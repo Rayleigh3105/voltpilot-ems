@@ -21,6 +21,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 )
 
 // Link is the cloud MQTT connection.
@@ -46,6 +47,7 @@ type Link struct {
 	onPlanV2            func(payload []byte)
 	onVerbundAnteile    func(payload []byte)
 	onSprungprobe       func(payload []byte)
+	onGeraetesuche      func(payload []byte)
 	onFlows             func(payload []byte)
 	onUpdateTarget      func(payload []byte)
 	onProbeRequest      func(payload []byte)
@@ -98,6 +100,10 @@ type Options struct {
 	// (docs/contracts/v2/mqtt-sprungprobe.md, AP-15 IP-21). NOT retained, an
 	// empty payload is never delivered. nil = not wired.
 	OnSprungprobe func(payload []byte)
+	// OnGeraetesuche receives a device-search order (starten, abbrechen) on
+	// .../v2/geraetesuche (docs/contracts/v2/mqtt-geraetesuche.md). NOT
+	// retained, an empty payload is never delivered. nil = not wired.
+	OnGeraetesuche func(payload []byte)
 	// OnFlows receives the retained flow deployment set on .../v2/flows
 	// (docs/contracts/v2/flow-artifact.md §3). Empty payload = retained
 	// clear (every artifact tab removed). nil = flow deployment not wired.
@@ -227,6 +233,7 @@ func New(o Options) (*Link, error) {
 		onControlCert:       o.OnControlCert,
 		onVerbundAnteile:    o.OnVerbundAnteile,
 		onSprungprobe:       o.OnSprungprobe,
+		onGeraetesuche:      o.OnGeraetesuche,
 		onChargingConfig:    o.OnChargingConfig,
 		onChargingBoost:     o.OnChargingBoost,
 		onProbeRequest:      o.OnProbeRequest,
@@ -311,6 +318,7 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	add("v2/plan", l.onPlanV2, true)
 	add("v2/verbund-anteile", l.onVerbundAnteile, true)
 	add("v2/sprungprobe", l.onSprungprobe, false)
+	add("v2/geraetesuche", l.onGeraetesuche, false)
 	add("v2/flows", l.onFlows, true)
 	add("v2/update", l.onUpdateTarget, true)
 	add("v2/control-certification", l.onControlCert, true)
@@ -515,6 +523,19 @@ type ComponentApplySummary struct {
 	// vp-portal-box-spiegel-s2).
 	HeldRevision string `json:"held_revision,omitempty"`
 	HeldReason   string `json:"held_reason,omitempty"`
+	// RejectedComponents are the devices the box did NOT apply while it applied
+	// the rest of the push: it cannot assign them a role (componentapply,
+	// erste Regel). They belong to `revision` - or, before the first apply, to
+	// `held_revision`. ADDITIVE and absent when nothing was skipped, so a box
+	// without a skipped device sends the bytes it sent before.
+	RejectedComponents []ComponentRejection `json:"rejected_components,omitempty"`
+}
+
+// ComponentRejection is one skipped device: its entity id and the German
+// reason without the id.
+type ComponentRejection struct {
+	EntityID string `json:"entity_id"`
+	Reason   string `json:"reason"`
 }
 
 // EntityObserved is one entity's edge-side Ist in the heartbeat (E1b).
@@ -588,9 +609,11 @@ type LocalSetupEntry struct {
 type NetworkSummary struct {
 	// ReportedAt is when the edge assembled this view (RFC 3339).
 	ReportedAt string `json:"reported_at"`
-	// LANHost is the endpoint of the Docker host on the CUSTOMER LAN, including
-	// its published web port. The installer detects/configures it outside the
-	// bridge container, so a later service visit over a VPN cannot replace it.
+	// LANHost is the endpoint of the box on the CUSTOMER LAN, including its
+	// published web port. The Docker installer detects/configures it outside
+	// the bridge container; Edge Light detects it itself on the router by the
+	// rule of the device search (default route, never a tunnel). A later
+	// service visit over a VPN cannot replace it.
 	LANHost string `json:"lan_host,omitempty"`
 	// Host is the proven address VERBATIM, port included (the port is part of
 	// what a human types). It is retained as fallback evidence for older/manual
@@ -799,6 +822,13 @@ type ChargersSummary struct {
 	// Chargers are the registered charge points, id-sorted. Never nil when the
 	// block is present.
 	Chargers []ChargerEntry `json:"chargers"`
+
+	// Rejected are the charge points refused in the last 24 h because their
+	// identity is not on the allowlist (docs/contracts/ocpp-klopft-an.md),
+	// newest first, at most 16. [] = the box reports that none knocked; the
+	// block also goes out for a knock alone, with an empty Chargers list -
+	// otherwise the FIRST station of a plant would stay invisible.
+	Rejected []geraetesuche.KlopftAn `json:"rejected"`
 }
 
 // maxChargerEntries / maxChargerConnectors bound the block. A charging park of
@@ -840,8 +870,19 @@ type ChargerEntry struct {
 	// ⚠ EMPTY means "an older box said nothing", NOT "haus": only a box that
 	// knows the field reports it, and a cloud that resolved silence to "haus"
 	// would claim a plant is house-side that nobody ever asked about.
-	Connection string                  `json:"connection,omitempty"`
-	Connectors []ChargerConnectorEntry `json:"connectors,omitempty"`
+	Connection string `json:"connection,omitempty"`
+	// Source / MinKw / StorageRelease ECHO the lane the box applies to this
+	// station (Konzept k1 „Gewählt ist nicht geladen", Regel 4; contract
+	// docs/contracts/ladepunkt-quelle-echo.md, additive). The cloud compares
+	// them with the customer's wish to say „Box hat übernommen".
+	//
+	// ⚠ ABSENT Source = an older box (or no known lane): "not confirmed",
+	// never "confirmed". With a Source, StorageRelease is always present
+	// (explicit false); MinKw only next to "sonne_zuerst" with an own minimum.
+	Source         string                  `json:"source,omitempty"`
+	MinKw          *float64                `json:"min_kw,omitempty"`
+	StorageRelease *bool                   `json:"storage_release,omitempty"`
+	Connectors     []ChargerConnectorEntry `json:"connectors,omitempty"`
 }
 
 // ChargerConnectorEntry is one plug: one vehicle, one claimant on the budget.
@@ -918,6 +959,10 @@ type ChargerConnectorEntry struct {
 	// SAYS so - a full charge nobody asked for would be a silent break of the
 	// customer's own priority.
 	Boost bool `json:"boost,omitempty"`
+	// HandPaused is true while this plug's „Laden pausieren" holds (W-10,
+	// additive): the pause outlives a box restart now, and the cloud learns it
+	// from the box instead of guessing it from the reason word.
+	HandPaused bool `json:"hand_paused,omitempty"`
 }
 
 // ConsumersSummary is the additive status-heartbeat block reporting the edge
@@ -976,8 +1021,9 @@ type ConsumersSummary map[string]ConsumerRuntime
 // ConsumerRuntime is one consumer entity's edge runtime state.
 type ConsumerRuntime struct {
 	// State is from the §14.13 vocabulary. The edge only ever claims what it
-	// can know: running_forced | running_optimized | clamped | waiting |
-	// offline (device had telemetry, went silent).
+	// can know: running_forced | running_optimized | running_manual (a
+	// human's own "Von Hand" override, never the plan's claim) | clamped |
+	// waiting | offline (device had telemetry, went silent).
 	State string `json:"state"`
 	// ReasonCode is from the §15 vocabulary incl. the cycle-guard extension
 	// (guard_min_on | guard_min_off | guard_max_starts | guard_ramp |
@@ -996,6 +1042,52 @@ type ConsumerRuntime struct {
 	// commanded runtime + starts; the cloud-side fulfilment ledger keys on
 	// telemetry, this is the device's own honest counter).
 	RequirementProgress *ConsumerRequirementProgress `json:"requirement_progress,omitempty"`
+	// Stage is set only for a consumer switched in STAGES over an output set
+	// (a heating rod per phase, docs/contracts/v2/heizstab-shelly.md): the
+	// commanded and the CONFIRMED stage with their kW - the evidence the
+	// ledger counts instead of "rated power x time". Additive; absent for
+	// every other consumer.
+	Stage *ConsumerStage `json:"stage,omitempty"`
+	// Heizstab is the box's heating-rod controller verdict (internal/
+	// heizstab, docs/contracts/v2/heizstab-regler.md): the stage it wants, why,
+	// the surplus it sees and when a higher stage may start. Additive; absent
+	// for every consumer without the controller block.
+	Heizstab *ConsumerHeizstab `json:"heizstab,omitempty"`
+}
+
+// ConsumerHeizstab is the controller's view of one heating rod.
+type ConsumerHeizstab struct {
+	Stufe     int     `json:"stufe"`
+	Ausgaenge int     `json:"ausgaenge"`
+	Kw        float64 `json:"kw"`
+	Code      string  `json:"code"`
+	Grund     string  `json:"grund"`
+	// VerfuegbarKw is the surplus the rod may use; absent while blind.
+	VerfuegbarKw *float64 `json:"verfuegbar_kw,omitempty"`
+	// HoeherAb is the earliest moment a higher stage may start (RFC 3339);
+	// absent = now or not applicable.
+	HoeherAb string `json:"hoeher_ab,omitempty"`
+	// Seit is when the controller last changed the stage (RFC 3339).
+	Seit string `json:"seit,omitempty"`
+}
+
+// ConsumerStage is the stage view of a consumer switched over an output set.
+type ConsumerStage struct {
+	// Commanded is the number of outputs the executor lets run, CommandedKw
+	// their elements' power.
+	Commanded   int     `json:"commanded"`
+	CommandedKw float64 `json:"commanded_kw"`
+	// Confirmed/ConfirmedKw is what the device REPORTS (outputs on and their
+	// power); absent while any output is unread - unknown is never "off".
+	Confirmed   *int     `json:"confirmed,omitempty"`
+	ConfirmedKw *float64 `json:"confirmed_kw,omitempty"`
+	// OutputsOn names the outputs reported on (Shelly ids).
+	OutputsOn []int `json:"outputs_on,omitempty"`
+	// MismatchSince is when the oldest still-running deviation of an output
+	// from its command began (RFC 3339); absent = every output as commanded.
+	MismatchSince string `json:"mismatch_since,omitempty"`
+	// At is when the stage was read (RFC 3339).
+	At string `json:"at"`
 }
 
 // ConsumerRequirementProgress carries the edge's per-day counters.
@@ -1036,6 +1128,11 @@ const (
 // because the contract is deliberately runtime-agnostic - a podman/quadlet or
 // Mender box reports its own backend and nothing above it changes.
 const UpdateBackendCompose = "compose"
+
+// UpdateBackendLight is Edge Light's backend: one program per architecture,
+// fetched at boot (edge-light/docs/boot-und-updates.md). The box type reports
+// it from its own build (UpdateBackend).
+const UpdateBackendLight = "light"
 
 // UpdateSummary is the additive `update` block of the status heartbeat (scout
 // vp-ota-rollout-h4 §5), the device's own answer to "what am I running and
@@ -1101,7 +1198,40 @@ type UpdateSummary struct {
 	//
 	// ABSENT and EMPTY mean different things on purpose - see TrustSummary.
 	Trust *TrustSummary `json:"trust,omitempty"`
+	// Geraet is WHAT the box runs on (Geraete & Updates G8, contract
+	// docs/contracts/v2/box-geraet.md): the device model as the device states it
+	// (OpenWrt sysinfo, device tree, the Pi's cpuinfo line, DMI - never guessed),
+	// the architecture of THIS program, and for Edge Light the loader state.
+	// nil = an older box, or the detection did not run (tests) - additive, an
+	// older cloud ignores it.
+	Geraet *GeraetSummary `json:"geraet,omitempty"`
 }
+
+// GeraetSummary is update.geraet (Geraete & Updates G8).
+type GeraetSummary struct {
+	// Modell is the device's own model statement, normalised; omitted when
+	// no source could be read (never a placeholder like "Default string").
+	Modell string `json:"modell,omitempty"`
+	// Arch is runtime.GOARCH of the running program (amd64, arm64, mipsle, …).
+	Arch string `json:"arch,omitempty"`
+	// Loader is Edge Light only: LoaderUpdate when the loader knows the update
+	// protocol (it sets VP_OTA_RAM_DIR, Stufe 2), LoaderFlash when it always
+	// starts the version from the flash (Stufe 1). Omitted on the Docker box.
+	Loader string `json:"loader,omitempty"`
+	// LoaderStand is Edge Light only: the LOADER_STAND mark of the loader in
+	// the flash (internal/loaderstand) - which boot.sh/init revision this box
+	// actually runs, so a loader rollout is checkable from the portal instead
+	// of through the maintenance tunnel. Omitted (0) on old loaders without a
+	// mark and on the Docker box; additive, an older cloud ignores it.
+	LoaderStand int `json:"loader_stand,omitempty"`
+}
+
+const (
+	// LoaderUpdate: the Edge Light loader swaps a verified candidate (Stufe 2).
+	LoaderUpdate = "update"
+	// LoaderFlash: the Edge Light loader only starts the flash copy (Stufe 1).
+	LoaderFlash = "flash"
+)
 
 // NeutralVerifiedSummary is one geraete-lokal gemessener Neutral-Zeit-Nachweis
 // (the otaapply.NeutralRecord counterpart carried in the heartbeat).
@@ -1651,9 +1781,12 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	if registerWrites != nil && len(registerWrites.Entries) > 0 {
 		payload["register_writes"] = registerWrites
 	}
-	if chargers != nil && len(chargers.Chargers) > 0 {
+	if chargers != nil && (len(chargers.Chargers) > 0 || len(chargers.Rejected) > 0) {
 		if len(chargers.Chargers) > maxChargerEntries {
 			chargers.Chargers = chargers.Chargers[:maxChargerEntries]
+		}
+		if len(chargers.Rejected) > geraetesuche.MaxKlopftAn {
+			chargers.Rejected = chargers.Rejected[:geraetesuche.MaxKlopftAn]
 		}
 		payload["chargers"] = chargers
 	}

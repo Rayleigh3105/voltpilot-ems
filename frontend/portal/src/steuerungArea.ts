@@ -33,7 +33,7 @@ import {
   type SteuerungFormelInput,
 } from './erloesKomposition';
 import { lifecycleLabel, type EditorEntity } from './flows/model';
-import { AUTOMATIC_MODULES } from './moduleSurface';
+import { AUTOMATIC_MODULES, exportFolgtBoersenpreis } from './moduleSurface';
 import { imRegal } from './anwendungen';
 import {
   benefitLine,
@@ -125,6 +125,7 @@ export function contributionRows(
               tarifParamCtKwh: earnings.tarifParamCtKwh,
               tarifPriced: earnings.tarifPriced ?? null,
               exportVerguetungPriced: earnings.exportVerguetungPriced ?? null,
+              exportVerguetungQuelle: earnings.exportVerguetungQuelle ?? null,
               plantKind: earnings.plantKind,
               anzulegenderWertCtKwh: earnings.anzulegenderWertCtKwh,
               marketValueSolarCtKwh: earnings.marketValueSolarCtKwh,
@@ -479,8 +480,16 @@ export interface ProtectionItem {
  * erscheint NUR, wenn das Netzladen für die Anlage tatsächlich gesperrt ist —
  * sonst wäre die Zeile eine Behauptung.
  */
-export function protectionItems(site: { netzladenErlaubt?: boolean | null }): ProtectionItem[] {
-  const items: ProtectionItem[] = AUTOMATIC_MODULES.map((m) => ({
+export function protectionItems(site: {
+  netzladenErlaubt?: boolean | null;
+  plantKind?: string | null;
+}): ProtectionItem[] {
+  // N4: die Negativpreis-Abregelung „schützt vor Kosten" nur, wo der Plan
+  // wirklich zum Börsenpreis einspeist - bei fester Vergütung regelt der
+  // Optimierer nie wegen des Preises ab.
+  const items: ProtectionItem[] = AUTOMATIC_MODULES.filter(
+    (m) => m.title !== 'Negativpreis-Abregelung' || exportFolgtBoersenpreis(site),
+  ).map((m) => ({
     key: m.title,
     label: m.title,
     tip: m.tip,

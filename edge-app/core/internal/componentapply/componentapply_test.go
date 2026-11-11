@@ -3,6 +3,7 @@ package componentapply
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -210,15 +211,17 @@ func TestTwoDevicesWithTheSameTransportAreAnAmbiguousSoll(t *testing.T) {
 func TestAnUndecidableRoleIsRefusedNeverGuessed(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-000000000001", "modbus-generic",
 		`{"brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.5"}}`))
-	_, err := Derive(reg, cat(), nil, now)
-	if err == nil || !strings.Contains(err.Error(), "welche Rolle") {
-		t.Fatalf("err = %v", err)
+	plan, err := Derive(reg, cat(), nil, now)
+	if !errors.Is(err, ErrNoConfiguration) || len(plan.Sources) != 0 || len(plan.Rejected) != 1 ||
+		plan.Rejected[0].EntityID != "aaaa0000-0000-0000-0000-000000000001" ||
+		!strings.Contains(plan.Rejected[0].Reason, "welche Rolle") {
+		t.Fatalf("plan=%+v err=%v", plan, err)
 	}
 	// Mit ausdruecklicher Rolle geht es - geraten wird nie.
 	reg = portal(ent("aaaa0000-0000-0000-0000-000000000001", "modbus-generic",
 		`{"role":"consumer","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.5"}}`))
-	plan, err := Derive(reg, cat(), nil, now)
-	if err != nil || plan.Sources[0].Role != sources.RoleConsumer {
+	plan, err = Derive(reg, cat(), nil, now)
+	if err != nil || plan.Sources[0].Role != sources.RoleConsumer || len(plan.Rejected) != 0 {
 		t.Fatalf("plan=%+v err=%v", plan, err)
 	}
 }
@@ -226,8 +229,120 @@ func TestAnUndecidableRoleIsRefusedNeverGuessed(t *testing.T) {
 func TestAnUnknownRoleWordIsRefused(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-000000000001", entities.TypeProducer,
 		`{"role":"wallbox","brand":"generic_modbus","connection":{"ip":"192.168.0.5"}}`))
-	if _, err := Derive(reg, cat(), nil, now); err == nil ||
-		!strings.Contains(err.Error(), "unbekannte Rolle") {
+	plan, err := Derive(reg, cat(), nil, now)
+	if !errors.Is(err, ErrNoConfiguration) || len(plan.Rejected) != 1 ||
+		plan.Rejected[0].Reason != `die Anbindung nennt die unbekannte Rolle "wallbox"` {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+}
+
+// --- Ein Gerät ohne Rolle versenkt nicht den ganzen Push --------------------
+
+// shellyChannel is one output of a Shelly Pro 3 (192.168.178.43) as the portal
+// created it on 02.11.2026 for the VoltPilotGATE: a generic-load on ONE channel,
+// without actuate and with fallback measure-only - a device the box cannot
+// assign any role.
+func shellyChannel(id string, channel int) entities.Entity {
+	e := ent(id, entities.TypeGenericLoad, fmt.Sprintf(
+		`{"brand":"shelly","model":"shelly_http","family":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channel":%d}}`, channel))
+	e.Guards.Failsafe.Behavior = "measure-only"
+	return e
+}
+
+// Der echte Fall (VoltPilotGATE, 02.11.2026): Hauslast, Netzzaehler und drei
+// Shelly-Ausgaenge als je ein Messgeraet ohne Rolle. Vorher verwarf die Box den
+// GANZEN Push; jetzt wendet sie Hauslast und Netzzaehler an und meldet genau
+// die drei Ausgaenge als abgelehnt, jeden mit Kennung und Grund.
+func TestThreeRolelessShellyOutputsAreRejectedAndTheRestIsApplied(t *testing.T) {
+	houseLoad := ent("5ee61b0e-fca6-49eb-a36a-057fff694dad", entities.TypeHouseLoad, "")
+	houseLoad.Guards.Failsafe.Behavior = "measure-only"
+	gridMeter := ent("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, meterDriver)
+	gridMeter.Guards.Failsafe.Behavior = "measure-only"
+	reg := portal(houseLoad, gridMeter,
+		shellyChannel("cf91e363-0000-0000-0000-000000000000", 0),
+		shellyChannel("bcb311cf-0000-0000-0000-000000000000", 1),
+		shellyChannel("53cfe532-0000-0000-0000-000000000000", 2))
+
+	plan, err := Derive(reg, cat(), nil, now)
+	if err != nil {
+		t.Fatalf("drei Geraete ohne Rolle duerfen den Push nicht versenken: %v", err)
+	}
+	if plan.Inverter != nil || len(plan.Sources) != 1 || plan.Sources[0].Role != sources.RoleNetz ||
+		plan.Sources[0].Connection.IP != "192.168.210.55" {
+		t.Fatalf("der Netzzaehler muss angewandt sein: %+v", plan)
+	}
+	want := []string{"53cfe532-0000-0000-0000-000000000000",
+		"bcb311cf-0000-0000-0000-000000000000", "cf91e363-0000-0000-0000-000000000000"}
+	if len(plan.Rejected) != len(want) {
+		t.Fatalf("abgelehnt = %+v", plan.Rejected)
+	}
+	for i, r := range plan.Rejected {
+		if r.EntityID != want[i] || !strings.Contains(r.Reason, "(generic-load)") ||
+			!strings.Contains(r.Reason, "welche Rolle") || strings.Contains(r.Reason, r.EntityID) {
+			t.Fatalf("Ablehnung %d = %+v", i, r)
+		}
+	}
+	// Eine Wiederholung desselben Pushs ist ein No-op - die Ablehnungen
+	// gehoeren nicht zu dem, was laeuft.
+	again, err := Derive(reg, cat(), plan.Sources, now.Add(time.Hour))
+	if err != nil || !again.SameAs(nil, plan.Sources) {
+		t.Fatalf("Wiederholung: %+v err=%v", again, err)
+	}
+}
+
+// Dieselbe Registry, wie sie auf der Box lag: Hauslast und Netzzaehler OHNE
+// Treiber (komponiert). Dann bleibt kein anwendbares Geraet - der ehrliche
+// Halt, aber MIT den drei Ablehnungen, damit das Portal sagen kann, warum.
+func TestTheRealRegistryWithComposedRowsHoldsAndStillNamesTheRejections(t *testing.T) {
+	reg := portal(
+		ent("5ee61b0e-fca6-49eb-a36a-057fff694dad", entities.TypeHouseLoad, ""),
+		ent("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, ""),
+		shellyChannel("cf91e363-0000-0000-0000-000000000000", 0),
+		shellyChannel("bcb311cf-0000-0000-0000-000000000000", 1),
+		shellyChannel("53cfe532-0000-0000-0000-000000000000", 2))
+	reg.Revision = "2026-11-02T10:11:33.667172959Z"
+	plan, err := Derive(reg, cat(), nil, now)
+	if !errors.Is(err, ErrNoConfiguration) {
+		t.Fatalf("err = %v, will ErrNoConfiguration", err)
+	}
+	if plan.Revision != reg.Revision || len(plan.Rejected) != 3 || !plan.Empty() {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
+// Was ein kaputter Lesepfad IST, verweigert weiter den ganzen Push - auch
+// neben einem Geraet ohne Rolle.
+func TestABrokenDriverStillRefusesTheWholePushBesideARolelessDevice(t *testing.T) {
+	for name, broken := range map[string]entities.Entity{
+		"unbekannte_marke": ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer,
+			`{"role":"pv-generation","brand":"gibt-es-nicht","connection":{"ip":"192.168.0.9"}}`),
+		"ohne_marke": ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer,
+			`{"communication":"modbus_tcp","connection":{"ip":"192.168.0.9","port":502,"unit_id":1}}`),
+		"unlesbar": ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, `{"brand":`),
+		"steuerung_mit_fremder_rolle": ent("6a1e3d0f-0000-0000-0000-000000000002",
+			entities.TypeAnlagensteuerung, `{"role":"pv-generation","communication":"modbus_tcp",
+			  "connection":{"ip":"10.0.0.5","port":502,"unit_id":1}}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			plan, err := Derive(portal(
+				ent("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+				shellyChannel("cf91e363-0000-0000-0000-000000000000", 0),
+				broken), cat(), nil, now)
+			if err == nil || errors.Is(err, ErrNoConfiguration) {
+				t.Fatalf("ein kaputter Treiber muss den ganzen Push verweigern: err=%v", err)
+			}
+			if plan.Inverter != nil || len(plan.Sources) != 0 || len(plan.Rejected) != 0 {
+				t.Fatalf("bei einer Verweigerung darf KEIN Teilplan zurueckkommen: %+v", plan)
+			}
+		})
+	}
+	// Zwei Wechselrichter bleiben ein widerspruechliches Soll.
+	if _, err := Derive(portal(
+		ent("aaaa0000-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+		ent("bbbb0000-0000-0000-0000-000000000002", entities.TypeBatteryHybrid, deyeDriver),
+		shellyChannel("cf91e363-0000-0000-0000-000000000000", 0)), cat(), nil, now); err == nil ||
+		!strings.Contains(err.Error(), "zwei Wechselrichter") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -334,6 +449,35 @@ func TestRecordKeepsTheLastAppliedRevisionAcrossARefusal(t *testing.T) {
 	}
 }
 
+// Die Ablehnungen einzelner Geraete gehoeren zu dem Stand, den der Record
+// beschreibt: eine Verweigerung des GANZEN naechsten Pushs laesst die der
+// laufenden Fassung stehen (sie laeuft weiter), raeumt aber die eines Halts.
+func TestRejectedDevicesFollowTheConfigurationTheyBelongTo(t *testing.T) {
+	one := []Rejection{{EntityID: "e1", Reason: "keine Rolle"}}
+	applied := NewRecord(AuthorityPortal, "r5", now).WithRejections(one)
+	if got := applied.WithRefusal("r6", "zwei Wechselrichter"); len(got.Rejected) != 1 || got.Revision != "r5" {
+		t.Fatalf("die laufende Fassung behaelt ihre Ablehnungen: %+v", got)
+	}
+	held := Record{Version: StateVersion, Authority: AuthorityPortal}.WithHold("r1", "nichts anwendbar", one)
+	if len(held.Rejected) != 1 || held.Held != "r1" {
+		t.Fatalf("der Halt nennt seine Ablehnungen: %+v", held)
+	}
+	if got := held.WithRefusal("r2", "zwei Wechselrichter"); len(got.Rejected) != 0 || got.Held != "" {
+		t.Fatalf("mit dem Halt gehen seine Ablehnungen: %+v", got)
+	}
+	if got := applied.WithHold("r7", "x", nil); len(got.Rejected) != 0 {
+		t.Fatalf("ein Halt ersetzt die Liste: %+v", got)
+	}
+	raw, _ := json.Marshal(applied)
+	if !strings.Contains(string(raw), `"rejected_components":[{"entity_id":"e1","reason":"keine Rolle"}]`) {
+		t.Fatalf("Drahtform = %s", raw)
+	}
+	raw, _ = json.Marshal(NewRecord(AuthorityPortal, "r5", now))
+	if strings.Contains(string(raw), "rejected_components") {
+		t.Fatalf("ohne Ablehnung bleibt das Feld weg: %s", raw)
+	}
+}
+
 func TestStoreRoundTripAndFutureVersionIsIgnoredWholesale(t *testing.T) {
 	dir := t.TempDir()
 	st, err := NewStore(dir)
@@ -407,126 +551,6 @@ func TestAPlantWithOnlySelfBuiltDevicesDerivesNoConfigurationAtAll(t *testing.T)
 	_, err := Derive(reg, cat(), nil, now)
 	if !errors.Is(err, ErrNoConfiguration) {
 		t.Fatalf("err = %v, will ErrNoConfiguration", err)
-	}
-}
-
-// --- Die selbst angebundene BATTERIE ueber MQTT (P5 Ebene 1) ---------------
-
-// Die Cloud pusht sie mit communication mqtt_local und der GANZEN gespeicherten
-// Definition als driver.connection (UserDefinedBatteryService.definitionJson -
-// ein Broker plus die Feld-Zuordnung), NIE mit einer Marke.
-const mqttBatteryDriver = `{"communication":"mqtt_local",
-  "connection":{"schema_version":"1.0","transport":"mqtt_local",
-    "broker":{"host":"192.168.40.20","port":1883},"publish_interval_s":15,
-    "mappings":[{"channel":"cell_min_mv","unit":"mV","topic":"emon/diybms/+/+",
-      "path":"voltage","aggregate":"min","value_type":"number","scale":1000,
-      "offset":0,"stale_s":300}]}}`
-
-// Dieselbe Gefahr wie beim Selbstbau-Geraet, ein Transport weiter: Derive ist
-// alles-oder-nichts, und eine MQTT-Batterie traegt keine Marke. Ohne den
-// erweiterten Skip verloere die Anlage mit ihrer ERSTEN eigenen Batterie die
-// Anwendung ihres Wechselrichters und aller Quellen.
-func TestAnMqttBatteryIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
-	reg := portal(
-		ent("6a1e3d0f-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
-		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
-		ent("bbbb0000-0000-0000-0000-00000000000f", "user-defined-battery", mqttBatteryDriver),
-	)
-	plan, err := Derive(reg, cat(), nil, now)
-	if err != nil {
-		t.Fatalf("eine selbst angebundene Batterie darf den Push nicht scheitern lassen: %v", err)
-	}
-	if plan.Inverter == nil {
-		t.Fatal("der Wechselrichter fehlt - genau das waere der Schaden")
-	}
-	if len(plan.Sources) != 1 {
-		t.Fatalf("Quellen = %d, will 1 (der Erzeuger; die MQTT-Batterie gehoert NICHT dazu)",
-			len(plan.Sources))
-	}
-	for _, s := range plan.Sources {
-		if strings.Contains(s.Communication, "mqtt") {
-			t.Fatalf("eine MQTT-Batterie ist in sources.json gelandet: %+v", s)
-		}
-	}
-}
-
-// --- Dieselbe Batterie ueber HTTP/JSON (P5 Ebene 1 "HTTP/JSON") -----------
-
-// Der ZWEITE Lesetyp desselben Anschlusses: communication http_local, und die
-// gespeicherte Definition traegt hier zusaetzlich das GEHEIMNIS des Endpunkts
-// (auth_secret). Es reist ueber DIESEN Weg zur Box - nie im Flow-Dokument, das
-// ueber die Portal-API lesbar waere - und wird vom vp-http-read-Knoten aus der
-// per-Entitaet retained Konfiguration gelesen.
-const httpBatteryDriver = `{"communication":"http_local",
-  "connection":{"schema_version":"1.0","transport":"http_local",
-    "endpoint":{"host":"192.168.40.21","port":80,"path":"/ha","tls":false},
-    "auth":{"mode":"header","header":"ApiKey"},"auth_secret":"geheim-123",
-    "publish_interval_s":15,"timeout_ms":5000,
-    "mappings":[{"channel":"soc_pct","unit":"%","path":"soc",
-      "aggregate":"last","value_type":"number","scale":1,"offset":0}]}}`
-
-// Dieselbe Gefahr, ein Transport weiter: ohne den erweiterten Skip verloere
-// die Anlage mit ihrer ersten HTTP-Batterie die Anwendung ihres
-// Wechselrichters und aller Quellen (Derive ist alles-oder-nichts).
-func TestAnHTTPBatteryIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
-	reg := portal(
-		ent("6a1e3d0f-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
-		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
-		ent("bbbb0000-0000-0000-0000-0000000000ff", "user-defined-battery", httpBatteryDriver),
-	)
-	plan, err := Derive(reg, cat(), nil, now)
-	if err != nil {
-		t.Fatalf("eine selbst angebundene Batterie darf den Push nicht scheitern lassen: %v", err)
-	}
-	if plan.Inverter == nil {
-		t.Fatal("der Wechselrichter fehlt - genau das waere der Schaden")
-	}
-	if len(plan.Sources) != 1 {
-		t.Fatalf("Quellen = %d, will 1 (der Erzeuger; die HTTP-Batterie gehoert NICHT dazu)",
-			len(plan.Sources))
-	}
-	for _, s := range plan.Sources {
-		if strings.Contains(s.Communication, "http_local") {
-			t.Fatalf("eine HTTP-Batterie ist in sources.json gelandet: %+v", s)
-		}
-	}
-}
-
-func TestParseDriverSkipsAnHTTPBatteryBeforeTheBrandCheck(t *testing.T) {
-	e := entities.Entity{ID: "batt", Type: "user-defined-battery",
-		Driver: json.RawMessage(httpBatteryDriver)}
-	d, ok, err := ParseDriver(e)
-	if err != nil {
-		t.Fatalf("kein Fehler erwartet, bekam %v", err)
-	}
-	if ok {
-		t.Fatalf("die Batterie darf kein Treiber-Ziel sein, bekam %+v", d)
-	}
-}
-
-// ParseDriver ueberspringt sie ausdruecklich - und zwar VOR der Marken-Pruefung.
-// Ihr Leseplan reist als generierter Flow ueber v2/flows, nicht ueber diesen
-// Weg.
-func TestParseDriverSkipsAnMqttBatteryBeforeTheBrandCheck(t *testing.T) {
-	e := entities.Entity{ID: "batt", Type: "user-defined-battery",
-		Driver: json.RawMessage(mqttBatteryDriver)}
-	d, ok, err := ParseDriver(e)
-	if err != nil {
-		t.Fatalf("kein Fehler erwartet, bekam %v", err)
-	}
-	if ok {
-		t.Fatalf("die Batterie darf kein Treiber-Ziel sein, bekam %+v", d)
-	}
-}
-
-// Die :8484-Geraetekarte ist Modbus-geformt (Adresse, Unit-ID, Kanalliste). Die
-// MQTT-Batterie hat davon nichts - sie wird uebersprungen, aber bewusst NICHT
-// als Selbstbau-Geraet gelistet, sonst stuende dort eine leere Adresse.
-func TestAnMqttBatteryIsSkippedButNotListedAsASelfBuiltDevice(t *testing.T) {
-	e := entities.Entity{ID: "batt", Type: "user-defined-battery",
-		Driver: json.RawMessage(mqttBatteryDriver)}
-	if IsSelfBuilt(e) {
-		t.Fatal("die MQTT-Batterie gehoert nicht auf die Modbus-Geraetekarte")
 	}
 }
 
@@ -614,5 +638,71 @@ func TestAnIOModuleBecomesOneConsumerSideSourceAndItsChannelsNone(t *testing.T) 
 	if s.Role != sources.RoleConsumer || s.Communication != inverter.CommEbyteModbusTCP ||
 		s.Connection.MAC != "00:54:2c:84:9b:90" || s.Connection.UnitID != 1 {
 		t.Fatalf("module source %+v", s)
+	}
+}
+
+// A heating rod over the three outputs of a Shelly Pro 3 (an output SET,
+// docs/contracts/v2/heizstab-shelly.md) derives ONE source that keeps the set,
+// with an identity of its own: it never shares an id with a single output of
+// the same device, and a redelivery is a no-op.
+func TestAShellyOutputSetDerivesOneSourceWithItsOwnIdentity(t *testing.T) {
+	rod := ent("aaaa0000-0000-0000-0000-0000000000a1", "heating-rod",
+		`{"brand":"shelly","model":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channels":[0,1,2],
+		  "output_kw":[2.0,2.0,2.0],"stages":[1,2,3]}}`)
+	rod.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	single := ent("aaaa0000-0000-0000-0000-0000000000a2", "generic-load",
+		`{"brand":"shelly","model":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channel":0}}`)
+	single.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	plan, err := Derive(portal(rod, single), cat(), nil, now)
+	if err != nil || len(plan.Sources) != 2 {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+	set, one := plan.Sources[0], plan.Sources[1]
+	if set.Connection.Channels != "0,1,2" || one.Connection.Channels != "" || set.ID == one.ID {
+		t.Fatalf("set=%+v single=%+v", set.Connection, one.Connection)
+	}
+	raw, _ := json.Marshal(set.Connection)
+	if !strings.Contains(string(raw), `"channels":[0,1,2]`) || strings.Contains(string(raw), "output_kw") {
+		t.Fatalf("source connection = %s", raw)
+	}
+	again, err := Derive(portal(single, rod), cat(), plan.Sources, now)
+	if err != nil || !again.SameAs(nil, plan.Sources) {
+		t.Fatalf("a redelivery must be a no-op: %+v err=%v", again, err)
+	}
+}
+
+// The heating rod exactly as the cloud creates it (POST .../components with
+// consumerType heating-rod): read-only - no actuate, failsafe off. Its role is
+// still unambiguous (consumer), so the box reads its output set instead of
+// rejecting it like a measure-only generic-load; commands stay refused by the
+// capability gate.
+func TestAHeatingRodWithoutActuateIsStillReadAsAConsumer(t *testing.T) {
+	rod := ent("aaaa0000-0000-0000-0000-0000000000a4", entities.TypeHeatingRod,
+		`{"brand":"shelly","model":"shelly_http","family":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channels":[0,1,2],
+		  "output_kw":[2.0,2.0,2.0],"stages":[1,2,3],"anschluss":"stern_mit_n"}}`)
+	rod.Guards.Failsafe.Behavior = "off"
+	if rod.Category() != entities.CategoryMeasureOnly || rod.Supports(entities.CmdOnOff) {
+		t.Fatalf("fixture: a read-only rod is measure-only for the guards")
+	}
+	plan, err := Derive(portal(rod), cat(), nil, now)
+	if err != nil || len(plan.Sources) != 1 || len(plan.Rejected) != 0 {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+	if s := plan.Sources[0]; s.Role != sources.RoleConsumer || s.Connection.Channels != "0,1,2" {
+		t.Fatalf("source %+v", s)
+	}
+}
+
+func TestAShellyOutputSetWithADoubleOutputIsRefused(t *testing.T) {
+	rod := ent("aaaa0000-0000-0000-0000-0000000000a3", "heating-rod",
+		`{"brand":"shelly","model":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","channels":[0,0]}}`)
+	rod.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	if _, err := Derive(portal(rod), cat(), nil, now); err == nil ||
+		!strings.Contains(err.Error(), "Ausgang 0 steht zweimal in der Ausgangsmenge.") {
+		t.Fatalf("err = %v", err)
 	}
 }

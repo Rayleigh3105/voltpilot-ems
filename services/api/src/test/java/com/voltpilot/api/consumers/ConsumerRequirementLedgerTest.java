@@ -64,6 +64,22 @@ class ConsumerRequirementLedgerTest {
     }
 
     @Test
+    void aManualOverrideCountsAsRunningTooTeilB() {
+        // Teil B (Captain-Befund 05.11.2026): a human's own "Von Hand"
+        // override still runs the device - the ledger must count it exactly
+        // like running_forced/running_optimized.
+        Instant now = Instant.parse("2026-08-10T20:00:00Z");
+        List<Row> rows = ConsumerRequirementLedger.evaluate(ENTITY, List.of(dailyRuntime("t", 60)),
+                ev(5400, "running_manual", null, Boolean.TRUE, EnergyConfirmation.ASSUMED, null,
+                        new BigDecimal("2.2")),
+                now, BERLIN);
+        assertThat(rows).hasSize(1);
+        Row r = rows.get(0);
+        assertThat(r.state()).isEqualTo(State.FULFILLED);
+        assertThat(r.actualEnergyKwh()).isEqualByComparingTo("3.300");
+    }
+
+    @Test
     void noReadbackNeverReadsFulfilled() {
         // Runtime meets the goal but there is NO confirmation channel (NONE):
         // commanded runtime alone is never "erfüllt" (§9.4 stage 4).

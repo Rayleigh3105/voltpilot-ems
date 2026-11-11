@@ -1,20 +1,20 @@
 package com.voltpilot.api.probe;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -56,7 +56,7 @@ public class ProbePublisher {
     private final String username;
     private final String password;
 
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public ProbePublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -65,6 +65,21 @@ public class ProbePublisher {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "probe", brokerUrl,
+                "voltpilot-api-probe-" + UUID.randomUUID(), true, username, password, null, null);
+    }
+
+    /**
+     * Stößt den Erstaufbau beim Start nur AN, blockiert den Start-Thread nie (Review-Fix: ein beim api-Start
+     * fehlender Broker hätte den Start sonst um bis zu {@link BrokerVerbindung#ZEITGRENZE_MS} je Weg verlängert -
+     * Risiko einer Neustart-Schleife der {@code startupProbe}). Der erste Versand wartet dafür selbst begrenzt auf
+     * den Erstaufbau ({@link BrokerVerbindung#verbundenerClient()}, wie vor der Migration das synchrone
+     * {@code MqttClient.connect()}); danach wartet kein Senden mehr auf die Verbindung, und Paho verbindet selbst
+     * neu.
+     */
+    @EventListener(ContextRefreshedEvent.class)
+    public void start() {
+        verbindung.sicherstellen();
     }
 
     /**
@@ -91,16 +106,19 @@ public class ProbePublisher {
         publish(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, null, ops);
     }
 
-    /** Wie oben, mit dem WAGO-Kopf als ERSTEM Schritt (AP-05 IP-7, Soll-Lesung am Gerät). */
+    /**
+     * Wie oben, mit einem Kopf-Schritt als ERSTEM Schritt: dem WAGO-Kopf (AP-05 IP-7, Soll-Lesung am
+     * Gerät) oder dem Kopf des Erzeuger-Bilds (EZ-15, Anlege-Schritt „Steuerung verbinden“).
+     */
     public synchronized void publish(UUID tenantId, UUID siteId, UUID deviceId,
-            String requestId, Instant requestedAt, String requestedBy, WagoKopfOp kopf,
+            String requestId, Instant requestedAt, String requestedBy, KopfOp kopf,
             List<ProbeRequest.Op> ops) throws Exception {
         String topic = probeTopic(tenantId, siteId, deviceId);
         MqttMessage message = new MqttMessage(
                 envelope(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, kopf, ops));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(topic, message);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         // ⚠ The customer's LAN address is deliberately NOT logged: it is their
         // network topology, it appears in no other log line on this path, and a
         // preview is not worth a permanent record of where their devices sit.
@@ -123,11 +141,28 @@ public class ProbePublisher {
                 requestedAt, requestedBy, opId, brand, model, family, role, connection));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(topic, message);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         // ⚠ Same rule as the read probe: the customer's LAN address is NOT
         // logged - it is their network topology, and a wizard step is not worth
         // a permanent record of where their devices sit.
         log.debug("published connection test {} (NON-retained)", requestId);
+    }
+
+    /**
+     * Publish the Shelly setting write {@code nach_stromausfall_aus} (Heizstab V1, HZ-5 = A): on
+     * the operator's explicit consent every output of the connection stays OFF after a power cut.
+     * A relay SETTING, not a switching command - same envelope and discipline as a test.
+     */
+    public synchronized void publishNachStromausfallAus(UUID tenantId, UUID siteId, UUID deviceId,
+            String requestId, Instant requestedAt, String requestedBy, String opId,
+            Map<String, Object> connection) throws Exception {
+        String topic = probeTopic(tenantId, siteId, deviceId);
+        MqttMessage message = new MqttMessage(deviceOpEnvelope("nach_stromausfall_aus", tenantId, siteId,
+                deviceId, requestId, requestedAt, requestedBy, opId, "shelly", null, null, null, connection));
+        message.setQos(1);
+        message.setRetained(false);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
+        log.debug("published nach_stromausfall_aus {} (NON-retained)", requestId);
     }
 
     /**
@@ -144,11 +179,34 @@ public class ProbePublisher {
                 requestedAt, requestedBy, op));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(topic, message);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         // ⚠ The customer's LAN address is NOT logged here either - and a write
         // is exactly the record someone would want; the audit trail names WHO
         // and WHAT, never WHERE in their network.
         log.debug("published switch op {} ({}, NON-retained)", requestId, op.op());
+    }
+
+    /**
+     * Ein Kopf-Schritt vor den Lese-Schritten: {@code wago_kopf} oder {@code erzeuger_kopf}. Beide
+     * tragen dieselben Parameter (Basisadresse, Registerart, Wortfolge je Anlage) und keinen Datentyp.
+     */
+    public sealed interface KopfOp permits WagoKopfOp, ErzeugerKopfOp {
+        /** Das Vertragswort des Ops. */
+        String op();
+
+        String id();
+
+        String host();
+
+        Integer port();
+
+        Integer unitId();
+
+        String registerKind();
+
+        int address();
+
+        String wordOrder();
     }
 
     /**
@@ -157,7 +215,24 @@ public class ProbePublisher {
      * Parameter der Anlage; das Typenschild wird nie erfragt — es ist nie ein Identitätsbeweis.
      */
     public record WagoKopfOp(String id, String host, Integer port, Integer unitId,
-            String registerKind, int address, String wordOrder) {
+            String registerKind, int address, String wordOrder) implements KopfOp {
+        @Override
+        public String op() {
+            return "wago_kopf";
+        }
+    }
+
+    /**
+     * Der Op {@code erzeuger_kopf} (Vertrag {@code op_erzeuger_kopf}, UEMS EZ-5/EZ-15): liest Kopf,
+     * Art und Nennleistung je Einheit und die Namen eines VoltPilot-Registerbilds Erzeuger v1 —
+     * keinen Messwert. Der Anlege-Schritt „Steuerung verbinden“ fragt ihn über die Datenquellen-Prüfung.
+     */
+    public record ErzeugerKopfOp(String id, String host, Integer port, Integer unitId,
+            String registerKind, int address, String wordOrder) implements KopfOp {
+        @Override
+        public String op() {
+            return "erzeuger_kopf";
+        }
     }
 
     /**
@@ -238,8 +313,20 @@ public class ProbePublisher {
     static byte[] testEnvelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
             Instant requestedAt, String requestedBy, String opId, String brand, String model,
             String family, String role, Map<String, Object> connection) {
+        return deviceOpEnvelope("test_connection", tenantId, siteId, deviceId, requestId, requestedAt,
+                requestedBy, opId, brand, model, family, role, connection);
+    }
+
+    /**
+     * The envelope of a DEVICE op (named by brand/model/family + the template's connection
+     * fields): {@code test_connection}, and the Shelly setting write {@code nach_stromausfall_aus}
+     * (Heizstab V1, HZ-5) that has the very same shape.
+     */
+    static byte[] deviceOpEnvelope(String op, UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, String opId, String brand, String model,
+            String family, String role, Map<String, Object> connection) {
         StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
-        sb.append(",\"ops\":[{\"op\":\"test_connection\"")
+        sb.append(",\"ops\":[{\"op\":\"").append(esc(op)).append('"')
                 .append(",\"id\":\"").append(esc(opId)).append('"')
                 .append(",\"brand\":\"").append(esc(brand)).append('"');
         if (model != null && !model.isBlank()) {
@@ -293,11 +380,11 @@ public class ProbePublisher {
     }
 
     static byte[] envelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
-            Instant requestedAt, String requestedBy, WagoKopfOp kopf, List<ProbeRequest.Op> ops) {
+            Instant requestedAt, String requestedBy, KopfOp kopf, List<ProbeRequest.Op> ops) {
         StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
         sb.append(",\"ops\":[");
         if (kopf != null) {
-            sb.append("{\"op\":\"wago_kopf\",\"transport\":\"modbus_tcp\"")
+            sb.append("{\"op\":\"").append(kopf.op()).append("\",\"transport\":\"modbus_tcp\"")
                     .append(",\"id\":\"").append(esc(kopf.id())).append('"')
                     .append(",\"host\":\"").append(esc(kopf.host().trim())).append('"')
                     .append(",\"port\":").append(kopf.port() == null ? 502 : kopf.port())
@@ -342,39 +429,8 @@ public class ProbePublisher {
         return new String(JsonStringEncoder.getInstance().quoteAsString(s));
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-probe-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
-    }
-
     @PreDestroy
     void close() {
-        if (client != null) {
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-                client.close();
-            } catch (Exception e) {
-                log.debug("closing probe publisher: {}", e.getMessage());
-            }
-        }
+        verbindung.schliessen();
     }
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,6 +105,10 @@ type boxStand struct {
 	letzteAnfrage time.Time
 	anfragen      int
 	ausgegeben    map[string]Ausgegeben
+	// bestaetigt: Zugang + Fingerabdruck -> seit wann die Box diesen Schlüssel
+	// nachweislich hat (bestaetige). Nur für die Rückmeldung ans Portal, nie
+	// für eine Antwort an die Box.
+	bestaetigt map[string]time.Time
 }
 
 // posten ist ein Eintrag der Antwort mit dem, was das Journal dazu nennt.
@@ -293,6 +298,8 @@ func (s *Stelle) Frage(ctx context.Context, box netip.Addr, warte time.Duration,
 		for i, p := range liste {
 			eintraege[i] = p.Eintrag
 		}
+		gleich := kennt != "" && kennt == Pruefwert(eintraege)
+		s.bestaetige(box, liste, gleich)
 		rest := time.Until(ende)
 		gesprungen := false
 		if zuerst == nil {
@@ -307,7 +314,7 @@ func (s *Stelle) Frage(ctx context.Context, box netip.Addr, warte time.Duration,
 				}
 			}
 		}
-		if kennt == "" || kennt != Pruefwert(eintraege) || rest <= 0 || gesprungen {
+		if !gleich || rest <= 0 || gesprungen {
 			s.gibAus(box, st, liste)
 			return Antwort{http.StatusOK, Text(eintraege)}
 		}
@@ -327,6 +334,75 @@ func (s *Stelle) Frage(ctx context.Context, box netip.Addr, warte time.Duration,
 		case <-t.C:
 		}
 	}
+}
+
+// bestaetige hält fest, was die Box nachweislich hat. Nennt sie den Prüfwert
+// der Liste, die jetzt für sie gilt (hat), dann hat sie genau diese Liste
+// geprüft und in ihre Schlüsseldatei geschrieben: Den Prüfwert einer Antwort
+// nennt eine Box erst danach (schluessel-holen.sh, uebernimm). Nennt sie einen
+// anderen oder keinen, ist von ihr nichts bekannt - auch nicht, was vorher
+// bestätigt war (sie kann neu gestartet sein).
+//
+// Das ist Buchführung für die Rückmeldung ans Portal. Keine Antwort an eine
+// Box hängt davon ab.
+func (s *Stelle) bestaetige(box netip.Addr, liste []posten, hat bool) {
+	jetzt := s.Jetzt()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bs := s.box(box)
+	if bs == nil {
+		return
+	}
+	if !hat || len(liste) == 0 {
+		bs.bestaetigt = nil
+		return
+	}
+	neu := make(map[string]time.Time, len(liste))
+	for _, p := range liste {
+		k := p.Zugang + " " + p.fingerabdruck
+		if seit, schon := bs.bestaetigt[k]; schon {
+			neu[k] = seit
+		} else {
+			neu[k] = jetzt
+		}
+	}
+	bs.bestaetigt = neu
+}
+
+// BoxAuskunft ist, was die Stelle über eine Box weiß - für die Rückmeldung
+// ans Portal (internal/meldung).
+type BoxAuskunft struct {
+	// LetzteAnfrage: Beginn der letzten Anfrage dieser Box (Null-Zeit: keine).
+	LetzteAnfrage time.Time
+	// Bestaetigt: Zugang -> Fingerabdruck -> seit wann die Box diesen
+	// Schlüssel nachweislich hat.
+	Bestaetigt map[string]map[string]time.Time
+}
+
+// Auskunft ist der Stand der Schlüsselausgabe seit dem Start des Dienstes.
+type Auskunft struct {
+	// Laeuft: der Schalter lauscht.
+	Laeuft bool
+	Boxen  map[netip.Addr]BoxAuskunft
+}
+
+// Auskunft liefert eine Kopie des Stands; sie liest nur den Speicher.
+func (s *Stelle) Auskunft() Auskunft {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := Auskunft{Laeuft: s.laeuft, Boxen: make(map[netip.Addr]BoxAuskunft, len(s.boxen))}
+	for adresse, bs := range s.boxen {
+		ba := BoxAuskunft{LetzteAnfrage: bs.letzteAnfrage, Bestaetigt: map[string]map[string]time.Time{}}
+		for k, seit := range bs.bestaetigt {
+			zugang, fingerabdruck, _ := strings.Cut(k, " ")
+			if ba.Bestaetigt[zugang] == nil {
+				ba.Bestaetigt[zugang] = map[string]time.Time{}
+			}
+			ba.Bestaetigt[zugang][fingerabdruck] = seit
+		}
+		a.Boxen[adresse] = ba
+	}
+	return a
 }
 
 // box liefert den Merkzettel einer Box (mit gehaltenem mu); nil, wenn schon

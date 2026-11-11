@@ -1,0 +1,134 @@
+# Heizstab über eine Shelly-Ausgangsmenge (Vertrag)
+
+Ein Heizstab mit einem Heizelement je Phase hängt an mehreren Ausgängen eines Shelly (Shelly Pro 3: Ausgang 0, 1, 2 = L1, L2, L3). VoltPilot führt ihn als **ein** Gerät und schaltet ihn in **Stufen**. Eine Stufe ist die Zahl der Ausgänge, die zusammen an sind; „alle zusammen“ ist die oberste Stufe, „eine Phase“ die unterste. Herkunft: Heizstab-Konzept V1, entschieden am 31.10.2026 (HZ-1 bis HZ-10).
+
+Gemeinsame Vektoren für Box und API: [heizstab-stufen-vectors.json](heizstab-stufen-vectors.json). Die Box liest sie in `edge-app/core/internal/shelly/group_vectors_test.go`.
+
+**Nur Stern mit N.** Der Pro 3 schaltet höchstens 240 V je Kontakt. Die Box schaltet die Ausgänge nacheinander, eine Anfrage je Ausgang. Liegen die Elemente im Dreieck oder im Stern ohne N, stehen dabei 345 bis 400 V über einem offenen Kontakt. Eine Ausgangsmenge entsteht deshalb nur für einen Stab in Stern mit N. Die Box sieht den Anschluss nicht, sie bekommt nur die Ausgangsmenge.
+
+## Treiberblock (Registry-Push → Box)
+
+Der Treiber bleibt `communication: "shelly_http"`. In `driver.connection` kommen additiv vier Felder hinzu:
+
+| Feld | Pflicht | Bedeutung |
+|---|---|---|
+| `channels` | ja | Die Ausgänge in Phasenfolge, je 0–3, höchstens vier, keiner doppelt. Fehlt das Feld, gilt der bisherige Weg mit einem Ausgang (`channel`), byte-gleich. |
+| `output_kw` | ja | Leistung des Elements hinter jedem Ausgang in kW, in der Reihenfolge von `channels`, jeweils > 0 (Typenschild). |
+| `stages` | nein | Erlaubte Zahl gleichzeitig eingeschalteter Ausgänge, aufsteigend, je 1 bis Zahl der Ausgänge. Fehlt das Feld, gilt nur „alle zusammen“. |
+| `rotation` | nein | Phasenwahl einer Teilstufe: `daily` (Vorgabe, HZ-3 = A: der Startausgang wandert täglich L1 → L2 → L3) oder `fixed` (immer der erste Ausgang). |
+
+Die übrigen Felder bleiben wie bisher: `ip`, `port`, `on_timer_s`.
+
+Die Cloud legt einen solchen Stab als Gerät vom Typ `heating-rod` an (`POST …/components` mit `consumerType: heating-rod`). In der Verbindung steht dann zusätzlich `anschluss` (`stern_mit_n` | `ohne_n` | `dreieck` | `unbekannt`); die Box überliest dieses Feld. Mehrere Ausgänge gibt es nur bei `stern_mit_n`. Bei `unbekannt` schaltet der Stab nicht, weder automatisch noch von Hand, bis der Anschluss bestätigt ist. Die Cloud prüft außerdem, dass jeder Ausgang genau einem Gerät gehört und die Box `heizstab_regler` meldet. Das Verbraucherprofil wird ein Stufenprofil: `stepped`, `levels_kw = [0, kW je Stufe …]`, `storage_first`. Ein Handeingriff wählt eine dieser Stufen (`stufe`, 1-basiert), nie einen Wert dazwischen.
+
+Die Box lehnt eine ungültige Menge mit einem deutschen Satz ab und schaltet dann nichts. Die Sätze stehen in den Vektoren unter `validate`. Teilstufen gibt es nur mit Elementen bis 4,6 kW, sonst entstünde mehr Schieflast, als VDE-AR-N 4100 erlaubt.
+
+Für den Lesepfad (Quelle der Box) zählt nur `channels`. Die Quelle eines Stabs bekommt eine eigene Identität (`set:0,1,2`) und teilt sie nie mit einem einzelnen Ausgang desselben Geräts.
+
+Die Box meldet die Quelle in `local_setup` nur mit `ip`, `port` und `channels`. Die Cloud bindet einen Stab daran (Erstbindung) und erkennt ihn nach einem Kennungswechsel wieder (`ComponentRebind`). Dabei zählen Rolle, Kommunikationsart, `ip`, `port` und `channels` in Phasenfolge. `anschluss`, `output_kw`, `stages`, `rotation` und `on_timer_s` gehören nicht zur Identität. Bis zum 04.11.2026 verglich die Cloud ihre Kopie mit diesen Feldern: Ein Stab wurde nie gebunden und blieb nach einem Kennungswechsel „nicht mehr verbunden“.
+Jedes Verbindungsfeld, das nur die Cloud trägt, steht in `IGNORED_CONNECTION_FIELDS`; `ComponentRebindTest` bindet das an die Felder von `inverter.Connection` (Box) und an die Vorlagen-Schemata, ein neues Cloud-Feld ohne Eintrag macht ihn rot.
+Die Erstbindung läuft im Herzschlag: Meldet die Box ihre Quellen (`local_setup`), bindet die Cloud eine wartende Komponente sofort an die passende freie Quelle (`ComponentRebindService.erstbindung`, nur wenn die Anlage überhaupt eine Komponente mit Anbindung und ohne Pin hat). Vorher geschah das erst im Takt der Bestands-Übernahme (5 min); bis dahin stand die Quelle als „Nicht übernommen“ neben dem Heizstab, und eine Schaltung scheiterte mit „Dieser Verbraucher ist noch nicht verbunden“ (Anlage „Zuhause“, 05.11.2026). Der Takt bleibt die zweite Sperre. Bestand braucht keine Migration: Ein Stab, der bis dahin ungebunden wartete, wird beim ersten Herzschlag nach dem Deploy gebunden (idempotent; nur eine freie Quelle mit gleichem Fingerabdruck, nie eine lebende Bindung).
+Ein Stab, der vor dieser Änderung angelegt wurde und noch ungebunden wartet, heilt sich selbst: Der Takt der Bestands-Übernahme (`ComponentAdoptionRunner.heal()`) bindet ihn an die gemeldete Quelle, solange sie frei ist.
+Hat jemand diese Quelle inzwischen als „Neues Gerät gefunden“ übernommen, trägt sie eine zweite Komponente; dann ist sie nicht frei, der Stab bleibt ungebunden und die zweite Komponente muss von Hand entfernt werden (danach bindet der nächste Takt).
+Eine Bestandsreparatur per Migration gibt es dafür nicht und braucht einen eigenen Entscheid.
+
+## Entitätsbeschreibung (Registry-Push → Box)
+
+Gemeinsame Vektoren: [heizstab-push-vectors.json](heizstab-push-vectors.json). Die API prüft die komponierte Beschreibung dagegen (`HeizstabPushApiTest`), die Box ihre Ableitung (`edge-app/core/internal/componentapply/heizstab_push_vectors_test.go`).
+
+Ein Heizstab über eine Ausgangsmenge ist von Anfang an ein **geschaltetes** Gerät - anders als jede andere Komponente des Anlege-Wegs, die nur lesend entsteht und erst später freigegeben wird. Seine Beschreibung trägt deshalb schon beim Anlegen:
+
+- `capabilities.measure`: die Messkanäle des Typkatalogs (`power_kw`);
+- `capabilities.actuate`: `on_off`, `setpoint_kw` (`min` 0, `max` = kW der obersten Stufe) und `limit_kw` (`max` = kW der obersten Stufe) - die `default_actuate`-Befehle des Typs `heating-rod`;
+- `guards.limits.max_consumption_kw` = kW der obersten Stufe, `guards.failsafe.behavior` = `off`; dazu kommen Mindestlauf und Mindestpause des Stufenprofils (`min_on_seconds`, `min_off_seconds`, je 300 s);
+- die Komponente ist steuerbar (`control`).
+
+Beim Ändern der Ausgangsmenge folgen Fähigkeiten und Schutzgrenzen der neuen obersten Stufe.
+Ein Heizstab, der vor dem 02.11.2026 ohne Schreibfähigkeit angelegt wurde, bekommt sie beim nächsten Start der API nachgetragen (`HeizstabFaehigkeitenNachtrag`); seine Anlage bekommt dann einen neuen Push.
+
+**Die Rolle auf der Box.** Die Box liest einen Heizstab (wie Wallbox und `generic-load`) als Verbraucher-Quelle allein aufgrund seines Typs - auch ohne `actuate`. Die Schreibfähigkeit entscheidet, was die Box schalten darf (Guard-Kette), nie, auf welcher Seite der Bilanz das Gerät gelesen wird. Bis zum 02.11.2026 leitete die Box die Rolle aus der Guard-Kategorie ab; eine Beschreibung ohne `actuate` galt als „nur messen“, fand keine Rolle und ließ den ganzen Push der Anlage scheitern („für … (heating-rod) ist nicht bestimmbar, welche Rolle das Gerät hat“). Eine ältere Box braucht deshalb die Beschreibung mit `actuate`; eine Box ab diesem Stand kommt mit beiden Formen zurecht.
+
+## Stufenwahl (Box, rein)
+
+- **Nie mehr als befohlen.** Ein Sollwert wählt die höchste erlaubte Stufe, deren Leistung hineinpasst. Gemessen wird mit den größten Elementen, damit auch ein Stab mit ungleichen Elementen nie mehr zieht.
+- **Ausdrücklich „an“ ohne Sollwert** ist die höchste erlaubte Stufe. „Aus“ und ein Sollwert unter der kleinsten Stufe sind aus.
+- **Ohne frischen Befehl** sind alle Ausgänge aus (§4.2).
+- **Ein Lauf wechselt nie mitten im Betrieb die Phase.** Ausgänge, die schon laufen, behalten Vorrang; die Rotation wirkt erst beim nächsten Start.
+- **Erst AUS, dann EIN.** Schlägt ein AUS fehl, geht in diesem Durchlauf kein EIN hinaus. Jedes EIN trägt seinen eigenen Totmann-Timer (`toggle_after`, 180 s).
+- **Der Re-Assert alle 60 s** schreibt alle Ausgänge neu, auch die ausgeschalteten.
+- **Abweichung (HZ-4 = B, keine Sperre):**
+  - Ein Ausgang, der nicht eingeschaltet hat, wird beim nächsten Re-Assert erneut geschrieben.
+  - Ein Ausgang, der an ist, obwohl er aus sein soll, bekommt sofort AUS, noch im selben Durchlauf. Bis dahin zählt er zur Stufe; die übrigen Ausgänge halten die Summe ≤ befohlen.
+
+## Handeingriff je Phase
+
+Seit dem 05.11.2026 kann ein Handeingriff einzelne Phasen schalten statt nur eine Stufe. Der Wunsch bleibt `setpoint_kw` und trägt zusätzlich `outputs`, die Kanalnummern der gewählten Ausgänge ([edge-desired.schema.json](edge-desired.schema.json), additiv):
+
+```json
+{"type": "setpoint_kw", "value": 4.0, "outputs": [0, 2]}
+```
+
+- **Der Sollwert bleibt die Obergrenze.** Die Cloud setzt ihn auf die Summe der kW der gewählten Elemente. Jede Schutzgrenze der Box kürzt ihn wie bisher, zum Beispiel `max_consumption_kw`, Mindestlauf und Mindestpause oder die Netzladen-Sperre. `outputs` geht nur mit einem gewährten Sollwert durch die Kette; fällt der Sollwert weg, fällt auch die Menge weg.
+- **Die Box schaltet genau diese Ausgänge** (`shelly.ExplicitOutputs`), wenn alle vier Bedingungen gelten:
+  - Der Befehl ist frisch und nicht „aus“.
+  - Jeder Kanal gehört zur Ausgangsmenge des Stabs, keiner steht doppelt.
+  - Die Zahl der gewählten Ausgänge ist eine erlaubte Stufe (`stages`). Ein Stab „nur alle zusammen“ schaltet weiter nur alle zusammen.
+  - Die kW der gewählten Elemente passen in den gewährten Sollwert.
+- **Sonst gilt die Stufenwahl** aus dem Sollwert wie oben, mit allen Regeln: nie mehr als befohlen, ohne frischen Befehl alles aus.
+- **Ein Handeingriff darf die Phase wechseln.** Anders als die Rotation wechselt die Box hier auch mitten im Lauf auf die gewählten Ausgänge.
+- **Ein klebender Ausgang** (an, obwohl aus befohlen) zählt zuerst. Die Box nimmt gewählte Ausgänge von hinten weg, bis die Summe wieder in den Sollwert passt.
+- **Totmann je Ausgang** (`toggle_after`), Re-Assert, Rücklesung und `mismatch_since` bleiben unverändert. Der Not-Aus (`VP_CONTROL_ENABLED`, `VP_CONSUMER_CONTROL_ENABLED`) schreibt weiter nichts.
+
+Die Box meldet das im Herzschlag als `supports: heizstab_phasen` ([edge-supports.md](edge-supports.md)); beide Box-Arten tragen es, der Stufenweg steckt im Core. Die Cloud sendet `outputs` nur an eine solche Box. Eine ältere Box überliest das Feld und wählt die Stufe aus dem Sollwert. Vektoren: der Block `plan` in [heizstab-stufen-vectors.json](heizstab-stufen-vectors.json), Fälle „Handeingriff je Phase: …“.
+
+**In der Cloud** nimmt `POST /api/v1/sites/{siteId}/consumers/{id}/override` die Wahl als `ausgaenge` (Kanalnummern) neben `action: start` an:
+
+- Die API prüft sie mit derselben Regel wie die Box (`HeizstabAusgaenge.phasenFehler`). Eine falsche Wahl ergibt 400 und schreibt nichts. Alle Phasen aus ist `action: stop` ohne Wahl.
+- Der Sollwert ist die Summe der kW der gewählten Elemente.
+- Die Wahl liegt in `consumer_override.target_outputs`, und `GET …/consumer-overrides` liefert sie als `targetOutputs`. Das ist der Wunsch; was läuft, meldet die Box in `stage.outputs_on`.
+- `outputs` geht nur an eine Box mit `heizstab_phasen`. Jede andere bekommt den Sollwert allein, und die Antwort trägt `phasenGenau: false`.
+- Ohne eigene Dauer endet ein Handeingriff an einem Heizstab über eine Ausgangsmenge nach zwei Stunden; das gilt auch für „Aus“ (Entscheid D1-A, 05.11.2026). Jeder neue Tipp setzt die Frist neu. Danach führt wieder Smart.
+
+## Rücklesung `edge/entities/{id}/readback`
+
+Eine Anfrage liest alle Ausgänge: Gen2 `Shelly.GetStatus`, Gen1 `/status`. Die v1-Form bleibt, mit drei Zusätzen:
+
+- **`registers`**: ein Eintrag je Ausgang (`role: "relay"`, `key: "output"` bzw. `"ison"`) mit `channel`, `commanded`, `actual` und `match`. Bei einer Abweichung steht dort `mismatch_since` (RFC 3339), der Zeitpunkt, seit dem dieser Ausgang vom Befehl abweicht.
+- **`stage`**:
+  - `commanded` und `commanded_kw`: die Ausgänge, die der Plan laufen lässt, einschließlich eines mitgezählten Ausgangs, der fälschlich an ist.
+  - `confirmed` und `confirmed_kw`: was das Gerät meldet.
+  - `outputs_on`: die Ausgänge, die das Gerät als eingeschaltet meldet.
+  - `counted`: Ausgänge, die an sind, obwohl sie aus sein sollen.
+  - Ist ein Ausgang ungelesen, sind `confirmed` und `confirmed_kw` `null`. Unbekannt ist nie „aus“.
+- **`on`**: der Stab heizt, d. h. mindestens ein Ausgang ist an.
+
+`all_match` ist nur wahr, wenn jeder Ausgang seinen Befehl meldet. Gemessene Leistung (`power_kw`) gibt es nur, wenn **jeder** Ausgang misst; dann ist sie die Summe. Der Pro 3 misst nicht.
+
+## Herzschlag: Verbraucherblock
+
+Zu `consumers.{id}` kommt additiv `stage` hinzu:
+
+- `commanded` und `commanded_kw`
+- `confirmed` und `confirmed_kw` (fehlen, solange unbekannt)
+- `outputs_on`
+- `mismatch_since`: Beginn der ältesten noch laufenden Abweichung
+- `at`: Zeitpunkt der Lesung
+
+Das ist der Beleg, mit dem das Ledger die Energie aus den kW der **bestätigten** Stufe rechnet statt aus Nennleistung × Zeit. Die Cloud schreibt dafür je Herzschlag die Laufzeit-Differenz der Box × kW der zuvor gemeldeten Stufe fort (`consumer_runtime_status.stufe_energie_kwh_heute`); fällt der Laufzeit-Zähler der Box, beginnt ein neuer Tag.
+
+## Verbindungstest und „nach Stromausfall“ (Probe, [mqtt-probe.schema.json](../mqtt-probe.schema.json))
+
+- **`test_connection`** mit `connection.channels` braucht zwei Anfragen wie bei einem Ausgang (`/shelly`, `Shelly.GetStatus`). Die Antwort enthält:
+  - je Ausgang eine `samples`-Zeile `relay_on_<kanal>` (0/1);
+  - den Block `ausgaenge` mit `kanal`, `ein` und `nach_stromausfall`.
+
+  Die Einstellung „nach Stromausfall“ liest die Box mit einer dritten Anfrage, nur wenn der Test dafür noch Zeit hat (≥ 4 s). Sonst fehlt sie; sie wird nie geraten. Alles außer `off` heißt: Nach einem Stromausfall ohne Box heizt der Stab weiter (HZ-5).
+- **`nach_stromausfall_aus`** (neue Op, nur Marke `shelly`) stellt an jedem Ausgang „nach Stromausfall: aus“ ein, nur auf ausdrückliche Zustimmung im Portal. Dazu gibt es einen Schreibbefehl je Ausgang: Gen2 `Switch.SetConfig`, Gen1 `/settings/relay/N`. Das ist eine Einstellung, kein Schaltbefehl. Die Antwort meldet den danach gelesenen Wert in `ausgaenge`. Eine ältere Box antwortet `not_supported`.
+
+## Doppelte Schreiber
+
+Beanspruchen zwei Geräte denselben Ausgang (eine Ausgangsmenge über einem Ausgang, der schon eine eigene Komponente ist), schreibt die Box auf keinem von beiden. Beide melden in der Rücklesung „Ausgang N gehört zu zwei Geräten …“. Die API verhindert das schon beim Anlegen; die Box ist die zweite Sperre.
+
+## Freigabe
+
+Der Typ `heating-rod` ist seit dem 04.11.2026 im Katalog `certified`. Die Freigabe hat der Captain entschieden; belegt sind Software und Simulator, einen Prüfstandslauf am realen Heizstab gab es nicht. Der erste reale Einsatz ist die VoltPilotGATE `edge-h5atkys`. Dieser Vertrag ändert an der Freigabe nichts. Geschaltet wird nur hinter den beiden Box-Schaltern `VP_CONTROL_ENABLED` und `VP_CONSUMER_CONTROL_ENABLED`.

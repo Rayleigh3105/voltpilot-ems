@@ -9,8 +9,10 @@ import {
   neueKomponente,
   rollenWahl,
   typFuerTemplate,
+  vorhandeneGeraete,
   vorschlagRolle,
 } from './anlegenFlow';
+import type { SiteComponentRow } from './api';
 import type { ComponentTemplate } from './komponentenAssistent';
 
 function tpl(over: Partial<ComponentTemplate> & { templateRef: string }): ComponentTemplate {
@@ -49,10 +51,6 @@ describe('keineVorlageHinweis', () => {
   it('nennt den GRUND, wenn es für eine Art keine eigene Vorlage gibt', () => {
     expect(keineVorlageHinweis('zaehler')).toMatch(/Für Zähler gibt es noch keine eigene Vorlage/);
     expect(keineVorlageHinweis('zaehler')).toMatch(/Netz-Zähler/);
-  });
-
-  it('führt die Batterie ohne Vorlagen - sie hat ihren eigenen Weg', () => {
-    expect(geraeteFuerTyp(alle, 'batterie')).toEqual({ templates: [], erweitert: false });
   });
 });
 
@@ -121,14 +119,23 @@ describe('rollenWahl / vorschlagRolle', () => {
     expect(meter.grund).toMatch(/bereits einen Netz-Zähler/);
   });
 
-  it('schlaegt beim zweiten Wechselrichter den weiteren Erzeuger vor - blockiert ihn aber nie', () => {
+  it('schlaegt beim zweiten Wechselrichter den weiteren Erzeuger vor - und sperrt die Wechselrichter-Rolle mit Grund', () => {
     expect(vorschlagRolle('wechselrichter', [])).toBe('inverter');
     expect(vorschlagRolle('wechselrichter', ['inverter'])).toBe('pv-generation');
-    expect(rollenWahl('wechselrichter', ['inverter']).every((r) => r.verfuegbar)).toBe(true);
+    // Genau EIN Wechselrichter je Anlage: der Server lehnte den zweiten erst beim Speichern ab
+    // (409, nach Adresse und Test). Jetzt steht es an der Aufgabe, mit dem nächsten Schritt.
+    const [wr, erzeuger] = rollenWahl('wechselrichter', ['inverter'], { inverter: 'Deye Scheune' });
+    expect(wr.verfuegbar).toBe(false);
+    expect(wr.grund).toContain('bereits einen Wechselrichter („Deye Scheune“)');
+    expect(wr.grund).toContain('Bearbeiten Sie ihn im Aufbau');
+    expect(erzeuger.verfuegbar).toBe(true);
   });
 
-  it('bewahrt die elektrische Speicher-Absicht auch neben einem vorhandenen Wechselrichter', () => {
-    expect(vorschlagRolle('wechselrichter', ['inverter'], 'inverter')).toBe('inverter');
+  it('die elektrische Speicher-Absicht gilt, solange die Anlage keinen angebundenen Wechselrichter hat', () => {
+    // Eine nur komponierte, nie eingerichtete Zeile zählt nicht (`vorhandeneGeraete` lässt sie weg).
+    expect(vorschlagRolle('wechselrichter', [], 'inverter')).toBe('inverter');
+    // Mit einem angebundenen Wechselrichter ist die Rolle gesperrt - der Slot kann sie nicht erzwingen.
+    expect(vorschlagRolle('wechselrichter', ['inverter'], 'inverter')).toBe('pv-generation');
     // Eine Rolle, die nicht zu dieser Typ-Karte gehört, wird nie eingeschleust.
     expect(vorschlagRolle('wechselrichter', [], 'consumer')).toBe('inverter');
   });
@@ -136,6 +143,48 @@ describe('rollenWahl / vorschlagRolle', () => {
   it('schlaegt nichts vor, wo nichts frei ist', () => {
     expect(vorschlagRolle('zaehler', ['grid-meter'])).toBeNull();
     expect(vorschlagRolle('ladesaeule', [])).toBeNull();
+  });
+});
+
+/**
+ * Live-Fall „Zuhause" (02.11.2026): die Plattform komponiert beim Verbinden der Box Netz und Haus
+ * und aus den Eckdaten des Speichers die Wechselrichter-Zeile - alle OHNE Anbindung, der Server
+ * füllt sie beim Speichern. Zählte die Fläche sie als Geräte, sperrte sie den Netz-Zähler auf
+ * jeder Anlage mit Box und schlüge „Weiterer Erzeuger" vor, wo der Kunde seinen ERSTEN
+ * Wechselrichter einrichtet.
+ */
+describe('vorhandeneGeraete', () => {
+  const zeile = (o: Partial<SiteComponentRow> & Pick<SiteComponentRow, 'id'>): SiteComponentRow =>
+    ({ definitionVersion: 1, ...o }) as SiteComponentRow;
+
+  it('zaehlt nur angebundene Zeilen - die komponierte Grundausstattung ist kein Gerät', () => {
+    const komponiert = [
+      zeile({ id: 'netz', role: 'grid-meter', entityType: 'grid-meter' }),
+      zeile({ id: 'haus', role: 'house-load', entityType: 'house-load' }),
+      zeile({ id: 'wr', role: 'battery-hybrid', entityType: 'battery-hybrid', connection: null }),
+    ];
+    expect(vorhandeneGeraete(komponiert)).toEqual({ rollen: [], namen: {} });
+    expect(rollenWahl('wechselrichter', vorhandeneGeraete(komponiert).rollen).every((r) => r.verfuegbar)).toBe(true);
+    expect(rollenWahl('zaehler', vorhandeneGeraete(komponiert).rollen)[0].verfuegbar).toBe(true);
+  });
+
+  it('spricht die Rollen des Assistenten und nennt das Gerät beim Namen', () => {
+    const geraete = [
+      zeile({ id: 'wr', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Deye Scheune', connection: { ip: '192.168.0.28', serial: '2985159064' } }),
+      zeile({ id: 'netz', role: 'grid-meter', entityType: 'grid-meter', label: null, connection: { ip: '192.168.0.9' } }),
+      zeile({ id: 'wb', role: 'consumer', entityType: 'wallbox', label: 'Wallbox', connection: { ip: '192.168.0.40' } }),
+    ];
+    expect(vorhandeneGeraete(geraete)).toEqual({
+      rollen: ['inverter', 'grid-meter', 'consumer'],
+      namen: { inverter: 'Deye Scheune', 'grid-meter': null, consumer: 'Wallbox' },
+    });
+    const [wr] = rollenWahl('wechselrichter', vorhandeneGeraete(geraete).rollen, vorhandeneGeraete(geraete).namen);
+    expect(wr.grund).toContain('„Deye Scheune“');
+  });
+
+  it('die bearbeitete Zeile zaehlt nicht als „schon da"', () => {
+    const geraete = [zeile({ id: 'wr', role: 'battery-hybrid', connection: { ip: '192.168.0.28' } })];
+    expect(vorhandeneGeraete(geraete, 'wr').rollen).toEqual([]);
   });
 });
 
@@ -184,5 +233,39 @@ describe('abschlussTitel', () => {
     expect(abschlussTitel('Dach Süd', false)).toBe('„Dach Süd" ist angelegt.');
     expect(abschlussTitel('Dach Süd', true)).toBe('„Dach Süd" ist wieder verbunden.');
     expect(abschlussTitel('  ', false)).toBe('„Die Komponente" ist angelegt.');
+  });
+});
+
+/**
+ * Der erste echte Zähler im Katalog (06.11.2026, Shelly Pro 3EM): am Hausanschluss Netz-Zähler, in einer
+ * Unterverteilung Unterzähler (Werner Schramm: 3EM-400 am Netzanschluss, „UV Halle“ und „UV Keller“). Ein Gerät,
+ * über das nur gemessen wird, bleibt Netz-Zähler - als Unterzähler könnte die Box ihm keine Rolle zuordnen.
+ */
+describe('Zähler-Vorlage: Netz-Zähler oder Unterzähler', () => {
+  it('fragt bei einer Zähler-Vorlage nach Netz-Zähler oder Unterzähler', () => {
+    const wahl = rollenWahl('zaehler', [], {}, 'meter');
+    expect(wahl.map((r) => r.rolle)).toEqual(['grid-meter', 'consumer']);
+    expect(wahl[1].label).toBe('Unterzähler');
+    expect(wahl[1].hint).toMatch(/Unterverteilung/);
+    expect(wahl.every((r) => r.verfuegbar)).toBe(true);
+    expect(vorschlagRolle('zaehler', [], null, 'meter')).toBe('grid-meter');
+  });
+
+  it('schlägt nach dem Netz-Zähler den Unterzähler vor', () => {
+    const [netz, unter] = rollenWahl('zaehler', ['grid-meter'], {}, 'meter');
+    expect(netz.verfuegbar).toBe(false);
+    expect(unter.verfuegbar).toBe(true);
+    expect(vorschlagRolle('zaehler', ['grid-meter', 'consumer'], null, 'meter')).toBe('consumer');
+  });
+
+  it('ein Gerät, über das gemessen wird, bleibt Netz-Zähler', () => {
+    expect(rollenWahl('zaehler', [], {}, 'inverter').map((r) => r.rolle)).toEqual(['grid-meter']);
+    expect(rollenWahl('zaehler', []).map((r) => r.rolle)).toEqual(['grid-meter']);
+    expect(vorschlagRolle('zaehler', ['grid-meter'], null, 'inverter')).toBeNull();
+  });
+
+  it('der Verbraucher außerhalb des Zählers behält seine Worte', () => {
+    expect(rollenWahl('verbraucher', [], {}, 'switch')[0].label).toBe('Verbraucher');
+    expect(typFuerTemplate(tpl({ templateRef: 'builtin:shelly:shelly-pro-3em', deviceType: 'meter' }))).toBe('zaehler');
   });
 });

@@ -5,9 +5,10 @@ import type { Netzanschluss } from '../api';
 import { LADEQUELLE } from '../glossar';
 import type { GeraetBild } from './bild';
 import {
-  FREIGABE_STUFE_TEXT, OPTION_SONNE_SPEICHER, UEBERSCHUSS_MODUS, grenzePruefung, hatSpeicherGrenze,
-  heutigerAnschluss, ladeQuelle, ladeWahl, ladebudgetKw, lokalesDatum, smartSchritte, speicherZeile,
+  FREIGABE_STUFE_TEXT, OPTION_SONNE_SPEICHER, UEBERSCHUSS_MODUS, band, grenzePruefung, hatSpeicherGrenze,
+  LADEMODUS_OHNE_AUTO, LADEMODUS_OHNE_LADUNG, heutigerAnschluss, ladeModusSperre, ladeQuelle, ladeWahl, ladebudgetKw, lokalesDatum, smartSchritte, speicherZeile,
 } from './laden';
+import { KEIN_LADEVORGANG_SATZ } from '../ladepunkte';
 
 function anschluss(bindungen: { anlage: string; ab: string; bis: string | null }[], vereinbart: string | number | null = '200'): Netzanschluss {
   return {
@@ -69,24 +70,24 @@ describe('Smart an einem Ladepunkt', () => {
   it('macht aus dem Anlagen-Standard „sofort“ die Steuerart Sonne zuerst - sonst bliebe die Karte auf Schnell', () => {
     const g = stand(null, 'sofort');
     expect(ladeWahl(g as GeraetBild)).toBe('schnell');
-    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, steuerart: 'min' });
+    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, blattOeffnen: true });
   });
 
   it('beendet „Jetzt voll laden“ und lässt eine gewählte Sonnen-Steuerart stehen', () => {
     const g = stand({ art: 'an', bisMs: null }, 'ueberschuss');
     expect(ladeWahl(g as GeraetBild)).toBe('schnell');
-    expect(smartSchritte(g)).toEqual({ eingriffBeenden: true, steuerart: null });
+    expect(smartSchritte(g)).toEqual({ eingriffBeenden: true, blattOeffnen: false });
   });
 
-  it('erledigt Eingriff UND Steuerart in einem Klick', () => {
-    expect(smartSchritte(stand({ art: 'aus', bisMs: null }, 'sofort'))).toEqual({ eingriffBeenden: true, steuerart: 'min' });
+  it('setzt nichts still: mit „sofort“ öffnet Smart das Blatt, erst „So laden“ beendet den Eingriff (E5=A)', () => {
+    expect(smartSchritte(stand({ art: 'aus', bisMs: null }, 'sofort'))).toEqual({ eingriffBeenden: false, blattOeffnen: true });
   });
 
   it('tut nichts, wenn der Ladepunkt schon smart lädt', () => {
     const g = stand(null, 'ueberschuss');
     expect(ladeWahl(g as GeraetBild)).toBe('smart');
-    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, steuerart: null });
-    expect(smartSchritte(stand(null, null))).toEqual({ eingriffBeenden: false, steuerart: null });
+    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, blattOeffnen: false });
+    expect(smartSchritte(stand(null, null))).toEqual({ eingriffBeenden: false, blattOeffnen: false });
   });
 });
 
@@ -207,5 +208,86 @@ describe('Sonne + Speicher: das Band der Untergrenze', () => {
     expect(hatSpeicherGrenze(undefined, 0, 4)).toBe(false);
     expect(hatSpeicherGrenze(g, 0, 2)).toBe(false);
     expect(hatSpeicherGrenze(g, 0, 3)).toBe(true);
+  });
+});
+
+// Audit vp-ocpp-haushalt W-14: der Rest der Box ist `Netz − Laden` mit Vorzeichen.
+describe('Netzanschluss bei Einspeisung (Audit W-14)', () => {
+  const n = () => Array.from({ length: 96 }, () => null as number | null);
+  const reihenOhneAnteil = { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: 0, morgenBekannt: false };
+  const wallbox = { jetztKw: 2.5, kurz: 'Werkstatt' } as unknown as GeraetBild;
+
+  it('⚠ nennt negativen Rest nicht „Haus" und macht „frei" nie größer als den Anschluss', () => {
+    const b = band({ netzanschlussKw: 22, hausLastKw: -4, sicherheitsabstandPct: 0 }, [wallbox], reihenOhneAnteil, 0)!;
+    expect(b.hausKw).toBeNull();
+    expect(b.einspeisungKw).toBeCloseTo(1.5, 5);
+    expect(b.freiKw).toBeLessThanOrEqual(22);
+    expect(b.teile.find((t) => t.k === 'haus')?.kw).toBe(0);
+    expect(b.teile.every((t) => t.kw >= 0)).toBe(true);
+  });
+
+  it('lässt eine echte Hauslast wie bisher', () => {
+    const b = band({ netzanschlussKw: 22, hausLastKw: 0.6, sicherheitsabstandPct: 0 }, [wallbox], reihenOhneAnteil, 0)!;
+    expect(b.hausKw).toBe(0.6);
+    expect(b.einspeisungKw).toBeNull();
+  });
+});
+
+/**
+ * EINE Regel für Karte und Blatt des Ladepunkts (Befund
+ * `voltpilot-lademodus-schnellzugriff`): über „Aus“ ins Blatt ließ sich
+ * „Schnell“ wählen, wo die Karte es gesperrt hatte.
+ */
+describe('ladeModusSperre', () => {
+  const lp = (over: Record<string, unknown> = {}) => ({
+    angesteckt: true, laedt: true, keinLadevorgang: null, sperre: null, boostbar: true, schnellGrund: null, ...over,
+  });
+  const g = (ladepunkt: Record<string, unknown> | null, over: Record<string, unknown> = {}) => ({
+    ladepunkt, eingriff: null, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule' }, ...over,
+  }) as unknown as Pick<GeraetBild, 'ladepunkt' | 'eingriff' | 'steuerart'>;
+
+  it('lässt beide frei, wo „Schnell“ etwas ändert', () => {
+    expect(ladeModusSperre(g(lp()), null, 'aus')).toBeNull();
+    expect(ladeModusSperre(g(lp()), null, 'schnell')).toBeNull();
+  });
+
+  it('sperrt „Schnell“ mit dem Grund, wo es nichts übersteuert - „Aus“ bleibt', () => {
+    const grund = 'Schnell ändert gerade nichts: Das Auto nimmt keinen Strom an (voll oder Auto-Timer).';
+    const x = g(lp({ boostbar: false, schnellGrund: grund }));
+    expect(ladeModusSperre(x, null, 'schnell')).toEqual({ art: 'wirkt_nicht', satz: grund });
+    expect(ladeModusSperre(x, null, 'aus')).toBeNull();
+  });
+
+  it('sperrt „Aus“ und „Schnell“ ohne laufenden Ladevorgang - mit dem Ausweg, wo das Auto ohne Ladevorgang steckt', () => {
+    // ⚠ Die Regel des Servers (`charging`): sonst endete der Knopf in
+    // „An diesem Stecker läuft gerade kein Ladevorgang.“.
+    const ohne = g(lp({ laedt: false, keinLadevorgang: KEIN_LADEVORGANG_SATZ }));
+    expect(ladeModusSperre(ohne, null, 'schnell')).toEqual({ art: 'kein_ladevorgang', satz: KEIN_LADEVORGANG_SATZ });
+    expect(ladeModusSperre(ohne, null, 'aus')).toEqual({ art: 'kein_ladevorgang', satz: KEIN_LADEVORGANG_SATZ });
+    // Steckt das Auto, ohne dass die Ladung schon begonnen hat (z. B. „startet“): kein Ausweg nötig.
+    const startet = g(lp({ laedt: false }));
+    expect(ladeModusSperre(startet, null, 'schnell')).toEqual({ art: 'kein_ladevorgang', satz: LADEMODUS_OHNE_LADUNG });
+    // Ruht die Steuerung, sagt das weiter zuerst die Ruhe.
+    expect(ladeModusSperre(ohne, 'ruht', 'schnell')).toEqual({ art: 'funktion', satz: 'ruht' });
+  });
+
+  it('sperrt nicht, was schon läuft oder immer gilt', () => {
+    const nichts = lp({ boostbar: false, schnellGrund: 'x' });
+    expect(ladeModusSperre(g(nichts, { eingriff: { art: 'an', bisMs: null } }), null, 'schnell')).toBeNull();
+    expect(ladeModusSperre(g(nichts, { steuerart: { quelle: 'sofort', herkunft: 'standard' } }), null, 'schnell')).toBeNull();
+  });
+
+  it('nennt Sperre, fehlendes Auto und Ruhe vor allem anderen', () => {
+    const sperre = { kind: 'getrennt', satz: 'Wallbox nicht erreichbar seit 12:40 Uhr', folge: 'Ein Eingriff käme nicht an.' };
+    expect(ladeModusSperre(g(lp({ sperre })), null, 'aus')).toEqual({
+      art: 'sperre', satz: 'Wallbox nicht erreichbar seit 12:40 Uhr. Ein Eingriff käme nicht an.',
+    });
+    expect(ladeModusSperre(g(lp({ angesteckt: false })), null, 'schnell')).toEqual({ art: 'kein_auto', satz: LADEMODUS_OHNE_AUTO });
+    expect(ladeModusSperre(g(lp()), 'Eingriffe und Pause gibt es, sobald die Steuerung gestartet ist.', 'aus'))
+      .toEqual({ art: 'funktion', satz: 'Eingriffe und Pause gibt es, sobald die Steuerung gestartet ist.' });
+  });
+
+  it('gilt nur für Ladepunkte', () => {
+    expect(ladeModusSperre(g(null), null, 'schnell')).toBeNull();
   });
 });

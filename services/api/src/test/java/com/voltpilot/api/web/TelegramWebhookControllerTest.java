@@ -1,0 +1,120 @@
+package com.voltpilot.api.web;
+
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.voltpilot.api.versand.ZustellwegService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+/**
+ * POST /api/v1/zustellwege/telegram/webhook (Alerting Scheibe 6, §7): Telegram ruft diese Route ohne
+ * jedes Benutzer-Token auf (Go-Live-Pruefung, siehe SecurityConfig#secured) - die einzige Absicherung
+ * ist der {@code secret_token}, den Telegram beim {@code setWebhook} erhielt und auf jedem Aufruf im
+ * Header {@code X-Telegram-Bot-Api-Secret-Token} zurückschickt.
+ */
+class TelegramWebhookControllerTest {
+
+    private static final String GEHEIMNIS = "s3cr3t-token-aus-der-umgebung";
+    private static final String HEADER = "X-Telegram-Bot-Api-Secret-Token";
+    private static final String START_UPDATE = "{\"message\":{\"text\":\"/start abc123\","
+            + "\"chat\":{\"id\":42}}}";
+
+    private final ZustellwegService zustellwege = mock(ZustellwegService.class);
+    private MockMvc mvc;
+
+    @BeforeEach
+    void aufbauen() {
+        mvc = MockMvcBuilders
+                .standaloneSetup(new TelegramWebhookController(zustellwege, GEHEIMNIS))
+                // Standalone MockMvc skips Boot's autoconfiguration (and its
+                // spring.http.converters.preferred-json-mapper=jackson2), so Spring's own
+                // Jackson-3-by-default converter would otherwise apply here - and this
+                // controller's @RequestBody JsonNode can't be deserialized by Jackson 3 at all.
+                .setMessageConverters(
+                        new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                        new org.springframework.http.converter.StringHttpMessageConverter(),
+                        new MappingJackson2HttpMessageConverter())
+                .build();
+    }
+
+    @Test
+    void fehlenderHeaderBekommtVerbotenStattEinerVerarbeitung() throws Exception {
+        mvc.perform(post("/api/v1/zustellwege/telegram/webhook")
+                .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(zustellwege);
+    }
+
+    @Test
+    void einFalscherHeaderBekommtVerbotenStattEinerVerarbeitung() throws Exception {
+        mvc.perform(post("/api/v1/zustellwege/telegram/webhook")
+                .header(HEADER, "irgendein-anderer-wert")
+                .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(zustellwege);
+    }
+
+    @Test
+    void derRichtigeHeaderWirdAngenommenUndVerknuepftDenToken() throws Exception {
+        mvc.perform(post("/api/v1/zustellwege/telegram/webhook")
+                .header(HEADER, GEHEIMNIS)
+                .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                .andExpect(status().isOk());
+
+        verify(zustellwege).telegramVerbindungBestaetigen(eq("abc123"), eq("42"));
+    }
+
+    @Test
+    void einUpdateOhneStartWirdOhneFehlerQuittiert() throws Exception {
+        mvc.perform(post("/api/v1/zustellwege/telegram/webhook")
+                .header(HEADER, GEHEIMNIS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"message\":{\"text\":\"hallo\",\"chat\":{\"id\":42}}}"))
+                .andExpect(status().isOk());
+
+        verifyNoInteractions(zustellwege);
+    }
+
+    @Test
+    void ohneGeheimnisWirdJederAufrufVerboten() throws Exception {
+        for (String geheimnis : new String[] {"", "   ", null}) {
+            MockMvc ohneGeheimnis = MockMvcBuilders
+                    .standaloneSetup(new TelegramWebhookController(zustellwege, geheimnis))
+                    // Same Jackson-3-by-default converter issue as the shared mvc field above.
+                    .setMessageConverters(
+                            new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                            new org.springframework.http.converter.StringHttpMessageConverter(),
+                            new MappingJackson2HttpMessageConverter())
+                    .build();
+
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                    .andExpect(status().isForbidden());
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            // Auch ein leerer oder beliebiger Header öffnet ihn nicht.
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .header(HEADER, "")
+                    .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                    .andExpect(status().isForbidden());
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .header(HEADER, GEHEIMNIS)
+                    .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                    .andExpect(status().isForbidden());
+        }
+
+        verifyNoInteractions(zustellwege);
+    }
+}

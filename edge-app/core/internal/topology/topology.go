@@ -74,16 +74,15 @@ const (
 const (
 	TypeModbusGeneric = "modbus-generic"
 	TypeModbusLoad    = "modbus-load"
-	// TypeUserDefinedBattery is the customer's OWN battery connection (P5,
-	// concept vp-deye-diybms-luecke-l5 §3.2b): a DIYBMS/Seplos/JK/ESP read over
-	// MQTT, mapped field by field onto the standard battery channels. It is
-	// category "storage", so without this entry its soc_pct and power_kw would
-	// walk into the storage node BY THEMSELVES - the automatic binding captain
-	// decision E6 rules out ("nie eine Namens-Heuristik"). It joins the storage
-	// node only through the EXPLICIT Speiser-Bindung (P6), which the cloud
-	// stores as a role assignment and pushes as descriptor.role_assignment.
-	TypeUserDefinedBattery = "user-defined-battery"
 )
+
+// TypeHouseLoad is the composed house load (v1->v2 backfill,
+// V2SiteBackfillRunner): Bezug + Erzeugung - Einspeisung +/- Speicher,
+// "everything behind the grid connection". Every other consumer-role member
+// (a sub-meter, a heating rod) is physically already inside this value - the
+// consumer node's value is therefore THIS one member, never the sum of all
+// (Zählerbaum-Konzept N3/R1, docs/contracts/v2/zaehlerbaum.md §3).
+const TypeHouseLoad = "house-load"
 
 // IsSelfBuiltType reports whether an entity TYPE was defined by the customer
 // themselves. Like IsChargingType this cannot be answered on the category: a
@@ -91,8 +90,7 @@ const (
 // modbus-load is category "consumer", exactly like a grid meter and a heating
 // rod - which is precisely why the TYPE has to answer it.
 func IsSelfBuiltType(entityType string) bool {
-	return entityType == TypeModbusGeneric || entityType == TypeModbusLoad ||
-		entityType == TypeUserDefinedBattery
+	return entityType == TypeModbusGeneric || entityType == TypeModbusLoad
 }
 
 // The connection of a charge point (Cockpit Phase 1 / C1): behind the house
@@ -108,34 +106,6 @@ const (
 // storage node's soc_pct, never a flow member) regardless of assigned role.
 const socChannel = "soc_pct"
 
-// The BMS limit + permission channels of the storage node (P6 Speiser-Bindung).
-// Like socChannel they are storage ATTRIBUTES, never flow members: an ampere
-// and a yes/no are not kilowatts, and summing them into value_kw would make the
-// spoke width a number with two meanings.
-const (
-	chargeLimitChannel      = "charge_limit_a"
-	dischargeLimitChannel   = "discharge_limit_a"
-	chargeAllowedChannel    = "charge_allowed"
-	dischargeAllowedChannel = "discharge_allowed"
-)
-
-// isStorageAttribute reports whether a channel feeds the storage node's
-// attributes (SoC, limits, permissions) instead of its power flow.
-func isStorageAttribute(channel string) bool {
-	switch channel {
-	case socChannel, chargeLimitChannel, dischargeLimitChannel,
-		chargeAllowedChannel, dischargeAllowedChannel:
-		return true
-	}
-	return false
-}
-
-// isLimitChannel reports whether a channel belongs to the storage node's
-// limits block.
-func isLimitChannel(channel string) bool {
-	return isStorageAttribute(channel) && channel != socChannel
-}
-
 // CapabilityInput is one resolved capability of an entity: its measure channel,
 // the role it is assigned to ("" = unassigned/informational, skipped), the
 // maßgeblich flag, and the latest live value (nil = unknown, never a fabricated
@@ -147,14 +117,18 @@ type CapabilityInput struct {
 	Value   *float64 `json:"value"`
 }
 
-// EntityInput is one entity with its resolved capabilities.
+// EntityInput is one entity with its resolved capabilities. ParentEntityID is
+// the Zählerbaum parent entity id (haengt_an, Konzept vp-zaehlerbaum-konzept) -
+// nil = at the root (the grid connection), the default for every pre-existing
+// plant on day one.
 type EntityInput struct {
-	ID           string            `json:"id"`
-	Type         string            `json:"type"`
-	Label        string            `json:"label"`
-	Category     string            `json:"category"`
-	Health       string            `json:"health"`
-	Capabilities []CapabilityInput `json:"capabilities"`
+	ID             string            `json:"id"`
+	Type           string            `json:"type"`
+	Label          string            `json:"label"`
+	Category       string            `json:"category"`
+	Health         string            `json:"health"`
+	Capabilities   []CapabilityInput `json:"capabilities"`
+	ParentEntityID *string           `json:"parent_entity_id,omitempty"`
 }
 
 // Input is the whole site as an entity graph.
@@ -168,44 +142,25 @@ type FlowMember struct {
 	Label    string   `json:"label"`
 	Primary  bool     `json:"primary"`
 	ValueKw  *float64 `json:"value_kw,omitempty"`
+	// HaengtAn carries through the entity's ParentEntityID unchanged - purely
+	// for display, never used in any calculation.
+	HaengtAn *string `json:"haengt_an,omitempty"`
 }
 
-// NodeSource names the entity ONE attribute of a node came from. It exists
-// because an attribute of the storage node need not come from the device whose
-// kilowatts the node draws: the Speiser-Bindung (P6) lets a customer's own
-// battery supply the SoC while the hybrid inverter keeps measuring the power.
-// Without this the surface would print a state of charge with no way to say
-// whose it is - and "Ladestand von: <Batterie>" is exactly the sentence the
-// binding owes the customer.
+// NodeSource names the entity ONE attribute of a node came from. An attribute
+// of the storage node (its SoC) need not come from the device whose kilowatts
+// the node draws, so the surface says whose number it shows.
 type NodeSource struct {
 	EntityID string `json:"entity_id"`
 	Label    string `json:"label"`
 }
 
-// NodeLimits is what the storage node's BMS currently permits: the charge /
-// discharge current caps and the two permission flags. Every field is optional
-// - an unmapped or silent channel is ABSENT, never a fabricated 0 (which on a
-// limit would read as "charging forbidden") and never a fabricated true.
-//
-// All four come from ONE entity (Source): a charge limit from one BMS next to a
-// discharge limit from another would be one block with two meanings.
-type NodeLimits struct {
-	Source           NodeSource `json:"source"`
-	ChargeLimitA     *float64   `json:"charge_limit_a,omitempty"`
-	DischargeLimitA  *float64   `json:"discharge_limit_a,omitempty"`
-	ChargeAllowed    *bool      `json:"charge_allowed,omitempty"`
-	DischargeAllowed *bool      `json:"discharge_allowed,omitempty"`
-}
-
 // FlowNode is one role node of the hub topology.
 type FlowNode struct {
-	Role      string      `json:"role"`
-	ValueKw   *float64    `json:"value_kw,omitempty"`
-	SocPct    *float64    `json:"soc_pct,omitempty"`
-	SocSource *NodeSource `json:"soc_source,omitempty"`
-	// Limits is the storage node's BMS envelope (P6). Absent everywhere else,
-	// and absent on a storage node whose battery reports none.
-	Limits     *NodeLimits  `json:"limits,omitempty"`
+	Role       string       `json:"role"`
+	ValueKw    *float64     `json:"value_kw,omitempty"`
+	SocPct     *float64     `json:"soc_pct,omitempty"`
+	SocSource  *NodeSource  `json:"soc_source,omitempty"`
 	FlowActive bool         `json:"flow_active"`
 	Direction  string       `json:"direction,omitempty"`
 	Members    []FlowMember `json:"members"`
@@ -341,6 +296,8 @@ func Derive(in Input) Topology {
 			nodes = append(nodes, gridNode(role, caps))
 		case RoleStorage:
 			nodes = append(nodes, storageNode(role, caps))
+		case RoleConsumer:
+			nodes = append(nodes, consumerNode(role, caps))
 		default:
 			nodes = append(nodes, sumNode(role, caps))
 		}
@@ -357,7 +314,7 @@ func sumNode(role string, caps []roleCap) FlowNode {
 	var sum float64
 	hasValue := false
 	for _, rc := range caps {
-		if isStorageAttribute(rc.cap.Channel) {
+		if rc.cap.Channel == socChannel {
 			continue
 		}
 		members = append(members, member(rc))
@@ -379,6 +336,40 @@ func sumNode(role string, caps []roleCap) FlowNode {
 		} else {
 			node.Direction = "in"
 		}
+	}
+	return node
+}
+
+// consumerNode (Zählerbaum-Konzept N3/R1): if a composed house load
+// (TypeHouseLoad) is among the members, ITS value is the node value - every
+// other member (a sub-meter, a heating rod) is already inside that one value,
+// so summing all of them would double-count. Without such a house member
+// (older/synthetic inputs) the sum of all members stays as before (sumNode) -
+// byte-identical to every case without a house member.
+func consumerNode(role string, caps []roleCap) FlowNode {
+	var haus *roleCap
+	for i := range caps {
+		if caps[i].entity.Type == TypeHouseLoad {
+			haus = &caps[i]
+			break
+		}
+	}
+	if haus == nil {
+		return sumNode(role, caps)
+	}
+	members := make([]FlowMember, 0, len(caps))
+	for _, rc := range caps {
+		members = append(members, member(rc))
+	}
+	node := FlowNode{Role: role, Members: members}
+	if haus.cap.Value == nil {
+		return node
+	}
+	mag := round3(math.Abs(*haus.cap.Value))
+	node.ValueKw = &mag
+	if mag > DeadbandKw {
+		node.FlowActive = true
+		node.Direction = "out"
 	}
 	return node
 }
@@ -406,9 +397,6 @@ func storageNode(role string, caps []roleCap) FlowNode {
 			}
 			continue
 		}
-		if isLimitChannel(rc.cap.Channel) {
-			continue
-		}
 		members = append(members, member(rc))
 		if rc.cap.Value != nil {
 			sum += *rc.cap.Value
@@ -416,7 +404,7 @@ func storageNode(role string, caps []roleCap) FlowNode {
 		}
 	}
 	node := FlowNode{Role: role, SocPct: soc, SocSource: socSource,
-		Limits: limitsOf(caps), Members: members}
+		Members: members}
 	if !hasValue {
 		return node
 	}
@@ -431,55 +419,6 @@ func storageNode(role string, caps []roleCap) FlowNode {
 		}
 	}
 	return node
-}
-
-// limitsOf lifts the BMS envelope of the storage node out of ONE entity's limit
-// channels: the primary one if somebody was marked maßgeblich, otherwise the
-// first that carries a value. Two BMS blending their caps into one block would
-// describe an envelope neither of them has.
-//
-// nil when nothing reports a limit - the honest answer for every plant whose
-// battery is read through a catalogue driver, which reports none of these.
-func limitsOf(caps []roleCap) *NodeLimits {
-	owner := ""
-	label := ""
-	ownerPrimary := false
-	for _, rc := range caps {
-		if !isLimitChannel(rc.cap.Channel) || rc.cap.Value == nil {
-			continue
-		}
-		if owner == "" || (rc.cap.Primary && !ownerPrimary) {
-			owner = rc.entity.ID
-			label = rc.entity.Label
-			ownerPrimary = rc.cap.Primary
-		}
-	}
-	if owner == "" {
-		return nil
-	}
-	out := NodeLimits{Source: NodeSource{EntityID: owner, Label: label}}
-	for _, rc := range caps {
-		if rc.entity.ID != owner || rc.cap.Value == nil {
-			continue
-		}
-		switch rc.cap.Channel {
-		case chargeLimitChannel:
-			v := round3(*rc.cap.Value)
-			out.ChargeLimitA = &v
-		case dischargeLimitChannel:
-			v := round3(*rc.cap.Value)
-			out.DischargeLimitA = &v
-		case chargeAllowedChannel:
-			// A permission travels as a NUMBER through telemetry (the v2
-			// channel contract knows only numbers); anything but 0 is "yes".
-			b := *rc.cap.Value != 0
-			out.ChargeAllowed = &b
-		case dischargeAllowedChannel:
-			b := *rc.cap.Value != 0
-			out.DischargeAllowed = &b
-		}
-	}
-	return &out
 }
 
 // gridNode takes the maßgebliche (primary, else first) member's SIGNED value -
@@ -518,7 +457,8 @@ func gridNode(role string, caps []roleCap) FlowNode {
 }
 
 func member(rc roleCap) FlowMember {
-	m := FlowMember{EntityID: rc.entity.ID, Label: rc.entity.Label, Primary: rc.cap.Primary}
+	m := FlowMember{EntityID: rc.entity.ID, Label: rc.entity.Label, Primary: rc.cap.Primary,
+		HaengtAn: rc.entity.ParentEntityID}
 	if rc.cap.Value != nil {
 		v := round3(*rc.cap.Value)
 		m.ValueKw = &v

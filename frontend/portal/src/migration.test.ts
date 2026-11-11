@@ -276,10 +276,11 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
     for (const input of [NIE_MIGRIERT, NICHTS_GELADEN]) {
       const s = anlageSurface(input);
       const sidebar = anlageSidebar(s);
-      // Ohne Speicher und ohne Ladepunkte fehlt der zweite Bereich ganz -
-      // „ein Bereich ohne Inhalt existiert nicht" (E3).
+      // Ohne Speicher und ohne Ladepunkte fehlt der Bereich „Fahrplan" -
+      // die Prognose ist UNBEDINGT (R.2) und füllt den zweiten Platz.
       expect(sidebar.bereiche.map((b) => b.key)).toEqual([
         'cockpit',
+        'prognose',
         'verlauf',
         'steuerung',
         'anlage',
@@ -660,6 +661,7 @@ describe('Abbau-Invarianten (M6)', () => {
       'ueberschuss',
       'verbraucher',
       'lastmanagement',
+      'netz-und-vermarktung',
       'eigene-auswertung',
     ]);
     //  3. das WILLENS-Overlay liest weiterhin JEDE Karte - ein gespeichertes
@@ -709,11 +711,10 @@ describe('Abbau-Invarianten (M6)', () => {
     const schreiber = sourceFiles().filter((f) =>
       /setAnwendungsPreset/.test(ohneKommentare(readFileSync(f, 'utf8'))),
     );
-    // api.ts = die Route selbst, AnlageFlow.tsx = der Assistent,
-    // AnlageTechnik.tsx = „Profil ändern" in den Einstellungen.
+    // api.ts = die Route selbst, AnlageTechnik.tsx = „Profil ändern" in den Einstellungen. Der Anlege-Fluss
+    // schreibt das Preset nicht mehr: sein Schritt „Betrieb" ist entfallen (Anlage-Flow a1, D6).
     expect(schreiber.map((f) => f.slice(SRC.length)).sort()).toEqual([
       'api.ts',
-      'components/AnlageFlow.tsx',
       'pages/AnlageTechnik.tsx',
     ]);
   });
@@ -1338,8 +1339,11 @@ describe('Steuerung Stufen 8+9: Umzüge und Datenbereinigung', () => {
       .filter((a) => a.klasse === 'basis' || a.klasse === 'regel')
       .map((a) => a.id)
       .sort();
+    // `netz-und-vermarktung` (UEMS EZ-6) kam NEU als `basis` dazu: nicht abschaltbar, also lehnt der
+    // Server jeden Schreibweg ab (SiteProfileService) - es gibt keine Zeile, die eine Migration räumen müsste.
     expect(geloescht).toEqual(
-      ['monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher', 'lastmanagement'].sort(),
+      ['monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher', 'lastmanagement',
+        'netz-und-vermarktung'].sort(),
     );
     // Was BLEIBT: die vier Betriebsmodelle und die cockpit-Anwendung. Ihre
     // Zeilen tragen eine Entscheidung, die der Kunde wirklich getroffen hat.
@@ -1551,7 +1555,8 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
     const kette = (pfad: string, start: string): string | null => {
       let soll: string | null = start;
       for (let schritt = 0; soll !== null && schritt < 20; schritt++) {
-        const f = kundenBestand.fortschreibungen.find(x => x.datei === pfad && x.vorher === soll);
+        // Ein Umzug (`verschoben_nach`) ist kein Glied der Kette - er sagt nur, WO die Kette endet.
+        const f = kundenBestand.fortschreibungen.find(x => x.datei === pfad && x.vorher === soll && !('verschoben_nach' in x));
         if (!f || 'menue' in f) break;
         verwendeteFortschreibungen.add(f);
         soll = f.nachher;
@@ -1619,13 +1624,45 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // Der ausgelieferte Neubau ist geschützt: jedes Bedienelement der main-Fassung steht unverändert im Merge.
         const rest = [...jetzt];
         for (const fingerabdruck of nz.main) {
-          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung.
-          const stelle = rest.indexOf(kette(pfad, fingerabdruck) ?? fingerabdruck);
+          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung - oder
+          // entfällt mit belegtem Wegfall (`nachher: null`, wie im Bestand unten): dann steht es nicht mehr da.
+          const ziel = kette(pfad, fingerabdruck);
+          if (ziel === null) {
+            expect(rest, `${pfad}: von main ${nz.nachzug} als entfallen belegt, steht aber noch da`).not.toContain(fingerabdruck);
+            continue;
+          }
+          const stelle = rest.indexOf(ziel);
           expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
           rest.splice(stelle, 1);
         }
       }
       for (const fingerabdruck of vorher) {
+        // Unverändert in eine andere Datei verschoben (Anlage-Flow a1: „Konto erstellen“ lädt nach): der Abdruck
+        // muss dort Zeichen für Zeichen stehen - geschützt wie am alten Ort.
+        const umzug = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck
+          && 'verschoben_nach' in f) as { verschoben_nach?: string } | undefined;
+        if (umzug?.verschoben_nach) {
+          verwendeteFortschreibungen.add(umzug as (typeof kundenBestand.fortschreibungen)[number]);
+          const ziel = ts.createSourceFile(umzug.verschoben_nach, readFileSync(join(SRC, umzug.verschoben_nach), 'utf8'),
+            ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+          const dort: string[] = [];
+          const sammle = (knoten: ts.Node) => {
+            if (ts.isJsxElement(knoten) || ts.isJsxSelfClosingElement(knoten)) {
+              const auf = ts.isJsxElement(knoten) ? knoten.openingElement : knoten;
+              if (tags.has(auf.tagName.getText(ziel))) {
+                const text = drucker.printNode(ts.EmitHint.Unspecified, knoten, ziel)
+                  .replace(/\s+/g, ' ').replace(/\bkey=\{[^}]*\} /g, '').trim();
+                dort.push(createHash('sha256').update(text).digest('hex'));
+              }
+            }
+            ts.forEachChild(knoten, sammle);
+          };
+          sammle(ziel);
+          expect(dort, `${pfad} → ${umzug.verschoben_nach}: verschobenes Bedienelement`).toContain(kette(pfad, fingerabdruck) ?? fingerabdruck);
+          expect(jetzt, `${pfad}: als verschoben belegt, steht aber noch da`).not.toContain(kette(pfad, fingerabdruck) ?? fingerabdruck);
+          zahl++;
+          continue;
+        }
         // Der ursprüngliche Bestand bleibt erhalten. Nur ein ausdrücklich belegter Nachfolger
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
         const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);

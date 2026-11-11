@@ -22,6 +22,7 @@ import (
 const (
 	consumerStateRunningForced    = "running_forced"
 	consumerStateRunningOptimized = "running_optimized"
+	consumerStateRunningManual    = "running_manual"
 	consumerStateClamped          = "clamped"
 	consumerStateWaiting          = "waiting"
 	consumerStateOffline          = "offline"
@@ -138,6 +139,13 @@ func (a *Agent) consumersSummary() cloud.ConsumersSummary {
 			}
 		}
 
+		// A consumer switched in stages over an output set (a heating rod per
+		// phase) reports its commanded and CONFIRMED stage - additive.
+		entry.Stage = a.shellyGroupStage(v.id)
+		// ...and, where the box's heating-rod controller drives it, the stage
+		// the controller wants and why (heizstab.go).
+		entry.Heizstab = a.heizstabSummary(v.id)
+
 		out[v.id] = entry
 	}
 	return out
@@ -151,12 +159,21 @@ func grantedOn(onOff *bool, setpointKw *float64) bool {
 	return setpointKw != nil && !math.IsNaN(*setpointKw) && *setpointKw > 0.005
 }
 
-// runningState splits Pflichtregel from optimized operation: a flow desire
-// with the D-5 override elevation is the must-run path; everything else
-// (plan/market, ordinary flow, failsafe hold) runs as planned/optimized.
+// runningState splits Pflichtregel, manual intervention and optimized
+// operation: a flow desire with the D-5 override elevation is the must-run
+// path; a local-ui holder with the same override flag is a HUMAN'S "Von Hand"
+// override (desired.manualIntervention, rank 75 - heating-rod and generic
+// consumer/storage overrides alike, cloud.go#ConsumerOverridePublisher /
+// DeviceOverrideService forward it this way). Reporting it as
+// running_optimized claimed the person's own switch as "von VoltPilot
+// geplant" (Captain-Befund 05.11.2026); everything else (plan/market,
+// ordinary flow, failsafe hold) runs as planned/optimized.
 func runningState(holderKind string, override bool) string {
-	if holderKind == "flow" && override {
+	if override && holderKind == "flow" {
 		return consumerStateRunningForced
+	}
+	if override && holderKind == "local-ui" {
+		return consumerStateRunningManual
 	}
 	return consumerStateRunningOptimized
 }

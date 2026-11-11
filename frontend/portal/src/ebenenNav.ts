@@ -38,7 +38,7 @@
  * Routen bleiben (`nav.ts` LEGACY-Disziplin): jedes Lesezeichen gilt weiter.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import type { Funktionen, Kennzahl, StandortAmStichtag } from './api';
+import type { Betriebsart, Funktionen, Kennzahl, StandortAmStichtag } from './api';
 import {
   isPortfolioPage,
   pageRoute,
@@ -85,7 +85,16 @@ export interface SidebarItem {
 }
 
 /** Die fünf Bereiche einer Anlage. */
-export type BereichId = 'cockpit' | 'fahrplan' | 'ladevorgaenge' | 'verlauf' | 'steuerung' | 'anlage';
+export type BereichId =
+  | 'cockpit'
+  | 'fahrplan'
+  | 'ladevorgaenge'
+  // „Nur messen" (R.2, Konzept vp-prognosen-konzept): die Prognose als
+  // eigener Bereich, wenn es weder Fahrplan noch Ladepark gibt.
+  | 'prognose'
+  | 'verlauf'
+  | 'steuerung'
+  | 'anlage';
 
 /**
  * Ein REITER eines Bereichs. Er zeigt IMMER auf eine Unterseite derselben
@@ -145,12 +154,13 @@ export const HELP_ITEM: SidebarItem = {
  * Der Schlüssel `messwerte` bleibt für die Energie-Seite (jedes Lesezeichen
  * gilt); die einzelnen Messwerte wohnen unter `einzelwerte`.
  *
- * Preise und Wetter gehören seit dem Rework zum FAHRPLAN (sie erklären den
- * Plan), die Prognosen zur ANLAGE (sie beschreiben ihr Modell). Wo es keinen
- * Fahrplan-Bereich gibt, bleiben Preise und Wetter hier — eine Ansicht wird nie
- * heimatlos. Die Lastspitze ist kein Reiter mehr: ihr Geld steht auf „Erlöse",
- * ihre gemessene Spitze auf „Energie"; die Seite bleibt über die Erlöse-Karte
- * erreichbar.
+ * Prognose und Preise gehören seit Konzept vp-prognosen-konzept (E2 = A,
+ * 11.11.2026) zum FAHRPLAN (sie erklären den Plan) bzw. zum LADEPARK; wo es
+ * keinen von beiden gibt, bekommt die Prognose ihren EIGENEN Bereich (R.2,
+ * `anlageBereiche` unten) - eine Ansicht wird nie heimatlos, aber auch nie
+ * fremdgeparkt in „Verlauf". Die Lastspitze ist kein Reiter mehr: ihr Geld
+ * steht auf „Erlöse", ihre gemessene Spitze auf „Energie"; die Seite bleibt
+ * über die Erlöse-Karte erreichbar.
  */
 export const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId | null }[] = [
   { key: 'messwerte', label: 'Energie', sub: 'messwerte', view: null },
@@ -158,10 +168,17 @@ export const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: 
   { key: 'einzelwerte', label: 'Messwerte', sub: 'einzelwerte', view: null },
 ];
 
-/** Preise und Wetter — im Fahrplan, wo es ihn gibt, sonst im Verlauf. */
-export const PLAN_KONTEXT_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId }[] = [
+/**
+ * Prognose und Preise — im Fahrplan oder Ladepark, wo es sie gibt, sonst als
+ * eigener Bereich „Prognose" (R.2, nie in Verlauf). Die Prognose ist
+ * UNBEDINGT (`view: null`): „für jede Anlage, mit und ohne Speicher, mit und
+ * ohne PV" (Konzept-Bericht Abschnitt 8). Der Reiter „Wetter" ist darin
+ * aufgegangen (Himmel/Temperatur stehen im Tagesbild) und leitet um
+ * (`nav.ts` `LEGACY_SUBS`/`LEGACY_ROUTES`).
+ */
+export const PLAN_KONTEXT_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId | null }[] = [
+  { key: 'prognose', label: 'Prognose', sub: 'prognose', view: null },
   { key: 'marktpreise', label: 'Preise', sub: 'marktpreise', view: 'marktpreise' },
-  { key: 'wetter', label: 'Wetter', sub: 'wetter', view: 'wetter' },
 ];
 
 /**
@@ -202,8 +219,11 @@ const SUB_BEREICH: Record<AnlagenSub, BereichId> = {
   // Rückfall, wenn das Modell sie nicht in einen Reiter legt (siehe `bereichFor`).
   marktpreise: 'verlauf',
   lastspitzen: 'verlauf',
-  prognose: 'anlage',
-  wetter: 'verlauf',
+  // Die Kundenseite der Prognose: Fahrplan oder Ladepark, wo es sie gibt,
+  // sonst ihr eigener Bereich `prognose` (R.2) - nie Verlauf.
+  prognose: 'fahrplan',
+  // Das frühere `prognose`: VoltPilot-interne Modellqualität, Reiter der Anlage.
+  prognosemodelle: 'anlage',
   steuerung: 'steuerung',
   laden: 'steuerung',
   regeln: 'steuerung',
@@ -243,6 +263,24 @@ function bereich(
  * Projektion) bleibt der Rückfall für einen Aufrufer, der nichts übergibt —
  * so rendert ein älterer Testaufruf zeichengleich wie vorher.
  */
+/**
+ * „Ein Ort fürs Laden" §4.6 (E2 = A): welches Gesicht der Bereich mit den
+ * Ladepunkten trägt. `undefined` (kein Aufrufer-Opt-in) ist absichtlich vom
+ * ausdrücklichen `null` (keine gespeicherte Betriebsart) unterschieden - nur
+ * so bleibt ein älterer Aufruf ohne diesen Parameter zeichengleich wie vor
+ * dieser Scheibe. Exportiert, damit die Privatkunden-Umleitung
+ * (`pages/AnlagenPage.tsx`) dieselbe Entscheidung trifft wie die Navigation.
+ */
+export function ladeSicht(
+  betriebsart: Betriebsart | null | undefined,
+  ladepunktAnzahl: number | null | undefined,
+): 'ladevorgaenge' | 'ladepark' | 'privatkunde' {
+  if (betriebsart === undefined) return 'ladevorgaenge';
+  if (betriebsart === 'betreiber') return 'ladepark';
+  if (betriebsart === 'endkunde') return 'privatkunde';
+  return (ladepunktAnzahl ?? 0) >= 3 ? 'ladepark' : 'privatkunde';
+}
+
 export function anlageBereiche(
   surface: AnlageSurface | null | undefined,
   badgeAnzahl?: number | null,
@@ -254,6 +292,9 @@ export function anlageBereiche(
    * (`showTechnicalLayer()`) herein - dieses Modul bleibt rein.
    */
   mitPrognosen = false,
+  /** Siehe {@link ladeSicht}; `hatLade` der Steuerung bleibt unberührt. */
+  betriebsart?: Betriebsart | null,
+  ladepunktAnzahl?: number | null,
 ): AnlageBereich[] {
   const raw = badgeAnzahl === undefined ? surface?.modes.length ?? null : badgeAnzahl;
   const badge =
@@ -266,34 +307,41 @@ export function anlageBereiche(
 
   // Bereich 2 folgt als EINZIGER der Komposition: mit Speicher heißt er
   // „Fahrplan" (und trägt die Ladevorgänge als zweiten Reiter, wo es auch
-  // Ladepunkte gibt), auf einem REINEN Ladepark „Ladevorgänge", sonst gibt es
-  // ihn nicht.
+  // Ladepunkte gibt), auf einem REINEN Ladepark „Ladevorgänge"/„Ladepark",
+  // sonst gibt es ihn nicht.
   const hatFahrplan = views.includes('fahrplan');
   const hatLade = views.includes('ladevorgaenge');
-  const planKontext = PLAN_KONTEXT_TABS.filter((t) => views.includes(t.view)).map(
+  const ladeModus = ladeSicht(betriebsart, ladepunktAnzahl);
+  const zeigeLade = hatLade && ladeModus !== 'privatkunde';
+  const ladeLabel = ladeModus === 'ladepark' ? 'Ladepark' : 'Ladevorgänge';
+  const planKontext = PLAN_KONTEXT_TABS.filter((t) => t.view === null || views.includes(t.view)).map(
     ({ key, label, sub }) => ({ key, label, sub }),
   );
   if (hatFahrplan) {
     const tabs: BereichTab[] = [{ key: 'fahrplan', label: 'Fahrplan', sub: 'fahrplan' }];
-    if (hatLade) tabs.push({ key: 'ladevorgaenge', label: 'Ladevorgänge', sub: 'ladevorgaenge' });
+    if (zeigeLade) tabs.push({ key: 'ladevorgaenge', label: ladeLabel, sub: 'ladevorgaenge' });
     tabs.push(...planKontext);
     out.push(bereich('fahrplan', 'Fahrplan', 'calendar', 'fahrplan', tabs));
-  } else if (hatLade) {
+  } else if (zeigeLade) {
+    // Reiner Ladepark: die Prognose (und, mit dynamischem Tarif, Preise)
+    // wohnen HIER (R.2) - nie in Verlauf, derselbe Grund wie beim Fahrplan.
     out.push(
-      bereich('ladevorgaenge', 'Ladevorgänge', 'zap', 'ladevorgaenge', [
-        { key: 'ladevorgaenge', label: 'Ladevorgänge', sub: 'ladevorgaenge' },
+      bereich('ladevorgaenge', ladeLabel, 'zap', 'ladevorgaenge', [
+        { key: 'ladevorgaenge', label: ladeLabel, sub: 'ladevorgaenge' },
+        ...planKontext,
       ]),
     );
+  } else {
+    // „Nur messen" (R.2): die Prognose bekommt ihren EIGENEN Bereich -
+    // `planKontext` ist nie leer (die Prognose selbst ist unbedingt), also
+    // gibt es ihn für jede Anlage, mit oder ohne PV, mit oder ohne
+    // dynamischen Tarif.
+    out.push(bereich('prognose', 'Prognose', 'sun', planKontext[0].sub, planKontext));
   }
 
   const verlaufTabs: BereichTab[] = VERLAUF_TABS.filter((t) => t.view === null || views.includes(t.view)).map(
     ({ key, label, sub }) => ({ key, label, sub }),
   );
-  if (!hatFahrplan) {
-    verlaufTabs.push(
-      ...planKontext.map((t) => (t.sub === 'marktpreise' ? { ...t, label: 'Marktpreise' } : t)),
-    );
-  }
   // UEMS AP-13 IP-8 (E7 = A): „Energiebilanz“ direkt nach „Energie“ (Schlüssel `messwerte`) — NUR mit Hauptzähler in der Stellung
   // (`surface.energiebilanz`, gesetzt von `anlageEnergiebilanz.mitEnergiebilanz`). Ohne den Fakt bleibt der Verlauf
   // zeichengleich (Bestandsschutz, AP-13 E2). Bewusst KEIN `VERLAUF_TABS`-Eintrag: der Reiter hängt an keiner Ansicht
@@ -315,7 +363,7 @@ export function anlageBereiche(
       badge == null ? null : (badgeTitel ?? null)),
   );
   const anlageTabs = mitPrognosen && views.includes('prognosequalitaet')
-    ? [...ANLAGE_TABS_BASIS, { key: 'prognose', label: 'Prognosen', sub: 'prognose' as AnlagenSub }]
+    ? [...ANLAGE_TABS_BASIS, { key: 'prognosemodelle', label: 'Prognosen', sub: 'prognosemodelle' as AnlagenSub }]
     : ANLAGE_TABS_BASIS;
   out.push(bereich('anlage', 'Anlage', 'layers', 'modell', anlageTabs));
   return out;
@@ -333,14 +381,21 @@ export function anlageSidebar(
   badgeAnzahl?: number | null,
   badgeTitel?: string | null,
   mitPrognosen = false,
+  betriebsart?: Betriebsart | null,
+  ladepunktAnzahl?: number | null,
 ): AnlageSidebar {
   return {
-    bereiche: anlageBereiche(surface, badgeAnzahl, badgeTitel, mitPrognosen),
+    bereiche: anlageBereiche(surface, badgeAnzahl, badgeTitel, mitPrognosen, betriebsart, ladepunktAnzahl),
     foot: [HELP_ITEM],
   };
 }
 
-/** Kürzere Telefon-Beschriftungen; die Seitenleiste behält die vollen Wörter. */
+/**
+ * Kürzere Telefon-Beschriftungen; die Seitenleiste behält die vollen Wörter.
+ * Nur das lange „Ladevorgänge" wird gekürzt - „Ladepark" (Betreiber-Sicht,
+ * §4.6) ist am Telefon schon kurz genug und bliebe sonst mit der Steuerung
+ * ununterscheidbar.
+ */
 const BOTTOM_LABELS: Partial<Record<BereichId, string>> = {
   ladevorgaenge: 'Laden',
 };
@@ -355,7 +410,7 @@ const BOTTOM_LABELS: Partial<Record<BereichId, string>> = {
 export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
   return sidebar.bereiche.map((b) => ({
     key: b.key,
-    label: BOTTOM_LABELS[b.key] ?? b.label,
+    label: b.label === 'Ladevorgänge' ? BOTTOM_LABELS[b.key] ?? b.label : b.label,
     icon: b.icon,
     target: b.target,
     badge: b.badge,

@@ -168,6 +168,8 @@ describe('speicherAussage — die Plan-Zeile', () => {
   it('nennt mit dem Feld den geplanten Mehrwert DER STEUERUNG', () => {
     const a = speicherAussage(eingabe(), { now: NOW, steuerungGeplantEur: 12.8 });
     expect(a?.geplant).toBe(`Vorab geplant hatte der Fahrplan ${nb('+ 12,80 €')} durch die Steuerung`);
+    // Derselbe Wert als Betrag für Kacheln („Heute geplant + 12,80 €").
+    expect(a?.geplantWert).toBe(`+${NBSP}12,80${NBSP}€`);
   });
 });
 

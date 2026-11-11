@@ -112,6 +112,45 @@ class ProbeResultListenerTest {
     }
 
     /**
+     * EZ-15: der Erzeuger-Kopf reist wie der WAGO-Kopf als eigener Block, auch neben einer Ablehnung;
+     * Lücke statt Null (ein leerer Name bleibt "", ein fehlender fehlt), fremde Wörter fallen weg.
+     */
+    @Test
+    void anErzeugerHeadTravelsWithUnitsAndNamesAlsoBesideARefusal() throws Exception {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"erreichbarkeit\",\"ok\":true,\"erzeuger_kopf\":{\"signatur_ok\":true,\"erkannt\":true,"
+                        + "\"hauptversion\":1,\"nebenversion\":0,\"te_anzahl\":2,\"herzschlag\":500,"
+                        + "\"programmstand\":2611,\"steuerung_id\":4712,\"anlagenart\":2,\"beschreibung_ab\":140,"
+                        + "\"einheiten\":[{\"einheit\":1,\"art\":2,\"nenn_kw\":66,\"typ_name\":\"MAN E0836LE\"},"
+                        + "{\"einheit\":2,\"art\":7},{\"einheit\":11,\"art\":1}],"
+                        + "\"netzbetreiber_name\":\"N-ERGIE Netz GmbH\",\"direktvermarkter_name\":\"\"}},"
+                        + "{\"id\":\"fremd\",\"ok\":false,\"error_code\":\"invalid_response\",\"message\":\"x\","
+                        + "\"erzeuger_kopf\":{\"signatur_ok\":false,\"erkannt\":false,\"grund\":\"signatur_fremd\"},"
+                        + "\"finding\":{\"channel\":\"erzeuger_kopf\",\"rule\":\"registerbild_unbekannt\"}},"
+                        + "{\"id\":\"halb\",\"ok\":true,\"erzeuger_kopf\":{\"te_anzahl\":2}}")));
+
+        List<ProbeResult.OpResult> zeilen = get(f).results();
+        ProbeResult.ErzeugerKopf kopf = zeilen.get(0).erzeugerKopf();
+        assertThat(zeilen.get(0).ok()).isTrue();
+        assertThat(kopf.teAnzahl()).isEqualTo(2);
+        assertThat(kopf.steuerungId()).isEqualTo(4712L);
+        assertThat(kopf.einheiten()).containsExactly(new ProbeResult.ErzeugerEinheit(1, 2, 66, "MAN E0836LE"),
+                new ProbeResult.ErzeugerEinheit(2, null, null, null));
+        assertThat(kopf.direktvermarkterName()).isEmpty();
+        assertThat(zeilen.get(1).ok()).isFalse();
+        assertThat(zeilen.get(1).errorCode()).isEqualTo("invalid_response");
+        assertThat(zeilen.get(1).erzeugerKopf().grund()).isEqualTo("signatur_fremd");
+        assertThat(zeilen.get(1).erzeugerKopf().teAnzahl()).isNull();
+        assertThat(zeilen.get(2).ok()).isFalse();
+        assertThat(zeilen.get(2).erzeugerKopf()).isNull();
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(zeilen.get(0)))
+                .contains("\"erzeuger_kopf\":{\"signatur_ok\":true,\"erkannt\":true", "\"te_anzahl\":2",
+                        "\"typ_name\":\"MAN E0836LE\"", "\"direktvermarkter_name\":\"\"")
+                .doesNotContain("wago_kopf");
+    }
+
+    /**
      * The identity rule of every listener on the device topics: a device may
      * not answer for another one. Both halves are checked - a foreign TOPIC and
      * a payload that disagrees with its own topic.
@@ -400,32 +439,29 @@ class ProbeResultListenerTest {
         assertThat(line.reading().socPct()).isEqualTo(87.0);
     }
 
-    // ---- Die Zuordnungs-Vorschau der selbst angebundenen Batterie (P5d) ----
+    // ---- Die Zuordnungs-Vorschau (benannte Messwert-Zeilen) ----
 
     /**
      * Die Vorschau-Zeile: je Zuordnung Roh- UND skalierter Wert nebeneinander -
      * genau das Paar, an dem ein Skalierungsfehler sichtbar wird.
      */
     @Test
-    void aBatteryPreviewCarriesOneRowPerMappingWithRawAndValue() {
+    void aPreviewCarriesOneRowPerMappingWithRawAndValue() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
-                        + "{\"channel\":\"cell_min_mv\",\"topic\":\"diybms/bank/3/cell/11\""
-                        + ",\"raw\":3.393,\"value\":3393.0,\"count\":176"
-                        + ",\"at\":\"2026-09-09T18:04:08Z\"}]}")));
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"di_1\""
+                        + ",\"raw\":3.393,\"value\":3393.0,\"count\":176}]}")));
 
         ProbeResult.OpResult line = get(f).results().get(0);
         assertThat(line.ok()).isTrue();
         assertThat(line.reading()).isNull();
         assertThat(line.samples()).hasSize(1);
         ProbeResult.Sample s = line.samples().get(0);
-        assertThat(s.channel()).isEqualTo("cell_min_mv");
-        assertThat(s.topic()).isEqualTo("diybms/bank/3/cell/11");
+        assertThat(s.channel()).isEqualTo("di_1");
         assertThat(s.raw()).isEqualTo(3.393);
         assertThat(s.value()).isEqualTo(3393.0);
         assertThat(s.count()).isEqualTo(176);
-        assertThat(s.at()).isEqualTo("2026-09-09T18:04:08Z");
     }
 
     /**
@@ -437,16 +473,14 @@ class ProbeResultListenerTest {
     void aMappingThatReceivedNothingCarriesNoNumberAtAll() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
-                        + "{\"channel\":\"charge_allowed\",\"count\":0"
-                        + ",\"raw\":0,\"value\":0,\"topic\":\"diybms/status\"}]}")));
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"do_1\",\"count\":0"
+                        + ",\"raw\":0,\"value\":0}]}")));
 
         ProbeResult.Sample s = get(f).results().get(0).samples().get(0);
         assertThat(s.count()).isZero();
         assertThat(s.raw()).isNull();
         assertThat(s.value()).isNull();
-        assertThat(s.topic()).isNull();
-        assertThat(s.at()).isNull();
     }
 
     /**
@@ -458,7 +492,7 @@ class ProbeResultListenerTest {
     void aSampleWithOnlyOneOfTheTwoNumbersKeepsNeither() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
                         + "{\"channel\":\"soc_pct\",\"count\":3,\"value\":41.5}]}")));
 
         ProbeResult.Sample s = get(f).results().get(0).samples().get(0);
@@ -476,7 +510,7 @@ class ProbeResultListenerTest {
     void aRefusedPreviewStillCarriesItsRowsAndItsNamedClass() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":false,\"error_code\":\"no_answer\""
+                "{\"id\":\"vorschau\",\"ok\":false,\"error_code\":\"no_answer\""
                         + ",\"message\":\"Im Lauschfenster kam nichts an.\""
                         + ",\"samples\":[{\"channel\":\"soc_pct\",\"count\":0}]}")));
 
@@ -492,7 +526,7 @@ class ProbeResultListenerTest {
     void aSampleWithoutAChannelIsDropped() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
                         + "{\"count\":5,\"raw\":1,\"value\":1},"
                         + "{\"channel\":\"voltage_v\",\"count\":5,\"raw\":574,"
                         + "\"value\":574}]}")));
@@ -500,5 +534,88 @@ class ProbeResultListenerTest {
         List<ProbeResult.Sample> samples = get(f).results().get(0).samples();
         assertThat(samples).hasSize(1);
         assertThat(samples.get(0).channel()).isEqualTo("voltage_v");
+    }
+
+    // ---- Ein Schaltaktor ohne Leistungsmessung (Shelly Pro 3, VoltPilotGATE 31.10.2026) ----
+
+    /**
+     * So antwortete die Box bis zu diesem Fix für einen Shelly Pro 3 (drei Ausgänge, keine
+     * Leistungsmessung): {@code ok}, aber KEIN einziger Kanal. Die Ehrlichkeitsregel bleibt - ein
+     * Gerät, das nichts gemeldet hat, ist nicht gelesen. Ohne Code und Satz der Box landet diese
+     * Zeile im Portal als „Die Prüfung ist fehlgeschlagen", und ohne bestandenen Test wird nicht
+     * gespeichert: genau das sah der Kunde, obwohl die Box den Schaltzustand gelesen hatte.
+     */
+    @Test
+    void einSchaltaktorMitLeeremReadingIstNichtGelesen() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":true,\"reading\":{}}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isFalse();
+        assertThat(line.reading()).isNull();
+        assertThat(line.errorCode()).isNull();
+    }
+
+    /**
+     * Der echte Wert eines Schaltaktors ist sein Schaltzustand: die Box schickt ihn als benannten
+     * Kanal {@code relay_on} (0 aus, 1 ein) - wörtlich die Zeile, die
+     * {@code TestShellyPortalTestAnswerNamesTheRelayStateNotAnEmptyReading} (Go) für den Pro 3
+     * festhält. Sie besteht, also gibt der Test das Speichern frei.
+     */
+    /**
+     * Heizstab V1: ein Shelly mit AUSGANGSMENGE meldet je Ausgang eine Zeile relay_on_&lt;kanal&gt; und
+     * den Block {@code ausgaenge} (Schaltzustand + „nach Stromausfall“). Beides reist ins Portal; ein
+     * unbekanntes Wort für „nach Stromausfall“ fällt weg (nie geraten).
+     */
+    @Test
+    void eineAusgangsmengeBringtIhreAusgaengeMit() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"relay_on_0\",\"raw\":0,\"value\":0,\"count\":1},"
+                        + "{\"channel\":\"relay_on_2\",\"raw\":1,\"value\":1,\"count\":1}],"
+                        + "\"ausgaenge\":[{\"kanal\":0,\"ein\":false,\"nach_stromausfall\":\"restore_last\"},"
+                        + "{\"kanal\":2,\"ein\":true,\"nach_stromausfall\":\"erfunden\"},{\"kanal\":9}]}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.samples()).hasSize(2);
+        assertThat(line.ausgaenge()).containsExactly(new ProbeResult.Ausgang(0, false, "restore_last"),
+                new ProbeResult.Ausgang(2, true, null));
+    }
+
+    /** Die Antwort auf nach_stromausfall_aus: nur der Block, die danach gelesene Einstellung. */
+    @Test
+    void nachStromausfallAusMeldetDieEinstellungJeAusgang() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"nach-stromausfall\",\"ok\":true,\"ausgaenge\":["
+                        + "{\"kanal\":0,\"nach_stromausfall\":\"off\"},{\"kanal\":1,\"nach_stromausfall\":\"off\"}]}")));
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.samples()).isNull();
+        assertThat(line.ausgaenge()).extracting(ProbeResult.Ausgang::nachStromausfall).containsExactly("off", "off");
+    }
+
+    @Test
+    void derSchaltzustandIstDerGeleseneWertEinesSchaltaktors() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":true,\"samples\":"
+                        + "[{\"channel\":\"relay_on\",\"raw\":0,\"value\":0,\"count\":1}]}")));
+
+        ProbeResult res = get(f);
+        assertThat(res.errorCode()).isNull();
+        ProbeResult.OpResult line = res.results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.errorCode()).isNull();
+        assertThat(line.reading()).isNull();
+        assertThat(line.samples()).hasSize(1);
+        ProbeResult.Sample s = line.samples().get(0);
+        assertThat(s.channel()).isEqualTo("relay_on");
+        assertThat(s.raw()).isEqualTo(0.0);
+        assertThat(s.value()).isEqualTo(0.0);
+        assertThat(s.count()).isEqualTo(1);
     }
 }

@@ -522,7 +522,7 @@ function kwhZelle(v: number | null): { text: string; ton: null } {
   return { text: v == null ? '—' : fmtNum(v, 'kWh', 1), ton: null };
 }
 
-function tabellenKopf(start: Date, range: HistoryRange): string {
+export function tabellenKopf(start: Date, range: HistoryRange): string {
   if (range === 'day') return `${start.getHours()}–${start.getHours() + 1} Uhr`;
   if (range === 'year') return start.toLocaleDateString('de-DE', { month: 'long' });
   return `${WT[start.getDay()]}., ${p2(start.getDate())}.${p2(start.getMonth() + 1)}.`;
@@ -553,11 +553,11 @@ export function energieTabelle(
   return { zeilen, summe };
 }
 
-function csvZahl(v: number | null): string {
+export function csvZahl(v: number | null): string {
   return v == null ? '' : (Math.round(v * 1000) / 1000).toFixed(3).replace('.', ',');
 }
 
-function isoLokal(d: Date): string {
+export function isoLokal(d: Date): string {
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 

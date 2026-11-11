@@ -1,0 +1,66 @@
+/*
+ * Die echte VoltPilot-Box (Gehäuse GL-MT300N-V2) als Zeichnung, isometrisch,
+ * aus der echten Geometrie des Gehäuse-Programms erzeugt (quelle/zeichnung.py
+ * im Konzept vp-box-verbinden-konzept). Farben aus den Tokens des Portals.
+ *
+ * Bewegung nur bei echten Ereignissen (Anmeldung, Herzschlag): reine
+ * Zustandswechsel (`is-online`), kein Loop - die Bewegungs-Familie
+ * (`src/motionTokens.test.ts`) nullt jede Dauer schon über die Familie,
+ * ohne eigenen `prefers-reduced-motion`-Block.
+ */
+.vpb { display: block; width: 100%; height: auto; overflow: visible; }
+.vpb-schatten { fill: rgba(30, 58, 95, 0.07); filter: url(#vpb-weich); }
+.vpb-deckel { fill: #fbfcfd; stroke: #cfd6de; stroke-width: 1; stroke-linejoin: round; }
+.vpb-front { fill: #e3e8ee; stroke: #cfd6de; stroke-width: 1; stroke-linejoin: round; }
+.vpb-seite { fill: #eef2f6; stroke: #cfd6de; stroke-width: 1; stroke-linejoin: round; }
+.vpb-saeule { fill: #e9edf2; stroke: #cfd6de; stroke-width: 1; stroke-linejoin: round; }
+.vpb-saeule-kopf { fill: #f7f9fb; stroke: #cfd6de; stroke-width: 1; }
+.vpb-schraube { fill: #e6ebf0; stroke: #c9d1da; stroke-width: 0.8; }
+.vpb-schraube-loch { fill: #9aa5b1; }
+.vpb-fenster { fill: #5b636c; stroke: #4b525a; stroke-width: 1; stroke-linejoin: round; }
+.vpb-buchse { fill: #3a4047; stroke: #2e343a; stroke-width: 0.8; stroke-linejoin: round; }
+.vpb-buchse-kerbe { fill: #2b3036; }
+.vpb-schlitz { fill: #f5f7f9; stroke: #cfd6de; stroke-width: 0.6; }
+.vpb-mulde { fill: #d6dce3; stroke: #c6ced7; stroke-width: 0.8; stroke-linejoin: round; }
+.vpb-reset { fill: #8e98a3; }
+.vpb-label { fill: none; stroke: #1a1a1a; stroke-linecap: round; stroke-linejoin: round; }
+.vpb-pfeil { fill: #1a1a1a; }
+.vpb-led { fill: #dfe5eb; stroke: #c9d1da; stroke-width: 0.6; }
+.vpb-logo-schrift { fill: #1a1a1a; }
+.vpb-logo-blau {
+  fill: #95b9ff;
+  transition: fill var(--vp-motion-base, 200ms) var(--vp-ease-inout, ease);
+}
+.vpb.is-online .vpb-logo-blau { fill: var(--vp-primary, #2b6cb0); }
+.vpb-stecker-vorn { fill: #d9e0e7; stroke: #b8c2cc; stroke-width: 0.8; stroke-linejoin: round; }
+.vpb-stecker-oben { fill: #eef2f6; stroke: #b8c2cc; stroke-width: 0.8; stroke-linejoin: round; }
+.vpb-stecker-seite { fill: #c9d2db; stroke: #b8c2cc; stroke-width: 0.8; stroke-linejoin: round; }
+.vpb-stecker-strom .vpb-stecker-vorn { fill: #4a5058; stroke: #3a4047; }
+.vpb-stecker-strom .vpb-stecker-oben { fill: #5d646c; stroke: #3a4047; }
+.vpb-stecker-strom .vpb-stecker-seite { fill: #40464d; stroke: #3a4047; }
+.vpb-kabel { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.vpb-kabel-netz { stroke: #aab4bf; stroke-width: 7; }
+.vpb-kabel-strom { stroke: #4a5058; stroke-width: 5; }
+.vpb-router-koerper { fill: #ffffff; stroke: #cfd6de; stroke-width: 1.2; }
+.vpb-router-front { fill: #eef2f6; stroke: #cfd6de; stroke-width: 1.2; }
+.vpb-router-antenne { stroke: #b8c2cc; stroke-width: 4; stroke-linecap: round; fill: none; }
+.vpb-router-led { fill: #b8c2cc; }
+.vpb-netzteil-koerper { fill: #ffffff; stroke: #cfd6de; stroke-width: 1.2; }
+.vpb-netzteil-pin { fill: #b8c2cc; }
+.vpb-netzteil-stift { stroke: #aab4bf; stroke-width: 3; stroke-linecap: round; }
+.vpb-halo {
+  fill: url(#vpb-halo-verlauf);
+  opacity: 0;
+  transition: opacity var(--vp-motion-page, 300ms) var(--vp-ease-out, ease);
+}
+.vpb.is-online .vpb-halo { opacity: 1; }
+.vpb-ziel { font: 600 15px/1 var(--vp-font-body, 'Inter', sans-serif); fill: #66717c; letter-spacing: 0.01em; }
+
+/* Prüf-Hilfe ab 5:00: die betroffene Buchse hervorgehoben (Abschnitt 5/7.1). */
+.vpb-hervorheben {
+  fill: none;
+  stroke: var(--vp-warn-ink, #b45309);
+  stroke-width: 3;
+  stroke-dasharray: 5 4;
+  opacity: 0.9;
+}

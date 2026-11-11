@@ -1,12 +1,16 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.web.dto.DatenquelleDto;
 import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -163,6 +167,30 @@ public class DatenquelleRepository {
                 + "WHERE ausgebaut_am IS NULL ORDER BY created_at, id",
                 (rs, n) -> new Box(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class),
                         rs.getString("name"), rs.getString("external_ref"))));
+    }
+
+    /**
+     * Die eingebauten Geräte je Quelle des Mandanten (Konzept „Ein Gerät, ein Eintrag“, GE-6) — allein
+     * über den gespeicherten Verweis {@code geraet.data_source_id}, nie über eine gleiche Adresse. Je
+     * Gerät die Komponenten, die es {@code jetzt} oder später speist (eine nachgetragene Karte beginnt
+     * erst mit der nächsten vollen Minute); ein Gerät, das {@code jetzt} ausgebaut ist, fehlt.
+     */
+    public Map<UUID, List<DatenquelleDto.Geraet>> geraeteJeQuelle(Instant jetzt) {
+        Map<UUID, List<DatenquelleDto.Geraet>> je = new LinkedHashMap<>();
+        jdbc.query("SELECT g.data_source_id, g.id, g.kennzeichen, g.bezeichnung, g.geraeteart, g.geraete_id, "
+                + "COALESCE(array_agg(v.entity_id ORDER BY v.gueltig_ab, v.entity_id) "
+                + "FILTER (WHERE v.entity_id IS NOT NULL), '{}') AS komponenten "
+                + "FROM geraet g LEFT JOIN geraet_komponente v ON v.geraet_id = g.id "
+                + "AND (v.gueltig_bis IS NULL OR v.gueltig_bis > ?) "
+                + "WHERE g.data_source_id IS NOT NULL AND (g.ausgebaut_am IS NULL OR g.ausgebaut_am > ?) "
+                + "GROUP BY g.id ORDER BY length(g.kennzeichen), g.kennzeichen, g.id", rs -> {
+                    UUID[] komponenten = (UUID[]) rs.getArray("komponenten").getArray();
+                    je.computeIfAbsent(rs.getObject("data_source_id", UUID.class), k -> new ArrayList<>())
+                            .add(new DatenquelleDto.Geraet(rs.getObject("id", UUID.class), rs.getString("kennzeichen"),
+                                    rs.getString("bezeichnung"), rs.getString("geraeteart"),
+                                    rs.getObject("geraete_id", Integer.class), List.of(komponenten)));
+                }, Timestamp.from(jetzt), Timestamp.from(jetzt));
+        return je;
     }
 
     private static Datenquelle map(ResultSet rs, int n) throws SQLException {

@@ -91,17 +91,28 @@ export function ohneStandort(s = selbst): boolean {
 }
 
 /**
- * UEMS AP-20 IP-17: den Gesamtabzug lädt nur der Kundenadministrator mit eigenem Konto — der Zwilling von
+ * Der Kundenadministrator dieses Kundenbereichs: das eigene Kundenkonto mit dieser Rolle — oder die
+ * Plattform-Administration im Mandantensprung (`zugang` „umschalter“), die dort als Kundenadministrator handelt
+ * (Auftrag vom 29.10.2026). Der Zwilling von `ZugriffContext.Zugriff#kundenadministrator` (Java).
+ */
+export function kundenadministrator(s = selbst): boolean {
+  if (!s || s.zustand !== 'aktiv') return false;
+  if (s.konto === 'plattform' && s.zugang === 'umschalter') return true;
+  return s.konto === 'benutzer' && s.zugang === 'konto' && s.rollen.includes('kundenadministrator');
+}
+
+/**
+ * UEMS AP-20 IP-17: den Gesamtabzug lädt nur der Kundenadministrator ({@link kundenadministrator}) — der Zwilling von
  * `KundenbereichEndeFilter.kundenadministrator` (Java); die API entscheidet trotzdem selbst (403).
  */
 export function gesamtabzugLaden(s = selbst): boolean {
-  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto' && s.rollen.includes('kundenadministrator');
+  return kundenadministrator(s);
 }
 
 /** Die Benutzerliste hat keine eigene Aktionskennung (AP-03 E2): Energiemanager lesen mit. */
 export function benutzerLesen(s = selbst): boolean {
-  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto'
-    && (darf('benutzer.verwalten', null, s) || s.rollen.includes('energiemanager'));
+  return kundenadministrator(s) || (!!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto'
+    && (darf('benutzer.verwalten', null, s) || s.rollen.includes('energiemanager')));
 }
 
 export function useRollen() {
@@ -248,8 +259,19 @@ export interface RolePill {
 }
 
 /**
+ * Wo „maßgeblich“ etwas bedeutet: der Topologie-Vertrag wählt mit `primary` den maßgeblichen Netzwert und den
+ * Ladestand; PV und Verbraucher summieren ihre Mitglieder. Dort legte „maßgeblich setzen“ trotzdem eine
+ * Rollen-Zuordnung an, die Cockpit und Übersicht als ganze Sonne lasen (Schramm „Zuhause“, 07.11.2026: „PIKO
+ * allein maßgeblich“). Darum gibt es das Wort und den Knopf nur für Netz und Ladestand.
+ */
+export function massgeblichWaehlbar(role: Role, channel: string): boolean {
+  return role === 'grid' ? channel !== SOC_CHANNEL : role === 'storage' && channel === SOC_CHANNEL;
+}
+
+/**
  * The distinct roles an entity's capabilities resolve to, for its card's role
- * pills. A hybrid inverter shows several (PV + Speicher); primary = maßgeblich.
+ * pills. A hybrid inverter shows several (PV + Speicher); primary = maßgeblich,
+ * nur wo es etwas bedeutet ({@link massgeblichWaehlbar}: Netzwert, Ladestand).
  */
 export function rolePillsFor(entityId: string, topology: SiteTopology): RolePill[] {
   const entity = topology.entities.find((e) => e.id === entityId);
@@ -258,7 +280,7 @@ export function rolePillsFor(entityId: string, topology: SiteTopology): RolePill
   for (const cap of entity.capabilities) {
     if (cap.role == null || !ROLE_ORDER.includes(cap.role as Role)) continue;
     const role = cap.role as Role;
-    seen.set(role, (seen.get(role) ?? false) || cap.primary);
+    seen.set(role, (seen.get(role) ?? false) || (cap.primary && massgeblichWaehlbar(role, cap.channel)));
   }
   return ROLE_ORDER.filter((r) => seen.has(r)).map((role) => ({
     role,

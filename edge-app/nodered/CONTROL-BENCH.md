@@ -440,9 +440,45 @@ wird, durchläuft diese Liste separat - genau wie Deye pro Familie.
 
 Nach bestandener Curtailment- **und** Storage-Freigabe: siehe „Freigabe" unten.
 
+## Pflichtlauf „Überschuss mit kurzen Verbrauchern“ (jeder Speicher, den die Box nachregelt)
+
+**Bedingung jeder Freigabe eines Speicher-Wechselrichters zum Steuern** (Entscheid E7 A vom 10.10.2026). Anlass: Herzogau, 10.10.2026 17:04 – in einer Lade-Viertelstunde schaltete ein Verbraucher für 10–15 s zu, die Box befahl sofort die Entladung, der Deye folgte nach rund 12 s, und 1,5 kW gingen aus dem Speicher ins Netz (zwölfmal in 79 Minuten). Jede Einzelregel war richtig; den Fehler zeigt nur ein Lauf mit kurzen Verbrauchern am Gerät mit seiner echten Folgezeit.
+
+Seit dem Entscheid A vom 13.10.2026 gilt die Haltezeit vor dem Entladen in **jeder** Viertelstunden-Art, nicht nur in der Lade-Viertelstunde: der Zusatzlauf zu `edge-2026.10.1` zeigte in einer Viertelstunde ohne geplantes Laden noch 22,3 Wh aus dem Speicher hinter sechs kurzen Verbrauchern. Der Pflichtlauf fährt darum **drei Slot-Arten**: Laden, Ruhe und Deck. Seit dem Entscheid A vom 19.10.2026 (Stufen-Haltezeit) wartet auch jeder **Anstieg** eines schon stehenden Defizits; der Pflichtlauf fährt darum auch die Nacht – die Grundlast steht, kurze Verbraucher kommen obendrauf.
+
+Der Lauf gilt für jede Absicht, bei der die Box der Messung nachregelt (kein zertifizierter Eigenmodus, `native_withheld`). Regelt das Gerät den Netzpunkt für alle Absichten selbst, gilt dieselbe Messung mit denselben zwei Zahlen – dann prüft sie das Gerät statt der Box.
+
+**Stufe 1 – Prüflauf im Kern (ohne Gerät, vor dem Prüfstandstag).** Gemessene Einschwingzeit und Messtakt stehen im Steuerprofil (`daempfung`, [Steuerprofile](../../catalog/control-profiles/README.md)); der Lauf simuliert daraus das Gerät im Regelkreis mit Totzeit und nimmt jedes gepackte Profil mit `box_regelt: true` von selbst auf:
+
+```bash
+cd edge-app/core
+go test ./internal/agent -v -run 'TestSurplusWithShortConsumers|TestShortConsumersInEverySlotKind|TestDischargeIsTakenBackWithTheNextGridValueWhenTheConsumerEnds|TestARealDeficitIsCoveredAfterTheHoldOnEveryDevice|TestAConsumerOfUpToAHoldNeverDischargesOnAnyDevice|TestShortConsumersOnTopOfAStandingDeficitWait|TestALoadStepAtNightIsCoveredOneHoldLater|TestASwingingLoadAtNightIsCoveredUpToItsLowerEdge'
+```
+
+`TestSurplusWithShortConsumers` ist die Lade-Viertelstunde; `TestShortConsumersInEverySlotKind` fährt dieselben Geräte durch die Ruhe-Viertelstunde (Planwert 0, keine Pflicht), die Deck-Viertelstunde (`cover_load_from_battery`, Planwert −1 kW) und die ungeplante Lastdeckung (`unplanned_load_discharge`). Bestanden, wenn die Zeile des Profils in **jeder** Slot-Art `aus dem Speicher eingespeist 0.0000 kWh` und `0 Entlade-Befehle` zeigt. `TestShortConsumersOnTopOfAStandingDeficitWait` fährt die Nacht (1,5 kW Grundlast, darauf der Verbraucher von 2,62 kW für 10–15 s) in Ruhe, Deck und ungeplanter Lastdeckung: bestanden, wenn kein Verbraucher die Entladung anhebt und der Speicher nicht mehr einspeist als in derselben Nacht ohne Verbraucher (der Deck-Planwert −1,6 kW liegt 0,1 kW über der Grundlast, innerhalb der Eingriffsschwelle des Folgers – das speist der Plan, kein Verbraucher). `TestALoadStepAtNightIsCoveredOneHoldLater` und `TestASwingingLoadAtNightIsCoveredUpToItsLowerEdge` binden den Preis: ein Lastsprung wird nie vor 60 s und spätestens Haltezeit plus zwei Messtakte nach seinem Beginn gedeckt, eine schneller schwankende Last nur bis zu ihrer Unterkante und ohne Einspeisung. Ein Profil ohne gemessene Zeiten läuft mit der Vorgabe (15 s / 25 s) – das ist dann eine Aussage über die Vorgabe, nicht über das Gerät.
+
+**Nulleinspeise-Verbraucher (NS-3 B, kein Freigabe-Urteil):** `go test ./internal/agent -v -run 'TestSurplusConsumer'` fährt dieselben Geräte gegen einen Verbraucher, der den Netzpunkt selbst auf null regelt (Stufen 12,5 kW bis 37,5 kW, die oberste Stufe fein geregelt, Einschaltverzug 30 s, Ausschaltverzug 10 s). Nachgestellt sind Herzogau 12.10. 14–15 Uhr und 14.10. 15:00–16:40. Ohne `charge_hold_base_load_kw` bricht die geplante Ladung ein, wie gemessen (Regressionsschutz für das Verhalten von heute). Mit dem Feld hält sie mindestens 85 % von `min(Plan, PV − Grundlast)`, und Laden bei mehr als 0,6 kW Bezug dauert höchstens Ausweichzeit plus eine Reaktion. Eine Last über der Grundlast, die nicht ausweicht, wird nach `guards.HoldYieldDwell` (60 s) wieder wie bisher getrimmt. Am echten Gerät mit echtem Verbraucher ist das nicht gemessen.
+
+**Stufe 2 – am Prüfstand und am ersten echten Gerät** (rund ein halber Tag; Simulatornachweise ersetzen keinen Prüfstand):
+
+1. Lade-Viertelstunden mit „Überschuss einlagern“ (Planwert > 0, `charge_from_surplus_only`), Ladestand zwischen Boden und Obergrenze, PV-Überschuss in den Stufen 0,5 / 1 / 2 / 5 kW. Danach, je mindestens zehn Minuten bei rund 0,5 kW PV-Überschuss: **Ruhe-Viertelstunden** (Planwert 0, keine Pflicht) und **Deck-Viertelstunden** (`cover_load_from_battery`, Planwert < 0 – bei Überschuss begrenzt die Box ihn auf 0).
+2. Einen Verbraucher von rund 1 kW für 5–20 s alle 1–2 Minuten schalten, je Stufe und je Slot-Art mindestens zehn Minuten (in den Lade-Viertelstunden zusammen mindestens 30 Verbraucher, in Ruhe und Deck je mindestens sechs). In Ruhe und Deck muss der Verbraucher größer sein als der Überschuss, sonst entsteht kein Defizit. Mitschnitt von `:8484` (`/api/state`, `/api/history`) im 5-s-Takt.
+3. Dabei **Folgezeit** (Befehl → gemessene Wirkung) und **Messtakt** (Abstand zweier Register-Auffrischungen, Netz- und Batteriehälfte getrennt) messen und im Steuerprofil nachtragen.
+4. Bei stehendem Defizit (Speicher deckt die Grundlast, abends oder nachts) denselben Verbraucher obendrauf schalten: der Sollwert bleibt stehen (`deficit_hold` mit `since` = Zuschalten), ein Verbraucher über drei Minuten wird nach der Haltezeit zusätzlich gedeckt.
+5. Gegenprobe in jeder der drei Slot-Arten: ein Defizit von mindestens drei Minuten (Verbraucher an lassen oder PV wegnehmen) – die Box deckt es nach der Haltezeit von 60 s, je nach Messtakt des Geräts also rund 70 bis 100 s nach seinem Beginn, nie früher als 60 s (`deficit_hold` im Zustand, danach `follow.path` = `deficit_cover` in Lade- und Ruhe-Viertelstunde, `follow` in der Deck-Viertelstunde).
+
+**Die zwei Zahlen** (aus dem Mitschnitt, je Probe mit Speicherleistung `b` und Netzleistung `g`, + = Laden bzw. Bezug):
+
+| Zahl | Rechnung | Bestanden |
+|---|---|---|
+| **aus dem Speicher eingespeist** | Summe von `min(max(−b, 0), max(−g, 0))` × Zeit, ohne geplante Verkaufs-Viertelstunden | 0 über dem Band 0,3 kW / 30 s; kein Entlade-Sollwert bei einem Verbraucher bis 60 s – in Lade-, Ruhe- und Deck-Viertelstunde |
+| **Überschuss nicht aufgenommen** | übrige Einspeisung `max(−g, 0)` minus der Zeile darüber, solange der Ladestand unter der Obergrenze liegt | notieren; mit dem festen Abstand von 0,5 kW bleibt bei kleinem Überschuss ein Rest – „nahe null“ wird die Zahl erst mit dem gleitenden Abstand (E3) |
+
+Nicht bestanden heißt: keine Freigabe für dieses Gerät, Befund mit Mitschnitt zurück an die Entwicklung. Die Regeln dahinter: [Defizit decken – Haltezeit](../../docs/contracts/v2/plan-execution-ownership.md#gemessenes-defizit-decken) und der gedämpfte Folger in [Edge-Laufzeit](../../docs/edge-runtime.md).
+
 ## Freigabe (Zertifizierung)
 
-Nach bestandener gerätespezifischer Liste die First-Light-Freigabe für genau dieses physische Gerät setzen. `VP_CONTROL_ENABLED` bleibt die äußere Freigabe; Netzladen benötigt zusätzlich die ausdrückliche Erlaubnis der Anlage.
+Nach bestandener gerätespezifischer Liste – für einen Speicher-Wechselrichter gehört der Pflichtlauf „Überschuss mit kurzen Verbrauchern“ oben dazu – die First-Light-Freigabe für genau dieses physische Gerät setzen. `VP_CONTROL_ENABLED` bleibt die äußere Freigabe; Netzladen benötigt zusätzlich die ausdrückliche Erlaubnis der Anlage.
 
 Eine Familienfreigabe ist eine gesonderte Änderung mit entsprechend breitem Nachweis. Core- und Node-RED-Allowlist müssen dabei übereinstimmen. Ein einzelner erfolgreich geprüfter Pilot rechtfertigt keinen pauschalen Flotteneintrag.
 
@@ -594,6 +630,10 @@ ggf. `generic-load`) in
 `services/api/src/main/resources/entitytypes/catalog.json` von
 `simulator_only` auf den zertifizierten Stand, plattformweit. Bis dahin bleiben
 die Typen unzertifiziert — der Treiber-Code ändert sich dafür nicht.
+**Stand 04.11.2026:** `heating-rod` ist ohne diese Session freigegeben
+(Entscheid des Captains; erster realer Einsatz an `edge-h5atkys`). Die Punkte
+oben bleiben dort als Kontrolle am echten Stab offen; `generic-load` bleibt
+`simulator_only`.
 
 ## Ebyte M31 (I/O-Modul, Relais je Verbraucher) — Treibernachweis und Geräteprüfung
 
@@ -699,7 +739,7 @@ Programm gibt es also gar keine Möglichkeit, versehentlich zu schreiben.**
 
 ### Vorbereitung
 
-1. **Die Kunden-Termin-Checkliste** aus `KACO.md` §12 abarbeiten — sie klärt
+1. **Die Kunden-Termin-Checkliste** aus `KACO.md` §13 abarbeiten — sie klärt
    Plattform, Firmware, Unit-ID, Modell-Liste, Vorzeichen und ob die
    App-Schnittstelle oder Modbus der Weg ist. Ohne sie fehlt jede Grundlage.
 2. **Firmware-Stufe feststellen** (SunSpec Modell 1 `Version`). Für die
@@ -770,6 +810,80 @@ Zwei Schritte, in dieser Reihenfolge:
 **gridsave ist NICHT Teil dieses Programms.** Ein gridsave braucht ein externes
 EMS über die Vendor-Modelle 64201-64204 (Zustandsmaschine, Lade-/Entladekennlinie,
 Pflicht-Watchdog 60 s) — ein eigener Bau mit eigener Untersuchung.
+
+## Checkliste Huawei SUN2000 + LUNA2000 — VORBEREITET und GESPERRT, nichts ist gemessen
+
+Wie KACO: die Register-Lage ist **dokumentiert** (Herstellerquelle „SUN2000MA
+Modbus Interface Definitions" Issue 08 + Feldquellen), aber an keinem
+Huawei-Gerät hat jemand von uns je etwas gemessen. Lesepfade + Registerkarte:
+[`HUAWEI.md`](HUAWEI.md); Analyse: firstmate `data/vp-kundenanlage-huawei-s1`.
+
+⚠ **Die Sperre ist genauso hart wie bei KACO.** `writes` bleibt in
+`huaweiControl` leer **unabhängig von der Freigabe** — eine First-Light-Karte
+öffnet hier nichts, die Sperre fällt erst mit einer bewussten Code-Änderung an
+`inverter-control-routing.js`. **Ohne dieses Programm gibt es also gar keine
+Möglichkeit, versehentlich zu schreiben.**
+
+### Vorbereitung
+
+1. **Installateur-Konto** besorgen und Modbus TCP am Gerät freischalten — ohne
+   diese Freischaltung antwortet das Gerät gar nicht.
+2. **Smart Dongle oder nur internes WLAN?** Entscheidet, ob Modbus parallel zur
+   FusionSolar-App läuft. Nur EIN Modbus-Client gleichzeitig.
+3. **Firmware-Stand notieren** (Installateur-Login/App) — Firmware-Bedingung,
+   Schreibbudget und Dämpfung sind in `huawei.json` komplett unbelegt
+   (Sicherheit D).
+4. **Smart Power Sensor** (DTSU666-H/DDSU666-H) am Netzanschlusspunkt
+   verbaut? Entscheidet, ob eine Netzmessung überhaupt möglich ist.
+
+### Messprogramm (Forcible Charge/Discharge, Register 47075–47249)
+
+⚠ **Höheres Risiko als die Abregelung**: ein falsches Vorzeichen oder eine
+falsche Skala bewegt eine echte Batterie.
+
+1. **Nur lesen.** 37765/37766 (Batterie-Lade-/Entladeleistung) und
+   37760 (SoC) gegen die FusionSolar-App prüfen; **Vorzeichen kalibrieren** -
+   die Feldquelle sagt „+ Laden", das deckt sich schon mit VoltPilots eigener
+   Konvention, aber unbelegt ist unbelegt.
+2. **Istwert von 47086 (Arbeitsmodus) notieren** vor dem Eingriff, damit die
+   Rücknahme belegbar ist.
+3. **Kleiner Sollwert in BEIDE Richtungen** (±0,5–1 kW) aus ruhiger Baseline:
+   47100 = 1 (Laden) bzw. 2 (Entladen), 47246 = 0 (Dauer-Modus, NIEMALS 1),
+   47247/47249 = ±W, 47083 = Minuten. Zurücklesen **und** 37765/37766 muss sich
+   in Befehlsrichtung bewegen.
+4. **⚠ DIE WICHTIGSTE MESSUNG: der geräteeigene Totmann.** `huawei.json`
+   `totmann` behauptet „endet nach 47083 Minuten im Dauer-Modus (47246 = 0),
+   flüchtig" (Sicherheit C, Feldquelle) - am Gerät NIE gemessen:
+   - 47083 auf eine kurze Zeit setzen, dann **aufhören zu schreiben**. Endet
+     die Zwangssteuerung tatsächlich nach Ablauf der Minuten? Wie exakt?
+   - 47246 = 1 (SoC-Modus) NICHT in Produktion ausprobieren (keine
+     dokumentierte Rückfallzeit) - nur falls der Zertifizierungslauf das
+     Firmwareverhalten explizit klären soll, mit sofortiger manueller
+     Rücknahme (47100 = 0) bereitstehend.
+   - **Hängende Zwangsentladung (evcc #26917) gezielt prüfen:** nach dem
+     dokumentierten Totmann-Ablauf 47100 zurücklesen - steht wirklich 0, oder
+     bleibt ein Sollwert stehen? Das ist das genau bekannte Feldproblem.
+5. **SoC-Fenster.** Entladebefehl an der Untergrenze ⇒ `guards.Clamp` liefert 0
+   ⇒ Gerät verharrt; Ladebefehl an der Obergrenze analog.
+6. **Selbstregel-Fenster (47075/47077).** Lade-/Entladegrenze setzen,
+   Wirkung auf die AC-Leistung beobachten, Rücknahme auf 0/0 prüfen - das ist
+   der Pfad ohne erzwungenen Sollwert (E/E_laden/E_decken/E_gedrosselt/H).
+7. **Netzladen-Freigabe (47087).** Nur auf einer Anlage ohne EEG-Einschränkung
+   prüfen; 47087 nach dem Test wieder auf 0.
+
+### Freigabe
+
+Zwei Schritte, in dieser Reihenfolge:
+
+1. **Die Adapter-Sperre lösen** (`inverter-control-routing.js`,
+   `huaweiControl`): `writes` darf erst dann dem üblichen Freigabe-Tor folgen.
+   Das ist eine bewusste Code-Änderung mit Review, kein Klick.
+2. Danach Freigabe **pro Gerät** über die First-Light-Karte, inklusive der
+   Pflicht-Bench-Prüfung „Überschuss mit kurzen Verbrauchern" (oben,
+   `TestSurplusWithShortConsumers`/`TestShortConsumersInEverySlotKind`) mit den
+   am Gerät gemessenen Einschwingzeit-/Messtakt-Werten statt der Vorgabe
+   15 s/25 s. Die flottenweite Aufnahme in `VP_CONTROL_CERTIFIED_FAMILIES` /
+   `CERTIFIED_CONTROL_FAMILIES` erst, wenn die Modellklasse belegt ist.
 
 ## OCPP-Ladepunkt (Ladesäule) — SIMULATOR-BEWIESEN, Bench steht aus
 

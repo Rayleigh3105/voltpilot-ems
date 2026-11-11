@@ -677,7 +677,7 @@ describe('geraetSeite · BMS (P4)', () => {
       }),
     }));
     expect(zeile(v.bms, 'Ladestand laut BMS')?.wert).toMatch(/^47/);
-    expect(zeile(v.bms, 'Strom')?.wert).toMatch(/^-30,0/);
+    expect(zeile(v.bms, 'Strom')?.wert).toMatch(/^−30,0/);
     // Zwei GETRENNTE Paare: „gerade erlaubt" ist nicht „Maximum des Speichers".
     expect(zeile(v.bms, 'Erlaubt gerade')?.wert).toMatch(/270.*laden.*342.*abgeben/);
     expect(zeile(v.bms, 'Maximum des Speichers')?.wert).toMatch(/400.*laden.*500.*abgeben/);

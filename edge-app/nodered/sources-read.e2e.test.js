@@ -825,3 +825,269 @@ test('an unreachable source emits its failure class without a telemetry sample',
   assert.equal(health[0].error_class,'unreachable');assert.equal(health[0].samples,0);
   assert.equal(health[0].requests,1);
 });
+
+// --- Powador seriell (kaco_serial) + Huawei SUN2000 (huawei_modbus) als QUELLE ---
+//
+// Echte Anlage (Go-live 2026-11): der Huawei ist der Hauptwechselrichter, der
+// KACO Powador 3200 - INT (RS485-ASCII ueber einen Waveshare-Wandler, KEIN Modbus)
+// wird als "Weiterer Erzeuger" uebernommen. Beide blieben im Executor
+// "NICHT VERDRAHTET: unbekannte Kommunikation" (Quelle 'pending', keine Daten),
+// obwohl sources-routing.planSources sie routet.
+
+const kacoSerialDecode = require('./kaco/kaco-serial-decode');
+
+function padL(value, width) {
+  const s = String(value);
+  return ' '.repeat(width - s.length) + s;
+}
+
+// Ein Kommando-0-Frame des Powador (Offsets wie kaco-serial-decode.js), mit
+// korrekter Pruefsumme.
+function kacoSerialFrame(f) {
+  const body = '*' + padL(f.address, 2) + '0' + ' ' +
+    padL(f.status, 3) + ' ' + padL(f.dcVoltageV, 5) + ' ' + padL(f.dcCurrentA, 5) + ' ' +
+    padL(f.dcPowerW, 5) + ' ' + padL(f.acVoltageV, 5) + ' ' + padL(f.acCurrentA, 5) + ' ' +
+    padL(f.acPowerW, 5) + ' ' + padL(f.temperatureC, 3) + ' ' + padL(f.dailyYieldWh, 6) + ' ';
+  const bodyBytes = Buffer.from(body, 'ascii');
+  return Buffer.concat([
+    Buffer.from([0x0a]), bodyBytes, Buffer.from([kacoSerialDecode.kacoChecksum(bodyBytes)]), Buffer.from(' 3200\r', 'ascii'),
+  ]);
+}
+
+const POWADOR_FRAME = kacoSerialFrame({
+  address: 1, status: 4, dcVoltageV: '585.9', dcCurrentA: '2.20', dcPowerW: 1264,
+  acVoltageV: '229.5', acCurrentA: '5.30', acPowerW: 1216, temperatureC: 36, dailyYieldWh: 6567,
+});
+
+// Waveshare im TCP-Server-Modus: reicht die seriellen Bytes 1:1 durch; antwortet
+// nur auf die Anfrage `#<adr>0\r` der erwarteten Adresse (sonst schweigt der Bus).
+function startWaveshare({ frame, address = 1 }) {
+  const requests = [];
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      sock.on('data', (chunk) => {
+        const text = chunk.toString('ascii');
+        requests.push(text);
+        if (text === '#' + String(address).padStart(2, '0') + '0\r') sock.write(frame);
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, requests }));
+  });
+}
+
+function kacoSerialSource(port, overrides = {}) {
+  return Object.assign({
+    id: 'src-powador',
+    role: 'pv-generation',
+    brand: 'kaco',
+    model: 'powador-3200-int',
+    family: 'kaco_serial',
+    communication: 'kaco_serial',
+    connection: { ip: '127.0.0.1', port, address: 1 },
+    interval_s: 5,
+    capacity_kwp: 3.2,
+  }, overrides);
+}
+
+test('a KACO Powador Erzeuger source (kaco_serial) is wired, read over the RS485 converter and publishes pv_power_kw', async () => {
+  const { server, port, requests } = await startWaveshare({ frame: POWADOR_FRAME });
+  try {
+    const { flow, sends, warns } = await storeAndRead([kacoSerialSource(port)]);
+    assert.deepEqual(warns, [], 'nothing is NICHT VERDRAHTET: ' + warns.join(' | '));
+    assert.equal(flow.source_plans.length, 1);
+    assert.equal(flow.source_plans[0].adapter, 'kaco_serial');
+    assert.equal(sends.length, 1, 'exactly one publish');
+    const [erzeuger, netz] = sends[0];
+    assert.equal(netz, null);
+    assert.equal(erzeuger.source_id, 'src-powador');
+    assert.equal(erzeuger.payload.pv_power_kw, 1.216, 'AC-Leistung des Powador');
+    assert.equal('power_kw' in erzeuger.payload, false, 'Erzeuger publishes ONLY pv');
+    assert.deepEqual(requests, ['#010\r'], 'KACO-ASCII-Anfrage Serie 00, Kommando 0 an Adresse 1 - kein Modbus-Frame');
+  } finally {
+    server.close();
+  }
+});
+
+test('a KACO Powador source honours the configured RS485 address', async () => {
+  const frame = kacoSerialFrame({
+    address: 7, status: 4, dcVoltageV: '500.0', dcCurrentA: '1.00', dcPowerW: 500,
+    acVoltageV: '230.0', acCurrentA: '2.00', acPowerW: 460, temperatureC: 30, dailyYieldWh: 100,
+  });
+  const { server, port, requests } = await startWaveshare({ frame, address: 7 });
+  try {
+    const { sends } = await storeAndRead([kacoSerialSource(port, { connection: { ip: '127.0.0.1', port, address: 7 } })]);
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0][0].payload.pv_power_kw, 0.46);
+    assert.deepEqual(requests, ['#070\r']);
+  } finally {
+    server.close();
+  }
+});
+
+test('a silent KACO converter is skipped (no send) and named via node.warn', async () => {
+  const { server, port } = await startWaveshare({ frame: POWADOR_FRAME, address: 9 }); // antwortet nur Adresse 9
+  try {
+    const { sends, warns } = await storeAndRead([kacoSerialSource(port)]);
+    assert.equal(sends.length, 0, 'no fabricated 0');
+    assert.ok(warns.some((w) => /src-powador/.test(w) && /KACO/.test(w)), 'the failure is named: ' + warns.join(' | '));
+  } finally {
+    server.close();
+  }
+});
+
+test('a KACO Powador source with an illegal RS485 address or family is NOT wired loudly', async () => {
+  const bad = await storeAndRead([kacoSerialSource(4196, { connection: { ip: '127.0.0.1', port: 4196, address: 99 } })]);
+  assert.equal(bad.flow.source_plans.length, 0);
+  assert.ok(bad.warns.some((w) => /NICHT VERDRAHTET/.test(w) && /Adresse/.test(w)), bad.warns.join(' | '));
+  const fam = await storeAndRead([kacoSerialSource(4196, { family: 'nope' })]);
+  assert.equal(fam.flow.source_plans.length, 0);
+  assert.ok(fam.warns.some((w) => /NICHT VERDRAHTET/.test(w) && /KACO-Familie/.test(w)), fam.warns.join(' | '));
+});
+
+// Huawei SUN2000-3KTL-M1 + LUNA2000: die vier FC3-Bloecke aus huawei-decode.planReads.
+function huaweiImage({ pvW, gridW, socX10, battW }) {
+  const img = new Map();
+  const i32 = (addr, v) => { const b = Buffer.alloc(4); b.writeInt32BE(v, 0); img.set(addr, b.readUInt16BE(0)); img.set(addr + 1, b.readUInt16BE(2)); };
+  i32(32064, pvW);
+  i32(32080, pvW);
+  i32(37113, gridW);
+  for (let a = 37760; a <= 37766; a++) img.set(a, 0);
+  img.set(37760, socX10);
+  i32(37765, battW);
+  return img;
+}
+
+function huaweiSource(port, overrides = {}) {
+  return Object.assign({
+    id: 'src-huawei',
+    role: 'pv-generation',
+    brand: 'huawei',
+    model: 'sun2000-3ktl-m1',
+    family: 'huawei_sun2000_luna',
+    communication: 'huawei_modbus',
+    connection: { ip: '127.0.0.1', port, unit_id: 0 },
+    interval_s: 5,
+    capacity_kwp: 4,
+  }, overrides);
+}
+
+test('a Huawei SUN2000 Erzeuger source (huawei_modbus) is wired, read and publishes pv_power_kw', async () => {
+  const { server, port } = await startModbusServer(huaweiImage({ pvW: 2345, gridW: -800, socX10: 655, battW: 500 }));
+  try {
+    const { flow, sends, warns } = await storeAndRead([huaweiSource(port)]);
+    assert.deepEqual(warns, [], 'nothing is NICHT VERDRAHTET: ' + warns.join(' | '));
+    assert.equal(flow.source_plans[0].adapter, 'huawei_modbus');
+    assert.equal(sends.length, 1);
+    const [erzeuger, netz] = sends[0];
+    assert.equal(netz, null);
+    assert.equal(erzeuger.source_id, 'src-huawei');
+    assert.equal(erzeuger.payload.pv_power_kw, 2.345);
+    assert.equal('power_kw' in erzeuger.payload, false);
+  } finally {
+    server.close();
+  }
+});
+
+test('a Huawei Netz source (smart power sensor) publishes signed power_kw on output 2', async () => {
+  const { server, port } = await startModbusServer(huaweiImage({ pvW: 2345, gridW: -800, socX10: 655, battW: 500 }));
+  try {
+    const { sends } = await storeAndRead([huaweiSource(port, { id: 'src-hw-netz', role: 'grid-meter' })]);
+    assert.equal(sends.length, 1);
+    const [erzeuger, netz] = sends[0];
+    assert.equal(erzeuger, null);
+    assert.equal(netz.source_id, 'src-hw-netz');
+    // Register 37113 = -800 W heisst laut Huawei-Doku Bezug aus dem Netz; VoltPilot: + = Bezug.
+    assert.equal(netz.payload.power_kw, 0.8, 'Vorzeichen aus dem Decoder (Huawei-Doku: < 0 = Bezug)');
+  } finally {
+    server.close();
+  }
+});
+
+test('a dead Huawei source is skipped (no send) and named via node.warn', async () => {
+  const dead = await startModbusServer(new Map());
+  await new Promise((resolve) => dead.server.close(resolve));
+  const { sends, warns } = await storeAndRead([huaweiSource(dead.port)]);
+  assert.equal(sends.length, 0);
+  assert.ok(warns.some((w) => /src-huawei/.test(w) && /Huawei/.test(w)), 'the failure is named: ' + warns.join(' | '));
+});
+
+test('both new ways run in ONE sequential cycle, each publishing its own source', async () => {
+  const hw = await startModbusServer(huaweiImage({ pvW: 3000, gridW: 0, socX10: 500, battW: 0 }));
+  const ks = await startWaveshare({ frame: POWADOR_FRAME });
+  try {
+    const { flow, sends } = await storeAndRead([huaweiSource(hw.port), kacoSerialSource(ks.port)]);
+    assert.equal(flow.source_plans.length, 2);
+    const byId2 = Object.fromEntries(sends.map((s) => [s[0].source_id, s[0].payload.pv_power_kw]));
+    assert.deepEqual(byId2, { 'src-huawei': 3, 'src-powador': 1.216 });
+  } finally {
+    hw.server.close();
+    ks.server.close();
+  }
+});
+
+// --- KOSTAL PIKO (kostal_dxs) als QUELLE ---
+// Der klassische PIKO 20 bei Schramm (07.11.2026) als weiterer Erzeuger: derselbe
+// gebuendelte GET auf /api/dxs.json wie der Hauptweg, veroeffentlicht nur
+// pv_power_kw. Vorher: "NICHT VERDRAHTET: unbekannte Kommunikation".
+function pikoServer(values) {
+  return new Promise((resolve) => {
+    const hits = [];
+    const server = http.createServer((req, res) => {
+      const u = new URL(req.url, 'http://x');
+      hits.push(req.method + ' ' + u.pathname);
+      if (req.method !== 'GET' || u.pathname !== '/api/dxs.json') { res.statusCode = 404; res.end('no'); return; }
+      const entries = u.searchParams.getAll('dxsEntries').map(Number).filter((id) => id in values).map((id) => ({ dxsId: id, value: values[id] }));
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ dxsEntries: entries, session: { sessionId: 0, roleId: 0 }, status: { code: 0 } }));
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, hits }));
+  });
+}
+
+function pikoSource(port, overrides = {}) {
+  return Object.assign({
+    id: 'src-piko', role: 'pv-generation', brand: 'kostal', model: 'piko-20', family: 'kostal_piko',
+    communication: 'kostal_dxs', connection: { ip: '127.0.0.1', port }, interval_s: 5,
+  }, overrides);
+}
+
+test('a KOSTAL PIKO Erzeuger source (kostal_dxs) is read over its Web-API and publishes pv_power_kw', async () => {
+  const piko = await pikoServer({ 67109120: 3964.4 });
+  try {
+    const flow = {}, sends = [], health = [];
+    await runFunctionNode(byId['sources-store'].func, { msg: { payload: [pikoSource(piko.port, { data_source_id: 'DQ-9' })] }, flow });
+    assert.equal(flow.source_plans.length, 1);
+    assert.equal(flow.source_plans[0].adapter, 'kostal_dxs');
+    await runFunctionNode(byId['sources-read'].func, { flow, sends, health });
+    assert.equal(sends.length, 1);
+    const [erzeuger, netz, verbraucher] = sends[0];
+    assert.equal(netz, null);
+    assert.equal(verbraucher, null);
+    assert.equal(erzeuger.source_id, 'src-piko');
+    assert.equal(erzeuger.payload.pv_power_kw, 3.964, '3964,4 W -> 3,964 kW');
+    assert.deepEqual(Object.keys(erzeuger.payload).sort(), ['pv_power_kw', 'ts']);
+    assert.equal(health.length, 1);
+    assert.equal(health[0].id, 'DQ-9');
+    assert.equal(health[0].failed, false);
+    assert.equal(health[0].requests, 1, 'one bundled GET per read');
+    assert.ok(piko.hits.every((h) => h === 'GET /api/dxs.json'), 'nur lesen: ' + piko.hits.join(', '));
+  } finally {
+    piko.server.close();
+  }
+});
+
+test('a KOSTAL PIKO at night (no AC id) publishes nothing and names it; as a grid meter it is NOT wired', async () => {
+  const piko = await pikoServer({ 16780544: 'PIKO 20' });
+  try {
+    const { flow, sends, warns } = await storeAndRead([
+      pikoSource(piko.port),
+      pikoSource(piko.port, { id: 'src-piko-netz', role: 'grid-meter' }),
+    ]);
+    assert.equal(flow.source_plans.length, 1, 'only the Erzeuger is planned');
+    assert.equal(sends.length, 0, 'absent, never 0');
+    assert.ok(warns.some((w) => /src-piko .*keine AC-Leistung/.test(w)), warns.join('\n'));
+    assert.ok(warns.some((w) => /src-piko-netz \(grid-meter\) NICHT VERDRAHTET: ein KOSTAL PIKO liefert nur seine Erzeugung/.test(w)), warns.join('\n'));
+  } finally {
+    piko.server.close();
+  }
+});

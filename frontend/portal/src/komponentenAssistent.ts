@@ -228,11 +228,19 @@ export function felder(template: ComponentTemplate | null): TemplateField[] {
   return template.transportSchema.filter((f) => f && typeof f.key === 'string' && f.key !== '');
 }
 
-/** Die Vorbelegung eines Formulars aus den Feld-Vorgaben der Vorlage. */
-export function initialeVerbindung(template: ComponentTemplate | null): Record<string, unknown> {
+/**
+ * Die Vorbelegung eines Formulars aus den Feld-Vorgaben der Vorlage. `weg` legt einen bekannten Weg darüber
+ * („Gerät an diesem Gateway hinzufügen", GE-5: Adresse, Port, freie Geräte-ID) — nur für Felder, die die Vorlage
+ * wirklich fragt; ein Wert für ein fremdes Feld ginge sonst unbemerkt mit.
+ */
+export function initialeVerbindung(
+  template: ComponentTemplate | null,
+  weg?: Readonly<Record<string, unknown>> | null,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of felder(template)) {
-    if (f.default !== undefined && f.default !== null) out[f.key] = f.default;
+    if (weg && weg[f.key] !== undefined && weg[f.key] !== null) out[f.key] = weg[f.key];
+    else if (f.default !== undefined && f.default !== null) out[f.key] = f.default;
   }
   return out;
 }
@@ -283,6 +291,20 @@ export function messwerte(reading: Record<string, unknown> | null | undefined): 
   return rows;
 }
 
+/** Eine benannte Zeile des Tests (`samples` des Vertrags), wie sie die Box gelesen hat. */
+export type TestKanal = { channel: string; value?: number | null; count?: number | null };
+
+/**
+ * Der Schaltzustand des geprüften Ausgangs - der echte Wert eines Schaltaktors
+ * ohne Leistungsmessung (Shelly Pro 3: `relay_on`, 0 aus, 1 ein). Ohne gelesene
+ * Zeile steht hier nichts; ein anderer Wert als 0 oder 1 ist keine Aussage.
+ */
+export function schaltzustand(samples: TestKanal[] | null | undefined): TestMesswert[] {
+  const z = samples?.find((s) => s.channel === 'relay_on');
+  if (!z || !z.count || (z.value !== 0 && z.value !== 1)) return [];
+  return [{ label: 'Schaltzustand', wert: z.value === 1 ? 'ein' : 'aus' }];
+}
+
 /**
  * Die deutschen Sätze zu den Fehlerklassen des Tests. Sie sind bewusst hier und
  * nicht im Server: dieselbe Klasse braucht am Gerät und im Portal denselben
@@ -327,6 +349,9 @@ export type ProbeAntwort = {
     message?: string | null;
     reading?: Record<string, unknown> | null;
     finding?: ProbeBefund | null;
+    samples?: TestKanal[] | null;
+    /** Heizstab V1: je Ausgang Schaltzustand und „nach Stromausfall“ (nur bei einer Ausgangsmenge). */
+    ausgaenge?: import('./heizstab').TestAusgang[] | null;
   }[];
 };
 
@@ -479,7 +504,7 @@ export function testErgebnis(antwort: ProbeAntwort | null | undefined): TestErge
       override: befund ? overrideFuer(befund) : undefined,
     };
   }
-  const rows = messwerte(line.reading);
+  const rows = [...messwerte(line.reading), ...schaltzustand(line.samples)];
   return {
     zustand: 'bestanden',
     text:
@@ -551,12 +576,31 @@ export function bilanzHinweis(rolle: KomponentenRolle): string {
  */
 export function rolleVerfuegbar(
   rolle: KomponentenRolle,
+  /**
+   * Die Rollen der Geräte, die die Anlage SCHON HAT - mit Anbindung. Eine von der Plattform
+   * komponierte Zeile ohne Anbindung (Netz und Haus beim Verbinden der Box, der Speicher aus
+   * seinen Eckdaten) ist kein Gerät: der Server füllt sie beim Speichern (`vorhandeneGeraete`).
+   */
   vorhandeneRollen: string[],
+  /** Die Namen dieser Geräte je Rolle, damit die Sperre das Gerät nennt; ohne sie bleibt es beim Satz. */
+  namen: Partial<Record<KomponentenRolle, string | null>> = {},
 ): { ok: true } | { ok: false; grund: string } {
   if (rolle === 'grid-meter' && vorhandeneRollen.filter((r) => r === 'grid-meter').length > 0) {
     return {
       ok: false,
       grund: 'Diese Anlage hat bereits einen Netz-Zähler. Es ist nur einer möglich.',
+    };
+  }
+  // Genau EIN Wechselrichter je Anlage (die Regel des Servers, dort eine 409 beim Speichern):
+  // gesagt wird es HIER, bei der Aufgabe - bevor der Kunde Adresse und Test hinter sich hat
+  // (Live-Fall „Zuhause", 02.11.2026). Der nächste Schritt steht dabei: den vorhandenen bearbeiten.
+  if (rolle === 'inverter' && vorhandeneRollen.some((r) => r === 'inverter')) {
+    const name = namen.inverter?.trim();
+    return {
+      ok: false,
+      grund: `Diese Anlage hat bereits einen Wechselrichter${name ? ` („${name}“)` : ''}. `
+        + 'Bearbeiten Sie ihn im Aufbau, statt einen zweiten anzulegen - oder wählen Sie '
+        + '„Weiterer Erzeuger“ für einen zusätzlichen Wechselrichter.',
     };
   }
   return { ok: true };

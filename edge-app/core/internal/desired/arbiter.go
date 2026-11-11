@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -20,10 +21,6 @@ type Deps struct {
 	// Reading returns the guard context for one entity (its own latest
 	// channels, falling back to the site reading - the E1a entityGuardReading).
 	Reading func(entityID string) guards.Reading
-	// BmsEnvelope is what the battery's own protection block currently allows
-	// for ONE entity (P5c), already in kilowatts. nil (or a nil result) = no
-	// statement, and the guard chain is byte-for-byte what it was before.
-	BmsEnvelope func(entityID string) *guards.BmsEnvelope
 	// EnvLimits is the v1 device-config band/SoC window composed into every
 	// STORAGE setpoint clamp (most restrictive wins). nil = registry only.
 	EnvLimits func() *guards.Limits
@@ -640,25 +637,6 @@ func (a *Arbiter) clampFor(st *entState, d *Desired, now time.Time, r guards.Rea
 	if a.deps.EnvLimits != nil {
 		extra = a.deps.EnvLimits()
 	}
-	// The BMS envelope (P5c) rides in on the same `extra` limits, per entity:
-	// what the battery's own protection allows is a HARD cap on top of the
-	// rated band, the SoC window, the EEG clamp and the §14a envelope. nil =
-	// the pack said nothing, and then nothing changes. A COPY is taken because
-	// EnvLimits may hand out a shared struct - stamping an entity's envelope
-	// onto it would leak that entity's cap onto the next one.
-	if a.deps.BmsEnvelope != nil {
-		if env := a.deps.BmsEnvelope(st.entity.ID); env != nil {
-			var l guards.Limits
-			if extra != nil {
-				l = *extra
-			} else {
-				l = guards.Limits{MaxChargeKw: math.Inf(1), MaxDischargeKw: math.Inf(1),
-					SocMinPct: math.Inf(-1), SocMaxPct: math.Inf(1)}
-			}
-			l.Bms = env
-			extra = &l
-		}
-	}
 	solarExtra := d.SolarOnly
 	if a.deps.ExtraSolarOnly != nil && a.deps.ExtraSolarOnly() {
 		solarExtra = true
@@ -905,7 +883,13 @@ func (a *Arbiter) holderRef(st *entState) *SourceRef {
 // picks the echoed entry for multi-entry (plan) sets; empty = dominance order
 // setpoint > limit_kw > limit_pct > on_off > mode.
 func commandJSON(c entities.Commands, preferred string) map[string]any {
-	entry := func(t string, v any) map[string]any { return map[string]any{"type": t, "value": v} }
+	entry := func(t string, v any) map[string]any {
+		m := map[string]any{"type": t, "value": v}
+		if t == entities.CmdSetpointKw && len(c.Outputs) > 0 {
+			m["outputs"] = c.Outputs // the explicit output set rides with its setpoint
+		}
+		return m
+	}
 	if preferred != "" {
 		switch preferred {
 		case entities.CmdSetpointKw:
@@ -980,7 +964,7 @@ func grantedMatchesWish(d *Desired, granted entities.Commands) bool {
 	if (c.OnOff == nil) != (granted.OnOff == nil) || (c.OnOff != nil && *c.OnOff != *granted.OnOff) {
 		return false
 	}
-	return c.Mode == granted.Mode
+	return c.Mode == granted.Mode && slices.Equal(c.Outputs, granted.Outputs)
 }
 
 // fingerprint identifies a DECISION (holder + source + granted) for event

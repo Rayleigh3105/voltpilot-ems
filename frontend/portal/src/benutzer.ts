@@ -26,7 +26,13 @@ export interface BenutzerAngelegt { benutzer: BenutzerKonto; startpasswort: stri
 
 // Nur der aufrufende Dialog hält diese Antwort bis zum Schließen. Kein Cache und kein Speicher.
 export const benutzerApi = {
-  liste: () => request<BenutzerEintrag[]>('/api/v1/benutzer'),
+  /**
+   * `tenantId` stampft den `X-Tenant-Id`-Kopf NUR für diesen Aufruf (wie
+   * `api.selbstauskunft`) - die Kundenakte liest damit die Rollen EINES
+   * Mandanten, ohne den globalen Mandanten-Umschalter zu verstellen. Kein
+   * neuer Endpoint: dieselbe Liste, die der Kundenadministrator selbst sieht.
+   */
+  liste: (tenantId?: string) => request<BenutzerEintrag[]>('/api/v1/benutzer', tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
   protokoll: (von: string, bis: string) => request<ZugriffProtokoll[]>(`/api/v1/benutzer/protokoll?von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`),
   /** `gueltigBis` nur bei „Einsicht“ (AP-19 Folge IP-13): letzter Tag, einschließlich; ohne ihn der bisherige Wechsel. */
   wechseln: (sub: string, bisher: string[], rolle: string, standorte: string[], gueltigBis?: string | null) => request<void>(`/api/v1/benutzer/${encodeURIComponent(sub)}/zugriff`, {
@@ -61,6 +67,11 @@ export function benutzerFehler(fehler: unknown, fallback = 'Das Startpasswort ko
     if (body?.code === 'eigene_zuweisung') return 'Ihre eigenen Rechte kann nur ein weiterer Kundenadministrator ändern.';
     if (body?.code === 'email_fremder_kundenbereich') return 'Diese E-Mail-Adresse ist bereits einem anderen Kundenbereich zugeordnet. Als Unterstützung gewähren?';
     if (body?.code === 'gueltig_bis_vergangen') return EINSICHT_BIS_VERGANGEN;
+    // N5: Keycloak unterscheidet Anmeldename und E-Mail - die Nachricht nennt jetzt das richtige Feld.
+    if (body?.code === 'anmeldename_vergeben') return 'Dieser Anmeldename ist bereits vergeben.';
+    if (body?.code === 'email_vergeben') return 'Diese E-Mail-Adresse ist bereits vergeben.';
+    if (body?.code === 'anmeldename_ungueltig') return body.message ?? 'Anmeldename: a-z, 0-9, Punkt, Bindestrich, Unterstrich; 3 bis 64 Zeichen.';
+    if (body?.code === 'realm_anmeldename_gesperrt') return body.message ?? 'Der Anmeldename lässt sich hier noch nicht ändern.';
     if (fehler.status === 422) return 'Bitte wählen Sie mindestens einen Standort.';
     if (fehler.status === 409) return 'Benutzername oder E-Mail-Adresse ist bereits vergeben.';
     if (fehler.status === 403) return grundUndWeg();

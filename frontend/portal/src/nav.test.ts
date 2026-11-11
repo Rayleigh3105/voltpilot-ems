@@ -24,11 +24,15 @@ import {
   modellBearbeitenKomponente,
   ohneModellBearbeiten,
   ohneGeraetBearbeiten,
-  PLATFORM_GROUPS,
+  PLATTFORM_ROOMS,
   PLATFORM_PAGES,
   PLATFORM_TAB_PAGES,
+  PLATTFORM_BEREICH,
   GERAETE_BEREICH,
+  KATALOG_TABS,
+  katalogSektionPage,
   navPageFor,
+  isPlattformBereich,
   isGeraeteBereich,
   canonicalPlatformHash,
   sektionHash,
@@ -42,6 +46,21 @@ import {
   boxSeiteHash,
   fernwartungHash,
   parseFernwartungBox,
+  werkstattHash,
+  geraeteAkteHash,
+  geraeteAkteRoute,
+  geraeteListeHash,
+  parseGeraeteListeFilter,
+  parseGeraeteListeWerkzeug,
+  mandantHash,
+  mandantAusHash,
+  aufbauHash,
+  parseAufbauRef,
+  ohneAufbauNeu,
+  parseAufbauSuche,
+  parseAufbauNeu,
+  standortAufbauHash,
+  zustellwegBestaetigenToken,
 } from './nav';
 import { anlageSidebar } from './ebenenNav';
 import { sprungziel } from './uemsOberflaechen';
@@ -52,7 +71,8 @@ const ALL_SUBS: AnlagenSub[] = [
   'fahrplan',
   'messwerte',
   'erloese',
-  'wetter',
+  'prognose',
+  'prognosemodelle',
   'technik',
   'modell',
   'steuerung',
@@ -75,9 +95,10 @@ describe('parseRoute', () => {
     expect(parseRoute('#/mandanten')).toEqual(route('mandanten'));
     // Stufe 4 (F5): „Benutzer" ist im Mandanten-Drawer aufgegangen - das
     // Lesezeichen bleibt gültig und landet auf der Mandanten-Liste, wo der
-    // Betreiber seinen Kunden wählt.
+    // Betreiber seinen Kunden wählt. Scheibe S1: die kanonische Adresse ist
+    // seither der Raum „Benutzer" (§4.2).
     expect(parseRoute('#/benutzer')).toEqual(route('mandanten'));
-    expect(canonicalPlatformHash('#/benutzer')).toBe('#/mandanten');
+    expect(canonicalPlatformHash('#/benutzer')).toBe('#/plattform/benutzer');
     expect(parseRoute('#/geraete-registry')).toEqual(route('geraete-registry'));
   });
 
@@ -88,7 +109,7 @@ describe('parseRoute', () => {
       siteId: 'site-1',
       sub: null,
     });
-    for (const sub of ['fahrplan', 'messwerte', 'erloese', 'wetter'] as const) {
+    for (const sub of ['fahrplan', 'messwerte', 'erloese', 'prognose'] as const) {
       expect(parseRoute(`#/anlage/site-1/${sub}`)).toEqual({
         page: 'anlagen',
         siteId: 'site-1',
@@ -102,7 +123,8 @@ describe('parseRoute', () => {
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
     // Die Historie ist zwei Welten - ihre Route erbt die BASIS-Welt.
     expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'messwerte' });
-    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
+    // Die alte Wetter-Seite ist in der Prognose aufgegangen (Konzept vp-prognosen-konzept, E2 = A).
+    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'prognose' });
     // ...the entity lists land on the Technik subpage (its content moved there
     // behind the gear icon in the money-centric v2).
     expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
@@ -327,7 +349,8 @@ describe('M1: no route breaks when the tab bar is retired', () => {
     expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: null });
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
     expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'messwerte' });
-    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
+    // Die alte Wetter-Seite ist in der Prognose aufgegangen (Konzept vp-prognosen-konzept, E2 = A).
+    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'prognose' });
     expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
     expect(parseRoute('#/geraete')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
     expect(parseRoute('#/anlage/s-1/optimierung')).toEqual({
@@ -436,45 +459,21 @@ function route(page: Route['page']): Route {
  * deshalb vor allem, dass sie NICHTS verändert: keine Route, keine Seite, kein
  * Lesezeichen.
  */
-describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
-  it('führt mit der Landung und dann den vier Aufgaben-Gruppen', () => {
-    expect(PLATFORM_GROUPS.map((g) => g.key)).toEqual([
-      'landing',
-      'flotte',
-      'anlagen-werkzeuge',
-      'katalog',
-      'kunden',
-    ]);
-    // Die Landung trägt bewusst KEINE eigene Überschrift - sie steht schon
-    // unter dem „Plattform"-Label der Schale.
-    expect(PLATFORM_GROUPS[0].label).toBeNull();
-    expect(PLATFORM_GROUPS[0].pages.map((p) => p.id)).toEqual(['plattform-uebersicht']);
-    expect(PLATFORM_GROUPS.slice(1).map((g) => g.label)).toEqual([
-      'Flotte',
-      'Anlagen-Werkzeuge',
-      'Katalog',
-      'Kunden',
+describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-konzept-k1 §4.1/4.2)', () => {
+  it('nennt die drei Räume in Arbeits-Reihenfolge', () => {
+    expect(PLATTFORM_ROOMS.map((r) => [r.key, r.label, r.page])).toEqual([
+      ['plattform', 'Plattform', 'plattform-uebersicht'],
+      ['geraete', 'Geräte', 'geraete-registry'],
+      ['benutzer', 'Benutzer', 'mandanten'],
     ]);
   });
 
-  it('verliert keine Seite: die flache Liste sind die Gruppen PLUS die Tab-Seiten', () => {
-    expect(PLATFORM_PAGES).toEqual([
-      ...PLATFORM_GROUPS.flatMap((g) => g.pages),
-      ...PLATFORM_TAB_PAGES,
-    ]);
-    // Und jede Seite steht GENAU EINMAL darin - eine Tab-Seite darf nie
-    // zusätzlich als Nav-Punkt auftauchen.
+  it('verliert keine Seite: die flache Liste sind die drei Landungen PLUS die Reiter-Seiten', () => {
     const ids = PLATFORM_PAGES.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('fencet auch die TAB-Seiten: sie stehen in der flachen Liste, nicht in der Nav', () => {
-    // Der Admin-Zaun in `App.tsx` prüft gegen `PLATFORM_PAGES`. Stünde
-    // `edge-updates` nur in den Gruppen, käme ein Nicht-Admin über
-    // `#/edge-updates` ungefencet durch.
-    expect(PLATFORM_PAGES.some((p) => p.id === 'geraete-registry')).toBe(true);
-    expect(PLATFORM_GROUPS.flatMap((g) => g.pages).some((p) => p.id === 'geraete-registry'))
-      .toBe(false);
+    for (const room of PLATTFORM_ROOMS) expect(ids).toContain(room.page);
+    for (const t of PLATTFORM_BEREICH.tabs) expect(ids).toContain(t.id);
+    for (const t of GERAETE_BEREICH.tabs) expect(ids).toContain(t.id);
   });
 
   it('hält jede Plattform-Route gültig (kein Lesezeichen bricht)', () => {
@@ -490,53 +489,156 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
     expect(new Set(icons).size).toBe(icons.length);
   });
 
-  it('hat die zwei gefalteten Punkte aus der Navigation genommen (Stufe 3)', () => {
-    const flotte = PLATFORM_GROUPS.find((g) => g.key === 'flotte')!.pages.map((p) => p.id);
-    expect(flotte).toEqual(['edge-updates', 'steuerungs-freigabe']);
-  });
-
-  it('lässt den Tab „Updates" den Nav-Punkt „Geräte" leuchten', () => {
-    // Der Bereich ist EIN Ort; der Tab darf die Leiste nicht ins Nichts zeigen
-    // lassen. Jede andere Seite bleibt sie selbst.
-    expect(navPageFor('edge-updates')).toBe('edge-updates');
-    expect(navPageFor('geraete-registry')).toBe('edge-updates');
+  it('lässt jeden Reiter des Raums „Plattform" dessen Landung leuchten, jeden Reiter „Geräte" seine', () => {
+    // Der Raum ist EIN Ort; ein Reiter darf die Leiste nicht ins Nichts zeigen
+    // lassen. Jede andere Seite bleibt sie selbst. Software/Werkstatt/Fernwartung
+    // sind vom Raum „Plattform" in den Raum „Geräte" umgehängt (gerätebezogene
+    // Flächen) - ihre Landung ist seither die Geräte-Liste, nicht die Plattform-Übersicht.
+    expect(navPageFor('edge-updates')).toBe('geraete-registry');
+    expect(navPageFor('werkstatt')).toBe('geraete-registry');
+    expect(navPageFor('fernwartung')).toBe('geraete-registry');
+    expect(navPageFor('katalog')).toBe('plattform-uebersicht');
+    expect(navPageFor('geraete-registry')).toBe('geraete-registry');
     expect(navPageFor('mandanten')).toBe('mandanten');
+    expect(isPlattformBereich('edge-updates')).toBe(false);
+    expect(isPlattformBereich('fernwartung')).toBe(false);
+    expect(isPlattformBereich('geraete-registry')).toBe(false);
+    expect(isPlattformBereich('katalog')).toBe(true);
+    expect(isPlattformBereich('optimizer')).toBe(false);
     expect(isGeraeteBereich('edge-updates')).toBe(true);
-    expect(isGeraeteBereich('geraete-registry')).toBe(true);
+    expect(isGeraeteBereich('werkstatt')).toBe(true);
     expect(isGeraeteBereich('fernwartung')).toBe(true);
-    expect(navPageFor('fernwartung')).toBe('edge-updates');
-    expect(isGeraeteBereich('optimizer')).toBe(false);
+    expect(isGeraeteBereich('geraete-registry')).toBe(true);
+    expect(isGeraeteBereich('katalog')).toBe(false);
+    expect(isGeraeteBereich('plattform-uebersicht')).toBe(false);
   });
 
-  it('nennt die drei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
+  it('nennt die zwei Reiter des Raums „Plattform" und die vier des Raums „Geräte" in Lese-Reihenfolge, jeweils mit der Landung', () => {
+    expect(PLATTFORM_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
+      ['plattform-uebersicht', 'Übersicht'],
+      ['katalog', 'Katalog'],
+    ]);
     expect(GERAETE_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
-      ['edge-updates', 'Updates'],
-      ['geraete-registry', 'Registrierung'],
+      ['geraete-registry', 'Geräte'],
+      ['edge-updates', 'Software'],
+      ['werkstatt', 'Werkstatt'],
       ['fernwartung', 'Fernwartung'],
     ]);
-    // Der Wirt IST einer der Tabs - sonst wäre der Bereich ohne Auswahl leer.
+    // Der Wirt IST einer der Reiter - sonst wäre der Raum ohne Auswahl leer.
+    expect(PLATTFORM_BEREICH.tabs.some((t) => t.id === PLATTFORM_BEREICH.host)).toBe(true);
     expect(GERAETE_BEREICH.tabs.some((t) => t.id === GERAETE_BEREICH.host)).toBe(true);
   });
 
-  it('behält beide Routen des Bereichs (kein Redirect, auch nicht programmatisch)', () => {
-    // `edge-updates` ist bewusst KEIN Legacy-Redirect: der Flotten-Puls
-    // navigiert programmatisch dorthin, und ein Lesezeichen soll auf dem Tab
-    // Updates landen, nicht auf dem Inventar.
-    expect(parseRoute('#/edge-updates')).toEqual(route('edge-updates'));
-    expect(parseRoute('#/geraete-registry')).toEqual(route('geraete-registry'));
+  it('zeigt Katalog als drei Unter-Reiter (Scheibe S3: Prognosemodelle statt Komponenten)', () => {
+    expect(KATALOG_TABS.map((t) => t.id)).toEqual(['vorlagen', 'modelle', 'prognose']);
+    expect(katalogSektionPage('vorlagen')).toBe('vorlagen');
+    expect(katalogSektionPage('modelle')).toBe('steuerungs-freigabe');
+    // „Prognose" lebt als Sektion IN der Katalog-Seite selbst, keine eigene `PageId`.
+    expect(katalogSektionPage('prognose')).toBe('katalog');
   });
 
-  it('faltet die Gerätetypen in die Steuerungs-Freigabe - MIT ihrem Anker', () => {
+  it('Scheibe S1 §4.2: jede alte Plattform-Adresse leitet auf ihren neuen Raum, mit Parametern', () => {
+    expect(canonicalPlatformHash('#/plattform-uebersicht')).toBe('#/plattform');
+    expect(canonicalPlatformHash('#/edge-updates')).toBe('#/plattform/software');
+    expect(canonicalPlatformHash('#/geraete-registry')).toBe('#/plattform/geraete');
+    // Scheibe S2 (Umzugstabelle §4.7): eine Adresse MIT Box-Referenz führt
+    // direkt in die Geräteakte, nicht mehr auf die alte Seite.
+    expect(canonicalPlatformHash('#/geraete-registry?geraet=edge-1')).toBe('#/plattform/geraete/edge-1');
+    expect(canonicalPlatformHash('#/fernwartung?box=edge-1')).toBe('#/plattform/geraete/edge-1/verbindung');
+    expect(canonicalPlatformHash('#/werkstatt?box=edge-1')).toBe('#/plattform/geraete/edge-1/einrichtung');
+    expect(canonicalPlatformHash('#/werkstatt?werkbank=1')).toBe('#/plattform/werkstatt?werkbank=1');
+    expect(canonicalPlatformHash('#/mandanten')).toBe('#/plattform/benutzer');
+    expect(canonicalPlatformHash('#/benutzer')).toBe('#/plattform/benutzer');
+    // Scheibe S5: der geöffnete Mandant (`?mandant=<id>`) zieht ins Pfad-Segment der Kundenakte um.
+    expect(canonicalPlatformHash('#/mandanten?mandant=t-1')).toBe('#/plattform/benutzer/t-1');
+    // Vorlagen/Steuerungs-Freigabe sind seit S1 Katalog-Unter-Reiter.
+    expect(canonicalPlatformHash('#/vorlagen')).toBe('#/plattform/katalog?sektion=vorlagen');
+    expect(canonicalPlatformHash('#/steuerungs-freigabe')).toBe('#/plattform/katalog?sektion=modelle');
+    // Scheibe S3 (Umzugstabelle §4.7): die alten Anlagen-Werkzeuge lösen sich auf.
+    expect(canonicalPlatformHash('#/optimizer')).toBe('#/plattform/geraete?werkzeug=plan');
+    expect(canonicalPlatformHash('#/flows')).toBe('#/plattform/geraete?werkzeug=flows');
+    expect(canonicalPlatformHash('#/komponenten-flotte')).toBe('#/plattform/geraete?filter=fassung');
+    // Ein vorhandenes `?sektion=` (die alte Gerätetypen-Sektion) bleibt erhalten.
+    expect(canonicalPlatformHash('#/steuerungs-freigabe?sektion=geraetetypen'))
+      .toBe('#/plattform/katalog?sektion=geraetetypen');
+    expect(canonicalPlatformHash('#/geraetetypen')).toBe('#/plattform/katalog?sektion=geraetetypen');
+    // Die neue, nested Adresse selbst wird nicht nochmal umgeschrieben.
+    expect(canonicalPlatformHash('#/plattform')).toBeNull();
+    expect(canonicalPlatformHash('#/plattform/software')).toBeNull();
+  });
+
+  it('`#/plattform/…` parst auf die richtige Seite, ein unbekanntes Segment auf die Landung', () => {
+    expect(parseRoute('#/plattform')).toEqual(route('plattform-uebersicht'));
+    expect(parseRoute('#/plattform/software')).toEqual(route('edge-updates'));
+    expect(parseRoute('#/plattform/werkstatt')).toEqual(route('werkstatt'));
+    expect(parseRoute('#/plattform/fernwartung')).toEqual(route('fernwartung'));
+    expect(parseRoute('#/plattform/katalog')).toEqual(route('katalog'));
+    expect(parseRoute('#/plattform/geraete')).toEqual(route('geraete-registry'));
+    expect(parseRoute('#/plattform/benutzer')).toEqual(route('mandanten'));
+    expect(parseRoute('#/plattform/unbekannt')).toEqual(route('plattform-uebersicht'));
+    expect(hashForRoute(route('plattform-uebersicht'))).toBe('#/plattform');
+    expect(hashForRoute(route('edge-updates'))).toBe('#/plattform/software');
+    expect(hashForRoute(route('mandanten'))).toBe('#/plattform/benutzer');
+  });
+
+  it('Scheibe S2 §4.2/4.4: die Geräteakte adressiert die Box-Referenz statt der UUID, Reiter als Pfad-Abschnitt', () => {
+    expect(parseRoute('#/plattform/geraete/edge-k2m4pqj')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: null, werkzeug: null },
+    });
+    expect(parseRoute('#/plattform/geraete/edge-k2m4pqj/software')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: 'software', werkzeug: null },
+    });
+    expect(parseRoute('#/plattform/geraete/VP-DEMO-0001/verbindung')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-DEMO-0001', reiter: 'verbindung', werkzeug: null },
+    });
+    // Ein unbekannter Reiter fällt auf den Überblick zurück, statt ins Leere zu zeigen.
+    expect(parseRoute('#/plattform/geraete/edge-1/unbekannt')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: null, werkzeug: null },
+    });
+    expect(hashForRoute(geraeteAkteRoute('edge-k2m4pqj'))).toBe('#/plattform/geraete/edge-k2m4pqj');
+    expect(hashForRoute(geraeteAkteRoute('edge-k2m4pqj', 'einrichtung'))).toBe('#/plattform/geraete/edge-k2m4pqj/einrichtung');
+    expect(geraeteAkteHash('edge-a b', 'verlauf')).toBe('#/plattform/geraete/edge-a%20b/verlauf');
+    expect(geraeteListeHash('offline')).toBe('#/plattform/geraete?filter=offline');
+    expect(geraeteListeHash()).toBe('#/plattform/geraete');
+    expect(parseGeraeteListeFilter(geraeteListeHash('offline'))).toBe('offline');
+    expect(parseGeraeteListeFilter('#/plattform/geraete')).toBeNull();
+  });
+
+  it('die Kundenakte steht als Pfad in der Adresse und wird nur von dort gelesen', () => {
+    expect(mandantAusHash(mandantHash('a b'))).toBe('a b');
+    expect(mandantAusHash('#/plattform/benutzer')).toBeNull();
+    expect(mandantAusHash('#/mandanten?mandant=t-1')).toBeNull();
+    expect(mandantAusHash('#/werkstatt?mandant=x')).toBeNull();
+    expect(mandantHash(null)).toBe('#/plattform/benutzer');
+  });
+
+  it('Scheibe S3 §4.2/4.4: der Reiter „Anlage" trägt ein Werkzeug mit vorgewählter Anlage', () => {
+    expect(parseRoute('#/plattform/geraete/edge-1/anlage')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'anlage', werkzeug: null },
+    });
+    expect(parseRoute('#/plattform/geraete/edge-1/anlage/plan')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'anlage', werkzeug: 'plan' },
+    });
+    expect(parseRoute('#/plattform/geraete/edge-1/anlage/flows')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'anlage', werkzeug: 'flows' },
+    });
+    // Ein Werkzeug gilt nur unter `anlage` - an einem anderen Reiter wird es ignoriert.
+    expect(parseRoute('#/plattform/geraete/edge-1/software/plan')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'software', werkzeug: null },
+    });
+    expect(hashForRoute(geraeteAkteRoute('edge-1', 'anlage', 'plan'))).toBe('#/plattform/geraete/edge-1/anlage/plan');
+    expect(hashForRoute(geraeteAkteRoute('edge-1', 'anlage'))).toBe('#/plattform/geraete/edge-1/anlage');
+    // `#/optimizer`/`#/flows` landen auf der Geräte-Liste mit dem Werkzeug im Gepäck - „Box wählen, dann Werkzeug".
+    expect(geraeteListeHash(null, 'plan')).toBe('#/plattform/geraete?werkzeug=plan');
+    expect(parseGeraeteListeWerkzeug('#/plattform/geraete?werkzeug=plan')).toBe('plan');
+    expect(parseGeraeteListeWerkzeug('#/plattform/geraete?werkzeug=unbekannt')).toBeNull();
+    expect(parseGeraeteListeWerkzeug('#/plattform/geraete')).toBeNull();
+  });
+
+  it('faltet die Gerätetypen in den Katalog - MIT ihrem Anker', () => {
     expect(parseRoute('#/geraetetypen')).toEqual(route('steuerungs-freigabe'));
     expect(parseRoute('#geraetetypen')).toEqual(route('steuerungs-freigabe'));
-    // Ohne den Anker landete das Lesezeichen oben auf einer Seite, deren
-    // Inhalt es gar nicht sucht.
-    expect(canonicalPlatformHash('#/geraetetypen'))
-      .toBe('#/steuerungs-freigabe?sektion=geraetetypen');
     expect(parseSektion(canonicalPlatformHash('#/geraetetypen')!)).toBe('geraetetypen');
-    // Eine Seite, die es noch gibt, wird NIE umgeschrieben.
-    expect(canonicalPlatformHash('#/steuerungs-freigabe')).toBeNull();
-    expect(canonicalPlatformHash('#/edge-updates')).toBeNull();
   });
 
   it('sektionHash/parseSektion: der Anker ist ein Parameter, nie eine eigene Route', () => {
@@ -552,10 +654,11 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
   });
 
   it('behält die Beschriftungen, die Lesezeichen und Copy schon kennen', () => {
-    expect(pageLabel('geraete-registry')).toBe('Registrierung');
-    expect(pageLabel('edge-updates')).toBe('Geräte');
+    expect(pageLabel('geraete-registry')).toBe('Geräte');
+    expect(pageLabel('edge-updates')).toBe('Software');
     expect(pageLabel('steuerungs-freigabe')).toBe('Steuerungs-Freigabe');
-    expect(pageLabel('plattform-uebersicht')).toBe('Plattform-Übersicht');
+    expect(pageLabel('plattform-uebersicht')).toBe('Plattform');
+    expect(pageLabel('mandanten')).toBe('Benutzer');
   });
 });
 
@@ -609,6 +712,38 @@ describe('parseGeraetRef (der Deep-Link-Vertrag)', () => {
     expect(parseFernwartungBox(fernwartungHash('edge-k7m2xq3'))).toBe('edge-k7m2xq3');
     expect(parseFernwartungBox('#/fernwartung')).toBeNull();
     expect(parseRoute('#/fernwartung?box=edge-k7m2xq3')).toEqual(route('fernwartung'));
+  });
+
+  it('trägt die Box der Werkstatt als ?box= wie die Fernwartung; die Werkstatt ist ein Reiter des Raums „Geräte"', () => {
+    expect(werkstattHash('edge-wrk7abg')).toBe('#/werkstatt?box=edge-wrk7abg');
+    expect(werkstattHash(' ')).toBe('#/werkstatt');
+    expect(parseFernwartungBox(werkstattHash('edge-wrk7abg'))).toBe('edge-wrk7abg');
+    expect(parseRoute('#/werkstatt?box=edge-wrk7abg')).toEqual(route('werkstatt'));
+    expect(isGeraeteBereich('werkstatt')).toBe(true);
+    expect(navPageFor('werkstatt')).toBe('geraete-registry');
+    expect(PLATFORM_TAB_PAGES.find((p) => p.id === 'werkstatt')?.adminOnly).toBe(true);
+  });
+
+  it('trägt beim Direktlink die Referenz für „Box hinzufügen“ als ?ref= und nimmt sie mit ?neu= wieder heraus', () => {
+    expect(aufbauHash('s1', 'box', { ref: 'edge-wrk7abg' })).toBe('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg');
+    // Nur zu „Box hinzufügen“: an einem Gerät oder einer Anlage hat die Referenz nichts zu suchen.
+    expect(aufbauHash('s1', 'geraet', { ref: 'edge-wrk7abg' })).toBe('#/anlage/s1/modell?neu=geraet');
+    expect(parseAufbauRef('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg')).toBe('edge-wrk7abg');
+    expect(parseAufbauRef('#/anlage/s1/modell?neu=box')).toBeNull();
+    expect(ohneAufbauNeu('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg&x=1')).toBe('#/anlage/s1/modell?x=1');
+  });
+
+  it('„Geräte suchen“ führt mit der Box in den Aufbau (?neu=suche&box=), Mitansehen und Verlauf reisen mit', () => {
+    expect(aufbauHash('s1', 'suche', { box: 'b1' })).toBe('#/anlage/s1/modell?neu=suche&box=b1');
+    expect(aufbauHash('s1', 'suche', { box: 'b1', such: 'x9' })).toBe('#/anlage/s1/modell?neu=suche&box=b1&such=x9');
+    expect(aufbauHash('s1', 'suche', { box: 'b1', verlauf: true })).toBe('#/anlage/s1/modell?neu=suche&box=b1&ansicht=verlauf');
+    // Nur zur Suche: an „Gerät hinzufügen“ hat die Box der Suche nichts zu suchen.
+    expect(aufbauHash('s1', 'geraet', { box: 'b1' })).toBe('#/anlage/s1/modell?neu=geraet');
+    expect(standortAufbauHash('st1', { anlage: 'a1', neu: 'suche', box: 'b1' })).toBe('#/standort/st1/aufbau?anlage=a1&neu=suche&box=b1');
+    expect(parseAufbauNeu('#/anlage/s1/modell?neu=suche&box=b1')).toBe('suche');
+    expect(parseAufbauSuche('#/anlage/s1/modell?neu=suche&box=b1&such=x9&ansicht=verlauf')).toEqual({ box: 'b1', such: 'x9', verlauf: true });
+    expect(parseAufbauSuche('#/anlage/s1/modell')).toEqual({ box: null, such: null, verlauf: false });
+    expect(ohneAufbauNeu('#/anlage/s1/modell?neu=suche&box=b1&such=x9&ansicht=verlauf&x=1')).toBe('#/anlage/s1/modell?x=1');
   });
 
   // ⚠ Der No-Orphan-Wächter: der frühere SCHREIBER ist ersatzlos entfallen.
@@ -788,5 +923,30 @@ describe('parseMessstelleWerte — Periode, Version und Vergleich der Werte eine
     expect(s?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-11&v=vorjahr');
     // „aus“ ist die Vorgabe: ohne Wahl steht nichts in der Adresse.
     expect(sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2026-11' })?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-11');
+  });
+});
+
+// Der Link aus der Bestätigungs-Mail (ZustellwegService#anfordern, §6.6) - sein Endpunkt
+// verlangt keine Anmeldung, die Route muss den Token also schon VOR dem Auth-Bootstrap lesen.
+describe('zustellwegBestaetigenToken', () => {
+  it('liest den Token aus der echten Link-Adresse', () => {
+    window.location.hash = '#/zustellweg/bestaetigen?token=abc123';
+    expect(zustellwegBestaetigenToken()).toBe('abc123');
+  });
+
+  it('ist null auf jeder anderen Route', () => {
+    window.location.hash = '#/uebersicht';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+    window.location.hash = '#register';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+  });
+
+  it('ist null ohne Token oder mit einem leeren Token', () => {
+    window.location.hash = '#/zustellweg/bestaetigen';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+    window.location.hash = '#/zustellweg/bestaetigen?token=';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+    window.location.hash = '#/zustellweg/bestaetigen?token=%20';
+    expect(zustellwegBestaetigenToken()).toBeNull();
   });
 });

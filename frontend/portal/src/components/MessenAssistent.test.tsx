@@ -77,7 +77,7 @@ afterEach(() => {
   delete (window as { matchMedia?: unknown }).matchMedia;
 });
 
-/** Die Ansage der Schale: „Schritt 2 von 5: Datenquelle". */
+/** Die Ansage der Schale: „Schritt 2 von 5: Anbindung". */
 const ansage = () => document.querySelector('.vp-anlegen-sr')?.textContent;
 /** Am Rechner „Messen & Auswerten einrichten", am Telefon „Messen & Auswerten". */
 const assistent = () => screen.getByRole('dialog', { name: /^Messen & Auswerten/ });
@@ -100,7 +100,7 @@ describe('MessenAssistent — Schrittfolge', () => {
     const leiste = () => within(assistent()).getByRole('list', { name: 'Schritte' });
     expect(within(leiste()).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       '1Standort',
-      '2Datenquelle',
+      '2Anbindung',
       '3Messstellen',
       '4Prüfen',
       '5Fertig',
@@ -109,8 +109,8 @@ describe('MessenAssistent — Schrittfolge', () => {
 
     klick('Weiter');
     await schritt2();
-    expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
-    expect(within(leiste()).getByText('Datenquelle').closest('li')).toHaveAttribute('aria-current', 'step');
+    expect(ansage()).toBe('Schritt 2 von 5: Anbindung');
+    expect(within(leiste()).getByText('Anbindung').closest('li')).toHaveAttribute('aria-current', 'step');
     expect(within(leiste()).getByText('Standort').closest('li')).toHaveClass('is-done');
 
     klick('Zurück');
@@ -182,7 +182,7 @@ describe('MessenAssistent — Abbruch und Wiedereinstieg', () => {
     // … und der Assistent öffnet genau dort — ohne Vorwahl, nur aus dem Entwurf.
     zeige({ speicher: ablage });
     await schritt2();
-    expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
+    expect(ansage()).toBe('Schritt 2 von 5: Anbindung');
     expect(within(assistent()).getByText('Werk Lindach (ST-2)')).toBeInTheDocument();
     expect(einrichten).toHaveBeenCalledTimes(1);
   });
@@ -205,7 +205,7 @@ describe('MessenAssistent — Abbruch und Wiedereinstieg', () => {
     vi.mocked(api.funktionen).mockResolvedValue(lindachImEntwurf());
     zeige({ standortId: LINDACH });
     await schritt2();
-    expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
+    expect(ansage()).toBe('Schritt 2 von 5: Anbindung');
   });
 });
 

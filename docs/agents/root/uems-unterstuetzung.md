@@ -4,7 +4,7 @@ Neu angelegt am 16.09.2026. Spezifikation: AP-03 §4.6 (Unterstützungszugriff),
 A4/A5/A14, §8 IP-8. Code: `unterstuetzung/` (`UnterstuetzungService`, `UnterstuetzungRepository`,
 `UnterstuetzungAbgelehnt`, `AblaufLaeufer`, `UnterstuetzungSchedulingConfig`),
 `web/UnterstuetzungController`, `web/AdminUnterstuetzungController`, `web/dto/UnterstuetzungDto`,
-Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `UnterstuetzungWiringTest`,
+Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14, Sprung der Plattform), `UnterstuetzungWiringTest`,
 `UnterstuetzungSchnittstelleVertragTest`.
 
 ## Was gilt
@@ -57,11 +57,16 @@ Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `Unt
   und keine E-Mail geraten; `UnterstuetzungApiTest` prüft das an Liste UND Postfach.
 - ⚠ **Ist Keycloak nicht erreichbar, wird NICHTS gewährt** (502 `konto_nicht_erreichbar`) — sonst entstünde für
   dieselbe Person ein zweites Konto, sobald die Suche nach der Adresse still leer zurückkäme.
-- **Der alte Mandanten-Umschalter ist seit IP-15 in Produktion geschlossen**
-  (`voltpilot.uems.unterstuetzung.umschalter-enabled`, Vorgabe AUS; local für Kompatibilität explizit AN).
-  VoltPilot erreicht Kundenflächen nur mit gewährter Unterstützung oder Notfall-Zugriff über
-  `X-Kundenbereich`, sonst 404. `/api/v1/admin/**` bleibt am eigenen Plattform-Zaun.
-  [Portal-Wege und Konfiguration](uems-unterstuetzung-portal.md).
+- **Der Mandanten-Umschalter ist seit dem 26.10.2026 wieder offen** (`voltpilot.uems.unterstuetzung.umschalter-enabled`,
+  Vorgabe AN; von IP-15 bis dahin AUS). Entscheidung des Betreibers vom 26.10.2026: die Plattform-Administration
+  springt wieder in jeden Kundenbereich, alle Kunden haben dafür eingewilligt. Offen nimmt `ZugriffKontextLader`
+  eine Plattform über `X-Tenant-Id` UND über `X-Kundenbereich` ohne wirksame Unterstützung an, beides als Zugang
+  `umschalter` (ganzer Kundenbereich, Urheber „VoltPilot-Betrieb“ im Protokoll, keine Rechteprüfung wie vor IP-6).
+  Eine wirksame Unterstützung der Plattform geht vor (Zugang `unterstuetzung`, ihre Standorte). Ein Partner braucht
+  IMMER eine Gewährung; der Schalter betrifft ihn nie. AUS ist der Not-Aus: dann wieder nur Unterstützung oder
+  Notfall-Zugriff, sonst 404. In Produktion steht der Wert ausdrücklich im GitOps-Repository
+  (`apps/voltpilot/base/api/api.env`); die Vorgabe in `application.yml` gilt dort nur ohne diese Zeile.
+  `/api/v1/admin/**` bleibt am eigenen Plattform-Zaun. [Portal-Wege und Konfiguration](uems-unterstuetzung-portal.md).
 - ⚠ **Die Migration BAUT AUF `V20260915030000` AUF** (Fremdschlüssel auf `zugriff`, das geschärfte
   `zugriff_protokoll_zugriff_chk`, das erweiterte Vokabular). In der späten Ankunft der IP-2-Migration kommt sie
   darum MIT ihr: `UemsZugriffMigrationTest.BAUEN_DARAUF_AUF`. Wer eine weitere Migration auf `zugriff` setzt,

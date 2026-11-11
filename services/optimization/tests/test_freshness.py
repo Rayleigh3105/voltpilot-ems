@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -198,7 +199,12 @@ class _SitesCursor:
         self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
         max_feed_in=None, leistungspreis=None, abrechnung="jahr",
         peak_reserve=None, supply_row=None, grenz_rows=(),
+        einspeiseverguetung=None, ab_solarspitzengesetz=None,
+        wechselrichter_pct=None,
     ) -> None:
+        # Die am Wechselrichter gelesene Entladegrenze
+        # (load_wechselrichter_untergrenzen); None = keine Zeile.
+        self._wechselrichter_pct = wechselrichter_pct
         # The UEMS AP-15 IP-3 Grenzblatt read (load_grenzblaetter): rows of
         # (site_id, gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw, keine); none by
         # default = no site is bound, the site value stays.
@@ -215,6 +221,9 @@ class _SitesCursor:
         # else a 7-tuple (netzentgelt, stromsteuer, konzession, umlagen,
         # vertrieb, ust, komponenten_stand).
         self._supply_row = supply_row
+        # The customer-stated Einspeisevergütung (site column, NULL = none).
+        self._einspeiseverguetung = einspeiseverguetung
+        self._ab_solarspitzengesetz = ab_solarspitzengesetz
         self._rows: list = []
 
     def __enter__(self):
@@ -249,6 +258,12 @@ class _SitesCursor:
             assert "v.stufe = 'anteile_aktiv'" in sql
             self._rows = []
             return
+        if "FROM wechselrichter_untergrenze" in sql:
+            self._rows = (
+                [] if self._wechselrichter_pct is None
+                else [(SITE, self._wechselrichter_pct)]
+            )
+            return
         if "SELECT s.id, s.lead_device_id FROM site s" in sql:
             # AP-15 Folgepunkt (load_fuehrende_boxen): keine Mehr-Box-Anlage.
             self._rows = []
@@ -265,6 +280,8 @@ class _SitesCursor:
         assert "s.max_feed_in_kw" in sql  # the FK1 feed-in cap is read too
         assert "s.leistungspreis_eur_kw" in sql  # the PS-1 module is read too
         assert "s.peak_reserve_soc_pct" in sql  # the PS-2 reserve is read too
+        assert "s.einspeiseverguetung_ct_kwh" in sql  # the stated rate too
+        assert "s.inbetriebnahme_ab_solarspitzengesetz" in sql  # its §51a answer
         # The structured Bezugspreis sheet is read too (site_supply_price):
         assert "LEFT JOIN site_supply_price ssp" in sql
         assert "ssp.netzentgelt_arbeitspreis_ct" in sql
@@ -277,7 +294,8 @@ class _SitesCursor:
             (
                 TENANT, SITE, uuid4(), "DE-LU",
                 10.0, 5.0, 5.0, 92.0, True, None, None, self._wear_ct,
-                "eigenverbrauch", "ohne", None, None, None, None,
+                "eigenverbrauch", "ohne", None, None,
+                self._einspeiseverguetung, self._ab_solarspitzengesetz, None, None,
                 self._backup_reserve,
                 self._soc_min, self._soc_max,
                 self._max_feed_in,
@@ -293,7 +311,8 @@ class _SitesCursor:
 def _wire_sites(
     monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
     max_feed_in=None, leistungspreis=None, abrechnung="jahr", peak_reserve=None,
-    supply_row=None, grenz_rows=(),
+    supply_row=None, grenz_rows=(), einspeiseverguetung=None,
+    ab_solarspitzengesetz=None, wechselrichter_pct=None,
 ):
     class _Conn:
         def __enter__(self):
@@ -306,7 +325,8 @@ def _wire_sites(
             return _SitesCursor(
                 wear_ct, backup_reserve, soc_min, soc_max, max_feed_in,
                 leistungspreis, abrechnung, peak_reserve, supply_row,
-                grenz_rows,
+                grenz_rows, einspeiseverguetung, ab_solarspitzengesetz,
+                wechselrichter_pct,
             )
 
     monkeypatch.setitem(
@@ -323,6 +343,25 @@ def test_null_asset_wear_falls_back_to_the_platform_default(monkeypatch):
     monkeypatch.setenv("OPTIMIZER_WEAR_COST_CT_PER_KWH", "2.5")
     [site] = load_battery_sites("postgresql://fake")
     assert site.battery.wear_cost_ct_per_kwh == 2.5
+
+
+def test_stated_einspeiseverguetung_resolves_to_the_site_tariff(monkeypatch):
+    # NULL column = no statement: the EEG derivation applies (byte-identical).
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.tariff.einspeiseverguetung_ct_kwh is None
+    # A stated rate (NUMERIC -> Decimal from psycopg) lands as float ct/kWh.
+    _wire_sites(monkeypatch, None, einspeiseverguetung=Decimal("12.500"))
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.tariff.einspeiseverguetung_ct_kwh == 12.5
+    assert isinstance(site.tariff.einspeiseverguetung_ct_kwh, float)
+    assert site.tariff.inbetriebnahme_ab_solarspitzengesetz is None
+    # Its §51a answer (only asked without a commissioning date) rides along.
+    _wire_sites(
+        monkeypatch, None, einspeiseverguetung=Decimal("6"), ab_solarspitzengesetz=True
+    )
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.tariff.inbetriebnahme_ab_solarspitzengesetz is True
 
 
 def test_asset_wear_override_beats_the_platform_default(monkeypatch):
@@ -553,6 +592,67 @@ def test_inconsistent_soc_band_falls_back_to_defaults_with_a_warning(
     assert site.battery.soc_min_fraction == 0.05
     assert site.battery.soc_max_fraction == 0.95
     assert any("invalid_soc_band" in r.message for r in caplog.records)
+
+
+# ---- die am Wechselrichter gelesene Entladegrenze (wechselrichter_untergrenze) --
+
+
+def test_without_inverter_reading_the_band_is_exactly_as_before(monkeypatch):
+    # Keine Zeile: Vorgabe 5 % bzw. der VoltPilot-Wert, Bit fuer Bit wie bisher.
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == 0.05
+    _wire_sites(monkeypatch, None, soc_min=10.0, soc_max=90.0)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == pytest.approx(0.10)
+    assert site.battery.soc_max_fraction == pytest.approx(0.90)
+
+
+def test_inverter_reading_raises_the_floor_above_the_platform_default(monkeypatch):
+    # Pilotanlage: am Deye 15 %, in VoltPilot nichts eingestellt (Vorgabe 5 %).
+    _wire_sites(monkeypatch, None, wechselrichter_pct=Decimal("15.00"))
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == pytest.approx(0.15)
+    assert site.battery.soc_max_fraction == 0.95
+
+
+def test_a_higher_voltpilot_value_stays_as_reserve(monkeypatch):
+    # Das Groessere gilt: VoltPilot 20 % ueber dem Wechselrichter (15 %).
+    _wire_sites(monkeypatch, None, soc_min=20.0, wechselrichter_pct=Decimal("15"))
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == pytest.approx(0.20)
+    # ... und umgekehrt hebt der Wechselrichter einen tieferen Wert an.
+    _wire_sites(monkeypatch, None, soc_min=10.0, wechselrichter_pct=Decimal("25"))
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == pytest.approx(0.25)
+
+
+def test_inverter_reading_at_or_above_the_upper_limit_is_ignored(
+    monkeypatch, caplog
+):
+    import logging as _logging
+
+    _wire_sites(monkeypatch, None, soc_max=90.0, wechselrichter_pct=Decimal("90"))
+    with caplog.at_level(_logging.WARNING):
+        [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == 0.05
+    assert site.battery.soc_max_fraction == pytest.approx(0.90)
+    assert any(
+        "wechselrichter_untergrenze_ignored" in r.message for r in caplog.records
+    )
+
+
+def test_soc_band_max_rule_directly():
+    from voltpilot_optimization.inputs import _soc_band
+
+    assert _soc_band(SITE, None, None) == (0.05, 0.95)
+    assert _soc_band(SITE, None, None, None) == (0.05, 0.95)
+    assert _soc_band(SITE, None, None, 15) == pytest.approx((0.15, 0.95))
+    assert _soc_band(SITE, 30, None, 15) == pytest.approx((0.30, 0.95))
+    assert _soc_band(SITE, None, None, -1) == (0.05, 0.95)
+    assert _soc_band(SITE, None, None, 120) == (0.05, 0.95)
+    # Ein inkonsistentes Band faellt auf die Vorgabe; die Lesung hebt sie an.
+    assert _soc_band(SITE, 96, None, 15) == pytest.approx((0.15, 0.95))
 
 
 def test_sql_column_guards_raise_instead_of_asserting():

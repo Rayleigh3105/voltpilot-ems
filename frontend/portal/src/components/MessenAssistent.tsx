@@ -33,6 +33,8 @@ import {
   FERTIG_WEITERE,
   fertigSatz,
   GEBAUTE_SCHRITTE,
+  GATEWAY_ANBINDEN,
+  GATEWAY_ANBINDEN_SATZ,
   GERAET_ANBINDEN,
   GERAET_ANBINDEN_SATZ,
   GERAET_VERBINDEN,
@@ -44,7 +46,6 @@ import {
   keineAnlageSatz,
   keineAnlageWeg,
   MESSANLAGE_ANLEGEN,
-  MESSANLAGE_RUECKKEHR,
   komponentenSatz,
   MESSEN_SCHRITTE,
   MESSEN_TITEL,
@@ -114,7 +115,7 @@ import './MessenAssistent.css';
  * (`AnlegenDialog`: Schrittleiste am Rechner, „Schritt n von 5" plus Balken am
  * Telefon, Fokusfalle, klebender Fuß). Schritt 1 wählt über `VpPicker` und legt
  * über den Standort-Dialog aus AP-02 an; „Weiter" erzeugt die Standort-Funktion
- * (`PUT …/funktionen/messen`). Schritt 2 öffnet je Anlage „Datenquelle anlegen"
+ * (`PUT …/funktionen/messen`). Schritt 2 öffnet je Anlage „Gateway oder Logger anbinden"
  * (`DatenquelleAnlegen`); „VoltPilot-Box hinzufügen" und „Gerät hinzufügen" führen
  * in den EINEN Ort dafür, den Aufbau der Anlage (`?neu=box|geraet`) — dort derselbe
  * Dialog, hier kein zweiter; der Entwurf bleibt, und der Aufbau bietet „Einrichtung
@@ -581,14 +582,14 @@ export function MessenAssistent({
                       <Recht aktion="datenquelle.bearbeiten"><button
                         type="button"
                         className="vp-ma-weg"
-                        aria-label={`Datenquelle anlegen für ${a.name}`}
+                        aria-label={`${GATEWAY_ANBINDEN} für ${a.name}`}
                         onClick={() => {
                           setFehler(null);
                           setUnterfluss({ art: 'datenquelle', anlage: { id: a.id, name: a.name } });
                         }}
                       >
-                        <span className="vp-ma-weg-titel">Datenquelle anlegen</span>
-                        <span className="vp-ma-weg-satz">Adresse, Netzlage und zuständige Box festlegen</span>
+                        <span className="vp-ma-weg-titel">{GATEWAY_ANBINDEN}</span>
+                        <span className="vp-ma-weg-satz">{GATEWAY_ANBINDEN_SATZ}</span>
                       </button></Recht>
                       <Recht aktion="geraet.einrichten"><button
                         type="button"
@@ -1012,7 +1013,7 @@ export function MessenAssistent({
         <AnlageAnlegenDrawerLazy
           open
           standortId={unterfluss.standortId}
-          rueckkehr={MESSANLAGE_RUECKKEHR}
+          zurueck
           existingSites={sites ?? undefined}
           onClose={() => setUnterfluss(null)}
           // Die neue Anlage steht erst nach dem Nachlesen an diesem Standort; Schritt 2 bleibt.

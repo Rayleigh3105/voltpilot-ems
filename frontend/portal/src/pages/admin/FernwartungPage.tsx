@@ -4,8 +4,10 @@
  * Der Wartungstunnel der Boxen: welche Box welchen Tunnel hat, welche
  * Techniker-Zugänge es gibt, welche Fenster offen sind - und das Protokoll.
  * Das Portal führt den Soll-Zustand; der Tunnel-Dienst auf der Wartungs-VM
- * setzt ihn um und meldet nichts zurück. Die Seite sagt deshalb getrennt, was
- * im Portal steht, wann der Dienst zuletzt abgeholt hat und was niemand weiß.
+ * setzt ihn um und meldet, welche Box verbunden ist und welches Fenster seinen
+ * Schlüssel abgeholt hat. Die Seite sagt getrennt, was im Portal steht, wann
+ * der Dienst zuletzt abgeholt hat, was er zuletzt gemeldet hat (mit dem Alter
+ * der Angabe) und was niemand weiß.
  *
  * Nur Plattform-Admins (O3: der Kunde sieht die Fenster nicht). Alle
  * Ableitungen stehen im reinen `adminFernwartung.ts`.
@@ -22,15 +24,18 @@ import {
   aktionLabel,
   boxOrt,
   boxAnmeldung,
+  boxVerbindung,
   fensterTeile,
   fensterTon,
   loeschbar,
   loeschenRueckfrage,
   oeffnenSperre,
   protokollDetail,
+  RUECKMELDUNG_TAKT_MS,
+  rueckmeldungLage,
   serverLage,
   SSH_STAND_SATZ,
-  UNBEKANNT_SATZ,
+  technikerHandshake,
   ZUSTIMMUNG_SATZ,
   zeitpunkt,
   type FernwartungBox,
@@ -38,6 +43,7 @@ import {
   type FernwartungProtokollEintrag,
   type FernwartungTechniker,
   type FernwartungUebersicht,
+  type TechnikerHandshake,
 } from '../../adminFernwartung';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import {
@@ -51,6 +57,7 @@ import { BoxAnmeldungBlock, SshSchluesselDialog } from '../../components/Fernwar
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { fernwartungHash, parseFernwartungBox } from '../../nav';
+import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { replaceCurrentNavigation } from '../../navigationBlocker';
 import { AdminPageHead } from './AdminPageHead';
 import './Fernwartung.css';
@@ -58,6 +65,11 @@ import './Fernwartung.css';
 type Sperrziel =
   | { art: 'box'; box: FernwartungBox }
   | { art: 'techniker'; techniker: FernwartungTechniker };
+
+/** Der Satz zum SSH-Stand in zwei Teilen: was passiert (immer sichtbar) und wann es klappt (aufklappbar). */
+const SSH_STAND_TEILUNG = SSH_STAND_SATZ.indexOf('. ') + 1;
+const SSH_STAND_KURZ = SSH_STAND_SATZ.slice(0, SSH_STAND_TEILUNG);
+const SSH_STAND_REST = SSH_STAND_SATZ.slice(SSH_STAND_TEILUNG).trim();
 
 export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
   const [uebersicht, setUebersicht] = useState<FernwartungUebersicht | null>(null);
@@ -115,6 +127,10 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Was der Tunnel-Dienst meldet, ändert sich ohne Zutun im Portal: still nachladen,
+  // damit Verbindung, abgeholter Schlüssel und das Alter der Angabe stimmen.
+  useFreshnessPoll(() => void laden(), RUECKMELDUNG_TAKT_MS);
+
   function filtern(ref: string | null) {
     setBoxFilter(ref);
     replaceCurrentNavigation(fernwartungHash(ref));
@@ -148,8 +164,9 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
 
   return (
     <div className="vp-admin-page vp-fw">
-      <AdminPageHead icon="lock" title="Fernwartung" description={ZUSTIMMUNG_SATZ} />
+      {/* Die Reiter stehen auf allen Geräte-Seiten über dem Kopf - sonst springt die Leiste beim Wechsel. */}
       {tabs}
+      <AdminPageHead icon="lock" title="Fernwartung" description={ZUSTIMMUNG_SATZ} />
 
       {ladeFehler && !geladen ? (
         <ErrorState message={ladeFehler} onRetry={() => void laden()} />
@@ -162,9 +179,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
           <Card padding="md" radius="lg" className="vp-fw-lagen" data-testid="fw-lagen">
             <LageZeile lage={serverLage(uebersicht.server)} testId="fw-server" />
             <LageZeile lage={abrufLage(uebersicht, jetzt)} testId="fw-dienst" />
-            <p className="vp-note" style={{ margin: 0 }}>
-              {UNBEKANNT_SATZ}
-            </p>
+            <LageZeile lage={rueckmeldungLage(uebersicht, jetzt)} testId="fw-rueckmeldung" />
           </Card>
           {ladeFehler && <p className="vp-alert vp-alert-warn">{ladeFehler}</p>}
           {aktionsFehler && <p className="vp-alert vp-alert-err">{aktionsFehler}</p>}
@@ -193,11 +208,12 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
             ) : (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="vp-table-scroll">
-                  <table className="vp-table responsive" data-testid="fw-boxen">
+                  <table className="vp-table responsive vp-zeilen vp-fw-tabelle-breit" data-testid="fw-boxen">
                     <thead>
                       <tr>
                         <th>Box</th>
                         <th>Tunnel</th>
+                        <th>Verbindung</th>
                         <th>Fernwartung</th>
                         <th aria-label="Aktionen" />
                       </tr>
@@ -205,29 +221,46 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                     <tbody>
                       {sortierteBoxen.map((b) => {
                         const sperre = oeffnenSperre(b, techniker);
-                        const anmeldung = boxAnmeldung(b, techniker);
+                        const anmeldung = boxAnmeldung(b, techniker, uebersicht, jetzt);
+                        const verbindung = boxVerbindung(b, uebersicht, jetzt);
                         const gewaehlt = b.edgeRef === boxFilter ? ' vp-fw-gewaehlt' : '';
                         return (
                           <Fragment key={b.id}>
                           <tr className={`${anmeldung ? 'vp-fw-hat-unterzeile' : ''}${gewaehlt}` || undefined}>
-                            <td data-label="Box">
+                            <td data-label="Box" data-zeile="haupt">
                               <span className="vp-cell-main">
-                                <span>
+                                <span className="vp-fw-name">
                                   {b.edgeRef}{' '}
                                   {b.status === 'gesperrt' && <Badge variant="off">gesperrt</Badge>}
                                 </span>
                                 <span className="vp-cell-sub">{boxOrt(b)}</span>
                               </span>
                             </td>
-                            <td data-label="Tunnel">
+                            <td data-label="Tunnel" data-zeile="neben" className="vp-zeilen-etikett">
                               <span className="vp-cell-main">
                                 <span>{b.adresse}</span>
-                                <span className="vp-cell-sub" title={b.publicKey}>
+                                <span className="vp-cell-sub vp-fw-schluessel" title={b.publicKey}>
                                   {b.publicKeyKurz}
                                 </span>
                               </span>
                             </td>
-                            <td data-label="Fernwartung">
+                            <td
+                              data-label="Verbindung"
+                              data-zeile="neben"
+                              className="vp-fw-zelle-verbindung"
+                              data-testid="fw-verbindung"
+                              data-fall={verbindung.fall}
+                            >
+                              <span className="vp-cell-main">
+                                <span>
+                                  <Badge variant={verbindung.ton} dot>
+                                    {verbindung.titel}
+                                  </Badge>
+                                </span>
+                                <span className="vp-cell-sub vp-fw-umbruch">{verbindung.text}</span>
+                              </span>
+                            </td>
+                            <td data-label="Fernwartung" data-zeile="neben">
                               {b.laufendeFenster.length === 0 ? (
                                 <span className="vp-muted">kein Fenster</span>
                               ) : (
@@ -251,8 +284,8 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </ul>
                               )}
                             </td>
-                            <td data-label="Aktionen">
-                              <div className="vp-fw-aktionen">
+                            <td data-label="Aktionen" data-zeile="fuss">
+                              <div className="vp-fw-aktionen vp-fw-aktionen-box">
                                 <Button
                                   variant="primary"
                                   size="sm"
@@ -263,6 +296,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                   Fenster öffnen
                                 </Button>
                                 {sperre && <span className="vp-cell-sub vp-fw-sperre">{sperre}</span>}
+                                <span className="vp-fw-aktionen-neben">
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -285,13 +319,14 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 >
                                   {b.edgeRef === boxFilter ? 'Alle Einträge' : 'Protokoll'}
                                 </Button>
+                                </span>
                               </div>
                             </td>
                           </tr>
                           {anmeldung && (
                             // Gehört zur Box-Zeile darüber: die Befehle brauchen die ganze Breite.
                             <tr className={`vp-fw-unterzeile${gewaehlt}`}>
-                              <td colSpan={4}>
+                              <td colSpan={5}>
                                 <BoxAnmeldungBlock anmeldung={anmeldung} boxRef={b.edgeRef} />
                               </td>
                             </tr>
@@ -319,9 +354,14 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 Zugang anlegen
               </Button>
             </div>
-            <p className="vp-note" style={{ margin: 0 }} data-testid="fw-ssh-stand">
-              {SSH_STAND_SATZ}
-            </p>
+            {/* Der erste Satz sagt, was passiert; die Bedingungen stehen aufklappbar darunter. */}
+            <div className="vp-note vp-fw-ssh-stand" data-testid="fw-ssh-stand">
+              <p style={{ margin: 0 }}>{SSH_STAND_KURZ}</p>
+              <details>
+                <summary>Wann eine Box den Schlüssel bekommt</summary>
+                <p style={{ margin: '4px 0 0' }}>{SSH_STAND_REST}</p>
+              </details>
+            </div>
             {techniker.length === 0 ? (
               <Card padding="lg" radius="lg">
                 <EmptyState
@@ -333,12 +373,13 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
             ) : (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="vp-table-scroll">
-                  <table className="vp-table responsive" data-testid="fw-techniker">
+                  <table className="vp-table responsive vp-zeilen vp-fw-tabelle-breit" data-testid="fw-techniker">
                     <thead>
                       <tr>
                         <th>Zugang</th>
                         <th>Tunnel</th>
                         <th>SSH-Schlüssel</th>
+                        <th>Letzter Handshake</th>
                         <th>Status</th>
                         <th aria-label="Aktionen" />
                       </tr>
@@ -348,21 +389,21 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                         .sort((a, b) => a.name.localeCompare(b.name, 'de'))
                         .map((t) => (
                           <tr key={t.id}>
-                            <td data-label="Zugang">
+                            <td data-label="Zugang" data-zeile="haupt">
                               <span className="vp-cell-main">
-                                <span>{t.name}</span>
+                                <span className="vp-fw-name">{t.name}</span>
                                 {t.notiz && <span className="vp-cell-sub">{t.notiz}</span>}
                               </span>
                             </td>
-                            <td data-label="Tunnel">
+                            <td data-label="Tunnel" data-zeile="neben" className="vp-zeilen-etikett">
                               <span className="vp-cell-main">
                                 <span>{t.adresse}</span>
-                                <span className="vp-cell-sub" title={t.publicKey}>
+                                <span className="vp-cell-sub vp-fw-schluessel" title={t.publicKey}>
                                   {t.publicKeyKurz}
                                 </span>
                               </span>
                             </td>
-                            <td data-label="SSH-Schlüssel" className="vp-fw-zelle-ssh">
+                            <td data-label="SSH-Schlüssel" data-zeile="neben" className="vp-fw-zelle-ssh vp-zeilen-etikett">
                               {t.sshFingerabdruck ? (
                                 <span className="vp-cell-main">
                                   <span className="vp-fw-fingerabdruck">{t.sshFingerabdruck}</span>
@@ -375,13 +416,14 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </span>
                               )}
                             </td>
-                            <td data-label="Status">
+                            <HandshakeZelle handshake={technikerHandshake(t, uebersicht, jetzt)} />
+                            <td data-label="Status" data-zeile="marke">
                               <Badge variant={t.status === 'aktiv' ? 'ok' : 'off'} dot>
                                 {t.status}
                               </Badge>
                             </td>
-                            <td data-label="Aktionen">
-                              <div className="vp-fw-aktionen">
+                            <td data-label="Aktionen" data-zeile="fuss">
+                              <div className="vp-fw-aktionen vp-fw-aktionen-raster">
                                 <Button variant="ghost" size="sm" onClick={() => setKonfigFuer(t)}>
                                   Konfiguration
                                 </Button>
@@ -407,6 +449,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                   <Button
                                     variant="ghost"
                                     size="sm"
+                                    className="vp-btn-danger"
                                     disabled={busy}
                                     onClick={() => setLoeschziel(t)}
                                   >
@@ -436,7 +479,15 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 </Button>
               )}
             </div>
-            <ProtokollListe eintraege={protokoll ?? []} jetzt={jetzt} />
+            {/* Geschichte statt Zugang - wie „Verlauf" andernorts (EdgeUpdatesPage) zu, mit der
+                Anzahl als Beleg (`vp-adminview-mobile-rework`: weniger Scrollen bis zu den
+                Zugängen, die diese Seite eigentlich verwaltet). */}
+            <details className="vp-fw-protokoll-aufklapp" data-testid="fw-protokoll-aufklapp">
+              <summary className="vp-sec-summary">
+                {(protokoll ?? []).length} Einträge
+              </summary>
+              <ProtokollListe eintraege={protokoll ?? []} jetzt={jetzt} />
+            </details>
           </section>
         </>
       )}
@@ -580,5 +631,26 @@ export function ProtokollListe({
         </table>
       </div>
     </Card>
+  );
+}
+
+/**
+ * „Letzter Handshake" eines Techniker-Zugangs: relativ in der Zelle, die genaue
+ * Zeit (oder warum es unbekannt ist) beim Darüberfahren.
+ */
+function HandshakeZelle({ handshake }: { handshake: TechnikerHandshake }) {
+  return (
+    <td
+      data-label="Letzter Handshake"
+      data-zeile="neben"
+      className="vp-zeilen-etikett"
+      data-testid="fw-handshake"
+      data-fall={handshake.fall}
+      title={handshake.titel}
+    >
+      <Badge variant={handshake.ton} dot>
+        {handshake.text}
+      </Badge>
+    </td>
   );
 }

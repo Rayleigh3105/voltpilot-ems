@@ -7,6 +7,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,6 +32,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ProbeRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(ProbeRegistry.class);
 
     /** Nothing waits longer than this, so an abandoned entry cannot leak. */
     private static final Duration TTL = Duration.ofMinutes(2);
@@ -60,7 +64,17 @@ public class ProbeRegistry {
      */
     public void complete(UUID deviceId, String requestId, ProbeResult result) {
         Pending p = pending.get(requestId);
-        if (p == null || !p.deviceId().equals(deviceId)) {
+        if (p == null) {
+            // Said out loud: the box DID answer, but nobody here waits for it -
+            // usually because the caller already gave up (or another api
+            // instance asked; the result subscription is not shared). Silent,
+            // a late answer looked exactly like a box that never answered
+            // (Shelly at the VoltPilotGATE, 31.10.2026).
+            log.info("probe answer {} from device {} has no waiting caller here "
+                    + "(late, or asked elsewhere) - dropped", requestId, deviceId);
+            return;
+        }
+        if (!p.deviceId().equals(deviceId)) {
             return;
         }
         pending.remove(requestId);

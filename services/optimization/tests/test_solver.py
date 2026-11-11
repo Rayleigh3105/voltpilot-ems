@@ -435,11 +435,12 @@ def test_eeg_constraint_exists_only_in_eeg_mode_and_in_both_builds():
     assert not hasattr(merchant, "solar_only_charge")
     assert not hasattr(merchant, "no_import_while_charging")
 
-    # EEG build: exactly ONE extra constraint family (FK3 removed the pre-FK3
-    # no-import-while-charging ban; the pv - curtail bound carries the
-    # Graustrom protection alone) - and it must survive the infeasible-§14a
-    # fallback rebuild (enforce_grid_limit=False) too, so a degraded plan can
-    # never fall back into grid charging.
+    # EEG build: exactly TWO extra constraint families - the FK3 pv - curtail
+    # bound and, since EN-2 A (2026-11-02), no charging in a slot with grid
+    # import (strenge_ausschliesslichkeit, tests/test_mispel_strenge.py) - and
+    # both must survive the infeasible-§14a fallback rebuild
+    # (enforce_grid_limit=False) too, so a degraded plan can never fall back
+    # into grid charging.
     for enforce in (True, False):
         eeg = build_model(
             make_input(
@@ -448,8 +449,9 @@ def test_eeg_constraint_exists_only_in_eeg_mode_and_in_both_builds():
             enforce_grid_limit=enforce,
         )
         assert hasattr(eeg, "solar_only_charge")
+        assert hasattr(eeg, "strenge_ausschliesslichkeit")
         assert not hasattr(eeg, "no_import_while_charging")
-        expected = 96 * 9 if enforce else 96 * 7
+        expected = 96 * 10 if enforce else 96 * 8
         assert eeg.nconstraints() == expected
 
 
@@ -475,12 +477,13 @@ def test_eeg_mode_never_charges_from_grid_even_under_extreme_spread():
 
 
 @needs_highs
-def test_eeg_mode_cloudy_day_charges_up_to_produced_pv_while_the_house_imports():
-    # The FK3 headline proof (PV-bus Bilanzierung, captain decision 2026-07-16):
-    # a cloudy day where load > pv in EVERY slot. The pre-FK3 Zähler semantics
-    # (charge <= max(pv - load, 0) = 0) forbade ALL charging here; PV-bus mode
-    # charges up to the PV actually produced while the house draws its load
-    # from the grid in parallel (DC-hybrid physics) - and never beyond the PV.
+def test_eeg_mode_cloudy_day_never_charges_while_the_house_imports():
+    # The EN-2 A headline proof (captain decision 2026-11-02; FK3 of
+    # 2026-07-16 alone let the PV bus charge while the house imported): a
+    # cloudy day where load > pv in EVERY slot. Every slot imports, so NOTHING
+    # may charge - in the balance at the connection point that charge would be
+    # grid power in the storage (tests/test_mispel_strenge.py). The battery
+    # still serves the expensive evening from what it holds at the start.
     n = 96
     prices = [20.0] * 48 + [60.0] * 16 + [250.0] * 32
     pv = [0.0] * 48 + [3.0] * 16 + [0.0] * 32  # cloudy: pv < load (4) all day
@@ -488,19 +491,9 @@ def test_eeg_mode_cloudy_day_charges_up_to_produced_pv_while_the_house_imports()
     for i, slot in enumerate(plan.slots):
         charge = max(slot.battery_kw, 0.0)
         assert charge <= pv[i] + 1e-6, f"slot {i} charges beyond the produced PV"
-    night = plan.slots[:48]
-    midday = plan.slots[48:64]
+        assert charge <= 1e-6, f"slot {i} charges {charge} kW while the house imports"
     evening = plan.slots[64:]
-    assert all(s.battery_kw <= 1e-6 for s in night), "no grid charging at night"
-    # The old surplus rule bounded every midday charge at max(3 - 4, 0) = 0;
-    # PV-bus mode stores real solar energy on this cloudy day.
-    assert sum(s.battery_kw for s in midday) > 1.0, "cloudy-day PV is stored"
-    # ... and the charging slots legitimately IMPORT the house load in
-    # parallel (the flow the pre-FK3 import ban forbade).
-    assert any(
-        s.battery_kw > 0.5 and s.grid_kw > 0.5 for s in midday
-    ), "the house must be allowed to import while the battery charges from PV"
-    assert sum(s.battery_kw for s in evening) < -1.0, "stored solar covers the peak"
+    assert sum(s.battery_kw for s in evening) < -1.0, "the stored energy covers the peak"
     assert plan.savings_eur > 0.5
 
 

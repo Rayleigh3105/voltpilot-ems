@@ -217,7 +217,7 @@ describe('Datenquelle und Zuständigkeit — die Datei als Ganzes', () => {
   });
 
   it('die echte Fähigkeiten-Tabelle trägt heute noch kein Release', () => {
-    expect(tabelle.map((e) => e.code)).toEqual(['data_sources']);
+    expect(tabelle.map((e) => e.code)).toEqual(['data_sources', 'geraetesuche']);
     expect(tabellenDatei.keine_faehigkeit.map((e: { was: string }) => e.was)).toContain('Zuständigkeit ab Zeitpunkt');
     expect(tabelle.every((e) => e.ab_release === null)).toBe(true);
   });

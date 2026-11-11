@@ -18,10 +18,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -50,6 +51,7 @@ import org.testcontainers.utility.DockerImageName;
  * battery asset, so {@code consumer-options.hasStorage} is true there.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class ConsumerApiTest {
@@ -184,7 +186,7 @@ class ConsumerApiTest {
         ResponseEntity<Map<String, Object>> res = post(token("demo", "demo"),
                 "/api/v1/sites/" + BERLIN_SITE + "/consumers",
                 Map.of("type", "generic-load", "ratedPowerKw", 2.0, "controlKind", "continuous"));
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat((String) res.getBody().get("message")).contains("Regelart");
     }
 
@@ -626,7 +628,7 @@ class ConsumerApiTest {
                     "/api/v1/sites/" + BERLIN_SITE + "/consumers", Map.of(
                             "type", "pump", "ratedPowerKw", 1.0, "controlKind", "on_off",
                             "ioEntityId", rodId, "ioChannel", 4));
-            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
             // One switching path per consumer, never two.
             ResponseEntity<Map<String, Object>> both = post(tok,

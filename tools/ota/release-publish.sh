@@ -221,6 +221,76 @@ ota_register() {
 	esac
 }
 
+# ota_aenderungen <tag> <ausgabe>
+#
+# „Was ist neu" (Geraete & Updates G4): die Box-Aenderungen seit dem letzten Tag
+# DERSELBEN Linie, eine Zeile je Commit („<Betreff> (<kurzsha>)"), neueste
+# zuerst, Merge-Commits nicht. Docker-Box: Tags edge-JJJJ.MM.N, Pfade edge-app;
+# Edge Light: Tags edge-light-JJJJ.MM.N, Pfade edge-light und edge-app/core.
+# Ein Commit, der dort nur Tests oder Markdown aendert, aendert die Box nicht.
+#
+# Ohne Vorgaenger-Tag (erstes Release der Linie) entsteht KEINE Datei - das ist
+# „keine Angabe", nicht „nichts geaendert". Eine leere Datei dagegen ist die
+# Aussage „seit dem letzten Tag keine Aenderung an der Box". `vp-ota sign` liest
+# die Datei ueber $VP_OTA_AENDERUNGEN in den Register-Rumpf - NEBEN das signierte
+# Manifest, nie hinein.
+ota_aenderungen() {
+	local tag="$1" out="$2" muster prev
+	local -a pfade
+	case "$tag" in
+	"$OTA_LIGHT_RELEASE_PREFIX"*)
+		muster="${OTA_LIGHT_RELEASE_PREFIX}[0-9]*"
+		pfade=(edge-light edge-app/core)
+		;;
+	*)
+		muster='edge-[0-9]*'
+		pfade=(edge-app)
+		;;
+	esac
+	prev="$(git tag -l "$muster" --sort=-v:refname | awk -v t="$tag" 'f { print; exit } $0 == t { f = 1 }')"
+	if [ -z "$prev" ]; then
+		rm -f "$out"
+		return 0
+	fi
+	git log --no-merges --format='%s (%h)' "$prev..$tag" -- "${pfade[@]}" \
+		':(exclude,glob)**/*_test.go' ':(exclude,glob)**/*.test.js' ':(exclude,glob)**/*.md' >"$out"
+}
+
+# ota_light_upload <portal-basis> <token> <version> <GOOS/GOARCH> <datei.gz>
+#
+# Laedt die gepackte Lieferung eines Edge-Light-Programms ins Portal (K2) - in
+# Teilen von 512 KiB, damit kein Groessenlimit eines Proxys vor der api greift.
+# Pruefsumme und Groesse kennt das Portal aus dem signierten Manifest im
+# Register; es meldet "fertig" erst, wenn beides stimmt. Beginnt immer bei 0
+# (ab=0 setzt eine halbe Lieferung zurueck); eine schon fertige Lieferung
+# beantwortet das Portal sofort mit fertig=true - dann endet die Schleife.
+OTA_LIGHT_TEIL=$((512 * 1024))
+ota_light_upload() {
+	local portal="${1%/}" token="$2" version="$3" arch="$4" file="$5"
+	local size ab=0 res code body="" fertig="" part
+	[ -f "$file" ] || ota_die "Lieferung fehlt: $file"
+	size="$(wc -c <"$file" | tr -d ' ')"
+	part="$(mktemp)"
+	while [ "$ab" -lt "$size" ]; do
+		dd if="$file" of="$part" bs="$OTA_LIGHT_TEIL" skip="$((ab / OTA_LIGHT_TEIL))" count=1 2>/dev/null ||
+			{ rm -f "$part"; ota_die "Teil ab $ab nicht lesbar: $file"; }
+		res="$(curl -sS -o - -w '\n%{http_code}' -X PUT \
+			-H "Authorization: Bearer $token" \
+			-H 'Content-Type: application/octet-stream' \
+			--data-binary "@$part" \
+			"$portal/api/v1/admin/edge-releases/$version/programme/$arch?ab=$ab" || true)"
+		code="${res##*$'\n'}"
+		body="${res%$'\n'*}"
+		[ "$code" = "200" ] || { rm -f "$part"; ota_die "Programm $arch: Teil ab $ab abgelehnt (HTTP $code): $body"; }
+		fertig="$(printf '%s' "$body" | ota_json_field fertig)"
+		[ "$fertig" = "true" ] && break
+		ab=$((ab + OTA_LIGHT_TEIL))
+	done
+	rm -f "$part"
+	[ "$fertig" = "true" ] || ota_die "Programm $arch: nach $size Bytes nicht fertig - Pruefsumme oder Groesse passen nicht zum Manifest: $body"
+	ota_info "Programm $arch: im Portal ($size Bytes, geprueft)."
+}
+
 # --- Forgejo (Release-Assets) ------------------------------------------------
 
 # ota_forgejo_auth_header <token> <user> <password> - druckt den Wert fuer den
@@ -326,6 +396,7 @@ OTA_RELEASE_RE='^edge-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
 OTA_RELEASE_MONTH_RE='^[0-9]{4}\.(0[1-9]|1[0-2])$'
 # Die eigene Release-Linie von Edge Light (Entscheid E7).
 OTA_LIGHT_RELEASE_PREFIX='edge-light-'
+OTA_LIGHT_RELEASE_RE='^edge-light-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
 
 # ota_check_release <name> - bricht LAUT ab, wenn der Name nicht dem Schema
 # folgt. Ein erfundenes Schema waere schlimmer als eine Ablehnung: der Name
@@ -348,6 +419,36 @@ ota_check_docker_release() {
 		;;
 	esac
 	ota_check_release "${1-}"
+}
+
+# ota_check_light_release <name> - das Schema der Edge-Light-Linie
+# edge-light-<JJJJ>.<MM>.<N>, N ein laufender Zaehler je Monat wie bei Docker.
+# Nur der eigene Lauf (.forgejo/workflows/edge-light-release.yaml) legt solche
+# Tags an; er baut, prueft und haengt an - ohne Manifest und Register.
+ota_check_light_release() {
+	[[ "${1-}" =~ $OTA_LIGHT_RELEASE_RE ]] ||
+		ota_die "Release-Name '${1-}' folgt nicht dem Schema edge-light-<JJJJ>.<MM>.<N> (N ist ein laufender Zaehler je Monat, KEIN Kalendertag). Es wurde nichts angelegt."
+}
+
+# ota_next_light_release <JJJJ.MM> - wie ota_next_release, aber fuer die
+# Edge-Light-Linie: es zaehlen nur edge-light-Tags, Docker-Tags nicht.
+ota_next_light_release() {
+	local ym="${1-}" line n max=-1
+	[[ "$ym" =~ $OTA_RELEASE_MONTH_RE ]] ||
+		ota_die "Monat '${ym}' ist nicht JJJJ.MM"
+	while IFS= read -r line; do
+		case "$line" in
+		"edge-light-$ym."*) n="${line#"edge-light-$ym."}" ;;
+		*) continue ;;
+		esac
+		case "$n" in
+		'' | *[!0-9]*) continue ;;
+		0) ;;
+		0*) continue ;;
+		esac
+		if [ "$n" -gt "$max" ]; then max="$n"; fi
+	done
+	printf 'edge-light-%s.%d' "$ym" "$((max + 1))"
 }
 
 # ota_next_release <JJJJ.MM> - liest die vorhandenen Tag-Namen von STDIN und
@@ -446,7 +547,12 @@ ota_git_authed() {
 #     (dieselbe Regel wie bei ota_token).
 ota_tag_release() {
 	local release="${1-}" commit="${2-}" ann="${3-}" remote auth
-	ota_check_release "$release"
+	# Beide Linien: der Docker-Weg hat vorher ota_check_docker_release geprueft,
+	# der Edge-Light-Weg ota_check_light_release.
+	case "$release" in
+	"$OTA_LIGHT_RELEASE_PREFIX"*) ota_check_light_release "$release" ;;
+	*) ota_check_release "$release" ;;
+	esac
 	[ -n "$commit" ] || ota_die "Kein Commit angegeben, auf den der Tag zeigen soll"
 
 	# Erst pruefen, dann anlegen: alles, was scheitern darf, scheitert VOR dem
@@ -494,8 +600,11 @@ release-publish.sh - ein signiertes Edge-Release veroeffentlichen
   sign         <manifest> <keyfile>               signieren + gegen die eingebackene Wurzel pruefen
   publish      <manifest> <tag>                   Forgejo-Assets + Register-Eintrag
   next-seq     <portal> <token>                   "<nextSeq> <currentSeq>"
+  light-upload <portal> <token> <version> <GOOS/GOARCH> <datei.gz>
+                                                  Edge-Light-Programm ins Portal (in Teilen)
   token        <token-url> <client-id> <secret>   client_credentials-Token
   next-release <JJJJ.MM>                          naechster freier Tag-Name (Tags auf STDIN)
+  aenderungen  <tag> <ausgabe>                    Box-Aenderungen seit dem letzten Tag der Linie
   tag-release  <release> <commit> [annotation]    annotierten Tag anlegen + pushen
 
 Umgebung (publish): VP_OTA_PORTAL, VP_OTA_PORTAL_TOKEN, VP_OTA_FORGEJO_BASE,
@@ -531,7 +640,13 @@ ota_sign() {
 		--key "$keyfile" --domain release --in "$manifest") ||
 		ota_die "Signieren fehlgeschlagen"
 
-	(cd "$core" && go run ./cmd/vp-ota verify --root baked \
+	# Gegen die Box-Art des Releases: ein Edge-Light-Manifest gilt nur fuer
+	# das Backend light (gegen compose geprueft hiesse es "deferred").
+	local backend=compose
+	case "$(ota_json_field release <"$manifest")" in
+	"$OTA_LIGHT_RELEASE_PREFIX"*) backend=light ;;
+	esac
+	(cd "$core" && go run ./cmd/vp-ota verify --root baked --backend "$backend" \
 		--trust-set "$trust" --manifest "$manifest") ||
 		ota_die "Gegenpruefung gegen die EINGEBACKENE Wurzel fehlgeschlagen - dieses Release wuerde auf jedem Geraet abgelehnt. Es geht nichts hinaus."
 }
@@ -571,9 +686,11 @@ ota_main() {
 	sign) ota_sign "$@" ;;
 	publish) ota_publish "$@" ;;
 	next-seq) ota_next_seq "$@" ;;
+	light-upload) ota_light_upload "$@" ;;
 	token) ota_token "$@" ;;
 	state-schema) ota_state_schema "$@" ;;
 	next-release) ota_next_release "$@" ;;
+	aenderungen) ota_aenderungen "$@" ;;
 	tag-release) ota_tag_release "$@" ;;
 	-h | --help | help | '') ota_usage; return 2 ;;
 	*)

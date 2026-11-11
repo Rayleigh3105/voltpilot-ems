@@ -70,9 +70,32 @@
     return (s.inverter && s.inverter.label) ? s.inverter.label : "Der Wechselrichter";
   }
 
+  // paired mirrors commissioning.js: a certificate is on disk. geraet_entfernt
+  // is deliberately NOT paired - the box waits for a new claim.
+  function paired(st) {
+    return st === "verbunden" || st === "zertifikat_erhalten" ||
+      st === "cloud_getrennt" || st === "cloud_fehler";
+  }
+
+  // hasDevice: is ANY device set up on this box - an inverter, a further
+  // source or own device (sourceCount, from /api/sources), a charge point, a
+  // device the portal pushed (topology), or anything that ever measured? No
+  // device TYPE is a prerequisite: a box is coupled first and set up in the
+  // portal.
+  function hasDevice(s, sourceCount) {
+    if (!s) return false;
+    if (s.inverter && s.inverter.configured) return true;
+    if (sourceCount > 0) return true;
+    if (s.ocpp && s.ocpp.chargers && s.ocpp.chargers.length > 0) return true;
+    if (s.topology && s.topology.nodes && s.topology.nodes.length > 0) return true;
+    return !!s.last_telemetry;
+  }
+
   // derive returns { tone: "ok"|"warn"|"err", title, detail, cause }.
   // `cause` is "" only for the ok verdict - every problem names its reason.
-  function derive(s, nowMs) {
+  // sourceCount (optional, additive) is the number of further sources and own
+  // devices from /api/sources; absent counts as none.
+  function derive(s, nowMs, sourceCount) {
     if (!s) {
       return {
         tone: "warn",
@@ -87,6 +110,7 @@
     var fresh = telAge != null && telAge < FRESH_SECONDS;
     var configured = !!(s.inverter && s.inverter.configured);
     var linkDown = s.inverter_link === "down";
+    var chargers = (s.ocpp && s.ocpp.chargers) || [];
 
     // 1) A broken pairing/enrollment beats everything - it is the reason
     //    nothing else will work.
@@ -95,18 +119,30 @@
       return { tone: p.tone, title: p.title, detail: "", cause: p.cause };
     }
 
-    // 2) Nothing to measure with yet.
-    if (!configured) {
+    // 2) Nothing set up yet. The box is coupled with the portal FIRST (its
+    //    reference is on "Einrichten" from the start) and set up there - the
+    //    hero names what is missing, never a device type as a prerequisite.
+    if (!hasDevice(s, sourceCount)) {
+      if (!paired(s.pairing_state)) {
+        return {
+          tone: "warn",
+          title: "Noch nicht mit dem Portal gekoppelt",
+          detail: "Noch kein Gerät eingerichtet.",
+          cause: "Die Referenz-ID steht unter „Einrichten“. Tragen Sie sie im VoltPilot-Portal ein – danach werden dort die Geräte der Anlage angelegt."
+        };
+      }
       return {
         tone: "warn",
-        title: "Anlage noch nicht eingerichtet",
-        detail: "",
-        cause: "Es ist kein Wechselrichter ausgewählt. Ohne ihn empfängt dieses Gerät keine Messwerte."
+        title: "Noch kein Gerät eingerichtet",
+        detail: "Die Box ist mit dem Portal gekoppelt.",
+        cause: "Legen Sie die Geräte der Anlage – Wechselrichter, Zähler, Ladepunkte – im VoltPilot-Portal an. Sie erscheinen dann hier."
       };
     }
 
-    // 3) Configured, but nothing has ever arrived.
-    if (telAge == null) {
+    // 3) Set up, but nothing has ever arrived. A charge park is the exception:
+    //    its charge points meter only while they charge, so "no reading yet"
+    //    is its normal state, not a wait (commissioning.js step 3).
+    if (telAge == null && configured) {
       return {
         tone: "warn",
         title: "Warte auf die ersten Messwerte",
@@ -116,9 +152,17 @@
           : inverterName(s) + " ist eingerichtet, es ist aber noch kein Messwert angekommen."
       };
     }
+    if (telAge == null && chargers.length === 0) {
+      return {
+        tone: "warn",
+        title: "Warte auf die ersten Messwerte",
+        detail: "",
+        cause: "Es ist noch kein Messwert angekommen. Unter „Einrichten“ zeigt jedes Gerät, ob es antwortet."
+      };
+    }
 
     // 4) Data has stopped coming - the most urgent everyday failure.
-    if (!fresh) {
+    if (telAge != null && !fresh) {
       return {
         tone: "warn",
         title: "Keine aktuellen Messwerte",
@@ -126,7 +170,9 @@
         cause: "Der letzte Messwert kam " + ago(telAge) + "." +
           (linkDown
             ? " " + inverterName(s) + " antwortet gerade nicht."
-            : " Bitte prüfen, ob der Wechselrichter eingeschaltet und erreichbar ist.")
+            : configured
+              ? " Bitte prüfen, ob der Wechselrichter eingeschaltet und erreichbar ist."
+              : " Bitte prüfen, ob die Geräte eingeschaltet und erreichbar sind.")
       };
     }
 
@@ -188,7 +234,17 @@
       };
     }
 
-    // 8) Plain cloud outage - local operation is unaffected.
+    // 8) Measuring, but not coupled yet: the coupling is what is missing.
+    if (!s.cloud_connected && !paired(s.pairing_state)) {
+      return {
+        tone: "warn",
+        title: "Noch nicht mit dem Portal gekoppelt",
+        detail: "Die Anlage läuft und misst weiter.",
+        cause: "Die Referenz-ID steht unter „Einrichten“. Tragen Sie sie im VoltPilot-Portal ein."
+      };
+    }
+
+    // 9) Plain cloud outage - local operation is unaffected.
     if (!s.cloud_connected) {
       return {
         tone: "warn",
@@ -212,6 +268,8 @@
   global.VPStatus = {
     FRESH_SECONDS: FRESH_SECONDS,
     derive: derive,
+    paired: paired,
+    hasDevice: hasDevice,
     ago: ago,
     ageSeconds: ageSeconds
   };

@@ -113,6 +113,47 @@
 // long-shipped self-consumption fallback does, so the written value is no
 // churnier than the fallback's; the register write-on-change discipline lives in
 // the Layer-1 executor, where it belongs.
+//
+// THE HOLD (Captain decision A, 2026-10-13, superseding the slot boundary of
+// E2 A from 2026-10-10): "engaging is immediate" above is true for LOWERING a
+// discharge and no longer for RAISING one. A discharge commanded on the first
+// sight of a deficit reaches a slow device 15-35 s later (Deye at Herzogau:
+// registers every 5-25 s, follows a write after ~12 s) - after a consumer of
+// 10-15 s has gone again, so the storage feeds the grid instead of the house.
+// E2 A therefore made the local trust rule wait in a slot that plans a charge.
+// The Zusatzlauf of edge-2026.10.1 showed the same loss in a slot that rests
+// (22,3 Wh behind six consumers, up to 20 s in one stretch), and nothing about
+// it depends on what the slot plans or on who authorized the cover.
+//
+// So the wait lives HERE, in the one place where a measured deficit becomes a
+// discharge, for all three authorities alike (follow, idle_follow,
+// deficit_cover) and for both halves:
+//
+//	a deficit that has not been measured without a break for DeficitCoverHold
+//	never RAISES the discharge - it is covered only up to what this follower
+//	already had in force on the previous tick. Lowering stays immediate.
+//
+// THE STUFEN-HALTEZEIT (Captain decision A, 2026-10-19) applies the same to
+// every RISE of a deficit that already stands: the house is covered up to the
+// larger of what was in force and what the clock has seen STAND for the hold -
+// the smallest deficit measured over it (DeficitHold.Observe). At night the
+// house is short for hours; a consumer of 10-15 s on top was still followed at
+// once, and the discharge reached the device after it had gone (0,13 kWh of
+// stored energy into the grid in 25 minutes on the Deye profile). The price,
+// chosen with the decision: a real load step is covered one hold later, and a
+// load that swings faster than the hold is covered up to its lower edge.
+//
+// "Already in force" is what makes the rule a wait and not an outage: a cover
+// that runs is not dropped because the evidence had a gap (a stale reading
+// restarts the clock, guards.DeficitHold), it merely cannot grow until the
+// deficit has stood again. And it is why the reduce half is part of it: in a
+// covering slot the plan's own forecast discharge is limited to what the house
+// has been SHOWN to need, so a short consumer on a PV surplus cannot bring back
+// a discharge the follower had just limited to zero.
+//
+// What the hold never touches: a discharge the PLAN commands in a slot without
+// the reduce right (a planned sale) runs unchanged - shrinking it is not this
+// guard's to do, with or without a clock.
 package guards
 
 import (
@@ -170,6 +211,10 @@ type FollowResult struct {
 	// follows; NaN when unknown (then the correction is inactive - never
 	// regulate blind).
 	DeficitKw float64
+	// CoverKw is the deficit the correction acted on: the measured one, or -
+	// while THE HOLD withholds part of it - what may be covered so far. NaN
+	// when unknown, like DeficitKw.
+	CoverKw float64
 	// Path distinguishes adjustment of an already-planned discharge ("follow")
 	// from the additive 0-kW idle fallback ("idle_follow"), the local
 	// customer-trust deficit coverage ("deficit_cover") and the cloud's
@@ -182,6 +227,11 @@ type FollowResult struct {
 	// authorizations starts or widens a discharge: the FULL cloud-computed
 	// reserve stack, which neither of them ever spends.
 	FloorSocPct *float64
+	// Held reports THE HOLD at work: the measured deficit would move the
+	// discharge deeper than the follower lets it, because the deficit - or its
+	// rise - has not yet stood for DeficitCoverHold. The box rests (or stays at
+	// the level it already covers) and buys the difference for now.
+	Held bool
 }
 
 // LoadFollower holds the correction's hysteresis state across setpoint ticks.
@@ -191,6 +241,11 @@ type LoadFollower struct {
 	mu        sync.Mutex
 	engaged   bool
 	fitsSince time.Time
+	// levelKw is the discharge (magnitude) this stage had in force after the
+	// previous tick - corrected or not. THE HOLD covers a deficit that has not
+	// stood yet only up to here (or up to what has stood, if more): it may keep
+	// what runs, never raise it.
+	levelKw float64
 }
 
 // NewLoadFollower returns a released follower.
@@ -212,6 +267,10 @@ func NewLoadFollower() *LoadFollower { return &LoadFollower{} }
 // half lands at exactly zero predicted grid import, which is within any
 // allowance the peak guard can compute (>= 0) - so neither can undo the other's
 // bound in either order.
+//
+// It is the follow duty on a deficit that HAS stood for DeficitCoverHold, at
+// every height - the steady state of a covering slot. The setpoint path never
+// calls it: it hands the clock's verdict to ApplyAuthorized.
 func (f *LoadFollower) Apply(
 	now time.Time,
 	kw float64,
@@ -220,7 +279,7 @@ func (f *LoadFollower) Apply(
 	reserveSocPct *float64,
 	r Reading,
 ) FollowResult {
-	return f.ApplyAuthorized(now, kw, coverLoad, false, false, false, reserveSocPct, true, l, r)
+	return f.ApplyAuthorized(now, kw, coverLoad, false, false, false, math.Inf(1), reserveSocPct, true, l, r)
 }
 
 // ApplyAuthorized composes the established follow duty with the three additive
@@ -258,6 +317,11 @@ func (f *LoadFollower) Apply(
 // Existing cover_load_from_battery semantics stay unchanged through the Apply
 // wrapper above: where the economic duty is granted it keeps BOTH halves and
 // the "follow" name.
+//
+// stoodKw is the verdict of the one clock (DeficitHold.Observe): the house
+// deficit that has been measured without a break for DeficitCoverHold, in kW
+// (0 = none has). No authority raises the discharge above the larger of it and
+// what this stage already had in force - see "THE HOLD" in the package comment.
 func (f *LoadFollower) ApplyAuthorized(
 	now time.Time,
 	kw float64,
@@ -265,12 +329,42 @@ func (f *LoadFollower) ApplyAuthorized(
 	unplannedLoad bool,
 	deficitCover bool,
 	limitToLoad bool,
+	stoodKw float64,
 	effectiveFloorSocPct *float64,
 	measurementsFresh bool,
 	l Limits,
 	r Reading,
 ) FollowResult {
-	res := FollowResult{Kw: kw, CommandedKw: kw, DeficitKw: math.NaN()}
+	res := f.track(now, kw, coverLoad, unplannedLoad, deficitCover, limitToLoad,
+		stoodKw, effectiveFloorSocPct, measurementsFresh, l, r)
+	// What is in force after this tick is what the next one may keep while its
+	// deficit has not stood yet - whatever the reason this tick returned it
+	// (corrected, untouched, refused).
+	f.mu.Lock()
+	f.levelKw = 0
+	if !math.IsNaN(res.Kw) && !math.IsInf(res.Kw, 0) && res.Kw < 0 {
+		f.levelKw = -res.Kw
+	}
+	f.mu.Unlock()
+	return res
+}
+
+// track is one evaluation; ApplyAuthorized records its result as the level in
+// force.
+func (f *LoadFollower) track(
+	now time.Time,
+	kw float64,
+	coverLoad bool,
+	unplannedLoad bool,
+	deficitCover bool,
+	limitToLoad bool,
+	stoodKw float64,
+	effectiveFloorSocPct *float64,
+	measurementsFresh bool,
+	l Limits,
+	r Reading,
+) FollowResult {
+	res := FollowResult{Kw: kw, CommandedKw: kw, DeficitKw: math.NaN(), CoverKw: math.NaN()}
 
 	// Nothing to enforce: not worth covering / no duty / no plan.
 	if !coverLoad && !unplannedLoad && !deficitCover && !limitToLoad {
@@ -357,10 +451,34 @@ func (f *LoadFollower) ApplyAuthorized(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	// THE HOLD: a deficit is covered only up to the larger of the discharge
+	// this stage already had in force and the deficit that has stood for
+	// DeficitCoverHold (a verdict that is not a number is none). From here on
+	// the correction acts on that COVERABLE deficit - one substitution, so the
+	// hysteresis, both halves and every bound below are the ones they always
+	// were, on a house that is short by no more than it has been shown to be.
+	keep := f.levelKw
+	if stoodKw > keep {
+		keep = stoodKw
+	}
+	cover := math.Min(deficit, keep)
+	res.CoverKw = cover
+	rc := r
+	if cover < deficit {
+		rc.LoadKw = r.PvKw + cover
+		// Named only where the measured deficit would have moved the discharge:
+		// a deepen this tick is authorized for, or a planned discharge the
+		// reduce right now limits below what the house draws.
+		wouldDeepen := deepenPath != "" && deficit+kw > DeficitCoverImportDeadbandKw &&
+			(f.engaged || deficit+kw > FollowEngageMarginKw)
+		wouldCover := reducePath != "" && math.Min(deficit, -kw) > cover+followWriteResolutionKw
+		res.Held = cover < deficit-followWriteResolutionKw && (wouldDeepen || wouldCover)
+	}
+
 	// predicted grid power of the command as it stands (+ = import). The target
 	// is 0, and |off| is how far the plan's own value misses it - the ONE
 	// quantity the symmetric hysteresis keys on.
-	predicted := r.LoadKw + kw - r.PvKw
+	predicted := rc.LoadKw + kw - rc.PvKw
 	off := math.Abs(predicted)
 
 	if !f.engaged {
@@ -397,7 +515,7 @@ func (f *LoadFollower) ApplyAuthorized(
 		if effectiveFloorSocPct != nil && *effectiveFloorSocPct > lim.SocMinPct {
 			lim.SocMinPct = *effectiveFloorSocPct
 		}
-		target := PeakShave(kw, 0, lim, r)
+		target := PeakShave(kw, 0, lim, rc)
 		if target >= kw-followWriteResolutionKw {
 			// Engaged but not biting (inside the release dwell, at the SoC
 			// floor/reserve, or already at the rated discharge).
@@ -422,8 +540,9 @@ func (f *LoadFollower) ApplyAuthorized(
 	// discharge, never a charge. No bound of its own is needed: shrinking a
 	// discharge magnitude cannot escape the rated band or the SoC floor, cannot
 	// touch the SoC ceiling or the EEG solar-only clamp, and only ever preserves
-	// what a peak reserve is holding.
-	target := -deficit
+	// what a peak reserve is holding. Under THE HOLD the house needs no more
+	// than the coverable deficit, so the limit is that.
+	target := -cover
 	if target < kw {
 		// Defensive: this branch must never LOWER the setpoint (that is the
 		// deepen half's job, with its bounds). Unreachable while predicted <= 0.
@@ -433,6 +552,9 @@ func (f *LoadFollower) ApplyAuthorized(
 		return res // engaged but not biting (inside the release dwell)
 	}
 	res.Kw = math.Round(target*1000) / 1000
+	if res.Kw == 0 {
+		res.Kw = 0 // a stopped discharge is 0, never the -0 a negated zero rounds to
+	}
 	res.Active, res.Direction, res.Path = true, FollowReduce, reducePath
 	return res
 }
@@ -448,7 +570,15 @@ func (f *LoadFollower) Engaged() bool {
 // Release lets the correction go (used by the setpoint path's early exits:
 // without an inverter reading, and during a bounded calibration write, it cannot
 // regulate at all, so it must not carry an engaged state across).
-func (f *LoadFollower) Release() { f.release() }
+//
+// It also forgets the level in force: after such an exit nothing of this
+// stage runs, so a deficit that has not stood yet finds nothing to keep.
+func (f *LoadFollower) Release() {
+	f.release()
+	f.mu.Lock()
+	f.levelKw = 0
+	f.mu.Unlock()
+}
 
 func (f *LoadFollower) release() {
 	f.mu.Lock()

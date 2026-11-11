@@ -54,6 +54,10 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
      *
      * <p>{@code pflege} sind die SERVER-abgeleiteten Pflege-Punkte (eine
      * Wahrheit, keine zweite Ableitung im Client).
+     *
+     * <p>{@code boxArt} ist die Linie der Box hinter {@code edge}/{@code update}
+     * ({@code docker}, {@code light} oder {@code null} = unbekannt, additiv seit
+     * Geräte &amp; Updates S0) - der Maßstab für den Stand an der Anlage.
      */
     public record FleetSiteDto(
             UUID siteId,
@@ -80,7 +84,8 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
             FleetKwpDto kwp,
             FleetFeedInDto feedIn,
             List<FleetForecastDto> forecast,
-            List<PflegeFlagDto> pflege) {
+            List<PflegeFlagDto> pflege,
+            String boxArt) {
     }
 
     /**
@@ -103,10 +108,25 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
      * Eine Box innerhalb ihrer Anlagen-Gruppe. {@code fuehrtAnlage == null}
      * heißt, dass keine führende Box bestimmt ist; {@code false} ist dagegen
      * die belegte Nebenrolle neben einer anderen führenden Box.
+     *
+     * <p>{@code boxArt} ({@code docker}, {@code light} oder {@code null} =
+     * unbekannt) ist die Linie der Box aus {@code update} und {@code edge}
+     * ({@code ota.BoxArt}, additiv seit Geräte &amp; Updates S0); an ihr misst die
+     * Oberfläche den Stand.
+     */
+    /**
+     * {@code herzschlagAm} (Status-Herzschlag) und {@code messwertAm}
+     * (jüngste Telemetrie) bleiben GETRENNT (Lücke L2); {@code lastSeenAt}
+     * bleibt additiv als der verschmolzene Wert bestehen.
      */
     public record FleetBoxDto(UUID deviceId, String externalRef, String name,
-            Boolean fuehrtAnlage, Instant lastSeenAt, FleetEdgeDto edge, FleetUpdateDto update,
-            List<String> supports) {
+            Boolean fuehrtAnlage, Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
+            FleetEdgeDto edge, FleetUpdateDto update,
+            List<String> supports, String boxArt,
+            /** Geclaimt am - Grundlage für "nie angemeldet seit …" (vp-box-verbinden-konzept N5). */
+            Instant createdAt,
+            /** null = die Box hat sich seit dem Verbinden nie angemeldet. */
+            AnmeldungDto anmeldung) {
     }
 
     /**
@@ -135,8 +155,15 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
     /**
      * Ein Eintrag des Release-Registers. {@code releaseSeq} ist DIE Ordnung -
      * eine monotone Ganzzahl, nie ein String- oder SHA-Vergleich (D5).
+     *
+     * <p>{@code boxArt} ist die Linie des Releases ({@code docker} oder
+     * {@code light}, {@code ota.BoxArt}; additiv seit Geräte &amp; Updates S0):
+     * der Soll-Stand einer Box ist das neueste Release IHRER Linie.
      */
-    public record FleetReleaseDto(long releaseSeq, String version) {
+    public record FleetReleaseDto(long releaseSeq, String version, String boxArt) {
+        public FleetReleaseDto(long releaseSeq, String version) {
+            this(releaseSeq, version, null);
+        }
     }
 
     /**

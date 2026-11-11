@@ -20,7 +20,7 @@ kopierten Weg vor IP-6, Abbruch beim Bauen, Teilzustellung), `uems/RegistryPushJ
   die heute die Anlagen-Summe bildet, ihren Bestand, sobald eine zweite Box ohne Speicher-Link dazukommt.
 - **Anlagen-Rollen = `grid-meter`, `house-load`, `battery-hybrid`.** Liest ihre Quelle eine andere Box
   als die führende, steht die Rolle in KEINEM Push (Log `anlagen_rolle_an_anderer_box`) — nie bei der
-  falschen Box. `producer` und `user-defined-battery` folgen ihrer Quelle wie jede Komponente.
+  falschen Box. `producer` folgt seiner Quelle wie jede Komponente.
 - **Anlagen-übergreifend ist gesperrt:** liest eine Box außerhalb der Anlage die Quelle (A3: DQ-3 an
   Box Halle 2 (neu) ab 10.04.2027 07:30), steht die Komponente in keinem Push
   (`box_ausserhalb_der_anlage`). IP-7 hat das Gate am Writer geprüft: es bleibt geschlossen

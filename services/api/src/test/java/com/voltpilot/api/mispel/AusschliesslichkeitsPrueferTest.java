@@ -26,16 +26,15 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * MiSpeL MP-2: der Ausschließlichkeits-Prüfer rechnet (1)¼, (2)¼, (3)–(6), (9)–(11) wie Anlage 1. Prüfnachweis ist
  * die Beispielrechnung 1 der BNetzA (A1 S. 15: 100 kWh Speicherverbrauch, 130 kWh Netzbezug, 50 kWh PV → 100 kWh
- * Netzstrom im Speicher) — gelesen aus dem Fall {@code bnetza-beispielrechnungen-speichervorrang} der MP-4-Vektoren
- * ({@code docs/contracts/v2/mispel-abgrenzung-vectors.json}),
- * nicht abgeschrieben. Dazu jeder Fall der Vektor-Datei mit Speicherzähler Z2 (A1, A5, A5-Variante): dieselben
- * Formeln, dieselben Zahlen. Rein: ohne Spring, ohne DB.
+ * Netzstrom im Speicher) und die Beispielrechnung 2 (A1 S. 16: 100 kWh Speichererzeugung, 80 kWh Netzeinspeisung →
+ * 80 kWh aus dem Speicher). Dazu jeder Fall der MP-4-Vektoren ({@code docs/contracts/v2/mispel-abgrenzung-vectors.json})
+ * mit Speicherzähler Z2 (A1, A5, A5-Variante): dieselben Formeln, dieselben Zahlen. Rein: ohne Spring, ohne DB.
  */
 class AusschliesslichkeitsPrueferTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
-    /** Weit hinter jedem Vektor-Jahr: alle Monate vollständig im Stand. */
+    /** Weit hinter jedem Testjahr: alle Monate vollständig im Stand. */
     private static final Instant SPAETER = Instant.parse("2100-01-01T00:00:00Z");
     private static final List<String> FORMELN = List.of("(3)", "(4)", "(5)", "(6)", "(9)", "(10)", "(11)");
 
@@ -70,29 +69,26 @@ class AusschliesslichkeitsPrueferTest {
         assertThat(ist.compareTo(soll)).as("%s: %s statt %s", was, ist, soll).isZero();
     }
 
-    /** Pruefnachweis MP-2: Beispielrechnung 1, A1 S. 15 (Abb. 1), und Beispielrechnung 2, A1 S. 16 (Abb. 2). */
+    /** Prüfnachweis MP-2: Beispielrechnung 1, A1 S. 15 (Abb. 1), und Beispielrechnung 2, A1 S. 16 (Abb. 2). */
     @Test
-    void beispielrechnungenDerBnetzaSpeichervorrang() throws Exception {
-        JsonNode fall = null;
-        for (JsonNode f : vektoren().get("faelle")) {
-            if (f.get("name").asText().equals("bnetza-beispielrechnungen-speichervorrang")) {
-                fall = f;
-            }
-        }
-        assertThat(fall).as("Fall der MP-4-Vektoren").isNotNull();
-        List<Viertelstunde> qh = viertelstunden(fall);
-
+    void beispielrechnungenDerBnetzaSpeichervorrang() {
         // Beispielrechnung 1: 130 kWh Netzbezug, 100 kWh Speicherverbrauch (die 50 kWh PV misst in A1 kein Zähler).
-        Viertelstunde br1 = qh.get(0);
-        gleich(br1.z1nb(), kwh("130"), "Z1NB¼");
-        gleich(br1.z2v(), kwh("100"), "Z2V¼");
+        Viertelstunde br1 = qh("2027-03-10T12:00:00+01:00", "130", "0", "100", "0");
+        // Beispielrechnung 2: 100 kWh Speichererzeugung, 80 kWh Netzeinspeisung.
+        Viertelstunde br2 = qh("2027-03-10T19:00:00+01:00", "0", "80", "0", "100");
         gleich(br1.formel1(), kwh("100"), "(1)¼ Beispielrechnung 1");
-        // Beispielrechnung 2: 100 kWh Speichererzeugung, 80 kWh Netzeinspeisung → 80 kWh aus dem Speicher.
-        gleich(qh.get(1).formel2(), kwh("80"), "(2)¼ Beispielrechnung 2");
+        gleich(br1.formel2(), kwh("0"), "(2)¼ Beispielrechnung 1");
+        gleich(br2.formel1(), kwh("0"), "(1)¼ Beispielrechnung 2");
+        gleich(br2.formel2(), kwh("80"), "(2)¼ Beispielrechnung 2");
 
-        Ergebnis e = AusschliesslichkeitsPruefer.pruefe(2027, qh, SPAETER);
+        Ergebnis e = AusschliesslichkeitsPruefer.pruefe(2027, List.of(br1, br2), SPAETER);
         Monat maerz = monat(e, "2027-03");
+        gleich(maerz.formeln().get("(3)"), kwh("130"), "(3)");
+        gleich(maerz.formeln().get("(4)"), kwh("80"), "(4)");
+        gleich(maerz.formeln().get("(5)"), kwh("100"), "(5)");
+        gleich(maerz.formeln().get("(6)"), kwh("100"), "(6)");
         gleich(maerz.formeln().get("(9)"), kwh("100"), "(9)");
+        gleich(maerz.formeln().get("(10)"), kwh("0"), "(10) = (5) – (9)");
         gleich(maerz.formeln().get("(11)"), kwh("80"), "(11)");
         assertThat(maerz.viertelstundenNetzstromImSpeicher()).isEqualTo(1);
         assertThat(maerz.viertelstundenSpeicherEinspeisung()).isEqualTo(1);

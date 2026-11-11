@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -11,20 +11,24 @@ import {
   type Site,
   type SiteEntities,
   type SiteSource,
+  type SiteTopology,
   type StandorteAmStichtag,
   type UemsDatenquelle,
   type UemsGemeinsameSteuerungZustand,
+  type UemsGeraet,
 } from '../api';
 import { gemeinsameSteuerungAendern, wegDesWechsels } from '../uemsDatenquelle';
 import type { SiteCharging } from '../ladepunkte';
 import {
   BOX_ROLLE,
-  boxGeraeteListe,
   boxSeite,
   GERAETE_HINWEIS,
   type BoxSeiteView,
 } from '../boxSeite';
-import type { BoxGeraet, Zeile } from '../geraetSeite';
+import { aufbauDerAnlage, type BoxEintrag, type BoxGateway } from '../boxGeraete';
+import { consumersApi } from '../consumers/consumersApi';
+import type { Consumer } from '../consumers/types';
+import type { Zeile } from '../geraetSeite';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import {
   GeraetRahmen,
@@ -38,9 +42,18 @@ import { AddDeviceDrawer, unclaimConsequences } from '../components/DeviceDrawer
 import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
 import { DatenquelleAnlegen } from '../components/DatenquelleAnlegen';
 import { Recht } from '../components/Recht';
+import {
+  GeraeteSuchenKnopf,
+  GeraetesucheGrund,
+  GeraetesucheLeer,
+  LetzteSuche,
+  useGeraetesucheLage,
+  useGeraetesucheVerlauf,
+} from '../components/GeraetesucheEinstieg';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { anlageRoute, aufbauHash, boxSeiteHash, geraeteAkteHash, hashForRoute, pageRoute } from '../nav';
 import { einstellungenHash } from '../settingsNav';
+import { UEMS_GATEWAY_ANBINDEN } from '../glossar';
 import {
   aufzeichnungSeit,
   genauigkeitsSatz,
@@ -48,14 +61,10 @@ import {
 } from '../befehle';
 import { BefehleVerlauf, useBefehleVerlauf } from '../components/BefehleVerlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useAnlagensteuerung } from '../useAnlagensteuerung';
 // LIVE: die Box-Seite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
 import { LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
-import { FernwartungKarte } from '../components/FernwartungKarte';
-import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
-import { geraetView, type GeraetView } from '../adminGeraet';
-import { adminApi } from '../admin/adminApi';
-import { fleetApi } from '../admin/fleetApi';
 import './GeraetSeite.css';
 import './BoxSeite.css';
 
@@ -103,6 +112,11 @@ export function BoxSeiteSection({
 
   const [data, setData] = useState<SiteEntities | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
+  // Dieselben Abrufe wie Anlage › Aufbau (GE-4): die Geräte an der Box kommen aus DERSELBEN Zuordnung.
+  const [topology, setTopology] = useState<SiteTopology | null>(null);
+  const [consumers, setConsumers] = useState<Consumer[] | null>(null);
+  // Die UEMS-Geräte: ihr `data_source_id` ist der einzige Verweis Weg → Gerät (GE-1); undefined = lädt, null = unbekannt.
+  const [uemsGeraete, setUemsGeraete] = useState<UemsGeraet[] | null | undefined>(undefined);
   const [control, setControl] = useState<ControlStatus | null>(null);
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
@@ -111,9 +125,6 @@ export function BoxSeiteSection({
   const [gemeinsameSteuerung, setGemeinsameSteuerung] = useState<UemsGemeinsameSteuerungZustand | null>(null);
   // Wohin der Wechsel einer Steuerquelle zu einem Mitglied führt (T6) — ohne Gemeinsame Steuerung der Bestand.
   const steuerquelleWeg = wegDesWechsels(true, gemeinsameSteuerung?.zustand ?? null, false, true);
-  const [adminView, setAdminView] = useState<GeraetView | null>(null);
-  const [adminBusy, setAdminBusy] = useState(false);
-  const [adminFehler, setAdminFehler] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -144,54 +155,46 @@ export function BoxSeiteSection({
       );
     };
     soft(api.siteSources(site.id), setSources);
+    soft(api.topology(site.id), setTopology);
+    soft(consumersApi.list(site.id), setConsumers);
+    setUemsGeraete(undefined);
+    void api.uemsGeraete(site.id).then(
+      (a) => active && setUemsGeraete(a.geraete),
+      () => active && setUemsGeraete(null),
+    );
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
     soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
-    soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
     soft(api.gemeinsameSteuerung(site.id), setGemeinsameSteuerung);
     soft(api.standorte(), setStandorte);
     setNow(Date.now());
-    if (showTechnicalLayer() && boxDevice) {
-      void Promise.all([
-        adminApi.listDevices(),
-        fleetApi.fleet(),
-        adminApi.controlCandidates().catch(() => null),
-        adminApi.edgeUpdates().catch(() => null),
-      ]).then(
-        ([devs, flotte, candidates, updates]) => {
-          if (!active) return;
-          setAdminView(geraetView({
-            ref: boxDevice.externalRef,
-            devices: devs,
-            sites: flotte.sites,
-            candidates,
-            releases: updates?.releases ?? [],
-            journal: updates?.journal ?? [],
-          }, new Date()));
-        },
-        () => {
-          if (active) setAdminView(null);
-        },
-      );
-    }
     return () => {
       active = false;
     };
   }, [site.id, boxDevice?.id, boxDevice?.externalRef, reloadKey]);
 
-  async function adminAktion(fn: () => Promise<unknown>) {
-    setAdminBusy(true);
-    setAdminFehler(null);
-    try {
-      await fn();
-      setReloadKey((k) => k + 1);
-    } catch (e) {
-      setAdminFehler(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
-    } finally {
-      setAdminBusy(false);
-    }
-  }
+  // Die Wege aller Anlagen am Standort (wie im Aufbau): die Last einer Box zählt alles, was sie liest — auch für eine
+  // Nachbaranlage. Bis die Standorte da sind, nur die eigene Anlage.
+  // Gerätesuche (Bericht §4 „Einstiege", d1/m1/m8): Knopf, Grund und letzte Suche dieser Box.
+  const sucheVerlauf = useGeraetesucheVerlauf(site.id, boxDevice?.id ?? null);
+  const sucheLage = useGeraetesucheLage(
+    boxDevice?.lastSeenAt ?? null,
+    edgeVersions?.find((e) => e.deviceId === boxDevice?.id) ?? null,
+    sucheVerlauf,
+    now,
+  );
+  const standortDerAnlage = standorte?.standorte.find((st) => st.anlagen.some((a) => a.id === site.id)) ?? null;
+  const anlagenIds = (standortDerAnlage ? standortDerAnlage.anlagen.map((a) => a.id) : [site.id]).join(',');
+  useEffect(() => {
+    let active = true;
+    // Wie im Aufbau: fehlt die Antwort einer Anlage, fehlen genau ihre Wege, nie die der anderen.
+    Promise.all(anlagenIds.split(',').map((id) => api.datenquellen(id).then((a) => a.datenquellen, () => [] as UemsDatenquelle[])))
+      .then((listen) => active && setDatenquellen(listen.flat()));
+    return () => {
+      active = false;
+    };
+  }, [anlagenIds, reloadKey]);
 
   // Zustand UND Bezugszeit ZUSAMMEN (die `liveness.ts`-Lehre); ein Fehlschlag
   // lässt beides unberührt.
@@ -201,8 +204,10 @@ export function BoxSeiteSection({
       api.controlStatus(site.id).catch(() => null),
       api.curtailmentStatus(site.id).catch(() => null),
       api.siteChargers(site.id).catch(() => null),
-    ]).then(([s, c, cu, ch]) => {
+      api.topology(site.id).catch(() => null),
+    ]).then(([s, c, cu, ch, t]) => {
       if (s !== null) setSources(s);
+      if (t !== null) setTopology(t);
       setControl(c);
       setCurtailment(cu);
       if (ch !== null) setCharging(ch);
@@ -210,9 +215,29 @@ export function BoxSeiteSection({
     });
   }, LIVE_POLL_MS);
 
-  const standortDerAnlage = standorte?.standorte.find((st) => st.anlagen.some((a) => a.id === site.id)) ?? null;
+  const anlagenNamen = useMemo(
+    () => new Map((standortDerAnlage?.anlagen ?? []).map((a) => [a.id, a.name])),
+    [standortDerAnlage],
+  );
+  // GE-3: die Wechselrichter hinter einer Anlagensteuerung zählen hier wie im Aufbau (dieselbe Zählweise).
+  const steuerungen = useAnlagensteuerung(site.id, true, false);
   const view: BoxSeiteView | null = useMemo(() => {
     if (!data) return null;
+    const anlage = aufbauDerAnlage({
+      siteId: site.id,
+      siteName: site.name,
+      entities: data,
+      topology,
+      sources,
+      charging,
+      consumers,
+      devices: devices ?? [],
+      devicesFetchedAt,
+      datenquellen,
+      uemsGeraete,
+      anlagensteuerungen: { liste: steuerungen.liste, werte: steuerungen.werte },
+      now,
+    });
     return boxSeite({
       ref: boxRef,
       siteName: site.name,
@@ -222,14 +247,17 @@ export function BoxSeiteSection({
       edgeVersions,
       control,
       curtailment,
-      geraete: boxGeraeteListe(data.localSetup, sources, charging?.chargers ?? null, now),
+      anlage,
+      zuordnung: uemsGeraete != null,
       localSetup: data.localSetup,
       datenquellen,
+      anlagenNamen,
       now,
     });
   }, [
     data, boxRef, site.name, site.id, devices, devicesFetchedAt, edgeVersions, control,
-    curtailment, sources, charging, datenquellen, now,
+    curtailment, topology, sources, charging, consumers, datenquellen, uemsGeraete, anlagenNamen, now,
+    steuerungen.liste, steuerungen.werte,
   ]);
 
   // DERSELBE Verlauf wie überall - der Server entscheidet weiterhin, was der
@@ -286,9 +314,9 @@ export function BoxSeiteSection({
         </Card>
       )}
 
-      {view && view.gefunden && (() => {
+      {view && view.gefunden && view.geraete && (() => {
         const verbunden = view.zustand.ton === 'ok';
-        const liefern = view.geraete.filter((g) => g.ton === 'ok').length;
+        const block = view.geraete;
         const verbindung = view.kacheln.find((k) => k.key === 'verbindung');
         const software = view.kacheln.find((k) => k.key === 'software');
         const notAus = view.grenzen.find((z) => z.label === 'Not-Aus' && z.ton === 'warn') ?? null;
@@ -304,13 +332,9 @@ export function BoxSeiteSection({
                 ton: view.zustand.ton,
                 key: 'verbindung',
               }}
-              satz={view.geraete.length > 0
-                ? `${liefern} von ${view.geraete.length} ${view.geraete.length === 1 ? 'Gerät liefert' : 'Geräten liefern'} Daten.`
-                : view.quellen.length > 0 && view.quellenSatz
-                  ? `${view.quellenSatz}.`
-                  : view.geraeteLeer}
+              satz={view.buehneSatz}
               satzTon={view.zustand.ton}
-              grafik={{ art: 'box', verbunden, geraete: view.geraete.length }}
+              grafik={{ art: 'box', verbunden, geraete: block.anzahl ?? 0 }}
               // Die Software-Version steht in „Gerät & Verbindung" (auch im
               // Kurztext) - nur eine WARNUNG zu ihr gehört auf die Bühne.
               chips={software && software.ton === 'warn' ? [{
@@ -322,74 +346,106 @@ export function BoxSeiteSection({
           ),
         };
 
-        // --- Zusatz: zuerst die Quellen der Box (UEMS AP-06 IP-16), dann ihre Geräte ---
+        // --- Zusatz: „Geräte an dieser Box" (GE-4) — dieselben Kästen wie im Aufbau unter dieser Box ---------
+        // Der Weg (AP-06-Datenquelle) ist keine eigene Zeile mehr: er steht am Gerät (Anbindung und Last), als
+        // Gateway mit den Geräten dahinter oder als „Anschluss ohne Gerät". Den Box-Wechsel trägt die Zeile, deren
+        // Weg es ist — beim Gateway gilt er für alle Geräte dahinter.
+        const wegAktion = (quelleId: string | null, name: string) => {
+          const q = quelleId ? datenquellen?.find((d) => d.id === quelleId) : undefined;
+          if (!q) return null;
+          // AP-15 IP-26: der Weg zu einem Mitglied — vor dem Scharfschalten bleibt der Knopf, der Server urteilt je
+          // Ziel-Box; scharf oder angehalten nur „Gemeinsame Steuerung ändern“.
+          if (q.steuerquelle && steuerquelleWeg !== 'innerhalb_der_gemeinsamen_steuerung') {
+            return steuerquelleWeg === 'gemeinsame_steuerung_aendern'
+              ? <small data-testid="steuerquelle-weg">
+                <a href={einstellungenHash(site.id, 'gemeinsam')}>{gemeinsameSteuerungAendern(q.kennzeichen)}</a>
+              </small>
+              : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>;
+          }
+          return (
+            <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"
+              aria-label={`Zuständige Box wechseln für ${name}`} onClick={() => setWechselQuelle(q)}>
+              Zuständige Box wechseln
+            </button></Recht>
+          );
+        };
+        const liste = block.eintraege.length + block.gateways.length + block.offen.length > 0;
         const modul: BausteinInhalt = {
-          titel: 'Datenquellen und Geräte',
+          titel: 'Geräte an dieser Box',
+          // „Geräte suchen" im Kartenkopf; im Leerzustand steht er groß im Inhalt (m1).
+          kopfRechts: boxDevice && !view.geraeteLeer
+            ? <GeraeteSuchenKnopf siteId={site.id} boxId={boxDevice.id} lage={sucheLage} grundId="box-geraetesuche-grund" />
+            : undefined,
           inhalt: (
-            <>
-              {view.quellenSatz && (
-                <div className="vp-box-quellen" data-testid="box-quellen">
-                  <div className="vp-box-quellen-kopf">
-                    <h3>{view.quellenSatz}</h3>
-                    {view.budgetSumme && <span>{view.budgetSumme}</span>}
-                  </div>
-                  {view.quellen.length === 0 ? <p className="vp-note">Diese Box liest noch keine Datenquelle.</p> : (
-                    <ul>
-                      {view.quellen.map((q) => (
-                        <li key={q.id}>
-                          <span className={`vp-health-dot vp-health-${q.ton}`} />
-                          <div>
-                            <b>{q.titel}</b>
-                            <span>{q.weg}</span>
-                            <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
-                            <small>{q.budget}</small>
-                            {/* AP-15 IP-26: der Weg zu einem Mitglied — vor dem Scharfschalten bleibt der Knopf, der Server
-                                urteilt je Ziel-Box; scharf oder angehalten nur „Gemeinsame Steuerung ändern“. */}
-                            {datenquellen?.find((d) => d.id === q.id)?.steuerquelle
-                              && steuerquelleWeg !== 'innerhalb_der_gemeinsamen_steuerung' ? (
-                              steuerquelleWeg === 'gemeinsame_steuerung_aendern'
-                                ? <small data-testid="steuerquelle-weg">
-                                  <a href={einstellungenHash(site.id, 'gemeinsam')}>{gemeinsameSteuerungAendern(q.kennzeichen)}</a>
-                                </small>
-                                : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
-                            ) : (
-                              <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"
-                                onClick={() => setWechselQuelle(datenquellen?.find((d) => d.id === q.id) ?? null)}>
-                                Zuständige Box wechseln
-                              </button></Recht>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten. */}
-                  {standortDerAnlage && (
-                    <Recht aktion="datenquelle.bearbeiten"><button type="button" className="vp-box-quellen-aktion" onClick={() => setQuelleAnlegen(true)}>
-                      <Icon name="plus" size={14} /> Datenquelle anlegen
-                    </button></Recht>
-                  )}
-                </div>
+            <div className="vp-box-geraete-block" data-testid="box-geraete-block">
+              {boxDevice && !view.geraeteLeer && <GeraetesucheGrund lage={sucheLage} id="box-geraetesuche-grund" />}
+              {block.summe && <p className="vp-box-last" data-testid="box-last">{block.summe}</p>}
+              {block.summeLeer && <p className="vp-note">{block.summeLeer}</p>}
+              {view.geraeteLeer && (boxDevice
+                ? <GeraetesucheLeer siteId={site.id} boxId={boxDevice.id} satz={view.geraeteLeer} lage={sucheLage} />
+                : <p className="vp-note">{view.geraeteLeer}</p>)}
+              {liste && (
+                <ul className="vp-geraet-liste vp-box-liste" data-testid="box-geraete">
+                  {block.eintraege.map((e) => (
+                    <BoxEintragZeile key={e.id} eintrag={e} aktion={wegAktion(e.quelleId, e.titel)} />
+                  ))}
+                  {block.gateways.map((w) => (
+                    <li key={w.id} className="vp-box-weg is-gateway" data-box-weg={w.kennzeichen}>
+                      <BoxGatewayZeile gateway={w} />
+                      <div className="vp-box-zeile-aktion">{wegAktion(w.id, w.titel)}</div>
+                      <ul className="vp-box-gateway-geraete" aria-label={`Geräte hinter ${w.titel}`}>
+                        {w.geraete.map((e) => <BoxEintragZeile key={e.id} eintrag={e} aktion={null} />)}
+                      </ul>
+                    </li>
+                  ))}
+                  {block.offen.map((w) => (
+                    <li key={w.id} className="vp-box-weg is-offen" data-box-weg={w.kennzeichen}>
+                      <div className="vp-geraet-zeile vp-box-geraet">
+                        <span className={`vp-health-dot vp-health-${w.ton}`} />
+                        <span className="tx">
+                          <span className="nm">{w.titel}</span>
+                          <span className="an">{w.weg}</span>
+                          <span className="st">{w.zustand}</span>
+                        </span>
+                      </div>
+                      <div className="vp-box-zeile-aktion">
+                        {/* Ein Ort zum Anlegen: das Gerät entsteht im Aufbau (`?neu=geraet`). */}
+                        <Recht aktion="geraet.einrichten">
+                          <a className="vp-box-quellen-aktion" href={aufbauHash(site.id, 'geraet')}
+                            aria-label={`Gerät an Anschluss ${w.kennzeichen} hinzufügen`}>
+                            Gerät hinzufügen
+                          </a>
+                        </Recht>
+                        {wegAktion(w.id, `Anschluss ${w.kennzeichen}`)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
-              {view.geraeteLeer && (
-                <p className="vp-note">{view.quellen.length > 0 ? KEINE_GERAETE_ABER_QUELLEN : view.geraeteLeer}</p>
+              {block.gemeldet > 0 && (
+                <p className="vp-note">
+                  {block.gemeldet === 1
+                    ? 'Die Box meldet ein weiteres Gerät, das noch nicht übernommen ist.'
+                    : `Die Box meldet ${block.gemeldet} weitere Geräte, die noch nicht übernommen sind.`}{' '}
+                  <a href={aufbauHash(site.id)}>Im Aufbau übernehmen</a>
+                </p>
               )}
-              {view.geraete.length > 0 && (
-                <>
-                  <ul className="vp-geraet-liste" data-testid="box-geraete">
-                    {view.geraete.map((g) => (
-                      <BoxGeraetZeile
-                        key={g.geraetId}
-                        geraet={g}
-                        siteId={site.id}
-                        ref_={view.kennung}
-                      />
-                    ))}
-                  </ul>
-                  <p className="vp-note">{GERAETE_HINWEIS}</p>
-                </>
+              {block.zuordnungUnbekannt && (
+                <p className="vp-note">
+                  Welches Gerät hinter den Anschlüssen dieser Box steht, ist gerade nicht bekannt — ihre Last zählt oben mit.
+                </p>
               )}
-            </>
+              {block.fremd && <p className="vp-note">{block.fremd}</p>}
+              {liste && <p className="vp-note">{GERAETE_HINWEIS}</p>}
+              {boxDevice && <LetzteSuche siteId={site.id} boxId={boxDevice.id} verlauf={sucheVerlauf} jetzt={now} />}
+              {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten.
+                  GE-6 (GD-5): von Hand ist das ein Gateway oder Logger; ein einzelnes Gerät kommt über „Gerät hinzufügen“. */}
+              {standortDerAnlage && (
+                <Recht aktion="datenquelle.bearbeiten"><button type="button" className="vp-box-quellen-aktion" onClick={() => setQuelleAnlegen(true)}>
+                  <Icon name="plus" size={14} /> {UEMS_GATEWAY_ANBINDEN}
+                </button></Recht>
+              )}
+            </div>
           ),
         };
 
@@ -455,31 +511,17 @@ export function BoxSeiteSection({
 
         // --- Technik & Diagnose -------------------------------------------------
         const technik: TechnikTeil[] = [{ id: 'rohdaten', inhalt: <ZeilenListe zeilen={view.technik} /> }];
-        if (showTechnicalLayer() && (adminView || boxDevice)) {
+        {/* E4 = A (Konzept `vp-adminview-konzept-k1` §4.6, Scheibe S2): die
+            Admin-Karten und die Fernwartungs-Karte entfallen hier - jeder
+            Box-Fakt hat seither genau EINEN Ort, die Geräteakte. */}
+        if (showTechnicalLayer() && boxDevice) {
           technik.push({
             id: 'plattform',
             inhalt: (
               <div data-testid="box-admin">
-                {adminView && <AdminGeraetKarten
-                  view={adminView}
-                  busy={adminBusy}
-                  onNavigateSteuerung={() => {
-                    window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
-                  }}
-                  onAssign={adminView.device.deviceId ? async (releaseSeq: number) => {
-                    await adminAktion(() => adminApi.setUpdateTarget(
-                      adminView.device.deviceId as string, { releaseSeq }));
-                  } : undefined}
-                  onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
-                    await adminAktion(() => adminApi.revertUpdateTarget(
-                      adminView.device.deviceId as string));
-                  } : undefined}
-                />}
-                {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
-                {/* Fernwartung (E5): nur Plattform-Admins - der Kunde sieht
-                    die Fenster nicht (O3). Lädt selbst, unabhängig davon, ob
-                    die übrigen Plattform-Karten geladen sind. */}
-                {boxDevice && <FernwartungKarte edgeRef={boxDevice.externalRef} />}
+                <a className="vp-box-oberflaeche" href={geraeteAkteHash(boxDevice.externalRef)}>
+                  In der Geräteakte öffnen <Icon name="chevron-right" size={14} />
+                </a>
               </div>
             ),
           });
@@ -547,30 +589,58 @@ export function BoxSeiteSection({
   );
 }
 
-/** Eine Box, die über Datenquellen liest, ist nicht „ohne Gerät“ — sie hat nur keine angelegten Geräte-Karten. */
-const KEINE_GERAETE_ABER_QUELLEN = 'Keine Geräte angelegt — die Box liest über die Datenquellen oben.';
+/**
+ * Ein Gerät AN der Box - eine Zeile mit dem Weg auf seine eigene Seite, darunter Anbindung und Last (GE-4). Ein
+ * Gerät ohne eigene Seite (Ersatzgerät) steht ohne Pfeil da; die Handlung zu seinem Weg steht neben der Zeile, nie
+ * im Link.
+ */
+/** Die Zeile eines Gateways (GE-4) — GE-5: ein Kasten mit eigener Seite, die Zeile führt dorthin. */
+function BoxGatewayZeile({ gateway: w }: { gateway: BoxGateway }) {
+  const inhalt = (
+    <>
+      <span className={`vp-health-dot vp-health-${w.ton}`} />
+      <span className="tx">
+        <span className="nm">{w.titel}</span>
+        <span className="ty">Gateway</span>
+        <span className="an">{w.weg}</span>
+        <span className="an">{w.zeile}</span>
+        <span className="st">{w.zustand}</span>
+      </span>
+    </>
+  );
+  return w.href ? (
+    <a className="vp-geraet-zeile vp-box-geraet" href={w.href}>
+      {inhalt}
+      <Icon name="chevron-right" size={16} />
+    </a>
+  ) : (
+    <div className="vp-geraet-zeile vp-box-geraet">{inhalt}</div>
+  );
+}
 
-/** Ein Gerät AN der Box - eine Zeile mit dem Weg auf seine eigene Seite. */
-function BoxGeraetZeile({
-  geraet,
-  siteId,
-  ref_,
-}: {
-  geraet: BoxGeraet;
-  siteId: string;
-  ref_: string;
-}) {
+function BoxEintragZeile({ eintrag, aktion }: { eintrag: BoxEintrag; aktion: ReactNode }) {
+  const inhalt = (
+    <>
+      <span className={`vp-health-dot vp-health-${eintrag.ton}`} />
+      <span className="tx">
+        <span className="nm">{eintrag.titel}</span>
+        <span className="ty">{eintrag.typ}</span>
+        {eintrag.anbindung && <span className="an">{eintrag.anbindung}</span>}
+        <span className="st">{eintrag.zustand}</span>
+      </span>
+    </>
+  );
   return (
     <li>
-      <a className="vp-geraet-zeile vp-box-geraet" href={geraetSeiteHash(siteId, ref_, geraet.geraetId)}>
-        <span className={`vp-health-dot vp-health-${geraet.ton}`} />
-        <span className="tx">
-          <span className="nm">{geraet.name}</span>
-          <span className="ty">{geraet.art}</span>
-          <span className="st">{geraet.zustand}</span>
-        </span>
-        <Icon name="chevron-right" size={16} />
-      </a>
+      {eintrag.href ? (
+        <a className="vp-geraet-zeile vp-box-geraet" href={eintrag.href}>
+          {inhalt}
+          <Icon name="chevron-right" size={16} />
+        </a>
+      ) : (
+        <div className="vp-geraet-zeile vp-box-geraet">{inhalt}</div>
+      )}
+      {aktion && <div className="vp-box-zeile-aktion">{aktion}</div>}
     </li>
   );
 }

@@ -72,7 +72,8 @@ describe('Reiter „Dokumente“ (Konzept Nachweisen n1, Runde 2, §6.5)', () =>
     expect(buehne.gesendet[0].koerper).toEqual({ art: 'risiken_chancen', titel: 'Risiken und Chancen', bezug: { art: 'unternehmen' } });
     expect(buehne.gesendet[1].koerper).toMatchObject({ form: 'verweis', verweis: { ablage: 'Risiko-Register der Geschäftsführung', kennung: 'RR-2029' } });
     expect(buehne.gesendet[2].koerper).toEqual({ entschieden_von: EM_IDS.IK, entschieden_am: null, begruendung: 'Erste Fassung festgehalten.' });
-    expect(offen).toHaveBeenCalled();
+    // Geöffnet wird erst nach der Antwort auf die Freigabe - gesendet ist sie schon, beantwortet vielleicht noch nicht.
+    await waitFor(() => expect(offen).toHaveBeenCalled());
   });
 
   it('wer nur liest, sieht kein Menü zum Festhalten', async () => {

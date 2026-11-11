@@ -7,14 +7,13 @@ import * as auth from '../auth';
 import { BAUSTEIN_ORDNUNG, type BausteinId } from '../geraetRahmen';
 import { NUR_LESEN } from '../befehle';
 import { SEITE } from '../befehleVerlauf';
-import { adminApi } from '../admin/adminApi';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
-import { fleetApi } from '../admin/fleetApi';
 import { entitiesApi } from '../entitiesApi';
 import { requestNavigation } from '../navigationBlocker';
 import {
   api,
+  ApiError,
   type CommandHistory,
   type Device,
   type RegisterWriteTarget,
@@ -24,8 +23,12 @@ import {
   type SiteInterventions,
   type SiteSource,
   type SiteTopology,
+  type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
+import { anbindungApi } from '../geraetAnbindung';
 import { gr4Einstellungen, gr4Z5b, k5Kanaele } from '../test/geraetHerkunftFixtures';
+import { ENTITY_GORE, gore, goreNv, goreWerte } from '../test/anlagensteuerungFixtures';
 
 const site: Site = {
   id: 's-1',
@@ -353,6 +356,8 @@ function stub(over: {
     },
   ]));
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
+  // GE-2: ohne eigene Angabe kennt die Anlage keinen Weg - dann gibt es keinen Abschnitt „Anbindung“.
+  vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
   // Die Aktionszeile (Stufe 2 §6.2) - was ein Blatt ABSETZEN kann. Alle drei
@@ -510,6 +515,30 @@ describe('GeraetSeiteSection', () => {
     expect(zentrale.getAttribute('href')).toBe('#/anlage/s-1/modell');
   });
 
+  it('nennt unter „Gerät & Verbindung“, woher das Gerät stammt - nur mit einer Herkunft vom Server', async () => {
+    stub();
+    const { unmount } = render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    expect(within(await screen.findByTestId('baustein-details')).queryByText('Angelegt')).toBeNull();
+    unmount();
+
+    vi.mocked(api.siteComponents).mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'batt', definitionVersion: 2, templateRef: 'builtin:deye:sun-30k-sg01hp3', templateVersion: 1,
+        herkunft: {
+          art: 'geraetesuche', suchId: '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d',
+          gesuchtAm: '2026-10-30T08:12:00Z', uebernommenAm: '2026-10-30T08:14:00Z',
+        },
+      }],
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    const details = await screen.findByTestId('baustein-details');
+    const angelegt = (await within(details).findByText('Angelegt')).parentElement as HTMLElement;
+    expect(angelegt).toHaveTextContent('aus der Gerätesuche vom 30.10.2026');
+  });
+
   // P4: „BMS" - nur da, wenn eine Batterie per CAN am Gerät hängt. Heute hängt
   // an keiner Anlage eine, also ist die Abwesenheit des Kastens der Normalfall
   // (und ausdrücklich kein Kasten, der erklärt, dass er nichts weiß).
@@ -574,6 +603,31 @@ describe('GeraetSeiteSection', () => {
     // Einrichtung - als Satz unter der gleichnamigen Überschrift.
     const einrichtung = await technikTeil('einrichtung');
     expect(within(einrichtung).getByText('Wird im Portal gepflegt (Fassung 3).')).toBeInTheDocument();
+  });
+
+  // Die Box wendet ein einzelnes Gerät nicht an (sie kann ihm keine Rolle zuordnen) und den Rest schon
+  // (VoltPilotGATE, 02.11.2026). Ihr Grund steht an GENAU diesem Gerät, und der Stand sagt nicht „aktiv“.
+  it('zeigt den Grund der Box, wenn sie genau dieses Gerät nicht anwendet', async () => {
+    stub();
+    vi.spyOn(api, 'componentVersions').mockResolvedValue([]);
+    vi.mocked(api.siteComponents).mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'fr1', role: 'pv-generation', entityType: 'producer', communication: 'fronius_sunspec',
+        connection: { ip: '192.168.254.30', port: 502, unit_id: 1 },
+        templateRef: 'builtin:fronius:eco-27', templateVersion: 1,
+        definitionVersion: 3, edgeSourceId: 'src-7c1e9a2b', syncStatus: 'in_sync',
+        rejectedReason: 'für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat',
+      }],
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+    const einrichtung = await technikTeil('einrichtung');
+    const grund = await within(einrichtung).findByTestId('geraet-box-abgelehnt');
+    expect(grund).toHaveTextContent(
+      'Die Box wendet dieses Gerät nicht an: für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat.',
+    );
+    expect(within(einrichtung).getByTestId('geraet-fassungen')).toHaveTextContent('Von der Box nicht angewandt');
+    expect(within(einrichtung).getByTestId('geraet-fassungen')).not.toHaveTextContent('auf der Box aktiv');
   });
 
   it('nennt den GRUND, wenn die Adresse kein Gerät meint - nie eine leere Seite', async () => {
@@ -1039,6 +1093,54 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByRole('heading', { name: 'Carport' })).toBeVisible();
   });
 
+  // Regressionsbeleg Wallbox-Einbindung e1, Abschnitt 7 Punkt 1: „Ladeeinstellungen der
+  // Anlage öffnen →" führte nach Steuerung › Laden (dort stehen „Womit laden?"/Ladeziel) -
+  // solange es den künftigen Ort „Laden" nicht gab, nicht nach Ladevorgänge. Scheibe 3
+  // (Ein Ort fürs Laden) hat die leise Zeile ersatzlos entfernt - „Laden steuern" (ein
+  // prominenter Knopf auf der Bühne, eigener Test in `OcppWallboxPage.test.tsx`) ist
+  // seither die EINE Tür und führt an dieselbe Stelle.
+  it('führt von der Wallbox-Geräteseite auf Steuerung › Laden statt auf Ladevorgänge', async () => {
+    stub({
+      entities: () => Promise.resolve({
+        ...entities,
+        entities: [
+          ...entities.entities,
+          {
+            id: 'wallbox-1', entityType: 'ev-charger', typeLabel: 'Ladepunkt',
+            role: 'consumer', label: 'Carport', control: true, deviceId: null,
+            capabilities: { measure: [{ channel: 'power_kw' }] }, guards: null,
+            syncStatus: 'in_sync', observed: null, edgeSourceId: null,
+          },
+        ],
+      }),
+    });
+    vi.mocked(api.siteChargers).mockResolvedValue({
+      budget: null,
+      chargers: [{
+        deviceId: 'gw', chargePointId: 'CP-1', label: 'Carport', priority: false,
+        connected: true, ready: true, lastSeen: FRISCH, connectors: [{
+          connectorId: 1, status: 'Charging', charging: true,
+        }], entityId: 'wallbox-1',
+      }],
+    });
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    vi.spyOn(api, 'ocppStations').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppEvents').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppGaps').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppTransactions').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppMeterValues').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppConfiguration').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppActionPermissions').mockResolvedValue({ actions: {} });
+    vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
+
+    window.history.replaceState(null, '', '#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1');
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="cp-CP-1" devices={[box]} />);
+
+    const link = await screen.findByRole('link', { name: 'Laden steuern' });
+    expect(link).toHaveAttribute('href', '#/anlage/s-1/laden');
+    expect(screen.queryByText('Ladeeinstellungen der Anlage öffnen →')).not.toBeInTheDocument();
+  });
+
   it('zeigt die Befehle DIESES Geräts und führt auf die volle Liste', async () => {
     // Der Wechselrichter trägt seit der Ziel-Attribution seinen Speicher-Strom
     // (`deviceIsBox: false`) - die Seite fragt den Server mit SEINER Kennung.
@@ -1323,63 +1425,17 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     window.location.hash = '';
   });
 
-  function stubAdmin() {
-    vi.spyOn(adminApi, 'listDevices').mockResolvedValue([
-      {
-        deviceId: 'gw',
-        externalRef: 'edge-45gz7da',
-        label: 'Pilsting',
-        siteId: 's-1',
-        siteName: 'Pilsting',
-        tenantId: 't-1',
-        tenantName: 'Kunde',
-        kind: 'inverter',
-        ist: 'edge-2026.08.1-9b37439a02c1',
-        soll: 'edge-2026.08.1',
-        sollSeq: 14,
-        channel: 'stable',
-        pinned: false,
-        state: 'bestaetigt',
-        reason: null,
-        blocker: null,
-        lastSeenAt: FRISCH,
-        reportedAt: FRISCH,
-        provisioned: false,
-        note: null,
-        provisionedAt: null,
-      },
-    ]);
-    vi.spyOn(fleetApi, 'fleet').mockResolvedValue({
-      sites: [],
-      releases: [],
-      journal: [],
-      kpi: null,
-    } as never);
-    vi.spyOn(adminApi, 'controlCandidates').mockResolvedValue([]);
-    vi.spyOn(adminApi, 'edgeUpdates').mockResolvedValue({
-      releases: [],
-      journal: [],
-      rollout: null,
-      fleet: [],
-      kpi: null,
-    } as never);
-  }
-
   it('zeigt dem KUNDEN keine Plattform-Sicht', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
-    stubAdmin();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByTestId('geraet-admin')).toBeNull();
-    // Und die Admin-Reads werden gar nicht erst geholt.
-    expect(adminApi.listDevices).not.toHaveBeenCalled();
   });
 
-  it('zeigt dem PLATTFORM-ADMIN dieselbe Seite PLUS die Plattform-Sicht', async () => {
+  it('zeigt dem PLATTFORM-ADMIN nur noch den Weg in die Geräteakte (E4 = A, Scheibe S2)', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     stub();
-    stubAdmin();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     // Sie ist der LETZTE Teil von „Technik & Diagnose" - nie ein Kasten auf der
@@ -1387,18 +1443,10 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     await waitFor(() => expect(screen.getByTestId('geraet-technik-oeffnen')).toHaveTextContent(/Plattform-Sicht/));
     const teil = await technikTeil('plattform');
     expect(within(teil).getByText('Plattform-Sicht (Admin)')).toBeTruthy();
-    expect(within(teil).getByTestId('geraet-admin')).toBeTruthy();
-  });
-
-  it('bleibt ohne Admin-Daten stehen - eine gescheiterte Plattform-Sicht kippt die Seite nicht', async () => {
-    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
-    stub();
-    vi.spyOn(adminApi, 'listDevices').mockRejectedValue(new Error('down'));
-    vi.spyOn(fleetApi, 'fleet').mockRejectedValue(new Error('down'));
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    await screen.findByRole('heading', { level: 1 });
-    await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
-    expect(screen.queryByTestId('geraet-admin')).toBeNull();
+    const link = within(teil).getByTestId('geraet-admin').querySelector('a') as HTMLAnchorElement;
+    expect(link).toHaveTextContent(/In der Geräteakte öffnen/);
+    // Die Box der Anlage, nicht das hier offene Gerät dahinter (`boxRef`).
+    expect(link.getAttribute('href')).toBe('#/plattform/geraete/edge-45gz7da');
   });
 });
 
@@ -1948,5 +1996,264 @@ describe('K4 · I/O-Modul und Verbraucher am Ausgang', () => {
     const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
     expect(within(aktivitaet).getByRole('link', { name: /Alle/ }).getAttribute('href'))
       .toBe('#/anlage/s-1/befehle?komponente=heiz');
+  });
+});
+
+/**
+ * EZ-10 · die Seite `as-<Entität>` einer Anlagensteuerung. Die Box liest sie über eine Datenquelle, nicht
+ * über eine eigene Quelle - der Server kennt `as-…` darum nicht als Gerät (`DeviceScopes`) und antwortete
+ * auf `?device=as-…` mit 404 „Gerät nicht gefunden.“. Ihre Aktivität fragt die Seite über ihre Komponente,
+ * wie beim Verbraucher am Ausgang (K4).
+ */
+describe('EZ-10 · Aktivität der Anlagensteuerung', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.location.hash = '';
+  });
+
+  const asSeite = `as-${ENTITY_GORE}`;
+  const steuerungEntities: SiteEntities = {
+    ...entities,
+    entities: [
+      ...entities.entities,
+      {
+        id: ENTITY_GORE, entityType: 'anlagensteuerung', typeLabel: 'Anlagensteuerung', role: null,
+        label: 'Anlagensteuerung Gore', control: false, deviceId: null,
+        capabilities: { measure: [] }, guards: null, syncStatus: 'in_sync', observed: null, edgeSourceId: null,
+      } as unknown as SiteEntities['entities'][number],
+    ],
+  };
+
+  /** Der Verlauf wie der Server ihn beantwortet: ein `as-…` als Gerät ist ihm unbekannt. */
+  function stubSteuerung(antwort: CommandHistory, mitEntities: SiteEntities = steuerungEntities) {
+    stub({ entities: () => Promise.resolve(mitEntities) });
+    vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
+      einrichtung: { moeglich: true, grund: null, boxen: [{ device_id: 'gw', faehig: true }] },
+      steuerungen: [gore()],
+    });
+    vi.spyOn(api, 'netzVermarktung').mockResolvedValue(goreNv());
+    vi.spyOn(api, 'anlagensteuerungWerte').mockResolvedValue(goreWerte());
+    vi.spyOn(api, 'commandHistory').mockImplementation((_site, q) => (
+      q.device?.startsWith('as-')
+        ? Promise.reject(new ApiError(404, 'Gerät nicht gefunden.'))
+        : Promise.resolve(antwort)
+    ));
+  }
+
+  it('fragt über die Komponente - ohne Aufzeichnung derselbe Leerzustand wie an der Box, kein Fehler', async () => {
+    stubSteuerung(commands({
+      recordingSince: null, deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE,
+      entityLabel: 'Anlagensteuerung Gore', writes: false, entries: [],
+    }));
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    expect(await screen.findByRole('heading', { name: 'Anlagensteuerung Gore' })).toBeInTheDocument();
+    await waitFor(() => expect(api.commandHistory).toHaveBeenCalledWith('s-1', expect.objectContaining({
+      entity: ENTITY_GORE,
+    })));
+    for (const call of vi.mocked(api.commandHistory).mock.calls) {
+      expect(call[1].device ?? null).toBeNull();
+    }
+    const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
+    expect(await within(aktivitaet).findByText(/Für diesen Zeitraum liegt uns nichts vor/)).toBeInTheDocument();
+    expect(within(aktivitaet).queryByText(/Gerät nicht gefunden/)).toBeNull();
+    expect(within(aktivitaet).queryByRole('button', { name: /Erneut versuchen/ })).toBeNull();
+    expect(within(aktivitaet).getByRole('link', { name: /Alle/ }).getAttribute('href'))
+      .toBe(`#/anlage/s-1/befehle?komponente=${ENTITY_GORE}`);
+  });
+
+  it('EZ-22: die Adresse ihres Pins (die Quelle aus EZ-21) führt auf die Seite der Steuerung, mit ihren Parametern', async () => {
+    const pin = 'src-as-192.168.1.50-503-1';
+    const mitPin: SiteEntities = {
+      ...steuerungEntities,
+      entities: steuerungEntities.entities.map((e) => (e.id === ENTITY_GORE ? { ...e, edgeSourceId: pin } : e)),
+      localSetup: [
+        ...steuerungEntities.localSetup,
+        {
+          id: pin, kind: 'source', role: 'plant-controller', brand: null, model: null, label: 'Anlagensteuerung',
+          reportedAt: '2026-10-23T08:40:00Z', adoptedEntityId: null,
+        } as SiteEntities['localSetup'][number],
+      ],
+    };
+    stubSteuerung(commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE, entries: [] }), mitPin);
+    window.location.hash = `#/anlage/s-1/geraet/edge-45gz7da/${pin}?abschnitt=jetzt`;
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={pin} devices={[box]} />);
+    await waitFor(() => expect(window.location.hash)
+      .toBe(`#/anlage/s-1/geraet/edge-45gz7da/${asSeite}?abschnitt=jetzt`));
+  });
+
+  /** GE-2: der Weg der Steuerung, DQ-1, mit dem gespeicherten Verweis am UEMS-Gerät (die Gore-Form). */
+  function mitWeg(rueckmeldung: Partial<NonNullable<UemsDatenquelle['rueckmeldung']>> = {}) {
+    const g = gore();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [anbindungsWeg({
+      id: g.datenquelle.id, kennzeichen: g.datenquelle.kennzeichen, name: 'Anlagensteuerung',
+      adresse: g.datenquelle.adresse, kadenz_s: 5,
+      rueckmeldung: { ...LIEFERT, ...rueckmeldung },
+    })] });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [einbau('g-as', ENTITY_GORE, g.datenquelle.id)] });
+    vi.spyOn(anbindungApi, 'verlauf').mockResolvedValue({ eintraege: [] });
+  }
+
+  it('GE-2: „Gerät & Verbindung“ trägt die Anbindung der Steuerung - der Weg steht genau einmal, ohne „Datenquelle“', async () => {
+    stubSteuerung(commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE, entries: [] }));
+    mitWeg();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    const sektion = await screen.findByTestId('baustein-details');
+    const anbindung = await within(sektion).findByTestId('geraet-anbindung');
+    expect(anbindung).toHaveTextContent('Modbus TCP · 192.168.1.50:503 · Geräte-ID 1');
+    expect(within(anbindung).getByRole('link', { name: /VoltPilot-Box Pilsting/ }))
+      .toHaveAttribute('href', '#/anlage/s-1/box/edge-45gz7da');
+    expect(anbindung).toHaveTextContent('Liefert Daten');
+    expect(anbindung).toHaveTextContent(/Last an der Box51\s%/);
+    expect(anbindung).toHaveTextContent('12 von 30 Anfragen/min · 305 von 600 Messwerten/min');
+    expect(anbindung).toHaveTextContent('Kennung DQ-1');
+    // GD-5 A: „Datenquelle“ steht nicht mehr am Gerät; die alten Bestandszeilen sind im Abschnitt aufgegangen.
+    expect(sektion).not.toHaveTextContent('Datenquelle DQ-1');
+    expect(within(sektion).queryByText('Modbus TCP · Registerbild Erzeuger')).toBeNull();
+    expect(within(screen.getByTestId('geraet-kopf')).getByTestId('geraet-zustand')).not.toHaveTextContent('Liefert keine Daten');
+  });
+
+  it('GE-2: meldet die Box „liefert keine Daten“, sagt der Kopf es mit Grund - EIN Zustand', async () => {
+    stubSteuerung(commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE, entries: [] }));
+    mitWeg({ zustand: 'liefert_nicht', fehlerklasse: 'timeout', seit: '2026-10-23T08:00:00Z', gelesen_am: null });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    const kopf = await screen.findByTestId('geraet-kopf');
+    await waitFor(() => expect(within(kopf).getByTestId('geraet-zustand')).toHaveTextContent('Liefert keine Daten'));
+    expect(within(kopf).getByTestId('geraet-zustand')).toHaveTextContent(/Seit 23\.10\.2026/);
+  });
+
+  it('zeigt die Einträge, die der Server für ihre Komponente liefert', async () => {
+    const mitEintrag = commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE });
+    stubSteuerung(mitEintrag);
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
+    await waitFor(() => expect(aktivitaet.querySelectorAll('li.vp-befehl').length).toBe(mitEintrag.entries.length));
+    expect(within(aktivitaet).queryByText(/liegt uns nichts vor|kein Befehl geschickt/)).toBeNull();
+    expect(within(aktivitaet).queryByText(/Gerät nicht gefunden/)).toBeNull();
+  });
+});
+
+// ---- GE-2 „Anbindung“ (Konzept „Ein Gerät, ein Eintrag“) -----------------------------------------------------
+
+const LIEFERT: NonNullable<UemsDatenquelle['rueckmeldung']> = {
+  zustand: 'liefert', fehlerklasse: null, seit: null, gelesen_am: FRISCH,
+  anfragen_pro_minute: 12, messwerte_pro_minute: 305, gemeldet_am: FRISCH, text: 'Liefert Daten',
+};
+
+/** Ein Weg der Anlage, gelesen von der Box der Tests. */
+function anbindungsWeg(o: Partial<UemsDatenquelle> = {}): UemsDatenquelle {
+  return {
+    id: 'dq-2', kennzeichen: 'DQ-2', name: null, anlage: 's-1', protokoll: 'modbus_tcp', adresse: '192.168.254.30:502',
+    geraete_ids: [1], netz: null, mehrere_leser: false, steuerquelle: false, vergleichsquelle: false, kadenz_s: 10,
+    archiviert_am: null, zustaendige_box: { id: 'gw', name: 'Pilsting', heimat_anlage: 's-1' }, zeitraeume: [],
+    rueckmeldung: LIEFERT, ...o,
+  };
+}
+
+/** Ein eingebautes UEMS-Gerät, das eine Komponente speist - sein `data_source_id` ist der EINE Verweis auf den Weg. */
+function einbau(id: string, entity: string, dataSourceId: string | null, geraeteId = 1): UemsGeraet {
+  return {
+    id, kennzeichen: `GR-${id}`, einbau_kennzeichen: `Z-${id}`, ausgebaut_am: null,
+    komponenten: [{ entity_id: entity, gueltig_ab: '2026-10-01T00:00:00Z', gueltig_bis: null }],
+    data_source_id: dataSourceId, geraete_id: geraeteId,
+  };
+}
+
+describe('GE-2 · Anbindung an der Geräteseite', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, '', '#/');
+  });
+
+  /** Der Zähler aus „⚠ an einen ZÄHLER …“: die Quelle `src-7c1e9a2b` (Komponente `fr1`) als Netzzähler. */
+  function zaehler(quellen: UemsDatenquelle[], geraete: UemsGeraet[]) {
+    stub({
+      entities: () => Promise.resolve({
+        ...entities,
+        localSetup: [entities.localSetup[0], { ...entities.localSetup[1], role: 'grid-meter' }],
+      }),
+    });
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: quellen });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete });
+    vi.spyOn(anbindungApi, 'verlauf').mockResolvedValue({
+      eintraege: [{
+        id: 3, art: 'zustaendigkeit_begonnen', text: 'Zuständigkeit begonnen',
+        box: { id: 'gw', name: 'Pilsting', heimat_anlage: 's-1' }, ergebnis: null,
+        gilt_ab: '2026-10-01T08:00:00Z', urheber: { name: 'Ines Kaltenbach', rolle: 'kundenadministrator', art: 'kunde' },
+        zeitpunkt: '2026-10-01T08:00:00Z',
+      }],
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+  }
+
+  it('Zähler mit Weg: Weg, lesende Box ›, Empfang, Last, Takt, Kennung - und der Weg steht nur hier', async () => {
+    zaehler([anbindungsWeg()], [einbau('g-1', 'fr1', 'dq-2')]);
+    const sektion = await screen.findByTestId('baustein-details');
+    const anbindung = await within(sektion).findByTestId('geraet-anbindung');
+    expect(within(anbindung).getByRole('heading', { name: 'Anbindung' })).toBeInTheDocument();
+    expect(anbindung).toHaveTextContent('Modbus TCP · 192.168.254.30:502 · Geräte-ID 1');
+    expect(within(anbindung).getByRole('link', { name: /VoltPilot-Box Pilsting/ }))
+      .toHaveAttribute('href', '#/anlage/s-1/box/edge-45gz7da');
+    expect(anbindung).toHaveTextContent('Liefert Daten');
+    expect(anbindung).toHaveTextContent(/Zuletzt gelesen/);
+    expect(anbindung).toHaveTextContent('Last an der Box');
+    expect(anbindung).toHaveTextContent(/Lesetaktalle 10\ss/);
+    expect(anbindung).toHaveTextContent('Kennung DQ-2');
+    // Die Zeilen aus dem gemeldeten Bestand stehen nicht ein zweites Mal daneben.
+    expect(within(sektion).queryByText('192.168.254.30 : 502')).toBeNull();
+    expect(within(sektion).queryByText('Modbus-Adresse 1')).toBeNull();
+  });
+
+  it('„Zuständige Box wechseln“ öffnet den vorhandenen Dialog; eine laufende Übergabe steht sichtbar da', async () => {
+    vi.spyOn(api, 'standorte').mockResolvedValue({ standorte: [] } as unknown as Awaited<ReturnType<typeof api.standorte>>);
+    zaehler([anbindungsWeg({
+      uebergabe: {
+        zustand: 'Übergabe ausstehend', seit: '2026-10-23T10:05:00Z',
+        box_alt: { id: 'gw', name: 'Pilsting', heimat_anlage: 's-1' },
+        box_neu: { id: 'gw-2', name: 'Halle 2', heimat_anlage: 's-1' },
+      },
+    })], [einbau('g-1', 'fr1', 'dq-2')]);
+    const anbindung = await screen.findByTestId('geraet-anbindung');
+    expect(anbindung).toHaveTextContent('Wechselt zu VoltPilot-Box Halle 2');
+    expect(anbindung).toHaveTextContent('bisher VoltPilot-Box Pilsting');
+    fireEvent.click(within(anbindung).getByRole('button', { name: 'Zuständige Box wechseln' }));
+    expect(await screen.findByRole('dialog', { name: 'Zuständige Box wechseln' })).toBeInTheDocument();
+  });
+
+  it('Technik & Diagnose › „Verlauf der Anbindung“ liest das Protokoll des eigenen Wegs', async () => {
+    zaehler([anbindungsWeg()], [einbau('g-1', 'fr1', 'dq-2')]);
+    await screen.findByTestId('geraet-anbindung');
+    const verlauf = await technikTeil('anbindung');
+    expect(within(verlauf).getByRole('heading', { name: 'Verlauf der Anbindung' })).toBeInTheDocument();
+    expect(await within(verlauf).findByText('Zuständigkeit begonnen')).toBeInTheDocument();
+    expect(within(verlauf).getByText('VoltPilot-Box Pilsting · Ines Kaltenbach')).toBeInTheDocument();
+    expect(anbindungApi.verlauf).toHaveBeenCalledWith('s-1', 'dq-2');
+  });
+
+  it('Gerät ohne Weg: kein Abschnitt, kein Verlauf - die Verbindung aus dem Bestand bleibt', async () => {
+    zaehler([anbindungsWeg()], [einbau('g-1', 'fr1', null)]);
+    const sektion = await screen.findByTestId('baustein-details');
+    await waitFor(() => expect(api.uemsGeraete).toHaveBeenCalled());
+    await act(async () => {});
+    expect(await within(sektion).findByText('192.168.254.30 : 502')).toBeInTheDocument();
+    expect(within(sektion).queryByTestId('geraet-anbindung')).toBeNull();
+    const technik = await technikOeffnen();
+    expect(technik.querySelector('[data-technik="anbindung"]')).toBeNull();
+    // Ein Weg mit derselben Adresse, aber ohne gespeicherten Verweis, wird NICHT zugeordnet.
+    expect(anbindungApi.verlauf).not.toHaveBeenCalled();
+  });
+
+  it('Gerät hinter einem Gateway: „Gelesen über Gateway DQ-3 (2 Geräte) ›“, eigene Geräte-ID, Wechsel und Last am Gateway', async () => {
+    zaehler(
+      [anbindungsWeg({ id: 'dq-3', kennzeichen: 'DQ-3', name: 'Zählergateway', adresse: '192.168.10.31:502', geraete_ids: [1, 2] })],
+      [einbau('g-1', 'fr1', 'dq-3', 2), einbau('g-2', 'batt', 'dq-3', 1)],
+    );
+    const anbindung = await screen.findByTestId('geraet-anbindung');
+    expect(anbindung).toHaveTextContent('Modbus TCP · 192.168.10.31:502 · Geräte-ID 2');
+    // GE-5: der Weg führt auf die Seite des Gateways, über die Box, die es liest.
+    expect(within(anbindung).getByRole('link', { name: /Gateway DQ-3 \(2 Geräte\)/ }))
+      .toHaveAttribute('href', '#/anlage/s-1/geraet/edge-45gz7da/dq-3');
+    expect(anbindung).not.toHaveTextContent('Last an der Box');
+    expect(within(anbindung).queryByRole('button', { name: 'Zuständige Box wechseln' })).toBeNull();
+    expect(anbindung).toHaveTextContent('Box und Last gelten für alle 2 Geräte an diesem Gateway');
   });
 });

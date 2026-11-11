@@ -1,5 +1,5 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageSeite, AnlagenPage } from './AnlagenPage';
 import { api, type Site } from '../api';
@@ -15,6 +15,8 @@ import { readFace, rememberFace } from '../anlageFace';
 // trotzdem erst den Platzhalter - das Modul ist nur schon da.
 import '../components/EnergieBuehne';
 import '../components/kacheln/CockpitKacheln';
+import { ReportFirstPaint } from '../bootReady';
+import { SUB_CHUNK } from '../pageChunks';
 
 /**
  * M3 (#531) — der Cockpit-Beweis, erweitert um die Captain-Nachtrag-Invarianten
@@ -392,11 +394,13 @@ describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anl
 });
 
 /**
- * E6 = A („Anlage – neu gedacht"): die Prognosen-Seite ist ein Werkzeug für
- * VoltPilot. Ein Kunde mit altem Lesezeichen landet dort, wo die
- * Treffsicherheit jetzt steht - im Fahrplan -, und nie auf einer leeren Seite.
+ * Konzept `vp-prognosen-konzept` (E1 = C, Sonnen-Teppich, 11.11.2026): die
+ * Adresse `prognose` ist die Kundenseite der Prognose - jede Anlage landet
+ * dort, mit und ohne Speicher, nie auf einer leeren Seite oder einer
+ * Umleitung. Die frühere VoltPilot-interne Seite (Modellqualität) heißt seither
+ * `prognosemodelle`.
  */
-describe('E6 = A · die Prognosen-Seite ist ein Werkzeug für VoltPilot', () => {
+describe('Konzept vp-prognosen-konzept · die Adresse `prognose` ist die Kundenseite', () => {
   const MIT_SPEICHER = anlageSurface({
     entities: [
       { id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } },
@@ -422,18 +426,87 @@ describe('E6 = A · die Prognosen-Seite ist ein Werkzeug für VoltPilot', () => 
     window.location.hash = '';
   });
 
-  it('führt einen Kunden mit altem Lesezeichen in den Fahrplan', async () => {
+  it('leitet einen Kunden NICHT mehr um - die Prognose ist die Kundenseite selbst', async () => {
     expect(MIT_SPEICHER.deepViews).toContain('fahrplan');
     window.location.hash = '#/anlage/s-1/prognose';
     renderPrognose(MIT_SPEICHER);
-    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/fahrplan'));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Prognose' })).toBeInTheDocument());
+    expect(window.location.hash).toBe('#/anlage/s-1/prognose');
+  });
+});
+
+describe('„Ein Ort fürs Laden" §4.6/§7.1 · Ladevorgänge entfällt für Privatkunden, Betreiber bleiben als „Ladepark"', () => {
+  const LADEPARK = anlageSurface({
+    entities: [
+      { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+    ] as never,
+    config: { plantKind: 'eigenverbrauch' },
   });
 
-  it('wartet, solange die Anlage lädt - und nennt bis dahin den Weg', () => {
-    window.location.hash = '#/anlage/s-1/prognose';
-    renderPrognose(null);
-    expect(window.location.hash).toBe('#/anlage/s-1/prognose');
-    expect(screen.getByRole('link', { name: 'Fahrplan' })).toHaveAttribute('href', '#/anlage/s-1/fahrplan');
+  function renderLadevorgaenge(
+    betriebsart: 'endkunde' | 'betreiber' | null,
+    ladepunktAnzahl: number | null,
+  ) {
+    return render(
+      <AnlagenPage
+        sites={[site]}
+        devices={[]}
+        devicesFetchedAt={null}
+        route={{ page: 'anlagen', siteId: 's-1', sub: 'ladevorgaenge' as never, geraet: null as never }}
+        onNavigate={() => {}}
+        onReload={() => {}}
+        surface={LADEPARK}
+        betriebsart={betriebsart}
+        ladepunktAnzahl={ladepunktAnzahl}
+      />,
+    );
+  }
+
+  // Die Seite lädt `LadevorgaengeSection` nach (React.lazy). Unter Last dauerte der erste Import länger als die Frist
+  // eines `findBy` (1 s), und der erste Fall, der sie zeigt, scheiterte zufällig (1 von 5 Läufen, 1029 ms);
+  // vorgewärmt löst `lazy` sofort auf - geprüft wird die Seite, nicht die Ladezeit des Testlaufs.
+  beforeAll(async () => {
+    await SUB_CHUNK.ladevorgaenge();
+  });
+
+  beforeEach(() => {
+    vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] } as never);
+  });
+
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  it('leitet eine ausdrückliche Privatkunden-Betriebsart auf Steuerung › Laden um', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge('endkunde', null);
+    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/laden'));
+  });
+
+  it('leitet ohne gespeicherte Betriebsart bei höchstens zwei Ladepunkten ebenfalls um', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge(null, 2);
+    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/laden'));
+  });
+
+  it('lässt einen Betreiber an Ort und Stelle - die Seite bleibt (das Label „Ladepark" prüft ebenenNav.test.ts)', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge('betreiber', null);
+    await screen.findByText('Weitere Säule anbinden');
+    expect(window.location.hash).toBe('#/anlage/s-1/ladevorgaenge');
+  });
+
+  it('lässt ohne gespeicherte Betriebsart bei drei oder mehr Ladepunkten ebenfalls an Ort und Stelle', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge(null, 3);
+    await screen.findByText('Weitere Säule anbinden');
+    expect(window.location.hash).toBe('#/anlage/s-1/ladevorgaenge');
+  });
+
+  it('wartet, solange die Ladepunktzahl noch nicht geladen ist - und leitet nicht verfrüht um', () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge(null, null);
+    expect(window.location.hash).toBe('#/anlage/s-1/ladevorgaenge');
   });
 });
 
@@ -557,10 +630,13 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy());
   });
 
-  it('Eigenverbrauch: Autarkie und Eigenverbrauch sind eigene Kacheln für heute', async () => {
+  it('Eigenverbrauch ohne Tagesverbrauch: Autarkie und Eigenverbrauch bleiben eigene Kacheln', async () => {
     // Konzept „Cockpit als Tagesfilm“: keine Ringe mehr in der Geldkarte -
     // die Tageskennzahlen stehen als eigene Kacheln im Raster (eine Kennzahl,
-    // ein Ort). Der Energiefluss selbst bleibt „jetzt gerade“.
+    // ein Ort). Der Energiefluss selbst bleibt „jetzt gerade“. Kennt der Tag
+    // seinen Verbrauch, ziehen beide in den Block „Heute“ neben dem Fluss
+    // (vp-cockpit-privat-konzept, E1 = A; eigene Fälle unten) - ohne ihn gibt
+    // es keinen Block, dessen Balken nichts zeigten.
     mockAdaptive(true);
     mockSurface(PRIVAT);
     const { container } = renderSeite();
@@ -847,7 +923,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     expect(p.textContent).toContain('meldet sich nicht');
   });
 
-  it('trägt die Steuerung als Bühnenfuß: Auftrag, Gerät und Wirkung getrennt', async () => {
+  it('trägt die Steuerung als EINE Zeile Auftrag › Gerät › Wirkung - am Rechner rechts unter der Leitkachel (Konzept b1, E2)', async () => {
     vi.restoreAllMocks();
     sessionStorage.clear();
     stubApi();
@@ -865,14 +941,20 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stage-foot .vp-control-spalten')).toBeTruthy());
-    const foot = container.querySelector('.vp-stage-foot') as HTMLElement;
-    const text = (foot.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
-    expect(text).toContain('Auftrag');
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero .vp-steuer')).toBeTruthy());
+    const zeile = container.querySelector('.vp-steuer') as HTMLElement;
+    const text = (zeile.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
     expect(text).toContain('Speicher laden 2,1 kW');
     expect(text).toContain('bestätigt');
-    expect(text).toContain('Wirkung');
-    expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
+    expect(text).toContain('Warum?');
+    expect(zeile.querySelectorAll('.vp-steuer-pfeil')).toHaveLength(2);
+    // Rechts unter der Leitkachel, wenn es die Spalte neben dem Fluss gibt - sonst am Bühnenfuß; nie in der
+    // Fluss-Spalte selbst (die Spalte steht seit vp-cockpit-privat-konzept E4 IN der Bühne, neben dem Fluss).
+    const ort = container.querySelector('.vp-hero-side') ? '.vp-hero-side .vp-hero-steuer .vp-steuer' : '.vp-stage-foot .vp-steuer';
+    expect(container.querySelector(ort)).toBe(zeile);
+    expect(container.querySelector('.vp-eb-links .vp-steuer')).toBeNull();
+    // Kein Fließtext unter der Zeile mehr (Konzept b1): die Gründe stehen im Blatt „Warum?“.
+    expect(container.querySelector('.vp-control-reason, .vp-guard-line')).toBeNull();
     // Die Bestätigung steht EINMAL - in der Steuerzeile, nicht noch am Speicher-Knoten.
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp-batt')).toBeTruthy());
     expect(container.querySelector('.vp-flow-confirm')).toBeNull();
@@ -888,6 +970,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
     expect(container.querySelector('.vp-flow-confirm')).toBeNull();
     expect(container.querySelector('.vp-stage-foot')).toBeNull();
+    expect(container.querySelector('.vp-steuer')).toBeNull();
   });
 });
 
@@ -964,6 +1047,34 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     expect(card?.querySelector('.vp-zustand.is-kompakt')).not.toBeNull();
     expect(card?.querySelector('.vp-toolbox-line')).toBeNull();
     expect(container.querySelector('.vp-stack-foot')).toBeNull();
+  });
+
+  it('ein Fahrplan-Befund bleibt in der Zeile, auch wenn die Fahrplan-Kachel steht - nie „Alles in Ordnung" unter einer Warnung', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(PRIVAT);
+    stubApi();
+    // Nur ein Plan von gestern: der Kopf sagt „Warnung · Fahrplan: kein aktueller Plan".
+    const gestern = new Date(Date.now() - 26 * 3600_000).toISOString();
+    vi.spyOn(api, 'schedule').mockResolvedValue({
+      planId: 'p0',
+      deviceId: null,
+      generatedAt: gestern,
+      slotMinutes: 15,
+      savingsEur: null,
+      bankedValueEur: null,
+      socStartPct: null,
+      socEndPct: null,
+      peakTargetKw: null,
+      slots: [{ start: gestern, batteryKw: 0, gridKw: null, socPct: null, priceEurMwh: null, costEur: null, baselineCostEur: null }],
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => {
+      expect(container.querySelector('.vp-cockpit-health .vp-zustand')).not.toBeNull();
+    });
+    await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).not.toBeNull(), { timeout: 5000 });
+    const card = container.querySelector('.vp-cockpit-health');
+    expect(card?.textContent).toContain('Fahrplan: kein aktueller Plan');
+    expect(card?.textContent).not.toContain('Alles in Ordnung');
   });
 
   it('meldet die selbst gemessenen Fakten (Fahrplan/Steuerung/Speicher) nach oben', async () => {
@@ -1156,14 +1267,6 @@ describe('B1 · Welle 3 faltet in Welle 2', () => {
     expect(container.querySelector('.vp-cockpit-stack')).toBeNull();
   });
 
-  it('startet /telemetry mit, wenn zuletzt das Peak-Band führte', async () => {
-    rememberFace('s-1', { stack: true, peak: true });
-    mockAdaptive(true, TOPO);
-    mockSurfaceLoading();
-    renderSeite();
-    await waitFor(() => expect(api.telemetry).toHaveBeenCalled());
-  });
-
   it('spekuliert NICHT ohne Erinnerung — byte-gleich zu vor B1', async () => {
     mockAdaptive(true, TOPO);
     mockSurfaceLoading();
@@ -1171,16 +1274,6 @@ describe('B1 · Welle 3 faltet in Welle 2', () => {
     // Der Zwischenzustand steht; die Welle-3-Abrufe warten wie bisher.
     await waitFor(() => expect(api.overview).toHaveBeenCalled());
     expect(api.history).not.toHaveBeenCalled();
-    expect(api.telemetry).not.toHaveBeenCalled();
-  });
-
-  it('spekuliert NICHT auf /telemetry, wenn zuletzt kein Peak-Band führte', async () => {
-    rememberFace('s-1', { stack: true, peak: false });
-    mockAdaptive(true, TOPO);
-    mockSurfaceLoading();
-    renderSeite();
-    await waitFor(() => expect(api.history).toHaveBeenCalled());
-    expect(api.telemetry).not.toHaveBeenCalled();
   });
 
   it('merkt sich das Gesicht, sobald ENTSCHIEDEN ist', async () => {
@@ -1841,4 +1934,300 @@ it('der Live-Takt holt auch die Ladepunkte - eine neu gestartete Ladung erschein
   await waitFor(() => expect(detail()).not.toContain('Kein Auto eingesteckt'));
   expect(detail()).toMatch(/Wallbox Garage.*8,2\skW/);
   expect(detail()).toMatch(/übriger Haushalt berechnet1,3\skW/);
+});
+
+describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('Ist-Werte und Frische alle 10 s, Zeitraum-Summen und Plan nur alle 30 s', async () => {
+    // Nur die Intervalle fälschen: Promises und waitFor laufen weiter auf der echten Uhr.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const overview = vi.spyOn(api, 'overview');
+    const earnings = vi.spyOn(api, 'siteEarnings');
+    const plan = vi.spyOn(api, 'schedule');
+    const control = vi.spyOn(api, 'controlStatus');
+    renderSeite();
+    await waitFor(() => expect(overview).toHaveBeenCalled());
+    await waitFor(() => expect(plan).toHaveBeenCalled());
+    const start = {
+      overview: overview.mock.calls.length,
+      earnings: earnings.mock.calls.length,
+      plan: plan.mock.calls.length,
+      control: control.mock.calls.length,
+    };
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(overview.mock.calls.length).toBe(start.overview + 1);
+    expect(control.mock.calls.length).toBe(start.control + 1);
+    expect(earnings.mock.calls.length).toBe(start.earnings);
+    expect(plan.mock.calls.length).toBe(start.plan);
+
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
+    });
+    expect(overview.mock.calls.length).toBe(start.overview + 3);
+    expect(earnings.mock.calls.length).toBe(start.earnings + 1);
+    expect(plan.mock.calls.length).toBe(start.plan + 1);
+  });
+});
+
+/**
+ * Rang 4a (Scout `vp-anlagen-cockpit-perf`): das Erstbild hängt nicht mehr an `/overview`.
+ *
+ * Die Übersichts-Zeile entscheidet nur, ob eine Anlage ohne Daten der Einrichtungspfad ist. Hat sie Komponenten oder
+ * Modi, steht der Stapel mit den Stammdaten, und nur die Teile der Zeile (Fluss, Zustand, Frische-Chip) laden mit
+ * Platzhaltern nach. Eine Anlage ohne Komponenten und Modi wartet unverändert (sie könnte der Einrichtungspfad sein).
+ */
+describe('Rang 4a · Erstbild ohne /overview', () => {
+  /** Hält die Übersicht an, bis der Fall sie freigibt. */
+  function overviewHalten() {
+    let frei: (() => void) | null = null;
+    const antwort = {
+      sites: [
+        {
+          id: 's-1', name: 'Hof Lindenberg', plantKind: 'eigenverbrauch', netzladenErlaubt: true, deviceCount: 1,
+          onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: new Date().toISOString(),
+          batteryWithoutDevice: false,
+          live: { ts: new Date().toISOString(), pvKw: 4.2, loadKw: 1.1, gridKw: -2.1, socPct: 60 },
+          plannedSavingsTodayEur: null,
+        },
+      ],
+      totals: {} as never,
+      dailySavings: [],
+    };
+    vi.spyOn(api, 'overview').mockImplementation(
+      () => new Promise((resolve) => { frei = () => resolve(antwort as never); }),
+    );
+    return () => frei?.();
+  }
+
+  it('Anlage mit Komponenten: der Stapel steht, solange /overview noch läuft - mit Platzhaltern', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const freigeben = overviewHalten();
+    const { container } = renderSeite();
+
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-stack')).toBeTruthy());
+    expect(container.querySelector('.vp-anlage-pending')).toBeNull();
+    // Bühne und Zustands-Karte halten ihren Platz, der Frische-Chip auch; die Statuszeile spricht nur für Vorlesegeräte.
+    expect(container.querySelector('.vp-cockpit-stack .vp-skeleton')).toBeTruthy();
+    expect(container.querySelector('.vp-cockpit-health[aria-hidden="true"] .vp-skeleton')).toBeTruthy();
+    expect(container.querySelector('.vp-anlage-badges [aria-hidden="true"][style*="hidden"]')).toBeTruthy();
+    expect(container.querySelector('.vp-anlage-sentence')).toBeNull();
+    // Und es wird NICHTS behauptet, was nur die Zeile weiß: kein Befund, keine Veraltung.
+    expect(container.querySelector('.vp-cockpit-health:not([aria-hidden="true"])')).toBeNull();
+    expect(container.querySelector('.is-stale')).toBeNull();
+
+    await act(async () => { freigeben(); });
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow')).toBeTruthy());
+    expect(container.querySelector('.vp-cockpit-health[aria-hidden="true"]')).toBeNull();
+    expect(container.querySelector('.vp-anlage-badges [aria-hidden="true"][style*="hidden"]')).toBeNull();
+    expect(container.querySelector('.vp-anlage-pending')).toBeNull();
+  });
+
+  it('Anlage ohne Komponenten und Modi wartet auf die Zeile - sie könnte der Einrichtungspfad sein', async () => {
+    mockAdaptive(false);
+    mockSurface(LEER);
+    const freigeben = overviewHalten();
+    const { container } = renderSeite();
+
+    await waitFor(() => expect(api.overview).toHaveBeenCalled());
+    // Ruhiger Zwischenzustand, KEIN Stapel und kein „nicht zugeordnet“ vor der Antwort.
+    expect(container.querySelector('.vp-anlage-pending')).toBeTruthy();
+    expect(container.querySelector('.vp-cockpit-stack')).toBeNull();
+    expect(container.querySelector('.vp-anlage-unassigned')).toBeNull();
+
+    await act(async () => { freigeben(); });
+    await waitFor(() => expect(container.querySelector('.vp-anlage-pending')).toBeNull());
+  });
+
+  it('meldet das erste Bild, ohne auf /overview zu warten - der Boot-Vorhang fällt mit den Stammdaten', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    overviewHalten();
+    const gemeldet = vi.fn();
+    render(
+      <ReportFirstPaint.Provider value={gemeldet}>
+        <AnlageSeite
+          sites={[site]}
+          devices={[]}
+          route={{ page: 'anlagen', siteId: 's-1', sub: null }}
+          onNavigate={() => {}}
+          onReload={() => {}}
+          site={site}
+          onOpenSub={() => {}}
+          onBackToList={null}
+        />
+      </ReportFirstPaint.Provider>,
+    );
+    await waitFor(() => expect(gemeldet).toHaveBeenCalled());
+  });
+});
+
+/**
+ * **Führt der Fluss, steht neben ihm der Tag** (Konzept `vp-cockpit-privat-konzept`, Captain-Entscheid
+ * E1–E4 = A vom 08.11.2026). Ein Haushalt ohne Lastspitzenkappung und ohne Vermarktung: die Leit-Regel
+ * ergibt „Energiefluss“ - dieselbe, die „Cockpit anpassen“ zeigt. Daneben steht der Block „Heute“, der
+ * Euro wird eine ruhige Zeile am Ende, und ein Stern des Kunden holt ihn zurück.
+ */
+describe('Führt der Fluss: „Heute“ neben dem Fluss, der Euro als ruhige Zeile (vp-cockpit-privat-konzept)', () => {
+  const OHNE_SPEICHER = { roleCounts: { pv: 1, storage: 0, consumer: 1, grid: 1 } };
+  const frist = { timeout: 5000 };
+  const text = (el: Element | null) => (el?.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
+
+  function telefon(isPhone: boolean) {
+    (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+      matches: isPhone && query.includes('720px'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    });
+  }
+
+  function haushalt(overview: Record<string, unknown> = OHNE_SPEICHER) {
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    stubApi(overview);
+    // Der Abend aus dem Bild des Captains: 22,0 kWh Sonne, 58,4 kWh Verbrauch, 29 % / 77 %.
+    vi.spyOn(api, 'history').mockResolvedValue({
+      totals: { consumptionKwh: 58.4, pvGenerationKwh: 22, gridImportKwh: 41.5, gridExportKwh: 5.1, autarkiePct: 29, eigenverbrauchPct: 77 },
+      buckets: [],
+      protocol: [],
+      plan: [],
+    } as never);
+    const mitternacht = new Date();
+    mitternacht.setHours(0, 0, 0, 0);
+    vi.spyOn(api, 'siteEarnings').mockResolvedValue({
+      range: 'day',
+      from: mitternacht.toISOString(),
+      to: new Date(mitternacht.getTime() + 24 * 3600_000).toISOString(),
+      nettoErgebnisEur: -5.56,
+      einspeiseErloesEur: 0.4,
+      eigenverbrauchsWertEur: 4.11,
+      stromkostenEur: 10.07,
+      savedEur: 0,
+      steuerungSplitReason: 'no_battery_data',
+    } as never);
+    mockAdaptive(true, TOPO);
+    mockSurface(PRIVAT);
+  }
+
+  afterEach(() => {
+    delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('am Rechner steht „Heute“ in der Spalte neben dem Fluss; Autarkie, Eigenverbrauch und Sonne ziehen ein', async () => {
+    haushalt();
+    telefon(false);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel="heute"]')).toBeTruthy(), frist);
+    const heute = container.querySelector('.vp-hero-side [data-kachel="heute"]');
+    expect(text(heute)).toMatch(/29\s*%/);
+    expect(text(heute)).toContain('Ihres Stroms kam heute aus eigener Sonne');
+    expect(text(heute)).toContain('Verbraucht');
+    expect(text(heute)).toContain('77 % selbst genutzt');
+    // Keine Leitkachel, kein Stern - der Fluss führt.
+    expect(container.querySelector('.vp-k-stern')).toBeNull();
+    for (const weg of ['autarkie', 'eigenverbrauch', 'sonne', 'geld']) {
+      expect(container.querySelector(`[data-kachel="${weg}"]`)).toBeNull();
+    }
+  });
+
+  it('der Euro steht als ruhige Zeile am Ende - ohne Rot, ohne Stern, ohne Steuerungs-Zeile (E2, N1)', async () => {
+    haushalt();
+    telefon(false);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-k-geldzeile')).toBeTruthy(), frist);
+    const zeile = container.querySelector('.vp-k-geldzeile') as HTMLElement;
+    expect(text(zeile)).toContain('Unterm Strich');
+    expect(text(zeile)).toContain('heute bisher');
+    expect(text(zeile)).toContain('5,56');
+    expect(container.querySelector('.is-kosten')).toBeNull();
+    expect(text(container)).not.toContain('Steuerung —');
+    expect(text(container)).not.toContain('Zwischenstand');
+    // Am Ende: hinter dem Kachelraster, vor dem Zustand.
+    await waitFor(() => expect(container.querySelector('.vp-kraster')).toBeTruthy(), frist);
+    const raster = container.querySelector('.vp-kraster') as HTMLElement;
+    expect(raster.compareDocumentPosition(zeile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('ohne Speicher kein Netzladen-Abzeichen im Kopf, mit Speicher wie bisher (N3)', async () => {
+    haushalt();
+    telefon(false);
+    const ohne = renderSeite();
+    await waitFor(() => expect(ohne.container.querySelector('.vp-hero-side [data-kachel="heute"]')).toBeTruthy(), frist);
+    expect(text(ohne.container.querySelector('.vp-anlage-badges'))).not.toMatch(/Solarladen|Netzladen/);
+    ohne.unmount();
+
+    haushalt({ roleCounts: { pv: 1, storage: 1, consumer: 1, grid: 1 } });
+    telefon(false);
+    const mit = renderSeite();
+    await waitFor(() => expect(text(mit.container.querySelector('.vp-anlage-badges'))).toMatch(/Netzladen aktiv/), frist);
+  });
+
+  it('der Stern des Kunden auf „Unterm Strich“ holt den Euro als Leitkachel zurück (E3)', async () => {
+    haushalt();
+    telefon(false);
+    vi.spyOn(api, 'cockpitLayout').mockResolvedValue({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: null,
+      eigen: { document: { order: [], hidden: [], shown: [], lead: 'erloes-komposition' }, updatedBy: null, updatedAt: null },
+      bausteine: [],
+      darfVorgabe: false,
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel="geld"] .vp-k-stern')).toBeTruthy(), frist);
+    expect(container.querySelector('[data-kachel="heute"]')).toBeNull();
+    expect(container.querySelector('.vp-k-geldzeile')).toBeNull();
+    // Ohne „Heute“ stehen die Tageskacheln wieder im Raster.
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel="autarkie"]')).toBeTruthy(), frist);
+  });
+
+  it('auch bei Marktoptimierung gilt der Stern des Kunden auf dem Energiefluss: „Heute“ statt Börsenpreis, der Euro genau einmal', async () => {
+    haushalt({ roleCounts: { pv: 1, storage: 1, consumer: 1, grid: 1 } });
+    // Netzladen + dynamischer Tarif = Marktoptimierung (Block „Handel“ mit Geld-Strom), ohne Leistungspreis.
+    mockSurface({ ...MULTI, signals: { ...MULTI.signals!, hasLeistungspreis: false }, config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch', netzladenErlaubt: true } });
+    telefon(false);
+    vi.spyOn(api, 'cockpitLayout').mockResolvedValue({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: null,
+      eigen: { document: { order: [], hidden: [], shown: [], lead: 'energiefluss' }, updatedBy: null, updatedAt: null },
+      bausteine: [],
+      darfVorgabe: false,
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel="heute"]')).toBeTruthy(), frist);
+    expect(container.querySelector('.vp-hero-side [data-kachel="strompreis"]')).toBeNull();
+    expect(container.querySelector('.vp-k-stern')).toBeNull();
+    // Der Euro steht genau einmal: als Zeile am Ende, nicht zusätzlich als Kachel im Raster („@geld“).
+    await waitFor(() => expect(container.querySelector('.vp-k-geldzeile')).toBeTruthy(), frist);
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel]')).toBeTruthy(), frist);
+    expect(container.querySelector('[data-kachel="geld"]')).toBeNull();
+  });
+
+  it('am Telefon ist „Heute“ die erste Kachel unter der Bühne, und die Kopfzeile trägt keinen Euro', async () => {
+    haushalt();
+    telefon(true);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel="heute"]')).toBeTruthy(), frist);
+    const erste = container.querySelector('.vp-kraster [data-kachel]') as HTMLElement;
+    expect(erste.getAttribute('data-kachel')).toBe('heute');
+    expect(container.querySelector('.vp-hero-side')).toBeNull();
+    expect(container.querySelector('.vp-mob-sticky-money')).toBeNull();
+    await waitFor(() => expect(container.querySelector('.vp-k-geldzeile')).toBeTruthy(), frist);
+  });
 });

@@ -33,6 +33,8 @@ Budget: 256 KiB je Artefakt, 512 KiB je serialisiertem Deployment gemäß Schema
 
 Der Core persistiert Artefakte und aktualisiert Node-RED über dessen Admin-API. Zurückgezogene Wünsche laufen entsprechend ihrer TTL aus; der nächste gültige Besitzer beziehungsweise Failsafe übernimmt.
 
+**Edge Light** hat kein Node-RED. Dort führt das Programm dasselbe Artefakt selbst aus, wenn es nur aus generierten Verbraucherregeln besteht (`vp-consumer-policy` mit seinen `inject`-Auslösern): der Go-Zwilling `internal/verbraucherregel` liest dieselben Topics des lokalen Busses und sendet denselben Wunsch wie der Palette-Knoten ([Vektoren](verbraucherregel-vectors.json)). Er steht beim Tor `min_palette_version` für den Palette-Stand 0.5.0. Jedes andere Bündel, etwa eine Automation aus dem Flow-Editor, quittiert Edge Light als `unsupported` mit dem Grund. Ein unverändertes Artefakt läuft mit seinem Zustand weiter, ein geändertes startet neu, ein zurückgezogenes hört auf zu erneuern.
+
 ## Reseed und Bestätigung
 
 Reseed erhält markierte `@vp-flow`-Tabs und erneuert die Herstellervorlagen getrennt. Die alte Behauptung, jeder Templatewechsel ersetze zwangsläufig alle Kundenflows, beschreibt nicht mehr den aktuellen Pfad.

@@ -869,6 +869,24 @@ export function todaySlots<T extends { start: string }>(slots: T[], now: Date): 
   return slots.filter((s) => new Date(s.start).toDateString() === day);
 }
 
+/**
+ * Index des letzten Slots, dessen Start nicht nach `now` liegt ("jetzt").
+ * -1, wenn der Plan noch vollständig in der Zukunft liegt (oder leer ist).
+ *
+ * Tastatur-Einstieg (WCAG 2.1.1): ein Fokus, der noch keinen gewählten Slot
+ * trägt, startet hier statt bei Index 0 - "jetzt" ist der sinnvolle erste
+ * Haltepunkt, genau wie beim Tipp auf die Tagesleiste.
+ */
+export function nowSlotIndex<T extends { start: string }>(slots: T[], now: Date): number {
+  const nowMs = now.getTime();
+  let idx = -1;
+  for (let i = 0; i < slots.length; i++) {
+    if (new Date(slots[i].start).getTime() <= nowMs) idx = i;
+    else break;
+  }
+  return idx;
+}
+
 /** Was der Fahrplan für heute an Geld vorsieht - drei Zahlen EINER Rechnung. */
 export interface PlannedDayCosts {
   /** Geplante Stromkosten mit VoltPilot (signierte Kosten, negativ = Erlös). */
@@ -1039,16 +1057,10 @@ export const KEIN_LADESTAND_NOTE =
 /**
  * Vokabular von `SchedulePlan.socSource` (Spalte `schedule.soc_source`).
  *
- * ⚠ Es ist ADDITIV: seit P5b kennt die Box die feinere Herkunft ihres
- * gerechneten Ladestands (Kennlinie vs. Ladungszählung, `soc_source_code`).
- * Reicht ein Lauf sie als `berechnet:kennlinie` /
- * `berechnet:ladungszaehlung` weiter, NENNT die Fahrplan-Seite sie; ein Lauf
- * mit dem groben `berechnet` bleibt unverändert richtig gelesen.
+ * ⚠ Es ist ADDITIV: ein Wort außerhalb des Vokabulars wird nicht geraten.
  */
 export const SOC_SOURCE_GEMESSEN = 'gemessen';
 export const SOC_SOURCE_BERECHNET = 'berechnet';
-export const SOC_SOURCE_KENNLINIE = 'berechnet:kennlinie';
-export const SOC_SOURCE_LADUNGSZAEHLUNG = 'berechnet:ladungszaehlung';
 export const SOC_SOURCE_UNBEKANNT = 'unbekannt';
 
 /**
@@ -1065,14 +1077,10 @@ export function planOhneLadestand(plan: { socSource?: string | null } | null | u
 }
 
 /**
- * Der Herkunfts-Zusatz für einen BERECHNETEN Ladestand (P7 + P5b/P5d).
+ * Der Herkunfts-Zusatz für einen BERECHNETEN Ladestand (P7).
  *
- * Der generische SoC-Baustein DARF planen — aber die Fläche muss sagen, dass
- * sein Stand gerechnet und nicht gemessen ist. Nennt der Lauf zusätzlich die
- * METHODE, steht sie im Satz: „aus der Kennlinie" und „mitgezählt" führen zu
- * verschiedenen Handlungen (die eine braucht die richtige Zellchemie, die
- * andere eine Nachkalibrierung), und ein Satz, der beide gleich behandelt,
- * hilft bei keiner von beiden.
+ * Ein berechneter Ladestand DARF planen — aber die Fläche muss sagen, dass
+ * er gerechnet und nicht gemessen ist.
  *
  * ⚠ Ein Wort außerhalb des Vokabulars ergibt `null` — geraten wird hier
  * nichts, und `gemessen`/`unbekannt`/ein Alt-Lauf ohne Spalte tragen den Satz
@@ -1081,25 +1089,22 @@ export function planOhneLadestand(plan: { socSource?: string | null } | null | u
 export function ladestandHerkunftNote(
   plan: { socSource?: string | null } | null | undefined,
 ): string | null {
-  const kern =
-    'Der Ladestand dieser Anlage wird berechnet, nicht gemessen – der Fahrplan ist '
-    + 'entsprechend ungenauer';
-  switch (plan?.socSource) {
-    case SOC_SOURCE_BERECHNET:
-      return `${kern}.`;
-    case SOC_SOURCE_KENNLINIE:
-      return `${kern}. Er entsteht aus der Zellspannung über die Kennlinie Ihrer Zelle.`;
-    case SOC_SOURCE_LADUNGSZAEHLUNG:
-      return `${kern}. Er wird ab einem Startpunkt mitgezählt und läuft ohne `
-        + 'Nachkalibrierung mit der Zeit auseinander.';
-    default:
-      return null;
+  if (plan?.socSource !== SOC_SOURCE_BERECHNET) {
+    return null;
   }
+  return 'Der Ladestand dieser Anlage wird berechnet, nicht gemessen – der Fahrplan ist entsprechend ungenauer.';
 }
 
 export const HORIZON_HINT =
   'Der Fahrplan reicht bis zum Tagesende – sobald die Börsenpreise für morgen ' +
   'vorliegen (ab ca. 13 Uhr), plant VoltPilot darüber hinaus.';
+
+/**
+ * Sonnen-sichere Fassung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.5):
+ * dieselbe ≥13-Uhr-Gatterung, nur ohne das Wort „Börsenpreise" - bei flachem
+ * Bezug und fester Vergütung erklärt der Preis nichts (D1).
+ */
+export const HORIZON_HINT_SONNE = 'Der Fahrplan reicht bis Mitternacht – ab etwa 13 Uhr auch für morgen.';
 
 /**
  * The horizon-edge honesty hint (FK2 part b): before the day-ahead price
@@ -1109,11 +1114,15 @@ export const HORIZON_HINT =
  * the plan's own slot range: the hint shows while the horizon end lies within
  * today (still ahead of `now`); a plan reaching into tomorrow - or an entirely
  * stale plan, which is a different problem - gets no hint.
+ *
+ * `sonne` (Vorgabe `false`, lässt jeden bestehenden Aufrufer unverändert):
+ * true liefert {@link HORIZON_HINT_SONNE} statt {@link HORIZON_HINT}.
  */
 export function horizonHint(
   slots: { start: string }[],
   now: Date,
   slotMinutes = 15,
+  sonne = false,
 ): string | null {
   if (slots.length === 0) return null;
   // Slots come time-ordered from the API; the horizon ends after the last one.
@@ -1121,7 +1130,7 @@ export function horizonHint(
   const horizonEnd = last + slotMinutes * 60_000;
   if (horizonEnd <= now.getTime()) return null;
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
-  return horizonEnd <= endOfToday ? HORIZON_HINT : null;
+  return horizonEnd <= endOfToday ? (sonne ? HORIZON_HINT_SONNE : HORIZON_HINT) : null;
 }
 
 /* ---------------------------------------------------------------------------

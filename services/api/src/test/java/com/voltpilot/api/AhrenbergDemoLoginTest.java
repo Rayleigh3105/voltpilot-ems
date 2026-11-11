@@ -44,9 +44,10 @@ class AhrenbergDemoLoginTest {
 
         List<String> namen = new ArrayList<>();
         realm.path("users").forEach(u -> namen.add(u.path("username").asText()));
-        // service-account-voltpilot-tunnel-dienst kam mit der Fernwartung (PR #1458) in den lokalen Realm.
+        // service-account-voltpilot-tunnel-dienst kam mit der Fernwartung (PR #1458) in den lokalen Realm,
+        // service-account-voltpilot-werkstatt-dienst mit der Werkstatt-Automatik (V1, Freigabe in der API).
         assertThat(namen).containsExactly("service-account-voltpilot-release-publisher",
-                "service-account-voltpilot-tunnel-dienst",
+                "service-account-voltpilot-tunnel-dienst", "service-account-voltpilot-werkstatt-dienst",
                 "service-account-voltpilot-api", "admin", "demo", "demo2", "ahrenberg",
                 "jonas", "ines", "peter", "murat", "claudia", "partner-brunner", "support-voss");
 

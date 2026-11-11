@@ -3,24 +3,21 @@ package com.voltpilot.api.probe;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -66,10 +63,9 @@ public class ProbeResultListener extends Rueckmeldeweg {
     private static final int MAX_RESULTS = 8;
 
     /**
-     * Wie viele Zuordnungs-Zeilen eine Vorschau höchstens trägt - genau die
-     * Obergrenze, die {@code UserDefinedBatteryDefinition.MAX_MAPPINGS} für
-     * eine Batterie erlaubt. Mehr Zeilen als es Zuordnungen geben KANN wären
-     * keine Antwort auf die gestellte Frage.
+     * Wie viele benannte Messwert-Zeilen ({@code samples}) eine Antwort höchstens
+     * trägt. Mehr Zeilen als es Zuordnungen geben KANN wären keine Antwort auf
+     * die gestellte Frage.
      */
     private static final int MAX_SAMPLES = 16;
     /** A bound on the German sentence a device may hand to a customer. */
@@ -92,8 +88,7 @@ public class ProbeResultListener extends Rueckmeldeweg {
     private final String password;
     private final ProbeRegistry registry;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public ProbeResultListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -104,75 +99,33 @@ public class ProbeResultListener extends Rueckmeldeweg {
         this.username = username;
         this.password = password;
         this.registry = registry;
+        this.verbindung = new BrokerVerbindung(log, "probe result", brokerUrl,
+                "voltpilot-api-probe-result-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(RESULT_FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
+        ensureConnected();
+    }
+
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
+    @Scheduled(fixedDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}",
+            initialDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}")
+    public void ensureConnected() {
+        verbindung.sicherstellen();
+    }
+
+    boolean connectedForTest() { return verbindung.verbunden(); }
+
+    private void empfangen(String topic, MqttMessage message) {
         try {
-            connect();
+            handle(topic, message.getPayload());
         } catch (Exception e) {
-            log.warn("Probe-result listener could not connect to {} yet: {} "
-                    + "(auto-reconnect active)", brokerUrl, e.getMessage());
+            // Deliberately without the payload: it carries the customer's
+            // LAN topology, and a parse failure is not worth recording it.
+            log.warn("Probe result on '{}' could not be handled: {}", topic, e.getMessage());
         }
-    }
-
-    private void connect() throws Exception {
-        synchronized (lock) {
-            if (client != null) {
-                return;
-            }
-            client = new MqttClient(brokerUrl, "voltpilot-api-probe-result-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-            client.setCallback(new MqttCallbackExtended() {
-                @Override
-                public void connectComplete(boolean reconnect, String serverUri) {
-                    try {
-                        client.subscribe(RESULT_FILTER, 1, messageListener());
-                        log.info("Probe-result listener subscribed to {} at {}",
-                                RESULT_FILTER, serverUri);
-                    } catch (Exception e) {
-                        log.warn("Probe-result subscribe failed: {}", e.getMessage());
-                    }
-                }
-
-                @Override
-                public void connectionLost(Throwable cause) {
-                    log.warn("Probe-result listener lost the broker connection: {} "
-                            + "(auto-reconnect active)",
-                            cause == null ? "unknown" : cause.getMessage());
-                }
-
-                @Override
-                public void messageArrived(String topic, MqttMessage message) {
-                }
-
-                @Override
-                public void deliveryComplete(
-                        org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {
-                }
-            });
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-    }
-
-    private IMqttMessageListener messageListener() {
-        return (topic, message) -> {
-            try {
-                handle(topic, message.getPayload());
-            } catch (Exception e) {
-                // Deliberately without the payload: it carries the customer's
-                // LAN topology, and a parse failure is not worth recording it.
-                log.warn("Probe result on '{}' could not be handled: {}", topic, e.getMessage());
-            }
-        };
     }
 
     /** Test-visible: parse one answer and hand it to the waiting request. */
@@ -228,14 +181,34 @@ public class ProbeResultListener extends Rueckmeldeweg {
                 boolean ok = line.path("ok").asBoolean(false);
                 JsonNode samplesNode = line.get("samples");
                 if (samplesNode != null && samplesNode.isArray()) {
-                    // Die VORSCHAU einer selbst angebundenen Batterie (P5d): je
-                    // Zuordnung eine Zeile. Sie steht VOR dem reading-Zweig, weil
-                    // sie den Vier-Kanal-Block gar nicht benutzt - und sie darf
-                    // auch bei ok=false stehen: „im Fenster kam nichts an" ist
-                    // genau die Auskunft, wegen der die Vorschau existiert.
+                    // Benannte Messwert-Zeilen: je Zuordnung eine Zeile. Sie
+                    // stehen VOR dem reading-Zweig, weil sie den Vier-Kanal-Block
+                    // gar nicht benutzen - und sie dürfen auch bei ok=false
+                    // stehen: „im Fenster kam nichts an" ist eine Auskunft.
                     List<ProbeResult.Sample> samples = samples(samplesNode);
-                    results.add(new ProbeResult.OpResult(id, ok, ok ? null : code(line),
-                            ok ? null : text(line), samples));
+                    List<ProbeResult.Ausgang> ausgaenge = ausgaenge(line.get("ausgaenge"));
+                    results.add(ausgaenge == null
+                            ? new ProbeResult.OpResult(id, ok, ok ? null : code(line), ok ? null : text(line), samples)
+                            : ProbeResult.OpResult.ausAusgaengen(id, ok, ok ? null : code(line),
+                                    ok ? null : text(line), samples, ausgaenge));
+                    continue;
+                }
+                List<ProbeResult.Ausgang> nurAusgaenge = ausgaenge(line.get("ausgaenge"));
+                if (nurAusgaenge != null) {
+                    // Heizstab V1: the answer of nach_stromausfall_aus - the setting per output
+                    // as the box read it back, no measurement.
+                    results.add(ProbeResult.OpResult.ausAusgaengen(id, ok, ok ? null : code(line),
+                            ok ? null : text(line), null, nurAusgaenge));
+                    continue;
+                }
+                JsonNode erzeugerNode = line.get("erzeuger_kopf");
+                if (erzeugerNode != null && erzeugerNode.isObject()) {
+                    // EZ-15: der Kopf eines Erzeuger-Registerbilds — wie beim WAGO-Kopf AUCH bei ok=false
+                    // (was stand denn dort?); ohne beide Pflichtfelder ist er keine Aussage.
+                    ProbeResult.ErzeugerKopf kopf = erzeugerKopf(erzeugerNode);
+                    boolean gut = ok && kopf != null;
+                    results.add(ProbeResult.OpResult.ausErzeugerKopf(id, gut, gut ? null : code(line),
+                            gut ? null : text(line), null, kopf));
                     continue;
                 }
                 JsonNode kopfNode = line.get("wago_kopf");
@@ -333,6 +306,58 @@ public class ProbeResultListener extends Rueckmeldeweg {
                 controller, text(n, "typenschild"));
     }
 
+    private static final Set<String> ERZEUGER_GRUENDE = Set.of("zu_wenig_woerter", "signatur_fremd",
+            "version_fremd", "wortfolge_falsch", "te_anzahl_ungueltig");
+
+    /**
+     * Der Erzeuger-Kopf (Vertrag {@code op_result.erzeuger_kopf}) — oder {@code null}, wenn
+     * {@code signatur_ok}/{@code erkannt} fehlen. Ein Grund außerhalb des Vokabulars, eine Einheit
+     * ohne gültige Nummer und eine Zahl außerhalb ihres Bereichs werden weggelassen, nie geraten.
+     */
+    private static ProbeResult.ErzeugerKopf erzeugerKopf(JsonNode n) {
+        JsonNode sig = n.get("signatur_ok");
+        JsonNode erkannt = n.get("erkannt");
+        if (sig == null || !sig.isBoolean() || erkannt == null || !erkannt.isBoolean()) {
+            return null;
+        }
+        String grund = n.path("grund").asText("");
+        if (!ERZEUGER_GRUENDE.contains(grund)) {
+            grund = null;
+        }
+        JsonNode kennung = n.get("steuerung_id");
+        Long steuerung = kennung != null && kennung.isIntegralNumber() && kennung.canConvertToLong()
+                && kennung.asLong() >= 0 && kennung.asLong() <= 4_294_967_295L ? kennung.asLong() : null;
+        List<ProbeResult.ErzeugerEinheit> einheiten = null;
+        JsonNode liste = n.get("einheiten");
+        if (liste != null && liste.isArray()) {
+            einheiten = new ArrayList<>();
+            for (JsonNode e : liste) {
+                Integer nr = optInt(e, "einheit");
+                if (nr == null || nr < 1 || nr > 10) {
+                    continue;
+                }
+                Integer art = optInt(e, "art");
+                Integer nenn = optInt(e, "nenn_kw");
+                einheiten.add(new ProbeResult.ErzeugerEinheit(nr, art != null && (art == 1 || art == 2) ? art : null,
+                        nenn != null && nenn >= 0 && nenn <= 65_534 ? nenn : null, name(e, "typ_name")));
+            }
+        }
+        return new ProbeResult.ErzeugerKopf(sig.asBoolean(), erkannt.asBoolean(), grund,
+                optInt(n, "hauptversion"), optInt(n, "nebenversion"), optInt(n, "te_anzahl"), optInt(n, "herzschlag"),
+                optInt(n, "programmstand"), steuerung, optInt(n, "anlagenart"), optInt(n, "beschreibung_ab"),
+                einheiten, name(n, "netzbetreiber_name"), name(n, "direktvermarkter_name"));
+    }
+
+    /** Ein Name aus dem Bild: ein gelesener leerer Name bleibt {@code ""} („keiner“), ein fehlender fehlt. */
+    private static String name(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        if (v == null || !v.isTextual()) {
+            return null;
+        }
+        String t = v.asText();
+        return t.length() > 32 ? t.substring(0, 32) : t;
+    }
+
     private static Integer optInt(JsonNode node, String field) {
         JsonNode v = node.get(field);
         if (v == null || !v.isNumber()) {
@@ -377,6 +402,31 @@ public class ProbeResultListener extends Rueckmeldeweg {
      * Register-Lesen: ohne BEIDE Zahlen ist es keine Lesung, und die Zeile
      * steht dann als „empfangen, aber nicht auswertbar" da.
      */
+    /** The outputs of a Shelly output set (contract op_result.ausgaenge); null when absent. */
+    private static final java.util.Set<String> NACH_STROMAUSFALL =
+            java.util.Set.of("off", "on", "restore_last", "match_input");
+
+    private static List<ProbeResult.Ausgang> ausgaenge(JsonNode arr) {
+        if (arr == null || !arr.isArray()) {
+            return null;
+        }
+        List<ProbeResult.Ausgang> out = new ArrayList<>();
+        for (JsonNode n : arr) {
+            if (out.size() >= 4) {
+                break;
+            }
+            JsonNode k = n.get("kanal");
+            if (k == null || !k.isIntegralNumber() || k.asInt() < 0 || k.asInt() > 3) {
+                continue;
+            }
+            JsonNode ein = n.get("ein");
+            String nach = n.path("nach_stromausfall").asText("");
+            out.add(new ProbeResult.Ausgang(k.asInt(), ein != null && ein.isBoolean() ? ein.asBoolean() : null,
+                    NACH_STROMAUSFALL.contains(nach) ? nach : null));
+        }
+        return List.copyOf(out);
+    }
+
     private static List<ProbeResult.Sample> samples(JsonNode arr) {
         List<ProbeResult.Sample> out = new ArrayList<>();
         for (JsonNode n : arr) {
@@ -394,8 +444,7 @@ public class ProbeResultListener extends Rueckmeldeweg {
                 raw = null;
                 value = null;
             }
-            out.add(new ProbeResult.Sample(channel, count > 0 ? text(n, "topic") : null, raw,
-                    value, count, count > 0 ? text(n, "at") : null));
+            out.add(new ProbeResult.Sample(channel, raw, value, count));
         }
         return List.copyOf(out);
     }
@@ -483,23 +532,6 @@ public class ProbeResultListener extends Rueckmeldeweg {
 
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-            } catch (Exception e) {
-                log.debug("Probe listener disconnect failed on shutdown: {}", e.getMessage());
-            }
-            try {
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("Probe listener close failed on shutdown: {}", e.getMessage());
-            }
-            client = null;
-        }
+        verbindung.schliessen();
     }
 }

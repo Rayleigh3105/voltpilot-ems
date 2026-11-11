@@ -154,7 +154,11 @@ it.each([
   vi.setSystemTime(new Date(jetzt));
   vi.mocked(benutzerApi.protokoll).mockResolvedValue([{ id: 1, zeit, betroffener: 'Claudia Berger', aktion: 'zuweisen', rolle: 'leser', standort: 'Werk Lindach', urheber: 'Jonas Wendlinger', grund: null }]);
   render(<BenutzerPage />);
+  expect(screen.getByRole('button', { name: 'Benutzerliste', exact: true })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: 'Zugriffsprotokoll', exact: true }));
+  // Eine Ansichts-Umschaltung: der gewählte Knopf trägt aria-pressed, keiner ist eine zweite Hauptaktion.
+  expect(screen.getByRole('button', { name: 'Zugriffsprotokoll', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Benutzerliste', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await screen.findByText(anzeige);
   expect(benutzerApi.protokoll).toHaveBeenLastCalledWith(expect.any(String), bis);
   fireEvent.click(screen.getByRole('combobox', { name: 'Von', exact: true }));

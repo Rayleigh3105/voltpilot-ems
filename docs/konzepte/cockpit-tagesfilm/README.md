@@ -12,6 +12,7 @@ Vorgaben aus der Abstimmung am 29.09.2026:
 - Die Umschaltung „Jetzt · kW / Heute · kWh“ bleibt.
 - Es muss mit beliebig vielen Verbrauchern funktionieren.
 - Das Cockpit bleibt reine Anzeige. Eingriffe laufen über Steuerung und Fahrplan.
+  - Eine Ausnahme (Kapitän 07.11.2026, Befund `voltpilot-lademodus-schnellzugriff`): Beim Privatkunden steht oben die Zeile „Auto steckt · Jetzt schnell laden“, nur solange ein Auto steckt und „Schnell“ etwas ändert. Sie öffnet den bestehenden Handeingriff-Dialog (Vorwahl „bis Abstecken, höchstens 14 Std“) und sendet denselben Auftrag wie der Reiter Laden (`components/SchnellLadenZeile.tsx`, Regeln in `schnellLaden.ts`).
 - Kachel-Vorschläge erscheinen nur im Dialog „Cockpit anpassen“.
 - Beim ersten Besuch gibt es keine Einführung. Das Cockpit muss sich selbst erklären.
 
@@ -40,6 +41,15 @@ flowchart TB
 **Telefon:** Kopf mit Anlage, Datenstand und Betriebsmodell. Darunter die Bühne mit Uhrzeit, Umschalter „Jetzt · kW / Heute · kWh“, einem Satz zum Moment, dem Energiefluss (Ladestand, Netz, Ziel oder Börsenpreis stehen an den Knoten), „Verbrauch im Detail“, „Erzeugung im Detail“, der Tagesleiste und „Zahlen als Liste“. Am Fuß der Bühne steht die Steuerzeile. Danach folgen das Kachelraster (zwei Spalten, „klein“ oder „breit“), die leise Zustandszeile und „Cockpit anpassen“. Unten sitzt die vorhandene Leiste mit den fünf Bereichen.
 
 **Rechner:** Die Bühne steht zweispaltig. Links sind Energiefluss, die beiden Listen nebeneinander und die Tagesleiste. Rechts steht „Dieser Moment“ mit vier Werten, darunter die Leitkachel. Das Kachelraster hat vier Spalten.
+
+Seit Konzept b1 (20.10.2026) entfällt „Dieser Moment“: die vier Werte stehen an den Knoten, rechts steht die Leitkachel.
+„Überwachen“ wohnt nur noch unter Meldungen › Überwachungen.
+
+Seit Konzept `vp-cockpit-privat-konzept` (08.11.2026, Entscheide E1 bis E4 = A) steht die rechte Spalte nur neben dem Fluss: so hoch wie Kopf, Satz und Energiefluss.
+Tagesleiste, die Listen und „Zahlen als Liste“ laufen darunter über die volle Kartenbreite.
+In der Spalte steht die Leitkachel; führt der Fluss, steht dort der Block „Heute“.
+Die Steuerzeile schließt die Spalte unten ab.
+Am Telefon gibt es keine Spalte: die Leitkachel oder „Heute“ ist die erste Kachel unter der Bühne.
 
 ## Energiefluss: Regeln der Bühne
 
@@ -79,15 +89,25 @@ Der schwächste Abstand unter Farbenblindheit (Protanopie) liegt bei ΔE 7,9, zw
 
 Links von „Jetzt“ stammen die Werte aus `/history?range=day` (Viertelstunden). Rechts davon kommen sie aus `/schedule` (`pvKw`, `loadKw`, `batteryKw`, `gridKw`, `socPct`, `slotRole`, `priceEurMwh`). Bedienung: ziehen, Pfeiltasten (mit Umschalt eine Stunde), Pos1 und Ende, „Tag abspielen“ und „Zurück zu Jetzt“. Die Leiste ist ein `role="slider"` mit Wertetext.
 
+Seit Konzept b1 (20.10.2026) wählt ein Finger nur durch einen Tipp, Wischen scrollt die Seite, die Maus zieht weiter.
+‹ › gehen je eine Viertelstunde, „Tag abspielen“ und der Hinweissatz entfallen, und die Leiste steht direkt unter dem Fluss.
+Einzelheiten: [Die Bühne des Cockpits](../../agents/portal/die-buehne-des-cockpits-leitungsplan-tagesleiste.md).
+
 ## Anpassung je Betrieb
 
 | | Eigenverbrauchs-Fahrplan (privat) | Marktoptimierung | Lastspitzenkappung | Ladepark-Lastmanagement | Anlage beobachten |
 |---|---|---|---|---|---|
-| Leitkachel (Stern) | Unterm Strich | Börsenpreis | Lastspitze | Ladebudget | keine |
-| Kacheln zu Beginn | Autarkie, Eigenverbrauch, Speicher, Wärmepumpe, Sonne, Laden, Fahrplan | Börsenpreis, Sonne, Speicher, Handel, Unterm Strich, Netz heute | Lastspitze, Lastspitzen-Reserve, Sonne, Unterm Strich, Netz heute | Ladebudget, Laden, Netz heute | Sonne, Netz heute, Autarkie |
-| Geld | eine Zahl, Ton „sparen“ | eine Zahl, Ton „verdienen“ | eine Zahl, Ton „verdienen“ | kein Geld | kein Geld (reine Messanlage) |
+| Leitkachel (Stern) | keine, der Fluss führt; neben ihm „Heute“ | Börsenpreis | Lastspitze | Ladebudget | keine |
+| Kacheln zu Beginn | Heute (statt Autarkie, Eigenverbrauch und Sonne), Speicher, Wärmepumpe, Laden, Fahrplan | Börsenpreis, Sonne, Speicher, Handel, Unterm Strich, Netz heute | Lastspitze, Lastspitzen-Reserve, Sonne, Unterm Strich, Netz heute | Ladebudget, Laden, Netz heute | Sonne, Netz heute, Autarkie |
+| Geld | eine Zahl als ruhige Zeile am Ende, ohne Rot | eine Zahl, Ton „verdienen“ | eine Zahl, Ton „verdienen“ | kein Geld | kein Geld (reine Messanlage) |
 
 Neu gegenüber heute: Bei Marktoptimierung führt der Börsenpreis statt des Geldes. Das folgt dem Wunsch, dass unter dem Fluss zuerst Börsenpreis, Sonne und Speicher stehen. Die heutige Reihenfolge der Leitblöcke steht in `leadSlot.ts` (Lastspitze, dann Geld, dann Fluss). Atypische Netznutzung bekommt weiterhin keinen Baustein.
+
+Seit `vp-cockpit-privat-konzept` (08.11.2026) folgt die Leitkachel genau dieser Leit-Regel (`layout.resolved.lead`), „privat“ ist kein eigenes Merkmal (E3).
+Führt der Energiefluss, gibt es keine Leitkachel: neben dem Fluss steht „Heute“ (E1), der Euro steht als ruhige Zeile „Unterm Strich heute bisher“ vor dem Zustand und nicht in der Telefon-Kopfzeile (E2).
+Wer den Euro oben sehen will, setzt in „Cockpit anpassen“ den Stern auf „Unterm Strich“; der Stern gilt, sobald es Erlöse gibt, auch ohne Geld-Strom.
+Lastspitze und Börsenpreis behalten ihre Leitkachel, sie steht ebenfalls nur neben dem Fluss (E4).
+Bericht und Board: Firstmate-Daten `vp-cockpit-privat-konzept`.
 
 ## Kachelkatalog
 
@@ -96,6 +116,8 @@ Jede Kachel ist gleich aufgebaut. Oben steht der Kopf mit Symbol, Name und Ziel.
 | Kachel | zeigt | Daten | verfügbar, wenn |
 |---|---|---|---|
 | Unterm Strich | eine Geldzahl, netto; Heute, Monat, Jahr | `/earnings` | Erzeuger oder Speicher |
+| Unterm Strich als Zeile | dieselbe Zahl in einer Zeile vor dem Zustand, ein Tipp öffnet die Erlöse | `/earnings` | der Fluss führt und es gibt Erlöse |
+| Heute | Autarkie groß; „Verbraucht“ nach Herkunft (Sonne, Speicher, Netz), „Sonne erzeugt“ nach Ziel (Haus, Speicher, Netz), Rest des Tages schraffiert als „noch erwartet“ | `/history` (Viertelstunden, Totals), `/schedule` | der Fluss führt und der Tagesverbrauch ist gemessen |
 | Autarkie | Anteil selbst gedeckt; Haus füllt sich nach Herkunft | `/history` (`autarkiePct`) | Verbrauch gemessen |
 | Eigenverbrauch | wohin die Erzeugung ging (Haus, Speicher, Netz) | `/history` (`eigenverbrauchPct`) | PV gemessen |
 | Speicher | Ladestand, Leistung, Tätigkeit laut Plan, „voll gegen“ | `/topology`, `/schedule` | Speicher |
@@ -113,6 +135,8 @@ Jede Kachel ist gleich aufgebaut. Oben steht der Kopf mit Symbol, Name und Ziel.
 | Zustand | leise, wenn alles läuft; sonst Befund mit Weg | Gesundheitsprüfung | immer (Pflicht) |
 
 Die Steuerzeile am Fuß der Bühne trennt Auftrag, Geräteantwort und gemessene Wirkung (`/control-status`).
+Seit Konzept b1 (20.10.2026) ist sie eine Zeile mit „Warum?“-Blatt; am Rechner steht sie rechts unter der Leitkachel.
+Seit `vp-cockpit-privat-konzept` schließt sie die Spalte neben dem Fluss unten ab, unter der Leitkachel oder „Heute“.
 
 ## Anpassen und Vorschläge
 

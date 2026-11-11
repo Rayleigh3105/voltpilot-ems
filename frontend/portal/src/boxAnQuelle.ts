@@ -22,10 +22,10 @@
  * bekommt keinen Satz, denn „gelesen von 8f3e…“ ist kein Kundensatz. Das ist dieselbe Regel wie
  * `letzter_wert` in AP-04 IP-14: `null` heißt „nichts bekannt“.
  *
- * ⚠ BEFUND an AP-06 (siehe `api.ts`): `GET …/sites/{id}/data-sources` nennt weder die Geräte noch
- * die Komponenten einer Quelle. Der Weg „Komponente → ihre Datenquelle“, den AP-13 §8
- * voraussetzt, geht deshalb über `GET …/sites/{id}/geraete` und dessen `data_source_id` —
- * {@link quellenJeGeraet} ist genau diese Verbindung, zwei Aufrufe je Anlage statt einem.
+ * Der Weg „Komponente → ihre Datenquelle“, den AP-13 §8 voraussetzt, geht über `GET …/sites/{id}/geraete`
+ * und dessen `data_source_id` — {@link quellenJeGeraet} ist genau diese Verbindung, zwei Aufrufe je Anlage.
+ * Seit GE-6 („Ein Gerät, ein Eintrag“) nennt `GET …/data-sources` denselben Verweis auch von der Seite des
+ * Wegs (`UemsDatenquelle.geraete`); der frühere Befund an AP-06 ist damit geschlossen.
  */
 import type { UemsDatenquelle, UemsDatenquelleZeitraum, UemsGeraet } from './api';
 import { UEMS_BOX } from './glossar';

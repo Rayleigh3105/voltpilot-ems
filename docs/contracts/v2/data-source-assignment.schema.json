@@ -275,7 +275,7 @@
         },
         "protokoll": {
           "description": "Wie die Box die Quelle liest.",
-          "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp", "solarman_v5"]
+          "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp", "solarman_v5", "kaco_serial"]
         },
         "adresse": {
           "description": "Wo die Box die Quelle findet — Host:Port, Themenfilter, Adresse der Auskunft, die Kennung der Ladestation oder Host:Port/Seriennummer des Solarman-Datenloggers. Die Adresse ist ein Parameter, nie die Identität.",
@@ -589,7 +589,7 @@
               "kennzeichen": { "$ref": "#/$defs/quellenKennzeichen" },
               "anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
               "box": { "$ref": "#/$defs/boxKennzeichen" },
-              "protokoll": { "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp", "solarman_v5"] },
+              "protokoll": { "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp", "solarman_v5", "kaco_serial"] },
               "adresse": { "type": "string" },
               "geraete_ids": { "type": "array", "items": { "type": "integer" } },
               "komponenten": { "type": "array", "minItems": 1, "items": { "type": "string" } },

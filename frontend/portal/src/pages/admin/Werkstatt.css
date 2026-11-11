@@ -1,0 +1,869 @@
+/* Werkstatt (WI-8 A): Übersicht am Rechner (vp-ws-*) und die Bildschirme an der Werkbank (vp-wsb-*). */
+
+/* ── Übersicht ───────────────────────────────────────────────────────────── */
+
+.vp-ws-kopfzeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  margin-bottom: var(--vp-space-3);
+}
+
+.vp-ws-dienstzeile {
+  margin: 0 0 var(--vp-space-3);
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-haupt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-box {
+  min-width: 0;
+  padding: var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-lg);
+  background: var(--vp-surface);
+}
+
+.vp-ws-karte-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+}
+
+.vp-ws-karte-zeile > div {
+  min-width: 0;
+  flex: 1 1 14rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-tabelle-rahmen {
+  overflow-x: auto;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-lg);
+  background: var(--vp-surface);
+}
+
+.vp-ws-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.vp-ws-tabelle th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-bottom: 1px solid var(--vp-border);
+}
+
+.vp-ws-tabelle td {
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-bottom: 1px solid var(--vp-border);
+  vertical-align: middle;
+}
+
+.vp-ws-tabelle tr:last-child td {
+  border-bottom: 0;
+}
+
+.vp-ws-gewaehlt {
+  background: var(--vp-tint);
+}
+
+.vp-ws-link {
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--vp-link);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.vp-ws-detail .vp-wsb-liste {
+  margin-bottom: var(--vp-space-3);
+}
+
+/* In der schmalen Spalte der Box: Etikett über dem Text, lange Befehle brechen um. */
+.vp-ws-detail .vp-ws-beschriftung {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.vp-ws-detail .vp-ws-etikett {
+  max-width: 12rem;
+}
+
+.vp-ws-beschriftung code {
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-werkzeug > .vp-btn {
+  white-space: normal;
+  max-width: 100%;
+}
+
+.vp-ws-aufklapp {
+  margin-top: var(--vp-space-3);
+}
+
+.vp-ws-aufklapp > summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: var(--vp-space-2);
+}
+
+.vp-ws-belege {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-ws-belege li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-belege span {
+  color: var(--vp-text-muted);
+  font-size: 12px;
+}
+
+.vp-ws-belege .vp-ws-pruefung {
+  color: var(--vp-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vp-ws-age > summary {
+  cursor: pointer;
+}
+
+.vp-ws-age[open] > summary {
+  margin-bottom: var(--vp-space-2);
+}
+
+/* In der Spalte der Box: Begriff über dem Wert. */
+.vp-ws-detail .vp-ws-protokoll {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.vp-ws-detail .vp-ws-protokoll > dd {
+  margin-bottom: var(--vp-space-2);
+}
+
+.vp-ws-freigabe-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-reihe2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-feldgruppe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  margin: 0;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  min-width: 0;
+}
+
+.vp-ws-feldgruppe > legend {
+  font-weight: 600;
+  padding: 0 var(--vp-space-1);
+}
+
+.vp-ws-feld {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-1);
+  font-weight: 600;
+}
+
+.vp-ws-feld > textarea {
+  font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: var(--vp-space-2);
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-md);
+  resize: vertical;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ── Einrichtungs-Detailseite einer Box ──────────────────────────────────── */
+
+.vp-ws-seite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-seitenkopf {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-seitentitel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-seitenstand {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vp-space-2);
+}
+
+.vp-ws-seitenraster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: start;
+}
+
+.vp-ws-seitenraster > .vp-ws-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-stapel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-stapel > .vp-ws-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-breit {
+  grid-column: 1 / -1;
+}
+
+.vp-ws-kartenkopf {
+  margin: 0;
+  font-size: 15px;
+}
+
+.vp-ws-fuss {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-dateien {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-datei {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2) var(--vp-space-3);
+  padding-bottom: var(--vp-space-3);
+  border-bottom: 1px solid var(--vp-border);
+}
+
+.vp-ws-datei:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.vp-ws-datei > .vp-ws-spalte {
+  flex: 1 1 16rem;
+}
+
+.vp-ws-datei > .vp-btn {
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .vp-ws-seitenraster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-seitenkopf {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-seitenstand {
+    justify-content: flex-start;
+  }
+}
+
+/* ── Beschriftung und Abnahme ────────────────────────────────────────────── */
+
+.vp-ws-spalte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-ws-werkzeug {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-ws-beschriftung {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+  gap: var(--vp-space-4);
+  align-items: start;
+}
+
+.vp-ws-etikett {
+  margin: 0;
+  padding: var(--vp-space-2);
+  border: 1px solid var(--vp-border);
+  border-radius: 8px;
+  background: #fff;
+  color: #000;
+  text-align: center;
+}
+
+.vp-ws-etikett > svg,
+.vp-ws-qr {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.vp-ws-klartext {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-protokoll {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem var(--vp-space-3);
+  margin: 0;
+}
+
+.vp-ws-protokoll > dt {
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-ws-protokoll > dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── Bildschirme an der Werkbank ─────────────────────────────────────────── */
+
+.vp-wsb {
+  max-width: 30rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.vp-wsb-kopf,
+.vp-wsb-reihe,
+.vp-wsb-fuss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+}
+
+.vp-wsb-fuss {
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: var(--vp-space-2);
+}
+
+.vp-wsb-krumen {
+  font-size: 12px;
+  color: var(--vp-text-muted);
+}
+
+.vp-wsb-h {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.vp-wsb-sub {
+  margin: -6px 0 0;
+  color: var(--vp-text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.vp-wsb-karte {
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: 16px;
+  background: var(--vp-surface);
+  min-width: 0;
+}
+
+.vp-wsb-karte > h5 {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-wsb-bildkarte {
+  display: flex;
+  justify-content: center;
+}
+
+.vp-wsb-bild {
+  width: 100%;
+  max-width: 18rem;
+  height: auto;
+}
+
+.vp-wsb-bild-klein {
+  max-width: 7rem;
+}
+
+.vp-wsb-hinweis {
+  margin: 0;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-left: 4px solid var(--vp-action);
+  border-radius: 12px;
+  background: var(--vp-tint);
+  overflow-wrap: anywhere;
+}
+
+.vp-wsb-warn {
+  border-left-color: var(--vp-warn-ink);
+  background: #fff3dc;
+}
+
+.vp-wsb-fehl {
+  border-left-color: #c62828;
+  background: #fdecea;
+}
+
+.vp-wsb-ok {
+  border-left-color: var(--vp-ok-ink);
+  background: #e8f5e9;
+}
+
+.vp-wsb-schritte {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: wsb;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-wsb-schritte > li {
+  counter-increment: wsb;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: var(--vp-space-2);
+  align-items: start;
+  overflow-wrap: anywhere;
+}
+
+.vp-wsb-schritte > li::before {
+  content: counter(wsb);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--vp-action);
+  color: #fff;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vp-wsb-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vp-wsb-zeile {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--vp-space-2);
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--vp-border);
+}
+
+.vp-wsb-zeile:last-child {
+  border-bottom: 0;
+}
+
+.vp-wsb-zeile small {
+  display: block;
+  font-size: 12px;
+  color: var(--vp-text-muted);
+}
+
+.vp-wsb-punkt {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.vp-wsb-ok .vp-wsb-punkt {
+  background: var(--vp-ok-ink);
+}
+
+.vp-wsb-lauf .vp-wsb-punkt {
+  border: 3px solid var(--vp-primary);
+  border-top-color: var(--vp-action);
+  animation: vp-spin 0.9s linear infinite;
+}
+
+.vp-wsb-offen .vp-wsb-punkt {
+  border: 2px solid #ced4da;
+}
+
+.vp-wsb-warn .vp-wsb-punkt {
+  background: var(--vp-warn-ink);
+}
+
+.vp-wsb-kacheln {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-3);
+}
+
+.vp-wsb-kachel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: var(--vp-space-3);
+  border: 2px solid var(--vp-border);
+  border-radius: 16px;
+  background: var(--vp-surface);
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-wsb-kachel:hover:not(:disabled),
+.vp-wsb-kachel:focus-visible {
+  border-color: var(--vp-action);
+}
+
+.vp-wsb-kachel:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.vp-wsb-kachel small {
+  color: var(--vp-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.vp-wsb-heute {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-wsb-heute > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+  overflow-wrap: anywhere;
+}
+
+.vp-wsb-balken {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--vp-border);
+  overflow: hidden;
+}
+
+.vp-wsb-balken > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--vp-primary), #5a8de8);
+}
+
+.vp-wsb-details {
+  font-size: 12px;
+  color: var(--vp-text-muted);
+  border-top: 1px dashed var(--vp-border);
+  padding-top: var(--vp-space-2);
+}
+
+.vp-wsb-details > summary {
+  cursor: pointer;
+}
+
+.vp-wsb-technik {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px var(--vp-space-2);
+  margin: var(--vp-space-2) 0 0;
+}
+
+.vp-wsb-technik > dt {
+  font-weight: 600;
+}
+
+.vp-wsb-technik > dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-wsb-ref {
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+
+.vp-wsb-qr {
+  width: 104px;
+  margin: 0 auto;
+}
+
+.vp-wsb-versand {
+  margin: 0;
+}
+
+.vp-wsb-leise {
+  border: 0;
+  background: none;
+  padding: 0;
+  min-height: 36px;
+  color: var(--vp-link);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vp-wsb-unten {
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--vp-border);
+  padding-top: var(--vp-space-2);
+}
+
+@media (max-width: 900px) {
+  .vp-ws-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .vp-ws-beschriftung {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-etikett {
+    max-width: 12rem;
+  }
+
+  .vp-ws-protokoll {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-protokoll > dd {
+    margin-bottom: var(--vp-space-2);
+  }
+
+  .vp-ws-reihe2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.vp-ws-kunde-offen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  margin: 0;
+}
+.vp-ws-kunde-offen > .vp-ws-qr {
+  width: 120px;
+  height: 120px;
+  flex: none;
+}
+.vp-ws-kunde-offen > .vp-ws-spalte {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.vp-ws-kunde-offen code {
+  overflow-wrap: anywhere;
+}
+
+/* ── Lauf-Seite (Konzept vp-werkstatt-lauf-seite, E1–E4 A): zwei Spalten am Rechner, eine am Telefon ── */
+
+.vp-wsl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+  grid-template-areas: 'kopf kopf' 'haupt seite' 'fuss fuss';
+  gap: var(--vp-space-3) var(--vp-space-4);
+  align-items: start;
+  max-width: 60rem;
+  margin: 0 auto;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.vp-wsl-kopf { grid-area: kopf; min-width: 0; }
+.vp-wsl-haupt { grid-area: haupt; max-width: none; margin: 0; min-width: 0; }
+.vp-wsl-seite { grid-area: seite; min-width: 0; display: flex; flex-direction: column; gap: var(--vp-space-3); }
+.vp-wsl-fuss { grid-area: fuss; min-width: 0; }
+
+/* Jetzt-Karte */
+.vp-wsl-jetzt { padding: var(--vp-space-3); border-radius: 16px; background: var(--vp-surface); border: 2px solid var(--vp-action); min-width: 0; }
+.vp-wsl-jetzt .ueber { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--vp-action); display: flex; gap: 6px; align-items: center; }
+.vp-wsl-jetzt .ueber::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--vp-action); }
+.vp-wsl-jetzt h4 { margin: 4px 0 2px; font-size: 18px; overflow-wrap: anywhere; }
+.vp-wsl-jetzt p { margin: 0; color: var(--vp-text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.vp-wsl-jetzt .vp-wsl-zeiten { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; color: var(--vp-text); }
+.vp-wsl-zeiten b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.vp-wsl-jetzt .vp-wsl-danach { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--vp-border); }
+
+/* Software-Karte */
+.vp-wsl-soft { padding: var(--vp-space-3); border-radius: 16px; background: var(--vp-surface); border: 1px solid var(--vp-border); min-width: 0; }
+.vp-wsl-soft h5 { margin: 0; font-size: 13px; font-weight: 600; color: var(--vp-text-muted); }
+.vp-wsl-soft .frg { margin: 2px 0 10px; font-size: 13px; overflow-wrap: anywhere; }
+.vp-wsl-soft .frg b { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.vp-wsl-paket { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--vp-border); }
+.vp-wsl-paket strong { font-size: 15px; overflow-wrap: anywhere; }
+.vp-wsl-paket .vorher { grid-column: 1 / -1; font-size: 12px; color: var(--vp-text-muted); overflow-wrap: anywhere; }
+.vp-wsl-pruef { font-size: 12px; color: var(--vp-ok-ink); font-weight: 600; white-space: nowrap; }
+.vp-wsl-pruef.offen { color: var(--vp-text-muted); font-weight: 400; }
+.vp-wsl-soft .neuer { margin: 6px 0 0; font-size: 12px; color: var(--vp-text-muted); }
+.vp-wsl-soft-zeile { display: none; border-radius: 12px; background: var(--vp-surface); border: 1px solid var(--vp-border); font-size: 13px; min-width: 0; }
+.vp-wsl-soft-zeile > summary { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 12px; cursor: pointer; }
+.vp-wsl-soft-zeile > summary b { font-weight: 600; }
+.vp-wsl-soft-zeile > .vp-wsl-soft { border: 0; border-top: 1px solid var(--vp-border); border-radius: 0 0 12px 12px; }
+
+/* Schritte mit Belegen */
+.vp-wsl-phase { border-bottom: 1px solid var(--vp-border); padding: 8px 0; }
+.vp-wsl-phase:last-child { border-bottom: 0; }
+.vp-wsl-phase > .ph { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-weight: 600; }
+.vp-wsl-phase > .ph small { font-weight: 400; color: var(--vp-text-muted); font-size: 12px; }
+.vp-wsl-phasenpunkt { display: block; border: 0; padding: 0; background: none; }
+.vp-wsl-schritte { list-style: none; margin: 4px 0 0 30px; padding: 0; }
+.vp-wsl-s { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding: 4px 0; align-items: start; font-size: 13px; }
+.vp-wsl-s .m { width: 16px; height: 16px; border-radius: 50%; margin-top: 2px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; box-sizing: border-box; }
+.vp-wsl-s.ok .m { background: #e8f5e9; color: var(--vp-ok-ink); }
+.vp-wsl-s.lauf .m { border: 2px solid var(--vp-action); }
+.vp-wsl-s.lauf { font-weight: 600; }
+.vp-wsl-s.offen { color: var(--vp-text-muted); }
+.vp-wsl-s.offen .m { border: 1px solid #ced4da; }
+.vp-wsl-s.warn .m { background: #fdecea; color: #c62828; }
+.vp-wsl-s small { display: block; font-weight: 400; color: var(--vp-text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.vp-wsl-s .d { font-size: 12px; color: var(--vp-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Box-Steckbrief */
+.vp-wsl-box { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 0; font-size: 13px; }
+.vp-wsl-box dt { color: var(--vp-text-muted); }
+.vp-wsl-box dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Fall-Seite: Knöpfe und „macht von selbst weiter“ */
+.vp-wsl-knoepfe { display: flex; flex-direction: column; gap: 8px; }
+.vp-wsl-knoepfe .vp-btn { width: 100%; justify-content: center; text-align: center; box-sizing: border-box; }
+.vp-wsl-selbst { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; font-size: 13px; }
+.vp-wsl-selbst.ja { background: #e8f5e9; color: #1b5e20; }
+.vp-wsl-selbst.nein { background: #f1f3f5; color: #495057; }
+.vp-wsl-nach { margin: 0; }
+
+/* Übersicht: zur Seite gelegt (E2 A) */
+.vp-ws-zurseite ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.vp-ws-zurseite li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--vp-border); min-width: 0; }
+.vp-ws-zurseite li small { color: var(--vp-text-muted); overflow-wrap: anywhere; }
+.vp-ws-zurseite-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+
+@media (max-width: 760px) {
+  .vp-wsl { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'kopf' 'haupt' 'seite' 'fuss'; }
+  .vp-wsl-nur-breit, .vp-wsl-boxkarte { display: none; }
+  .vp-wsl-soft-zeile { display: block; }
+  /* erledigte Phasen eingeklappt: ✓ und Zahl reichen */
+  .vp-wsl-phase.ok > .vp-wsl-schritte { display: none; }
+}
+
+/* UI-Runde Admin: Klartext vorn, Rohwörter des Dienstes aufklappbar „für die Technik“. */
+.vp-ws-technik summary { cursor: pointer; font-size: 0.8125rem; color: var(--vp-text-muted); width: fit-content; border-radius: var(--vp-radius-sm); }
+.vp-ws-technik summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
+.vp-ws-technik small { display: block; margin-top: 2px; }
+.vp-ws-technik-grund { margin-top: 4px; font-size: 0.875rem; overflow-wrap: anywhere; }
+.vp-ws-technik-grund code { font-size: 0.8125rem; }
+
+/* Telefon: Box-Zeilen kompakt (`vp-zeilen`); die Zelle der Tabelle trägt dort kein eigenes Polster. */
+@media (max-width: 720px) {
+  .vp-ws-tabelle.vp-zeilen { --vp-zeilen-rand: var(--vp-space-3); font-size: 0.9375rem; }
+  .vp-table.responsive.vp-zeilen.vp-ws-tabelle td { border-bottom: 0; }
+  .vp-ws-tabelle.vp-zeilen td[data-zeile='marke'] { color: var(--vp-text-muted); font-size: 0.8125rem; }
+}

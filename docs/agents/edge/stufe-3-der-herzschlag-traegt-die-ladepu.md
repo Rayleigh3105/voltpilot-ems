@@ -1,4 +1,4 @@
-# Stufe 3: der Herzschlag trägt die Ladepunkte, und das Tor kennt sie
+# Stufe 3: der Herzschlag trägt die Ladepunkte, und die Einrichtung kennt sie
 
 Ausgelagert aus `edge-app/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 71).
 
@@ -18,14 +18,13 @@ Einrichtungs-Schritte wie vorher.
   0, und `safe_default_holds` reist mit: ein `false` ist eine ANLAGEN-Tatsache,
   die kein Ladeprofil reparieren kann, und „hält" wäre eine bequeme Lüge über
   die Sicherung eines Kunden.
-- **⚠ Das Einrichtungs-Tor fragt seit dieser Stufe „liefert IRGENDEINE
-  Komponente Daten", nicht „liefert der Wechselrichter"** (Konzept §5.1): ein
-  Ladepark hat gar keinen Wechselrichter, das alte Tor hätte ihn also für immer
-  von der Kopplung ausgesperrt (`web.go` `deriveOnboarding` +
-  `charge_point_connected` im Umschlag, `commissioning.js` Schritt 1/4). Die
-  Regel wohnt EINMAL, als `state.Snapshot.HasReportedChargePoint()`, damit
-  Weboberfläche und Herzschlag nicht in zwei Antworten auf eine Frage
-  auseinanderlaufen.
+- **⚠ Ein Ladepark hat gar keinen Wechselrichter** (Konzept §5.1): die
+  Einrichtungsseite nennt seine Säulen als Geräte und liest die Messwerte aus
+  ihnen (`charge_point_connected` im Umschlag, `commissioning.js` Schritte 2/3).
+  Die Kopplung hängt an keinem Gerät - die Referenz steht von Anfang an auf
+  der Seite. Die Regel „Säule hat sich gemeldet" wohnt EINMAL, als
+  `state.Snapshot.HasReportedChargePoint()`, damit Weboberfläche und
+  Herzschlag nicht in zwei Antworten auf eine Frage auseinanderlaufen.
 - **⚠ Sie keyt auf „hat sich JE gemeldet", nicht auf den lebenden Socket:** ein
   Schritt, der bestanden war, darf nicht wieder zufallen, weil eine Verbindung
   flatterte — und eine BootNotification IST der Verbindungsnachweis einer
@@ -35,12 +34,21 @@ Einrichtungs-Schritte wie vorher.
   leer, und „noch keine Messwerte" wäre die falscheste aller Aussagen über eine
   Anlage, die gerade Autos lädt. Ohne Ladevorgang sagt es ehrlich „keine
   Ladevorgänge — keine Messwerte" statt einen Fehler zu behaupten.
+- **Ein sichtbarer Wechsel am Ladepunkt schickt den Herzschlag sofort**
+  (`agent/ocpp_status_kick.go`, 06.11.2026): Anstecken, Sitzung, Status,
+  erste Leistung, Beginn oder Ende des Ziehens. Der Wächter vergleicht einen
+  Fingerabdruck aus Wörtern, keine Zahlen; ein laufender Ladevorgang mit
+  wanderndem Messwert löst nichts aus. Zwischen zwei Herzschlägen liegen
+  mindestens 5 s (`statusKickMinGap`), Wechsel in dieser Zeit gehen gesammelt
+  am Ende der Frist hinaus; der 15-s-Takt beginnt danach neu. Der OCPP-Server
+  weckt dafür über einen zweiten Kanal (`csms.Server.Observed`), weil die
+  Zuteilung `Changed` leert. Beweis: `agent/ocpp_status_kick_test.go`.
 - Beweise: `agent/ocpp_heartbeat_test.go` (die Reise über den ECHTEN Executor,
   „ohne Ladepunkte KEIN Block", abwesende Messwerte werden weggelassen statt
-  genullt, die EINE Tor-Regel) · `web/web_test.go` (der Ladepark kommt durch
-  das Tor OHNE je einen Wechselrichter zu behaupten, ein flatternder Socket
-  sperrt nicht zu, eine Wechselrichter-Anlage bleibt byte-gleich) ·
-  `web/jstest/ui.test.js` (die drei Schritt-Fälle inkl. „ohne Ladepunkte ändert
-  sich KEIN Wort").
+  genullt, die EINE Säulen-Regel) · `web/web_test.go`
+  (`TestChargePointFactWithoutAnInverter`: die Säule meldet sich, OHNE je
+  einen Wechselrichter zu behaupten, ein flatternder Socket nimmt das nicht
+  zurück) · `web/jstest/ui.test.js` (die Ladepark-Fälle inkl. „ohne
+  Ladepunkte ändert sich KEIN Wort").
 - **⚠ `static/*` ist `//go:embed`-t — nach jeder Änderung den Core neu bauen.**
 

@@ -34,13 +34,22 @@ public record SimulationRequestDto(
     public record Consumption(BigDecimal annualKwh, String profile) {
     }
 
+    /**
+     * The tariff what-if. {@code einspeiseverguetungCtKwh} is the stated feste
+     * Einspeisevergütung (ct/kWh) - for the customer route the site's own
+     * statement unless the body overrides it; absent = the EEG derivation from
+     * {@code commissionedOn}. {@code inbetriebnahmeAbSolarspitzengesetz}
+     * decides §51a for a stated rate while {@code commissionedOn} is unknown.
+     */
     public record Tariff(
             String plantKind,
             String tarifArt,
             BigDecimal tarifParamCtKwh,
             BigDecimal anzulegenderWertCtKwh,
             LocalDate commissionedOn,
-            Boolean netzladenErlaubt) {
+            Boolean netzladenErlaubt,
+            BigDecimal einspeiseverguetungCtKwh,
+            Boolean inbetriebnahmeAbSolarspitzengesetz) {
     }
 
     public record Battery(

@@ -412,7 +412,10 @@ async function messeUndFotografiere(page: Page, breite: number, name: string) {
   if (await page.locator('.vp-modal').count()) {
     await expect(page.locator('.vp-modal').last()).toHaveCSS('opacity', '1');
   }
-  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+  // Endlos-Loops (der Laufpunkt „wird gesucht“ des Anlege-Flusses) laufen immer - gewartet wird nur auf die endlichen.
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
+  );
   const m = await ueberlauf(page, breite);
   expect(m.dokument, `${name} ${breite}: Dokument`).toBe(0);
   expect(m.rumpf, `${name} ${breite}: Rumpf`).toBe(0);
@@ -450,7 +453,7 @@ for (const breite of BREITEN) {
 
       await page.getByRole('button', { name: 'Weiter', exact: true }).click();
       await schritt2(page);
-      await zaehlerIst(page, breite, 2, 'Datenquelle');
+      await zaehlerIst(page, breite, 2, 'Anbindung');
       await expect(page.getByText('3 Komponenten angebunden')).toBeVisible();
       await messeUndFotografiere(page, breite, 'schritt2');
 
@@ -469,7 +472,7 @@ for (const breite of BREITEN) {
       // … und nach einem Neuladen OHNE Vorwahl steht er wieder auf Schritt 2 — ohne zweites Einrichten.
       await oeffne(page, breite);
       await schritt2(page);
-      await zaehlerIst(page, breite, 2, 'Datenquelle');
+      await zaehlerIst(page, breite, 2, 'Anbindung');
       await expect(page.getByText('Werk Lindach (ST-2)')).toBeVisible();
       await messeUndFotografiere(page, breite, 'wiedereinstieg');
       expect(einrichten).toEqual([LINDACH]);
@@ -493,34 +496,35 @@ for (const breite of BREITEN) {
       const fluss = page.getByRole('dialog', { name: 'Anlage anlegen' });
       await expect(fluss).toBeVisible();
       await expect(page.locator('.vp-anlegen-dialog')).toHaveCount(0);
-      await expect(fluss.getByRole('combobox', { name: 'Standort *' })).toContainText('Werk Lindach (ST-2)');
-      await expect(fluss.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät']);
+      await expect(fluss.getByRole('radio', { name: /Am selben Ort wie „Werk Lindach“/ })).toBeChecked();
+      await expect(fluss.locator('.vp-step-label')).toHaveText(['Adresse', 'Box', 'Anlage']);
       const woerter = () => page.evaluate(() => (window as unknown as { steuerGeldWoerterDerSeite: () => string[] }).steuerGeldWoerterDerSeite());
       expect(await woerter(), 'Schritt 1').toEqual([]);
       await messeUndFotografiere(page, breite, 'messanlage-schritt1');
-      await fluss.getByLabel('Name der Anlage').fill('Halle 3');
+      await fluss.getByLabel('Name der neuen Anlage').fill('Halle 3');
       await fluss.getByRole('button', { name: 'Weiter', exact: true }).click();
-      await expect(fluss.getByText('PV & Speicher aus dem Register')).toBeVisible();
-      expect(await woerter(), 'Register').toEqual([]);
-      await fluss.getByRole('button', { name: 'Überspringen - später nachtragen', exact: true }).click();
-      await expect(fluss.getByText('Verbinden Sie Ihre VoltPilot-Box')).toBeVisible();
-      expect(await woerter(), 'Gerät').toEqual([]);
-      await fluss.getByLabel('Geräte-ID').fill('vp-demo-0001');
-      await fluss.getByRole('button', { name: 'Anlage anlegen', exact: true }).click();
-      const zurueck = fluss.getByRole('button', { name: 'Weiter mit „Messen & Auswerten“', exact: true });
-      await expect(zurueck).toBeVisible();
-      await expect(fluss.getByRole('button', { name: 'Zu den Messstellen' })).toHaveCount(0);
-      expect(await woerter(), 'Fertig').toEqual([]);
-      await messeUndFotografiere(page, breite, 'messanlage-fertig');
+      await expect(fluss.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
+      expect(await woerter(), 'Box').toEqual([]);
+      await fluss.getByLabel('Kennung').fill('vp-demo-0001');
+      await fluss.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+      // Das ehrliche Ergebnis nach dem Verbinden (QE-4 A) spricht auch kein Steuerwort - dann weiter.
+      await expect(fluss.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
+      expect(await woerter(), 'Box verbunden').toEqual([]);
+      await fluss.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }).click();
+      // Schritt 3 · Anlage - danach ohne Fertig-Bildschirm zurück in den Assistenten (D7).
+      const stimmtSo = fluss.getByRole('button', { name: 'Stimmt so', exact: true });
+      await expect(stimmtSo).toBeVisible();
+      expect(await woerter(), 'Anlage').toEqual([]);
+      await messeUndFotografiere(page, breite, 'messanlage-anlage');
       expect(cloud.angelegt).toEqual([expect.objectContaining({ name: 'Halle 3', standortId: LINDACH, netzladenErlaubt: false, maxFeedInKw: null })]);
       expect(cloud.geclaimt).toBe(1);
 
       // Zurück im Assistenten: Schritt 2 mit der neuen Anlage, die Adresse bleibt.
       const vorher = page.url();
-      await zurueck.click();
+      await stimmtSo.click();
       await schritt2(page);
-      await zaehlerIst(page, breite, 2, 'Datenquelle');
-      await expect(page.getByRole('button', { name: 'Datenquelle anlegen für Halle 3', exact: true })).toBeVisible();
+      await zaehlerIst(page, breite, 2, 'Anbindung');
+      await expect(page.getByRole('button', { name: 'Gateway oder Logger anbinden für Halle 3', exact: true })).toBeVisible();
       await expect(page.getByTestId('messen-keine-anlage')).toHaveCount(0);
       expect(page.url()).toBe(vorher);
       await messeUndFotografiere(page, breite, 'messanlage-zurueck');
@@ -541,7 +545,7 @@ for (const breite of BREITEN) {
       }
     });
 
-    test('Datenquelle anlegen: Box-Wahl, Prüfung und Budget-Ablehnung mit zwei Auswegen', async ({ page }) => {
+    test('Gateway oder Logger anbinden: Box-Wahl, Prüfung und Budget-Ablehnung mit zwei Auswegen', async ({ page }) => {
       const cloud: Cloud = {
         standorte: ahrenbergHeute(),
         funktionen: ahrenbergFunktionen({
@@ -552,8 +556,8 @@ for (const breite of BREITEN) {
       await verdrahte(page, cloud);
       await oeffne(page, breite, `?standort=${FIXTURE_IDS.st1}`);
       await schritt2(page);
-      await page.getByRole('button', { name: 'Datenquelle anlegen für Werk Ahrenberg – Halle 2', exact: true }).click();
-      const dialog = page.getByRole('dialog', { name: 'Datenquelle anlegen' });
+      await page.getByRole('button', { name: 'Gateway oder Logger anbinden für Werk Ahrenberg – Halle 2', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Gateway oder Logger anbinden' });
       await expect(dialog).toBeVisible();
       await expect(page.getByRole('dialog', { name: /^Messen & Auswerten/ })).toHaveCount(0);
       await dialog.getByLabel('Name').fill('WAGO-Steuerung Halle 2');
@@ -565,7 +569,7 @@ for (const breite of BREITEN) {
       await expect(dialog.getByText('Software 2.8.0')).toHaveCount(2);
       await expect(dialog.getByText('Freies Lesebudget: wird beim Einrichten geprüft')).toHaveCount(2);
       await dialog.getByRole('button', { name: 'Entwurf anlegen' }).click();
-      await expect(dialog.getByText(/DQ-4 ist als Entwurf angelegt/)).toBeVisible();
+      await expect(dialog.getByText(/Anschluss DQ-4 ist als Entwurf gespeichert/)).toBeVisible();
       await dialog.getByRole('button', { name: 'Von Box Halle 1 prüfen' }).click();
       await expect(dialog.getByText(/Erreichbar · 184 ms/)).toBeVisible();
       await dialog.getByRole('button', { name: 'Einrichtung abschließen' }).click();

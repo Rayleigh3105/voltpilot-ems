@@ -12,7 +12,7 @@ keine Migration.**
   `components/GeraetRahmen.tsx`. **Fehlt einem Typ ein Baustein, fällt er STILL weg** — kein
   Kasten, der erklärt, dass er leer ist (S5).
 - **„Technik & Diagnose" ist eine eigene ADRESSE** (`?ansicht=technik[&abschnitt=teil]`, E1 a):
-  Register/Messwerte · OCPP · Auswertung · Einrichtung · Rohdaten · Plattform-Sicht. Am Telefon
+  Register/Messwerte · OCPP · Verlauf der Anbindung · Auswertung · Einrichtung · Rohdaten · Plattform-Sicht. Am Telefon
   schiebt sie, am Rechner blendet sie (`runPageTransition`). **Alte Lesezeichen bleiben gültig**
   (`ALTER_ABSCHNITT`: `?abschnitt=register` → Technik › Register, `jetzt` → Bühne,
   `befehle` → Aktivität …). Gesprungen wird weiter über `id` + Fokus, nie über einen `#anker`.
@@ -40,6 +40,26 @@ keine Migration.**
 - **Das Unumkehrbare wohnt im Menü „⋯"** (V7): Entfernen/Löschen öffnen dieselben Rückfragen mit
   denselben Folgen wie vorher. Ein belegter Befund eines Technik-Teils steht schon an der
   geschlossenen Zeile (`TechnikTeil.hinweis`, z. B. OCPP-Lücken).
+- **Anbindung (GE-2, Konzept „Ein Gerät, ein Eintrag“):** hat ein Gerät einen gespeicherten Weg
+  (`geraet.data_source_id`), trägt „Gerät & Verbindung“ den Abschnitt „Anbindung“ — Weg, „Gelesen
+  von Box … ›“, Empfang, Last an der Box, laufende Übergabe, Lesetakt, klein „Kennung DQ-n“ — und
+  „Zuständige Box wechseln“ öffnet den `DatenquelleWechselDialog` der Box-Seite (Steuerquelle: dieselbe
+  Weiche `wegDesWechsels`). Welcher Weg dazugehört, sagt allein der Aufbau: die Seite sucht ihr Gerät in
+  `aufbauBaum` (`geraetAnbindung.geraetImAufbau`), nie über die Adresse; die Bestandszeilen Anbindung/
+  Adresse/Lesetakt/Gelesen über gehen dann im Abschnitt auf. Der Kopf zeigt EINEN Zustand: eine
+  gemeldete Störung des Wegs gewinnt (`aufbauBaum.wegStoerung`, dieselbe Regel wie die Aufbau-Zeile).
+  Hinter einem Gateway: „Gelesen über Gateway DQ-n (k Geräte) ›“ führt auf die Gateway-Seite; Box-Wechsel
+  und Last stehen am Gateway. Technik › „Verlauf der Anbindung“ liest `GET …/data-sources/{id}/history`
+  mit dem Satz des Änderungsprotokolls (`text`); das Geräte-Protokoll führt dieselben Einträge.
+- **Gateway-Seite (GE-5):** ein Weg mit mehreren Geräten (1 : N, nur über gespeicherte Verweise) hat die
+  Seite `…/geraet/{ref}/dq-<n>` (`geraetAdresse.gatewayGeraetId`, nur Ziffern) im selben Rahmen:
+  „Geräte an diesem Gateway“ mit Geräte-ID und Seite je Gerät, „Gerät & Verbindung“ mit derselben
+  Anbindung (`geraetAnbindung.gatewayAnbindung`: alle Geräte-IDs, Last und Box-Wechsel für alle),
+  Technik › „Verlauf der Anbindung“. Ein Weg mit einem oder keinem Gerät hat keine Seite — die Adresse
+  nennt dann sein Gerät bzw. den Aufbau (`gatewaySeite.ts`). „Gerät an diesem Gateway hinzufügen“ führt
+  mit `?neu=geraet&an=DQ-n` in den Gerätekatalog, belegt `ip`/`port`/`unit_id` vor (`gatewayVorbelegung`)
+  und hängt das neue Gerät danach über den Vorschlag „Zu DQ-n hinzufügen“ an (`gatewayAnhaengen`) — zeigt
+  der Server es dort nicht, hängt nichts.
 - **K4 · I/O-Modul:** ein Verbraucher am Relais eines Moduls hat die Seite `io-<Entität>`
   (`geraetAdresse`), gebunden über `plantModel(…, ioBindungenAus(consumers))`. Die Modul-Seite
   zeigt den Klemmenplan (belegter Ausgang führt zu seinem Verbraucher, freier Ausgang schaltbar);
@@ -47,7 +67,7 @@ keine Migration.**
   über seine Komponente** (`?entity=`), nie über `device=io-…`. „Ist es ein Modul?" beantwortet
   EINE Regel (`geraetSeite.istIoModul`). Die freie Zuordnung von Aus- UND Eingängen ist ein
   eigenes, späteres Paket (E4 Schritt 2).
-- **Beweise:** `geraetRahmen.test.ts`, `geraetSteuerung.test.ts`, `geraetHeute.test.ts`,
+- **Beweise:** `geraetRahmen.test.ts`, `geraetSteuerung.test.ts`, `geraetHeute.test.ts`, `geraetAnbindung.test.ts`,
   `components/GeraetBuehne.test.tsx`, `consumers/ioZustand.test.ts`, K4-Blöcke in
   `geraetSeite.test.ts`/`komponenten.test.ts`/`GeraetSeiteSection.test.tsx`, dazu die Wirte
   `GeraetSeiteSection`, `BoxSeiteSection`, `OcppWallboxPage`. Browser bei 375 und 1440 px:

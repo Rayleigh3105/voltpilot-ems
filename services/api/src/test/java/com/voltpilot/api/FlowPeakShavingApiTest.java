@@ -20,9 +20,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.ParameterizedTypeReference;
@@ -60,6 +61,7 @@ import org.testcontainers.utility.DockerImageName;
  * dry-run (its economics are E5b, not built).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class FlowPeakShavingApiTest {
@@ -214,7 +216,7 @@ class FlowPeakShavingApiTest {
                 Map.of()).getBody().path("valid").asBoolean()).isTrue();
         ResponseEntity<JsonNode> atypRefused = exchange(atypBase + "/versions/1/simulate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
-        assertThat(atypRefused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(atypRefused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(atypRefused.getBody().path("message").asText())
                 .contains("atypische Netznutzung").contains("Vorbereitung");
         // The draft never activated, so it deletes cleanly (no lingering claim).
@@ -262,7 +264,7 @@ class FlowPeakShavingApiTest {
         // 2) Module precondition: no Leistungspreis configured → honest 422.
         ResponseEntity<JsonNode> noPrice = exchange(base + "/versions/1/activate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
-        assertThat(noPrice.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(noPrice.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(noPrice.getBody().path("activated").asBoolean()).isFalse();
         assertThat(noPrice.getBody().path("reason").asText()).isEqualTo("peakshaving_not_configured");
         assertThat(noPrice.getBody().path("message").asText()).contains("Leistungspreis");

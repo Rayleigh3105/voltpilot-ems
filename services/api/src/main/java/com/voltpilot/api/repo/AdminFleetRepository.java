@@ -1,6 +1,7 @@
 package com.voltpilot.api.repo;
 
 import com.voltpilot.api.uems.GrenzeAufloesung;
+import com.voltpilot.api.web.dto.AnmeldungDto;
 import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import java.math.BigDecimal;
@@ -79,12 +80,33 @@ public class AdminFleetRepository {
             String plantKind, boolean netzladenErlaubt, String tarifArt) {
     }
 
-    /** Eine aktive Box mit ihren eigenen, nie anlagenweit geratenen Ständen. */
+    /**
+     * Eine aktive Box mit ihren eigenen, nie anlagenweit geratenen Ständen.
+     *
+     * <p>{@code herzschlagAm} (Status-Herzschlag, {@code device_status_seen_at})
+     * und {@code messwertAm} (jüngste Telemetrie-Ankunft) bleiben GETRENNT
+     * (Lücke L2, Adminview-Konzept Abschnitt 3.4): sie laufen über getrennte
+     * Wege (API-Listener bzw. Datenannahme → Redpanda → Writer) und können
+     * verschieden alt sein. {@code lastSeenAt} bleibt additiv als der
+     * verschmolzene Wert ({@code coalesce(herzschlagAm, messwertAm)}) bestehen,
+     * bis alle Leser auf die getrennten Felder umgestellt sind.
+     */
     public record FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
-            Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
+            Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
+            EdgeVersionRow edge, UpdateStatusRow update, List<String> supports,
+            /** Geclaimt am (device.created_at) - Grundlage für "nie angemeldet seit …" (N5). */
+            Instant createdAt,
+            /** vp-box-verbinden-konzept N5: null = die Box hat sich seit dem Verbinden nie angemeldet. */
+            AnmeldungDto anmeldung) {
+        public FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
+                Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
+                EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
+            this(deviceId, siteId, externalRef, name, lastSeenAt, herzschlagAm, messwertAm,
+                    edge, update, supports, null, null);
+        }
         public FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
                 Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update) {
-            this(deviceId, siteId, externalRef, name, lastSeenAt, edge, update, null);
+            this(deviceId, siteId, externalRef, name, lastSeenAt, null, null, edge, update, null, null, null);
         }
     }
 
@@ -107,8 +129,16 @@ public class AdminFleetRepository {
             Instant reportedAt) {
     }
 
-    /** Ein Eintrag des Release-Registers - {@code releaseSeq} ist DIE Ordnung. */
-    public record EdgeReleaseRow(long releaseSeq, String version) {
+    /**
+     * Ein Eintrag des Release-Registers - {@code releaseSeq} ist DIE Ordnung,
+     * {@code boxArt} die Linie ({@code ota.BoxArt}: {@code docker} oder
+     * {@code light}). Ein Stand wird nur an der eigenen Linie gemessen
+     * (Geräte &amp; Updates S0).
+     */
+    public record EdgeReleaseRow(long releaseSeq, String version, String boxArt) {
+        public EdgeReleaseRow(long releaseSeq, String version) {
+            this(releaseSeq, version, com.voltpilot.api.ota.BoxArt.ofRelease(version, null));
+        }
     }
 
     /** Die vom Gerät gemeldete Quellen-Gesundheit, gezählt. */
@@ -160,12 +190,17 @@ public class AdminFleetRepository {
     public List<FleetBoxRow> boxes() {
         return jdbc.query("""
                 SELECT d.id AS device_id, d.site_id, d.external_ref, d.name, d.supports,
+                       d.created_at,
                        coalesce(d.device_status_seen_at, telemetry.last_seen) AS last_seen,
+                       d.device_status_seen_at AS herzschlag_am,
+                       telemetry.last_seen AS messwert_am,
                        edge.core_version, edge.palette_version,
                        edge.reported_at AS edge_reported_at,
                        update.version, update.backend, update.current_version,
                        update.target_version, update.state, update.reason,
-                       update.last_known_good, update.reported_at AS update_reported_at
+                       update.last_known_good, update.reported_at AS update_reported_at,
+                       anmeldung.csr_updated_at AS anmeldung_angefragt_am,
+                       anmeldung.issued_at AS anmeldung_abgeholt_am
                   FROM device d
                   LEFT JOIN LATERAL (
                        SELECT max(t.received_at) AS last_seen
@@ -182,18 +217,29 @@ public class AdminFleetRepository {
                          FROM device_update_status u WHERE u.device_id = d.id
                         ORDER BY u.reported_at DESC LIMIT 1
                   ) update ON true
+                  LEFT JOIN LATERAL (
+                       SELECT e.csr_updated_at, e.issued_at
+                         FROM device_enrollment e WHERE e.external_ref = d.external_ref
+                  ) anmeldung ON true
                  WHERE d.ausgebaut_am IS NULL
                  ORDER BY d.site_id, d.created_at, d.id
                 """, (rs, i) -> {
+                    Timestamp createdAt = rs.getTimestamp("created_at");
                     Timestamp lastSeen = rs.getTimestamp("last_seen");
+                    Timestamp herzschlagAm = rs.getTimestamp("herzschlag_am");
+                    Timestamp messwertAm = rs.getTimestamp("messwert_am");
                     Timestamp edgeReported = rs.getTimestamp("edge_reported_at");
                     Timestamp updateReported = rs.getTimestamp("update_reported_at");
+                    Timestamp angefragtAm = rs.getTimestamp("anmeldung_angefragt_am");
+                    Timestamp abgeholtAm = rs.getTimestamp("anmeldung_abgeholt_am");
                     return new FleetBoxRow(
                             rs.getObject("device_id", UUID.class),
                             rs.getObject("site_id", UUID.class),
                             rs.getString("external_ref"),
                             rs.getString("name"),
                             lastSeen == null ? null : lastSeen.toInstant(),
+                            herzschlagAm == null ? null : herzschlagAm.toInstant(),
+                            messwertAm == null ? null : messwertAm.toInstant(),
                             edgeReported == null ? null : new EdgeVersionRow(
                                     rs.getString("core_version"),
                                     rs.getString("palette_version"),
@@ -207,7 +253,11 @@ public class AdminFleetRepository {
                                     rs.getString("reason"),
                                     rs.getString("last_known_good"),
                                     updateReported.toInstant()),
-                            com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports")));
+                            com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports")),
+                            createdAt == null ? null : createdAt.toInstant(),
+                            angefragtAm == null && abgeholtAm == null ? null : new AnmeldungDto(
+                                    angefragtAm == null ? null : angefragtAm.toInstant(),
+                                    abgeholtAm == null ? null : abgeholtAm.toInstant()));
                 });
     }
 
@@ -436,8 +486,10 @@ public class AdminFleetRepository {
      */
     public List<EdgeReleaseRow> releases() {
         return jdbc.query(
-                "SELECT release_seq, version FROM edge_release ORDER BY release_seq DESC",
-                (rs, i) -> new EdgeReleaseRow(rs.getLong("release_seq"), rs.getString("version")));
+                "SELECT release_seq, version, manifest FROM edge_release ORDER BY release_seq DESC",
+                (rs, i) -> new EdgeReleaseRow(rs.getLong("release_seq"), rs.getString("version"),
+                        com.voltpilot.api.ota.BoxArt.ofRelease(rs.getString("version"),
+                                rs.getString("manifest"))));
     }
 
     /**

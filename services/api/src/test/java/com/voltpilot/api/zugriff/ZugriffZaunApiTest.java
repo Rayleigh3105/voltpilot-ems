@@ -9,6 +9,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.ueberwachung.ExterneEmpfaengerApiTest;
 import com.voltpilot.api.uems.GesamtabzugApiTest;
 import jakarta.servlet.ServletException;
 import java.net.URI;
@@ -35,9 +36,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -50,6 +51,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -67,9 +69,11 @@ import org.testcontainers.utility.DockerImageName;
  * Hand) — mit dem Demo-Kundenbereich des Dev-Seeds.
  *
  * <ol>
- *   <li><b>Partner ohne wirksame Unterstützung: 404 auf jeder Kundenroute</b>, jede Methode, in acht Varianten (ohne
- *       Kopf, fremder/kaputter Kopf, {@code X-Tenant-Id}, beendete Unterstützung, Unterstützung in einem ANDEREN
- *       Kundenbereich, Plattform mit {@code X-Kundenbereich} ohne Unterstützung).</li>
+ *   <li><b>Partner ohne wirksame Unterstützung: 404 auf jeder Kundenroute</b>, jede Methode, in sieben Varianten
+ *       (ohne Kopf, fremder/kaputter Kopf, {@code X-Tenant-Id}, beendete Unterstützung, Unterstützung in einem
+ *       ANDEREN Kundenbereich). Die Plattform mit {@code X-Kundenbereich} ohne Unterstützung gehört seit dem
+ *       26.10.2026 nicht mehr dazu: bei offenem Umschalter (hier Profil {@code local}) kommt sie hinein wie über
+ *       {@code X-Tenant-Id} - siehe die Einstellungen je Anfrage.</li>
  *   <li><b>Die Einstellungen je Anfrage</b> über eine Test-Route, die {@code current_setting} liest: jeder Aufrufer
  *       sieht seine eigenen, auch abwechselnd hintereinander (der Pool gibt Verbindungen weiter).</li>
  *   <li><b>Bestand: jedes heutige Konto sieht auf jeder lesenden Kundenroute dasselbe wie vor IP-4.</b> „Vorher" ist
@@ -104,6 +108,8 @@ class ZugriffZaunApiTest {
     private static final String BERLIN_SITE = "00000000-0000-0000-0000-000000000002";
     private static final String KUNDENBEREICH = ZugriffKontextLader.KUNDENBEREICH_HEADER;
     private static final String TENANT = "X-Tenant-Id";
+    /** Das Konto des Bestandsvergleichs, das seit dem Mandantensprung (29.10.2026) als Kundenadministrator liest. */
+    private static final String PLATTFORM_IM_SPRUNG = "Plattform mit X-Tenant-Id";
     static final String SITZUNG = "/api/v1/test-sitzung";
     private static final String AUSNAHME = "Ausnahme im Handler: ";
 
@@ -173,7 +179,7 @@ class ZugriffZaunApiTest {
     @Qualifier("requestMappingHandlerMapping")
     RequestMappingHandlerMapping mapping;
 
-    @SpyBean
+    @MockitoSpyBean
     ZugriffKontextLader lader;
 
     /** {@code true} = „vorher": der Lader lädt nichts, der Filter reicht durch. */
@@ -239,7 +245,6 @@ class ZugriffZaunApiTest {
         Authentication ohne = konto("sub-zaun-partner-ohne", null, "partner");
         Authentication beendet = konto(PARTNER_BEENDET, null, "partner");
         Authentication gewaehrt = konto(PARTNER_GEWAEHRT, null, "partner");
-        Authentication plattform = konto("sub-zaun-plattform", null, "platform-admin");
         List<Konto> varianten = List.of(
                 new Konto("Partner ohne Kopf", ohne, new String[0]),
                 new Konto("Partner, X-Kundenbereich ohne Unterstützung", ohne,
@@ -250,9 +255,7 @@ class ZugriffZaunApiTest {
                 new Konto("Partner, X-Tenant-Id", ohne, new String[] {TENANT, DEMO.toString()}),
                 new Konto("Partner, Unterstützung beendet", beendet, new String[] {KUNDENBEREICH, DEMO.toString()}),
                 new Konto("Partner, Unterstützung nur in einem anderen Kundenbereich", gewaehrt,
-                        new String[] {KUNDENBEREICH, NORDWIND.toString()}),
-                new Konto("Plattform, X-Kundenbereich ohne Unterstützung neben X-Tenant-Id", plattform,
-                        new String[] {KUNDENBEREICH, DEMO.toString(), TENANT, DEMO.toString()}));
+                        new String[] {KUNDENBEREICH, NORDWIND.toString()}));
 
         Map<String, List<String>> nicht404 = new TreeMap<>();
         for (Route r : routen) {
@@ -277,6 +280,10 @@ class ZugriffZaunApiTest {
                 new String[] {TENANT, DEMO.toString()});
         Konto plattformOhne = new Konto("Plattform ohne Kopf", konto("sub-zaun-plattform", null, "platform-admin"),
                 new String[0]);
+        // Der Sprung der Plattform-Administration (26.10.2026): das Portal schickt X-Kundenbereich, offen gilt er
+        // ohne Unterstützung wie der Umschalter - der ganze Kundenbereich.
+        Konto sprung = new Konto("Plattform, X-Kundenbereich ohne Unterstützung",
+                konto("sub-zaun-plattform", null, "platform-admin"), new String[] {KUNDENBEREICH, DEMO.toString()});
         Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
         Konto leser = new Konto("Leser", konto(KUNDE_LESER, DEMO), new String[0]);
         Konto ohne = new Konto("Kundenkonto ohne wirksame Zuweisung", konto(KUNDE_OHNE, DEMO), new String[0]);
@@ -290,6 +297,7 @@ class ZugriffZaunApiTest {
             assertThat(sitzung(partner)).isEqualTo(List.of(DEMO.toString(), "standorte", ids));
             assertThat(sitzung(leser)).isEqualTo(List.of(DEMO.toString(), "standorte", ids));
             assertThat(sitzung(umschalter)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
+            assertThat(sitzung(sprung)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
             // AP-03 IP-9: ein Konto, dessen einzige Zuweisung vorbei ist, kommt gar nicht mehr bis zur Route —
             // der Entzug wirkt mit der nächsten Anfrage, und sie sagt auch, warum (A6).
             assertThat(beendet(ohne)).isEqualTo("zugriff_beendet");
@@ -321,14 +329,18 @@ class ZugriffZaunApiTest {
 
     /**
      * AP-03 IP-13 (Einfuehrung 83e3820e): Benutzerliste und Protokoll der Benutzerverwaltung. AP-20 IP-17: der
-     * Gesamtabzug — nur der Kundenadministrator, erkannt am Zugriffs-Kontext.
+     * Gesamtabzug — nur der Kundenadministrator, erkannt am Zugriffs-Kontext. Alerting Scheibe 6: die externen
+     * Empfaenger einer Ueberwachung — ihr Dienst prueft {@code ueberwachung.verwalten} am Aufrufer, ohne Kontext 403;
+     * mit Kontext ist eine unbekannte Regel 404.
      */
     private static final List<NachIp4> NACH_IP4 = List.of(
             new NachIp4("/api/v1/benutzer", "/api/v1/benutzer", BenutzerVerwaltungApiTest.class),
             new NachIp4("/api/v1/benutzer/protokoll",
                     "/api/v1/benutzer/protokoll?von=2024-01-01T00:00:00Z&bis=2024-12-31T00:00:00Z",
                     BenutzerVerwaltungApiTest.class),
-            new NachIp4("/api/v1/unternehmen/abzug", "/api/v1/unternehmen/abzug", GesamtabzugApiTest.class));
+            new NachIp4("/api/v1/unternehmen/abzug", "/api/v1/unternehmen/abzug", GesamtabzugApiTest.class),
+            new NachIp4("/api/v1/meldungen/regeln/{id}/externe-empfaenger", ExterneEmpfaengerApiTest.PROBE,
+                    ExterneEmpfaengerApiTest.class));
 
     private static final Set<String> AUSGENOMMEN =
             NACH_IP4.stream().map(NachIp4::muster).collect(Collectors.toCollection(TreeSet::new));
@@ -353,6 +365,11 @@ class ZugriffZaunApiTest {
      *
      * <p>Captain 22.09.2026 E2 = A: genau die beiden Kundenkonten steigen — echte und gedachte
      * Kundenadmin-Zuweisung (E12) erhalten dieselbe Stufe. Alle anderen Leseantworten bleiben gleich.
+     *
+     * <p><b>Der Mandantensprung (Auftrag vom 29.10.2026):</b> die Plattform mit {@code X-Tenant-Id} liest seither als
+     * Kundenadministrator, wo ein Dienst sein Urteil über {@code RechtPruefung.aufrufer()} spricht — „vorher" war sie
+     * dort eine VoltPilot-Unterstützung. Ihre Abweichungen stehen in {@code sprung} und sind wörtlich festgenagelt:
+     * eine weitere Route, die sich für sie ändert, fällt auf, ebenso ein Zurückdrehen.
      */
     @Test
     void jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4UndIp5() throws Exception {
@@ -364,12 +381,13 @@ class ZugriffZaunApiTest {
                         new String[0]),
                 new Konto("Kundenkonto ohne Realm-Rolle, nie zugewiesen (Bestandsregel E12)", konto(KUNDE_NIE, DEMO),
                         new String[0]),
-                new Konto("Plattform mit X-Tenant-Id", konto("sub-zaun-plattform", null, "platform-admin"),
+                new Konto(PLATTFORM_IM_SPRUNG, konto("sub-zaun-plattform", null, "platform-admin"),
                         new String[] {TENANT, DEMO.toString()}),
                 new Konto("Plattform ohne Kopf", konto("sub-zaun-plattform", null, "platform-admin"),
                         new String[0]));
         List<String> abweichungen = new ArrayList<>();
         List<String> stufenwechsel = new ArrayList<>();
+        Set<String> sprung = new TreeSet<>();
         Set<String> fluechtig = new TreeSet<>();
         Set<String> mitAusnahme = new TreeSet<>();
         Set<String> ohneAussage = new TreeSet<>();
@@ -377,6 +395,7 @@ class ZugriffZaunApiTest {
         for (Route r : routen) {
             boolean jedeAntwortAbgelehnt = true;
             for (Konto k : konten) {
+                List<String> abweichend = k.name().equals(PLATTFORM_IM_SPRUNG) ? new ArrayList<>() : abweichungen;
                 Antwort vorher1 = vorher(r, k);
                 Antwort nachher = ruf(r, k);
                 Antwort vorher2 = vorher(r, k);
@@ -387,17 +406,20 @@ class ZugriffZaunApiTest {
                 if (vorher1.status() != vorher2.status()) {
                     fluechtig.add(r.toString());
                 } else if (nachher.status() != vorher2.status()) {
-                    abweichungen.add(k.name() + ": " + r + " vorher " + vorher2.status() + ", nachher " + nachher.status());
+                    abweichend.add(k.name() + ": " + r + " vorher " + vorher2.status() + ", nachher " + nachher.status());
                 } else if (!vorher1.body().equals(vorher2.body())) {
                     fluechtig.add(r.toString());
                 } else if (!nachher.body().equals(vorher2.body())) {
                     if (OCPP_STUFE.equals(r.muster())) {
                         stufenwechsel.add(k.name() + ": " + stufe(vorher2.body()) + " → " + stufe(nachher.body()));
                     } else {
-                        abweichungen.add(k.name() + ": " + r + " Körper weicht ab");
+                        abweichend.add(k.name() + ": " + r + " Körper weicht ab");
                     }
                 } else {
                     gleich = true;
+                }
+                if (abweichend != abweichungen) {
+                    sprung.addAll(abweichend);
                 }
                 if (gleich && nachher.status() == 200 && nachher.body().length() > 2) {
                     mitDaten++;
@@ -425,6 +447,12 @@ class ZugriffZaunApiTest {
         assertThat(routen).hasSizeGreaterThan(150);
         assertThat(mitDaten).isGreaterThan(100);
         assertThat(abweichungen).isEmpty();
+        // Mandantensprung: Berichte (vorher 403 als Unterstützung) und die Knöpfe Freigeben/Zurücknehmen der
+        // Korrekturen (vorher „recht_fehlt“) wie beim Kundenadministrator.
+        assertThat(sprung).containsExactlyInAnyOrder(
+                PLATTFORM_IM_SPRUNG + ": GET /api/v1/berichte vorher 403, nachher 200",
+                PLATTFORM_IM_SPRUNG + ": GET /api/v1/korrekturen/{kennung} Körper weicht ab",
+                PLATTFORM_IM_SPRUNG + ": GET /api/v1/standorte/{standortId}/korrekturen Körper weicht ab");
         // Captain 22.09.2026 E2 = A: echte und gedachte Kundenadmin-Zuweisung, jeweils MIT Stufe.
         assertThat(stufenwechsel).containsExactly(
                 "Kundenkonto (Bestandsübernahme: Kundenadministrator): CUSTOMER → SITE_ADMIN",
@@ -1295,7 +1323,9 @@ class ZugriffZaunApiTest {
         return ruf(MockMvcRequestBuilders.request(r.methode(), URI.create(r.pfad())), k);
     }
 
-    private Antwort ruf(MockHttpServletRequestBuilder anfrage, Konto k) throws Exception {
+    // Spring 7 split MockMultipartHttpServletRequestBuilder off MockHttpServletRequestBuilder's
+    // hierarchy; the common self-typed base both now extend is this abstract class.
+    private Antwort ruf(AbstractMockHttpServletRequestBuilder<?> anfrage, Konto k) throws Exception {
         anfrage.with(authentication(k.auth()));
         for (int i = 0; i < k.koepfe().length; i += 2) {
             anfrage.header(k.koepfe()[i], k.koepfe()[i + 1]);
@@ -1479,6 +1509,12 @@ class ZugriffZaunApiTest {
                 + "grund, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, 'bearbeitet', '{}'::jsonb, "
                 + "'{\"name\":\"Zaun-Zähler\"}'::jsonb, '2026-09-01T00:00:00Z', false, 'Zaun-Protokoll', ?, 'Zaun', "
                 + "'kundenadministrator', 'kunde')", DEMO, messstelle, KUNDE_KA);
+        // Die Regel der Probe von ExterneEmpfaengerApiTest (NACH_IP4): eine Ueberwachung am Demo-Standort.
+        root.update("INSERT INTO ueberwachung (id, tenant_id, standort_id, name, wertart, bezug, bedingung, schwere, "
+                + "empfaenger, herkunft, aktiv, angelegt_von) VALUES (?, ?, ?, 'Zaun-Netzbezug', "
+                + "'anlage.netz.leistung', ?::jsonb, '{\"art\":\"ueber\",\"schwelle\":120}'::jsonb, 'warnung', "
+                + "'[]'::jsonb, 'eigen', true, ?)",
+                ExterneEmpfaengerApiTest.REGEL, DEMO, demoStandort, "{\"anlage\":\"" + BERLIN_SITE + "\"}", KUNDE_KA);
         buehne = new Buehne(messstelle, quelle, box, wago, komponente, ort, kostenstelle, prozess);
         String standort = "/api/v1/standorte/" + demoStandort;
         PROBEN.put(BEZUGSGROESSE_SELBST, "/api/v1/bezugsgroessen/" + bezugsgroesse);
@@ -1562,7 +1598,10 @@ class ZugriffZaunApiTest {
      * Übernahme als Kundenadministrator), damit Import, Zeile und Wert so zusammenhängen wie im Betrieb.
      */
     private void importAnlegen() throws Exception {
-        String monat = java.time.YearMonth.now().minusMonths(2).toString();
+        // ⚠ FEST vor dem Beginn der Kanalbindung (2026-08-31T22:00Z = 01.09. in Berlin, siehe
+        // Bühnenaufbau): „heute minus zwei Monate“ lag ab November 2026 IN der Bindung, und der
+        // Import scheiterte mit kanal_gebunden - alle elf Fälle rot, weil jeder ihn vorbereitet.
+        String monat = "2026-08";
         byte[] datei = ("Periode;Menge;Einheit\n" + monat + ";312,4;h\n").getBytes(StandardCharsets.UTF_8);
         byte[] zuordnung = ("{\"spalten\":{\"periode\":1,\"wert\":2,\"einheit\":3},\"deutung\":\"periode\","
                 + "\"zahlformat\":\"de\",\"bezugsgroesse\":\"" + BEZUGSGROESSE + "\"}").getBytes(StandardCharsets.UTF_8);

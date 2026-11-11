@@ -119,11 +119,18 @@ describe('preisVergleich · die Grundlage steht als Unterzeile', () => {
     );
   });
 
-  it('nicht verknüpft: Börsenpreis — und der Weg zur Verknüpfung', () => {
+  it('ohne Vergütung: Börsenpreis - und der Weg zur Karte „Einspeisevergütung"', () => {
     const m = { ...fx('eeg-tag-abgeschlossen'), exportVerguetungPriced: false } as SiteEarnings;
     const unter = zeile(preisVergleich({ money: m }), 'einspeisung').unter!;
-    expect(unter.text).toBe('verdient: Börsenpreis · nicht verknüpft');
-    expect(unter.link).toEqual({ text: 'Anlage verknüpfen ›', ziel: 'mastr' });
+    expect(unter.text).toBe('verdient: Börsenpreis · Vergütung nicht hinterlegt');
+    expect(unter.link).toEqual({ text: 'Vergütung hinterlegen ›', ziel: 'verguetung' });
+  });
+
+  it('ein selbst angegebener Satz ist keine „feste Vergütung (EEG)"', () => {
+    const m = { ...fx('eeg-tag-abgeschlossen'), exportVerguetungQuelle: 'angegeben' } as SiteEarnings;
+    const unter = zeile(preisVergleich({ money: m }), 'einspeisung').unter!;
+    expect(unter.text).toBe('verdient: Ihre angegebene Vergütung');
+    expect(unter.link).toBeUndefined();
   });
 });
 

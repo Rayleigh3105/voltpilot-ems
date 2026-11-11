@@ -5,6 +5,10 @@ Er spielt genau die Antworten, deren Behandlung im Skript tragend ist:
   * Token: 200 nur mit dem richtigen client_secret, sonst 401 (invalid_client)
   * next-seq: 200 mit nextSeq/currentSeq, 401 ohne gueltiges Token
   * POST edge-releases: 201 neu · 200 BYTEGLEICHE Wiederholung · 409 abweichend
+  * PUT edge-releases/<v>/programme/<os>/<arch>?ab=: Teil-Upload eines
+    Edge-Light-Programms; Groesse und Pruefsumme aus dem registrierten Manifest,
+    "fertig" erst bei voller Laenge UND passender Pruefsumme (wie
+    EdgeLightProgrammController)
   * Forgejo: Release anlegen (201) bzw. schon vorhanden (409) + per Tag finden,
     Assets auflisten/loeschen/hochladen
 
@@ -16,6 +20,7 @@ Ebenso das Forgejo-409: nur so ist der Wiederholungslauf wirklich geprueft.
 Druckt seinen Port auf stdout und laeuft, bis er getoetet wird.
 """
 
+import hashlib
 import json
 import re
 import sys
@@ -26,6 +31,7 @@ RELEASES = {}  # tag -> id
 ASSETS = {}  # release id -> {name: {"id": n, "size": n}}
 NEXT_ASSET_ID = [1]  # monoton wie bei Forgejo - eine wiederverwendete id
 # wuerde beim Ersetzen eines Assets ein FREMDES Asset mittreffen.
+PROGRAMME = {}  # (version, arch) -> {"daten": bytes, "fertig": bool}
 TOKEN = "stub-token"
 SECRET = "richtig"
 
@@ -127,6 +133,41 @@ class Handler(BaseHTTPRequestHandler):
                  for k, v in sorted(ASSETS.get(rid, {}).items())],
             )
         self._send(404, {"message": "unbekannter Pfad"})
+
+    def do_PUT(self):
+        n = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(n)
+        m = re.match(r"^/api/v1/admin/edge-releases/([^/]+)/programme/([a-z0-9]+/[a-z0-9]+)\?ab=(\d+)$", self.path)
+        if not m:
+            return self._send(404, {"message": "unbekannter Pfad"})
+        if not self._authed():
+            return self._send(401, {"message": "kein Token"})
+        version, arch, ab = m.group(1), m.group(2), int(m.group(3))
+        if version not in STORE or not STORE[version][0]:
+            return self._send(404, {"message": "nicht registriert"})
+        prog = [a for a in json.loads(STORE[version][0])["artifacts"]
+                if a.get("type") == "binary" and a.get("arch") == arch]
+        if not prog:
+            return self._send(404, {"message": "kein Programm fuer " + arch})
+        size, sha = prog[0]["gz_size"], prog[0]["gz_sha256"]
+        p = PROGRAMME.setdefault((version, arch), {"daten": b"", "fertig": False})
+        if not p["fertig"]:
+            if ab == 0:
+                p["daten"] = raw
+            elif ab == len(p["daten"]):
+                p["daten"] += raw
+            else:
+                return self._send(409, {"message": "Teil passt nicht"})
+            if len(p["daten"]) > size:
+                p["daten"] = b""
+                return self._send(400, {"message": "zu lang"})
+            if len(p["daten"]) == size:
+                if hashlib.sha256(p["daten"]).hexdigest() != sha:
+                    p["daten"] = b""
+                    return self._send(400, {"message": "Pruefsumme passt nicht"})
+                p["fertig"] = True
+        return self._send(200, {"version": version, "arch": arch, "empfangen": len(p["daten"]),
+                                "groesse": size, "fertig": p["fertig"]})
 
     def do_DELETE(self):
         m = re.match(r"^/api/v1/repos/[^/]+/[^/]+/releases/(\d+)/assets/(\d+)$", self.path)

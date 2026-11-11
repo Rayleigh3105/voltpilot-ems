@@ -7,22 +7,36 @@ import React from 'react';
  */
 export function Badge({
   children,
-  variant = 'tint', // tint | gradient | solid | ok | warn | off
+  variant = 'tint', // tint | gradient | solid | ok | warn | offline | off
   dot = false,
+  // Schlägt den Punkt EINMAL (keine Dauer-Animation) - der Beleg, dass eine
+  // Antwort gerade einen neueren Herzschlag getragen hat (Adminview-Konzept
+  // §5.4). Nie mit `pulse` als Dauerzustand verwechseln: der endet nach einem
+  // Lauf von selbst und braucht deshalb KEINEN Eintrag im
+  // `prefers-reduced-motion`-Block von `index.css` (eine einmalige Animation
+  // steht unter `--vp-motion-scale: 0` sofort auf ihrem Endzustand).
+  pulse = false,
   style = {},
   ...props
 }) {
   const variants = {
+    // Text in --vp-action (Navy): --vp-primary-deep erreichte auf dem hellen Tint nur ~3,1:1
+    // (WCAG AA verlangt 4,5:1 für diese kleine Schrift).
     tint: {
       background: 'var(--vp-tint)',
-      color: 'var(--vp-primary-deep)',
+      color: 'var(--vp-action)',
     },
     gradient: {
       background: 'var(--vp-grad-badge)',
-      color: 'var(--vp-primary-deep)',
+      color: 'var(--vp-action)',
     },
+    // `--vp-primary-deep` (#5A8DE8) trug hier weiss bei nur 3,27:1 (axe-core,
+    // WCAG 1.4.3 verlangt 4,5:1 für diese kleine Schrift) - derselbe Fehler,
+    // den `tint` oben schon einmal hatte. `--vp-action` ist laut Token-Kommentar
+    // in `colors.css` GENAU für "weiss auf Füllung bei WCAG AA" gebaut
+    // (~8:1) und wird bereits für Buttons/Links benutzt - kein neuer Farbwert.
     solid: {
-      background: 'var(--vp-primary-deep)',
+      background: 'var(--vp-action)',
       color: '#fff',
     },
     ok: {
@@ -32,6 +46,13 @@ export function Badge({
     warn: {
       background: '#FFF3E0',
       color: 'var(--vp-warn-ink, #b45309)',
+    },
+    // Eine Stufe dunkler als `warn` (Adminview-Konzept §5.3: „verzögert" ist
+    // bernstein, „meldet sich nicht" ist orange - zwei verschiedene Ernste,
+    // zwei verschiedene Töne, nie derselbe wie ein Fehler (`fehler`).
+    offline: {
+      background: '#FDE9D3',
+      color: '#9A4A0A',
     },
     off: {
       background: 'var(--vp-bg-light)',
@@ -58,6 +79,7 @@ export function Badge({
     >
       {dot && (
         <span
+          className={pulse ? 'vp-badge-dot-puls' : undefined}
           style={{
             width: 7,
             height: 7,

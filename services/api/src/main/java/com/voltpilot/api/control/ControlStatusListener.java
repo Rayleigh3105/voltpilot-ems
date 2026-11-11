@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.repo.BatteryControlRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -17,12 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -142,8 +139,7 @@ public class ControlStatusListener extends Rueckmeldeweg {
     private final BatteryControlRepository batteryControl;
     private final CommandLogWriter commandLog;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     @Autowired
     public ControlStatusListener(
@@ -159,6 +155,9 @@ public class ControlStatusListener extends Rueckmeldeweg {
         this.controlStatus = controlStatus;
         this.commandLog = commandLog;
         this.batteryControl = batteryControl;
+        this.verbindung = new BrokerVerbindung(log, "control status", brokerUrl,
+                "voltpilot-api-control-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(STATUS_FILTER, 1, null, quittung), this::empfangen);
     }
 
     /** Without the Steuerstand store: the {@code battery_control} block is ignored. */
@@ -170,66 +169,24 @@ public class ControlStatusListener extends Rueckmeldeweg {
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
+        ensureConnected();
+    }
+
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
+    @Scheduled(fixedDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}",
+            initialDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}")
+    public void ensureConnected() {
+        verbindung.sicherstellen();
+    }
+
+    boolean connectedForTest() { return verbindung.verbunden(); }
+
+    private void empfangen(String topic, MqttMessage message) {
         try {
-            connect();
+            handle(topic, message.getPayload());
         } catch (Exception e) {
-            log.warn("Control-status listener could not connect to {} yet: {} (auto-reconnect active)",
-                    brokerUrl, e.getMessage());
+            log.warn("Control status on '{}' failed: {}", topic, e.getMessage());
         }
-    }
-
-    private void connect() throws Exception {
-        synchronized (lock) {
-            if (client != null) {
-                return;
-            }
-            client = new MqttClient(brokerUrl, "voltpilot-api-control-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-            client.setCallback(new MqttCallbackExtended() {
-                @Override
-                public void connectComplete(boolean reconnect, String serverUri) {
-                    try {
-                        client.subscribe(STATUS_FILTER, 1, messageListener());
-                        log.info("Control-status listener subscribed to {} at {}", STATUS_FILTER, serverUri);
-                    } catch (Exception e) {
-                        log.warn("Control-status subscribe failed: {}", e.getMessage());
-                    }
-                }
-
-                @Override
-                public void connectionLost(Throwable cause) {
-                    log.warn("Control-status listener lost the broker connection: {} (auto-reconnect active)",
-                            cause == null ? "unknown" : cause.getMessage());
-                }
-
-                @Override
-                public void messageArrived(String topic, MqttMessage message) {
-                }
-
-                @Override
-                public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {
-                }
-            });
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-    }
-
-    private IMqttMessageListener messageListener() {
-        return (topic, message) -> {
-            try {
-                handle(topic, message.getPayload());
-            } catch (Exception e) {
-                log.warn("Control status on '{}' failed: {}", topic, e.getMessage());
-            }
-        };
     }
 
     /** Package-visible + test-visible: parse one status heartbeat's control block. */
@@ -479,23 +436,6 @@ public class ControlStatusListener extends Rueckmeldeweg {
 
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-            } catch (Exception e) {
-                log.debug("Control listener disconnect failed on shutdown: {}", e.getMessage());
-            }
-            try {
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("Control listener close failed on shutdown: {}", e.getMessage());
-            }
-            client = null;
-        }
+        verbindung.schliessen();
     }
 }

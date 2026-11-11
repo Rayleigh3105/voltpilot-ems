@@ -43,6 +43,18 @@ import {
   MISPEL_ZURUECKSPEISEN_RUHT,
 } from './glossar';
 import {
+  anschlussGespeichert,
+  UEMS_ANBINDUNG,
+  UEMS_ANSCHLUSS,
+  UEMS_GATEWAY_ANBINDEN,
+  UEMS_GERAETE_SUCHEN,
+  UEMS_GERAETESUCHE,
+  UEMS_IM_HEIMNETZ_SUCHEN,
+  UEMS_LISTE_DURCHSUCHEN,
+} from './glossar';
+import { AUFBAU_ERZEUGUNG, AUFBAU_LADEN, AUFBAU_NETZ, AUFBAU_SPEICHER, AUFBAU_VERBRAUCH } from './glossar';
+import { GATEWAY_ANBINDEN, MESSEN_SCHRITTE, ZUR_DATENQUELLE } from './messenAssistent';
+import {
   UEMS_ABWEICHUNG,
   UEMS_ABWEICHUNG_ERGEBNISSE,
   UEMS_ABWEICHUNG_ZUSTAENDE,
@@ -235,6 +247,7 @@ import {
   UEMS_WIRKSAMKEIT,
   UEMS_WORTLAUT,
 } from './glossar';
+import * as koppelTexte from './koppelTexte';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -309,10 +322,21 @@ const EXCLUDED = [
   '/onboardingFunnel.ts',
   '/adminVorlagen.ts',
   '/adminKomponentenFlotte.ts',
-  '/adminGeraet.ts',
-  // Die reine Schicht der Admin-Seite „Geräte & Updates" (`pages/admin/BoxVersions`,
-  // einziger Importeur) — sie spricht legitim Betreiber-Vokabular (Release, Version).
-  '/boxVersions.ts',
+  // Die reine Schicht der Geräte-Liste (Scheibe S2, `pages/admin/GeraeteListePage`).
+  '/geraeteListe.ts',
+  // Die reine Schicht der Admin-Seite „Geräte › Werkstatt" (`pages/admin/Werkstatt*`): Sie nennt die
+  // Box-Arten beim technischen Namen („Edge Light", „Docker-Box") und spricht Werkstatt-Vokabular.
+  '/werkstatt.ts',
+  // Die Werkstatt-Bildschirme (WI-8 A, `pages/admin/WerkstattBank`): dieselbe Admin-Seite, dasselbe Vokabular.
+  '/werkstattBank.ts',
+  // Die Einrichtungs-Detailseite einer Box (`pages/admin/WerkstattBoxSeite`): dieselbe Admin-Seite, dasselbe Vokabular.
+  '/werkstattEinrichtung.ts',
+  // Die Lauf-Seite der Werkbank (Fall-Seiten, Schritte mit Belegen, Software): dieselbe Admin-Seite, dasselbe Vokabular.
+  '/werkstattLauf.ts',
+  // Die reine Schicht der Admin-Seite „Geräte & Updates" (`pages/admin/EdgeUpdatesPage`
+  // und `GeraeteUpdates`, Geräte & Updates G5) — sie spricht legitim Betreiber-Vokabular
+  // (Release, Version, Docker-Box, Edge Light).
+  '/geraeteUpdates.ts',
   // Anlagen-Zentrale Stufe 3 (PR 3a): der Nachfolger der aufgelösten
   // Installateur-Ansicht. Er spricht legitim Betreiber-Vokabular („Entität",
   // „Messpunkt") und wird - wie die Plattform-Sicht - NUR hinter dem EINEN Tor
@@ -840,28 +864,37 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'onboardingFunnel',
       'adminVorlagen',
       'adminKomponentenFlotte',
-      'adminGeraet',
-      // `boxVersions` ist die reine Schicht der Admin-Seite „Geräte & Updates";
-      // sie darf die anderen Admin-Schichten importieren (nur die Admin-Seite
-      // rendert sie), war aber bei ihrer Einführung nicht mit aufgeführt.
-      'boxVersions',
+      // `geraeteUpdates` ist die reine Schicht der Admin-Seite „Geräte & Updates"
+      // (G5); sie darf die anderen Admin-Schichten importieren (nur die Admin-Seite
+      // rendert sie).
+      'geraeteUpdates',
       // UEMS AP-15 IP-24: das Betreiber-Blatt der Gemeinsamen Steuerung.
       'adminGemeinsameSteuerung',
+      // Geräte › Werkstatt (26.10.2026).
+      'werkstatt',
+      // Die Werkstatt-Bildschirme (WI-8 A).
+      'werkstattBank',
+      // Die Einrichtungs-Detailseite einer Box.
+      'werkstattEinrichtung',
+      // Die Lauf-Seite der Werkbank.
+      'werkstattLauf',
+      // Die Geräte-Liste (Scheibe S2): eine Zeile je Box in jedem Lebensabschnitt.
+      'geraeteListe',
+      // Plattform › Übersicht (Scheibe S4): bündelt die anderen reinen
+      // Admin-Schichten zu Kacheln, „Braucht dich", Flottenbild und Dienste.
+      'plattformUebersicht',
     ];
-    // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
-    // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor
-    // `showTechnicalLayer()` (das M7-Muster der Installateur-Ansicht). Genau
-    // diese zwei Dateien dürfen die reinen Schichten deshalb hereinziehen;
-    // damit die Ausnahme kein Loch wird, wird das Tor GEPRÜFT statt geglaubt.
+    // Installateur-Ansicht (M7-Muster): die technische Sicht wohnt ADDITIV
+    // auf der Kunden-Geräteseite, hinter dem EINEN Rollen-Tor
+    // `showTechnicalLayer()`. Admin-GERÄTE-Fakten (Software, Vertrauen,
+    // Fernwartung) stehen seit der Geräteakte (Konzept
+    // `vp-adminview-konzept-k1` §4.6, Scheibe S2, E4 = A) NICHT MEHR additiv
+    // auf den Kundenseiten - dort führt nur noch ein Link
+    // (`geraeteAkteHash`) in die Akte; `GeraetSeiteSection.tsx` und
+    // `BoxSeiteSection.tsx` importieren deshalb keine der reinen
+    // Admin-Schichten mehr und stehen nicht mehr in dieser Liste.
     const GATE = 'showTechnicalLayer(';
-    const ADMIN_BLOCK = 'components/AdminGeraetKarten.tsx';
-    const rollenGehostet = [
-      ADMIN_BLOCK,
-      'pages/GeraetSeiteSection.tsx',
-      // Geräteseiten Stufe 1: die BOX hat ihre eigene Gattung - und trägt die
-      // Plattform-Sicht nach demselben Muster (dasselbe Tor, derselbe Block).
-      'pages/BoxSeiteSection.tsx',
-    ];
+    const rollenGehostet: string[] = [];
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
@@ -875,14 +908,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       const gated = stripComments(code).includes(GATE);
       for (const m of adminOnly) {
         if (!new RegExp(`from '[^']*\\b${m}'`).test(code)) continue;
-        // Der Block SELBST ist die Plattform-Sicht; seine Wirte tragen das Tor.
-        if (rel === ADMIN_BLOCK) continue;
         if (rollenGehostet.includes(rel) && gated) continue;
         offenders.push(`${rel} importiert ${m}`);
-      }
-      // Und wer die Plattform-Sicht RENDERT, muss das Tor tragen.
-      if (/from '[^']*\bAdminGeraetKarten'/.test(code) && !gated) {
-        offenders.push(`${rel} rendert die Plattform-Sicht OHNE ${GATE})`);
       }
       // Dasselbe für die aufgelöste Installateur-Ansicht (Stufe 3): sie ist
       // vom Copy-Wächter ausgenommen, also darf sie nur hinter dem Tor
@@ -893,6 +920,37 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       // UEMS AP-15 IP-24: das Betreiber-Blatt (auch lazy geladen) nur hinter dem Tor.
       if (/['/]admin\/GemeinsameSteuerungBetreiberBlatt'/.test(code) && !gated) {
         offenders.push(`${rel} rendert das Betreiber-Blatt OHNE ${GATE})`);
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  /**
+   * Die Geräteakte (Konzept `vp-adminview-konzept-k1` §4.4/§8, Scheibe S2):
+   * EIN Ort je Box-Fakt. Software-, Verbindungs- und Einrichtungs-Fakten
+   * dürfen nur noch innerhalb von `pages/admin/GeraeteAktePage.tsx` (bzw. den
+   * Bausteinen, die sie dort einbettet: `FernwartungKarte`,
+   * `WerkstattBoxSeite`, `Zeitleiste`) gerendert werden - keine Kundenfläche
+   * und keine andere Admin-Seite darf dieselben Fakten ein zweites Mal zeigen.
+   */
+  it('Geräteakte: kein Box-Fakt an einem zweiten Ort (Scheibe S2, kein doppeltes Urteil)', () => {
+    const AKTE = 'pages/admin/GeraeteAktePage.tsx';
+    const HEIMAT = new Set([
+      AKTE,
+      'components/FernwartungKarte.tsx',
+      'pages/admin/WerkstattBoxSeite.tsx',
+      'pages/admin/Zeitleiste.tsx',
+    ]);
+    const offenders: string[] = [];
+    for (const file of walk(SRC)) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (rel.includes('.test.') || HEIMAT.has(rel)) continue;
+      const code = readFileSync(file, 'utf8');
+      if (/from '[^']*\/AdminGeraetKarten'/.test(code)) {
+        offenders.push(`${rel} importiert die aufgelöste AdminGeraetKarten - ihre Fakten wohnen jetzt in der Geräteakte`);
+      }
+      if (/<FernwartungKarte\b/.test(code) && rel !== AKTE) {
+        offenders.push(`${rel} rendert die Fernwartungs-Karte außerhalb der Geräteakte`);
       }
     }
     expect(offenders, offenders.join('\n')).toEqual([]);
@@ -967,13 +1025,79 @@ describe('AP-01 IP-13 · Kundenwörter im Grenze-Schritt', () => {
 describe('AP-06 IP-11 · Datenquelle anlegen spricht mit Kundenwörtern in Sie-Form', () => {
   it('nennt Box, Netzlage, Prüfung und Lesebudget — keine internen Transportwörter', () => {
     const quelle = readFileSync(join(process.cwd(), 'src/components/DatenquelleAnlegen.tsx'), 'utf8');
-    for (const wort of ['Datenquelle anlegen', 'Netzlage', 'Zuständige Box', 'Lesebudget', 'Was danach gilt']) {
+    // Seit GE-6 heißt der Dialog „Gateway oder Logger anbinden“ (die Konstante steht im Glossar).
+    for (const wort of ['UEMS_GATEWAY_ANBINDEN', 'Netzlage', 'Zuständige Box', 'Lesebudget', 'Was danach gilt']) {
       expect(quelle).toContain(wort);
     }
     expect(`${budgetFreiText(null)} ${folgenSaetze('Halle 2', 'Box Halle 2').join(' ')}`)
       .toContain('Liegt die Quelle in einem anderen Netz, brauchen Sie eine Box dort oder eine Route der Kunden-IT.');
     expect(quelle).not.toMatch(/\b(?:Gateway-ID|Device-ID|Duty Cycle|Payload|Topic)\b/);
     expect(quelle).not.toMatch(/\b(?:du|dein(?:e|en|em|er|es)?|euch)\b/i);
+  });
+});
+
+describe('GE-6 · Anschluss statt Datenquelle (Konzept „Ein Gerät, ein Eintrag“, GD-5 A)', () => {
+  const lies = (datei: string) => readFileSync(join(process.cwd(), datei), 'utf8');
+
+  it('„Steuerung verbinden“ und der WAGO-Assistent zeigen kein „Datenquelle“ — der Schritt heißt „Anschluss“', () => {
+    for (const datei of ['src/components/AnlagensteuerungAssistent.tsx', 'src/components/WagoAssistent.tsx']) {
+      expect(visibleTexts(lies(datei)).filter((t) => /Datenquelle/.test(t)), datei).toEqual([]);
+    }
+    expect(lies('src/components/WagoAssistent.tsx')).toContain('[UEMS_ANSCHLUSS,');
+    expect(anschlussGespeichert('DQ-1', 'Anlegen'))
+      .toBe(`${UEMS_ANSCHLUSS} gespeichert (Kennung DQ-1). Das Gerät entsteht erst mit „Anlegen“.`);
+  });
+
+  it('„Datenquelle anlegen“ heißt an Box-Seite, Messen-Assistent und im Dialog „Gateway oder Logger anbinden“', () => {
+    for (const datei of ['src/components/DatenquelleAnlegen.tsx', 'src/pages/BoxSeiteSection.tsx',
+      'src/components/MessenAssistent.tsx']) {
+      expect(visibleTexts(lies(datei)).filter((t) => /Datenquelle anlegen/.test(t)), datei).toEqual([]);
+    }
+    expect(GATEWAY_ANBINDEN).toBe(UEMS_GATEWAY_ANBINDEN);
+    expect(MESSEN_SCHRITTE[1]).toBe(UEMS_ANBINDUNG);
+    expect(ZUR_DATENQUELLE).toBe(`Zur ${UEMS_ANBINDUNG}`);
+  });
+});
+
+describe('Gerätesuche · ein Name je Sache (Konzept „Geräte suchen“, Bericht §4 „Einstiege und Name“)', () => {
+  const lies = (datei: string) => readFileSync(join(process.cwd(), datei), 'utf8');
+
+  it('„Geräte suchen“ ist der Knopf; das Filterfeld des Aufbaus heißt „Liste durchsuchen“', () => {
+    expect(UEMS_GERAETE_SUCHEN).toBe('Geräte suchen');
+    expect(UEMS_GERAETESUCHE).toBe('Gerätesuche');
+    expect(UEMS_LISTE_DURCHSUCHEN).toBe('Liste durchsuchen');
+    expect(UEMS_IM_HEIMNETZ_SUCHEN).toBe('Im Heimnetz suchen');
+    const tabelle = lies('src/components/AufbauTabelle.tsx');
+    expect(tabelle).toContain('aria-label={UEMS_LISTE_DURCHSUCHEN}');
+    expect(tabelle).not.toContain('aria-label="Geräte suchen"');
+  });
+
+  it('die Such-Flächen sagen, dass nur gelesen wird, und das Glossar führt die Kundenwörter', () => {
+    const texte = ['src/components/GeraetesucheDialog.tsx', 'src/components/GeraetesucheEinstieg.tsx']
+      .flatMap((datei) => visibleTexts(lies(datei)));
+    expect(texte.filter((t) => /nur gelesen/.test(t)).length).toBeGreaterThan(0);
+    expect(texte.filter((t) => /Hostname|Gerätename/.test(t))).toEqual([]);
+    const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+    for (const k of ['UEMS_GERAETE_SUCHEN', 'UEMS_GERAETESUCHE', 'UEMS_IM_HEIMNETZ_SUCHEN', 'UEMS_LISTE_DURCHSUCHEN']) {
+      expect(glossar, k).toContain(k);
+    }
+  });
+
+  it('die Gerätegruppen im Aufbau tragen die Wörter von Energiefluss und Cockpit - aus dem Glossar, nie „Bereich“', () => {
+    expect([AUFBAU_ERZEUGUNG, AUFBAU_SPEICHER, AUFBAU_NETZ, AUFBAU_VERBRAUCH, AUFBAU_LADEN]).toEqual([
+      'Erzeugung', 'Speicher', 'Netz', 'Verbrauch', 'Laden',
+    ]);
+    const gruppen = lies('src/aufbauGruppen.ts');
+    for (const k of ['AUFBAU_ERZEUGUNG', 'AUFBAU_SPEICHER', 'AUFBAU_NETZ', 'AUFBAU_VERBRAUCH', 'AUFBAU_LADEN']) {
+      expect(gruppen, k).toContain(`: ${k},`);
+    }
+    // „Bereich“ ist das Ortswort des Unternehmens (UEMS_BEREICH), kein Gruppenwort.
+    expect(visibleTexts(gruppen).filter((t) => /Bereich/.test(t))).toEqual([]);
+    const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+    expect(glossar).toContain('Gerätegruppen im Aufbau');
+    for (const k of ['AUFBAU_ERZEUGUNG', 'AUFBAU_SPEICHER', 'AUFBAU_NETZ', 'AUFBAU_VERBRAUCH', 'AUFBAU_LADEN']) {
+      expect(glossar, k).toContain(k);
+    }
   });
 });
 
@@ -990,9 +1114,10 @@ describe('AP-06 IP-11 · Datenquelle anlegen spricht mit Kundenwörtern in Sie-F
 /** Die Kunden-Chart-Flächen (die Admin-Charts sprechen legitim Betreiber-Vokabular). */
 const CHART_FILES = [
   'ScheduleChart.tsx',
-  'HistoryChart.tsx',
   'TelemetryChart.tsx',
-  'WeatherChart.tsx',
+  // Preis- und Wetter-Bild der Fassung 3 (Preise und Wetter, 20.10.2026).
+  'components/PreisZeitstrahl.tsx',
+  'components/WetterTag.tsx',
   'PriceHistoryChart.tsx',
   'ForecastQualityChart.tsx',
   'components/VerlaufChart.tsx',
@@ -1773,7 +1898,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
     // Die Wörter-Quellen (Glossar, Vertrags-Zwilling) und die Navigation dürfen es; jede ANDERE Kundenfläche nicht.
     // `glossarEinstieg.ts` ist das Glossar des ersten Bilds (dieselben Wörter, von `glossar.ts` weitergereicht).
-    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'glossarEinstieg.ts', 'uemsKennzahl.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts', 'test/korrekturFixtures.ts']);
+    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'glossarEinstieg.ts', 'uemsKennzahl.ts', 'werteKatalog.ts', 'meldungen.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts', 'test/korrekturFixtures.ts']);
     const treffer = new Set<string>();
     for (const file of customerFiles()) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
@@ -2089,7 +2214,6 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ - ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/AbweichungSeite.tsx', // neu: „Über diese Abweichung“ nennt ihre Kennzahl (Verbessern-Konzept v1, PR3)
-  'pages/DataPages.tsx', // alt
   'pages/EnergiezielSeite.tsx', // neu: die Seite eines Energieziels führt zu seiner Kennzahl (Konzept Verbessern §6.4)
   'pages/MassnahmeSeite.tsx', // neu: „Wofür und woran gemessen“ nennt die Kennzahl der Messgrundlage (Verbessern v1 PR 2, §6.6)
   'portfolioCockpit.ts', // alt
@@ -2632,8 +2756,7 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/EnergieeinsatzDialoge.tsx',
     // IP-12: Rangliste, Einstufung, Kriterien und Historie.
     'components/BewertungEntscheidungen.tsx',
-    // IP-18: Abdeckungs-Tabelle, Messmittel-Blatt mit Dialog, Toleranz-Dialog an der Befund-Zeile.
-    'components/MessabdeckungTabelle.tsx',
+    // IP-18: Messmittel-Blatt mit Dialog, Toleranz-Dialog an der Befund-Zeile.
     'components/MessmittelBlatt.tsx',
     'components/VergleichBefund.tsx',
     // IP-20: Messplanung — Bedarf erfassen, einlösen, verwerfen; Liste je Einsatz und je Standort.
@@ -4741,4 +4864,98 @@ describe('MiSpeL MP-41c · Kundenwörter der Wallbox-Karte kommen aus dem Glossa
       expect(stripComments(laden)).not.toContain(`'${wort}`);
     });
   }
+});
+
+describe('Konzept k1 · Womit laden? - ein Modus, ein Name, ein Versprechen', () => {
+  it('jedes Versprechen hat höchstens fünf Wörter, und jede Ladequelle hat eines', async () => {
+    const { LADEQUELLE, LADEQUELLE_VERSPRECHEN, LADEQUELLE_GUT_WENN } = await import('./glossar');
+    for (const k of Object.keys(LADEQUELLE) as (keyof typeof LADEQUELLE)[]) {
+      expect(LADEQUELLE_VERSPRECHEN[k].split(/\s+/).length, k).toBeLessThanOrEqual(5);
+      expect(LADEQUELLE_GUT_WENN[k], k).toBeTruthy();
+    }
+  });
+
+  it('Karte, Blatt, Ziel-Blatt, Fahrzeuge, Gerätblatt und Hilfe sprechen dieselben Namen - und nie vom Börsenpreis als Grenze', () => {
+    const lesen = (datei: string) => stripComments(readFileSync(join(SRC, datei), 'utf8'));
+    for (const datei of ['steuerung/LadenReiter.tsx', 'steuerung/LadeWahl.tsx']) {
+      const q = lesen(datei);
+      expect(q, datei).toContain('LADEQUELLE_VERSPRECHEN');
+      expect(q, datei).not.toMatch(/Börsenpreis unter|Ø Börse|Smart heißt hier/);
+    }
+    // Das Ziel-Blatt fragt kein zweites „Womit?“ (E4=A).
+    expect(lesen('steuerung/LadenReiter.tsx')).not.toMatch(/Sonne zuerst, dann günstig|nur günstige Stunden|<h3>Womit\?<\/h3>/);
+    // Fahrzeuge und Gerätblatt: die Namen aus dem Glossar, kein „Solar-Überschuss“ mehr.
+    expect(lesen('fahrzeugProfile.ts')).toContain('LADEQUELLE');
+    expect(lesen('fahrzeugProfile.ts')).not.toContain('Solar-Überschuss');
+    expect(lesen('steuerung/Blaetter.tsx')).toContain('LADEQUELLE_VERSPRECHEN');
+    // Nach dem Senden: „gesendet“, nicht „Gilt ab jetzt“ (Regel 4).
+    expect(lesen('steuerung/SteuerungSeite.tsx')).not.toContain('Gilt ab jetzt; Gemessenes bleibt');
+    const hilfe = readFileSync(join(SRC, 'help/content/steuerung.ts'), 'utf8');
+    for (const v of ['Nur Überschuss, sonst Pause', 'Immer etwas, Sonne obendrauf', 'Sonne, dazu der Speicher-Rest', 'Netzstrom, wenn er billig ist', 'So laden']) {
+      expect(hilfe).toContain(v);
+    }
+  });
+});
+
+/**
+ * QR-Einstieg (Konzept vp-qr-einstieg, entschieden 04.11.2026): die Seiten nach dem Scan des Gehäuse-QR.
+ * Jeder Satz aus `koppelTexte.ts` (Funktionen mit Beispielwerten) spricht das Kunden-Wörterbuch in Sie-Form:
+ * „VoltPilot-Box“/„Box“, „Kennung“, „verbinden“ - nie „Edge“, „Device“, „koppeln“ oder „claim“. Und
+ * „meldet sich“ steht nur dort, wo die Seite ein echtes Lebenszeichen hat (M9, nie im Wartezustand M8).
+ */
+describe('QR-Einstieg · die Seiten nach dem Scan sprechen das Kunden-Wörterbuch', () => {
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const sammeln = (wo: string, wert: unknown): void => {
+      if (typeof wert === 'string') out.push({ wo, text: wert });
+      else if (typeof wert === 'function') {
+        const f = wert as (...a: unknown[]) => unknown;
+        sammeln(wo, f.length >= 2 ? f('EDGE-K7M2XQ3', 'Zuhause') : f(f.name === 'mehrereAnlagen' ? 2 : 'EDGE-K7M2XQ3'));
+      } else if (Array.isArray(wert)) wert.forEach((w, i) => sammeln(`${wo}[${i}]`, w));
+      else if (wert && typeof wert === 'object') for (const [k, v] of Object.entries(wert)) sammeln(`${wo}.${k}`, v);
+    };
+    for (const [name, wert] of Object.entries(koppelTexte)) {
+      if (name === 'bandText') {
+        for (const ort of ['registrierung', 'anmeldung', 'assistent'] as const) sammeln(`bandText ${ort}`, koppelTexte.bandText(ort, 'EDGE-K7M2XQ3'));
+      } else sammeln(name, wert);
+    }
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(50);
+  });
+
+  it('kein Satz trägt ein verbotenes oder internes Wort, keiner duzt', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+      if (/\b(?:edge|device|claim|koppeln|gekoppelt|Kopplung)\b/i.test(text.replace(/EDGE-K7M2XQ3|„EDGE-“/g, ''))) {
+        violations.push(`${wo}: internes Box-Wort in „${text}“`);
+      }
+      if (/\b(?:du|dein(?:e|en|em|er|es)?|euch)\b/i.test(text)) violations.push(`${wo}: duzt in „${text}“`);
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('„meldet sich“ nur mit Lebenszeichen: der Wartezustand behauptet es nie', () => {
+    const warten = [
+      koppelTexte.WEG.titelStartet,
+      koppelTexte.WEG.titelLaenger,
+      koppelTexte.WEG.titelHoertNichts,
+      koppelTexte.WEG.titelImInternet,
+      koppelTexte.WEG.titelDatensperre,
+      koppelTexte.WEG.stillTitel,
+    ];
+    for (const t of warten) expect(t).not.toMatch(/meldet sich(?! gerade nicht| noch nicht)|ist online/);
+    expect(koppelTexte.WEG.onlineTitel).toBe('Ihre Box ist online');
+  });
+
+  it('vor der Anmeldung sagt die Empfangsseite nichts, was nur der Server wissen kann', () => {
+    const oeffentlich = [...JSON.stringify(koppelTexte.EMPFANG).split('","'), ...JSON.stringify(koppelTexte.UNLESBAR).split('","')];
+    for (const t of oeffentlich) expect(t).not.toMatch(/online|verbunden mit|gehört (?:schon|bereits)|Werkstatt|zuletzt|Konto „/);
+  });
 });

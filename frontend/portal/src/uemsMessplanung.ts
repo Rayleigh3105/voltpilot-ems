@@ -1,4 +1,5 @@
 import {
+  ablehnungCode,
   ApiError,
   type BewertungMessabdeckungOrt,
   type Energieeinsatz,
@@ -362,14 +363,9 @@ export const nichtEinloesbarSatz = (b: Messbedarf): string =>
 /** „MS-24 zuordnen“: nach einer Ablehnung des Einlösens löst derselbe Bedarf mit der schon angelegten Messstelle ein. */
 export const zuordnenText = (m: { kennzeichen: string }): string => `${m.kennzeichen} zuordnen`;
 
-const code = (e: unknown): string | null =>
-  e instanceof ApiError && e.body && typeof e.body === 'object' && typeof (e.body as { code?: unknown }).code === 'string'
-    ? (e.body as { code: string }).code
-    : null;
-
 /** Die Ablehnungen der Messbedarf-Routen als Satz mit Weg. */
 export function messbedarfAblehnung(e: unknown): string {
-  const c = code(e);
+  const c = ablehnungCode(e);
   if (c === 'wortlaut_fehlt') return 'Bitte beschreiben Sie, was gemessen werden soll.';
   if (c === 'begruendung_fehlt') return 'Bitte begründen Sie, warum der Bedarf verworfen wird.';
   if (c === 'messstelle_nicht_eingerichtet')

@@ -570,6 +570,8 @@ export interface AnwendungSignals {
   plantKind: string | null;
   tarifArt: string | null;
   netzladenErlaubt: boolean;
+  /** ≥ 1 Komponente vom Typ `anlagensteuerung` (UEMS EZ-6); fehlt = keine. */
+  hasAnlagensteuerung?: boolean;
 }
 
 /** Der generierte Verbraucher-Executor (D-19) — der Beleg für eine Regel. */
@@ -636,6 +638,10 @@ export function derivedActive(id: string, signals: AnwendungSignals): boolean {
       // Es gibt keinen Strategie-Knoten: der Verteiler LÄUFT auf der Box,
       // sobald eine Säule da ist.
       return signals.hasChargePoint;
+    case 'netz-und-vermarktung':
+      // Sobald eine Anlagensteuerung bindet, gibt es Vorgaben zu zeigen —
+      // ohne Schalter und ohne eigenen Reiter (EW-11).
+      return signals.hasAnlagensteuerung === true;
     default:
       return false;
   }
@@ -669,6 +675,8 @@ export function requirementMet(requirementId: string, signals: AnwendungSignals)
       return signals.hasChargePoint;
     case 'anschlussgrenze':
       return signals.hasGridLimit;
+    case 'anlagensteuerung':
+      return signals.hasAnlagensteuerung === true;
     default:
       return false;
   }

@@ -44,10 +44,12 @@ export const PAGE_CHUNK = {
   'portfolio-messwerte': () => import('./pages/PortfolioMesswerte'),
   'portfolio-erloese': () => import('./pages/PortfolioErloese'),
   'kunden-benutzer': () => import('./pages/BenutzerPage'),
+  meldungen: () => import('./pages/MeldungenPage'),
+  einstellungen: () => import('./pages/EinstellungenPage'),
   standort: () => import('./pages/StandortUebersichtPage'),
   mandanten: () => import('./pages/admin/MandantenPage'),
-  'plattform-uebersicht': () => import('./pages/admin/PlattformUebersichtPage'),
-  'geraete-registry': () => import('./pages/admin/GeraeteBereich'),
+  'plattform-uebersicht': () => import('./pages/admin/PlattformBereich'),
+  'geraete-registry': () => import('./pages/admin/GeraeteRegistryPage'),
   optimizer: () => import('./pages/admin/OptimizerPage'),
   flows: () => import('./pages/admin/FlowsPage'),
   'steuerungs-freigabe': () => import('./pages/admin/SteuerungsFreigabePage'),
@@ -70,7 +72,12 @@ export const SUB_CHUNK = {
   steuerung: () => import('./pages/SteuerungSection'),
   technik: () => import('./pages/AnlageTechnik'),
   befehle: () => import('./pages/BefehleSection'),
-  prognose: () => import('./pages/PrognosePage'),
+  // Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+  // Sonnen-Teppich). `prognosemodelle` ist das frühere `prognose` - die
+  // VoltPilot-interne Modellqualität; die Datei heisst weiter `PrognosePage`
+  // (keine Dateiumbenennung nötig, nur der Routen-Schlüssel ist frei geworden).
+  prognose: () => import('./pages/PrognoseSeite'),
+  prognosemodelle: () => import('./pages/PrognosePage'),
 } as const;
 
 /**

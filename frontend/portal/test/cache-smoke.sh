@@ -128,7 +128,9 @@ esac
 
 # Take the hashed bundles from the served index.html - never hardcode a hash.
 INDEX="$(req -fsS "$BASE/")"
-ASSETS="$(printf '%s' "$INDEX" | grep -oE '/assets/[A-Za-z0-9._-]+' | sort -u)"
+# Only real references (src=/href=): index.html also NAMES designsystem/assets/voltpilot-wordmark.png in
+# a comment, a file Vite deliberately never emits (the wordmark is inlined, see vite.config.ts).
+ASSETS="$(printf '%s' "$INDEX" | grep -oE '(src|href)="/assets/[A-Za-z0-9._-]+"' | grep -oE '/assets/[A-Za-z0-9._-]+' | sort -u)"
 [ -n "$ASSETS" ] || fail "index.html references no /assets/* bundle - did the Vite output dir change?"
 for a in $ASSETS; do
   assert_immutable "$a"
@@ -153,6 +155,7 @@ for a in $ASSETS; do
       ;;
   esac
 done
+
 
 # A vanished hashed bundle is a hard 404 (check 8). hdrs() cannot be reused
 # here - its curl -f fails on 4xx - so the status and headers are read without -f.

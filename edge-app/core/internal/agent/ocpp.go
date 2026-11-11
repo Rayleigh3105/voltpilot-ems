@@ -15,6 +15,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entladeschutz"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -49,6 +50,19 @@ const (
 	ocppReadbackInterval = 60 * time.Second
 	// ocppCallTimeout bounds a single request to a station.
 	ocppCallTimeout = 10 * time.Second
+	// ocppCommissionTimeout bounds a WHOLE set-up run (W-08). Every request in
+	// it has its own deadline (csms.CallTimeout); one deadline around all of
+	// them failed a station that answers in 1.3 s, because a set-up is eight to
+	// two dozen requests. The pass blocks for the run, so it stays below the
+	// dead man's switch of the other stations (csms.TxProfileDuration, 120 s)
+	// minus one tick.
+	ocppCommissionTimeout = 90 * time.Second
+	// ocppCommissionRetryMin / Max pace a set-up that failed: the first retry
+	// waits one tick, every further one twice as long, at most five minutes.
+	// Without it a failing station was set up again on every change signal -
+	// every meter value, every status.
+	ocppCommissionRetryMin = ocppTickInterval
+	ocppCommissionRetryMax = 5 * time.Minute
 	// ocppLogInterval rate-limits the repeated-failure log line: a station
 	// that has been unreachable for an hour must not write 180 lines about it
 	// (the OTA-blocker lesson - log on CHANGE, then rarely).
@@ -86,10 +100,13 @@ type ocppRuntime struct {
 	// of a sample the park has not decided on yet (bezugswaechter_anteil.go).
 	planStichprobe time.Time
 	// commissioned fingerprints what a station was last set up WITH, so a
-	// reconnect or a changed site limit re-commissions and nothing else does.
+	// reboot or a changed site limit re-commissions and nothing else does - a
+	// reconnect without a reboot keeps the station's profiles (W-07).
 	commissioned map[string]string
-	lastReadback map[string]time.Time
-	lastErrLog   map[string]time.Time
+	// commissionRetry holds the backoff of a set-up that failed (W-08).
+	commissionRetry map[string]ocppCommissionRetry
+	lastReadback    map[string]time.Time
+	lastErrLog      map[string]time.Time
 	// active tracks which connectors held a live profile last tick, so a
 	// session that ended gets its profile CLEARED instead of leaving a limit
 	// the next vehicle would inherit.
@@ -105,6 +122,9 @@ type ocppRuntime struct {
 	// phaseDwell / phasePause shorten the switch pacing for the rig only
 	// (0 = lastmgmt's defaults).
 	phaseDwell, phasePause time.Duration
+	// sourceRun / sourcePause shorten the source lane's Mindestlauf /
+	// Mindestpause (W-11) for the rig only (0 = lastmgmt's defaults).
+	sourceRun, sourcePause time.Duration
 	// release is the „Sonne + Speicher" gate (hysteresis + effect latch,
 	// internal/lastmgmt/release.go). The zero value is ready to use.
 	release lastmgmt.ReleaseGate
@@ -163,15 +183,16 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	}
 	rt := &ocppRuntime{
 		srv: srv, store: store, settings: set,
-		budget:       lastmgmt.NewBudgetTracker(),
-		boosts:       newBoostStore(),
-		wake:         make(chan struct{}, 1),
-		commissioned: map[string]string{},
-		lastReadback: map[string]time.Time{},
-		lastErrLog:   map[string]time.Time{},
-		active:       map[string]int{},
-		phases:       map[string]*lastmgmt.PhasePacer{},
-		phaseAsked:   map[string]time.Time{},
+		budget:          lastmgmt.NewBudgetTracker(),
+		boosts:          loadBoostStore(a.Cfg.DataDir, time.Now().UTC()),
+		wake:            make(chan struct{}, 1),
+		commissioned:    map[string]string{},
+		commissionRetry: map[string]ocppCommissionRetry{},
+		lastReadback:    map[string]time.Time{},
+		lastErrLog:      map[string]time.Time{},
+		active:          map[string]int{},
+		phases:          map[string]*lastmgmt.PhasePacer{},
+		phaseAsked:      map[string]time.Time{},
 	}
 	a.ocpp = rt
 	// Protocol events have their own durable queue: a WAN outage must not erase
@@ -197,6 +218,8 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	}
 	a.done.Add(1)
 	go a.ocppLoop(ctx)
+	a.done.Add(1)
+	go a.ocppStatusWatch(ctx, srv)
 	if a.v2x != nil {
 		a.done.Add(1)
 		go a.v2xLoop(ctx)
@@ -364,8 +387,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// default is „Schnell laden" would have no lane at all for the one station
 	// the customer put on „Nur Sonnenstrom". A site where NO station chose is
 	// byte-for-byte unchanged - ocppLanePolicy then returns the site default.
-	lanePolicy := ocppLanePolicy(set, snap)
-	surplus := a.ocppSurplusFor(now, set, lanePolicy)
+	surplus := a.ocppSurplus(now, set, snap)
 
 	sessions, byKey := ocppSessions(snap, allocKw, set)
 	// P6: the go-e/Modbus wallboxes the portal put into the Ladepark-Rahmen
@@ -379,6 +401,9 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// lift a session out of the source lane entirely, so whatever the profile
 	// chose can never outrank a human or the plan.
 	ocppApplyVehicleProfiles(sessions, byKey, set.VehicleProfiles)
+	// W-10: an override „bis Abstecken" ends with ITS session, also on the
+	// surface and in the pause file - not only where a plug still charges.
+	rt.boosts.endSessions(snap)
 	ocppApplyBoosts(rt, sessions, byKey, now)
 	// K3: the arbitration bridge - the plan, a rule, a Handeingriff or a due
 	// deadline reaches the charge point through the SAME machine every other
@@ -390,6 +415,10 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	control := rt.srv.ControlPolicy()
 	for i := range sessions {
 		if claim, ok := byKey[sessions[i].Key]; ok {
+			// W-11: the physical floor of THIS plug - no limit below 6 A.
+			if c, ok := snap.ChargerByID(claim.chargerID); ok {
+				sessions[i].FloorKw = ocppFloorKw(control, c, claim.connectorID)
+			}
 			physical := control.PhaseCaps(claim.chargerID, claim.connectorID, sessions[i].MaxKw)
 			cap := control.LimitKw(claim.chargerID, claim.connectorID, now, physical)
 			if cap < sessions[i].MaxKw && (sessions[i].CapKw == nil || cap < *sessions[i].CapKw) {
@@ -420,6 +449,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		SourceAllowsMinimum: lastmgmt.NormalizePolicy(set.SurplusPolicy) == lastmgmt.PolicySolarFirst,
 		Policy:              set.SurplusPolicy,
 		SourceBlind:         surplus.Blind,
+		Pacing:              lastmgmt.Pacing{MinRun: rt.sourceRun, MinPause: rt.sourcePause},
 		Previous:            rt.previousPlan(), Now: now,
 	}
 	// „Sonne + Speicher" (ocpp_release.go): one more reading of the same
@@ -571,13 +601,74 @@ func ocppAllocatable(v lastmgmt.BudgetVerdict, reservedKw float64) float64 {
 	return 0
 }
 
+// ocppCommissionRetry is the backoff of one station's failed set-up: which
+// set-up failed, how often in a row, and when the next attempt may run.
+type ocppCommissionRetry struct {
+	fp    string
+	fails int
+	next  time.Time
+}
+
+// ocppCommissionBackoff is the wait after the n-th failure in a row.
+func ocppCommissionBackoff(fails int) time.Duration {
+	d := ocppCommissionRetryMin
+	for i := 1; i < fails && d < ocppCommissionRetryMax; i++ {
+		d *= 2
+	}
+	return min(d, ocppCommissionRetryMax)
+}
+
 // ocppCommission installs the two permanent profiles when the station is new,
-// reconnected, or the site's numbers moved.
+// rebooted, or the site's numbers moved.
 func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planableKw float64, safe lastmgmt.SafeDefault, now time.Time) {
 	rt := a.ocpp
 	if !safe.Computable {
 		return // nothing honest to install yet; the snapshot carries the reason
 	}
+	maxKw := ocppStationCeilingKw(c, planableKw)
+	// The fingerprint includes the BOOT generation, so a station that rebooted
+	// and may have lost its profiles is set up again. The connection is
+	// deliberately not in it (W-07): a station that only lost its socket kept
+	// its profiles, and setting it up again would cap its car at 0 W first.
+	fp := fmt.Sprintf("%d|%s|%.3f|%.3f", c.BootedAt.UnixNano(), rt.srv.ControlPolicy().SafetyKey(), maxKw, safe.PerConnectorKw)
+	rt.mu.Lock()
+	same := rt.commissioned[c.ID] == fp && c.ProfilesInForce()
+	retry := rt.commissionRetry[c.ID]
+	rt.mu.Unlock()
+	if same {
+		return
+	}
+	if retry.fp != fp {
+		retry = ocppCommissionRetry{fp: fp}
+	} else if now.Before(retry.next) {
+		return
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, ocppCommissionTimeout)
+	defer cancel()
+	if err := rt.srv.Commission(cctx, c.ID, maxKw, safe.PerConnectorKw, csms.DefaultMeterInterval); err != nil {
+		retry.fails++
+		retry.next = now.Add(ocppCommissionBackoff(retry.fails))
+		rt.mu.Lock()
+		rt.commissionRetry[c.ID] = retry
+		rt.mu.Unlock()
+		rt.logThrottled("commission:"+c.ID, now, func() {
+			slog.Warn("Ladesäule konnte nicht eingerichtet werden", "charge_point_id", c.ID, "err", err,
+				"fails", retry.fails, "retry_in", ocppCommissionBackoff(retry.fails).String())
+		})
+		return
+	}
+	rt.mu.Lock()
+	rt.commissioned[c.ID] = fp
+	delete(rt.commissionRetry, c.ID)
+	rt.mu.Unlock()
+}
+
+// ocppStationCeilingKw is the station's TxDefault maximum: its declared rating
+// across all its connectors, never above the planable connection budget; the
+// budget alone without a rating. Shared with consumerOnKw, so a plan's „an"
+// means exactly what the station was set up with.
+func ocppStationCeilingKw(c csms.ChargerState, planableKw float64) float64 {
 	maxKw := planableKw
 	if c.RatedKw > 0 {
 		n := len(c.Connectors)
@@ -591,27 +682,31 @@ func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planabl
 			maxKw = r
 		}
 	}
-	// The fingerprint includes the CONNECTION generation, so a station that
-	// rebooted and may have lost its profiles is set up again.
-	fp := fmt.Sprintf("%d|%d|%s|%.3f|%.3f", c.ConnectedAt.UnixNano(), c.BootedAt.UnixNano(), rt.srv.ControlPolicy().SafetyKey(), maxKw, safe.PerConnectorKw)
-	rt.mu.Lock()
-	same := rt.commissioned[c.ID] == fp
-	rt.mu.Unlock()
-	if same {
-		return
-	}
+	return maxKw
+}
 
-	cctx, cancel := context.WithTimeout(ctx, ocppCallTimeout)
-	defer cancel()
-	if err := rt.srv.Commission(cctx, c.ID, maxKw, safe.PerConnectorKw, csms.DefaultMeterInterval); err != nil {
-		rt.logThrottled("commission:"+c.ID, now, func() {
-			slog.Warn("Ladesäule konnte nicht eingerichtet werden", "charge_point_id", c.ID, "err", err)
-		})
-		return
+// ocppFloorKw is the physical floor of one plug (W-11, Audit
+// vp-ocpp-haushalt-audit): 6 A on every phase the operator wired
+// (`ocppcontrol.Electrical`), at its declared voltage. Without a wiring entry
+// the plug counts as THREE-phase - the household 11/22 kW wallbox - unless its
+// rating lies below the three-phase floor, which only a single-phase station
+// can have.
+//
+// ⚠ Three-phase is the conservative guess for „Nur Sonne": a single-phase
+// station read as three-phase waits for 4,1 kW of sun instead of 1,4 kW (sun
+// lost), the other way round it would be handed limits under 6 A and fill the
+// gap from the grid (the promise broken). The wiring entry ends the guess.
+func ocppFloorKw(control ocppcontrol.Policy, c csms.ChargerState, connector int) float64 {
+	phases, volts := 3, lastmgmt.FloorVoltageV
+	if e, ok := control.Wiring(c.ID, connector); ok && len(e.Phases) > 0 {
+		phases = len(e.Phases)
+		if e.VoltageV > 0 {
+			volts = e.VoltageV
+		}
+	} else if c.RatedKw > 0 && c.RatedKw+1e-9 < lastmgmt.ChargeFloorKw(3, volts) {
+		phases = 1
 	}
-	rt.mu.Lock()
-	rt.commissioned[c.ID] = fp
-	rt.mu.Unlock()
+	return lastmgmt.ChargeFloorKw(phases, volts)
 }
 
 // ocppApply writes the live allocation and REFRESHES it every tick.
@@ -986,7 +1081,9 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 	safe := lastmgmt.DeriveSafeDefault(set.GridLimitKw, effectiveMaxHouseLoad(set), snap.ConnectorCount())
 	now := time.Now().UTC()
 	verdict, reserved := a.ocppBudget(now, set, snap, safe)
-	surplus := a.ocppSurplus(now, set)
+	// The SAME derivation the executor ran above (ocppSurplus): the heartbeat
+	// must report the lane the stations were given, not the site default.
+	surplus := a.ocppSurplus(now, set, snap)
 	boosted := map[string]bool{}
 	paused := map[string]bool{}
 	fullKeys, pausedKeys := rt.boostKeys(now)
@@ -1066,11 +1163,20 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		oc := state.OcppCharger{
 			ID: c.ID, Label: c.Label, Priority: c.Priority, Connected: c.Connected,
 			Vendor: c.Vendor, Model: c.Model, Firmware: c.Firmware,
-			Ready: !c.CommissionedAt.IsZero() && c.Connected && !c.CommissionedAt.Before(c.BootedAt) && !c.CommissionedAt.Before(c.ConnectedAt), Note: c.CommissionError,
+			Ready: c.ProfilesInForce(), Note: c.CommissionError,
 			// Der AUFGELÖSTE Wert (abwesend = hinter dem Haus): die Karte und
 			// der Herzschlag sollen nicht beide dieselbe Vorgabe-Regel führen.
 			Connection: c.ConnectionOrHaus(),
 		}
+		// Konzept k1 Regel 4: die Bahn, die die Box für diese Säule FÄHRT -
+		// aufgelöst wie die Entscheidung (eigene Wahl, sonst die der Anlage,
+		// ein unbekanntes Wort als „schnell"; lastmgmt.sessionPolicy).
+		lane := lastmgmt.NormalizePolicy(lastmgmt.SurplusPolicy(c.SourceOrSite(string(set.SurplusPolicy))))
+		oc.Source = string(lane)
+		if lane == lastmgmt.PolicySolarFirst {
+			oc.MinKw = c.MinKw
+		}
+		oc.StorageRelease = lane == lastmgmt.PolicySolarOnly && c.StorageRelease
 		if !c.LastSeen.IsZero() {
 			oc.LastSeenMs = c.LastSeen.UnixMilli()
 		}
@@ -1140,13 +1246,23 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 					// ⚠ The station's OWN lane (P5): a plug on „Nur Sonnenstrom" at a
 					// site defaulting to „Schnell laden" must not read „(Ihre
 					// Priorität: Schnell laden)".
-					ocn.ReasonText = lastmgmt.TextFor(alloc.Reason,
+					// W-11: AllocationText names what a vehicle the sun cannot
+					// start needs („braucht 4,1 kW").
+					ocn.ReasonText = lastmgmt.AllocationText(alloc,
 						lastmgmt.NormalizePolicy(lastmgmt.SurplusPolicy(c.SourceOrSite(string(set.SurplusPolicy)))))
 					ocn.Boost = alloc.Boost
 					if !alloc.NextTurnAt.IsZero() {
 						ocn.NextTurnMs = alloc.NextTurnAt.UnixMilli()
 					}
 				}
+			}
+			// A car is plugged in but the box knows no transaction: name it,
+			// instead of leaving a bare SuspendedEVSE that every surface reads
+			// as „wartet" (lastmgmt.ReasonNoSession). Not while a start is
+			// waiting for the station's set-up - that one is about to begin.
+			if ocpConnectorWithoutSession(con) && !rt.srv.StartPending(c.ID, con.ID) {
+				ocn.Reason = lastmgmt.ReasonNoSession
+				ocn.ReasonText = lastmgmt.Text(lastmgmt.ReasonNoSession)
 			}
 			oc.Connectors = append(oc.Connectors, ocn)
 		}
@@ -1158,6 +1274,13 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		info.MeasuredKw = &measured
 	}
 	return info
+}
+
+// ocpConnectorWithoutSession: the station says a car is plugged in and a
+// charge should run (Charging, SuspendedEV, SuspendedEVSE), but the box holds
+// no transaction for that connector.
+func ocpConnectorWithoutSession(con csms.Connector) bool {
+	return con.Session == nil && csms.ChargingStatus(con.Status)
 }
 
 // ocppHost is the host an operator types into a station. The box does not
@@ -1250,6 +1373,7 @@ func (a *Agent) OcppSaveSettings(req lastmgmt.SettingsRequest) (lastmgmt.Setting
 	}
 	rt.settings = next
 	rt.commissioned = map[string]string{}
+	rt.commissionRetry = map[string]ocppCommissionRetry{}
 	rt.mu.Unlock()
 
 	if err := rt.store.Save(next); err != nil {
@@ -1265,6 +1389,7 @@ func (a *Agent) ocppForget(id string) {
 	rt := a.ocpp
 	rt.mu.Lock()
 	delete(rt.commissioned, id)
+	delete(rt.commissionRetry, id)
 	rt.mu.Unlock()
 }
 

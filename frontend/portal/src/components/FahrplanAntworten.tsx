@@ -1,14 +1,15 @@
 /**
- * Die ANTWORTEN unter dem Tagesbild (E1) und die WAAGE der gewählten
+ * Die ANTWORTEN des Tagesbilds (E1) und die WAAGE der gewählten
  * Viertelstunde (E5). Render-only: jeder Satz kommt aus
  * `fahrplanAntworten.ts` bzw. `fahrplanWaage.ts`.
  *
- * Jede Antwort trägt ihr Ehrlichkeits-Abzeichen („Geplant"/„Gemessen") und
- * ihren ORT im Bild: ein Tipp zeigt die Stelle (am Telefon dreht die Uhr den
- * Zeiger dorthin, am Rechner markiert der Bildfahrplan sie).
+ * Eine Antwort steht als ZEILE in Stichworten (Überblick 20.10.2026:
+ * „Als Nächstes · 18:15 Einspeisen") und trägt ihren ORT im Bild: ein Tipp
+ * zeigt die Stelle (am Telefon dreht die Uhr den Zeiger dorthin, am Rechner
+ * markiert das Tagesband sie) und klappt den ganzen Satz mit seinem
+ * Ehrlichkeits-Abzeichen auf.
  */
 
-import { Icon } from '../../designsystem/components/core/Icon';
 import type { Antwort, AntwortKey } from '../fahrplanAntworten';
 import type { Waage } from '../fahrplanWaage';
 import { fmtNum } from '../format';
@@ -19,49 +20,85 @@ export function FahrplanAntworten({
   gewaehlt,
   onWahl,
   form,
+  nachtragHref,
+  erloeseHref,
+  onSonnenstromOeffnen,
 }: {
   antworten: Antwort[];
-  /** Die Antwort, deren Stelle gerade gezeigt wird; null = keine. */
+  /** Die aufgeklappte Antwort; null = keine. */
   gewaehlt: AntwortKey | null;
-  /** Ein Tipp auf eine Antwort: ihre Stelle zeigen und sie ausführlich nennen. */
+  /** Ein Tipp auf eine Kachel: ihren ganzen Satz zeigen (und ihre Stelle im Bild). */
   onWahl: (a: Antwort) => void;
   /**
-   * `reihe` = alle nebeneinander — am Telefon die einzige Form, in der ALLE
-   * Antworten im ersten Bildschirm beginnen (E9); `liste` = untereinander,
-   * neben der Uhr. In der schmalen Reihe steht der Zusatz erst im Banner.
+   * `kacheln` = zwei, drei Kacheln nebeneinander unter der Uhr (Telefon);
+   * `spalten` = Spalten in der Jetzt-Karte (Rechner), mit leiser Zeile.
    */
-  form: 'reihe' | 'reihe-schmal' | 'liste';
+  form: 'kacheln' | 'spalten';
+  /** Wohin der Nachtrag-Satz der Geld-Antwort führt (Speicher-Stammdaten). */
+  nachtragHref?: string;
+  /** Wohin „Zu den Erlösen" führt. */
+  erloeseHref?: string;
+  /**
+   * Die Sonnen-Erzählung (§4.3/§4.5): öffnet „Ihr Sonnenstrom heute" statt
+   * zu den Erlösen zu führen (`details === 'sonnenstrom'`); ohne Angabe
+   * bleibt der Knopf weg.
+   */
+  onSonnenstromOeffnen?: () => void;
 }) {
   if (antworten.length === 0) return null;
-  const zusatzZeigen = form !== 'reihe-schmal';
+  const offen = antworten.find((a) => a.key === gewaehlt) ?? null;
   return (
-    <ul
-      className={`vp-antw is-${form}`}
-      style={{ ['--vp-antw-n' as string]: String(antworten.length) }}
-      aria-label="Antworten zum Fahrplan"
-    >
-      {antworten.map((a) => (
-        <li key={a.key} className={`vp-antw-kachel${gewaehlt === a.key ? ' is-gewaehlt' : ''}`}>
-          <button
-            type="button"
-            className="vp-antw-knopf"
-            aria-pressed={gewaehlt === a.key}
-            onClick={() => onWahl(a)}
-          >
-            {/* Frage, dann gleich die Antwort - am Telefon beginnt sie so noch
-                im ersten Bildschirm; das Abzeichen folgt darunter. */}
-            <span className="vp-antw-frage">{a.frage}</span>
-            <span className="vp-antw-text">{a.antwort}</span>
-            <span className="vp-antw-kopf">
-              <ProvBadge art={a.art === 'gemessen' ? 'gemessen' : 'geplant'} />
-              {a.zeit && <span className="vp-antw-zeit">ab {a.zeit}</span>}
-            </span>
-            {zusatzZeigen && a.zusatz && <span className="vp-antw-zusatz">{a.zusatz}</span>}
-            {a.ziel && <Icon name="map-pin" size={14} className="vp-antw-ort" aria-hidden="true" />}
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className={`vp-antw-gruppe is-${form}`}>
+      <ul
+        className={`vp-antw is-${form}`}
+        style={{ ['--vp-antw-n' as string]: String(antworten.length) }}
+        aria-label="Antworten zum Fahrplan"
+      >
+        {antworten.map((a) => (
+          <li key={a.key} className={`vp-antw-zeile${gewaehlt === a.key ? ' is-gewaehlt' : ''}`}>
+            <button
+              type="button"
+              className="vp-antw-knopf"
+              aria-expanded={gewaehlt === a.key}
+              aria-label={`${a.kurz.label}: ${a.kurz.wert}${form === 'spalten' && a.kurz.meta ? `, ${a.kurz.meta}` : ''}. ${a.frage} ${a.antwort}`}
+              onClick={() => onWahl(a)}
+            >
+              <span className="vp-antw-label">{a.kurz.label}</span>
+              {' '}
+              <span className={`vp-antw-wert${a.key === 'bringt' ? ` is-geld${a.kurz.ton ? ` is-${a.kurz.ton}` : ''}` : ''}`}>{a.kurz.wert}</span>
+              {form === 'spalten' && a.kurz.meta && ' '}
+              {form === 'spalten' && a.kurz.meta && <span className="vp-antw-meta">{a.kurz.meta}</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {offen && (
+        <div className="vp-antw-detail" role="status">
+          <p className="vp-antw-satz">
+            <ProvBadge art={offen.art === 'gemessen' ? 'gemessen' : 'geplant'} /> {offen.antwort}
+          </p>
+          {offen.zusatz &&
+            (offen.nachtrag && nachtragHref ? (
+              <a className="vp-antw-zusatz" href={nachtragHref}>
+                {offen.zusatz}
+              </a>
+            ) : (
+              <p className="vp-antw-zusatz">{offen.zusatz}</p>
+            ))}
+          {offen.notiz && <p className="vp-antw-zusatz">{offen.notiz}</p>}
+          {offen.details === 'erloese' && erloeseHref && (
+            <a className="vp-tb-link" href={erloeseHref}>
+              Zu den Erlösen ›
+            </a>
+          )}
+          {offen.details === 'sonnenstrom' && onSonnenstromOeffnen && (
+            <button type="button" className="vp-tb-link" onClick={onSonnenstromOeffnen}>
+              Zu Ihrem Sonnenstrom ›
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

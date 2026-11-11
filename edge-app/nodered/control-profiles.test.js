@@ -70,6 +70,10 @@ const KACO_SEL = {
   schema_version: '1.0', brand: 'kaco', family: 'kaco_nh3', communication: 'kaco_modbus', control_tier: 1,
   connection: { ip: '192.168.0.31', port: 502, unit_id: 1 },
 };
+const HUAWEI_SEL = {
+  schema_version: '1.0', brand: 'huawei', family: 'huawei_sun2000_luna', communication: 'huawei_modbus', control_tier: 2,
+  connection: { ip: '192.168.0.40', port: 502, unit_id: 0 },
+};
 
 // A live SunSpec discovery over a minimal register image (Common, Nameplate
 // 12 kW, Immediate Controls SF -2, optionally Storage 10 kW).
@@ -290,6 +294,44 @@ test('KACO NH3: Profil kaco_nh3 = heutiger Plan von kacoNh3Control, Schreiben ha
   assertWrites('uebergabe', f.uebergabe, C.nativeSelfConsumption(KACO_SEL, { controlEnabled: true, deviceCertified: true }).planned);
   assertWrites('rueckgabe', f.rueckgabe, C.controlRelease(KACO_SEL, {}).planned);
   assert.equal(C.KACO_NH3_CONTROL_REG.MODE_SELF_CONSUMPTION, p.uebergabe.schreibfolge[0].wert);
+});
+
+test('Huawei SUN2000: Profil huawei = heutiger Plan von huaweiControl, Schreiben hart gesperrt', () => {
+  const p = profile('huawei');
+  const f = p.adapter.folgen;
+  // N (Netzladen): nur mit grid_charge_allowed - exakt die Reihenfolge aus
+  // absichten.N.schreibfolge (adapter_folge "netzladen").
+  const netzladenPlan = C.controlRoute(HUAWEI_SEL, { ...setpoint(3), grid_charge_allowed: true }, {}).planned;
+  assertWrites('netzladen', f.netzladen, netzladenPlan);
+  assert.equal(netzladenPlan.find((w) => w.addr === C.HUAWEI_CONTROL_REG.FORCE_DURATION_MIN).value,
+    C.HUAWEI_FORCE_DURATION_MIN, 'die kuerzeste Dauer-Einheit, jeden Tick neu geschrieben (Failsafe)');
+  assert.equal(netzladenPlan.find((w) => w.addr === C.HUAWEI_CONTROL_REG.FORCE_MODE).value, 0,
+    'Dauer-Modus (47246 = 1 haette keinen Zeit-Ruckfall) - niemals SoC-Modus');
+
+  // Ohne grid_charge_allowed faellt ein positiver Sollwert auf das Selbstregel-
+  // Fenster zurueck (adapter.folgen.laden_gedrosselt - die in den Abweichungen
+  // dokumentierte Vereinigung von E_laden + E_gedrosselt).
+  const gedrosseltPlan = C.controlRoute(HUAWEI_SEL, setpoint(3), {}).planned;
+  assertWrites('laden_gedrosselt', f.laden_gedrosselt, gedrosseltPlan);
+
+  // E_decken (negativer Sollwert, kein erzwungener Export - siehe Abweichungen).
+  assertWrites('decken', f.decken, C.controlRoute(HUAWEI_SEL, setpoint(-3), {}).planned);
+
+  // H (Halten).
+  const haltenPlan = C.controlRoute(HUAWEI_SEL, setpoint(0), {}).planned;
+  assertWrites('halten', f.halten, haltenPlan);
+  assert.deepEqual(p.absichten.H.schreibfolge, f.halten.schreibfolge, 'Halten deckt sich wortgleich mit der Absicht');
+
+  // Schreiben bleibt in JEDEM Fall gesperrt - auch mit control_enabled.
+  for (const kw of [3, -3, 0]) {
+    assert.deepEqual(C.controlRoute(HUAWEI_SEL, setpoint(kw), {}).writes, [],
+      'ausfuehrbar: false - auch mit Zertifikat keine Schreibvorgänge');
+  }
+  assert.equal(p.adapter.ausfuehrbar, false);
+
+  assertWrites('rueckgabe', f.rueckgabe, C.controlRelease(HUAWEI_SEL, {}).planned);
+  assert.equal(C.HUAWEI_CONTROL_REG.FORCE_MODE_DURATION, p.absichten.N.schreibfolge[3].wert,
+    '47246 = 0 (Dauer-Modus) in Profil und Adapter identisch');
 });
 
 // --- Fronius -----------------------------------------------------------------------

@@ -21,7 +21,7 @@ Die Geräte benötigen keine zweite Apply-Freigabe und keinen Autonomie-Schalter
 
 | Information | Bedeutung |
 |---|---|
-| Neueste Version | Neuester Eintrag im Release-Register |
+| Neueste Version | Neuester Eintrag im Release-Register der eigenen Linie: Docker-Box (`edge-JJJJ.MM.N`) oder Edge Light (`edge-light-JJJJ.MM.N`) |
 | Ziel | Dieser Box zugewiesenes Release |
 | Installiert / gemeldet | Von der Box berichtete Softwarestände |
 | Bestätigt | Zugewiesener Stand und erforderlicher Selbsttest erfolgreich belegt |

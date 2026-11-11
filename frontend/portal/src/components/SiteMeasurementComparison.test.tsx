@@ -42,6 +42,13 @@ describe('SiteMeasurementComparison', () => {
     expect(api.measurementHistory).toHaveBeenCalledWith(
       'a', 'point.a', '7d', 'decoded', undefined, undefined, 'site',
     );
-    expect(screen.getByText('Bis zu drei semantisch gleiche Punkte. Einheiten erhalten getrennte Achsen.')).toBeVisible();
+    expect(screen.getByText('Bis zu drei gleichartige Werte nebeneinander, z. B. die Temperatur mehrerer Geräte.')).toBeVisible();
+  });
+
+  it('zeigt bei einem Fehler nur die Meldung - nicht zugleich „werden geladen“', async () => {
+    vi.spyOn(api, 'measurementComparisonOptions').mockRejectedValueOnce(new Error('down'));
+    render(<SiteMeasurementComparison siteId="site" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Zusätzliche Messwerte sind gerade nicht erreichbar.');
+    expect(screen.queryByText('Vergleichspunkte werden geladen …')).toBeNull();
   });
 });

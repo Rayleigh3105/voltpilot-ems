@@ -21,8 +21,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -63,6 +63,38 @@ public class AdminEdgeUpdateController {
     @GetMapping("/edge-updates")
     public EdgeUpdatesDto edgeUpdates() {
         return rollouts.readModel(Instant.now());
+    }
+
+    /**
+     * Die Eignung jeder Box für EIN signiertes Release - bereit, wartet,
+     * aktuell oder kann nicht, mit Grund (Geräte &amp; Updates G1, der
+     * Verteil-Dialog). Rein lesend; 404 für ein unbekanntes, 409 für ein nicht
+     * signiertes Release.
+     */
+    @GetMapping("/edge-updates/eignung")
+    public EdgeUpdatesDto.EignungDto eignung(@RequestParam long releaseSeq) {
+        return rollouts.eignung(releaseSeq, Instant.now());
+    }
+
+    /**
+     * Die Release-Seite: Inhalt aus dem signierten Manifest, „Was ist neu",
+     * Programme im Portal (Edge Light), wo es läuft und wann es verteilt wurde
+     * (Geräte &amp; Updates G4). Rein lesend; 404 für ein unbekanntes Release.
+     */
+    @GetMapping("/edge-updates/releases/{releaseSeq}")
+    public EdgeUpdatesDto.ReleaseSeiteDto releaseSeite(@PathVariable long releaseSeq) {
+        return rollouts.releaseSeite(releaseSeq, Instant.now());
+    }
+
+    /**
+     * Der Verlauf EINER Box, neueste zuerst: was das Portal angefragt hat und
+     * was die Box gemeldet hat (Geräte &amp; Updates G3). Rein lesend; 404, wenn
+     * es das Gerät nicht gibt. {@code limit} 1..500, Vorgabe 100.
+     */
+    @GetMapping("/devices/{deviceId}/verlauf")
+    public EdgeUpdatesDto.VerlaufDto verlauf(@PathVariable UUID deviceId,
+            @RequestParam(defaultValue = "100") int limit) {
+        return rollouts.verlauf(deviceId, limit);
     }
 
     /**

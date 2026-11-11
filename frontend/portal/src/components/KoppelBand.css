@@ -1,0 +1,192 @@
+/* Seiten nach dem Scan des Gehäuse-QR (Konzept vp-qr-einstieg, M1 bis M12). Nur Tokens. */
+
+.vp-koppel-band {
+  display: flex;
+  gap: var(--vp-space-3);
+  align-items: flex-start;
+  padding: var(--vp-space-3) var(--vp-space-4);
+  margin: 0 0 var(--vp-space-4);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-tint);
+  color: var(--vp-text-dark);
+  border: 1px solid var(--vp-border);
+  text-align: left;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.vp-koppel-band-symbol {
+  flex: none;
+  display: inline-flex;
+  color: var(--vp-action);
+  margin-top: 2px;
+}
+.vp-koppel-band-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-koppel-band-zeile {
+  color: var(--vp-text-gray);
+  font-size: 0.85rem;
+}
+
+.vp-koppel-kachel {
+  display: grid;
+  gap: var(--vp-space-1);
+  padding: var(--vp-space-4);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface-alt);
+  border: 1px solid var(--vp-border);
+  text-align: left;
+}
+.vp-koppel-kachel-titel {
+  font-size: 0.8rem;
+  color: var(--vp-text-gray);
+}
+.vp-koppel-kachel-wert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+.vp-koppel-kachel-wert code {
+  font-family: var(--vp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-koppel-kachel-zeile {
+  font-size: 0.85rem;
+  color: var(--vp-text-gray);
+}
+
+.vp-koppel-unterseite {
+  margin: 0 auto var(--vp-space-4);
+  max-width: 260px;
+}
+.vp-koppel-unterseite svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.vp-koppel-gehaeuse {
+  fill: var(--vp-surface-alt);
+  stroke: var(--vp-border);
+  stroke-width: 2;
+}
+.vp-koppel-qr {
+  fill: var(--vp-text-dark);
+}
+.vp-koppel-klartext {
+  font: 700 15px ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  fill: var(--vp-text-dark);
+}
+.vp-koppel-klartext-luecke {
+  fill: var(--vp-text-gray);
+}
+
+/* Die Seiten selbst: Empfang (öffentlich) und die Sonderfälle nach der Anmeldung. */
+.vp-koppel-seite {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-space-4);
+  text-align: left;
+  min-width: 0;
+}
+.vp-koppel-seite h1,
+.vp-koppel-seite h2 {
+  margin: 0;
+}
+.vp-koppel-seite h4 {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.95rem;
+}
+/* Lange Knopftexte („Später anschließen – weiter zur Anlage“) brechen um statt den Rand zu berühren. */
+.vp-btn.vp-koppel-knopf {
+  padding-left: var(--vp-space-4);
+  padding-right: var(--vp-space-4);
+  white-space: normal;
+  height: auto;
+  min-height: 48px;
+  line-height: 1.3;
+  text-align: center;
+}
+.vp-koppel-seite h3 {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 1rem;
+}
+.vp-koppel-kicker {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-action);
+}
+.vp-koppel-schritte,
+.vp-koppel-liste {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--vp-space-3);
+}
+.vp-koppel-schritte li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: start;
+}
+.vp-koppel-nummer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--vp-radius-full);
+  background: var(--vp-tint);
+  color: var(--vp-action);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.vp-koppel-schritte b {
+  display: block;
+}
+.vp-koppel-schritte span,
+.vp-koppel-liste li {
+  color: var(--vp-text-gray);
+  font-size: 0.9rem;
+}
+.vp-koppel-liste li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--vp-space-2);
+}
+.vp-koppel-liste li > svg {
+  margin-top: 3px;
+  color: var(--vp-action);
+}
+.vp-koppel-handlung {
+  display: grid;
+  gap: var(--vp-space-3);
+}
+.vp-koppel-klein {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--vp-text-gray);
+}
+.vp-koppel-chip {
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+}
+.vp-koppel-karte {
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}

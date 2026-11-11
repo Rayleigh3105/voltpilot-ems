@@ -1,0 +1,21 @@
+# Werkbank-Brücke (services/werkstatt-dienst/bruecke): der Werkstatt-Anschluss.
+# Feste Adressen, kein DHCP, kein Standardweg, kein IPv6. Von einrichten.sh
+# erzeugt; nicht von Hand ändern.
+[connection]
+id=vp-werkstatt
+type=ethernet
+interface-name=@WERKSTATT@
+autoconnect=true
+autoconnect-priority=100
+
+[ethernet]
+
+[ipv4]
+method=manual
+@ADRESSEN@
+never-default=true
+ignore-auto-dns=true
+link-local=disabled
+
+[ipv6]
+method=disabled

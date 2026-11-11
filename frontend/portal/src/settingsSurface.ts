@@ -197,6 +197,9 @@ const EFFECT_ORDER: readonly SettingEffect[] = ['fahrplan', 'erloese', 'speicher
  * anfasst:
  *  - `stromtarif` geht als Bezugspreis in die Zielfunktion des Fahrplans UND in
  *    jede bewertete Euro-Zahl (`pricing.py import_prices` / `SlotEconomics`).
+ *  - `einspeiseverguetung` ist die Gegenrichtung: der Einspeisewert derselben
+ *    Zielfunktion und jedes Einspeise-Erlöses (`pricing.py export_values` /
+ *    `SlotEconomics.exportValueCtSql`) - eine Angabe wirkt in beiden.
  *  - `anzulegender-wert` bildet über die gleitende Marktprämie den
  *    Einspeisewert — derselbe Wert plant und rechnet ab.
  *  - `netzladen` ist eine Nebenbedingung des Fahrplans und bestimmt, woraus der
@@ -208,6 +211,7 @@ const EFFECT_ORDER: readonly SettingEffect[] = ['fahrplan', 'erloese', 'speicher
  */
 const EFFECTS: Record<ModeSettingId, SettingEffect[]> = {
   stromtarif: ['fahrplan', 'erloese'],
+  einspeiseverguetung: ['fahrplan', 'erloese'],
   'anzulegender-wert': ['fahrplan', 'erloese'],
   netzladen: ['fahrplan', 'speicher'],
   speicherschonung: ['fahrplan', 'speicher'],
@@ -242,6 +246,7 @@ export function effectChips(id: ModeSettingId): string[] {
  */
 const HONESTY: Record<ModeSettingId, Provenienz> = {
   stromtarif: 'bewertet',
+  einspeiseverguetung: 'bewertet',
   'anzulegender-wert': 'bewertet',
   leistungspreis: 'bewertet',
   'abrechnung-leistung': 'bewertet',

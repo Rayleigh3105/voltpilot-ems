@@ -22,6 +22,7 @@
 //  4. Vor `recordingSince` wird NICHTS behauptet, auch nichts Entlastendes.
 import type { CommandEntry, CommandHistory } from './api';
 import { journalSatz, journalTon } from './registerWrite';
+import { sucheZeile } from './geraetesucheHerkunft';
 import { batteryDirection, CONTROL_DEADBAND_KW } from './control';
 import { fmtNum } from './format';
 
@@ -102,6 +103,7 @@ const STROM: Record<string, string> = {
   ladepunkt: 'OCPP-Ladeprofil',
   waechter: 'Einspeisewächter',
   register: 'Register',
+  geraetesuche: 'Einrichtung',
 };
 
 /**
@@ -353,7 +355,7 @@ export function pfadWort(pfad: string | null | undefined): string | null {
 export function film(
   history: CommandHistory | null,
   now: number,
-  opts: { datiert?: boolean } = {},
+  opts: { datiert?: boolean; ich?: string | null } = {},
 ): BefehlZeile[] {
   if (!history) return [];
   // Der ERSTE Tag des Fensters. Er ist der Bezug, gegen den eine Zeile
@@ -372,7 +374,9 @@ export function film(
   for (const e of history.entries) {
     const zeile = e.stream === 'register'
       ? registerZeile(e, fensterTag)
-      : e.kind === 'ereignis' ? ereignisZeile(e, fensterTag) : periodenZeile(e, now, fensterTag);
+      : e.stream === 'geraetesuche'
+        ? geraetesucheZeile(e, fensterTag, opts.ich ?? null)
+        : e.kind === 'ereignis' ? ereignisZeile(e, fensterTag) : periodenZeile(e, now, fensterTag);
     if (zeile) out.push(zeile);
   }
   return out;
@@ -405,6 +409,30 @@ function registerZeile(e: CommandEntry, fensterTag: string | null): BefehlZeile 
     laufend: false,
     roh: registerRoh(r),
     herkunft: HERKUNFT[e.source] ?? '',
+    strom: stromLabel(e.stream),
+  };
+}
+
+/**
+ * Der FÜNFTE Strom `geraetesuche` (Folgepaket `vp-gs-folge-herkunft`, Bild d1): eine Suche im Heimnetz oder eine
+ * Übernahme aus ihr. Was sie sagt, steht in `geraetesucheHerkunft.sucheZeile`; hier bekommt sie Zeit und Tag wie
+ * jede Zeile. Eine Suche nennt nur ihren Beginn („09:12", läuft sie: „ab 09:12") - die Dauer steht an der Zeile.
+ * OHNE Block oder mit unbekannter Art gibt es KEINE Zeile.
+ */
+function geraetesucheZeile(e: CommandEntry, fensterTag: string | null, ich: string | null): BefehlZeile | null {
+  const z = sucheZeile(e, ich);
+  if (!z) return null;
+  return {
+    id: e.id,
+    tag: berlinTag(e.startedAt),
+    art: 'ereignis',
+    zeit: spanne(e.startedAt, null, z.laufend, fensterTag),
+    satz: z.satz,
+    urteil: z.urteil,
+    ton: z.ton,
+    laufend: z.laufend,
+    roh: z.roh,
+    herkunft: z.herkunft,
     strom: stromLabel(e.stream),
   };
 }

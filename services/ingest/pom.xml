@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -24,6 +24,7 @@
              Testcontainers docker-java client negotiates (see services/api). -->
         <docker.api.version>1.44</docker.api.version>
         <paho.version>1.2.5</paho.version>
+        <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
     </properties>
 
     <dependencies>
@@ -31,9 +32,26 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- Boot 4 defaults to Jackson 3 (tools.jackson.*); this service's own code still
+             imports com.fasterxml.jackson.* directly (14 files). spring-boot-jackson2 keeps
+             classic Jackson 2 on the classpath alongside the Jackson 3 default so those files
+             keep compiling and behaving unchanged. Deprecated, slated for removal upstream -
+             the full move to tools.jackson.*/JsonMapper is its own follow-up task, not this one. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jackson2</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- Boot 4 split Health/HealthIndicator out of spring-boot-actuator into their own
+             module (org.springframework.boot.health.contributor.*, was
+             org.springframework.boot.actuate.health.*); spring-boot-starter-actuator no
+             longer pulls it transitively. Needed for EventsTopicHealthIndicator. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-health</artifactId>
         </dependency>
         <!-- Prometheus scrape format for the actuator: registering this registry
              turns the `prometheus` actuator endpoint on (remapped to /metrics in
@@ -44,6 +62,14 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <!-- Boot 4 moved Spring Integration autoconfiguration (the @ServiceActivator/
+             @EnableIntegration wiring that TelemetryIngestHandler etc. rely on) out of
+             spring-boot-autoconfigure into its own spring-boot-integration module; plain
+             spring-integration-mqtt no longer gets it transitively. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-integration</artifactId>
         </dependency>
         <!-- MVP data path: consume MQTT (EMQX), publish to Redpanda (Kafka API). -->
         <dependency>
@@ -57,9 +83,13 @@
             <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
             <version>${paho.version}</version>
         </dependency>
+        <!-- Boot 4 moved Kafka autoconfiguration (KafkaAdmin/KafkaTemplate/listener wiring) out
+             of spring-boot-autoconfigure into its own spring-boot-kafka module; plain
+             spring-kafka no longer gets it transitively. spring-boot-starter-kafka pulls both
+             the autoconfigure module and spring-kafka itself. -->
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
         <!-- Postgres driver for the zero-touch provisioning resolver: it looks a
              hello's ref up in the `device` table (plain JDBC, no pool/auto-config
@@ -70,9 +100,28 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- JSON-Logzeilen per Schalter (logback-spring.xml, docs/k8s-readiness.md Abschnitt
+             "Logs"): der Encoder wird nur geladen, wenn voltpilot.logging.format=json steht -
+             die Vorgabe bleibt die Textzeile von Spring Boot. 8.1 ist die letzte Linie fuer
+             Jackson 2 (9.0 verlangt Jackson 3, das Spring Boot 3.3 nicht mitbringt). Apache-2.0. -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>${logstash-logback-encoder.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 removed @AutoConfigureObservability; @AutoConfigureMetrics (export=true by
+             default) is the replacement that re-enables the Prometheus-backed metrics the
+             scrape-endpoint tests need, since @SpringBootTest disables metrics export by default. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-micrometer-metrics-test</artifactId>
             <scope>test</scope>
         </dependency>
         <!-- Testcontainers: real EMQX + Redpanda for the end-to-end pipe proof
@@ -103,6 +152,16 @@
                 <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Sicherheits-Patch (transitiv über kafka-clients): GHSA-gwq9-9ffj-mvrv,
+                 GHSA-q233-g92q-qxp6, GHSA-xqrx-qh46-34m7, behoben in 1.1.10.9. Bleibt auch
+                 nach dem Boot-4.1-Wechsel nötig: Boot 4.1.2 bringt selbst nur 1.1.10.7, also
+                 weiterhin hinter dem Patch. Beim nächsten Boot-Patch erneut prüfen, ob die
+                 Boot-eigene Version aufgeholt hat. -->
+            <dependency>
+                <groupId>org.xerial.snappy</groupId>
+                <artifactId>snappy-java</artifactId>
+                <version>1.1.10.12</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

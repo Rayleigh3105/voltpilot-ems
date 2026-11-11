@@ -339,6 +339,110 @@
       }
     },
     {
+      "name": "zaehlerbaum-haus-und-unterzaehler-keine-doppelzaehlung",
+      "note": "Zählerbaum-Konzept N3/R1: Netz 8.1 kW, UV Halle 7.7 kW (sub-meter, Mitglied des Verbraucher-Knotens wie heute, haengt_an=null=Wurzel). Der Knotenwert ist NUR der Haus-Wert (8.1), nie 8.1+7.7 - das war der gemeldete Fehler (Screenshot „Verbrauch, 3 Geräte, zusammen 11,0 kW“).",
+      "input": {
+        "entities": [
+          {
+            "id": "H", "type": "house-load", "label": "Hausverbrauch", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 8.1 }
+            ]
+          },
+          {
+            "id": "UV1", "type": "sub-meter", "label": "UV Halle", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 7.7 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 8.1, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "H", "label": "Hausverbrauch", "primary": true, "value_kw": 8.1 },
+              { "entity_id": "UV1", "label": "UV Halle", "primary": false, "value_kw": 7.7 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "zaehlerbaum-maschine-hinter-unterverteilung-traegt-haengt-an",
+      "note": "Ein Kompressor hinter UV Halle (haengt_an = UV1) bleibt ein eigenes Mitglied mit eigenem Wert; der Knotenwert folgt weiter nur dem Haus (8.1) - die Ebene ist Sache der Liste/des Cockpits, nicht der Topologie.",
+      "input": {
+        "entities": [
+          {
+            "id": "H", "type": "house-load", "label": "Hausverbrauch", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 8.1 }
+            ]
+          },
+          {
+            "id": "UV1", "type": "sub-meter", "label": "UV Halle", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 7.7 }
+            ]
+          },
+          {
+            "id": "K1", "type": "generic-load", "label": "Kompressor", "category": "consumer", "health": "ok",
+            "parent_entity_id": "UV1",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 3.2 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 8.1, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "H", "label": "Hausverbrauch", "primary": true, "value_kw": 8.1 },
+              { "entity_id": "UV1", "label": "UV Halle", "primary": false, "value_kw": 7.7 },
+              { "entity_id": "K1", "label": "Kompressor", "primary": false, "value_kw": 3.2, "haengt_an": "UV1" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "zaehlerbaum-ohne-haus-mitglied-bleibt-die-summe-wie-bisher",
+      "note": "Ohne ein house-load-Mitglied (ältere/synthetische Eingabe) bleibt die Summe aller Mitglieder, byte-identisch zu jedem Fall ohne Haus-Mitglied (z. B. consumers-aggregate oben) - die Regel wirkt NUR, wenn ein Haus-Mitglied da ist.",
+      "input": {
+        "entities": [
+          {
+            "id": "UV1", "type": "sub-meter", "label": "UV Halle", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 7.7 }
+            ]
+          },
+          {
+            "id": "UV2", "type": "sub-meter", "label": "UV Keller", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 0.1 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 7.8, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "UV1", "label": "UV Halle", "primary": true, "value_kw": 7.7 },
+              { "entity_id": "UV2", "label": "UV Keller", "primary": false, "value_kw": 0.1 }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "name": "charging-idle-and-unmeasured",
       "note": "A plugged-in car taking nothing is a MEASURED 0 (below the deadband, so no flow); a station that never metered contributes no value at all - it stays a member, but the sum is the measured one, never a fabricated 0.",
       "input": {
@@ -369,90 +473,6 @@
           }
         ]
       }
-    },
-    {
-      "name": "p6-speiser-bindung-feeds-hybrid",
-      "note": "P6 Speiser-Bindung, Fall (1): die AUSDRÜCKLICH gebundene Selbstbau-Batterie liefert Ladestand, Grenzen und Freigaben des Speicher-Knotens; die LEISTUNG bleibt beim Hybrid-Wechselrichter, wo sie gemessen wird. Ihr power_kw traegt deshalb keine Rolle - dieselben Kilowatt zweimal zu zaehlen waere schlicht falsch. Die Grenz-Kanaele sind Speicher-EIGENSCHAFTEN, nie Fluss-Mitglieder: 22 A und 74 A in value_kw zu summieren machte aus der Speichen-Breite eine Zahl mit zwei Bedeutungen.",
-      "input": {
-        "entities": [
-          {
-            "id": "A", "type": "battery-hybrid", "label": "Deye SUN-30K", "category": "storage", "health": "ok",
-            "capabilities": [
-              { "channel": "battery_power_kw", "role": "storage", "primary": true, "value": -4.2 },
-              { "channel": "pv_power_kw", "role": "pv", "primary": true, "value": 6.1 }
-            ]
-          },
-          {
-            "id": "B", "type": "user-defined-battery", "label": "DIY-Speicher Keller", "category": "storage", "health": "ok",
-            "capabilities": [
-              { "channel": "soc_pct", "role": "storage", "primary": true, "value": 7.4 },
-              { "channel": "cell_min_mv", "role": "", "primary": false, "value": 3393 },
-              { "channel": "charge_limit_a", "role": "storage", "primary": true, "value": 22 },
-              { "channel": "discharge_limit_a", "role": "storage", "primary": true, "value": 74 },
-              { "channel": "charge_allowed", "role": "storage", "primary": true, "value": 1 },
-              { "channel": "discharge_allowed", "role": "storage", "primary": true, "value": 0 },
-              { "channel": "power_kw", "role": "", "primary": false, "value": -4.1 }
-            ]
-          }
-        ]
-      },
-      "expected": {
-        "schema_version": "1.0",
-        "nodes": [
-          {
-            "role": "pv", "value_kw": 6.1, "flow_active": true, "direction": "in",
-            "members": [
-              { "entity_id": "A", "label": "Deye SUN-30K", "primary": true, "value_kw": 6.1 }
-            ]
-          },
-          {
-            "role": "storage", "value_kw": 4.2, "soc_pct": 7.4,
-            "soc_source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
-            "limits": {
-              "source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
-              "charge_limit_a": 22, "discharge_limit_a": 74,
-              "charge_allowed": true, "discharge_allowed": false
-            },
-            "flow_active": true, "direction": "in",
-            "members": [
-              { "entity_id": "A", "label": "Deye SUN-30K", "primary": true, "value_kw": -4.2 }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "name": "p6-speiser-bindung-standalone",
-      "note": "P6 Speiser-Bindung, Fall (2): ohne Hybrid-Wechselrichter IST die gebundene Batterie der Speicher-Knoten - dann liefert sie auch die Leistung und ist Fluss-Mitglied. soc_source nennt sie selbst; eine Flaeche kann daran erkennen, dass hier nichts umgeleitet wurde.",
-      "input": {
-        "entities": [
-          {
-            "id": "B", "type": "user-defined-battery", "label": "DIY-Speicher Keller", "category": "storage", "health": "ok",
-            "capabilities": [
-              { "channel": "soc_pct", "role": "storage", "primary": true, "value": 63 },
-              { "channel": "power_kw", "role": "storage", "primary": true, "value": 3.5 },
-              { "channel": "charge_limit_a", "role": "storage", "primary": true, "value": 40 }
-            ]
-          }
-        ]
-      },
-      "expected": {
-        "schema_version": "1.0",
-        "nodes": [
-          {
-            "role": "storage", "value_kw": 3.5, "soc_pct": 63,
-            "soc_source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
-            "limits": {
-              "source": { "entity_id": "B", "label": "DIY-Speicher Keller" },
-              "charge_limit_a": 40
-            },
-            "flow_active": true, "direction": "out",
-            "members": [
-              { "entity_id": "B", "label": "DIY-Speicher Keller", "primary": true, "value_kw": 3.5 }
-            ]
-          }
-        ]
-      }
     }
   ],
   "default_role_cases": [
@@ -464,6 +484,11 @@
     { "name": "edge-measure-only-alias", "type": "grid-meter", "category": "measure-only", "channel": "power_kw", "connection": "", "expected": "grid" },
     { "name": "house-load-power", "type": "house-load", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer" },
     { "name": "heating-rod-power", "type": "heating-rod", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer" },
+    { "name": "sub-meter-power", "type": "sub-meter", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer",
+      "note": "Unterverteilung (Konzept vp-unterzaehler-anzeige C1, R1-Fix im Zählerbaum-Konzept): a pure meter of a part of the house is a Verbraucher member like a heating rod - never the grid. With a house-load member present the node value is the house value alone (see the zaehlerbaum-* consumer cases above), not a sum; readers never had to work around a doubled node value in the first place." },
+    { "name": "sub-meter-counter-is-no-flow", "type": "sub-meter", "category": "consumer", "channel": "energy_kwh", "connection": "", "expected": "" },
+    { "name": "sub-meter-phase-is-no-flow", "type": "sub-meter", "category": "consumer", "channel": "power_l1_kw", "connection": "", "expected": "",
+      "note": "A phase power is a part of power_kw - as a flow member it would count the same load twice." },
     { "name": "wallbox-power-default", "type": "wallbox", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "charging",
       "note": "C2: the TYPE decides, not the category - a wallbox is category consumer exactly like a heating rod. An unstated connection reads as haus, the safe direction." },
     { "name": "wallbox-power-haus", "type": "wallbox", "category": "consumer", "channel": "power_kw", "connection": "haus", "expected": "charging" },
@@ -480,11 +505,6 @@
       "note": "L5 (vp-portal-box-spiegel-s2): a customer-defined sensor is category meter, so before the self-built branch a channel merely NAMED power_kw rendered as the grid connection point. The grid node may only be built from a real grid meter, and the Stufe-3 promise is that a self-built sensor never enters the energy balance." },
     { "name": "self-built-measure-only-alias", "type": "modbus-generic", "category": "measure-only", "channel": "power_kw", "connection": "", "expected": "" },
     { "name": "self-built-free-channel", "type": "modbus-generic", "category": "meter", "channel": "fuellstand_pct", "connection": "", "expected": "" },
-    { "name": "user-defined-battery-soc-is-never-automatic", "type": "user-defined-battery", "category": "storage", "channel": "soc_pct", "connection": "", "expected": "",
-      "note": "E6 (Captain, 09.09.2026): eine selbst angebundene Batterie speist den Speicher-Knoten NUR ueber die ausdrueckliche Bindung, nie von selbst. Ohne diese Zeile faellt ihr soc_pct in die Speicher-Regel und beginnt, den Ladestand der Hausbatterie zu fuellen - eine automatische Bindung per Kanalname, also genau die Namens-Heuristik, die der Entscheid ausschliesst." },
-    { "name": "user-defined-battery-power-is-never-automatic", "type": "user-defined-battery", "category": "storage", "channel": "power_kw", "connection": "", "expected": "",
-      "note": "Bilanz-Ehrlichkeit: die Batterie-LEISTUNG einer Hybrid-Anlage wird am Wechselrichter gemessen. Ohne diese Zeile entschiede die Kategorie storage und dieselben Kilowatt zaehlten zweimal." },
-    { "name": "user-defined-battery-charge-limit-is-never-automatic", "type": "user-defined-battery", "category": "storage", "channel": "charge_limit_a", "connection": "", "expected": "" },
     { "name": "self-built-pv-channel-is-still-not-a-role", "type": "modbus-generic", "category": "meter", "channel": "pv_power_kw", "connection": "", "expected": "",
       "note": "The TYPE is checked FIRST: a customer-named channel can never buy its way into a role by matching one of the pilot channel names." },
     { "name": "self-built-switch-never-double-counts-the-house", "type": "modbus-load", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "",

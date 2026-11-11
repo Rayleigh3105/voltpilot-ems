@@ -96,6 +96,9 @@ type Dienst struct {
 	// offen sind die Fenster, die nach dem letzten Lauf im Kernel standen -
 	// nur um ihr Ende ins Journal zu schreiben, nie um eines zu öffnen.
 	offen map[abgleich.Paar]gemerkt
+	// letzter ist der letzte frisch abgeholte, gültige Stand seit dem Start -
+	// nur für Lage(), nie für einen Abgleich.
+	letzter *soll.Gueltig
 }
 
 type gemerkt struct {
@@ -224,6 +227,7 @@ func (d *Dienst) abgleich(ctx context.Context, jetzt time.Time, daten []byte) Er
 	if d.Ausgabe != nil {
 		d.Ausgabe.SetzeStand(g)
 	}
+	d.letzter = &g
 
 	ist, err := d.ist(ctx)
 	if err != nil {
@@ -293,6 +297,48 @@ func (d *Dienst) merke(fenster map[abgleich.Paar]time.Duration, jetzt time.Time,
 	for p, rest := range fenster {
 		d.offen[p] = gemerkt{bis: jetzt.Add(rest), kennung: kennung[p.Box], rest: rest}
 	}
+}
+
+// Lage ist, was der Dienst nach seinem letzten Lauf weiß - für die
+// Rückmeldung ans Portal (internal/meldung). Sie ist eine Kopie: Wer sie
+// liest, ändert am Dienst nichts.
+type Lage struct {
+	// Peers des letzten frisch abgeholten, gültigen Soll-Stands.
+	Peers []soll.PeerSoll
+	// Fenster dieses Stands, deren Paar nach dem letzten Lauf in der
+	// Kernel-Menge stand und dort noch nicht abgelaufen sein kann.
+	Fenster []soll.FensterSoll
+}
+
+// Lage liefert den Stand nach dem letzten Lauf; false, solange seit dem Start
+// kein frischer, gültiger Soll-Stand abgeholt wurde (dann kennt der Dienst
+// die Kennungen des Portals nicht).
+func (d *Dienst) Lage() (Lage, bool) {
+	if d.letzter == nil {
+		return Lage{}, false
+	}
+	jetzt := d.Jetzt()
+	var l Lage
+	for _, key := range sortiert(d.letzter.Peers) {
+		l.Peers = append(l.Peers, d.letzter.Peers[key])
+	}
+	for _, f := range d.letzter.Fenster {
+		m, steht := d.offen[abgleich.Paar{Techniker: f.Techniker, Box: f.Box}]
+		if !steht || !m.bis.After(jetzt) || f.Beginn.After(jetzt.Add(Vorlauf)) || !f.Ende.After(jetzt) {
+			continue
+		}
+		l.Fenster = append(l.Fenster, f)
+	}
+	return l, true
+}
+
+func sortiert(peers map[string]soll.PeerSoll) []string {
+	keys := make([]string, 0, len(peers))
+	for k := range peers {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return peers[keys[i]].Adresse.Less(peers[keys[j]].Adresse) })
+	return keys
 }
 
 func zaehleBleibende(ist abgleich.Ist, plan abgleich.Plan) int {

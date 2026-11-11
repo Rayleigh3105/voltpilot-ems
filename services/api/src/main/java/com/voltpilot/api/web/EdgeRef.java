@@ -15,10 +15,12 @@ package com.voltpilot.api.web;
  *
  * <p>MUST stay in lockstep with the generator in the edge core
  * ({@code edge-app/core/internal/agent/agent.go}): identical alphabet, identical
- * position weights. The Go {@code ref_test.go} and {@link EdgeRefTest} pin the
- * shared vectors from both sides.
+ * position weights. The shared vectors live in
+ * {@code docs/contracts/edge-ref-vectors.json}; the Go {@code ref_test.go},
+ * {@link EdgeRefTest} and the portal twin ({@code frontend/portal/src/edgeRef.ts})
+ * all read them.
  */
-final class EdgeRef {
+public final class EdgeRef {
 
     /** No 0/O/1/l/i lookalikes - mirrors the edge generator's {@code refAlphabet}. */
     static final String ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -40,7 +42,7 @@ final class EdgeRef {
      * {@code edge-inverter-42}) fall outside this and stay ungated - preserving
      * backward compatibility for anything that is not a generated ref.
      */
-    static boolean isGeneratedFormat(String ref) {
+    public static boolean isGeneratedFormat(String ref) {
         if (ref == null || !ref.startsWith(PREFIX)) {
             return false;
         }
@@ -57,11 +59,16 @@ final class EdgeRef {
     }
 
     /**
-     * Whether a generated-format ref carries a valid check character. Call only
-     * when {@link #isGeneratedFormat} is true. Assumes a lowercase ref (the
-     * claim path canonicalizes {@value #PREFIX} refs to lowercase first).
+     * Whether a ref is a well-formed generated ref with a valid check character
+     * ({@value #PREFIX} + six body characters + the check character). Assumes a
+     * lowercase ref (the claim path canonicalizes {@value #PREFIX} refs to
+     * lowercase first); anything else - another prefix, a free-form ref - is
+     * {@code false}.
      */
-    static boolean isValid(String ref) {
+    public static boolean isValid(String ref) {
+        if (ref == null || !ref.startsWith(PREFIX)) {
+            return false;
+        }
         String rest = ref.substring(PREFIX.length());
         if (rest.length() != BODY_LEN + 1) {
             return false;

@@ -268,6 +268,13 @@ a {
 a:hover {
   color: var(--vp-link-hover);
 }
+/* Ein Link MITTEN IM SATZ braucht mehr als die Farbe (WCAG 1.4.1): gegen die
+   graue Hinweisschrift trennt das Blau nur 1,6 : 1. Unterstrichen wie
+   `.vp-linklike`; Links mit eigener Klasse (Knöpfe, Karten) bleiben, wie sie sind. */
+:is(.vp-note, .vp-tb-fein, .vp-einst-grenze) a:not([class]) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 button {
   font-family: var(--vp-font-heading);
@@ -322,6 +329,50 @@ svg [tabindex]:focus-visible {
   outline-offset: 2px;
 }
 
+/* Ein Diagramm-Container, dessen Fläche einen Zeitpunkt wählt oder einen Tag
+   öffnet (`ScheduleChart`/`HistoryEnergieChart`): dieselbe Maus-Geste muss mit
+   Pfeiltasten + Enter bedienbar sein (WCAG 2.1.1), also derselbe Haus-Ring wie
+   bei der Tagesleiste (`.vp-tl:focus-visible`). Die Marke selbst wird von
+   mehreren, sonst getrennten Chart-Komponenten gesetzt - EIN Ort statt einer
+   Kopie je Diagramm. */
+.vp-chart-clickable {
+  cursor: pointer;
+}
+.vp-chart-clickable:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 4px;
+}
+
+/* Erster Tab-Stopp jeder Seite (`AppShell`): ohne ihn tabbt eine
+   Tastaturbedienung auf JEDER Seite erst durch die ganze Seitenleiste und
+   Kopfzeile, bevor der Inhalt beginnt (WCAG 2.4.1 "Bypass Blocks").
+   Unsichtbar, bis er den Tastaturfokus trägt. Er setzt den Fokus auf
+   `<main tabindex="-1">`; das ist kein Bedienelement, ein Ring um die ganze
+   Spalte sagte nichts - der nächste Tab landet im Inhalt. */
+.vp-skip-link {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 100;
+  padding: 8px 16px;
+  border: 0;
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--vp-radius-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+.vp-skip-link:focus-visible {
+  top: 8px;
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-main:focus {
+  outline: none;
+}
+
 /* ============================================================
    Unified dashboard shell: fixed sidebar + content column
    ============================================================ */
@@ -349,6 +400,12 @@ svg [tabindex]:focus-visible {
   padding: var(--vp-space-4) var(--vp-space-5);
   height: 68px;
   border-bottom: 1px solid var(--vp-border);
+}
+/* B3: das Bildzeichen existiert nur für die Tablet-Schiene (Shell.css,
+   721-1023px) - überall sonst zeigt die Wortmarke, das Zeichen bleibt
+   verborgen (keine doppelte Marke, kein Sprung beim Resize). */
+.vp-sidebar .brand .vp-brand-zeichen {
+  display: none;
 }
 .vp-sidebar .brand img {
   /* Die BESCHNITTENE Wortmarke (640x152) fuellt die Markenflaeche. Sie loeste
@@ -1025,6 +1082,67 @@ svg [tabindex]:focus-visible {
   color: var(--vp-text-muted);
   margin: 0 0 26px;
   font-size: 0.95rem;
+}
+/* Die eine Frage der Registrierung (Anlage-Flow a1, D2): zwei Karten, am Telefon untereinander. */
+.vp-zweck {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.vp-zweck > legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.vp-zweck-wahl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.vp-zweck-karte {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  cursor: pointer;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  transition: var(--vp-motion-chrome);
+}
+.vp-zweck-karte:hover {
+  border-color: var(--vp-action);
+}
+.vp-zweck-karte.is-an {
+  border-color: var(--vp-action);
+  background: var(--vp-paleblue-start);
+  box-shadow: 0 0 0 1px var(--vp-action);
+}
+.vp-zweck-karte input {
+  flex-shrink: 0;
+  margin: 2px 0 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--vp-action);
+}
+.vp-zweck-karte strong {
+  display: block;
+  color: var(--vp-text-dark);
+}
+.vp-zweck-zeile {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  color: var(--vp-text-gray);
+}
+.vp-zweck-fehler {
+  font-size: 0.82rem;
+  color: var(--vp-industry-end);
 }
 .vp-auth-note {
   margin-top: 18px;
@@ -2144,6 +2262,9 @@ button.vp-cl-item.is-off .vp-cl-label {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
+  /* Ein Link richtet sich nach seinem Text, ein <button> zentriert von Haus aus: in einer
+     linksbündigen Spalte (Geräteliste) stand der Boxname sonst mittig und brach mittig um. */
+  text-align: inherit;
 }
 .vp-linklike:hover {
   color: var(--vp-link-hover);
@@ -2189,6 +2310,42 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-weight: 600;
   color: var(--vp-text-dark);
 }
+/* Ein Feld aus Beschriftung, Textfeld und Hilfe (`<label className="vp-field">`): untereinander,
+   das Textfeld über die volle Breite. Ohne diese Regel standen Beschriftung, ein schmales
+   Textfeld und der Hilfesatz nebeneinander in EINER Zeile (Fernwartung „Grund *“ beim Öffnen
+   eines Fensters, „Vorlage eintragen“). Schrift 16 px: iOS zoomt sonst beim Antippen hinein. */
+.vp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.vp-field textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-white, #fff);
+  color: var(--vp-text-dark);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+.vp-field textarea:focus-visible {
+  outline: none;
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-field textarea[aria-invalid='true'] {
+  border-color: var(--vp-industry-end);
+}
+.vp-field .vp-field-help {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted);
+}
 .vp-pw-toggle {
   font-size: var(--vp-text-meta);
 }
@@ -2209,7 +2366,9 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-alert-info {
   background: var(--vp-paleblue-start);
-  color: var(--vp-primary-deep);
+  /* Wie `--vp-link`: `--vp-primary-deep` hielt als Schrift nur 2,98 : 1,
+     `--vp-action` hält 7,2 : 1 (WCAG 1.4.3). */
+  color: var(--vp-action);
 }
 .vp-alert-warn {
   background: #fff4e5;
@@ -2227,9 +2386,14 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 
 /* Onboarding wizard (first-run: Standort -> Geraet -> erste Daten) */
+/* Der Einrichtungs-Assistent nutzt die ganze Breite der Haupt-Spalte (`.vp-main`, bis 1240px) -
+   vorher eine schmale 560px-Karte, auf der die Adresssuche und ihre Karte eng zusammengedrängt
+   waren (Captain, Task vp-anlage-adresse-ux). Ab Tablet-Breite teilt sich Schritt 1 (Adresse) die
+   Hülle in zwei Spalten (`.vp-anlage-ort-felder` in AnlageSchritt.css); Schritt 2 und 3 bleiben
+   inhaltlich unverändert und laufen einspaltig in derselben breiten Hülle weiter. */
 .vp-onboarding {
-  max-width: 560px;
-  margin: var(--vp-space-8) auto 0;
+  max-width: 100%;
+  margin: var(--vp-space-4) 0 0;
 }
 .vp-steps {
   display: flex;
@@ -2290,6 +2454,14 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-onboarding-step > p {
   margin: 0 0 var(--vp-space-5);
+}
+/* Schritt 2 (Box) und 3 (Anlage) bleiben inhaltlich unverändert und brauchen keine Kartenspalte -
+   in der jetzt breiten Hülle bleiben ihre Felder lesbar schmal statt ausgezogen. Schritt 1
+   (`.vp-anlage-ort`) nutzt dagegen die volle Breite für Eingaben + Karte. */
+.vp-onboarding-step:not(.vp-anlage-ort) {
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .vp-geo-results {
   display: grid;
@@ -2375,6 +2547,14 @@ button.vp-cl-item.is-off .vp-cl-label {
   display: flex;
   align-items: center;
   gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+}
+.vp-map-aufloesung {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+  margin: calc(var(--vp-space-2) * -1) 0 0;
   font-size: var(--vp-text-sm);
   color: var(--vp-text-dark);
 }
@@ -2613,11 +2793,17 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-empty h3 {
   font-size: 1.25rem;
+  /* Titel stehen eng (Token „Kartentitel"): bei der Körper-Zeilenhöhe 1,6 liefen zwei Zeilen am Telefon 32 px
+     auseinander. Balance hält den Umbruch ruhig statt „…nicht / geladen werden". */
+  line-height: var(--vp-leading-snug);
+  text-wrap: balance;
   margin-bottom: var(--vp-space-2);
 }
 .vp-empty p {
   color: var(--vp-text-muted);
   max-width: 440px;
+  line-height: 1.5;
+  text-wrap: pretty;
   margin: 0 auto var(--vp-space-5);
 }
 
@@ -2652,7 +2838,8 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-seg button.active {
   background: var(--vp-surface);
-  color: var(--vp-primary-deep);
+  /* --vp-action statt --vp-primary-deep: die gewählte Wahl lag auf Weiß bei ~3,3:1 (AA: 4,5:1). */
+  color: var(--vp-action);
   box-shadow: var(--vp-shadow-sm);
 }
 
@@ -2869,6 +3056,104 @@ button.vp-cl-item.is-off .vp-cl-label {
     letter-spacing: var(--vp-tracking-wide);
     color: var(--vp-text-muted);
     font-weight: 600;
+  }
+}
+
+/* Listen-Zeilen am Telefon (`vp-table responsive vp-zeilen`): EINE kompakte Zeile je
+   Eintrag statt einer Etikett/Wert-Karte je Spalte. Die Zellen sagen per `data-zeile`,
+   wo sie stehen: `haupt` und `neben` links untereinander, `marke` (Zustand) und
+   `aktion` rechts, `fuss` (Knöpfe) über die volle Breite darunter, `breit` nur ab
+   721 px (am Telefon steht dieselbe Angabe in einer `vp-zeilen-telefon`-Zeile der
+   Hauptzelle). Ohne `data-zeile` gilt `haupt`. Eine `neben`-Zelle, die ohne Etikett
+   nichts sagt („10.10.16.2“, „vor 40 s“), trägt `vp-zeilen-etikett`: dann steht ihr
+   `data-label` klein davor. */
+.vp-zeilen-telefon {
+  display: none;
+}
+@media (max-width: 720px) {
+  .vp-table.responsive.vp-zeilen tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: var(--vp-space-3);
+    border: 0;
+    border-bottom: 1px solid var(--vp-border);
+    border-radius: 0;
+    margin: 0;
+    /* Die meisten Listen stehen in einer Karte ohne Polster; in einer gepolsterten Karte setzt die Fläche `--vp-zeilen-rand: 0`. */
+    padding: var(--vp-space-3) var(--vp-zeilen-rand, var(--vp-space-4));
+  }
+  .vp-table.responsive.vp-zeilen tr:last-child {
+    border-bottom: 0;
+  }
+  .vp-table.responsive.vp-zeilen td {
+    display: block;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    grid-column: 1;
+    overflow-wrap: anywhere;
+  }
+  .vp-table.responsive.vp-zeilen td::before {
+    content: none;
+  }
+  /* Unterzeilen nehmen die Breite unter Name UND Zustand; der Zustand steht nur neben dem Namen. */
+  .vp-table.responsive.vp-zeilen td[data-zeile='neben'] {
+    grid-column: 1 / 3;
+    color: var(--vp-text-muted);
+    font-size: 0.875rem;
+    margin-top: 2px;
+  }
+  .vp-table.responsive.vp-zeilen td[data-zeile='marke'] {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+  }
+  .vp-table.responsive.vp-zeilen td[data-zeile='aktion'] {
+    grid-column: 3;
+    grid-row: 1 / span 4;
+    text-align: right;
+  }
+  .vp-table.responsive.vp-zeilen td[data-zeile='fuss'] {
+    grid-column: 1 / -1;
+    margin-top: var(--vp-space-2);
+  }
+  .vp-table.responsive.vp-zeilen td.vp-zeilen-etikett {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: baseline;
+    column-gap: 6px;
+  }
+  .vp-table.responsive.vp-zeilen td.vp-zeilen-etikett > details {
+    flex-basis: 100%;
+  }
+  .vp-table.responsive.vp-zeilen td.vp-zeilen-etikett::before {
+    content: attr(data-label);
+    font-family: var(--vp-font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--vp-text-muted);
+  }
+  .vp-table.responsive.vp-zeilen td[colspan] {
+    grid-column: 1 / -1;
+  }
+  /* Am Ende des Blocks: gewinnt auch gegen `vp-zeilen-etikett` (gleiche Spezifität). */
+  .vp-table.responsive.vp-zeilen td[data-zeile='breit'] {
+    display: none;
+  }
+  .vp-zeilen-telefon {
+    display: block;
+    color: var(--vp-text-muted);
+    font-size: 0.875rem;
+    font-weight: 400;
+    margin-top: 2px;
+  }
+  .vp-zeilen-nur-breit {
+    display: none;
   }
 }
 
@@ -3754,6 +4039,30 @@ button.vp-cl-item.is-off .vp-cl-label {
   flex: 0 0 auto;
   white-space: nowrap;
 }
+/* Am Telefon passen die vier Geräte-Reiter (Geräte · Software · Werkstatt · Fernwartung)
+   mit schmalerem Polster in die Breite; vorher war „Fernwartung“ abgeschnitten. Unter
+   ~ 350 px scrollt die Leiste weiter in sich. */
+.vp-seg.vp-bereich-tabs .vp-tab-kurz {
+  display: none;
+}
+@media (max-width: 720px) {
+  /* Nur die Breite, nicht `display`: eine Fläche darf die Leiste am Telefon weiter ausblenden
+     (Plattform-Übersicht: Zeilen am Ende statt Reiterleiste). */
+  .vp-seg.vp-bereich-tabs {
+    width: 100%;
+  }
+  /* Reiter mit Kurzwort (Katalog: Vorlagen · Freigabe · Prognose); der Name des Reiters bleibt lang (aria-label). */
+  .vp-seg.vp-bereich-tabs .vp-tab-lang {
+    display: none;
+  }
+  .vp-seg.vp-bereich-tabs .vp-tab-kurz {
+    display: inline;
+  }
+  .vp-seg.vp-bereich-tabs button {
+    flex: 1 0 auto;
+    padding-inline: 6px;
+  }
+}
 /* Title + one explaining sentence INSIDE a padding-0 table card (the shared
    .vp-section-head is a flex row for h2 + actions and carries no padding, so it
    cannot sit inside one). Used wherever an admin page stacks several titled
@@ -3766,6 +4075,11 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-admin-sec-head h2 {
   font-size: 1.05rem;
   margin: 0;
+}
+/* Als freier Abschnittskopf (h2 direkt in `.vp-admin-sec`, z. B. Prognosemodelle im Katalog) ohne den
+   Innenabstand der Tabellenkarte - sonst steht er 20 px eingerückt über seinem eigenen Text. */
+.vp-admin-sec > h2.vp-admin-sec-head {
+  padding: 0 0 var(--vp-space-2);
 }
 .vp-admin-sec-head p {
   margin: 4px 0 0;
@@ -4860,16 +5174,19 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-role-members { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .vp-role-member {
   display: flex;
+  /* Reicht die Breite nicht für Name UND Knopf, rutscht der Knopf in die nächste Zeile -
+     der Name wird nie zugunsten des Knopfs mitten im Wort gebrochen. */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   padding: 6px 8px;
   border-radius: 8px;
   background: var(--vp-surface-2, #f6f8fb);
   font-size: 0.85rem;
 }
 .vp-role-member.primary { background: color-mix(in srgb, var(--vp-flow-grid) 10%, #f6f8fb); }
-.vp-role-member-main { display: flex; flex-direction: column; min-width: 0; }
-.vp-role-member-name { font-weight: 600; overflow-wrap: anywhere; }
+.vp-role-member-main { display: flex; flex-direction: column; flex: 1 1 9rem; min-width: 0; }
+.vp-role-member-name { font-weight: 600; overflow-wrap: break-word; hyphens: auto; }
 .vp-role-member-main .vp-muted { font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 .vp-massgeblich { margin-left: auto; font-size: 0.74rem; font-weight: 700; color: #0f6d6b; white-space: nowrap; }
 .vp-role-member-action,
@@ -5295,6 +5612,14 @@ button.vp-cl-item.is-off .vp-cl-label {
   .vp-period-tabs button {
     min-height: 44px;
   }
+  /* Filter-Segmente der Geräteliste (B4): derselbe `.vp-seg`-Mechanismus, aber
+     ohne `display:flex` am Knopf selbst - die Zeile muss das Zentrieren mit
+     übernehmen, sonst hängt der Text oben in der gewachsenen Box. */
+  .vp-gu-seg button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
   /* Diagramm-Legenden sind Serien-Schalter, sobald sie Knöpfe sind
      (`button.vp-cl-item.is-toggle` setzt 32px - gleiche Spezifität nötig). */
   button.vp-cl-item.is-toggle {
@@ -5323,6 +5648,67 @@ button.vp-cl-item.is-off .vp-cl-label {
      nur 30–34 px hoch. */
   .vp-chip-action {
     min-height: 44px;
+  }
+  /* G11-Nachtrag B4 (UI/UX-Wartung u1): weitere gemessene Tippflächen unter
+     44 px, je unsichtbar gewachsen (Muster `.vp-vb-schritt`) - die sichtbare
+     Zeile bleibt gleich hoch. `position: relative` steht an jedem Ziel selbst. */
+  .vp-wv-marke::before {
+    content: '';
+    position: absolute;
+    inset: -12px -2px;
+  }
+  .vp-abw-link::before {
+    content: '';
+    position: absolute;
+    inset: -14px -4px;
+  }
+  .vp-mss-aendern::before {
+    content: '';
+    position: absolute;
+    inset: -9px -4px;
+  }
+  .vp-ae-open::before {
+    content: '';
+    position: absolute;
+    inset: -9px -4px;
+  }
+  .vp-ob-bearbeiten::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+  }
+  .vp-zustand-lever::before {
+    content: '';
+    position: absolute;
+    inset: -12px -4px;
+  }
+  .vp-auf-t-plus::before,
+  .vp-auf-t-mehr::before {
+    content: '';
+    position: absolute;
+    inset: -7px -2px;
+  }
+  .vp-auf-t-auf::before {
+    content: '';
+    position: absolute;
+    inset: -11px;
+  }
+  /* „PDF“/„CSV“/„Kriterien ändern“ der Bewertung waren schon auf 32 px gewachsen
+     (`.vp-be-link`), aber nicht bis zur Haus-Regel. Verdoppelte Klasse statt
+     höherer Media-Spezifität: `BewertungErgebnis.css` setzt dieselbe eine
+     Klasse unbedingt auf 32px, die Ladereihenfolge der Bündel entscheidet bei
+     gleicher Spezifität sonst nicht zuverlässig zugunsten dieser Regel. */
+  .vp-be-link.vp-be-link {
+    min-height: 44px;
+  }
+  /* Monatszeilen der Kennzahl-Tabelle (nur ab 721 px, siehe Seitenkommentar):
+     die Zeile selbst muss wachsen - ihre Tabelle scrollt mit `overflow-x: auto`,
+     eine unsichtbare Weitung über die Zelle hinaus würde dort abgeschnitten.
+     Verdoppelte Klasse aus demselben Grund wie bei `.vp-be-link` oben. */
+  .vp-kzs-tabelle.vp-kzs-tabelle th,
+  .vp-kzs-tabelle.vp-kzs-tabelle td {
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
   /* Leaflet lädt seine `.leaflet-touch .leaflet-bar a`-Regel unabhängig von
      unserer Datei. Die höhere Spezifität hält die 44 px deshalb stabil. */
@@ -5571,6 +5957,13 @@ button.vp-cl-item.is-off .vp-cl-label {
   cursor: pointer;
 }
 .vp-linkbtn:hover { color: var(--vp-link-hover, #2c5282); }
+/* Ein Link im Satz einer Meldung (`Erneut laden`) bleibt eine Textzeile: die Treffläche wächst unsichtbar (Polster
+   gegen negativen Rand), der Zeilenabstand bleibt der des Satzes. Eine eigene 44-px-Zeile bekäme er nur als eigener Knopf. */
+.vp-alert .vp-linkbtn {
+  font-weight: 700;
+  padding: 12px 4px;
+  margin: -12px -4px;
+}
 
 /* ---------------------------------------------------------------------------
    Steuerungs-Freigabe (Plattform) - das Modell-Register + die Scharfschaltung.
@@ -6444,18 +6837,32 @@ span.vp-swap-out {
     --vp-motion-scale: 0;
   }
 
+  /* ⚠ `:root` vorneweg bei den nächsten zwei Regeln: ihr Loop steht in einem
+     NACHGELADENEN Stück (`EnergieBuehne.css`, `steuerung.css`), dessen Blatt
+     erst NACH dieser Datei eingehängt wird. Bei gleicher Spezifität gewann es
+     über die Quell-Reihenfolge - im Browser gemessen liefen die Fluss-Punkte
+     und der Puls der Pille unter reduzierter Bewegung weiter. */
+
   /* Leitungsplan (Cockpit-Bühne): die Punkte SIND die Aussage „live“ -
      unter reduzierter Bewegung entfallen sie ganz; die Richtung trägt dort
      die Herkunftsfarbe der Spur (Grün kommt immer aus dem Speicher …). */
-  .vp-lp.is-live .vp-lp-punkte {
+  :root .vp-lp.is-live .vp-lp-punkte {
     display: none;
     animation: none;
   }
 
   /* Die Zustands-Pille der Steuerung („läuft"): derselbe Herzschlag wie der
      Flotten-Punkt - das Wort „läuft" trägt die Aussage auch ohne ihn. */
-  .stn .pill.on i,
-  .stn-blatt .pill.on i {
+  :root .stn .pill.on i,
+  :root .stn-blatt .pill.on i {
+    animation: none;
+  }
+
+  /* Werkstatt-Läuft-Anzeige (Fall- und Lauf-Seite, lazy geladenes Werkstatt.css):
+     der Satz und das mitzählende Lebenszeichen „zuletzt geprüft vor …“ bleiben
+     stehen, nur der Ring ruht (E5). `:root` davor, weil Werkstatt.css NACH
+     dieser Datei eingehängt wird und bei gleicher Spezifität gewänne. */
+  :root .vp-wsb-lauf .vp-wsb-punkt {
     animation: none;
   }
 
@@ -6463,7 +6870,13 @@ span.vp-swap-out {
   .vp-flow-rev,
   .vp-spinner,
   .vp-flowport.accepts,
-  .vp-ustate-busy .vp-ustate-dot {
+  .vp-ustate-busy .vp-ustate-dot,
+  /* Geräte & Updates G5: derselbe Punkt im Badge „Update läuft" und im laufenden Schritt. */
+  .vp-gu .vp-gu-badge.lauf .p,
+  .vp-gu .vp-gu-tracker .aktiv i,
+  /* Plattform › Übersicht: die Leuchte einer Box, auf der gerade ein Update läuft. */
+  .vp-ueb-flotte-geraet.ton-lauf .schein,
+  .vp-ueb-flotte-geraet.ton-lauf .licht {
     animation: none;
   }
 

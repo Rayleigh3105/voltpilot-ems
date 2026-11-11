@@ -10,7 +10,7 @@ Ausführbare JSON-Fixtures für Schema- und Laufzeitprüfungen. Dateinamen und I
 | `mqtt-ota-target.*.json` | 2 | 1 |
 | `mqtt-probe.*.json` | 12 | 3 |
 | `mqtt-register-write.*.json` | 6 | 1 |
-| `mqtt-schedule.*.json` | 5 | 4 |
+| `mqtt-schedule.*.json` | 9 | 7 |
 | `ota-release-manifest.*.json` | 3 | 2 |
 
 `valid` muss die jeweils geprüfte Regel erfüllen; `invalid` benennt den gezielten Verstoß. Negative Beispiele nicht mit beliebigen Zusatzfeldern ungültig machen. Datumswerte sind eingefrorene Testdaten, keine aktuellen Fahrpläne.
@@ -28,8 +28,9 @@ Konsumenten: Optimierung `tests/test_contract.py`; Go-Core `internal/plan`, `ota
 ## Ergänzende Fälle
 
 - `mqtt-schedule.invalid.limit-discharge-not-boolean.json`: `limit_discharge_to_load` ist eine boolesche Erlaubnis, kein zweiter kW-Sollwert.
-- `mqtt-probe.valid.test-connection-battery*.json`: MQTT-/HTTP-Vorschau mit `samples`; kein Empfang bedeutet `count: 0` ohne erfundenen Wert. HTTP-Geheimnisse gehören nur in Probe/Registry.
+- `mqtt-schedule.valid.charge-hold.json`: `charge_hold_base_load_kw` (NS-3 B) ist die Last, gegen die der Plan die Ladung gerechnet hat, nur an ladenden Slots mit `charge_from_surplus_only`; der dritte Slot ohne das Feld trimmt wie bisher. `mqtt-schedule.invalid.charge-hold-negative.json`: eine negative Grundlast ist ungültig.
 - `mqtt-charging-config.valid.steuerart-je-saeule.json`: fehlende Säulenwahl übernimmt den Anlagenstandard; fehlende Rahmenfelder erhalten den Boxwert.
 - `mqtt-charging-config.valid.fahrzeug-profile*.json`: vollständige Profil-Liste je Box-`tag_ref`; eine leere Liste entfernt alle Profile. Der Cloud-Journalbezug ist keine gültige Kartenkennung.
 - `mqtt-probe.valid.wago-kopf*.json`: der Op `wago_kopf` liest NUR den Kopf eines VoltPilot-Registerbilds WAGO v1. Ein Feld, das die Lesung nicht ergeben hat, fehlt; bei fremder Hauptversion steht nur die Version da, nie Kartenzahl oder Herzschlag. `mqtt-probe.invalid.wago-kopf-without-address.json`: ohne Basisadresse gibt es keinen Kopf - der Kopf beginnt genau dort.
+- `mqtt-probe.valid.erzeuger-kopf*.json`: der Op `erzeuger_kopf` (EZ-5) liest Kopf, je Einheit Art und Nennleistung und die Namen eines VoltPilot-Registerbilds Erzeuger v1; ein nicht gelesenes Feld fehlt, ein gelesener leerer Name ist `""`. Ein fremdes Bild (auch ein WAGO-Bild „VP“ „RB“) antwortet mit Befund `erzeuger_kopf`/`registerbild_unbekannt`. `mqtt-probe.invalid.erzeuger-kopf-without-address.json`: ohne Basisadresse kein Kopf.
 - `mqtt-charging-boost.valid.laden-pausieren.json`: `action: pause` stoppt nur diesen Ladevorgang; fehlende `action` behält den bisherigen Voll-Laden-Boost.

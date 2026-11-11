@@ -1,0 +1,13 @@
+# Werkstatt-Dienst in prod. Das Bild wird von Hand gesetzt (kein Tag-Bump der
+# Pipeline, Sync nur von Hand): newTag = Commit aus dem Lauf "Werkstatt-Dienst".
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: werkstatt-prod
+resources:
+  - ../../base
+  - werkstatt-dienst-oeffentlich.yaml
+generators:
+  - secret-generator.yaml
+images:
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-dienst
+    newTag: COMMIT

@@ -9,12 +9,15 @@ const person = (teil: Partial<Selbstauskunft>): Selbstauskunft => ({
   kundenadministratoren: [], ...teil,
 });
 
-it('AP-20 IP-17: den Gesamtabzug bietet das Portal nur dem Kundenadministrator mit eigenem Konto an', () => {
+it('AP-20 IP-17: den Gesamtabzug bietet das Portal nur dem Kundenadministrator an (eigenes Konto oder Plattform im Sprung)', () => {
   expect(gesamtabzugLaden(person({}))).toBe(true);
   expect(gesamtabzugLaden(person({ rollen: ['energiemanager'] }))).toBe(false);
   expect(gesamtabzugLaden(person({ rollen: ['einsicht'] }))).toBe(false);
   expect(gesamtabzugLaden(person({ konto: 'partner', zugang: 'unterstuetzung', rollen: ['unterstuetzer'] }))).toBe(false);
-  expect(gesamtabzugLaden(person({ konto: 'plattform', zugang: 'umschalter' }))).toBe(false);
+  // Mandantensprung (Auftrag vom 29.10.2026): die Plattform handelt dort als Kundenadministrator - als Unterstützung nie.
+  expect(gesamtabzugLaden(person({ konto: 'plattform', zugang: 'umschalter' }))).toBe(true);
+  expect(gesamtabzugLaden(person({ konto: 'plattform', zugang: 'unterstuetzung', rollen: ['unterstuetzer'] }))).toBe(false);
+  expect(gesamtabzugLaden(person({ konto: 'plattform', zugang: null, kundenbereich: null, rollen: [] }))).toBe(false);
   expect(gesamtabzugLaden(person({ zustand: 'gesperrt' }))).toBe(false);
   expect(gesamtabzugLaden(null)).toBe(false);
 });

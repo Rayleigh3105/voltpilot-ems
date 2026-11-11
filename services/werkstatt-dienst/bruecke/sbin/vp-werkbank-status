@@ -1,0 +1,78 @@
+#!/bin/sh
+# Stand der Werkbank-Brücke als eine JSON-Zeile (Schema vp-werkbank-status.v1).
+#
+# Erzwungener Befehl des Status-Schlüssels (über sudo: arping und nft brauchen
+# root). Liest nur: Kabel und Adressen am Werkstatt-Anschluss, das WLAN, ob
+# Durchleitung und Firewall stehen, und wer an den Box-Adressen des
+# Werkstatt-Anschlusses antwortet. Gefragt wird nur nach diesen festen
+# Adressen (je zwei ARP-Anfragen), nie im Netz gesucht.
+#
+#   antworten: [{"adresse": "192.168.8.1", "macs": ["94:83:c4:…"]}]
+#   Zwei MACs an einer Adresse heißen: zwei Geräte am Werkstatt-Anschluss.
+set -u
+PARAM=/etc/vp-werkbank/parameter.env
+[ -r "$PARAM" ] || { echo '{"schema":"vp-werkbank-status.v1","fehler":"nicht eingerichtet"}'; exit 0; }
+wert() { sed -n "s/^$1=//p" "$PARAM" | head -n1; }
+NETZ=$(wert NETZ)
+WERKSTATT=$(wert WERKSTATT)
+ZIELE=$(wert ZIELE)
+FASSUNG=$(cat /etc/vp-werkbank/fassung 2>/dev/null | tr -cd '0-9a-f')
+
+jliste() { # jliste a b c -> "a","b","c"
+  _s=''
+  for _x in "$@"; do _s="$_s${_s:+,}\"$_x\""; done
+  printf '%s' "$_s"
+}
+adressen() { ip -4 -o addr show dev "$1" 2>/dev/null | awk '{print $4}' | tr -cd '0-9./\n'; }
+wahr() { if "$@"; then echo true; else echo false; fi; }
+
+kabel=$(wahr [ "$(cat "/sys/class/net/$WERKSTATT/carrier" 2>/dev/null)" = 1 ])
+oben=$(wahr [ "$(cat "/sys/class/net/$NETZ/operstate" 2>/dev/null)" = up ])
+energie=unbekannt
+if command -v iw >/dev/null 2>&1; then
+  case "$(iw dev "$NETZ" get power_save 2>/dev/null)" in
+    *off*) energie=aus ;;
+    *on*) energie=an ;;
+  esac
+fi
+# Strom des Pi: Eine Mango am USB des Pi zieht beim Start Strom; mit
+# Unterspannung verliert der Pi WLAN (Lauf 114050-9ef8). vcgencmd get_throttled:
+# Bit 0 = Unterspannung jetzt, Bit 16 = seit dem Start. Ohne vcgencmd: unbekannt.
+strom='"quelle":"keine"'
+if command -v vcgencmd >/dev/null 2>&1; then
+  t=$(vcgencmd get_throttled 2>/dev/null | sed -n 's/^throttled=0x\([0-9a-fA-F]\{1,8\}\)$/\1/p')
+  if [ -n "$t" ]; then
+    n=$((0x$t))
+    j=false; [ $((n & 1)) -ne 0 ] && j=true
+    v=false; [ $((n & 65536)) -ne 0 ] && v=true
+    strom="\"unterspannung_jetzt\":$j,\"unterspannung_seit_start\":$v,\"quelle\":\"vcgencmd\""
+  fi
+fi
+fwd=$(wahr [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null)" = 1 ])
+tabelle() { nft list table inet werkbank >/dev/null 2>&1; }
+fw=$(wahr tabelle)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+boxen=$(for z in $ZIELE; do echo "${z%:*}"; done | sort -u)
+if [ "$kabel" = true ]; then
+  for ip in $boxen; do
+    (arping -c 2 -w 3 -I "$WERKSTATT" "$ip" 2>/dev/null |
+      sed -n 's/.*[Rr]eply from [0-9.]* \[\([0-9A-Fa-f:]*\)\].*/\1/p' |
+      tr 'A-F' 'a-f' | grep -E '^([0-9a-f]{2}:){5}[0-9a-f]{2}$' | sort -u >"$tmp/$ip") &
+  done
+  wait
+fi
+antworten=''
+for ip in $boxen; do
+  [ -s "$tmp/$ip" ] || continue
+  # shellcheck disable=SC2046 # MACs sind geprüft (nur 0-9a-f und :)
+  antworten="$antworten${antworten:+,}{\"adresse\":\"$ip\",\"macs\":[$(jliste $(cat "$tmp/$ip"))]}"
+done
+
+# shellcheck disable=SC2046 # Adressen sind geprüft (nur 0-9 . /)
+printf '{"schema":"vp-werkbank-status.v1","fassung":"%s","zeit":"%s","werkstatt":{"schnittstelle":"%s","kabel":%s,"adressen":[%s]},"netz":{"schnittstelle":"%s","oben":%s,"adressen":[%s],"energiesparen":"%s"},"durchleitung":{"ip_forward":%s,"firewall":%s},"antworten":[%s],"strom":{%s}}\n' \
+  "$FASSUNG" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  "$WERKSTATT" "$kabel" "$(jliste $(adressen "$WERKSTATT"))" \
+  "$NETZ" "$oben" "$(jliste $(adressen "$NETZ"))" "$energie" \
+  "$fwd" "$fw" "$antworten" "$strom"

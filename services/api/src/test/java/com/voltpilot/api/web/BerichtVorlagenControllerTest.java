@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -40,7 +41,15 @@ class BerichtVorlagenControllerTest {
 
     @Test
     void dieRouteLiefertDieRessourceByteFuerByte() throws Exception {
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new BerichtVorlagenController()).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new BerichtVorlagenController())
+                // Standalone MockMvc skips Boot's autoconfiguration (and its
+                // spring.http.converters.preferred-json-mapper=jackson2), so Spring's own
+                // Jackson-3-by-default converter would otherwise apply here.
+                .setMessageConverters(
+                        new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                        new org.springframework.http.converter.StringHttpMessageConverter(),
+                        new MappingJackson2HttpMessageConverter())
+                .build();
         MvcResult r = mvc.perform(get("/api/v1/bericht-vorlagen")).andExpect(status().isOk()).andReturn();
         assertThat(MediaType.parseMediaType(r.getResponse().getContentType()).isCompatibleWith(MediaType.APPLICATION_JSON))
                 .isTrue();

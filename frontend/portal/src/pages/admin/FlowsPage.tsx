@@ -34,10 +34,21 @@ const CHAIN_BORDER: Record<string, string> = {
   aktion: '#2E9E5B',
 };
 
-export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
-  const [tenantId, setTenantId] = useState<string | null>(null);
+/** Scheibe S3 (E2 = A): mit welcher Anlage das Werkzeug aus der Akte heraus geöffnet wurde - die Auswahl Mandant → Anlage entfällt dann. */
+export interface FlowsPreselect {
+  tenantId: string;
+  siteId: string;
+  siteName: string;
+}
+
+export function FlowsPage({ tenants = [], preselect, onBack }: {
+  tenants?: Tenant[];
+  preselect?: FlowsPreselect | null;
+  onBack?: () => void;
+}) {
+  const [tenantId, setTenantId] = useState<string | null>(() => preselect?.tenantId ?? null);
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<string | null>(null);
+  const [siteId, setSiteId] = useState<string | null>(() => preselect?.siteId ?? null);
   const [flows, setFlows] = useState<FlowSummary[] | null>(null);
   const [listState, setListState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [editing, setEditing] = useState<{ flowId: string; version: number } | null>(null);
@@ -140,43 +151,51 @@ export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
         icon="zap"
         category="primary"
         title="Flows"
-        description="Typisierte Energie-Flows je Anlage bauen, prüfen, simulieren und ausrollen - Bausteine statt freiem Code, Guards bleiben unantastbar."
-        actions={siteId ? (
-          <Button size="sm" onClick={() => setCreateOpen(true)}>＋ Neuer Flow</Button>
-        ) : undefined}
+        description={preselect
+          ? `Flows der Anlage „${preselect.siteName}" - Bausteine statt freiem Code, Guards bleiben unantastbar.`
+          : 'Typisierte Energie-Flows je Anlage bauen, prüfen, simulieren und ausrollen - Bausteine statt freiem Code, Guards bleiben unantastbar.'}
+        actions={(
+          <div className="vp-row-gap">
+            {preselect && onBack && <Button variant="outline" size="sm" onClick={onBack}>← Zur Anlage</Button>}
+            {siteId && <Button size="sm" onClick={() => setCreateOpen(true)}>＋ Neuer Flow</Button>}
+          </div>
+        )}
       />
 
-      <Card className="vp-optim-pickers" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <VpPicker
-          id="flows-tenant"
-          className="vp-optim-picker"
-          label="Mandant"
-          options={[
-            { value: '', label: '– Mandant wählen –' },
-            ...tenants.map((tenant) => ({ value: tenant.id, label: tenant.name })),
-          ]}
-          value={tenantId ?? ''}
-          onChange={(v) => {
-            setTenantId(v || null);
-            setSiteId(null);
-            setFlows(null);
-          }}
-          searchPlaceholder="Mandant suchen …"
-        />
-        <VpPicker
-          id="flows-site"
-          className="vp-optim-picker"
-          label="Anlage"
-          options={[
-            { value: '', label: '– Anlage wählen –' },
-            ...sites.map((s) => ({ value: s.id, label: s.name })),
-          ]}
-          value={siteId ?? ''}
-          onChange={(v) => setSiteId(v || null)}
-          disabled={!tenantId}
-          searchPlaceholder="Anlage suchen …"
-        />
-      </Card>
+      {/* ---- picker row (E2 = A, Scheibe S3: mit vorgewählter Anlage entfällt sie) -- */}
+      {!preselect && (
+        <Card className="vp-optim-pickers" style={{ marginBottom: 'var(--vp-space-4)' }}>
+          <VpPicker
+            id="flows-tenant"
+            className="vp-optim-picker"
+            label="Mandant"
+            options={[
+              { value: '', label: '– Mandant wählen –' },
+              ...tenants.map((tenant) => ({ value: tenant.id, label: tenant.name })),
+            ]}
+            value={tenantId ?? ''}
+            onChange={(v) => {
+              setTenantId(v || null);
+              setSiteId(null);
+              setFlows(null);
+            }}
+            searchPlaceholder="Mandant suchen …"
+          />
+          <VpPicker
+            id="flows-site"
+            className="vp-optim-picker"
+            label="Anlage"
+            options={[
+              { value: '', label: '– Anlage wählen –' },
+              ...sites.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+            value={siteId ?? ''}
+            onChange={(v) => setSiteId(v || null)}
+            disabled={!tenantId}
+            searchPlaceholder="Anlage suchen …"
+          />
+        </Card>
+      )}
 
       {!tenantId && (
         <EmptyState

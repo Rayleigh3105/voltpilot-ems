@@ -296,6 +296,23 @@ jobs:
       - name: OCPP system rig
         run: bash edge-app/test/e2e-ocpp.sh
 
+      - name: Set up Python (Günstig rig)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Günstig rig (optimizer plan -> core -> OCPP simulator)
+        # „Günstig" ohne Ziel über die GANZE Kette (Bericht
+        # vp-wallbox-modi-konzept §3.4): der echte Optimierer rechnet den Plan,
+        # der echte Kern verteilt ihn an eine simulierte Säule. Er braucht das
+        # Optimierer-Paket samt Solver - in einer eigenen venv, damit der Rest
+        # des Jobs davon nichts sieht.
+        run: |
+          venv="$(mktemp -d)/opt"
+          python -m venv "$venv"
+          "$venv/bin/pip" install -q -e 'services/optimization[solver]' -e services/forecast
+          OPT_PYTHON="$venv/bin/python" bash edge-app/test/e2e-guenstig.sh
+
       - name: Edge compose system rig
         run: bash edge-app/test/e2e-compose.sh
 
@@ -603,6 +620,28 @@ jobs:
           path: release.json
           if-no-files-found: error
 
+      # Geraete & Updates G4: „Was ist neu" - die Box-Aenderungen seit dem letzten
+      # Tag DERSELBEN Linie (tools/ota/release-publish.sh ota_aenderungen). Sie
+      # reisen NEBEN dem signierten Manifest ins Register (`vp-ota sign` liest
+      # $VP_OTA_AENDERUNGEN), nie hinein. Reine Anzeige: ein Fehler hier haelt
+      # kein Release auf, und ohne Vorgaenger-Tag gibt es keine Angabe.
+      - name: Was ist neu (Box-Aenderungen seit dem letzten Tag der Linie)
+        id: aenderungen
+        if: steps.inputs.outputs.ready == 'true'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          datei="${RUNNER_TEMP}/aenderungen.txt"
+          ota_aenderungen "${GITHUB_REF_NAME}" "$datei"
+          if [ -f "$datei" ]; then
+            echo "datei=$datei" >> "$GITHUB_OUTPUT"
+            echo "$(wc -l < "$datei" | tr -d ' ') Box-Aenderung(en) seit dem letzten Tag der Linie:"
+            cat "$datei"
+          else
+            echo "Erstes Release der Linie - keine Angabe."
+          fi
+
       # Signieren und danach mit `--root baked` GEGENPRUEFEN - also gegen exakt
       # die Wurzel, die im Image steckt. Das ist Zeichen fuer Zeichen die
       # Pruefung, die jedes Geraet durchfuehrt, nur vorgezogen vor die
@@ -615,6 +654,8 @@ jobs:
           set -euo pipefail
           . tools/ota/release-publish.sh
           ota_sign "${GITHUB_WORKSPACE}/release.json" "${{ steps.inputs.outputs.keyfile }}"
+        env:
+          VP_OTA_AENDERUNGEN: ${{ steps.aenderungen.outputs.datei }}
 
       # Erst jetzt geht etwas hinaus. Beides ist idempotent: eine vorhandene
       # Forgejo-Release wird wiederverwendet, ein gleichnamiges Asset ersetzt,

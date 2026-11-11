@@ -139,14 +139,32 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       await expect(anlagen.nth(1)).toContainText('Werk Ahrenberg – Halle 2');
       await expect(flaeche).not.toContainText('Lindach');
       await expect(flaeche).not.toContainText('Sie sind hier');
-      // Die Box nennt ihre Datenquellen (AP-06) — sie stehen im Baum unter ihr, mit Weg und Rückmeldung.
+      // GE-1 „je Kasten ein Eintrag“: ein Weg (AP-06-Datenquelle) ist keine eigene Zeile mehr — er steht am Gerät, als
+      // Gateway oder als „Anschluss ohne Gerät“. Die Bühne verknüpft keinen der drei Wege der Box Halle 1 über einen
+      // gespeicherten Verweis mit einem Gerät im Aufbau (Halle 1 trägt dort keine Gerätezeile); zusammengelegt über
+      // die Adresse wird nichts.
       await expect(flaeche).toContainText('Box Halle 1');
-      await expect(flaeche).toContainText('liest 3 Datenquellen');
-      const quellen = flaeche.locator('.vp-auf-t-zeile.is-quelle');
-      await expect(quellen).toHaveCount(3);
-      await expect(quellen.first()).toContainText('DQ-1');
-      await expect(quellen.first()).toContainText('Modbus TCP · 192.168.10.21');
-      await expect(quellen.first()).toContainText('Liefert Daten');
+      await expect(flaeche).toContainText('0 Geräte · 3 Anschlüsse offen');
+      // GE-4: die Box-Zeile nennt die Last ihrer Wege — dieselbe Rechnung wie „Geräte an dieser Box“ auf der Box-Seite.
+      await expect(flaeche.locator('.vp-auf-t-zeile.is-box').first()).toContainText(/0 Geräte · 3 Anschlüsse offen · Last \d+\s%/);
+      await expect(flaeche).not.toContainText('Datenquelle');
+      const anschluesse = flaeche.locator('.vp-auf-t-zeile.is-anschluss');
+      await expect(anschluesse).toHaveCount(3);
+      await expect(anschluesse.first()).toContainText('Anschluss ohne Gerät');
+      await expect(anschluesse.first()).toContainText('Modbus TCP · 192.168.10.21 · Geräte-ID 1 · Kennung DQ-1');
+      await expect(anschluesse.first()).toContainText('Liefert Daten');
+      // Zwei Boxen am Standort: jeder Weg steht unter der Box, die ihn liest — DQ-4 und DQ-5 unter Box Halle 2,
+      // sobald Halle 2 aufgeklappt ist (dieselbe `AufbauSection` wie Anlage › Aufbau).
+      await anlagen.nth(1).getByRole('button', { name: /Werk Ahrenberg – Halle 2/ }).click();
+      await expect(flaeche.locator('.vp-auf-t-zeile.is-anschluss')).toHaveCount(5);
+      const reihe = await flaeche.locator('.vp-auf-t-zeile').evaluateAll((zeilen) =>
+        zeilen
+          .map((z) => z.classList.contains('is-box') ? `Box:${z.querySelector('.vp-auf-t-kuerze')?.textContent}`
+            : z.classList.contains('is-anschluss') ? `${z.textContent?.match(/Kennung (DQ-\d)/)?.[1]}` : null)
+          .filter(Boolean),
+      );
+      expect(reihe).toEqual(['Box:Box Halle 1', 'DQ-1', 'DQ-2', 'DQ-3', 'Box:Box Halle 2', 'DQ-4', 'DQ-5']);
+      ohneQuerlauf(await messe(page), `aufbau-${breite}-halle2`);
       // Die andere Anlage öffnet sich hier, im Standort — nicht in der Anlage.
       await expect(anlagen.nth(1).getByRole('link', { name: /öffnen/i })).toHaveAttribute('href', /^#\/standort\/[^/]+\/aufbau\?anlage=/);
       // EIN Ort zum Hinzufügen: Gerät, VoltPilot-Box und Anlage stehen hier — und nur hier.
@@ -160,14 +178,22 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     }
   });
 
-  test('AP-06 IP-16 · Box-Seite bei 1440 und 375 px: Datenquellen ersetzen die alte reine Geräteliste', async ({ page }) => {
+  test('GE-4 · Box-Seite bei 1440 und 375 px: „Geräte an dieser Box“ zeigt dieselben Kästen wie der Aufbau', async ({ page }) => {
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
       await expect(page.getByRole('heading', { name: 'Box Halle 1', level: 1 })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
-      await expect(page.locator('.vp-box-quellen')).toContainText('DQ-1');
-      await expect(page.locator('.vp-box-quellen')).toContainText('Liefert Daten');
-      await expect(page.locator('.vp-box-quellen')).toContainText('Budget-Anteil');
+      await expect(page.getByRole('heading', { name: 'Geräte an dieser Box' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
+      // Wie im Aufbau („0 Geräte · 3 Anschlüsse offen“): keiner der drei Wege ist über einen gespeicherten Verweis
+      // mit einem Gerät verknüpft — sie stehen als „Anschluss ohne Gerät“ da, mit Weg, Zustand und Last.
+      const geraete = page.getByTestId('box-geraete');
+      await expect(geraete.locator('[data-box-weg]')).toHaveCount(3);
+      const dq1 = page.locator('[data-box-weg="DQ-1"]');
+      await expect(dq1).toContainText('Anschluss ohne Gerät');
+      await expect(dq1).toContainText('Kennung DQ-1');
+      await expect(dq1).toContainText('Liefert Daten');
+      await expect(page.getByTestId('box-last')).toContainText('Zusammen');
+      await expect(page.getByTestId('geraet-heldsatz')).toHaveText('Noch kein Gerät — 3 Anschlüsse warten auf ein Gerät.');
+      await expect(page.getByTestId('baustein-modul')).not.toContainText('Datenquellen und Geräte');
       // „Update planen“ steht seit main d1b97ac39 in „Gerät & Verbindung“ — am Telefon zugeklappt.
       const details = page.getByTestId('baustein-details');
       if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) await details.locator(':scope > summary').click();
@@ -185,7 +211,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
   for (const breite of [375, 1440]) {
     test(`AP-06 IP-12 · Quellenübergabe: Prüfung, Folgen, geplanter Wechsel und Rücknahme bei ${breite} px`, async ({ page }) => {
       await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
-      await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
+      await expect(page.getByRole('heading', { name: 'Geräte an dieser Box' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
       await page.getByRole('button', { name: 'Zuständige Box wechseln' }).first().click();
       const dialog = page.getByRole('dialog', { name: 'Zuständige Box wechseln' });
       await expect(dialog).toBeVisible();
@@ -218,7 +244,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
     await page.getByRole('menuitem', { name: 'Box tauschen' }).click();
     const dialog = page.getByRole('dialog', { name: 'Box tauschen' });
-    await dialog.getByLabel('Geräte-ID *').fill('VP-BOX-2027-0090');
+    await dialog.getByLabel('Kennung *').fill('VP-BOX-2027-0090');
     await dialog.getByRole('button', { name: 'VoltPilot-Box hinzufügen' }).click();
     await expect(dialog).toContainText('Der Tausch ist noch nicht bestätigt.');
     await expect(dialog).toContainText('Heimat-Anlage, Rolle führende Box');

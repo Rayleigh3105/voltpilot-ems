@@ -29,8 +29,10 @@ v1 (single battery)          v2 (co-optimizer)
 ===========================  ==================================================
 ``netzladen_erlaubt=False``  every storage's effective grid-charge permission
 (EEG mode)                   is False -> the SAME solar-only-charge constraint
-                             (``charge <= pv - curtail``, PV-bus Bilanzierung
-                             per FK3) selected by the SolarOnlyCharge module
+                             (``charge <= pv - curtail``, FK3) and the same
+                             no-charging-during-import rule
+                             (``strenge_ausschliesslichkeit``, EN-2 A)
+                             selected by the SolarOnlyCharge module
 ``netzladen_erlaubt=True``   per-entity ``charge_from_grid_allowed=True``
 (merchant mode)
 ===========================  ==================================================
@@ -255,7 +257,8 @@ class LoadRequirement:
     def mandatory(self) -> bool:
         """Both compiled enforcements are obligations whose shortfall is a
         stage-1 slack (a Pflichtlauf immediately, a flexible task by its
-        deadline); opportunistic requirements never reach the solver."""
+        deadline); an opportunistic requirement reaches the solver only as a
+        compiled pure-price window (D1, Steuerart „Günstig")."""
         return True
 
 

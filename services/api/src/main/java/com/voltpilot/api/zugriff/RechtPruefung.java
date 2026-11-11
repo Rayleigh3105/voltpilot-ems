@@ -56,8 +56,10 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p><b>Wer fragt</b>, steht allein im {@link ZugriffContext}: die wirksamen Zuweisungen des Kundenkontos (nie
  * zugewiesen = Kundenadministrator, Bestandsregel E12) bzw. die angenommene Unterstützung. Zwei Fälle prüft sie
- * bewusst NICHT und zählt sie: ohne Kontext (kein Kundenbereich im Token, Jobs, OIDC aus) und der Plattform-Umschalter
- * {@code X-Tenant-Id} — der bleibt bis IP-8, wie er ist (AP-03 W3).
+ * bewusst NICHT und zählt sie: ohne Kontext (kein Kundenbereich im Token, Jobs, OIDC aus) und die Plattform im
+ * Mandantensprung (Zugang {@code umschalter}, AP-03 W3) — sie darf dort jede Aktion des Kundenadministrators und die
+ * P-Zeilen ({@link #SPRUNGRECHT}), die Prüfung ergäbe stets „erlaubt". Wer selbst urteilt ({@link #aufrufer}), bekommt
+ * für sie den Kundenadministrator des Sprungs, nie einen leeren Aufrufer.
  *
  * <p>Standorte tragen im Vertrags-Eingang ihre ID (wie in {@code KennzahlRechte}/{@code BerichtRechte}), nicht das
  * Kurzzeichen der Selbstauskunft.
@@ -80,7 +82,7 @@ public class RechtPruefung {
         UNSICHTBAR("unsichtbar"),
         /** Kein Zugriff-Kontext — nicht geprüft. */
         OHNE_KONTEXT("ohne_kontext"),
-        /** Plattform am Umschalter {@code X-Tenant-Id} — nicht geprüft bis IP-8 (W3). */
+        /** Plattform im Mandantensprung (Zugang {@code umschalter}) — nicht geprüft: {@link #SPRUNGRECHT} erlaubt alles. */
         UMSCHALTER("umschalter");
 
         private final String code;
@@ -108,6 +110,17 @@ public class RechtPruefung {
      * was die Prüfung hier erlaubt.
      */
     static final Zuweisung BESTANDSRECHT = new Zuweisung(Rolle.KUNDENADMINISTRATOR, null, null, null, IMMER, null, null);
+
+    /**
+     * Das gedachte Recht der Plattform-Administration im Mandantensprung (Zugang {@code umschalter}, Auftrag vom
+     * 29.10.2026: „als Admin in der Mandantensicht alles können"): Kundenadministrator, unternehmensweit, seit jeher —
+     * an einem Plattform-Konto. Die P-Zeilen bleiben damit bei {@code voltpilot_betrieb}, Vier-Augen und der Schutz des
+     * letzten Kundenadministrators gelten wie für ihn; im Protokoll steht weiter VoltPilot-Betrieb
+     * ({@code uems/ProtokollAkteur}). Die Selbstauskunft liest dieselbe Zuweisung ({@link #imSprung}); die Fälle
+     * {@code sprung-*} in {@code rechte-vectors.json} pinnen, was daraus folgt.
+     */
+    public static final Zuweisung SPRUNGRECHT = new Zuweisung(Rolle.KUNDENADMINISTRATOR, null, null, null, IMMER, null,
+            null);
 
     private final JdbcTemplate jdbc;
     private final Geltungsbereich geltungsbereich;
@@ -241,11 +254,17 @@ public class RechtPruefung {
 
     /**
      * Der Aufrufer als Benutzer der Rechte-Ableitung — für die Dienste, die ihr Urteil selbst sprechen (Kennzahlen,
-     * Berichte, Korrekturen). Leer ohne Kontext und am Umschalter: dort bleibt die Festlegung von vor IP-6.
+     * Berichte, Korrekturen, Überwachungen, Stummschaltungen). Im Mandantensprung der Kundenadministrator des Sprungs
+     * ({@link #SPRUNGRECHT}). Leer nur ohne Kontext: dort bleibt die Festlegung von vor IP-6.
      */
     public static Optional<Benutzer> aufrufer() {
         Zugriff z = ZugriffContext.get();
-        return ungeprueft(z) != null ? Optional.empty() : Optional.of(benutzer(z));
+        return z == null ? Optional.empty() : Optional.of(benutzer(z));
+    }
+
+    /** Die Plattform-Administration im Mandantensprung als Benutzer der Rechte-Ableitung ({@link #SPRUNGRECHT}). */
+    public static Benutzer imSprung(String sub, String name) {
+        return new Benutzer(sub, name, RechteAbleitung.Konto.PLATTFORM, KontoZustand.AKTIV, List.of(SPRUNGRECHT));
     }
 
     // ------------------------------------------------------------------ Urteil
@@ -369,9 +388,12 @@ public class RechtPruefung {
      * Der Aufrufer als Eingang des Vertrags. Er bekommt die wirksamen UND die beendeten Zuweisungen (IP-9): der
      * Vertrag filtert selbst nach {@code wirksam(jetzt)} und braucht die beendeten allein, um eine Ablehnung
      * {@code zugriff_beendet} statt {@code ausserhalb_geltungsbereich} zu nennen (§5.9). Ein Bestandskonto (E12)
-     * hat per Definition keine.
+     * hat per Definition keine; die Plattform im Sprung trägt {@link #SPRUNGRECHT}.
      */
     static Benutzer benutzer(Zugriff z) {
+        if (z.imSprung()) {
+            return imSprung(z.sub(), z.sub());
+        }
         List<Zuweisung> zuweisungen = z.zugang() == Zugang.KONTO && z.bestandskonto()
                 ? List.of(BESTANDSRECHT)
                 : Stream.concat(z.zuweisungen().stream(), z.beendete().stream())

@@ -1,0 +1,41 @@
+/*
+ * Das Himmel-Symbol (Konzept „Preise und Wetter", Fassung 3). Die frühere
+ * Wetter-Seite ist entfernt (Konzept `vp-prognosen-konzept`); das Symbol
+ * lebt im Sonnen-Teppich weiter (`PrognoseTeppich.tsx`/`PrognoseTeppich.css`).
+ */
+
+/* --- Das Wettersymbol --------------------------------------------------- */
+
+.vp-ws {
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.vp-ws-sonne {
+  fill: var(--vp-flow-pv, #f59e0b);
+}
+
+.vp-ws-strahl {
+  stroke: var(--vp-flow-pv, #f59e0b);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.vp-ws-wolke {
+  fill: var(--vp-c-border, #e2e8f0);
+  stroke: var(--vp-c-muted-fg, #475569);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.vp-ws-wolke.is-hell {
+  fill: var(--vp-c-card, #ffffff);
+}
+
+.vp-ws-mond {
+  fill: #cbd5e1;
+  stroke: var(--vp-c-muted-fg, #475569);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}

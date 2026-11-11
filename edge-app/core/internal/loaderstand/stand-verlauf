@@ -1,0 +1,7 @@
+# Verlauf der Loader-Staende von Edge Light (nur anhaengen, nie umschreiben).
+# Eine Zeile je Stand: "<stand> <sha256 boot.sh> <sha256 vp-edge-light.init>".
+# Der Test erzwingt streng steigende Staende und dass die LETZTE Zeile zu den
+# eingebetteten Kopien passt - wer boot.sh oder das Init-Skript aendert, muss
+# LOADER_STAND erhoehen und hier eine neue Zeile anhaengen, sonst erreicht die
+# Aenderung keine Box im Feld (der Rueckschritt-Schutz vergleicht nur Staende).
+1 5b8f0e4ec583ec385455381f8be94d9451209534b76bf7b254a2f0cd7f322ef7 3570d35899fc01924ff520009f96c29269a048c4c30b4bbc416900d97f04900d

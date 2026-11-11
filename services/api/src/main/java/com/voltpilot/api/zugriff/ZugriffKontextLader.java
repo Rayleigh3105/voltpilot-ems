@@ -30,15 +30,18 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li><b>Kundenkonto</b> ({@code KONTO_benutzer}): der Kundenbereich bleibt der aus dem Token; geladen werden die
  *       wirksamen Zuweisungen. Ein Kundenkonto wird hier NIE abgewiesen — noch setzt niemand durch (IP-5 ff.).</li>
- *   <li><b>Partner und Plattform mit {@code X-Kundenbereich}</b>: angenommen NUR gegen eine wirksame Unterstützung
+ *   <li><b>Partner und Plattform mit {@code X-Kundenbereich}</b>: angenommen gegen eine wirksame Unterstützung
  *       des Kontos in genau diesem Kundenbereich — Partner: Installateur; Plattform: VoltPilot oder Notfall-Zugriff.
- *       Dann ist er der Kundenbereich der Anfrage ({@code TenantContext}); sonst abgewiesen.</li>
+ *       Dann ist er der Kundenbereich der Anfrage ({@code TenantContext}). Ohne sie wird ein Partner IMMER
+ *       abgewiesen; eine Plattform nur, solange der Umschalter zu ist — offen nimmt sie den Kundenbereich wie am
+ *       Umschalter an (Zugang {@code umschalter}, siehe unten). Eine wirksame Unterstützung geht dabei vor.</li>
  *   <li><b>Partner ohne den Kopf</b>: abgewiesen.</li>
  *   <li><b>Plattform ohne den Kopf</b>: der Mandanten-Umschalter {@code X-Tenant-Id} — mit ihm der Kundenbereich,
- *       ohne ihn keiner. <b>Er ist seit IP-8 abschaltbar</b> ({@code voltpilot.uems.unterstuetzung.umschalter-enabled},
- *       Vorgabe AUS seit IP-15): AUS wird eine Plattform ohne wirksame Unterstützung auf jeder
- *       Kundenroute abgewiesen wie ein Partner ohne Gewährung — das ist der Satz aus A5 („nicht der heutige
- *       {@code X-Tenant-Id}-Vollzugriff"). Die Portal-Umstellung (IP-15) verwendet diesen Weg auch für die Plattform.</li>
+ *       ohne ihn keiner. <b>Er ist seit IP-8 abschaltbar</b> ({@code voltpilot.uems.unterstuetzung.umschalter-enabled}).
+ *       Von IP-15 bis zum 26.10.2026 war die Vorgabe AUS (A5: „nicht der heutige {@code X-Tenant-Id}-Vollzugriff");
+ *       seither ist sie AN, nach der Entscheidung des Betreibers, dass die Plattform-Administration wieder in jeden
+ *       Kundenbereich springt (alle Kunden haben eingewilligt). AUS bleibt der Not-Aus: eine Plattform ohne wirksame
+ *       Unterstützung wird dann auf jeder Kundenroute abgewiesen wie ein Partner ohne Gewährung.</li>
  * </ul>
  *
  * <p>Die Kontoart kommt allein aus {@code KONTO_*} des {@link KeycloakRealmRoleConverter}. Ein Lesefehler bei der
@@ -59,47 +62,57 @@ public class ZugriffKontextLader {
     private volatile Clock uhr = Clock.systemUTC();
 
     public ZugriffKontextLader(ZugriffRepository zugriffe, MeterRegistry metriken,
-            @Value("${voltpilot.uems.unterstuetzung.umschalter-enabled:false}") boolean umschalter) {
+            @Value("${voltpilot.uems.unterstuetzung.umschalter-enabled:true}") boolean umschalter) {
         this.zugriffe = zugriffe;
         this.metriken = metriken;
         this.umschalter = umschalter;
     }
 
-    /** Gilt der Mandanten-Umschalter {@code X-Tenant-Id} auf Kundenrouten noch? (AP-03 W3, IP-8) */
+    /** Gilt der Mandanten-Umschalter der Plattform auf Kundenrouten? (AP-03 W3, IP-8; offen seit 26.10.2026) */
     public boolean umschalterGilt() {
         return umschalter;
     }
 
     /**
-     * Ein Zugriff, keiner (kein Kundenbereich im Spiel) oder abgewiesen (404 auf jeder Kundenroute).
+     * Ein Zugriff, keiner (kein Kundenbereich im Spiel), abgewiesen (404 auf jeder Kundenroute) oder ein
+     * WIDERSPRUCH (400 auf jeder Kundenroute).
      *
      * @param beendet gesetzt, wenn die Abweisung ein ENTZUG ist (IP-9): der Aufrufer hatte hier einmal Zugang,
      *     und der ist vorbei. Dann sagt die 404 das auch — {@code zugriff_beendet} mit dem Satz des Vertrags,
      *     statt schweigend die Existenz zu verneinen. Ohne frühere Zuweisung bleibt es bei der stummen 404.
+     * @param widerspruch wahr, wenn die Anfrage ZWEI verschiedene Kundenbereiche nennt ({@code X-Tenant-Id}
+     *     und {@code X-Kundenbereich}): keiner von beiden wird still genommen — lieber 400 als falsche Daten
+     *     (Befund vp-kundenakte-fremde-personen: die Kundenakte eines Kunden zeigte bei offenem Umschalter
+     *     die Personen des ANDEREN Kunden).
      */
-    public record Ergebnis(Zugriff zugriff, boolean abgewiesen, ZugriffBeendet beendet, boolean kontoUngueltig) {
+    public record Ergebnis(Zugriff zugriff, boolean abgewiesen, ZugriffBeendet beendet, boolean kontoUngueltig,
+            boolean widerspruch) {
         static Ergebnis entferntesKonto() {
-            return new Ergebnis(null, true, null, true);
+            return new Ergebnis(null, true, null, true, false);
         }
 
         static Ergebnis keiner() {
-            return new Ergebnis(null, false, null, false);
+            return new Ergebnis(null, false, null, false, false);
         }
 
         static Ergebnis abgewiesenOhneZugriff() {
-            return new Ergebnis(null, true, null, false);
+            return new Ergebnis(null, true, null, false, false);
         }
 
         static Ergebnis abgewiesenWeilBeendet(ZugriffBeendet b) {
-            return new Ergebnis(null, true, b, false);
+            return new Ergebnis(null, true, b, false, false);
+        }
+
+        static Ergebnis widersprochen() {
+            return new Ergebnis(null, true, null, false, true);
         }
 
         static Ergebnis mit(Zugriff z) {
-            return new Ergebnis(z, false, null, false);
+            return new Ergebnis(z, false, null, false, false);
         }
 
         static Ergebnis mit(Zugriff z, ZugriffBeendet b) {
-            return new Ergebnis(z, false, b, false);
+            return new Ergebnis(z, false, b, false, false);
         }
     }
 
@@ -151,6 +164,17 @@ public class ZugriffKontextLader {
                     : Ergebnis.mit(z);
         }
         if (kundenbereichKopf != null && !kundenbereichKopf.isBlank()) {
+            // Widerspruch (Befund vp-kundenakte-fremde-personen): nennt die Anfrage mit X-Tenant-Id
+            // (TenantFilter, nur Plattform) UND X-Kundenbereich ZWEI verschiedene Kundenbereiche, wird
+            // keiner still genommen - vorher gewann der Kopf, und die Kundenakte von Kunde B las bei
+            // offenem Umschalter auf A die Personen von A. Ein Partner kommt hier nie an: für ihn
+            // ignoriert der TenantFilter X-Tenant-Id, sein TenantContext ist leer.
+            UUID ausdruecklich = TenantContext.get();
+            UUID kandidat = alsUuid(kundenbereichKopf.trim());
+            if (ausdruecklich != null && kandidat != null && !kandidat.equals(ausdruecklich)) {
+                zaehle("widerspruch");
+                return Ergebnis.widersprochen();
+            }
             return unterstuetzung(sub, konto, kundenbereichKopf.trim(), jetzt);
         }
         if (konto == Konto.PLATTFORM) {
@@ -169,6 +193,15 @@ public class ZugriffKontextLader {
         }
         zaehle("abgewiesen");
         return Ergebnis.abgewiesenOhneZugriff();
+    }
+
+    /** Der Kopfwert als UUID — {@code null}, wenn er keine ist (das weist {@link #unterstuetzung} ab wie bisher). */
+    private static UUID alsUuid(String wert) {
+        try {
+            return UUID.fromString(wert);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /** Die Kontoart aus {@code KONTO_<code>}; {@code null}, wenn der Konverter keine abgelegt hat. */
@@ -270,6 +303,13 @@ public class ZugriffKontextLader {
             } else {
                 TenantContext.set(vorher);
             }
+        }
+        if (zeilen.isEmpty() && konto == Konto.PLATTFORM && umschalter) {
+            // Der Sprung der Plattform-Administration (Entscheidung vom 26.10.2026): das Portal schickt auch für
+            // sie X-Kundenbereich. Ohne Unterstützung gilt bei offenem Umschalter derselbe Zugang wie über
+            // X-Tenant-Id - ganzer Kundenbereich, derselbe Urheber im Protokoll. Ein Partner kommt hier nie hin.
+            TenantContext.set(kandidat);
+            return Ergebnis.mit(new Zugriff(sub, konto, kandidat, Zugang.UMSCHALTER, List.of(), jetzt));
         }
         if (zeilen.isEmpty()) {
             zaehle("abgewiesen");

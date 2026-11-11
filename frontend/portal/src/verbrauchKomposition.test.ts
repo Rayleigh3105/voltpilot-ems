@@ -104,6 +104,8 @@ describe('verbrauchKomposition · das Haus bleibt die Summe', () => {
     expect(c.gruppen.map((g) => g.id)).toEqual(['laden', 'waerme']);
     expect(c.gruppen[0].headline).toBe('1 von 1 lädt · 11,0 kW');
     expect(c.gruppen[1].kw).toBe(1.9);
+    // Der Heizstab der Gruppe „Wärme“ ist als solcher markiert: Flamme statt Wärmepumpe, nie die Kachel „Wärmepumpe“.
+    expect(c.gruppen[1].teile.map((t) => t.heizstab ?? false)).toEqual([true]);
     expect(c.rest.kw).toBeCloseTo(1.2, 9);
     expect(c.rest.note).toBeNull();
   });
@@ -180,6 +182,20 @@ describe('verbrauchKomposition · der Rest ist eine Differenz, kein Gerät', () 
     expect(c.rest.note).toBe('nicht bestimmbar (Wärmepumpe ohne Leistungsmessung)');
   });
 
+  it('ein von Hand laufender Verbraucher ohne Messwert blockiert ihn ebenso (Teil B)', () => {
+    const c = k({
+      topology: topo([HAUS, HEIZSTAB, { entity_id: 'wp', label: 'Wärmepumpe', primary: false }], [
+        ...ENTITIES,
+        entity({ id: 'wp', entityType: 'heat-pump', typeLabel: 'Wärmepumpe' }),
+      ]),
+      consumerStatus: [
+        { entityId: 'wp', state: 'running_manual', reportedAt: '2026-08-28T09:41:00Z' },
+      ],
+    });
+    expect(c.rest.kw).toBeNull();
+    expect(c.rest.note).toBe('nicht bestimmbar (Wärmepumpe ohne Leistungsmessung)');
+  });
+
   it('ein VERALTETER Messwert blockiert ihn ebenfalls, mit eigenem Grund', () => {
     const c = k({
       topology: topo([HAUS, HEIZSTAB], [
@@ -205,7 +221,8 @@ describe('verbrauchKomposition · der Rest ist eine Differenz, kein Gerät', () 
     const c = k({ topology: topo([{ ...HAUS, value_kw: 5.0 }, HEIZSTAB], ENTITIES) });
     expect(c.rest.kw).toBeNull();
     expect(c.rest.konflikt).toBe(true);
-    expect(c.rest.note).toBe('Messwerte passen nicht zusammen (-7,9 kW)');
+    // Echtes Minus, nie der ASCII-Bindestrich (Zählerbaum-Konzept N2).
+    expect(c.rest.note).toBe('Messwerte passen nicht zusammen (−7,9 kW)');
   });
 
   it('eine Rundungs-Differenz unter der Schwelle ist KEIN Widerspruch', () => {

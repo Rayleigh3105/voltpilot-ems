@@ -1,0 +1,105 @@
+/* „Gerät zuordnen" (ZuordnenDialog.tsx) - die Stile reisen mit dem Dialog.
+   Bis 11/2026 lagen sie in AnlagenModell.css, das auf der Anlagen-Seite gar
+   nicht geladen ist: Frage und Antwort klebten dann ohne Abstand aneinander. */
+
+/* ---- Was das Gerät ist und als was es erscheint ---- */
+.vp-zuordnen-geraet {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  min-width: 0;
+}
+.vp-zuordnen-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--vp-flow-load-soft);
+  color: var(--vp-flow-load);
+}
+.vp-zuordnen-symbol.rolle-pv {
+  background: var(--vp-flow-pv-soft);
+  color: var(--vp-flow-pv);
+}
+.vp-zuordnen-symbol.rolle-netz {
+  background: var(--vp-flow-grid-soft);
+  color: var(--vp-flow-grid);
+}
+.vp-zuordnen-symbol.rolle-offen {
+  background: var(--vp-paleblue-start);
+  color: var(--vp-action);
+}
+.vp-zuordnen-text {
+  display: grid;
+  gap: var(--vp-space-3);
+  flex: 1;
+  min-width: 0;
+}
+.vp-zuordnen-daten {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  margin: 0;
+}
+.vp-zuordnen-daten > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-zuordnen-daten dt {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted);
+}
+.vp-zuordnen-daten dd {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-zuordnen-geraet .vp-note {
+  margin: 0;
+}
+@media (max-width: 480px) {
+  .vp-zuordnen-daten {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- „Wieder verbinden" oder neu anlegen (PR3, vp-vier-erzeuger-p9) ---- */
+.vp-reconnect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  padding: var(--vp-space-3);
+  margin: 0;
+  min-width: 0;
+}
+.vp-reconnect-opt {
+  display: flex;
+  gap: var(--vp-space-2);
+  align-items: flex-start;
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-reconnect-opt input { margin-top: 3px; flex: none; }
+.vp-reconnect-hint { display: block; margin-top: 2px; }
+/* Der Picker steht eingerueckt unter seiner Radiozeile - Rahmen und Polster
+   bringt er selbst mit. */
+.vp-reconnect-select {
+  margin-left: 26px;
+  max-width: 100%;
+}
+
+.vp-zuordnen-dialog .vp-alert {
+  margin: 0;
+}

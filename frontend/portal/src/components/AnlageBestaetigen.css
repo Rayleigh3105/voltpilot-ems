@@ -1,0 +1,165 @@
+/* Schritt 3 des Anlege-Flusses (AnlageBestaetigen.tsx): der Überblick nach dem Verbinden, Solar und Speicher. */
+
+/* ---- „So geht es weiter“ (vp-box-verbinden-konzept, Runde 1/E5) ---- */
+.vp-weiter-ueberblick {
+  display: grid;
+  gap: var(--vp-space-2);
+  margin: 0 0 var(--vp-space-5);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  list-style: none;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+.vp-weiter-ueberblick .is-done {
+  color: var(--vp-ok-ink, #2e7d32);
+  font-weight: var(--vp-weight-semibold);
+}
+.vp-weiter-ueberblick .is-done::before {
+  content: '✓ ';
+}
+.vp-weiter-ueberblick .is-current {
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-weight-semibold);
+}
+
+/* ---- Solar und Speicher ---- */
+.vp-anlage-teile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-space-3);
+}
+.vp-anlage-teil {
+  --teil-farbe: var(--vp-flow-pv);
+  --teil-flaeche: var(--vp-flow-pv-soft);
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  min-width: 0;
+  transition: var(--vp-motion-chrome);
+}
+.vp-anlage-teil.is-batt {
+  --teil-farbe: var(--vp-flow-batt);
+  --teil-flaeche: var(--vp-flow-batt-soft);
+}
+.vp-anlage-teil.is-an {
+  border-color: var(--teil-farbe);
+  box-shadow: 0 0 0 1px var(--teil-farbe);
+}
+.vp-anlage-teil.is-bekannt {
+  border-color: var(--vp-border);
+  box-shadow: none;
+}
+.vp-anlage-teil-kopf {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--vp-space-2) var(--vp-space-4);
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--vp-text-dark);
+  cursor: pointer;
+  border-radius: var(--vp-radius-btn);
+  box-sizing: border-box;
+}
+.vp-anlage-teil.is-bekannt .vp-anlage-teil-kopf {
+  cursor: default;
+}
+.vp-anlage-teil-kopf:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+}
+.vp-anlage-teil-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--teil-flaeche);
+  color: var(--teil-farbe);
+}
+.vp-anlage-teil-titel {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--vp-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.vp-anlage-teil-titel strong {
+  margin-left: var(--vp-space-1);
+  font-variant-numeric: tabular-nums;
+}
+.vp-anlage-teil-quelle {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted);
+}
+.vp-anlage-teil-haken {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--vp-field-border);
+  color: #fff;
+}
+.vp-anlage-teil.is-an .vp-anlage-teil-haken {
+  border-color: var(--teil-farbe);
+  background: var(--teil-farbe);
+}
+.vp-anlage-teil-inhalt {
+  padding: 0 var(--vp-space-4) var(--vp-space-4);
+}
+.vp-anlage-teil-felder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--vp-space-3);
+}
+
+/* ---- „Aus dem Register holen“ ---- */
+.vp-onboarding-step > .vp-register-link {
+  margin: var(--vp-space-4) 0 0;
+}
+.vp-register-link .vp-linklike {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.vp-register-holen {
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-register-holen .vp-onb-block-title {
+  margin: 0;
+}
+@media (max-width: 480px) {
+  .vp-anlage-teil.is-bekannt .vp-anlage-teil-kopf {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .vp-anlage-teil-quelle {
+    flex-basis: 100%;
+    padding-left: calc(34px + var(--vp-space-3));
+    padding-bottom: var(--vp-space-1);
+  }
+}
+
+/* F9: „Ihre Eingaben sind wiederhergestellt.“ über dem Schritt (AnlageFlow.tsx). */
+.vp-entwurf-zurueck {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  margin: 0 0 var(--vp-space-4);
+}

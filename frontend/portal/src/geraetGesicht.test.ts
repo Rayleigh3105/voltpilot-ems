@@ -8,9 +8,10 @@ import {
   typWort,
   type GesichtInput,
 } from './geraetGesicht';
-import type { ControlStatus, CurtailmentStatus, SiteEntity, SiteSource } from './api';
+import type { ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity } from './api';
 import type { PlantComponent } from './komponenten';
 import type { ChargePoint } from './ladepunkte';
+import type { FlowNode } from './topology';
 import { NBSP } from './format';
 
 const FRISCH = new Date().toISOString();
@@ -467,28 +468,27 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
   });
 
   /**
-   * P6 Speiser-Bindung: der Live-Fall dieses Pakets. Der Deye im
-   * Spannungsmodus MISST keinen Ladestand - das gebundene DIYBMS rechnet ihn.
-   * Ohne diesen Zweig zeigte die Geräteseite weiter das Schweigen des
-   * Wechselrichters, während das Cockpit daneben den gebundenen Wert führt.
+   * Liefert ein ANDERES Gerät den Ladestand, steht er am Wechselrichter - und
+   * sagt, von wem. Sonst zeigte die Geräteseite weiter das Schweigen des
+   * Wechselrichters, während das Cockpit daneben den anderen Wert führt.
    */
-  it('B · der gebundene Ladestand steht am Wechselrichter - und sagt, von wem', () => {
+  it('B · der Ladestand eines anderen Geräts steht am Wechselrichter - und sagt, von wem', () => {
     const g = gesicht(input({
       komponenten: [komponente({ role: 'storage', entityId: 'e-batt', reading: null })],
       speicherKnoten: {
         role: 'storage',
         soc_pct: 7.4,
-        soc_source: { entity_id: 'e-diy', label: 'DIY-Speicher Keller' },
+        soc_source: { entity_id: 'e-zweit', label: 'Zweiter Speicher' },
         flow_active: false,
         members: [{ entity_id: 'e-batt', label: 'Deye SUN-30K', primary: true }],
       } as never,
     }));
     const speicher = g.held.kacheln.find((k) => k.key === 'speicher');
     expect(speicher?.wert).toBe(`7,4${NBSP}%`);
-    expect(speicher?.wort).toBe('Ladestand von: DIY-Speicher Keller');
+    expect(speicher?.wort).toBe('Ladestand von: Zweiter Speicher');
   });
 
-  /** Meldet das Gerät SELBST den Ladestand, ändert P6 nichts. */
+  /** Meldet das Gerät SELBST den Ladestand, ändert sich nichts. */
   it('B · der eigene Ladestand des Geräts bleibt unangetastet', () => {
     const g = gesicht(input({
       komponenten: [komponente({
@@ -506,37 +506,6 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
     const speicher = g.held.kacheln.find((k) => k.key === 'speicher');
     expect(speicher?.wert).toBe(`62,0${NBSP}%`);
     expect(speicher?.wort).toBe('geladen');
-  });
-
-  /**
-   * P6: was das BMS ZULÄSST. Eine gesperrte Richtung erklärt einen ruhenden
-   * Speicher, den sonst niemand erklärt - und ein abwesendes Feld wird
-   * ÜBERGANGEN, nie als „erlaubt" gelesen.
-   */
-  it('B · die BMS-Hülle steht neben dem Ladestand, ohne Freigaben zu erfinden', () => {
-    const g = gesicht(input({
-      komponenten: [komponente({ role: 'storage', entityId: 'e-batt', reading: null })],
-      speicherKnoten: {
-        role: 'storage',
-        flow_active: false,
-        limits: {
-          source: { entity_id: 'e-diy', label: 'DIY' },
-          charge_limit_a: 22,
-          discharge_allowed: false,
-        },
-        members: [],
-      } as never,
-    }));
-    const keys = g.held.kacheln.map((k) => k.key);
-    expect(keys).toContain('bms-laden');
-    expect(keys).toContain('bms-entladen');
-    expect(g.held.kacheln.find((k) => k.key === 'bms-entladen')?.wert).toBe('gesperrt');
-
-    const ohne = gesicht(input({
-      komponenten: [komponente({ role: 'storage', entityId: 'e-batt', reading: null })],
-      speicherKnoten: { role: 'storage', flow_active: false, members: [] } as never,
-    }));
-    expect(ohne.held.kacheln.map((k) => k.key)).not.toContain('bms-laden');
   });
 
   it('⚠ B · was dieses Gerät NICHT misst, bekommt keine Kachel', () => {
@@ -723,5 +692,134 @@ describe('das I/O-Modul (Ebyte M31)', () => {
   it('bietet keinen freien Registerzugriff - seine Kanäle schaltet der Klemmenplan', () => {
     const g = gesicht(io);
     expect(g.sektionen).not.toContain('register');
+  });
+});
+
+function topologyEntity(over: Partial<TopologyEntity> = {}): TopologyEntity {
+  return {
+    id: 'e-x',
+    entityType: 'generic',
+    typeLabel: 'Gerät',
+    label: null,
+    category: 'producer',
+    health: 'ok',
+    capabilities: [],
+    ...over,
+  };
+}
+
+function flowNode(over: Partial<FlowNode> = {}): FlowNode {
+  return { role: 'pv', flow_active: false, members: [], ...over };
+}
+
+describe('Heizstab: der Kopf zeigt die BESTÄTIGTE Stufe (Entschlacken 04.11.2026)', () => {
+  const stab = (
+    stufe: Parameters<typeof gesicht>[0]['heizstab'],
+    bilanz: Partial<Pick<GesichtInput, 'pvKnoten' | 'netzKnoten' | 'speicherKnoten' | 'topologie'>> = {},
+  ) => gesicht(input({
+    art: 'quelle',
+    geraetId: 'src-shelly',
+    rolle: 'consumer',
+    communication: 'shelly_http',
+    komponenten: [komponente({ role: 'consumer', entityId: 'e-hz', label: 'Heizstab' })],
+    gemessen: false,
+    heizstab: stufe,
+    ...bilanz,
+  })).held;
+
+  it('nennt Stufe und angenommene Leistung statt „meldet gerade keinen Wert“', () => {
+    const h = stab({ stufe: { commanded: 2, confirmed: 2, confirmed_kw: 4, outputs_on: [0, 1] } });
+    expect(h.satz).toBe('Heizt gerade.');
+    expect(h.kacheln).toEqual([expect.objectContaining({ label: 'Stufe', wert: '2 Phasen', wort: `≈${NBSP}4,0${NBSP}kW · angenommen` })]);
+    expect(h.zeilen).toEqual(['Energie: angenommen aus den bestätigten Stufen']);
+    expect(h.hinweis).toBeNull();
+  });
+
+  it('unbekannt bleibt unbekannt - nie „aus“', () => {
+    expect(stab({ stufe: null }).satz).toBe('Die Box hat noch keine Stufe gemeldet.');
+    expect(stab({ stufe: { commanded: 1, confirmed: null } }).satz).toBe('Die Box hat die Stufe noch nicht bestätigt.');
+    expect(stab({ stufe: { commanded: 0, confirmed: 0, confirmed_kw: 0 } }).satz).toBe('Heizt gerade nicht.');
+    expect(stab({ stufe: { commanded: 0, confirmed: 0, confirmed_kw: 0 } }).kacheln[0].wert).toBe('Aus');
+  });
+
+  /**
+   * Teil A (Captain-Befund 05.11.2026): Screenshot-Widerspruch - bestätigte
+   * Stufe 3 (≈4,5 kW), die gemessene Hausbilanz derselben Minute gibt nur
+   * ≈0,3 kW her (PV 0,2 + Speicherentladung 0,1 + Netz 0,0).
+   */
+  describe('Plausibilitätsabgleich gegen die gemessene Hausbilanz', () => {
+    const frischePv = flowNode({
+      role: 'pv', value_kw: 0.2, flow_active: true, direction: 'in',
+      members: [{ entity_id: 'e-pv', label: 'PV', primary: true, value_kw: 0.2 }],
+    });
+    const ausgeglichenesNetz = flowNode({
+      role: 'grid', value_kw: 0, flow_active: false,
+      members: [{ entity_id: 'e-grid', label: 'Netz', primary: true, value_kw: 0 }],
+    });
+    const entladenderSpeicher = flowNode({
+      role: 'storage', value_kw: 0.1, flow_active: true, direction: 'in',
+      members: [{ entity_id: 'e-batt', label: 'Speicher', primary: true, value_kw: -0.1 }],
+    });
+    const frischeEntities = [
+      topologyEntity({ id: 'e-pv', category: 'producer', health: 'ok' }),
+      topologyEntity({ id: 'e-grid', category: 'meter', health: 'ok' }),
+      topologyEntity({ id: 'e-batt', category: 'storage', health: 'ok' }),
+    ];
+    const bilanzDesScreenshots = {
+      pvKnoten: frischePv,
+      netzKnoten: ausgeglichenesNetz,
+      speicherKnoten: entladenderSpeicher,
+      topologie: frischeEntities,
+    };
+
+    it('widerlegt „Heizt gerade.“, wenn die FRISCHE Bilanz klar dagegen spricht', () => {
+      const h = stab(
+        { stufe: { commanded: 3, confirmed: 3, confirmed_kw: 4.5, outputs_on: [0, 1, 2] } },
+        bilanzDesScreenshots,
+      );
+      expect(h.satz).toBe(
+        'Eingeschaltet, aber im Hausverbrauch ist davon nichts zu sehen - vermutlich hat der Thermostat abgeschaltet.',
+      );
+      expect(h.satzTon).toBe('warn');
+      expect(h.kacheln[0].ton).toBe('warn');
+      expect(h.zeilen[0]).toBe(
+        'Energie: angenommen aus den bestätigten Stufen - für diese Minuten ungenau, der Hausverbrauch widerspricht',
+      );
+    });
+
+    it('bleibt bei „Heizt gerade.“, wenn die Bilanz die Annahme nicht widerlegt', () => {
+      const h = stab(
+        { stufe: { commanded: 1, confirmed: 1, confirmed_kw: 0.7, outputs_on: [0] } },
+        bilanzDesScreenshots,
+      );
+      expect(h.satz).toBe('Heizt gerade.');
+      expect(h.satzTon).toBe('ok');
+      expect(h.zeilen).toEqual(['Energie: angenommen aus den bestätigten Stufen']);
+    });
+
+    it('fällt NIE auf „heizt nicht“ zurück - ohne Bilanz bleibt die heutige Aussage stehen', () => {
+      const h = stab(
+        { stufe: { commanded: 3, confirmed: 3, confirmed_kw: 4.5, outputs_on: [0, 1, 2] } },
+        { pvKnoten: null, netzKnoten: null, speicherKnoten: null, topologie: null },
+      );
+      expect(h.satz).toBe('Heizt gerade.');
+      expect(h.satzTon).toBe('ok');
+    });
+
+    it('eine VERALTETE Bilanz (ein Mitglied nicht „ok“) zählt nicht als frisch - kein Urteil', () => {
+      const h = stab(
+        { stufe: { commanded: 3, confirmed: 3, confirmed_kw: 4.5, outputs_on: [0, 1, 2] } },
+        {
+          ...bilanzDesScreenshots,
+          topologie: [
+            topologyEntity({ id: 'e-pv', category: 'producer', health: 'stale' }),
+            topologyEntity({ id: 'e-grid', category: 'meter', health: 'ok' }),
+            topologyEntity({ id: 'e-batt', category: 'storage', health: 'ok' }),
+          ],
+        },
+      );
+      expect(h.satz).toBe('Heizt gerade.');
+      expect(h.satzTon).toBe('ok');
+    });
   });
 });

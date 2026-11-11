@@ -85,6 +85,13 @@ const (
 // flow/UI publisher can impersonate the fallback.
 const SourceDeadlineFallback SourceKind = "deadline-fallback"
 
+// SourceHeizstab is the CORE-INTERNAL heating-rod controller (internal/
+// heizstab, Heizstab-Konzept V1): the customer's Steuerart of a heating rod,
+// run on the box instead of a Node-RED flow. It wishes in class 'flow' (a
+// rule, rank 40) and only ever enters via SubmitInternal - Parse rejects the
+// kind, so no publisher can impersonate the controller.
+const SourceHeizstab SourceKind = "heizstab"
+
 // Source identifies a desired's emitter. Flow sources carry the compiler-
 // stamped flow identity.
 type Source struct {
@@ -340,11 +347,34 @@ func parseCommand(raw json.RawMessage) (entities.Commands, string, error) {
 		return entities.Commands{}, "", schemaErr("command missing")
 	}
 	var cmd struct {
-		Type  string          `json:"type"`
-		Value json.RawMessage `json:"value"`
+		Type    string          `json:"type"`
+		Value   json.RawMessage `json:"value"`
+		Outputs json.RawMessage `json:"outputs"`
 	}
 	if err := json.Unmarshal(raw, &cmd); err != nil {
 		return entities.Commands{}, "", schemaErr("command unreadable: %v", err)
+	}
+	var outputs []int
+	if len(cmd.Outputs) > 0 && string(cmd.Outputs) != "null" {
+		// The explicit output set of a heating rod (heizstab-shelly.md
+		// "Handeingriff je Phase"): only next to a setpoint_kw, which stays
+		// the ceiling every guard clamps.
+		if cmd.Type != entities.CmdSetpointKw {
+			return entities.Commands{}, "", schemaErr("outputs only with setpoint_kw")
+		}
+		if err := json.Unmarshal(cmd.Outputs, &outputs); err != nil {
+			return entities.Commands{}, "", schemaErr("outputs needs an array of output numbers")
+		}
+		if len(outputs) == 0 || len(outputs) > 4 {
+			return entities.Commands{}, "", schemaErr("outputs needs 1..4 entries")
+		}
+		seen := map[int]bool{}
+		for _, o := range outputs {
+			if o < 0 || o > 3 || seen[o] {
+				return entities.Commands{}, "", schemaErr("outputs entries must be distinct numbers 0..3")
+			}
+			seen[o] = true
+		}
 	}
 	num := func() (float64, error) {
 		var v float64
@@ -364,6 +394,7 @@ func parseCommand(raw json.RawMessage) (entities.Commands, string, error) {
 			return out, "", err
 		}
 		out.SetpointKw = &v
+		out.Outputs = outputs
 	case entities.CmdLimitKw:
 		v, err := num()
 		if err != nil {

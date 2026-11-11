@@ -1,0 +1,8 @@
+# Werkbank-Brücke (services/werkstatt-dienst/bruecke): der Benutzer werkstatt
+# darf als root genau zwei feste Befehle, ohne Passwort, sonst nichts.
+Cmnd_Alias VP_WERKBANK_STATUS = /usr/local/sbin/vp-werkbank-status
+Cmnd_Alias VP_WERKBANK_EINRICHTEN = /usr/local/sbin/vp-werkbank-einrichten
+werkstatt ALL=(root) NOPASSWD: VP_WERKBANK_STATUS, VP_WERKBANK_EINRICHTEN
+# Der Dienst fragt den Status alle paar Sekunden ab: diese Aufrufe nicht ins
+# Systemprotokoll schreiben, sonst füllt es sich mit gleichen Zeilen.
+Defaults!VP_WERKBANK_STATUS !syslog, !pam_session

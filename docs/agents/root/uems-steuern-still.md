@@ -44,8 +44,9 @@ umgesetzt, C bewusst nicht.
 8. **Kein neuer Einstieg „ich will steuern" hier.** Der auffindbare, nicht aufdrängende Ort außerhalb der
    Steuerungsseite (naheliegend „Funktionen" im Avatar-Menü, AP-01 E5 = A) ist noch nicht gebaut.
 9. **Der Anlege-Fluss folgt derselben Regel** (Modus „nur messen“, `uems-messanlage.md`): an einem Standort, der
-   schweigt, kein Schritt „Betrieb“, weder Veräußerungsform noch Feineinstellungen, und „Fertig“ führt zu den
-   Messstellen — die Anlage und ihr Bereich „Steuerung“ bleiben einen Tipp entfernt.
+   schweigt, weder Veräußerungsform noch Feineinstellungen, und das Ende von Schritt 3 führt ohne Umweg zu den
+   Messstellen — die Anlage und ihr Bereich „Steuerung“ bleiben erreichbar. Den Schritt „Betrieb“ gibt es seit
+   Anlage-Flow a1 (D6) in keiner Art mehr.
 
 ## Prüfen
 

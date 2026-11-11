@@ -14,6 +14,8 @@ COPY docs/contracts/v2/edge-capabilities.json /app/docs/contracts/v2/edge-capabi
 COPY docs/contracts/v2/measurement-budget-vectors.json /app/docs/contracts/v2/measurement-budget-vectors.json
 # Der Formelkatalog der MiSpeL-Abgrenzungsoption für Nachweis und Export (MP-16).
 COPY docs/contracts/v2/mispel-abgrenzung-vectors.json /app/docs/contracts/v2/mispel-abgrenzung-vectors.json
+# Werkstatt-Zubehör (vp-werkstatt-zubehoer-download): pom.xml legt diese Druckdateien ins Jar.
+COPY edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/hutschienen-clip.3mf edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/bohrlehre.3mf /app/edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/
 RUN ./mvnw -B -q clean package -DskipTests
 
 # ---- run ----

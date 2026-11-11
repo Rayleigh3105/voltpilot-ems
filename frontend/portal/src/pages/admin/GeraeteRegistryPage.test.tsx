@@ -1,285 +1,90 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const listProvisionedDevices = vi.fn();
-const listPendingEnrollments = vi.fn();
-
-const listDevices = vi.fn();
-const edgeUpdates = vi.fn();
-const controlCandidates = vi.fn();
-const fleet = vi.fn();
-
-vi.mock('../../admin/adminApi', () => ({
-  adminApi: {
-    listProvisionedDevices: () => listProvisionedDevices(),
-    listPendingEnrollments: () => listPendingEnrollments(),
-    listDevices: () => listDevices(),
-    edgeUpdates: () => edgeUpdates(),
-    controlCandidates: () => controlCandidates(),
-    provisionDevice: vi.fn(),
-    deleteProvisionedDevice: vi.fn(),
-    setUpdateTarget: vi.fn(),
-    revertUpdateTarget: vi.fn(),
-  },
+/**
+ * Der Raum „Geräte" (umgehängt vom Raum „Plattform"): trägt vier Reiter -
+ * Geräte (Liste/Akte) · Software (N5) · Werkstatt · Fernwartung. Geprüft wird
+ * der WIRT: dass er je Route die richtige Fläche rendert, die Reiterleiste in
+ * jede durchreicht und ein Klick die passende Route navigiert. Was die
+ * Flächen selbst zeigen, prüfen ihre eigenen Suiten.
+ */
+vi.mock('./GeraeteListePage', () => ({
+  GeraeteListePage: () => <h1>Geräte-Liste-Fläche</h1>,
+}));
+vi.mock('./GeraeteAktePage', () => ({
+  GeraeteAktePage: () => <h1>Geräteakte-Fläche</h1>,
+}));
+vi.mock('./EdgeUpdatesPage', () => ({
+  EdgeUpdatesPage: ({ tabs }: { tabs?: React.ReactNode }) => (
+    <div>
+      {tabs}
+      <h1>Software-Fläche</h1>
+    </div>
+  ),
+}));
+vi.mock('./WerkstattPage', () => ({
+  WerkstattPage: ({ tabs }: { tabs?: React.ReactNode }) => (
+    <div>
+      {tabs}
+      <h1>Werkstatt-Fläche</h1>
+    </div>
+  ),
+}));
+vi.mock('./FernwartungPage', () => ({
+  FernwartungPage: ({ tabs }: { tabs?: React.ReactNode }) => (
+    <div>
+      {tabs}
+      <h1>Fernwartung-Fläche</h1>
+    </div>
+  ),
 }));
 
-vi.mock('../../admin/fleetApi', () => ({ fleetApi: { fleet: () => fleet() } }));
+const { GeraeteBereich } = await import('./GeraeteRegistryPage');
 
-const { GeraeteRegistryPage } = await import('./GeraeteRegistryPage');
+describe('GeraeteBereich - EIN Raum, vier Reiter', () => {
+  const onNavigate = vi.fn();
+  beforeEach(() => onNavigate.mockReset());
 
-const DEVICE = {
-  externalRef: 'VP-DEMO-0001',
-  kind: 'inverter',
-  note: null,
-  provisionedAt: '2026-07-01T00:00:00Z',
-  claimed: true,
-  claimedByTenant: 'Demo C&I',
-};
+  it('rendert je Route die zugehörige Fläche', () => {
+    const { rerender } = render(
+      <GeraeteBereich page="geraete-registry" onNavigate={onNavigate} />,
+    );
+    expect(screen.getByText('Geräte-Liste-Fläche')).toBeInTheDocument();
 
-/** Eine echte Bestandsbox: `edge-`Referenz, NICHT aus der Aufkleber-Registry. */
-const FLEET_ROW = {
-  deviceId: 'd1', externalRef: 'edge-k2m4pqj', label: 'edge-k2m4pqj',
-  siteId: 's1', siteName: 'Auernheim', tenantId: 't1', tenantName: 'Maximilian Wüstholz',
-  kind: null, ist: 'edge-2026.08.1-9b37439a02c1', soll: 'edge-2026.08.1', sollSeq: 14,
-  channel: 'stable', pinned: false, state: 'bestaetigt', reason: null, blocker: null,
-  lastSeenAt: '2026-08-05T09:00:00Z', reportedAt: '2026-08-05T09:00:00Z',
-  provisioned: false, note: null, provisionedAt: null,
-  trust: {
-    rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
-    trustSetGeneratedAt: '2026-08-04T10:00:00Z', trustSetError: null,
-  },
-};
+    rerender(<GeraeteBereich page="edge-updates" onNavigate={onNavigate} />);
+    expect(screen.getByText('Software-Fläche')).toBeInTheDocument();
 
-/** Die gedruckte, noch NICHT verbundene Aufkleber-ID. */
-const PRINTED = {
-  deviceId: null, externalRef: 'VP-DEMO-0002', label: null,
-  siteId: null, siteName: null, tenantId: null, tenantName: null, kind: 'inverter',
-  ist: null, soll: null, sollSeq: null, channel: null, pinned: false,
-  state: null, reason: null, blocker: null, lastSeenAt: null, reportedAt: null,
-  provisioned: true, note: null, provisionedAt: '2026-07-01T00:00:00Z', trust: null,
-};
+    rerender(<GeraeteBereich page="werkstatt" onNavigate={onNavigate} />);
+    expect(screen.getByText('Werkstatt-Fläche')).toBeInTheDocument();
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  // ⚠ jsdom teilt `window.location.hash` über ALLE Tests einer Datei - ohne
-  // diesen Reset öffnet der `?geraet=`-Parameter des vorigen Tests die
-  // Detailseite, und der folgende Test findet seine Tabelle nicht mehr.
-  window.location.hash = '';
-  controlCandidates.mockResolvedValue([]);
-  fleet.mockResolvedValue({ sites: [], releases: [] });
-  listProvisionedDevices.mockResolvedValue([DEVICE]);
-  listPendingEnrollments.mockResolvedValue([]);
-  // Das Inventar ist die VEREINIGUNG: die verbundene Aufkleber-ID, eine echte
-  // `edge-`Bestandsbox und eine gedruckte, noch unverbundene ID.
-  listDevices.mockResolvedValue([
-    { ...FLEET_ROW, deviceId: 'd0', externalRef: DEVICE.externalRef, label: 'VP-DEMO-0001',
-      siteName: 'Demo Site', tenantName: DEVICE.claimedByTenant, kind: 'inverter',
-      provisioned: true, provisionedAt: DEVICE.provisionedAt },
-    FLEET_ROW,
-    PRINTED,
-  ]);
-  edgeUpdates.mockResolvedValue({
-    releases: [{
-      releaseSeq: 14, version: 'edge-2026.08.1', targetCommit: null, notes: null,
-      signed: true, signingKeyId: 'rel-2026-a', createdAt: '2026-08-04T10:00:00Z',
-      runningOnDevices: 1,
-    }],
-    activeRollout: null, fleet: [], journal: [],
-    kpi: { known: 1, upToDate: 1, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
-  });
-});
-
-describe('Geräteregistrierung und nachrangige Support-Zuordnung', () => {
-  it('zeigt das Inventar ohne Onboarding-Kennzahlen oder leere Support-Karten', async () => {
-    render(<GeraeteRegistryPage />);
-    await screen.findByTestId('devices');
-    expect(screen.queryByText('Wartet auf Zuordnung')).toBeNull();
-    expect(screen.queryByText('Vertrauen gekreuzt')).toBeNull();
-    expect(screen.queryByText('Kein Gerät wartet auf Zuordnung')).toBeNull();
+    rerender(<GeraeteBereich page="fernwartung" onNavigate={onNavigate} />);
+    expect(screen.getByText('Fernwartung-Fläche')).toBeInTheDocument();
   });
 
-  it('surfaces a device that reported but met no claim - the typo window', async () => {
-    listPendingEnrollments.mockResolvedValue([
-      {
-        externalRef: 'edge-k7m2p4x',
-        deviceInfo: 'VP Edge · Raspberry Pi',
-        csrUpdatedAt: new Date(Date.now() - 3 * 24 * 3600_000).toISOString(),
-        everIssued: false,
-        issuedAt: null,
-      },
-    ]);
-    render(<GeraeteRegistryPage />);
-
-    const summary = await screen.findByText('1 Box ohne Kundenkonto');
-    expect(summary.closest('details')).not.toHaveAttribute('open');
-    fireEvent.click(summary);
-    expect(await screen.findByText('edge-k7m2p4x')).toBeVisible();
-    expect(screen.getByText('VP Edge · Raspberry Pi')).toBeInTheDocument();
-    expect(screen.getByText('Vermutlich Tippfehler beim Kunden')).toBeInTheDocument();
+  it('zeigt die Geräteakte statt der Liste, wenn eine Box-Referenz dabei ist', () => {
+    render(
+      <GeraeteBereich page="geraete-registry" geraeteAkte={{ ref: 'edge-abc', reiter: null }} onNavigate={onNavigate} />,
+    );
+    expect(screen.getByText('Geräteakte-Fläche')).toBeInTheDocument();
   });
 
-  it('lässt die Support-Fläche ohne offene Zuordnung weg', async () => {
-    render(<GeraeteRegistryPage />);
-    await screen.findByTestId('devices');
-    expect(screen.queryByText('Kein Gerät wartet auf Zuordnung')).toBeNull();
+  it('nennt die vier Reiter in Lese-Reihenfolge, markiert den laufenden und navigiert auf den anderen', () => {
+    render(<GeraeteBereich page="edge-updates" onNavigate={onNavigate} />);
+    const tabs = screen.getByRole('tablist', { name: 'Geräte' });
+    expect(tabs.textContent).toBe('GeräteSoftwareWerkstattFernwartung');
+    expect(screen.getByRole('tab', { name: 'Software' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Geräte' }).getAttribute('aria-selected')).toBe('false');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Werkstatt' }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'werkstatt', siteId: null, sub: null });
   });
 
-  it('a failed pending load is a FAILURE, never "nobody is waiting"', async () => {
-    listPendingEnrollments.mockRejectedValue(new Error('kaputt'));
-    render(<GeraeteRegistryPage />);
-
-    // Die Registry darunter bleibt benutzbar ...
-    expect(await screen.findByText('VP-DEMO-0001')).toBeInTheDocument();
-    // ... und die Sektion sagt, dass sie gerade nichts weiß.
-    expect(screen.getByText(/wartenden Geräte konnten nicht geladen werden/)).toBeInTheDocument();
-    expect(screen.queryByText('Kein Gerät wartet auf Zuordnung')).toBeNull();
-  });
-});
-
-describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', () => {
-  it('enthält die ECHTE Flotte, nicht nur die Aufkleber-IDs', async () => {
-    render(<GeraeteRegistryPage />);
-    const table = await screen.findByTestId('devices');
-    // DER behobene Befund: eine `edge-`Bestandsbox kam auf dieser Seite mit
-    // NULL Zeilen vor - wer „meine Geräte" suchte, fand sie nur als
-    // Nebenspalten anderer Seiten.
-    expect(table).toHaveTextContent('edge-k2m4pqj');
-    expect(table).toHaveTextContent('Auernheim');
-    // Und die gedruckte, noch unverbundene ID steht daneben - eine Tabelle.
-    expect(table).toHaveTextContent('VP-DEMO-0002');
-    expect(table).toHaveTextContent('noch nicht verbunden');
-  });
-
-  it('zeigt den Stempel als Tag + Build statt als Rohstring', async () => {
-    render(<GeraeteRegistryPage />);
-    const table = await screen.findByTestId('devices');
-    // `edge-2026.08.1-9b37439a02c1` neben `edge-2026.08.1` sind zwei
-    // verschieden AUSSEHENDE Zeichenketten für dieselbe Frage.
-    expect(table).toHaveTextContent('edge-2026.08.1 (Build 9b37439a)');
-    expect(table).not.toHaveTextContent('9b37439a02c1');
-  });
-
-  it('führt aus der Zeile auf die EINE Geräteseite - nie in eine zweite Ansicht', async () => {
-    // Anlagen-Zentrale Stufe 3 (PR 3b): die Zeile ist der EINSTIEG, nicht der
-    // Ort. Klick und Lesezeichen laufen durch dieselbe Stelle, also kann die
-    // Liste nie eine zweite Vollansicht desselben Geräts danebenstellen.
-    const jump = vi.fn();
-    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
-    const table = await screen.findByTestId('devices');
-    fireEvent.click(within(table).getByText('Auernheim'));
-
-    await waitFor(() => expect(jump).toHaveBeenCalled());
-    expect(jump.mock.calls[0][1]).toEqual({
-      page: 'anlagen',
-      siteId: 's1',
-      sub: 'geraet',
-      geraet: { ref: 'edge-k2m4pqj', geraetId: null },
-    });
-    // Die Liste bleibt stehen - sie ist der Einstieg, nicht der Ort.
-    expect(screen.getByTestId('devices')).toBeInTheDocument();
-  });
-
-  it('zeigt die Bereichs-Tabs über der Liste', async () => {
-    render(<GeraeteRegistryPage tabs={<div data-testid="tabs">Tabs</div>} />);
-    await screen.findByTestId('devices');
-    expect(screen.getByTestId('tabs')).toBeInTheDocument();
-  });
-
-  it('sagt bei einer unbekannten Referenz, dass es sie nicht gibt', async () => {
-    window.location.hash = '#/geraete-registry?geraet=VP-GIBT-ES-NICHT';
-    render(<GeraeteRegistryPage />);
-    expect(await screen.findByText(/keinen Eintrag/)).toBeInTheDocument();
-    // …und die Liste steht darunter weiter.
-    expect(screen.getByTestId('devices')).toBeInTheDocument();
-  });
-
-  it('bietet der noch unverbundenen ID keine Zuweisung an', async () => {
-    render(<GeraeteRegistryPage />);
-    const table = await screen.findByTestId('devices');
-    // Eine gedruckte ID ist noch kein Gerät - eine Zeile, die sich nicht
-    // öffnen lässt, ist ehrlicher als ein Drawer ohne Inhalt.
-    const row = within(table).getByText('VP-DEMO-0002').closest('tr') as HTMLElement;
-    expect(row.className).not.toContain('vp-row-click');
-  });
-
-  it('behauptet ohne Inventar KEINE Geräteliste - ein Fehlschlag ist keine Datenlage', async () => {
-    // Die Registry als Ersatz zu rendern wäre eine sichtbare Lüge: eine
-    // beanspruchte Aufkleber-ID hat dort zwar `claimed`, aber keine Geräte-Id,
-    // und jede Zeile läse sich als „noch nicht verbunden".
-    listDevices.mockRejectedValue(new Error('kaputt'));
-    render(<GeraeteRegistryPage />);
-
-    expect(await screen.findByText(/Geräte-Inventar ist gerade nicht abrufbar/))
-      .toBeInTheDocument();
-    expect(screen.queryByTestId('devices')).toBeNull();
-    expect(document.body.textContent).not.toContain('noch nicht verbunden —');
-    // Die Registrierung bleibt auch bei einem Lesefehler erreichbar.
-    expect(screen.getByRole('button', { name: 'Geräte-ID registrieren' })).toBeEnabled();
-  });
-
-  it('fragt vor dem Entfernen im Haus-Muster - mit Folgenliste', async () => {
-    render(<GeraeteRegistryPage />);
-    const table = await screen.findByTestId('devices');
-    fireEvent.click(within(table).getByRole('button', { name: /Entfernen/ }));
-
-    const list = await screen.findByTestId('confirm-consequences');
-    expect(list).toHaveTextContent('Kein Kunde kann diese ID danach mehr verbinden');
-    // Umkehrbarkeit gehört dazu - sonst liest sich das Entfernen endgültiger,
-    // als es ist.
-    expect(list).toHaveTextContent('umkehrbar');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// PR 1f: ein VERBUNDENES Gerät hat genau EINEN Ort
-// ---------------------------------------------------------------------------
-
-describe('GeraeteRegistryPage · Weg in die Geräteseite', () => {
-  it('führt ein verbundenes Gerät in die Mandanten-Ansicht seiner Anlage', async () => {
-    const jump = vi.fn();
-    window.location.hash = '#/geraete-registry?geraet=edge-k2m4pqj';
-    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
-
-    await waitFor(() => expect(jump).toHaveBeenCalled());
-    // Der Mandant wird MITgesetzt - die Seite liegt hinter dem RLS-Zaun.
-    expect(jump.mock.calls[0][0]).toBe('t1');
-    expect(jump.mock.calls[0][1]).toEqual({
-      page: 'anlagen',
-      siteId: 's1',
-      sub: 'geraet',
-      // Die REFERENZ ist der Schlüssel, nie die Geräte-UUID.
-      geraet: { ref: 'edge-k2m4pqj', geraetId: null },
-    });
-  });
-
-  it('führt eine gedruckte, noch unverbundene ID NIRGENDWOHIN - sie behält ihre Zeile', async () => {
-    const jump = vi.fn();
-    window.location.hash = '#/geraete-registry?geraet=VP-DEMO-0002';
-    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
-
-    // Es gibt kein Gerät, in das man springen könnte - also wird kein Mandant
-    // umgeschaltet, und die Adresse sagt WARUM, statt eine leere Seite zu
-    // zeigen (Stufe 3, PR 3b).
-    const hinweis = await screen.findByTestId('geraet-hinweis');
-    expect(hinweis).toHaveTextContent(/noch mit keinem Kundenkonto verbunden/);
-    expect(jump).not.toHaveBeenCalled();
-    expect(screen.getByTestId('devices')).toBeInTheDocument();
-    // Und der Hinweis räumt sich weg.
-    fireEvent.click(within(hinweis).getByRole('button', { name: 'Zur Geräte-Liste' }));
-    await waitFor(() => expect(screen.queryByTestId('geraet-hinweis')).toBeNull());
-    expect(window.location.hash).not.toContain('geraet=');
-  });
-
-  // Der Rückbau-Wächter (PR 3b): die zweite Vollansicht ist WEG. Käme sie
-  // zurück, hätte ein Gerät wieder zwei Orte - genau der Befund, den die
-  // Konsolidierung behebt.
-  it('hat keine zweite Vollansicht mehr - die Liste bleibt IMMER stehen', async () => {
-    const jump = vi.fn();
-    window.location.hash = '#/geraete-registry?geraet=edge-k2m4pqj';
-    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
-    await waitFor(() => expect(jump).toHaveBeenCalled());
-    expect(screen.getByTestId('devices')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Alle Geräte$/ })).toBeNull();
-    expect(screen.queryByRole('heading', { name: /Grenzen & Wächter/ })).toBeNull();
+  it('reicht die Leiste in JEDE Fläche - sie gehört dem Raum, nicht einer Seite', () => {
+    const { rerender } = render(
+      <GeraeteBereich page="werkstatt" onNavigate={onNavigate} />,
+    );
+    expect(screen.getByRole('tablist', { name: 'Geräte' })).toBeInTheDocument();
+    rerender(<GeraeteBereich page="fernwartung" onNavigate={onNavigate} />);
+    expect(screen.getByRole('tablist', { name: 'Geräte' })).toBeInTheDocument();
   });
 });

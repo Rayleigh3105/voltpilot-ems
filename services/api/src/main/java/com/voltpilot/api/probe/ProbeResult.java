@@ -32,19 +32,46 @@ public record ProbeResult(String requestId, String errorCode, String message,
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
             Double value, String errorCode, String message, Reading reading, Switched switched,
-            Finding finding, List<Sample> samples, @JsonProperty("wago_kopf") WagoKopf wagoKopf) {
+            Finding finding, List<Sample> samples, @JsonProperty("wago_kopf") WagoKopf wagoKopf,
+            @JsonProperty("erzeuger_kopf") ErzeugerKopf erzeugerKopf, List<Ausgang> ausgaenge) {
+
+        /** Every shape before the Shelly output set (Heizstab V1) - unchanged. */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message, Reading reading, Switched switched,
+                Finding finding, List<Sample> samples, WagoKopf wagoKopf, ErzeugerKopf erzeugerKopf) {
+            this(id, ok, raw, registers, value, errorCode, message, reading, switched, finding, samples,
+                    wagoKopf, erzeugerKopf, null);
+        }
+
+        /**
+         * The outputs of a Shelly OUTPUT SET (heizstab-shelly.md, contract op_result.ausgaenge): the
+         * named samples (relay_on_&lt;kanal&gt;) next to the outputs block, or the block alone (the
+         * answer of nach_stromausfall_aus).
+         */
+        public static OpResult ausAusgaengen(String id, boolean ok, String errorCode, String message,
+                List<Sample> samples, List<Ausgang> ausgaenge) {
+            return new OpResult(id, ok, null, null, null, errorCode, message, null, null, null, samples,
+                    null, null, ausgaenge);
+        }
 
         /** Every shape before the WAGO head (AP-05 IP-7) — unchanged. */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message, Reading reading, Switched switched,
                 Finding finding, List<Sample> samples) {
-            this(id, ok, raw, registers, value, errorCode, message, reading, switched, finding, samples, null);
+            this(id, ok, raw, registers, value, errorCode, message, reading, switched, finding, samples, null, null);
         }
 
         /** The {@code wago_kopf} shape: the head block, also next to a refusal. */
         public static OpResult ausKopf(String id, boolean ok, String errorCode, String message,
                 WagoKopf kopf) {
-            return new OpResult(id, ok, null, null, null, errorCode, message, null, null, null, null, kopf);
+            return new OpResult(id, ok, null, null, null, errorCode, message, null, null, null, null, kopf, null);
+        }
+
+        /** The {@code erzeuger_kopf} shape (EZ-15): the head block, also next to a refusal. */
+        public static OpResult ausErzeugerKopf(String id, boolean ok, String errorCode, String message,
+                Finding finding, ErzeugerKopf kopf) {
+            return new OpResult(id, ok, null, null, null, errorCode, message, null, null, finding, null, null,
+                    kopf);
         }
 
         /** The register-read shape (no {@code reading}, no {@code switched}). */
@@ -73,13 +100,21 @@ public record ProbeResult(String requestId, String errorCode, String message,
         }
 
         /**
-         * The SELF-CONNECTED battery's preview shape (P5/P5d): one row per
-         * field mapping instead of the closed four-channel {@code reading}.
+         * The named-samples shape: one row per field mapping instead of the
+         * closed four-channel {@code reading}.
          */
         public OpResult(String id, boolean ok, String errorCode, String message,
                 List<Sample> samples) {
             this(id, ok, null, null, null, errorCode, message, null, null, null, samples);
         }
+    }
+
+    /**
+     * One output of a Shelly output set: the read switch state and the "nach Stromausfall" setting
+     * (off | on | restore_last | match_input). Both stay null when not read - never guessed.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Ausgang(int kanal, Boolean ein, @JsonProperty("nach_stromausfall") String nachStromausfall) {
     }
 
     /**
@@ -97,9 +132,28 @@ public record ProbeResult(String requestId, String errorCode, String message,
     }
 
     /**
-     * What ONE field mapping of a self-connected device received during the
-     * listening window (contract {@code op_result.samples}, P5 {@code
-     * mqtt_local} + the P5d mapping surface).
+     * Der gelesene KOPF eines VoltPilot-Registerbilds Erzeuger v1 (Vertrag {@code op_result.erzeuger_kopf},
+     * UEMS EZ-5): Kopf, je Einheit Art und Nennleistung, die Namen ab {@code beschreibung_ab} — kein Messwert.
+     * Lücke statt Null: ein Feld, das die Lesung nicht ergeben hat, fehlt; ein gelesener leerer Name ist
+     * {@code ""} („keiner“), ein nicht gelesener fehlt.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record ErzeugerKopf(Boolean signaturOk, Boolean erkannt, String grund, Integer hauptversion,
+            Integer nebenversion, Integer teAnzahl, Integer herzschlag, Integer programmstand, Long steuerungId,
+            Integer anlagenart, Integer beschreibungAb, List<ErzeugerEinheit> einheiten, String netzbetreiberName,
+            String direktvermarkterName) {
+    }
+
+    /** Eine Einheit hinter dem Erzeuger-Kopf: Nummer (ab 1), Art (1 PV · 2 BHKW), Nennleistung, Typ aus dem Bild. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record ErzeugerEinheit(int einheit, Integer art, Integer nennKw, String typName) {
+    }
+
+    /**
+     * What ONE field mapping of a device received during the listening window
+     * (contract {@code op_result.samples}).
      *
      * <p>Its OWN block, never {@link Reading}: {@code reading} is the closed
      * four-channel snapshot of a CATALOG device, while these rows are named by
@@ -115,8 +169,7 @@ public record ProbeResult(String requestId, String errorCode, String message,
      */
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Sample(String channel, String topic, Double raw, Double value, int count,
-            String at) {
+    public record Sample(String channel, Double raw, Double value, int count) {
     }
 
     /**

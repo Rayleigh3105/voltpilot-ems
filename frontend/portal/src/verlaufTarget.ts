@@ -30,7 +30,9 @@ const SUB_TARGETS: Record<WidgetId, AnlagenSub> = {
   handel: 'fahrplan',
   lastspitze: 'lastspitzen',
   automatik: 'steuerung',
-  wetter: 'wetter',
+  // Wetter wohnt seit Konzept vp-prognosen-konzept (E2 = A) in der Prognose
+  // (Himmel/Temperatur stehen über dem Tagesbild) - die Kachel selbst bleibt.
+  wetter: 'prognose',
 };
 
 /** Das Absprung-Ziel einer Kachel. */

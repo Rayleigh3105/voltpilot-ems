@@ -58,6 +58,47 @@ function zahl(v: number | null | undefined): number | null {
 const LAMBDA = 'Wert gespeicherter Energie';
 const EINGERECHNET = 'Speicherverluste und Verschleiß sind im Plan eingerechnet.';
 
+/**
+ * Die SPANNE (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.4, Lesehöhe b):
+ * ersetzt die λ-Waage für die ganze Sonnen-Erzählung-Klasse durch EINE
+ * Waage, konstant für den Tag - selbst genutzt gegen eingespeist, mit den
+ * Preisen, mit denen der Plan selbst gerechnet hat (`importPriceCtKwh`/
+ * `exportValueCtKwh`). Lesehöhe c (Technik-Blick) bleibt für alle bei λ/π/
+ * Marge - diese Funktion betrifft nur Lesehöhe b.
+ *
+ * `luecke` (§5.2, Vergütung nicht hinterlegt): kein erfundener Satz - die
+ * Seiten entfallen, nur das Urteil nennt die Lücke.
+ */
+export function spanneSatz(e: {
+  importCtKwh: number | null;
+  exportCtKwh: number | null;
+  /** z. B. „EEG, Inbetriebnahme 15.06.2024"; null = unbekannte Herkunft. */
+  verguetungHerkunft?: string | null;
+  luecke?: boolean;
+}): Waage {
+  const seiten: [WaageSeite, WaageSeite] | null =
+    !e.luecke && e.importCtKwh != null && e.exportCtKwh != null
+      ? [
+          { label: 'Selbst genutzt spart', hinweis: 'Ihr Strompreis, fest', ct: e.importCtKwh, kosten: false },
+          {
+            label: 'Eingespeist bringt',
+            hinweis: e.verguetungHerkunft ? `Ihre Vergütung, ${e.verguetungHerkunft}` : 'Ihre Vergütung',
+            ct: e.exportCtKwh,
+            kosten: false,
+          },
+        ]
+      : null;
+  return {
+    frage: 'Was eine Kilowattstunde Sonnenstrom wert ist',
+    seiten,
+    gewaehlt: null,
+    urteil: e.luecke
+      ? 'Ihre Einspeisevergütung ist nicht hinterlegt – tragen Sie sie nach, damit der Fahrplan genau rechnet.'
+      : 'Darum zuerst ins Haus, dann in den Speicher, der Rest ins Netz. ' + EINGERECHNET,
+    gleichstand: false,
+  };
+}
+
 /** Die Waage einer Viertelstunde; null, wenn ihr die Fakten fehlen. */
 export function waage(slot: WhySlot, plantKind: PlanWordingKind): Waage | null {
   const role = slot.slotRole ?? null;

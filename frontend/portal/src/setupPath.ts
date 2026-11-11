@@ -25,6 +25,7 @@
  * („außerhalb des geführten Pfads bleibt Adoption admin-first").
  */
 
+import { UEMS_GERAETE_SUCHEN } from './glossar';
 import type { AdoptableSource } from './rollen';
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,11 @@ export interface SetupPathView {
 export interface SetupPathInput {
   /** Beanspruchte Geräte der Anlage (Overview `deviceCount`). */
   deviceCount?: number | null;
+  /**
+   * Davon gerade mit Lebenszeichen (Overview `onlineCount`). „… und meldet sich“ nur damit; fehlt die
+   * Zahl, sagt der Pfad nichts über das Lebenszeichen (Konzept vp-qr-einstieg §7).
+   */
+  onlineCount?: number | null;
   /** Vom Gerät gemeldete, noch nicht übernommene Quellen. */
   reported?: AdoptableSource[] | null;
   /** Bereits übernommene Entitäten dieser Anlage. */
@@ -113,16 +119,6 @@ export const SETUP_STATUS_LINE =
   + 'Drei Schritte, alles Weitere passiert automatisch.';
 
 export const SETUP_TITLE = 'Ihr Weg zum fertigen EMS';
-
-/**
- * Der Übergabe-Satz des AE5-Assistenten in den Einrichtungspfad (M5): der
- * Assistent legt die ANLAGE an, die Anlagen-Seite führt die KETTE zu Ende.
- * Er nennt die zwei verbleibenden Schritte und wirbt für KEINEN Modus (die
- * Profil-Vorauswahl bleibt reiner Vorlagen-Wähler, F5).
- */
-export const SETUP_NEXT_HINT =
-  'So geht es weiter: Auf Ihrer Anlagen-Seite übernehmen Sie die gemeldeten Geräte '
-  + 'und wählen danach Ihre Steuerung - wir führen Sie Schritt für Schritt.';
 
 export const SETUP_FOOT_NOTE =
   'Sobald Geräte und eine Steuerung da sind, baut sich diese Seite von selbst - '
@@ -150,9 +146,13 @@ export function setupPath(input: SetupPathInput | null | undefined): SetupPathVi
     id: 'geraet',
     num: 1,
     title: geraetDone ? 'VoltPilot-Box verbunden' : 'VoltPilot-Box verbinden',
-    line: geraetDone
-      ? 'Ihre VoltPilot-Box gehört zu dieser Anlage und meldet sich.'
-      : 'Verbinden Sie Ihre VoltPilot-Box mit dieser Anlage - Sie brauchen nur die Geräte-ID.',
+    line: !geraetDone
+      ? 'Verbinden Sie Ihre VoltPilot-Box mit dieser Anlage - Sie brauchen nur ihre Kennung. Sie steht unten auf der Box.'
+      : i.onlineCount == null
+        ? 'Ihre VoltPilot-Box gehört zu dieser Anlage.'
+        : i.onlineCount > 0
+          ? 'Ihre VoltPilot-Box gehört zu dieser Anlage und meldet sich.'
+          : 'Ihre VoltPilot-Box gehört zu dieser Anlage und wartet auf erste Daten. Sobald sie Strom und Internet hat, meldet sie sich.',
     state: geraetDone ? 'done' : 'current',
     // Dieselbe Handlung, derselbe Name wie im Aufbau — und dort findet sie statt (EIN Ort für Boxen).
     action: geraetDone ? null : { kind: 'claim', label: 'VoltPilot-Box hinzufügen' },
@@ -163,9 +163,9 @@ export function setupPath(input: SetupPathInput | null | undefined): SetupPathVi
     : uebernehmenDone
       ? 'Ihre Geräte sind übernommen - VoltPilot kennt sie jetzt.'
       : reported.length > 0
-        ? `Ihr Gerät meldet: ${reportedNames(reported)}. Mit einem Klick werden daraus Ihre Geräte.`
-        : 'Ihr Gerät meldet noch keine Geräte. Richten Sie Wechselrichter und Zähler direkt am '
-          + 'Gerät ein - danach erscheinen sie hier zum Übernehmen.';
+        ? `Ihre Box meldet: ${reportedNames(reported)}. Mit einem Klick werden daraus Ihre Geräte.`
+        : `Ihre Box meldet noch keine Geräte. Nutzen Sie „${UEMS_GERAETE_SUCHEN}“, oder richten Sie `
+          + 'Wechselrichter und Zähler direkt an der Box ein - danach erscheinen sie hier zum Übernehmen.';
 
   const uebernehmen: SetupStep = {
     id: 'uebernehmen',

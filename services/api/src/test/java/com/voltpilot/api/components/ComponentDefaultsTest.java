@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,54 @@ class ComponentDefaultsTest {
     void einTypOhneKatalogKanalBehauptetKeinen() throws Exception {
         assertThat(channels(parse(ComponentDefaults.capabilities(mapper, catalog,
                 "modbus-generic", ComponentService.ROLE_CONSUMER)))).isEmpty();
+    }
+
+    /**
+     * Unterverteilungen (Konzept vp-unterzaehler-anzeige C1): ein Zähler auf der Verbraucher-Seite ist
+     * ein {@code sub-meter} - nie „Steuerbare Last" - mit Leistung, Zählerständen und Phasen.
+     */
+    @Test
+    void einZaehlerAufDerVerbraucherSeiteIstEinUnterzaehlerMitZaehlerkanaelen() throws Exception {
+        assertThat(ComponentService.entityTypeFor(ComponentService.ROLE_CONSUMER, vorlage("meter")))
+                .isEqualTo(ComponentDefaults.TYPE_SUB_METER);
+        assertThat(ComponentService.entityTypeFor(ComponentService.ROLE_CONSUMER, vorlage("switch")))
+                .as("ein anderer Verbraucher bleibt beim Rollen-Typ").isEqualTo("generic-load");
+        assertThat(ComponentService.entityTypeFor(ComponentService.ROLE_NETZ, vorlage("meter")))
+                .as("am Netzanschluss bleibt derselbe Zähler der Netz-Zähler").isEqualTo("grid-meter");
+
+        EntityTypeCatalog.EntityType typ = catalog.find(ComponentDefaults.TYPE_SUB_METER);
+        assertThat(typ.category()).isEqualTo("consumer");
+        assertThat(typ.controllable()).as("ein Zähler wird nie geschaltet").isFalse();
+        JsonNode caps = parse(ComponentDefaults.capabilities(mapper, catalog, ComponentDefaults.TYPE_SUB_METER,
+                ComponentService.ROLE_CONSUMER));
+        assertThat(channels(caps)).containsExactly("power_kw", "energy_kwh", "energy_export_kwh",
+                "power_l1_kw", "power_l2_kw", "power_l3_kw");
+        assertThat(unitOf(caps, "energy_kwh")).isEqualTo("kWh");
+        assertThat(unitOf(caps, "power_l1_kw")).isEqualTo("kW");
+    }
+
+    @Test
+    void einNetzZaehlerUeberEinenZaehlerTraegtDessenKanaeleUndVerliertSieBeimGeraetewechsel() throws Exception {
+        String nurLeistung = "{\"measure\":[{\"unit\":\"kW\",\"channel\":\"power_kw\"}]}";
+        String mitZaehler = ComponentDefaults.netzZaehlerAbgleich(mapper, catalog, nurLeistung, "shelly_em_http");
+        assertThat(channels(parse(mitZaehler))).containsExactly("power_kw", "energy_kwh", "energy_export_kwh",
+                "power_l1_kw", "power_l2_kw", "power_l3_kw");
+        assertThat(ComponentDefaults.netzZaehlerAbgleich(mapper, catalog, mitZaehler, "shelly_em_http"))
+                .as("schon angeglichen: nichts zu schreiben").isNull();
+        assertThat(ComponentDefaults.netzZaehlerAbgleich(mapper, catalog, nurLeistung, "sunspec_tcp"))
+                .as("ein anderes Gerät: power_kw bleibt allein").isNull();
+        // Ein anderer Zähler am Netzanschluss: genau die Zählerkanäle gehen, ein gepflegter Kanal bleibt.
+        String gepflegt = mitZaehler.replace("]}", ",{\"unit\":\"V\",\"channel\":\"voltage_l1_v\"}]}");
+        assertThat(channels(parse(ComponentDefaults.netzZaehlerAbgleich(mapper, catalog, gepflegt, "sunspec_tcp"))))
+                .containsExactly("power_kw", "voltage_l1_v");
+        assertThat(channels(parse(ComponentDefaults.netzZaehlerAbgleich(mapper, catalog, null, "shelly_em_http"))))
+                .as("eine Zeile ohne Fähigkeiten bekommt Leistung und Zählerkanäle").hasSize(6);
+    }
+
+    private static ComponentTemplateDto vorlage(String deviceType) {
+        return new ComponentTemplateDto("builtin:x:y", "builtin", 1, "x", "X", "y", "Y", null, deviceType, null,
+                "fam", "Fam", "comm", "Comm", null, null, null, java.math.BigDecimal.ONE, 0, "builtin", null, null,
+                null, null);
     }
 
     private JsonNode parse(String json) throws Exception {

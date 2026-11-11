@@ -57,6 +57,71 @@ cd "$(dirname "$0")/.."
 #           MP-18c) holte drei Wörter aus `glossar.ts` und damit das ganze Glossar zurück
 #   253,81  MiSpeL-Nachzug (Grenze 256) — die drei Wörter stehen in `glossarEinstieg.ts`;
 #           die +1,44 kB über `main` sind `speicherAussage.ts`, `main.tsx` und `api.ts`
+#   256,06  Alerting Scheibe 2, Nachbesserung 3/3 (Grenze 257) — „Überwachen" jetzt
+#           auch an Aufbau-Zeilen und Geräteseite, s.u.
+#   258,25  main 19.10.2026, PR 1524 (Grenze 257, rot) — B8 (Push-Abmelden auf geteilten
+#           Geräten) importierte `push.ts` statisch in `AppShell.tsx`.
+#   257,04  B8-Nachlade-Fix (Grenze 258) — `push.ts` nur noch per `import()` beim Klick auf
+#           „Abmelden“ geladen, s.u.
+#   258,08  main 05.11.2026 (Grenze 258, rot) - viele kleine Zuwächse seit 23.10.
+#   257,73  Bestätigungsseite der Zustellweg-Mail (`ZustellwegBestaetigenScreen`) nur noch als
+#           `lazy` in `main.tsx` - sie braucht allein, wer den Link aus der Mail öffnet. Die Grenze bleibt 258.
+#   243,55  Luft-Auftrag 05.11.2026 (Grenze 258, 14,45 kB Luft) - drei Schnitte, s.u.
+#
+# WAS DER LUFT-AUFTRAG HERAUSGENOMMEN HAT (−14,45 kB gz, ohne eine Funktion zu ändern; Belege im PR-Text):
+#   Dreimal hing ein ganzes Fach-Modul im ersten Bild, weil EIN winziger Aufruf an ihm hing (die ersten beiden
+#   Zeilen), einmal ein Dialog, den nur der Anpassen-Modus öffnet (die dritte). Rollup
+#   beschneidet ein Modul mit Top-Level-Code (Tabellen, `new Set`, Objekt-Literale) nicht, auch wenn der
+#   Einstieg nur eine Zeile braucht - wie bei V-01 und dem UEMS-Schnitt gilt: die Hilfe zieht in ein
+#   eigenes Modul, das alte Modul reicht sie unverändert weiter.
+#   −7,05  `komponentenHealth.ts` (statt `komponenten.ts`) und `verlaufEntity.ts` (statt `verlauf.ts`):
+#          `livePuls.ts` brauchte von beiden genau eine Zeile (`toComponentHealth`, `V1_ENTITY`), zog aber
+#          Komponenten-Fachmodul samt Rollen, Pin-Abbildung und Messwert-Baum mit.
+#   −5,62  `strompreisGate.ts` (statt `strompreis.ts`): die Anlagen-Seite braucht nur das Tor
+#          `gateStrompreis`; dahinter hingen Film-Wortlaut, Preisfenster und Bezugspreis-Vorschau.
+#   −1,84  `EigeneAuswertungDialog` in `AnlagenPage.tsx` nur noch als `lazy`: er öffnet allein aus dem
+#          Anpassen-Modus, der das Stück beim Aufgehen vorholt (`ladeEigeneAuswertung`, EINE
+#          Aufrufstelle) - der Klick findet es schon da, kein Ladeschirm, kein Layout-Springen.
+#   Wächter im Quelltext: `src/einstiegLuft.test.ts` (die Module oben bleiben aus dem Einstieg).
+#   Die Grenze bleibt 258: die 14 kB Luft sind für die nächsten Features da, nicht für die Ratsche.
+#
+# WARUM DIE GRENZE AM 19.10.2026 VON 257 AUF 258 GEHT (vp-bundle-b8-nachladung, Belege im
+#   PR-Text): B8s EIGENES Gewicht ist vollständig draußen — `push.ts` und sein Daten-Zwilling
+#   `benachrichtigungenApi.ts` stehen nicht mehr in der Sourcemap des Einstiegs (geprüft per
+#   `node`-Skript über `sources`, wie Prüfung 3 es für Motion tut). Der `import('../push')` beim
+#   Klick auf „Abmelden“ ersetzt den alten statischen Import 1:1 — Reihenfolge und Verhalten
+#   bleiben exakt (die B8-Regressionstests aus PR 1524 sind unverändert grün, ebenso der
+#   Abmelde-Fluss bei langsamem Netz: `logout` hängt an DERSELBEN Kette, die jetzt erst das
+#   Nachladen UND das Aufräumen abwartet, ein Nachlade-Fehler hält das Abmelden so wenig auf wie
+#   ein Abo-Fehler vorher). Was BLEIBT, ist nicht B8, sondern zwei Dinge, die sich hier nur
+#   treffen: die unvermeidbare Lade-Tabelle JEDES neuen `import()`-Aufrufs (gemessen auf dem
+#   Stand VOR PR 1526: 258,25 → 256,91, also 0,85 kB über der alten Basis von 256,06 — dieselbe
+#   Art Kosten wie die +0,10 kB der Grenze von 15.10.2026, hier nur größer, weil es ein
+#   brandneuer Chunk ist, kein bereits bestehender) UND die zeitgleich auf `main` gelandete
+#   Einstellungen Scheibe 1 (PR 1526: Avatar-Menü nennt jetzt Name/E-Mail/Rolle und trägt den
+#   Eintrag „Einstellungen“; die Rollen-Liste und der neue Konto-Hook in `auth.ts` sind bewusst
+#   NICHT lazy, siehe deren eigene Kommentare dort). Zusammen tragen beide den Einstieg auf
+#   257,04 kB — 0,04 kB über der ALTEN Grenze von 257, keines der beiden Features lässt sich
+#   ohne Funktionsverlust weiter drücken. Zwei legitime Features im Einstieg, kein drittes
+#   Nachlade-Loch.
+#
+# WARUM DIE GRENZE AM 15.10.2026 VON 256 AUF 257 GEHT (gemessen, ohne eine
+#   Funktion zu ändern): `UeberwachenBlatt` hatte genau EINEN Verwender
+#   (`EnergieBuehne.tsx`) und lag deshalb ungeteilt in dessen eigenem
+#   Lazy-Stück. Diese Nachbesserung bringt den Einstiegspunkt „Überwachen" auch
+#   an die Aufbau-Tabelle und die Geräteseiten-Bühne (Brief Punkt 3) — drei
+#   voneinander unabhängige Seiten-Bündel teilen sich das Blatt jetzt, Rollup
+#   muss es (und `ueberwachungApi.ts`, seinen Daten-Zwilling) deshalb in einen
+#   gemeinsamen Chunk ausgliedern. Jeder neue Chunk-Name steht einmal im
+#   Einstieg selbst (die geteilte Lade-Tabelle jedes `import()`-Aufrufs) — das
+#   sind die +0,10 kB gz, nicht dupliziertes Feature-Gewicht: eine Zeichenketten-
+#   Suche im gebauten Einstieg bestätigt, dass kein Zeichen von
+#   `UeberwachenBlatt`s eigenem Code dort liegt, nur sein Dateiname. Kein
+#   Lazy-Trick drückt das weiter herunter, ohne das Blatt an einer der drei
+#   Flächen wieder zu entfernen.
+#   Nachtrag 20.10.2026 (Konzept b1, E3): „Überwachen“ wohnt jetzt nur unter
+#   Meldungen; das Blatt öffnen nur noch Meldungs-Center und Steuerung.
+#   Gemessen: Einstieg 256,96 kB gz (vorher 257,02) - die Grenze bleibt 257.
 #
 # WAS DER UEMS-SCHNITT HERAUSGENOMMEN HAT (−105,52 kB gz, ohne eine Funktion zu ändern):
 #   Der Sammelzweig `uems` hatte 71 Quellen neu im Einstieg. Zwei Flächen sind
@@ -91,7 +156,7 @@ cd "$(dirname "$0")/.."
 #   Der Einstieg zog vier große Fach-Module für je eine kleine Hilfe mit.
 #   Die Hilfen wohnen jetzt in eigenen Modulen, die alten Module reichen sie
 #   unverändert weiter:
-#   `ladestandVon.ts` (statt `batterieAnschluss`/`selbstbau`),
+#   `ladestandVon.ts` (statt eines großen Fach-Moduls),
 #   `geraetAdresse.ts` (statt `geraetSeite`), `provenienz.ts` (statt
 #   `historieWelten`), `geldWelt.ts` (statt `portfolioHistorie`).
 #
@@ -118,7 +183,13 @@ cd "$(dirname "$0")/.."
 # `nav.ts` raus, `commit` = nacktes `setRoute`) liegt bei 230,28 kB — immer noch
 # über 230, weil der Kopfraum von main (158 Byte) kleiner war als die reine
 # Vorlade-Grenze `pageChunks.ts` plus die `view-transition-name`-Attribute.
-LIMIT_KB="${LIMIT_KB:-256}"
+#
+# NACHTRAG 23.10.2026 (Anlage-Flow a1, Paket 0+1): main stand bei 258,53 kB, schon über der
+#   Grenze. Das Formular „Konto erstellen“ liegt jetzt in einem eigenen Stück
+#   (`Registrierung.tsx`, ein `lazy` in `App.tsx`, 2,3 kB gz) - es braucht nur, wer sich
+#   registriert; die Sätze der Zahlenfelder des Anlege-Schritts stehen in `zahlFehler.ts`.
+#   Gemessen mit B1/B2/B3/F6 im Einstieg: 257,97 kB - die Grenze bleibt 258.
+LIMIT_KB="${LIMIT_KB:-258}"
 
 OUT="dist-bundle-smoke"
 trap 'rm -rf "$OUT"' EXIT
@@ -173,17 +244,22 @@ node -e '
 ' "$map"
 echo "ok"
 
-echo "== 4/6 · Chart-Bündel unter 210 kB gz =="
+echo "== 4/6 · Chart-Bündel unter 225 kB gz =="
 # Nur benötigte ECharts-Module: 344,50 -> 203,28 kB gz (09.09.2026).
 # AP-01 registrierte `Graphic`+`VisualMap` für REPLACE_MERGE: 219,92 kB gz,
 # rot. V-01 (24.09.2026) nimmt `VisualMap` wieder heraus (kein Diagramm setzt
 # ihn; Wächter `src/chartRegistrierung.test.ts`): 208,5 kB gz.
+# echarts 5.5.1 -> 6.1.0 (D10, Sicherheitsbericht vp-wartung-security-s1,
+# GHSA-fgmj-fm8m-jvvx): dieselben Module, 223,83 kB gz (10.11.2026) - das
+# Mehrgewicht liegt in echarts/zrender 6 selbst (u. a. das neue
+# Token-Theme-System und die Achsen-Überlappungsprüfung, beide ab v6 immer
+# mitgebaut), nicht in dieser Datei. Grenze mit knappem Kopfraum auf 225.
 # Ein erneuter Vollimport muss am ausgelieferten Artefakt auffallen.
 chart_line=$(grep -E 'assets/useEChart-[^ ]+\.js[[:space:]]' /tmp/vp-bundle-build.log | tail -1)
 chart_gz_kb=$(printf '%s' "$chart_line" | sed -nE 's/.*gzip:[[:space:]]*([0-9.,]+) kB.*/\1/p' | tr -d ',')
 [ -n "$chart_gz_kb" ] || { echo "FAIL: Chart-Bündel fehlt in der Build-Ausgabe"; exit 1; }
-awk -v g="$chart_gz_kb" 'BEGIN{ exit !(g <= 210) }' || {
-  echo "FAIL: Chart-Bündel ${chart_gz_kb} kB gz (Grenze 210 kB)."
+awk -v g="$chart_gz_kb" 'BEGIN{ exit !(g <= 225) }' || {
+  echo "FAIL: Chart-Bündel ${chart_gz_kb} kB gz (Grenze 225 kB)."
   exit 1
 }
 echo "ok: ${chart_gz_kb} kB gz"

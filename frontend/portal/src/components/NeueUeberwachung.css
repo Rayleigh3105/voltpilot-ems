@@ -1,0 +1,82 @@
+/* „Neue Überwachung“ (Konzept b1): Ort wählen, dann den Wert - eine Zeile je Wert, die ganze Zeile ist der Knopf. */
+.vp-nu {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.vp-nu-werte {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-nu-frage {
+  margin: 0;
+  font: 700 0.95rem/1.3 var(--vp-font-heading);
+}
+.vp-nu-gruppe {
+  margin: 8px 0 0;
+  font: 700 0.7rem/1.2 var(--vp-font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nu-hinweis {
+  margin: 0;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nu-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.vp-nu-wert {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-nu-wert:hover {
+  border-color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nu-wert:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-nu-wert > svg:last-child {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nu-ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nu-ico.is-pv { background: var(--vp-flow-pv-soft, #fef3e2); color: var(--vp-c-chart-pv, #e65100); }
+.vp-nu-ico.is-load { background: var(--vp-flow-load-soft, #f1ecfd); color: var(--vp-flow-load, #8b5cf6); }
+.vp-nu-ico.is-batt { background: var(--vp-flow-batt-soft, #e7f6ec); color: var(--vp-flow-batt-ink, #166534); }
+.vp-nu-ico.is-grid { background: var(--vp-flow-grid-soft, #e2f6f5); color: var(--vp-flow-grid, #0ea5a3); }
+.vp-nu-name {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.vp-nu-jetzt {
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

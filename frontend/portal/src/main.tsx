@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
@@ -18,8 +18,15 @@ import { initAuth, keycloak, login, wasRateLimited, wasSessionExpired } from './
 import { BOOT_TIMEOUT_MS, BootTimeoutError, bootOutcome, withTimeout } from './boot';
 import { BootErrorBoundary, BootSplash } from './components/Boot';
 import { initInstallApp } from './installApp';
-import { isRegisterRoute } from './nav';
+import { koppelEmpfang, koppelLinkAnnehmen } from './koppelLink';
+import { isRegisterRoute, zustellwegBestaetigenToken } from './nav';
 import { registerServiceWorker } from './serviceWorker';
+
+// Die Bestätigungsseite braucht nur, wer den Link aus der Mail öffnet - ein Lazy-Stück, nicht Teil des
+// ersten Bilds (Bündel-Wächter `test/bundle-smoke.sh`). Bis es da ist, steht der Ladeschirm.
+const ZustellwegBestaetigenScreen = lazy(() =>
+  import('./components/ZustellwegBestaetigenScreen').then((m) => ({ default: m.ZustellwegBestaetigenScreen })),
+);
 
 // App-Hülle. Beides läuft VOR dem Auth-Bootstrap, weil beides von ihm
 // unabhängig ist: `beforeinstallprompt` feuert kurz nach dem Laden und wird
@@ -28,6 +35,18 @@ import { registerServiceWorker } from './serviceWorker';
 // nie mit dem ersten Bild um Bandbreite konkurriert.
 initInstallApp(window);
 registerServiceWorker();
+
+// Alerting Scheibe 3 (§6.8): ein Klick auf eine Push-Benachrichtigung in einem
+// bereits offenen Tab schickt ihre Ziel-Adresse hierher (public/sw.js
+// `notificationclick`) - der Tab navigiert dann selbst, statt einen zweiten zu öffnen.
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const daten = event.data as { type?: string; url?: string } | undefined;
+    if (daten?.type === 'vp-push-click' && daten.url) {
+      window.location.hash = daten.url;
+    }
+  });
+}
 
 // Keep the access token fresh in the background.
 keycloak.onTokenExpired = () => {
@@ -58,59 +77,86 @@ const AUTO_LOGIN_GUARD = 'vp.auth.autoLoginRedirect';
 // whatever initAuth() does afterwards can only ever REPLACE this splash.
 render(<BootSplash />);
 
-// White-page fix, part 2: the whole auth bootstrap is bounded. keycloak-js
-// contains unbounded iframe/postMessage waits (a Keycloak/proxy error page
-// inside a hidden iframe never answers), so a hard ceiling here is the only
-// reliable guarantee that the boot always settles into a rendered state.
-Promise.resolve()
-  .then(() => withTimeout(initAuth(), BOOT_TIMEOUT_MS))
-  .then((authenticated) => {
-    const outcome = bootOutcome({
-      authenticated,
-      registerRoute: isRegisterRoute(),
-      guardWasSet: sessionStorage.getItem(AUTO_LOGIN_GUARD) !== null,
-      rateLimited: wasRateLimited(),
+// Der Direktlink vom Gehäuse (`#/k/<referenz>`, nginx leitet `/k/<referenz>` hierher): die Referenz
+// in den Speicher (Tab und 24 Stunden im Browser) und aus der Adresse, BEVOR die Anmeldung die Adresse
+// mitnimmt. Ohne Sitzung zeigt das Portal dann die Empfangsseite; angemeldet bietet die App sie an.
+const koppelAnnahme = koppelLinkAnnehmen(window.location, (url) =>
+  window.history.replaceState(window.history.state, '', url),
+);
+
+// The confirmation-mail link (`#/zustellweg/bestaetigen?token=...`, §6.6):
+// its API endpoint takes no login, so this short-circuits BEFORE initAuth()
+// even runs - an unreachable/slow Keycloak (the very reason the click often
+// has no session: another device/browser) must never block it. Works
+// whether the browser happens to be logged in or not, since it never asks.
+const zustellwegToken = zustellwegBestaetigenToken();
+if (zustellwegToken) {
+  render(
+    <Suspense fallback={<BootSplash />}>
+      <ZustellwegBestaetigenScreen token={zustellwegToken} />
+    </Suspense>,
+  );
+} else {
+  // White-page fix, part 2: the whole auth bootstrap is bounded. keycloak-js
+  // contains unbounded iframe/postMessage waits (a Keycloak/proxy error page
+  // inside a hidden iframe never answers), so a hard ceiling here is the only
+  // reliable guarantee that the boot always settles into a rendered state.
+  Promise.resolve()
+    .then(() => withTimeout(initAuth(), BOOT_TIMEOUT_MS))
+    .then((authenticated) => {
+      const outcome = bootOutcome({
+        authenticated,
+        registerRoute: isRegisterRoute(),
+        guardWasSet: sessionStorage.getItem(AUTO_LOGIN_GUARD) !== null,
+        rateLimited: wasRateLimited(),
+        koppel: authenticated ? null : (koppelEmpfang(koppelAnnahme)?.art ?? null),
+      });
+      switch (outcome.kind) {
+        case 'app':
+          sessionStorage.removeItem(AUTO_LOGIN_GUARD);
+          render(<App initialAuth sessionExpired={wasSessionExpired()} />);
+          return;
+        case 'register':
+          // Self-registration lives in the portal, not Keycloak - its route must
+          // render without the redirect (the Keycloak login page links here).
+          render(<App initialAuth={false} initialView="register" />);
+          return;
+        case 'koppel':
+          // Kein Ziel für den Schleifenschutz: die Empfangsseite leitet nicht selbst weiter.
+          sessionStorage.removeItem(AUTO_LOGIN_GUARD);
+          render(<App initialAuth={false} initialView={outcome.lesbar ? 'koppel' : 'koppel-unlesbar'} />);
+          return;
+        case 'autoLogin':
+          // No session, no stored tokens: go STRAIGHT to the Keycloak login
+          // instead of a "Jetzt anmelden" pre-step. The card behind stays as a
+          // fallback if the navigation is interrupted.
+          sessionStorage.setItem(AUTO_LOGIN_GUARD, '1');
+          render(<App initialAuth={false} redirecting />);
+          login();
+          return;
+        case 'login':
+          sessionStorage.removeItem(AUTO_LOGIN_GUARD);
+          render(
+            <App
+              initialAuth={false}
+              sessionExpired={wasSessionExpired()}
+              rateLimited={wasRateLimited()}
+            />,
+          );
+          return;
+      }
+    })
+    .catch((err) => {
+      // Never leave a blank page, whatever failed.
+      // eslint-disable-next-line no-console
+      console.error('Keycloak init failed', err);
+      if (err instanceof BootTimeoutError) {
+        // The init hung (hidden-iframe error page, stalled proxy, ...). Fall to
+        // the manual card WITHOUT wiping stored state - "Anmelden" does a clean
+        // full-page login() that works even when the silent iframes are broken.
+        render(<App initialAuth={false} authTimeout rateLimited={wasRateLimited()} />);
+        return;
+      }
+      render(<App initialAuth={false} authError />);
     });
-    switch (outcome.kind) {
-      case 'app':
-        sessionStorage.removeItem(AUTO_LOGIN_GUARD);
-        render(<App initialAuth sessionExpired={wasSessionExpired()} />);
-        return;
-      case 'register':
-        // Self-registration lives in the portal, not Keycloak - its route must
-        // render without the redirect (the Keycloak login page links here).
-        render(<App initialAuth={false} initialView="register" />);
-        return;
-      case 'autoLogin':
-        // No session, no stored tokens: go STRAIGHT to the Keycloak login
-        // instead of a "Jetzt anmelden" pre-step. The card behind stays as a
-        // fallback if the navigation is interrupted.
-        sessionStorage.setItem(AUTO_LOGIN_GUARD, '1');
-        render(<App initialAuth={false} redirecting />);
-        login();
-        return;
-      case 'login':
-        sessionStorage.removeItem(AUTO_LOGIN_GUARD);
-        render(
-          <App
-            initialAuth={false}
-            sessionExpired={wasSessionExpired()}
-            rateLimited={wasRateLimited()}
-          />,
-        );
-        return;
-    }
-  })
-  .catch((err) => {
-    // Never leave a blank page, whatever failed.
-    // eslint-disable-next-line no-console
-    console.error('Keycloak init failed', err);
-    if (err instanceof BootTimeoutError) {
-      // The init hung (hidden-iframe error page, stalled proxy, ...). Fall to
-      // the manual card WITHOUT wiping stored state - "Anmelden" does a clean
-      // full-page login() that works even when the silent iframes are broken.
-      render(<App initialAuth={false} authTimeout rateLimited={wasRateLimited()} />);
-      return;
-    }
-    render(<App initialAuth={false} authError />);
-  });
+}

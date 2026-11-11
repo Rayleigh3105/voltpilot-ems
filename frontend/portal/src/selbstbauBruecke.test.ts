@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { buildGuidedFlow, parseGuidedFlow } from './flows/guidedBuilder';
 import {
   GERAET_ANLEGEN_HINWEIS,
   REGEL_BRUECKE_LABEL,
@@ -9,8 +8,6 @@ import {
   istSelbstbau,
   komponenteAusHash,
   regelBrueckeHash,
-  vorbefuellteAktion,
-  vorbefuellteRegel,
   vorbefuellterName,
   type BrueckenKomponente,
   brueckenKomponente,
@@ -37,43 +34,6 @@ describe('Gerät → Regel', () => {
     expect(bietetRegelBruecke(waermepumpe)).toBe(true);
     expect(bietetRegelBruecke({ ...waermepumpe, channels: [] })).toBe(false);
     expect(bietetRegelBruecke({ entityId: 'e3', label: 'Ohne' })).toBe(false);
-  });
-
-  it('befüllt den Baukasten mit dem ERSTEN Messwert vor', () => {
-    const regel = vorbefuellteRegel(waermepumpe)!;
-    expect(regel.conditions).toHaveLength(1);
-    expect(regel.conditions[0]).toMatchObject({
-      kind: 'entity',
-      entityId: 'e1',
-      channel: 'wassertemperatur',
-    });
-  });
-
-  it('lässt die AKTION offen - was passieren soll, weiß nur der Kunde', () => {
-    const regel = vorbefuellteRegel(waermepumpe)!;
-    expect(regel.action).toEqual({ kind: 'notify', message: '' });
-  });
-
-  it('gibt ohne Messwert nichts zurück, statt eine leere Bedingung zu bauen', () => {
-    expect(vorbefuellteRegel({ entityId: 'e4', label: 'Leer', channels: [] })).toBeNull();
-  });
-
-  /**
-   * ⚠ Der Beweis, dass die Vorbefüllung wirklich in den Baukasten passt: sie
-   * geht durch den ECHTEN Emitter und den ECHTEN Rück-Parser. Eine Form, die
-   * nur „plausibel aussieht", öffnet dem Kunden einen Editor, der sie nicht
-   * lesen kann.
-   */
-  it('ist eine Regel, die der Baukasten wirklich bauen UND zurücklesen kann', () => {
-    const regel = vorbefuellteRegel(waermepumpe)!;
-    const doc = buildGuidedFlow(regel, vorbefuellterName(waermepumpe), 'site-1');
-    const zurueck = parseGuidedFlow(doc);
-    expect(zurueck).not.toBeNull();
-    expect(zurueck!.conditions[0]).toMatchObject({
-      kind: 'entity',
-      entityId: 'e1',
-      channel: 'wassertemperatur',
-    });
   });
 
   it('schlägt einen Namen vor, der die Komponente nennt', () => {
@@ -108,43 +68,6 @@ describe('Regel → Gerät', () => {
   });
 });
 
-describe('die Aktion eines FREIGEGEBENEN Schalters (Stufe 4)', () => {
-  const basis = {
-    entityId: 'e-1',
-    label: 'Heizstab',
-    channels: [{ channel: 'power_kw' }],
-  };
-
-  it('bleibt OHNE Freigabe offen - nie eine Aktion, die nichts bewirken kann', () => {
-    expect(vorbefuellteAktion(basis)).toEqual({ kind: 'notify', message: '' });
-    expect(vorbefuellteAktion({ ...basis, schalter: { schaltbar: false, art: 'on_off' } }))
-      .toEqual({ kind: 'notify', message: '' });
-  });
-
-  it('wird bei Ein/Aus zur Schalt-Aktion mit verfallendem Wunsch', () => {
-    const a = vorbefuellteAktion({ ...basis, schalter: { schaltbar: true, art: 'on_off' } });
-    expect(a.kind).toBe('onoff');
-    // Ein Wunsch verfällt IMMER - so zieht der Arbiter ihn selbst zurück.
-    expect(a.kind === 'onoff' && a.ttlS).toBeGreaterThan(0);
-    expect(a.kind === 'onoff' && a.entityId).toBe('e-1');
-  });
-
-  it('nimmt beim Sollwert den kleinsten FREIGEGEBENEN Wert, nie einen geratenen', () => {
-    const a = vorbefuellteAktion({
-      ...basis,
-      schalter: { schaltbar: true, art: 'setpoint', min: 1.5 },
-    });
-    expect(a.kind === 'setpoint' && a.value).toBe(1.5);
-  });
-
-  it('reicht die Aktion in die vorbefüllte Regel durch', () => {
-    const r = vorbefuellteRegel({ ...basis, schalter: { schaltbar: true, art: 'on_off' } })!;
-    expect(r.action.kind).toBe('onoff');
-    // Die Bedingung bleibt der erste Messwert - die Brücke erfindet keine.
-    expect(r.conditions[0]).toMatchObject({ kind: 'entity', channel: 'power_kw' });
-  });
-});
-
 describe('brueckenKomponente (die Editor-Sicht der Brücke)', () => {
   it('leitet den Schalter aus dem SCHREIBWEG ab, nie aus einem Flag', () => {
     const k = brueckenKomponente({
@@ -161,28 +84,10 @@ describe('brueckenKomponente (die Editor-Sicht der Brücke)', () => {
     expect(k.schalter?.art).toBe('setpoint');
   });
 
-  it('behauptet OHNE Schreibweg keinen Schalter - und die Aktion bleibt offen', () => {
+  it('behauptet OHNE Schreibweg keinen Schalter', () => {
     const k = brueckenKomponente({
       id: 'e-9', label: 'Fühler', measure: ['temperatur'], actuate: [],
     });
     expect(k.schalter).toBeNull();
-    expect(vorbefuellteAktion(k)).toEqual({ kind: 'notify', message: '' });
-  });
-
-  it('ergibt ohne Messwert KEINE Regel - der Absprung wäre eine Sackgasse', () => {
-    const k = brueckenKomponente({ id: 'e-9', label: 'X', measure: [], actuate: ['on_off'] });
-    expect(bietetRegelBruecke(k)).toBe(false);
-    expect(vorbefuellteRegel(k)).toBeNull();
-  });
-
-  it('baut aus einer freigegebenen Komponente eine gültige Regel', () => {
-    const k = brueckenKomponente({
-      id: 'e-9', label: 'Heizstab', measure: ['temperatur'], actuate: ['on_off'],
-    });
-    const regel = vorbefuellteRegel(k)!;
-    const doc = buildGuidedFlow(regel, vorbefuellterName(k), 'site-1');
-    // Der Beweis, dass die Vorbefüllung wirklich trägt: sie geht durch den
-    // ECHTEN Emitter und wieder zurück.
-    expect(parseGuidedFlow(doc)).not.toBeNull();
   });
 });

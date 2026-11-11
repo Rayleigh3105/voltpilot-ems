@@ -63,6 +63,22 @@
         {"key":"battery-management-mode","address":1080,"width_words":1,"group":"Status & Fehler","label_de":"Batteriemanagement-Modus","label_source":"Battery management mode","unit":null,"value_type":"enum16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":300,"recommended":true},
         {"key":"sensor-type","address":1082,"width_words":1,"group":"Identität","label_de":"Energiezähler-Typ","label_source":"Energy sensor type","unit":null,"value_type":"enum16","signed":false,"endian":"big","scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":3600,"recommended":false}
       ]
+    },
+    {
+      "family": "kaco_serial",
+      "source_url": "https://github.com/g4bri3lDev/kaco-rs485",
+      "source_revision": "KACO Standard Protocol series \"00\" (APL_RS485protocol_KACO §2.1/2.2.1/2.3), g4bri3lDev/kaco-rs485 protocol.py verified against on-site Powador 6400xi/8000xi captures",
+      "points": [
+        {"key":"status","selector":"#{address}0\r#status","group":"Status & Fehler","label_de":"Wechselrichter-Status","label_source":"status","unit":null,"value_type":"uint8","signed":false,"scale":{"kind":"none"},"aggregation_kind":"state","cadence_s":30,"recommended":true},
+        {"key":"dc-voltage","selector":"#{address}0\r#dc_voltage_v","group":"DC","label_de":"Generatorspannung","label_source":"dc_voltage_v","unit":"V","value_type":"float64","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"dc-current","selector":"#{address}0\r#dc_current_a","group":"DC","label_de":"Generatorstrom","label_source":"dc_current_a","unit":"A","value_type":"float64","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"dc-power","selector":"#{address}0\r#dc_power_w","group":"DC","label_de":"Generatorleistung","label_source":"dc_power_w","unit":"W","value_type":"int32","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"ac-voltage","selector":"#{address}0\r#ac_voltage_v","group":"AC","label_de":"Netzspannung","label_source":"ac_voltage_v","unit":"V","value_type":"float64","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"ac-current","selector":"#{address}0\r#ac_current_a","group":"AC","label_de":"Netzstrom","label_source":"ac_current_a","unit":"A","value_type":"float64","signed":false,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"ac-power","selector":"#{address}0\r#ac_power_w","group":"AC","label_de":"Einspeiseleistung","label_source":"ac_power_w","unit":"W","value_type":"int32","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":30,"recommended":true},
+        {"key":"temperature","selector":"#{address}0\r#temperature_c","group":"Temperatur","label_de":"Gerätetemperatur","label_source":"temperature_c","unit":"°C","value_type":"int32","signed":true,"scale":{"kind":"none"},"aggregation_kind":"gauge","cadence_s":300,"recommended":true},
+        {"key":"energy-today","selector":"#{address}0\r#daily_yield_wh","group":"Zähler","label_de":"Erzeugung heute","label_source":"daily_yield_wh","unit":"Wh","value_type":"uint32","signed":false,"scale":{"kind":"none"},"aggregation_kind":"counter","cadence_s":300,"recommended":true}
+      ]
     }
   ]
 }

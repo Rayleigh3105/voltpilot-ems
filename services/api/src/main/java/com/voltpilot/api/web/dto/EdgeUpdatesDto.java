@@ -13,9 +13,135 @@ import java.util.UUID;
  * aggregiert (keine Client-Schleife), und <b>was niemand gemessen hat, ist
  * {@code null} und trägt seinen Grund</b> - nie eine erfundene Null, nie ein
  * geratener Zustand.
+ *
+ * <p>{@code lines} (Geräte &amp; Updates S0, additiv) trägt das neueste Release
+ * und die Zählung JE LINIE - Docker-Box und Edge Light getrennt. Die
+ * {@link KpiDto}-Felder bleiben unverändert für ältere Portale (dort gilt das
+ * neueste Release über beide Linien).
  */
 public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollouts,
-        List<FleetRowDto> fleet, List<EventDto> journal, KpiDto kpi) {
+        List<FleetRowDto> fleet, List<EventDto> journal, KpiDto kpi, List<LineDto> lines) {
+
+    /**
+     * Eine Software-Linie: Docker-Box ({@code docker}, Releases
+     * {@code edge-JJJJ.MM.N}) oder Edge Light ({@code light},
+     * {@code edge-light-JJJJ.MM.N}).
+     *
+     * <p>{@code newestRelease}/{@code newestReleaseSeq} sind das neueste Release
+     * DIESER Linie ({@code null} = die Linie hat noch keines). {@code devices}
+     * zählt die Boxen der Linie ({@code ota.BoxArt}; eine Box unbekannter Art
+     * zählt in keiner Linie, nie still als Docker-Box), {@code known} davon die,
+     * die überhaupt einen Stand gemeldet haben, und {@code upToDate} die, die das
+     * neueste Release der Linie melden ({@code ota.EdgeStandVerdict}, dieselbe
+     * Regel wie auf der Kunden-Box-Seite).
+     *
+     * <p>Eine Linie steht nur in der Liste, wenn sie ein Release oder eine Box
+     * hat; die Reihenfolge ist fest (Docker-Box, dann Edge Light).
+     */
+    public record LineDto(String boxArt, String newestRelease, Long newestReleaseSeq,
+            int devices, int known, int upToDate,
+            // Geräte & Updates G1 (additiv): die Linien-Sicht der Seite.
+            int releases, java.util.Map<String, Integer> stand, List<LineVersionDto> versions) {
+    }
+
+    /**
+     * Eine Sprosse der Versionsleiter einer Linie: ein Release (oder ein Stand,
+     * den das Register nicht führt - {@code releaseSeq == null}) und die Boxen,
+     * die ihn melden. Registrierte Releases neueste zuerst, danach die übrigen.
+     */
+    public record LineVersionDto(String version, Long releaseSeq, List<UUID> devices) {
+    }
+
+    /**
+     * Die drei Fakten einer Anfrage (Geräte &amp; Updates G2, {@code ota.UpdateFakten}):
+     * angefragt (Portal), angenommen (Box), bestätigt (Box), je mit Zeitpunkt
+     * ({@code null} = unbekannt).
+     */
+    public record FaktenDto(AngefragtDto angefragt, AngenommenDto angenommen,
+            BestaetigtDto bestaetigt) {
+    }
+
+    /** Angefragt: Release, Zeitpunkt und Person (bzw. {@code system}). */
+    public record AngefragtDto(String release, long releaseSeq, Instant am, String von) {
+    }
+
+    /**
+     * Angenommen: {@code ja}, {@code offen}, {@code wartet} (Box offline),
+     * {@code abgelehnt}, {@code zurueckgestellt} - mit dem Grund der Box.
+     */
+    public record AngenommenDto(String stand, Instant am, String grund) {
+    }
+
+    /**
+     * Bestätigt: {@code ja}, {@code offen}, {@code laeuft} (mit {@code schritt}
+     * {@code laedt}/{@code wendet_an}/{@code selbsttest}), {@code fehlgeschlagen},
+     * {@code zurueckgenommen}, {@code verstummt}.
+     */
+    public record BestaetigtDto(String stand, Instant am, String schritt, String grund) {
+    }
+
+    /**
+     * Die Eignung aller Boxen der Linie eines Releases (Geräte &amp; Updates G1,
+     * {@code GET /api/v1/admin/edge-updates/eignung}). {@code andereLinie} zählt
+     * die Boxen der anderen Box-Art, die hier bewusst nicht stehen.
+     */
+    public record EignungDto(long releaseSeq, String version, String boxArt,
+            List<EignungBoxDto> boxen, int andereLinie) {
+    }
+
+    /**
+     * Der Verlauf EINER Box, neueste zuerst (Geräte &amp; Updates G3,
+     * {@code GET /api/v1/admin/devices/{deviceId}/verlauf}).
+     */
+    public record VerlaufDto(UUID deviceId, List<VerlaufEintragDto> eintraege) {
+    }
+
+    /**
+     * Ein Eintrag ({@code ota.BoxVerlauf}): {@code quelle} {@code portal}
+     * ({@code art} angefragt, zurueckgezogen, erneut_gesendet, entfernt; {@code von}
+     * = Akteur) oder {@code box} ({@code art} stand mit {@code vorher} - {@code null}
+     * = erste Meldung -, angenommen, abgelehnt, zurueckgestellt, fehlgeschlagen,
+     * zurueckgenommen, mit dem Grund der Box). Zeitpunkte sind Serverzeit.
+     */
+    public record VerlaufEintragDto(Instant am, String quelle, String art, String release,
+            String vorher, String grund, String von, UUID rolloutId) {
+    }
+
+    /**
+     * Die Release-Seite (Geräte &amp; Updates G4,
+     * {@code GET /api/v1/admin/edge-updates/releases/{releaseSeq}}): was drin ist
+     * (aus dem signierten Manifest), was neu ist ({@code aenderungen}, CI; {@code null}
+     * = keine Angabe), wer signiert hat, wo es läuft und wann es verteilt wurde.
+     * {@code programme} nur bei Edge Light: was davon fertig im Portal liegt.
+     */
+    public record ReleaseSeiteDto(long releaseSeq, String version, String boxArt, boolean signed,
+            String signingKeyId, Instant createdAt, String targetCommit, String notes,
+            List<String> aenderungen, boolean erlaubtRueckschritt, Long minFromSeq,
+            List<ReleaseTeilDto> inhalt, List<ReleaseProgrammDto> programme, List<UUID> laeuftAuf,
+            int boxenDerLinie, List<VerteiltDto> verteilt) {
+    }
+
+    /** Ein Bestandteil laut Manifest: {@code typ} image oder binary; Größen nur bei binary. */
+    public record ReleaseTeilDto(String typ, String name, String arch, Long groesse, Long gzGroesse) {
+    }
+
+    /** Ein Edge-Light-Programm im Portal: Größe laut Manifest, empfangen, fertig geprüft. */
+    public record ReleaseProgrammDto(String arch, long groesse, long empfangen, boolean fertig) {
+    }
+
+    /** Eine Verteilung dieses Releases (Lauf), mit ihrer Zählung von heute. */
+    public record VerteiltDto(UUID rolloutId, String state, String createdBy, Instant createdAt,
+            int total, int confirmed, int failed) {
+    }
+
+    /**
+     * Eine Box im Verteil-Dialog: {@code gruppe} ist {@code bereit},
+     * {@code wartet}, {@code aktuell} oder {@code kann_nicht} ({@code ota.UpdateEignung}),
+     * {@code grund} der deutsche Satz dazu.
+     */
+    public record EignungBoxDto(UUID deviceId, String label, String externalRef, String siteName,
+            String tenantName, String ist, String gruppe, String grund, Instant lastSeenAt) {
+    }
 
     /**
      * Ein Eintrag des Release-Registers, neueste zuerst.
@@ -90,7 +216,25 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
             String state, String reason, String blocker,
             Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust,
-            String boxArt) {
+            String boxArt,
+            // Geräte & Updates G1/G2 (additiv):
+            // lastSeenAt  - die EINE Uhr für „online" (Herzschlag, Serverzeit);
+            // linie       - die Linie, an der gemessen wird (null = unbekannt);
+            // stand       - ota.LinienStand (hand, fehler, offline, laeuft, gehalten,
+            //               aktuell, aelter, unbekannt);
+            // stufe1      - Edge Light ohne gekreuztes Vertrauen;
+            // istRelease  - das Register-Release, das die Box fährt (null = nicht registriert);
+            // releasesDahinter - wie viele Releases der Linie neuer sind (null = unbekannt);
+            // istSeit     - seit wann der laufende Stand läuft (null = unbekannt);
+            // fakten      - angefragt/angenommen/bestätigt der aktuellen Anfrage (null = keine).
+            Instant lastSeenAt, String linie, String stand, boolean stufe1, String istRelease,
+            Integer releasesDahinter, Instant istSeit, FaktenDto fakten,
+            // Geräte & Updates G8 (additiv): das Gerät, wie die Box es meldet
+            // (update.geraet; null = nicht gemeldet) - Modell, Architektur und
+            // bei Edge Light der Loader-Stand (update | flash) samt der
+            // LOADER_STAND-Marke des Loaders im Flash (Loader-Selbstupdate;
+            // null = nicht gemeldet, alte Loader tragen keine Marke).
+            String geraetModell, String geraetArch, String loader, Integer loaderStand) {
     }
 
     /**
@@ -126,6 +270,10 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
      * <p>Ein „Sie sind dran"-Zähler existiert bewusst NICHT mehr: seit der
      * Vereinfachung vom 26.08.2026 wartet nach dem Klick auf „Aktualisieren"
      * niemand mehr auf einen Menschen.
+     *
+     * <p>⚠ {@code upToDate} und {@code newestRelease} messen am neuesten
+     * Release über BEIDE Linien - so lesen es ältere Portale, und dabei bleibt
+     * es. Das Urteil je Linie trägt {@link LineDto} (Geräte &amp; Updates S0).
      */
     public record KpiDto(int known, int upToDate, int unknown, int inRollout, int failed,
             String newestRelease) {

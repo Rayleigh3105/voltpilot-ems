@@ -54,7 +54,9 @@ gewinnt, und keine von beiden kann die andere aufweichen.**
   konkurriert, wird sie innerhalb ihres Ranges zuerst bedient (das „wirkt wie
   temporärer Vorrang mit Quelle-egal" der Mockups). Sie gilt GENAU EINER
   Transaktion (eine neue Sitzung am selben Stecker ist ein anderes Fahrzeug und
-  erbt sie nie), höchstens `lastmgmt.BoostMaxDuration` (4 h), und sie wird
+  erbt sie nie), höchstens `lastmgmt.BoostMaxDuration` (4 h; „bis Abstecken“,
+  `until_unplug`: bis zum Sitzungsende, Deckel
+  `lastmgmt.BoostUntilUnplugMaxDuration` = 14 h), und sie wird
   **bewusst NICHT persistiert**: eine Box, die nach einem Neustart Stunden
   später still weiter Netzstrom kauft, gäbe ein Versprechen, das niemand
   gemacht hat.

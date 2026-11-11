@@ -3,7 +3,7 @@ import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { AufbauKategorie } from '../aufbauBaum';
-import { AufbauSymbol } from './AufbauTabelle';
+import { AufbauSymbol } from './AufbauSymbol';
 import { Recht } from './Recht';
 import './Einrichten.css';
 
@@ -24,6 +24,7 @@ export function EinrichtenSeite({
   titel,
   onClose,
   onZurueck,
+  zurueckLabel = 'Zurück zum Katalog',
   kopf,
   fuss,
   children,
@@ -33,6 +34,8 @@ export function EinrichtenSeite({
   onClose: () => void;
   /** Zurück in den Katalog; null = die Seite wurde nicht aus dem Katalog geöffnet. */
   onZurueck?: (() => void) | null;
+  /** Wohin der Pfeil zurückführt (aus der Gerätesuche: „Zurück zur Gerätesuche"). */
+  zurueckLabel?: string;
   kopf?: ReactNode;
   fuss: ReactNode;
   children: ReactNode;
@@ -44,7 +47,7 @@ export function EinrichtenSeite({
       title={titel}
       icon={
         onZurueck ? (
-          <button type="button" className="vp-ein-zurueck" onClick={onZurueck} aria-label="Zurück zum Katalog">
+          <button type="button" className="vp-ein-zurueck" onClick={onZurueck} aria-label={zurueckLabel}>
             <Icon name="chevron-left" size={20} />
           </button>
         ) : undefined
@@ -67,6 +70,7 @@ export function EinrichtenKopf({
   icon,
   brauchen,
   hinweis,
+  aendern,
 }: {
   titel: string;
   unterzeile: string;
@@ -75,14 +79,21 @@ export function EinrichtenKopf({
   /** „Sie brauchen: …" - die Pflichtangaben, bevor man anfängt. */
   brauchen: string[];
   hinweis?: ReactNode;
+  /** Das Gerät ist gewählt, ließe sich aber noch tauschen („Modell ändern"): ein leiser Link neben dem Namen. */
+  aendern?: { label: string; onClick: () => void };
 }) {
   return (
-    <div className="vp-ein-kopf">
+    <div className={`vp-ein-kopf${aendern ? ' hat-aendern' : ''}`}>
       <AufbauSymbol kategorie={kategorie} icon={icon} />
       <span className="vp-ein-kopf-text">
         <b>{titel}</b>
         <small>{unterzeile}</small>
       </span>
+      {aendern && (
+        <button type="button" className="vp-ein-aendern" onClick={aendern.onClick} data-testid="einrichten-aendern">
+          {aendern.label}
+        </button>
+      )}
       {brauchen.length > 0 && (
         <p className="vp-ein-brauchen">
           Sie brauchen:

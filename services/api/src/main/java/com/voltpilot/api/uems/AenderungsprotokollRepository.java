@@ -305,10 +305,21 @@ public class AenderungsprotokollRepository {
      * V20260911200000) und wird nie weitergegeben — ein Wechsel legt eine NEUE
      * {@code geraet}-Zeile an, kein Schreibweg ändert ein bestehendes Kennzeichen. Wer die
      * Journale vereinheitlicht (AP-03 IP-7), darf hier eine echte Geräte-Spalte einsetzen.
+     *
+     * <p>Dazu kommen die Einträge seines WEGS (Konzept „Ein Gerät, ein Eintrag“, GE-2): liest die Box
+     * das Gerät über eine Datenquelle ({@code geraet.data_source_id}), steht deren Protokoll
+     * ({@code data_source_aenderung} — angelegt, bearbeitet, geprüft, Box gewechselt …) auch hier. Der
+     * Verweis ist der gespeicherte, nie eine gleiche Adresse. Hinter einem Gateway gilt derselbe Weg für
+     * alle Geräte daran — jedes zeigt ihn. {@code null} = kein Weg, nur die Einträge oben.
      */
-    public List<Zeile> fuerEinbau(String einbauKennzeichen, Filter f) {
-        return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_GERAET, false, "? IN (einbau, einbau_zweit)",
-                List.of(einbauKennzeichen), f);
+    public List<Zeile> fuerEinbau(String einbauKennzeichen, UUID dataSourceId, Filter f) {
+        if (dataSourceId == null) {
+            return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_GERAET, false, "? IN (einbau, einbau_zweit)",
+                    List.of(einbauKennzeichen), f);
+        }
+        return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_GERAET + "UNION ALL\n" + STROM_DATENQUELLE, false,
+                "(? IN (einbau, einbau_zweit) OR (quelle = 'datenquelle' AND bezug_id = ?))",
+                List.of(einbauKennzeichen, dataSourceId), f);
     }
 
     /** Das Protokoll des ganzen Unternehmens — alle vier Journale in EINER Abfrage. */

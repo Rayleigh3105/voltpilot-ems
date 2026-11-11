@@ -23,6 +23,7 @@
   min-width: 0;
   --vp-auf-haar: color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
   --vp-auf-einzug: 22px;
+  --vp-auf-schiene: color-mix(in srgb, var(--vp-primary) 60%, var(--vp-surface));
 }
 
 /* --- Kleine Bausteine ------------------------------------------------------- */
@@ -126,6 +127,11 @@
     grid-template-columns: minmax(14rem, 1fr) auto;
     grid-template-areas: 'suche filter';
   }
+  /* Ohne Filter mit Wahl (`AufbauTabelle`) nimmt die Suche die ganze Breite - keine leere Spalte. */
+  .vp-auf-werkzeug.is-ohne-filter {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'suche';
+  }
 }
 .vp-auf-leiste {
   display: flex;
@@ -141,6 +147,21 @@
 .vp-auf-leiste > .vp-auf-neu {
   flex: 0 0 auto;
   margin-left: auto;
+  order: 2;
+}
+/* Der technische Einstieg (Plattform-Sicht) steht als eigener Knopf zwischen Zähler und „Gerät hinzufügen“ -
+   er schwebt nie über der Zählzeile. */
+.vp-auf-leiste > .vp-auf-technik-add {
+  flex: 0 0 auto;
+  order: 1;
+  white-space: nowrap;
+}
+/* Schmal rückt er unter die Zeile mit Zähler und „Gerät“ (links), statt über den Hauptknopf zu springen. */
+@container vp-auf (max-width: 719px) {
+  .vp-auf-leiste > .vp-auf-technik-add {
+    order: 3;
+    margin-right: auto;
+  }
 }
 .vp-auf-suche {
   grid-area: suche;
@@ -352,16 +373,19 @@
 }
 
 /*
- * AM TELEFON steht über der Tabelle nur, was man zum Finden braucht: die Suche
- * (mit dem Filter-Knopf darin), die Zahl der Geräte und „+ Gerät". Der Standort
- * steht schon oben im Seitenkopf und als Anlage in der Tabelle, die vier Filter
- * klappen erst auf Wunsch auf, und die Kurzfilter zeigen nur Symbol und Zahl -
- * ihre Wörter bleiben für Screenreader lesbar.
+ * AM TELEFON steht über der Tabelle nur, was man zum Finden braucht: die Zeile
+ * des Standorts, die Suche (mit dem Filter-Knopf darin), die Zahl der Geräte und
+ * „+ Gerät". Die vier Filter klappen erst auf Wunsch auf, und die Kurzfilter
+ * zeigen nur Symbol und Zahl - ihre Wörter bleiben für Screenreader lesbar.
  */
 @container vp-auf (max-width: 719px) {
-  .vp-auf-ort,
   .vp-auf-breit {
     display: none;
+  }
+  /* F16 (Anlage-Flow a1): die Standort-Zeile bleibt - ohne sie stand eine Anlage desselben Standorts
+     ohne Erklärung in der Tabelle. Sie bricht in Zeilen um, statt die Seite zu verbreitern. */
+  .vp-auf-ort {
+    font-size: 0.8rem;
   }
   .vp-auf-filter-auf {
     display: inline-flex;
@@ -508,9 +532,12 @@
 .vp-auf-t-kopf,
 .vp-auf-t-zeile {
   display: grid;
+  /* B2 (UI/UX-Wartung u1): „Art" stand oft halb leer, während „Zustand" nebenan
+     abschnitt („Wartet auf die erste Verbi…", 207 von 234 px) - der Anteil
+     wandert von Art zu Zustand, die Summe bleibt 2,95fr. */
   grid-template-columns:
-    minmax(0, 2.6fr) minmax(0, 1.35fr) minmax(0, 1.45fr) minmax(0, 1.05fr)
-    2.25rem;
+    minmax(0, 2.5fr) minmax(0, 1.2fr) minmax(0, 1.75fr) minmax(0, 1.05fr)
+    3.5rem;
   column-gap: var(--vp-space-3);
   align-items: center;
   padding: 0 var(--vp-space-2) 0 var(--vp-space-3);
@@ -550,20 +577,20 @@
   min-height: 38px;
   color: var(--vp-text-gray);
 }
-/* Eine Datenquelle der Box (UEMS AP-06): ein Weg, kein Gerät — ruhiger als eine Gerätezeile. */
-.vp-auf-t-zeile.is-quelle {
-  min-height: 42px;
-}
-.vp-auf-t-zeile.is-quelle .vp-auf-t-titel {
-  font-weight: var(--vp-weight-medium, 500);
+/* Ein Gateway (GE-1): ein Kasten mit eigener Seite (GE-5) — die Geräte dahinter stehen eine Ebene tiefer. */
+.vp-auf-t-zeile.is-gateway {
+  min-height: 46px;
+  cursor: pointer;
 }
 .vp-auf-t-zeile.is-geraet:not(.is-lesend) {
   cursor: pointer;
 }
+.vp-auf-t-zeile.is-gateway:hover,
 .vp-auf-t-zeile.is-geraet:not(.is-lesend):hover {
   background: color-mix(in srgb, var(--vp-bg-light) 70%, var(--vp-surface));
 }
-.vp-auf-t-zeile.is-fund {
+.vp-auf-t-zeile.is-fund,
+.vp-auf-t-zeile.is-anschluss {
   background: repeating-linear-gradient(
     135deg,
     var(--vp-surface) 0 9px,
@@ -572,6 +599,58 @@
 }
 .vp-auf-t-zeile.is-leer {
   min-height: 42px;
+}
+/* Der Kopf einer Gerätegruppe (Konzept `vp-anlage-geraete-gruppiert`): ein ruhiger Abschnitt wie der Tabellenkopf,
+   Name über Gerät, Art und Zustand, die Summe in der Wert-Spalte. Er klappt nicht. */
+.vp-auf-t-zeile.is-gruppe {
+  min-height: 32px;
+  background: var(--vp-bg-light);
+}
+.vp-auf-t-zeile.is-gruppe > .vp-auf-t-name {
+  grid-column: 1 / 4;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.vp-auf-t-zeile.is-gruppe > .vp-auf-t-wert {
+  grid-column: 4;
+  white-space: normal;
+}
+.vp-auf-t-zeile.is-gruppe > .vp-auf-t-wert .is-leer {
+  font-size: var(--vp-text-meta);
+}
+.vp-auf-t-gkopf {
+  --c: var(--vp-text-gray);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+.vp-auf-t-gkopf > svg {
+  flex: 0 0 auto;
+  color: var(--c);
+}
+.vp-auf-t-gkopf.is-solar { --c: var(--vp-chart-pv-line); }
+.vp-auf-t-gkopf.is-battery { --c: var(--vp-battery-end); }
+.vp-auf-t-gkopf.is-ev { --c: var(--vp-ev-end); }
+.vp-auf-t-gkopf.is-home { --c: var(--vp-home-end); }
+.vp-auf-t-gkopf.is-grid { --c: var(--vp-grid); }
+.vp-auf-t-ganzahl {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: 1px solid var(--vp-auf-haar);
+  background: var(--vp-surface);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--vp-text-gray);
 }
 /* Die Antwort auf einen Sprung (`?komponente=`): kurz hervorgehoben. */
 .vp-auf-t-zeile.is-angesprungen {
@@ -715,6 +794,18 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   font-size: var(--vp-text-meta);
   color: var(--vp-text-gray);
 }
+/* GE-1: die Anbindung eines Geräts („Modbus TCP · 192.168.4.165:503") — rückt als Ganzes in die nächste Zeile,
+   wenn sie neben dem Modell keinen Platz hat. */
+.vp-auf-t-anbindung {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.vp-auf-t-anbindung > svg {
+  flex: none;
+}
 .vp-auf-t-text small .is-warn,
 .vp-auf-t-name .is-warn {
   color: var(--vp-warn-ink);
@@ -723,10 +814,12 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
 }
 .vp-auf-t-art {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--vp-text-gray);
+  /* Die Art bricht um statt „Hybrid-Wechselrichter · Ha…“ abzuschneiden; die Zeile wächst mit (der Tooltip trägt den vollen Text). */
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+  padding-block: 6px;
 }
 .vp-auf-t-zustand {
   display: grid;
@@ -735,11 +828,21 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   align-items: center;
   min-width: 0;
 }
+/* B2: zweizeilig statt einzeilig abzuschneiden - der Zustandssatz („Wartet
+   auf die erste Rückmeldung …") passte einzeilig oft nicht, auch nicht nach
+   der Spaltenkorrektur oben. Die Zeilenhöhe trägt das (gemessen an allen
+   `.vp-auf-t-zeile`-Varianten, deren `min-height` bereits zweizeilige `Art`
+   kennt). */
 .vp-auf-t-zustand .w {
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
   color: var(--vp-text-dark);
   font-weight: var(--vp-weight-semibold);
 }
@@ -777,6 +880,8 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   justify-self: end;
   color: var(--vp-text-gray);
   display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .vp-auf-t-summe {
   grid-column: 2 / 5;
@@ -811,6 +916,7 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
 }
 .vp-auf-t-plus,
 .vp-auf-t-mehr {
+  position: relative;
   border: 1px solid var(--vp-auf-haar);
   background: var(--vp-surface);
   color: var(--vp-action);
@@ -864,6 +970,12 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   color: var(--vp-action);
   cursor: pointer;
 }
+/* „Geräte suchen" neben „Noch kein Gerät an dieser Box" (Gerätesuche): dieselbe ruhige Handlung, Tippfläche 44 px. */
+.vp-auf-t-leer.vp-auf-t-suchen {
+  margin-left: var(--vp-space-3);
+  min-height: 44px;
+  border-style: solid;
+}
 .vp-auf-t-nichts > span {
   display: grid;
   justify-items: center;
@@ -885,13 +997,51 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
 
 /* Handy und schmale Fenster: zwei Zeilen statt fünf Spalten. */
 @container vp-auf (max-width: 719px) {
+  /* Tippflächen am Telefon (UI-Runde Kundenseiten, Befund #44): Aufklappen (22 px), „+“ und „…“
+     (30 px) und der Filter-Knopf (30 px) wachsen über eine unsichtbare ::after-Fläche auf 44 px Höhe -
+     dasselbe Muster wie `.vp-infotip-btn`. Seitlich nur wenig, damit sich „+“ und „…“ nicht decken. */
+  .vp-auf-t-auf::after {
+    content: '';
+    position: absolute;
+    inset: -11px;
+  }
+  .vp-auf-t-plus,
+  .vp-auf-t-mehr,
+  .vp-auf-filter-auf {
+    position: relative;
+  }
+  .vp-auf-t-plus::after,
+  .vp-auf-t-mehr::after,
+  .vp-auf-filter-auf::after {
+    content: '';
+    position: absolute;
+    inset: -7px -3px;
+  }
   /* ⚠ Eine Container-Abfrage erreicht nur NACHKOMMEN - die Variable sitzt
      deshalb an der Tabelle, nicht am Behälter `.vp-auf`. */
   .vp-auf-t {
     --vp-auf-einzug: 0px;
   }
+  /* Ein einzelnes langes Wort („Netzanschluss", „Kompressor") hatte ohne `overflow-wrap` keine
+     Umbruchstelle - die Zeile lief über die Box hinaus und wurde von `overflow: hidden` mitten im
+     Wort abgeschnitten (B2-Nachtrag reichte nur für die Zustandsspalte). Bricht jetzt wie die
+     zweite Zeile (Modell/Weg) um, statt Buchstaben zu verschlucken.
+     Zählerbaum-Nachtrag: `overflow-wrap: anywhere` allein brach noch an einer beliebigen Stelle
+     („Netzanschlu" / „ss") - `hyphens: auto` bricht stattdessen an der Silbenfuge (wie
+     `NwZeilen.css`), `overflow-wrap` bleibt nur als Rückfalllinie für Wörter ohne Trennstelle. */
   .vp-auf-t-titel .vp-auf-t-kuerze {
     white-space: normal;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  /* GE-1: die zweite Zeile trägt Modell UND Weg („WAGO PFC200 · Modbus TCP · 192.168.4.165:503") — am Telefon
+     bricht sie um wie der Titel, statt abgeschnitten über den Rand zu laufen. */
+  .vp-auf-t-text small .vp-auf-t-kuerze {
+    white-space: normal;
+    overflow-wrap: anywhere;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -899,11 +1049,43 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   .vp-auf-t-auf-platz {
     display: none;
   }
+  /* Geschwister stehen bündig: ein Gerät ohne Aufklappknopf behält dessen Platz, sonst läge sein Symbol links von dem
+     des aufklappbaren Geräts darüber (und links vom Symbol der Box, die es enthält). */
+  .vp-auf-t-zeile.is-geraet > .vp-auf-t-name > .vp-auf-t-auf-platz {
+    display: block;
+  }
   .vp-auf-t-kopf {
     display: none;
   }
+  /* Tiefe ohne Einzug: der Name braucht am Telefon jeden Pixel (ein Einzug ließ „Speicher Scheune“ mitten im Wort
+     brechen). Statt dessen laufen am linken Zeilenrand so viele feine Linien wie die Zeile Ebenen tief liegt - sie
+     stehen im vorhandenen Polster und verbinden sich über die Zeilengrenzen zu einer Schiene unter der Box. */
+  .vp-auf-t-zeile.is-e1,
+  .vp-auf-t-zeile.is-e2,
+  .vp-auf-t-zeile.is-e3 {
+    position: relative;
+  }
+  .vp-auf-t-zeile.is-e1::before,
+  .vp-auf-t-zeile.is-e2::before,
+  .vp-auf-t-zeile.is-e3::before {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: -1px;
+    bottom: 0;
+    /* Höchstens zwei Linien: das Polster (8 px) endet vor dem Aufklappknopf, tiefere Ebenen zeigen dieselben zwei. */
+    width: calc(min(var(--ebene, 1), 2) * 4px - 2px);
+    background: repeating-linear-gradient(90deg, var(--vp-auf-schiene) 0 2px, transparent 2px 4px);
+    pointer-events: none;
+  }
+  /* Der Name behält am Telefon mindestens knapp die Hälfte der Zeile: ein langes Zustandswort („Noch keine
+     Rückmeldung", „Wartet auf die ersten Daten") nahm der Namensspalte sonst alles - der Gerätename stand mit
+     ein, zwei Buchstaben da oder gar nicht (Live-Fall „Zuhause", 02.11.2026). Das Wort bricht stattdessen um.
+     B2-Nachtrag (UI/UX-Wartung u1): 46 % reichten nicht - die rechte `auto`-Spalte wächst beim Layout VOR der
+     `1fr`-Namensspalte auf ihren eigenen Bedarf (Wert ODER Zustand, je nachdem, was länger ist), auch wenn der
+     Zustand dieser Zeile kurz ist. Der Name bekommt deshalb klar mehr als die Hälfte als Mindestmaß. */
   .vp-auf-t-zeile {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(60%, 1fr) auto;
     grid-template-areas:
       'name wert'
       'name zustand';
@@ -918,6 +1100,9 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     grid-area: wert;
     align-self: end;
     padding-top: 8px;
+    /* Ein langer Wert („0,6 kW Einspeisung“) bricht um, statt Menü und Pfeil über den Rand zu schieben. */
+    white-space: normal;
+    min-width: 0;
   }
   .vp-auf-t-zeile > .vp-auf-t-zustand {
     grid-area: zustand;
@@ -927,11 +1112,35 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     gap: 6px;
     padding-bottom: 8px;
   }
+  .vp-auf-t-zeile > .vp-auf-t-zustand .w {
+    /* Die Rechner-Klemme auf zwei Zeilen gilt hier nicht: die Spalte ist
+       ohnehin schmal, ein langer Zustandssatz darf so viele Zeilen brauchen
+       wie er will, statt ab der zweiten mit „…" zu enden. */
+    display: block;
+    -webkit-line-clamp: unset;
+    white-space: normal;
+    text-align: right;
+  }
   .vp-auf-t-zeile > .vp-auf-t-zustand small,
   .vp-auf-t-zeile > .vp-auf-t-art,
-  .vp-auf-t-zeile > .vp-auf-t-pfeil,
+  .vp-auf-t-zeile > .vp-auf-t-pfeil:not(:has(.vp-rowmenu)),
   .vp-auf-t-zeile > [role='cell']:empty {
     display: none;
+  }
+  /* Das „…“-Menü (Zuordnung ändern, Komponente löschen, Regel erstellen) bleibt auch am Telefon erreichbar - eine
+     eigene dritte Spalte, statt mit dem sonst ausgeblendeten Pfeil zu verschwinden. Dieselbe 60 %-Mindestbreite
+     wie oben (B2-Nachtrag) - fast jede Gerätezeile trägt ein „…“-Menü, ein kleineres Mindestmaß hier hätte den
+     Namen genau dort am meisten gestaucht (Zählerbaum-Nachtrag: „Netzanschluss" trägt ein solches Menü). */
+  .vp-auf-t-zeile:has(> .vp-auf-t-pfeil .vp-rowmenu) {
+    grid-template-columns: minmax(60%, 1fr) auto auto;
+    grid-template-areas:
+      'name wert mehr'
+      'name zustand mehr';
+  }
+  .vp-auf-t-zeile > .vp-auf-t-pfeil:has(.vp-rowmenu) {
+    grid-area: mehr;
+    justify-self: end;
+    align-self: center;
   }
   .vp-auf-t-zeile.is-ok > .vp-auf-t-zustand .w {
     color: var(--vp-text-gray);
@@ -940,8 +1149,29 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   .vp-auf-t-zeile.is-teil {
     grid-template-areas: 'name wert';
   }
+  /* Der Gruppenkopf ist eine Zeile: Name und Anzahl links, Summe rechts. */
+  .vp-auf-t-zeile.is-gruppe {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'name wert';
+  }
+  .vp-auf-t-zeile.is-gruppe > .vp-auf-t-name {
+    grid-column: auto;
+  }
+  .vp-auf-t-zeile.is-gruppe > .vp-auf-t-wert {
+    grid-column: auto;
+    align-self: center;
+    padding: 0;
+  }
   .vp-auf-t-zeile.is-teil > .vp-auf-t-name {
     padding-left: 30px;
+  }
+  /* GE-1: die Geräte hinter einem Gateway rücken auch am Telefon ein — sonst stünden sie wie seine Geschwister da. */
+  .vp-auf-t-zeile.is-geraet.is-e3 > .vp-auf-t-name {
+    padding-left: 22px;
+  }
+  /* GE-3: die Wechselrichter unter ihrer Steuerung — hinter einem Gateway eine Stufe tiefer als die Steuerung. */
+  .vp-auf-t-zeile.is-einheit > .vp-auf-t-name {
+    padding-left: calc((var(--ebene, 3) - 2) * 22px);
   }
   .vp-auf-t-zeile.is-teil > .vp-auf-t-wert {
     align-self: center;
@@ -949,12 +1179,14 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   }
   .vp-auf-t-zeile.is-anlage,
   .vp-auf-t-zeile.is-box,
-  .vp-auf-t-zeile.is-fund {
+  .vp-auf-t-zeile.is-fund,
+  .vp-auf-t-zeile.is-anschluss {
     grid-template-areas: 'name aktion';
   }
   .vp-auf-t-zeile.is-anlage > .vp-auf-t-summe,
   .vp-auf-t-zeile.is-box > .vp-auf-t-zustand,
-  .vp-auf-t-zeile.is-fund > .vp-auf-t-zustand {
+  .vp-auf-t-zeile.is-fund > .vp-auf-t-zustand,
+  .vp-auf-t-zeile.is-anschluss > .vp-auf-t-zustand {
     display: none;
   }
   .vp-auf-t-zeile > .vp-auf-t-aktion,

@@ -48,6 +48,33 @@ def test_active_model_resolves_from_env():
     assert registry.active_model(ForecastKind.PV, env) == "pv-residual-xgb"
 
 
+def test_pv_physical_legacy_dni_can_never_become_active():
+    """S0 (N1, Captain 11.11.2026): the OLD reading is a permanent comparison
+    reference, never a promotable challenger - absent from the vocabulary by
+    construction, not convention."""
+    assert registry.PV_PHYSICAL_LEGACY_DNI not in registry.KNOWN_MODELS
+    with pytest.raises(ValueError, match="unknown forecast model id"):
+        registry.kind_of(registry.PV_PHYSICAL_LEGACY_DNI)
+    with pytest.raises(ValueError, match="not a known forecast model id"):
+        registry.active_model(
+            ForecastKind.PV,
+            {"VOLTPILOT_ACTIVE_PV_MODEL": registry.PV_PHYSICAL_LEGACY_DNI},
+        )
+    # The active default is still pv-physical - just reading differently now.
+    assert registry.active_models({})[ForecastKind.PV] == "pv-physical"
+
+
+def test_load_profile_is_known_and_selectable():
+    """S5 (E7 = A, Captain 11.11.2026): anders als die legacy-DNI-Lesart ist
+    das Tagestyp-Modell ein ECHTER Kandidat - es MUSS wählbar sein, sonst
+    könnte die Automatik es nie übernehmen."""
+    assert registry.LOAD_PROFILE in registry.KNOWN_MODELS
+    assert registry.kind_of(registry.LOAD_PROFILE) is ForecastKind.LOAD
+    assert registry.active_model(
+        ForecastKind.LOAD, {"VOLTPILOT_ACTIVE_LOAD_MODEL": registry.LOAD_PROFILE}
+    ) == registry.LOAD_PROFILE
+
+
 def test_unknown_or_mismatched_active_model_fails_loudly():
     with pytest.raises(ValueError, match="not a known forecast model id"):
         registry.active_model(ForecastKind.LOAD, {"VOLTPILOT_ACTIVE_LOAD_MODEL": "typo"})

@@ -64,6 +64,36 @@ export interface AnnahmenEingabe {
   } | null;
   /** Der Weg zur Prognose-Seite - nur für VoltPilot; null = kein Link. */
   prognoseSeite?: string | null;
+  /**
+   * Die Vergütungszeile der Sonnen-Erzählung (Konzept
+   * `vp-fahrplan-eigenverbrauch-konzept` §4.5): nur gesetzt, sobald die Anlage
+   * die Sonnen-Erzählung bekommt - sonst keine Zeile (die Börse erklärt die
+   * Einspeisung bei Preis-Erzählung schon über den Reiter „Preise").
+   */
+  verguetung?: {
+    /** Der wirksame Satz (ct/kWh); null = keiner (die Lücke, §5.2). */
+    satzCtKwh: number | null;
+    /** „hergeleitet aus EEG, Inbetriebnahme 01.06.2025" o. ä.; null ohne Angabe. */
+    herkunft: string | null;
+    /** Vergütung nicht hinterlegt - der Satz fehlt, nicht nur seine Herkunft. */
+    luecke: boolean;
+    /** Wohin „ändern ›" führt. */
+    aendernHref: string;
+  } | null;
+  /**
+   * Der § 51a-Satz des Tages (`fahrplanWhy.nullstundenSatz`, §4.4): nur
+   * gesetzt, trägt der jüngste Lauf Viertelstunden ohne Vergütung.
+   */
+  nullstunden?: string | null;
+  /**
+   * Umstellung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §5.3, Scheibe
+   * S5): Stammdaten (Tarif, Vermarktungsart) und der jüngste Lauf
+   * widersprechen sich noch in der Erzählung - eine eben geänderte
+   * Einstellung (Tarif, Netzladen, Vergütung), die der Plan erst beim
+   * nächsten Lauf (höchstens 15 Minuten) nachvollzieht
+   * (`preisRolle.umstellungErkannt`).
+   */
+  umstellung?: boolean;
 }
 
 function zahl(v: number | null | undefined): number | null {
@@ -78,6 +108,17 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   const out: AnnahmeZeile[] = [];
   const zeile = (key: string, icon: IconName, titel: string, text: string, link: AnnahmeZeile['link'] = null) =>
     out.push({ key, icon, titel, text, link });
+
+  // Umstellung (§5.3): steht zuerst - sie erklärt, warum der Rest der Karte
+  // gerade noch die alte Einstellung zeigen könnte.
+  if (e.umstellung) {
+    zeile(
+      'umstellung',
+      'refresh-cw',
+      'Ihre Änderung',
+      'Ihre Änderung gilt ab dem nächsten Plan (spätestens in 15 Minuten).',
+    );
+  }
 
   // Die Lage: wie der Tag verläuft und was für morgen erwartet wird.
   if (e.lage?.bogen) zeile('bogen', 'trending-up', 'Der Tag', e.lage.bogen);
@@ -98,11 +139,34 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   } else if (e.tarifArt === 'fest' && param != null) {
     zeile('tarif', 'euro', 'Fester Strompreis', `${fmtNum(param, 'ct', 1)} je kWh.`);
   }
+  if (e.verguetung) {
+    const v = e.verguetung;
+    zeile(
+      'verguetung',
+      'euro',
+      'Ihre Einspeisevergütung',
+      v.luecke || v.satzCtKwh == null
+        ? 'Vergütung nicht hinterlegt.'
+        : `${fmtNum(v.satzCtKwh, 'ct', 1)} je kWh${v.herkunft ? ` (${v.herkunft})` : ''}.`,
+      { href: v.aendernHref, text: 'ändern' },
+    );
+  }
+  if (e.nullstunden) zeile('nullstunden', 'sun', 'Stunden ohne Vergütung', e.nullstunden);
   if (e.plantKind === 'direktvermarktung') {
     zeile('vermarktung', 'trending-up', 'Direktvermarktung', 'Verkauft wird zum Börsenpreis.');
   }
   if (e.netzladenErlaubt === true) {
-    zeile('netzladen', 'zap', 'Netzladen aktiv', 'Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung).');
+    // §5.3: bei festem Strompreis bewertet der Plan die Einspeisung zum
+    // Börsenpreis und lädt aus dem Netz nur über einer Hürde - bei einem
+    // festen Bezugspreis lohnt das praktisch nie, darum der Hinweis mit dem
+    // echten Satz, wenn er bekannt ist.
+    const hinweisFest =
+      e.tarifArt === 'fest'
+        ? param != null
+          ? ` Bei Ihrem festen Strompreis (${fmtNum(param, 'ct', 1)} je kWh) lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.`
+          : ' Bei einem festen Strompreis lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.'
+        : '';
+    zeile('netzladen', 'zap', 'Netzladen aktiv', `Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung).${hinweisFest}`);
   } else if (e.netzladenErlaubt === false) {
     zeile('netzladen', 'sun', 'Nur Solarladen (EEG)', 'Der Speicher lädt nur aus Sonnenstrom (Ihre Einstellung).');
   }
@@ -122,12 +186,15 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   }
   if (e.fallback14a === true) zeile('14a', 'alert-triangle', '§ 14a', FALLBACK_14A_NOTE);
 
+  // „Neu geplant" und „Prognosen" sagten zweimal „alle 15 Minuten" - eine
+  // Zeile trägt beides (Überblick 20.10.2026).
   if (e.planVon) {
     zeile(
       'neu',
       'refresh-cw',
       'Neu geplant',
-      `Zuletzt um ${uhr(e.planVon)} Uhr; VoltPilot plant alle ${e.slotMinutes} Minuten neu.`,
+      `Zuletzt um ${uhr(e.planVon)} Uhr, alle ${e.slotMinutes} Minuten neu – mit Ihrer Verbrauchs- und PV-Prognose.`,
+      e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
     );
   }
   const v = e.vorhersage;
@@ -140,20 +207,22 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   if (v && teile.length > 0 && v.tage > 0) {
     // Das Fenster ist die Abfrage; bewertet sind darin womöglich weniger Tage -
     // das steht dann dabei, statt ein kürzeres Fenster zu behaupten.
-    const fenster = v.fenster === 1 ? 'letzter Tag' : `letzte ${v.fenster} Tage`;
+    const fenster = v.fenster === 1 ? 'am letzten Tag' : `in den letzten ${v.fenster} Tagen`;
     zeile(
       'vorhersage',
       'trending-up',
-      `Vorhersage, ${fenster}${v.tage < v.fenster ? ` (${v.tage} bewertet)` : ''}`,
-      `Ø Abweichung je Viertelstunde: ${teile.join(' · ')}.`,
+      'Treffsicherheit',
+      `Die Vorhersage lag ${fenster}${v.tage < v.fenster ? ` (${v.tage} bewertet)` : ''} im Mittel so weit daneben: ${teile.join(' · ')} je Viertelstunde.`,
     );
   }
-  zeile(
-    'prognosen',
-    'activity',
-    'Prognosen',
-    FORECAST_FOOTNOTE,
-    e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
-  );
+  if (!e.planVon) {
+    zeile(
+      'prognosen',
+      'activity',
+      'Prognosen',
+      FORECAST_FOOTNOTE,
+      e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
+    );
+  }
   return out;
 }

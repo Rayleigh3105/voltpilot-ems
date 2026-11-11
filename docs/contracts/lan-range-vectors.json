@@ -1,0 +1,79 @@
+{
+  "$comment": "Die GETEILTEN Vektoren der Bereichsregel: die Privat-Ziel-Regel von lan-host-vectors.json, erweitert von EINEM Host-String auf ADRESSBEREICHE (Gerätesuche, docs/contracts/v2/mqtt-geraetesuche.md §4). Zwei Zwillinge lesen diese Datei PER PFAD und müssen je Fall dasselbe Urteil fällen - Go edge-app/core/internal/probe (bereich.go: SuchBereich, PruefeBereich, ZielImBereich; kanonisch, die Box glaubt der Cloud nichts) und Java services/api .../geraetesuche/Suchbereich (die API glaubt der Box auch nicht blind und speichert nur, was in einem gültigen Bereich liegt). Wer die Regel ändert, ändert beide Seiten UND diese Datei zusammen.",
+  "$rationale": "Ein Bereich ist strenger als ein Host: lan-host-vectors.json lässt Loopback, Link-Local, CGNAT, IPv6 und LAN-Namen als EIN Ziel gelten, weil ein Mensch es eingetippt hat. Einen BEREICH durchsucht die Box aber selbst, Adresse für Adresse - also nur, was sicher ihr eigenes Heimnetz ist: RFC1918-IPv4 (10/8, 172.16/12, 192.168/16), höchstens /24, und nur Netze ihrer eigenen Schnittstellen. Ist ein Netz größer als /24, sucht sie nur das /24 um ihre eigene Adresse und sagt es (ausschnitt). Die eigene Adresse ist nie ein Ziel; damit sind auch die eigenen Ports (Modbus-Spiegel 502, Bus 1883/1884, 8484, OCPP 8887) ausgenommen. Ein fremdes Gerät mit Port 8484 (KACO-Stick) bleibt dagegen erlaubt - eine Sperre nach Portnummer wäre falsch.",
+  "suchbereich": {
+    "$regel": "Aus einer eigenen Adresse der Box (mit Präfix aus der Schnittstelle; ohne Präfix = VP_LAN_HOST der Docker-Box) das Suchnetz bilden. ausschnitt null = unbekannt (ohne Präfix kennt die Box die Maske nicht). Fälle mit schnittstelle prüft nur die Box (nur_box): die API sieht keine Schnittstellen.",
+    "faelle": [
+      { "adresse": "192.168.178.20/24", "netz": "192.168.178.0/24", "box_adresse": "192.168.178.20", "ausschnitt": false, "why": "ein /24 bleibt, wie es ist" },
+      { "adresse": "192.168.178.20/16", "netz": "192.168.178.0/24", "box_adresse": "192.168.178.20", "ausschnitt": true, "why": "größer als /24: nur das /24 um die Box, benannt" },
+      { "adresse": "10.0.7.19/8", "netz": "10.0.7.0/24", "box_adresse": "10.0.7.19", "ausschnitt": true, "why": "RFC1918 10/8" },
+      { "adresse": "172.16.5.4/12", "netz": "172.16.5.0/24", "box_adresse": "172.16.5.4", "ausschnitt": true, "why": "RFC1918 172.16/12 untere Kante" },
+      { "adresse": "172.31.255.254/24", "netz": "172.31.255.0/24", "box_adresse": "172.31.255.254", "ausschnitt": false, "why": "RFC1918 172.16/12 obere Kante" },
+      { "adresse": "192.168.2.1/25", "netz": "192.168.2.0/25", "box_adresse": "192.168.2.1", "ausschnitt": false, "why": "kleiner als /24 bleibt klein" },
+      { "adresse": "192.168.178.20", "netz": "192.168.178.0/24", "box_adresse": "192.168.178.20", "ausschnitt": null, "why": "Docker-Box: VP_LAN_HOST ohne Maske - das /24 um die Adresse, Maske unbekannt" },
+      { "adresse": "100.72.0.1/10", "abgelehnt": "nicht_privat", "why": "CGNAT darf ein einzelnes Ziel sein, ein Suchbereich nie" },
+      { "adresse": "169.254.10.10/16", "abgelehnt": "nicht_privat", "why": "Link-Local" },
+      { "adresse": "127.0.0.1/8", "abgelehnt": "nicht_privat", "why": "Loopback" },
+      { "adresse": "8.8.8.8/24", "abgelehnt": "nicht_privat", "why": "öffentlich" },
+      { "adresse": "172.32.0.1/24", "abgelehnt": "nicht_privat", "why": "eine Adresse über 172.16/12" },
+      { "adresse": "fd00::1/64", "abgelehnt": "nicht_privat", "why": "IPv6 wird nie durchsucht" },
+      { "adresse": "192.168.178.20/31", "abgelehnt": "zu_klein", "why": "/31 und /32 haben außer der Box keine Adresse" },
+      { "adresse": "192.168.178.0/24", "abgelehnt": "keine_hostadresse", "why": "die Netzadresse ist keine Adresse der Box" },
+      { "adresse": "192.168.178.255/24", "abgelehnt": "keine_hostadresse", "why": "die Broadcast-Adresse ist keine Adresse der Box" },
+      { "adresse": "wechselrichter", "abgelehnt": "keine_adresse", "why": "ein Name ist kein Bereich" },
+      { "adresse": "192.168.178.020/24", "abgelehnt": "keine_adresse", "why": "führende Null ist mehrdeutig (oktal)" },
+      { "adresse": "", "abgelehnt": "keine_adresse", "why": "leer" },
+      { "adresse": "192.168.2.1/24", "schnittstelle": "br-lan", "netz": "192.168.2.0/24", "box_adresse": "192.168.2.1", "ausschnitt": false, "nur_box": true, "why": "Edge Light: das eigene LAN" },
+      { "adresse": "192.168.178.21/24", "schnittstelle": "eth0.2", "netz": "192.168.178.0/24", "box_adresse": "192.168.178.21", "ausschnitt": false, "nur_box": true, "why": "Edge Light: WAN zum Kundennetz" },
+      { "adresse": "10.8.0.2/24", "schnittstelle": "wg0", "abgelehnt": "tunnel", "nur_box": true, "why": "der Wartungstunnel ist kein Heimnetz" },
+      { "adresse": "10.9.0.2/24", "schnittstelle": "tun0", "abgelehnt": "tunnel", "nur_box": true, "why": "Tunnel" },
+      { "adresse": "127.0.0.1/8", "schnittstelle": "lo", "abgelehnt": "nicht_privat", "nur_box": true, "why": "Loopback bleibt nicht_privat, auch mit Namen" },
+      { "adresse": "172.17.0.2/16", "schnittstelle": "docker0", "abgelehnt": "container", "nur_box": true, "why": "das Bridge-Netz der Container ist der eigene Stapel, nie ein Heimnetz" },
+      { "adresse": "172.18.0.5/16", "schnittstelle": "veth3f2a1b", "abgelehnt": "container", "nur_box": true, "why": "Container-Schnittstelle" },
+      { "adresse": "172.19.0.1/16", "schnittstelle": "br-3f2a1b4c5d6e", "abgelehnt": "container", "nur_box": true, "why": "eine Docker-Brücke heißt br- und zwölf Hex-Zeichen; br-lan (OpenWrt) ist dagegen das LAN von Edge Light" }
+    ]
+  },
+  "bereich": {
+    "$regel": "Ein gemeldetes Paar (netz, box_adresse) prüfen: netz ist die Netzadresse eines RFC1918-IPv4-Netzes mit Präfix 24 bis 30, box_adresse eine Host-Adresse darin.",
+    "faelle": [
+      { "netz": "192.168.178.0/24", "box_adresse": "192.168.178.20", "gueltig": true },
+      { "netz": "192.168.2.0/25", "box_adresse": "192.168.2.1", "gueltig": true },
+      { "netz": "10.0.7.0/24", "box_adresse": "10.0.7.19", "gueltig": true },
+      { "netz": "192.168.0.0/16", "box_adresse": "192.168.0.5", "gueltig": false, "grund": "zu_gross", "why": "höchstens /24" },
+      { "netz": "192.168.178.0/31", "box_adresse": "192.168.178.1", "gueltig": false, "grund": "zu_klein" },
+      { "netz": "8.8.8.0/24", "box_adresse": "8.8.8.20", "gueltig": false, "grund": "nicht_privat" },
+      { "netz": "100.64.0.0/24", "box_adresse": "100.64.0.10", "gueltig": false, "grund": "nicht_privat", "why": "CGNAT" },
+      { "netz": "192.168.178.5/24", "box_adresse": "192.168.178.20", "gueltig": false, "grund": "keine_netzadresse", "why": "Host-Bits gesetzt: das ist kein Netz" },
+      { "netz": "192.168.178.0/24", "box_adresse": "192.168.179.20", "gueltig": false, "grund": "box_ausserhalb" },
+      { "netz": "192.168.178.0/24", "box_adresse": "192.168.178.0", "gueltig": false, "grund": "box_keine_hostadresse" },
+      { "netz": "192.168.178.0/24", "box_adresse": "192.168.178.255", "gueltig": false, "grund": "box_keine_hostadresse" },
+      { "netz": "192.168.178.0", "box_adresse": "192.168.178.20", "gueltig": false, "grund": "keine_adresse", "why": "ohne Präfix kein Netz" },
+      { "netz": "fd00::/64", "box_adresse": "fd00::1", "gueltig": false, "grund": "keine_adresse", "why": "IPv6 ist keine Bereichsform" }
+    ]
+  },
+  "ziel": {
+    "$regel": "Darf eine Adresse in einer Suche angesprochen werden bzw. als Fund gelten? Nur eine IPv4-Host-Adresse in einem der Bereiche, nie die Box selbst, nie Netz- oder Broadcast-Adresse. Der Port ändert daran nichts.",
+    "bereiche": [
+      { "netz": "192.168.178.0/24", "box_adresse": "192.168.178.20" },
+      { "netz": "192.168.2.0/25", "box_adresse": "192.168.2.1" }
+    ],
+    "faelle": [
+      { "ip": "192.168.178.34", "port": 8899, "erlaubt": true },
+      { "ip": "192.168.2.100", "port": 80, "erlaubt": true },
+      { "ip": "192.168.178.40", "port": 8484, "erlaubt": true, "why": "KACO-Stick: dieselbe Portnummer wie die Box, aber ein fremdes Gerät" },
+      { "ip": "192.168.178.20", "port": 502, "erlaubt": false, "grund": "box_selbst", "why": "der Modbus-Spiegel der Box" },
+      { "ip": "192.168.178.20", "port": 80, "erlaubt": false, "grund": "box_selbst", "why": "die eigene Adresse ist mit jedem Port ausgenommen" },
+      { "ip": "192.168.2.1", "port": 8887, "erlaubt": false, "grund": "box_selbst" },
+      { "ip": "192.168.2.200", "port": 80, "erlaubt": false, "grund": "ausserhalb", "why": "über dem /25" },
+      { "ip": "192.168.178.0", "port": 80, "erlaubt": false, "grund": "netzadresse" },
+      { "ip": "192.168.178.255", "port": 80, "erlaubt": false, "grund": "broadcast" },
+      { "ip": "192.168.2.127", "port": 80, "erlaubt": false, "grund": "broadcast", "why": "Broadcast des /25" },
+      { "ip": "10.0.0.5", "port": 502, "erlaubt": false, "grund": "ausserhalb" },
+      { "ip": "8.8.8.8", "port": 53, "erlaubt": false, "grund": "ausserhalb" },
+      { "ip": "192.168.178.034", "port": 80, "erlaubt": false, "grund": "keine_adresse", "why": "führende Null ist mehrdeutig (oktal)" },
+      { "ip": "wr1.local", "port": 80, "erlaubt": false, "grund": "keine_adresse", "why": "ein Bereich nennt Adressen; ein Name wird hier nie aufgelöst" },
+      { "ip": "::ffff:192.168.178.34", "port": 80, "erlaubt": false, "grund": "keine_adresse", "why": "IPv4 in IPv6-Form" },
+      { "ip": "", "port": 80, "erlaubt": false, "grund": "keine_adresse" }
+    ]
+  }
+}

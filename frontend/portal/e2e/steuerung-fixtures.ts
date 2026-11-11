@@ -8,11 +8,12 @@
  * `e2e/steuerung.tsx` importiert; nie im Produktionsbündel.
  */
 import { api } from '../src/api';
+import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { buildGuidedFlow } from '../src/flows/guidedBuilder';
 import { installHelpFixtures, site } from './help-fixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
-import { rechteSeed } from '../src/test/rollenFixtures';
+import { rechteSeed, sichtbareListe, SPRUNG_FALL } from '../src/test/rollenFixtures';
 import D from './steuerung-daten.json';
 
 /** Die Uhr der Aufnahmen: 13:10 Uhr in Berlin. */
@@ -45,7 +46,7 @@ interface Def {
 const Q_LAST = ['ueberschuss', 'guenstig', 'feste_zeiten', 'sofort'];
 const DEFS: Def[] = [
   { id: 'wb', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Wallbox Werkstatt', nenn: 11, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, quellen: ['ueberschuss', 'ueberschuss_speicher', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
-  { id: 'lp', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Ladepunkt Carport', nenn: 11, gemessen: true, steuerart: { quelle: 'guenstig', herkunft: 'saeule', preisgrenzeCtKwh: 9, ziel: 'bis_uhrzeit', zielEnergieKwh: 30, zielFenster: { tage: 'daily', von: '', bis: '07:00' } }, quellen: ['ueberschuss', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
+  { id: 'lp', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Ladepunkt Carport', nenn: 11, gemessen: true, steuerart: { quelle: 'guenstig', herkunft: 'saeule', preisgrenzeCtKwh: 28, ziel: 'bis_uhrzeit', zielEnergieKwh: 30, zielFenster: { tage: 'daily', von: '', bis: '07:00' } }, quellen: ['ueberschuss', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
   { id: 'hs', typ: 'heating-rod', typLabel: 'Heizstab', name: 'Heizstab Warmwasser', nenn: 3, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'policy', schwelleKw: 1 }, quellen: Q_LAST, ziele: ['laufzeit_bis'], levels: [1, 2, 3], hilft: false },
   { id: 'wp', typ: 'heat-pump-sgready', typLabel: 'Wärmepumpe (SG-Ready)', name: 'Wärmepumpe', nenn: 1.5, gemessen: false, steuerart: { quelle: 'freigabe_ueberschuss', herkunft: 'policy', schwelleKw: 2 }, quellen: ['freigabe_ueberschuss', 'freigabe_guenstig', 'sofort'], ziele: [] },
   { id: 'pool', typ: 'pump', typLabel: 'Pumpe', name: 'Poolpumpe', nenn: 0.75, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'policy', schwelleKw: 0.75, ziel: 'laufzeit_bis', zielLaufzeitMinuten: 360, zielFenster: { tage: 'daily', von: '', bis: '20:00' } }, quellen: Q_LAST, ziele: ['laufzeit_bis'], hilft: true },
@@ -64,15 +65,52 @@ const GESTEUERT = DEFS.filter((d) => d.id in KW) as (Def & { id: Id })[];
 
 const summe = (t: number) => GESTEUERT.reduce((s, d) => s + (KW[d.id][t] ?? 0), 0);
 const gesamtLast = (t: number) => (D.last[t] ?? 0) + summe(t);
+/** Die Last des Fahrplans: ohne die Ladepunkte - die plant er selbst (Ko-Optimierer, `base_load_kw`). */
+const planLast = (t: number) => gesamtLast(t) - LADE.reduce((s, id) => s + (KW[id][t] ?? 0), 0);
+/** Bezugspreis des Beispiels: Börse + Netzentgelte/Abgaben, mit MwSt. (Konzept k1, Abschnitt 2). */
+const bezugspreis = (spotCt: number) => Math.round((spotCt + 17) * 1.19 * 100) / 100;
+
+/**
+ * `?erstnutzer=1`: beide Ladepunkte stehen auf dem Anlagen-Standard `sofort` - der erste Besuch
+ * (Konzept k1, E5=A). `?speicher=beobachtet` siehe unten.
+ */
+const ERSTNUTZER = new URLSearchParams(location.search).get('erstnutzer') === '1';
+if (ERSTNUTZER) {
+  for (const d of DEFS) if (d.id === 'wb' || d.id === 'lp') d.steuerart = { quelle: 'sofort', herkunft: 'standard' };
+}
+
+/** Die Bahn, die die Box für eine Steuerart fährt (`SteuerartProjektion.bahnAus`, seit #1569 Günstig = nur_sonne). */
+function bahn(st: Record<string, unknown>): { source: string; minKw: number | null; storageRelease: boolean } {
+  if (st.quelle === 'ueberschuss') {
+    if (st.ueberschussModus === 'mindestleistung') return { source: 'sonne_zuerst', minKw: (st.mindestleistungKw as number) ?? null, storageRelease: false };
+    return { source: 'nur_sonne', minKw: null, storageRelease: st.ueberschussModus === 'speicher' };
+  }
+  return { source: st.quelle === 'guenstig' ? 'nur_sonne' : 'schnell', minKw: null, storageRelease: false };
+}
+
+/**
+ * `?box=light`: eine Edge Light, die `verbraucherregeln` noch nicht meldet - der Server sperrt dort nur
+ * „Solar-Überschuss“, wo er eine reaktive Regel wäre (`SteuerartSatz.GRUND_BOX_OHNE_REGELN`, wörtlich):
+ * Schaltlast, Pumpe, SG-Ready. Ladepunkt (Bahn der Box) und Heizstab mit Stufen (Regler der Box) fahren
+ * ihn im Core; Zeit, Preis und „Fertig bis“ laufen über den Fahrplan und bleiben frei.
+ */
+const EDGE_LIGHT = new URLSearchParams(location.search).get('box') === 'light';
+const GRUND_BOX_OHNE_REGELN = 'Ihre VoltPilot-Box führt Regeln nach dem Solar-Überschuss erst nach einem Update aus.';
 
 function optionen(d: Def) {
-  const v: Record<string, unknown> = { schwelleKw: d.nenn, preisgrenzeCtKwh: 10, mindestlaufzeitMinuten: 10 };
+  // Die Vorgabe der Preisgrenze ist das billigste Viertel des BEZUGSPREISES (`SteuerartPreisVorgabe`).
+  const v: Record<string, unknown> = { schwelleKw: d.nenn, preisgrenzeCtKwh: 30, mindestlaufzeitMinuten: 10 };
   if (d.typ === 'heat-pump-sgready') Object.assign(v, { mindestlaufzeitMinuten: 30, sperrzeitMinuten: 20 });
+  const ueberschussImCore = d.typ === 'ev-charger' || (d.typ === 'heating-rod' && d.levels !== undefined);
+  const light = EDGE_LIGHT && !ueberschussImCore;
+  const sperre = (id: string) => (light && (id === 'ueberschuss' || id === 'freigabe_ueberschuss')
+    ? { id, gesperrt: true, grund: GRUND_BOX_OHNE_REGELN }
+    : { id, gesperrt: false });
   return {
     schreibbar: d.schreibbar !== false,
     nichtSchreibbarGrund: d.grund ?? null,
-    quellen: d.quellen.map((id) => ({ id, gesperrt: false })),
-    ziele: d.ziele.map((id) => ({ id, gesperrt: false })),
+    quellen: d.quellen.map(sperre),
+    ziele: d.ziele.map(sperre),
     vorgaben: v,
   };
 }
@@ -94,6 +132,95 @@ const STATUS: Record<string, [string, string | null]> = {
   ziel: ['fulfilled', null],
 };
 
+/**
+ * `?wallbox=werk|abweichend|offline|voll|einspeisung`: die Haushalts-Fälle des Audits
+ * `vp-ocpp-haushalt` an der Wallbox Werkstatt - was die Box in diesem Zustand meldet.
+ *
+ * - `werk` (W-01): Box mit Werkseinstellung, die Steuerung ist nicht freigegeben; das Auto zieht 11 kW.
+ * - `abweichend` (W-05): die Säule hält die Grenze nicht (Rücklesung `abweichend`), lädt 11 kW bei „Nur Sonne".
+ * - `offline` (W-12): die Wallbox seit 2 h getrennt, ihr letzter Stand „Charging 7,4 kW".
+ * - `voll` (W-21): das Auto ist voll (SuspendedEV, 0 kW).
+ * - `einspeisung` (W-14): sonniger Mittag, der Rest der Box (`Netz − Laden`) ist negativ.
+ * - `smart-ohne-sonne` / `smart-ohne-sonne-neu`: „Nur Sonne“ ohne Sonne, Box im Feld bzw. nach dem Fix (siehe unten).
+ * - `ohne-ladevorgang` / `ohne-ladevorgang-neu`: dieselbe Lage, aber die Box kennt KEINEN Ladevorgang
+ *   (`charging: false`, keine Sitzung) - Box im Feld bzw. mit dem Grund `kein_ladevorgang` (siehe unten).
+ */
+const WALLBOX_FALL = new URLSearchParams(location.search).get('wallbox');
+
+function wallboxFall(
+  charging: { budget: Record<string, unknown>; chargers: Record<string, unknown>[] },
+  rahmen: Record<string, unknown>,
+) {
+  const wb = charging.chargers.find((c) => c.chargePointId === 'CP-WERKSTATT')!;
+  const con = (wb.connectors as Record<string, unknown>[])[0];
+  const vor = (min: number) => new Date(Date.parse(JETZT) - min * 60_000).toISOString();
+  const laedt = (kw: number) => {
+    Object.assign(charging.budget, { measuredKw: kw, allocatedKw: kw });
+    Object.assign(rahmen, { verteiltKw: kw });
+    Object.assign(con, { status: 'Charging', charging: true, powerKw: kw, allocatedKw: kw, reason: 'laedt', reasonText: 'lädt' });
+  };
+  switch (WALLBOX_FALL) {
+    case 'werk':
+      Object.assign(charging.budget, { controlEnabled: false,
+        controlNote: 'Die Verbrauchersteuerung ist an dieser Box noch nicht freigegeben. Die Ladesäulen halten ihr hinterlegtes Sicherheitsprofil.' });
+      laedt(11);
+      Object.assign(con, { allocatedKw: null, readback: null, commandStatus: null });
+      break;
+    case 'abweichend':
+      laedt(11);
+      Object.assign(con, { allocatedKw: 0, readback: 'abweichend', readbackNote: 'Die Säule hält 0 kW nicht ein.',
+        reason: 'kein_ueberschuss', reasonText: 'wartet auf Sonnenstrom' });
+      break;
+    case 'offline':
+      laedt(7.4);
+      Object.assign(wb, { connected: false, lastSeen: vor(120) });
+      Object.assign(con, { meteredAt: vor(120) });
+      break;
+    case 'voll':
+      // Die Box hält `charging` für SuspendedEV mit Sitzung WAHR (`csms.ChargingStatus`): die Ladung läuft, das Auto nimmt nichts.
+      Object.assign(con, { status: 'SuspendedEV', charging: true, powerKw: 0, allocatedKw: 11, sessionKwh: 18.2,
+        sessionSince: vor(240), reason: null, reasonText: null });
+      break;
+    // Befund `voltpilot-lademodus-schnellzugriff` (06.11.2026): „Smart · Nur Sonne“ an der Säule, die Anlage ohne
+    // eigene Vorgabe (das Portal schreibt seit P5 keine), keine Sonne. Die Box im Feld hält das Auto mit
+    // `kein_ueberschuss` auf 0 kW und meldet `surplusActive=false` - nur das Echo der Säule nennt die Bahn.
+    // `-neu`: dieselbe Lage mit einer Box nach dem Fix, die die Bahn der Säule meldet.
+    case 'smart-ohne-sonne':
+    case 'smart-ohne-sonne-neu': {
+      const neu = WALLBOX_FALL === 'smart-ohne-sonne-neu';
+      Object.assign(charging.budget, { surplusPolicy: 'schnell', surplusActive: neu, surplusKw: neu ? 0 : undefined,
+        measuredKw: 0, allocatedKw: 0 });
+      Object.assign(rahmen, { verteiltKw: 0 });
+      Object.assign(con, { status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 0, sessionKwh: 4.0,
+        reason: 'kein_ueberschuss', reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)' });
+      break;
+    }
+    // Pilotanlage 07.11.2026: die Wallbox verband sich neu, als die Ladung begann; die Box lehnte den Start im
+    // Einrichtungsfenster ab, die Wallbox gab ihn auf. Seitdem: SuspendedEVSE, `charging: false`, keine Sitzung -
+    // Server und Box lehnen „Schnell“, „Aus“ und „bis Abstecken“ ab. Dieselbe Lage wie `smart-ohne-sonne`, nur
+    // ohne Ladevorgang. `-neu`: eine Box, die den Grund `kein_ladevorgang` mit Satz meldet.
+    case 'ohne-ladevorgang':
+    case 'ohne-ladevorgang-neu': {
+      const neu = WALLBOX_FALL === 'ohne-ladevorgang-neu';
+      Object.assign(charging.budget, { surplusPolicy: 'schnell', surplusActive: neu, surplusKw: neu ? 0 : undefined,
+        measuredKw: 0, allocatedKw: 0 });
+      Object.assign(rahmen, { verteiltKw: 0 });
+      Object.assign(con, { status: 'SuspendedEVSE', charging: false, powerKw: null, allocatedKw: null, sessionKwh: null,
+        sessionSince: null, tagRef: null, meteredAt: null,
+        reason: neu ? 'kein_ladevorgang' : null,
+        reasonText: neu ? 'Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.' : null });
+      break;
+    }
+    case 'einspeisung':
+      laedt(2.5);
+      Object.assign(charging.budget, { siteLoadKw: -4, siteGridKw: -1.5 });
+      Object.assign(rahmen, { hausLastKw: -4 });
+      break;
+    default:
+      break;
+  }
+}
+
 export function installSteuerungFixtures() {
   installHelpFixtures();
   const result = (value: unknown) => async () => structuredClone(value);
@@ -112,10 +239,10 @@ export function installSteuerungFixtures() {
   const slots = Array.from({ length: 192 - J }, (_, k) => {
     const i = J + k;
     return {
-      start: ts(i), pvKw: pv[i], loadKw: gesamtLast(i), gridKw: netz[i], batteryKw: sp[i], socPct: soc[i],
+      start: ts(i), pvKw: pv[i], loadKw: planLast(i), gridKw: netz[i], batteryKw: sp[i], socPct: soc[i],
       priceEurMwh: preis[i] * 10, curtailKw: D.abgeregelt[i] ?? 0, costEur: 0, baselineCostEur: 0,
       slotRole: null, slotFlags: null, storedValueCtKwh: null, gridValueCtKwh: null, peakPressureEurKw: null,
-      importPriceCtKwh: null, exportValueCtKwh: null, importPriceSource: null,
+      importPriceCtKwh: bezugspreis(preis[i]), exportValueCtKwh: 7.9, importPriceSource: 'sammelaufschlag',
       // „Sonne + Speicher“: die Untergrenze je Viertelstunde - keine, wo der
       // Plan Netzstrom bezieht (dort handelt er); abends steigt sie für die Nacht.
       evReleaseFloorSocPct: netz[i] > 0.05 ? null : untergrenze(i),
@@ -148,6 +275,8 @@ export function installSteuerungFixtures() {
   const rahmen = { netzanschlussKw: 22, gepflegteGrenzeKw: 22, effektivGrenzeKw: 22, hausLastKw: 0.6, hoechsteHausLastKw: 5.2,
     verteiltKw: KW.wb[J], budgetKw: 17.2, sicherheitsabstandPct: 10, mindestleistungKw: 1.4, modus: 'measured', blind: false, steckerAnzahl: 2, gemeldetAm: JETZT };
 
+  // `?regeln=ohne`: kein Gerät, das eine Regel schalten kann, keine Regel, keine Szene - der Reiter „Regeln“ fällt weg.
+  const OHNE_REGELN = new URLSearchParams(location.search).get('regeln') === 'ohne';
   const consumers = GESTEUERT.filter((d) => !LADE.includes(d.id)).concat(DEFS.filter((d) => ['spuel', 'lueft', 'sauna'].includes(d.id)) as never[])
     .map((d) => ({
       id: eid(d.id), type: d.typ, typeLabel: d.typLabel, name: d.name,
@@ -155,7 +284,7 @@ export function installSteuerungFixtures() {
       resolutionKw: null, powerRangesKw: null, storageRelation: 'storage_first', defaultGridEnergyPolicy: 'avoid',
       allowStorageDischarge: d.hilft ?? false, failsafe: 'off', enabled: true, version: 1,
       connection: d.id === 'sauna' ? 'disconnected' : 'connected', edgeSourceId: `src-${d.id}`,
-      controlActivation: ['spuel', 'lueft', 'sauna'].includes(d.id) ? 'not_activated' : 'active', hasDraftPolicy: false, draftPolicyVersion: null,
+      controlActivation: OHNE_REGELN || ['spuel', 'lueft', 'sauna'].includes(d.id) ? 'not_activated' : 'active', hasDraftPolicy: false, draftPolicyVersion: null,
       confirmationChannel: d.gemessen ? 'power_kw' : 'relay_state',
       ioEntityId: d.id === 'hs' || d.id === 'wp' ? 'e-io' : null, ioChannel: d.id === 'hs' ? 1 : d.id === 'wp' ? 4 : null,
     }));
@@ -168,7 +297,9 @@ export function installSteuerungFixtures() {
   });
   const connector = (id: Id, angesteckt: boolean) => ({
     connectorId: 1, status: angesteckt ? (KW[id][J] > 0 ? 'Charging' : 'SuspendedEVSE') : 'Available',
-    charging: KW[id][J] > 0, allocatedKw: KW[id][J], powerKw: angesteckt ? KW[id][J] : 0, energyKwh: 812,
+    // `charging` ist die SITZUNG, nicht der Stromfluss: die Box meldet es für jeden angesteckten Stecker mit
+    // Ladevorgang wahr, auch bei 0 kW (`csms.ChargingStatus`) - dieselbe Regel, nach der der Server Eingriffe annimmt.
+    charging: angesteckt, allocatedKw: KW[id][J], powerKw: angesteckt ? KW[id][J] : 0, energyKwh: 812,
     sessionKwh: angesteckt ? 4.6 : null, meteredAt: JETZT, sessionSince: angesteckt ? ts(32) : null,
     readback: 'confirmed', commandStatus: 'accepted', tagRef: angesteckt ? 'tagref_07cd1234' : null,
     reason: angesteckt ? 'ueberschuss' : null, reasonText: angesteckt ? 'Sonnenstrom' : 'Kein Fahrzeug angeschlossen.',
@@ -176,14 +307,21 @@ export function installSteuerungFixtures() {
   const charging = { budget: { deviceId: 'help-box', enabled: true, controlEnabled: true, connectorCount: 2, gridLimitKw: 22,
     effLimitKw: 22, marginPct: 10, minPowerKw: 1.4, budgetKw: 17.2, allocatedKw: KW.wb[J], measuredKw: KW.wb[J], reservedKw: 0,
     siteLoadKw: 0.6, siteGridKw: netz[J], budgetMode: 'metered', surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', reportedAt: JETZT,
+    // Die Werkstatt-Säule lädt gerade mit Sonnenstrom (`connector('wb', true)`, reason „ueberschuss“) -
+    // die Quellen-Bahn meldet das also auch als aktiv.
+    surplusActive: true, surplusKw: KW.wb[J],
     // `?speicher=beobachtet`: dieselbe Freigabe aus einem Speicher, den VoltPilot nicht steuert (07.10.2026).
     storageRelease: { active: true, kw: 2.4, floorSocPct: 15, socPct: soc[J],
       mode: new URLSearchParams(location.search).get('speicher') === 'beobachtet' ? 'frei_beobachtet' : 'frei',
       note: 'Der Speicher gibt bis 2,4 kW für das Auto frei und darf bis 15 % entladen.' } },
   chargers: [
-    { deviceId: 'help-box', chargePointId: 'CP-WERKSTATT', entityId: eid('wb'), label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true, vendor: 'go-e', model: 'Charger', lastSeen: JETZT, reportedAt: JETZT, connectors: [connector('wb', true)] },
-    { deviceId: 'help-box', chargePointId: 'CP-CARPORT', entityId: eid('lp'), label: 'Ladepunkt Carport', priority: false, connected: true, ready: true, vendor: 'KEBA', model: 'P30', lastSeen: JETZT, reportedAt: JETZT, connectors: [connector('lp', false)] },
+    // Das Echo der Bahn (Konzept k1 Regel 4): die Box fährt, was gewählt ist.
+    { deviceId: 'help-box', chargePointId: 'CP-WERKSTATT', entityId: eid('wb'), label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true, vendor: 'go-e', model: 'Charger', lastSeen: JETZT, reportedAt: JETZT,
+      quelle: bahn(DEFS[0].steuerart), quelleUebernommen: true as boolean | null, connectors: [connector('wb', true)] },
+    { deviceId: 'help-box', chargePointId: 'CP-CARPORT', entityId: eid('lp'), label: 'Ladepunkt Carport', priority: false, connected: true, ready: true, vendor: 'KEBA', model: 'P30', lastSeen: JETZT, reportedAt: JETZT,
+      quelle: bahn(DEFS[1].steuerart), quelleUebernommen: true as boolean | null, connectors: [connector('lp', false)] },
   ] };
+  wallboxFall(charging, rahmen);
   const consumerPlan = { planId: 'st-plan', generatedAt: JETZT, slotMinutes: 15,
     entities: GESTEUERT.map((d) => ({ entityId: eid(d.id), name: d.name,
       slots: Array.from({ length: 192 - J - 1 }, (_, k) => ({ time: ts(J + 1 + k), command: 'setpoint_kw', targetValue: KW[d.id][J + 1 + k] ?? 0, reasonCode: null, requirementId: null })) })) };
@@ -198,7 +336,7 @@ export function installSteuerungFixtures() {
   const entities = [
     komponente('help-battery', 'battery-hybrid', 'Speicher Scheune', ['soc_pct', 'battery_power_kw'], ['set_power']),
     komponente('help-grid', 'grid-meter', 'Netzanschluss', ['power_kw'], []),
-    ...DEFS.map((d) => komponente(eid(d.id), d.typ, d.name, d.gemessen ? ['power_kw'] : [], d.schreibbar === false ? [] : LADE.includes(d.id as Id) ? ['limit_kw'] : ['on_off', ...(d.levels ? ['setpoint_kw'] : [])])),
+    ...DEFS.map((d) => komponente(eid(d.id), d.typ, d.name, d.gemessen ? ['power_kw'] : [], d.schreibbar === false || OHNE_REGELN ? [] : LADE.includes(d.id as Id) ? ['limit_kw'] : ['on_off', ...(d.levels ? ['setpoint_kw'] : [])])),
     komponente('e-io', 'io-module', 'I/O-Modul Technikraum', [], []),
   ];
 
@@ -207,7 +345,7 @@ export function installSteuerungFixtures() {
     action: { kind: 'setpoint', entityId: eid('hs'), value: 3, ttlS: 300 } }, 'Negativpreise mitnehmen', SITE);
   const regelAus = buildGuidedFlow({ conditions: [{ kind: 'entity', entityId: 'help-battery', channel: 'soc_pct', direction: 'above', threshold: 90, hysteresis: 2 }], combinator: 'and',
     action: { kind: 'onoff', entityId: eid('klima'), ttlS: 300 } }, 'Speicher voll? Weiter', SITE);
-  const flows = [
+  const flows = OHNE_REGELN ? [] : [
     { flowId: 'f-neg', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 2, latestLifecycle: 'active', activeVersion: 2, updatedAt: JETZT, simulation: null, latestDocument: regelDoc, versions: [1, 2] },
     { flowId: 'f-voll', name: 'Speicher voll? Weiter', runtime: 'edge', latestVersion: 1, latestLifecycle: 'draft', activeVersion: null, updatedAt: JETZT, simulation: null, latestDocument: regelAus, versions: [1] },
   ];
@@ -224,7 +362,7 @@ export function installSteuerungFixtures() {
     history: result(verlauf),
     telemetry: result([{ ts: JETZT, powerKw: netz[J], socPct: soc[J], pvPowerKw: pv[J], loadKw: gesamtLast(J), gridLimitKw: 22 }]),
     prices: result({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: preis.map((p, i) => ({ ts: ts(i), end: ts(i + 1), priceEurMwh: p * 10 })) }),
-    weather: result({ runAt: JETZT, points: (D.temp as number[]).map((t, i) => ({ ts: ts(i), temperatureC: t, cloudCoverPct: 10, ghiWM2: 0, dniWM2: 0, dhiWM2: 0 })) }),
+    weather: result({ runAt: JETZT, points: (D.temp as number[]).map((t, i) => ({ ts: ts(i), temperatureC: t, cloudCoverPct: 10, ghiWM2: 0, dniWM2: 0, dhiWM2: 0, dniNormalWM2: 0 })) }),
     siteVerbraucher: result({ verbraucher, ladepunkte: { standard: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'pausieren' }, standardFolger: 0, gesamt: 2, rahmen }, rangliste }),
     saveRangliste: async (_s: string, eintraege: { art: string; entityId?: string }[]) => ({
       verbraucher, ladepunkte: { standard: null, standardFolger: 0, gesamt: 2, rahmen },
@@ -264,6 +402,19 @@ export function installSteuerungFixtures() {
       // Wie der Server: die Steuerart gilt danach (die Seite liest die Liste neu).
       const e = verbraucher.find((v) => v.entityId === entityId);
       if (e) e.steuerart = { ...w, herkunft: e.ladepunkt ? 'saeule' : 'policy' } as typeof e.steuerart;
+      // Die Box: der nächste Herzschlag (eine Sekunde später) meldet noch die alte Bahn, der danach
+      // die neue - mit neuer Meldezeit und frischer Messung des Steckers (gesendet › übernommen › gemessen).
+      const cp = charging.chargers.find((c) => c.entityId === entityId);
+      if (cp) {
+        cp.quelleUebernommen = false;
+        cp.reportedAt = '2026-09-29T11:10:05.000Z';
+        window.setTimeout(() => {
+          cp.quelle = bahn(w);
+          cp.quelleUebernommen = true;
+          cp.reportedAt = '2026-09-29T11:10:20.000Z';
+          for (const con of cp.connectors) con.meteredAt = '2026-09-29T11:10:30.000Z';
+        }, 1000);
+      }
       return { steuerart: { ...w, herkunft: 'policy' }, aktiv: true, entityId };
     },
     setSuggestionState: async (_s: string, key: string, state: string) => ({ key, state, mutedUntil: state === 'nur_messen' ? null : '2099-01-01T00:00:00Z', updatedAt: JETZT }),
@@ -288,6 +439,36 @@ export function installSteuerungFixtures() {
     pauseAutomation: async () => ({ applied: true, pushed: true, kind: 'pause', endsAt: null, effectivePowerKw: null, ttlRenewed: false, message: 'ok' }),
     startBatteryOverride: async () => ({ applied: true, pushed: true, kind: 'speicher_laden', endsAt: null, effectivePowerKw: 5, ttlRenewed: false, message: 'ok' }),
   });
+  // `?heizstab=shelly`: der Heizstab hängt an einem Shelly Pro 3 (drei Ausgänge als EIN Gerät) statt an einem
+  // Ausgang des I/O-Moduls - sein Blatt zeigt dann dieselbe Steuerung wie seine Geräteseite (Smart zuerst, ein
+  // Schalter je Phase, Einstellungen zum Aufklappen). Die Box meldet `heizstab_phasen`.
+  if (new URLSearchParams(location.search).get('heizstab') === 'shelly') {
+    const hs = consumers.find((c) => c.id === 'e-hs');
+    if (hs) Object.assign(hs, { ioEntityId: null, ioChannel: null, controlKind: 'stepped', ratedPowerKw: 4.5, levelsKw: [0, 1.5, 3, 4.5] });
+    const st = status.find((x) => x.entityId === 'e-hs');
+    if (st) {
+      Object.assign(st, {
+        stufe: { commanded: 2, commanded_kw: 3, confirmed: 2, confirmed_kw: 3, outputs_on: [0, 1], mismatch_since: null, at: JETZT },
+        heizstab: { stufe: 2, code: 'ueberschuss', grund: 'Heizt mit Überschuss.' },
+      });
+    }
+    const basis = api.siteComponents.bind(api);
+    Object.assign(api, {
+      siteComponents: async (siteId: string) => {
+        const b = await basis(siteId);
+        return { ...b, components: [...b.components, {
+          id: 'e-hs', role: 'consumer', entityType: 'heating-rod', label: 'Heizstab Warmwasser', brand: 'shelly',
+          model: 'shelly_http', family: 'shelly_http', communication: 'shelly_http', sourceKind: 'builtin',
+          templateRef: 'builtin:shelly:shelly_http', templateVersion: 1, definitionVersion: 1, edgeSourceId: 'src-hs',
+          syncStatus: 'in_sync',
+          connection: { ip: '192.168.178.43', port: 80, channels: [0, 1, 2], output_kw: [1.5, 1.5, 1.5], stages: [1, 2, 3], rotation: 'daily', anschluss: 'stern_mit_n' },
+        }] };
+      },
+      edgeVersions: result(sichtbareListe([{ deviceId: 'help-box', siteId: SITE, coreVersion: 'edge-2026.11.05', paletteVersion: null,
+        reportedAt: JETZT, capabilities: ['data_sources', 'heizstab_regler', 'heizstab_phasen'] }])),
+    });
+  }
+
   Object.assign(consumersApi, {
     list: result(consumers),
     status: result(status),
@@ -317,11 +498,27 @@ export function installSteuerungFixtures() {
     });
   }
 
+  // Mandantensprung (Auftrag vom 29.10.2026): `?sprung=1` zeigt dieselbe Anlage der Plattform-Administration, die ohne
+  // Unterstützung in den Kundenbereich gesprungen ist - Plattform-Token, gemerkter Mandant und `/me` aus dem
+  // Vertragsfall `sprung-*` (Kundenadministrator, unternehmensweit, Zugang „umschalter“), wie die API ihn liefert.
+  const sprung = new URLSearchParams(location.search).get('sprung') === '1';
+  const MANDANT = { id: 'help-tenant', name: 'Beispielbetrieb', segment: 'B2C', plan: 'mvp', betriebsart: null,
+    betriebsartEffective: null, createdAt: '2026-03-12T08:00:00Z' };
+  if (sprung) {
+    Object.assign(keycloak, { tokenParsed: { name: 'Lena Voss', email: 'support-voss@voltpilot.local',
+      realm_access: { roles: ['platform-admin'] } } });
+    sessionStorage.setItem('vp-tenant-override', MANDANT.id);
+    Object.assign(api, {
+      selbstauskunft: result({ ...rechteSeed('LV', SPRUNG_FALL).me, kundenbereich: { id: MANDANT.id, name: MANDANT.name, beendet: null } }),
+    });
+  }
+
   // Die Regeln (`/flows`) laufen über fetch - dieselbe Abkürzung wie in den Hilfe-Beispieldaten.
   const vorher = window.fetch;
   window.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
     const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (sprung && url.pathname === '/api/v1/admin/tenants') return json([MANDANT]);
     if (url.pathname.endsWith(`/sites/${SITE}/flows`) && (!init?.method || init.method === 'GET')) return json(flows);
     if (/\/flows\/[^/]+\/versions\/\d+\/activate$/.test(url.pathname)) return json({ activated: true, message: 'aktiv', published: true, lifecycle: 'active' });
     if (url.pathname.endsWith(`/sites/${SITE}/flows`) && init?.method === 'POST') {

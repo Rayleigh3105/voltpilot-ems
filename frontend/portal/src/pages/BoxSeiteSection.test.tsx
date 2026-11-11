@@ -4,9 +4,6 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { BoxSeiteSection } from './BoxSeiteSection';
 import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
 import * as auth from '../auth';
-import { adminApi } from '../admin/adminApi';
-import { ApiError } from '../api';
-import { fleetApi } from '../admin/fleetApi';
 import {
   api,
   type CommandHistory,
@@ -16,7 +13,13 @@ import {
   type SiteEntities,
   type SiteSource,
   type SiteTopology,
+  type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
+import { consumersApi } from '../consumers/consumersApi';
+import { gatewayForm, goreForm } from '../test/boxGeraeteFixtures';
+import { gsAktivitaet, gsVerlauf } from '../test/geraetesucheFixtures';
+import { aufbauHash } from '../nav';
 
 const site: Site = {
   id: 's-1',
@@ -232,12 +235,24 @@ function stub(over: {
   commands?: CommandHistory;
   targets?: RegisterWriteTarget[];
   writes?: RegisterWriteEvent[];
+  topology?: SiteTopology | null;
+  sources?: SiteSource[];
+  datenquellen?: readonly UemsDatenquelle[] | null;
+  uemsGeraete?: readonly UemsGeraet[] | null;
 } = {}) {
   vi.spyOn(api, 'siteEntities').mockImplementation(
     over.entities ?? (() => Promise.resolve(entities)),
   );
-  vi.spyOn(api, 'topology').mockResolvedValue(topology);
-  vi.spyOn(api, 'siteSources').mockResolvedValue(sources);
+  vi.spyOn(api, 'topology').mockResolvedValue((over.topology === undefined ? topology : over.topology) as SiteTopology);
+  vi.spyOn(api, 'siteSources').mockResolvedValue(over.sources ?? sources);
+  // GE-4: dieselben Abrufe wie Anlage › Aufbau — Wege, ihre Verweise auf Geräte und die Verbraucher.
+  vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [...(over.datenquellen ?? [])] } as never);
+  vi.spyOn(api, 'uemsGeraete').mockImplementation(() => over.uemsGeraete === null
+    ? Promise.reject(new Error('down'))
+    : Promise.resolve({ geraete: [...(over.uemsGeraete ?? [])] }));
+  vi.spyOn(consumersApi, 'list').mockResolvedValue([]);
+  vi.spyOn(api, 'gemeinsameSteuerung').mockRejectedValue(new Error('nicht gebraucht'));
+  vi.spyOn(api, 'standorte').mockRejectedValue(new Error('nicht gebraucht'));
   vi.spyOn(api, 'siteComponents').mockResolvedValue({
     componentAuthority: 'portal',
     components: [
@@ -419,71 +434,17 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     window.location.hash = '';
   });
 
-  function stubAdmin() {
-    vi.spyOn(adminApi, 'fernwartungBox').mockRejectedValue(
-      new ApiError(404, 'Für edge-45gz7da ist kein Tunnel-Schlüssel hinterlegt.'),
-    );
-    vi.spyOn(adminApi, 'fernwartung').mockRejectedValue(new Error('nicht gebraucht'));
-    vi.spyOn(adminApi, 'fernwartungTechniker').mockResolvedValue([]);
-    vi.spyOn(adminApi, 'listDevices').mockResolvedValue([
-      {
-        deviceId: 'gw',
-        externalRef: 'edge-45gz7da',
-        label: 'Pilsting',
-        siteId: 's-1',
-        siteName: 'Pilsting',
-        tenantId: 't-1',
-        tenantName: 'Kunde',
-        kind: 'inverter',
-        ist: 'edge-2026.08.1-9b37439a02c1',
-        soll: 'edge-2026.08.1',
-        sollSeq: 14,
-        channel: 'stable',
-        pinned: false,
-        state: 'bestaetigt',
-        reason: null,
-        blocker: null,
-        lastSeenAt: FRISCH,
-        reportedAt: FRISCH,
-        provisioned: false,
-        note: null,
-        provisionedAt: null,
-      },
-    ]);
-    vi.spyOn(fleetApi, 'fleet').mockResolvedValue({
-      sites: [],
-      releases: [],
-      journal: [],
-      kpi: null,
-    } as never);
-    vi.spyOn(adminApi, 'controlCandidates').mockResolvedValue([]);
-    vi.spyOn(adminApi, 'edgeUpdates').mockResolvedValue({
-      releases: [],
-      journal: [],
-      rollout: null,
-      fleet: [],
-      kpi: null,
-    } as never);
-  }
-
   it('zeigt dem KUNDEN keine Plattform-Sicht', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
-    stubAdmin();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByTestId('box-admin')).toBeNull();
-    // Und die Admin-Reads werden gar nicht erst geholt - auch die
-    // Fernwartung nicht (O3: der Kunde sieht die Fenster nicht).
-    expect(adminApi.listDevices).not.toHaveBeenCalled();
-    expect(adminApi.fernwartungBox).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('fw-karte')).toBeNull();
   });
 
-  it('zeigt dem PLATTFORM-ADMIN dieselbe Seite PLUS die Plattform-Sicht', async () => {
+  it('zeigt dem PLATTFORM-ADMIN nur noch den Weg in die Geräteakte (E4 = A, Scheibe S2)', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     stub();
-    stubAdmin();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     // Sie ist der LETZTE Teil von „Technik & Diagnose" (E1 a) - eine eigene
@@ -493,21 +454,9 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     const technik = await screen.findByTestId('geraet-technik');
     const teil = within(technik).getByText('Plattform-Sicht (Admin)').closest('[data-technik]') as HTMLElement;
     expect(teil.getAttribute('data-technik')).toBe('plattform');
-    expect(within(teil).getByTestId('box-admin')).toBeTruthy();
-    // Die Fernwartung dieser Box: ohne hinterlegten Schlüssel sagt sie das.
-    expect(await within(teil).findByText(/kein Tunnel-Schlüssel hinterlegt/)).toBeTruthy();
-    expect(adminApi.fernwartungBox).toHaveBeenCalledWith('edge-45gz7da');
-  });
-
-  it('bleibt ohne Admin-Daten stehen - eine gescheiterte Plattform-Sicht kippt die Seite nicht', async () => {
-    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
-    stub();
-    vi.spyOn(adminApi, 'listDevices').mockRejectedValue(new Error('down'));
-    vi.spyOn(fleetApi, 'fleet').mockRejectedValue(new Error('down'));
-    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    await screen.findByRole('heading', { level: 1 });
-    await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
-    expect(screen.queryByTestId('box-admin')).toBeNull();
+    const link = within(teil).getByTestId('box-admin').querySelector('a') as HTMLAnchorElement;
+    expect(link).toHaveTextContent(/In der Geräteakte öffnen/);
+    expect(link.getAttribute('href')).toBe('#/plattform/geraete/edge-45gz7da');
   });
 });
 
@@ -535,11 +484,181 @@ describe('BoxSeiteSection · Kern', () => {
     expect(ids).not.toContain('steuerung');
     expect(ids).not.toContain('heute');
     expect(ids).toEqual(['buehne', 'aktivitaet', 'details']);
-    // Die Quellen und Geräte an der Box stehen als eigener Baustein direkt neben
-    // der Bühne (UEMS AP-06 IP-16: „Datenquellen und Geräte").
-    expect(screen.getByTestId('baustein-modul')).toHaveTextContent('Datenquellen und Geräte');
+    // Die Geräte an der Box stehen als eigener Baustein direkt neben der Bühne (GE-4: „Geräte an dieser Box“ —
+    // vorher „Datenquellen und Geräte“, UEMS AP-06 IP-16).
+    expect(screen.getByTestId('baustein-modul')).toHaveTextContent('Geräte an dieser Box');
+    expect(screen.getByTestId('baustein-modul')).not.toHaveTextContent('Datenquellen und Geräte');
     // Register hat ein Rechner nicht - Technik & Diagnose führt nur Rohdaten.
     expect(screen.getByTestId('geraet-technik-oeffnen')).toHaveTextContent('Rohdaten');
     expect(screen.getByTestId('geraet-technik-oeffnen')).not.toHaveTextContent('Register');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GE-4 (Konzept „Ein Gerät, ein Eintrag"): „Geräte an dieser Box" aus DERSELBEN Zuordnung wie der Aufbau
+// ---------------------------------------------------------------------------
+
+describe('BoxSeiteSection · Geräte an dieser Box (GE-4)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const amOrt = (id: string, name: string): Site => ({ ...site, id, name });
+
+  /**
+   * Gore (Neue Halle): vorher stand die Steuerung hier zweimal — als „DQ-1" in „Datenquellen und Geräte" und als Gerät
+   * darunter, ohne Bezug. Jetzt EINE Zeile mit ihrer Anbindung und Last; die Summe steht über der Liste.
+   */
+  it('Gore: die Steuerung EINMAL — mit Anbindung, Last, Box-Wechsel und der Summe, ohne Zeile für DQ-1', async () => {
+    const d = goreForm(Date.now());
+    stub({
+      entities: () => Promise.resolve(d.entities!),
+      topology: d.topology,
+      sources: [],
+      datenquellen: d.datenquellen,
+      uemsGeraete: d.uemsGeraete,
+    });
+    render(<BoxSeiteSection site={amOrt('site-gore', 'Neue Halle')} boxRef="edge-5mz8bdd" devices={[...d.devices]} />);
+
+    const liste = await screen.findByTestId('box-geraete');
+    await waitFor(() => expect(liste).toHaveTextContent('Modbus TCP · 192.168.4.165:503 · Last 51 %'));
+    expect(within(liste).getAllByRole('link').map((a) => a.getAttribute('href')))
+      .toEqual(['#/anlage/site-gore/geraet/edge-5mz8bdd/as-e-as']);
+    expect(liste).toHaveTextContent('Anlagensteuerung');
+    expect(liste).toHaveTextContent('WAGO PFC200');
+    expect(screen.getByTestId('box-last'))
+      .toHaveTextContent('Zusammen 12 von 30 Anfragen/min · 305 von 600 Messwerten/min · Last 51 %');
+    const modul = screen.getByTestId('baustein-modul');
+    expect(modul).not.toHaveTextContent('DQ-1');
+    expect(modul).not.toHaveTextContent('Datenquellen und Geräte');
+    // Bühne und Liste zählen dieselben Geräte.
+    expect(screen.getByTestId('geraet-heldsatz')).toHaveTextContent('1 von 1 Gerät liefert Daten.');
+    // Der Box-Wechsel steht an der Zeile, deren Weg es ist.
+    expect(within(modul).getByRole('button', { name: 'Zuständige Box wechseln für Anlagensteuerung' })).toBeInTheDocument();
+  });
+
+  it('Gateway-Form: das Gateway mit seinen vier Geräten darunter, ein offener Anschluss mit „Gerät hinzufügen"', async () => {
+    const d = gatewayForm(Date.now());
+    stub({
+      entities: () => Promise.resolve(d.entities!),
+      topology: d.topology,
+      sources: d.sources ?? [],
+      datenquellen: d.datenquellen,
+      uemsGeraete: d.uemsGeraete,
+    });
+    render(<BoxSeiteSection site={amOrt('site-hs', 'Halle Süd')} boxRef="VP-HS-0001" devices={[...d.devices]} />);
+
+    const liste = await screen.findByTestId('box-geraete');
+    await waitFor(() => expect(within(liste).getByText('Zählergateway Halle')).toBeInTheDocument());
+    const gateway = liste.querySelector('[data-box-weg="DQ-3"]') as HTMLElement;
+    expect(gateway).toHaveTextContent('4 Geräte · Last 23 %');
+    // GE-5: die Gateway-Zeile führt auf die Seite des Gateways.
+    expect(gateway.querySelector(':scope > a.vp-geraet-zeile')).toHaveAttribute('href', '#/anlage/site-hs/geraet/VP-HS-0001/dq-3');
+    const dahinter = within(gateway).getByRole('list', { name: 'Geräte hinter Zählergateway Halle' });
+    expect(within(dahinter).getAllByRole('link')).toHaveLength(4);
+    // Nach Namen wie im Aufbau (vp-anlage-geraete-gruppiert) - die Geräte-ID steht an jedem.
+    expect(within(dahinter).getAllByRole('link').map((l) => l.textContent ?? '').join(' | ')).toContain('Geräte-ID 2');
+    // Den Box-Wechsel trägt das Gateway — für alle vier; die Geräte dahinter haben keinen eigenen.
+    expect(within(gateway).getAllByRole('button', { name: /Zuständige Box wechseln/ })).toHaveLength(1);
+
+    const offen = liste.querySelector('[data-box-weg="DQ-5"]') as HTMLElement;
+    expect(offen).toHaveTextContent('Anschluss ohne Gerät');
+    expect(offen).toHaveTextContent('Kennung DQ-5');
+    expect(within(offen).getByRole('link', { name: 'Gerät an Anschluss DQ-5 hinzufügen' }))
+      .toHaveAttribute('href', '#/anlage/site-hs/modell?neu=geraet');
+
+    expect(screen.getByTestId('box-last'))
+      .toHaveTextContent('Zusammen 12 von 30 Anfragen/min · 186 von 600 Messwerten/min · Last 40 %');
+    expect(screen.getByTestId('geraet-heldsatz')).toHaveTextContent('5 von 5 Geräten liefern Daten.');
+  });
+
+  it('ohne `…/geraete` zeigt sie keinen geratenen Anschluss — und sagt, dass die Zuordnung fehlt', async () => {
+    const d = goreForm(Date.now());
+    stub({
+      entities: () => Promise.resolve(d.entities!),
+      topology: d.topology,
+      sources: [],
+      datenquellen: d.datenquellen,
+      uemsGeraete: null,
+    });
+    render(<BoxSeiteSection site={amOrt('site-gore', 'Neue Halle')} boxRef="edge-5mz8bdd" devices={[...d.devices]} />);
+    const modul = await screen.findByTestId('baustein-modul');
+    await waitFor(() => expect(modul).toHaveTextContent('ist gerade nicht bekannt'));
+    expect(modul).not.toHaveTextContent('Anschluss ohne Gerät');
+    expect(modul).not.toHaveTextContent('192.168.4.165');
+    expect(screen.getByTestId('box-last')).toHaveTextContent('Last 51 %');
+  });
+});
+
+describe('BoxSeiteSection · Gerätesuche (Bericht §4 „Einstiege“, m1/m8/d1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const verlauf = () => gsVerlauf(Date.now()).map((e) => ({ ...e, deviceId: box.id }));
+
+  it('„Geräte suchen“ im Kopf der Karte führt mit der Box in den Aufbau; die letzte Suche steht darunter', async () => {
+    stub();
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: verlauf() });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const knopf = await screen.findByTestId('geraete-suchen');
+    expect(knopf).toHaveAttribute('href', aufbauHash(site.id, 'suche', { box: box.id }));
+    expect(knopf).toHaveTextContent('Geräte suchen');
+    const letzte = await screen.findByTestId('letzte-suche');
+    expect(letzte).toHaveTextContent(/^Letzte Suche heute \d\d:\d\d · 2 Energie-Geräte, 2 davon noch nicht übernommen/);
+    expect(within(letzte).getByRole('link', { name: 'Letzte Suchen' }))
+      .toHaveAttribute('href', aufbauHash(site.id, 'suche', { box: box.id, verlauf: true }));
+    expect(screen.queryByTestId('geraetesuche-grund')).toBeNull();
+  });
+
+  it('ohne die Fähigkeit: ausgegraut, mit „Update nötig für: Gerätesuche“ und „Update planen“', async () => {
+    stub();
+    vi.mocked(api.edgeVersions).mockResolvedValue(sichtbareListe([
+      { deviceId: 'gw', siteId: 's-1', coreVersion: 'edge-2026.10.1', paletteVersion: null, reportedAt: FRISCH, capabilities: ['data_sources'] },
+    ]));
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: [] });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const grund = await screen.findByTestId('geraetesuche-grund');
+    expect(grund).toHaveTextContent('Update nötig für: Gerätesuche');
+    expect(within(grund).getByRole('link', { name: /Update planen/ })).toBeInTheDocument();
+    const knopf = screen.getByRole('button', { name: 'Geräte suchen' });
+    expect(knopf).toBeDisabled();
+    expect(knopf).toHaveAttribute('aria-describedby', 'box-geraetesuche-grund');
+  });
+
+  it('eine laufende Suche lässt sich mitansehen - mit Person und Dauer', async () => {
+    stub();
+    const [, zweite] = verlauf();
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({
+      suchen: [{ ...zweite, zustand: 'laeuft', gestartetAm: new Date(Date.now() - 12_000).toISOString(), dauerMs: null }],
+    });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    expect(await screen.findByTestId('geraetesuche-grund')).toHaveTextContent(/Suche läuft · seit 1\d s · gestartet von Anna Weber \(VoltPilot-Service\)/);
+    expect(screen.getByRole('link', { name: 'Mitansehen' }))
+      .toHaveAttribute('href', aufbauHash(site.id, 'suche', { box: box.id, such: zweite.suchId }));
+  });
+
+  it('die Aktivität (d1): die Suche mit Person, Dauer und „nur gelesen“, darüber die Übernahme aus ihr', async () => {
+    const jetzt = Date.now();
+    stub({ commands: commands({ entries: gsAktivitaet(jetzt), from: new Date(jetzt - 86_400_000).toISOString(),
+      to: new Date(jetzt).toISOString() }) });
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: verlauf() });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
+    const zeilen = await within(aktivitaet).findAllByRole('listitem');
+    const saetze = zeilen.map((z) => z.textContent ?? '').filter((t) => t.includes('Gerät'));
+    expect(saetze).toHaveLength(2);
+    expect(saetze[0]).toMatch(/Gerät angelegt: Wechselrichter \(aus der Gerätesuche\)/);
+    expect(saetze[1]).toMatch(/Gerätesuche im Heimnetz/);
+    expect(saetze[1]).toMatch(/2 neue Geräte/);
+    // Die eigene Person heißt „Sie“ - wie in Bild d1.
+    expect(saetze[1]).toMatch(/Sie · 38 s · nur gelesen/);
+  });
+
+  it('leere Box (m1): „An dieser Box meldet sich noch kein Gerät.“ mit dem Hauptknopf; offline sagt es warum', async () => {
+    stub({ entities: () => Promise.resolve({ registry: null, entities: [], localSetup: [], staleOnDevice: [] }), sources: [] });
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: [] });
+    const alt = { ...box, lastSeenAt: new Date(Date.now() - 30 * 60_000).toISOString() };
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[alt]} />);
+    const leer = await screen.findByTestId('geraetesuche-leer');
+    expect(within(leer).getByText('An dieser Box meldet sich noch kein Gerät.')).toBeInTheDocument();
+    expect(within(leer).getByRole('button', { name: 'Geräte suchen' })).toBeDisabled();
+    expect(within(leer).getByTestId('geraetesuche-grund')).toHaveTextContent(/^Ihre Box meldet sich gerade nicht \(zuletzt \d\d:\d\d\)/);
+    expect(within(leer).getByRole('link', { name: 'Von Hand hinzufügen' })).toHaveAttribute('href', aufbauHash(site.id, 'geraet'));
   });
 });

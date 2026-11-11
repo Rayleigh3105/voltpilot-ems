@@ -19,9 +19,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.core.Authentication;
@@ -82,7 +82,7 @@ class AusschliesslichkeitsPruefungApiTest {
     }
 
     @Autowired MockMvc mvc;
-    @MockBean KeycloakAdminClient keycloak;
+    @MockitoBean KeycloakAdminClient keycloak;
 
     private JdbcTemplate root;
 
@@ -95,10 +95,14 @@ class AusschliesslichkeitsPruefungApiTest {
     private record Anlage(UUID tenant, UUID site) {}
 
     private Anlage anlage(String name, boolean speicher) {
+        return anlage(name, speicher, false);
+    }
+
+    private Anlage anlage(String name, boolean speicher, boolean netzladenErlaubt) {
         UUID tenant = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class,
                 name + " " + UUID.randomUUID().toString().substring(0, 8));
-        UUID site = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone) VALUES (?, ?, 'DE-LU')"
-                + " RETURNING id", UUID.class, tenant, name);
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone, netzladen_erlaubt)"
+                + " VALUES (?, ?, 'DE-LU', ?) RETURNING id", UUID.class, tenant, name, netzladenErlaubt);
         if (speicher) {
             root.update("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh) VALUES (?, ?, 'battery', 200)",
                     tenant, site);
@@ -163,18 +167,101 @@ class AusschliesslichkeitsPruefungApiTest {
                 .containsExactly("toleranz", "speichervorrang_ausschliesslichkeit", "rechtsfolge", "messwerte");
     }
 
+    /**
+     * Die Form des Herzogau-Tages 02.11.2026 (in 2025 gelegt, damit der Stand den Tag sicher enthält): bei verbotenem
+     * Netzladen lädt der Speicher morgens in vielen Viertelstunden, während das Netz liefert. Erwartet: jede dieser
+     * Viertelstunden gezählt, die Menge nach (1)¼ = MIN [ Bezug ; Laden ], Laden aus Überschuss ohne Bezug nicht,
+     * eine Viertelstunde ohne Speicherkanal als Lücke und nie als Null.
+     */
     @Test
-    void flotteNurAnlagenMitSpeicher() throws Exception {
+    void herzogauFormLadenBeiNetzbezugInVielenViertelstunden() throws Exception {
+        Anlage hof = anlage("Herzogau-Form", true);
+        // 08:00–09:45: 3,0 kWh Bezug, 1,5 kWh Laden -> je 1,5 kWh, 8 Viertelstunden.
+        for (int i = 0; i < 8; i++) {
+            viertelstunde(hof, viertel("2025-11-02T08:00:00+01:00", i), 3.0, 0.0, 1.5, 0.0);
+        }
+        // 10:00–10:45: 1,0 kWh Bezug, 4,0 kWh Laden (PV dazu) -> je 1,0 kWh, 4 Viertelstunden.
+        for (int i = 0; i < 4; i++) {
+            viertelstunde(hof, viertel("2025-11-02T10:00:00+01:00", i), 1.0, 0.0, 4.0, 0.0);
+        }
+        // 11:00–12:45: Laden aus Überschuss, Einspeisung, kein Bezug -> 0.
+        for (int i = 0; i < 8; i++) {
+            viertelstunde(hof, viertel("2025-11-02T11:00:00+01:00", i), 0.0, 2.0, 3.0, 0.0);
+        }
+        // 13:00: 5 Wh Bezug beim Laden -> streng gezählt, unter jeder Schwelle der Staffel.
+        viertelstunde(hof, "2025-11-02T13:00:00+01:00", 0.005, 0.0, 2.0, 0.0);
+        // 13:15: Speicherkanal fehlt -> Lücke.
+        viertelstunde(hof, "2025-11-02T13:15:00+01:00", 2.0, 0.0, null, null);
+        // 18:00–18:45: Entladen ins Netz -> (2)¼ = 1,0 je Viertelstunde, kein Netzstrom im Speicher.
+        for (int i = 0; i < 4; i++) {
+            viertelstunde(hof, viertel("2025-11-02T18:00:00+01:00", i), 0.5, 1.0, 0.0, 1.5);
+        }
+
+        MvcResult r = mvc.perform(get(PFAD + "/" + hof.site()).param("jahr", "2025").with(authentication(admin())))
+                .andReturn();
+        assertThat(r.getResponse().getStatus()).as(text(r)).isEqualTo(200);
+        JsonNode body = json(r);
+        assertThat(body.at("/werte").asText()).isEqualTo("geraetewerte_vorlaeufig");
+        assertThat(body.at("/anlage/netzladen_erlaubt").asBoolean()).isFalse();
+
+        JsonNode nov = body.at("/monate/10");
+        assertThat(nov.at("/monat").asText()).isEqualTo("2025-11");
+        assertThat(nov.at("/viertelstunden_netzstrom_im_speicher").asInt()).isEqualTo(13);
+        assertThat(nov.at("/formeln/(9)").decimalValue()).isEqualByComparingTo("16.005");
+        assertThat(nov.at("/formeln/(3)").decimalValue()).isEqualByComparingTo("30.005");
+        assertThat(nov.at("/formeln/(5)").decimalValue()).isEqualByComparingTo("54");
+        assertThat(nov.at("/formeln/(10)").decimalValue()).isEqualByComparingTo("37.995");
+        assertThat(nov.at("/formeln/(11)").decimalValue()).isEqualByComparingTo("4");
+        assertThat(nov.at("/viertelstunden_speicher_einspeisung").asInt()).isEqualTo(4);
+        assertThat(nov.at("/viertelstunden_mit_werten").asInt()).isEqualTo(25);
+        assertThat(nov.at("/viertelstunden_soll").asInt()).isEqualTo(30 * 96);
+        assertThat(nov.at("/luecken").asInt()).isEqualTo(30 * 96 - 25);
+        assertThat(nov.at("/toleranz_staffel")).extracting(z -> z.at("/viertelstunden").asInt())
+                .containsExactly(12, 12, 8);
+        assertThat(nov.at("/toleranz_staffel/0/kwh").decimalValue()).isEqualByComparingTo("16");
+        assertThat(nov.at("/toleranz_staffel/2/kwh").decimalValue()).isEqualByComparingTo("12");
+        // Andere Monate ohne Werte: nur Lücken, keine Null-Mengen als Befund.
+        assertThat(body.at("/monate/9/viertelstunden_mit_werten").asInt()).isZero();
+        assertThat(body.at("/monate/9/viertelstunden_netzstrom_im_speicher").asInt()).isZero();
+
+        JsonNode jahr = body.at("/ergebnis_jahr");
+        assertThat(jahr.at("/netzstrom_im_speicher").asBoolean()).isTrue();
+        assertThat(jahr.at("/monate_mit_netzstrom_im_speicher").asInt()).isEqualTo(1);
+        assertThat(jahr.at("/viertelstunden_netzstrom_im_speicher").asInt()).isEqualTo(13);
+        assertThat(jahr.at("/formeln/(9)").decimalValue()).isEqualByComparingTo("16.005");
+
+        // RLS: dieselben Zeilen sind für die Laufzeitrolle ohne Mandant unsichtbar — gelesen hat die Admin-Verbindung.
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        assertThat(app.queryForObject("SELECT count(*) FROM telemetry_rollup_15m WHERE site_id = ?", Long.class,
+                hof.site())).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM telemetry_rollup_15m WHERE site_id = ?", Long.class,
+                hof.site())).isEqualTo(26);
+    }
+
+    private static String viertel(String beginn, int i) {
+        return OffsetDateTime.parse(beginn).plusMinutes(15L * i).toString();
+    }
+
+    @Test
+    void flotteNurAnlagenMitSpeicherUndVerbotenemNetzladen() throws Exception {
         Anlage mit = anlage("Speicherhof", true);
         Anlage ohne = anlage("Nur PV", false);
+        Anlage erlaubt = anlage("Netzlader", true, true);
         viertelstunde(mit, "2025-08-01T10:00:00+02:00", 5.0, 0.0, 2.0, 0.0);
         viertelstunde(ohne, "2025-08-01T10:00:00+02:00", 5.0, 0.0, 2.0, 0.0);
+        viertelstunde(erlaubt, "2025-08-01T10:00:00+02:00", 5.0, 0.0, 2.0, 0.0);
 
         MvcResult r = mvc.perform(get(PFAD).param("jahr", "2025").with(authentication(admin()))).andReturn();
         assertThat(r.getResponse().getStatus()).as(text(r)).isEqualTo(200);
         JsonNode anlagen = json(r).at("/anlagen");
         List<String> sites = anlagen.findValuesAsText("site_id");
-        assertThat(sites).contains(mit.site().toString()).doesNotContain(ohne.site().toString());
+        assertThat(sites).contains(mit.site().toString()).doesNotContain(ohne.site().toString())
+                .doesNotContain(erlaubt.site().toString());
+        // Einzeln bleibt die Anlage mit erlaubtem Netzladen abrufbar, mit dem Schalter in der Antwort.
+        MvcResult einzeln = mvc.perform(get(PFAD + "/" + erlaubt.site()).param("jahr", "2025")
+                .with(authentication(admin()))).andReturn();
+        assertThat(einzeln.getResponse().getStatus()).as(text(einzeln)).isEqualTo(200);
+        assertThat(json(einzeln).at("/anlage/netzladen_erlaubt").asBoolean()).isTrue();
         for (JsonNode z : anlagen) {
             if (z.at("/anlage/site_id").asText().equals(mit.site().toString())) {
                 assertThat(z.at("/ergebnis_jahr/formeln/(9)").decimalValue()).isEqualByComparingTo("2");

@@ -54,6 +54,7 @@ func (a *Agent) onChargingBoost(payload []byte) {
 	res, err := a.OcppBoost(lastmgmt.BoostRequest{
 		ChargePointID: req.ChargePointID, Connector: req.Connector,
 		Minutes: req.Minutes, Cancel: req.Cancel, Pause: req.Pause(),
+		UntilUnplug: req.UntilUnplug,
 	})
 	if err != nil {
 		slog.Warn("charging boost not applied", "charge_point", req.ChargePointID,

@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.components.SelfBuildDefinition;
-import com.voltpilot.api.components.UserDefinedBatteryDefinition;
 import com.voltpilot.api.templates.ComponentTemplateDefinition;
 import com.voltpilot.api.uems.BestandAnschluss.Anschluss;
 import java.io.InputStream;
@@ -61,6 +60,36 @@ class BestandAnschlussTest {
                 .isEqualTo("http://192.168.0.30:8484");
     }
 
+    /** Huawei SUN2000: Modbus TCP, aber die Unit-ID 0 (Werkswert bei direkter Verbindung) ist GÜLTIG. */
+    @Test
+    void huaweiLiestUnitIdNullAlsGueltigeAdresse() {
+        assertThat(BestandAnschluss.aus("huawei_modbus", "{\"ip\":\"192.168.0.50\",\"port\":502,\"unit_id\":0}"))
+                .isEqualTo(new Anschluss("modbus_tcp", "192.168.0.50:502", 0, null));
+        // Fehlende Felder: die Vorgaben des Treibers (Port 502, Unit-ID 0).
+        assertThat(BestandAnschluss.aus("huawei_modbus", "{\"ip\":\"192.168.0.51\"}"))
+                .isEqualTo(new Anschluss("modbus_tcp", "192.168.0.51:502", 0, null));
+        // Hinter einem Smart Dongle vergibt der Hersteller häufig 1.
+        assertThat(BestandAnschluss.aus("huawei_modbus", "{\"ip\":\"192.168.0.51\",\"unit_id\":1}").geraeteId())
+                .isEqualTo(1);
+    }
+
+    /** KACO-Powador-Altgeräte über den RS485-zu-Ethernet-Wandler: die Geräte-ID ist die Busadresse (1-32). */
+    @Test
+    void kacoSeriellLiestWandlerHostPortUndRs485Adresse() {
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.40\",\"port\":8899,\"address\":7}"))
+                .isEqualTo(new Anschluss("kaco_serial", "192.168.0.40:8899", 7, null));
+        // Fehlende Felder: die Vorgaben des Treibers (Port 8899, Adresse 1).
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.41\"}"))
+                .isEqualTo(new Anschluss("kaco_serial", "192.168.0.41:8899", 1, null));
+        // Adresse 0 ist NIE gültig (KACOs Betriebsanleitung: 1-32) - wie bei einer Modbus-Unit-ID
+        // liest die Box sie wie „fehlt" und nimmt die Vorgabe des Treibers.
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.41\",\"address\":0}").geraeteId())
+                .isEqualTo(1);
+        // Eine Adresse ausserhalb 1..32 ist keine - die Vorgabe des Treibers gilt.
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.41\",\"address\":99}").geraeteId())
+                .isEqualTo(1);
+    }
+
     /** Der Standard-Port der Tabelle ist die Vorgabe der Vorlage im Katalog — sonst läse die Box woanders. */
     @Test
     void dieStandardPortsSindDieDesKatalogs() throws Exception {
@@ -91,18 +120,6 @@ class BestandAnschlussTest {
                 .adresse()).isEqualTo("https://stick.local:443");
         assertThat(BestandAnschluss.aus("fronius_solar_api", "{\"ip\":\"192.168.0.40\",\"scheme\":\"https\"}")
                 .adresse()).isEqualTo("https://192.168.0.40:80");
-        assertThat(BestandAnschluss.aus("http_local", "{\"transport\":\"http_local\",\"endpoint\":{\"host\":"
-                + "\"192.168.30.20\",\"path\":\"api/bms\",\"tls\":false},\"auth_secret\":\"x\"}").adresse())
-                .isEqualTo("http://192.168.30.20:80/api/bms");
-    }
-
-    @Test
-    void mqttHatEineAdresseNurMitGenauEinemThema() {
-        assertThat(BestandAnschluss.aus("mqtt_local", "{\"broker\":{\"host\":\"127.0.0.1\",\"port\":1883},"
-                + "\"mappings\":[{\"channel\":\"soc\",\"topic\":\"bms/1/state\"},{\"channel\":\"power\","
-                + "\"topic\":\"bms/1/state\"}]}")).isEqualTo(new Anschluss("mqtt", "bms/1/state", null, null));
-        assertThat(BestandAnschluss.aus("mqtt_local", "{\"mappings\":[{\"topic\":\"bms/1/soc\"},"
-                + "{\"topic\":\"bms/1/power\"}]}").adresse()).as("kein gemeinsamer Filter").isNull();
     }
 
     /** Deye über seinen Datenlogger: Host, Port, Logger-Seriennummer, Slave-ID — wie der Treiber sie braucht. */
@@ -160,8 +177,6 @@ class BestandAnschlussTest {
         }
         real.addAll(ComponentTemplateDefinition.COMMUNICATIONS);
         real.add(SelfBuildDefinition.COMMUNICATION);
-        real.add(UserDefinedBatteryDefinition.COMMUNICATION);
-        real.add(UserDefinedBatteryDefinition.COMMUNICATION_HTTP);
         Set<String> box = treiberDerBox();
         assertThat(box).as("die Treiber der Box sind gelesen").contains("solarman_v5", "modbus_baukasten");
         real.addAll(box);

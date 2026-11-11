@@ -161,6 +161,16 @@
   font-size: var(--vp-c-fs-14);
   list-style: none;
 }
+.vp-buehne-warnung {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+  font-size: var(--vp-c-fs-14);
+  font-weight: 600;
+  line-height: var(--vp-c-lh-text);
+}
 .vp-buehne-hinweis {
   margin: 0;
   color: var(--vp-c-muted-fg);

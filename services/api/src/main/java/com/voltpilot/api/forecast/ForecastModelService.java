@@ -3,6 +3,7 @@ package com.voltpilot.api.forecast;
 import com.voltpilot.api.repo.AdminForecastModelChoiceRepository;
 import com.voltpilot.api.repo.ForecastModelChoiceRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
+import com.voltpilot.api.repo.SiteForecastAutomatikRepository;
 import com.voltpilot.api.repo.SiteForecastModelChoiceRepository;
 import com.voltpilot.api.web.dto.ForecastModelChoiceDto;
 import com.voltpilot.api.web.dto.ForecastModelChoiceDto.KindChoiceDto;
@@ -36,10 +37,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ForecastModelService {
 
+    /** Der Urheber-Hinweis der Automatik im Journal - niemals ein echtes JWT-Subject. */
+    public static final String AUTOMATIK_SET_BY = "system:automatik";
+    public static final String AUTOMATIK_SET_BY_NAME = "Automatik";
+
     private final ForecastModelChoiceRepository choices;
     private final AdminForecastModelChoiceRepository adminChoices;
     private final SiteForecastModelChoiceRepository siteChoices;
     private final ForecastQualityRepository quality;
+    private final SiteForecastAutomatikRepository automatik;
     private final String envLoadModel;
     private final String envPvModel;
 
@@ -48,12 +54,14 @@ public class ForecastModelService {
             AdminForecastModelChoiceRepository adminChoices,
             SiteForecastModelChoiceRepository siteChoices,
             ForecastQualityRepository quality,
+            SiteForecastAutomatikRepository automatik,
             @Value("${voltpilot.forecast.active-load-model}") String envLoadModel,
             @Value("${voltpilot.forecast.active-pv-model}") String envPvModel) {
         this.choices = choices;
         this.adminChoices = adminChoices;
         this.siteChoices = siteChoices;
         this.quality = quality;
+        this.automatik = automatik;
         this.envLoadModel = envLoadModel;
         this.envPvModel = envPvModel;
     }
@@ -177,7 +185,8 @@ public class ForecastModelService {
                     env,
                     fromSite ? own.setByName() : null,
                     fromSite ? own.setAt() : null,
-                    ForecastModels.modelsOf(kind)));
+                    ForecastModels.modelsOf(kind),
+                    ForecastModels.KIND_LOAD.equals(kind) ? automatik.aktiv(siteId) : null));
         }
         return new SiteForecastModelsDto(siteId, kinds, siteChoices.history(siteId, 20));
     }
@@ -206,6 +215,36 @@ public class ForecastModelService {
      */
     public SiteForecastModelsDto promote(
             UUID siteId, String kind, String model, String setBy, String setByName) {
+        return promote(siteId, kind, model, setBy, setByName, false);
+    }
+
+    /**
+     * Dieselbe Umstellung, von der AUTOMATIK ausgelöst (S5, Bericht R.4) -
+     * anders als eine Wahl von Hand schaltet sie sich selbst NICHT aus (sonst
+     * könnte die Automatik nie ein zweites Mal wählen). Der Läufer prüft
+     * zuvor selbst, ob er für diese Anlage zuständig ist
+     * ({@link SiteForecastAutomatikRepository#aktiv}); diese Methode wiederholt
+     * nur die SCHREIB-Sperren (Kandidat sammelt noch / keine Tagesbewertung),
+     * nie die Zuständigkeits-Prüfung.
+     */
+    public SiteForecastModelsDto promoteAutomatisch(UUID siteId, String kind, String model) {
+        return promote(siteId, kind, model, AUTOMATIK_SET_BY, AUTOMATIK_SET_BY_NAME, true);
+    }
+
+    /**
+     * Schaltet die Automatik für DIESE Anlage (nur {@code load}) wieder ein -
+     * das Gegenstück zur stillen Abschaltung bei einer Wahl von Hand (Bericht
+     * R.4 Punkt 2: "bis er sie wieder einschaltet"). Wählt selbst kein
+     * Modell; der nächste Takt des Läufers entscheidet.
+     */
+    public SiteForecastModelsDto automatikEinschalten(UUID siteId, String setBy) {
+        automatik.setzen(siteId, true, setBy);
+        return state(siteId);
+    }
+
+    private SiteForecastModelsDto promote(
+            UUID siteId, String kind, String model, String setBy, String setByName,
+            boolean automatisch) {
         String id = validated(kind, model);
         String active = activeModels(siteId).get(kind);
         if (active.equals(id)) {
@@ -228,6 +267,12 @@ public class ForecastModelService {
                             + " könnte.");
         }
         siteChoices.promote(siteId, kind, id, active, setBy, setByName);
+        // Ein Mensch gewinnt (Bericht R.4 Punkt 2): eine Wahl von Hand schaltet
+        // die Automatik aus, bis ein ausdrückliches "wieder einschalten" sie
+        // zurücksetzt - sonst überschriebe der nächste Takt die Entscheidung.
+        if (!automatisch && ForecastModels.KIND_LOAD.equals(kind)) {
+            automatik.setzen(siteId, false, setBy);
+        }
         return state(siteId);
     }
 

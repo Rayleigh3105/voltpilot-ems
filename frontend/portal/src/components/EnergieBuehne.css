@@ -19,21 +19,32 @@
   color: var(--vp-c-fg, #1e293b);
 }
 
-/* --- Kopf: Uhrzeit, Marke, Plan, Umschalter ------------------------------ */
+/* --- Kopf: Uhrzeit, Umschalter, Marke ------------------------------------- */
+/* Feste Plätze (Konzept b1): Uhrzeit und Umschalter teilen die erste Zeile, die
+   Marke hat am Telefon eine eigene Zeile darunter. So bleibt der Umschalter in
+   jedem Zustand oben rechts und der Kopf gleich hoch; eine lange Marke
+   („gemessen · Plan: …“) bricht in ihrer Zeile um. */
 .vp-eb-kopf {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "uhr modus" "marke marke";
   align-items: center;
   gap: 6px 8px;
   min-width: 0;
+}
+.vp-eb-kopf .vp-eb-uhr { grid-area: uhr; }
+.vp-eb-kopf .vp-eb-modus { grid-area: modus; }
+.vp-eb-kopf .vp-eb-marke {
+  grid-area: marke;
+  justify-self: start;
+  max-width: 100%;
 }
 .vp-eb-uhr {
   font: 800 1.25rem/1 var(--vp-font-heading);
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
-.vp-eb-marke,
-.vp-eb-plan {
+.vp-eb-marke {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -55,8 +66,7 @@
   border-radius: 50%;
   background: currentColor;
 }
-.vp-eb-marke.is-plan,
-.vp-eb-plan {
+.vp-eb-marke.is-plan {
   background: transparent;
   border: 1px dashed var(--vp-chart-plan, #1e3a5f);
   color: var(--vp-chart-plan, #1e3a5f);
@@ -72,6 +82,50 @@
   min-height: 2.8em;
   font: 600 0.95rem/1.4 var(--vp-font-heading);
   text-wrap: pretty;
+}
+/* Was im Moment fehlt oder veraltet ist (`flussBilanz.lueckenSatz`) - leise unter dem Satz, bricht um. */
+.vp-eb-luecke {
+  margin: -6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+/* --- Die Spalte neben dem Fluss (Konzept vp-cockpit-privat-konzept, E4 = A) ---
+   Ab 900 px steht sie rechts neben Kopf, Satz und Leitungsplan; Tagesleiste und
+   Listen laufen darunter über die volle Breite, die Spalte ist so nie höher als
+   der Fluss. Schmaler löst sich die Reihe auf (`display: contents`) und die
+   Spalte rückt ans Ende der Bühne - die Tagesleiste bleibt direkt unter dem
+   Fluss (Konzept b1). Rand und Abstände der Spalte kommen aus `.vp-hero-side`.
+   Kopf, Satz und Leitungsplan bleiben in jeder Breite eine echte Box mit dem
+   Abstand der Bühne: ihr Behälter hat so ein Maß (Wächter `layout-waechter`). */
+.vp-eb-reihe {
+  display: contents;
+}
+.vp-eb-links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.vp-eb-reihe > .vp-hero-side {
+  order: 1;
+}
+@media (min-width: 900px) {
+  .vp-eb-reihe {
+    display: grid;
+    grid-template-columns: minmax(0, 1.68fr) minmax(0, 1fr);
+    gap: var(--vp-space-4, 16px);
+    min-width: 0;
+  }
+  .vp-eb-reihe > .vp-hero-side {
+    order: 0;
+  }
+  /* Die Steuerzeile schließt die Spalte unten ab, auf Höhe des Hauses im Fluss. */
+  .vp-eb-reihe > .vp-hero-side > .vp-hero-steuer {
+    margin-top: auto;
+  }
 }
 
 /* --- Der Leitungsplan ---------------------------------------------------- */
@@ -366,6 +420,8 @@ a.vp-eb-zeile {
   overflow-wrap: anywhere;
 }
 .vp-eb-zn small {
+  /* Name und Zustand stehen in zwei Zeilen - sonst läuft „Wallbox Carport Ladevorgang läuft“ als ein Satz. */
+  display: block;
   font-weight: 500;
   font-size: 0.78rem;
   color: var(--vp-c-muted-fg, #475569);
@@ -433,8 +489,11 @@ a.vp-eb-zeile {
   height: 88px;
   min-width: 0;
   cursor: ew-resize;
-  touch-action: none;
+  /* Ein senkrechtes Wischen scrollt die Seite; nur ein Tipp wählt (Tagesleiste.tsx). */
+  touch-action: pan-y;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
   border-radius: 8px;
 }
 .vp-tl svg {
@@ -453,6 +512,13 @@ a.vp-eb-zeile {
 .vp-tl-ax {
   font: 600 10px var(--vp-font-body);
   fill: var(--vp-c-muted-fg, #475569);
+}
+/* Die Spur-Beschriftung („Börsenpreis“, „Plan“) liegt über den Balken: ein heller Rand hält sie lesbar. */
+.vp-tl-lbl {
+  paint-order: stroke;
+  stroke: var(--vp-surface, #fff);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .vp-tl-ax {
   font-weight: 500;
@@ -486,19 +552,33 @@ a.vp-eb-zeile {
   gap: 8px;
   flex-wrap: wrap;
 }
-.vp-eb-spiel {
-  background: var(--vp-c-fg, #1e293b);
-  color: var(--vp-surface, #fff);
+.vp-eb-schritt {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  cursor: pointer;
+}
+.vp-eb-schritt:hover:not(:disabled) {
+  background: var(--vp-c-muted, #e9eff8);
+}
+.vp-eb-schritt:disabled {
+  color: var(--vp-c-border, #e2e8f0);
+  cursor: default;
+}
+.vp-eb-schritt:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
 }
 .vp-eb-jetzt {
   background: var(--vp-surface, #fff);
   border-color: var(--vp-c-border, #e2e8f0);
   color: var(--vp-c-fg, #1e293b);
-}
-.vp-eb-hinweis {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--vp-c-muted-fg, #475569);
 }
 
 /* --- Blätter ------------------------------------------------------------- */
@@ -590,15 +670,26 @@ a.vp-eb-zeile {
   margin: 0;
 }
 
-/* Am Rechner: die beiden Listen nebeneinander, Uhr und Satz etwas größer. */
+/* Am Rechner: „Verbrauch im Detail“ über die volle Breite, die Zeilen in zwei
+   Spalten - unter dem Fluss steht nur noch diese eine Liste (die Erzeugung je
+   Gerät steht im Blatt der Sonne); das frühere Raster für zwei Listen ließ die
+   rechte Hälfte leer. Uhr und Satz etwas größer. */
 @media (min-width: 1024px) {
-  .vp-eb-listen {
+  .vp-eb-listen > .vp-eb-liste > ul {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 32px;
-    align-items: start;
+    column-gap: 32px;
+  }
+  .vp-eb-listen > .vp-eb-liste li:nth-child(2) .vp-eb-zeile {
+    border-top: 0;
   }
   .vp-eb-uhr {
     font-size: 1.4rem;
+  }
+  /* Am Rechner reicht die Breite: Uhrzeit, Marke und Umschalter in einer Zeile. */
+  .vp-eb-kopf {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "uhr marke modus";
   }
   .vp-eb-satz {
     font-size: 1rem;
@@ -628,60 +719,6 @@ a.vp-eb-zeile {
   .vp-eb-blatt .vp-vbcomp-link {
     grid-template-columns: 8px minmax(6.5em, 1fr) minmax(0, max-content) 16px;
   }
-}
-
-/* --- „Dieser Moment“ rechts neben dem Fluss (am Rechner) ----------------- */
-.vp-eb-moment {
-  --vp-lp-pv: var(--vp-c-chart-pv, #e65100);
-  --vp-lp-batt: var(--vp-c-chart-soc, #166534);
-  --vp-lp-grid: var(--vp-flow-grid, #0ea5a3);
-  --vp-lp-load: var(--vp-flow-load, #8b5cf6);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.vp-eb-moment-h {
-  margin: 0;
-  font: 700 0.6875rem/1.2 var(--vp-c-font, var(--vp-font-heading));
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--vp-c-muted-fg, #475569);
-}
-.vp-eb-moment-kpis {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.vp-eb-mk {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-.vp-eb-mk-ico {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-}
-.vp-eb-mk.is-pv .vp-eb-mk-ico { background: var(--vp-flow-pv-soft, #fef3e2); color: var(--vp-lp-pv); }
-.vp-eb-mk.is-load .vp-eb-mk-ico { background: var(--vp-flow-load-soft, #f1ecfd); color: var(--vp-lp-load); }
-.vp-eb-mk.is-batt .vp-eb-mk-ico { background: var(--vp-flow-batt-soft, #e7f6ec); color: var(--vp-lp-batt); }
-.vp-eb-mk.is-grid .vp-eb-mk-ico { background: var(--vp-flow-grid-soft, #e2f6f5); color: var(--vp-lp-grid); }
-.vp-eb-mk b {
-  display: block;
-  font: 800 1.125rem/1.15 var(--vp-c-font, var(--vp-font-heading));
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-}
-.vp-eb-mk span:not(.vp-eb-mk-ico) {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--vp-c-muted-fg, #475569);
-  overflow-wrap: anywhere;
 }
 
 /* --- „Zahlen als Liste“ -------------------------------------------------- */

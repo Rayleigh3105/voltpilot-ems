@@ -1,0 +1,233 @@
+package com.voltpilot.api.versand;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.voltpilot.api.tenant.TenantAwareDataSource;
+import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.versand.telegram.TelegramAdapter;
+import com.voltpilot.api.versand.webhook.WebhookVersandAdapter;
+import com.voltpilot.api.versand.webpush.WebPushAdapter;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Base64;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.postgresql.ds.PGSimpleDataSource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * Der Bestätigungsfluss des E-Mail-Zustellwegs (§6.6): eine Adresse wird erst beliefert, wenn ihr
+ * Inhaber sie über einen Link bestätigt - der Token ist einmalig und läuft ab. Testcontainers,
+ * Docker nötig.
+ */
+@Testcontainers(disabledWithoutDocker = true)
+class ZustellwegBestaetigungIT {
+
+    private static final String APP_USER = "voltpilot_app";
+    private static final String APP_PW = "voltpilot_app_test_pw";
+    private static final String ADMIN_USER = "voltpilot_admin";
+    private static final String ADMIN_PW = "voltpilot_admin_test_pw";
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
+            .withDatabaseName("voltpilot")
+            .withUsername("voltpilot")
+            .withPassword("voltpilot_dev_pw");
+
+    private static JdbcTemplate root;
+    private static JdbcTemplate adminJdbc;
+    private static ZustellwegRepository zustellwege;
+    private static VersandRepository ausgang;
+    private static UUID tenant;
+
+    @BeforeAll
+    static void aufbauen() {
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration")
+                .baselineOnMigrate(true)
+                .baselineVersion("0")
+                .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
+                .load().migrate();
+        root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
+        JdbcTemplate appJdbc = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
+        adminJdbc = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
+        zustellwege = new ZustellwegRepository(appJdbc, adminJdbc);
+        ausgang = new VersandRepository(appJdbc, adminJdbc);
+        tenant = root.queryForObject("INSERT INTO tenant (name) VALUES ('Bestaetigung-Test') RETURNING id", UUID.class);
+    }
+
+    @AfterEach
+    void aufraeumen() {
+        TenantContext.clear();
+        adminJdbc.update("DELETE FROM benachrichtigung WHERE tenant_id = ?", tenant);
+        adminJdbc.update("DELETE FROM zustellweg WHERE tenant_id = ?", tenant);
+    }
+
+    @Test
+    void unbestaetigtBleibtDieAdresseOhneWirkung() {
+        TenantContext.set(tenant);
+        zustellwege.anlegenOderErneuern("sub-neu", "neu@example.test", "tok-unbestaetigt",
+                Instant.now().plusSeconds(3600));
+
+        Optional<String> ziel = zustellwege.bestaetigtesZiel(tenant, "sub-neu");
+
+        assertThat(ziel).isEmpty();
+        assertThat(zustellwege.eigener("sub-neu")).get().extracting(ZustellwegRepository.Zustellweg::bestaetigt)
+                .isEqualTo(false);
+    }
+
+    @Test
+    void bestaetigenMachtDieAdresseWirksamUndVerbrauchtDenToken() {
+        TenantContext.set(tenant);
+        zustellwege.anlegenOderErneuern("sub-jonas", "jonas@example.test", "tok-einmalig",
+                Instant.now().plusSeconds(3600));
+        TenantContext.clear(); // der Bestätigungsendpunkt hat keine Anmeldung, also keinen Kundenbereich
+
+        boolean ersterKlick = zustellwege.bestaetigen("tok-einmalig", Instant.now());
+        boolean zweiterKlick = zustellwege.bestaetigen("tok-einmalig", Instant.now());
+
+        assertThat(ersterKlick).isTrue();
+        assertThat(zweiterKlick).as("der Token ist verbraucht - ein zweiter Klick findet nichts mehr").isFalse();
+        assertThat(zustellwege.bestaetigtesZiel(tenant, "sub-jonas")).contains("jonas@example.test");
+    }
+
+    @Test
+    void einAbgelaufenerTokenBestaetigtNichts() {
+        TenantContext.set(tenant);
+        zustellwege.anlegenOderErneuern("sub-ines", "ines@example.test", "tok-abgelaufen",
+                Instant.now().minusSeconds(10));
+        TenantContext.clear();
+
+        boolean ok = zustellwege.bestaetigen("tok-abgelaufen", Instant.now());
+
+        assertThat(ok).isFalse();
+        assertThat(zustellwege.bestaetigtesZiel(tenant, "sub-ines")).isEmpty();
+    }
+
+    @Test
+    void eineGeaenderteAdresseVerliertIhreBestaetigung() {
+        TenantContext.set(tenant);
+        zustellwege.anlegenOderErneuern("sub-peter", "alt@example.test", "tok-alt", Instant.now().plusSeconds(3600));
+        zustellwege.bestaetigen("tok-alt", Instant.now());
+        assertThat(zustellwege.bestaetigtesZiel(tenant, "sub-peter")).contains("alt@example.test");
+
+        // Eine geänderte Adresse ist wieder UNBESTÄTIGT (§6.6) - sonst könnte eine Person eine fremde
+        // Adresse eintragen und sich auf die alte Bestätigung berufen.
+        zustellwege.anlegenOderErneuern("sub-peter", "neu@example.test", "tok-neu", Instant.now().plusSeconds(3600));
+
+        assertThat(zustellwege.bestaetigtesZiel(tenant, "sub-peter")).isEmpty();
+
+        zustellwege.bestaetigen("tok-neu", Instant.now());
+        assertThat(zustellwege.bestaetigtesZiel(tenant, "sub-peter")).contains("neu@example.test");
+    }
+
+    @Test
+    void derZustellwegServiceReihtDieBestaetigungsMailMitDemAngeforderenZielEin() {
+        TenantContext.set(tenant);
+        ZustellwegService dienst = neuerDienst("http://localhost:5173");
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-15T12:00:00Z"), ZoneOffset.UTC));
+
+        dienst.anfordern("sub-moritz", "moritz@example.test");
+
+        String ziel = adminJdbc.queryForObject(
+                "SELECT ziel FROM benachrichtigung WHERE tenant_id = ? AND empfaenger_sub = 'sub-moritz'",
+                String.class, tenant);
+        assertThat(ziel).isEqualTo("moritz@example.test");
+        assertThat(dienst.eigener("sub-moritz")).get()
+                .extracting(ZustellwegRepository.Zustellweg::bestaetigt).isEqualTo(false);
+    }
+
+    /**
+     * Die exakte Link-URL der Mail (Abnahme-Befund: die Portal-Route dahinter gab es nicht) -
+     * {@code basisUrl + "/#/zustellweg/bestaetigen?token=…"}, wie {@code ZustellwegController#bestaetigen}
+     * sie öffentlich (ohne Anmeldung) entgegennimmt.
+     */
+    @Test
+    void dieBestaetigungsMailTraegtDenLinkZurPortalRouteMitDemEchtenToken() {
+        TenantContext.set(tenant);
+        ZustellwegService dienst = neuerDienst("https://portal.voltpilot.de");
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-15T12:00:00Z"), ZoneOffset.UTC));
+
+        dienst.anfordern("sub-lena", "lena@example.test");
+
+        String inhalt = adminJdbc.queryForObject(
+                "SELECT inhalt FROM benachrichtigung WHERE tenant_id = ? AND empfaenger_sub = 'sub-lena'",
+                String.class, tenant);
+        String token = adminJdbc.queryForObject(
+                "SELECT bestaetigung_token FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = 'sub-lena'",
+                String.class, tenant);
+        assertThat(token).isNotBlank();
+        assertThat(inhalt).contains("https://portal.voltpilot.de/#/zustellweg/bestaetigen?token=" + token);
+    }
+
+    @Test
+    void erneutesAnfordernVerschicktEineZweiteMail() {
+        // B2: eine zweite Anforderung derselben Adresse schrieb bisher denselben Doppelversand-
+        // Schluessel (quelle_id blieb die unveraenderte zustellweg-Zeile, nr war fest 0) - die zweite
+        // Mail wurde am Schutz von §9 verschluckt, statt zuzustellen.
+        TenantContext.set(tenant);
+        ZustellwegService dienst = neuerDienst("http://localhost:5173");
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-19T08:00:00Z"), ZoneOffset.UTC));
+
+        dienst.anfordern("sub-zweitmail", "zweitmail@example.test");
+
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-19T08:05:00Z"), ZoneOffset.UTC));
+        dienst.anfordern("sub-zweitmail", "zweitmail@example.test");
+
+        int anzahl = adminJdbc.queryForObject(
+                "SELECT count(*) FROM benachrichtigung WHERE tenant_id = ? AND empfaenger_sub = 'sub-zweitmail'",
+                Integer.class, tenant);
+        assertThat(anzahl).as("beide Anforderungen reihen je eine eigene Mail ein").isEqualTo(2);
+    }
+
+    /**
+     * Diese Tests rufen nie {@code senden} auf den Scheibe-2-Adaptern (Probe/E-Mail-Adresse), darum
+     * genügen Platzhalter wie in {@code PushUndStufenRoutingIT}/{@code WebhookZustellungIT} - nur
+     * {@code WebPushAdapter} prüft seinen Schlüssel schon beim Bauen (BouncyCastle), darum kein echtes
+     * {@code null}.
+     */
+    private static ZustellwegService neuerDienst(String basisUrl) {
+        TelegramAdapter telegram = (chatId, text) -> { };
+        EmailVersandAdapter email = new EmailVersandAdapter(
+                new org.springframework.mail.javamail.JavaMailSenderImpl(), "meldungen@voltpilot.de");
+        WebPushAdapter push = new WebPushAdapter(platzhalter(65), platzhalterPrivatschluessel(),
+                "mailto:test@voltpilot.de");
+        WebhookVersandAdapter webhook = new WebhookVersandAdapter();
+        ZustellwegService dienst = new ZustellwegService(zustellwege, ausgang, telegram, email, push, webhook,
+                basisUrl, "", "");
+        return dienst;
+    }
+
+    private static String platzhalter(int laenge) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[laenge]);
+    }
+
+    /** BouncyCastle verlangt einen Skalar in [1, n-1] - lauter Nullen wären ungültig. */
+    private static String platzhalterPrivatschluessel() {
+        byte[] skalarEins = new byte[32];
+        skalarEins[31] = 1;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(skalarEins);
+    }
+
+    private static DataSource ds(String user, String password) {
+        PGSimpleDataSource ds = new PGSimpleDataSource();
+        ds.setUrl(POSTGRES.getJdbcUrl());
+        ds.setUser(user);
+        ds.setPassword(password);
+        return ds;
+    }
+}

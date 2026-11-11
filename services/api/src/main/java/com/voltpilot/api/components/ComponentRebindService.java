@@ -53,6 +53,19 @@ public class ComponentRebindService {
     }
 
     /**
+     * Die Erstbindung allein, billig genug für den Herzschlag: läuft nur, wenn die Anlage überhaupt eine
+     * Komponente mit Anbindung, aber ohne Pin hat (eine im Portal angelegte, die ihre Quelle noch sucht).
+     * Sonst kostet sie eine Abfrage und tut nichts.
+     */
+    public Outcome erstbindung(UUID siteId) {
+        boolean wartet = entityRepo.pointsForSite(siteId).stream().anyMatch(row ->
+                (row.edgeSourceId() == null || row.edgeSourceId().isBlank())
+                        && row.communication() != null && !row.communication().isBlank()
+                        && row.connectionJson() != null && !row.connectionJson().isBlank());
+        return wartet ? rebindOrphanedPins(siteId) : new Outcome(0);
+    }
+
+    /**
      * Stellt gerissene Bindungen dieser Anlage wieder her. Findet sich kein
      * eindeutiges Paar, passiert NICHTS - der manuelle Weg bleibt.
      */

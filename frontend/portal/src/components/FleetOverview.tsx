@@ -82,7 +82,9 @@ export function FleetSiteCard({
   const fresh = siteLiveFresh(site, now);
   const reason = earnings?.reason ?? null;
   const earn = earnings
-    ? siteEarnText(site.plantKind, savedOnDay(earnings.dailySaved, berlinDay(now)))
+    ? earnings.steuerungMonatMitBestandEur !== undefined
+      ? siteEarnText(site.plantKind, earnings.steuerungMonatMitBestandEur ?? null, 'monat')
+      : siteEarnText(site.plantKind, savedOnDay(earnings.dailySaved, berlinDay(now)))
     : null;
   // "nicht berechenbar" only for structural reasons; a site that simply has no
   // measurements yet keeps the calmer onboarding/prüfen copy below.

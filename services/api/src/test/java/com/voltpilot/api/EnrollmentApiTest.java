@@ -16,8 +16,9 @@ import java.util.UUID;
 import javax.security.auth.x500.X500Principal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -59,6 +60,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class EnrollmentApiTest {
@@ -290,7 +292,7 @@ class EnrollmentApiTest {
     void unknownStickerRefIsRefusedLikeTheClaimEndpoint() throws Exception {
         String csr = TestPki.csrPem(TestPki.rsaKeyPair(2048), "CN=dev");
         assertThat(postCsr("VP-TYPO-9999", csr, null).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
 
     @Test
@@ -406,6 +408,28 @@ class EnrollmentApiTest {
         assertThat(deviceLookup.allEnrolledDeviceIdentities())
                 .as("an unclaimed device leaves the source of truth")
                 .noneSatisfy(d -> assertThat(d.deviceId()).isEqualTo(deviceId));
+    }
+
+    // ---- Vorgangs-Kennung (docs/k8s-readiness.md, Abschnitt "Logs") -----------
+
+    /**
+     * Die Verdrahtung von {@code VorgangsKennung} in der echten Anwendung, hier geprüft, weil diese
+     * Klasse sie ohnehin auf einem echten Port startet: auch eine Antwort, die schon die gesicherte
+     * Kette gibt (401 ohne Token), nennt ihre Kennung - übernommen, wenn eine mitkommt, sonst erzeugt.
+     */
+    @Test
+    void jedeAntwortDerAnwendungNenntIhreVorgangsKennung() {
+        HttpHeaders vomIngress = new HttpHeaders();
+        vomIngress.set("X-Request-ID", "0a1b2c3d4e5f60718293a4b5c6d7e8f9");
+
+        ResponseEntity<String> uebernommen = rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(vomIngress), String.class);
+        ResponseEntity<String> erzeugt = rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
+                HttpEntity.EMPTY, String.class);
+
+        assertThat(uebernommen.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(uebernommen.getHeaders().getFirst("X-Request-ID")).isEqualTo("0a1b2c3d4e5f60718293a4b5c6d7e8f9");
+        assertThat(erzeugt.getHeaders().getFirst("X-Request-ID")).matches("[0-9a-f]{32}");
     }
 
     // ---- helpers ---------------------------------------------------------------

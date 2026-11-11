@@ -3,9 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Recht } from './components/Recht';
-import { darf, grundUndWeg, ohneStandort, RechteStandort, setSelbstauskunft, sichtbareStandorte, teilansichtKopf } from './rollen';
+import {
+  benutzerLesen, darf, gesamtabzugLaden, grundUndWeg, kundenadministrator, ohneStandort, RechteStandort, setSelbstauskunft,
+  sichtbareStandorte, teilansichtKopf,
+} from './rollen';
 import { darf as vertragDarf } from './rechte';
-import { rechteSeed, RECHTE_MATRIX, STANDORT_IDS } from './test/rollenFixtures';
+import { rechteSeed, RECHTE_MATRIX, SPRUNG_FALL, STANDORT_IDS } from './test/rollenFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { startEbene } from './betriebsart';
 
@@ -92,4 +95,64 @@ it('W14: rückwirkend braucht eine eigene Erlaubnis; Thomas richtet nur ab heute
     if (person === 'TB') { expect(frueher).not.toContain('<button>'); expect(frueher).toContain('Jonas Wendlinger'); }
     else expect(frueher).toBe(heute);
   }
+});
+
+describe('Mandantensprung · die Plattform-Administration kann im Kundenbereich, was der Kundenadministrator kann', () => {
+  const sprung = () => rechteSeed('LV', SPRUNG_FALL).me;
+
+  it('/me im Sprung: Zugang umschalter, Kundenadministrator unternehmensweit, jeder Standort sichtbar', () => {
+    const me = sprung();
+    expect(me).toMatchObject({ konto: 'plattform', zugang: 'umschalter', rollen: ['kundenadministrator'], unternehmensweit: true });
+    expect(me.standorte.map(s => [s.kennzeichen, s.rollen, s.ocpp_stufe])).toEqual([
+      ['ST-1', ['kundenadministrator'], 'PLATFORM'], ['ST-2', ['kundenadministrator'], 'PLATFORM']]);
+  });
+
+  it('jede Aktion, die Jonas (Kundenadministrator) hat, hat sie auch - unternehmensweit und an jedem Standort; P bleibt dazu', () => {
+    const jonas = rechteSeed('JW').me;
+    const me = sprung();
+    for (const aktion of RECHTE_MATRIX.keys()) {
+      for (const standort of [null, STANDORT_IDS['ST-1'], STANDORT_IDS['ST-2']]) {
+        if (darf(aktion, standort, jonas)) expect(darf(aktion, standort, me), `${aktion} @ ${standort}`).toBe(true);
+      }
+      if (RECHTE_MATRIX.get(aktion)!.zellen.voltpilot_betrieb === 'P') expect(darf(aktion, null, me), aktion).toBe(true);
+    }
+  });
+
+  it('die Karte „Wer bekommt Sonnenstrom zuerst?“: „Ändern“ statt „Dafür fehlt Ihnen das Recht.“', () => {
+    setSelbstauskunft(sprung());
+    render(<RechteStandort.Provider value={STANDORT_IDS['ST-1']}>
+      <Recht aktion="betriebsweise.aendern"><button>Ändern</button></Recht>
+      <Recht aktion="handeingriff.setzen"><button>Eingreifen</button></Recht>
+      <Recht aktion="freigabe.erteilen"><button>Freigeben</button></Recht>
+    </RechteStandort.Provider>);
+    for (const name of ['Ändern', 'Eingreifen', 'Freigeben']) expect(screen.getByRole('button', { name })).toBeTruthy();
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+
+  it('Sonderprüfungen ohne Matrix-Zeile: Benutzerliste und Gesamtabzug wie beim Kundenadministrator', () => {
+    const me = sprung();
+    expect(kundenadministrator(me)).toBe(true);
+    expect(benutzerLesen(me)).toBe(true);
+    expect(gesamtabzugLaden(me)).toBe(true);
+    expect(kundenadministrator({ ...me, zustand: 'gesperrt' })).toBe(false);
+  });
+
+  it('Gegenprobe: ohne Sprung, als Unterstützung und als Kundenrolle bleibt alles, wie es war', () => {
+    const ohneSprung = { ...sprung(), kundenbereich: null, zugang: null, rollen: [], unternehmensweit: false, standorte: [],
+      unternehmen_rechte: [] };
+    expect(kundenadministrator(ohneSprung)).toBe(false);
+    expect(benutzerLesen(ohneSprung)).toBe(false);
+    const lena = rechteSeed('LV').me;
+    expect(lena.zugang).toBe('unterstuetzung');
+    expect(kundenadministrator(lena)).toBe(false);
+    expect(benutzerLesen(lena)).toBe(false);
+    expect(gesamtabzugLaden(lena)).toBe(false);
+    expect(darf('betriebsweise.aendern', STANDORT_IDS['ST-1'], lena)).toBe(false);
+    const ines = rechteSeed('IK').me;
+    expect([kundenadministrator(ines), benutzerLesen(ines), gesamtabzugLaden(ines)]).toEqual([false, true, false]);
+    const jonas = rechteSeed('JW').me;
+    expect([kundenadministrator(jonas), benutzerLesen(jonas), gesamtabzugLaden(jonas)]).toEqual([true, true, true]);
+    const claudia = rechteSeed('CB').me;
+    expect([kundenadministrator(claudia), benutzerLesen(claudia), gesamtabzugLaden(claudia)]).toEqual([false, false, false]);
+  });
 });

@@ -36,6 +36,12 @@ const { parseConfig, route } = require('./inverter-routing');
 const SCHEMA_VERSION = '1.0';
 const ROLE_ERZEUGER = 'pv-generation';
 const ROLE_NETZ = 'grid-meter';
+// The transport of an Anlagensteuerung (UEMS EZ-21, core sources.RolePlantController).
+// It sits in edge/sources/config so the measurement binding can resolve the
+// controller's pin to an address - the palette reads the Erzeuger image over it.
+// The self-wiring never polls it: planSources keeps it out like any role it does
+// not read, and the flow store names it instead of warning NICHT VERDRAHTET.
+const ROLE_PLANT_CONTROLLER = 'plant-controller';
 // A consumer (Verbraucher) measurement point - e.g. a go-e wallbox read over its
 // local HTTP API. Read-only like the other source roles; its load_kw rides the
 // per-source topic and (topology layer) renders as a consumer entity.
@@ -118,6 +124,7 @@ module.exports = {
   ROLE_ERZEUGER,
   ROLE_NETZ,
   ROLE_CONSUMER,
+  ROLE_PLANT_CONTROLLER,
   parseSourcesConfig,
   planSources,
 };

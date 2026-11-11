@@ -149,6 +149,9 @@ func TestStartzeileNenntDieSchluesselausgabe(t *testing.T) {
 		if !strings.Contains(log.String(), will) {
 			t.Errorf("Port %q: %s", port, log.String())
 		}
+		if !strings.Contains(log.String(), "rueckmeldung=an") {
+			t.Errorf("Startzeile ohne die Rückmeldung: %s", log.String())
+		}
 		if r := regeln(k); (r.SchluesselPort != 0) != (port != "") {
 			t.Errorf("Port %q kommt nicht in der Firewall-Basis an: %+v", port, r)
 		}

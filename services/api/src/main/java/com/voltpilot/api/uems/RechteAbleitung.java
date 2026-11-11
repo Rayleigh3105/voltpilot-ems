@@ -327,7 +327,8 @@ public final class RechteAbleitung {
         VERLAENGERN("verlaengern"),
         ABLAUFEN("ablaufen"),
         ERSTE_ANMELDUNG("erste_anmeldung"),
-        STARTPASSWORT_NEU("startpasswort_neu");
+        STARTPASSWORT_NEU("startpasswort_neu"),
+        KONTO_GEAENDERT("konto_geaendert");
 
         private final String code;
 

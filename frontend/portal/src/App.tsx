@@ -1,16 +1,15 @@
-import { darf, ohneStandort, RechteStandort, setSelbstauskunft, teilansichtKopf, useRollen } from './rollen';
-import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { darf, ohneStandort, RechteStandort, setSelbstauskunft, sichtbareStandorte, teilansichtKopf, useRollen } from './rollen';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
-import { Input } from '../designsystem/components/forms/Input';
 import { ANMELDE_TEXT, AuthScreen, TrustRow } from './components/AuthScreen';
-import { currentRoles, isPlatformAdmin, login, loginWithCredentials } from './auth';
-import { PASSWORT_MIN_ZEICHEN, passwortFehler } from './passwortRegel';
+import { currentRoles, isPlatformAdmin, login } from './auth';
+import { leseEntwurf, meinEntwurfSchluessel } from './anlageEntwurf';
+import { einrichtungSpaeter, merkeEinrichtungSpaeter } from './einrichtungSpaeter';
 import {
   api,
   ApiError,
-  register,
   setTenantOverride,
   setKundenbereich,
   type Betriebsart,
@@ -40,10 +39,12 @@ import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
   aufbauHash,
+  boxSeiteHash,
   canonicalAnlageHash,
   canonicalStandortHash,
   canonicalVerbrauchHash,
   canonicalPlatformHash,
+  isPlattformBereich,
   isGeraeteBereich,
   hashForRoute,
   isBootHash,
@@ -73,6 +74,7 @@ import {
   transitionKind,
   type PageId,
   type Route,
+  werkstattHash,
 } from './nav';
 import { PAGE_CHUNK } from './pageChunks';
 import { darfEnergieeinsaetzeSehen, darfEnergiemanagementSehen, darfVerbesserungSehen } from './bereichSicht';
@@ -125,7 +127,16 @@ import { PortfolioTabs } from './components/PortfolioTabs';
 import { EbenenTabs } from './components/EbenenTabs';
 import { helpForRoute } from './help/context';
 import { useEntscheidFokus } from './useEntscheidFokus';
+import { offeneKoppelRef, vergissKoppelRef } from './koppelLink';
+import type { KoppelSeiteArt } from './components/KoppelSeite';
 const HelpPage = lazy(PAGE_CHUNK.hilfe);
+// „Konto erstellen“: nur die Registrierung braucht es, nie das erste Bild (Bündel-Wächter, Anlage-Flow a1).
+// Keine Seite (kein Eintrag in PAGE_CHUNK, nichts vorzuladen): das Stück lädt, wenn das Formular rendert.
+const RegisterForm = lazy(() => import('./Registrierung').then((m) => ({ default: m.RegisterForm })));
+// Das Band der Anmeldekarte lädt nach (Bündel-Wächter): ohne Box aus dem QR-Code braucht es niemand.
+const AnmeldeBand = lazy(() => import('./components/KoppelBand').then((m) => ({ default: m.AnmeldeBand })));
+const KoppelSeite = lazy(() => import('./components/KoppelSeite').then((m) => ({ default: m.KoppelSeite })));
+const KoppelEmpfang = lazy(() => import('./components/KoppelEmpfang').then((m) => ({ default: m.KoppelEmpfang })));
 // Der Anlege-Assistent des ERSTEN Besuchs - nachgeladen statt mitgeliefert
 // (Perf-Review `vp-cockpit-perf-p7` §2 U2). Er hängt über
 // `Onboarding.tsx → AnlageFlow.tsx → LocationMap` an **Leaflet** (146 kB) und
@@ -202,6 +213,14 @@ const BenutzerPage = lazy(() =>
 const MessstellenPage = lazy(() =>
   PAGE_CHUNK['portfolio-messstellen']().then((m) => ({ default: m.MessstellenPage })),
 );
+// Meldungs-Center (Alerting Scheibe 1, Entscheid 4A): öffnet nur über die Glocke oder einen Link.
+const MeldungenPage = lazy(() =>
+  PAGE_CHUNK['meldungen']().then((m) => ({ default: m.MeldungenPage })),
+);
+// Einstellungen (Konzept vp-einstellungen-konzept-e1, Scheibe 1): öffnet nur über das Avatar-Menü.
+const EinstellungenPage = lazy(() =>
+  PAGE_CHUNK['einstellungen']().then((m) => ({ default: m.EinstellungenPage })),
+);
 const BezugsgroessenPage = lazy(() =>
   PAGE_CHUNK['portfolio-bezugsgroessen']().then((m) => ({ default: m.BezugsgroessenPage })),
 );
@@ -232,13 +251,14 @@ const PortfolioErloese = lazy(() =>
 const MandantenPage = lazy(() =>
   PAGE_CHUNK.mandanten().then((m) => ({ default: m.MandantenPage })),
 );
-const PlattformUebersichtPage = lazy(() =>
-  PAGE_CHUNK['plattform-uebersicht']().then((m) => ({
-    default: m.PlattformUebersichtPage,
-  })),
+// Scheibe S1 (seither umgehängt): der Raum „Plattform" mit seinen zwei
+// Reitern (Übersicht · Katalog) rendert über EINEN Lade-Einstieg.
+const PlattformBereich = lazy(() =>
+  PAGE_CHUNK['plattform-uebersicht']().then((m) => ({ default: m.PlattformBereich })),
 );
-// Stufe 3: EIN Nav-Punkt „Geräte" mit zwei Tabs - beide Routen rendern denselben
-// Bereich, also gibt es auch nur einen Lade-Einstieg.
+// Der Raum „Geräte" mit seinen vier Reitern (Liste/Akte · Software ·
+// Werkstatt · Fernwartung) - Software/Werkstatt/Fernwartung sind vom Raum
+// „Plattform" umgehängt.
 const GeraeteBereich = lazy(() =>
   PAGE_CHUNK['geraete-registry']().then((m) => ({ default: m.GeraeteBereich })),
 );
@@ -267,6 +287,9 @@ const KomponentenFlottePage = lazy(() =>
   })),
 );
 
+/** Was die Karte ohne Sitzung zeigt. */
+type AnmeldeAnsicht = 'login' | 'register' | 'koppel' | 'koppel-unlesbar';
+
 export default function App({
   initialAuth,
   authError = false,
@@ -285,8 +308,11 @@ export default function App({
   sessionExpired?: boolean;
   /** True while main.tsx is navigating to the Keycloak login (no pre-step). */
   redirecting?: boolean;
-  /** 'register' when the visitor deep-linked the portal's #register route. */
-  initialView?: 'login' | 'register';
+  /**
+   * 'register' when the visitor deep-linked the portal's #register route; 'koppel' / 'koppel-unlesbar'
+   * nach dem Scan des Gehäuse-QR ohne Sitzung (Empfangsseite, `KoppelEmpfang`).
+   */
+  initialView?: AnmeldeAnsicht;
 }) {
   if (!initialAuth)
     return (
@@ -319,14 +345,30 @@ function LoginScreen({
   rateLimited?: boolean;
   sessionExpired?: boolean;
   redirecting?: boolean;
-  initialView?: 'login' | 'register';
+  initialView?: AnmeldeAnsicht;
 }) {
-  const [view, setViewState] = useState<'login' | 'register'>(initialView);
+  const [view, setViewState] = useState<AnmeldeAnsicht>(initialView);
   // Keep the URL in sync so a reload on the register form stays on the form
   // (main.tsx only auto-redirects to Keycloak OFF the #register route).
-  function setView(v: 'login' | 'register') {
+  function setView(v: AnmeldeAnsicht) {
     setViewState(v);
     window.location.hash = v === 'register' ? '#register' : '';
+  }
+  // Die Box aus dem QR-Code (Tab oder 24 Stunden im Browser): Band über der Anmeldekarte (M4).
+  const [koppelRef] = useState(() => offeneKoppelRef());
+  if (view === 'koppel' || view === 'koppel-unlesbar') {
+    return (
+      <AuthScreen>
+        <Suspense fallback={<p className="vp-auth-hint" aria-busy="true">Wird geladen …</p>}>
+          <KoppelEmpfang
+            kennung={view === 'koppel' ? koppelRef : null}
+            onKontoErstellen={() => setView('register')}
+            onAnmelden={() => login()}
+          />
+        </Suspense>
+        <TrustRow />
+      </AuthScreen>
+    );
   }
   if (redirecting) {
     // The Keycloak redirect is already underway (no pre-step). The panel is
@@ -366,6 +408,11 @@ function LoginScreen({
       )}
       {view === 'login' ? (
         <>
+          {koppelRef && (
+            <Suspense fallback={null}>
+              <AnmeldeBand kennung={koppelRef} />
+            </Suspense>
+          )}
           <h1>Willkommen zurück</h1>
           <p className="vp-auth-hint">{ANMELDE_TEXT.vpLoginHint}</p>
           {authError ? (
@@ -404,201 +451,12 @@ function LoginScreen({
       ) : (
         // "Zur Anmeldung" goes straight to the Keycloak login (there is no
         // in-portal login pre-step anymore).
-        <RegisterForm onBack={() => login()} />
+        <Suspense fallback={<p className="vp-auth-hint" aria-busy="true">Wird geladen …</p>}>
+          <RegisterForm onBack={() => login()} />
+        </Suspense>
       )}
       {view === 'login' && <TrustRow />}
     </AuthScreen>
-  );
-}
-
-export function RegisterForm({ onBack }: { onBack: () => void }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ name: false, email: false, password: false });
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const nameRef = useRef<HTMLInputElement>(null);
-  const emailRef = useRef<HTMLInputElement>(null);
-  const passwordRef = useRef<HTMLInputElement>(null);
-
-  const nameOk = name.trim().length > 0;
-  const emailOk = /\S+@\S+\.\S+/.test(email.trim());
-  const passwordFehler = passwortFehler(password, email, name);
-  const passwordOk = passwordFehler === null;
-  const valid = nameOk && emailOk && passwordOk;
-
-  function touch(field: keyof typeof touched) {
-    setTouched((t) => ({ ...t, [field]: true }));
-  }
-
-  async function submit() {
-    if (busy) return;
-    if (!valid) {
-      // Point at what's missing instead of silently refusing.
-      setTouched({ name: true, email: true, password: true });
-      (!nameOk ? nameRef : !emailOk ? emailRef : passwordRef).current?.focus();
-      return;
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      await register({ name: name.trim(), email: email.trim(), password });
-      // Sign the fresh customer straight in with the credentials they just
-      // typed (reloads the SPA into the onboarding wizard). If the direct
-      // grant is unavailable (e.g. older realm config), fall back to the
-      // pre-filled Keycloak login.
-      try {
-        await loginWithCredentials(email.trim().toLowerCase(), password);
-        return; // reloading
-      } catch {
-        setDone(true);
-      }
-    } catch (e) {
-      setErr(
-        e instanceof ApiError && e.status === 409
-          ? 'Mit dieser E-Mail-Adresse gibt es bereits ein Konto. Melden Sie sich stattdessen an.'
-          : e instanceof ApiError && e.status === 400
-            ? `Bitte prüfen Sie Ihre Eingaben: gültige E-Mail-Adresse und ein Passwort mit mindestens ${PASSWORT_MIN_ZEICHEN} Zeichen, das nicht Ihr Name oder Ihre E-Mail-Adresse ist.`
-            : e instanceof ApiError && e.status === 429
-              ? 'Zu viele Registrierungsversuche von Ihrem Anschluss. Bitte versuchen Sie es in etwa einer Stunde erneut.'
-              : e instanceof ApiError && (e.status === 502 || e.status === 503)
-                ? // Keycloak/anmeldedienst is down: this is an outage, not a
-                  // transient hiccup - don't invite an immediate retry (m7).
-                  'Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in wenigen Minuten erneut.'
-                : 'Die Registrierung hat gerade nicht geklappt. Bitte versuchen Sie es gleich noch einmal.',
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (done) {
-    return (
-      <>
-        <h1>Ihr Konto ist bereit</h1>
-        <p className="vp-auth-hint">
-          Willkommen bei VoltPilot! Melden Sie sich jetzt mit Ihrer E-Mail-Adresse an -
-          danach legen Sie Ihre Anlage an und verbinden Ihr Gerät.
-        </p>
-        <Button variant="primary" size="lg" fullWidth onClick={() => login(email.trim())}>
-          Jetzt anmelden
-        </Button>
-      </>
-    );
-  }
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-      noValidate
-    >
-      <h1>Konto erstellen</h1>
-      <p className="vp-auth-hint">
-        In einer Minute startklar: Konto anlegen, Anlage benennen, Gerät verbinden.
-      </p>
-      <div style={{ display: 'grid', gap: 12, textAlign: 'left' }}>
-        <Input
-          ref={nameRef}
-          label="Ihr Name oder Firmenname"
-          placeholder="z. B. Erika Kaiser"
-          autoComplete="name"
-          autoFocus
-          value={name}
-          onChange={(e) => setName((e.target as HTMLInputElement).value)}
-          onBlur={() => touch('name')}
-          error={
-            touched.name && !nameOk
-              ? 'Bitte geben Sie Ihren Namen oder Firmennamen ein.'
-              : null
-          }
-        />
-        <Input
-          ref={emailRef}
-          label="E-Mail-Adresse"
-          type="email"
-          placeholder="erika@example.com"
-          autoComplete="email"
-          spellCheck={false}
-          value={email}
-          onChange={(e) => setEmail((e.target as HTMLInputElement).value)}
-          onBlur={() => touch('email')}
-          error={
-            touched.email && !emailOk
-              ? 'Das sieht noch nicht wie eine E-Mail-Adresse aus.'
-              : null
-          }
-        />
-        <div className="vp-pw-field">
-          <div className="vp-pw-labelrow">
-            <label htmlFor="reg-password" className="vp-field-label">
-              Passwort
-            </label>
-            <button
-              type="button"
-              className="vp-linklike vp-pw-toggle"
-              onClick={() => setShowPassword((s) => !s)}
-              aria-pressed={showPassword}
-            >
-              {showPassword ? 'Verbergen' : 'Anzeigen'}
-            </button>
-          </div>
-          <Input
-            ref={passwordRef}
-            id="reg-password"
-            type={showPassword ? 'text' : 'password'}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
-            onBlur={() => touch('password')}
-            error={
-              touched.password && !passwordOk ? passwordFehler : null
-            }
-            hint={
-              passwordOk ? (
-                <span style={{ color: 'var(--vp-ok-ink)' }}>
-                  <Icon
-                    name="check"
-                    size={12}
-                    strokeWidth={3}
-                    style={{ verticalAlign: '-1px', marginRight: 4 }}
-                  />
-                  Passwort erfüllt die Vorgabe.
-                </span>
-              ) : (
-                `Mindestens ${PASSWORT_MIN_ZEICHEN} Zeichen, nicht Ihr Name oder Ihre E-Mail-Adresse.`
-              )
-            }
-          />
-        </div>
-      </div>
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        fullWidth
-        disabled={busy}
-        // Blur validation can add a line above this button between pointer
-        // down/up, moving it away from the tap. An invalid submit focuses the
-        // first error itself; keep the field focused until that click lands.
-        onMouseDown={(e) => { if (!valid) e.preventDefault(); }}
-        style={{ marginTop: 16 }}
-      >
-        {busy ? 'Erstelle Konto…' : 'Konto erstellen'}
-      </Button>
-      {err && <div className="vp-alert vp-alert-err">{err}</div>}
-      <p className="vp-auth-note">
-        Schon ein Konto?{' '}
-        <button type="button" className="vp-linklike" onClick={onBack}>
-          Zur Anmeldung
-        </button>
-      </p>
-    </form>
   );
 }
 
@@ -647,7 +505,17 @@ function UnifiedPortal() {
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  // F6 (Anlage-Flow a1): „Später einrichten" gilt je Kundenbereich über Neuladen und neue Anmeldung -
+  // vorher kam der Vollbild-Assistent nach jedem Laden wieder, beim Register mit leeren Feldern.
+  const [onboardingDismissed, setOnboardingDismissedState] = useState(() => einrichtungSpaeter(isAdmin));
+  const setOnboardingDismissed = useCallback((spaeter: boolean) => {
+    setOnboardingDismissedState(spaeter);
+    merkeEinrichtungSpaeter(spaeter);
+  }, []);
+  // B1: einmal offen, beendet den Assistenten nur der Kunde - nicht die Geräte-Abfrage, die nach dem
+  // Verbinden der Box ein Gerät findet (vorher kippte er 30 s nach „Ihre Anlage ist verbunden" auf
+  // „Noch keine Anlage").
+  const [onboardingOffen, setOnboardingOffen] = useState(false);
   // The shell's "＋ Anlage hinzufügen" one-flow drawer (single-Anlage customers).
   const [addAnlageOpen, setAddAnlageOpen] = useState(false);
   // AP-01 E5 = A: Ziel des offenen Messen-Assistenten (`null` = zu), Zahl der Schließungen, Avatar → Karte.
@@ -1134,7 +1002,7 @@ function UnifiedPortal() {
   // REITER des Verlaufs, also gewöhnliche Unterseiten - ein eigener Zweig für
   // sie gibt es nicht mehr.
   const shellSite = page === 'anlagen' ? resolveAnlage(sites, route.siteId) : null;
-  const { surface, aufmerksam } = useAnlageSurface(shellSite);
+  const { surface, aufmerksam, ladepunktAnzahl } = useAnlageSurface(shellSite);
 
   // Die stille Auffrischung der Geräteliste - das Gegenstück zur Bezugszeit
   // oben. Vorher tickte hier nur eine Uhr über einem EINMAL geladenen
@@ -1163,6 +1031,14 @@ function UnifiedPortal() {
     );
   }, [tenantReady, selbst]);
   useFreshnessPoll(refreshDevices, LIVENESS_POLL_MS, tenantReady && selbst !== null && !ohneStandort(selbst));
+  // N3 (vp-box-verbinden-konzept): die Box-Liste des Kopfs lief unabhängig von der des
+  // Einrichtungs-Assistenten - bis zu 30 s nach einem Verbinden sagte der Kopf noch
+  // „noch nicht verbunden", während die Seite darunter schon „Box verbunden" sagte.
+  useEffect(() => {
+    const neu = () => refreshDevices();
+    window.addEventListener('vp-geraet-verbunden', neu);
+    return () => window.removeEventListener('vp-geraet-verbunden', neu);
+  }, [refreshDevices]);
 
   // Device liveness of the Anlage in scope, judged against the moment the
   // server answered - never against a clock that ran past a snapshot we could
@@ -1270,10 +1146,15 @@ function UnifiedPortal() {
           aufmerksamkeitTitel(aufmerksam),
           // Das EINE Tor (`rollen.showTechnicalLayer` = Plattform-Admin).
           isAdmin,
+          betriebsart,
+          ladepunktAnzahl,
         ),
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
         // lassen.
+        // `surface` ist null, bis die Oberfläche einmal da ist (jeder Abruf dort ist fail-soft, sie kommt immer) - auch im
+        // ersten Bild, in dem `loading` noch nicht gesetzt ist.
+        bereicheLaden: surface == null,
         activeKey: activeAreaKey(route.sub, anlageSidebar(surface)),
         onOpenSub: (sub: Parameters<typeof anlageRoute>[1]) =>
           navigate(anlageRoute(shellSite.id, sub ?? null)),
@@ -1402,11 +1283,90 @@ function UnifiedPortal() {
   const loadFailed =
     error != null && loaded && tenantReady && sites.length === 0 && devices.length === 0;
 
-  // First-run journey: until the customer has a device sending data, the whole
-  // portal IS the onboarding. No empty dashboard with disconnected forms.
+  // First-run journey: a customer without any Anlage gets the full-page assistant ONCE. Once an Anlage
+  // exists, what is still open (Box, Geräte, Steuerung) is the Einrichtungs-Karte in its cockpit - never
+  // the full page again (Anlage-Flow a1, D7; R7: vorher Banner, Einrichtungspfad und Kopfknopf zugleich).
   // Customers only - an admin browsing an empty tenant keeps the normal pages.
-  const showOnboarding =
-    !isAdmin && loaded && !error && devices.length === 0 && !onboardingDismissed && darf('anlage.verwalten');
+  const onboardingGewollt =
+    !isAdmin && loaded && !error && sites.length === 0 && devices.length === 0 && !onboardingDismissed
+    && darf('anlage.verwalten');
+  useEffect(() => {
+    if (onboardingGewollt) setOnboardingOffen(true);
+  }, [onboardingGewollt]);
+  // F9 (Anlage-Flow a1, Paket 3): ein offener Anlege-Fluss dieses Tabs kommt nach Neuladen oder Anmeldung
+  // zurück - am selben Schritt, mit denselben Eingaben (`anlageEntwurf.ts`). Einmal je Laden geprüft.
+  const entwurfGeprueft = useRef(false);
+  useEffect(() => {
+    if (entwurfGeprueft.current || isAdmin || !loaded || error || !tenantReady) return;
+    entwurfGeprueft.current = true;
+    const entwurf = leseEntwurf(meinEntwurfSchluessel());
+    if (!entwurf || !darf('anlage.verwalten')) return;
+    if (entwurf.wirt === 'assistent') {
+      setOnboardingDismissed(false);
+      setOnboardingOffen(true);
+    } else {
+      setAddAnlageOpen(true);
+    }
+  }, [isAdmin, loaded, error, tenantReady, darf, setOnboardingDismissed]);
+  const showOnboarding = !isAdmin && !onboardingDismissed && (onboardingGewollt || onboardingOffen);
+
+  // Der Direktlink vom Gehäuse (`koppelLink.ts`, Konzept vp-qr-einstieg QE-2 A): die gemerkte Referenz
+  // dorthin, wo eine Box verbunden wird. Ohne Anlage bietet sie der Einrichtungs-Assistent an, mit einer
+  // Anlage der Aufbau („Box hinzufügen“), mit mehreren erst die Wahl der Anlage. Gehört die Box schon zum
+  // Konto oder fehlt das Recht, steht eine eigene Seite. Ein VoltPilot-Admin landet in der Werkstatt.
+  // Entschieden wird EINMAL je Laden: Legt der Assistent in Schritt 1 die Anlage an, springt die Weiche
+  // nicht mehr um (Befund §7). Vergessen wird die Referenz erst nach dem Verbinden, beim Abbruch oder beim
+  // Abmelden (QE-3 B); verbunden wird nie von selbst.
+  const [koppelRef, setKoppelRef] = useState<string | null>(() => offeneKoppelRef());
+  const [koppelSeite, setKoppelSeite] = useState<KoppelSeiteArt | null>(null);
+  const koppelEntschieden = useRef(false);
+  useEffect(() => {
+    if (!koppelRef || koppelEntschieden.current) return;
+    if (!isAdmin && (!loaded || error != null || !tenantReady)) return;
+    koppelEntschieden.current = true;
+    const ref = koppelRef;
+    const lage = {
+      admin: isAdmin,
+      siteIds: sites.map((s) => s.id),
+      boxen: devices,
+      darfAnlegen: darf('anlage.verwalten'),
+      darfVerbinden: darf('geraet.einrichten') || sichtbareStandorte().some((o) => o.rechte.includes('geraet.einrichten')),
+      aufbau: (siteId: string, r: string) => aufbauHash(siteId, 'box', { ref: r }),
+      werkstatt: (r: string) => werkstattHash(r),
+    };
+    // Die Weiche lädt nach (Bündel-Wächter): das erste Bild trägt sie nicht.
+    void import('./koppelZiel').then(({ koppelZiel }) => {
+      const ziel = koppelZiel(ref, lage);
+      switch (ziel.art) {
+        case 'assistent':
+          setOnboardingDismissed(false);
+          setOnboardingOffen(true);
+          return;
+        case 'adresse':
+          // Die Werkstatt ist das Ende für den Admin; der Aufbau vergisst die Referenz selbst (verbunden/Abbruch).
+          if (isAdmin) {
+            vergissKoppelRef();
+            setKoppelRef(null);
+          }
+          window.location.hash = ziel.hash;
+          return;
+        case 'schonDeins':
+          // Nichts mehr zu tun: die Referenz ist erledigt.
+          vergissKoppelRef();
+          setKoppelSeite(ziel);
+          return;
+        default:
+          setKoppelSeite(ziel);
+      }
+    });
+  }, [koppelRef, isAdmin, loaded, error, tenantReady, sites, devices, darf, setOnboardingDismissed]);
+  function koppelSeiteSchliessen(vergessen: boolean) {
+    if (vergessen) {
+      vergissKoppelRef();
+      setKoppelRef(null);
+    }
+    setKoppelSeite(null);
+  }
 
   // The always-visible shell action for the one case with no obvious entry
   // point: a customer with exactly one Anlage (no Übersicht, no Anlagen-Liste).
@@ -1420,6 +1380,10 @@ function UnifiedPortal() {
 
   function finishOnboarding(ziel?: Route) {
     setOnboardingDismissed(true);
+    setOnboardingOffen(false);
+    // Die Referenz aus dem QR-Code vergisst der Schritt „Box“ beim Verbinden; „später verbinden“ behält
+    // sie bis morgen (QE-3 B) - beim nächsten Laden öffnet dann der Aufbau „Box hinzufügen“.
+    setKoppelRef(null);
     void reload();
     // Modus „nur messen“ (`anlegeNurMessen.ts`): das Ende nennt „Standort › Messstellen“ als Ziel.
     if (ziel) navigate(ziel);
@@ -1500,6 +1464,10 @@ function UnifiedPortal() {
   // Ein Plattform-Konto hat keinen Standort (/me: konto „plattform“, standorte leer) - die Plattform-Seiten
   // brauchen keinen und bleiben erreichbar, wie schon im Lade-Zweig unten.
   const leer = ohneStandort(selbst) && !(isAdmin && PLATFORM_PAGES.some((p) => p.id === page));
+  // Die Plattform hat einen Mandanten gewählt, aber /me nimmt ihn nicht an (`kundenbereich` null): der Sprung ist in
+  // dieser Umgebung abgeschaltet und es gibt dort keine wirksame Unterstützung. Das ist kein fehlender Standort - die
+  // Karte nennt den Grund und den Weg. Bei offenem Umschalter (Vorgabe seit 26.10.2026) kommt sie nicht vor.
+  const ohneUnterstuetzung = leer && isAdmin && tenantId != null && selbst?.kundenbereich == null;
   const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
   // Avatar-Menü „Funktionen“ (AP-01 E5 = A): nur, wo die Landung eine Ebene mit der Karte ist. Die Anlage- und die
   // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war. Die Unternehmens-Übersicht trägt die
@@ -1539,6 +1507,7 @@ function UnifiedPortal() {
       tenants={tenants}
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
+      onKundeOeffnen={(id) => jumpToTenant(id, 'uebersicht')}
       anlage={leer ? null : anlageNav}
       ebenen={leer ? null : ebenenNav}
       ohneStandort={leer}
@@ -1592,13 +1561,49 @@ function UnifiedPortal() {
         <LoadErrorNotice onRetry={() => void reload()} />
       ) : tenantReady && !selbst && !PLATFORM_PAGES.some((p) => p.id === page) ? (
         <Card padding="lg" radius="lg"><p>Wird geladen …</p></Card>
+      ) : ohneUnterstuetzung ? (
+        <OhneUnterstuetzungNotice
+          mandant={tenants.find((t) => t.id === tenantId)?.name ?? null}
+          onMandanten={() => { changeTenant(null); navigate('mandanten'); }}
+        />
+      ) : koppelSeite && koppelRef ? (
+        <LazyBoundary fallback={null}>
+          <KoppelSeite
+            seite={koppelSeite}
+            kennung={koppelRef}
+            sites={sites}
+            devices={devices}
+            kundenadministratoren={selbst?.kundenadministratoren ?? []}
+            onAnlage={(siteId) => {
+              koppelSeiteSchliessen(false);
+              window.location.hash = aufbauHash(siteId, 'box', { ref: koppelRef });
+            }}
+            onBoxAnsehen={(siteId) => {
+              koppelSeiteSchliessen(true);
+              window.location.hash = boxSeiteHash(siteId, koppelRef);
+            }}
+            onCockpit={(siteId) => {
+              koppelSeiteSchliessen(true);
+              navigate(anlageRoute(siteId));
+            }}
+            // Wahl: „später verbinden“ behält die Referenz bis morgen; M12: „Zur Übersicht“ ist der Abbruch.
+            onSchliessen={() => koppelSeiteSchliessen(koppelSeite.art !== 'wahl')}
+          />
+        </LazyBoundary>
       ) : leer ? (
         <Card padding="lg" radius="lg"><h1>Kein Standort zugewiesen</h1><p>{selbst?.text}</p>
           {selbst?.kuenftig.map((z) => <p key={`${z.standort}-${z.ab}`}>{z.text}</p>)}
         </Card>
       ) : showOnboarding ? (
         <LazyBoundary fallback={null}>
-          <OnboardingWizard sites={sites} onDone={(ziel) => finishOnboarding(ziel)} onSkip={() => finishOnboarding()} />
+          <OnboardingWizard
+            sites={sites}
+            vorschlagKennung={koppelRef ? offeneKoppelRef() : null}
+            // B1: die neue Anlage steht sofort in der Liste - nie „Noch keine Anlage" neben einer angelegten.
+            onSiteCreated={(s) => void reload(s.id, { background: true })}
+            onDone={(ziel) => finishOnboarding(ziel)}
+            onSkip={() => finishOnboarding()}
+          />
         </LazyBoundary>
       ) : !showPageTree ? (
         // Shell-Boot läuft (`!loaded`) und es ist eine mandantengebundene Seite:
@@ -1614,14 +1619,16 @@ function UnifiedPortal() {
             !isAdmin &&
             loaded &&
             !error &&
+            sites.length === 0 &&
             devices.length === 0 && darf('anlage.verwalten') && (
-              // The customer skipped the guided setup ("Später einrichten"):
-              // keep one clear way back in, instead of a dead-end dashboard.
+              // The customer skipped the guided setup ("Später einrichten") before the first
+              // Anlage: keep one clear way back in. With an Anlage the Einrichtungs-Karte in
+              // its cockpit is that way (D7) - no second prompt.
               <Card padding="lg" radius="lg" accent="primary" className="vp-resume-banner">
                 <div style={{ flex: '1 1 360px', minWidth: 0 }}>
-                  <h4 style={{ marginBottom: 4 }}>Ihre Anlage ist noch nicht verbunden</h4>
+                  <h4 style={{ marginBottom: 4 }}>Noch keine Anlage eingerichtet</h4>
                   <p className="vp-muted" style={{ margin: 0 }}>
-                    In wenigen Minuten startklar: Anlage anlegen, Gerät verbinden -
+                    In wenigen Minuten startklar: Adresse, Box, Anlage -
                     wir führen Sie Schritt für Schritt durch.
                   </p>
                 </div>
@@ -1915,6 +1922,8 @@ function UnifiedPortal() {
             />
           )}
           {page === 'kunden-benutzer' && <BenutzerPage />}
+          {page === 'meldungen' && <MeldungenPage />}
+          {page === 'einstellungen' && <EinstellungenPage />}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
           {page === 'portfolio-erloese' && <PortfolioErloese sites={geldSites} />}
           {page === 'uebersicht' && (
@@ -1940,10 +1949,12 @@ function UnifiedPortal() {
               // Standort dieser Anlage misst. Sonst fragt das Cockpit nichts und zeigt nichts Neues.
               misstHier={route.siteId ? misstAnlage(ebenenLesemodell, route.siteId) : false}
               standortId={orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null}
+              betriebsart={betriebsart}
+              ladepunktAnzahl={ladepunktAnzahl}
             />
           )}
-          {page === 'plattform-uebersicht' && isAdmin && (
-            <PlattformUebersichtPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
+          {isPlattformBereich(page) && isAdmin && (
+            <PlattformBereich page={page} onNavigate={navigate} />
           )}
           {page === 'mandanten' && isAdmin && (
             <MandantenPage
@@ -1955,7 +1966,8 @@ function UnifiedPortal() {
             />
           )}
           {isGeraeteBereich(page) && isAdmin && (
-            <GeraeteBereich page={page} onNavigate={navigate} onJumpToTenant={jumpToTenant} />
+            <GeraeteBereich page={page} geraeteAkte={route.geraeteAkte ?? null} onNavigate={navigate}
+              onJumpToTenant={jumpToTenant} tenants={tenants} />
           )}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'steuerungs-freigabe' && isAdmin && <SteuerungsFreigabePage />}
@@ -2032,6 +2044,32 @@ function LoadErrorNotice({ onRetry }: { onRetry: () => void }) {
           Erneut laden
         </Button>
       </div>
+    </Card>
+  );
+}
+
+/**
+ * Die Plattform ist in einen Mandanten gesprungen, und die API nimmt den Kundenbereich nicht an (404 auf jeder
+ * Kundenroute, /me ohne Kundenbereich). Seit dem 26.10.2026 heißt das: der Sprung ist in dieser Umgebung abgeschaltet
+ * (Not-Aus `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED=false`), und es gibt keine wirksame Unterstützung. Die
+ * Karte öffnet nichts - sie sagt nur, warum die Ansicht leer ist und welcher Weg dann noch bleibt.
+ */
+function OhneUnterstuetzungNotice({ mandant, onMandanten }: { mandant: string | null; onMandanten: () => void }) {
+  return (
+    <Card padding="lg" radius="lg">
+      <h1>Kein Zugriff auf diesen Kundenbereich</h1>
+      <p>
+        Die Ansicht von {mandant ? <b>{mandant}</b> : 'diesem Mandanten'} hat sich nicht geöffnet. Der Sprung der
+        Plattform in die Mandanten-Ansicht ist in dieser Umgebung abgeschaltet, und für diesen Mandanten besteht
+        keine wirksame Unterstützung.
+      </p>
+      <p>
+        Solange der Sprung abgeschaltet ist, öffnet sich die Ansicht nur mit einer Unterstützung, die der
+        Kundenadministrator bestätigt hat, oder mit einem Notfall-Zugriff. Beides beginnt unter Plattform › Mandanten
+        im Dialog des Mandanten: „Unterstützung anfragen“ oder „Notfall-Zugriff“ (24 Stunden, Grund Pflicht, die
+        Kundenadministratoren erhalten einen Hinweis).
+      </p>
+      <Button variant="primary" onClick={onMandanten}>Zu den Mandanten</Button>
     </Card>
   );
 }

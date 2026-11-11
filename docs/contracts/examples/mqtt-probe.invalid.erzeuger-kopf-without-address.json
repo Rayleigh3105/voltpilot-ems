@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "e25a0b9c3e77d302",
+  "requested_at": "2026-10-21T20:06:00Z",
+  "ops": [
+    {
+      "op": "erzeuger_kopf",
+      "id": "steuerung",
+      "transport": "modbus_tcp",
+      "host": "192.168.20.40",
+      "register_kind": "input"
+    }
+  ]
+}

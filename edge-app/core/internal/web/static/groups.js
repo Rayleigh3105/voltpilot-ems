@@ -37,21 +37,29 @@
      tone: "ok" | "warn" | "off"; problemKey: non-null ONLY for a state that
      should open the group by itself (something stopped delivering).
      ------------------------------------------------------------------ */
+  var ROLE_PLANT_CONTROLLER = "plant-controller";
+
   function anlageSummary(s, sources, statuses, nowMs, custom) {
     s = s || {};
-    sources = sources || [];
+    // Die Adresse einer Anlagensteuerung (EZ-21, Rolle plant-controller) ist
+    // kein Erzeuger: ihr Bild liest der Messplan, nicht die Quellen-Lesung -
+    // ihr „wartet auf Daten" hier wäre ein Warten, das niemand tut.
+    sources = (sources || []).filter(function (src) { return src.role !== ROLE_PLANT_CONTROLLER; });
     statuses = statuses || {};
     custom = custom || [];
     if (nowMs == null) nowMs = s.server_now_ms || Date.now();
 
     var inv = s.inverter;
-    if (!inv || !inv.configured) {
+    var hasInv = !!(inv && inv.configured);
+    var chargers = (s.ocpp && s.ocpp.chargers) || [];
+    if (!hasInv && sources.length === 0 && custom.length === 0 && chargers.length === 0) {
       // The guided flow leads the page in this state - the group stays a calm
-      // pointer, never a second voice nagging about the same thing.
-      return { tone: "off", text: "Noch kein Wechselrichter eingerichtet", problemKey: null };
+      // pointer, never a second voice nagging about the same thing. No device
+      // TYPE is missing: none is set up yet.
+      return { tone: "off", text: "Noch kein Gerät eingerichtet", problemKey: null };
     }
 
-    var parts = [inv.label || "Wechselrichter"];
+    var parts = hasInv ? [inv.label || "Wechselrichter"] : [];
     var erz = 0, netz = 0, verb = 0, kwp = 0;
     for (var i = 0; i < sources.length; i++) {
       var src = sources[i];
@@ -72,14 +80,19 @@
     if (custom.length > 0) {
       parts.push(custom.length + (custom.length === 1 ? " eigenes Gerät" : " eigene Geräte"));
     }
+    // Ladesäulen haben ihre eigene Gruppe mit eigenem Urteil; hier werden sie
+    // nur genannt, damit eine Anlage ohne Wechselrichter nicht „leer" heißt.
+    if (!hasInv && chargers.length > 0) {
+      parts.push(chargers.length + (chargers.length === 1 ? " Ladesäule" : " Ladesäulen"));
+    }
 
     // Delivery verdict: the primary inverter via the composite telemetry age,
     // every additional source via its own status ("ok"|"warn"|"pending").
     var telAge = ageSeconds(s.last_telemetry, nowMs);
     var everDelivered = telAge != null;
     var stale = [], waiting = [];
-    if (!everDelivered) waiting.push(inv.label || "Wechselrichter");
-    else if (telAge >= FRESH_SECONDS) stale.push(inv.label || "Wechselrichter");
+    if (hasInv && !everDelivered) waiting.push(inv.label || "Wechselrichter");
+    else if (hasInv && telAge >= FRESH_SECONDS) stale.push(inv.label || "Wechselrichter");
     for (var j = 0; j < sources.length; j++) {
       var st = statuses[sources[j].id] || "pending";
       var name = sources[j].label || sources[j].brand || "Quelle";
@@ -104,6 +117,9 @@
       // already looking at it).
       return { tone: "off", text: parts.join(" · "), problemKey: null };
     }
+    // Without an inverter and without a source this row judges nothing (own
+    // devices and charge points carry their own verdict) - no "liefert" claim.
+    if (!hasInv && sources.length === 0) return { tone: "off", text: parts.join(" · "), problemKey: null };
     parts.push(sources.length > 0 ? "alle liefern" : "liefert Daten");
     return { tone: "ok", text: parts.join(" · "), problemKey: null };
   }
@@ -118,7 +134,7 @@
     s = s || {};
     var inv = s.inverter;
     if (!inv || !inv.configured) {
-      return { tone: "off", text: "Zuerst den Wechselrichter verbinden", problemKey: null };
+      return { tone: "off", text: "Noch nichts freizugeben", problemKey: null };
     }
 
     var parts = [];

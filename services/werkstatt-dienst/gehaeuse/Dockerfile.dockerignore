@@ -1,0 +1,12 @@
+# Kontext ist die Wurzel des Repositorys; ins Bau-Image kommt nur das
+# Gehäuse-Programm (ohne seine lokale Umgebung und Ausgabe), die zwei Vektoren
+# und das Job-Skript.
+*
+!edge-light/gehaeuse/glinet-gl-mt300n-v2/
+edge-light/gehaeuse/glinet-gl-mt300n-v2/.venv
+edge-light/gehaeuse/glinet-gl-mt300n-v2/.werkzeug
+edge-light/gehaeuse/glinet-gl-mt300n-v2/aus
+**/__pycache__
+!docs/contracts/werkstatt-beschriftung.json
+!docs/contracts/edge-ref-vectors.json
+!services/werkstatt-dienst/gehaeuse/gehaeuse-job.sh

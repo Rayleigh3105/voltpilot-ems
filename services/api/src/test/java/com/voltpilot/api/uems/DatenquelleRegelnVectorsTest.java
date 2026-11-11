@@ -462,16 +462,18 @@ class DatenquelleRegelnVectorsTest {
     }
 
     /**
-     * Die echte Tabelle trägt die Fähigkeit, deren Fehlen der A7-Satz nennt — und heute noch kein
-     * Release (kein ausgeliefertes Release hat sie). „Zuständigkeit ab Zeitpunkt“ steht seit B06
-     * unter {@code keine_faehigkeit}: der Cloud-Zeitgeber erbringt sie für jede Box.
+     * Die echte Tabelle trägt die Fähigkeiten, deren Fehlen der A7-Satz nennt — und heute noch kein
+     * Release (kein ausgeliefertes Release hat sie). „Gerätesuche“ kam am 30.10.2026 mit dem Knopf
+     * „Geräte suchen“; ihr {@code ab_release} bleibt null, bis die Tabelle je Box-Art liest
+     * (edge-supports.md „Je Box-Art“). „Zuständigkeit ab Zeitpunkt“ steht seit B06 unter
+     * {@code keine_faehigkeit}: der Cloud-Zeitgeber erbringt sie für jede Box.
      */
     @Test
     void dieFaehigkeitenTabelleIstDieDesKonzepts() throws Exception {
         List<TabellenEintrag> tab = tabelle(lies(TABELLE).path("faehigkeiten"));
-        assertThat(tab).extracting(TabellenEintrag::code).containsExactly("data_sources");
+        assertThat(tab).extracting(TabellenEintrag::code).containsExactly("data_sources", "geraetesuche");
         assertThat(tab).extracting(TabellenEintrag::name)
-                .containsExactly("Rückmeldung je Datenquelle");
+                .containsExactly("Rückmeldung je Datenquelle", "Gerätesuche");
         assertThat(tab).extracting(TabellenEintrag::abRelease).containsOnlyNulls();
         assertThat(lies(TABELLE).path("keine_faehigkeit").findValuesAsText("was"))
                 .contains("Zuständigkeit ab Zeitpunkt");

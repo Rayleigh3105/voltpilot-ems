@@ -3,7 +3,10 @@ import type { SiteComponentTemplate } from './api';
 import { keineVorlageHinweis } from './anlegenFlow';
 import type { AufbauBaum } from './aufbauBaum';
 import {
+  SCHALTER_HINWEIS,
+  WALLBOX_HINWEIS,
   WEGE,
+  alsModellAngeboten,
   einrichtenUnterzeile,
   katalogAnsicht,
   katalogFunde,
@@ -88,14 +91,15 @@ describe('kategorieVon', () => {
 });
 
 describe('katalogChips', () => {
-  it('zählt je Art - die Wege ohne Vorlage zählen mit', () => {
+  it('zählt je Art - die Wege ohne Vorlage zählen mit, die Batterie ohne Modell trägt keine Zahl', () => {
     const chips = katalogChips(ALLE, [VORLAGE]);
     expect(chips.map((c) => `${c.label} ${c.anzahl ?? '-'}`)).toEqual([
       'Alle -',
       'Wechselrichter 5',
-      'Laden 2',
-      'Schalten 2',
-      'Batterie 1',
+      'Laden 1',
+      // Der Shelly-Schalter zählt nicht: als Modell steht er nicht im Katalog (VoltPilotGATE, 02.11.2026).
+      'Schalten 1',
+      'Batterie -',
       'Zähler -',
       'Selbst beschreiben 2',
     ]);
@@ -113,10 +117,10 @@ describe('katalogAnsicht — blättern', () => {
     expect(gruppen(a)).toEqual([
       'Von Ihrer Box gemeldet: Fronius gefunden',
       'Wechselrichter: Deye, KACO',
-      'Laden: go-e Charger, Ladesäule mit OCPP 1.6',
-      'Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais), Shelly Relais / Schaltaktor',
-      'Batterie: Batterie mit eigenem BMS',
+      'Laden: Ladesäule mit OCPP 1.6',
+      'Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais)',
       'Selbst beschreiben: Modbus-TCP-Gerät, Wärmepumpe Keller',
+      'Weitere Geräte: Anlagensteuerung (SPS mit VoltPilot-Bild)',
     ]);
     expect(a.gruppen[1].rechts).toBe('5 Modelle');
     // Kein Hinweis-Kasten über allem - das Ehrliche zum Zähler steht unter „Zähler".
@@ -139,13 +143,34 @@ describe('katalogAnsicht — blättern', () => {
     const a = ansicht({ chip: 'zaehler' });
     expect(a.hinweis).toBe(keineVorlageHinweis('zaehler'));
     expect(a.gruppen[0].titel).toBe('Gerät wählen, über das gemessen wird');
-    expect(a.gruppen[0].eintraege.map((e) => e.titel)).toEqual(['Deye', 'Ebyte', 'go-e', 'KACO', 'Shelly']);
+    expect(a.gruppen[0].eintraege.map((e) => e.titel)).toEqual(['Deye', 'Ebyte', 'KACO', 'Shelly']);
   });
 
   it('erklärt Laden, das I/O-Modul und die fehlenden Batterie-Modelle', () => {
-    expect(ansicht({ chip: 'laden' }).hinweis).toMatch(/meldet sich selbst bei Ihrer Box/);
+    expect(ansicht({ chip: 'laden' }).hinweis).toBe(WALLBOX_HINWEIS);
     expect(ansicht({ chip: 'schalten' }).hinweis).toMatch(/jeden Ausgang einem Verbraucher/);
     expect(ansicht({ chip: 'batterie' }).hinweis).toMatch(/Fertige Batterie-Modelle gibt es im Katalog noch nicht/);
+    expect(ansicht({ chip: 'batterie' }).gruppen).toEqual([]);
+  });
+
+  // Ein einzelner Schaltausgang als eigenes Gerät wäre ein Messgerät ohne Rolle, das die Box nicht anwendet
+  // (VoltPilotGATE, 02.11.2026: „Heizstab“, „Phase 2“, „Phase 3“). Der Katalog bietet den Schalter deshalb nicht als
+  // Modell an und sagt, wo er stattdessen entsteht - über „Zähler" bleibt er das Gerät, über das gemessen wird.
+  it('bietet einen Schalter nicht als Modell an und nennt den Weg über „Geräte suchen“', () => {
+    const schalten = ansicht({ chip: 'schalten' });
+    expect(gruppen(schalten)).toEqual(['Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais)']);
+    expect(schalten.hinweis).toContain(SCHALTER_HINWEIS);
+    expect(schalten.hinweis).toMatch(/jeden Ausgang einem Verbraucher/);
+    expect(ansicht({ chip: 'schalten', templates: [SHELLY] }).hinweis).toBe(SCHALTER_HINWEIS);
+
+    const suche = ansicht({ q: 'Shelly' });
+    expect(suche.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel))).not.toContain('Shelly Relais / Schaltaktor');
+    expect(suche.hinweis).toBe(SCHALTER_HINWEIS);
+    expect(ansicht({ chip: 'alle', marke: 'shelly' }).gruppen.flatMap((g) => g.eintraege)).toHaveLength(0);
+
+    expect(alsModellAngeboten(SHELLY, 'alle')).toBe(false);
+    expect(alsModellAngeboten(SHELLY, 'zaehler')).toBe(true);
+    expect(alsModellAngeboten(EBYTE, 'schalten')).toBe(true);
   });
 
   it('zeigt unter „Selbst beschreiben" den Modbus-Weg und die Verwaltung eigener Vorlagen (K4)', () => {
@@ -168,7 +193,8 @@ describe('katalogAnsicht — Suche', () => {
 
   it('findet die Wege über ihre Stichwörter', () => {
     expect(gruppen(ansicht({ q: 'ocpp' }))).toEqual(['Laden: Ladesäule mit OCPP 1.6']);
-    expect(gruppen(ansicht({ q: 'seplos' }))).toEqual(['Batterie: Batterie mit eigenem BMS']);
+    // Eine Batterie ohne Hybrid-Wechselrichter bietet der Katalog nicht an: kein Eintrag in der Art „Batterie".
+    expect(gruppen(ansicht({ q: 'batterie' })).filter((g) => g.startsWith('Batterie:'))).toEqual([]);
   });
 
   it('findet eigene Vorlagen und was die Box meldet', () => {
@@ -179,12 +205,19 @@ describe('katalogAnsicht — Suche', () => {
   it('schlägt ohne Treffer die Wege vor - nie ein stiller leerer Bereich', () => {
     const a = ansicht({ q: 'keba' });
     expect(a.leer).toMatch(/Kein Eintrag passt zu „keba"/);
-    expect(gruppen(a)).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät']);
+    expect(gruppen(a)).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
   });
 
   it('bleibt in der gewählten Art', () => {
-    expect(gruppen(ansicht({ q: 'go-e', chip: 'wr' }))).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät']);
-    expect(gruppen(ansicht({ q: 'go-e', chip: 'laden' }))).toEqual(['Laden: go-e Charger']);
+    expect(gruppen(ansicht({ q: 'go-e', chip: 'wr' }))).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
+    // Die HTTP-Schnittstelle der go-e steht nicht als Modell da (nur lesend, die Box ordnet ihr keine Rolle zu);
+    // wer sie sucht, bekommt den Weg über OCPP gesagt.
+    const laden = ansicht({ q: 'go-e', chip: 'laden' });
+    expect(laden.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel))).not.toContain('go-e Charger');
+    expect(laden.hinweis).toBe(WALLBOX_HINWEIS);
+    expect(ansicht({ q: 'go-e' }).hinweis).toBe(WALLBOX_HINWEIS);
+    expect(alsModellAngeboten(GOE, 'alle')).toBe(false);
+    expect(alsModellAngeboten(GOE, 'laden')).toBe(false);
   });
 
   it('verschweigt den Deckel nie', () => {
@@ -208,8 +241,24 @@ describe('wahlFuer', () => {
     const marke = a.gruppen[1].eintraege[0];
     expect(wahlFuer(marke, 'alle')).toBeNull();
     expect(wahlFuer(a.gruppen[0].eintraege[0], 'alle')).toMatchObject({ art: 'fund' });
-    expect(wahlFuer(a.gruppen[2].eintraege[1], 'alle')).toEqual({ art: 'weg', weg: 'ocpp' });
-    expect(wahlFuer(a.gruppen[5].eintraege[1], 'alle')).toMatchObject({ art: 'vorlage' });
+    expect(wahlFuer(a.gruppen[2].eintraege[0], 'alle')).toEqual({ art: 'weg', weg: 'ocpp' });
+    expect(wahlFuer(a.gruppen[4].eintraege[1], 'alle')).toMatchObject({ art: 'vorlage' });
+  });
+});
+
+describe('Anlagensteuerung (UEMS EZ-15)', () => {
+  it('steht als letzter Weg unter „Weitere Geräte“ und öffnet den eigenen Assistenten', () => {
+    const a = ansicht();
+    const weitere = a.gruppen.find((g) => g.key === 'weitere');
+    expect(weitere?.eintraege.map((e) => e.titel)).toEqual(['Anlagensteuerung (SPS mit VoltPilot-Bild)']);
+    expect(wahlFuer(weitere!.eintraege[0], 'alle')).toEqual({ art: 'weg', weg: 'anlagensteuerung' });
+    expect(WEGE.anlagensteuerung.zusatz).toBe('BHKW oder PV mit WAGO oder anderem Controller');
+  });
+
+  it('findet sich über BHKW, SPS oder WAGO', () => {
+    for (const q of ['bhkw', 'SPS', 'pfc200', 'Anlagensteuerung']) {
+      expect(gruppen(ansicht({ q }))).toContain('Weitere Geräte: Anlagensteuerung (SPS mit VoltPilot-Bild)');
+    }
   });
 });
 
@@ -258,5 +307,39 @@ describe('katalogFunde', () => {
       ['src-1', 'Box Scheune'],
       ['src-2', null],
     ]);
+  });
+});
+
+/**
+ * Die erste Zähler-Vorlage (Shelly Pro 3EM, 06.11.2026): unter „Zähler" stehen erst die Zähler, dann - wie zuvor -
+ * das Gerät, über das gemessen wird. Ein Zähler bestimmt seine Rolle im Fluss (Netz-Zähler oder Unterzähler).
+ */
+describe('Zähler mit eigener Vorlage', () => {
+  const METER = tpl({ templateRef: 'builtin:shelly:shelly-pro-3em', brand: 'shelly', brandLabel: 'Shelly',
+    modelLabel: 'Shelly Pro 3EM / Pro 3EM-400 (Zähler)', deviceType: 'meter', communication: 'shelly_em_http',
+    communicationLabel: 'Shelly-Zähler über die lokale HTTP-Schnittstelle' });
+  const MIT = [...ALLE, METER];
+
+  it('zeigt erst die Zähler, dann das messende Gerät - ohne den Satz „keine Vorlage"', () => {
+    const a = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: '', chip: 'zaehler', marke: null });
+    expect(a.hinweis).not.toBe(keineVorlageHinweis('zaehler'));
+    expect(a.gruppen.map((g) => g.titel)).toEqual(['Zähler', 'Oder das Gerät, über das gemessen wird']);
+    expect(a.gruppen[0].eintraege.map((e) => e.titel)).toContain('Shelly Pro 3EM / Pro 3EM-400 (Zähler)');
+    expect(a.gruppen[1].eintraege.map((e) => e.titel)).toEqual(['Deye', 'Ebyte', 'KACO', 'Shelly']);
+  });
+
+  it('findet über „Zähler" den Zähler und das messende Gerät', () => {
+    const zaehler = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: '3em', chip: 'zaehler', marke: null });
+    expect(zaehler.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel))).toContain('Shelly Pro 3EM / Pro 3EM-400 (Zähler)');
+    const deye = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: 'sun12k', chip: 'zaehler', marke: null });
+    expect(deye.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel)).some((t) => t.includes('SUN-12K'))).toBe(true);
+  });
+
+  it('lässt den Zähler seine Rolle selbst finden - das messende Gerät wird Netz-Zähler', () => {
+    const zaehler = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: '3em', chip: 'zaehler', marke: null });
+    const eintrag = zaehler.gruppen.flatMap((g) => g.eintraege).find((e) => e.titel.includes('Pro 3EM'));
+    expect(eintrag && wahlFuer(eintrag, 'zaehler')).toMatchObject({ art: 'modell', rolle: null });
+    const deye = ansicht({ q: 'sun12k' }).gruppen[0].eintraege[0];
+    expect(wahlFuer(deye, 'zaehler')).toMatchObject({ art: 'modell', rolle: 'grid-meter' });
   });
 });

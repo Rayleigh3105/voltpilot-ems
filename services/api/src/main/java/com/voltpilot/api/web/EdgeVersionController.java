@@ -34,7 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
  * URTEIL</b> gegen das Release-Register ({@code newestRelease}/{@code upToDate},
  * gebildet von {@link EdgeStandVerdict}) - der Maßstab erreichte den Kunden bis
  * dahin überhaupt nicht, seine Box zeigte also eine Version, die niemand
- * einordnen konnte. Es reist das Urteil, NIE das Register.
+ * einordnen konnte. Es reist das Urteil, NIE das Register. Seit Geräte &amp;
+ * Updates S0 misst das Urteil an der Linie der Box (Docker-Box oder Edge Light).
  *
  * <p>AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
  * {@code teilansicht} den Umfang derselben Antwort. Der Standort-Zaun bleibt erhalten.
@@ -59,8 +60,10 @@ public class EdgeVersionController {
         List<EdgeVersionRepository.RegisterEntry> register = edgeVersions.releases();
         return new SichtbareListe<>(edgeVersions.findAll().stream()
                 .map(v -> {
+                    // Gemessen an der EIGENEN Linie (S0): eine Docker-Box nie am
+                    // neuesten Edge-Light-Release und umgekehrt.
                     EdgeStandVerdict.Verdict urteil =
-                            EdgeStandVerdict.of(v.coreVersion(), register);
+                            EdgeStandVerdict.of(v.coreVersion(), v.boxArt(), register);
                     return new EdgeVersionDto(v.deviceId(), v.siteId(), v.coreVersion(),
                             v.paletteVersion(), v.reportedAt(), urteil.newestRelease(),
                             urteil.upToDate(), v.supports(),

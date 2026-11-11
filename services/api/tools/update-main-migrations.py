@@ -49,7 +49,7 @@ if args.stdout:
     sys.stdout.write(content)
 elif args.check:
     if not OUTPUT.is_file() or OUTPUT.read_text() != content:
-        raise SystemExit("main migration list is stale; regenerate after main -> uems merge")
+        raise SystemExit("main migration list is stale; regenerate after a rollout, on the rolled-out commit")
 else:
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(content)

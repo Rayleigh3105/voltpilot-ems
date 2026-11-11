@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * MiSpeL MP-2 (W1 = D): der Ausschließlichkeits-Prüfer als Auswertung für den Betreiber — nur lesend, nur
+ * MiSpeL MP-2: der Ausschließlichkeits-Prüfer als Auswertung für den Betreiber — nur lesend, nur
  * platform-admin, keine Portalfläche. Je Anlage und Kalendermonat: wie viel Netzstrom nach Speichervorrang im Speicher
  * landete und wie viel der Speicher einspeiste (Anlage 1 S. 11, S. 14–16, S. 33–35). Rechnung und Lesart:
  * {@link AusschliesslichkeitsPruefer}; Wegweiser {@code docs/agents/root/mispel-ausschliesslichkeits-pruefer.md}.
@@ -37,8 +37,8 @@ public class AdminMispelController {
     }
 
     /**
-     * Recht: {@code plattform.betrieb} — lesend. Jahreswerte jeder Anlage mit erfasstem Speicher, über
-     * alle Mandanten; {@code jahr} fehlend = laufendes Kalenderjahr (gesetzliche Zeit).
+     * Recht: {@code plattform.betrieb} — lesend. Jahreswerte jeder Anlage mit erfasstem Speicher und verbotenem
+     * Netzladen, über alle Mandanten; {@code jahr} fehlend = laufendes Kalenderjahr (gesetzliche Zeit).
      */
     @GetMapping
     public FlottenPruefung flotte(@RequestParam(required = false) Integer jahr) {

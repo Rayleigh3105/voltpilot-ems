@@ -132,6 +132,7 @@ public final class AenderungSatz {
             case "zustaendigkeit_begonnen" -> "Zuständigkeit begonnen";
             case "zustaendigkeit_gewechselt" -> "Zuständigkeit gewechselt";
             case "aus_bestand_uebernommen" -> was + " aus dem Bestand übernommen";
+            case "messwerte_ausgewaehlt" -> "Messwerte für die Box ausgewählt" + messwerte(neu);
             case "zugriff_zugewiesen" -> "Zugriff zugewiesen" + zugriff(neu);
             case "zugriff_entzogen" -> "Zugriff entzogen" + zugriff(neu);
             // AP-16 IP-15 (G1–G3): die Angabe am Einbau; „nicht erhoben“ bleibt so stehen, nie geschätzt.
@@ -306,6 +307,28 @@ public final class AenderungSatz {
         neu.path("zeilen").forEach(z -> teile.add(z.path("anteil_prozent").asText().replace('.', ',')
                 + "\u00a0% " + z.path("kostenstelle").asText()));
         return zusatz(teile.isEmpty() ? VerteilungRegeln.NICHT_VERTEILT : String.join(", ", teile));
+    }
+
+    /**
+     * „47 von 47“ oder „40 von 47, 7 ausgelassen (Messwertbudget)“ — der automatische Messplan einer
+     * Anlagensteuerung (UEMS EZ-18). Ohne Zahlen kein Zusatz, nie eine erfundene.
+     */
+    private static String messwerte(JsonNode neu) {
+        String gewaehlt = text(neu, "gewaehlt");
+        String angefragt = text(neu, "angefragt");
+        if (gewaehlt == null || angefragt == null) {
+            return "";
+        }
+        int budget = 0;
+        int katalog = 0;
+        for (JsonNode a : neu.path("ausgelassen")) {
+            if ("budget".equals(a.path("grund").asText())) budget++;
+            else katalog++;
+        }
+        List<String> teile = new ArrayList<>();
+        if (budget > 0) teile.add(budget + " ausgelassen (Messwertbudget)");
+        if (katalog > 0) teile.add(katalog + " ausgelassen (nicht im Katalog)");
+        return ": " + gewaehlt + " von " + angefragt + (teile.isEmpty() ? "" : ", " + String.join(", ", teile));
     }
 
     /** „3.100“ — eine ganze Zahl mit dem Tausenderpunkt des Portals (de-DE); alles andere bleibt, wie es ist. */

@@ -196,11 +196,16 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["base", "kind", "offset_words", "width_words"],
-      "description": "Adresse im VoltPilot-Registerbild WAGO v1: Basisadresse, Funktionscode und Wortfolge sind Parameter je Anlage (wago-registerbild.md §2); der Offset zählt Kopf + index · Karten-Block + Feld.",
+      "description": "Adresse in einem VoltPilot-Registerbild (WAGO v1, Erzeuger v1): Basisadresse, Funktionscode und Wortfolge sind Parameter je Anlage (wago-registerbild.md §2, Registerbild-Fassung der Erzeuger-Steuerung); der Offset zählt Kopf + index · Block + Feld (Vorlage je Karte/Einheit) oder ist fest (feste Abschnitte des Erzeuger-Bilds).",
       "properties": {
         "base": {"const": "parameter"},
         "kind": {"const": "registerbild_relative"},
-        "offset_words": {"type": "string", "pattern": "^[0-9]+\\+index\\*[1-9][0-9]*\\+[0-9]+$"},
+        "offset_words": {
+          "oneOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "string", "pattern": "^[0-9]+\\+index\\*[1-9][0-9]*\\+[0-9]+$"}
+          ]
+        },
         "width_words": {"type": "integer", "minimum": 1}
       }
     },
@@ -336,7 +341,7 @@
         "signed": {"$ref": "#/$defs/nullableBoolean"},
         "source_commit": {"$ref": "#/$defs/nullableString"},
         "source_key_raw": {"type": "string", "minLength": 1},
-        "source_kind": {"enum": ["modbus_holding", "modbus_input", "sunspec_model", "http_api_key", "rest_json", "rpc_json", "ocpp_sampled_value", "wago_registerbild"]},
+        "source_kind": {"enum": ["modbus_holding", "modbus_input", "sunspec_model", "http_api_key", "rest_json", "rpc_json", "ocpp_sampled_value", "wago_registerbild", "erzeuger_registerbild"]},
         "source_evidence": {
           "type": "array",
           "minItems": 1,

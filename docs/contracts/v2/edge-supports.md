@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe"]` steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -50,6 +50,64 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   (Bilanz, Formel, Kennzahl, sichtbar im Portal) gebaut waren; Beleg
   `cloud/geteilter_punkt_gemeldet_test.go`. Eine Box ohne das Wort bekommt weiter den
   zusammengelegten Plan. Keine Zeile in `edge-capabilities.json` (Begründung wie `plan_quittung`).
+- `erzeuger_registerbild` (UEMS EZ-6): die Box liest das VoltPilot-Registerbild Erzeuger v1
+  (Katalogfamilie `voltpilot.erzeuger_registerbild_v1`) mit den Parametern aus
+  [`mqtt-measurement-config`](mqtt-measurement-config.schema.json) `erzeuger_registerbilder`
+  (`x-erzeuger-registerbilder-rule`). Die Cloud fragt das Wort an zwei Stellen: `MeasurementConfigPublisher`
+  sendet das Feld nur an eine Box, die es meldet (ein älterer Core verwürfe sonst das ganze Dokument), und
+  die Anlagensteuerung wird nur angelegt bzw. im Portal angeboten, wenn die zuständige Box es meldet
+  ([Anlagensteuerung](../../agents/root/erzeuger-anlagensteuerung.md)). **Gemeldet seit EZ-5** (`advertised: true`,
+  `BuiltSupports`), wirksam mit dem Box-Release, das den Laufzeitkatalog 2026.10.21.1 trägt: die Box liest das Bild
+  alle 5 s (bis 8 Einheiten eine Anfrage), prüft Kopf und Soll, sendet die Punkte mit Qualität (`stale`,
+  `uncertain`) und meldet `frozen_source`/`device_restart`; dazu die Probe-Art `erzeuger_kopf`
+  ([Probe-Vertrag](../mqtt-probe.schema.json), [Box-Leser](../../agents/root/uems-erzeuger-registerbild-box.md)).
+  Beleg `edge-app/nodered/measurements/erzeuger-laufzeit.test.js`. Keine Zeile in `edge-capabilities.json`
+  (Begründung wie `plan_quittung`).
+- `anlagensteuerung_quelle` (UEMS EZ-21): der Applier (`componentapply`) leitet aus dem Registry-Treiber einer
+  Entität vom Typ `anlagensteuerung` (`communication: modbus_tcp`, `connection` = Adresse, Port und Geräte-ID der
+  Datenquelle, Lesetakt 5 s, keine Marke) eine Quelle der Rolle `plant-controller` in `edge/sources/config` ab —
+  ohne Wechselrichter-Katalog, ohne dass Core oder Selbstverdrahtung sie pollen —, und die Palette bindet die
+  Komponente über ihren Pin `edge_source_id` daran ([Treiber-Regel](edge-entity.schema.json)
+  `x-anlagensteuerung-driver-rule`, [Vektoren](anlagensteuerung-quelle-vectors.json)). Die Cloud fragt das Wort
+  in `EntityRegistryService.composePush` je Box: nur eine Box, die es meldet, bekommt Treiber und Pin; jede andere
+  den Push Byte für Byte wie vorher. Ein älterer Applier sähe einen Treiber mit Verbindung und ohne Marke und
+  verweigerte den GANZEN Push. **Gemeldet seit EZ-21** (`BuiltSupports`), wirksam mit dem Box-Release, das diesen
+  Applier trägt. Beleg `edge-app/core/internal/componentapply/plant_controller_test.go`. Keine Zeile in
+  `edge-capabilities.json`: eine Zeile gälte für jeden Stand ab einem Release-Tag, und ein Tag, das diesen Applier
+  doch nicht trägt, bekäme den Treiber und verweigerte damit jede Konfiguration der Anlage — nur die eigene Meldung
+  der Box ist dafür sicher.
+- `geraetesuche` (Gerätesuche, 30.10.2026): die Box sucht auf `.../v2/geraetesuche` lesend im Heimnetz, meldet alle 2 s
+  auf `.../v2/geraetesuche-stand` und genau ein Ergebnis auf `.../v2/geraetesuche-ergebnis`
+  ([Gerätesuche](mqtt-geraetesuche.md)). Die Route `POST /api/v1/sites/{siteId}/geraetesuche` fragt dieses Wort
+  (409 `nicht_unterstuetzt`). **Gesendet von beiden Box-Arten** (Paket 2, 30.10.2026): das Suchmodul
+  `edge-app/core/internal/geraetesuche/suche` steckt in `vp-edge-core` und `vp-edge-light`, verdrahtet in
+  `agent/geraetesuche.go` (Beleg `suche/suche_test.go`: eine ganze Suche je Box-Art gegen simulierte Geräte). Eine ältere
+  Box meldet das Wort nicht und bekommt nie einen Auftrag. **Die Zeile in `edge-capabilities.json`** kam mit dem
+  Portal-Paket zusammen mit dem Knopf „Geräte suchen“ (vorher hätte jede Box-Karte und die Flotte „Update nötig für:
+  Gerätesuche“ für einen Knopf gesagt, den es nicht gab). Anders als bei `sprungprobe` sagt die Fläche einer älteren Box
+  „Update nötig für: Gerätesuche“ und „Update planen“ (`ab_release` null, siehe „Je Box-Art“).
+  Das Wort wird **je Box-Art** gemeldet (siehe unten); welche Erkenner eine Box-Art wirklich laufen ließ, nennt das
+  Ergebnis, nicht dieses Wort.
+- `heizstab_regler` (Heizstab-Konzept V1, 31.10.2026): die Box führt den Parameterblock `heizstab` eines Heizstabs mit
+  Shelly-Ausgangsmenge selbst aus ([Heizstab-Regler](heizstab-regler.md); `internal/heizstab`, `agent/heizstab.go`,
+  Beleg `agent/heizstab_test.go`). Beide Box-Arten melden es, der Regler steckt im Core. Die Cloud sendet den Block nur
+  an eine Box mit diesem Wort; eine ältere Box überliest ihn und schaltet den Stab nicht automatisch. Keine Zeile in
+  `edge-capabilities.json`, solange keine Fläche ein Update dafür verlangt.
+- `verbraucherregeln` (Steuerarten auf Edge Light, 04.11.2026): die Box führt die Verbraucherregeln aus, die die Cloud
+  aus einer Steuerart macht. Die reaktive Regel mit lokalem Signal (Überschuss an Schaltlast, SG-Ready-Freigabe,
+  Regelbaukasten mit Ladestand, Fahrzeug oder Verfügbarkeit) kommt als generiertes Artefakt mit dem Knoten
+  `vp-consumer-policy` ([Flow-Artefakt](flow-artifact.md)): die Docker-Box lädt es in die Palette, Edge Light führt
+  dasselbe Artefakt im Go-Zwilling `internal/verbraucherregel` an denselben Topics des lokalen Busses aus (gemeinsame
+  [Vektoren](verbraucherregel-vectors.json), Beleg `verbraucherregel/laufzeit_test.go`). Zeitfenster, Preisfenster und
+  Fristen („Feste Zeiten“, „Günstige Stunden“, „Fertig bis“) laufen ohnehin über Fahrplan und Registry-Push im Core
+  beider Box-Arten. Beide Box-Arten melden das Wort. Das Portal gibt einer Edge Light die Steuerarten, die daran
+  hängen, nur frei, wenn sie es meldet; eine Docker-Box hat die Palette immer und wird nie gesperrt.
+- `heizstab_phasen` (Handeingriff je Phase, 05.11.2026): ein Wunsch `setpoint_kw` darf eine ausdrückliche
+  Ausgangsmenge `outputs` tragen, und der Stufenweg eines Shelly-Heizstabs schaltet genau diese Ausgänge, solange sie in
+  den gewährten Sollwert passen ([Heizstab über eine Ausgangsmenge](heizstab-shelly.md#handeingriff-je-phase);
+  `shelly.ExplicitOutputs`, Beleg `shelly/group_vectors_test.go`). Beide Box-Arten melden es, der Stufenweg steckt im
+  Core. Das Portal zeigt die Schalter je Phase nur einer Box mit diesem Wort, sonst die Stufenwahl; die Cloud sendet
+  `outputs` nur an eine solche Box. Eine ältere Box überliest das Feld und wählt die Stufe aus dem Sollwert.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).
@@ -64,6 +122,26 @@ Release-Eintrag. Fehlend, `null` und `[]` lassen die Tabelle gelten; eine Teilme
 entzieht keine dort belegte Fähigkeit. Ein unbekannter Name gilt nie als unterstützt.
 Die Tabelle bleibt Daten (`edge-capabilities.json`); die Ordnung kommt aus `release_seq`.
 Das ersetzt die frühere, alleinige Auswertung eines vorhandenen `supports`-Blocks.
+
+## Je Box-Art
+
+`supports[]` und das Update-Backend (`update.backend` im Herzschlag) meldet jede Box **aus ihrem eigenen Build**: Edge
+Light (`vp-edge-light`, Backend `light`) und die Docker-Box (`edge-app`, Backend `compose`, `quadlet` oder `mender`)
+tragen je eine eigene Liste der gebauten Fähigkeiten. Ein Wort heißt „diese Box-Art in diesem Build kann es“; die Cloud
+schließt nie von der einen Box-Art auf die andere (`ota/BoxArt`). Seit Paket 2 der Gerätesuche nennt jedes Programm seine
+Box-Art (`edgemain.Options.BoxArt`): `cloud.BuiltSupports(boxArt)` gibt die Liste je Build, `cloud.UpdateBackend(boxArt)`
+das Backend (`light` bzw. `compose`), mit dem die Box auch ein Release prüft. Eine Edge-Light-Box ab diesem Stand meldet
+also `light`; ältere Stände melden weiter `compose`, darum bleibt die Erkennung am Versionsstempel in der API bestehen.
+
+Die Vektoren sagen je Wort, welche Box-Art es trägt: `box_arten` (wahlfrei; fehlt = beide). Edge Light hat keine
+Node-RED-Palette und meldet darum `measurement_config_per_component`, `erzeuger_registerbild` und
+`anlagensteuerung_quelle` nicht (`box_arten: ["docker"]`): deren Weg endet in der Palette. Das Feld liest nur der
+Go-Test (`cloud/edge_supports_test.go`); Java und TS überlesen es.
+
+Auch die Tabelle `edge-capabilities.json` kennt die Box-Art nicht: `BoxFaehigkeiten.effective` ordnet nach `release_seq`
+über beide Linien, ein Edge-Light-Stand hinter dem `ab_release` eines Docker-Tags gälte also mit. Die Zeile
+`geraetesuche` trägt deshalb `ab_release` null, bis die Tabelle je Box-Art liest; bis dahin belegt allein die eigene
+Meldung der Box die Fähigkeit.
 
 ## Speicherung und Mischbetrieb
 

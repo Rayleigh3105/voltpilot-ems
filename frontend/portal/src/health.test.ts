@@ -355,3 +355,28 @@ describe('zustandView — leise wenn gesund, laut nur mit Befund', () => {
     expect(zustandView([])).toBeNull();
   });
 });
+
+describe('Konzept b1: die Abweichung der Einspeisegrenze ist ein Befund mit Weg', () => {
+  const SATZ = 'Ihr Wechselrichter begrenzt die Einspeisung am Netzpunkt auf 70,0 kW — hinterlegt sind 75,0 kW.';
+
+  it('erscheint nur mit Beleg, wortgleich mit deviceLimitLine, als ruhiger Hinweis mit Weg in die Einstellungen', () => {
+    expect(byKey(healthChecklist(input({})), 'grenze')).toBeUndefined();
+    expect(byKey(healthChecklist(input({ geraeteGrenze: null })), 'grenze')).toBeUndefined();
+    const items = healthChecklist(input({ geraeteGrenze: SATZ }));
+    expect(byKey(items, 'grenze')).toMatchObject({ state: 'off', detail: SATZ });
+    const zustand = zustandView(items)!;
+    expect(zustand.state).toBe('befund');
+    expect(zustand.toneWord).toBe('Hinweis');
+    expect(zustand.findings).toEqual([
+      expect.objectContaining({ key: 'grenze', text: `Einspeisegrenze: ${SATZ}`, lever: { sub: 'technik', label: 'Einstellungen' } }),
+    ]);
+  });
+
+  it('Kopf-Abzeichen und Zustand sagen dasselbe (eine Wahrheit)', () => {
+    const badge = healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 }, geraeteGrenze: SATZ });
+    expect(badge.state).toBe('hinweis');
+    expect(badge.detail).toBe(`Einspeisegrenze: ${SATZ}`);
+    expect(sameHealthFacts({ geraeteGrenze: SATZ }, { geraeteGrenze: SATZ })).toBe(true);
+    expect(sameHealthFacts({ geraeteGrenze: SATZ }, { geraeteGrenze: null })).toBe(false);
+  });
+});

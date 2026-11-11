@@ -26,7 +26,6 @@ split direction), so sparse history degrades gracefully instead of erroring.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -41,7 +40,6 @@ from voltpilot_forecast.holidays import is_german_holiday
 from voltpilot_forecast.openmeteo import WeatherPoint, hour_label_for
 
 SLOT_MINUTES = 15
-SLOTS_PER_DAY = 24 * 60 // SLOT_MINUTES
 
 #: The v1 platform timezone (matches the api's HistoryRange.ZONE): calendar
 #: features describe GERMAN daily life, so they are computed in Berlin time.
@@ -249,7 +247,3 @@ def pv_residual_feature_row(
         else float(point.temperature_c)
     )
     return [physical_kw, slot_of_day, ghi, cloud, temp]
-
-
-def is_nan(value: float) -> bool:
-    return isinstance(value, float) and math.isnan(value)

@@ -2,7 +2,7 @@ import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
 import { anlageSidebar, ebenenLeiste } from '../ebenenNav';
@@ -11,13 +11,28 @@ import { anlageSurface } from '../surface';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
 import { werkAhrenberg, werkLindach } from '../test/standorteFixtures';
-import { initInstallApp, resetInstallApp } from '../installApp';
+import { logout } from '../auth';
+import { DESKTOP_QUERY } from '../useIsPhone';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
 vi.mock('../auth', () => ({
   currentUser: () => ({ name: 'Erika Kaiser', email: 'erika@example.com', roles: [] }),
   logout: vi.fn(),
 }));
+
+
+/**
+ * Der Seitenleisten-Eintrag mit diesem SICHTBAREN Namen (`.vp-nav-lbl`); null =
+ * keiner. Seit dem Befund vom 02.11.2026 trägt ein Eintrag seinen Namen nicht
+ * mehr als `title`, wo der Text zu sehen ist - ein Test findet ihn am Text.
+ */
+function navEintrag(label: string): HTMLElement | null {
+  return (
+    [...document.querySelectorAll<HTMLElement>('.vp-navitem')].find(
+      (b) => b.querySelector('.vp-nav-lbl')?.textContent?.trim() === label,
+    ) ?? null
+  );
+}
 
 const baseProps = {
   page: 'anlagen' as const,
@@ -54,13 +69,13 @@ describe('AppShell "＋ Anlage hinzufügen" header action', () => {
   });
 });
 
-describe('AppShell admin tenant switcher', () => {
+describe('AppShell Suche statt Mandanten-Umschalter (Scheibe S1, E3 = A)', () => {
   const tenants = [
     { id: 't-1', name: 'Stadtwerke Musterstadt', segment: 'CI', plan: 'basic', betriebsart: null, betriebsartEffective: 'betreiber' as const, createdAt: '2026-01-01T00:00:00Z' },
     { id: 't-2', name: 'Familie Kaiser', segment: 'B2C', plan: 'basic', betriebsart: null, betriebsartEffective: 'endkunde' as const, createdAt: '2026-01-01T00:00:00Z' },
   ];
 
-  it('renders the tenant switcher with an "Alle Mandanten" default for admins', () => {
+  it('sucht über die geladenen Kunden; die Wahl öffnet die Kundenansicht', () => {
     const onTenantChange = vi.fn();
     render(
       <AppShell
@@ -75,22 +90,99 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    // Seit dem Picker-System ist der Umschalter der Haus-Picker, kein `select`.
-    const trigger = screen.getByRole('combobox', { name: 'Mandanten-Umschalter' });
-    expect(trigger).toHaveTextContent('Alle Mandanten');
+    const trigger = screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' });
     fireEvent.click(trigger);
-    expect(screen.getByRole('option', { name: 'Alle Mandanten' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: 'Familie Kaiser' }));
+    expect(screen.getByRole('option', { name: /Familie Kaiser/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Familie Kaiser/ }));
     expect(onTenantChange).toHaveBeenCalledWith('t-2');
   });
 
-  it('shows no tenant switcher for a customer', () => {
+  it('ein Kunde aus der Suche springt in seine Kundensicht (nicht nur Mandant setzen)', () => {
+    const onTenantChange = vi.fn();
+    const onKundeOeffnen = vi.fn();
+    render(
+      <AppShell
+        {...baseProps}
+        isAdmin
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        tenants={tenants}
+        onTenantChange={onTenantChange}
+        onKundeOeffnen={onKundeOeffnen}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' }));
+    fireEvent.click(screen.getByRole('option', { name: /Familie Kaiser/ }));
+    expect(onKundeOeffnen).toHaveBeenCalledWith('t-2');
+    expect(onTenantChange).not.toHaveBeenCalled();
+  });
+
+  it('das Feld nennt den offenen Kunden statt „Bitte wählen …“', () => {
+    const { rerender } = render(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants}>
+        <div>content</div>
+      </AppShell>,
+    );
+    const feld = () => screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' });
+    expect(feld()).toHaveTextContent('Kunde suchen …');
+    expect(feld()).not.toHaveTextContent('Bitte wählen');
+    rerender(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants} tenantOverride="t-2">
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(feld()).toHaveTextContent('Familie Kaiser');
+    fireEvent.click(feld());
+    expect(screen.getByRole('option', { name: /Familie Kaiser/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('sucht auch über die Plattform-Seiten und navigiert dorthin', () => {
+    const onNavigate = vi.fn();
+    render(
+      <AppShell
+        {...baseProps}
+        isAdmin
+        showOverview
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        onNavigate={onNavigate}
+        tenants={tenants}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' }));
+    fireEvent.click(screen.getByRole('option', { name: /^Werkstatt/ }));
+    expect(onNavigate).toHaveBeenCalledWith('werkstatt');
+  });
+
+  it('zeigt keine Suche für einen Kunden', () => {
     render(
       <AppShell {...baseProps} isAdmin={false} showAddAnlage={false} onAddAnlage={vi.fn()} tenants={[]}>
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.queryByRole('combobox', { name: 'Mandanten-Umschalter' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' })).toBeNull();
+  });
+
+  it('zeigt das Rückweg-Band "Wie der Kunde es sieht" nur mit gewähltem Kunden', () => {
+    const onTenantChange = vi.fn();
+    const { rerender } = render(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants} onTenantChange={onTenantChange}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(screen.queryByText('Zur Plattform zurück')).toBeNull();
+    rerender(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants} tenantOverride="t-2" onTenantChange={onTenantChange}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(document.querySelector('.vp-kundenansicht-band')).toHaveTextContent('Familie Kaiser');
+    fireEvent.click(screen.getByRole('button', { name: 'Zur Plattform zurück' }));
+    expect(onTenantChange).toHaveBeenCalledWith(null);
   });
 });
 
@@ -134,11 +226,11 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     // über Einträgen, von denen einer ebenfalls „Anlage" heißt.
     const { container } = renderShell();
     expect(container.querySelector('.vp-anlagenav .vp-nav-group-label')).toBeNull();
-    // Ohne Speicher/Ladepunkte gibt es den zweiten Bereich nicht (Gesetz 1:
-    // ein Bereich ohne Inhalt existiert nicht).
+    // Ohne Speicher/Ladepunkte gibt es den Bereich „Fahrplan" nicht - aber die
+    // Prognose ist UNBEDINGT (R.2) und füllt den zweiten Platz als eigener Bereich.
     expect(
       [...container.querySelectorAll('.vp-anlagenav .vp-nav-lbl')].map((n) => n.textContent),
-    ).toEqual(['Cockpit', 'Verlauf', 'Steuerung', 'Anlage']);
+    ).toEqual(['Cockpit', 'Prognose', 'Verlauf', 'Steuerung', 'Anlage']);
     // Und die früheren Einzel-Einträge sind Reiter geworden, keine Nav-Zeilen.
     expect(container.querySelector('.vp-anlagenav')?.textContent).not.toContain('Messwerte');
     expect(screen.queryByRole('button', { name: /Live-Daten/ })).toBeNull();
@@ -200,8 +292,10 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
 
   it('is a real, keyboard-reachable control with a cause-carrying accessible name', () => {
     renderShell({ health: WARN_HEALTH });
+    // The name starts with the visible text (label, cause) in the same order
+    // (WCAG 2.5.3) and appends the context "Zustand der Anlage" at the end.
     const badge = screen.getByRole('button', {
-      name: /Zustand der Anlage: Warnung – Gerät: meldet sich nicht/,
+      name: /Warnung – Gerät: meldet sich nicht\. Zustand der Anlage/,
     });
     expect(badge.tagName).toBe('BUTTON');
     expect(badge.getAttribute('aria-expanded')).toBe('false');
@@ -344,16 +438,17 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(screen.queryByRole('dialog', { name: 'Weitere Bereiche' })).toBeNull();
   });
 
-  it('rückt nach, wo ein Bereich fehlt - nie ein leerer Platz', () => {
+  it('rückt nach, wo ein Bereich fehlt - die Prognose füllt den Platz (R.2)', () => {
     renderShell();
     const bar = screen.getByLabelText(/Bereiche der Anlage/);
     expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
       'Cockpit',
+      'Prognose',
       'Verlauf',
       'Steuerung',
       'Anlage',
     ]);
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
   });
 
   it('die Leiste NAVIGIERT in ihren Bereich', () => {
@@ -424,77 +519,58 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
    * „Mehr"-Blatt gibt es nicht mehr, und einen Hamburger gab es schon vorher
    * nicht. Ohne dieses Menü käme ein Admin am Telefon nirgends hin.
    */
-  it('trägt Hilfe und Abmelden im Avatar-Menü', () => {
+  it('trägt Hilfe, Einstellungen und Abmelden im Avatar-Menü', () => {
     renderShell();
     // Zu ist zu: kein Menü im DOM, bevor jemand es öffnet.
     expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
     expect(menu.textContent).toContain('Hilfe & Kontakt');
+    expect(menu.textContent).toContain('Einstellungen');
     expect(menu.textContent).toContain('Abmelden');
   });
 
-  it('führt die Plattform-Punkte im Avatar-Menü mit (der Telefon-Weg des Admins)', () => {
-    render(
-      <AppShell
-        {...baseProps}
-        isAdmin
-        showAddAnlage={false}
-        onAddAnlage={vi.fn()}
-        anlage={anlage}
-      >
-        <div>content</div>
-      </AppShell>,
-    );
+  // B8: ein Klick auf „Abmelden" räumt erst das Push-Abo dieses Geräts auf, bevor er abmeldet -
+  // beides muss am Ende wirklich passieren, auch ohne Push-Unterstützung in jsdom.
+  it('meldet nach einem Klick auf Abmelden tatsächlich ab', async () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Abmelden' }));
+
+    await waitFor(() => expect(logout).toHaveBeenCalled());
+  });
+
+  /**
+   * Einstellungen Scheibe 1 (Entscheid 1A): „Einstellungen" ersetzt „Meine
+   * Benachrichtigungen" und „Als App auf dem Handy" - EIN Eintrag, der auf die
+   * Seite navigiert statt ein Blatt zu öffnen.
+   */
+  it('„Einstellungen" navigiert auf die Seite - kein eigenes Blatt mehr', () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Einstellungen' }));
+    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
+    // Innerhalb einer Anlage reist die Navigation über ihren eigenen Weg (wie „Benutzer" auch).
+    expect(anlage.onOpenPage).toHaveBeenCalledWith('einstellungen');
+  });
+
+  it('lässt weder „Meine Benachrichtigungen" noch „Als App auf dem Handy" im Menü', () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Meine Benachrichtigungen' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Als App auf dem Handy' })).toBeNull();
+  });
+
+  /** Behebt M8: der Kopf des Avatar-Menüs nennt Name, Anmelde-E-Mail und Rolle auf JEDER Breite. */
+  it('nennt Name, Anmelde-E-Mail und Rolle im Kopf des Avatar-Menüs (behebt M8)', () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    renderShell();
     fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
-    expect(menu.textContent).toContain('Plattform');
-    // Seit Stufe 3 ist „Edge-Updates" ein TAB von „Geräte" - im Menü steht der
-    // Bereich, nicht sein Tab (der wäre ein zweiter Weg zum selben Ort).
-    expect(menu.textContent).toContain('Geräte');
-    expect(menu.textContent).not.toContain('Edge-Updates');
-    // Und ein Kunde bekommt die Gruppe gar nicht erst.
-    cleanup();
-    renderShell();
-    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
-    expect(screen.getByRole('menu', { name: 'Konto-Menü' }).textContent).not.toContain('Plattform');
-  });
-
-  it('trägt „Als App auf dem Handy" - die Einrichtung gilt dem Gerät, nicht der Anlage (E5)', async () => {
-    resetInstallApp();
-    initInstallApp({
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      matchMedia: () => ({ matches: false }),
-      navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari' },
-    });
-    renderShell();
-    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Als App auf dem Handy' }));
-    // Das Menü schließt, das Blatt öffnet (lazy geladen).
-    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
-    // Lazy geladen: der erste Aufruf darf länger dauern als eine Sekunde.
-    expect(
-      await screen.findByRole('dialog', { name: 'Als App auf dem Handy' }, { timeout: 5000 }),
-    ).toBeInTheDocument();
-    // Schließen gibt den Fokus an den Avatar zurück - der Menüeintrag ist fort.
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Als App auf dem Handy' })).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /Konto-Menü/ })));
-  });
-
-  it('lässt den Eintrag in der installierten App weg', () => {
-    resetInstallApp();
-    initInstallApp({
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      matchMedia: () => ({ matches: true }),
-      navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/151' },
-    });
-    renderShell();
-    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
-    expect(screen.queryByRole('menuitem', { name: 'Als App auf dem Handy' })).toBeNull();
-    resetInstallApp();
+    expect(within(menu).getByText('Erika Kaiser')).toBeInTheDocument();
+    expect(within(menu).getByText('erika@example.com')).toBeInTheDocument();
+    expect(within(menu).getByText('Kundenadministrator')).toBeInTheDocument();
+    setSelbstauskunft(null);
   });
 
   it('das Avatar-Menü schließt mit Escape', () => {
@@ -569,7 +645,7 @@ describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
     // Die frühere Listen-Seite „Meine Anlagen" ist ersatzlos aufgegangen.
     expect(eintraege).not.toContain('Meine Anlage');
     expect(eintraege).not.toContain('Meine Anlagen');
-    fireEvent.click(screen.getByTitle('Portfolio'));
+    fireEvent.click(within(nav).getByRole('button', { name: 'Portfolio' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio');
   });
 
@@ -580,8 +656,8 @@ describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
       showPortfolio: true,
       fleetLabel: 'Meine Anlagen',
     });
-    expect(screen.getByTitle('Meine Anlagen')).toBeInTheDocument();
-    expect(screen.queryByTitle('Portfolio')).toBeNull();
+    expect(within(screen.getByLabelText('Hauptnavigation')).getByRole('button', { name: 'Meine Anlagen' })).toBeInTheDocument();
+    expect(navEintrag('Portfolio')).toBeNull();
   });
 
   it('trägt Hilfe und Abmelden auch hier im Avatar-Menü', () => {
@@ -599,7 +675,7 @@ describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
  * Gruppen. Geprüft wird die ORDNUNG in der Schale - die Mengen-Invarianten
  * liegen in `nav.test.ts`.
  */
-describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
+describe('AppShell: die drei Räume (Scheibe S1, Konzept vp-adminview-konzept-k1 §4.2)', () => {
   const adminProps = {
     ...baseProps,
     isAdmin: true,
@@ -608,55 +684,18 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     onAddAnlage: vi.fn(),
   };
 
-  function sidebarLabels() {
-    const nav = screen.getByLabelText('Hauptnavigation');
-    return [...nav.querySelectorAll('.vp-nav-group-label .vp-nav-lbl')].map((n) => n.textContent);
-  }
-
-  /**
-   * S8: die Gruppe ist ZUSAMMENKLAPPBAR und startet EINGEKLAPPT, solange ein
-   * Mandant gewählt ist - dort arbeitet der Admin in der Kundensicht, und elf
-   * Plattform-Punkte darüber sind dann Rauschen. Ohne Mandant ist sie offen.
-   */
-  function oeffnePlattform() {
-    // Exakt „Plattform" - `/Plattform/` träfe auch „Plattform-Übersicht".
-    const knopf = screen.getByRole('button', { name: 'Plattform' });
-    if (knopf.getAttribute('aria-expanded') === 'false') fireEvent.click(knopf);
-  }
-
-  it('rendert „Plattform" plus die vier Gruppen-Überschriften in Arbeits-Reihenfolge', () => {
+  it('rendert die drei Räume Plattform · Geräte · Benutzer, ungefaltet', () => {
     render(
       <AppShell {...adminProps}>
         <div>content</div>
       </AppShell>,
     );
-    oeffnePlattform();
-    expect(sidebarLabels()).toEqual([
-      'Plattform',
-      'Flotte',
-      'Anlagen-Werkzeuge',
-      'Katalog',
-      'Kunden',
-    ]);
+    for (const label of ['Plattform', 'Geräte', 'Benutzer']) {
+      expect(navEintrag(label)).not.toBeNull();
+    }
   });
 
-  it('stellt die Landung OHNE eigene Überschrift an die Spitze', () => {
-    render(
-      <AppShell {...adminProps}>
-        <div>content</div>
-      </AppShell>,
-    );
-    oeffnePlattform();
-    const nav = screen.getByLabelText('Hauptnavigation');
-    const gruppen = [...nav.querySelectorAll('.vp-navgroup')];
-    // Die erste Gruppe ist die Landung: ein Eintrag, keine Zwischenüberschrift.
-    expect(gruppen[0].querySelector('.vp-nav-sublabel')).toBeNull();
-    expect(gruppen[0].textContent).toContain('Plattform-Übersicht');
-    // Und die Gruppen darunter tragen ihre Überschrift.
-    expect(gruppen[1].querySelector('.vp-nav-sublabel')?.textContent).toBe('Flotte');
-  });
-
-  it('behält jeden Punkt bedienbar und den Mandanten-Zähler', () => {
+  it('behält jeden Raum bedienbar, mit dem Mandanten-Zähler am Raum "Benutzer"', () => {
     const onNavigate = vi.fn();
     render(
       <AppShell
@@ -669,90 +708,55 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
         <div>content</div>
       </AppShell>,
     );
-    oeffnePlattform();
-    for (const label of ['Geräte', 'Steuerungs-Freigabe',
-      'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten']) {
-      expect(screen.getByTitle(label)).toBeInTheDocument();
+    fireEvent.click(navEintrag('Geräte')!);
+    expect(onNavigate).toHaveBeenCalledWith('geraete-registry');
+    expect(navEintrag('Benutzer')!.textContent).toContain('1');
+    fireEvent.click(navEintrag('Benutzer')!);
+    expect(onNavigate).toHaveBeenCalledWith('mandanten');
+    fireEvent.click(navEintrag('Plattform')!);
+    expect(onNavigate).toHaveBeenCalledWith('plattform-uebersicht');
+  });
+
+  it('lässt "Plattform" auf seinem Reiter Katalog leuchten, "Geräte" auf Software/Werkstatt/Fernwartung (umgehängt)', () => {
+    const { unmount: unmountKatalog } = render(
+      <AppShell {...adminProps} page="katalog">
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(navEintrag('Plattform')!.className).toContain('active');
+    unmountKatalog();
+
+    for (const page of ['edge-updates', 'werkstatt', 'fernwartung'] as const) {
+      const { unmount } = render(
+        <AppShell {...adminProps} page={page}>
+          <div>content</div>
+        </AppShell>,
+      );
+      expect(navEintrag('Geräte')!.className).toContain('active');
+      unmount();
     }
-    // Die drei gefalteten Punkte sind aus der LEISTE verschwunden - ihre
-    // Flächen leben als Tab (Updates), als Sektion (Gerätetypen) bzw. im
-    // Mandanten-Drawer (Benutzer) weiter.
-    expect(screen.queryByTitle('Edge-Updates')).toBeNull();
-    expect(screen.queryByTitle('Gerätetypen')).toBeNull();
-    expect(screen.queryByTitle('Benutzer')).toBeNull();
-    fireEvent.click(screen.getByTitle('Geräte'));
-    expect(onNavigate).toHaveBeenCalledWith('edge-updates');
-    expect(screen.getByTitle('Mandanten').textContent).toContain('1');
   });
 
-  it('lässt „Geräte" auch auf dem Tab Updates leuchten', () => {
-    render(
-      <AppShell {...adminProps} page="edge-updates">
-        <div>content</div>
-      </AppShell>,
-    );
-    oeffnePlattform();
-    // Ein Tab darf die Leiste nie ins Nichts zeigen lassen: der Bereich ist
-    // aktiv, sonst wüsste der Betreiber nicht, wo er steht.
-    expect(screen.getByTitle('Geräte').className).toContain('active');
-  });
-
-  it('S8: die Gruppe startet EINGEKLAPPT, solange ein Mandant gewählt ist', () => {
+  it('bleibt mit gewähltem Mandanten unverändert sichtbar - kein Falten mehr', () => {
     render(
       <AppShell {...adminProps} tenantOverride="t-1">
         <div>content</div>
       </AppShell>,
     );
-    const knopf = screen.getByRole('button', { name: 'Plattform' });
-    expect(knopf.getAttribute('aria-expanded')).toBe('false');
-    // Eingeklappt heißt EINGEKLAPPT: die Punkte stehen nicht im DOM.
-    expect(screen.queryByTitle('Mandanten')).toBeNull();
-    // Ein Klick öffnet sie - der Weg ist da, er drängt sich nur nicht auf.
-    fireEvent.click(knopf);
-    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
-
-    // Und ohne gewählten Mandanten steht sie von sich aus offen.
-    cleanup();
-    render(
-      <AppShell {...adminProps} tenantOverride={null}>
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(
-      screen.getByRole('button', { name: 'Plattform' }).getAttribute('aria-expanded'),
-    ).toBe('true');
+    expect(navEintrag('Benutzer')).not.toBeNull();
+    expect(navEintrag('Geräte')).not.toBeNull();
+    expect(navEintrag('Plattform')).not.toBeNull();
   });
 
-  it('S8: die Wahl eines Mandanten klappt sie zu, das Zurücksetzen wieder auf', () => {
-    const { rerender } = render(
-      <AppShell {...adminProps} tenantOverride={null}>
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
-    rerender(
-      <AppShell {...adminProps} tenantOverride="t-1">
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(screen.queryByTitle('Mandanten')).toBeNull();
-    rerender(
-      <AppShell {...adminProps} tenantOverride={null}>
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
-  });
-
-  it('zeigt einem Kunden keine einzige Plattform-Gruppe', () => {
+  it('zeigt einem Kunden keinen einzigen Raum', () => {
     render(
       <AppShell {...baseProps} showAddAnlage={false} onAddAnlage={vi.fn()}>
         <div>content</div>
       </AppShell>,
     );
-    expect(sidebarLabels()).not.toContain('Plattform');
-    expect(screen.queryByRole('button', { name: 'Plattform' })).toBeNull();
-    expect(screen.queryByTitle('Geräte')).toBeNull();
+    expect(navEintrag('Plattform')).toBeNull();
+    expect(navEintrag('Geräte')).toBeNull();
+    expect(navEintrag('Benutzer')).toBeNull();
   });
 });
 
@@ -856,11 +860,12 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
     const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
     expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
       'Cockpit',
+      'Prognose',
       'Verlauf',
       'Steuerung',
       'Anlage',
     ]);
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
     expect(bar.querySelector('[aria-current="page"]')?.textContent).toContain('Steuerung');
   });
 });
@@ -894,7 +899,7 @@ describe('AppShell: die Seitenleiste je Ebene (Konzept „Navigation aus einem G
       'Verbessern',
       'Nachweisen',
     ]);
-    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    expect(navEintrag('Ahrenberg')).toBeNull();
     const bar = screen.getByLabelText('Bereiche');
     expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Verbessern', 'Nachweisen']);
   });
@@ -940,16 +945,16 @@ describe('AppShell: die Seitenleiste je Ebene (Konzept „Navigation aus einem G
     };
     const { unmount } = zeige(null, { ...anlage, hoch: { wert: '__standort__', label: 'Werk Ahrenberg', onOpen: vi.fn() } });
     expect(eintraege()[0]).toBe('Werk Ahrenberg');
-    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    expect(navEintrag('Ahrenberg')).toBeNull();
     unmount();
     zeige(null, { ...anlage, hoch: null });
     expect(screen.queryByTestId('seitenleiste-hoch')).toBeNull();
-    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    expect(navEintrag('Ahrenberg')).toBeNull();
   });
 
   it('ohne Einträge der Ebene und ohne Weg nach oben bleibt der Eintrag der Flotte wie bisher', () => {
     zeige(null);
-    expect(screen.getByTitle('Ahrenberg')).toBeInTheDocument();
+    expect(navEintrag('Ahrenberg')).not.toBeNull();
   });
 });
 
@@ -1019,5 +1024,132 @@ describe('AppShell · Kontexthilfe am Telefon in der Kopfleiste (UX-Review V-03)
       </AppShell>,
     );
     expect(container.querySelector('.vp-topbar-help')).toBeNull();
+  });
+});
+
+describe('Seitenleiste: ein Titel nur, wo er mehr sagt als der sichtbare Text (Befund 02.11.2026)', () => {
+  // Der `title` ist ein nativer Tooltip des Browsers: er steht am Zeiger, nicht
+  // am Eintrag, und bleibt stehen, bis die Maus sich bewegt. Rücken die Einträge
+  // unter dem ruhenden Zeiger nach (die Bereiche einer Anlage kommen erst mit
+  // ihrer Oberfläche), hängt ein „Fahrplan" irgendwo über der Seite. Darum trägt
+  // ein Eintrag seinen Namen nur dort als Titel, wo der Text NICHT zu sehen ist:
+  // in der Symbolleiste am Tablet (721–1023 px). Was mehr sagt, bleibt überall.
+  function fenster(rechner: boolean) {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: (q: string) => ({
+        matches: q === DESKTOP_QUERY ? rechner : false,
+        media: q,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+  }
+  afterEach(() => {
+    cleanup();
+    // @ts-expect-error - der Stub gehört dem einzelnen Test
+    delete window.matchMedia;
+  });
+
+  const SPEICHER = anlageSurface({
+    entities: [{ id: 'b', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }],
+    config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' },
+  });
+  const anlage = {
+    siteId: 's-1',
+    siteName: 'Pilsting / Herzogau',
+    sites: [{ id: 's-1', name: 'Pilsting / Herzogau' }],
+    onSelectSite: vi.fn(),
+    sidebar: anlageSidebar(SPEICHER, 2, '2 Dinge brauchen Aufmerksamkeit'),
+    activeKey: 'fahrplan',
+    onOpenSub: vi.fn(),
+    onOpenPage: vi.fn(),
+    onOpenFleet: vi.fn(),
+    hoch: { wert: 'flotte', label: 'Meine Anlagen', onOpen: vi.fn() },
+    health: null,
+  };
+  /** Je Eintrag (nach seinem sichtbaren Namen) der Titel - null, wo keiner steht. */
+  const titel = () =>
+    Object.fromEntries(
+      [...screen.getByLabelText('Hauptnavigation').querySelectorAll('.vp-navitem')].map((b) => [
+        b.querySelector('.vp-nav-lbl')?.textContent?.trim(),
+        b.getAttribute('title'),
+      ]),
+    );
+  const renderAnlage = () =>
+    render(
+      <AppShell {...baseProps} showAddAnlage={false} onAddAnlage={vi.fn()} anlage={anlage}>
+        <div>content</div>
+      </AppShell>,
+    );
+
+  it('wiederholt auf dem Rechner nicht den sichtbaren Namen als Tooltip', () => {
+    fenster(true);
+    renderAnlage();
+    const t = titel();
+    expect(Object.keys(t)).toEqual(['Meine Anlagen', 'Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage']);
+    expect(t.Cockpit).toBeNull();
+    expect(t.Fahrplan).toBeNull();
+    expect(t.Verlauf).toBeNull();
+    expect(t.Anlage).toBeNull();
+    // Was MEHR sagt als der Name, bleibt: der Satz zum Abzeichen, das „Zurück zu".
+    expect(t.Steuerung).toBe('Steuerung — 2 Dinge brauchen Aufmerksamkeit');
+    expect(t['Meine Anlagen']).toBe('Zurück zu Meine Anlagen');
+    expect(screen.getByRole('button', { name: 'Hilfe & Kontakt' }).getAttribute('title')).toBeNull();
+  });
+
+  it('nennt in der Symbolleiste am Tablet den Namen - dort ist der Text versteckt', () => {
+    fenster(false);
+    renderAnlage();
+    const t = titel();
+    expect(t.Cockpit).toBe('Cockpit');
+    expect(t.Fahrplan).toBe('Fahrplan');
+    expect(t.Steuerung).toBe('Steuerung — 2 Dinge brauchen Aufmerksamkeit');
+    expect(t['Meine Anlagen']).toBe('Zurück zu Meine Anlagen');
+    expect(screen.getByRole('button', { name: 'Hilfe & Kontakt' }).getAttribute('title')).toBe('Hilfe & Kontakt');
+  });
+
+  it('gilt auch für die Flotten-Ebene und ihre Seiten', () => {
+    fenster(true);
+    render(
+      <AppShell {...baseProps} page="portfolio" showPortfolio showAddAnlage={false} onAddAnlage={vi.fn()}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(titel().Portfolio).toBeNull();
+    cleanup();
+    fenster(false);
+    render(
+      <AppShell {...baseProps} page="portfolio" showPortfolio showAddAnlage={false} onAddAnlage={vi.fn()}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(titel().Portfolio).toBe('Portfolio');
+  });
+});
+
+describe('AppShell: Sprung zum Inhalt vor Seitenleiste und Kopfzeile (WCAG 2.4.1)', () => {
+  it('ist der erste fokussierbare Knoten der Schale und setzt den Fokus auf <main>, ohne die Adresse zu ändern', () => {
+    window.location.hash = '#/fahrplan';
+    const { container } = render(
+      <AppShell {...baseProps}>
+        <div>content</div>
+      </AppShell>,
+    );
+    const app = container.querySelector('.vp-app')!;
+    const sprung = app.firstElementChild as HTMLElement;
+    expect(sprung).toBe(screen.getByRole('button', { name: 'Zum Inhalt springen' }));
+    expect(sprung.className).toContain('vp-skip-link');
+    const main = container.querySelector('main')!;
+    expect(main.getAttribute('tabindex')).toBe('-1');
+    fireEvent.click(sprung);
+    expect(document.activeElement).toBe(main);
+    // Jeder Hash ist eine Route - ein Anker hätte die Seite gewechselt.
+    expect(window.location.hash).toBe('#/fahrplan');
   });
 });

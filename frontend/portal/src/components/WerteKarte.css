@@ -164,11 +164,18 @@
   box-shadow: none;
 }
 .vp-wk-zeitwahl.is-seite .vp-wk-schritt {
+  position: relative;
   min-width: 36px;
   min-height: 36px;
   border: 1px solid var(--vp-border);
   border-radius: 10px;
   background: var(--vp-surface);
+}
+/* Das Kästchen bleibt 36 px, die Tippfläche wächst unsichtbar auf 44 px (Muster `.vp-vb-schritt`). */
+.vp-wk-zeitwahl.is-seite .vp-wk-schritt::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 .vp-wk-zeitwahl.is-seite .vp-wk-datum .vp-picker-ausloeser,
 .vp-wk-zeitwahl.is-seite .vp-wk-jahr {

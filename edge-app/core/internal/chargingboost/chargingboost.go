@@ -75,6 +75,11 @@ type Request struct {
 	Action string
 	// Minutes is the requested duration; 0 = the contract default (the cap).
 	Minutes int
+	// UntilUnplug = „bis Abstecken" (W-10): the override lasts until the
+	// session ends, under the box's own cap; Minutes is then ignored. An
+	// ABSENT field is false - a cloud that does not send it grants exactly
+	// what it did before.
+	UntilUnplug bool
 	// Cancel takes a running override back at once.
 	Cancel bool
 	// RequestedAt is when the CLOUD granted it - the anchor of the window.
@@ -92,6 +97,7 @@ type wire struct {
 	Connector     int    `json:"connector_id"`
 	Action        string `json:"action"`
 	Minutes       int    `json:"minutes"`
+	UntilUnplug   bool   `json:"until_unplug"`
 	Cancel        bool   `json:"cancel"`
 	RequestedAt   string `json:"requested_at"`
 	Actor         string `json:"actor"`
@@ -148,7 +154,7 @@ func Parse(payload []byte) (Request, error) {
 	return Request{
 		TenantID: w.TenantID, SiteID: w.SiteID, DeviceID: w.DeviceID,
 		ChargePointID: id, Connector: w.Connector, Action: action, Minutes: w.Minutes,
-		Cancel: w.Cancel, RequestedAt: ts.UTC(), Actor: strings.TrimSpace(w.Actor),
+		UntilUnplug: w.UntilUnplug, Cancel: w.Cancel, RequestedAt: ts.UTC(), Actor: strings.TrimSpace(w.Actor),
 	}, nil
 }
 

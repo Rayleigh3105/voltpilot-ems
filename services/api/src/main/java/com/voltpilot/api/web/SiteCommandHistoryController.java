@@ -6,6 +6,7 @@ import com.voltpilot.api.command.DeviceScopes;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.CommandHistoryDto;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -61,12 +62,22 @@ public class SiteCommandHistoryController {
     private final Geltungsbereich geltungsbereich;
     private final CommandLogReader reader;
     private final DeviceScopes scopes;
+    private volatile Clock uhr = Clock.systemUTC();
 
     public SiteCommandHistoryController(Geltungsbereich geltungsbereich, CommandLogReader reader,
             DeviceScopes scopes) {
         this.geltungsbereich = geltungsbereich;
         this.reader = reader;
         this.scopes = scopes;
+    }
+
+    /** Für Tests: die Uhr, an der "heute" für die Aufbewahrungsgrenze (CommandFilter#MAX_DAYS_BACK) hängt. */
+    public void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
+    }
+
+    private LocalDate heute() {
+        return LocalDate.now(uhr.withZone(HistoryRange.ZONE));
     }
 
     @GetMapping("/command-history")
@@ -113,8 +124,7 @@ public class SiteCommandHistoryController {
         int max;
         try {
             filter = CommandFilter.parse(streams, sources, verdicts);
-            window = CommandFilter.window(parsed, at, from, to,
-                    LocalDate.now(HistoryRange.ZONE));
+            window = CommandFilter.window(parsed, at, from, to, heute());
             max = CommandFilter.limit(limit);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());

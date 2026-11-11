@@ -82,6 +82,18 @@ const BRAND_DISPLAY: Record<string, string> = {
   'go-e': 'go-e',
 };
 
+/**
+ * Raw model codes where the generic two-group truncation of {@link shortModel}
+ * reads wrong - Shelly repeats the brand inside the model code itself
+ * ("shelly-pro-3em"), so cutting at two groups keeps the brand and drops the
+ * meter's generation ("shelly-pro"), and the row showed "Shelly shelly-pro"
+ * (Zählerbaum-Konzept N1). Add one entry per such code instead of widening the
+ * generic heuristic, which is correct for every other catalog brand.
+ */
+const MODEL_DISPLAY: Record<string, string> = {
+  'shelly-pro-3em': 'Pro 3EM',
+};
+
 /** "deye" -> "Deye"; an already-capitalised or mixed-case brand is left alone. */
 function brandCase(brand: string): string {
   const b = brand.trim();
@@ -111,13 +123,20 @@ export function technicalDeviceName(input: DeviceNameInput): string | null {
   const edge = (input.edgeLabel ?? '').trim();
   if (edge) return edge;
   const brand = brandCase((input.brand ?? '').trim());
-  const model = shortModel((input.model ?? '').trim());
+  const rawModel = (input.model ?? '').trim();
+  const model = TRANSPORT_MODELLE.has(rawModel) ? '' : MODEL_DISPLAY[rawModel] ?? shortModel(rawModel);
   const brandModel = [brand, model].filter(Boolean).join(' ');
   if (brandModel) return brandModel;
   const typeLabel = stripParenthetical((input.typeLabel ?? '').trim());
   if (typeLabel) return typeLabel;
   return null;
 }
+
+/**
+ * Modell-Kennungen, die nur den Transport einer Vorlage nennen („shelly_http“ = ein Shelly über seine
+ * Web-Schnittstelle) - kein Kundenwort. Der Name endet dann bei der Marke („Shelly“).
+ */
+const TRANSPORT_MODELLE = new Set(['shelly_http']);
 
 /** Per-type short names for the types a role alone cannot tell apart. */
 const TYPE_SHORT: Record<string, string> = {
@@ -129,6 +148,7 @@ const TYPE_SHORT: Record<string, string> = {
   'heating-rod': 'Heizstab',
   'heat-pump-sgready': 'Wärmepumpe',
   'generic-load': 'Verbraucher',
+  'sub-meter': 'Unterzähler',
   // D3 customer dictionary (M7): "Messgerät", never the internal "Messpunkt".
   'modbus-generic': 'Messgerät',
 };

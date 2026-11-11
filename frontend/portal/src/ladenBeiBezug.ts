@@ -6,7 +6,11 @@
  * Der belegte Fall (Herzogau, 24.09.2026 17:08): eine Wolke nimmt der Anlage in
  * Sekunden 15 kW PV; der Wechselrichter braucht einen Messtakt (10 s) plus
  * Folgezeit (15–20 s), bis er das Laden absenkt. In dieser Lücke fließt kurz
- * Netzstrom in den Speicher — physikalisch echt, aber kein Fehler. Das Cockpit
+ * Netzstrom in den Speicher — physikalisch echt, ein Rest aus der Reaktionszeit
+ * des Geräts. Bei Netzladen „Verboten“ hält die Box die Ladung seit EN-1 A
+ * (02.11.2026) 1 kW unter dem gemessenen Überschuss und senkt sofort ab
+ * (Netzladen-Sperre, edge-app guards/netzladensperre.go); ganz auf null bringt
+ * das keine Steuerung von außen. Das Cockpit
  * zeigte „lädt 16,6 kW ✓" neben „8,5 kW Bezug" ohne ein Wort dazu; der Haken
  * (Sollwert bestätigt) las sich wie „so ist es gewollt".
  *

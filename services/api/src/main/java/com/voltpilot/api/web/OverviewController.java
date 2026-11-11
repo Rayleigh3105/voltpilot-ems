@@ -9,10 +9,13 @@ import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.repo.OverviewRepository;
 import com.voltpilot.api.repo.SiteProfileStateRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.topology.PvJeGeraet;
 import com.voltpilot.api.topology.RollenZuordnungService;
+import com.voltpilot.api.topology.TopologyService;
 import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.web.dto.OverviewDto;
+import com.voltpilot.api.web.dto.OverviewDto.BoxGeloestHinweisDto;
 import com.voltpilot.api.web.dto.OverviewDto.EnergyTodayDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewDailySavingsDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewLiveDto;
@@ -80,13 +83,18 @@ public class OverviewController {
     private final StandortLesemodellService standortLesemodell;
     private final RollenZuordnungService rollen;
     private final TeilansichtDienst teilansicht;
+    private final TopologyService topologie;
+    private final com.voltpilot.api.geraete.BoxLoesenRepository boxLoesen;
 
     public OverviewController(SiteRepository sites, OverviewRepository overview,
             EntityTypeCatalog catalog, AnwendungKatalog anwendungen,
             SiteProfileStateRepository profileStates,
             StandortLesemodellService standortLesemodell,
             RollenZuordnungService rollen,
-            TeilansichtDienst teilansicht) {
+            TeilansichtDienst teilansicht,
+            TopologyService topologie,
+            com.voltpilot.api.geraete.BoxLoesenRepository boxLoesen) {
+        this.boxLoesen = boxLoesen;
         this.sites = sites;
         this.overview = overview;
         this.catalog = catalog;
@@ -95,6 +103,7 @@ public class OverviewController {
         this.standortLesemodell = standortLesemodell;
         this.rollen = rollen;
         this.teilansicht = teilansicht;
+        this.topologie = topologie;
     }
 
     // Rechte: lesendes Aggregat, keine eigene Kennung (AP-03 §4.5 R-A2, §6.2 IP-10).
@@ -127,6 +136,10 @@ public class OverviewController {
         // UEMS AP-02 IP-3: der Standort je Anlage heute - additiv, null solange
         // eine Anlage keinem Standort zugeordnet ist (heute: jede).
         Map<UUID, StandortBezug> standortJeAnlage = standortLesemodell.bezugJeAnlage();
+        // B3 (Konzept vp-plattform-admin-box-benutzer-konzept): der Hinweis, solange eine Anlage nach
+        // "Vom Kunden lösen" keine Box hat - additiv, höchstens 14 Tage.
+        Map<UUID, com.voltpilot.api.geraete.BoxLoesenRepository.Hinweis> boxGeloestJeAnlage =
+                boxLoesen.hinweiseJeAnlage();
         // Nur die Live-Anzeige liest die kanonischen Rollen, je Rolle eine Flotten-Abfrage.
         // Ohne Zuordnung bleibt die Roh-Telemetrie unverändert.
         Map<UUID, RollenDto.KanonischerWert> pvKanonisch = rollen.rollenJeAnlage("pv");
@@ -149,7 +162,8 @@ public class OverviewController {
             totalOnline += onlineCount;
 
             OverviewRepository.LiveRow liveRow = livePerSite.get(site.id());
-            OverviewLiveDto live = liveDto(liveRow, pvKanonisch.get(site.id()),
+            RollenDto.KanonischerWert pvRolle = pvKanonisch.get(site.id());
+            OverviewLiveDto live = liveDto(liveRow, pvRolle, pvRohJeGeraet(site.id(), liveRow, pvRolle),
                     verbrauchKanonisch.get(site.id()), netzKanonisch.get(site.id()));
             if (liveRow != null && !liveRow.ts().isBefore(freshnessCutoff)) {
                 liveSitesCovered++;
@@ -187,7 +201,8 @@ public class OverviewController {
                             strategyNodes.getOrDefault(site.id(), Set.of()),
                             liveRow != null, gridLimitSites.contains(site.id()),
                             storedStates.getOrDefault(site.id(), Map.of())),
-                    standortJeAnlage.get(site.id())));
+                    standortJeAnlage.get(site.id()),
+                    boxGeloestHinweisDto(boxGeloestJeAnlage.get(site.id()))));
         }
 
         OverviewRepository.StorageTotals storage = overview.storageTotals();
@@ -211,13 +226,37 @@ public class OverviewController {
                 teilansichtDto);
     }
 
-    /** Rollen lenken ausschließlich die Live-Anzeige um; null bleibt unbekannt, nie Rohwert/0. */
+    /**
+     * Rollen lenken ausschließlich die Live-Anzeige um; null bleibt unbekannt, nie Rohwert/0. Die PV nach der
+     * Je-Gerät-Regel ({@link PvJeGeraet}, wie das Cockpit): eine Zuordnung ersetzt die Zahl ihrer Geräte, nicht
+     * die der Anlage. Verbrauch und Netz ersetzen die Anlagenzahl.
+     */
     private static OverviewLiveDto liveDto(OverviewRepository.LiveRow liveRow,
-            RollenDto.KanonischerWert pv, RollenDto.KanonischerWert verbrauch,
+            RollenDto.KanonischerWert pv, Map<UUID, Double> pvRohJeGeraet, RollenDto.KanonischerWert verbrauch,
             RollenDto.KanonischerWert netz) {
         if (liveRow == null) return null;
-        return new OverviewLiveDto(liveRow.ts(), rollenWert(pv, liveRow.pvKw()),
+        return new OverviewLiveDto(liveRow.ts(), PvJeGeraet.anlagenPv(liveRow.pvKw(), pv, pvRohJeGeraet),
                 rollenWert(verbrauch, liveRow.loadKw()), rollenWert(netz, liveRow.gridKw()), liveRow.socPct());
+    }
+
+    /**
+     * Der Rohwert je Mitglied des PV-Knotens der Topologie - dieselben Zahlen, die das Cockpit addiert; {@code null}
+     * für ein Mitglied ohne Wert. Nur für eine Anlage mit PV-Zuordnung und Live-Zeile: jede andere Anlage bleibt bei
+     * ihrer einen Flotten-Abfrage.
+     */
+    private Map<UUID, Double> pvRohJeGeraet(UUID site, OverviewRepository.LiveRow liveRow,
+            RollenDto.KanonischerWert pv) {
+        if (liveRow == null || pv == null || !pv.zuordnungVorhanden() || pv.wert() == null) return Map.of();
+        Map<UUID, Double> roh = new java.util.HashMap<>();
+        for (var n : topologie.topology(site).topology().nodes()) {
+            if (!"pv".equals(n.role())) continue;
+            for (var m : n.members()) {
+                UUID id = UUID.fromString(m.entityId());
+                Double alt = roh.get(id);
+                roh.put(id, m.valueKw() == null ? alt : alt == null ? m.valueKw() : alt + m.valueKw());
+            }
+        }
+        return roh;
     }
 
     private static BigDecimal rollenWert(RollenDto.KanonischerWert rolle, BigDecimal rohwert) {
@@ -363,5 +402,10 @@ public class OverviewController {
             return "stale";
         }
         return waitingCount > 0 ? "waiting" : "online";
+    }
+
+    private static BoxGeloestHinweisDto boxGeloestHinweisDto(
+            com.voltpilot.api.geraete.BoxLoesenRepository.Hinweis h) {
+        return h == null ? null : new BoxGeloestHinweisDto(h.anlass(), h.anlassText(), h.bisSpaetestens());
     }
 }

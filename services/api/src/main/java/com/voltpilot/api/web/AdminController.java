@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.admin.AdminAnfrageKennungen;
 import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
@@ -27,7 +28,6 @@ import com.voltpilot.api.web.dto.TenantOffboardingCleanupDto;
 import com.voltpilot.api.web.dto.UpdateTenantRequest;
 import com.voltpilot.api.web.dto.UpdateUserRequest;
 import com.voltpilot.api.benutzer.BenutzerService;
-import com.voltpilot.api.benutzer.BenutzerFehler;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import org.springframework.security.core.Authentication;
 import jakarta.validation.Valid;
@@ -51,7 +51,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -84,12 +86,15 @@ public class AdminController {
     private final BenutzerService benutzer;
     private final AdminBenutzerService adminBenutzer;
     private final KundenbereichLoeschung loeschung;
+    private final AdminAnfrageKennungen anfrageKennungen;
+    private final AnfrageKennungen fingerabdrucke;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
             ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer,
-            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung) {
+            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung,
+            AdminAnfrageKennungen anfrageKennungen, AnfrageKennungen fingerabdrucke) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
@@ -99,19 +104,38 @@ public class AdminController {
         this.benutzer = benutzer;
         this.adminBenutzer = adminBenutzer;
         this.loeschung = loeschung;
+        this.anfrageKennungen = anfrageKennungen;
+        this.fingerabdrucke = fingerabdrucke;
     }
 
     // ---- tenants -------------------------------------------------------------
+
+    /** Die Route der Anfrage-Kennung beim Anlegen (Tabelle {@code admin_anfrage_kennung}). */
+    static final String ROUTE_KUNDE_ANLEGEN = "POST /api/v1/admin/tenants";
 
     @GetMapping("/tenants")
     public List<TenantDto> listTenants() {
         return tenants.findAll();
     }
 
+    /**
+     * Befund vp-kundenakte-fremde-personen (Punkt 5, doppelter Kunde): dieselbe Anfrage-Kennung legt
+     * nie ein zweites Mal an - ein Doppelklick oder das Wiederholen nach einem Netzfehler bekommt den
+     * Kunden der ersten Antwort zurück. {@code tenant.name} bleibt bewusst nicht eindeutig (zwei
+     * Privatkunden dürfen gleich heißen); das Portal warnt zusätzlich vor einem gleichen Namen.
+     */
     @PostMapping("/tenants")
-    public ResponseEntity<TenantDto> createTenant(@Valid @RequestBody CreateTenantRequest request) {
-        TenantDto created = tenants.create(request.name(), request.segmentOrDefault());
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    public ResponseEntity<?> createTenant(@Valid @RequestBody CreateTenantRequest request,
+            @RequestHeader(value = AnfrageKennungen.KOPF, required = false) String anfrageKopf,
+            @AuthenticationPrincipal Jwt caller) {
+        String kennung = AnfrageKennungen.kennung(anfrageKopf);
+        if (kennung == null) {
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(tenants.create(request.name(), request.segmentOrDefault()));
+        }
+        return anfrageKennungen.einmal(caller.getSubject(), ROUTE_KUNDE_ANLEGEN, kennung,
+                fingerabdrucke.fingerabdruck(request), HttpStatus.CREATED,
+                () -> tenants.create(request.name(), request.segmentOrDefault()));
     }
 
     /** Update a tenant's master data (name/segment/betriebsart - U0 shell frame). */
@@ -314,6 +338,45 @@ public class AdminController {
         return enrollments.findPending();
     }
 
+    /**
+     * Remove a dead enrollment from the Geräte-Liste: a mistyped reference
+     * that never got claimed, or a box that was once issued a certificate and
+     * is now disconnected without a re-claim. 404 if the ref is unknown or a
+     * customer claimed it in the meantime - the operator's list can be a few
+     * seconds stale.
+     */
+    @DeleteMapping("/enrollments/pending/{externalRef}")
+    public ResponseEntity<Void> deletePendingEnrollment(@PathVariable String externalRef) {
+        String canonical = DeviceController.canonicalExternalRef(externalRef);
+        if (!enrollments.delete(canonical)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Enrollment '" + canonical + "' not found or claimed by a customer");
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Personensuche über ALLE Kunden (Lücke L6, Adminview-Konzept Abschnitt
+     * 3.4/4.5): die Suche im Raum Benutzer findet damit Personen SERVERSEITIG
+     * statt nur über die geladenen Listen eines einzelnen Mandanten.
+     * Keycloaks eigene realmweite {@code search} deckt das in einem Aufruf ab
+     * ({@link KeycloakAdminClient#searchUsers}); jedes Konto trägt sein
+     * {@code tenantId} (oder {@code null} für ein Konto ohne das Attribut).
+     * Eine leere oder fehlende Suche liefert eine leere Liste, nie den ganzen
+     * Realm.
+     */
+    @GetMapping("/personen")
+    public List<AdminUserDto> personensuche(@RequestParam(required = false) String suche) {
+        if (suche == null || suche.isBlank()) {
+            return List.of();
+        }
+        try {
+            return keycloak.searchUsers(suche).stream().map(AdminController::toDto).toList();
+        } catch (KeycloakAdminException ex) {
+            throw toResponse(ex);
+        }
+    }
+
     // ---- customer users ------------------------------------------------------
 
     @GetMapping("/tenants/{tenantId}/users")
@@ -336,16 +399,24 @@ public class AdminController {
                         ProtokollAkteur.aus(auth).orElseThrow()));
     }
 
-    /** Update a customer user's profile (email/name; the username is immutable). */
+    /**
+     * Update a customer user's profile - name, email, and (P3) the username. Keycloak UND der UEMS-Spiegel
+     * ({@code benutzer.anzeigename}/{@code email}, P1/N1) ändern sich in EINER Transaktion, mit Protokoll
+     * {@code konto_geaendert} ({@link AdminBenutzerService#profilAendern}).
+     */
     @PutMapping("/tenants/{tenantId}/users/{userId}")
     public AdminUserDto updateUser(@PathVariable UUID tenantId, @PathVariable String userId,
             @Valid @RequestBody UpdateUserRequest request) {
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            return toDto(keycloak.updateProfile(userId, request.email(),
+            return toDto(adminBenutzer.profilAendern(tenantId, userId, request.username(), request.email(),
                     request.firstName(), request.lastName()));
         } catch (KeycloakAdminException ex) {
+            // N5: ein Anmeldename-Konflikt (P3) trägt einen genaueren Code (anmeldename_vergeben) - den
+            // lässt die globale Antwort (BenutzerFehlerAntwort) durch statt ihn hier zu verlieren.
+            if (ex.code() != null) {
+                throw ex;
+            }
             throw toResponse(ex);
         }
     }
@@ -387,13 +458,28 @@ public class AdminController {
         }
     }
 
-    /** IP-14: der Kundenadministrator vergibt das Startpasswort über die Kundenroute neu. */
+    /**
+     * N6: der Plattform-Admin vergibt ein neues Startpasswort - der Live-Login nennt „Support" als Weg bei
+     * vergessenem Passwort, aber vor N6 gab es für den Admin selbst keinen (403, nur im Mandantensprung über
+     * die Kundenseite). Derselbe Weg wie der Kundenadministrator ({@link BenutzerService#neuVergeben}).
+     */
     @PostMapping("/tenants/{tenantId}/users/{userId}/reset-password")
-    public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId) {
+    public BenutzerService.Angelegt resetPassword(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);
-        requireUserInTenant(tenantId, userId);
-        throw new BenutzerFehler(403, "recht_fehlt",
-                "Ein Startpasswort vergibt der Kundenadministrator in der Benutzerverwaltung neu.");
+        return adminBenutzer.neuesStartpasswort(tenantId, userId);
+    }
+
+    /**
+     * P2: „Person hinzufügen" - weitere Personen eines Kundenbereichs, nicht nur die erste (W4 fällt,
+     * `rechte-matrix.json` „benutzer.verwalten"). Rolle und Standorte wie der Kundenadministrator; das
+     * Zugriffsprotokoll des Kunden zeigt den Urheber VoltPilot-Betrieb ({@link ProtokollAkteur}).
+     */
+    @PostMapping("/tenants/{tenantId}/personen")
+    public ResponseEntity<BenutzerService.Angelegt> person(@PathVariable UUID tenantId,
+            @RequestBody BenutzerService.Anlage request) {
+        requireTenant(tenantId);
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(adminBenutzer.person(tenantId, request));
     }
 
     /**
@@ -435,19 +521,6 @@ public class AdminController {
         if (!tenants.existsById(tenantId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
         }
-    }
-
-    /**
-     * A user addressed under a tenant path must actually carry that tenant -
-     * a user reached through the wrong tenant's path is "not found", never
-     * acted on.
-     */
-    private KeycloakUser requireUserInTenant(UUID tenantId, String userId) {
-        KeycloakUser user = keycloak.getUser(userId);
-        if (!tenantId.toString().equals(user.tenantId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found in this tenant");
-        }
-        return user;
     }
 
     private static AdminUserDto toDto(KeycloakUser u) {

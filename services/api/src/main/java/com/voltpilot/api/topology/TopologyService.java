@@ -2,10 +2,13 @@ package com.voltpilot.api.topology;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.ZaehlerbaumService;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.erzeuger.AnlagensteuerungLesung;
+import com.voltpilot.api.erzeuger.AnlagensteuerungRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.topology.TopologyRepository.LiveValue;
 import com.voltpilot.api.topology.TopologyRepository.RoleOverride;
@@ -23,6 +26,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -77,10 +81,12 @@ public class TopologyService {
     private final DeviceChargerStatusRepository chargers;
     private final EntityRegistryService push;
     private final RollenZuordnungService rollen;
+    private final ZaehlerbaumService zaehlerbaum;
 
     public TopologyService(EntityRegistryRepository registry, TopologyRepository repo,
             EntityTypeCatalog catalog, ObjectMapper mapper,
-            DeviceChargerStatusRepository chargers, EntityRegistryService push, RollenZuordnungService rollen) {
+            DeviceChargerStatusRepository chargers, EntityRegistryService push, RollenZuordnungService rollen,
+            ZaehlerbaumService zaehlerbaum) {
         this.registry = registry;
         this.repo = repo;
         this.catalog = catalog;
@@ -88,6 +94,15 @@ public class TopologyService {
         this.chargers = chargers;
         this.push = push;
         this.rollen = rollen;
+        this.zaehlerbaum = zaehlerbaum;
+    }
+
+    private AnlagensteuerungLesung steuerungen;
+
+    /** UEMS EZ-22: die Lebendigkeit einer Anlagensteuerung kommt aus ihrer Lesung, nicht aus telemetry_v2. */
+    @Autowired(required = false)
+    void setAnlagensteuerungLesung(AnlagensteuerungLesung steuerungen) {
+        this.steuerungen = steuerungen;
     }
 
     /**
@@ -218,8 +233,16 @@ public class TopologyService {
         // need (C2). One small indexed read; a site without a charge point gets
         // an empty map and resolves byte-identically to before.
         Map<UUID, String> connections = chargers.connectionsByEntity(siteId);
+        // Zählerbaum-Konzept: woran jede Komponente heute hängt (null = Wurzel) -
+        // nur für den Verbraucher-Knoten gebraucht, aber harmlos an jedem Mitglied.
+        Map<UUID, UUID> haengtAn = zaehlerbaum.baum(siteId);
         Instant now = Instant.now();
         Set<String> firstSeen = new HashSet<>();
+        // EZ-22: eine Anlagensteuerung hat keinen Messkanal in telemetry_v2 (Katalog default_measure: []) - ihre
+        // Lebendigkeit ist die jüngste Lesung ihres Erzeuger-Bilds; sonst stünde sie für immer auf „never“.
+        Map<UUID, AnlagensteuerungRepository.Lesung> lesungen = steuerungen != null
+                && rows.stream().anyMatch(r -> AnlagensteuerungRepository.ENTITY_TYPE.equals(r.entityType()))
+                ? steuerungen.fuerAnlage(siteId) : Map.of();
 
         List<EntityTopologyDto> entities = new ArrayList<>();
         List<TopologyDeriver.EntityInput> derivIn = new ArrayList<>();
@@ -259,12 +282,16 @@ public class TopologyService {
                         value));
                 derivCaps.add(new TopologyDeriver.CapabilityInput(channel, role, primary, value));
             }
-            String health = health(newest, now);
+            AnlagensteuerungRepository.Lesung lesung = lesungen.get(row.id());
+            String health = AnlagensteuerungRepository.ENTITY_TYPE.equals(row.entityType()) && steuerungen != null
+                    ? AnlagensteuerungLesung.health(lesung == null ? null : lesung.juengst(), now)
+                    : health(newest, now);
             entities.add(new EntityTopologyDto(row.id(), row.entityType(),
                     catalog.labelFor(row.entityType()), row.label(), category, health, connection,
                     caps));
+            UUID eltern = haengtAn.get(row.id());
             derivIn.add(new TopologyDeriver.EntityInput(row.id().toString(), row.entityType(),
-                    label(row), category, health, derivCaps));
+                    label(row), category, health, derivCaps, eltern == null ? null : eltern.toString()));
         }
 
         TopologyDeriver.Topology topo = TopologyDeriver.derive(new TopologyDeriver.Input(derivIn));
@@ -325,10 +352,9 @@ public class TopologyService {
     /**
      * Was ein Kreis zeigt (K8/B1): ein LEISTUNGS-Kanal das Mittel über
      * {@link TopologyRepository#DISPLAY_MEAN_WINDOW}, damit PV, Netz, Speicher
-     * und Haus auf derselben Zeitbasis stehen und ihre Bilanz stimmt. Ladestand,
-     * Grenzen/Freigaben (Zahlen mit Ja/Nein-Bedeutung) und alles ohne kW/W
-     * bleiben der letzte Wert - ein gemitteltes „erlaubt" oder ein gemittelter
-     * Zählerstand wäre eine erfundene Zahl.
+     * und Haus auf derselben Zeitbasis stehen und ihre Bilanz stimmt. Ladestand
+     * und alles ohne kW/W bleiben der letzte Wert - ein gemittelter Zählerstand
+     * wäre eine erfundene Zahl.
      */
     static double displayValue(LiveValue lv, String channel, String unit) {
         boolean leistung = "kW".equals(unit) || "W".equals(unit);

@@ -1,0 +1,208 @@
+{
+ "nachweis": "Zusatzlauf zu NW-3 — kurzer Verbraucher am gebauten Box-Image",
+ "gefahren_am": "2026-10-12T21:28:16Z",
+ "repo_stand_des_pruefstands": "c5b32cba7be54a4b3be5965c7b3c72d6ef110c64",
+ "paar": {
+  "ref": "edge-2026.10.0",
+  "tag_commit": "99944c8960adee128bdb2177048d41c540ca27a4",
+  "core_binary_stempel": "edge-2026.10.0-99944c8960ad",
+  "stand_den_die_box_selbst_meldet": "edge-2026.10.0-99944c8960ad",
+  "herkunft": "die von nw3.sh aus dem Tag gebauten Bilder, NICHT das Release-Artefakt"
+ },
+ "fall": {
+  "name": "ruhe",
+  "quelle": "edge-app/core/internal/agent/surplus_short_consumer_scenario_test.go (herzogauBenchScenario)",
+  "pv_kw": 5.0,
+  "ueberschuss_kw_bis_sekunde": "0.76",
+  "verbraucher_kw": 2.62,
+  "verbraucher_dauern_s": [
+   15,
+   10,
+   12
+  ],
+  "verbraucher_abstaende_s": [
+   60,
+   90,
+   120,
+   75,
+   105
+  ],
+  "geraet": "Modell des Tags (edge/sim/sim-model.js): folgt einem Sollwert nach 12 s (reine Totzeit), meldet alle 5 s, Ladezustand 37 %",
+  "fahrplan": {
+   "schema_version": "1.0",
+   "tenant_id": "00000000-0000-0000-0000-000000000001",
+   "site_id": "00000000-0000-0000-0000-000000000002",
+   "device_id": "00000000-0000-0000-0000-000000000003",
+   "plan_id": "b91cd91c-beef-4f6e-9c00-a1976e2f24c2",
+   "generated_at": "2026-10-12T21:19:12Z",
+   "horizon_slots": 4,
+   "slot_minutes": 15,
+   "grid_charge_allowed": false,
+   "slots": [
+    {
+     "start": "2026-10-12T21:15:00Z",
+     "battery_setpoint_kw": 0.0
+    },
+    {
+     "start": "2026-10-12T21:30:00Z",
+     "battery_setpoint_kw": 0.0
+    },
+    {
+     "start": "2026-10-12T21:45:00Z",
+     "battery_setpoint_kw": 0.0
+    },
+    {
+     "start": "2026-10-12T22:00:00Z",
+     "battery_setpoint_kw": 0.0
+    }
+   ],
+   "effective_floor_soc_pct": 5.0
+  }
+ },
+ "ergebnis": {
+  "fall": "ruhe",
+  "fenster_von_s": 91.0,
+  "fenster_bis_s": 560.0,
+  "sekunden": 467,
+  "verbraucher": 6,
+  "verbraucher_je_ueberschuss_kw": {
+   "0.76": 6
+  },
+  "aus_dem_speicher_eingespeist_kwh": 0.0455,
+  "aus_dem_speicher_eingespeist_s": 120,
+  "laengste_einspeisung_aus_dem_speicher_s": 41,
+  "geladen_kwh": 0.0,
+  "entladen_kwh": 0.0482,
+  "bezug_kwh": 0.0317,
+  "einspeisung_kwh": 0.1305,
+  "ueberschuss_angeboten_kwh": 0.085,
+  "groesste_entladung_kw": 1.36,
+  "sollwerte_geschrieben": 94,
+  "entlade_befehle": 26,
+  "kleinster_sollwert_kw": -1.36,
+  "groesster_sollwert_kw": 0.0,
+  "entlade_befehle_im_einzelnen": [
+   {
+    "t_s": 111.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 111.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 121.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 121.5,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 201.3,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 201.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 211.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 211.5,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 321.3,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 321.3,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 331.3,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 331.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 401.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 401.4,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 411.5,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 411.8,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 501.3,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 501.3,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 511.3,
+    "sollwert_kw": -1.36
+   },
+   {
+    "t_s": 511.3,
+    "sollwert_kw": -1.36
+   }
+  ],
+  "entlade_befehl_stand_nach_verbraucher_ende_s": [
+   17.9,
+   15.8,
+   12.6,
+   45.9
+  ],
+  "ems_freigabe_entzogen": 0,
+  "urteil": "gemessen",
+  "satz": "6 kurze Verbraucher in einer Viertelstunde ohne geplantes Laden: 26 Entlade-Befehle, aus dem Speicher eingespeist 45.5 Wh in 120 s (laengste Strecke 41 s)"
+ },
+ "herzschlag_modi_im_fenster": {
+  "plan": 24,
+  "deficit_cover": 7
+ },
+ "letzter_herzschlag_im_fenster": {
+  "version": "edge-2026.10.0-99944c8960ad",
+  "battery_control": {
+   "state": "gesteuert",
+   "control_enabled": true,
+   "certified": true
+  },
+  "control": {
+   "commanded_kw": 0,
+   "confirmed_kw": 0,
+   "all_match": true,
+   "control_enabled": true,
+   "certified": true,
+   "slot_start": "2026-10-12T21:15:00Z",
+   "checked_at": "2026-10-12T21:28:03.152Z",
+   "mismatch_roles": [],
+   "execution": {
+    "mode": "plan"
+   },
+   "cert_source": "env"
+  }
+ },
+ "grenzen": [
+  "Simulatorbeleg, kein Hardware-Pruefstand und kein Prueflauf je Steuerprofil",
+  "ein Fall (zwei Ueberschuesse, eine Verbrauchergroesse), ein Geraet mit reiner Totzeit",
+  "geprueft ist der Weg, auf dem die Box gedaempft selbst regelt; ems_freigabe_entzogen im Ergebnis zaehlt, wie oft sie im Fenster an das Geraet uebergeben hat",
+  "ein Lauf allein beweist die Korrektur nicht - erst die Gegenprobe gegen den Stand davor"
+ ]
+}

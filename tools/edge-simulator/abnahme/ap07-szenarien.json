@@ -1,5 +1,5 @@
 {
-  "pruefsumme": "b8cc42d3684b158a8d9a9fb3d6c96a9ead119fc2e7a194d3b291227ff0eac54c",
+  "pruefsumme": "2dd862fb1f5115d4e1e92bd0d86cc9049a1bd7a1d653ed7c7bfcc46443a0e64a",
   "quelle": "tools/edge-simulator/uems_szenarien.py",
   "szenarien": [
     {
@@ -172,7 +172,7 @@
           "hinweis": "Umschlag 48 213, 256 Werte, Messzeit 14:00:00–14:04:15 Ortszeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:04:15Z",
             "samples": [
@@ -2243,7 +2243,7 @@
           "hinweis": "QoS-1-Wiederholung nach PUBACK-Zeitüberschreitung: gleiche Sequenz, gleiche Werte",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:04:15Z",
             "samples": [
@@ -4314,7 +4314,7 @@
           "hinweis": "Box-Neustart: dieselben Werte mit zurückgesetzter Sequenz 1",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:04:15Z",
             "samples": [
@@ -6853,7 +6853,7 @@
           "hinweis": "letzter Umschlag vor dem Ausfall",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T12:59:00Z",
             "samples": [
@@ -6916,7 +6916,7 @@
           "hinweis": "Box Halle 1 liefert während des Ausfalls unverändert",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2026-11-03T13:05:00Z",
             "samples": [
@@ -6971,7 +6971,7 @@
           "hinweis": "Box Halle 1 liefert während des Ausfalls unverändert",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2026-11-03T14:00:00Z",
             "samples": [
@@ -7026,7 +7026,7 @@
           "hinweis": "Box Halle 1 liefert während des Ausfalls unverändert",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2026-11-03T16:00:00Z",
             "samples": [
@@ -7081,7 +7081,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:00:00Z",
             "samples": [
@@ -7144,7 +7144,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:01:00Z",
             "samples": [
@@ -7207,7 +7207,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:02:00Z",
             "samples": [
@@ -7270,7 +7270,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:03:00Z",
             "samples": [
@@ -7333,7 +7333,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:04:00Z",
             "samples": [
@@ -7396,7 +7396,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:05:00Z",
             "samples": [
@@ -7459,7 +7459,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:06:00Z",
             "samples": [
@@ -7522,7 +7522,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:07:00Z",
             "samples": [
@@ -7585,7 +7585,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:08:00Z",
             "samples": [
@@ -7648,7 +7648,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:09:00Z",
             "samples": [
@@ -7711,7 +7711,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:10:00Z",
             "samples": [
@@ -7774,7 +7774,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:11:00Z",
             "samples": [
@@ -7837,7 +7837,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:12:00Z",
             "samples": [
@@ -7900,7 +7900,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:13:00Z",
             "samples": [
@@ -7963,7 +7963,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:14:00Z",
             "samples": [
@@ -8026,7 +8026,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:15:00Z",
             "samples": [
@@ -8089,7 +8089,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:16:00Z",
             "samples": [
@@ -8152,7 +8152,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:17:00Z",
             "samples": [
@@ -8215,7 +8215,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:18:00Z",
             "samples": [
@@ -8278,7 +8278,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:19:00Z",
             "samples": [
@@ -8341,7 +8341,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:20:00Z",
             "samples": [
@@ -8404,7 +8404,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:21:00Z",
             "samples": [
@@ -8467,7 +8467,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:22:00Z",
             "samples": [
@@ -8530,7 +8530,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:23:00Z",
             "samples": [
@@ -8593,7 +8593,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:24:00Z",
             "samples": [
@@ -8656,7 +8656,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:25:00Z",
             "samples": [
@@ -8719,7 +8719,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:26:00Z",
             "samples": [
@@ -8782,7 +8782,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:27:00Z",
             "samples": [
@@ -8845,7 +8845,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:28:00Z",
             "samples": [
@@ -8908,7 +8908,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:29:00Z",
             "samples": [
@@ -8971,7 +8971,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:30:00Z",
             "samples": [
@@ -9034,7 +9034,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:31:00Z",
             "samples": [
@@ -9097,7 +9097,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:32:00Z",
             "samples": [
@@ -9160,7 +9160,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:33:00Z",
             "samples": [
@@ -9223,7 +9223,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:34:00Z",
             "samples": [
@@ -9286,7 +9286,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:35:00Z",
             "samples": [
@@ -9349,7 +9349,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:36:00Z",
             "samples": [
@@ -9412,7 +9412,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:37:00Z",
             "samples": [
@@ -9475,7 +9475,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:38:00Z",
             "samples": [
@@ -9538,7 +9538,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:39:00Z",
             "samples": [
@@ -9601,7 +9601,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:40:00Z",
             "samples": [
@@ -9664,7 +9664,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:41:00Z",
             "samples": [
@@ -9727,7 +9727,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:42:00Z",
             "samples": [
@@ -9790,7 +9790,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:43:00Z",
             "samples": [
@@ -9853,7 +9853,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:44:00Z",
             "samples": [
@@ -9916,7 +9916,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:45:00Z",
             "samples": [
@@ -9979,7 +9979,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:46:00Z",
             "samples": [
@@ -10042,7 +10042,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:47:00Z",
             "samples": [
@@ -10105,7 +10105,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:48:00Z",
             "samples": [
@@ -10168,7 +10168,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:49:00Z",
             "samples": [
@@ -10231,7 +10231,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:50:00Z",
             "samples": [
@@ -10294,7 +10294,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:51:00Z",
             "samples": [
@@ -10357,7 +10357,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:52:00Z",
             "samples": [
@@ -10420,7 +10420,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:53:00Z",
             "samples": [
@@ -10483,7 +10483,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:54:00Z",
             "samples": [
@@ -10546,7 +10546,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:55:00Z",
             "samples": [
@@ -10609,7 +10609,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:56:00Z",
             "samples": [
@@ -10672,7 +10672,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:57:00Z",
             "samples": [
@@ -10735,7 +10735,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:58:00Z",
             "samples": [
@@ -10798,7 +10798,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:59:00Z",
             "samples": [
@@ -10861,7 +10861,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:00:00Z",
             "samples": [
@@ -10924,7 +10924,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:01:00Z",
             "samples": [
@@ -10987,7 +10987,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:02:00Z",
             "samples": [
@@ -11050,7 +11050,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:03:00Z",
             "samples": [
@@ -11113,7 +11113,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:04:00Z",
             "samples": [
@@ -11176,7 +11176,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:05:00Z",
             "samples": [
@@ -11239,7 +11239,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:06:00Z",
             "samples": [
@@ -11302,7 +11302,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:07:00Z",
             "samples": [
@@ -11365,7 +11365,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:08:00Z",
             "samples": [
@@ -11428,7 +11428,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:09:00Z",
             "samples": [
@@ -11491,7 +11491,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:10:00Z",
             "samples": [
@@ -11554,7 +11554,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:11:00Z",
             "samples": [
@@ -11617,7 +11617,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:12:00Z",
             "samples": [
@@ -11680,7 +11680,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:13:00Z",
             "samples": [
@@ -11743,7 +11743,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:14:00Z",
             "samples": [
@@ -11806,7 +11806,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:15:00Z",
             "samples": [
@@ -11869,7 +11869,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:16:00Z",
             "samples": [
@@ -11932,7 +11932,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:17:00Z",
             "samples": [
@@ -11995,7 +11995,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:18:00Z",
             "samples": [
@@ -12058,7 +12058,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:19:00Z",
             "samples": [
@@ -12121,7 +12121,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:20:00Z",
             "samples": [
@@ -12184,7 +12184,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:21:00Z",
             "samples": [
@@ -12247,7 +12247,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:22:00Z",
             "samples": [
@@ -12310,7 +12310,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:23:00Z",
             "samples": [
@@ -12373,7 +12373,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:24:00Z",
             "samples": [
@@ -12436,7 +12436,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:25:00Z",
             "samples": [
@@ -12499,7 +12499,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:26:00Z",
             "samples": [
@@ -12562,7 +12562,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:27:00Z",
             "samples": [
@@ -12625,7 +12625,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:28:00Z",
             "samples": [
@@ -12688,7 +12688,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:29:00Z",
             "samples": [
@@ -12751,7 +12751,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:30:00Z",
             "samples": [
@@ -12814,7 +12814,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:31:00Z",
             "samples": [
@@ -12877,7 +12877,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:32:00Z",
             "samples": [
@@ -12940,7 +12940,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:33:00Z",
             "samples": [
@@ -13003,7 +13003,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:34:00Z",
             "samples": [
@@ -13066,7 +13066,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:35:00Z",
             "samples": [
@@ -13129,7 +13129,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:36:00Z",
             "samples": [
@@ -13192,7 +13192,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:37:00Z",
             "samples": [
@@ -13255,7 +13255,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:38:00Z",
             "samples": [
@@ -13318,7 +13318,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:39:00Z",
             "samples": [
@@ -13381,7 +13381,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:40:00Z",
             "samples": [
@@ -13444,7 +13444,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:41:00Z",
             "samples": [
@@ -13507,7 +13507,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:42:00Z",
             "samples": [
@@ -13570,7 +13570,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:43:00Z",
             "samples": [
@@ -13633,7 +13633,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:44:00Z",
             "samples": [
@@ -13696,7 +13696,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:45:00Z",
             "samples": [
@@ -13759,7 +13759,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:46:00Z",
             "samples": [
@@ -13822,7 +13822,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:47:00Z",
             "samples": [
@@ -13885,7 +13885,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:48:00Z",
             "samples": [
@@ -13948,7 +13948,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:49:00Z",
             "samples": [
@@ -14011,7 +14011,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:50:00Z",
             "samples": [
@@ -14074,7 +14074,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:51:00Z",
             "samples": [
@@ -14137,7 +14137,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:52:00Z",
             "samples": [
@@ -14200,7 +14200,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:53:00Z",
             "samples": [
@@ -14263,7 +14263,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:54:00Z",
             "samples": [
@@ -14326,7 +14326,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:55:00Z",
             "samples": [
@@ -14389,7 +14389,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:56:00Z",
             "samples": [
@@ -14452,7 +14452,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:57:00Z",
             "samples": [
@@ -14515,7 +14515,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:58:00Z",
             "samples": [
@@ -14578,7 +14578,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T14:59:00Z",
             "samples": [
@@ -14641,7 +14641,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:00:00Z",
             "samples": [
@@ -14704,7 +14704,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:01:00Z",
             "samples": [
@@ -14767,7 +14767,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:02:00Z",
             "samples": [
@@ -14830,7 +14830,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:03:00Z",
             "samples": [
@@ -14893,7 +14893,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:04:00Z",
             "samples": [
@@ -14956,7 +14956,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:05:00Z",
             "samples": [
@@ -15019,7 +15019,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:06:00Z",
             "samples": [
@@ -15082,7 +15082,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:07:00Z",
             "samples": [
@@ -15145,7 +15145,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:08:00Z",
             "samples": [
@@ -15208,7 +15208,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:09:00Z",
             "samples": [
@@ -15271,7 +15271,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:10:00Z",
             "samples": [
@@ -15334,7 +15334,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:11:00Z",
             "samples": [
@@ -15397,7 +15397,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:12:00Z",
             "samples": [
@@ -15460,7 +15460,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:13:00Z",
             "samples": [
@@ -15523,7 +15523,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:14:00Z",
             "samples": [
@@ -15586,7 +15586,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:15:00Z",
             "samples": [
@@ -15649,7 +15649,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:16:00Z",
             "samples": [
@@ -15712,7 +15712,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:17:00Z",
             "samples": [
@@ -15775,7 +15775,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:18:00Z",
             "samples": [
@@ -15838,7 +15838,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:19:00Z",
             "samples": [
@@ -15901,7 +15901,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:20:00Z",
             "samples": [
@@ -15964,7 +15964,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:21:00Z",
             "samples": [
@@ -16027,7 +16027,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:22:00Z",
             "samples": [
@@ -16090,7 +16090,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:23:00Z",
             "samples": [
@@ -16153,7 +16153,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:24:00Z",
             "samples": [
@@ -16216,7 +16216,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:25:00Z",
             "samples": [
@@ -16279,7 +16279,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:26:00Z",
             "samples": [
@@ -16342,7 +16342,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:27:00Z",
             "samples": [
@@ -16405,7 +16405,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:28:00Z",
             "samples": [
@@ -16468,7 +16468,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:29:00Z",
             "samples": [
@@ -16531,7 +16531,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:30:00Z",
             "samples": [
@@ -16594,7 +16594,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:31:00Z",
             "samples": [
@@ -16657,7 +16657,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:32:00Z",
             "samples": [
@@ -16720,7 +16720,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:33:00Z",
             "samples": [
@@ -16783,7 +16783,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:34:00Z",
             "samples": [
@@ -16846,7 +16846,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:35:00Z",
             "samples": [
@@ -16909,7 +16909,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:36:00Z",
             "samples": [
@@ -16972,7 +16972,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:37:00Z",
             "samples": [
@@ -17035,7 +17035,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:38:00Z",
             "samples": [
@@ -17098,7 +17098,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:39:00Z",
             "samples": [
@@ -17161,7 +17161,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:40:00Z",
             "samples": [
@@ -17224,7 +17224,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:41:00Z",
             "samples": [
@@ -17287,7 +17287,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:42:00Z",
             "samples": [
@@ -17350,7 +17350,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:43:00Z",
             "samples": [
@@ -17413,7 +17413,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:44:00Z",
             "samples": [
@@ -17476,7 +17476,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:45:00Z",
             "samples": [
@@ -17539,7 +17539,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:46:00Z",
             "samples": [
@@ -17602,7 +17602,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:47:00Z",
             "samples": [
@@ -17665,7 +17665,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:48:00Z",
             "samples": [
@@ -17728,7 +17728,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:49:00Z",
             "samples": [
@@ -17791,7 +17791,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:50:00Z",
             "samples": [
@@ -17854,7 +17854,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:51:00Z",
             "samples": [
@@ -17917,7 +17917,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:52:00Z",
             "samples": [
@@ -17980,7 +17980,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:53:00Z",
             "samples": [
@@ -18043,7 +18043,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:54:00Z",
             "samples": [
@@ -18106,7 +18106,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:55:00Z",
             "samples": [
@@ -18169,7 +18169,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:56:00Z",
             "samples": [
@@ -18232,7 +18232,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:57:00Z",
             "samples": [
@@ -18295,7 +18295,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:58:00Z",
             "samples": [
@@ -18358,7 +18358,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T15:59:00Z",
             "samples": [
@@ -18421,7 +18421,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:00:00Z",
             "samples": [
@@ -18484,7 +18484,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:01:00Z",
             "samples": [
@@ -18547,7 +18547,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:02:00Z",
             "samples": [
@@ -18610,7 +18610,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:03:00Z",
             "samples": [
@@ -18673,7 +18673,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:04:00Z",
             "samples": [
@@ -18736,7 +18736,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:05:00Z",
             "samples": [
@@ -18799,7 +18799,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:06:00Z",
             "samples": [
@@ -18862,7 +18862,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:07:00Z",
             "samples": [
@@ -18925,7 +18925,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:08:00Z",
             "samples": [
@@ -18988,7 +18988,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:09:00Z",
             "samples": [
@@ -19051,7 +19051,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:10:00Z",
             "samples": [
@@ -19114,7 +19114,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:11:00Z",
             "samples": [
@@ -19177,7 +19177,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:12:00Z",
             "samples": [
@@ -19240,7 +19240,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:13:00Z",
             "samples": [
@@ -19303,7 +19303,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:14:00Z",
             "samples": [
@@ -19366,7 +19366,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:15:00Z",
             "samples": [
@@ -19429,7 +19429,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:16:00Z",
             "samples": [
@@ -19492,7 +19492,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:17:00Z",
             "samples": [
@@ -19555,7 +19555,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:18:00Z",
             "samples": [
@@ -19618,7 +19618,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:19:00Z",
             "samples": [
@@ -19681,7 +19681,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:20:00Z",
             "samples": [
@@ -19744,7 +19744,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:21:00Z",
             "samples": [
@@ -19807,7 +19807,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:22:00Z",
             "samples": [
@@ -19870,7 +19870,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:23:00Z",
             "samples": [
@@ -19933,7 +19933,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:24:00Z",
             "samples": [
@@ -19996,7 +19996,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:25:00Z",
             "samples": [
@@ -20059,7 +20059,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:26:00Z",
             "samples": [
@@ -20122,7 +20122,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:27:00Z",
             "samples": [
@@ -20185,7 +20185,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:28:00Z",
             "samples": [
@@ -20248,7 +20248,7 @@
           "hinweis": "Outbox-Replay mit Original-Messzeit",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T16:29:00Z",
             "samples": [
@@ -20574,7 +20574,7 @@
           "hinweis": "letzter Umschlag vor dem Ausfall (Sequenz 48 213)",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T12:59:00Z",
             "samples": [
@@ -20667,7 +20667,7 @@
           "hinweis": "ältester behaltener Takt, direkt hinter der Verdrängung",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-06T13:00:00Z",
             "samples": [
@@ -20730,7 +20730,7 @@
           "hinweis": "Mitte des Replays",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-09T01:00:00Z",
             "samples": [
@@ -20793,7 +20793,7 @@
           "hinweis": "letzter Takt vor der Rückkehr",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-11T12:59:00Z",
             "samples": [
@@ -20856,7 +20856,7 @@
           "hinweis": "Nachzügler der reparierten Box nach der Endgültigkeit des Intervalls",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e2",
             "observed_at": "2026-11-03T13:00:00Z",
             "samples": [
@@ -21088,7 +21088,7 @@
           "hinweis": "Box Halle 1 ist bis 07:29:50 zuständig",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2027-04-10T05:27:50Z",
             "samples": [
@@ -21143,7 +21143,7 @@
           "hinweis": "Box Halle 1 ist bis 07:29:50 zuständig",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2027-04-10T05:28:50Z",
             "samples": [
@@ -21198,7 +21198,7 @@
           "hinweis": "Box Halle 1 ist bis 07:29:50 zuständig",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2027-04-10T05:29:50Z",
             "samples": [
@@ -21253,7 +21253,7 @@
           "hinweis": "Box Halle 2 liest DQ-3 ab 07:31:10",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
             "observed_at": "2027-04-10T05:31:10Z",
             "samples": [
@@ -21308,7 +21308,7 @@
           "hinweis": "Box Halle 2 liest DQ-3 ab 07:31:10",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
             "observed_at": "2027-04-10T05:32:10Z",
             "samples": [
@@ -21363,7 +21363,7 @@
           "hinweis": "Box Halle 2 liest DQ-3 ab 07:31:10",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
             "observed_at": "2027-04-10T05:33:10Z",
             "samples": [
@@ -21418,7 +21418,7 @@
           "hinweis": "Nachzügler mit Messzeit VOR dem Wechsel: bleibt führend (Zuständigkeit zur Messzeit)",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2027-04-10T05:29:55Z",
             "samples": [
@@ -21473,7 +21473,7 @@
           "hinweis": "Nachzügler mit Messzeit NACH dem Wechsel: Rolle spiegel, nie führend",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
             "observed_at": "2027-04-10T05:30:50Z",
             "samples": [
@@ -21682,7 +21682,7 @@
           "hinweis": "letzter Wert vor dem Uhrfehler",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
             "observed_at": "2026-10-20T07:11:00Z",
             "samples": [
@@ -21721,7 +21721,7 @@
           "hinweis": "Messzeit 840 s nach dem Eingang: abgewiesen, keine Rohwerte in der Zukunft",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
             "observed_at": "2026-10-20T07:26:00Z",
             "samples": [
@@ -21760,7 +21760,7 @@
           "hinweis": "Messzeit 840 s nach dem Eingang: abgewiesen, keine Rohwerte in der Zukunft",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
             "observed_at": "2026-10-20T07:27:00Z",
             "samples": [
@@ -21799,7 +21799,7 @@
           "hinweis": "Messzeit 840 s nach dem Eingang: abgewiesen, keine Rohwerte in der Zukunft",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
             "observed_at": "2026-10-20T07:28:00Z",
             "samples": [
@@ -21838,7 +21838,7 @@
           "hinweis": "Nachlieferung mit Messzeit in der Vergangenheit: unberührt vom Uhrfehler",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
             "observed_at": "2026-10-20T06:41:00Z",
             "samples": [
@@ -21877,7 +21877,7 @@
           "hinweis": "Uhr gestellt: normale Werte",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
             "observed_at": "2026-10-20T08:30:00Z",
             "samples": [
@@ -21916,7 +21916,7 @@
           "hinweis": "Uhr gestellt: normale Werte",
           "nutzlast": {
             "applied_revision": 1,
-            "catalog_version": "2026.08.26.3",
+            "catalog_version": "2026.09.23.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
             "observed_at": "2026-10-20T08:31:00Z",
             "samples": [

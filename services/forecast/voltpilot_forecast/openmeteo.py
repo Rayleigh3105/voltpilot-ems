@@ -57,12 +57,19 @@ def hour_label_for(ts: datetime) -> datetime:
 
 # The hourly variables we request. shortwave_radiation is GHI (W/m2); the
 # direct/diffuse split lets the POA transposition avoid a modelled diffuse guess.
+# direct_normal_irradiance (N1, docs/forecasting.md) is the TRUE beam-normal
+# DNI - unlike direct_radiation, which Open-Meteo documents as the HORIZONTAL
+# direct component (direct_radiation + diffuse_radiation == shortwave_radiation
+# exactly). ``dni_w_m2``/PV_PHYSICAL keep reading direct_radiation unchanged
+# (shadow-only: nothing active switches here); the correctly-read value only
+# feeds the new ``pv-physical-dni`` shadow candidate.
 _HOURLY_VARIABLES = (
     "temperature_2m",
     "cloud_cover",
     "shortwave_radiation",
     "direct_radiation",
     "diffuse_radiation",
+    "direct_normal_irradiance",
 )
 
 
@@ -77,6 +84,13 @@ class WeatherPoint:
     ``ghi_w_m2`` is global horizontal irradiance (shortwave); ``dni``/``dhi`` are
     the direct/diffuse components. Any field may be ``None`` if the provider omits
     it for that hour (e.g. radiation at night is 0, not null, but we stay tolerant).
+
+    ``dni_w_m2`` is kept as the HISTORICAL (mislabeled, N1) reading - Open-Meteo's
+    ``direct_radiation``, which is horizontal, not beam-normal - because the
+    active ``pv-physical`` model already depends on its exact values and S0
+    changes nothing active. ``dni_normal_w_m2`` is the newly fetched, correctly
+    read ``direct_normal_irradiance`` (true DNI); only the ``pv-physical-dni``
+    shadow candidate reads it.
     """
 
     timestamp: datetime
@@ -85,6 +99,7 @@ class WeatherPoint:
     ghi_w_m2: float | None
     dni_w_m2: float | None = None
     dhi_w_m2: float | None = None
+    dni_normal_w_m2: float | None = None
 
 
 @dataclass(frozen=True)
@@ -113,7 +128,10 @@ class OpenMeteoConfig:
 
     base_url: str = DEFAULT_BASE_URL
     timeout_seconds: float = 30.0
-    forecast_days: int = 3
+    #: 7 days since S4 ("die Woche je Stunde"): the active 48h quarter-hour
+    #: forecast only needs ~3, the rest feeds the separate hourly week-ahead
+    #: outlook (forecast_collect.weekly_outlook_timestamps).
+    forecast_days: int = 7
 
 
 def _to_float(value) -> float | None:
@@ -148,6 +166,7 @@ def parse_forecast_response(
     ghi = hourly.get("shortwave_radiation", [])
     dni = hourly.get("direct_radiation", [])
     dhi = hourly.get("diffuse_radiation", [])
+    dni_normal = hourly.get("direct_normal_irradiance", [])
 
     def _at(seq, i):
         return seq[i] if i < len(seq) else None
@@ -166,6 +185,7 @@ def parse_forecast_response(
                 ghi_w_m2=_to_float(_at(ghi, i)),
                 dni_w_m2=_to_float(_at(dni, i)),
                 dhi_w_m2=_to_float(_at(dhi, i)),
+                dni_normal_w_m2=_to_float(_at(dni_normal, i)),
             )
         )
 
@@ -266,8 +286,6 @@ class OpenMeteoWeatherProvider(WeatherProvider):
     forecast horizon still falls back to 0 W/m² (night/no data).
     """
 
-    name = "open_meteo"
-
     #: Sub-samples per interval for the clear-sky shape integrals (midpoint
     #: rule). Five over a quarter hour is 3-minute resolution - far finer than
     #: the sun moves - and the whole horizon costs a few milliseconds.
@@ -277,8 +295,19 @@ class OpenMeteoWeatherProvider(WeatherProvider):
     #: Sub-hour resolution the values are shaped for. ``None`` = infer it from
     #: the requested timestamps (the horizon is uniform), falling back to 15.
     slot_minutes: int | None = None
+    #: N1 (docs/forecasting.md): when ``True``, the beam component is sourced
+    #: from the correctly-read ``direct_normal_irradiance`` (``dni_normal_w_m2``)
+    #: instead of the historical, mislabeled ``direct_radiation`` reading
+    #: (``dni_w_m2`` - horizontal, not beam-normal). Only the shadow candidate
+    #: ``pv-physical-dni`` sets this; the active ``pv-physical`` model keeps
+    #: reading ``dni_w_m2`` unchanged, so nothing active switches.
+    use_true_dni: bool = False
 
     _index: dict[datetime, WeatherPoint] = field(default_factory=dict, init=False)
+
+    @property
+    def name(self) -> str:  # type: ignore[override]
+        return "open_meteo_dni" if self.use_true_dni else "open_meteo"
 
     def __post_init__(self) -> None:
         # Normalised here as well as at lookup: stored points come back from a
@@ -304,12 +333,11 @@ class OpenMeteoWeatherProvider(WeatherProvider):
                 continue
 
             ghi_share, dni_share = self._shape(location, ts, slot, hour_shape)
+            raw_dni = point.dni_normal_w_m2 if self.use_true_dni else point.dni_w_m2
             samples.append(
                 IrradianceSample(
                     ghi_w_m2=point.ghi_w_m2 * ghi_share,
-                    dni_w_m2=(
-                        None if point.dni_w_m2 is None else point.dni_w_m2 * dni_share
-                    ),
+                    dni_w_m2=(None if raw_dni is None else raw_dni * dni_share),
                     dhi_w_m2=(
                         None if point.dhi_w_m2 is None else point.dhi_w_m2 * ghi_share
                     ),

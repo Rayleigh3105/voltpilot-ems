@@ -1,0 +1,246 @@
+/* Der Sonnen-Teppich (Konzept „Prognosen", E1 = C). Ergänzt die geteilten
+   `.vp-pz-*`-Klassen aus `PreisZeitstrahl.css` um den neuen Teppich-Baustein. */
+
+.vp-pt-karte-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vp-pt-karte-kopf h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.vp-pt-karte-kopf span {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vp-c-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+.vp-pt-kopfsatz {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 17px;
+  margin: 2px 0 10px;
+}
+
+.vp-pt-kopfsatz span {
+  color: var(--vp-c-text-muted, #64748b);
+  font-size: 14px;
+}
+
+.vp-pt-teppich {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.vp-pt-zeile {
+  display: grid;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+.vp-pt-kopfzeile {
+  padding-bottom: 2px;
+}
+
+.vp-pt-stunde {
+  font-size: 10px;
+  color: var(--vp-c-text-muted, #94a3b8);
+  text-align: center;
+}
+
+.vp-pt-tagzeile {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  padding: 3px 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vp-pt-tagzeile:hover,
+.vp-pt-tagzeile:focus-visible {
+  border-color: var(--vp-c-border, #e2e8f0);
+}
+
+.vp-pt-tagzeile.is-gewaehlt {
+  background: var(--vp-c-surface-muted, #f8fafc);
+  border-color: var(--vp-c-primary, #2563eb);
+}
+
+.vp-pt-tagzeile.is-ausblick .vp-pt-zelle {
+  opacity: 0.55;
+}
+
+.vp-pt-tag-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+
+.vp-pt-zelle {
+  height: 22px;
+  border-radius: 3px;
+  background: var(--vp-c-surface-muted, #f1f5f9);
+  position: relative;
+}
+
+.vp-pt-zelle.is-deckt::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 2px 0;
+  height: 2px;
+  margin: 0 3px;
+  border-radius: 1px;
+  background: var(--vp-flow-pv-line, #16a34a);
+}
+
+.vp-pt-hinweis {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vp-c-text-muted, #64748b);
+  margin: 8px 0 0;
+}
+
+.vp-pt-punkt {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--vp-flow-pv-line, #16a34a);
+}
+
+.vp-pt-bild {
+  width: 100%;
+}
+
+.vp-pt-morgen {
+  font-size: 13px;
+  color: var(--vp-c-text-muted, #64748b);
+  margin: -4px 0 10px;
+}
+
+.vp-pt-tipp {
+  font-size: 13px;
+  color: var(--vp-c-text-muted, #64748b);
+  margin: 6px 0 0;
+}
+
+.vp-pt-tipp-telefon {
+  margin: 0 0 8px;
+}
+
+/* --------------------------------------------------------------- Balken */
+
+.vp-pt-balken {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 2px;
+}
+
+.vp-pt-balken-zeile {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  row-gap: 2px;
+}
+
+.vp-pt-balken-titel {
+  font-size: 13px;
+  color: var(--vp-c-text-muted, #64748b);
+}
+
+.vp-pt-balken-spur {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--vp-c-surface-muted, #f1f5f9);
+  overflow: hidden;
+}
+
+.vp-pt-balken-erwartet,
+.vp-pt-balken-gemessen {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 5px;
+}
+
+.vp-pt-balken-zahl {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.vp-pt-balken-sub {
+  grid-column: 2 / span 2;
+  font-size: 12px;
+  color: var(--vp-c-text-muted, #64748b);
+  margin-top: -2px;
+}
+
+/* -------------------------------------------------------------- Streifen */
+
+.vp-pt-streifen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vp-pt-streifen-titel {
+  font-size: 12px;
+  color: var(--vp-c-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+.vp-pt-streifen-spur {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vp-c-surface-muted, #f1f5f9);
+}
+
+.vp-pt-streifen-spur i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+}
+
+.vp-pt-legende-punkt {
+  display: inline-block;
+  width: 10px;
+  height: 0;
+  border-top: 1.5px dotted var(--vp-c-text-muted, #64748b);
+}
+
+@media (max-width: 480px) {
+  .vp-pt-stunde {
+    font-size: 8px;
+  }
+
+  .vp-pt-tag-name {
+    font-size: 11px;
+  }
+}

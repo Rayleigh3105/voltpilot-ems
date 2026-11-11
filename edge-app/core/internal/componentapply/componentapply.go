@@ -24,6 +24,24 @@
 //     live plant's measurements down, and it is structurally impossible here
 //     because nothing is written until everything validated.
 //
+//     ONE exception, and it is not a half-applied read path: a device the box
+//     cannot assign a ROLE (roleFor: no explicit role it knows, and a type
+//     whose role is not unambiguous) is skipped and reported by id
+//     (Plan.Rejected); every other device is applied. Such a device has no
+//     place in this box's read path at all - there is nothing of it to apply
+//     halfway. Refusing the whole push for it left a plant with house load and
+//     grid meter unapplied because of three measure-only Shelly outputs
+//     (VoltPilotGATE, 02.11.2026). Everything that IS a broken read path - an
+//     unreadable driver, a driver without a brand, a model the catalog does not
+//     know, two inverters, two devices on one connection - still refuses the
+//     whole push.
+//
+//     The same skip-and-report holds for an additional source whose TRANSPORT
+//     the box's own source reader does not wire in that role (Options.
+//     SourceReads, Edge Light only): it would be applied and then never read,
+//     and the portal would wait for its first value forever. It too has no
+//     place in this box's read path; the rest of the push is applied.
+//
 //   - AN EMPTY SOLL IS NOT A SOLL - UNTIL THE PORTAL OWNS THE BOX. A push that
 //     names no device at all yields ErrNoConfiguration, never an empty plan.
 //     Wiping a working box because the portal has not been filled in yet would
@@ -133,51 +151,6 @@ type Driver struct {
 // together, or the box would start refusing pushes it should ignore.
 const CommunicationSelfBuild = "modbus_baukasten"
 
-// CommunicationMqttLocal marks a BATTERY the customer connected themselves over
-// a LOCAL MQTT broker (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b).
-// Same story as CommunicationSelfBuild: such a component is read by its own
-// generated flow (one vp-mqtt-read node with the user's field mapping), never
-// by the self-wiring tab - so this applier deliberately does NOT turn it into a
-// source.
-//
-// ⚠ The value is shared verbatim with the cloud
-// (services/api .../components/UserDefinedBatteryDefinition.COMMUNICATION).
-// ⚠ ROLLOUT ORDER: a box WITHOUT this constant refuses the driver of such a
-// component ("nennt keine Marke") and Derive is all-or-nothing - the site would
-// lose the application of its inverter and every source. The edge release
-// therefore has to reach a site BEFORE the first battery is connected there.
-const CommunicationMqttLocal = "mqtt_local"
-
-// CommunicationHTTPLocal marks a BATTERY the customer connected themselves over
-// its own HTTP/JSON endpoint in the LAN (P5 Ebene 1 "HTTP/JSON", Konzept
-// vp-deye-diybms-luecke-l5 §3.2b) - the sibling of CommunicationMqttLocal, and
-// the same story: read by its own generated flow (one vp-http-read node with
-// the user's value-path mapping), never by the self-wiring tab.
-//
-// ⚠ Unlike the other two, this driver block DOES carry something the box needs:
-// `connection.auth_secret`, the credential of the endpoint. It reaches the read
-// node through the per-entity retained config, NOT through the flow document -
-// a flow document is readable through the portal API, so a credential in it
-// would be a credential in the browser.
-//
-// ⚠ The value is shared verbatim with the cloud
-// (services/api .../components/UserDefinedBatteryDefinition.COMMUNICATION_HTTP).
-// ⚠ ROLLOUT ORDER, exactly as for mqtt_local: a box WITHOUT this constant
-// refuses the driver of such a component ("nennt keine Marke") and Derive is
-// all-or-nothing - the site would lose the application of its inverter and
-// every source. The edge release therefore has to reach a site BEFORE the first
-// HTTP-connected battery is created there.
-const CommunicationHTTPLocal = "http_local"
-
-// selfReadCommunications are the communications whose devices carry their own
-// generated read flow. They are skipped here - never refused: refusing would
-// sink the WHOLE push over a device this applier is not responsible for.
-func isSelfRead(communication string) bool {
-	return communication == CommunicationSelfBuild ||
-		communication == CommunicationMqttLocal ||
-		communication == CommunicationHTTPLocal
-}
-
 // Plan is the derived local configuration of one push: at most one primary
 // inverter plus the additional read-only sources, all already validated against
 // the box's own catalog.
@@ -190,6 +163,29 @@ type Plan struct {
 	// plant that only has meters/producers is a legitimate shape).
 	Inverter *inverter.Selection
 	Sources  []sources.Source
+	// SourceEntities names, per derived source id, the registry entity the
+	// source was derived from: the box's OWN answer to "whose reading is this?"
+	// on a portal-managed plant. The agent needs it to report an Erzeuger's
+	// reading as the telemetry of ITS component on a box without an inverter
+	// (agent.producerEntityTelemetry). Derived, never persisted - SameAs ignores it.
+	SourceEntities map[string]string
+	// Rejected are the devices of this push the box did NOT apply because it
+	// cannot assign them a role or its source reader does not read their
+	// transport in that role (Options.SourceReads) - sorted by entity id, like
+	// the push. They are
+	// not part of what runs; SameAs therefore ignores them. With
+	// ErrNoConfiguration Derive still returns them (and the revision), so the
+	// caller can say WHY nothing applicable is left.
+	Rejected []Rejection
+}
+
+// Rejection is one device the box skipped while applying the rest of the push.
+// The wire form is the heartbeat's component_apply.rejected_components entry.
+type Rejection struct {
+	EntityID string `json:"entity_id"`
+	// Reason is a German sentence without the id (the id travels beside it), so
+	// the portal can show it at the device as it stands.
+	Reason string `json:"reason"`
 }
 
 // Empty reports whether the plan names no device at all.
@@ -229,23 +225,26 @@ func ParseDriver(e entities.Entity) (Driver, bool, error) {
 	if len(d.Connection) == 0 {
 		return Driver{}, false, nil
 	}
-	// ⚠ A SELF-READ device is not part of the local read path at all, and
+	// ⚠ A SELF-BUILT device is not part of the local read path at all, and
 	// skipping it HERE - before the brand check - is load-bearing, not
 	// cosmetic: Derive is all-or-nothing, roleFor does not know the
-	// `modbus-generic` / `user-defined-battery` types, and such a device
-	// carries no brand by construction. Without this branch ONE
-	// customer-defined sensor would sink the WHOLE push, so a plant would lose
-	// the application of its inverter and every source the moment it defines
-	// its first own device.
+	// `modbus-generic` type, and such a device carries no brand by
+	// construction. Without this branch ONE customer-defined sensor would sink
+	// the WHOLE push, so a plant would lose the application of its inverter and
+	// every source the moment it defines its first own device.
 	//
 	// Its READ PLAN travels elsewhere: as a generated flow over v2/flows (one
-	// vp-modbus-read per channel, or ONE vp-mqtt-read / vp-http-read carrying
-	// the whole field mapping of a self-connected battery), publishing its own
-	// per-entity telemetry. The driver block carries display/context - and, for
-	// the HTTP read type, the endpoint credential the read node picks up from
-	// the per-entity retained config.
-	if isSelfRead(d.Communication) {
+	// vp-modbus-read per channel), publishing its own per-entity telemetry.
+	if d.Communication == CommunicationSelfBuild {
 		return Driver{}, false, nil
+	}
+	// A plant controller (UEMS EZ-21) carries no brand by construction: a SPS
+	// is in no inverter catalog. Its transport is checked in Derive instead
+	// (plantControllerSource). The cloud only sends this driver to a box that
+	// reports the capability `anlagensteuerung_quelle` - an older box would
+	// stop at the brand check below and refuse the whole push.
+	if e.Type == entities.TypeAnlagensteuerung {
+		return d, true, nil
 	}
 	if strings.TrimSpace(d.Brand) == "" {
 		return Driver{}, false, fmt.Errorf("Anbindung von %q nennt keine Marke", e.ID)
@@ -265,18 +264,40 @@ func (d Driver) connection() (inverter.Connection, error) {
 	return c, nil
 }
 
+// unassignableRole is roleFor's answer for a device this box cannot place in
+// the plant: the driver names a role this box does not know, or names none and
+// the type/category does not decide it. Derive skips exactly that device and
+// reports it (Plan.Rejected) - it never sinks the rest of the push. The text is
+// the customer-facing reason, without the entity id.
+type unassignableRole struct{ reason string }
+
+func (u *unassignableRole) Error() string { return u.reason }
+
 // roleFor decides what a device is. The driver's explicit role wins; otherwise
 // the entity TYPE decides, and only for the types whose plant role is
 // unambiguous. Anything else is refused by name - a device read into the wrong
-// role would silently land in the wrong side of the energy balance.
+// role would silently land in the wrong side of the energy balance. A device
+// whose role is merely UNKNOWN to this box is an *unassignableRole (skipped
+// and reported); a plant controller that contradicts its own role is a broken
+// driver and refuses the whole push like any other broken driver.
 func roleFor(e entities.Entity, d Driver) (string, error) {
+	// A plant controller has exactly one role. Any other explicit role would
+	// put a SPS into the energy balance or the inverter slot, so it is refused.
+	if e.Type == entities.TypeAnlagensteuerung {
+		if r := strings.TrimSpace(d.Role); r != "" && r != sources.RolePlantController {
+			return "", fmt.Errorf("Anlagensteuerung %q nennt die Rolle %q - sie ist nur %q",
+				e.ID, d.Role, sources.RolePlantController)
+		}
+		return sources.RolePlantController, nil
+	}
 	switch strings.TrimSpace(d.Role) {
 	case RoleInverter, sources.RoleErzeuger, sources.RoleNetz, sources.RoleConsumer:
 		return strings.TrimSpace(d.Role), nil
 	case "":
 		// fall through to the type-derived default
 	default:
-		return "", fmt.Errorf("Anbindung von %q nennt die unbekannte Rolle %q", e.ID, d.Role)
+		return "", &unassignableRole{fmt.Sprintf(
+			"die Anbindung nennt die unbekannte Rolle %q", d.Role)}
 	}
 	switch e.Type {
 	case entities.TypeBatteryHybrid:
@@ -285,6 +306,18 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 		return sources.RoleErzeuger, nil
 	case entities.TypeGridMeter:
 		return sources.RoleNetz, nil
+	case entities.TypeSubMeter:
+		// A sub-meter (Unterzähler) is read on the consumer side: its power is
+		// the load of that part of the plant, never the grid value.
+		return sources.RoleConsumer, nil
+	case entities.TypeHeatingRod:
+		// A heating rod is a consumer whatever its guards say. The cloud creates
+		// it READ-ONLY (no actuate until "Steuern freigeben"), so category()
+		// calls it measure-only - which is the guard semantics (no command
+		// passes), not its place in the plant. Its read path is the Shelly
+		// output set (docs/contracts/v2/heizstab-shelly.md, "Für den Lesepfad");
+		// switching stays behind the capability gate.
+		return sources.RoleConsumer, nil
 	}
 	if e.Category() == entities.CategoryConsumer {
 		return sources.RoleConsumer, nil
@@ -297,13 +330,27 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 	if d.Communication == inverter.CommEbyteModbusTCP {
 		return sources.RoleConsumer, nil
 	}
-	return "", fmt.Errorf("für %q (%s) ist nicht bestimmbar, welche Rolle das Gerät hat",
-		e.ID, e.Type)
+	// A Shelly meter that is not the grid meter (that one arrives as
+	// grid-meter above) is a SUB-METER - a sub-distribution, a hall. The cloud
+	// creates it for the consumer role with the meter template, which makes it
+	// a measure-only device entity. It is read on the consumer side: its power
+	// is the load of that part of the plant and never becomes the grid value,
+	// which belongs to the one grid meter alone.
+	if d.Communication == inverter.CommShellyEMHTTP {
+		return sources.RoleConsumer, nil
+	}
+	return "", &unassignableRole{fmt.Sprintf(
+		"für dieses Gerät (%s) ist nicht bestimmbar, welche Rolle es hat - es ist weder "+
+			"Wechselrichter, Erzeuger oder Netzzähler noch ein steuerbarer Verbraucher", e.Type)}
 }
 
 // Derive turns a registry push into the local configuration. It validates
 // EVERYTHING before returning anything: the returned plan is either complete and
-// applicable, or there is an error and the caller changes nothing.
+// applicable, or there is an error and the caller changes nothing. "Complete"
+// means every device except those this box cannot assign a role; those are
+// listed in Plan.Rejected (see the first rule at the top of this file). When
+// nothing applicable is left, the error is ErrNoConfiguration and the plan
+// carries only the revision and the rejections.
 //
 // The catalog is the box's own (inverter.DefaultCatalog): the box does not take
 // the cloud's word for what it can read. A model the cloud believes in but this
@@ -318,6 +365,24 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 // running.
 func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Source,
 	now time.Time) (Plan, error) {
+	return DeriveWith(reg, cat, current, now, Options{})
+}
+
+// Options are what the box running Derive knows about itself.
+type Options struct {
+	// SourceReads answers, for an additional source (not the inverter, not a
+	// plant controller), whether THIS box's reader wires the transport in that
+	// role: "" = yes, else the German reason. A source it refuses is skipped and
+	// reported (Plan.Rejected) like a device without a role - the box does not
+	// read it, and saying so beats "wartet auf die ersten Daten" forever (the
+	// KOSTAL PIKO at Schramm, 07.11.2026). nil = no such check: on the Docker box
+	// the Node-RED flow reads the sources and names what it cannot read itself.
+	SourceReads func(comm, role string) string
+}
+
+// DeriveWith is Derive with what the box knows about its own reader.
+func DeriveWith(reg entities.Registry, cat inverter.Catalog, current []sources.Source,
+	now time.Time, opts Options) (Plan, error) {
 	plan := Plan{Revision: reg.Revision}
 	keep := keepLocalIDs(current)
 	byFingerprint := map[string]string{} // transport identity -> entity id that claimed it
@@ -339,6 +404,11 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 			continue
 		}
 		role, err := roleFor(e, d)
+		var unassignable *unassignableRole
+		if errors.As(err, &unassignable) {
+			plan.Rejected = append(plan.Rejected, Rejection{EntityID: e.ID, Reason: unassignable.reason})
+			continue
+		}
 		if err != nil {
 			return Plan{}, err
 		}
@@ -367,19 +437,33 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 			continue
 		}
 
-		src, err := sources.Normalize(cat, sources.Request{
-			Role:           role,
-			Label:          e.Label,
-			Brand:          d.Brand,
-			Model:          d.Model,
-			Family:         d.Family,
-			Connection:     conn,
-			IntervalS:      d.IntervalS,
-			CapacityKwp:    d.CapacityKwp,
-			RegistryUnitID: d.RegistryUnitID,
-		}, now)
-		if err != nil {
-			return Plan{}, fmt.Errorf("Gerät %q: %s", e.ID, message(err))
+		var src sources.Source
+		if role == sources.RolePlantController {
+			src, err = plantControllerSource(e, d, conn, now)
+			if err != nil {
+				return Plan{}, err
+			}
+		} else {
+			src, err = sources.Normalize(cat, sources.Request{
+				Role:           role,
+				Label:          e.Label,
+				Brand:          d.Brand,
+				Model:          d.Model,
+				Family:         d.Family,
+				Connection:     conn,
+				IntervalS:      d.IntervalS,
+				CapacityKwp:    d.CapacityKwp,
+				RegistryUnitID: d.RegistryUnitID,
+			}, now)
+			if err != nil {
+				return Plan{}, fmt.Errorf("Gerät %q: %s", e.ID, message(err))
+			}
+			if opts.SourceReads != nil {
+				if why := opts.SourceReads(src.Communication, src.Role); why != "" {
+					plan.Rejected = append(plan.Rejected, Rejection{EntityID: e.ID, Reason: why})
+					continue
+				}
+			}
 		}
 		// The clash check keys on the TRANSPORT IDENTITY, not on the final id:
 		// two entities describing the same physical device are ambiguous even
@@ -408,13 +492,77 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 		}
 		taken[src.ID] = true
 		plan.Sources = append(plan.Sources, src)
+		if plan.SourceEntities == nil {
+			plan.SourceEntities = map[string]string{}
+		}
+		plan.SourceEntities[src.ID] = e.ID
 	}
 
 	if plan.Empty() {
-		return Plan{}, ErrNoConfiguration
+		return Plan{Revision: plan.Revision, Rejected: plan.Rejected}, ErrNoConfiguration
 	}
 	return plan, nil
 }
+
+// plantControllerSource turns the driver of an Anlagensteuerung (UEMS EZ-21)
+// into the source the measurement binding resolves its pin to: the transport
+// of its data source (Modbus TCP host:port and the controller's unit id), and
+// nothing else.
+//
+// Deliberately WITHOUT cat.Normalize: a SPS has no brand and no model in the
+// inverter catalog, and the catalog's Modbus profile would turn it into a
+// device the self-wiring tab polls as an inverter. The values are taken as the
+// cloud sent them - no default unit, no default port - because the cloud mints
+// the pin from exactly these values (AnlagensteuerungQuelle.kennung, the Java
+// twin of sources.DeterministicID). Defaulting one of them here would give the
+// source a different id than the pin and leave the component unbound.
+func plantControllerSource(e entities.Entity, d Driver, conn inverter.Connection,
+	now time.Time) (sources.Source, error) {
+	comm := strings.TrimSpace(d.Communication)
+	if comm != inverter.CommModbusTCP {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: die Box liest eine Steuerung nur über Modbus TCP, nicht über %q",
+			e.ID, d.Communication)
+	}
+	ip := strings.TrimSpace(conn.IP)
+	if ip == "" || strings.ContainsAny(ip, " \t") {
+		return sources.Source{}, fmt.Errorf("Anlagensteuerung %q: die Adresse der Steuerung fehlt", e.ID)
+	}
+	if conn.Port < 1 || conn.Port > 65535 {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: der Port %d liegt nicht zwischen 1 und 65535", e.ID, conn.Port)
+	}
+	if conn.UnitID < 0 || conn.UnitID > 255 {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: die Geräte-ID %d liegt nicht zwischen 0 und 255", e.ID, conn.UnitID)
+	}
+	interval := d.IntervalS
+	if interval == 0 {
+		interval = plantControllerIntervalS
+	}
+	if interval < 1 || interval > 3600 {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: der Lesetakt %d s liegt nicht zwischen 1 und 3600", e.ID, interval)
+	}
+	label := strings.TrimSpace(e.Label)
+	if label == "" {
+		label = "Anlagensteuerung"
+	}
+	return sources.Source{
+		Role:          sources.RolePlantController,
+		Label:         label,
+		Family:        sources.FamilyErzeugerRegisterbild,
+		Communication: inverter.CommModbusTCP,
+		Connection:    inverter.Connection{IP: ip, Port: conn.Port, UnitID: conn.UnitID},
+		IntervalS:     interval,
+		CreatedAt:     now.UTC(),
+	}, nil
+}
+
+// plantControllerIntervalS is the read cadence of the Erzeuger image (EW-5 A).
+// The palette reads the image at its own cadence anyway; the value only keeps
+// the source's freshness window honest.
+const plantControllerIntervalS = 5
 
 // keepLocalIDs maps the transport identity of every CURRENTLY configured source
 // onto the id it runs under, so a derivation can recognise a device instead of
@@ -542,6 +690,13 @@ type Record struct {
 	// (Befund L1, Scout vp-portal-box-spiegel-s2).
 	Held       string `json:"held_revision,omitempty"`
 	HeldReason string `json:"held_reason,omitempty"`
+	// Rejected are the devices the box did not apply while it applied the rest
+	// (Plan.Rejected). They belong to the configuration the record describes:
+	// the applied revision, or - before the first apply - the held one. A
+	// whole-push refusal keeps the applied revision's list (that revision still
+	// runs) and drops a hold's list together with the hold. ADDITIVE: an older
+	// build reads this file and ignores the field.
+	Rejected []Rejection `json:"rejected_components,omitempty"`
 }
 
 // NewRecord builds the record of a successful apply.
@@ -564,6 +719,10 @@ func (r Record) WithRefusal(revision, reason string) Record {
 	r.Version = StateVersion
 	r.Refused = revision
 	r.RefusedReason = reason
+	if r.Held != "" || r.Revision == "" {
+		// The rejections belonged to the hold (or to nothing that runs).
+		r.Rejected = nil
+	}
 	r.Held, r.HeldReason = "", ""
 	return r
 }
@@ -572,11 +731,20 @@ func (r Record) WithRefusal(revision, reason string) Record {
 // revision, applied nothing and keeps its local files. Like a refusal it keeps
 // the last applied revision (that is still what runs) - and it clears a stale
 // refusal, because an older revision's reason must not outlive its answer.
-func (r Record) WithHold(revision, reason string) Record {
+// rejected are the devices of the held revision the box could not assign a
+// role - the reason nothing applicable was left.
+func (r Record) WithHold(revision, reason string, rejected []Rejection) Record {
 	r.Version = StateVersion
 	r.Held = revision
 	r.HeldReason = reason
 	r.Refused, r.RefusedReason = "", ""
+	r.Rejected = rejected
+	return r
+}
+
+// WithRejections returns the record of an apply with the devices it skipped.
+func (r Record) WithRejections(rejected []Rejection) Record {
+	r.Rejected = rejected
 	return r
 }
 

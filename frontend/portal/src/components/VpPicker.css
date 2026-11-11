@@ -485,9 +485,23 @@
   font-weight: 700;
   color: var(--vp-action);
 }
-/* Monats-Auswahl: die ganze Zeile ist kein Ziel, aber jeder Tag DES Monats. */
-.vp-kal-gitter.art-monat .vp-kal-tag.is-rand.is-gewaehlt {
-  background: color-mix(in srgb, var(--vp-action) 55%, transparent);
+/* Monats-Auswahl (`VpMonatsRaster`): zwölf Kacheln unter ihrem Jahr, 4 × 3 -
+   dieselben Tag-Knöpfe, nur breiter und höher. */
+.vp-monats-gitter {
+  display: grid;
+  gap: 4px;
+}
+.vp-monats-zeile {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.vp-monats-kachel {
+  min-height: 44px;
+}
+.vp-kal-kopf button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .vp-kal-fuss {
   display: flex;

@@ -98,6 +98,13 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Ladestand zuletzt](#ladestand-zuletzt) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
 - [Lädt immer sofort](#lädt-immer-sofort) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
 - [Sonne + Speicher](#sonne--speicher) — Sicht Betrieb · Nachtrag Ladequelle (06.10.2026)
+- [Nur Sonne](#nur-sonne) — Sicht Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)
+- [Sonne + Minimum](#sonne--minimum) — Sicht Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)
+- [Günstig (Ladequelle)](#günstig-ladequelle) — Sicht Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)
+- [Überwachung](#überwachung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A/9A/10A (15.10.2026)
+- [Meldung](#meldung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)
+- [Zustellweg](#zustellweg) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)
+- [Ruhezeit](#ruhezeit) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3, Entscheid 8A (15.10.2026)
 
 ## Kundenbereich
 
@@ -241,7 +248,7 @@ Der Netzanschluss ist ein eigenes Objekt am Standort (E6). Er trägt, was heute 
 
 **Beispiel (Referenzunternehmen Ahrenberg).** NA-1 Hauptanschluss Halle 1 (Marktlokation 47110000001, 630 kVA, vereinbart 550 kW, RLM, 22,4 ct/kWh, 96 €/kW·a), NA-2 Anschluss Halle 2 (250 kVA, 200 kW), NA-3 Anschluss Lindach (160 kVA, 120 kW).
 
-**Heute im Code.** Heute nicht als Objekt; seine Eigenschaften liegen auf `site`: `max_feed_in_kw` (MIG/V20260716000000__site_max_feed_in_kw.sql:21), `leistungspreis_eur_kw`/`abrechnung_leistung` (MIG/V20260716020000__peak_shaving_master_data.sql:44-50), `tarif_art`/`tarif_param_ct_kwh` (MIG/V20260708010000__site_tarif_model.sql:41-44), `anzulegender_wert_ct_kwh` (MIG/V20260707020000__anzulegender_wert_and_monthly_market_value.sql:44), `netzladen_erlaubt` (MIG/V20260707000000__site_netzladen_erlaubt.sql:21). Portal-Erklärtext „Name, Standort, Veräußerungsform und Netzanschluss“ (PORTAL/pages/AnlageTechnik.tsx:486) und Feld „Maximale Einspeiseleistung am Netzanschlusspunkt“ (PORTAL/pages/AnlageTechnik.tsx:547). Der Netzzähler ist die Komponente mit Rolle `grid`.
+**Heute im Code.** Heute nicht als Objekt; seine Eigenschaften liegen auf `site`: `max_feed_in_kw` (MIG/V20260716000000__site_max_feed_in_kw.sql:21), `leistungspreis_eur_kw`/`abrechnung_leistung` (MIG/V20260716020000__peak_shaving_master_data.sql:44-50), `tarif_art`/`tarif_param_ct_kwh` (MIG/V20260708010000__site_tarif_model.sql:41-44), `anzulegender_wert_ct_kwh` (MIG/V20260707020000__anzulegender_wert_and_monthly_market_value.sql:44), die vom Kunden angegebene Einspeisevergütung `einspeiseverguetung_ct_kwh` (MIG/V20261027101500__site_einspeiseverguetung.sql:47), `netzladen_erlaubt` (MIG/V20260707000000__site_netzladen_erlaubt.sql:21). Portal-Erklärtext „Name, Standort, Veräußerungsform und Netzanschluss“ (PORTAL/pages/AnlageTechnik.tsx:486) und Feld „Maximale Einspeiseleistung am Netzanschlusspunkt“ (PORTAL/pages/AnlageTechnik.tsx:547). Der Netzzähler ist die Komponente mit Rolle `grid`.
 
 **Abgrenzung.** Nicht das elektrische System (das hängt dahinter), nicht der Hauptzähler (eine Messstelle AM Anschluss).
 
@@ -273,6 +280,13 @@ Eine Box hat genau eine Heimat-Anlage (E7, unverändert: sie ist die Topic-Adres
 
 > **Verfeinert durch AP-04 E11:** Ein Wechsel der zuständigen Box ist eine reine Zuständigkeitssache — Messstelle und Quellenbindung bleiben unberührt; ab dem Zeitpunkt nennt die Herkunft je Wert die neue Box.
 
+**Box verbinden nach dem Scan des Gehäuse-QR (Konzept vp-qr-einstieg, entschieden 04.11.2026: QE-1 A, QE-2 A, QE-3 B, QE-4 A, QE-5 A).**
+Die Kennung steht unten auf der Box, groß gedruckt wie „EDGE-K7M2XQ3“ („EDGE-“ und sieben Zeichen); der QR-Code darüber führt ins Portal. Das Portal zeigt sie überall so, wo der Kunde sie mit dem Aufdruck vergleicht, und sendet die kanonische Form („edge-k7m2xq3“).
+Ohne Sitzung steht die Empfangsseite „Ihre VoltPilot-Box ist da“: nur, was im Code steht, keine Serverabfrage, nie ob die Box existiert, wem sie gehört oder ob sie online ist. Ein falsches Prüfzeichen heißt „Dieser Code ist nicht vollständig lesbar“.
+Die Handlung heißt „Box verbinden“ (im Aufbau „VoltPilot-Box hinzufügen“), nie „koppeln“ oder „claim“. Danach sagt das Portal „wartet auf das erste Lebenszeichen“ mit Prüfliste und erst mit echtem Lebenszeichen „Ihre Box ist online“; „meldet sich“ steht nie für eine stumme Box.
+Gehört die Box einem anderen Konto, nennt das Portal dieses Konto nicht („Diese Box ist schon mit einem anderen Konto verbunden“); gehört sie schon zum eigenen, sagt es „Diese Box gehört schon zu Ihnen“.
+Wortlaut: PORTAL/koppelTexte.ts; Weiche: PORTAL/koppelLink.ts.
+
 ## Datenquelle
 
 *Sicht: Erfassung*
@@ -283,7 +297,7 @@ Die Datenquelle ist der technische Zugang (Modbus TCP Host/Port/Geräte-ID, MQTT
 
 **Beispiel (Referenzunternehmen Ahrenberg).** DQ-3: Modbus TCP 192.168.10.31, Geräte-IDs 1–4 — vier Unterzähler hinter einer Adresse, zuständig Box E-1. DQ-5: OCPP-Station AHR-LP-01, die sich selbst zur Box E-2 verbindet.
 
-**Heute im Code.** Kein Objekt. Transport-Wahrheit je Komponente in `measurement_point.communication/family/connection_json` (MIG/V20260709000000__measurement_point.sql:38-43), historisiert in `component_definition.connection_json` (MIG/V20260817000000__component_authority_and_definitions.sql:82-93); „Sein Leseplan reist im Flow“ (docs/agents/edge/ein-selbstbau-geraet-darf-den-registry-p.md:18-20); Lesetypen `vp.modbus.read`, `vp.mqtt.read`, `vp.http.read` sind Flow-Knoten (services/api/src/main/resources/flowcatalog/catalog.json:769,904,1046). Ist-Rückmeldung je Quelle `device_source_status.health` ok|stale|never (MIG/V20260721000000__device_source_status.sql:24-41). Zuständige Box = `measurement_point.device_id` bzw. `entity_registry_state.device_id` je Anlage (MIG/V20260709000000:48; MIG/V20260719030000__entity_sync_state.sql:24-27). Im Portal ist „Datenquelle“ heute nur die MaStR-Herkunft (PORTAL/components/MastrDrawer.tsx:276).
+**Heute im Code.** Eigenes Objekt seit AP-06: `data_source` mit Kennzeichen DQ-n, Protokoll, Adresse, Geräte-IDs, Netzlage und Lesetakt (MIG/V20260911150000__uems_datenquelle_zustaendigkeit.sql:82), die zeitgültige Zuständigkeit `data_source_assignment` (MIG/V20260911150000__uems_datenquelle_zustaendigkeit.sql:210) und die Rückmeldung je Box und Quelle `device_data_source_status` (MIG/V20260916220000__uems_datenquellen_status.sql:5). Verweise auf den Weg tragen das Gerät (`geraet.data_source_id` mit `geraete_id`, MIG/V20260911200000__uems_geraet.sql:141) und die Komponente (`measurement_point.data_source_id`, MIG/V20260911150000__uems_datenquelle_zustaendigkeit.sql:322); `GET …/data-sources` nennt je Weg seine Geräte (`geraete[]`, docs/contracts/openapi.yaml:35483). Im Portal heißt der Weg am Gerät „Anbindung“ und im Anlege-Assistenten „Anschluss“ (PORTAL/glossar.ts:880); „Datenquelle“ steht nur noch beim Anbinden eines Gateways oder Loggers (PORTAL/glossar.ts:882).
 
 **Abgrenzung.** Nicht das Gerät (was antwortet), nicht der Messkanal (was gelesen wird), nicht die Box (wer liest).
 
@@ -294,6 +308,14 @@ Die Datenquelle ist der technische Zugang (Modbus TCP Host/Port/Geräte-ID, MQTT
 > **Verfeinert durch AP-06 E1/E2/E5/E12:** Identität, Zuständigkeitszeiträume (halboffen auf die Minute, nie überlappend, nie rückwirkend, beendet statt überschrieben), Doppel-Lesen, Fehlerklassen je Quelle und die Tabelle „Software-Stand → Fähigkeiten“ sind Vertrag: `docs/contracts/v2/data-source-assignment.md` mit `data-source-vectors.json` und `edge-capabilities.json` (AP-06 IP-1, Zwillinge `uems/DatenquelleRegeln` ⟷ `uemsDatenquelle.ts`).
 
 > **Verfeinert durch AP-04 E4 · AP-05 E5:** Wandlerfaktor und Einstellungen hängen an der QUELLE (Gerät bzw. Gerät + Kanal), zeitgültig als Fassung; die Messstelle bleibt hardwarefrei.
+
+**Anbindung statt Datenquelle (Konzept „Ein Gerät, ein Eintrag“, Captain 23.10.2026, GD-5 A).**
+Der Aufbau zeigt, was man anfassen kann — je Kasten ein Eintrag; der Weg zu einem Gerät ist Teil seiner Seite und heißt dort „Anbindung“ (Adresse, lesende Box, Empfang, Last, Verlauf).
+Die Kennung DQ-n bleibt die stabile Kennung im Box-Verkehr, im Protokoll und im Support; der Kunde sieht sie klein neben der Anbindung („Kennung DQ-1“).
+In den Anlege-Assistenten („Steuerung verbinden“, WAGO-Steuerung) heißt der Schritt „Anschluss“; der Zwischenstand sagt „Anschluss gespeichert (Kennung DQ-1). Das Gerät entsteht erst mit „Anlegen“.“, und der Anschluss heißt wie das Gerät.
+„Datenquelle“ steht nur noch, wo ein Weg ohne ein einzelnes Gerät entsteht: „Gateway oder Logger anbinden“ (Box-Seite, Messen-Assistent), hinter dem mehrere Geräte antworten; ein Weg ohne Gerät ist ein „Anschluss ohne Gerät“.
+Welches Gerät hinter einem Weg steht, sagt allein der gespeicherte Verweis `geraet.data_source_id` — nie eine gleiche Adresse; die Meldung „Datenquelle liefert Daten“ nennt deshalb das Gerät („Anlagensteuerung liefert keine Daten — nicht erreichbar (Kennung DQ-1).“), ihr Bezug bleibt die Anlage.
+Kundenwörter: `UEMS_ANBINDUNG`, `UEMS_ANSCHLUSS`, `UEMS_GATEWAY_ANBINDEN` (PORTAL/glossar.ts).
 
 ## Gerät (physisches Messgerät, Controller, Energiekarte)
 
@@ -315,6 +337,20 @@ Die Datenquelle ist der technische Zugang (Modbus TCP Host/Port/Geräte-ID, MQTT
 
 > **Verfeinert durch AP-04 E10:** Ein Controller-Wechsel ist EIN Vorgang am Gerät: Karten gelten als übernommen, je Karte abwählbar; alle Komponenten wechseln auf das neue Gerät, alle Messstellen binden automatisch an die neuen Kanäle.
 
+**Gerätesuche (Konzept „Geräte suchen“, Captain 30.10.2026, DP-1 C, DP-2 bis DP-7 A).**
+„Geräte suchen“ startet auf der VoltPilot-Box einen lesenden Suchlauf in ihrem Heimnetz (höchstens 3 Minuten, je Netz höchstens /24); die Sache heißt „Gerätesuche“, auch im Satz „Update nötig für: Gerätesuche“. Das Filterfeld im Aufbau heißt darum „Liste durchsuchen“, die Kachel im Katalog „Im Heimnetz suchen“.
+Die Funde stehen in sechs Gruppen in fester Reihenfolge: „Braucht Ihre Hilfe“, „Bereit zum Übernehmen“, „Erkannt, mit dieser Box noch nicht anbindbar“, „Vielleicht ein Energie-Gerät“, „Schon eingerichtet“ und „Weitere Geräte im Heimnetz“ (Telefone und Rechner nur als Anzahl, nie mit Namen oder MAC-Adresse).
+Die Erkennung steht als Wort: „sicher erkannt“ (das Gerät hat Hersteller, Typ oder Seriennummer selbst gesagt), „wahrscheinlich“ (Merkmale passen, Übernehmen nur mit Bestätigung), „nur erreichbar“; „Woran erkannt?“ nennt die Merkmale.
+„Übernehmen“ öffnet den bestehenden Anlege-Fluss mit dem Anschluss aus der Suche; der Verbindungstest startet von selbst und liest nur. Gleich ist ein Fund nur über seine Seriennummer, nie über dieselbe Adresse; eine neue Adresse desselben Geräts ist ein Vorschlag, den ein Tipp übernimmt (dieselbe Komponente, eine neue Fassung).
+Kundenwörter: `UEMS_GERAETE_SUCHEN`, `UEMS_GERAETESUCHE`, `UEMS_IM_HEIMNETZ_SUCHEN`, `UEMS_LISTE_DURCHSUCHEN` (PORTAL/glossar.ts).
+
+**Gerätegruppen im Aufbau (Konzept „Geräte gruppiert“, Captain 07.11.2026, GR-1 A, GR-2 A, GR-3 A).**
+Der Aufbau ordnet die Geräte einer Box in fünf feste Gruppen, in der Reihenfolge des Anlagenkopfs: „Erzeugung“, „Speicher“, „Netz“, „Verbrauch“ und „Laden“ — dieselben Wörter wie Energiefluss und Cockpit. Leere Gruppen entfallen; Köpfe stehen erst ab zwei Gruppen in einer Box, an einer Anlage mit mehreren Boxen je Box. Gruppen klappen nicht.
+Jedes Gerät steht einmal, in der ersten Gruppe, zu der es gehört: ein Hybrid-Wechselrichter unter „Erzeugung“ (seine Zeile zeigt dort die PV-Leistung, den Ladestand zeigen Anlagenkopf und Aufklappen), eine Anlagensteuerung ebenso, eine Ladesäule unter „Laden“, Heizstab, Wärmepumpe, Schalter und Unterzähler unter „Verbrauch“. Darin nach Namen, natürlich („Kaco 2“ vor „Kaco 10“), im Verbrauch die Unterzähler zuerst; nie nach Leistung.
+Der Kopf nennt die Anzahl und die Summe der Zeilen — nur bei mindestens zwei Zeilen, die alle einen aktuellen Wert haben; sonst „1 Gerät ohne aktuellen Wert“, nie eine Teilsumme und nie eine 0. Unter „Laden“ steht der Wortlaut des Cockpits („2 von 4 laden · 18,2 kW“). Unter Suche und Filter steht keine Summe.
+Nichts zählt doppelt: mischt „Verbrauch“ Unterzähler und einzelne Verbraucher, entfällt die Summe (ein Heizstab kann hinter einer Unterverteilung hängen); „Netz“ summiert nie (zwei Zähler messen oft denselben Anschluss), ein Ladestand in % auch nicht.
+Kundenwörter: `AUFBAU_ERZEUGUNG`, `AUFBAU_SPEICHER`, `AUFBAU_NETZ`, `AUFBAU_VERBRAUCH`, `AUFBAU_LADEN` (PORTAL/glossar.ts); Regeln: PORTAL/aufbauGruppen.ts.
+
 ## Komponente
 
 *Sicht: Erfassung*
@@ -325,7 +361,7 @@ Unverändert aus dem Einheitsmodell: die Komponente ist die Zeile, die der Kunde
 
 **Beispiel (Referenzunternehmen Ahrenberg).** K-1 Wechselrichter, K-2 Speicher, K-3 Netzzähler Halle 1, K-8.1…K-8.4 Zähler je Energiekarte, K-9 Ladepunkt (bis 30.11.2026 „Nur messen“).
 
-**Heute im Code.** `measurement_point` mit `entity_type` = v2-Entität (MIG/V20260718000000__v2_entity_registry.sql:4-5, :22-24), Basis MIG/V20260709000000__measurement_point.sql:27-60 (role, label, brand, model, communication, connection_json, unit, device_id, control, capacity_kwp); `source_kind` builtin|certified|custom|composed (MIG/V20260815000000__component_template.sql:208-221). Kundenwort „Komponente“ statt „Entität“/„Anlagenteil“ (PORTAL/copy.test.ts:77,80). Freigabe-Stufen „Nur messen / Von VoltPilot freigegeben / Geprüfte Vorlage / Von Ihnen freigegeben“ (PORTAL/schaltFreigabe.ts:401-434). Kein Status-/Aktiv-/Archiv-Feld (17× `ALTER TABLE measurement_point`, keines fügt eines hinzu).
+**Heute im Code.** `measurement_point` mit `entity_type` = v2-Entität (MIG/V20260718000000__v2_entity_registry.sql:4-5, :22-24), Basis MIG/V20260709000000__measurement_point.sql:27-60 (role, label, brand, model, communication, connection_json, unit, device_id, control, capacity_kwp); `source_kind` builtin|certified|custom|composed (MIG/V20260815000000__component_template.sql:208-221). Kundenwort „Komponente“ statt „Entität“/„Anlagenteil“ (PORTAL/copy.test.ts:77,80). Freigabe-Stufen „Nur messen / Von VoltPilot freigegeben / Noch nicht am Prüfstand / Geprüfte Vorlage / Von Ihnen freigegeben“ (PORTAL/schaltFreigabe.ts:401-444); „Noch nicht am Prüfstand“ trägt ein schaltbarer Typ, den der Katalog nur im Simulator geprüft hat (`certificationStatus` am Entitäts-DTO). Kein Status-/Aktiv-/Archiv-Feld (17× `ALTER TABLE measurement_point`, keines fügt eines hinzu).
 
 **Abgrenzung.** Nicht das Gerät (physisch), nicht die Messstelle (fachlich, überlebt die Komponente).
 
@@ -1631,3 +1667,101 @@ Wie tief der Speicher dafür entladen werden darf (seine Untergrenze), rechnet d
 **Heute im Code.** Steuerart `ueberschussModus=speicher` mit der Karte `ueberschuss_speicher` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartSatz.java:132), Untergrenze im Optimierer (services/optimization/voltpilot_optimization/storage_release.py:390), Steuerstand der Box im Herzschlag (`docs/contracts/speicher-steuerstand.md`, MIG/V20261007120000__device_battery_control.sql:33), Freigabe auf der Box (`edge-app/core/internal/lastmgmt/release.go`), Reserve je Anlage (MIG/V20261006120000__sonne_speicher.sql:40), Wort als `LADEQUELLE` (PORTAL/glossar.ts:157).
 
 **Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht der Vorrang „Speicher vor Auto“ (der ordnet den Überschuss), nicht die Notstrom- und Schutzreserve des Speichers (die bleibt immer unberührt).
+
+## Nur Sonne
+
+*Sicht: Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“ mit dem Versprechen „Nur Überschuss, sonst Pause“: das Auto lädt nur mit dem Sonnenstrom, den Haus und (bei „Speicher zuerst“) der Speicher übrig lassen.**
+
+Reicht der Überschuss nicht für die Startleistung des Autos, pausiert das Laden; ohne frische Messung am Netzanschluss ebenfalls. Netzstrom gibt es in dieser Quelle nie - es sei denn, ein Ladeziel braucht ihn: dann kommt der Rest in den günstigsten Stunden aus dem Netz. Die Box fährt dafür die Bahn `nur_sonne`. Gut, wenn das Auto tagsüber steht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Wallbox Werkstatt an einem sonnigen Septembertag: von 13:00 bis 17:30 lädt das Auto mit dem Überschuss, danach Pause bis zur nächsten Sonne.
+
+**Heute im Code.** Steuerart `quelle=ueberschuss`, `ueberschussModus=pausieren` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartProjektion.java), Bahn `nur_sonne` (`edge-app/core/internal/lastmgmt/surplus.go`), Name und Versprechen als `LADEQUELLE`/`LADEQUELLE_VERSPRECHEN` (PORTAL/glossar.ts), Vorschau in PORTAL/steuerung/ladeVorschau.ts.
+
+**Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht „Sonne + Speicher“ (gibt zusätzlich Speicherenergie frei).
+
+## Sonne + Minimum
+
+*Sicht: Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“ mit dem Versprechen „Immer etwas, Sonne obendrauf“: das Auto lädt immer mit mindestens der Mindestleistung, Fehlendes kommt aus dem Netz, Überschuss obendrauf.**
+
+Die Mindestleistung ist die der Steuerart oder die des Ladepark-Rahmens (Vorgabe 1,4 kW); ein Auto, das erst bei mehr Leistung startet, lädt entsprechend höher. Ohne frische Messung kappt die Box nicht und lädt voll. Die Box fährt dafür die Bahn `sonne_zuerst`. Beim ersten Besuch ist „Sonne + Minimum“ im Blatt vorausgewählt; gesetzt wird es erst mit „So laden“. Gut, wenn es sicher vorangehen soll.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Wallbox Werkstatt, 13:10 bis morgen 7:00: tagsüber Sonne, nachts 1,4 kW aus dem Netz - zusammen etwa 43 kWh, davon 19 kWh Netzstrom (Schätzung).
+
+**Heute im Code.** Steuerart `ueberschussModus=mindestleistung` mit `mindestleistungKw` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartProjektion.java), Bahn `sonne_zuerst` mit `min_kw` (`docs/contracts/mqtt-charging-config.schema.json`), Wort als `LADEQUELLE.min` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht „Schnell“ (volle Leistung zu jedem Preis), nicht die Startschwelle eines Autos (die kennt nur die Box).
+
+## Günstig (Ladequelle)
+
+*Sicht: Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“ mit dem Versprechen „Netzstrom, wenn er billig ist“: das Auto lädt mit voller Leistung, solange der Bezugspreis unter der Preisgrenze liegt.**
+
+Verglichen wird der BEZUGSPREIS der Anlage (was eine kWh aus dem Netz kostet), nie der Börsenpreis. Die Preisgrenze steht sichtbar im Blatt und lässt sich mit − / + ändern; ihre Vorgabe ist das billigste Viertel des Bezugspreises der letzten 7 Tage. Das Preisfenster führt der Fahrplan aus; ohne frischen Plan fährt die Box die Bahn `nur_sonne`, und die Karte sagt „Wartet auf günstigen Preis“. Gut, wenn der Tarif stündlich wechselt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Wallbox Werkstatt mit Grenze 30 ct/kWh: von 13:00 bis 16:00 voll, danach Pause, weil der Abendpreis darüber liegt - 33 kWh bis 7:00, davon 14 kWh Netzstrom, Ø 14 ct/kWh (Schätzung).
+
+**Heute im Code.** Steuerart `quelle=guenstig` mit `preisgrenzeCtKwh`, Vorgabe aus `SteuerartPreisVorgabe` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartPreisVorgabe.java), Bahn `nur_sonne` seit #1569 (`SteuerartProjektion.bahnAus`), Wort als `LADEQUELLE.guenstig` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht „Günstige Stunden“ eines anderen Verbrauchers (gleiche Regel, anderes Gerät), nicht der Börsenpreis.
+
+## Überwachung
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A/9A/10A (15.10.2026)*
+
+**Eine vom Kunden angelegte Wenn-Dann-Beobachtung eines Werts (Schwelle, Richtung, optionale Dauer), die bei Erreichen eine Meldung erzeugt — erst im Probelauf, dann scharf.**
+
+Eine Überwachung entsteht nur unter Meldungen › Überwachungen: „+ Überwachung“ fragt den Ort (Anlage, Messstelle, Kennzahl, Energieziel) und den Wert, dann folgt das Blatt „Überwachen“ (Konzept b1, 20.10.2026, Entscheid E3: kein Menü und keine Marke „überwacht“ mehr am Wert einer anderen Fläche). Sie trägt eine Schwere (Hinweis · Warnung · Dringend, Entscheid 6A — bewusst nicht „Severity“ oder „Priorität“), eine Rückkehrschwelle und eine Erholdauer gegen Flattern um die Schwelle (VoltPilot setzt beide vor, änderbar im Blatt). „Überwachung starten“ öffnet sie im Probelauf mit fester Frist; „Jetzt scharf schalten“ beendet ihn vorzeitig. Jede Meldung einer der Scheibe-5-Wertarten trägt strukturell die Marke „eigene Überwachung“ (Entscheid 9A: kein Läufer legt eine ab Werk an). Eine ältere Steuerungs-Regel mit dem Baustein „Benachrichtigung“ bleibt ein separater, nie zustellender Hinweis; ihre Karte bietet stattdessen „In Überwachung umwandeln“ an (Entscheid 10A), sofern ihre einzige Bedingung einen gemessenen Kanal referenziert.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Eigene Überwachung an AN-1: Netzbezug über 300 kW, Rückkehrschwelle 5 %, Erholdauer 5 Minuten — seit 20.10.2026 scharf, nach einem Probelauf bis 19.10.2026.
+
+**Heute im Code.** Kundenwörter `WORT_UEBERWACHUNG`/`WORT_UEBERWACHEN`/`WORT_EIGENE_UEBERWACHUNG` (PORTAL/meldungen.ts:31,35,80); Satz- und Vorgaben-Ableitung inkl. Rückkehrschwelle/Erholdauer und der Perioden-Wörter Tag/Woche/Monat/Abrechnungszeitraum (PORTAL/ueberwachungSatz.ts:1-20,97-101); „+ Überwachung“ (PORTAL/pages/MeldungenPage.tsx:235), Ort und Wert (PORTAL/components/NeueUeberwachung.tsx:29, PORTAL/ueberwachungAuswahl.ts:107,130), Wächter der Entscheidung (PORTAL/ueberwachenNurMeldungen.test.ts); API `UeberwachenBlatt.tsx`/`ueberwachungApi.ts`; „… im Probelauf bis …“ und „Jetzt scharf schalten“ (PORTAL/pages/MeldungenPage.tsx:395,406); Umwandlung einer alten Regel: `notifyUmwandlung` und „Benachrichtigung (kommt noch nicht an).“ (PORTAL/steuerung/regeln.ts:210,215,228), Knopf „In Überwachung umwandeln“ (PORTAL/steuerung/RegelnReiter.tsx:222). Fachmodell-Eintrag nachgezogen, nachdem alle Scheiben 0–6 gemergt waren (vorher bewusst zurückgestellt, PORTAL/meldungen.ts:4-15).
+
+**Abgrenzung.** Nicht die Regel der Steuerung (die schaltet ein Gerät; ihr Baustein „Benachrichtigung“ ist ein reiner Diagnose-Hinweis ohne Zustellweg); nicht die Meldung selbst (das Ergebnis, siehe „Meldung“).
+
+## Meldung
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)*
+
+**Das Ergebnis einer ausgelösten Überwachung: ein Eintrag im Meldungs-Center mit Schwere, Zeitpunkt und Bezug zum beobachteten Wert — bis sie quittiert ist („Gesehen“) oder die Bedingung endet.**
+
+Der Jetzt-Reiter sortiert Dringend vor Warnung vor Hinweis, darin das älteste zuerst; der Verlauf-Reiter zeigt die jüngste zuerst (dieselbe Wortwahl „Verlauf“ wie bei der Messstelle, AP-13, bewusst wiederverwendet). Eine Meldung verweist je nach Wertart auf die Kennzahl, das Energieziel oder die Messstelle — nie auf eine Auffälligkeit (AP-18): die Scheibe-5-Wertarten haben heute kein eigenes Auffälligkeiten-Ziel, der Verweis bleibt ehrlich beim nächsten vorhandenen Objekt. Eine tägliche Tages-Zusammenfassung ist eine persönliche Zustellungs-Einstellung, keine eigene Meldungsart.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Jetzt-Reiter von AN-1: „Netzbezug über 300 kW seit 14:12 · Dringend“ — noch nicht gesehen; im Verlauf steht sie ab dem Moment, in dem der Wert wieder unter die Rückkehrschwelle fällt.
+
+**Heute im Code.** Kundenwörter `WORT_MELDUNG`/`WORT_MELDUNGEN`/`WORT_GESEHEN` und `SCHWERE_WORT` (Hinweis · Warnung · Dringend) (PORTAL/meldungen.ts:28-31,43-47); Sortierung `sortiereJetzt`/`sortiereVerlauf` (PORTAL/meldungen.ts:63-74); Verweis-Ziele „Zur Kennzahl“/„Zum Energieziel“/„Zur Messstelle“ (PORTAL/meldungen.ts:115-121); Seite `#/meldungen` mit Reitern Jetzt/Verlauf/Überwachungen (PORTAL/pages/MeldungenPage.tsx:142,147-148); Tages-Zusammenfassung-Schalter (PORTAL/pages/EinstellungenPage.tsx:956).
+
+**Abgrenzung.** Nicht die Überwachung (die Regel, die sie erzeugt); nicht die Auffälligkeit des Verbessern-Bereichs (AP-18) — beide Fundstellen bleiben unabhängig.
+
+## Zustellweg
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)*
+
+**Der Weg, auf dem eine Person von einer Meldung erfährt — eine persönliche Einstellung am Kundenkonto, nicht Teil der Überwachungs-Regel selbst.**
+
+Vier Wege, jeder mit eigener Schwere-Schwelle und einzeln abschaltbar: E-Mail (mit optionaler Tages-Zusammenfassung zu fester Uhrzeit), Push auf diesem Gerät (Web-Push; die Browser-Erlaubnis fragt erst nach einem Tipp, nie beim Laden; auf iOS nur aus der installierten Web-App), Webhook (eine URL für einen Teams- oder Slack-Incoming-Webhook) und Telegram (verbunden über „Telegram verbinden“). Ruhezeit und Stummschaltung wirken auf die Zustellung, nie auf die Überwachung selbst — eine stummgeschaltete Regel überwacht unverändert weiter, nur ihre Meldungen bleiben zu.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ines Kaltenbach: E-Mail ab Warnung mit Tages-Zusammenfassung um 07:00 Uhr, Push auf ihrem Telefon ab Dringend, kein Webhook, kein Telegram verbunden.
+
+**Heute im Code.** `EmailZustellweg`/`PushAbo`/`WebhookZiel` (PORTAL/benachrichtigungenApi.ts:5-7,10-18,20-27,29); `pushUnterstuetzt` (PORTAL/push.ts:4-16); Zeilen „Push auf diesem Gerät“/„Team-Kanal“/„Telegram“/„Weiteren Weg verbinden“ und Knopf „Telegram verbinden“ der Einstellungs-Seite (Scheibe 1, PORTAL/pages/EinstellungenPage.tsx:559,587,597,871,1064).
+
+**Abgrenzung.** Nicht die Schwere (die Bedingung, AB der überhaupt zugestellt wird); nicht die Ruhezeit (WANN trotz Schwere nicht sofort zugestellt wird).
+
+## Ruhezeit
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3, Entscheid 8A (15.10.2026)*
+
+**Ein wiederkehrendes Zeitfenster je Person, in dem Meldungen nicht sofort zugestellt werden — außer die Person erlaubt „Dringendes trotzdem melden“.**
+
+Werktags und Wochenende getrennt einstellbar, das Wochenende auch als „ganz“; ein Fenster darf über Mitternacht reichen (von > bis). Die Portal-Vorschau im Blatt ist nur ein Zwilling der Rechnung — die tatsächliche Zustellung entscheidet ausschließlich der Server. „Dringendes trotzdem melden“ ist ein eigener Schalter: ohne ihn bleibt auch eine dringende Meldung bis zum Ende der Ruhezeit zurückgehalten.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ruhezeit werktags 22:00–07:00 Uhr, Wochenende ganz, mit „Dringendes trotzdem melden“ aktiv — eine Dringend-Meldung kommt trotzdem sofort an, eine Warnung erst nach Ende der Ruhezeit.
+
+**Heute im Code.** `RuhezeitTeilfenster`/`RuhezeitRegeln` (PORTAL/ruhezeit.ts:1-24); Zeile „Ruhezeit“ und Option „keine Ruhezeit“ der Einstellungs-Seite (Scheibe 1, PORTAL/pages/EinstellungenPage.tsx:609,1175); Schalter „Dringendes trotzdem melden“ (:616).
+
+**Abgrenzung.** Nicht die Stummschaltung (unterdrückt eine einzelne Regel/Anlage befristet, unabhängig von der Uhrzeit — heute nur als API, noch ohne eigene Kundenformulierung im Markup).

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../api';
 import {
@@ -17,7 +17,19 @@ import {
   SITE_HALLE_1,
   SITE_HALLE_2,
 } from '../test/geraetHerkunftFixtures';
+import type { Programmstand } from '../programmstand';
 import { GeraetHerkunft } from './GeraetHerkunft';
+
+const STAND_ALT: Programmstand = {
+  zustand: 'aelter',
+  ist: 2605,
+  ist_text: '26.05',
+  soll: 2610,
+  soll_text: '26.10',
+  soll_quelle: 'bibliothek',
+  gemessen_am: '2026-10-21T10:00:00Z',
+  warnen: true,
+};
 
 /**
  * Die ergänzte Geräteseite (UEMS AP-04 IP-12) als Fläche: Karte „Gerät“,
@@ -36,8 +48,12 @@ function gr4() {
   );
 }
 
-function ek2() {
+function ek2(programmstand: Programmstand | null = null) {
   vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [c1()] });
+  // UEMS EZ-16: ein Controller fragt, ob er eine Anlagensteuerung ist; die WAGO-Steuerung C-1 ist keine.
+  vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
+    steuerungen: programmstand ? [{ geraet_id: c1().id, entity_id: K8[1], programmstand }] : [],
+  });
   vi.spyOn(api, 'komponenteMesskanaele').mockResolvedValue(k82Kanaele());
   const lesen = vi.spyOn(api, 'geraetEinstellungen').mockResolvedValue(c1Einstellungen());
   render(<GeraetHerkunft siteId={SITE_HALLE_2} komponenten={[{ entityId: K8[1], label: K8_NAMEN[K8[1]] }]} jetzt={JETZT_C1} />);
@@ -160,6 +176,36 @@ describe('GeraetHerkunft', () => {
     fireEvent.click(within(dialog.closest('[role="dialog"]') as HTMLElement).getByRole('button', { name: /eintragen$/ }));
     expect(await within(dialog).findByText('Dafür fehlt Ihnen das Recht „Führende Quelle binden“.')).toBeInTheDocument();
     expect(screen.getByTestId('einstellung-aendern')).toBeInTheDocument();
+  });
+
+  it('Programmstand (UEMS EZ-16): eine Anlagensteuerung nennt ihn — ein alter Stand mit Hinweis', async () => {
+    ek2(STAND_ALT);
+    const zeile = await screen.findByTestId('geraet-programmstand');
+    expect(within(zeile).getByText('Programmstand')).toBeInTheDocument();
+    expect(within(zeile).getByText('26.05 · älter als erwartet')).toBeInTheDocument();
+    expect(within(zeile).getByText('gelesen 21.10.2026, 12:00 Uhr')).toBeInTheDocument();
+    expect(within(zeile).getByRole('note')).toHaveTextContent('Fährt einen alten Stand (26.05, erwartet 26.10).');
+  });
+
+  it('Programmstand: aktuell ohne Hinweis, unbekannt nie als Stand — ein anderer Controller ohne Zeile', async () => {
+    ek2({ ...STAND_ALT, zustand: 'aktuell', ist: 2610, ist_text: '26.10', warnen: false });
+    const zeile = await screen.findByTestId('geraet-programmstand');
+    expect(within(zeile).getByText('26.10 · aktuell')).toBeInTheDocument();
+    expect(within(zeile).queryByRole('note')).toBeNull();
+    cleanup();
+    vi.restoreAllMocks();
+
+    ek2({ ...STAND_ALT, zustand: 'unbekannt', ist: null, ist_text: null, gemessen_am: null, warnen: false });
+    const unbekannt = await screen.findByTestId('geraet-programmstand');
+    expect(within(unbekannt).getByText('nicht gelesen')).toBeInTheDocument();
+    expect(within(unbekannt).getByText('Die Steuerung meldet keinen gültigen Stand.')).toBeInTheDocument();
+    cleanup();
+    vi.restoreAllMocks();
+
+    const liste = ek2();
+    await waitFor(() => expect(liste).toHaveBeenCalled());
+    await screen.findByTestId('geraet-karte');
+    expect(screen.queryByTestId('geraet-programmstand')).toBeNull();
   });
 
   it('ohne auflösbares Gerät entsteht GAR NICHTS — kein Kasten, der erklärt, dass er nichts weiß', async () => {

@@ -49,6 +49,16 @@ public final class Csrs {
         return csr;
     }
 
+    /**
+     * Der öffentliche Schlüssel einer (geprüften) Anfrage als
+     * SubjectPublicKeyInfo in DER, Base64 - die Form, in der die Werkstatt den
+     * Geräteschlüssel festhält (D2). Über JCA neu kodiert, damit derselbe
+     * Schlüssel immer dieselben Bytes ergibt, egal wie die Box ihn schrieb.
+     */
+    public static String schluesselSpki(PKCS10CertificationRequest csr) {
+        return java.util.Base64.getEncoder().encodeToString(publicKeyOf(csr).getEncoded());
+    }
+
     private static PKCS10CertificationRequest parse(String csrPem) {
         try (PEMParser parser = new PEMParser(new StringReader(csrPem))) {
             Object parsed = parser.readObject();

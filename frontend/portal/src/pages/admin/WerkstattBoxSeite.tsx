@@ -1,0 +1,491 @@
+/**
+ * Die Einrichtungs-Detailseite einer Box in der Werkstatt (`#/werkstatt?box=<referenz>`,
+ * auch das Ziel des Direktlinks vom Gehäuse): alles, was die Einrichtung für
+ * diese Box festhält, an einem Ort. Anzeige und Download; am Ablauf
+ * der Einrichtung ändert sie nichts. Einzige Aktion: eine Box löschen, die
+ * weder abgenommen noch gekoppelt ist (etwa einen Fehlversuch), samt dem, was
+ * nur ihr gehört (Tunnel-Schlüssel, Codes), mit Rückfrage auf der Seite, die
+ * Referenz und Mitgehendes nennt. Nur für VoltPilot-Admins (wie die ganze
+ * Werkstatt); das Root-Passwort steht, wie an der Abnahme, nur verschlüsselt da.
+ */
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { Badge } from '../../../designsystem/components/core/Badge';
+import { Button } from '../../../designsystem/components/core/Button';
+import { Card } from '../../../designsystem/components/core/Card';
+import { Aufklapper } from '../../components/Aufklapper';
+import { useIsPhone } from '../../useIsPhone';
+import { adminApi } from '../../admin/adminApi';
+import { boxVerbindung, zeitpunkt, type FernwartungBox, type FernwartungUebersicht } from '../../adminFernwartung';
+import { ApiError, ladeWerkstattGehaeuse, ladeWerkstattZubehoer } from '../../api';
+import { Befehl } from '../../components/FernwartungSsh';
+import { mb } from '../../geraeteUpdates';
+import { fernwartungHash } from '../../nav';
+import { loeschbar, loeschtTunnelSchluessel, VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
+import type { UebersichtZeile, WerkstattFreigabe } from '../../werkstattBank';
+import {
+  bindung,
+  einrichtung,
+  freigabeDerBox,
+  fruehereAbnahmen,
+  gehaeuseFehlerSatz,
+  GEHAEUSE_BAUT_SATZ,
+  gehaeuseStand,
+  GEHAEUSE_WARTET_SATZ,
+  kundenStand,
+  WERKSTATT_ZUBEHOER,
+  type EinrichtungZeile,
+} from '../../werkstattEinrichtung';
+import type { GehaeuseAuftragAnsicht } from '../../werkstattBank';
+import { PhasenListe } from './WerkstattBank';
+import { liveSeitSek, schrittTitel, seitText } from '../../werkstattLauf';
+import { AbnahmeAnzeige, BeschriftungKarte, DirektlinkQr, STAND_BADGE } from './WerkstattTeile';
+
+type Bindung = { art: 'laedt' } | { art: 'keine' } | { art: 'fehler'; text: string } | { art: 'da'; box: FernwartungBox; uebersicht: FernwartungUebersicht | null };
+
+/** Der Download-Knopf der Box-Druckdatei: lädt authentifiziert (platform-admin), zeigt einen Fehler ehrlich. */
+function GehaeuseDownloadKnopf({ edgeRef }: { edgeRef: string }) {
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  async function laden() {
+    setLaedt(true);
+    setFehler(null);
+    try {
+      await ladeWerkstattGehaeuse(edgeRef);
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Die Box-Druckdatei konnte nicht geladen werden.');
+    } finally {
+      setLaedt(false);
+    }
+  }
+  return (
+    <div data-testid="ws-gehaeuse-knopf">
+      <Button variant="outline" size="sm" onClick={() => void laden()} disabled={laedt}>
+        {laedt ? 'Lädt …' : 'Box-Druckdatei (3MF) laden'}
+      </Button>
+      {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid="ws-gehaeuse-fehler">{fehler}</p>}
+    </div>
+  );
+}
+
+/** Der Download-Knopf eines Zubehörteils (Hutschienen-Clip, Bohrlehre): ohne Kennung, für jede Box gleich. */
+function ZubehoerDownloadKnopf({ teil, name }: { teil: string; name: string }) {
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  async function laden() {
+    setLaedt(true);
+    setFehler(null);
+    try {
+      await ladeWerkstattZubehoer(teil);
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Die Zubehör-Druckdatei konnte nicht geladen werden.');
+    } finally {
+      setLaedt(false);
+    }
+  }
+  return (
+    <div data-testid={`ws-zubehoer-knopf-${teil}`}>
+      <Button variant="outline" size="sm" onClick={() => void laden()} disabled={laedt}>
+        {laedt ? 'Lädt …' : `${name} (3MF) laden`}
+      </Button>
+      {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid={`ws-zubehoer-fehler-${teil}`}>{fehler}</p>}
+    </div>
+  );
+}
+
+/** „Erneut erstellen" nach einem echten Fehler beim Bau der Druckdatei: legt einen Auftrag an, zeigt ihn an. */
+function GehaeuseErneutKnopf({ edgeRef }: { edgeRef: string }) {
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const [angelegt, setAngelegt] = useState(false);
+  async function erneut() {
+    setLaedt(true);
+    setFehler(null);
+    try {
+      await adminApi.werkstattGehaeuseErneut(edgeRef);
+      setAngelegt(true);
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Der Auftrag ließ sich nicht anlegen.');
+    } finally {
+      setLaedt(false);
+    }
+  }
+  if (angelegt) {
+    return <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-erneut-angelegt">Eingereiht; der Dienst holt den Auftrag mit seiner nächsten Meldung ab.</p>;
+  }
+  return (
+    <div data-testid="ws-gehaeuse-erneut">
+      <Button variant="outline" size="sm" onClick={() => void erneut()} disabled={laedt}>
+        {laedt ? 'Lädt …' : 'Erneut erstellen'}
+      </Button>
+      {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid="ws-gehaeuse-erneut-fehler">{fehler}</p>}
+    </div>
+  );
+}
+
+/**
+ * Eine SEKUNDÄRE Karte der Einrichtungs-Detailseite (`vp-adminview-mobile-rework`):
+ * am Telefon ein {@link Aufklapper} - zu, mit der Urteilszeile als Beleg; am
+ * Rechner die unveränderte offene Karte mit `<h3>` (das Haus-Muster dieser
+ * Seite, kein Icon wie bei `AufklapperKarte`). „Ablauf der Einrichtung" und
+ * „Löschen" bleiben bewusst plaine Karten, nie durch diese ersetzt.
+ */
+function WsKarte({ titel, urteil, breit, testId, children }: {
+  titel: string;
+  urteil?: ReactNode;
+  breit?: boolean;
+  testId: string;
+  children: ReactNode;
+}) {
+  const isPhone = useIsPhone();
+  const klasse = `vp-ws-karte${breit ? ' vp-ws-breit' : ''}`;
+  if (!isPhone) {
+    return (
+      <Card padding="md" radius="lg" className={klasse} data-testid={testId}>
+        <h3 className="vp-ws-kartenkopf">{titel}</h3>
+        {children}
+      </Card>
+    );
+  }
+  return (
+    <Card padding="md" radius="lg" className={klasse} data-testid={testId}>
+      <Aufklapper titel={titel} sub={urteil}>
+        {children}
+      </Aufklapper>
+    </Card>
+  );
+}
+
+function Zeilen({ zeilen, leer = '–' }: { zeilen: EinrichtungZeile[]; leer?: string }) {
+  return (
+    <dl className="vp-ws-protokoll">
+      {zeilen.map((z) => (
+        <Fragment key={z.id}>
+          <dt>{z.titel}</dt>
+          <dd className={z.id === 'host' ? 'vp-fw-fingerabdruck' : undefined} data-testid={`ws-zeile-${z.id}`}>{z.wert ?? leer}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+export function WerkstattBoxSeite({
+  zeile,
+  boxen,
+  freigaben,
+  jetzt,
+  gehaeuseAuftraege,
+  onZurueck,
+  onGeloescht,
+}: {
+  zeile: UebersichtZeile;
+  boxen: readonly WerkstattBox[];
+  freigaben: readonly WerkstattFreigabe[];
+  jetzt: Date;
+  /** Offene Gehäuse-Aufträge aus der Ansicht des Dienstes (additiv); fehlt ohne Stand des Dienstes. */
+  gehaeuseAuftraege?: readonly GehaeuseAuftragAnsicht[] | null;
+  onZurueck: () => void;
+  /** Nach dem Löschen: zurück zur Liste ohne diese Box. */
+  onGeloescht?: (ref: string) => void;
+}) {
+  const ref = zeile.box as string;
+  const box = boxen.find((b) => b.edgeRef === ref) ?? null;
+  const mango = zeile.geraet === 'Mango';
+  const [verb, setVerb] = useState<Bindung>({ art: 'laedt' });
+  const [loeschen, setLoeschen] = useState<'aus' | 'fragen' | 'laeuft'>('aus');
+  const [loeschFehler, setLoeschFehler] = useState<string | null>(null);
+
+  async function wirklichLoeschen() {
+    setLoeschen('laeuft');
+    setLoeschFehler(null);
+    try {
+      await adminApi.werkstattBoxLoeschen(ref);
+      onGeloescht?.(ref);
+    } catch (e) {
+      setLoeschen('fragen');
+      setLoeschFehler(e instanceof ApiError ? e.message : 'Die Box ließ sich nicht löschen.');
+    }
+  }
+
+  useEffect(() => {
+    let aktuell = true;
+    setVerb({ art: 'laedt' });
+    (async () => {
+      try {
+        const [fw, u] = await Promise.allSettled([adminApi.fernwartungBox(ref), adminApi.fernwartung()]);
+        if (!aktuell) return;
+        if (fw.status === 'fulfilled') {
+          setVerb({ art: 'da', box: fw.value, uebersicht: u.status === 'fulfilled' ? u.value : null });
+        } else if (fw.reason instanceof ApiError && fw.reason.status === 404) {
+          setVerb({ art: 'keine' });
+        } else {
+          setVerb({ art: 'fehler', text: fw.reason instanceof ApiError ? fw.reason.message : 'Die Fernwartung dieser Box ließ sich nicht laden.' });
+        }
+      } catch {
+        if (aktuell) setVerb({ art: 'fehler', text: 'Die Fernwartung dieser Box ließ sich nicht laden.' });
+      }
+    })();
+    return () => {
+      aktuell = false;
+    };
+  }, [ref]);
+
+  const stand = STAND_BADGE[zeile.stand];
+  const abnahme = zeile.abnahme;
+  const freigabe = box ? freigabeDerBox(abnahme, zeile.lauf?.freigabe, freigaben) : null;
+  const verbindung = verb.art === 'da' ? boxVerbindung(verb.box, verb.uebersicht, jetzt) : null;
+  const kunde = kundenStand(box, ref);
+
+  return (
+    <div className="vp-ws-detail vp-ws-seite" data-testid="ws-detail">
+      <div className="vp-ws-seitenkopf">
+        <Button variant="outline" size="sm" onClick={onZurueck} data-testid="ws-zurueck">
+          ‹ Alle Boxen
+        </Button>
+        <div className="vp-ws-seitentitel">
+          <h2 style={{ margin: 0 }}>{ref}</h2>
+          <p className="vp-muted" style={{ margin: '2px 0 0' }}>
+            {zeile.geraet}
+            {zeile.lauf?.freigabe ? ` · Freigabe ${zeile.lauf.freigabe}` : ''}
+          </p>
+        </div>
+        <div className="vp-ws-seitenstand">
+          <Badge variant={stand.variant} data-testid="ws-stand">{stand.text}</Badge>
+          <Badge variant="warn" title={VERSAND_SATZ}>Nicht versenden: Stufe 1</Badge>
+        </div>
+      </div>
+
+      {zeile.geraet === 'Docker-Box' && (
+        <p className="vp-alert vp-alert-warn">Für die Docker-Box gibt es noch keinen Ablauf im Dienst und keine Abnahme (kommt mit der nächsten Stufe).</p>
+      )}
+      {zeile.lauf?.grund && zeile.stand === 'problem' && (
+        <div className="vp-alert vp-alert-warn" data-testid="ws-grund">
+          {/* Erst der Schritt in Worten, dann der Grund des Dienstes als Beleg für die Technik. */}
+          <strong>{zeile.lauf.schritt ? `Stehen geblieben bei „${schrittTitel(zeile.lauf.schritt)}“` : 'Der Lauf ist stehen geblieben'}</strong>
+          <div className="vp-ws-technik-grund">Grund des Dienstes: <code>{zeile.lauf.grund}</code></div>
+        </div>
+      )}
+
+      {kunde.art === 'eingerichtet' && (
+        <p className="vp-alert vp-alert-ok" style={{ margin: 0 }} data-testid="ws-kunde">
+          Vom Kunden eingerichtet: {kunde.mandant}
+          {kunde.anlage ? `, Anlage ${kunde.anlage}` : ', ohne Anlage'} · seit {zeitpunkt(kunde.seit, jetzt)}
+        </p>
+      )}
+      {kunde.art === 'offen' && (
+        <div className="vp-alert vp-alert-warn vp-ws-kunde-offen" data-testid="ws-kunde">
+          <DirektlinkQr edgeRef={ref} testId="ws-kunde-qr" />
+          <div className="vp-ws-spalte">
+            <strong>Noch nicht vom Kunden eingerichtet.</strong>
+            <span>
+              Der Kunde richtet die Box über diesen Link ein (derselbe wie der QR-Code auf dem Gehäuse); als Admin
+              öffnest du ihn in einem privaten Fenster.
+            </span>
+            <div data-testid="ws-kunde-link">
+              <Befehl text={kunde.link} was="Link" knopf="Link kopieren" />
+            </div>
+          </div>
+        </div>
+      )}
+      {kunde.art === 'unbekannt' && (
+        <p className="vp-muted" style={{ margin: 0 }} data-testid="ws-kunde">
+          Ob ein Kunde die Box schon eingerichtet hat, ist nicht bekannt.
+        </p>
+      )}
+
+      <div className="vp-ws-seitenraster">
+        {mango && (
+          <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-breit" data-testid="ws-gehaeuse">
+            <h3 className="vp-ws-kartenkopf">Gehäuse-Druckdatei (3MF)</h3>
+            {(() => {
+              const stand = gehaeuseStand(box, gehaeuseAuftraege);
+              if (stand.art === 'bereit') {
+                return (
+                  <>
+                    <GehaeuseDownloadKnopf edgeRef={ref} />
+                    <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-stand">
+                      {stand.name} · {mb(stand.bytes)} · abgelegt {zeitpunkt(stand.hochgeladenAm, jetzt)}
+                    </p>
+                  </>
+                );
+              }
+              if (stand.art === 'fehler') {
+                return (
+                  <>
+                    <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">{gehaeuseFehlerSatz(stand.grund)}</p>
+                    <GehaeuseErneutKnopf edgeRef={ref} />
+                  </>
+                );
+              }
+              if (stand.art === 'baut') {
+                const seitSek = liveSeitSek(stand.seit, jetzt.getTime());
+                return (
+                  <ul className="vp-wsb-liste" data-testid="ws-gehaeuse-baut">
+                    <li className="vp-wsb-zeile vp-wsb-lauf">
+                      <span className="vp-wsb-punkt" aria-hidden />
+                      <span>
+                        {GEHAEUSE_BAUT_SATZ}
+                        {seitSek != null && <small data-testid="ws-gehaeuse-seit">seit {seitText(seitSek)}</small>}
+                      </span>
+                    </li>
+                  </ul>
+                );
+              }
+              return (
+                <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">{GEHAEUSE_WARTET_SATZ}</p>
+              );
+            })()}
+          </Card>
+        )}
+
+        {mango && (
+          <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-breit" data-testid="ws-zubehoer">
+            <h3 className="vp-ws-kartenkopf">Zubehör (3MF)</h3>
+            <ul className="vp-ws-dateien">
+              {WERKSTATT_ZUBEHOER.map((z) => (
+                <li key={z.teil} className="vp-ws-datei" data-testid={`ws-zubehoer-${z.teil}`}>
+                  <div className="vp-ws-spalte">
+                    <strong>{z.name}</strong>
+                    <span>{z.zweck}</span>
+                    <span className="vp-muted">{z.druckhinweis} {z.stand}</span>
+                  </div>
+                  <ZubehoerDownloadKnopf teil={z.teil} name={z.name} />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
+        <WsKarte titel="Einrichtung" testId="ws-einrichtung" urteil={box ? einrichtung(box, freigabe)[0]?.wert ?? undefined : 'ohne Eintrag'}>
+          {box ? (
+            <>
+              <Zeilen zeilen={einrichtung(box, freigabe)} />
+              <p className="vp-muted vp-ws-fuss">
+                Im Register seit {zeitpunkt(box.angelegtAm, jetzt)} ({box.angelegtVon}), zuletzt geändert {zeitpunkt(box.geaendertAm, jetzt)}.
+                {!abnahme && ' Ohne Abnahme gibt es keinen geprüften Stand: Fassung, Tunnel-Adresse und Host-Schlüssel fehlen.'}
+              </p>
+              {box.notiz && <p style={{ margin: 0 }}>Notiz: {box.notiz}</p>}
+            </>
+          ) : (
+            <p className="vp-muted" style={{ margin: 0 }}>Diese Box steht nicht im Register der Werkstatt, nur ein Lauf des Dienstes kennt sie.</p>
+          )}
+        </WsKarte>
+
+        <div className="vp-ws-stapel">
+          <WsKarte titel="Bindung und Fernwartung" testId="ws-bindung"
+            urteil={verb.art === 'laedt' ? 'lädt' : verb.art === 'fehler' ? 'Fehler' : verb.art === 'keine' ? 'ohne Kopplung' : verbindung?.titel}>
+            {verb.art === 'laedt' && <p className="vp-muted" style={{ margin: 0 }}>Lädt …</p>}
+            {verb.art === 'fehler' && <p className="vp-alert vp-alert-warn" style={{ margin: 0 }}>{verb.text}</p>}
+            {verb.art === 'keine' && (
+              <>
+                <Zeilen zeilen={bindung(null)} />
+                <p className="vp-muted vp-ws-fuss">Für diese Box ist noch kein Tunnel-Schlüssel hinterlegt; sie ist keinem Kunden gekoppelt.</p>
+              </>
+            )}
+            {verb.art === 'da' && (
+              <>
+                <Zeilen zeilen={bindung(verb.box)} />
+                {verbindung && (
+                  <p className="vp-ws-fuss" data-testid="ws-verbindung">
+                    <Badge variant={verbindung.ton === 'ok' ? 'ok' : verbindung.ton === 'warn' ? 'warn' : 'off'}>{verbindung.titel}</Badge>{' '}
+                    <span className="vp-muted">{verbindung.text}</span>
+                  </p>
+                )}
+              </>
+            )}
+            <p style={{ margin: 0 }}>
+              <a href={fernwartungHash(ref)}>Fernwartung dieser Box</a>
+            </p>
+          </WsKarte>
+
+          <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-ablauf">
+            <h3 className="vp-ws-kartenkopf">Ablauf der Einrichtung</h3>
+            {zeile.lauf ? (
+              <PhasenListe lauf={zeile.lauf.stand} />
+            ) : (
+              <p className="vp-muted" style={{ margin: 0 }}>Kein Lauf des Werkstatt-Dienstes bekannt (die Ansicht hält nur die letzten Läufe).</p>
+            )}
+          </Card>
+        </div>
+
+        <WsKarte titel="Abnahme und Belege" testId="ws-abnahme" breit urteil={abnahme ? `abgenommen ${zeitpunkt(abnahme.erfasstAm, jetzt)}` : 'noch keine Abnahme'}>
+          {abnahme ? (
+            <>
+              <AbnahmeAnzeige a={abnahme} jetzt={jetzt} />
+              {box && fruehereAbnahmen(box).length > 0 && (
+                <details className="vp-ws-aufklapp" data-testid="ws-fruehere">
+                  <summary>Frühere Abnahmen ({fruehereAbnahmen(box).length})</summary>
+                  <ul className="vp-ws-belege">
+                    {fruehereAbnahmen(box).map((a) => (
+                      <li key={a.id}>
+                        <span className="vp-ws-pruefung">{zeitpunkt(a.erfasstAm, jetzt)} · {a.quelle === 'dienst' ? 'vom Dienst' : `von ${a.erfasstVon} (von Hand)`}</span>
+                        <span>{a.fassung}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </>
+          ) : (
+            <p className="vp-muted" style={{ margin: 0 }}>Noch keine Abnahme.</p>
+          )}
+        </WsKarte>
+
+        {mango && (
+          <WsKarte titel="Beschriftung des Gehäuses" testId="ws-karte-beschriftung">
+            <BeschriftungKarte edgeRef={ref} />
+          </WsKarte>
+        )}
+      </div>
+
+      {onGeloescht && box && loeschbar(box) && (
+        <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-loeschen">
+          <h3 className="vp-ws-kartenkopf">Löschen</h3>
+          {loeschen === 'aus' ? (
+            <>
+              <p className="vp-muted" style={{ margin: 0 }}>
+                Diese Box ist weder abgenommen noch gekoppelt, etwa ein Fehlversuch. Sie lässt sich löschen.
+              </p>
+              <p style={{ margin: 0 }}>
+                <Button variant="outline" size="sm" onClick={() => setLoeschen('fragen')} data-testid="ws-loeschen-start">
+                  Löschen
+                </Button>
+              </p>
+            </>
+          ) : (
+            <div role="group" aria-label={`${ref} löschen`} data-testid="ws-loeschen-frage">
+              <p style={{ marginTop: 0 }}>
+                <strong>{ref}</strong> wirklich löschen?
+              </p>
+              {(box.loeschtMit ?? []).length > 0 ? (
+                <>
+                  <p style={{ margin: 0 }}>Mit ihr geht:</p>
+                  <ul data-testid="ws-loeschen-mit" style={{ marginTop: 4 }}>
+                    {(box.loeschtMit ?? []).map((w) => <li key={w}>{w}</li>)}
+                  </ul>
+                </>
+              ) : (
+                <p style={{ margin: 0 }} data-testid="ws-loeschen-mit">Mit ihr geht nur der Eintrag im Register.</p>
+              )}
+              <p className="vp-muted">
+                Läufe und Einlösungen bleiben als Verlauf; die Werkstatt hält fest, wer die Box wann gelöscht hat.
+                {zeile.stand === 'laeuft' && ' Der Werkstatt-Dienst arbeitet gerade mit ihr; sein Lauf hält dann mit einem Fall an.'}
+                {loeschtTunnelSchluessel(box) && ' Ihr Tunnel-Schlüssel wird nie wieder vergeben: Soll dieselbe Box noch einmal eingerichtet werden, erst zurücksetzen.'}
+              </p>
+              {loeschFehler && <p className="vp-alert vp-alert-err" data-testid="ws-loeschen-fehler">{loeschFehler}</p>}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Button variant="primary" size="sm" disabled={loeschen === 'laeuft'} onClick={() => void wirklichLoeschen()} data-testid="ws-loeschen-ja">
+                  {loeschen === 'laeuft' ? 'Löscht …' : `${ref} löschen`}
+                </Button>
+                <Button variant="outline" size="sm" disabled={loeschen === 'laeuft'} onClick={() => { setLoeschen('aus'); setLoeschFehler(null); }} data-testid="ws-loeschen-nein">
+                  Abbrechen
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      <p className="vp-muted" style={{ margin: 0 }}>{VERSAND_SATZ}</p>
+    </div>
+  );
+}

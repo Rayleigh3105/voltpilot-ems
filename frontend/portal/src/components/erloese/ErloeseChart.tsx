@@ -183,7 +183,9 @@ export function ErloeseChart({
         chart.setOption(
           {
             textStyle: { fontFamily: t.font },
-            grid: { left, right, top: 16, bottom: 28, containLabel: false },
+            // `outerBoundsMode: 'none'` keeps the fixed left/right margins exact under
+            // echarts 6's edge-overflow prevention, which is on by default (v6 upgrade guide).
+            grid: { left, right, top: 16, bottom: 28, containLabel: false, outerBoundsMode: 'none' },
             tooltip: {
               trigger: 'axis',
               confine: true,
@@ -299,7 +301,8 @@ export function ErloeseChart({
         chart.setOption(
           {
             textStyle: { fontFamily: t.font },
-            grid: { left, right, top: 12, bottom: 28, containLabel: false },
+            // outerBoundsMode: 'none' - see the kumuliert grid above.
+            grid: { left, right, top: 12, bottom: 28, containLabel: false, outerBoundsMode: 'none' },
             tooltip: {
               trigger: 'axis',
               confine: true,
@@ -333,9 +336,10 @@ export function ErloeseChart({
               textStyle: { color: t.axis, fontSize: AXIS.fontSize, fontWeight: 500, fontFamily: t.font },
             },
           ],
+          // outerBoundsMode: 'none' on both grids - see the kumuliert grid above.
           grid: [
-            { left, right, top: 12, height: oben, containLabel: false },
-            { left, right, top: preisTop, height: unten, containLabel: false },
+            { left, right, top: 12, height: oben, containLabel: false, outerBoundsMode: 'none' },
+            { left, right, top: preisTop, height: unten, containLabel: false, outerBoundsMode: 'none' },
           ],
           axisPointer: { link: [{ xAxisIndex: 'all' }] },
           tooltip: {

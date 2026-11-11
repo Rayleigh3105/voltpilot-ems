@@ -1,0 +1,301 @@
+/* Seite „Geräte & Updates" (Geräte & Updates G5, Konzept vom 05.11.2026).
+   Nur Portal-Tokens; Rechner und Telefon aus EINER Auszeichnung über die
+   Container-Query auf .vp-gu (die Breite der Seite, nicht des Fensters). */
+.vp-gu {
+  container: vp-gu / inline-size;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.vp-gu *, .vp-gu *::before, .vp-gu *::after { min-width: 0; }
+.vp-gu h2, .vp-gu h3 { font-family: var(--vp-font-heading); margin: 0; letter-spacing: -0.3px; }
+.vp-gu-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; letter-spacing: -0.2px; overflow-wrap: anywhere; }
+.vp-gu-leise { color: var(--vp-text-gray); }
+.vp-gu-klein { font-size: 0.84rem; }
+
+/* Lage-Satz */
+.vp-gu-lage { display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 11px 14px; font-weight: 600; }
+.vp-gu-lage > svg { flex: none; }
+.vp-gu-lage > span { flex: 1 1 auto; }
+.vp-gu-lage.ok { background: var(--vp-mint-start); color: var(--vp-ok-ink); }
+.vp-gu-lage.warn { background: #FFF4E5; color: #8a5300; }
+.vp-gu-lage.hand { background: #FBF3D5; color: #6B5200; }
+.vp-gu-lage.lauf { background: var(--vp-paleblue-start); color: var(--vp-navy-2); }
+.vp-gu-lage.info { background: #F1F4F8; color: #3E4A57; }
+.vp-gu-lage-link { margin-left: auto; font: inherit; font-weight: 700; color: inherit; background: none; border: 0; padding: 4px 2px; cursor: pointer; white-space: nowrap; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Linien */
+.vp-gu-linien { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.vp-gu-linie { background: #fff; border: 1px solid var(--vp-border); border-radius: 16px; box-shadow: var(--vp-shadow-sm); padding: 18px 20px; display: grid; gap: 12px; align-content: start; }
+.vp-gu-linie-kopf { display: flex; align-items: center; gap: 10px; }
+.vp-gu-kreis { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--vp-tint); color: var(--vp-navy-2); flex: none; }
+.vp-gu-linie-kopf h2 { font-size: 1.15rem; }
+.vp-gu-linie-kopf small { display: block; color: var(--vp-text-gray); font-size: 0.8rem; font-weight: 500; }
+.vp-gu-zahl { margin-left: auto; text-align: right; font-weight: 700; font-size: 0.86rem; color: #3E4A57; white-space: nowrap; }
+.vp-gu-neu { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.vp-gu-etikett { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--vp-text-gray); width: 100%; }
+.vp-gu-version { font-family: var(--vp-font-heading); font-size: 1.45rem; font-weight: 800; letter-spacing: -0.6px; overflow-wrap: anywhere; }
+.vp-gu-plattformen { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Badges und Chips */
+.vp-gu-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.76rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; line-height: 1.4; }
+.vp-gu-badge.ok { background: var(--vp-mint-start); color: var(--vp-ok-ink); }
+.vp-gu-badge.warn { background: #FFF3E0; color: var(--vp-warn-ink); }
+.vp-gu-badge.off { background: var(--vp-bg-light); color: #57606A; border: 1px solid var(--vp-border); }
+.vp-gu-badge.fehler { background: #FDECEA; color: #B71C1C; }
+.vp-gu-badge.lauf { background: #E8F0FE; color: var(--vp-navy-2); }
+.vp-gu-badge.hand { background: #FBF3D5; color: #6B5200; }
+.vp-gu-badge .p { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+/* Der Zustands-Punkt „Auftrag unterwegs" (`vp-ustate-pulse`, index.css); der EINE
+   prefers-reduced-motion-Block in index.css hält ihn an. */
+.vp-gu-badge.lauf .p { animation: vp-ustate-pulse 1.6s ease-in-out infinite; }
+.vp-gu-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 0.76rem; font-weight: 600; padding: 2px 8px; border-radius: 7px; background: #F1F4F8; color: #3E4A57; white-space: nowrap; }
+.vp-gu-chip.docker { background: #E8F0FE; color: #1F4E8C; }
+.vp-gu-chip.light { background: #EEF7EE; color: #2E6B34; }
+.vp-gu-chip.hw { background: #fff; border: 1px solid var(--vp-border); color: #4A5562; font-weight: 500; white-space: normal; }
+.vp-gu-chip.hw.fehlt { border-color: #E0B060; color: #8a5300; }
+
+/* Flottenbalken */
+.vp-gu-balken { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: #EEF1F5; gap: 2px; }
+.vp-gu-balken i { display: block; height: 100%; }
+.vp-gu-balken .s-ok, .vp-gu-legende .s-ok { background: #43A047; }
+.vp-gu-balken .s-lauf, .vp-gu-legende .s-lauf { background: #5A8DE8; }
+.vp-gu-balken .s-alt, .vp-gu-legende .s-alt { background: #B0BCCB; }
+.vp-gu-balken .s-halt, .vp-gu-legende .s-halt { background: #E0A030; }
+.vp-gu-balken .s-fehler, .vp-gu-legende .s-fehler { background: #E53935; }
+.vp-gu-balken .s-hand, .vp-gu-legende .s-hand { background: repeating-linear-gradient(135deg, #C9A227 0 4px, #E9D58A 4px 8px); }
+.vp-gu-balken .s-off, .vp-gu-legende .s-off { background: #fff; box-shadow: inset 0 0 0 2px #B0BCCB; }
+.vp-gu-balken .s-leer, .vp-gu-legende .s-leer { background: #E3E8EF; }
+.vp-gu-legende { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.82rem; color: #3E4A57; }
+.vp-gu-legende span { display: inline-flex; align-items: center; gap: 5px; }
+.vp-gu-legende i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+
+/* Versionsleiter */
+.vp-gu-leiter { display: grid; gap: 4px; border-top: 1px solid var(--vp-border); padding-top: 10px; }
+.vp-gu-leiter-zeile { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 0.86rem; }
+.vp-gu-leiter-zeile .vp-gu-mono { font-weight: 600; }
+.vp-gu-leiter-zeile .wer { color: var(--vp-text-gray); text-align: right; }
+
+.vp-gu-aktionen { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.vp-gu-knopf-warnen { display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-family: var(--vp-font-heading); font-weight: 700; line-height: 1; border-radius: 12px; border: 2px solid #E0B060; background: #fff; color: #8a5300; padding: 0.55rem 0.95rem; font-size: 0.9rem; cursor: pointer; }
+.vp-gu-knopf-warnen:hover { background: #FFF8EC; }
+.vp-gu-knopf-warnen:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 2px; }
+
+/* Blöcke: Braucht dich, Boxen */
+.vp-gu-block { display: grid; gap: 10px; }
+.vp-gu-block-titel { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.vp-gu-block-titel h2 { font-size: 1.15rem; }
+.vp-gu-aufgaben { display: grid; gap: 10px; }
+.vp-gu-aufgabe { background: #fff; border: 1px solid var(--vp-border); border-left: 5px solid #E0A030; border-radius: 14px; padding: 13px 16px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.vp-gu-aufgabe.ton-fehler { border-left-color: #E53935; }
+.vp-gu-aufgabe.ton-hand { border-left-color: #C9A227; }
+.vp-gu-aufgabe .vp-gu-kreis { background: #FFF4E5; color: #8a5300; }
+.vp-gu-aufgabe.ton-fehler .vp-gu-kreis { background: #FDECEA; color: #B71C1C; }
+.vp-gu-aufgabe.ton-hand .vp-gu-kreis { background: #FBF3D5; color: #7A5E00; }
+.vp-gu-aufgabe h3 { font-size: 1rem; }
+.vp-gu-aufgabe p { margin: 2px 0 0; font-size: 0.88rem; color: #3E4A57; }
+
+.vp-gu-karte { background: #fff; border: 1px solid var(--vp-border); border-radius: 16px; box-shadow: var(--vp-shadow-sm); overflow: hidden; }
+.vp-gu-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--vp-border); }
+/* Eine Filterzeile statt zweier gestapelter Grau-Balken (Geräte-Liste, S8):
+   dieselben `.vp-gu-seg`-Chips wie bei „Geräte & Updates", nur ohne das
+   eigene Polster/Rand von `.vp-gu-filter` - sie sitzt bereits im Polster
+   von `.vp-admin-sec-head`. */
+.vp-gu-filterzeile { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: var(--vp-space-3); }
+.vp-gu-filterzeile .vp-gu-such { margin-left: auto; }
+.vp-gu-seg { display: inline-flex; background: var(--vp-bg-light); border: 1px solid var(--vp-border); border-radius: 12px; padding: 3px; gap: 2px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.vp-gu-seg button { flex: none; padding: 6px 11px; border-radius: 9px; font: inherit; font-weight: 600; font-size: 0.86rem; color: var(--vp-text-gray); white-space: nowrap; background: none; border: 0; cursor: pointer; }
+.vp-gu-seg button.an { background: #fff; color: var(--vp-primary-deep); box-shadow: var(--vp-shadow-sm); }
+.vp-gu-seg button:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 1px; }
+.vp-gu-such { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 1px solid var(--vp-field-border); border-radius: 10px; padding: 0 10px; color: var(--vp-text-gray); min-width: 200px; }
+.vp-gu-such input { border: 0; outline: none; font: inherit; font-size: 0.86rem; padding: 7px 0; width: 100%; background: transparent; color: var(--vp-text-dark); }
+.vp-gu-such:focus-within { border-color: var(--vp-action); box-shadow: 0 0 0 3px rgba(90, 141, 232, 0.25); }
+.vp-gu-leer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 16px; color: var(--vp-text-gray); }
+
+/* Geräte-Liste am Telefon (`vp-zeilen`): je Box eine kompakte Zeile - Name, darunter Referenz,
+   Kunde/Anlage, Verbindung, Software und Hinweis als kurze Zeilen; vorher ~ 350 px Etikett/Wert-Karte.
+   Filter-Chips brechen um statt rechts abgeschnitten zu scrollen, die Suche nimmt die volle Breite. */
+@media (max-width: 720px) {
+  .vp-gu-filterzeile .vp-gu-seg { flex-wrap: wrap; overflow-x: visible; }
+  .vp-gu-filterzeile .vp-gu-such { margin-left: 0; width: 100%; min-width: 0; }
+  .vp-gu-filterzeile .vp-gu-such input { padding: 10px 0; font-size: 1rem; }
+  .vp-geraeteliste { --vp-zeilen-rand: var(--vp-space-4); }
+  .vp-geraeteliste .vp-cell-main { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+  .vp-geraeteliste .vp-cell-main .vp-linklike { flex-basis: 100%; text-align: left; font-weight: 700; }
+  .vp-geraeteliste .vp-box-art { display: inline; margin: 0; }
+  /* „Box-Art unbekannt“ stünde sonst an jeder Zeile; die Geräteakte nennt sie. */
+  .vp-geraeteliste .vp-box-art:has([data-box-art='unbekannt']) { display: none; }
+  .vp-geraeteliste .vp-gu-verb { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .vp-geraeteliste .vp-gu-zeile-aktionen { display: inline-flex; align-items: center; }
+}
+
+/* Die Box-Tabelle: Spalten am Rechner, Karten am Telefon */
+.vp-gu-tabelle { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.vp-gu-tabelle th, .vp-gu-tabelle td { text-align: left; vertical-align: middle; padding: 12px 16px; }
+.vp-gu-tabelle thead th { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--vp-text-gray); padding-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--vp-border); }
+.vp-gu-tabelle thead th:nth-child(1) { width: 21%; }
+.vp-gu-tabelle thead th:nth-child(2) { width: 18%; }
+.vp-gu-tabelle thead th:nth-child(3) { width: 14%; }
+.vp-gu-tabelle thead th:nth-child(4) { width: 17%; }
+.vp-gu-tabelle thead th:nth-child(6) { width: 48px; }
+.vp-gu-tabelle tbody tr { border-bottom: 1px solid var(--vp-border); }
+.vp-gu-tabelle tbody:last-child tr:last-child { border-bottom: none; }
+.vp-gu-tabelle tr[data-testid="box-zeile"] { cursor: pointer; }
+.vp-gu-tabelle tr[data-testid="box-zeile"]:hover { background: #FAFBFD; }
+.vp-gu-tabelle tr.hervor { background: #FFFBF3; }
+.vp-gu-gruppe th { padding: 9px 16px 7px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--vp-text-gray); background: #FAFBFC; }
+.vp-gu-gruppe th svg { vertical-align: -2px; margin-right: 8px; }
+.vp-gu-name b { display: block; font-size: 0.97rem; overflow-wrap: anywhere; }
+.vp-gu-name small { display: block; color: var(--vp-text-gray); font-size: 0.82rem; overflow-wrap: anywhere; }
+.vp-gu-linie-zelle { display: flex; flex-wrap: wrap; gap: 4px; }
+/* Fünf Zustände (Adminview-Konzept §5.3): zwei gefüllte Punkte für „hier
+   tut sich (noch) etwas" (grün/bernstein), zwei hohle Ringe für „nichts zu
+   berichten" (nie gemeldet/unbekannt), ein gefüllter Punkt in sattem Orange
+   für den einzigen echten Alarm (meldet sich nicht). */
+.vp-gu-verb { display: grid; gap: 1px; font-size: 0.86rem; }
+.vp-gu-verb b { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.vp-gu-verb b i { width: 8px; height: 8px; border-radius: 50%; background: #43A047; display: inline-block; flex: none; }
+.vp-gu-verb.verzoegert b i { background: #E0A030; }
+.vp-gu-verb.offline b i { background: #9A4A0A; }
+.vp-gu-verb.nie b i, .vp-gu-verb.unbekannt b i { background: #fff; box-shadow: inset 0 0 0 2px #90A4AE; }
+.vp-gu-verb small { color: var(--vp-text-gray); font-size: 0.78rem; }
+.vp-gu-laeuft { display: grid; gap: 4px; font-size: 0.86rem; justify-items: start; }
+.vp-gu-laeuft .vp-gu-mono { font-weight: 600; }
+.vp-gu-zeile-label { display: none; }
+.vp-gu-status { font-size: 0.84rem; color: #3E4A57; display: grid; gap: 4px; justify-items: stretch; }
+.vp-gu-status > span:first-child:has(.vp-gu-badge) { justify-self: start; }
+.vp-gu-satz { font-size: 0.8rem; color: var(--vp-text-gray); }
+.vp-gu-ziel { font-size: 0.8rem; color: #3E4A57; }
+.vp-gu-pfeil-zelle { text-align: right; }
+.vp-gu-zeile-aktionen { display: inline-flex; align-items: center; gap: 2px; }
+.vp-gu-pfeil { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: #9AA5B1; cursor: pointer; }
+.vp-gu-pfeil:hover { background: var(--vp-bg-light); color: var(--vp-navy-2); }
+.vp-gu-pfeil:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 1px; }
+
+/* Drei Fakten: angefragt · angenommen · bestätigt */
+.vp-gu-tracker { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; font-size: 0.74rem; }
+.vp-gu-tracker li { display: grid; gap: 3px; color: #7A8592; }
+.vp-gu-tracker li i { height: 5px; border-radius: 999px; background: #E3E8EF; display: block; }
+.vp-gu-tracker .fertig { color: #2E6B34; }
+.vp-gu-tracker .fertig i { background: #43A047; }
+.vp-gu-tracker .aktiv { color: var(--vp-navy-2); font-weight: 600; }
+.vp-gu-tracker .aktiv i { background: #5A8DE8; animation: vp-ustate-pulse 1.6s ease-in-out infinite; }
+.vp-gu-tracker .fehler { color: #B71C1C; font-weight: 600; }
+.vp-gu-tracker .fehler i { background: #E53935; }
+.vp-gu-tracker .warten { color: #8a5300; }
+.vp-gu-tracker .warten i { background: repeating-linear-gradient(90deg, #E0B060 0 5px, #F5E3BC 5px 10px); }
+
+/* Lauf in der Linie (G6): drei Zahlen, danach ggf. „An die übrigen" */
+.vp-gu-lauf { background: var(--vp-paleblue-start); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
+.vp-gu-lauf-kopf { display: flex; gap: 8px; align-items: center; font-weight: 700; color: var(--vp-navy-2); font-size: 0.92rem; }
+.vp-gu-lauf-kopf > svg { flex: none; }
+.vp-gu-drei { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vp-gu-drei div { background: #fff; border-radius: 10px; padding: 7px 10px; }
+.vp-gu-drei b { display: block; font-size: 1.15rem; font-family: var(--vp-font-heading); }
+.vp-gu-drei small { color: var(--vp-text-gray); font-size: 0.76rem; display: block; }
+.vp-gu-lauf-fehler { margin: 0; font-size: 0.84rem; color: #B71C1C; }
+.vp-gu-weiter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px dashed #9DB6E0; border-radius: 10px; padding: 9px 12px; font-size: 0.88rem; }
+.vp-gu-weiter > span { flex: 1 1 220px; }
+
+/* Verteil-Dialog (G6): drei Teile, je Box eine Wahl. Rendert im Modal, also
+   außerhalb des Containers .vp-gu - die Regeln hängen nicht an ihm. */
+.vp-gu-verteil { display: grid; gap: 14px; }
+.vp-gu-teil { border: 0; margin: 0; padding: 0 0 14px; border-bottom: 1px solid var(--vp-border); display: grid; gap: 8px; min-width: 0; }
+.vp-gu-teil:last-child { border-bottom: none; padding-bottom: 0; }
+.vp-gu-teil legend { font-family: var(--vp-font-heading); font-weight: 700; font-size: 0.95rem; display: flex; gap: 8px; align-items: center; padding: 0; margin-bottom: 8px; }
+.vp-gu-teil legend .n { width: 22px; height: 22px; border-radius: 50%; background: var(--vp-action); color: #fff; display: grid; place-items: center; font-size: 0.78rem; flex: none; }
+.vp-gu-teil p { margin: 0; }
+.vp-gu-wahl { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: start; border: 1px solid var(--vp-border); border-radius: 12px; padding: 10px 12px; cursor: pointer; }
+.vp-gu-wahl input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--vp-action); }
+.vp-gu-wahl > span:nth-child(2) { min-width: 0; }
+.vp-gu-wahl b { display: block; font-size: 0.93rem; overflow-wrap: anywhere; }
+.vp-gu-wahl small { display: block; font-size: 0.82rem; color: var(--vp-text-gray); overflow-wrap: anywhere; }
+.vp-gu-wahl.an { border-color: var(--vp-action); background: #F3F7FF; }
+.vp-gu-wahl.gesperrt { background: #FAFBFC; color: #7A8592; cursor: default; }
+.vp-gu-wahl:focus-within { box-shadow: 0 0 0 3px rgba(90, 141, 232, 0.25); }
+.vp-gu-wahl-gruppe { display: grid; gap: 6px; }
+.vp-gu-wahl-titel { font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vp-text-gray); margin-top: 4px; }
+.vp-gu-link { background: none; border: 0; padding: 2px 0; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--vp-action); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; justify-self: start; }
+.vp-gu-link:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 2px; }
+.vp-gu-erste { margin-left: 30px; }
+.vp-gu-fuss-satz { margin: 0 auto 0 0; flex: 1 1 260px; align-self: center; font-size: 0.88rem; color: #3E4A57; }
+/* Am Telefon (Blatt, Fuß in umgekehrter Spalte): der Satz über den Knöpfen, kurz wie im Board. */
+@media (max-width: 720px) {
+  .vp-gu-fuss-satz { order: 3; flex: none; margin: 0; }
+  .vp-gu-fuss-lang { display: none; }
+}
+
+/* Release-Seite und Box-Seite (G7): Blätter im Modal - außerhalb von .vp-gu. */
+.vp-gu-version-link { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; }
+.vp-gu-version-link:hover { text-decoration-color: currentColor; }
+.vp-gu-version-link:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 2px; border-radius: 4px; }
+.vp-gu-blatt { display: grid; gap: 0; }
+.vp-gu-blatt-kopf { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--vp-border); }
+.vp-gu-blatt-teil { padding: 14px 0; border-bottom: 1px solid var(--vp-border); display: grid; gap: 10px; min-width: 0; }
+.vp-gu-blatt-teil:last-child { border-bottom: none; }
+.vp-gu-blatt-teil h3, .vp-gu-technik summary { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vp-text-gray); font-family: var(--vp-font-body); font-weight: 700; margin: 0; }
+.vp-gu-blatt-teil p { margin: 0; }
+.vp-gu-notiz { font-size: 0.95rem; }
+.vp-gu-fakten { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.vp-gu-fakt { border: 1px solid var(--vp-border); border-radius: 12px; padding: 10px 12px; display: grid; gap: 3px; align-content: start; }
+.vp-gu-fakt small { font-size: 0.74rem; color: var(--vp-text-gray); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.vp-gu-fakt b { font-size: 0.95rem; overflow-wrap: anywhere; }
+.vp-gu-fakt span { font-size: 0.8rem; color: var(--vp-text-gray); overflow-wrap: anywhere; }
+.vp-gu-verlauf { list-style: none; margin: 0; padding: 0; display: grid; }
+.vp-gu-ereignis { display: grid; grid-template-columns: 92px 18px minmax(0, 1fr); gap: 10px; }
+.vp-gu-ereignis .wann { font-size: 0.8rem; color: var(--vp-text-gray); text-align: right; padding-top: 1px; }
+.vp-gu-ereignis .linie { position: relative; }
+.vp-gu-ereignis .linie::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: #E3E8EF; }
+.vp-gu-ereignis:last-child .linie::before { bottom: auto; height: 16px; }
+.vp-gu-ereignis .linie i { position: absolute; left: 3px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px #90A4AE; }
+.vp-gu-ereignis .linie i.ok { box-shadow: inset 0 0 0 3px #43A047; }
+.vp-gu-ereignis .linie i.fehler { box-shadow: inset 0 0 0 3px #E53935; }
+.vp-gu-ereignis .linie i.lauf { box-shadow: inset 0 0 0 3px #5A8DE8; }
+.vp-gu-ereignis .was { padding-bottom: 14px; font-size: 0.88rem; min-width: 0; }
+.vp-gu-ereignis .was b { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
+.vp-gu-ereignis .was small { display: block; color: var(--vp-text-gray); font-size: 0.8rem; }
+.vp-gu-schritte { margin: 0; padding-left: 1.2rem; display: grid; gap: 8px; font-size: 0.88rem; }
+.vp-gu-schritte li > div { margin-top: 6px; }
+.vp-gu-hinweis { background: #FBF3D5; color: #5C4700; border-radius: 12px; padding: 12px 14px; font-size: 0.88rem; display: grid; gap: 6px; }
+.vp-gu-hinweis b { color: #4A3900; }
+.vp-gu-tab-rahmen { overflow-x: auto; }
+.vp-gu-tab { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.vp-gu-tab th, .vp-gu-tab td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--vp-border); vertical-align: top; }
+.vp-gu-tab th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vp-text-gray); }
+.vp-gu-tab tr:last-child td { border-bottom: none; }
+.vp-gu-technik summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.vp-gu-technik dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0 0; font-size: 0.86rem; }
+.vp-gu-technik dt { color: var(--vp-text-gray); }
+.vp-gu-technik dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .vp-gu-fakten { grid-template-columns: minmax(0, 1fr); }
+  .vp-gu-ereignis { grid-template-columns: 64px 18px minmax(0, 1fr); gap: 8px; }
+  .vp-gu-technik dl { grid-template-columns: minmax(0, 1fr); }
+  .vp-gu-technik dd { margin-bottom: 6px; }
+}
+
+/* ---------- Telefon: dieselbe Auszeichnung, schmal ---------- */
+@container vp-gu (max-width: 640px) {
+  .vp-gu-lage { flex-wrap: wrap; align-items: flex-start; }
+  .vp-gu-lage > span { flex: 1 1 200px; }
+  .vp-gu-lage-link { margin-left: 28px; }
+  .vp-gu-linien { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .vp-gu-linie { padding: 14px; }
+  .vp-gu-zahl { display: none; }
+  .vp-gu-version { font-size: 1.2rem; }
+  .vp-gu-aufgabe { grid-template-columns: 30px minmax(0, 1fr); padding: 12px; }
+  .vp-gu-aufgabe .vp-gu-aktionen { grid-column: 1 / -1; }
+  .vp-gu-filter { padding: 10px; }
+  .vp-gu-such { margin-left: 0; width: 100%; min-width: 0; }
+  .vp-gu-tabelle, .vp-gu-tabelle tbody, .vp-gu-tabelle tr, .vp-gu-tabelle td, .vp-gu-tabelle th { display: block; width: auto; }
+  .vp-gu-tabelle thead { display: none; }
+  .vp-gu-gruppe th { padding: 8px 12px 6px; border-bottom: 1px solid var(--vp-border); }
+  .vp-gu-tabelle tr[data-testid="box-zeile"] { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 6px 10px; padding: 12px; }
+  .vp-gu-tabelle tr[data-testid="box-zeile"] > td { grid-column: 1; padding: 0; }
+  .vp-gu-tabelle tr[data-testid="box-zeile"] > td.vp-gu-pfeil-zelle { grid-column: 2; grid-row: 1; align-self: start; }
+  .vp-gu-name small { display: inline; }
+  .vp-gu-name small + small::before { content: ' · '; font-family: var(--vp-font-body); }
+  .vp-gu-verb { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .vp-gu-laeuft { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .vp-gu-zeile-label { display: inline; font-size: 0.74rem; color: var(--vp-text-gray); font-weight: 600; margin-right: 4px; }
+}

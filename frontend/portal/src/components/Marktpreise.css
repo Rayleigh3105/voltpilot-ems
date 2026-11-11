@@ -12,28 +12,10 @@
  * (`.vp-c-stm*`, `ErgebnisKarte.css`), die Ledger-Zeile (`.vp-c-led*`), der
  * Chip (`.vp-chip`, `index.css`), die Karte (`.vp-c-card`) und der Aufklapper
  * (`.vp-c-aufk*`). Dieses Blatt fügt nur hinzu, was es sonst nirgends gibt:
- * das TAG-Segment, das Profi-RASTER und die Weg-Zeile.
+ * das TAG-Segment (Fahrplan), das Profi-RASTER und den Hinweis (Rückblick und
+ * Erklär-Blatt der Preis-Seite). Die Preis-Seite selbst steht seit Fassung 3
+ * in `PreisZeitstrahl.css`.
  */
-
-/* ===========================================================================
- * 1 · STATEMENT — auf der Fläche, keine Karte
- * ========================================================================= */
-
-.vp-mp-stm {
-  margin-bottom: var(--vp-c-space-4, 16px);
-  /* ⚠ Ausdrücklich, nicht geerbt: das Statement steht auf der FLÄCHE, nicht in
-     der Karte — `.vp-c-card` setzt die Schrift der Variante C, hier gibt es
-     keine Karte, und `body` trägt die Portal-Schrift (Inter). Ohne diese Zeile
-     stünde die EINE Zahl des Reiters als EINZIGES in einer zweiten Familie (im
-     Browser bei 375 gemessen; dieselbe Klippe wie beim `.vp-c-label`). */
-  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
-}
-
-/* Das Label des Statements steht ALLEIN — `.vp-c-label` ist `space-between`
-   für Label + Chips, hier gibt es nur das Label. */
-.vp-mp-stm-label {
-  justify-content: flex-start;
-}
 
 /* ===========================================================================
  * 2 · TAG-SEGMENT (V3-Form, 44 px) — Heute / Morgen
@@ -162,33 +144,6 @@
 .vp-mp-tab tbody td {
   font-variant-numeric: tabular-nums;
   text-align: right;
-}
-
-/* ===========================================================================
- * 4 · DIE WEG-ZEILE — „zum Fahrplan ›"
- * ========================================================================= */
-
-.vp-mp-weg {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--vp-c-space-2, 8px);
-  /* 48 px Trefferfläche (§3.2 V4-Fuß / V8). */
-  min-height: 48px;
-  margin-top: var(--vp-c-space-2, 8px);
-  padding: 0;
-  border-top: 1px solid var(--vp-c-border, #e2e8f0);
-  color: var(--vp-c-primary, #2563eb);
-  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
-  font-size: var(--vp-c-fs-16, 16px);
-  font-weight: var(--vp-c-fw-600, 600);
-  line-height: var(--vp-c-lh-text, 1.5);
-  text-decoration: none;
-}
-
-.vp-mp-weg:hover,
-.vp-mp-weg:focus-visible {
-  text-decoration: underline;
 }
 
 /* ===========================================================================

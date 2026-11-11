@@ -272,6 +272,10 @@ public class RolloutRepository {
      * dem Stempel leitet {@code ota.BoxArt} die Box-Art ab.
      * {@code controlCheckedAt}/{@code controlConfirmed}/{@code controlCertified}
      * kommen aus {@code device_control_status} - reine Diagnose.
+     * {@code lastSeenAt} ist die EINE Uhr für „online" (Serverzeit des letzten
+     * Herzschlags, sonst der letzten Telemetrie); {@code targetVerdictAt} und
+     * {@code currentSince} sind die Zeitpunkte „angenommen" und „läuft seit"
+     * (Geräte &amp; Updates G2, {@code null} = unbekannt).
      */
     public record FleetDeviceRow(UUID deviceId, String externalRef, String deviceName,
             UUID siteId, String siteName, UUID tenantId, String tenantName,
@@ -281,7 +285,8 @@ public class RolloutRepository {
             String reportedBlocker, Instant reportedAt, Instant lastSeenAt,
             Instant controlCheckedAt, Boolean controlConfirmed, Boolean controlCertified,
             String rootKeyIds, String trustSetKeyIds, String trustSetGeneratedAt,
-            String trustSetError) {
+            String trustSetError, Instant targetVerdictAt, Instant currentSince,
+            String geraetModell, String geraetArch, String loader, Integer loaderStand) {
     }
 
     /**
@@ -297,7 +302,8 @@ public class RolloutRepository {
                        u.target_verdict,
                        u.reason, u.blocker, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
-                       u.trust_set_error,
+                       u.trust_set_error, u.target_verdict_at, u.current_since,
+                       u.geraet_modell, u.geraet_arch, u.loader, u.loader_stand,
                        coalesce(d.device_status_seen_at, ls.last_seen) AS last_seen,
                        c.checked_at AS control_checked_at, c.all_match AS control_confirmed,
                        c.certified AS control_certified
@@ -340,7 +346,18 @@ public class RolloutRepository {
                         rs.getString("root_key_ids"),
                         rs.getString("trust_set_key_ids"),
                         rs.getString("trust_set_generated_at"),
-                        rs.getString("trust_set_error")));
+                        rs.getString("trust_set_error"),
+                        // Geräte & Updates G2: „angenommen" und „läuft seit" -
+                        // null = unbekannt (kein beobachteter Wechsel).
+                        instant(rs, "target_verdict_at"),
+                        instant(rs, "current_since"),
+                        // Geräte & Updates G8: das Gerät (null = nicht gemeldet).
+                        rs.getString("geraet_modell"),
+                        rs.getString("geraet_arch"),
+                        rs.getString("loader"),
+                        // Loader-Selbstupdate: die LOADER_STAND-Marke im Flash
+                        // (null = nicht gemeldet, nie 0 erfinden).
+                        (Integer) rs.getObject("loader_stand")));
     }
 
     /** Prüft, ob eine Geräte-Id überhaupt existiert (bevor sie ein Ziel bekommt). */

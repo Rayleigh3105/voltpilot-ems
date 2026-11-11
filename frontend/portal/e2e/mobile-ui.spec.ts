@@ -52,7 +52,15 @@ test('registration validates, keeps readable mobile fields, and clears old focus
   const submit = page.getByRole('button', { name: 'Konto erstellen', exact: true });
   if (isMobile) await submit.tap();
   else await submit.click();
-  const name = page.getByLabel('Ihr Name oder Firmenname', { exact: true });
+  // D2 (Anlage-Flow a1): die eine Frage steht zuerst - ohne Wahl bekommt sie den Fokus.
+  const zuhause = page.getByRole('radio', { name: /Für mein Zuhause/ });
+  await expect(zuhause).toBeFocused();
+  await expect(page.getByText('Bitte wählen Sie, wofür Sie VoltPilot nutzen.')).toBeVisible();
+  if (isMobile) await zuhause.tap();
+  else await zuhause.click();
+  if (isMobile) await submit.tap();
+  else await submit.click();
+  const name = page.getByLabel('Ihr Name', { exact: true });
   await expect(name).toBeFocused();
   await name.fill('Mobile Test');
   await page.getByLabel('E-Mail-Adresse', { exact: true }).fill('invalid');

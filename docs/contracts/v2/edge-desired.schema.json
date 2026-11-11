@@ -37,9 +37,21 @@
       "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "enum": ["setpoint_kw", "on_off", "limit_pct", "limit_kw", "mode"] },
-        "value": {}
+        "value": {},
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0, "maximum": 3 },
+          "description": "Additive (heizstab-shelly.md „Handeingriff je Phase“): die ausdrückliche Ausgangsmenge eines Heizstabs in Kanalnummern, nur neben setpoint_kw. Der Sollwert bleibt die Obergrenze, die jede Schutzgrenze kürzt; die Box schaltet genau diese Ausgänge nur, solange ihre Zahl eine erlaubte Stufe ist und ihre kW in den gewährten Sollwert passen, sonst die Stufe aus dem Sollwert. Gesendet nur an eine Box mit supports heizstab_phasen; eine ältere Box überliest das Feld."
+        }
       },
       "allOf": [
+        {
+          "if": { "required": ["outputs"] },
+          "then": { "properties": { "type": { "const": "setpoint_kw" } } }
+        },
         {
           "if": { "properties": { "type": { "const": "setpoint_kw" } } },
           "then": { "required": ["value"], "properties": { "value": { "type": "number" } } }

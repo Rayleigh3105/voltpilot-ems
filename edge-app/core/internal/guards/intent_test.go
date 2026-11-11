@@ -102,7 +102,8 @@ func TestIntentVectors(t *testing.T) {
 				t.Fatalf("plan window = [%v ; %v], want [%v ; %v]", in.MinKw, in.MaxKw, c.PlanMinKw, c.PlanMaxKw)
 			}
 			l := Limits{MaxChargeKw: v.Limits.MaxChargeKw, MaxDischargeKw: v.Limits.MaxDischargeKw,
-				SocMinPct: v.Limits.SocMinPct, SocMaxPct: v.Limits.SocMaxPct, SolarOnlyCharge: c.SolarOnlyCharge}
+				SocMinPct: v.Limits.SocMinPct, SocMaxPct: v.Limits.SocMaxPct, SolarOnlyCharge: c.SolarOnlyCharge,
+				StrictExclusivity: c.SolarOnlyCharge}
 			r := Reading{SocPct: orNaN(c.Reading.SocPct), PvKw: orNaN(c.Reading.PvKw),
 				LoadKw: orNaN(c.Reading.LoadKw), GridLimitKw: orNaN(c.Reading.GridLimitKw)}
 			w := ClipWindow(in, l, r, c.FloorPct)

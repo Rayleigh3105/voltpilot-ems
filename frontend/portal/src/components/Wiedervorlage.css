@@ -77,6 +77,7 @@
   flex: 0 0 auto;
 }
 .vp-wv-menue-knopf {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -88,6 +89,12 @@
   background: var(--vp-c-card, #fff);
   color: var(--vp-c-muted-fg, #475569);
   cursor: pointer;
+}
+/* Die Tippfläche wächst unsichtbar auf 44 px, ohne den Kopf auseinanderzuziehen (Muster `.vp-ms-menue-knopf`). */
+.vp-wv-menue-knopf::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
 }
 .vp-wv-kalender:focus-visible,
 .vp-wv-menue-knopf:focus-visible,
@@ -132,6 +139,7 @@
 }
 /* Eine Marke ist auch Sprungmarke zu ihrem Abschnitt. */
 button.vp-wv-marke {
+  position: relative;
   border: 0;
   cursor: pointer;
 }

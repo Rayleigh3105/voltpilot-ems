@@ -115,6 +115,19 @@ class SiteScopeArchitekturTest {
                     "web/EntityController.java", "geltungsbereich.requireSite"),
             new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2_rollup_1h", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/EntityController.java", "geltungsbereich.requireSite"),
+            // Energie je Komponente (#1776): energy() ruft vorher requireSite und sucht die
+            // Komponente über entityForSite, bevor energySeries die Reihen liest.
+            new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2", 1, Grund.ANLAGE_GEPRUEFT,
+                    "web/EntityController.java", "geltungsbereich.requireSite"),
+            new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2_rollup_1h", 1, Grund.ANLAGE_GEPRUEFT,
+                    "web/EntityController.java", "geltungsbereich.requireSite"),
+            // Alerting Scheibe 2 (§6.4, §6.8 Entwurf 1): der 30-Tage-Probelauf. Bezug `anlage` prüft
+            // ProbelaufService vorher selbst (telemetry_v2_rollup_15m trägt nur den Mandanten-Zaun);
+            // Bezug `komponente` kommt nur über die site_scope-gezäunte measurement_point-Auflösung.
+            new Erlaubt("ueberwachung/ProbelaufRepository.java", "telemetry_v2_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
+                    "ueberwachung/ProbelaufService.java", "geltungsbereich.requireSite(bezug.id())"),
+            new Erlaubt("ueberwachung/ProbelaufRepository.java", "telemetry_v2_rollup_15m", 1, Grund.UEBER_MESSKOMPONENTE,
+                    "ueberwachung/ProbelaufService.java", "repo.anlageDerKomponente(bezug.id())"),
             new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2_rollup_1d", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/EntityController.java", "geltungsbereich.requireSite"),
             // Erlöse je Anlage (Speicher-Bank, Start-SoC).
@@ -122,6 +135,10 @@ class SiteScopeArchitekturTest {
                     "web/SiteEarningsController.java", "SiteDto site = sites.findById(siteId);"),
             new Erlaubt("repo/EarningsRepository.java", "telemetry_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/SiteEarningsController.java", "SiteDto site = sites.findById(siteId);"),
+            // Ladungen mit Herkunft und Geld (#1594): die Hausbilanz je Viertelstunde DIESER Anlage;
+            // die Route transactions/economics ruft vorher requireSite.
+            new Erlaubt("repo/ChargingEconomicsRepository.java", "telemetry_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
+                    "web/SiteOcppController.java", "geltungsbereich.requireSite(siteId);"),
             // I/O-Modul (main #1202/8edb7c6da): Ausgangszahl und Ein-/Ausgangszustände je Modul DIESER Anlage;
             // beide Routen (consumer-options, io-modules/{id}/zustand) rufen vorher requireSite.
             new Erlaubt("consumers/ConsumerRepository.java", "telemetry_v2", 2, Grund.ANLAGE_GEPRUEFT,
@@ -155,6 +172,22 @@ class SiteScopeArchitekturTest {
                     Grund.UEBER_MESSKOMPONENTE, "uems/MessstelleFormelWerteRepository.java", "FROM measurement_point mp"),
             new Erlaubt("uems/QuelleAnteilWerte.java", "device_measurement_sample", 1, Grund.UEBER_MESSKOMPONENTE,
                     "uems/QuelleAnteilWerte.java", "measurement_point"),
+            // EZ-6 juengste(): die jüngsten Werte EINER Anlagensteuerung. Die entity_id kommt nur aus STEUERUNG
+            // (geraet und measurement_point, beide mit Standort-Policy) - Werte-Fläche, Geräte-Form und der
+            // erzeuger-Leser der Überwachung reichen nur die dort gelesene Komponente weiter.
+            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
+                    Grund.UEBER_MESSKOMPONENTE, "erzeuger/AnlagensteuerungRepository.java",
+                    "JOIN measurement_point m ON m.id = v.entity_id"),
+            // EZ-10 verlauf(): die Kurven EINER Anlagensteuerung für Verlauf › Messwerte. Der Dienst prüft vorher die
+            // Anlage (404) und nimmt die entity_id nur aus einer Steuerung dieser Anlage (STEUERUNG wie oben).
+            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
+                    Grund.ANLAGE_GEPRUEFT, "erzeuger/AnlagensteuerungService.java",
+                    "filter(x -> x.siteId().equals(siteId))"),
+            // EZ-23 wechsel(): die Zustandswechsel des Tages für das Erzeuger-Cockpit. Der Dienst prüft vorher die
+            // Anlage (anlageSichtbar über site, sonst 404) und nimmt die entity_id nur aus steuerungen(siteId).
+            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
+                    Grund.ANLAGE_GEPRUEFT, "erzeuger/ErzeugerJetztService.java",
+                    "List<Steuerung> steuerungen = repo.steuerungen(siteId);"),
 
             // --- liest je Anlage, zeigt nur sichtbare (Teilansicht der Summen: IP-10)
             new Erlaubt("repo/OverviewRepository.java", "telemetry_rollup_15m", 1, Grund.ZEIGT_NUR_SICHTBARE,
@@ -179,8 +212,15 @@ class SiteScopeArchitekturTest {
                     "uems/ViertelstundeLaeufer.java", "@Scheduled"),
             new Erlaubt("uems/KanalbindungLauf.java", "device_measurement_sample", 3, Grund.OHNE_ANFRAGE,
                     "uems/EndgueltigkeitLaeufer.java", "@Scheduled"),
+            // UEMS EZ-7: der Vorgaben-Läufer liest die Werte je Anlagensteuerung unter dem Mandanten des Takts.
+            new Erlaubt("erzeuger/VorgabenLaufRepository.java", "device_measurement_sample", 3, Grund.OHNE_ANFRAGE,
+                    "erzeuger/VorgabenLaeufer.java", "@Scheduled"),
             new Erlaubt("repo/FleetMetricsRepository.java", "telemetry", 1, Grund.OHNE_ANFRAGE,
                     "metrics/FleetMetricsCollector.java", "@Scheduled"),
+            // L1-Plattform-Dienste (#1758): newestTelemetryAt() liefert nur einen Zeitstempel,
+            // der ganze Controller trägt den platform-admin-Zaun.
+            new Erlaubt("repo/FleetMetricsRepository.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminPlattformDiensteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             // AP-07 IP-16: systemweiter, taeglich gecachter Speicher-Waechter
             // ueber die BYPASSRLS-Admin-Rolle; nie in einem Kunden-Request.
             new Erlaubt("repo/DbHealthMetricsRepository.java", "device_measurement_sample", 1,
@@ -191,6 +231,10 @@ class SiteScopeArchitekturTest {
                     Grund.KEIN_SQL, "metrics/DbHealthMetrics.java", "STORAGE_PLAN"),
             new Erlaubt("repo/ConsumerRequirementStateRepository.java", "telemetry_v2", 1, Grund.OHNE_ANFRAGE,
                     "consumers/ConsumerRuntimeStatusListener.java", "client.subscribe(STATUS_FILTER"),
+            // Entladegrenze am Deye-Wechselrichter (#1797): der Abgleich läuft über alle Anlagen im Takt,
+            // nie aus einem Kundenrequest.
+            new Erlaubt("entities/WechselrichterUntergrenzeRepository.java", "device_measurement_sample", 1,
+                    Grund.OHNE_ANFRAGE, "entities/WechselrichterUntergrenzeLaeufer.java", "@Scheduled"),
 
             // --- Plattform
             // boxes() und deviceStatsPerSite(): ausschließlich der plattformweiten Admin-Flotte
@@ -202,7 +246,7 @@ class SiteScopeArchitekturTest {
             new Erlaubt("uems/SprungprobeRepository.java", "telemetry", 1, Grund.PLATTFORM,
                     "web/AdminGemeinsameSteuerungController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("uems/SprungprobeRepository.java", "telemetry", 1, Grund.OHNE_ANFRAGE,
-                    "uems/SprungprobeBerichtListener.java", "IMqttMessageListener"),
+                    "uems/SprungprobeBerichtListener.java", " extends Rueckmeldeweg "),
             new Erlaubt("repo/AdminFleetRepository.java", "telemetry_rollup_15m", 2, Grund.PLATTFORM,
                     "web/AdminFleetController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("repo/TenantRepository.java", "telemetry", 1, Grund.PLATTFORM, "web/AdminController.java",
@@ -213,6 +257,36 @@ class SiteScopeArchitekturTest {
                     "web/AdminController.java", "hasRole('platform-admin')"),
             new Erlaubt("repo/TenantRepository.java", "telemetry_rollup_1d", 1, Grund.PLATTFORM,
                     "web/AdminController.java", "hasRole('platform-admin')"),
+            // Vom-Kunden-lösen-Befund (L1, vp-plattform-admin-box-benutzer-konzept) und Box verbinden
+            // S4 ("Andere Kennung", L4): die geteilte Abfrage von AdminBoxLoesenRepository (vor dem
+            // Sperren, BYPASSRLS, nur aus AdminGeraeteAkteController, platform-admin) und
+            // BoxLoesenRepository (unter der Sperre). Letztere erreichen zwei Wege denselben
+            // gezählten Text in DIESER Datei: der Admin-Weg mit gesetztem TenantContext
+            // (BenutzerService.erster-Muster) UND seit L4 DeviceController.claim (Kunde, ersetzt) -
+            // dort dicht, weil d.id vorher über das RLS-gezäunte devices.findById aufgelöst wird: ein
+            // fremder Mandant sieht die Zeile gar nicht, genau wie Grund.UEBER_GERAET anderswo.
+            new Erlaubt("geraete/BoxBefundSql.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxBefundSql.java", "telemetry_v2", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxBefundSql.java", "device_measurement_sample", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            // Endgültig löschen (vierter Löschweg, vp-box-endgueltig-loeschen): die EINE Bestands-
+            // Abfrage von BoxDatenBestand - dasselbe Muster wie BoxBefundSql darüber. Gelesen von
+            // AdminBoxEndgueltigRepository (BYPASSRLS, nur aus AdminGeraeteAkteController,
+            // platform-admin); das Statement selbst joint site/tenant, nur die EXISTS-Unterabfragen
+            // je Datenart zählen hier als "ohne site" - sie sind über d.id auf GENAU eine Box der
+            // schon gejointen Anlage gebunden.
+            new Erlaubt("geraete/BoxDatenBestand.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "telemetry_v2", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "device_measurement_sample", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "device_measurement_rollup_5m", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "device_measurement_rollup_15m", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
 
             // --- kein SQL
             new Erlaubt("uems/EreignisVokabular.java", "telemetry", 1, Grund.KEIN_SQL, "uems/EreignisVokabular.java",

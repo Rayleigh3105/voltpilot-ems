@@ -7,10 +7,12 @@
  * Geräte, ohne Reihenfolge, Plan und Vorschläge. Angehalten (SZ-2 A) stehen
  * die Geräte abgedimmt mit ihrem Grund, die Reihenfolge ohne „Ändern“.
  */
-import { forwardRef, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type KeyboardEvent } from 'react';
+import { forwardRef, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type KeyboardEvent } from 'react';
 import { Recht } from '../components/Recht';
+import type { TarifArt } from '../api';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { haptik } from '../haptik';
+import { preisRolle, type PreisRolle } from '../preisRolle';
 import {
   SPEICHER,
   auftragSatz,
@@ -23,7 +25,9 @@ import {
   type GeraetBild,
 } from './bild';
 import { Ic } from './Ic';
+import { negativpreisZeile } from '../moduleSurface';
 import { messBild, type MessTeil } from './messen';
+import { AnlagensteuerungKarten } from './AnlagensteuerungKarte';
 import { vorschlag } from './neu';
 import type { BlattZustand, SeitenBild } from './seite';
 import { useBreite, zeitband } from './Zeitband';
@@ -43,6 +47,10 @@ import {
 
 export interface GeraeteReiterProps {
   bild: SeitenBild;
+  /** Steht der Reiter „Regeln“? Ohne ihn verweist die Geräteliste nicht darauf. */
+  mitRegeln?: boolean;
+  /** Die Anlage - die Messen-Ansicht liest an ihr die Anlagensteuerung (UEMS EZ-10). */
+  siteId: string;
   oeffne: (b: BlattZustand) => void;
   /** Neu in der Anlage: den Vorschlag übernehmen. */
   onUebernehmen: (g: GeraetBild) => void;
@@ -50,10 +58,26 @@ export interface GeraeteReiterProps {
   onReihenfolge: (ids: string[]) => Promise<void>;
   onAnlage: (g: GeraetBild | null) => void;
   netzanschlussKw: number | null;
+  /**
+   * N4/S4 (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7): zusammen mit
+   * `tarifArt` und dem Tagesbild-Lauf entscheiden sie, ob „Was immer gilt"
+   * die Negativpreis-Abregelung oder (§ 51a) „Stunden ohne Vergütung" zeigt.
+   */
+  plantKind: string | null;
+  netzladenErlaubt: boolean | null;
+  /** Die Sonnen-Erzählung (§4.7): aus `preisRolle`, zusammen mit dem Lauf. */
+  tarifArt: TarifArt | null | undefined;
   busy: string | null;
   /** Von außen gewünscht: die Reihenfolge ändern (aus einem Blatt). */
   reoStart: string | null;
   onReoGestartet: () => void;
+  /**
+   * Die Wallbox-Zeile führt auf den Reiter „Laden" statt auf das allgemeine
+   * Gerätblatt (Konzept „Ein Ort fürs Laden" e1, Abschnitt 4.2: alle Türen
+   * führen zur einzigen Schaltstelle) - hier allein noch zur Reihenfolge und
+   * zum Tagesbild geöffnet, nie zum Schalten.
+   */
+  zuLaden: () => void;
 }
 
 export function GeraeteReiter(p: GeraeteReiterProps) {
@@ -73,15 +97,34 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
     });
   }, [p.reoStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} oeffne={p.oeffne} />;
+  // Die EINE Klassen-Regel (Konzept `vp-fahrplan-eigenverbrauch-konzept`
+  // §5.1/§4.7, Scheibe S4): aus den Preisen des HEUTIGEN Laufs
+  // (`bild.reihen.bezug`/`.einspeise`, dieselben Felder wie der Fahrplan
+  // liest), Index 0..TAG-1 - `Reihen` ist bereits auf die absolute
+  // Raster-Zeit ausgerichtet, keine zweite Übersetzung nötig (anders als
+  // `TagModell`s Tagesausschnitt).
+  const rolle = useMemo(
+    () =>
+      preisRolle({
+        slots: bild.reihen.bezug
+          .slice(0, TAG)
+          .map((importPriceCtKwh, i) => ({ importPriceCtKwh, exportValueCtKwh: bild.reihen.einspeise[i] })),
+        tarifArt: p.tarifArt ?? null,
+        plantKind: p.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+      }),
+    [bild.reihen, p.tarifArt, p.plantKind],
+  );
+  const sonne = rolle.erzaehlung === 'sonne';
+
+  if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} siteId={p.siteId} oeffne={p.oeffne} mitRegeln={p.mitRegeln} />;
   const t = sel ?? bild.raster.jetzt;
   return (
     <>
-      <JetztKarte bild={bild} t={t} sel={sel} onJetzt={() => { setSel(null); setTag(0); }} oeffne={p.oeffne} />
+      <JetztKarte bild={bild} t={t} sel={sel} sonne={sonne} onJetzt={() => { setSel(null); setTag(0); }} oeffne={p.oeffne} />
       {bild.einordnung.neu.map((g) => (
         <NeuKarte key={g.id} g={g} bild={bild} busy={p.busy === g.id} oeffne={p.oeffne} onUebernehmen={p.onUebernehmen} onNurMessen={p.onNurMessen} />
       ))}
-      <Tagesbild bild={bild} tag={tag} setTag={(x) => { setTag(x); setSel(x === 1 ? TAG + bild.raster.jetzt : null); }} sel={sel} setSel={setSel} oeffne={p.oeffne} />
+      <Tagesbild bild={bild} tag={tag} setTag={(x) => { setTag(x); setSel(x === 1 ? TAG + bild.raster.jetzt : null); }} sel={sel} setSel={setSel} sonne={sonne} oeffne={p.oeffne} />
       <Liste
         ref={listeRef}
         bild={bild}
@@ -91,8 +134,16 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
         onReihenfolge={p.onReihenfolge}
         onAnlage={p.onAnlage}
         busy={p.busy === 'reihenfolge'}
+        zuLaden={p.zuLaden}
       />
-      <ImmerKarte bild={bild} oeffne={p.oeffne} netzanschlussKw={p.netzanschlussKw} />
+      <ImmerKarte
+        bild={bild}
+        oeffne={p.oeffne}
+        netzanschlussKw={p.netzanschlussKw}
+        plantKind={p.plantKind}
+        netzladenErlaubt={p.netzladenErlaubt}
+        rolle={rolle}
+      />
     </>
   );
 }
@@ -101,8 +152,11 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
 // Jetzt
 // ---------------------------------------------------------------------------
 
-function JetztKarte({ bild, t, sel, onJetzt, oeffne }: {
-  bild: SeitenBild; t: number; sel: number | null; onJetzt: () => void; oeffne: (b: BlattZustand) => void;
+function JetztKarte({ bild, t, sel, sonne = false, onJetzt, oeffne }: {
+  bild: SeitenBild; t: number; sel: number | null;
+  /** Die Sonnen-Erzählung (§4.7, Scheibe S4); Vorgabe `false` lässt den Zusatz unverändert. */
+  sonne?: boolean;
+  onJetzt: () => void; oeffne: (b: BlattZustand) => void;
 }) {
   const r = bild.raster;
   const rh = bild.reihen;
@@ -113,8 +167,17 @@ function JetztKarte({ bild, t, sel, onJetzt, oeffne }: {
   const satz = kopfsatz(rh, t, bild.geraete, r.jetzt);
   const zusatz: [string, string][] = [];
   const preis = rh.preis[t];
-  if (preis != null && preis < 0) {
-    zusatz.push(['down', `Strom kostet an der Börse gerade unter null${(rh.abgeregelt[t] ?? 0) > 0.1 ? '; statt einzuspeisen wird abgeregelt.' : '.'}`]);
+  const abgeregeltSuffix = (rh.abgeregelt[t] ?? 0) > 0.1;
+  if (sonne) {
+    // § 51a (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7): die Einspeise-
+    // Vergütung dieser Viertelstunde ist auf null geklemmt, weil die Börse
+    // gerade negativ ist - sonst sagt diese Klasse zur Börse nichts (sie
+    // rechnet damit nicht).
+    if (rh.einspeise[t] === 0 && preis != null && preis < 0) {
+      zusatz.push(['down', `Gerade gibt es für Einspeisung keine Vergütung${abgeregeltSuffix ? '; der Überschuss wird abgeregelt.' : '.'}`]);
+    }
+  } else if (preis != null && preis < 0) {
+    zusatz.push(['down', `Strom kostet an der Börse gerade unter null${abgeregeltSuffix ? '; statt einzuspeisen wird abgeregelt.' : '.'}`]);
   }
   if (t === r.jetzt) {
     for (const g of bild.geraete) {
@@ -128,7 +191,7 @@ function JetztKarte({ bild, t, sel, onJetzt, oeffne }: {
     if (bild.pausiertBisMs != null) zusatz.push(['pause', 'Automatik pausiert.']);
     if (bild.funktion.angehalten) zusatz.push(['pause', 'VoltPilot steuert gerade nicht.']);
   }
-  const unter = unterzeile(rh, t, bild.speicher != null);
+  const unter = unterzeile(rh, t, bild.speicher != null, sonne);
   const l = leiste(rh, t, bild.geraete, bild.reihenfolge, r.jetzt);
   return (
     <section className="card jetzt links" id="jetzt" aria-live="polite" aria-label="Jetzt">
@@ -380,9 +443,12 @@ function artikelUnbestimmt(g: GeraetBild): string {
 // Tagesbild
 // ---------------------------------------------------------------------------
 
-function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
+function Tagesbild({ bild, tag, setTag, sel, setSel, sonne = false, oeffne }: {
   bild: SeitenBild; tag: number; setTag: (t: number) => void; sel: number | null;
-  setSel: (t: number | null) => void; oeffne: (b: BlattZustand) => void;
+  setSel: (t: number | null) => void;
+  /** Die Sonnen-Erzählung (§4.7, Scheibe S4): keine Börsenpreis-Spur, kein Preis im Tooltip. Vorgabe `false`. */
+  sonne?: boolean;
+  oeffne: (b: BlattZustand) => void;
 }) {
   const [ref, w] = useBreite();
   const heute = tag === 0;
@@ -395,7 +461,7 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
     .map((g) => ({ g, h: breit ? 17 : 15, gap: 5 }));
   const bands = [
     { art: 'pv' as const, h: 24, gap: 4 },
-    { art: 'preis' as const, h: 26, gap: 8 },
+    ...(sonne ? [] : [{ art: 'preis' as const, h: 26, gap: 8 }]),
     ...(bild.speicher ? [{ art: 'soc' as const, h: 12, gap: 6, label: 'Ladestand des Speichers' }] : []),
   ];
   const momentT = sel ?? bild.raster.jetzt;
@@ -436,7 +502,7 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
     if (e.key === 'End') { e.preventDefault(); waehle(t0 + TAG - 1); }
     if (e.key === 'Escape') { e.preventDefault(); setSel(null); }
   };
-  const mz = momentZeile(bild.reihen, momentT, bild.geraete, bild.raster.jetzt);
+  const mz = momentZeile(bild.reihen, momentT, bild.geraete, bild.raster.jetzt, sonne);
   const erwartet = bild.geraete.some((g) => g.herkunft.some((h) => h === 'erwartet'));
   return (
     <section className="card plan links" aria-label="Tagesbild">
@@ -500,7 +566,7 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
 // Messen-Ansicht (UEMS SZ-1 A): nur Gemessenes, die Geräte als ruhige Liste
 // ---------------------------------------------------------------------------
 
-function MessenAnsicht({ bild, oeffne }: { bild: SeitenBild; oeffne: (b: BlattZustand) => void }) {
+function MessenAnsicht({ bild, siteId, oeffne, mitRegeln }: { bild: SeitenBild; siteId: string; oeffne: (b: BlattZustand) => void; mitRegeln?: boolean }) {
   const m = messBild({ raster: bild.raster, jetzt: bild.jetztGemessen, geraete: bild.geraete, speicher: bild.speicher });
   const auf = (id: string) => oeffne(id === SPEICHER ? { art: 'speicher' } : { art: 'geraet', id });
   return (
@@ -520,6 +586,8 @@ function MessenAnsicht({ bild, oeffne }: { bild: SeitenBild; oeffne: (b: BlattZu
         )}
         {m.teile.length > 0 && <Messleiste teile={m.teile} auf={auf} />}
       </section>
+      {/* UEMS EZ-10: an einer Erzeugeranlage mit Anlagensteuerung - wer steuert, je Einheit. */}
+      <AnlagensteuerungKarten siteId={siteId} />
       <section aria-label="Gemessene Geräte" className="devs rechts" id="devs">
         <div className="card-h" style={{ margin: '4px 2px 0' }}>
           <h2>
@@ -541,7 +609,7 @@ function MessenAnsicht({ bild, oeffne }: { bild: SeitenBild; oeffne: (b: BlattZu
             </span>
           </button>
         ))}
-        <p className="leise" style={{ padding: '0 4px' }}>Antippen zeigt Messwerte und Steuerart des Geräts. Regeln stehen im Reiter Regeln.</p>
+        <p className="leise" style={{ padding: '0 4px' }}>Antippen zeigt Messwerte und Steuerart des Geräts.{mitRegeln === false ? '' : ' Regeln stehen im Reiter Regeln.'}</p>
       </section>
     </>
   );
@@ -590,6 +658,7 @@ interface ListeProps {
   onReihenfolge: (ids: string[]) => Promise<void>;
   onAnlage: (g: GeraetBild | null) => void;
   busy: boolean;
+  zuLaden: () => void;
 }
 
 const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
@@ -621,13 +690,13 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
         id === SPEICHER ? (
           <SpeicherKarte key={id} bild={bild} platz={i + 1} oeffne={p.oeffne} />
         ) : (
-          <GeraetKarte key={id} g={alle.find((g) => g.id === id)!} bild={bild} platz={i + 1} oeffne={p.oeffne} />
+          <GeraetKarte key={id} g={alle.find((g) => g.id === id)!} bild={bild} platz={i + 1} oeffne={p.oeffne} zuLaden={p.zuLaden} />
         ),
       )}
       {bild.rest.length > 0 && <div className="linie">nach Zeit, Frist oder Preis</div>}
       {bild.rest.map((id) => {
         const g = alle.find((x) => x.id === id);
-        return g ? <GeraetKarte key={id} g={g} bild={bild} platz={null} oeffne={p.oeffne} /> : null;
+        return g ? <GeraetKarte key={id} g={g} bild={bild} platz={null} oeffne={p.oeffne} zuLaden={p.zuLaden} /> : null;
       })}
       <OffenZeilen bild={bild} oeffne={p.oeffne} onAnlage={p.onAnlage} />
       {/* Steuern-Regel #779: an einer Anlage ohne Teilnahme kein Anstoß, ein Gerät anzubinden. */}
@@ -641,8 +710,11 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
   );
 });
 
-function GeraetKarte({ g, bild, platz, oeffne }: { g: GeraetBild; bild: SeitenBild; platz: number | null; oeffne: (b: BlattZustand) => void }) {
+function GeraetKarte({ g, bild, platz, oeffne, zuLaden }: {
+  g: GeraetBild; bild: SeitenBild; platz: number | null; oeffne: (b: BlattZustand) => void; zuLaden: () => void;
+}) {
   const r = bild.raster;
+  const lp = !!g.eintrag.ladepunkt;
   const t = r.jetzt;
   const an = g.an === true || (g.jetztKw ?? 0) > 0.02;
   let icoKlasse = '';
@@ -661,7 +733,7 @@ function GeraetKarte({ g, bild, platz, oeffne }: { g: GeraetBild; bild: SeitenBi
     ? <>Eingriff{g.eingriff.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ''} · dann wieder Smart</>
     : <>Smart: <em>{g.auftrag}</em></>;
   return (
-    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'geraet', id: g.id }); }}>
+    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={(e) => { e.currentTarget.focus(); if (lp) zuLaden(); else oeffne({ art: 'geraet', id: g.id }); }}>
       <span className={`ico ${icoKlasse}`}>
         <Ic n={g.symbol} s={23} />
         {platz != null && <span className="rk">{platz}</span>}
@@ -895,8 +967,8 @@ const ReoListe = forwardRef<HTMLElement, ListeProps & { reo: string[] }>(functio
         </span>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className="btn sek" style={{ flex: 1 }} onClick={() => p.setReo(null)}>Abbrechen</button>
-        <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" style={{ flex: 1 }} disabled={p.busy || !folgen.length} onClick={() => void speichern()}>
+        <button type="button" className="btn sek" style={{ flex: '0 1 auto' }} onClick={() => p.setReo(null)}>Abbrechen</button>
+        <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" style={{ flex: 1, whiteSpace: 'nowrap' }} disabled={p.busy || !folgen.length} onClick={() => void speichern()}>
           {p.busy ? 'Speichere …' : 'Reihenfolge speichern'}
         </button></Recht>
       </div>
@@ -913,18 +985,34 @@ function cssId(id: string): string {
 // Was immer gilt
 // ---------------------------------------------------------------------------
 
-function ImmerKarte({ bild, oeffne, netzanschlussKw }: { bild: SeitenBild; oeffne: (b: BlattZustand) => void; netzanschlussKw: number | null }) {
+function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt, rolle }: {
+  bild: SeitenBild;
+  oeffne: (b: BlattZustand) => void;
+  netzanschlussKw: number | null;
+  plantKind: string | null;
+  netzladenErlaubt: boolean | null;
+  /** Die EINE Klassen-Regel (§4.7, Scheibe S4) - aus dem heutigen Lauf, siehe {@link GeraeteReiter}. */
+  rolle: PreisRolle;
+}) {
   const rows: [string, string, string, BlattZustand][] = [
-    ['shield', 'Wer gewinnt?', 'Schutz › Ihr Eingriff › Regel › Frist › Reihenfolge', { art: 'vorrang' }],
+    // Worte statt einer Zeichenkette („Schutz › Ihr Eingriff › …“): die Rangfolge selbst steht im Blatt.
+    ['shield', 'Wer gewinnt?', 'Wenn sich zwei Wünsche widersprechen', { art: 'vorrang' }],
   ];
   if (bild.speicher) {
     rows.push(['battery', `Speicher: ${bild.betriebsmodell}`, `Betriebsmodell${bild.speicher.reservePct != null ? ` · Reserve ${fPct(bild.speicher.reservePct)}` : ''}`, { art: 'speicher' }]);
   }
   if (netzanschlussKw != null) {
-    rows.push(['gauge', `Netzanschluss ${fKw(netzanschlussKw)}`, 'Laden wird gekürzt, bevor die Sicherung fällt', { art: 'rahmen' }]);
+    rows.push(['gauge', `Netzanschluss ${fKw(netzanschlussKw)}`, 'Laden wird gekürzt, bevor die Sicherung fällt', { art: 'netzanschluss' }]);
   }
   rows.push(['pole', '§ 14a EnWG', 'Grenze Ihres Netzbetreibers für steuerbare Geräte', { art: 'p14a' }]);
-  rows.push(['down', 'Negativpreis-Abregelung', 'Bei Preisen unter null speist die Anlage nicht ein', { art: 'negativ' }]);
+  // N4/S4 (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7): siehe
+  // `moduleSurface.negativpreisZeile` für die Regel.
+  const zeileArt = negativpreisZeile(rolle, { plantKind, netzladenErlaubt });
+  if (zeileArt === 'negativ') {
+    rows.push(['down', 'Negativpreis-Abregelung', 'Bei Preisen unter null speist die Anlage nicht ein', { art: 'negativ' }]);
+  } else if (zeileArt === 'nullstunden') {
+    rows.push(['down', 'Stunden ohne Vergütung', 'Keine Vergütung bei negativen Börsenpreisen (§ 51a EEG)', { art: 'nullstunden' }]);
+  }
   return (
     <section className="card immer links" aria-label="Was immer gilt">
       <div className="card-h" style={{ margin: '8px 0 2px' }}>

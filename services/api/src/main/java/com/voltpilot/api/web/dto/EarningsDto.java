@@ -113,9 +113,13 @@ public record EarningsDto(
      * the "bewertet zu Ihrem Stromtarif" copy never over- or under-claims;
      * {@code exportVerguetungPriced} is its EXPORT-side sibling (B2 fix,
      * audit vp-geldzahlen-audit-x7): whether the feed-in terms are valued at
-     * the plant's feste EEG-Einspeisevergütung instead of bare spot (false for
+     * the plant's feste Einspeisevergütung instead of bare spot (false for
      * Direktvermarktung, whose spot + Marktprämie valuation the premium fields
-     * already explain, and for plants without a determinable remuneration). The
+     * already explain, and for plants without a determinable remuneration);
+     * {@code exportVerguetungQuelle} says where that fixed rate comes from -
+     * {@code eeg} (derived from the EEG schedule) or {@code angegeben} (the
+     * customer's own statement, {@code site.einspeiseverguetung_ct_kwh}) - and
+     * is null exactly when {@code exportVerguetungPriced} is false. The
      * Eigenverbrauchs-Wert is computed slot-by-slot in the repository at the
      * site's IMPORT price - it IS the avoided supply cost, so {@code tarifPriced}
      * describes it just as it describes {@code stromkosten}/{@code savedEur}
@@ -166,6 +170,14 @@ public record EarningsDto(
      * {@code mispelNetzeinspeisungSpeicherKwh} = Σ (2)¼,
      * {@code mispelMengenQuelle} - dieselbe Rechenstelle wie auf
      * {@code SiteEarningsDto}; an jedem anderen Tag null.
+     *
+     * <p><b>Mit Bestand (Bedienkonzept vp-herzogau-p3-kachel-konzept, Captain
+     * 14.10.2026 P3-4 A).</b> {@code savedSteuerungMitBestandEur} ist die
+     * Steuerung des gewählten Zeitraums mit Bestand bewertet (wie auf
+     * {@code SiteEarningsDto}); {@code steuerungMonatMitBestandEur} nur bei
+     * {@code range=day}: Monatserster bis zu diesem Tag mit Bestand. Beide
+     * kommen aus dem Walk, den die Route ohnehin rechnet; null bei einer
+     * Lücke oder ohne Dreiteilung.
      */
     public record EarningsSiteDto(
             UUID id,
@@ -191,6 +203,7 @@ public record EarningsDto(
             BigDecimal tarifParamCtKwh,
             Boolean tarifPriced,
             Boolean exportVerguetungPriced,
+            String exportVerguetungQuelle,
             BigDecimal einspeiseErloesEur,
             BigDecimal eigenverbrauchsWertEur,
             BigDecimal gesamtertragEur,
@@ -213,7 +226,9 @@ public record EarningsDto(
             List<String> steuerungGruende,
             BigDecimal mispelNetzstromverbrauchSpeicherKwh,
             BigDecimal mispelNetzeinspeisungSpeicherKwh,
-            String mispelMengenQuelle) {
+            String mispelMengenQuelle,
+            BigDecimal savedSteuerungMitBestandEur,
+            BigDecimal steuerungMonatMitBestandEur) {
     }
 
     /**
@@ -254,7 +269,21 @@ public record EarningsDto(
             BigDecimal baselinePeakKw,
             BigDecimal avoidedKw,
             BigDecimal avoidedEur,
-            List<PeakPeriodDto> history) {
+            List<PeakPeriodDto> history,
+            /** Das laufende Viertelstunden-Mittel des Netzbezugs AUF DEM SERVER (Alerting Scheibe 4,
+             * Konzept vp-alerting-konzept-m1 §6.10 Punkt 3: {@code AnlagenflussWerteLeser.
+             * netzLastspitzeLaufendKw} - dieselbe Zahl wie die "Lastspitze droht"-Überwachung).
+             * Nur die EINE Anlage (§6.7, kein Live-Wert je Flotte) füllt es; die Flotten-Erlöse
+             * lassen es weg. */
+            BigDecimal currentQuarterMeanKw) {
+
+        /** Flotten-Erlöse (viele Anlagen je Anfrage) kennen keinen Live-Wert - {@code null}. */
+        public PeakShavingDto(BigDecimal leistungspreisEurKw, String abrechnung, LocalDate periodStart,
+                BigDecimal peakKw, BigDecimal baselinePeakKw, BigDecimal avoidedKw, BigDecimal avoidedEur,
+                List<PeakPeriodDto> history) {
+            this(leistungspreisEurKw, abrechnung, periodStart, peakKw, baselinePeakKw, avoidedKw, avoidedEur,
+                    history, null);
+        }
     }
 
     /** One closed-or-running billing period of the peak-shaving history. */
@@ -313,9 +342,15 @@ public record EarningsDto(
      * gepflegten Batterie-Stammdaten hat (der Grund steht als
      * {@code steuerungSplitReason} an der Anlage) - dann zeigt die
      * Kundenflaeche KEINE Zahl, nie die Gesamtzahl als Ersatz.
+     *
+     * <p>{@code mitBestandEur} ist derselbe Tag „mit Bestand bewertet“
+     * (Bedienkonzept vp-herzogau-p3-kachel-konzept §4.3), aus demselben Walk;
+     * aus diesen Tagen bildet die Übersicht die letzten 7 Tage. Null ohne
+     * Dreiteilung oder bei einer Lücke (kein gemessener Ladestand am Tagesrand).
      */
     public record EarningsDailyDto(
-            LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur) {
+            LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur,
+            BigDecimal mitBestandEur) {
     }
 
     /**

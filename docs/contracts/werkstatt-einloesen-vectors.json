@@ -1,0 +1,104 @@
+{
+  "vertrag": "Einlösen eines Werkstatt-Codes durch die Box (vp-werkstatt-einloesen.v1)",
+  "beschreibung": "Die Box signiert den kanonischen Text mit ihrem Geräteschlüssel (EC P-256, ECDSA mit SHA-256, ASN.1 DER, Base64). Leser: services/api …/werkstatt/EinloesenVertrag.java und der Befehl werkstatt-anmelden im Go-Core (edge-app/core/internal/werkstatt). Vertrag: docs/contracts/werkstatt-einloesen-v1.md. Der Schlüssel unten ist NUR für Tests erzeugt und gehört zu keiner Box.",
+  "test_privater_schluessel_pkcs8_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgKMvAu5O3Zziw9mbY\nyRM1kqAj8C5F/3hOY/tgoduCadihRANCAATaNevqJuq4rPHWgD8vJ7Agdzrd2gtx\n+SjTGXrLEsiiBbUC6InUtDugsfWVTrCHpjDVxpvWCf5DpSouSpVpaNth\n-----END PRIVATE KEY-----\n",
+  "anfrage": {
+    "edgeRef": "edge-k7m2xq3",
+    "code": "wk-abcdefghijklmnopqrstuvwxyz",
+    "fassung": "edge-light-2026.11.0",
+    "geraeteSchluessel": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2jXr6ibquKzx1oA/LyewIHc63doLcfko0xl6yxLIogW1AuiJ1LQ7oLH1lU6wh6Yw1cab1gn+Q6UqLkqVaWjbYQ==",
+    "wireguardSchluessel": "/iwscgv6ILyS1xKzB+lbL/O57nrWajmiSQdU6qaQU0A=",
+    "hostSchluessel": "SHA256:2SDE0cZR4XtlVLjiHnsD7uTHNtWugyfzDJt4URFUDik",
+    "csrPem": "-----BEGIN CERTIFICATE REQUEST-----\nMIHSMHkCAQAwFzEVMBMGA1UEAwwMZWRnZS1rN20yeHEzMFkwEwYHKoZIzj0CAQYI\nKoZIzj0DAQcDQgAE2jXr6ibquKzx1oA/LyewIHc63doLcfko0xl6yxLIogW1AuiJ\n1LQ7oLH1lU6wh6Yw1cab1gn+Q6UqLkqVaWjbYaAAMAoGCCqGSM49BAMCA0kAMEYC\nIQCZVSqNoS/CmazoOeQFQIeasKyyY/V/jvHBsqBzNgNorAIhAMetnjtNXg6vG1Sg\noXHODFo/q0AkdBg6Qw9i66C2FPAE\n-----END CERTIFICATE REQUEST-----\n",
+    "signatur": "MEUCIQD2FYrhBHwQb/reBKH3JdmU/j6tRt8lYR/D4M8OFWLmYwIgGRJGrJ4kzGP8HLxFEPmXw23Nx9HhBTp/mPV0s8Yg5Iw="
+  },
+  "kanonisch": "vp-werkstatt-einloesen.v1\nedge_ref=edge-k7m2xq3\ncode=wk-abcdefghijklmnopqrstuvwxyz\nfassung=edge-light-2026.11.0\ngeraete_schluessel=MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2jXr6ibquKzx1oA/LyewIHc63doLcfko0xl6yxLIogW1AuiJ1LQ7oLH1lU6wh6Yw1cab1gn+Q6UqLkqVaWjbYQ==\nwireguard_schluessel=/iwscgv6ILyS1xKzB+lbL/O57nrWajmiSQdU6qaQU0A=\nhost_schluessel=SHA256:2SDE0cZR4XtlVLjiHnsD7uTHNtWugyfzDJt4URFUDik\ncsr_sha256=422ec698a088e6258eace08a15da34c930f974c7b451fea87889986eaa01b4a4\n",
+  "csr_sha256": "422ec698a088e6258eace08a15da34c930f974c7b451fea87889986eaa01b4a4",
+  "geraete_schluessel_sha256": "83f3172bab953aac385e0fa51fe80ec317e9b7c8fd065284e4fbbbd6c8afdcb6",
+  "signatur_go": "MEUCIQDjkVUoCMeAwwO09kTZkg7t8joH3iZEx+3iqG2vMYTG5gIgDHRRJdlKEwWYgaewayswwjEEaswCgLMdyR6wfETyEA0=",
+  "signatur_go_beschreibung": "Signatur desselben kanonischen Textes mit demselben Testschlüssel, erzeugt von Go (ecdsa.SignASN1): der Querbeleg, dass die API eine Signatur des Go-Core annimmt.",
+  "signatur_ungueltig": [
+    {
+      "name": "andere Referenz",
+      "feld": "edgeRef",
+      "wert": "edge-abcdefj"
+    },
+    {
+      "name": "anderer Code",
+      "feld": "code",
+      "wert": "wk-bbcdefghijklmnopqrstuvwxyz"
+    },
+    {
+      "name": "andere Fassung",
+      "feld": "fassung",
+      "wert": "edge-light-2026.11.1"
+    },
+    {
+      "name": "anderer Tunnel-Schlüssel",
+      "feld": "wireguardSchluessel",
+      "wert": "GepKwuGlOxJn/lpho7a4H3YM5CI6JbSVpeK2GD2mhxc="
+    },
+    {
+      "name": "anderer Host-Schlüssel",
+      "feld": "hostSchluessel",
+      "wert": "SHA256:GepKwuGlOxJn/lpho7a4H3YM5CI6JbSVpeK2GD2mhxc"
+    },
+    {
+      "name": "andere Zertifikatsanfrage",
+      "feld": "csrPem",
+      "wert": "-----BEGIN CERTIFICATE REQUEST-----\nMIHSMHkCAQAwFzEVMBMGA1UEAwwMZWRnZS1rN20yeHEzMFkwEwYHKoZIzj0CAQYI\nKoZIzj0DAQcDQgAE2jXr6ibquKzx1oA/LyewIHc63doLcfko0xl6yxLIogW1AuiJ\n1LQ7oLH1lU6wh6Yw1cab1gn+Q6UqLkqVaWjbYaAAMAoGCCqGSM49BAMCA0kAMEYC\nIQCZVSqNoS/CmazoOeQFQIeasKyyY/V/jvHBsqBzNgNorAIhAMetnjtNXg6vG1Sg\noXHODFo/q0AkdBg6Qw9i66C2FPAE\n\n-----END CERTIFICATE REQUEST-----\n"
+    },
+    {
+      "name": "fremder Geräteschlüssel",
+      "feld": "geraeteSchluessel",
+      "wert": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZqzKFGjsd6Ea7u+sRl7+BxO5rBtlUVyHZSEqWO1xJWpFiO6RAtFhPolwwEIRMGX4bRC5JGFvK1uydx6GmJ3atw=="
+    }
+  ],
+  "formfehler": [
+    {
+      "name": "Prüfzeichen falsch",
+      "feld": "edgeRef",
+      "wert": "edge-k7m2xqz"
+    },
+    {
+      "name": "Sticker statt Box-Kennung",
+      "feld": "edgeRef",
+      "wert": "VP-ABC123"
+    },
+    {
+      "name": "Code zu kurz",
+      "feld": "code",
+      "wert": "wk-abc"
+    },
+    {
+      "name": "Code mit 1",
+      "feld": "code",
+      "wert": "wk-1bcdefghijklmnopqrstuvwxyz"
+    },
+    {
+      "name": "Zeilenumbruch in der Fassung",
+      "feld": "fassung",
+      "wert": "edge-light-2026.11.0\ncode=x"
+    },
+    {
+      "name": "RSA statt P-256",
+      "feld": "geraeteSchluessel",
+      "wert": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA"
+    },
+    {
+      "name": "Tunnel-Schlüssel kaputt",
+      "feld": "wireguardSchluessel",
+      "wert": "abc"
+    },
+    {
+      "name": "Host-Schlüssel ohne SHA256:",
+      "feld": "hostSchluessel",
+      "wert": "MD5:aa:bb"
+    },
+    {
+      "name": "keine Signatur",
+      "feld": "signatur",
+      "wert": ""
+    }
+  ]
+}

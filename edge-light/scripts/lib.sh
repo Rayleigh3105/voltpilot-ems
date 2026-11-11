@@ -35,7 +35,7 @@ go_run() {
   done
   [ "${1:-}" = "--" ] && shift
   if have_local_go; then
-    (cd "$CORE_DIR" && env "${envs[@]}" go "$@")
+    (cd "$CORE_DIR" && env ${envs[@]+"${envs[@]}"} go "$@")
     return
   fi
   command -v docker >/dev/null 2>&1 || {
@@ -47,12 +47,12 @@ go_run() {
     docker run --rm -v "$GO_CACHE_VOLUME":/cache "$GO_IMAGE" chmod -R 0777 /cache
   }
   local denv=()
-  for e in "${envs[@]}"; do denv+=(-e "$e"); done
+  for e in ${envs[@]+"${envs[@]}"}; do denv+=(-e "$e"); done
   docker run --rm --user "$(id -u):$(id -g)" \
     -v "$REPO_ROOT":/src -v "$GO_CACHE_VOLUME":/cache \
     -w /src/edge-app/core \
     -e HOME=/tmp -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod \
-    "${denv[@]}" "$GO_IMAGE" go "$@"
+    ${denv[@]+"${denv[@]}"} "$GO_IMAGE" go "$@"
 }
 
 # core_path übersetzt einen Pfad unter dem Repo in den im Container gueltigen.

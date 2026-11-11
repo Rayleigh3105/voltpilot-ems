@@ -293,4 +293,23 @@ describe('OCPP wallbox view model', () => {
       kind: 'available', connectorId: 1, action: null, actionLabel: null,
     });
   });
+  // Audit vp-ocpp-haushalt W-12: die Box meldet die Wallbox frisch als
+  // GETRENNT - ihre eigene Uhr ist dann nicht der letzte Kontakt der Wallbox.
+  it('⚠ nennt als letzten Kontakt die Wallbox, nicht die Meldung der Box - mit Datum am anderen Tag', () => {
+    const now = Date.parse('2026-09-29T11:10:00Z');
+    const edge = {
+      connected: false,
+      lastSeen: '2026-09-28T09:10:00Z',
+      reportedAt: '2026-09-29T11:09:50Z',
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+    };
+    const verbindung = stationConnection(null, now, edge);
+    expect(verbindung).toMatchObject({ online: false, label: 'Offline', source: 'edge', lastSeen: '2026-09-28T09:10:00Z' });
+    const zustand = wallboxState(null, wallboxHero([], [], [], now), now, edge);
+    expect(zustand.kind).toBe('offline');
+    expect(zustand.detail).toMatch(/^Letzter Kontakt am 28\.09\. um \d{2}:\d{2} Uhr\./);
+    // Am selben Tag genügt die Uhrzeit.
+    const heute = wallboxState(null, wallboxHero([], [], [], now), now, { ...edge, lastSeen: '2026-09-29T09:10:00Z' });
+    expect(heute.detail).toMatch(/^Letzter Kontakt um \d{2}:\d{2} Uhr\./);
+  });
 });

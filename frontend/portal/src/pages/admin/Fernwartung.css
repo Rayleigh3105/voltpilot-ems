@@ -177,8 +177,103 @@ tr.vp-fw-gewaehlt > td {
   margin: 0;
 }
 
-.vp-fw-anmeldung-fenster > li.vp-alert {
+/* Je offenem Fenster: Abzeichen mit dem Fall, daneben der Satz in voller Länge. */
+.vp-fw-fall {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem var(--vp-space-2);
   padding: var(--vp-space-2) var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: 8px;
+  background: var(--vp-surface);
+  min-width: 0;
+}
+
+/* Das Abzeichen bleibt ganz; wird es eng, steht der Satz darunter. */
+.vp-fw-fall-abzeichen {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.vp-fw-fall-satz {
+  flex: 1 1 18rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-dark);
+}
+
+/* Die Verbindung einer Box: der Satz darf umbrechen, die Spalte bleibt lesbar breit. */
+.vp-table td.vp-fw-zelle-verbindung {
+  min-width: 14rem;
+  max-width: 24rem;
+  white-space: normal;
+}
+
+/* Die Fernwartungs-Tabellen tragen mehr je Zeile als andere (Boxen: Verbindung
+   und die Anmeldung je offenem Fenster als Fließtext; Techniker-Zugänge: SSH-
+   Fingerabdrücke) - bei 720 px (der Haus-Grenze `.vp-table.responsive`) passen
+   ihre Spalten noch knapp nebeneinander, bei 768-900 px (Tablet, Befund
+   `vp-adminview-mobile-rework`) nicht mehr: eine Spalte wird schmaler als ihr
+   Inhalt braucht, die Zeile läuft über den Rand. Diese zwei Tabellen stapeln
+   deshalb schon ab 900 px - dieselben Regeln wie `.vp-table.responsive` in
+   `index.css`, nur unter einer höheren Grenze. */
+@media (max-width: 900px) {
+  .vp-table.vp-fw-tabelle-breit thead {
+    display: none;
+  }
+  .vp-table.vp-fw-tabelle-breit,
+  .vp-table.vp-fw-tabelle-breit tbody,
+  .vp-table.vp-fw-tabelle-breit tr,
+  .vp-table.vp-fw-tabelle-breit td {
+    display: block;
+    width: 100%;
+  }
+  .vp-table.vp-fw-tabelle-breit tr {
+    border: 1px solid var(--vp-border);
+    border-radius: var(--vp-radius-md);
+    margin-bottom: var(--vp-space-3);
+    padding: var(--vp-space-2) var(--vp-space-3);
+  }
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-hat-unterzeile,
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-unterzeile {
+    border-radius: 0;
+    margin-bottom: 0;
+  }
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-hat-unterzeile {
+    border-bottom: 0;
+    margin-bottom: 0;
+    border-radius: var(--vp-radius-md) var(--vp-radius-md) 0 0;
+  }
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-unterzeile {
+    border-top: 0;
+    border-radius: 0 0 var(--vp-radius-md) var(--vp-radius-md);
+    margin-bottom: var(--vp-space-3);
+  }
+  .vp-table.vp-fw-tabelle-breit tr:last-child td {
+    border-bottom: none;
+  }
+  .vp-table.vp-fw-tabelle-breit td {
+    border: none;
+    padding: var(--vp-space-2) 0;
+    min-width: 0;
+  }
+  .vp-table.vp-fw-tabelle-breit td::before {
+    content: attr(data-label);
+    display: block;
+    font-family: var(--vp-font-body);
+    font-size: var(--vp-text-meta);
+    text-transform: uppercase;
+    letter-spacing: var(--vp-tracking-wide);
+    color: var(--vp-text-muted);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .vp-table.vp-fw-tabelle-breit td.vp-fw-zelle-verbindung {
+    min-width: 0;
+    max-width: none;
+  }
 }
 
 /* Die Unterzeile gehört zur Box-Zeile darüber: kein Strich dazwischen. */
@@ -287,7 +382,12 @@ tr.vp-fw-gewaehlt > td {
   .vp-table.responsive tr.vp-fw-unterzeile > td::before {
     content: none;
   }
-  /* Der Fingerabdruck steht UNTER seiner Beschriftung, nicht daneben. */
+  /* Der Fingerabdruck und die Verbindung stehen UNTER ihrer Beschriftung, nicht daneben. */
+  .vp-table.responsive td.vp-fw-zelle-verbindung {
+    min-width: 0;
+    max-width: none;
+  }
+  .vp-table.responsive td.vp-fw-zelle-verbindung,
   .vp-table.responsive td.vp-fw-zelle-ssh {
     flex-direction: column;
     align-items: stretch;
@@ -315,4 +415,58 @@ tr.vp-fw-gewaehlt > td {
   .vp-fw-sperre {
     text-align: left;
   }
+}
+
+/* UI-Runde Admin: Aktionen ordentlich statt zufällig umgebrochen. */
+/* Box-Zeile: oben „Fenster öffnen“, darunter Sperren und Protokoll nebeneinander, zuletzt der Grund,
+   warum das Fenster nicht geht - statt zufällig umgebrochener Knöpfe mit dem Grund dazwischen. */
+.vp-fw-aktionen.vp-fw-aktionen-box { flex-direction: column; align-items: flex-end; }
+.vp-fw-aktionen-neben { display: flex; flex-wrap: nowrap; gap: 0.35rem; justify-content: flex-end; white-space: nowrap; }
+.vp-fw-aktionen-box .vp-fw-sperre { order: 10; max-width: 18rem; }
+@media (max-width: 720px) {
+  .vp-fw-aktionen.vp-fw-aktionen-box { align-items: flex-start; }
+  .vp-fw-aktionen-neben { justify-content: flex-start; flex-wrap: wrap; }
+}
+/* Techniker-Zeile: die bis zu vier Aktionen als ruhiges 2 × 2-Raster, rechtsbündig. */
+.vp-fw-aktionen.vp-fw-aktionen-raster {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: end;
+  justify-items: end;
+}
+/* Am Telefon (Etikett/Wert-Karten) wieder die umbrechende Reihe: das Raster wäre breiter als die Karte. */
+@media (max-width: 720px) {
+  .vp-fw-aktionen.vp-fw-aktionen-raster { display: flex; }
+}
+.vp-fw-ssh-stand { display: block; }
+.vp-fw-ssh-stand details summary { cursor: pointer; width: fit-content; margin-top: 4px; border-radius: var(--vp-radius-sm); }
+.vp-fw-ssh-stand details summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
+/* „Techniker-Zugang anlegen“: die Anleitung zum SSH-Schlüssel aufklappbar (der Schlüssel ist dort freiwillig). */
+.vp-fw-erzeugen-auf > summary { cursor: pointer; width: fit-content; font-size: 0.875rem; color: var(--vp-text-muted); border-radius: var(--vp-radius-sm); }
+.vp-fw-erzeugen-auf > summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
+.vp-fw-erzeugen-auf[open] > summary { margin-bottom: var(--vp-space-2); }
+
+/* Telefon (Auftrag vp-admin-mobil-ueberholung): Boxen und Techniker-Zugänge als kompakte
+   Zeilen (`vp-zeilen`) statt Etikett/Wert-Karten - Name oben, Zustand rechts, Tunnel,
+   Verbindung, Fenster und Schlüssel als kurze Zeilen, die Knöpfe als Fußzeile in einer Reihe.
+   Vorher war die Seite mit vier Boxen und vier Zugängen ~ 5.200 px lang. */
+@media (max-width: 720px) {
+  .vp-fw-tabelle-breit.vp-zeilen { --vp-zeilen-rand: var(--vp-space-4); }
+  .vp-fw-name { font-weight: 700; color: var(--vp-text-dark); }
+  .vp-table.vp-zeilen .vp-fw-name ~ .vp-cell-sub,
+  .vp-table.vp-zeilen td[data-zeile='haupt'] .vp-cell-sub { font-size: 0.8125rem; }
+  /* Der gekürzte öffentliche Schlüssel sagt am Telefon nichts; die volle Form steht im Titel und am Rechner. */
+  .vp-table.vp-zeilen .vp-fw-schluessel { display: none; }
+  .vp-table.vp-zeilen td.vp-zeilen-etikett .vp-cell-main { display: inline-flex; flex-direction: row; gap: 6px; }
+  .vp-table.responsive.vp-zeilen td.vp-fw-zelle-verbindung .vp-cell-main { gap: 2px; }
+  .vp-table.responsive.vp-zeilen td.vp-fw-zelle-ssh .vp-cell-main { flex-wrap: wrap; }
+  .vp-table.responsive.vp-zeilen.vp-fw-tabelle-breit tr.vp-fw-hat-unterzeile { border-bottom: 0; padding-bottom: var(--vp-space-2); }
+  .vp-table.responsive.vp-zeilen.vp-fw-tabelle-breit tr.vp-fw-unterzeile { padding-top: 0; border-top: 0; }
+  .vp-fw-aktionen.vp-fw-aktionen-box { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .vp-fw-aktionen-box .vp-fw-sperre { flex-basis: 100%; max-width: none; }
+  .vp-fw-aktionen.vp-fw-aktionen-raster { flex-wrap: wrap; justify-content: flex-start; }
+}
+@media (max-width: 720px) {
+  /* Ein offenes Fenster: Zustand | bis wann · wer | „Schließen“ in EINER Zeile statt drei. */
+  .vp-table.vp-zeilen .vp-fw-fenster li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; align-items: center; }
 }

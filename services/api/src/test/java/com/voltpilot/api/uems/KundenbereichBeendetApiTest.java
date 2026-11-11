@@ -28,9 +28,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -90,9 +90,18 @@ class KundenbereichBeendetApiTest {
         m.put("POST /api/v1/admin/tenants", "legt einen neuen Kundenbereich an");
         m.put("POST /api/v1/admin/provisioned-devices", "vorregistrierte Box, noch in keinem Kundenbereich");
         m.put("DELETE /api/v1/admin/provisioned-devices/{externalRef}", "vorregistrierte Box, noch in keinem Kundenbereich");
+        m.put("DELETE /api/v1/admin/enrollments/pending/{externalRef}",
+                "tote Anmeldung einer Box, die kein Kunde gekoppelt hat (AdminEnrollmentRepository#delete prüft das"
+                        + " beim Löschen), noch in keinem Kundenbereich");
+        // Adminview S7: die Liste „Braucht dich" der Plattform (`plattform_braucht_dich_erledigt`, V20261106170000)
+        // trägt keinen Mandanten.
+        m.put("POST /api/v1/admin/plattform/braucht-dich/erledigen", "Merkliste der Plattform, kein Kundenbereich");
+        m.put("DELETE /api/v1/admin/plattform/braucht-dich/{schluessel}", "Merkliste der Plattform, kein Kundenbereich");
         m.put("POST /api/v1/admin/forecast-models", "Plattform-Modell");
         m.put("POST /api/v1/admin/simulation", "Plattform-Simulation ohne Kundendaten");
         m.put("POST /api/v1/admin/edge-releases", "Box-Software der Plattform");
+        m.put("PUT /api/v1/admin/edge-releases/{version}/programme/{os}/{arch}",
+                "Programme der Box-Software der Plattform (Edge Light)");
         m.put("POST /api/v1/admin/rollouts", "Flotten-Rollout — Befund im PR: er erreicht auch Boxen beendeter Bereiche");
         m.put("POST /api/v1/admin/control-certifications", "Freigaben je Gerätemodell, nicht je Kundenbereich");
         m.put("DELETE /api/v1/admin/control-certifications", "Freigaben je Gerätemodell, nicht je Kundenbereich");
@@ -119,6 +128,35 @@ class KundenbereichBeendetApiTest {
                 "Fernwartung einer Box — Befund: kein Kundenbereich-Zaun, erreicht auch Boxen beendeter Bereiche (Diagnose/Abbau)");
         m.put("PUT /api/v1/admin/fernwartung/boxen/{ref}/schluessel",
                 "Fernwartung einer Box — Befund: kein Kundenbereich-Zaun, erreicht auch Boxen beendeter Bereiche (Diagnose/Abbau)");
+        // Werkstatt (main 024ea8c12): das Register der Boxen VOR dem Versand - `werkstatt_box` trägt keinen
+        // Mandanten (Migration V20261026200000), die Box ist noch in keinem Kundenbereich.
+        m.put("POST /api/v1/admin/werkstatt/boxen", "Werkstatt-Register: Box vor dem Versand, noch in keinem Kundenbereich");
+        m.put("DELETE /api/v1/admin/werkstatt/boxen/{ref}",
+                "Werkstatt: Box löschen (Fehlversuch, weder abgenommen noch gekoppelt), noch in keinem Kundenbereich");
+        m.put("POST /api/v1/admin/werkstatt/boxen/{ref}/abnahme",
+                "Werkstatt-Abnahme: Box vor dem Versand, noch in keinem Kundenbereich");
+        m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/lan-netz",
+                "Werkstatt: LAN-Netz einer Box vor dem Versand, noch in keinem Kundenbereich");
+        m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/schritte/{schritt}",
+                "Werkstatt: Haken eines Schritts an einer Box vor dem Versand, noch in keinem Kundenbereich");
+        // Werkstatt-Automatik V1: die Freigabe der Werkstatt (`werkstatt_freigabe`, V20261102120000) gilt für
+        // Boxen vor dem Versand und trägt keinen Mandanten.
+        m.put("POST /api/v1/admin/werkstatt/freigaben",
+                "Werkstatt freigeben: gilt für Boxen vor dem Versand, kein Kundenbereich");
+        m.put("POST /api/v1/admin/werkstatt/freigaben/{kennung}/ende",
+                "Freigabe beenden: gilt für Boxen vor dem Versand, kein Kundenbereich");
+        // Werkstatt: Lauf-Seite (V20261105200000, main 2b355ef2d) - Aufträge an den Werkstatt-Dienst und
+        // „zur Seite gelegt“ nennen einen Lauf der Werkstatt, keinen Mandanten.
+        m.put("POST /api/v1/admin/werkstatt/dienst/nochmal",
+                "Werkstatt: Nochmal versuchen, Auftrag an den Werkstatt-Dienst, Box vor dem Versand, kein Kundenbereich");
+        m.put("POST /api/v1/admin/werkstatt/zur-seite",
+                "Werkstatt: Box zur Seite legen, Lauf der Werkstatt, Box vor dem Versand, kein Kundenbereich");
+        // vp-mango-3mf-pro-box, automatisch nachholen (main 3617c49e0/70b58565a): „Erneut erstellen“ für die
+        // Box-Druckdatei legt denselben Auftrag wie „Nochmal versuchen“ an (werkstatt_auftrag, Art gehaeuse,
+        // Spalte lauf trägt die Edge-Referenz) - die Box steht noch im Werkstatt-Register, nicht in einem
+        // Kundenbereich.
+        m.put("POST /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse/neu",
+                "Werkstatt: Druckdatei des Gehäuses erneut erstellen, Box vor dem Versand, kein Kundenbereich");
         return m;
     }
 
@@ -153,12 +191,13 @@ class KundenbereichBeendetApiTest {
 
     @Autowired MockMvc mvc;
     @Autowired @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping routen;
-    @MockBean KeycloakAdminClient keycloak;
+    @MockitoBean KeycloakAdminClient keycloak;
 
     private JdbcTemplate root;
     private UUID tenant;
     private UUID site;
     private UUID box;
+    private String boxRef;
     private String kundenadmin;
     private String leserin;
 
@@ -175,8 +214,9 @@ class KundenbereichBeendetApiTest {
                 tenant, unternehmen);
         site = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone) VALUES (?, 'Werk', 'DE-LU') "
                 + "RETURNING id", UUID.class, tenant);
+        boxRef = "kb-ende-" + nr;
         box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) RETURNING id",
-                UUID.class, tenant, site, "kb-ende-" + nr);
+                UUID.class, tenant, site, boxRef);
         kundenadmin = "jw-" + nr;
         leserin = "berger-" + nr;
         spiegel(kundenadmin);
@@ -218,8 +258,11 @@ class KundenbereichBeendetApiTest {
                     if (admin && ausnahme(muster)) {
                         continue;
                     }
+                    // Vom Kunden lösen (L1) trägt die Box über ihre externe Referenz, kein {deviceId} -
+                    // trotzdem ein Kundenbereich (KundenbereichEndeFilter#ADMIN_BOX_REF), keine Ausnahme.
+                    boolean boxUeberReferenz = muster.equals("/api/v1/admin/geraete/{ref}/loesen");
                     if (admin && !muster.contains("{tenantId}") && !muster.contains("{siteId}")
-                            && !muster.contains("{deviceId}")) {
+                            && !muster.contains("{deviceId}") && !boxUeberReferenz) {
                         ohne.add(schluessel);
                         continue;
                     }
@@ -250,7 +293,10 @@ class KundenbereichBeendetApiTest {
                 .as("kein Schreibweg hat etwas geschrieben").isEmpty();
     }
 
-    /** NW-5: der Kundenadministrator liest weiter, eine Leserin nicht; beide sehen den Zustand und /me. */
+    /**
+     * NW-5: der Kundenadministrator (auch die Plattform im Mandantensprung) liest weiter, eine Leserin nicht; beide
+     * sehen den Zustand und /me.
+     */
     @Test
     void lesenBleibtNurFuerDenKundenadministrator() throws Exception {
         beenden(tenant);
@@ -279,9 +325,16 @@ class KundenbereichBeendetApiTest {
         assertThat(endeLeserin.path("text").asText()).contains("Nur Ihr Kundenadministrator")
                 .doesNotContain("Gesamtabzug");
 
-        // Der Umschalter der Plattform liest einen beendeten Bereich nicht als Kunde; die Plattform-Liste bleibt.
+        // Die Plattform im Mandantensprung liest wie der Kundenadministrator (Auftrag vom 29.10.2026) — schreiben darf
+        // auch sie im beendeten Bereich nichts mehr. Die Plattform-Liste bleibt.
         assertThat(ruf(get("/api/v1/sites").header("X-Tenant-Id", tenant.toString()), plattform())
-                .getResponse().getStatus()).isEqualTo(409);
+                .getResponse().getStatus()).isEqualTo(200);
+        JsonNode endeSprung = JSON.readTree(ruf(get("/api/v1/me").header("X-Tenant-Id", tenant.toString()), plattform())
+                .getResponse().getContentAsString(StandardCharsets.UTF_8)).path("kundenbereich").path("beendet");
+        assertThat(endeSprung.path("liest").asBoolean()).isTrue();
+        MvcResult sprungSchreibt = ruf(post("/api/v1/sites").header("X-Tenant-Id", tenant.toString())
+                .contentType(MediaType.APPLICATION_JSON).content("{}"), plattform());
+        assertThat(sprungSchreibt.getResponse().getStatus()).isEqualTo(409);
         assertThat(ruf(get("/api/v1/admin/tenants"), plattform()).getResponse().getStatus()).isEqualTo(200);
         // Ein Kundenkonto erfährt über eine Plattform-Route nichts über den Zustand: dort gilt weiter 403.
         assertThat(ruf(post("/api/v1/admin/tenants/" + tenant + "/users").contentType(MediaType.APPLICATION_JSON)
@@ -377,6 +430,7 @@ class KundenbereichBeendetApiTest {
                 case "tenantId" -> tenant.toString();
                 case "siteId" -> site.toString();
                 case "deviceId" -> box.toString();
+                case "ref" -> boxRef;
                 default -> name.toLowerCase().endsWith("id") ? UUID.randomUUID().toString() : "x";
             };
             m.appendReplacement(aus, Matcher.quoteReplacement(wert));

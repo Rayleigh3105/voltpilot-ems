@@ -57,6 +57,8 @@ public class EntityRegistryService {
 
     /** Platform SoC window defaults, mirroring the optimizer's 5-95 % band. */
     private static final double DEFAULT_SOC_MIN_PCT = 5;
+    /** Die Plattform-Vorgabe des Min. Ladestands (für die Anzeige der Herkunft). */
+    public static final double SOC_MIN_VORGABE_PCT = DEFAULT_SOC_MIN_PCT;
     private static final double DEFAULT_SOC_MAX_PCT = 95;
 
     static final String TYPE_BATTERY_HYBRID = "battery-hybrid";
@@ -156,6 +158,36 @@ public class EntityRegistryService {
     }
 
     /**
+     * Die am Wechselrichter gelesene Entladegrenze je Anlage ({@link WechselrichterUntergrenze}); ohne Spring
+     * (Tests mit {@code new …}) keine - dann gilt der VoltPilot-Wert allein, wie vorher.
+     */
+    private WechselrichterUntergrenzeRepository untergrenzen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void untergrenzen(WechselrichterUntergrenzeRepository untergrenzen) {
+        this.untergrenzen = untergrenzen;
+    }
+
+    /** UEMS EZ-21: Treiber und Pin, die erst je Box entstehen; ohne Spring (Tests mit {@code new …}) keine. */
+    private PushAnbindungen anbindungen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void anbindungen(PushAnbindungen anbindungen) {
+        this.anbindungen = anbindungen;
+    }
+
+    /**
+     * Heizstab V1, Paket 3: der Parameterblock {@code heizstab} je Heizstab, nur an eine Box, die
+     * den Regler kann und für die die Automatik freigegeben ist (HeizstabPush); ohne Spring keiner.
+     */
+    private com.voltpilot.api.consumers.HeizstabPush heizstabPush;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void heizstabPush(com.voltpilot.api.consumers.HeizstabPush heizstabPush) {
+        this.heizstabPush = heizstabPush;
+    }
+
+    /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
      * footgun): with the package-private test-seam constructor below and no
      * annotation, Spring cannot pick an injection constructor and crash-loops
@@ -208,7 +240,7 @@ public class EntityRegistryService {
             }
             repo.setEntityConfig(pointId, TYPE_BATTERY_HYBRID,
                     write(batteryCapabilities(battery)),
-                    write(batteryGuards(battery, repo.netzladenErlaubt(siteId))));
+                    write(batteryGuards(siteId, battery, repo.netzladenErlaubt(siteId))));
         } else {
             skipped.add("battery-hybrid: no battery asset on this site");
         }
@@ -220,7 +252,7 @@ public class EntityRegistryService {
                 case "pv-generation" -> repo.setEntityConfig(point.id(), TYPE_PRODUCER,
                         write(producerCapabilities(point)), write(producerGuards(point)));
                 case ROLE_GRID_METER -> repo.setEntityConfig(point.id(), TYPE_GRID_METER,
-                        write(gridMeterCapabilities()), write(gridMeterGuards()));
+                        write(gridMeterCapabilities(point)), write(gridMeterGuards()));
                 case ROLE_HOUSE_LOAD -> repo.setEntityConfig(point.id(), TYPE_HOUSE_LOAD,
                         write(houseLoadCapabilities()), write(houseLoadGuards()));
                 default -> {
@@ -329,7 +361,9 @@ public class EntityRegistryService {
     @Transactional
     public BackfillOutcome bootstrapIfEligible(UUID siteId) {
         BatteryAsset battery = repo.batteryAsset(siteId);
-        boolean batteryUncomposed = battery != null && repo.batteryHybridPointId(siteId) == null;
+        UUID batteryPoint = repo.batteryHybridPointId(siteId);
+        boolean batteryUncomposed = battery != null
+                && (batteryPoint == null || !composedFromAsset(siteId, batteryPoint));
         if (repo.hasEntities(siteId) && !batteryUncomposed) {
             return BackfillOutcome.ALREADY_V2;
         }
@@ -338,6 +372,29 @@ public class EntityRegistryService {
         }
         bootstrap(siteId);
         return BackfillOutcome.MIGRATED;
+    }
+
+    /**
+     * Ob die battery-hybrid-Zeile ihre Fähigkeiten und Schutzgrenzen schon aus
+     * dem Speicher-Stammsatz trägt.
+     *
+     * <p>Seit dem 02.11.2026 entsteht die Zeile auch OHNE Stammsatz - beim
+     * Speichern des Wechselrichters im Anlege-Weg oder in der Bestands-Übernahme
+     * ({@code components.KomponierteWechselrichterZeile}) - und trägt dann nur
+     * die Mess-Vorgaben des Typkatalogs. Trägt der Kunde den Speicher später ein,
+     * muss diese Zeile dieselben Grenzen bekommen wie in der Reihenfolge
+     * „Speicher zuerst"; sonst bliebe der Speicher für immer ohne Lade-/Entlade-
+     * grenzen und ohne Schreibweg. Der Stammsatz schreibt {@code limits.soc_min_pct}
+     * IMMER ({@link #batteryGuards}), die Katalog-Vorgabe nie - genau daran wird
+     * die nachzufrischende Zeile erkannt, nicht an einer Vermutung.
+     */
+    private boolean composedFromAsset(UUID siteId, UUID batteryPointId) {
+        EntityRow row = repo.entityForSite(siteId, batteryPointId);
+        if (row == null) {
+            return true;
+        }
+        JsonNode guards = parseOr(row.guardConfigJson(), mapper.createObjectNode());
+        return guards.path("limits").has("soc_min_pct");
     }
 
     // ---- Conversion preview (MIG: dry-run, writes NOTHING) ------------------
@@ -377,7 +434,7 @@ public class EntityRegistryService {
         if (battery != null) {
             UUID pointId = repo.batteryHybridPointId(siteId);
             ObjectNode caps = batteryCapabilities(battery);
-            ObjectNode guards = batteryGuards(battery, repo.netzladenErlaubt(siteId));
+            ObjectNode guards = batteryGuards(siteId, battery, repo.netzladenErlaubt(siteId));
             // LOCKSTEP with bootstrap(): a CREATE composes no label at all
             // (Label-Hygiene), a REFRESH keeps whatever a human named it - the
             // preview must never claim the conversion renames a customer's row.
@@ -401,7 +458,7 @@ public class EntityRegistryService {
                 }
                 case ROLE_GRID_METER -> {
                     hasGridPoint = true;
-                    ObjectNode caps = gridMeterCapabilities();
+                    ObjectNode caps = gridMeterCapabilities(point);
                     plan.add(new PlannedEntity(point.id(), action, TYPE_GRID_METER, point.label(),
                             rolesFor(TYPE_GRID_METER, caps), caps, gridMeterGuards()));
                 }
@@ -647,7 +704,7 @@ public class EntityRegistryService {
                             + "\". Verfügbare Typen liefert der Typkatalog.");
         }
         if (type.composed()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieser Entitätstyp wird aus den Stammdaten der Anlage abgeleitet "
                             + "(Speicher, Messpunkte + Bootstrap) und kann nicht direkt "
                             + "angelegt werden.");
@@ -730,7 +787,7 @@ public class EntityRegistryService {
         String role = switch (entityType) {
             case TYPE_PRODUCER -> "pv-generation";
             case TYPE_GRID_METER -> "grid-meter";
-            default -> throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            default -> throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieser Entitätstyp wird über den Wechselrichter/Speicher der Anlage "
                             + "eingerichtet und kann nicht als Quelle übernommen werden.");
         };
@@ -794,7 +851,7 @@ public class EntityRegistryService {
         if (configEdit) {
             EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
             if (type != null && type.composed()) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Die Konfiguration dieses Entitätstyps wird aus den Stammdaten der "
                                 + "Anlage abgeleitet - bitte dort pflegen (Speicher-Editor, "
                                 + "Messpunkte, Netzladen-Schalter).");
@@ -1243,9 +1300,28 @@ public class EntityRegistryService {
         // The existing opaque driver object is extensible even in old registry schemas.
         // Never derive this identity from an address or from edge_source_id.
         var sourceLabels = repo.datenquellenKennzeichen(siteId);
+        // UEMS EZ-21: eine Anlagensteuerung bekommt Treiber (Transport ihrer
+        // Datenquelle) und Pin nur im Push an eine Box, die sie versteht
+        // (Fähigkeit anlagensteuerung_quelle) - eine ältere Box sähe einen
+        // Treiber mit Verbindung und ohne Marke und verweigerte den GANZEN
+        // Push. Jede andere Box bekommt die Steuerung wie vorher: ohne Pin,
+        // der Treiber höchstens mit data_source_id.
+        Map<UUID, PushAnbindungen.Anbindung> angebunden = anbindungen == null ? Map.of()
+                : anbindungen.fuerBox(siteId, deviceId);
+        // Heizstab V1: der Regler der Box statt eines Regel-Flows - additiv wie flex_requirements;
+        // ohne einen einzigen Block ist die Nutzlast byte-gleich.
+        Map<UUID, ObjectNode> heizstaebe = heizstabPush == null ? Map.of()
+                : heizstabPush.fuerBox(siteId, deviceId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
+            PushAnbindungen.Anbindung an = angebunden.get(row.id());
+            if (an != null && an.driver() == null) {
+                d.remove("edge_source_id");
+            } else if (an != null) {
+                d.put("edge_source_id", an.edgeSourceId());
+                d.set("driver", an.driver().deepCopy());
+            }
             EntityRegistryRepository.ConsumerIoBinding io = ioBindings.get(row.id());
             if (io != null && !d.has("driver")) {
                 d.set("driver", ioChannelDriver(io));
@@ -1260,6 +1336,12 @@ public class EntityRegistryService {
                 mergeCycleLimits(d, cl);
             }
             if (claimed.containsKey(row.id())) {
+                d.put("owner_claimed", true);
+            }
+            ObjectNode heizstabBlock = heizstaebe.get(row.id());
+            if (heizstabBlock != null) {
+                // Der Regler der Box IST die Regel dieses Heizstabs: der Plan bleibt draußen.
+                d.set("heizstab", heizstabBlock.deepCopy());
                 d.put("owner_claimed", true);
             }
             String chargePointId = chargePoints.get(row.id());
@@ -1551,7 +1633,52 @@ public class EntityRegistryService {
         return caps;
     }
 
-    private ObjectNode batteryGuards(BatteryAsset battery, boolean netzladenErlaubt) {
+    /**
+     * Die wirksame Untergrenze des Speichers in %: der VoltPilot-Wert ({@code asset.soc_min_pct}, sonst
+     * {@link #DEFAULT_SOC_MIN_PCT}), angehoben auf die am Wechselrichter gelesene Grenze, wenn eine übernommen ist
+     * ({@link WechselrichterUntergrenze#wirksamPct}). Ohne Lesung genau der Wert von vorher.
+     */
+    public double socMinWirksamPct(UUID siteId, BatteryAsset battery) {
+        WechselrichterUntergrenzeRepository.Eintrag gelesen = untergrenzen == null ? null : untergrenzen.eintrag(siteId);
+        return WechselrichterUntergrenze.wirksamPct(battery.socMinPct(),
+                gelesen == null ? null : gelesen.stand().socMinPct(), battery.socMaxPct(), DEFAULT_SOC_MIN_PCT);
+    }
+
+    /**
+     * Zieht {@code guards.limits.soc_min_pct} der Speicher-Komponente auf die wirksame Untergrenze nach und stellt
+     * die Registry zu - der Abgleich ruft das, wenn sich die gelesene Grenze am Wechselrichter geändert hat. Nur an
+     * einer Zeile, die ihre Grenzen aus dem Speicher-Stammsatz trägt ({@link #composedFromAsset}); jede andere bleibt
+     * unberührt. Gibt zurück, ob etwas geändert wurde.
+     */
+    @Transactional
+    public boolean untergrenzeNachziehen(UUID siteId) {
+        BatteryAsset battery = repo.batteryAsset(siteId);
+        UUID pointId = repo.batteryHybridPointId(siteId);
+        if (battery == null || pointId == null) {
+            return false;
+        }
+        EntityRow row = repo.entityForSite(siteId, pointId);
+        if (row == null) {
+            return false;
+        }
+        JsonNode guards = parseOr(row.guardConfigJson(), mapper.createObjectNode());
+        if (!(guards instanceof ObjectNode g) || !(g.path("limits") instanceof ObjectNode limits)
+                || !limits.has("soc_min_pct")) {
+            return false;
+        }
+        double wirksam = socMinWirksamPct(siteId, battery);
+        if (limits.path("soc_min_pct").asDouble() == wirksam) {
+            return false;
+        }
+        limits.put("soc_min_pct", wirksam);
+        repo.setEntityConfig(pointId, row.entityType() == null ? TYPE_BATTERY_HYBRID : row.entityType(),
+                row.capabilitiesJson() == null ? write(mapper.createObjectNode()) : row.capabilitiesJson(),
+                write(g));
+        pushRegistryBestEffort(siteId);
+        return true;
+    }
+
+    private ObjectNode batteryGuards(UUID siteId, BatteryAsset battery, boolean netzladenErlaubt) {
         ObjectNode guards = mapper.createObjectNode();
         ObjectNode limits = guards.putObject("limits");
         if (battery.maxChargeKw() != null) {
@@ -1560,7 +1687,7 @@ public class EntityRegistryService {
         if (battery.maxDischargeKw() != null) {
             limits.put("max_discharge_kw", battery.maxDischargeKw().doubleValue());
         }
-        limits.put("soc_min_pct", numberOr(battery.socMinPct(), DEFAULT_SOC_MIN_PCT));
+        limits.put("soc_min_pct", socMinWirksamPct(siteId, battery));
         limits.put("soc_max_pct", numberOr(battery.socMaxPct(), DEFAULT_SOC_MAX_PCT));
         limits.put("charge_from_grid_allowed", netzladenErlaubt);
         guards.putObject("failsafe").put("behavior", "self-consumption");
@@ -1598,6 +1725,16 @@ public class EntityRegistryService {
         ObjectNode caps = mapper.createObjectNode();
         caps.putArray("measure").add(measureCap("power_kw", "kW"));
         return caps;
+    }
+
+    /**
+     * Die Fähigkeiten eines VORHANDENEN Netz-Zählers: wird er über einen Zähler gelesen (Shelly Pro
+     * 3EM-400), trägt er dessen Zählerstände und Phasen - sonst nähme ein neues Komponieren sie ihm
+     * wieder, und die Box verwürfe sie (Konzept vp-unterzaehler-anzeige B1/C1).
+     */
+    private ObjectNode gridMeterCapabilities(EntityRow point) {
+        return com.voltpilot.api.components.ComponentDefaults.netzZaehlerCapabilities(mapper, catalog,
+                point.communication());
     }
 
     private ObjectNode gridMeterGuards() {

@@ -226,7 +226,7 @@ export function GemeinsameSteuerungEinrichten({
               const e = entwurf.boxen.find((x) => x.boxId === b.box_id)!;
               const liest = b.komponenten.map((k) => k.name ?? k.typ).join(' · ');
               return (
-                <label key={b.box_id} className="vp-gs-wahl">
+                <label key={b.box_id} className="vp-gsk-wahl">
                   <input type="checkbox" checked={e.mit} onChange={(ev) => box(b.box_id, (x) => ({ ...x, mit: ev.target.checked }))} />
                   <span><b>Box {e.name}</b><small>{liest ? `liest: ${liest}` : 'liest noch nichts'}</small></span>
                 </label>
@@ -240,7 +240,7 @@ export function GemeinsameSteuerungEinrichten({
           <fieldset className="vp-gs-feld">
             <legend>{FRAGEN[1]}</legend>
             {vorschlag.netzzaehler_box_id == null && (
-              <p className="vp-gs-hinweis" role="note">
+              <p className="vp-gsk-hinweis" role="note">
                 {FLAECHE.netzzaehler_fehlt} {boxWeg && <a className="vp-gs-weg" href={boxWeg}>Datenquelle an einer Box anlegen</a>}
               </p>
             )}
@@ -271,7 +271,7 @@ export function GemeinsameSteuerungEinrichten({
         {entwurf && vorschlag && frage === 3 && (
           <section className="vp-gs-feld" aria-label={FRAGEN[2]}>
             {vorschlag.grenzen?.einspeisung_kw == null && vorschlag.grenzen?.bezug_kw == null && !einspeisungUnbegrenzt(vorschlag) ? (
-              <p className="vp-gs-hinweis" role="note">
+              <p className="vp-gsk-hinweis" role="note">
                 {FLAECHE.netzanschluss_fehlt} {netzWeg && <a className="vp-gs-weg" href={netzWeg}>Netzanschluss eintragen</a>}
               </p>
             ) : (
@@ -381,15 +381,15 @@ export function GemeinsameSteuerungEinrichten({
 
         {nachher != null && vorschlag && (
           <section className="vp-gs-feld" aria-label="Abgesendet" data-testid="gs-abgesendet">
-            <p className="vp-gs-zeile" role="status" data-testid="gs-ergebnis-zustand">{zustandsZeile(nachher, vorschlag, namen)}</p>
+            <p className="vp-gsk-zeile" role="status" data-testid="gs-ergebnis-zustand">{zustandsZeile(nachher, vorschlag, namen)}</p>
             <p>{FLAECHE.abgesendet}</p>
-            {befundSaetze(nachher, namen).map((b) => <p key={b.text} className="vp-gs-hinweis" data-testid="gs-befund">{b.text}</p>)}
+            {befundSaetze(nachher, namen).map((b) => <p key={b.text} className="vp-gsk-hinweis" data-testid="gs-befund">{b.text}</p>)}
           </section>
         )}
 
         {bild && frage === 6 && (
           <section className="vp-gs-feld" aria-label="Ergebnis" data-testid="gs-ergebnis">
-            <p className="vp-gs-zeile" role="status" data-testid="gs-ergebnis-entwurf">{FLAECHE.ergebnis_entwurf}</p>
+            <p className="vp-gsk-zeile" role="status" data-testid="gs-ergebnis-entwurf">{FLAECHE.ergebnis_entwurf}</p>
             {(['einspeisung', 'bezug'] as const).map((r) => {
               const a = bild.einrichten.ergebnis?.[r] ?? null;
               return (
@@ -408,7 +408,7 @@ export function GemeinsameSteuerungEinrichten({
               );
             })}
             {hinweise.map((h) => (
-              <div key={h.text} className="vp-gs-hinweis" data-testid="gs-hinweis">
+              <div key={h.text} className="vp-gsk-hinweis" data-testid="gs-hinweis">
                 <p>{h.text}</p>
                 {h.rueckfall && (
                   <div className="vp-gs-reihe">
@@ -420,7 +420,7 @@ export function GemeinsameSteuerungEinrichten({
               </div>
             ))}
             {befundSaetze(bild.zustand, namen).filter((b) => !hinweise.some((h) => h.text === b.text))
-              .map((b) => <p key={b.text} className="vp-gs-hinweis" data-testid="gs-befund">{b.text}</p>)}
+              .map((b) => <p key={b.text} className="vp-gsk-hinweis" data-testid="gs-befund">{b.text}</p>)}
           </section>
         )}
       </div>

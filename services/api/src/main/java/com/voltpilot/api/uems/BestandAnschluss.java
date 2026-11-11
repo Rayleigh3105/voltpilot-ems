@@ -3,9 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Der heutige Anschluss einer Bestands-Komponente in den Wörtern einer Datenquelle (UEMS AP-06
@@ -21,18 +19,28 @@ import java.util.Set;
  *   <li>Modbus TCP ({@code modbus_tcp}, {@code kostal_modbus}, {@code kaco_modbus}, der Selbstbau
  *       {@code modbus_baukasten}) und SunSpec-Modbus ({@code sunspec_tcp}, {@code fronius_sunspec}):
  *       {@code ip:port}, die Geräte-ID ist {@code unit_id}.</li>
+ *   <li>Huawei SUN2000 ({@code huawei_modbus}): wie Modbus TCP, aber die Unit-ID 0 ist bei Huawei
+ *       eine GÜLTIGE Adresse (Werkswert bei direkter WLAN-/LAN-Verbindung) und die Vorgabe des
+ *       Treibers — sie wird nicht als „fehlt“ gelesen.</li>
  *   <li>Solarman-Datenlogger ({@code solarman_v5}, Deye): {@code ip:port/serial} — die Seriennummer
  *       des Datenloggers gehört zum Weg (ohne sie liest der Treiber nicht), die Geräte-ID ist die
  *       Slave-ID {@code mb_slave_id}.</li>
  *   <li>HTTP-Auskunft ({@code kaco_http}, {@code fronius_solar_api}, {@code goe_http_api},
- *       {@code shelly_http}, der Batterie-Anschluss {@code http_local}): {@code schema://host:port}
- *       — {@code https}, wo der Treiber es nimmt ({@code scheme: https} oder
- *       {@code insecure_tls}, bei {@code http_local} {@code endpoint.tls}), sonst {@code http}.</li>
- *   <li>MQTT-Themen ({@code mqtt_local}): das EINE Thema aller Zuordnungen; liest die Komponente
- *       mehrere Themen, gibt es keinen gemeinsamen Filter — keine Adresse.</li>
+ *       {@code shelly_http}, Shelly-Zähler {@code shelly_em_http}, KOSTAL PIKO
+ *       {@code kostal_dxs}): {@code schema://host:port} —
+ *       {@code https}, wo der Treiber es nimmt ({@code scheme: https} oder {@code insecure_tls}),
+ *       sonst {@code http}.</li>
+ *   <li>KACO seriell über einen RS485-zu-Ethernet-Wandler ({@code kaco_serial}): {@code ip:port}
+ *       — des WANDLERS, nicht des Wechselrichters —, die Geräte-ID ist die RS485-Busadresse
+ *       (1-32, {@code address}; KEINE Modbus-Unit-ID, dieses Protokoll kennt kein Modbus). 0 ist
+ *       hier NIE gültig und wird — wie bei {@code unit_id} — als „fehlt" gelesen.</li>
+ *   <li>KOSTAL PIKO über Modbus RTU auf einem RS485-zu-Ethernet-Wandler ({@code kostal_piko_rtu},
+ *       der dokumentierte Ausweg neben {@code kostal_dxs}): {@code ip:port} des WANDLERS, die
+ *       Geräte-ID ist eine echte Modbus-Unit-ID ({@code unit_id}) — anders als bei
+ *       {@code kaco_serial}, dessen Protokoll kein Modbus kennt.</li>
  *   <li>OCPP-Station ({@link #ocpp}): die Stations-Kennung.</li>
  *   <li>Die Tabelle ist VOLLSTÄNDIG: jedes Transport-Wort, das eine Bestandsanlage tragen kann
- *       (Vorlagen des Katalogs und des Admin-Werkzeugs, Selbstbau, Batterie-Anschluss, die
+ *       (Vorlagen des Katalogs und des Admin-Werkzeugs, Selbstbau, die
  *       Treiber der Box), steht darin ({@code BestandAnschlussTest}). Ein Wort, das es trotzdem
  *       nicht kennt, geht als SEIN Wort weiter und wird von der Regel verworfen
  *       ({@code protokoll_unbekannt}) — die Rückwand, nie eine Abbildung auf ein anderes Wort.</li>
@@ -70,13 +78,14 @@ public final class BestandAnschluss {
      */
     record Transport(String protokoll, Integer standardPort, Integer standardGeraeteId, Weg weg) {}
 
-    enum Weg { MODBUS, MODBUS_BAUKASTEN, SOLARMAN, HTTP, HTTP_LOCAL, MQTT_LOCAL }
+    enum Weg { MODBUS, MODBUS_UNIT_NULL_GUELTIG, MODBUS_BAUKASTEN, SOLARMAN, HTTP, KACO_SERIAL }
 
     /** Die geschlossene, vollständige Tabelle — ein neuer Transport kommt hierher UND in den Vertrag. */
     static final Map<String, Transport> TRANSPORTE = Map.ofEntries(
             Map.entry("modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
             Map.entry("kostal_modbus", new Transport("modbus_tcp", 1502, 71, Weg.MODBUS)),
             Map.entry("kaco_modbus", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
+            Map.entry("huawei_modbus", new Transport("modbus_tcp", 502, 0, Weg.MODBUS_UNIT_NULL_GUELTIG)),
             Map.entry("modbus_baukasten", new Transport("modbus_tcp", 502, 1, Weg.MODBUS_BAUKASTEN)),
             Map.entry("sunspec_tcp", new Transport("sunspec_modbus", 502, 1, Weg.MODBUS)),
             Map.entry("fronius_sunspec", new Transport("sunspec_modbus", 502, 1, Weg.MODBUS)),
@@ -85,9 +94,11 @@ public final class BestandAnschluss {
             Map.entry("fronius_solar_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("goe_http_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("shelly_http", new Transport("http", 80, null, Weg.HTTP)),
+            Map.entry("shelly_em_http", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("ebyte_modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
-            Map.entry("http_local", new Transport("http", null, null, Weg.HTTP_LOCAL)),
-            Map.entry("mqtt_local", new Transport("mqtt", null, null, Weg.MQTT_LOCAL)));
+            Map.entry("kaco_serial", new Transport("kaco_serial", 8899, 1, Weg.KACO_SERIAL)),
+            Map.entry("kostal_dxs", new Transport("http", 80, null, Weg.HTTP)),
+            Map.entry("kostal_piko_rtu", new Transport("kostal_piko_rtu", 8899, 1, Weg.MODBUS)));
 
     /**
      * @param communication  {@code measurement_point.communication}
@@ -108,6 +119,8 @@ public final class BestandAnschluss {
         return switch (t.weg()) {
             case MODBUS -> modbus(t, text(c.get("ip")), c.get("port"),
                     geraeteId(c.get("unit_id"), t.standardGeraeteId(), true), kadenz);
+            case MODBUS_UNIT_NULL_GUELTIG -> modbus(t, text(c.get("ip")), c.get("port"),
+                    geraeteId(c.get("unit_id"), t.standardGeraeteId(), false), kadenz);
             case MODBUS_BAUKASTEN -> {
                 // Der Selbstbau nimmt eine 0 als Geräte-ID ernst (SelfBuildDefinition), nur „fehlt“ ist 1.
                 JsonNode tr = c.path("transport");
@@ -127,23 +140,12 @@ public final class BestandAnschluss {
                 boolean tls = "https".equals(text(c.get("scheme"))) || c.path("insecure_tls").asBoolean(false);
                 yield http(t, tls, text(c.get("ip")), port(c.get("port"), t.standardPort()), "", kadenz);
             }
-            case HTTP_LOCAL -> {
-                JsonNode e = c.path("endpoint");
-                boolean tls = e.path("tls").asBoolean(false);
-                String pfad = text(e.get("path"));
-                yield http(t, tls, text(e.get("host")), port(e.get("port"), tls ? 443 : 80),
-                        pfad == null ? "" : (pfad.startsWith("/") ? pfad : "/" + pfad), kadenz);
-            }
-            case MQTT_LOCAL -> {
-                Set<String> themen = new LinkedHashSet<>();
-                c.path("mappings").forEach(m -> {
-                    String thema = text(m.get("topic"));
-                    if (thema != null) {
-                        themen.add(thema);
-                    }
-                });
-                yield new Anschluss(t.protokoll(), themen.size() == 1 ? themen.iterator().next() : null, null,
-                        kadenz);
+            case KACO_SERIAL -> {
+                String host = text(c.get("ip"));
+                Integer adr = serialAddress(c.get("address"), t.standardGeraeteId());
+                String adresse = host == null ? null
+                        : normalisiert(t.protokoll(), host + ":" + port(c.get("port"), t.standardPort()));
+                yield new Anschluss(t.protokoll(), adresse, adr, kadenz);
             }
         };
     }
@@ -202,6 +204,28 @@ public final class BestandAnschluss {
             return null;
         }
         return id == 0 && nullIstVorgabe ? vorgabe : id;
+    }
+
+    /**
+     * Die RS485-Busadresse der seriellen KACO-Plattform (1-32, je Gerät eindeutig am Bus
+     * einzustellen — KACOs eigene Betriebsanleitung Powador 3200-6600, Dok. 31001135-06). 0
+     * ist hier NIE eine gültige Adresse (anders als bei Modbus gibt es keine Broadcast-Bedeutung)
+     * und wird deshalb — wie bei {@link #geraeteId} — als „fehlt" gelesen.
+     */
+    private static Integer serialAddress(JsonNode n, Integer vorgabe) {
+        if (n == null || n.isNull() || (n.isTextual() && n.asText().isBlank())) {
+            return vorgabe;
+        }
+        Integer v = null;
+        if (n.isIntegralNumber() && n.canConvertToInt()) {
+            v = n.asInt();
+        } else if (n.isTextual() && n.asText().strip().matches("[0-9]{1,2}")) {
+            v = Integer.parseInt(n.asText().strip());
+        }
+        if (v != null && v == 0) {
+            return vorgabe;
+        }
+        return (v == null || v < 1 || v > 32) ? vorgabe : v;
     }
 
     private static Integer kadenz(JsonNode c) {

@@ -331,6 +331,7 @@ function wahl(p: Partial<ModellWahl> & { kind: 'load' | 'pv' }): ModellWahl {
     setByName: null,
     setAt: null,
     selectable: ['load-persistence', 'load-xgb'],
+    automatikAktiv: null,
     ...p,
   };
 }

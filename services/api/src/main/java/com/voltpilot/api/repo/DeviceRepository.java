@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +43,22 @@ public class DeviceRepository {
                 + ".site_id AND v.device_id = " + alias + ".id AND v.time >= now() - interval '7 days')))";
     }
 
+    /**
+     * Anmeldung (vp-box-verbinden-konzept S2): the box's own enrollment
+     * moments, by scalar subquery against the global, pre-claim
+     * {@code device_enrollment} table keyed on the row's OWN
+     * {@code external_ref} - never a join that could leak another tenant's
+     * reference. {@code refExpr} is a SQL expression for that ref (a column
+     * reference such as {@code "d.external_ref"}, or {@code "?"} bound
+     * alongside the caller's own parameters).
+     */
+    static String anmeldungColumns(String refExpr) {
+        return "(SELECT e.csr_updated_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
+                + ") AS anmeldung_angefragt_am, "
+                + "(SELECT e.issued_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
+                + ") AS anmeldung_abgeholt_am";
+    }
+
     public List<DeviceDto> findAll() {
         // Only boxes that take part in operation: an ausgebaut box (UEMS AP-07
         // IP-11) keeps its row and its recordings, but is no device of the
@@ -49,7 +66,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + lastSeen("d") + " AS last_seen "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d WHERE d.ausgebaut_am IS NULL ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
@@ -59,7 +76,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + lastSeen("d") + " AS last_seen "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d WHERE d.id = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
     }
@@ -72,7 +89,8 @@ public class DeviceRepository {
     public Optional<DeviceDto> findByExternalRef(String externalRef) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
-                        + "d.lan_host, d.lan_seen_at, d.lan_source, " + lastSeen("d") + " AS last_seen "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, " + lastSeen("d") + " AS last_seen, "
+                        + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d "
                         + "WHERE d.external_ref = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice,
@@ -86,17 +104,29 @@ public class DeviceRepository {
      * with a duplicate-key error (surfaced as HTTP 409).
      */
     public DeviceDto claim(UUID tenantId, UUID siteId, String externalRef, String kind) {
+        return claim(tenantId, siteId, externalRef, kind, null);
+    }
+
+    /**
+     * Wie {@link #claim(UUID, UUID, String, String)}, mit dem Urheber (L5, Nebenbefund N7): heute nennt
+     * das Verbinden keinen Akteur, nur {@code created_at}. {@code akteur} additiv - {@code null} bleibt
+     * {@code null} in beiden Spalten (ein Aufrufer ohne {@link ProtokollAkteur}, etwa ein Test).
+     */
+    public DeviceDto claim(UUID tenantId, UUID siteId, String externalRef, String kind, ProtokollAkteur akteur) {
         lockReference(externalRef);
         lockTopology(siteId);
         jdbc.query("SELECT id FROM site WHERE id = ? FOR UPDATE", (rs, n) -> rs.getObject(1), siteId);
         return jdbc.queryForObject(
-                "INSERT INTO device (tenant_id, site_id, external_ref, kind, status) "
-                        + "VALUES (?, ?, ?, ?, 'claimed') "
+                "INSERT INTO device (tenant_id, site_id, external_ref, kind, status, "
+                        + "verbunden_von_sub, verbunden_von_name) "
+                        + "VALUES (?, ?, ?, ?, 'claimed', ?, ?) "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
-                        + "NULL::timestamptz AS last_seen",
+                        + "NULL::timestamptz AS last_seen, " + anmeldungColumns("?"),
                 DeviceRepository::mapDevice,
-                tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind);
+                tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind,
+                akteur == null ? null : akteur.sub(), akteur == null ? null : akteur.name(),
+                externalRef, externalRef);
     }
 
     /**
@@ -109,7 +139,7 @@ public class DeviceRepository {
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? AND ausgebaut_am IS NULL "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
-                        + lastSeen("device") + " AS last_seen",
+                        + lastSeen("device") + " AS last_seen, " + anmeldungColumns("device.external_ref"),
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
 
@@ -156,6 +186,33 @@ public class DeviceRepository {
         jdbc.update("UPDATE asset SET device_id = NULL WHERE device_id = ?", deviceId);
         jdbc.update("UPDATE entity_registry_state SET device_id = NULL WHERE device_id = ?", deviceId);
         jdbc.update("UPDATE site SET lead_device_id = NULL WHERE lead_device_id = ?", deviceId);
+    }
+
+    /**
+     * „Vom Kunden lösen" (L1, B1=A): die Verknüpfung verschwindet, ALS WÄRE SIE NIE GEWESEN - anders
+     * als {@link #ausbauen} bleibt keine Zeile. Der Aufrufer ({@code BoxLoesenService}) hat die Regel
+     * (nie gemeldet, {@code docs/contracts/box-loesen-vectors.json}) vorher unter {@link #lockReference}
+     * geprüft und die Topologie über {@link #ausDerTopologieLoesen} gelöst.
+     *
+     * <p>Die Messwert-Tabellen verweisen mit {@code ON DELETE RESTRICT} auf {@code device}
+     * (V20260913150000): fände sich doch eine Zeile, lehnt DIESES Statement selbst ab (23503) - der
+     * Aufrufer übersetzt das in denselben 409, nichts ist geändert. False heißt: RLS verbirgt die Box
+     * oder sie ist schon weg (=> 404).
+     */
+    public boolean loesen(UUID deviceId) {
+        return jdbc.update("DELETE FROM device WHERE id = ? AND ausgebaut_am IS NULL", deviceId) > 0;
+    }
+
+    /**
+     * „Endgültig löschen" einer AUSGEBAUTEN Box, die nie Daten geliefert hat (vierter Löschweg,
+     * vp-box-endgueltig-loeschen) - das Gegenstück zu {@link #loesen}: hier MUSS die Box ausgebaut
+     * sein. Der Aufrufer ({@code BoxEndgueltigLoeschenService}) hat {@code BoxDatenBestand} und die
+     * Beleg-Regeln vorher unter {@link #lockReference} geprüft; die RESTRICT-Fremdschlüssel
+     * (V20260913150000) lehnen sonst dieses Statement selbst ab (23503). False heißt: RLS verbirgt
+     * die Box oder sie ist schon weg (=> 404).
+     */
+    public boolean endgueltigLoeschen(UUID deviceId) {
+        return jdbc.update("DELETE FROM device WHERE id = ? AND ausgebaut_am IS NOT NULL", deviceId) > 0;
     }
 
     /**
@@ -235,6 +292,25 @@ public class DeviceRepository {
                 createdAt == null ? null : createdAt.toInstant(),
                 rs.getString("lan_host"),
                 lanSeen == null ? null : lanSeen.toInstant(),
-                rs.getString("lan_source"));
+                rs.getString("lan_source"),
+                null,
+                anmeldung(rs));
+    }
+
+    /**
+     * Null when the box has never requested a certificate since being
+     * claimed ("nie angemeldet") rather than two null instants - see
+     * {@link AnmeldungDto}.
+     */
+    private static com.voltpilot.api.web.dto.AnmeldungDto anmeldung(java.sql.ResultSet rs)
+            throws java.sql.SQLException {
+        java.sql.Timestamp angefragt = rs.getTimestamp("anmeldung_angefragt_am");
+        java.sql.Timestamp abgeholt = rs.getTimestamp("anmeldung_abgeholt_am");
+        if (angefragt == null && abgeholt == null) {
+            return null;
+        }
+        return new com.voltpilot.api.web.dto.AnmeldungDto(
+                angefragt == null ? null : angefragt.toInstant(),
+                abgeholt == null ? null : abgeholt.toInstant());
     }
 }

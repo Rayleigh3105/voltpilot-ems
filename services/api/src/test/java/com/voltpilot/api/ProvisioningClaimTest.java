@@ -16,8 +16,9 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -45,6 +46,7 @@ import org.testcontainers.utility.DockerImageName;
  * and Keycloak. Also proves the config is retained (re-provision on subscribe).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class ProvisioningClaimTest {
@@ -106,7 +108,7 @@ class ProvisioningClaimTest {
 
     @Test
     void claimPublishesRetainedProvisioningConfig() throws Exception {
-        String ref = "zero-touch-" + UUID.randomUUID().toString().substring(0, 8);
+        String ref = TestKennung.box("zero-touch-" + UUID.randomUUID().toString().substring(0, 8));
 
         // The device booted first ("claim-later"): it is already subscribed to its
         // config topic and waiting - no hello retry needed once the claim lands.
@@ -220,7 +222,7 @@ class ProvisioningClaimTest {
      */
     @Test
     void unclaimClearsRetainedConfigAndReclaimRepublishesIt() throws Exception {
-        String ref = "recycle-" + UUID.randomUUID().toString().substring(0, 8);
+        String ref = TestKennung.box("recycle-" + UUID.randomUUID().toString().substring(0, 8));
         HttpHeaders headers = bearer(token("demo", "demo"));
 
         // Claim: the retained config exists on the broker.
@@ -263,7 +265,7 @@ class ProvisioningClaimTest {
      */
     @Test
     void purgePublishesRetainedPurgeCommandThatAnOfflineDeviceReceivesOnReconnect() throws Exception {
-        String ref = "purge-cmd-" + UUID.randomUUID().toString().substring(0, 8);
+        String ref = TestKennung.box("purge-cmd-" + UUID.randomUUID().toString().substring(0, 8));
         HttpHeaders headers = bearer(token("demo", "demo"));
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
@@ -310,7 +312,7 @@ class ProvisioningClaimTest {
      */
     @Test
     void deviceInitiatedPurgeRequestPurgesItsOwnDataOnly() throws Exception {
-        String ref = "purge-req-" + UUID.randomUUID().toString().substring(0, 8);
+        String ref = TestKennung.box("purge-req-" + UUID.randomUUID().toString().substring(0, 8));
         HttpHeaders headers = bearer(token("demo", "demo"));
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
@@ -380,7 +382,7 @@ class ProvisioningClaimTest {
         exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
                 + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + TENANT_A + "', '"
                 + siteId + "', 'battery', 65, 30, 30, 92)");
-        String ref = "v2-rig-" + UUID.randomUUID().toString().substring(0, 8);
+        String ref = TestKennung.box("v2-rig-" + UUID.randomUUID().toString().substring(0, 8));
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
                 new HttpEntity<>(Map.of("siteId", siteId, "externalRef", ref), customer),

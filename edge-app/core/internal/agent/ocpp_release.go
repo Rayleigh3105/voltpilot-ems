@@ -123,9 +123,6 @@ func (a *Agent) ocppReleaseInput(now time.Time) lastmgmt.ReleaseInput {
 	in.DeficitKw, _, in.Measured = a.ocpp.budget.ReleaseFacts(now)
 	in.BatteryReady, in.BatteryObserved, in.BatteryNote = a.releaseReady.get(now, window)
 	in.RatedDischargeKw = a.Cfg.MaxDischargeKw
-	if env := a.bmsEnvelope(a.batteryEntityID()); env != nil {
-		in.BmsDischargeKw, in.BmsBlocked = env.DischargeKw, env.DischargeBlocked
-	}
 	return in
 }
 

@@ -16,6 +16,7 @@ import {
   EBENEN_SEITEN,
   flottenEintraege,
   istDetailseite,
+  ladeSicht,
   modeViewItems,
   resolveAnlage,
   STANDORT_BERICHTE,
@@ -27,6 +28,7 @@ import {
   unternehmensGruppen,
   LEISTE_HOECHSTENS,
   type AnlageBereich,
+  type AnlageSidebar,
   type BereichId,
   type EbenenLesemodell,
   type EbenenSeiten,
@@ -70,7 +72,7 @@ const ALL_SUBS: AnlagenSub[] = [
   'einzelwerte',
   'marktpreise',
   'prognose',
-  'wetter',
+  'prognosemodelle',
   'steuerung',
   'laden',
   'regeln',
@@ -156,11 +158,11 @@ describe('anlageBereiche - die fünf Bereiche sind FEST und geordnet', () => {
     }
   });
 
-  it('lässt den zweiten Bereich WEG, wo es weder Speicher noch Ladepunkte gibt', () => {
-    // „Ein Bereich ohne Inhalt existiert nicht" - der einzige Bereich, der der
-    // Komposition folgt.
+  it('ersetzt den zweiten Bereich durch die Prognose, wo es weder Speicher noch Ladepunkte gibt (R.2)', () => {
+    // „Ein Bereich ohne Inhalt existiert nicht", aber die Prognose ist
+    // UNBEDINGT - der zweite Platz bleibt nie leer.
     const ohne = anlageSurface({ entities: [PV_ONLY], config: { plantKind: 'eigenverbrauch' } });
-    expect(keys(anlageBereiche(ohne))).toEqual(['cockpit', 'verlauf', 'steuerung', 'anlage']);
+    expect(keys(anlageBereiche(ohne))).toEqual(['cockpit', 'prognose', 'verlauf', 'steuerung', 'anlage']);
   });
 
   it('nennt ihn „Ladevorgänge" auf einem REINEN Ladepark', () => {
@@ -175,8 +177,74 @@ describe('anlageBereiche - die fünf Bereiche sind FEST und geordnet', () => {
     expect(zweiter.key).toBe('ladevorgaenge');
     expect(zweiter.label).toBe('Ladevorgänge');
     expect(zweiter.target).toEqual({ kind: 'sub', sub: 'ladevorgaenge' });
-    // Ein Bereich mit EINEM Reiter behauptet keine Wahl.
-    expect(tabsFor(anlageSidebar(ladepark), 'ladevorgaenge')).toEqual([]);
+    // Die Prognose ist UNBEDINGT (R.2) - auch der Ladepark trägt sie als zweiten Reiter.
+    expect(tabsFor(anlageSidebar(ladepark), 'ladevorgaenge').map((t) => t.sub)).toEqual(['ladevorgaenge', 'prognose']);
+  });
+
+  it('nennt ihn „Ladepark" für einen Betreiber, egal wie viele Ladepunkte', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    const bereiche = anlageBereiche(ladepark, undefined, undefined, false, 'betreiber', 1);
+    const zweiter = bereiche[1];
+    expect(zweiter.key).toBe('ladevorgaenge');
+    expect(zweiter.label).toBe('Ladepark');
+    expect(bottomBarSlots(anlageSidebar(ladepark, undefined, undefined, false, 'betreiber', 1))[1].label).toBe(
+      'Ladepark',
+    );
+  });
+
+  it('lässt den Bereich Ladevorgänge für eine Privatkunden-Betriebsart WEG - die Prognose füllt den Platz (R.2)', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    expect(keys(anlageBereiche(ladepark, undefined, undefined, false, 'endkunde'))).toEqual([
+      'cockpit',
+      'prognose',
+      'verlauf',
+      'steuerung',
+      'anlage',
+    ]);
+    // Die Steuerung behält ihren Reiter „Laden" - unberührt von der Betriebsart.
+    expect(tabsOf(anlageBereiche(ladepark, undefined, undefined, false, 'endkunde'), 'steuerung')).toEqual([
+      'steuerung',
+      'laden',
+      'regeln',
+    ]);
+  });
+
+  it('entscheidet ohne gespeicherte Betriebsart nach der Zahl der Ladepunkte', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    // Bis zwei Ladepunkte: Privatkunde - der Bereich entfällt, die Prognose füllt den Platz (R.2).
+    expect(keys(anlageBereiche(ladepark, undefined, undefined, false, null, 2))).toEqual([
+      'cockpit',
+      'prognose',
+      'verlauf',
+      'steuerung',
+      'anlage',
+    ]);
+    // Ab drei: Ladepark.
+    expect(anlageBereiche(ladepark, undefined, undefined, false, null, 3)[1].label).toBe('Ladepark');
+  });
+
+  it('ladeSicht: ausdrückliche Betriebsart schlägt die Ladepunktzahl, keine Angabe bleibt historisch', () => {
+    expect(ladeSicht(undefined, undefined)).toBe('ladevorgaenge');
+    expect(ladeSicht(null, 0)).toBe('privatkunde');
+    expect(ladeSicht(null, 2)).toBe('privatkunde');
+    expect(ladeSicht(null, 3)).toBe('ladepark');
+    expect(ladeSicht('betreiber', 0)).toBe('ladepark');
+    expect(ladeSicht('endkunde', 99)).toBe('privatkunde');
   });
 
   it('hängt die Ladevorgänge als ZWEITEN Reiter an den Fahrplan, wo es beides gibt', () => {
@@ -189,8 +257,24 @@ describe('anlageBereiche - die fünf Bereiche sind FEST und geordnet', () => {
     });
     const bereiche = anlageBereiche(beides);
     expect(keys(bereiche)).toEqual(FUENF);
-    // Das Wetter erklärt den Plan und steht deshalb bei ihm (Verlauf-Rework E1).
-    expect(tabsOf(bereiche, 'fahrplan')).toEqual(['fahrplan', 'ladevorgaenge', 'wetter']);
+    // Die Prognose erklärt den Plan und steht deshalb bei ihm (Konzept vp-prognosen-konzept, E2 = A).
+    expect(tabsOf(bereiche, 'fahrplan')).toEqual(['fahrplan', 'ladevorgaenge', 'prognose']);
+
+    // §4.6: dieselbe Betriebsart-Unterscheidung gilt für den REITER im
+    // Fahrplan genauso wie für den eigenständigen Bereich oben.
+    expect(tabsOf(anlageBereiche(beides, undefined, undefined, false, 'betreiber'), 'fahrplan')).toEqual([
+      'fahrplan',
+      'ladevorgaenge',
+      'prognose',
+    ]);
+    expect(
+      anlageBereiche(beides, undefined, undefined, false, 'betreiber').find((b) => b.key === 'fahrplan')?.tabs
+        .find((t) => t.sub === 'ladevorgaenge')?.label,
+    ).toBe('Ladepark');
+    expect(tabsOf(anlageBereiche(beides, undefined, undefined, false, 'endkunde'), 'fahrplan')).toEqual([
+      'fahrplan',
+      'prognose',
+    ]);
   });
 
   it('öffnet jeder Bereich seine erste Seite', () => {
@@ -224,11 +308,13 @@ describe('die REITER entstehen aus dem M0-Read-Model', () => {
     expect(tabsOf(anlageBereiche(MARKT), 'verlauf')).not.toContain('marktpreise');
   });
 
-  it('lässt Preise und Wetter ohne Fahrplan im Verlauf — nie heimatlos', () => {
+  it('gibt Preise und Prognose ohne Fahrplan ihren EIGENEN Bereich — nie heimatlos (R.2)', () => {
     const pvBoerse = anlageSurface({ entities: [PV_ONLY], config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' } });
     const b = anlageBereiche(pvBoerse);
     expect(keys(b)).not.toContain('fahrplan');
-    expect(tabsOf(b, 'verlauf')).toEqual(['messwerte', 'einzelwerte', 'marktpreise', 'wetter']);
+    expect(keys(b)).toContain('prognose');
+    expect(tabsOf(b, 'prognose')).toEqual(['prognose', 'marktpreise']);
+    expect(tabsOf(b, 'verlauf')).toEqual(['messwerte', 'einzelwerte']);
   });
 
   it('führt die Lastspitze nicht mehr als Reiter — Geld auf Erlöse, Spitze auf Energie', () => {
@@ -261,12 +347,12 @@ describe('die REITER entstehen aus dem M0-Read-Model', () => {
     expect(bereichLabel(sidebar, 'energiebilanz')).toBe('Verlauf');
   });
 
-  it('gibt dem Bereich „Anlage" die Prognosen nur für VoltPilot, wo es sie gibt', () => {
+  it('gibt dem Bereich „Anlage" die Prognosemodelle nur für VoltPilot, wo es sie gibt', () => {
     for (const surface of [MARKT, PRIVAT]) {
       expect(tabsOf(anlageBereiche(surface, undefined, undefined, true), 'anlage')).toEqual([
         'modell',
         'technik',
-        'prognose',
+        'prognosemodelle',
       ]);
     }
     expect(tabsOf(anlageBereiche(null, undefined, undefined, true), 'anlage')).toEqual([
@@ -359,10 +445,11 @@ describe('bottomBarSlots - die Telefon-Leiste sind die fünf Bereiche', () => {
     expect(slots.find((i) => i.key === 'cockpit')?.label).toBe('Cockpit');
   });
 
-  it('hat auf einer Anlage ohne Speicher/Ladepunkte VIER Kacheln - nie einen leeren Slot', () => {
+  it('hat auf einer Anlage ohne Speicher/Ladepunkte FÜNF Kacheln - die Prognose füllt den Platz (R.2)', () => {
     const ohne = anlageSurface({ entities: [PV_ONLY], config: { plantKind: 'eigenverbrauch' } });
     expect(bottomBarSlots(anlageSidebar(ohne)).map((i) => i.key)).toEqual([
       'cockpit',
+      'prognose',
       'verlauf',
       'steuerung',
       'anlage',
@@ -375,9 +462,9 @@ describe('tabsFor - EINE Ableitung für Leiste und Reiter', () => {
     const s = anlageSidebar(ALLE);
     expect(tabsFor(s, 'erloese').map((t) => t.sub)).toEqual(['messwerte', 'erloese', 'einzelwerte']);
     expect(tabsFor(s, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik']);
-    expect(tabsFor(s, 'wetter').map((t) => t.sub)).toEqual(['fahrplan', 'marktpreise', 'wetter']);
+    expect(tabsFor(s, 'prognose').map((t) => t.sub)).toEqual(['fahrplan', 'prognose', 'marktpreise']);
     const betreiber = anlageSidebar(ALLE, undefined, undefined, true);
-    expect(tabsFor(betreiber, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik', 'prognose']);
+    expect(tabsFor(betreiber, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik', 'prognosemodelle']);
   });
 
   it('liefert LEER, wo der Bereich EINE Seite ist', () => {
@@ -393,13 +480,24 @@ describe('tabsFor - EINE Ableitung für Leiste und Reiter', () => {
   });
 
   it('liefert LEER, wo der Bereich nur EINEN Reiter hätte', () => {
-    // Speicher, aber weder Ladepunkte noch Wetter: der Fahrplan ist EINE Seite.
+    // Seit die Prognose UNBEDINGT ist (R.2), hat kein zusammengesetzter
+    // Bereich mehr nur einen Reiter - die Sperre selbst bleibt dennoch ein
+    // Vertrag von `tabsFor`, direkt an einem handgebauten Bereich geprüft.
+    const einReiter: AnlageSidebar = {
+      bereiche: [
+        { key: 'steuerung', label: 'Steuerung', icon: 'zap', target: { kind: 'sub', sub: 'steuerung' }, badge: null, badgeTitel: null, tabs: [{ key: 'steuerung', label: 'Geräte', sub: 'steuerung' }] },
+      ],
+      foot: [],
+    };
+    expect(tabsFor(einReiter, 'steuerung')).toEqual([]);
+
+    // Speicher, aber weder Ladepunkte noch Preise: der Fahrplan trägt trotzdem die Prognose.
     const nurSpeicher = anlageSurface({
       entities: [],
       signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
       config: { plantKind: 'eigenverbrauch', tarifArt: 'fest' },
     });
-    expect(tabsFor(anlageSidebar(nurSpeicher), 'fahrplan')).toEqual([]);
+    expect(tabsFor(anlageSidebar(nurSpeicher), 'fahrplan').map((t) => t.sub)).toEqual(['fahrplan', 'prognose']);
   });
 
   it('benennt den Bereich, in dem eine Unterseite wohnt', () => {
@@ -474,13 +572,13 @@ describe('activeAreaKey - EINE Hervorhebungs-Regel', () => {
       expect(activeAreaKey(sub)).toBe('verlauf');
     }
     expect(activeAreaKey('steuerung')).toBe('steuerung');
-    for (const sub of ['modell', 'technik', 'prognose', 'befehle', 'geraet', 'box'] as const) {
+    for (const sub of ['modell', 'technik', 'prognosemodelle', 'befehle', 'geraet', 'box'] as const) {
       expect(activeAreaKey(sub)).toBe('anlage');
     }
-    // Mit Modell zählt der Reiter: Preise und Wetter wandern mit dem Fahrplan …
+    // Mit Modell zählt der Reiter: Preise und Prognose wandern mit dem Fahrplan …
     const s = anlageSidebar(MARKT);
     expect(activeAreaKey('marktpreise', s)).toBe('fahrplan');
-    expect(activeAreaKey('wetter', s)).toBe('fahrplan');
+    expect(activeAreaKey('prognose', s)).toBe('fahrplan');
     // … und ein reiner Ladepark hebt SEINEN Bereich hervor.
     const ladepark = anlageSidebar(
       anlageSurface({

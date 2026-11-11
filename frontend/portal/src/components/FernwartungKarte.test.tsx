@@ -148,5 +148,71 @@ describe('FernwartungKarte (Box-Seite, nur Plattform-Schicht)', () => {
     expect(screen.getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent(
       '„Max (Laptop)“: Anmeldung mit dem SSH-Schlüssel SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
     );
+    // Ohne Meldung des Tunnel-Dienstes: unbekannt, nicht „nicht verbunden".
+    expect(screen.getByTestId('fw-karte-verbindung')).toHaveTextContent('Verbindung unbekannt');
+    expect(screen.getByTestId('fw-karte-verbindung')).toHaveTextContent(/noch nie seinen Zustand gemeldet/);
+    expect(screen.getByTestId('fw-anmeldung-vorhanden')).toHaveAttribute('data-fall', 'unbekannt');
+  });
+
+  it('zeigt, was der Tunnel-Dienst zuletzt zu Box und Fenster gemeldet hat', async () => {
+    const gemeldetAm = new Date(Date.now() - 15_000).toISOString();
+    fernwartung.mockResolvedValue({
+      ...uebersicht,
+      rueckmeldungen: [
+        {
+          dienst: 'voltpilot-tunnel-dienst',
+          zuletztAm: gemeldetAm,
+          gestartetUm: new Date(Date.now() - 7_200_000).toISOString(),
+          schluesselausgabe: true,
+          boxen: 1,
+          fenster: 1,
+        },
+      ],
+    });
+    fernwartungTechniker.mockResolvedValue([
+      {
+        id: 't1',
+        name: 'Max (Laptop)',
+        publicKey: 'FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=',
+        publicKeyKurz: 'FY4LLXFa…BI8/Y=',
+        adresse: '10.10.32.2',
+        status: 'aktiv',
+        notiz: null,
+        angelegtAm: '2026-10-07T10:00:00Z',
+        geaendertAm: '2026-10-07T10:00:00Z',
+        sshPublicKey: 'ssh-rsa AAAAB3NzaC1yc2EA',
+        sshFingerabdruck: 'SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
+        sshBits: 3072,
+      },
+    ]);
+    const boxMit = (verbundenSeit: string | null, abgeholt: string | null) => ({
+      id: 'b1',
+      edgeRef: 'edge-zay5sdd',
+      publicKey: 'jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM=',
+      publicKeyKurz: 'jUg9DePF…5HiEM=',
+      adresse: '10.10.16.2',
+      status: 'aktiv',
+      notiz: null,
+      angelegtAm: '2026-10-07T10:00:00Z',
+      geaendertAm: '2026-10-07T10:00:00Z',
+      siteId: null,
+      siteName: null,
+      tenantId: null,
+      tenantName: null,
+      rueckmeldung: { gemeldetAm, verbundenSeit, zuletztGefragtUm: verbundenSeit },
+      laufendeFenster: [{ ...offenesFenster, rueckmeldung: { gemeldetAm, schluesselAbgeholtUm: abgeholt } }],
+    });
+
+    fernwartungBox.mockResolvedValue(boxMit(null, null));
+    const { unmount } = render(<FernwartungKarte edgeRef="edge-zay5sdd" />);
+    expect(await screen.findByTestId('fw-karte-verbindung')).toHaveTextContent('Box nicht verbunden');
+    expect(screen.getByTestId('fw-anmeldung-vorhanden')).toHaveAttribute('data-fall', 'nicht_verbunden');
+    unmount();
+
+    fernwartungBox.mockResolvedValue(boxMit(new Date(Date.now() - 600_000).toISOString(), new Date(Date.now() - 30_000).toISOString()));
+    render(<FernwartungKarte edgeRef="edge-zay5sdd" />);
+    expect(await screen.findByTestId('fw-karte-verbindung')).toHaveTextContent(/Box verbunden.*Stand: vor \d+ s\./);
+    expect(screen.getByTestId('fw-anmeldung-vorhanden')).toHaveAttribute('data-fall', 'bereit');
+    expect(screen.getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent('Alles bereit');
   });
 });

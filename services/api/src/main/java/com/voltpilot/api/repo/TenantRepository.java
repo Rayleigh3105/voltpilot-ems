@@ -69,9 +69,17 @@ public class TenantRepository {
      * this admin connection (BYPASSRLS) is the only way one comes into being.
      */
     public TenantDto create(String name, String segment) {
+        return create(name, segment, null);
+    }
+
+    /**
+     * Wie {@link #create(String, String)}, mit der Betriebsart, die die Selbstregistrierung aus der
+     * Frage „Für mein Zuhause / Für ein Unternehmen“ setzt (Anlage-Flow a1, D2); {@code null} = keine.
+     */
+    public TenantDto create(String name, String segment, String betriebsart) {
         return jdbc.queryForObject(
                 "WITH t AS ("
-                        + " INSERT INTO tenant (name, segment) VALUES (?, ?)"
+                        + " INSERT INTO tenant (name, segment, betriebsart) VALUES (?, ?, ?)"
                         + " RETURNING id, name, segment, plan, betriebsart, created_at),"
                         + " u AS ("
                         + " INSERT INTO unternehmen (tenant_id, name, zeitzone)"
@@ -87,7 +95,7 @@ public class TenantRepository {
                         + " 'voltpilot_betrieb', 'voltpilot'"
                         + " FROM u)"
                         + " SELECT id, name, segment, plan, betriebsart, created_at FROM t",
-                TenantRepository::map, name, segment);
+                TenantRepository::map, name, segment, betriebsart);
     }
 
     /**
@@ -374,7 +382,11 @@ public class TenantRepository {
                 // names its Zugriff and its Anfrage, an Anfrage names its Zugriff and its Standorte, all
                 // RESTRICT.
                 for (String table : new String[] {"unterstuetzung_hinweis", "unterstuetzung_anfrage_standort",
-                    "unterstuetzung_anfrage", "zugriff_protokoll", "zugriff", "benutzer", "zugriff_bestand"}) {
+                    "unterstuetzung_anfrage", "zugriff_protokoll", "zugriff", "benutzer", "zugriff_bestand",
+                    // Vom-Kunden-gelöst-Protokoll (V20261110090000): nur den Mandanten, RESTRICT.
+                    "box_loesen_protokoll",
+                    // Endgültig-gelöscht-Protokoll (V20261111190000): nur den Mandanten, RESTRICT.
+                    "box_endgueltig_geloescht_protokoll"}) {
                     deleteByTenant(con, table, tenantId);
                 }
                 // The Berichte (V20260915050000) go before the Standort or Unternehmen their Geltung
@@ -469,6 +481,13 @@ public class TenantRepository {
                         // The Geräte-Rückfall (V20260921150000) holds only the tenant (RESTRICT).
                         "komponente_geraete_rueckfall",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
+                        // The Erzeuger-Steuerung (V20261021193000): the Registerbild-Fassung hangs at
+                        // its Gerät, the Netz-und-Vermarktung master data at the site; both hold the
+                        // tenant (RESTRICT).
+                        "registerbild_fassung", "anlage_netz_vermarktung",
+                        // Its Vorgaben, their Lücken and the Läufer's Stand (V20261022013700, UEMS EZ-7)
+                        // hang at the same Gerät and hold the tenant (RESTRICT).
+                        "erzeuger_vorgabe", "erzeuger_vorgabe_luecke", "erzeuger_vorgabe_lauf",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "device_data_source_status", "data_source_assignment", "data_source",
                         "data_source_kennzeichen_seq",

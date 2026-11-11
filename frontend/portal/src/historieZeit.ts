@@ -22,7 +22,6 @@
  */
 import type { HistoryCoverage, HistoryRange } from './api';
 import { isoDate, isoWeek } from './periodNav';
-import type { StripSlot } from './anlage';
 import type { VergleichsModus } from './historieVergleich';
 
 // --- F2: der Zeitraum-Sprung -------------------------------------------------
@@ -179,49 +178,6 @@ export function sprungJahre(
 
 // --- F2: der Monatsstreifen als Sprungbrett ---------------------------------
 
-/** Wie viele Monate der Streifen zeigt (wie in der Geld-Ansicht). */
-export const STREIFEN_MONATE = 12;
-
-const MONATE_KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
-
-/**
- * Die Monats-Chips der Zeit-Leiste — derselbe `MonthStrip`-Baustein wie in der
- * Geld-Ansicht, hier aber als reiner **Navigator**: die Historie kennt keine
- * Monatswerte, ohne zwölf weitere Abrufe zu bezahlen, also trägt der Chip
- * bewusst KEINE Zahl statt einer erfundenen.
- *
- * Was er dafür trägt, ist die Datenlage: ein Monat, der vollständig vor der
- * ersten oder nach der letzten Messung liegt, ist als datenlos markiert
- * (`hasData: false`) — die Oberfläche graut ihn aus, statt den Kunden in eine
- * leere Fläche springen zu lassen. Ohne Abdeckungsdaten bleibt `hasData`
- * unbekannt (undefined) und nichts wird ausgegraut.
- */
-export function streifenSlots(
-  now: Date,
-  coverage?: HistoryCoverage | null,
-  count = STREIFEN_MONATE,
-): StripSlot[] {
-  const jetztKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const ab = coverage?.firstDataAt ? new Date(coverage.firstDataAt) : null;
-  const bis = coverage?.lastDataAt ? new Date(coverage.lastDataAt) : null;
-  const abKey = ab && !Number.isNaN(ab.getTime()) ? isoMonth(ab) : null;
-  const bisKey = bis && !Number.isNaN(bis.getTime()) ? isoMonth(bis) : null;
-
-  const slots: StripSlot[] = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1, 12);
-    const key = isoMonth(d);
-    slots.push({
-      month: `${key}-01`,
-      label: MONATE_KURZ[d.getMonth()],
-      value: null,
-      isCurrent: key === jetztKey,
-      hasData: abKey == null ? undefined : key >= abKey && (bisKey == null || key <= bisKey),
-    });
-  }
-  return slots;
-}
-
 /**
  * Wohin ein Tipp auf einen Monats-Chip führt. Im Monatsmodus ist das der Monat
  * selbst; im Tagesmodus der erste Tag dieses Monats — außer beim laufenden
@@ -236,7 +192,11 @@ export function streifenAnker(monthIso: string, range: HistoryRange, now: Date):
   return gleicherMonat ? new Date(now) : anker;
 }
 
-/** In welchen Zeiträumen der Streifen etwas nützt (Tag: 211 Klicks, Monat: 7). */
+/**
+ * In welchen Zeiträumen der Monats-Sprung im ⋯-Popover etwas nützt (Tag: 211
+ * Klicks, Monat: 7). Seit dem Captain-Befund 04.11.2026 ist er ein Raster der
+ * zwölf Monate unter ihrem Jahr (`VpMonatsRaster`), kein Chip-Streifen mehr.
+ */
 export function zeigtStreifen(range: HistoryRange): boolean {
   return range === 'day' || range === 'month';
 }

@@ -52,6 +52,10 @@ public record AdminDevicesDto(List<DeviceRowDto> devices) {
             String ist, String soll, Long sollSeq,
             String state, String reason, String blocker, Instant lastSeenAt, Instant reportedAt,
             boolean provisioned, String note, Instant provisionedAt,
-            EdgeUpdatesDto.TrustDto trust, String boxArt) {
+            EdgeUpdatesDto.TrustDto trust, String boxArt,
+            // Geräte & Updates G8 (additiv): das gemeldete Gerät, null = nicht
+            // gemeldet; loaderStand ist die LOADER_STAND-Marke des Loaders im
+            // Flash (Loader-Selbstupdate, nur Edge Light).
+            String geraetModell, String geraetArch, String loader, Integer loaderStand) {
     }
 }

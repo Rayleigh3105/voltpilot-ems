@@ -67,12 +67,37 @@ public class EntityObservedRepository {
      * wholesale, so entities that vanished from the report vanish here too
      * (the heartbeat carries the COMPLETE Ist; a partial merge would keep
      * ghosts forever).
+     *
+     * <p><b>Concurrent writers: the youngest report wins.</b> Two heartbeats of
+     * one box can be written at the same time (a second API instance on the same
+     * topic, a redelivery). The former {@code DELETE} + {@code INSERT} lost that
+     * race: the {@code DELETE} cannot see the other transaction's uncommitted
+     * rows, the {@code INSERT} then died on {@code entity_observed_state_pkey}
+     * once it committed. Now every row is an {@code ON CONFLICT} upsert that
+     * overwrites only a row that is not YOUNGER than this report
+     * ({@code reported_at}), and the vanished rows go the same way (never a row
+     * a younger report wrote). So the result is the same whichever commits
+     * first, and a late older heartbeat never turns the picture back. Rows are
+     * written in {@code entity_id} order, so two writers queue on the same
+     * lock chain instead of deadlocking.
+     *
+     * <p>One honest limit: an OLDER report that is written while a younger one
+     * is still uncommitted can add a row the younger one no longer carries; the
+     * next heartbeat (seconds later) replaces the set again.
      */
     @Transactional
     public void replaceForDevice(UUID deviceId, UUID tenantId, UUID siteId, Instant reportedAt,
             List<ObservedRow> rows) {
-        jdbc.update("DELETE FROM entity_observed_state WHERE device_id = ?", deviceId);
-        for (ObservedRow row : rows) {
+        java.sql.Timestamp reported = java.sql.Timestamp.from(reportedAt);
+        Integer younger = jdbc.queryForObject(
+                "SELECT count(*) FROM entity_observed_state WHERE device_id = ? AND reported_at > ?",
+                Integer.class, deviceId, reported);
+        if (younger != null && younger > 0) {
+            return; // a younger report is already stored: this one is out of order
+        }
+        List<ObservedRow> ordered = rows.stream()
+                .sorted(java.util.Comparator.comparing(ObservedRow::entityId)).toList();
+        for (ObservedRow row : ordered) {
             EdgeLink link = row.edgeLink();
             jdbc.update(
                     "INSERT INTO entity_observed_state (device_id, entity_id, tenant_id, site_id, "
@@ -81,13 +106,29 @@ public class EntityObservedRepository {
                             + "edge_model, edge_communication, edge_family, edge_connection, "
                             + "edge_interval_s, edge_capacity_kwp, edge_registry_unit_id) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, "
-                            + "?::jsonb, ?, ?, ?)",
+                            + "?::jsonb, ?, ?, ?) "
+                            + "ON CONFLICT (device_id, entity_id) DO UPDATE SET "
+                            + "tenant_id = EXCLUDED.tenant_id, site_id = EXCLUDED.site_id, "
+                            + "source = EXCLUDED.source, entity_type = EXCLUDED.entity_type, "
+                            + "health = EXCLUDED.health, label = EXCLUDED.label, "
+                            + "last_telemetry_at = EXCLUDED.last_telemetry_at, "
+                            + "applied_revision = EXCLUDED.applied_revision, "
+                            + "channels = EXCLUDED.channels, reported_at = EXCLUDED.reported_at, "
+                            + "edge_role = EXCLUDED.edge_role, edge_brand = EXCLUDED.edge_brand, "
+                            + "edge_model = EXCLUDED.edge_model, "
+                            + "edge_communication = EXCLUDED.edge_communication, "
+                            + "edge_family = EXCLUDED.edge_family, "
+                            + "edge_connection = EXCLUDED.edge_connection, "
+                            + "edge_interval_s = EXCLUDED.edge_interval_s, "
+                            + "edge_capacity_kwp = EXCLUDED.edge_capacity_kwp, "
+                            + "edge_registry_unit_id = EXCLUDED.edge_registry_unit_id "
+                            + "WHERE entity_observed_state.reported_at <= EXCLUDED.reported_at",
                     deviceId, row.entityId(), tenantId, siteId, row.source(), row.entityType(),
                     row.health(), row.label(),
                     row.lastTelemetryAt() == null ? null
                             : java.sql.Timestamp.from(row.lastTelemetryAt()),
                     row.appliedRevision(), row.channelsJson(),
-                    java.sql.Timestamp.from(reportedAt), row.edgeRole(), row.edgeBrand(),
+                    reported, row.edgeRole(), row.edgeBrand(),
                     row.edgeModel(),
                     link == null ? null : link.communication(),
                     link == null ? null : link.family(),
@@ -96,6 +137,17 @@ public class EntityObservedRepository {
                     link == null ? null : link.capacityKwp(),
                     link == null ? null : link.registryUnitId());
         }
+        // Whatever this report no longer carries goes - but never a row a younger report wrote.
+        String[] kept = ordered.stream().map(ObservedRow::entityId).toArray(String[]::new);
+        jdbc.update(con -> {
+            java.sql.PreparedStatement ps = con.prepareStatement(
+                    "DELETE FROM entity_observed_state WHERE device_id = ? AND reported_at <= ? "
+                            + "AND NOT (entity_id = ANY (?))");
+            ps.setObject(1, deviceId);
+            ps.setTimestamp(2, reported);
+            ps.setArray(3, con.createArrayOf("text", kept));
+            return ps;
+        });
     }
 
     /**

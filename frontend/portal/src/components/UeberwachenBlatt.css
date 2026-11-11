@@ -1,0 +1,36 @@
+/* Das Blatt "Überwachen" (Alerting Scheibe 2, Konzept §6.8). */
+.vp-ueberwachen-blatt {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.vp-ueberwachen-satz {
+  margin: 0;
+  font: 600 1rem/1.4 var(--vp-font-body);
+  color: var(--vp-text-dark, #1e293b);
+}
+.vp-ueberwachen-probelauf {
+  margin: 0;
+  font: 400 0.8125rem/1.4 var(--vp-font-body);
+  color: var(--vp-text-gray, #475569);
+}
+.vp-ueberwachen-felder {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  .vp-ueberwachen-felder {
+    grid-template-columns: 1fr;
+  }
+}
+.vp-ueberwachen-schwere {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vp-ueberwachen-schwere-label {
+  font: 600 0.8125rem/1.2 var(--vp-font-body);
+  color: var(--vp-text-gray, #475569);
+}

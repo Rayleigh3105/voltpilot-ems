@@ -28,3 +28,23 @@ for (const breite of [375, 1440]) {
     await expect(page.getByText(/lässt diese Kennung ab jetzt herein/)).toBeVisible();
   });
 }
+
+// Audit vp-ocpp-haushalt W-04: eine eingetragene, nie verbundene Kennung steht in der
+// Liste der Box - der Assistent meldet sie trotzdem nicht als „gemeldet“.
+for (const breite of [375, 1440]) {
+  test(`OCPP-Assistent: eingetragen, nie verbunden heißt „Wartet auf die Wallbox“ ${breite}`, async ({ page }) => {
+    await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 1000 });
+    await page.goto('/e2e/ladepark-box.html?nie-verbunden');
+    await page.getByRole('combobox', { name: 'Box für die Ladepunkte' }).click();
+    await page.getByRole('option', { name: /Box Halle 1/ }).click();
+    await page.getByLabel('Kennung').fill('wallbox-garage');
+    const schritt = page.locator('.vp-anbinden-status');
+    await expect(schritt).toHaveText(/Wartet auf die Wallbox/);
+    await expect(page.locator('.vp-anbinden-zustand')).toHaveText('Wartet auf die Wallbox');
+    await expect(page.getByText('Hat sich gemeldet')).toHaveCount(0);
+    await expect(page.getByText(/Prüfen Sie Adresse und Kennung/)).toBeVisible();
+    // Die Nennleistung der Kennung steht im Feld (W-02, Paket Cloud).
+    await expect(page.getByLabel('Nennleistung in kW')).toHaveValue('11');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  });
+}

@@ -121,7 +121,7 @@ func TestHerzschlagMitUndOhneBlock(t *testing.T) {
 	if b := a.gemeinsameSteuerung(); b != nil {
 		t.Fatalf("block after the plan was cleared: %+v", b)
 	}
-	if !slices.Contains(cloud.BuiltSupports(), "plan_quittung") {
+	if !slices.Contains(cloud.BuiltSupports(""), "plan_quittung") {
 		t.Fatal("receipt built but plan_quittung not advertised")
 	}
 }

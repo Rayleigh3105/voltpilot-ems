@@ -20,8 +20,9 @@ import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -62,6 +63,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class ComponentTemplateApiTest {
@@ -479,7 +481,7 @@ class ComponentTemplateApiTest {
     private void claim(String customerToken, UUID siteId, String ref) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/devices/claim"),
                 HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId.toString(), "externalRef", ref),
+                new HttpEntity<>(Map.of("siteId", siteId.toString(), "externalRef", TestKennung.box(ref)),
                         bearer(customerToken)),
                 new org.springframework.core.ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);

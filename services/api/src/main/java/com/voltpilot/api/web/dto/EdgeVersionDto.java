@@ -21,9 +21,11 @@ import java.util.UUID;
 public record EdgeVersionDto(UUID deviceId, UUID siteId, String coreVersion,
         String paletteVersion, Instant reportedAt,
         // Geräteseiten Stufe 1 (R2a): das URTEIL gegen das Release-Register,
-        // additiv. `newestRelease` ist der Soll-Stand (null = leeres Register,
-        // also kein Maßstab), `upToDate` DREIWERTIG - null heißt „nicht
-        // bewertbar" (nichts gemeldet ODER nicht registriert), NIE „veraltet".
+        // additiv. `newestRelease` ist der Soll-Stand: das neueste Release der
+        // LINIE dieser Box (Docker-Box oder Edge Light, seit Geräte & Updates S0;
+        // null = kein Maßstab: leeres Register, Linie unbekannt oder ohne
+        // Release), `upToDate` DREIWERTIG - null heißt „nicht bewertbar"
+        // (nichts gemeldet ODER nicht registriert), NIE „veraltet".
         // Es reist das Urteil, nie das Register (EdgeStandVerdict).
         String newestRelease, Boolean upToDate,
         // Raw report plus the central reported-OR-table result. Null report = legacy box.

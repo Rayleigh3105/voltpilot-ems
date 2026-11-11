@@ -484,6 +484,19 @@ func (e *Enroller) loadOrCreateKey() (*ecdsa.PrivateKey, error) {
 	return key, nil
 }
 
+// Geraeteschluessel liest den Geräteschlüssel aus dem Identitätsverzeichnis,
+// ohne je einen neuen zu erzeugen (Werkstatt: eingelöst wird mit dem Schlüssel,
+// der die Zertifikatsanfrage trägt).
+func Geraeteschluessel(dir string) (*ecdsa.PrivateKey, error) {
+	return (&Enroller{Dir: dir}).loadKey()
+}
+
+// Zertifikatsanfrage baut eine Anfrage für den Schlüssel, wie der erste Start
+// sie schickt (PEM).
+func Zertifikatsanfrage(key *ecdsa.PrivateKey, ref string) (string, error) {
+	return buildCSR(key, ref)
+}
+
 func buildCSR(key *ecdsa.PrivateKey, ref string) (string, error) {
 	// The requested subject is irrelevant - issuance overrides it with the
 	// claim-derived identity. The CSR only proves key possession.

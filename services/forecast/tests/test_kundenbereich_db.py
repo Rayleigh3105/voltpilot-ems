@@ -46,6 +46,9 @@ from voltpilot_forecast.repository import TimescaleForecastRepository  # noqa: E
 from voltpilot_forecast.weather_repository import (  # noqa: E402
     TimescaleWeatherForecastRepository,
 )
+from voltpilot_forecast.weekly_repository import (  # noqa: E402
+    TimescaleWeeklyForecastRepository,
+)
 
 IMAGE = "timescale/timescaledb:2.17.2-pg16"
 DDL = Path(__file__).resolve().parents[3] / "infra" / "local" / "timescale"
@@ -75,15 +78,22 @@ CREATE TABLE plan_accuracy (
     realized_cost_eur NUMERIC, n_slots INTEGER, computed_at TIMESTAMPTZ,
     PRIMARY KEY (site_id, day));
 ALTER TABLE tenant ADD COLUMN IF NOT EXISTS beendet_am TIMESTAMPTZ;
+ALTER TABLE weather_forecast ADD COLUMN IF NOT EXISTS dni_normal_w_m2 NUMERIC(8, 2);
+CREATE TABLE forecast_weekly (
+    time TIMESTAMPTZ NOT NULL, tenant_id UUID NOT NULL, site_id UUID NOT NULL,
+    kind TEXT NOT NULL, model TEXT NOT NULL, value_kw NUMERIC(12, 4) NOT NULL,
+    run_at TIMESTAMPTZ NOT NULL, method TEXT NOT NULL,
+    PRIMARY KEY (site_id, kind, model, run_at, time));
 """
 
-#: The five tables the forecast service writes per site.
+#: The six tables the forecast service writes per site.
 TABELLEN = (
     "forecast",
     "forecast_model_state",
     "forecast_accuracy",
     "plan_accuracy",
     "weather_forecast",
+    "forecast_weekly",
 )
 
 
@@ -184,6 +194,14 @@ def _schreibe_alles(conn, tenant: str, site: str) -> None:
         tenant_id=tenant, site_id=site, latitude=52.52, longitude=13.40, run_at=T0,
         points=(WeatherPoint(T0 + timedelta(hours=1), 18.0, 40.0, 300.0),),
     ))
+    TimescaleWeeklyForecastRepository(conn).save(
+        ForecastSeries(
+            kind=ForecastKind.PV, site_id=site, tenant_id=tenant, run_at=T0,
+            method="clear_sky_v1:open_meteo_dni",
+            points=[ForecastPoint(T0 + timedelta(hours=48), 2.0)],
+            model="pv-physical",
+        )
+    )
 
 
 def _site_ids(dsn: str) -> dict[str, set[str]]:

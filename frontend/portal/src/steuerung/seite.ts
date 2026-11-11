@@ -131,7 +131,7 @@ export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBil
 
 /** Welches Blatt gerade offen ist. */
 export type BlattZustand =
-  | { art: 'geraet'; id: string; modus?: 'aus' | 'an' }
+  | { art: 'geraet'; id: string; modus?: 'aus' | 'an'; einstellungen?: boolean }
   | { art: 'speicher' }
   /** „Steuerung anhalten“: die Dauern der Pause und „Bis ich fortsetze“ (SZ-2 A). */
   | { art: 'pause' }
@@ -139,11 +139,27 @@ export type BlattZustand =
   | { art: 'vorrang' }
   | { art: 'p14a' }
   | { art: 'negativ' }
+  /**
+   * „Stunden ohne Vergütung" (§ 51a EEG, Konzept
+   * `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4): die Sonnen-
+   * Erzählung-Fassung von {@link negativ} - keine Kostenvermeidung, sondern
+   * eine ausbleibende Vergütung bei sonst fester Einspeisung.
+   */
+  | { art: 'nullstunden' }
   | { art: 'anbinden' }
   | { art: 'neu'; id: string }
-  | { art: 'rahmen' }
+  /**
+   * Die Anschlussgrenze SELBST stellt man seit „Ein Ort fürs Laden" Scheibe 4
+   * (E5 = A) in den Einstellungen ein - dieses Blatt ist nur noch der Hinweis
+   * auf der Geräte-Seite („Was immer gilt"), kein Formular mehr.
+   */
+  | { art: 'netzanschluss' }
   | { art: 'ziel'; id: string }
   | { art: 'abfahrt'; id: string }
+  /** „Womit laden?“ - das Vorschau-Blatt eines Ladepunkts (Konzept k1, E1=B). */
+  | { art: 'womit'; id: string }
   | { art: 'fahrzeug'; tagRef: string }
+  /** „Ladungen · Alle" (§4.1 Punkt 5, Scheibe 2): Monat, Auto-Filter, CSV. */
+  | { art: 'ladungen'; id: string }
   | { art: 'regel'; flowId?: string; geraet?: string; vorlage?: string }
   | { art: 'szene'; id: string };

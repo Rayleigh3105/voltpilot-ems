@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.ota.RolloutStates;
 import com.voltpilot.api.ota.RolloutService;
+import com.voltpilot.api.ota.UpdateStatusListener;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -28,8 +29,9 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -73,6 +75,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 // Das Release-Register ist GLOBAL und MONOTON - eine Sequenznummer, die kleiner
@@ -142,6 +145,12 @@ class OtaRolloutApiTest {
     @Autowired
     RolloutService rollouts;
 
+    @Autowired
+    com.voltpilot.api.repo.DeviceRepository deviceRepo;
+
+    @Autowired
+    com.voltpilot.api.repo.UpdateStatusRepository updateStatusRepo;
+
     private final ObjectMapper json = new ObjectMapper();
 
     /** Ein Manifest, dessen Bytes bewusst „unaufgeräumt" sind. */
@@ -154,6 +163,62 @@ class OtaRolloutApiTest {
               "signing_key_id": "rel-2026-a"
             }
             """;
+    /**
+     * Die gepackte Lieferung eines Edge-Light-"Programms" für den Test: 1,3 MB
+     * kaum packbarer Bytes, damit das Hochladen mehrere Teile braucht.
+     */
+    private static final byte[] LIGHT_GZ = lightGz();
+    private static final String LIGHT_GZ_SHA = sha256Hex(LIGHT_GZ);
+
+    /** Ein Edge-Light-Manifest in der Form, die {@code vp-ota manifest --binary} erzeugt. */
+    private static final String LIGHT_MANIFEST = """
+            {
+              "schema_version": "1.0",
+              "release": "edge-light-2026.10.1",
+              "release_seq": 41,
+              "target_commit": "3bf8c038a1b2",
+              "artifacts": [
+                {
+                  "type": "binary",
+                  "name": "vp-edge-light",
+                  "arch": "linux/mipsle",
+                  "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+                  "size": 14614743,
+                  "gz_sha256": "%s",
+                  "gz_size": %d
+                }
+              ],
+              "min_from_seq": 0,
+              "allow_downgrade": false,
+              "state_schema": 1,
+              "compat": {
+                "backends": ["light"]
+              },
+              "signing_key_id": "rel-2026-a"
+            }
+            """.formatted(LIGHT_GZ_SHA, LIGHT_GZ.length);
+
+    private static byte[] lightGz() {
+        byte[] roh = new byte[1_300_000];
+        new java.util.Random(4711).nextBytes(roh);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(out)) {
+            gz.write(roh);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return out.toByteArray();
+    }
+
+    private static String sha256Hex(byte[] b) {
+        try {
+            return java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(b));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static final String SIGNATURE =
             "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\",\"key_id\":\"rel-2026-a\","
                     + "\"domain\":\"release\",\"signature\":\"AAAA\"}\n";
@@ -165,8 +230,8 @@ class OtaRolloutApiTest {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
 
-        String refA = "ota-a-" + UUID.randomUUID().toString().substring(0, 8);
-        String refB = "ota-b-" + UUID.randomUUID().toString().substring(0, 8);
+        String refA = TestKennung.box("ota-a-" + UUID.randomUUID().toString().substring(0, 8));
+        String refB = TestKennung.box("ota-b-" + UUID.randomUUID().toString().substring(0, 8));
         UUID a = claim(customer, refA);
         UUID b = claim(customer, refB);
 
@@ -280,8 +345,8 @@ class OtaRolloutApiTest {
                 MANIFEST.replace("edge-2026.08.0", "edge-2026.09.1").replace(":12", ":31"),
                 SIGNATURE);
 
-        UUID one = claim(customer, "ota-x-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID two = claim(customer, "ota-y-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID one = claim(customer, TestKennung.box("ota-x-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID two = claim(customer, TestKennung.box("ota-y-" + UUID.randomUUID().toString().substring(0, 8)));
 
         assertThat(post("/api/v1/admin/rollouts", admin,
                 Map.of("releaseSeq", 30, "devices", List.of(one.toString())))
@@ -316,9 +381,9 @@ class OtaRolloutApiTest {
     void theTrustIdentityReachesTheFleetMatrixAndAbsenceIsNeverAFinding() throws Exception {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
-        UUID crossed = claim(customer, "ota-t1-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID open = claim(customer, "ota-t2-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID silent = claim(customer, "ota-t3-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID crossed = claim(customer, TestKennung.box("ota-t1-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID open = claim(customer, TestKennung.box("ota-t2-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID silent = claim(customer, TestKennung.box("ota-t3-" + UUID.randomUUID().toString().substring(0, 8)));
 
         reportTrust(crossed, "root-2026-a", "rel-2026-a,rel-2026-b", "2026-08-04T10:00:00Z", null);
         reportTrust(open, "", "", null, null);
@@ -348,7 +413,7 @@ class OtaRolloutApiTest {
     void theDeviceInventoryUnitesTheStickerRegistryWithTheRealFleet() throws Exception {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
-        String edgeRef = "ota-inv-" + UUID.randomUUID().toString().substring(0, 8);
+        String edgeRef = TestKennung.box("ota-inv-" + UUID.randomUUID().toString().substring(0, 8));
         UUID device = claim(customer, edgeRef);
         String printed = "VP-INV-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
         assertThat(post("/api/v1/admin/provisioned-devices", admin,
@@ -402,9 +467,9 @@ class OtaRolloutApiTest {
     void aReleaseOnlyReachesBoxesOfItsOwnKind() throws Exception {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
-        UUID docker = claim(customer, "ota-bd-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID light = claim(customer, "ota-bl-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID silent = claim(customer, "ota-bs-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID docker = claim(customer, TestKennung.box("ota-bd-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID light = claim(customer, TestKennung.box("ota-bl-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID silent = claim(customer, TestKennung.box("ota-bs-" + UUID.randomUUID().toString().substring(0, 8)));
         reportBox(docker, "compose", "edge-2026.09.1-3bf8c038a1b2");
         // Die Pilot-Box heute: der Core meldet noch fest `compose`, erkennbar
         // ist Edge Light nur am Stempel.
@@ -413,11 +478,9 @@ class OtaRolloutApiTest {
         registerRelease(admin, "edge-2026.10.0", 40,
                 MANIFEST.replace("edge-2026.08.0", "edge-2026.10.0").replace(":12", ":40"),
                 SIGNATURE);
-        String lightManifest = MANIFEST.replace("edge-2026.08.0", "edge-2026.10.1")
-                .replace(":12", ":41")
-                .replace("\"signing_key_id\"",
-                        "\"compat\": {\"backends\": [\"light\"]},\n  \"signing_key_id\"");
-        registerRelease(admin, "edge-2026.10.1", 41, lightManifest, SIGNATURE);
+        // Ein Edge-Light-Release unter seinem Namen edge-light-JJJJ.MM.N und in
+        // der Form des Vertrags (das Register liest Edge Light streng).
+        registerRelease(admin, "edge-light-2026.10.1", 41, LIGHT_MANIFEST, SIGNATURE);
 
         // ── Die Leserouten tragen die Box-Art ─────────────────────────────
         JsonNode page = readModel(admin);
@@ -439,8 +502,7 @@ class OtaRolloutApiTest {
         assertThat(single.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat((String) single.getBody().get("message"))
                 .contains("edge-2026.10.0")
-                .contains("diese Box ist eine Edge Light")
-                .contains("Updates von Hand (Edge Light, Stufe 1)");
+                .contains("diese Box ist eine Edge Light");
 
         // ── Rollout mit einem unpassenden Gerät: 409, NICHTS zugewiesen ───
         int rolloutsBefore = readModel(admin).get("rollouts").size();
@@ -468,6 +530,72 @@ class OtaRolloutApiTest {
         assertThat((String) lightOnUnknown.getBody().get("message"))
                 .contains("Box-Art dieses Geräts ist unbekannt");
 
+        // ── Stufe 1 (Geräte & Updates S0): ohne gekreuztes Vertrauen nimmt die
+        // Edge-Light-Box nichts aus dem Portal an - gesperrt VOR dem Senden, auf
+        // beiden Schreibwegen, statt als „fehlgeschlagen ⚠" auf der Box zu enden.
+        ResponseEntity<Map<String, Object>> stufe1 = post(
+                "/api/v1/admin/devices/" + light + "/update-target", admin, Map.of("releaseSeq", 41));
+        assertThat(stufe1.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) stufe1.getBody().get("message"))
+                .contains("diese Box hat Stufe 1").contains("nachrüsten");
+        ResponseEntity<Map<String, Object>> stufe1Auftrag = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 41, "devices", List.of(light.toString())));
+        assertThat(stufe1Auftrag.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) stufe1Auftrag.getBody().get("message")).contains("diese Box hat Stufe 1");
+        assertThat(sollOf(readModel(admin), light)).isNull();
+        // Nachgerüstet: Wurzel und geprüftes Vertrauens-Set gemeldet (Stufe 2).
+        kreuzeVertrauen(light);
+
+        // ── Edge Light: erst verteilbar, wenn die Programme im Portal liegen ─
+        ResponseEntity<Map<String, Object>> ohneProgramm = post(
+                "/api/v1/admin/devices/" + light + "/update-target", admin, Map.of("releaseSeq", 41));
+        assertThat(ohneProgramm.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) ohneProgramm.getBody().get("message"))
+                .contains("noch nicht verteilbar").contains("linux/mipsle");
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/" + LIGHT_GZ_SHA), byte[].class)
+                .getStatusCode()).as("vor dem Hochladen gibt es nichts").isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(putTeil(admin, "edge-2026.10.0", "linux/mipsle", 0, new byte[] {1}).getStatusCode())
+                .as("ein Docker-Release hat keine Programme").isEqualTo(HttpStatus.CONFLICT);
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/arm64", 0, new byte[] {1}).getStatusCode())
+                .as("eine Plattform, die das Manifest nicht nennt").isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Eine falsche Lieferung in voller Länge wird am Ende verworfen.
+        byte[] falsch = LIGHT_GZ.clone();
+        falsch[falsch.length - 1] ^= 1;
+        ResponseEntity<Map<String, Object>> verworfen = hochladen(admin, falsch);
+        assertThat(verworfen.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) verworfen.getBody().get("message")).contains("Pruefsumme");
+        // Ein Teil an der falschen Stelle passt nicht.
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/mipsle", 0,
+                java.util.Arrays.copyOfRange(LIGHT_GZ, 0, 1000)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/mipsle", 5000,
+                java.util.Arrays.copyOfRange(LIGHT_GZ, 5000, 6000)).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        // Die richtige Lieferung, in Teilen von 512 KiB: fertig erst mit dem letzten.
+        ResponseEntity<Map<String, Object>> fertig = hochladen(admin, LIGHT_GZ);
+        assertThat(fertig.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(fertig.getBody()).containsEntry("fertig", true);
+        assertThat(((Number) fertig.getBody().get("empfangen")).longValue()).isEqualTo(LIGHT_GZ.length);
+        // Ein wiederholter Lauf ändert nichts.
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/mipsle", 0, new byte[] {9}).getBody())
+                .containsEntry("fertig", true);
+        JsonNode stand = json.readTree(rest.exchange(url("/api/v1/admin/edge-releases/edge-light-2026.10.1/programme"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class).getBody());
+        assertThat(stand.get(0).get("arch").asText()).isEqualTo("linux/mipsle");
+        assertThat(stand.get(0).get("fertig").asBoolean()).isTrue();
+
+        // Offen abrufbar, ohne Token, Byte für Byte.
+        ResponseEntity<byte[]> abruf = rest.getForEntity(url("/api/v1/edge/light-programm/" + LIGHT_GZ_SHA),
+                byte[].class);
+        assertThat(abruf.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(abruf.getHeaders().getContentType().toString()).isEqualTo("application/gzip");
+        assertThat(abruf.getBody()).isEqualTo(LIGHT_GZ);
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/" + "0".repeat(64)), byte[].class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/nicht-hex"), byte[].class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
         // ── Passende Zuweisungen gehen durch ──────────────────────────────
         assertThat(post("/api/v1/admin/rollouts", admin,
                 Map.of("releaseSeq", 40, "devices", List.of(docker.toString(), silent.toString())))
@@ -477,7 +605,404 @@ class OtaRolloutApiTest {
         page = readModel(admin);
         assertThat(sollOf(page, docker)).isEqualTo("edge-2026.10.0");
         assertThat(sollOf(page, silent)).isEqualTo("edge-2026.10.0");
-        assertThat(sollOf(page, light)).isEqualTo("edge-2026.10.1");
+        assertThat(sollOf(page, light)).isEqualTo("edge-light-2026.10.1");
+
+        // ── Geräte & Updates S0: jede Box wird an IHRER Linie gemessen ──────
+        // Das neueste Release über beide Linien ist edge-light-2026.10.1 (41);
+        // eine Docker-Box auf edge-2026.10.0 (40) ist trotzdem aktuell, und der
+        // Kunde liest nie „neuerer Stand edge-light-…".
+        reportBox(docker, "compose", "edge-2026.10.0-3bf8c038a1b2");
+        reportBox(light, "compose", "edge-light-2026.10.1-9b37439a02c1");
+        List<Map<String, Object>> kunde = SichtbareListenTestLeser.lesen(rest,
+                url("/api/v1/edge-versions"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
+        Map<String, Object> dockerStand = kundenStand(kunde, docker);
+        assertThat(dockerStand.get("newestRelease")).isEqualTo("edge-2026.10.0");
+        assertThat(dockerStand.get("upToDate")).isEqualTo(Boolean.TRUE);
+        Map<String, Object> lightStand = kundenStand(kunde, light);
+        assertThat(lightStand.get("newestRelease")).isEqualTo("edge-light-2026.10.1");
+        assertThat(lightStand.get("upToDate")).isEqualTo(Boolean.TRUE);
+
+        // Die Betreiber-Seite trägt dieselbe Sicht je Linie (additiv: die KPI
+        // älterer Portale bleibt das neueste Release über beide Linien).
+        page = readModel(admin);
+        JsonNode dockerLinie = linie(page, "docker");
+        assertThat(dockerLinie.get("newestRelease").asText()).isEqualTo("edge-2026.10.0");
+        assertThat(dockerLinie.get("newestReleaseSeq").asLong()).isEqualTo(40);
+        assertThat(dockerLinie.get("upToDate").asInt()).isPositive();
+        assertThat(dockerLinie.get("devices").asInt()).isGreaterThanOrEqualTo(dockerLinie.get("upToDate").asInt());
+        JsonNode lightLinie = linie(page, "light");
+        assertThat(lightLinie.get("newestRelease").asText()).isEqualTo("edge-light-2026.10.1");
+        assertThat(lightLinie.get("devices").asInt()).isEqualTo(1);
+        assertThat(lightLinie.get("known").asInt()).isEqualTo(1);
+        assertThat(lightLinie.get("upToDate").asInt()).isEqualTo(1);
+        assertThat(page.get("lines").get(0).get("boxArt").asText()).isEqualTo("docker");
+        assertThat(page.get("kpi").get("newestRelease").asText()).isEqualTo("edge-light-2026.10.1");
+    }
+
+    /**
+     * Geräte &amp; Updates G1/G2: die Linien-Sicht, die drei Fakten mit EIGENEN
+     * Zeitpunkten über den ECHTEN Ingest (UpdateStatusListener), die Eignung je
+     * Box und Release, und eine zurückgezogene Anfrage hält ihren Lauf nicht mehr
+     * offen.
+     */
+    @Test
+    @Order(7)
+    void linienFaktenEignungUndZurueckgezogen() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UUID a = claim(customer, TestKennung.box("ota-ga-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID b = claim(customer, TestKennung.box("ota-gb-" + UUID.randomUUID().toString().substring(0, 8)));
+        UpdateStatusListener ingest = new UpdateStatusListener("tcp://localhost:1883", "", "",
+                deviceRepo, updateStatusRepo);
+        herzschlag(ingest, a, "edge-2026.10.0-3bf8c038a1b2", null, null, "idle");
+        herzschlag(ingest, b, "edge-2026.10.0-3bf8c038a1b2", null, null, "idle");
+        registerRelease(admin, "edge-2026.10.2", 42,
+                MANIFEST.replace("edge-2026.08.0", "edge-2026.10.2").replace(":12", ":42"), SIGNATURE);
+
+        // ── Eignung (G1): bereit; die Edge-Light-Box zählt nur als andere Linie ─
+        JsonNode eignung = getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=42");
+        assertThat(eignung.get("boxArt").asText()).isEqualTo("docker");
+        assertThat(eignungOf(eignung, a).get("gruppe").asText()).isEqualTo("bereit");
+        assertThat(eignung.get("andereLinie").asInt()).as("die Edge-Light-Box aus Fall 6").isPositive();
+        assertThat(rest.exchange(url("/api/v1/admin/edge-updates/eignung?releaseSeq=11"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .as("nicht signiert").isEqualTo(HttpStatus.CONFLICT);
+        assertThat(rest.exchange(url("/api/v1/admin/edge-updates/eignung?releaseSeq=42"),
+                HttpMethod.GET, new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        // ── Angefragt (Portal) ─────────────────────────────────────────────
+        ResponseEntity<Map<String, Object>> lauf = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 42, "devices", List.of(a.toString(), b.toString())));
+        assertThat(lauf.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        UUID rolloutId = UUID.fromString((String) lauf.getBody().get("rolloutId"));
+        JsonNode fakten = rowOf(readModel(admin), a).get("fakten");
+        assertThat(fakten.get("angefragt").get("release").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(fakten.get("angefragt").get("am").isNull()).isFalse();
+        assertThat(fakten.get("angefragt").get("von").asText()).isNotBlank();
+        assertThat(fakten.get("angenommen").get("stand").asText()).isEqualTo("offen");
+        assertThat(fakten.get("bestaetigt").get("stand").asText()).isEqualTo("offen");
+
+        // ── Angenommen (Box) mit Zeitpunkt, dann der Zwischenschritt ───────
+        herzschlag(ingest, a, "edge-2026.10.0-3bf8c038a1b2", "edge-2026.10.2", "ok", "downloading");
+        fakten = rowOf(readModel(admin), a).get("fakten");
+        assertThat(fakten.get("angenommen").get("stand").asText()).isEqualTo("ja");
+        assertThat(fakten.get("angenommen").get("am").isNull()).as("Serverzeit des Wechsels").isFalse();
+        assertThat(fakten.get("bestaetigt").get("stand").asText()).isEqualTo("laeuft");
+        assertThat(fakten.get("bestaetigt").get("schritt").asText()).isEqualTo("laedt");
+
+        // ── Bestätigt (Box) mit dem Zeitpunkt des Versionswechsels ─────────
+        herzschlag(ingest, a, "edge-2026.10.2-9b37439a02c1", "edge-2026.10.2", "ok", "succeeded");
+        JsonNode page = readModel(admin);
+        JsonNode zeileA = rowOf(page, a);
+        assertThat(zeileA.get("fakten").get("bestaetigt").get("stand").asText()).isEqualTo("ja");
+        assertThat(zeileA.get("fakten").get("bestaetigt").get("am").isNull()).isFalse();
+        assertThat(zeileA.get("istSeit").isNull()).isFalse();
+        assertThat(zeileA.get("istRelease").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(zeileA.get("linie").asText()).isEqualTo("docker");
+        assertThat(zeileA.get("stand").asText()).isEqualTo("aktuell");
+        assertThat(zeileA.get("releasesDahinter").asInt()).isZero();
+        assertThat(zeileA.get("lastSeenAt").isNull()).isFalse();
+        JsonNode zeileB = rowOf(page, b);
+        assertThat(zeileB.get("stand").asText()).as("angefragt, noch nicht angenommen").isEqualTo("laeuft");
+        assertThat(zeileB.get("releasesDahinter").asInt()).isEqualTo(1);
+        assertThat(zeileB.get("istSeit").isNull()).as("die erste Meldung sagt nicht, seit wann").isTrue();
+
+        // ── Linien-Sicht (G1) ──────────────────────────────────────────────
+        JsonNode docker = linie(page, "docker");
+        assertThat(docker.get("newestRelease").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(docker.get("releases").asInt()).isGreaterThanOrEqualTo(2);
+        assertThat(docker.get("stand").get("aktuell").asInt()).isPositive();
+        assertThat(docker.get("stand").get("laeuft").asInt()).isPositive();
+        assertThat(versionOf(docker, "edge-2026.10.2").get("releaseSeq").asLong()).isEqualTo(42);
+        assertThat(versionOf(docker, "edge-2026.10.2").get("devices").toString()).contains(a.toString());
+        assertThat(versionOf(docker, "edge-2026.10.0").get("devices").toString()).contains(b.toString());
+
+        // ── Eignung danach: A ist aktuell und kann kein älteres Release ─────
+        assertThat(eignungOf(getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=42"), a)
+                .get("gruppe").asText()).isEqualTo("aktuell");
+        JsonNode aelter = eignungOf(getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=40"), a);
+        assertThat(aelter.get("gruppe").asText()).isEqualTo("kann_nicht");
+        assertThat(aelter.get("grund").asText()).contains("Läuft schon edge-2026.10.2");
+
+        // ── Zurückgezogen: der Lauf hält nicht mehr auf B und wird mit A fertig ─
+        assertThat(post("/api/v1/admin/devices/" + b + "/update-target/revert", admin, Map.of())
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        rollouts.reconcile(Instant.now());
+        page = readModel(admin);
+        JsonNode r = rolloutOf(page, rolloutId);
+        assertThat(r.get("state").asText()).isEqualTo("done");
+        assertThat(rolloutDeviceState(r, b)).isEqualTo("zurueckgezogen");
+        assertThat(rolloutDeviceState(r, a)).isEqualTo("bestaetigt");
+        assertThat(rowOf(page, b).get("fakten").isNull()).as("keine Anfrage mehr").isTrue();
+
+        // ── Verlauf je Box (G3): Portal-Handlungen und Box-Meldungen, neueste zuerst.
+        // Den Box-Teil hat der Trigger auf device_update_status beim ECHTEN Ingest
+        // (App-Rolle, RLS) angehängt.
+        JsonNode verlaufA = getJson(admin, "/api/v1/admin/devices/" + a + "/verlauf").get("eintraege");
+        assertThat(arten(verlaufA)).containsExactly("box:stand", "box:angenommen", "portal:angefragt",
+                "box:stand");
+        assertThat(verlaufA.get(0).get("release").asText()).isEqualTo("edge-2026.10.2-9b37439a02c1");
+        assertThat(verlaufA.get(0).get("vorher").asText()).isEqualTo("edge-2026.10.0-3bf8c038a1b2");
+        assertThat(verlaufA.get(1).get("release").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(verlaufA.get(2).get("release").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(verlaufA.get(2).get("von").asText()).isNotBlank();
+        assertThat(verlaufA.get(3).get("vorher").isNull()).as("erste Meldung").isTrue();
+        JsonNode verlaufB = getJson(admin, "/api/v1/admin/devices/" + b + "/verlauf").get("eintraege");
+        assertThat(arten(verlaufB)).containsExactly("portal:zurueckgezogen", "portal:angefragt", "box:stand");
+        assertThat(getJson(admin, "/api/v1/admin/devices/" + a + "/verlauf?limit=1").get("eintraege").size())
+                .isEqualTo(1);
+        assertThat(rest.exchange(url("/api/v1/admin/devices/" + UUID.randomUUID() + "/verlauf"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/admin/devices/" + a + "/verlauf"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * Geräte &amp; Updates G4: „Was ist neu" reist mit dem Register-Eintrag (CI) und
+     * lässt sich durch einen wiederholten Tag-Lauf NACHTRAGEN, nie überschreiben;
+     * die Release-Seite zeigt Inhalt aus dem Manifest, Programme im Portal, wo es
+     * läuft und die Änderungen.
+     */
+    @Test
+    @Order(8)
+    void releaseSeiteUndWasIstNeu() throws Exception {
+        String admin = token("admin", "admin");
+        String manifest43 = MANIFEST.replace("edge-2026.08.0", "edge-2026.10.3").replace(":12", ":43");
+        ResponseEntity<Map<String, Object>> neu = post("/api/v1/admin/edge-releases", admin, Map.of(
+                "version", "edge-2026.10.3", "releaseSeq", 43, "manifest", manifest43,
+                "signature", SIGNATURE, "aenderungen", List.of("Core: Heizstab je Phase (#1693) (ef19aec51)",
+                        "  ", "Node-RED: Fronius-Block (#1690) (abc1234)")));
+        assertThat(neu.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(neu.getBody().get("aenderungen")).as("getrimmt, leere Zeilen fallen weg")
+                .isEqualTo(List.of("Core: Heizstab je Phase (#1693) (ef19aec51)",
+                        "Node-RED: Fronius-Block (#1690) (abc1234)"));
+
+        JsonNode seite = getJson(admin, "/api/v1/admin/edge-updates/releases/43");
+        assertThat(seite.get("version").asText()).isEqualTo("edge-2026.10.3");
+        assertThat(seite.get("boxArt").asText()).isEqualTo("docker");
+        assertThat(seite.get("signed").asBoolean()).isTrue();
+        assertThat(seite.get("aenderungen").size()).isEqualTo(2);
+        assertThat(seite.get("boxenDerLinie").asInt()).isPositive();
+        assertThat(seite.get("erlaubtRueckschritt").asBoolean()).isFalse();
+
+        // Ein wiederholter Tag-Lauf (bytegleich) trägt nach, wo keine Angabe steht:
+        // die LEERE Liste ist die Aussage „keine Änderung an der Box".
+        String manifest42 = MANIFEST.replace("edge-2026.08.0", "edge-2026.10.2").replace(":12", ":42");
+        ResponseEntity<Map<String, Object>> nachtrag = post("/api/v1/admin/edge-releases", admin, Map.of(
+                "version", "edge-2026.10.2", "releaseSeq", 42, "manifest", manifest42,
+                "signature", SIGNATURE, "aenderungen", List.of()));
+        assertThat(nachtrag.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(nachtrag.getBody().get("aenderungen")).isEqualTo(List.of());
+        ResponseEntity<Map<String, Object>> ueber = post("/api/v1/admin/edge-releases", admin, Map.of(
+                "version", "edge-2026.10.2", "releaseSeq", 42, "manifest", manifest42,
+                "signature", SIGNATURE, "aenderungen", List.of("anders")));
+        assertThat(ueber.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ueber.getBody().get("aenderungen")).as("nie überschrieben").isEqualTo(List.of());
+
+        // Edge Light (Fall 6): Inhalt aus dem Manifest, Programme fertig im Portal,
+        // läuft auf der Edge-Light-Box; vor G4 registriert = keine Angabe.
+        JsonNode light = getJson(admin, "/api/v1/admin/edge-updates/releases/41");
+        assertThat(light.get("boxArt").asText()).isEqualTo("light");
+        JsonNode teil = light.get("inhalt").get(0);
+        assertThat(teil.get("typ").asText()).isEqualTo("binary");
+        assertThat(teil.get("arch").asText()).isEqualTo("linux/mipsle");
+        assertThat(teil.get("gzGroesse").asLong()).isEqualTo(LIGHT_GZ.length);
+        JsonNode programm = light.get("programme").get(0);
+        assertThat(programm.get("arch").asText()).isEqualTo("linux/mipsle");
+        assertThat(programm.get("fertig").asBoolean()).isTrue();
+        assertThat(programm.get("empfangen").asLong()).isEqualTo(LIGHT_GZ.length);
+        assertThat(light.get("laeuftAuf").size()).isPositive();
+        assertThat(light.get("aenderungen").isNull()).isTrue();
+
+        assertThat(rest.exchange(url("/api/v1/admin/edge-updates/releases/9999"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Geräte &amp; Updates G8: die Box meldet ihr Gerät im Update-Block (echter
+     * Ingest); der Loader-Stand macht die Stufe sicher - eine Edge-Light-Box mit
+     * gekreuztem Vertrauen, deren Loader nur die Flash-Fassung startet, ist
+     * Stufe 1 und bekommt kein Release, bis sie nachgerüstet ist.
+     */
+    @Test
+    @Order(9)
+    void geraetUndLoaderAusDemHerzschlag() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UUID mango = claim(customer, TestKennung.box("ota-gm-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID pi = claim(customer, TestKennung.box("ota-gp-" + UUID.randomUUID().toString().substring(0, 8)));
+        UpdateStatusListener ingest = new UpdateStatusListener("tcp://localhost:1883", "", "",
+                deviceRepo, updateStatusRepo);
+        String trust = ",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_key_ids\":[\"rel-2026-a\"]}";
+        herzschlagRoh(ingest, mango, "edge-light-2026.10.1-9b37439a02c1",
+                "{\"backend\":\"light\",\"current\":\"edge-light-2026.10.1-9b37439a02c1\",\"state\":\"idle\""
+                        + trust + ",\"geraet\":{\"modell\":\"GL.iNet GL-MT300N-V2\",\"arch\":\"mipsle\","
+                        + "\"loader\":\"flash\"}}");
+        herzschlagRoh(ingest, pi, "edge-2026.10.2-9b37439a02c1",
+                "{\"backend\":\"compose\",\"current\":\"edge-2026.10.2-9b37439a02c1\",\"state\":\"idle\","
+                        + "\"geraet\":{\"modell\":\"Raspberry Pi 4 Model B Rev 1.4\",\"arch\":\"arm64\"}}");
+
+        JsonNode page = readModel(admin);
+        JsonNode zeile = rowOf(page, mango);
+        assertThat(zeile.get("geraetModell").asText()).isEqualTo("GL.iNet GL-MT300N-V2");
+        assertThat(zeile.get("geraetArch").asText()).isEqualTo("mipsle");
+        assertThat(zeile.get("loader").asText()).isEqualTo("flash");
+        assertThat(zeile.get("stufe1").asBoolean()).as("gekreuzt, aber der Loader kennt keine Updates").isTrue();
+        assertThat(zeile.get("stand").asText()).isEqualTo("hand");
+        JsonNode zeilePi = rowOf(page, pi);
+        assertThat(zeilePi.get("geraetModell").asText()).isEqualTo("Raspberry Pi 4 Model B Rev 1.4");
+        assertThat(zeilePi.get("geraetArch").asText()).isEqualTo("arm64");
+        assertThat(zeilePi.get("loader").isNull()).isTrue();
+        JsonNode inventar = json.readTree(rest.exchange(url("/api/v1/admin/devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getBody()).get("devices");
+        assertThat(inventoryRow(inventar, pi).get("geraetModell").asText())
+                .isEqualTo("Raspberry Pi 4 Model B Rev 1.4");
+
+        // Stufe 1 am Loader: 409 mit dem Loader-Satz, im Dialog „kann nicht".
+        ResponseEntity<Map<String, Object>> gesperrt = post("/api/v1/admin/devices/" + mango + "/update-target",
+                admin, Map.of("releaseSeq", 41));
+        assertThat(gesperrt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) gesperrt.getBody().get("message")).contains("ihr Loader startet immer die Fassung aus dem Flash");
+        ResponseEntity<Map<String, Object>> gesperrtAuftrag = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 41, "devices", List.of(mango.toString())));
+        assertThat(gesperrtAuftrag.getStatusCode()).as("auch die Verteilung").isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) gesperrtAuftrag.getBody().get("message"))
+                .contains("ihr Loader startet immer die Fassung aus dem Flash");
+        JsonNode eignung = eignungOf(getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=41"), mango);
+        assertThat(eignung.get("gruppe").asText()).isEqualTo("kann_nicht");
+
+        // Nachgerüstet: der neue Loader kennt Updates - die Zuweisung geht durch.
+        herzschlagRoh(ingest, mango, "edge-light-2026.10.1-9b37439a02c1",
+                "{\"backend\":\"light\",\"current\":\"edge-light-2026.10.1-9b37439a02c1\",\"state\":\"idle\""
+                        + trust + ",\"geraet\":{\"modell\":\"GL.iNet GL-MT300N-V2\",\"arch\":\"mipsle\","
+                        + "\"loader\":\"update\"}}");
+        assertThat(rowOf(readModel(admin), mango).get("stufe1").asBoolean()).isFalse();
+        assertThat(post("/api/v1/admin/devices/" + mango + "/update-target", admin,
+                Map.of("releaseSeq", 41)).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        // Ein Bericht OHNE Block (Sofort-Bericht, ältere Box) lässt die Angabe stehen.
+        herzschlagRoh(ingest, pi, "edge-2026.10.2-9b37439a02c1",
+                "{\"backend\":\"compose\",\"current\":\"edge-2026.10.2-9b37439a02c1\",\"state\":\"idle\"}");
+        assertThat(rowOf(readModel(admin), pi).get("geraetArch").asText()).isEqualTo("arm64");
+
+        // Gerät und Loader sind kein Verlauf (G3): der Trigger auf device_update_status
+        // schreibt nur Stand, Urteil und Zustand - auch der Wechsel flash -> update nicht.
+        assertThat(arten(getJson(admin, "/api/v1/admin/devices/" + pi + "/verlauf").get("eintraege")))
+                .as("zwei Meldungen derselben Fassung, eine davon ohne Block").containsExactly("box:stand");
+        assertThat(arten(getJson(admin, "/api/v1/admin/devices/" + mango + "/verlauf").get("eintraege")))
+                .containsExactly("portal:angefragt", "box:stand");
+    }
+
+    /** Ein Status-Herzschlag mit beliebigem Update-Block durch den ECHTEN Ingest. */
+    private void herzschlagRoh(UpdateStatusListener ingest, UUID deviceId, String version, String update) {
+        String payload = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A
+                + "\",\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + deviceId
+                + "\",\"online\":true,\"ts\":\"" + Instant.now() + "\",\"version\":\"" + version
+                + "\",\"update\":" + update + "}";
+        ingest.handle("ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/status",
+                payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** „quelle:art" je Verlauf-Eintrag, in der gelieferten Reihenfolge. */
+    private static List<String> arten(JsonNode eintraege) {
+        List<String> out = new java.util.ArrayList<>();
+        for (JsonNode e : eintraege) {
+            out.add(e.get("quelle").asText() + ":" + e.get("art").asText());
+        }
+        return out;
+    }
+
+    /** Ein Status-Herzschlag mit Update-Block durch den ECHTEN Ingest. */
+    private void herzschlag(UpdateStatusListener ingest, UUID deviceId, String laeuft, String ziel,
+            String urteil, String zustand) {
+        String update = "{\"backend\":\"compose\",\"current\":\"" + laeuft + "\",\"state\":\""
+                + zustand + "\"" + (ziel == null ? "" : ",\"target\":\"" + ziel + "\"")
+                + (urteil == null ? "" : ",\"target_verdict\":\"" + urteil + "\"") + "}";
+        String payload = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A
+                + "\",\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + deviceId
+                + "\",\"online\":true,\"ts\":\"" + Instant.now() + "\",\"version\":\"" + laeuft
+                + "\",\"update\":" + update + "}";
+        ingest.handle("ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/status",
+                payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private JsonNode getJson(String token, String path) throws Exception {
+        ResponseEntity<String> res = rest.exchange(url(path), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), String.class);
+        assertThat(res.getStatusCode()).as(path).isEqualTo(HttpStatus.OK);
+        return json.readTree(res.getBody());
+    }
+
+    private static JsonNode rowOf(JsonNode page, UUID deviceId) {
+        for (JsonNode row : page.get("fleet")) {
+            if (deviceId.toString().equals(row.get("deviceId").asText())) {
+                return row;
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt in der Flotte");
+    }
+
+    private static JsonNode eignungOf(JsonNode eignung, UUID deviceId) {
+        for (JsonNode box : eignung.get("boxen")) {
+            if (deviceId.toString().equals(box.get("deviceId").asText())) {
+                return box;
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt in der Eignung");
+    }
+
+    private static JsonNode versionOf(JsonNode linie, String version) {
+        for (JsonNode v : linie.get("versions")) {
+            if (version.equals(v.get("version").asText())) {
+                return v;
+            }
+        }
+        throw new AssertionError("Version " + version + " fehlt in der Leiter");
+    }
+
+    private static JsonNode rolloutOf(JsonNode page, UUID rolloutId) {
+        for (JsonNode r : page.get("rollouts")) {
+            if (rolloutId.toString().equals(r.get("id").asText())) {
+                return r;
+            }
+        }
+        throw new AssertionError("Lauf " + rolloutId + " fehlt");
+    }
+
+    private static String rolloutDeviceState(JsonNode rollout, UUID deviceId) {
+        for (JsonNode d : rollout.get("devices")) {
+            if (deviceId.toString().equals(d.get("deviceId").asText())) {
+                return d.get("state").asText();
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt im Lauf");
+    }
+
+    private static Map<String, Object> kundenStand(List<Map<String, Object>> stande, UUID deviceId) {
+        return stande.stream().filter(r -> deviceId.toString().equals(r.get("deviceId")))
+                .findFirst().orElseThrow(() -> new AssertionError("Gerät " + deviceId + " fehlt"));
+    }
+
+    private static JsonNode linie(JsonNode page, String boxArt) {
+        for (JsonNode l : page.get("lines")) {
+            if (boxArt.equals(l.get("boxArt").asText())) {
+                return l;
+            }
+        }
+        throw new AssertionError("Linie " + boxArt + " fehlt");
+    }
+
+    /** Wurzel und geprüftes Vertrauens-Set setzen, ohne den gemeldeten Stand zu berühren. */
+    private void kreuzeVertrauen(UUID deviceId) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("UPDATE device_update_status SET root_key_ids = 'root-2026-a', "
+                    + "trust_set_key_ids = 'rel-2026-a' WHERE device_id = '" + deviceId + "'");
+        }
     }
 
     /** Backend und Stempel einer Box direkt setzen (Ingest: UpdateStatusListenerTest). */
@@ -672,6 +1197,31 @@ class OtaRolloutApiTest {
                 .filter(e -> event.equals(e.get("event").asText()))
                 .map(e -> e.get("actor").asText())
                 .toList();
+    }
+
+    /** Ein Teil einer Edge-Light-Lieferung hochladen. */
+    private ResponseEntity<Map<String, Object>> putTeil(String token, String version, String arch, long ab,
+            byte[] teil) {
+        HttpHeaders h = bearer(token);
+        h.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        return rest.exchange(url("/api/v1/admin/edge-releases/" + version + "/programme/" + arch + "?ab=" + ab),
+                HttpMethod.PUT, new HttpEntity<>(teil, h), new ParameterizedTypeReference<>() {});
+    }
+
+    /** Die ganze Lieferung so hochladen wie der Release-Lauf: 512 KiB je Teil, ab 0. */
+    private ResponseEntity<Map<String, Object>> hochladen(String token, byte[] gz) {
+        ResponseEntity<Map<String, Object>> last = null;
+        for (int ab = 0; ab < gz.length; ab += 512 * 1024) {
+            last = putTeil(token, "edge-light-2026.10.1", "linux/mipsle", ab,
+                    java.util.Arrays.copyOfRange(gz, ab, Math.min(gz.length, ab + 512 * 1024)));
+            if (!last.getStatusCode().is2xxSuccessful()) {
+                return last;
+            }
+            if (ab + 512 * 1024 < gz.length) {
+                assertThat(last.getBody()).containsEntry("fertig", false);
+            }
+        }
+        return last;
     }
 
     private ResponseEntity<Map<String, Object>> post(String path, String token, Object body) {

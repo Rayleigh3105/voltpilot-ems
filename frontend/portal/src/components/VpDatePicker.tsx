@@ -9,11 +9,13 @@ import {
 } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { useIsPhone } from '../useIsPhone';
-import { MAX_KALENDER_PX, VpPanel } from './VpPanel';
+import { MAX_KALENDER_PX, MIN_KALENDER_PX, VpPanel } from './VpPanel';
+import { VpMonatsRaster } from './VpMonatsRaster';
 import {
   anzeige,
   blaettern,
   datumVon,
+  isoMonat,
   isoTag,
   monatsGitter,
   monatsTitel,
@@ -34,6 +36,11 @@ import {
  * Wochen-Auswahl markiert die ganze Zeile, die Monats-Auswahl den ganzen
  * Monat - eine zweite Kalender-Implementierung je Art wären drei Wahrheiten
  * über denselben August.
+ *
+ * ⚠ Ausnahme seit dem Captain-Befund „ich weiß nicht mal, was das ist": die
+ * MONATS-Art zeigt kein Tagesgitter mehr, sondern das Raster der zwölf Monate
+ * unter ihrem Jahr ({@link VpMonatsRaster}) - in einem Tagesgitter einen Monat
+ * zu wählen, war nicht auf einen Blick zu verstehen.
  *
  * <b>⚠ Der WERT bleibt ISO</b> (`JJJJ-MM-TT` / `JJJJ-Www` / `JJJJ-MM`),
  * byte-gleich mit dem abgelösten nativen Feld - die Zusage „keine
@@ -188,7 +195,20 @@ export function VpDatePicker({
   const text = value ? anzeige(value, art) ?? placeholder : placeholder;
   const wochenWert = (w: string) => w;
 
-  const panel = (
+  const panel = art === 'monat' ? (
+    <VpMonatsRaster
+      ref={gitterRef}
+      wert={value || null}
+      onWaehle={(m) => {
+        onChange(m);
+        schliessen();
+      }}
+      min={min}
+      max={max}
+      heute={isoMonat(heuteDatum)}
+      ariaLabel={ariaLabel ?? (typeof label === 'string' ? label : 'Monat')}
+    />
+  ) : (
     <div className="vp-picker-kalender">
       <div className="vp-kal-kopf">
         <button
@@ -310,6 +330,7 @@ export function VpDatePicker({
       haspopup="dialog"
       isPhone={isPhone}
       maxPanelPx={MAX_KALENDER_PX}
+      minPanelPx={MIN_KALENDER_PX}
       onOpened={() => gitterRef.current?.focus()}
     >
       {panel}

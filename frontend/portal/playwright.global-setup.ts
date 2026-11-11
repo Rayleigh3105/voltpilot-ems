@@ -53,10 +53,17 @@ import { chromium, type Browser, type FullConfig } from '@playwright/test';
      Serverstart) ohne Antwort — `berichte.spec.ts:210` lief in `page.goto`
      über 30 s; allein und kalt war die Spec dreimal grün. Darum steht sie
      als dritter Wirt hier, bezahlt wie die anderen vor der ersten Zusicherung.
+
+   ⚠ Das Cockpit einer Anlage (`#/anlage/{id}`, Bühne mit Leitungsplan) ist
+     ein eigenes nachgeladenes Stück, das die Hilfe-Seite nicht übersetzt. Im
+     Gesamtlauf vom 20.10.2026 fand `layout-waechter.spec.ts:46` (der erste Fall
+     der Datei, desktop-chromium) den Energiefluss in 2 von 3 kalten Läufen
+     nicht binnen 5 s; allein war er jedes Mal grün. Darum der vierte Wirt.
    ========================================================================= */
 
 const WIRTE = [
   '/e2e/help.html#/hilfe/fahrplan',
+  '/e2e/help.html#/anlage/help-site',
   '/e2e/startansicht.html?bild=unternehmen&rechte=1&person=MD',
   '/e2e/startansicht.html?bild=unternehmen&ansicht=bericht&br=BR-2026-0001&tagesverlauf=gefuellt',
 ];

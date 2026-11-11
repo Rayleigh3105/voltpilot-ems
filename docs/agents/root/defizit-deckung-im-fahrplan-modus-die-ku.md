@@ -27,7 +27,10 @@ Halte-Grund besteht - bis maximal zur Defizithöhe, nie mehr.**
   (`edge-app/core/internal/guards/deficitcover.go`). Sie entscheidet nie, OB
   Zyklen sich lohnen; sie weigert sich nur, Energie zu KAUFEN, auf der die
   Anlage steht, während der Plan nichts verlangt. Jeder echte Preis-Entscheid
-  des Plans bleibt unberührt: eine geplante LADUNG wird nie umgedeutet, ein
+  des Plans bleibt unberührt: eine geplante LADUNG wird nie umgedeutet (seit dem
+  10.10.2026 auch dann nicht, wenn die Kürzung sie auf 0 genommen hat: in einer
+  Lade-Viertelstunde entlädt die Regel erst, wenn das Defizit 60 s gemessen
+  anhält - Entscheid E2 A, Details im Edge-Thema), ein
   geplanter VERKAUF tiefer als das Defizit lässt gar keinen Restbezug übrig
   (Eintritts-Totband 0,2 kW), und die Korrektur ist **DEEPEN-ONLY** - eine
   Entladung zu BEGRENZEN ist ein Preis-Entscheid und bleibt bei der Wolke.

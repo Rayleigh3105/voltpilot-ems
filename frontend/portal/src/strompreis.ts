@@ -49,23 +49,14 @@ import { ctPerKwh } from './format';
 import { preisFenster, type FensterArt } from './preisFenster';
 import type { PlanWordingKind } from './schedule';
 import { bezugspreisVorschau, type PreisSlot } from './settingsSurface';
-import { hasMode, type ActiveMode } from './surface';
+import { gateStrompreis } from './strompreisGate';
 
 // ---------------------------------------------------------------------------
 // Gating (D1)
 // ---------------------------------------------------------------------------
 
-/**
- * Wo der Streifen erscheint: exakt die Signalmenge, die auch die
- * Marktpreise-Ansicht erreichbar macht (`surface.ts`/`ebenenNav`) — der
- * Markt-Modus ODER ein dynamischer Tarif. Keine neue Regel, kein Drift.
- */
-export function gateStrompreis(
-  modes: ActiveMode[],
-  tarifArt: TarifArt | null | undefined,
-): boolean {
-  return hasMode(modes, 'marktvermarktung') || tarifArt === 'dynamisch';
-}
+// `gateStrompreis` wohnt in `strompreisGate.ts` (Bündel-Wächter) und bleibt hier unter dem alten Namen erreichbar.
+export { gateStrompreis };
 
 // ---------------------------------------------------------------------------
 // Preis-Sicht (Kurve + Urteil + Anker)

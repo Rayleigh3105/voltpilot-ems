@@ -25,9 +25,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -96,7 +96,7 @@ class ZugriffBestandWiederholungApiTest {
 
     @Autowired MockMvc mvc;
     @Autowired ZugriffBestandLaeufer laeufer;
-    @MockBean KeycloakAdminClient keycloak;
+    @MockitoBean KeycloakAdminClient keycloak;
 
     @Test
     void keycloakBeimStartWegNachDerWiederkehrSiehtDasBestandskontoSeineStandorteOhneNeustart() throws Exception {

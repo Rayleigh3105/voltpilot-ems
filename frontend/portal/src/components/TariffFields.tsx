@@ -52,6 +52,7 @@ export function TariffFields({
   priceMode,
   onPriceMode,
   storedPriceMode,
+  paramError = null,
 }: {
   tarifArt: TarifArt;
   onTarifArt: (art: TarifArt) => void;
@@ -70,6 +71,8 @@ export function TariffFields({
   onPriceMode?: (mode: PriceMode) => void;
   /** Der GESPEICHERTE Weg — für den Spiegel und die Folgen-Ansage. */
   storedPriceMode?: PriceMode;
+  /** Der Satz am Preis-Feld (eigene Prüfung oder Ablehnung des Servers, Anlage-Flow a1 F4). */
+  paramError?: string | null;
 }) {
   // Die Entwürfe der jeweils anderen Tarifart. Bewusst lokal: sie sind reine
   // Eingabe-Ergonomie, gespeichert wird immer nur der Wert der aktuellen Art.
@@ -123,10 +126,12 @@ export function TariffFields({
           value={tarifArt}
           onChange={(v) => changeArt(v as TarifArt)}
         />
-        <p className="vp-note" style={{ margin: 0 }}>
-          Für den Wert Ihres Eigenverbrauchs. Bei „Ohne Angabe" zeigen wir den
-          Eigenverbrauch nur in kWh, nie einen erfundenen Euro-Wert.
-        </p>
+        {/* Nur die Wahl, die eine Folge hat, die man nicht sieht, trägt einen Satz. */}
+        {tarifArt === 'ohne' && (
+          <p className="vp-note" style={{ margin: 0 }}>
+            Ohne Angabe zeigen wir den Eigenverbrauch nur in kWh, nie einen erfundenen Euro-Wert.
+          </p>
+        )}
       </div>
 
       {modeChoice && (
@@ -153,8 +158,7 @@ export function TariffFields({
             ))}
           </div>
           <p className="vp-note" style={{ margin: 0 }}>
-            {priceModeExplain(priceMode!, tarifArt)} Es zählt immer nur einer der
-            beiden Wege - nie beide zusammen.
+            {priceModeExplain(priceMode!, tarifArt)}
           </p>
         </fieldset>
       )}
@@ -176,6 +180,7 @@ export function TariffFields({
             placeholder={field.placeholder}
             inputMode="decimal"
             value={param}
+            error={paramError}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               // Wer tippt, hat die Ansage gelesen - „bitte neu eintragen" darf
               // nicht über einem gefüllten Feld stehen bleiben.

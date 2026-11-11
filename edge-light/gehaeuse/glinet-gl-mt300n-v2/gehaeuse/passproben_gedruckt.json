@@ -1,0 +1,108 @@
+{
+ "stand": "11.10.2026",
+ "anlass": "Antworten des Betreibers vom 11.10.2026 eingearbeitet: Er hat das ganze Gehäuse v0.2 gedruckt, „es sitzt perfekt. Licht passt auch“. Neu im Stand ist deshalb der weiße Körper seines Deckels v0.2 (ohne Beschriftung); Unterteil, Schablone, Steckerwand und Schachtprobe sind unverändert der Stand vom 10.10.2026. Von seinen gedruckten Teilen gelten Unterteil und Deckel v0.2 weiter. Neu zu drucken ist nur der Deckel, und nur für die Beschriftung (v0.4: kleinere Schrift), davor die Schriftprobe.",
+ "passproben": {
+  "schablone": {
+   "volumen": 5038.463,
+   "flaeche": 6972.155,
+   "min": [
+    -2.3,
+    -2.5,
+    -5.7
+   ],
+   "max": [
+    53.25,
+    53.45,
+    2.5
+   ],
+   "schwerpunkt": [
+    26.1049,
+    22.3765,
+    -3.0162
+   ],
+   "stl_sha256": "1da7690b1259fd1ba6dc581d305b94fa2ab39d8ebc327f6221381c7ef241cd6d"
+  },
+  "steckerwand": {
+   "volumen": 4900.576,
+   "flaeche": 5866.532,
+   "min": [
+    -2.3,
+    -2.5,
+    -6.5
+   ],
+   "max": [
+    53.25,
+    53.45,
+    15.0
+   ],
+   "schwerpunkt": [
+    12.0578,
+    32.7204,
+    0.56
+   ],
+   "stl_sha256": "d4adf543a27d2742a79049372f074b5c8c7dfe76bf09a0be6fdd61e774032c38"
+  },
+  "schachtprobe": {
+   "volumen": 1951.082,
+   "flaeche": 2832.699,
+   "min": [
+    -2.3,
+    -2.5,
+    0.0
+   ],
+   "max": [
+    53.25,
+    6.0,
+    17.0
+   ],
+   "schwerpunkt": [
+    23.9907,
+    1.9471,
+    12.2431
+   ],
+   "stl_sha256": "6becc4f851cb4e173ff301e47747fff5e46d7396faa9f8815647145e9ab742e8"
+  }
+ },
+ "gehaeuse": {
+  "unterteil": {
+   "volumen": 24925.104,
+   "flaeche": 16269.752,
+   "min": [
+    -5.75,
+    -2.5,
+    -10.5
+   ],
+   "max": [
+    56.7,
+    53.45,
+    15.0
+   ],
+   "schwerpunkt": [
+    25.8248,
+    25.0157,
+    -3.7129
+   ],
+   "stl_sha256": "b7dbd04edaa4bf7e2df4d29b45813dfbf2068fb383e240ee7124368a870554a5"
+  },
+  "deckel_v02": {
+   "volumen": 8297.509,
+   "flaeche": 9895.83,
+   "min": [
+    -5.75,
+    -2.5,
+    0.0
+   ],
+   "max": [
+    56.7,
+    53.45,
+    17.0
+   ],
+   "schwerpunkt": [
+    25.4432,
+    23.8982,
+    14.5583
+   ],
+   "stl_sha256": "e9808c9e299ae98d1911bb1060bafa09ac907238b75ee437c974958ee2903f90"
+  }
+ }
+}

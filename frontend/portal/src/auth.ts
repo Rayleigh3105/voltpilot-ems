@@ -1,4 +1,6 @@
 import Keycloak from 'keycloak-js';
+import { isStandalone } from './installApp';
+import { vergissKoppelRef } from './koppelLink';
 
 const KC_URL = import.meta.env.VITE_KEYCLOAK_URL ?? 'http://localhost:8081';
 const KC_REALM = import.meta.env.VITE_KEYCLOAK_REALM ?? 'voltpilot';
@@ -37,7 +39,51 @@ export function isPlatformAdmin(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// The TAB TOKEN STORE - one mechanism, two feeders.
+// Konto-Aktionen (Einstellungen Scheibe 1, Entscheid 6A): „Passwort ändern" und
+// „Zwei-Schritt-Anmeldung" laufen als Keycloak-Schritt aus der Seite heraus
+// (`login({action})` setzt `kc_action`), die Rückkehr landet wieder auf der
+// Konto-Gruppe der Einstellungs-Seite. `onActionUpdate` muss VOR `keycloak.init()`
+// hängen, um die Rückkehr noch zu sehen - darum hier am Modul-Rand, nicht erst
+// in `initAuth()`.
+
+export type KontoAktion = 'UPDATE_PASSWORD' | 'CONFIGURE_TOTP';
+export type KontoAktionStatus = 'success' | 'cancelled' | 'error';
+export interface KontoAktionErgebnis {
+  status: KontoAktionStatus;
+  action: KontoAktion | null;
+}
+
+let kontoAktionErgebnis: KontoAktionErgebnis | null = null;
+const kontoAktionListeners = new Set<() => void>();
+keycloak.onActionUpdate = (status, action) => {
+  kontoAktionErgebnis = { status, action: action === 'UPDATE_PASSWORD' || action === 'CONFIGURE_TOTP' ? action : null };
+  kontoAktionListeners.forEach((f) => f());
+};
+
+export function subscribeKontoAktion(cb: () => void): () => void {
+  kontoAktionListeners.add(cb);
+  return () => kontoAktionListeners.delete(cb);
+}
+
+export function kontoAktionSnapshot(): KontoAktionErgebnis | null {
+  return kontoAktionErgebnis;
+}
+
+/** Nur fürs Blatt: der gesehene Status zählt nur einmal. */
+export function kontoAktionZuruecksetzen(): void {
+  kontoAktionErgebnis = null;
+}
+
+/** Löst den Keycloak-Schritt aus - Rückkehr auf dieselbe Gruppe der Einstellungs-Seite. */
+export function kontoAktionAusfuehren(action: KontoAktion): void {
+  void keycloak.login({
+    action,
+    redirectUri: `${window.location.origin}${window.location.pathname}#/einstellungen?abschnitt=konto`,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The TOKEN STORE - one mechanism, two feeders.
 //
 // (1) Seamless post-registration login (Direct Access Grant). A fresh customer
 //     just typed their email + password into OUR registration form; sending
@@ -52,12 +98,23 @@ export function isPlatformAdmin(): boolean {
 //     3p-cookies probe, auth?prompt=none, token - because nothing was stored
 //     and initAuth always fell through to the full check-sso dance. The tokens
 //     of a successful login are therefore remembered here too, so the next load
-//     in this tab takes the SAME proven ONE-request refresh path as (1).
+//     in this tab (or app) takes the SAME proven ONE-request refresh path as (1).
 //
-// The store lives in sessionStorage, so it dies with the tab and is never
-// shared between tabs - a deliberate scope/lifetime trade-off (see AGENTS.md).
-// A failing/expired/refused refresh ALWAYS degrades to the normal check-sso
-// path, so the store can only ever make a boot faster, never break it.
+// WHERE the store lives depends on how the portal runs:
+//  - In a browser TAB: sessionStorage, so it dies with the tab and is never
+//    shared between tabs - a deliberate scope/lifetime trade-off (AGENTS.md).
+//  - As the INSTALLED app (display-mode standalone, iOS `navigator.standalone`):
+//    localStorage. Every app start is a fresh browsing context, so a
+//    sessionStorage store died with each close and the boot fell back to
+//    check-sso, which only works while a persistent Keycloak cookie survives
+//    in the app (none after the registration grant or without "Angemeldet
+//    bleiben"). The persisted refresh token lives exactly as long as its
+//    Keycloak session: with "Angemeldet bleiben" 90 d idle / 180 d max,
+//    without it and after the registration's password grant 12 h / 24 h
+//    (realm template; measured 2026-10-31). NEVER for platform-admin: that
+//    token set stays in sessionStorage, as in a tab.
+// A refused/expired refresh ALWAYS degrades to the normal check-sso path, so
+// the store can only ever make a boot faster, never break it.
 // ---------------------------------------------------------------------------
 
 const TOKEN_STORE_KEY = 'vp.auth.tokens';
@@ -148,12 +205,60 @@ async function tokenGrant(form: Record<string, string>): Promise<TokenSet> {
   return (await res.json()) as TokenSet;
 }
 
+/** Runs the portal as the installed app? Then the store outlives the window. */
+function alsApp(): boolean {
+  return typeof window !== 'undefined' && isStandalone(window);
+}
+
+/** Realm roles inside a raw access token (JWT payload); null when unreadable. */
+function realmRollen(accessToken: string): string[] | null {
+  try {
+    const teil = (accessToken.split('.')[1] ?? '').replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(teil.padEnd(Math.ceil(teil.length / 4) * 4, '=')), (c) =>
+      c.charCodeAt(0),
+    );
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
+      realm_access?: { roles?: unknown };
+    };
+    const rollen = payload.realm_access?.roles;
+    return Array.isArray(rollen) ? rollen.filter((r): r is string => typeof r === 'string') : [];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * May this token set outlive the app window? Only in the installed app, and
+ * never for platform-admin - an unreadable token counts as platform-admin.
+ */
+function bleibtUeberAppStart(t: TokenSet): boolean {
+  if (!alsApp()) return false;
+  const rollen = realmRollen(t.access_token);
+  return rollen !== null && !rollen.includes(PLATFORM_ADMIN_ROLE);
+}
+
 function storeTokens(t: TokenSet): void {
-  sessionStorage.setItem(TOKEN_STORE_KEY, JSON.stringify(t));
+  const raw = JSON.stringify(t);
+  if (bleibtUeberAppStart(t)) {
+    localStorage.setItem(TOKEN_STORE_KEY, raw);
+    sessionStorage.removeItem(TOKEN_STORE_KEY);
+    return;
+  }
+  sessionStorage.setItem(TOKEN_STORE_KEY, raw);
+  // Only the app drops its persisted copy here. A tab leaves it alone: on
+  // Android and the desktop the installed app shares this origin's storage.
+  if (alsApp()) localStorage.removeItem(TOKEN_STORE_KEY);
+}
+
+function readStoredTokens(): string | null {
+  const imFenster = sessionStorage.getItem(TOKEN_STORE_KEY);
+  if (imFenster !== null || !alsApp()) return imFenster;
+  return localStorage.getItem(TOKEN_STORE_KEY);
 }
 
 function clearStoredTokens(): void {
   sessionStorage.removeItem(TOKEN_STORE_KEY);
+  if (alsApp()) localStorage.removeItem(TOKEN_STORE_KEY);
 }
 
 /**
@@ -162,7 +267,7 @@ function clearStoredTokens(): void {
  * stored session or it has expired.
  */
 async function refreshStoredTokens(): Promise<TokenSet | null> {
-  const raw = sessionStorage.getItem(TOKEN_STORE_KEY);
+  const raw = readStoredTokens();
   if (!raw) return null;
   let stored: TokenSet;
   try {
@@ -205,6 +310,10 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
         return null;
       }
       if (attempt === 1) {
+        // The installed app keeps its store when Keycloak is merely unreachable
+        // (no signal at app start, 5xx): that is no refusal, and dropping it
+        // would cost the months-long session. The next start tries again.
+        if (alsApp()) return null;
         // A stored session existed but could not be refreshed - the session is
         // truly gone. Flag it so the login screen says "Sitzung abgelaufen".
         storedSessionExpired = true;
@@ -217,7 +326,7 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
 }
 
 /**
- * Write the LIVE keycloak-js session into the tab store. Called on every
+ * Write the LIVE keycloak-js session into the token store. Called on every
  * authenticated boot and again after each background token refresh, because
  * keycloak-js rotates the refresh token - a store left at the token of an hour
  * ago would present a superseded (idle-timed-out) one on the next reload and
@@ -265,8 +374,8 @@ export async function loginWithCredentials(username: string, password: string): 
  * Initialise Keycloak.
  *
  * FAST path: a stored session (fresh registration OR the last successful login
- * in this tab) is re-validated with ONE refresh grant and injected - no SSO
- * iframe, no auth?prompt=none redirect.
+ * in this tab or app) is re-validated with ONE refresh grant and injected - no
+ * SSO iframe, no auth?prompt=none redirect.
  *
  * FALLBACK path: no store, or the stored session could not be refreshed for ANY
  * reason (expired, revoked, throttled, corrupt, Keycloak unreachable) - then the
@@ -310,8 +419,8 @@ export async function initAuth(): Promise<boolean> {
     responseMode: 'query',
   });
   // Remember the session this login/SSO check just established, so the NEXT
-  // load in this tab takes the fast path above instead of these three round
-  // trips. Nothing else about this path changes.
+  // load in this tab (or app) takes the fast path above instead of these three
+  // round trips. Nothing else about this path changes.
   if (authenticated) onAuthenticated();
   return authenticated;
 }
@@ -322,8 +431,17 @@ export function login(loginHint?: string): void {
   void keycloak.login(loginHint ? { loginHint } : undefined);
 }
 
+/**
+ * Sign out: drop every stored token set, then end the Keycloak session. The
+ * persisted app store goes from a tab too - on Android and the desktop the
+ * installed app shares this origin's storage (and its Keycloak cookie), and
+ * signing out must not leave a months-long token on the device.
+ */
 export function logout(): void {
   clearStoredTokens();
+  localStorage.removeItem(TOKEN_STORE_KEY);
+  // Die vorgemerkte Box aus dem QR-Code geht mit (QE-3 B: gelöscht beim Abmelden).
+  vergissKoppelRef();
   void keycloak.logout({ redirectUri: window.location.origin });
 }
 
@@ -337,12 +455,43 @@ export function currentUser(): UserInfo {
   };
 }
 
+/**
+ * Die Token-Erneuerung scheiterte an der Verbindung, nicht an der Sitzung
+ * (Anlage-Flow a1, B2): WLAN-Wechsel, Rechner aus dem Ruhezustand, Funkloch.
+ * Die Anfrage scheitert wie bei einem verlorenen `fetch` - die Fläche meldet
+ * „nicht erreichbar“ und behält ihre Eingaben, die nächste Anfrage versucht es
+ * neu. Keine Umleitung zur Anmeldung.
+ */
+export class VerbindungUnterbrochen extends Error {
+  constructor() {
+    super('Keine Verbindung zur Anmeldung.');
+  }
+}
+
+/**
+ * Hat die gescheiterte Erneuerung die Sitzung beendet? Nur wenn Keycloak
+ * geantwortet und abgelehnt hat (400 `invalid_grant`, 401) - keycloak-js räumt
+ * die Tokens dann selbst ab, darum zählt auch ein fehlendes Refresh-Token.
+ * Ein Netzfehler (`TypeError`), ein 5xx oder ein 429 beendet keine Sitzung.
+ */
+export function sitzungBeendet(fehler: unknown): boolean {
+  if (!keycloak.refreshToken) return true;
+  const status = (fehler as { response?: { status?: unknown } } | null | undefined)?.response?.status;
+  return status === 400 || status === 401;
+}
+
 /** A valid access token, refreshed if it expires within 30s. */
 export async function freshToken(): Promise<string | undefined> {
   try {
     await keycloak.updateToken(30);
-  } catch {
-    // Refresh failed (session gone) - redirect to a fresh login and ABORT the
+  } catch (fehler) {
+    if (!sitzungBeendet(fehler)) {
+      // B2: ein Netzaussetzer ist keine beendete Sitzung. Ein noch gültiges
+      // Token trägt die Anfrage weiter; sonst scheitert nur diese Anfrage.
+      if (keycloak.token && !keycloak.isTokenExpired(0)) return keycloak.token;
+      throw new VerbindungUnterbrochen();
+    }
+    // Refresh refused (session gone) - redirect to a fresh login and ABORT the
     // pending request via AuthRedirectError, so it never fires an
     // unauthenticated call that would 401 and flash a raw status at the user.
     login();

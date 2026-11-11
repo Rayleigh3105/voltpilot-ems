@@ -6,12 +6,14 @@ import {
   OPTIMIERUNG_INTRO,
   abrechnungLabel,
   buildLastspitzenUpdate,
+  exportFolgtBoersenpreis,
   isLeistungspreisActive,
   lastspitzenkappungCard,
   lastspitzenPerioden,
   lastspitzenProof,
   marktoptimierungCard,
   marktoptimierungLine,
+  negativpreisZeile,
   parseLastspitzenForm,
   supportsLastspitzenConfig,
   vermiedeneSpitzeLine,
@@ -87,6 +89,7 @@ describe('PS-4 proof (real numbers on the active card + the money-hero line)', (
     avoidedKw: 12,
     avoidedEur: 1440,
     history: [],
+    currentQuarterMeanKw: null,
   };
 
   it('lastspitzenProof renders the three German rows with de-DE numbers', () => {
@@ -144,6 +147,45 @@ describe('PS-4 proof (real numbers on the active card + the money-hero line)', (
   it('abrechnungLabel speaks the billing period', () => {
     expect(abrechnungLabel('jahr')).toBe('pro Jahr');
     expect(abrechnungLabel('monat')).toBe('pro Monat');
+  });
+});
+
+describe('exportFolgtBoersenpreis (N4: Negativpreis-Abregelung nur wo wahr)', () => {
+  it('true nur bei Netzladen oder Direktvermarktung - der feste Vergütungsfall bleibt false', () => {
+    expect(exportFolgtBoersenpreis({ plantKind: 'eigenverbrauch', netzladenErlaubt: false })).toBe(false);
+    expect(exportFolgtBoersenpreis({ plantKind: 'eigenverbrauch', netzladenErlaubt: true })).toBe(true);
+    expect(exportFolgtBoersenpreis({ plantKind: 'direktvermarktung', netzladenErlaubt: false })).toBe(true);
+    expect(exportFolgtBoersenpreis({ plantKind: null, netzladenErlaubt: null })).toBe(false);
+  });
+});
+
+describe('negativpreisZeile (Konzept vp-fahrplan-eigenverbrauch-konzept §4.7, Scheibe S4)', () => {
+  const site = { plantKind: 'eigenverbrauch', netzladenErlaubt: false };
+
+  it('bleibt bei den Stammdaten, trägt der Lauf keine Preisfelder (einspeisung unbekannt)', () => {
+    expect(negativpreisZeile({ einspeisung: 'unbekannt' }, site)).toBeNull();
+    expect(negativpreisZeile({ einspeisung: 'unbekannt' }, { plantKind: 'eigenverbrauch', netzladenErlaubt: true })).toBe('negativ');
+    expect(negativpreisZeile({ einspeisung: 'unbekannt' }, { plantKind: 'direktvermarktung', netzladenErlaubt: false })).toBe(
+      'negativ',
+    );
+  });
+
+  it('eine feste Einspeisung ohne Nullstunden zeigt keine Zeile', () => {
+    expect(negativpreisZeile({ einspeisung: 'flach' }, site)).toBeNull();
+  });
+
+  it('§ 51a (einspeisung flach_mit_nullstunden) zeigt „Stunden ohne Vergütung" statt der Abregelung', () => {
+    expect(negativpreisZeile({ einspeisung: 'flach_mit_nullstunden' }, site)).toBe('nullstunden');
+  });
+
+  it('eine echt schwankende Einspeisung (Ü20) zeigt die Abregelung, auch ohne Netzladen/DV in den Stammdaten', () => {
+    expect(negativpreisZeile({ einspeisung: 'schwankt' }, site)).toBe('negativ');
+  });
+
+  it('Netzladen/DV gewinnt, auch wenn der Lauf (noch) keine Nullstunden zeigt', () => {
+    expect(negativpreisZeile({ einspeisung: 'flach_mit_nullstunden' }, { plantKind: 'eigenverbrauch', netzladenErlaubt: true })).toBe(
+      'negativ',
+    );
   });
 });
 
@@ -284,6 +326,7 @@ describe('P1 · die blätterbaren Abrechnungsperioden (V3)', () => {
       { periodStart: '2025-01-01', peakKw: 11, baselinePeakKw: 12, avoidedKw: 1, avoidedEur: 120 },
       { periodStart: '2026-01-01', peakKw: 8.5, baselinePeakKw: 9.4, avoidedKw: 0.9, avoidedEur: 108 },
     ],
+    currentQuarterMeanKw: null,
     ...over,
   });
 

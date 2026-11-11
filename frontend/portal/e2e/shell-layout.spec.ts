@@ -21,20 +21,32 @@ for (const scene of ['long', 'admin&long', 'admin&fleet', 'ok', 'unknown']) {
         const rect = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().toJSON();
         return { pageWidth: document.documentElement.scrollWidth, header: rect('.vp-topbar')!,
           avatar: rect('.vp-avatar-btn')!, title: rect('.vp-topbar .here')!,
-          status: rect('.vp-healthbadge'), tenant: rect('.vp-context'), main: rect('.vp-main')! };
+          status: rect('.vp-healthbadge'), tenant: rect('.vp-context'), main: rect('.vp-main')!,
+          // Scheibe S1 (E3 = A): mit gewähltem Mandanten steht das Rückweg-Band
+          // „Wie der Kunde es sieht" zwischen Kopfzeile und Inhalt.
+          band: rect('.vp-kundenansicht-band') };
       });
       expect(bounds.pageWidth, `${scene} @ ${width}: document overflow`).toBeLessThanOrEqual(width);
       expect(bounds.avatar.right).toBeLessThanOrEqual(width);
-      expect(bounds.main.top).toBeCloseTo(bounds.header.bottom, 1);
+      expect(bounds.main.top).toBeCloseTo(bounds.band ? bounds.band.bottom : bounds.header.bottom, 1);
       if (width <= 1279) {
         expect(bounds.avatar.width).toBeGreaterThanOrEqual(44);
         expect(bounds.avatar.height).toBeGreaterThanOrEqual(44);
         if (!scene.includes('fleet')) {
           expect(bounds.title.width, `plant identity @ ${width}`).toBeGreaterThan(scene.includes('long') ? 80 : 70);
           if (bounds.status) {
-            // The two text rows form a single 44px block, centered with the avatar.
-            expect(bounds.title.top).toBeCloseTo(bounds.avatar.top, 0);
-            expect(bounds.status.bottom).toBeCloseTo(bounds.avatar.bottom, 0);
+            // B1 (UI/UX-Wartung u1): eine Ursache, die nicht neben „Warnung“ passt,
+            // bricht jetzt um statt mit „…“ abzuschneiden - dann wird der Block
+            // höher als 44px und kann nicht mehr exakt mit dem Avatar fluchten.
+            // Im üblichen Fall (keine Ursache oder eine kurze) bleiben Titel- und
+            // Zustandszeile weiter ein einziger, mit dem Avatar zentrierter 44px-Block.
+            if (bounds.status.height <= 24) {
+              expect(bounds.title.top).toBeCloseTo(bounds.avatar.top, 0);
+              expect(bounds.status.bottom).toBeCloseTo(bounds.avatar.bottom, 0);
+            } else {
+              expect(bounds.title.top).toBeGreaterThanOrEqual(bounds.header.top);
+              expect(bounds.status.bottom).toBeLessThanOrEqual(bounds.header.bottom);
+            }
             expect(bounds.status.right).toBeLessThanOrEqual(bounds.avatar.x - 8);
           }
         }
@@ -65,9 +77,10 @@ for (const width of [320, 390, 768]) {
     await page.getByRole('button', { name: /Zustand der Anlage:/ }).click();
     await expect(page.getByRole('dialog', { name: 'Zustand der Anlage' })).toBeVisible();
     await page.keyboard.press('Escape');
-    await page.getByRole('combobox', { name: 'Mandanten-Umschalter' }).click();
-    await page.getByRole('option', { name: 'Alle Mandanten', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'Mandanten-Umschalter' })).toHaveText('Alle Mandanten');
+    // Scheibe S1 (E3 = A): die Suche ersetzt den Mandanten-Umschalter.
+    await page.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' }).click();
+    await expect(page.getByRole('listbox', { name: 'Box, Kunde, Anlage, Person suchen' })).toBeVisible();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: /Konto-Menü/ }).click();
     await expect(page.getByRole('menu')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -120,4 +133,36 @@ test('cockpit actions stay together below the reserved freshness row', async ({ 
     expect(settings.height).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
+});
+
+test('sidebar entries carry their name as a title only in the icon rail - nothing floats on the desktop', async ({ page }) => {
+  // Befund vom 02.11.2026: ein natives „Fahrplan"-Tooltip hing über der Brotkrume.
+  // Der `title` steht am Zeiger, nicht am Eintrag; auf dem Rechner ist der Name
+  // sichtbar und der Titel entfällt, in der Symbolleiste (721–1023 px) trägt er ihn.
+  await page.goto('/e2e/shell-layout.html?ok');
+  await page.evaluate(() => document.fonts.ready);
+  const lesen = () =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        [...document.querySelectorAll('.vp-sidebar .vp-navitem')].map((b) => {
+          const lbl = b.querySelector('.vp-nav-lbl')!;
+          return [lbl.textContent!.trim(), { title: b.getAttribute('title'), labelWidth: Math.round(lbl.getBoundingClientRect().width) }];
+        }),
+      ),
+    );
+  await page.setViewportSize({ width: 1200, height: 844 });
+  await expect.poll(async () => (await lesen()).Fahrplan?.title ?? null).toBeNull();
+  const rechner = await lesen();
+  expect(rechner.Fahrplan.labelWidth).toBeGreaterThan(20);
+  expect(rechner.Cockpit.title).toBeNull();
+  expect(rechner.Portfolio.title).toBeNull();
+  expect(rechner['Hilfe & Kontakt'].title).toBeNull();
+
+  await page.setViewportSize({ width: 834, height: 1194 });
+  await expect.poll(async () => (await lesen()).Fahrplan?.title ?? null).toBe('Fahrplan');
+  const tablet = await lesen();
+  expect(tablet.Fahrplan.labelWidth).toBeLessThanOrEqual(1);
+  expect(tablet.Cockpit.title).toBe('Cockpit');
+  expect(tablet.Portfolio.title).toBe('Portfolio');
+  expect(tablet['Hilfe & Kontakt'].title).toBe('Hilfe & Kontakt');
 });

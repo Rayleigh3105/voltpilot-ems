@@ -24,46 +24,14 @@
  */
 'use strict';
 
-const { Engine } = require('../lib/reactive-eval');
-const { shape } = require('./vp-desired');
+// The I/O-free half (signal mapping, evaluation, publish decision) lives in
+// lib/consumer-policy-runtime.js so Edge Light's Go twin is held to the same
+// vectors (docs/contracts/v2/verbraucherregel-vectors.json).
+const { Runtime, siteSignals, entitySignals } = require('../lib/consumer-policy-runtime');
 
 const SITE_TOPIC = 'edge/telemetry';
 const PREFIX = 'edge/entities/';
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-
-/**
- * siteSignals() is exported for unit tests: map one composite edge/telemetry
- * payload onto the site signal channels. Absent inputs stay absent - the
- * surplus is only computable when BOTH pv and load were measured (never a
- * fabricated 0, §3.3).
- */
-function siteSignals(obj) {
-  if (obj == null || typeof obj !== 'object') return {};
-  const out = {};
-  const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
-  const soc = num(obj.soc_pct);
-  if (soc !== null) out.soc_pct = soc;
-  const grid = num(obj.power_kw);
-  if (grid !== null) out.grid_power_kw = grid;
-  const pv = num(obj.pv_power_kw);
-  const load = num(obj.load_kw);
-  if (pv !== null && load !== null) out.pv_surplus_kw = pv - load;
-  return out;
-}
-
-/** entitySignals(): numeric channels of one entity telemetry payload. */
-function entitySignals(entity, obj) {
-  if (obj == null || typeof obj !== 'object') return {};
-  if (obj.schema_version !== '1.0' || obj.entity_id !== entity) return {};
-  const channels = obj.channels;
-  if (channels == null || typeof channels !== 'object') return {};
-  const out = {};
-  for (const key of Object.keys(channels)) {
-    const v = channels[key];
-    if (typeof v === 'number' && isFinite(v)) out[key] = v;
-  }
-  return out;
-}
 
 module.exports = function (RED) {
   function VpConsumerPolicyNode(config) {
@@ -80,22 +48,8 @@ module.exports = function (RED) {
       return;
     }
     const client = core.client;
-    const spec = {
-      command: config.command,
-      off_delay_s: Number(config.off_delay_s) || 0,
-      requirements: Array.isArray(config.requirements) ? config.requirements : [],
-    };
-    const engine = new Engine(spec);
+    const runtime = new Runtime(config);
     const entityTopic = PREFIX + entity + '/telemetry';
-    const baseCfg = {
-      entity,
-      command: config.command,
-      ttl_s: config.ttl_s,
-      flowId: config.flowId,
-      flowVersion: config.flowVersion,
-      nodeId: config.nodeId || config.id,
-    };
-    let lastFingerprint = null; // of the last published desired
 
     const subscribe = () => {
       client.subscribe(SITE_TOPIC, { qos: 1 }, () => {});
@@ -107,35 +61,21 @@ module.exports = function (RED) {
     if (client.connected) subscribe();
     client.on('connect', subscribe);
 
-    const publish = (result) => {
-      const payload = shape({ ...baseCfg, override: result.mustRun === true }, result.value);
-      if (!payload) {
-        node.status({ fill: 'yellow', shape: 'ring', text: 'unbrauchbarer Zielwert' });
-        return;
+    // Send what the runtime decided and show the verdict.
+    const apply = ({ result, publish, unusable }) => {
+      if (unusable) node.status({ fill: 'yellow', shape: 'ring', text: 'unbrauchbarer Zielwert' });
+      if (publish) {
+        client.publish(PREFIX + entity + '/desired', JSON.stringify(publish), { qos: 1 }, (err) => {
+          if (err) node.status({ fill: 'red', shape: 'ring', text: 'Sendefehler' });
+        });
       }
-      client.publish(PREFIX + entity + '/desired', JSON.stringify(payload), { qos: 1 }, (err) => {
-        if (err) node.status({ fill: 'red', shape: 'ring', text: 'Sendefehler' });
-      });
-      lastFingerprint = payload.request_id + '|' + (result.mustRun === true);
-    };
-
-    // fromTrigger = a compiled interval tick (the TTL renewal cadence): while
-    // active, ALWAYS re-publish. A telemetry-driven evaluation publishes only
-    // when the desired CHANGED (transition / new value) so a 5-s telemetry
-    // loop cannot multiply the renewal rate.
-    const evaluate = (fromTrigger) => {
-      const result = engine.evaluate(Date.now());
       if (result.active) {
-        const payload = shape({ ...baseCfg, override: result.mustRun === true }, result.value);
-        const fingerprint = payload ? payload.request_id + '|' + (result.mustRun === true) : null;
-        if (fromTrigger || fingerprint !== lastFingerprint) publish(result);
         node.status({
           fill: 'green',
           shape: 'dot',
           text: (result.held ? 'endet gleich · ' : 'aktiv · ') + result.requirementIds.join(','),
         });
       } else {
-        lastFingerprint = null;
         node.status({
           fill: 'grey',
           shape: result.anyUnknown ? 'ring' : 'dot',
@@ -153,21 +93,15 @@ module.exports = function (RED) {
         return;
       }
       const now = Date.now();
-      if (msgTopic === SITE_TOPIC) {
-        const signals = siteSignals(obj);
-        for (const key of Object.keys(signals)) engine.updateSignal('site', key, signals[key], now);
-      } else {
-        const signals = entitySignals(entity, obj);
-        for (const key of Object.keys(signals)) engine.updateSignal('entity', key, signals[key], now);
-      }
-      evaluate(false); // react immediately (Fahrzeug anstecken -> sofort)
+      // react immediately (Fahrzeug anstecken -> sofort)
+      apply(msgTopic === SITE_TOPIC ? runtime.onSite(obj, now) : runtime.onEntity(obj, now));
     };
     client.on('message', onMessage);
     node.on('close', () => client.removeListener('message', onMessage));
 
     // The compiled interval trigger drives renewal + staleness re-checks.
     node.on('input', function (msg, send, done) {
-      evaluate(true);
+      apply(runtime.onTrigger(Date.now()));
       done();
     });
   }

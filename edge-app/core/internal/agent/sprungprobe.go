@@ -70,10 +70,8 @@ func (a *Agent) nimmSprungprobe(payload []byte, now time.Time) bool {
 
 // sprungSchritt advances a running probe on this tick with the verdicts known
 // BEFORE the feed-in watchdog: an import-side guard that lowered the battery
-// setpoint on this tick, a frozen connection-point value, the battery's hard
-// protection stop. The zero Wunsch (no probe) changes nothing.
-func (a *Agent) sprungSchritt(now time.Time, r guards.Reading, battKw *float64, bezugGriffEin bool,
-	bms *guards.BmsEnvelope) sprungprobe.Wunsch {
+// setpoint on this tick, a frozen connection-point value. The zero Wunsch (no probe) changes nothing.
+func (a *Agent) sprungSchritt(now time.Time, r guards.Reading, battKw *float64, bezugGriffEin bool) sprungprobe.Wunsch {
 	a.sprungMu.Lock()
 	defer a.sprungMu.Unlock()
 	if a.sprung == nil {
@@ -90,8 +88,6 @@ func (a *Agent) sprungSchritt(now time.Time, r guards.Reading, battKw *float64, 
 		l.Waechter = sprungprobe.Bezugswaechter
 	case !a.eingefrorenSeit(now).IsZero():
 		l.Waechter = sprungprobe.Eingefroren
-	case bms != nil && (bms.ChargeBlocked || bms.DischargeBlocked):
-		l.Waechter = sprungprobe.Geraeteschutz
 	}
 	w := a.sprung.Schritt(now, l)
 	a.sprungAbschliessen()

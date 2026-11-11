@@ -1,0 +1,26 @@
+/* Steuerungs-Freigabe: gemeinsame Gründe einmal über der Anlagen-Tabelle, Prüfstandsbelege aufklappbar. */
+.vp-cert-gruende {
+  margin: 0;
+  padding: var(--vp-space-3) var(--vp-space-4);
+  list-style: none;
+  border-bottom: 1px solid var(--vp-border);
+  background: var(--vp-bg-light);
+  font-size: 0.875rem;
+  color: var(--vp-text-muted);
+}
+.vp-cert-gruende li + li { margin-top: var(--vp-space-1); }
+.vp-cert-gruende b { color: var(--vp-text); font-weight: 600; }
+.vp-cert-nachweis { margin-top: 0.25rem; }
+.vp-cert-nachweis summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted);
+  width: fit-content;
+  border-radius: var(--vp-radius-sm);
+}
+.vp-cert-nachweis summary:focus-visible { outline: 2px solid var(--vp-focus, var(--vp-primary)); outline-offset: 2px; }
+.vp-cert-nachweis[open] summary { margin-bottom: 0.25rem; }
+/* Die Abschnittsköpfe stehen hier frei auf der Seite, nicht in einer Tabellenkarte: ohne deren
+   Innenabstand, sonst stehen sie eingerückt über ihrem eigenen Text. */
+.vp-cert-page .vp-admin-sec-head { padding: 0 0 var(--vp-space-2); }
+.vp-cert-page .vp-admin-sec + .vp-admin-sec { margin-top: var(--vp-space-6); }

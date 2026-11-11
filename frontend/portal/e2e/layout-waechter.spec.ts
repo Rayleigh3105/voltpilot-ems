@@ -13,8 +13,8 @@ import { expect, test, type Page } from '@playwright/test';
  *   verschöbe Kantenglättung und Schrift um Pixel. Der Wächter fragt deshalb
  *   nach den Eigenschaften, die ein Kunde als Fehler sieht - und die in jedem
  *   Browser gleich gelten: Symbole bleiben Symbole, nichts ragt über den Rand,
- *   unter dem Fluss steht kein leerer Streifen, und im Fahrplan beginnen alle
- *   Antworten im ersten Bildschirm (E9).
+ *   unter dem Fluss steht kein leerer Streifen, und im Fahrplan stehen Status,
+ *   Uhr und Kacheln im ersten Bildschirm.
  *
  * Er läuft in jedem Projekt der Konfiguration, also auch in `mobile-webkit`
  * (Safari). Breiten nach Portal-Regel: 1440 am Rechner, 375 am Telefon.
@@ -87,27 +87,14 @@ test('Cockpit: Energiefluss-Symbole bleiben Symbole, nichts ragt über den Rand'
  * die Hilfe-Fixtures sind ein erster Besuch. Die Messungen gelten dem
  * Alltag danach; der Wächter beendet sie deshalb wie ein Kunde.
  */
-async function einfuehrungBeenden(page: Page) {
-  const beenden = page.getByRole('button', { name: 'Beenden' });
-  if (await beenden.count()) await beenden.first().click();
-}
-
 test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über den Rand', async ({ page }) => {
   await oeffnen(page, FAHRPLAN);
   await page.locator('.vp-tb').first().waitFor();
-  // Das Blatt der Einführung (Telefon) liegt innerhalb des Bildschirms.
-  const blatt = page.locator('.vp-tb-tour.is-blatt');
-  if (await blatt.count()) {
-    const b = await blatt.first().boundingBox();
-    expect(b!.x).toBeGreaterThanOrEqual(-1);
-    expect(b!.x + b!.width).toBeLessThanOrEqual((page.viewportSize()?.width ?? 0) + 1);
-  }
-  await einfuehrungBeenden(page);
 
   const mass = await page.locator('.vp-tb').first().evaluate((card) => {
     const k = card.getBoundingClientRect();
-    // Am Telefon und Tablet die Uhr, ab 900 px Inhaltsbreite der Bildfahrplan (E10).
-    const bild = card.querySelector('.vp-uhr-svg, .vp-bf-svg')!;
+    // Am Telefon und Tablet die Uhr, ab 900 px Inhaltsbreite das Tagesband.
+    const bild = card.querySelector('.vp-uhr-svg, .vp-tband-svg')!;
     const b = bild.getBoundingClientRect();
     // Die Symbole der Tätigkeiten sind verschachtelte <svg> (`Icon`) - der
     // Fehler des Energieflusses (V-07) darf sich hier nicht wiederholen.
@@ -116,7 +103,7 @@ test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über 
       return { w: Math.round(r.width), h: Math.round(r.height) };
     });
     return {
-      art: bild.classList.contains('vp-uhr-svg') ? 'uhr' : 'bildfahrplan',
+      art: bild.classList.contains('vp-uhr-svg') ? 'uhr' : 'tagesband',
       karteLinks: k.left,
       karteRechts: k.right,
       bildLinks: b.left,
@@ -127,7 +114,7 @@ test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über 
   });
 
   const breite = page.viewportSize()?.width ?? 0;
-  expect(mass.art, 'Uhr bis 900 px Inhaltsbreite, darüber der Bildfahrplan').toBe(breite >= 1200 ? 'bildfahrplan' : 'uhr');
+  expect(mass.art, 'Uhr bis 900 px Inhaltsbreite, darüber das Tagesband').toBe(breite >= 1200 ? 'tagesband' : 'uhr');
   expect(mass.bildHoehe, 'das Tagesbild hat eine Fläche').toBeGreaterThan(150);
   expect(mass.bildLinks).toBeGreaterThanOrEqual(mass.karteLinks - 1);
   expect(mass.bildRechts).toBeLessThanOrEqual(mass.karteRechts + 1);
@@ -138,58 +125,66 @@ test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über 
   }
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
 
-  // Rückmeldung 25.09.2026 („zwei doppelte Diagramme"): neben dem Tagesbild
-  // steht kein zweites Bild desselben Tages, kein Film und kein Aufklapper.
-  // Das bisherige Diagramm öffnet sich nur als Dialog „Alle Werte".
-  await expect(page.locator('.vp-uhr-svg, .vp-bf-svg')).toHaveCount(1);
+  // Neben dem Tagesbild steht kein zweites Bild desselben Tages, kein Film
+  // und kein „Mehr erklären". Das bisherige Diagramm öffnet sich nur als
+  // Dialog „Alle Werte" (am Telefon in „Gut zu wissen").
+  await expect(page.locator('.vp-uhr-svg, .vp-tband-svg')).toHaveCount(1);
   await expect(page.locator('.vp-film')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Mehr erklären/ })).toHaveCount(0);
+  const wissen = page.getByRole('button', { name: 'Gut zu wissen' });
+  if (await wissen.count()) await wissen.click();
   await expect(page.getByRole('button', { name: /Alle Werte im Diagramm/ })).toHaveCount(1);
 });
 
 /**
- * E1/E9 (Konzept „Tagesuhr und Bildfahrplan", 24.09.2026): am Telefon stehen
- * Tagesschalter, Kopfsatz, Uhr, Werte und die Zeile zum Moment ganz oben,
- * direkt darunter die Antworten - und ALLE Antworten beginnen im ersten
- * Bildschirm (375 × 812, über der unteren Leiste). Darunter darf die Seite
- * länger werden; die frühere Grenze der Gesamthöhe (1 750 px, V-02/V-06)
- * ersetzt E9 A durch dieses Budget des ersten Bildschirms.
+ * Der erste Bildschirm (Überblick 20.10.2026, Variante A: „in fünf Sekunden
+ * verstehen, was abgeht"): am Telefon stehen Tagesschalter, die Status-Zeile,
+ * die Uhr und die Kacheln GANZ im ersten Bildschirm (375 × 812, über der
+ * unteren Leiste) - in dieser Reihenfolge. Am Rechner stehen Status und
+ * Kacheln in der Jetzt-Karte über dem Tagesband, und das Band beginnt im
+ * ersten Bildschirm.
  *
  * Seit dem Tagesschalter (25.09.2026) trägt der Fahrplan wie seine Reiter
  * Preise und Wetter keinen SICHTBAREN Seitenkopf: die Reiterleiste springt
- * nicht mehr, und die Uhr bekam den Platz („so groß wie möglich").
+ * nicht, und das Tagesbild bekommt den Platz.
  */
-test('Fahrplan: die Uhr ganz oben, alle Antworten im ersten Bildschirm (E1, E9)', async ({ page }) => {
+test('Fahrplan: Status, Uhr und Kacheln im ersten Bildschirm', async ({ page }) => {
   await oeffnen(page, FAHRPLAN);
-  await page.locator('.vp-antw').first().waitFor();
-  await einfuehrungBeenden(page);
+  await page.locator('.vp-tb-status').first().waitFor();
   // Die Überschrift ist da - für Screenreader, nicht auf der Fläche.
   await expect(page.locator('main h1', { hasText: 'Fahrplan' })).toHaveClass(/vp-sr-only/);
 
   const mass = await page.evaluate(() => {
     const leiste = document.querySelector('.vp-bottombar');
     const leisteOben = leiste && leiste.getBoundingClientRect().height > 0 ? leiste.getBoundingClientRect().top : innerHeight;
-    const bild = document.querySelector('.vp-uhr, .vp-bf')!.getBoundingClientRect();
-    const kopf = document.querySelector('.vp-tb-kopf');
+    const r = (sel: string) => document.querySelector(sel)?.getBoundingClientRect() ?? null;
     return {
       sichtbarBis: Math.min(innerHeight, leisteOben),
-      bildOben: bild.top,
-      kopfOben: kopf ? kopf.getBoundingClientRect().top : null,
-      antworten: [...document.querySelectorAll('.vp-antw-kachel')].map((el) => el.getBoundingClientRect().top),
+      tage: r('.vp-tb-tage'),
+      status: r('.vp-tb-status'),
+      bild: r('.vp-uhr, .vp-tband'),
+      uhr: document.querySelector('.vp-uhr') != null,
+      kacheln: [...document.querySelectorAll('.vp-antw-zeile')].map((el) => {
+        const b = el.getBoundingClientRect();
+        return { top: b.top, bottom: b.bottom };
+      }),
     };
   });
-  expect(mass.antworten.length, 'Antworten unter dem Tagesbild').toBeGreaterThanOrEqual(2);
-  for (const oben of mass.antworten) {
-    // Mindestens die Frage und der Beginn der Antwort stehen über dem Rand.
-    expect(oben, 'eine Antwort beginnt unter dem ersten Bildschirm').toBeLessThanOrEqual(mass.sichtbarBis - 40);
-    // Unter dem Bild (Telefon, Rechner) oder daneben (Tablet) - nie davor.
-    expect(oben, 'die Antworten stehen nicht vor dem Bild').toBeGreaterThanOrEqual(mass.bildOben - 1);
+  expect(mass.kacheln.length, 'Kacheln zum Tag').toBeGreaterThanOrEqual(1);
+  expect(mass.tage!.top, 'der Tagesschalter (E2) steht über der Status-Zeile').toBeLessThan(mass.status!.top);
+  if (mass.uhr) {
+    // Telefon und Tablet: Status über der Uhr (Tablet: daneben), Kacheln unter Status und Uhr.
+    expect(mass.status!.bottom).toBeLessThanOrEqual(mass.sichtbarBis);
+    expect(mass.bild!.bottom, 'die ganze Uhr im ersten Bildschirm').toBeLessThanOrEqual(mass.sichtbarBis + 1);
+    for (const k of mass.kacheln) {
+      expect(k.bottom, 'eine Kachel ragt unter den ersten Bildschirm').toBeLessThanOrEqual(mass.sichtbarBis + 1);
+      expect(k.top).toBeGreaterThan(mass.status!.top);
+    }
+  } else {
+    // Rechner: die Kacheln stehen in der Jetzt-Karte über dem Band, das Band beginnt im ersten Bildschirm.
+    for (const k of mass.kacheln) expect(k.bottom).toBeLessThanOrEqual(mass.bild!.top);
+    expect(mass.bild!.top, 'das Tagesband beginnt im ersten Bildschirm').toBeLessThan(mass.sichtbarBis - 100);
   }
-  // Aufbau des Prototyps: der Tagesschalter über dem Kopfsatz, der über dem Bild.
-  if (mass.kopfOben != null) expect(mass.kopfOben).toBeLessThan(mass.bildOben);
-  const tage = await page.getByRole('tablist', { name: 'Tag' }).boundingBox();
-  expect(tage, 'der Tagesschalter (E2)').not.toBeNull();
-  if (mass.kopfOben != null) expect(tage!.y).toBeLessThan(mass.kopfOben);
 });
 
 /**
@@ -206,3 +201,80 @@ test('Fahrplan: die Reiterleiste steht auf Fahrplan, Preise und Wetter an dersel
   }
   expect(oben, 'Oberkante der Reiterleiste je Reiter').toEqual([oben[0], oben[0], oben[0]]);
 });
+
+/**
+ * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept`,
+ * Scheibe S3): `help-site-2` ("Werkstatt am Bach") trägt einen Festtarif
+ * ohne Netzladen und klassiert deshalb als `preisRolle(...).erzaehlung ===
+ * 'sonne'` (über den Stammdaten-Rückfall, §5.3 - derselbe geteilte Lauf wie
+ * `help-site`, der (noch) keine Preisfelder je Viertelstunde trägt). Der
+ * Sonnenbogen an der Uhr und die Autarkie-Kachel erscheinen NUR hier, nie
+ * bei `help-site` (dynamischer Tarif, Preis-Erzählung) - diese Seite bleibt
+ * von den Tests oben unberührt gegen Rückschritt geprüft.
+ */
+test('Fahrplan (Sonnen-Erzählung): der Sonnenbogen bleibt im Rahmen, „Aus eigenem Strom" statt Geld', async ({ page }) => {
+  await oeffnen(page, '/e2e/help.html#/anlage/help-site-2/fahrplan');
+  await page.locator('.vp-tb').first().waitFor();
+
+  const breite = page.viewportSize()?.width ?? 0;
+  if (breite < 1200) {
+    // Telefon/Tablet: der Sonnenbogen lebt im selben <svg> wie der Ring - die
+    // bestehende Überlauf-/Symbolgrößen-Prüfung oben gilt automatisch weiter.
+    const uhrSvg = page.locator('.vp-uhr-svg').first();
+    await expect(uhrSvg).toBeVisible();
+    const mass = await uhrSvg.evaluate((svg) => {
+      const r = svg.getBoundingClientRect();
+      const boegen = [...svg.querySelectorAll('.vp-uhr-sonne path')].map((p) => p.getBoundingClientRect());
+      return {
+        svg: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+        boegen: boegen.map((b) => ({ left: b.left, right: b.right, top: b.top, bottom: b.bottom })),
+      };
+    });
+    expect(mass.boegen.length, 'der Sonnenbogen zeichnet mindestens ein Stück').toBeGreaterThan(0);
+    for (const b of mass.boegen) {
+      // Etwas Toleranz für Rundung/Antialiasing (1 px), aber kein echtes Überragen.
+      expect(b.left).toBeGreaterThanOrEqual(mass.svg.left - 1);
+      expect(b.right).toBeLessThanOrEqual(mass.svg.right + 1);
+      expect(b.top).toBeGreaterThanOrEqual(mass.svg.top - 1);
+      expect(b.bottom).toBeLessThanOrEqual(mass.svg.bottom + 1);
+    }
+  }
+
+  // Die Autarkie-Kachel statt der Geld-Kachel - in jeder Breite sichtbar.
+  await expect(page.getByText('Aus eigenem Strom').first()).toBeVisible();
+  const kacheln = page.locator('.vp-antw-zeile');
+  const kachelText = await kacheln.allTextContents();
+  expect(kachelText.some((t) => /Aus eigenem Strom/.test(t)), 'die Kachel zeigt die Autarkie').toBe(true);
+  expect(kachelText.some((t) => t.includes('€')), 'keine Geld-Kachel mehr auf dieser Klasse').toBe(false);
+
+  // „Gut zu wissen": der feste Strompreis UND die eigene Einspeisevergütung
+  // dieser Anlage stehen mit echten Zahlen da - nie „nicht hinterlegt" nur
+  // weil die Hilfe-Attrappe die falsche Anlage abgefragt hat.
+  const wissen = page.getByRole('button', { name: 'Gut zu wissen' });
+  if (await wissen.count()) await wissen.click();
+  const wissenText = (await page.locator('section[aria-label="Gut zu wissen"], .vp-tb-zu-inhalt').last().textContent()) ?? '';
+  expect(wissenText).toContain('30,0');
+  expect(wissenText).toContain('Ihre Einspeisevergütung');
+  expect(wissenText).not.toContain('nicht hinterlegt');
+
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+});
+
+/**
+ * „Ihr Sonnenstrom heute": die Wallbox-Hinweiszeile steht nur, wenn die Anlage
+ * einen Ladepunkt hat (`?wallbox=1` legt einen `ev-charger` an `help-site-2`).
+ * Ohne Ladepunkt darf der Satz nie erscheinen, mit ihm muss er stehen.
+ */
+for (const mitWallbox of [false, true]) {
+  test(`Fahrplan (Sonnenstrom): Wallbox-Hinweis ${mitWallbox ? 'steht mit' : 'fehlt ohne'} Ladepunkt`, async ({ page }) => {
+    await oeffnen(page, `/e2e/help.html${mitWallbox ? '?wallbox=1' : ''}#/anlage/help-site-2/fahrplan`);
+    await page.locator('.vp-tb').first().waitFor();
+    const knopf = page.getByRole('button', { name: 'Ihr Sonnenstrom heute' });
+    if (await knopf.count()) await knopf.click();
+    await expect(page.getByText('Ihre Sonne:').first()).toBeVisible();
+    const hinweis = page.getByText(/ein Auto an der Wallbox könnte sie nutzen/);
+    if (mitWallbox) await expect(hinweis.first()).toBeVisible();
+    else await expect(hinweis).toHaveCount(0);
+    expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  });
+}

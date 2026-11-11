@@ -1,0 +1,10 @@
+# Öffentliche Schlüssel, nichts Geheimes: der Notfall-Schlüssel (Entscheid K2 a)
+# steht auf der Brücke im Benutzer werkstatt und später auf jeder Box.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: werkstatt-dienst-oeffentlich
+  namespace: werkstatt-prod
+data:
+  voltpilot-notfall.pub: |
+    ssh-rsa AAAA… voltpilot-notfall

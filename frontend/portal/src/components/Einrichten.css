@@ -39,6 +39,41 @@
   padding-bottom: var(--vp-space-4);
   border-bottom: 1px solid var(--vp-border);
 }
+.vp-ein-kopf.hat-aendern {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+/* „Modell ändern": leise wie ein Link, Tippfläche 44 px; am schmalen Telefon fällt er unter den Namen. */
+.vp-ein-aendern {
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  white-space: nowrap;
+  cursor: pointer;
+}
+@media (max-width: 520px) {
+  .vp-ein-kopf.hat-aendern {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .vp-ein-aendern {
+    grid-column: 2;
+    justify-self: start;
+    min-height: 36px;
+    margin: -4px 0 0 -6px;
+  }
+}
+.vp-ein-aendern:hover {
+  text-decoration: underline;
+}
+.vp-ein-aendern:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .vp-ein-kopf .vp-auf-sym {
   width: 40px;
   height: 40px;

@@ -57,7 +57,20 @@ const (
 	// house balance / a consumer entity is topology-layer work; here it is a
 	// first-class source role so it can be added, read and published.
 	RoleConsumer = "consumer"
+	// RolePlantController is the transport of an Anlagensteuerung (UEMS EZ-21):
+	// the address the palette reads the Erzeuger register image over, bound to
+	// the component through its pin (edge_source_id). It only ever comes from a
+	// portal plan (componentapply) - never from the local add path, which is why
+	// isKnownRole does not list it. No fold reads it: it adds nothing to the PV
+	// sum, the grid value, the envelope or the export backstop (each of those
+	// asks for its own role), and the self-wiring tab does not poll it.
+	RolePlantController = "plant-controller"
 )
+
+// FamilyErzeugerRegisterbild is the family a plant-controller source carries:
+// the catalog family the palette reads over it. It is a label, not a register
+// profile - nothing on the box looks it up.
+const FamilyErzeugerRegisterbild = "voltpilot.erzeuger_registerbild_v1"
 
 // isKnownRole reports whether role is one of the read-only source roles the edge
 // can configure today. A meter (RoleNetz) and a consumer (RoleConsumer) carry no
@@ -290,8 +303,14 @@ func TransportIdentity(s Source) string {
 		parts = append(parts, strings.TrimSpace(s.Connection.Serial))
 	case inverter.CommShellyHTTP:
 		// A multi-channel Shelly (2PM) is one box with two independent relays:
-		// each channel is its own physical measurement point.
-		parts = append(parts, strconv.Itoa(s.Connection.Channel))
+		// each channel is its own physical measurement point. An output SET
+		// (one heating rod over several outputs) is one device of its own -
+		// "set:" keeps it apart from every single output.
+		if s.Connection.Channels != "" {
+			parts = append(parts, "set:"+string(s.Connection.Channels))
+		} else {
+			parts = append(parts, strconv.Itoa(s.Connection.Channel))
+		}
 	}
 	return strings.Join(parts, "\n")
 }
@@ -306,6 +325,24 @@ const TopicWildcard = TopicPrefix + "+/telemetry"
 // TopicConfig is the retained selection array the core publishes for Node-RED
 // (sibling of edge/inverter/config).
 const TopicConfig = "edge/sources/config"
+
+// The meter details a meter source (a Shelly three-phase meter as grid meter
+// or sub-meter) carries next to its role channel on edge/sources/{id}/telemetry
+// (Unterverteilungen, Konzept vp-unterzaehler-anzeige B1): the counters in kWh
+// and the power per phase in kW. The names are the ENTITY channels of a meter
+// (type catalog `sub-meter`; a grid meter read through a meter): energy_kwh is
+// the import counter, so the house rule "the energy of a period is the
+// counter's increase" applies to it unchanged.
+const (
+	MeterEnergyKwh       = "energy_kwh"
+	MeterEnergyExportKwh = "energy_export_kwh"
+	MeterPowerL1Kw       = "power_l1_kw"
+	MeterPowerL2Kw       = "power_l2_kw"
+	MeterPowerL3Kw       = "power_l3_kw"
+)
+
+// MeterDetailChannels are the meter details in a fixed order.
+var MeterDetailChannels = []string{MeterEnergyKwh, MeterEnergyExportKwh, MeterPowerL1Kw, MeterPowerL2Kw, MeterPowerL3Kw}
 
 // IDFromTopic extracts the source id from edge/sources/{id}/telemetry, or ""
 // when the topic does not match that shape.
@@ -371,6 +408,22 @@ func (s Source) busEntry() map[string]any {
 		conn["unit_id"] = s.Connection.UnitID
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+	case inverter.CommHuaweiModbus:
+		// Huawei SUN2000 (+ LUNA2000) over its own Modbus TCP server (mirrors
+		// inverter.Selection.BusPayload): the unit id (0 direct, mostly 1
+		// behind the Smart Dongle) and the two READ sign hatches - without them
+		// a second SUN2000 as an Erzeuger or Netz source would be read at unit 0
+		// with the factory signs, whatever the form said.
+		conn["unit_id"] = s.Connection.UnitID
+		conn["profile"] = s.Connection.Profile
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+	case inverter.CommKacoSerial:
+		// Powador behind an RS485-to-Ethernet converter: the RS485 bus address
+		// (1-32) is the reader's one addressing field - without it every
+		// Powador source would be asked as "#010" (scout vp-kundenanlage-drei-
+		// geraete: the saved address never reached the bus config).
+		conn["address"] = s.Connection.Address
 	case inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP:
 		// SunSpec-live over Modbus TCP (mirrors inverter.Selection.BusPayload);
 		// `sunspec_tcp` is the SAME way under a brand-neutral id (IsSunSpecTCP).

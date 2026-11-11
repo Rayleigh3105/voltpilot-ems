@@ -22,7 +22,6 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from urllib.parse import quote
 
 from voltpilot_forecast.domain import GeoLocation
 from voltpilot_forecast.kundenbereich import NICHT_BEENDET
@@ -30,6 +29,7 @@ from voltpilot_forecast.openmeteo import (
     OpenMeteoConfig,
     OpenMeteoWeatherSource,
 )
+from voltpilot_forecast.pgdsn import dsn_from_env
 from voltpilot_forecast.runtime import ServeRuntime, serve_health
 from voltpilot_forecast.weather_repository import (
     TimescaleWeatherForecastRepository,
@@ -44,25 +44,6 @@ class SiteRow:
     tenant_id: str
     site_id: str
     location: GeoLocation
-
-
-def _dsn_from_env(env: dict[str, str]) -> str:
-    host = env.get("POSTGRES_HOST", "localhost")
-    port = env.get("POSTGRES_PORT", "5432")
-    db = env.get("POSTGRES_DB", "voltpilot")
-    # The collector reads sites across tenants and writes weather, so it connects
-    # as the trusted backend role (POSTGRES_USER), not the RLS-scoped app role.
-    user = quote(env.get("POSTGRES_USER", "voltpilot"), safe="")
-    password = quote(env.get("POSTGRES_PASSWORD", ""), safe="")
-    # connect_timeout bounds the connect: without it libpq waits on the OS
-    # TCP timeout, so an unreachable DB hangs the cycle (and the shutdown
-    # handler) instead of failing into the retry back-off. See
-    # docs/k8s-readiness.md.
-    timeout = env.get("POSTGRES_CONNECT_TIMEOUT", "10")
-    return (
-        f"postgresql://{user}:{password}@{host}:{port}/{db}"
-        f"?connect_timeout={quote(timeout, safe='')}"
-    )
 
 
 def _now_utc() -> datetime:
@@ -129,7 +110,7 @@ def _build_source(env: dict[str, str]) -> OpenMeteoWeatherSource:
     return OpenMeteoWeatherSource(
         OpenMeteoConfig(
             base_url=env.get("OPEN_METEO_BASE_URL", OpenMeteoConfig.base_url),
-            forecast_days=int(env.get("WEATHER_FORECAST_DAYS", "3")),
+            forecast_days=int(env.get("WEATHER_FORECAST_DAYS", "7")),
         )
     )
 
@@ -190,7 +171,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _run_cycle(env: dict[str, str], source, persist: bool) -> None:
-    dsn = _dsn_from_env(env)
+    dsn = dsn_from_env(env)
     sites = load_sites_with_coordinates(dsn)
     if not sites:
         logger.warning("weather.no_sites", extra={"context": {}})

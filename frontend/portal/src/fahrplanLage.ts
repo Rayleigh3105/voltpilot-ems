@@ -21,7 +21,7 @@
  *    Es sind dieselben Reihen, die das Fahrplan-Diagramm als Prognose-Linien
  *    zeichnet - Zeile und Diagramm können sich damit nicht widersprechen. Aus
  *    Bewölkung und kWp eine ZWEITE Erzeugungsprognose zu rechnen ist im Haus
- *    ausdrücklich verboten (`wetterLeistung.ts`); das Wetter liefert deshalb
+ *    ausdrücklich verboten (`wetterTag.ts`); das Wetter liefert deshalb
  *    hier nur ein WORT ({@link weatherWhyTomorrow}), nie eine Zahl.
  * 2. **Reicht der Horizont nicht bis morgen** (vormittags, bevor die
  *    Börsenpreise für morgen vorliegen), sagt die Zeile GENAU DAS -
@@ -352,14 +352,22 @@ export function ausblickSatz(
     slotMinutes?: number;
     weather?: CloudPoint[] | null;
     plan?: PlanWhyFacts | null;
+    /** Die Sonnen-Erzählung; Vorgabe `false` lässt den Horizont-Satz unverändert. */
+    sonne?: boolean;
   } = {},
 ): string | null {
   const slotMinutes = opts.slotMinutes ?? 15;
   const teile: string[] = [];
-  const himmel = opts.weather ? weatherWhyTomorrow(opts.weather, now) : null;
-  if (himmel) teile.push(HIMMEL_SATZ[himmel]);
-
   const energie = morgenEnergie(slots, now, slotMinutes);
+  const himmel = opts.weather ? weatherWhyTomorrow(opts.weather, now) : null;
+  // Kein Widerspruch in einem Absatz (Überblick 20.10.2026): das Wetter-Wort
+  // kommt aus einer anderen Vorhersage als die Plan-Zahlen. Erwartet der Plan
+  // mehr Solar-Überschuss als Verbrauch, ist „kaum Sonne" daneben falsch
+  // (Demo 20.10.2026: „kaum Sonne" neben 50 kWh Überschuss bei 24 kWh
+  // Verbrauch) - dann sprechen nur die Zahlen, nach denen der Plan rechnet.
+  const widerspruch = himmel === 'bewoelkt' && energie != null && energie.ueberschussKwh > energie.verbrauchKwh;
+  if (himmel && !widerspruch) teile.push(HIMMEL_SATZ[himmel]);
+
   if (energie != null) {
     teile.push(
       `Der Fahrplan rechnet für morgen mit ${kwh(energie.ueberschussKwh)} Solar-Überschuss ` +
@@ -368,7 +376,7 @@ export function ausblickSatz(
     const speicher = speicherHalbsatz(opts.plan);
     if (speicher) teile.push(speicher);
   } else {
-    const hint = horizonHint(slots, now, slotMinutes);
+    const hint = horizonHint(slots, now, slotMinutes, opts.sonne === true);
     if (hint) teile.push(hint);
   }
   return teile.length === 0 ? null : teile.join(' ');
@@ -399,6 +407,12 @@ export interface LageInput {
   /** Die Wetter-Vorhersage der Anlage; ohne sie fehlt das Himmels-Wort. */
   weather?: CloudPoint[] | null;
   now: Date;
+  /**
+   * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.5):
+   * true unterdrückt den Börsenpreis-Tagesbogen (B1, er entfällt ersatzlos)
+   * und spricht den Horizont-Satz sonnen-sicher. Vorgabe `false`.
+   */
+  sonne?: boolean;
 }
 
 export interface LageView {
@@ -425,11 +439,12 @@ export interface LageView {
  */
 export function lageView(input: LageInput): LageView | null {
   const slotMinutes = input.slotMinutes ?? 15;
-  const bogen = bogenSatz(tagesbogen(input.slots, input.now, slotMinutes));
+  const bogen = input.sonne ? null : bogenSatz(tagesbogen(input.slots, input.now, slotMinutes));
   const ausblick = ausblickSatz(input.slots, input.now, {
     slotMinutes,
     weather: input.weather,
     plan: input.plan,
+    sonne: input.sonne,
   });
   const nachtreserve = nachtreserveSatz(input.plan);
   if (bogen == null && ausblick == null && nachtreserve == null) return null;

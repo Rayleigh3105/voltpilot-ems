@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
-import { api, type Device, type Site, type SiteAsset, type SupplyPrice } from '../api';
+import { api, type Device, type Einspeiseverguetung, type Site, type SiteAsset, type SupplyPrice } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { mispelApi, type FoerderwegAnsicht } from '../mispelFoerderwegApi';
 import type { FoerderwegWert } from '../mispelFoerderweg';
+import { buettner, buettnerNv } from '../test/anlagensteuerungFixtures';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
 // mock it like LocationMap.test.tsx does; the map itself is not under test.
@@ -269,6 +270,24 @@ function planWithPrice(over: Partial<Record<string, unknown>> = {}) {
   } as never;
 }
 
+/** Der Stand der Karte „Einspeisevergütung", wie der Server ihn liefert (EEG 2025, § 51a). */
+function verguetungStand(over: Partial<Einspeiseverguetung> = {}): Einspeiseverguetung {
+  return {
+    zustand: 'eeg',
+    wirksamCtKwh: 7.94,
+    angegebenCtKwh: null,
+    inbetriebnahmeAbSolarspitzengesetz: null,
+    hergeleitetCtKwh: 7.94,
+    hergeleitetGenaehert: false,
+    inbetriebnahme: '2025-06-01',
+    leistungKwp: 9.8,
+    eegEndeAm: '2045-12-31',
+    ohneVerguetungBeiNegativpreis: true,
+    anzulegenderWertCtKwh: null,
+    ...over,
+  };
+}
+
 /** Rendert die ganze Einstellungs-Seite einer gewöhnlichen PV+Speicher-Anlage. */
 /**
  * MiSpeL MP-17: der Förderweg der Anlage (`GET …/foerderweg`). Ohne Angabe der Bestand aus den Schaltern
@@ -315,6 +334,8 @@ async function renderEinstellungen(
   supplySheet: SupplyPrice | null = null,
   plan: unknown = null,
   devices: Device[] = [device({ id: 'd-1' })],
+  verguetung: Einspeiseverguetung | Error = verguetungStand(),
+  gridLimitKw: number | null = null,
   weg?: FoerderwegWert,
 ) {
   const s: Site = { ...eegSite, ...over };
@@ -322,8 +343,16 @@ async function renderEinstellungen(
   const assets = vi
     .spyOn(api, 'siteAssets')
     .mockResolvedValue(batteryOver == null ? [] : [battery({ deviceId: 'd-1', ...batteryOver })]);
+  const verguetungAbruf =
+    verguetung instanceof Error
+      ? vi.spyOn(api, 'einspeiseverguetung').mockRejectedValue(verguetung)
+      : vi.spyOn(api, 'einspeiseverguetung').mockResolvedValue(verguetung);
   const preview = vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a'));
   const supply = vi.spyOn(api, 'supplyPrice').mockResolvedValue(supplySheet as never);
+  // Die Zeile „Anschlussgrenze" (E5 = A, Scheibe 4) holt ihren Anzeigewert selbst.
+  const chargingConfig = vi.spyOn(api, 'chargingConfig').mockResolvedValue({
+    gridLimitKw, priorityChargePointIds: [], chargePoints: [],
+  } as never);
   const schedule =
     plan == null
       ? vi.spyOn(api, 'schedule').mockRejectedValue(new Error('kein Plan'))
@@ -355,7 +384,8 @@ async function renderEinstellungen(
           onSiteDeleted={() => {}}
         />,
       ),
-    restore: () => [assets, preview, supply, schedule, fw].forEach((m) => m.mockRestore()),
+    verguetungAbruf,
+    restore: () => [assets, preview, supply, schedule, verguetungAbruf, chargingConfig, fw].forEach((m) => m.mockRestore()),
   };
 }
 
@@ -393,6 +423,21 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     // Ohne Koordinaten sagt die Zeile, was fehlt - und warum es zählt. Das
     // Feld heißt weiter „Standort" (Glossar, E9: B).
     expect(zeile('Standort')).toHaveTextContent('Ohne Standort auf der Karte gibt es keine Wettervorhersage.');
+    restore();
+  });
+
+  // „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Anschlussgrenze zieht aus dem
+  // Rahmen-Blatt der Steuerung hierher um - direkt neben der Einspeisegrenze.
+  it('zeigt die Anschlussgrenze neben der Einspeisegrenze und öffnet das Rahmen-Blatt', async () => {
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
+      verbraucher: [], rangliste: [],
+      ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null },
+    } as never);
+    vi.spyOn(api, 'siteDetail').mockRejectedValue(new Error('n/a'));
+    const { restore } = await renderEinstellungen({}, {}, null, null, undefined, undefined, 77);
+    await waitFor(() => expect(zeile('Anschlussgrenze')).toHaveTextContent('77,0'));
+    fireEvent.click(zeile('Anschlussgrenze'));
+    expect(await screen.findByRole('dialog', { name: /Netzanschluss und Laden/ })).toBeInTheDocument();
     restore();
   });
 
@@ -441,6 +486,50 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     const b = await screen.findByRole('dialog');
     expect(b).toHaveAccessibleName('Förderweg ändern');
     expect(within(b).getByText(/Wie wird die Einspeisung Ihrer Anlage gefördert/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('jede Zeile öffnet nur IHR Feld - gespeichert wird trotzdem die ganze Anlage', async () => {
+    const updateSite = vi.spyOn(api, 'updateSite').mockResolvedValue({ ...eegSite, name: 'Hof Neu' });
+    const { restore } = await renderEinstellungen({ maxFeedInKw: 30 });
+    const b = await blatt('Name');
+    expect(b).toHaveAccessibleName('Name');
+    expect(within(b).getByLabelText('Name')).toHaveValue('Hof Sonnenfeld');
+    // Keine Karte, keine Einspeisegrenze, keine Veräußerungsform im Namens-Blatt.
+    expect(within(b).queryByText('Standort auf der Karte')).toBeNull();
+    expect(within(b).queryByLabelText(/Maximale Einspeiseleistung/)).toBeNull();
+    expect(within(b).queryByText(/Wie wird Ihr Strom vergütet/)).toBeNull();
+    fireEvent.change(within(b).getByLabelText('Name'), { target: { value: 'Hof Neu' } });
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(updateSite).toHaveBeenCalled());
+    // Die Felder, die das Blatt nicht zeigt, reisen unverändert mit.
+    expect(updateSite).toHaveBeenCalledWith('s-1', expect.objectContaining({ name: 'Hof Neu', maxFeedInKw: 30 }));
+    updateSite.mockRestore();
+    restore();
+  });
+
+  it('„Kapazität" öffnet direkt das Speicher-Formular - Abbrechen schließt das Blatt', async () => {
+    const { restore } = await renderEinstellungen();
+    const b = await blatt('Kapazität');
+    expect(within(b).getByLabelText('Kapazität (kWh) *')).toBeInTheDocument();
+    expect(within(b).queryByRole('button', { name: /Speicher bearbeiten/ })).toBeNull();
+    fireEvent.click(within(b).getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    restore();
+  });
+
+  it('Einspeisegrenze und Standort öffnen ihr eigenes Feld', async () => {
+    const { restore } = await renderEinstellungen({ maxFeedInKw: 30 });
+    const grenze = await blatt('Einspeisegrenze');
+    expect(grenze).toHaveAccessibleName('Einspeisegrenze');
+    expect(within(grenze).getByLabelText(/Maximale Einspeiseleistung/)).toBeInTheDocument();
+    expect(within(grenze).queryByLabelText('Name')).toBeNull();
+    fireEvent.click(within(grenze).getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const ort = await blatt('Standort');
+    expect(ort).toHaveAccessibleName('Standort');
+    expect(within(ort).getByText('Standort auf der Karte')).toBeInTheDocument();
+    expect(within(ort).queryByLabelText(/Maximale Einspeiseleistung/)).toBeNull();
     restore();
   });
 
@@ -635,9 +724,251 @@ describe('Einstellungen · Stromtarif im Blatt', () => {
   });
 });
 
+describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
+  it('zeigt den wirksamen Satz MIT Herkunft - direkt unter dem Stromtarif', async () => {
+    const { restore } = await renderEinstellungen({ tarifArt: 'fest', tarifParamCtKwh: 30 });
+    const z = await waitFor(() => {
+      const el = zeile('Einspeisevergütung');
+      expect(el).toHaveTextContent('7,94 ct/kWh');
+      return el;
+    });
+    expect(z).toHaveTextContent('hergeleitet aus EEG, Inbetriebnahme 01.06.2025');
+    // Die Gegenrichtung des Stromtarifs steht gleich darunter.
+    const geld = document.getElementById('technik-geld')!;
+    const zeilen = within(geld).getAllByRole('button').map((b) => b.textContent ?? '');
+    expect(zeilen.findIndex((t) => t.startsWith('Einspeisevergütung'))).toBe(
+      zeilen.findIndex((t) => t.startsWith('Stromtarif')) + 1,
+    );
+    restore();
+  });
+
+  it('eigener Satz: wirkt nach dem Speichern, sagt die Folge und nimmt sie zurück', async () => {
+    const setzen = vi
+      .spyOn(api, 'setEinspeiseverguetung')
+      .mockImplementation(async (_id, satz) =>
+        satz == null
+          ? verguetungStand()
+          : verguetungStand({ zustand: 'angegeben', wirksamCtKwh: satz, angegebenCtKwh: satz }),
+      );
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('7,94'));
+
+    const b = await blatt('Einspeisevergütung');
+    expect(b).toHaveAccessibleName('Einspeisevergütung');
+    // Dieselbe Formensprache wie der Stromtarif: Wirkung und Art der Zahl.
+    expect(within(b).getByText('Wirkt auf: Fahrplan')).toBeInTheDocument();
+    expect(within(b).getByText('Wirkt auf: Erlöse')).toBeInTheDocument();
+    expect(within(b).getByText('Bewertet')).toBeInTheDocument();
+    expect(within(b).getByTestId('verguetung-jetzt')).toHaveTextContent('7,94 ct/kWh');
+    expect(within(b).getByText(/§ 51a EEG/)).toBeInTheDocument();
+    expect(within(b).getByRole('radio', { name: /Aus dem EEG herleiten/ })).toBeChecked();
+
+    fireEvent.click(within(b).getByRole('radio', { name: /Eigenen Satz angeben/ }));
+    fireEvent.change(within(b).getByLabelText('Ihr Satz (ct/kWh)'), { target: { value: '12,5' } });
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+
+    // Mit Inbetriebnahmedatum entscheidet das Datum - keine Antwort reist mit.
+    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', 12.5, null));
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('12,50 ct/kWh'));
+    expect(zeile('Einspeisevergütung')).toHaveTextContent('von Ihnen angegeben');
+    expect(
+      await screen.findByText('Ab dem nächsten Fahrplan gilt Ihr Satz - Ihre Erlöse sind schon damit bewertet.'),
+    ).toBeInTheDocument();
+
+    // „Rückgängig" stellt den vorigen Stand wieder her - hier: die Herleitung.
+    fireEvent.click(screen.getByRole('button', { name: 'Rückgängig' }));
+    await waitFor(() => expect(setzen).toHaveBeenLastCalledWith('s-1', null, null));
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('7,94 ct/kWh'));
+    expect(await screen.findByText('Ab dem nächsten Fahrplan gilt wieder der Satz aus dem EEG.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull();
+    setzen.mockRestore();
+    restore();
+  });
+
+  it('zurücksetzen IST die Wahl „herleiten" - gespeichert wird null', async () => {
+    const setzen = vi.spyOn(api, 'setEinspeiseverguetung').mockResolvedValue(verguetungStand());
+    const { restore } = await renderEinstellungen(
+      {},
+      {},
+      null,
+      null,
+      undefined,
+      verguetungStand({ zustand: 'angegeben', wirksamCtKwh: 12.5, angegebenCtKwh: 12.5 }),
+    );
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('von Ihnen angegeben'));
+    const b = await blatt('Einspeisevergütung');
+    expect(within(b).getByRole('radio', { name: /Eigenen Satz angeben/ })).toBeChecked();
+    expect(within(b).getByLabelText('Ihr Satz (ct/kWh)')).toHaveValue('12,5');
+    // Die Herleitung steht daneben - man sieht, worauf Zurücksetzen führt.
+    expect(within(b).getByRole('radio', { name: /Aus dem EEG herleiten/ })).toHaveAccessibleName(
+      /7,94\sct\/kWh · Inbetriebnahme 01\.06\.2025/,
+    );
+    fireEvent.click(within(b).getByRole('radio', { name: /Aus dem EEG herleiten/ }));
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', null, null));
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('hergeleitet aus EEG'));
+    setzen.mockRestore();
+    restore();
+  });
+
+  it('ein ungültiger Satz wird nicht gesendet - der Fehler steht am Feld, der Fokus auch', async () => {
+    const setzen = vi.spyOn(api, 'setEinspeiseverguetung');
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('7,94'));
+    const b = await blatt('Einspeisevergütung');
+    fireEvent.click(within(b).getByRole('radio', { name: /Eigenen Satz angeben/ }));
+    const feld = within(b).getByLabelText('Ihr Satz (ct/kWh)');
+    fireEvent.change(feld, { target: { value: '120' } });
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+    expect(await within(b).findByText(/zwischen 0 und 100/)).toBeInTheDocument();
+    expect(feld).toHaveFocus();
+    expect(setzen).not.toHaveBeenCalled();
+    setzen.mockRestore();
+    restore();
+  });
+
+  it('ohne Grundlage: „Ohne Angabe" statt einer Null - und beide Wege dorthin', async () => {
+    const { restore } = await renderEinstellungen(
+      {},
+      {},
+      null,
+      null,
+      undefined,
+      verguetungStand({
+        zustand: 'ohne_angabe',
+        wirksamCtKwh: null,
+        hergeleitetCtKwh: null,
+        inbetriebnahme: null,
+        leistungKwp: null,
+        eegEndeAm: null,
+        ohneVerguetungBeiNegativpreis: false,
+      }),
+    );
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('Ohne Angabe'));
+    expect(zeile('Einspeisevergütung')).toHaveTextContent('Vergütung nicht hinterlegt');
+    expect(zeile('Einspeisevergütung')).not.toHaveTextContent(/0,00/);
+    const b = await blatt('Einspeisevergütung');
+    expect(within(b).getByRole('button', { name: /Anlage verknüpfen/ })).toBeInTheDocument();
+    expect(within(b).getByRole('radio', { name: /Eigenen Satz angeben/ })).toBeInTheDocument();
+    restore();
+  });
+
+  it('ohne Datum fragt der eigene Satz nach dem 25.02.2025 - Pflicht, damit die Nullstunden stimmen', async () => {
+    const ohneDatum = verguetungStand({
+      zustand: 'ohne_angabe',
+      wirksamCtKwh: null,
+      hergeleitetCtKwh: null,
+      inbetriebnahme: null,
+      leistungKwp: null,
+      eegEndeAm: null,
+      ohneVerguetungBeiNegativpreis: false,
+    });
+    const setzen = vi.spyOn(api, 'setEinspeiseverguetung').mockResolvedValue({
+      ...ohneDatum,
+      zustand: 'angegeben',
+      wirksamCtKwh: 6,
+      angegebenCtKwh: 6,
+      inbetriebnahmeAbSolarspitzengesetz: true,
+      ohneVerguetungBeiNegativpreis: true,
+    });
+    const { restore } = await renderEinstellungen({}, {}, null, null, undefined, ohneDatum);
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('Ohne Angabe'));
+    const b = await blatt('Einspeisevergütung');
+    // Bei „herleiten" gibt es nichts zu fragen - es gilt ohnehin der Börsenpreis.
+    expect(within(b).queryByRole('group', { name: 'Wann ging Ihre Anlage in Betrieb?' })).toBeNull();
+    fireEvent.click(within(b).getByRole('radio', { name: /Eigenen Satz angeben/ }));
+    const frage = within(b).getByRole('group', { name: 'Wann ging Ihre Anlage in Betrieb?' });
+    fireEvent.change(within(b).getByLabelText('Ihr Satz (ct/kWh)'), { target: { value: '6' } });
+
+    // Ohne Antwort wird nichts gesendet: der Grund steht da, der Fokus auf der ersten Wahl.
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+    expect(await within(frage).findByRole('alert')).toHaveTextContent(/negativem Börsenpreis/);
+    expect(within(frage).getByRole('radio', { name: /vor dem 25\.02\.2025/ })).toHaveFocus();
+    expect(setzen).not.toHaveBeenCalled();
+
+    fireEvent.click(within(frage).getByRole('radio', { name: /am 25\.02\.2025 oder später/ }));
+    expect(within(frage).queryByRole('alert')).toBeNull();
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(setzen).toHaveBeenCalledWith('s-1', 6, true));
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('von Ihnen angegeben'));
+    setzen.mockRestore();
+    restore();
+  });
+
+  it('mit Datum steht die Lage nach § 51a da - und wird nicht gefragt', async () => {
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('7,94'));
+    const b = await blatt('Einspeisevergütung');
+    fireEvent.click(within(b).getByRole('radio', { name: /Eigenen Satz angeben/ }));
+    expect(within(b).queryByRole('group', { name: 'Wann ging Ihre Anlage in Betrieb?' })).toBeNull();
+    expect(within(b).getByText(/keine Vergütung \(§ 51a EEG\) - das gilt auch für einen eigenen Satz/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('Direktvermarktung: erklärt den Börsenpreis + Marktprämie, statt einen Satz vorzutäuschen', async () => {
+    const setzen = vi.spyOn(api, 'setEinspeiseverguetung');
+    const { restore } = await renderEinstellungen(
+      { plantKind: 'direktvermarktung', anzulegenderWertCtKwh: 8.11 },
+      {},
+      null,
+      null,
+      undefined,
+      verguetungStand({ zustand: 'direktvermarktung', wirksamCtKwh: null, anzulegenderWertCtKwh: 8.11 }),
+    );
+    const anlage = document.getElementById('technik-verguetung') as HTMLElement;
+    await waitFor(() => expect(anlage).toHaveTextContent('Börsenpreis + Marktprämie'));
+    // Nichts anzugeben: der Grund steht an der Zeile, sie öffnet kein Blatt mit „Verstanden".
+    expect(within(anlage).queryByRole('button')).toBeNull();
+    expect(within(anlage).getByText(/Marktprämie aus Ihrem anzulegenden Wert/)).toHaveTextContent('8,11 ct/kWh');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(setzen).not.toHaveBeenCalled();
+    setzen.mockRestore();
+    restore();
+  });
+
+  it('Netzladen: Börsenpreis mit Grund - eine Angabe ruht und wird genannt', async () => {
+    const { restore } = await renderEinstellungen(
+      { netzladenErlaubt: true },
+      {},
+      null,
+      null,
+      undefined,
+      verguetungStand({ zustand: 'netzladen', wirksamCtKwh: null, angegebenCtKwh: 12.5 }),
+    );
+    const z = document.getElementById('technik-verguetung') as HTMLElement;
+    await waitFor(() => expect(z).toHaveTextContent('solange Netzladen erlaubt ist'));
+    expect(within(z).getByText(/Ausschließlichkeitsprinzip/)).toHaveTextContent(
+      'Ihr Satz von 12,50 ct/kWh gilt wieder, sobald Netzladen aus ist.',
+    );
+    expect(within(z).queryByRole('button')).toBeNull();
+    restore();
+  });
+
+  it('liest nach einem Netzladen-Wechsel neu - der Zustand folgt dem Schalter', async () => {
+    const { rerender, verguetungAbruf, restore } = await renderEinstellungen();
+    await waitFor(() => expect(verguetungAbruf).toHaveBeenCalledTimes(1));
+    verguetungAbruf.mockResolvedValue(verguetungStand({ zustand: 'netzladen', wirksamCtKwh: null }));
+    rerender({ ...eegSite, netzladenErlaubt: true });
+    await waitFor(() => expect(document.getElementById('technik-verguetung')).toHaveTextContent('Börsenpreis'));
+    expect(verguetungAbruf).toHaveBeenCalledTimes(2);
+    restore();
+  });
+
+  it('„nicht geladen" ist nicht „Ohne Angabe" - und ein Tippen versucht es erneut', async () => {
+    const { verguetungAbruf, restore } = await renderEinstellungen({}, {}, null, null, undefined, new Error('down'));
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('nicht geladen'));
+    expect(zeile('Einspeisevergütung')).not.toHaveTextContent('Ohne Angabe');
+    verguetungAbruf.mockResolvedValue(verguetungStand());
+    fireEvent.click(zeile('Einspeisevergütung'));
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('7,94 ct/kWh'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    restore();
+  });
+});
+
 describe('Einstellungen · Schalter wirken direkt - mit Folge und „Rückgängig"', () => {
   it('Netzladen: die Bedingung steht VOR dem Umlegen an der Zeile — der Satz des Förderwegs (W2)', async () => {
-    const { restore } = await renderEinstellungen({}, {}, null, null, undefined, 'marktpraemie_abgrenzung');
+    const { restore } = await renderEinstellungen({}, {}, null, null, undefined, undefined, null, 'marktpraemie_abgrenzung');
     const schalter = screen.getByRole('switch', { name: 'Netzladen' });
     expect(schalter).toHaveAttribute('aria-checked', 'false');
     expect(schalter.closest('li')).toHaveTextContent('Ihre Einstellung — mit der Abgrenzungsoption erlaubt');
@@ -660,7 +991,7 @@ describe('Einstellungen · Schalter wirken direkt - mit Folge und „Rückgängi
       .spyOn(api, 'updateSite')
       .mockImplementation(async (_id, body) => ({ ...eegSite, ...(body as object) }) as Site);
     const { onSiteSaved, rerender, restore } = await renderEinstellungen(
-      { maxFeedInKw: 75 }, {}, null, null, undefined, 'marktpraemie_abgrenzung');
+      { maxFeedInKw: 75 }, {}, null, null, undefined, undefined, null, 'marktpraemie_abgrenzung');
 
     fireEvent.click(screen.getByRole('switch', { name: 'Netzladen' }));
     await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
@@ -697,7 +1028,7 @@ describe('Einstellungen · Schalter wirken direkt - mit Folge und „Rückgängi
 
   it('Netzladen: eine Ablehnung steht als Satz an der Zeile, nie als Stille', async () => {
     const updateSite = vi.spyOn(api, 'updateSite').mockRejectedValue(new Error('down'));
-    const { onSiteSaved, restore } = await renderEinstellungen({}, {}, null, null, undefined, 'ungefoerdert');
+    const { onSiteSaved, restore } = await renderEinstellungen({}, {}, null, null, undefined, undefined, null, 'ungefoerdert');
     fireEvent.click(screen.getByRole('switch', { name: 'Netzladen' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('nicht gespeichert');
     expect(onSiteSaved).not.toHaveBeenCalled();
@@ -763,10 +1094,12 @@ describe('Einstellungen · Profil ändern (Anwendungs-Programm Stufe 2)', () => 
 
     expect(zeile('Profil')).toHaveTextContent('Privat');
     fireEvent.click(zeile('Profil'));
-    expect(screen.getByText(/Ihre eingeschalteten Betriebsmodelle bleiben unverändert/)).toBeInTheDocument();
+    // Vor einer Wahl gibt es keine Folgen zu nennen.
+    expect(screen.queryByText(/Ihre eingeschalteten Betriebsmodelle bleiben unverändert/)).toBeNull();
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Profil' }));
     fireEvent.click(await screen.findByRole('option', { name: /Gewerbe/ }));
+    expect(screen.getByText(/Ihre eingeschalteten Betriebsmodelle bleiben unverändert/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Profil speichern' }));
 
     await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
@@ -823,16 +1156,19 @@ describe('Einstellungen · von VoltPilot eingerichtet (Schloss)', () => {
     const { restore } = await renderEinstellungen();
     const streifen = document.querySelector('.vp-set-schutz') as HTMLElement;
     expect(within(streifen).getByText('§ 14a-Schutz')).toBeInTheDocument();
-    expect(within(streifen).getByText('Negativpreis-Abregelung')).toBeInTheDocument();
     expect(within(streifen).getByText('EEG: nur Solarladen')).toBeInTheDocument();
+    // N4: feste Vergütung (eigenverbrauch, kein Netzladen) regelt nie wegen
+    // des Preises ab - die Zeile behauptet das dann auch nicht.
+    expect(within(streifen).queryByText('Negativpreis-Abregelung')).toBeNull();
     restore();
   });
 
-  it('… und lässt „nur Solarladen" weg, sobald das Netzladen erlaubt ist', async () => {
+  it('… und lässt „nur Solarladen" weg, sobald das Netzladen erlaubt ist - dann regelt die Anlage auch bei Negativpreis ab', async () => {
     const { restore } = await renderEinstellungen({ netzladenErlaubt: true });
     const streifen = document.querySelector('.vp-set-schutz') as HTMLElement;
     expect(within(streifen).getByText('§ 14a-Schutz')).toBeInTheDocument();
     expect(within(streifen).queryByText('EEG: nur Solarladen')).toBeNull();
+    expect(within(streifen).getByText('Negativpreis-Abregelung')).toBeInTheDocument();
     restore();
   });
 });
@@ -864,11 +1200,11 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
     restore();
   });
 
-  it('nennt den Weg, solange der Anlage noch eine Box zugeordnet ist', async () => {
+  it('nennt den Weg an der Zeile, solange der Anlage noch eine Box zugeordnet ist - ohne Blatt', async () => {
     const { restore } = await renderEinstellungen();
-    const b = await blatt('Anlage löschen');
-    expect(within(b).getByText(/Entfernen Sie die Box zuerst im Aufbau/)).toBeInTheDocument();
-    expect(within(b).queryByRole('button', { name: 'Anlage löschen' })).toBeNull();
+    const loeschen = document.getElementById('technik-loeschen') as HTMLElement;
+    expect(loeschen).toHaveTextContent(/Entfernen Sie die Box zuerst im Aufbau/);
+    expect(within(loeschen).queryByRole('button')).toBeNull();
     restore();
   });
 
@@ -956,5 +1292,41 @@ describe('AP-03 IP-12 · Rechte an der kurzen Liste', () => {
     // Das Profil ist die Betriebsweise - ein eigenes Recht, das diese Person behält.
     expect(within(gruppe).getByRole('button', { name: /Profil/ })).toBeInTheDocument();
     spies.forEach((m) => m.mockRestore());
+  });
+});
+
+describe('Einstellungen · Strom & Geld an einer Erzeugeranlage (UEMS EZ-10)', () => {
+  it('ohne Anlagensteuerung keine neuen Zeilen', async () => {
+    const ohne = vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue(null);
+    const nv = vi.spyOn(api, 'netzVermarktung').mockResolvedValue(buettnerNv());
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(ohne).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /^Direktvermarkter/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Netzbetreiber/ })).toBeNull();
+    restore();
+    [ohne, nv].forEach((m) => m.mockRestore());
+  });
+
+  it('Netzbetreiber, Direktvermarkter, Einspeisemanagement und je Einheit die MaStR-Nummer; das Blatt speichert', async () => {
+    const liste = vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
+      einrichtung: { moeglich: true, grund: null, boxen: [] },
+      steuerungen: [buettner()],
+    });
+    const nv = vi.spyOn(api, 'netzVermarktung').mockResolvedValue(buettnerNv());
+    const put = vi.spyOn(api, 'netzVermarktungAendern').mockResolvedValue({ ...buettnerNv(), direktvermarkter_kanal: 'modbus', revision: 2 });
+    const { restore } = await renderEinstellungen();
+    const gruppe = document.getElementById('technik-geld')!;
+    expect(await within(gruppe).findByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('WVV · über Relais und 4–20 mA');
+    expect(within(gruppe).getByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('angezeigt wird Ihr Name');
+    expect(within(gruppe).getByRole('button', { name: /^Netzbetreiber/ })).toHaveTextContent('nicht eingetragen');
+    expect(within(gruppe).getByRole('button', { name: /^Einspeisemanagement/ })).toHaveTextContent('Stufen (Rundsteuerempfänger)');
+    expect(within(gruppe).getByRole('button', { name: /^Motor 1/ })).toHaveTextContent('MaStR-Nummer nicht erfasst');
+    const dialog = await blatt('Direktvermarkter');
+    expect(within(dialog).getByLabelText('Direktvermarkter')).toHaveValue('WVV');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith(eegSite.id, expect.objectContaining({ expected_revision: 1, direktvermarkter: 'WVV' })));
+    await waitFor(() => expect(within(gruppe).getByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('WVV · über Modbus'));
+    restore();
+    [liste, nv, put].forEach((m) => m.mockRestore());
   });
 });

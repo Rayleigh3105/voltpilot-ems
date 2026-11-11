@@ -49,6 +49,8 @@ export interface RegelnReiterProps {
   onBefehle: () => void;
   /** Tippen auf die laufende Szene beendet sie (ohne Nachfrage). */
   onSzeneBeenden: () => void;
+  /** „In Überwachung umwandeln" (Alerting Scheibe 6, Entscheid 10A) - nur bei `k.notifyUmwandlung`. */
+  onUmwandeln: (k: RegelKarte) => void;
 }
 
 const FARBE: Record<string, [string, string]> = {
@@ -145,11 +147,17 @@ export function RegelnReiter(p: RegelnReiterProps) {
         </section>
       )}
       <section aria-label="Ihre Regeln" style={{ display: 'grid', gap: 8 }} className="links">
-        <div className="grp-h"><h3>Ihre Regeln</h3><span>{an} von {p.karten.length} an</span></div>
+        {/* „0 von 0 an" zählt nichts - die Zahl steht erst mit der ersten Regel. */}
+        <div className="grp-h"><h3>Ihre Regeln</h3>{p.karten.length > 0 && <span>{an} von {p.karten.length} an</span>}</div>
         {p.karten.map((k) => (
-          <RegelKarteView key={k.flowId} k={k} bild={bild} busy={p.busy === k.flowId} oeffne={p.oeffne} onSchalter={p.onSchalter} />
+          <RegelKarteView key={k.flowId} k={k} bild={bild} busy={p.busy === k.flowId} oeffne={p.oeffne} onSchalter={p.onSchalter} onUmwandeln={p.onUmwandeln} />
         ))}
-        {!p.karten.length && <p className="leise" style={{ padding: '0 4px' }}>Noch keine Regel. Eine Vorlage ist der schnellste Anfang.</p>}
+        {/* Den Hinweis auf eine Vorlage gibt es nur, wo Vorlagen angeboten werden (ohne schaltbares Gerät keine). */}
+        {!p.karten.length && (
+          <p className="leise" style={{ padding: '0 4px' }}>
+            {vorlagen.length > 0 ? 'Noch keine Regel. Eine Vorlage ist der schnellste Anfang.' : 'Noch keine Regel.'}
+          </p>
+        )}
         <p className="leise" style={{ padding: '0 4px' }}>Regeln sind Ausnahmen vom Smart-Auftrag der Geräte. Schutzgrenzen und Ihre Eingriffe gehen immer vor.</p>
       </section>
       <section className="card rechts" aria-label="Verlauf" style={{ gridRow: 'auto' }}>
@@ -172,8 +180,9 @@ export function RegelnReiter(p: RegelnReiterProps) {
   );
 }
 
-function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
+function RegelKarteView({ k, bild, busy, oeffne, onSchalter, onUmwandeln }: {
   k: RegelKarte; bild: SeitenBild; busy: boolean; oeffne: (b: BlattZustand) => void; onSchalter: (k: RegelKarte) => void;
+  onUmwandeln: (k: RegelKarte) => void;
 }) {
   const r = bild.raster;
   const heute = k.entwurf ? greift(k.entwurf, bild.reihen, 0, TAG) : null;
@@ -214,6 +223,11 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
         {!k.satz && <span>· {k.freiText}</span>}
         {info.length > 0 && <span>· {info.join(' · ')}</span>}
       </div>
+      {k.notifyUmwandlung && (
+        <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" style={{ width: '100%' }} onClick={() => onUmwandeln(k)}>
+          In Überwachung umwandeln
+        </button></Recht>
+      )}
       {heute && <Streifen bits={heute} an={k.an && !ruht} jetzt={r.jetzt} />}
     </article>
   );

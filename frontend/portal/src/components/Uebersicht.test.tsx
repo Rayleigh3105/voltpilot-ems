@@ -12,6 +12,9 @@ import { wvR12 } from '../test/wiedervorlageFixtures';
 import { FIXTURE_IDS, ahrenbergHeute, werkAhrenberg, werkLindach } from '../test/standorteFixtures';
 import { versorgungAhrenberg, versorgungLindach } from '../test/versorgungFixtures';
 import { pageRoute, standortRoute } from '../nav';
+import { KORREKTUR_VORSPANN } from '../anlageUmziehen';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import type { EbenenLeistenKachel } from '../ebenenNav';
 
 /**
@@ -360,6 +363,42 @@ describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
     expect(screen.getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 1 öffnen' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 2 öffnen' })).toBeTruthy();
     expect(screen.getAllByText(/Verbrauch/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  // U7a (#1407 P2): mit den Energie-Karten war der Weg „Zuordnung korrigieren“ verloren gegangen.
+  it('jede Energie-Karte trägt „Zuordnung korrigieren“ und öffnet die Korrektur ab dem ersten Tag der Anlage', async () => {
+    mocks({ overview: ahrenbergOverview() });
+    vi.spyOn(api, 'anlageBilanz').mockRejectedValue(new Error('keine Bilanz'));
+    const standorte = vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
+    const navigiert = vi.fn();
+    render(
+      <StandortUebersichtPage standort={werkAhrenberg()} sites={SITES} onNavigate={navigiert} onReload={() => {}} betriebsart="endkunde" />,
+    );
+    const oeffnen = await screen.findByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 1 öffnen' });
+    const karte = oeffnen.closest('article');
+    if (!karte) throw new Error('Die Energie-Karte von Halle 1 fehlt.');
+    expect(screen.getAllByRole('button', { name: 'Zuordnung korrigieren' })).toHaveLength(2);
+
+    fireEvent.click(within(karte).getByRole('button', { name: 'Zuordnung korrigieren' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(standorte).toHaveBeenCalled();
+    expect(within(dialog).getByText('Werk Ahrenberg – Halle 1')).toBeTruthy();
+    expect(within(dialog).getByText(KORREKTUR_VORSPANN)).toBeTruthy();
+    // Vorgabe ist der bestätigte erste Tag der Zuordnung (werkAhrenberg: Halle 1 seit 12.03.2024).
+    expect(within(dialog).getByText('12.03.2024')).toBeTruthy();
+    // Der Knopf führt in den Dialog, nicht nebenbei in die Anlage.
+    expect(navigiert).not.toHaveBeenCalled();
+  });
+
+  it('ohne das Recht anlage.zuordnen trägt keine Energie-Karte den Weg', async () => {
+    setSelbstauskunft(rechteSeed('CB').me);
+    mocks({ overview: ahrenbergOverview() });
+    vi.spyOn(api, 'anlageBilanz').mockRejectedValue(new Error('keine Bilanz'));
+    render(
+      <StandortUebersichtPage standort={werkAhrenberg()} sites={SITES} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" />,
+    );
+    await screen.findByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 1 öffnen' });
+    expect(screen.queryByRole('button', { name: 'Zuordnung korrigieren' })).toBeNull();
   });
 });
 

@@ -1,10 +1,9 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.components.ComponentConnectionReceipts;
+import com.voltpilot.api.components.ComponentConnectionSchema;
 import com.voltpilot.api.components.ComponentService;
 import com.voltpilot.api.components.SelfBuildComponentService;
-import com.voltpilot.api.components.UserDefinedBatteryDefinition;
-import com.voltpilot.api.components.UserDefinedBatteryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.zugriff.Geltungsbereich;
@@ -16,7 +15,6 @@ import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
 import com.voltpilot.api.web.dto.ComponentTestRequest;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
 import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
-import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest;
 import com.voltpilot.api.web.dto.RollbackComponentRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadResult;
@@ -78,18 +76,18 @@ public class SiteComponentController {
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
-    private final UserDefinedBatteryService batteries;
+    private final com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum;
 
     public SiteComponentController(Geltungsbereich geltungsbereich, ComponentService components,
             ComponentConnectionReceipts receipts,
             ProbeService probes, SelfBuildComponentService selfBuild,
-            UserDefinedBatteryService batteries) {
+            com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum) {
         this.selfBuild = selfBuild;
-        this.batteries = batteries;
         this.geltungsbereich = geltungsbereich;
         this.components = components;
         this.receipts = receipts;
         this.probes = probes;
+        this.zaehlerbaum = zaehlerbaum;
     }
 
     /** Die Komponenten dieser Anlage samt Autoritäts- und Soll/Ist-Stand. */
@@ -112,6 +110,33 @@ public class SiteComponentController {
     public SiteComponentsDto update(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveComponentRequest request, @AuthenticationPrincipal Jwt jwt) {
         return components.update(siteId, entityId, request, subject(jwt));
+    }
+
+    /**
+     * Umhängen (Zählerbaum-Konzept, R5 „Seit wann?"): dieselbe Prüfung wie
+     * beim Anlegen (R6), nur mit der Tages-Mechanik eines Bestandswerts.
+     */
+    @PutMapping("/components/{entityId}/haengt-an")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public SiteComponentsDto haengtAnSetzen(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestBody com.voltpilot.api.web.dto.HaengtAnRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String seitWannWort = request.seitWann();
+        com.voltpilot.api.components.ZaehlerbaumService.SeitWann seitWann;
+        if (com.voltpilot.api.web.dto.HaengtAnRequest.SCHON_IMMER.equals(seitWannWort)) {
+            seitWann = com.voltpilot.api.components.ZaehlerbaumService.SeitWann.SCHON_IMMER;
+        } else if (com.voltpilot.api.web.dto.HaengtAnRequest.AB_TAG.equals(seitWannWort)) {
+            if (request.ab() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "„Umgebaut am …“ braucht ein Datum.");
+            }
+            seitWann = com.voltpilot.api.components.ZaehlerbaumService.SeitWann.AB_TAG;
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "„Seit wann?“ fehlt: schon_immer oder ab_tag.");
+        }
+        zaehlerbaum.umhaengen(siteId, entityId, request.haengtAn(), seitWann, request.ab(), subject(jwt));
+        return components.list(siteId);
     }
 
     /** Die Fassungen einer Komponente, neueste zuerst. */
@@ -191,76 +216,6 @@ public class SiteComponentController {
     public SiteComponentsDto deleteCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.delete(siteId, entityId, subject(jwt));
-    }
-
-    // ---- Die eigene BATTERIE (P5 Ebene 1: MQTT oder HTTP/JSON) ------------
-
-    /**
-     * Eine selbst angebundene Batterie anlegen (Konzept
-     * {@code vp-deye-diybms-luecke-l5} §3.2b): eine Quelle im Kundennetz plus
-     * die Feld-Zuordnung auf die Standard-Batteriekanäle. Seit P5-HTTP kennt
-     * dieselbe Route ZWEI Anschlussarten - {@code mqtt_local} (ein lokaler
-     * Broker, Topic-Filter) und {@code http_local} (eine JSON-Auskunft,
-     * Wertepfade) -, und alles dahinter ist identisch: Entität, Fassung,
-     * generierter Flow über {@code v2/flows}, Ladestand (P5b), Bindung (P6).
-     * {@code transport} entscheidet; fehlt es, gilt der MQTT-Weg.
-     *
-     * <p>Anders als der Modbus-Baukasten fordert dieser Weg (noch) KEINEN
-     * Verbindungstest: eine MQTT-Vorschau braucht ein Lauschfenster statt einer
-     * Einmal-Lesung, und die kommt mit dem Zuordnungs-Assistenten (P5d). Eine
-     * Pflicht ohne Tür wäre eine Sackgasse. Die LAN-Regel gilt unverändert.
-     */
-    @PostMapping("/components/battery")
-    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
-    public SiteComponentsDto createBattery(@PathVariable UUID siteId,
-            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
-            @AuthenticationPrincipal Jwt jwt) {
-        return batteries.create(siteId, request, subject(jwt));
-    }
-
-    /**
-     * Die ZUORDNUNGS-VORSCHAU einer selbst angebundenen Batterie (P5d): die
-     * Box lauscht kurz auf dem Broker des Kunden und antwortet je Zuordnung
-     * mit dem, was wirklich hereinkam - Roh- UND skalierter Wert nebeneinander,
-     * genau wie beim „Jetzt lesen" des Modbus-Baukastens.
-     *
-     * <p><b>Sie schreibt nichts und hinterlegt keinen Beleg.</b> Anders als
-     * {@link #test} ist sie KEINE Voraussetzung des Speicherns: eine
-     * MQTT-Vorschau braucht ein Lauschfenster, das ältere Boxen nicht haben,
-     * und eine Pflicht ohne Tür wäre eine Sackgasse statt eines Schutzes.
-     *
-     * <p>Deshalb ist auch jeder Ausgang ein 200 mit einer benannten Klasse:
-     * {@code not_supported} ist eine Aussage über die BOX („kann noch nicht
-     * lauschen"), {@code timeout} über die Verbindung - keiner von beiden ist
-     * ein Urteil über die Zuordnung, und die Fläche sagt das genau so.
-     */
-    @PostMapping("/components/battery/preview")
-    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
-    public ProbeResult previewBattery(@PathVariable UUID siteId,
-            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
-            @RequestParam(name = "entityId", required = false) UUID entityId,
-            @AuthenticationPrincipal Jwt jwt) {
-        Map<String, Object> connection = batteries.previewConnection(siteId, request, entityId);
-        return probes.testConnection(siteId, null, entityId, "batterie",
-                UserDefinedBatteryDefinition.ENTITY_TYPE, null, null, null, connection,
-                subject(jwt));
-    }
-
-    /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
-    @PutMapping("/components/battery/{entityId}")
-    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
-    public SiteComponentsDto updateBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
-            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
-            @AuthenticationPrincipal Jwt jwt) {
-        return batteries.update(siteId, entityId, request, subject(jwt));
-    }
-
-    /** Eine selbst angebundene Batterie entfernen - samt ihrem Lese-Flow. */
-    @DeleteMapping("/components/battery/{entityId}")
-    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
-    public SiteComponentsDto deleteBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
-            @AuthenticationPrincipal Jwt jwt) {
-        return batteries.delete(siteId, entityId, subject(jwt));
     }
 
     // ---- Steuern freigeben (Einheitsmodell Stufe 4) -----------------------
@@ -377,6 +332,9 @@ public class SiteComponentController {
         // Stelle, an der der Kunde die Eckpunkte AUSPROBIERT, und er soll dort
         // dieselbe Auskunft bekommen wie beim Klick auf Speichern.
         components.requireUsableVoltageBounds(connection);
+        // Und dieselbe Typgrenze wie beim Speichern: ein Test mit einem Zahlenfeld als Text
+        // wäre sonst grün, obwohl die Box das gespeicherte Gerät später ablehnt.
+        ComponentConnectionSchema.require(template, connection);
 
         ProbeResult result = probes.testConnection(siteId, request.deviceId(), request.entityId(), "verbindung",
                 template.brand(), template.model(), template.family(), request.role(), connection,
@@ -454,6 +412,33 @@ public class SiteComponentController {
     }
 
     /**
+     * „Auf ‚aus‘ stellen“ (Heizstab V1, HZ-5 = A): die Box stellt an jedem Ausgang des Shelly
+     * „nach Stromausfall: aus“ ein - nur auf diesen ausdrücklichen Klick, nie beim Anlegen. Eine
+     * Geräte-EINSTELLUNG, kein Schaltbefehl. Dieselbe Form wie der Verbindungstest; die Antwort
+     * trägt je Ausgang die danach gelesene Einstellung ({@code ausgaenge}). Nur für Shelly.
+     */
+    @PostMapping("/component-nach-stromausfall-aus")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public ProbeResult nachStromausfallAus(@PathVariable UUID siteId,
+            @Valid @RequestBody ComponentTestRequest request, @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        ComponentTemplateDto template = components.templateForTest(siteId, request.entityId(),
+                request.templateRef(), request.templateVersion());
+        if (!"shelly_http".equals(template.communication())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Diese Einstellung gibt es nur an einem Shelly.");
+        }
+        Map<String, Object> connection =
+                request.connection() == null ? Map.of() : new LinkedHashMap<>(request.connection());
+        if (request.entityId() != null) {
+            connection = components.connectionForTest(siteId, request.entityId(), template, connection);
+        }
+        return probes.nachStromausfallAus(siteId, request.deviceId(), request.entityId(), connection,
+                subject(jwt));
+    }
+
+    /**
      * Ob dieser Lauf das Speichern freigibt. Bewusst streng: die GANZE Anfrage
      * muss ohne Ablehnung durchgelaufen sein UND die eine Zeile {@code ok}
      * melden. Ein Timeout, eine Ratenbegrenzung oder eine leere Antwort sind
@@ -477,7 +462,7 @@ public class SiteComponentController {
 
     /** Deutsche Gründe erreichen das Portal als {"message": ...} (MastrController-Muster). */
     /**
-     * Ein selbst definiertes Gerät oder eine eigene Batterie ist Beleg freigegebener Berichtsstände
+     * Ein selbst definiertes Gerät ist Beleg freigegebener Berichtsstände
      * (UEMS AP-12 E13 S2): 409 {@code berichts_belege} mit der Liste - nichts geschrieben.
      */
     @ExceptionHandler(BelegeImWeg.class)

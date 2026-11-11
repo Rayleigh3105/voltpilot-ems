@@ -26,7 +26,8 @@ import org.yaml.snakeyaml.Yaml;
  * <p>Die Wortlisten gelten in ihrer JÜNGSTEN Fassung: V20261008213500 hat die
  * CHECKs aus V20261007163700 erweitert (Zustand {@code geloescht}, Aktion
  * {@code techniker_geloescht}), V20261009074500 die Aktionen noch einmal (SSH-
- * Schlüssel gesetzt und entfernt).
+ * Schlüssel gesetzt und entfernt), V20261106080000 um {@code box_geloescht}
+ * (Fehlversuch der Werkstatt gelöscht).
  */
 class FernwartungVertragTest {
 
@@ -34,12 +35,14 @@ class FernwartungVertragTest {
     private static final String ANLAGE = "/db/migration/V20261007163700__fernwartung.sql";
     private static final String MIGRATION = "/db/migration/V20261008213500__fernwartung_zugang_loeschen.sql";
     private static final String SSH = "/db/migration/V20261009074500__fernwartung_ssh_schluessel.sql";
+    private static final String FEHLVERSUCH = "/db/migration/V20261106080000__werkstatt_fehlversuch_loeschen.sql";
 
     private static Map<String, Object> schemas;
     private static Map<String, Object> paths;
     private static String anlage;
     private static String migration;
     private static String ssh;
+    private static String fehlversuch;
 
     @BeforeAll
     @SuppressWarnings("unchecked")
@@ -52,6 +55,7 @@ class FernwartungVertragTest {
         anlage = lies(ANLAGE);
         migration = lies(MIGRATION);
         ssh = lies(SSH);
+        fehlversuch = lies(FEHLVERSUCH);
     }
 
     private static String lies(String pfad) throws IOException {
@@ -77,7 +81,66 @@ class FernwartungVertragTest {
                 "/api/v1/admin/fernwartung/fenster",
                 "/api/v1/admin/fernwartung/fenster/{id}/schliessen",
                 "/api/v1/admin/fernwartung/protokoll",
-                "/api/v1/fernwartung/soll");
+                "/api/v1/fernwartung/soll",
+                "/api/v1/fernwartung/rueckmeldung");
+    }
+
+    /**
+     * Die Rückmeldung des Tunnel-Dienstes: eine Route, nur PUT, und die Form
+     * der Meldung ist in Vertrag, Java und Datenbank dieselbe. Was das Portal
+     * davon zeigt, steht an Box, Fenster und Übersicht.
+     */
+    @Test
+    void dieRueckmeldungStehtInVertragJavaUndMigrationGleich() throws IOException {
+        Map<String, Object> route = map(paths, "/api/v1/fernwartung/rueckmeldung");
+        assertThat(route).containsOnlyKeys("put");
+        assertThat(map(map(route, "put"), "responses")).containsOnlyKeys("204", "400", "401", "403", "413", "422");
+
+        Map<String, Object> meldung = schema("FernwartungRueckmeldungMeldung");
+        List<String> felder = komponenten(FernwartungRueckmeldung.Meldung.class);
+        assertThat(map(meldung, "properties").keySet()).containsExactlyInAnyOrderElementsOf(felder);
+        // Pflicht ist alles außer dem additiven Feld techniker (ein älterer Dienst kennt es nicht).
+        assertThat(meldung.get("required")).asList().containsExactlyInAnyOrderElementsOf(
+                felder.stream().filter(f -> !"techniker".equals(f)).toList());
+        assertThat(meldung.get("additionalProperties")).isEqualTo(false);
+        assertThat(map(map(meldung, "properties"), "version").get("enum")).asList()
+                .containsExactly(FernwartungRueckmeldung.VERSION);
+        for (Object[] liste : new Object[][] {{"boxen", FernwartungRueckmeldung.BoxMeldung.class},
+                {"fenster", FernwartungRueckmeldung.FensterMeldung.class},
+                {"techniker", FernwartungRueckmeldung.TechnikerMeldung.class}}) {
+            Map<String, Object> eintraege = map(map(meldung, "properties"), (String) liste[0]);
+            assertThat(eintraege.get("maxItems")).isEqualTo(FernwartungRueckmeldung.MAX_EINTRAEGE);
+            List<String> spalten = komponenten((Class<?>) liste[1]);
+            assertThat(map(map(eintraege, "items"), "properties").keySet()).as((String) liste[0])
+                    .containsExactlyInAnyOrderElementsOf(spalten);
+            assertThat(map(eintraege, "items").get("required")).asList().containsExactlyInAnyOrderElementsOf(spalten);
+            assertThat(map(eintraege, "items").get("additionalProperties")).isEqualTo(false);
+        }
+
+        // Was das Portal zeigt: dieselben Angaben an Box, Fenster und Übersicht.
+        assertThat(map(map(map(schema("FernwartungBox"), "properties"), "rueckmeldung"), "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(komponenten(AdminFernwartungController.BoxRueckmeldungDto.class));
+        assertThat(map(map(map(schema("FernwartungFenster"), "properties"), "rueckmeldung"), "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(
+                        komponenten(AdminFernwartungController.FensterRueckmeldungDto.class));
+        assertThat(map(map(map(map(schema("FernwartungUebersicht"), "properties"), "rueckmeldungen"), "items"),
+                "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(komponenten(AdminFernwartungController.RueckmeldungDto.class));
+        assertThat(map(map(map(schema("FernwartungTechniker"), "properties"), "rueckmeldung"), "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(
+                        komponenten(AdminFernwartungController.TechnikerRueckmeldungDto.class));
+        for (String form : List.of("FernwartungBox", "FernwartungFenster", "FernwartungTechniker")) {
+            assertThat(map(map(schema(form), "properties"), "rueckmeldung").get("nullable")).as(form)
+                    .isEqualTo(true);
+        }
+
+        // Die Spalten der Migration tragen dieselben Angaben, und keine andere.
+        String sql = lies("/db/migration/V20261010203000__fernwartung_rueckmeldung.sql");
+        assertThat(sql).contains("verbunden_seit     TIMESTAMPTZ,").contains("zuletzt_gefragt_um TIMESTAMPTZ,")
+                .contains("schluessel_abgeholt_um TIMESTAMPTZ").contains("gestartet_um      TIMESTAMPTZ NOT NULL")
+                .contains("schluesselausgabe BOOLEAN     NOT NULL");
+        assertThat(sql).doesNotContainIgnoringCase("public_key").doesNotContainIgnoringCase("adresse")
+                .doesNotContainIgnoringCase("fingerabdruck");
     }
 
     @Test
@@ -109,14 +172,15 @@ class FernwartungVertragTest {
 
     @Test
     void dieProtokollAktionenSindInMigrationUndVertragDieselben() {
-        List<String> ausMigration = woerter(ssh, "aktion IN");
+        List<String> ausMigration = woerter(fehlversuch, "aktion IN");
         Map<String, Object> aktion = map(map(schema("FernwartungProtokollEintrag"), "properties"), "aktion");
         assertThat(aktion.get("enum")).asList().containsExactlyInAnyOrderElementsOf(ausMigration);
         // Erweitert, nichts weggenommen: jeder ältere Protokolleintrag bleibt gültig.
         assertThat(woerter(migration, "aktion IN")).containsAll(woerter(anlage, "aktion IN"))
                 .contains("techniker_geloescht");
-        assertThat(ausMigration).containsAll(woerter(migration, "aktion IN"))
+        assertThat(woerter(ssh, "aktion IN")).containsAll(woerter(migration, "aktion IN"))
                 .contains("techniker_ssh_schluessel_gesetzt", "techniker_ssh_schluessel_entfernt");
+        assertThat(ausMigration).containsAll(woerter(ssh, "aktion IN")).contains("box_geloescht");
     }
 
     /**

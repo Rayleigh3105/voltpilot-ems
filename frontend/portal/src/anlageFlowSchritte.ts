@@ -7,15 +7,9 @@
  */
 
 /**
- * The step rail of the flow, in order (register-first). AE5 (spec §3) moved the
- * device claim ("Gerät") ahead of the adaptive last step: the entity bootstrap +
- * usage-profile + auto-start seeding need the Anlage's master data AND its
- * gateway device in place, so it is the last, adaptive step.
- *
- * Its LABEL is **„Betrieb"** since Steuerung Stufe 0 „Entwirrung"
- * (Captain 25.08.2026: „Anwendung" ist kein Kundenwort mehr; der Schritt fragt
- * nach dem BETRIEB der Anlage — Profil, EIN Betriebsmodell, Speicherschonung).
- * Es war davor „Anwendungen" und davor „Nutzung"; die Komponenten-Id und jede
- * Route bleiben.
+ * Die Schrittleiste des Anlege-Flusses (Anlage-Flow a1, Konzept §5.3): drei feste Schritte, die Leiste
+ * ändert sich nie - Adresse (wo die Anlage steht) · Box (die Kennung) · Anlage (bestätigen, was dazugehört).
+ * Der frühere Schritt „Register“ ist ein Link in „Anlage“ (R4), „Betrieb“ ist entfallen (D6, R14): die
+ * Steuerung schlägt den Betrieb später vor.
  */
-export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Betrieb'] as const;
+export const FLOW_STEPS = ['Adresse', 'Box', 'Anlage'] as const;

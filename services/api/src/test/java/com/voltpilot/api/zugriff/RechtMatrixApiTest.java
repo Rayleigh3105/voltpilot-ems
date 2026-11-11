@@ -32,7 +32,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
@@ -250,6 +250,11 @@ class RechtMatrixApiTest {
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/components", "ee4433e33"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A2}/components", "eee443443"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/modbus-probe", "ee4433e33"));
+        // Gerätesuche (DP-4 A): Starten und Abbrechen tragen dasselbe Recht wie Verbindungstest und Probe.
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/geraetesuche", "ee4433e33"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A2}/geraetesuche", "eee443443"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.DELETE, "/api/v1/sites/{A1}/geraetesuche/{FREMD}",
+                "ee4433e33"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/devices/claim", "eee333e33"));
         z.add(new Zeile("komponente.loeschen", HttpMethod.DELETE, "/api/v1/devices/{D1}", "ee4433333"));
         z.add(new Zeile("komponente.loeschen", HttpMethod.DELETE, "/api/v1/sites/{A1}/components/custom/{FREMD}",
@@ -427,7 +432,14 @@ class RechtMatrixApiTest {
             Map.entry("energiemanagement.ansehen", "lesend — EnergiemanagementPersonenApiTest (IP-6: Personen nur "
                     + "Mandanten-Zaun, Aufgaben nur unternehmensweit), EnergiemanagementDokumentApiTest (IP-7: Zaun "
                     + "über den Standort des Bezugs), EnergiemanagementVerzeichnisApiTest (IP-8: Zaun je Quelle, "
-                    + "Einsicht liest und ruft die CSV ab)"));
+                    + "Einsicht liest und ruft die CSV ab)"),
+            Map.entry("ueberwachung.eigene", "DIENST (Alerting v1 §6.6, Entscheid 5A) — RechteAbleitung.darf in "
+                    + "UeberwachungAnlegenService entscheidet eigene/verwalten erst anhand der Empfänger im Körper, "
+                    + "keine feste Ziel-Rolle je Route; geprüft in UeberwachungAnlegenServiceIT"),
+            Map.entry("ueberwachung.verwalten", "DIENST (Alerting v1 §6.6, Entscheid 5A) — dieselbe körperabhängige "
+                    + "Prüfung wie ueberwachung.eigene; der Ablehnungsfall (Empfänger ≠ Aufrufer ohne verwalten) ist "
+                    + "in UeberwachungAnlegenServiceIT abgedeckt. StummschaltungController#anlegen ruft dieselbe "
+                    + "Kennung über StummschaltungService, dafür noch ohne eigenen Test."));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {
@@ -466,6 +478,43 @@ class RechtMatrixApiTest {
                 + "4 außerhalb):");
         tabelle.forEach((k, v) -> System.out.println("  " + v + "  " + k));
         assertThat(abweichungen).as("Abweichungen von der Matrix").isEmpty();
+    }
+
+    /**
+     * Die lesenden Routen der Gerätesuche tragen kein {@link Recht} (Leseroute), prüfen {@code geraet.einrichten} aber
+     * im Handler (DP-4 A, OpenAPI-Tag {@code geraetesuche}): dieselbe Erwartung wie das Starten an der Anlage. Erlaubt:
+     * der Verlauf ist 200, eine unbekannte Suche 404; ohne Recht 403 {@code recht_fehlt}; außerhalb 404
+     * {@code nicht_gefunden} - dieselbe Antwort wie für eine Anlage, die es nicht gibt.
+     */
+    @Test
+    void dieLesendenRoutenDerGeraetesuchePruefenGeraetEinrichtenImHandler() throws Exception {
+        String erwartet = "ee4433e33";
+        List<String> abweichungen = new ArrayList<>();
+        for (int i = 0; i < PERSONEN.size(); i++) {
+            Person p = PERSONEN.get(i);
+            char soll = erwartet.charAt(i);
+            MvcResult verlauf = ruf(HttpMethod.GET, pfad("/api/v1/sites/{A1}/geraetesuche"), p, false, null);
+            MvcResult eine = ruf(HttpMethod.GET, pfad("/api/v1/sites/{A1}/geraetesuche/{FREMD}"), p, false, null);
+            for (MvcResult r : List.of(verlauf, eine)) {
+                int status = r.getResponse().getStatus();
+                String code = status == 200 ? "" : MAPPER.readTree(r.getResponse().getContentAsString(
+                        StandardCharsets.UTF_8)).path("code").asText();
+                String ist = status + " " + code;
+                String richtig = switch (soll) {
+                    case 'e' -> r == verlauf ? "200 " : "404 nicht_gefunden";
+                    case '3' -> "403 recht_fehlt";
+                    default -> "404 nicht_gefunden";
+                };
+                if (!richtig.equals(ist)) {
+                    abweichungen.add(p.kurz() + " " + r.getRequest().getRequestURI() + ": erwartet " + richtig
+                            + ", ist " + ist);
+                }
+            }
+        }
+        assertThat(abweichungen).as("lesende Routen der Gerätesuche").isEmpty();
+        // Die Verläufe sind dieselben: keiner sieht eine Suche, die es nicht gibt.
+        assertThat(MAPPER.readTree(ruf(HttpMethod.GET, pfad("/api/v1/sites/{A1}/geraetesuche"), JW, false, null)
+                .getResponse().getContentAsString(StandardCharsets.UTF_8)).path("suchen").isArray()).isTrue();
     }
 
     /** Jede Zeile der Gruppen 1–3 hat eine Route oben oder einen Grund. */
@@ -679,9 +728,11 @@ class RechtMatrixApiTest {
         assertThat(durch).as("Schreibrouten, an denen Einsicht durchkommt").isEmpty();
         assertThat(geprueft).isGreaterThanOrEqualTo(160);
         // Nur das eigene Konto (E) und lesende Zeilen an Routen, die rechnen statt zu schreiben (Vorschau, Simulation
-        // mit messwerte.ansehen) — keine Freigabe, kein Eintrag, kein Export.
+        // mit messwerte.ansehen) — keine Freigabe, kein Eintrag, kein Export. ueberwachung.eigene trägt an Einsicht
+        // bewusst ein U (Alerting v1 §6.6, Entscheid 5A): wer einen Wert sehen darf, darf sich selbst dazu
+        // benachrichtigen lassen.
         assertThat(nichtMinus).as("Routen mit @Recht, die Einsicht erreicht").containsExactlyInAnyOrder("konto.eigenes",
-                "messwerte.ansehen");
+                "messwerte.ansehen", "ueberwachung.eigene");
         assertThat(aktionen.get("konto.eigenes").path("zellen").path("einsicht").asText()).isEqualTo("E");
     }
 

@@ -108,7 +108,16 @@ public final class ConsumerRequirementLedger {
      */
     public record Evidence(int runtimeSecondsToday, String reportedState, String reportedReason,
             Boolean confirmed, EnergyConfirmation confirmationLevel, BigDecimal measuredEnergyKwh,
-            BigDecimal ratedPowerKw) {}
+            BigDecimal ratedPowerKw, BigDecimal stageEnergyKwh) {
+
+        /** Every consumer without stages - the shape before Heizstab V1. */
+        public Evidence(int runtimeSecondsToday, String reportedState, String reportedReason,
+                Boolean confirmed, EnergyConfirmation confirmationLevel, BigDecimal measuredEnergyKwh,
+                BigDecimal ratedPowerKw) {
+            this(runtimeSecondsToday, reportedState, reportedReason, confirmed, confirmationLevel,
+                    measuredEnergyKwh, ratedPowerKw, null);
+        }
+    }
 
     /** One computed ledger row (matches consumer_requirement_state). */
     public record Row(UUID instanceId, String requirementId, Instant periodStart, Instant deadline,
@@ -116,7 +125,12 @@ public final class ConsumerRequirementLedger {
             int actualRuntimeSeconds, EnergyConfirmation energyConfirmation, State state,
             String reasonCode) {}
 
-    private static final Set<String> RUNNING_STATES = Set.of("running_forced", "running_optimized");
+    // running_manual (Teil B, Captain-Befund 05.11.2026): a human's own "Von
+    // Hand" override still runs the device - the ledger counts it exactly
+    // like running_forced/running_optimized, or a manually-held run would
+    // silently drop out of the day's fulfilment.
+    private static final Set<String> RUNNING_STATES =
+            Set.of("running_forced", "running_optimized", "running_manual");
     private static final Set<String> BLOCKED_REASONS =
             Set.of("guard_grid_limit", "guard_rated_power", "guard_min_off", "guard_max_starts");
 
@@ -202,11 +216,19 @@ public final class ConsumerRequirementLedger {
         };
     }
 
-    /** Assumed energy = Nennleistung × Laufzeit; measured/integrated come in. */
+    /**
+     * Assumed energy = Nennleistung × Laufzeit; measured/integrated come in. A heating rod switched
+     * in STAGES (Heizstab V1) brings its own assumed energy: the kW of the CONFIRMED stage × the time
+     * it ran at that stage (HeizstabStufe#energieFortschreiben) - one phase of three is a third of
+     * the rated power, never all of it.
+     */
     private static BigDecimal actualEnergy(Evidence ev, int runtimeSeconds) {
         EnergyConfirmation level = ev.confirmationLevel();
         if (level == EnergyConfirmation.MEASURED || level == EnergyConfirmation.INTEGRATED) {
             return ev.measuredEnergyKwh(); // may be null when telemetry is missing
+        }
+        if (level == EnergyConfirmation.ASSUMED && ev.stageEnergyKwh() != null) {
+            return ev.stageEnergyKwh();
         }
         if (level == EnergyConfirmation.ASSUMED && ev.ratedPowerKw() != null && runtimeSeconds > 0) {
             return ev.ratedPowerKw()

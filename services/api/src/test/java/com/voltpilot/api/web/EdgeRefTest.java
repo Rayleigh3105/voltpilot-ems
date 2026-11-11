@@ -2,6 +2,10 @@ package com.voltpilot.api.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -75,6 +79,28 @@ class EdgeRefTest {
         assertThat(EdgeRef.isGeneratedFormat("edge-abcdefj")).isTrue();  // 7 chars
         assertThat(EdgeRef.isGeneratedFormat("edge-abcdef")).isTrue();   // 6 (a deletion typo)
         assertThat(EdgeRef.isGeneratedFormat("edge-abcdefgh")).isTrue(); // 8 (an insertion typo)
+    }
+
+    /**
+     * Die geteilten Vektoren ({@code docs/contracts/edge-ref-vectors.json}), die auch der Go-Erzeuger
+     * und der Portal-Zwilling lesen - eine eigene Liste hier wäre eine zweite Wahrheit.
+     */
+    @Test
+    void sharedVectors() throws Exception {
+        JsonNode v = new ObjectMapper().readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "edge-ref-vectors.json")));
+        assertThat(v.path("alphabet").asText()).isEqualTo(EdgeRef.ALPHABET);
+        assertThat(v.path("praefix").asText()).isEqualTo(EdgeRef.PREFIX);
+        assertThat(v.path("gueltig")).isNotEmpty();
+        for (JsonNode k : v.path("gueltig")) {
+            assertThat(EdgeRef.isValid(k.asText())).as("gültig: %s", k.asText()).isTrue();
+        }
+        assertThat(v.path("ungueltig")).isNotEmpty();
+        for (JsonNode k : v.path("ungueltig")) {
+            assertThat(EdgeRef.isValid(k.path("kennung").asText()))
+                    .as("ungültig: %s (%s)", k.path("kennung").asText(), k.path("warum").asText())
+                    .isFalse();
+        }
     }
 
     /** Independent re-implementation of the check char, to catch a drifting VALID vector. */

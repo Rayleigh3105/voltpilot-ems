@@ -103,10 +103,9 @@ describe('Die Kacheln folgen der echten Navigation', () => {
       ...ebenenBereiche({ art: 'unternehmen' }, messkunde).map((b) => b.label),
     ];
     const { container } = render(<BrandStage />);
-    // Die Prognose hat für Kunden keinen eigenen Reiter („Prognosen“ ist ein
-    // VoltPilot-Werkzeug): sie steht als Zeile im Fahrplan, das Wetter als Reiter.
-    const ziel: Record<string, string> = { Prognose: 'Wetter' };
-    const fremd = kachelTitel(container).filter((t) => !echt.includes(ziel[t!] ?? t!));
+    // Die Prognose ist seit Konzept vp-prognosen-konzept ein echter Reiter
+    // (`PLAN_KONTEXT_TABS`) - keine Umbenennung mehr nötig.
+    const fremd = kachelTitel(container).filter((t) => !echt.includes(t!));
     expect(fremd).toEqual([]);
   });
 });

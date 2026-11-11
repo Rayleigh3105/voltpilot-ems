@@ -22,7 +22,9 @@ consumes what other layers produced:
   and the grid-charging switch from ``site``,
 - the pricing master data for the P1 asymmetric objective: ``site.plant_kind``,
   ``site.tarif_art``/``tarif_param_ct_kwh``, ``site.anzulegender_wert_ct_kwh``,
-  the PV asset's ``commissioned_on``/``pv_capacity_kwp`` (MaStR) and the
+  the customer-stated ``site.einspeiseverguetung_ct_kwh`` (with its §51a answer
+  ``inbetriebnahme_ab_solarspitzengesetz``), the PV asset's
+  ``commissioned_on``/``pv_capacity_kwp`` (MaStR) and the
   ``monthly_market_value`` Monatsmarktwert rows - turned into per-slot
   import/export price series by :mod:`voltpilot_optimization.pricing`.
 
@@ -50,7 +52,7 @@ from voltpilot_optimization.config import (
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
     mispel_fahrzeug_site_ids,
-    mispel_strenge_site_ids,
+    morgen_ueberschuss_enabled,
     pv_anchor_decay_slots,
     pv_anchor_enabled,
     pv_anchor_lookback,
@@ -64,6 +66,8 @@ from voltpilot_optimization.config import (
     require_measured_soc,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
+    ueberschuss_verbraucher_enabled,
+    vorsprung_budget_eur,
 )
 from voltpilot_optimization import grenze_aufloesung, verbund
 from voltpilot_optimization.domain import (
@@ -75,6 +79,7 @@ from voltpilot_optimization.domain import (
     SLOTS_24H,
     SOC_SOURCE_GEMESSEN,
     SOC_SOURCE_UNBEKANNT,
+    VorsprungStand,
     ensure_utc,
     floor_to_slot,
     horizon_slot_starts,
@@ -397,8 +402,9 @@ class BatterySite:
 
     ``netzladen_erlaubt`` is the per-site grid-charging switch
     (``site.netzladen_erlaubt``, DB default FALSE): False = EEG mode, the
-    battery charges only from produced PV (charge <= pv - curtail, PV-bus
-    Bilanzierung per FK3); True = merchant mode (arbitrage).
+    battery charges only from produced PV (charge <= pv - curtail, FK3) and
+    never in a slot with grid import (EN-2 A), i.e. only from the PV surplus;
+    True = merchant mode (arbitrage).
 
     ``max_feed_in_kw`` (FK1) is the site's static feed-in cap at the grid
     connection point (``site.max_feed_in_kw``, nullable master data) - a hard
@@ -415,7 +421,8 @@ class BatterySite:
 
     ``tariff`` carries the pricing-relevant master data (P1: plant_kind,
     tarif_art/param, anzulegender Wert, the PV asset's commissioning date +
-    kWp, plus the structured ``site_supply_price`` sheet as
+    kWp, the customer's stated Einspeisevergütung, plus the structured
+    ``site_supply_price`` sheet as
     ``tariff.supply_price`` - ``None`` when no row is maintained, which keeps
     the legacy import model byte-identically) feeding the asymmetric
     import/export pricing; the default reproduces the symmetric bare-spot
@@ -501,6 +508,10 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     fuehrende = load_fuehrende_boxen(dsn, site_id)
     # MiSpeL MP-10: die wirksame Foerderweg-Fassung je Anlage am Berliner Tag.
     foerderwege = load_foerderwege(dsn, jetzt.astimezone(GRENZ_ZONE).date(), site_id)
+    # Die am Wechselrichter gelesene Entladegrenze je Anlage (api
+    # V20261109090000, WechselrichterUntergrenze): hebt die Untergrenze des
+    # SoC-Bandes an. Eine Anlage ohne Zeile bleibt Wort fuer Wort wie vorher.
+    untergrenzen = load_wechselrichter_untergrenzen(dsn, site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -510,7 +521,8 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                    a.roundtrip_efficiency_pct, s.netzladen_erlaubt,
                    s.latitude, s.longitude, a.wear_cost_ct_per_kwh,
                    s.plant_kind, s.tarif_art, s.tarif_param_ct_kwh,
-                   s.anzulegender_wert_ct_kwh,
+                   s.anzulegender_wert_ct_kwh, s.einspeiseverguetung_ct_kwh,
+                   s.inbetriebnahme_ab_solarspitzengesetz,
                    pv.commissioned_on, pv.pv_capacity_kwp,
                    s.backup_reserve_soc_pct,
                    a.soc_min_pct, a.soc_max_pct,
@@ -541,6 +553,7 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                 tenant_id, site_id, device_id, zone, cap, chg, dis, eff,
                 netzladen, lat, lon, wear_ct,
                 plant_kind, tarif_art, tarif_param, anzulegender_wert,
+                einspeiseverguetung, ab_solarspitzengesetz,
                 commissioned_on, pv_kwp, backup_reserve,
                 soc_min_pct, soc_max_pct, max_feed_in,
                 leistungspreis, abrechnung, peak_reserve,
@@ -555,7 +568,8 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                 )
                 continue
             soc_min_fraction, soc_max_fraction = _soc_band(
-                site_id, soc_min_pct, soc_max_pct
+                site_id, soc_min_pct, soc_max_pct,
+                untergrenzen.get(_uuid(site_id)),
             )
             sites.append(
                 BatterySite(
@@ -621,6 +635,15 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                         ),
                         commissioned_on=commissioned_on,
                         pv_capacity_kwp=float(pv_kwp) if pv_kwp is not None else None,
+                        # The customer's stated rate (Einspeisevergütung card):
+                        # NULL = no statement, the EEG derivation applies.
+                        einspeiseverguetung_ct_kwh=_opt_float(einspeiseverguetung),
+                        # §51a for a stated rate without commissioning date.
+                        inbetriebnahme_ab_solarspitzengesetz=(
+                            bool(ab_solarspitzengesetz)
+                            if ab_solarspitzengesetz is not None
+                            else None
+                        ),
                         # No site_supply_price row = None = the legacy import
                         # model, byte-identically (report §3.1 rollout rule).
                         supply_price=(
@@ -1180,6 +1203,36 @@ def load_fuehrende_boxen(dsn: str, site_id: UUID | None = None) -> dict[UUID, UU
     return {_uuid(sid): _uuid(box) for sid, box in rows}
 
 
+def load_wechselrichter_untergrenzen(
+    dsn: str, site_id: UUID | None = None
+) -> dict[UUID, float]:
+    """``{site_id: soc_min_pct}`` - die am Wechselrichter gelesene Entladegrenze.
+
+    Die api uebernimmt die juengste plausible Lesung der Box (Deye-Hybrid
+    "Battery Low SOC") je Anlage in ``wechselrichter_untergrenze``
+    (``WechselrichterUntergrenzeAbgleich``); die Zeile bleibt stehen, wenn die
+    Box schweigt - die letzte gueltige Lesung gilt weiter, nie ein stiller
+    Rueckfall auf 5 %. Vor der api-Migration ``V20261109090000`` gibt es die
+    Tabelle nicht: das ist genau "keine Lesung" (Muster
+    :func:`load_fuehrende_boxen`).
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    sql = "SELECT site_id, soc_min_pct FROM wechselrichter_untergrenze"
+    params: tuple = ()
+    if site_id is not None:
+        sql += " WHERE site_id = %s"
+        params = (site_id,)
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("wechselrichter_untergrenze.schema_missing")
+        return {}
+    return {_uuid(sid): float(pct) for sid, pct in rows if pct is not None}
+
+
 def _uuid(value) -> UUID:
     return value if isinstance(value, UUID) else UUID(str(value))
 
@@ -1289,7 +1342,9 @@ def _opt_float(value) -> float | None:
     return float(value) if value is not None else None
 
 
-def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
+def _soc_band(
+    site_id, soc_min_pct, soc_max_pct, wechselrichter_pct=None
+) -> tuple[float, float]:
     """Resolve the per-asset usable SoC band (``asset.soc_min_pct``/
     ``soc_max_pct``, api migration V20260710020000, admin-tuned) into
     :class:`BatteryParams` fractions.
@@ -1299,6 +1354,13 @@ def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
     it crosses the other side's default) falls back to the platform defaults
     with a loud warning instead of crashing the site's every run: master data
     to fix, never a dead optimizer.
+
+    ``wechselrichter_pct`` is the discharge limit read from the inverter
+    (:func:`load_wechselrichter_untergrenzen`). The effective minimum is the
+    LARGER of it and the VoltPilot value: never plan below what the inverter
+    allows, and a higher VoltPilot value stays as a deliberate reserve. A
+    reading at or above the upper limit (or outside 0-100 %) is ignored with a
+    warning. ``None`` (no reading) leaves the band exactly as before.
     """
     soc_min = (
         float(soc_min_pct) / 100.0
@@ -1325,8 +1387,23 @@ def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
                 }
             },
         )
-        return DEFAULT_SOC_MIN_FRACTION, DEFAULT_SOC_MAX_FRACTION
-    return soc_min, soc_max
+        soc_min, soc_max = DEFAULT_SOC_MIN_FRACTION, DEFAULT_SOC_MAX_FRACTION
+    if wechselrichter_pct is None:
+        return soc_min, soc_max
+    gelesen = float(wechselrichter_pct) / 100.0
+    if not 0.0 <= gelesen < soc_max:
+        logger.warning(
+            "site.wechselrichter_untergrenze_ignored",
+            extra={
+                "context": {
+                    "site_id": str(site_id),
+                    "wechselrichter_pct": str(wechselrichter_pct),
+                    "soc_max_fraction": soc_max,
+                }
+            },
+        )
+        return soc_min, soc_max
+    return max(soc_min, gelesen), soc_max
 
 
 def gather_inputs(
@@ -1425,10 +1502,6 @@ def gather_inputs(
     )
     residual = ewma_residual(recent_load, load_kw[0]) if load_kw else None
     load_kw = apply_load_nowcast(load_kw, residual)
-    # No fresh evidence means no robust-band claim and preserves the active
-    # model's series byte-for-byte. With evidence, the band is bounded + fades.
-    if residual is not None:
-        load_kw = apply_uncertainty_reserve(load_kw)
     pv_kw, pv_used_fallback = _forecast_or_fallback(
         dsn, site, "pv", "pv_power_kw", slot_starts, now, stored_pv
     )
@@ -1445,6 +1518,20 @@ def gather_inputs(
     # earlier ones, and BEFORE the night floor, which stays the last gate.
     pv_kw = _nowcast_pv_input(dsn, site, slot_starts, pv_kw, now)
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
+    # NS-3 B (Schalter je Anlage, Vorgabe aus): läuft der Überschuss-Verbraucher
+    # im Messfenster, rechnet der Plan im Sonnenfenster der nahen Stunden mit der
+    # Grundlast - nach dem Nowcast, weil der den gemessenen Verbraucher in diese
+    # Stunden trägt, und vor dem Sicherheitsaufschlag, der der Grundlast gilt.
+    # Nur mit frischer Messung (residual), dieselbe Bedingung wie der Aufschlag.
+    ueberschuss_verbraucher: tuple[bool, ...] = ()
+    if residual is not None and ueberschuss_verbraucher_enabled(site.site_id):
+        load_kw, ueberschuss_verbraucher = _ohne_ueberschuss_verbraucher(
+            dsn, site, slot_starts, load_kw, pv_kw, recent_load, now
+        )
+    # No fresh evidence means no robust-band claim and preserves the active
+    # model's series byte-for-byte. With evidence, the band is bounded + fades.
+    if residual is not None:
+        load_kw = apply_uncertainty_reserve(load_kw)
 
     # Both live readings sit behind a freshness window (F4/P4): a stale
     # section-14a reading must NOT become a standing envelope over every future
@@ -1617,6 +1704,20 @@ def gather_inputs(
     # byte-identisch (siehe voltpilot_optimization.night_reserve).
     night_errors = _night_error_quantiles(dsn, site, now, site_choices)
 
+    # NS-5 B (Zwischenlösung je Anlage): nur an einer eingeschalteten Anlage
+    # wird gelesen, ob heute schon ein geplanter Lade-Slot lief. Ein Lesefehler
+    # kostet diesen Lauf die Morgenregel, nie den Plan.
+    morgen_ueberschuss = morgen_ueberschuss_enabled(site.site_id)
+    heute_geladen = False
+    if morgen_ueberschuss:
+        gelesen = _heute_geplant_geladen(dsn, site.site_id, slot_starts[0])
+        morgen_ueberschuss = gelesen is not None
+        heute_geladen = bool(gelesen)
+
+    # NS-2 A (Vorsprung-Budget je Anlage): nur an einer eingeschalteten Anlage
+    # wird der Vorsprung der api gelesen.
+    vorsprung_budget, vorsprung = _vorsprung_eingabe(dsn, site.site_id)
+
     return OptimizationInput(
         tenant_id=site.tenant_id,
         site_id=site.site_id,
@@ -1657,10 +1758,6 @@ def gather_inputs(
         # E6 A: die ehrliche Marge fuer Netzanteil beim Laden - nur am
         # Festpreis-Tarif, Spot-Anlagen bleiben bei 0 (kein Term).
         grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
-        # MiSpeL MP-45: der Betreiber-Schalter der strengen
-        # Ausschliesslichkeit (VOLTPILOT_MISPEL_STRENGE_SITES, Vorgabe leer =
-        # FK3). Wirkt nur im EEG-Modus, siehe OptimizationInput.strenge_aktiv.
-        strenge_ausschliesslichkeit=site.site_id in mispel_strenge_site_ids(),
         # MiSpeL MP-10: die dritte Betriebsart aus dem Foerderweg (E2 = B).
         mischbetrieb=site.mischbetrieb,
         # MiSpeL MP-14: der Foerderweg des Plantags (Fassung oder Bestand)
@@ -1682,7 +1779,225 @@ def gather_inputs(
         ),
         # M1: nur die Messlatte liest ihn, der Plan bleibt byte-identisch.
         stur_betriebsbereich_pct=_betriebsbereich_pct(dsn, site.site_id, now),
+        # NS-5 B: Morgenüberschuss in Ruhe-Slots, nur an eingeschalteten Anlagen.
+        morgen_ueberschuss=morgen_ueberschuss,
+        morgen_ueberschuss_heute_geladen=heute_geladen,
+        # NS-3 B: wo der Plan den Überschuss-Verbraucher herausgerechnet hat.
+        ueberschuss_verbraucher=ueberschuss_verbraucher,
+        # NS-2 A: Vorsprung-Budget, nur an eingeschalteten Anlagen.
+        vorsprung_budget_eur=vorsprung_budget,
+        vorsprung=vorsprung,
     )
+
+
+def _vorsprung_eingabe(
+    dsn: str, site_id: UUID, env=None
+) -> tuple[float | None, VorsprungStand | None]:
+    """Budget und gelesener Stand dieser Anlage (NS-2 A): ``(None, None)`` an
+    jeder nicht eingeschalteten Anlage - dort wird nichts gelesen, der Plan
+    ist byte-identisch zu vorher. Ohne lesbaren Stand gibt es für diesen Lauf
+    kein Budget, nie keinen Plan."""
+    budget = vorsprung_budget_eur(site_id, env)
+    if budget is None:
+        return None, None
+    return budget, _vorsprung_stand(dsn, site_id)
+
+
+def _vorsprung_stand(dsn: str, site_id: UUID) -> VorsprungStand | None:
+    """Der Vorsprung mit Bestand, den die api für diese Anlage zuletzt
+    geschrieben hat (Tabelle ``steuerung_vorsprung``, Vertrag
+    ``docs/contracts/steuerung-vorsprung-v1.md``), oder ``None``.
+
+    FAIL-SOFT wie die Messlatte: ``None`` heißt "kein Budget in diesem Lauf"
+    (keine Zeile, nicht lesbar). Ob der Stand frisch genug ist, entscheidet
+    :mod:`voltpilot_optimization.vorsprung` am Laufbeginn.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT messung_bis, tag, bewertung_ct_kwh, vorsprung_kwh,
+                       kapazitaet_kwh, monat_mit_bestand_eur,
+                       sieben_tage_mit_bestand_eur, tage_mit_bestand_eur
+                FROM steuerung_vorsprung WHERE site_id = %s
+                """,
+                (site_id,),
+            )
+            row = cur.fetchone()
+    except Exception:
+        logger.warning(
+            "vorsprung.unavailable - Lauf ohne Vorsprung-Budget (NS-2 A)",
+            extra={"context": {"site_id": str(site_id)}},
+            exc_info=True,
+        )
+        return None
+    if row is None:
+        return None
+
+    def zahl(wert):
+        return None if wert is None else float(wert)
+
+    return VorsprungStand(
+        messung_bis=ensure_utc(row[0]),
+        tag=row[1],
+        bewertung_ct_kwh=float(row[2]),
+        vorsprung_kwh=float(row[3]),
+        kapazitaet_kwh=float(row[4]),
+        monat_eur=zahl(row[5]),
+        sieben_tage_eur=zahl(row[6]),
+        tage_eur=tuple(zahl(x) for x in (row[7] or ())),
+    )
+
+
+def _ohne_ueberschuss_verbraucher(
+    dsn: str,
+    site: BatterySite,
+    slot_starts: list[datetime],
+    load_kw: list[float],
+    pv_kw: list[float],
+    recent_load: list[float],
+    now: datetime,
+) -> tuple[list[float], tuple[bool, ...]]:
+    """NS-3 B: die Lastreihe ohne den gemessenen Überschuss-Verbraucher, und je
+    Slot, ob er herausgerechnet wurde (leer = nichts erkannt).
+
+    Liest die Grundlast aus den 15-min-Rollups der letzten Tage und die Sonne
+    aus DEMSELBEN Messfenster wie die Last des Nowcasts (2 Minuten, höchstens
+    30 s alt - beide Hälften eines Überschusses müssen denselben Moment
+    messen). Die Regel steht in :mod:`voltpilot_optimization.ueberschuss_verbraucher`.
+
+    FAIL-SOFT: ein Lesefehler kostet den Lauf die Regel (die Reihe von vorher),
+    nie den Plan.
+    """
+    from voltpilot_optimization import ueberschuss_verbraucher as uv
+
+    try:
+        profil = uv.grundlast_profil(_grundlast_viertelstunden(dsn, site.site_id, now))
+        pv_jetzt = _recent_pv_samples(
+            dsn, site.tenant_id, site.site_id, now,
+            lookback=timedelta(minutes=2), max_age=timedelta(seconds=30),
+            device_id=site.device_id,
+        )
+    except Exception:
+        logger.warning(
+            "ueberschuss_verbraucher.unavailable - Lauf ohne Erkennung (NS-3 B)",
+            extra={"context": {"site_id": str(site.site_id)}},
+            exc_info=True,
+        )
+        return load_kw, ()
+    erkennung = uv.erkenne(profil, slot_starts[0], recent_load, pv_jetzt)
+    if erkennung is None or profil is None:
+        return load_kw, ()
+    neu, markiert = uv.ohne_verbraucher(load_kw, pv_kw, slot_starts, profil, erkennung)
+    if not any(markiert):
+        return load_kw, ()
+    logger.info(
+        "ueberschuss_verbraucher.erkannt",
+        extra={
+            "context": {
+                "site_id": str(site.site_id),
+                "grundlast_kw": round(erkennung.grundlast_kw, 2),
+                "gemessen_kw": round(erkennung.gemessen_kw, 2),
+                "sonne_kw": round(erkennung.sonne_kw, 2),
+                "verbraucher_kw": round(erkennung.verbraucher_kw, 2),
+                "belege": erkennung.belege,
+                "slots": sum(markiert),
+            }
+        },
+    )
+    return neu, markiert
+
+
+def _grundlast_viertelstunden(dsn: str, site_id: UUID, now: datetime) -> list:
+    """Die abgeschlossenen Viertelstunden-Mittel von Last und Sonne der letzten
+    :data:`~voltpilot_optimization.ueberschuss_verbraucher.TAGE` Tage aus
+    ``telemetry_rollup_15m`` (``*_kwh * 4.0`` IST das Mittel, dasselbe Muster
+    wie :func:`voltpilot_optimization.night_reserve._measured_load_slots`) -
+    die Grundlast braucht keine laufende Viertelstunde, und die Rollups
+    überleben die Retention des rohen ``telemetry``."""
+    import psycopg  # lazy: optional [db] extra
+
+    from voltpilot_optimization.ueberschuss_verbraucher import TAGE, Viertelstunde
+
+    now = ensure_utc(now)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT bucket, load_kwh * 4.0, pv_kwh * 4.0 FROM telemetry_rollup_15m
+            WHERE site_id = %s AND load_kwh IS NOT NULL AND pv_kwh IS NOT NULL
+              AND bucket >= %s AND bucket < %s
+            """,
+            (
+                site_id,
+                now - timedelta(days=TAGE),
+                now - timedelta(minutes=SLOT_MINUTES),
+            ),
+        )
+        rows = cur.fetchall()
+    return [
+        Viertelstunde(start=ensure_utc(ts), last_kw=float(last), pv_kw=float(pv))
+        for ts, last, pv in rows
+        if last is not None and pv is not None
+    ]
+
+
+def _heute_geplant_geladen(
+    dsn: str, site_id: UUID, horizont_start: datetime
+) -> bool | None:
+    """Ob am Berliner Tag von ``horizont_start`` vor dem Horizont schon ein
+    Slot lief, in dem der Plan laden wollte (NS-5 B), oder ``None``.
+
+    Gezählt wird je vergangenem Slot der Plan, der ihn AUSGEFÜHRT hat: die
+    Zeile eines Laufs, der in diesem Slot entstand (``generated_at`` in
+    ``[time, time + Slotlänge)``, denn der erste Slot eines Laufs ist der
+    laufende). Ein späterer Lauf, der denselben Slot noch als Zukunft sah,
+    zählt nicht - geladen hätte die Box nach dem Plan des Slots selbst.
+
+    FAIL-SOFT wie die Messlatte: ``None`` heißt „nicht lesbar“, der Aufrufer
+    lässt die Morgenregel für diesen Lauf weg (der Plan von heute), statt
+    einen Nachmittag für einen Morgen zu halten.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    from voltpilot_optimization.slot_trim import PLANNED_IDLE_DEADBAND_KW
+
+    horizont_start = ensure_utc(horizont_start)
+    tagesanfang = (
+        horizont_start.astimezone(BERLIN)
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(timezone.utc)
+    )
+    if tagesanfang >= horizont_start:
+        return False
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                  SELECT 1 FROM schedule
+                  WHERE site_id = %s AND time >= %s AND time < %s
+                    AND generated_at >= time AND generated_at < time + %s
+                    AND battery_kw > %s)
+                """,
+                (
+                    site_id,
+                    tagesanfang,
+                    horizont_start,
+                    timedelta(minutes=SLOT_MINUTES),
+                    PLANNED_IDLE_DEADBAND_KW,
+                ),
+            )
+            row = cur.fetchone()
+        return bool(row[0]) if row is not None else False
+    except Exception:
+        logger.warning(
+            "morgen_ueberschuss.unavailable - Lauf ohne Morgenregel (NS-5 B)",
+            extra={"context": {"site_id": str(site_id)}},
+            exc_info=True,
+        )
+        return None
 
 
 def _betriebsbereich_pct(
@@ -1691,10 +2006,13 @@ def _betriebsbereich_pct(
     """Der gemessene Betriebsbereich des echten Speichers (M1) fuer den
     sturen Speicher der Messlatte, oder ``None``.
 
-    Je Berliner Monat der :data:`~voltpilot_optimization.stur.BETRIEBSBEREICH_EIMER`-t
-    niedrigste ``soc_min_pct`` und -t hoechste ``soc_max_pct`` der 15-min-Eimer,
-    vereint ueber den laufenden Monat und den Vormonat - dieselbe Regel und
-    dieselbe Abfrage wie ``EarningsRepository.monthBetriebsbereich`` (Java).
+    Der :data:`~voltpilot_optimization.stur.BETRIEBSBEREICH_EIMER`-t niedrigste
+    ``soc_min_pct`` und -t hoechste ``soc_max_pct`` der 15-min-Eimer des
+    laufenden Berliner Monats - dieselbe Regel wie
+    ``EarningsRepository.monthBetriebsbereich`` (Java). Seit NS-1 A (Captain
+    15.10.2026) zaehlt der Vormonat nicht mehr: haelt der Waechter der Box das
+    Planungsband, faehrt die Messlatte dasselbe Band wie der Plan; nur ein
+    Ausbruch DESSELBEN Monats weitet es.
 
     FAIL-SOFT wie die Messlatte selbst: ein fehlender Bereich ist das
     unveraenderte Planungsband, nie ein fehlender Plan.
@@ -1707,7 +2025,6 @@ def _betriebsbereich_pct(
     monat = now.astimezone(BERLIN).replace(
         day=1, hour=0, minute=0, second=0, microsecond=0
     )
-    vormonat = (monat - timedelta(days=1)).replace(day=1)
     try:
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute(
@@ -1722,7 +2039,7 @@ def _betriebsbereich_pct(
                   WHERE site_id = %s AND bucket >= %s AND bucket < %s
                   GROUP BY 1) m
                 """,
-                (site_id, vormonat, now),
+                (site_id, monat, now),
             )
             row = cur.fetchone()
         if row is None or (row[0] is None and row[1] is None):

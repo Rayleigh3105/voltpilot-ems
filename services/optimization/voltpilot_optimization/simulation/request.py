@@ -76,6 +76,8 @@ class SimulationRequest:
                 if self.tariff.commissioned_on
                 else None,
                 self.tariff.pv_capacity_kwp,
+                self.tariff.einspeiseverguetung_ct_kwh,
+                self.tariff.inbetriebnahme_ab_solarspitzengesetz,
             ],
             "netzladen": self.netzladen_erlaubt,
             "battery": [
@@ -147,6 +149,16 @@ def parse_request(doc: dict) -> SimulationRequest:
         ),
         commissioned_on=commissioned_on,
         pv_capacity_kwp=pv_kwp if pv_kwp > 0 else None,
+        # The stated Einspeisevergütung (site master data or the what-if):
+        # absent = the EEG derivation from the commissioning date.
+        einspeiseverguetung_ct_kwh=_optional_number(
+            tariff_doc, "einspeiseverguetungCtKwh", "Einspeisevergütung (ct/kWh)", 0.0, 100.0
+        ),
+        inbetriebnahme_ab_solarspitzengesetz=_optional_bool(
+            tariff_doc,
+            "inbetriebnahmeAbSolarspitzengesetz",
+            "Inbetriebnahme ab dem 25.02.2025 (ja/nein)",
+        ),
     )
     netzladen = bool(tariff_doc.get("netzladenErlaubt") or False)
 
@@ -275,6 +287,15 @@ def _number(
             f"{label} muss zwischen {lo:g} und {hi:g} liegen."
         )
     return number
+
+
+def _optional_bool(doc: dict, key: str, label: str) -> bool | None:
+    value = doc.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise InvalidRequest(f"Ungültiger Wert für {label}.")
+    return value
 
 
 def _optional_number(

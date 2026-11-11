@@ -282,16 +282,18 @@ export function einspeiseProvenance(money: EarningsSite): string | null {
       ? ' Enthält Ihre Marktprämie.'
       : '';
   if (money.exportVerguetungPriced === true) {
+    // Wer den Satz selbst angegeben hat, liest es so - nie als „gesetzlich".
+    const art = money.exportVerguetungQuelle === 'angegeben' ? 'angegebene' : 'feste';
     // Effektiver Vergütungssatz aus den ZWEI gezeigten Zahlen (kein Spot); ohne
     // eingespeiste kWh gibt es keinen Satz, dann die zahlfreie ehrliche Fassung.
     if (money.eingespeistKwh != null && money.eingespeistKwh > 0) {
       return (
         `Eingespeiste ${energyLabel(money.eingespeistKwh)} × Ø ` +
         `${ctAmount((money.einspeiseErloesEur / money.eingespeistKwh) * 100)} ct/kWh ` +
-        `Ihre feste Einspeisevergütung.`
+        `Ihre ${art} Einspeisevergütung.`
       );
     }
-    return 'Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zu Ihrer festen Einspeisevergütung.';
+    return `Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zu Ihrer ${art}n Einspeisevergütung.`;
   }
   if (money.eingespeistKwh == null || money.realizedExportCtKwh == null) {
     return `Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zum Börsenpreis Ihrer Einspeise-Zeiten.${premium}`;

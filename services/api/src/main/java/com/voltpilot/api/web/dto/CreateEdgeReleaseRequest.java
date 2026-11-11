@@ -35,5 +35,16 @@ public record CreateEdgeReleaseRequest(
         String notes,
         String manifest,
         String signature,
-        String signingKeyId) {
+        String signingKeyId,
+        // Geräte & Updates G4 (additiv): „Was ist neu" - die Box-Änderungen seit
+        // dem letzten Tag DERSELBEN Linie, eine Zeile je Commit (CI). Fehlt das
+        // Feld, gibt es keine Angabe. Nicht Teil des signierten Manifests.
+        @jakarta.validation.constraints.Size(max = 200)
+        java.util.List<@jakarta.validation.constraints.Size(max = 300) String> aenderungen) {
+
+    /** Die Vor-G4-Form ohne Änderungsliste. */
+    public CreateEdgeReleaseRequest(String version, Long releaseSeq, String targetCommit, String notes,
+            String manifest, String signature, String signingKeyId) {
+        this(version, releaseSeq, targetCommit, notes, manifest, signature, signingKeyId, null);
+    }
 }

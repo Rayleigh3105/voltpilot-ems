@@ -190,6 +190,10 @@ func TestAPauseEndsWhenTheVehicleLeaves(t *testing.T) {
 		c, _ := a.ocpp.srv.Snapshot().ChargerByID("SAEULE-1")
 		return len(c.ActiveConnectors()) == 0
 	})
+	// OCPP timestamps resolve whole seconds, and a start identical to the last
+	// one in second, meter and card IS its replay (csms startWatermark). A real
+	// re-plug takes longer than that; the rig waits the second out.
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)))
 	if err := st.Plug(1, ocppsim.Vehicle{DemandKw: 240, MinKw: 5}); err != nil {
 		t.Fatalf("re-plug: %v", err)
 	}

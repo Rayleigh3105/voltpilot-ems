@@ -35,7 +35,7 @@ import (
 // Eine LEERE Nutzlast nimmt die Zuweisung zurück (retained-clear, z. B. beim
 // Unclaim) - dann verschwindet auch die Datei, nie ein verwaistes Ziel.
 func (a *Agent) onUpdateTarget(payload []byte) {
-	store := otatarget.NewStore(a.Cfg.DataDir)
+	store := a.otaTargetStore()
 	if len(payload) == 0 {
 		if err := store.Clear(); err != nil {
 			slog.Warn("OTA: Zuweisung konnte nicht entfernt werden", "err", err)
@@ -90,7 +90,7 @@ func (a *Agent) onUpdateTarget(payload []byte) {
 // gibt (zweiter Rückgabewert false, dann greift der beaufsichtigte Dateipfad
 // der Stufe 1).
 func (a *Agent) otaCheckTarget() (otaVerdict, bool) {
-	store := otatarget.NewStore(a.Cfg.DataDir)
+	store := a.otaTargetStore()
 	fi, err := os.Stat(store.Path())
 	if err != nil {
 		return otaVerdict{}, false
@@ -155,7 +155,7 @@ func (a *Agent) otaVerifyTarget(raw []byte) otaVerdict {
 		TrustSetSig:    readFileOrNil(dir, otaTrustSetFile+otaSigSuffix),
 		Manifest:       env.Manifest,
 		ManifestSig:    env.Signature,
-		Backend:        cloud.UpdateBackendCompose,
+		Backend:        cloud.UpdateBackend(a.boxArt()),
 		RunningVersion: Version,
 		Now:            time.Now(),
 	}
@@ -228,7 +228,7 @@ func (a *Agent) otaVerifyTarget(raw []byte) otaVerdict {
 // ist die eigentliche Sicherheits-Eigenschaft dieser Stufe: der beaufsichtigte
 // Anwender wendet nie etwas an, das dieses Gerät nicht selbst verifiziert hat.
 func (a *Agent) OtaTarget() otatarget.View {
-	store := otatarget.NewStore(a.Cfg.DataDir)
+	store := a.otaTargetStore()
 	raw, err := store.Load()
 	view := otatarget.View{}
 	if cur := a.otaReadCurrent(a.otaDir()); cur != nil {
@@ -316,6 +316,9 @@ func (a *Agent) OtaRecordApplied(release string, releaseSeq int64) (otatarget.Vi
 	a.otaForceRecheck()
 	return a.OtaTarget(), nil
 }
+
+// OtaUpdate ist der Update-Block des Herzschlags fuer /health.
+func (a *Agent) OtaUpdate() *cloud.UpdateSummary { return a.updateSummary() }
 
 // otaAppliedError ist eine ABLEHNUNG mit deutschem Grund (400 auf :8484).
 type otaAppliedError struct{ msg string }

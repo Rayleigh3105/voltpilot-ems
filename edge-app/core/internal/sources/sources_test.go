@@ -507,3 +507,42 @@ func TestBalanceLeaderStatementsPersistAndUnknownWordsFailClosed(t *testing.T) {
 		t.Fatalf("a legacy opt-out is the location \"woanders\": %+v", got)
 	}
 }
+
+// The two transports Edge Light's Go Layer 1 reads as a source since the
+// Huawei/KACO go-live (scout vp-kundenanlage-drei-geraete): the bus config must
+// carry the fields the reader needs, exactly like inverter.Selection.BusPayload
+// does for the primary inverter.
+func TestBusConfigCarriesHuaweiAndKacoSerialConnection(t *testing.T) {
+	huawei := Source{ID: "src-hw", Role: RoleErzeuger, Brand: inverter.BrandHuawei, Model: "sun2000-m1",
+		Family: inverter.FamHuaweiSun2000Luna, Communication: inverter.CommHuaweiModbus,
+		Connection: inverter.Connection{IP: "192.168.178.60", Port: 502, UnitID: 1, Profile: inverter.FamHuaweiSun2000Luna, InvertGridSign: true}}
+	kaco := Source{ID: "src-kaco", Role: RoleErzeuger, Brand: inverter.BrandKaco, Model: "powador-3200-int",
+		Family: inverter.FamKacoSerial, Communication: inverter.CommKacoSerial,
+		Connection: inverter.Connection{IP: "192.168.178.61", Port: 4196, Address: 7}}
+	var m struct {
+		Sources []struct {
+			ID         string         `json:"id"`
+			Connection map[string]any `json:"connection"`
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal(BusConfig([]Source{huawei, kaco}), &m); err != nil || len(m.Sources) != 2 {
+		t.Fatalf("bus config: %v %+v", err, m)
+	}
+	hw := m.Sources[0].Connection
+	if hw["ip"] != "192.168.178.60" || hw["port"] != float64(502) || hw["unit_id"] != float64(1) ||
+		hw["profile"] != inverter.FamHuaweiSun2000Luna || hw["invert_grid_sign"] != true || hw["invert_batt_sign"] != false {
+		t.Errorf("huawei_modbus connection on the bus: %v", hw)
+	}
+	if _, has := hw["address"]; has {
+		t.Error("a Huawei carries no RS485 address")
+	}
+	ks := m.Sources[1].Connection
+	if ks["ip"] != "192.168.178.61" || ks["port"] != float64(4196) || ks["address"] != float64(7) {
+		t.Errorf("kaco_serial connection on the bus: %v", ks)
+	}
+	for _, k := range []string{"unit_id", "invert_grid_sign", "serial"} {
+		if _, has := ks[k]; has {
+			t.Errorf("a Powador carries no %s", k)
+		}
+	}
+}

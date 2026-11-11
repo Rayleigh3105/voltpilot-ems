@@ -34,7 +34,7 @@ class SchedulePricingServiceTest {
     private static SlotEconomics pilstingEconomics() {
         SupplyPrice sheet = new SupplyPrice(11.33, null, null, null, null, 0.0);
         SiteEconomics site = new SiteEconomics("direktvermarktung", false, "ohne", null,
-                null, null, null, 0.96, 4.0, sheet);
+                null, null, null, null, null, 0.96, 4.0, sheet);
         return new SlotEconomics(site, EegRates.fromJson(null), Map.of(), false);
     }
 

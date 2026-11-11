@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react';
 import {
   AXIS,
   BAR,
@@ -43,6 +44,18 @@ import type { OptimizerDiagnostics } from '../../optimizerApi';
  * Ein Klick wählt weiterhin einen Slot für die €-Aufschlüsselung darunter —
  * jetzt über die ganze Spalte, nicht nur den Balken.
  */
+
+/** Das Wort zur Batterie-Rolle eines Slots - Tooltip UND Tastatur-Wert (aria-valuetext) teilen es. */
+function slotKindWort(s: OptimizerDiagnostics['slots'][number]): string {
+  const kind = chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw);
+  return kind === 'netzladen'
+    ? 'lädt aus dem Netz'
+    : kind === 'solarladen'
+      ? 'lädt Solarstrom'
+      : kind === 'entladen'
+        ? 'entlädt'
+        : 'hält';
+}
 
 /** Der Börsenpreis, mit dem der Solver rechnet (die Solver-Referenz). */
 const SPOT = 'Börsenpreis (Solver)';
@@ -231,16 +244,7 @@ export function OptimizerPlanChart({
                 hour: '2-digit',
                 minute: '2-digit',
               });
-              const kind = chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw);
-              const label =
-                kind === 'netzladen'
-                  ? 'lädt aus dem Netz'
-                  : kind === 'solarladen'
-                    ? 'lädt Solarstrom'
-                    : kind === 'entladen'
-                      ? 'entlädt'
-                      : 'hält';
-              const lines = [`<b>${time} Uhr</b>`, `Batterie ${label}`];
+              const lines = [`<b>${time} Uhr</b>`, `Batterie ${slotKindWort(s)}`];
               if (s.batteryKw != null) lines.push(`Leistung: ${fmtKw(Number(s.batteryKw))}`);
               if (s.gridKw != null) lines.push(`${NETZ}: ${fmtKw(Number(s.gridKw))}`);
               if (s.importPriceCtKwh != null)
@@ -405,12 +409,55 @@ export function OptimizerPlanChart({
     { color: t.soc, label: LADESTAND, unit: '%', shape: 'dotted' },
   ];
 
+  // Tastatur-Äquivalent zum Tipp auf die Zeichenfläche (WCAG 2.1.1), dieselbe
+  // Mechanik wie `ScheduleChart`: Pfeiltasten/Pos1/Ende und Eingabe/Leertaste
+  // wählen denselben Slot wie der zrender-Klick oben.
+  const kbSlots = diag.slots;
+  const kbCurrent = selectedIdx >= 0 && selectedIdx < kbSlots.length ? selectedIdx : 0;
+  const kbSlot = kbSlots[kbCurrent] ?? null;
+  const kbValueText = kbSlot
+    ? `${new Date(kbSlot.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr, Batterie ${slotKindWort(kbSlot)}`
+    : undefined;
+  const onChartKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (kbSlots.length === 0) return;
+    const nav =
+      e.key === 'ArrowRight' || e.key === 'ArrowUp'
+        ? Math.min(kbSlots.length - 1, kbCurrent + 1)
+        : e.key === 'ArrowLeft' || e.key === 'ArrowDown'
+          ? Math.max(0, kbCurrent - 1)
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? kbSlots.length - 1
+              : null;
+    if (nav != null) {
+      e.preventDefault();
+      if (nav !== kbCurrent) onSelectSlot(nav);
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelectSlot(kbCurrent);
+    }
+  };
+
   return (
     <div>
       <ChartLegend items={legend} />
       {/* Zwei Panels brauchen mehr Höhe als eine Fläche - `panels` ist die
           Zwei-Panel-Stufe der `.vp-chart`-Höhenklassen. */}
-      <div ref={ref} className="vp-chart panels" />
+      <div
+        ref={ref}
+        className="vp-chart panels vp-chart-clickable"
+        tabIndex={0}
+        role="slider"
+        aria-label="Plan: Zeitpunkt wählen"
+        aria-valuemin={0}
+        aria-valuemax={Math.max(0, kbSlots.length - 1)}
+        aria-valuenow={kbCurrent}
+        aria-valuetext={kbValueText}
+        onKeyDown={onChartKeyDown}
+      />
     </div>
   );
 }

@@ -83,6 +83,29 @@ type Registerbild struct {
 	Karten            []RegisterbildKarte `json:"karten"`
 }
 
+// Erzeugerbild carries the per-installation Soll of a "VoltPilot-Registerbild
+// Erzeuger v1" (x-erzeuger-registerbilder-rule, EZ-6 cloud / EZ-5 box): one
+// image per Anlagensteuerung, named by its component. Base address, function
+// code and word order are PARAMETERS like those of a WAGO image; te_anzahl and
+// anlagenart are the Soll the head is checked against (a unit more or less is
+// never re-attached silently); steuerung_kennung is checked only when present -
+// absent means "not assigned", never 0. veraltet_netzpunkt_s is the age of the
+// grid-point reading above which only that value is uncertain.
+//
+// This layer carries and shape-checks them; the reading rule lives in
+// edge-app/nodered/measurements/erzeuger-registerbild.js. OPTIONAL and purely
+// additive: a config without it parses exactly as before.
+type Erzeugerbild struct {
+	EntityID           string `json:"entity_id"`
+	Basisadresse       int    `json:"basisadresse"`
+	Funktionscode      int    `json:"funktionscode"`
+	Wortfolge          string `json:"wortfolge"`
+	TeAnzahl           int    `json:"te_anzahl"`
+	Anlagenart         string `json:"anlagenart"`
+	SteuerungKennung   *int64 `json:"steuerung_kennung,omitempty"`
+	VeraltetNetzpunktS int    `json:"veraltet_netzpunkt_s"`
+}
+
 type Config struct {
 	SchemaVersion  string      `json:"schema_version"`
 	TenantID       string      `json:"tenant_id"`
@@ -93,6 +116,8 @@ type Config struct {
 	Selections     []Selection `json:"selections"`
 	// Additive since UEMS AP-05 IP-6; absent on every box shipped so far.
 	Registerbilder []Registerbild `json:"registerbilder,omitempty"`
+	// Additive since EZ-6/EZ-5; sent only to a box reporting erzeuger_registerbild.
+	Erzeugerbilder []Erzeugerbild `json:"erzeuger_registerbilder,omitempty"`
 }
 
 // geteiltePunkte applies the x-point-key-rule of mqtt-measurement-config 2.0
@@ -176,7 +201,57 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 	if err := validRegisterbilder(c.Registerbilder); err != nil {
 		return c, err
 	}
+	if err := validErzeugerbilder(c.Erzeugerbilder); err != nil {
+		return c, err
+	}
 	return c, nil
+}
+
+// MaxErzeugerbilder bounds the plant controllers one box may read Erzeuger
+// images from (the schema's maxItems); MaxErzeugerEinheiten is the contract's
+// ceiling of units per image.
+const (
+	MaxErzeugerbilder    = 64
+	MaxErzeugerEinheiten = 10
+)
+
+func validErzeugerbilder(bilder []Erzeugerbild) error {
+	if len(bilder) > MaxErzeugerbilder {
+		return errors.New("too many erzeugerbilder")
+	}
+	seen := map[string]bool{}
+	for _, b := range bilder {
+		if !entityIDPattern.MatchString(b.EntityID) {
+			return errors.New("invalid erzeugerbild entity_id")
+		}
+		if b.Anlagenart != "pv" && b.Anlagenart != "bhkw" && b.Anlagenart != "gemischt" {
+			return errors.New("erzeugerbild anlagenart must be pv, bhkw or gemischt")
+		}
+		if seen[strings.ToLower(b.EntityID)] {
+			return fmt.Errorf("duplicate erzeugerbild %s", b.EntityID)
+		}
+		seen[strings.ToLower(b.EntityID)] = true
+		if b.Funktionscode != 3 && b.Funktionscode != 4 {
+			return errors.New("erzeugerbild funktionscode must be 3 or 4")
+		}
+		if b.Wortfolge != "big" && b.Wortfolge != "little" {
+			return errors.New("erzeugerbild wortfolge must be big or little")
+		}
+		if b.TeAnzahl < 1 || b.TeAnzahl > MaxErzeugerEinheiten {
+			return errors.New("erzeugerbild te_anzahl must be 1 to 10")
+		}
+		// The running image is 38 + 10 words per unit from the base address.
+		if b.Basisadresse < 0 || b.Basisadresse > 65535 || b.Basisadresse+38+10*b.TeAnzahl > 65536 {
+			return errors.New("erzeugerbild does not fit the address space")
+		}
+		if b.SteuerungKennung != nil && (*b.SteuerungKennung < 0 || *b.SteuerungKennung > 4294967295) {
+			return errors.New("invalid erzeugerbild steuerung_kennung")
+		}
+		if b.VeraltetNetzpunktS < 1 || b.VeraltetNetzpunktS > 65534 {
+			return errors.New("invalid erzeugerbild veraltet_netzpunkt_s")
+		}
+	}
+	return nil
 }
 
 // MaxRegisterbilder bounds the controllers one box may carry register images

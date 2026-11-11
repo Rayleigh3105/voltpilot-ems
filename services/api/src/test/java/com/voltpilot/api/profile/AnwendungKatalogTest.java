@@ -278,7 +278,7 @@ class AnwendungKatalogTest {
         // Auswertung" und das Willens-Overlay sie lesen.
         assertThat(katalog.ausserhalbRegal().stream().map(Anwendung::id)).containsExactly(
                 "monitoring", "speicher-fahrplan", "ueberschuss", "verbraucher", "lastmanagement",
-                "eigene-auswertung");
+                "netz-und-vermarktung", "eigene-auswertung");
         assertThat(katalog.sichtbare()).containsExactlyInAnyOrderElementsOf(
                 java.util.stream.Stream
                         .concat(katalog.regal().stream(), katalog.ausserhalbRegal().stream())

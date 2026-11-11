@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from voltpilot_optimization.config import (
@@ -780,6 +780,39 @@ def derive_terminal_value(
 
 
 @dataclass(frozen=True)
+class VorsprungStand:
+    """Was die api je Anlage über den Vorsprung MIT BESTAND gegen den sturen
+    Speicher meldet (NS-2 A; Vertrag ``docs/contracts/steuerung-vorsprung-v1.md``,
+    Tabelle ``steuerung_vorsprung``). Alle Beträge in EUR, gegen die faire
+    Messlatte aus NS-1 A, mit Bestand symmetrisch bewertet - genau die Zahlen
+    der Kachel (HZ-3 A). Der Optimierer zerlegt sie in Kasse und Bestand und
+    bewertet den Bestand selbst vorsichtiger
+    (:mod:`voltpilot_optimization.vorsprung`).
+
+    ``monat_eur`` / ``sieben_tage_eur`` sind ``None`` bei einer Lücke - dann
+    hat die Kachel dort keine Zahl, und für dieses Fenster gibt es kein Budget.
+    """
+
+    #: Ende des letzten gemessenen Eimers - der Moment von ``vorsprung_kwh``.
+    messung_bis: datetime
+    #: Der Berliner Tag D, zu dem die Fenster gehören (Monat bis D, 7 Tage D-6..D).
+    tag: date
+    #: Bewertung einer gespeicherten kWh: Bezugspreis × √0,92 (25 ct → 23,98 ct).
+    bewertung_ct_kwh: float
+    #: Gemessener Ladestand minus Vergleichsspeicher (kWh der api), Rückstand negativ.
+    vorsprung_kwh: float
+    #: kWh je 100 % des Vergleichsspeichers (NS-1 A: aus der Messung).
+    kapazitaet_kwh: float
+    #: Monat mit Bestand: Σ der Tage vom Monatsersten bis einschließlich D.
+    monat_eur: float | None
+    #: 7 Tage mit Bestand: D-6..D, der laufende Tag D bis ``messung_bis``.
+    sieben_tage_eur: float | None
+    #: Die 6 abgeschlossenen Tage D-6..D-1 mit Bestand, ältester zuerst - sie
+    #: fallen an den Mitternächten des Horizonts aus dem 7-Tage-Fenster.
+    tage_eur: tuple = ()
+
+
+@dataclass(frozen=True)
 class OptimizationInput:
     """Everything one solver run needs, slot-aligned over the horizon.
 
@@ -800,8 +833,9 @@ class OptimizationInput:
     grid-charging switch, captain decision 2026-07-07): ``True`` = merchant
     mode, the battery may charge from the grid (price arbitrage); ``False`` =
     EEG mode, the battery charges ONLY from PV the site actually produces
-    (``charge <= pv - curtail``, PV-bus Bilanzierung per FK3, captain decision
-    2026-07-16; the house may import its load in parallel) - the
+    (``charge <= pv - curtail``, FK3, captain decision 2026-07-16) and NEVER
+    in a slot with grid import (EN-2 A, captain decision 2026-11-02 - the
+    house no longer imports in parallel), i.e. only from the PV surplus - the
     Ausschliesslichkeitsprinzip for EEG-funded plants. The field is REQUIRED
     (no default) on purpose: every caller must decide, so a forgotten wire-up
     can never silently put an EEG plant into grid arbitrage.
@@ -1010,11 +1044,48 @@ class OptimizationInput:
     wiederholbar: bool = False
     #: M1 (Captain 29.09.2026 "mach alle drei"): der GEMESSENE Betriebsbereich
     #: des echten Speichers (tiefster/hoechster Ladestand in Prozent, je aus
-    #: mindestens vier Viertelstunden dieses oder des Vormonats), mit dem der
+    #: mindestens vier Viertelstunden dieses Monats, NS-1 A), mit dem der
     #: sture Speicher der Messlatte sein Band WEITET - nie verengt. Nur die
     #: Messlatte liest ihn (:func:`voltpilot_optimization.stur.stur_battery`);
     #: der Plan faehrt unveraendert sein eigenes Band. ``None`` = kein Messwert.
     stur_betriebsbereich_pct: tuple[float | None, float | None] | None = None
+    #: NS-5 B (Captain-Entscheid 15.10.2026, Zwischenlösung bis NS-3 B): an
+    #: dieser Anlage bekommt jeder Ruhe-Slot vom Tagesanfang bis zum ersten
+    #: Lade-Slot des Tages die Freigabe ``charge_surplus_to_battery``, der
+    #: Morgenüberschuss geht also in den Speicher statt ins Netz
+    #: (:func:`voltpilot_optimization.slot_trim.morgen_ueberschuss_slots`). Wie
+    #: die Freigabe selbst wird es NACH dem Lösen gestempelt: die Sollwerte des
+    #: Plans bleiben unberührt. Vorgabe False = byte-identisch zu vorher, auch
+    #: für jeden Aufrufer, der seine Eingaben selbst baut.
+    morgen_ueberschuss: bool = False
+    #: Ob am Berliner Tag des ersten Slots VOR dem Horizont schon ein Slot lief,
+    #: in dem der Plan laden wollte (gelesen aus den gespeicherten Läufen, siehe
+    #: :func:`voltpilot_optimization.inputs._heute_geplant_geladen`). Dann ist
+    #: der erste Lade-Slot dieses Tages vorbei, und die Regel gilt erst wieder
+    #: ab dem nächsten Tag. Nur mit ``morgen_ueberschuss`` von Bedeutung.
+    morgen_ueberschuss_heute_geladen: bool = False
+    #: NS-3 B (Captain-Entscheid 15.10.2026): je Slot, ob der Plan hier den
+    #: gemessenen Überschuss-Verbraucher aus der Last genommen hat und mit der
+    #: Grundlast rechnet
+    #: (:func:`voltpilot_optimization.ueberschuss_verbraucher.ohne_verbraucher`;
+    #: ``load_kw`` trägt die Grundlast schon). In einem solchen Slot, der lädt
+    #: und ``charge_from_surplus_only`` trägt, bekommt die Box die Last des
+    #: Plans als ``charge_hold_base_load_kw`` und hält die Ladung gegen den
+    #: Verbraucher. Leer = keine Erkennung, byte-identisch zu vorher, auch für
+    #: jeden Aufrufer, der seine Eingaben selbst baut.
+    ueberschuss_verbraucher: tuple[bool, ...] = ()
+    #: NS-2 A (Captain-Entscheid 15.10.2026): das Vorsprung-Budget dieser
+    #: Anlage in EUR - Monat und letzte 7 Tage mit Bestand nie tiefer als
+    #: ``-vorsprung_budget_eur`` unter dem sturen Speicher. Geprüft NACH dem
+    #: Lösen am fertigen Plan (:func:`voltpilot_optimization.vorsprung.mit_budget`):
+    #: wo der Plan es täte, fährt der Slot stur. ``None`` = Regel aus,
+    #: byte-identisch zu vorher, auch für jeden Aufrufer, der seine Eingaben
+    #: selbst baut.
+    vorsprung_budget_eur: float | None = None
+    #: Der gelesene Vorsprung (api, Tabelle ``steuerung_vorsprung``); ``None``
+    #: = nicht lesbar, zu alt oder Regel aus - dann gibt es kein Budget und der
+    #: Plan bleibt, wie er ist.
+    vorsprung: VorsprungStand | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -1034,6 +1105,10 @@ class OptimizationInput:
             series = getattr(self, name)
             if series is not None and len(series) != n:
                 raise ValueError(f"{name} must have one entry per slot ({n})")
+        if self.ueberschuss_verbraucher and len(self.ueberschuss_verbraucher) != n:
+            raise ValueError(
+                f"ueberschuss_verbraucher must be empty or have one entry per slot ({n})"
+            )
         if self.slot_minutes <= 0:
             raise ValueError("slot_minutes must be positive")
         if self.grid_limit_kw is not None and self.grid_limit_kw <= 0:
@@ -1358,6 +1433,19 @@ class PlanSlot:
     # ``charge_surplus_to_battery``): an executor duty, not presentation.
     # None/False = pre-feature behavior.
     charge_surplus_to_battery: bool | None = None
+    # ---- NS-3 B: Ladung gegen den Überschuss-Verbraucher halten (2026-10-16) --
+    # The load (kW) this slot's planned CHARGE was computed against, present
+    # only where the run detected a surplus-following consumer and took it out
+    # of the load (OptimizationInput.ueberschuss_verbraucher), the slot charges
+    # and carries charge_from_surplus_only. The edge then bounds its trim by
+    # pv - min(load, this value) instead of pv - load, so a consumer that
+    # regulates to zero export no longer takes the planned charge; a load above
+    # it that does not yield is caught by the edge's own import guard
+    # (edge-app/core/internal/guards/chargehold.go). Reaches the MQTT payload
+    # as the optional per-slot ``charge_hold_base_load_kw``; None = absent =
+    # the trim of before. NOT persisted: the slot's persisted load_kw IS this
+    # value, and slot_flags carries the reason ``ueberschuss_verbraucher``.
+    charge_hold_base_load_kw: float | None = None
 
     @property
     def pv_limit_kw(self) -> float | None:

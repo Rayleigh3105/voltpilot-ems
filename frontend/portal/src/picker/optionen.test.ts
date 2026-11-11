@@ -70,9 +70,12 @@ describe('die Suche ist tolerant - dieselbe wie die Modell-Suche', () => {
   });
 
   it('sagt ehrlich, wenn nichts passt - nie ein stiller leerer Bereich', () => {
-    const s = suche(ANLAGEN, 'huawei');
+    // 'sma' statt 'huawei': SMA ist weiterhin eine vollständig dokumentierte,
+    // aber nicht angebotene Marke (siehe catalog/control-profiles/README.md) -
+    // Huawei ist das seit vp-huawei-anbindung-w1 nicht mehr.
+    const s = suche(ANLAGEN, 'sma');
     expect(s.zeilen).toEqual([]);
-    expect(s.leer).toContain('huawei');
+    expect(s.leer).toContain('sma');
   });
 
   it('lässt den leeren Satz vom Aufrufer überschreiben', () => {

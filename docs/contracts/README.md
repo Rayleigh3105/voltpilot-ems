@@ -17,7 +17,12 @@ flowchart LR
 | v1-Telemetrie / Ereignis | [MQTT](mqtt-telemetry.schema.json), [telemetry.raw](telemetry-raw.event.schema.json) |
 | v1-Fahrplan | [mqtt-schedule](mqtt-schedule.schema.json) |
 | Status-Herzschlag: Steuerstand des Speichers | [Vertrag](speicher-steuerstand.md), [Vektoren](speicher-steuerstand-vectors.json) |
+| Status-Herzschlag: Ladequelle je Säule (Echo für „Box hat übernommen“) | [Vertrag](ladepunkt-quelle-echo.md), [Vektoren](ladepunkt-quelle-echo-vectors.json) |
+| Status-Herzschlag: Gerät der Box im Update-Block (Modell, Architektur, Edge-Light-Loader; Geräte & Updates G8) | [Vertrag](v2/box-geraet.md), [Vektoren](v2/box-geraet-vectors.json) |
+| Vorsprung mit Bestand je Anlage (api → Optimierer, Vorsprung-Budget NS-2 A) | [Vertrag](steuerung-vorsprung-v1.md), Tabelle `steuerung_vorsprung` |
+| Einspeisevergütung je eingespeister kWh: Angabe des Kunden über dem EEG-Satzplan (Optimierer, Erlöse, Karte im Portal) | [Vektoren](einspeiseverguetung-vectors.json), Spalte `site.einspeiseverguetung_ct_kwh`, Route `/api/v1/sites/{siteId}/einspeiseverguetung` |
 | Provisioning | [Hello-/Config-Vertrag](mqtt-provisioning.schema.json) |
+| Kennung einer Box (`edge-` + Prüfzeichen; Box, API und Portal) | [Vektoren](edge-ref-vectors.json) |
 | v2: Entitäten, Flows, Verbraucher und Messpunkte | [v2-Übersicht](v2/README.md) |
 | Energetische Bewertung (UEMS AP-16) | [Regeln](v2/bewertung.md), [Regel-Vektoren](v2/bewertung-vectors.json), [Messabdeckung Ahrenberg](v2/messabdeckung.json), [Schema](v2/bewertung.schema.json) |
 | Bezugsbasis einer Kennzahl (UEMS AP-17) | [Regeln](v2/bezugsbasis.md), [Regel-Vektoren](v2/bezugsbasis-vectors.json), [Schema](v2/bezugsbasis.schema.json) |
@@ -31,8 +36,19 @@ flowchart LR
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
 | OTA | [Manifest](ota-release-manifest.schema.json) mit [Vektoren je Box-Art](ota-release-manifest-vectors.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
 | Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |
+| Registerbild Erzeuger: Steuerung einer PV- oder BHKW-Anlage → Box (Modbus, nur lesen) | [Vertrag](v2/erzeuger-registerbild.md), [Vektoren](v2/erzeuger-registerbild-vectors.json), [Schema](v2/erzeuger-registerbild.schema.json); Energiekarten: [WAGO-Registerbild](v2/wago-registerbild.md) |
+| Box-Quelle der Anlagensteuerung: Registry-Treiber und Pin (UEMS EZ-21) | [Regel](v2/edge-entity.schema.json) `x-anlagensteuerung-driver-rule`, [Vektoren](v2/anlagensteuerung-quelle-vectors.json), Fähigkeit `anlagensteuerung_quelle` ([Herzschlag](v2/edge-supports.md)) |
 | Diagnose / Eingriff | [Probe](mqtt-probe.schema.json), [Registerauftrag](mqtt-register-write.schema.json), [Datenbereinigung](mqtt-data-purge.schema.json) |
-| Fernwartung | [Soll-Stand des Tunnel-Dienstes](fernwartung-soll-v1.example.json), Routen im OpenAPI-Tag `fernwartung`; [Schlüsselausgabe an die Box](fernwartung-schluessel-v1.md) mit [Vektor](fernwartung-schluessel-v1.example.txt) |
+| Gerätesuche: „Geräte suchen“ startet auf der Box einen lesenden Suchlauf im Heimnetz (Auftrag, Zwischenstand, Ergebnis; Routen im OpenAPI-Tag `geraetesuche`) | [Vertrag](v2/mqtt-geraetesuche.md), [Auftrag](v2/mqtt-geraetesuche.schema.json), [Zwischenstand](v2/mqtt-geraetesuche-stand.schema.json), [Ergebnis](v2/mqtt-geraetesuche-ergebnis.schema.json), [Vektoren](v2/geraetesuche-vectors.json); [Bereichsregel](lan-range-vectors.json) (Erweiterung von [lan-host](lan-host-vectors.json)); abgewiesene Ladesäulen im Herzschlag: [OCPP „klopft an“](ocpp-klopft-an.md) mit [Schema](ocpp-klopft-an.schema.json) und [Fällen](ocpp-klopft-an-vectors.json) |
+| Fernwartung | [Soll-Stand des Tunnel-Dienstes](fernwartung-soll-v1.example.json), Routen im OpenAPI-Tag `fernwartung`; [Schlüsselausgabe an die Box](fernwartung-schluessel-v1.md) mit [Vektor](fernwartung-schluessel-v1.example.txt); [Rückmeldung des Tunnel-Dienstes ans Portal](fernwartung-rueckmeldung-v1.md) mit [Vektor](fernwartung-rueckmeldung-v1.example.json) |
+| Werkstatt: Prüfungen der Werkstatt-Regel für die Abnahme einer Box (API und Portal) | [Vektor](werkstatt-pruefungen.json), Routen im OpenAPI-Tag `werkstatt`, [Werkstatt](../werkstatt.md) |
+| Werkstatt: Einlösen des Einmal-Codes durch die Box, festgehaltener Geräteschlüssel (D2) (API und Go-Core) | [Vertrag](werkstatt-einloesen-v1.md) mit [Vektoren](werkstatt-einloesen-vectors.json), Routen im OpenAPI-Tag `werkstatt-dienst` |
+| Plattform-Admin: eine nie gemeldete Box vom Kunden lösen (L1) - die Regel von `BoxLoesenRegel` | [Vektoren](box-loesen-vectors.json), Routen `/api/v1/admin/geraete/{ref}/loesen` |
+| Werkstatt: Ansicht des Werkstatt-Dienstes für die Werkstatt-Bildschirme (Dienst, API, Portal) | [Vertrag](werkstatt-ansicht-v1.md) mit [Vektor](werkstatt-ansicht-v1.example.json) und [Zuständen eines Laufs](werkstatt-ansicht-v1.zustaende.json) |
+| Werkstatt: Beschriftung des Gehäuses, Referenz und QR-Code mit dem Direktlink (Portal und Gehäuse-Programm) | [Vektor](werkstatt-beschriftung.json), [Gehäuse](../../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md) |
+| Heizstab über eine Shelly-Ausgangsmenge: Treiberblock `channels`/`output_kw`/`stages`, Entitätsbeschreibung mit Schreibfähigkeit, Stufen-Rücklesung, Herzschlag-Stufe, Probe `ausgaenge` und `nach_stromausfall_aus`, Handeingriff je Phase (`command.outputs`, Fähigkeit `heizstab_phasen`) | [Vertrag](v2/heizstab-shelly.md), [Vektoren Stufen](v2/heizstab-stufen-vectors.json), [Vektoren Push](v2/heizstab-push-vectors.json) |
+| Heizstab-Regler der Box: Parameterblock `heizstab` im Registry-Push, Stufe aus dem Überschuss mit Eigenlast, Vorrang zum Speicher, Herzschlag `consumers.{id}.heizstab`, Fähigkeit `heizstab_regler` | [Vertrag](v2/heizstab-regler.md), [Vektoren](v2/heizstab-regler-vectors.json) |
+| Generierte reaktive Verbraucherregel (`vp-consumer-policy`): Docker-Box in der Palette, Edge Light im Go-Zwilling, je Schritt derselbe Wunsch; Fähigkeit `verbraucherregeln` | [Flow-Artefakt](v2/flow-artifact.md), [Vektoren](v2/verbraucherregel-vectors.json), [Fähigkeit](v2/edge-supports.md) |
 | Beispiele | [v1-Fixtures](examples/README.md), [v2-Fixtures](v2/examples/README.md) |
 
 Die Dateien in diesem Verzeichnis sind die vollständige Schemaablage; die Tabelle gruppiert die wichtigsten Grenzen.

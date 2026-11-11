@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.erzeuger.AnlagensteuerungRepository;
 import com.voltpilot.api.profile.UsageProfileDeriver.Emphasis;
 import com.voltpilot.api.profile.UsageProfileDeriver.Signals;
 import com.voltpilot.api.repo.FlowRepository;
@@ -107,8 +108,9 @@ public class UsageProfileService {
      *
      * @param signals        die unveränderten AE7-Signale
      * @param hasMeasurement ≥ 1 Entität deklariert einen Messkanal
+     * @param hasAnlagensteuerung ≥ 1 Komponente vom Typ {@code anlagensteuerung} (UEMS EZ-6)
      */
-    record PlantSignals(Signals signals, boolean hasMeasurement) {}
+    record PlantSignals(Signals signals, boolean hasMeasurement, boolean hasAnlagensteuerung) {}
 
     PlantSignals plantSignals(UUID siteId, SiteDto site) {
         boolean hasStorage = false;
@@ -116,9 +118,13 @@ public class UsageProfileService {
         boolean hasControllableConsumer = false;
         boolean hasChargePoint = false;
         boolean hasMeasurement = false;
+        boolean hasAnlagensteuerung = false;
         for (EntityRegistryRepository.EntityRow row : entities.entitiesForSite(siteId)) {
             if (ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType())) {
                 hasChargePoint = true;
+            }
+            if (AnlagensteuerungRepository.ENTITY_TYPE.equals(row.entityType())) {
+                hasAnlagensteuerung = true;
             }
             EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
             String category = type == null ? "" : type.category();
@@ -141,7 +147,8 @@ public class UsageProfileService {
         }
         return new PlantSignals(new Signals(hasStorage, hasPv, hasControllableConsumer,
                 hasChargePoint, activeStrategyNodeTypes(siteId), site.plantKind(),
-                site.leistungspreisEurKw() != null, site.usageProfileOverride()), hasMeasurement);
+                site.leistungspreisEurKw() != null, site.usageProfileOverride()), hasMeasurement,
+                hasAnlagensteuerung);
     }
 
     /**

@@ -1,0 +1,8 @@
+# Umgebung und Werkzeuge: werden mit ./einrichten.sh angelegt (rund 2 GB)
+.venv/
+.werkzeug/
+# Alles Erzeugte: Druckdateien, Bilder, Prüfbericht (./bauen.sh). Eingecheckt
+# ist davon nur, was unter druck/ und docs/ liegt (gehaeuse/abgleich.py).
+aus/
+__pycache__/
+*.pyc

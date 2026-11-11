@@ -156,7 +156,9 @@ public class AdminFleetController {
             List<FleetBoxDto> boxDtos = siteBoxes.stream().map(box -> new FleetBoxDto(
                     box.deviceId(), box.externalRef(), box.name(),
                     leading == null ? null : leading.equals(box.deviceId()),
-                    box.lastSeenAt(), edgeDto(box.edge()), updateDto(box.update()), box.supports())).toList();
+                    box.lastSeenAt(), box.herzschlagAm(), box.messwertAm(),
+                    edgeDto(box.edge()), updateDto(box.update()), box.supports(),
+                    boxArt(box.edge(), box.update()), box.createdAt(), box.anmeldung())).toList();
             DeviceStats stats = deviceStats.get(id);
             int deviceCount = stats == null ? 0 : stats.deviceCount();
             int onlineCount = stats == null ? 0 : stats.onlineCount();
@@ -201,23 +203,38 @@ public class AdminFleetController {
                     feedIn,
                     siteForecast,
                     FleetPflege.flags(site.tarifArt(), batteryWithoutDevice, kwp, feedIn,
-                            siteForecast)));
+                            siteForecast),
+                    boxArt(version, ota)));
         }
         // Das Register reist als Ganzes mit (es ist klein und wird ohnehin je
         // Zeile GEBRAUCHT): der erste Eintrag ist der Soll-Stand, und ein
         // gemeldeter Stand lässt sich nur DARIN einordnen. Leer = kein Maßstab.
         List<AdminFleetDto.FleetReleaseDto> register = releases.stream()
-                .map(r -> new AdminFleetDto.FleetReleaseDto(r.releaseSeq(), r.version()))
+                .map(r -> new AdminFleetDto.FleetReleaseDto(r.releaseSeq(), r.version(), r.boxArt()))
                 .toList();
         return new AdminFleetDto(out, register, fleet.unterstuetzungBis(), fleet.unterstuetzungStandorte());
     }
 
-    private static FleetEdgeDto edgeDto(EdgeVersionRow version) {
+    /**
+     * Die Linie einer Box aus ihren beiden Meldungen ({@code ota.BoxArt}): das
+     * Apply-Backend und jeder Stempel. {@code null} = unbekannt, nie still Docker.
+     */
+    /** Package-sichtbar: auch {@code AdminGeraeteAkteController} bildet dieselbe Frage ab (L3). */
+    static String boxArt(EdgeVersionRow version, UpdateStatusRow update) {
+        return com.voltpilot.api.ota.BoxArt.ofDevice(update == null ? null : update.backend(),
+                update == null ? null : update.version(),
+                update == null ? null : update.currentVersion(),
+                version == null ? null : version.coreVersion());
+    }
+
+    /** Package-sichtbar, siehe {@link #boxArt}. */
+    static FleetEdgeDto edgeDto(EdgeVersionRow version) {
         return version == null ? null : new FleetEdgeDto(
                 version.coreVersion(), version.paletteVersion(), version.reportedAt());
     }
 
-    private static FleetUpdateDto updateDto(UpdateStatusRow update) {
+    /** Package-sichtbar, siehe {@link #boxArt}. */
+    static FleetUpdateDto updateDto(UpdateStatusRow update) {
         return update == null ? null : new FleetUpdateDto(
                 update.version(), update.backend(), update.currentVersion(), update.targetVersion(),
                 update.state(), update.reason(), update.lastKnownGood(), update.reportedAt());

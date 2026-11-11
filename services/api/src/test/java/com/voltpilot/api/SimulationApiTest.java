@@ -14,9 +14,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpEntity;
@@ -44,6 +45,7 @@ import org.testcontainers.utility.DockerImageName;
  * and the service's German refusals (400/429) are relayed verbatim.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class SimulationApiTest {
@@ -170,6 +172,51 @@ class SimulationApiTest {
         assertThat(status.getBody().get("status")).isEqualTo("done");
         assertThat(cast(cast(status.getBody().get("result")).get("headline"))
                 .get("gesamtVorteilEur")).isEqualTo(364.0);
+    }
+
+    /**
+     * Die Ersparnis-Simulation bewertet die Einspeisung wie der laufende
+     * Optimierer: mit der Angabe der Anlage, wenn es eine gibt (pricing.py liest
+     * sie als Ebene über der EEG-Herleitung), sonst ohne das Feld - dann leitet
+     * der Dienst aus dem Inbetriebnahmedatum her wie bisher.
+     */
+    @Test
+    void customerSimulationCarriesTheStatedEinspeiseverguetung() {
+        String token = token("demo", "demo");
+        String karte = "/api/v1/sites/" + BERLIN_SITE + "/einspeiseverguetung";
+        String simulation = "/api/v1/sites/" + BERLIN_SITE + "/simulation";
+        // Die Demo-Anlage hat kein Inbetriebnahmedatum: die Angabe trägt dann die
+        // Antwort zu § 51a mit (hier: in Betrieb ab dem 25.02.2025).
+        assertThat(exchange(karte, HttpMethod.PUT, token,
+                Map.of("satzCtKwh", 11.5, "inbetriebnahmeAbSolarspitzengesetz", true))
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        try {
+            assertThat(exchange(simulation, HttpMethod.POST, token, Map.of()).getStatusCode())
+                    .isEqualTo(HttpStatus.ACCEPTED);
+            Map<String, Object> tariff = cast(fake.submitted.get(fake.submitted.size() - 1)
+                    .get("tariff"));
+            assertThat(((Number) tariff.get("einspeiseverguetungCtKwh")).doubleValue())
+                    .isEqualTo(11.5);
+            assertThat(tariff.get("inbetriebnahmeAbSolarspitzengesetz")).isEqualTo(true);
+
+            // Ein Was-wäre-wenn im Body gewinnt über die Angabe der Anlage.
+            assertThat(exchange(simulation, HttpMethod.POST, token,
+                    Map.of("tariff", Map.of("einspeiseverguetungCtKwh", 7.0))).getStatusCode())
+                    .isEqualTo(HttpStatus.ACCEPTED);
+            tariff = cast(fake.submitted.get(fake.submitted.size() - 1).get("tariff"));
+            assertThat(((Number) tariff.get("einspeiseverguetungCtKwh")).doubleValue())
+                    .isEqualTo(7.0);
+        } finally {
+            Map<String, Object> zurueck = new java.util.HashMap<>();
+            zurueck.put("satzCtKwh", null);
+            assertThat(exchange(karte, HttpMethod.PUT, token, zurueck).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+        }
+        assertThat(exchange(simulation, HttpMethod.POST, token, Map.of()).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(cast(fake.submitted.get(fake.submitted.size() - 1).get("tariff")))
+                .doesNotContainKey("einspeiseverguetungCtKwh")
+                .doesNotContainKey("inbetriebnahmeAbSolarspitzengesetz");
     }
 
     @Test

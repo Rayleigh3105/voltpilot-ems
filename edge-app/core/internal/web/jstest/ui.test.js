@@ -149,7 +149,10 @@ test("status: a healthy plant says so and names what makes it healthy", () => {
 
 test("status: EVERY problem verdict carries a plain-German cause", () => {
   const cases = [
-    ["no inverter", { ...HEALTHY, inverter: null }],
+    ["no device, not coupled", { pairing_state: "warte_auf_beanspruchung", cloud_connected: false }],
+    ["no device, coupled", { pairing_state: "verbunden", cloud_connected: true }],
+    ["measuring, not coupled", { ...HEALTHY, pairing_state: "warte_auf_beanspruchung", cloud_connected: false }],
+    ["meter only, never delivered", { ...HEALTHY, inverter: null, last_telemetry: undefined, topology: { nodes: [{ id: "z" }] } }],
     ["never delivered", { ...HEALTHY, last_telemetry: undefined }],
     ["stale data", { ...HEALTHY, last_telemetry: iso(600) }],
     ["portal unreachable", { ...HEALTHY, pairing_state: "portal_nicht_erreichbar" }],
@@ -170,6 +173,54 @@ test("status: EVERY problem verdict carries a plain-German cause", () => {
     assert.ok(v.cause && v.cause.length > 20, `${name}: must name a cause, got ${JSON.stringify(v.cause)}`);
     assert.ok(v.title && v.title.length > 0, `${name}: must have a headline`);
   }
+});
+
+// Coupling comes first: a fresh box names what is MISSING - the coupling, then
+// a device - and never demands an inverter. Any device counts.
+test("status: a box without a device asks for the coupling, never for an inverter", () => {
+  const fresh = statusFor({ pairing_state: "warte_auf_beanspruchung", cloud_connected: false });
+  assert.strictEqual(fresh.title, "Noch nicht mit dem Portal gekoppelt");
+  assert.strictEqual(fresh.detail, "Noch kein Gerät eingerichtet.");
+  assert.match(fresh.cause, /Referenz-ID steht unter „Einrichten“/);
+  assert.match(fresh.cause, /im VoltPilot-Portal/);
+
+  const coupled = statusFor({ pairing_state: "verbunden", cloud_connected: true });
+  assert.strictEqual(coupled.title, "Noch kein Gerät eingerichtet");
+  assert.match(coupled.cause, /im VoltPilot-Portal an/);
+
+  for (const v of [fresh, coupled]) {
+    assert.doesNotMatch(v.title + v.detail + v.cause, /kein Wechselrichter|Ohne (ihn|Wechselrichter)/,
+      "no device type is a prerequisite");
+  }
+});
+
+test("status: any device counts - meter, own device, charge point, portal device", () => {
+  const VP = load(["status.js"]).VPStatus;
+  const bare = { pairing_state: "verbunden", cloud_connected: true };
+  assert.strictEqual(VP.hasDevice(bare, 0), false);
+  assert.strictEqual(VP.hasDevice(bare, 2), true, "a further source or own device");
+  assert.strictEqual(VP.hasDevice({ ...bare, ocpp: { chargers: [{ id: "s1" }] } }, 0), true);
+  assert.strictEqual(VP.hasDevice({ ...bare, topology: { nodes: [{ id: "n" }] } }, 0), true);
+  assert.strictEqual(VP.hasDevice({ ...bare, last_telemetry: iso(5) }, 0), true);
+
+  // A meter-only plant that delivers is healthy - no inverter is missing.
+  const meter = VP.derive({ ...bare, last_telemetry: iso(5) }, NOW, 1);
+  assert.strictEqual(meter.tone, "ok");
+
+  // A charge park meters only while charging: no reading is its normal state.
+  const park = VP.derive({ ...bare, ocpp: { chargers: [{ id: "s1" }] } }, NOW, 0);
+  assert.strictEqual(park.tone, "ok");
+
+  // A further source that is silent waits for its first reading.
+  const silent = VP.derive(bare, NOW, 1);
+  assert.strictEqual(silent.title, "Warte auf die ersten Messwerte");
+  assert.doesNotMatch(silent.cause, /Wechselrichter/);
+});
+
+test("status: a measuring box that is not coupled yet names the coupling", () => {
+  const v = statusFor({ ...HEALTHY, pairing_state: "warte_auf_beanspruchung", cloud_connected: false });
+  assert.strictEqual(v.title, "Noch nicht mit dem Portal gekoppelt");
+  assert.strictEqual(v.detail, "Die Anlage läuft und misst weiter.");
 });
 
 test("status: a blocked control plan repeats the core's own reason verbatim", () => {
@@ -367,6 +418,35 @@ test("control: the limiting direction says so, and names the giveaway as the cau
     "limiting must not borrow the raising direction's cause: " + d.text);
   assert.ok(!/nicht übernommen|Abweichung/.test(d.text),
     "a correction must never read as a failed write: " + d.text);
+});
+
+test("control: while the hold makes a deficit wait, the follow line says so instead of naming a consumption it does not follow", () => {
+  // Covering slot on a PV surplus, a consumer switches on (2026-10-13): the
+  // forecast discharge stays limited to 0 until the deficit has stood 60 s.
+  const d = followFor({
+    follow: { active: true, direction: "reduce", planned_kw: -1.0, deficit_kw: 2.14 },
+    deficit_hold: { active: true, since: "2026-10-13T15:03:00Z", hold_s: 60 },
+  });
+  assert.ok(d, "the correction still produces a reason line");
+  assert.match(d.text, /60 Sekunden/, "it names the wait: " + d.text);
+  assert.match(d.text, /2,1 kW/, "and what the house draws: " + d.text);
+  assert.match(d.text, /erst angehoben/, "and that the discharge is not raised yet: " + d.text);
+  assert.ok(!/Folgt dem gemessenen Hausverbrauch|Entladung begrenzt|Entladung angehoben/.test(d.text),
+    "it must not claim to follow or to have raised: " + d.text);
+  assert.match(d.text, /bewusste Nachführung/, "and that it is deliberate: " + d.text);
+  // The same while a running cover keeps its level through an unproven step.
+  const kept = followFor({
+    follow: { active: true, direction: "deepen", planned_kw: -1.5, deficit_kw: 3.0 },
+    deficit_hold: { active: true, hold_s: 60 },
+  });
+  assert.match(kept.text, /erst angehoben/, kept.text);
+  assert.ok(!/Entladung angehoben/.test(kept.text), "nothing was raised: " + kept.text);
+  // Without the hold block the two established lines are untouched.
+  const plain = followFor({
+    follow: { active: true, direction: "reduce", planned_kw: -6.7, deficit_kw: 5.1 },
+    deficit_hold: null,
+  });
+  assert.match(plain.text, /Entladung begrenzt/, plain.text);
 });
 
 test("control: an unknown direction claims none", () => {
@@ -777,44 +857,55 @@ function stepsFor(state, sourceCount) {
   return load(["commissioning.js"]).VPCommissioning.derive(state, sourceCount || 0, NOW);
 }
 
-test("commissioning: a fresh device out of the box", () => {
+test("commissioning: a fresh device out of the box couples FIRST", () => {
   // Exactly what /api/state reports on a device that has just booted: nothing
-  // configured, nothing delivered, the reference still withheld server-side.
+  // configured, nothing delivered - and the reference already in the envelope.
   const res = stepsFor({
     pairing_state: "warte_auf_beanspruchung",
     cloud_connected: false,
     inverter: null,
     inverter_link: "",
-    claim_unlocked: false
+    ref: "edge-k7m2xq3"
   });
-  const [inv, src, portal, mess] = res.steps;
+  assert.strictEqual(res.steps.length, 3);
+  const [portal, geraete, mess] = res.steps;
 
-  assert.strictEqual(inv.state, "todo");
-  assert.ok(inv.cause.includes("keine Messwerte"), inv.cause);
-  assert.ok(inv.action && inv.action.href === "#wechselrichter");
+  assert.strictEqual(portal.key, "portal");
+  assert.strictEqual(portal.title, "Mit dem Portal koppeln");
+  assert.strictEqual(portal.state, "active", "coupling is never locked");
+  assert.match(portal.cause, /noch keiner Anlage zugeordnet/);
+  assert.match(geraete.cause, /Nach der Kopplung legen Sie die Geräte im VoltPilot-Portal an/,
+    "after coupling, the portal does the rest");
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(portal.action)),
+    { label: "Zur Kopplung", href: "#portal", ghost: false });
 
-  assert.strictEqual(src.state, "todo", "sources cannot be judged before the inverter works");
-
-  assert.strictEqual(portal.state, "todo");
-  assert.ok(portal.cause.includes("Referenz-ID"), "the lock must explain WHY it is locked");
-  assert.strictEqual(portal.action, null, "a locked step offers no shortcut past the gate");
+  assert.strictEqual(geraete.key, "geraete");
+  assert.strictEqual(geraete.title, "Geräte einrichten");
+  assert.strictEqual(geraete.state, "todo");
+  assert.match(geraete.cause, /Kein Gerät muss vorher verbunden sein/);
+  assert.ok(geraete.action && geraete.action.href === "#anlage" && geraete.action.ghost,
+    "local setup stays available, but it is not the lead");
 
   assert.strictEqual(mess.state, "todo");
   assert.strictEqual(res.doneCount, 0);
   assert.strictEqual(res.activeNum, 1);
   assert.strictEqual(res.allDone, false);
+  for (const st of res.steps) {
+    assert.doesNotMatch(st.title + st.detail + st.cause, /Wechselrichter verbinden|Erst den Wechselrichter|gesperrt/,
+      `${st.key}: no device type is a prerequisite`);
+  }
 });
 
 test("commissioning: the progress counter names the OPEN step, not done+1", () => {
-  // Inverter + sources + measurements fine, only the portal claim is missing:
-  // three of four are done, but the step the operator must act on is 3.
+  // Inverter + measurements fine, only the portal coupling is missing: two of
+  // three are done, but the step the operator must act on is 1.
   const res = stepsFor({
     pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
     inverter: { configured: true, label: "Deye" }, inverter_link: "up",
-    last_telemetry: iso(6), claim_unlocked: true
+    last_telemetry: iso(6)
   }, 2);
-  assert.strictEqual(res.doneCount, 3);
-  assert.strictEqual(res.activeNum, 3, "'Schritt 4 von 4' while step 3 is open would be a lie");
+  assert.strictEqual(res.doneCount, 2);
+  assert.strictEqual(res.activeNum, 1, "'Schritt 3 von 3' while step 1 is open would be a lie");
   assert.strictEqual(res.allDone, false);
 });
 
@@ -824,69 +915,78 @@ test("commissioning: a fully configured, running plant is all done and recedes",
     cloud_connected: true,
     inverter: { configured: true, label: "Deye SUN-30K" },
     inverter_link: "up",
-    last_telemetry: iso(4),
-    claim_unlocked: true
+    last_telemetry: iso(4)
   }, 3);
-  const [inv, src, portal, mess] = res.steps;
+  const [portal, geraete, mess] = res.steps;
 
-  assert.strictEqual(inv.state, "done");
-  assert.ok(inv.detail.includes("Deye SUN-30K"));
-  assert.strictEqual(src.state, "done");
-  assert.ok(src.detail.includes("3"), src.detail);
   assert.strictEqual(portal.state, "done");
+  assert.strictEqual(geraete.state, "done");
+  assert.ok(geraete.detail.includes("Deye SUN-30K"), geraete.detail);
+  assert.ok(geraete.detail.includes("3 weitere Quellen"), geraete.detail);
   assert.strictEqual(mess.state, "done");
 
-  assert.strictEqual(res.doneCount, 4);
+  assert.strictEqual(res.doneCount, 3);
   assert.strictEqual(res.activeNum, null);
-  assert.strictEqual(res.allDone, true, "all four done -> the block recedes to one green line");
+  assert.strictEqual(res.allDone, true, "all three done -> the block recedes");
   for (const s of res.steps) {
     assert.strictEqual(s.cause, "", `${s.key}: a done step must not nag`);
   }
 });
 
-test("commissioning: a single-inverter plant needs no sources and is NOT blocked by it", () => {
-  const res = stepsFor({
-    pairing_state: "verbunden", cloud_connected: true,
-    inverter: { configured: true, label: "Fronius Eco" }, inverter_link: "up",
-    last_telemetry: iso(10), claim_unlocked: true
-  }, 0);
-  assert.strictEqual(res.steps[1].state, "done");
-  assert.ok(res.steps[1].cause.includes("Normalfall"), "it must say why zero is fine");
-  assert.strictEqual(res.allDone, true);
+test("commissioning: any device completes step 2 - none is a prerequisite", () => {
+  const coupled = { pairing_state: "verbunden", cloud_connected: true };
+  // A single inverter needs no further source.
+  assert.strictEqual(stepsFor({ ...coupled, inverter: { configured: true, label: "Fronius Eco" },
+    last_telemetry: iso(10) }, 0).allDone, true);
+  // A meter-only plant (a further source, no inverter) is set up and done.
+  const meter = stepsFor({ ...coupled, last_telemetry: iso(10) }, 1);
+  assert.strictEqual(meter.steps[1].state, "done");
+  assert.strictEqual(meter.steps[1].detail, "1 weitere Quelle.");
+  assert.strictEqual(meter.allDone, true);
+  // Coupled, nothing set up: step 2 points to the portal, the box offers it too.
+  const empty = stepsFor(coupled, 0);
+  assert.strictEqual(empty.steps[1].state, "active");
+  assert.match(empty.steps[1].cause, /im VoltPilot-Portal an/);
+  assert.strictEqual(empty.activeNum, 2);
 });
 
 test("commissioning: the honest in-between states name their cause", () => {
-  // Inverter configured but silent -> step 1 active, and the portal step stays
-  // locked because the SERVER withheld the reference (claim_unlocked=false).
+  // Inverter configured but silent -> the coupling is still open (step 1) and
+  // step 3 says why no value comes. Nothing is locked.
   const silent = stepsFor({
     pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
-    inverter: { configured: true, label: "Deye SUN-30K" }, inverter_link: "down",
-    claim_unlocked: false
+    inverter: { configured: true, label: "Deye SUN-30K" }, inverter_link: "down"
   });
   assert.strictEqual(silent.steps[0].state, "active");
-  assert.ok(silent.steps[0].cause.includes("antwortet nicht"), silent.steps[0].cause);
-  assert.strictEqual(silent.steps[2].state, "todo");
+  assert.strictEqual(silent.steps[1].state, "done");
+  assert.strictEqual(silent.steps[2].state, "active");
+  assert.ok(silent.steps[2].cause.includes("antwortet nicht"), silent.steps[2].cause);
 
-  // Claimed, delivering, but the data went stale -> step 4 is BLOCKED and says
+  // Claimed, delivering, but the data went stale -> step 3 is BLOCKED and says
   // how long ago the last value came.
   const stale = stepsFor({
     pairing_state: "verbunden", cloud_connected: true,
     inverter: { configured: true, label: "Deye" }, inverter_link: "up",
-    last_telemetry: iso(3 * 3600), claim_unlocked: true
+    last_telemetry: iso(3 * 3600)
   }, 1);
-  assert.strictEqual(stale.steps[3].state, "blocked");
-  assert.ok(stale.steps[3].cause.includes("Stunden"), stale.steps[3].cause);
+  assert.strictEqual(stale.steps[2].state, "blocked");
+  assert.ok(stale.steps[2].cause.includes("Stunden"), stale.steps[2].cause);
   assert.strictEqual(stale.allDone, false);
 
-  // Claimed but the cloud link dropped -> step 3 is active with the reason,
+  // Claimed but the cloud link dropped -> step 1 is active with the reason,
   // never a silent green tick.
   const offline = stepsFor({
     pairing_state: "cloud_getrennt", cloud_connected: false,
     inverter: { configured: true, label: "Deye" }, inverter_link: "up",
-    last_telemetry: iso(5), claim_unlocked: true
+    last_telemetry: iso(5)
   }, 1);
-  assert.strictEqual(offline.steps[2].state, "active");
-  assert.ok(offline.steps[2].cause.length > 20);
+  assert.strictEqual(offline.steps[0].state, "active");
+  assert.ok(offline.steps[0].cause.length > 20);
+
+  // Removed in the portal: the coupling step re-opens, whatever is connected.
+  const removed = stepsFor({ pairing_state: "geraet_entfernt", cloud_connected: false }, 0);
+  assert.strictEqual(removed.steps[0].state, "active");
+  assert.strictEqual(removed.steps[0].detail, "Referenz-ID im Portal eintragen.");
 });
 
 /* ============ groups.js: the four Einrichten accordion groups ============ */
@@ -1027,6 +1127,16 @@ test("groups: die Kopfzeile ZÄHLT eigene Geräte, lässt sie aber aus dem Liefe
   assert.ok(!/eigene?s? Gerät/.test(vorher.text), vorher.text);
 });
 
+test("groups: die Adresse einer Anlagensteuerung ist kein Erzeuger und wartet auf nichts (EZ-21)", () => {
+  const G = groupsApi();
+  const steuerung = { id: "src-2hv35pcn", role: "plant-controller", label: "Anlagensteuerung", capacity_kwp: 0 };
+  // Sie liefert nie über die Quellen-Lesung (ihr Bild liest der Messplan), ihr Status bleibt also "pending".
+  const sum = G.anlageSummary(G_STATE, G_SOURCES.concat([steuerung]), { ...G_OK, "src-2hv35pcn": "pending" }, NOW);
+  assert.strictEqual(sum.text, G.anlageSummary(G_STATE, G_SOURCES, G_OK, NOW).text);
+  assert.strictEqual(sum.tone, "ok");
+  assert.match(sum.text, /2 Erzeuger/);
+});
+
 test("groups: a source that stops delivering turns Anlage amber and opens it ONCE", () => {
   const G = groupsApi();
   const warn = G.anlageSummary(G_STATE, G_SOURCES, { s1: "ok", s2: "warn" }, NOW);
@@ -1045,6 +1155,30 @@ test("groups: a source that stops delivering turns Anlage amber and opens it ONC
   const staleInv = G.anlageSummary({ ...G_STATE, last_telemetry: iso(600) }, [], {}, NOW);
   assert.strictEqual(staleInv.tone, "warn");
   assert.ok(staleInv.problemKey);
+});
+
+test("groups: die Anlage-Zeile verlangt keinen Wechselrichter - jedes Gerät zählt", () => {
+  const G = groupsApi();
+  const leer = { server_now_ms: NOW, pairing_state: "warte_auf_beanspruchung" };
+  const nichts = G.anlageSummary(leer, [], {}, NOW);
+  assert.strictEqual(nichts.text, "Noch kein Gerät eingerichtet");
+  assert.strictEqual(nichts.tone, "off");
+  assert.strictEqual(nichts.problemKey, null);
+
+  // Nur ein Netz-Zähler, kein Wechselrichter: die Zeile nennt ihn und urteilt
+  // über seine Lieferung.
+  const zaehler = [{ id: "z1", role: "grid-meter", label: "Netz-Zähler" }];
+  const nurZaehler = G.anlageSummary(leer, zaehler, { z1: "ok" }, NOW);
+  assert.strictEqual(nurZaehler.text, "Netz-Zähler · alle liefern");
+  assert.strictEqual(nurZaehler.tone, "ok");
+
+  // Ein Ladepark: die Säulen werden genannt, geurteilt wird in ihrer Gruppe.
+  const park = G.anlageSummary({ ...leer, ocpp: { chargers: [{ id: "s1" }, { id: "s2" }] } }, [], {}, NOW);
+  assert.strictEqual(park.text, "2 Ladesäulen");
+  assert.strictEqual(park.tone, "off");
+
+  // Die Steuerung ohne Wechselrichter: eine Tatsache, keine Aufforderung.
+  assert.doesNotMatch(G.steuerungSummary(leer).text, /Zuerst/);
 });
 
 test("groups: waiting for first data is calm - never an alarm, never auto-open", () => {
@@ -2083,6 +2217,9 @@ test("a charging row says the state first, and a waiting one says WHY", () => {
     "wartet");
 
   assert.strictEqual(O.connectorLine({ charging: false, status: "Available" }, now), "frei");
+  // Auto steckt ohne Ladevorgang: der Satz der Box mit dem Ausweg, kein nacktes „SuspendedEVSE".
+  const ohne = "Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.";
+  assert.strictEqual(O.connectorLine({ charging: false, status: "SuspendedEVSE", reason: "kein_ladevorgang", reason_text: ohne }, now), ohne);
   assert.strictEqual(O.connectorLine(null, now), "");
 });
 
@@ -2266,20 +2403,24 @@ function stepsPortal(state, sourceCount) {
 test("commissioning: eine portal-verwaltete Anlage legt Geräte im PORTAL an", () => {
   // Befund L6: der Flow versprach hier "Erzeuger & Zähler erfassen ... werden
   // hier nachgetragen" - auf einer Anlage, deren Anlege-Knöpfe alle ausgeblendet
-  // sind. Konzept vp-komponenten-einheit-h2 §4.3: "2 · Geräte im PORTAL anlegen".
-  const res = stepsPortal({
+  // sind. Konzept vp-komponenten-einheit-h2 §4.3: "Geräte im PORTAL anlegen".
+  const leer = stepsPortal({ pairing_state: "verbunden", cloud_connected: true }, 0);
+  const two = leer.steps[1];
+  assert.strictEqual(two.title, "Geräte im Portal anlegen");
+  assert.strictEqual(two.state, "active");
+  assert.match(two.cause, /im VoltPilot-Portal angelegt/);
+  assert.doesNotMatch(two.cause, /hier nachgetragen|hier auf der Box/,
+    "eine Anlage ohne Anlege-Knopf darf nicht behaupten, hier werde etwas eingerichtet");
+  assert.strictEqual(two.action, null, "kein Knopf für eine Handlung, die gesperrt ist");
+
+  // Sehen bleibt lokal - der Anker zeigt auf die Anlage-Gruppe.
+  const laeuft = stepsPortal({
     pairing_state: "verbunden", cloud_connected: true,
     inverter: { configured: true, label: "Deye SUN-30K" }, inverter_link: "up",
-    last_telemetry: iso(4), claim_unlocked: true
+    last_telemetry: iso(4)
   }, 0);
-  const two = res.steps[1];
-  assert.strictEqual(two.title, "Geräte im Portal anlegen");
-  assert.match(two.cause, /im VoltPilot-Portal angelegt/);
-  assert.doesNotMatch(two.cause, /hier nachgetragen/,
-    "eine Anlage ohne Anlege-Knopf darf nicht behaupten, hier werde etwas nachgetragen");
-  assert.strictEqual(two.action.label, "Geräte ansehen");
-  // Sehen bleibt lokal - der Anker zeigt weiter auf die Quellen-Gruppe.
-  assert.strictEqual(two.action.href, "#quellen");
+  assert.strictEqual(laeuft.steps[1].action.label, "Geräte ansehen");
+  assert.strictEqual(laeuft.steps[1].action.href, "#anlage");
 });
 
 test("commissioning: portal-verwaltet zählt den GEMELDETEN Bestand", () => {
@@ -2288,77 +2429,57 @@ test("commissioning: portal-verwaltet zählt den GEMELDETEN Bestand", () => {
   const res = stepsPortal({
     pairing_state: "verbunden", cloud_connected: true,
     inverter: { configured: true, label: "Deye" }, inverter_link: "up",
-    last_telemetry: iso(4), claim_unlocked: true
+    last_telemetry: iso(4)
   }, 2);
   const two = res.steps[1];
   assert.strictEqual(two.state, "done");
-  assert.match(two.detail, /2 weitere Geräte aus dem Portal/);
+  assert.match(two.detail, /2 weitere Geräte – aus dem Portal/);
   assert.strictEqual(two.cause, "", "ein erledigter Schritt nörgelt nicht");
-});
-
-test("commissioning: portal-verwaltet verspricht kein Auswählen und kein Ändern", () => {
-  // Ohne Wechselrichter gibt es hier NICHTS zu tun: "Wechselrichter auswählen"
-  // führte auf einen Knopf, den setPortalManaged ausblendet.
-  const leer = stepsPortal({
-    pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
-    inverter: null, claim_unlocked: false
-  }, 0);
-  const one = leer.steps[0];
-  assert.strictEqual(one.state, "todo");
-  assert.strictEqual(one.action, null, "kein Knopf für eine Handlung, die gesperrt ist");
-  assert.match(one.cause, /im VoltPilot-Portal angelegt/);
-
-  // Und ein laufender Wechselrichter wird ANGESEHEN, nicht geändert.
-  const laeuft = stepsPortal({
-    pairing_state: "verbunden", cloud_connected: true,
-    inverter: { configured: true, label: "Deye" }, inverter_link: "up",
-    last_telemetry: iso(4), claim_unlocked: true
-  }, 1);
-  assert.strictEqual(laeuft.steps[0].action.label, "Gerät ansehen");
 });
 
 test("commissioning: portal-verwaltet bietet den Verbindungstest weiter an", () => {
   // Der Test ist LOKAL und ändert nichts - er bleibt deshalb der eine Weg, den
-  // Schritt 1 auf einer stummen portal-verwalteten Anlage anbietet. Möglich ist
+  // Schritt 3 auf einer stummen portal-verwalteten Anlage anbietet. Möglich ist
   // das erst, seit die Taste an der ZEILE sitzt (inverter.js invRowTestBtn) und
   // nicht mehr im ausgeblendeten Bearbeiten-Formular.
   const stumm = stepsPortal({
     pairing_state: "verbunden", cloud_connected: true,
-    inverter: { configured: true, label: "Deye" }, inverter_link: "down",
-    claim_unlocked: true
+    inverter: { configured: true, label: "Deye" }, inverter_link: "down"
   }, 0);
-  const one = stumm.steps[0];
-  assert.strictEqual(one.state, "active");
-  assert.strictEqual(one.action.label, "Verbindung prüfen");
-  assert.strictEqual(one.action.href, "#wechselrichter");
+  const three = stumm.steps[2];
+  assert.strictEqual(three.state, "active");
+  assert.strictEqual(three.action.label, "Verbindung prüfen");
+  assert.strictEqual(three.action.href, "#wechselrichter");
 });
 
-test("commissioning: ohne portal_managed ändert sich KEIN Wort", () => {
-  // Der Wächter gegen eine schleichende Verschlechterung jeder box-verwalteten
-  // Bestandsbox: derselbe Zustand, einmal mit dem alten Drei-Argument-Aufruf und
-  // einmal mit dem neuen vierten Argument auf false.
+test("commissioning: ohne portal_managed ändert sich nur Schritt 2", () => {
+  // Derselbe Zustand, einmal mit dem Drei-Argument-Aufruf und einmal mit dem
+  // vierten Argument auf false: kein Wort anders.
   const base = {
     pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
     inverter: { configured: true, label: "Deye" }, inverter_link: "up",
-    last_telemetry: iso(6), claim_unlocked: true
+    last_telemetry: iso(6)
   };
   const alt = JSON.parse(JSON.stringify(stepsFor(base, 2).steps));
   const neu = JSON.parse(JSON.stringify(
     load(["commissioning.js"]).VPCommissioning.derive(base, 2, NOW, false).steps));
   assert.deepStrictEqual(neu, alt);
-  assert.strictEqual(alt[1].title, "Erzeuger & Zähler erfassen");
-  assert.match(alt[1].action.label, /Quellen ansehen/);
+  assert.strictEqual(alt[1].title, "Geräte einrichten");
+  assert.strictEqual(alt[1].detail, "Deye · 2 weitere Quellen.");
+  // Box-verwaltet und leer: die Box bietet das Einrichten an, ohne zu führen.
+  const leer = stepsFor({ pairing_state: "verbunden", cloud_connected: true }, 0).steps[1];
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(leer.action)),
+    { label: "Hier auf der Box einrichten", href: "#anlage", ghost: true });
 });
 
 /* ====== commissioning.js: der Ladepark hat keinen Wechselrichter ====== */
 
 test("commissioning: eine Anlage NUR aus Ladepunkten wird trotzdem geführt", () => {
-  // Vor Stufe 3 hing Schritt 1 am Wechselrichter — eine Ladepark-Box wäre für
-  // immer auf "Noch kein Wechselrichter ausgewählt" stehen geblieben, obwohl
-  // ihre tragende Komponente längst Autos lädt.
+  // Eine Ladepark-Box hat keinen Wechselrichter - ihre Säulen SIND die Geräte,
+  // und ihre Messwerte kommen aus den Säulen selbst.
   const res = stepsFor({
     pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
-    inverter: null, claim_unlocked: true, charge_point_connected: true,
+    inverter: null, charge_point_connected: true,
     ocpp: {
       chargers: [
         { id: "saeule-1", connected: true, last_seen_ms: NOW,
@@ -2367,14 +2488,12 @@ test("commissioning: eine Anlage NUR aus Ladepunkten wird trotzdem geführt", ()
       ]
     }
   });
-  const [one, , portal, mess] = res.steps;
-  assert.strictEqual(one.title, "Ladepunkt verbinden");
-  assert.strictEqual(one.state, "done");
-  assert.match(one.detail, /2 Ladesäulen/);
-  assert.strictEqual(one.action.href, "#ladepunkte");
-  // Der Portal-Schritt ist der offene, nicht Schritt 1.
+  const [portal, geraete, mess] = res.steps;
+  // Der Portal-Schritt ist der offene.
   assert.strictEqual(portal.state, "active");
-  assert.strictEqual(res.activeNum, 3);
+  assert.strictEqual(res.activeNum, 1);
+  assert.strictEqual(geraete.state, "done");
+  assert.match(geraete.detail, /2 Ladesäulen/);
   // Messwerte kommen aus den Säulen — `last_telemetry` bliebe hier für immer
   // leer, und "noch keine Messwerte" wäre die falscheste aller Aussagen.
   assert.strictEqual(mess.state, "done");
@@ -2384,17 +2503,16 @@ test("commissioning: eine Anlage NUR aus Ladepunkten wird trotzdem geführt", ()
 test("commissioning: eine eingetragene, aber stumme Säule ist NICHT verbunden", () => {
   const res = stepsFor({
     pairing_state: "warte_auf_beanspruchung", inverter: null,
-    claim_unlocked: false, charge_point_connected: false,
+    charge_point_connected: false,
     ocpp: { chargers: [{ id: "saeule-1", connectors: [] }] }
   });
-  const [one, , portal, mess] = res.steps;
-  assert.strictEqual(one.title, "Ladepunkt verbinden");
-  assert.strictEqual(one.state, "active");
+  const [portal, geraete, mess] = res.steps;
+  assert.strictEqual(portal.state, "active", "die Kopplung wartet auf keine Säule");
+  assert.strictEqual(geraete.state, "done");
+  assert.strictEqual(mess.state, "active");
   // Der Grund NENNT den Weg: die Säule wählt uns an, nicht umgekehrt.
-  assert.match(one.cause, /wählt dieses Gerät selbst an/);
-  assert.strictEqual(portal.state, "todo");
-  assert.match(portal.cause, /Ladesäule/);
-  assert.strictEqual(mess.state, "todo");
+  assert.match(mess.cause, /wählt dieses Gerät selbst an/);
+  assert.strictEqual(mess.action.href, "#ladepunkte");
 });
 
 test("commissioning: ohne Ladepunkte ändert sich KEIN Wort", () => {
@@ -2403,7 +2521,7 @@ test("commissioning: ohne Ladepunkte ändert sich KEIN Wort", () => {
   const base = {
     pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
     inverter: { configured: true, label: "Deye" }, inverter_link: "up",
-    last_telemetry: iso(6), claim_unlocked: true
+    last_telemetry: iso(6)
   };
   // JSON-Rundlauf: `load()` baut je Aufruf einen eigenen vm-Realm, dessen
   // Objekt-Prototypen deepStrictEqual sonst auseinanderhält (die dokumentierte
@@ -2411,15 +2529,15 @@ test("commissioning: ohne Ladepunkte ändert sich KEIN Wort", () => {
   const plain = JSON.parse(JSON.stringify(stepsFor(base, 2).steps));
   const withEmptyOcpp = JSON.parse(JSON.stringify(stepsFor({ ...base, ocpp: { chargers: [] } }, 2).steps));
   assert.deepStrictEqual(withEmptyOcpp, plain);
-  assert.strictEqual(plain[0].title, "Wechselrichter verbinden");
-  // Und eine Anlage MIT Wechselrichter, die zusätzlich eine Säule hat, bleibt
-  // eine Wechselrichter-Anlage: Schritt 1 spricht weiter von ihm.
+  // Und eine Anlage MIT Wechselrichter, die zusätzlich eine Säule hat, misst
+  // über den Wechselrichter: Schritt 3 spricht von dessen Messwerten.
   const both = stepsFor({
     ...base,
     ocpp: { chargers: [{ id: "s1", connected: true, last_seen_ms: NOW }] },
     charge_point_connected: true
   }, 2);
-  assert.strictEqual(both.steps[0].title, "Wechselrichter verbinden");
+  assert.strictEqual(both.steps[2].detail, "Aktuelle Messwerte kommen an.");
+  assert.match(both.steps[1].detail, /Deye · 2 weitere Quellen · 1 Ladesäule/);
 });
 
 /* ============ katalogwege.js: der Verbindungsweg gehört dem MODELL ============ */
@@ -3270,7 +3388,6 @@ test("förderweg: Abgrenzungsoption mit Netzladen nennt Begriff und 'erlaubt —
   const d = fw(planMit({ foerderweg: "marktpraemie_abgrenzung", bekannt: true, solar_only: false, grid_charge_allowed: true }));
   assert.strictEqual(d.title, "Marktprämie mit Abgrenzungsoption");
   assert.strictEqual(d.text, "Laden aus dem Netz: erlaubt — Ihre Einstellung im Portal.");
-  assert.strictEqual(d.streng, false);
   const klemme = d.tech.filter((r) => r[0] === "Solarlade-Klemme")[0];
   assert.match(klemme[1], /^aus/);
 });
@@ -3293,19 +3410,8 @@ test("förderweg: Ausschließlichkeitsoption und Einspeisevergütung laden nur m
     const d = fw(planMit({ foerderweg: weg, bekannt: true, solar_only: true, grid_charge_allowed: false }));
     assert.strictEqual(d.title, begriff);
     assert.match(d.text, /^Laden nur mit Sonnenstrom/);
-    assert.strictEqual(d.streng, false);
+    assert.match(d.text, /nie während die Anlage Netzstrom bezieht/);
   }
-});
-
-test("förderweg: die strenge Lesart ist gelb und sagt, wer sie eingeschaltet hat", () => {
-  const d = fw(planMit({ foerderweg: "marktpraemie_ausschliesslichkeit", bekannt: true, solar_only: true,
-    grid_charge_allowed: false, strict_exclusivity: true, strict_exclusivity_tolerance_kwh: 0 }));
-  assert.strictEqual(d.streng, true);
-  assert.strictEqual(d.lead, "Strenge Lesart, von VoltPilot eingeschaltet:");
-  assert.match(d.text, /Anlage 1 S\. 11/);
-  const tech = Object.fromEntries(JSON.parse(JSON.stringify(d.tech)));
-  assert.strictEqual(tech.strict_exclusivity, "true");
-  assert.strictEqual(tech.strict_exclusivity_tolerance_kwh, "0");
 });
 
 test("förderweg: ohne Plan, ohne Feld oder mit unbekanntem Wert lädt die Box sicherheitshalber nur mit Sonnenstrom", () => {
@@ -3325,8 +3431,63 @@ test("förderweg: ohne Plan, ohne Feld oder mit unbekanntem Wert lädt die Box s
 test("förderweg: der Technikmodus nennt Planzeit und alle Plan-Felder", () => {
   const d = fw(planMit({ foerderweg: "marktpraemie_abgrenzung", bekannt: true, solar_only: false, grid_charge_allowed: true, grid_export_limit_kw: 30 }));
   const keys = JSON.parse(JSON.stringify(d.tech)).map((r) => r[0]);
-  assert.deepStrictEqual(keys, ["Planzeit", "foerderweg", "grid_charge_allowed", "strict_exclusivity",
-    "strict_exclusivity_tolerance_kwh", "grid_export_limit_kw", "Solarlade-Klemme"]);
+  assert.deepStrictEqual(keys, ["Planzeit", "foerderweg", "grid_charge_allowed", "grid_export_limit_kw",
+    "Solarlade-Klemme"]);
   assert.match(d.tech[0][1], /^Fahrplan von \d\d:\d\d · empfangen \d\d:\d\d$/);
-  assert.strictEqual(d.tech[5][1], "30");
+  assert.strictEqual(d.tech[3][1], "30");
+});
+
+/* =================== Das Zeichen der Marke im Kopf ===================
+   Der Kopf beider Seiten (Startseite, Einrichten) zeigt das echte Zeichen
+   der Marke - Punkt über dem schräg stehenden Blitz, das „i" der Wortmarke -
+   mit denselben Zahlen wie `VP_MARK` im Portal
+   (frontend/portal/src/components/VpLoader.tsx), nicht mehr den generischen
+   Blitz. Das Kästchen ist weiß, das Zeichen steht in seinen eigenen Farben.
+   ==================================================================== */
+
+const VP_MARK_DOT = '<circle cx="36.87" cy="19.64" r="3.22" fill="#000000"/>';
+const VP_MARK_BOLT =
+  '<path d="M33.9 24.29 L40.03 24.29 L34.76 32.17 L39.9 32.17 L25.98 47.36 L31.89 35.7 L27.95 35.7 Z" fill="#95B9FF"/>';
+
+test("brand-mark: beide Köpfe tragen das echte Zeichen, nicht mehr den generischen Blitz", () => {
+  for (const datei of ["index.html", "einrichten.html"]) {
+    const html = fs.readFileSync(path.join(STATIC, datei), "utf8");
+    const m = /<span class="brand-mark"[^>]*>\s*(<svg[\s\S]*?<\/svg>)/.exec(html);
+    assert.ok(m, datei + ": kein .brand-mark mit SVG");
+    const svg = m[1];
+    assert.ok(svg.includes(VP_MARK_DOT), datei + ": Punkt der Marke fehlt");
+    assert.ok(svg.includes(VP_MARK_BOLT), datei + ": Blitz der Marke fehlt");
+    assert.ok(!/currentColor/.test(svg), datei + ": Zeichen hängt an currentColor");
+    assert.ok(!html.includes("M13 2 4.5 13.5"), datei + ": der alte Blitz steht noch da");
+  }
+});
+
+test("brand-mark: Kästchen weiß, kein blauer Grund unter dem hellblauen Blitz", () => {
+  const css = fs.readFileSync(path.join(STATIC, "shell.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ");
+  const regel = /\.brand-mark\s*\{([^}]*)\}/.exec(css);
+  assert.ok(regel, "shell.css: keine .brand-mark-Regel");
+  assert.match(regel[1], /background:\s*#fff\s*;/);
+  assert.ok(!/gradient|--vp-primary/.test(regel[1]), "blauer Grund unter dem Zeichen");
+  for (const datei of ["shell.css", "dashboard.css"]) {
+    const c = fs.readFileSync(path.join(STATIC, datei), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+    for (const r of c.matchAll(/\.brand-mark\s*\{([^}]*)\}/g)) {
+      assert.ok(!/background/.test(r[1]) || r[1] === regel[1], datei + ": zweiter Grund für .brand-mark");
+    }
+  }
+});
+
+test("brand-mark: dieselben Zahlen wie VP_MARK im Portal (wenn das Portal daneben liegt)", (t) => {
+  const quelle = path.join(__dirname, "..", "..", "..", "..", "..", "frontend", "portal",
+    "src", "components", "VpLoader.tsx");
+  if (!fs.existsSync(quelle)) {
+    t.skip("Portal-Quelle nicht im Baum (Einzelbau des Core)");
+    return;
+  }
+  const tsx = fs.readFileSync(quelle, "utf8");
+  assert.match(tsx, /dot: \{ cx: 36\.87, cy: 19\.64, r: 3\.22, fill: '#000000' \}/);
+  const d = /d: 'M33\.9 24\.29 L40\.03[^']*'/.exec(tsx);
+  assert.ok(d, "VP_MARK.bolt.d nicht gefunden");
+  assert.ok(VP_MARK_BOLT.includes(d[0].slice(4, -1)), "Blitz weicht von VP_MARK ab");
+  assert.match(tsx, /fill: '#95B9FF'/);
 });

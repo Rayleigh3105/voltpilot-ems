@@ -5,8 +5,8 @@ Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 133).
 
 Die Cloud sieht zu, sie entscheidet nicht (Konzept §5, E1): Budget und
 Verteilung bleiben auf der Box, weil die Anschlussgrenze physisch ist. Der
-Herzschlag trägt seit Stufe 3 den additiven `chargers`-Block (Edge-Seite +
-Einrichtungs-Tor: `edge-app/AGENTS.md`), und diese Seite ist sein Speicher.
+Herzschlag trägt seit Stufe 3 den additiven `chargers`-Block (Edge-Seite:
+`edge-app/AGENTS.md`), und diese Seite ist sein Speicher.
 
 - **`ChargerStatusListener` ist das ACHTE Geschwister** auf `ems/+/+/+/status`
   (Flag `VOLTPILOT_CHARGERS_MQTT_LISTENER_ENABLED`, in BEIDEN Composes an) mit

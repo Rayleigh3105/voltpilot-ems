@@ -101,6 +101,12 @@ public class SecurityConfig {
                 // (absent unless voltpilot.enrollment.enabled).
                 .requestMatchers(HttpMethod.POST, "/api/v1/enrollment/*/csr").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/enrollment/*/certificate").permitAll()
+                // Werkstatt-Automatik (D2): Die frisch eingerichtete Box löst ihren
+                // Einmal-Code ein - dieselbe Lage wie beim Enrollment, kein Token.
+                // Der Code (30 min, einmal, an die Referenz gebunden) und die
+                // Signatur mit dem Geräteschlüssel sind der Nachweis; Rate-Limit
+                // und Prüfung in WerkstattEinloesenController. EXAKTER Pfad.
+                .requestMatchers(HttpMethod.POST, "/api/v1/werkstatt/einloesen").permitAll()
                 // Das root-signierte Trust-Set beim EINRICHTEN: eine Box, die
                 // gerade installiert wird, hat noch kein Token - dieselbe Lage
                 // wie beim Enrollment. Herausgegeben wird ausschliesslich
@@ -116,6 +122,25 @@ public class SecurityConfig {
                 // schlicht schreibt, was er laedt.
                 .requestMatchers(HttpMethod.GET, "/api/v1/edge/trust-set/trust-set.json",
                         "/api/v1/edge/trust-set/trust-set.json.sig").permitAll()
+                // Edge Light (Konzept vp-edge-light-update, U-4 A): die gepackten
+                // Programme SIGNIERTER Edge-Light-Releases, benannt nach ihrer
+                // Pruefsumme. Die Box laedt ohne Token; die Echtheit entsteht
+                // auf ihr (Manifest gegen die eingebackene Wurzel, Bytes gegen
+                // gz_sha256 aus diesem Manifest). Genau EIN Pfadsegment.
+                .requestMatchers(HttpMethod.GET, "/api/v1/edge/light-programm/*").permitAll()
+                // Alerting Scheibe 0 (§6.6): der Bestätigungslink aus der E-Mail
+                // hat keine Anmeldung - die Person hat zu diesem Zeitpunkt noch
+                // keinen bestätigten Zustellweg; der einmalige, ablaufende Token
+                // selbst ist der Nachweis (ZustellwegController).
+                .requestMatchers(HttpMethod.GET, "/api/v1/zustellwege/bestaetigen").permitAll()
+                // Alerting Scheibe 6: Telegram selbst ruft den Update-Webhook auf,
+                // ohne jedes Benutzer-Token - die Absicherung ist Telegrams eigener
+                // secret_token-Header, den TelegramWebhookController zeitkonstant
+                // gegen das aus der Umgebung gelesene Geheimnis prüft (403 bei
+                // Fehlen/Abweichung, und immer 403, solange kein Geheimnis
+                // gesetzt ist). Ohne diese Freigabe bekäme Telegrams Server
+                // 401 und könnte die Box nie verbinden.
+                .requestMatchers(HttpMethod.POST, "/api/v1/zustellwege/telegram/webhook").permitAll()
                 // Gürtel UND Hosenträger für den Admin-Baum: die eigentliche
                 // Autorisierung ist weiterhin @PreAuthorize je Controller, aber
                 // seit es eine ZWEITE, eng geschnittene Admin-Rolle gibt
@@ -127,12 +152,16 @@ public class SecurityConfig {
                 // weiter zu), sie schließt nur die Rückfallebene.
                 .requestMatchers("/api/v1/admin/**")
                         .hasAnyRole("platform-admin", "edge-release-publisher")
-                // Dieselbe Rückfallebene für die Leseroute des Tunnel-Dienstes
-                // (FernwartungSollController): nur das Dienstkonto mit der
-                // Rolle tunnel-dienst, kein Kunden- und kein Admin-Token.
+                // Dieselbe Rückfallebene für die beiden Routen des Tunnel-Dienstes
+                // (FernwartungSollController, FernwartungRueckmeldungController):
+                // nur das Dienstkonto mit der Rolle tunnel-dienst, kein Kunden-
+                // und kein Admin-Token.
                 // Bewusst ein EIGENER Baum statt unter /api/v1/admin/**, damit
                 // die Rolle dort nichts erreicht.
                 .requestMatchers("/api/v1/fernwartung/**").hasRole("tunnel-dienst")
+                // Ebenso der Baum des Werkstatt-Dienstes (WerkstattDienstController):
+                // nur das Dienstkonto mit der Rolle werkstatt-dienst.
+                .requestMatchers("/api/v1/werkstatt-dienst/**").hasRole("werkstatt-dienst")
                 .anyRequest().authenticated())
             // Map Keycloak realm roles -> ROLE_* authorities so @PreAuthorize on the
             // admin API can gate Portal-Admins (platform-admin) from Portal-Users.
@@ -181,9 +210,14 @@ public class SecurityConfig {
         cfg.setAllowedOrigins(allowedOrigins);
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         // X-Tenant-Id is the Portal-Admin tenant switcher (see TenantFilter);
-        // X-Kundenbereich the partner/platform choice against an Unterstützung (ZugriffFilter).
+        // X-Kundenbereich the partner/platform choice against an Unterstützung (ZugriffFilter);
+        // Idempotency-Key the Anfrage-Kennung of the create routes (Anlage-Flow a1, B3).
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Tenant-Id",
-                ZugriffKontextLader.KUNDENBEREICH_HEADER));
+                ZugriffKontextLader.KUNDENBEREICH_HEADER, com.voltpilot.api.web.AnfrageKennungen.KOPF));
+        // Downloads nennen ihren Dateinamen über Content-Disposition (Gesamtabzug, Meldungen-Verlauf,
+        // Box-Druckdatei) - ohne das als "exposed" zu nennen, verweigert der Browser JS cross-origin
+        // den Zugriff darauf und der Download fällt auf einen Platzhalternamen zurück.
+        cfg.setExposedHeaders(List.of("Content-Disposition"));
         cfg.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);

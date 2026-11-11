@@ -10,13 +10,14 @@ import { lokalerTag, type Tag } from './uemsOrtsbaum';
  *    archivierter (die Rücknahme bleibt stehen): nichts.
  * 2. Schon Vorschläge: der Kundenbereich bleibt auf dem Vorschau-Weg — nur
  *    eine Anlage ohne Vorschlag bekommt ihren, nie einen Standort.
- * 3. GENAU EINE Anlage: ein Standort mit ihrem Namen, Entwurf, es fehlt:
- *    Adresse (nie eine erfundene, E10), in der Zeitzone des Unternehmens, und
+ * 3. GENAU EINE Anlage: ein Standort „Standort" (nie mit dem Namen der Anlage,
+ *    Anlage-Flow a1 D9; mit seiner ersten Adresse heißt er nach Straße oder Ort),
+ *    Entwurf, es fehlt: Adresse (nie eine erfundene, E10), in der Zeitzone des Unternehmens, und
  *    die Zuordnung ab dem TAG ihres Anlegens in dieser Zeitzone (E9).
  * 4. MEHRERE Anlagen: je Anlage ein Vorschlag „ein Standort gleichen Namens"
  *    ab demselben Tag — keine Zuordnung (E5, A6).
  *
- * Der Name folgt der Namensregel des Standorts: ohne Randleerzeichen,
+ * Der Name eines Vorschlags folgt der Namensregel des Standorts: ohne Randleerzeichen,
  * höchstens 120 Zeichen (nach Unicode-Zeichen gezählt und gekürzt); ein leerer
  * Anlagenname wird das Kundenwort „Standort".
  *
@@ -42,7 +43,7 @@ export const BESTANDSUEBERNAHME_GRUENDE = [
 ] as const;
 export type BestandsuebernahmeGrund = (typeof BESTANDSUEBERNAHME_GRUENDE)[number];
 
-/** Das Kundenwort, wenn die Anlage keinen Namen hat — nie eine Ablehnung. */
+/** Das Kundenwort für einen Standort ohne eigenen Namen (D9) und einen Vorschlag ohne Anlagennamen. */
 export const NAME_OHNE_ANLAGENNAME = 'Standort';
 
 /** Dieselbe Obergrenze wie der Name eines Standorts. */
@@ -129,7 +130,7 @@ export function bestandsuebernahme(e: BestandsEingang): BestandsPlan {
     return {
       art: 'standort_anlegen',
       grund: 'eine_anlage',
-      standort: { name: standortName(a.name), zustand: 'entwurf', esFehlt: ['adresse'], zeitzone: zone },
+      standort: { name: NAME_OHNE_ANLAGENNAME, zustand: 'entwurf', esFehlt: ['adresse'], zeitzone: zone },
       zuordnung: { anlage: a.kennzeichen, gueltigAb: lokalerTag(a.angelegtUm, zone) },
       vorschlaege: [],
     };

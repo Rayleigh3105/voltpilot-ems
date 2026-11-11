@@ -13,7 +13,7 @@ import { iso, mitternacht, tagPlus } from '../bezugsPeriode';
 import { VORGABE_ZEITZONE } from '../uemsZustand';
 import './BenutzerPage.css';
 
-const vorgang: Record<string, string> = { zuweisen: 'Zugriff gewährt', entziehen: 'Zugriff beendet', sperren: 'Benutzer gesperrt', entfernen: 'Benutzer entfernt', erste_anmeldung: 'Erste Anmeldung', startpasswort_neu: 'Startpasswort neu vergeben', gewaehren: 'Unterstützung gewährt', verlaengern: 'Unterstützung verlängert', beenden: 'Unterstützung beendet', ablaufen: 'Unterstützung abgelaufen', anfragen: 'Anfrage zur Unterstützung', notfall: 'Notfall-Zugriff' };
+const vorgang: Record<string, string> = { zuweisen: 'Zugriff gewährt', entziehen: 'Zugriff beendet', sperren: 'Benutzer gesperrt', entfernen: 'Benutzer entfernt', erste_anmeldung: 'Erste Anmeldung', startpasswort_neu: 'Startpasswort neu vergeben', konto_geaendert: 'Konto geändert', gewaehren: 'Unterstützung gewährt', verlaengern: 'Unterstützung verlängert', beenden: 'Unterstützung beendet', ablaufen: 'Unterstützung abgelaufen', anfragen: 'Anfrage zur Unterstützung', notfall: 'Notfall-Zugriff' };
 const tag = (zeit: number) => iso(zeit, VORGABE_ZEITZONE).slice(0, 10);
 export function BenutzerPage() {
   const rechte = useRollen();
@@ -67,8 +67,10 @@ export function BenutzerPage() {
       {schreiben && <Button onClick={e => { e.currentTarget.focus(); setAnlegen(true); }}>Benutzer anlegen</Button>}
     </header>
     {!schreiben && <p className="vp-note">Sie lesen die Benutzerliste. Änderungen übernimmt Ihr Kundenadministrator.</p>}
-    {schreiben && <div className="vp-benutzer-aktionen"><Button variant={protokoll ? 'outline' : 'primary'} onClick={() => setProtokoll(false)}>Benutzerliste</Button>
-      <Button variant={protokoll ? 'primary' : 'outline'} onClick={() => setProtokoll(true)}>Zugriffsprotokoll</Button></div>}
+    {/* Eine Umschaltung der Ansicht, keine zweite Hauptaktion: „Benutzer anlegen“ bleibt der eine volle Knopf. */}
+    {schreiben && <div className="vp-benutzer-aktionen vp-benutzer-umschalter" role="group" aria-label="Ansicht">
+      <Button variant="outline" size="sm" className={protokoll ? undefined : 'is-aktiv'} aria-pressed={!protokoll} onClick={() => setProtokoll(false)}>Benutzerliste</Button>
+      <Button variant="outline" size="sm" className={protokoll ? 'is-aktiv' : undefined} aria-pressed={protokoll} onClick={() => setProtokoll(true)}>Zugriffsprotokoll</Button></div>}
     {fehler && !entzug && <p role="alert" className="vp-alert vp-alert-err">{fehler}</p>}
     {!protokoll && <>
       {!liste && !fehler && <p role="status">Benutzer werden geladen…</p>}

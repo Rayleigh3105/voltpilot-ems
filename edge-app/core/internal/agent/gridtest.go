@@ -357,11 +357,14 @@ func (a *Agent) gridTestOverride(now time.Time, p *plan.Plan) bool {
 		// scharfen Zustand behaupten.
 		s.Trim = nil
 		s.Follow = nil
+		s.DeficitHold = nil
 		s.Absorb = nil
 		s.Native = nil
 	})
 	a.trim.Release()
+	a.hold.Release()
 	a.follow.Release()
+	a.deficitHold.Release()
 	a.absorb.Release()
 	a.native.Release()
 	return true

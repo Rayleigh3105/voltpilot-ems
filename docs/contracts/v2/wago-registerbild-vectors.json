@@ -59,7 +59,7 @@
       "angabe": {
         "art": "repo",
         "wert": ["big", "word_little_byte_big"],
-        "fundstelle": "catalog/measurement-points/schema/catalog.schema.json:296"
+        "fundstelle": "catalog/measurement-points/schema/catalog.schema.json:301"
       }
     },
     {
@@ -652,7 +652,7 @@
     }
   ],
   "lesen": {
-    "max_woerter_je_anfrage": {"art": "repo", "wert": 120, "fundstelle": "docs/contracts/v2/measurement-budget-vectors.json:34"},
+    "max_woerter_je_anfrage": {"art": "repo", "wert": 120, "fundstelle": "docs/contracts/v2/measurement-budget-vectors.json:36"},
     "kartenblock_nie_teilen": {
       "art": "festlegung",
       "wert": "ein Karten-Block wird nie auf zwei Anfragen verteilt",

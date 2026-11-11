@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { History, HistoryTotals, SchedulePlan, ScheduleSlot, WeatherPoint } from './api';
+import type { History, HistoryTotals, SchedulePlan, ScheduleSlot } from './api';
 import {
   autarkieKachel,
   eigenverbrauchKachel,
   fahrplanKachel,
   handelKachel,
+  heuteKachel,
   naechsteSchritte,
   netzKachel,
-  sonneKachel,
   speicherAusblick,
   speicherKachel,
   steuerSpalten,
@@ -148,30 +148,59 @@ describe('Handel', () => {
   });
 });
 
-describe('Sonne', () => {
-  const punkte: WeatherPoint[] = Array.from({ length: 24 }, (_, h) => ({
-    ts: new Date(2026, 8, 10, h).toISOString(),
-    temperatureC: 20,
-    cloudCoverPct: 10,
-    ghiWM2: h >= 7 && h <= 19 ? 800 - Math.abs(h - 13) * 120 : 0,
-    dniWM2: null,
-    dhiWM2: null,
-  }));
+describe('Heute (Konzept vp-cockpit-privat-konzept, E1 = A)', () => {
+  const summe = (t: { kwh: number }[]) => t.reduce((x, y) => x + y.kwh, 0);
 
-  it('Sonnenstärke jetzt, Lage am Himmel, gemessen und erwartet', () => {
-    const s = sonneKachel(punkte, NOW, TOTALS, tagAus(history(), plan(), NOW))!;
-    expect(s.ghi).toBe(680);
-    expect(s.bogen).toBeGreaterThan(0.3);
-    expect(s.bogen).toBeLessThan(0.6);
-    expect(s.heuteKwh).toBe(20);
-    expect(s.erwartetKwh).toBeGreaterThan(20);
+  it('zeigt die Autarkie des Servers und die kWh, aus denen sie entsteht', () => {
+    const h = heuteKachel(TOTALS, tagAus(history(), plan(), NOW), true)!;
+    expect(h.autarkiePct).toBe(41.7);
+    expect(h.eigenverbrauchPct).toBe(92);
+    expect(h.verbrauchtKwh).toBe(24);
+    // Woher: Sonne (Viertelstunden ab 7 Uhr) und Netz (davor); kein Speicher-Anteil ohne Entladung.
+    expect(h.herkunft.map((t) => [t.key, t.label])).toEqual([['pv', 'Sonne'], ['grid', 'Netz']]);
+    expect(summe(h.herkunft)).toBeCloseTo(24, 6);
+    // Wohin: ins Haus, in den Speicher, ins Netz - und mittags der noch erwartete Rest des Plans.
+    expect(h.sonne.map((t) => t.key)).toEqual(['load', 'batt', 'grid', 'plan']);
+    expect(h.sonne.find((t) => t.key === 'batt')?.kwh).toBeCloseTo(2.4, 6);
+    expect(h.sonne.find((t) => t.key === 'grid')?.kwh).toBeCloseTo(1.6, 6);
+    expect(h.sonne.find((t) => t.key === 'plan')?.label).toBe('noch erwartet');
   });
 
-  it('ohne Plan keine Erwartung, ohne alles keine Kachel', () => {
-    expect(sonneKachel(punkte, NOW, TOTALS, null)!.erwartetKwh).toBeNull();
-    expect(sonneKachel(null, NOW, null, null)).toBeNull();
+  it('ohne Speicher-Messung rechnet er aus den Tagessummen: was nicht bezogen wurde, kam von der Sonne', () => {
+    const ohne = history();
+    for (const b of ohne.buckets) Object.assign(b, { batteryChargeKwh: null, batteryDischargeKwh: null });
+    const tag = tagAus(ohne, null, NOW);
+    const h = heuteKachel(TOTALS, tag, false)!;
+    expect(h.herkunft).toEqual([
+      { key: 'pv', label: 'Sonne', kwh: 10 },
+      { key: 'grid', label: 'Netz', kwh: 14 },
+    ]);
+    expect(h.sonne).toEqual([
+      { key: 'load', label: 'im Haus', kwh: 18.4 },
+      { key: 'grid', label: 'ins Netz', kwh: 1.6 },
+    ]);
+    // Mit Speicher, aber ohne Herkunft je Viertelstunde, wird nichts erfunden: „selbst“.
+    expect(heuteKachel(TOTALS, tag, true)!.herkunft[0].label).toBe('selbst');
+  });
+
+  it('nach Sonnenuntergang kein „noch erwartet“, ohne Verbrauch kein Block (fehlend ist keine Null)', () => {
+    const abends = new Date(2026, 8, 10, 21, 0, 0);
+    const h = heuteKachel(TOTALS, tagAus(history(), plan(), abends), true)!;
+    expect(h.sonne.some((t) => t.key === 'plan')).toBe(false);
+    expect(heuteKachel({ ...TOTALS, consumptionKwh: null } as unknown as HistoryTotals, null, false)).toBeNull();
+  });
+
+  it('ohne Erzeugung gibt es keinen zweiten Balken und keinen Eigenverbrauch', () => {
+    const h = heuteKachel({ ...TOTALS, pvGenerationKwh: 0, gridExportKwh: 0 } as unknown as HistoryTotals, null, false)!;
+    expect(h.erzeugtKwh).toBeNull();
+    expect(h.sonne).toEqual([]);
+    expect(h.eigenverbrauchPct).toBeNull();
   });
 });
+
+// Die Kachel "Prognose" (ehemals "Sonne") liest seit `vp-prognosen-konzept`
+// direkt `prognoseModell()` - ihre Ableitung ist in `prognoseSeite.test.ts`
+// geprüft, nicht hier.
 
 describe('Die Steuerzeile: Auftrag, Gerät und Wirkung getrennt', () => {
   const basis = {

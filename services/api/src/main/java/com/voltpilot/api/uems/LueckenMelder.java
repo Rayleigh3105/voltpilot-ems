@@ -44,8 +44,12 @@ import org.springframework.stereotype.Component;
  *       und schon wieder zu ist, wird geschlossen gemeldet. Nur Reihen mit eingeschalteter
  *       Mess-Auswahl werden erwartet.
  *   <li><b>Je Box aus dem letzten Eingang</b> („Box meldet sich nicht“): länger als die
- *       Herzschlag-Toleranz kein Eingang von ihr ({@code telemetry.received_at} — dieselbe
- *       Grundlage wie die Live-Flächen — und {@code device_measurement_sample.received_at}). Dann
+ *       Herzschlag-Toleranz kein Eingang von ihr - seit Befund 1 (vp-alerting-konzept-m1 §3.1)
+ *       der Herzschlag selbst ({@code device_status_seen_at}, dieselbe Grundlage wie die
+ *       Live-Flächen und die Übersicht, {@link #boxAusHerzschlag}) ALS WEITERE Eingangsquelle neben
+ *       der Ankunft von Daten ({@code telemetry.received_at} und
+ *       {@code device_measurement_sample.received_at}) - eine Box, die lebt und sich meldet, aber
+ *       keine Messwerte liefert, steht damit nicht mehr fälschlich als „meldet sich nicht". Dann
  *       entsteht EINE offene Lücke je Box (Bezug nur {@code box}: der KERN-Pfad bekommt so seine
  *       Lücke) und EINE je Datenquelle, für die die Box zu dem Zeitpunkt zuständig war
  *       ({@code data_source_assignment}, der UEMS-Pfad) — nie eine je fehlendem Wert, nie eine
@@ -209,6 +213,7 @@ public class LueckenMelder {
                 n += boxenErstmals(con, neu, jetzt);
             }
             if (neu.isAfter(ab)) {
+                n += boxAusHerzschlag(con, ab, neu, jetzt);
                 n += boxAusProben(con, ab, neu, jetzt);
                 n += reihenAusProben(con, ab, neu, jetzt);
                 n += boxAusTelemetrie(con, ab, neu, jetzt);
@@ -238,18 +243,21 @@ public class LueckenMelder {
             """;
 
     /**
-     * Der allererste Lauf: der jüngste Telemetrie-Eingang jeder angemeldeten Box, egal wie alt — nur
-     * über den Index, ohne die Nachlieferungs-Filter (die liest das Eintragen nur im Anlauf-Fenster).
+     * Der allererste Lauf: der jüngste Eingang jeder angemeldeten Box, egal wie alt — Telemetrie
+     * UND Herzschlag (Befund 1, §3.1), nur über den Index bzw. die Spalte selbst, ohne die
+     * Nachlieferungs-Filter (die liest das Eintragen nur im Anlauf-Fenster).
      */
     private int boxenErstmals(Connection con, Instant bis, Instant jetzt) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("""
                 INSERT INTO messreihe_luecke_stand AS st (tenant_id, einheit, art, device_id, site_id,
                        zuletzt, faellig_ab)
-                SELECT d.tenant_id, 'box:' || d.id::text, 'box', d.id, d.site_id, t.letzte, ?
+                SELECT d.tenant_id, 'box:' || d.id::text, 'box', d.id, d.site_id,
+                       GREATEST(t.letzte, d.device_status_seen_at), ?
                   FROM device d
                  CROSS JOIN LATERAL (SELECT max(x.received_at) AS letzte FROM telemetry x
                                       WHERE x.device_id = d.id AND x.received_at <= ?) t
-                 WHERE d.status = 'claimed' AND t.letzte IS NOT NULL AND NOT (d.tenant_id = ANY (?::uuid[]))
+                 WHERE d.status = 'claimed' AND NOT (d.tenant_id = ANY (?::uuid[]))
+                   AND (t.letzte IS NOT NULL OR d.device_status_seen_at IS NOT NULL)
                 ON CONFLICT (tenant_id, einheit) DO UPDATE SET
                        zuletzt = GREATEST(st.zuletzt, EXCLUDED.zuletzt), faellig_ab = EXCLUDED.faellig_ab
                 """)) {
@@ -323,6 +331,49 @@ public class LueckenMelder {
             ps.setLong(3, ZustandAbleitung.TOLERANZ_MINDESTENS_S);
             ps.setTimestamp(4, Timestamp.from(von));
             ps.setTimestamp(5, Timestamp.from(bis));
+            return ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Befund 1 (vp-alerting-konzept-m1 §3.1): der Herzschlag ({@code device_status_seen_at}) als
+     * WEITERE Eingangsquelle für den Box-Pfad, wie der Wegweiser es vorsieht
+     * ({@code docs/agents/root/uems-luecken-melder.md}: „die Live-Flächen lesen den Herzschlag
+     * bereits, der Lücken-Melder ist noch nicht darauf umgestellt … beim Anschluss sind sie
+     * weitere Eingangsquellen, keine neue Regel"). Eine Box, die lebt und sich meldet, aber keine
+     * Messwerte liefert, steht damit nicht mehr fälschlich als „meldet sich nicht" am Standort,
+     * während die Übersicht sie längst als erreichbar zeigt.
+     *
+     * <p>Berührt NUR {@code zuletzt} und - solange eine Lücke offen ist - {@code erste_nach}: keine
+     * eigene Nachlieferung (ein Herzschlag kennt keine Zustellart), darum bleiben
+     * {@code nachlieferung_von}/{@code nachlieferung_bis} hier unangetastet (nicht Teil des
+     * UPDATE SET, anders als {@link #BOX_KONFLIKT}) - ein gleichzeitiger Treffer aus
+     * {@link #boxAusTelemetrie}/{@link #boxAusProben} im selben Takt verliert seine
+     * Nachlieferungs-Zeiten nicht an ein {@code LEAST(…, NULL)}.
+     */
+    private int boxAusHerzschlag(Connection con, Instant von, Instant bis, Instant jetzt) throws SQLException {
+        String sql = """
+                INSERT INTO messreihe_luecke_stand AS st (tenant_id, einheit, art, device_id, site_id,
+                       zuletzt, erste_nach, faellig_ab)
+                SELECT d.tenant_id, 'box:' || d.id::text, 'box', d.id, d.site_id, d.device_status_seen_at,
+                       CASE WHEN b.luecke_seit IS NOT NULL AND d.device_status_seen_at > b.luecke_seit
+                            THEN d.device_status_seen_at END,
+                       ?
+                  FROM device d
+                  LEFT JOIN messreihe_luecke_stand b
+                         ON b.tenant_id = d.tenant_id AND b.einheit = 'box:' || d.id::text
+                 WHERE d.status = 'claimed' AND d.device_status_seen_at > ? AND d.device_status_seen_at <= ?
+                ON CONFLICT (tenant_id, einheit) DO UPDATE SET
+                       zuletzt = GREATEST(st.zuletzt, EXCLUDED.zuletzt),
+                       site_id = COALESCE(EXCLUDED.site_id, st.site_id),
+                       erste_nach = CASE WHEN st.luecke_seit IS NULL THEN NULL
+                                         ELSE LEAST(st.erste_nach, EXCLUDED.erste_nach) END,
+                       faellig_ab = EXCLUDED.faellig_ab
+                """;
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(jetzt));
+            ps.setTimestamp(2, Timestamp.from(von));
+            ps.setTimestamp(3, Timestamp.from(bis));
             return ps.executeUpdate();
         }
     }

@@ -36,12 +36,12 @@ class BuiltinComponentTemplatesTest {
         List<BuiltinTemplate> all = builtin.all();
         assertThat(all).as("die Ressource ist nicht leer").isNotEmpty();
 
-        // Die neun Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
+        // Die zehn Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
         // Fällt eine weg, hat jemand den Katalog beschnitten, ohne es zu merken -
         // der Kunde bekäme im Assistenten weniger Geräte, als seine Box lesen kann.
         Set<String> brands = all.stream().map(BuiltinTemplate::brand).collect(Collectors.toSet());
         assertThat(brands).containsExactlyInAnyOrder("deye", "generic_modbus", "fronius",
-                "fronius_sunspec", "kostal", "kaco", "go-e", "shelly", "ebyte");
+                "fronius_sunspec", "kostal", "kaco", "huawei", "go-e", "shelly", "ebyte");
 
         // Die Deye-Modellreihe ist die grösste und der Grund, warum die Vorlage
         // je MODELL geschlüsselt ist (ein Registerprofil deckt mehrere Baureihen ab).
@@ -61,8 +61,8 @@ class BuiltinComponentTemplatesTest {
                 .filter(t -> "kaco".equals(t.brand())).toList();
         assertThat(kaco).as("KACO-Modelle").hasSizeGreaterThanOrEqualTo(60);
         for (BuiltinTemplate t : kaco) {
-            assertThat(t.communication()).isIn("sunspec_tcp", "kaco_http");
-            assertThat(t.family()).isIn("sunspec_live", "kaco_http", "kaco_http_hybrid");
+            assertThat(t.communication()).isIn("sunspec_tcp", "kaco_http", "kaco_serial");
+            assertThat(t.family()).isIn("sunspec_live", "kaco_http", "kaco_http_hybrid", "kaco_serial");
             assertThat(t.brandLabel()).isEqualTo("KACO");
             // Keine einzige KACO-Zeile darf „Fronius" nennen - der ganze Grund
             // für die brand-neutrale Kennung `sunspec_tcp`.
@@ -75,6 +75,10 @@ class BuiltinComponentTemplatesTest {
                 .isEqualTo("kaco_http_hybrid");
         assertThat(find("builtin:kaco:bp-10.0-nx3-m2").family()).isEqualTo("kaco_http");
         assertThat(find("builtin:kaco:bp-4.6-tl1").family()).isEqualTo("sunspec_live");
+        // Die dritte Plattform: Powador-Altgeräte ohne Netzwerk-Anschluss, seriell
+        // über einen RS485-zu-Ethernet-Wandler - kein Modbus, keine Discovery.
+        assertThat(find("builtin:kaco:powador-3200-int").communication()).isEqualTo("kaco_serial");
+        assertThat(find("builtin:kaco:powador-3200-int").family()).isEqualTo("kaco_serial");
     }
 
     @Test

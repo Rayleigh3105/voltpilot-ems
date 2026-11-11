@@ -13,6 +13,11 @@ Protokoll-Tabelle `data_source_aenderung` (Migration `V20260911180000`, dazu
 
 ## ⚠ Die Fallen
 
+- **`geraete[]` nur über den gespeicherten Verweis (GE-6).** Jede Datenquelle nennt ihre eingebauten
+  Geräte (`DatenquelleRepository.geraeteJeQuelle`, je Gerät die laufend gespeisten Komponenten) allein
+  über `geraet.data_source_id` — ein Gerät an derselben Adresse ohne Verweis gehört nicht dazu, ein zur
+  Uhr des Dienstes ausgebautes auch nicht. Leer = Anschluss ohne Gerät, mehrere = Gateway.
+
 - **Keine zweite Regel-Logik.** Ob eine Box ab `t` lesen darf, urteilt allein
   `DatenquelleRegeln.pruefeAntrag`; jeder geänderte Zeitraum geht danach durch
   `pruefeZeitraum`. Die ERSTE Box einer Quelle ist ein Antrag `anlegen` (der gespeicherte

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import evDyn from '../fahrplanVektoren/laeufe/ev-dyn-tag.json';
+import evFest51a from '../fahrplanVektoren/laeufe/ev-fest-51a-tag.json';
+import { preisRolle } from '../preisRolle';
 import {
   SPEICHER,
   auftragSatz,
@@ -8,7 +11,9 @@ import {
   jetztWerte,
   kopfsatz,
   kurzName,
+  wiederholtDasWort,
   leiste,
+  momentZeile,
   ordnen,
   quellenAnteil,
   reihen,
@@ -16,10 +21,11 @@ import {
   reihenfolgeRumpf,
   speicherBild,
   symbolFuer,
+  unterzeile,
   type Reihen,
 } from './bild';
 import type { VerbraucherEintrag } from '../verbraucherZone';
-import { N, raster, slotVon, uhr, uhrTag, dauer, spannen, spannenText } from './zeit';
+import { N, TAG, raster, slotVon, uhr, uhrTag, dauer, spannen, spannenText } from './zeit';
 
 const NOW = new Date(2026, 8, 29, 13, 10);
 const r = raster(NOW);
@@ -27,7 +33,7 @@ const iso = (t: number) => new Date(r.start + t * 900_000).toISOString();
 
 function leereReihen(): Reihen {
   const n = () => Array.from({ length: N }, () => null as number | null);
-  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), temp: n(), abgeregelt: n(), gemessenBis: r.jetzt, morgenBekannt: false };
+  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: r.jetzt, morgenBekannt: false };
 }
 
 const eintrag = (o: Partial<VerbraucherEintrag> & { entityId: string }): VerbraucherEintrag => ({
@@ -132,6 +138,16 @@ describe('geraete', () => {
     expect(laeuft.jetztKw).toBe(2.5);
   });
 
+  it('ein von der Box gemeldeter Handeingriff liest ehrlich „von Hand", nie „läuft" wie ein Plan (Teil B)', () => {
+    const [g] = geraete({
+      raster: r,
+      reihen: leereReihen(),
+      verbraucher: { verbraucher: [eintrag({ entityId: 'a' })], ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null }, rangliste: [] },
+      status: [{ entityId: 'a', state: 'running_manual', reportedAt: NOW.toISOString() }],
+    });
+    expect(g.pill).toEqual(['on', 'von Hand']);
+  });
+
   it('nennt einen Eingriff mit Ende', () => {
     const [g] = geraete({
       raster: r,
@@ -152,9 +168,11 @@ describe('Wörter', () => {
     expect(auftragSatz({ quelle: 'guenstig', herkunft: 'policy', preisgrenzeCtKwh: 8.5 }, g)).toBe('Unter 8,5 ct');
     expect(auftragSatz({ quelle: 'feste_zeiten', herkunft: 'policy', fenster: { tage: 'weekdays', von: '06:30', bis: '08:30' } }, g)).toBe('06:30–08:30 werktags');
     expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'policy', ziel: 'laufzeit_bis', zielLaufzeitMinuten: 360, zielFenster: { tage: 'daily', von: '', bis: '20:00' } }, g)).toBe('6 Std bis 20:00, Sonne zuerst');
-    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, { form: 'stufenlos', ladepunkt: true })).toBe('Nur Sonnenstrom');
+    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, { form: 'stufenlos', ladepunkt: true })).toBe('Nur Sonne');
     expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'speicher' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Speicher');
-    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'mindestleistung' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Mindestleistung');
+    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'mindestleistung' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Minimum');
+    expect(auftragSatz({ quelle: 'guenstig', herkunft: 'saeule', preisgrenzeCtKwh: 30 }, { form: 'stufenlos', ladepunkt: true })).toBe('Günstig unter 30,0 ct');
+    expect(auftragSatz({ quelle: 'sofort', herkunft: 'standard' }, { form: 'stufenlos', ladepunkt: true })).toBe('Schnell · immer sofort voll');
     expect(auftragSatz({ quelle: 'freigabe_ueberschuss', herkunft: 'policy' }, { form: 'freigabe', ladepunkt: false })).toBe('Anheben bei Sonne');
   });
 
@@ -176,6 +194,10 @@ describe('Erwartung', () => {
     expect(bits[61]).toBe(false);
     expect(imFenster(90, '22:00', '07:00')).toBe(true);
     expect(imFenster(40, '22:00', '07:00')).toBe(false);
+    // „Günstig“ vergleicht den BEZUGSPREIS (wie der Server), nie den Börsenpreis; ohne ihn keine Erwartung.
+    rh.preis[70] = 5; rh.bezug[70] = 31; rh.bezug[71] = 29;
+    const guenstig = erwarteteLaeufe({ quelle: 'guenstig', herkunft: 'policy', preisgrenzeCtKwh: 30 }, { form: 'schalten', nennKw: 2, ladepunkt: false }, rh);
+    expect([guenstig[70], guenstig[71], guenstig[72]]).toEqual([false, true, false]);
     // Ohne Auftrag keine Erwartung.
     expect(erwarteteLaeufe({ quelle: 'ueberschuss', herkunft: 'ohne' }, { form: 'schalten', nennKw: 2, ladepunkt: false }, rh).some(Boolean)).toBe(false);
   });
@@ -271,5 +293,170 @@ describe('MiSpeL MP-41c · Lade-Zeilen und Fahrzeug-Zeilen derselben Wallbox im 
     const nur = bild([fz(53, 0), fz(72, -2)]);
     expect(nur.herkunft.some((h) => h === 'plan')).toBe(false);
     expect(nur.fahrzeugPlan?.zurueck[72]).toBe(2);
+  });
+});
+
+describe('unterzeile/momentZeile · sonne (Konzept vp-fahrplan-eigenverbrauch-konzept §4.7, Scheibe S4)', () => {
+  it('nennt den Börsenpreis wie bisher, ohne `sonne` (Vorgabe false)', () => {
+    const rh = leereReihen();
+    rh.preis[52] = 8.4; rh.temp[52] = 22; rh.soc[52] = 64;
+    expect(unterzeile(rh, 52, true)).toBe('Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %');
+    expect(unterzeile(rh, 52, true, false)).toBe('Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %');
+  });
+
+  it('lässt den Börsenpreis (und die Morgen-Notiz) weg, mit `sonne = true`', () => {
+    const rh = leereReihen();
+    rh.preis[52] = 8.4; rh.temp[52] = 22; rh.soc[52] = 64;
+    expect(unterzeile(rh, 52, true, true)).toBe('22 °C draußen · Speicher 64 %');
+    // Die Morgen-Notiz ist ebenfalls eine Preis-Aussage - auch sie entfällt.
+    const morgen = leereReihen();
+    morgen.morgenBekannt = false;
+    expect(unterzeile(morgen, TAG, false, true)).toBe('');
+    expect(unterzeile(morgen, TAG, false, false)).toBe('Preise für morgen kommen gegen 13 Uhr');
+  });
+
+  it('momentZeile: derselbe Kopf ohne den Preis-Teil bei `sonne = true`', () => {
+    const rh = leereReihen();
+    rh.pv[52] = 3.2; rh.preis[52] = 11.9;
+    expect(momentZeile(rh, 52, [], 52).kopf).toBe('13:00–13:15 · Sonne 3,2 kW · 11,9 ct/kWh');
+    expect(momentZeile(rh, 52, [], 52, true).kopf).toBe('13:00–13:15 · Sonne 3,2 kW');
+  });
+});
+
+describe('reihen() + preisRolle · Ende zu Ende über den echten § 51a-Lauf (Scheibe S4)', () => {
+  it('klassiert über `bild.reihen` genauso wie der Fahrplan - 19 Nullstunden, 10:00-14:45', () => {
+    const lauf = evFest51a as { slots: Array<Record<string, unknown>> };
+    const r51a = raster(new Date(2026, 9, 27));
+    const rh = reihen({ raster: r51a, plan: { slots: lauf.slots } as never });
+    const rolle = preisRolle({
+      slots: rh.bezug.slice(0, TAG).map((importPriceCtKwh, i) => ({ importPriceCtKwh, exportValueCtKwh: rh.einspeise[i] })),
+      tarifArt: 'fest',
+      plantKind: 'eigenverbrauch',
+    });
+    expect(rolle.bezug).toBe('flach');
+    expect(rolle.einspeisung).toBe('flach_mit_nullstunden');
+    expect(rolle.erzaehlung).toBe('sonne');
+    expect(rolle.nullstunden).toHaveLength(19);
+    // Dieselbe Spanne wie in fahrplanWhy.sonne.test.ts (ev-fest-51a-tag): 10:00-14:45 lokal.
+    const von = Math.min(...rolle.nullstunden);
+    const bis = Math.max(...rolle.nullstunden);
+    expect(uhrTag(von)).toBe('10:00');
+    expect(uhrTag(bis + 1)).toBe('14:45');
+  });
+
+  it('der dynamische Lauf (ev-dyn-tag) bleibt die Preis-Erzählung über dieselbe Ableitung', () => {
+    const lauf = evDyn as { slots: Array<Record<string, unknown>> };
+    const rDyn = raster(new Date(2026, 9, 27));
+    const rh = reihen({ raster: rDyn, plan: { slots: lauf.slots } as never });
+    const rolle = preisRolle({
+      slots: rh.bezug.slice(0, TAG).map((importPriceCtKwh, i) => ({ importPriceCtKwh, exportValueCtKwh: rh.einspeise[i] })),
+      tarifArt: 'dynamisch',
+      plantKind: 'eigenverbrauch',
+    });
+    expect(rolle.bezug).toBe('schwankt');
+    expect(rolle.erzaehlung).toBe('preis');
+  });
+});
+
+// Die Fälle der Audit-Bühne `vp-ocpp-haushalt` (Haushalt mit einer Wallbox) an
+// der Laden-Karte - je Befund das, was die Karte vorher behauptete.
+describe('Ladepunkt im Haushalt (Audit vp-ocpp-haushalt)', () => {
+  const JETZT = NOW.toISOString();
+  const vor = (min: number) => new Date(NOW.getTime() - min * 60_000).toISOString();
+  const wallbox = eintrag({
+    entityId: 'wb', name: 'Wallbox Garage', typ: 'ev-charger', typLabel: 'Wallbox', ladepunkt: true,
+    chargePointId: 'WB-1', steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' },
+  } as Partial<VerbraucherEintrag> & { entityId: string });
+  type Lp = NonNullable<Parameters<typeof geraete>[0]['charging']>;
+  const charging = (cp: Partial<Lp['chargers'][number]> = {}, con: Record<string, unknown> = {}, budget: Record<string, unknown> = {}): Lp => ({
+    budget: { deviceId: 'box', enabled: true, controlEnabled: true, connectorCount: 1, ...budget } as Lp['budget'],
+    chargers: [{
+      deviceId: 'box', chargePointId: 'WB-1', priority: false, connected: true, ready: true, lastSeen: JETZT, reportedAt: JETZT,
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, meteredAt: JETZT, sessionSince: vor(95), ...con }],
+      ...cp,
+    }] as Lp['chargers'],
+  });
+  const bildVon = (c: Lp) => geraete({
+    raster: r, reihen: leereReihen(), charging: c,
+    verbraucher: { verbraucher: [wallbox], ladepunkte: { standard: null, standardFolger: 0, gesamt: 1, rahmen: null }, rangliste: [] },
+  })[0];
+
+  it('regelt VoltPilot alles, steht keine Sperre an der Karte', () => {
+    const g = bildVon(charging());
+    expect(g.ladepunkt?.sperre).toBeNull();
+    expect(g.ladepunkt?.angesteckt).toBe(true);
+    expect(g.an).toBe(true);
+  });
+
+  it('W-01 · Box ab Werk: die Karte sagt, dass VoltPilot nicht regelt', () => {
+    const g = bildVon(charging({}, {}, { controlEnabled: false, controlNote: 'Die Verbrauchersteuerung ist an dieser Box noch nicht freigegeben.' }));
+    expect(g.ladepunkt?.sperre?.kind).toBe('nicht_freigegeben');
+    expect(g.ladepunkt?.sperre?.satz).toBe('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung');
+  });
+
+  it('W-05 · Säule hält die Grenze nicht (Rücklesung abweichend): nicht steuerbar', () => {
+    const g = bildVon(charging({}, { readback: 'abweichend', readbackNote: 'Die Säule hält 0 kW nicht ein.' }));
+    expect(g.ladepunkt?.sperre?.kind).toBe('keine_grenzen');
+    expect(g.ladepunkt?.sperre?.satz).toBe('Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern');
+  });
+
+  it('W-05 · Sicherheitsprofil abgelehnt (ready=false mit Satz der Box): nicht steuerbar', () => {
+    const g = bildVon(charging({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' }));
+    expect(g.ladepunkt?.sperre?.kind).toBe('keine_grenzen');
+  });
+
+  it('⚠ W-12 · Wallbox seit 2 h getrennt: nicht „angesteckt", nicht „lädt", Sperre mit letztem Kontakt', () => {
+    const g = bildVon(charging({ connected: false, lastSeen: vor(120) }, { powerKw: 7.4, meteredAt: vor(120) }));
+    expect(g.ladepunkt?.angesteckt).toBe(false);
+    expect(g.ladepunkt?.laedt).toBe(false);
+    expect(g.ladepunkt?.sitzungSeit).toBeNull();
+    expect(g.an).toBeNull();
+    expect(g.jetztKw).toBeNull();
+    expect(g.pill).toEqual(['stale', 'keine Verbindung']);
+    expect(g.ladepunkt?.sperre?.kind).toBe('getrennt');
+    expect(g.ladepunkt?.sperre?.satz).toMatch(/^Wallbox nicht erreichbar seit \d{2}:\d{2} Uhr$/);
+    expect(g.warum).toBe(g.ladepunkt?.sperre?.satz);
+  });
+
+  it('⚠ W-21 · Auto voll (SuspendedEV): das Vektor-Wort, nie „wartet"', () => {
+    const g = bildVon(charging({}, { status: 'SuspendedEV', charging: false, powerKw: 0, allocatedKw: 11 }));
+    expect(g.ladepunkt?.zustand?.kind).toBe('auto_pausiert');
+    expect(g.pill).toEqual(['wait', 'Auto pausiert']);
+    expect(g.warum).toBe('Auto pausiert · voll oder Auto-Timer');
+    expect(g.ladepunkt?.sperre).toBeNull();
+    // So meldet es die echte Box: mit Sitzung ist `charging` auch bei SuspendedEV wahr - „an“ ist es trotzdem nicht.
+    const echt = bildVon(charging({}, { status: 'SuspendedEV', charging: true, powerKw: 0, allocatedKw: 11 }));
+    expect(echt.an).toBe(false);
+    expect(echt.ladepunkt?.laedt).toBe(true);
+    expect(echt.pill).toEqual(['wait', 'Auto pausiert']);
+  });
+
+  it('Auto steckt ohne Ladevorgang (Pilotanlage 07.11.2026): nicht „an“, kein laufender Ladevorgang, der Ausweg als Satz', () => {
+    const g = bildVon(charging({}, { status: 'SuspendedEVSE', charging: false, powerKw: null, sessionSince: null, meteredAt: null }));
+    expect(g.an).toBe(false);
+    expect(g.ladepunkt?.angesteckt).toBe(true);
+    expect(g.ladepunkt?.laedt).toBe(false);
+    expect(g.ladepunkt?.keinLadevorgang).toBe('Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.');
+    expect(g.ladepunkt?.boostbar).toBe(false);
+    expect(g.pill).toEqual(['wait', 'kein Ladevorgang']);
+    // Mit Ladevorgang, von uns bei 0 kW gehalten: die Sitzung läuft, „an“ ist die Säule nicht.
+    const wartet = bildVon(charging({}, { status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 0 }));
+    expect(wartet.an).toBe(false);
+    expect(wartet.ladepunkt?.laedt).toBe(true);
+    expect(wartet.ladepunkt?.keinLadevorgang).toBeNull();
+  });
+});
+
+describe('wiederholtDasWort (Befund #13: keine Doppelsätze an der Wallbox)', () => {
+  it('erkennt denselben Zustand mit anderen Worten', () => {
+    expect(wiederholtDasWort('Kein Fahrzeug angeschlossen.', 'frei')).toBe(true);
+    expect(wiederholtDasWort('kein Auto', 'frei')).toBe(true);
+    expect(wiederholtDasWort('Ladevorgang läuft.', 'laedt_ohne_messung')).toBe(true);
+    expect(wiederholtDasWort('Ladevorgang läuft.', 'laedt')).toBe(true);
+  });
+  it('lässt einen Grund stehen, der mehr sagt', () => {
+    expect(wiederholtDasWort('Sonnenstrom', 'laedt')).toBe(false);
+    expect(wiederholtDasWort('Pause wegen Netzgrenze', 'wartet')).toBe(false);
+    expect(wiederholtDasWort('Kein Fahrzeug angeschlossen.', 'stoerung')).toBe(false);
   });
 });

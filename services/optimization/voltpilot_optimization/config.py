@@ -329,8 +329,10 @@ SLOT_TRIM_MARGIN_CT_PER_KWH = 0.5
 
 #: Ehrliche Marge (Captain-Entscheid E6 A, 24.09.2026; Befund K0
 #: vp-wr-k0-plandaten): on a FIXED-tariff site (``tarif_art='fest'``) a kWh
-#: the battery takes from the grid - directly, or over the PV bus while the
-#: house imports in parallel (FK3) - must earn at least this much in ct per AC
+#: the battery takes from the grid - the charge beyond the slot's PV surplus;
+#: in EEG mode the rule ``strenge_ausschliesslichkeit`` (EN-2 A, 2026-11-02)
+#: has made that zero, so it binds only where grid charging is allowed -
+#: must earn at least this much in ct per AC
 #: kWh AFTER the full round trip (losses both ways + wear) before the plan
 #: buys it. ONE constant, two readers: the LP prices it on the grid-sourced
 #: part of every charge (``solver.build_model``, constraint
@@ -478,6 +480,116 @@ def surplus_charge_enabled(env=None) -> bool:
     if v in ("false", "0", "no", "off"):
         return False
     raise ValueError(f"{SURPLUS_CHARGE_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
+#: Morgenüberschuss in Ruhe-Slots (NS-5 B, Captain-Entscheid 15.10.2026,
+#: :func:`voltpilot_optimization.slot_trim.morgen_ueberschuss_slots`): an
+#: diesen Anlagen bekommt jeder Ruhe-Slot vom Tagesanfang bis zum ersten
+#: Lade-Slot des Tages die Freigabe ``charge_surplus_to_battery``. Eine
+#: ZWISCHENLÖSUNG bis NS-3 B (Vorrang des Speichers vor dem Überschuss-
+#: Verbraucher), danach je Anlage wieder abschalten. Kommagetrennte
+#: Anlagen-UUIDs (das Muster von ``VOLTPILOT_V2_PLAN_SITES``: ein Env-Wechsel,
+#: keine Spalte); leer oder nicht gesetzt = keine Anlage, die Pläne sind
+#: byte-identisch zu vorher. ``OPTIMIZER_SURPLUS_CHARGE_ENABLED=false`` schaltet
+#: die Regel mit ab - sie setzt dieselbe Freigabe.
+MORGEN_UEBERSCHUSS_ANLAGEN_ENV = "OPTIMIZER_MORGEN_UEBERSCHUSS_ANLAGEN"
+
+
+def morgen_ueberschuss_enabled(site_id, env=None) -> bool:
+    """Ob diese Anlage den Morgenüberschuss in Ruhe-Slots lädt (NS-5 B).
+    Vorgabe AUS; ein ungültiger Eintrag bricht laut ab - ein Tippfehler darf
+    eine Anlage nie still ein- oder ausschalten."""
+    return _anlage_in_env(MORGEN_UEBERSCHUSS_ANLAGEN_ENV, site_id, env)
+
+
+#: Speicher vor dem Überschuss-Verbraucher (NS-3 B, Captain-Entscheid
+#: 15.10.2026, :mod:`voltpilot_optimization.ueberschuss_verbraucher`): an diesen
+#: Anlagen erkennt der Plan einen Verbraucher, der selbst auf null Einspeisung
+#: regelt und jeden Überschuss nimmt, rechnet im Sonnenfenster mit der
+#: Grundlast statt mit der gemessenen Last samt Verbraucher und gibt der Box
+#: die Grundlast als ``charge_hold_base_load_kw`` mit, damit sie die geplante
+#: Ladung gegen ihn hält. Kommagetrennte Anlagen-UUIDs (das Muster von
+#: ``OPTIMIZER_MORGEN_UEBERSCHUSS_ANLAGEN``); leer oder nicht gesetzt = keine
+#: Anlage, nichts wird gelesen und die Pläne sind byte-identisch zu vorher.
+#: Wird eine Anlage eingeschaltet, gehört sie aus
+#: ``OPTIMIZER_MORGEN_UEBERSCHUSS_ANLAGEN`` genommen (beides zusammen ist im
+#: Replay der Oktober-Läufe schlechter als NS-3 B allein).
+UEBERSCHUSS_VERBRAUCHER_ANLAGEN_ENV = "OPTIMIZER_UEBERSCHUSS_VERBRAUCHER_ANLAGEN"
+
+
+def ueberschuss_verbraucher_enabled(site_id, env=None) -> bool:
+    """Ob der Plan an dieser Anlage den Überschuss-Verbraucher herausrechnet
+    (NS-3 B). Vorgabe AUS; ein ungültiger Eintrag bricht laut ab."""
+    return _anlage_in_env(UEBERSCHUSS_VERBRAUCHER_ANLAGEN_ENV, site_id, env)
+
+
+def _anlage_in_env(name: str, site_id, env=None) -> bool:
+    """Ob ``site_id`` in der kommagetrennten Anlagenliste ``name`` steht - ein
+    ungültiger Eintrag bricht laut ab, denn ein Tippfehler darf eine Anlage nie
+    still ein- oder ausschalten."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    anlagen = set()
+    for part in (env.get(name) or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            anlagen.add(UUID(part))
+        except ValueError as exc:
+            raise ValueError(
+                f"{name} must be comma-separated site UUIDs, got {part!r}"
+            ) from exc
+    return UUID(str(site_id)) in anlagen
+
+
+#: Vorsprung-Budget (NS-2 A, Captain-Entscheid 15.10.2026,
+#: :mod:`voltpilot_optimization.vorsprung`): an diesen Anlagen darf der Plan
+#: den Monat und die letzten 7 Tage MIT BESTAND nie tiefer als das Budget unter
+#: den sturen Speicher drücken - wo er es täte, fährt er den Slot stur.
+#: Kommagetrennte Einträge ``<Anlagen-UUID>`` (Budget 0 EUR, "nie unter der
+#: Messlatte") oder ``<Anlagen-UUID>=<EUR>`` (ein Budget >= 0 je Anlage); leer
+#: oder nicht gesetzt = keine Anlage, die Pläne sind byte-identisch zu vorher
+#: und die Tabelle ``steuerung_vorsprung`` wird nicht gelesen.
+VORSPRUNG_BUDGET_ANLAGEN_ENV = "OPTIMIZER_VORSPRUNG_BUDGET_ANLAGEN"
+
+
+def vorsprung_budget_eur(site_id, env=None) -> float | None:
+    """Das Vorsprung-Budget dieser Anlage in EUR, oder ``None`` (Regel aus).
+
+    Vorgabe AUS; ein ungültiger Eintrag (keine UUID, kein Betrag, ein
+    negatives Budget, eine Anlage doppelt) bricht laut ab - ein Tippfehler darf
+    eine Anlage nie still ein- oder ausschalten oder ihr ein anderes Budget
+    geben."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    budgets: dict = {}
+    for part in (env.get(VORSPRUNG_BUDGET_ANLAGEN_ENV) or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        anlage, _, betrag = part.partition("=")
+        try:
+            uuid = UUID(anlage.strip())
+            eur = float(betrag) if betrag.strip() else 0.0
+        except ValueError as exc:
+            raise ValueError(
+                f"{VORSPRUNG_BUDGET_ANLAGEN_ENV} must be comma-separated site "
+                f"UUIDs with an optional '=<EUR>' budget, got {part!r}"
+            ) from exc
+        if not math.isfinite(eur) or eur < 0.0:
+            raise ValueError(
+                f"{VORSPRUNG_BUDGET_ANLAGEN_ENV}: the budget must be a finite "
+                f"amount >= 0 EUR, got {part!r}"
+            )
+        if uuid in budgets:
+            raise ValueError(
+                f"{VORSPRUNG_BUDGET_ANLAGEN_ENV}: site {uuid} is listed twice"
+            )
+        budgets[uuid] = eur
+    return budgets.get(UUID(str(site_id)))
 
 
 #: Instant off-switch for the NACHT-WERTFUNKTION (P3 of the Nachtreserve

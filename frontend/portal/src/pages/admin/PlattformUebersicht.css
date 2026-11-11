@@ -1,0 +1,415 @@
+/* Plattform › Übersicht (Scheibe S4, Konzept §4.3): vier Kacheln, Braucht
+   dich, Auffällig, die Flotte als Gerätewand, Dienste. Am Telefon ein 2×2-Raster statt vier
+   Zeilen, und die übrigen Plattform-Reiter stehen als Zeilen am Ende. */
+
+.vp-ueb-kacheln {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-space-4);
+  margin-bottom: var(--vp-space-6);
+}
+@media (min-width: 900px) {
+  .vp-ueb-kacheln { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.vp-ueb-kachel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+.vp-ueb-kachel.vp-ueb-kachel--klick {
+  font: inherit;
+  color: inherit;
+}
+.vp-ueb-kachel .vp-ueb-kachel-kopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--vp-text-muted);
+}
+.vp-ueb-kachel .vp-ueb-kachel-pfeil {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  color: var(--vp-text-muted);
+}
+.vp-ueb-kachel .vp-ueb-kachel-zahl {
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.vp-ueb-kachel .vp-ueb-kachel-zahl.warn { color: var(--vp-warn-ink); }
+.vp-ueb-kachel .vp-ueb-kachel-zahl.ok { color: var(--vp-ok-ink); }
+.vp-ueb-kachel .vp-ueb-kachel-wort { font-size: 0.85rem; font-weight: 600; }
+.vp-ueb-kachel .vp-ueb-kachel-kontext { font-size: 0.75rem; color: var(--vp-text-muted); }
+/* Der Kontext (die Aufschlüsselung) trägt am Telefon keine eigene Aussage mehr -
+   Zahl und Wort reichen, genau wie das Board es misst. */
+@media (max-width: 720px) {
+  .vp-ueb-kacheln .vp-ueb-kachel-kontext { display: none; }
+  /* Kompakte Kacheln: Zahl und Wort nebeneinander, weniger Polster - die vier Kacheln
+     belegten vorher ~ 400 px des ersten Bildschirms. `!important` nur gegen das Inline-Polster der Karte. */
+  .vp-ueb-kacheln { gap: var(--vp-space-2); margin-bottom: var(--vp-space-4); }
+  .vp-ueb-kacheln .vp-ueb-kachel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+    padding: 12px 14px !important;
+  }
+  .vp-ueb-kacheln .vp-ueb-kachel-kopf { grid-column: 1 / -1; }
+  .vp-ueb-kacheln .vp-ueb-kachel .vp-ueb-kachel-zahl { font-size: 1.5rem; margin-top: 2px; }
+  .vp-ueb-kacheln .vp-ueb-kachel .vp-ueb-kachel-wort { font-size: 0.8125rem; line-height: 1.25; }
+}
+
+.vp-ueb-spalten {
+  display: grid;
+  gap: var(--vp-space-6);
+  margin-bottom: var(--vp-space-6);
+}
+@media (min-width: 1100px) {
+  .vp-ueb-spalten { grid-template-columns: 1.1fr 1fr; align-items: start; }
+  /* Ohne „Auffällig" nimmt „Braucht dich" die ganze Breite - die Flotte steht darunter. */
+  .vp-ueb-spalten--eins { grid-template-columns: minmax(0, 1fr); }
+}
+.vp-ueb-spalte { display: flex; flex-direction: column; gap: var(--vp-space-6); }
+
+/* Der leere Zustand steht unter seinem Titel (gleicher Einzug wie `.vp-admin-sec-head`, Abstand zur Linie)
+   und in der Schrift der Nachbarkarte „Auffällig“; vorher klebte er an der Linie, 8 px links vom Titel und größer. */
+.vp-ueb-braucht-leer {
+  margin: 0;
+  padding: var(--vp-space-3) var(--vp-space-5) var(--vp-space-5);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+}
+.vp-ueb-braucht-sammel { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 10px; }
+.vp-ueb-braucht-sammel button {
+  border: 1px solid var(--vp-c-border);
+  background: var(--vp-bg-light);
+  color: var(--vp-text-muted);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.vp-ueb-braucht-sammel button:hover { color: inherit; border-color: var(--vp-warn-ink); }
+
+.vp-ueb-braucht-liste { display: flex; flex-direction: column; }
+.vp-ueb-braucht-zeile {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-ueb-braucht-zeile:first-child { border-top: none; }
+.vp-ueb-braucht-zeile-knopf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 8px 10px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.vp-ueb-braucht-erledigt-knopf {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-right: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--vp-c-border);
+  background: none;
+  color: var(--vp-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.vp-ueb-braucht-erledigt-knopf:hover { color: var(--vp-ok-ink); border-color: var(--vp-ok-ink); }
+
+.vp-ueb-braucht-erledigte { border-top: 1px solid var(--vp-c-border); padding: 8px 16px; }
+.vp-ueb-braucht-erledigte-knopf {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: var(--vp-text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.vp-ueb-braucht-erledigte-liste { display: flex; flex-direction: column; margin-top: 6px; }
+.vp-ueb-braucht-erledigte-zeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-ueb-braucht-erledigte-zeile:first-child { border-top: none; }
+.vp-ueb-braucht-erledigte-haupt { display: flex; flex-direction: column; min-width: 0; opacity: 0.75; }
+.vp-ueb-braucht-erledigte-haupt b { font-size: 0.86rem; }
+.vp-ueb-braucht-erledigte-haupt small { color: var(--vp-text-muted); font-size: 0.75rem; }
+.vp-ueb-braucht-erledigte-zeile button {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  color: var(--vp-link, #2563eb);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.vp-ueb-braucht-kreis {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vp-bg-light);
+  color: var(--vp-warn-ink);
+}
+.vp-ueb-braucht-haupt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.vp-ueb-braucht-haupt b { font-size: 0.9rem; }
+.vp-ueb-braucht-haupt small { color: var(--vp-text-muted); font-size: 0.78rem; }
+.vp-ueb-braucht-kunde { display: block; font-weight: 500; color: var(--vp-text-muted); font-size: 0.78rem; }
+.vp-ueb-braucht-schritt { flex: 0 0 auto; font-size: 0.78rem; color: var(--vp-text-muted); }
+
+/* Die Flotte als Gerätewand (Konzept vp-flottenbild-konzept, Weg B): jede Box
+   ein kleines Gerät, die Leuchte trägt den Zustand, ein Wort steht nur bei
+   einer Abweichung. Töne wie die Live-Zustände der Akte (§5.3): verbunden grün,
+   verzögert bernstein, offline orange, nie gemeldet grau, Update läuft blau. */
+.vp-ueb-flotte {
+  --vp-ueb-flotte-ok: var(--vp-flow-batt);
+  --vp-ueb-flotte-verzoegert: #f59e0b;
+  --vp-ueb-flotte-aus: #ea580c;
+  --vp-ueb-flotte-lauf: var(--vp-primary-deep);
+  margin-bottom: var(--vp-space-6);
+}
+.vp-ueb-flotte-kopf { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-bottom: var(--vp-space-4); }
+.vp-ueb-flotte-kopf h2 { margin: 0; font-size: 1.05rem; }
+.vp-ueb-flotte-umfang {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-ueb-flotte-wand { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.vp-ueb-flotte-wand[hidden] { display: none; }
+/* Am Rechner steht das Wort rechts neben dem Gerät, am Telefon unter den Namen
+   (reine Geometrie - die schmale Kachel fasst Gerät und „nur von Hand" nicht in einer Zeile). */
+.vp-ueb-flotte-kachel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'geraet wort' 'kunde kunde' 'anlage anlage' 'zusatz zusatz';
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px 14px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  background: var(--vp-c-card);
+  font: inherit;
+  color: var(--vp-c-fg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--vp-motion-fast) var(--vp-ease-out), box-shadow var(--vp-motion-fast) var(--vp-ease-out),
+    transform var(--vp-motion-fast) var(--vp-ease-out);
+}
+.vp-ueb-flotte-kachel:hover {
+  border-color: color-mix(in srgb, var(--vp-c-primary) 40%, var(--vp-c-border));
+  box-shadow: var(--vp-shadow-sm);
+  transform: var(--vp-lift);
+}
+.vp-ueb-flotte-kachel:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
+/* Störungen und Hinweise sind getönt - so stehen sie auch in einer Wand von 40 Boxen vorn. */
+.vp-ueb-flotte-kachel.ton-aus {
+  background: color-mix(in srgb, var(--vp-ueb-flotte-aus) 5%, var(--vp-c-card));
+  border-color: color-mix(in srgb, var(--vp-ueb-flotte-aus) 35%, var(--vp-c-border));
+}
+.vp-ueb-flotte-kachel.ton-verzoegert {
+  background: color-mix(in srgb, var(--vp-ueb-flotte-verzoegert) 6%, var(--vp-c-card));
+  border-color: color-mix(in srgb, var(--vp-ueb-flotte-verzoegert) 35%, var(--vp-c-border));
+}
+.vp-ueb-flotte-kachel.ton-lauf {
+  background: color-mix(in srgb, var(--vp-ueb-flotte-lauf) 6%, var(--vp-c-card));
+  border-color: color-mix(in srgb, var(--vp-ueb-flotte-lauf) 30%, var(--vp-c-border));
+}
+.vp-ueb-flotte-kachel.ton-nie { border-style: dashed; border-color: var(--vp-gray); }
+/* Das Wort (Badge) bricht nie um. */
+.vp-ueb-flotte-wort { grid-area: wort; justify-self: end; align-self: start; margin: 4px 0 0 8px; white-space: nowrap; }
+.vp-ueb-flotte-kunde {
+  grid-area: kunde;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding-left: 2px;
+  font-family: var(--vp-font-heading);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  hyphenate-limit-chars: 10 4 4;
+}
+.vp-ueb-flotte-anlage {
+  grid-area: anlage;
+  margin-top: 2px;
+  padding-left: 2px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--vp-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vp-ueb-flotte-zusatz { grid-area: zusatz; }
+
+/* Die Box als Gerät: grauer Umriss, die Leuchte trägt den Zustand. */
+.vp-ueb-flotte-geraet {
+  grid-area: geraet;
+  display: block;
+  margin: 0 0 8px -2px;
+  color: color-mix(in srgb, var(--vp-text-muted) 75%, var(--vp-c-card));
+}
+.vp-ueb-flotte-geraet .koerper { fill: var(--vp-c-bg); stroke: currentColor; stroke-width: 1.5; }
+.vp-ueb-flotte-geraet .kante { fill: none; stroke: var(--vp-c-border); stroke-width: 1.5; }
+.vp-ueb-flotte-geraet .linie { fill: none; stroke: color-mix(in srgb, currentColor 60%, var(--vp-c-card)); stroke-width: 1.5; stroke-linecap: round; }
+.vp-ueb-flotte-geraet .schein { fill: color-mix(in srgb, var(--vp-ueb-flotte-ok) 22%, transparent); }
+.vp-ueb-flotte-geraet .licht { fill: var(--vp-ueb-flotte-ok); }
+.vp-ueb-flotte-geraet.ton-verzoegert .schein { fill: color-mix(in srgb, var(--vp-ueb-flotte-verzoegert) 26%, transparent); }
+.vp-ueb-flotte-geraet.ton-verzoegert .licht { fill: var(--vp-ueb-flotte-verzoegert); }
+.vp-ueb-flotte-geraet.ton-aus .schein { fill: color-mix(in srgb, var(--vp-ueb-flotte-aus) 22%, transparent); }
+.vp-ueb-flotte-geraet.ton-aus .licht { fill: var(--vp-ueb-flotte-aus); }
+.vp-ueb-flotte-geraet.ton-nie .schein { fill: none; }
+.vp-ueb-flotte-geraet.ton-nie .licht { fill: var(--vp-c-card); stroke: var(--vp-text-muted); stroke-width: 1.5; }
+.vp-ueb-flotte-geraet.ton-lauf .schein { fill: color-mix(in srgb, var(--vp-ueb-flotte-lauf) 20%, transparent); }
+.vp-ueb-flotte-geraet.ton-lauf .licht { fill: var(--vp-ueb-flotte-lauf); }
+/* „Update läuft" ist der eine animierte Zustand des Portals (`vp-ustate-busy`,
+   index.css); unter reduzierter Bewegung hält ihn der Block am Ende von index.css an. */
+.vp-ueb-flotte-geraet.ton-lauf .schein,
+.vp-ueb-flotte-geraet.ton-lauf .licht {
+  animation: vp-ustate-pulse 1.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Ab 13 Boxen am Telefon: die ruhigen hinter einer Zeile. */
+.vp-ueb-flotte-klappe {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-bg);
+  font: inherit;
+  font-size: 0.84rem;
+  color: var(--vp-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.vp-ueb-flotte-klappe b { color: var(--vp-c-fg); font-weight: 650; }
+.vp-ueb-flotte-klappe[aria-expanded='true'] { margin-bottom: 10px; }
+
+/* Anlage ohne Box: ein leiser Hinweis mit Weg zur Kundenakte statt einer leeren Zeile. */
+.vp-ueb-flotte-ohnebox {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-c-border);
+  font-size: 0.8rem;
+  color: var(--vp-text-muted);
+}
+.vp-ueb-flotte-ohnebox a { display: inline-flex; align-items: center; gap: 2px; font-weight: 600; color: var(--vp-link); text-decoration: none; }
+.vp-ueb-flotte-ohnebox a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+@media (max-width: 720px) {
+  .vp-ueb-flotte-wand { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .vp-ueb-flotte-kachel {
+    grid-template-areas: 'geraet geraet' 'kunde kunde' 'anlage anlage' 'zusatz zusatz' 'wort wort';
+    padding: 10px 11px 12px 9px;
+    border-radius: 13px;
+  }
+  .vp-ueb-flotte-wort { justify-self: start; margin: 8px 0 0 2px; }
+  .vp-ueb-flotte-geraet { width: 38px; height: 28px; margin-bottom: 6px; }
+  .vp-ueb-flotte-kunde { font-size: 0.875rem; }
+}
+
+/* Dienste: keine Karte mehr, eine unauffällige Leiste am Seitenkopf. Ruhig,
+   solange alles ok ist; nur ein auffälliger Dienst darf hier Ton zeigen. */
+.vp-ueb-dienste-leiste {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: baseline;
+  gap: var(--vp-space-5);
+  padding: 6px 2px;
+  margin-bottom: var(--vp-space-4);
+  border-bottom: 1px solid var(--vp-c-border);
+  font-size: 0.8rem;
+  color: var(--vp-text-muted);
+}
+.vp-ueb-dienste-leiste--warn { border-bottom-color: color-mix(in srgb, var(--vp-warn-ink) 40%, transparent); }
+.vp-ueb-dienste-leiste--kurz { gap: 6px; overflow: visible; }
+.vp-ueb-dienst { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; white-space: nowrap; }
+.vp-ueb-dienst b { font-weight: 700; color: var(--vp-text); }
+.vp-ueb-dienst small { color: var(--vp-text-muted); }
+.vp-ueb-dienst-punkt { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.vp-ueb-dienst-punkt.ok { background: var(--vp-ok-ink); }
+.vp-ueb-dienst-punkt.warn { background: var(--vp-warn-ink); }
+
+.vp-ueb-auffaellig-zeile { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: 0.82rem; }
+.vp-ueb-auffaellig-zeile span:first-child { color: var(--vp-text-muted); }
+
+/* Die übrigen Plattform-Reiter als Zeilen am Ende - statt der waagrecht
+   scrollenden Reiterleiste (nur am Telefon sichtbar, Konzept §4.3). */
+.vp-ueb-reiter-liste { display: none; }
+@media (max-width: 720px) {
+  .vp-ueb-reiter-liste { display: flex; flex-direction: column; margin-top: var(--vp-space-6); }
+  .vp-ueb-reiter-zeile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 4px;
+    border: none;
+    border-top: 1px solid var(--vp-c-border);
+    background: none;
+    text-align: left;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .vp-ueb-reiter-zeile:first-child { border-top: none; }
+  .vp-ueb-reiter-zeile > span:nth-child(2) { flex: 1 1 auto; font-weight: 600; }
+  .vp-ueb-reiter-zeile .vp-ueb-reiter-urteil { color: var(--vp-text-muted); font-size: 0.82rem; }
+  /* Nur auf DIESER Seite: die Reiterleiste des Raums weicht den Zeilen oben.
+     Scheibe S4 betrifft ausdrücklich nur die Übersicht - Software, Werkstatt,
+     Fernwartung und Katalog behalten ihre Reiterleiste am Telefon. */
+  .vp-plattform-uebersicht > .vp-plattform-tabs { display: none; }
+}

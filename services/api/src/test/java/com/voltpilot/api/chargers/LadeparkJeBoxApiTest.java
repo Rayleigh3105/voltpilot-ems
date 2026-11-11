@@ -34,9 +34,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.invocation.Invocation;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -111,7 +111,7 @@ class LadeparkJeBoxApiTest {
     @Autowired
     LadeparkJeBox verbund;
 
-    @MockBean
+    @MockitoBean
     ChargingConfigPublisher publisher;
 
     private static JdbcTemplate root;
@@ -215,7 +215,7 @@ class LadeparkJeBoxApiTest {
 
         assertThatThrownBy(() -> anbinden(w, "HL-01", w.halle1()))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> {
-                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
                     assertThat(e.getReason()).contains("Eine zweite Box für Ladepunkte ist erst mit der gemeinsamen");
                 });
     }
@@ -244,7 +244,7 @@ class LadeparkJeBoxApiTest {
 
         assertThatThrownBy(() -> anbinden(w, "HL-02", lesebox))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> {
-                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
                     assertThat(e.getReason()).contains("liest in der Gemeinsamen Steuerung nur");
                 });
     }
@@ -270,7 +270,7 @@ class LadeparkJeBoxApiTest {
         root.update("DELETE FROM site_charge_point_allowlist WHERE charge_point_id = 'HL-01'");
         assertThatThrownBy(() -> anbinden(w, "HL-03", w.halle1()))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> {
-                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
                     assertThat(e.getReason()).contains("ist angehalten");
                 });
         anbinden(w, "AHR-LP-08", w.verwaltung());

@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  KEIN_LADEVORGANG_SATZ,
+  keinLadevorgang,
+  ladungLaeuft,
   aktuelleLeistung,
   messwertAlter,
   ANBINDEN_EINSTIEG,
@@ -20,6 +23,8 @@ import {
   asStorage,
   BOOST_INTRO,
   boostbar,
+  quellenBahnWirkt,
+  schnellWirktNichtGrund,
   boostBanner,
   boostEndeKarte,
   boostFolgen,
@@ -41,6 +46,14 @@ import {
   surplusLine,
   turnIn,
   ueberschussVerfuegbar,
+  BIS_ABSTECKEN,
+  bisAbsteckenSatz,
+  budgetFuer,
+  einspeisungKw,
+  LADEPUNKT_DECKEL_MIN,
+  LADEPUNKT_ABSTECKEN_DECKEL_MIN,
+  boostDauer,
+  ladepunktSperre,
   type ChargePoint,
   type ChargingBudget,
 } from './ladepunkte';
@@ -295,14 +308,17 @@ describe('ladeZustand - der OCPP-Status entscheidet das Wort', () => {
   });
 
   it('behauptet über eine getrennte Säule nichts als ihren letzten Kontakt', () => {
-    const z = ladeZustand(con({ status: 'Charging', charging: true, powerKw: 11 }), {
-      connected: false,
-      lastSeen: '2026-08-20T09:12:00Z',
-    });
+    const punkt = { connected: false, lastSeen: '2026-08-20T09:12:00Z' };
+    const z = ladeZustand(con({ status: 'Charging', charging: true, powerKw: 11 }), punkt,
+      Date.parse('2026-08-20T10:00:00Z'));
     expect(z.kind).toBe('getrennt');
     expect(z.word).toBe('Säule getrennt');
     expect(z.tone).toBe('stoerung');
     expect(z.detail).toMatch(/^zuletzt \d{2}:\d{2}$/);
+    // ⚠ An einem anderen Tag trägt der letzte Kontakt sein Datum - „zuletzt
+    // 11:12" über eine Säule, die seit gestern schweigt, läse wie heute (W-12).
+    expect(ladeZustand(con({ status: 'Charging' }), punkt, Date.parse('2026-08-22T10:00:00Z')).detail)
+      .toMatch(/^zuletzt 20\.08\. \d{2}:\d{2}$/);
     // Ohne letzten Kontakt wird keine Uhrzeit erfunden.
     expect(ladeZustand(con({}), { connected: false, lastSeen: null }).detail).toBeNull();
   });
@@ -536,9 +552,10 @@ describe('die Quellen-Bahn wird DURCHGEREICHT, nie neu formuliert', () => {
 
   it('zeigt BEIDE Wahrheiten - sonst liest die Drosselung wie ein Defekt', () => {
     const streifen = kombinationsStreifen(surplusBudget);
-    expect(streifen).toMatch(/197 kW physisch möglich/);
-    expect(streifen).toMatch(/110 kW aus Ihrer Sonne/);
+    expect(streifen).toMatch(/Ihr Anschluss lässt jetzt 197 kW zu/);
+    expect(streifen).toMatch(/Ihre Sonne liefert 110 kW/);
     expect(streifen).toMatch(/niedrigere Grenze/);
+    expect(streifen).not.toMatch(/WIE VIEL|WOHER/);
     // Ohne Quellen-Bahn gibt es nichts zu kombinieren - EINE Grenze ist EINE.
     expect(kombinationsStreifen(budget)).toBeNull();
     expect(kombinationsStreifen(null)).toBeNull();
@@ -657,8 +674,13 @@ describe('„Jetzt voll laden"', () => {
       saeule({
         connectors: [
           {
+            // Die Box vergibt `kein_ueberschuss` nur an einen Stecker MIT
+            // Sitzung - `charging` ist dort wahr. Das Auto meldet SuspendedEV:
+            // weder Ton noch Zustand machen den Knopf, nur das Maschinen-Wort.
             connectorId: 1,
-            charging: false,
+            charging: true,
+            status: 'SuspendedEV',
+            allocatedKw: 0,
             reason: 'kein_ueberschuss',
             reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)',
           },
@@ -670,6 +692,73 @@ describe('„Jetzt voll laden"', () => {
     expect(boostbar(surplusBudget, wartend[0])).toBe(true);
     // Ein Wort, das dieser Stand nicht kennt, begründet nichts.
     expect(boostbar(surplusBudget, { ...wartend[0], reasonCode: 'neues_wort' })).toBe(false);
+  });
+});
+
+/**
+ * Befund `voltpilot-lademodus-schnellzugriff` (07.11.2026): eine Box vor dem
+ * Fix meldet `surplusActive=false`, sobald die Anlage keine Vorgabe hat - und
+ * das Portal schreibt seit P5 keine mehr. Das Echo der Säule nennt die Bahn,
+ * die die Box wirklich fährt; „Schnell“ liest sie.
+ */
+describe('„Schnell“ liest die Bahn der Säule', () => {
+  const ohneSonne = (quelle: ChargePoint['quelle']) => ladevorgangRows([
+    saeule({
+      quelle,
+      connectors: [{
+        connectorId: 1, status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 0,
+        reason: 'kein_ueberschuss', reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)',
+      }],
+    }),
+  ])[0];
+  const feldBox = { ...surplusBudget, surplusActive: false };
+
+  it('trägt die Bahn je Zeile, ein unbekanntes Wort als unbekannt', () => {
+    expect(ohneSonne({ source: 'nur_sonne', minKw: null, storageRelease: false }).bahn).toBe('nur_sonne');
+    expect(ohneSonne(null).bahn).toBeNull();
+    expect(ohneSonne({ source: 'mondschein' as never, minKw: null, storageRelease: null }).bahn).toBeNull();
+  });
+
+  it('bietet „Schnell“ an, wo die Box die Sonnen-Bahn der Säule fährt, auch wenn die Anlage keine meldet', () => {
+    const row = ohneSonne({ source: 'nur_sonne', minKw: null, storageRelease: false });
+    expect(quellenBahnWirkt(feldBox, row)).toBe(true);
+    expect(boostbar(feldBox, row)).toBe(true);
+    expect(schnellWirktNichtGrund(feldBox, row)).toBeNull();
+    expect(ladepunktAktionen(feldBox, row)).toContain('voll_laden');
+    expect(boostbar(feldBox, ohneSonne({ source: 'sonne_zuerst', minKw: 4.2, storageRelease: false }))).toBe(true);
+  });
+
+  it('nimmt eine Säule auf „schnell“ aus, auch wenn eine Nachbarsäule die Bahn aufspannt', () => {
+    const row = ohneSonne({ source: 'schnell', minKw: null, storageRelease: false });
+    expect(quellenBahnWirkt(surplusBudget, row)).toBe(false);
+    expect(boostbar(surplusBudget, row)).toBe(false);
+    expect(schnellWirktNichtGrund(surplusBudget, row)).toMatch(/lädt schon so schnell es geht/);
+    expect(ladepunktKeinEingriff(surplusBudget, row)).toBeNull();
+  });
+
+  it('fällt ohne Echo (ältere Box) auf den Block der Anlage zurück', () => {
+    const row = ohneSonne(null);
+    expect(boostbar(surplusBudget, row)).toBe(true);
+    expect(boostbar(feldBox, row)).toBe(false);
+    expect(schnellWirktNichtGrund(feldBox, row)).toBe('Schnell ändert gerade nichts: Für diese Ladung meldet die Box keine Sonnen-Vorgabe.');
+  });
+
+  it('sagt, warum „Schnell“ nichts ändert, statt still zu sperren', () => {
+    const mit = (con: Record<string, unknown>) => ladevorgangRows([
+      saeule({ quelle: { source: 'nur_sonne', minKw: null, storageRelease: false }, connectors: [{ connectorId: 1, ...con } as never] }),
+    ])[0];
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'SuspendedEV', charging: true, powerKw: 0 })))
+      .toBe('Schnell ändert gerade nichts: Das Auto nimmt keinen Strom an (voll oder Auto-Timer).');
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Charging', charging: true, powerKw: 0 })))
+      .toBe('Schnell ändert gerade nichts: Das Auto nimmt gerade keinen Strom.');
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 7 })))
+      .toBe('Schnell ändert gerade nichts: Die Wallbox hält die Ladung selbst an.');
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Preparing', charging: false })))
+      .toBe('Schnell geht, sobald die Ladung begonnen hat.');
+    expect(schnellWirktNichtGrund(surplusBudget, null)).toBe('Schnell gilt für eine laufende Ladung.');
+    // Wo es etwas ändert oder schon läuft, gibt es keinen Grund.
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Charging', charging: true, powerKw: 3.2 }))).toBeNull();
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Charging', charging: true, powerKw: 11, boost: true }))).toBeNull();
   });
 });
 
@@ -706,6 +795,71 @@ const ZUSTAND_VEKTOREN: { faelle: ZustandVektor[] } = JSON.parse(
   ),
 );
 
+/**
+ * „Auto steckt, kein Ladevorgang“ (Befund an einer Pilotanlage, 07.11.2026):
+ * die Wallbox meldet SuspendedEVSE, die Box kennt keinen Ladevorgang - Server
+ * und Box lehnen „Schnell“, „Aus“ und „bis Abstecken“ ab. EINE Regel
+ * (`ladungLaeuft` = `charging`, wie der Server) entscheidet jeden Knopf.
+ */
+describe('Ladevorgang läuft · kein Ladevorgang', () => {
+  const ohne = { connectorId: 1, status: 'SuspendedEVSE', charging: false };
+
+  it('erkennt den Fall auch an einer Box, die das Wort noch nicht schickt', () => {
+    expect(keinLadevorgang(ohne)).toBe(true);
+    expect(keinLadevorgang({ ...ohne, status: 'SuspendedEV' })).toBe(true);
+    expect(keinLadevorgang({ ...ohne, status: 'Charging' })).toBe(true);
+    // Eine neue Box sagt es ausdrücklich.
+    expect(keinLadevorgang({ ...ohne, reason: 'kein_ladevorgang' })).toBe(true);
+  });
+
+  it('verwechselt ihn nicht mit einer Sitzung, einem freien Stecker oder einem Start', () => {
+    expect(keinLadevorgang({ ...ohne, charging: true })).toBe(false);
+    expect(keinLadevorgang({ ...ohne, sessionSince: '2026-11-07T08:00:00Z' })).toBe(false);
+    // Zuteilung oder Grund vergibt die Box nur an einen Stecker MIT Sitzung.
+    expect(keinLadevorgang({ ...ohne, allocatedKw: 0 })).toBe(false);
+    expect(keinLadevorgang({ ...ohne, reason: 'budget' })).toBe(false);
+    for (const status of ['Available', 'Preparing', 'Finishing', 'Faulted', 'Unavailable', 'Reserved', null]) {
+      expect(keinLadevorgang({ ...ohne, status })).toBe(false);
+    }
+  });
+
+  it('sagt „kein Ladevorgang“ mit dem Ausweg statt „wartet“', () => {
+    const z = ladeZustand(ohne, { connected: true, lastSeen: null });
+    expect(z.kind).toBe('kein_ladevorgang');
+    expect(z.word).toBe('Eingesteckt · kein Ladevorgang');
+    expect(z.reason).toBe(KEIN_LADEVORGANG_SATZ);
+    expect(z.reasonCode).toBe('kein_ladevorgang');
+    // Eine getrennte Säule bleibt getrennt - über ihren Stecker wissen wir nichts.
+    expect(ladeZustand(ohne, { connected: false, lastSeen: null }).kind).toBe('getrennt');
+  });
+
+  it('bietet ohne Ladevorgang keinen Knopf an, der in die Ablehnung des Servers läuft', () => {
+    const budget = { deviceId: 'd-1', enabled: true, controlEnabled: true, connectorCount: 1, surplusActive: true } as never;
+    const [row] = ladevorgangRows([saeule({ connectors: [ohne], quelle: { source: 'nur_sonne' } } as never)]);
+    expect(row.ladungLaeuft).toBe(false);
+    expect(boostbar(budget, row)).toBe(false);
+    expect(pausierbar(row)).toBe(false);
+    expect(ladepunktAktionen(budget, row)).toEqual([]);
+    expect(schnellWirktNichtGrund(budget, row)).toBe(KEIN_LADEVORGANG_SATZ);
+    // ⚠ Auch die alte Form „wartet“ (SuspendedEVSE, 0 kW, charging falsch) bekommt keinen Knopf mehr:
+    // der Server prüft `charging`, nicht das Statuswort.
+    const [alt] = ladevorgangRows([saeule({ connectors: [{ ...ohne, allocatedKw: 0, reason: 'budget' }], quelle: { source: 'nur_sonne' } } as never)]);
+    expect(alt.kind).toBe('wartet');
+    expect(boostbar(budget, alt)).toBe(false);
+    expect(schnellWirktNichtGrund(budget, alt)).toBe('Schnell gilt für eine laufende Ladung.');
+    // Mit Ladevorgang bleibt alles wie bisher.
+    const [mit] = ladevorgangRows([saeule({ connectors: [{ ...ohne, charging: true, allocatedKw: 0, reason: 'kein_ueberschuss' }], quelle: { source: 'nur_sonne' } } as never)]);
+    expect(mit.ladungLaeuft).toBe(true);
+    expect(boostbar(budget, mit)).toBe(true);
+  });
+
+  it('ist dieselbe Regel wie der Server: charging', () => {
+    expect(ladungLaeuft({ charging: true })).toBe(true);
+    expect(ladungLaeuft({ charging: false })).toBe(false);
+    expect(ladungLaeuft(null)).toBe(false);
+  });
+});
+
 describe('ladeZustand · Sim-Abgleich gegen die geteilten Vektoren (E7)', () => {
   it('deckt jedes Zustandswort des Konzepts §4.2 ab', () => {
     // Kein Wort darf ungeprüft bleiben - sonst wäre die Abnahme löchrig genau
@@ -714,7 +868,7 @@ describe('ladeZustand · Sim-Abgleich gegen die geteilten Vektoren (E7)', () => 
     for (const kind of [
       'getrennt', 'frei', 'startet', 'laedt', 'laedt_ohne_messung', 'nimmt_nichts',
       'wartet', 'saeule_pausiert', 'auto_pausiert', 'beendet', 'stoerung',
-      'nicht_verfuegbar', 'reserviert',
+      'nicht_verfuegbar', 'reserviert', 'kein_ladevorgang',
     ]) {
       expect(abgedeckt.has(kind)).toBe(true);
     }
@@ -837,7 +991,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     key: 'CP1#1', title: 'Wallbox Garage · Stecker A', kind: 'laedt', word: 'Lädt',
     tone: 'laedt', reason: null, reasonCode: null, powerKw: 7.4, allocatedKw: 7.4,
     socPct: null, since: null, nextTurn: null, priority: false,
-    chargePointId: 'CP1', connectorId: 1, boost: false, ...over,
+    chargePointId: 'CP1', connectorId: 1, boost: false, ladungLaeuft: true, ...over,
   } as unknown as Parameters<typeof ladepunktAktionen>[1]);
 
   it('bietet an einer laufenden Ladung BEIDE Richtungen an', () => {
@@ -908,7 +1062,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
 
   it('führt genau die Dauern des Mockups, Vorauswahl 2 h', () => {
     expect(LADEPUNKT_DAUERN.map((d) => d.label))
-      .toEqual(['30 min', '1 h', '2 h', '4 h', 'bis Abstecken']);
+      .toEqual(['30 min', '1 h', '2 h', '4 h', 'bis Abstecken, höchstens 14 Std']);
     // ⚠ „bis Abstecken" hat KEINE Minutenzahl: sie wäre eine Zusage über eine
     // Abfahrt, die niemand kennt.
     expect(LADEPUNKT_DAUERN[4].minutes).toBeNull();
@@ -918,8 +1072,11 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
   it('beschriftet die Einträge wörtlich wie das abgenommene Mockup', () => {
     expect(LADEPUNKT_LABEL.voll_laden).toBe('Jetzt voll laden (nur diese Ladung)');
     expect(LADEPUNKT_LABEL.resume).toBe('Automatik fortsetzen');
+    // ⚠ „Bis Abstecken" deckelt die Box mit 14 Stunden (Vertrag
+    // `mqtt-charging-boost`, `until_unplug`) - ohne Deckel wäre es eine
+    // Zusage über eine Sitzung, die niemand beendet (Audit W-10).
     expect(LADEPUNKT_HINWEIS.voll_laden)
-      .toBe('Netzstrom erlaubt. Endet spätestens beim Abstecken.');
+      .toBe('Netzstrom erlaubt. Endet beim Abstecken, spätestens nach 14 Std.');
   });
 
   it('trägt in der Folgen-Karte die vier Blöcke des Haus-Musters', () => {
@@ -932,7 +1089,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     // ⚠ „bis Abstecken" trägt KEINE Minutenzahl - dort gilt nur der Deckel.
     const bis = boostFolgenKarte(budget({ gridLimitKw: 32 }), LADEPUNKT_DAUERN[4]);
     expect(bis.bloecke[3].zeilen[0])
-      .toBe('Endet beim Abstecken, längstens nach 4 Stunden - danach gilt wieder Ihre Priorität.');
+      .toBe('Endet beim Abstecken, längstens nach 14 Stunden - danach gilt wieder Ihre Priorität.');
   });
 
   it('nennt die Anschlussgrenze nur, wenn die Box sie meldet', () => {
@@ -957,7 +1114,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     const t = boostBanner('Chef-Parkplatz');
     expect(t).toBe(
       'Handeingriff läuft: Chef-Parkplatz lädt voll (nur diese Ladung) · '
-      + 'endet spätestens beim Abstecken',
+      + 'endet beim Abstecken, spätestens nach 14 Std',
     );
     // ⚠ Der Herzschlag meldet je Stecker nur `boost: true|false`, kein Ende -
     // „noch 1:12 h" wäre erfunden.
@@ -980,7 +1137,7 @@ describe('Ladepunkt pausieren (P3b)', () => {
     key: 'CP1#1', title: 'Wallbox Garage · Stecker A', kind: 'laedt', word: 'Lädt',
     basisWort: 'Lädt', tone: 'laedt', reason: null, reasonCode: null, powerKw: 7.4,
     allocatedKw: 7.4, socPct: null, since: null, nextTurn: null, priority: false,
-    chargePointId: 'CP1', connectorId: 1, boost: false, handeingriff: false, ...over,
+    chargePointId: 'CP1', connectorId: 1, boost: false, handeingriff: false, ladungLaeuft: true, ...over,
   } as unknown as Parameters<typeof ladepunktAktionen>[1]);
 
   it('erkennt die Pause am MASCHINEN-Wort und sagt sie im ZUSTAND', () => {
@@ -1030,9 +1187,18 @@ describe('Ladepunkt pausieren (P3b)', () => {
       expect(pausierbar(row({ kind }))).toBe(true);
     }
     for (const kind of ['frei', 'startet', 'beendet', 'getrennt', 'stoerung',
-      'nicht_verfuegbar', 'reserviert']) {
+      'nicht_verfuegbar', 'reserviert', 'kein_ladevorgang']) {
       expect(pausierbar(row({ kind }))).toBe(false);
     }
+    // ⚠ Dieselbe Regel wie der Server: ohne Ladevorgang (`charging` falsch)
+    // keine Pause, auch wenn das Statuswort „wartet“ ergäbe.
+    expect(pausierbar(row({ kind: 'wartet', ladungLaeuft: false }))).toBe(false);
+  });
+
+  it('nennt am Stecker ohne Ladevorgang den Ausweg statt eines Knopfs', () => {
+    const ohne = row({ kind: 'kein_ladevorgang', word: 'Eingesteckt · kein Ladevorgang', tone: 'stoerung', ladungLaeuft: false });
+    expect(ladepunktAktionen(budget(), ohne)).toEqual([]);
+    expect(ladepunktKeinEingriff(budget(), ohne)).toBe(KEIN_LADEVORGANG_SATZ);
   });
 
   it('nennt am nicht-ladenden Stecker den Grund, statt einen Knopf zu zeigen', () => {
@@ -1044,13 +1210,13 @@ describe('Ladepunkt pausieren (P3b)', () => {
 
   it('beschriftet den Eintrag wörtlich wie das abgenommene Mockup', () => {
     expect(LADEPUNKT_LABEL.laden_pausieren).toBe('Laden pausieren');
-    expect(LADEPUNKT_HINWEIS.laden_pausieren).toBe('Bis Sie fortsetzen oder das Auto absteckt.');
+    expect(LADEPUNKT_HINWEIS.laden_pausieren).toBe('Bis Sie fortsetzen oder das Auto absteckt, höchstens 14 Std.');
   });
 
   it('sagt im Banner, WELCHE Richtung läuft', () => {
     expect(ladepunktBanner('Wallbox Garage', 'pausiert'))
       .toBe('Handeingriff läuft: Wallbox Garage pausiert (nur diese Ladung) · '
-        + 'endet spätestens beim Abstecken');
+        + 'endet beim Abstecken, spätestens nach 14 Std');
     // Der Boost-Banner bleibt Zeichen für Zeichen der von vorher.
     expect(boostBanner('Wallbox Garage')).toBe(ladepunktBanner('Wallbox Garage', 'voll_laden'));
   });
@@ -1064,8 +1230,8 @@ describe('Ladepunkt pausieren (P3b)', () => {
     // Vertrags-Deckel der Box.
     const offen = pauseFolgenKarte(LADEPUNKT_DAUERN[4]);
     expect(offen.bloecke.find((b) => b.key === 'ende')?.zeilen[0])
-      .toContain('längstens nach 4 Stunden');
-    expect(offen.bestaetigen).toBe('Laden pausieren - bis Abstecken');
+      .toContain('längstens nach 14 Stunden');
+    expect(offen.bestaetigen).toBe('Laden pausieren - bis Abstecken, höchstens 14 Std');
   });
 
   it('beschreibt die RÜCKNAHME je Richtung verschieden', () => {
@@ -1076,5 +1242,145 @@ describe('Ladepunkt pausieren (P3b)', () => {
       .toBe('Sie beenden die volle Ladung für diesen einen Ladevorgang.');
     // Ohne Angabe bleibt es zeichengleich beim Boost - ältere Aufrufer.
     expect(boostEndeKarte()).toEqual(boostEndeKarte('voll_laden'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit vp-ocpp-haushalt: ein Haushalt mit einer Wallbox (W-01, W-05, W-10,
+// W-12, W-13, W-14) - die Fälle der Audit-Bühne als dauerhafte Regeln.
+// ---------------------------------------------------------------------------
+
+describe('ladepunktSperre · regelt VoltPilot diese Wallbox gerade?', () => {
+  const t = Date.parse('2026-09-29T11:10:00Z');
+  const box = { controlEnabled: true };
+
+  it('regelt eine verbundene, eingerichtete Wallbox an einer freigegebenen Box', () => {
+    expect(ladepunktSperre(saeule(), box, t)).toBeNull();
+    // ⚠ Ohne Budget-Block wird keine fehlende Freigabe behauptet.
+    expect(ladepunktSperre(saeule(), null, t)).toBeNull();
+  });
+
+  it('W-01 · Box ab Werk (controlEnabled=false): „regelt noch nicht – lädt mit voller Leistung"', () => {
+    const s = ladepunktSperre(saeule(), { controlEnabled: false }, t)!;
+    expect(s.kind).toBe('nicht_freigegeben');
+    expect(s.satz).toBe('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung');
+    expect(s.folge).toContain('keine Ladewahl');
+  });
+
+  it('W-05 · abgelehntes Sicherheitsprofil oder abweichende Rücklesung: „nimmt keine Ladegrenzen an"', () => {
+    const abgelehnt = ladepunktSperre(saeule({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' }), box, t)!;
+    expect(abgelehnt.kind).toBe('keine_grenzen');
+    expect(abgelehnt.satz).toBe('Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern');
+    const abweichend = ladepunktSperre(saeule({ connectors: [{ connectorId: 1, charging: true, readback: 'abweichend' }] }), box, t)!;
+    expect(abweichend.kind).toBe('keine_grenzen');
+    // Noch ohne Urteil der Box: eingerichtet wird gerade, nicht abgelehnt.
+    expect(ladepunktSperre(saeule({ ready: false, note: null }), box, t)?.kind).toBe('wird_eingerichtet');
+    expect(ladepunktSperre(saeule({ connectors: [{ connectorId: 1, charging: true, readback: 'ok' }] }), box, t)).toBeNull();
+  });
+
+  it('⚠ W-12 · connected=false gewinnt vor jeder anderen Aussage, mit Datum am anderen Tag', () => {
+    const heute = ladepunktSperre(saeule({ connected: false, lastSeen: '2026-09-29T09:10:00Z' }), { controlEnabled: false }, t)!;
+    expect(heute.kind).toBe('getrennt');
+    expect(heute.satz).toMatch(/^Wallbox nicht erreichbar seit \d{2}:\d{2} Uhr$/);
+    const gestern = ladepunktSperre(saeule({ connected: false, lastSeen: '2026-09-28T09:10:00Z' }), box, t)!;
+    expect(gestern.satz).toMatch(/^Wallbox nicht erreichbar seit 28\.09\. \d{2}:\d{2} Uhr$/);
+    expect(ladepunktSperre(saeule({ connected: false, lastSeen: null }), box, t)?.kind).toBe('nie_gemeldet');
+  });
+
+  it('nimmt das Budget der Box, an der die Säule hängt', () => {
+    const zwei = {
+      budget: { ...budget, deviceId: 'd1', controlEnabled: true },
+      budgets: [{ ...budget, deviceId: 'd1', controlEnabled: true }, { ...budget, deviceId: 'd2', controlEnabled: false }],
+      chargers: [],
+    };
+    expect(budgetFuer(zwei, { deviceId: 'd2' })?.controlEnabled).toBe(false);
+    expect(budgetFuer({ budget, chargers: [] }, { deviceId: 'd9' })).toBe(budget);
+  });
+});
+
+describe('chargerView · Audit W-05', () => {
+  it('⚠ eine verbundene Säule mit abgelehntem Sicherheitsprofil ist nicht grün „angemeldet"', () => {
+    const view = chargerView(saeule({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' }));
+    expect(view.tone).toBe('stoerung');
+    expect(view.word).toBe('nimmt keine Ladegrenzen an');
+    expect(view.detail).toContain('NotSupported');
+    expect(chargerView(saeule({ ready: false, note: null })).tone).toBe('ruhig');
+    expect(chargerView(saeule()).tone).toBe('laedt');
+  });
+});
+
+describe('ladevorgangRows · Audit W-13 (alte Werte stehen nicht da wie neue)', () => {
+  it('⚠ zeigt bei einem 30 min alten Messwert weder die alte Leistung noch den alten Ladestand', () => {
+    const jetzt = Date.parse('2026-09-29T11:10:00Z');
+    const [row] = ladevorgangRows([saeule({
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, socPct: 80,
+        meteredAt: '2026-09-29T10:40:00Z', sessionSince: '2026-09-29T09:35:00Z' }],
+    })], jetzt);
+    expect(row.word).toBe('Lädt — Leistung nicht messbar');
+    expect(row.powerKw).toBeNull();
+    expect(row.socPct).toBeNull();
+    expect(row.detail).toMatch(/^Leistung veraltet · zuletzt \d{2}:\d{2}$/);
+  });
+
+  it('lässt einen frischen Messwert stehen', () => {
+    const jetzt = Date.parse('2026-09-29T11:10:00Z');
+    const [row] = ladevorgangRows([saeule({
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, socPct: 80, meteredAt: '2026-09-29T11:09:00Z' }],
+    })], jetzt);
+    expect(row.powerKw).toBe(11);
+    expect(row.socPct).toBe(80);
+    expect(row.detail).toBeNull();
+  });
+});
+
+describe('budgetBand · Audit W-14 (Einspeisung ist keine negative Hauslast)', () => {
+  const sonnig: ChargingBudget = { ...budget, gridLimitKw: 22, effLimitKw: 22, marginPct: 0, siteLoadKw: -4, measuredKw: 2.5, allocatedKw: 2.5 };
+
+  it('⚠ macht „frei" nie größer als den Anschluss und sagt „speist ein" statt „−4 kW Gebäude"', () => {
+    const band = budgetBand(sonnig)!;
+    const frei = band.segments.find((x) => x.id === 'frei')!;
+    expect(frei.kw).toBeCloseTo(19.5, 5);
+    expect(band.segments.reduce((sum, x) => sum + x.kw, 0)).toBeLessThanOrEqual(22 + 1e-9);
+    expect(band.headline).toBe('2,5 kW von 22 kW');
+    expect(band.line).toBe('Ihr Anschluss ist geschützt: Ihre Anlage speist gerade 1,5 kW ein, 2,5 kW Laden bleiben unter Ihrer Grenze.');
+    expect(band.line).not.toMatch(/-|−/);
+  });
+
+  it('rechnet die Einspeisung aus dem Rest der Box zurück (Netz = Rest + Laden)', () => {
+    expect(einspeisungKw(-4, 2.5)).toBeCloseTo(1.5, 5);
+    // Das Laden nimmt den Überschuss ganz: nichts geht ins Netz.
+    expect(einspeisungKw(-2, 3)).toBe(0);
+    // Ein positiver Rest ist Hauslast, keine Einspeisung; fehlend bleibt fehlend.
+    expect(einspeisungKw(1.2, 0)).toBeNull();
+    expect(einspeisungKw(null, 0)).toBeNull();
+    expect(budgetBand({ ...sonnig, siteLoadKw: -2, measuredKw: 3 })!.line).toContain('bezieht gerade keinen Netzstrom');
+  });
+});
+
+describe('Der Deckel eines Ladepunkt-Eingriffs · Audit W-10', () => {
+  it('⚠ „bis Abstecken" nennt seinen Deckel - 14 Stunden mit `until_unplug`, sonst 240 Minuten', () => {
+    expect(LADEPUNKT_DECKEL_MIN).toBe(240);
+    expect(LADEPUNKT_ABSTECKEN_DECKEL_MIN).toBe(14 * 60);
+    expect(BIS_ABSTECKEN).toBe('bis Abstecken, höchstens 14 Std');
+    expect(LADEPUNKT_DAUERN.find((d) => d.minutes == null)?.label).toBe(BIS_ABSTECKEN);
+    expect(bisAbsteckenSatz('15:10')).toBe('zum Abstecken, spätestens 15:10');
+    // Kein Satz verspricht mehr ein Ende allein beim Abstecken.
+    for (const satz of Object.values(LADEPUNKT_HINWEIS)) expect(satz).not.toMatch(/Abstecken\.$|absteckt\.$/);
+  });
+
+  it('liest den Deckel aus dem Vertrag selbst', () => {
+    const vertrag = JSON.parse(readFileSync(resolve(process.cwd(), '../../docs/contracts/mqtt-charging-boost.schema.json'), 'utf8'));
+    const minutes = JSON.stringify(vertrag).match(/"minutes":\{[^}]*"maximum":(\d+)/);
+    expect(Number(minutes?.[1])).toBe(LADEPUNKT_DECKEL_MIN);
+    // Der Deckel von „bis Abstecken" steht im Vertrag beim Feld `until_unplug`.
+    const bis = String(vertrag.properties.until_unplug.description).match(/\((\d+) Stunden statt (\d+)\)/);
+    expect(Number(bis?.[1]) * 60).toBe(LADEPUNKT_ABSTECKEN_DECKEL_MIN);
+    expect(Number(bis?.[2]) * 60).toBe(LADEPUNKT_DECKEL_MIN);
+  });
+
+  it('sendet „bis Abstecken" als `untilUnplug`, eine Minuten-Wahl als Minuten', () => {
+    expect(boostDauer(null)).toEqual({ untilUnplug: true });
+    expect(boostDauer(120)).toEqual({ minutes: 120 });
+    expect(boostDauer(240)).not.toHaveProperty('untilUnplug');
   });
 });

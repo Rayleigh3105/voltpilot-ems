@@ -1,0 +1,469 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
+import { Icon } from '../../designsystem/components/core/Icon';
+import { api, ladeMeldungenVerlaufCsv, type Anlagensteuerung } from '../api';
+import { boxRefOf } from '../geraetAdresse';
+import { useBoxen } from '../useBoxRef';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { EmptyState, ErrorState } from '../components/States';
+import { NeueUeberwachung } from '../components/NeueUeberwachung';
+import { UeberwachenBlatt } from '../components/UeberwachenBlatt';
+import { VpPicker } from '../components/VpPicker';
+import {
+  anlageAusHash,
+  einheitAusBezug,
+  istEigeneUeberwachung,
+  meldungEinheitLink,
+  meldungenApi,
+  meldungQuelleLink,
+  reiterAusHash,
+  type Meldung,
+  type UeberwachungsRegel,
+  SCHWERE_WORT,
+  sortiereJetzt,
+  sortiereVerlauf,
+  wertartSatzname,
+  WORT_EIGENE_UEBERWACHUNG,
+  WORT_GESEHEN,
+} from '../meldungen';
+import { datumZeit } from '../rechteTexte';
+import { useRollen } from '../rollen';
+import { ueberwachungApi } from '../ueberwachungApi';
+import type { WertWahl } from '../ueberwachungAuswahl';
+import { useIsPhone } from '../useIsPhone';
+import './MeldungenPage.css';
+
+type Reiter = 'jetzt' | 'verlauf' | 'regeln';
+
+/**
+ * Die Herkunft einer Regel (§6.4/§6.8) - `ab_werk` (System, z. B. der Preis-Hinweis-Vorschlag,
+ * Entscheid 15C), `eigen` (§6.8 Scheibe 2, „Vom Wert zur fertigen Regel") und `steuerung`
+ * (Alerting Scheibe 6, Entscheid 10A, „In Überwachung umwandeln") sind die tatsächlich
+ * geschriebenen Werte; `vorschlag` bleibt der Fallback-Text für den noch ungenutzten vierten
+ * Katalog-Wert (`ueberwachung_herkunft_chk`).
+ */
+const HERKUNFT_WORT: Record<string, string> = {
+  ab_werk: 'ab Werk',
+  eigen: 'eigene Regel',
+  steuerung: 'aus Steuerung übernommen',
+};
+
+/** Löschbar über diese Fläche (Abnahme-Befund) ist nur eine selbst angelegte Regel - dieselbe
+ * Einschränkung wie serverseitig (`UeberwachungAnlegenService.loeschen`, `CLIENT_HERKUNFT`): eine
+ * ab-Werk-Regel bliebe sonst dauerhaft weg (ihre Aussaat sät jede Wertart/Anlage nur einmal). */
+function loeschbar(regel: UeberwachungsRegel): boolean {
+  return regel.herkunft === 'eigen' || regel.herkunft === 'steuerung';
+}
+
+/** Die vier Zeiträume des CSV-Exports (Entscheid 14A) - eine Export-Bequemlichkeit, keine
+ * abrechnungsgenaue Angabe, darum feste UTC-Fenster statt der Standort-Zeitzone. */
+const CSV_PERIODEN = [
+  { value: 'monat', label: 'Dieser Monat' },
+  { value: 'letzter_monat', label: 'Letzter Monat' },
+  { value: 'jahr', label: 'Dieses Jahr' },
+  { value: 'letztes_jahr', label: 'Letztes Jahr' },
+];
+
+function csvZeitraum(periode: string, jetzt: Date): { von: string; bis: string } {
+  const jahr = jetzt.getUTCFullYear();
+  const monat = jetzt.getUTCMonth();
+  switch (periode) {
+    case 'letzter_monat':
+      return { von: new Date(Date.UTC(jahr, monat - 1, 1)).toISOString(), bis: new Date(Date.UTC(jahr, monat, 1)).toISOString() };
+    case 'jahr':
+      return { von: new Date(Date.UTC(jahr, 0, 1)).toISOString(), bis: new Date(Date.UTC(jahr + 1, 0, 1)).toISOString() };
+    case 'letztes_jahr':
+      return { von: new Date(Date.UTC(jahr - 1, 0, 1)).toISOString(), bis: new Date(Date.UTC(jahr, 0, 1)).toISOString() };
+    default:
+      return { von: new Date(Date.UTC(jahr, monat, 1)).toISOString(), bis: new Date(Date.UTC(jahr, monat + 1, 1)).toISOString() };
+  }
+}
+
+/**
+ * Das Meldungs-Center (Alerting Scheibe 1, Konzept §6.8, Entscheid 4A): `#/meldungen` mit den
+ * Reitern Jetzt · Verlauf · Überwachungen. Öffnet nur über die Glocke im Kopf oder einen Link
+ * (`#/meldungen?anlage=<id>` aus der Zustands-Anzeige einer Anlage) - kein Eintrag in der Leiste.
+ *
+ * Seit Konzept b1 (20.10.2026, Entscheid E3) entsteht eine Überwachung NUR hier: „+ Überwachung“
+ * im Reiter Überwachungen fragt Ort und Wert (`NeueUeberwachung`), dann folgt das vorhandene Blatt
+ * „Überwachen“. Am Wert einer anderen Fläche gibt es kein „Überwachen“ mehr.
+ */
+export function MeldungenPage() {
+  const [reiter, setReiter] = useState<Reiter>(() => reiterAusHash(window.location.hash) ?? 'jetzt');
+  const [meldungen, setMeldungen] = useState<Meldung[] | null>(null);
+  const [regeln, setRegeln] = useState<UeberwachungsRegel[] | null>(null);
+  const [fehler, setFehler] = useState('');
+  const [neuLaden, setNeuLaden] = useState(0);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [csvPeriode, setCsvPeriode] = useState('monat');
+  const [csvLaedt, setCsvLaedt] = useState(false);
+  const [csvFehler, setCsvFehler] = useState('');
+  const [loeschenZiel, setLoeschenZiel] = useState<UeberwachungsRegel | null>(null);
+  const [neuOffen, setNeuOffen] = useState(false);
+  const [neuWert, setNeuWert] = useState<WertWahl | null>(null);
+  const anlageFilter = anlageAusHash(window.location.hash);
+  const isPhone = useIsPhone();
+  const { selbst } = useRollen();
+  // Wer sich an irgendeinem Standort (oder am Unternehmen) selbst benachrichtigen lassen darf, sieht
+  // „+ Überwachung“; ob es am gewählten Ort erlaubt ist, entscheidet der Server beim Anlegen.
+  const darfAnlegen = !!selbst && selbst.zustand === 'aktiv'
+    && (selbst.unternehmen_rechte.includes(RECHT_EIGENE) || selbst.standorte.some((st) => st.rechte.includes(RECHT_EIGENE)));
+
+  useEffect(() => {
+    let aktiv = true;
+    setFehler('');
+    const laden =
+      reiter === 'regeln'
+        ? meldungenApi.regeln().then((r) => {
+            if (aktiv) setRegeln(r);
+          })
+        : (reiter === 'jetzt' ? meldungenApi.jetzt() : meldungenApi.verlauf()).then((m) => {
+            if (aktiv) setMeldungen(m);
+          });
+    laden.catch(() => {
+      if (aktiv) setFehler('Die Meldungen konnten nicht geladen werden. Bitte versuchen Sie es erneut.');
+    });
+    return () => {
+      aktiv = false;
+    };
+  }, [reiter, neuLaden]);
+
+  const gefiltert = (meldungen ?? []).filter((m) => !anlageFilter || m.anlageId === anlageFilter);
+  const liste = reiter === 'verlauf' ? sortiereVerlauf(gefiltert) : sortiereJetzt(gefiltert);
+
+  // GE-3: ein Alarm je Einheit führt auf die Seite der Einheit — dafür die Steuerungen ihrer Anlage und die Boxen,
+  // nur wenn es solche Meldungen gibt. Fail-soft: ohne Antwort steht die Meldung ohne Weg da.
+  const einheitAnlagen = useMemo(
+    () => [...new Set((meldungen ?? []).filter((m) => einheitAusBezug(m.bezugKennung) && m.anlageId).map((m) => m.anlageId as string))].sort().join(','),
+    [meldungen],
+  );
+  const [steuerungenJe, setSteuerungenJe] = useState<Record<string, Anlagensteuerung[]>>({});
+  useEffect(() => {
+    let aktiv = true;
+    for (const id of einheitAnlagen.split(',').filter(Boolean)) {
+      api.anlagensteuerungen(id).then(
+        (l) => aktiv && setSteuerungenJe((alt) => ({ ...alt, [id]: l?.steuerungen ?? [] })),
+        () => undefined,
+      );
+    }
+    return () => {
+      aktiv = false;
+    };
+  }, [einheitAnlagen]);
+  const boxen = useBoxen(einheitAnlagen !== '');
+  const einheitLink = (m: Meldung) =>
+    m.anlageId ? meldungEinheitLink(m, steuerungenJe[m.anlageId], boxRefOf(boxen, m.anlageId)) : null;
+
+  async function gesehen(id: string) {
+    if (busy) return;
+    setBusy(id);
+    try {
+      const aktualisiert = await meldungenApi.gesehen(id);
+      setMeldungen((liste) => liste?.map((m) => (m.id === id ? aktualisiert : m)) ?? liste);
+    } catch {
+      setFehler('"Gesehen" konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Entscheid 14A: der Verlauf je Periode als CSV - ein Nachweis für die eigene Dokumentation,
+   * kein Anspruch auf Normerfüllung (MX4). */
+  async function verlaufCsv() {
+    if (csvLaedt) return;
+    setCsvLaedt(true);
+    setCsvFehler('');
+    try {
+      const { von, bis } = csvZeitraum(csvPeriode, new Date());
+      await ladeMeldungenVerlaufCsv(von, bis);
+    } catch {
+      setCsvFehler('Die Datei konnte nicht geladen werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setCsvLaedt(false);
+    }
+  }
+
+  /** „Jetzt scharf schalten" (§6.8 Entwurf 1) - beendet den Probelauf einer eigenen Regel vorzeitig. */
+  async function scharfSchalten(id: string) {
+    if (busy) return;
+    setBusy(id);
+    try {
+      const aktualisiert = await ueberwachungApi.scharfSchalten(id);
+      setRegeln((liste) => liste?.map((r) => (r.id === id ? aktualisiert : r)) ?? liste);
+    } catch {
+      setFehler('Das Scharfschalten ist fehlgeschlagen. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Löschen (Abnahme-Befund aus Produktion: "wie kann ich diese denn wieder löschen?") - eine
+   * eigene Regel verschwindet aus der Verwaltung, der Verlauf bleibt (Entscheid 3B, ConfirmDialog
+   * nennt das ausdrücklich, damit die Rückfrage ehrlich bleibt).
+   */
+  async function loeschen(id: string) {
+    if (busy) return;
+    setBusy(id);
+    try {
+      await ueberwachungApi.loeschen(id);
+      setRegeln((liste) => liste?.filter((r) => r.id !== id) ?? liste);
+      setLoeschenZiel(null);
+    } catch {
+      setFehler('Das Löschen ist fehlgeschlagen. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="vp-meldungen" data-testid="meldungen-seite">
+      <h1>Meldungen</h1>
+      <div className="vp-bereich-tabs" role="tablist" aria-label="Meldungen">
+        {(
+          [
+            ['jetzt', 'Jetzt'],
+            ['verlauf', 'Verlauf'],
+            ['regeln', 'Überwachungen'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={reiter === key}
+            className={`vp-bereich-tab${reiter === key ? ' active' : ''}`}
+            data-testid={`meldungen-reiter-${key}`}
+            onClick={() => setReiter(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {fehler && <ErrorState message={fehler} onRetry={() => setNeuLaden((n) => n + 1)} />}
+
+      {reiter === 'verlauf' && (
+        <div className="vp-meldungen-csv" data-testid="verlauf-csv">
+          <VpPicker
+            ariaLabel="Zeitraum des Exports"
+            options={CSV_PERIODEN}
+            value={csvPeriode}
+            onChange={setCsvPeriode}
+          />
+          <Button variant="outline" size="sm" disabled={csvLaedt} onClick={() => void verlaufCsv()}>
+            Verlauf als CSV
+          </Button>
+          {csvFehler && <p role="alert">{csvFehler}</p>}
+        </div>
+      )}
+
+      {reiter === 'regeln' && darfAnlegen && (
+        <div className="vp-meldungen-neu">
+          <Button size="sm" onClick={() => setNeuOffen(true)}>
+            <Icon name="plus" size={16} /> Überwachung
+          </Button>
+        </div>
+      )}
+
+      {reiter === 'regeln' ? (
+        fehler && regeln === null ? null : <RegelListe
+          regeln={regeln}
+          busy={busy}
+          onScharfSchalten={scharfSchalten}
+          onLoeschenAnfragen={setLoeschenZiel}
+        />
+      ) : (
+        // Fehlgeschlagen ist nicht „wird geladen": ohne Antwort steht nur der Fehlerzustand darüber.
+        fehler && meldungen === null ? null : <MeldungListe
+          meldungen={meldungen === null ? null : liste}
+          reiter={reiter}
+          busy={busy}
+          onGesehen={gesehen}
+          einheitLink={einheitLink}
+        />
+      )}
+
+      <ConfirmDialog
+        open={loeschenZiel != null}
+        title="Überwachung löschen?"
+        intro={`„${loeschenZiel?.name ?? (loeschenZiel ? wertartSatzname(loeschenZiel.wertart) : '')}" meldet sich danach nicht mehr.`}
+        consequences={[
+          'Der bisherige Verlauf dieser Überwachung bleibt erhalten.',
+          'Noch offene Meldungen dieser Regel werden geschlossen.',
+        ]}
+        confirmLabel="Löschen"
+        tone="danger"
+        busy={loeschenZiel != null && busy === loeschenZiel.id}
+        onCancel={() => setLoeschenZiel(null)}
+        onConfirm={() => { if (loeschenZiel) void loeschen(loeschenZiel.id); }}
+      />
+
+      <NeueUeberwachung
+        offen={neuOffen}
+        isPhone={isPhone}
+        onClose={() => setNeuOffen(false)}
+        onWahl={(w) => { setNeuOffen(false); setNeuWert(w); }}
+      />
+      {neuWert && (
+        <UeberwachenBlatt
+          key={neuWert.schluessel}
+          offen
+          isPhone={isPhone}
+          onClose={() => setNeuWert(null)}
+          wertart={neuWert.wertart}
+          bezug={neuWert.bezug}
+          aktuellerWert={neuWert.aktuellerWert}
+          einheit={neuWert.einheit}
+          titelZusatz={neuWert.titelZusatz}
+          onUeberwacht={(regel) => setRegeln((liste) => [regel, ...(liste ?? [])])}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Das Recht, sich selbst zu einem Wert benachrichtigen zu lassen (Alerting §6.6, Entscheid 5A). */
+const RECHT_EIGENE = 'ueberwachung.eigene';
+
+function MeldungListe({
+  meldungen,
+  reiter,
+  busy,
+  onGesehen,
+  einheitLink,
+}: {
+  meldungen: Meldung[] | null;
+  reiter: Reiter;
+  busy: string | null;
+  onGesehen: (id: string) => void;
+  /** Der Weg eines Alarms je Einheit auf ihre Seite (GE-3); null = keiner. */
+  einheitLink?: (m: Meldung) => { label: string; hash: string } | null;
+}) {
+  if (meldungen === null) return <p>Wird geladen …</p>;
+  if (meldungen.length === 0) {
+    return (
+      <div className="vp-meldungen-leer">
+        <EmptyState
+          icon={reiter === 'jetzt' ? 'check' : 'bell'}
+          category={reiter === 'jetzt' ? 'ev' : 'primary'}
+          title={reiter === 'jetzt' ? 'Alles ruhig' : 'Noch nichts erledigt'}
+          description={
+            reiter === 'jetzt'
+              ? 'Keine offenen Meldungen. Sobald etwas Ihre Aufmerksamkeit braucht, steht es hier.'
+              : 'Erledigte Meldungen erscheinen hier, sobald Sie eine abgeschlossen haben.'
+          }
+        />
+      </div>
+    );
+  }
+  return (
+    <ul className="vp-meldungen-liste">
+      {meldungen.map((m) => {
+        const quelle = meldungQuelleLink(m) ?? einheitLink?.(m) ?? null;
+        return (
+        <li key={m.id} className={`vp-meldung schwere-${m.schwere}`}>
+          <span className="vp-meldung-dot" aria-hidden="true" />
+          <div className="vp-meldung-inhalt">
+            <div className="vp-meldung-kopf">
+              <span className="vp-meldung-schwere">{SCHWERE_WORT[m.schwere]}</span>
+              <span className="vp-meldung-seit">seit {datumZeit(m.ausgeloestAm)}</span>
+            </div>
+            <p className="vp-meldung-satz">
+              {wertartSatzname(m.wertart)}
+              {m.anlageName ? ` der Anlage ${m.anlageName}` : ''}
+            </p>
+            <p className="vp-meldung-kennzeichen">
+              {m.kennzeichen}
+              {istEigeneUeberwachung(m.wertart) && (
+                <span className="vp-meldung-eigene" data-testid="meldung-eigene-ueberwachung">
+                  {' '}· {WORT_EIGENE_UEBERWACHUNG}
+                </span>
+              )}
+              {quelle && (
+                <>
+                  {' '}·{' '}
+                  <a href={quelle.hash} data-testid="meldung-quelle-link">
+                    {quelle.label}
+                  </a>
+                </>
+              )}
+            </p>
+            {m.gesehenVon && (
+              <p className="vp-meldung-gesehen">
+                Gesehen von {m.gesehenVon}
+                {m.gesehenAm ? `, ${datumZeit(m.gesehenAm)}` : ''}
+              </p>
+            )}
+          </div>
+          {reiter === 'jetzt' && !m.gesehenVon && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy === m.id}
+              onClick={() => onGesehen(m.id)}
+            >
+              {WORT_GESEHEN}
+            </Button>
+          )}
+        </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function RegelListe({
+  regeln,
+  busy,
+  onScharfSchalten,
+  onLoeschenAnfragen,
+}: {
+  regeln: UeberwachungsRegel[] | null;
+  busy: string | null;
+  onScharfSchalten: (id: string) => void;
+  onLoeschenAnfragen: (regel: UeberwachungsRegel) => void;
+}) {
+  if (regeln === null) return <p>Wird geladen …</p>;
+  if (regeln.length === 0) return <p className="vp-meldungen-leer">Noch keine Überwachung eingeschaltet.</p>;
+  return (
+    <ul className="vp-meldungen-liste">
+      {regeln.map((r) => (
+        <li key={r.id} className="vp-regel">
+          <Icon name="bell" size={18} />
+          <div className="vp-meldung-inhalt">
+            <p className="vp-meldung-satz">{r.name ?? wertartSatzname(r.wertart)}</p>
+            <p className="vp-meldung-kennzeichen">
+              {SCHWERE_WORT[r.schwere]} · {HERKUNFT_WORT[r.herkunft] ?? 'Vorschlag'}
+              {r.probelaufBis && ` · im Probelauf bis ${datumZeit(r.probelaufBis).split(' ')[0]}`}
+            </p>
+          </div>
+          <div className="vp-regel-aktionen">
+            {r.probelaufBis && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy === r.id}
+                onClick={() => onScharfSchalten(r.id)}
+              >
+                Jetzt scharf schalten
+              </Button>
+            )}
+            {loeschbar(r) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="vp-btn-danger"
+                disabled={busy === r.id}
+                aria-label={`${r.name ?? wertartSatzname(r.wertart)} löschen`}
+                onClick={() => onLoeschenAnfragen(r)}
+              >
+                <Icon name="trash" size={14} /> Löschen
+              </Button>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}

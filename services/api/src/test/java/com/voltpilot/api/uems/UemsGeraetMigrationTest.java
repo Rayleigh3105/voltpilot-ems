@@ -252,12 +252,11 @@ class UemsGeraetMigrationTest {
         assertThat(kaco.get("geraete_id")).isNull();
 
         assertThat(geraetVon("Wallbox").get("geraeteart")).isEqualTo("ladestation");
-        assertThat(geraetVon("Batterie").get("geraeteart")).isEqualTo("speicher");
         assertThat(geraetVon("Heizstab").get("geraeteart")).isEqualTo("sonstiges");
 
-        assertThat(List.of("Hybrid", "Fronius", "Netzzähler Janitza", "KACO", "Wallbox", "Batterie",
+        assertThat(List.of("Hybrid", "Fronius", "Netzzähler Janitza", "KACO", "Wallbox",
                 "Heizstab").stream().map(k -> (String) geraetVon(k).get("kennzeichen")))
-                .containsExactly("GR-1", "GR-2", "GR-3", "GR-4", "GR-5", "GR-6", "GR-7");
+                .containsExactly("GR-1", "GR-2", "GR-3", "GR-4", "GR-5", "GR-6");
     }
 
     /** Ohne Wechselrichter an der Box wird nichts zusammengelegt — nie geraten. */
@@ -274,8 +273,8 @@ class UemsGeraetMigrationTest {
         assertThat(geraetVon("zwei WR: zweiter")).isNotEqualTo(geraetVon("zwei WR: erster"));
         assertThat(List.of("ohne WR: Netzzähler", "ohne WR: Hausverbrauch", "zwei WR: erster",
                 "zwei WR: zweiter").stream().map(k -> (String) geraetVon(k).get("kennzeichen")))
-                .containsExactly("GR-8", "GR-9", "GR-10", "GR-11");
-        assertThat(zaehlerNachDerMigration.get(PROBE)).isEqualTo(12);
+                .containsExactly("GR-7", "GR-8", "GR-9", "GR-10");
+        assertThat(zaehlerNachDerMigration.get(PROBE)).isEqualTo(11);
     }
 
     @Test
@@ -701,8 +700,6 @@ class UemsGeraetMigrationTest {
                 null, "2026-07-23T09:00:00Z");
         bestand(PROBE, hybridAnlage, "Wallbox", "consumer", "wallbox", null, false, "go-e", "Charger Gemini",
                 "goe_http_api", "{\"ip\":\"192.168.178.70\"}", null, "2026-07-24T09:00:00Z");
-        bestand(PROBE, hybridAnlage, "Batterie", "consumer", "user-defined-battery", null, false, null, null,
-                null, "{\"topic\":\"bms/+/soc\"}", null, "2026-07-25T09:00:00Z");
         bestand(PROBE, hybridAnlage, "Heizstab", "consumer", "heating-rod", null, false, "Shelly", "Pro 1PM",
                 "shelly_http", "{\"ip\":\"192.168.178.80\",\"channel\":0}", null, "2026-07-26T09:00:00Z");
 

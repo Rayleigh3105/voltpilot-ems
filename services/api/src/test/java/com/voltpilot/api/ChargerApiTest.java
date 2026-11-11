@@ -23,8 +23,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -35,7 +36,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -61,6 +62,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class ChargerApiTest {
@@ -121,7 +123,7 @@ class ChargerApiTest {
     @Autowired
     com.voltpilot.api.fahrzeuge.SiteVehicleRepository vehicles;
 
-    @MockBean
+    @MockitoBean
     ChargingConfigPublisher chargingConfigPublisher;
 
     private final ObjectMapper json = new ObjectMapper();
@@ -176,6 +178,107 @@ class ChargerApiTest {
             assertThat(rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, admin),String.class)
                     .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         } finally { deleteSite(site); }
+    }
+
+    /**
+     * Audit W-01: Wer eine Säule über den Kundenweg „Ladesäule anbinden" einträgt, gibt der
+     * Box damit die OCPP-Regelung frei ({@code ocpp_control.enabled=true}) - ohne sie schreibt
+     * eine Box mit Werkseinstellung keine einzige Ladegrenze. Das Dokument reist mit dem
+     * Ladepark-Dokument des Anbindens. Idempotent, und ein ausdrückliches Abschalten im
+     * Technik-Panel bleibt auch beim nächsten Anbinden stehen.
+     */
+    @Test
+    void anbindenGibtDieOcppRegelungFreiUndLaesstEinAbschaltenStehen() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "OCPP-Freigabe beim Anbinden");
+        String control = "/api/v1/sites/" + site + "/ocpp/control";
+        String anbinden = "/api/v1/sites/" + site + "/charging-config/charge-points";
+        try {
+            UUID device = claim(customer, site, "edge-freigabe-anbinden");
+            assertThat(getJson(control, customer).path("desired").isNull()).isTrue();
+            org.mockito.Mockito.clearInvocations(chargingConfigPublisher);
+
+            postJson(anbinden, customer, Map.of("chargePointId", "WALLBOX-GARAGE", "deviceId",
+                    device.toString()));
+            JsonNode desired = getJson(control, customer).path("desired");
+            assertThat(desired.path("enabled").asBoolean()).isTrue();
+            assertThat(desired.path("revision").asLong()).isEqualTo(1);
+            assertThat(desired.path("authorization").path("mode").asText())
+                    .as("Karten bleiben frei - wie ohne Dokument").isEqualTo("free");
+            assertThat(desired.path("phase_limits_a")).isEmpty();
+            // Zugestellt wie vom Technik-Panel: im Ladepark-Dokument an die Box des Anbindens.
+            List<String> zugestellt = org.mockito.Mockito.mockingDetails(chargingConfigPublisher)
+                    .getInvocations().stream()
+                    .filter(i -> i.getMethod().getName().equals("publish")
+                            && i.getArguments().length == 15)
+                    .filter(i -> device.equals(i.getArgument(2)))
+                    .map(i -> i.<String>getArgument(13))
+                    .toList();
+            assertThat(zugestellt).isNotEmpty();
+            assertThat(json.readTree(zugestellt.get(zugestellt.size() - 1)).path("enabled").asBoolean())
+                    .isTrue();
+
+            // Idempotent: ein zweites Anbinden ändert die Freigabe nicht.
+            postJson(anbinden, customer, Map.of("chargePointId", "WALLBOX-GARAGE", "deviceId",
+                    device.toString()));
+            assertThat(getJson(control, customer).path("desired").path("revision").asLong()).isEqualTo(1);
+
+            // Das Technik-Panel schaltet ab - und das nächste Anbinden lässt das stehen.
+            var aus = (com.fasterxml.jackson.databind.node.ObjectNode) desired.deepCopy();
+            aus.put("enabled", false);
+            var saved = rest.exchange(url(control), HttpMethod.PUT, new HttpEntity<>(aus, bearer(customer)),
+                    String.class);
+            assertThat(saved.getStatusCode()).as("%s", saved.getBody()).isEqualTo(HttpStatus.OK);
+            postJson(anbinden, customer, Map.of("chargePointId", "WALLBOX-HOF", "deviceId",
+                    device.toString()));
+            desired = getJson(control, customer).path("desired");
+            assertThat(desired.path("enabled").asBoolean()).isFalse();
+            assertThat(desired.path("revision").asLong()).isEqualTo(2);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Konzept k1 Regel 4 („Gewählt ist nicht geladen"): die Box meldet je Säule
+     * die Bahn, die sie fährt; die API vergleicht sie mit der Wahl je Säule und
+     * sagt dem Portal „übernommen", „weicht ab" oder - bei einer älteren Box -
+     * „unbekannt", nie eine erfundene Bestätigung.
+     */
+    @Test
+    void theBoxEchoesTheLaneAndTheViewComparesItWithTheWish() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Echo");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-echo");
+            postJson("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "saeule-1"));
+            putJson("/api/v1/sites/" + site + "/charging-config/charge-points/saeule-1/source", customer,
+                    Map.of("source", "sonne_zuerst", "minKw", 4.2));
+
+            // 1 · Eine ältere Box meldet keine Bahn: unbekannt, nicht übernommen.
+            heartbeat(site, device, oneStation());
+            JsonNode alt = getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers").get(0);
+            assertThat(alt.get("quelle").isNull()).isTrue();
+            assertThat(alt.get("quelleUebernommen").isNull()).isTrue();
+
+            // 2 · Die Box fährt noch die alte Bahn: weicht ab.
+            heartbeat(site, device, oneStation().replace("\"id\":\"saeule-1\",",
+                    "\"id\":\"saeule-1\",\"source\":\"nur_sonne\",\"storage_release\":false,"));
+            JsonNode vorher = getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers").get(0);
+            assertThat(vorher.get("quelle").get("source").asText()).isEqualTo("nur_sonne");
+            assertThat(vorher.get("quelleUebernommen").asBoolean()).isFalse();
+
+            // 3 · Die Box hat übernommen - Bahn und Mindestleistung.
+            heartbeat(site, device, oneStation().replace("\"id\":\"saeule-1\",",
+                    "\"id\":\"saeule-1\",\"source\":\"sonne_zuerst\",\"min_kw\":4.2,\"storage_release\":false,"));
+            JsonNode danach = getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers").get(0);
+            assertThat(danach.get("quelle").get("minKw").asDouble()).isEqualTo(4.2);
+            assertThat(danach.get("quelle").get("storageRelease").asBoolean()).isFalse();
+            assertThat(danach.get("quelleUebernommen").asBoolean()).isTrue();
+        } finally {
+            deleteSite(site);
+        }
     }
 
     @Test
@@ -523,6 +626,15 @@ class ChargerApiTest {
                     String.class);
             assertThat(pause.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 
+            // 6c · Audit W-10: „bis Abstecken" (`untilUnplug`) ist ein angenommenes
+            //      Feld des Rumpfs - es geht denselben Weg, ohne Broker also 503.
+            ResponseEntity<String> bisAbstecken = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1,
+                            "action", "pause", "untilUnplug", true), bearer(customer)),
+                    String.class);
+            assertThat(bisAbstecken.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+
             ResponseEntity<String> badAction = rest.exchange(
                     url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
                     new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1,
@@ -675,7 +787,7 @@ class ChargerApiTest {
                     HttpMethod.POST,
                     new HttpEntity<>(Map.of("chargePointId", "ahr-lp-02",
                             "deviceId", lesebox.toString()), bearer(customer)), String.class);
-            assertThat(zweiteBox.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(zweiteBox.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(zweiteBox.getBody()).contains("bereits an eine andere Box angebunden")
                     .contains("gemeinsamen Steuerung");
             assertThat(publishedChargingDevices()).isEmpty();
@@ -1175,7 +1287,7 @@ class ChargerApiTest {
     private UUID claim(String customerToken, UUID siteId, String ref) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/devices/claim"),
                 HttpMethod.POST,
-                new HttpEntity<>(Map.of("externalRef", ref, "siteId", siteId.toString(),
+                new HttpEntity<>(Map.of("externalRef", TestKennung.box(ref), "siteId", siteId.toString(),
                         "kind", "inverter"), bearer(customerToken)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.CREATED);

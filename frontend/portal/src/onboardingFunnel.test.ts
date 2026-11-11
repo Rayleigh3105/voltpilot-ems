@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
+import { DELAYED_WINDOW_MS } from './adminFleet';
+import { ONLINE_WINDOW_MS } from './api';
 import {
+  PENDING_KONTEXT,
   TYPO_SUSPECT_AFTER_MS,
   deviceRows,
   funnelStages,
+  pendingErreichbarText,
   pendingRows,
   versionDisplay,
   versionLabel,
@@ -97,6 +101,25 @@ describe('pendingRows', () => {
     expect(pendingRows([raw], NOW)[0].deviceInfo).toBeNull();
     const none = { ...pending('edge-stumm', 0), deviceInfo: null };
     expect(pendingRows([none], NOW)[0].deviceInfo).toBeNull();
+  });
+
+  it('erreichbar: dieselbe Online-Regel wie die verbundene Flotte, nie „Verbunden" - das Gerät ist nicht beim Kunden (Firstmate vp-werkstatt-laeuft-anzeige)', () => {
+    const [frisch] = pendingRows([pending('edge-frisch', 0)], NOW);
+    expect(frisch.erreichbar.zustand).toBe('online');
+    expect(pendingErreichbarText(frisch.erreichbar)).toBe('Online');
+    expect(pendingErreichbarText(frisch.erreichbar)).not.toBe('Verbunden');
+
+    const [verzoegert] = pendingRows([pending('edge-verzoegert', DELAYED_WINDOW_MS + 1000)], NOW);
+    expect(verzoegert.erreichbar.zustand).toBe('verzoegert');
+    expect(pendingErreichbarText(verzoegert.erreichbar)).toBe('Verzögert');
+
+    const [offline] = pendingRows([pending('edge-offline', ONLINE_WINDOW_MS + 1000)], NOW);
+    expect(offline.erreichbar.zustand).toBe('offline');
+    expect(pendingErreichbarText(offline.erreichbar)).toBe('Meldet sich nicht');
+  });
+
+  it('PENDING_KONTEXT: kein Kunde, kein Benutzer, keine Anlage - für jede wartende Zeile derselbe Satz', () => {
+    expect(PENDING_KONTEXT).toBe('Noch bei keinem Kunden eingerichtet');
   });
 
   it('does not mutate the input list', () => {

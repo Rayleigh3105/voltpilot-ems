@@ -13,7 +13,7 @@
  *  - die Regel-Kapsel → Reiter Regeln (Satzbaukasten mit Probelauf).
  * Geräte legt die Steuerung nicht an; das geschieht in der Anlage.
  */
-import type { Site } from '../api';
+import type { Device, Site } from '../api';
 import type { BereichTab } from '../ebenenNav';
 import type { AnlagenSub } from '../nav';
 import { SteuerungSeite, type SteuerungReiter } from '../steuerung/SteuerungSeite';
@@ -23,11 +23,14 @@ export function SteuerungSection({
   reiter = 'steuerung',
   tabs = [],
   onOpenSub,
+  devices,
 }: {
   site: Site;
   reiter?: SteuerungReiter;
   tabs?: BereichTab[];
   onOpenSub?: (sub: AnlagenSub) => void;
+  /** Für die Technik-Zeile auf „Laden" (Konzept e1 §4.3): der Weg zur Geräteseite der Wallbox. */
+  devices?: Device[];
 }) {
   const reiterListe: BereichTab[] = tabs.length
     ? tabs
@@ -41,6 +44,7 @@ export function SteuerungSection({
       reiter={reiter}
       tabs={reiterListe}
       onOpenSub={(sub) => (onOpenSub ? onOpenSub(sub) : (window.location.hash = `#/anlage/${site.id}/${sub}`))}
+      devices={devices}
     />
   );
 }

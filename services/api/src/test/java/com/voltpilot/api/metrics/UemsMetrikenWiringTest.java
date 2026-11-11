@@ -53,10 +53,13 @@ class UemsMetrikenWiringTest {
     /**
      * {@code PlanResultListener} (AP-15 IP-10), {@code VerbundAnteileResultListener} (AP-15 IP-7) und
      * {@code SprungprobeBerichtListener} (AP-15 IP-21) halten mit ihrem Takt nur die Broker-Verbindung, es gibt keinen
-     * Lauf, der stehen könnte.
+     * Lauf, der stehen könnte. {@code ChargerStatusListener} und {@code DataSourceStatusListener} (#1798,
+     * MQTT-Erstverbindung mit Backoff) sind derselbe Takt nach demselben Muster: {@code ensureConnected}
+     * ruft nur {@code BrokerVerbindung.sicherstellen}, bis die erste Verbindung steht - danach übernimmt
+     * Paho die Wiederverbindung.
      */
     private static final Set<String> KEIN_LAEUFER = Set.of("PlanResultListener", "VerbundAnteileResultListener",
-            "SprungprobeBerichtListener");
+            "SprungprobeBerichtListener", "ChargerStatusListener", "DataSourceStatusListener");
 
     @Test
     void jedeKlasseMitTaktOderStartLaufStehtImKatalogUndUmgekehrt() throws IOException {

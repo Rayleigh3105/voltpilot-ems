@@ -164,7 +164,9 @@ describe('FernwartungPage', () => {
     await screen.findByTestId('fw-boxen');
     expect(screen.getByTestId('fw-server')).toHaveTextContent('wartung.voltpilot.de:51820');
     expect(screen.getByTestId('fw-dienst')).toHaveTextContent('Tunnel-Dienst holt ab');
-    expect(screen.getByText(/meldet der Tunnel-Dienst nicht zurück/)).toBeInTheDocument();
+    // Der Dienst holt ab, hat aber nie gemeldet: das steht da, statt „nicht verbunden".
+    expect(screen.getByTestId('fw-rueckmeldung')).toHaveTextContent('Tunnel-Dienst meldet keinen Zustand');
+    expect(screen.getByTestId('fw-rueckmeldung')).toHaveTextContent(/ist deshalb nicht bekannt/);
     expect(screen.getByText(/sieht die einzelnen Fenster nicht/)).toBeInTheDocument();
 
     const boxen = screen.getByTestId('fw-boxen');
@@ -358,6 +360,9 @@ describe('FernwartungPage', () => {
       // Die Seite verspricht nicht, dass jede Box den Schlüssel holt.
       expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript/);
       expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt/);
+      // Sichtbar ist nur, was passiert; die Bedingungen stehen eingeklappt darunter.
+      expect(screen.getByTestId('fw-ssh-stand').querySelector('details')).not.toHaveAttribute('open');
+      expect(screen.getByTestId('fw-ssh-stand').querySelector('p')).toHaveTextContent(/^Das Portal gibt den SSH-Schlüssel eines Zugangs an den Wartungsserver weiter\.$/);
     });
 
     it('zur Zeile eines offenen Fensters stehen die fertigen Befehle für SSH und die Web-App', async () => {
@@ -374,6 +379,9 @@ describe('FernwartungPage', () => {
         within(anmeldung).getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2'),
       ).toBeInTheDocument();
       expect(within(anmeldung).getByText('http://127.0.0.1:8484')).toBeInTheDocument();
+      // Der direkte Weg: service-tunnel.sh gibt die Web-App für das Techniker-Netz frei.
+      expect(within(anmeldung).getByText('http://10.10.16.2:8484')).toBeInTheDocument();
+      expect(within(anmeldung).getByRole('button', { name: 'Adresse der Web-App kopieren' })).toBeEnabled();
       expect(within(anmeldung).getByRole('button', { name: 'SSH-Befehl kopieren' })).toBeEnabled();
       expect(within(anmeldung).getByRole('button', { name: 'Befehl für die Web-App kopieren' })).toBeEnabled();
       expect(within(anmeldung).getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent(
@@ -440,6 +448,8 @@ describe('FernwartungPage', () => {
       expect(within(dialog).getByTestId('fw-ssh-aktuell')).toHaveTextContent('Kein SSH-Schlüssel hinterlegt');
       // Die Befehle zum Erzeugen stehen im Dialog, für Windows und Linux.
       const erzeugen = within(dialog).getByTestId('fw-ssh-erzeugen');
+      // In diesem Dialog ist der Schlüssel die Aufgabe: die Befehle stehen offen, nicht eingeklappt.
+      expect(erzeugen.closest('details')).toBeNull();
       expect(within(erzeugen).getByText('Windows (PowerShell)')).toBeInTheDocument();
       expect(within(erzeugen).getByText('ssh-keygen -t rsa -b 3072 -f ~/.ssh/id_rsa_voltpilot')).toBeInTheDocument();
       expect(
@@ -508,6 +518,8 @@ describe('FernwartungPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Zugang anlegen' }));
       const dialog = await screen.findByRole('dialog');
       expect(within(dialog).getByTestId('fw-ssh-erzeugen')).toBeInTheDocument();
+      // Freiwillig heißt hier auch: die Anleitung steht eingeklappt, der Dialog bleibt kurz.
+      expect(within(dialog).getByTestId('fw-ssh-erzeugen').closest('details')).not.toHaveAttribute('open');
       fireEvent.change(within(dialog).getByLabelText(/Name/), { target: { value: 'Neu (Laptop)' } });
       fireEvent.change(within(dialog).getByLabelText(/Öffentlicher WireGuard-Schlüssel/), {
         target: { value: 'SBsk0U9z6BgB/U8nb+L9PdK/46p7mBvWRQe8I0Vg3C0=' },
@@ -551,6 +563,147 @@ describe('FernwartungPage', () => {
       expect(within(protokoll).getByText('SSH-Schlüssel gesetzt')).toBeInTheDocument();
       expect(within(protokoll).getByText(`${FINGERABDRUCK} · RSA 3072`)).toBeInTheDocument();
     });
+  });
+
+  describe('Rückmeldung des Tunnel-Dienstes an Box und Fenster', () => {
+    const vor = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    /** Eine Meldung, angenommen vor `alter` Sekunden. */
+    const meldung = (alter: number, over: Record<string, unknown> = {}) => ({
+      dienst: 'voltpilot-tunnel-dienst',
+      zuletztAm: vor(alter),
+      gestartetUm: vor(7200),
+      schluesselausgabe: true,
+      boxen: 2,
+      fenster: 1,
+      ...over,
+    });
+    const zelle = (boxen: HTMLElement, ref: string) =>
+      within(within(boxen).getByText(ref).closest('tr') as HTMLElement).getByTestId('fw-verbindung');
+
+    beforeEach(() => {
+      fernwartungTechniker.mockResolvedValue([maxMitSsh, { ...max, id: 't2', name: 'Werkstatt-Tablet', adresse: '10.10.32.3' }]);
+    });
+
+    it('alles bereit: Box verbunden, Schlüssel abgeholt - mit dem Alter der Angabe', async () => {
+      const gemeldetAm = vor(20);
+      fernwartung.mockResolvedValue(uebersicht({ rueckmeldungen: [meldung(20, { zuletztAm: gemeldetAm })] }));
+      fernwartungBoxen.mockResolvedValue([
+        box({
+          rueckmeldung: { gemeldetAm, verbundenSeit: vor(3600), zuletztGefragtUm: vor(30) },
+          laufendeFenster: [offenesFenster({ rueckmeldung: { gemeldetAm, schluesselAbgeholtUm: vor(50) } })],
+        }),
+        box({ id: 'b2', edgeRef: 'edge-k7m2xq3', adresse: '10.10.16.3', rueckmeldung: { gemeldetAm, verbundenSeit: null, zuletztGefragtUm: null } }),
+      ]);
+      render(<FernwartungPage />);
+      const boxen = await screen.findByTestId('fw-boxen');
+      expect(screen.getByTestId('fw-rueckmeldung')).toHaveTextContent('Tunnel-Dienst meldet seinen Zustand');
+      expect(screen.getByTestId('fw-rueckmeldung')).toHaveTextContent(/Letzte Meldung vor \d+ s \(2 Boxen, 1 offene Fenster/);
+
+      expect(zelle(boxen, 'edge-zay5sdd')).toHaveAttribute('data-fall', 'verbunden');
+      expect(zelle(boxen, 'edge-zay5sdd')).toHaveTextContent(/Box verbunden.*Verbunden seit .* Sie hat zuletzt um .* nach Schlüsseln gefragt\. Stand: vor \d+ s\./);
+      // Die zweite Box: gemeldet als nicht verbunden.
+      expect(zelle(boxen, 'edge-k7m2xq3')).toHaveAttribute('data-fall', 'nicht_verbunden');
+      expect(zelle(boxen, 'edge-k7m2xq3')).toHaveTextContent(/Box nicht verbunden.*kein WireGuard-Handshake in den letzten 3 Minuten/);
+
+      const fall = within(within(boxen).getByTestId('fw-anmeldung')).getByRole('listitem');
+      expect(fall).toHaveAttribute('data-fall', 'bereit');
+      expect(fall).toHaveTextContent('Alles bereit');
+      expect(fall).toHaveTextContent(new RegExp(`hat den SSH-Schlüssel ${FINGERABDRUCK.replace(/[+]/g, '\\+')} um .* abgeholt\\. Die Anmeldung ist möglich\\. Stand: vor \\d+ s\\.`));
+    });
+
+    it('unterscheidet „Schlüssel noch nicht abgeholt", „Box nicht verbunden" und „kein SSH-Schlüssel am Zugang"', async () => {
+      const gemeldetAm = vor(10);
+      fernwartung.mockResolvedValue(uebersicht({ rueckmeldungen: [meldung(10, { zuletztAm: gemeldetAm })] }));
+      const offen = { rueckmeldung: { gemeldetAm, schluesselAbgeholtUm: null } };
+      fernwartungBoxen.mockResolvedValue([
+        box({
+          rueckmeldung: { gemeldetAm, verbundenSeit: vor(3600), zuletztGefragtUm: vor(5) },
+          laufendeFenster: [
+            offenesFenster(offen),
+            offenesFenster({ id: 'f2', technikerId: 't2', technikerName: 'Werkstatt-Tablet', ...offen }),
+          ],
+        }),
+        box({
+          id: 'b2',
+          edgeRef: 'edge-k7m2xq3',
+          adresse: '10.10.16.3',
+          rueckmeldung: { gemeldetAm, verbundenSeit: null, zuletztGefragtUm: null },
+          laufendeFenster: [offenesFenster({ id: 'f3', edgeRef: 'edge-k7m2xq3', ...offen })],
+        }),
+      ]);
+      render(<FernwartungPage />);
+      const boxen = await screen.findByTestId('fw-boxen');
+      const faelle = (ref: string) =>
+        within(boxen.querySelector(`[data-testid="fw-anmeldung"][data-box="${ref}"]`) as HTMLElement)
+          .getAllByRole('listitem')
+          .map((li) => li.getAttribute('data-fall'));
+      expect(faelle('edge-zay5sdd')).toEqual(['nicht_abgeholt', 'kein_schluessel']);
+      expect(faelle('edge-k7m2xq3')).toEqual(['nicht_verbunden']);
+      expect(within(boxen).getByText('Schlüssel noch nicht abgeholt')).toBeInTheDocument();
+      expect(within(boxen).getByText('Kein SSH-Schlüssel am Zugang')).toBeInTheDocument();
+      expect(within(boxen).getByText(/Das Fenster ist offen, aber niemand erreicht die Box/)).toBeInTheDocument();
+      expect(within(boxen).getByText(/Sie fragt nach Schlüsseln, zuletzt um .*; in der Regel folgt der Schlüssel nach wenigen Sekunden/)).toBeInTheDocument();
+    });
+
+    it('unbekannt ist kein „nicht verbunden": eine veraltete Meldung zeigt, was niemand mehr weiß', async () => {
+      const gemeldetAm = vor(1200);
+      // Der Dienst hat zuletzt vor 20 Minuten gemeldet - damals: nicht verbunden, nicht abgeholt.
+      fernwartung.mockResolvedValue(uebersicht({ abrufe: [], rueckmeldungen: [meldung(1200, { zuletztAm: gemeldetAm })] }));
+      fernwartungBoxen.mockResolvedValue([
+        box({
+          rueckmeldung: { gemeldetAm, verbundenSeit: null, zuletztGefragtUm: null },
+          laufendeFenster: [offenesFenster({ rueckmeldung: { gemeldetAm, schluesselAbgeholtUm: null } })],
+        }),
+      ]);
+      render(<FernwartungPage />);
+      const boxen = await screen.findByTestId('fw-boxen');
+      expect(screen.getByTestId('fw-rueckmeldung')).toHaveTextContent('Meldung des Tunnel-Dienstes veraltet');
+      expect(screen.getByTestId('fw-rueckmeldung')).toHaveTextContent(/Letzte Meldung vor 20 min/);
+      expect(zelle(boxen, 'edge-zay5sdd')).toHaveAttribute('data-fall', 'unbekannt');
+      expect(zelle(boxen, 'edge-zay5sdd')).toHaveTextContent(/Verbindung unbekannt.*ist nicht bekannt: Die letzte Meldung des Tunnel-Dienstes ist 20 min alt\. Damals war die Box nicht verbunden\./);
+      expect(within(boxen).queryByText('Box nicht verbunden')).toBeNull();
+      const fall = within(within(boxen).getByTestId('fw-anmeldung')).getByRole('listitem');
+      expect(fall).toHaveAttribute('data-fall', 'unbekannt');
+      expect(fall).toHaveTextContent('Stand unbekannt');
+      expect(fall).not.toHaveTextContent(/noch nicht abgeholt/);
+    });
+
+    it('eine API ohne Rückmeldung (kein Feld) zeigt „unbekannt", nicht „nicht verbunden"', async () => {
+      // Die Vorgabe der übrigen Fälle: weder `rueckmeldungen` noch `rueckmeldung` an der Box.
+      fernwartungBoxen.mockResolvedValue([box({ laufendeFenster: [offenesFenster()] })]);
+      render(<FernwartungPage />);
+      const boxen = await screen.findByTestId('fw-boxen');
+      expect(zelle(boxen, 'edge-zay5sdd')).toHaveAttribute('data-fall', 'unbekannt');
+      expect(zelle(boxen, 'edge-zay5sdd')).toHaveTextContent(/noch nie seinen Zustand gemeldet/);
+      expect(within(within(boxen).getByTestId('fw-anmeldung')).getByRole('listitem')).toHaveAttribute('data-fall', 'unbekannt');
+    });
+  });
+
+  it('die Spalte „Letzter Handshake": gemeldet, noch nie, unbekannt - mit genauer Zeit im Hover', async () => {
+    const jetzt = Date.now();
+    const meldung = new Date(jetzt - 10_000).toISOString();
+    fernwartung.mockResolvedValue(
+      uebersicht({
+        rueckmeldungen: [
+          { dienst: 'voltpilot-tunnel-dienst', zuletztAm: meldung, gestartetUm: '2026-10-07T09:15:00Z', schluesselausgabe: true, boxen: 1, fenster: 0 },
+        ],
+      }),
+    );
+    fernwartungTechniker.mockResolvedValue([
+      { ...max, id: 't1', name: 'Macbook Air', rueckmeldung: { gemeldetAm: meldung, letzterHandshakeUm: new Date(jetzt - 47_000).toISOString() } },
+      { ...max, id: 't2', name: 'Max (ASUS)', rueckmeldung: { gemeldetAm: meldung, letzterHandshakeUm: null } },
+      { ...max, id: 't3', name: 'Werkstatt-Dienst', rueckmeldung: null },
+    ]);
+    render(<FernwartungPage />);
+    const tabelle = await screen.findByTestId('fw-techniker');
+    expect(within(tabelle).getByRole('columnheader', { name: 'Letzter Handshake' })).toBeInTheDocument();
+    const zellen = within(tabelle).getAllByTestId('fw-handshake');
+    expect(zellen.map((z) => z.getAttribute('data-fall'))).toEqual(['gemeldet', 'noch_nie', 'unbekannt']);
+    expect(zellen[0]).toHaveTextContent(/^vor 4[6-9] s$/);
+    expect(zellen[0].getAttribute('title')).toMatch(/^Letzter Handshake: \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}:\d{2}\./);
+    expect(zellen[1]).toHaveTextContent('noch nie');
+    expect(zellen[2]).toHaveTextContent('unbekannt');
+    expect(zellen[2].getAttribute('title')).toMatch(/nennt diesen Zugang nicht/);
   });
 
   it('warnt, wenn der Tunnel-Dienst nicht abholt', async () => {

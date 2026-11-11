@@ -162,8 +162,10 @@ function einspeisung(money: SiteEarnings): RechenZeile[] {
 
   const preis = durchschnittCt(e, kwh);
   const herkunft = money.exportVerguetungPriced
-    ? 'Ihre feste Einspeisevergütung (EEG)'
-    : 'Börsenpreis Ihrer Einspeise-Zeiten (Ø) — Vergütung nicht hinterlegt: Anlage verknüpfen ›';
+    ? money.exportVerguetungQuelle === 'angegeben'
+      ? 'Ihre angegebene Einspeisevergütung'
+      : 'Ihre feste Einspeisevergütung (EEG)'
+    : 'Börsenpreis Ihrer Einspeise-Zeiten (Ø) - Vergütung nicht hinterlegt: unter Strom & Geld eintragen';
   if (preis == null) {
     return [{ formel: `= ${eurAmount(rundeKaufmaennisch(e, 2))}`, herkunft }];
   }
@@ -339,6 +341,11 @@ const GLOSSAR: Record<string, GlossarEintrag> = {
     erklaerung:
       'Der gesetzliche Satz je eingespeister Kilowattstunde für Anlagen ohne Direktvermarktung, 20 Jahre ab Inbetriebnahme.',
   },
+  angegeben: {
+    begriff: 'Angegebene Einspeisevergütung',
+    erklaerung:
+      'Der Satz je eingespeister Kilowattstunde, den Sie unter Strom & Geld angegeben haben - er gilt statt der Herleitung aus dem EEG.',
+  },
   eigenverbrauch: {
     begriff: 'Wert des Eigenverbrauchs',
     erklaerung:
@@ -376,7 +383,18 @@ const GLOSSAR: Record<string, GlossarEintrag> = {
  * Erklärung eines Wortes an JEDER Stelle derselbe Satz ist.
  */
 export function erloesBegriff(
-  key: 'boerse' | 'praemie' | 'monatsmarktwert' | 'anzulegender' | 'feste' | 'eigenverbrauch' | 'netzbezug' | 'ergebnis' | 'planwert' | 'zwischenstand',
+  key:
+    | 'boerse'
+    | 'praemie'
+    | 'monatsmarktwert'
+    | 'anzulegender'
+    | 'feste'
+    | 'angegeben'
+    | 'eigenverbrauch'
+    | 'netzbezug'
+    | 'ergebnis'
+    | 'planwert'
+    | 'zwischenstand',
 ): GlossarEintrag {
   return GLOSSAR[key];
 }
@@ -504,22 +522,21 @@ export function ebene2(input: Ebene2Input): Ebene2 {
     }
   } else if (money.exportVerguetungPriced) {
     const preis = durchschnittCt(e, kwh);
+    const angegeben = money.exportVerguetungQuelle === 'angegeben';
+    const art = angegeben ? 'von Ihnen angegeben' : 'feste Vergütung (EEG), 20 Jahre ab Inbetriebnahme';
     zeilen.push({
       label: 'Einspeisepreis',
-      wert:
-        preis == null
-          ? 'feste Vergütung (EEG), 20 Jahre ab Inbetriebnahme'
-          : `${ct(preis)}/kWh · feste Vergütung (EEG), 20 Jahre ab Inbetriebnahme`,
+      wert: preis == null ? art : `${ct(preis)}/kWh · ${art}`,
     });
-    glossar.push(GLOSSAR.feste);
+    glossar.push(angegeben ? GLOSSAR.angegeben : GLOSSAR.feste);
   } else {
     const preis = durchschnittCt(e, kwh);
     zeilen.push({
       label: 'Einspeisepreis',
       wert:
         preis == null
-          ? 'Börsenpreis — nicht verknüpft: Anlage verknüpfen ›'
-          : `Börsenpreis · Ø ${ct(preis)} — nicht verknüpft: Anlage verknüpfen ›`,
+          ? 'Börsenpreis - Vergütung nicht hinterlegt: unter Strom & Geld eintragen'
+          : `Börsenpreis · Ø ${ct(preis)} - Vergütung nicht hinterlegt: unter Strom & Geld eintragen`,
     });
     if (!glossar.includes(GLOSSAR.boerse)) glossar.push(GLOSSAR.boerse);
   }
@@ -760,6 +777,18 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
     out.push({
       formel: 'Schritt 2 · Steuerung: —',
       herkunft: `ohne Kapazität sowie Lade- und Entladeleistung gibt es keinen Vergleich mit ${MESSLATTE_DATIV_UNBESTIMMT}: Speicher-Daten nachtragen ›`,
+    });
+  }
+
+  // Mit Bestand (Bedienkonzept P3, P3-2 A): auf Woche, Monat und Jahr ist die
+  // Zahl vorn die Summe der Tage mit Bestand — der Schritt sagt, wie sie aus
+  // der Kassenrechnung oben wird. Den Tag erklärt die Karte selbst.
+  const mitBestand = num(money.savedSteuerungMitBestandEur ?? null);
+  if (steuerung != null && money.range !== 'day' && mitBestand != null) {
+    out.push({
+      formel: `Schritt 4 · mit Bestand bewertet: ${vorzeichen(rundeKaufmaennisch(mitBestand, 2))}`,
+      herkunft:
+        'die Summe der Tage: je Tag die Kassenrechnung plus die Änderung des Vorsprungs auf den Vergleichsspeicher × Bezugspreis × 95,9 % — so stehen Verkauf und Nachkauf am selben Tag',
     });
   }
 

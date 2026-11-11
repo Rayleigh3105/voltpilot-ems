@@ -118,12 +118,12 @@ export const PRELOAD_DEADLINE_MS = 300;
 type Loader = () => Promise<unknown>;
 
 /**
- * Die Unterseiten, die sich EIN Stück teilen, nennen dasselbe: Fahrplan,
- * Wetter und Marktpreise wohnen zu dritt in `DataPages`.
+ * Die Unterseiten, die sich EIN Stück teilen, nennen dasselbe: Fahrplan und
+ * Marktpreise wohnen zu zweit in `DataPages`. Die Prognose (Wetter ist darin
+ * aufgegangen) hat ihr eigenes Stück (`PrognoseSeite`).
  */
 const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   fahrplan: SUB_CHUNK.daten,
-  wetter: SUB_CHUNK.daten,
   marktpreise: SUB_CHUNK.daten,
   messwerte: SUB_CHUNK.messwerte,
   energiebilanz: SUB_CHUNK.energiebilanz,
@@ -140,12 +140,13 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   technik: SUB_CHUNK.technik,
   befehle: SUB_CHUNK.befehle,
   prognose: SUB_CHUNK.prognose,
+  prognosemodelle: SUB_CHUNK.prognosemodelle,
 };
 
 /**
  * `anlagen` fehlt mit Absicht: ohne Anlage ist es die Umleitungs-Adresse der
  * Flotten-Ebene, mit Anlage das Cockpit — beides ohne eigenes Stück.
- * Geräte-Registry, Edge-Updates und Fernwartung teilen sich `GeraeteBereich`.
+ * Geräte-Registry, Edge-Updates, Fernwartung und Werkstatt teilen sich `GeraeteBereich`.
  */
 const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   hilfe: PAGE_CHUNK.hilfe,
@@ -163,12 +164,15 @@ const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   'portfolio-messwerte': PAGE_CHUNK['portfolio-messwerte'],
   'portfolio-erloese': PAGE_CHUNK['portfolio-erloese'],
   'kunden-benutzer': PAGE_CHUNK['kunden-benutzer'],
+  meldungen: PAGE_CHUNK.meldungen,
+  einstellungen: PAGE_CHUNK.einstellungen,
   standort: PAGE_CHUNK.standort,
   mandanten: PAGE_CHUNK.mandanten,
   'plattform-uebersicht': PAGE_CHUNK['plattform-uebersicht'],
   'geraete-registry': PAGE_CHUNK['geraete-registry'],
   'edge-updates': PAGE_CHUNK['geraete-registry'],
   fernwartung: PAGE_CHUNK['geraete-registry'],
+  werkstatt: PAGE_CHUNK['geraete-registry'],
   optimizer: PAGE_CHUNK.optimizer,
   flows: PAGE_CHUNK.flows,
   'steuerungs-freigabe': PAGE_CHUNK['steuerungs-freigabe'],

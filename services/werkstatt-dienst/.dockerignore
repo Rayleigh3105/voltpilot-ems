@@ -1,0 +1,6 @@
+# Nur was der Bau braucht: Quellen und die eingebetteten Dateien der Brücke.
+deploy
+docs
+test
+*.md
+!bruecke/**

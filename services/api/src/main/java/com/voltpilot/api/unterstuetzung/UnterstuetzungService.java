@@ -26,6 +26,7 @@ import com.voltpilot.api.zugriff.ZugriffRepository.NeueZuweisung;
 import com.voltpilot.api.zugriff.ZugriffRepository.StandortEintrag;
 import com.voltpilot.api.zugriff.ZugriffRepository.Zeile;
 import com.voltpilot.api.benutzer.StartpasswortKonten;
+import com.voltpilot.api.versand.BenachrichtigungAusgang;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -41,6 +42,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -86,6 +88,20 @@ public class UnterstuetzungService {
     private final UnterstuetzungRepository unterstuetzungen;
     private final KeycloakAdminClient keycloak;
     private volatile Clock uhr = Clock.systemUTC();
+
+    /**
+     * Der zentrale Versand (Alerting Scheibe 0, Konzept §7 Scheibe 0 Punkt 4): „keine zweite Versand-
+     * Insel" - jeder NEUE Hinweis reiht hier zusätzlich zur Portal-Karte eine E-Mail ein. Nachgereicht
+     * statt im Konstruktor, damit kein bestehender Aufrufer sich ändert ({@code required = false} hält
+     * ihn auch in den Minimal-Kontexten der Wiring-Tests gültig); {@link BenachrichtigungAusgang#STUMM}
+     * ist der No-Op ohne Spring, wie {@code UemsLaeuferMelder.STUMM}.
+     */
+    private BenachrichtigungAusgang ausgang = BenachrichtigungAusgang.STUMM;
+
+    @Autowired(required = false)
+    void setAusgang(BenachrichtigungAusgang ausgang) {
+        this.ausgang = ausgang;
+    }
 
     public UnterstuetzungService(ZugriffRepository zugriffe, UnterstuetzungRepository unterstuetzungen,
             KeycloakAdminClient keycloak) {
@@ -549,11 +565,20 @@ public class UnterstuetzungService {
         return e.bannerKunde() != null ? e.bannerKunde() : e.text();
     }
 
-    /** Ein Hinweis an JEDEN wirksamen Kundenadministrator; {@code true}, sobald mindestens einer neu war. */
+    /**
+     * Ein Hinweis an JEDEN wirksamen Kundenadministrator; {@code true}, sobald mindestens einer neu
+     * war. Ein NEUER Hinweis reiht zusätzlich seine E-Mail über den zentralen Versand ein (§7 Scheibe 0
+     * Punkt 4) - ein bereits vorhandener (Teil-Index, Takt zweimal gefahren) tut das nicht noch einmal.
+     */
     private boolean hinweisen(Anlass anlass, Welt welt, UUID griff, UUID anfrageId, String text) {
         boolean neu = false;
         for (Person p : welt.k().kundenadministratoren()) {
-            neu |= unterstuetzungen.hinweisen(anlass, p.kennung(), null, griff, anfrageId, text);
+            Optional<UUID> id = unterstuetzungen.hinweisen(anlass, p.kennung(), null, griff, anfrageId, text);
+            if (id.isPresent()) {
+                neu = true;
+                ausgang.email("unterstuetzung_hinweis", id.get(), p.kennung(), anlass.code(),
+                        "VoltPilot-Hinweis", text);
+            }
         }
         return neu;
     }

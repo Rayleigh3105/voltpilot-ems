@@ -14,6 +14,7 @@ import {
   ohneMesswertHinweis,
   pruefen,
   rolleVerfuegbar,
+  schaltzustand,
   KEIN_EMPFAENGER_SATZ,
   haltGrund,
   sollIstText,
@@ -25,6 +26,7 @@ import {
   uebernahmeHinweis,
   type ComponentMatch,
   type ComponentTemplate,
+  type ProbeAntwort,
   verwaltungsHinweis,
 } from './komponentenAssistent';
 
@@ -199,6 +201,35 @@ describe('das Testergebnis', () => {
     expect(r.messwerte).toEqual([]);
     expect(r.text).toBe('Das Gerät antwortet.');
   });
+
+  // Shelly Pro 3 an der VoltPilotGATE (31.10.2026): drei Ausgänge, keine Leistungsmessung.
+  // Bis zum Fix antwortete die Box `{"ok":true,"reading":{}}`, der Server machte daraus eine
+  // Zeile ohne ok und ohne Grund - im Portal „Die Prüfung ist fehlgeschlagen", Speichern gesperrt.
+  it('Shelly Pro 3: die Antwort ohne einen Kanal war ein Nein ohne Grund', () => {
+    const r = testErgebnis({ requestId: 'r', results: [{ id: 'verbindung', ok: false }] } as ProbeAntwort);
+    expect(r.zustand).toBe('fehlgeschlagen');
+    expect(r.text).toBe('Die Prüfung ist fehlgeschlagen.');
+  });
+
+  it('Shelly Pro 3: der gelesene Schaltzustand ist der echte Wert und gibt das Speichern frei', () => {
+    const aus = testErgebnis({
+      results: [{ id: 'verbindung', ok: true, samples: [{ channel: 'relay_on', raw: 0, value: 0, count: 1 }] }],
+    } as ProbeAntwort);
+    expect(aus.zustand).toBe('bestanden');
+    expect(aus.messwerte).toEqual([{ label: 'Schaltzustand', wert: 'aus' }]);
+    expect(aus.text).toBe('Das Gerät antwortet. Diese Messwerte kommen gerade an:');
+    const ein = testErgebnis({
+      results: [{ ok: true, samples: [{ channel: 'relay_on', value: 1, count: 1 }] }],
+    });
+    expect(ein.messwerte).toEqual([{ label: 'Schaltzustand', wert: 'ein' }]);
+  });
+
+  it('zeigt einen Schaltzustand nur, wenn er gelesen wurde', () => {
+    expect(schaltzustand([{ channel: 'relay_on', count: 0 }])).toEqual([]);
+    expect(schaltzustand([{ channel: 'relay_on', value: 0.5, count: 1 }])).toEqual([]);
+    expect(schaltzustand([{ channel: 'do_1', value: 1, count: 1 }])).toEqual([]);
+    expect(schaltzustand(null)).toEqual([]);
+  });
 });
 
 describe('Rolle + Bilanz', () => {
@@ -221,6 +252,19 @@ describe('Rolle + Bilanz', () => {
     const gesperrt = rolleVerfuegbar('grid-meter', ['grid-meter']);
     expect(gesperrt.ok).toBe(false);
     expect(gesperrt.ok === false && gesperrt.grund).toContain('nur einer');
+  });
+
+  it('nennt die Ein-Wechselrichter-Regel VOR dem Klick - mit Gerät und nächstem Schritt', () => {
+    // Bis 02.11.2026 sagte das erst der Server, als 409 nach bestandenem Test (Live-Fall „Zuhause").
+    expect(rolleVerfuegbar('inverter', ['pv-generation', 'consumer'])).toEqual({ ok: true });
+    const ohneName = rolleVerfuegbar('inverter', ['inverter']);
+    expect(ohneName.ok).toBe(false);
+    expect(ohneName.ok === false && ohneName.grund).toBe(
+      'Diese Anlage hat bereits einen Wechselrichter. Bearbeiten Sie ihn im Aufbau, statt einen zweiten '
+        + 'anzulegen - oder wählen Sie „Weiterer Erzeuger“ für einen zusätzlichen Wechselrichter.',
+    );
+    const mitName = rolleVerfuegbar('inverter', ['inverter'], { inverter: 'Deye Scheune' });
+    expect(mitName.ok === false && mitName.grund).toContain('bereits einen Wechselrichter („Deye Scheune“)');
   });
 });
 

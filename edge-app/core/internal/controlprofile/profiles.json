@@ -94,6 +94,25 @@
     {
       "bindung": [
         {
+          "marke": "huawei",
+          "modelle": null,
+          "registerfamilie": "huawei_sun2000_luna",
+          "steuerpfad": null
+        }
+      ],
+      "daempfung": {
+        "box_regelt": true,
+        "einschwingzeit_s": null,
+        "messtakt_s": null
+      },
+      "id": "huawei",
+      "schreibbudget": {
+        "dauerspeicher_je_tag": 20
+      }
+    },
+    {
+      "bindung": [
+        {
           "marke": "kaco",
           "modelle": null,
           "registerfamilie": "kaco_nh3",

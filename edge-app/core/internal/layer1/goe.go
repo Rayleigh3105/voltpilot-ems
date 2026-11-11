@@ -11,7 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goeapi"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/huaweidecode"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacoserial"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kostaldxs"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
@@ -143,17 +147,103 @@ func (r *Runtime) sourcesOnce(ctx context.Context) {
 	}
 }
 
+// sourceOutcome is one source read as the executor books it: the channel the
+// role publishes, or why there is none - and the evidence of the read for the
+// source status (requests made, error class of a failure).
+type sourceOutcome struct {
+	values   map[string]float64
+	why      string
+	requests int
+	class    string
+}
+
+// readSource reads one planned source by its transport and publishes the
+// channel its ROLE asks for - or names why nothing was published. Either way
+// the read leaves a receipt on edge/data-sources/poll, like the flow's
+// source executor (reportSource).
 func (r *Runtime) readSource(ctx context.Context, p sourcePlan) {
 	rctx, cancel := context.WithTimeout(ctx, sourceOverallTimeout)
 	defer cancel()
 	release, ok := r.lanes.acquire(rctx, p.Addr, sourceOverallTimeout)
 	if !ok {
-		r.sourceFailed(p, "Gesamt-Timeout nach 30 s - Lesung abgebrochen (Verbindung haengt?)")
+		r.finishSource(p, sourceOutcome{why: "Gesamt-Timeout nach 30 s - Lesung abgebrochen (Verbindung haengt?)", class: "timeout"})
 		return
 	}
-	res, err := r.goeGet(rctx, p.URL)
-	release()
+	var out sourceOutcome
+	switch p.Comm {
+	case CommHuaweiModbus:
+		rd, err := r.readHuawei(rctx, p.Huawei)
+		release()
+		in := huaweiSourceReading(rd, err, p.Huawei)
+		in.requests, in.class = 1, errorClassOf(rctx, err, false)
+		if rd != nil {
+			in.requests = rd.Attempts
+			if len(rd.Blocks) == 0 {
+				in.class = "invalid_response"
+			}
+		}
+		out = inverterOutcome(p, in)
+	case CommKacoSerial:
+		raw, err := kacoserial.Read(rctx, r.dialTCP, p.Kaco.Addr, p.Kaco.Address, r.kacoOpts())
+		release()
+		in := kacoSourceReading(raw, err)
+		in.requests, in.class = 1, errorClassOf(rctx, err, false)
+		switch {
+		case errors.Is(err, kacoserial.ErrNoAnswer):
+			in.class = "no_answer" // connected, the converter stayed silent
+		case errors.Is(err, kacoserial.ErrClosed):
+			in.class = "invalid_response" // closed before a reply (busy / not in TCP-server mode)
+		}
+		if err == nil && in.reading == nil {
+			in.class = "invalid_response"
+		}
+		out = inverterOutcome(p, in)
+	case CommSunSpecTCP, CommFroniusSunSpec:
+		l, err := r.readSunSpec(rctx, p.Sunspec)
+		release()
+		in := sunspecSourceReading(l, err)
+		in.requests, in.class = 1, errorClassOf(rctx, err, false)
+		if l != nil && l.Requests > 1 {
+			in.requests = l.Requests
+		}
+		if err == nil && in.reading == nil {
+			in.class = "invalid_response"
+		}
+		out = inverterOutcome(p, in)
+	case CommShellyEM:
+		out = r.readShellyEMSource(rctx, p)
+		release()
+	case CommKostalDxs:
+		// The same bundle as the primary inverter's tick (kostaldxs.PollIDs),
+		// one GET; the PIKO's weak webserver never sees a second request at once
+		// (the lane).
+		res, err := r.getDxs(rctx, p.Kostal, kostaldxs.PollIDs)
+		release()
+		in := kostalDxsSourceReading(res, err)
+		in.requests, in.class = 1, errorClassOf(rctx, err, errors.Is(err, errKostalDxsBadResponse) ||
+			errors.Is(err, errHTTPStatus) || errors.Is(err, errBodyTooLarge))
+		if err == nil && in.reading == nil {
+			in.class = "invalid_response"
+		}
+		out = inverterOutcome(p, in)
+	default:
+		res, err := r.goeGet(rctx, p.URL)
+		release()
+		out = goeOutcome(p, res, err)
+		out.requests = 1
+		if err != nil {
+			out.class = errorClassOf(rctx, err, errors.Is(err, errHTTPStatus) || errors.Is(err, errBodyTooLarge) ||
+				errors.Is(err, goeapi.ErrNotJSON))
+		} else if out.values == nil {
+			out.class = "invalid_response"
+		}
+	}
+	r.finishSource(p, out)
+}
 
+// goeOutcome is the go-e's channel by role: a Verbraucher's load_kw; a go-e
+// measures no grid power and no PV, so the flow fails those roles each tick.
+func goeOutcome(p sourcePlan, res *goeapi.Result, err error) sourceOutcome {
 	var load *float64
 	if err == nil && res != nil && res.LoadKw != nil {
 		load = res.LoadKw
@@ -165,15 +255,75 @@ func (r *Runtime) readSource(ctx context.Context, p sourcePlan) {
 	switch p.Role {
 	case sources.RoleConsumer:
 		if load == nil {
-			r.sourceFailed(p, why)
-			return
+			return sourceOutcome{why: why}
 		}
-		r.publishSource(p, map[string]any{"load_kw": *load})
+		return sourceOutcome{values: map[string]float64{"load_kw": *load}}
 	case sources.RoleNetz:
-		// A go-e measures no grid power: the flow fails this source each tick.
-		r.sourceFailed(p, orDefault(why, "kein Netzwert in der Antwort"))
+		return sourceOutcome{why: orDefault(why, "kein Netzwert in der Antwort")}
 	default:
-		r.sourceFailed(p, orDefault(why, "kein PV-Wert in der Antwort"))
+		return sourceOutcome{why: orDefault(why, "kein PV-Wert in der Antwort")}
+	}
+}
+
+// finishSource publishes the outcome's channel (or names the failure) and
+// leaves the receipt.
+func (r *Runtime) finishSource(p sourcePlan, out sourceOutcome) {
+	if out.values == nil {
+		r.sourceFailed(p, out.why)
+		r.reportSource(p, out.requests, 0, true, out.class)
+		return
+	}
+	vals := make(map[string]any, len(out.values)+1)
+	for k, v := range out.values {
+		vals[k] = v
+	}
+	r.publishSource(p, vals)
+	r.reportSource(p, out.requests, len(out.values), false, "")
+}
+
+// errorClassOf names a failed read in the closed vocabulary of the source
+// status (datasourcestatus.ErrorClass): the overall budget ran out = timeout,
+// a refused/unroutable connect = unreachable, no answer in time = no_answer,
+// an answer that is no usable frame = invalid_response.
+func errorClassOf(ctx context.Context, err error, answered bool) string {
+	switch {
+	case err == nil:
+		return ""
+	case answered:
+		return "invalid_response"
+	case ctx.Err() != nil:
+		return "timeout"
+	case isDialError(err):
+		return "unreachable"
+	case isTimeout(err):
+		return "no_answer"
+	}
+	return "unreachable"
+}
+
+// reportSource is the flow's reportSource: one receipt per read on
+// edge/data-sources/poll - the assigned data source id when the push named
+// one, else the local source id; the requests the read made, the values it
+// delivered and, on failure, the error class. The core resolves identity from
+// its registry; the receipt is evidence, never a value.
+func (r *Runtime) reportSource(p sourcePlan, requests, samples int, failed bool, class string) {
+	if requests < 0 {
+		requests = 0
+	}
+	r.srcMu.Lock()
+	r.receiptSeq++
+	seq := r.receiptSeq
+	r.srcMu.Unlock()
+	ev := datasourcestatus.Event{Ts: r.opts.Now().UTC(), EventID: r.bootID + "-" + strconv.FormatUint(seq, 10),
+		Requests: &requests, Samples: samples, Failed: failed, ErrorClass: datasourcestatus.ErrorClass(class)}
+	if p.DataSourceID != "" {
+		ev.ID = p.DataSourceID
+	} else {
+		ev.SourceID = p.ID
+	}
+	raw, _ := json.Marshal(ev)
+	if err := r.bus.Publish(datasourcestatus.Topic, raw, false); err != nil {
+		r.log.Debug("Lese-Beleg nicht auf den lokalen Bus", "quelle", p.ID, "err", err)
 	}
 }
 
@@ -208,7 +358,87 @@ func (r *Runtime) publishSource(p sourcePlan, values map[string]any) {
 }
 
 func (r *Runtime) sourceFailed(p sourcePlan, why string) {
-	r.sourceTrace(p.ID, "fail:"+why, true, "Quelle "+p.ID+" (goe_http_api "+p.IP+":"+strconv.Itoa(p.Port)+"): "+why)
+	r.sourceTrace(p.ID, "fail:"+why, true, "Quelle "+p.ID+" ("+p.Comm+" "+p.IP+":"+strconv.Itoa(p.Port)+"): "+why)
+}
+
+// inverterSourceReading is what an inverter-class source (Huawei, Powador,
+// SunSpec) delivered in one cycle: the decoded channels, or the reason there
+// are none - plus the read's evidence for the receipt.
+type inverterSourceReading struct {
+	reading  map[string]float64
+	why      string
+	requests int
+	class    string
+}
+
+func huaweiSourceReading(rd *huaweiRead, err error, p *huaweiPlan) inverterSourceReading {
+	switch {
+	case err != nil:
+		return inverterSourceReading{why: "Huawei: keine Antwort (Timeout oder Verbindung abgewiesen): " + err.Error()}
+	case len(rd.Blocks) == 0:
+		return inverterSourceReading{why: "Huawei: jeder Block abgelehnt (Unit-ID " + strconv.Itoa(int(p.UnitID)) + " falsch oder Modbus TCP am Geraet nicht freigeschaltet?)"}
+	}
+	res := huaweidecode.Decode(rd.Blocks, p.Opts)
+	if res == nil {
+		return inverterSourceReading{why: "Huawei: keine Messwerte decodiert"}
+	}
+	return inverterSourceReading{reading: res.Reading}
+}
+
+func kacoSourceReading(raw []byte, err error) inverterSourceReading {
+	if err != nil {
+		return inverterSourceReading{why: "KACO seriell: " + kacoNoAnswer + ": " + err.Error()}
+	}
+	res := kacoserial.Decode(raw, false)
+	if res == nil {
+		if c, ok := kacoserial.ReplyCommandByte(raw); ok && kacoserial.ProtocolMismatch(raw) {
+			return inverterSourceReading{why: "KACO seriell: Kommando-Byte " + strconv.Quote(string(c)) + " - ein anderes KACO-Protokoll, nicht die Powador-Serie 00"}
+		}
+		return inverterSourceReading{why: "KACO seriell: " + kacoNoAnswer}
+	}
+	return inverterSourceReading{reading: res.Reading}
+}
+
+// kostalDxsSourceReading is the source executor's view of one PIKO read: the
+// AC power as pv_power_kw, or why there is none (night: the webserver answers
+// without the AC id - absent, never 0).
+func kostalDxsSourceReading(res *kostaldxs.Result, err error) inverterSourceReading {
+	switch {
+	case err != nil:
+		return inverterSourceReading{why: "KOSTAL PIKO (Web-API): keine Antwort/ungueltige Antwort: " + err.Error()}
+	case res == nil || len(res.Reading) == 0:
+		return inverterSourceReading{why: "KOSTAL PIKO (Web-API): keine AC-Leistung in der Antwort"}
+	}
+	return inverterSourceReading{reading: res.Reading}
+}
+
+// inverterOutcome is the ONE channel the source's role stands for (the flow's
+// sources-read node): an Erzeuger its pv_power_kw, a Netz meter its signed
+// power_kw, a Verbraucher its load_kw - an inverter has none. A channel the
+// device did not deliver is a failure of this tick, never a 0.
+func inverterOutcome(p sourcePlan, in inverterSourceReading) sourceOutcome {
+	out := sourceOutcome{requests: in.requests, class: in.class}
+	if in.reading == nil {
+		out.why = in.why
+		return out
+	}
+	key, missing := "", ""
+	switch p.Role {
+	case sources.RoleErzeuger:
+		key, missing = "pv_power_kw", "kein PV-Wert in der Antwort"
+	case sources.RoleNetz:
+		key, missing = "power_kw", "kein Netzwert in der Antwort (Smart Power Sensor am Netzpunkt?)"
+	default:
+		out.why, out.class = "ein Wechselrichter liefert keinen Verbrauchswert (load_kw)", "invalid_response"
+		return out
+	}
+	v, ok := in.reading[key]
+	if !ok {
+		out.why, out.class = missing, "invalid_response"
+		return out
+	}
+	out.values = map[string]float64{key: v}
+	return out
 }
 
 // sourceTrace is the flow's trace(): a class (ok / fail:<why>) is logged when

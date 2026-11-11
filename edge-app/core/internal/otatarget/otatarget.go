@@ -175,6 +175,13 @@ func NewStore(dataDir string) *Store {
 	return &Store{dir: filepath.Join(dataDir, "ota")}
 }
 
+// NewStoreAt legt die Zuweisung in GENAU diesem Verzeichnis ab. Edge Light
+// haelt sie im RAM (sie liegt retained im Broker und kommt nach jedem
+// Neustart wieder) - der Flash bekommt sie nicht bei jedem Verbinden neu.
+func NewStoreAt(dir string) *Store {
+	return &Store{dir: dir}
+}
+
 // Path ist der Ablageort der Zuweisung.
 func (s *Store) Path() string { return filepath.Join(s.dir, "target.json") }
 

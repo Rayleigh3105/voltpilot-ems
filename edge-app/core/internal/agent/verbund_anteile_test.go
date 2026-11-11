@@ -169,7 +169,7 @@ func TestOhneAnteilHerzschlagWieNachIP10(t *testing.T) {
 	if b := a.gemeinsameSteuerung(); b != nil {
 		t.Fatalf("block without plan and document: %+v", b)
 	}
-	if !slices.Contains(cloud.BuiltSupports(), "steuerungsverbund_anteil") {
+	if !slices.Contains(cloud.BuiltSupports(""), "steuerungsverbund_anteil") {
 		t.Fatal("share document built but steuerungsverbund_anteil not advertised")
 	}
 }

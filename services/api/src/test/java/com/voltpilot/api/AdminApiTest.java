@@ -11,8 +11,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -54,6 +55,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class AdminApiTest {
@@ -365,29 +367,208 @@ class AdminApiTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void deletePendingEnrollmentRemovesADeadRegistryRowButNeverAClaimedOne() {
+        String admin = token("admin", "admin");
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
+                + "VALUES ('edge-typo-99', 'dummy-csr') ON CONFLICT DO NOTHING");
+        // Claimed (demo-inverter-01 has a matching device row) - not a dead end.
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
+                + "VALUES ('demo-inverter-01', 'dummy-csr') ON CONFLICT DO NOTHING");
+
+        // A customer may never delete through the operator route.
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/edge-typo-99"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        // A claimed ref refuses - the box is not an unclaimed dead end.
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/demo-inverter-01"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // The dead registry row deletes cleanly...
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/edge-typo-99"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(admin)), Void.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+
+        // ...and a second delete (already gone) answers 404, not a silent 204.
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/edge-typo-99"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<List<Map<String, Object>>> pending = rest.exchange(
+                url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(pending.getBody()).extracting(e -> e.get("externalRef")).doesNotContain("edge-typo-99");
+    }
+
     // ---- (b4) support password reset -----------------------------------------
 
     /**
-     * The platform has no SMTP, so a forgotten password has exactly one recovery
-     * path: support resets it from the admin console. This proves the whole
-     * support story: the customer locks themselves out guessing, support sets a
-     * new password through the tenant-scoped admin endpoint, and the new
-     * password works immediately because the reset also lifts the brute-force
-     * lockout. A user addressed under the wrong tenant's path is never touched.
+     * N6 (Konzept vp-plattform-admin-box-benutzer-konzept, 10.11.2026): die Anmeldeseite nennt
+     * „Support" bei vergessenem Passwort, aber vor N6 hatte der Plattform-Admin dafür keinen eigenen
+     * Weg (403, nur im Mandantensprung über die Kundenseite). Jetzt vergibt er selbst ein neues
+     * Startpasswort über die admin-geschützte Route - derselbe Weg wie der Kundenadministrator
+     * ({@code BenutzerService#neuVergeben}), inklusive Pflichtwechsel und aufgehobener
+     * Brute-Force-Sperre. Ein Benutzer über den FALSCHEN Mandanten-Pfad bleibt unberührt (404).
      */
     @Test
-    void startpasswortGehoertDemKundenadministratorUndNichtMehrDemSupport() {
+    void supportVergibtEinNeuesStartpasswortUeberDieAdminRoute() {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Alpenstrom GmbH", "B2C").get("id");
         String userId = (String) createUser(admin, tenantId, "alpen-kunde", "kunde@alpen.example", "eigenes-passwort-1").get("id");
         String otherTenant = (String) createTenant(admin, "Fremdstrom AG", "B2C").get("id");
         assertThat(rest.exchange(url("/api/v1/admin/tenants/" + otherTenant + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).containsKey("access_token");
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).as("die falsche Mandanten-Route ändert nichts")
+                .containsKey("access_token");
+
+        ResponseEntity<Map<String, Object>> reset = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(reset.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String neuesStartpasswort = (String) reset.getBody().get("startpasswort");
+        assertThat(neuesStartpasswort).isNotBlank();
+
+        // Das alte Passwort gilt nicht mehr; das neue verlangt sofort den Pflichtwechsel (kein Token).
+        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).doesNotContainKey("access_token");
+        assertThat(tryToken("alpen-kunde", neuesStartpasswort)).doesNotContainKey("access_token");
+    }
+
+    // ---- (b5) person management (P1/P2/P3, Konzept vp-plattform-admin-box-benutzer-konzept) ----
+
+    /**
+     * P1 (N1) + P3: „Bearbeiten" ganz machen (vorher nur Keycloak, der Spiegel blieb auf dem alten
+     * Stand) UND den Anmeldenamen ändern (Realm-Härtung {@code editUsernameAllowed} + nur admin
+     * editierbar, Keycloak-Labor §4.2). Protokoll-Wort {@code konto_geaendert}, Urheber
+     * VoltPilot-Betrieb; ein unveränderter Anmeldename im Body schreibt kein zweites Mal.
+     */
+    @Test
+    void adminRenamesAUserAndMirrorsNameAndEmailIntoTheUemsSpiegel() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Umbenennwerk GmbH", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "vor-der-aenderung", "alt@umbenennen.example",
+                "egal-pw-1").get("id");
+
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "nach-der-aenderung", "email", "neu@umbenennen.example",
+                        "firstName", "Nora", "lastName", "Nachher"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody()).containsEntry("username", "nach-der-aenderung");
+        assertThat(updated.getBody()).containsEntry("email", "neu@umbenennen.example");
+
+        // P1/N1: der Spiegel zieht mit - vorher blieb er auf dem Stand beim Anlegen.
+        assertThat(queryString("SELECT anzeigename FROM benutzer WHERE sub = '" + userId + "'"))
+                .isEqualTo("Nora Nachher");
+        assertThat(queryString("SELECT email FROM benutzer WHERE sub = '" + userId + "'"))
+                .isEqualTo("neu@umbenennen.example");
+
+        // P3: Protokoll `konto_geaendert` mit „vorher → nachher", Urheber VoltPilot-Betrieb (Admin außerhalb
+        // des Mandantensprungs).
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + userId
+                + "' AND aktion = 'konto_geaendert' AND grund = 'Anmeldename: vor-der-aenderung → nach-der-aenderung' "
+                + "AND actor_rolle = 'voltpilot_betrieb'")).isEqualTo(1);
+
+        // Labor W3-W5: Sitzungen/`sub` bleiben, nur der alte Anmeldename gilt ab dem Speichern nicht mehr.
+        keycloakAdmin.resetPassword(userId, "Nachher-Passwort-24!", false);
+        assertThat(tryToken("vor-der-aenderung", "Nachher-Passwort-24!")).doesNotContainKey("access_token");
+        assertThat(tryToken("nach-der-aenderung", "Nachher-Passwort-24!")).containsKey("access_token");
+
+        // Ein unveränderter Anmeldename im Body schreibt kein zweites Protokoll.
+        ResponseEntity<Map<String, Object>> ohneUmbenennung = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "nach-der-aenderung", "email", "neu@umbenennen.example"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ohneUmbenennung.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + userId
+                + "' AND aktion = 'konto_geaendert'")).as("kein zweiter Eintrag ohne echte Änderung").isEqualTo(1);
+
+        // N4: ein ungültiger Anmeldename (Großbuchstaben) wird mit einer erklärenden 400 abgelehnt, nichts geändert.
+        ResponseEntity<Map<String, Object>> ungueltig = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "Grossbuchstabe"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ungueltig.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ungueltig.getBody()).containsEntry("code", "anmeldename_ungueltig");
+        assertThat(keycloakAdmin.getUser(userId).username()).as("nichts geändert").isEqualTo("nach-der-aenderung");
+
+        // N5: ein vergebener Anmeldename nennt das richtige Feld, auch beim Umbenennen (nicht nur beim Anlegen).
+        // Der Anmeldename ist realmweit eindeutig (KeycloakAdminClient.findByUsername) - ein ANDERER
+        // Kundenbereich reicht; "erster" legt nur den ersten Benutzer EINES Mandanten an (W4 bleibt dafür).
+        String anderTenant = (String) createTenant(admin, "Umbenennwerk Zwei GmbH", "CI").get("id");
+        createUser(admin, anderTenant, "schon-vergeben", "vergeben@umbenennen.example", "egal-pw-2");
+        ResponseEntity<Map<String, Object>> doppelt = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "schon-vergeben"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(doppelt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(doppelt.getBody()).containsEntry("code", "anmeldename_vergeben");
+    }
+
+    /**
+     * P2: „Person hinzufügen" - der Admin legt eine WEITERE Person an (nicht nur die erste, W4 fällt), mit
+     * Rolle und Standort wie der Kundenadministrator; das Zugriffsprotokoll des Kunden zeigt den Urheber
+     * VoltPilot-Betrieb. N5: ein doppelter Anmeldename bzw. eine doppelte E-Mail nennen das richtige Feld.
+     */
+    @Test
+    void adminAddsAFurtherPersonWithRoleAndSiteAndDistinguishesDuplicateFields() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Zweitperson GmbH", "CI").get("id");
+        createUser(admin, tenantId, "erste-kundenadministratorin", "erste@zweitperson.example", "egal-pw-1");
+        // UEMS-Standort (Rechte-Tabelle), nicht der Legacy-`site` der Admin-Route - `BenutzerService.anlegen`
+        // prüft Standorte gegen `standort` (wie BenutzerStartpasswortApiTest es auch direkt anlegt).
+        UUID unternehmen = UUID.fromString(queryString("SELECT id FROM unternehmen WHERE tenant_id = '" + tenantId + "'"));
+        UUID standort = UUID.fromString(queryString("INSERT INTO standort (tenant_id, unternehmen_id, name, "
+                + "kurzzeichen, zeitzone, zustand) VALUES ('" + tenantId + "', '" + unternehmen
+                + "', 'Werk Zweitperson', 'ST-ZP', 'Europe/Berlin', 'aktiv') RETURNING id"));
+
+        ResponseEntity<Map<String, Object>> angelegt = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "zweite-person", "email", "zweite@zweitperson.example",
+                        "vorname", "Zweite", "nachname", "Person", "rolle", "leser",
+                        "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(angelegt.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> konto = (Map<String, Object>) angelegt.getBody().get("benutzer");
+        String sub = (String) konto.get("sub");
+        assertThat(angelegt.getBody().get("startpasswort")).isNotNull();
+        assertThat(keycloakAdmin.getUser(sub).tenantId()).isEqualTo(tenantId);
+        assertThat(queryLong("SELECT count(*) FROM zugriff WHERE benutzer_sub = '" + sub
+                + "' AND rolle = 'leser' AND standort_id = '" + standort + "'")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + sub
+                + "' AND aktion = 'zuweisen' AND actor_rolle = 'voltpilot_betrieb'")).isEqualTo(1);
+
+        // N5: derselbe Anmeldename nochmal -> anmeldename_vergeben, nicht der generische „konto_vorhanden".
+        ResponseEntity<Map<String, Object>> doppelterName = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "zweite-person", "email", "andere@zweitperson.example",
+                        "rolle", "leser", "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(doppelterName.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(doppelterName.getBody()).containsEntry("code", "anmeldename_vergeben");
+
+        // N5: dieselbe E-Mail nochmal (anderer Anmeldename) -> email_vergeben.
+        ResponseEntity<Map<String, Object>> doppelteEmail = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "dritte-person", "email", "zweite@zweitperson.example",
+                        "rolle", "leser", "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(doppelteEmail.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(doppelteEmail.getBody()).containsEntry("code", "email_vergeben");
+
+        // N4: ein ungültiger Anmeldename (zu kurz) wird abgelehnt, bevor ein Konto entsteht.
+        ResponseEntity<Map<String, Object>> ungueltig = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "xy", "email", "vierte@zweitperson.example",
+                        "rolle", "leser", "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ungueltig.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ungueltig.getBody()).containsEntry("code", "anmeldename_ungueltig");
     }
 
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
@@ -702,7 +883,7 @@ class AdminApiTest {
         String siteId = (String) site.getBody().get("id");
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-weg-01"),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box("edge-weg-01")),
                         bearer(customer)),
                 new ParameterizedTypeReference<>() {});
         String deviceId = (String) claim.getBody().get("id");
@@ -764,7 +945,7 @@ class AdminApiTest {
         assertThat(tenants.getBody()).extracting(t -> t.get("id")).doesNotContain(tenantId);
     }
 
-    @org.springframework.boot.test.mock.mockito.SpyBean
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     com.voltpilot.api.repo.TenantRepository offboardingTenants;
 
     @Test
@@ -904,7 +1085,8 @@ class AdminApiTest {
         seed.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, gueltig_ab, zeitzone) "
                 + "VALUES (?::uuid, ?, 'kundenadministrator', now(), 'Europe/Berlin')", tenantId, zweiter.id());
 
-        // Edit email + name; the username is immutable and stays.
+        // Edit email + name; without a `username` field in the body, the login identity stays (P3: it is
+        // changeable now, but only on request - see adminRenamesAUserAndMirrorsNameAndEmailIntoTheUemsSpiegel).
         ResponseEntity<Map<String, Object>> updated = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
                 new HttpEntity<>(Map.of("email", "neu@pflege.example", "firstName", "Petra",
@@ -2108,7 +2290,7 @@ class AdminApiTest {
                 .as("vor dem Gerät gibt es ehrlich nichts zu zeigen").isEmpty();
 
         rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", claimSite, "externalRef", "selbstbau-deye-01"),
+                new HttpEntity<>(Map.of("siteId", claimSite, "externalRef", TestKennung.box("selbstbau-deye-01")),
                         kunde),
                 new ParameterizedTypeReference<Map<String, Object>>() {});
 
@@ -2157,7 +2339,7 @@ class AdminApiTest {
                         kunde),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
         rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", spaeter, "externalRef", "selbstbau-deye-02"),
+                new HttpEntity<>(Map.of("siteId", spaeter, "externalRef", TestKennung.box("selbstbau-deye-02")),
                         kunde),
                 new ParameterizedTypeReference<Map<String, Object>>() {});
         assertThat(customerEntities(kunde, spaeter))
@@ -2588,7 +2770,7 @@ class AdminApiTest {
         assertThat(rest.exchange(url("/api/v1/admin/sites/" + siteId + "/v2-entities"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("entityType", "battery-hybrid"), adminTenant),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         String batteryId = (String) rest.exchange(
                 url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.GET,
                 new HttpEntity<>(adminTenant),
@@ -2600,7 +2782,7 @@ class AdminApiTest {
                 HttpMethod.PUT,
                 new HttpEntity<>(Map.of("guards", Map.of("failsafe", Map.of("behavior", "off"))),
                         adminTenant),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Guard-config edit on the open type: valid replaces, garbage is 400.
         ResponseEntity<Map<String, Object>> edited = rest.exchange(
@@ -2903,7 +3085,7 @@ class AdminApiTest {
                 url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "bh-3", "entityType", "battery-hybrid"),
                         adminTenant), String.class).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // A customer cannot adopt (admin-only route -> 403).
         assertThat(rest.exchange(
@@ -3368,6 +3550,13 @@ class AdminApiTest {
         assertThat(c.get("update")).as("nie gemeldet heißt unbekannt, nicht veraltet").isNull();
         assertThat(c.get("edge")).isNull();
 
+        // Geräte & Updates S0: jede Anlage trägt die Linie ihrer Box - der
+        // Maßstab der Oberfläche. Ein Stempel ohne Backend ist eine Docker-Box,
+        // eine stumme Box hat keine Linie (nie still Docker).
+        assertThat(a.get("boxArt")).isEqualTo("docker");
+        assertThat(b.get("boxArt")).isEqualTo("docker");
+        assertThat(c.get("boxArt")).isNull();
+
         // (4) Register anlegen: die Sequenz setzt sich von selbst fort.
         Map<String, Object> r1 = createRelease(admin,
                 Map.of("version", "edge-2026.07.2", "targetCommit", "665d59b8"));
@@ -3403,6 +3592,8 @@ class AdminApiTest {
         assertThat(register.get(0)).containsEntry("version", "edge-2026.08.0");
         assertThat(register).extracting(x -> x.get("version"))
                 .contains("edge-2026.07.2", "edge-2026.08.0");
+        // S0: jeder Eintrag nennt seine Linie - ohne Kennzeichnung eine Docker-Box.
+        assertThat(register.get(0)).containsEntry("boxArt", "docker");
 
         // (7) Die Rollen-Grenze der Registerroute.
         String customer = token("demo", "demo");
@@ -3508,6 +3699,71 @@ class AdminApiTest {
         assertThat(unsigned.get("manifest")).isNull();
         assertThat(unsigned.get("signature")).isNull();
         assertThat(unsigned.get("signingKeyId")).isNull();
+    }
+
+    /**
+     * Edge Light (Konzept vp-edge-light-update, K1): das Register nimmt den
+     * Namen edge-light-JJJJ.MM.N an, den der Vertrag verlangt - und liest ein
+     * solches Manifest STRENG wie das Werkzeug: Name, Backend light und nur
+     * Programme mit Pruefsummen gehoeren zusammen. Einen unsignierten
+     * Edge-Light-Eintrag gibt es nicht.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void anEdgeLightReleaseIsRegisteredUnderItsOwnNameAndOnlyInContractForm() {
+        String admin = token("admin", "admin");
+        long seq = ((Number) rest.exchange(url("/api/v1/admin/edge-releases/next-seq"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<Map<String, Object>>() {})
+                .getBody().get("nextSeq")).longValue();
+        String version = "edge-light-2027.03.0";
+        String binary = "{\"type\": \"binary\", \"name\": \"vp-edge-light\", \"arch\": \"linux/mipsle\", "
+                + "\"sha256\": \"" + "3".repeat(64) + "\", \"size\": 16318657, "
+                + "\"gz_sha256\": \"" + "4".repeat(64) + "\", \"gz_size\": 5243517}";
+        java.util.function.BiFunction<String, String, String> manifest = (artifact, backend) -> "{\n"
+                + "  \"schema_version\": \"1.0\",\n"
+                + "  \"release\": \"" + version + "\",\n"
+                + "  \"release_seq\": " + seq + ",\n"
+                + "  \"target_commit\": \"3bf8c038a1b2\",\n"
+                + "  \"artifacts\": [" + artifact + "],\n"
+                + "  \"min_from_seq\": 0,\n"
+                + "  \"allow_downgrade\": false,\n"
+                + "  \"state_schema\": 1,\n"
+                + "  \"compat\": {\"backends\": [\"" + backend + "\"]},\n"
+                + "  \"signing_key_id\": \"rel-2026-a\"\n"
+                + "}\n";
+        String signature = "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\","
+                + "\"key_id\":\"rel-2026-a\",\"domain\":\"release\","
+                + "\"signature\":\"" + "C".repeat(86) + "==\"}\n";
+
+        // Nicht in der Form des Vertrags: 400 mit Grund, nichts eingetragen.
+        ResponseEntity<Map<String, Object>> compose = postRelease(admin, Map.of("version", version,
+                "manifest", manifest.apply(binary, "compose"), "signature", signature));
+        assertThat(compose.getStatusCode()).as("edge-light-… fuer compose").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) compose.getBody().get("message")).contains("Form des Vertrags");
+        String image = "{\"type\": \"oci-image\", \"name\": \"core\", \"ref\": \"x/core@sha256:"
+                + "1".repeat(64) + "\"}";
+        assertThat(postRelease(admin, Map.of("version", version,
+                "manifest", manifest.apply(image, "light"), "signature", signature)).getStatusCode())
+                .as("ein Image in einem Edge-Light-Release").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", version,
+                "manifest", manifest.apply(binary.replace(", \"gz_size\": 5243517", ""), "light"),
+                "signature", signature)).getStatusCode())
+                .as("ein Programm ohne Groesse der Lieferung").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", "edge-2027.03.9",
+                "manifest", manifest.apply(binary, "light").replace(version, "edge-2027.03.9"),
+                "signature", signature)).getStatusCode())
+                .as("das Backend light unter einem Docker-Namen").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", version, "targetCommit", "aabbccdd"))
+                .getStatusCode()).as("ein Edge-Light-Release ohne Signatur").isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // In der Form des Vertrags: eingetragen, unter seinem eigenen Namen.
+        String good = manifest.apply(binary, "light");
+        Map<String, Object> created = createRelease(admin, Map.of("version", version,
+                "manifest", good, "signature", signature));
+        assertThat(created).containsEntry("version", version);
+        assertThat(((Number) created.get("releaseSeq")).longValue()).isEqualTo(seq);
+        assertThat((String) listReleases(admin).stream().filter(r -> version.equals(r.get("version")))
+                .findFirst().orElseThrow().get("manifest")).isEqualTo(good);
     }
 
     /**
@@ -3837,7 +4093,7 @@ class AdminApiTest {
         return res.getBody();
     }
 
-    @org.springframework.boot.test.mock.mockito.SpyBean
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     com.voltpilot.api.admin.KeycloakAdminClient keycloakAdmin;
 
     private Map<String, Object> createUser(String token, String tenantId, String username,
@@ -3903,6 +4159,18 @@ class AdminApiTest {
                 java.sql.ResultSet rs = st.executeQuery(sql)) {
             rs.next();
             return rs.getDouble(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
+
+    /** Scalar text query as the Postgres superuser (bypasses RLS); {@code null} if no row matched. */
+    private static String queryString(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            return rs.next() ? rs.getString(1) : null;
         } catch (Exception e) {
             throw new IllegalStateException("query failed: " + sql, e);
         }

@@ -29,5 +29,16 @@ import java.time.Instant;
  */
 public record EdgeReleaseDto(long releaseSeq, String version, String targetCommit, String notes,
         Instant createdAt, String createdBy, String manifest, String signature,
-        String signingKeyId) {
+        String signingKeyId,
+        // Geräte & Updates G4 (additiv): „Was ist neu" - die Box-Änderungen seit
+        // dem letzten Tag derselben Linie (CI); null = keine Angabe.
+        java.util.List<String> aenderungen) {
+
+    /** Die Vor-G4-Form ohne Änderungsliste. */
+    public EdgeReleaseDto(long releaseSeq, String version, String targetCommit, String notes,
+            Instant createdAt, String createdBy, String manifest, String signature,
+            String signingKeyId) {
+        this(releaseSeq, version, targetCommit, notes, createdAt, createdBy, manifest, signature,
+                signingKeyId, null);
+    }
 }

@@ -113,13 +113,14 @@ export function tagAus(history: History | null, plan: SchedulePlan | null, now: 
       for (let k = 0; k < je; k++) {
         const v = viertel[i0 + k];
         if (!v) continue;
+        // Der Preis gilt auch ohne Messung (Erzeugeranlage: ihre Werte gehen nicht in die Hausbilanz).
+        v.preisCt = b.priceEurMwh == null ? null : b.priceEurMwh / 10;
         const e = energieAus(b, 1 / je);
         const leer = Object.values(e).every((x) => x == null);
         if (leer) continue;
         v.energie = e;
         v.gemessen = leistungAus(e);
         v.socPct = n(b.socLastPct);
-        v.preisCt = b.priceEurMwh == null ? null : b.priceEurMwh / 10;
       }
     }
   }

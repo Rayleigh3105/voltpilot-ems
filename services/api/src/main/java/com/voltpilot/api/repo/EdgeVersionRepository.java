@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.ota.BoxArt;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -38,9 +39,23 @@ public class EdgeVersionRepository {
      * jeweilige Feld leer, nie eine geratene Version.
      */
     public record EdgeVersion(UUID deviceId, UUID siteId, String coreVersion,
-            String paletteVersion, Instant reportedAt, List<String> supports) {
+            String paletteVersion, Instant reportedAt, List<String> supports, String backend) {
         public EdgeVersion(UUID deviceId, UUID siteId, String coreVersion, String paletteVersion, Instant reportedAt) {
-            this(deviceId, siteId, coreVersion, paletteVersion, reportedAt, null);
+            this(deviceId, siteId, coreVersion, paletteVersion, reportedAt, null, null);
+        }
+
+        public EdgeVersion(UUID deviceId, UUID siteId, String coreVersion, String paletteVersion,
+                Instant reportedAt, List<String> supports) {
+            this(deviceId, siteId, coreVersion, paletteVersion, reportedAt, supports, null);
+        }
+
+        /**
+         * Die Box-Art dieses Geräts ({@code ota.BoxArt}): aus dem gemeldeten
+         * Apply-Backend ({@code update.backend}) und dem Stempel. {@code null} =
+         * unbekannt, nie still Docker.
+         */
+        public String boxArt() {
+            return BoxArt.ofDevice(backend, coreVersion);
         }
     }
 
@@ -63,10 +78,17 @@ public class EdgeVersionRepository {
     }
 
     /**
-     * Ein Eintrag des Release-Registers, auf die zwei Felder reduziert, die der
-     * Kunden-Lesepfad braucht: den NAMEN und die ORDNUNG.
+     * Ein Eintrag des Release-Registers, auf die drei Felder reduziert, die der
+     * Kunden-Lesepfad braucht: den NAMEN, die ORDNUNG und die LINIE
+     * ({@code boxArt}: {@code docker} oder {@code light}, {@code ota.BoxArt}).
+     * Ohne die Linie wäre „neuestes Release" eines über beide Box-Arten - genau
+     * so las eine Docker-Box „neuerer Stand edge-light-…" (Geräte &amp; Updates S0).
      */
-    public record RegisterEntry(String version, long releaseSeq) {
+    public record RegisterEntry(String version, long releaseSeq, String boxArt) {
+        /** Ohne Manifest: die Linie allein aus dem Namen (sonst Docker, wie {@code BoxArt.ofRelease}). */
+        public RegisterEntry(String version, long releaseSeq) {
+            this(version, releaseSeq, BoxArt.ofRelease(version, null));
+        }
     }
 
     /**
@@ -79,14 +101,17 @@ public class EdgeVersionRepository {
      * V20260803020000 {@code GRANT SELECT}) - die BYPASSRLS-Rolle ist dort die
      * SCHREIB-Berechtigung, und die bleibt hinter {@code /api/v1/admin/**}.
      *
-     * <p>Gelesen werden nur Name und Sequenz; das Register selbst verlässt das
-     * Haus nie über diesen Pfad (die Kunden-Antwort trägt ausschließlich das
-     * URTEIL und den Namen des Soll-Stands).
+     * <p>Gelesen werden Name, Sequenz und - nur um die Linie zu bestimmen - das
+     * Manifest ({@code BoxArt.ofRelease}: Name ODER {@code compat.backends}); die
+     * Bytes verlassen diese Methode nicht. Das Register selbst verlässt das Haus
+     * nie über diesen Pfad (die Kunden-Antwort trägt ausschließlich das URTEIL
+     * und den Namen des Soll-Stands).
      */
     public List<RegisterEntry> releases() {
-        return jdbc.query("SELECT version, release_seq FROM edge_release "
+        return jdbc.query("SELECT version, release_seq, manifest FROM edge_release "
                         + "ORDER BY release_seq DESC",
-                (rs, n) -> new RegisterEntry(rs.getString("version"), rs.getLong("release_seq")));
+                (rs, n) -> new RegisterEntry(rs.getString("version"), rs.getLong("release_seq"),
+                        BoxArt.ofRelease(rs.getString("version"), rs.getString("manifest"))));
     }
 
     /**
@@ -103,7 +128,7 @@ public class EdgeVersionRepository {
         return jdbc.query(
                 "SELECT d.id AS device_id, d.site_id, "
                         + "COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
-                        + "e.core_version) AS core_version, e.palette_version, d.supports, "
+                        + "e.core_version) AS core_version, e.palette_version, d.supports, u.backend, "
                         + "CASE WHEN COALESCE(NULLIF(u.version, ''), "
                         + "NULLIF(u.current_version, '')) IS NOT NULL "
                         + "THEN u.reported_at ELSE coalesce(e.reported_at, d.supports_reported_at) END AS reported_at "
@@ -119,6 +144,7 @@ public class EdgeVersionRepository {
                         rs.getString("core_version"),
                         rs.getString("palette_version"),
                         rs.getTimestamp("reported_at").toInstant(),
-                        com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports"))));
+                        com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports")),
+                        rs.getString("backend")));
     }
 }

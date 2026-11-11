@@ -22,14 +22,15 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'cockpit', category: 'alltag', title: 'Das Cockpit lesen',
     summary: 'Zustand, Energieflüsse und aktuelle Messwerte Ihrer Anlage auf einen Blick.',
-    keywords: ['Dashboard', 'Übersicht', 'Live', 'Energiefluss', 'Status', 'Warnung', 'Anpassen'],
+    keywords: ['Dashboard', 'Übersicht', 'Live', 'Energiefluss', 'Status', 'Warnung', 'Anpassen', 'Heute', 'Autarkie', 'Leitkachel', 'Stern'],
     sections: [
       { id: 'blick', title: 'Zuerst Zustand und Datenstand prüfen', paragraphs: [
         "Prüfen Sie zuerst Zustand und Datenstand. Die Bausteine folgen Ihrer Ausstattung; unter Anpassen können Sie die angebotenen Bausteine ordnen oder ausblenden. Alte Messwerte beschreiben einen früheren Zustand.",
       ], figure: 'cockpit' },
       { id: 'lesen', title: 'Von den Flüssen zu den Einzelwerten', paragraphs: [
         "Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, die Anlagenzahl einzuordnen.",
-      ] },
+        "Neben dem Energiefluss steht, was bei Ihrer Anlage zählt: mit Leistungspreis die Lastspitze, mit Vermarktung der Börsenpreis. Sonst steht dort „Heute“: wie viel Ihres Stroms heute aus eigener Sonne kam, woher der Verbrauch kam und wohin die Sonne ging. Der Betrag „Unterm Strich“ folgt dann als ruhige Zeile am Ende; wer ihn oben sehen möchte, setzt unter „Cockpit anpassen“ den Stern auf „Unterm Strich“.",
+      ], figure: 'cockpit-zuhause' },
       { id: 'weiter', title: 'Was tun bei einem Hinweis?', paragraphs: [
         "Öffnen Sie einen Hinweis für seine Ursache. Geplante Aktionen stehen im Fahrplan, vergangene Messungen unter Verlauf → Energie und Geräteverbindungen unter Anlage. Prüfen Sie bei fehlenden Zahlen zuerst Quelle und Datenstand.",
       ] },
@@ -38,23 +39,26 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'fahrplan', category: 'alltag', title: 'Den Fahrplan verstehen',
     summary: 'Wann Ihr Speicher laden oder entladen soll und wie Sie Plan und Ausführung auseinanderhalten.',
-    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum', 'Tagesuhr', 'Bildfahrplan', 'Gestern', 'Morgen'],
+    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum', 'Tagesuhr', 'Tagesband', 'Gestern', 'Morgen'],
     prerequisite: 'Ein Speicher beziehungsweise eine Anlage, für die ein Fahrplan angeboten wird.',
     sections: [
       { id: 'lesen', title: 'Der Tag in einem Bild', paragraphs: [
-        "Ganz oben sagt ein Satz, was der Speicher heute tut, und das Jetzt-Band, was er gerade tut, warum, und ob Sie etwas tun müssen. Das Bild darunter zeigt den ganzen Tag: oben der Preis, der den Plan treibt, darunter Sonne und Verbrauch, in der Mitte der Ladestand als Linie zwischen leer und voll, unten die Tätigkeit des Speichers. Wer eine Spalte von oben nach unten liest, sieht Ursache und Wirkung zur selben Uhrzeit. Was schon vorbei ist, zeigt den Plan, der damals galt; gemessen sind Sonne und Verbrauch.",
-        "Welcher Preis oben steht, hängt von Ihrem Tarif ab: Ändert sich Ihr Strompreis über den Tag, etwa bei einem dynamischen Tarif oder mit Hoch- und Niedertarif, steht er dort. Ist er fest und vermarkten Sie Ihren Strom direkt, steht dort der Börsenpreis, zu dem verkauft wird. Bei festem Preis ohne Vermarktung entfällt die Preisspur: Der Plan folgt dann Sonne und Verbrauch.",
-        "Die Tätigkeiten heißen überall gleich: Sonne speichern, Günstig aus dem Netz laden, Verbrauch decken, Warten und Einspeisung pausieren. Unter dem Bild stehen die Antworten auf die häufigsten Fragen zum Tag; ein Klick markiert ihre Stelle im Bild. Darunter folgen die Waage, der Tag in Stationen und „Worauf Ihr Plan achtet“ mit Tarif, Grenzen und Hinweisen. Dort öffnet „Alle Werte im Diagramm“ das bisherige Diagramm mit allen Spuren.",
+        "Ganz oben steht, was der Speicher gerade tut, darunter in Stichworten der Ladestand, ein Grund wie „voll“ und der nächste Wechsel. Folgt Ihr Gerät dem Plan nicht oder führt es bewusst nach, steht eine kurze Gerätezeile darunter; ein Tipp zeigt den ganzen Satz. Ein Tipp auf die oberste Zeile öffnet das Warum: einen Satz, die Waage und alle Gründe.",
+        "Am Rechner zeigt das Tagesband den ganzen Tag: oben die Tätigkeiten des Speichers mit Uhrzeit, darunter der Ladestand – links von jetzt gemessen, rechts geplant –, unten Sonne und der Preis, der den Plan treibt. Ändert sich Ihr Strompreis über den Tag, etwa bei einem dynamischen Tarif oder mit Hoch- und Niedertarif, steht er dort; ist er fest und vermarkten Sie Ihren Strom direkt, der Börsenpreis. Bei festem Preis ohne Vermarktung entfällt die Preisspur. Mit der Maus zeigt eine Lupe jede Viertelstunde, ein Klick auf eine Tätigkeit ihr Warum.",
+        "Die Tätigkeiten heißen überall gleich: Sonne speichern, Günstig aus dem Netz laden, Verbrauch decken, Warten und Einspeisung pausieren. Die Farbe sagt die Richtung des Speichers – grün lädt, beere gibt ab, grau wartet –, das Symbol wofür. Die Kacheln beantworten, was als Nächstes kommt, ob der Speicher bis zum Abend reicht und was die Steuerung heute bringen soll. „Ihr Tag“ listet alle Phasen, vergangene mit gemessenem Ladestand; „Gut zu wissen“ nennt Tarif, Grenzen und Hinweise und öffnet „Alle Werte im Diagramm“.",
       ], figure: 'fahrplan' },
-      { id: 'uhr', title: 'Die Tagesuhr am Telefon', paragraphs: [
-        "Am Telefon ist der Tag ein Kreis: oben Mittag, unten Mitternacht. Außen stehen Sonne und Preis, der breite Ring zeigt die Tätigkeit, innen der Ladestand. Ziehen Sie den Zeiger oder tippen Sie auf eine Uhrzeit; Werte und Antworten gelten dann für diesen Moment. Ein Tipp in die Mitte holt die Gegenwart zurück, das Fragezeichen erklärt die Uhr Schritt für Schritt.",
+      { id: 'uhr', title: 'Die Uhr am Telefon', paragraphs: [
+        "Am Telefon geht die Uhr wie jede andere: 12 Stunden rund, der Zeiger steht auf der Uhrzeit von jetzt. Der Ring zeigt, was ab jetzt kommt, elf Stunden nach vorn und über Mitternacht hinaus; außen am Ring steht die Uhrzeit jedes Wechsels. Ein Tipp auf einen Abschnitt des Rings zeigt, warum der Speicher das dann tut.",
       ], figure: 'fahrplan-uhr' },
       { id: 'tage', title: 'Gestern, heute, morgen', paragraphs: [
-        "Über dem Bild wählen Sie den Tag. Gestern zeigt den Plan, wie er galt: für jede Viertelstunde den Stand, mit dem sie begann, dazu gemessene Sonne und gemessenen Verbrauch und unter „Was hat es gebracht?“, was die Steuerung an diesem Tag gebracht hat. Ob der Speicher wirklich gereicht hat, sagen die Messwerte.",
+        "Über dem Bild wählen Sie den Tag. Gestern zeigt den Plan, wie er galt, und den gemessenen Ladestand dazu; die Kachel nennt, was die Steuerung an diesem Tag gebracht hat. Am Telefon zeigt die Uhr dann den Vor- oder Nachmittag.",
         "Morgen zeigt den jüngsten Plan für den nächsten Tag. Er entsteht, sobald die Börsenpreise für morgen gegen 13 Uhr veröffentlicht sind, und wird bis dahin alle 15 Minuten neu gerechnet; vorher steht dort, wann er kommt. Was der Speicher gerade tut und ob Sie eingreifen müssen, steht nur bei Heute.",
       ] },
       { id: 'gruende', title: 'Warum die Batterie gerade so geplant ist', paragraphs: [
-        "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Die Waage unter den Antworten stellt die zwei Werte je Kilowattstunde nebeneinander, zwischen denen entschieden wurde; „Alle Gründe“ öffnet die ausführliche Erklärung.",
+        "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Die Waage im Warum stellt die zwei Werte je Kilowattstunde nebeneinander, zwischen denen entschieden wurde; „Alle Gründe und Zahlen“ öffnet die ausführliche Erklärung.",
+      ] },
+      { id: 'festpreis', title: 'Bei festem Strompreis', paragraphs: [
+        "Haben Sie einen festen Strompreis und eine feste Einspeisevergütung, erklärt der Fahrplan sich über die Sonne statt über die Börse: Ihr Strompreis gegen Ihre Vergütung ist die eine Waage, die über jede Entscheidung des Tages bestimmt – deshalb zuerst ins Haus, dann in den Speicher, der Rest ins Netz. „Aus eigenem Strom“ zeigt dann, wie viel Ihres heutigen Verbrauchs die Sonne gedeckt hat; „Ihr Sonnenstrom heute“ zeigt, wohin sie floss. Nur bei negativen Börsenpreisen nach dem 25.02.2025 (§ 51a EEG) gibt es für einzelne Viertelstunden keine Vergütung – der Fahrplan füllt den Speicher dann lieber, statt einzuspeisen.",
       ] },
       { id: 'kontrolle', title: 'Plan ist nicht gleich Ausführung', paragraphs: [
         "Ein Plan belegt eine Absicht. Geräteantworten und Messwerte zeigen, was daraus wurde. Fehlt der Plan, prüfen Sie Verbindung, Speicherzuordnung und die Hinweise unter Steuerung.",
@@ -87,7 +91,7 @@ export const everydayArticles: HelpArticle[] = [
         "Prüfen Sie Zeitraum und Kennzahl: Einspeiseerlös, Bezugskosten, Einsparung und Planwert haben unterschiedliche Bedeutungen. Die Berechnung hängt von Tarifangaben und Messungen ab; sie ersetzt keine Rechnung Ihres Vertragspartners.",
       ], figure: 'erloese' },
       { id: 'mehrwert', title: 'Was bringt die VoltPilot-Steuerung?', paragraphs: [
-        "Die Kachel „VoltPilot-Steuerung“ vergleicht Ihre Anlage mit demselben Speicher ohne smarte Steuerung: Der lädt jeden Überschuss sofort und entlädt bei Bedarf sofort, ohne auf Preise zu achten. Der Betrag ist, was die Steuerung darüber hinaus gebracht hat. Er ist kein Teil des Ergebnisses, sondern ein Vergleich. Maßstab und Rechnung stehen im ⓘ der Kachel. Fehlen die Speicherdaten, steht dort ein Strich und der Weg zum Nachtragen.",
+        "Die Kachel „VoltPilot-Steuerung“ vergleicht Ihre Anlage mit demselben Speicher ohne smarte Steuerung, gleich groß wie gemessen und stur gefahren: Der lädt jeden Überschuss sofort und entlädt bei Bedarf sofort, ohne auf Preise zu achten. Der Betrag ist, was die Steuerung darüber hinaus gebracht hat. Er ist kein Teil des Ergebnisses, sondern ein Vergleich. Maßstab und Rechnung stehen im ⓘ der Kachel. Fehlen die Speicherdaten, steht dort ein Strich und der Weg zum Nachtragen.",
       ] },
       { id: 'speicherbestand', title: 'Warum die Tagesbilanz zwischendurch anders aussieht', paragraphs: [
         "Gespeicherte Energie kann ihren Nutzen erst später bringen. Lesen Sie deshalb Ergebnis und gegebenenfalls Bestandskonto zusammen. Der Zwischenstand am Mittag ist noch kein abgeschlossenes Tagesergebnis.",
@@ -110,7 +114,8 @@ export const everydayArticles: HelpArticle[] = [
     prerequisite: 'Die Marktpreise-Ansicht ist für entsprechend konfigurierte Anlagen verfügbar.',
     sections: [
       { id: 'diagramm', title: 'Preis und Zeit gehören zusammen', paragraphs: [
-        "Die Ansicht zeigt veröffentlichte Preise für Zeitraum und Markt. Prüfen Sie Datum und Einheit. Eine Lücke steht für fehlende Preise; sie ist weder null noch eine Vorhersage.",
+        "Oben steht der Börsenpreis der laufenden Viertelstunde und ein Wort dazu: günstig, mittel oder teuer im Vergleich zu den kommenden Stunden bis zum letzten bekannten Preis. Die zwei Kacheln nennen die günstigsten und die teuersten zwei Stunden ab jetzt.",
+        "Im Bild markiert die dunkle Linie jetzt; Vergangenes ist blass. Ein Tipp auf einen Balken zeigt seine Viertelstunde oben, „Jetzt“ führt zurück. Eine Lücke steht für fehlende Preise; sie ist weder null noch eine Vorhersage. Woche, Monat und Jahr finden Sie unter „Rückblick“.",
       ], figure: 'marktpreise' },
       { id: 'tarif', title: 'Börsenpreis ist nicht Ihr vollständiger Bezugspreis', paragraphs: [
         "Zum Börsenanteil können weitere Tarifbestandteile kommen. Ein negativer Börsenpreis bedeutet deshalb nicht automatisch einen negativen Bezugspreis. Prüfen Sie Einstellungen und Vertragsangaben.",
@@ -125,11 +130,12 @@ export const everydayArticles: HelpArticle[] = [
     summary: 'Vorhersagen für PV und Verbrauch sowie deren spätere Bewertung einordnen.',
     keywords: ['Wetter', 'Forecast', 'Vorhersage', 'Prognosequalität', 'Genauigkeit', 'Abweichung', 'Fahrplan'],
     sections: [
-      { id: 'wetter', title: 'Wetter beschreibt die erwarteten Bedingungen', paragraphs: [
-        "Die Wetteransicht schätzt Bedingungen am Anlagenstandort; sie misst keine Solarproduktion. Bei unplausiblen Ortsangaben prüfen Sie den Standort. Lokales Wetter kann von der Vorhersage abweichen.",
+      { id: 'wetter', title: 'Der Sonnen-Teppich zeigt Sonne und Verbrauch auf einen Blick', paragraphs: [
+        "Oben steht, wie lange die Sonne heute reicht, und zwei Balken für Sonne und Verbrauch, je mit dem, was schon erzeugt bzw. verbraucht ist. Der Teppich darunter zeigt sieben Tage je Stunde: je Tag eine Zeile, je Stunde eine Spalte - kräftig, wo die Sonne den Verbrauch deckt. Ein Tipp auf einen Tag wählt ihn für das Bild darunter.",
+        "Im Bild ist gemessener Sonnenstrom gefüllt und erwarteter schraffiert; die dunkle Linie markiert jetzt. Ab übermorgen ist die Zeile ein Ausblick, heller gezeichnet - er reicht so weit, wie der Wetterdienst heute vorhersagt. Ohne PV zeigt der Teppich den Verbrauch. Lokales Wetter kann von der Vorhersage abweichen; bei unplausiblen Ortsangaben prüfen Sie den Standort.",
       ], figure: 'wetter' },
       { id: 'modelle', title: 'Prognose und Prognosequalität', paragraphs: [
-        "Im Fahrplan steht unter „Worauf Ihr Plan achtet“, wie weit die Vorhersage zuletzt danebenlag: die mittlere Abweichung je Viertelstunde für Verbrauch und PV. Verglichen werden gespeicherte Vorhersagen mit Messungen; wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich. Welches Vorhersagemodell plant, betreut VoltPilot.",
+        "Im Fahrplan steht unter „Gut zu wissen“, wie weit die Vorhersage zuletzt danebenlag: die mittlere Abweichung je Viertelstunde für Verbrauch und PV. Verglichen werden gespeicherte Vorhersagen mit Messungen; wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich. Welches Vorhersagemodell plant, betreut VoltPilot.",
       ], figure: 'prognose' },
       { id: 'bewertung', title: 'Abweichungen mit ihrer Einheit lesen', paragraphs: [
         "Lesen Sie Fehlermetrik und Einheit: Eine Abweichung in kW ist keine Prozentgenauigkeit. Vergleichen Sie dieselbe Größe und denselben Zeitraum. Ein historisch besseres Modell garantiert keinen besseren einzelnen Tag.",

@@ -19,6 +19,9 @@ package agent
 // sich auch nur EIN Geraet nicht uebersetzen, bleibt der bisherige Zustand
 // vollstaendig stehen und der Grund wandert in den Herzschlag. Ein halb
 // angewandter Lesepfad ist der eine Fehler, der eine Live-Anlage blind macht.
+// Ausnahme (componentapply, erste Regel): ein Geraet, dem die Box keine Rolle
+// zuordnen kann, hat gar keinen Lesepfad hier - es wird uebersprungen und mit
+// Kennung und Grund gemeldet (rejected_components), der Rest angewandt.
 
 import (
 	"errors"
@@ -119,7 +122,11 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 	running := append([]sources.Source(nil), a.srcs...)
 	a.srcMu.Unlock()
 
-	plan, err := componentapply.Derive(reg, a.invCat, running, time.Now())
+	plan, err := a.deriveComponents(reg, running)
+	for _, r := range plan.Rejected {
+		slog.Warn("Gerät aus dem Portal nicht angewandt (die übrigen schon)",
+			"revision", reg.Revision, "entity", r.EntityID, "grund", r.Reason)
+	}
 	if errors.Is(err, componentapply.ErrNoConfiguration) && a.PortalManagedComponents() {
 		// NACH der Übernahme ist das leere Soll eine Aussage des Portals: der
 		// Kunde hat das letzte angebundene Gerät gelöscht. Jede Quelle, die hier
@@ -128,7 +135,9 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 		// gelöschtes Gerät weiter, meldete es weiter an die Box-Seite und wäre
 		// nirgends mehr zu entfernen. Der Wechselrichter bleibt wie bei jedem
 		// Plan ohne Wechselrichter unberührt.
+		rejected := plan.Rejected
 		plan, err = componentapply.EmptiedPlan(reg.Revision), nil
+		plan.Rejected = rejected
 	}
 	if err != nil {
 		if errors.Is(err, componentapply.ErrNoConfiguration) {
@@ -142,9 +151,13 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 			// Ablehnungsgrund stehen - im Portal las sich das als „Änderung
 			// unterwegs zur Box", dauerhaft und ohne Begründung. Lokal bleibt
 			// weiterhin alles unverändert; nur der Bericht wird ehrlich.
-			a.recordComponentHold(reg.Revision, noConfigurationHint)
-			slog.Info("Portal-verwaltete Anlage ohne Geräte-Konfiguration; lokal bleibt alles unverändert",
-				"revision", reg.Revision)
+			hint := noConfigurationHint
+			if len(plan.Rejected) > 0 {
+				hint = noApplicableDeviceHint
+			}
+			a.recordComponentHold(reg.Revision, hint, plan.Rejected)
+			slog.Info("Portal-verwaltete Anlage ohne anwendbare Geräte-Konfiguration; lokal bleibt alles unverändert",
+				"revision", reg.Revision, "abgelehnt", len(plan.Rejected))
 			return
 		}
 		a.recordComponentRefusal(reg.Revision, err.Error())
@@ -164,8 +177,9 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 		(plan.Inverter == nil && len(plan.Sources) == 0 && len(currentSources) == 0) {
 		// The Übernahme-is-a-no-op property, made observable: an unchanged plan
 		// writes no file and republishes no retained topic.
-		a.markComponentsApplied(plan.Revision)
-		slog.Info("Geräte-Konfiguration aus dem Portal: keine Änderung", "revision", plan.Revision)
+		a.markComponentsApplied(plan.Revision, plan.Rejected)
+		slog.Info("Geräte-Konfiguration aus dem Portal: keine Änderung", "revision", plan.Revision,
+			"abgelehnt", len(plan.Rejected))
 		return
 	}
 
@@ -175,9 +189,10 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 			"revision", reg.Revision, "err", err)
 		return
 	}
-	a.markComponentsApplied(plan.Revision)
+	a.markComponentsApplied(plan.Revision, plan.Rejected)
 	slog.Info("Geräte-Konfiguration aus dem Portal angewandt", "revision", plan.Revision,
-		"wechselrichter", plan.Inverter != nil, "geraete", len(plan.Sources))
+		"wechselrichter", plan.Inverter != nil, "geraete", len(plan.Sources),
+		"abgelehnt", len(plan.Rejected))
 }
 
 // writeComponentPlan persists and publishes the derived configuration.
@@ -237,9 +252,12 @@ func hasSourceID(list []sources.Source, id string) bool {
 
 // markComponentsApplied records a successful apply (and clears any previous
 // refusal - a later push that works is the answer to an earlier one that did not).
-func (a *Agent) markComponentsApplied(revision string) {
+// rejected are the devices of this revision the box skipped (they are reported,
+// not applied).
+func (a *Agent) markComponentsApplied(revision string, rejected []componentapply.Rejection) {
 	a.compMu.Lock()
-	rec := componentapply.NewRecord(componentapply.AuthorityPortal, revision, time.Now()).Cleared()
+	rec := componentapply.NewRecord(componentapply.AuthorityPortal, revision, time.Now()).Cleared().
+		WithRejections(rejected)
 	a.compRecord = rec
 	a.compMu.Unlock()
 	a.persistComponentRecord(rec)
@@ -254,15 +272,35 @@ func (a *Agent) markComponentsApplied(revision string) {
 const noConfigurationHint = "Im Portal ist für diese Anlage kein verbundenes Gerät hinterlegt; " +
 	"die Box behält deshalb den zuletzt angewandten Stand."
 
+// noApplicableDeviceHint is the hold sentence when the portal DOES name
+// connected devices, but the box can assign none of them a role (each one is
+// listed with its own reason in rejected_components).
+// SetSourceReads hands the agent the in-process source reader's answer to
+// "do you wire this transport in this role?" (edgemain, before Start). A portal
+// plan is then derived with it: a source the reader cannot wire is skipped and
+// reported (component_apply.rejected_components) instead of being applied and
+// never delivering a value.
+func (a *Agent) SetSourceReads(reads func(comm, role string) string) { a.sourceReads = reads }
+
+// deriveComponents is THE derivation of a portal plan on this box - the apply
+// and the source-to-entity map must agree on what runs.
+func (a *Agent) deriveComponents(reg entities.Registry, running []sources.Source) (componentapply.Plan, error) {
+	return componentapply.DeriveWith(reg, a.invCat, running, time.Now(),
+		componentapply.Options{SourceReads: a.sourceReads})
+}
+
+const noApplicableDeviceHint = "Die Box kann keines der im Portal verbundenen Geräte anwenden; " +
+	"sie behält deshalb den zuletzt angewandten Stand."
+
 // recordComponentHold records that the box SAW a revision and deliberately
 // applied nothing, keeping the last applied revision (that is still what runs).
 // It also clears a stale refusal - an older revision's reason must not outlive
 // the answer to a newer one.
-func (a *Agent) recordComponentHold(revision, reason string) {
+func (a *Agent) recordComponentHold(revision, reason string, rejected []componentapply.Rejection) {
 	a.compMu.Lock()
 	rec := a.compRecord
 	rec.Authority = componentapply.AuthorityPortal
-	rec = rec.WithHold(revision, reason)
+	rec = rec.WithHold(revision, reason, rejected)
 	a.compRecord = rec
 	a.compMu.Unlock()
 	a.persistComponentRecord(rec)

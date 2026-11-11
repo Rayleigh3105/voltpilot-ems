@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
+import com.voltpilot.api.geraetesuche.KlopftAnSpeicher;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ConnectorRow;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -22,19 +24,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -134,8 +133,12 @@ public class ChargerStatusListener extends Rueckmeldeweg {
      */
     private final ObjectProvider<SiteVehicleRepository> vehicles;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
+    /**
+     * OCPP „klopft an“ ({@code docs/contracts/ocpp-klopft-an.md}): die abgewiesenen Kennungen des Blocks für die
+     * Antwort der Gerätesuche. Per Setter, damit die Tests ihren Aufruf behalten; ohne ihn bleibt alles wie vorher.
+     */
+    private KlopftAnSpeicher klopftAn;
 
     public ChargerStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -153,71 +156,36 @@ public class ChargerStatusListener extends Rueckmeldeweg {
         this.composer = composer;
         this.commandLog = commandLog;
         this.vehicles = vehicles;
+        this.verbindung = new BrokerVerbindung(log, "charger status", brokerUrl,
+                "voltpilot-api-chargers-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(STATUS_FILTER, 1, null, quittung), this::empfangen);
+    }
+
+    @Autowired(required = false)
+    public void setKlopftAn(KlopftAnSpeicher klopftAn) {
+        this.klopftAn = klopftAn;
     }
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
+        ensureConnected();
+    }
+
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
+    @Scheduled(fixedDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}",
+            initialDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}")
+    public void ensureConnected() {
+        verbindung.sicherstellen();
+    }
+
+    boolean connectedForTest() { return verbindung.verbunden(); }
+
+    private void empfangen(String topic, MqttMessage message) {
         try {
-            connect();
+            handle(topic, message.getPayload());
         } catch (Exception e) {
-            log.warn("Charger-status listener could not connect to {} yet: {} (auto-reconnect active)",
-                    brokerUrl, e.getMessage());
+            log.warn("Charger status on '{}' failed: {}", topic, e.getMessage());
         }
-    }
-
-    private void connect() throws Exception {
-        synchronized (lock) {
-            if (client != null) {
-                return;
-            }
-            client = new MqttClient(brokerUrl, "voltpilot-api-chargers-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-            client.setCallback(new MqttCallbackExtended() {
-                @Override
-                public void connectComplete(boolean reconnect, String serverUri) {
-                    try {
-                        client.subscribe(STATUS_FILTER, 1, messageListener());
-                        log.info("Charger-status listener subscribed to {} at {}", STATUS_FILTER,
-                                serverUri);
-                    } catch (Exception e) {
-                        log.warn("Charger-status subscribe failed: {}", e.getMessage());
-                    }
-                }
-
-                @Override
-                public void connectionLost(Throwable cause) {
-                    log.warn("Charger-status listener lost the broker connection: {} (auto-reconnect active)",
-                            cause == null ? "unknown" : cause.getMessage());
-                }
-
-                @Override
-                public void messageArrived(String topic, MqttMessage message) {
-                }
-
-                @Override
-                public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {
-                }
-            });
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-    }
-
-    private IMqttMessageListener messageListener() {
-        return (topic, message) -> {
-            try {
-                handle(topic, message.getPayload());
-            } catch (Exception e) {
-                log.warn("Charger status on '{}' failed: {}", topic, e.getMessage());
-            }
-        };
     }
 
     /** Test-sichtbar: EINEN Herzschlag mit seinem chargers-Block verarbeiten. */
@@ -231,6 +199,7 @@ public class ChargerStatusListener extends Rueckmeldeweg {
         }
         JsonNode block = json == null ? null : json.get("chargers");
         if (block == null || !block.isObject()) {
+            ohneBlock(topic, json); // wer anklopft, ist damit unbekannt
             return; // ein Herzschlag ohne Ladepunkt-Block
         }
         JsonNode list = block.get("chargers");
@@ -274,7 +243,7 @@ public class ChargerStatusListener extends Rueckmeldeweg {
                     textOrNull(c, "vendor"), textOrNull(c, "model"), textOrNull(c, "firmware"),
                     c.path("ready").asBoolean(false), textOrNull(c, "note"),
                     optInstant(c, "last_seen"), vocabulary(c, "connection", CONNECTIONS),
-                    connectors(c.get("connectors"))));
+                    quelleEcho(c), connectors(c.get("connectors"))));
         }
         TenantContext.set(tenantId);
         try {
@@ -286,6 +255,9 @@ public class ChargerStatusListener extends Rueckmeldeweg {
             }
             chargerStatus.replaceForDevice(deviceId, tenantId, siteId, reportedAt, budget,
                     chargers);
+            if (klopftAn != null) {
+                klopftAn.merken(tenantId, deviceId, block, Instant.now());
+            }
             JsonNode controlStatus = block.get("control_status");
             if (validControlStatus(controlStatus))
                 chargerStatus.replaceOcppControlStatus(deviceId, controlStatus.toString());
@@ -314,6 +286,21 @@ public class ChargerStatusListener extends Rueckmeldeweg {
             }
         } finally {
             TenantContext.clear();
+        }
+    }
+
+    /**
+     * Ein Herzschlag ohne Block {@code chargers}: ob eine Säule anklopft, ist unbekannt (ältere Box oder nichts zu
+     * melden lässt sich nicht unterscheiden). Nur die Box des Topics, und nur wenn die Nutzlast sie selbst nennt.
+     */
+    private void ohneBlock(String topic, JsonNode json) {
+        if (klopftAn == null || json == null) {
+            return;
+        }
+        String[] parts = topic.split("/");
+        UUID deviceId = parts.length == 5 ? parseUuid(parts[3]) : null;
+        if (deviceId != null && deviceId.toString().equals(json.path("device_id").asText())) {
+            klopftAn.vergessen(deviceId);
         }
     }
 
@@ -493,6 +480,21 @@ public class ChargerStatusListener extends Rueckmeldeweg {
      * Wort wird verworfen statt gespeichert - der Stecker behält damit "kein
      * Zustand gemeldet" statt einen erfundenen zu bekommen.
      */
+    /**
+     * Das Echo der Bahn einer Säule (Konzept k1 Regel 4, Vertrag
+     * {@code ladepunkt-quelle-echo.md}). Ohne bekanntes Bahn-Wort KEIN Echo -
+     * dann sagt das Portal „noch nicht bestätigt", nie eine geratene Bahn.
+     */
+    static QuellenEcho.Echo quelleEcho(JsonNode c) {
+        String source = vocabulary(c, "source", POLICIES);
+        if (source == null) {
+            return null;
+        }
+        Double minKw = optDouble(c, "min_kw");
+        return new QuellenEcho.Echo(source, minKw != null && minKw > 0 ? minKw : null,
+                optBool(c, "storage_release"));
+    }
+
     private static String vocabulary(JsonNode node, String field, Set<String> allowed) {
         String v = node.path(field).asText("");
         return allowed.contains(v) ? v : null;
@@ -561,23 +563,6 @@ public class ChargerStatusListener extends Rueckmeldeweg {
 
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-            } catch (Exception e) {
-                log.debug("Charger listener disconnect failed on shutdown: {}", e.getMessage());
-            }
-            try {
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("Charger listener close failed on shutdown: {}", e.getMessage());
-            }
-            client = null;
-        }
+        verbindung.schliessen();
     }
 }

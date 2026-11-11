@@ -35,7 +35,7 @@ Quellen: `TenantFilter`, `TenantAwareDataSource`, `SecurityConfig`, Migrationen 
 
 Die öffentliche Registrierung ist schaltbar und durch ein adressbezogenes sowie globales In-Memory-Limit begrenzt. Vertrauenswürdige Proxy-Hops müssen zur Infrastruktur passen. Anonyme Validierungsfehler brauchen einen erlaubten ERROR-Dispatch, sonst kann Spring sie als 401 verdecken.
 
-Das Portal kann nach Registrierung direkt einloggen. SessionStorage hält Tokens tabbezogen und wird über Refresh aktualisiert; bei normalem Login gibt es zusätzlich die Keycloak-SSO-Sitzung. Realm-Änderungen wirken bei bestehenden Instanzen nicht durch erneuten Import. Details der Sitzungs-/Brute-Force-Einstellungen: [Keycloak](../infra/prod/keycloak/README.md).
+Das Portal kann nach Registrierung direkt einloggen. Im Browser-Tab hält `sessionStorage` die Tokens tabbezogen, in der installierten App `localStorage` (nie für `platform-admin`); beide werden über Refresh aktualisiert; bei normalem Login gibt es zusätzlich die Keycloak-SSO-Sitzung. Realm-Änderungen wirken bei bestehenden Instanzen nicht durch erneuten Import. Details der Sitzungs-/Brute-Force-Einstellungen: [Keycloak](../infra/prod/keycloak/README.md).
 
 ## Geräteidentität
 

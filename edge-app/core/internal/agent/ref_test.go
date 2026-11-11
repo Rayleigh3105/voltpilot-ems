@@ -5,26 +5,18 @@ package agent
 // EdgeRefTest.java exercises the same vectors from the Java side.
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
 
 // refValid mirrors EdgeRef.isValid on the api side: an "edge-" ref must be the
 // prefix + six body chars + one matching check char, all in the alphabet.
+// refValid ist die Prüfung der Produktion (GueltigeKennung); die Vektoren
+// unten binden sie an EdgeRef.java und das Portal.
 func refValid(ref string) bool {
-	if !strings.HasPrefix(ref, generatedRefPrefix) {
-		return false
-	}
-	rest := ref[len(generatedRefPrefix):]
-	if len(rest) != 7 {
-		return false
-	}
-	for i := 0; i < 6; i++ {
-		if strings.IndexByte(refAlphabet, rest[i]) < 0 {
-			return false
-		}
-	}
-	return rest[6] == refCheckChar(rest[:6])
+	return GueltigeKennung(ref)
 }
 
 func TestGeneratedRefIsValid(t *testing.T) {
@@ -88,5 +80,42 @@ func TestWrongLengthRejected(t *testing.T) {
 	}
 	if refValid("edge-abcdefgh") {
 		t.Fatal("8-char body should be rejected")
+	}
+}
+
+// TestSharedVectors reads docs/contracts/edge-ref-vectors.json - the same file
+// EdgeRefTest.java and the portal twin (frontend/portal/src/edgeRef.test.ts)
+// read, so the three can never drift apart silently.
+func TestSharedVectors(t *testing.T) {
+	raw, err := os.ReadFile("../../../../docs/contracts/edge-ref-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Alphabet  string   `json:"alphabet"`
+		Praefix   string   `json:"praefix"`
+		Gueltig   []string `json:"gueltig"`
+		Ungueltig []struct {
+			Kennung string `json:"kennung"`
+		} `json:"ungueltig"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Alphabet != refAlphabet || v.Praefix != generatedRefPrefix {
+		t.Fatalf("alphabet/prefix drifted: %q %q", v.Alphabet, v.Praefix)
+	}
+	if len(v.Gueltig) == 0 || len(v.Ungueltig) == 0 {
+		t.Fatal("vectors are empty")
+	}
+	for _, ref := range v.Gueltig {
+		if !refValid(ref) {
+			t.Fatalf("shared valid vector %q rejected", ref)
+		}
+	}
+	for _, u := range v.Ungueltig {
+		if refValid(u.Kennung) {
+			t.Fatalf("shared invalid vector %q accepted", u.Kennung)
+		}
 	}
 }

@@ -56,6 +56,7 @@ export function ZuordnungAendernDialog({
   entities,
   localSetup,
   sources,
+  vorschlag = null,
   onClose,
   onSaved,
 }: {
@@ -64,12 +65,19 @@ export function ZuordnungAendernDialog({
   entities: SiteEntity[];
   localSetup: EntityLocalSetup[];
   sources?: SiteSource[] | null;
+  /**
+   * Vorgewählte Quelle, wenn „Geräte suchen“ hierher geführt hat (`wiederVerbindenAusSuche`): nur eine
+   * Wahl, gespeichert wird weiterhin erst mit „Übernehmen“.
+   */
+  vorschlag?: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const choices = assignChoices(component, entities, localSetup, sources);
   const own = currentChoice(choices);
-  const [picked, setPicked] = useState<string>(own?.sourceId ?? '');
+  const [picked, setPicked] = useState<string>(
+    own?.sourceId ?? (vorschlag != null && choices.some((c) => c.sourceId === vorschlag) ? vorschlag : ''),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

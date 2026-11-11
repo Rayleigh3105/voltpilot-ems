@@ -26,9 +26,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -95,7 +95,7 @@ class BenutzerVerwaltungApiTest {
     MockMvc mvc;
 
     /** Das Keycloak-Konto beim Anlegen (AP-19 Folge IP-13) — ohne Keycloak-Container; die Zuweisung ist echt. */
-    @MockBean
+    @MockitoBean
     StartpasswortKonten konten;
 
     private static JdbcTemplate root;
@@ -187,13 +187,26 @@ class BenutzerVerwaltungApiTest {
         String sub = "konto-zu-sperren"; spiegel(sub); amStandort(sub, "leser", standortA);
         var alt = konto(sub, DEMO);
         assertThat(ruf(get("/api/v1/sites"), alt).status()).isEqualTo(200);
+        // B13 (Einstellungen-Konzept Scheibe 2, §2.5): die Wege dieser Person bleiben sonst
+        // gespeichert, bis der ganze Kundenbereich endet - das Entfernen loescht sie mit.
+        root.update("INSERT INTO zustellweg (tenant_id, benutzer_sub, weg, ziel) VALUES (?, ?, 'email', ?)",
+                DEMO, sub, sub + "@example.test");
+        root.update("INSERT INTO push_abo (tenant_id, benutzer_sub, endpoint, p256dh, auth, geraet) "
+                + "VALUES (?, ?, 'https://push.example/b13-test', 'p', 'a', 'Test-Geraet')", DEMO, sub);
         assertThat(ruf(post("/api/v1/benutzer/" + sub + "/sperren", "{}"), konto(JONAS, DEMO)).status()).isEqualTo(204);
         Antwort danach = ruf(get("/api/v1/sites"), alt);
         assertThat(danach.status()).isEqualTo(404); assertThat(danach.body()).contains("zugriff_beendet");
         assertThat(zuweisungen(sub)).hasSize(1); // Sperren hält an; Entfernen beendet die Zuweisung.
         assertThat(root.queryForObject("SELECT zustand FROM benutzer WHERE tenant_id = ? AND sub = ?", String.class, DEMO, sub)).isEqualTo("gesperrt");
+        // Sperren allein löscht die Wege noch nicht - erst das Entfernen (B13).
+        assertThat(root.queryForObject("SELECT count(*) FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ?",
+                Integer.class, DEMO, sub)).isEqualTo(1);
         assertThat(ruf(MockMvcRequestBuilders.delete(uri("/api/v1/benutzer/" + sub)), konto(JONAS, DEMO)).status()).isEqualTo(204);
         assertThat(zuweisungen(sub)).isEmpty();
+        assertThat(root.queryForObject("SELECT count(*) FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ?",
+                Integer.class, DEMO, sub)).isEqualTo(0);
+        assertThat(root.queryForObject("SELECT count(*) FROM push_abo WHERE tenant_id = ? AND benutzer_sub = ?",
+                Integer.class, DEMO, sub)).isEqualTo(0);
         assertThat(ruf(get("/api/v1/benutzer"), konto(JONAS, DEMO)).body()).doesNotContain(sub);
         String p = "/api/v1/benutzer/protokoll?von=" + Instant.now().minusSeconds(3600) + "&bis=" + Instant.now().plusSeconds(3600);
         Antwort protokoll = ruf(get(p), konto(JONAS, DEMO));
@@ -231,6 +244,45 @@ class BenutzerVerwaltungApiTest {
                 .content(MAPPER.writeValueAsString(Map.of("bisher", List.of(), "rolle", "bearbeiter", "standorte", List.of(standortA)))), auth);
         assertThat(doppelt.status()).isEqualTo(409); assertThat(doppelt.body()).contains("zuweisung_vorhanden");
         assertThat(zuweisungen(sub)).hasSize(2);
+    }
+
+    /**
+     * Der Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration liest Benutzerliste und
+     * Zugriffsprotokoll und wechselt Rollen wie der Kundenadministrator — über {@code X-Kundenbereich} ohne
+     * Unterstützung. Der Protokolleintrag trägt IHRE Kennung und die Rolle VoltPilot-Betrieb; der letzte
+     * Kundenadministrator bleibt auch gegen sie geschützt. Ohne Sprung erreicht sie keine Kundenroute.
+     */
+    @Test void imMandantensprungVerwaltetDiePlattformBenutzerWieDerKundenadministrator() throws Exception {
+        String lena = "sub-sprung-lena";
+        var sprung = plattform(lena);
+        Antwort liste = ruf(get("/api/v1/benutzer").header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()),
+                sprung);
+        assertThat(liste.status()).as(liste.body()).isEqualTo(200);
+        assertThat(liste.body()).contains(JONAS, CLAUDIA);
+
+        String sub = "konto-sprung"; spiegel(sub); amStandort(sub, "leser", standortA);
+        UUID bisher = zuweisungen(sub).get(0);
+        Antwort wechsel = ruf(MockMvcRequestBuilders.put(uri("/api/v1/benutzer/" + sub + "/zugriff"))
+                .header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()).contentType(MediaType.APPLICATION_JSON)
+                .content(MAPPER.writeValueAsString(Map.of("bisher", List.of(bisher), "rolle", "bearbeiter",
+                        "standorte", List.of(standortA)))), sprung);
+        assertThat(wechsel.status()).as(wechsel.body()).isEqualTo(204);
+        assertThat(zuweisungen(sub)).hasSize(1).doesNotContain(bisher);
+        assertThat(root.queryForList("SELECT DISTINCT actor_sub || ' ' || actor_rolle || ' ' || actor_art "
+                + "FROM zugriff_protokoll WHERE tenant_id = ? AND betroffener_sub = ? AND aktion = 'zuweisen'",
+                String.class, DEMO, sub)).containsExactly(lena + " voltpilot_betrieb voltpilot");
+        String zeitraum = "/api/v1/benutzer/protokoll?von=" + Instant.now().minusSeconds(3600) + "&bis="
+                + Instant.now().plusSeconds(3600);
+        Antwort protokoll = ruf(get(zeitraum).header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()), sprung);
+        assertThat(protokoll.status()).as(protokoll.body()).isEqualTo(200);
+        assertThat(protokoll.body()).contains(sub, "Lena Voss");
+
+        Antwort letzter = ruf(post("/api/v1/benutzer/" + JONAS + "/sperren", "{}")
+                .header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()), sprung);
+        assertThat(letzter.status()).isEqualTo(409);
+        assertThat(letzter.body()).contains("letzter_kundenadministrator");
+
+        assertThat(ruf(get("/api/v1/benutzer"), sprung).status()).as("ohne Sprung kein Kundenbereich").isEqualTo(403);
     }
 
     // ================================================================= AP-19 Folge IP-13 — Einsicht befristen (R6)
@@ -428,6 +480,14 @@ class BenutzerVerwaltungApiTest {
             claims.put("tenant_id", tenant.toString());
         }
         Jwt jwt = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
+        return new KeycloakRealmRoleConverter().convert(jwt);
+    }
+
+    /** Ein Plattform-Konto (Realm-Rolle {@code platform-admin}) ohne Kundenbereich im Token. */
+    private static Authentication plattform(String sub) {
+        Jwt jwt = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"),
+                Map.of("sub", sub, "preferred_username", "Lena Voss", "realm_access",
+                        Map.of("roles", List.of(KeycloakRealmRoleConverter.PLATFORM_ADMIN_ROLE))));
         return new KeycloakRealmRoleConverter().convert(jwt);
     }
 

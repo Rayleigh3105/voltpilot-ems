@@ -2,6 +2,18 @@ spring:
   application:
     name: voltpilot-api
 
+  # Boot 4 defaults HTTP JSON (de)serialization to Jackson 3, which does not know how to
+  # serialize a classic com.fasterxml.jackson.databind.JsonNode (its own, unrelated type).
+  # Many response DTOs here embed such a JsonNode directly (e.g. AdminWerkstattController's
+  # AbnahmeDto.probe/belege) - under the Jackson 3 default converter, fields after an embedded
+  # classic JsonNode in the same object silently go missing from the response. Keeps the classic
+  # Jackson 2 MappingJackson2HttpMessageConverter (via spring-boot-jackson2) as the HTTP
+  # converter while this app still builds responses with classic Jackson 2 types; drop once the
+  # full Jackson 3 migration (tools.jackson.*) lands.
+  http:
+    converters:
+      preferred-json-mapper: jackson2
+
   # Ceiling for the graceful shutdown below: after this the remaining
   # in-flight work is cut and the JVM leaves. Must stay COMFORTABLY BELOW the
   # pod's terminationGracePeriodSeconds (recommendation: 20s here, 45s there,
@@ -21,15 +33,60 @@ spring:
       resolve-lazily: true
 
   # Runtime connection: the NON-privileged app role so Row-Level-Security applies.
+  # This is the REQUEST pool (DataSourceConfig#realDataSource) - every HTTP
+  # request's queries run through it. Scheduled jobs and listeners use the
+  # background pool below instead (same role, no timeout).
+  #
+  # Security-Wartung (vp-wartung-security-s1 C2): no dev-password fallback here -
+  # the local/test profile supplies one (application-local.yml, pom.xml surefire
+  # env), so a production start (empty SPRING_PROFILES_ACTIVE, docs/deploy.md)
+  # aborts with a clear "could not resolve placeholder" instead of silently
+  # connecting with a publicly known default.
   datasource:
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
     username: ${APP_DB_USER:voltpilot_app}
-    password: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+    password: ${APP_DB_PASSWORD}
     # Pool size as an ENV knob (docs/k8s-readiness.md): the Hikari default of
     # 10 is kept so nothing changes today, but a multi-replica deployment sizes
     # it per replica against the DB's max_connections without a rebuild.
     hikari:
       maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      pool-name: voltpilot-request-pool
+      # Wartung Datenbank-Zeitgrenze (vp-db-zeitgrenze): die langsamsten
+      # legitimen Leser lagen frisch gemessen bei unter 1 s SQL-Zeit, der
+      # langsamste Nutzerweg (earnings/year) unter 1 s TTFB im Labor - 30 s hat
+      # also reichlich Abstand nach oben und faengt nur eine wirklich
+      # haengende Abfrage ab. SET statement_timeout ist eine Sitzungsgroesse:
+      # connection-init-sql setzt sie EINMAL je physischer Verbindung, danach
+      # gilt sie fuer deren ganze Lebenszeit - kein SET/RESET je Anfrage noetig,
+      # weil dieser Pool NUR waehrend einer HTTP-Anfrage geliehen wird
+      # (AnfragePfadDataSource).
+      connection-init-sql: SET statement_timeout = ${DB_STATEMENT_TIMEOUT_MS:30000}
+      data-source-properties:
+        # pgjdbc, Sekunden: der Client-seitige Riegel, falls Postgres selbst
+        # gar nicht mehr antwortet (Netz-/Prozessausfall) - etwas groesser als
+        # statement_timeout, damit dessen eigene Abbruch-Antwort noch ankommt,
+        # statt vom rohen Socket-Timeout ueberholt zu werden.
+        socketTimeout: ${DB_SOCKET_TIMEOUT_S:35}
+
+  # Hintergrund-Pool: dieselbe Rolle/Datenbank wie oben, ohne Zeitgrenze.
+  # Naechtliche/geplante Jobs (@Scheduled) und MQTT-Listener laufen nie durch
+  # TenantFilter, setzen AnfrageZeitgrenze also nie und landen deshalb immer
+  # hier (DataSourceConfig#backgroundDataSource, AnfragePfadDataSource).
+  # vp-db-zeitgrenze, Steer-Nachweis Punkt 3: das war vorher KEIN eigenes
+  # Budget - Hintergrundarbeit teilte sich die 30 Verbindungen des einen Pools
+  # mit dem Anfrage-Pfad. 4 (wie der bestehende Admin-Pool, der dieselbe Art
+  # Last seit Produktionsbetrieb unauffaellig bedient) haelt das GESAMTBUDGET
+  # je Instanz nahe am bisherigen Stand (30+4 Admin -> 30+4+4), statt zusaetzlich
+  # auf die volle Anfrage-Pool-Groesse zu gehen. Ohne dokumentierten
+  # max_connections-Wert der Produktions-DB in diesem oder im GitOps-Repo ist
+  # das eine vorsichtige, keine belegte Zahl - bei Rueckstand sichtbar an
+  # voltpilot_ueberwachung_rueckstand_s und per Hikari-Pool-Metrik, dann hier
+  # per ENV hochsetzen.
+  background-datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_BACKGROUND_MAX_SIZE:4}
+      pool-name: voltpilot-background-pool
 
   # Migrations run as the Postgres SUPERUSER (owns schema, creates the app role
   # and the RLS policies). baseline-version 0 lets the idempotent V1 run even on
@@ -38,7 +95,8 @@ spring:
     enabled: true
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
     user: ${POSTGRES_USER:voltpilot}
-    password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
+    # C2: no dev-password fallback, see the datasource.password comment above.
+    password: ${POSTGRES_PASSWORD}
     baseline-on-migrate: true
     baseline-version: 0
     locations: classpath:db/migration
@@ -79,11 +137,12 @@ spring:
     out-of-order: true
     placeholders:
       appDbUser: ${APP_DB_USER:voltpilot_app}
-      appDbPassword: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+      # C2: no dev-password fallback, see the datasource.password comment above.
+      appDbPassword: ${APP_DB_PASSWORD}
       # V4 creates the dedicated cross-tenant admin role (BYPASSRLS) used only by
       # the platform-admin API. Password is a placeholder like the app role.
       adminDbUser: ${ADMIN_DB_USER:voltpilot_admin}
-      adminDbPassword: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
+      adminDbPassword: ${ADMIN_DB_PASSWORD}
 
   security:
     oauth2:
@@ -96,6 +155,23 @@ spring:
           # This is the fix for the issuer/JWKS-host mismatch: iss is validated
           # against issuer-uri while keys come from a reachable jwk-set-uri.
           jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8081/realms/voltpilot/protocol/openid-connect/certs}
+
+  # Alerting Scheibe 0 (com.voltpilot.api.versand.VersandConfig): der eine SMTP-
+  # Adapter des zentralen Versands. Werte bleiben LEER - niemals ein echtes
+  # Passwort hier committen. Beim Deploy kommt SMTP_PASSWORD aus der sops-
+  # Geheimnisdatei des GitOps-Repos (docs/rollout/uems-erste-freigabe.md,
+  # Zeile ~980), derselbe Weg wie das Keycloak-Realm-SMTP-Passwort.
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SMTP_AUTH:true}
+          starttls:
+            enable: ${SMTP_STARTTLS:true}
 
 server:
   port: ${API_PORT:8090}
@@ -124,6 +200,11 @@ server:
 # offline unit tests and broker-less dev setups opt out explicitly with
 # VOLTPILOT_SECURITY_OIDC_ENABLED=false.
 voltpilot:
+  # Logformat auf stdout (logback-spring.xml, docs/k8s-readiness.md "Logs"):
+  # text = die Zeile von Spring Boot (Vorgabe), json = eine JSON-Zeile je Ereignis
+  # mit request_id und tenant_id. Jeder andere Wert bleibt bei text.
+  logging:
+    format: ${VOLTPILOT_LOGGING_FORMAT:text}
   flyway:
     # The switch alone never relaxes startup without the explicit local profile.
     startwaechter: ${VOLTPILOT_FLYWAY_STARTWAECHTER:streng}
@@ -137,6 +218,25 @@ voltpilot:
   # Public self-service registration (tenant + login in one step). On by default;
   # closed platforms set VOLTPILOT_REGISTRATION_ENABLED=false to remove the
   # endpoint entirely.
+  # Adresssuche beim Anlegen (Anlage-Flow a1, Entscheid D4): GET /api/v1/orte/suche fragt einen
+  # Photon-Geocoder mit OpenStreetMap-Adressen (Vorgabe: der oeffentliche Dienst von komoot, fair use
+  # ohne Zusage). Fuer Produktion einen eigenen Photon mit OSM-Auszug DE/AT/CH betreiben und hier
+  # eintragen; die api braucht dorthin ausgehenden Zugang. Namensnennung zeigt das Portal.
+  #
+  # Befund (Task vp-anlage-adresse-ux): die oeffentliche Photon-Demo antwortet im Mittel 4-10s -
+  # der alte Timeout von drei Sekunden warf deshalb praktisch bei jeder echten Anfrage. Timeout
+  # angehoben UND ein zweiter, unabhaengiger OSM-Dienst (Nominatim) als Rueckfall, wenn Photon nicht
+  # fristgerecht antwortet - Nominatim bleibt bewusst nur Rueckfall, nie Primaerdienst fuer die
+  # Autocomplete-Last jedes Tastendrucks (siehe Javadoc OrteSuche).
+  orte:
+    suche:
+      url: ${VOLTPILOT_ORTE_SUCHE_URL:https://photon.komoot.io/api}
+      rueckwaerts-url: ${VOLTPILOT_ORTE_SUCHE_RUECKWAERTS_URL:https://photon.komoot.io/reverse}
+      timeout: ${VOLTPILOT_ORTE_SUCHE_TIMEOUT:PT5S}
+      ausweich:
+        url: ${VOLTPILOT_ORTE_SUCHE_AUSWEICH_URL:https://nominatim.openstreetmap.org/search}
+        rueckwaerts-url: ${VOLTPILOT_ORTE_SUCHE_AUSWEICH_RUECKWAERTS_URL:https://nominatim.openstreetmap.org/reverse}
+        timeout: ${VOLTPILOT_ORTE_SUCHE_AUSWEICH_TIMEOUT:PT4S}
   registration:
     enabled: ${VOLTPILOT_REGISTRATION_ENABLED:true}
     # Abuse guard for the public endpoint: sliding-window limits per client
@@ -210,11 +310,80 @@ voltpilot:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}
     cors:
       allowed-origins: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  # Alerting Scheibe 0 (Konzept vp-alerting-konzept-m1 §7, Entscheid 1A): der
+  # zentrale Versand - EIN Ausgang (benachrichtigung), EIN Zusteller, EIN
+  # Kanal-Adapter (E-Mail). `enabled` ist der Not-Aus des Takts - Vorgabe AN,
+  # im Testlauf AUS (surefire). `absender` ist die VON-Adresse, nie die SMTP-
+  # Anmeldung; `bestaetigung-basis-url` baut den Link in der Bestätigungs-Mail
+  # (die Portal-URL, nie die API selbst - der Klick landet im Portal).
+  versand:
+    enabled: ${VOLTPILOT_VERSAND_ENABLED:true}
+    absender: ${VOLTPILOT_VERSAND_ABSENDER:meldungen@voltpilot.de}
+    bestaetigung-basis-url: ${VOLTPILOT_VERSAND_BESTAETIGUNG_BASIS_URL:http://localhost:5173}
+    interval-ms: ${VOLTPILOT_VERSAND_INTERVAL_MS:15000}
+    initial-delay-ms: ${VOLTPILOT_VERSAND_INITIAL_DELAY_MS:20000}
+    loeschlauf-interval-ms: ${VOLTPILOT_VERSAND_LOESCHLAUF_INTERVAL_MS:86400000}
+    loeschlauf-initial-delay-ms: ${VOLTPILOT_VERSAND_LOESCHLAUF_INITIAL_DELAY_MS:60000}
   # Complete OCPP 1.6 station-originated journal. The edge removes credentials
   # before durable spooling; this boundary applies the same policy again before
   # Postgres. Compose enables the MQTT consumer, while broker-less tests keep it
   # disabled. The pepper is secret in production and must remain stable so an
   # idTag maps to the same opaque reference without becoming reversible.
+  # Alerting Scheibe 1 (Konzept vp-alerting-konzept-m1 §6.7, §7 Scheibe 1): der
+  # UeberwachungsLaeufer - je Kundenbereich unter TenantContext mit der
+  # Laufzeitrolle, sät die Vorschläge ab Werk (Entscheid 2A) und wertet jede
+  # aktive Regel aus. `enabled` ist der Not-Aus des ganzen Takts - Vorgabe AN
+  # (Hausregel), im Testlauf AUS (surefire); wer ihn prüft, ruft
+  # UeberwachungsLaeufer.lauf()/UeberwachungsService.lauf() selbst.
+  ueberwachung:
+    enabled: ${VOLTPILOT_UEBERWACHUNG_ENABLED:true}
+    interval-ms: ${VOLTPILOT_UEBERWACHUNG_INTERVAL_MS:15000}
+    initial-delay-ms: ${VOLTPILOT_UEBERWACHUNG_INITIAL_DELAY_MS:20000}
+  # Vorsprung-Budget (NS-2 A, com.voltpilot.api.optimizer.SteuerungVorsprungLaeufer): je Anlage
+  # Monat und 7 Tage mit Bestand nach steuerung_vorsprung, wo der Optimierer sie liest. Vorgabe AN
+  # (Hausregel), im Testlauf AUS (surefire); ob ein Plan sie nutzt, entscheidet allein
+  # OPTIMIZER_VORSPRUNG_BUDGET_ANLAGEN am Optimierer.
+  steuerung-vorsprung:
+    enabled: ${VOLTPILOT_STEUERUNG_VORSPRUNG_ENABLED:true}
+    interval-ms: ${VOLTPILOT_STEUERUNG_VORSPRUNG_INTERVAL_MS:300000}
+    initial-delay-ms: ${VOLTPILOT_STEUERUNG_VORSPRUNG_INITIAL_DELAY_MS:90000}
+  # Vorgaben einer Erzeugeranlage (UEMS EZ-7, com.voltpilot.api.erzeuger.VorgabenLaeufer): je
+  # Anlagensteuerung aus den Werten des Erzeuger-Registerbilds die Zeiträume, in denen Netzbetreiber,
+  # Direktvermarkter oder die Anlage selbst begrenzt haben, nach erzeuger_vorgabe. Vorgabe AN
+  # (Hausregel), im Testlauf AUS (surefire); wer ihn prüft, ruft VorgabenLaeufer.lauf() selbst.
+  erzeuger:
+    vorgaben:
+      enabled: ${VOLTPILOT_ERZEUGER_VORGABEN_ENABLED:true}
+      interval-ms: ${VOLTPILOT_ERZEUGER_VORGABEN_INTERVAL_MS:60000}
+      initial-delay-ms: ${VOLTPILOT_ERZEUGER_VORGABEN_INITIAL_DELAY_MS:120000}
+  # Alerting Scheibe 3 (Konzept vp-alerting-konzept-m1 §7, Entscheid 1A): Web-Push als dritter
+  # Zustellweg. Werte bleiben LEER - niemals einen echten Schlüssel hier committen. Das PRIVATE
+  # Schlüsselpaar kommt wie das SMTP-Passwort aus der sops-Geheimnisdatei des GitOps-Repos
+  # (docs/rollout/uems-erste-freigabe.md); lokal/im Testlauf aus Umgebungsvariablen. Der
+  # ÖFFENTLICHE Schlüssel ist kein Geheimnis (RFC 8292) - er geht über
+  # `GET /api/v1/push/oeffentlicher-schluessel` an den Browser. `vapid-subject` ist die
+  # Kontakt-Adresse, die der Push-Dienst bei Missbrauch anschreibt (RFC 8292 "sub"-Anspruch).
+  push:
+    vapid-public-key: ${VOLTPILOT_PUSH_VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${VOLTPILOT_PUSH_VAPID_PRIVATE_KEY:}
+    vapid-subject: ${VOLTPILOT_PUSH_VAPID_SUBJECT:mailto:meldungen@voltpilot.de}
+  # Alerting Scheibe 6 (Konzept vp-alerting-konzept-m1 §7 Scheibe 6): Telegram als fünfter
+  # Zustellweg. `bot-token` bleibt LEER - niemals einen echten Token hier committen; er kommt wie
+  # das SMTP-Passwort aus der sops-Geheimnisdatei des GitOps-Repos, lokal/im Testlauf aus
+  # Umgebungsvariablen. `bot-username` baut den Start-Link (`t.me/<bot-username>?start=<token>`).
+  # `webhook-secret` ist Telegrams eigener `secret_token` für den Update-Webhook (ebenfalls ein
+  # Geheimnis, nie ins Repo); leer schaltet den Webhook ab - jeder Aufruf bekommt 403 (Warnung beim
+  # Start). Beim Einschalten von Telegram setzen und beim `setWebhook` als `secret_token` mitgeben.
+  telegram:
+    bot-token: ${VOLTPILOT_TELEGRAM_BOT_TOKEN:}
+    bot-username: ${VOLTPILOT_TELEGRAM_BOT_USERNAME:}
+    webhook-secret: ${VOLTPILOT_TELEGRAM_WEBHOOK_SECRET:}
+  # Wartung Befund 6 (vp-wartung-perf-p1): der gemeinsame Erstverbindungs-Takt aller
+  # MQTT-Zuhörer/-Sender über BrokerVerbindung - fehlt der Broker beim api-Start,
+  # versucht sicherstellen() auf diesem Takt weiter, statt es (wie vor diesem Fix)
+  # bei genau einem gescheiterten Erstversuch zu belassen.
+  mqtt:
+    erstverbindung-takt-ms: ${VOLTPILOT_MQTT_ERSTVERBINDUNG_TAKT_MS:5000}
   ocpp:
     mqtt-listener-enabled: ${VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED:false}
     # Stable per API deployment: clean-session=false lets EMQX queue QoS1
@@ -228,7 +397,8 @@ voltpilot:
   # credentials differ. Set voltpilot.admin-datasource.url only to point elsewhere.
   admin-datasource:
     username: ${ADMIN_DB_USER:voltpilot_admin}
-    password: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
+    # C2: no dev-password fallback, see the datasource.password comment above.
+    password: ${ADMIN_DB_PASSWORD}
   # Zero-touch device onboarding (docs/contracts/mqtt-provisioning.schema.json):
   # on claim, publish the retained provision/{ref}/config to the broker so a
   # waiting device is configured immediately. Best-effort; off by default so
@@ -244,6 +414,16 @@ voltpilot:
   forecast:
     active-load-model: ${VOLTPILOT_ACTIVE_LOAD_MODEL:load-persistence}
     active-pv-model: ${VOLTPILOT_ACTIVE_PV_MODEL:pv-physical}
+    # S5 (Konzept vp-prognosen-konzept, E6 = B/E7 = A, Bericht R.4): die
+    # Verbrauchs-Automatik vergleicht taeglich das aktive Lastmodell gegen
+    # seine Kandidaten (forecast_rueckblick, 28 Tage) und uebernimmt den
+    # Gewinner selbst - eine Wahl von Hand schaltet sie je Anlage aus, bis
+    # der Kunde sie wieder einschaltet. `enabled` ist der Not-Aus - Vorgabe
+    # AN, im Testlauf AUS (surefire). Gilt ausdruecklich nur dem Verbrauch,
+    # nie der PV-Korrektur (die bleibt bei der Wahl von Hand).
+    automatik:
+      enabled: ${VOLTPILOT_FORECAST_AUTOMATIK_ENABLED:true}
+      cron: ${VOLTPILOT_FORECAST_AUTOMATIK_CRON:0 0 6 * * *}
   # Api-side MIRROR of the optimizer's platform tunables (services/optimization
   # voltpilot_optimization/config.py) feeding the admin optimizer panel and the
   # per-slot diagnostics. The api only DISPLAYS these - pass the SAME
@@ -313,6 +493,13 @@ voltpilot:
   # the portal endpoint uses. Reuses the provisioning broker settings above.
   # Off by default so unit tests and broker-less setups are unaffected; compose
   # turns it on.
+  # Heizstab V1 (HZ-9 = B): solange heating-rod im Katalog simulator_only ist, bekommt
+  # NUR eine Prüfstand-Box den Parameterblock heizstab (Automatik des Heizstab-Reglers).
+  # Seit dem Katalog-Flip (04.11.2026, certified) bekommt ihn jede Box mit Heizstab-
+  # Regler; die Liste wirkt erst wieder, wenn der Typ zurückgestuft wird. Komma-
+  # getrennte Geräte-IDs; leer (Vorgabe) = keine zusätzliche Box.
+  heizstab:
+    pruefstand-boxen: ${VOLTPILOT_HEIZSTAB_PRUEFSTAND_BOXEN:}
   # Verbrauchssteuerung Inkrement 4 (§16/§19): the consumer-policy activation
   # path's two gates, BOTH default OFF - only tests and the simulator rig turn
   # them on; productivisation/de-gating is Inkrement 5. `enabled` is the master
@@ -401,6 +588,19 @@ voltpilot:
       enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_ENABLED:true}
       reconcile-enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_RECONCILE_ENABLED:true}
       interval-ms: ${VOLTPILOT_COMPONENTS_ADOPTION_INTERVAL_MS:300000}
+    # Konzept „Ein Gerät, ein Eintrag“ (GE-6): beim Start bekommt jeder WAGO-Controller
+    # ohne Anschluss den Anschluss, den die Komponenten seiner Karten schon tragen
+    # (WagoAnschlussNachtragLaeufer, kein Takt) - nie über eine Adresse. Idempotent,
+    # kein Push, kein Kommando. `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
+    wago-anschluss-nachtrag:
+      enabled: ${VOLTPILOT_COMPONENTS_WAGO_ANSCHLUSS_NACHTRAG_ENABLED:true}
+  # Die Entladegrenze, die am Wechselrichter eingestellt ist (Deye-Hybrid „Battery
+  # Low SOC“): der Läufer legt den Messpunkt in den Messplan der Box und übernimmt
+  # die jüngste plausible Lesung je Anlage (WechselrichterUntergrenzeAbgleich).
+  # Vorgabe AN, im Testlauf AUS (surefire).
+  wechselrichter-untergrenze:
+    enabled: ${VOLTPILOT_WECHSELRICHTER_UNTERGRENZE_ENABLED:true}
+    interval-ms: ${VOLTPILOT_WECHSELRICHTER_UNTERGRENZE_INTERVAL_MS:120000}
   # UEMS AP-02 IP-9: die BESTANDSÜBERNAHME der Standorte läuft AUTOMATISCH bei
   # jedem Start (BestandsuebernahmeLaeufer, kein Takt): ein Kundenbereich mit
   # genau einer Anlage bekommt seinen Standort (Entwurf, Adresse fehlt) samt
@@ -537,12 +737,14 @@ voltpilot:
     # `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
     unterstuetzung:
       enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED:true}
-      # AP-03 W3: gilt der Mandanten-Umschalter X-Tenant-Id auf KUNDENrouten noch?
-      # IP-15: Produktion AUS. Kundenflächen verlangen gewährte Unterstützung oder
-      # Notfall-Zugriff über X-Kundenbereich. Nur das lokale Kompatibilitätsprofil
-      # behält den alten Umschalter ausdrücklich für Bestandsnachweise.
+      # AP-03 W3: gilt der Mandanten-Umschalter der Plattform auf KUNDENrouten?
+      # AN seit 26.10.2026 (Entscheidung des Betreibers, alle Kunden haben eingewilligt):
+      # die Plattform-Administration springt wieder in jeden Kundenbereich, über
+      # X-Tenant-Id oder X-Kundenbereich, auch ohne Unterstützung (ZugriffKontextLader).
+      # IP-15 bis 26.10.2026 war die Vorgabe AUS. AUS bleibt der Not-Aus: dann nur mit
+      # gewährter Unterstützung oder Notfall-Zugriff. Partner betrifft der Schalter nie.
       # /api/v1/admin/** (Plattform-Betrieb) ist davon nie betroffen.
-      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:false}
+      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}
     # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
     # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
     # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt
@@ -756,6 +958,11 @@ voltpilot:
     server-endpunkt: ${VP_FERNWARTUNG_SERVER_ENDPUNKT:wartung.voltpilot.de}
     server-port: ${VP_FERNWARTUNG_SERVER_PORT:51820}
     server-public-key: ${VP_FERNWARTUNG_SERVER_PUBLIC_KEY:}
+  # Werkstatt-Automatik V1 (services/werkstatt-dienst, D2): der Techniker-Zugang
+  # "Werkstatt-Dienst" (seine UUID aus der Fernwartung), fuer den eine Einloesung
+  # das Probe-Fenster oeffnet. Leer: der Dienst bekommt keine Einmal-Codes.
+  werkstatt:
+    techniker-zugang: ${VP_WERKSTATT_TECHNIKER_ZUGANG:}
   # Keycloak Admin REST API access for provisioning customer users. The API
   # authenticates as the voltpilot-api service account (client_credentials) that
   # holds the realm-management roles. base-url is the compose-internal Keycloak.
@@ -764,7 +971,8 @@ voltpilot:
       base-url: ${KEYCLOAK_ADMIN_BASE_URL:http://keycloak:8080}
       realm: ${KEYCLOAK_REALM:voltpilot}
       client-id: ${KEYCLOAK_API_CLIENT_ID:voltpilot-api}
-      client-secret: ${KEYCLOAK_API_CLIENT_SECRET:voltpilot-api-dev-secret}
+      # C2: no dev-secret fallback, see the datasource.password comment above.
+      client-secret: ${KEYCLOAK_API_CLIENT_SECRET}
 
 # Expose actuator at the root so health is reachable at /health (and /info).
 #
@@ -779,7 +987,21 @@ voltpilot:
 # SecurityConfig permits exactly this one path (MetricsEndpointSecurityTest
 # guards both halves). It is not publicly reachable: the frontend nginx proxies
 # only /api/ and /auth/, so it exists only on the pod/compose network.
+#
+# Serverzeit je Route (Scout vp-anlagen-cockpit-perf, Rang 7): Spring Boot zeichnet
+# `http.server.requests` je Routen-VORLAGE auf (`uri="/api/v1/overview"`, nie die
+# aufgelöste Adresse mit Kennungen), aber nur als Zähler/Summe/Maximum - daraus
+# lässt sich kein "wie viele Aufrufe dauerten länger als eine Sekunde" lesen. Die
+# festen Obergrenzen unten machen daraus ein Histogramm
+# (`http_server_requests_seconds_bucket`): neun Reihen je Route statt der rund
+# siebzig eines vollen Perzentil-Histogramms, und der Kundennutzen steht in den
+# Grenzen selbst (50 ms = flüssig, 500 ms = spürbar, 5 s = Aussetzer). Keine
+# Kunden-, Mandanten- oder Anlagenkennung als Etikett.
 management:
+  metrics:
+    distribution:
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2500ms,5s,10s
   endpoints:
     web:
       base-path: /

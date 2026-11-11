@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.ErrorCode;
+import org.flywaydb.core.api.CoreErrorCode;
 import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
@@ -20,7 +20,7 @@ import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.flywaydb.core.api.output.ValidateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.core.env.Environment;
 
 /**
@@ -81,14 +81,18 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
      * repair can actually address, instead of the pending-migration noise a
      * standalone {@code validate()} reports on every healthy deploy.
      */
-    private static final Set<ErrorCode> REPAIRABLE = EnumSet.of(
-            ErrorCode.CHECKSUM_MISMATCH,
-            ErrorCode.DESCRIPTION_MISMATCH,
-            ErrorCode.TYPE_MISMATCH,
-            ErrorCode.APPLIED_VERSIONED_MIGRATION_NOT_RESOLVED,
-            ErrorCode.APPLIED_REPEATABLE_MIGRATION_NOT_RESOLVED,
-            ErrorCode.FAILED_VERSIONED_MIGRATION,
-            ErrorCode.FAILED_REPEATABLE_MIGRATION);
+    // Flyway 12 turned ErrorCode into an empty marker interface; the actual constants now
+    // live on the CoreErrorCode enum that implements it. ErrorDetails.errorCode is still
+    // typed as the ErrorCode interface, so Set<CoreErrorCode>.contains(ErrorCode) below
+    // still type-checks (Set.contains takes Object) and still compares correctly.
+    private static final Set<CoreErrorCode> REPAIRABLE = EnumSet.of(
+            CoreErrorCode.CHECKSUM_MISMATCH,
+            CoreErrorCode.DESCRIPTION_MISMATCH,
+            CoreErrorCode.TYPE_MISMATCH,
+            CoreErrorCode.APPLIED_VERSIONED_MIGRATION_NOT_RESOLVED,
+            CoreErrorCode.APPLIED_REPEATABLE_MIGRATION_NOT_RESOLVED,
+            CoreErrorCode.FAILED_VERSIONED_MIGRATION,
+            CoreErrorCode.FAILED_REPEATABLE_MIGRATION);
 
     // Exact historical identities, not a prefix/range permission for absent core SQL.
     // Eight current db/dev files plus the original provisioned-devices seed from

@@ -25,8 +25,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -72,6 +73,7 @@ import org.testcontainers.utility.DockerImageName;
  * hier geht es um Draht, Zeilen, Protokoll und Zaun.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class OrtApiTest {
@@ -313,7 +315,7 @@ class OrtApiTest {
                 Map.of("m2", 3400.5, "gueltigAb", "2027-02-01")), HttpStatus.BAD_REQUEST, "flaeche_ungueltig");
         assertThat(krumm.path("message").asText()).isEqualTo(OrtsbaumAbleitung.FLAECHE_SATZ);
         JsonNode frueh = abgelehnt(put("/api/v1/orte/" + halle2 + "/flaeche", token, ah.tenant,
-                Map.of("m2", 3000, "gueltigAb", "2026-09-30")), HttpStatus.UNPROCESSABLE_ENTITY,
+                Map.of("m2", 3000, "gueltigAb", "2026-09-30")), HttpStatus.UNPROCESSABLE_CONTENT,
                 "gab_es_noch_nicht");
         assertThat(frueh.path("message").asText())
                 .isEqualTo("Halle 2 gibt es im Portal erst seit 01.10.2026. Wählen Sie ein Datum ab dem 01.10.2026.");
@@ -432,13 +434,13 @@ class OrtApiTest {
         String lindach = "/api/v1/standorte/" + ah.ids.get("ST-2") + "/orte";
 
         JsonNode standort = abgelehnt(post(lindach, token, ah.tenant, Map.of("art", "gebaeude",
-                "name", "Werkstatt", "gueltigAb", "2026-10-01")), HttpStatus.UNPROCESSABLE_ENTITY,
+                "name", "Werkstatt", "gueltigAb", "2026-10-01")), HttpStatus.UNPROCESSABLE_CONTENT,
                 "ziel_gab_es_noch_nicht");
         assertThat(standort.path("message").asText()).isEqualTo(
                 "Werk Lindach gibt es im Portal erst seit 15.10.2026. Wählen Sie ein Datum ab dem 15.10.2026.");
         JsonNode gebaeude = abgelehnt(post(lindach, token, ah.tenant, Map.of("art", "bereich",
                 "name", "Tor 3", "elternId", ah.ids.get("G-4").toString(), "gueltigAb", "2026-10-01")),
-                HttpStatus.UNPROCESSABLE_ENTITY, "ziel_gab_es_noch_nicht");
+                HttpStatus.UNPROCESSABLE_CONTENT, "ziel_gab_es_noch_nicht");
         assertThat(gebaeude.path("message").asText()).startsWith("Lagerhalle Lindach gibt es im Portal erst seit 15.10.2026.");
         // Ein Gebäude eines anderen Standorts ist hier kein Elternknoten.
         abgelehnt(post(lindach, token, ah.tenant, Map.of("art", "bereich", "name", "Tor 3",

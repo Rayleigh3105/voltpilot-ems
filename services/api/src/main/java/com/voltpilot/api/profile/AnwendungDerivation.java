@@ -49,6 +49,7 @@ public final class AnwendungDerivation {
     public static final String REQ_LEISTUNGSMESSUNG = "leistungsmessung";
     public static final String REQ_LADEPUNKT = "ladepunkt";
     public static final String REQ_ANSCHLUSSGRENZE = "anschlussgrenze";
+    public static final String REQ_ANLAGENSTEUERUNG = "anlagensteuerung";
 
     /**
      * Alles, woraus eine Anwendung abgeleitet wird — die Schnittmenge dessen,
@@ -68,14 +69,24 @@ public final class AnwendungDerivation {
      * @param plantKind               {@code direktvermarktung} | …
      * @param tarifArt                {@code dynamisch} | {@code fest} | {@code ohne}
      * @param netzladenErlaubt        der EEG-Schalter der Anlage
+     * @param hasAnlagensteuerung     ≥ 1 Komponente vom Typ {@code anlagensteuerung} (UEMS EZ-6)
      */
     public record Input(boolean hasStorage, boolean hasPv, boolean hasControllableConsumer,
             boolean hasChargePoint, boolean hasMeasurement, boolean hasLeistungspreis,
             boolean hasGridLimit, Set<String> activeNodeTypes, boolean hasCustomerRule,
-            String plantKind, String tarifArt, boolean netzladenErlaubt) {
+            String plantKind, String tarifArt, boolean netzladenErlaubt, boolean hasAnlagensteuerung) {
 
         public Input {
             activeNodeTypes = activeNodeTypes == null ? Set.of() : Set.copyOf(activeNodeTypes);
+        }
+
+        /** Ohne Anlagensteuerung — die Eingabe von vor UEMS EZ-6. */
+        public Input(boolean hasStorage, boolean hasPv, boolean hasControllableConsumer,
+                boolean hasChargePoint, boolean hasMeasurement, boolean hasLeistungspreis,
+                boolean hasGridLimit, Set<String> activeNodeTypes, boolean hasCustomerRule,
+                String plantKind, String tarifArt, boolean netzladenErlaubt) {
+            this(hasStorage, hasPv, hasControllableConsumer, hasChargePoint, hasMeasurement, hasLeistungspreis,
+                    hasGridLimit, activeNodeTypes, hasCustomerRule, plantKind, tarifArt, netzladenErlaubt, false);
         }
 
         boolean carries(String nodeType) {
@@ -135,6 +146,10 @@ public final class AnwendungDerivation {
                 // deren Karte aber "aus" sagt, wäre eine Falschaussage über eine
                 // laufende Anlage.
                 return in.hasChargePoint();
+            case AnwendungKatalog.NETZ_UND_VERMARKTUNG:
+                // Sobald eine Anlagensteuerung bindet, gibt es Vorgaben zu zeigen —
+                // ohne Schalter und ohne eigenen Reiter (EW-11).
+                return in.hasAnlagensteuerung();
             default:
                 return false;
         }
@@ -178,6 +193,8 @@ public final class AnwendungDerivation {
                 return in.hasChargePoint();
             case REQ_ANSCHLUSSGRENZE:
                 return in.hasGridLimit();
+            case REQ_ANLAGENSTEUERUNG:
+                return in.hasAnlagensteuerung();
             default:
                 return false;
         }

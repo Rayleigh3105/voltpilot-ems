@@ -133,15 +133,38 @@ public class EarningsController {
         // §10 P0: Vortag, Monat bisher, Vergleichsspeicher-Stände, Gründe)
         // carries each site's speicher share out of the SAME month-anchored
         // walk - bit-identical to savedSpeicher, so the day runs one walk.
+        //
+        // Mit Bestand (Bedienkonzept vp-herzogau-p3-kachel-konzept, P3-4 A):
+        // der Tag und sein Monat kommen aus demselben Tages-Walk, jeder andere
+        // Zeitraum aus dem Walk, den savedSpeicher ohnehin rechnet - kein
+        // zusätzlicher Walk auf dieser teuren, oft abgefragten Route.
         boolean tag = !all && parsed == HistoryRange.DAY;
-        Map<UUID, EarningsRepository.Tageseinordnung> einordnungen = tag
-                ? earnings.tageseinordnung(from, to)
+        Map<UUID, EarningsRepository.Tagesbild> tagesbilder = tag
+                ? earnings.tagesbilder(from, to, to.isAfter(Instant.now()))
                 : Map.of();
+        Map<UUID, EarningsRepository.Tageseinordnung> einordnungen = new HashMap<>();
+        tagesbilder.forEach((id, b) -> {
+            if (b.einordnung() != null) {
+                einordnungen.put(id, b.einordnung());
+            }
+        });
         Map<UUID, BigDecimal> speicherSplits = new HashMap<>();
+        Map<UUID, BigDecimal> mitBestand = new HashMap<>();
         if (tag) {
             einordnungen.forEach((id, e) -> speicherSplits.put(id, e.speicherEur()));
+            tagesbilder.forEach((id, b) -> {
+                if (b.zeitraum() != null && b.zeitraum().heute() != null
+                        && b.zeitraum().heute().mitBestandEur() != null) {
+                    mitBestand.put(id, b.zeitraum().heute().mitBestandEur());
+                }
+            });
         } else {
-            speicherSplits.putAll(earnings.savedSpeicher(from, to));
+            earnings.fensterwerte(from, to).forEach((id, f) -> {
+                speicherSplits.put(id, f.speicherEur());
+                if (f.steuerungMitBestandEur() != null) {
+                    mitBestand.put(id, f.steuerungMitBestandEur());
+                }
+            });
         }
         // MiSpeL MP-18c (BK-W5 = A): die Tagessummen (1)¼/(2)¼ je Anlage, nur
         // am Tag und nur an einem MiSpeL-Tag (sonst fehlt die Anlage).
@@ -157,9 +180,10 @@ public class EarningsController {
         });
         // Whether each site's import valuation engages a tariff/Preisblatt
         // beyond bare spot - the provenance copy's honesty switch - and its
-        // export-side sibling (feste EEG-Vergütung vs bare spot, B2 fix).
+        // export-side sibling (feste Vergütung vs bare spot, B2 fix) with the
+        // source of that rate (EEG-derived or stated by the customer).
         Map<UUID, Boolean> tarifPriced = earnings.tarifPriced();
-        Map<UUID, Boolean> exportVerguetungPriced = earnings.exportVerguetungPriced();
+        Map<UUID, String> exportVerguetungQuelle = earnings.exportVerguetungQuelle();
         // The forward expected Marktwert Solar is independent of the selected
         // range (always the coming horizon), so it is computed once against the
         // wall clock, keyed on the ACTIVE PV model.
@@ -250,6 +274,10 @@ public class EarningsController {
             EarningsRepository.Tageseinordnung einordnung = savedSteuerung != null
                     ? einordnungen.get(site.id())
                     : null;
+            EarningsRepository.Tagesbild bild = tagesbilder.get(site.id());
+            BigDecimal monatMitBestand = bild == null || bild.zeitraum() == null
+                    || bild.zeitraum().monat() == null ? null
+                    : bild.zeitraum().monat().mitBestandEur();
             BigDecimal siteGeplant = einordnung != null ? geplant.get(site.id()) : null;
             EarningsRepository.MispelTagesmengen mispel = mispelMengen.get(site.id());
             // Forward expected Marktwert Solar (range-independent); absent when
@@ -271,7 +299,7 @@ public class EarningsController {
             List<EarningsDailyDto> dailySaved = daily
                     .getOrDefault(site.id(), List.of()).stream()
                     .map(d -> new EarningsDailyDto(
-                            d.day(), d.savedEur(), d.savedSteuerungEur()))
+                            d.day(), d.savedEur(), d.savedSteuerungEur(), d.mitBestandEur()))
                     .toList();
 
             // The money-centric Gesamtertrag = Einspeise-Erlös + the
@@ -320,7 +348,8 @@ public class EarningsController {
                     site.tarifArt(),
                     site.tarifParamCtKwh(),
                     tarifPriced.getOrDefault(site.id(), false),
-                    exportVerguetungPriced.getOrDefault(site.id(), false),
+                    exportVerguetungQuelle.containsKey(site.id()),
+                    exportVerguetungQuelle.get(site.id()),
                     einspeise,
                     eigenverbrauchsWert,
                     gesamtertrag,
@@ -343,7 +372,9 @@ public class EarningsController {
                     SteuerungGrund.fuer(savedSteuerung, einordnung, siteGeplant, mispel),
                     mispel == null ? null : mispel.netzstromverbrauchSpeicherKwh(),
                     mispel == null ? null : mispel.netzeinspeisungSpeicherKwh(),
-                    mispel == null ? null : mispel.quelle()));
+                    mispel == null ? null : mispel.quelle(),
+                    savedSteuerung == null ? null : mitBestand.get(site.id()),
+                    monatMitBestand));
         }
 
         // "Gesamt" honestly starts at the first covered slot, not at the epoch.

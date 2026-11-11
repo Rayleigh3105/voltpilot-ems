@@ -1250,6 +1250,174 @@
   },
   "fortschreibungen": [
     {
+      "datei": "App.tsx",
+      "vorher": "205d0bf899dc70fbf26c650d0ed118f533ee3f0d8c66b04cc217f2412b6a4339",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "41dc3d43214e5f78b83ed3babcb41afffa304a658e4a34f0c44ef1ef95c52cfd",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "7fcaaff78cacbb6cde4e156ebb6a5ea5739266b3f889a8530348bf90250d7ccb",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "11445cd203c708dd3dfa158068192cd382353ed35b115d587d6e6743a2e0505a",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "8f1f2cb5fc471743695a7def4442e37cf157b3354ad9d327988be79b9da396d9",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "ca1646baa5439b52d12c8161aaff8cff903a36f223373e73ec749473ca348366",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "5094b7aaa6968220ae96a9dfb899d699325c82ffeb59e2cc6fa5e74450f703b5",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "components/DeviceDrawers.tsx",
+      "vorher": "2d5ec8650dd88aac39505656c950d03e4a5ef043e437a8050e94390eebb1238e",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), B4: die main-Fassung des Felds der Box-Kennung ist das gemeinsame KennungFeld (components/KennungFeld.tsx, ergänzt edge- und prüft das Prüfzeichen); dieselbe Beschriftung „Kennung“, derselbe Ref und Enter sendet."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "41dc3d43214e5f78b83ed3babcb41afffa304a658e4a34f0c44ef1ef95c52cfd",
+      "nachher": "91d8e18ce8b0c4787c1659db620891b08fd1a4d669d7bc862aee340e6de0dd40",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D2: das Namensfeld der Registrierung nennt nach der Frage „Für mein Zuhause / Für ein Unternehmen“ „Ihr Name“ bzw. „Name Ihres Unternehmens“; Wert, Prüfung und Fokus bleiben."
+    },
+    {
+      "datei": "components/TariffFields.tsx",
+      "vorher": "8d6e2fe0d030334c6470b71f940a4214db961a95b51fb7cd29f53870fc14fcee",
+      "nachher": "20ca3ef57ec1004ac39a220c8b3382263306c7c223f93dfaa468cdc81e917a91",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), F4: das Preis-Feld zeigt seinen Satz am Feld (eigene Prüfung oder Ablehnung des Servers); Beschriftung, Wert und Handler bleiben."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "bbcd95b7eab4a29ed774fb5c9d495d51677b93d1a581fe43dee01989f1554349",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4/F3: die Ortssuche im Browser (Open-Meteo, „Ändern“ am gewählten Ort) entfällt; die Adresse sucht components/AdressSuche.tsx über GET /api/v1/orte/suche."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "7cd614dea94a71e5b71785dd2bfaed3ca4781a94a37fbb457fb0c63f3cb22a19",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4/F1/F3: das Feld „Standort“ der Ortssuche entfällt - die Adresse wird einmal erfasst (components/AdressSuche.tsx, Feld „Adresse“)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "d3b9f57c1ff4527cbea41db20f07b9a56196ab64e26ff574401208307a2f36f6",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4/F5: „Suchen“ entfällt - Vorschläge kommen beim Tippen, „Weiter“ nimmt den ersten Vorschlag (components/AdressSuche.tsx, AnlageSchritt.tsx)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "e3c2abc2cfe8756039a6e39579fd497bd17883892e17448dee3d5c0a36c3143d",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4: die Trefferliste der Ortssuche entfällt; Vorschläge sind die Optionen der Liste in components/AdressSuche.tsx."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "007f579bcd61d54f5e8514c0d14f6550c41c70f23911322836d8653c26bc75a9",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: Schritt 1 wohnt in components/AnlageSchritt.tsx; das Namensfeld heißt dort „Name der neuen Anlage“ (erste Anlage: „Name“, vorbelegt „Zuhause“) mit Satz am Feld."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "4645bf3370b43f66594b1049bbea7c7e79bfd244c245fb96dc3a3e57b23d84e4",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: „Gleicher Standort wie …“ steht in components/AnlageSchritt.tsx, nur noch für Anlagen ohne Standort-Objekt; sonst ist der Ort die ausdrückliche Wahl „Am selben Ort wie …“ (D8)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "9ce95ada5c56d3e6b4fac9068656a69546da19103d39f584ad4b1a42975d6a99",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: „Feineinstellungen“ stehen unverändert im Geld-Teil von components/AnlageSchritt.tsx."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "526164856eea8d639087d70a74946f66d8fc584358dbb517f704f3649ff2ea86",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1/F4: „Anzulegender Wert“ steht im Geld-Teil von components/AnlageSchritt.tsx, mit Satz am Feld."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "9966d7c4fa3c2297896663b500e78876d9207c1ad092a55117de4f9b337c407d",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1/F4: „Maximale Einspeiseleistung“ steht im Geld-Teil von components/AnlageSchritt.tsx, mit Satz am Feld."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "47aa36169ea2c20b751e2c086805610e44d628d53c2e7c78f45094bc3352ce57",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: „Weiter“ von Schritt 1 steht in components/AnlageSchritt.tsx (Standort und Anlage in einem Zug, mit Anfrage-Kennung, B3)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "8926e62651f36125996f6d03ba966f426f6ebb7e7579109a2be8337a6824b0fd",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), B4: das Feld der Box-Kennung ist das gemeinsame KennungFeld (components/KennungFeld.tsx)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "32c87c3d0ca92813e2716a06eb751529c219d96f8aab24f8aeebf9201682342a",
+      "nachher": "491a8d3bef59ec48d2c271cb33066c479a87dc8bdbd1e21e5e8d0bf7956f054f",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), F10: der Knopf des Box-Schritts heißt „Box verbinden“ - die Anlage gibt es schon; Handler und Recht bleiben."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "6ea6d22ecac7d517ea52442046e776a9d6af1036cfcf44fac30f544a65ad01f9",
+      "nachher": "2f469ef86a651834e3c2671fd60980d925e49aebbceb6c62e73f2d68b76d8d2c",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D5: „Box ist noch nicht da - später verbinden“ statt „Box habe ich noch nicht - später“; derselbe Weg weiter."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "2f469ef86a651834e3c2671fd60980d925e49aebbceb6c62e73f2d68b76d8d2c",
+      "nachher": "be1eb02afabc3975df47de566c8cbb93d5bf12605aa6e0c091717051469e772c",
+      "commit": "fm/vp-qr-einstieg-bau",
+      "grund": "Konzept vp-qr-einstieg (entschieden 04.11.2026, QE-2 A/QE-3 B, M6): der Wortlaut kommt aus koppelTexte.ts (SCHRITT_BOX.spaeter, „Box ist noch nicht da – später verbinden“ mit Gedankenstrich); derselbe Handler onSkip, derselbe Weg weiter."
+    },
+    {
       "datei": "components/StandortVorschau.tsx",
       "vorher": "60e1d0cdcb423982005d8418e981aac1af72dcb44c070b56c4c278ab30514820",
       "nachher": "18b82d5d7bf36b30a9a74f2379a4949dee238f2bbe182d61af3c95c8269e0629",
@@ -1557,6 +1725,314 @@
       "nachher": "bd397680846bbb8e0530668a39aaacaff0c8a6d15b7e590a5805e5728dda6dc6",
       "commit": "uems · Nachweisen PR0 (Konzept n1, Befund 1)",
       "grund": "PDF und CSV hängen an jedem Stand: die Seite ruft die Datei selbst ab (abrufen statt der nie gereichten Prop onAbruf) und sperrt den Knopf, solange ein Abruf läuft. Wortlaut und Ziel (GET …/staende/{nr}/pdf bzw. csv) unverändert."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "263739f47f208055304202a7bb7d2d7b657b7d7d514772ba275fcb9faf41b132",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "f0a09b0dbe00c7be9d0fcbc3e88519aecd03fe884f251495b4586fc8b9c81889",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "0f5156e41789a5f6da1efb9f116889ad472601b67d9ee49f4cb49f5636d4c7c8",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "eef9cea35741e1aed2818ec73eb00ef82f708cddc05f9d8a21e3b6afa1a12279",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "f13573d0d3a0d0158164a7914809a7d50e91a61afb2f6d14abb94dc9d9647f73",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "4052d64c43d59fba91bffb0f25da784e88d50f09829823a77b70f3859c24a409",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "329b2bfc3a8e39153bcb8f7c409b36b0fb6fa5134fc8df9ec6524fed824acc21",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "3cb8af33492e8b008b7184f1778ef100495695f18a68a01db31bbb48bff66e03",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "3a3c33fabbae6b6eeb93394856fb1cd9bad0133733a31568c5e79172ababb31a",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "7bedfa5081218c99d6be66763125672398056741038709ad53fbf1b52a6d7fad",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "5bb7e80eb4749d221492fff8c535fe917614eda8fbc4f50daca5049de5519b70",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "8c67ad12ef0fcee25c7e765268324cb61dc637976071fbe6ead579ea5ac3b16a",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "349be9f69f19f5e38b27e7de7b6142a50de53cfbb99b02ca4dceb42407c7e7b4",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "ec7a900fd298bed3d788170e841f1058c919c8ad5f644fb8163022e84159321b",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "692b2e1be4f6b763ea8eed95615ef107c16786aa3801ced4bc529c6809c88ca2",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "d5b0c0801d460f5d3ad85b541e49863bb0c016ef8865c085bcdfb38872c1dca2",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "6b620e5c7a66fbd07c56300b9ee533e2d325d1252cde62689a77aea04da76691",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "c545eb037a302c1926a2c3b2c9497489694fed8859f10ad033c33e7248186607",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "b12eb1ab2d8408735d56c7397b7de4d66c388723ba71b2de308c2d5359e8b55f",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "b26b9b171a6a708f62cc84b02ebc377964fc3bdb35b0bd6779d540e71550bc22",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "c51628cc4961abd464749d5528dabada91ae04ebbc3a5b981d3c5b965f109d9b",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "7fcabd1ba358b6e7c10b1226205f0a5838b040a07005644c13f5ef493ad117b3",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "a9b109e44d49e749214d253111d37eb83118e9601cbb5b46c9d1347ad040c525",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "cedbf26c878a1568d8250d96b9e4b6c37be164f9dfcedaf8e5939441a311331b",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "9de4355f8aa09ca05119c7c7fdddbd3a78de663a9352ebe1e8c5a973231aa225",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "de6f0f9ca17bf155313498f80aa353195e50559fd6623f48c13da36c2f0c63e7",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "03314b89b6710d70272f699d5d86c60c6cc15f81960b2341562e8baf05db1858",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "2358beb8e2caaad3888595d8745bdd122409a41be50e5560490931d54c9b6197",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "2c5a004ce46bf44fd600db725a2e12684a1e4964b6a952cc5afd016584b408dd",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "987614fc5d2f8ff76eeeecb09b3c0c9016b8cde6be18240a285704214fb7c1b3",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "b5b8969419de4ab9d1a98e7706380a5238cf601b2f1ac8dcb9353ac37e444415",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "1d9414153320d9f1bfd5db2e39de2f739510e1c38c6c796990e846aaddde3c7c",
+      "nachher": "8dcc705a16021d82cac5f5301bcf3c3ae9e22210391310ec2e2760ea6a1ed7f4",
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), F9: „Später einrichten“ räumt den Entwurf des Flusses ab (anlageEntwurf.ts) - nichts bleibt als Geisterzustand; Text und Ziel unverändert."
+    },
+    {
+      "datei": "components/LadesaeuleAnbinden.tsx",
+      "vorher": "4a2bd7dd0d3e194b6573bab8c5cca5948895a6dc0ce89d50cd8609961e0971b2",
+      "nachher": "1c38e5558721721e67fe49afba5376bae97e5c318f7987aa3e29f2cc6ab7f9ef",
+      "commit": "fm/vp-ocpp-start-portal",
+      "grund": "Audit vp-ocpp-haushalt W-02 (Zusatz Paket Cloud, Inbox 001): „Kennung eintragen“ sperrt zusätzlich, solange die Nennleistung ungültig ist (`nenn.mangel`); Beschriftung, Handler und bisherige Sperren bleiben erhalten."
+    },
+    {
+      "datei": "components/LadesaeuleAnbinden.tsx",
+      "vorher": "ab1308a157972508d2486f8f7a0577c66d5bbc6f0a254f839b89380d89c453af",
+      "nachher": "608da9db688bf35e0ecf92e0395c2382b0886b8878597e3a662eb395d6c7dfe9",
+      "commit": "fm/vp-ocpp-start-portal",
+      "grund": "Audit vp-ocpp-haushalt W-02 (Zusatz Paket Cloud, Inbox 001): der Knopf an einer schon eingetragenen Kennung speichert jetzt Anschluss ODER Nennleistung und heißt deshalb „Änderung speichern“ statt „Anschluss speichern“; er sperrt bei ungültiger Nennleistung, Handler unverändert."
+    },
+    {
+      "datei": "pages/LadevorgaengeSection.tsx",
+      "vorher": "55b42bc07bbd6fc53e701bb83c7d4473d001bacfcb2bd83aa3fe691568637a7b",
+      "nachher": null,
+      "commit": "fm/vp-wallbox-ein-ort-laden-w1",
+      "grund": "Konzept Wallbox-Einbindung e1 (Captain 27.10.2026, E1-E6 = A), Scheibe 3 §4.3/§7: „Ladesäule anbinden“ öffnet keinen eigenen Assistenten-Drawer mehr, sondern führt als Link auf den Aufbau derselben Anlage (`aufbauHash(site.id, 'geraet')`) - demselben Ort, an dem auch eine Anlage oder eine Box entsteht (Hausregel „Ein Ort zum Anlegen“). Der Formular-Körper components/LadesaeuleAnbinden.tsx lebt unverändert im Aufbau-Fluss (AnlegenFlow.tsx) weiter; nur die Drawer-Hülle (components/LadesaeuleAnbindenDrawer) ist entfallen."
+    },
+    {
+      "datei": "components/LivePuls.tsx",
+      "vorher": "4cc68f6e572e958ddb6b99cf8dce19eeca66428d0541ff954f869365bd4ac998",
+      "nachher": "02b205513155e7f0fb1720c503e778ecf6bee169a752a8c6245934e903ce1764",
+      "commit": "fm/vp-batterie-bms-vollentfernung",
+      "grund": "Die Zeile der Speicher-Kachel verliert die beiden Nebenzeilen für die Herkunft eines berechneten Ladestands und die Grenzen des Batteriemanagements: beide Auskünfte kamen nur von der entfernten Batterie mit eigenem BMS. Die Handlung (Sprung in den Verlauf) und alle Attribute der Zeile bleiben unverändert; „Ladestand von: <Gerät>“ bleibt."
+    },
+    {
+      "datei": "components/ZuordnenDialog.tsx",
+      "vorher": "cb76a4b565affa0bd86fff63c8778b90f3d942b10eeff8db888a6d65610c32fb",
+      "nachher": "ebabd260dec868b20d975bcc0c3b15ad4c0bc00815e1fdac23893bfe088909eb",
+      "commit": "822aaaee73d66348ce6f5a108e1ce3651aed70a4",
+      "grund": "Der Knopf „Fertig“ benennt den Zug („Zuordnen“ bzw. „Wieder verbinden“, #1666); Handler, Sperre und Recht bleiben. Der Wächter war seit dem Merge von #1666 auf main rot."
+    },
+    {
+      "datei": "components/LocationMap.tsx",
+      "vorher": "2978b0c36e9a3bf70a4dd0cf42bc7a9003034aef43aaf16f9e8b5d7a86a2de9d",
+      "nachher": "e044153ff7f62f53674265deacede131cf83c33ba6a401cd4da51a417a0456c5",
+      "commit": "fm/vp-anlage-adresse-ux",
+      "grund": "Task vp-anlage-adresse-ux: der Knopf „Entfernen“ räumt jetzt auch eine stehende Rückwärts-Auflösung des Pins ab (Zustand ehrlich machen, Geister-Pin-Befund) - Beschriftung, Recht und das eigentliche Entfernen (`onChange(null, null)`) bleiben unverändert."
+    },
+    {
+      "datei": "shell/AppShell.tsx",
+      "vorher": "b47e708b821a5fb1aed22c95fad38d9acff20913f05be2503f2715c891c6b137",
+      "nachher": null,
+      "commit": "430db48b5a8868ced219959beaa1e3b9825484fd",
+      "grund": "#1752 Adminview S1: der Falt-Knopf „Plattform“ der Seitenleiste entfällt - die drei Räume (Plattform/Geräte/Benutzer) stehen jetzt immer offen als eigene Knöpfe, nichts mehr zum Auf-/Zuklappen."
+    },
+    {
+      "datei": "shell/AppShell.tsx",
+      "vorher": "a7ae0eea270eb8639d91e231fbf0dbf1be527ae5cfe587ea19db5460d28379fa",
+      "nachher": null,
+      "commit": "430db48b5a8868ced219959beaa1e3b9825484fd",
+      "grund": "#1752 Adminview S1: der Telefon-Block „Plattform“ im Avatar-Menü (eine Schleife über die Plattform-Seiten) entfällt; „Einstellungen“, „Benutzer“ und „Funktionen“ stehen seitdem als eigene, fest benannte Einträge im selben Menü."
+    },
+    {
+      "datei": "pages/AnlageTechnik.tsx",
+      "vorher": "9f87a0d001b8e5bd88d7ffac006a8c4f573ebd1f3f095d4f657d1d98bbdedd54",
+      "nachher": "084696c2589d1f1a77cfc1aeae4ce82f955daf5a36b479a4b1bc58e4b3517b97",
+      "commit": "9f018ef42ad1b84d52e5e2b3bfe1e0963f19d66b",
+      "grund": "#1714 „jede Zeile öffnet nur ihr Feld“: das Namensfeld trägt die Pflichtstern-Beschriftung nur noch, wenn das Blatt mehr als das eine Feld zeigt (`nur`); Wert, Fokus und Änderungs-Handler bleiben unverändert."
+    },
+    {
+      "datei": "pages/AnlageTechnik.tsx",
+      "vorher": "0773946f678ee504a47ad03d7544c55e9944dee40ddc45030d5276ca40b13176",
+      "nachher": "41c4c4175445905afda0904132f06ca4195e2c0e78607e96e04706340a3d5309",
+      "commit": "9f018ef42ad1b84d52e5e2b3bfe1e0963f19d66b",
+      "grund": "#1714 „jede Zeile öffnet nur ihr Feld“: der Speichern-Knopf des Stammdaten-Blatts heißt „Speichern“, wenn `nur` ein einzelnes Feld öffnet, sonst weiter „Änderungen speichern“; Recht, Handler und Sperre bleiben unverändert."
+    },
+    {
+      "datei": "help/HelpFigure.tsx",
+      "vorher": "5a1742f74b6580d0f1cadeb34d36301ba0755e9fd2008e3daf791d51219317c4",
+      "nachher": "6f9cc6524c08ce413770e25c1c289aa2593911f423debc6c94b3e0b00f8c6bb8",
+      "commit": "fm/vp-a11y-befunde",
+      "grund": "Wartung Barrierefreiheit vp-wartung-a11y-w1 Welle 2 (2.5.3): der Knopf heißt „Vergrößern: Screenshot …“ statt „Screenshot vergrößern: …“ - der Name beginnt mit dem sichtbaren „Vergrößern“; Handler und Ziel bleiben."
+    },
+    {
+      "datei": "shell/HealthBadgeButton.tsx",
+      "vorher": "1d3d9644b287f7592d2da3a9c80560b4c6b4548e8fca70419597c5061cd7c4a7",
+      "nachher": "7cb1df86a0cec37d654482d103cd6124253c83fd4c0cf525b7c8b3ddfed43bce",
+      "commit": "fm/vp-a11y-befunde",
+      "grund": "Wartung Barrierefreiheit vp-wartung-a11y-w1 Welle 2 (2.5.3): der Name beginnt mit dem sichtbaren Text (Zustandswort, Ursache) und hängt „Zustand der Anlage – Details anzeigen“ an, statt umgekehrt; Handler und Popover bleiben."
     }
   ],
   "assistentZusammenfuehrung": {
@@ -2899,6 +3375,39 @@
         "components/AnstossVerwerfenDialog.tsx": {
           "entfaellt": true,
           "wohin": "Blatt „Stand n behalten“ (BerichtBehaltenBlatt): ein Grund für alle offenen Anstöße"
+        }
+      }
+    },
+    {
+      "entscheid": "Captain-Auftrag vom 04.11.2026: die „Batterie mit eigenem BMS“ (MQTT oder HTTP/JSON) entfällt vollständig - Gerätetyp, Anlegen, Bearbeiten, Vorschau und Zuordnung. Den realen Kunden dazu gibt es nicht mehr; eine Batterie am Hybrid-Wechselrichter richtet der Kunde über den Wechselrichter ein.",
+      "commit": "fm/vp-batterie-bms-vollentfernung",
+      "ersetzt": "die Bedienelemente des Batterie-Assistenten (Anschluss, Zuordnung, Ladestand, Bindung, Speichern); eine Fortschreibung gab es für sie nie",
+      "dateien": {
+        "components/BatterieAssistent.tsx": {
+          "entfaellt": true,
+          "wohin": "kein Nachfolger: der Gerätetyp ist entfernt (die Migration löscht den Bestand), der Katalog nennt für „Batterie“ den Weg über den Wechselrichter"
+        }
+      }
+    },
+    {
+      "entscheid": "Konzept vp-adminview-konzept-k1 §4.6, Scheibe S2, Captain-Freigabe 'Bitte mit allen Empfehlungen umsetzen' (E4 = A): die Admin-Karten der Kunden-Geräte- und Box-Seite loesen sich auf - jeder Box-Fakt bekommt die Geraeteakte als EINEN Ort statt der additiven Plattform-Sicht.",
+      "commit": "fm/vp-adminview-s2-geraeteakte",
+      "ersetzt": "die additive Plattform-Sicht in GeraetSeiteSection.tsx und BoxSeiteSection.tsx (Software, Vertrauen, Steuerung, Grenzen, Verbindung, Verlauf)",
+      "dateien": {
+        "components/AdminGeraetKarten.tsx": {
+          "entfaellt": true,
+          "wohin": "pages/admin/GeraeteAktePage.tsx (Reiter Software, Verbindung, Einrichtung, Verlauf)"
+        }
+      }
+    },
+    {
+      "entscheid": "Code-Gesundheit (Bericht vp-wartung-codehealth-c1, Abschnitt „Totes Code — Portal“), Captain-Freigabe 'bitte alle Empfehlungen' (10.11.2026): components/ConsumerStrip.tsx hatte keine Importe mehr im Produktbundle (knip, mit grep auf aktuellem origin/main erneut belegt) und ist als toter Code gelöscht.",
+      "commit": "fm/vp-codehealth-befunde",
+      "ersetzt": "den Verbraucher-Streifen auf der Cockpit-Karte; eine Fortschreibung gab es für ihn nie",
+      "dateien": {
+        "components/ConsumerStrip.tsx": {
+          "entfaellt": true,
+          "wohin": "kein Nachfolger: toter Code ohne Aufrufstelle, ersatzlos gelöscht"
         }
       }
     }

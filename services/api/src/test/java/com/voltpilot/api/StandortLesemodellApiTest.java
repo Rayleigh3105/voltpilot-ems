@@ -27,8 +27,9 @@ import java.util.concurrent.Callable;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -70,6 +71,7 @@ import org.testcontainers.utility.DockerImageName;
  * Vektor-Datei; hier geht es um Draht, Zaun und Bestand.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class StandortLesemodellApiTest {
@@ -281,7 +283,8 @@ class StandortLesemodellApiTest {
         assertThat(un.path("nochNichtZugeordnetZahl").asInt()).isZero();
 
         JsonNode bezug = overviewZeile(adminToken, tenant, site).path("standort");
-        assertThat(feldnamen(bezug)).containsExactly("id", "name", "kurzzeichen", "gueltigAb");
+        assertThat(feldnamen(bezug)).containsExactly("id", "name", "kurzzeichen", "gueltigAb", "adresseFehlt");
+        assertThat(bezug.path("adresseFehlt").asBoolean()).as("ein Entwurf ohne Adresse (D9)").isTrue();
         assertThat(bezug.path("id").asText()).isEqualTo(standort.toString());
         assertThat(bezug.path("name").asText()).isEqualTo("Werk Ahrenberg – Halle 1");
         assertThat(bezug.path("kurzzeichen").asText()).isEqualTo("ST-1");
@@ -376,6 +379,9 @@ class StandortLesemodellApiTest {
         assertThat(overview.path("sites")).isNotEmpty();
         List<String> erwartet = new ArrayList<>(OVERVIEW_SITE_FELDER);
         erwartet.add("standort");
+        // `boxGeloestHinweis` ist das additive Feld aus vp-plattform-admin-box-benutzer-konzept
+        // (B3) - wie `standort` ans Ende, nichts Bestehendes verschoben.
+        erwartet.add("boxGeloestHinweis");
         for (JsonNode zeile : overview.path("sites")) {
             assertThat(feldnamen(zeile)).containsExactlyElementsOf(erwartet);
             assertThat(zeile.path("standort").isNull()).isTrue();

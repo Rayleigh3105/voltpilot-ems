@@ -1,0 +1,15 @@
+# Werkbank-Brücke (services/werkstatt-dienst/bruecke): Firewall und
+# Durchleitung beim Start laden, bevor das Netz hochkommt.
+[Unit]
+Description=VoltPilot Werkbank-Brücke: Firewall (nftables, Tabelle inet werkbank)
+DefaultDependencies=no
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/vp-werkbank/werkbank.nft
+
+[Install]
+WantedBy=multi-user.target

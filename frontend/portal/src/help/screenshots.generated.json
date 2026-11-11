@@ -12,14 +12,19 @@
         "text": "Der Anlagenname zeigt, welchen Standort Sie gerade betrachten."
       },
       {
-        "x": 30.77,
-        "y": 25.96,
+        "x": 32.21,
+        "y": 29.25,
         "text": "Die Energieanzeige beschreibt die aktuelle Erzeugung und die weiteren Flüsse."
       },
       {
+        "x": 7.8,
+        "y": 60.17,
+        "text": "Ein Tipp auf die Tagesleiste zeigt eine andere Viertelstunde, ‹ › gehen je 15 Minuten weiter."
+      },
+      {
         "x": 64.74,
-        "y": 18.1,
-        "text": "Das Ergebnis bezieht sich auf den hier gewählten Zeitraum."
+        "y": 52.63,
+        "text": "Die Steuerzeile nennt Auftrag, Bestätigung und Wirkung; „Warum?“ öffnet die Gründe."
       }
     ]
   },
@@ -65,8 +70,8 @@
         "text": "Hier erkennen und wechseln Sie die geöffnete Anlage."
       },
       {
-        "x": 41.79,
-        "y": 10.72,
+        "x": 35.64,
+        "y": 23.19,
         "text": "Hilfe & Kontakt öffnet das vollständige Hilfe-Center."
       },
       {
@@ -80,23 +85,23 @@
     "title": "Eine Anlage einrichten",
     "file": "anlage-anlegen.png",
     "width": 1192,
-    "height": 1400,
+    "height": 1263,
     "alt": "Eine Anlage einrichten. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 31.63,
-        "y": 35.76,
-        "text": "Geben Sie der Anlage einen wiedererkennbaren Namen."
+        "y": 35.26,
+        "text": "Wo steht die Anlage? Am selben Ort oder an einer anderen Adresse - die Wahl nennt ihre Folge."
       },
       {
         "x": 31.63,
-        "y": 46.72,
-        "text": "Der Standort hilft bei der Zuordnung der Wettervorhersage."
+        "y": 61.91,
+        "text": "Ein Name, unter dem Sie die Anlage wiederfinden."
       },
       {
         "x": 31.63,
-        "y": 92.2,
-        "text": "Mit Weiter speichern Sie diesen Schritt und gelangen zu den Registerdaten."
+        "y": 87.09,
+        "text": "Mit Weiter entsteht die Anlage, und es geht zur Box."
       }
     ]
   },
@@ -104,22 +109,22 @@
     "title": "Die Geräte-ID zuordnen",
     "file": "box-verbinden.png",
     "width": 640,
-    "height": 544,
+    "height": 566,
     "alt": "Die Geräte-ID zuordnen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 8.28,
-        "y": 54.37,
+        "y": 56.12,
         "text": "Übertragen Sie die vollständige VoltPilot-Geräte-ID."
       },
       {
         "x": 8.28,
-        "y": 71.15,
+        "y": 72.26,
         "text": "Prüfen Sie die Anlage, der die Box zugeordnet werden soll."
       },
       {
-        "x": 59.91,
-        "y": 90.06,
+        "x": 59.92,
+        "y": 90.44,
         "text": "Das Hinzufügen ordnet die Box zu; die Datenverbindung prüfen Sie anschließend."
       }
     ]
@@ -133,12 +138,12 @@
     "callouts": [
       {
         "x": 13.33,
-        "y": 40.14,
+        "y": 42.72,
         "text": "Die Geräte-ID bleibt während der Eingabe sichtbar."
       },
       {
         "x": 13.33,
-        "y": 50.97,
+        "y": 53.55,
         "text": "Die gewählte Anlage bestimmt den Standort der Zuordnung."
       },
       {
@@ -162,22 +167,17 @@
       },
       {
         "x": 4.36,
-        "y": 19.92,
-        "text": "Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen."
+        "y": 17.47,
+        "text": "Was der Speicher gerade tut, in Stichworten - und daneben, was als Nächstes kommt, ob er bis zum Abend reicht und was es bringen soll."
       },
       {
         "x": 6.46,
-        "y": 32.88,
-        "text": "Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde."
-      },
-      {
-        "x": 4.36,
-        "y": 55.61,
-        "text": "Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild."
+        "y": 34.16,
+        "text": "Oben die Tätigkeiten mit Uhrzeit, darunter der Ladestand - links gemessen, rechts geplant -, unten Sonne und Preis. Mit der Maus zeigt eine Lupe jede Viertelstunde."
       },
       {
         "x": 52.68,
-        "y": 66.3,
+        "y": 59.56,
         "text": "Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten."
       }
     ]
@@ -231,50 +231,50 @@
     ]
   },
   "marktpreise": {
-    "title": "Börsenpreise im Tagesverlauf",
+    "title": "Börsenpreis jetzt und in den nächsten Stunden",
     "file": "marktpreise.png",
     "width": 1192,
-    "height": 1500,
-    "alt": "Börsenpreise im Tagesverlauf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 932,
+    "alt": "Börsenpreis jetzt und in den nächsten Stunden. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 2.64,
-        "y": 12.5,
-        "text": "Marktpreise beschreiben die Börse, nicht automatisch Ihren vollständigen Tarif."
+        "x": 4.36,
+        "y": 22.1,
+        "text": "Oben steht der Börsenpreis jetzt und wie er im Vergleich zu den kommenden Stunden liegt."
+      },
+      {
+        "x": 42.45,
+        "y": 22.1,
+        "text": "Die zwei Kacheln schauen nur nach vorn: die günstigsten und die teuersten zwei Stunden."
       },
       {
         "x": 6.46,
-        "y": 83.45,
-        "text": "Die Kennzahl gehört zum ausgewählten Zeitraum und ihrer angegebenen Einheit."
-      },
-      {
-        "x": 6.46,
-        "y": 38.05,
-        "text": "Die Zeitachse zeigt die günstigen und teuren Abschnitte des Tages."
+        "y": 46.24,
+        "text": "Die dunkle Linie markiert jetzt. Ein Tipp auf einen Balken zeigt seine Viertelstunde oben."
       }
     ]
   },
   "wetter": {
-    "title": "Wetter und erwartete PV-Leistung",
+    "title": "Der Sonnen-Teppich: Sonne und Verbrauch",
     "file": "wetter.png",
     "width": 1192,
     "height": 1200,
-    "alt": "Wetter und erwartete PV-Leistung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "alt": "Der Sonnen-Teppich: Sonne und Verbrauch. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 2.64,
-        "y": 15.63,
-        "text": "Die Vorhersage bezieht sich auf den Standort der geöffneten Anlage."
+        "x": 4.36,
+        "y": 17.17,
+        "text": "Oben steht, wie lange die Sonne reicht, und zwei Balken für Sonne und Verbrauch."
       },
       {
         "x": 6.46,
-        "y": 28.32,
-        "text": "Diese Leistung ist vorhergesagt, nicht bereits gemessen."
+        "y": 38.68,
+        "text": "Der Teppich zeigt sieben Tage je Stunde auf einen Blick; ein Tipp wählt den Tag für das Bild."
       },
       {
         "x": 6.46,
-        "y": 35.15,
-        "text": "Der Verlauf macht die erwarteten Änderungen über den Tag sichtbar."
+        "y": 69.91,
+        "text": "Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt."
       }
     ]
   },
@@ -282,23 +282,23 @@
     "title": "Wie gut die Vorhersage zuletzt traf",
     "file": "prognose.png",
     "width": 552,
-    "height": 646,
+    "height": 617,
     "alt": "Wie gut die Vorhersage zuletzt traf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 8.15,
-        "y": 5.68,
+        "y": 5.94,
         "text": "Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage."
       },
       {
         "x": 13.95,
-        "y": 72.54,
+        "y": 79.35,
         "text": "Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent."
       },
       {
         "x": 13.95,
-        "y": 82.6,
-        "text": "Vorhersagen sind Annahmen; der Fahrplan wird laufend neu gerechnet."
+        "y": 68.82,
+        "text": "Vorhersagen sind Annahmen; der Fahrplan wird alle 15 Minuten neu gerechnet."
       }
     ]
   },
@@ -490,10 +490,10 @@
       {
         "x": 4.45,
         "y": 66.67,
-        "text": "Ein Tippen auf ein Gerät öffnet den Kurzblick mit allen Werten."
+        "text": "Ein Tippen auf ein Gerät führt direkt auf seine Geräteseite mit allen Werten."
       },
       {
-        "x": 80.79,
+        "x": 80.78,
         "y": 44.38,
         "text": "„Gerät hinzufügen“ öffnet den Gerätekatalog; im Menü daneben legen Sie eine Box oder Anlage an."
       }
@@ -503,22 +503,22 @@
     "title": "Verbindung und Zustand der Box",
     "file": "box.png",
     "width": 1192,
-    "height": 1177,
+    "height": 1200,
     "alt": "Verbindung und Zustand der Box. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 10.07,
-        "y": 13.62,
+        "y": 13.36,
         "text": "Prüfen Sie Namen und Geräte-ID der Box."
       },
       {
         "x": 10.07,
-        "y": 18.44,
+        "y": 18.08,
         "text": "Der Punkt neben dem Namen zeigt die Verbindung und wie alt der letzte Kontakt ist."
       },
       {
         "x": 63.61,
-        "y": 23.53,
+        "y": 23.08,
         "text": "Die Aktivität unterscheidet Aktionen und ihre Rückmeldungen."
       }
     ]
@@ -551,32 +551,32 @@
     "title": "Einstellungen der Anlage",
     "file": "einstellungen.png",
     "width": 1192,
-    "height": 1115,
+    "height": 1200,
     "alt": "Einstellungen der Anlage. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 4.7,
-        "y": 28.43,
+        "y": 26.44,
         "text": "Jede Zeile zeigt ihren aktuellen Wert; ein Tippen öffnet das Bearbeiten."
       },
       {
         "x": 93.37,
-        "y": 39.79,
+        "y": 44.86,
         "text": "Einfache Schalter wirken sofort und lassen sich rückgängig machen."
       },
       {
         "x": 4.7,
-        "y": 65.81,
+        "y": 72.39,
         "text": "Beim Speicher stehen Kapazität und der Umgang mit dem Speicher."
       }
     ]
   },
   "fahrplan-uhr": {
-    "title": "Fahrplan am Telefon: die Tagesuhr",
+    "title": "Fahrplan am Telefon: die Uhr",
     "file": "fahrplan-uhr.png",
     "width": 390,
     "height": 844,
-    "alt": "Fahrplan am Telefon: die Tagesuhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "alt": "Fahrplan am Telefon: die Uhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 9.23,
@@ -585,18 +585,18 @@
       },
       {
         "x": 9.23,
-        "y": 31.13,
-        "text": "Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand."
+        "y": 25.47,
+        "text": "Was der Speicher gerade tut. Ein Tipp zeigt, warum."
+      },
+      {
+        "x": 12.05,
+        "y": 33.94,
+        "text": "Die Uhr geht wie jede andere. Der Ring zeigt, was ab jetzt kommt."
       },
       {
         "x": 9.23,
-        "y": 74.49,
-        "text": "Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn."
-      },
-      {
-        "x": 9.23,
-        "y": 86.94,
-        "text": "Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle."
+        "y": 79.62,
+        "text": "Reicht der Speicher bis zum Abend, und was soll es heute bringen?"
       }
     ]
   },
@@ -679,6 +679,30 @@
         "x": 1.77,
         "y": 53.37,
         "text": "Das Tagesbild zeigt bis jetzt Gemessenes, danach Plan und Erwartung."
+      }
+    ]
+  },
+  "cockpit-zuhause": {
+    "title": "Cockpit eines Haushalts: „Heute“ neben dem Energiefluss",
+    "file": "cockpit-zuhause.png",
+    "width": 1192,
+    "height": 1216,
+    "alt": "Cockpit eines Haushalts: „Heute“ neben dem Energiefluss. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 64.74,
+        "y": 23.04,
+        "text": "Wie viel Ihres Stroms heute aus eigener Sonne kam, vom Morgen bis jetzt."
+      },
+      {
+        "x": 64.74,
+        "y": 31.38,
+        "text": "Woher der Verbrauch kam: Sonne, Speicher oder Netz. Darunter, wohin die Sonne ging."
+      },
+      {
+        "x": 4.36,
+        "y": 91.12,
+        "text": "Der Betrag „Unterm Strich“ steht als ruhige Zeile am Ende; ein Tipp öffnet die Erlöse."
       }
     ]
   }

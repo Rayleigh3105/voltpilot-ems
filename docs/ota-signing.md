@@ -60,9 +60,14 @@ Das Dienstkonto `edge-release-publisher` darf Releases und das öffentliche Trus
 Es gibt ein Manifest je Box-Art. Ein Docker-Release (`edge-JJJJ.MM.N`) trägt `oci-image`-Artefakte für das Backend `compose`. Ein Edge-Light-Release (`edge-light-JJJJ.MM.N`, eigene Linie) trägt nur `binary`-Artefakte, je Architektur eines, und nur das Backend `light`. Beide nutzen denselben Release-Schlüssel und dasselbe Trust-Set; `release_seq` bleibt eine Ordnung über beide Linien. Vertrag: [Manifest-Schema](contracts/ota-release-manifest.schema.json), [geteilte Vektoren](contracts/ota-release-manifest-vectors.json).
 
 - Nach gültiger Signatur stellt eine Box ein Release einer anderen Box-Art zurück: `deferred` mit Grund, Sperre `backend`. Dasselbe gilt für einen Bestandteil, den ihr Backend nicht anwendet, etwa einen unbekannten Typ. Eine ungültige Signatur bleibt `rejected`, die Box meldet `failed`.
-- Vorlauf: Diese Toleranz muss als Docker-Release auf den Boxen sein, bevor das erste Edge-Light-Release ins Register kommt. Eine ältere Docker-Box lehnt ein Edge-Light-Manifest als „Form kaputt“ ab und meldet `failed`.
-- `vp-ota manifest`, `sign` und `register` prüfen streng (`ParseManifestStrict`): nur bekannte Typen und Backends, ein Manifest je Box-Art.
+- Vorlauf: Diese Toleranz muss als Docker-Release auf den Boxen sein, bevor das erste Edge-Light-Release ins Register kommt. Eine ältere Docker-Box lehnt ein Edge-Light-Manifest als „Form kaputt“ ab und meldet `failed`. Sie ist seit `edge-2026.10.0` enthalten; zusätzlich weist die API ein Release nie einer Box der anderen Art zu (409).
+- `vp-ota manifest`, `sign` und `register` prüfen streng (`ParseManifestStrict`): nur bekannte Typen und Backends, ein Manifest je Box-Art. `vp-ota manifest --binary name:GOOS/GOARCH=programm` misst Programm und gepackte Lieferung (`programm.gz`) selbst und lehnt eine Lieferung ab, die nicht genau das Programm entpackt.
+- Das Register nimmt `edge-light-JJJJ.MM.N` an und liest ein Edge-Light-Manifest ebenso streng (`ReleaseManifest.readStrict`, Vektor-Feld `erzeugbar`). Ein Edge-Light-Eintrag ohne Signatur wird abgelehnt.
 - Der Docker-Workflow startet nie für einen `edge-light-*`-Tag, und sein manueller Weg legt keinen solchen Namen an (`ota_check_docker_release`).
+- Den `edge-light-*`-Tag legt der eigene Lauf `edge-light-release.yaml` an (`ota_check_light_release`, `ota_next_light_release`). Er baut die Programme, packt sie (`gzip -9 -n`) und hängt alles an das Forgejo-Release, für die Werkstatt (Freigabe mit Prüfsummen). Danach erzeugt, signiert (Gegenprüfung gegen die eingebackene Wurzel mit Backend `light`) und registriert er das Manifest – **nur** mit der Repo-Variable `EDGE_LIGHT_SIGNIEREN=true` und den Geheimnissen der Docker-Linie. Fehlt eines davon, bleibt der Lauf grün und signiert nichts. Die Variable setzt der Captain, sobald die Boxen Edge-Light-Updates anwenden. Selbsttest: `tools/ota/test-light-release-workflow.sh`.
+- Zuletzt lädt der Lauf die gepackten Programme ins Portal (`ota_light_upload`, Teile zu 512 KiB, Konto `edge-release-publisher`). Größe und Prüfsumme nimmt das Portal aus dem signierten Manifest im Register; fertig ist eine Lieferung erst, wenn beides stimmt. Die Box lädt offen über `/api/v1/edge/light-programm/{gz_sha256}` (nur fertige Programme signierter Edge-Light-Releases). Ein Edge-Light-Release ist erst zuweisbar, wenn jedes Programm seines Manifests fertig im Portal liegt (sonst 409); den Stand zeigt `GET /api/v1/admin/edge-releases/{version}/programme`.
+
+- Den Laborbeweis für Edge Light baut `edge-light/labor/laborbau.sh` mit einer **Wegwerf-Wurzel** und eigenem Labor-Vertrauens-Set (eingebacken in eine Kopie der Quellen, wie `edge-app/test/ota-soak`). Fehlerfassungen werden nie mit dem echten Release-Schlüssel signiert ([Labor](../edge-light/labor/README.md)).
 
 ## Manueller Signierpfad
 
@@ -74,6 +79,8 @@ vp-ota verify --root baked --trust-set trust-set.json --manifest release.json
 ```
 
 Zum Veröffentlichen den vorhandenen Helper `tools/ota/release-publish.sh` nutzen; dessen Hilfe nennt Eingaben und Authentifizierung. Manifest und Signatur unverändert als Assets und API-Registerinhalt transportieren. Das passende `vp-ota`-Binary muss die tatsächlich verwendete Root-Wurzel enthalten.
+
+„Was ist neu“ (Geräte & Updates G4): Vor dem Signieren schreibt der Release-Lauf die Box-Änderungen seit dem letzten Tag derselben Linie in eine Datei (`release-publish.sh aenderungen <tag> <datei>`; Docker-Box über `edge-app`, Edge Light über `edge-light` und `edge-app/core`, ohne reine Test- und Markdown-Commits). `vp-ota sign` liest sie über `$VP_OTA_AENDERUNGEN` (Handpfad: `vp-ota register --aenderungen <datei>`) in `register.json` – neben das signierte Manifest, nie hinein. Ohne Vorgänger-Tag entsteht keine Datei (keine Angabe); eine leere Datei heißt „keine Änderung an der Box“. Ein bytegleich wiederholter Tag-Lauf trägt die Liste im Register nach, wo noch keine steht, und überschreibt nie.
 
 ## Trust-Set auf Geräte bringen
 

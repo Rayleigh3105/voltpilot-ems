@@ -785,13 +785,17 @@ class UemsBerichtKaskadeTest {
         Instant e = OKT_1.plusMonths(1).atStartOfDay(ZONE).toInstant();
         int tage = OKT_1.lengthOfMonth();
         long stunden = ChronoUnit.HOURS.between(b, e);
+        // `berechnet_am` fest auf das Monatsende - sonst griffe die Spalten-Vorgabe `now()` (echte Uhr):
+        // mit real verstreichender Zeit wanderte sie über DATENSTAND_NR1 (fester Stichtag 10.11.2026) und
+        // D2 würfe „ein einbezogener Wert ist später gerechnet", ohne dass sich an den Daten etwas änderte.
         root.update("INSERT INTO messreihe_periode (tag, art, tenant_id, entity_id, messkanal, zeitzone, zeitzone_herkunft, "
                 + "beginn, ende, stunden, teile_erwartet, teile_vorhanden, teile_endgueltig, wertart, menge, menge_zustand, "
-                + "kennzeichen, erhalten, erwartet, abdeckung_prozent, zustand, endgueltig_ab, version) VALUES (?, 'monat', "
+                + "kennzeichen, erhalten, erwartet, abdeckung_prozent, zustand, endgueltig_ab, version, berechnet_am) "
+                + "VALUES (?, 'monat', "
                 + "?, ?, ?, 'Europe/Berlin', 'vorgabe', ?, ?, ?, ?, ?, ?, 'counter', ?::numeric, 'vollständig', '[]'::jsonb, "
-                + "?, ?, 100, 'endgueltig', ?, 1)", OKT_1, w.mandant(), w.komponenten().get(kennzeichen), ENERGIE,
+                + "?, ?, 100, 'endgueltig', ?, 1, ?)", OKT_1, w.mandant(), w.komponenten().get(kennzeichen), ENERGIE,
                 Timestamp.from(b), Timestamp.from(e), stunden, tage, tage, tage, menge, stunden * 60, stunden * 60,
-                Timestamp.from(e.plus(Duration.ofDays(7))));
+                Timestamp.from(e.plus(Duration.ofDays(7))), Timestamp.from(e));
     }
 
     private static UUID uuid(String sql, Object... args) {

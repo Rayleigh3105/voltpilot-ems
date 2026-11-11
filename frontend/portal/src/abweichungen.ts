@@ -5,7 +5,7 @@
  * (E5 = A), die Vergleichszeilen aus dem Leser. Das Portal ordnet, filtert und prüft nur die Form; entschieden wird an
  * der Route. Eine Ursache ist immer die Aussage einer Person („Aussage von …“) — nie ein Satz des Systems (U3).
  */
-import { ApiError, type Abweichung, type AbweichungEintrag, type AbweichungErgebnis, type Auffaelligkeit } from './api';
+import { ablehnungCode, ApiError, type Abweichung, type AbweichungEintrag, type AbweichungErgebnis, type Auffaelligkeit } from './api';
 import { monatWort } from './bezugsbasisVergleich';
 import { BEGRUENDUNG_HINWEIS, begruendungOk, tag } from './energieziele';
 import type { MassnahmeVorbelegung } from './massnahmen';
@@ -273,13 +273,8 @@ export const ABLEHNUNG: Record<string, string> = {
   recht_fehlt: 'Dafür fehlt Ihnen das Recht an dieser Kennzahl.',
 };
 
-function code(e: unknown): string | null {
-  const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { code?: unknown }) : null;
-  return typeof body?.code === 'string' ? body.code : null;
-}
-
 export function ablehnungSatz(e: unknown): string {
-  const c = code(e);
+  const c = ablehnungCode(e);
   if (c && ABLEHNUNG[c]) return ABLEHNUNG[c];
   const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { message?: unknown }) : null;
   if (typeof body?.message === 'string' && body.message) return body.message;

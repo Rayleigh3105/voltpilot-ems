@@ -6,6 +6,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 
 - `npm run typecheck`, passende Vitest-Fälle und `npm run build` ausführen. Für Interaktion/Layout passende Playwright-Fälle verwenden.
 - Eine e2e-Spec, die beim LADEN wirft oder eine Umgebungsvariable braucht, gehört nicht in den Standardsatz: ein Sammelfehler in einer Datei setzt `npx playwright test` auf `0 tests in 0 files` und Exit 1 — der komplette Lauf findet dann nichts mehr. Solche Specs über `testIgnore` in `playwright.config.ts` ausnehmen und nur ihr Werkzeug sie einschalten lassen.
+- Browser-Proben messen am Dev-Server keine Dauer: er liefert jede Quelldatei einzeln aus, eine Zeitgrenze mäße ihn und die Last der Maschine. Soll ein Zeitgeber der Seite nicht der Grund sein, die Uhr der Seite anhalten (`page.clock`; Muster `uhrAnhaltenDannAnlagenliste` in `e2e/boot-flow.spec.ts`). Dauern gehören an den Build (`e2e/performance/audit.mjs`).
 - Bestehende Komponenten und Tokens in `designsystem/` nutzen. `Input` reicht seinen Ref zum nativen Feld durch; Picker und Input teilen den Feldrand.
 - `ebenenNav.ts` bestimmt Bereiche und Reiter aus `surface.ts`; `nav.ts` hält stabile Hash-Routen und Legacy-Umleitungen. Keine neuen Seiten ohne Navigationszuordnung.
 - Getrennte Portfolioreiter und Anlagenansichten erhalten; CSS für Portfolio-KPIs/Tabellen auf den Portfolio-Kontext begrenzen.
@@ -37,9 +38,10 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 - Globale Hilfe vor Mandanten-, Fehler- und Onboarding-Sperren rendern. Artikel und Hilfedialog teilen dieselbe Datenquelle.
 - Artikel-/Abschnittskennungen sind Lesezeichen. Screenshots nur aus den fiktiven E2E-Fixtures erzeugen; Fixtures nie ins Produktionsbundle importieren.
 - Capture zuerst, danach Tests des generierten Screenshot-Indexes. Keine parallelen Schreib-/Leseläufe auf diesen Dateien.
-- Auth-Token-Store bleibt tabbezogen. `initAuth` validiert gespeicherte Tokens vor Initialisierung; keycloak-js nicht zweimal initialisieren.
+- Auth-Token-Store bleibt im Browser-Tab tabbezogen (`sessionStorage`); nur die installierte App hält ihn im `localStorage`, nie für `platform-admin`. `initAuth` validiert gespeicherte Tokens vor Initialisierung; keycloak-js nicht zweimal initialisieren.
 - Anonyme Registrierung darf nicht über einen Request-Wrapper laufen, der Token-Refresh und Login erzwingt.
 - Referenznormalisierung mit API/Go-Prüfungen synchron halten; gemeinsame Texte aus `anlageFlow.ts` wiederverwenden.
+- Direktlink vom Gehäuse `/k/<ref>`: `nginx.conf`, `koppelLink.ts` (angenommen in `main.tsx` vor `initAuth`, Ziel in `App.tsx`) und `werkstatt.ts` (`beschriftung`) gemeinsam ändern; die Schlüssel liest auch das Keycloak-Theme (`js/box-band.js`). Die Referenz liegt im `sessionStorage` und 24 Stunden im `localStorage` (nur die Referenz mit Frist; gelöscht nach Verbinden, Abbruch, Abmelden) und füllt ein Feld vor; verbunden wird nie von selbst.
 
 ## Maintaining this file
 

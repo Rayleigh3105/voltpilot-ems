@@ -45,12 +45,15 @@ import java.util.UUID;
  *     "bewertet zu Ihrem Stromtarif" vs "zu Börsenpreisen" switch)
  * @param exportVerguetungPriced the EXPORT-side sibling of {@code tarifPriced}
  *     (B2 fix, audit vp-geldzahlen-audit-x7): whether the feed-in is valued at
- *     the plant's feste EEG-Einspeisevergütung instead of bare spot (a
- *     non-grid-charging {@code eigenverbrauch} plant with a known, unexpired
- *     commissioning date). {@code false} for Direktvermarktung - its spot +
- *     Marktprämie valuation is already explained by the premium fields - and
- *     for plants whose remuneration cannot be determined (they honestly stay
- *     at spot)
+ *     the plant's feste Einspeisevergütung instead of bare spot (a
+ *     non-grid-charging {@code eigenverbrauch} plant with a customer-stated
+ *     rate or a known, unexpired commissioning date). {@code false} for
+ *     Direktvermarktung - its spot + Marktprämie valuation is already
+ *     explained by the premium fields - and for plants whose remuneration
+ *     cannot be determined (they honestly stay at spot)
+ * @param exportVerguetungQuelle where that fixed rate comes from: {@code eeg}
+ *     (derived from the EEG schedule) or {@code angegeben} (the customer's own
+ *     statement); null exactly when {@code exportVerguetungPriced} is false
  * @param nettoErgebnisEur the period's result: Ertrag minus Stromkosten
  * @param savedEur the ATTRIBUTION of VoltPilot's steering - a delta against an
  *     unregulated plant that already sits INSIDE the result, never a sibling
@@ -143,6 +146,17 @@ import java.util.UUID;
  *     (Gerätewerte; die amtlichen Mengen rechnet der Monatslauf)
  * @param series the money per Berlin bucket (hour for a day, day for week and
  *     month, month for year/all) - the stacked bars + the cumulative line
+ * @param savedSteuerungMitBestandEur die Steuerung des Zeitraums „mit Bestand
+ *     bewertet“ (Bedienkonzept vp-herzogau-p3-kachel-konzept §4.3, Captain
+ *     14.10.2026 P3-2 A und P3-4 A): Σ seiner Berliner Tage, je Tag
+ *     {@code savedSteuerungEur} + Änderung des Vorsprungs auf den
+ *     Vergleichsspeicher × Bezugspreis × √0,92, auf den Cent. Null ohne
+ *     Dreiteilung oder wenn einem Tag ein gemessener Ladestand am Rand fehlt
+ * @param steuerungZeitraum nur {@code range=day}: Monat, letzte 7 Tage und der
+ *     Tag selbst mit Bestand samt der Tage des 7-Tage-Fensters (neuester
+ *     zuerst); null für jedes andere {@code range} oder ohne Batterie-Stammdaten.
+ *     Rechenregeln und Fälle: {@code docs/contracts/steuerung-tag-vectors.json},
+ *     Block {@code mit_bestand}
  */
 public record SiteEarningsDto(
         UUID siteId,
@@ -155,6 +169,7 @@ public record SiteEarningsDto(
         BigDecimal tarifParamCtKwh,
         boolean tarifPriced,
         boolean exportVerguetungPriced,
+        String exportVerguetungQuelle,
         BigDecimal anzulegenderWertCtKwh,
         long coveredSlots,
         LocalDate firstCoveredDate,
@@ -201,7 +216,9 @@ public record SiteEarningsDto(
         BigDecimal mispelNetzeinspeisungSpeicherKwh,
         String mispelMengenQuelle,
         List<SiteEarningsBucketDto> series,
-        PeakShavingDto peakShaving) {
+        PeakShavingDto peakShaving,
+        BigDecimal savedSteuerungMitBestandEur,
+        SteuerungZeitraumDto steuerungZeitraum) {
 
     /**
      * One bucket of the money chart: the three parts that stack (feed-in
@@ -209,6 +226,57 @@ public record SiteEarningsDto(
      * net, so the cumulative line is the running sum of {@code nettoEur} and
      * lands exactly on {@link SiteEarningsDto#nettoErgebnisEur}.
      */
+    /**
+     * Die Steuerung mit Bestand rund um den angefragten Tag (Bedienkonzept
+     * vp-herzogau-p3-kachel-konzept §4.2) - alles aus DEMSELBEN Walk wie die
+     * Tageszahl.
+     *
+     * @param bezugCtKwh mittlerer Bezugspreis des Tages (vor seinem ersten
+     *     Eimer der des jüngsten gemessenen Tages davor)
+     * @param bewertungCtKwh {@code bezugCtKwh × √0,92} auf 0,01 ct - so viel
+     *     ist eine gespeicherte kWh wert (fest 25 ct → 23,98 ct)
+     * @param monat Monatserster bis zum angefragten Tag
+     * @param sieben die 7 abgeschlossenen Berliner Kalendertage: läuft der Tag
+     *     noch, die 7 davor, sonst die 7 bis einschließlich des Tages
+     * @param heute der angefragte Tag; null vor seinem ersten Eimer
+     * @param tage die gemessenen Tage des 7-Tage-Fensters, neuester zuerst
+     */
+    public record SteuerungZeitraumDto(
+            BigDecimal bezugCtKwh,
+            BigDecimal bewertungCtKwh,
+            SteuerungFensterDto monat,
+            SteuerungFensterDto sieben,
+            SteuerungTagDto heute,
+            List<SteuerungTagDto> tage) {
+    }
+
+    /** Ein Zeitraum mit Bestand; {@code mitBestandEur} null bei einer Lücke oder ohne Tag. */
+    public record SteuerungFensterDto(LocalDate von, LocalDate bis, BigDecimal mitBestandEur) {
+    }
+
+    /**
+     * Ein Berliner Tag mit Bestand. {@code steuerungEur} ist die
+     * Kassenrechnung des Tages, {@code bestandEur} = (Vorsprung Ende − Vorsprung
+     * Start) × Bewertung, beide auf den Cent; {@code mitBestandEur} ist ihre
+     * Summe, null bei einer Lücke. Vorsprung = gemessener Ladestand −
+     * Vergleichsspeicher, ein Rückstand ist negativ. {@code gruende} aus der
+     * geschlossenen Liste ({@code gestern_verkauft}, {@code wenig_sonne},
+     * {@code anders_geladen}), höchstens zwei. {@code messungBis} ist das Ende
+     * des letzten gemessenen Eimers des Tages („Heute bis 08:15“).
+     */
+    public record SteuerungTagDto(
+            LocalDate tag,
+            BigDecimal steuerungEur,
+            BigDecimal vorsprungStartKwh,
+            BigDecimal vorsprungEndeKwh,
+            BigDecimal bezugCtKwh,
+            BigDecimal bewertungCtKwh,
+            BigDecimal bestandEur,
+            BigDecimal mitBestandEur,
+            List<String> gruende,
+            Instant messungBis) {
+    }
+
     public record SiteEarningsBucketDto(
             Instant start,
             BigDecimal einspeiseErloesEur,

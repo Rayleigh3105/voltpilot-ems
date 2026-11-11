@@ -56,7 +56,7 @@ describe('LadenKachel', () => {
       uebersicht: () => '#/anlage/s/ladevorgaenge', charger: () => '#/g/1' })} />);
     // Kein einziger Knopf: jede Handlung wohnt dort, wo sie hingehört.
     expect(container.querySelectorAll('button')).toHaveLength(0);
-    // Nur Sprünge - der Kopf auf „Ladevorgänge", die Zeile auf ihr Gerät.
+    // Nur Sprünge - der Kopf auf „Laden", die Zeile auf ihr Gerät.
     const links = [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'));
     expect(links).toEqual(['#/anlage/s/ladevorgaenge', '#/g/1']);
   });

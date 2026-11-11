@@ -1,38 +1,55 @@
 /**
- * Reiter „Laden“: alles rund um die Ladepunkte an einem Ort (Prototyp
- * `ui-laden.js`) - Netzanschluss, je Ladepunkt Aus · Smart · Schnell,
- * Womit laden, Ladeziel, Ladeplan, Vorrang vor dem Speicher, Fahrzeuge.
+ * Reiter „Laden“: der EINE Ort für jeden Ladepunkt (Konzept „Ein Ort fürs
+ * Laden" e1, Scheibe 1) - Netzanschluss, je Ladepunkt eine Bühne (Zustand und
+ * Herkunft in Klartext), Aus · Smart · Schnell (schaltet NUR hier), Womit
+ * laden, Ladeziel, Ladungen (kWh), Vorrang vor dem Speicher, Autos, eine
+ * Technik-Zeile zur Geräteseite.
  */
 import { liste } from './liste';
-import { useEffect, useId, useRef, useState } from 'react';
-import { api, type ChargingConfig } from '../api';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { api, type ChargingConfig, type Device, type OcppTransactionEconomics } from '../api';
 import { Recht } from '../components/Recht';
 import { VpTimePicker } from '../components/VpTimePicker';
-import { LADEQUELLE } from '../glossar';
-import type { SpeicherFreigabe } from '../ladepunkte';
+import { GeraetBuehne } from '../components/GeraetBuehne';
+import { LADEPUNKT_MODUS, LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
+import { useRollen } from '../rollen';
+import { LADEPUNKT_ABSTECKEN_DECKEL_TEXT, type LadepunktSperre, type SpeicherFreigabe } from '../ladepunkte';
 import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import type { FahrerAnfrage, LadepunktErtraege, LadepunktListe, Rueckspeisen } from '../ladepunktErtraege';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { parseDecimal } from '../zahl';
+import { ladeCsv } from '../ladeCsv';
+import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
+import { geraetSeiteHash } from '../nav';
 import { Blatt } from './Blatt';
 import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
+import { ladungenCsv, ladungenSumme, ladungenZeilen } from './ladungen';
 import { Ic } from './Ic';
 import {
-  OPTION_SONNE_SPEICHER, abfahrtSetzen, abfahrtZeile, band, ertragZeile, fahrerAnfrage, grenzePruefung, haltSatz,
-  hatSpeicherGrenze, heutigerAnschluss, kmZu, kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan,
+  OPTION_SONNE_SPEICHER, abfahrtSetzen, abfahrtZeile, band, bandBremst, ertragZeile, fahrerAnfrage, grenzePruefung,
+  haltSatz, heutigerAnschluss, kmZu, kwVereinbart, ladebudgetKw, ladeModusSperre, ladeQuelle, ladeWahl,
   ladestandAlterText, ladestandZuletztText, lokalesDatum, naechsteAbfahrt, naechsteUhrzeit, pctKm, rueckspeiseLage,
   rueckspeiseSatz, rueckspeiseWohin, ruhtZurueckspeisen, schnellSatz, speicherZeile, wallboxMispel, wochentageText,
-  type AnschlussStand, type LadeQuelle, type RueckspeiseLage, type WallboxMispel,
+  type AnschlussStand, type RueckspeiseLage, type WallboxMispel,
 } from './laden';
 import { MISPEL_PLAN_VON } from '../glossar';
+import { DreiZahlen, QuelleZeichen, VorschauBand, startEntwurf, wunschAus } from './LadeWahl';
+import { kwhText, mitAuto, uhrKurz, vorschauFuer, vorschauSaetze, type VorschauAnlage } from './ladeVorschau';
+import { rueckmeldung, type Gesendet } from './rueckmeldung';
 import type { BlattZustand, SeitenBild } from './seite';
-import { Zeitband } from './Zeitband';
-import { N, TAG, fCt, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
+import { TAG, fCt, fEur, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
+// `RahmenBlatt` ist seit „Ein Ort fürs Laden" Scheibe 4 auch außerhalb der Steuerung mountbar
+// (Einstellungen, `components/AnschlussgrenzeBlatt.tsx`) - diese Datei bringt ihre eigene
+// Styling-Abhängigkeit deshalb selbst mit, statt sich auf `SteuerungSeite.tsx`s Import zu
+// verlassen (Bündler dedupliziert dieselbe Datei; sonst rendert das Blatt dort ohne Höhen-/
+// Z-Index-Regel und der Sektionsleiste läuft über sie hinweg).
+import './steuerung.css';
 
 export interface LadenReiterProps {
+  siteId: string;
   bild: SeitenBild;
   rahmen: LadeparkRahmen | null;
   config: ChargingConfig | null;
@@ -40,7 +57,6 @@ export interface LadenReiterProps {
   busy: string | null;
   oeffne: (b: BlattZustand) => void;
   onSmart: (g: GeraetBild) => void;
-  onQuelle: (g: GeraetBild, q: LadeQuelle) => void;
   onVorrang: (speicherZuerst: boolean) => void;
   onLadevorgaenge: () => void;
   zuGeraete: () => void;
@@ -55,18 +71,39 @@ export interface LadenReiterProps {
   releaseGemeldet?: string | null;
   /** „Sonne + Speicher“: die Reserve der Anlage setzen (null = Vorgabe). */
   onReserve?: (kwh: number | null) => void;
+  /** Was die Vorschau von der Anlage braucht (Speicher, Vorrang, Startleistung). */
+  anlage: VorschauAnlage;
+  /** Je Ladepunkt die zuletzt gesendete Wahl dieser Sitzung (Rückmeldung in drei Schritten). */
+  gesendet: Record<string, Gesendet>;
+  /** Für die Technik-Zeile (§4.3): der Weg zur Geräteseite der Wallbox. */
+  devices?: Device[];
+  /** Für „Ladungen" (§4.1 Punkt 5 / §4.4, Scheibe 2): die Ladungen aller Ladepunkte, mit Herkunft und Geld. */
+  economics?: OcppTransactionEconomics[] | null;
 }
 
 export function LadenReiter(p: LadenReiterProps) {
   const { bild } = p;
   const lp = bild.ladepunkte;
+  const boxRef = boxRefOf(p.devices, p.siteId);
+  // Die Anschlussgrenze wohnt seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) in
+  // den Einstellungen - hier bleibt NUR ein Satz, und nur, solange sie
+  // tatsächlich bremst (`bandBremst`). Kein Rahmen-Knopf, keine Karte mehr.
+  const bremstSatz = bandBremst(band(p.rahmen, bild.ladepunkte, bild.reihen, bild.raster.jetzt));
   return (
     <>
-      <BudgetKarte bild={bild} rahmen={p.rahmen} oeffne={p.oeffne} />
+      {bremstSatz && (
+        <section className="card" aria-label="Netzanschluss">
+          <p className="leise">Mehr lässt Ihr Hausanschluss gerade nicht zu.</p>
+        </section>
+      )}
       {lp.map((g) => (
-        <LadeKarte key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne} onSmart={p.onSmart} onQuelle={p.onQuelle}
+        <LadeKarte
+          key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne}
+          onSmart={p.onSmart} release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null}
+          anlage={p.anlage} gesendet={p.gesendet[g.id] ?? null} siteId={p.siteId} boxRef={boxRef}
+          economics={p.economics ?? null}
           m={wallboxMispel(g, p.ladepunkte)} ertraege={p.ertraege ?? null} onFahrer={p.onFahrer} zuErloesen={p.zuErloesen}
-          release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null} />
+        />
       ))}
       {!lp.length && (
         <section className="card">
@@ -82,7 +119,7 @@ export function LadenReiter(p: LadenReiterProps) {
       <section className="card immer">
         <button type="button" className="immer-r" onClick={p.onLadevorgaenge}>
           <span className="li"><Ic n="history" s={18} /></span>
-          <span className="lt">Ladevorgänge<small>Jede Ladung mit Menge, Herkunft und Karte</small></span>
+          <span className="lt">Ladevorgänge<small>Was gerade lädt, mit Leistung und Karte</small></span>
           <Ic n="chevR" s={18} />
         </button>
       </section>
@@ -90,51 +127,20 @@ export function LadenReiter(p: LadenReiterProps) {
   );
 }
 
-function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: LadeparkRahmen | null; oeffne: (b: BlattZustand) => void }) {
-  const b = band(rahmen, bild.ladepunkte, bild.reihen, bild.raster.jetzt);
-  if (!b) {
-    return (
-      <section className="card" aria-label="Netzanschluss">
-        <div className="card-h">
-          <h2><Ic n="gauge" s={18} />Netzanschluss</h2>
-          <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
-        </div>
-        <p className="leise">Die Grenze Ihres Netzanschlusses ist noch nicht hinterlegt. Ohne sie verteilt die Box nur, was sie sicher weiß.</p>
-      </section>
-    );
-  }
-  return (
-    <section className="card" aria-label="Netzanschluss">
-      <div className="card-h">
-        <h2><Ic n="gauge" s={18} />Netzanschluss {fKw(b.anschlussKw)}</h2>
-        <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
-      </div>
-      <div className="budget">
-        <div className="b-bar" role="img" aria-label="Aufteilung des Netzanschlusses">
-          {b.teile.map((x, i) => (
-            <span key={`${x.k}-${i}`} className={x.k} style={{ flex: `0 0 ${((x.kw / b.anschlussKw) * 100).toFixed(1)}%` }} title={`${x.label} ${fKw(x.kw)}`}>
-              {x.kw / b.anschlussKw > 0.14 ? x.label : ''}
-            </span>
-          ))}
-        </div>
-        <p className="leise">
-          Aus dem Netz gerade: Haus {b.hausKw != null ? fKw(b.hausKw) : 'nicht gemeldet'}
-          {b.ladenNetzKw > 0.05 ? `, Laden ${fKw(b.ladenNetzKw)}` : ''}. Für Autos frei: <b style={{ color: 'var(--c-fg)' }}>{fKw(b.freiKw)}</b>. Laden mit Sonnenstrom belastet den Anschluss nicht.
-          {b.ladenKw > 0.05 ? ` Es laden gerade ${fKw(b.ladenKw)}.` : ''}
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ertraege, onFahrer, zuErloesen, release, releaseGemeldet }: {
+function LadeKarte({
+  g, bild, fahrzeuge, busy, oeffne, onSmart, release, releaseGemeldet, anlage, gesendet, siteId, boxRef, economics,
+  m, ertraege, onFahrer, zuErloesen,
+}: {
   g: GeraetBild; bild: SeitenBild; fahrzeuge: SiteFahrzeuge | null; busy: boolean;
-  oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void; onQuelle: (g: GeraetBild, q: LadeQuelle) => void;
+  oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void;
   /** MiSpeL MP-41b; `null` = Bestand, die Karte bleibt wie vor MP-41b. */
   m: WallboxMispel | null; ertraege: LadepunktErtraege | null;
   onFahrer?: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>; zuErloesen?: () => void;
   release: SpeicherFreigabe | null; releaseGemeldet: string | null;
+  anlage: VorschauAnlage; gesendet: Gesendet | null;
+  siteId: string; boxRef: string | null; economics: OcppTransactionEconomics[] | null;
 }) {
+  const rollen = useRollen();
   // BK-41 A: für ein Auto mit gemeldetem Ladestand wird das Ladeziel zu „Abfahrt und Reserve“ - eine Quelle (MP-41a).
   const abfahrtStatt = m?.fahrzeug === 'mit_ladestand';
   const r = bild.raster;
@@ -142,9 +148,23 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
   const wahl = ladeWahl(g);
   const q = ladeQuelle(g);
   const an = g.an === true;
+  // Der Anlagen-Standard eines Ladepunkts, dessen Kunde nie gewählt hat (E5=A): ehrlich „immer sofort voll“.
+  const ungesteuert = !g.eingriff && g.steuerart?.quelle === 'sofort';
+  const sperreAus = ladeModusSperre(g, bild.funktion.sperre, 'aus');
+  const sperreSchnell = ladeModusSperre(g, bild.funktion.sperre, 'schnell');
+  const schnellWirktNicht = sperreSchnell?.art === 'wirkt_nicht';
+  // Auto steckt, aber kein Ladevorgang läuft: „Aus“ und „Schnell“ endeten in der Ablehnung des Servers.
+  const ohneLadung = sperreSchnell?.art === 'kein_ladevorgang' ? sperreSchnell : null;
+  const schnellGrundId = useId();
   const karte = l?.karte ? liste(fahrzeuge?.fahrzeuge).find((f) => f.tagRef === l.karte) ?? null : null;
+  // Regelt VoltPilot diese Wallbox gerade gar nicht? (Audit W-01/W-05/W-12)
+  const sperre = l?.sperre ?? null;
+  const stumm = sperre?.kind === 'getrennt' || sperre?.kind === 'nie_gemeldet';
+  // ⚠ Ein volles Auto (SuspendedEV) bekommt keine Ladeankündigung (Audit W-21).
+  const autoPausiert = l?.zustand?.kind === 'auto_pausiert' ? l.zustand : null;
   let sub: string;
-  if (l?.angesteckt) {
+  if (stumm) sub = 'Ob ein Auto steckt, ist gerade unbekannt';
+  else if (l?.angesteckt) {
     const kurzKarte = l.karte ? kartenKurz(l.karte) : '';
     const wer = [karte?.name?.trim() || null, kurzKarte ? `Karte ${kurzKarte}…` : null].filter(Boolean).join(' · ') || (karte ? fahrzeugName(karte) : 'Ein Auto');
     // MiSpeL MP-41c (BK-41c-2 A): ein alter Ladestand verschwindet nicht spurlos - der Kopf sagt, von wann er ist.
@@ -153,65 +173,75 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
   } else sub = 'Kein Auto angesteckt';
   const platz = bild.rang.indexOf(g.id) + 1;
   const ansage = wahl === 'aus'
-    ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ' bis zum Abstecken'}. Danach wieder Smart.`
-    : wahl === 'schnell'
+    ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ` bis zum Abstecken, höchstens ${LADEPUNKT_ABSTECKEN_DECKEL_TEXT}`}. Danach wieder Smart.`
+    : wahl === 'schnell' && !ungesteuert
       ? schnellSatz(g, m != null)
-      : an && g.sonnig && platz > 0 && !g.steuerart?.ziel
-        ? `Sonnenstrom · Platz ${platz}`
-        : g.warum;
-  const quellen: [LadeQuelle, string, string][] = [
-    ['sonne', LADEQUELLE.sonne, 'ueberschuss'], ['min', LADEQUELLE.min, 'ueberschuss'],
-    ['speicher', LADEQUELLE.speicher, OPTION_SONNE_SPEICHER], ['guenstig', LADEQUELLE.guenstig, 'guenstig'],
-  ];
-  const frei = new Set(liste(g.eintrag.optionen?.quellen).filter((x) => !x.gesperrt).map((x) => x.id));
-  // „Sonne + Speicher“ zeigt auch GESPERRT seinen Grund (die Haus-Disziplin der
-  // gesperrten Karte) - eine Wahl, die verschwindet, erklärt nichts. Nur neben
-  // einer wählbaren Sonnen-Quelle: ohne sie fehlt die ganze Gruppe aus einem
-  // Grund, den die Karte schon nennt.
-  const speicherSperre = frei.has('ueberschuss')
-    ? liste(g.eintrag.optionen?.quellen).find((x) => x.id === OPTION_SONNE_SPEICHER && x.gesperrt) ?? null
-    : null;
+      : null;
   const s = g.steuerart;
   const zielAn = s?.ziel === 'bis_uhrzeit' && typeof s.zielEnergieKwh === 'number';
   const zielMoeglich = liste(g.eintrag.optionen?.ziele).some((z) => z.id === 'bis_uhrzeit' && !z.gesperrt);
-  const kw = g.nennKw ?? 11;
-  let zielSub = 'Tippen, um eine Menge bis zu einer Uhrzeit festzulegen';
-  let planKw: (number | null)[] | null = null;
+  let zielSub = 'Ziel setzen';
   let zielBis: number | null = null;
   if (zielAn && s?.zielFenster?.bis) {
     const bis = naechsteUhrzeit(r.jetzt, s.zielFenster.bis);
     zielBis = bis;
-    const art = s.quelle === 'guenstig' ? 'In den günstigsten Stunden'
-      : q === 'speicher' ? 'Sonne und freigegebener Speicher zuerst, Rest in den günstigsten Stunden'
-        : 'Sonne zuerst, Rest in den günstigsten Stunden';
+  }
+  const entwurf = q ? startEntwurf(g) : null;
+  const vor = entwurf ? vorschauFuer(bild, g, anlage, entwurf) : null;
+  if (zielAn && zielBis != null) {
     // Der Fahrplan hat Vorrang; die Schätzung nur, wo er fehlt und ein Auto steckt.
     const geplant = g.herkunft.some((h, t) => h === 'plan' && t > r.jetzt);
     let fertig: number | null = null;
     if (geplant) {
-      for (let t = r.jetzt; t < bis; t++) if ((g.kw[t] ?? 0) > 0.02) fertig = t + 1;
-    } else if (l?.angesteckt) {
-      const plan = ladeplan(bild.reihen, r.jetzt, bis, s.zielEnergieKwh ?? 0, kw, s.quelle === 'guenstig');
-      planKw = plan.kw;
-      fertig = plan.fertig;
-    }
-    zielSub = `${art}${fertig != null ? ` · fertig voraussichtlich ${uhrTag(fertig)}` : !l?.angesteckt ? ' · sobald ein Auto ansteckt' : ''}`;
+      for (let t = r.jetzt; t < zielBis; t++) if ((g.kw[t] ?? 0) > 0.02) fertig = t + 1;
+    } else if (l?.angesteckt && vor?.vorschau.schafft) fertig = vor.vorschau.fertig;
+    zielSub = sperre ? 'wirkt gerade nicht' : fertig != null ? `fertig voraussichtlich ${uhrTag(fertig)}` : !l?.angesteckt ? 'sobald ein Auto ansteckt' : 'reicht laut Schätzung nicht ganz';
   }
+  const saetze = vor ? vorschauSaetze(vor.vorschau, vor.abfahrt) : null;
+  // ⚠ Nimmt die Wallbox keine Ladegrenzen an, ist jede Ladewahl eine leere Zusage (Audit W-05).
+  const darf = rollen.darf('betriebsweise.aendern') && sperre?.kind !== 'keine_grenzen';
+  const oeffneWahl = (e: { currentTarget: HTMLElement }) => { e.currentTarget.focus(); oeffne({ art: 'womit', id: g.id }); };
+  const zeilen = gesendet ? rueckmeldung(l, gesendet, r.nowMs, (ms) => uhrVon(r, ms)) : null;
+  // ⚠ Die Bühne (Konzept „Ein Ort fürs Laden" e1, §4.1 Punkt 1): „der Strom
+  // läuft in der Farbe seiner Herkunft". Nur beim Laden selbst - pausiert/
+  // ohne Auto zeigt sie die ruhige Spur, nie eine erfundene Quelle.
+  const herkunft = an ? herkunftArt(bild, r.jetzt) : null;
+  const hw = herkunftWort(bild, r.jetzt);
+  const buehneSatz = stumm
+    ? sub
+    : !l?.angesteckt
+      ? 'Kein Auto angesteckt'
+      : an
+        ? (hw === 'lädt' ? 'Lädt' : `Lädt ${hw}`)
+        : l.keinLadevorgang
+          ? 'Kein Ladevorgang'
+          : wahl === 'aus'
+            ? 'Pausiert'
+            : 'Wartet';
+  const ladungenMonat = ladungenZeilen(economics, l?.chargePointId ?? '');
+  const ladungen = ladungenMonat.slice(0, 3);
+  const summe = ladungenSumme(ladungenMonat);
+  const technikHref = boxRef ? geraetSeiteHash(siteId, boxRef, chargerGeraetId(l?.chargePointId ?? '')) : null;
   // MiSpeL MP-41c (BK-41c-1 A): was der Lauf zum Zurückspeisen sagt - geplant (Zeile + Band) oder warum nicht.
   // Ist die Steuerung angehalten, schaltet VoltPilot nichts; das sagt schon der Hinweis der Karte.
   const lage = m && !bild.funktion.angehalten ? rueckspeiseLage(g, m, r) : null;
   const zurueck = lage?.art === 'geplant' ? lage.plan.zurueck : undefined;
-  const zeileH = zurueck ? 30 : 18;
-  const zeile = planKw ? { g, h: zeileH, kw: mitGemessen(g, planKw, r.jetzt), zurueck } : { g, h: zeileH, zurueck };
   const t1 = Math.min(N, r.jetzt + TAG);
   // Die Legende nennt nur, was das Band zeigt: „laden“ nur, wenn die Zeile Laden trägt.
-  const laedtImBand = (zeile.kw ?? g.kw).slice(r.jetzt, t1).some((v) => v != null && v > 0.02);
-  // „Sonne + Speicher“: das Ladestand-Band mit der Untergrenze des Fahrplans -
-  // nur, wenn der Plan im Fenster überhaupt eine trägt (belegte Zahlen).
-  const grenzeBand = q === 'speicher' && hatSpeicherGrenze(bild.reihen.speicherGrenze, r.jetzt, t1);
+  const laedtImBand = g.kw.slice(r.jetzt, t1).some((v) => v != null && v > 0.02);
   const ticks: number[] = [];
   for (let k = 0; k <= t1 - r.jetzt; k++) if ((r.jetzt + k) % 24 === 0) ticks.push(k);
   return (
     <section className={`card lp-card${bild.funktion.angehalten ? ' matt' : ''}`} aria-label={g.name}>
+      {/* ⚠ Die Sperre sagt `SperreHinweis` gleich darunter mit Satz UND Folge als
+          EIGENER `role="status"` - die Bühne nennt sie hier nicht zusätzlich
+          (zwei Status-Flächen mit demselben Satz war der Befund). */}
+      <GeraetBuehne
+        zahl={an && g.jetztKw != null ? { zahl: String(Math.round(g.jetztKw * 10) / 10).replace('.', ','), einheit: 'kW', wort: null, ton: 'ok', key: 'kw' } : null}
+        satz={buehneSatz}
+        satzTon={sperre || l?.keinLadevorgang ? 'warn' : 'ok'}
+        grafik={{ art: 'wallbox', kw: g.jetztKw ?? null, laedt: an, herkunft, angesteckt: !!l?.angesteckt }}
+      />
       <div className="lp-h">
         <span className={`ico${an ? ' on' : ''}`}><Ic n="car" s={26} /></span>
         <span className="t">
@@ -220,30 +250,57 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
         </span>
         <span className="lp-kw">
           {an && g.jetztKw != null ? fKw(g.jetztKw) : '—'}
-          <small>{an ? herkunftWort(bild, r.jetzt) : g.pill[1]}</small>
+          <small>{an ? herkunftWort(bild, r.jetzt) : stumm ? 'keine Verbindung' : l?.angesteckt ? g.pill[1] : 'kein Auto'}</small>
         </span>
       </div>
       <Recht aktion="handeingriff.setzen"><div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
-        {([['aus', 'pause', 'Aus'], ['smart', 'sun', 'Smart'], ['schnell', 'rocket', 'Schnell']] as const).map(([k, i, label]) => (
+        {([['aus', 'pause', LADEPUNKT_MODUS.aus], ['smart', 'sun', LADEPUNKT_MODUS.smart], ['schnell', 'rocket', LADEPUNKT_MODUS.schnell]] as const).map(([k, i, label]) => (
           <button
             type="button"
             key={k}
             data-m={k}
             aria-pressed={wahl === k}
-            disabled={busy || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
+            // ⚠ Unter einer Sperre bleibt nur der Rückweg eines laufenden Eingriffs („Smart“).
+            // ⚠ „Aus“ und „Schnell“ folgen EINER Regel (`ladeModusSperre`) - derselben wie das
+            // Blatt des Ladepunkts, und für „Schnell“ derselben (`boostbar`) wie *Ladevorgänge*
+            // und das Menü „Eingreifen“ (Audit, Befund 3).
+            disabled={busy || (k === 'smart' ? sperre != null && !g.eingriff : (k === 'aus' ? sperreAus : sperreSchnell) != null)}
+            aria-describedby={k !== 'smart' && ohneLadung ? schnellGrundId : k === 'schnell' && schnellWirktNicht ? schnellGrundId : undefined}
             onClick={(e) => {
-              if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
               e.currentTarget.focus();
+              if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
               oeffne({ art: 'geraet', id: g.id, modus: k === 'aus' ? 'aus' : 'an' });
             }}
           >
             <Ic n={i} s={20} />
             {label}
+            {k === 'schnell' && <small>{ungesteuert ? 'immer' : schnellWirktNicht || ohneLadung ? 'gerade nicht' : 'für diese Ladung'}</small>}
           </button>
         ))}
       </div></Recht>
+      {/* Der Grund statt eines stummen grauen Knopfs; Sperre, Ruhe und „kein Auto“
+          sagen ihre eigenen Flächen darunter bzw. die Bühne. */}
+      {schnellWirktNicht && <p className="leise" role="note" id={schnellGrundId}>{sperreSchnell?.satz}</p>}
+      {/* Auto steckt ohne Ladevorgang: der Ausweg als Hinweis, nicht als Fehler nach dem Klick. */}
+      {ohneLadung && (
+        l?.keinLadevorgang
+          ? <p className="konflikt" role="note" id={schnellGrundId}><Ic n="info" s={18} /><span>{ohneLadung.satz}</span></p>
+          : <p className="leise" role="note" id={schnellGrundId}>{ohneLadung.satz}</p>
+      )}
+      {sperre && <SperreHinweis sperre={sperre} />}
       {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
-      <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>
+      {ansage && <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>}
+      {ungesteuert && (
+        <>
+          <p className="lq-zustand"><i aria-hidden="true" />{LADEPUNKT_UNGESTEUERT.satz}</p>
+          <p className="leise">{LADEPUNKT_UNGESTEUERT.folge}</p>
+          <Recht aktion="betriebsweise.aendern">
+            <button type="button" className="btn lq-einstellen" disabled={busy} onClick={oeffneWahl}>
+              <Ic n="sun" s={18} />{LADEPUNKT_UNGESTEUERT.knopf}
+            </button>
+          </Recht>
+        </>
+      )}
       {!abfahrtStatt && l?.sitzungKwh != null && l.sitzungKwh > 0.05 && (
         <div className="soc">
           <div className="soc-row">
@@ -259,55 +316,88 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
       {wahl === 'smart' && (
         <>
           {!abfahrtStatt && <div className="blk">
-            <h3>Womit laden?</h3>
-            <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Womit laden">
-              {quellen.filter(([, , id]) => frei.has(id)).map(([k, label]) => (
-                <button type="button" key={k} aria-pressed={q === k} disabled={busy} onClick={() => onQuelle(g, k)}>{label}</button>
-              ))}
-              {speicherSperre && (
-                <button type="button" key="speicher-gesperrt" aria-pressed={false} disabled title={speicherSperre.grund ?? undefined}>{LADEQUELLE.speicher}</button>
-              )}
-            </div></Recht>
-            {speicherSperre?.grund && <p className="leise">{LADEQUELLE.speicher}: {speicherSperre.grund}</p>}
+            {/* h2, nicht h3: die Seite trägt bereits ein h1, kein h2 dazwischen (1.3.1). */}
+            <h2>Womit laden{platz > 0 && <span className="meta">Platz {platz}</span>}</h2>
+            {q && vor && saetze ? (
+              <WahlZeile darf={darf} label={`${LADEQUELLE[q]}: ${LADEQUELLE_VERSPRECHEN[q]}. Womit laden – ändern`} onClick={oeffneWahl}>
+                <QuelleZeichen q={q} klein />
+                <span className="lq-t"><b>{LADEQUELLE[q]}</b> <small>{LADEQUELLE_VERSPRECHEN[q]}</small></span>
+                {darf && <span className="lq-chev" aria-hidden="true"><Ic n="chevR" s={18} /></span>}
+                {/* Die Vorschau ist eine Zusage - sie entfällt, solange VoltPilot
+                    nichts bewirkt oder das Auto selbst nichts nimmt. Beide
+                    Flächen sind eine Vorschau der Karte für sehende Nutzer,
+                    kein zweiter Name des Knopfs (der Name oben nennt schon
+                    Quelle und Aktion): `aria-hidden` auf der Fläche und der
+                    Satz als CSS-Inhalt (`content: attr(data-satz)`), kein
+                    Textknoten - sonst zählte er trotz `aria-hidden` zum
+                    SICHTBAREN Text des Knopfs (axe `label-content-name-
+                    mismatch`; dieselbe Falle wie die Achsenbeschriftung in
+                    `VorschauBand`, siehe dort). */}
+                {!sperre && !autoPausiert && (
+                  <span className="lq-mini" aria-hidden="true">
+                    <VorschauBand v={vor.vorschau} abfahrt={vor.abfahrt} maxKw={g.nennKw ?? 11} h={36} preis={q === 'guenstig'}
+                      label={`${LADEQUELLE[q]}: geschätzte Ladeleistung bis ${uhrKurz(vor.abfahrt)} Uhr nach Herkunft`} />
+                  </span>
+                )}
+                {!sperre && (
+                  <span
+                    className="lq-satz"
+                    aria-hidden="true"
+                    data-satz={
+                      autoPausiert
+                        ? [autoPausiert.word, autoPausiert.detail].filter(Boolean).join(' · ')
+                        : mitAuto(saetze.jetzt, !!l?.angesteckt)
+                    }
+                  >
+                    {saetze.dann && !autoPausiert && <small data-satz={`${saetze.dann} · Schätzung`} />}
+                  </span>
+                )}
+              </WahlZeile>
+            ) : (
+              <WahlZeile darf={darf} label="Noch nicht gewählt: Tippen, um zu wählen. Womit laden – wählen" onClick={oeffneWahl}>
+                <span className="lq-t"><b>Noch nicht gewählt</b><small>Tippen, um zu wählen</small></span>
+                {darf && <span className="lq-chev" aria-hidden="true"><Ic n="chevR" s={18} /></span>}
+              </WahlZeile>
+            )}
+            {!darf && <Recht aktion="betriebsweise.aendern"><span /></Recht>}
             {q === 'speicher' && <p className="leise">{speicherZeile(release, bild.reihen.speicherGrenze?.[r.jetzt] ?? null, releaseGemeldet)}</p>}
-            {q === 'guenstig' && !zielAn && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Börsenpreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
-            {q === 'min' && <p className="leise">Lädt immer mit mindestens {fKw(s?.mindestleistungKw ?? 1.4)}; was die Sonne mehr liefert, kommt dazu.</p>}
+            {q === 'guenstig' && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Bezugspreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
           </div>}
           {abfahrtStatt && m && <AbfahrtZeile g={g} m={m} oeffne={oeffne} nowMs={r.nowMs} />}
           {!abfahrtStatt && zielMoeglich && (
             <button type="button" className="lziel" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'ziel', id: g.id }); }}>
               <Ic n="flag" s={20} />
               <span>
-                <b>{zielAn ? `+${zahl0(s?.zielEnergieKwh ?? 0)} kWh bis ${zielBis != null ? uhrTag(zielBis) : s?.zielFenster?.bis ?? ''}` : 'Kein Ziel · lädt, wenn es passt'}</b>
+                <b>{zielAn ? `+${zahl0(s?.zielEnergieKwh ?? 0)} kWh bis ${zielBis != null ? uhrTag(zielBis) : s?.zielFenster?.bis ?? ''}` : 'Kein Ziel'}</b>
                 <small>{zielSub}</small>
               </span>
               <Ic n="chevR" s={18} />
             </button>
           )}
-          <Zeitband
-            id={`lade-${g.id}`}
-            t0={r.jetzt}
-            t1={t1}
-            reihen={bild.reihen}
-            jetzt={r.jetzt}
-            padT={22}
-            tage
-            label="Ladeplan der nächsten 24 Stunden"
-            bands={grenzeBand
-              ? [{ art: 'pv', h: 20, gap: 4 }, { art: 'soc', h: 22, gap: 4, grenze: bild.reihen.speicherGrenze, label: 'Ladestand und Untergrenze für „Sonne + Speicher“' }, { art: 'preis', h: 22, gap: 6 }]
-              : [{ art: 'pv', h: 20, gap: 4 }, { art: 'preis', h: 22, gap: 6 }]}
-            rows={[zeile]}
-            ticks={ticks}
-            namen={false}
-          />
+          {/* MiSpeL MP-41c (BK-41c-1 A): an einem Ladepunkt mit Zurückspeisen zeigt die Karte den Plan des Laufs als Band. */}
           {lage?.art === 'geplant' && m && (
-            <div className="wb-leg" data-legende="zurueck">
-              {laedtImBand && <span><i className="l" />laden</span>}
-              <span><i className="z" />zurück {rueckspeiseWohin(m.fahrer)}</span>
-              {lage.plan.standMs != null && <span className="r">{MISPEL_PLAN_VON} {uhrVon(r, lage.plan.standMs)}</span>}
-            </div>
+            <>
+              <Zeitband
+                id={`lade-${g.id}`}
+                t0={r.jetzt}
+                t1={t1}
+                reihen={bild.reihen}
+                jetzt={r.jetzt}
+                padT={22}
+                tage
+                label="Ladeplan der nächsten 24 Stunden"
+                bands={[{ art: 'pv', h: 20, gap: 4 }, { art: 'preis', h: 22, gap: 6 }]}
+                rows={[{ g, h: 30, zurueck }]}
+                ticks={ticks}
+                namen={false}
+              />
+              <div className="wb-leg" data-legende="zurueck">
+                {laedtImBand && <span><i className="l" />laden</span>}
+                <span><i className="z" />zurück {rueckspeiseWohin(m.fahrer)}</span>
+                {lage.plan.standMs != null && <span className="r">{MISPEL_PLAN_VON} {uhrVon(r, lage.plan.standMs)}</span>}
+              </div>
+            </>
           )}
-          {grenzeBand && <p className="leise">Gestrichelt: bis dorthin darf der Speicher für das Auto entladen. Fehlt die Linie, nutzt der Fahrplan den Speicher selbst oder es gibt keine Freigabe.</p>}
         </>
       )}
       {/* BK-41c-3 A: „Abfahrt und Reserve“ bleibt unter „Schnell“ erreichbar - sie gilt wieder mit „Smart“. */}
@@ -316,8 +406,94 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
           unter={`gilt wieder mit „Smart“${m.fahrer.reserve_pct != null ? ` · Reserve ${zahl0(m.fahrer.reserve_pct)}\u00a0% bleibt` : ''}`} />
       )}
       {m && <ErtragZeile e={ertraege} komponente={g.id} zuErloesen={zuErloesen} />}
+      {zeilen && (
+        <ol className="lq-rm" aria-live="polite" aria-label="Rückmeldung">
+          {zeilen.map((z, i) => (
+            <li key={i} className={z.zustand}>
+              <span className="pk" aria-hidden="true">{z.zustand === 'fertig' ? <Ic n="check" s={12} /> : z.zustand === 'warn' ? <Ic n="alert" s={12} /> : z.zustand === 'laeuft' ? '…' : null}</span>
+              <span>{z.text}{z.unter && <small>{z.unter}</small>}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {/* „Ladungen" (§4.1 Punkt 5 / §4.4, Scheibe 2): drei Zahlen des Monats,
+          darunter die letzten drei mit Sonnenanteil und Euro; „Alle" öffnet
+          Monat, Auto-Filter und die CSV „für die Abrechnung". */}
+      <div className="blk">
+        <div className="card-h" style={{ margin: 0 }}>
+          <h3 style={{ margin: 0 }}>Ladungen · {monatsName()}</h3>
+          <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'ladungen', id: g.id }); }}>
+            Alle<Ic n="chevR" s={16} />
+          </button>
+        </div>
+        {summe.kwh != null && (
+          <p style={{ margin: '4px 0 10px', font: '600 14px/1.4 var(--font)' }}>
+            {fKwh(summe.kwh)}{summe.sonnenanteilPct != null ? `, ${fPct(summe.sonnenanteilPct)} Sonne` : ''}
+            {summe.euro != null ? `, ${fEur(summe.euro)}` : ''}
+            {summe.durchschnittCtKwh != null ? <small> · Ø {fCt(summe.durchschnittCtKwh)}</small> : null}
+          </p>
+        )}
+        {ladungen.length ? (
+          <ul className="lq-ladungen">
+            {ladungen.map((z) => (
+              <li key={z.key}>
+                <span>{ladungDatum(z.startedAt)}{z.sonnenanteilPct != null ? ` · ${fPct(z.sonnenanteilPct)} Sonne` : ''}</span>
+                <b>{z.kwh != null ? fKwh(z.kwh) : '—'}{z.euro != null ? <small> {fEur(z.euro)}</small> : null}</b>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="leise">Noch keine abgeschlossene Ladung.</p>
+        )}
+      </div>
+      {/* Technik-Zeile (§4.3): Kennung, Sicherheitsprofil und Ausfall-Schutz
+          wohnen an der Geräteseite - hier nur die ruhige Zeile, die hinführt. */}
+      {technikHref && (
+        <a className="lq-technik" href={technikHref}>
+          <Ic n="shield" s={16} />
+          <span>Anschluss geschützt <small>{g.name} verbunden · Technik</small></span>
+          <Ic n="chevR" s={16} />
+        </a>
+      )}
     </section>
   );
+}
+
+/** „Oktober" - der Name des laufenden Monats (die Zeilen sind sein Inhalt). */
+function monatsName(): string {
+  return new Date().toLocaleDateString('de-DE', { month: 'long' });
+}
+
+/** „26.10., 18:20" - das Datum einer Ladung, in Kundenworten. */
+function ladungDatum(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const d = new Date(t);
+  return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}, ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** Woher der Ladestrom gerade kommt - für die Farbe der Bühne (§4.1 Punkt 1). */
+function herkunftArt(bild: SeitenBild, t: number): 'sonne' | 'speicher' | 'netz' | null {
+  const a = quellenAnteil(bild.reihen, t);
+  if (!a) return null;
+  if (a.pv >= a.sp && a.pv >= a.netz) return 'sonne';
+  return a.sp >= a.netz ? 'speicher' : 'netz';
+}
+
+/** Warum VoltPilot an dieser Wallbox gerade nichts bewirkt - der Satz und seine Folge (Audit W-01/W-05/W-12). */
+function SperreHinweis({ sperre }: { sperre: LadepunktSperre }) {
+  return (
+    <div className="konflikt lq-sperre" role="status" data-sperre={sperre.kind}>
+      <Ic n="alert" s={18} />
+      <span><b>{sperre.satz}.</b> {sperre.folge}</span>
+    </div>
+  );
+}
+
+/** Die Zeile „Womit laden“: ein Knopf ins Blatt - ohne das Recht nur die Anzeige. */
+function WahlZeile({ darf, label, onClick, children }: { darf: boolean; label: string; onClick: (e: { currentTarget: HTMLElement }) => void; children: ReactNode }) {
+  if (!darf) return <div className="lq-zeile">{children}</div>;
+  return <button type="button" className="lq-zeile" aria-label={label} onClick={onClick}>{children}</button>;
 }
 
 function herkunftWort(bild: SeitenBild, t: number): string {
@@ -325,10 +501,6 @@ function herkunftWort(bild: SeitenBild, t: number): string {
   if (!a) return 'lädt';
   if (a.pv >= a.sp && a.pv >= a.netz) return 'mit Sonne';
   return a.sp >= a.netz ? 'aus dem Speicher' : 'aus dem Netz';
-}
-
-function mitGemessen(g: GeraetBild, plan: (number | null)[], jetzt: number): (number | null)[] {
-  return plan.map((v, t) => (t <= jetzt ? g.kw[t] : v));
 }
 
 /** Bietet ein Ladepunkt der Anlage „Sonne + Speicher“ überhaupt an? */
@@ -407,13 +579,15 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild, mispel = false }: { fahrzeuge:
           ))}
         </div>
       ) : (
-        <p className="leise">Noch hat keine Ladekarte hier geladen.</p>
+        // Ohne Ladekarte gibt es noch nichts einzustellen - der Satz über „diese Karte“ hatte keinen Bezug.
+        <p className="leise">Noch hat keine Ladekarte hier geladen. Sobald jemand mit einer Karte lädt, erscheint sie hier.</p>
       )}
-      {mispel ? (
+      {zeilen.length > 0 && (
+        <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.</p>
+      )}
+      {mispel && (
         // MiSpeL MP-41b: Abfahrt und Reserve gehören dem Ladepunkt, nicht dem Fahrzeug (A1 S. 27, Abschn. 3.2.5).
         <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. An einem Ladepunkt mit Zurückspeisen gelten Abfahrt und Reserve für jedes Auto, das seinen Ladestand meldet — nicht je Karte; für alle anderen ist ein Ziel eine Menge in kWh.</p>
-      ) : (
-        <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.</p>
       )}
     </section>
   );
@@ -703,48 +877,163 @@ export function AbfahrtBlatt({ k, id, ladepunkte, onSpeichern }: {
 // Blätter des Reiters
 // ---------------------------------------------------------------------------
 
+/** „2026-10" → der Vormonat/Folgemonat - reine Zeichenkettenarithmetik, keine Datumsbibliothek nötig. */
+function monatVerschoben(monat: string, delta: number): string {
+  const [jahrStr, monatStr] = monat.split('-');
+  const n = (Number(jahrStr) * 12 + (Number(monatStr) - 1)) + delta;
+  const jahr = Math.floor(n / 12);
+  const m = (n % 12) + 1;
+  return `${jahr}-${String(m).padStart(2, '0')}`;
+}
+
+/** „2026-10" → „Oktober 2026". */
+function monatLabel(monat: string): string {
+  const [jahr, m] = monat.split('-').map(Number);
+  return new Date(jahr, m - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+}
+
+/**
+ * „Ladungen · Alle" (§4.1 Punkt 5, Scheibe 2): Monat wählen, nach Auto
+ * filtern, jede Ladung mit Menge/Sonnenanteil/Euro, CSV „für die
+ * Abrechnung" - ohne jede Aussage über steuerliche oder messrechtliche
+ * Eignung. Holt sich den gewählten Monat selbst (wie `useAnschluss` im
+ * Rahmen-Blatt): die Hauptseite kennt nur den laufenden Monat.
+ */
+export function LadungenBlatt({ k, id, siteId, fahrzeuge }: {
+  k: BlattKontext; id: string; siteId: string; fahrzeuge: SiteFahrzeuge | null;
+}) {
+  const g = k.bild.geraete.find((x) => x.id === id);
+  const heuteMonat = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const [monat, setMonat] = useState(heuteMonat);
+  const [autoFilter, setAutoFilter] = useState<string | null>(null);
+  const [daten, setDaten] = useState<OcppTransactionEconomics[] | null>(null);
+  const [laden, setLaden] = useState(false);
+  useEffect(() => {
+    let aktiv = true;
+    setLaden(true);
+    api.ocppTransactionEconomics(siteId, monat).then(
+      (d) => { if (aktiv) { setDaten(d); setLaden(false); } },
+      () => { if (aktiv) { setDaten(null); setLaden(false); } },
+    );
+    return () => { aktiv = false; };
+  }, [siteId, monat]);
+  if (!g?.ladepunkt) return null;
+  const cp = g.ladepunkt.chargePointId;
+  const alle = ladungenZeilen(daten, cp);
+  const autos = Array.from(new Set(alle.map((z) => z.kartenRef).filter((x): x is string => !!x)));
+  const gefiltert = autoFilter ? alle.filter((z) => z.kartenRef === autoFilter) : alle;
+  const summe = ladungenSumme(gefiltert);
+  const autoName = (ref: string) => {
+    const f = liste(fahrzeuge?.fahrzeuge).find((x) => x.tagRef === ref);
+    return f ? fahrzeugName(f) : `Karte ${kartenKurz(ref)}…`;
+  };
+  return (
+    <Blatt symbol="history" titel={`Ladungen · ${g.name}`} voll onClose={k.zu}>
+      <div className="blk">
+        <div className="lq-monat" role="group" aria-label="Monat">
+          <button type="button" aria-label="Vormonat" onClick={() => setMonat(monatVerschoben(monat, -1))}><Ic n="chevL" s={18} /></button>
+          <b aria-live="polite">{monatLabel(monat)}</b>
+          <button type="button" aria-label="Folgemonat" disabled={monat >= heuteMonat} onClick={() => setMonat(monatVerschoben(monat, 1))}><Ic n="chevR" s={18} /></button>
+        </div>
+        {autos.length > 1 && (
+          <div className="chips" role="group" aria-label="Auto" style={{ marginBottom: 10 }}>
+            <button type="button" aria-pressed={autoFilter == null} onClick={() => setAutoFilter(null)}>Alle Autos</button>
+            {autos.map((ref) => (
+              <button type="button" key={ref} aria-pressed={autoFilter === ref} onClick={() => setAutoFilter(ref)}>{autoName(ref)}</button>
+            ))}
+          </div>
+        )}
+        {laden ? (
+          <p className="leise">Lädt …</p>
+        ) : summe.kwh != null ? (
+          <p style={{ margin: '0 0 10px', font: '700 15px/1.4 var(--font)' }}>
+            {fKwh(summe.kwh)}{summe.sonnenanteilPct != null ? `, ${fPct(summe.sonnenanteilPct)} Sonne` : ''}
+            {summe.euro != null ? `, ${fEur(summe.euro)}` : ''}
+            {summe.durchschnittCtKwh != null ? <small> · Ø {fCt(summe.durchschnittCtKwh)}</small> : null}
+          </p>
+        ) : (
+          <div className="lq-leer">
+            <span className="li" aria-hidden="true"><Ic n="history" s={20} /></span>
+            <b>Keine abgeschlossene Ladung</b>
+            <p className="leise">
+              {monat >= heuteMonat
+                ? 'Sobald ein Ladevorgang beendet ist, steht er hier mit Menge, Sonnenanteil und Euro.'
+                : `Im ${monatLabel(monat)} wurde an dieser Wallbox nichts geladen.`}
+            </p>
+          </div>
+        )}
+        {gefiltert.length > 0 && (
+          <ul className="lq-ladungen">
+            {gefiltert.map((z) => (
+              <li key={z.key}>
+                <span>
+                  {ladungDatum(z.startedAt)}
+                  {z.sonnenanteilPct != null ? ` · ${fPct(z.sonnenanteilPct)} Sonne` : ''}
+                  {z.kartenRef ? ` · ${autoName(z.kartenRef)}` : ''}
+                </span>
+                <b>{z.kwh != null ? fKwh(z.kwh) : '—'}{z.euro != null ? <small> {fEur(z.euro)}</small> : null}</b>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          type="button"
+          className="btn sek"
+          style={{ marginTop: 12 }}
+          disabled={!gefiltert.length}
+          onClick={() => ladeCsv(ladungenCsv(gefiltert), `ladungen-${cp}-${monat}.csv`)}
+        >
+          <Ic n="down" s={18} />
+          CSV für die Abrechnung
+        </button>
+        <p className="leise" style={{ marginTop: 8 }}>
+          Die CSV ist eine Übersicht für Ihre eigenen Unterlagen - keine Rechnung und kein Nachweis im steuerlichen oder messrechtlichen Sinn.
+        </p>
+      </div>
+    </Blatt>
+  );
+}
+
 const ZIEL_ZEITEN = ['06:00', '07:00', '08:00', '16:00', '18:00'];
 
-export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string; onSpeichern: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean> }) {
+/**
+ * Das Ladeziel: Menge und Uhrzeit (Konzept k1, E4=A). Es fragt kein zweites
+ * „Womit?“ mehr - geladen wird mit der Ladequelle der Karte, und „Ziel
+ * übernehmen“ schickt sie unverändert mit (vorher überschrieb das Blatt sie
+ * still, aus „Günstig“ wurde „Nur Sonne“, Befund 11).
+ */
+export function ZielBlatt({ k, id, anlage, rahmenMinKw, onSpeichern }: {
+  k: BlattKontext; id: string; anlage: VorschauAnlage; rahmenMinKw: number | null;
+  onSpeichern: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
+}) {
   const g = k.bild.geraete.find((x) => x.id === id);
   const s = g?.steuerart;
   const [kwh, setKwh] = useState<number>(typeof s?.zielEnergieKwh === 'number' ? s.zielEnergieKwh : 20);
   const [bis, setBis] = useState<string>(s?.zielFenster?.bis ?? '07:00');
-  const [quelle, setQuelle] = useState<'ueberschuss' | 'guenstig'>(s?.quelle === 'guenstig' ? 'guenstig' : 'ueberschuss');
   if (!g) return null;
   const r = k.bild.raster;
-  const bisT = naechsteUhrzeit(r.jetzt, bis);
-  const kw = g.nennKw ?? 11;
-  const plan = ladeplan(k.bild.reihen, r.jetzt, bisT, kwh, kw, quelle === 'guenstig');
-  const t1 = Math.min(N, Math.max(bisT + 4, r.jetzt + 24));
-  const schritt = t1 - r.jetzt <= 48 ? 8 : 16;
-  const ticks: number[] = [];
-  for (let x = 0; x <= t1 - r.jetzt; x++) if ((r.jetzt + x) % schritt === 0) ticks.push(x);
-  const vorlaeufig = bisT >= TAG && !k.bild.reihen.morgenBekannt;
+  const basis = startEntwurf(g);
+  const w = { ...basis, zielKwh: kwh, zielBis: bis };
+  const { vorschau, abfahrt } = vorschauFuer(k.bild, g, anlage, w);
+  const vorlaeufig = abfahrt >= TAG && !k.bild.reihen.morgenBekannt;
   const busy = k.busy === g.id;
-  const wunsch = (mitZiel: boolean): SteuerartWunsch => ({
-    quelle,
-    ...(quelle === 'ueberschuss' ? { ueberschussModus: s?.ueberschussModus ?? 'pausieren' } : {}),
-    ...(quelle === 'guenstig' && s?.preisgrenzeCtKwh != null ? { preisgrenzeCtKwh: s.preisgrenzeCtKwh } : {}),
-    ...(mitZiel ? { ziel: 'bis_uhrzeit', zielEnergieKwh: kwh, zielFenster: { tage: 'daily', von: '', bis } } : {}),
-  });
   return (
     <Blatt
       symbol="flag"
       titel="Ladeziel"
-      unter={g.name}
+      unter={`${g.name} · ${LADEQUELLE[basis.modus]}`}
       voll
       onClose={k.zu}
       fuss={
         <Recht aktion="betriebsweise.aendern">
           {s?.ziel ? (
-            <button type="button" className="btn sek" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunsch(false))) k.zu(); }}>Kein Ziel</button>
+            <button type="button" className="btn sek" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunschAus(g, { ...basis, zielKwh: 0 }, rahmenMinKw))) k.zu(); }}>Kein Ziel</button>
           ) : (
             <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
           )}
-          <button type="button" className="btn" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunsch(true))) k.zu(); }}>
+          <button type="button" className="btn" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunschAus(g, w, rahmenMinKw))) k.zu(); }}>
             <Ic n="check" s={18} />
-            {busy ? 'Speichere …' : 'Ziel übernehmen'}
+            {busy ? 'Wird gesendet …' : 'Ziel übernehmen'}
           </button>
         </Recht>
       }
@@ -765,13 +1054,7 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
             <button type="button" key={z} aria-pressed={bis === z} onClick={() => setBis(z)}>{naechsteUhrzeit(r.jetzt, z) >= TAG ? 'morgen ' : 'heute '}{z}</button>
           ))}
         </div>
-      </div>
-      <div className="blk">
-        <h3>Womit?</h3>
-        <div className="chips">
-          <button type="button" aria-pressed={quelle === 'ueberschuss'} onClick={() => setQuelle('ueberschuss')}>Sonne zuerst, dann günstig</button>
-          <button type="button" aria-pressed={quelle === 'guenstig'} onClick={() => setQuelle('guenstig')}>nur günstige Stunden</button>
-        </div>
+        <p>Geladen wird mit „{LADEQUELLE[basis.modus]}“, bis das Ziel erreicht ist; fehlt dann etwas, kommt der Rest in den günstigsten Stunden aus dem Netz. Ändern lässt sich das unter „Womit laden“.</p>
       </div>
       {!g.ladepunkt?.angesteckt ? (
         <div className="blk">
@@ -779,35 +1062,19 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
           <div className="warum">Kein Auto angesteckt. Das Ziel gilt ab der nächsten Ladung; VoltPilot plant sie, sobald ein Auto ansteckt.</div>
         </div>
       ) : (
-      <div className="blk">
-        <h3>Plan <span className="meta" style={{ textTransform: 'none', letterSpacing: 0 }}>Schätzung</span></h3>
-        <Zeitband
-          id={`z-${g.id}`}
-          t0={r.jetzt}
-          t1={t1}
-          reihen={k.bild.reihen}
-          jetzt={r.jetzt}
-          padT={22}
-          tage
-          label="Ladeplan bis zum Ziel"
-          bands={[{ art: 'pv', h: 18, gap: 4 }, { art: 'preis', h: 26, gap: 6 }]}
-          rows={[{ g, h: 20, kw: plan.kw }]}
-          ticks={ticks}
-          namen={false}
-        />
-        <div className="prev-sum">
-          <div><b>{plan.fertig != null ? uhrTag(plan.fertig) : '—'}</b><small>voraussichtlich fertig</small></div>
-          <div><b>{fKwh(plan.kwh)}</b><small>{plan.kwh ? `${fPct((plan.pvKwh / plan.kwh) * 100)} Sonne` : ''}</small></div>
-          <div><b>{plan.netzKwh > 0.05 ? fCt((plan.eur * 100) / plan.netzKwh) : '—'}</b><small>Ø Börse im Netzanteil</small></div>
+        <div className="blk">
+          <h3>Plan <span className="meta" style={{ textTransform: 'none', letterSpacing: 0 }}>Schätzung</span></h3>
+          <VorschauBand v={vorschau} abfahrt={abfahrt} maxKw={g.nennKw ?? 11} h={46} preis={basis.modus === 'guenstig'}
+            label={`Ladeziel: geschätzte Ladeleistung bis ${uhrKurz(abfahrt)} Uhr nach Herkunft`} />
+          <DreiZahlen v={vorschau} abfahrt={abfahrt} />
+          {vorschau.schafft === false && (
+            <div className="konflikt"><Ic n="alert" s={18} /><span>Das reicht nicht ganz: bis {uhrTag(abfahrt)} passen {kwhText(vorschau.kwh)}. Früher anstecken oder später abfahren hilft.</span></div>
+          )}
+          {vorlaeufig && (
+            <div className="konflikt"><Ic n="info" s={18} /><span>Vorläufig: Die Börsenpreise für morgen kommen gegen 13 Uhr. Dann plant VoltPilot neu.</span></div>
+          )}
+          <p className="leise">Die Box plant die Ladung selbst; das Bild ist eine Schätzung aus Prognose und Preis. Kommt das Auto später oder fährt früher, gilt das Ziel für die nächste Ladung.</p>
         </div>
-        {!plan.schafft && (
-          <div className="konflikt"><Ic n="alert" s={18} /><span>Das reicht nicht ganz: bis {uhrTag(bisT)} passen {fKwh(plan.kwh)}. Früher anstecken oder später abfahren hilft.</span></div>
-        )}
-        {vorlaeufig && (
-          <div className="konflikt"><Ic n="info" s={18} /><span>Vorläufig: Die Börsenpreise für morgen kommen gegen 13 Uhr. Dann plant VoltPilot neu.</span></div>
-        )}
-        <p className="leise">Die Box plant die Ladung selbst; das Bild ist eine Schätzung aus Prognose und Preis. Kommt das Auto später oder fährt früher, gilt das Ziel für die nächste Ladung.</p>
-      </div>
       )}
     </Blatt>
   );
@@ -821,9 +1088,13 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
  * Blatt zeigt denselben Grund schon vorher und sperrt „Übernehmen“. Ohne
  * Bindung gilt der Übergang: die vereinbarte Leistung kommt aus dem Blatt.
  */
-export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze }: {
-  k: BlattKontext; siteId: string; rahmen: LadeparkRahmen | null; config: ChargingConfig | null;
+export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze, serverFehler = null }: {
+  /** Nur `zu`/`busy` - seit Scheibe 4 auch außerhalb der Steuerung mountbar (Einstellungen). */
+  k: { zu: () => void; busy: string | null };
+  siteId: string; rahmen: LadeparkRahmen | null; config: ChargingConfig | null;
   onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
+  /** Ein Fehler des `onGrenze`-Abrufs selbst (Netz/Server) - getrennt von der Plausibilitätsprüfung unten. */
+  serverFehler?: string | null;
 }) {
   const start = config?.gridLimitKw ?? rahmen?.gepflegteGrenzeKw ?? rahmen?.netzanschlussKw ?? null;
   const [kw, setKw] = useState<number | null>(start);
@@ -922,6 +1193,7 @@ export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze }: {
           )}
           {uebergangBeruehrt && uebergangFehlt && geaendert && <p className="stn-fehler">Tragen Sie die vereinbarte Leistung ein.</p>}
           {einwand && <p className="stn-fehler">{einwand}</p>}
+          {serverFehler && <p className="stn-fehler" role="alert">{serverFehler}</p>}
         </div>
       </div>
       <div className="blk">
@@ -964,48 +1236,6 @@ function useAnschluss(siteId: string): AnschlussStand {
   return stand;
 }
 
-export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
-  k: BlattKontext; tagRef: string; fahrzeuge: SiteFahrzeuge | null;
-  onSetzen: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
-}) {
-  const f = liste(fahrzeuge?.fahrzeuge).find((x) => x.tagRef === tagRef);
-  const [name, setName] = useState(f?.name ?? '');
-  if (!f) return null;
-  const q = f.steuerart?.quelle ?? null;
-  const busy = k.busy === `fz:${tagRef}`;
-  return (
-    <Blatt
-      symbol="car"
-      titel={fahrzeugName(f)}
-      unter="Einstellung für diese Ladekarte"
-      onClose={k.zu}
-      fuss={
-        <Recht aktion="ladepunkt.betrieb"><button type="button" className="btn" disabled={busy} onClick={async () => {
-          if (name.trim() !== (f.name ?? '')) { if (await onSetzen(tagRef, { name: name.trim() })) k.zu(); } else k.zu();
-        }}>
-          Fertig
-        </button></Recht>
-      }
-    >
-      <div className="blk">
-        <h3>Name</h3>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="z. B. Familienauto"
-          aria-label="Name des Fahrzeugs"
-          style={{ minHeight: 46, borderRadius: 12, border: '1px solid var(--field)', padding: '0 12px', font: '600 16px var(--font)', width: '100%' }}
-        />
-      </div>
-      <div className="blk">
-        <h3>Wenn diese Karte lädt</h3>
-        <Recht aktion="ladepunkt.betrieb"><div className="chips">
-          <button type="button" aria-pressed={q == null} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: '' })}>wie der Ladepunkt</button>
-          <button type="button" aria-pressed={q === 'ueberschuss'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss' })}>Smart</button>
-          <button type="button" aria-pressed={q === 'sofort'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'sofort' })}>Schnell</button>
-        </div></Recht>
-        <p>„Smart“ lädt mit Sonnenstrom, „Schnell“ sofort mit voller Leistung. Ohne Wahl gilt die Einstellung des Ladepunkts.</p>
-      </div>
-    </Blatt>
-  );
-}
+// `FahrzeugBlatt` ist entfallen (Konzept „Ein Ort fürs Laden" e1, Abschnitt 7
+// Punkt 6): „Autos" öffnet jetzt denselben `FahrzeugDialog` wie früher nur die
+// Ladevorgänge-Seite - zwei Dialoge über dieselbe Sache wären zwei Wahrheiten.

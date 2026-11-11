@@ -10,6 +10,8 @@ import {
   api,
   ApiError,
   type Device,
+  type Einspeiseverguetung,
+  type Erzeugungseinheit,
   type Site,
   type SiteAsset,
   type SiteDeletionPreview,
@@ -40,11 +42,14 @@ import { LocationMap } from '../components/LocationMap';
 import { AnlageStandortZeile, useAnlageStandort } from '../components/AnlageStandortZeile';
 import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
+import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
+import { angabeMoeglich, ruhtErklaerung, verguetungFolge, verguetungZeile } from '../einspeiseverguetung';
 import { DangerZone } from '../components/DangerZone';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
 import { PRESETS, PROFIL_UNGESETZT, profilAenderungsFolgen, profilLabel, type Profil } from '../anwendungen';
 import { MastrDrawer } from '../components/MastrDrawer';
+import { AnschlussgrenzeBlatt } from '../components/AnschlussgrenzeBlatt';
 import { canEditSetting, SettingEditForm, settingReadValue } from '../components/SettingEditors';
 import { ErrorState, TextSkeleton } from '../components/States';
 import { GemeinsameSteuerungKarte, useGemeinsameSteuerung, type GemeinsameSteuerungDaten } from '../components/GemeinsameSteuerungKarte';
@@ -57,6 +62,23 @@ import type { PauschalAufbau } from '../components/FoerderwegPauschal';
 import { foerderweg, netzladenZeile, tagText } from '../mispelFoerderweg';
 import { mispelApi, type FoerderwegAnsicht } from '../mispelFoerderwegApi';
 import '../components/FoerderwegDialog.css';
+import {
+  direktvermarkterHinweis,
+  direktvermarkterWert,
+  einheitName,
+  einheitNummer,
+  einheitTyp,
+  einspeisemanagementWert,
+  sortiert,
+  typHinweis,
+} from '../anlagensteuerung';
+import { useAnlagensteuerung } from '../useAnlagensteuerung';
+import {
+  DirektvermarkterForm,
+  EinheitForm,
+  EinspeisemanagementForm,
+  NetzbetreiberBlatt,
+} from '../components/NetzVermarktungFormen';
 import '../components/Profile.css';
 import './Einstellungen.css';
 
@@ -117,15 +139,23 @@ const NETZLADEN_FOLGE = {
 const SCHALT_FEHLER = 'Die Änderung wurde nicht gespeichert. Bitte versuchen Sie es erneut.';
 
 type BlattArt =
-  | { art: 'stammdaten' }
+  // `nur`: die Zeile öffnet nur IHR Feld (Name, Veräußerungsform, Einspeisegrenze, Standort).
+  | { art: 'stammdaten'; nur: StammdatenFeld }
   | { art: 'einstellung'; setting: ModeSettingDef }
   | { art: 'voltpilot'; setting: ModeSettingDef }
+  // Die Einspeisevergütung braucht den Stand vom Server (Herleitung, Herkunft).
+  | { art: 'verguetung' }
   | { art: 'speicher'; bearbeiten: boolean }
   | { art: 'registrierung' }
-  | { art: 'loeschen' };
+  | { art: 'loeschen' }
+  // UEMS EZ-10: Stammdaten Netz und Vermarktung einer Anlage mit Anlagensteuerung.
+  | { art: 'netzbetreiber' }
+  | { art: 'direktvermarkter' }
+  | { art: 'einspeisemanagement' }
+  | { art: 'einheit'; geraetId: string; einheit: Erzeugungseinheit };
 
 interface Folge {
-  key: 'netzladen' | 'speicherschonung';
+  key: 'netzladen' | 'speicherschonung' | 'verguetung';
   text: string;
   zurueck: (() => void) | null;
 }
@@ -213,6 +243,7 @@ export function TechnikSection({
   onSiteSaved: (updated: Site) => void;
   onSiteDeleted: () => void;
 }) {
+  const rollen = useRollen();
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [assetsError, setAssetsError] = useState(false);
   const [assetsReloadKey, setAssetsReloadKey] = useState(0);
@@ -223,6 +254,15 @@ export function TechnikSection({
   const [profilOffen, setProfilOffen] = useState(false);
   const [mastrOpen, setMastrOpen] = useState(false);
   const [folge, setFolge] = useState<Folge | null>(null);
+  // Die Karte „Einspeisevergütung": der Stand vom Server, gemerkt mit SEINER
+  // Anlage - beim Wechsel der Anlage steht nie der Stand der vorigen da.
+  const [verguetungGeladen, setVerguetungGeladen] = useState<{ siteId: string; stand: Einspeiseverguetung } | null>(
+    null,
+  );
+  const [verguetungFehler, setVerguetungFehler] = useState(false);
+  const [verguetungKey, setVerguetungKey] = useState(0);
+  const verguetung = verguetungGeladen?.siteId === site.id ? verguetungGeladen.stand : null;
+  const setVerguetung = (stand: Einspeiseverguetung) => setVerguetungGeladen({ siteId: site.id, stand });
   const [schaltBusy, setSchaltBusy] = useState<Folge['key'] | null>(null);
   const [schaltFehler, setSchaltFehler] = useState<{ key: Folge['key']; text: string } | null>(null);
   // MiSpeL MP-17 (BK-17 A): der Förderweg der Einspeisestelle — er ersetzt die Zeile „Veräußerungsform“.
@@ -230,6 +270,12 @@ export function TechnikSection({
   const [fwFehler, setFwFehler] = useState(false);
   const [fwOffen, setFwOffen] = useState(false);
   const [fwFolge, setFwFolge] = useState<{ text: string; fehler: boolean } | null>(null);
+  // „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Zeile „Anschlussgrenze" zeigt
+  // den heutigen Wert, ohne die Haupt-Ladefolge der Einstellungen damit zu
+  // belasten - `AnschlussgrenzeBlatt` holt beim Öffnen ihre eigenen, volleren
+  // Daten (Netzanschluss-Bindung, Grundlast) noch einmal selbst.
+  const [gridLimitKw, setGridLimitKw] = useState<number | null>(null);
+  const [anschlussgrenzeOffen, setAnschlussgrenzeOffen] = useState(false);
 
   // Ein Rückgängig baut auf dem NEUESTEN Stand auf, nie auf dem des Klicks -
   // sonst setzte es eine inzwischen gespeicherte andere Änderung mit zurück.
@@ -237,12 +283,21 @@ export function TechnikSection({
   siteRef.current = site;
 
   const siteDevices = useMemo(() => devices.filter((d) => d.siteId === site.id), [devices, site.id]);
+  const loeschSperre =
+    siteDevices.length > 0
+      ? `Die Anlage kann nicht gelöscht werden, solange ihr ${siteDevices.length === 1 ? 'eine VoltPilot-Box zugeordnet ist' : `${siteDevices.length} VoltPilot-Boxen zugeordnet sind`}. Entfernen Sie die Box zuerst im Aufbau.`
+      : null;
   const anchored = useSettingsAnchor();
   // UEMS AP-02 IP-8 (T6a, W4): das Objekt „Standort“ der Anlage. Ohne eines bleibt
   // die Gruppe „Anlage“ Zeichen für Zeichen, wie sie ist (AnlageTechnik.standort.test.tsx).
   const { anlageStandort, antwort: standortAntwort, neuLaden: standortNeuLaden } = useAnlageStandort(site.id);
   // UEMS AP-15 IP-23: die Karte „Gemeinsame Steuerung“ - sichtbar nur an steuernden Anlagen mit mehreren Boxen.
   const gemeinsam = useGemeinsameSteuerung(site.id, siteDevices);
+  // UEMS EZ-10: nur an einer Anlage mit Anlagensteuerung stehen Netzbetreiber, Direktvermarkter,
+  // Einspeisemanagement und die Einheiten unter „Strom & Geld“ (EW-3 A: kein neuer Reiter).
+  const erzeuger = useAnlagensteuerung(site.id, false);
+  const steuerungen = erzeuger.liste?.steuerungen ?? [];
+  const nv = steuerungen.length > 0 ? erzeuger.netzVermarktung : null;
 
   useEffect(() => {
     setBlatt(null);
@@ -275,6 +330,36 @@ export function TechnikSection({
     };
   }, [site.id, assetsReloadKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setGridLimitKw(null);
+    api.chargingConfig(site.id)
+      .then((c) => !cancelled && setGridLimitKw(c.gridLimitKw ?? null))
+      // Fail-soft: die Zeile zeigt dann „noch nicht hinterlegt" - dasselbe
+      // Bild wie bei einer Anlage, die wirklich keine Grenze gesetzt hat.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [site.id]);
+
+  // Die Einspeisevergütung hängt an Veräußerungsform, Netzladen und dem
+  // PV-Eintrag (Inbetriebnahme, kWp; neu nach der MaStR-Verknüpfung) - nach
+  // jeder dieser Änderungen neu lesen.
+  useEffect(() => {
+    let cancelled = false;
+    const id = site.id;
+    setVerguetungFehler(false);
+    api
+      .einspeiseverguetung(id)
+      .then((stand) => !cancelled && setVerguetungGeladen({ siteId: id, stand }))
+      // „Nicht geladen" ist nicht „keine Angabe": ein Fehler zeigt sich als Fehler.
+      .catch(() => !cancelled && setVerguetungFehler(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [site.id, site.plantKind, site.netzladenErlaubt, assetsReloadKey, verguetungKey]);
+
   // Direktlinks: die Gruppe in den Blick holen. Die Box wohnt im Aufbau.
   useEffect(() => {
     if (!anchored) return;
@@ -298,6 +383,7 @@ export function TechnikSection({
   const pageSettings = settingsPageSettings({ plantKind: site.plantKind });
   const geld = pageSettings.filter((s) => settingsGroupFor(s.id) === 'geld');
   const tarif = geld.find((s) => s.id === 'stromtarif') ?? null;
+  const verguetungSetting = geld.find((s) => s.id === 'einspeiseverguetung') ?? null;
   const anzulegend = geld.find((s) => s.id === 'anzulegender-wert') ?? null;
   const netzladen = geld.find((s) => s.id === 'netzladen') ?? null;
   const schonung = pageSettings.find((s) => s.id === 'speicherschonung') ?? null;
@@ -357,6 +443,26 @@ export function TechnikSection({
       });
     } catch {
       setSchaltFehler({ key: 'speicherschonung', text: SCHALT_FEHLER });
+    } finally {
+      setSchaltBusy(null);
+    }
+  }
+
+  /** Setzt die Angabe zurück auf den vorigen Stand - das „Rückgängig" der Folge. */
+  async function verguetungZurueck(vorher: Einspeiseverguetung) {
+    setSchaltBusy('verguetung');
+    setSchaltFehler(null);
+    try {
+      // Der vorige Stand samt seiner Antwort zu § 51a (nur ohne Datum gespeichert).
+      const neu = await api.setEinspeiseverguetung(
+        site.id,
+        vorher.angegebenCtKwh,
+        vorher.angegebenCtKwh == null ? null : vorher.inbetriebnahmeAbSolarspitzengesetz,
+      );
+      setVerguetung(neu);
+      setFolge({ key: 'verguetung', text: verguetungFolge(neu), zurueck: null });
+    } catch {
+      setSchaltFehler({ key: 'verguetung', text: SCHALT_FEHLER });
     } finally {
       setSchaltBusy(null);
     }
@@ -435,7 +541,7 @@ export function TechnikSection({
       <div className="vp-einst-raster">
         {/* ---------- Anlage ---------- */}
         <Gruppe id="anlage" titel="Anlage">
-          <Zeile icon="home" kat="home" label="Name" wert={site.name} recht="anlage.verwalten" onClick={() => oeffne({ art: 'stammdaten' })} />
+          <Zeile icon="home" kat="home" label="Name" wert={site.name} recht="anlage.verwalten" onClick={() => oeffne({ art: 'stammdaten', nur: 'name' })} />
           <Zeile icon="users" kat="home" label="Profil" wert={profilLabel(site.profil)} recht="betriebsweise.aendern" onClick={() => setProfilOffen(true)} />
           <Zeile
             icon="trending-up"
@@ -443,7 +549,22 @@ export function TechnikSection({
             label="Einspeisegrenze"
             wert={site.maxFeedInKw != null ? fmtNum(site.maxFeedInKw, 'kW', 1) : 'keine Grenze hinterlegt'}
             recht="anlage.verwalten"
-            onClick={() => oeffne({ art: 'stammdaten' })}
+            onClick={() => oeffne({ art: 'stammdaten', nur: 'einspeisegrenze' })}
+          />
+          {/*
+            „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Anschlussgrenze zieht
+            aus dem Rahmen-Blatt der Steuerung hierher um, neben Einspeisegrenze
+            und Netzladen. Die Rechnung selbst bleibt im bewährten
+            `RahmenBlatt` - `AnschlussgrenzeBlatt` holt ihre Daten nur lazy,
+            wenn die Zeile tatsächlich geöffnet wird.
+          */}
+          <Zeile
+            icon="sliders"
+            kat="grid"
+            label="Anschlussgrenze"
+            wert={gridLimitKw != null ? fmtNum(gridLimitKw, 'kW', 1) : 'noch nicht hinterlegt'}
+            recht="grenze.eintragen"
+            onClick={() => setAnschlussgrenzeOffen(true)}
           />
           {/* UEMS AP-02 IP-8: das Standort-OBJEKT über den Koordinaten - nur, wenn die Anlage eines hat. */}
           {anlageStandort && standortAntwort && (
@@ -465,7 +586,7 @@ export function TechnikSection({
             sub={coords ? null : 'Ohne Standort auf der Karte gibt es keine Wettervorhersage.'}
             warn={!coords}
             recht="anlage.verwalten"
-            onClick={() => oeffne({ art: 'stammdaten' })}
+            onClick={() => oeffne({ art: 'stammdaten', nur: 'standort' })}
           />
         </Gruppe>
 
@@ -479,6 +600,16 @@ export function TechnikSection({
               wert={tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}
               recht="anlage.verwalten"
               onClick={() => oeffne({ art: 'einstellung', setting: tarif })}
+            />
+          )}
+          {verguetungSetting && (
+            <VerguetungZeile
+              label={verguetungSetting.label}
+              stand={verguetung}
+              fehler={verguetungFehler}
+              onBlatt={() => oeffne({ art: 'verguetung' })}
+              onNeuLaden={() => setVerguetungKey((k) => k + 1)}
+              folge={folgeZeile('verguetung')}
             />
           )}
           {anzulegend && (
@@ -581,6 +712,53 @@ export function TechnikSection({
               {folgeZeile('netzladen')}
             </li>
           )}
+          {nv && (
+            <>
+              <Zeile
+                id="technik-netzbetreiber"
+                icon="pole"
+                kat="grid"
+                label="Netzbetreiber"
+                wert={nv.netzbetreiber ?? 'nicht eingetragen'}
+                sub={nv.hinweise[0]?.text ?? null}
+                warn={nv.hinweise.length > 0}
+                onClick={() => oeffne({ art: 'netzbetreiber' })}
+              />
+              <Zeile
+                id="technik-direktvermarkter"
+                icon="trending-up"
+                kat="dynamic"
+                label="Direktvermarkter"
+                wert={direktvermarkterWert(nv)}
+                sub={direktvermarkterHinweis(nv)}
+                recht="anlage.verwalten"
+                onClick={() => oeffne({ art: 'direktvermarkter' })}
+              />
+              <Zeile
+                id="technik-einspeisemanagement"
+                icon="sliders"
+                kat="grid"
+                label="Einspeisemanagement"
+                wert={einspeisemanagementWert(nv)}
+                recht="anlage.verwalten"
+                onClick={() => oeffne({ art: 'einspeisemanagement' })}
+              />
+              {steuerungen.flatMap((st) =>
+                sortiert(st.einheiten).map((e) => (
+                  <Zeile
+                    key={e.teil_id}
+                    icon={e.einheit_art === 'bhkw_motor' ? 'zap' : e.einheit_art === 'pv_wechselrichter' ? 'sun' : 'cpu'}
+                    kat="home"
+                    label={einheitName(e)}
+                    wert={e.registry_unit_id ?? 'MaStR-Nummer nicht erfasst'}
+                    sub={typHinweis(e) ?? ([e.bezeichnung ? einheitNummer(e) : null, einheitTyp(e)].filter(Boolean).join(' · ') || null)}
+                    recht="geraet.einrichten"
+                    onClick={() => oeffne({ art: 'einheit', geraetId: st.geraet_id, einheit: e })}
+                  />
+                )),
+              )}
+            </>
+          )}
           {vpGeld.map((s) => (
             <Zeile
               key={s.id}
@@ -637,7 +815,8 @@ export function TechnikSection({
                 label="Kapazität"
                 wert={battery.capacityKwh != null ? fmtNum(battery.capacityKwh, 'kWh', 1) : 'nicht hinterlegt'}
                 sub="Leistung, Wirkungsgrad, steuerndes Gerät"
-                onClick={() => oeffne({ art: 'speicher', bearbeiten: false })}
+                // Wer bearbeiten darf, landet direkt im Formular - kein Lese-Blatt mit „Speicher bearbeiten“ davor.
+                onClick={() => oeffne({ art: 'speicher', bearbeiten: rollen.darf('geraet.einrichten') })}
               />
               {schonung && (
                 <UmgangZeile
@@ -687,6 +866,9 @@ export function TechnikSection({
             kat="gefahr"
             label="Anlage löschen"
             gefahr
+            // Solange eine Box zugeordnet ist, geht es nicht - der Weg steht an der Zeile statt in einem Blatt.
+            statisch={loeschSperre != null}
+            sub={loeschSperre}
             onClick={() => oeffne({ art: 'loeschen' })}
           />
         </Gruppe>
@@ -715,10 +897,11 @@ export function TechnikSection({
       </p>
 
       {/* ---------- das eine Blatt ---------- */}
-      <Modal open={blatt != null} onClose={schliesse} title={blattTitel(blattInhalt, battery)}>
+      <Modal open={blatt != null} onClose={schliesse} title={blattTitel(blattInhalt, battery, koordinatenLabel(anlageStandort))}>
         {blattInhalt?.art === 'stammdaten' && (
           <StammdatenEditForm
             site={site}
+            nur={blattInhalt.nur}
             onCancel={schliesse}
             onSaved={(updated) => {
               schliesse();
@@ -748,6 +931,32 @@ export function TechnikSection({
             /></Recht>
           </div>
         )}
+        {blattInhalt?.art === 'verguetung' && verguetung && (
+          <div className="vp-einst-blatt">
+            {/* Erklärung und „Wirkt auf …" nur, wo die Angabe auch wirkt - bei
+                Direktvermarktung und Netzladen erklärt das Blatt den Börsenpreis. */}
+            {angabeMoeglich(verguetung.zustand) && <p className="vp-note">{SETTING_HINT.einspeiseverguetung}</p>}
+            {angabeMoeglich(verguetung.zustand) && <Wirkung id="einspeiseverguetung" />}
+            <EinspeiseverguetungBlatt
+              siteId={site.id}
+              stand={verguetung}
+              onCancel={schliesse}
+              onMastr={() => {
+                schliesse();
+                setMastrOpen(true);
+              }}
+              onSaved={(neu, vorher) => {
+                schliesse();
+                setVerguetung(neu);
+                setFolge({
+                  key: 'verguetung',
+                  text: verguetungFolge(neu),
+                  zurueck: () => void verguetungZurueck(vorher),
+                });
+              }}
+            />
+          </div>
+        )}
         {blattInhalt?.art === 'voltpilot' && (
           <div className="vp-einst-blatt">
             <p className="vp-einst-gross">{settingReadValue(blattInhalt.setting.id, site, battery)}</p>
@@ -763,7 +972,11 @@ export function TechnikSection({
               battery={battery}
               devices={siteDevices}
               startEditing={blattInhalt.bearbeiten}
-              onSaved={(a) => setAssets(a)}
+              onSaved={(a) => {
+                setAssets(a);
+                if (blattInhalt.bearbeiten) schliesse();
+              }}
+              onEditCancel={blattInhalt.bearbeiten ? schliesse : undefined}
             />
           </div>
         )}
@@ -783,6 +996,41 @@ export function TechnikSection({
               }}
             />
           ))}
+        {blattInhalt?.art === 'netzbetreiber' && nv && <NetzbetreiberBlatt nv={nv} />}
+        {blattInhalt?.art === 'direktvermarkter' && nv && (
+          <DirektvermarkterForm
+            siteId={site.id}
+            nv={nv}
+            onCancel={schliesse}
+            onSaved={(neu) => {
+              erzeuger.setzeNetzVermarktung(neu);
+              schliesse();
+            }}
+          />
+        )}
+        {blattInhalt?.art === 'einspeisemanagement' && nv && (
+          <EinspeisemanagementForm
+            siteId={site.id}
+            nv={nv}
+            onCancel={schliesse}
+            onSaved={(neu) => {
+              erzeuger.setzeNetzVermarktung(neu);
+              schliesse();
+            }}
+          />
+        )}
+        {blattInhalt?.art === 'einheit' && (
+          <EinheitForm
+            key={blattInhalt.einheit.teil_id}
+            geraetId={blattInhalt.geraetId}
+            einheit={blattInhalt.einheit}
+            onCancel={schliesse}
+            onSaved={() => {
+              erzeuger.neuLaden();
+              schliesse();
+            }}
+          />
+        )}
         {blattInhalt?.art === 'loeschen' && (
           <DangerZone
             recht="anlage.verwalten"
@@ -791,11 +1039,7 @@ export function TechnikSection({
             description="Eine gelöschte Anlage kann nicht wiederhergestellt werden."
             consequences={deleteConsequences()}
             confirmLabel="Anlage endgültig löschen"
-            disabledReason={
-              siteDevices.length > 0
-                ? `Die Anlage kann nicht gelöscht werden, solange ihr ${siteDevices.length === 1 ? 'eine VoltPilot-Box zugeordnet ist' : `${siteDevices.length} VoltPilot-Boxen zugeordnet sind`}. Entfernen Sie die Box zuerst im Aufbau.`
-                : null
-            }
+            disabledReason={loeschSperre}
             busy={deleteBusy}
             error={deleteError}
             onConfirm={() => void deleteSite()}
@@ -804,7 +1048,23 @@ export function TechnikSection({
       </Modal>
 
       <ProfilDialog site={site} open={profilOffen} onClose={() => setProfilOffen(false)} onSaved={onSiteSaved} />
-      <MastrDrawer site={site} open={mastrOpen} onClose={() => setMastrOpen(false)} onApplied={(a) => setAssets(a)} />
+      {anschlussgrenzeOffen && (
+        <AnschlussgrenzeBlatt
+          siteId={site.id}
+          onClose={() => setAnschlussgrenzeOffen(false)}
+          onSaved={(c) => setGridLimitKw(c.gridLimitKw ?? null)}
+        />
+      )}
+      <MastrDrawer
+        site={site}
+        open={mastrOpen}
+        onClose={() => setMastrOpen(false)}
+        onApplied={(a) => {
+          setAssets(a);
+          // Inbetriebnahme und kWp aus dem Register: die Herleitung neu lesen.
+          setVerguetungKey((k) => k + 1);
+        }}
+      />
       {fwOffen && fw && (
         <FoerderwegDialog
           siteId={site.id}
@@ -858,19 +1118,30 @@ function foerderwegSub(f: FoerderwegAnsicht): string {
   return teile.join(' · ');
 }
 
-function blattTitel(b: BlattArt | null, battery: SiteAsset | null): string {
+function blattTitel(b: BlattArt | null, battery: SiteAsset | null, standortZeile: string): string {
   switch (b?.art) {
     case 'stammdaten':
-      return 'Anlage bearbeiten';
+      // Die Standort-Zeile heißt je nach Standort-Objekt „Standort" oder „Standort auf der Karte".
+      return b.nur === 'standort' ? standortZeile : STAMMDATEN_TITEL[b.nur];
     case 'einstellung':
     case 'voltpilot':
       return b.setting.label;
+    case 'verguetung':
+      return 'Einspeisevergütung';
     case 'speicher':
       return battery ? 'Speicher' : 'Speicher hinzufügen';
     case 'registrierung':
       return 'Registrierung (MaStR)';
     case 'loeschen':
       return 'Anlage löschen';
+    case 'netzbetreiber':
+      return 'Netzbetreiber';
+    case 'direktvermarkter':
+      return 'Direktvermarkter';
+    case 'einspeisemanagement':
+      return 'Einspeisemanagement';
+    case 'einheit':
+      return einheitName(b.einheit);
     default:
       return '';
   }
@@ -904,7 +1175,8 @@ function Gruppe({
 }) {
   return (
     <section id={`technik-${id}`} className="vp-einst-grp" aria-labelledby={`technik-${id}-h`}>
-      <h3 id={`technik-${id}-h`}>{titel}</h3>
+      {/* h2, nicht h3: die Seite trägt bereits ein h1, kein h2 dazwischen (1.3.1). */}
+      <h2 id={`technik-${id}-h`}>{titel}</h2>
       {vorne}
       <ul className="vp-einst-liste">{children}</ul>
     </section>
@@ -927,7 +1199,9 @@ function Zeile({
   schloss = false,
   gefahr = false,
   recht,
+  statisch = false,
   onClick,
+  nach = null,
 }: {
   id?: string;
   icon: IconName;
@@ -938,15 +1212,23 @@ function Zeile({
   warn?: boolean;
   schloss?: boolean;
   gefahr?: boolean;
+  /** Was unter der Zeile im selben Eintrag steht (die Folge nach dem Speichern). */
+  nach?: ReactNode;
   /**
    * Das Recht, das die Änderung hinter dieser Zeile braucht (UEMS AP-03 IP-12). Ohne
    * es bleibt der Wert lesbar, die Zeile öffnet nichts, und der Grund steht darunter.
    */
   recht?: string;
+  /**
+   * Es gibt hier nichts zu tun: die Zeile nennt Wert und Grund und öffnet kein
+   * Blatt (ein Blatt mit nur einem Satz und „Verstanden" wäre ein unnötiges Modal).
+   */
+  statisch?: boolean;
   onClick: () => void;
 }) {
   const rollen = useRollen();
-  if (recht && !rollen.darf(recht)) {
+  const ohneRecht = recht != null && !rollen.darf(recht);
+  if (ohneRecht || statisch) {
     return (
       <li id={id}>
         <div className={`vp-einst-zeile is-statisch${gefahr ? ' is-gefahr' : ''}`}>
@@ -954,12 +1236,17 @@ function Zeile({
           <span className="vp-einst-lab">
             <b>{label}</b>
             {wert != null && <span className="vp-einst-wert">{wert}</span>}
-            <small>
-              <Recht aktion={recht}>{null}</Recht>
-            </small>
+            {ohneRecht ? (
+              <small>
+                <Recht aktion={recht}>{null}</Recht>
+              </small>
+            ) : (
+              sub && <small className={warn ? 'is-warn' : undefined}>{sub}</small>
+            )}
           </span>
           <span />
         </div>
+        {nach}
       </li>
     );
   }
@@ -988,7 +1275,84 @@ function Zeile({
           )}
         </span>
       </button>
+      {nach}
     </li>
+  );
+}
+
+/**
+ * Die Zeile „Einspeisevergütung" unter dem Stromtarif: der Satz, der gerade
+ * gilt, und darunter, woher er kommt („hergeleitet aus EEG, Inbetriebnahme …"
+ * bzw. „von Ihnen angegeben"). Ohne Grundlage steht „Ohne Angabe" da - nie eine
+ * Null. Bei Direktvermarktung und Netzladen öffnet sie ein erklärendes Blatt
+ * ohne Recht-Schranke (es ändert nichts), sonst braucht sie „Anlage verwalten"
+ * wie der Stromtarif.
+ */
+function VerguetungZeile({
+  label,
+  stand,
+  fehler,
+  onBlatt,
+  onNeuLaden,
+  folge,
+}: {
+  label: string;
+  stand: Einspeiseverguetung | null;
+  fehler: boolean;
+  onBlatt: () => void;
+  onNeuLaden: () => void;
+  folge: ReactNode;
+}) {
+  if (fehler) {
+    return (
+      <Zeile
+        id="technik-verguetung"
+        icon="sun"
+        kat="dynamic"
+        label={label}
+        wert="nicht geladen"
+        sub="Tippen, um es erneut zu versuchen"
+        warn
+        onClick={onNeuLaden}
+      />
+    );
+  }
+  if (stand == null) {
+    return (
+      <Zeile id="technik-verguetung" icon="sun" kat="dynamic" label={label} wert="wird geladen …" onClick={() => undefined} />
+    );
+  }
+  const z = verguetungZeile(stand);
+  // Bei Direktvermarktung und Netzladen gibt es keinen Satz anzugeben: der Grund steht an der Zeile.
+  if (!angabeMoeglich(stand.zustand)) {
+    const ruht = ruhtErklaerung(stand);
+    return (
+      <Zeile
+        id="technik-verguetung"
+        icon="sun"
+        kat="dynamic"
+        label={label}
+        wert={z.wert}
+        sub={ruht ? <>{z.sub}<span className="vp-einst-grund">{ruht}</span></> : z.sub}
+        statisch
+        onClick={onBlatt}
+        nach={folge}
+      />
+    );
+  }
+  return (
+    <Zeile
+      id="technik-verguetung"
+      icon="sun"
+      kat="dynamic"
+      label={label}
+      wert={z.wert}
+      sub={z.sub}
+      warn={z.warn}
+      recht="anlage.verwalten"
+      onClick={onBlatt}
+      nach={folge}
+    />
   );
 }
 
@@ -1190,7 +1554,8 @@ function ProfilDialog({
       open={open}
       title="Profil ändern"
       intro="Wofür wird diese Anlage betrieben?"
-      consequences={profilAenderungsFolgen(wahl)}
+      // Die Folgen erst, wenn wirklich etwas anderes gewählt ist - vorher gibt es keine.
+      consequences={wahl === (site.profil ?? null) ? [] : profilAenderungsFolgen(wahl)}
       confirmLabel={busy ? 'Speichere…' : 'Profil speichern'}
       busy={busy}
       onConfirm={speichern}
@@ -1218,22 +1583,39 @@ function ProfilDialog({
   );
 }
 
+/** Das eine Feld, das eine Zeile der Einstellungen öffnet. */
+export type StammdatenFeld = 'name' | 'einspeisegrenze' | 'standort';
+
+/** Der Titel des Blatts je Zeile - wortgleich mit der Zeile, die es öffnet. */
+const STAMMDATEN_TITEL: Record<StammdatenFeld, string> = {
+  name: 'Name',
+  einspeisegrenze: 'Einspeisegrenze',
+  standort: 'Standort',
+};
+
 /**
- * Das Formular der Grunddaten im Blatt „Anlage bearbeiten": Name, Gebotszone,
- * Standort auf der Karte und die Einspeisegrenze. Die Veräußerungsform steckt seit
- * MiSpeL MP-17 im Förderweg (eigene Zeile und Dialog, BK-17 A). Es trägt die
- * WHOLE site unverändert mit (`buildSitePayload`, Voll-Repräsentation), damit
- * ein fokussierter Save nie ein Feld blankt, das eine andere Zeile besitzt.
+ * Das Formular der Grunddaten: Name, Gebotszone, Standort auf der Karte und die
+ * Einspeisegrenze. Die Veräußerungsform steckt seit MiSpeL MP-17 im Förderweg
+ * (eigene Zeile und Dialog, BK-17 A). Es trägt die WHOLE site unverändert mit
+ * (`buildSitePayload`, Voll-Repräsentation), damit ein fokussierter Save nie ein
+ * Feld blankt, das eine andere Zeile besitzt.
+ *
+ * Mit `nur` zeigt es genau das Feld der Zeile, die es geöffnet hat (Standort =
+ * Karte und Gebotszone) - wer den Namen ändert, sieht nicht die Karte und zwei
+ * Absätze zur Einspeisung. Gespeichert wird trotzdem die ganze Anlage.
  */
 export function StammdatenEditForm({
   site,
+  nur,
   onCancel,
   onSaved,
 }: {
   site: Site;
+  nur?: StammdatenFeld;
   onCancel: () => void;
   onSaved: (updated: Site) => void;
 }) {
+  const zeige = (f: StammdatenFeld) => nur == null || nur === f;
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
@@ -1277,13 +1659,13 @@ export function StammdatenEditForm({
   return (
     <div className="vp-tech-editform">
       <div className="vp-form-stack">
-        <Input
-          label="Name *"
+        {zeige('name') && <Input
+          label={nur ? 'Name' : 'Name *'}
           value={name}
           autoFocus
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-        />
-        <VpPicker
+        />}
+        {zeige('standort') && <VpPicker
           id="edit-site-zone"
           label="Gebotszone"
           options={[
@@ -1293,8 +1675,8 @@ export function StammdatenEditForm({
           ]}
           value={biddingZone}
           onChange={setBiddingZone}
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        />}
+        {zeige('standort') && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap
             lat={lat}
@@ -1307,8 +1689,8 @@ export function StammdatenEditForm({
           <p className="vp-note" style={{ margin: 0 }}>
             Verschieben Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
           </p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        </div>}
+        {zeige('einspeisegrenze') && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <Input
             label="Maximale Einspeiseleistung am Netzanschlusspunkt (kW)"
             placeholder="z. B. 75"
@@ -1321,7 +1703,7 @@ export function StammdatenEditForm({
             wenn angegeben, plant VoltPilot die Einspeisung nie über diese Grenze
             hinaus. Ihr Bezug aus dem Netz ist davon nicht betroffen.
           </p>
-        </div>
+        </div>}
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
       <div className="vp-tech-editactions">
@@ -1329,7 +1711,7 @@ export function StammdatenEditForm({
           Abbrechen
         </Button>
         <Recht aktion="anlage.verwalten"><Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
-          {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
+          {busy ? 'Wird gespeichert…' : nur ? 'Speichern' : 'Änderungen speichern'}
         </Button></Recht>
       </div>
     </div>
@@ -1350,6 +1732,7 @@ export function BatteryControlSection({
   onSaved,
   hideWarning = false,
   startEditing = false,
+  onEditCancel,
 }: {
   siteId: string;
   battery: SiteAsset | null;
@@ -1359,6 +1742,8 @@ export function BatteryControlSection({
   hideWarning?: boolean;
   /** Direkt im Formular beginnen („Speicher hinzufügen", „Gerät zuordnen"). */
   startEditing?: boolean;
+  /** „Abbrechen" im Formular schließt die umgebende Fläche statt zur Lese-Ansicht zu wechseln. */
+  onEditCancel?: () => void;
 }) {
   const [editing, setEditing] = useState(startEditing);
   // Nur ein WECHSEL der Anlage beendet das Bearbeiten - nicht das erste Rendern.
@@ -1380,7 +1765,7 @@ export function BatteryControlSection({
         siteId={siteId}
         battery={battery}
         devices={devices}
-        onCancel={() => setEditing(false)}
+        onCancel={onEditCancel ?? (() => setEditing(false))}
         onSaved={(a) => {
           setEditing(false);
           onSaved(a);

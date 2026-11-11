@@ -1,0 +1,132 @@
+{
+ "nachweis": "Zusatzlauf zu NW-3 — kurzer Verbraucher am gebauten Box-Image",
+ "gefahren_am": "2026-10-12T21:33:15Z",
+ "repo_stand_des_pruefstands": "c5b32cba7be54a4b3be5965c7b3c72d6ef110c64",
+ "paar": {
+  "ref": "edge-2026.10.1",
+  "tag_commit": "c5b32cba7be54a4b3be5965c7b3c72d6ef110c64",
+  "core_binary_stempel": "edge-2026.10.1-c5b32cba7be5",
+  "stand_den_die_box_selbst_meldet": "edge-2026.10.1-c5b32cba7be5",
+  "herkunft": "die von nw3.sh aus dem Tag gebauten Bilder, NICHT das Release-Artefakt"
+ },
+ "fall": {
+  "name": "laden",
+  "quelle": "edge-app/core/internal/agent/surplus_short_consumer_scenario_test.go (herzogauBenchScenario)",
+  "pv_kw": 5.0,
+  "ueberschuss_kw_bis_sekunde": "0.76:420,0.5",
+  "verbraucher_kw": 2.62,
+  "verbraucher_dauern_s": [
+   15,
+   10,
+   12
+  ],
+  "verbraucher_abstaende_s": [
+   60,
+   90,
+   120,
+   75,
+   105
+  ],
+  "geraet": "Modell des Tags (edge/sim/sim-model.js): folgt einem Sollwert nach 12 s (reine Totzeit), meldet alle 5 s, Ladezustand 37 %",
+  "fahrplan": {
+   "schema_version": "1.0",
+   "tenant_id": "00000000-0000-0000-0000-000000000001",
+   "site_id": "00000000-0000-0000-0000-000000000002",
+   "device_id": "00000000-0000-0000-0000-000000000003",
+   "plan_id": "b91cd91c-beef-4f6e-9c00-a1976e2f24c2",
+   "generated_at": "2026-10-12T21:19:06Z",
+   "horizon_slots": 4,
+   "slot_minutes": 15,
+   "grid_charge_allowed": false,
+   "slots": [
+    {
+     "start": "2026-10-12T21:15:00Z",
+     "battery_setpoint_kw": 1.3,
+     "charge_from_surplus_only": true,
+     "charge_surplus_to_battery": true
+    },
+    {
+     "start": "2026-10-12T21:30:00Z",
+     "battery_setpoint_kw": 1.3,
+     "charge_from_surplus_only": true,
+     "charge_surplus_to_battery": true
+    },
+    {
+     "start": "2026-10-12T21:45:00Z",
+     "battery_setpoint_kw": 1.3,
+     "charge_from_surplus_only": true,
+     "charge_surplus_to_battery": true
+    },
+    {
+     "start": "2026-10-12T22:00:00Z",
+     "battery_setpoint_kw": 1.3,
+     "charge_from_surplus_only": true,
+     "charge_surplus_to_battery": true
+    }
+   ],
+   "effective_floor_soc_pct": 5.0
+  }
+ },
+ "ergebnis": {
+  "fall": "laden",
+  "fenster_von_s": 90.0,
+  "fenster_bis_s": 860.0,
+  "sekunden": 768,
+  "verbraucher": 9,
+  "verbraucher_je_ueberschuss_kw": {
+   "0.76": 4,
+   "0.5": 5
+  },
+  "aus_dem_speicher_eingespeist_kwh": 0.0,
+  "aus_dem_speicher_eingespeist_s": 0,
+  "laengste_einspeisung_aus_dem_speicher_s": 0,
+  "geladen_kwh": 0.0159,
+  "entladen_kwh": 0.0,
+  "bezug_kwh": 0.0657,
+  "einspeisung_kwh": 0.0995,
+  "ueberschuss_angeboten_kwh": 0.112,
+  "groesste_entladung_kw": 0.0,
+  "sollwerte_geschrieben": 154,
+  "entlade_befehle": 0,
+  "kleinster_sollwert_kw": 0.0,
+  "groesster_sollwert_kw": 0.26,
+  "entlade_befehle_im_einzelnen": [],
+  "entlade_befehl_stand_nach_verbraucher_ende_s": [],
+  "ems_freigabe_entzogen": 0,
+  "urteil": "gruen",
+  "satz": "9 kurze Verbraucher, kein Entlade-Befehl (kleinster Sollwert 0.0 kW), aus dem Speicher eingespeist 0 Wh, geladen 16 Wh von 112 Wh angebotenem Ueberschuss"
+ },
+ "herzschlag_modi_im_fenster": {
+  "trim": 51
+ },
+ "letzter_herzschlag_im_fenster": {
+  "version": "edge-2026.10.1-c5b32cba7be5",
+  "battery_control": {
+   "state": "gesteuert",
+   "control_enabled": true,
+   "certified": true
+  },
+  "control": {
+   "commanded_kw": 0,
+   "confirmed_kw": 0,
+   "all_match": true,
+   "control_enabled": true,
+   "certified": true,
+   "slot_start": "2026-10-12T21:30:00Z",
+   "checked_at": "2026-10-12T21:32:57.095Z",
+   "mismatch_roles": [],
+   "execution": {
+    "mode": "trim",
+    "planned_kw": 1.3,
+    "surplus_kw": 0
+   },
+   "cert_source": "env"
+  }
+ },
+ "grenzen": [
+  "Simulatorbeleg, kein Hardware-Pruefstand und kein Prueflauf je Steuerprofil",
+  "ein Fall (zwei Ueberschuesse, eine Verbrauchergroesse), ein Geraet mit reiner Totzeit",
+  "geprueft ist der Weg, auf dem die Box gedaempft selbst regelt; ems_freigabe_entzogen im Ergebnis zaehlt, wie oft sie im Fenster an das Geraet uebergeben hat",
+  "ein Lauf allein beweist die Korrektur nicht - erst die Gegenprobe gegen den Stand davor"
+ ]
+}

@@ -9,6 +9,11 @@ import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.entities.LeadDeviceService;
+import com.voltpilot.api.geraete.BoxBefundSql;
+import com.voltpilot.api.geraete.BoxLoesenAbgelehnt;
+import com.voltpilot.api.geraete.BoxLoesenRegel;
+import com.voltpilot.api.geraete.BoxLoesenRegel.BoxBefund;
+import com.voltpilot.api.geraete.BoxLoesenRepository;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
@@ -18,6 +23,7 @@ import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.tenant.AnfrageZeitgrenze;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
@@ -32,6 +38,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -81,11 +88,22 @@ public class DeviceController {
     private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
     private final CommandLogRepository commandLog;
     private final RechtPruefung rechte;
+    private final BoxLoesenRepository boxLoesen;
     private LeadDeviceService leadDevices;
 
     @org.springframework.beans.factory.annotation.Autowired
     void leadDevices(LeadDeviceService service) {
         this.leadDevices = service;
+    }
+
+    /** Die Route des Verbindens für die Anfrage-Kennung (Anlage-Flow a1, Paket 2). */
+    static final String ROUTE_VERBINDEN = "POST /api/v1/devices/claim";
+
+    private AnfrageKennungen anfrageKennungen;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void anfrageKennungen(AnfrageKennungen kennungen) {
+        this.anfrageKennungen = kennungen;
     }
 
     /** UEMS AP-15 §5.5: eine abgemeldete Mitglieds-Box scheidet aus der Gemeinsamen Steuerung aus. */
@@ -108,7 +126,7 @@ public class DeviceController {
             ControlCertificationService controlCertification,
             ObjectProvider<ChargingConfigPublisher> chargingConfig,
             com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides,
-            CommandLogRepository commandLog, TeilansichtDienst teilansicht) {
+            CommandLogRepository commandLog, TeilansichtDienst teilansicht, BoxLoesenRepository boxLoesen) {
         this.devices = devices;
         this.teilansicht = teilansicht;
         this.geltungsbereich = geltungsbereich;
@@ -125,6 +143,7 @@ public class DeviceController {
         this.chargingConfig = chargingConfig;
         this.deviceOverrides = deviceOverrides;
         this.commandLog = commandLog;
+        this.boxLoesen = boxLoesen;
     }
 
     @GetMapping
@@ -140,18 +159,46 @@ public class DeviceController {
         return new SichtbareListe<>(liste.stream().map(d -> new DeviceDto(
                 d.id(), d.siteId(), d.externalRef(), d.kind(), d.name(), d.status(),
                 d.lastSeenAt(), d.createdAt(), d.lanHost(), d.lanSeenAt(), d.lanSource(),
-                fuehrend.get(d.siteId()) == null ? null : d.id().equals(fuehrend.get(d.siteId()))))
+                fuehrend.get(d.siteId()) == null ? null : d.id().equals(fuehrend.get(d.siteId())),
+                d.anmeldung()))
                 .toList(), teilansicht.jetzt());
     }
 
     @PostMapping("/claim")
     @Recht(value = "geraet.einrichten", ziel = RechtZiel.DIENST)
     @Transactional
-    public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request) {
+    public ResponseEntity<?> claim(@Valid @RequestBody DeviceClaimRequest request,
+            org.springframework.security.core.Authentication auth,
+            @org.springframework.web.bind.annotation.RequestHeader(value = AnfrageKennungen.KOPF,
+                    required = false) String anfrageKopf) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
+        // Anlage-Flow a1 (Paket 2): dieselbe Anfrage-Kennung wie an POST /sites und /standorte. Das
+        // Verbinden war schon über die Kennung der Box idempotent; die Anfrage-Kennung gibt beim
+        // Wiederholen nach einer verlorenen Antwort genau die erste Antwort zurück und lehnt dieselbe
+        // Kennung mit einer anderen Box oder Anlage ab (422 anfrage_kennung_anders).
+        String kennung = anfrageKennungen == null ? null : AnfrageKennungen.kennung(anfrageKopf);
+        String fingerabdruck = kennung == null ? null : anfrageKennungen.fingerabdruck(request);
+        if (kennung != null) {
+            anfrageKennungen.sperren(ROUTE_VERBINDEN, kennung);
+            Optional<AnfrageKennungen.Gemerkt> gemerkt = anfrageKennungen.gemerkt(ROUTE_VERBINDEN, kennung,
+                    fingerabdruck);
+            if (gemerkt.isPresent()) {
+                return AnfrageKennungen.antwort(gemerkt.get());
+            }
+        }
+        ResponseEntity<DeviceDto> antwort = verbinden(request, auth, tenantId);
+        if (kennung != null) {
+            anfrageKennungen.merken(ROUTE_VERBINDEN, kennung, fingerabdruck,
+                    HttpStatus.valueOf(antwort.getStatusCode().value()), antwort.getBody());
+        }
+        return antwort;
+    }
+
+    private ResponseEntity<DeviceDto> verbinden(DeviceClaimRequest request,
+            org.springframework.security.core.Authentication auth, UUID tenantId) {
         // The target site must belong to the caller's tenant (RLS-checked).
         if (!geltungsbereich.siteVisible(request.siteId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
@@ -181,23 +228,49 @@ public class DeviceController {
         //   - Self-generated edge refs (edge-...) must carry a valid check
         //     character (the format the shipping Edge-App shows on its :8484 web
         //     app). A single-character typo breaks the checksum (see EdgeRef).
-        // Other free-form refs (dev seeds, integrations) stay ungated.
+        // A customer account (KONTO_benutzer) knows only these two forms: a free
+        // ref from a customer is a typo of one of them ("k7m2xq3" without "edge-",
+        // "edgek7m2xq3", "edge-k7m2xq1" with a "1" for an "l") and would become a
+        // ghost device (Anlage-Flow a1, B4). Other free-form refs (dev seeds,
+        // integrations) stay open to the platform and to service accounts.
+        if (kundenkonto(auth) && !externalRef.startsWith(STICKER_PREFIX) && !EdgeRef.isValid(externalRef)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Unknown Geräte-ID '" + externalRef + "' - keine Kennung einer VoltPilot-Box");
+        }
         String kind = request.kind();
         if (externalRef.startsWith(STICKER_PREFIX)) {
             Optional<String> provisionedKind = provisioned.findKind(externalRef);
             if (provisionedKind.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Unknown Geräte-ID '" + externalRef + "' - not a provisioned device");
             }
             if (kind == null || kind.isBlank()) {
                 kind = provisionedKind.get();
             }
         } else if (EdgeRef.isGeneratedFormat(externalRef) && !EdgeRef.isValid(externalRef)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Unknown Geräte-ID '" + externalRef + "' - Prüfzeichen ungültig (Tippfehler?)");
         }
+        com.voltpilot.api.uems.ProtokollAkteur akteur = com.voltpilot.api.uems.ProtokollAkteur.aus(auth).orElse(null);
+        // Box verbinden S4 ("Andere Kennung", Vertrag Abschnitt 3.5): nur LESEN, nichts ändern -
+        // schlägt das eigentliche Verbinden unten fehl (fremde Kennung 409, Tippfehler oben schon
+        // 422), bleibt die zu ersetzende Box unberührt, weil bis hierher nichts geschrieben wurde.
+        // box_loesen_protokoll_von_chk verlangt für geloest_art = 'kunde' einen Urheber (anders als
+        // der Admin-Weg): ohne ProtokollAkteur (Servicekonto) gäbe es sonst erst beim Protokollieren
+        // einen 500, NACH dem Lösen - hier, vor jeder Änderung, ist der klare Fehler billig.
+        if (request.ersetzt() != null && akteur == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Andere Kennung braucht eine angemeldete Person.");
+        }
+        BoxBefundSql.Zeile ersetzteZeile = request.ersetzt() == null ? null : ersetzteBoxPruefen(request.ersetzt());
         try {
-            DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, kind);
+            DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, kind, akteur);
+            if (ersetzteZeile != null) {
+                // Erst jetzt, nachdem die neue Kennung sicher verbunden ist: die alte Box lösen, als
+                // wäre sie nie gewesen (BoxLoesenRegel, adminWeg = false; dieselbe Hygiene wie
+                // BoxLoesenService.loesenGesperrt, aber geloest_art = "kunde").
+                loeseErsetzteBox(ersetzteZeile, tenantId, akteur);
+            }
             // Self-maintaining control path: if this claim leaves the site with
             // exactly one device and its battery asset is still unlinked, link
             // them - the battery is controlled by the inverter (this device), so
@@ -215,6 +288,16 @@ public class DeviceController {
             // platform-admin bootstrap or an api restart). Idempotent +
             // fail-soft; a broken composition never fails the claim.
             autoCompose.ensureComposed(claimed.siteId());
+            if (ersetzteZeile != null && !ersetzteZeile.siteId().equals(claimed.siteId())) {
+                // Die ersetzte Box gehörte einer anderen Anlage als die neue (seltener Fall, der
+                // Assistent ersetzt meist innerhalb derselben Anlage): deren Speicher-Verknüpfung
+                // heilt separat, dieselbe Selbst-Heilung wie nach jedem Lösen.
+                if (assets.autoLinkBatteryDevice(ersetzteZeile.siteId())) {
+                    log.info("Auto-linked remaining device of site {} to its battery asset after "
+                            + "andere Kennung of {}", ersetzteZeile.siteId(), ersetzteZeile.deviceId());
+                }
+                autoCompose.ensureComposed(ersetzteZeile.siteId());
+            }
             // Zero-touch onboarding: hand the waiting device its identity via the
             // retained provision/{ref}/config (best-effort; see ProvisioningPublisher).
             // The claim still succeeds if the broker is down, but a discarded
@@ -233,6 +316,74 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Device '" + externalRef + "' is already claimed");
         }
+    }
+
+    /**
+     * Box verbinden S4: der Befund UNTER der Sperre der zu ersetzenden Box, geprüft gegen dieselbe
+     * {@link BoxLoesenRegel} wie der Admin-Weg - nur mit {@code adminWeg = false} (Vertrag Abschnitt
+     * 3.5): ein abgeholter Schlüssel blockiert hier IMMER, anders als bei B2 = A. Eine fremde, schon
+     * ausgebaute oder nicht vorhandene Geräte-ID ({@code ersetzt} ein gefälschter Pfad) ergibt
+     * denselben Befund wie eine schon ausgebaute Box ({@code aktiv = false}) statt eine eigene 404 -
+     * nie eine fremde Box lösen, nie verraten, ob die ID überhaupt existiert. Nichts wird geändert;
+     * nur bei einer leeren Gründe-Liste holt der Aufrufer nach einer erfolgreichen neuen Kennung die
+     * Box tatsächlich ab ({@link #loeseErsetzteBox}).
+     */
+    private BoxBefundSql.Zeile ersetzteBoxPruefen(UUID ersetzteId) {
+        Optional<DeviceDto> vorab = devices.findById(ersetzteId);
+        BoxBefundSql.Zeile zeile = null;
+        if (vorab.isPresent()) {
+            // Dasselbe Recht wie an der Zielanlage (oben): eine Standort-Rolle ohne Zugang zur
+            // Anlage der zu ersetzenden Box darf sie nicht lösen, auch wenn RLS sie sieht.
+            rechte.pruefen("geraet.einrichten", RechtZiel.ANLAGE, vorab.get().siteId(),
+                    () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found"));
+            devices.lockReference(vorab.get().externalRef());
+            zeile = boxLoesen.zeileUnterSperre(ersetzteId).orElse(null);
+        }
+        BoxBefund befund = zeile == null
+                ? new BoxBefund(false, null, null, null, false, null)
+                : zeile.befund();
+        List<String> gruende = BoxLoesenRegel.gruende(befund, false);
+        if (!gruende.isEmpty()) {
+            throw new BoxLoesenAbgelehnt(gruende, befund);
+        }
+        return zeile;
+    }
+
+    /**
+     * Box verbinden S4: die ersetzte Box lösen, als wäre sie nie gewesen (B1 = A, {@code geloest_art
+     * = "kunde"}, Anlass {@code andere_kennung}) - dieselbe Hygiene wie
+     * {@code BoxLoesenService.loesenGesperrt}, nur ohne den admin-exklusiven Schlüssel-Entzug (B2 =
+     * A), der hier nie greift: {@link #ersetzteBoxPruefen} hat {@code angemeldet} schon
+     * ausgeschlossen. Läuft NACH dem erfolgreichen Claim der neuen Kennung (derselbe
+     * {@code @Transactional}), damit ein scheiterndes Verbinden (409 fremde Kennung) die alte Box
+     * unberührt lässt.
+     */
+    private void loeseErsetzteBox(BoxBefundSql.Zeile zeile, UUID tenantId,
+            com.voltpilot.api.uems.ProtokollAkteur akteur) {
+        UUID deviceId = zeile.deviceId();
+        UUID siteId = zeile.siteId();
+        if (verbundAusscheiden != null) {
+            verbundAusscheiden.beimAusbau(deviceId, akteur);
+        }
+        commandLog.beimAusbauBeenden(deviceId);
+        devices.ausDerTopologieLoesen(deviceId);
+        provisioning.ifAvailable(p -> p.clearRetained(zeile.externalRef(), tenantId, siteId, deviceId));
+        entityRegistry.ifAvailable(p -> p.clearRegistry(tenantId, siteId, deviceId));
+        rollouts.ifAvailable(r -> r.onDeviceUnclaimed(tenantId, siteId, deviceId));
+        controlCertification.onDeviceUnclaimed(tenantId, siteId, deviceId);
+        chargingConfig.ifAvailable(p -> p.clear(tenantId, siteId, deviceId));
+        deviceOverrides.clearSite(siteId);
+        try {
+            if (!devices.loesen(deviceId)) {
+                throw new BoxLoesenAbgelehnt(List.of("verbund"), zeile.befund());
+            }
+        } catch (DataIntegrityViolationException ex) {
+            // Die DB-Rückversicherung (ON DELETE RESTRICT, V20260913150000): nichts geändert.
+            throw new BoxLoesenAbgelehnt(List.of("messwerte"), zeile.befund());
+        }
+        boxLoesen.protokollieren(new BoxLoesenRepository.Eintrag(tenantId, siteId, zeile.siteName(), deviceId,
+                zeile.externalRef(), zeile.verbundenAm(), akteur == null ? null : akteur.sub(),
+                akteur == null ? "VoltPilot" : akteur.name(), "kunde", "andere_kennung", null, zeile.befund()));
     }
 
     /**
@@ -267,6 +418,14 @@ public class DeviceController {
     @PostMapping("/{deviceId}/purge-data")
     @Recht(value = "aufzeichnungen.loeschen", ziel = RechtZiel.DEVICE)
     public com.voltpilot.api.web.dto.DevicePurgeResultDto purgeData(@PathVariable UUID deviceId) {
+        // vp-db-zeitgrenze: DevicePurgeService rebuilt die Rollups der Anlage aus ihrer GANZEN
+        // Roh-Historie neu (SeriesRepository#recomputeRollupsForSite) - bei einer lange laufenden
+        // Anlage kann das realistisch an die 30-s-Anfrage-Zeitgrenze kommen oder sie überschreiten.
+        // Ein Abbruch mitten im Rebuild wäre zwar transaktional sicher (Rollback), aber nutzlos: ein
+        // Retry träfe dieselbe Dauer erneut. Ausgenommen statt asynchron gemacht, weil die Dienst-
+        // eigene Sitzungssperre (DevicePurgeService) ohnehin nur einen Purge je Gerät gleichzeitig
+        // zulässt - kein zusätzlicher Job-Status nötig.
+        AnfrageZeitgrenze.ausnahme();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
         DevicePurgeService.Result r = purge.purge(device);
@@ -305,6 +464,15 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
         devices.ausDerTopologieLoesen(deviceId);
+        // N2 (Konzept vp-plattform-admin-box-benutzer-konzept Abschnitt 5): dieselbe Selbst-Heilung
+        // wie beim Verbinden (claim) - verliert eine Anlage mit zwei Boxen eine davon, bleibt sonst
+        // der Speicher ohne Box ("Ihr Speicher ist keinem Gerät zugeordnet"), obwohl die verbleibende
+        // Box ihn jetzt eindeutig steuern könnte. Best-effort und idempotent wie dort.
+        if (assets.autoLinkBatteryDevice(device.siteId())) {
+            log.info("Auto-linked remaining device of site {} to its battery asset after unclaiming {}",
+                    device.siteId(), deviceId);
+        }
+        autoCompose.ensureComposed(device.siteId());
         // Die offenen Perioden des Befehlsverlaufs enden mit der Box: kein Herzschlag schlösse sie
         // mehr, und „läuft" wäre für immer falsch. Beendet, nicht gelöscht (UEMS AP-07 IP-11).
         commandLog.beimAusbauBeenden(deviceId);
@@ -352,6 +520,21 @@ public class DeviceController {
     @ExceptionHandler(BelegeImWeg.class)
     public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
+    /**
+     * Box verbinden S4 ("Andere Kennung"): die zu ersetzende Box hat sich doch gemeldet (oder ihren
+     * Schlüssel abgeholt) - 409 mit den Gründen und dem Befund, nichts geändert (Vertrag Abschnitt
+     * 3.5, {@code 409 box_hat_sich_gemeldet}), wie {@code AdminGeraeteAkteController.abgelehnt}.
+     */
+    @ExceptionHandler(BoxLoesenAbgelehnt.class)
+    public ResponseEntity<java.util.Map<String, Object>> andereKennungAbgelehnt(BoxLoesenAbgelehnt e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
+    /** Ein Kundenkonto (UEMS AP-03 IP-3, Kontoart {@code benutzer}) - weder Plattform noch Servicekonto. */
+    private static boolean kundenkonto(org.springframework.security.core.Authentication auth) {
+        return Kundenkonto.ist(auth);
     }
 
     /**

@@ -40,11 +40,14 @@ Arbeitsteilung zwischen ihnen IST die Ausfallsicherheit:
   `unbekannt`. Ein angenommener Befehl ist kein Befehl in Kraft — die
   PR-280-/Deye-Lehre auf OCPP übertragen. Eine Antwort in AMPERE wird nur mit passender erklärter Verdrahtung
   umgerechnet; fehlende oder abweichende Phasen bleiben `unbekannt`.
-- **`Commission` läuft bei JEDEM (Wieder-)Verbinden**, nicht einmal beim
-  Koppeln: eine Säule, die neu gestartet hat, kann ihr Sicherheitsprofil
-  verloren haben, und eine Anlage mit geänderten Grenzen muss die neuen lernen.
-  Ein Fehlschlag wird protokolliert UND zurückgegeben — nie bleibt eine Säule
-  „eingerichtet" aussehend zurück.
+- **`Commission` läuft nach JEDEM Neustart der Säule** (BootNotification),
+  nicht einmal beim Koppeln: eine Säule, die neu gestartet hat, kann ihr
+  Sicherheitsprofil verloren haben, und eine Anlage mit geänderten Grenzen muss
+  die neuen lernen. Ein bloßes Wiederverbinden ohne Neustart richtet nicht neu
+  ein (W-07, `ChargerState.ProfilesInForce`); den 0-W-Schutz setzt nur die
+  erste Einrichtung je Säulen-Start, ein Fehlschlag wird mit Backoff
+  wiederholt (W-08). Ein Fehlschlag wird protokolliert UND zurückgegeben — nie
+  bleibt eine Säule „eingerichtet" aussehend zurück.
 - **⚠ Für TESTS mit einer simulierten Station: EINE Uhr.** Der Profil-Start
   kommt vom Server, den Ablauf beurteilt die Station — zwei auseinanderlaufende
   Uhren lassen ein Profil im Moment des Schreibens abgelaufen aussehen

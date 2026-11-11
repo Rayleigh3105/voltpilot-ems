@@ -55,10 +55,14 @@ public class AusschliesslichkeitsPruefungRepository {
         return jdbc.query(ANLAGE + "WHERE s.id = ?", (rs, n) -> anlage(rs), siteId).stream().findFirst();
     }
 
-    /** Alle Anlagen mit erfasstem Speicher, nach Mandant und Name. */
-    public List<Anlage> anlagenMitSpeicher() {
+    /**
+     * Alle Anlagen mit erfasstem Speicher, für die Netzladen nicht erlaubt ist ({@code site.netzladen_erlaubt =
+     * false}, Portal „Verboten“), nach Mandant und Name. Nur dort gilt die Zusage, dass kein Netzstrom in den Speicher
+     * geht; eine Anlage mit erlaubtem Netzladen lädt bewusst aus dem Netz.
+     */
+    public List<Anlage> anlagenMitSpeicherOhneNetzladen() {
         return jdbc.query(ANLAGE + "WHERE EXISTS (SELECT 1 FROM asset a WHERE a.site_id = s.id AND a.type = 'battery')"
-                + " ORDER BY t.name, s.name, s.id", (rs, n) -> anlage(rs));
+                + " AND NOT s.netzladen_erlaubt ORDER BY t.name, s.name, s.id", (rs, n) -> anlage(rs));
     }
 
     private static Anlage anlage(ResultSet rs) throws SQLException {

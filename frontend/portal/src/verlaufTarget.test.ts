@@ -17,7 +17,8 @@ describe('widgetTarget — Geld-/Modus-Kacheln bilden auf ihre Seite ab', () => 
     expect(widgetTarget('handel')).toEqual({ kind: 'sub', sub: 'fahrplan' });
     expect(widgetTarget('lastspitze')).toEqual({ kind: 'sub', sub: 'lastspitzen' });
     expect(widgetTarget('automatik')).toEqual({ kind: 'sub', sub: 'steuerung' });
-    expect(widgetTarget('wetter')).toEqual({ kind: 'sub', sub: 'wetter' });
+    // Wetter wohnt seit Konzept vp-prognosen-konzept (E2 = A) in der Prognose.
+    expect(widgetTarget('wetter')).toEqual({ kind: 'sub', sub: 'prognose' });
   });
 });
 

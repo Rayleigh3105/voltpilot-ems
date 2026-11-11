@@ -231,6 +231,11 @@ type OtaController interface {
 	OtaRecordApplied(release string, releaseSeq int64) (otatarget.View, error)
 	// IsOtaRejection tells a refusal (400 + German reason) from a real failure.
 	IsOtaRejection(err error) bool
+	// OtaUpdate is the `update` block of the heartbeat (backend, running
+	// version, current_seq, trust identity). /health carries it so the
+	// Werkstatt can check "Update-bereit" on a box that has no customer yet
+	// (Konzept vp-edge-light-update, K5). nil = not known.
+	OtaUpdate() *cloud.UpdateSummary
 }
 
 // InstallerWriteController backs the deliberately NARROW remote installer
@@ -254,36 +259,23 @@ type InstallerWriteController interface {
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
-// its own clock drifts from the edge device's, plus the derived onboarding-gate
-// signals the guided two-step onboarding needs.
+// its own clock drifts from the edge device's, plus two derived facts the
+// setup page names (which component has proven itself).
+//
+// ⚠ Nothing here gates the coupling: the reference is always part of the
+// envelope. A box is coupled with the portal FIRST and set up there; no device
+// type and no measured data is a prerequisite.
 type stateEnvelope struct {
 	state.Snapshot
 	ServerNowMs int64 `json:"server_now_ms"`
 
-	// InverterConnected is the gate for the portal-claim step: an inverter is
-	// configured AND at least one telemetry reading has arrived (the inverter is
-	// proven to actually deliver data). Only then may the customer claim the
-	// device in the portal.
+	// InverterConnected is a fact, not a gate: an inverter is configured AND at
+	// least one telemetry reading has arrived.
 	InverterConnected bool `json:"inverter_connected"`
-	// OnboardingStep is the current guided step: "inverter" (connect the
-	// inverter first), "claim" (inverter delivers data -> claim in the portal),
-	// or "done" (device already claimed/paired - onboarding no longer governs).
-	OnboardingStep string `json:"onboarding_step"`
-	// ClaimUnlocked is true once the reference may be shown (gate satisfied or
-	// the device is already paired). While false the reference is withheld from
-	// the envelope entirely so the UI cannot accidentally reveal it (the
-	// belt-and-suspenders half of the enforcement).
-	ClaimUnlocked bool `json:"claim_unlocked"`
-	// ChargePointConnected is the SECOND way through the gate (Lastmanagement
-	// Stufe 3, concept §5.1): a charging park has no inverter at all, and a box
-	// whose gate keys on one alone could never be commissioned. It is true once
-	// at least one REGISTERED charge point has spoken to this box - a
-	// BootNotification IS the connection proof for a charge point (the
-	// assistant's "Verbindungstest" is exactly that).
-	//
-	// ⚠ It is ADDITIVE and never loosens the inverter rule: a plant WITH an
-	// inverter is byte-identical to before, and a plant with neither component
-	// stays locked, which is the honest state of a box that measures nothing.
+	// ChargePointConnected is true once at least one REGISTERED charge point
+	// has spoken to this box - a BootNotification IS the connection proof for a
+	// charge point (Lastmanagement Stufe 3, concept §5.1). Same rule as the
+	// heartbeat (state.Snapshot.HasReportedChargePoint).
 	ChargePointConnected bool `json:"charge_point_connected"`
 
 	// Topology is the additive AE1 Anlagen-Topologie-Read-Model: the site's v2
@@ -300,63 +292,14 @@ type stateEnvelope struct {
 	ActiveControl cloud.ActiveControl `json:"active_control"`
 }
 
-// paired reports whether a certificate is already on disk (the device is
-// claimed), mirroring the frontend's step derivation: any post-claim pairing
-// state counts, including the transient cloud-error/disconnect states.
-// geraet_entfernt (removed/unclaimed in the cloud) is DELIBERATELY not paired:
-// a cert is still on disk, but the claim mapping is gone - the onboarding gate
-// re-opens the portal step (revealing the reference once the inverter delivers
-// data) so the customer can re-claim.
-func paired(pairingState string) bool {
-	switch pairingState {
-	case "verbunden", "zertifikat_erhalten", "cloud_getrennt", "cloud_fehler":
-		return true
-	}
-	return false
-}
-
-// deriveOnboarding computes the gate signals from a snapshot: the inverter is
-// "connected" only when it is configured AND has delivered at least one reading;
-// a charge point counts once it has reported itself to this box.
-//
-// ⚠ The gate asks "does SOME component deliver data", not "does the inverter"
-// (Lastmanagement concept §5.1): a Ladepark box has no inverter, so the
-// inverter-only rule would have locked it out of commissioning forever. The
-// generalisation is strictly ADDITIVE - the inverter branch is untouched and a
-// plant without either component stays locked, exactly as before.
-func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, chargePointConnected,
-	claimUnlocked bool) {
-	inverterConfigured := snap.Inverter != nil && snap.Inverter.Configured
-	inverterConnected = inverterConfigured && !snap.LastTelemetry.IsZero()
-	chargePointConnected = snap.HasReportedChargePoint()
-	componentConnected := inverterConnected || chargePointConnected
-	switch {
-	case paired(snap.PairingState):
-		return "done", inverterConnected, chargePointConnected, true
-	case componentConnected:
-		return "claim", inverterConnected, chargePointConnected, true
-	default:
-		return "inverter", inverterConnected, chargePointConnected, false
-	}
-}
-
 func envelope(st *state.Store, topo TopologyController, ac ActiveControlController) stateEnvelope {
 	snap := st.Get()
-	step, invConnected, cpConnected, claimUnlocked := deriveOnboarding(snap)
-	// Withhold the reference until the claim step is unlocked, so the portal
-	// reference cannot leak into the UI before the inverter is proven to work.
-	// The device's own enrollment uses the ref from its config, not this
-	// envelope, so this never blocks the background key/CSR/cert handshake.
-	if !claimUnlocked {
-		snap.Ref = ""
-	}
+	inverterConfigured := snap.Inverter != nil && snap.Inverter.Configured
 	return stateEnvelope{
 		Snapshot:             snap,
 		ServerNowMs:          time.Now().UnixMilli(),
-		InverterConnected:    invConnected,
-		ChargePointConnected: cpConnected,
-		OnboardingStep:       step,
-		ClaimUnlocked:        claimUnlocked,
+		InverterConnected:    inverterConfigured && !snap.LastTelemetry.IsZero(),
+		ChargePointConnected: snap.HasReportedChargePoint(),
 		Topology:             topo.Topology(),
 		ActiveControl:        ac.ActiveControl(),
 	}
@@ -1251,6 +1194,9 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			"ota_target":         otaView.Release,
 			"ota_target_seq":     otaView.ReleaseSeq,
 			"ota_target_verdict": otaView.Verdict,
+			// Der Update-Block des Herzschlags (Box-Art, bestaetigter Stand,
+			// Vertrauens-Identitaet): die Werkstatt prueft daran "Update-bereit".
+			"ota_update": ota.OtaUpdate(),
 		})
 	})
 

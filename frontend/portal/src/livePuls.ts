@@ -31,7 +31,7 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { SiteTopology, TelemetryPoint } from './api';
 import { deriveTiles } from './adaptiveLive';
-import { toComponentHealth, type ComponentHealth } from './komponenten';
+import { toComponentHealth, type ComponentHealth } from './komponentenHealth';
 import { numOrNoData } from './nodata';
 import {
   batteryState,
@@ -42,7 +42,7 @@ import {
   type LiveSnapshot,
 } from './live';
 import type { FlowMember, Role } from './topology';
-import { V1_ENTITY } from './verlauf';
+import { V1_ENTITY } from './verlaufEntity';
 
 /** Der Kopfhinweis des Boards — beide Zeitbezüge, eine Interaktion. */
 export const BOARD_HINT = 'Jetzt und heute · eine Zeile öffnet den Verlauf';
@@ -82,15 +82,8 @@ export interface LivePulsRow {
   socPct?: number;
   /** Detail der JETZT-Zeile ("Ladeleistung 3,4 kW"); nie eine Tagessumme. */
   subLine?: string;
-  /**
-   * WOHER der Ladestand kommt („gemessen" / „berechnet: Kennlinie"), P5b/P5d.
-   * Absent = unbekannt, nie stillschweigend „gemessen".
-   */
-  herkunft?: string;
-  /** „Ladestand von: <Batterie>" (P6 Speiser-Bindung); absent ohne Umleitung. */
+  /** „Ladestand von: <Gerät>"; absent ohne Umleitung. */
   socQuelle?: string;
-  /** Was das BMS zulässt („max. 22 A laden · Entladen gesperrt"), P6. */
-  grenzen?: string;
   health: ComponentHealth;
   /** Representative measurement — the „Verlauf"-jump target. */
   target: { entityId: string; channel: string } | null;
@@ -213,9 +206,7 @@ export function componentRows(topo: SiteTopology): LivePulsRow[] {
       arrow: tile.arrow,
       socPct: tile.socPct,
       subLine: tile.role === 'pv' || tile.role === 'grid' ? undefined : tile.subLine,
-      herkunft: tile.herkunft,
       socQuelle: tile.socQuelle,
-      grenzen: tile.grenzen,
       health: worstMemberHealth(topo, members),
       target,
       today: null,

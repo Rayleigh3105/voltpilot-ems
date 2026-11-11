@@ -1,4 +1,5 @@
 import { Recht } from './Recht';
+import { UEMS_GERAETE_SUCHEN } from '../glossar';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -21,7 +22,15 @@ import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
 import { VpPicker } from './VpPicker';
 import { HelpLink } from '../help/HelpProvider';
-import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { DEVICE_ID_FIELD, DEVICE_ID_TAKEN_MSG, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { BoxFremdKonto } from './BoxVerbunden';
+import { BoxWeg } from '../boxweg/BoxWeg';
+import { KoppelBand } from './KoppelBand';
+import { kennungWieGedruckt, vergissKoppelRef } from '../koppelLink';
+import { BLATT } from '../koppelTexte';
+import { isPlatformAdmin } from '../auth';
+import { kennungSendbar, pruefeKennung } from '../edgeRef';
+import { KennungFeld } from './KennungFeld';
 import { tauschFehler, tauschFolgen } from '../boxDialoge';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
@@ -61,10 +70,12 @@ export function AddDeviceDrawer({
   sites,
   onClaimed,
   nachfolgerVon = null,
+  vorschlag = null,
   datenquellen = [],
   // EIN Name je Handlung: eine Box anmelden heißt überall „VoltPilot-Box hinzufügen“ — „Gerät hinzufügen“
   // ist der Gerätekatalog (Zähler, Wechselrichter, Ladesäule hinter der Box).
   title = 'VoltPilot-Box hinzufügen',
+  onGeraeteSuchen = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -72,46 +83,72 @@ export function AddDeviceDrawer({
   onClaimed: (device: Device) => void;
   /** Auf der Box-Seite: dieselbe Claim-Strecke, danach eine getrennte Bestätigung des Tauschs. */
   nachfolgerVon?: Device | null;
+  /** Die Referenz aus dem Direktlink vom Gehäuse (`koppelLink.ts`): steht beim Öffnen im Feld. */
+  vorschlag?: string | null;
   datenquellen?: UemsDatenquelle[];
   /** Titel und Knopf; der Aufbau nennt die Box beim Namen („VoltPilot-Box hinzufügen"). */
   title?: string;
+  /**
+   * Gerätesuche (Bericht §4 „Einstiege"): nach dem Anmelden ist „Geräte suchen" der nächste Schritt; null = der Wirt
+   * bietet ihn hier nicht an (Box-Tausch, Flotte).
+   */
+  onGeraeteSuchen?: ((device: Device) => void) | null;
 }) {
   const [externalRef, setExternalRef] = useState('');
   const [siteId, setSiteId] = useState('');
-  const [refTouched, setRefTouched] = useState(false);
+  const [abgeschickt, setAbgeschickt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<Device | null>(null);
   const [tausch, setTausch] = useState<BoxTauschAntwort | null>(null);
+  // M11 (Konzept vp-qr-einstieg, QE-5 A): die Box gehört einem anderen Konto - eigene Ansicht statt roter Zeile.
+  const [fremd, setFremd] = useState<string | null>(null);
   const refInput = useRef<HTMLInputElement>(null);
+  // Die Plattform verbindet auch freie Kennungen (der Server erlaubt sie nur ihr, B4).
+  const frei = isPlatformAdmin();
 
   useEffect(() => {
     if (!siteId && sites[0]) setSiteId(sites[0].id);
   }, [sites, siteId]);
 
+  useEffect(() => {
+    if (open && vorschlag) setExternalRef(vorschlag);
+  }, [open, vorschlag]);
+
   const siteName = (id: string) => sites.find((s) => s.id === id)?.name ?? id.slice(0, 8);
 
   async function claim() {
     if (busy || !siteId) return;
-    if (!externalRef.trim()) {
-      // Mirror RegisterForm: keep the button live, point at the empty field (m6).
-      setRefTouched(true);
+    const pruefung = pruefeKennung(externalRef);
+    const kennung = frei ? externalRef.trim() : pruefung.kennung;
+    if (frei ? !kennung : !kennungSendbar(pruefung)) {
+      // Mirror RegisterForm: keep the button live, point at the field (m6).
+      setAbgeschickt(true);
       refInput.current?.focus();
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const device = await api.claimDevice(siteId, externalRef.trim());
+      const device = await api.claimDevice(siteId, kennung);
+      // Verbunden: die Box aus dem QR-Code ist erledigt, Tab und Browser vergessen sie (QE-3 B).
+      if (vorschlag && kennung === vorschlag) vergissKoppelRef();
       setClaimed(device);
       setExternalRef('');
+      setAbgeschickt(false);
       onClaimed(device);
+      // N3: stößt den Kopf an, seine eigene (sonst bis zu 30 s alte) Geräteliste neu zu fragen.
+      window.dispatchEvent(new Event('vp-geraet-verbunden'));
     } catch (e) {
+      if (!nachfolgerVon && e instanceof ApiError && e.status === 409) {
+        setFremd(kennung);
+        return;
+      }
       setError(
         e instanceof ApiError && e.status === 422
           ? DEVICE_ID_UNKNOWN_MSG
           : e instanceof ApiError && e.status === 409
-            ? 'Diese Geräte-ID ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Schreibweise - oder kontaktieren Sie unseren Support.'
+            ? DEVICE_ID_TAKEN_MSG
             : e instanceof ApiError && e.status === 404
               ? 'Die gewählte Anlage wurde nicht gefunden. Bitte laden Sie die Seite neu.'
               : 'Die Box konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
@@ -135,9 +172,12 @@ export function AddDeviceDrawer({
   }
 
   function close() {
+    // Abbruch ohne Verbinden: die Box aus dem QR-Code ist damit erledigt (QE-2 A, QE-3 B).
+    if (vorschlag && !claimed) vergissKoppelRef();
     setClaimed(null);
     setTausch(null);
     setError(null);
+    setFremd(null);
     onClose();
   }
 
@@ -159,9 +199,20 @@ export function AddDeviceDrawer({
               {busy ? 'Wird vorbereitet …' : 'Box-Tausch bestätigen'}
             </Button></Recht>
           </>
+        ) : claimed && onGeraeteSuchen ? (
+          <>
+            <Button variant="ghost" onClick={close}>Fertig</Button>
+            <Recht aktion="geraet.einrichten"><Button variant="primary" onClick={() => onGeraeteSuchen(claimed)} data-testid="box-angemeldet-suchen">
+              {UEMS_GERAETE_SUCHEN}
+            </Button></Recht>
+          </>
         ) : claimed ? (
           <Button variant="primary" onClick={close}>
             Fertig
+          </Button>
+        ) : fremd ? (
+          <Button variant="ghost" onClick={close}>
+            Abbrechen
           </Button>
         ) : (
           <>
@@ -177,15 +228,15 @@ export function AddDeviceDrawer({
     >
       {claimed ? (
         <>
-          <div className={`vp-alert ${tausch?.zugestellt ? 'vp-alert-ok' : 'vp-alert-info'}`} style={{ marginTop: 0 }} role="status">
+          {nachfolgerVon && <div className={`vp-alert ${tausch?.zugestellt ? 'vp-alert-ok' : 'vp-alert-info'}`} style={{ marginTop: 0 }} role="status">
             {nachfolgerVon
               ? tausch
                 ? tausch.zugestellt
                   ? 'Box-Tausch abgeschlossen. Die neue Box übernimmt die Aufgaben.'
                   : 'Box-Tausch vorbereitet. Die Änderung wird zugestellt, sobald die Box erreichbar ist.'
                 : <>Neue Box <b>{claimed.externalRef}</b> verbunden. Der Tausch ist noch nicht bestätigt.</>
-              : <>VoltPilot-Box <b>{claimed.externalRef}</b> wurde der Anlage <b>{siteName(claimed.siteId)}</b> zugeordnet.</>}
-          </div>
+              : null}
+          </div>}
           {nachfolgerVon && !tausch ? (
             <section className="vp-dqa-folgen" aria-label="Folgen des Box-Tauschs">
               <h3>Was danach gilt</h3>
@@ -197,77 +248,51 @@ export function AddDeviceDrawer({
               ).map((satz) => <li key={satz}>{satz}</li>)}</ul>
               <p>Bestätigen Sie erst nach dieser Prüfung. Bis dahin bleibt die bisherige Box zuständig.</p>
             </section>
-          ) : !nachfolgerVon ? <p style={{ margin: 'var(--vp-space-4) 0' }}>
-            Mehr ist nicht zu tun: sobald die Box mit dieser Referenz online geht,
-            erhält sie ihre Konfiguration automatisch und beginnt zu senden.
-          </p> : null}
+          ) : null}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
+          {/* M8/M9 (QE-4 A): ehrlich, ob sich die Box schon meldet - die Knöpfe trägt der Fuß des Blatts. */}
           {!nachfolgerVon && (
-          <ul className="vp-checklist">
-            <li>
-              <span className="mk">
-                <Icon name="check" size={13} strokeWidth={3} />
-              </span>
-              <div>
-                <b>Box registriert</b>
-                <div className="vp-note">
-                  Zugeordnet zur Anlage {siteName(claimed.siteId)}.
-                </div>
-              </div>
-            </li>
-            <li>
-              <span className="mk todo">2</span>
-              <div>
-                <b>Box einschalten</b>
-                <div className="vp-note">
-                  Die Box meldet sich mit ihrer Referenz an und wird automatisch
-                  konfiguriert - keine IDs, kein Kopieren.
-                </div>
-              </div>
-            </li>
-            <li>
-              <span className="mk todo">3</span>
-              <div>
-                <b>Auf erste Daten warten</b>
-                <div className="vp-note">
-                  Sobald erste Messwerte eintreffen, wechselt der Status automatisch von{' '}
-                  <Badge variant="warn" dot style={{ fontSize: '0.7rem' }}>
-                    wartet auf erste Daten
-                  </Badge>{' '}
-                  auf{' '}
-                  <Badge variant="ok" dot style={{ fontSize: '0.7rem' }}>
-                    online
-                  </Badge>
-                  .
-                </div>
-              </div>
-            </li>
-          </ul>
+            <>
+              <BoxWeg box={claimed} anlageName={siteName(claimed.siteId)} />
+              {onGeraeteSuchen && (
+                <p className="vp-note">Danach findet „Geräte suchen“ Wechselrichter, Zähler, Wallboxen und Schalter in Ihrem Heimnetz – es wird nur gelesen.</p>
+              )}
+            </>
           )}
         </>
+      ) : fremd ? (
+        <BoxFremdKonto
+          kennung={fremd}
+          onAndere={() => {
+            if (vorschlag && fremd === vorschlag) vergissKoppelRef();
+            setFremd(null);
+            setExternalRef('');
+            setAbgeschickt(false);
+            requestAnimationFrame(() => refInput.current?.focus());
+          }}
+        />
       ) : (
         <>
+          {/* M7: die Kennung kam aus dem QR-Code - woher, sagt das Band. */}
+          {vorschlag && !nachfolgerVon && (
+            <KoppelBand zeile={BLATT.bandZeile}>{BLATT.band(kennungWieGedruckt(vorschlag))}</KoppelBand>
+          )}
           <p className="vp-note" style={{ marginTop: 0 }}>
             {nachfolgerVon
-              ? `Verbinden Sie die neue Box mit ihrer Geräte-ID als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
-              : <>{DEVICE_ID_FIELD.help} Die Box verbindet sich selbst - Sie müssen keine IDs übertragen.</>}
+              ? `Verbinden Sie die neue Box mit ihrer Kennung als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
+              : DEVICE_ID_FIELD.help}
           </p>
           <HelpLink article="box-verbinden">Hilfe beim Verbinden</HelpLink>
           <div className="vp-form-stack">
-            <Input
+            <KennungFeld
               ref={refInput}
-              label={`${DEVICE_ID_FIELD.label} *`}
-              placeholder={DEVICE_ID_FIELD.placeholder}
-              value={externalRef}
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setExternalRef(normalizeDeviceIdInput(e.target.value));
-                if (refTouched) setRefTouched(false);
-              }}
-              onBlur={() => setRefTouched(true)}
-              error={refTouched && !externalRef.trim() ? 'Bitte geben Sie die Geräte-ID ein.' : null}
+              id="claim-kennung"
+              pflicht
+              wert={externalRef}
+              onWert={setExternalRef}
+              abgeschickt={abgeschickt}
+              frei={frei}
+              onEnter={() => void claim()}
             />
             <VpPicker
               id="claim-site"
@@ -278,6 +303,9 @@ export function AddDeviceDrawer({
               searchPlaceholder="Anlage suchen …"
               disabled={Boolean(nachfolgerVon)}
             />
+            {vorschlag && !nachfolgerVon && sites.length > 1 && (
+              <p className="vp-note" style={{ margin: 0 }}>{BLATT.mehrereAnlagen(sites.length)}</p>
+            )}
           </div>
           {sites.length === 0 && (
             <div className="vp-alert vp-alert-info">

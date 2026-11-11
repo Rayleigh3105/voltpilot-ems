@@ -452,6 +452,19 @@ export function zeilenHinweis(reason: EarningsReason | null): string {
 }
 
 /**
+ * Die Steuerungszahl EINER Anlage in der Zählweise der Fläche: mit Bestand
+ * (Bedienkonzept vp-herzogau-p3-kachel-konzept, P3-2 A und P3-4 A), wo der
+ * Server sie schickt - auch ein `null` darin ist eine Lücke, nie die
+ * Kassenrechnung als Ersatz. Nur ein älteres Backend ohne das Feld zählt noch
+ * die Kassenrechnung.
+ */
+function steuerungZahl(m: EarningsSite): number | null {
+  return m.savedSteuerungMitBestandEur !== undefined
+    ? (m.savedSteuerungMitBestandEur ?? null)
+    : (m.savedSteuerungEur ?? null);
+}
+
+/**
  * Die Portfolio-Summe des Geldes plus die Anlagen-Tabelle darunter.
  *
  * **Die große Zahl ist das Ergebnis UNTERM STRICH** (Erlöse-Konzept E9 / P9) —
@@ -499,7 +512,7 @@ export function erloeseAggregat(
       name: s.name,
       zustand,
       nettoEur: zeilenNetto,
-      steuerungEur: money?.savedSteuerungEur ?? null,
+      steuerungEur: money ? steuerungZahl(money) : null,
       eingespeistKwh: money?.eingespeistKwh ?? null,
       einspeiseEur: zahl(money?.einspeiseErloesEur),
       eigenverbrauchEur: zahl(money?.eigenverbrauchsWertEur),
@@ -541,10 +554,11 @@ export function erloeseAggregat(
     eigenverbrauchEur,
     stromkostenEur,
     ohneErgebnis: zeilen.filter((z) => z.zustand !== 'daten' && byId.has(z.siteId)).length,
-    steuerungEur: summe(beitragende.map((m) => m.savedSteuerungEur ?? null)),
-    steuerungAnlagen: beitragende.filter(
-      (m) => typeof m.savedSteuerungEur === 'number' && Number.isFinite(m.savedSteuerungEur),
-    ).length,
+    steuerungEur: summe(beitragende.map((m) => steuerungZahl(m))),
+    steuerungAnlagen: beitragende.filter((m) => {
+      const v = steuerungZahl(m);
+      return typeof v === 'number' && Number.isFinite(v);
+    }).length,
     selbstverbrauchKwh: summe(beitragende.map((m) => m.selbstverbrauchKwh)),
     eingespeistKwh: summe(beitragende.map((m) => m.eingespeistKwh)),
     coveredSlots: beitragende.reduce((n, m) => n + (m.coveredSlots ?? 0), 0),

@@ -38,7 +38,9 @@ class LaeuferBeendetArchitekturTest {
             entry("StrukturAenderungLaeufer", List.of("StrukturAenderungLaeufer", "BezugsbasisAnstoss")),
             entry("ViertelstundeLaeufer", List.of("ViertelstundeVerdichter")),
             entry("WetterArchivLaeufer", List.of("WetterArchivAbruf")),
-            entry("RolloutWatcher", List.of("RolloutService")));
+            entry("RolloutWatcher", List.of("RolloutService")),
+            entry("ZustellLaeufer", List.of("VersandRepository")),
+            entry("WechselrichterUntergrenzeLaeufer", List.of("WechselrichterUntergrenzeAbgleich")));
 
     /** Läufer ohne Sperre — mit dem Grund, warum sie auch für einen beendeten Kundenbereich laufen dürfen. */
     static final Map<String, String> OHNE_SPERRE = Map.ofEntries(
@@ -52,6 +54,29 @@ class LaeuferBeendetArchitekturTest {
             entry("VorbehaltMetrik", "liest nur: Kennzahlen des Betriebs"),
             entry("MeasurementConfigStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
+            entry("GeraetesucheListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("ChargerStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("DataSourceStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ConsumerReplanTriggerListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ConsumerRuntimeStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ControlStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("CurtailmentStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("EntityStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("FlowNodeStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("LoadResidualReplanListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ProbeResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("PurgeRequestListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("RegisterWriteResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("RegisterWriteUplinkListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("SourceStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("UpdateStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("PlanResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("SprungprobeBerichtListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
@@ -61,6 +86,11 @@ class LaeuferBeendetArchitekturTest {
                     + " für jeden Kundenbereich gleich — keine neue Zeile"),
             entry("ZeilentextAufbewahrungLaeufer", "Aufbewahrung: leert Importzeilen-Texte nach ihrer Frist, für jeden"
                     + " Kundenbereich gleich — keine neue Zeile"),
+            entry("GeraetesucheAufraeumen", "Aufbewahrung: löscht Suchen und Funde nach 30 Tagen (SQL-Funktion), für jeden"
+                    + " Kundenbereich gleich — keine neue Zeile; das Protokoll bleibt"),
+            entry("CertificateNotAfterBackfillRunner", "Rückfüllung: liest not_after aus dem schon gespeicherten"
+                    + " Zertifikat derselben Zeile (device_enrollment, global ohne Kundenbereich) — keine neue Zeile,"
+                    + " spricht keine Box an"),
             entry("OcppActionService", "schließt abgelaufene OCPP-Aufträge ab und räumt nach Frist (SQL-Funktion);"
                     + " spricht keine Box an"),
             entry("ControlCertificationService", "Schutz: das Freigaberegister geht an jede Box — eine Verkleinerung"

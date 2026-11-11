@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { KNOWN_ROLES, roleLabel, type SlotRole } from '../fahrplanWhy';
 import type { PlanWordingKind } from '../schedule';
 import type { RollenKanonischerWert } from '../api';
 import type { AnlagenSub } from '../nav';
+import { showTechnicalLayer } from '../rollen';
+import type { ErzeugerBuehne } from '../erzeuger';
 import type { JetztFluss } from '../flussJetzt';
-import { erzeugungListe, ohneAufteilung, rollenListe, verbrauchListe, type Liste } from '../flussListen';
+import { lueckenSatz, widerspruchSatz, type FlussBilanz } from '../flussBilanz';
+import { erzeugungListe, kuerzen, ohneAufteilung, rollenListe, verbrauchListe, type Liste } from '../flussListen';
 import {
   herkunftMoment,
   knotenTexte,
@@ -27,7 +29,7 @@ import {
   type Rolle,
   type Zeitbezug,
 } from '../leitungsplan';
-import type { PvComposition } from '../pvComposition';
+import type { PvComposition, PvContribution } from '../pvComposition';
 import { energieBis, hoechsterBezug, tagesSkala, uhrzeit, type Tag } from '../tagesleiste';
 import type { VerbrauchKomposition } from '../verbrauchKomposition';
 import { BottomSheet } from './BottomSheet';
@@ -38,16 +40,22 @@ import './EnergieBuehne.css';
 const ROLLEN = new Set<string>(KNOWN_ROLES);
 
 /**
- * **Die Bühne des Cockpits** (Konzept `docs/konzepte/cockpit-tagesfilm`):
- * Uhrzeit, Umschalter „Jetzt · kW / Heute · kWh“, ein Satz zum Moment, der
- * Energiefluss als Leitungsplan, „Verbrauch/Erzeugung im Detail“ und die
- * Tagesleiste. Jeder Knoten und jede Zeile öffnet am Telefon ein Blatt, am
- * Rechner das zentrierte `Modal`. Die Listen sind der EINE Ort der Geräte im
- * Cockpit (kein Komponenten-Board mehr darunter).
+ * **Die Bühne des Cockpits** (Konzept `docs/konzepte/cockpit-tagesfilm`, Kopf
+ * und Zeitwahl seit Konzept b1 vom 20.10.2026): Uhrzeit, Umschalter „Jetzt · kW
+ * / Heute · kWh“, ein Satz zum Moment, der Energiefluss als Leitungsplan, direkt
+ * darunter die Tagesleiste und danach „Verbrauch im Detail“. Jeder Knoten und
+ * jede Zeile öffnet am Telefon ein Blatt, am Rechner das zentrierte `Modal`. Die
+ * Listen sind der EINE Ort der Geräte im Cockpit (kein Komponenten-Board mehr
+ * darunter).
+ *
+ * Die vier Werte des Moments stehen an den Knoten - es gibt keinen zweiten Werteblock daneben, und
+ * „Überwachen“ wohnt nur unter Meldungen › Überwachungen (Konzept b1, Entscheide E1/E3).
  *
  * Messung, Plan und Jetzt bleiben getrennt: die Marke oben sagt, was gerade
- * zu sehen ist („Live“, „gemessen“, „Plan und Prognose“, „Energie · gemessen“),
- * und nur „Live“ bewegt sich.
+ * zu sehen ist („Live“, „gemessen“, „Plan · Tätigkeit“, „Energie · gemessen“),
+ * und nur „Live“ bewegt sich. Die Tagesleiste steht direkt unter dem Fluss,
+ * weil die Liste beim Verlassen von „jetzt“ kürzer wird - stünde die Leiste
+ * darunter, spränge sie nach dem ersten Tipp unter dem Finger weg.
  */
 export function EnergieBuehne({
   jetzt,
@@ -64,7 +72,9 @@ export function EnergieBuehne({
   now = new Date(),
   onBlatt,
   onOpenSub,
-  momentZiel = null,
+  erzeuger = null,
+  bilanz = null,
+  seite = null,
 }: {
   jetzt: JetztFluss;
   stale?: boolean;
@@ -85,33 +95,35 @@ export function EnergieBuehne({
   /** Absprung aus dem Blatt (Energie-Verlauf, Ihre Geräte). */
   onOpenSub?: (sub: AnlagenSub) => void;
   /**
-   * Am Rechner: der Platz rechts neben dem Fluss für „Dieser Moment“ (die vier
-   * Werte der gewählten Uhrzeit, Konzept „Cockpit als Tagesfilm“).
+   * Erzeugeranlage an einer Anlagensteuerung (Konzept „Erzeuger am WAGO-Modbus-Server“, EZ-8): der
+   * Moment „jetzt“ kommt dann aus dem Bild der Steuerung (`jetzt` ist schon daraus gebildet), der Satz
+   * nennt die Vorgabe, der obere Knoten heißt „Erzeugung“ mit Motor oder Sonne, der untere „Hof“ bzw.
+   * „Verbrauch“ (= Erzeugung + Netzpunkt). Ohne Netzpunkt (EW-16 C) stehen Netz und Hof als „—“, nie 0.
    */
-  momentZiel?: HTMLElement | null;
+  erzeuger?: ErzeugerBuehne | null;
+  /**
+   * Die Bilanz des Moments „jetzt“ (`flussBilanz`): passt der Satz der vier Werte nicht zusammen, gibt
+   * es keine Anteile, und die Teile, die fehlen oder veraltet sind, stehen unter dem Satz. `null` = kein
+   * Befund (Erzeugeranlage, Prüfbühnen ohne Topologie).
+   */
+  bilanz?: Pick<FlussBilanz, 'luecken' | 'stimmig' | 'weitereErzeuger'> | null;
+  /**
+   * Die Spalte NEBEN dem Fluss am Rechner (Konzept `vp-cockpit-privat-konzept`, E4 = A): Leitkachel
+   * oder „Heute“, darunter die Steuerzeile. Sie steht nur neben Kopf, Satz und Leitungsplan - Tagesleiste
+   * und Listen laufen darunter über die volle Breite. So ist sie nie höher als der Fluss; vorher war sie
+   * so hoch wie Fluss, Tagesleiste und Geräteliste zusammen und blieb zu drei Vierteln leer.
+   */
+  seite?: ReactNode;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('jetzt');
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
-  const [spielt, setSpielt] = useState(false);
   const [blatt, setBlatt] = useState<{ art: Rolle } | null>(null);
   const ausloeser = useRef<HTMLElement | null>(null);
   const jetztQ = tag?.jetzt ?? 0;
-  const q = Math.min(gewaehlt ?? jetztQ, ansicht === 'heute' ? jetztQ : (tag?.viertel.length ?? 1) - 1);
-
-  // „Tag abspielen“: eine Viertelstunde je Schritt, bis zum Ende (bzw. bis jetzt).
-  useEffect(() => {
-    if (!spielt || !tag) return undefined;
-    const ende = ansicht === 'heute' ? tag.jetzt : tag.viertel.length - 1;
-    const reduziert = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const t = window.setInterval(() => {
-      setGewaehlt((g) => {
-        const n = (g ?? 0) + 1;
-        if (n >= ende) { setSpielt(false); return ende; }
-        return n;
-      });
-    }, reduziert ? 220 : 110);
-    return () => window.clearInterval(t);
-  }, [spielt, tag, ansicht]);
+  // Die letzte wählbare Viertelstunde: bei „Heute · kWh“ jetzt, sonst das Tagesende (Plan).
+  const letzteQ = ansicht === 'heute' ? jetztQ : (tag?.viertel.length ?? 1) - 1;
+  const q = Math.min(gewaehlt ?? jetztQ, letzteQ);
+  const waehle = (n: number) => setGewaehlt(Math.max(0, Math.min(letzteQ, n)));
 
   // --- Der Moment -----------------------------------------------------------
   let werte: FlussWerte;
@@ -138,7 +150,8 @@ export function EnergieBuehne({
     zeit = 'gemessen';
   } else if (!tag || q === jetztQ) {
     werte = jetzt.werte;
-    herkunft = herkunftMoment(werte);
+    // Passen die vier Werte nicht als EIN Satz zusammen, erfindet der Fluss keine Aufteilung.
+    herkunft = bilanz && !bilanz.stimmig ? null : herkunftMoment(werte);
     socPct = jetzt.socPct;
     zeit = 'live';
     skala = Math.max(tag?.maxKw ?? 0, liveMax);
@@ -168,9 +181,21 @@ export function EnergieBuehne({
     socPct,
     zielKw: betrieb === 'spitze' ? zielKw : null,
   });
+  if (erzeuger) {
+    // Die Knoten tragen die Wörter der Erzeugeranlage; die Werte bleiben die des gewählten Moments.
+    const k = erzeuger.knoten;
+    const live = zeit === 'live' && !heute;
+    const pvZeilen = live ? [k.erzeugungZeile] : texte.pv.zeilen;
+    const lastZeilen = heute ? texte.load.zeilen : [k.lastName];
+    texte.pv = { ...texte.pv, zeilen: pvZeilen, aria: `Erzeugung: ${texte.pv.wert}, ${pvZeilen.join(', ')}` };
+    texte.load = { ...texte.load, zeilen: lastZeilen, aria: `${k.lastName}: ${texte.load.wert}, ${lastZeilen.join(', ')}` };
+    if (live && k.netzZeile) texte.grid = { ...texte.grid, zeilen: [k.netzZeile], aria: `Netz: ${texte.grid.wert}, ${k.netzZeile}` };
+  }
   const uhr = !tag || (q === jetztQ && !heute) ? uhrText(now) : heute && q === jetztQ ? uhrText(now) : uhrzeit(v?.start ?? now.getTime());
-  const satzText =
-    satz({
+  const jetztLive = zeit === 'live' && !heute;
+  const widerspruch = jetztLive && !erzeuger && bilanz && !bilanz.stimmig ? widerspruchSatz(werte) : null;
+  const luecke = jetztLive && !erzeuger && bilanz ? lueckenSatz(bilanz.luecken) : null;
+  const satzText = erzeuger && jetztLive ? erzeuger.satz : widerspruch ?? satz({
       betrieb,
       ansicht,
       zeit,
@@ -185,18 +210,36 @@ export function EnergieBuehne({
       preisCt: q === jetztQ ? null : preisCt,
     }) ?? (zeit === 'plan' ? 'Für diese Viertelstunde liegt kein vollständiger Plan vor.' : 'Für diesen Moment fehlen Messwerte; das Cockpit rechnet keine Aufteilung aus.');
   const rolle = v?.rolle && ROLLEN.has(v.rolle) ? roleLabel(v.rolle as SlotRole, planKind) : null;
-  const marke = heute ? 'Energie · gemessen' : zeit === 'plan' ? 'Plan und Prognose' : zeit === 'live' ? 'Live' : 'gemessen';
+  // Die Plan-Tätigkeit steht IN der Marke (keine zweite Plakette, die den Umschalter verdrängt).
+  // Jetzt nennt sie die Fahrplan-Zeile; eine gemessene Viertelstunde sagt „Plan:“, denn die
+  // Tätigkeit ist eine Aussage des Plans, keine Messung.
+  const planWort = rolle && !heute && q !== jetztQ ? rolle : null;
+  const marke = heute
+    ? 'Energie · gemessen'
+    : zeit === 'plan'
+      ? planWort ? `Plan · ${planWort}` : 'Plan und Prognose'
+      : zeit === 'live'
+        ? 'Live'
+        : planWort ? `gemessen · Plan: ${planWort}` : 'gemessen';
 
   // --- Listen „im Detail“ ---------------------------------------------------
   const max = isPhone ? 4 : 6;
   // Unter dem Fluss steht nur der Verbrauch; die Erzeugung je Gerät öffnet
   // sich im Blatt des Sonnen-Knotens (dieselbe Listenform).
-  const vListe: Liste | null =
-    heute || zeit === 'live'
-      ? verbrauchListe(verbrauch, { heute, max, hausKw: heute ? null : werte.load })
-      : verbrauch
-        ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan')
-        : null;
+  // Bei einer Erzeugeranlage steht hier die Erzeugung je Einheit (Motor, Wechselrichter) - nur jetzt.
+  // Mit Verbrauchs-Zuordnung ist IHR Wert der Verbrauch am Knoten - dann steht auch unter dem Fluss
+  // ihre Aufschlüsselung (wie im Blatt), nie das Haus der Box mit einer anderen Summe.
+  const rollenVerbrauch = jetztLive && !erzeuger ? rollenListe(rollen?.load) : null;
+  // Ohne aktuellen Hauswert gibt es keine Aufschlüsselung davon (der Grund steht unter dem Satz).
+  const hausFehlt = jetztLive && bilanz?.luecken.some((l) => l.rolle === 'load') === true;
+  let vListe: Liste | null;
+  if (erzeuger) vListe = zeit === 'live' && !heute ? erzeuger.liste : null;
+  else if (rollenVerbrauch) vListe = { ...rollenVerbrauch, zeilen: kuerzen(rollenVerbrauch.zeilen, max, 'Verbraucher', false) };
+  else if (heute || zeit === 'live') {
+    vListe = verbrauchListe(hausFehlt ? null : verbrauch, {
+      heute, max, hausKw: heute ? null : werte.load, technik: showTechnicalLayer(),
+    });
+  } else vListe = verbrauch ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan') : null;
 
   const oeffne = (art: Rolle, el: HTMLElement) => {
     ausloeser.current = el;
@@ -210,18 +253,12 @@ export function EnergieBuehne({
     if (el && document.contains(el)) el.focus({ preventScroll: true });
   };
 
-  return (
-    <div className={`vp-eb${heute ? ' is-heute' : ''}`}>
+  const oben = (
+    <>
+      {/* Feste Plätze: Uhrzeit und Umschalter oben, die Marke darunter (am Rechner in einer
+          Zeile). Eine lange Marke bricht in ihrer eigenen Zeile um, nie der Umschalter. */}
       <div className="vp-eb-kopf">
         <span className="vp-eb-uhr">{heute ? `bis ${uhr}` : uhr}</span>
-        <span className={`vp-eb-marke is-${heute ? 'heute' : zeit}`}>
-          {zeit === 'live' && !heute && <i aria-hidden="true" />}
-          {marke}
-        </span>
-        {/* Jetzt sagt die Fahrplan-Zeile, was der Plan tut; nur eine andere
-            Viertelstunde nennt ihre Tätigkeit hier. */}
-        {rolle && !heute && q !== jetztQ && <span className="vp-eb-plan">Plan: {rolle}</span>}
-        <span className="vp-eb-sp" />
         <div className="vp-seg vp-seg-compact vp-eb-modus" role="group" aria-label="Anzeige">
           {(['jetzt', 'heute'] as const).map((a) => (
             <button
@@ -230,7 +267,6 @@ export function EnergieBuehne({
               aria-pressed={ansicht === a}
               className={ansicht === a ? 'active' : ''}
               onClick={() => {
-                setSpielt(false);
                 setAnsicht(a);
                 // „Heute“ zeigt die Energie je Gerät - erst dann werden die Tagessummen geholt.
                 if (a === 'heute') { setGewaehlt(null); onBlatt?.('load'); }
@@ -240,8 +276,13 @@ export function EnergieBuehne({
             </button>
           ))}
         </div>
+        <span className={`vp-eb-marke is-${heute ? 'heute' : zeit}`}>
+          {zeit === 'live' && !heute && <i aria-hidden="true" />}
+          {marke}
+        </span>
       </div>
       <p className="vp-eb-satz" aria-live="polite">{satzText}</p>
+      {luecke && <p className="vp-eb-luecke">{luecke}</p>}
 
       <Leitungsplan
         herkunft={herkunft}
@@ -254,14 +295,23 @@ export function EnergieBuehne({
         gridKw={werte.grid}
         zielKw={betrieb === 'spitze' ? zielKw : null}
         reserveProzent={reserveProzent}
-        stale={stale}
+        stale={stale || (erzeuger?.veraltet ?? false)}
+        symbol={erzeuger?.knoten.symbol === 'motor' ? 'motor' : 'sonne'}
         onKnoten={(r, el) => oeffne(r, el)}
       />
+    </>
+  );
 
-      {vListe && (
-        <div className="vp-eb-listen">
-          <ListeBlock liste={vListe} onOpen={(el) => oeffne('load', el)} />
+  return (
+    <div className={`vp-eb${heute ? ' is-heute' : ''}${seite ? ' is-zweispaltig' : ''}`}>
+      {seite ? (
+        <div className="vp-eb-reihe">
+          <div className="vp-eb-links">{oben}</div>
+          {/* Dieselbe Klasse wie die frühere rechte Spalte der Karte: Rand, Abstände und die Prüfungen bleiben. */}
+          <div className="vp-hero-side">{seite}</div>
         </div>
+      ) : (
+        oben
       )}
 
       {tag && (
@@ -272,54 +322,60 @@ export function EnergieBuehne({
             q={q}
             heute={heute}
             zielKw={betrieb === 'spitze' ? zielKw : null}
-            onQ={(n) => { setSpielt(false); setGewaehlt(n); }}
+            vorgaben={erzeuger?.vorgaben ?? null}
+            onQ={waehle}
           />
+          {/* Ein Tipp trifft am Telefon nur auf etwa ± 45 Minuten genau; ‹ › gehen je eine Viertelstunde. */}
           <div className="vp-eb-zeitknoepfe">
             <button
               type="button"
-              className="vp-btn vp-btn--sm vp-eb-spiel"
-              onClick={() => {
-                if (spielt) { setSpielt(false); return; }
-                if (q >= (heute ? jetztQ : tag.viertel.length - 1) || q === jetztQ) setGewaehlt(0);
-                setSpielt(true);
-              }}
+              className="vp-eb-schritt"
+              aria-label="Eine Viertelstunde früher"
+              disabled={q <= 0}
+              onClick={() => waehle(q - 1)}
             >
-              <Icon name={spielt ? 'x' : 'history'} size={16} />
-              {spielt ? 'Anhalten' : 'Tag abspielen'}
+              <Icon name="chevron-left" size={18} />
+            </button>
+            <button
+              type="button"
+              className="vp-eb-schritt"
+              aria-label="Eine Viertelstunde später"
+              disabled={q >= letzteQ}
+              onClick={() => waehle(q + 1)}
+            >
+              <Icon name="chevron-right" size={18} />
             </button>
             <span className="vp-eb-sp" />
             {q !== jetztQ && (
-              <button type="button" className="vp-btn vp-btn--sm vp-eb-jetzt" onClick={() => { setSpielt(false); setGewaehlt(null); }}>
+              <button type="button" className="vp-btn vp-btn--sm vp-eb-jetzt" onClick={() => setGewaehlt(null)}>
                 Zurück zu Jetzt
               </button>
             )}
           </div>
-          <p className="vp-eb-hinweis">Ziehen Sie über die Tagesleiste. Links von „Jetzt“ sehen Sie Messwerte, rechts den Plan.</p>
         </div>
       )}
 
-      <ZahlenAlsListe werte={werte} heute={heute} zeit={zeit} uhr={uhr} tag={tag} jetztUhr={uhrText(now)} />
+      {vListe && (
+        <div className="vp-eb-listen">
+          <ListeBlock liste={vListe} onOpen={(el) => oeffne(erzeuger ? 'pv' : 'load', el)} />
+        </div>
+      )}
 
-      {momentZiel &&
-        createPortal(
-          <div className="vp-eb-moment">
-            <p className="vp-eb-moment-h">
-              {heute ? `Heute bis ${uhr}` : zeit === 'plan' ? `Plan ${uhr}` : zeit === 'live' ? `Jetzt ${uhr}` : `Gemessen ${uhr}`}
-            </p>
-            <div className="vp-eb-moment-kpis">
-              <MomentWert ton="pv" icon="sun" text={texte.pv} />
-              <MomentWert ton="load" icon="home" text={texte.load} />
-              {jetzt.hat.batt && <MomentWert ton="batt" icon="battery" text={texte.batt} />}
-              <MomentWert ton="grid" icon="pole" text={texte.grid} />
-            </div>
-          </div>,
-          momentZiel,
-        )}
+      <ZahlenAlsListe
+        werte={werte}
+        heute={heute}
+        zeit={zeit}
+        uhr={uhr}
+        tag={tag}
+        jetztUhr={uhrText(now)}
+        hatSpeicher={!erzeuger}
+        lastName={erzeuger?.knoten.lastName}
+      />
 
       <Blatt
         offen={blatt != null}
         isPhone={isPhone}
-        titel={blatt ? BLATT_TITEL[blatt.art] : ''}
+        titel={blatt ? (erzeuger && blatt.art === 'load' ? erzeuger.knoten.lastName : BLATT_TITEL[blatt.art]) : ''}
         onClose={schliesse}
       >
         {blatt && (
@@ -334,9 +390,11 @@ export function EnergieBuehne({
             uhr={uhr}
             verbrauch={verbrauch}
             pv={pv}
+            weitereErzeuger={bilanz?.weitereErzeuger ?? []}
             rollen={rollen}
             zielKw={zielKw}
             rolle={rolle}
+            erzeuger={erzeuger}
             onOpenSub={onOpenSub ? (sub) => { schliesse(); onOpenSub(sub); } : undefined}
           />
         )}
@@ -352,20 +410,6 @@ const BLATT_TITEL: Record<Rolle, string> = {
   grid: 'Netz',
 };
 
-function MomentWert({ ton, icon, text }: { ton: Rolle; icon: 'sun' | 'home' | 'battery' | 'pole'; text: { wert: string; zeilen: string[] } }) {
-  return (
-    <div className={`vp-eb-mk is-${ton}`}>
-      <span className="vp-eb-mk-ico" aria-hidden="true">
-        <Icon name={icon} size={16} />
-      </span>
-      <div>
-        <b>{text.wert}</b>
-        <span>{text.zeilen[0]}</span>
-      </div>
-    </div>
-  );
-}
-
 /**
  * „Zahlen als Liste“ (wie im Prototyp): dieselben Werte als Tabelle - für
  * Vorlesen und für alle, die Zahlen lieber lesen als Spuren. Der gewählte
@@ -378,6 +422,8 @@ function ZahlenAlsListe({
   uhr,
   tag,
   jetztUhr,
+  hatSpeicher = true,
+  lastName = 'Verbrauch',
 }: {
   werte: FlussWerte;
   heute: boolean;
@@ -385,6 +431,10 @@ function ZahlenAlsListe({
   uhr: string;
   tag: Tag | null;
   jetztUhr: string;
+  /** Ohne Speicher keine Speicher-Zeilen (sonst stünde dort eine erfundene 0). */
+  hatSpeicher?: boolean;
+  /** „Hof“ bei einer Biogasanlage (EZ-8). */
+  lastName?: string;
 }) {
   const f = heute ? kwh : kw;
   const b = werte.batt;
@@ -394,9 +444,10 @@ function ZahlenAlsListe({
   const e = tag ? energieBis(tag, tag.jetzt).energie : null;
   const zeilen: [string, number | null, number | null][] = [
     ['Erzeugung', werte.pv, e?.pv ?? null],
-    ['Verbrauch', werte.load, e?.load ?? null],
-    ['Speicher laden', pos(b), e?.laden ?? null],
-    ['Speicher abgeben', neg(b), e?.abgeben ?? null],
+    [lastName, werte.load, e?.load ?? null],
+    ...(hatSpeicher
+      ? ([['Speicher laden', pos(b), e?.laden ?? null], ['Speicher abgeben', neg(b), e?.abgeben ?? null]] as [string, number | null, number | null][])
+      : []),
     ['Netzbezug', pos(g), e?.bezug ?? null],
     ['Einspeisung', neg(g), e?.einspeisung ?? null],
   ];
@@ -448,7 +499,8 @@ function ListeBlock({ liste, onOpen, className }: { liste: Liste; onOpen?: (el: 
       </span>
       <span className="vp-eb-zn">
         {z.name}
-        {z.sub && <small> {z.sub}</small>}
+        {/* Der Satz der Box endet auf „.“ ("Ladevorgang läuft."): vor dem „· seit …“ steht kein Punkt. */}
+        {z.sub && <small> {z.sub.replace(/\.(\s*·)/g, '$1')}</small>}
       </span>
       <span className="vp-eb-zw">{z.wert}</span>
       {z.art !== 'weitere' && (
@@ -550,9 +602,11 @@ function BlattInhalt({
   uhr,
   verbrauch,
   pv,
+  weitereErzeuger = [],
   rollen,
   zielKw,
   rolle,
+  erzeuger = null,
   onOpenSub,
 }: {
   art: Rolle;
@@ -565,9 +619,12 @@ function BlattInhalt({
   uhr: string;
   verbrauch: VerbrauchKomposition | null;
   pv: PvComposition | null;
+  /** Mit PV-Zuordnung: die Erzeuger, die sie nicht erfasst - sie zählen mit ihrer eigenen Messung. */
+  weitereErzeuger?: readonly PvContribution[];
   rollen: { pv: RollenKanonischerWert | null; load: RollenKanonischerWert | null; grid: RollenKanonischerWert | null } | null;
   zielKw: number | null;
   rolle: string | null;
+  erzeuger?: ErzeugerBuehne | null;
   onOpenSub?: (sub: AnlagenSub) => void;
 }) {
   const f = heute ? kwh : kw;
@@ -602,7 +659,9 @@ function BlattInhalt({
         {wegZeilen(wege((p) => p.startsWith('pv>')))}
         {!heute && zeit === 'live' && (() => {
           // Dieselbe Listenform wie unter dem Fluss, hier vollständig.
-          const liste = rollenListe(rollen?.pv) ?? erzeugungListe(pv, { max: Number.MAX_SAFE_INTEGER });
+          const liste = erzeuger
+            ? erzeuger.liste
+            : rollenListe(rollen?.pv, weitereErzeuger) ?? erzeugungListe(pv, { max: Number.MAX_SAFE_INTEGER });
           return liste ? <ListeBlock liste={liste} className="vp-rolle-pv" /> : null;
         })()}
         {zeit === 'plan' && <p className="vp-eb-note">Die Prognose gilt für die ganze Anlage, nicht je Fläche.</p>}
@@ -613,8 +672,24 @@ function BlattInhalt({
   }
   if (art === 'load') {
     const teile: [string, number, string][] = herkunft
-      ? [['Sonne', herkunft['pv>load'], 'pv'], ['Speicher', herkunft['batt>load'], 'batt'], ['Netz', herkunft['grid>load'], 'grid']]
+      ? [[erzeuger ? 'Erzeugung' : 'Sonne', herkunft['pv>load'], 'pv'], ['Speicher', herkunft['batt>load'], 'batt'], ['Netz', herkunft['grid>load'], 'grid']]
       : [];
+    if (erzeuger) {
+      // Der Hof ist gerechnet (Erzeugung + Netzpunkt), kein eigener Zähler; ohne Netzpunkt gibt es ihn nicht.
+      return (
+        <>
+          <div className="vp-eb-kpis">{kpi(`${erzeuger.knoten.lastName} ${wann}`, f(werte.load))}</div>
+          {teile.length > 0 && <p className="vp-eb-zw-titel">Herkunft {heute ? 'heute' : wann}</p>}
+          <Herkunftsbalken teile={teile} />
+          <p className="vp-eb-note">
+            {werte.load == null
+              ? 'Ohne Messung am Netzpunkt lässt sich der Verbrauch hinter dem Netzanschluss nicht ausrechnen.'
+              : 'Gerechnet aus Erzeugung und Netzpunkt - kein eigener Zähler.'}
+          </p>
+          {weiter}
+        </>
+      );
+    }
     return (
       <>
         <div className="vp-eb-kpis">{kpi(`Verbrauch ${wann}`, f(werte.load))}</div>
@@ -623,7 +698,9 @@ function BlattInhalt({
         {(zeit === 'live' || heute) && (() => {
           const liste =
             (!heute ? rollenListe(rollen?.load) : null) ??
-            verbrauchListe(verbrauch, { heute, max: Number.MAX_SAFE_INTEGER, hausKw: heute ? null : werte.load });
+            verbrauchListe(verbrauch, {
+              heute, max: Number.MAX_SAFE_INTEGER, hausKw: heute ? null : werte.load, technik: showTechnicalLayer(),
+            });
           return liste ? <ListeBlock liste={liste} className="vp-rolle-consumer" /> : null;
         })()}
         {zeit === 'plan' && <p className="vp-eb-note">Für den Plan gibt es keine Aufteilung je Gerät.</p>}
@@ -665,7 +742,11 @@ function BlattInhalt({
         const liste = rollenListe(rollen?.grid);
         return liste ? <ListeBlock liste={liste} className="vp-rolle-grid" /> : null;
       })()}
-      <p className="vp-eb-note">Eingespeist ist, was den Netzanschluss verlässt, nicht was den Speicher verlässt.</p>
+      <p className="vp-eb-note">
+        {erzeuger && g == null
+          ? 'An dieser Anlage wird am Netzpunkt nicht gemessen; Einspeisung und Bezug sind deshalb unbekannt.'
+          : 'Eingespeist ist, was den Netzanschluss verlässt, nicht was den Speicher verlässt.'}
+      </p>
       {weiter}
     </>
   );

@@ -35,6 +35,7 @@ from voltpilot_forecast.ml import (
 )
 from voltpilot_forecast.pv import PhysicalPvForecaster
 from voltpilot_forecast.solar import solar_position
+from voltpilot_forecast.weather import IrradianceSample, WeatherProvider
 
 # Monday 2026-06-01: day-of-week arithmetic below is explicit.
 T0 = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
@@ -196,6 +197,73 @@ def test_pv_residual_corrects_a_systematic_physical_bias():
     assert challenger_mae < 0.5 * physical_mae  # and mostly corrected
     assert all(p.value_kw >= 0 for p in series.points)
     assert all(p.value_kw <= config.plant.capacity_kwp for p in series.points)
+
+
+def test_pv_residual_retrains_against_whatever_physical_is_now_never_double_corrects():
+    """N1 (Captain 11.11.2026, "Behebe den Lesefehler"): once ``pv-physical``'s
+    weather provider switches to the true DNI, a fresh ``train()`` must learn
+    the residual against the NEW physical values - never add the OLD
+    correction on top of an already-fixed baseline.
+
+    ``PvResidualXgbForecaster.train()`` always calls
+    ``self._physical.power_series()`` live (``ml.py``); it never reads a
+    stored historical baseline. So this is a guarantee by construction, not a
+    code change S0 needs to make - this test pins it: retraining against the
+    SAME measured history, but a physical model whose irradiance jumped from
+    "legacy" to "true" DNI, pulls the residual DOWN rather than stacking a
+    second correction on top.
+    """
+
+    class FixedIrradianceProvider(WeatherProvider):
+        name = "fixed"
+
+        def __init__(self, dni: float) -> None:
+            self._dni = dni
+
+        def irradiance(self, location, timestamps):
+            return [
+                IrradianceSample(ghi_w_m2=300.0, dni_w_m2=self._dni, dhi_w_m2=50.0)
+                for _ in timestamps
+            ]
+
+    config = _pv_config()
+    days = 21
+    slots = [
+        T0 + timedelta(days=d, minutes=15 * q) for d in range(days) for q in range(96)
+    ]
+    run_at = T0 + timedelta(days=days)
+    target = HORIZON_DAY.slot_starts(run_at)
+
+    # Measured reality matches the LEGACY reading exactly (no bias to learn).
+    legacy_physical = PhysicalPvForecaster(weather=FixedIrradianceProvider(150.0))
+    truth = dict(zip(slots, legacy_physical.power_series(config, slots)))
+    history = [Observation(ts, v) for ts, v in truth.items()]
+    actual = dict(zip(target, legacy_physical.power_series(config, target)))
+
+    before = PvResidualXgbForecaster(physical=legacy_physical, seed=7)
+    before.train(config, history, run_at)
+    before_mae = forecast_metrics(
+        {p.timestamp: p.value_kw for p in before.forecast(config, HORIZON_DAY, run_at).points},
+        actual,
+    ).mae_kw
+    assert before_mae < 0.1  # nothing systematic left to correct
+
+    # N1 fix: physical now reads the TRUE (higher) DNI, measured reality is
+    # unchanged. Retraining on the SAME history must correct physical back
+    # DOWN towards truth - the un-retrained physical alone would overshoot it.
+    fixed_physical = PhysicalPvForecaster(weather=FixedIrradianceProvider(500.0))
+    after = PvResidualXgbForecaster(physical=fixed_physical, seed=7)
+    after.train(config, history, run_at)
+    after_mae = forecast_metrics(
+        {p.timestamp: p.value_kw for p in after.forecast(config, HORIZON_DAY, run_at).points},
+        actual,
+    ).mae_kw
+    fixed_only_mae = forecast_metrics(
+        {p.timestamp: p.value_kw for p in fixed_physical.forecast(config, HORIZON_DAY, run_at).points},
+        actual,
+    ).mae_kw
+    assert fixed_only_mae > 0.5  # the un-retrained jump really is a big miss
+    assert after_mae < 0.1 * fixed_only_mae  # retraining erases it, not stacks it
 
 
 def test_pv_residual_can_never_invent_generation_after_sunset():

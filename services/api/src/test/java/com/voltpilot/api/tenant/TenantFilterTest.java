@@ -1,6 +1,7 @@
 package com.voltpilot.api.tenant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -61,6 +63,52 @@ class TenantFilterTest {
         filter.doFilter(mock(HttpServletRequest.class), mock(HttpServletResponse.class), chain);
 
         assertThat(seen.get()).isNull();
+    }
+
+    /** Die Log-Kennung (docs/k8s-readiness.md, Abschnitt "Logs") gilt genau so lange wie der Mandant. */
+    @Test
+    void logKennungNenntDenMandantenWaehrendDerAnfrageUndDanachNichtMehr() throws Exception {
+        UUID tenant = UUID.randomUUID();
+        authenticateWithClaim("tenant_id", tenant.toString());
+
+        AtomicReference<String> seen = new AtomicReference<>();
+        FilterChain chain = (req, res) -> seen.set(MDC.get("tenant_id"));
+        filter.doFilter(mock(HttpServletRequest.class), mock(HttpServletResponse.class), chain);
+
+        assertThat(seen.get()).isEqualTo(tenant.toString());
+        assertThat(MDC.get("tenant_id")).isNull();
+    }
+
+    /**
+     * Tomcat schreibt die Zeile zur unbehandelten Ausnahme erst nach allen Filtern: der Mandant ist dann
+     * abgeräumt (RLS sieht nichts mehr), aber die Log-Kennung nennt ihn noch - VorgangsKennung räumt sie
+     * am Ende der Anfrage ab.
+     */
+    @Test
+    void nachEinemWurfBleibtNurDieLogKennungFuerDieFehlerzeile() {
+        UUID tenant = UUID.randomUUID();
+        authenticateWithClaim("tenant_id", tenant.toString());
+        FilterChain boom = (req, res) -> {
+            throw new IllegalStateException("downstream failure");
+        };
+
+        assertThatThrownBy(() -> filter.doFilter(mock(HttpServletRequest.class),
+                mock(HttpServletResponse.class), boom)).hasMessage("downstream failure");
+
+        assertThat(TenantContext.get()).isNull();
+        assertThat(MDC.get("tenant_id")).isEqualTo(tenant.toString());
+    }
+
+    @Test
+    void einWurfOhneMandantLaesstKeineLogKennungZurueck() {
+        FilterChain boom = (req, res) -> {
+            throw new IllegalStateException("downstream failure");
+        };
+
+        assertThatThrownBy(() -> filter.doFilter(mock(HttpServletRequest.class),
+                mock(HttpServletResponse.class), boom)).hasMessage("downstream failure");
+
+        assertThat(MDC.get("tenant_id")).isNull();
     }
 
     @Test

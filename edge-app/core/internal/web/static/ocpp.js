@@ -110,6 +110,9 @@
   function connectorLine(con, nowMs) {
     if (!con) return "";
     if (!con.charging) {
+      // Auto steckt, aber die Box kennt keinen Ladevorgang: der Satz nennt den
+      // Ausweg (neu einstecken) statt eines nackten Statusworts.
+      if (con.reason === "kein_ladevorgang") return con.reason_text || "kein Ladevorgang";
       return con.status === "Available" || !con.status ? "frei" : (con.status || "frei");
     }
     if (con.reason === "laedt" || (con.allocated_kw > 0)) {

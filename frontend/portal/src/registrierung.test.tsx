@@ -15,7 +15,7 @@ vi.mock('./auth', async (importOriginal) => ({
   loginWithCredentials,
 }));
 
-import { RegisterForm } from './App';
+import { RegisterForm } from './Registrierung';
 import { passwortFehler } from './passwortRegel';
 
 // AP-20 E12: mindestens 12 Zeichen, nicht der Benutzername (= E-Mail).
@@ -27,7 +27,8 @@ describe('Passwort-Vorgabe der Selbstregistrierung', () => {
 
   function ausfuellen(passwort: string, email = 'erika@example.com') {
     render(<RegisterForm onBack={() => {}} />);
-    fireEvent.change(screen.getByLabelText('Ihr Name oder Firmenname'), { target: { value: 'Erika Kaiser' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Für mein Zuhause/ }));
+    fireEvent.change(screen.getByLabelText('Ihr Name'), { target: { value: 'Erika Kaiser' } });
     fireEvent.change(screen.getByLabelText('E-Mail-Adresse'), { target: { value: email } });
     const feld = screen.getByLabelText('Passwort');
     fireEvent.change(feld, { target: { value: passwort } });
@@ -44,7 +45,7 @@ describe('Passwort-Vorgabe der Selbstregistrierung', () => {
   it('nimmt 12 Zeichen an', async () => {
     ausfuellen('abcdefghijkl');
     await waitFor(() => expect(register).toHaveBeenCalledWith({
-      name: 'Erika Kaiser', email: 'erika@example.com', password: 'abcdefghijkl',
+      name: 'Erika Kaiser', email: 'erika@example.com', password: 'abcdefghijkl', zweck: 'zuhause',
     }));
   });
 
@@ -52,6 +53,21 @@ describe('Passwort-Vorgabe der Selbstregistrierung', () => {
     ausfuellen('Erika@Example.com');
     expect(await screen.findByText('Das Passwort darf nicht Ihr Name oder Ihre E-Mail-Adresse sein.')).toBeInTheDocument();
     expect(register).not.toHaveBeenCalled();
+  });
+
+  // D2 (Anlage-Flow a1): die eine Frage wählt den Weg beim Anlegen - ohne Antwort geht nichts an die API.
+  it('fragt „Für mein Zuhause“ / „Für ein Unternehmen“ - ohne Wahl wird nichts gesendet', async () => {
+    render(<RegisterForm onBack={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Ihr Name oder Firmenname'), { target: { value: 'Sonnenhof GmbH' } });
+    fireEvent.change(screen.getByLabelText('E-Mail-Adresse'), { target: { value: 'info@sonnenhof.example' } });
+    fireEvent.change(screen.getByLabelText('Passwort'), { target: { value: 'ein-langes-passwort' } });
+    fireEvent.click(screen.getByRole('button', { name: /Konto erstellen/ }));
+    expect(await screen.findByText('Bitte wählen Sie, wofür Sie VoltPilot nutzen.')).toBeInTheDocument();
+    expect(register).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('radio', { name: /Für ein Unternehmen/ }));
+    expect(screen.getByLabelText('Name Ihres Unternehmens')).toHaveValue('Sonnenhof GmbH');
+    fireEvent.click(screen.getByRole('button', { name: /Konto erstellen/ }));
+    await waitFor(() => expect(register).toHaveBeenCalledWith(expect.objectContaining({ zweck: 'unternehmen' })));
   });
 
   it('nennt die Vorgabe im Hinweis mit 12 Zeichen', () => {

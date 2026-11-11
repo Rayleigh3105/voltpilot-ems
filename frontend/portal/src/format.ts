@@ -106,12 +106,19 @@ export function plantKindLabel(kind: string | null | undefined): string {
   return kind ?? '';
 }
 
-/** German decimal number + unit, joined with a non-breaking space. */
+/**
+ * German decimal number + unit, joined with a non-breaking space.
+ * A negative value gets the real minus sign (U+2212), not the ASCII hyphen
+ * `toLocaleString` would print - the portal rule "echtes Minus verwenden"
+ * (UEMS-Zahlenformat AP-08 E11; Zählerbaum-Konzept N2).
+ */
 export function fmtNum(v: number | null | undefined, unit: string, digits = 1): string {
   if (v == null) return '-';
-  const n = Number(v).toLocaleString('de-DE', {
+  const num = Number(v);
+  const vorzeichen = num < 0 ? '−' : '';
+  const n = `${vorzeichen}${Math.abs(num).toLocaleString('de-DE', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  });
+  })}`;
   return unit ? `${n}${NBSP}${unit}` : n;
 }

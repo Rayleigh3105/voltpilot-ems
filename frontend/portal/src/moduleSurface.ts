@@ -310,6 +310,54 @@ export function vermiedeneSpitzeLine(
 }
 
 /**
+ * N4: true nur für die Klassen, deren Plan die Einspeisung wirklich zum
+ * Börsenpreis rechnet und darum bei Negativpreis tatsächlich abregelt
+ * (`SlotEconomics.exportValueCtKwh` server-seitig: `netzladenErlaubt` und
+ * Direktvermarktung fallen bei negativem Spot selbst unter null). Eine feste
+ * EEG-Vergütung bleibt positiv, egal was die Börse macht - der Solver regelt
+ * dort nie wegen des Preises ab (`solver.py` PV-Kürzung). Ohne die Erzeuger-
+ * Daten (Inbetriebnahme, §51a-Ablauf) bleibt die Entscheidung bei dieser
+ * groben Zweiteilung: der sichere Fall (ja/nein eindeutig), nicht die volle
+ * Server-Regel - eine feine Zwischen-Klasse bräuchte eine neue Eingabe, die
+ * das Portal heute nicht hat.
+ */
+export function exportFolgtBoersenpreis(site: {
+  plantKind?: PlantKind | string | null;
+  netzladenErlaubt?: boolean | null;
+}): boolean {
+  return site.netzladenErlaubt === true || site.plantKind === 'direktvermarktung';
+}
+
+/** Welche „Was immer gilt"-Zeile zur Einspeisung passt; `null` = keine. */
+export type NegativpreisZeileArt = 'negativ' | 'nullstunden';
+
+/**
+ * Die feinere Fassung von {@link exportFolgtBoersenpreis} (Konzept
+ * `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4), sobald ein Lauf
+ * vorliegt: `preisRolle(...).einspeisung` liest die echten Preisfelder des
+ * Plans (`importPriceCtKwh`/`exportValueCtKwh`) und kennt damit zusätzlich
+ * den Fall, den die Stammdaten allein nicht sehen - Ü20 (abgelaufene oder
+ * fehlende EEG-Vergütung, Rückfall auf den Börsenpreis). Die Stammdaten-
+ * Prüfung bleibt als Rückfall für Läufe ohne Preisfelder (`einspeisung ===
+ * 'unbekannt'`), damit kein älterer Lauf die Zeile verliert.
+ *
+ * - `einspeisung === 'schwankt'` (echte Marktbindung: Netzladen an,
+ *   Direktvermarktung, Ü20) ODER die Stammdaten sagen dasselbe → `'negativ'`
+ *   (Negativpreis-Abregelung, unverändert).
+ * - sonst `einspeisung === 'flach_mit_nullstunden'` (§ 51a: sonst feste
+ *   Vergütung, in einzelnen Viertelstunden auf null geklemmt) → `'nullstunden'`.
+ * - sonst `null` - bei dieser Anlage gibt es zur Einspeisung nichts zu sagen.
+ */
+export function negativpreisZeile(
+  rolle: { einspeisung: string },
+  site: { plantKind?: PlantKind | string | null; netzladenErlaubt?: boolean | null },
+): NegativpreisZeileArt | null {
+  if (exportFolgtBoersenpreis(site) || rolle.einspeisung === 'schwankt') return 'negativ';
+  if (rolle.einspeisung === 'flach_mit_nullstunden') return 'nullstunden';
+  return null;
+}
+
+/**
  * Tier 3 - always-on protections the system applies automatically. One line
  * each; the tip carries the detail behind an InfoTip.
  */

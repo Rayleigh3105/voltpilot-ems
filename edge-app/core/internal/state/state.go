@@ -69,12 +69,30 @@ type Snapshot struct {
 	// setpoint far below the Fahrplan and no reason for it.
 	Trim *TrimInfo `json:"trim,omitempty"`
 
+	// ChargeHold is the NS-3 B hold (2026-10-16), non-nil ONLY while the slot's
+	// planned charge is held against a surplus consumer (guards.ChargeHolder).
+	// It names why the charge stands although the measured house load would
+	// leave no surplus for it - the consumer is the one that steps down.
+	ChargeHold *ChargeHoldInfo `json:"charge_hold,omitempty"`
+
+	// NetzladenSperre is the last stage before the device write on a plant
+	// whose grid charging is not allowed (EN-1 A, 2026-11-02), non-nil ONLY
+	// while it is actually lowering the commanded charge: it names why the
+	// battery charges less than the Fahrplan and the corrections asked for.
+	NetzladenSperre *NetzladenSperreInfo `json:"netzladen_sperre,omitempty"`
+
 	// Follow is the in-slot load following (2026-07-30), non-nil ONLY while it is
 	// actually deepening the commanded discharge. Same reason as Trim: without it
 	// the customer would see a confirmed setpoint far BELOW the Fahrplan value
 	// (more discharge) and no reason for it. The two are mutually exclusive by
 	// construction - one acts on charge, the other on discharge.
 	Follow *FollowInfo `json:"follow,omitempty"`
+
+	// DeficitHold (2026-10-10, additive, box-local) is non-nil ONLY while the
+	// box is making a measured deficit WAIT: an authority to cover it stands,
+	// but the discharge is raised only once the deficit has stood for the hold
+	// time - in every slot kind since 2026-10-13. See DeficitHoldInfo.
+	DeficitHold *DeficitHoldInfo `json:"deficit_hold,omitempty"`
 
 	// Absorb is the in-slot surplus absorption (2026-08-02), non-nil ONLY while
 	// it is actually RAISING the commanded charge to the measured PV surplus.
@@ -221,9 +239,7 @@ type Snapshot struct {
 	//
 	// Display + heartbeat visibility only. It is deliberately NOT a measurement
 	// channel: the frozen v1 cloud telemetry contract stays untouched, and
-	// nothing on the box CONTROLS from these values - the BMS cap that guards
-	// setpoints is the v2 entity-channel envelope (guards.BmsEnvelope, P5c),
-	// which comes from an entity the portal bound on purpose.
+	// nothing on the box CONTROLS from these values.
 	BmsReading map[string]float64 `json:"bms_reading,omitempty"`
 
 	// DespikedDropped is the running count of transient garbage samples the
@@ -278,6 +294,42 @@ type TrimInfo struct {
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
+// NetzladenSperreInfo is the UI-facing state of the Netzladen-Sperre
+// (guards.NetzladenSperre): with grid charging not allowed the battery charges
+// at most the measured surplus minus 1 kW, and nothing on an unknown or older
+// than 30 s reading. Read-only display of a decision already taken.
+type NetzladenSperreInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// PlannedKw is the charge the chain asked for before the lock.
+	PlannedKw float64 `json:"planned_kw"`
+	// CapKw is the bound in force (what the battery is held at).
+	CapKw float64 `json:"cap_kw"`
+	// SurplusKw is the measured surplus pv - load the bound rests on; nil when
+	// the reading is unknown or too old (Blind).
+	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+	// Blind is true when the bound is 0 for want of a fresh reading.
+	Blind bool `json:"blind,omitempty"`
+}
+
+// ChargeHoldInfo is the UI-facing state of the NS-3 B hold: the cloud took a
+// surplus consumer out of the load this slot's charge was planned against, so
+// the box bounds the charge by the base load, not by the measured house load.
+// Read-only display of a decision already taken - the hold itself lives in
+// guards.ChargeHolder.
+type ChargeHoldInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// PlanBaseLoadKw is the base load the plan sent (charge_hold_base_load_kw).
+	PlanBaseLoadKw float64 `json:"plan_base_load_kw"`
+	// BaseLoadKw is the base load in force: higher than the plan's once a load
+	// above it did not yield within guards.HoldYieldDwell.
+	BaseLoadKw float64 `json:"base_load_kw"`
+	// ConsumerKw is the measured load above the base load - the consumer's share
+	// that no longer bounds the charge.
+	ConsumerKw float64 `json:"consumer_kw"`
+}
+
 // FollowInfo is the UI-facing state of the in-slot load following: the cloud
 // marked this slot worth covering from the battery, so the commanded DISCHARGE
 // is being TRACKED to the MEASURED house deficit - raised where the forecast
@@ -309,6 +361,24 @@ type FollowInfo struct {
 	// FloorSocPct is the floor this correction actually applied. It differs
 	// from the run-level reserve only for the full-battery top-band rule.
 	FloorSocPct *float64 `json:"floor_soc_pct,omitempty"`
+}
+
+// DeficitHoldInfo is the box-local state of the hold
+// (guards.DeficitCoverHold): a measured house deficit is bought for up to the
+// hold time before the battery covers it - or covers more of it than it
+// already does -, because a consumer shorter than the inverter's own follow
+// time would otherwise be answered by a discharge that arrives after it and
+// goes into the grid. Read-only display of a decision already taken, like its
+// siblings.
+type DeficitHoldInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// Since is the time the box first saw the deficit it waits for, at its
+	// present height: a rise of a standing deficit is dated by the rise
+	// (guards.DeficitHold.Since).
+	Since *time.Time `json:"since,omitempty"`
+	// HoldS is the hold time in seconds the deficit must stand.
+	HoldS float64 `json:"hold_s"`
 }
 
 // AbsorbInfo is the UI-facing state of the in-slot surplus absorption: the
@@ -619,6 +689,14 @@ type ControlInfo struct {
 	// Confirm (0 after a held cycle). Shown as the technician's detail.
 	MismatchCycles    int `json:"mismatch_cycles,omitempty"`
 	UnconfirmedCycles int `json:"unconfirmed_cycles,omitempty"`
+	// HeldAt is the CheckedAt of the newest cycle that HELD (zero = none yet),
+	// FailedCycles the number of cycles since - mismatching and unanswered ones
+	// alike, which the two counters above keep apart. Together they bound how
+	// long a regulation the box started itself may ride out a failed readback
+	// (agent.runningReadbackHealthy). Internal to the core: no surface reads
+	// them, so they stay out of the JSON.
+	HeldAt       time.Time `json:"-"`
+	FailedCycles int       `json:"-"`
 	// Mode is WHICH kind of plan Layer 1 executed for this cycle: "normal" (the
 	// ordinary setpoint write), "release" (the neutral hand-back) or "native"
 	// (the native self-regulation primitive: the device was handed its own
@@ -975,8 +1053,16 @@ type OcppCharger struct {
 	// Connection is WHERE this station hangs: "haus" (behind the house
 	// connection) or "eigen" (its own grid connection). Always one of the two -
 	// the resolved value, never the raw absence.
-	Connection string          `json:"connection,omitempty"`
-	Connectors []OcppConnector `json:"connectors,omitempty"`
+	Connection string `json:"connection,omitempty"`
+	// Source / MinKw / StorageRelease are the lane this box APPLIES to the
+	// station (Konzept k1 „Gewählt ist nicht geladen", Regel 4): its own choice
+	// or the site's, resolved like the decision (an unknown word runs as
+	// "schnell"). StorageRelease is only ever true next to
+	// "nur_sonne", MinKw only next to "sonne_zuerst" (0 = the frame's minimum).
+	Source         string          `json:"source,omitempty"`
+	MinKw          float64         `json:"min_kw,omitempty"`
+	StorageRelease bool            `json:"storage_release,omitempty"`
+	Connectors     []OcppConnector `json:"connectors,omitempty"`
 }
 
 // OcppConnector is one plug.

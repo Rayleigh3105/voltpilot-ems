@@ -60,6 +60,17 @@ public record SiteComponentsDto(
      *     abgeleitet aus Soll- und Ist-Revision plus dem, was die Box über sich
      *     selbst meldet, nie geraten
      *     ({@link com.voltpilot.api.components.ComponentService#syncStatus})
+     * @param herkunft woher die Komponente stammt, wenn sie über „Übernehmen" aus
+     *     einer Gerätesuche angelegt wurde; sonst abwesend (nie geraten). Gelesen
+     *     aus dem Protokoll der Suche, das den Läufer nach 30 Tagen überlebt.
+     * @param rejectedReason warum die Box GENAU DIESE Komponente nicht anwendet,
+     *     wörtlich von der Box ({@code component_apply.rejected_components}):
+     *     sie kann ihr keine Rolle zuordnen und hat den Rest trotzdem angewandt.
+     *     Abwesend heißt „nicht übersprungen" oder „die Box meldet das nicht".
+     *     Gilt für den Stand, den die Box zuletzt beantwortet hat - der
+     *     {@code syncStatus} bleibt daneben, wie er ist.
+     * @param haengtAn Zählerbaum-Konzept (E1 A): die Eltern-Komponente HEUTE,
+     *     oder {@code null} = an der Wurzel (dem Netzanschluss).
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ComponentRowDto(
@@ -78,5 +89,23 @@ public record SiteComponentsDto(
             int definitionVersion,
             BigDecimal capacityKwp,
             String edgeSourceId,
-            String syncStatus) {}
+            String syncStatus,
+            HerkunftDto herkunft,
+            String rejectedReason,
+            UUID haengtAn) {}
+
+    /**
+     * Die Herkunft einer Komponente - heute nur die Gerätesuche (Folgepaket
+     * vp-gs-folge-herkunft): „aus der Gerätesuche vom {@code gesuchtAm}".
+     *
+     * @param art           {@code geraetesuche}; ein Portal, das ein Wort nicht
+     *                      kennt, behauptet nichts
+     * @param suchId        die Suche - nach 30 Tagen gelöscht (DP-3 A), die
+     *                      Herkunft bleibt
+     * @param gesuchtAm     wann gesucht wurde
+     * @param uebernommenAm wann der Fund zur Komponente wurde
+     */
+    public record HerkunftDto(String art, UUID suchId, Instant gesuchtAm, Instant uebernommenAm) {
+        public static final String GERAETESUCHE = "geraetesuche";
+    }
 }

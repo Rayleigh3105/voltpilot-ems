@@ -34,6 +34,7 @@
  * `deviceLimitLine`, `controlStrip`. Zwei Formulierungen über denselben Befund
  * wären zwei Urteile.
  */
+import { UEMS_ANBINDUNG } from './glossar';
 
 /** Ein Baustein der Hauptansicht. Die Reihenfolge ist FEST. */
 export type BausteinId = 'buehne' | 'steuerung' | 'heute' | 'aktivitaet' | 'details';
@@ -57,11 +58,12 @@ export const BAUSTEIN_TITEL: Record<BausteinId, string> = {
 };
 
 /** Ein Teil der Unteransicht „Technik & Diagnose". */
-export type TechnikId = 'register' | 'ocpp' | 'auswertung' | 'einrichtung' | 'rohdaten' | 'plattform';
+export type TechnikId = 'register' | 'ocpp' | 'anbindung' | 'auswertung' | 'einrichtung' | 'rohdaten' | 'plattform';
 
 export const TECHNIK_ORDNUNG: readonly TechnikId[] = [
   'register',
   'ocpp',
+  'anbindung',
   'auswertung',
   'einrichtung',
   'rohdaten',
@@ -71,6 +73,8 @@ export const TECHNIK_ORDNUNG: readonly TechnikId[] = [
 export const TECHNIK_TITEL: Record<TechnikId, string> = {
   register: 'Register',
   ocpp: 'OCPP',
+  // GE-2: das Protokoll des Wegs zu diesem Gerät (`GET …/data-sources/{id}/history`).
+  anbindung: `Verlauf der ${UEMS_ANBINDUNG}`,
   auswertung: 'Auswertung',
   einrichtung: 'Einrichtung',
   rohdaten: 'Rohdaten',

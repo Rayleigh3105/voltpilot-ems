@@ -13,12 +13,20 @@
  *   „SUN-12K-SG04LP3-EU", auf jeder Fläche gleich.
  * - **K5 · Messwerte als Unterzeilen.** Ein Gerät mit mehreren Komponenten
  *   klappt sie auf; die Gerätezeile trägt den Hauptwert.
+ * - **GE-1 · je Kasten ein Eintrag.** Ein Weg ist keine Zeile; nur ein Gateway
+ *   (mit seinen Geräten darunter) und ein Anschluss ohne Gerät stehen da. Die
+ *   Kennung („DQ-1") und die Adresse findet die Suche am Gerät.
+ * - **GE-3 · Einheiten hinter der Steuerung.** Die Wechselrichter einer
+ *   Anlagensteuerung stehen immer sichtbar eine Ebene unter ihr (keine
+ *   Aufklapp-Zeile: sie sind Geräte, keine Messwerte). Trifft nur eine Einheit,
+ *   steht ihre Steuerung als Ort mit da.
  *
  * Rein + deterministisch: kein React, kein Netz, keine Uhr. Die Fläche
  * (`components/AufbauTabelle.tsx`) rendert nur, was hier entschieden wird.
  */
-import type { AufbauAnlage, AufbauBaum, AufbauBox, AufbauGeraet, AufbauQuelle } from './aufbauBaum';
+import type { AufbauAnlage, AufbauBaum, AufbauBox, AufbauGeraet, AufbauWeg } from './aufbauBaum';
 import type { PlantComponent } from './komponenten';
+import { gruppenKopf, gruppenZahl, GRUPPEN_ORDNUNG, sortiereGeraete, type GruppenKopf } from './aufbauGruppen';
 import { normalisiereSuche, passt, suchBegriffe } from './picker/suche';
 
 export type FilterSchluessel = 'art' | 'zustand' | 'box' | 'marke';
@@ -72,7 +80,7 @@ export function markeVon(g: AufbauGeraet): string {
   return g.marke ?? OHNE_MARKE;
 }
 
-/** Wonach ein Gerät gefunden wird: sein Name, Modell, Art, Hersteller, Kennung und Ort. */
+/** Wonach ein Gerät gefunden wird: sein Name, Modell, Art, Hersteller, Kennung, Anbindung und Ort. */
 function heuhaufen(g: AufbauGeraet, box: AufbauBox | null, anlage: AufbauAnlage): string {
   return normalisiereSuche(
     [
@@ -82,6 +90,10 @@ function heuhaufen(g: AufbauGeraet, box: AufbauBox | null, anlage: AufbauAnlage)
       g.marke ?? '',
       g.kennung ?? '',
       ...g.karte.komponenten.map((c) => c.label),
+      // GE-1: der Weg steht am Gerät — Adresse und Kennung („DQ-1") finden es, auch die seines Gateways.
+      g.anbindungText ?? '',
+      ...g.anbindungen.flatMap((a) => [a.kennzeichen, a.weg]),
+      g.gateway?.titel ?? '',
       box?.name ?? '',
       box?.ref ?? '',
       anlage.name,
@@ -89,12 +101,15 @@ function heuhaufen(g: AufbauGeraet, box: AufbauBox | null, anlage: AufbauAnlage)
   );
 }
 
-/** Wonach eine Datenquelle gefunden wird: Kennzeichen, Name, Weg und ihre Box. */
-function quelleTrifft(q: AufbauQuelle, box: AufbauBox, f: AufbauFilter, begriffe: string[]): boolean {
-  // Art, Zustand und Hersteller beschreiben Geräte — mit einem dieser Filter steht keine Quelle da.
+/** Wonach ein Weg mit eigener Zeile (Gateway, Anschluss ohne Gerät) gefunden wird: Name, Weg, Kennung und Ort. */
+function wegTrifft(w: AufbauWeg, box: AufbauBox | null, f: AufbauFilter, begriffe: string[]): boolean {
+  // Art, Zustand und Hersteller beschreiben Geräte — mit einem dieser Filter steht ein Weg nur über seine Geräte da.
   if (f.art.length + f.zustand.length + f.marke.length > 0) return false;
-  if (f.box.length > 0 && !f.box.includes(box.id)) return false;
-  return begriffe.length === 0 || passt(normalisiereSuche([q.titel, q.weg, box.name, box.ref].join(' ')), begriffe);
+  if (f.box.length > 0 && !f.box.includes(box?.id ?? OHNE_BOX)) return false;
+  return (
+    begriffe.length === 0 ||
+    passt(normalisiereSuche([w.titel, w.weg, w.kennzeichen, box?.name ?? '', box?.ref ?? ''].join(' ')), begriffe)
+  );
 }
 
 export function filterAktiv(f: AufbauFilter): boolean {
@@ -130,9 +145,16 @@ export type TabellenZeile =
       teilbar: boolean;
       offen: boolean;
     }
-  | { typ: 'teil'; key: string; ebene: number; geraet: AufbauGeraet; komponente: PlantComponent }
-  /** Eine Datenquelle, die die Box liest (UEMS AP-06) — kein Gerät, darum fällt sie aus Art-, Zustand- und Herstellerfilter. */
-  | { typ: 'quelle'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox; quelle: AufbauQuelle }
+  /**
+   * Der Kopf einer Gerätegruppe (Erzeugung · Speicher · Netz · Verbrauch · Laden, `aufbauGruppen.ts`): Anzahl und
+   * ehrliche Summe. Er steht auf der Ebene seiner Geräte und klappt nicht - Gruppen bleiben offen wie Abschnitte.
+   */
+  | { typ: 'gruppe'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox | null; kopf: GruppenKopf }
+  | { typ: 'teil'; key: string; ebene: number; anlage: AufbauAnlage; geraet: AufbauGeraet; komponente: PlantComponent }
+  /** Ein Gateway (1 : N, GE-1): ein Kasten, kein Gerät — seine Geräte stehen eine Ebene tiefer. */
+  | { typ: 'gateway'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox | null; weg: AufbauWeg; offen: boolean }
+  /** Ein Anschluss ohne Gerät (1 : 0, GE-1) — kein Gerät, darum fällt er aus Art-, Zustand- und Herstellerfilter. */
+  | { typ: 'anschluss'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox | null; weg: AufbauWeg }
   | {
       typ: 'fund';
       key: string;
@@ -149,10 +171,12 @@ export type TabellenZeile =
       text: string;
       /** Führt die Zeile zum Hinzufügen einer Box (nur an der geöffneten Anlage)? */
       boxHinzufuegen: boolean;
+      /** Die leere Box („Noch kein Gerät an dieser Box"): dort steht „Geräte suchen" (Gerätesuche, Bericht §4). */
+      box: AufbauBox | null;
     };
 
 export interface Aufklappzustand {
-  /** Ist dieser Knoten (Anlage/Box) offen? `vorgabe` gilt, solange niemand klickte. */
+  /** Ist dieser Knoten (Anlage/Box/Gateway) offen? `vorgabe` gilt, solange niemand klickte. */
   offen: (id: string, vorgabe: boolean) => boolean;
   /** Die aufgeklappten Geräte - ihre Messwerte stehen als Unterzeilen darunter. */
   geraete: ReadonlySet<string>;
@@ -165,6 +189,8 @@ function geraeteZeilen(
   geraete: AufbauGeraet[],
   ebene: number,
   z: Aufklappzustand,
+  einheiten: ReadonlyMap<string, AufbauGeraet[]> = new Map(),
+  zaehlerbaumKinder: ReadonlyMap<string, AufbauGeraet[]> = new Map(),
 ): void {
   for (const g of geraete) {
     if (g.art === 'neu') {
@@ -174,11 +200,121 @@ function geraeteZeilen(
     const teilbar = g.karte.komponenten.length > 1;
     const offen = teilbar && z.geraete.has(g.id);
     out.push({ typ: 'geraet', key: g.id, ebene, anlage, box, geraet: g, teilbar, offen });
-    if (!offen) continue;
-    for (const c of g.karte.komponenten) {
-      out.push({ typ: 'teil', key: `${g.id}::${c.id}`, ebene: ebene + 1, geraet: g, komponente: c });
+    if (offen) {
+      for (const c of g.karte.komponenten) {
+        out.push({ typ: 'teil', key: `${g.id}::${c.id}`, ebene: ebene + 1, anlage, geraet: g, komponente: c });
+      }
+    }
+    // GE-3: die Einheiten hinter einer Steuerung — Geräte, eine Ebene tiefer, immer sichtbar.
+    for (const u of einheiten.get(g.id) ?? []) {
+      out.push({ typ: 'geraet', key: u.id, ebene: ebene + 1, anlage, box, geraet: u, teilbar: false, offen: false });
+    }
+    // Zählerbaum-Konzept (E2 A „Baum in der Liste"): was hinter DIESEM Zähler
+    // hängt, eine Ebene tiefer, immer sichtbar (keine Aufklapp-Zeile, wie GE-3) -
+    // rekursiv, denn eine Unterverteilung kann selbst wieder Kinder tragen.
+    const kinder = zaehlerbaumKinder.get(g.id);
+    if (kinder && kinder.length > 0) {
+      geraeteZeilen(out, anlage, box, sortiereGeraete(kinder), ebene + 1, z, einheiten, zaehlerbaumKinder);
     }
   }
+}
+
+/**
+ * Die Zeilen EINES Orts (Box oder Anlage ohne Box): seine Geräte, die Gateways mit ihren Geräten darunter und die
+ * Anschlüsse ohne Gerät. Mit Suche und Filter nur, was trifft — ein Gateway auch, wenn eins seiner Geräte trifft.
+ * Gibt die Zahl der Treffer zurück.
+ */
+function ortZeilen(
+  out: TabellenZeile[],
+  anlage: AufbauAnlage,
+  box: AufbauBox | null,
+  geraete: AufbauGeraet[],
+  wege: AufbauWeg[],
+  ebene: number,
+  f: AufbauFilter,
+  begriffe: string[],
+  z: Aufklappzustand,
+): number {
+  const aktiv = filterAktiv(f);
+  const trifftHier = (g: AufbauGeraet) => trifft(g, box, anlage, f, begriffe);
+  // GE-3: die Einheiten stehen unter ihrer Steuerung, nie für sich — und eine treffende Einheit trägt ihre Steuerung mit.
+  const einheiten = new Map<string, AufbauGeraet[]>();
+  for (const g of geraete) {
+    if (g.einheit && trifftHier(g)) einheiten.set(g.einheit.steuerungId, [...(einheiten.get(g.einheit.steuerungId) ?? []), g]);
+  }
+  // Zählerbaum-Konzept (E2 A): wer hängt an welcher Komponente? Jede Komponente
+  // jedes Geräts kann Eltern sein - gesucht wird über ihre entityId, nicht über
+  // die Geräte-Id (ein Hybrid trägt mehrere Komponenten, Aspekt „pv" inklusive).
+  const geraetDerKomponente = new Map<string, AufbauGeraet>();
+  for (const g of geraete) {
+    for (const c of g.karte.komponenten) geraetDerKomponente.set(c.entityId, g);
+  }
+  const zaehlerbaumKinder = new Map<string, AufbauGeraet[]>();
+  for (const g of geraete) {
+    if (g.haengtAn == null || !trifftHier(g)) continue;
+    const eltern = geraetDerKomponente.get(g.haengtAn);
+    // Die Eltern-Komponente ist nicht (mehr) sichtbar (z. B. eine fremde
+    // Anlage im Protokoll) - dann steht die Zeile lieber an der Wurzel, als
+    // unauffindbar zu verschwinden.
+    if (!eltern) continue;
+    zaehlerbaumKinder.set(eltern.id, [...(zaehlerbaumKinder.get(eltern.id) ?? []), g]);
+  }
+  const haengtSichtbar = (g: AufbauGeraet) => g.haengtAn != null && geraetDerKomponente.has(g.haengtAn);
+  const traegt = (g: AufbauGeraet) =>
+    !g.einheit && !haengtSichtbar(g) && (trifftHier(g) || einheiten.has(g.id) || zaehlerbaumKinder.has(g.id));
+  const gateways = wege.filter((w) => w.art === 'gateway');
+  const amGateway = new Set(gateways.flatMap((w) => w.geraete.map((g) => g.id)));
+  const direkt = geraete.filter((g) => !amGateway.has(g.id) && traegt(g));
+  const sichtbar = gateways
+    .map((w) => ({ w, geraete: w.geraete.filter(traegt) }))
+    .filter(({ w, geraete: g }) => !aktiv || g.length > 0 || wegTrifft(w, box, f, begriffe));
+  const offene = wege.filter((w) => w.art === 'offen' && (!aktiv || wegTrifft(w, box, f, begriffe)));
+  const ort = box?.id ?? `${anlage.id}::ohne-box`;
+  // Gruppiert (Konzept `vp-anlage-geraete-gruppiert`): je Gruppe ein Kopf, erst ab zwei Gruppen an diesem Ort -
+  // gezählt über ALLE seine Geräte, damit ein Treffer auch unter Suche und Filter seine Gruppe zeigt.
+  const alleDirekt = geraete.filter((g) => !amGateway.has(g.id) && !g.einheit && !haengtSichtbar(g));
+  const mitKoepfen = gruppenZahl(alleDirekt) >= 2;
+  const sortiert = sortiereGeraete(direkt);
+  for (const gruppe of GRUPPEN_ORDNUNG) {
+    const darin = sortiert.filter((g) => g.gruppe === gruppe);
+    if (darin.length === 0) continue;
+    if (mitKoepfen) {
+      // Blenden Suche oder Filter Geräte der Gruppe aus, wäre ihre Summe eine Teilsumme - dann steht keine da.
+      const teilmenge = darin.length !== alleDirekt.filter((g) => g.gruppe === gruppe).length;
+      out.push({ typ: 'gruppe', key: `${ort}::gruppe::${gruppe}`, ebene, anlage, box, kopf: gruppenKopf(gruppe, darin, teilmenge) });
+    }
+    geraeteZeilen(out, anlage, box, darin, ebene, z, einheiten, zaehlerbaumKinder);
+  }
+  // Funde und „Nicht mehr verbunden" gehören in keine Gruppe - sie bleiben am Ende der Geräte.
+  geraeteZeilen(out, anlage, box, sortiert.filter((g) => g.gruppe == null), ebene, z, einheiten, zaehlerbaumKinder);
+  for (const { w, geraete: dahinter } of sichtbar) {
+    const offen = aktiv || z.offen(w.id, true);
+    out.push({ typ: 'gateway', key: `${ort}::gateway::${w.id}`, ebene, anlage, box, weg: w, offen });
+    // Hinter einem Gateway in derselben Reihenfolge, ohne eigene Köpfe.
+    if (offen) geraeteZeilen(out, anlage, box, sortiereGeraete(dahinter), ebene + 1, z, einheiten, zaehlerbaumKinder);
+  }
+  for (const w of offene) out.push({ typ: 'anschluss', key: `${ort}::anschluss::${w.id}`, ebene, anlage, box, weg: w });
+  // Rekursiv, denn eine Unterverteilung kann selbst wieder Kinder tragen (Zählerbaum, beliebig tief).
+  const unter = (liste: AufbauGeraet[]): number =>
+    liste.reduce((n, g) => {
+      const kinder = zaehlerbaumKinder.get(g.id) ?? [];
+      return n + (einheiten.get(g.id)?.length ?? 0) + kinder.length + unter(kinder);
+    }, 0);
+  return (
+    direkt.length + unter(direkt) + sichtbar.reduce((n, x) => n + 1 + x.geraete.length + unter(x.geraete), 0) + offene.length
+  );
+}
+
+/** Der Ort ohne Zeilen — nur zum Zählen der Treffer, bevor die Gruppe entschieden ist. */
+function ortTreffer(
+  anlage: AufbauAnlage,
+  box: AufbauBox | null,
+  geraete: AufbauGeraet[],
+  wege: AufbauWeg[],
+  f: AufbauFilter,
+  begriffe: string[],
+): number {
+  return ortZeilen([], anlage, box, geraete, wege, 0, f, begriffe, { offen: () => false, geraete: new Set() });
 }
 
 /**
@@ -196,25 +332,20 @@ export function tabellenZeilen(
   const begriffe = suchBegriffe(f.q);
   const out: TabellenZeile[] = [];
   for (const a of baum.anlagen) {
-    const boxen = a.boxen.map((b) => ({
-      b,
-      treffer: b.geraete.filter((g) => trifft(g, b, a, f, begriffe)),
-      quellen: b.quellen.filter((q) => quelleTrifft(q, b, f, begriffe)),
-    }));
-    const ohneBox = a.ohneBox.filter((g) => trifft(g, null, a, f, begriffe));
-    const summe = boxen.reduce((n, x) => n + x.treffer.length + x.quellen.length, 0) + ohneBox.length;
+    const boxen = a.boxen.map((b) => ({ b, treffer: ortTreffer(a, b, b.geraete, b.wege, f, begriffe) }));
+    const ohneBox = ortTreffer(a, null, a.ohneBox, a.wegeOhneBox, f, begriffe);
+    const summe = boxen.reduce((n, x) => n + x.treffer, 0) + ohneBox;
     if (aktiv && summe === 0) continue;
     const aOffen = aktiv || z.offen(a.id, a.aktuell);
     out.push({ typ: 'anlage', key: a.id, ebene: 0, anlage: a, offen: aOffen });
     if (!aOffen) continue;
-    for (const { b, treffer, quellen } of boxen) {
-      if (aktiv && treffer.length === 0 && quellen.length === 0) continue;
+    for (const { b, treffer } of boxen) {
+      if (aktiv && treffer === 0) continue;
       const bOffen = aktiv || z.offen(b.id, true);
       out.push({ typ: 'box', key: b.id, ebene: 1, anlage: a, box: b, offen: bOffen });
       if (!bOffen) continue;
-      geraeteZeilen(out, a, b, treffer, 2, z);
-      for (const q of quellen) out.push({ typ: 'quelle', key: `${b.id}::quelle::${q.id}`, ebene: 2, anlage: a, box: b, quelle: q });
-      if (!aktiv && b.geraete.length === 0 && b.quellen.length === 0) {
+      ortZeilen(out, a, b, b.geraete, b.wege, 2, f, begriffe, z);
+      if (!aktiv && b.geraete.length === 0 && b.wege.length === 0) {
         out.push({
           typ: 'leer',
           key: `${b.id}::leer`,
@@ -222,10 +353,11 @@ export function tabellenZeilen(
           anlage: a,
           text: a.aktuell || a.geraeteZahl != null ? 'Noch kein Gerät an dieser Box' : 'Wird geladen …',
           boxHinzufuegen: false,
+          box: b,
         });
       }
     }
-    geraeteZeilen(out, a, null, ohneBox, 1, z);
+    ortZeilen(out, a, null, a.ohneBox, a.wegeOhneBox, 1, f, begriffe, z);
     if (!aktiv && a.boxen.length === 0) {
       out.push({
         typ: 'leer',
@@ -234,6 +366,7 @@ export function tabellenZeilen(
         anlage: a,
         text: 'Noch keine VoltPilot-Box',
         boxHinzufuegen: a.aktuell,
+        box: null,
       });
     }
   }
@@ -321,6 +454,8 @@ export function aktiveFilter(
 export interface AufbauZahlen {
   /** Angelegte Geräte der geöffneten Anlage (ohne Gemeldetes). */
   geraete: number;
+  /** Gateways der geöffneten Anlage — Kästen, aber keine Geräte (GE-1). */
+  gateways: number;
   /** Davon sichtbar unter Suche und Filter. */
   treffer: number;
   /** Was Aufmerksamkeit braucht (Zustand nicht in Ordnung), an der geöffneten Anlage. */
@@ -335,8 +470,11 @@ export function aufbauZahlen(baum: AufbauBaum, f: AufbauFilter): AufbauZahlen {
   const begriffe = suchBegriffe(f.q);
   const hier = eintraege(baum).filter((e) => e.anlage.aktuell);
   const geraete = hier.filter((e) => e.g.art === 'geraet' || e.g.art === 'ladepunkt');
+  const aktuelle = baum.anlagen.filter((a) => a.aktuell);
+  const wege = aktuelle.flatMap((a) => [...a.boxen.flatMap((b) => b.wege), ...a.wegeOhneBox]);
   return {
     geraete: geraete.length,
+    gateways: wege.filter((w) => w.art === 'gateway').length,
     treffer: geraete.filter((e) => trifft(e.g, e.box, e.anlage, f, begriffe)).length,
     achtung: hier.filter((e) => zustandVon(e.g) === 'achtung').length,
     gemeldet: hier.filter((e) => zustandVon(e.g) === 'gemeldet').length,
@@ -352,4 +490,27 @@ export function mitFilter(f: AufbauFilter, schluessel: FilterSchluessel, werte: 
 /** Ein Kurzfilter („braucht Aufmerksamkeit"): ersetzt Suche und Filter durch genau ihn. */
 export function kurzfilter(zustand: ZustandKlasse): AufbauFilter {
   return { ...LEERER_FILTER, zustand: [zustand] };
+}
+
+const mehrzahl = (n: number, eins: string, viele: string) => `${n} ${n === 1 ? eins : viele}`;
+
+/** Gateways an einem Ort: „1 Gateway"; null = keins. */
+export function gatewaySatz(wege: readonly AufbauWeg[]): string | null {
+  const n = wege.filter((w) => w.art === 'gateway').length;
+  return n > 0 ? mehrzahl(n, 'Gateway', 'Gateways') : null;
+}
+
+/**
+ * Was an einer Box hängt, in Kästen gezählt (GE-1): „1 Gerät", „4 Geräte · 1 Gateway", „6 Geräte · 1 Gateway ·
+ * 1 Anschluss offen". Das Gateway ist ein Kasten, aber kein Gerät — es zählt getrennt; Gemeldetes zählt nicht.
+ */
+export function kastenSatz(geraete: readonly AufbauGeraet[], wege: readonly AufbauWeg[]): string {
+  const offen = wege.filter((w) => w.art === 'offen').length;
+  return [
+    mehrzahl(geraete.filter((g) => g.art !== 'neu').length, 'Gerät', 'Geräte'),
+    gatewaySatz(wege),
+    offen > 0 ? mehrzahl(offen, 'Anschluss offen', 'Anschlüsse offen') : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }

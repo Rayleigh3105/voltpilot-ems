@@ -56,7 +56,7 @@ Datenquelle, Gerät, Komponente, Anlage) gelten unverändert. Dazu:
 |---|---|---|
 | Kennzeichen | `DQ-n`, eindeutig je Kundenbereich, automatisch vergeben; ändert sich nie durch Technik | `kennzeichen` |
 | Anlage | wo die Geräte verdrahtet sind — darf von der Heimat der lesenden Box abweichen | `anlage` |
-| Protokoll | geschlossenes Vokabular: `modbus_tcp` Modbus TCP · `sunspec_modbus` SunSpec-Modbus · `mqtt` MQTT-Themen · `http` HTTP-Auskunft · `ocpp` OCPP-Station · `solarman_v5` Solarman-Datenlogger (seit IP-4, nach AP-06 Soll-Regel 8); neue nur über den Katalog | `protokoll` |
+| Protokoll | geschlossenes Vokabular: `modbus_tcp` Modbus TCP · `sunspec_modbus` SunSpec-Modbus · `mqtt` MQTT-Themen · `http` HTTP-Auskunft · `ocpp` OCPP-Station · `solarman_v5` Solarman-Datenlogger (seit IP-4, nach AP-06 Soll-Regel 8) · `kaco_serial` Serieller RS485-Wandler (KACO Powador-Altgeräte) · `kostal_piko_rtu` Modbus RTU über Wandler (KOSTAL PIKO, Ausweg neben `http`); neue nur über den Katalog | `protokoll` |
 | Adresse | Host:Port · Themenfilter · URL · Stations-Kennung · Host:Port/Seriennummer des Solarman-Datenloggers — ein Parameter, nie die Identität | `adresse` |
 | Geräte hinter der Quelle | Geräte-ID je Gerät (Steckplatz bei Energiekarten, AP-05 E4) | `geraete_ids` |
 | Netzlage | dokumentiertes Netz oder `null` | `netz` |
@@ -328,18 +328,20 @@ IP-6 sie ihr zustellt): gelesen wird `measurement_point.communication` + `connec
 | Transport | Protokoll | Adresse | Geräte-ID |
 |---|---|---|---|
 | `modbus_tcp`, `kostal_modbus`, `kaco_modbus`, I/O-Modul `ebyte_modbus_tcp`, Selbstbau `modbus_baukasten` | `modbus_tcp` | `ip:port` (Selbstbau: `transport.host:port`) | `unit_id` |
+| `huawei_modbus` (Huawei SUN2000) | `modbus_tcp` | `ip:port` | `unit_id` — die 0 ist bei Huawei eine gültige Adresse (Werkswert), Vorgabe 0 |
 | `sunspec_tcp`, `fronius_sunspec` | `sunspec_modbus` | `ip:port` | `unit_id` |
 | `solarman_v5` (Deye über den Datenlogger) | `solarman_v5` | `ip:port/serial` — die Seriennummer des Datenloggers trägt jeder Solarman-V5-Rahmen; ohne sie keine Adresse | `mb_slave_id` |
-| `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http`, Batterie-Anschluss `http_local` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`, `endpoint.tls`) | — |
-| `mqtt_local` | `mqtt` | das EINE Thema aller Zuordnungen; mehrere Themen: keine Adresse | — |
+| `kaco_serial` (KACO Powador über RS485-zu-Ethernet-Wandler) | `kaco_serial` | `ip:port` des Wandlers (Port 8899) | RS485-Busadresse `address` (1-32; 0 oder außerhalb: Vorgabe 1) |
+| `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http`, Shelly-Zähler `shelly_em_http`, KOSTAL PIKO `kostal_dxs` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`) | — |
+| `kostal_piko_rtu` (KOSTAL PIKO über Modbus RTU auf einem RS485-zu-Ethernet-Wandler, der dokumentierte Ausweg neben `kostal_dxs`) | `kostal_piko_rtu` | `ip:port` des Wandlers (Port 8899) | `unit_id` |
 | Ladestation (`device_charge_point`) | `ocpp` | die Stations-Kennung | — |
 | jedes andere Wort (die Rückwand) | das Wort selbst → `protokoll_unbekannt` | — | — |
 
 **Die Tabelle ist vollständig** (AP-06 Soll-Regel 8, Konzept vom Captain am 10.09.2026 abgenommen: JEDE vorhandene Komponente
 wird genau einer Datenquelle zugeordnet): sie kennt genau die Transport-Wörter, die eine
 Bestandsanlage tragen kann — die Vorlagen des Katalogs (`builtin.json`), die Anbindungs-Arten des
-Admin-Werkzeugs (`ComponentTemplateDefinition.COMMUNICATIONS`), Selbstbau und Batterie-Anschluss
-und die Treiber der Box (`edge-app/core/internal/inverter`, `componentapply`);
+Admin-Werkzeugs (`ComponentTemplateDefinition.COMMUNICATIONS`) und Selbstbau
+sowie die Treiber der Box (`edge-app/core/internal/inverter`, `componentapply`);
 `BestandAnschlussTest.dieTabelleKenntJedesTransportWortDesBestands` hält das gleich. Ein fehlender
 Port und eine fehlende Geräte-ID sind die Vorgaben des Treibers (eine 0 liest ein Treiber der Box
 wie „fehlt“) — dieselben wie die Vorbelegung der Vorlage im Katalog (`BestandAnschlussTest` hält
@@ -351,8 +353,9 @@ Zeile, erreicht die Box nicht und ist darum kein Beleg.
 ## 9. Fähigkeiten einer Box (E12 = A)
 
 [`edge-capabilities.json`](./edge-capabilities.json) nennt die Fähigkeiten, deren Fehlen eine
-Fläche benennt — heute **Rückmeldung je Datenquelle** (`data_sources`) — mit dem ersten Release,
-das sie trägt (`ab_release`).
+Fläche benennt — heute **Rückmeldung je Datenquelle** (`data_sources`) und seit dem 30.10.2026
+**Gerätesuche** (`geraetesuche`, mit dem Knopf „Geräte suchen“) — mit dem ersten Release, das sie
+trägt (`ab_release`).
 
 1. Eine bekannte Fähigkeit aus `supports[]` gilt auch ohne Tabellenbeleg. Fremde Wörter
    werden verworfen; Details und Vokabular: [Fähigkeitsmeldung](edge-supports.md).
@@ -362,11 +365,12 @@ das sie trägt (`ab_release`).
    Release in der Ordnung `release_seq` nicht vor `ab_release` liegt (Captain-Entscheid D5 —
    nie ein Zeichenketten- oder SHA-Vergleich).
 3. Ein Stempel ohne Release (nackte SHA, „dev“, das semver-Beispiel „2.5.0“) beweist nichts.
-   Die Fläche zeigt „Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle“ (A7), mit
-   dem Release-Tag statt des Builds, wo es eines gibt.
+   Die Fläche zeigt „Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche“
+   (A7), mit dem Release-Tag statt des Builds, wo es eines gibt.
 
-⚠ **Heute trägt kein ausgeliefertes Release die Fähigkeit** — `ab_release` ist `null`. Wer das
-Release baut, das sie bringt, trägt sein Tag dort ein. Keine Fähigkeit sind Zustellung je Box
+⚠ **Heute trägt kein ausgeliefertes Release eine der Fähigkeiten** — `ab_release` ist `null`. Wer das
+Release baut, das `data_sources` bringt, trägt sein Tag dort ein; `geraetesuche` bleibt null, bis die Tabelle
+je Box-Art liest ([Je Box-Art](edge-supports.md#je-box-art)), und gilt bis dahin nur per `supports[]`. Keine Fähigkeit sind Zustellung je Box
 (E4, Cloud), **Zuständigkeit ab Zeitpunkt** (E8, Cloud-Zeitgeber für jede Box), Nachfolger-Anmeldung
 (E7, Cloud) und die lesende Box je Wert (Topic) — dafür gibt es nie ein „Update nötig“. Fällt bei
 einer Übergabe eine der beiden Boxen zum Zeitpunkt aus, wartet die Übergabe, bis sie wieder

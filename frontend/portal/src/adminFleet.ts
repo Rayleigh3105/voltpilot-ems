@@ -14,6 +14,7 @@ import type {
 import { BOX_FAEHIGKEITEN } from './boxUebersicht';
 import { CONTROL_STALE_MS, EXECUTION_MODE_LABEL } from './control';
 import { curtailTruth, netzKwText, releaseNote, type CurtailTruth } from './curtailment';
+import { seitDauer } from './format';
 import { faehigkeiten } from './uemsDatenquelle';
 
 /**
@@ -152,6 +153,8 @@ export interface FleetBoxRow {
   roleText: string;
   connectionText: string;
   connectionTone: Tone;
+  /** Der genaue Zustand (E6: unterscheidet „verzögert" von „offline" - `connectionTone` tut das nicht). */
+  connectionZustand: BoxErreichbarkeit;
   lastSeenText: string;
   software: EdgeStand;
   capabilities: FleetBoxCapability[];
@@ -195,16 +198,26 @@ export function sourceHealth(counts: AdminFleetSources | null): SourceHealth | n
   };
 }
 
+/** Die Linie eines Register-Eintrags; ohne Angabe (älterer Server) Docker wie dort. */
+function releaseLinie(r: AdminFleetRelease): 'docker' | 'light' {
+  return r.boxArt === 'light' ? 'light' : 'docker';
+}
+
 /**
- * Der SOLL-Stand der Flotte: der neueste Eintrag des Release-Registers, oder
- * `null` bei leerem Register. Der Endpunkt liefert das Register schon nach
- * `releaseSeq` absteigend - hier steht die Regel trotzdem EINMAL explizit, denn
- * sie ist die ganze Ordnung: `releaseSeq` ist eine monotone Ganzzahl, nie ein
- * String- oder SHA-Vergleich.
+ * Der SOLL-Stand: der neueste Eintrag des Release-Registers - mit `linie` der
+ * neueste DIESER Linie (Geräte & Updates S0: eine Docker-Box wird nie am
+ * Edge-Light-Release gemessen) - oder `null`. Der Endpunkt liefert das Register
+ * schon nach `releaseSeq` absteigend - hier steht die Regel trotzdem EINMAL
+ * explizit, denn sie ist die ganze Ordnung: `releaseSeq` ist eine monotone
+ * Ganzzahl, nie ein String- oder SHA-Vergleich.
  */
-export function sollRelease(releases: AdminFleetRelease[]): AdminFleetRelease | null {
+export function sollRelease(
+  releases: AdminFleetRelease[],
+  linie?: 'docker' | 'light',
+): AdminFleetRelease | null {
   let newest: AdminFleetRelease | null = null;
   for (const r of releases) {
+    if (linie && releaseLinie(r) !== linie) continue;
     if (newest == null || r.releaseSeq > newest.releaseSeq) newest = r;
   }
   return newest;
@@ -252,6 +265,12 @@ export function releaseIsRunning(release: string, stamped: string): boolean {
  *    Gleichheit hätte jedes erfolgreich angewandte Tag-Release als „nicht
  *    registriert" gelesen.
  *
+ * 4. **Gemessen wird an der eigenen Linie** (Geräte & Updates S0): der Soll
+ *    ist das neueste Release der Box-Art der Box (`boxArt` aus der API), sonst
+ *    der Linie des Releases, das ihr Stempel trägt. Eine Docker-Box am
+ *    neuesten Edge-Light-Release zu messen hieß „veraltet" für eine Box, die
+ *    dieses Release nie bekommen kann.
+ *
  * Der IST-Stand kommt bevorzugt aus dem OTA-Block (er reist top-level im
  * Herzschlag und deckt auch Geräte ohne Flow-Deployment ab) und fällt sonst auf
  * den flows-getragenen `coreVersion` zurück - so bleibt eine ältere Edge
@@ -261,6 +280,7 @@ export function edgeStand(
   edge: AdminFleetEdge | null,
   update: AdminFleetUpdate | null,
   releases: AdminFleetRelease[],
+  boxArt?: string | null,
 ): EdgeStand {
   const ist = update?.version ?? edge?.coreVersion ?? null;
   const paletteVersion = edge?.paletteVersion ?? null;
@@ -275,8 +295,7 @@ export function edgeStand(
       title: 'Das Gerät hat noch keinen Software-Stand gemeldet.',
     };
   }
-  const soll = sollRelease(releases);
-  if (!soll) {
+  if (releases.length === 0) {
     return {
       coreVersion: ist,
       paletteVersion,
@@ -287,7 +306,38 @@ export function edgeStand(
       title: 'Kein Release im Register - ohne Maßstab wird kein Stand als veraltet bewertet.',
     };
   }
-  const entry = releases.find((r) => releaseIsRunning(r.version, ist));
+  // Gemessen wird an der EIGENEN Linie (S0): die Box-Art der Box, sonst die
+  // Linie des Releases, das ihr Stempel trägt (dieselbe Regel wie
+  // `EdgeStandVerdict` in der API).
+  const art = boxArt === 'docker' || boxArt === 'light' ? boxArt : null;
+  const getragen = releases.find((r) => releaseIsRunning(r.version, ist));
+  const linie = art ?? (getragen ? releaseLinie(getragen) : null);
+  if (!linie) {
+    return {
+      coreVersion: ist,
+      paletteVersion,
+      status: 'nicht_registriert',
+      text: `${ist} · nicht registriert`,
+      tone: 'off',
+      outdated: false,
+      title: 'Dieser Stand steht nicht im Release-Register. Ob er älter oder neuer ist, '
+        + 'lässt sich daraus nicht sagen.',
+    };
+  }
+  const soll = sollRelease(releases, linie);
+  if (!soll) {
+    return {
+      coreVersion: ist,
+      paletteVersion,
+      status: 'kein_massstab',
+      text: ist,
+      tone: 'off',
+      outdated: false,
+      title: `Für ${linie === 'light' ? 'Edge Light' : 'die Docker-Box'} ist noch kein Release `
+        + 'registriert - ohne Maßstab wird kein Stand als veraltet bewertet.',
+    };
+  }
+  const entry = releases.find((r) => releaseLinie(r) === linie && releaseIsRunning(r.version, ist));
   if (!entry) {
     return {
       coreVersion: ist,
@@ -347,7 +397,7 @@ export function fleetRows(
 ): FleetRow[] {
   const rows: FleetRow[] = sites.map((site) => {
     const sources = sourceHealth(site.sources);
-    const edge = edgeStand(site.edge, site.update, releases);
+    const edge = edgeStand(site.edge, site.update, releases, site.boxArt);
     const live = liveCell(site, now);
     const plan = planCell(site.lastPlanGeneratedAt, now);
     const devices = deviceCell(site);
@@ -409,9 +459,13 @@ function fleetBoxRow(
   now: Date,
   releases: AdminFleetRelease[],
 ): FleetBoxRow {
-  const lastSeen = box.lastSeenAt ? Date.parse(box.lastSeenAt) : Number.NaN;
-  const age = Number.isFinite(lastSeen) ? now.getTime() - lastSeen : null;
-  const connectionTone: Tone = age === null ? 'off' : age <= ONLINE_WINDOW_MS ? 'ok' : 'warn';
+  const verbindung = boxVerbindung(box.lastSeenAt, now);
+  // N5 (vp-box-verbinden-konzept): eine Box, die sich seit dem Verbinden nie
+  // angemeldet hat (keine Zertifikatsanfrage), sah bisher wie eine normal
+  // langsame aus ("Wartet auf erste Meldung" + "—"). Mit der Anmelde-Angabe
+  // (S2) sagt die Zeile das jetzt ausdrücklich - der Fall vom 10.11. wäre
+  // sofort aufgefallen.
+  const nieAngemeldetSeit = verbindung.zustand === 'nie' && box.anmeldung == null ? seitDauer(box.createdAt, now) : null;
   const version = box.update?.version ?? box.edge?.coreVersion ?? null;
   const release = version === null
     ? null
@@ -433,14 +487,11 @@ function fleetBoxRow(
       : box.fuehrtAnlage === false
         ? 'Weitere Box'
         : 'Führende Box nicht festgelegt',
-    connectionText: age === null
-      ? 'Wartet auf erste Meldung'
-      : connectionTone === 'ok'
-        ? 'Verbunden'
-        : 'Meldet sich nicht',
-    connectionTone,
-    lastSeenText: age === null ? DASH : relAge(age),
-    software: edgeStand(box.edge, box.update, releases),
+    connectionText: nieAngemeldetSeit ? 'Nie angemeldet' : verbindung.text,
+    connectionTone: verbindung.tone,
+    connectionZustand: verbindung.zustand,
+    lastSeenText: nieAngemeldetSeit ?? verbindung.lastSeenText,
+    software: edgeStand(box.edge, box.update, releases, box.boxArt),
     capabilities: capabilityResult.faehigkeiten.map((capability, index) => ({
       code: capability.code,
       name: BOX_FAEHIGKEITEN[index].name,
@@ -489,19 +540,87 @@ function liveCell(site: AdminFleetSite, now: Date): { text: string; tone: Tone }
   return { text: relAge(age), tone: age <= ONLINE_WINDOW_MS ? 'ok' : 'warn' };
 }
 
-function planCell(lastRun: string | null, now: Date): { text: string; tone: Tone } {
+/** Das Alter des letzten Optimierer-Laufs - auch wiederverwendet in der Akte › Anlage (Scheibe S3). */
+export function planCell(lastRun: string | null, now: Date): { text: string; tone: Tone } {
   if (!lastRun) return { text: 'kein aktueller Plan', tone: 'warn' };
   const age = now.getTime() - Date.parse(lastRun);
   return { text: relAge(age), tone: age > PLAN_STALE_MS ? 'warn' : 'ok' };
 }
 
 /** „vor 7 Min." in der Sprache von `format.fmtRelative`, aus einer Dauer. */
+/** Ob eine Box gerade erreichbar ist - die vier Zustände der Flotten-Regel (E6: „verzögert" zusätzlich). */
+export type BoxErreichbarkeit = 'online' | 'verzoegert' | 'offline' | 'nie';
+
+export interface BoxVerbindung {
+  zustand: BoxErreichbarkeit;
+  tone: Tone;
+  /** „Verbunden" · „Verzögert" · „Meldet sich nicht" · „Wartet auf erste Meldung". */
+  text: string;
+  /** Alter der letzten Meldung („vor 3 Min.") oder „—" ohne Meldung. */
+  lastSeenText: string;
+}
+
+/**
+ * Ab wann eine Box als „verzögert" gilt (Adminview-Konzept §5.3, E6): drei
+ * ausgebliebene Herzschläge bei einem 15-s-Takt. Bis dahin sagt das Portal
+ * zwischen dem Herzschlag-Takt und dem 5-Minuten-Fenster nichts, obwohl genau
+ * dann jemand am Gerät nachsieht - „verzögert" ist reine Anzeige, löst keine
+ * Aufgabe aus (`aufgaben`/`uebersichtBrauchtDich` bleiben bei `offline`).
+ */
+export const DELAYED_WINDOW_MS = 45 * 1000;
+
+/**
+ * DIE Online-Regel der Plattform: eine Box gilt als online, wenn ihre letzte
+ * Meldung höchstens `DELAYED_WINDOW_MS` vor `now` liegt; bis `ONLINE_WINDOW_MS`
+ * gilt sie als verzögert, danach als „meldet sich nicht". Ohne Meldung ist sie
+ * NICHT online, sondern „nie" (fehlend ist keine Null). Die Plattform-Übersicht
+ * und die Geräteliste lesen beide diese Funktion, damit es nur EINE Schwelle
+ * und EINEN Wortlaut gibt. `now` ist der Abrufzeitpunkt der Daten, nie eine
+ * Uhr über einem stehenden Schnappschuss.
+ */
+export function boxVerbindung(lastSeenAt: string | null | undefined, now: Date): BoxVerbindung {
+  const lastSeen = lastSeenAt ? Date.parse(lastSeenAt) : Number.NaN;
+  const age = Number.isFinite(lastSeen) ? now.getTime() - lastSeen : null;
+  if (age === null) {
+    return { zustand: 'nie', tone: 'off', text: 'Wartet auf erste Meldung', lastSeenText: DASH };
+  }
+  if (age <= DELAYED_WINDOW_MS) {
+    return { zustand: 'online', tone: 'ok', text: 'Verbunden', lastSeenText: relAge(age) };
+  }
+  if (age <= ONLINE_WINDOW_MS) {
+    return { zustand: 'verzoegert', tone: 'warn', text: 'Verzögert', lastSeenText: relAge(age) };
+  }
+  return { zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht', lastSeenText: relAge(age) };
+}
+
+export interface VerbindungZaehlung {
+  online: number;
+  verzoegert: number;
+  offline: number;
+  nie: number;
+  /** „12 online · 2 offline · 1 nie gemeldet" - Nullen bleiben stehen. */
+  text: string;
+}
+
+/** Zählt Boxen nach `boxVerbindung`. */
+export function verbindungZaehlung(zustaende: BoxErreichbarkeit[]): VerbindungZaehlung {
+  const online = zustaende.filter((z) => z === 'online').length;
+  const verzoegert = zustaende.filter((z) => z === 'verzoegert').length;
+  const offline = zustaende.filter((z) => z === 'offline').length;
+  const nie = zustaende.filter((z) => z === 'nie').length;
+  return {
+    online, verzoegert, offline, nie,
+    text: `${online} online · ${offline} offline · ${nie} nie gemeldet`,
+  };
+}
+
 export function relAge(ms: number): string {
   const s = Math.max(0, ms / 1000);
   if (s < 60) return `vor ${Math.round(s)} Sek.`;
   if (s < 3600) return `vor ${Math.round(s / 60)} Min.`;
   if (s < 86400) return `vor ${Math.round(s / 3600)} Std.`;
-  return `vor ${Math.round(s / 86400)} Tagen`;
+  const tage = Math.round(s / 86400);
+  return tage === 1 ? 'vor 1 Tag' : `vor ${tage} Tagen`;
 }
 
 /**

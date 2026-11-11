@@ -392,16 +392,15 @@
 
 /* --- Das Sprungfeld (F2) -------------------------------------------------- */
 
+/* Rahmen, Polster und Fläche trägt der Auslöser des Hauspickers (`VpPicker`/`VpDatePicker`)
+   selbst. Ein zweiter Rahmen hier (aus der Zeit des nativen Felds) zeichnete den Kalender-
+   und Jahr-Knopf doppelt umrandet. */
 .vp-zl-jump {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 38px;
   min-width: 0;
-  padding: 0 8px;
-  border: 1px solid var(--vp-border);
-  border-radius: 9px;
-  background: var(--vp-surface, #fff);
   color: var(--vp-text-muted, #6c757d);
 }
 
@@ -955,6 +954,9 @@
   padding: 0;
   border-radius: 10px;
   overflow: hidden;
+  /* Die Schiene schrumpft nie: mit `overflow: hidden` löst ihr `min-width: auto` auf 0 auf, und
+     bei 768 px (Finger-Tablet) schnitt sie „Jahr“ zu „Jah“ ab. Platz gibt die Beschriftung ab. */
+  flex-shrink: 0;
 }
 
 .vp-zeitleiste .vp-seg > button {
@@ -967,6 +969,16 @@
   background: var(--vp-c-primary, #2563eb);
   color: #fff;
   box-shadow: none;
+}
+
+/* Tablet (721-1023 px, Seitenleiste als Schiene): bei 768 px hat die EINE Zeile ~638 px, ihre
+   Bedienelemente brauchten ~670 - der Zeitraum stand als „So., 08.1…“. Schmalere Polster im
+   Segment geben ihm seine Breite zurück; die Höhe von 44 px bleibt. In dieser Breite gibt es nur
+   die Schreibtisch-Leiste (die Mobil-Fassung gilt bis 720 px). */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .vp-zeitleiste .vp-seg > button {
+    padding-inline: 0.6rem;
+  }
 }
 
 .vp-zeitleiste .vp-period-nav > .step {
@@ -992,11 +1004,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vp-c-fg, #1e293b);
-  /* ⚠ Der Blätterer trägt seinen Tag ZWEIMAL (diese Beschriftung und das
-     Sprungfeld daneben). Die Kürzung nimmt deshalb ZUERST die Beschriftung —
-     sie ellipsiert, während das Sprungfeld den Tag vollständig lesbar hält.
-     Die drei Schritt-Knöpfe halten ihre 44 px über ihr eigenes `min-width`. */
+  /* Die Beschriftung ist der EINE sichtbare Tag: das Kalender-Sprungfeld daneben
+     zeigt im Blätterer nur sein Symbol (unten). Die drei Schritt-Knöpfe halten
+     ihre 44 px über ihr eigenes `min-width`. */
   flex-shrink: 999;
+}
+
+/* Im Blätterer ist das Datums-Sprungfeld ein Kalender-KNOPF: sein Wert stand als
+   zweites „05.11.2026“ neben „Do., 05.11.2026“ (UI-Runde Kundenseiten, Befund
+   #10). Der Wert bleibt für Screenreader im Knopf, der Name kommt aus
+   `ariaLabel` („Tag wählen“ …). Das Jahr (eine Liste ohne Symbol) und das
+   ⋯-Blatt am Telefon zeigen ihn weiter. */
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-period-nav .vp-zl-jump.is-kalender .vp-picker-wert,
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-period-nav .vp-zl-jump.is-kalender .vp-picker-caret {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 /* Das Datum-Feld: gleiche Höhe wie seine Nachbarn (B12). Der Auslöser des
@@ -1086,8 +1112,10 @@
   gap: var(--vp-space-3);
 }
 
-.vp-zl-pop .vp-mstrip {
-  margin-bottom: 0;
+/* Das Monats-Raster im Popover: der Rahmen ist das Popover selbst. */
+.vp-zl-pop .vp-monatsraster {
+  padding: 0;
+  min-width: 0;
 }
 
 .vp-zl-pop .vp-zl-cover,

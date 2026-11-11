@@ -127,6 +127,9 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   await expect(page.getByTestId('geraet-held')).toBeVisible();
   expect(await page.evaluate(() => window.location.hash)).toBe(hashVorher);
 
+  // Scheibe 3: „Laden stoppen" (die rohe OCPP-Aktion) wohnt seit dem
+  // entfallenen Schalter-Baustein nur noch in „Technik & Diagnose".
+  await technikOeffnen(page);
   await page.getByRole('button', { name: 'Laden stoppen', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Auswirkung');
   await expect(page.getByLabel('Transaktion *')).toHaveValue('1842');
@@ -227,6 +230,29 @@ test('edge-only charging stays compact when no power or transaction has arrived'
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
 
+// Audit vp-ocpp-haushalt W-05/W-01: eine verbundene Wallbox, an der VoltPilot nichts
+// bewirkt, sieht auf ihrer Geräteseite nicht steuerbar aus. Scheibe 3: der eigene
+// Schalter-Baustein ist entfallen - die Bühne sagt Satz UND Folge zusammen.
+for (const [fall, satz, folge] of [
+  ['ohne-grenzen', 'Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern.',
+    'Ladewahl und Eingriffe wirken an dieser Wallbox nicht.'],
+  ['werk', 'VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.',
+    'Bis die Steuerung an Ihrer VoltPilot-Box freigegeben ist, wirkt keine Ladewahl.'],
+] as const) {
+  test(`Geräteseite ${fall}: die Bühne sagt Satz und Folge, ohne Schalter-Baustein`, async ({ page }, testInfo) => {
+    if (testInfo.project.name === 'desktop-chromium') await page.setViewportSize({ width: 1440, height: 1000 });
+    if (testInfo.project.name === 'mobile-chromium') await page.setViewportSize({ width: 375, height: 900 });
+    await mock(page, { edgeOnly: true });
+    await page.goto(`/e2e/ocpp-wallbox.html?edge-only&${fall}`);
+    await expect(page.locator('.vp-buehne-warnung b')).toHaveText(satz);
+    await expect(page.locator('.vp-buehne-warnung')).toContainText(folge);
+    await expect(page.getByTestId('geraet-steuerung')).toHaveCount(0);
+    // Der Satz steht nur einmal auf dem Bildschirm.
+    await expect(page.getByText(satz, { exact: true })).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  });
+}
+
 test('hard action requires the server phrase and never overflows its sheet', async ({ page }) => {
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
   await technikOeffnen(page);
@@ -245,6 +271,9 @@ test('hard action requires the server phrase and never overflows its sheet', asy
 test('transport retry is idempotent and the modal traps focus while every close path is busy-locked', async ({ page }) => {
   const state = await mock(page, { failFirstAction: true, slowAction: true });
   await page.goto('/e2e/ocpp-wallbox.html');
+  // Scheibe 3: „Laden stoppen" wohnt seit dem entfallenen Schalter-Baustein
+  // nur noch in „Technik & Diagnose".
+  await technikOeffnen(page);
   const trigger = page.getByRole('button', { name: 'Laden stoppen', exact: true });
   // Exercise keyboard return-focus; Safari taps do not retain button focus.
   await trigger.focus(); await trigger.press('Enter');

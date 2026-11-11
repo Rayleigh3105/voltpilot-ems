@@ -67,6 +67,20 @@ und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
   Phasen. Bei Änderungen bleiben neue Starts gesperrt,
   bis sämtliche Säulen die neuen Schutzprofile angenommen haben. Fehlende Angaben
   oder nicht bestätigbare Cache-Einstellungen verhindern die Freigabe.
+  Kommt ein `StartTransaction` (oder `Authorize`) nach einer BootNotification an,
+  bevor die Säule wieder eingerichtet ist, wartet die Box höchstens 20 s auf die
+  Einrichtung und nimmt den Start danach regulär an; scheitert die Einrichtung oder
+  dauert sie länger, bleibt es bei `Invalid`. Eine go-e meldet sich bei jedem
+  Neuverbinden mit BootNotification und beendet einen abgelehnten Vorgang, ohne es
+  bei steckendem Auto erneut zu versuchen. Jede Ablehnung steht mit Grund im
+  Protokoll der Box („Ladevorgang abgelehnt“).
+- Meldet ein Stecker ein verbundenes Auto (`Charging`, `SuspendedEV`, `SuspendedEVSE`),
+  ohne dass die Box eine Transaktion dazu kennt, steht im Herzschlag der Grund
+  `kein_ladevorgang` mit dem Ausweg (neu einstecken); Vektoren in
+  `contracts/ocpp-ladezustand-vectors.json`. „Schnell“, „Aus“ und „bis Abstecken“
+  greifen nur in einen laufenden Ladevorgang: Server (`connector.charging()`), Box
+  (`ocppTransactionOf`) und Portal (`ladeRegel.ts` `ladungLaeuft`) prüfen dasselbe
+  `charging`; ohne es bietet das Portal keinen Knopf, sondern den Hinweis an.
 - **Phasenumschaltung (1p/3p)** ist je Stecker freigeschaltet (`phase_switching` in
   der Verdrahtung, nur bei drei Phasen) und braucht zusätzlich die eigene Meldung
   der Säule `ConnectorSwitch3to1PhaseSupported=true`. Dann kennt der Verteiler zwei
@@ -94,8 +108,11 @@ und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
   länger; das Ende bleibt gleich. Eine Säule, deren Uhr nachgeht, sieht
   eine Erneuerung so nie in ihrer Zukunft beginnen und fällt dazwischen nicht auf
   ihr dreiphasiges Default-Profil zurück.
-- Leistung, Energie und SoC haben getrennte Messuhren. Historische, zukünftige und
-  zurücklaufende Samples aktualisieren die Live-Regelung nicht. Das Protokolljournal
+- Leistung, Energie und SoC haben getrennte Messuhren. Zeiten der Säule zählen auf
+  der Box-Uhr: geht ihre Uhr bis 120 s falsch, wird die Meldung auf die Box-Uhr
+  verschoben; Startzeit und Start-Wasserzeichen führt die Box ebenso (W-09). Weiter
+  entfernte, historische und zurücklaufende Samples aktualisieren die Live-Regelung
+  nicht. Das Protokolljournal
   bewahrt ihre ursprünglichen Zeitstempel. Auch Komponenten-Telemetrie verwendet die
   jeweilige Messuhr; eine Energiemeldung verjüngt keine alte Leistung.
 - Netz- und Ladeleistung werden nur als Paar desselben Moments verrechnet. Nach einem

@@ -6,6 +6,21 @@
  *
  * Bewegung nur über `--vp-motion-*`: ein Wechsel der Art blendet den Inhalt
  * kurz ein (`vp-kat-ein`), sonst bewegt sich nichts.
+ *
+ * Breite (Auftrag 05.11.2026, Captain: „zu hochkant" - Nachtrag: am Telefon
+ * bleibt die heutige Linie): das `Modal` trägt `breit` (840 px statt 640 px);
+ * ab der Telefon-Grenze (721 px, dieselbe wie `shell.css`/`useIsPhone`) wird
+ * jede Marken-/Modell-Liste ein Karten-Raster, das die Breite nutzt, statt
+ * eines einspaltigen Turms - dieselben Einträge, nur nebeneinander. Am
+ * Telefon (≤720 px) bleibt die bisherige einspaltige, geränderte Liste
+ * unverändert.
+ *
+ * ⚠ Der Desktop-Umbau von `.vp-kat-liste`/`.vp-kat-eintrag` steht ERST NACH
+ * ihren Telefon-Grundregeln im File (eigener `@media`-Block unten, nicht im
+ * `.vp-kat-arten`-Block oben): bei gleicher Selektor-Spezifität gewinnt die
+ * SPÄTERE Regel - vor den Grundregeln stehend wurde Rand, Radius und die
+ * `li + li`-Trennlinie der Telefon-Fassung immer wieder zurücküberschrieben
+ * (Review 05.11.2026: unsichtbare Karten, Linienreste, Doppelrahmen).
  */
 
 .vp-kat {
@@ -81,6 +96,15 @@
 }
 .vp-kat-arten::-webkit-scrollbar {
   display: none;
+}
+/* Am Rechner ist Platz für zwei Zeilen: die Arten brechen um, statt am Rand abgeschnitten zu stehen („Zähler“ halb). */
+@media (min-width: 721px) {
+  .vp-kat-arten {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    margin: 0;
+    padding: 0;
+  }
 }
 .vp-kat-art {
   flex: 0 0 auto;
@@ -240,6 +264,50 @@
 .vp-kat-eintrag.is-fund:hover {
   background: color-mix(in srgb, var(--vp-mint-end) 50%, var(--vp-mint-start));
 }
+
+/* Ab der Telefon-Grenze wird der Turm ein Karten-Raster: dieselben Einträge
+   nebeneinander statt untereinander. Die Liste trägt eine leise getönte
+   Fläche dahinter, jede Karte ihren eigenen Rand + Schatten (`--vp-shadow-sm`,
+   beim Hover der Marken-Glow `--vp-shadow-hover`) - sonst verschwimmt das
+   Raster auf Weiß zu einer fugenlosen Tabelle (Review 05.11.2026). */
+@media (min-width: 721px) {
+  .vp-kat-liste {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+    gap: 10px;
+    padding: 10px;
+    border: 0;
+    border-radius: var(--vp-radius-sm);
+    overflow: visible;
+    background: var(--vp-bg-light);
+  }
+  .vp-kat-liste > li + li {
+    border-top: 0;
+  }
+  .vp-kat-eintrag {
+    height: 100%;
+    align-items: start;
+    border: 1px solid var(--vp-gray);
+    border-radius: var(--vp-radius-sm);
+    background: var(--vp-surface);
+    box-shadow: var(--vp-shadow-sm);
+    transition:
+      box-shadow var(--vp-motion-fast) var(--vp-ease-inout),
+      border-color var(--vp-motion-fast) var(--vp-ease-inout);
+  }
+  .vp-kat-eintrag:hover {
+    border-color: var(--vp-action);
+    box-shadow: var(--vp-shadow-hover);
+  }
+  .vp-kat-eintrag.is-fund {
+    background: var(--vp-mint-start);
+  }
+  /* „Im Heimnetz suchen" bleibt die EINE breite Karte oben - keine schmale Spalte neben leeren Rasterzellen. */
+  .vp-kat-liste.vp-kat-heimnetz {
+    grid-template-columns: 1fr;
+  }
+}
+
 .vp-kat-text {
   display: grid;
   min-width: 0;

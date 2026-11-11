@@ -129,6 +129,7 @@ func TestIndependentOwnerClaimBlocksEstablishedMarketFollower(t *testing.T) {
 
 	// Establish the adversarial starting point: the retained market duty is
 	// active and rewrites the idle plan to screenshot A's -14.7 kW.
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 	assertLegacyFollow(t, a.State.Get(), -14.7, true, state.ModeSchedule)
 
@@ -175,6 +176,7 @@ func TestContractGridAndSafetyHoldersBlockEstablishedMarketFollower(t *testing.T
 			}
 			a.applyEntityRegistry(reg)
 			setRetainedLegacyCoverScenario(a, now)
+			standDeficit(a, now) // the house has been short for the hold already
 			a.applySetpoint(now)
 			assertLegacyFollow(t, a.State.Get(), -14.7, true, state.ModeSchedule)
 

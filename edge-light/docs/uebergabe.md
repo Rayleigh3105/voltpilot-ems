@@ -2,6 +2,17 @@
 
 Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen und für einen KI-Assistenten. Sie fasst zusammen, was seit dem 03.10.2026 entschieden, gebaut und gemessen wurde. Alles Weitere steht in den verlinkten Dokumenten.
 
+## Werkstatt-Regel (10.10.2026)
+
+**Keine Box verlässt die Werkstatt ohne Root-Passwort und ohne Anmeldeprobe über Portal und Tunnel.**
+
+1. **Root-Passwort setzen** (`passwd` an der Box). Das Original-Abbild hat keines; die SSH-Instanz im LAN lässt dann jeden ohne Schlüssel und ohne Passwort hinein.
+2. **Als dauerhaften Schlüssel nur den Notfall-Schlüssel eintragen** (Entscheid K2 a). Techniker-Schlüssel kommen nicht mehr auf die Box: Sie stehen im Portal am Zugang, und die Box holt sie im offenen Fenster.
+3. **Anmeldeprobe:** Tunnel einrichten, im Portal ein Fenster öffnen und sich über den Wartungstunnel anmelden, von einem Gerät ohne dauerhaften Schlüssel auf der Box. Im Portal steht am Fenster „Alles bereit“. Den Fingerabdruck des Host-Schlüssels zur Box-Referenz notieren.
+4. **Erst dann verpacken.** Scheitert die Probe, bleibt die Box in der Werkstatt; das Portal nennt am Fenster den Grund.
+
+Schritt für Schritt, mit dem, woran man jeden Punkt sieht: [mango.md, Bevor eine Box die Werkstatt verlässt](mango.md#bevor-eine-box-die-werkstatt-verlässt). Der Notfall-Schlüssel, sein Aufbewahrungsort und der Weg dorthin je Box: [mango.md, Dauerhafte Schlüssel](mango.md#dauerhafte-schlüssel-ein-notfall-schlüssel).
+
 ## Stand 07.10.2026: Edge Light ist auf `main`
 
 - **Edge Light ist nach `main` gemergt** (ein Merge-Commit, keine Umschreibung). Edge-Light-Arbeit entsteht ab jetzt auf `main`; `feature/edge-light` bleibt stehen, bis er gelöscht wird. Beide Box-Arten bestehen dauerhaft nebeneinander (Entscheid 07.10.2026).
@@ -45,13 +56,13 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
 | Web-App im Tunnel | `http://10.10.1.25:8484` | nur freigegebene Techniker-Adressen, bisher `10.10.1.5` |
 | Vor Ort | WLAN `VoltPilot.de-zay5sdd`, `root@192.168.1.1` Port 22 | Host-Schlüssel prüfen (s. u.) |
 
-Eingetragene Schlüssel (05.10.2026, am Gerät gelesen): `voltpilot-mango@desktop` (Max' Laptop, `10.10.1.5`) und `claude@CodeServer voltpilot-edge` (CodeServer, `10.10.1.26`, WireGuard im Userspace über `wireproxy`). Einen Zugang entzieht man mit dem Peer in wireguard-ui und der Zeile in `/etc/dropbear/authorized_keys`.
+Eingetragene Schlüssel (05.10.2026, am Gerät gelesen): `voltpilot-mango@desktop` (Max' Laptop, `10.10.1.5`) und `claude@CodeServer voltpilot-edge` (CodeServer, `10.10.1.26`, WireGuard im Userspace über `wireproxy`). Einen Zugang entzieht man mit dem Peer in wireguard-ui und der Zeile in `/etc/dropbear/authorized_keys`. Zielzustand ist ein einziger dauerhafter Schlüssel, der Notfall-Schlüssel; für den Piloten folgt das mit dem Wechsel auf den Wartungsserver ([mango.md](mango.md#dauerhafte-schlüssel-ein-notfall-schlüssel)).
 
 Der Wechsel auf den Wartungsserver aus dem Portal ist beschrieben, aber noch nicht ausgeführt: [mango.md, Wechsel des Piloten](mango.md#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt).
 
 Ohne Freigabe in der Liste erreicht ein Rechner mit SSH-Zugang die Web-App über einen SSH-Tunnel: `ssh -p 2222 -L 8484:127.0.0.1:8484 root@10.10.1.25`, dann `http://localhost:8484`.
 
-**Ein weiterer Rechner** braucht drei Dinge:
+**Ein weiterer Rechner** braucht im alten Service-VPN drei Dinge. Am Wartungsserver aus dem Portal entfällt das: Dort genügen ein Techniker-Zugang mit SSH-Schlüssel und ein offenes Fenster ([Fernwartung](../../docs/fernwartung.md)).
 1. Einen eigenen Peer in wireguard-ui.
 2. Seinen öffentlichen RSA-Schlüssel in `/etc/dropbear/authorized_keys` des Mango, eingetragen von einem Rechner, der schon Zugang hat, oder vor Ort.
 3. Seine VPN-Adresse für die Web-App: `edge-light/openwrt/service-tunnel.sh root@10.10.1.25 web 10.10.1.5 <neue-ip>` (die Liste wird ersetzt; das Skript nutzt SSH, also mit `-p 2222` über einen Wrapper oder vor Ort mit `root@192.168.1.1`).
@@ -113,8 +124,9 @@ RAM 120 MB / ca. 65 MB verfügbar · `/tmp` 60 MB · Flash frei 9,4 MB (JFFS2) �
 
 ```sh
 passwd                                  # root-Passwort setzen
-# besser: SSH-Schlüssel nach /etc/dropbear/authorized_keys und Passwort-Login abschalten
 ```
+
+Das ist Schritt 1 der [Werkstatt-Regel](#werkstatt-regel-10102026). Als dauerhafter Schlüssel gehört nur der Notfall-Schlüssel nach `/etc/dropbear/authorized_keys`; Techniker melden sich über ein Fenster aus dem Portal an.
 
 ### 2. Labortest auf dem Mango (ca. 5 Minuten, kein Portal-Kontakt)
 
@@ -135,25 +147,22 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 
 ### 3. Pilot mit Loader und Portal
 
-1. Root-Passwort setzen und einen **RSA**-Schlüssel hinterlegen (Dropbear kennt kein Ed25519).
-2. `edge-light/scripts/build.sh mipsle`, dann `edge-light/openwrt/install.sh root@<mango-ip>` – legt die gepackte Kopie in den Flash; ein Download-Server ist nicht nötig (optional als zweites Argument `<base_url>`).
+1. Root-Passwort setzen und den Notfall-Schlüssel hinterlegen, einen **RSA**-Schlüssel (Dropbear kennt kein Ed25519): [Werkstatt-Regel](#werkstatt-regel-10102026).
+2. `edge-light/scripts/build.sh mipsle`, dann `edge-light/openwrt/install.sh root@<mango-ip>` – legt Vertrauens-Set und die bestätigte Fassung in den Flash (mit `VP_LIGHT_MANIFEST=<release.json>` auch den Stand); ein Download-Server ist nicht nötig, `base_url` ist abgeschafft ([Updates](boot-und-updates.md)).
 3. `/etc/init.d/vp-edge-light restart`, `logread -f -e vp-edge-light`. Am Mango geprüft: Start, Absturz, Neustart, kein Schreiben in den Flash ([mango.md](mango.md#lokale-kopie-im-flash-gebaut-am-gerät-geprüft-03102026)).
-4. Auf `:8484` den Deye einrichten, die Box im Portal koppeln.
-5. go-e per OCPP anbinden: in der go-e-App als OCPP-Server `ws://<mango-ip>:8887/ocpp/<kennung>` eintragen, die Kennung im Portal hinzufügen, Überschussladen „Nur Sonnenstrom" wählen. **Vorher** DHCP-Reservierung für den Mango im Kundenrouter und Firewall-Regel für 8887 aus dem Kundennetz – beides fehlt in `install.sh` (am Gerät gefunden, siehe [mango.md](mango.md#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)). Die Verbindung selbst ist mit einer echten go-e belegt.
+4. Die Box im Portal koppeln (die Referenz steht auf `:8484` sofort), dann den Deye einrichten.
+5. go-e per OCPP anbinden: in der go-e-App als OCPP-Server `ws://<mango-ip>:8887/ocpp/<kennung>` eintragen, die Kennung im Portal hinzufügen, Überschussladen „Nur Sonnenstrom" wählen. **Vorher** DHCP-Reservierung für den Mango im Kundenrouter (Handarbeit, `install.sh` erinnert daran); die Firewall-Regel für 8887 aus dem Kundennetz legt `install.sh` seit 04.11.2026 selbst an (am Gerät gefunden, siehe [mango.md](mango.md#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)). Die Verbindung selbst ist mit einer echten go-e belegt.
 6. 48 h beobachten (Pilotplan in [mango.md](mango.md)).
 
 **Stand 04.10.2026:** Der Pilot-Mango läuft als Dienst aus der Kopie im Flash, liest den echten Deye (Logger am WLAN des Mango) und hat den Wartungstunnel (`10.10.1.25`, SSH 2222). Er ist beim Produktiv-Portal angemeldet (`edge-zay5sdd`) und wartet auf die Zuordnung zu einer Anlage. Noch offen: Tunnel-Test von einem anderen VPN-Gerät, Land `DE` im WLAN, Firewall-Regel/DHCP-Reservierung für OCPP.
 
-⚠ Bis Stufe 2 nur auf Pilotanlagen: Die Echtheit des Programms hängt an HTTPS, nicht an einer Signatur.
+⚠ Bis U-6 erfüllt ist (Laborbeweis grün, erstes Portal-Update auf `edge-tgjn9gd`), gehen keine Boxen zum Kunden (Entscheid 5c).
 
-### 4. Stufe 2 bauen ([boot-und-updates.md](boot-und-updates.md))
+### 4. Stufe 2: Updates aus dem Portal ([boot-und-updates.md](boot-und-updates.md))
 
-- Kleines Prüfprogramm `vp-light-boot` (Go, `internal/otaverify`) im Flash: prüft das signierte Release-Manifest gegen die eingebackene Wurzel.
-- Vertrag `docs/contracts/ota-release-manifest.schema.json` additiv um Artefakt-Typ `binary` erweitern.
-- Release-Lauf baut, signiert und verteilt die drei Programme; Portal-Route zum Ausliefern.
-- Updates über die bestehende Zuweisung (`ems/…/v2/update`), Rückfall auf die zuletzt bestätigte Fassung.
-- Die lokale Kopie im Flash ist gebaut (Stufe 1); Stufe 2 legt dort die zuletzt **bestätigte** Fassung ab und prüft sie wie den Download gegen die Signatur.
-- CI: MIPS-Build (`GOARCH=mipsle GOMIPS=softfloat go build ./cmd/vp-edge-light`) als Prüfschritt aufnehmen und einmal von Hand anstoßen.
+Gebaut im Konzept `vp-edge-light-update` (K1–K5, 04.11.2026): signierte Release-Linie (`edge-light-release.yaml`, `vp-ota manifest --binary`), Programme im Portal mit offener Abruf-Route, Anwenden im Programm (`ota_light.go`, `internal/otalight`), Tausch, Probe und Rücknahme im Loader, Werkstatt installiert update-bereit (Abnahme-Prüfung „Update-bereit“). Ein eigenes Prüfprogramm `vp-light-boot` und Wellen gibt es nicht (U-3 A, U-1 A).
+
+Offen: [Laborbeweis P1–P11](../labor/README.md) an der Labor-Mango, [Nachrüsten](nachruesten.md) von `edge-tgjn9gd`, Pilot `edge-zay5sdd` und VoltPilotGATE mit erstem Update über das Portal.
 
 ### 5. Stufe 3: Monitoring + Überschussladen vollständig
 
@@ -163,7 +172,7 @@ go-e lesen, weitere Energiequellen (Deye, go-e, generisches Modbus), geräte-eig
 
 | Frage | Stand |
 |---|---|
-| HTTPS-Speicherort für Pilot und später | Pilot: nicht nötig (lokale Kopie im Flash); Stufe 2: Portal-Route vorgeschlagen |
+| Speicherort der Programme | entschieden (U-4 A): offene Portal-Route `/api/v1/edge/light-programm/<gz_sha256>`, nur signierte Edge-Light-Programme |
 | Kundenautomationen: Go-Laufzeit für den Flow-Katalog, Vertrag liefert dem Gerät dann den Flow-Graphen | Konzept nötig (Stufe 7) |
 | Code-Knoten `vp.logic.function` (Kunden-JavaScript): JS-Interpreter in Go oder ablösen | offen |
 | Node-RED-Editor als Servicezugang entfällt: Bestandsanlagen mit Handverdrahtung | vor dem Umstieg prüfen |

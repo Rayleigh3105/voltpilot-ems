@@ -21,7 +21,6 @@ import com.voltpilot.api.flows.FlowCompiler;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
-import com.voltpilot.api.topology.TopologyRepository;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.uems.BerichtRegeln;
 import com.voltpilot.api.uems.BerichtsBelege;
@@ -34,8 +33,8 @@ import org.mockito.InOrder;
 import org.springframework.beans.factory.ObjectProvider;
 
 /**
- * Der Belegschutz an den zwei Löschtüren des Komponenten-Controllers (UEMS AP-12 IP-12, E13 S2): ein selbst definiertes
- * Gerät und eine eigene Batterie werden erst nach ihren eigenen Prüfungen (404, 409 „am Gerät verwaltet“, 422 falsche
+ * Der Belegschutz an der Löschtür des Komponenten-Controllers (UEMS AP-12 IP-12, E13 S2): ein selbst definiertes
+ * Gerät wird erst nach ihren eigenen Prüfungen (404, 409 „am Gerät verwaltet“, 422 falsche
  * Tür) und VOR dem ersten Schreiben gegen die Berichts-Belege geprüft — eine Ablehnung zieht keinen Leseplan zurück,
  * löscht keine Komponente und veröffentlicht nichts. Ohne Beleg läuft derselbe Weg wie heute, in derselben Reihenfolge.
  *
@@ -99,43 +98,11 @@ class KomponenteLoeschenBelegschutzTest {
         verify(belege, never()).pruefeKomponente(any(), any());
     }
 
-    @Test
-    void eineEigeneBatterieMitBelegZiehtKeinenLeseplanZurueckUndLoeschtNichts() {
-        when(entityRepo.entityForSite(SITE, KOMPONENTE)).thenReturn(row(UserDefinedBatteryDefinition.COMMUNICATION));
-        doThrow(IM_WEG).when(belege).pruefeKomponente(SITE, KOMPONENTE);
-
-        assertThatThrownBy(() -> batterie().delete(SITE, KOMPONENTE, "kc-jw")).isSameAs(IM_WEG);
-
-        verify(flows, never()).retireActive(any());
-        verify(entityRegistry, never()).deleteEntity(any(), any(), anyBoolean());
-        verify(deployments, never()).republishForSite(any());
-    }
-
-    @Test
-    void eineEigeneBatterieOhneBelegGehtWieHeute() {
-        when(entityRepo.entityForSite(SITE, KOMPONENTE)).thenReturn(row(UserDefinedBatteryDefinition.COMMUNICATION));
-
-        batterie().delete(SITE, KOMPONENTE, "kc-jw");
-
-        InOrder reihenfolge = inOrder(belege, flows, entityRegistry, deployments);
-        reihenfolge.verify(belege).pruefeKomponente(SITE, KOMPONENTE);
-        reihenfolge.verify(flows).retireActive(UserDefinedBatteryFlowCompiler.generatedFlowId(KOMPONENTE));
-        reihenfolge.verify(entityRegistry).deleteEntity(SITE, KOMPONENTE, true);
-        reihenfolge.verify(deployments).republishForSite(SITE);
-    }
-
     private SelfBuildComponentService selbstbau() {
         return new SelfBuildComponentService(sites, entityRepo, entityRegistry, definitions, mock(ComponentService.class),
                 mock(ComponentConnectionReceipts.class), mock(SiteComponentTemplateRepository.class),
                 mock(SelfBuildFlowCompiler.class), flows, deployments, flowc, mock(ProbeService.class),
                 mock(ConsumerAuditRepository.class), mapper, belege);
-    }
-
-    private UserDefinedBatteryService batterie() {
-        return new UserDefinedBatteryService(sites, entityRepo, entityRegistry, new EntityTypeCatalog(mapper), definitions,
-                mock(ComponentService.class), new SocCurveTemplateCatalog(mapper), new ProtectionProfileCatalog(mapper),
-                new UserDefinedBatteryFlowCompiler(mapper), flows, deployments, flowc, mock(TopologyRepository.class), mapper,
-                belege);
     }
 
     private static EntityRow row(String communication) {

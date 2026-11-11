@@ -87,7 +87,9 @@ describe('OcppWallboxPage integration', () => {
     const held = screen.getByTestId('geraet-held');
     expect(held.querySelector('[data-kachel="leistung"]')).toHaveTextContent(/11\s*kW/);
     expect(within(held).getByText('6,4 kWh')).toBeVisible();
-    expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(1);
+    // Scheibe 3: die Haupt-OCPP-Aktion wohnt jetzt in „Technik und Diagnose",
+    // nicht mehr an der Bühne - dort steht nur noch „Laden steuern".
+    expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(0);
     expect(view.container).not.toHaveTextContent('Erwartetes Ende');
     expect(view.container).not.toHaveTextContent('Kosten bisher');
     expect(view.container).not.toHaveTextContent('Solaranteil');
@@ -96,6 +98,7 @@ describe('OcppWallboxPage integration', () => {
     // möglichen Aktionen erscheinen nur passend zum aktuellen Zustand.
     expect(screen.queryByTestId('ocpp-service')).toBeNull();
     const technik = await technikOeffnen();
+    expect(technik.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(1);
     expect(within(technik).getByText('••••••••')).toBeVisible();
     fireEvent.click(screen.getByText(/unknownKey/));
     expect(screen.getByText(/VendorMystery/)).toBeVisible();
@@ -151,11 +154,13 @@ describe('OcppWallboxPage integration', () => {
     }]);
     vi.mocked(api.ocppTransactions).mockResolvedValue([]);
     vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
-    const view = render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     expect(await zustandsSatz(new RegExp(sentence))).toBeVisible();
-    if (actionLabel) expect(screen.getByRole('button', { name: actionLabel })).toBeVisible();
     if (kind === 'offline') expect(screen.getByText('Anschluss 1 zuletzt: Frei')).toBeVisible();
-    expect(view.container.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(actionLabel ? 1 : 0);
+    // Scheibe 3: die Aktion wohnt in „Technik und Diagnose", nicht mehr an der Bühne.
+    const technik = await technikOeffnen();
+    if (actionLabel) expect(within(technik).getByRole('button', { name: actionLabel })).toBeVisible();
+    expect(technik.querySelectorAll('.vp-ocpp-primary-action .vp-btn')).toHaveLength(actionLabel ? 1 : 0);
   });
 
   it('offers connector unlock only after finishing and binds it to the affected connector', async () => {
@@ -167,6 +172,7 @@ describe('OcppWallboxPage integration', () => {
     vi.mocked(api.ocppTransactions).mockResolvedValue([]);
     vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
+    await technikOeffnen();
     const unlock = await screen.findByRole('button', { name: 'Stecker entriegeln' });
     fireEvent.click(unlock);
     expect(within(screen.getByRole('dialog')).getByRole('spinbutton')).toHaveValue(2);
@@ -229,10 +235,105 @@ describe('OcppWallboxPage integration', () => {
     expect(within(nowCard).queryByText('Nicht verfügbar')).toBeNull();
     expect(nowCard.querySelector('.vp-ocpp-now-facts')).toBeNull();
     expect(nowCard.querySelector('.vp-ocpp-primary-action')).toBeNull();
-    // Mit AKTUELLEM Beleg der Box trägt die Säule ihren Schalter - Automatik gilt.
-    const steuerung = screen.getByTestId('geraet-steuerung');
-    expect(within(steuerung).getByRole('radio', { name: /Automatik/ })).toHaveAttribute('aria-checked', 'true');
-    expect(within(steuerung).getByRole('radio', { name: /Sofort laden/ })).toBeInTheDocument();
+    // Scheibe 3: kein eigener Schalter-Baustein mehr - „Laden steuern" führt
+    // zum Reiter Laden, die rohe OCPP-Aktion wohnt in „Technik und Diagnose".
+    expect(screen.queryByTestId('geraet-steuerung')).toBeNull();
+  });
+
+  // Scheibe 3: die leise Zeile „Ladeeinstellungen der Anlage öffnen" wohnte
+  // nur im entfallenen Schalter-Baustein - „Laden steuern" (eigener Test
+  // unten) ist jetzt die EINE Tür, keine zweite daneben.
+  it('zeigt keine zweite, leise Tür neben „Laden steuern" mehr', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back"
+      settingsHref="#/anlage/s-1/laden"
+      charger={{
+        deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+        lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+        connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+      }} />);
+
+    await screen.findByRole('link', { name: 'Laden steuern' });
+    expect(screen.queryByText('Ladeeinstellungen der Anlage öffnen →')).not.toBeInTheDocument();
+  });
+
+  // Konzept „Ein Ort fürs Laden" e1, §4.2: alle Türen führen zu „Laden" - ein
+  // prominenter Knopf oben auf der Geräteseite, nicht nur die leise Zeile.
+  it('„Laden steuern": ein Knopf oben auf der Bühne führt zu „Laden"', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back"
+      settingsHref="#/anlage/s-1/laden"
+      charger={{
+        deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+        lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+        connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+      }} />);
+
+    const buehne = (await screen.findByTestId('geraet-held'));
+    const link = within(buehne).getByRole('link', { name: 'Laden steuern' });
+    expect(link).toHaveAttribute('href', '#/anlage/s-1/laden');
+  });
+
+  it('ohne settingsHref gibt es keinen erfundenen Weg', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+    }} />);
+
+    const buehne = await screen.findByTestId('geraet-held');
+    expect(within(buehne).queryByRole('link', { name: 'Laden steuern' })).not.toBeInTheDocument();
+  });
+
+  // Audit vp-ocpp-haushalt W-01/W-05: eine verbundene Wallbox, an der VoltPilot
+  // nichts bewirkt, sieht nicht steuerbar aus - die Bühne sagt Satz UND Folge,
+  // seit Scheibe 3 ohne einen eigenen Schalter-Baustein.
+  it('⚠ W-05 · eine Wallbox ohne Ladegrenzen sagt Satz und Folge, ohne Schalter', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: false,
+      note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)',
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, meteredAt: new Date().toISOString() }],
+    }} budget={{ deviceId: 'd', enabled: true, controlEnabled: true, connectorCount: 1, surplusActive: true }} />);
+
+    expect(await screen.findByText('Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern.')).toBeVisible();
+    expect(screen.getByText(/Ladewahl und Eingriffe wirken an dieser Wallbox nicht\./)).toBeVisible();
+    expect(screen.queryByTestId('geraet-steuerung')).toBeNull();
+  });
+
+  it('⚠ W-01 · Box ab Werk: „VoltPilot regelt diese Wallbox noch nicht“ an der Bühne', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, meteredAt: new Date().toISOString() }],
+    }} budget={{ deviceId: 'd', enabled: true, controlEnabled: false, connectorCount: 1 }} />);
+    expect(await screen.findByText('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.')).toBeVisible();
+    expect(screen.queryByTestId('geraet-steuerung')).toBeNull();
+  });
+
+  // Audit W-13: die Geräteseite lud ihre OCPP-Daten nur beim Öffnen; nach
+  // fünf Minuten galt alles als veraltet, obwohl die Wallbox weiter lud.
+  it('⚠ W-13 · fragt die Gerätedaten alle 30 Sekunden neu', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
+    await zustandsSatz(/lädt/);
+    const vorher = vi.mocked(api.ocppStations).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await waitFor(() => expect(vi.mocked(api.ocppStations).mock.calls.length).toBeGreaterThan(vorher));
+    expect(vi.mocked(api.ocppMeterValues).mock.calls.length).toBeGreaterThan(1);
   });
 
   it('keeps a stale connector out of status, reason and connector settings despite a fresh heartbeat', async () => {
@@ -295,6 +396,11 @@ describe('OcppWallboxPage integration', () => {
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     expect(await screen.findByText(/OCPP-Gerätedaten konnten nicht geladen/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Erneut laden' })).toBeVisible();
+    // Unbekannt ist nicht „noch nichts eingetroffen": kein Leerzustand unter der Fehlermeldung.
+    expect(screen.queryByText(/Sobald die erste OCPP-Nachricht eintrifft/)).toBeNull();
+    expect(screen.getByText('Der Zustand ist gerade nicht abrufbar.')).toBeVisible();
+    expect(screen.queryByText(/Noch keine abgeschlossene Sitzung/)).toBeNull();
+    expect(screen.getByText('Die Ladevorgänge sind gerade nicht abrufbar.')).toBeVisible();
   });
 
   it('does not present unsupported or unauthorized actions as executable', async () => {
@@ -308,16 +414,21 @@ describe('OcppWallboxPage integration', () => {
     }]);
     vi.mocked(api.ocppActionPermissions).mockResolvedValue({ actions: {} });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
-    expect(await screen.findByText(/Ihr Kundenadministrator: Jonas Wendlinger/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Laden starten' })).toBeNull();
     expect(screen.queryByTestId('sektion-befehle')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Firmware aktualisieren/ })).toBeNull();
-    expect(screen.queryByText(/NotSupported möglich/)).toBeNull();
+    // Scheibe 3: die Begründung der fehlenden Freigabe wohnt jetzt bei der
+    // Aktion selbst, in „Technik und Diagnose".
+    const technik = await technikOeffnen();
+    expect(within(technik).getByText(/Ihr Kundenadministrator: Jonas Wendlinger/)).toBeVisible();
+    expect(within(technik).queryByRole('button', { name: /Firmware aktualisieren/ })).toBeNull();
+    expect(within(technik).queryByText(/NotSupported möglich/)).toBeNull();
   });
 
   it('shows inputs and impact before sending, then keeps response and effect separate', async () => {
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     await zustandsSatz('Anschluss 1 lädt.');
+    // Scheibe 3: die Aktion wohnt in „Technik und Diagnose".
+    await technikOeffnen();
     fireEvent.click(screen.getByRole('button', { name: 'Laden stoppen' }));
     expect(screen.getByText('Auswirkung')).toBeVisible();
     expect(screen.getByText('Bestätigung')).toBeVisible();
@@ -334,6 +445,7 @@ describe('OcppWallboxPage integration', () => {
       .mockResolvedValueOnce(created);
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     await zustandsSatz('Anschluss 1 lädt.');
+    await technikOeffnen();
     fireEvent.click(screen.getByRole('button', { name: 'Laden stoppen' }));
     const send = screen.getByRole('button', { name: 'Prüfen und senden' });
     fireEvent.click(send);
@@ -390,6 +502,7 @@ describe('OcppWallboxPage integration', () => {
     vi.mocked(api.createOcppAction).mockReturnValue(new Promise((resolve) => { resolveAction = resolve; }));
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Wallbox" backHref="#back" />);
     await zustandsSatz('Anschluss 1 lädt.');
+    await technikOeffnen();
     const trigger = screen.getByRole('button', { name: 'Laden stoppen' });
     trigger.focus(); fireEvent.click(trigger);
     const dialog = screen.getByRole('dialog');

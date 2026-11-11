@@ -60,6 +60,7 @@ const GROUPS = new Set<string>([
 export function settingsGroupFor(id: ModeSettingId): SettingsGroupId | null {
   switch (id) {
     case 'stromtarif':
+    case 'einspeiseverguetung':
     case 'anzulegender-wert':
     case 'netzladen':
       return 'geld';
@@ -96,6 +97,8 @@ export function parseSettingsAnchor(hash: string): TechnikAbschnitt | null {
 export const SETTING_HINT: Partial<Record<ModeSettingId, string>> = {
   stromtarif:
     'Der Preis, zu dem Sie Strom beziehen - damit plant Ihr Fahrplan, und damit wird jede Euro-Zahl bewertet.',
+  einspeiseverguetung:
+    'Was Sie je eingespeister Kilowattstunde bekommen - damit plant Ihr Fahrplan, und damit wird Ihr Einspeise-Erlös bewertet.',
   'anzulegender-wert':
     'Ihr EEG-Referenzwert aus dem Direktvermarktungsvertrag - Grundlage Ihrer Marktprämie.',
   netzladen:

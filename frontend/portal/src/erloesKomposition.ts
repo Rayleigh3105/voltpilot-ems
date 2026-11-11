@@ -353,6 +353,8 @@ export interface SteuerungFormelInput {
    * es bei der vorsichtigeren Börsenpreis-Fassung.
    */
   exportVerguetungPriced?: boolean | null;
+  /** Woher der feste Satz kommt (`eeg` | `angegeben`) - „nach EEG" nur beim EEG-Satz. */
+  exportVerguetungQuelle?: 'eeg' | 'angegeben' | null;
   /** Der Ø-Bezugspreis des Zeitraums — belegt die Preis-Zeile. */
   bezugspreisCtKwh?: number | null;
   plantKind?: PlantKind | null;
@@ -471,9 +473,10 @@ function einspeisePreisKurz(input: SteuerungFormelInput): string {
 
 /** Der Wortlaut der Einspeisepreis-Zeile. */
 function einspeisePreisText(input: SteuerungFormelInput): string {
-  return istFesteVerguetung(input)
-    ? 'Ihre feste Einspeisevergütung nach EEG.'
-    : 'Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.';
+  if (!istFesteVerguetung(input)) return 'Der Börsenpreis (Day-Ahead) der jeweiligen Viertelstunde.';
+  return input.exportVerguetungQuelle === 'angegeben'
+    ? 'Ihre angegebene Einspeisevergütung.'
+    : 'Ihre feste Einspeisevergütung nach EEG.';
 }
 
 /**
@@ -1238,6 +1241,7 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
             tarifParamCtKwh: money.tarifParamCtKwh,
             tarifPriced: money.tarifPriced ?? null,
             exportVerguetungPriced: money.exportVerguetungPriced ?? null,
+            exportVerguetungQuelle: money.exportVerguetungQuelle ?? null,
             bezugspreisCtKwh: money.bezugspreisCtKwh,
             plantKind: money.plantKind,
             marktpraemieEur: money.marktpraemieEur,

@@ -1,0 +1,5 @@
+# Druckdateien und Bilder sind Binärdateien: nie Zeilenenden umsetzen, nie als
+# Text vergleichen oder zusammenführen. Die Regel des Repositorys für
+# edge-light/** (text=auto eol=lf) gilt für alles andere hier weiter.
+*.3mf binary
+*.png binary

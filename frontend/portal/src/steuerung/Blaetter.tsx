@@ -9,6 +9,11 @@
 import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Recht } from '../components/Recht';
+import { HeizstabKarteGeladen } from '../components/HeizstabKarte';
+import { quelleChip } from '../verbraucherZone';
+import { LADEPUNKT_MODUS, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
+import { BIS_ABSTECKEN, LADEPUNKT_ABSTECKEN_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
+import { ladeModusSperre, ladeQuelle } from './laden';
 import { useRollen } from '../rollen';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import type { SiteProfile } from '../profiles';
@@ -16,6 +21,7 @@ import { benefitLine } from '../profiles';
 import { fehlt, fragen, TAGE_WORT, wunschAus, entwurfAus, type SteuerartEntwurf, type SteuerartWunsch } from '../steuerartDialog';
 import type { FlowSummary } from '../flows/flowsApi';
 import { parseGuidedFlow } from '../flows/guidedBuilder';
+import { hashForRoute, anlageRoute } from '../nav';
 import { Blatt } from './Blatt';
 import {
   SPEICHER,
@@ -73,6 +79,8 @@ export interface BlattKontext {
   busy: string | null;
   a: Aktionen;
   zu: () => void;
+  /** Gibt es ein Gerät, das eine Regel schalten kann (`regelZiele`)? Ohne fallen die Einstiege in eine neue Regel weg. */
+  neueRegel: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +91,7 @@ type Art3 = 'aus' | 'smart' | 'an';
 
 export function dreiWorte(g: GeraetBild | null): [string, string, string] {
   if (!g) return ['Halten', 'Smart', 'Laden'];
-  if (g.eintrag.ladepunkt) return ['Aus', 'Smart', 'Schnell'];
+  if (g.eintrag.ladepunkt) return [LADEPUNKT_MODUS.aus, LADEPUNKT_MODUS.smart, LADEPUNKT_MODUS.schnell];
   if (g.form === 'freigabe') return ['Normal', 'Smart', 'Anheben'];
   return ['Aus', 'Smart', 'Ein'];
 }
@@ -103,14 +111,19 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
   const cur: Art3 = eingriff ? eingriff.art : 'smart';
   // In Ruhe (UEMS R0) gibt es keinen Eingriff - nur „Smart“ beendet einen laufenden.
   const sperre = bild.funktion.sperre;
-  const [wahl, setWahl] = useState<Art3>(sperre ? cur : start ?? cur);
   const lp = !!g?.eintrag.ladepunkt;
+  // ⚠ Am Ladepunkt gilt DIESELBE Regel wie auf seiner Karte (`ladeModusSperre`):
+  // über „Aus“ ins Blatt ließ sich „Schnell“ sonst wählen, wo die Karte es sperrt.
+  const lpSperre = (k: Art3) => (lp && g && k !== 'smart' ? ladeModusSperre(g, sperre, k === 'aus' ? 'aus' : 'schnell') : null);
+  const [wahl, setWahl] = useState<Art3>(sperre || (start && lpSperre(start)) ? cur : start ?? cur);
+  // Läuft „Schnell“ schon, ist sein Knopf der aktuelle Stand, kein Angebot.
+  const schnellSperre = cur === 'an' ? null : lpSperre('an');
   const [minuten, setMinuten] = useState<number | null>(lp ? null : 60);
   const knopf = (k: Art3, label: string, icon: string) => (
     <button
       type="button"
       aria-pressed={wahl === k}
-      disabled={busy || (sperre != null && k !== 'smart')}
+      disabled={busy || (sperre != null && k !== 'smart') || lpSperre(k) != null}
       onClick={() => {
         if (k === 'smart') {
           setWahl('smart');
@@ -125,9 +138,13 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
     </button>
   );
   const dauern: [number | null, string][] = [...DAUERN];
-  if (lp) dauern.push([null, 'bis Abstecken']);
+  // ⚠ „bis Abstecken" endet spätestens am Deckel der Box (Audit W-10) - der
+  // Chip und der Knopf sagen beides.
+  if (lp) dauern.push([null, BIS_ABSTECKEN]);
   const bisMs = minuten == null ? null : bild.raster.nowMs + minuten * 60_000;
-  const bisText = bisMs == null ? 'zum Abstecken' : uhrVon(bild.raster, bisMs);
+  const bisText = bisMs == null
+    ? bisAbsteckenSatz(uhrVon(bild.raster, bild.raster.nowMs + LADEPUNKT_ABSTECKEN_DECKEL_MIN * 60_000))
+    : uhrVon(bild.raster, bisMs);
   // Die Ruhe sperrt für alle und sagt ihren Grund; die Knöpfe selbst folgen dem Recht (AP-03 IP-12).
   return (
     <>
@@ -137,13 +154,15 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
           {knopf('smart', b, 'sun')}
           {knopf('an', c, !g ? 'down' : lp ? 'rocket' : 'power')}
         </div>
-        {wahl !== 'smart' && wahl !== cur && !sperre && (
+        {/* Der Grund, warum „Schnell“ (und ggf. „Aus“) hier nicht geht - die Ruhe sagt ihren unten. */}
+        {schnellSperre && schnellSperre.art !== 'funktion' && <p className="leise" role="note">{schnellSperre.satz}</p>}
+        {wahl !== 'smart' && wahl !== cur && !sperre && !lpSperre(wahl) && (
           <div className="param">
             <div className="blk">
               <h3>Wie lange?</h3>
-              <div className="dauer" style={{ gridTemplateColumns: `repeat(${dauern.length},minmax(0,1fr))` }}>
+              <div className="dauer">
                 {dauern.map(([v, l]) => (
-                  <button type="button" key={l} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
+                  <button type="button" key={l} className={v == null ? 'ganz' : undefined} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
                     {l}
                   </button>
                 ))}
@@ -170,52 +189,73 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
 }
 
 /** Energie, Netzanteil und Kosten einer Laufzeit - anteilig aus dem Plan. */
-function laufFolge(rh: Reihen, von: number, bis: number, kw: number): { kwh: number; netzKwh: number; eur: number } {
+function laufFolge(rh: Reihen, von: number, bis: number, kw: number): { kwh: number; netzKwh: number; eur: number | null } {
   let kwh = 0;
   let netzKwh = 0;
   let eur = 0;
+  let fehlt = false;
   for (let t = von; t < Math.min(bis, N); t++) {
     const e = kw / 4;
     const a = quellenAnteil(rh, t);
     const netz = e * (a?.netz ?? 0);
     kwh += e;
     netzKwh += netz;
-    const p = rh.preis[t];
+    // Netzstrom kostet den Bezugspreis; ohne ihn kein Euro-Betrag (unbekannt ist keine Null).
+    const p = rh.bezug[t];
     if (p != null) eur += (netz * p) / 100;
+    else if (netz > 0.001) fehlt = true;
   }
-  return { kwh, netzKwh, eur };
+  return { kwh, netzKwh, eur: fehlt ? null : eur };
 }
 
 // ---------------------------------------------------------------------------
 // Gerät
 // ---------------------------------------------------------------------------
 
-export function GeraetBlatt({ k, id, modus }: { k: BlattKontext; id: string; modus?: 'aus' | 'an' }) {
+export function GeraetBlatt({ k, id, modus, siteId = null, einstellungenOffen = false }: {
+  k: BlattKontext;
+  id: string;
+  modus?: 'aus' | 'an';
+  /** Mit Anlage zeigt ein Heizstab seine eigene Steuerung (Smart zuerst, ein Schalter je Phase). */
+  siteId?: string | null;
+  /** Aus dem Link „Ändern“ der Geräteseite: die Einstellungen stehen offen. */
+  einstellungenOffen?: boolean;
+}) {
   const g = k.bild.geraete.find((x) => x.id === id);
   if (!g) return null;
-  return <GeraetBlattInhalt k={k} g={g} modus={modus} />;
+  return <GeraetBlattInhalt k={k} g={g} modus={modus} siteId={siteId} einstellungenOffen={einstellungenOffen} />;
 }
 
-function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; modus?: 'aus' | 'an' }) {
+function GeraetBlattInhalt({ k, g, modus, siteId, einstellungenOffen }: {
+  k: BlattKontext;
+  g: GeraetBild;
+  modus?: 'aus' | 'an';
+  siteId: string | null;
+  einstellungenOffen: boolean;
+}) {
   const { bild, a } = k;
   const r = bild.raster;
   const [entwurf, setEntwurf] = useState<SteuerartEntwurf>(() => entwurfAus(g.eintrag));
   const basis = useMemo(() => entwurfAus(g.eintrag), [g.eintrag]);
   const geaendert = JSON.stringify(entwurf) !== JSON.stringify(basis);
   const lp = !!g.eintrag.ladepunkt;
+  const lq = lp ? ladeQuelle(g) : null;
   const busy = k.busy === g.id;
 
   const folge = (art: 'aus' | 'an', minuten: number | null): string => {
-    const bis = minuten == null ? N : Math.min(N, r.jetzt + Math.ceil(minuten / 15));
+    // „bis Abstecken" rechnet bis zum Deckel der Box - länger läuft der Eingriff nie.
+    const dauer = minuten ?? LADEPUNKT_ABSTECKEN_DECKEL_MIN;
+    const bis = Math.min(N, r.jetzt + Math.ceil(dauer / 15));
+    const ende = minuten == null ? bisAbsteckenSatz(uhrVon(r, r.nowMs + dauer * 60_000)) : uhrVon(r, r.nowMs + dauer * 60_000);
     if (art === 'an') {
       const kw = g.nennKw;
-      if (kw == null) return `Läuft bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}.`;
+      if (kw == null) return `Läuft bis ${ende}.`;
       const f = laufFolge(bild.reihen, r.jetzt, bis, kw);
-      return `Läuft bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}: ≈ ${fKwh(f.kwh)}, davon aus dem Netz ≈ ${fKwh(f.netzKwh)}${f.eur > 0.005 ? ` (≈ ${fEur(f.eur)})` : ''}.`;
+      return `Läuft bis ${ende}: ≈ ${fKwh(f.kwh)}, davon aus dem Netz ≈ ${fKwh(f.netzKwh)}${f.eur != null && f.eur > 0.005 ? ` (≈ ${fEur(f.eur)})` : ''}.`;
     }
     let entfaellt = 0;
     for (let t = r.jetzt; t < bis; t++) entfaellt += (g.kw[t] ?? 0) / 4;
-    return `Bleibt aus bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}${entfaellt > 0.05 ? `; entfallen ≈ ${fKwh(entfaellt)} laut Plan.` : '.'}`;
+    return `Bleibt aus bis ${ende}${entfaellt > 0.05 ? `; entfallen ≈ ${fKwh(entfaellt)} laut Plan.` : '.'}`;
   };
 
   // Heute: gemessen bis jetzt.
@@ -279,8 +319,11 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
     </>
   ) : null;
   const hilft = g.consumer?.allowStorageDischarge;
-  return (
-    <Blatt titel={g.name} kopf={kopf} fuss={fuss} voll onClose={k.zu}>
+  // Heizstab (D2-A, 05.11.2026): dieselbe Steuerung wie auf seiner Geräteseite, ohne Verlauf; alles Übrige
+  // liegt unter EINER aufklappbaren Zeile „Einstellungen“.
+  const heizstab = g.typ === 'heating-rod' && siteId != null;
+  const kopfJetzt = (
+    <>
       <DreiSchalter
         g={g}
         bild={bild}
@@ -327,10 +370,14 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
           </p>
         )}
       </div>
+    </>
+  );
+  const einstellungen = (
+    <>
       {lp ? (
         <div className="blk">
           <h3>Smart heißt hier</h3>
-          <p>{g.auftrag}. Ladeziel und Quelle stellen Sie im Reiter Laden ein.</p>
+          <p>{lq ? `${LADEQUELLE[lq]}: ${LADEQUELLE_VERSPRECHEN[lq]}` : g.auftrag}. Womit geladen wird und das Ladeziel stellen Sie im Reiter Laden ein.</p>
           <button type="button" className="btn sek" onClick={() => { k.zu(); a.zuReiter('laden'); }}>
             <Ic n="car" s={18} />
             Zum Reiter Laden
@@ -361,12 +408,14 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
             ))}
             {!regeln.length && <p className="leise">Keine. Das Gerät folgt nur seinem Smart-Auftrag.</p>}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', geraet: g.id }); }}>
-              <Ic n="plus" s={16} />
-              Auch wenn …
-            </button></Recht>
-          </div>
+          {k.neueRegel && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', geraet: g.id }); }}>
+                <Ic n="plus" s={16} />
+                Auch wenn …
+              </button></Recht>
+            </div>
+          )}
         </div>
       )}
       {!lp && g.consumer && hilft != null && (
@@ -419,6 +468,40 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
           </button>
         </div>
       </details>
+    </>
+  );
+  return (
+    <Blatt titel={g.name} kopf={kopf} fuss={fuss} voll onClose={k.zu}>
+      {heizstab ? (
+        <HeizstabKarteGeladen
+          siteId={siteId!}
+          entityId={g.id}
+          gesperrt={bild.funktion.sperre}
+          sonst={<>{kopfJetzt}{einstellungen}</>}
+          danach={<>
+          {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
+          <details className="vp-hz-mehr vp-hz-einst" open={einstellungenOffen || geaendert} data-testid="heizstab-dialog-einstellungen">
+            <summary>
+              <span>Einstellungen</span>
+              <small>
+                {[
+                  quelleChip(g.eintrag.steuerart),
+                  hilft == null ? null : hilft ? 'Speicher hilft' : 'Speicher hilft nicht',
+                  platz >= 0 ? `Platz ${platz + 1}` : null,
+                  'Technik',
+                ].filter(Boolean).join(' · ')}
+              </small>
+            </summary>
+            {einstellungen}
+          </details>
+          </>}
+        />
+      ) : (
+        <>
+          {kopfJetzt}
+          {einstellungen}
+        </>
+      )}
       {folgeNeu}
     </Blatt>
   );
@@ -563,7 +646,23 @@ export function ArtenWahl({ g, bild, entwurf, setEntwurf }: {
   const set = (p: Partial<SteuerartEntwurf>) => setEntwurf({ ...entwurf, ...p });
   let panel: ReactNode = null;
   const r = bild.raster;
-  if (aktiv === 'ueberschuss' || aktiv === 'freigabe_ueberschuss') {
+  if (aktiv === 'ueberschuss' && g.typ === 'heating-rod' && g.form === 'stufig' && g.stufenKw?.length) {
+    // Heizstab V1: die Box regelt die Stufe selbst (Parameterblock heizstab) - eine Schwelle gilt hier nicht.
+    panel = (
+      <div className="param">
+        <div className="prow">
+          <span>
+            Heizt in Stufen mit dem Überschuss
+            <small>
+              {`Die Box wählt selbst ${g.stufenKw.map((x) => zahl0(x)).join(', ')} kW, je nachdem, was die Sonne übrig lässt, `
+                + 'und lässt 0,2 kW als Einspeisung stehen - auch ohne Internet. Den Vorrang zum Speicher legt die '
+                + '„Reihenfolge bei knapper Leistung“ fest.'}
+            </small>
+          </span>
+        </div>
+      </div>
+    );
+  } else if (aktiv === 'ueberschuss' || aktiv === 'freigabe_ueberschuss') {
     const ab = entwurf.schwelleKw;
     const sub = g.form === 'stufig' && g.stufenKw?.length
       ? `Nutzt ${g.stufenKw.map((x) => zahl0(x)).join(', ')} kW, je nach Überschuss.`
@@ -587,11 +686,12 @@ export function ArtenWahl({ g, bild, entwurf, setEntwurf }: {
   } else if (aktiv === 'guenstig' || aktiv === 'freigabe_guenstig') {
     const grenze = entwurf.preisgrenzeCtKwh;
     let n = 0;
-    if (grenze != null) for (let t = r.jetzt; t < TAG; t++) { const p = bild.reihen.preis[t]; if (p != null && p < grenze) n++; }
+    // Die Grenze gilt für den BEZUGSPREIS (`market.import_price_ct_kwh`), nicht für den Börsenpreis.
+    if (grenze != null) for (let t = r.jetzt; t < TAG; t++) { const p = bild.reihen.bezug[t]; if (p != null && p < grenze) n++; }
     panel = (
       <div className="param">
         <div className="prow">
-          <span>Preisgrenze<small>{grenze != null ? `heute ab jetzt ${dauer(n)} darunter` : 'Börsenpreis, unter dem das Gerät läuft'}</small></span>
+          <span>Preisgrenze<small>{grenze != null ? `heute ab jetzt ${dauer(n)} darunter` : 'Bezugspreis, unter dem das Gerät läuft'}</small></span>
           <Stepper
             wert={grenze != null ? fCt(grenze) : '—'}
             minus="niedriger"
@@ -759,7 +859,7 @@ export function SpeicherBlatt({ k }: { k: BlattKontext }) {
   const busy = k.busy === SPEICHER;
   const geaendert = wahl !== laufend;
   const modelle: { id: string | null; t: string; s: string; ok: boolean; grund: string | null }[] = [
-    { id: null, t: 'Eigenverbrauch', s: 'Möglichst viel eigener Strom im Haus. Grundform, ohne Betriebsmodell.', ok: true, grund: null },
+    { id: null, t: 'Eigenverbrauch', s: 'Möglichst viel eigener Strom im Haus – die Grundform, wenn kein anderes Modell gewählt ist.', ok: true, grund: null },
     ...gruppe.map((p) => {
       const fehlend = liste(p.requirements).filter((x) => !x.met).map((x) => x.label);
       const ok = !fehlend.length && !p.blockedReason;
@@ -966,15 +1066,58 @@ export function P14aBlatt({ k }: { k: BlattKontext }) {
   );
 }
 
+/**
+ * Der Hinweis „Was immer gilt“ › Netzanschluss (Geräte-Reiter) - seit „Ein
+ * Ort fürs Laden" Scheibe 4 (E5 = A) nur noch Erklärung, kein Formular mehr.
+ * Die Anschlussgrenze SELBST stellt man in den Einstellungen ein.
+ */
+export function NetzanschlussBlatt({ k, siteId, netzanschlussKw }: {
+  k: BlattKontext; siteId: string; netzanschlussKw: number;
+}) {
+  return (
+    <Blatt symbol="gauge" titel={`Netzanschluss ${fKw(netzanschlussKw)}`} unter="läuft immer mit" onClose={k.zu}>
+      <div className="warum">Laden wird gekürzt, bevor die Sicherung fällt.</div>
+      <p className="leise">VoltPilot hält Ihren Netzanschluss ein - auch ohne Cloud. Die Grenze stellen Sie in den{' '}
+        <a href={hashForRoute(anlageRoute(siteId, 'technik'))}>Einstellungen</a> ein.</p>
+    </Blatt>
+  );
+}
+
 export function NegativBlatt({ k }: { k: BlattKontext }) {
   return (
     <Blatt symbol="down" titel="Negativpreis-Abregelung" unter="läuft immer mit" onClose={k.zu}>
       <div className="warum">Kostet Strom an der Börse unter null, speist die Anlage nicht ein. Das schützt vor Kosten.</div>
-      <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
-      <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); k.a.oeffne({ art: 'regel', vorlage: 'negativ' }); }}>
-        <Ic n="plus" s={18} />
-        Regel aus Vorlage
-      </button></Recht>
+      {k.neueRegel && (
+        <>
+          <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
+          <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); k.a.oeffne({ art: 'regel', vorlage: 'negativ' }); }}>
+            <Ic n="plus" s={18} />
+            Regel aus Vorlage
+          </button></Recht>
+        </>
+      )}
+    </Blatt>
+  );
+}
+
+/**
+ * „Stunden ohne Vergütung" (§ 51a EEG, Konzept
+ * `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4): die Sonnen-
+ * Erzählung-Fassung von {@link NegativBlatt} - bei dieser Klasse ist
+ * Einspeisung sonst fest vergütet, keine Kostenvermeidung nötig. Keine
+ * Regel-Vorlage: der Fahrplan füllt den Speicher in diesen Stunden bereits
+ * von selbst, es gibt nichts zusätzlich einzustellen.
+ */
+export function NullstundenBlatt({ k }: { k: BlattKontext }) {
+  return (
+    <Blatt symbol="down" titel="Stunden ohne Vergütung" unter="§ 51a EEG" onClose={k.zu}>
+      <div className="warum">
+        Bei negativen Börsenpreisen gibt es für Ihre Anlage keine Einspeisevergütung (§ 51a EEG, Solarspitzengesetz).
+      </div>
+      <p className="leise">
+        In diesen Viertelstunden füllt der Fahrplan lieber den Speicher, statt wertlos einzuspeisen - dafür ist nichts
+        einzustellen.
+      </p>
     </Blatt>
   );
 }

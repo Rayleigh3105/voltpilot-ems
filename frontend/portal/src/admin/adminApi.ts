@@ -1,12 +1,13 @@
-import type { BenutzerAngelegt } from '../benutzer';
+import type { BenutzerAngelegt, BenutzerAnlage } from '../benutzer';
 import {
+  ANFRAGE_KENNUNG_KOPF,
   request,
   type CertSource,
   type CreateSiteInput,
   type PlatformCertVerdict,
   type Site,
 } from '../api';
-import type { DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
+import type { BoxVerlauf, DeviceTrust, EdgeEignung, EdgeReleaseSeite, EdgeUpdates } from '../adminEdgeUpdates';
 import type { AdminVorlage } from '../adminVorlagen';
 import type { FlottenAnlage } from '../adminKomponentenFlotte';
 import type { PlattformModellWahlZustand } from '../prognose';
@@ -19,6 +20,8 @@ import type {
   FernwartungTechnikerAntwort,
   FernwartungUebersicht,
 } from '../adminFernwartung';
+import type { WerkstattBox } from '../werkstatt';
+import type { WerkstattDienst, WerkstattFreigabe, ZurSeite } from '../werkstattBank';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -142,6 +145,13 @@ export interface AdminDeviceRow {
   trust?: DeviceTrust | null;
   /** Box-Art aus der API (`ota.BoxArt`); `null` = unbekannt oder noch kein Gerät. */
   boxArt?: string | null;
+  /** Das gemeldete Gerät (Geräte & Updates G8, `update.geraet`); `null` = nicht gemeldet. */
+  geraetModell?: string | null;
+  geraetArch?: string | null;
+  /** Nur Edge Light: `update` (Stufe 2) oder `flash` (Stufe 1). */
+  loader?: string | null;
+  /** Nur Edge Light: die `LOADER_STAND`-Marke des Loaders im Flash; `null` = nicht gemeldet. */
+  loaderStand?: number | null;
 }
 
 export interface ProvisionDeviceInput {
@@ -161,9 +171,32 @@ export interface UpdateTenantInput {
 }
 
 export interface UpdateUserInput {
+  /** P3: fehlt oder unverändert lässt den Anmeldenamen stehen. */
+  username?: string | null;
   email?: string | null;
   firstName?: string | null;
   lastName?: string | null;
+}
+
+/** Eingabe von `POST …/beenden` (§5.6: Auftrag, Begründung, Name eintippen, Frist in Tagen). */
+export interface BeendenMandantInput {
+  auftrag: string;
+  begruendung: string;
+  confirmName: string;
+  fristTage?: number | null;
+}
+
+export interface WiederaufnehmenMandantInput {
+  auftrag: string;
+  begruendung: string;
+}
+
+/** Die Antwort von `POST …/beenden` bzw. `…/wiederaufnehmen` - die neuen Vertragsdaten. */
+export interface VertragsendeUebergang {
+  zustand: 'beendet' | 'aktiv';
+  beendet_am?: string;
+  frist_tage?: number;
+  loeschung_fruehestens?: string;
 }
 
 /** Report of what the tenant offboarding removed (DB transactional, Keycloak best-effort). */
@@ -277,13 +310,160 @@ export interface SaveComponentTemplateInput {
   note?: string | null;
 }
 
+// ── S6 Lesemodelle (Adminview-Konzept Abschnitt 3.4) ───────────────────────
+
+/** L1 Plattform-Dienste: dieselben Werte, die die API längst für Prometheus rechnet. */
+export interface AdminPlattformDienst {
+  name: 'optimierer' | 'preise' | 'messwerte' | 'tunnel-dienst' | 'werkstatt-dienst';
+  zuletztAm: string | null;
+}
+export interface AdminPlattformDienste {
+  dienste: AdminPlattformDienst[];
+}
+
+/** „Braucht dich" einzeln auf erledigt setzen (Plattform-Übersicht, Scheibe S4). */
+export interface AdminBrauchtDichErledigt {
+  schluessel: string;
+  stand: string;
+  erledigtAm: string;
+  erledigtVon: string;
+}
+export interface AdminBrauchtDichErledigtListe {
+  erledigt: AdminBrauchtDichErledigt[];
+}
+
+/** L5 Meldungen plattformweit - dieselben Felder wie `MeldungDto`, plus Mandant. */
+export interface AdminMeldung {
+  id: string;
+  kennzeichen: string;
+  tenantId: string;
+  tenantName: string;
+  standortId: string | null;
+  bezugKennung: string;
+  wertart: string;
+  schwere: string;
+  ausgeloestAm: string;
+  zustand: string;
+  wiederNormalAm: string | null;
+  gesehenVon: string | null;
+  gesehenAm: string | null;
+  erledigtAm: string | null;
+}
+export interface AdminMeldungenListe {
+  meldungen: AdminMeldung[];
+}
+
+/** L6 Personensuche über alle Kunden. */
+export type AdminPerson = AdminUser;
+
+/** L7 Geräte-Liste über alle Lebensabschnitte. */
+export interface AdminGeraeteListeEintrag {
+  externalRef: string;
+  lebensabschnitt: 'gedruckt' | 'meldet_sich' | 'werkstatt' | 'kunde' | 'ausgebaut';
+  seit: string | null;
+  deviceId: string | null;
+  siteId: string | null;
+  tenantId: string | null;
+  tenantName: string | null;
+  name: string | null;
+}
+export interface AdminGeraeteListeAntwort {
+  geraete: AdminGeraeteListeEintrag[];
+}
+
+/** L3 Geräteakte in einer Antwort. */
+export interface AdminGeraeteAkte {
+  externalRef: string;
+  lebensabschnitt: AdminGeraeteListeEintrag['lebensabschnitt'];
+  lebensabschnittSeit: string | null;
+  kopf: {
+    deviceId: string;
+    name: string | null;
+    siteId: string;
+    siteName: string;
+    tenantId: string;
+    tenantName: string;
+    herzschlagAm: string | null;
+    messwertAm: string | null;
+    lastSeenAt: string | null;
+    ausgebautAm: string | null;
+  } | null;
+  software: {
+    edge: { coreVersion: string | null; paletteVersion: string | null; reportedAt: string } | null;
+    update: {
+      version: string | null;
+      backend: string | null;
+      currentVersion: string | null;
+      targetVersion: string | null;
+      state: string | null;
+      reason: string | null;
+      lastKnownGood: string | null;
+      reportedAt: string;
+    } | null;
+    supports: string[] | null;
+    boxArt: string | null;
+  } | null;
+  verbindung: {
+    lanHost: string | null;
+    lanSeenAt: string | null;
+    tunnelAktiv: boolean | null;
+    tunnelAdresse: string | null;
+  } | null;
+  einrichtung: {
+    zertifikatAusgestelltAm: string | null;
+    zertifikatGueltigBis: string | null;
+    werkstattAngelegtAm: string | null;
+  } | null;
+}
+
+/** „Vom Kunden lösen" (L1, Konzept vp-plattform-admin-box-benutzer-konzept): Feldnamen wie Box verbinden E2. */
+export interface BoxLoesenBefund {
+  loesbar: boolean;
+  /** Reihenfolge: verbund, herzschlag, messwerte, meldungen, zustaendigkeit, angemeldet. */
+  gruende: string[];
+  fakten: {
+    verbundenAm: string;
+    herzschlagAm: string | null;
+    messwertAm: string | null;
+    meldungAm: string | null;
+    anmeldung: { zuletztAngefragtAm: string | null; schluesselAbgeholtAm: string | null };
+  };
+}
+
+export type BoxLoesenAnlass = 'falsche_kennung' | 'fremder_kunde' | 'doppelt_verbunden' | 'anderer_anlass';
+
+/**
+ * „Endgültig löschen" einer AUSGEBAUTEN Box (vierter Löschweg, vp-box-endgueltig-loeschen): der
+ * Befund nennt die Datenarten, an denen das Urteil hängt - nie nur ein Ja/Nein (Sätze: `boxEndgueltig.ts`).
+ */
+export interface BoxEndgueltigBefund {
+  deviceId: string;
+  loeschbar: boolean;
+  /** Reihenfolge der 409-Liste: herzschlag, messwerte, messauswahl, meldungen, befehle, ocpp, …, berichtsstaende. */
+  daten: string[];
+  fakten: { verbundenAm: string; ausgebautAm: string; tenantName: string; siteName: string };
+}
+
+export interface BoxEndgueltigErgebnis {
+  externalRef: string;
+  deviceId: string;
+  geloeschtAm: string;
+  bereitsGeloescht: boolean;
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
-  createTenant: (input: CreateTenantInput) =>
+  /**
+   * `kennung` ist die Anfrage-Kennung des Formulars (B3-Mechanik wie beim Anlegen einer Anlage):
+   * ein Doppelklick oder das Wiederholen nach einem Netzfehler legt denselben Kunden nie zweimal an
+   * (Befund vp-kundenakte-fremde-personen, Punkt 5 - die Kundenliste zeigte einen Kunden doppelt).
+   */
+  createTenant: (input: CreateTenantInput, kennung?: string) =>
     request<Tenant>('/api/v1/admin/tenants', {
       method: 'POST',
       body: JSON.stringify(input),
+      ...(kennung ? { headers: { [ANFRAGE_KENNUNG_KOPF]: kennung } } : {}),
     }),
 
   updateTenant: (tenantId: string, input: UpdateTenantInput) =>
@@ -298,6 +478,21 @@ export const adminApi = {
     request<TenantOffboardingReport>(`/api/v1/admin/tenants/${tenantId}/delete`, {
       method: 'POST',
       body: JSON.stringify({ confirmName }),
+    }),
+
+  // Vertragsende I (N1, UEMS AP-20 IP-16): beenden mit Frist, wiederaufnehmen -
+  // derselbe Kundenbereich, kein neuer. Der Löschweg (deleteTenant) bleibt
+  // der einzige Löschweg; diese zwei sind nur der Übergang davor.
+  beendenMandant: (tenantId: string, input: BeendenMandantInput) =>
+    request<VertragsendeUebergang>(`/api/v1/admin/tenants/${tenantId}/beenden`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  wiederaufnehmenMandant: (tenantId: string, input: WiederaufnehmenMandantInput) =>
+    request<VertragsendeUebergang>(`/api/v1/admin/tenants/${tenantId}/wiederaufnehmen`, {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 
   listUsers: (tenantId: string) =>
@@ -330,9 +525,21 @@ export const adminApi = {
       method: 'DELETE',
     }),
 
-  // Support lever: no SMTP means no self-service reset, so support sets a new
-  // (default temporary) password here; any brute-force lockout is lifted too.
+  /**
+   * N6: Support lever - no SMTP means no self-service reset, so the admin sets a new
+   * (temporary) password here; any brute-force lockout is lifted too.
+   */
+  resetPassword: (tenantId: string, userId: string) =>
+    request<BenutzerAngelegt>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/reset-password`, {
+      method: 'POST',
+    }),
 
+  /** P2: „Person hinzufügen" - eine WEITERE Person, mit Rolle und Standorten wie der Kundenadministrator. */
+  createPerson: (tenantId: string, input: BenutzerAnlage) =>
+    request<BenutzerAngelegt>(`/api/v1/admin/tenants/${tenantId}/personen`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   listSites: (tenantId: string) =>
     request<Site[]>(`/api/v1/admin/tenants/${tenantId}/sites`),
@@ -353,6 +560,12 @@ export const adminApi = {
    */
   listPendingEnrollments: () =>
     request<PendingEnrollment[]>('/api/v1/admin/enrollments/pending'),
+
+  // 404 wenn unbekannt oder inzwischen von einem Kunden beansprucht.
+  deletePendingEnrollment: (externalRef: string) =>
+    request<void>(`/api/v1/admin/enrollments/pending/${encodeURIComponent(externalRef)}`, {
+      method: 'DELETE',
+    }),
 
   /**
    * Die steuerbaren Gerätetypen mit ihrem plattformweiten Freigabe-Stand
@@ -427,6 +640,18 @@ export const adminApi = {
 
   /** Alles, was die Seite „Edge-Updates" zeigt, in EINEM Aufruf. */
   edgeUpdates: () => request<EdgeUpdates>('/api/v1/admin/edge-updates'),
+
+  /** Der Verlauf EINER Box, neueste zuerst: was das Portal tat und was die Box meldete (G3). */
+  boxVerlauf: (deviceId: string, limit = 100) =>
+    request<BoxVerlauf>(`/api/v1/admin/devices/${deviceId}/verlauf?limit=${limit}`),
+
+  /** Wer EIN Release bekommen kann, je Box mit Grund (Geräte & Updates G1, der Verteil-Dialog). */
+  edgeEignung: (releaseSeq: number) =>
+    request<EdgeEignung>(`/api/v1/admin/edge-updates/eignung?releaseSeq=${releaseSeq}`),
+
+  /** Die Release-Seite: Inhalt je Plattform, Programme im Portal, „Was ist neu" (Geräte & Updates G4). */
+  edgeRelease: (releaseSeq: number) =>
+    request<EdgeReleaseSeite>(`/api/v1/admin/edge-updates/releases/${releaseSeq}`),
 
   /**
    * Das INVENTAR aller Geräte über den ganzen Lebenszyklus (Seite „Geräte") -
@@ -620,4 +845,128 @@ export const adminApi = {
       `/api/v1/admin/fernwartung/protokoll${qs ? `?${qs}` : ''}`,
     );
   },
+
+  /** Die Fenster einer Box, neueste zuerst - auch geschlossene (die Werkstatt sucht darin ihre Probe). */
+  fernwartungFenster: (box: string, limit = 50) =>
+    request<FernwartungFenster[]>(
+      `/api/v1/admin/fernwartung/fenster?box=${encodeURIComponent(box)}&limit=${limit}`,
+    ),
+
+  // ── Werkstatt (Entscheid vom 26.10.2026): Boxen vor dem Versand ──────────
+  // Das Register, die Schritte, das LAN-Netz und die Abnahme. Tunnel-Schlüssel
+  // und Fenster laufen über die Routen der Fernwartung. Kein Aufruf trägt ein
+  // Passwort: das Root-Passwort einer Box bleibt im Browser.
+
+  werkstattBoxen: () => request<WerkstattBox[]>('/api/v1/admin/werkstatt/boxen'),
+
+  /**
+   * Eine Box löschen (etwa einen Fehlversuch) samt Tunnel-Schlüssel, Codes und Geräteschlüssel: 204;
+   * 409 mit Grund, wenn sie abgenommen oder gekoppelt ist.
+   */
+  werkstattBoxLoeschen: (ref: string) =>
+    request<void>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}`, { method: 'DELETE' }),
+
+  /** Was der Werkstatt-Dienst gerade tut (Ansicht mit Alter, Läufe), für die Werkstatt-Bildschirme. */
+  werkstattDienst: () => request<WerkstattDienst>('/api/v1/admin/werkstatt/dienst'),
+
+  /**
+   * „Erneut erstellen" für die Box-Druckdatei (Gehäuse, P10): ein Auftrag an den Werkstatt-Dienst,
+   * ihren Bau noch einmal einzureihen - auch einen schon fertigen (Nachdruck). 201/200; 422 Referenz.
+   */
+  werkstattGehaeuseErneut: (ref: string) =>
+    request<{ id: string; art: string; lauf: string; erteiltAm: string }>(
+      `/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/gehaeuse/neu`,
+      { method: 'POST' },
+    ),
+
+  // ── S6 Lesemodelle (Adminview-Konzept Abschnitt 3.4) ─────────────────────
+
+  /** L1: die Dienste-Zeile der Übersicht. */
+  plattformDienste: () => request<AdminPlattformDienste>('/api/v1/admin/plattform/dienste'),
+
+  /** „Braucht dich" einzeln auf erledigt setzen - serverseitig, plattformweit. */
+  brauchtDichErledigt: () =>
+    request<AdminBrauchtDichErledigtListe>('/api/v1/admin/plattform/braucht-dich/erledigt'),
+
+  /** Eine oder mehrere Zeilen erledigen (z. B. „alle dieser Art"). */
+  brauchtDichErledigen: (eintraege: { schluessel: string; stand: string }[]) =>
+    request<void>('/api/v1/admin/plattform/braucht-dich/erledigen', {
+      method: 'POST',
+      body: JSON.stringify({ eintraege }),
+    }),
+
+  /** Einen erledigten Eintrag zurückholen. */
+  brauchtDichWiederherstellen: (schluessel: string) =>
+    request<void>(`/api/v1/admin/plattform/braucht-dich/${encodeURIComponent(schluessel)}`, {
+      method: 'DELETE',
+    }),
+
+  /** L3: die Geräteakte in einer Antwort. */
+  geraeteAkte: (ref: string) =>
+    request<AdminGeraeteAkte>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}`),
+
+  /** L1 (B1-B4): der Befund „Vom Kunden lösen" - informativ, prüft nichts unter Sperre. */
+  geraeteLoesenBefund: (ref: string) =>
+    request<BoxLoesenBefund>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`),
+
+  /** L1: löst die Verknüpfung, als wäre sie nie gewesen (409 mit Gründen, wenn die Regel es nicht erlaubt). */
+  geraeteLoesen: (ref: string, anlass: BoxLoesenAnlass, anlassText: string | null) =>
+    request<{ externalRef: string; anlass: string }>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`, {
+      method: 'POST',
+      body: JSON.stringify({ anlass, anlassText }),
+    }),
+
+  /** Endgültig löschen: der Befund einer AUSGEBAUTEN Box - informativ, prüft nichts unter Sperre. */
+  geraeteEndgueltigBefund: (ref: string) =>
+    request<BoxEndgueltigBefund>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/endgueltig-loeschen`),
+
+  /** Endgültig löschen: GENAU die Box aus dem Befund (idempotent; 409 mit der Liste, wenn doch Daten da sind). */
+  geraeteEndgueltigLoeschen: (ref: string, deviceId: string) =>
+    request<BoxEndgueltigErgebnis>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/endgueltig-loeschen`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId }),
+    }),
+
+  /** L5: Meldungen plattformweit (`status=verlauf` für erledigte). */
+  adminMeldungen: (status?: 'verlauf') =>
+    request<AdminMeldungenListe>(
+      `/api/v1/admin/meldungen${status ? `?status=${status}` : ''}`,
+    ),
+
+  /** L6: Personensuche über alle Kunden; eine leere Suche liefert nichts. */
+  personensuche: (suche: string) =>
+    suche.trim() === ''
+      ? Promise.resolve<AdminPerson[]>([])
+      : request<AdminPerson[]>(`/api/v1/admin/personen?suche=${encodeURIComponent(suche)}`),
+
+  /** L7: die eine Geräte-Liste über alle Lebensabschnitte. */
+  geraeteListe: () => request<AdminGeraeteListeAntwort>('/api/v1/admin/geraeteliste'),
+
+  werkstattFreigaben: () => request<WerkstattFreigabe[]>('/api/v1/admin/werkstatt/freigaben'),
+
+  /**
+   * „Nochmal versuchen“ (Lauf-Seite E1 A): ein Auftrag an den Werkstatt-Dienst, den angehaltenen Lauf neu
+   * anzustoßen; er holt ihn mit seiner nächsten Meldung ab. 201/200; 409 mit Grund (kein Nochmal für diesen Fall).
+   */
+  werkstattNochmal: (lauf: string) =>
+    request<{ id: string; art: string; lauf: string; erteiltAm: string }>('/api/v1/admin/werkstatt/dienst/nochmal', {
+      method: 'POST', body: JSON.stringify({ lauf }),
+    }),
+
+  /** „Box zur Seite legen“ (E2 A): mit Fall, Lösung und Zeit festhalten. 201/200; 404/409 mit Grund. */
+  werkstattZurSeite: (lauf: string) =>
+    request<ZurSeite>('/api/v1/admin/werkstatt/zur-seite', { method: 'POST', body: JSON.stringify({ lauf }) }),
+
+  /** Werkstatt freigeben (WI-4 A): 201; 409, wenn für die Box-Art schon eine läuft; 422 mit Grund. */
+  werkstattFreigeben: (input: {
+    boxArt: 'mango';
+    tage: number;
+    obergrenze: number;
+    openwrt: WerkstattFreigabe['openwrt'];
+    edgeLight: WerkstattFreigabe['edgeLight'];
+    notiz?: string | null;
+  }) => request<WerkstattFreigabe>('/api/v1/admin/werkstatt/freigaben', { method: 'POST', body: JSON.stringify(input) }),
+
+  werkstattFreigabeBeenden: (kennung: string) =>
+    request<WerkstattFreigabe>(`/api/v1/admin/werkstatt/freigaben/${encodeURIComponent(kennung)}/ende`, { method: 'POST' }),
 };

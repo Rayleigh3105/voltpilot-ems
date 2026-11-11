@@ -22,8 +22,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -63,6 +64,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 @org.springframework.context.annotation.Import(ComponentApiTest.RecordingPublisherConfig.class)
@@ -222,7 +224,7 @@ class ComponentApiTest {
                     customer, saveBody(FRONIUS, "pv-generation", conn));
             assertThat(blind.getStatusCode())
                     .as("ohne Beleg wird kein Blind-Soll gespeichert")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(blind.getBody()).contains("Verbindung");
 
             // Ein Beleg für eine ANDERE Verbindung zählt nicht.
@@ -232,7 +234,7 @@ class ComponentApiTest {
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(FRONIUS, "pv-generation", conn)).getStatusCode())
                     .as("der Beleg hängt an GENAU dieser Verbindung")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
             // --- Anlegen --------------------------------------------------
             receipts.record(site, FRONIUS, 1, conn);
@@ -323,6 +325,91 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * Der Live-Fall „Zuhause" (02.11.2026): der Kunde legt seine Anlage OHNE
+     * Speicher-Stammsatz an, verbindet die Box (die Plattform komponiert Netz und
+     * Haus), richtet seinen Deye über die Gerätesuche ein - Test mit echten
+     * Werten bestanden - und „Speichern" antwortete „Für diese Anlage ist noch
+     * kein Wechselrichter angelegt. Bitte tragen Sie zuerst die Eckdaten Ihres
+     * Speichers ein." Die Zeile „Wechselrichter", die er im Aufbau sah, war das
+     * Ersatzgerät des Portals für Netz und Haus, keine battery-hybrid-Zeile.
+     *
+     * <p>Seitdem: die Zeile entsteht beim Speichern (nur lesend, ohne Grenzen),
+     * die 0-1-Regel bleibt, und der Speicher frischt GENAU DIESE Zeile nach,
+     * sobald der Kunde seine Eckdaten einträgt - dieselben Grenzen und derselbe
+     * Schreibweg wie in der Reihenfolge „Speicher zuerst".
+     */
+    @Test
+    void derWechselrichterWirdOhneSpeicherStammsatzGespeichertUndDerSpeicherFrischtDieZeileNach()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Zuhause");
+        try {
+            claim(customer, site, "edge-zuhause-01");
+            // ABSICHTLICH KEIN saveBattery - genau so entstand die Anlage beim Kunden.
+            JsonNode vorher = getJson("/api/v1/sites/" + site + "/components", customer);
+            assertThat(rowsByRole(vorher, "battery-hybrid"))
+                    .as("ohne Speicher-Stammsatz komponiert die Plattform keine Wechselrichter-Zeile")
+                    .isEmpty();
+            assertThat(rowsByRole(vorher, "grid-meter"))
+                    .as("Netz (und Haus) sind beim Verbinden der Box komponiert - daraus macht "
+                            + "das Portal sein Ersatzgerät „Wechselrichter\"")
+                    .hasSize(1);
+
+            Map<String, Object> conn = deyeConnection();
+            receipts.record(site, DEYE, 1, conn);
+            ResponseEntity<String> gespeichert = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(DEYE, "inverter", conn));
+            assertThat(gespeichert.getStatusCode())
+                    .as("ein getesteter Wechselrichter wird gespeichert - ohne Speicher-"
+                            + "Stammsatz, ohne 409: %s", gespeichert.getBody())
+                    .isEqualTo(HttpStatus.OK);
+            JsonNode zeile = byRole(json.readTree(gespeichert.getBody()), "battery-hybrid");
+            assertThat(zeile.get("templateRef").asText()).isEqualTo(DEYE);
+            assertThat(zeile.get("connection").get("serial").asText()).isEqualTo("2985159064");
+            UUID entityId = UUID.fromString(zeile.get("id").asText());
+
+            // Nur lesend, ohne Grenzen: ohne Eckdaten gibt es keinen Schreibweg.
+            JsonNode entity = entityById(getJson("/api/v1/sites/" + site + "/entities", customer),
+                    entityId);
+            assertThat(entity.get("entityType").asText()).isEqualTo("battery-hybrid");
+            assertThat(entity.path("capabilities").path("actuate").size())
+                    .as("kein Schreibweg vor den Eckdaten des Speichers").isZero();
+            assertThat(entity.path("guards").path("limits").has("soc_min_pct")).isFalse();
+            assertThat(measureChannels(site, customer, "battery-hybrid"))
+                    .as("die Messkanäle kommen aus dem Typkatalog, wie bei jeder Komponente")
+                    .contains("soc_pct", "pv_power_kw");
+
+            // Die 0-1-Regel bleibt: ein zweiter Wechselrichter wird abgewiesen.
+            ResponseEntity<String> zweiter = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(DEYE, "inverter", conn));
+            assertThat(zweiter.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(zweiter.getBody()).contains("bereits einen Wechselrichter");
+
+            // Der Speicher kommt SPÄTER - und frischt genau diese Zeile nach.
+            saveBattery(customer, site);
+            JsonNode nachher = getJson("/api/v1/sites/" + site + "/entities", customer);
+            long zeilen = 0;
+            for (JsonNode e : nachher.get("entities")) {
+                if ("battery-hybrid".equals(e.path("entityType").asText())) zeilen++;
+            }
+            assertThat(zeilen).as("der Speicher legt keine zweite Zeile an").isEqualTo(1);
+            JsonNode frisch = entityById(nachher, entityId);
+            assertThat(frisch.path("guards").path("limits").path("max_charge_kw").asDouble())
+                    .as("die Grenzen kommen jetzt aus dem Stammsatz").isEqualTo(15.0);
+            assertThat(frisch.path("guards").path("limits").path("soc_min_pct").isNumber()).isTrue();
+            assertThat(frisch.path("capabilities").path("actuate").size())
+                    .as("mit den Eckdaten hat der Speicher seinen Schreibweg - wie bei "
+                            + "„Speicher zuerst\"").isGreaterThan(0);
+            assertThat(byRole(getJson("/api/v1/sites/" + site + "/components", customer),
+                    "battery-hybrid").get("connection").get("serial").asText())
+                    .as("die Anbindung des Wechselrichters bleibt stehen")
+                    .isEqualTo("2985159064");
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     /** Höchstens EIN Netz-Zähler je Anlage - serverseitig, nicht nur im Frontend. */
     @Test
     void atMostOneGridMeterPerPlantIsEnforcedByTheServer() throws Exception {
@@ -354,6 +441,91 @@ class ComponentApiTest {
         } finally {
             deleteSite(customer, site);
         }
+    }
+
+    /**
+     * Zählerbaum-Konzept (E1-E5 = A, 10.11.2026): „hängt an" beim Anlegen
+     * UND beim Umhängen, mit R6-Plausibilität und der Tages-Mechanik (R5).
+     */
+    @Test
+    void zaehlerbaumHaengtAnBeimAnlegenUndUmhaengen() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Zählerbaum-Anlage");
+        try {
+            String shelly = "builtin:shelly:shelly-pro-3em";
+
+            // Netzanschluss - die Wurzel, bekommt selbst nie ein haengtAn.
+            receipts.record(site, GENERIC, 1, Map.of("ip", "192.168.0.11", "port", 502, "unit_id", 1));
+            ResponseEntity<String> netz = post("/api/v1/sites/" + site + "/components", customer,
+                    saveBody(GENERIC, "grid-meter", Map.of("ip", "192.168.0.11", "port", 502, "unit_id", 1)));
+            assertThat(netz.getStatusCode()).isEqualTo(HttpStatus.OK);
+            UUID netzId = UUID.fromString(byRole(json.readTree(netz.getBody()), "grid-meter").get("id").asText());
+
+            // UV Halle - ein Unterzähler, hängt beim Anlegen an der Wurzel (kein haengtAn gesetzt).
+            Map<String, Object> halleConn = Map.of("ip", "192.168.0.10");
+            receipts.record(site, shelly, 1, halleConn);
+            Map<String, Object> halleBody = saveBody(shelly, "consumer", halleConn);
+            ResponseEntity<String> halle = post("/api/v1/sites/" + site + "/components", customer, halleBody);
+            assertThat(halle.getStatusCode()).as(halle.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode halleRow = rowsByRole(json.readTree(halle.getBody()), "consumer").get(0);
+            assertThat(halleRow.has("haengtAn")).as("an der Wurzel: kein Feld, nie ein erfundenes null im JSON wäre nötig, aber abwesend ist auch richtig").isFalse();
+            UUID halleId = UUID.fromString(halleRow.get("id").asText());
+
+            // Kompressor - hängt beim Anlegen an UV Halle, nicht an der Wurzel.
+            Map<String, Object> kompConn = new LinkedHashMap<>(halleConn);
+            kompConn.put("ip", "192.168.0.12");
+            receipts.record(site, shelly, 1, kompConn);
+            Map<String, Object> kompBody = saveBody(shelly, "consumer", kompConn);
+            kompBody.put("haengtAn", halleId.toString());
+            ResponseEntity<String> kompressor = post("/api/v1/sites/" + site + "/components", customer, kompBody);
+            assertThat(kompressor.getStatusCode()).as(kompressor.getBody()).isEqualTo(HttpStatus.OK);
+            List<JsonNode> consumers = rowsByRole(json.readTree(kompressor.getBody()), "consumer");
+            JsonNode kompRow = consumers.stream()
+                    .filter(r -> !r.get("id").asText().equals(halleId.toString())).findFirst().orElseThrow();
+            assertThat(kompRow.get("haengtAn").asText()).isEqualTo(halleId.toString());
+            UUID kompressorId = UUID.fromString(kompRow.get("id").asText());
+
+            // R6: der Netzanschluss hängt nirgends.
+            ResponseEntity<String> wurzelUmhaengen = put(
+                    "/api/v1/sites/" + site + "/components/" + netzId + "/haengt-an", customer,
+                    Map.of("haengtAn", halleId.toString(), "seitWann", "schon_immer"));
+            assertThat(wurzelUmhaengen.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(wurzelUmhaengen.getBody()).contains("hängt nirgends");
+
+            // R6: kein Zyklus - UV Halle darf nicht an ihren eigenen Kompressor hängen.
+            ResponseEntity<String> zyklus = put(
+                    "/api/v1/sites/" + site + "/components/" + halleId + "/haengt-an", customer,
+                    Map.of("haengtAn", kompressorId.toString(), "seitWann", "schon_immer"));
+            assertThat(zyklus.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(zyklus.getBody()).contains("Kreis");
+
+            // Umhängen „schon immer": der Kompressor hängt jetzt an der Wurzel.
+            ResponseEntity<String> umgehaengt = put(
+                    "/api/v1/sites/" + site + "/components/" + kompressorId + "/haengt-an", customer,
+                    Map.of("seitWann", "schon_immer"));
+            assertThat(umgehaengt.getStatusCode()).as(umgehaengt.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode nachher = getJson("/api/v1/sites/" + site + "/components", customer);
+            JsonNode kompNachher = byId(nachher, kompressorId);
+            assertThat(kompNachher.has("haengtAn")).as("zurück an der Wurzel").isFalse();
+        } finally {
+            // Wie messstelle_stellung/-ort/-quelle vor ihr (ON DELETE RESTRICT, nichts
+            // mit Historie wird automatisch gelöscht): das Aufräumen räumt die
+            // Zuordnung ausdrücklich ab, bevor die Komponenten der Anlage fallen.
+            try (Connection c = superuser(); Statement st = c.createStatement()) {
+                st.execute("DELETE FROM komponente_haengt_an WHERE komponente_id IN "
+                        + "(SELECT id FROM measurement_point WHERE site_id = '" + site + "')");
+            } catch (SQLException e) {
+                throw new IllegalStateException(e);
+            }
+            deleteSite(customer, site);
+        }
+    }
+
+    private static JsonNode byId(JsonNode response, UUID id) {
+        for (JsonNode row : response.get("components")) {
+            if (id.toString().equals(row.path("id").asText())) return row;
+        }
+        throw new AssertionError("keine Komponente mit id " + id);
     }
 
     /**
@@ -391,6 +563,35 @@ class ComponentApiTest {
                     .asText()).isEqualTo("measure-only");
             assertThat(json.readTree(stored.connectionJson()).path("ip").asText())
                     .isEqualTo("192.168.3.50");
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
+    /**
+     * Ein einzelner Schaltausgang (Shelly, {@code device_type: switch}) entstünde als
+     * reines Messgerät ohne Rolle, das die Box nicht anwendet (VoltPilotGATE,
+     * 02.11.2026: „Heizstab“, „Phase 2“, „Phase 3“). Die Route lehnt ihn ab, bevor
+     * irgendetwas entsteht, und nennt den Ausweg - auch mit gültigem Testbeleg.
+     */
+    @Test
+    void aSingleSwitchOutputIsRefusedAsARolelessDevice() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Schalter-Anlage");
+        try {
+            String shelly = "builtin:shelly:shelly_http";
+            Map<String, Object> conn = Map.of("ip", "192.168.178.43", "port", 80, "channel", 0);
+            receipts.record(site, shelly, 1, conn);
+            int vorher = getJson("/api/v1/sites/" + site + "/components", customer)
+                    .path("components").size();
+
+            ResponseEntity<String> refused = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(shelly, "consumer", conn));
+            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
+            assertThat(refused.getBody()).contains("einzelner Schaltausgang")
+                    .contains("Geräte suchen");
+            assertThat(getJson("/api/v1/sites/" + site + "/components", customer)
+                    .path("components").size()).isEqualTo(vorher);
         } finally {
             deleteSite(customer, site);
         }
@@ -507,6 +708,37 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * Scout vp-kundenanlage-drei-geraete (04.11.2026): ein Zahlenfeld als Text
+     * ({@code "mb_slave_id": "01"}) wurde gespeichert, und die Box lehnte danach den ganzen Push
+     * ab. Test UND Speichern lehnen es jetzt mit dem Feldnamen ab - auch mit gültigem Beleg.
+     */
+    @Test
+    void aNumberFieldSentAsTextIsRefusedByTestAndSaveWithTheFieldName() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Typ-Anlage");
+        try {
+            Map<String, Object> conn = deyeConnection();
+            conn.put("mb_slave_id", "01");
+            String base = "/api/v1/sites/" + site;
+
+            ResponseEntity<String> test = post(base + "/component-test", customer,
+                    Map.of("templateRef", DEYE, "connection", conn));
+            assertThat(test.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(test.getBody()).contains("muss eine Zahl sein");
+
+            receipts.record(site, DEYE, 1, conn);
+            ResponseEntity<String> save = post(base + "/components", customer,
+                    saveBody(DEYE, "inverter", conn));
+            assertThat(save.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(save.getBody()).contains("muss eine Zahl sein");
+            assertThat(getJson(base + "/components", customer).get("components"))
+                    .as("die Ablehnung schreibt NICHTS").isEmpty();
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     /** RLS ist der Zaun: eine fremde Anlage ist 404, bevor etwas geschrieben wird. */
     @Test
     void aForeignPlantIs404OnEveryRoute() throws Exception {
@@ -545,7 +777,7 @@ class ComponentApiTest {
             applyRepo.upsert(device, UUID.fromString(TENANT_A), berlin,
                     ComponentAuthority.PORTAL, "r5", Instant.parse("2026-08-16T10:00:00Z"),
                     "r6", "Wechselrichter \"x\": Unbekannte Marke.", null, null,
-                    Instant.parse("2026-08-16T10:05:00Z"));
+                    Instant.parse("2026-08-16T10:05:00Z"), null);
         } finally {
             TenantContext.clear();
         }
@@ -618,6 +850,57 @@ class ComponentApiTest {
     }
 
     /**
+     * Ein Gerät, dem die Box keine Rolle zuordnen kann, versenkt nicht mehr den
+     * ganzen Push (VoltPilotGATE, 02.11.2026): die Box wendet den Rest an und
+     * meldet genau dieses Gerät in {@code rejected_components}. Der Grund
+     * erscheint an GENAU dieser Komponente - die übrigen bleiben ohne, und die
+     * Fassung gilt als angewandt.
+     */
+    @Test
+    void aComponentTheBoxSkippedCarriesTheBoxReasonAtItsRow() throws Exception {
+        String customer = token("demo", "demo");
+        UUID berlin = UUID.fromString(BERLIN_SITE);
+        UUID device = anyDeviceOf(berlin);
+        JsonNode before = getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer);
+        String soll = before.path("sollRevision").asText(null);
+        assertThat(before.get("components").size()).as("mindestens zwei Komponenten").isGreaterThan(1);
+        String skipped = before.get("components").get(0).get("id").asText();
+
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, applyRepo);
+        String topic = "ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + device + "/status";
+        String grund = "für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat";
+        String beat = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A + "\","
+                + "\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + device + "\","
+                + "\"online\":true,\"entities\":{\"revision\":\"" + soll + "\","
+                + "\"component_apply\":{\"authority\":\"portal\",\"revision\":\"" + soll + "\","
+                + "\"applied_at\":\"2026-11-02T10:11:40Z\","
+                + "\"rejected_components\":[{\"entity_id\":\"" + skipped + "\",\"reason\":\""
+                + grund + "\"}]}}}";
+        listener.handle(topic, beat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        JsonNode list = getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer);
+        assertThat(list.get("appliedRevision").asText()).isEqualTo(soll);
+        assertThat(list.has("refusedRevision")).as("übersprungen ist nicht abgelehnt").isFalse();
+        for (JsonNode row : list.get("components")) {
+            if (row.get("id").asText().equals(skipped)) {
+                assertThat(row.get("rejectedReason").asText()).isEqualTo(grund);
+            } else {
+                assertThat(row.has("rejectedReason")).isFalse();
+            }
+            assertThat(row.get("syncStatus").asText()).isEqualTo("in_sync");
+        }
+
+        // Der nächste Herzschlag ohne das Feld räumt den Grund.
+        listener.handle(topic, beat.replaceAll(",\"rejected_components\":\\[.*?\\]", "")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        for (JsonNode row : getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer)
+                .get("components")) {
+            assertThat(row.has("rejectedReason")).isFalse();
+        }
+    }
+
+    /**
      * Der AUSWEG aus der Sackgasse (Live-Fall Muehlfeldweg 2, 21.08.2026): eine
      * Deye-Anlage mit Eigenbau-Batterie, deren BMS nicht gekoppelt ist, meldet
      * dauerhaft SoC 0. Der Verbindungstest lehnt richtig ab - aber das Geraet
@@ -649,7 +932,7 @@ class ComponentApiTest {
             // 1 · Ohne ausdrueckliche Zustimmung wird NICHTS gespeichert.
             ResponseEntity<String> ohne = post("/api/v1/sites/" + site + "/components",
                     customer, saveBody(DEYE, "inverter", conn));
-            assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(ohne.getBody()).contains("Ladestand");
 
             // 2 · Eine Zustimmung zu einem ANDEREN Kanal gilt nicht - sonst waere
@@ -657,7 +940,7 @@ class ComponentApiTest {
             Map<String, Object> falsch = saveBody(DEYE, "inverter", conn);
             falsch.put("acceptMissingChannel", "pv_power_kw");
             assertThat(post("/api/v1/sites/" + site + "/components", customer, falsch)
-                    .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
             // 3 · Mit der richtigen Zustimmung wird gespeichert.
             Map<String, Object> ok = saveBody(DEYE, "inverter", conn);
@@ -789,7 +1072,7 @@ class ComponentApiTest {
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(DEYE, "inverter", conn)).getStatusCode())
                     .as("ohne Zustimmung wird auch mit Schaetzung nichts gespeichert")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
             Map<String, Object> ok = saveBody(DEYE, "inverter", conn);
             ok.put("acceptMissingChannel", "soc_pct");
@@ -935,6 +1218,27 @@ class ComponentApiTest {
         throw new AssertionError("keine Komponente mit Rolle " + role);
     }
 
+    /** Alle Komponenten dieser Rolle - leer ist hier ein gültiger Befund. */
+    private static List<JsonNode> rowsByRole(JsonNode response, String role) {
+        List<JsonNode> out = new java.util.ArrayList<>();
+        for (JsonNode row : response.get("components")) {
+            if (role.equals(row.path("role").asText())) {
+                out.add(row);
+            }
+        }
+        return out;
+    }
+
+    /** Die Entität dieser Kennung aus {@code GET …/entities}. */
+    private static JsonNode entityById(JsonNode entities, UUID id) {
+        for (JsonNode e : entities.get("entities")) {
+            if (id.toString().equals(e.path("id").asText())) {
+                return e;
+            }
+        }
+        throw new AssertionError("keine Entität " + id);
+    }
+
     /**
      * Die BYTES des zuletzt wirklich veröffentlichten Registry-Pushes dieser
      * Anlage - erzeugt über den echten Pfad, nicht über einen Test-Nachbau.
@@ -986,7 +1290,7 @@ class ComponentApiTest {
     private void claim(String customerToken, UUID siteId, String ref) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/devices/claim"),
                 HttpMethod.POST,
-                new HttpEntity<>(Map.of("externalRef", ref, "siteId", siteId.toString(),
+                new HttpEntity<>(Map.of("externalRef", TestKennung.box(ref), "siteId", siteId.toString(),
                         "kind", "inverter"), bearer(customerToken)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.CREATED);

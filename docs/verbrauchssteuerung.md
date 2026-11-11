@@ -101,9 +101,15 @@ Warum der ganze Plan und nicht nur die Untergrenze (Entscheid 07.10.2026, [Konze
 | Lokale Pflichtregel, Signale frisch | Kann innerhalb der Schutzgrenzen weiter ausgewertet werden |
 | Benötigtes Signal unbekannt/veraltet | Kein erfundener Wahrheitswert und kein neuer Start daraus |
 | Vorberechnetes Preis-/Zeitfenster endet | Bedingung unbekannt; keine unbegrenzte Fortsetzung |
-| Fristaufgabe ohne frischen v2-Plan | Begrenzter Deadline-Fallback nur mit bestätigtem eigenem Fortschritt |
+| „Günstig“ ohne frischen v2-Plan für diesen Verbraucher | Kein Netzstrom zu einem unbekannten Preis: eine OCPP-Säule fährt die Bahn `nur_sonne` (Sonnenüberschuss lädt, sonst Pause), jeder andere Verbraucher seinen Failsafe |
+| Fristaufgabe ohne frischen v2-Plan für diesen Verbraucher | Begrenzter Deadline-Fallback nur mit bestätigtem eigenem Fortschritt; ein frischer Plan, der nur andere Komponenten steuert, schaltet ihn nicht stumm |
 
-Der Deadline-Fallback nutzt `flex_requirements` aus dem Registry-Push und beginnt erst am berechneten spätesten Startpunkt. Er ist intern zwischen `flow` und `market` eingeordnet, durchläuft dieselben Guards und weicht einem frischen Plan. Unbekannter Fortschritt startet keine Aufgabe; nach Fristende wird ein verpasster Bedarf als solcher ausgewiesen.
+„Günstig“ (`reactive` + `opportunistic` mit reiner Preisbedingung, auch die SG-Ready-Freigabe bei günstigem Strom) hat keinen Edge-Ausführer; der Optimierer macht daraus das Preisfenster (`consumer_inputs`, Grund `price_below_threshold`).
+In jedem Slot mit Bezugspreis unter der Grenze plant er die Zielleistung, in jedem anderen ausdrücklich aus; liegt im Horizont kein Slot darunter, bleibt der Verbraucher trotzdem im Plan und ist überall aus.
+Eine Säule, die nur `limit_kw` kennt, bekommt Plan-Slot und Deadline-Fallback als Grenze (`consumerCommandsFor` im Core): `setpoint_kw` wird die Grenze selbst, `on_off` aus wird 0 kW, `on_off` an die Obergrenze der Säule (Nennleistung aus dem Registry, sonst die Einrichtungs-Obergrenze der Box: Nennleistung × Stecker, ohne Nennleistung das planbare Anschlussbudget); ohne jede Obergrenze bleibt `on_off` an unübersetzt. Der Rig `edge-app/test/e2e-guenstig.sh` belegt die Kette am OCPP-Simulator.
+Ihr Steuerprofil hat trotzdem die Regelart `continuous`, nie `on_off` (eine Box vor W-02 verwirft das Wort an der Säule, die Übersetzung oben ist nur das Netz darunter), und die Nennleistung je Stecker aus dem Ladesäulen-Dokument (`rated_kw` beim Anbinden; ein Profil ohne sie bekommt sie beim nächsten Herzschlag der Box). Ohne Nennleistung plant der Optimierer die Säule nicht und protokolliert den Grund (`consumer.compile_failed`). Profil und Dokument, wie die API sie anlegt: [Vektoren](contracts/v2/ladepunkt-profil-vectors.json).
+
+Der Deadline-Fallback nutzt `flex_requirements` aus dem Registry-Push und beginnt erst am berechneten spätesten Startpunkt. Er ist intern zwischen `flow` und `market` eingeordnet, durchläuft dieselben Guards und weicht einem frischen Plan, der diesen Verbraucher im laufenden Slot tatsächlich hält (Frische je Komponente, `planServes` im Core). Unbekannter Fortschritt startet keine Aufgabe; nach Fristende wird ein verpasster Bedarf als solcher ausgewiesen.
 
 ## Rückmeldung und Portal
 
@@ -112,6 +118,14 @@ Die Kundenoberfläche trennt Gerät anlegen, Betriebsregel erstellen und Ausfüh
 Der Fahrplan (`GET …/consumer-schedule`, `entity_plan_slot`) trägt seit MiSpeL MP-41c an Anlagen im Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES` auch den Eintrag des bidirektionalen Ladepunkts, abgelegt wie an die Box gesendet: `setpoint_kw` mit negativem Wert = Zurückspeisen am Ladepunkt, `0` = gerechnet, aber kein Zurückspeisen, `reason_code` `fahrzeug_rueckspeisen` ([Fahrplan 2.0](contracts/v2/mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39)). Ein Leser, der nur Verbrauch stapelt, nimmt diese Zeilen heraus.
 
 Geräte-/Typfreigabe, Verbindungsprüfung und globale Flags sind verschiedene Voraussetzungen. Herstelleradapter für go-e und Shelly sowie OCPP sind vorhanden; ihre Existenz bedeutet keine pauschale Freigabe jedes realen Modells.
+
+**Womit laden? (Konzept k1, 23.10.2026).** Die vier Ladequellen tragen überall Namen und Versprechen aus `glossar.ts` (`LADEQUELLE`, `LADEQUELLE_VERSPRECHEN`).
+Das Blatt „Womit laden?“ zeigt je Quelle eine SCHÄTZUNG bis zur Abfahrt (`steuerung/ladeVorschau.ts`): Ladeleistung je Viertelstunde nach Sonne, Speicher und Netz, die mögliche Menge, den Netzanteil und Ø ct/kWh (Netz zum Bezugspreis `importPriceCtKwh`, Sonne und Speicher zum Einspeisewert `exportValueCtKwh`; fehlt ein gebrauchter Preis, gibt es keinen Schnitt).
+Annahmen: Abfahrt ohne Ziel ist der nächste Morgen 7:00 (mindestens vier Stunden hin), mit Ziel dessen Uhrzeit; der Ladepunkt wird allein mit dem Überschuss der Anlage gerechnet (die Karte nennt seinen Platz); die Untergrenze von „Sonne + Speicher“ kommt aus dem Fahrplan, wo er eine trägt, sonst rechnet das Portal sie grob nach.
+Antippen ändert nur die Vorschau, erst „So laden“ schreibt die ganze Steuerart; das Ladeziel wohnt im selben Blatt, das Ziel-Blatt fragt kein zweites „Womit?“.
+Ein Ladepunkt auf dem Anlagen-Standard `sofort` sagt „Lädt immer sofort voll“; „Smart“ öffnet dann das Blatt mit der Vorauswahl „Sonne + Minimum“ und setzt nichts still.
+Nach „So laden“ zeigt die Karte drei Schritte: gesendet › Box hat übernommen › Wirkung gemessen.
+Den zweiten belegt das Echo der Bahn je Säule im Herzschlag ([Vertrag](contracts/ladepunkt-quelle-echo.md)), verglichen mit der Wahl je Säule; eine ältere Box ohne Echo bleibt „noch nicht bestätigt“.
 
 ## Betrieb und Tests
 

@@ -51,6 +51,15 @@ function resolvePoint(key, discovery, definition) {
     address.offset_words = evalDynamicOffset(address.offset_words, Number(kartenMatch[1]));
     point = Object.assign({}, point, { point_key: key, address });
   }
+  // An Erzeuger image (EZ-5/EZ-6): unit n (TE-Nr. from 1) of the template
+  // erzeuger.te[*] lies at 28 + n · 10 + field. Like the WAGO cards, how many
+  // units exist is the Soll of the plant, checked when the image is read.
+  const einheitMatch = key.match(/^erzeuger\.te\[(\d+)]\./);
+  if (einheitMatch && point.address && point.address.kind === 'registerbild_relative') {
+    const address = Object.assign({}, point.address);
+    address.offset_words = evalDynamicOffset(address.offset_words, Number(einheitMatch[1]));
+    point = Object.assign({}, point, { point_key: key, address });
+  }
   return point;
 }
 

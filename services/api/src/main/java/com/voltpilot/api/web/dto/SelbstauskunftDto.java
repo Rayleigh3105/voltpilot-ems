@@ -12,8 +12,8 @@ import java.util.UUID;
  * Ableitung {@code sichtbare_standorte} aus {@code docs/contracts/v2/rechte-vectors.json}.
  *
  * @param kundenbereich {@code null} ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung)
- * @param zugang {@code konto} | {@code unterstuetzung} | {@code umschalter} (Plattform über {@code X-Tenant-Id}, bis
- *     IP-8); {@code null} ohne Kundenbereich
+ * @param zugang {@code konto} | {@code unterstuetzung} | {@code umschalter} (Plattform am offenen Umschalter, über
+ *     {@code X-Tenant-Id} oder {@code X-Kundenbereich} ohne Unterstützung); {@code null} ohne Kundenbereich
  * @param rollen die wirksamen Rollen (Kennungen der Matrix) in der Folge der Matrix
  * @param unternehmenRechte die Aktionen, die der Aufrufer auf Unternehmensebene darf
  * @param text der Satz ohne Standort („Ihnen ist derzeit kein Standort zugewiesen. …“), sonst {@code null}

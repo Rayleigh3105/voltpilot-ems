@@ -171,6 +171,9 @@ services:
       # voltpilot-tunnel-dienst, role tunnel-dienst: reads the Fernwartung
       # Soll-Stand only). Also ships DISABLED - see docs/fernwartung.md.
       VP_TUNNEL_DIENST_SECRET: ${VP_TUNNEL_DIENST_SECRET:-change-me}
+      # voltpilot-werkstatt-dienst, role werkstatt-dienst: only its own tree
+      # /api/v1/werkstatt-dienst/**. Also ships DISABLED - see services/werkstatt-dienst.
+      VP_WERKSTATT_DIENST_SECRET: ${VP_WERKSTATT_DIENST_SECRET:-change-me}
     volumes:
       - ./infra/prod/keycloak:/opt/keycloak/data/import:ro
       # VoltPilot login theme. On a CI roll-out the deploy workflow ships this
@@ -721,7 +724,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      WEATHER_FORECAST_DAYS: ${WEATHER_FORECAST_DAYS:-3}
+      WEATHER_FORECAST_DAYS: ${WEATHER_FORECAST_DAYS:-7}
       WEATHER_REFRESH_SECONDS: ${WEATHER_REFRESH_SECONDS:-10800}
       WEATHER_HEALTH_PORT: ${WEATHER_HEALTH_PORT:-8098}
       POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}

@@ -94,9 +94,12 @@ const BLAETTER: ReadonlyArray<{
   // ab jetzt streng. `preisFenster.css` ist ERSATZLOS entfallen: seine
   // 0,74-rem-Wortzeile lebt als Ledger-Zeile (16 px) in der Karte.
   { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', fs: 0, ff: 0, fw: 0 },
+  // Die Preis-Seite der Fassung 3 („Preise und Wetter", 20.10.2026) — von Anfang an streng.
+  { reiter: 'Marktpreise', datei: 'components/PreisZeitstrahl.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Marktpreise', datei: 'components/StrompreisStrip.css', fs: 12, ff: 0, fw: 1 },
   { reiter: 'Prognose', datei: 'pages/Prognose.css', fs: 0, ff: 0, fw: 0 },
-  { reiter: 'Wetter', datei: 'WeatherChart.css', fs: 0, ff: 0, fw: 0 },
+  // Die Wetter-Seite der Fassung 3 - von Anfang an streng.
+  { reiter: 'Wetter', datei: 'components/WetterTag.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Nachbar', datei: 'components/Fahrplan.css', fs: 41, ff: 3, fw: 1 },
 ];
 

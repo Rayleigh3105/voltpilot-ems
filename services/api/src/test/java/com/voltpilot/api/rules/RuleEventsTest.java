@@ -57,6 +57,22 @@ class RuleEventsTest {
     }
 
     @Test
+    @DisplayName("ein Handeingriff ist ebenso ein Schaltvorgang (Teil B)")
+    void manualOverrideCountsAsASwitchEdgeToo() {
+        List<RuleEvents.Event> start = RuleEvents.deriveConsumerEvents(
+                List.of(row(WALLBOX, "waiting", "price_below_threshold", null)),
+                List.of(row(WALLBOX, "running_manual", null, 7.4)));
+        assertThat(start).singleElement()
+                .extracting(RuleEvents.Event::kind).isEqualTo(RuleEvents.GESTARTET);
+
+        List<RuleEvents.Event> stop = RuleEvents.deriveConsumerEvents(
+                List.of(row(WALLBOX, "running_manual", null, 7.4)),
+                List.of(row(WALLBOX, "waiting", null, null)));
+        assertThat(stop).singleElement()
+                .extracting(RuleEvents.Event::kind).isEqualTo(RuleEvents.GESTOPPT);
+    }
+
+    @Test
     @DisplayName("ein Wechsel zwischen zwei Nicht-Lauf-Zuständen ist KEIN Schaltvorgang")
     void nonSwitchTransitionIsRecordedButNotCounted() {
         List<RuleEvents.Event> events = RuleEvents.deriveConsumerEvents(

@@ -10,13 +10,13 @@ import {
   ApiError,
   type ComponentTemplate,
   type Device,
+  type GeraetesucheBezug,
   type SiteComponents,
   type SiteComponentTemplate,
   type SiteComponentRow,
 } from '../api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
-import { BatterieAssistent } from './BatterieAssistent';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 import { HEBEL_HINWEIS, HEBEL_INTRO, SKALIERUNG_X10, hebel } from '../testHebel';
@@ -51,8 +51,10 @@ import {
   neueKomponente,
   rollenWahl,
   typFuerTemplate,
+  vorhandeneGeraete,
   vorschlagRolle,
   type TypId,
+  type VorhandeneGeraete,
 } from '../anlegenFlow';
 import {
   auswirkungen,
@@ -60,6 +62,7 @@ import {
   delta,
   istSecret,
   kundenRolle,
+  normalisiereFeldEingabe,
   normalisiereSecretEingabe,
   verbindungFuerSpeichern,
 } from '../geraeteEdit';
@@ -71,21 +74,28 @@ function typFuerRolle(rolle: KomponentenRolle): TypId {
   return 'wechselrichter';
 }
 
-/**
- * Der Weg, auf dem eine BESTEHENDE Zeile bearbeitet wird.
- *
- * ⚠ Der ENTITÄTSTYP entscheidet zuerst, nicht die Rolle: eine selbst
- * angebundene Batterie ist Rolle „storage" und liefe über `typFuerRolle` in
- * den Katalog-Weg - der nach Marke und Modell fragt, die es bei ihr nicht
- * gibt. Sie gehört in ihren eigenen Assistenten, so wie sie angelegt wurde.
- */
+/** Der Weg, auf dem eine BESTEHENDE Zeile bearbeitet wird: ihre Rolle entscheidet. */
 function typFuerZeile(row: SiteComponentRow): TypId {
-  if (row.entityType === UDB_TYP) return 'batterie';
   return typFuerRolle(kundenRolle(row));
 }
 
-/** Der Entitätstyp der selbst angebundenen Batterie (P5 Ebene 1). */
-const UDB_TYP = 'user-defined-battery';
+/**
+ * Zählerbaum-Konzept: wie tief ein Zähler im Baum hängt (0 = der Netzanschluss
+ * oder ein Unterzähler direkt an der Wurzel) - für die Einrückung im Picker
+ * „Wo hängt er?". Bricht einen Kreis ab, statt endlos zu laufen (R6 verhindert
+ * ihn serverseitig; hier nur eine Schutzgrenze gegen einen fehlerhaften Stand).
+ */
+function tiefeZaehler(id: string, alle: readonly SiteComponentRow[]): number {
+  let tiefe = 0;
+  let cur = alle.find((k) => k.id === id);
+  const gesehen = new Set<string>();
+  while (cur?.haengtAn && !gesehen.has(cur.id)) {
+    gesehen.add(cur.id);
+    tiefe += 1;
+    cur = alle.find((k) => k.id === cur!.haengtAn);
+  }
+  return tiefe;
+}
 
 /**
  * Der ANLEGE-FLUSS nach dem Gerätekatalog (Konzept „Aufbau und
@@ -99,8 +109,7 @@ const UDB_TYP = 'user-defined-battery';
  * Befund + Hebel + „Trotzdem fortfahren") → **Name**. Nach dem Speichern sagt
  * der Wirt, was entstanden ist, und springt darauf (`onFertig`).
  *
- * Die Wege ohne Vorlage (Ladesäule, Batterie mit eigenem BMS, Modbus-Gerät)
- * und die Bearbeitung auf der Geräteseite laufen durch dieselbe Datei.
+ * Die Wege ohne Vorlage (Ladesäule, Modbus-Gerät) und die Bearbeitung auf der Geräteseite laufen durch dieselbe Datei.
  *
  * <b>⚠ Die Anlege-SEMANTIK ist unverändert.</b> Dieselben Aufrufe mit denselben
  * Rümpfen (`testComponentConnection` → `matchComponent` → `createComponent`),
@@ -110,6 +119,11 @@ const UDB_TYP = 'user-defined-battery';
  * Diese Datei RENDERT nur; jede Regel kommt aus den reinen `anlegenFlow.ts`,
  * `komponentenAssistent.ts` und `testHebel.ts`.
  */
+/** Was der Fluss beim Zurückgehen hergibt: die Verbindungswerte, die je Datenlogger gelten und nicht je Modell. */
+export interface AnlegenStand {
+  verbindung: Record<string, unknown>;
+}
+
 export function AnlegenFlow({
   siteId,
   box,
@@ -122,7 +136,12 @@ export function AnlegenFlow({
   geraetKennung,
   startTemplate = null,
   startRolle = null,
+  startVerbindung = null,
   onZurueck = null,
+  zurueckLabel,
+  modellAendern = false,
+  startHerkunft = null,
+  startFund = null,
   onFertig,
   onClose,
   onSaved,
@@ -143,9 +162,8 @@ export function AnlegenFlow({
    */
   vorlage?: SiteComponentTemplate | null;
   /**
-   * Ein Weg ohne Vorlage aus dem Gerätekatalog: Ladesäule (`ladesaeule`),
-   * Batterie mit eigenem BMS (`batterie`) oder Modbus-Gerät (`eigenbau`).
-   * Keine Anlege-Semantik ändert sich dadurch.
+   * Ein Weg ohne Vorlage aus dem Gerätekatalog: Ladesäule (`ladesaeule`)
+   * oder Modbus-Gerät (`eigenbau`). Keine Anlege-Semantik ändert sich dadurch.
    */
   initialTyp?: TypId | null;
   /** Bestehende stabile Komponente: derselbe Assistent, mit ihren Sollwerten. */
@@ -166,8 +184,30 @@ export function AnlegenFlow({
   startTemplate?: ComponentTemplate | null;
   /** Über „Zähler" gewählt: das Gerät misst den Hausanschluss (Netz-Zähler). */
   startRolle?: KomponentenRolle | null;
-  /** Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). */
-  onZurueck?: (() => void) | null;
+  /**
+   * Ein bekannter Weg, an dem das Gerät hinzukommt („Gerät an diesem Gateway hinzufügen", GE-5): Adresse, Port und
+   * freie Geräte-ID je Feld der Vorlage vorbelegt — der Kunde ändert sie, der Verbindungstest prüft sie wie immer.
+   */
+  startVerbindung?: Readonly<Record<string, unknown>> | null;
+  /**
+   * Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). Die Verbindungswerte reisen mit: wer zur Modellwahl
+   * der Gerätesuche zurückgeht, behält IP, Seriennummer und was er sonst am Datenlogger getippt hat.
+   */
+  onZurueck?: ((stand?: AnlegenStand) => void) | null;
+  /** Aus der Modellwahl der Gerätesuche geöffnet: der Kopf nennt das Modell und bietet „Modell ändern" an. */
+  modellAendern?: boolean;
+  /** Wohin der Pfeil zurückführt, wenn nicht in den Katalog (Gerätesuche: „Zurück zur Gerätesuche"). */
+  zurueckLabel?: string;
+  /**
+   * Woher die Vorbelegung stammt, als ein Satz am Anschluss („Aus der Gerätesuche: …"). Gesetzt nur aus der
+   * Gerätesuche - dann bittet der Fluss nach dem bestandenen Test zusätzlich, die Richtung am Gerät zu vergleichen.
+   */
+  startHerkunft?: string | null;
+  /**
+   * Der Fund, aus dem „Übernehmen" vorbelegt hat (Suche + Schlüssel). Er reist beim Anlegen mit - der Server prüft
+   * ihn, schreibt das Protokoll „übernommen" und hält die Herkunft „aus der Gerätesuche vom …" an der Komponente fest.
+   */
+  startFund?: GeraetesucheBezug | null;
   /** Nach dem Anlegen: was entstanden ist - der Wirt springt darauf und sagt es. */
   onFertig?: (info: { id: string | null; titel: string; uebernommen: boolean; hinweis?: string | null }) => void;
   onClose: () => void;
@@ -184,17 +224,15 @@ export function AnlegenFlow({
   const [typ] = useState<TypId | null>(
     vorlage ? 'eigenbau' : (edit ? typFuerZeile(edit) : (startTyp ?? initialTyp ?? null)),
   );
-  // Nur die Batterie-Bearbeitung auf der Geräteseite hat noch Schritte.
-  const [batterieSchritt, setBatterieSchritt] = useState<1 | 2 | 3 | 4>(1);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
-    edit ? kundenRolle(edit) : startTyp ? vorschlagRolle(startTyp, [], startRolle) : null,
+    edit ? kundenRolle(edit) : startTyp ? vorschlagRolle(startTyp, [], startRolle, startTemplate?.deviceType) : null,
   );
   const [template, setTemplate] = useState<ComponentTemplate | null>(startTemplate);
   const [templateVersion, setTemplateVersion] = useState<number | null>(
     edit?.templateVersion ?? startTemplate?.version ?? null,
   );
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>(
-    () => (edit ? { ...(edit.connection ?? {}) } : startTemplate ? initialeVerbindung(startTemplate) : {}),
+    () => (edit ? { ...(edit.connection ?? {}) } : startTemplate ? initialeVerbindung(startTemplate, startVerbindung) : {}),
   );
   const [erweitertOffen, setErweitertOffen] = useState(false);
   const [technikOffen, setTechnikOffen] = useState(false);
@@ -227,8 +265,20 @@ export function AnlegenFlow({
   const [kwp, setKwp] = useState(edit?.capacityKwp == null ? '' : String(edit.capacityKwp));
   const [speichern, setSpeichern] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+  // Die Geräte, die die Anlage schon hat (nur ANGEBUNDENE Zeilen, `vorhandeneGeraete`) - als
+  // Rollen für die Aufgabe-Frage und mit Namen, damit eine Sperre das Gerät nennt.
   const [vorhandene, setVorhandene] = useState<string[]>([]);
+  const [vorhandeneNamen, setVorhandeneNamen] = useState<VorhandeneGeraete['namen']>({});
   const [vorherigeIds, setVorherigeIds] = useState<{ id: string }[]>([]);
+  /**
+   * Zählerbaum-Konzept (E1 A, Bericht §4.3): die Komponenten der Anlage, aus
+   * denen „Wo hängt er?" seine Auswahl baut - dieselbe Antwort wie `vorhandene`
+   * oben, nur ungekürzt (Rolle, Typ, `haengtAn`), weil der Baum sie braucht.
+   */
+  const [komponenten, setKomponenten] = useState<SiteComponentRow[]>([]);
+  /** „Wo hängt er?": die gewählte Eltern-Komponente, `null` = die Wurzel (der Netzanschluss). */
+  const [haengtAn, setHaengtAn] = useState<string | null>(null);
+  const [haengtAnBeruehrt, setHaengtAnBeruehrt] = useState(false);
   /** Die Komponente, die gerade entstanden ist - BELEGT, nie geraten. */
   /**
    * Die vorhandene Komponente, die dieses Gerät übernimmt - VOM SERVER, nie
@@ -261,16 +311,18 @@ export function AnlegenFlow({
       .siteComponents(siteId)
       .then((c) => {
         if (!alive) return;
-        const rollen = c.components.filter((r) => r.id !== edit?.id).map((r) => r.role ?? '');
+        const { rollen, namen } = vorhandeneGeraete(c.components, edit?.id);
         setVorhandene(rollen);
+        setVorhandeneNamen(namen);
+        setKomponenten(c.components);
         if (startTyp && !edit) {
           setRolle((aktuell) => {
-            const wahlen = rollenWahl(startTyp, rollen);
+            const wahlen = rollenWahl(startTyp, rollen, {}, startTemplate?.deviceType);
             const bleibtGueltig = wahlen.some((wahl) => wahl.rolle === aktuell && wahl.verfuegbar);
             // ⚠ Nur ein AUTOMATISCHER Vorschlag wird nachgeführt: hat die Anlage
             // schon einen Hauptwechselrichter, meint der Kunde fast immer einen
             // weiteren Erzeuger (`vorschlagRolle`).
-            const vorschlag = vorschlagRolle(startTyp, rollen, startRolle);
+            const vorschlag = vorschlagRolle(startTyp, rollen, startRolle, startTemplate?.deviceType);
             return bleibtGueltig && (aktuell === startRolle || wahlen.length === 1) ? aktuell : vorschlag;
           });
         }
@@ -301,7 +353,26 @@ export function AnlegenFlow({
     () => (typ ? geraeteFuerTyp(alle, typ) : { templates: [], erweitert: false }),
     [alle, typ],
   );
-  const rollen = typ ? rollenWahl(typ, vorhandene) : [];
+  const rollen = typ ? rollenWahl(typ, vorhandene, vorhandeneNamen, template?.deviceType) : [];
+
+  /**
+   * Zählerbaum-Konzept (E1 A, Bericht §4.3): „Wo hängt er?" nur für einen
+   * NEUEN Unterzähler - ein Netz-Zähler hängt nie irgendwo (R6
+   * `wurzel_haengt_nirgends`), ein Umhängen ist der eigene Weg im Gerätemenü.
+   */
+  const zeigeWoHaengtEr = !edit && typ === 'zaehler' && rolle === 'consumer';
+  const zaehlerAuswahl = useMemo(
+    () =>
+      komponenten.filter((k) => k.role === 'grid-meter' || k.entityType === 'sub-meter'),
+    [komponenten],
+  );
+  const netzanschluss = zaehlerAuswahl.find((k) => k.role === 'grid-meter') ?? null;
+  // Vorbelegung: der Netzanschluss, solange der Kunde noch nicht selbst gewählt hat
+  // (Bericht: „nie aus Messwerten geraten" - hier ist noch nicht einmal eine
+  // Komponente angelegt, also bleibt nur die Wurzel als ehrliche Vorgabe).
+  useEffect(() => {
+    if (zeigeWoHaengtEr && !haengtAnBeruehrt && netzanschluss) setHaengtAn(netzanschluss.id);
+  }, [zeigeWoHaengtEr, haengtAnBeruehrt, netzanschluss]);
 
   /**
    * Die Picker-Zeilen: EINE Zeile je Modell, gruppiert nach Marke. Die
@@ -403,7 +474,7 @@ export function AnlegenFlow({
   useEffect(() => {
     // Auf der Einrichten-Seite läuft er, sobald alles dasteht; die Bearbeitung
     // auf der Geräteseite prüft ausdrücklich per Knopf.
-    if (inlineBearbeitung || typ === 'eigenbau' || typ === 'batterie' || typ === 'ladesaeule')
+    if (inlineBearbeitung || typ === 'eigenbau' || typ === 'ladesaeule')
       return;
     if (!template || !testNoetig || testZustand !== 'ungeprueft' || laeuft.current) return;
     if (fehlend.length > 0) return;
@@ -426,7 +497,7 @@ export function AnlegenFlow({
     setTemplate(t);
     setTemplateVersion(t.version);
     const istBisherige = edit?.templateRef === t.templateRef;
-    setVerbindung(istBisherige ? { ...(edit.connection ?? {}) } : initialeVerbindung(t));
+    setVerbindung(istBisherige ? { ...(edit.connection ?? {}) } : initialeVerbindung(t, startVerbindung));
     setSocVolt(socSchaetzung.leereEingabe());
     setSocAngeboten(false);
     // ⚠ NICHT mit dem Modellnamen vorbefüllen (Alias-Kontinuität, Live-Fall
@@ -463,9 +534,10 @@ export function AnlegenFlow({
   }
 
   function setzeFeld(field: TemplateField, value: unknown) {
+    // Erst auf den Typ des Schemas ("01" → 1), dann die Geheimnis-Regel.
     const normalized = normalisiereSecretEingabe(
       field,
-      value,
+      normalisiereFeldEingabe(field, value),
       edit?.connection?.[field.key],
     );
     setVerbindung((v) => ({ ...v, [field.key]: normalized }));
@@ -496,7 +568,7 @@ export function AnlegenFlow({
         return;
       }
       // Zurück in den Katalog: dort steht die Modellwahl.
-      onZurueck?.();
+      onZurueck?.({ verbindung });
       return;
     }
     if (!h.feld) return;
@@ -594,6 +666,11 @@ export function AnlegenFlow({
         acceptMissingChannel: ohneKanal?.channel,
         expectedRevision: edit?.definitionVersion,
         effectiveAt: edit ? new Date().toISOString() : undefined,
+        geraetesuche: !edit && startFund ? startFund : undefined,
+        // „an der Wurzel" (Netzanschluss-Rolle, oder kein Ziel gewählt) schreibt
+        // ausdrücklich KEINE Zuordnung - das ist die Vorgabe des Berichts, nicht
+        // ein unvollständiges Formular.
+        haengtAn: zeigeWoHaengtEr && haengtAn !== netzanschluss?.id ? haengtAn : undefined,
       };
       const result = edit
         ? await api.updateComponent(siteId, edit.id, body)
@@ -610,7 +687,9 @@ export function AnlegenFlow({
         return;
       }
       setVorherigeIds(result.components.map((r) => ({ id: r.id })));
-      setVorhandene(result.components.map((r) => r.role ?? ''));
+      const danach = vorhandeneGeraete(result.components, edit?.id);
+      setVorhandene(danach.rollen);
+      setVorhandeneNamen(danach.namen);
       onSaved(result);
     } catch (e) {
       setFehler(e instanceof ApiError
@@ -685,48 +764,6 @@ export function AnlegenFlow({
    * wird aber erst auf Wunsch sichtbar. Alle Zustands- und Speicherregeln oben
    * sind dieselben wie im bisherigen Assistenten.
    */
-  /*
-   * Eine SELBST ANGEBUNDENE BATTERIE bearbeitet ihr eigener Assistent - auch
-   * hier auf der Geräteseite. Das Formular darunter fragt nach Marke, Modell
-   * und Verbindungsfeldern einer VORLAGE; diese Batterie hat keine, und ihre
-   * ganze Definition (Broker, Topics, Wertepfade, wie der Ladestand entsteht)
-   * käme darin gar nicht vor. Ein zweites Formular für dieselben Felder wären
-   * zwei Wahrheiten über denselben Anschluss.
-   */
-  if (edit && inlineBearbeitung && edit.entityType === UDB_TYP) {
-    return (
-      <section className="vp-geraet-edit" data-testid="batterie-bearbeiten">
-        <header className="vp-geraet-edit-head">
-          <div>
-            <p className="vp-geraet-edit-eyebrow">Bearbeitungsmodus</p>
-            <h1>{edit.label?.trim() || 'Batterie'} bearbeiten</h1>
-            <p>
-              Ändern Sie die Verbindung, die Feld-Zuordnung oder die Art, wie der Ladestand
-              entsteht. Die bisherige Fassung läuft bis zur Bestätigung der Box weiter.
-            </p>
-          </div>
-          <span className="vp-pill vp-pill-info">Fassung {edit.definitionVersion}</span>
-        </header>
-        <BatterieAssistent
-          siteId={siteId}
-          schritt={batterieSchritt}
-          onSchritt={setBatterieSchritt}
-          navPortal={null}
-          bearbeiten={{
-            entityId: edit.id,
-            label: edit.label ?? null,
-            connection: edit.connection ?? null,
-          }}
-          onBack={onClose}
-          onSaved={(result) => {
-            onSaved(result);
-            onClose();
-          }}
-        />
-      </section>
-    );
-  }
-
   if (edit && inlineBearbeitung) {
     const modell = template
       ? `${template.brandLabel} ${template.modelLabel}`.trim()
@@ -1053,13 +1090,14 @@ export function AnlegenFlow({
    * Gespeichert wird erst mit Beleg: bestandener Test oder die abgenickte
    * Ausnahme. Aufrufe und Rümpfe sind dieselben wie zuvor im Assistenten.
    */
-  if (!edit && template && typ && typ !== 'eigenbau' && typ !== 'batterie' && typ !== 'ladesaeule') {
+  if (!edit && template && typ && typ !== 'eigenbau' && typ !== 'ladesaeule') {
     const symbol = KATEGORIE_SYMBOL[typ === 'zaehler' ? 'zaehler' : kategorieVon(template)];
-    const vorschlag = vorschlagRolle(typ, vorhandene, startRolle);
+    const vorschlag = vorschlagRolle(typ, vorhandene, startRolle, template?.deviceType);
     const rolleOk = rollen.some((r) => r.rolle === rolle && r.verfuegbar);
     const rollenFrage = rollen.length > 1 || typ === 'zaehler' || !rolleOk;
     const belegt = testZustand === 'bestanden' || Boolean(ohneKanal);
-    const nr = { anschluss: rollenFrage ? 2 : 1, test: rollenFrage ? 3 : 2, name: rollenFrage ? 4 : 3 };
+    const vorWoHaengtEr = (rollenFrage ? 2 : 1) + (zeigeWoHaengtEr ? 1 : 0);
+    const nr = { anschluss: vorWoHaengtEr, test: vorWoHaengtEr + 1, name: vorWoHaengtEr + 2 };
     // Kurz: welche Angaben es sind, steht im Kopf („Sie brauchen") und an den Feldern.
     const fehlendText = fehlend.length === 1 ? `es fehlt: ${fehlend[0].label}` : `${fehlend.length} Angaben fehlen`;
     const testStand: { zustand: AbschnittZustand; stand: string | null } =
@@ -1090,9 +1128,11 @@ export function AnlegenFlow({
       <EinrichtenSeite
         titel="Gerät einrichten"
         onClose={onClose}
-        onZurueck={onZurueck}
+        onZurueck={onZurueck ? () => onZurueck({ verbindung }) : null}
+        zurueckLabel={zurueckLabel}
         kopf={
           <EinrichtenKopf
+            aendern={modellAendern && onZurueck ? { label: 'Modell ändern', onClick: () => onZurueck({ verbindung }) } : undefined}
             titel={modellTitel(template)}
             unterzeile={einrichtenUnterzeile(template)}
             kategorie={symbol.kategorie}
@@ -1160,6 +1200,61 @@ export function AnlegenFlow({
             </Abschnitt>
           )}
 
+          {zeigeWoHaengtEr && (
+            <Abschnitt
+              nummer={vorWoHaengtEr}
+              zustand={haengtAn ? 'fertig' : 'aktiv'}
+              titel="Wo hängt er?"
+            >
+              <p className="vp-ein-notiz">
+                <Icon name="info" size={15} />
+                <span>Hinter welchem Zähler ist er eingebaut?</span>
+              </p>
+              <div className="vp-assist-roles" role="radiogroup" aria-label="Wo hängt er?" data-testid="wo-haengt-er">
+                {netzanschluss && (
+                  <button
+                    key={netzanschluss.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={haengtAn === netzanschluss.id}
+                    className={`vp-assist-role${haengtAn === netzanschluss.id ? ' is-on' : ''}`}
+                    disabled={speichern}
+                    onClick={() => { setHaengtAn(netzanschluss.id); setHaengtAnBeruehrt(true); }}
+                  >
+                    <strong>{netzanschluss.label ?? 'Netzanschluss'}</strong>
+                    <span>Der Hausanschluss - die Wurzel des Zählerbaums.</span>
+                  </button>
+                )}
+                {[...zaehlerAuswahl]
+                  .filter((k) => k.id !== netzanschluss?.id)
+                  .sort((a, b) => tiefeZaehler(a.id, zaehlerAuswahl) - tiefeZaehler(b.id, zaehlerAuswahl)
+                    || (a.label ?? '').localeCompare(b.label ?? '', 'de'))
+                  .map((k) => (
+                    <button
+                      key={k.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={haengtAn === k.id}
+                      className={`vp-assist-role${haengtAn === k.id ? ' is-on' : ''}`}
+                      style={{ marginLeft: `${tiefeZaehler(k.id, zaehlerAuswahl) * 20}px` }}
+                      disabled={speichern}
+                      onClick={() => { setHaengtAn(k.id); setHaengtAnBeruehrt(true); }}
+                    >
+                      <strong>{k.label ?? 'Unterzähler'}</strong>
+                      <span>Unterzähler - eine Unterverteilung oder eine Halle.</span>
+                    </button>
+                  ))}
+              </div>
+              {haengtAn && haengtAn !== netzanschluss?.id && (
+                <p className="vp-assist-help">
+                  {name.trim() || 'Dieses Gerät'} misst dann einen Teil von{' '}
+                  {zaehlerAuswahl.find((k) => k.id === haengtAn)?.label ?? 'diesem Zähler'}. Dieser zeigt dafür, was
+                  ohne eigenen Zähler übrig bleibt.
+                </p>
+              )}
+            </Abschnitt>
+          )}
+
           <Abschnitt
             nummer={nr.anschluss}
             zustand={fehlend.length > 0 ? 'aktiv' : 'fertig'}
@@ -1183,6 +1278,12 @@ export function AnlegenFlow({
                   <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} onBlur={feldVerlassen} disabled={speichern} />
                 ))}
               </details>
+            )}
+            {startHerkunft && (
+              <p className="vp-ein-notiz" data-testid="aus-der-suche">
+                <Icon name="search" size={15} />
+                <span>{startHerkunft}</span>
+              </p>
             )}
           </Abschnitt>
 
@@ -1220,6 +1321,13 @@ export function AnlegenFlow({
                   </ul>
                 )}
               </div>
+            )}
+            {/* Aus der Gerätesuche (Bericht §4 „Übernehmen"): die Werte kamen an - stimmt auch die Richtung? */}
+            {startHerkunft && testZustand === 'bestanden' && (
+              <p className="vp-ein-notiz" data-testid="richtung-pruefen">
+                <Icon name="info" size={15} />
+                <span>Stimmen Laden/Entladen und Bezug/Einspeisung mit der Anzeige am Gerät überein?</span>
+              </p>
             )}
             {(testZustand === 'bestanden' || testZustand === 'fehlgeschlagen') && (
               <Recht aktion="geraet.einrichten"><Button variant="outline" className="vp-anlegen-nochmal" onClick={testen} disabled={speichern}>
@@ -1384,15 +1492,6 @@ export function AnlegenFlow({
     );
   }
 
-  /** Nach dem Anlegen über einen Weg ohne Vorlage: melden, was entstanden ist, und schließen. */
-  function fertigMelden(result: SiteComponents, fallback: string) {
-    const id = neueKomponente(vorherigeIds, result.components);
-    const titel = result.components.find((r) => r.id === id)?.label?.trim() || fallback;
-    onSaved(result);
-    onFertig?.({ id, titel, uebernommen: false });
-    onClose();
-  }
-
   /*
    * Das MODBUS-GERÄT (auch aus einer eigenen Vorlage): Anschluss, Messwerte und
    * Name auf einer Seite - der Assistent zeichnet sie selbst, denn nur er weiß,
@@ -1404,24 +1503,20 @@ export function AnlegenFlow({
         siteId={siteId}
         vorlage={vorlage}
         vorher={vorherigeIds}
+        startAdresse={
+          typeof startVerbindung?.ip === 'string'
+            ? { host: startVerbindung.ip, port: typeof startVerbindung.port === 'number' ? startVerbindung.port : null }
+            : null
+        }
+        startFund={startFund}
         onZurueck={onZurueck}
+        zurueckLabel={zurueckLabel}
         onClose={onClose}
         onGespeichert={(result, info) => {
           onSaved(result);
           onFertig?.({ id: info.id, titel: info.titel, uebernommen: false, hinweis: info.hinweis });
           onClose();
         }}
-      />
-    );
-  }
-
-  /* Die BATTERIE mit eigenem BMS (P5d): derselbe Assistent wie beim Bearbeiten, als eine Seite. */
-  if (typ === 'batterie') {
-    return (
-      <BatterieAssistent
-        siteId={siteId}
-        seite={{ onZurueck, onClose }}
-        onSaved={(result) => fertigMelden(result, 'Batterie')}
       />
     );
   }
@@ -1438,6 +1533,7 @@ export function AnlegenFlow({
         titel="Gerät einrichten"
         onClose={onClose}
         onZurueck={onZurueck}
+        zurueckLabel={zurueckLabel}
         kopf={
           <EinrichtenKopf
             titel="Ladesäule mit OCPP 1.6"

@@ -1,13 +1,18 @@
 import { Recht } from './Recht';
 import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
-import { Icon, type IconName } from '../../designsystem/components/core/Icon';
+import { Icon } from '../../designsystem/components/core/Icon';
+import { AufbauSymbol } from './AufbauSymbol';
 import { VpPicker } from './VpPicker';
-import { RowMenu } from './RowMenu';
+import { RowMenu, type RowMenuItem } from './RowMenu';
+import { InfoTip } from './InfoTip';
 import { hervorheben, suchBegriffe } from '../picker/suche';
+
 import {
   FILTER_LABEL,
   LEERER_FILTER,
   aktiveFilter,
+  gatewaySatz,
+  kastenSatz,
   kurzfilter,
   mitFilter,
   type AufbauFilter,
@@ -22,12 +27,13 @@ import {
   type AufbauAnlage,
   type AufbauBox,
   type AufbauGeraet,
-  type AufbauKategorie,
   type AufbauWurzel,
 } from '../aufbauBaum';
 import type { ComponentHealth, ComponentRole, PlantComponent } from '../komponenten';
 import type { AdoptableSource } from '../rollen';
 import { anlageRoute, hashForRoute } from '../nav';
+import { UEMS_GERAETE_SUCHEN, UEMS_LISTE_DURCHSUCHEN } from '../glossar';
+import { GRUPPE_SYMBOL } from '../aufbauGruppen';
 import { mitStaffel, useStaffel } from '../staffel';
 
 /**
@@ -87,15 +93,6 @@ function Treffer({ text, begriffe }: { text: string; begriffe: string[] }) {
   );
 }
 
-/** Das einfarbige Symbol einer Zeile - die Kategorie färbt nur das Zeichen. */
-export function AufbauSymbol({ kategorie, icon }: { kategorie: AufbauKategorie | 'anlage'; icon: IconName }) {
-  return (
-    <span className={`vp-auf-sym is-${kategorie}`} aria-hidden="true">
-      <Icon name={icon} size={15} />
-    </span>
-  );
-}
-
 function Auf({ offen, label, onClick }: { offen: boolean; label: string; onClick: () => void }) {
   return (
     <button type="button" className="vp-auf-t-auf" aria-expanded={offen} aria-label={label} onClick={onClick}>
@@ -111,6 +108,8 @@ export interface AufbauTabelleProps {
    */
   standortSicht?: { wechselHref: (anlageId: string) => string; anlageName?: string } | null;
   wurzel: AufbauWurzel | null;
+  /** F16 (Anlage-Flow a1): „Adresse nachtragen“ direkt an der Standort-Zeile, wenn sie fehlt. */
+  onAdresseNachtragen?: () => void;
   anlagenZahl: number;
   boxZahl: number;
   zeilen: TabellenZeile[];
@@ -120,19 +119,39 @@ export interface AufbauTabelleProps {
   onFilter: (f: AufbauFilter) => void;
   onAnlageUmschalten: (a: AufbauAnlage) => void;
   onBoxUmschalten: (b: AufbauBox) => void;
+  /** Ein Gateway (GE-1) klappt seine Geräte zu und auf. */
+  onGatewayUmschalten: (id: string) => void;
   onGeraetUmschalten: (id: string) => void;
   onKurzblick: (id: string) => void;
   onUebernehmen: (q: AdoptableSource) => void;
   onTechnischUebernehmen: ((q: AdoptableSource) => void) | null;
   /** Gerät hinzufügen (an einer Box oder allgemein); null = hier nicht möglich. */
   onGeraetHinzufuegen: ((box: AufbauBox | null) => void) | null;
+  /** „Geräte suchen" an einer leeren Box (Gerätesuche); null/absent = hier nicht angeboten. */
+  onGeraeteSuchen?: ((box: AufbauBox) => void) | null;
   /** Warum „Gerät hinzufügen" gesperrt ist - nie ein stummer grauer Knopf. */
   geraetGesperrt: string | null;
   onBoxHinzufuegen: () => void;
   onAnlageHinzufuegen: () => void;
   onBoxVerwalten: (b: AufbauBox) => void;
-  /** Eine Ausnahme an einer Komponente („ohne Ladestand") - sie steht in der Zeile. */
-  hinweisFor: (g: AufbauGeraet) => string | null;
+  /**
+   * Eine Ausnahme an einer Komponente („ohne Ladestand") - das Wort steht in der Zeile, der Grund dahinter kam
+   * früher nur im Kurzblick; jetzt trägt ihn ein `InfoTip` an derselben Stelle (ein Gerät mit eigener Seite
+   * öffnet beim Tippen keinen Dialog mehr).
+   */
+  hinweisFor: (g: AufbauGeraet) => { badge: string; satz: string } | null;
+  /**
+   * Ein Gerät mit eigener Seite (`karte.href`) springt beim Tippen DIREKT dorthin - kein Modal mehr dazwischen.
+   * Was der frühere Kurzblick an solchen Geräten zusätzlich bot (Zuordnung ändern, Komponente löschen, Regel mit
+   * dieser Komponente erstellen) steht jetzt im „…“-Zeilenmenü; leer = nichts davon trifft zu.
+   */
+  mehrFor: (g: AufbauGeraet) => RowMenuItem[];
+  /**
+   * Die technische Sicht (nur VoltPilot, hinter `showTechnicalLayer()`) springt ebenfalls direkt; ihren vollen
+   * technischen Rumpf (Strategien, Rollen, Entfernen mit `purgePoint`) öffnet der Zeilenmenü-Eintrag
+   * „Technisch …“ im unveränderten Kurzblick.
+   */
+  showTechnical: boolean;
   /** Nur für VoltPilot: der technische Einstieg neben „Gerät hinzufügen". */
   technik?: ReactNode;
 }
@@ -147,17 +166,23 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
   // sie immer da; der Knopf ist dort ausgeblendet (`Aufbau.css`).
   const [filterOffen, setFilterOffen] = useState(false);
   const filterId = useId();
+  // Ein Filter mit weniger als zwei Werten bietet keine Wahl (eine Box, ein Hersteller …) und
+  // steht nur, solange er gesetzt ist - sonst stünden bei einem Gerät vier leere Knöpfe da.
+  const filterSchluessel = (Object.keys(FILTER_LABEL) as FilterSchluessel[]).filter(
+    (k) => p.optionen[k].length > 1 || p.filter[k].length > 0,
+  );
+
   return (
     <>
-      <Ort wurzel={p.wurzel} anlagenZahl={p.anlagenZahl} boxZahl={p.boxZahl} />
+      <Ort wurzel={p.wurzel} anlagenZahl={p.anlagenZahl} boxZahl={p.boxZahl} onAdresseNachtragen={p.onAdresseNachtragen} />
 
-      <div className={`vp-auf-werkzeug${filterOffen ? ' is-filter-offen' : ''}`}>
+      <div className={`vp-auf-werkzeug${filterOffen ? ' is-filter-offen' : ''}${filterSchluessel.length === 0 ? ' is-ohne-filter' : ''}`}>
         <label className="vp-auf-suche">
           <Icon name="search" size={16} aria-hidden="true" />
           <input
             type="text"
             role="searchbox"
-            aria-label="Geräte suchen"
+            aria-label={UEMS_LISTE_DURCHSUCHEN}
             placeholder="Name, Modell, Kennung …"
             value={p.filter.q}
             autoComplete="off"
@@ -179,7 +204,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
               <Icon name="x" size={15} />
             </button>
           )}
-          <button
+          {filterSchluessel.length > 0 && <button
             type="button"
             className={`vp-auf-filter-auf${aktive.length > 0 ? ' is-aktiv' : ''}`}
             aria-expanded={filterOffen}
@@ -189,10 +214,10 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           >
             <Icon name="sliders" size={16} />
             {aktive.length > 0 && <span aria-hidden="true">{aktive.length}</span>}
-          </button>
+          </button>}
         </label>
-        <div className="vp-auf-filter" id={filterId} role="group" aria-label="Filter">
-          {(Object.keys(FILTER_LABEL) as FilterSchluessel[]).map((k) => (
+        {filterSchluessel.length > 0 && <div className="vp-auf-filter" id={filterId} role="group" aria-label="Filter">
+          {filterSchluessel.map((k) => (
             <VpPicker
               key={k}
               className="vp-auf-filterfeld"
@@ -209,7 +234,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
               onChangeMany={(werte) => p.onFilter(mitFilter(p.filter, k, werte))}
             />
           ))}
-        </div>
+        </div>}
       </div>
       <div className="vp-auf-leiste">
         <div className="vp-auf-zahlen" aria-live="polite">
@@ -220,6 +245,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           ) : (
             <span>
               <b>{n.geraete}</b> {n.geraete === 1 ? 'Gerät' : 'Geräte'}
+              {n.gateways > 0 && ` · ${n.gateways} ${n.gateways === 1 ? 'Gateway' : 'Gateways'}`}
               <span className="vp-auf-breit">
                 {p.standortSicht?.anlageName ? ` an ${p.standortSicht.anlageName}` : ' an dieser Anlage'}
               </span>
@@ -322,11 +348,26 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           )}
         </div>
       </div>
+
     </>
   );
 }
 
-function Ort({ wurzel, anlagenZahl, boxZahl }: { wurzel: AufbauWurzel | null; anlagenZahl: number; boxZahl: number }) {
+/**
+ * Die Standort-Zeile über dem Baum - auch am Telefon (F16: dort fehlte sie, und eine Anlage desselben
+ * Standorts stand ohne Erklärung in der Tabelle). Fehlt die Adresse, steht der Weg dorthin an ihr.
+ */
+function Ort({
+  wurzel,
+  anlagenZahl,
+  boxZahl,
+  onAdresseNachtragen,
+}: {
+  wurzel: AufbauWurzel | null;
+  anlagenZahl: number;
+  boxZahl: number;
+  onAdresseNachtragen?: () => void;
+}) {
   return (
     <p className="vp-auf-ort" aria-label={wurzel ? `Standort ${wurzel.name}` : 'Standort'}>
       <span>
@@ -341,7 +382,18 @@ function Ort({ wurzel, anlagenZahl, boxZahl }: { wurzel: AufbauWurzel | null; an
           <>Ihre Anlage</>
         )}
       </span>
-      {wurzel?.art === 'standort' && <span>{wurzel.adresse ?? 'Adresse noch nicht hinterlegt'}</span>}
+      {wurzel?.art === 'standort' && (
+        <span>
+          {wurzel.adresse ?? 'Adresse noch nicht hinterlegt'}
+          {!wurzel.adresse && onAdresseNachtragen && (
+            <Recht aktion="standort.verwalten">
+              <button type="button" className="vp-auf-linkbtn" onClick={onAdresseNachtragen}>
+                Adresse nachtragen
+              </button>
+            </Recht>
+          )}
+        </span>
+      )}
       <span>
         {anlagenZahl} {anlagenZahl === 1 ? 'Anlage' : 'Anlagen'} · {boxZahl} {boxZahl === 1 ? 'Box' : 'Boxen'}
       </span>
@@ -359,10 +411,14 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
       return <GeraetZeile z={z} begriffe={begriffe} p={p} />;
     case 'teil':
       return <TeilZeile z={z} begriffe={begriffe} />;
-    case 'quelle':
-      return <QuelleZeile z={z} begriffe={begriffe} />;
+    case 'gateway':
+      return <GatewayZeile z={z} begriffe={begriffe} p={p} />;
+    case 'anschluss':
+      return <AnschlussZeile z={z} begriffe={begriffe} p={p} />;
     case 'fund':
       return <FundZeile z={z} begriffe={begriffe} p={p} />;
+    case 'gruppe':
+      return <GruppeZeile z={z} />;
     default:
       return (
         <div className={`vp-auf-t-zeile is-leer${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)}>
@@ -373,6 +429,16 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
               </button></Recht>
             ) : (
               <span className="vp-auf-t-leer">{z.text}</span>
+            )}
+            {z.box && z.anlage.aktuell && p.onGeraeteSuchen && (
+              <Recht aktion="geraet.einrichten"><button
+                type="button"
+                className="vp-auf-t-leer is-aktion vp-auf-t-suchen"
+                onClick={() => z.box && p.onGeraeteSuchen?.(z.box)}
+                aria-label={`${UEMS_GERAETE_SUCHEN} an ${z.box.name}`}
+              >
+                <Icon name="target" size={15} /> {UEMS_GERAETE_SUCHEN}
+              </button></Recht>
             )}
           </span>
         </div>
@@ -407,8 +473,10 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
             <small>
               {a.boxen.length} {a.boxen.length === 1 ? 'Box' : 'Boxen'}
               {a.geraeteZahl != null && ` · ${a.geraeteZahl} ${a.geraeteZahl === 1 ? 'Gerät' : 'Geräte'}`}
-              {!a.aktuell && !p.standortSicht && ' · nur lesend'}
+              {gatewayText(a) && ` · ${gatewayText(a)}`}
+              {!a.aktuell && !p.standortSicht && ' · am selben Standort'}
               {a.wertStand === 'veraltet' && <span className="is-warn"> · keine aktuellen Werte</span>}
+              {a.wertAlter && <span> · Werte {a.wertAlter}</span>}
             </small>
           </span>
         </button>
@@ -445,15 +513,8 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
   );
 }
 
-/** Was an einer Box hängt: „3 Geräte“, „liest 2 Datenquellen“ oder beides — eine lesende Box ist nie „0 Geräte“. */
-function boxInhalt(b: AufbauBox): string {
-  const n = b.geraete.filter((g) => g.art !== 'neu').length;
-  const geraete = `${n} ${n === 1 ? 'Gerät' : 'Geräte'}`;
-  const q = b.quellen.length;
-  if (q === 0) return geraete;
-  const quellen = `liest ${q} ${q === 1 ? 'Datenquelle' : 'Datenquellen'}`;
-  return n === 0 ? quellen : `${geraete} · ${quellen}`;
-}
+/** Die Gateways einer Anlage in ihrer Kopfzeile („1 Gateway“); null = keins. */
+const gatewayText = (a: AufbauAnlage) => gatewaySatz([...a.boxen.flatMap((b) => b.wege), ...a.wegeOhneBox]);
 
 function BoxZeile({
   z,
@@ -484,7 +545,8 @@ function BoxZeile({
               <Treffer text={b.ref} begriffe={begriffe} />
             </span>
             {' · '}
-            {boxInhalt(b)}
+            {kastenSatz(b.geraete, b.wege)}
+            {b.last && ` · ${b.last}`}
           </small>
         </span>
       </span>
@@ -539,18 +601,36 @@ function GeraetZeile({
   const nurLesend = !z.anlage.aktuell;
   const hinweis = nurLesend ? null : p.hinweisFor(g);
   const wert = g.werte[0] ?? null;
+  // Ein Gerät mit eigener Seite springt dorthin - nie mehr über ein Modal. Nur ohne Seite (verwaist, neu
+  // gefunden, keine Geräteseite) bleibt der Kurzblick der einzige Ort.
+  const href = g.karte.href;
+  // Die technische Sicht springt ebenso; ihren Rumpf (Strategien, Rollen, technisch bearbeiten, Entfernen) trägt
+  // weiter der Kurzblick - er öffnet über „Technisch …“ im Zeilenmenü.
+  const mehr: RowMenuItem[] =
+    !nurLesend && href
+      ? [
+          ...p.mehrFor(g),
+          ...(p.showTechnical
+            ? [{ label: 'Technisch …', icon: 'cpu' as const, onClick: () => p.onKurzblick(g.id) }]
+            : []),
+        ]
+      : [];
   // Die ganze Zeile ist ein Ziel für die Maus; Tastatur und Vorlesesoftware
-  // nehmen den Namen-Knopf - eine Zeile, die selbst ein Knopf wäre, dürfte
+  // nehmen den Namen-Knopf/-Link - eine Zeile, die selbst ein Ziel wäre, dürfte
   // keinen Aufklapp-Knopf enthalten.
   const zeilenKlick = (e: MouseEvent<HTMLDivElement>) => {
-    if (nurLesend) return;
     if ((e.target as HTMLElement).closest('button, a, input')) return;
+    if (href) {
+      window.location.hash = href;
+      return;
+    }
+    if (nurLesend) return;
     p.onKurzblick(g.id);
   };
   const titel = <Treffer text={g.titel} begriffe={begriffe} />;
   return (
     <div
-      className={`vp-auf-t-zeile is-geraet is-${g.ton}${nurLesend ? ' is-lesend' : ''}${ebeneKlasse(z.ebene)}`}
+      className={`vp-auf-t-zeile is-geraet is-${g.ton}${g.einheit ? ' is-einheit' : ''}${nurLesend ? ' is-lesend' : ''}${ebeneKlasse(z.ebene)}`}
       role="row"
       style={ebene(z.ebene)}
       data-aufbau-geraet={g.id}
@@ -568,16 +648,14 @@ function GeraetZeile({
         )}
         <AufbauSymbol kategorie={g.kategorie} icon={g.icon} />
         <span className="vp-auf-t-text">
-          {nurLesend ? (
-            g.karte.href ? (
-              <a className="vp-auf-t-titel" href={g.karte.href}>
-                <span className="vp-auf-t-kuerze">{titel}</span>
-              </a>
-            ) : (
-              <span className="vp-auf-t-titel">
-                <span className="vp-auf-t-kuerze">{titel}</span>
-              </span>
-            )
+          {href ? (
+            <a className="vp-auf-t-titel" href={href}>
+              <span className="vp-auf-t-kuerze">{titel}</span>
+            </a>
+          ) : nurLesend ? (
+            <span className="vp-auf-t-titel">
+              <span className="vp-auf-t-kuerze">{titel}</span>
+            </span>
           ) : (
             <button
               type="button"
@@ -592,7 +670,23 @@ function GeraetZeile({
             <span className="vp-auf-t-kuerze">
               <Treffer text={g.unterzeile} begriffe={begriffe} />
             </span>
-            {hinweis && <span className="is-warn">{hinweis}</span>}
+            {/* GE-1: der Weg steht am Gerät — ein eigenes Stück der Zeile, das als Ganzes umbricht, nie abgeschnitten
+                hinter dem Modell. */}
+            {g.anbindungText && (
+              <span className="vp-auf-t-anbindung">
+                <Icon name="link" size={12} aria-hidden="true" />
+                <span className="vp-auf-t-kuerze">
+                  <span className="vp-sr-only">Anbindung: </span>
+                  <Treffer text={g.anbindungText} begriffe={begriffe} />
+                </span>
+              </span>
+            )}
+            {hinweis && (
+              <span className="is-warn">
+                {hinweis.badge}
+                <InfoTip title={hinweis.badge}>{hinweis.satz}</InfoTip>
+              </span>
+            )}
           </small>
         </span>
       </span>
@@ -607,14 +701,22 @@ function GeraetZeile({
       <span role="cell" className="vp-auf-t-wert">
         {wert ? (
           <span title={wert.label}>{wert.text}</span>
+        ) : g.einheit ? (
+          // GE-3: eine Einheit ohne gültige Lesung — „—“ wie auf ihrer Seite, nie 0.
+          <span className="is-leer" aria-label="Ist-Leistung unbekannt">
+            —
+          </span>
         ) : (
           <span className="is-leer" aria-label="kein Messwert">
             –
           </span>
         )}
       </span>
-      <span role="cell" className="vp-auf-t-pfeil" aria-hidden="true">
-        {!nurLesend && <Icon name="chevron-right" size={16} />}
+      <span role="cell" className="vp-auf-t-pfeil">
+        {mehr.length > 0 && (
+          <RowMenu label={`Weitere Aktionen für ${g.titel}`} buttonClassName="vp-auf-t-mehr" items={mehr} />
+        )}
+        {(href || !nurLesend) && <Icon name="chevron-right" size={16} />}
       </span>
     </div>
   );
@@ -660,38 +762,152 @@ function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>
 }
 
 /**
- * Eine Datenquelle, die die Box liest (UEMS AP-06): Kennzeichen und Weg, ihr Zustand, und der Weg auf die
- * Box-Seite, wo sie verwaltet wird (zuständige Box wechseln, neue anlegen).
+ * Ein Gateway (GE-1, GD-3 A): ein Kasten, hinter dem mehrere Geräte antworten — eine Zeile mit Weg und
+ * Box-Rückmeldung, die Geräte eine Ebene tiefer. Der Name und der Pfeil führen auf seine Seite (GE-5).
  */
-function QuelleZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'quelle' }>; begriffe: string[] }) {
-  const q = z.quelle;
+/**
+ * Der Kopf einer Gerätegruppe (Konzept `vp-anlage-geraete-gruppiert`): Symbol · Name · Anzahl, rechts die Summe
+ * der Zeilen - oder, statt einer Teilsumme, wie viele Geräte keinen aktuellen Wert haben. Am Telefon bringt er Art
+ * und Summe zurück, die dort sonst fehlen.
+ */
+function GruppeZeile({ z }: { z: Extract<TabellenZeile, { typ: 'gruppe' }> }) {
+  const k = z.kopf;
+  const symbol = GRUPPE_SYMBOL[k.gruppe];
   return (
-    <div className={`vp-auf-t-zeile is-quelle${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-quelle-zeile={q.id}>
+    <div
+      className={`vp-auf-t-zeile is-gruppe${ebeneKlasse(z.ebene)}`}
+      role="row"
+      style={ebene(z.ebene)}
+      aria-label={k.label}
+      data-aufbau-gruppe={k.gruppe}
+    >
       <span role="cell" className="vp-auf-t-name">
-        <span className="vp-auf-t-auf-platz" />
+        <span className={`vp-auf-t-gkopf is-${symbol.kategorie}`}>
+          <Icon name={symbol.icon} size={14} aria-hidden="true" />
+          <span className="w">{k.wort}</span>
+          <span className="vp-auf-t-ganzahl">
+            {k.anzahl}
+            <span className="vp-sr-only"> {k.anzahl === 1 ? 'Gerät' : 'Geräte'}</span>
+          </span>
+        </span>
+      </span>
+      <span role="cell" className="vp-auf-t-wert">
+        {k.summe ?? (k.hinweis ? <span className="is-leer">{k.hinweis}</span> : null)}
+      </span>
+    </div>
+  );
+}
+
+function GatewayZeile({
+  z,
+  begriffe,
+  p,
+}: {
+  z: Extract<TabellenZeile, { typ: 'gateway' }>;
+  begriffe: string[];
+  p: AufbauTabelleProps;
+}) {
+  const w = z.weg;
+  const n = w.geraete.length;
+  // Wie die Gerätezeile: die ganze Zeile ist ein Ziel für die Maus, Tastatur und Vorlesesoftware nehmen den Namen.
+  const zeilenKlick = (e: MouseEvent<HTMLDivElement>) => {
+    if (!w.href || (e.target as HTMLElement).closest('button, a, input')) return;
+    window.location.hash = w.href;
+  };
+  const titel = (
+    <>
+      <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[w.ton]}`} />
+      <span className="vp-auf-t-kuerze">
+        <Treffer text={w.titel} begriffe={begriffe} />
+      </span>
+    </>
+  );
+  return (
+    <div className={`vp-auf-t-zeile is-gateway is-${w.ton}${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-aufbau-weg={w.id} onClick={zeilenKlick}>
+      <span role="cell" className="vp-auf-t-name">
+        <Auf offen={z.offen} label={`Geräte hinter ${w.titel} ${z.offen ? 'zuklappen' : 'aufklappen'}`} onClick={() => p.onGatewayUmschalten(w.id)} />
         <AufbauSymbol kategorie="navy" icon="link" />
         <span className="vp-auf-t-text">
-          <span className="vp-auf-t-titel">
-            <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[q.ton]}`} />
-            <a className="vp-auf-t-kuerze" href={z.box.href}>
-              <Treffer text={q.titel} begriffe={begriffe} />
-            </a>
-          </span>
+          {w.href ? (
+            <a className="vp-auf-t-titel" href={w.href}>{titel}</a>
+          ) : (
+            <b className="vp-auf-t-titel">{titel}</b>
+          )}
           <small>
-            <Treffer text={q.weg} begriffe={begriffe} />
+            <span className="vp-auf-t-kuerze">
+              <Treffer text={w.weg} begriffe={begriffe} />
+            </span>
           </small>
         </span>
       </span>
       <span role="cell" className="vp-auf-t-art">
-        Datenquelle
+        Gateway
       </span>
       <span role="cell" className="vp-auf-t-zustand">
-        <span className={`vp-health-dot ${TON_PUNKT[q.ton]}`} />
-        <span className="w">{gross(q.zustandWort)}</span>
-        {q.zustandZeit && <small>{q.zustandZeit}</small>}
+        <span className={`vp-health-dot ${TON_PUNKT[w.ton]}`} />
+        <span className="w">{gross(w.zustandWort)}</span>
+        {w.zustandZeit && <small>{w.zustandZeit}</small>}
       </span>
-      <span role="cell" className="vp-auf-t-wert" />
-      <span role="cell" />
+      <span role="cell" className="vp-auf-t-wert">
+        {n} {n === 1 ? 'Gerät' : 'Geräte'}
+      </span>
+      <span role="cell" className="vp-auf-t-pfeil" aria-hidden="true">
+        {w.href && <Icon name="chevron-right" size={16} />}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Ein Anschluss ohne Gerät (GE-1, 1 : 0): ein Weg ist angelegt, aber kein Gerät dahinter bekannt — sichtbar,
+ * auch ohne zuständige Box, mit dem Weg zum Hinzufügen.
+ */
+function AnschlussZeile({
+  z,
+  begriffe,
+  p,
+}: {
+  z: Extract<TabellenZeile, { typ: 'anschluss' }>;
+  begriffe: string[];
+  p: AufbauTabelleProps;
+}) {
+  const w = z.weg;
+  return (
+    <div className={`vp-auf-t-zeile is-anschluss is-${w.ton}${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-aufbau-weg={w.id}>
+      <span role="cell" className="vp-auf-t-name">
+        <span className="vp-auf-t-auf-platz" />
+        <AufbauSymbol kategorie="fund" icon="plug" />
+        <span className="vp-auf-t-text">
+          <b className="vp-auf-t-titel">
+            <span className="vp-auf-t-kuerze">{w.titel}</span>
+          </b>
+          <small>
+            <span className="vp-auf-t-kuerze">
+              <Treffer text={w.weg} begriffe={begriffe} />
+            </span>
+          </small>
+        </span>
+      </span>
+      <span role="cell" className="vp-auf-t-art">
+        Anschluss
+      </span>
+      <span role="cell" className="vp-auf-t-zustand">
+        <span className={`vp-health-dot ${TON_PUNKT[w.ton]}`} />
+        <span className="w">{gross(w.zustandWort)}</span>
+        {w.zustandZeit && <small>{w.zustandZeit}</small>}
+      </span>
+      <span role="cell" className="vp-auf-t-aktion is-breit">
+        {z.anlage.aktuell && p.onGeraetHinzufuegen && (
+          <Recht aktion="geraet.einrichten"><button
+            type="button"
+            className="vp-btn vp-btn--outline vp-btn--sm"
+            onClick={() => p.onGeraetHinzufuegen?.(z.box)}
+            aria-label={`Gerät an Anschluss ${w.kennzeichen} hinzufügen`}
+          >
+            Gerät hinzufügen
+          </button></Recht>
+        )}
+      </span>
     </div>
   );
 }

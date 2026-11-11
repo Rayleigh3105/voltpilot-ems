@@ -206,6 +206,13 @@ describe('Stufe 2: der Morgen-Ausblick rechnet NUR mit den Plan-Eingaben', () =>
     expect(sonnig).toContain('überwiegend Sonne');
   });
 
+  it('lässt das Wetter-Wort weg, wenn es den Plan-Zahlen widerspricht', () => {
+    // „kaum Sonne" neben mehr Solar-Überschuss als Verbrauch (Demo 20.10.2026).
+    const satz = ausblickSatz(morgenSlots({ pv: 12, last: 1 }), NOW, { weather: wetter(95) }) as string;
+    expect(satz).not.toContain('kaum Sonne');
+    expect(satz).toContain('Solar-Überschuss');
+  });
+
   it('nennt das Wetter-Wort auch dann, wenn der Plan morgen noch nicht abdeckt', () => {
     const nurWetter = ausblickSatz([], NOW, { weather: wetter(95) }) as string;
     expect(nurWetter).toContain('kaum Sonne');

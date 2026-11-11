@@ -1,0 +1,75 @@
+/*
+ * Die Einstiege in „Geräte suchen" auf der Box-Seite (Konzept vp-portal-geraetesuche-konzept, m1/m8/d1): der Knopf im
+ * Kartenkopf, der Leerzustand mit dem Hauptknopf und der eine Satz, warum der Knopf gerade nicht geht.
+ */
+.vp-gs-einstieg-leer {
+  display: grid;
+  justify-items: center;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-5) var(--vp-space-4);
+  text-align: center;
+  min-width: 0;
+}
+.vp-gs-einstieg-leer > b {
+  font-family: var(--vp-font-heading);
+  font-size: 1.05rem;
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-gs-einstieg-leer > p {
+  margin: 0;
+  max-width: 36ch;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+.vp-gs-einstieg-symbol {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--vp-paleblue-start);
+  color: var(--vp-action);
+}
+.vp-gs-einstieg-knopf {
+  gap: 6px;
+}
+.vp-gs-einstieg-gross {
+  width: min(100%, 320px);
+  min-height: 48px;
+  justify-content: center;
+  margin-top: var(--vp-space-2);
+}
+.vp-gs-einstieg-hand {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+}
+.vp-gs-einstieg-grund {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.vp-gs-einstieg-grund > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+}
+.vp-gs-einstieg-leer .vp-gs-einstieg-grund {
+  justify-content: center;
+  text-align: center;
+}
+.vp-gs-einstieg-letzte a {
+  font-weight: var(--vp-weight-semibold);
+}

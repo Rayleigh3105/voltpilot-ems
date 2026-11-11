@@ -275,6 +275,13 @@ func TestClampCommandsBatteryUsesRegistryBandAndD8Posture(t *testing.T) {
 	if granted.SetpointKw == nil || *granted.SetpointKw != 3 {
 		t.Fatalf("D-8 solar-only clamp: want 3 (measured pv), got %+v", granted.SetpointKw)
 	}
+	// EXPLICITLY not allowed: the Netzladen-Sperre too (EN-1 A) - the measured
+	// surplus less the reserve, 3 - 1 - 1.
+	notAllowed := false
+	strict := batteryEntity(10, 8, &notAllowed).ClampCommands(Commands{SetpointKw: &wish}, r)
+	if strict.SetpointKw == nil || *strict.SetpointKw != 3-1-guards.NetzladenReserveKw {
+		t.Fatalf("explicit no grid charging: want 1 (pv - load - reserve), got %+v", strict.SetpointKw)
+	}
 	// Explicit true releases the clamp: only the rated band applies.
 	allowed := true
 	e2 := batteryEntity(10, 8, &allowed)
@@ -585,5 +592,27 @@ func TestRegistryWithoutRoleAssignmentsIsUnchanged(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "role_assignment") {
 		t.Fatalf("the persisted registry grew a role_assignment key: %s", raw)
+	}
+}
+
+// The explicit output set of a per-phase switch rides ONLY with a granted
+// setpoint: the setpoint is clamped as always (it stays the ceiling the driver
+// judges the set against), and a dropped setpoint drops the set.
+func TestClampCommandsOutputsRideWithTheSetpoint(t *testing.T) {
+	r := guards.Reading{SocPct: guards.Unknown(), PvKw: guards.Unknown(),
+		LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown()}
+	wb := wallboxEntity()
+	over := 22.0
+	granted := wb.ClampCommands(Commands{SetpointKw: &over, Outputs: []int{0, 2}}, r)
+	if granted.SetpointKw == nil || *granted.SetpointKw != 11 || len(granted.Outputs) != 2 {
+		t.Fatalf("set must ride with the clamped setpoint, got %+v", granted)
+	}
+	on := true
+	if granted = wb.ClampCommands(Commands{OnOff: &on, Outputs: []int{0}}, r); granted.Outputs != nil {
+		t.Fatalf("a set without a setpoint must be dropped, got %+v", granted.Outputs)
+	}
+	meter := Entity{ID: "m", Type: TypeGridMeter}
+	if granted = meter.ClampCommands(Commands{SetpointKw: &over, Outputs: []int{0}}, r); granted.Outputs != nil {
+		t.Fatalf("measure-only must drop the set, got %+v", granted.Outputs)
 	}
 }

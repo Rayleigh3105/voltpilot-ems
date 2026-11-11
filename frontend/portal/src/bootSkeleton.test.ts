@@ -35,7 +35,7 @@ describe('index.html Sofort-Lader', () => {
   it('references no EXTERNAL asset (bleibt no-cache-tauglich, kein Hash nötig)', () => {
     const skeleton = html.slice(html.indexOf('<style>'));
     // Kein `url(...)` auf ein externes Asset. Erlaubt sind lokale SVG-Fragment-
-    // Refs (`url(#vplFill-bs)`) und Data-URIs (`url(data:…)`) - beide kosten
+    // Refs (`url(#…)`) und Data-URIs (`url(data:…)`) - beide kosten
     // KEINEN Request.
     expect(skeleton).not.toMatch(/url\(\s*["']?(?!#|data:)/i);
     // Kein <img> auf ein externes Asset - nur Data-URIs (die Wortmarke; kein

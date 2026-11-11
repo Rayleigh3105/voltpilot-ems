@@ -10,6 +10,7 @@ import {
   type SiteSource,
   type SiteTopology,
   type StandorteAmStichtag,
+  type UemsDatenquelle,
 } from '../api';
 import * as auth from '../auth';
 import { entitiesApi } from '../entitiesApi';
@@ -17,6 +18,7 @@ import { consumersApi } from '../consumers/consumersApi';
 import { OHNE_STANDORT } from '../aufbauBaum';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
+import { GS_GOE, GS_TEMPLATES, geraetesucheFaelle } from '../test/geraetesucheFixtures';
 
 /*
   Der Reiter „Aufbau" (Konzept „Anlage – neu gedacht", E1–E6 = A). Die
@@ -302,6 +304,13 @@ async function kurzblick(el: HTMLElement | Promise<HTMLElement>) {
   return screen.findByRole('dialog');
 }
 
+/** Technische Sicht: der Zeilenmenü-Eintrag „Technisch …“ öffnet den Kurzblick eines Geräts mit eigener Seite. */
+async function technischerKurzblick(el: HTMLElement | Promise<HTMLElement>) {
+  fireEvent.click(within(await el).getByRole('button', { name: /Weitere Aktionen/ }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Technisch/ }));
+  return screen.findByRole('dialog');
+}
+
 /** Die Zeile einer Komponente im Kurzblick. */
 function komponente(dialog: HTMLElement, label: string): HTMLElement {
   return within(dialog).getByText(label).closest('li') as HTMLElement;
@@ -339,11 +348,14 @@ describe('AufbauSection · der Baum', () => {
       'href',
       '#/anlage/s-1/box/VP-ABC123',
     );
-    // Die Geräte stehen darunter - ihr Name öffnet den Kurzblick.
+    // Die Geräte stehen darunter - ihr Name führt direkt auf die Geräteseite, kein Modal mehr dazwischen.
     for (const id of ['inv', 'src-1']) {
       const z = await zeile(id);
       expect(z).toHaveAttribute('role', 'row');
-      expect(within(z).getAllByRole('button').some((b) => b.getAttribute('aria-haspopup') === 'dialog')).toBe(true);
+      expect(within(z).getByRole('link', { name: new RegExp(id === 'inv' ? 'Deye' : 'Fronius') })).toHaveAttribute(
+        'href',
+        expect.stringContaining(`/geraet/VP-ABC123/${id}`),
+      );
     }
   });
 
@@ -372,8 +384,9 @@ describe('AufbauSection · der Baum', () => {
     rendere();
     const deye = await zeile('inv');
     expect(deye).toHaveTextContent('Deye SUN-30K');
-    // Der Ladestand steht als ganze Zahl - wie am Kopf der Anlage.
-    expect(deye).toHaveTextContent('76 %');
+    // Der Hybrid steht unter Erzeugung und zeigt dort seine PV-Leistung; den Ladestand zeigen Kopf und Aufklappen
+    // (vp-anlage-geraete-gruppiert).
+    expect(deye).not.toHaveTextContent('76 %');
     // Die weiteren Messwerte klappen darunter auf (K5).
     fireEvent.click(within(deye).getByRole('button', { name: /Messwerte von .* aufklappen/ }));
     const teile = await waitFor(() => {
@@ -382,23 +395,35 @@ describe('AufbauSection · der Baum', () => {
       return t;
     });
     const text = teile.map((t) => t.textContent ?? '').join(' | ');
+    // Der Ladestand steht als ganze Zahl - wie am Kopf der Anlage.
+    expect(text).toMatch(/76\s%/);
     expect(text).toContain('Einspeisung');
     expect(text).not.toMatch(/[-−]30,0/);
     // Der Fronius liefert über die Box - sein Wert steht an seiner Zeile.
     expect(await zeile('src-1')).toHaveTextContent('21,2');
   });
 
+  it('zeigt nur Filter mit einer Wahl - eine einzige Box bekommt keinen Box-Filter', async () => {
+    stub();
+    rendere();
+    await zeile('inv');
+    const gruppe = screen.getByRole('group', { name: 'Filter' });
+    const knoepfe = within(gruppe).getAllByRole('combobox').map((k) => k.getAttribute('aria-label'));
+    expect(knoepfe).not.toContain('Nach Box filtern');
+    expect(knoepfe.length).toBeGreaterThan(0);
+  });
+
   it('findet Geräte über die Suche und filtert nach Zustand - Gruppen bleiben sichtbar', async () => {
     stub();
     rendere();
     await zeile('inv');
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Geräte suchen' }), { target: { value: 'sun30k' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Liste durchsuchen' }), { target: { value: 'sun30k' } });
     await waitFor(() => expect(document.querySelector('[data-aufbau-geraet="src-1"]')).toBeNull());
     expect(await zeile('inv')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'VoltPilot-Box' })).toBeInTheDocument();
     expect(screen.getByText(/von \d+ Geräten/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Geräte suchen' }), { target: { value: 'gibtsnicht' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Liste durchsuchen' }), { target: { value: 'gibtsnicht' } });
     expect(await screen.findByText(/Kein Gerät passt zu „gibtsnicht"/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Suche und Filter zurücksetzen' }));
     expect(await zeile('src-1')).toBeInTheDocument();
@@ -434,7 +459,7 @@ describe('AufbauSection · der Baum', () => {
     expect(neu.tagName).not.toBe('BUTTON');
     fireEvent.click(within(neu).getByRole('button', { name: 'Übernehmen' }));
     expect(await screen.findByText('Gerät zuordnen')).toBeInTheDocument();
-    expect(screen.getByText('Was misst dieses Gerät?')).toBeInTheDocument();
+    expect(screen.getByText('Wird angezeigt als')).toBeInTheDocument();
     expect(screen.getByText('Wallbox')).toBeInTheDocument();
   });
 
@@ -443,11 +468,11 @@ describe('AufbauSection · der Baum', () => {
     vi.spyOn(entitiesApi, 'adopt').mockRejectedValue(new ApiError(403, 'Forbidden'));
     rendere();
     fireEvent.click(within(await zeile('neu:goe-1')).getByRole('button', { name: 'Übernehmen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Zuordnen' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/));
   });
 
-  it('nennt eine Ausnahme schon in der Zeile - „ohne Ladestand" - und den Grund im Kurzblick', async () => {
+  it('nennt eine Ausnahme schon in der Zeile - „ohne Ladestand" - und den Grund im InfoTip', async () => {
     stub();
     vi.mocked(api.siteComponents).mockResolvedValue({
       componentAuthority: 'portal',
@@ -470,15 +495,18 @@ describe('AufbauSection · der Baum', () => {
       ],
     } as never);
     rendere();
-    await waitFor(async () => expect(await zeile('inv')).toHaveTextContent('ohne Ladestand'));
+    const deye = await waitFor(async () => {
+      const z = await zeile('inv');
+      expect(z).toHaveTextContent('ohne Ladestand');
+      return z;
+    });
 
-    const dialog = await kurzblick(zeile('inv'));
-    const speicher = komponente(dialog, 'Speicher');
-    expect(within(speicher).getByText('ohne Ladestand')).toBeInTheDocument();
-    expect(within(speicher).getByText(/mit unplausiblen Testwerten angelegt am 21\.08\.2026/)).toBeInTheDocument();
-    expect(within(speicher).getByText(/Steuerung des Speichers bleibt deshalb aus/)).toBeInTheDocument();
-    // Die PV-Zeile desselben Hybrids ist davon nicht betroffen.
-    expect(within(dialog).getAllByText(/mit unplausiblen Testwerten/)).toHaveLength(1);
+    // Das Gerät hat eine eigene Seite - der Klick führt dorthin; der Grund hinter „ohne Ladestand" steht jetzt
+    // an einem InfoTip derselben Zeile, kein Kurzblick mehr dazwischen.
+    fireEvent.click(within(deye).getByRole('button', { name: 'Erklärung anzeigen' }));
+    const tip = screen.getByRole('tooltip');
+    expect(within(tip).getByText(/mit unplausiblen Testwerten angelegt am 21\.08\.2026/)).toBeInTheDocument();
+    expect(within(tip).getByText(/Steuerung des Speichers bleibt deshalb aus/)).toBeInTheDocument();
   });
 
   it('schweigt ohne Beleg - eine gewöhnliche Anlage trägt keine Ausnahme', async () => {
@@ -495,56 +523,189 @@ describe('AufbauSection · der Baum', () => {
   it('spricht in der Kundensicht keine technischen Wörter', async () => {
     stub();
     const { container } = rendere();
-    await zeile('inv');
+    const deye = await zeile('inv');
     expect(FORBIDDEN.test(container.textContent ?? '')).toBe(false);
-    const dialog = await kurzblick(zeile('inv'));
-    expect(FORBIDDEN.test(dialog.textContent ?? '')).toBe(false);
+    // Das „…"-Zeilenmenü (Regel erstellen, Zuordnung ändern) trägt jetzt eigenen Text - auch er bleibt kundentauglich.
+    fireEvent.click(within(deye).getByRole('button', { name: /Weitere Aktionen/ }));
+    const menu = await screen.findByRole('menu');
+    expect(FORBIDDEN.test(menu.textContent ?? '')).toBe(false);
   });
 });
 
-describe('AufbauSection · der Kurzblick (E2)', () => {
+/** Eine Datenquelle der Testanlage, gelesen von der Box `gw`, die Daten liefert. */
+const datenquelle = (o: Partial<UemsDatenquelle> & Pick<UemsDatenquelle, 'id' | 'kennzeichen'>): UemsDatenquelle => ({
+  name: null, anlage: 's-1', protokoll: 'sunspec_modbus', adresse: '192.168.10.20:502', geraete_ids: [1], netz: null,
+  mehrere_leser: false, steuerquelle: false, vergleichsquelle: false, kadenz_s: 10, archiviert_am: null,
+  zustaendige_box: { id: 'gw', name: null, heimat_anlage: 's-1' }, zeitraeume: [],
+  rueckmeldung: {
+    zustand: 'liefert', fehlerklasse: null, seit: null, gelesen_am: new Date().toISOString(), anfragen_pro_minute: 6,
+    messwerte_pro_minute: 30, gemeldet_am: new Date().toISOString(), text: 'Liefert Daten',
+  },
+  ...o,
+});
+
+describe('AufbauSection · Gerät an einem Gateway hinzufügen (GE-5)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('öffnet beim Tippen - und die Geräteseite ist EINEN Tipp weiter', async () => {
+  const ZAEHLER = {
+    templateRef: 'builtin:janitza:umg-604',
+    kind: 'builtin',
+    version: 1,
+    brand: 'janitza',
+    brandLabel: 'Janitza',
+    model: 'umg-604',
+    modelLabel: 'UMG 604',
+    deviceType: 'meter',
+    communication: 'modbus_tcp',
+    communicationLabel: 'Modbus TCP',
+    transportSchema: [
+      { key: 'ip', label: 'IP-Adresse', type: 'text', required: true },
+      { key: 'port', label: 'Port', type: 'number', default: 502 },
+      { key: 'unit_id', label: 'Geräte-ID', type: 'number', default: 1 },
+    ],
+  };
+
+  it('die Gateway-Zeile führt auf die Seite des Gateways — Name und Zeile', async () => {
+    stub();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({
+      datenquellen: [datenquelle({ id: 'dq-3', kennzeichen: 'DQ-3', name: 'Zählergateway', protokoll: 'modbus_tcp', geraete_ids: [1, 2] })],
+    });
+    const gr = (id: string, entity: string, nr: number) => ({
+      id, kennzeichen: id.toUpperCase(), einbau_kennzeichen: id.toUpperCase(), ausgebaut_am: null, data_source_id: 'dq-3', geraete_id: nr,
+      komponenten: [{ entity_id: entity, gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: null }],
+    });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [gr('gr-batt', 'batt', 1), gr('gr-fr1', 'fr1', 2)] });
+    const { container } = rendere();
+    const gateway = await waitFor(() => {
+      const el = container.querySelector('[data-aufbau-weg="dq-3"]');
+      if (!el) throw new Error('keine Gateway-Zeile');
+      return el as HTMLElement;
+    });
+    expect(within(gateway).getByRole('link', { name: 'Zählergateway' }))
+      .toHaveAttribute('href', '#/anlage/s-1/geraet/VP-ABC123/dq-3');
+    fireEvent.click(within(gateway).getByText('2 Geräte'));
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/VP-ABC123/dq-3');
+  });
+
+  it('`?neu=geraet&an=DQ-3` öffnet den Katalog; das Modell kommt mit Adresse, Port und freier Geräte-ID des Gateways', async () => {
+    stub(`#/anlage/${site.id}/modell?neu=geraet&an=DQ-3`);
+    portalVerwaltet();
+    vi.mocked(api.componentTemplates).mockResolvedValue([ZAEHLER] as never);
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({
+      datenquellen: [datenquelle({ id: 'dq-3', kennzeichen: 'DQ-3', protokoll: 'modbus_tcp', adresse: '192.168.10.31:502', geraete_ids: [1, 2] })],
+    });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [] });
+    rendere();
+
+    const katalog = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    // Einmal je Adresse: der Parameter ist verbraucht, ein Neuladen öffnet nichts erneut.
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
+    fireEvent.change(within(katalog).getByRole('searchbox', { name: 'Katalog durchsuchen' }), { target: { value: 'umg' } });
+    fireEvent.click(await within(katalog).findByRole('button', { name: /UMG\s*604/ }));
+
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    await waitFor(() => expect((within(seite).getByLabelText(/IP-Adresse/) as HTMLInputElement).value).toBe('192.168.10.31'));
+    expect((within(seite).getByLabelText(/Geräte-ID/) as HTMLInputElement).value).toBe('3');
+    expect((within(seite).getByLabelText(/^Port/) as HTMLInputElement).value).toBe('502');
+  });
+});
+
+describe('AufbauSection · ein Eintrag je Kasten (GE-1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('liest die Verweise der Anlage: der Fronius trägt seinen Weg, ein Weg ohne Gerät steht als Anschluss da — keine Datenquellen-Zeile', async () => {
+    stub();
+    portalVerwaltet();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({
+      datenquellen: [
+        datenquelle({ id: 'dq-1', kennzeichen: 'DQ-1' }),
+        datenquelle({ id: 'dq-2', kennzeichen: 'DQ-2', protokoll: 'modbus_tcp', adresse: '192.168.10.40:502', rueckmeldung: null }),
+      ],
+    });
+    const uems = vi.spyOn(api, 'uemsGeraete').mockResolvedValue({
+      geraete: [{
+        id: 'gr-fr1', kennzeichen: 'GR-2', einbau_kennzeichen: 'GR-2', ausgebaut_am: null, data_source_id: 'dq-1',
+        komponenten: [{ entity_id: 'fr1', gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: null }],
+      }],
+    });
+    const { container } = rendere();
+    const fronius = await zeile('src-1');
+    await waitFor(() => expect(fronius).toHaveTextContent('SunSpec-Modbus · 192.168.10.20:502'));
+    expect(uems).toHaveBeenCalledWith('s-1');
+    const anschluss = container.querySelector('[data-aufbau-weg="dq-2"]') as HTMLElement;
+    expect(anschluss).toHaveTextContent('Anschluss ohne Gerät');
+    expect(anschluss).toHaveTextContent('Kennung DQ-2');
+    expect(within(anschluss).getByRole('button', { name: 'Gerät an Anschluss DQ-2 hinzufügen' })).toBeInTheDocument();
+    expect(container.querySelector('[data-aufbau-weg="dq-1"]')).toBeNull();
+    expect(container.querySelector('.vp-auf-t-zeile.is-box')).toHaveTextContent('2 Geräte · 1 Anschluss offen');
+    expect(container.textContent).not.toMatch(/Datenquelle/);
+    // Das Gerät hat eine eigene Seite - der Klick springt dorthin, kein Kurzblick mehr dazwischen.
+    expect(within(fronius).getByRole('link', { name: /Fronius/ })).toHaveAttribute(
+      'href',
+      '#/anlage/s-1/geraet/VP-ABC123/src-1',
+    );
+  });
+
+  it('ohne Antwort von `…/geraete` bleibt es fail-soft: die Geräte wie vorher, kein geratener Anschluss', async () => {
+    stub();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [datenquelle({ id: 'dq-1', kennzeichen: 'DQ-1' })] });
+    vi.spyOn(api, 'uemsGeraete').mockRejectedValue(new ApiError(503, 'Unavailable'));
+    const { container } = rendere();
+    const fronius = await zeile('src-1');
+    await waitFor(() => expect(api.uemsGeraete).toHaveBeenCalled());
+    expect(fronius).not.toHaveTextContent('192.168.10.20');
+    expect(container.querySelector('[data-aufbau-weg]')).toBeNull();
+    expect(container.querySelector('.vp-auf-t-zeile.is-box')).toHaveTextContent('2 Geräte');
+  });
+});
+
+describe('AufbauSection · ein Gerät mit eigener Seite springt direkt dorthin (kein Modal mehr)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('springt beim Tippen auf die Zeile direkt auf die Geräteseite - kein Kurzblick dazwischen', async () => {
     stub();
     rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    expect(dialog).toHaveAccessibleName('Deye SUN-30K');
-    expect(within(dialog).getByText(/an VoltPilot-Box/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('link', { name: /Geräteseite öffnen/ })).toHaveAttribute(
+    const deye = await zeile('inv');
+    // Titel UND Zeile sind dasselbe Ziel - „Bearbeiten", Sofortmaßnahmen und Entfernen stehen bereits dort.
+    expect(within(deye).getByRole('link', { name: 'Deye SUN-30K' })).toHaveAttribute(
       'href',
       '#/anlage/s-1/geraet/VP-ABC123/inv',
     );
-    // Der Register-Weg wird GENAU EINMAL genannt - kein zweiter Einstieg.
-    expect(within(dialog).getAllByText(/Register lesen und schreiben Sie auf der Geräteseite/)).toHaveLength(1);
-    expect(screen.queryByTestId('am-register-experte')).toBeNull();
-    expect(screen.queryByTestId('am-regwrite')).toBeNull();
+    fireEvent.click(deye);
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/VP-ABC123/inv');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('trägt EIN Gerät mit mehreren Komponenten - Speicher, Solarmodule, Netzanschluss', async () => {
+  it('trägt an mehreren Komponenten je eine eigene Zeile im „…“-Menü - Regel erstellen, Zuordnung ändern', async () => {
     stub();
     rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    const speicher = komponente(dialog, 'Speicher');
-    expect(speicher).toHaveTextContent('76,0');
-    expect(speicher).toHaveTextContent('Wird von VoltPilot gesteuert');
-    expect(komponente(dialog, 'Netzanschluss')).toHaveTextContent('Einspeisung');
-    // Dieselbe Aufteilung wie der Energiefluss: 27 kW am Hybrid, 21,2 davon
-    // liefert der Fronius - die eigenen Module tragen 5,8 kW.
-    expect(komponente(dialog, 'Solarmodule am Deye SUN-30K')).toHaveTextContent('5,8');
+    const deye = await zeile('inv');
+    fireEvent.click(within(deye).getByRole('button', { name: /Weitere Aktionen/ }));
+    const eintraege = (await screen.findAllByRole('menuitem')).map((m) => m.textContent);
+    // Speicher und Netzanschluss sind von VoltPilot zusammengesetzt - keine Aufräum-Hebel, aber beide messen,
+    // also bietet jede ihre eigene Regel-Brücke; nur der Netzanschluss ist re-pinnbar.
+    expect(eintraege.some((t) => t?.includes('Regel mit dieser Komponente erstellen · Speicher'))).toBe(true);
+    expect(eintraege.some((t) => t?.includes('Regel mit dieser Komponente erstellen · Netzanschluss'))).toBe(true);
+    expect(eintraege.some((t) => t?.includes('Zuordnung ändern · Netzanschluss'))).toBe(true);
+    // Von VoltPilot zusammengesetzte Komponenten (Speicher) bekommen keine Aufräum-Hebel und keine Freigabe -
+    // die Freigabe eines Plattform-Speichers erteilt VoltPilot, nicht der Kunde.
+    expect(eintraege.some((t) => t?.includes('Zuordnung ändern · Speicher'))).toBe(false);
+    expect(eintraege.some((t) => t?.includes('Komponente löschen · Speicher'))).toBe(false);
+    expect(eintraege.some((t) => t?.includes('Steuern freigeben'))).toBe(false);
   });
 
-  it('führt Bearbeiten an den EINEN Inline-Ort auf der Geräteseite', async () => {
+  it('führt „Regel mit dieser Komponente erstellen" aus dem Zeilenmenü in den Baukasten', async () => {
     stub();
-    portalVerwaltet();
     rendere();
-    await waitFor(() => expect(api.siteComponents).toHaveBeenCalled());
-    const dialog = await kurzblick(zeile('inv'));
-    expect(await within(dialog).findByRole('link', { name: /Bearbeiten/ })).toHaveAttribute(
-      'href',
-      '#/anlage/s-1/geraet/VP-ABC123/inv?bearbeiten=1',
-    );
+    const fronius = await zeile('src-1');
+    fireEvent.click(within(fronius).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Regel mit dieser Komponente erstellen/ }));
+    expect(window.location.hash).toContain('/steuerung?komponente=fr1');
   });
+});
+
+describe('AufbauSection · der Kurzblick (E2) - für Geräte ohne eigene Seite', () => {
+  afterEach(() => vi.restoreAllMocks());
 
   it('bietet einem Gerät ohne Seite weder Bearbeiten noch Geräteseite - der Stift bleibt im Aufbau', async () => {
     stub();
@@ -603,53 +764,8 @@ describe('AufbauSection · der Kurzblick (E2)', () => {
     expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 
-  it('bietet den Namens-Stift an jeder benennbaren Komponente - nicht an der PV-Zeile des Hybrids', async () => {
-    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
-    stub();
-    rendere();
-    const deye = await kurzblick(zeile('inv'));
-    const namen = within(deye)
-      .getAllByRole('link', { name: /umbenennen/ })
-      .map((a) => a.getAttribute('aria-label'));
-    expect(namen).toContain('„Speicher“ umbenennen');
-    expect(namen).toContain('„Netzanschluss“ umbenennen');
-    expect(namen.some((n) => n?.includes('Solarmodule'))).toBe(false);
-    // Der Stift führt ohne Dialog auf den Inline-Ort der Geräteseite.
-    expect(within(deye).getByRole('link', { name: '„Netzanschluss“ umbenennen' })).toHaveAttribute(
-      'href',
-      '#/anlage/s-1/geraet/VP-ABC123/inv?bearbeiten=1&komponente=grid',
-    );
-    expect(screen.queryByRole('dialog', { name: 'Komponente umbenennen' })).toBeNull();
-
-    fireEvent.click(within(deye).getByRole('button', { name: 'Schließen' }));
-    const fronius = await kurzblick(zeile('src-1'));
-    expect(within(fronius).getByRole('link', { name: /Fronius Anlage“ umbenennen/ })).toBeInTheDocument();
-  });
-
-  it('§5.3 · die Speicher-Zeile führt auf das Hybrid-Blatt mit markierter Kachel - nur sie', async () => {
-    stub();
-    rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    const link = within(komponente(dialog, 'Speicher')).getByRole('link', { name: /Speicher am Wechselrichter/ });
-    expect(link.getAttribute('href')).toMatch(/abschnitt=buehne/);
-    expect(link.getAttribute('href')).toMatch(/kachel=speicher/);
-    // Ein Parameter im Hash, nie eine zweite Raute.
-    expect((link.getAttribute('href') ?? '').slice(1)).not.toContain('#');
-    expect(
-      within(komponente(dialog, 'Netzanschluss')).queryByRole('link', { name: /Speicher am Wechselrichter/ }),
-    ).toBeNull();
-  });
-
-  it('bietet an den von VoltPilot zusammengesetzten Komponenten keine Aufräum-Hebel', async () => {
-    stub();
-    rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    const speicher = komponente(dialog, 'Speicher');
-    expect(within(speicher).queryByRole('button', { name: /Komponente löschen/ })).toBeNull();
-    expect(within(speicher).queryByRole('button', { name: /Zuordnung ändern/ })).toBeNull();
-    // Die Freigabe eines Plattform-Speichers erteilt VoltPilot, nicht der Kunde.
-    expect(within(dialog).queryByRole('button', { name: /Steuern freigeben/ })).toBeNull();
-  });
+  // Das Umbenennen je Komponente und der markierte Speicher-Abschnitt („§5.3") sind seit diesem Wechsel Sache
+  // der Geräteseite selbst (sie bietet beides inline, Inhalt der Geräteseite ist nicht Gegenstand dieser Fläche).
 });
 
 /**
@@ -727,9 +843,10 @@ describe('AufbauSection · nicht mehr verbunden', () => {
     });
     rendere();
 
-    const dialog = await kurzblick(zeileMit('Fronius WR2'));
-    fireEvent.click(within(dialog).getByText(/Mehr zu/));
-    fireEvent.click(within(dialog).getByRole('button', { name: /Zuordnung ändern/ }));
+    // Dieses Gerät hat eine eigene Seite - „Zuordnung ändern" kommt jetzt aus dem „…"-Zeilenmenü, nicht mehr dem Kurzblick.
+    const zeileWr2 = await zeileMit('Fronius WR2');
+    fireEvent.click(within(zeileWr2).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Zuordnung ändern/ }));
 
     expect(await screen.findByText('aktuell zugeordnet')).toBeInTheDocument();
     expect(screen.getByText(/gehört derzeit zu „Geist“/)).toBeInTheDocument();
@@ -739,6 +856,109 @@ describe('AufbauSection · nicht mehr verbunden', () => {
 
     await waitFor(() => expect(repin).toHaveBeenCalledWith('s-1', 'wr2', 'src-b', { swap: true }));
     expect(repin).toHaveBeenCalledTimes(1);
+  });
+
+  /** Zählerbaum-Konzept: zwei Unterzähler zusätzlich zum Netzanschluss - für „Woanders anhängen …". */
+  function stubZaehlerbaum() {
+    stub();
+    vi.mocked(api.siteEntities).mockResolvedValue({
+      ...entities,
+      localSetup: [
+        ...entities.localSetup,
+        { id: 'src-uv-halle', kind: 'source', role: 'consumer', brand: 'shelly', model: 'shelly-pro-3em', label: 'UV Halle', reportedAt: '', adoptedEntityId: 'uv-halle' },
+        { id: 'src-uv-keller', kind: 'source', role: 'consumer', brand: 'shelly', model: 'shelly-pro-3em', label: 'UV Keller', reportedAt: '', adoptedEntityId: 'uv-keller' },
+      ],
+      entities: [
+        ...entities.entities,
+        {
+          id: 'uv-halle',
+          entityType: 'sub-meter',
+          typeLabel: 'Unterzähler',
+          role: 'consumer',
+          label: 'UV Halle',
+          control: false,
+          deviceId: 'gw',
+          capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
+          guards: null,
+          syncStatus: 'in_sync',
+          observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+          edgeSourceId: 'src-uv-halle',
+          haengtAn: null,
+        },
+        {
+          id: 'uv-keller',
+          entityType: 'sub-meter',
+          typeLabel: 'Unterzähler',
+          role: 'consumer',
+          label: 'UV Keller',
+          control: false,
+          deviceId: 'gw',
+          capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
+          guards: null,
+          syncStatus: 'in_sync',
+          observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+          edgeSourceId: 'src-uv-keller',
+          haengtAn: null,
+        },
+      ],
+    } as never);
+    vi.mocked(api.topology).mockResolvedValue({
+      ...topology,
+      entities: [
+        ...topology.entities,
+        {
+          id: 'uv-halle', entityType: 'sub-meter', typeLabel: 'Unterzähler', label: 'UV Halle', category: 'consumer', health: 'ok',
+          capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 7.7 }],
+        },
+        {
+          id: 'uv-keller', entityType: 'sub-meter', typeLabel: 'Unterzähler', label: 'UV Keller', category: 'consumer', health: 'ok',
+          capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 0.1 }],
+        },
+      ],
+    } as never);
+  }
+
+  it('hängt einen Unterzähler über „Woanders anhängen …" an einen anderen Zähler, mit der R5-Zeitwahl', async () => {
+    stubZaehlerbaum();
+    const umhaengen = vi.spyOn(api, 'haengtAnSetzen').mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    rendere();
+
+    const keller = await zeile('src-uv-keller');
+    fireEvent.click(within(keller).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Woanders anhängen/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Woanders anhängen' });
+    // Der Netzanschluss und „UV Halle" sind wählbar - „UV Keller" selbst nicht (kein Kreis).
+    expect(within(dialog).getByRole('radio', { name: /UV Halle/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /UV Keller/ })).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('radio', { name: /UV Halle/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+    await waitFor(() =>
+      expect(umhaengen).toHaveBeenCalledWith('s-1', 'uv-keller', { haengtAn: 'uv-halle', seitWann: 'schon_immer', ab: undefined }),
+    );
+  });
+
+  it('„umgebaut am …" schickt das gewählte Datum statt „schon immer"', async () => {
+    stubZaehlerbaum();
+    const umhaengen = vi.spyOn(api, 'haengtAnSetzen').mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    rendere();
+
+    const keller = await zeile('src-uv-keller');
+    fireEvent.click(within(keller).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Woanders anhängen/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Woanders anhängen' });
+
+    fireEvent.click(within(dialog).getByRole('radio', { name: /UV Halle/ }));
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Umgebaut am/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+    await waitFor(() =>
+      expect(umhaengen).toHaveBeenCalledWith(
+        's-1',
+        'uv-keller',
+        expect.objectContaining({ haengtAn: 'uv-halle', seitWann: 'ab_tag', ab: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }),
+      ),
+    );
   });
 
   it('löscht eine Komponente erst nach den genannten Folgen', async () => {
@@ -1127,9 +1347,28 @@ describe('AufbauSection · die technische Sicht', () => {
     await zeile('inv');
   }
 
+  it('springt beim Tippen direkt auf die Geräteseite - der technische Rumpf liegt hinter „Technisch …“', async () => {
+    await adminRender();
+    window.location.hash = '';
+    fireEvent.click(await zeile('inv'));
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/VP-ABC123/inv');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const dialog = await technischerKurzblick(zeile('inv'));
+    expect(within(dialog).getAllByTestId('tech-zeile').length).toBeGreaterThan(0);
+  });
+
+  it('bietet „Technisch …“ dem Kunden nicht an', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    rendere();
+    fireEvent.click(within(await zeile('inv')).getByRole('button', { name: /Weitere Aktionen/ }));
+    await screen.findAllByRole('menuitem');
+    expect(screen.queryByRole('menuitem', { name: /Technisch/ })).toBeNull();
+  });
+
   it('trägt den technischen Rumpf an der Komponente im Kurzblick', async () => {
     await adminRender();
-    const dialog = await kurzblick(zeile('inv'));
+    const dialog = await technischerKurzblick(zeile('inv'));
     const zeilen = within(dialog).getAllByTestId('tech-zeile');
     const alle = zeilen.map((z) => z.textContent ?? '').join(' ');
     expect(alle).toContain('Netzanschluss');
@@ -1149,7 +1388,7 @@ describe('AufbauSection · die technische Sicht', () => {
     const remove = vi.spyOn(entitiesApi, 'remove').mockResolvedValue(undefined as never);
     rendere();
 
-    const dialog = await kurzblick(zeile('inv'));
+    const dialog = await technischerKurzblick(zeile('inv'));
     const netz = within(dialog)
       .getAllByTestId('tech-zeile')
       .find((z) => (z.textContent ?? '').includes('Netzanschluss')) as HTMLElement;
@@ -1188,8 +1427,10 @@ describe('AufbauSection · die technische Sicht', () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
     rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    expect(within(dialog).queryAllByTestId('tech-zeile')).toHaveLength(0);
+    // Kein Kurzblick mehr für dieses Gerät - der Klick würde auf die Geräteseite springen; die Abwesenheit
+    // technischer Elemente gilt ohnehin für die ganze Fläche, nicht nur innerhalb eines Dialogs.
+    await zeile('inv');
+    expect(screen.queryAllByTestId('tech-zeile')).toHaveLength(0);
     expect(screen.queryByText('Rollen & Zuordnung')).toBeNull();
     expect(screen.queryByRole('button', { name: /Technisch bearbeiten/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Komponente anlegen \(technisch\)/ })).toBeNull();
@@ -1265,5 +1506,79 @@ describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () 
     rendere();
     const dialog = await kurzblick(zeileMit('Wallbox Garage'));
     expect(await within(dialog).findByText('Nur laden')).toBeInTheDocument();
+  });
+});
+
+describe('AufbauSection · Gerätesuche (Konzept „Geräte suchen“)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const F = geraetesucheFaelle(Date.now());
+  const bestanden = { results: [{ ok: true, reading: { value: 7.4, unit: 'kW' } }] };
+
+  it('`?neu=suche&box=` öffnet „Geräte suchen“ an genau dieser Box; der Parameter ist danach verbraucht', async () => {
+    stub(`#/anlage/${site.id}/modell?neu=suche&box=gw`);
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.fertig));
+    rendere();
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.stringMatching(/^portal-/));
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
+  });
+
+  it('an einer leeren Box steht „Geräte suchen“ neben „Noch kein Gerät an dieser Box“', async () => {
+    stub();
+    portalVerwaltet();
+    vi.mocked(api.siteEntities).mockResolvedValue({ registry: null, entities: [], localSetup: [], staleOnDevice: [] });
+    vi.mocked(api.siteSources).mockResolvedValue([]);
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Geräte suchen an VoltPilot-Box' }));
+    expect(await screen.findByRole('heading', { name: 'Suche im Heimnetz …' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
+  });
+
+  it('der Katalog „Gerät hinzufügen“ beginnt mit „Im Heimnetz suchen“', async () => {
+    stub();
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät hinzufügen' }));
+    const katalog = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    fireEvent.click(await within(katalog).findByRole('button', { name: /Im Heimnetz suchen/ }));
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('„Übernehmen“ öffnet den Anlege-Fluss vorbelegt, der Test startet von selbst; danach zurück zur Liste', async () => {
+    stub(`#/anlage/${site.id}/modell?neu=suche&box=gw`);
+    portalVerwaltet();
+    vi.mocked(api.componentTemplates).mockResolvedValue(GS_TEMPLATES as never);
+    vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.breit));
+    const test = vi.spyOn(api, 'testComponentConnection').mockResolvedValue(bestanden as never);
+    vi.spyOn(api, 'matchComponent').mockResolvedValue(undefined);
+    const anlegen = vi.spyOn(api, 'createComponent').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ id: 'goe-neu', role: 'consumer', templateRef: GS_GOE.templateRef, definitionVersion: 1, syncStatus: 'pending' }],
+    } as never);
+    rendere();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'go-e Wallbox übernehmen' }));
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    expect((within(seite).getByLabelText(/IP-Adresse der Wallbox/) as HTMLInputElement).value).toBe('192.168.178.52');
+    expect(within(seite).getByTestId('aus-der-suche')).toHaveTextContent('Aus der Gerätesuche: IP-Adresse der Wallbox, Port.');
+    await waitFor(() => expect(test).toHaveBeenCalledWith(site.id, expect.objectContaining({
+      deviceId: 'gw', templateRef: GS_GOE.templateRef, connection: { ip: '192.168.178.52', port: 80 },
+    })), { timeout: 3_000 });
+    expect(await within(seite).findByTestId('richtung-pruefen')).toBeInTheDocument();
+    expect(within(seite).getByRole('button', { name: 'Zurück zur Gerätesuche' })).toBeInTheDocument();
+    const speichern = within(seite).getByTestId('einrichten-speichern');
+    await waitFor(() => expect(speichern).toBeEnabled());
+    fireEvent.click(speichern);
+    await waitFor(() => expect(anlegen).toHaveBeenCalled());
+
+    const suche = await screen.findByRole('dialog', { name: 'Geräte suchen' });
+    expect(await within(suche).findByText(/„go-e Charger“ ist angelegt\./)).toBeInTheDocument();
+    expect(within(suche).getByRole('region', { name: 'Übernommen' })).toHaveTextContent('go-e Charger');
+    // Kein Sprung auf das neue Gerät - der Weg führt zurück zur Liste (m5c).
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 });

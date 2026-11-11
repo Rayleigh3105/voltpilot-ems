@@ -18,7 +18,8 @@ const katalog = JSON.parse(readFileSync(
   'utf8')) as { points: { family: string }[]; families: { family: string; an_der_box: boolean }[] };
 const alleFamilien = Array.from(new Set(katalog.points.map((p) => p.family))).sort();
 // `an_der_box: false` (Katalog-README „Familien noch nicht an der Box“): der Server bietet diese Familien
-// nicht an, die Kopie führt sie darum nicht. Die WAGO-Karten gingen mit 2026.09.23.3 an die Box (AP-05 IP-6b).
+// nicht an, die Kopie führt sie darum nicht. Die WAGO-Karten gingen mit 2026.09.23.3 an die Box (AP-05 IP-6b),
+// das Erzeuger-Registerbild mit 2026.10.21.1 (EZ-5).
 const nochNichtAnDerBox = katalog.families.filter((f) => !f.an_der_box).map((f) => f.family).sort();
 const echteFamilien = alleFamilien.filter((f) => !nochNichtAnDerBox.includes(f));
 
@@ -35,7 +36,9 @@ describe('KATALOG_FAMILIEN ist eine geprüfte Kopie, keine zweite Wahrheit', () 
   });
 
   it('lässt die Familien weg, die noch an keine Box gehen - sonst stünde dort ein leerer Kasten', () => {
-    expect(nochNichtAnDerBox).toEqual([]);
+    // Seit dem Inhaltsstand 2026.10.26.1: kaco_serial (Powador-Altgeräte, seriell) - der
+    // Kern-Lesepfad kennt sie, der generische Mess-Runtime-Adapter fehlt noch.
+    expect(nochNichtAnDerBox).toEqual(['kaco_serial']);
     expect(KATALOG_FAMILIEN.filter((f) => nochNichtAnDerBox.includes(f))).toEqual([]);
   });
 
@@ -61,6 +64,7 @@ describe('expandFamilien - der Zwilling von MeasurementCatalogFamilies.expand', 
     expect(expandFamilien(['sunspec_live'])).toEqual(expandFamilien(['sunspec']));
     expect(expandFamilien(['goe_http_api'])).toEqual(['goe.api_v2']);
     expect(expandFamilien(['shelly_http'])).toEqual(['shelly.gen1', 'shelly.gen2plus']);
+    expect(expandFamilien(['shelly_em_triphase'])).toEqual(['shelly.gen2plus']);
     expect(expandFamilien(['ocpp'])).toEqual(['ocpp.1_6']);
     expect(expandFamilien(['ocpp.1_6'])).toEqual(['ocpp.1_6']);
     expect(expandFamilien(['hybrid_3p'])).toEqual(['hybrid_3p']);
@@ -83,7 +87,8 @@ describe('expandFamilien - der Zwilling von MeasurementCatalogFamilies.expand', 
     // nachgezogen werden; dieser Wächter macht das Vergessen rot.
     const zweige = Array.from(javaQuelle.matchAll(/family\.(?:equals|startsWith)\("([^"]+)"\)/g))
       .map((m) => m[1]).sort();
-    expect(zweige).toEqual(['goe_http_api', 'ocpp', 'shelly_http', 'sunspec', 'sunspec_live']);
+    expect(zweige).toEqual(
+      ['goe_http_api', 'ocpp', 'shelly_em_triphase', 'shelly_http', 'sunspec', 'sunspec_live']);
   });
 });
 

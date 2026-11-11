@@ -8,7 +8,7 @@ Go-Core, Node-RED-I/O und OTA-Updater bilden die Kunden-Box. [Laufzeitregeln](..
 - `test/install-selfcheck.sh` und `test/update-selfcheck.sh` prüfen Installer/Updater. Die gemeinsame Compose-Vorlage, Installer und Updatepfad synchron halten.
 - Neue Env-Optionen müssen im Core, Beispiel-Env, Compose und erzeugten Installations-Compose ankommen.
 - Generierte Flows aus `build-flows.js` erzeugen; eingebettete Module nicht als unabhängige Kopien pflegen. `flows-sync.test.js` prüft die Übereinstimmung.
-- Edge Light (`../edge-light`) nutzt Go-Zwillinge von Node-RED-Modulen hinter denselben Bus-Topics. Nach Änderungen an `nodered/deye/solarman-v5.js`, `deye-decode.js` oder `goe/goe-api.js` die Vektoren mit `deye/*-vectors.gen.js` bzw. `goe/goe-api-vectors.gen.js` neu erzeugen; die Go-Tests in `core/internal/{solarmanv5,deyedecode,goeapi}` zeigen, ob der Zwilling nachziehen muss. `vp-edge-core` und `vp-edge-light` teilen den Programmrahmen `core/internal/edgemain`.
+- Edge Light (`../edge-light`) nutzt Go-Zwillinge von Node-RED-Modulen hinter denselben Bus-Topics. Nach Änderungen an `nodered/deye/solarman-v5.js`, `deye-decode.js`, `goe/goe-api.js`, `huawei/huawei-decode.js` oder `kaco/kaco-serial-decode.js` die Vektoren mit dem jeweiligen `*-vectors.gen.js` daneben neu erzeugen; die Go-Tests in `core/internal/{solarmanv5,deyedecode,goeapi,huaweidecode,kacoserial}` zeigen, ob der Zwilling nachziehen muss. Modbus TCP spricht der Core nur über `core/internal/modbustcp`. `vp-edge-core` und `vp-edge-light` teilen den Programmrahmen `core/internal/edgemain`.
 - Änderungen an `DefaultCatalog()` verlangen den vorgesehenen Vorlagenexport. Messpunkt-/Runtime-Artefakte mit den Katalogwerkzeugen erzeugen, nicht manuell editieren.
 - Cloud-Standard ist `https://portal.voltpilot.de`. Geänderte MQTT-Endpunkte bei Enrollment-Reconcile auch bei identischer Geräte-ID übernehmen; der MQTT-Client cached seinen Broker.
 
@@ -26,7 +26,7 @@ Go-Core, Node-RED-I/O und OTA-Updater bilden die Kunden-Box. [Laufzeitregeln](..
 
 - Hausbilanz: frische Erzeuger aggregieren → geeigneten Netzzähler wählen → gemessene Batterieleistung → Hauslast ableiten. [Details](../docs/edge-runtime.md#messwerte).
 - Batterieleistung nicht aus der Hausbilanz als Messung erfinden. Bei nachweislichem Hybrid ohne Batteriemessung ist die Hauslast unbekannt; nur nachweislich batterielose Geräte erlauben physisch null.
-- Sonnenstrom-Ladegrenze ist die gemessene PV-Leistung am PV-Bus; die Hauslast kann parallel Netzstrom beziehen. Fehlende PV darf Solar-only-Laden nicht freigeben.
+- Netzladen „Verboten“ (oder Feld fehlt): Laden ≤ gemessene PV und ≤ `max(PV − Haus − 1 kW, 0)` über alle PV; die letzte Stufe vor dem Schreiben (`guards.NetzladenSperre`) hat das letzte Wort, Messung unbekannt oder älter als 30 s = 0 (EN-1 A, 02.11.2026). Kein Laden bei Hausbezug, auch nicht aus der DC-PV des Hybrids.
 - Der Go-Core bleibt Ausführer und Schutzinstanz. Adapter dürfen Freigaben/Grenzen nicht erweitern.
 - „Gerät regelt“ nur für das Führungsgerät: Zählerort „am Netzpunkt“ angegeben (`balance.json`), kein zweiter selbst regelnder Speicher, kein Widerspruch zum Netz-Zähler; Eigenmodus-Tests müssen den Zählerort setzen. Der Einspeisewächter ist Außenkreis dieser Kaskade. [Details](../docs/contracts/v2/plan-execution-ownership.md#mehrere-wechselrichter-an-einem-netzpunkt-k6-24092026).
 - Zertifizierung ist modell-/gerätebezogen; globales Steuerungsflag und lokale Freigaben wirken gemeinsam. Simulatorbelege sind keine Hardwarezertifizierung.

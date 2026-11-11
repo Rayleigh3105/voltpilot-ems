@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -23,7 +23,8 @@
              version; 1.19.x pins v1.32, which Docker 25+ (min API 1.40) rejects. -->
         <testcontainers.version>1.20.6</testcontainers.version>
         <docker.api.version>1.44</docker.api.version>
-        <measurement.catalog.version>2026.09.23.3</measurement.catalog.version>
+        <measurement.catalog.version>2026.10.26.1</measurement.catalog.version>
+        <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
     </properties>
 
     <dependencies>
@@ -39,6 +40,23 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Boot 4 split Health/HealthIndicator (DB/diskspace/custom contributors, the
+             liveness/readiness groups docs/k8s-readiness.md relies on) out of
+             spring-boot-actuator into its own module; spring-boot-starter-actuator no
+             longer pulls it transitively. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-health</artifactId>
+        </dependency>
+        <!-- Boot 4 defaults to Jackson 3 (tools.jackson.*); this service's own code still
+             imports com.fasterxml.jackson.* directly (434 files). spring-boot-jackson2 keeps
+             classic Jackson 2 on the classpath alongside the Jackson 3 default so those files
+             keep compiling and behaving unchanged. Deprecated, slated for removal upstream -
+             the full move to tools.jackson.*/JsonMapper is its own follow-up task, not this one. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jackson2</artifactId>
+        </dependency>
         <!-- Prometheus scrape format for the actuator (com.voltpilot.api.metrics):
              the fleet-operations gauges an alert rule watches. Registering this
              registry is what turns the `prometheus` actuator endpoint on; the
@@ -52,9 +70,10 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- Renamed under Boot 4 (spring-boot-starter-oauth2-resource-server -> ...-security-...). -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
 
         <!-- Persistence: plain JDBC (repository-encapsulated per architecture §10),
@@ -67,14 +86,26 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- Alerting Scheibe 0 (Konzept vp-alerting-konzept-m1 §7): der eine
+             SMTP-Adapter des zentralen Versands (com.voltpilot.api.versand).
+             Nur die JavaMail-Klassen werden genutzt (VersandConfig baut die
+             JavaMailSenderImpl-Bean selbst) - Spring Boots eigene
+             MailSenderAutoConfiguration bleibt ungenutzt. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Flyway runs through a Boot starter from 4.x on, not the bare flyway-core
+             dependency (spring-boot-flyway pulls flyway-core itself, 12.4.0). The
+             PostgreSQL-specific Flyway module is NOT pulled transitively and stays explicit. -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -97,7 +128,7 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk18on</artifactId>
-            <version>1.78.1</version>
+            <version>1.86</version>
         </dependency>
 
         <!-- UEMS AP-12 IP-11 (E11 DA2): das PDF eines Berichtsstands, server-seitig aus dem Abzug
@@ -119,6 +150,17 @@
             </exclusions>
         </dependency>
 
+        <!-- JSON-Logzeilen per Schalter (logback-spring.xml, docs/k8s-readiness.md Abschnitt
+             "Logs"): der Encoder wird nur geladen, wenn voltpilot.logging.format=json steht -
+             die Vorgabe bleibt die Textzeile von Spring Boot. 8.1 ist die letzte Linie fuer
+             Jackson 2 (9.0 verlangt Jackson 3, das Spring Boot 3.3 nicht mitbringt). Apache-2.0. -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>${logstash-logback-encoder.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -127,6 +169,37 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 moved TestRestTemplate out of spring-boot-test into its own module;
+             66 test files here use it. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-resttestclient</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- TestRestTemplateTestAutoConfiguration's @ConditionalOnMissingBean needs to
+             introspect RestTemplateBuilder's class (its ObjectProvider<RestTemplateBuilder>
+             parameter type) even though the dependency itself is optional; without this
+             module on the classpath that introspection throws NoClassDefFoundError. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-restclient</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 removed @AutoConfigureObservability; @AutoConfigureMetrics (export=true by
+             default) is the replacement that re-enables the Prometheus-backed metrics the
+             scrape-endpoint tests need, since @SpringBootTest disables metrics export by default. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-micrometer-metrics-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 moved @AutoConfigureMockMvc out of spring-boot-test into its own module,
+             used across 116 test files here. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
         <!-- Testcontainers: real TimescaleDB + Keycloak for the RLS-isolation and
@@ -150,6 +223,14 @@
             <groupId>com.github.dasniko</groupId>
             <artifactId>testcontainers-keycloak</artifactId>
             <version>3.5.1</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Alerting Scheibe 0: ein lokaler SMTP-Fänger für die Versand-ITs
+             (ZustellungGreenMailIT, ZustellwegBestaetigungIT) - Apache License 2.0. -->
+        <dependency>
+            <groupId>com.icegreen</groupId>
+            <artifactId>greenmail</artifactId>
+            <version>2.1.3</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -188,6 +269,18 @@
                 <targetPath>mispel</targetPath>
                 <includes>
                     <include>mispel-abgrenzung-vectors.json</include>
+                </includes>
+            </resource>
+            <!-- vp-werkstatt-zubehoer-download: Hutschienen-Clip und Bohrlehre, ohne Kennung,
+                 bleiben die eingecheckten Dateien aus edge-light/gehaeuse - keine Kopie, die
+                 auseinanderlaufen könnte (Dockerfile kopiert sie in die Bau-Stufe,
+                 WerkstattZubehoerDateiTest erzwingt Byte- und Prüfsummen-Gleichheit). -->
+            <resource>
+                <directory>${project.basedir}/../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck</directory>
+                <targetPath>werkstatt/zubehoer</targetPath>
+                <includes>
+                    <include>hutschienen-clip.3mf</include>
+                    <include>bohrlehre.3mf</include>
                 </includes>
             </resource>
         </resources>
@@ -281,6 +374,12 @@
                              prueft ComponentAdoptionWiringTest an der echten
                              application.yml. -->
                         <voltpilot.components.adoption.reconcile-enabled>false</voltpilot.components.adoption.reconcile-enabled>
+                        <!-- Der WAGO-Anschluss-Nachtrag (Konzept „Ein Geraet, ein
+                             Eintrag“, GE-6) ist ein START-Lauf wie die
+                             Bestandsuebernahme: im Testlauf aus, in PRODUKTION an
+                             (application.yml). Wer ihn prueft, ruft
+                             WagoAnschlussNachtragLaeufer.lauf() selbst. -->
+                        <voltpilot.components.wago-anschluss-nachtrag.enabled>false</voltpilot.components.wago-anschluss-nachtrag.enabled>
                         <!-- Der Erneuerungs-Takt der Handeingriffe (Steuerung
                              Stufe 4, B6) ist in PRODUKTION an (application.yml,
                              matchIfMissing) - im Testlauf aus, aus demselben
@@ -352,6 +451,10 @@
                              Testlauf aus, in PRODUKTION an. KorrekturKaskadeWiringTest
                              prueft die ausgelieferte Vorgabe. -->
                         <voltpilot.uems.kaskade.enabled>false</voltpilot.uems.kaskade.enabled>
+                        <!-- Die Entladegrenze des Wechselrichters (WechselrichterUntergrenzeLaeufer):
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an.
+                             Wer sie prueft, ruft WechselrichterUntergrenzeAbgleich.lauf() selbst. -->
+                        <voltpilot.wechselrichter-untergrenze.enabled>false</voltpilot.wechselrichter-untergrenze.enabled>
                         <!-- Die Kaskaden-Naht der Berichte (AP-12 IP-8): im Testlauf
                              aus, in PRODUKTION an. KorrekturKaskadeWiringTest prueft die
                              ausgelieferte Vorgabe; UemsBerichtKaskadeTest baut die Naht
@@ -389,6 +492,11 @@
                         <!-- Der MiSpeL-Monatslauf (MP-8b): im Testlauf aus, in PRODUKTION an.
                              Wer ihn prueft, ruft MispelMonatslaufLaeufer.lauf() selbst. -->
                         <voltpilot.mispel.monatslauf.enabled>false</voltpilot.mispel.monatslauf.enabled>
+                        <!-- Die Verbrauchs-Automatik (S5, Konzept vp-prognosen-konzept):
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an
+                             (application.yml, matchIfMissing). Wer sie prueft, ruft
+                             AutomatikLaeufer.lauf() bzw. AutomatikLaeufer.entscheide() selbst. -->
+                        <voltpilot.forecast.automatik.enabled>false</voltpilot.forecast.automatik.enabled>
                         <!-- Die Rechte-Bestandsuebernahme (AP-03 IP-2): dieselbe Falle wie
                              die Bestandsuebernahme der Standorte - im Testlauf aus,
                              in PRODUKTION an. Wer sie prueft, ruft
@@ -401,12 +509,46 @@
                              UnterstuetzungApiTest ruft lauf() mit gestellter Uhr selbst.
                              Der Zugang endet auch ohne ihn (endet_am). -->
                         <voltpilot.uems.unterstuetzung.enabled>false</voltpilot.uems.unterstuetzung.enabled>
+                        <!-- Der Takt des zentralen Versands (Alerting Scheibe 0,
+                             com.voltpilot.api.versand.ZustellLaeufer): dieselbe
+                             @Scheduled-Falle, im Testlauf aus, in PRODUKTION an
+                             (application.yml, matchIfMissing). Wer ihn prueft,
+                             ruft Zusteller.lauf() bzw. VersandRepository selbst. -->
+                        <voltpilot.versand.enabled>false</voltpilot.versand.enabled>
+                        <!-- Alerting Scheibe 1 (vp-alerting-konzept-m1 §7): der
+                             UeberwachungsLaeufer-Takt (com.voltpilot.api.ueberwachung.UeberwachungsLaeufer) -
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an
+                             (application.yml, matchIfMissing). Wer ihn prueft, ruft
+                             UeberwachungsLaeufer.lauf() bzw. UeberwachungsService.lauf() selbst. -->
+                        <voltpilot.ueberwachung.enabled>false</voltpilot.ueberwachung.enabled>
+                        <!-- NS-2 A: der SteuerungVorsprungLaeufer-Takt
+                             (com.voltpilot.api.optimizer.SteuerungVorsprungLaeufer) - dieselbe
+                             @Scheduled-Falle, im Testlauf aus, in PRODUKTION an (application.yml,
+                             matchIfMissing). Wer ihn prueft, ruft SteuerungVorsprungLaeufer.lauf() selbst. -->
+                        <voltpilot.steuerung-vorsprung.enabled>false</voltpilot.steuerung-vorsprung.enabled>
+                        <!-- UEMS EZ-7: der VorgabenLaeufer-Takt (com.voltpilot.api.erzeuger.VorgabenLaeufer) -
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an (application.yml,
+                             matchIfMissing). Wer ihn prueft, ruft VorgabenLaeufer.lauf() selbst. -->
+                        <voltpilot.erzeuger.vorgaben.enabled>false</voltpilot.erzeuger.vorgaben.enabled>
                         <!-- The AP-06 per-data-source status listener is ON in production.
                              Unit tests drive handle() without opening a broker connection. -->
                         <voltpilot.uems.data-source-status.mqtt-listener-enabled>false</voltpilot.uems.data-source-status.mqtt-listener-enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>
+                        <!-- Security-Wartung (vp-wartung-security-s1 C2): application.yml dropped its
+                             dev-password fallbacks (production must abort without the real env var).
+                             Most test classes activate the local profile (application-local.yml restores
+                             these), but a handful of real-Postgres/Testcontainers tests run with NO active
+                             profile and only override the specific properties their own scenario touches
+                             (e.g. OrtAenderungenApiTest never binds voltpilot.admin-datasource.password).
+                             These four cover every such gap with the same well-known dev values so the
+                             placeholder always resolves; a test that cares about the real value still sets
+                             its own @DynamicPropertySource/testcontainer credential, which wins. -->
+                        <APP_DB_PASSWORD>voltpilot_app_dev_pw</APP_DB_PASSWORD>
+                        <POSTGRES_PASSWORD>voltpilot_dev_pw</POSTGRES_PASSWORD>
+                        <ADMIN_DB_PASSWORD>voltpilot_admin_dev_pw</ADMIN_DB_PASSWORD>
+                        <KEYCLOAK_API_CLIENT_SECRET>voltpilot-api-dev-secret</KEYCLOAK_API_CLIENT_SECRET>
                     </environmentVariables>
                 </configuration>
             </plugin>

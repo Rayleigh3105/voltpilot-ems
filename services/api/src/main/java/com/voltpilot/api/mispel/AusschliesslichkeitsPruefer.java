@@ -16,12 +16,11 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * MiSpeL MP-2 (W1 = D): misst das Ausmaß, in dem der Speicher einer Anlage Netzstrom aufnahm — die BNetzA-Lesart der
+ * MiSpeL MP-2: misst das Ausmaß, in dem der Speicher einer Anlage Netzstrom aufnahm — die BNetzA-Lesart der
  * Ausschließlichkeitsoption (§ 19 Abs. 3a EEG): „kein Verbrauch im Stromspeicher …, während es gleichzeitig einen
  * Netzbezug gibt“ (Anlage 1 S. 11). Rein: ohne Spring, ohne DB, ohne Uhr.
  *
- * <p>Gerechnet wird mit den Formeln der Anlage 1, Nummer und Rechenweg wörtlich wie im Vertrag
- * {@code docs/contracts/v2/mispel-abgrenzung.md}: je Viertelstunde (1)¼ = MIN [ Z1NB¼ ; Z2V¼ ] (Speichervorrang,
+ * <p>Gerechnet wird mit den Formeln der Anlage 1 (Festlegung MiSpeL der BNetzA), Nummer und Rechenweg wörtlich: je Viertelstunde (1)¼ = MIN [ Z1NB¼ ; Z2V¼ ] (Speichervorrang,
  * § 21 Abs. 4 S. 3 EnFG, A1 S. 14–15, S. 33) und (2)¼ = MIN [ Z1NE¼ ; Z2E¼ ] (§ 21 Abs. 4 S. 4 EnFG, A1 S. 15–16,
  * S. 34); je Kalendermonat (3) bis (6), (9) = ∑M (1)¼, (10) = (5) – (9) und (11) = ∑M (2)¼ (A1 S. 34–35); das Jahr
  * summiert die Monate (A1 S. 14, Abschn. 2.1.4). Die Viertelstunden mit (1)¼ > 0 sind genau die, in denen der Speicher
@@ -29,8 +28,7 @@ import java.util.TreeMap;
  * bestand — ihre Zahl hängt nicht davon ab, ob der Speichervorrang auch für § 19 Abs. 3a EEG gilt; die Menge (9) ist die
  * Zuordnung nach Speichervorrang.
  *
- * <p>Eine Viertelstunde gehört zum Kalendermonat, in dem sie nach gesetzlicher Zeit beginnt (Regel {@code zeit} des
- * Vertrags). Eine Viertelstunde trägt Werte, wenn alle vier Zählerwerte da sind; fehlt einer oder die ganze
+ * <p>Eine Viertelstunde gehört zum Kalendermonat, in dem sie nach gesetzlicher Zeit beginnt (Europe/Berlin). Eine Viertelstunde trägt Werte, wenn alle vier Zählerwerte da sind; fehlt einer oder die ganze
  * Viertelstunde, ist sie eine Lücke und geht in keine Summe ein — unbekannt ist keine Null. Die Festlegung kennt keine
  * Toleranz je Viertelstunde; die Staffel {@link #STAFFEL_KWH} zeigt nur, wie viel bei einer Schwelle übrig bliebe.
  */

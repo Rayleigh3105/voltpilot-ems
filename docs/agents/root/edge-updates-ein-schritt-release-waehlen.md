@@ -137,34 +137,112 @@ Zuweisung desselben Release versucht wieder).
   unpassender Box-Art mit **409** und deutschem Grund; ein Rollout mit einem
   unpassenden Gerät schreibt NICHTS. Ein Edge-Light-Release verlangt den Beleg
   „Edge Light" (Docker-Kerne vor dem Edge-Light-Update-Vertrag lehnen `light`
-  als Prüffehler ab; neuere stellen zurück, Sperre `backend`), ein
+  als Prüffehler ab; neuere stellen zurück, Sperre `backend`) und gekreuztes
+  Vertrauen: eine Edge-Light-Box ohne Wurzel UND geprüftes Vertrauens-Set hat
+  Stufe 1 und bekommt es nicht (`GRUND_LIGHT_STUFE_1`, sonst endete es als
+  „fehlgeschlagen ⚠"); ein
   Docker-Release bleibt einer Box unbekannter Art zuweisbar. Das ist kein
   Zustands-Tor, sondern der Cloud-Zwilling von `compat.backends`. `boxArt`
   reist auf `ReleaseDto`, `FleetRowDto` und `DeviceRowDto`; der Portal-Zwilling
   `releaseSperre` (`adminEdgeUpdates.ts`) trägt wortgleiche Sätze — **beide
-  zusammen ändern.**
+  zusammen ändern.** „Neueste Version" und „aktuell" gelten JE LINIE
+  (`EdgeUpdatesDto.lines`, Kunden-Urteil `EdgeStandVerdict`, Flotte `edgeStand`
+  mit `boxArt`): eine Docker-Box wird nie am neuesten Edge-Light-Release
+  gemessen; `kpi.newestRelease`/`upToDate` bleiben für ältere Portale die
+  Sicht über beide Linien.
+- **Drei Fakten, eine Uhr (Geräte & Updates G1/G2):** Jede Flotten-Zeile trägt
+  `fakten` (`ota.UpdateFakten`): angefragt (Portal) · angenommen (Box-Urteil
+  zum GLEICHEN Ziel, `target_verdict_at`) · bestätigt (läuft das Ziel,
+  `current_since`); beide Zeitpunkte setzt nur der Ingest bei einem beobachteten
+  Wechsel (Serverzeit, sonst `null` = unbekannt). „Offline" misst überall am
+  Herzschlag (`lastSeenAt`, `RolloutStates.lebenszeichen`), nicht am Zeitstempel
+  des Update-Blocks. `stand` (`ota.LinienStand`) ist das eine Wort je Box für
+  Balken und Liste; die Eignung je Box und Release liefert
+  `GET /admin/edge-updates/eignung` (`ota.UpdateEignung`, dieselben Sperren wie
+  die Schreibwege plus Rückschritt). Eine zurückgezogene oder abgelöste Anfrage
+  heißt im Lauf `zurueckgezogen` und hält ihn nicht mehr offen.
+- **Verlauf je Box und Release-Seite (Geräte & Updates G3/G4):** Was die Box
+  meldet, hängt ein Trigger auf `device_update_status` NUR BEI EINEM WECHSEL an
+  `box_update_verlauf` (stand · urteil · zustand; unter der Zeilensperre, also
+  ohne Doppel bei zwei Pods); `GET /admin/devices/{id}/verlauf` mischt das mit
+  den Portal-Ereignissen aus `rollout_event` (Geräte-Index). „Was ist neu"
+  schreibt der Release-Lauf (`ota_aenderungen`, `$VP_OTA_AENDERUNGEN` →
+  `vp-ota sign` → `register.json`), NEBEN das signierte Manifest; ein
+  bytegleich wiederholter Tag-Lauf trägt es nach, überschreibt nie. Leere Liste
+  = „keine Box-Änderung", `null` = keine Angabe. `GET
+  /admin/edge-updates/releases/{seq}` zeigt Inhalt, Programme, Läuft-auf,
+  Verteilungen.
+- **Gerät und Loader (Geräte & Updates G8):** Die Box meldet `update.geraet`
+  (Modell, Architektur, bei Edge Light `loader` update | flash und additiv
+  `loader_stand`, die `LOADER_STAND`-Marke des Loaders im Flash; Vertrag
+  `docs/contracts/v2/box-geraet.md`). Stufe 1 = kein gekreuztes Vertrauen ODER
+  `loader = flash` (`BoxArt.stufe1`, Portal `stufe1`); ohne Loader-Angabe
+  entscheidet das Vertrauen. Gespeichert nur, wenn der Block kommt - sonst
+  bleibt die letzte Angabe. Loader und Dienst-Init erneuert das bestätigte
+  Programm selbst aus eingebetteten Kopien (Loader-Selbstupdate,
+  `edge-light/docs/boot-und-updates.md#loader-selbstupdate`); wer `boot.sh`
+  oder das Init-Skript ändert, erhöht `LOADER_STAND` und schreibt
+  `edge-app/core/internal/loaderstand/stand-verlauf` fort.
 
 ### Portal
 
-EINE Fläche (`pages/admin/EdgeUpdatesPage.tsx` über der reinen
-`src/adminEdgeUpdates.ts`): Releases-Tabelle → je signiertem Release
-„Aktualisieren ▸" → Drawer mit „Alle Geräte" + Checkbox je Gerät (jedes trägt
-seinen ZUSTAND und ggf. einen **Einwand als HINWEIS, nie als Sperre**) →
-Zusammenfassung „Das passiert jetzt" → **Aktualisieren**. Darunter je AKTUELLER
-Zuweisung eine Karte mit Fortschritts-Rückgrat (über die ERREICHBARE Menge;
-offline/unbekannt stehen DANEBEN, nie im Nenner) und einer Zeile je Gerät
-(Ist · Zustand · Grund · Hebel). `currentRolloutViews` verbindet dafür
-`FleetRow.rolloutId` + `sollSeq` mit der Karte: der Live-Zustand einer neueren
-Zuweisung erscheint NIE unter dem Release-Kopf eines älteren Rollouts; dessen
-Mitgliedschaft bleibt ausschließlich im Journal. Der geteilte `GeraeteDrawer` weist ein
-Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Angeboten werden
-nur zur Box-Art passende Releases (`zuweisbareReleases`); unpassende Geräte stehen
-im Rollout-Dialog ausgegraut MIT Grund (E10), „Alle passenden Geräte" wählt sie
-nicht mit. Edge Light ohne geprüftes Vertrauens-Set heißt ruhig „Updates von Hand
-(Edge Light, Stufe 1)" (`crossoverState` → `von_hand`), nie „ohne Vertrauens-Set". Es gibt
-**nirgends** einen zweiten Knopf; die Vier-Klassen-Grammatik ist auf `busy`
-(läuft von selbst, pulsiert) · `blocked` · `incident` · `calm` geschrumpft, die
-frühere fünfte Klasse `action` („SIE sind dran") ist entfallen.
+EINE Fläche (`pages/admin/EdgeUpdatesPage.tsx`, Bausteine in
+`pages/admin/GeraeteUpdates.tsx` über der reinen `src/geraeteUpdates.ts`, seit
+Geräte & Updates G5): oben EIN Lage-Satz (das Dringendste zuerst: Fehler >
+Zurückhalten > wartende Anfrage offline > Update läuft > Stufe 1 > älter > alles
+aktuell), dann je Linie eine Karte (Docker-Box, Edge Light) mit ihrem neuesten
+Release, „für welche Geräte gebaut" (Docker aus dem Bau, Edge Light aus der
+Release-Seite mit ✓ je Programm im Portal), Flottenbalken aus `stand`,
+Versionsleiter aus `lines[].versions` und genau EINEM Hauptknopf
+(`Verteilen …` · `Fortschritt` · `Nachrüsten: so geht's` · `Alle aktuell`);
+„Releases (n)" öffnet die Releases DIESER Linie. Darunter „Braucht dich" (Box,
+Grund, nächster Schritt) und die Boxen nach Linie mit Verbindung aus
+`lastSeenAt` (`boxVerbindung`, dieselbe Regel wie die Registrierung; fehlt das
+Feld, „Verbindung unbekannt"), laufendem Stand, Anfrage (Ziel) und den drei
+Schritten angefragt · angenommen · bestätigt aus `fakten`. Fehlt `stand` (älterer
+Server), steht eine Box „ohne Stand", nie „neuestes".
+
+Verteilt wird weiter in EINEM Schritt, seit G6 im Dialog „Update verteilen ·
+Linie" (`pages/admin/VerteilDialog.tsx`, Einstieg „Verteilen …" der Karte oder
+„Verteilen ▸" in „Releases (n)"): (1) ein SIGNIERTES Release dieser Linie,
+(2) die Boxen in GENAU einer Gruppe aus der Eignung des Servers
+(`GET /admin/edge-updates/eignung`, G1) — bereit · wartet, bis sie online ist ·
+schon angefragt (offene Anfrage für genau dieses Release, aus `fakten`) · schon
+aktuell · kann nicht mit Grund (Stufe 1 mit „Nachrüsten"); Boxen der anderen
+Linie liefert der Server nicht, er zählt sie (`andereLinie`). Ein unbekanntes
+Gruppen-Wort ist „kann nicht", nie still „bereit". (3) Reihenfolge: „Erst eine
+Box" ist VORGESCHLAGEN (E1 A, eine bereite vor einer wartenden), „Alle n auf
+einmal" die Alternative; der Knopf sagt, was passiert („1 Box anfragen").
+Gesendet wird `createRollout` mit genau diesen Boxen — im Server wartet nichts.
+Der Lauf steht IN der Linien-Karte (`laufInDerKarte`): die jüngste Anfrage je
+Linie, offen oder seit höchstens einem Tag beendet, als drei Zahlen
+angefragt · angenommen · bestätigt aus den Fakten der HEUTIGEN Anfrage je Box —
+ein älterer Auftrag erscheint so nie als Live-Zustand eines neueren. Hat die
+erste Box bestätigt und ist nichts gescheitert, bietet der Lauf „An die übrigen
+n" an (derselbe Dialog, vorausgewählt nur die übrigen, „alle auf einmal"). Die
+Lauf-Karten unter der Liste und der alte Rollout-Drawer sind entfallen.
+„Braucht dich" trägt „Anfrage zurückziehen" (`…/update-target/revert`, für eine
+stumme Box und für die abgelehnte Anfrage an eine Box mit Stufe 1) und „Noch
+einmal anfragen" (dieselbe Anfrage neu: neuer `assigned_at`, die Box löst damit
+ihren Merkzettel `FileFailed` — `otaupdater/engine.go`, ebenso Edge Light).
+Seit G7 öffnet jede Box ihre Box-Seite (`pages/admin/BoxSeite.tsx`, ersetzt
+den `GeraeteDrawer`): drei Kästen läuft (Box) · angefragt (Portal) · zuletzt
+bestätigt (Box) und der Verlauf (`GET /admin/devices/{id}/verlauf`, G3); als
+„bestätigt" gilt nur ein Stand, den das Portal seit dem vorigen Wechsel
+angefragt hatte (`zuletztBestaetigt`), ein Wechsel von Hand heißt „läuft jetzt".
+Eine einzelne Box fragt man dort mit „Update anfragen …" an — derselbe Dialog,
+nur diese Box, kein Kanal, kein Pin. Eine Box mit Stufe 1 zeigt oben den Grund
+in einem Satz (Loader vor Vertrauen) und die vier Schritte zum Nachrüsten mit
+„Fenster öffnen" (Fernwartung); Nachrüsten bleibt Handarbeit (E3 A,
+`edge-light/docs/nachruesten.md`). Ein Klick auf eine Version (Linien-Karte,
+„Releases (n)") öffnet die Release-Seite (`ReleaseSeite.tsx`, Daten aus G4):
+was neu ist (nur Box-Änderungen seit dem Vorgänger DERSELBEN Linie), Inhalt je
+Gerät mit „geprüft" im Portal, was nie im Update ist, wo es läuft und wann es
+verteilt wurde. Angeboten werden nur zur Box-Art passende, SIGNIERTE
+Releases, einer Edge-Light-Box mit Stufe 1 keines (`zuweisbareReleases`,
+`releaseSperre` braucht `trust`). Stufe 1 heißt ruhig „nur von Hand"
+(`stand = hand`, eigene Farbe), nie „ohne Vertrauens-Set" und nie ein Fehler. Es
+gibt **nirgends** einen zweiten Knopf am Gerät.
 
 ### Edge-Seite (Kurzform; Details in `edge-app/AGENTS.md`)
 

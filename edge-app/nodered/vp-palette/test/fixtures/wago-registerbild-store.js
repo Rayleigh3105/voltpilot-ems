@@ -303,8 +303,12 @@ function erstelleRegisterbild(cfg = {}, aufbau = ladeAufbau()) {
  * Der In-Process-Modbus-TCP-Server vor dem Store - nach dem Muster von `modbus_spec.js`, aber
  * mit den Ausnahmen, die ein Leser treffen kann: fremder Funktionscode → 0x01, Adresse
  * außerhalb des Registerbilds oder mehr als 125 Register → 0x02 bzw. 0x03.
+ *
+ * Er braucht vom Store nur `funktionscode` und `lies(adresse, anzahl)`; der Erzeuger-Store
+ * (`erzeuger-registerbild-store.js`) steht darum vor demselben Server. `port` und `host` sind
+ * für dessen Kommandozeile da - Tests nehmen den freien Port.
  */
-function starteRegisterbildServer(store, { delayMs = 0 } = {}) {
+function starteRegisterbildServer(store, { delayMs = 0, port = 0, host = '127.0.0.1' } = {}) {
   const state = { anfragen: 0, ausnahmen: 0, letzte: null };
   const server = net.createServer((sock) => {
     sock.on('error', () => {});
@@ -351,7 +355,7 @@ function starteRegisterbildServer(store, { delayMs = 0 } = {}) {
     });
   });
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(port, host, () => {
       resolve({
         port: server.address().port,
         state,

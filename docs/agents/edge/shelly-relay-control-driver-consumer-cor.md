@@ -74,9 +74,9 @@ must hold:
   the SAME file - the goe-control-vectors discipline).
 - **Gates:** executor gated on `VP_CONTROL_ENABLED` AND
   `VP_CONSUMER_CONTROL_ENABLED` (both default OFF = zero HTTP + no state file,
-  byte-identical); the TYPES heating-rod/generic-load stay `simulator_only` in
-  the cloud catalog until the captain's bench session flips them (D11, its own
-  mini-PR). The source poll is the READ path and runs regardless (like every
+  byte-identical); the TYPE generic-load stays `simulator_only` in the cloud
+  catalog until a bench session flips it (D11, its own mini-PR); heating-rod is
+  `certified` since 2026-11-04 on the captain's decision without a bench run. The source poll is the READ path and runs regardless (like every
   other source reader) - adding the source is the opt-in.
 - Proofs: `internal/shelly` units (vectors, both-gen stubs, auth refusal,
   controlcheck write-only-while-off, store round-trip),

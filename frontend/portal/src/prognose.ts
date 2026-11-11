@@ -447,6 +447,13 @@ export interface ModellWahl {
   setByName: string | null;
   setAt: string | null;
   selectable: ForecastModelId[];
+  /**
+   * S5 ("Verbrauch lernt von selbst", Bericht R.4): ob die tägliche Automatik
+   * für diese Art noch einschalten darf. `null` für PV (die Automatik gibt es
+   * nur für Verbrauch); `false` nach einer Wahl von Hand - dieselbe Zeile, die
+   * `ForecastModelService.promote` auch serverseitig abschaltet.
+   */
+  automatikAktiv: boolean | null;
 }
 
 export interface ModellWahlHistorie {

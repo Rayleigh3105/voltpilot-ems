@@ -1,7 +1,6 @@
 import { lazy, useEffect, useRef, useState } from 'react';
 import { LazyBoundary } from './Lazy';
 import type { Site } from '../api';
-import type { AnlegeRueckkehr } from '../anlegeNurMessen';
 import type { Route } from '../nav';
 
 const AnlageAnlegenDrawer = lazy(() =>
@@ -28,7 +27,8 @@ export function AnlageAnlegenDrawerLazy(props: {
   onChanged: (createdSiteId: string, ziel?: Route) => void;
   existingSites?: Site[];
   standortId?: string | null;
-  rueckkehr?: AnlegeRueckkehr | null;
+  /** Aus einem Assistenten, der danach weitergeht: das Ende kehrt dorthin zurück. */
+  zurueck?: boolean;
 }) {
   const [everOpened, setEverOpened] = useState(props.open);
   const openRef = useRef(props.open);

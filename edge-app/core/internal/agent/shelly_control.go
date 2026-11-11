@@ -82,7 +82,13 @@ func (a *Agent) shellyIdentity(ctx context.Context, doer shelly.Doer, cfg shelly
 			return id, nil
 		}
 	}
-	id, err := shelly.Detect(ctx, doer, cfg)
+	var id shelly.Identity
+	var err error
+	if cfg.IsGroup() {
+		id, _, err = shelly.DetectGroup(ctx, doer, cfg)
+	} else {
+		id, err = shelly.Detect(ctx, doer, cfg)
+	}
 	if err != nil {
 		return shelly.Identity{}, err
 	}
@@ -122,6 +128,7 @@ func (a *Agent) shellyCommandFor(entityID string) shelly.Command {
 	if dec.Granted.SetpointKw != nil {
 		v := *dec.Granted.SetpointKw
 		cmd.SetpointKw = &v
+		cmd.Outputs = append([]int(nil), dec.Granted.Outputs...)
 	}
 	if dec.Granted.OnOff != nil {
 		v := *dec.Granted.OnOff
@@ -149,12 +156,28 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 		return
 	}
 	seen := map[string]bool{}
+	doubles := shellyDoubleClaims(reg)
 	for _, e := range reg.Entities {
 		cfg, ok := shelly.ParseDriver(e.Driver)
 		if !ok {
 			continue // not a shelly-backed entity
 		}
 		seen[e.ID] = true
+		if ch, double := doubles[e.ID]; double {
+			// Two entities claim one output (an output set over a per-output
+			// component): neither writes - two writers would undo each other.
+			if now.Sub(lastAssert[e.ID]) >= goeReassertInterval {
+				slog.Warn("shelly output claimed twice; not driven", "entity", e.ID, "channel", ch)
+				a.publishShellyDoubleClaim(e, cfg, ch, now)
+				lastAssert[e.ID] = now
+				delete(lastFP, e.ID)
+			}
+			continue
+		}
+		if cfg.IsGroup() {
+			a.runShellyGroupEntity(ctx, doer, e, cfg, lastFP, lastAssert, now)
+			continue
+		}
 		cmd := a.shellyCommandFor(e.ID)
 		plan := shelly.PlanFor(cfg, cmd)
 		fp := shellyPlanFingerprint(plan)
@@ -192,6 +215,7 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 			delete(lastAssert, id)
 		}
 	}
+	a.forgetShellyGroups(seen)
 }
 
 // publishShellyReadback publishes the per-entity readback (NOT retained - a
@@ -268,7 +292,8 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 		if s.Communication != inverter.CommShellyHTTP {
 			continue
 		}
-		cfg := shelly.Config{IP: s.Connection.IP, Port: s.Connection.Port, Channel: s.Connection.Channel}
+		cfg := shelly.Config{IP: s.Connection.IP, Port: s.Connection.Port, Channel: s.Connection.Channel,
+			Channels: s.Connection.Channels.Ints()}
 		counted := &sourceStatusDoer{inner: doer}
 		ident, err := a.shellyIdentity(ctx, counted, cfg)
 		if err != nil {
@@ -276,7 +301,24 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 			slog.Warn("shelly source detect failed", "source", s.ID, "target", cfg.HostPort(), "err", err)
 			continue
 		}
-		st, de := shelly.ReadState(ctx, counted, cfg, ident)
+		var payload map[string]any
+		var de *shelly.DriverError
+		if cfg.IsGroup() {
+			// An output set (one heating rod over several outputs): every
+			// output from one status answer.
+			payload, de = shellyGroupSourceReading(ctx, counted, cfg, ident)
+		} else {
+			var st shelly.State
+			if st, de = shelly.ReadState(ctx, counted, cfg, ident); de == nil {
+				payload = map[string]any{}
+				if st.On != nil {
+					payload["relay_on"] = *st.On
+				}
+				if st.PowerKw != nil {
+					payload["load_kw"] = *st.PowerKw
+				}
+			}
+		}
 		if de != nil {
 			a.observeShellySource(s, counted.requests, 0, de)
 			slog.Warn("shelly source read failed", "source", s.ID, "target", cfg.HostPort(), "err", de)
@@ -284,13 +326,6 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 				a.shellyForgetIdentity(cfg)
 			}
 			continue
-		}
-		payload := map[string]any{}
-		if st.On != nil {
-			payload["relay_on"] = *st.On
-		}
-		if st.PowerKw != nil {
-			payload["load_kw"] = *st.PowerKw
 		}
 		a.observeShellySource(s, counted.requests, len(payload), nil)
 		if len(payload) == 0 {
@@ -313,25 +348,38 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 // on the wizard's explicit control_test - the non-disruptive switch test
 // (shelly.ControlCheck: a value-identical off-write ONLY while the relay is
 // off; a running heat cycle is read-only + honestly named).
+//
+// The relay state comes from the status answer the detection already read
+// (shelly.DetectState): two HTTP requests, not three. The portal waits for this
+// answer, and a Shelly on a weak WLAN needs seconds per request.
 func (a *Agent) shellyTest(req testconn.Request) testconn.Result {
 	raw, _ := json.Marshal(req.Connection)
 	var cfg shelly.Config
 	_ = json.Unmarshal(raw, &cfg)
+	if cfg.IsGroup() {
+		return a.shellyGroupTest(req, cfg)
+	}
 	doer := a.shellyDoerRef()
 	ctx, cancel := context.WithTimeout(context.Background(), testReadTimeout)
 	defer cancel()
 
-	ident, err := shelly.Detect(ctx, doer, cfg)
+	_, st, err := shelly.DetectState(ctx, doer, cfg)
 	if err != nil {
 		return shellyTestFailure(err)
-	}
-	st, de := shelly.ReadState(ctx, doer, cfg, ident)
-	if de != nil {
-		return shellyTestFailure(de)
 	}
 	res := testconn.Result{OK: true, Reading: &testconn.Reading{}}
 	if st.PowerKw != nil {
 		res.Reading.LoadKw = st.PowerKw
+	} else if st.On != nil {
+		// A Shelly WITHOUT a power reading (Pro 3, Plus 1, a metering model
+		// whose status carried no apower) has exactly one real value: the relay
+		// state of this output - the same relay_on its source publishes in
+		// operation. It travels as the channel state, like an I/O module's
+		// (runProbeTestConnection: States -> samples). An empty four-channel
+		// reading is, rightly, "not read" in the cloud: the portal showed
+		// "Die Prüfung ist fehlgeschlagen" for a Pro 3 the box had read fine
+		// (VoltPilotGATE, 31.10.2026).
+		res.States = []testconn.ChannelState{{Channel: shellyRelayChannel, Value: b01(*st.On)}}
 	}
 	if req.ControlTest {
 		out := shelly.ControlCheck(ctx, doer, cfg)
@@ -343,6 +391,10 @@ func (a *Agent) shellyTest(req testconn.Request) testconn.Result {
 	}
 	return res
 }
+
+// shellyRelayChannel names the relay state of the tested output (0 = off,
+// 1 = on) in a connection test - the key of the source telemetry.
+const shellyRelayChannel = "relay_on"
 
 // shellyTestFailure maps a driver error onto the testconn vocabulary with the
 // specific German message preserved.

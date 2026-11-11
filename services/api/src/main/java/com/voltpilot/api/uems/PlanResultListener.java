@@ -4,17 +4,13 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,18 +38,24 @@ public class PlanResultListener extends Rueckmeldeweg {
     /** Eine gültige, einem Plan zuzuordnende Quittung samt Mandant aus dem Topic. */
     record Gepruefte(UUID tenantId, PlanZustellungRepository.Quittung quittung) {}
 
-    private final String brokerUrl, username, password;
     private final PlanZustellungRepository repository;
     private final ObjectMapper mapper;
-    private MqttClient client;
+    /**
+     * Ein Client, einmal gebaut, nie verworfen; eindeutige ID mit sauberer Sitzung. Die Box sendet die Quittung
+     * retained, nach jedem Abo liegt die letzte also vor: eine dauerhafte Sitzung bringt nichts, aber die feste ID ließ
+     * zwei Clients derselben api (oder zweier Pods im Rollout) einander die Sitzung auf Dauer abnehmen.
+     */
+    private final BrokerVerbindung verbindung;
 
     public PlanResultListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             PlanZustellungRepository repository, ObjectMapper mapper) {
-        this.brokerUrl = brokerUrl; this.username = username; this.password = password;
         this.repository = repository; this.mapper = mapper;
+        this.verbindung = new BrokerVerbindung(log, "plan result", brokerUrl,
+                "voltpilot-api-plan-result-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -61,57 +63,21 @@ public class PlanResultListener extends Rueckmeldeweg {
         ensureConnected();
     }
 
-    /** Initial broker outages are retried; a failed half-created client never wedges startup. */
+    /** Startet den Erstaufbau, bis eine Verbindung stand; danach verbindet nur Paho neu. */
     @Scheduled(fixedDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}",
             initialDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}")
-    public synchronized void ensureConnected() {
-        if (client != null && client.isConnected()) return;
-        try {
-            connect();
-        } catch (Exception e) {
-            log.warn("plan result listener awaits broker: {}", e.getMessage());
-            discardClient();
-        }
-    }
-
-    private void connect() throws Exception {
-        discardClient();
-        client = new MqttClient(brokerUrl, "voltpilot-api-plan-result", new MemoryPersistence());
-        client.setCallback(new MqttCallbackExtended() {
-            @Override public void connectComplete(boolean reconnect, String uri) {
-                try { client.subscribe(FILTER, 1, listener()); }
-                catch (Exception e) { log.warn("plan result subscribe failed: {}", e.getMessage()); }
-            }
-            @Override public void connectionLost(Throwable cause) { }
-            @Override public void messageArrived(String topic, MqttMessage message) { }
-            @Override public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken t) { }
-        });
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(false); options.setAutomaticReconnect(true); options.setConnectionTimeout(5);
-        if (username != null && !username.isBlank()) {
-            options.setUserName(username); options.setPassword(password == null ? new char[0] : password.toCharArray());
-        }
-        client.connect(options);
-        client.subscribe(FILTER, 1, listener());
+    public void ensureConnected() {
+        verbindung.sicherstellen();
     }
 
     @PreDestroy
     void stop() {
-        discardClient();
+        verbindung.schliessen();
     }
 
-    private void discardClient() {
-        if (client == null) return;
-        try { if (client.isConnected()) client.disconnect(); client.close(); }
-        catch (Exception ignored) { }
-        client = null;
-    }
-
-    private IMqttMessageListener listener() {
-        return (topic, message) -> {
-            try { handle(topic, message.getPayload(), Instant.now()); }
-            catch (Exception e) { log.warn("plan result on {} rejected: {}", topic, e.getMessage()); }
-        };
+    private void empfangen(String topic, MqttMessage message) {
+        try { handle(topic, message.getPayload(), Instant.now()); }
+        catch (Exception e) { log.warn("plan result on {} rejected: {}", topic, e.getMessage()); }
     }
 
     /** Prüft und schreibt; false = verworfen (ungültig, fremde Box, älter als das Gespeicherte). */

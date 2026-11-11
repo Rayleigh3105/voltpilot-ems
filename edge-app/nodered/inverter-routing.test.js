@@ -329,6 +329,61 @@ test('route keeps explicit kostal connection values and gates unknown families i
   assert.match(idle.reason, /Kostal-Familie/);
 });
 
+// --- Huawei SUN2000 + LUNA2000 (huawei_modbus) -------------------------------
+
+const huaweiDecode = require('./huawei/huawei-decode');
+
+function huaweiConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'huawei',
+      label: 'Huawei · SUN2000-M1',
+      family: 'huawei_sun2000_luna',
+      communication: 'huawei_modbus',
+      connection: { ip: '192.168.0.40', port: 502, unit_id: 0 },
+      updated_at: '2026-10-26T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a huawei_modbus selection', () => {
+  const sel = routing.parseConfig(huaweiConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_HUAWEI_MODBUS);
+  assert.strictEqual(sel.family, 'huawei_sun2000_luna');
+});
+
+test('route maps huawei_modbus onto the sourced read plan with vendor default 502/0', () => {
+  const plan = routing.route(routing.parseConfig(huaweiConfig({
+    connection: { ip: '192.168.0.40' }, // port/unit omitted -> defaults
+  })));
+  assert.strictEqual(plan.adapter, 'huawei_modbus');
+  assert.strictEqual(plan.family, 'huawei_sun2000_luna');
+  assert.strictEqual(plan.target, '192.168.0.40:502');
+  assert.strictEqual(plan.connection.port, 502);
+  assert.strictEqual(plan.connection.unit_id, 0);
+  assert.strictEqual(plan.connection.invert_grid_sign, false);
+  assert.strictEqual(plan.connection.invert_batt_sign, false);
+  // The read plan is EXACTLY the decode module's (one truth for the blocks).
+  assert.deepStrictEqual(plan.reads, huaweiDecode.planReads({ family: 'huawei_sun2000_luna' }));
+});
+
+test('route keeps explicit huawei connection values and gates unknown families idle-safe', () => {
+  const plan = routing.route(routing.parseConfig(huaweiConfig({
+    connection: { ip: '10.0.0.8', port: 503, unit_id: 1, invert_grid_sign: true, invert_batt_sign: true },
+  })));
+  assert.strictEqual(plan.target, '10.0.0.8:503');
+  assert.strictEqual(plan.connection.unit_id, 1);
+  assert.strictEqual(plan.connection.invert_grid_sign, true);
+  assert.strictEqual(plan.connection.invert_batt_sign, true);
+  // Unknown family -> idle with a named reason, never a fabricated plan.
+  const idle = routing.route(routing.parseConfig(huaweiConfig({ family: 'kostal_plenticore' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /Huawei-Familie/);
+});
+
 // --- die GERÄTE-EIGENE Einspeisegrenze („Grenzen & Wächter" Stufe 0) ---------
 
 test('exportLimitRegister kennt hybrid_3p und AUSDRÜCKLICH nicht hybrid_1p', () => {
@@ -404,4 +459,174 @@ test('an unknown communication is still refused (the alias widens nothing)', () 
     schema_version: '1.0', family: 'sunspec_live', communication: 'sunspec_udp',
     connection: { ip: '192.168.0.9' },
   })), null);
+});
+
+// --- KACO Powador-Altgeraete, seriell ueber RS485-zu-Ethernet-Wandler (kaco_serial) ---
+
+const kacoSerialDecode = require('./kaco/kaco-serial-decode');
+
+function kacoSerialConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'kaco',
+      label: 'KACO · Powador 3200 - INT',
+      family: 'kaco_serial',
+      communication: 'kaco_serial',
+      connection: { ip: '192.168.0.40', port: 8899, address: 1 },
+      updated_at: '2026-10-26T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a kaco_serial selection', () => {
+  const sel = routing.parseConfig(kacoSerialConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_KACO_SERIAL);
+  assert.strictEqual(sel.family, 'kaco_serial');
+});
+
+test('route maps kaco_serial onto a TCP target + the exact request frame, with defaults 8899/Adresse 1', () => {
+  const plan = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '192.168.0.40' }, // port/address omitted -> defaults
+  })));
+  assert.strictEqual(plan.adapter, 'kaco_serial');
+  assert.strictEqual(plan.family, 'kaco_serial');
+  assert.strictEqual(plan.target, '192.168.0.40:8899');
+  assert.strictEqual(plan.connection.port, 8899);
+  assert.strictEqual(plan.connection.address, 1);
+  assert.strictEqual(plan.request, '#010\r');
+});
+
+test('route keeps an explicit RS485-Adresse and Port', () => {
+  const plan = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '10.0.0.5', port: 4196, address: 7 },
+  })));
+  assert.strictEqual(plan.target, '10.0.0.5:4196');
+  assert.strictEqual(plan.connection.address, 7);
+  assert.strictEqual(plan.request, '#070\r');
+});
+
+test('route refuses an out-of-range RS485-Adresse and an unknown family, idle-safe', () => {
+  const outOfRange = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '10.0.0.5', address: 99 },
+  })));
+  assert.strictEqual(outOfRange.adapter, 'idle');
+  assert.match(outOfRange.reason, /1 und 32/);
+
+  // Adresse 0 ist bei dieser Plattform KEINE gueltige Vorgabe (anders als eine
+  // Modbus-Unit-ID) - KACOs eigene Betriebsanleitung nennt nur 1..32.
+  const zero = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '10.0.0.5', address: 0 },
+  })));
+  assert.strictEqual(zero.adapter, 'idle');
+  assert.match(zero.reason, /1 und 32/);
+
+  const idle = routing.route(routing.parseConfig(kacoSerialConfig({ family: 'kaco_http' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /KACO-Familie/);
+});
+
+test('kaco_serial shares exactly one family with kaco-serial-decode.js (no second register of the name)', () => {
+  assert.deepStrictEqual(Object.keys(kacoSerialDecode.FAMILIES), ['kaco_serial']);
+});
+
+// --- Klassischer KOSTAL PIKO, Web-API /api/dxs.json (kostal_dxs) -------------
+
+const kostalDxsDecode = require('./kostal/kostal-dxs-decode');
+const kostalRtuDecode = require('./kostal/kostal-piko-rtu-decode');
+
+function kostalDxsConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'kostal',
+      label: 'KOSTAL · PIKO 20',
+      family: 'kostal_piko',
+      communication: 'kostal_dxs',
+      connection: { ip: '192.168.1.122', port: 80 },
+      updated_at: '2026-11-06T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a kostal_dxs selection', () => {
+  const sel = routing.parseConfig(kostalDxsConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_KOSTAL_DXS);
+  assert.strictEqual(sel.family, 'kostal_piko');
+});
+
+test('route maps kostal_dxs onto an HTTP target with the default port 80', () => {
+  const plan = routing.route(routing.parseConfig(kostalDxsConfig({ connection: { ip: '192.168.1.122' } })));
+  assert.strictEqual(plan.adapter, 'kostal_dxs');
+  assert.strictEqual(plan.family, 'kostal_piko');
+  assert.strictEqual(plan.target, '192.168.1.122:80');
+  assert.strictEqual(plan.connection.port, 80);
+});
+
+test('route refuses an unknown kostal_dxs family idle-safe', () => {
+  const idle = routing.route(routing.parseConfig(kostalDxsConfig({ family: 'kostal_piko_ba' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /KOSTAL-PIKO-Familie/);
+});
+
+test('kostal_dxs shares exactly one family with kostal-dxs-decode.js', () => {
+  assert.deepStrictEqual(Object.keys(kostalDxsDecode.FAMILIES), ['kostal_piko']);
+});
+
+// --- Derselbe PIKO ueber den Ausweg, Modbus RTU (kostal_piko_rtu) ------------
+
+function kostalRtuConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'kostal',
+      label: 'KOSTAL · PIKO 20',
+      family: 'kostal_piko_rtu',
+      communication: 'kostal_piko_rtu',
+      connection: { ip: '192.168.0.50', port: 8899, unit_id: 1 },
+      updated_at: '2026-11-06T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a kostal_piko_rtu selection', () => {
+  const sel = routing.parseConfig(kostalRtuConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_KOSTAL_PIKO_RTU);
+});
+
+test('route maps kostal_piko_rtu onto the GATEWAY target, with defaults 8899/Geraeteadresse 1 and an empty cross-check IP', () => {
+  const plan = routing.route(routing.parseConfig(kostalRtuConfig({ connection: { ip: '192.168.0.50' } })));
+  assert.strictEqual(plan.adapter, 'kostal_piko_rtu');
+  assert.strictEqual(plan.target, '192.168.0.50:8899');
+  assert.strictEqual(plan.connection.unit_id, 1);
+  assert.strictEqual(plan.connection.cross_check_ip, '');
+});
+
+test('route keeps an explicit Geraeteadresse, Port and Gegenprobe-IP', () => {
+  const plan = routing.route(routing.parseConfig(kostalRtuConfig({
+    connection: { ip: '192.168.0.50', port: 4196, unit_id: 3, cross_check_ip: '192.168.1.122' },
+  })));
+  assert.strictEqual(plan.target, '192.168.0.50:4196');
+  assert.strictEqual(plan.connection.unit_id, 3);
+  assert.strictEqual(plan.connection.cross_check_ip, '192.168.1.122');
+});
+
+test('route refuses a Geraeteadresse ausserhalb 1..247 and an unknown family, idle-safe', () => {
+  const outOfRange = routing.route(routing.parseConfig(kostalRtuConfig({ connection: { ip: '10.0.0.5', unit_id: 999 } })));
+  assert.strictEqual(outOfRange.adapter, 'idle');
+  assert.match(outOfRange.reason, /1 und 247/);
+
+  const idle = routing.route(routing.parseConfig(kostalRtuConfig({ family: 'kostal_piko' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /KOSTAL-PIKO-Familie/);
+});
+
+test('kostal_piko_rtu shares exactly one family with kostal-piko-rtu-decode.js', () => {
+  assert.deepStrictEqual(Object.keys(kostalRtuDecode.FAMILIES), ['kostal_piko_rtu']);
 });

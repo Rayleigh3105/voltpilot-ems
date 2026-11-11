@@ -9,7 +9,9 @@ import {
   ruecknahmeFolgen,
   spur,
   umfang,
+  vorlagenSuche,
   type AdminVorlage,
+  type VorlagenGruppe,
 } from './adminVorlagen';
 
 function v(over: Partial<AdminVorlage> = {}): AdminVorlage {
@@ -130,5 +132,21 @@ describe('adminVorlagen', () => {
     expect(satz).toContain('1 eingebaute');
     expect(satz).toContain('2 selbst eingetragene');
     expect(satz).toContain('1 nicht mehr wählbar');
+  });
+});
+
+describe('vorlagenSuche (UI-Runde Admin)', () => {
+  const g = (brandLabel: string, modelLabel: string, kind: string) =>
+    ({ templateRef: `${brandLabel}-${modelLabel}`, kind, brandLabel, modelLabel, communicationLabel: 'Modbus TCP' }) as unknown as VorlagenGruppe;
+  const liste = [g('Deye', 'SUN-10K', 'builtin'), g('ACME', 'Relais 16', 'certified'), g('Deye', 'SUN-30K', 'builtin')];
+
+  it('lässt ohne Suchtext alles stehen, die selbst eingetragenen zuerst', () => {
+    expect(vorlagenSuche(liste, '  ').map((x) => x.modelLabel)).toEqual(['Relais 16', 'SUN-10K', 'SUN-30K']);
+  });
+
+  it('verlangt jedes Wort, ohne Groß/Klein, in Marke, Modell oder Verbindung', () => {
+    expect(vorlagenSuche(liste, 'deye 30k').map((x) => x.modelLabel)).toEqual(['SUN-30K']);
+    expect(vorlagenSuche(liste, 'modbus').length).toBe(3);
+    expect(vorlagenSuche(liste, 'sma')).toEqual([]);
   });
 });

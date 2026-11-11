@@ -212,6 +212,7 @@ public class ZaehlerwechselService {
                                 ZAEHLERSTAND.equals(q.herleitung()));
                     }).toList();
             return new ZaehlerwechselDto.Vorschau(zeit(am), geraete.teileAm(id, am).stream()
+                    .filter(GeraetRepository.Teil::istKarte)
                     .map(k -> new ZaehlerwechselDto.Karte(k.id(), k.steckplatz(), k.bezeichnung(), k.typ(), k.seriennummer())).toList(), folgen);
         });
     }
@@ -276,8 +277,12 @@ public class ZaehlerwechselService {
             throw wechselAbgelehnt(u, alt);
         }
 
-        // 2. Karten brauchen die ausdrückliche Entscheidung des Controllerwechsels (IP-19).
-        List<GeraetRepository.Teil> karten = geraete.teileAm(geraetId, a.zeitpunkt());
+        // 2. Karten brauchen die ausdrückliche Entscheidung des Controllerwechsels (IP-19). Die
+        // Erzeugungseinheiten einer Anlagensteuerung (UEMS EZ-6) stecken nicht IN der Steuerung — sie ziehen
+        // mit allen Angaben zum neuen Einbau um, ohne Entscheidung.
+        List<GeraetRepository.Teil> teile = geraete.teileAm(geraetId, a.zeitpunkt());
+        List<GeraetRepository.Teil> karten = teile.stream().filter(GeraetRepository.Teil::istKarte).toList();
+        List<GeraetRepository.Teil> einheiten = teile.stream().filter(t -> !t.istKarte()).toList();
         if (!karten.isEmpty() && a.kartenUebernommen() == null) {
             Map<String, Object> fakten = new LinkedHashMap<>();
             fakten.put("karten", karten.size());
@@ -407,6 +412,9 @@ public class ZaehlerwechselService {
         for (GeraetRepository.Teil karte : karten) {
             neueKarten.put(karte.id(), geraete.karteWechseln(tenant, karte, neuId, a.zeitpunkt(),
                     a.kartenUebernommen().contains(karte.id())));
+        }
+        for (GeraetRepository.Teil einheit : einheiten) {
+            geraete.karteWechseln(tenant, einheit, neuId, a.zeitpunkt(), true);
         }
         List<UUID> komponenten = new ArrayList<>();
         for (Speisung s : speisungen) {

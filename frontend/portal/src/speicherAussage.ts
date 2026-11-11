@@ -44,7 +44,7 @@
  * Backend, das die Felder gar nicht kennt, bekommt gar keine Aussage
  * (`null`) — ein fehlendes FELD ist kein fehlendes STAMMDATUM.
  */
-import type { PlantKind } from './api';
+import type { PlantKind, SteuerungZeitraum } from './api';
 import { BESTAND_BADGE, bestandZeile, type BestandEingabe } from './erloesKomposition';
 import { eurAmount, fmtNum, NBSP } from './format';
 import { MISPEL_GUTSCHRIFT, MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG } from './glossarEinstieg';
@@ -82,6 +82,14 @@ export const MESSLATTE_KURZ = 'ohne smarte Steuerung';
  * mit EIN Speicher" (genau so im Test aufgefallen).
  */
 export const MESSLATTE_DATIV_UNBESTIMMT = 'einem Speicher ohne smarte Steuerung';
+
+/**
+ * Wie die Messlatte fährt, in EINEM Satz (NS-1 A, Captain 15.10.2026): derselbe
+ * Speicher, so groß wie gemessen, stur gefahren. Steht im ⓘ jeder Kachel
+ * „VoltPilot-Steuerung“ hinter „Verglichen wird mit {@link MESSLATTE_DATIV}“.
+ */
+export const MESSLATTE_REGEL =
+  'gleich groß wie gemessen, stur gefahren: Er lädt jeden Überschuss sofort und deckt jeden Bedarf sofort, ohne Blick auf Preise';
 
 /** Das VORZEICHEN einer Zahl als Wort — nie Farbe allein (§3.9). */
 export type SpeicherVorzeichen = 'plus' | 'minus' | 'null';
@@ -195,6 +203,33 @@ export interface MispelMonatAussage {
   zusammenSek: string;
 }
 
+/**
+ * Die Worte zu den Grund-Kennungen MIT BESTAND (Bedienkonzept
+ * vp-herzogau-p3-kachel-konzept §3; Regeln in
+ * `docs/contracts/steuerung-tag-vectors.json`, Block `mit_bestand`):
+ * „gestern verkauft, heute nachgekauft“ steht immer, wenn die Regel greift -
+ * es erklärt den Nachtbezug, nicht mehr ein Minus. Eine fremde Kennung bleibt
+ * stumm.
+ */
+export const BESTAND_GRUND_WORT: Readonly<Record<string, string>> = {
+  gestern_verkauft: 'gestern verkauft, heute nachgekauft',
+  wenig_sonne: 'wenig Sonne',
+  anders_geladen: 'anders geladen und entladen',
+};
+
+/** Die Grund-Wörter eines Tages mit Bestand, höchstens zwei; leer ohne bekannten Grund. */
+export function bestandGrundWorte(gruende: readonly string[] | null | undefined): string[] {
+  if (!Array.isArray(gruende)) return [];
+  return gruende
+    .map((k) => BESTAND_GRUND_WORT[k])
+    .filter((w): w is string => !!w)
+    .slice(0, GRUENDE_HOECHSTENS);
+}
+
+/** Der Satz, wenn einem Tag ein gemessener Ladestand am Rand fehlt (Regel 5). */
+export const LADESTAND_FEHLT_SATZ =
+  'Für diesen Zeitraum fehlt an einem Tagesrand der gemessene Ladestand — ohne ihn gibt es keine Zahl mit Bestand.';
+
 /** Ein Anker des größeren Zeitraums: „September bisher + 116,94 €". */
 export interface SpeicherAnker {
   label: string;
@@ -234,6 +269,10 @@ export interface SpeicherAussage {
    * alte, gegen „ohne Speicher" geplante Zahl erreicht diese Fläche nicht mehr.
    */
   geplant: string | null;
+  /** Derselbe Planwert als Betrag („+ 6,39 €"); null ohne Planwert. */
+  geplantWert: string | null;
+  /** Das Vorzeichen des Planwerts (`plus`/`minus`/`null` = Totband); null ohne Planwert. */
+  geplantTon: SpeicherGeld['ton'] | null;
 
   /* --- Einordnung eines Tages (Konzept k1 §7, E1/E3/E4 = A) --- */
   /**
@@ -275,6 +314,8 @@ export interface SpeicherAussage {
   hinweis: string | null;
   /** true = der Hinweis führt auf die Technik-Seite (Stammdaten nachtragen). */
   nachtragLink: boolean;
+  /** true = die Zahl ist mit Bestand bewertet (Bedienkonzept P3, P3-2 A). */
+  mitBestand: boolean;
 
   /* --- Kurzform für Cockpit + Steuerungs-Bereich --- */
   /** „Steuerung + 3,10 €" — EINE Zeile. */
@@ -316,6 +357,19 @@ export interface SpeicherEingabe extends BestandEingabe {
   mispelNetzstromverbrauchSpeicherKwh?: number | null;
   mispelNetzeinspeisungSpeicherKwh?: number | null;
   mispelMengenQuelle?: string | null;
+  /**
+   * Die Zählweise MIT BESTAND (Bedienkonzept vp-herzogau-p3-kachel-konzept,
+   * P3-2 A „eine Zählweise“): steht das Feld in der Antwort (auch als `null`),
+   * IST es die Zahl der Fläche - die Kassenrechnung `savedSteuerungEur` bleibt
+   * dann nur Prüfsumme und Rechenschritt. `null` = nicht rechenbar (Lücke im
+   * Ladestand), nie eine 0. Fehlt das Feld (älteres Backend), gilt die
+   * Kassenrechnung wie bisher.
+   */
+  savedSteuerungMitBestandEur?: number | null;
+  /** Nur Anlagen-Route, `range=day`: Monat, 7 Tage und Tag mit Bestand. */
+  steuerungZeitraum?: SteuerungZeitraum | null;
+  /** Nur Mandanten-Route, `range=day`: der Monat bis zu diesem Tag mit Bestand. */
+  steuerungMonatMitBestandEur?: number | null;
 }
 
 export interface SpeicherKontext {
@@ -376,7 +430,8 @@ export function geldWort(v: number): string {
   return fest(tonWort(v).wort);
 }
 
-function anzeigeTonVon(eur: number, laeuft: boolean): SpeicherTon {
+/** Der Anzeige-Ton einer Steuerungszahl ({@link SpeicherTon}) — auch für die Zahlen mit Bestand. */
+export function anzeigeTonVon(eur: number, laeuft: boolean): SpeicherTon {
   if (laeuft) return 'neutral';
   if (Math.abs(eur) < SPEICHER_TOTBAND) return 'neutral';
   return eur > 0 ? 'ok' : 'warn';
@@ -645,7 +700,23 @@ export function speicherAussage(
   }
   const widerspruch = steuerungEur != null && !split;
 
-  const steuerung = split ? tonWort(steuerungEur) : null;
+  // Netzladen nach MiSpeL (BK-W5 A): an einem MiSpeL-Tag mit Netzladen ins
+  // Netz (bzw. in einem MiSpeL-Monat mit bestimmter Menge (20)) ist die Zahl
+  // die Stromrechnung, daneben die Gutschrift. Dort gilt die Kassenrechnung
+  // mit ihrem eigenen Namen; überall sonst die Zählweise MIT BESTAND (P3-2 A).
+  const kasse = split ? tonWort(steuerungEur) : null;
+  const netzladen = tag && kasse ? netzladenMispel(money, ctx.mispelGutschrift) : null;
+  const mispelMonat =
+    kasse && money.range === 'month' ? mispelMonatAussage(kasse, ctx.mispelGutschrift) : null;
+  const mispelKasse = netzladen != null || mispelMonat != null;
+
+  // Mit Bestand (P3-2 A): steht das Feld da, ist es DIE Zahl; die Kasse
+  // bleibt Prüfsumme. Ein `null` darin ist eine Lücke im Ladestand - dann
+  // „—“ mit Grund, nie die Kasse als Ersatz (zwei Zählweisen auf einer Fläche).
+  const mitBestand = split && !mispelKasse && money.savedSteuerungMitBestandEur !== undefined;
+  const bestandZahl = num(money.savedSteuerungMitBestandEur ?? null);
+  const luecke = mitBestand && bestandZahl == null;
+  const steuerung = !split ? null : mitBestand ? (luecke ? null : tonWort(bestandZahl)) : kasse;
 
   // Der GRUND wird nur genannt, wenn der Server ihn nennt. Ein fehlendes Feld
   // (älteres Backend) ist kein fehlendes Stammdatum — dann gibt es schlicht
@@ -653,7 +724,7 @@ export function speicherAussage(
   const grund: SteuerungSplitReason | null =
     split || widerspruch ? null : (money.steuerungSplitReason ?? null);
 
-  if (steuerung == null && grund == null) return null;
+  if (steuerung == null && grund == null && !luecke) return null;
 
   const wann = laeuft
     ? tag
@@ -666,20 +737,31 @@ export function speicherAussage(
   // Die EINORDNUNG (Konzept k1 §7, E1/E3 = A): der Grund kommt vom Server und
   // wird nur in Worte gesetzt — nie geraten, nie gecacht (der Grund eines
   // laufenden Tages kann am Abend kippen, z2 „Über die Paketgrenze" 1).
-  const gruende = tag && steuerung ? grundKennungen(money.steuerungGruende) : null;
+  //
+  // Mit Bestand gelten die Gründe des Tages aus `steuerungZeitraum` mit ihren
+  // eigenen Worten (auch über null: „gestern verkauft, heute nachgekauft“
+  // erklärt den Nachtbezug); die Regeln der Kassenrechnung treten zurück.
+  const gruende = mitBestand
+    ? null
+    : tag && steuerung
+      ? grundKennungen(money.steuerungGruende)
+      : null;
+  const bestandWorte =
+    mitBestand && tag && steuerung ? bestandGrundWorte(money.steuerungZeitraum?.heute?.gruende) : [];
   // Netzladen nach MiSpeL (BK-W5 A): die Zeile steht vorn — an einem
   // Minus-Tag als Grund des Servers, an einem Plus-Tag allein; nie ein
   // „unter Null“-Urteil über gewolltes Netzladen.
-  const netzladen = tag && steuerung ? netzladenMispel(money, ctx.mispelGutschrift) : null;
-  const minusTexte =
-    steuerung && steuerung.ton === 'minus' && gruende && gruende.length > 0
-      ? gruende.map((k) =>
-          k === 'netzladen_mispel' && netzladen
-            ? { kurz: MISPEL_NETZLADEN, mitZahl: netzladen.zeile, mitPaar: netzladen.zeile }
-            : grundText(k, money, steuerung.eur, laeuft),
-        )
-      : [];
-  const texte =
+  const minusTexte: GrundText[] =
+    bestandWorte.length > 0
+      ? bestandWorte.map((w) => ({ kurz: w, mitZahl: w, mitPaar: w }))
+      : steuerung && steuerung.ton === 'minus' && gruende && gruende.length > 0
+        ? gruende.map((k) =>
+            k === 'netzladen_mispel' && netzladen
+              ? { kurz: MISPEL_NETZLADEN, mitZahl: netzladen.zeile, mitPaar: netzladen.zeile }
+              : grundText(k, money, steuerung.eur, laeuft),
+          )
+        : [];
+  const texte: GrundText[] =
     netzladen && !gruende?.includes('netzladen_mispel')
       ? [
           { kurz: MISPEL_NETZLADEN, mitZahl: netzladen.zeile, mitPaar: netzladen.zeile },
@@ -694,42 +776,58 @@ export function speicherAussage(
     netzladen && weitere.length > 0
       ? { ...netzladen, sekLang: fest([netzladen.sekLang, ...weitere].join(' · ')) }
       : netzladen;
+  const bewertet = mitBestand ? ' (mit Bestand bewertet)' : '';
 
   const satz =
     steuerung == null
-      ? null
+      ? luecke
+        ? LADESTAND_FEHLT_SATZ
+        : null
       : netzladen
         ? laeuft
           ? `Zwischenstand Steuerung ${MISPEL_STROMRECHNUNG}: ${steuerung.wort} gegenüber ${MESSLATTE_DATIV}, ohne MiSpeL-Gutschrift — ${grundZeile}.`
           : `${gross(MISPEL_STROMRECHNUNG)} hat die Steuerung ${wann} ${steuerung.wort} gebracht — gegenüber ${MESSLATTE_DATIV}, ohne MiSpeL-Gutschrift; ${grundZeile}.`
-        : steuerung.ton === 'plus'
-        ? `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — gegenüber ${MESSLATTE_DATIV}`
-        : steuerung.ton === 'minus'
-          ? gruende != null
-            ? // Berechnet: nur der Grund des Servers — ohne ihn gar keiner.
-              laeuft
-              ? `Zwischenstand Steuerung: ${steuerung.wort} gegenüber ${MESSLATTE_DATIV}${grundZeile ? ` — ${grundZeile}` : ''}.`
-              : `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — weniger als ${MESSLATTE_DATIV}${grundZeile ? `; ${grundZeile}` : ''}.`
-            : laeuft
-              ? `Zwischenstand Steuerung: ${steuerung.wort} gegenüber ${MESSLATTE_DATIV} — sie hält Energie für später; die Kasse zählt sie erst, wenn der Speicher später den Netzbezug ersetzt.`
-              : `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — weniger als ${MESSLATTE_DATIV}.`
-          : `Die Steuerung und ${MESSLATTE} liegen ${wann} gleichauf.`;
+        : mitBestand
+          ? steuerung.ton === 'null'
+            ? `Die Steuerung und ${MESSLATTE} liegen ${wann} gleichauf${bewertet}.`
+            : `Die Steuerung hat ${wann} ${steuerung.wort} gebracht${bewertet} — ${steuerung.ton === 'plus' ? 'gegenüber' : 'weniger als'} ${MESSLATTE_DATIV}${grundZeile ? `; ${grundZeile}` : ''}.`
+          : steuerung.ton === 'plus'
+            ? `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — gegenüber ${MESSLATTE_DATIV}`
+            : steuerung.ton === 'minus'
+              ? gruende != null
+                ? // Berechnet: nur der Grund des Servers — ohne ihn gar keiner.
+                  laeuft
+                  ? `Zwischenstand Steuerung: ${steuerung.wort} gegenüber ${MESSLATTE_DATIV}${grundZeile ? ` — ${grundZeile}` : ''}.`
+                  : `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — weniger als ${MESSLATTE_DATIV}${grundZeile ? `; ${grundZeile}` : ''}.`
+                : laeuft
+                  ? `Zwischenstand Steuerung: ${steuerung.wort} gegenüber ${MESSLATTE_DATIV} — sie hält Energie für später; die Kasse zählt sie erst, wenn der Speicher später den Netzbezug ersetzt.`
+                  : `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — weniger als ${MESSLATTE_DATIV}.`
+              : `Die Steuerung und ${MESSLATTE} liegen ${wann} gleichauf.`;
 
   const ankerRoh = steuerung
     ? tag
-      ? monatsAnker(money, ctx.now, laeuft)
+      ? monatsAnker(
+          mitBestand
+            ? {
+                ...money,
+                steuerungMonatBisherEur:
+                  money.steuerungZeitraum?.monat.mitBestandEur ?? money.steuerungMonatMitBestandEur ?? null,
+              }
+            : money,
+          ctx.now,
+          laeuft,
+        )
       : money.range === 'month'
         ? jahresAnker(ctx)
         : null
     : null;
-  const mispelMonat =
-    steuerung && money.range === 'month' ? mispelMonatAussage(steuerung, ctx.mispelGutschrift) : null;
   const anker =
-    (netzladen || mispelMonat) && ankerRoh
+    mispelKasse && ankerRoh
       ? { ...ankerRoh, label: `${ankerRoh.label} · Stromrechnung` }
       : ankerRoh;
 
-  const bestand = bestandZeile(money, ctx.now);
+  // Mit Bestand entfällt die Bestandszeile („Kein Abzug“): der Bestand zählt mit.
+  const bestand = mitBestand ? null : bestandZeile(money, ctx.now);
   const geplantEur = num(ctx.steuerungGeplantEur ?? null);
 
   const labelRoh = laeuft
@@ -742,7 +840,7 @@ export function speicherAussage(
   const label = netzladen ? `${labelRoh} · Stromrechnung` : labelRoh;
   // Kein Rot über gewolltes Netzladen: die Gutschrift fehlt der Zahl noch.
   const anzeigeTon = steuerung
-    ? netzladen || mispelMonat
+    ? mispelKasse
       ? 'neutral'
       : anzeigeTonVon(steuerung.eur, laeuft)
     : 'neutral';
@@ -764,6 +862,8 @@ export function speicherAussage(
       geplantEur == null
         ? null
         : `Vorab geplant hatte der Fahrplan ${tonWort(geplantEur).wort} durch die Steuerung${netzladen ? ' — ohne MiSpeL-Gutschrift' : ''}`,
+    geplantWert: geplantEur == null ? null : fest(tonWort(geplantEur).wort),
+    geplantTon: geplantEur == null ? null : tonWort(geplantEur).ton,
 
     gruende,
     grundZeile,
@@ -791,12 +891,13 @@ export function speicherAussage(
               : null
       : null,
     wert: steuerung ? steuerung.wort : '—',
-    hinweis: grund === 'no_battery_data' ? 'Speicher-Daten fehlen ›' : null,
+    hinweis: grund === 'no_battery_data' ? 'Speicher-Daten fehlen ›' : luecke ? 'Ladestand fehlt' : null,
     nachtragLink: grund === 'no_battery_data',
+    mitBestand,
 
     kurz,
     kurzTitel: satz ?? (grund === 'no_battery_data' ? OHNE_VERGLEICH_SATZ : kurz),
-    hatAussage: steuerung != null || grund != null,
+    hatAussage: steuerung != null || grund != null || luecke,
   };
 }
 

@@ -35,7 +35,7 @@ import org.testcontainers.utility.DockerImageName;
 /**
  * AP-14 IP-1: die drei Betriebsabfrage-Blätter unter {@code tools/betriebsabfragen/} gegen
  * Wegwerf-Datenbanken — das Vorher-Blatt gegen GENAU den Migrationssatz von {@code main}
- * ({@code migration/main-migrations.txt}), Nachher- und Pilot-Blatt gegen den vollen Satz von
+ * ({@code migration/vor-uems-migrations.txt}), Nachher- und Pilot-Blatt gegen den vollen Satz von
  * {@code uems}. Die Blätter werden aus den Dateien GELESEN, nie in den Test kopiert: eine Quelle.
  *
  * <p>Geprüft wird, was der Betreiber am Tag des Ausrollens braucht: jede Abfrage LÄUFT, keine
@@ -468,7 +468,7 @@ class BetriebsabfragenBlaetterTest {
 
     private static List<String> mainSatz() throws IOException {
         try (var eingang = BetriebsabfragenBlaetterTest.class
-                .getResourceAsStream("/migration/main-migrations.txt")) {
+                .getResourceAsStream("/migration/vor-uems-migrations.txt")) {
             assertThat(eingang).isNotNull();
             List<String> main = new String(eingang.readAllBytes(), UTF_8).lines()
                     .filter(zeile -> !zeile.isBlank() && !zeile.startsWith("#")).toList();

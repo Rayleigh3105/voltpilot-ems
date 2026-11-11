@@ -13,6 +13,8 @@ import static org.mockito.Mockito.when;
 
 import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
+import com.voltpilot.api.geraetesuche.KlopftAn;
+import com.voltpilot.api.geraetesuche.KlopftAnSpeicher;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
@@ -527,5 +529,32 @@ class ChargerStatusListenerTest {
                 + "{\"id\":1,\"charging\":true,"
                 + "\"tag_ref\":\"tagref_1f2e3d4c5b6a798877665544\"}]}]}");
         assertThat(c.chargers()).hasSize(1);
+    }
+
+    /**
+     * OCPP „klopft an“ (docs/contracts/ocpp-klopft-an.md): die abgewiesenen Kennungen des Blocks gehen an die Antwort
+     * der Gerätesuche; die eigene Adresse der Box wird überlesen, die Kennung bleibt. Ein Herzschlag ohne Block macht
+     * den Stand unbekannt (null), nie „niemand klopft an“.
+     */
+    @Test
+    void abgewieseneSaeulenGehenAnDieGeraetesucheUndOhneBlockIstEsUnbekannt() {
+        KlopftAnSpeicher speicher = new KlopftAnSpeicher();
+        listener.setKlopftAn(speicher);
+        Instant jetzt = Instant.now();
+        String block = "\"chargers\":{\"reported_at\":\"" + jetzt + "\",\"enabled\":true,\"ocpp_port\":8887,"
+                + "\"chargers\":[],\"rejected\":[{\"id\":\"CP-HALLE1\",\"ip\":\"192.168.178.20\","
+                + "\"first_seen\":\"" + jetzt.minusSeconds(600) + "\",\"last_seen\":\"" + jetzt.minusSeconds(30)
+                + "\",\"attempts\":50}]}";
+        listener.handle(TOPIC, envelope(block).getBytes(StandardCharsets.UTF_8));
+
+        List<KlopftAn.Eintrag> eintraege = speicher.lesen(TENANT, DEVICE, List.of("192.168.178.20"), jetzt);
+        assertThat(eintraege).hasSize(1);
+        assertThat(eintraege.get(0).chargePointId()).isEqualTo("CP-HALLE1");
+        assertThat(eintraege.get(0).ip()).as("die eigene Adresse der Box").isNull();
+        assertThat(eintraege.get(0).versuche()).isEqualTo(50);
+        assertThat(speicher.lesen(UUID.randomUUID(), DEVICE, List.of(), jetzt)).as("fremder Mandant").isNull();
+
+        listener.handle(TOPIC, envelope("\"version\":\"2026.10.7\"").getBytes(StandardCharsets.UTF_8));
+        assertThat(speicher.lesen(TENANT, DEVICE, List.of(), jetzt)).isNull();
     }
 }

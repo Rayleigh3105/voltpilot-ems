@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -62,7 +63,11 @@ public final class GeraetDto {
             OffsetDateTime gueltigAb,
             OffsetDateTime gueltigBis) {}
 
-    /** Eine Energiekarte im Steckplatz eines Controllers; {@code steckplatz == null} = nicht erhoben. */
+    /**
+     * Ein Teil eines Controllers: eine Energiekarte im Steckplatz ({@code steckplatz == null} = nicht erhoben) oder
+     * eine Erzeugungseinheit mit TE-Nr. an einer Anlagensteuerung (UEMS EZ-6). Die Einheiten-Angaben sind an einer
+     * Karte null; an einer Einheit heißt null „nicht erhoben“.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Teil(
             UUID id,
@@ -72,7 +77,12 @@ public final class GeraetDto {
             String typ,
             String seriennummer,
             OffsetDateTime eingebautAm,
-            OffsetDateTime ausgebautAm) {}
+            OffsetDateTime ausgebautAm,
+            Integer teNr,
+            String einheitArt,
+            BigDecimal nennleistungKw,
+            String registryUnitId,
+            String typBild) {}
 
     /** Ein früherer Einbau desselben Geräts — „Z-5a · ausgebaut am 18.11.2026 10:40". */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

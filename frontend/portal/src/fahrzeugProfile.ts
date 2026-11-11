@@ -21,6 +21,7 @@
  * hier — die Fläche sagt ihn nur.
  */
 
+import { LADEQUELLE, LADEQUELLE_VERSPRECHEN } from './glossar';
 import type { Steuerart } from './verbraucherZone';
 
 // ---------------------------------------------------------------------------
@@ -90,21 +91,22 @@ export const OHNE_STEUERART = 'Lädt wie der Ladepunkt';
 export const NIE_GESEHEN = 'noch nicht gesehen';
 export const LAEDT_GERADE = 'lädt gerade';
 
+// Dieselben Namen und Versprechen wie „Womit laden?“ am Ladepunkt (Konzept k1, E2=A).
 export const QUELLE_TEXT: Record<FahrzeugQuelle, { titel: string; text: string }> = {
   sofort: {
-    titel: 'Sofort laden',
-    text: 'Diese Karte lädt, sobald sie eingesteckt ist — mit der Leistung, die der '
+    titel: 'Schnell',
+    text: 'Diese Karte lädt sofort voll, sobald sie eingesteckt ist — mit der Leistung, die der '
       + 'Anschluss hergibt.',
   },
   ueberschuss: {
-    titel: 'Solar-Überschuss',
-    text: 'Diese Karte lädt aus dem gemessenen Sonnenüberschuss.',
+    titel: 'Mit Sonne',
+    text: `${LADEQUELLE.sonne} oder ${LADEQUELLE.min} — Sie wählen darunter, was passiert, wenn die Sonne nicht reicht.`,
   },
 };
 
 export const MODUS_TEXT: Record<'pausieren' | 'mindestleistung', string> = {
-  pausieren: 'Pausieren, wenn die Sonne nicht reicht',
-  mindestleistung: 'Mindestleistung halten',
+  pausieren: `${LADEQUELLE.sonne}: ${LADEQUELLE_VERSPRECHEN.sonne}`,
+  mindestleistung: `${LADEQUELLE.min}: ${LADEQUELLE_VERSPRECHEN.min}`,
 };
 
 // ---------------------------------------------------------------------------
@@ -178,10 +180,10 @@ export function steuerartChip(f: Fahrzeug): string {
   if (q === 'ueberschuss') {
     const modus = f.steuerart?.ueberschussModus;
     const kw = f.steuerart?.mindestleistungKw;
-    if (modus === 'mindestleistung' && typeof kw === 'number' && kw > 0) {
-      return `${QUELLE_TEXT.ueberschuss.titel} (mind. ${kwText(kw)})`;
+    if (modus === 'mindestleistung') {
+      return typeof kw === 'number' && kw > 0 ? `${LADEQUELLE.min} (mind. ${kwText(kw)})` : LADEQUELLE.min;
     }
-    return QUELLE_TEXT.ueberschuss.titel;
+    return LADEQUELLE.sonne;
   }
   return OHNE_STEUERART;
 }
@@ -334,7 +336,7 @@ export interface VerlaufFahrzeug {
   zeile: FahrzeugZeile;
   /** Das gespeicherte Fahrzeug — `null`, solange die Liste es nicht kennt. */
   fahrzeug: Fahrzeug | null;
-  /** „Dienstwagen · Sofort laden" bzw. „Karte 1f2e… · Lädt wie der Ladepunkt". */
+  /** „Dienstwagen · Schnell" bzw. „Karte 1f2e… · Lädt wie der Ladepunkt". */
   text: string;
   /** Das Wort auf dem Knopf: benennen, solange sie keinen Namen hat. */
   aktion: string;

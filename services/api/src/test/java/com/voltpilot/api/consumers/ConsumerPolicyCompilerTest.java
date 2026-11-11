@@ -158,6 +158,27 @@ class ConsumerPolicyCompilerTest {
                 .isNull();
         assertThat(compiler.needsArtifact(pureCloud)).isFalse();
 
+        // ⚠ Die andere Haelfte des Splits ist PFLICHT, nicht Annahme: genau
+        // diese Form schreibt die Steuerart „Günstig" (SteuerartDokument), und
+        // ihr Ausfuehrer ist der Optimierer (consumer_inputs.compile_consumer ->
+        // Preisfenster, test_guenstig_* in services/optimization). Bis zum
+        // Bericht vp-wallbox-modi-konzept §3.4 fuehrte sie NIEMAND aus - hier
+        // kein Artefakt, dort uebersprungen - und eine OCPP-Saeule lud voll.
+        JsonNode guenstig = MAPPER.readTree("""
+                {
+                  "schema_version": "1.0", "entity_id": "%s", "timezone": "Europe/Berlin",
+                  "requirements": [
+                    { "id": "guenstig", "name": "Günstige Stunden", "kind": "reactive",
+                      "enforcement": "opportunistic",
+                      "condition": { "signal": "market.import_price_ct_kwh", "operator": "lt", "value": 28 },
+                      "target": { "kind": "kw", "value": 11 } }
+                  ]
+                }
+                """.formatted(ENTITY));
+        assertThat(compiler.compile(guenstig, wallbox(), SITE, TENANT, POLICY, 1, WINDOWS, NOW))
+                .isNull();
+        assertThat(compiler.needsArtifact(guenstig)).isFalse();
+
         JsonNode fixedWindow = MAPPER.readTree("""
                 {
                   "schema_version": "1.0", "entity_id": "%s", "timezone": "Europe/Berlin",

@@ -84,7 +84,8 @@ public class GeraetService {
                 teile.getOrDefault(e.id(), List.of()).stream()
                         .map(t -> new GeraetDto.Teil(t.id(), t.teilart(), t.steckplatz(),
                                 t.bezeichnung(), t.typ(), t.seriennummer(), zeit(t.eingebautAm()),
-                                zeit(t.ausgebautAm())))
+                                zeit(t.ausgebautAm()), t.teNr(), t.einheitArt(), t.nennleistungKw(),
+                                t.registryUnitId(), t.typBild()))
                         .toList(),
                 vorgaenger);
     }

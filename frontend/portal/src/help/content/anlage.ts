@@ -4,7 +4,7 @@ export const plantArticles: HelpArticle[] = [
   {
     id: 'anlagenmodell', category: 'anlage', title: 'Den Aufbau Ihrer Anlage verstehen',
     summary: 'Wie Anlage, VoltPilot-Box und Geräte zusammengehören und wie Sie ein Gerät hinzufügen.',
-    keywords: ['Aufbau', 'Standort', 'Komponente', 'Modell', 'Gerät', 'Box', 'Zuordnung', 'Messwert', 'Hinzufügen', 'Katalog', 'Suche', 'Filter', 'Modbus', 'Ladesäule', 'Batterie'],
+    keywords: ['Aufbau', 'Standort', 'Komponente', 'Modell', 'Gerät', 'Box', 'Zuordnung', 'Messwert', 'Hinzufügen', 'Katalog', 'Suche', 'Filter', 'Modbus', 'Ladesäule', 'Batterie', 'Gerätesuche', 'Geräte suchen', 'Heimnetz', 'Seriennummer'],
     sections: [
       { id: 'ordnung', title: 'Von der Anlage bis zum Messwert', paragraphs: [
         "Der Reiter „Aufbau“ zeigt Ihre Anlage als Tabelle: die Anlage, ihre VoltPilot-Boxen und die Geräte daran, jedes mit Art, Zustand und Wert. Die Suche findet Namen, Modelle und Kennungen; die Filter grenzen nach Art, Zustand, Box und Hersteller ein. Ein Gerät kann mehrere Komponenten liefern, etwa Speicher und Netzanschluss. Eine Datenverbindung allein erlaubt noch keine Steuerung.",
@@ -15,28 +15,71 @@ export const plantArticles: HelpArticle[] = [
         'Was die Box schon meldet, steht gestrichelt in der Tabelle und lässt sich übernehmen.',
       ] },
       { id: 'hinzufuegen', title: 'Ein Gerät hinzufügen', paragraphs: [
-        "Ohne passende Vorlage stehen Ladesäulen mit OCPP, Batterien mit eigenem BMS und Modbus-Geräte als eigene Einträge im Katalog. Eine VoltPilot-Box oder eine weitere Anlage legen Sie über das Menü neben „Gerät hinzufügen“ an.",
+        "Ohne passende Vorlage stehen Ladesäulen mit OCPP und Modbus-Geräte als eigene Einträge im Katalog. Eine VoltPilot-Box oder eine weitere Anlage legen Sie über das Menü neben „Gerät hinzufügen“ an.",
       ], steps: [
         '„Gerät hinzufügen“ öffnet den Gerätekatalog. Suchen Sie nach Marke oder Modell, so wie es auf dem Typenschild steht, oder wählen Sie über Art und Marke.',
         'Nach der Wahl öffnet die Einrichten-Seite. Tragen Sie den Anschluss ein; die Box testet dann von selbst und zeigt echte Werte.',
         'Mit echten Werten geht „Speichern“. Danach springt der Aufbau auf das neue Gerät.',
       ], figure: 'geraet-hinzufuegen' },
+      { id: 'geraete-suchen', title: 'Geräte im Heimnetz suchen lassen', paragraphs: [
+        "„Geräte suchen“ lässt Ihre VoltPilot-Box ihr Heimnetz nach Wechselrichtern, Zählern, Wallboxen und Schaltern durchsuchen. Es wird nur gelesen: die Box meldet sich nirgends an und schreibt nichts. Sie sucht höchstens drei Minuten und nur in ihren eigenen privaten Netzen.",
+        "Die Funde stehen in festen Gruppen: was Ihre Hilfe braucht (etwa eine neue Adresse oder ein Passwortschutz), was sich übernehmen lässt, was erkannt, aber mit dieser Box noch nicht anbindbar ist, und was schon eingerichtet ist. Telefone und Rechner stehen nur als Anzahl da. „Woran erkannt?“ zeigt, was das Gerät über sich gesagt hat.",
+        "Hat ein eingerichtetes Gerät eine neue Adresse, erkennt die Suche es an der Seriennummer, nie an der Adresse. Ein Tipp übernimmt die neue Adresse für dasselbe Gerät; stellen Sie im Router am besten eine feste IP ein.",
+      ], steps: [
+        'Auf der Box-Seite „Geräte suchen“ antippen – oder im Katalog „Im Heimnetz suchen“. Die Suche dauert meist unter einer Minute; Sie können das Fenster schließen, sie läuft weiter.',
+        'Beim gefundenen Gerät „Übernehmen“ antippen. Die Einrichten-Seite öffnet mit dem Anschluss aus der Suche; der Test startet von selbst. Gefragt wird nur, was die Suche nicht lesen kann, etwa das Modell vom Typenschild.',
+        'Mit echten Werten speichern. Danach führt der Weg zurück zur Liste, das nächste Gerät steht oben.',
+      ], note: 'Ist der Knopf ausgegraut, steht darunter der Grund: die Box meldet sich gerade nicht, sie braucht ein Update („Update nötig für: Gerätesuche“) oder es läuft schon eine Suche, die Sie mitansehen können.' },
       { id: 'einrichten', title: 'Die Einrichten-Seite lesen', paragraphs: [
         "Die Leiste links zeigt, was fertig ist, was jetzt dran ist und was danach kommt. Solange etwas fehlt, steht der Grund neben „Speichern“. Ein Test ohne gültige Werte speichert nichts; die Hinweise darunter nennen, was Sie prüfen können.",
       ], figure: 'geraet-einrichten' },
       { id: 'unvollstaendig', title: 'Wenn das Modell unvollständig ist', paragraphs: [
         "Fehlende Komponenten oder Zuordnungen können Werte und Ansichten unvollständig machen. Prüfen Sie vorhandene Einträge, Synchronisation und Messwerte, bevor Sie ein Gerät erneut hinzufügen.",
       ] },
-    ], related: ['geraete', 'box-verbinden', 'probleme'],
+    ], related: ['geraete', 'geraete-suchen', 'box-verbinden', 'probleme'],
+  },
+  {
+    id: 'geraete-suchen', category: 'anlage', title: 'Geräte suchen: was die Box liest und was bleibt',
+    summary: 'Was die Gerätesuche im Heimnetz tut und nicht tut, was gespeichert wird und warum ein Gerät fehlen kann.',
+    keywords: ['Gerätesuche', 'Geräte suchen', 'Heimnetz', 'Suche', 'finden', 'nicht gefunden', 'Datenschutz', 'Passwort',
+      'anbindbar', 'Netz der Box', 'Docker', 'Rechner', 'Letzte Suchen', 'Modbus TCP'],
+    prerequisite: 'Eine VoltPilot-Box, die sich gerade meldet und die Gerätesuche kennt. Ohne sie nennt der Knopf „Geräte suchen“ den Grund, etwa „Update nötig für: Gerätesuche“.',
+    sections: [
+      { id: 'nur-lesen', title: 'Was die Suche tut – und was nicht', paragraphs: [
+        "Auf Knopfdruck fragt Ihre VoltPilot-Box die Geräte in ihrem Netz, wer sie sind. Es wird nur gelesen: Die Box meldet sich nirgends an, probiert kein Passwort aus und ändert an keinem Gerät eine Einstellung. Verlangt ein Gerät eine Anmeldung, sagt die Suche das; den Passwortschutz schalten Sie dann in der App des Geräts aus.",
+        "Gesucht wird nur in privaten Netzen der Box: im Heimnetz, in dem sie hängt, und im Netz der Box, wenn sie selbst eines aufspannt – je Netz in höchstens 254 Adressen (ein /24-Netz). Eine Suche dauert höchstens drei Minuten, meist unter einer; je Box sind 6 Suchen pro Stunde möglich.",
+      ] },
+      { id: 'wer-und-was-bleibt', title: 'Wer suchen darf und was gespeichert wird', paragraphs: [
+        "Suchen und die Ergebnisse ansehen darf, wer an der Anlage Geräte einrichten darf – dasselbe Recht wie für „Gerät hinzufügen“. Fehlt es, steht statt des Knopfs, wer es darf. Unter „Letzte Suchen“ sehen Sie, wer wann gesucht hat.",
+        "VoltPilot speichert Energie-Geräte (Wechselrichter, Zähler, Wallboxen, Schalter) und Netz-Technik wie Router oder WLAN-Zugangspunkte mit Hersteller, Modell und Adresse. Nach 30 Tagen werden die Suche und ihre Funde gelöscht; festgehalten bleibt nur, wer wann gesucht hat, wie viele Geräte es waren und welche gefundenen Geräte Sie übernommen haben. Telefone, Tablets und Rechner erscheinen nur als Anzahl. MAC-Adressen und die Namen, die Geräte im Heimnetz tragen, speichert VoltPilot nicht.",
+      ] },
+      { id: 'gruppen', title: 'Die Gruppen der Ergebnisse', paragraphs: [
+        "„Bereit zum Übernehmen“ führt mit einem Tipp in die Einrichten-Seite; der Test startet von selbst. „Braucht Ihre Hilfe“ nennt, was Sie zuerst tun müssen, etwa eine Schnittstelle einschalten oder eine neue Adresse bestätigen. „Schon eingerichtet“ zeigt, was die Anlage bereits kennt.",
+        "„Erkannt, mit dieser Box noch nicht anbindbar“ heißt: Die Box weiß, was das Gerät ist, kann es aber noch nicht lesen. Entweder liest es eine andere Art von VoltPilot-Box schon, oder VoltPilot hat dafür noch keinen Leseweg. Einrichten lässt es sich darum hier nicht. „Vielleicht ein Energie-Gerät“ antwortet, verrät aber nicht genug über sich; „Woran erkannt?“ zeigt, was das Gerät gesagt hat.",
+      ] },
+      { id: 'nicht-gefunden', title: 'Wenn ein Gerät nicht gefunden wird', paragraphs: [
+        "Findet die Suche kein Energie-Gerät, stellt sie vier Fragen. Gerät aus? Manche Datenlogger schlafen nachts, wenn keine Sonne scheint. Anderes Netz? Die Box nennt die Netze, in denen sie gesucht hat; ein Gerät in einem anderen Netz findet sie nicht. Schnittstelle aus? Bei SMA, Fronius, KOSTAL und Huawei muss am Gerät Modbus TCP eingeschaltet sein, bei go-e in der App „HTTP API v2“. Nicht gesucht? Dann nennt die Box die Hersteller, nach denen sie noch nicht suchen kann.",
+        "Ein Gerät, das nicht dabei ist, ist deshalb nicht „nicht vorhanden“. Suchen Sie bei schwachem WLAN oder am Morgen ruhig ein zweites Mal, oder fügen Sie das Gerät von Hand hinzu.",
+      ] },
+      { id: 'box-auf-rechner', title: 'Eine Box auf einem eigenen Rechner', paragraphs: [
+        "Läuft Ihre VoltPilot-Box als Programm auf einem eigenen Rechner (Docker), sucht sie durch dessen Netzanschluss: in den Adressen um die Adresse im Heimnetz, die bei der Einrichtung eingetragen wurde. Fehlt diese Adresse, beginnt die Suche nicht und sagt das – fragen Sie dann Ihren Installateur.",
+        "Eine solche Box hört keine Rundrufe im Heimnetz. Sie kann Telefone, Rechner und andere Geräte darum nicht unterscheiden und zählt sie als „unbekannte Geräte“. Energie-Geräte findet sie über dieselben Fragen an jede Adresse.",
+      ] },
+    ], related: ['anlagenmodell', 'geraete', 'box-verbinden'],
   },
   {
     id: 'geraete', category: 'anlage', title: 'Box, Geräte und Befehle prüfen',
     summary: 'Verbindung, Konfiguration und die tatsächliche Wirkung einer Aktion auseinanderhalten.',
-    keywords: ['Offline', 'Online', 'Wechselrichter', 'Gerät', 'Box', 'Befehl', 'Verbindung', 'Synchronisation', 'Rückmeldung'],
+    keywords: ['Offline', 'Online', 'Wechselrichter', 'Gerät', 'Box', 'Befehl', 'Verbindung', 'Synchronisation', 'Rückmeldung',
+      'Anbindung', 'Anschluss', 'Gateway', 'Logger', 'Datenquelle', 'Kennung'],
     sections: [
       { id: 'box', title: 'Die Box ist der Verbindungsweg', paragraphs: [
         "Prüfen Sie auf der Box-Seite letzten Kontakt und Verbindung. Eine erreichbare Box garantiert keine Messung von jedem angeschlossenen Gerät. Öffnen Sie für Details die jeweilige Geräteseite.",
       ], figure: 'box' },
+      { id: 'anbindung', title: 'Die Anbindung eines Geräts', paragraphs: [
+        "Wie VoltPilot ein Gerät erreicht, steht auf seiner Geräteseite unter „Gerät & Verbindung“ als „Anbindung“: Protokoll und Adresse im Netz der Anlage und die VoltPilot-Box, die es liest. Die Anbindung gehört zum Gerät — tauschen Sie die Box, liest die neue Box über denselben Weg weiter. Die kleine Kennung daneben (etwa „DQ-1“) brauchen Sie nur für Rückfragen an den Support.",
+        "Beim Verbinden einer Steuerung heißt dieser Schritt „Anschluss“: Sie tragen Adresse und Geräte-ID ein, die Box prüft den Weg, und der Anschluss heißt danach wie das Gerät. Antworten hinter einer Adresse mehrere Geräte, etwa vier Zähler hinter einem Zählergateway, binden Sie zuerst das Gateway an („Gateway oder Logger anbinden“ auf der Box-Seite) und fügen danach die Geräte hinzu.",
+      ] },
       { id: 'aenderung', title: 'Gespeichert, übertragen, wirksam', paragraphs: [
         "Gespeichert, übertragen und wirksam sind unterschiedliche Zustände. Prüfen Sie Synchronisation und Rückmeldung. Verbindungsdaten müssen zur Installation passen; beim Entfernen zählt der im Dialog beschriebene Umfang.",
       ], diagram: 'proof', figure: 'geraete' },

@@ -14,9 +14,13 @@ v2 ergänzt mehrere Entitäten je Box, typisierte Flows, Verbraucheranforderunge
 | Registry und Entity-Konfiguration | [Erklärung](edge-entity-config.md), [Schema](edge-entity.schema.json) |
 | Flow-Graph und Artefakt | [Graph](flow-graph.md), [Artefakt](flow-artifact.md), [Graph-Schema](flow-graph.schema.json), [Artefakt-Schema](flow-artifact.schema.json) |
 | Verbraucher | [Funktionsmodell](../../verbrauchssteuerung.md), [Policy](consumer-policy.schema.json), [Vektoren](consumer-policy-vectors.json) |
+| OCPP-Ladepunkt: Profil und Policy, wie die API sie anlegt | [Vektoren](ladepunkt-profil-vectors.json) — Regelart, Nennleistung, Dokument und Box-Anforderung; Optimierer-Tests und Box-Rig lesen ihr Profil nur von hier |
 | Anlagenprojektion | [Topologie](topology-read-model.md), [Nutzungsprofil](usage-profile.md) |
+| Zählerbaum: wo ein Zähler/Verbraucher im elektrischen Baum hängt | [Vertrag](zaehlerbaum.md), [Vektoren](zaehlerbaum-vectors.json) — Zwillinge `ZaehlerbaumRegeln` (Java) und `zaehlerbaum.ts` (TS) |
 | Quellen-Herzschlag | [Vertrag](data-source-status.md), [Schema](data-source-status.schema.json), [Vektoren](data-source-status-vectors.json) |
 | Zusätzliche Messpunkte | [Konfiguration](mqtt-measurement-config.schema.json), [Status](mqtt-measurement-config-status.schema.json), [Messungen](mqtt-measurement-samples.schema.json), [Ereignis](measurements-raw.event.schema.json) |
+| Registerbild Erzeuger (Steuerung → Box, EZ-1) | [Vertrag](erzeuger-registerbild.md), [Schema](erzeuger-registerbild.schema.json), [Vektoren](erzeuger-registerbild-vectors.json) — PV und BHKW an einem Modbus-Server (FC4 ab 0, Signatur „VP“ „EZ“); die Vektoren sind die Leserspezifikation für Box-Leser, Simulator und SPS-Baustein |
+| Gerätesuche (Box ↔ Cloud, nicht retained) | [Vertrag](mqtt-geraetesuche.md), Schemas [Auftrag](mqtt-geraetesuche.schema.json) · [Zwischenstand](mqtt-geraetesuche-stand.schema.json) · [Ergebnis](mqtt-geraetesuche-ergebnis.schema.json), [Vektoren](geraetesuche-vectors.json) — Erkennungskatalog je Box-Art, Fallklassen gueltig/ungueltig/fund_ueberlesen/toleriert, Antwort-Wörter der Routen |
 | Prüfung | [Fixtures](examples/README.md), [Simulator](edge-simulator-v2.md) |
 
 ## Dauerhafte Entscheidungen
@@ -44,7 +48,7 @@ Die Kennungen bleiben für Querverweise erhalten; Detailregeln stehen im jeweili
 | D-18 | Eine ConsumerPolicy je Verbraucher mit gemeinsam validierter Semantik |
 | D-19 | Generierter reaktiver Flow über bestehenden Compiler; serverseitiges `origin`, kein freier Control-Override |
 | D-20 | Interner Deadline-Fallback zwischen Flow und Marktplan, nur mit belegtem Fortschritt |
-| D-21 | `origin` markiert generierte Herkunft; Consumer-Policy/Modbus sowie ergänzend MQTT-/HTTP-Geräte (D-22/D-24) |
+| D-21 | `origin` markiert generierte Herkunft; Consumer-Policy und Modbus |
 
 ## Implementierung und bekannte Abweichung
 
@@ -104,15 +108,12 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`wago-referenzdatensatz.schema.json`](./wago-referenzdatensatz.schema.json) + [`fixtures/wago-referenzdatensatz/`](./fixtures/wago-referenzdatensatz/README.md) | AP-05 IP-1: Form des Referenzdatensatzes je WAGO-Kombination (Rohwörter → Kanalwerte); belegt nur aus dem Pilot mit Nachweis. Nachweis-Zeilen: [Hardwareblatt-Vorlage](../../wago/hardwareblatt-vorlage.md). |
 | [`wago-registerbild.md`](./wago-registerbild.md) + [`wago-registerbild-vectors.json`](./wago-registerbild-vectors.json) + [`wago-registerbild.schema.json`](./wago-registerbild.schema.json) | AP-05 IP-2: VoltPilot-Registerbild WAGO v1 — Kopf, Karten-Block, Parameter, additive Versionierung; jede Zahl mit Herkunft (Festlegung, Handbuch, zu erheben), Lese-Fälle ohne Beleg. |
 | [`wago-simulator-vectors.json`](./wago-simulator-vectors.json) | AP-05 IP-12: Simulator-Vorstufe zum Registerbild — sechs Fälle (Normallast, Rücksetzung, Herzschlag steht, Version fremd, Karte fehlt, Bereichsbegrenzung — S6 kam mit IP-8) auf dem Register-Store `edge-app/nodered/vp-palette/test/fixtures/wago-registerbild-store.js`. Aufbau und Vokabular kommen aus `wago-registerbild-vectors.json`; jeder Fall `herkunft: simulator`, `belegt: false` — der Simulator dient dem Bauen, nie dem Beleg. |
+| [`erzeuger-simulator-vectors.json`](./erzeuger-simulator-vectors.json) | EZ-2: Simulator-Fälle zum Registerbild Erzeuger, schlanke Fassung 1.0 (FC4 ab 0) — Gore (PV, 3 Wechselrichter, Netzbetreiber 60 %), Büttner (BHKW, 2 Motoren, Direktvermarkter, kein Netzpunkt nach EW-16 C) und sieben Fehlerfälle (Herzschlag steht, Kopf fremd, Wortfolge falsch, Abschnitt veraltet, Ungültig-Werte, te_anzahl ungültig, Neustart), mit Zeit über `sekunden`-Schritte. Store `edge-app/nodered/vp-palette/test/fixtures/erzeuger-registerbild-store.js` (auch als Echtzeit-Server von der Kommandozeile), Prüfer `erzeuger_simulator_spec.js`. Der Aufbau steht bis zum Vertrag aus EZ-1 im Abschnitt `registerbild`; jeder Fall `herkunft: simulator`, `belegt: false`. |
 
 ## Ergänzende Entscheidungen
 
 | Kennung | Regel |
 |---|---|
 | D-6a | Handeingriff `local-ui` + `override` hat Rang 75; Ausnahme beim Konflikt mit einer Regel. [Arbitration](edge-desired-arbitration.md#handeingriff-d-6a). |
-| D-22 | Selbst angebundene Batterie: ein generierter `vp.mqtt.read`, gemeinsame Feldzuordnung und Aggregation über Zelltopics. |
-| D-23 | `vp.soc.derive` liefert SoC mit numerischer Herkunft; fehlend bleibt abwesend. |
-| D-24 | `vp.http.read` als zweiter Lesepfad; Auth-Geheimnis in Registry/Probe, nicht im Flow. |
-| D-25 | `vp.bms.limit` begrenzt Wünsche anhand aktueller Batteriegrenzen; ein Autor je Kanal, kein direkter Register-Schreibpfad. |
 
-Details zu D-22–25: [Entity-Konfiguration](edge-entity-config.md#selbst-angebundene-batterien-und-schutzgrenzen). Fehlende optionale Felder erhalten das bisherige Verhalten; neue Leser zuerst auf der Box ausrollen.
+Fehlende optionale Felder erhalten das bisherige Verhalten; neue Leser zuerst auf der Box ausrollen.

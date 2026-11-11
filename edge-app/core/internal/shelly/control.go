@@ -16,9 +16,10 @@ package shelly
 // So the DRIVER executes behind the kill-switches (VP_CONTROL_ENABLED AND
 // VP_CONSUMER_CONTROL_ENABLED, both off by default) with VERIFY-on-device
 // honesty for everything hardware-behavioral (timer fidelity, metering
-// plausibility - CONTROL-BENCH.md -> Shelly); the consumer TYPES
-// (heating-rod / generic-load) stay `simulator_only` in the cloud catalog
-// until the captain's bench session flips them (D11, its own mini-PR).
+// plausibility - CONTROL-BENCH.md -> Shelly). In the cloud catalog
+// generic-load stays `simulator_only`; heating-rod is `certified` since
+// 2026-11-04 on the captain's decision without a bench session (first real
+// use at edge-h5atkys), so the VERIFY-on-device points still apply there.
 
 import (
 	"context"
@@ -33,6 +34,11 @@ type Command struct {
 	OnOff          *bool    // the authoritative relay command when present
 	ControlEnabled bool     // the core kill-switch verdict
 	Stale          bool     // no arbiter decision at all -> fail-safe OFF
+
+	// Outputs is the explicit output set of a manual per-phase switch
+	// (channel numbers, heizstab-shelly.md "Handeingriff je Phase"). Only
+	// the stage path reads it, and only while it fits SetpointKw.
+	Outputs []int
 }
 
 // onKwThreshold separates "commanded to run" from "commanded off" on a bare
@@ -136,11 +142,14 @@ func PlanFor(cfg Config, cmd Command) Plan {
 // Register is the commanded-vs-actual relay readback entry (the v1 all_match
 // register shape: 1 = on, 0 = off).
 type Register struct {
-	Role      string `json:"role"`
-	Key       string `json:"key"`
-	Commanded int    `json:"commanded"`
-	Actual    *int   `json:"actual"`
-	Match     bool   `json:"match"`
+	Role string `json:"role"`
+	Key  string `json:"key"`
+	// Channel names the output on the stage path (one register per output);
+	// absent on the single-output path, so its payload stays byte-identical.
+	Channel   *int `json:"channel,omitempty"`
+	Commanded int  `json:"commanded"`
+	Actual    *int `json:"actual"`
+	Match     bool `json:"match"`
 }
 
 // Verdict is the evaluated readback.

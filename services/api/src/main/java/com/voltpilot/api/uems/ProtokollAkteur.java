@@ -70,11 +70,29 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
     }
 
     /**
+     * VoltPilot selbst, ohne Person: der Messplan einer Anlagensteuerung, den die Cloud beim Anlegen oder beim
+     * Nachholen von allein für die zuständige Box auswählt (UEMS EZ-18).
+     */
+    public static ProtokollAkteur messplan() {
+        return new ProtokollAkteur(null, "Messplan", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
      * VoltPilot selbst, ohne Person: der tägliche Lauf des Vorbehalts aus Messwerten (AP-15 IP-13), der den Vorbehalt
      * der Bezugsseite selbsttätig ERHÖHT (verengt nur) und Vorschläge zum Senken anlegt.
      */
     public static ProtokollAkteur vorbehaltAusMesswerten() {
         return new ProtokollAkteur(null, "Vorbehalt aus Messwerten", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
+     * VoltPilot selbst, ohne Person: die Übernahme von „hängt an" am Gerät in die elektrische
+     * Stellung der gebundenen Messstelle (Zählerbaum-Konzept, Vertrag
+     * {@code docs/contracts/v2/zaehlerbaum.md} §4). Derselbe Schritt, der eine Komponente im
+     * Aufbau umhängt, trägt die Stellung nach - im Protokoll als eigener Name erkennbar.
+     */
+    public static ProtokollAkteur zaehlerbaumUebernahme() {
+        return new ProtokollAkteur(null, "Zählerbaum-Übernahme", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
     }
 
     /**

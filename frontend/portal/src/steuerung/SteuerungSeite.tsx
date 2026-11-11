@@ -20,8 +20,8 @@
  * Anlage ohne Teilnahme hat keine Plakette (SZ-1 A, Messen-Ansicht).
  */
 import { liste } from './liste';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError, type Site, type SzeneKey } from '../api';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api, ApiError, type Device, type Site, type SzeneKey } from '../api';
 import { Recht } from '../components/Recht';
 import { SteuernAssistent } from '../components/SteuernAssistent';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
@@ -34,13 +34,25 @@ import { customerFlowApi } from '../flows/flowsApi';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { LIST_POLL_MS } from '../pollCadence';
+import { useIsPhone } from '../useIsPhone';
 import { useRollen } from '../rollen';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
+
+/**
+ * Eigener Chunk statt eines statischen Imports (dasselbe Argument wie bei `AufbauTabelle.tsx`):
+ * das Blatt „Überwachen" öffnet höchstens einmal, beim „In Überwachung umwandeln" einer
+ * Benachrichtigungs-Regel (Alerting Scheibe 6, Entscheid 10A).
+ */
+const UeberwachenBlatt = lazy(() =>
+  import('../components/UeberwachenBlatt').then((m) => ({ default: m.UeberwachenBlatt })),
+);
 import {
   AnbindenBlatt,
   GeraetBlatt,
   NegativBlatt,
+  NetzanschlussBlatt,
+  NullstundenBlatt,
   NeuBlatt,
   P14aBlatt,
   PauseBlatt,
@@ -55,12 +67,20 @@ import {
 import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
-import { AbfahrtBlatt, FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
-import { ladepunktErsetzt, RUECKSPEISEN_WORT, UEBERSCHUSS_MODUS, smartSchritte, type LadeQuelle } from './laden';
+import { AbfahrtBlatt, LadenReiter, LadungenBlatt, ZielBlatt } from './LadenReiter';
+import { FahrzeugDialog } from '../components/FahrzeugDialog';
+import { fahrzeugZeilen } from '../fahrzeugProfile';
+import { ladepunktErsetzt, quelleAusWunsch, RUECKSPEISEN_WORT, smartSchritte } from './laden';
 import type { FahrerAnfrage } from '../ladepunktErtraege';
+import { LADEPUNKT_ABSTECKEN_DECKEL_MIN, boostDauer, bisAbsteckenSatz } from '../ladepunkte';
+import { LadeWahlBlatt } from './LadeWahl';
+import { vorschauAnlage, type VorschauAnlage } from './ladeVorschau';
+import type { Gesendet } from './rueckmeldung';
 import { nurMessenKey, vorschlag } from './neu';
+import { anlageRoute, hashForRoute } from '../nav';
+import { szenenfaehig } from './szenen';
 import { RegelBlatt, RegelnReiter } from './RegelnReiter';
-import { bezugAus, greift, neuerEntwurf, regelKarten, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
+import { bezugAus, greift, neuerEntwurf, regelKarten, regelnReiterSichtbar, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
 import { seitenBild, type BlattZustand } from './seite';
 import { useSteuerungDaten } from './useSteuerungDaten';
 import { spannen, uhrTag, uhrVon } from './zeit';
@@ -73,12 +93,14 @@ export interface SteuerungSeiteProps {
   reiter: SteuerungReiter;
   tabs: BereichTab[];
   onOpenSub: (sub: AnlagenSub) => void;
+  /** Für die Technik-Zeile auf „Laden" (Konzept e1 §4.3): der Weg zur Geräteseite der Wallbox. */
+  devices?: Device[];
 }
 
 const fehlerText = (e: unknown, sonst: string) =>
   e instanceof ApiError || e instanceof Error ? e.message || sonst : sonst;
 
-export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeiteProps) {
+export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: SteuerungSeiteProps) {
   const { daten, geladen, fehler, neuLaden, setze } = useSteuerungDaten(site);
   const rollen = useRollen();
   const [now, setNow] = useState(() => new Date());
@@ -90,9 +112,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   useEffect(() => setNow(new Date()), [daten.live, daten.status]);
   const bild = useMemo(() => seitenBild(daten, now, site.id), [daten, now, site.id]);
   const funktion = bild.funktion;
+  const isPhone = useIsPhone();
   const [einrichten, setEinrichten] = useState(false);
   const [blatt, setBlatt] = useState<BlattZustand | null>(null);
+  const [umwandelnKarte, setUmwandelnKarte] = useState<RegelKarte | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Je Ladepunkt die zuletzt gesendete Wahl dieser Sitzung (Rückmeldung in drei Schritten, Konzept k1). */
+  const [gesendet, setGesendet] = useState<Record<string, Gesendet>>({});
   const [toast, setToast] = useState<{ text: string; warn?: boolean } | null>(null);
   const [reoStart, setReoStart] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
@@ -113,6 +139,32 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   }, [daten.editorEntities, bild.geraete]);
   const ziele = useMemo(() => regelZiele(bild.geraete.filter((g) => !g.ohneAuftrag || g.schreibbar), daten.editorEntities), [bild.geraete, daten.editorEntities]);
   const karten = useMemo(() => regelKarten(daten.flows, bezug, namen), [daten.flows, bezug, namen]);
+  // Ohne ein Gerät, das eine Regel schalten kann, und ohne bestehende Regel fällt der Reiter „Regeln“
+  // weg (samt den Einstiegen „Auch wenn …“ und „Regel aus Vorlage“); erst wenn alles geladen ist.
+  const mitRegeln = regelnReiterSichtbar({
+    bereit: geladen && daten.verbraucher != null && daten.flows != null && daten.editorEntities != null,
+    ziele: ziele.length,
+    regeln: karten.length,
+    szenen: bild.szene != null || bild.geraete.some(szenenfaehig),
+  });
+  const sichtbareTabs = mitRegeln ? tabs : tabs.filter((t) => t.sub !== 'regeln');
+  // Ein Lesezeichen auf den ausgeblendeten Reiter landet auf dem ersten sichtbaren - `replace`:
+  // kein Verlaufseintrag, der Zurück-Knopf springt nicht im Kreis.
+  const regelnUmleiten = reiter === 'regeln' && !mitRegeln ? (sichtbareTabs[0]?.sub ?? 'steuerung') : null;
+  useEffect(() => {
+    if (regelnUmleiten) window.location.replace(hashForRoute(anlageRoute(site.id, regelnUmleiten)));
+  }, [regelnUmleiten, site.id]);
+
+  // „Ändern“ auf der Geräteseite eines Heizstabs (`?einstellungen=<id>`): das Blatt des Geräts mit offenen
+  // Einstellungen. Der Parameter fällt danach weg - Zurück landet nicht wieder im Blatt.
+  useEffect(() => {
+    if (reiter !== 'steuerung') return;
+    const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+    const id = q.get('einstellungen');
+    if (!id || !bild.geraete.some((g) => g.id === id)) return;
+    setBlatt({ art: 'geraet', id, einstellungen: true });
+    replaceCurrentNavigation(window.location.hash.split('?')[0]);
+  }, [reiter, bild.geraete]);
 
   // Alte Regel-Lesezeichen (`?verbraucher=`, `?komponente=`, `?vorlage=`) öffnen den Baukasten.
   useEffect(() => {
@@ -147,11 +199,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     await lauf(g.id, async () => {
       try {
         const [a, , c] = dreiWorte(g);
-        const bis = minuten == null ? 'zum Abstecken' : uhrVon(bild.raster, Date.now() + minuten * 60_000);
+        const bis = minuten == null
+          ? bisAbsteckenSatz(uhrVon(bild.raster, Date.now() + LADEPUNKT_ABSTECKEN_DECKEL_MIN * 60_000))
+          : uhrVon(bild.raster, Date.now() + minuten * 60_000);
         if (g.ladepunkt) {
           const lp = g.ladepunkt;
           if (art === 'smart') await api.chargingBoost(site.id, { chargePointId: lp.chargePointId, connectorId: lp.connectorId, cancel: true });
-          else await api.chargingBoost(site.id, { chargePointId: lp.chargePointId, connectorId: lp.connectorId, action: art === 'aus' ? 'pause' : 'voll', ...(minuten != null ? { minutes: minuten } : {}) });
+          else await api.chargingBoost(site.id, { chargePointId: lp.chargePointId, connectorId: lp.connectorId, action: art === 'aus' ? 'pause' : 'voll', ...boostDauer(minuten) });
         } else if (art === 'smart') {
           await consumersApi.clearOverride(site.id, g.id);
         } else {
@@ -205,10 +259,21 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     let ok = false;
     await lauf(g.id, async () => {
       try {
+        const lp = g.ladepunkt;
+        const modus = lp ? quelleAusWunsch(w) : null;
         const res = await api.setzeSteuerart(site.id, g.id, w);
         if (res.aktiv === false && res.nachricht) meldung(res.nachricht, true);
-        else meldung(`${g.name}: ${res.steuerart ? 'übernommen' : 'gespeichert'}. Gilt ab jetzt; Gemessenes bleibt.`);
+        // „Gesendet“ statt „Gilt ab jetzt“ (Konzept k1): gespeichert heißt nicht, dass die Box übernommen hat.
+        else if (lp && modus) meldung(`${g.name}: gesendet. Ob die Box übernimmt, steht an der Karte.`);
+        else meldung(`${g.name}: gesendet. Gemessenes bleibt.`);
         ok = true;
+        if (lp && modus) {
+          setGesendet((x) => ({ ...x, [g.id]: { modus, ms: Date.now(), vorherGemeldet: lp.gemeldetAm, vorherGemessen: lp.gemessenAm } }));
+          // Der Herzschlag der Box kommt alle 15 s; die Ladepunkte nicht erst mit dem nächsten Takt lesen.
+          for (const ms of [4000, 12_000, 25_000]) {
+            window.setTimeout(() => void api.siteChargers(site.id).then((c) => setze('charging', c), () => {}), ms);
+          }
+        }
         // „Nur messen“ ist damit zurückgenommen (bestmöglich; die Karte folgt dem Auftrag).
         if (liste(daten.vorschlaege?.states).some((x) => x.key === nurMessenKey(g.id))) {
           void api.clearSuggestionState(site.id, nurMessenKey(g.id)).then(
@@ -372,23 +437,6 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     await steuerart(g, v.wunsch);
   };
 
-  const ladeQuelle = async (g: GeraetBild, q: LadeQuelle) => {
-    const s = g.steuerart;
-    const v = g.eintrag.optionen?.vorgaben;
-    const ziel = s?.ziel === 'bis_uhrzeit'
-      ? { ziel: 'bis_uhrzeit', zielEnergieKwh: s.zielEnergieKwh ?? null, zielFenster: s.zielFenster ?? null }
-      : {};
-    const w: SteuerartWunsch = q === 'guenstig'
-      ? { quelle: 'guenstig', preisgrenzeCtKwh: s?.preisgrenzeCtKwh ?? v?.preisgrenzeCtKwh ?? null, ...ziel }
-      : {
-          quelle: 'ueberschuss',
-          ueberschussModus: UEBERSCHUSS_MODUS[q],
-          ...(q === 'min' ? { mindestleistungKw: s?.mindestleistungKw ?? daten.verbraucher?.ladepunkte.rahmen?.mindestleistungKw ?? 1.4 } : {}),
-          ...ziel,
-        };
-    await steuerart(g, w);
-  };
-
   const regelAktivieren = async (e: RegelEntwurf): Promise<boolean> => {
     const g = bild.geraete.find((x) => x.id === e.dann.g) ?? null;
     const regel = zuGuided(e, bezug, g);
@@ -493,9 +541,17 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     busy,
     a: aktionen,
     zu,
+    neueRegel: ziele.length > 0,
   };
 
   const rahmen = daten.verbraucher?.ladepunkte.rahmen ?? null;
+  const anlage = useMemo(() => vorschauAnlage(daten.assets, daten.plan, daten.chargingConfig, rahmen?.mindestleistungKw),
+    [daten.assets, daten.plan, daten.chargingConfig, rahmen?.mindestleistungKw]);
+  /** „So laden“: läuft ein Eingriff, endet er zuerst - dann geht die ganze Steuerart an den Server. */
+  const soLaden = async (g: GeraetBild, w: SteuerartWunsch): Promise<boolean> => {
+    if (g.eingriff && !(await eingriff(g, 'smart', null))) return false;
+    return steuerart(g, w);
+  };
   const zahlen: Record<string, number> = {
     steuerung: bild.geraete.filter((g) => g.an === true).length,
     laden: bild.ladepunkte.filter((g) => g.ladepunkt?.angesteckt).length,
@@ -515,18 +571,20 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   } else if (reiter === 'laden') {
     inhalt = (
       <LadenReiter
+        siteId={site.id}
         bild={bild}
         rahmen={rahmen}
         config={daten.chargingConfig}
         fahrzeuge={daten.fahrzeuge}
         busy={busy}
         oeffne={setBlatt}
-        onSmart={(g) => void (async () => {
+        onSmart={(g) => {
           const s = smartSchritte(g);
-          if (s.eingriffBeenden) await eingriff(g, 'smart', null);
-          if (s.steuerart) await ladeQuelle(g, s.steuerart);
-        })()}
-        onQuelle={(g, q) => void ladeQuelle(g, q)}
+          if (s.eingriffBeenden) void eingriff(g, 'smart', null);
+          if (s.blattOeffnen) setBlatt({ art: 'womit', id: g.id });
+        }}
+        anlage={anlage}
+        gesendet={gesendet}
         onVorrang={(zuerst) => void lauf('vorrang', async () => {
           try {
             const c = await api.saveChargingConfig(site.id, { storagePriority: zuerst ? 'speicher_vor_auto' : 'auto_vor_speicher' });
@@ -553,6 +611,8 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             meldung(fehlerText(e, 'Die Reserve konnte nicht gespeichert werden.'), true);
           }
         })}
+        devices={devices}
+        economics={daten.ocppTransactionEconomics}
       />
     );
   } else if (reiter === 'regeln') {
@@ -568,21 +628,28 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         onSchalter={regelSchalter}
         onBefehle={() => onOpenSub('befehle')}
         onSzeneBeenden={() => void szeneAus()}
+        onUmwandeln={setUmwandelnKarte}
       />
     );
   } else {
     inhalt = (
       <GeraeteReiter
         bild={bild}
+        siteId={site.id}
         oeffne={setBlatt}
         onUebernehmen={(g) => void uebernehmen(g)}
         onNurMessen={(g) => void aktionen.nurMessen(g)}
         onReihenfolge={reihenfolge}
         onAnlage={() => onOpenSub('modell')}
         netzanschlussKw={rahmen?.effektivGrenzeKw ?? rahmen?.netzanschlussKw ?? null}
+        plantKind={site.plantKind}
+        netzladenErlaubt={site.netzladenErlaubt}
+        tarifArt={site.tarifArt}
         busy={busy}
         reoStart={reoStart}
         onReoGestartet={() => setReoStart(null)}
+        zuLaden={() => onOpenSub('laden')}
+        mitRegeln={mitRegeln}
       />
     );
   }
@@ -620,8 +687,9 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
           </button>
         )}
       </div>
-      <div className="stn-reiter" role="tablist" aria-label="Reiter der Steuerung">
-        {tabs.map((t) => (
+      {/* Eine Leiste mit EINEM Reiter bietet keine Wahl - ohne Laden und Regeln steht die Seite ohne sie. */}
+      {sichtbareTabs.length > 1 && <div className="stn-reiter" role="tablist" aria-label="Reiter der Steuerung">
+        {sichtbareTabs.map((t) => (
           <button
             type="button"
             role="tab"
@@ -633,7 +701,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             {zahlen[t.sub] && !ohneZahlen ? <span className="n">{zahlen[t.sub]}</span> : null}
           </button>
         ))}
-      </div>
+      </div>}
       {baender && (
         <div className="stn-baender">
           {funktion.einstieg && (
@@ -689,39 +757,20 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
           )}
         </div>
       )}
-      <main className={`stn-main ${reiter}`}>
+      {/* Kein zweites <main>: die Schale trägt schon das eine (`AppShell`). */}
+      <div className={`stn-main ${reiter}`}>
         {inhalt}
-      </main>
-      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onFahrer={fahrer} onGrenze={async (kw, vereinbartKw) => {
-        let ok = false;
-        await lauf('rahmen', async () => {
-          try {
-            // Der Kunden-Schritt (AP-01 IP-13) prüft gegen den Netzanschluss und lehnt mit 422 und Grund ab;
-            // `/charging-config` speicherte die Grenze ungeprüft.
-            const c = await api.saveCustomerChargingFrame(site.id, { gridLimitKw: kw, ...(vereinbartKw != null ? { vereinbartKw } : {}) });
-            setze('chargingConfig', c);
-            meldung('Rahmen übernommen.');
-            ok = true;
-            const v = await api.siteVerbraucher(site.id).catch(() => null);
-            if (v) setze('verbraucher', v);
-          } catch (e) {
-            meldung(fehlerText(e, 'Der Rahmen konnte nicht gespeichert werden.'), true);
-          }
-        });
-        return ok;
-      }} onFahrzeug={async (tagRef, w) => {
-        let ok = false;
-        await lauf(`fz:${tagRef}`, async () => {
-          try {
-            const f = await api.setzeFahrzeug(site.id, tagRef, w);
-            setze('fahrzeuge', f);
-            meldung('Übernommen.');
-            ok = true;
-          } catch (e) {
-            meldung(fehlerText(e, 'Das Fahrzeug konnte nicht gespeichert werden.'), true);
-          }
-        });
-        return ok;
+      </div>
+      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} anlage={anlage} onSoLaden={soLaden} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onFahrer={fahrer} onFahrzeug={async (tagRef, w) => {
+        // ⚠ `FahrzeugDialog` (Konzept „Ein Ort fürs Laden" e1, Abschnitt 7
+        // Punkt 6: EIN Dialog statt des früheren Fahrzeug-Blatts) trägt seinen
+        // eigenen Busy-/Fehler-Zustand und erwartet eine Promise, die bei
+        // einem Fehler ABLEHNT - sie fängt ihn nicht hier ein.
+        const f = await api.setzeFahrzeug(site.id, tagRef, w);
+        setze('fahrzeuge', f);
+      }} onFahrzeugEntfernen={async (tagRef) => {
+        const f = await api.entferneFahrzeugProfil(site.id, tagRef);
+        setze('fahrzeuge', f);
       }} />}
       {einrichten && funktion.standortId && (
         <SteuernAssistent
@@ -739,11 +788,32 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
           <span>{toast.text}</span>
         </div>
       )}
+      {umwandelnKarte?.notifyUmwandlung && (
+        <Suspense fallback={null}>
+          <UeberwachenBlatt
+            offen
+            isPhone={isPhone}
+            onClose={() => setUmwandelnKarte(null)}
+            wertart="geraet.messwert"
+            bezug={{ komponente: umwandelnKarte.notifyUmwandlung.entityId, kanal: umwandelnKarte.notifyUmwandlung.channel }}
+            aktuellerWert={null}
+            titelZusatz={umwandelnKarte.name}
+            herkunft="steuerung"
+            onUeberwacht={() => {
+              const { flowId, name } = umwandelnKarte;
+              setUmwandelnKarte(null);
+              void regelLoeschen(flowId).then((ok) => {
+                if (ok) meldung(`„${name}“ ist jetzt eine Überwachung.`);
+              });
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
 
-function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onFahrer, onGrenze, onFahrzeug }: {
+function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anlage, onSoLaden, onRegel, onLoeschen, onSteuerart, onFahrer, onFahrzeug, onFahrzeugEntfernen }: {
   blatt: BlattZustand;
   k: BlattKontext;
   siteId: string;
@@ -752,16 +822,18 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRe
   bezug: ReturnType<typeof bezugAus>;
   rahmen: import('../verbraucherZone').LadeparkRahmen | null;
   daten: import('./useSteuerungDaten').SteuerungDaten;
+  anlage: VorschauAnlage;
+  onSoLaden: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
   onRegel: (e: RegelEntwurf) => Promise<boolean>;
   onLoeschen: (flowId: string) => Promise<boolean>;
   onSteuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
   onFahrer: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>;
-  onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
-  onFahrzeug: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
+  onFahrzeug: (tagRef: string, w: import('../fahrzeugProfile').FahrzeugWunsch) => Promise<void>;
+  onFahrzeugEntfernen: (tagRef: string) => Promise<void>;
 }) {
   switch (blatt.art) {
     case 'geraet':
-      return <GeraetBlatt k={k} id={blatt.id} modus={blatt.modus} />;
+      return <GeraetBlatt k={k} id={blatt.id} modus={blatt.modus} siteId={siteId} einstellungenOffen={blatt.einstellungen === true} />;
     case 'speicher':
       return <SpeicherBlatt k={k} />;
     case 'pause':
@@ -774,20 +846,43 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRe
       return <P14aBlatt k={k} />;
     case 'negativ':
       return <NegativBlatt k={k} />;
+    case 'nullstunden':
+      return <NullstundenBlatt k={k} />;
     case 'anbinden':
       return <AnbindenBlatt k={k} />;
     case 'neu':
       return <NeuBlatt k={k} id={blatt.id} />;
     case 'szene':
       return <SzeneBlatt k={k} id={blatt.id} />;
-    case 'rahmen':
-      return <RahmenBlatt k={k} siteId={siteId} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
+    case 'netzanschluss':
+      return <NetzanschlussBlatt k={k} siteId={siteId} netzanschlussKw={rahmen?.effektivGrenzeKw ?? rahmen?.netzanschlussKw ?? 0} />;
     case 'ziel':
-      return <ZielBlatt k={k} id={blatt.id} onSpeichern={onSteuerart} />;
+      return <ZielBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSpeichern={onSteuerart} />;
     case 'abfahrt':
       return <AbfahrtBlatt k={k} id={blatt.id} ladepunkte={daten.ladepunkte} onSpeichern={onFahrer} />;
-    case 'fahrzeug':
-      return <FahrzeugBlatt k={k} tagRef={blatt.tagRef} fahrzeuge={daten.fahrzeuge} onSetzen={onFahrzeug} />;
+    case 'womit':
+      return <LadeWahlBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSoLaden={onSoLaden} />;
+    case 'ladungen':
+      return <LadungenBlatt k={k} id={blatt.id} siteId={siteId} fahrzeuge={daten.fahrzeuge} />;
+    case 'fahrzeug': {
+      // ⚠ EIN Dialog für die Fahrzeug-Einstellung (Konzept „Ein Ort fürs
+      // Laden" e1, Abschnitt 7 Punkt 6): „Laden" öffnet denselben
+      // `FahrzeugDialog` wie früher nur die Ladevorgänge-Seite - zwei
+      // Dialoge über dieselbe Sache wären zwei Wahrheiten.
+      const namen = (cp: string) => k.bild.ladepunkte.find((g) => g.ladepunkt?.chargePointId === cp)?.name ?? null;
+      const zeile = fahrzeugZeilen(daten.fahrzeuge, namen, k.bild.raster.nowMs).find((z) => z.tagRef === blatt.tagRef);
+      if (!zeile) return null;
+      const fahrzeug = daten.fahrzeuge?.fahrzeuge.find((f) => f.tagRef === blatt.tagRef) ?? null;
+      return (
+        <FahrzeugDialog
+          zeile={zeile}
+          fahrzeug={fahrzeug}
+          onClose={k.zu}
+          onSpeichern={onFahrzeug}
+          onEntfernen={fahrzeug ? onFahrzeugEntfernen : undefined}
+        />
+      );
+    }
     case 'regel': {
       const vorhanden = blatt.flowId ? karten.find((x) => x.flowId === blatt.flowId) ?? null : null;
       if (vorhanden && !vorhanden.entwurf) {

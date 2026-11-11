@@ -1,0 +1,310 @@
+import { describe, expect, it } from 'vitest';
+import {
+  abschnitte,
+  dauer,
+  einheitPunkt,
+  ERZEUGER_PUNKT as P,
+  einheitenListe,
+  erzeugerBlatt,
+  erzeugerBuehne,
+  erzeugerKette,
+  erzeugerKnoten,
+  erzeugerLage,
+  erzeugerSatz,
+  erzeugerStatus,
+  geregeltHeute,
+  vorgabeSpuren,
+  type ErzeugerJetzt,
+} from './erzeuger';
+import { erzeugerBeispiel, vorgabenHeuteBeispiel } from './test/erzeugerFixtures';
+
+const NOW = new Date(2026, 9, 21, 15, 44, 0);
+const sp = (s: string) => s.replace(/ /g, ' ');
+const mitternacht = new Date(2026, 9, 21).getTime();
+
+function mit(fall: 'buettner' | 'gore', aenderung: (j: ErzeugerJetzt) => void): ErzeugerJetzt {
+  const j = erzeugerBeispiel(fall, NOW);
+  aenderung(j);
+  return j;
+}
+
+describe('erzeugerLage', () => {
+  it('Büttner: zwei Motoren, Netzbetreiber 60 %, Abruf 80 kW, kein Netzpunkt (EW-16 C)', () => {
+    const l = erzeugerLage(erzeugerBeispiel('buettner', NOW), NOW);
+    expect(l.art).toBe('bhkw');
+    expect(l.erzeugungKw).toBeCloseTo(58.9);
+    // Ohne Netzpunkt gibt es weder Netz noch Hof - nie 0.
+    expect(l.netzKw).toBeNull();
+    expect(l.hofKw).toBeNull();
+    expect(l.gasspeicherPct).toBe(62);
+    expect(l.nb).toMatchObject({ kanal: 2, verbunden: true, begrenzt: true, prozent: 60, gehalten: false });
+    expect(l.dv).toMatchObject({ kanal: 1, abruf: true, stopp: false, bereit: true, sollKw: 80 });
+    expect(l.quelle).toBe('netzbetreiber');
+    expect(l.folgt).toBe(true);
+    expect(l.grenzeKw).toBeCloseTo(59.4);
+    expect(l.einheiten.map((e) => [e.name, e.typName, e.istKw, e.zustand])).toEqual([
+      ['Motor 1', 'MAN E0836LE', 39.6, 'laeuft_begrenzt'],
+      ['Motor 2', 'Smartblock 33', 19.3, 'laeuft_begrenzt'],
+    ]);
+    expect(l.veraltet).toBe(false);
+  });
+
+  it('Gore: Hof = Erzeugung + Netzpunkt, Leitstelle getrennt hält 100 %', () => {
+    const l = erzeugerLage(erzeugerBeispiel('gore', NOW), NOW);
+    expect(l.art).toBe('pv');
+    expect(l.netzKw).toBeCloseTo(0.1);
+    expect(l.hofKw).toBeCloseTo(41.1);
+    expect(l.gasspeicherPct).toBeNull();
+    expect(l.nb.gehalten).toBe(true);
+    expect(l.nb.begrenzt).toBe(false);
+    expect(l.quelle).toBe('netzpunkt');
+    expect(l.einheiten).toHaveLength(3);
+  });
+
+  it('ein Gültigkeitsbit = 0 macht den Wert unbekannt, nie 0 (Lesart 5)', () => {
+    const l = erzeugerLage(mit('gore', (j) => {
+      j.werte[P.aGueltig].wert = 0b01000; // Netzpunkt nicht gültig
+      j.werte[P.sBits].wert = 0; // Wirkung nicht gültig
+      j.werte[einheitPunkt(2, 'bits')].wert = 0b10; // Werte der Einheit nicht gültig
+    }), NOW);
+    expect(l.netzKw).toBeNull();
+    expect(l.hofKw).toBeNull();
+    expect(l.quelle).toBeNull();
+    expect(l.folgt).toBeNull();
+    expect(l.grenzeKw).toBeNull();
+    expect(l.einheiten[1].istKw).toBeNull();
+    expect(l.einheiten[1].zustand).toBeNull();
+    expect(l.einheiten[1].sollKw).toBeCloseTo(13.7);
+  });
+
+  it('Qualität invalid oder device_error ist kein Wert; ein unbekanntes Aufzählungswort auch nicht', () => {
+    const l = erzeugerLage(mit('buettner', (j) => {
+      j.werte[P.pErzeugungW].qualitaet = 'device_error';
+      j.werte[P.quelleP].wert = 42;
+    }), NOW);
+    expect(l.erzeugungKw).toBeNull();
+    expect(l.quelle).toBeNull();
+  });
+
+  it('veraltet: Qualität stale oder Lesung älter als zwei Minuten', () => {
+    expect(erzeugerLage(mit('gore', (j) => { j.werte[P.pErzeugungW].qualitaet = 'stale'; }), NOW).veraltet).toBe(true);
+    expect(erzeugerLage(erzeugerBeispiel('gore', NOW), new Date(NOW.getTime() + 3 * 60_000)).veraltet).toBe(true);
+    expect(erzeugerLage(mit('gore', (j) => { j.werte = {}; }), NOW).veraltet).toBe(true);
+  });
+
+  it('nicht bereit: Störung vor dem Direktvermarkter, sonst die Gründe aus t_bits Bit 4–9', () => {
+    const gemeldet = erzeugerLage(mit('buettner', (j) => {
+      j.werte[P.dvBits].wert = 0b00011; // gültig, Abruf, NICHT bereit gemeldet
+      j.werte[einheitPunkt(1, 'bits')].wert = 0b1_0000_0011; // Gasspeicher leer (Bit 8)
+    }), NOW);
+    expect(gemeldet.nichtBereit).toBe('dem Direktvermarkter nicht bereit gemeldet: Gasspeicher leer');
+    expect(erzeugerLage(mit('buettner', (j) => { j.werte[P.anlageZustand].wert = 4; }), NOW).nichtBereit).toBe('Störung');
+    expect(erzeugerLage(erzeugerBeispiel('gore', NOW), NOW).nichtBereit).toBeNull();
+  });
+});
+
+describe('Status oben', () => {
+  it('Büttner: Netzbetreiber begrenzt 60 %, Direktvermarkter ruft ab', () => {
+    expect(erzeugerStatus(erzeugerLage(erzeugerBeispiel('buettner', NOW), NOW)).map((s) => sp(s.text))).toEqual([
+      'Netzbetreiber begrenzt 60 %',
+      'Direktvermarkter ruft ab',
+    ]);
+  });
+  it('Gore: Leitstelle getrennt als Warnung, keine Begrenzung bei 100 %', () => {
+    expect(erzeugerStatus(erzeugerLage(erzeugerBeispiel('gore', NOW), NOW))).toEqual([
+      { key: 'leitstelle', text: 'Leitstelle getrennt', ton: 'warn' },
+    ]);
+  });
+  it('Anlage nicht bereit; veraltete Werte behaupten nichts', () => {
+    const l = erzeugerLage(mit('buettner', (j) => { j.werte[P.anlageZustand].wert = 5; }), NOW);
+    expect(erzeugerStatus(l).map((s) => s.text)).toContain('Anlage nicht bereit');
+    expect(erzeugerStatus(erzeugerLage(erzeugerBeispiel('buettner', NOW), new Date(NOW.getTime() + 600_000)))).toEqual([]);
+  });
+});
+
+describe('Soll-Kette', () => {
+  it('Büttner: Netzbetreiber 60 % › Direktvermarkter 80 kW › ✓ Anlage 58,9 kW, NB strenger', () => {
+    const k = erzeugerKette(erzeugerLage(erzeugerBeispiel('buettner', NOW), NOW), NOW);
+    expect(k.glieder.map((g) => sp(g.text))).toEqual(['Netzbetreiber 60 %', 'Direktvermarkter 80,0 kW', 'Anlage 58,9 kW']);
+    expect(k.glieder.map((g) => g.kurz && sp(g.kurz))).toEqual(['NB 60 %', 'DV 80,0 kW', null]);
+    expect(k.glieder.map((g) => g.ton)).toEqual(['ruhig', 'ruhig', 'ok']);
+    expect(k.glieder[0].bindet).toBe(true);
+    expect(k.pille).toEqual({ text: 'NB strenger', ton: 'info' });
+    expect(sp(k.alter ?? '')).toBe('Daten 3 s alt');
+  });
+  it('Gore: NB 100 % (gehalten) › Nulleinspeisung 41,2 kW › ✓ Anlage 41,0 kW mit einem Hinweis', () => {
+    const k = erzeugerKette(erzeugerLage(erzeugerBeispiel('gore', NOW), NOW), NOW);
+    expect(k.glieder.map((g) => sp(g.text))).toEqual(['Netzbetreiber 100 % (gehalten)', 'Nulleinspeisung 41,2 kW', 'Anlage 41,0 kW']);
+    expect(k.glieder[0].ton).toBe('warn');
+    expect(k.pille).toEqual({ text: '1 Hinweis', ton: 'warn' });
+  });
+  it('folgt die Anlage nicht, wird das letzte Glied bernstein; veraltet bleibt alles ruhig', () => {
+    const l = erzeugerLage(mit('buettner', (j) => { j.werte[P.sBits].wert = 0b01; }), NOW);
+    expect(erzeugerKette(l, NOW).glieder.at(-1)?.ton).toBe('warn');
+    const alt = new Date(NOW.getTime() + 600_000);
+    const k = erzeugerKette(erzeugerLage(erzeugerBeispiel('gore', NOW), alt), alt);
+    expect(k.glieder.every((g) => g.ton === 'ruhig')).toBe(true);
+    expect(k.pille).toBeNull();
+    expect(k.alter).toBe('zuletzt 15:43');
+  });
+});
+
+describe('Blatt „Steuerung jetzt“', () => {
+  it('Büttner: die ganze Kette mit Namen, Warum und Grenze', () => {
+    const j = erzeugerBeispiel('buettner', NOW);
+    const l = erzeugerLage(j, NOW);
+    const b = erzeugerBlatt(l, NOW, geregeltHeute(vorgabenHeuteBeispiel('buettner', NOW), l, mitternacht));
+    expect(b.zeilen.map((z) => [z.titel, sp(z.unter), sp(z.wert)])).toEqual([
+      ['Netzbetreiber', 'Netz Musterstadt GmbH · Stufe 60 % · seit 14:32', '59,4 kW'],
+      ['Direktvermarkter', 'Stadtwerke Beispiel · Abruf seit 13:05 · bereit ✓', '80,0 kW'],
+      ['Anlage', 'folgt ✓ · 2 von 2 Motoren laufen', '58,9 kW'],
+    ]);
+    expect(b.balken).toEqual({ maxKw: 99, istKw: 58.9, nbKw: 59.4, dvKw: 80 });
+    expect(Object.fromEntries(b.warum.map(([k, v]) => [k, sp(v)]))).toEqual({
+      'Es gilt': '59,4 kW – der Netzbetreiber ist strenger als der Direktvermarkter',
+      Seit: '14:32 (1 h 12 min)',
+      Daten: '3 s alt · Wago antwortet',
+      Heute: 'Netzbetreiber 2× · Direktvermarkter 1×',
+    });
+    expect(b.grenze.map(([k, v]) => [k, sp(v)])).toEqual([['Wirksam', 'höchstens 59,4 kW'], ['Weg des DV', 'Relais und 4–20 mA']]);
+  });
+  it('Gore: Leitstelle getrennt, eigene Grenze, cos φ nur mit Vorgabe', () => {
+    const j = mit('gore', (x) => { x.werte[P.nbBits].wert = 0b10001; x.werte[P.nbCosphi] = { wert: -0.97, gelesenAm: x.werte[P.nbBits].gelesenAm, qualitaet: 'good' }; });
+    const l = erzeugerLage(j, NOW);
+    const b = erzeugerBlatt(l, NOW, null);
+    expect(b.zeilen.map((z) => z.titel)).toEqual(['Netzbetreiber', 'Nulleinspeisung', 'Anlage']);
+    expect(sp(b.zeilen[0].unter)).toBe('Netz Musterstadt GmbH · Leitstelle 100 % · getrennt, Wert gehalten');
+    expect(b.zeilen[0].ton).toBe('warn');
+    expect(b.zeilen[0].wert).toBe('keine Grenze');
+    expect(sp(b.warum[0][1])).toBe('41,2 kW – die Anlage regelt selbst am Netzpunkt (Nulleinspeisung)');
+    expect(b.grenze.map(([k, v]) => [k, sp(v)])).toContainEqual(['cos φ', '0,97 untererregt (Vorgabe des Netzbetreibers)']);
+  });
+});
+
+describe('Gore, erste Lesung: Vorgabe ungültig, Wort 24 = Ersatzwert (EZ-1 §3, Fall E21)', () => {
+  // Das Bild vom 22.10.2026: n_bits 0x0002 (Verbindung steht, Bit 0 = 0), Wort 24 = 1000 → 100 %, cos φ 0x7FFF,
+  // quelle_p 6 Ersatzwert, Grenze 265,5 kW. Auch wenn die 100 % ankämen, sind sie keine Vorgabe des Netzbetreibers.
+  const gore = () => mit('gore', (x) => {
+    const t = x.werte[P.nbBits].gelesenAm;
+    const s = (k: string, wert: number | null) => { x.werte[k] = { wert, gelesenAm: t, qualitaet: wert == null ? 'invalid' : 'good' }; };
+    s(P.nbBits, 0b010); s(P.nbProzent, 100); s(P.nbCosphi, null); s(P.quelleP, 6); s(P.sBits, 0b11); s(P.pGrenzeW, 265_500);
+  });
+
+  it('die Lage kennt keine Vorgabe, die Wirkung kommt vom Ersatzwert', () => {
+    const l = erzeugerLage(gore(), NOW);
+    expect([l.nb.gueltig, l.nb.prozent, l.nb.begrenzt, l.nb.cosphi, l.quelle, l.grenzeKw]).toEqual([false, null, false, null, 'ersatzwert', 265.5]);
+    expect(erzeugerStatus(l)).toEqual([]);
+  });
+
+  it('Soll-Kette, Blatt und Satz sagen „keine gültige Vorgabe“ und den Ersatzwert, nie „begrenzt auf 100 %“', () => {
+    const l = erzeugerLage(gore(), NOW);
+    const k = erzeugerKette(l, NOW);
+    expect(k.glieder.map((g) => [g.key, sp(g.text), g.bindet])).toEqual([
+      ['nb', 'Netzbetreiber keine gültige Vorgabe', false],
+      ['eigen', 'Ersatzwert 265,5 kW', true],
+      ['anlage', 'Anlage 41,0 kW', false],
+    ]);
+    const b = erzeugerBlatt(l, NOW, null);
+    expect(sp(b.zeilen[0].unter)).toBe('Netz Musterstadt GmbH · Leitstelle keine gültige Vorgabe · seit 15:32');
+    expect(b.zeilen[0].wert).toBe('—');
+    expect(b.zeilen.map((z) => z.titel)).toEqual(['Netzbetreiber', 'Ersatzwert', 'Anlage']);
+    expect(sp(b.warum[0][1])).toBe('265,5 kW – Ersatzwert der Steuerung');
+    expect(b.balken?.nbKw).toBeNull();
+    const satz = sp(erzeugerSatz(l));
+    expect(satz).toBe('Vom Netzbetreiber liegt keine gültige Vorgabe vor; die Steuerung fährt einen Ersatzwert von 265,5 kW. Sie erzeugt 41,0 kW.');
+    const alles = [satz, ...k.glieder.map((g) => sp(g.text)), ...b.zeilen.flatMap((z) => [sp(z.unter), z.wert])].join(' | ');
+    expect(alles).not.toMatch(/100\s?%/);
+  });
+});
+
+describe('Bühne', () => {
+  it('Satz zur Vorgabe: Büttner ohne Netzpunkt nennt die Erzeugung, Gore die Nulleinspeisung', () => {
+    expect(sp(erzeugerSatz(erzeugerLage(erzeugerBeispiel('buettner', NOW), NOW)))).toBe(
+      'Der Netzbetreiber begrenzt die Anlage auf 60 %. Sie erzeugt 58,9 kW.',
+    );
+    expect(erzeugerSatz(erzeugerLage(erzeugerBeispiel('gore', NOW), NOW))).toBe(
+      'Die Anlage begrenzt sich selbst: Am Netzpunkt fließt nichts ins Netz.',
+    );
+    const mitNetz = erzeugerLage(mit('buettner', (j) => { j.werte[P.aGueltig].wert = 0b11001; j.werte[P.pNvpW].wert = -44_300; j.werte[P.pNvpW].qualitaet = 'good'; }), NOW);
+    expect(sp(erzeugerSatz(mitNetz))).toBe('Der Netzbetreiber begrenzt die Anlage auf 60 %. Sie speist 44,3 kW ein.');
+    expect(mitNetz.hofKw).toBeCloseTo(14.6);
+  });
+  it('Knoten: Motor oder Sonne je Anlagenart, Hof bei Biogas, Netz ohne Messung', () => {
+    expect(erzeugerKnoten(erzeugerLage(erzeugerBeispiel('buettner', NOW), NOW))).toEqual({
+      symbol: 'motor', erzeugungZeile: 'Erzeugung · 2 Motoren', lastName: 'Hof', netzZeile: 'ohne Messung',
+    });
+    expect(erzeugerKnoten(erzeugerLage(erzeugerBeispiel('gore', NOW), NOW))).toEqual({
+      symbol: 'sonne', erzeugungZeile: 'Erzeugung · 3 WR', lastName: 'Verbrauch', netzZeile: null,
+    });
+  });
+});
+
+describe('Heute: Wer hat geregelt, Spuren', () => {
+  it('liest Anzahl und Dauer je Urheber aus den Vorgaben des Servers (EZ-7 „heute“)', () => {
+    const j = erzeugerBeispiel('buettner', NOW);
+    const z = geregeltHeute(vorgabenHeuteBeispiel('buettner', NOW), erzeugerLage(j, NOW), mitternacht);
+    expect(z?.map((x) => [x.key, x.urheber, x.anzahl, sp(dauer(x.dauerMs))])).toEqual([
+      ['nb', 'Netzbetreiber', 2, '2 h 27 min'],
+      ['dv', 'Direktvermarkter', 1, '2 h 39 min'],
+    ]);
+    const g = erzeugerBeispiel('gore', NOW);
+    // Die getrennte Leitstelle ist keine Begrenzung; die Anlage selbst regelt seit 5 h.
+    expect(geregeltHeute(vorgabenHeuteBeispiel('gore', NOW), erzeugerLage(g, NOW), mitternacht)?.map((x) => [x.urheber, x.anzahl, x.dauerMs])).toEqual([
+      ['Netzbetreiber', 0, 0],
+      ['Anlage selbst', 1, 300 * 60_000],
+    ]);
+  });
+  it('ohne Antwort oder ohne ausgewerteten heutigen Tag keine Zählung (nie „heute nicht“ erfunden)', () => {
+    const j = erzeugerBeispiel('buettner', NOW);
+    const l = erzeugerLage(j, NOW);
+    expect(geregeltHeute(null, l, mitternacht)).toBeNull();
+    expect(geregeltHeute({ ...vorgabenHeuteBeispiel('buettner', NOW), verarbeitet_bis: null }, l, mitternacht)).toBeNull();
+    const gestern = new Date(mitternacht - 120_000).toISOString();
+    expect(geregeltHeute({ ...vorgabenHeuteBeispiel('buettner', NOW), verarbeitet_bis: gestern }, l, mitternacht)).toBeNull();
+    // Ausgewertet, aber heute ohne Vorgabe: „heute nicht“ ist dann eine Aussage.
+    expect(geregeltHeute({ ...vorgabenHeuteBeispiel('buettner', NOW), je_urheber: [] }, l, mitternacht)?.map((x) => x.anzahl)).toEqual([0, 0]);
+  });
+  it('Abschnitte beginnen frühestens um Mitternacht und laufen bis jetzt', () => {
+    const a = abschnitte([{ ab: new Date(mitternacht - 3_600_000).toISOString(), wert: 1 }, { ab: new Date(mitternacht + 600_000).toISOString(), wert: 0 }], (w) => w === 1, mitternacht, NOW.getTime());
+    expect(a).toEqual([{ von: mitternacht, bis: mitternacht + 600_000 }]);
+  });
+  it('Spuren je Viertelstunde: Netzbetreiber und Direktvermarkter, bei Gore „Anlage selbst“', () => {
+    const viertel = Array.from({ length: 96 }, (_, i) => ({ start: mitternacht + i * 900_000 }));
+    const j = erzeugerBeispiel('buettner', NOW);
+    const s = vorgabeSpuren(j, erzeugerLage(j, NOW), viertel, NOW.getTime(), 900_000);
+    expect(s.map((x) => [x.name, x.kurz, x.farbe])).toEqual([['Netzbetreiber', 'Netzbetreiber', 'netz'], ['Direktvermarkter', 'Direktverm.', 'markt']]);
+    // 14:32 liegt in der Viertelstunde 58 (14:30), 15:44 in 62; danach nichts.
+    expect(s[0].an[57]).toBe(false);
+    expect(s[0].an[58]).toBe(true);
+    expect(s[0].an[62]).toBe(true);
+    expect(s[0].an[63]).toBe(false);
+    const g = erzeugerBeispiel('gore', NOW);
+    expect(vorgabeSpuren(g, erzeugerLage(g, NOW), viertel, NOW.getTime(), 900_000).map((x) => x.name)).toEqual(['Netzbetreiber', 'Anlage selbst']);
+  });
+});
+
+describe('Erzeugung im Detail — je Einheit auf ihre Seite (GE-3)', () => {
+  const href = (teNr: number) => `#/anlage/site-gore/geraet/edge-gore/as-ent~te-${teNr}`;
+
+  it('der Name ist die Bezeichnung der Einheit (additiv in der Antwort), sonst „Wechselrichter n“', () => {
+    const j = mit('gore', (x) => {
+      x.einheiten[0] = { ...x.einheiten[0], bezeichnung: 'WR Dach Nord' };
+    });
+    expect(erzeugerLage(j, NOW).einheiten.map((e) => e.name)).toEqual(['WR Dach Nord', 'Wechselrichter 2', 'Wechselrichter 3']);
+  });
+
+  it('im Blatt führt jede eingetragene Einheit auf ihre Seite; eine nur im Bild gezählte hat keine', () => {
+    const j = mit('gore', (x) => {
+      x.einheiten = x.einheiten.filter((e) => e.teNr !== 3);
+    });
+    const liste = einheitenListe(erzeugerLage(j, NOW), href)!;
+    expect(liste.zeilen.map((z) => [z.key, z.href])).toEqual([
+      ['te1', href(1)],
+      ['te2', href(2)],
+      ['te3', null],
+    ]);
+    expect(erzeugerBuehne(j, erzeugerLage(j, NOW), null, NOW, href).liste?.zeilen[0].href).toBe(href(1));
+    // Ohne Weg (keine Box, noch keine Entität) bleibt die Liste, wie sie war.
+    expect(einheitenListe(erzeugerLage(j, NOW))!.zeilen.every((z) => z.href == null)).toBe(true);
+  });
+});

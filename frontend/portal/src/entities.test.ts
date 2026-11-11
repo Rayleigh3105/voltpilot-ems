@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SiteEntity } from './api';
+import type { SiteEntity, SocMinHerkunft } from './api';
 import {
   actuateCommands,
   failsafeLabel,
@@ -104,6 +104,56 @@ describe('capabilities + guards', () => {
     expect(rows).toContainEqual({ label: 'Min. Ladestand', value: '5 %' });
     expect(rows).toContainEqual({ label: 'Netzladen erlaubt', value: 'nein' });
     expect(rows).toContainEqual({ label: 'Rückfallverhalten', value: 'Eigenverbrauch' });
+  });
+
+  describe('Min. Ladestand vom Wechselrichter', () => {
+    const jetzt = new Date('2026-11-09T07:00:00Z'); // 08:00 in Berlin
+    const herkunft = (over: Partial<SocMinHerkunft> = {}): SocMinHerkunft => ({
+      wirksamPct: 15,
+      quelle: 'wechselrichter',
+      wechselrichterPct: 15,
+      voltpilotPct: null,
+      gelesenAm: '2026-11-09T06:50:00Z',
+      seit: '2026-11-09T06:50:00Z',
+      aktuell: true,
+      letzteLesungVerworfen: null,
+      ...over,
+    });
+    const speicher = (socMin: SocMinHerkunft | null, limits: Record<string, number | boolean> = { soc_min_pct: 15 }) =>
+      entity({ entityType: 'battery-hybrid', guards: { limits, failsafe: { behavior: 'self-consumption' } }, socMin });
+
+    it('nennt Quelle und Stand der Lesung', () => {
+      expect(guardRows(speicher(herkunft()), jetzt)).toContainEqual({
+        label: 'Min. Ladestand',
+        value: '15 % · vom Wechselrichter gelesen, Stand 07:50',
+      });
+    });
+
+    it('nennt eine alte Lesung als nicht aktuell und behält ihren Wert', () => {
+      const alt = herkunft({ gelesenAm: '2026-11-08T17:05:00Z', aktuell: false });
+      expect(guardRows(speicher(alt), jetzt)).toContainEqual({
+        label: 'Min. Ladestand',
+        value: '15 % · vom Wechselrichter gelesen, Stand 08.11. 18:05 – Lesung nicht aktuell',
+      });
+    });
+
+    it('nennt einen höheren VoltPilot-Wert als Quelle', () => {
+      const vp = herkunft({ wirksamPct: 20, quelle: 'voltpilot', voltpilotPct: 20 });
+      expect(guardRows(speicher(vp, { soc_min_pct: 20 }), jetzt)).toContainEqual({
+        label: 'Min. Ladestand',
+        value: '20 % · in VoltPilot eingestellt (Wechselrichter 15 %, Stand 07:50)',
+      });
+    });
+
+    it('zeigt die gelesene Grenze auch ohne eigene Schutzgrenze der Komponente', () => {
+      const rows = guardRows(speicher(herkunft(), {}), jetzt);
+      expect(rows[0]).toEqual({ label: 'Min. Ladestand', value: '15 % · vom Wechselrichter gelesen, Stand 07:50' });
+    });
+
+    it('ohne Lesung bleibt die Zeile wie vorher', () => {
+      expect(guardRows(speicher(null, { soc_min_pct: 5 }), jetzt)).toContainEqual({ label: 'Min. Ladestand', value: '5 %' });
+      expect(guardRows(speicher(null, {}), jetzt).some((r) => r.label === 'Min. Ladestand')).toBe(false);
+    });
   });
 
   it('maps failsafe behaviors to German', () => {

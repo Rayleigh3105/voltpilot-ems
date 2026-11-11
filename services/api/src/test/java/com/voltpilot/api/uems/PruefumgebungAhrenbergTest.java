@@ -41,9 +41,9 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -120,7 +120,7 @@ class PruefumgebungAhrenbergTest {
     @Autowired PruefumgebungUhr buehnenUhr;
     @Autowired ZugriffBuehnenUhr zugriffUhr;
     @Autowired @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping routen;
-    @MockBean StartpasswortKonten konten;
+    @MockitoBean StartpasswortKonten konten;
 
     JdbcTemplate root;
     /** Das Einsicht-Konto der Fachperson und sein letzter Tag (einschließlich, Europe/Berlin). */

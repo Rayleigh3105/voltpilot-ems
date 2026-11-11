@@ -1,0 +1,123 @@
+{
+  "_comment": [
+    "Ein OCPP-Ladepunkt im Haushalt, genau so, wie ihn die API anlegt (Audit W-02, 26.10.2026).",
+    "profil: was ConsumerService.ensureProfile für den Katalogtyp ev-charger anlegt - Regelart aus dem Katalog",
+    "(nur limit_kw -> continuous; die Box trägt den geplanten setpoint_kw als Grenze), Nennleistung je Stecker",
+    "aus dem Ladesäulen-Dokument der Anlage (site_charge_point_allowlist.rated_kw); null = unbekannt, nie 0;",
+    "Nachweiskanal power_kw (die Box veröffentlicht ihn je Säulen-Komponente) - ohne ihn sperrt die API jedes kWh-Ziel.",
+    "wunsch: was das Portal schickt (steuerung/LadeWahl.tsx wunschAus); dokument: was SteuerartDokument daraus",
+    "macht (entity_id ist hier ein Platzhalter); flex_requirements: was EntityRegistryService.flexRequirementsFor",
+    "davon zur Box schiebt (null = nichts schiebbar). Leser: Java LadepunktProfilVectorsTest und SteuerartApiTest,",
+    "Python tests/test_consumer_dispatch.py und tests/test_ladepunkt_ziel.py, edge-app/test/guenstig-plan.py.",
+    "Kein Leser setzt control_kind oder rated_power_kw selbst - eine Änderung der API-Seite gehört hierher."
+  ],
+  "entity_type": "ev-charger",
+  "entity_id": "lp-1",
+  "timezone": "Europe/Berlin",
+  "faelle": [
+    {
+      "name": "guenstig",
+      "profil": {"control_kind": "continuous", "rated_power_kw": 11, "confirmation_channel": "power_kw"},
+      "wunsch": {"quelle": "guenstig", "preisgrenzeCtKwh": 28},
+      "dokument": {
+        "schema_version": "1.0",
+        "entity_id": "lp-1",
+        "timezone": "Europe/Berlin",
+        "requirements": [
+          {
+            "id": "guenstig",
+            "name": "Günstige Stunden",
+            "kind": "reactive",
+            "enforcement": "opportunistic",
+            "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt", "value": 28},
+            "target": {"kind": "kw", "value": 11}
+          }
+        ]
+      },
+      "flex_requirements": null
+    },
+    {
+      "name": "guenstig-mit-ziel",
+      "profil": {"control_kind": "continuous", "rated_power_kw": 11, "confirmation_channel": "power_kw"},
+      "wunsch": {
+        "quelle": "guenstig",
+        "preisgrenzeCtKwh": 28,
+        "ziel": "bis_uhrzeit",
+        "zielEnergieKwh": 20,
+        "zielFenster": {"tage": "daily", "von": "", "bis": "06:00"}
+      },
+      "dokument": {
+        "schema_version": "1.0",
+        "entity_id": "lp-1",
+        "timezone": "Europe/Berlin",
+        "requirements": [
+          {
+            "id": "guenstig",
+            "name": "Günstige Stunden",
+            "kind": "reactive",
+            "enforcement": "opportunistic",
+            "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt", "value": 28},
+            "target": {"kind": "kw", "value": 11}
+          },
+          {
+            "id": "bis_uhrzeit",
+            "name": "Bis 06:00 Uhr fertig",
+            "kind": "flexible_task",
+            "enforcement": "required_by_deadline",
+            "recurrence": {"days": "daily", "from": "18:00", "to": "06:00"},
+            "demand": {"energy_kwh": 20},
+            "target": {"kind": "kw", "value": 11}
+          }
+        ]
+      },
+      "flex_requirements": [
+        {
+          "id": "bis_uhrzeit",
+          "timezone": "Europe/Berlin",
+          "days": "daily",
+          "from": "18:00",
+          "to": "06:00",
+          "energy_kwh": 20.0,
+          "power_kw": 11.0,
+          "command": "setpoint_kw"
+        }
+      ]
+    },
+    {
+      "name": "ziel-ohne-nennleistung",
+      "profil": {"control_kind": "continuous", "rated_power_kw": null, "confirmation_channel": "power_kw"},
+      "wunsch": {
+        "quelle": "guenstig",
+        "preisgrenzeCtKwh": 28,
+        "ziel": "bis_uhrzeit",
+        "zielEnergieKwh": 20,
+        "zielFenster": {"tage": "daily", "von": "", "bis": "06:00"}
+      },
+      "dokument": {
+        "schema_version": "1.0",
+        "entity_id": "lp-1",
+        "timezone": "Europe/Berlin",
+        "requirements": [
+          {
+            "id": "guenstig",
+            "name": "Günstige Stunden",
+            "kind": "reactive",
+            "enforcement": "opportunistic",
+            "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt", "value": 28},
+            "target": {"kind": "on_off", "value": true}
+          },
+          {
+            "id": "bis_uhrzeit",
+            "name": "Bis 06:00 Uhr fertig",
+            "kind": "flexible_task",
+            "enforcement": "required_by_deadline",
+            "recurrence": {"days": "daily", "from": "18:00", "to": "06:00"},
+            "demand": {"energy_kwh": 20},
+            "target": {"kind": "on_off", "value": true}
+          }
+        ]
+      },
+      "flex_requirements": null
+    }
+  ]
+}

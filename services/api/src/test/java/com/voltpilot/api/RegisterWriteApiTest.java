@@ -26,8 +26,9 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -71,6 +72,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class RegisterWriteApiTest {
@@ -249,7 +251,7 @@ class RegisterWriteApiTest {
             assertThat(e.get("afterRaw")).isEqualTo(7000);
             assertThat(e.get("adopted")).isEqualTo(true);
             assertThat(e.get("outcome")).isEqualTo("uebernommen");
-            assertThat(e.get("deviceRef")).isEqualTo("edge-regwrite-e2e-01");
+            assertThat(e.get("deviceRef")).isEqualTo(TestKennung.box("edge-regwrite-e2e-01"));
 
             // --- Der vierte Strom trägt dieselbe Zeile, ohne sie zu kopieren --
             ResponseEntity<Map<String, Object>> hist = get(
@@ -802,7 +804,7 @@ class RegisterWriteApiTest {
             assertThat(dead.getBody().get("outcome")).isEqualTo("unbekannt");
             assertThat((String) dead.getBody().get("message"))
                     .contains("noch nie bei VoltPilot gemeldet")
-                    .contains("edge-regwrite-addr-box");
+                    .contains(TestKennung.box("edge-regwrite-addr-box"));
             assertThat(stub.sawNothing())
                     .as("die Box hört auf diesem Pfad nicht zu").isTrue();
 
@@ -986,7 +988,7 @@ class RegisterWriteApiTest {
     private UUID claim(String token, UUID siteId, String ref) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/devices/claim"),
                 HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId.toString(), "externalRef", ref),
+                new HttpEntity<>(Map.of("siteId", siteId.toString(), "externalRef", TestKennung.box(ref)),
                         bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);

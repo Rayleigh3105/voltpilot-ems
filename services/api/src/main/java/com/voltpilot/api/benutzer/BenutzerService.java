@@ -10,7 +10,6 @@ import com.voltpilot.api.uems.RechteAbleitung.KontoZustand;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.zugriff.ZugriffAenderung;
 import com.voltpilot.api.zugriff.ZugriffContext;
-import com.voltpilot.api.zugriff.ZugriffContext.Zugang;
 import com.voltpilot.api.zugriff.ZugriffRepository;
 import com.voltpilot.api.zugriff.ZugriffRepository.BenutzerSpiegel;
 import com.voltpilot.api.zugriff.ZugriffRepository.NeueZuweisung;
@@ -79,10 +78,11 @@ public class BenutzerService {
         // Serialize before creating the external account, including against tenant teardown.
         aenderung.sperreKundenbereich();
         if (!zugriffe.kundenbereichVorhanden()) throw nichtGefunden();
-        if (a == null || a.username() == null || a.username().isBlank() || a.username().length() > 255
+        if (a == null || a.username() == null || a.username().isBlank()
                 || a.email() == null || !a.email().matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) {
             throw new BenutzerFehler(400, "anfrage_ungueltig", "Benutzername und E-Mail-Adresse sind erforderlich.");
         }
+        anmeldenamePruefen(a.username().trim());
         Rolle rolle;
         try { rolle = Rolle.vonCode(a.rolle()); }
         catch (RuntimeException ex) { throw new BenutzerFehler(400, "anfrage_ungueltig", "Bitte wählen Sie eine Rolle."); }
@@ -141,15 +141,27 @@ public class BenutzerService {
         });
     }
 
+    /** Das Kundenkonto als Kundenadministrator oder die Plattform im Mandantensprung ({@code Zugriff#kundenadministrator}). */
     private static void kundenadministrator() {
         var z = ZugriffContext.get();
-        if (z == null || z.konto() != Konto.BENUTZER || z.zugang() != Zugang.KONTO
-                || !(z.bestandskonto() || z.zuweisungen().stream().anyMatch(x -> x.rolle() == Rolle.KUNDENADMINISTRATOR))) {
+        if (z == null || !z.kundenadministrator()) {
             throw new BenutzerFehler(403, "recht_fehlt", "Nur der Kundenadministrator kann Benutzer anlegen oder ein Startpasswort neu vergeben.");
         }
     }
 
     private static BenutzerFehler nichtGefunden() {
         return new BenutzerFehler(404, "nicht_gefunden", "Benutzer oder Standort nicht gefunden.");
+    }
+
+    /**
+     * N4: Zeichen und Länge des Anmeldenamens — das Labor zeigt, dass die Realm-Vorlage das selbst nicht prüft
+     * (Leerzeichen, Umlaut, ein Zeichen gehen sonst durch). Gilt beim Anlegen (hier) UND beim Umbenennen
+     * ({@code AdminBenutzerService.profilAendern}, P3) — dieselbe Regel, ein Ort.
+     */
+    public static void anmeldenamePruefen(String username) {
+        if (username == null || !username.matches("[a-z0-9._-]{3,64}")) {
+            throw new BenutzerFehler(400, "anmeldename_ungueltig",
+                    "Anmeldename: a-z, 0-9, Punkt, Bindestrich, Unterstrich; 3 bis 64 Zeichen.");
+        }
     }
 }

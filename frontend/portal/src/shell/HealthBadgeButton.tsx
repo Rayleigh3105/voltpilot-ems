@@ -25,10 +25,16 @@ import type { HealthBadge } from '../health';
 export function HealthBadgeButton({
   health,
   onOpenDetail,
+  meldungenLink,
 }: {
   health: HealthBadge;
   /** Opens the plant's health surface (its cockpit); null = no drill target. */
   onOpenDetail?: (() => void) | null;
+  /**
+   * Alerting Scheibe 1 (Entscheid 4A): "N Meldungen dieser Anlage ›", wenn es welche gibt - die
+   * Zustands-Anzeige bleibt und verlinkt zum Meldungs-Center dieser Anlage (§6.2).
+   */
+  meldungenLink?: { anzahl: number; onOpen: () => void } | null;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -85,8 +91,10 @@ export function HealthBadgeButton({
 
   const cause = health.detail;
   // The accessible name carries state AND cause, so a screen reader hears what
-  // the sighted customer reads — never just the word "Warnung".
-  const ariaLabel = `Zustand der Anlage: ${health.label}${cause ? ` – ${cause}` : ''}. Details anzeigen`;
+  // the sighted customer reads — never just the word "Warnung". It starts
+  // with the visible text (label, cause) in the same order (WCAG 2.5.3) and
+  // appends the context a sighted customer gets from the top bar alone.
+  const ariaLabel = `${health.label}${cause ? ` – ${cause}` : ''}. Zustand der Anlage – Details anzeigen`;
 
   return (
     <>
@@ -103,6 +111,7 @@ export function HealthBadgeButton({
       >
         <span className="vp-health-dot" aria-hidden="true" />
         <span className="vp-healthbadge-lbl">{health.label}</span>
+        {cause && ' '}
         {cause && <span className="vp-healthbadge-cause">{cause}</span>}
         <Icon name="chevron-down" size={14} className="vp-healthbadge-caret" />
       </button>
@@ -134,6 +143,19 @@ export function HealthBadgeButton({
                   </li>
                 ))}
               </ul>
+            )}
+            {meldungenLink && meldungenLink.anzahl > 0 && (
+              <button
+                type="button"
+                className="vp-healthpop-link"
+                onClick={() => {
+                  setOpen(false);
+                  meldungenLink.onOpen();
+                }}
+              >
+                {meldungenLink.anzahl} {meldungenLink.anzahl === 1 ? 'Meldung' : 'Meldungen'} dieser Anlage
+                <Icon name="chevron-right" size={14} />
+              </button>
             )}
             {onOpenDetail && (
               <button

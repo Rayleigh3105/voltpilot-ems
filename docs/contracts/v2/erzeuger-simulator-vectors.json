@@ -1,0 +1,2261 @@
+{
+  "_comment": [
+    "EZ-2 — Simulator-Fälle zum „VoltPilot-Registerbild Erzeuger“, schlanke Fassung 1.0.",
+    "Zwei Anlagen (Gore PV, Büttner BHKW) und sieben Fehlerfälle auf einem In-Process-Modbus-Server",
+    "(FC4, Eingangsregister ab 0). Sie sind die BÜHNE für den Box-Leser (EZ-5) und das Protokoll",
+    "(EZ-7) — kein Leser, kein Treiber, kein Produktivcode der Box.",
+    "",
+    "⚠ KEIN BELEG. Es gibt keine Büttner-Hardware, und auch Gore ist aus dem nicht übersetzten",
+    "Entwurf nachgestellt. Jeder Fall trägt herkunft: simulator und belegt: false; alle Zahlen sind",
+    "ausgedacht. Der Store liefert Rohwörter genau wie die Steuerung; was daraus folgt (veraltet,",
+    "Ereignis, Qualität), entscheidet der Leser.",
+    "",
+    "Der Aufbau (`registerbild`) ist mechanisch aus der Vorlage gezogen, bis EZ-1 den Vertrag",
+    "erzeuger-registerbild.md mit eigenen Vektoren liefert; dann zieht dieser Abschnitt dorthin um."
+  ],
+  "schema_version": "1.0",
+  "vorlage": "register-vorlage-schlank.json (Konzept „Erzeuger am Wago-Modbus-Server“, Fassung 12)",
+  "vertrag": "folgt mit EZ-1 (docs/contracts/v2/erzeuger-registerbild.md)",
+  "herkunft": "Konzept §3.7 (schlanke Fassung), §3.8 und gore-umbau/PRG_VP_Bild.st (Verhalten des Programms), §3.9 (Gore/Büttner im Bild), §3.10 (Namen ab 140), §4.3 (Datenalter und „veraltet“); Entscheide EW-2, EW-5, EW-10, EW-16 C, EW-17",
+  "fixture": "edge-app/nodered/vp-palette/test/fixtures/erzeuger-registerbild-store.js",
+  "pruefer": [
+    "edge-app/nodered/vp-palette/test/erzeuger_simulator_spec.js"
+  ],
+  "unit_id": 1,
+  "beweisregel": "Der Simulator dient dem Bauen, nie dem Beleg. Kein Fall dieser Datei darf einen nachweis tragen; ein belegter Fall kommt erst von einer echten Steuerung.",
+  "runtime_version_unberuehrt": "EZ-2 hebt die RUNTIME_VERSION der Box nicht und packt keine Palette neu — das tut EZ-5 mit dem Edge-Release.",
+  "registerbild": {
+    "quelle": "register-vorlage-schlank.json, Fassung 1.0-entwurf (Konzept „Erzeuger am Wago-Modbus-Server“, Fassung 12, §3.7, §3.9, §3.10)",
+    "quelle_sha256": "d640568cf035e041ffed2e244b49cf5fff07374bd282f0e396d811c1b0f94199",
+    "erklaerung": "Mechanisch aus der Vorlage gezogen: Adressen, Woerter, Typen, Ungueltig-Werte und Bitfelder. Das ist die Stelle, die EZ-1 mit dem formalen Vertrag (erzeuger-registerbild.md + Vektoren) abloest; bis dahin lesen Fixture und Pruefer beide nur hier.",
+    "funktionscode": 4,
+    "basis": 0,
+    "wortfolge": "big",
+    "wortfolge_text": "höherwertiges Wort zuerst",
+    "signatur": [
+      22096,
+      17754
+    ],
+    "signatur_text": "„VP“ „EZ“ — zwei feste Woerter (Befund B2)",
+    "pruefwert": 16909060,
+    "version": 256,
+    "ungueltig": {
+      "U16": 65535,
+      "S16": 32767,
+      "U32": 4294967295,
+      "S32": 2147483647
+    },
+    "max_einheiten": 10,
+    "anfragen_text": "eine Anfrage bis 10 Einheiten (≤ 120 Wörter)",
+    "abschnitte": [
+      {
+        "kurz": "K",
+        "titel": "Kopf",
+        "start": 0,
+        "woerter": 12
+      },
+      {
+        "kurz": "A",
+        "titel": "Anlage und Netzpunkt",
+        "start": 12,
+        "woerter": 10
+      },
+      {
+        "kurz": "N",
+        "titel": "Netzbetreiber",
+        "start": 22,
+        "woerter": 6
+      },
+      {
+        "kurz": "D",
+        "titel": "Direktvermarkter",
+        "start": 28,
+        "woerter": 6
+      },
+      {
+        "kurz": "S",
+        "titel": "Wirkung",
+        "start": 34,
+        "woerter": 4
+      },
+      {
+        "kurz": "T",
+        "titel": "je Einheit",
+        "start": 38,
+        "woerter": 10
+      }
+    ],
+    "felder": [
+      {
+        "abschnitt": "K",
+        "feld": "signatur",
+        "adresse": 0,
+        "woerter": 2,
+        "typ": "U32",
+        "einheit": "0x5650 0x455A"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "wortfolge",
+        "adresse": 2,
+        "woerter": 2,
+        "typ": "U32",
+        "einheit": "0x01020304"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "version",
+        "adresse": 4,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "0x0100"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "te_anzahl",
+        "adresse": 5,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Anzahl"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "herzschlag",
+        "adresse": 6,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "+1 je s"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "programmstand",
+        "adresse": 7,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "JJMM"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "steuerung_id",
+        "adresse": 8,
+        "woerter": 2,
+        "typ": "U32",
+        "einheit": "Nummer"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "anlagenart",
+        "adresse": 10,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "1 PV · 2 BHKW · 3 gemischt"
+      },
+      {
+        "abschnitt": "K",
+        "feld": "beschreibung_ab",
+        "adresse": 11,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Adresse, 0 = keine Namen"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "a_gueltig",
+        "adresse": 12,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Bitfeld"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "a_alter_s",
+        "adresse": 13,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "s"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "p_nvp_w",
+        "adresse": 14,
+        "woerter": 2,
+        "typ": "S32",
+        "einheit": "W · + Bezug / − Einspeisung"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "p_erzeugung_w",
+        "adresse": 16,
+        "woerter": 2,
+        "typ": "S32",
+        "einheit": "W · + Erzeugung"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "anlage_zustand",
+        "adresse": 18,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "0 aus · 1 bereit · 2 läuft · 3 läuft begrenzt · 4 Störung · 5 Hand/Wartung · 6 Not-Aus"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "a_bits",
+        "adresse": 19,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Bitfeld"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "speicher_fuellstand",
+        "adresse": 20,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "0,1 %"
+      },
+      {
+        "abschnitt": "A",
+        "feld": "p_installiert_kw",
+        "adresse": 21,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "kW"
+      },
+      {
+        "abschnitt": "N",
+        "feld": "n_kanal",
+        "adresse": 22,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "0 keiner · 1 feste Grenze · 2 Stufen · 3 Fernwirktechnik"
+      },
+      {
+        "abschnitt": "N",
+        "feld": "n_bits",
+        "adresse": 23,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Bitfeld"
+      },
+      {
+        "abschnitt": "N",
+        "feld": "n_p_prozent",
+        "adresse": 24,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "0,1 %"
+      },
+      {
+        "abschnitt": "N",
+        "feld": "n_cosphi",
+        "adresse": 25,
+        "woerter": 1,
+        "typ": "S16",
+        "einheit": "0,001 · + über- / − untererregt"
+      },
+      {
+        "abschnitt": "N",
+        "feld": "n_seit_s",
+        "adresse": 26,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "s, höchstens 65534"
+      },
+      {
+        "abschnitt": "N",
+        "feld": "n_zaehler",
+        "adresse": 27,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Anzahl, läuft über"
+      },
+      {
+        "abschnitt": "D",
+        "feld": "d_kanal",
+        "adresse": 28,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "0 keiner · 1 Relais und mA · 2 Modbus"
+      },
+      {
+        "abschnitt": "D",
+        "feld": "d_bits",
+        "adresse": 29,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Bitfeld"
+      },
+      {
+        "abschnitt": "D",
+        "feld": "d_soll_w",
+        "adresse": 30,
+        "woerter": 2,
+        "typ": "U32",
+        "einheit": "W"
+      },
+      {
+        "abschnitt": "D",
+        "feld": "d_seit_s",
+        "adresse": 32,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "s, höchstens 65534"
+      },
+      {
+        "abschnitt": "D",
+        "feld": "d_zaehler",
+        "adresse": 33,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Anzahl, läuft über"
+      },
+      {
+        "abschnitt": "S",
+        "feld": "quelle_p",
+        "adresse": 34,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "0 keine Grenze · 1 Netzbetreiber · 2 Direktvermarkter · 3 Netzpunkt-Regelung · 4 Hand · 5 Not-Aus · 6 Ersatzwert"
+      },
+      {
+        "abschnitt": "S",
+        "feld": "s_bits",
+        "adresse": 35,
+        "woerter": 1,
+        "typ": "U16",
+        "einheit": "Bitfeld"
+      },
+      {
+        "abschnitt": "S",
+        "feld": "p_grenze_w",
+        "adresse": 36,
+        "woerter": 2,
+        "typ": "U32",
+        "einheit": "W"
+      }
+    ],
+    "einheit": {
+      "start": 38,
+      "woerter": 10,
+      "felder": [
+        {
+          "feld": "t_zustand",
+          "offset": 0,
+          "woerter": 1,
+          "typ": "U16",
+          "einheit": "wie anlage_zustand"
+        },
+        {
+          "feld": "t_bits",
+          "offset": 1,
+          "woerter": 1,
+          "typ": "U16",
+          "einheit": "Bitfeld"
+        },
+        {
+          "feld": "t_art",
+          "offset": 2,
+          "woerter": 1,
+          "typ": "U16",
+          "einheit": "1 PV-Wechselrichter · 2 BHKW-Motor"
+        },
+        {
+          "feld": "t_nenn_kw",
+          "offset": 3,
+          "woerter": 1,
+          "typ": "U16",
+          "einheit": "kW"
+        },
+        {
+          "feld": "t_p_ist_w",
+          "offset": 4,
+          "woerter": 2,
+          "typ": "S32",
+          "einheit": "W"
+        },
+        {
+          "feld": "t_p_soll_w",
+          "offset": 6,
+          "woerter": 2,
+          "typ": "U32",
+          "einheit": "W"
+        },
+        {
+          "feld": "t_e",
+          "offset": 8,
+          "woerter": 2,
+          "typ": "U32",
+          "einheit": "0,1 kWh"
+        }
+      ]
+    },
+    "bitfelder": {
+      "a_gueltig": [
+        {
+          "bit": 0,
+          "bedeutung": "Netzpunkt gültig"
+        },
+        {
+          "bit": 1,
+          "bedeutung": "Netzpunkt berechnet"
+        },
+        {
+          "bit": 2,
+          "bedeutung": "Netzpunkt-Messung tot"
+        },
+        {
+          "bit": 3,
+          "bedeutung": "Erzeugung gültig"
+        },
+        {
+          "bit": 4,
+          "bedeutung": "Gasspeicher gültig"
+        }
+      ],
+      "a_bits": [
+        {
+          "bit": 0,
+          "bedeutung": "Not-Aus vor Ort"
+        },
+        {
+          "bit": 1,
+          "bedeutung": "NA-Schutz"
+        },
+        {
+          "bit": 2,
+          "bedeutung": "Sammelstörung"
+        },
+        {
+          "bit": 3,
+          "bedeutung": "Hand/Ort"
+        },
+        {
+          "bit": 4,
+          "bedeutung": "Wartung"
+        }
+      ],
+      "n_bits": [
+        {
+          "bit": 0,
+          "bedeutung": "Vorgabe gültig"
+        },
+        {
+          "bit": 1,
+          "bedeutung": "Verbindung steht"
+        },
+        {
+          "bit": 2,
+          "bedeutung": "Wirkleistung begrenzt"
+        },
+        {
+          "bit": 3,
+          "bedeutung": "Not-Aus"
+        },
+        {
+          "bit": 4,
+          "bedeutung": "cos-φ-Vorgabe"
+        },
+        {
+          "bit": 5,
+          "bedeutung": "Kennlinie"
+        }
+      ],
+      "d_bits": [
+        {
+          "bit": 0,
+          "bedeutung": "Abschnitt gültig"
+        },
+        {
+          "bit": 1,
+          "bedeutung": "Aktivierung"
+        },
+        {
+          "bit": 2,
+          "bedeutung": "Stopp"
+        },
+        {
+          "bit": 3,
+          "bedeutung": "bereit gemeldet"
+        },
+        {
+          "bit": 4,
+          "bedeutung": "aktiv gemeldet"
+        }
+      ],
+      "s_bits": [
+        {
+          "bit": 0,
+          "bedeutung": "gültig"
+        },
+        {
+          "bit": 1,
+          "bedeutung": "Anlage folgt"
+        }
+      ],
+      "t_bits": [
+        {
+          "bit": 0,
+          "bedeutung": "Werte gültig"
+        },
+        {
+          "bit": 1,
+          "bedeutung": "Sollwert gültig"
+        },
+        {
+          "bit": 2,
+          "bedeutung": "DV bereit"
+        },
+        {
+          "bit": 3,
+          "bedeutung": "DV aktiv"
+        },
+        {
+          "bits": [
+            4,
+            9
+          ],
+          "bedeutung": "Gründe für „nicht bereit“"
+        }
+      ]
+    },
+    "namen": {
+      "ab": 140,
+      "woerter_je_text": 16,
+      "reihenfolge": [
+        "netzbetreiber_name",
+        "direktvermarkter_name",
+        "t_typ_name je Einheit"
+      ],
+      "kodierung": "32 Zeichen, 1 Byte je Zeichen (ISO 8859-1 wie CODESYS STRING), höherwertiges Byte zuerst, mit 0 aufgefüllt",
+      "gelesen": "beim Start, bei neuem programmstand und einmal am Tag"
+    },
+    "lesarten_ez1": {
+      "herkunft": "EZ-1, abweichungen.md (Stand 21.10.2026), verbindlich für alle Pakete: A1 A, A2 A, Lesarten 1–12. Der Prüfer liest danach; die Fixture setzt nur Wörter.",
+      "zaehler_ohne_ungueltig": [
+        "herzschlag",
+        "n_zaehler",
+        "d_zaehler"
+      ],
+      "deckung": [
+        {
+          "bitfeld": "a_gueltig",
+          "bit": 0,
+          "felder": [
+            "p_nvp_w"
+          ]
+        },
+        {
+          "bitfeld": "a_gueltig",
+          "bit": 3,
+          "felder": [
+            "p_erzeugung_w"
+          ]
+        },
+        {
+          "bitfeld": "a_gueltig",
+          "bit": 4,
+          "felder": [
+            "speicher_fuellstand"
+          ]
+        },
+        {
+          "bitfeld": "n_bits",
+          "bit": 0,
+          "felder": [
+            "n_p_prozent",
+            "n_cosphi"
+          ]
+        },
+        {
+          "bitfeld": "d_bits",
+          "bit": 0,
+          "felder": [
+            "d_soll_w",
+            "d_seit_s",
+            "d_zaehler"
+          ]
+        },
+        {
+          "bitfeld": "s_bits",
+          "bit": 0,
+          "felder": [
+            "quelle_p",
+            "p_grenze_w"
+          ]
+        },
+        {
+          "bitfeld": "t_bits",
+          "bit": 0,
+          "felder": [
+            "t_zustand",
+            "t_p_ist_w",
+            "t_e"
+          ]
+        },
+        {
+          "bitfeld": "t_bits",
+          "bit": 1,
+          "felder": [
+            "t_p_soll_w"
+          ]
+        }
+      ],
+      "deckung_text": "Bit = 0 → das Feld ist unbekannt (null), nie 0. Ohne Bit: Wert, solange nicht Typ-Maximum (Lesart 5).",
+      "te_anzahl": {
+        "min": 1,
+        "max": 10
+      },
+      "anfrage_max_woerter": 120,
+      "namen_relativ": "Netzbetreiber +0, Direktvermarkter +16, Typ der Einheit n +32 + (n−1)·16 ab beschreibung_ab; 0 oder 0xFFFF = keine Namen; endet am ersten 0-Byte, leer = null (Lesart 1, 2).",
+      "version": "höherwertiges Byte = Hauptversion (1), niederwertiges = Nebenversion (Lesart 3)."
+    },
+    "woerter_gore": 68,
+    "woerter_buettner": 58,
+    "letzte_adresse_gore": 219,
+    "letzte_adresse_buettner": 203
+  },
+  "schritte": {
+    "art": "festlegung",
+    "wert": [
+      "sekunden",
+      "steuerung_steht",
+      "neustart",
+      "nb_vorgabe",
+      "dv_wechsel",
+      "felder_setzen",
+      "alter_laeuft",
+      "signatur_setzen"
+    ],
+    "erklaerung": "sekunden n: n Sekunden vergehen — Herzschlag +n (läuft über 65 535 auf 0 wie WORD + 1 im Entwurf), n_seit_s und d_seit_s +n bis höchstens 65 534, solange sie nicht ungültig sind; a_alter_s nur nach alter_laeuft. steuerung_steht: das Bild friert ein, die Uhr läuft weiter. neustart: Herzschlag, Zähler und „seit“ beginnen bei 0 (ungültige bleiben ungültig). nb_vorgabe / dv_wechsel: neue Vorgabe — Zähler +1, „seit“ = 0, dann die genannten Felder. felder_setzen: Felder und Einheiten-Felder setzen. signatur_setzen: zwei Wörter auf 0 und 1.",
+    "fundstelle": "edge-app/nodered/vp-palette/test/fixtures/erzeuger-registerbild-store.js (schritt)"
+  },
+  "herzschlag_urteile": {
+    "art": "beobachtung",
+    "wert": [
+      "erste_lesung",
+      "laeuft",
+      "steht",
+      "ueberlauf",
+      "rueckwaerts"
+    ],
+    "erklaerung": "Wie sich der Herzschlag zur vorigen erkannten Lesung verhält; null, wo der Kopf fremd ist. Welche Qualität und welches Ereignis daraus werden, entscheidet EZ-5."
+  },
+  "gruende": {
+    "art": "festlegung_vorlaeufig",
+    "wert": [
+      "signatur_fremd",
+      "version_fremd",
+      "wortfolge_abweichend",
+      "te_anzahl_ungueltig"
+    ],
+    "erklaerung": "Die Wörter des Prüfers hier, in der Prüfreihenfolge von EZ-1 (Lesart 4): Signatur → Hauptversion → Prüfwert → te_anzahl 1…10. Die Wörter selbst legt EZ-1 im Vertrag fest; weichen sie ab, zieht diese Datei nach."
+  },
+  "befunde": [
+    {
+      "nr": "B1",
+      "text": "herzschlag, n_zaehler und d_zaehler tragen in der Vorlage den Ungültig-Wert 0xFFFF, laufen aber über. Entschieden in EZ-1 (A2 A): bei diesen drei Zählern ist 0xFFFF ein Wert, sie laufen 65 535 → 0, Differenz mod 65 536. Der Simulator zählt so (E2 Lesung 2 steht auf 65 535, Lesung 3 auf 4), der Prüfer liest 0xFFFF dort als Wert."
+    },
+    {
+      "nr": "B2",
+      "text": "signatur steht in der Vorlage als U32, im Entwurf als zwei feste Wörter (aBild[0] := 16#5650, aBild[1] := 16#455A); EZ-1 prüft sie als Wort 0 und Wort 1 vor der Wortfolge (Lesart 4). Der Simulator hält sie darum als feste Wörter, auch bei falscher Wortfolge — so erreicht F3 den Prüfwert. Den Prüfwert selbst legt der Simulator mit derselben Routine ab wie jeden 32-Bit-Wert (Lesart 9)."
+    },
+    {
+      "nr": "B3",
+      "text": "„eine Anfrage bis 10 Einheiten (≤ 120 Wörter)“ geht nicht auf: 38 + 10 · 10 = 138. Entschieden in EZ-1 (A1 A): max_einheiten bleibt 10, eine Anfrage bis 8 Einheiten, ab 9 zwei, ein Einheiten-Block wird nie geteilt. Der Prüfer plant so und liest ein 10-Einheiten-Bild in zwei Anfragen."
+    },
+    {
+      "nr": "B4",
+      "text": "Büttner a_gueltig sagt in der Vorlage noch „Bit 1 = 1 (zwei Kabel, EW-16 A)“; entschieden ist EW-16 C (keine Messung am Netzpunkt). Der Fall folgt dem Entscheid: Bit 0 und 1 aus, Bit 2 („Messung tot“) ebenfalls aus, weil es keine Messung gibt, p_nvp_w und a_alter_s ungültig."
+    },
+    {
+      "nr": "B5",
+      "text": "Bei fester Grenze (n_kanal 1) gibt es keinen Stufenwechsel: n_seit_s steht ungültig, n_zaehler 0. Die Vorlage sagt dazu nur „seit Stufenwechsel“."
+    },
+    {
+      "nr": "B6",
+      "text": "Das Protokoll in §4.6 nennt noch Feldnamen der langen Fassung (p_vorgabe_seit_s, t_dv_bits, quelle_p 7/8). In der schlanken Fassung sind das n_seit_s/d_seit_s, t_bits Bit 2/3 und quelle_p 0–6. Betrifft EZ-7, nicht diese Fälle."
+    }
+  ],
+  "faelle": [
+    {
+      "name": "E1 gore",
+      "why": "Gore wie im Entwurf PRG_VP_Bild.st: PV, drei Wechselrichter je 125 kW, 265 kWp installiert. Der Netzbetreiber gibt über Fernwirktechnik (n_kanal 3) 60 % vor; das bindet (quelle_p 1), die wirksame Grenze ist 3 × 53 kW = 159 kW, die Anlage folgt. Nach 8 s hebt der Netzbetreiber auf 100 % an: n_zaehler 17 → 18, n_seit_s beginnt bei 0; 2 s später läuft die Anlage ohne Grenze (quelle_p 0, Grenze und Sollwerte „ungültig“ wie im Entwurf). Kein Direktvermarkter (d_kanal 0, Abschnitt ungültig). Namen ab 140, Typ je Wechselrichter „Growatt“ wie im Entwurf (TODO Typenschild). 68 Wörter laufend, eine Anfrage; Namen 140–219 in einer zweiten.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "aufbau": {
+        "wortfolge": "big",
+        "kopf": {
+          "herzschlag": 1200,
+          "programmstand": 2610,
+          "steuerung_id": 1,
+          "anlagenart": 1,
+          "beschreibung_ab": 140
+        },
+        "felder": {
+          "a_gueltig": 9,
+          "a_alter_s": 1,
+          "p_nvp_w": 11600,
+          "p_erzeugung_w": 158400,
+          "anlage_zustand": 3,
+          "a_bits": 0,
+          "speicher_fuellstand": "ungueltig",
+          "p_installiert_kw": 265,
+          "n_kanal": 3,
+          "n_bits": 7,
+          "n_p_prozent": 600,
+          "n_cosphi": "ungueltig",
+          "n_seit_s": 340,
+          "n_zaehler": 17,
+          "d_kanal": 0,
+          "d_bits": 0,
+          "d_soll_w": "ungueltig",
+          "d_seit_s": "ungueltig",
+          "d_zaehler": 0,
+          "quelle_p": 1,
+          "s_bits": 3,
+          "p_grenze_w": 159000
+        },
+        "einheiten": [
+          {
+            "t_zustand": 3,
+            "t_bits": 3,
+            "t_art": 1,
+            "t_nenn_kw": 125,
+            "t_p_ist_w": 52400,
+            "t_p_soll_w": 53000,
+            "t_e": 1843276
+          },
+          {
+            "t_zustand": 3,
+            "t_bits": 3,
+            "t_art": 1,
+            "t_nenn_kw": 125,
+            "t_p_ist_w": 52900,
+            "t_p_soll_w": 53000,
+            "t_e": 1839102
+          },
+          {
+            "t_zustand": 3,
+            "t_bits": 3,
+            "t_art": 1,
+            "t_nenn_kw": 125,
+            "t_p_ist_w": 53100,
+            "t_p_soll_w": 53000,
+            "t_e": 1851990
+          }
+        ],
+        "namen": {
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": "",
+          "t_typ_name": [
+            "Growatt",
+            "Growatt",
+            "Growatt"
+          ]
+        },
+        "laenge": 220
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur 0x5650 „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur 0x455A „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102 (höherwertig zuerst)"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            },
+            {
+              "adresse": 4,
+              "wort": 256,
+              "warum": "version 0x0100"
+            },
+            {
+              "adresse": 5,
+              "wort": 3,
+              "warum": "te_anzahl"
+            },
+            {
+              "adresse": 22,
+              "wort": 3,
+              "warum": "n_kanal Fernwirktechnik"
+            },
+            {
+              "adresse": 24,
+              "wort": 600,
+              "warum": "n_p_prozent 60,0 %"
+            },
+            {
+              "adresse": 30,
+              "wort": 65535,
+              "warum": "d_soll_w ungültig, höherwertiges Wort"
+            },
+            {
+              "adresse": 36,
+              "wort": 2,
+              "warum": "p_grenze_w 159 000 = 0x0002…"
+            },
+            {
+              "adresse": 37,
+              "wort": 27928,
+              "warum": "…0x6D18"
+            },
+            {
+              "adresse": 68,
+              "wort": 0,
+              "warum": "zwischen laufendem Bild und Namen steht 0"
+            },
+            {
+              "adresse": 140,
+              "wort": 20013,
+              "warum": "netzbetreiber_name „N-“"
+            },
+            {
+              "adresse": 156,
+              "wort": 0,
+              "warum": "direktvermarkter_name leer = keiner"
+            },
+            {
+              "adresse": 172,
+              "wort": 18290,
+              "warum": "t_typ_name Einheit 1 „Gr“"
+            },
+            {
+              "adresse": 219,
+              "wort": 0,
+              "warum": "letztes Register der Namen"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "te_anzahl": 3,
+              "herzschlag": 1200,
+              "programmstand": 2610,
+              "steuerung_id": 1,
+              "anlagenart": 1,
+              "beschreibung_ab": 140,
+              "a_gueltig": 9,
+              "p_nvp_w": 11600,
+              "p_erzeugung_w": 158400,
+              "speicher_fuellstand": null,
+              "p_installiert_kw": 265,
+              "n_kanal": 3,
+              "n_bits": 7,
+              "n_p_prozent": 600,
+              "n_cosphi": null,
+              "n_seit_s": 340,
+              "n_zaehler": 17,
+              "d_kanal": 0,
+              "d_bits": 0,
+              "d_soll_w": null,
+              "d_seit_s": null,
+              "d_zaehler": null,
+              "quelle_p": 1,
+              "s_bits": 3,
+              "p_grenze_w": 159000
+            },
+            "bits": {
+              "a_gueltig": {
+                "0": true,
+                "1": false,
+                "2": false,
+                "3": true,
+                "4": false
+              },
+              "n_bits": {
+                "0": true,
+                "1": true,
+                "2": true,
+                "4": false
+              },
+              "d_bits": {
+                "0": false
+              }
+            },
+            "einheiten": [
+              {
+                "t_zustand": 3,
+                "t_art": 1,
+                "t_nenn_kw": 125,
+                "t_p_ist_w": 52400,
+                "t_p_soll_w": 53000,
+                "t_e": 1843276
+              },
+              {
+                "t_p_ist_w": 52900
+              },
+              {
+                "t_p_ist_w": 53100,
+                "t_e": 1851990
+              }
+            ],
+            "namen": {
+              "netzbetreiber_name": "N-ERGIE Netz GmbH",
+              "direktvermarkter_name": null,
+              "t_typ_name": [
+                "Growatt",
+                "Growatt",
+                "Growatt"
+              ]
+            }
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1205,
+              "n_seit_s": 345,
+              "n_zaehler": 17,
+              "n_p_prozent": 600,
+              "quelle_p": 1
+            }
+          }
+        },
+        {
+          "nr": 3,
+          "t_s": 10,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 3
+            },
+            {
+              "art": "nb_vorgabe",
+              "felder": {
+                "n_bits": 3,
+                "n_p_prozent": 1000
+              }
+            },
+            {
+              "art": "sekunden",
+              "wert": 2
+            },
+            {
+              "art": "felder_setzen",
+              "felder": {
+                "quelle_p": 0,
+                "p_grenze_w": "ungueltig",
+                "anlage_zustand": 2,
+                "p_erzeugung_w": 162000,
+                "p_nvp_w": 8000
+              },
+              "einheiten": [
+                {
+                  "nr": 1,
+                  "t_zustand": 2,
+                  "t_p_soll_w": "ungueltig",
+                  "t_p_ist_w": 54000
+                },
+                {
+                  "nr": 2,
+                  "t_zustand": 2,
+                  "t_p_soll_w": "ungueltig",
+                  "t_p_ist_w": 54000
+                },
+                {
+                  "nr": 3,
+                  "t_zustand": 2,
+                  "t_p_soll_w": "ungueltig",
+                  "t_p_ist_w": 54000
+                }
+              ]
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1210,
+              "n_bits": 3,
+              "n_p_prozent": 1000,
+              "n_seit_s": 2,
+              "n_zaehler": 18,
+              "quelle_p": 0,
+              "p_grenze_w": null,
+              "anlage_zustand": 2,
+              "p_erzeugung_w": 162000
+            },
+            "bits": {
+              "n_bits": {
+                "0": true,
+                "1": true,
+                "2": false
+              }
+            },
+            "einheiten": [
+              {
+                "t_zustand": 2,
+                "t_p_soll_w": null,
+                "t_p_ist_w": 54000
+              },
+              {
+                "t_p_soll_w": null
+              },
+              {
+                "t_p_soll_w": null
+              }
+            ],
+            "beginn_t_s": {
+              "n": 8
+            }
+          }
+        },
+        {
+          "nr": 4,
+          "t_s": 15,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1215,
+              "n_seit_s": 7,
+              "n_zaehler": 18
+            },
+            "beginn_t_s": {
+              "n": 8
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "E2 buettner",
+      "why": "Büttner/Engelhard: Biogas-BHKW, zwei Motoren 66 und 33 kW (99 kW installiert), Gasspeicher 63,4 %. Netzbetreiber über feste 70-%-Grenze (n_kanal 1, kein Stufenwechsel: n_seit_s ungültig, n_zaehler 0). Der Direktvermarkter (WVV-Poolbox, d_kanal 1 Relais und 4–20 mA) hat aktiviert und fordert 66 kW; das bindet (quelle_p 2). EW-16 C: keine Messung am Netzpunkt — Bit 0 und 1 in a_gueltig aus, p_nvp_w und a_alter_s ungültig. Nach 6 s senkt der Direktvermarkter auf 45 kW (d_zaehler 5 → 6, d_seit_s ab 0), 2 s später folgen die Motoren. Zählerstand von Motor 2 ungültig („easYgen oder ungültig“). Der Herzschlag steht bei 65 530 und läuft in Lesung 2 auf 65 535 — bei Herzschlag und Zählern ein Wert, nicht „ungültig“ (EZ-1 A2) — und in Lesung 3 über 0 auf 4 (Überlauf, kein Neustart). 58 Wörter laufend, Namen 140–203 mit Umlaut.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "aufbau": {
+        "wortfolge": "big",
+        "kopf": {
+          "herzschlag": 65530,
+          "programmstand": 2611,
+          "steuerung_id": 2,
+          "anlagenart": 2,
+          "beschreibung_ab": 140
+        },
+        "felder": {
+          "a_gueltig": 24,
+          "a_alter_s": "ungueltig",
+          "p_nvp_w": "ungueltig",
+          "p_erzeugung_w": 65700,
+          "anlage_zustand": 3,
+          "a_bits": 0,
+          "speicher_fuellstand": 634,
+          "p_installiert_kw": 99,
+          "n_kanal": 1,
+          "n_bits": 1,
+          "n_p_prozent": 700,
+          "n_cosphi": "ungueltig",
+          "n_seit_s": "ungueltig",
+          "n_zaehler": 0,
+          "d_kanal": 1,
+          "d_bits": 27,
+          "d_soll_w": 66000,
+          "d_seit_s": 412,
+          "d_zaehler": 5,
+          "quelle_p": 2,
+          "s_bits": 3,
+          "p_grenze_w": 66000
+        },
+        "einheiten": [
+          {
+            "t_zustand": 3,
+            "t_bits": 15,
+            "t_art": 2,
+            "t_nenn_kw": 66,
+            "t_p_ist_w": 43800,
+            "t_p_soll_w": 44000,
+            "t_e": 9876543
+          },
+          {
+            "t_zustand": 3,
+            "t_bits": 15,
+            "t_art": 2,
+            "t_nenn_kw": 33,
+            "t_p_ist_w": 21900,
+            "t_p_soll_w": 22000,
+            "t_e": "ungueltig"
+          }
+        ],
+        "namen": {
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": "WVV (Stadtwerke Würzburg)",
+          "t_typ_name": [
+            "MAN E0836LE",
+            "KW Energie Smartblock 33"
+          ]
+        },
+        "laenge": 204
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            },
+            {
+              "adresse": 10,
+              "wort": 2,
+              "warum": "anlagenart BHKW"
+            },
+            {
+              "adresse": 12,
+              "wort": 24,
+              "warum": "a_gueltig: Bit 3 und 4, Bit 0 und 1 aus (EW-16 C)"
+            },
+            {
+              "adresse": 14,
+              "wort": 32767,
+              "warum": "p_nvp_w ungültig 0x7FFF…"
+            },
+            {
+              "adresse": 15,
+              "wort": 65535,
+              "warum": "…0xFFFF"
+            },
+            {
+              "adresse": 29,
+              "wort": 27,
+              "warum": "d_bits gültig, Aktivierung, bereit, aktiv"
+            },
+            {
+              "adresse": 31,
+              "wort": 464,
+              "warum": "d_soll_w 66 000 = 0x0001 0x01D0"
+            },
+            {
+              "adresse": 58,
+              "wort": 0,
+              "warum": "hinter zwei Einheiten steht 0"
+            },
+            {
+              "adresse": 156,
+              "wort": 22358,
+              "warum": "direktvermarkter_name „WV“"
+            },
+            {
+              "adresse": 157,
+              "wort": 22048,
+              "warum": "„V “"
+            },
+            {
+              "adresse": 164,
+              "wort": 22524,
+              "warum": "„Wü“ — ü ist 0xFC in ISO 8859-1"
+            },
+            {
+              "adresse": 203,
+              "wort": 0,
+              "warum": "letztes Register der Namen"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "te_anzahl": 2,
+              "herzschlag": 65530,
+              "anlagenart": 2,
+              "a_gueltig": 24,
+              "a_alter_s": null,
+              "p_nvp_w": null,
+              "p_erzeugung_w": 65700,
+              "speicher_fuellstand": 634,
+              "p_installiert_kw": 99,
+              "n_kanal": 1,
+              "n_bits": 1,
+              "n_p_prozent": 700,
+              "n_seit_s": null,
+              "n_zaehler": 0,
+              "d_kanal": 1,
+              "d_bits": 27,
+              "d_soll_w": 66000,
+              "d_seit_s": 412,
+              "d_zaehler": 5,
+              "quelle_p": 2,
+              "s_bits": 3,
+              "p_grenze_w": 66000
+            },
+            "bits": {
+              "a_gueltig": {
+                "0": false,
+                "1": false,
+                "2": false,
+                "3": true,
+                "4": true
+              },
+              "d_bits": {
+                "0": true,
+                "1": true,
+                "2": false,
+                "3": true,
+                "4": true
+              }
+            },
+            "einheiten": [
+              {
+                "t_art": 2,
+                "t_nenn_kw": 66,
+                "t_p_ist_w": 43800,
+                "t_p_soll_w": 44000,
+                "t_e": 9876543,
+                "t_bits": 15
+              },
+              {
+                "t_art": 2,
+                "t_nenn_kw": 33,
+                "t_p_ist_w": 21900,
+                "t_e": null
+              }
+            ],
+            "namen": {
+              "netzbetreiber_name": "N-ERGIE Netz GmbH",
+              "direktvermarkter_name": "WVV (Stadtwerke Würzburg)",
+              "t_typ_name": [
+                "MAN E0836LE",
+                "KW Energie Smartblock 33"
+              ]
+            }
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 65535,
+              "d_seit_s": 417,
+              "d_zaehler": 5,
+              "n_seit_s": null
+            }
+          }
+        },
+        {
+          "nr": 3,
+          "t_s": 10,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 1
+            },
+            {
+              "art": "dv_wechsel",
+              "felder": {
+                "d_soll_w": 45000
+              }
+            },
+            {
+              "art": "sekunden",
+              "wert": 2
+            },
+            {
+              "art": "felder_setzen",
+              "felder": {
+                "p_grenze_w": 45000,
+                "p_erzeugung_w": 44700
+              },
+              "einheiten": [
+                {
+                  "nr": 1,
+                  "t_p_soll_w": 30000,
+                  "t_p_ist_w": 29800
+                },
+                {
+                  "nr": 2,
+                  "t_p_soll_w": 15000,
+                  "t_p_ist_w": 14900
+                }
+              ]
+            },
+            {
+              "art": "sekunden",
+              "wert": 2
+            }
+          ],
+          "herzschlag_urteil": "ueberlauf",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 4,
+              "d_soll_w": 45000,
+              "d_seit_s": 4,
+              "d_zaehler": 6,
+              "p_grenze_w": 45000,
+              "quelle_p": 2
+            },
+            "einheiten": [
+              {
+                "t_p_soll_w": 30000,
+                "t_p_ist_w": 29800
+              },
+              {
+                "t_p_soll_w": 15000
+              }
+            ],
+            "beginn_t_s": {
+              "d": 6
+            }
+          }
+        },
+        {
+          "nr": 4,
+          "t_s": 15,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            },
+            {
+              "art": "felder_setzen",
+              "felder": {
+                "speicher_fuellstand": 636
+              }
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 9,
+              "d_seit_s": 9,
+              "speicher_fuellstand": 636
+            },
+            "beginn_t_s": {
+              "d": 6
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "F1 herzschlag-steht",
+      "why": "Gore; nach Lesung 2 bleibt die Steuerung stehen: das ganze Bild friert ein (Herzschlag 1205, n_seit_s 345), der Modbus-Server liefert es weiter. Lesung 2, 3 und 4 zeigen denselben Herzschlag — dreimal gleich, ab Lesung 4 gilt alles als veraltet (§3.7 Kopf, §4.3 (1)). Dass die Werte nichts mehr wert sind, entscheidet der Leser, nicht der Simulator.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "basis": "E1 gore",
+      "gleiche_lesungen_in_folge": [
+        1,
+        1,
+        2,
+        3
+      ],
+      "stillstand_ab_lesung": 4,
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1200,
+              "a_gueltig": 9,
+              "n_p_prozent": 600,
+              "d_kanal": 0,
+              "quelle_p": 1
+            },
+            "einheiten": [
+              {
+                "t_p_ist_w": 52400
+              },
+              {},
+              {}
+            ]
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1205,
+              "n_seit_s": 345
+            }
+          }
+        },
+        {
+          "nr": 3,
+          "t_s": 10,
+          "schritte": [
+            {
+              "art": "steuerung_steht"
+            },
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "steht",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1205,
+              "n_seit_s": 345
+            }
+          }
+        },
+        {
+          "nr": 4,
+          "t_s": 15,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "steht",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1205,
+              "n_seit_s": 345
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "F2 kopf-fremd",
+      "why": "Gore; in Lesung 2 trägt der Server ein fremdes Bild: die Signatur des WAGO-Energiekarten-Bilds v1 (0x5650 0x5242 „VP“ „RB“) statt „VP“ „EZ“ — etwa weil die Box auf den falschen Port oder die falsche Steuerung zeigt. Der Leser liest dann nichts weiter.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "basis": "E1 gore",
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1200,
+              "p_erzeugung_w": 158400,
+              "n_kanal": 3,
+              "d_soll_w": null,
+              "p_grenze_w": 159000
+            },
+            "einheiten": [
+              {
+                "t_e": 1843276
+              },
+              {},
+              {}
+            ]
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            },
+            {
+              "art": "signatur_setzen",
+              "woerter": [
+                22096,
+                21058
+              ]
+            }
+          ],
+          "herzschlag_urteil": null,
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "„VP“ bleibt"
+            },
+            {
+              "adresse": 1,
+              "wort": 21058,
+              "warum": "0x5242 „RB“ = WAGO-Registerbild v1"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "nicht_lesbar",
+            "grund": "signatur_fremd"
+          }
+        }
+      ]
+    },
+    {
+      "name": "F3 wortfolge-falsch",
+      "why": "Gore, aber das Programm legt jeden 32-Bit-Wert mit dem niederwertigen Wort zuerst ab (F_WortTief vor F_WortHoch vertauscht). Die Signatur steht als zwei feste Wörter und bleibt richtig (Befund B2); der Prüfwert liest sich 0x0304 0x0102 — genau dafür ist er da. Auch steuerung_id steht verdreht (8 = 1, 9 = 0).",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "basis": "E1 gore",
+      "aufbau_aenderung": {
+        "wortfolge": "little"
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": null,
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“, unverändert"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“, unverändert"
+            },
+            {
+              "adresse": 2,
+              "wort": 772,
+              "warum": "Prüfwert verdreht: 0x0304 zuerst"
+            },
+            {
+              "adresse": 3,
+              "wort": 258,
+              "warum": "…dann 0x0102"
+            },
+            {
+              "adresse": 8,
+              "wort": 1,
+              "warum": "steuerung_id 1, niederwertiges Wort zuerst"
+            },
+            {
+              "adresse": 9,
+              "wort": 0,
+              "warum": "…dann das höherwertige"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "nicht_lesbar",
+            "grund": "wortfolge_abweichend"
+          }
+        }
+      ]
+    },
+    {
+      "name": "F4 abschnitt-veraltet",
+      "why": "Eine Steuerung mit dem Gore-Bild, deren Netzpunkt-Messung nicht mehr nachkommt: a_alter_s läuft ab 25 s jede Sekunde mit, Bit 0 in a_gueltig bleibt gesetzt. Ab Lesung 3 liegt das Alter über der Schwelle für Abschnitt A (Vorgabe 30 s, §4.3 (2)) — nur dieser Abschnitt ist dann fraglich, Herzschlag und alle anderen Abschnitte laufen normal. Der Gore-Entwurf selbst riegelt bei 10 s ab (nepFreezeTON) und setzt dann Bit 2; dieser Fall zeigt eine Steuerung ohne diese Sperre.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "basis": "E1 gore",
+      "aufbau_aenderung": {
+        "felder": {
+          "a_alter_s": 25
+        }
+      },
+      "schwelle_s": {
+        "A": 30,
+        "art": "vorgabe",
+        "fundstelle": "Konzept §4.3 (2): „A und T 30 s“"
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            },
+            {
+              "adresse": 13,
+              "wort": 25,
+              "warum": "a_alter_s"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1200,
+              "a_alter_s": 25,
+              "a_gueltig": 9,
+              "n_p_prozent": 600,
+              "d_bits": 0,
+              "quelle_p": 1
+            },
+            "einheiten": [
+              {
+                "t_zustand": 3
+              },
+              {},
+              {}
+            ],
+            "ueber_schwelle": {
+              "A": false
+            }
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "alter_laeuft"
+            },
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "a_alter_s": 30,
+              "herzschlag": 1205
+            },
+            "ueber_schwelle": {
+              "A": false
+            }
+          }
+        },
+        {
+          "nr": 3,
+          "t_s": 10,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "a_alter_s": 35,
+              "a_gueltig": 9,
+              "herzschlag": 1210
+            },
+            "ueber_schwelle": {
+              "A": true
+            }
+          }
+        },
+        {
+          "nr": 4,
+          "t_s": 15,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "a_alter_s": 40,
+              "herzschlag": 1215
+            },
+            "ueber_schwelle": {
+              "A": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "F5 ungueltig-werte",
+      "why": "Gore mit cos-φ-Vorgabe 0,950 untererregt (n_cosphi −950, Bit 4) und Einspeisung am Netzpunkt (p_nvp_w −4 300 W). In Lesung 2 fallen einzelne Felder auf das Typ-Maximum: U16 n_p_prozent, S16 n_cosphi, S32 p_nvp_w, U32 t_p_soll_w von Einheit 2 und t_e von Einheit 3. Ungültig ist nicht 0: der Leser gibt dort „kein Wert“ aus, alles andere bleibt. Gegenprobe: t_e von Einheit 1 steht auf 0xFFFFFFFE — eins unter dem Maximum ist ein Wert.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "basis": "E1 gore",
+      "aufbau_aenderung": {
+        "felder": {
+          "n_cosphi": -950,
+          "n_bits": 23,
+          "p_nvp_w": -4300
+        }
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            },
+            {
+              "adresse": 25,
+              "wort": 64586,
+              "warum": "n_cosphi −950 als S16"
+            },
+            {
+              "adresse": 14,
+              "wort": 65535,
+              "warum": "p_nvp_w −4 300 = 0xFFFF…"
+            },
+            {
+              "adresse": 15,
+              "wort": 61236,
+              "warum": "…0xEF34"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "n_cosphi": -950,
+              "n_p_prozent": 600,
+              "p_nvp_w": -4300,
+              "d_zaehler": null,
+              "p_grenze_w": 159000,
+              "herzschlag": 1200
+            },
+            "bits": {
+              "n_bits": {
+                "4": true
+              }
+            },
+            "einheiten": [
+              {
+                "t_e": 1843276
+              },
+              {
+                "t_p_soll_w": 53000
+              },
+              {
+                "t_e": 1851990
+              }
+            ]
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            },
+            {
+              "art": "felder_setzen",
+              "felder": {
+                "n_p_prozent": "ungueltig",
+                "n_cosphi": "ungueltig",
+                "p_nvp_w": "ungueltig"
+              },
+              "einheiten": [
+                {
+                  "nr": 1,
+                  "t_e": 4294967294
+                },
+                {
+                  "nr": 2,
+                  "t_p_soll_w": "ungueltig"
+                },
+                {
+                  "nr": 3,
+                  "t_e": "ungueltig"
+                }
+              ]
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "woerter": [
+            {
+              "adresse": 24,
+              "wort": 65535,
+              "warum": "n_p_prozent U16 ungültig"
+            },
+            {
+              "adresse": 25,
+              "wort": 32767,
+              "warum": "n_cosphi S16 ungültig 0x7FFF"
+            },
+            {
+              "adresse": 14,
+              "wort": 32767,
+              "warum": "p_nvp_w S32 ungültig 0x7FFF…"
+            },
+            {
+              "adresse": 15,
+              "wort": 65535,
+              "warum": "…0xFFFF"
+            },
+            {
+              "adresse": 46,
+              "wort": 65535,
+              "warum": "t_e Einheit 1 0xFFFF…"
+            },
+            {
+              "adresse": 47,
+              "wort": 65534,
+              "warum": "…0xFFFE — ein Wert"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "n_p_prozent": null,
+              "n_cosphi": null,
+              "p_nvp_w": null,
+              "p_erzeugung_w": 158400,
+              "n_seit_s": 345,
+              "p_grenze_w": 159000
+            },
+            "einheiten": [
+              {
+                "t_e": 4294967294,
+                "t_p_soll_w": 53000
+              },
+              {
+                "t_p_soll_w": null,
+                "t_p_ist_w": 52900
+              },
+              {
+                "t_e": null,
+                "t_p_ist_w": 53100
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "F6 te-anzahl-ungueltig",
+      "why": "Gore-Bild, aber te_anzahl steht auf 0 (Programm ohne Einheiten-Zuordnung), danach auf 11 (mehr als max_einheiten 10). Nach der Prüfreihenfolge von EZ-1 (Lesart 4: te_anzahl 1…10) ist das Bild dann nicht lesbar — kein einziger Wert, auch nicht aus den Abschnitten A bis S. Die alten Einheiten-Blöcke ab 38 stehen weiter im Server. In Lesung 3 steht wieder 3: das Bild ist lesbar wie bei E1.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "basis": "E1 gore",
+      "aufbau_aenderung": {
+        "kopf": {
+          "te_anzahl": 0
+        }
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": null,
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            },
+            {
+              "adresse": 5,
+              "wort": 0,
+              "warum": "te_anzahl 0"
+            },
+            {
+              "adresse": 38,
+              "wort": 3,
+              "warum": "alter Block von Einheit 1 steht noch da"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "nicht_lesbar",
+            "grund": "te_anzahl_ungueltig"
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            },
+            {
+              "art": "felder_setzen",
+              "felder": {
+                "te_anzahl": 11
+              }
+            }
+          ],
+          "herzschlag_urteil": null,
+          "woerter": [
+            {
+              "adresse": 5,
+              "wort": 11,
+              "warum": "te_anzahl 11 > max_einheiten"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "nicht_lesbar",
+            "grund": "te_anzahl_ungueltig"
+          }
+        },
+        {
+          "nr": 3,
+          "t_s": 10,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            },
+            {
+              "art": "felder_setzen",
+              "felder": {
+                "te_anzahl": 3
+              }
+            }
+          ],
+          "herzschlag_urteil": "erste_lesung",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "te_anzahl": 3,
+              "herzschlag": 1210,
+              "p_erzeugung_w": 158400,
+              "n_kanal": 3,
+              "d_kanal": 0,
+              "p_grenze_w": 159000
+            },
+            "einheiten": [
+              {
+                "t_p_ist_w": 52400
+              },
+              {},
+              {}
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "F7 neustart",
+      "why": "Gore; nach Lesung 2 startet das Programm neu (Spannung weg, Download, Reset). Herzschlag, n_zaehler („seit Programmstart“) und n_seit_s beginnen wieder bei 0 — wie im Entwurf, wo uHerzschlag und setpointTelegramCounter nicht remanent sind. Die Vorgabe 60 % selbst bleibt (GVL_RETAIN), die Fernwirkverbindung steht nach dem Start noch nicht (n_bits Bit 1 aus). In Lesung 3 springt der Herzschlag von 1205 auf 3 zurück: das ist ein Neustart, kein Überlauf.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen. Der Simulator dient dem Bauen, nie dem Beleg; die Hardware bei Büttner gibt es noch nicht, und auch der Gore-Fall ist aus dem nicht übersetzten Entwurf PRG_VP_Bild.st nachgestellt, nicht von der Steuerung gelesen.",
+      "basis": "E1 gore",
+      "herzschlag_regel": {
+        "art": "beobachtung",
+        "schrittgrenze": 120,
+        "erklaerung": "Wie im WAGO-Simulator: steht = gleich · laeuft = größer · ueberlauf = kleiner, aber über 65 536 hinweg unter der Schrittgrenze · rueckwaerts = sonst. Nur Beobachtung, keine Leserregel."
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "t_s": 0,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "woerter": [
+            {
+              "adresse": 0,
+              "wort": 22096,
+              "warum": "signatur „VP“"
+            },
+            {
+              "adresse": 1,
+              "wort": 17754,
+              "warum": "signatur „EZ“"
+            },
+            {
+              "adresse": 2,
+              "wort": 258,
+              "warum": "wortfolge 0x0102"
+            },
+            {
+              "adresse": 3,
+              "wort": 772,
+              "warum": "wortfolge 0x0304"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1200,
+              "n_zaehler": 17,
+              "n_seit_s": 340,
+              "a_gueltig": 9,
+              "d_kanal": 0,
+              "s_bits": 3
+            },
+            "einheiten": [
+              {
+                "t_zustand": 3
+              },
+              {},
+              {}
+            ]
+          }
+        },
+        {
+          "nr": 2,
+          "t_s": 5,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 1205,
+              "n_zaehler": 17,
+              "n_seit_s": 345
+            }
+          }
+        },
+        {
+          "nr": 3,
+          "t_s": 10,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 2
+            },
+            {
+              "art": "neustart"
+            },
+            {
+              "art": "sekunden",
+              "wert": 3
+            },
+            {
+              "art": "felder_setzen",
+              "felder": {
+                "n_bits": 5
+              }
+            }
+          ],
+          "herzschlag_urteil": "rueckwaerts",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 3,
+              "n_zaehler": 0,
+              "n_seit_s": 3,
+              "n_p_prozent": 600,
+              "n_bits": 5,
+              "programmstand": 2610
+            },
+            "bits": {
+              "n_bits": {
+                "0": true,
+                "1": false,
+                "2": true
+              }
+            }
+          }
+        },
+        {
+          "nr": 4,
+          "t_s": 15,
+          "schritte": [
+            {
+              "art": "sekunden",
+              "wert": 5
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "felder": {
+              "herzschlag": 8,
+              "n_zaehler": 0,
+              "n_seit_s": 8
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

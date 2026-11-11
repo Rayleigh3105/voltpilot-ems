@@ -1,0 +1,20 @@
+# Argo CD Application für den Werkstatt-Dienst. Kein automated: Sync nur von
+# Hand (Risiko "hardwarenaher Dienst im Produktionscluster").
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: werkstatt-prod
+  namespace: argocd
+spec:
+  project: prod
+  source:
+    # Adresse des gitops-Repos wie bei den übrigen Applications
+    repoURL: GITOPS_REPO_URL
+    targetRevision: main
+    path: apps/werkstatt/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: werkstatt-prod
+  syncPolicy:
+    syncOptions:
+      - PruneLast=true

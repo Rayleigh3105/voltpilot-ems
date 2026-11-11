@@ -5,7 +5,6 @@ import type { VerbesserungUebersicht } from './verbesserungUebersicht';
 import type { Wiedervorlage, WiedervorlageZuletzt } from './wiedervorlage';
 import type { MispelEmpfaenger, MispelJahr, MispelMonat } from './mispelMengen';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
-import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
 import type {
   CockpitLayoutDocument,
@@ -14,6 +13,7 @@ import type {
   Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
 import type { Profil } from './anwendungen';
+import type { Programmstand } from './programmstand';
 import type { BezugsgroesseLesart } from './bezugsgroesse';
 import type { EigeneAuswertungWerte } from './eigeneAuswertung';
 import type {
@@ -41,6 +41,13 @@ export type { Fahrzeug, FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile'
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
+import type {
+  Geraetesuche,
+  GeraetesucheGrund,
+  GeraetesucheGruppeWort,
+  GeraetesucheVerlaufEintrag,
+  GeraetesucheZustand,
+} from './geraetesuche';
 
 /** AP-08 IP-16: Prüfseite und Ersatzwerte; Werte entstehen erst nach Freigabe im Rechenlauf. */
 export type ErsatzwertMethode = 'gleichmaessig_verteilen' | 'profil_vorperiode' | 'profil_vergleichsquelle'
@@ -76,7 +83,7 @@ export interface ErsatzwertVorschau {
   perioden: KorrekturPeriode[]; auswirkungen: KorrekturAuswirkungen; vieraugen: boolean; freigabe_noetig: boolean;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
+export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
 /**
  * Anlagentyp of a site: steers the money wording ("mehr verdient" for
@@ -264,6 +271,54 @@ export type SupplyPriceUpdate = Partial<{
   komponentenStand: string | null;
 }>;
 
+/**
+ * Der Zustand der Karte „Einspeisevergütung" - ein geschlossenes Vokabular
+ * (`docs/contracts/einspeiseverguetung-vectors.json`, Block `zustaende`):
+ * `angegeben` = Ihr eigener Satz wirkt, `eeg` = der aus dem EEG hergeleitete
+ * Satz wirkt, `eeg_abgelaufen` = die 20 Jahre sind vorbei (Börsenpreis),
+ * `ohne_angabe` = kein Inbetriebnahmedatum und keine Angabe (Börsenpreis),
+ * `netzladen` = Netzladen erlaubt (Börsenpreis, die Angabe ruht),
+ * `direktvermarktung` = Börsenpreis + Marktprämie (kein fester Satz).
+ */
+export type EinspeiseverguetungZustand =
+  | 'angegeben'
+  | 'eeg'
+  | 'eeg_abgelaufen'
+  | 'ohne_angabe'
+  | 'netzladen'
+  | 'direktvermarktung';
+
+/**
+ * GET/PUT /api/v1/sites/{siteId}/einspeiseverguetung: welcher Satz je
+ * eingespeister kWh HEUTE in Fahrplan und Erlöse eingeht und woher er kommt.
+ * Der Server rechnet alles (Satzplan, Herkunft) - das Portal liest nur.
+ */
+export interface Einspeiseverguetung {
+  zustand: EinspeiseverguetungZustand;
+  /** Der feste Satz, der heute wirkt (ct/kWh); null = keiner (Börse). */
+  wirksamCtKwh: number | null;
+  /** Ihre gespeicherte Angabe; null = keine. Ruht bei Netzladen/Direktvermarktung. */
+  angegebenCtKwh: number | null;
+  /**
+   * Ihre Antwort „in Betrieb ab dem 25.02.2025?" - nur ohne Inbetriebnahmedatum
+   * (mit Datum null: das Datum entscheidet); null = nicht angegeben.
+   */
+  inbetriebnahmeAbSolarspitzengesetz: boolean | null;
+  /** Der Satz aus dem EEG-Satzplan; null ohne Inbetriebnahmedatum. */
+  hergeleitetCtKwh: number | null;
+  /** Der Satzplan rechnet für dieses Datum mit Jahresstufen (vor dem EEG 2023). */
+  hergeleitetGenaehert: boolean;
+  /** Inbetriebnahme der PV-Anlage (ISO-Tag) oder null. */
+  inbetriebnahme: string | null;
+  leistungKwp: number | null;
+  /** Letzter Tag der EEG-Vergütung (ISO-Tag) oder null. */
+  eegEndeAm: string | null;
+  /** § 51a EEG: bei negativem Börsenpreis keine Vergütung (Datum, sonst Ihre Antwort). */
+  ohneVerguetungBeiNegativpreis: boolean;
+  /** Bei Direktvermarktung der anzulegende Wert, sonst null. */
+  anzulegenderWertCtKwh: number | null;
+}
+
 export interface CreateSiteInput {
   name: string;
   biddingZone?: string;
@@ -349,13 +404,51 @@ export interface WeatherPoint {
   temperatureC: number | null;
   cloudCoverPct: number | null;
   ghiWM2: number | null;
+  /** Historische Lesart (Open-Meteo `direct_radiation`, waagerecht - N1). */
   dniWM2: number | null;
   dhiWM2: number | null;
+  /** Richtig gelesene Direktstrahlung senkrecht zur Sonne (`direct_normal_irradiance`, S0). */
+  dniNormalWM2: number | null;
 }
 
 export interface WeatherForecast {
   runAt: string | null;
   points: WeatherPoint[];
+}
+
+/** Ein Prognosewert: mittlere Leistung `valueKw` ab `ts`. */
+export interface ForecastValue {
+  ts: string;
+  valueKw: number | null;
+}
+
+/**
+ * S1 ("der Lesepunkt", Konzept vp-prognosen-konzept): die Prognose einer
+ * Anlage, unabhängig davon, ob sie einen Fahrplan hat. `pvRunAt`/`loadRunAt`
+ * bleiben GETRENNT (nie eine gemeinsame Zeit) - ein ausgefallener
+ * Collector-Lauf einer Art versteckt sich nie in der Zeit der anderen.
+ * `null`/eine leere Liste heißt: diese Art hat noch nie gerechnet, nie eine
+ * erfundene Null.
+ */
+export interface ForecastResponse {
+  activePvModel: string;
+  activeLoadModel: string;
+  pvRunAt: string | null;
+  pvKw: ForecastValue[];
+  loadRunAt: string | null;
+  loadKw: ForecastValue[];
+  yesterdayExpected: {
+    pvRunAt: string | null;
+    pvKw: ForecastValue[];
+    loadRunAt: string | null;
+    loadKw: ForecastValue[];
+  };
+  weekly: {
+    pvRunAt: string | null;
+    pvKw: ForecastValue[];
+    loadRunAt: string | null;
+    loadKw: ForecastValue[];
+  };
 }
 
 /** Ein laufender Handeingriff (Steuerung Stufe 4). */
@@ -841,12 +934,78 @@ export interface HistoryPlanPoint {
  */
 export type HistoryEventType =
   | 'negativpreis'
+  | 'keine-verguetung'
   | 'abregelung'
   | 'netzgrenze'
   | 'netzladen'
   | 'abendverkauf'
   | 'datenluecke'
-  | 'geraet-still';
+  | 'geraet-still'
+  | 'netzbetreiber'
+  | 'direktvermarkter'
+  | 'nicht-bereit';
+
+/**
+ * Die Vorgabe hinter einem Ereignis `netzbetreiber`, `direktvermarkter` oder `nicht-bereit` (UEMS EZ-9, EW-12 A) —
+ * abgeleitet von EZ-7, keine neue Messung. Im Tag genau eine Vorgabe (`id` öffnet das Detail) oder eine Datenlücke
+ * mit weiteren Wechseln (`luecken` 1), ab der Woche das Bündel eines Tages bzw. Monats (ohne `id`). Unbekannt ist
+ * `null`, nie 0.
+ */
+export interface HistoryVorgabe {
+  id: string | null;
+  urheber: 'netzbetreiber' | 'direktvermarkter' | 'anlage';
+  art: 'p_begrenzung' | 'abschaltung' | 'q_vorgabe' | 'dv_aktivierung' | 'dv_stopp' | 'nicht_bereit' | null;
+  teNr: number | null;
+  einheitName: string | null;
+  /** Der wirkliche Beginn (kann vor dem Zeitraum liegen); im Bündel `null`. */
+  beginn: string | null;
+  beginnGenau: boolean;
+  /** Das wirkliche Ende; `null` = läuft oder Bündel. */
+  ende: string | null;
+  laeuft: boolean;
+  vorgabeProzent: number | null;
+  /** Die kleinste Vorgabe in W — beim Direktvermarkter der Abruf. */
+  vorgabeW: number | null;
+  /** `bindend` = die Anlage folgte ihr (sie war die wirksame Grenze), `nicht_bindend` = eine andere war strenger. */
+  bindung: 'bindend' | 'nicht_bindend' | null;
+  /** Euro-Schätzung der nicht erzeugten Energie; `null` ohne Preisgrundlage (Biogas bis EZ-12). */
+  wertEur: number | null;
+  unvollstaendig: number;
+  luecken: number;
+  /** Weitere Wechsel in den Datenlücken; `null` = unbekannt (Neustart) oder keine Lücke. */
+  weitereWechsel: number | null;
+  /** Die Gründe für „nicht bereit“ als Text des Bilds. */
+  gruende: string[];
+}
+
+/**
+ * Eine Zeile der Zählung „Nach Art“ (UEMS EZ-9): `periode` null = der ganze Zeitraum (mit den Einheiten),
+ * `JJJJ-MM` = ein Monat (nur im Jahr). Gezählt hat EZ-7 über EINEN Abschnitt — eine Vorgabe über Mitternacht
+ * zählt einmal.
+ */
+export interface HistoryVorgabenZaehlung {
+  periode: string | null;
+  type: 'netzbetreiber' | 'direktvermarkter' | 'nicht-bereit';
+  /** `null` = die ganze Anlage bzw. bei „nicht bereit“ alle Einheiten zusammen. */
+  teNr: number | null;
+  einheitName: string | null;
+  anzahl: number;
+  minutes: number;
+  energyKwh: number | null;
+  wertEur: number | null;
+  ohneSchaetzung: number;
+  unvollstaendig: number;
+  arten: Record<string, number>;
+  luecken: number;
+  weitereWechsel: number | null;
+}
+
+/** Die Vorgaben einer Anlage mit Anlagensteuerung im Zeitraum (EZ-9); fehlt bei jeder anderen Anlage. */
+export interface HistoryVorgaben {
+  /** Bis wohin der Vorgaben-Läufer die Anlage ausgewertet hat; `null` = noch nie. */
+  verarbeitetBis: string | null;
+  zaehlung: HistoryVorgabenZaehlung[];
+}
 
 /**
  * Ein Ereignis im Verlauf (F6) — das Auffällige, das einen Ausreißer im
@@ -856,12 +1015,31 @@ export type HistoryEventType =
  * **`text` trägt die Aussage OHNE Zeitangabe** — die Zeit steht in
  * `start`/`end` und wird zeitraumgerecht davor gesetzt (`historieEreignisse.ts`
  * `ereignisSpur`). `end` ist exklusiv.
+ *
+ * **Ab der Woche bündelt der Server** je Art die Fenster eines Tages (Woche,
+ * Monat) bzw. eines Monats (Jahr): `count`/`days` zählen sie, `minutes` ist
+ * ihre Summe. Die Zusatzfelder fehlen bei einem älteren Backend.
  */
 export interface HistoryEvent {
   type: HistoryEventType;
   start: string;
   end: string;
   text: string;
+  /** Die eine Zahl, ungerundet, in `unit` (tiefster Preis, Energie, Netzgrenze); `null` bei Lücken. */
+  value?: number | null;
+  unit?: 'ct/kWh' | 'kWh' | 'kW' | null;
+  /** Aus dem Fahrplan (Abregelung, Abendverkauf), keine Messung. */
+  planned?: boolean;
+  /** Summe der Fenster in Minuten. */
+  minutes?: number;
+  /** Zahl der Fenster im Bündel (1 im Tag). */
+  count?: number;
+  /** Zahl der Tage mit einem Fenster (1 im Tag). */
+  days?: number;
+  /** Die Fakten des Abendverkaufs als Zeilen; sonst leer. */
+  facts?: { label: string; value: string }[];
+  /** Die Vorgabe hinter `netzbetreiber`, `direktvermarkter` und `nicht-bereit` (EZ-9); sonst nicht da. */
+  vorgabe?: HistoryVorgabe;
 }
 
 /**
@@ -919,6 +1097,11 @@ export interface History {
    * niemand geprüft hat.
    */
   events?: HistoryEvent[];
+  /**
+   * Die Vorgaben einer Erzeugeranlage „Nach Art“ (UEMS EZ-9) — nur bei einer Anlage mit Anlagensteuerung; ihr
+   * Dasein sagt der Karte, dass sie „noch keine Vorgaben“ statt „Nichts Auffälliges“ sagen darf.
+   */
+  vorgaben?: HistoryVorgaben;
 }
 
 /**
@@ -926,12 +1109,20 @@ export interface History {
  * every model's lifecycle, and the daily error/skill series from the
  * evaluation job. Model ids: load-persistence / pv-physical (Vergleichsmodelle),
  * load-xgb / pv-residual-xgb (lernende Kandidaten, shadow-only until promoted).
+ *
+ * `pv-physical-legacy-dni` (S0/N1, 11.11.2026) ist absichtlich NICHT in der
+ * Registry/im Schalter-Vokabular (`ForecastModels.java`,
+ * `voltpilot_forecast.registry`) - sie läuft trotzdem jeden Zyklus mit und
+ * taucht hier nur DESHALB auf, weil die tägliche Bewertung jede in
+ * `forecast_accuracy` stehende Modell-Id zeigt, nicht nur die bekannten.
  */
 export type ForecastModelId =
   | 'load-persistence'
   | 'pv-physical'
   | 'load-xgb'
-  | 'pv-residual-xgb';
+  | 'pv-residual-xgb'
+  | 'pv-physical-legacy-dni'
+  | 'load-profile';
 
 export interface FeatureImportance {
   feature: string;
@@ -994,6 +1185,32 @@ export interface ForecastQuality {
   planAccuracy: PlanAccuracyPoint[];
 }
 
+/** Ein Tag im Blatt "Rückblick" (S3, Bericht Abschnitt 9): "am Vortag erwartet" neben "gemessen". */
+export interface RueckblickTag {
+  day: string;
+  erwartetKwh: number;
+  gemessenKwh: number;
+}
+
+/**
+ * Der Rückblick EINER Prognoseart, immer des AKTIVEN Modells (S3, E5 = A).
+ * `abweichungKwh` (das 0,8-Quantil der Tagesabweichung über die letzten 28
+ * Tage) bleibt `null`, solange weniger als zehn Tage bewertet sind - "Fehlend
+ * ist keine Null".
+ */
+export interface RueckblickKind {
+  kind: 'load' | 'pv';
+  model: ForecastModelId;
+  /** Bis zu sieben Tage, älteste zuerst. */
+  tage: RueckblickTag[];
+  abweichungKwh: number | null;
+  bewerteteTage: number;
+}
+
+export interface RueckblickResponse {
+  kinds: RueckblickKind[];
+}
+
 export interface Device {
   id: string;
   siteId: string;
@@ -1024,6 +1241,19 @@ export interface Device {
   lanSource?: 'erreicht' | 'schnittstelle' | null;
   /** Server-derived role; absent on older backends. Never infer it from list order. */
   fuehrtAnlage?: boolean | null;
+  /**
+   * vp-box-verbinden-konzept S2: die eigenen Anmelde-Momente der Box
+   * (`device_enrollment`, nur fürs eigene Gerät). `null`/fehlend = die Box
+   * hat sich seit dem Verbinden nie angemeldet, oder ein älteres Backend
+   * sendet den Block gar nicht - beides liest sich wie „nie", nie wie „aus".
+   */
+  anmeldung?: DeviceAnmeldung | null;
+}
+
+/** Siehe {@link Device.anmeldung}. */
+export interface DeviceAnmeldung {
+  zuletztAngefragtAm: string | null;
+  schluesselAbgeholtAm: string | null;
 }
 
 /** AP-06 IP-19: Ergebnis der Nachfolger-Anmeldung; `zugestellt=false` ist erst vorbereitet. */
@@ -1291,6 +1521,25 @@ export interface OcppTransaction {
   transactionDataPurgedAt: string | null;
 }
 
+/**
+ * „Ladungen" mit Herkunft und Geld (Konzept „Ein Ort fürs Laden" e1, Scheibe 2):
+ * dieselbe Preisgrundlage wie die Erlöse (`SlotEconomics`). `sonnenanteilPct`
+ * ist ein ANTEILIGER SCHLUSS aus der Hausbilanz, nie gemessen; `euro`/
+ * `durchschnittCtKwh` sind `null`, wo eine Zutat fehlt - nie eine erfundene
+ * Zahl. `kartenRef` ist das Karten-Pseudonym der Box, nie der OCPP-Bezug.
+ */
+export interface OcppTransactionEconomics {
+  chargePointId: string;
+  transactionId: number;
+  startedAt: string;
+  stoppedAt: string | null;
+  kwh: number | null;
+  sonnenanteilPct: number | null;
+  euro: number | null;
+  durchschnittCtKwh: number | null;
+  kartenRef: string | null;
+}
+
 export interface OcppMeterSample {
   sampledAt: string;
   eventId: string;
@@ -1524,6 +1773,22 @@ export interface EntityObserved {
   reportedAt: string;
 }
 
+/**
+ * Der wirksame Min. Ladestand eines Speichers und seine Herkunft: das Größere von VoltPilot-Wert und der am
+ * Wechselrichter gelesenen Grenze. `aktuell` false = die letzte gültige Lesung ist älter als eine Stunde; sie gilt
+ * mit ihrem Zeitpunkt weiter (nie ein stiller Rückfall auf 5 %).
+ */
+export interface SocMinHerkunft {
+  wirksamPct: number;
+  quelle: 'wechselrichter' | 'voltpilot';
+  wechselrichterPct: number;
+  voltpilotPct: number | null;
+  gelesenAm: string;
+  seit: string;
+  aktuell: boolean;
+  letzteLesungVerworfen: 'unplausibel' | 'veraltet' | null;
+}
+
 /** One v2 entity with its capabilities, guard config and drift verdict. */
 export interface SiteEntity {
   id: string;
@@ -1551,6 +1816,23 @@ export interface SiteEntity {
    * an older backend simply omits it (then the dialog stays generic).
    */
   capacityKwp?: number | null;
+  /**
+   * Zählerbaum-Konzept (E1 A): die Eltern-Komponente im elektrischen Baum
+   * HEUTE, oder `null`/abwesend = hängt an der Wurzel (dem Netzanschluss).
+   */
+  haengtAn?: string | null;
+  /**
+   * Der Freigabe-Stand des Gerätetyps aus dem Katalog (`certified` | `in_certification` | `simulator_only` |
+   * `not_certified` | `per_device`); null/absent = der Typ hat keinen (Wechselrichter, Zähler) oder ein älteres
+   * Backend lässt das Feld weg. Das Abzeichen „Von VoltPilot freigegeben" steht nur ohne Einschränkung.
+   */
+  certificationStatus?: string | null;
+  /**
+   * Woher der Min. Ladestand eines Speichers kommt — nur an der Speicher-Komponente einer Anlage, deren
+   * Entladegrenze am Wechselrichter gelesen wurde (Deye „Battery Low SOC“). null/absent = keine Lesung (oder ein
+   * älteres Backend); dann bleibt die Anzeige wie vorher.
+   */
+  socMin?: SocMinHerkunft | null;
   /**
    * true = the pinned edge source is no longer among the device's reported
    * sources (identity churn - offer "Wieder verbinden"); false = pinned +
@@ -1695,6 +1977,41 @@ export interface SaveComponentBody {
   expectedRevision?: number;
   /** Ab wann diese Änderung gilt; aktuell atomisch beim Speichern. */
   effectiveAt?: string;
+  /**
+   * Der Bezug auf den Fund, aus dem „Übernehmen" (bzw. „Adresse übernehmen", DP-7 A) vorbelegt hat. Der Server prüft
+   * ihn gegen Anlage, Mandant und die 30 Tage der Suche (422 ohne jede Änderung) und schreibt das Protokoll; beim
+   * Anlegen hält er die `herkunft` der Komponente fest. Ohne ihn: der Weg wie bisher.
+   */
+  geraetesuche?: GeraetesucheBezug;
+  /**
+   * Heizstab V1: `heating-rod` legt EIN Gerät über die Ausgangsmenge eines Shelly an (`connection.channels`,
+   * `output_kw`, `stages`, `rotation`, `anschluss`; docs/contracts/v2/heizstab-shelly.md). Fehlt = wie bisher.
+   */
+  consumerType?: 'heating-rod';
+  /**
+   * Zählerbaum-Konzept (E1 A): hinter welcher Komponente dieser Zähler oder
+   * gemessene Verbraucher eingebaut ist - `undefined`/`null` = an der Wurzel
+   * (dem Netzanschluss). Nur beim Anlegen gelesen; ein späteres Umhängen läuft
+   * über `api.haengtAnSetzen`.
+   */
+  haengtAn?: string | null;
+}
+
+/** Welcher Fund welcher Gerätesuche eine Komponente vorbelegt hat (`schluessel` des Fundes). */
+export interface GeraetesucheBezug {
+  suchId: string;
+  fund: string;
+}
+
+/**
+ * Woher eine Komponente stammt - heute nur „aus der Gerätesuche vom `gesuchtAm`". Gelesen aus dem Protokoll der
+ * Suche; es überlebt den Läufer nach 30 Tagen, die Suche selbst nicht. Ein unbekanntes `art` behauptet nichts.
+ */
+export interface KomponenteHerkunft {
+  art: 'geraetesuche' | string;
+  suchId: string;
+  gesuchtAm: string;
+  uebernommenAm: string;
 }
 
 /**
@@ -1752,26 +2069,25 @@ export interface ProbeAntwort {
     reading?: Record<string, unknown> | null;
     finding?: ProbeBefund | null;
     /**
-     * Die Zuordnungs-VORSCHAU einer selbst angebundenen Batterie (P5d): EINE
-     * Zeile je Feld-Zuordnung.
-     *
-     * ⚠ Der Block ist ABWESEND, wenn die Box (noch) nicht lauschen kann - das
-     * heißt „diese Box kann es nicht", nie „es kam nichts an". Eine Zeile ohne
-     * Empfang trägt `count: 0` und KEINE Zahl; „nicht gemessen" ist nie
-     * „gemessen 0".
+     * Die benannten Messwert-Zeilen eines Verbindungstests: EINE Zeile je Kanal.
+     * Eine Zeile ohne Empfang trägt `count: 0` und KEINE Zahl; „nicht gemessen"
+     * ist nie „gemessen 0".
      */
     samples?: ProbeVorschauZeile[] | null;
+    /**
+     * Heizstab V1: bei einem Shelly mit Ausgangsmenge je Ausgang Schaltzustand und „nach Stromausfall“ -
+     * beim Verbindungstest neben den samples `relay_on_<kanal>`, bei „Auf ‚aus‘ stellen“ allein.
+     */
+    ausgaenge?: import('./heizstab').TestAusgang[] | null;
   }[];
 }
 
-/** Was EINE Feld-Zuordnung im Lauschfenster empfangen hat (P5d). */
+/** Eine benannte Messwert-Zeile eines Verbindungstests. */
 export interface ProbeVorschauZeile {
   channel: string;
-  topic?: string | null;
   raw?: number | null;
   value?: number | null;
   count: number;
-  at?: string | null;
 }
 
 /**
@@ -1869,6 +2185,18 @@ export interface SiteComponentRow {
   capacityKwp?: number | null;
   edgeSourceId?: string | null;
   syncStatus?: string | null;
+  /** Nur nach „Übernehmen" aus der Gerätesuche; sonst abwesend (nie geraten). */
+  herkunft?: KomponenteHerkunft | null;
+  /**
+   * Warum die Box GENAU DIESES Gerät nicht anwendet, wörtlich von der Box (sie kann ihm keine Rolle zuordnen und hat
+   * die übrigen trotzdem angewandt). Abwesend = nicht übersprungen oder von der Box nicht gemeldet.
+   */
+  rejectedReason?: string | null;
+  /**
+   * Zählerbaum-Konzept (E1 A): die Eltern-Komponente im elektrischen Baum
+   * HEUTE, oder `null`/abwesend = hängt an der Wurzel (dem Netzanschluss).
+   */
+  haengtAn?: string | null;
 }
 
 export interface SiteEntities {
@@ -1900,7 +2228,10 @@ export interface TopologyEntity {
   label: string | null;
   /** storage | producer | meter | consumer (steers the tile/flow semantics). */
   category: string;
-  /** ok | stale | never (5-min liveness window). */
+  /**
+   * ok | stale | never (5-min liveness window). An `anlagensteuerung` has no telemetry_v2 channel: its health is
+   * the newest reading of its Erzeuger image within 120 s (UEMS EZ-22).
+   */
   health: string;
   /**
    * WO eine Säule hängt (`haus` | `eigen`, Cockpit Phase 1 / C1) - nur bei
@@ -1996,6 +2327,23 @@ export interface EntityHistory {
   to: string;
   bucketMinutes: number;
   channels: Record<string, EntityHistoryBucket[]>;
+}
+
+/**
+ * Die Energie EINES Geräts je Eimer des Zeitraums (`GET …/entities/{id}/energy`, Unterverteilungen
+ * C2): der Zuwachs des Zählerstands (`source: 'zaehler'`), sonst Leistung × Dauer (`'leistung'`).
+ * Die Eimer sind die von `/history` für denselben Zeitraum. `kwh`/`totalKwh` `null` = nicht
+ * belegbar (der Zähler fiel), nie eine 0; die Werte sind ungerundet.
+ */
+export interface EntityEnergy {
+  range: HistoryRange;
+  from: string;
+  to: string;
+  bucketMinutes: number;
+  source: 'zaehler' | 'leistung' | null;
+  buckets: { start: string; kwh: number | null }[];
+  totalKwh: number | null;
+  counterFalls: boolean;
 }
 
 // --- UEMS: Messkanäle + berechnete Messstelle („Gesamtwert", AP-04 IP-13 / AP-10) ---
@@ -2553,7 +2901,7 @@ export interface Selbstauskunft {
   zustand: 'angelegt' | 'aktiv' | 'gesperrt' | 'entfernt';
   /** `null` ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung). */
   kundenbereich: SelbstauskunftKundenbereich | null;
-  /** `umschalter` = Plattform über `X-Tenant-Id` (bis AP-03 IP-8). */
+  /** `umschalter` = Plattform am offenen Mandanten-Umschalter (`X-Tenant-Id`, oder `X-Kundenbereich` ohne Unterstützung). */
   zugang: 'konto' | 'unterstuetzung' | 'umschalter' | null;
   rollen: string[];
   unternehmensweit: boolean;
@@ -4904,6 +5252,19 @@ export interface OverviewSite {
    * Standort zugeordnet (heute jede Bestandsanlage); absent = älteres Backend.
    */
   standort?: StandortBezug | null;
+  /**
+   * B3 (Konzept vp-plattform-admin-box-benutzer-konzept): der Hinweis, solange
+   * eine Anlage nach „Vom Kunden lösen" keine Box hat - höchstens 14 Tage,
+   * `null`/absent = kein Hinweis.
+   */
+  boxGeloestHinweis?: BoxGeloestHinweis | null;
+}
+
+/** B3: der Hinweis an der Anlage, bis eine Box verbunden ist, höchstens 14 Tage. */
+export interface BoxGeloestHinweis {
+  anlass: string;
+  anlassText: string | null;
+  bisSpaetestens: string;
 }
 
 /** Die Energie-Summen eines Tages (kWh), jedes Feld einzeln `null`-fähig. */
@@ -4982,6 +5343,11 @@ export interface StandortBezug {
   name: string;
   kurzzeichen: string;
   gueltigAb: string;
+  /**
+   * Der Standort hat noch keine vollständige Adresse (Anlage-Flow a1, D9) - das Cockpit fragt mit der Karte
+   * „Wo steht …?“. Optional: ein älterer Server lässt das Feld weg, dann fragt niemand.
+   */
+  adresseFehlt?: boolean;
 }
 
 /**
@@ -5256,6 +5622,25 @@ export type Nutzung =
   | 'sonstiges';
 
 /** Die Lage auf der Karte — beide Koordinaten oder keine. */
+/** Ein Adressvorschlag (`GET /api/v1/orte/suche`); `genau`: so fein ist der Treffer. */
+export interface OrtTreffer {
+  text: string;
+  strasse: string | null;
+  hausnummer: string | null;
+  plz: string | null;
+  ort: string | null;
+  land: 'DE' | 'AT' | 'CH';
+  breitengrad: number;
+  laengengrad: number;
+  genau: 'haus' | 'strasse' | 'ort';
+}
+
+export interface OrteSuchAntwort {
+  treffer: OrtTreffer[];
+  /** Die Namensnennung der Daten („© OpenStreetMap-Mitwirkende“) - sie steht unter den Vorschlägen. */
+  quelle: string;
+}
+
 export interface StandortLage {
   breitengrad: number;
   laengengrad: number;
@@ -6621,6 +7006,138 @@ export type ExecutionMode =
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
 export type ExecutionDirection = 'deepen' | 'reduce';
 
+/**
+ * Erzeuger am Wago-Modbus-Server (Konzept „Erzeuger am WAGO-Modbus-Server“ §4.2/§4.5, EZ-8): was das
+ * Cockpit von einer Anlage mit Anlagensteuerung liest. `GET /api/v1/sites/{siteId}/erzeuger/jetzt` ist
+ * ein additiver Wunsch an EZ-6 (Cloud-Modell); 204 = die Anlage hat keine Anlagensteuerung, 404 = älteres
+ * Backend - beides heißt „kein Erzeuger-Cockpit“, die Seite bleibt wie heute. Ableitung: `erzeuger.ts`.
+ */
+export type ErzeugerQualitaet = 'good' | 'uncertain' | 'invalid' | 'stale' | 'device_error';
+
+/** Ein Messpunkt `erzeuger.*` im aktuellen Stand - Zahl in der Einheit des Punkts (W, %, kW, s; Bitfeld als Ganzzahl). */
+export interface ErzeugerWert {
+  wert: number | null;
+  gelesenAm: string | null;
+  qualitaet: ErzeugerQualitaet | null;
+}
+
+/** Ein Zustandswechsel eines Punkts: ab wann der Wert gilt. Die Liste beginnt mit dem Wert um Mitternacht. */
+export interface ErzeugerWechsel {
+  ab: string;
+  wert: number | null;
+}
+
+export interface ErzeugerJetzt {
+  /** Das Gerät „Anlagensteuerung“ (z. B. WAGO PFC200). */
+  steuerung: { geraetId: string; name: string };
+  /** Namen aus dem Bild (§3.10) oder den Stammdaten; null = nicht bekannt bzw. keiner. */
+  netzbetreiber: string | null;
+  direktvermarkter: string | null;
+  /** Teile `erzeugungseinheit` (Identität = Steuerung + TE-Nr.); `bezeichnung` = Name der Einheit (GE-3), null = keiner. */
+  einheiten: { teNr: number; art: 'pv' | 'bhkw' | null; typName: string | null; nennKw: number | null; bezeichnung: string | null }[];
+  /** Aktueller Wert je Punktname (`erzeuger.nb.bits`, `erzeuger.te2.p_ist_w`, …). */
+  werte: Record<string, ErzeugerWert>;
+  /** Heutige Wechsel von `erzeuger.wirkung.quelle_p`, `erzeuger.nb.bits`, `erzeuger.dv.bits`. */
+  wechselHeute: Record<string, ErzeugerWechsel[]>;
+}
+
+/**
+ * Die Vorgaben einer Erzeugeranlage aus EZ-7 (`/api/v1/sites/{siteId}/erzeuger/vorgaben…`, Snake-Case wie die
+ * Route): wer wann wie lange die Anlage begrenzt oder gesteuert hat. Unbekannt ist `null`, nie 0.
+ */
+export type ErzeugerUrheber = 'netzbetreiber' | 'direktvermarkter' | 'anlage' | 'hand' | 'ersatzwert' | 'schutz';
+
+export interface ErzeugerVorgabe {
+  id: string;
+  geraet_id: string;
+  te_nr: number | null;
+  einheit_name: string | null;
+  urheber: ErzeugerUrheber;
+  art: string;
+  beginn: string;
+  beginn_genau: boolean;
+  ende: string | null;
+  ende_genau: boolean;
+  gesehen_bis: string;
+  dauer_s: number;
+  vorgabe_prozent: number | null;
+  vorgabe_w: number | null;
+  ist_mittel_w: number | null;
+  verfuegbar_mittel_w: number | null;
+  energie_kwh: number | null;
+  methode: 'pv_prognose' | 'nennleistung_bereite_motoren' | 'dv_sollwert_davor' | null;
+  wert_eur: number | null;
+  kanal: string | null;
+  bindung: 'bindend' | 'nicht_bindend' | null;
+  unvollstaendig: boolean;
+  neustart: boolean;
+  zaehler_beginn: number | null;
+  zaehler_ende: number | null;
+  gruende: string[];
+}
+
+/** Ein Rohwert am Beginn oder Ende einer Vorgabe, in der Sprache des Bilds. */
+export interface ErzeugerVorgabeRohwert {
+  point_key: string;
+  feld: string;
+  te_nr: number | null;
+  wert: number;
+  wort: string | null;
+  text: string | null;
+  bits: { bit: number; wort: string; text: string }[] | null;
+}
+
+/**
+ * `GET …/erzeuger/vorgaben` (EZ-7): die Vorgaben, die `[von, bis)` berühren (ohne Zeitraum die letzten sieben Tage),
+ * und die Datenlücken mit weiteren Wechseln. Gelesen von der Seite einer Einheit (GE-3).
+ */
+export interface ErzeugerVorgabenChronik {
+  site_id: string;
+  von: string;
+  bis: string;
+  verarbeitet_bis: string | null;
+  vorgaben: ErzeugerVorgabe[];
+  luecken: {
+    id: string;
+    geraet_id: string;
+    urheber: 'netzbetreiber' | 'direktvermarkter';
+    beginn: string;
+    ende: string;
+    weitere_wechsel: number | null;
+    neustart: boolean;
+    zaehler_vorher: number | null;
+    zaehler_nachher: number | null;
+  }[];
+}
+
+/** `GET …/erzeuger/vorgaben/{vorgabeId}`: die Vorgabe mit ihren Rohsignalen und den Proben ihres Zeitraums. */
+export interface ErzeugerVorgabeDetail {
+  vorgabe: ErzeugerVorgabe;
+  roh_beginn: ErzeugerVorgabeRohwert[];
+  roh_ende: ErzeugerVorgabeRohwert[];
+  signale: { point_key: string; gemessen_am: string; wert: number | null; qualitaet: string | null }[];
+  signale_gekuerzt: boolean;
+}
+
+/** Je Urheber über alle Arten (ganze Anlage), die Dauer vereinigt — die Zahl der Kachel „Wer hat heute geregelt?“. */
+export interface ErzeugerJeUrheber {
+  urheber: ErzeugerUrheber;
+  anzahl: number;
+  dauer_s: number;
+  energie_kwh: number | null;
+  wert_eur: number | null;
+}
+
+/** `GET …/erzeuger/vorgaben/heute`: der heutige Tag (Europe/Berlin) bis jetzt. */
+export interface ErzeugerVorgabenHeute {
+  site_id: string;
+  tag: string;
+  abgerufen_am: string;
+  verarbeitet_bis: string | null;
+  je_urheber: ErzeugerJeUrheber[];
+  laufend: ErzeugerVorgabe[];
+}
+
 export interface ControlStatus {
   deviceId: string;
   /**
@@ -7130,6 +7647,27 @@ export interface CommandEntry {
   register?: RegisterWriteEvent | null;
   /** AP-03 IP-7: wer die Zeile ausgelöst hat (Register-Vorgang, „Jetzt voll laden“); null an abgeleiteten Zeilen. */
   urheber?: ProtokollUrheber | null;
+  /**
+   * NUR auf den Zeilen des fünften Stroms `geraetesuche`: eine Suche im Heimnetz (`eventKind` `geraetesuche`) oder
+   * eine Übernahme aus ihr (`geraet_uebernommen`, `adresse_uebernommen`), gelesen aus dem Protokoll der Suche.
+   */
+  geraetesuche?: GeraetesucheAktivitaet | null;
+}
+
+/** Der Block einer Zeile des Stroms `geraetesuche` (OpenAPI `CommandEntry.geraetesuche`). */
+export interface GeraetesucheAktivitaet {
+  suchId: string;
+  /** Bei einer Suche: was die Box meldete, ohne Ergebnis die Regel der Suche; bei einer Übernahme null. */
+  zustand: GeraetesucheZustand | null;
+  grund: GeraetesucheGrund | null;
+  dauerMs: number | null;
+  /** Funde je Gruppe zum Zeitpunkt des Ergebnisses; null ohne Ergebnis (nie 0). */
+  zaehler: Record<GeraetesucheGruppeWort, number> | null;
+  abgebrochenVon: ProtokollUrheber | null;
+  /** Bei einer Übernahme: der heutige Name der Komponente; null, wenn sie entfernt ist. */
+  komponente: string | null;
+  fund: string | null;
+  gesuchtAm: string | null;
 }
 
 export interface CommandDetail {
@@ -7241,6 +7779,15 @@ export interface EarningsDaily {
    * NOTHING for that day - never the total as a substitute, never a fake zero.
    */
   savedSteuerungEur?: number | null;
+  /**
+   * Derselbe Tag „mit Bestand bewertet“ (Bedienkonzept
+   * vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 P3-4 A): Kasse +
+   * Änderung des Vorsprungs auf den Vergleichsspeicher × Bezugspreis × √0,92,
+   * auf den Cent. Aus diesen Tagen bildet die Übersicht die letzten 7 Tage.
+   * `null` ohne Dreiteilung oder bei einer Lücke; absent bei einem älteren
+   * Backend.
+   */
+  mitBestandEur?: number | null;
 }
 
 /** One Ertrag-chart bucket: its Berlin start (ISO) + the Gesamtertrag. */
@@ -7356,6 +7903,14 @@ export interface CockpitMoney {
   mispelNetzeinspeisungSpeicherKwh?: number | null;
   mispelMengenQuelle?: string | null;
   /**
+   * Die Steuerung des gewählten Zeitraums MIT BESTAND (Bedienkonzept
+   * vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 P3-2 A und P3-4 A: eine
+   * Zählweise für Tag, 7 Tage, Monat und jeden Zeitraum) — Σ seiner Tage,
+   * je Tag Kasse + Bestandsänderung × Bezugspreis × √0,92. `null` ohne
+   * Dreiteilung oder bei einer Lücke; absent bei einem älteren Backend.
+   */
+  savedSteuerungMitBestandEur?: number | null;
+  /**
    * Die EINE grosse Zahl aller Flaechen: das Ergebnis „unterm Strich"
    * (Erloese-Konzept E9, Paket P9). Beide Endpunkte tragen genau EINEN der
    * zwei Wege dorthin, und `erloesNetto.nettoEur()` ist die EINE Ableitung,
@@ -7406,6 +7961,12 @@ export interface EarningsSite extends CockpitMoney {
   reason: EarningsReason | null;
   dailySaved: EarningsDaily[];
   /**
+   * Nur `range=day`: Monatserster bis zu diesem Tag mit Bestand — dieselbe
+   * Zahl wie `steuerungZeitraum.monat` der Anlagen-Route. `null` bei einer
+   * Lücke, ohne Dreiteilung oder für jedes andere `range`.
+   */
+  steuerungMonatMitBestandEur?: number | null;
+  /**
    * Money-centric "Meine Anlage" view (v2). Gesamtertrag =
    * einspeiseErloesEur (metered feed-in valued at spot + Marktprämie) +
    * eigenverbrauchsWertEur (self-consumed energy valued per the site's tariff).
@@ -7439,6 +8000,12 @@ export interface EarningsSite extends CockpitMoney {
    * unchanged, conservative Börsenpreis wording).
    */
   exportVerguetungPriced?: boolean | null;
+  /**
+   * WOHER der feste Satz kommt: `eeg` (hergeleitet) oder `angegeben` (Ihre
+   * Angabe auf der Karte „Einspeisevergütung"); null genau dann, wenn
+   * `exportVerguetungPriced` nicht true ist. Optional wie sein Geschwister.
+   */
+  exportVerguetungQuelle?: 'eeg' | 'angegeben' | null;
   einspeiseErloesEur: number | null;
   eigenverbrauchsWertEur: number | null;
   gesamtertragEur: number | null;
@@ -7493,6 +8060,13 @@ export interface PeakShaving {
   avoidedEur: number | null;
   /** Last 12 billing periods with measured data, ascending (incl. running). */
   history: PeakShavingPeriod[];
+  /**
+   * The running ¼-hour mean grid import (kW), computed on the SERVER
+   * (Alerting Scheibe 4: `AnlagenflussWerteLeser.netzLastspitzeLaufend` - the
+   * same number the "Lastspitze droht" Überwachung reads). Null when the
+   * running quarter has no usable sample yet - never a fabricated 0.
+   */
+  currentQuarterMeanKw: number | null;
 }
 
 /** One billing period of the peak-shaving history. */
@@ -7616,6 +8190,8 @@ export interface SiteEarnings extends CockpitMoney {
    * consumers gate on `=== true`.
    */
   exportVerguetungPriced?: boolean | null;
+  /** `eeg` | `angegeben` | null - siehe EarningsSite.exportVerguetungQuelle. */
+  exportVerguetungQuelle?: 'eeg' | 'angegeben' | null;
   anzulegenderWertCtKwh: number | null;
   coveredSlots: number;
   firstCoveredDate: string | null;
@@ -7670,6 +8246,63 @@ export interface SiteEarnings extends CockpitMoney {
   speicherWertBasis?: 'plan' | 'terminal' | null;
   series: SiteEarningsBucket[];
   peakShaving?: PeakShaving | null;
+  /**
+   * Nur `range=day`: Monat, letzte 7 Tage und der Tag mit Bestand
+   * ({@link SteuerungZeitraum}); `null` sonst, absent bei einem älteren
+   * Backend. Gelesen nur in `steuerungZeitraum.ts`.
+   */
+  steuerungZeitraum?: SteuerungZeitraum | null;
+}
+
+/**
+ * Die Steuerung MIT BESTAND rund um den angefragten Tag (Bedienkonzept
+ * vp-herzogau-p3-kachel-konzept §4.2; Regeln und Fälle:
+ * `docs/contracts/steuerung-tag-vectors.json`, Block `mit_bestand`). Je Tag
+ * Kasse (`steuerungEur`) + (Vorsprung 24:00 − Vorsprung 00:00) × Bewertung,
+ * beides auf den Cent; Monat und 7 Tage sind die Summen ihrer Tage. `null`
+ * heißt: nicht rechenbar (Lücke im Ladestand oder kein gemessener Tag) — nie 0.
+ */
+export interface SteuerungZeitraum {
+  /** Mittlerer Bezugspreis des Tages (ct/kWh). */
+  bezugCtKwh: number | null;
+  /** `bezugCtKwh × √0,92` auf 0,01 ct (fest 25 ct → 23,98 ct). */
+  bewertungCtKwh: number | null;
+  /** Monatserster bis zum angefragten Tag. */
+  monat: SteuerungFenster;
+  /** Die 7 abgeschlossenen Berliner Kalendertage (läuft der Tag: die 7 davor). */
+  sieben: SteuerungFenster | null;
+  /** Der angefragte Tag; `null` vor seinem ersten Eimer. */
+  heute: SteuerungTag | null;
+  /** Die gemessenen Tage des 7-Tage-Fensters, neuester zuerst. */
+  tage: SteuerungTag[];
+}
+
+export interface SteuerungFenster {
+  /** ISO-Datum (Berlin). */
+  von: string;
+  bis: string;
+  mitBestandEur: number | null;
+}
+
+export interface SteuerungTag {
+  /** ISO-Datum (Berlin). */
+  tag: string;
+  /** Die Kassenrechnung des Tages (`savedSteuerungEur`), auf den Cent. */
+  steuerungEur: number | null;
+  /** Gemessener Ladestand − Vergleichsspeicher um 00:00 (Rückstand negativ). */
+  vorsprungStartKwh: number | null;
+  /** Derselbe Vorsprung nach dem letzten gemessenen Eimer des Tages. */
+  vorsprungEndeKwh: number | null;
+  bezugCtKwh: number | null;
+  bewertungCtKwh: number | null;
+  /** `(vorsprungEndeKwh − vorsprungStartKwh) × bewertungCtKwh / 100`, auf den Cent. */
+  bestandEur: number | null;
+  /** `steuerungEur + bestandEur`; `null` bei einer Lücke. */
+  mitBestandEur: number | null;
+  /** `gestern_verkauft` | `wenig_sonne` | `anders_geladen`, höchstens zwei. */
+  gruende: string[];
+  /** Ende des letzten gemessenen Eimers (ISO) — „Heute bis 08:15“. */
+  messungBis?: string | null;
 }
 
 export class ApiError extends Error {
@@ -7681,6 +8314,12 @@ export class ApiError extends Error {
   constructor(readonly status: number, message: string, readonly body?: unknown) {
     super(message);
   }
+}
+
+/** Der Code einer Ablehnung (`code` im JSON-Körper der Route), sonst `null`. */
+export function ablehnungCode(e: unknown): string | null {
+  const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { code?: unknown }) : null;
+  return typeof body?.code === 'string' ? body.code : null;
 }
 
 /**
@@ -7723,11 +8362,46 @@ export function setTenantOverride(tenantId: string | null): void {
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
+/**
+ * Das STARTFENSTER der Funktionen (Scout `vp-anlagen-cockpit-perf`, Rang 6).
+ *
+ * Der App-Start liest `/funktionen` strukturell drei Mal: die Schale für die Startebene, die Übersicht für den
+ * Anlege-Entscheid, die Anlagen-Seite für ihr Lese-Modell - zeitlich um 100-300 ms versetzt, also weit
+ * jenseits dessen, was die In-flight-Bündelung noch teilt. Jede Kopie ist eine Server-Abfrage, ein
+ * Verbindungsplatz und ein JSON-Parse VOR dem ersten Bild.
+ *
+ * Darum bleibt der Eintrag von `/funktionen` (und NUR dieser Route, ein Konfigurations-Stand ohne Takt) nach der
+ * ANTWORT noch {@link STARTFENSTER_MS} im Bündel stehen. Die Veraltung ist doppelt begrenzt: höchstens so lange nach
+ * der Antwort, und jede Änderung (Mutation) leert das Bündel sofort - wer nach einem Schreiben liest, liest neu.
+ * Eine Ablehnung wird nie geteilt. Der Takt-Grundsatz oben bleibt: ein 30-s-Takt holt wirklich neu.
+ */
+export const STARTFENSTER_MS = 2_000;
+const STARTFENSTER_PFADE = new Set(['/api/v1/funktionen']);
+
+/**
+ * Der je Aufruf gestempelte `X-Tenant-Id`-Kopf (Kundenakte, Plattform-Geräteseite) - sonst `null`.
+ * Er gewinnt über den globalen Umschalter: ein Aufruf, der seinen Kunden AUSDRÜCKLICH nennt, trägt
+ * NIE zusätzlich den `X-Kundenbereich` des offenen Umschalters. Vorher gingen beide Köpfe hinaus,
+ * die API nahm still den Umschalter - und die Kundenakte von Kunde B zeigte die Personen von Kunde A
+ * (Befund vp-kundenakte-fremde-personen; die API lehnt zwei verschiedene Kundenbereiche jetzt mit
+ * 400 `kundenbereich_widerspruch` ab).
+ */
+function expliziterMandant(headers: HeadersInit | undefined): string | null {
+  // Jede Aufrufstelle stempelt den Kopf als einfaches Objekt (wie `mitKennung`).
+  if (!headers || Array.isArray(headers) || headers instanceof Headers) return null;
+  return (headers as Record<string, string>)['X-Tenant-Id'] || null;
+}
+
 function coalesceKey(path: string, init: RequestInit): string | null {
   const method = (init.method ?? 'GET').toUpperCase();
   if (method !== 'GET') return null;
   if (init.body != null || init.signal != null) return null;
-  return `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
+  // Ein ausdrücklicher Mandant gehört in den Schlüssel: die Kundenliste fragt `/api/v1/me` je Kunde
+  // GLEICHZEITIG ab - ohne ihn teilten alle Zeilen die Antwort des ersten Kunden.
+  const explizit = expliziterMandant(init.headers);
+  return explizit != null
+    ? `${explizit}||${path}`
+    : `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -7735,10 +8409,12 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (key != null) {
     const running = inFlight.get(key);
     if (running) return running as Promise<T>;
-    const p: Promise<T> = requestUncoalesced<T>(path, init).finally(() => {
-      // Nach einer Änderung kann unter dem Schlüssel schon eine neuere Anfrage stehen - nur die eigene austragen.
+    const p: Promise<T> = requestUncoalesced<T>(path, init);
+    // Nach einer Änderung kann unter dem Schlüssel schon eine neuere Anfrage stehen - nur die eigene austragen.
+    const frei = () => {
       if (inFlight.get(key) === p) inFlight.delete(key);
-    });
+    };
+    p.then(() => (STARTFENSTER_PFADE.has(path) ? setTimeout(frei, STARTFENSTER_MS) : frei()), frei);
     inFlight.set(key, p);
     return p;
   }
@@ -7783,15 +8459,49 @@ export function vergissGemerkte(): void {
  * Welcher Kundenbereich gemeint ist: `X-Kundenbereich` (Partner und Plattform in einer Unterstützung, Kunden ohnehin),
  * sonst der Plattform-Umschalter `X-Tenant-Id`. Jeder Abruf trägt ihn gleich - auch die Datei-Abrufe (CSV, PDF, ICS);
  * ohne ihn lief der CSV-Abruf des Verzeichnisses in einem fremden Kundenbereich ohne Wahl (Konzept Nachweisen n1, A16).
+ * Ein Aufruf mit EIGENEM `X-Tenant-Id`-Kopf (Kundenakte, Plattform-Geräteseite) nennt seinen Kunden ausdrücklich;
+ * `requestUncoalesced` lässt den Umschalter-Kopf dann weg (siehe {@link expliziterMandant}).
  */
-function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
+export function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
   return bereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': bereich }
     : mandant ? { 'X-Tenant-Id': mandant } : {};
 }
 
+/** Der Kopf der Anfrage-Kennung (`AnfrageKennungen.KOPF` in der API). */
+export const ANFRAGE_KENNUNG_KOPF = 'Idempotency-Key';
+/** Wie lange eine Anfrage mit Kennung nach einem Netzfehler wartet, bevor sie es noch einmal versucht. */
+export const WIEDERHOLEN_NACH_MS = 1000;
+
+/** Eine neue Anfrage-Kennung - je Formular EINE, für jeden Versuch dieselbe (B3). */
+export function neueAnfrageKennung(): string {
+  // `randomUUID` gibt es nur im sicheren Kontext (https, localhost) - sonst Zeit und Zufall.
+  return `portal-${crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+function hatAnfrageKennung(headers: HeadersInit | undefined): boolean {
+  // `mitKennung` setzt den Kopf immer als Objekt.
+  return !!headers && !Array.isArray(headers) && !(headers instanceof Headers) && ANFRAGE_KENNUNG_KOPF in headers;
+}
+
+function mitKennung(kennung: string | undefined): RequestInit {
+  return kennung ? { headers: { [ANFRAGE_KENNUNG_KOPF]: kennung } } : {};
+}
+
+/**
+ * Obergrenze je lesender Anfrage, damit eine hängende Verbindung (Netz weg, Proxy ohne Antwort) den
+ * Boot nie unbegrenzt am Lade-Vorhang hält - vorher hatte der Boot-Abruf (`/me`, `/sites`, …) gar
+ * keine Zeitgrenze. Großzügig genug, um eine echte, nur langsame Antwort nicht fälschlich abzubrechen -
+ * dieselbe Größenordnung wie `auth.ts` `TOKEN_GRANT_TIMEOUT_MS`, aber für Fachaufrufe statt des
+ * Token-Endpunkts.
+ */
+const REQUEST_TIMEOUT_MS = 20_000;
+
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const angefragterMandant = tenantOverride;
-  const angefragterKundenbereich = kundenbereich;
+  // Ein Aufruf mit AUSDRÜCKLICHEM Kunden (eigener `X-Tenant-Id`-Kopf) spricht genau diesen Kunden an:
+  // der `X-Kundenbereich` des offenen Umschalters bleibt dann weg (siehe `expliziterMandant`).
+  const explizit = expliziterMandant(init.headers);
+  const angefragterMandant = explizit ?? tenantOverride;
+  const angefragterKundenbereich = explizit != null ? null : kundenbereich;
   let token: string | undefined;
   try {
     token = await freshToken();
@@ -7802,7 +8512,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     if (e instanceof AuthRedirectError) return new Promise<never>(() => {});
     throw e;
   }
-  const res = await fetch(`${API_BASE}${path}`, {
+  const anfrage: RequestInit = {
     ...init,
     headers: {
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
@@ -7810,7 +8520,23 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
       ...bereichKopf(path, angefragterKundenbereich, angefragterMandant),
       ...(init.headers ?? {}),
     },
-  });
+    // Ein eigenes Abbruch-Signal des Aufrufers (Komponenten-Unmount) bleibt UNVERÄNDERT wirksam -
+    // die Zeitgrenze tritt nur ein, wo bisher gar keines gesetzt war (der Boot-Fall), und nur beim
+    // Lesen: ein abgebrochener schreibender Aufruf (etwa ein Datei-Import) kann auf dem Server
+    // trotzdem fertig werden, und der Browser meldete dann einen Fehler für etwas, das geschah.
+    signal: init.signal ?? ((init.method ?? 'GET').toUpperCase() === 'GET' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined),
+  };
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, anfrage);
+  } catch (e) {
+    // B3 (Anlage-Flow a1): ging die Antwort verloren, wiederholt eine Anfrage MIT Anfrage-Kennung
+    // einmal von selbst - der Server kennt die Kennung und gibt dieselbe Anlage zurück, statt sie ein
+    // zweites Mal anzulegen. Ohne Kennung nie: ob geschrieben wurde, weiß nur der Server.
+    if (!(e instanceof TypeError) || !hatAnfrageKennung(init.headers)) throw e;
+    await new Promise((r) => setTimeout(r, WIEDERHOLEN_NACH_MS));
+    res = await fetch(`${API_BASE}${path}`, anfrage);
+  }
   if (!res.ok) {
     // Never leak a raw HTTP status/statusText into customer-facing copy (m4):
     // default to a plain-German message and let a server-provided German
@@ -7934,10 +8660,94 @@ export async function ladeMispelNachweis(
   setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 
+/**
+ * Alerting Scheibe 5, Entscheid 14A: der Verlauf des Meldungs-Centers als CSV-Datei für einen
+ * Zeitraum `[von, bis)` (ISO-Zeitpunkte) - derselbe Download-Weg wie {@link ladeGesamtabzug}
+ * (authentifizierter Abruf, Dateiname aus `Content-Disposition`).
+ */
+export async function ladeMeldungenVerlaufCsv(von: string, bis: string): Promise<void> {
+  const token = await freshToken();
+  const path = `/api/v1/meldungen/verlauf.csv?von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`;
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...bereichKopf(path),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Der Verlauf konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? 'meldungen-verlauf.csv';
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
+/**
+ * vp-mango-3mf-pro-box: die Box-Druckdatei des Gehäuses herunterladen (nur
+ * platform-admin) - derselbe Download-Weg wie {@link ladeGesamtabzug}. 404,
+ * solange der Werkstatt-Dienst sie noch nicht hochgeladen hat.
+ */
+export async function ladeWerkstattGehaeuse(edgeRef: string): Promise<void> {
+  const token = await freshToken();
+  const path = `/api/v1/admin/werkstatt/boxen/${encodeURIComponent(edgeRef)}/gehaeuse`;
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...bereichKopf(path),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message
+      ?? 'Die Box-Druckdatei konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? `${edgeRef}.3mf`;
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
+/**
+ * vp-werkstatt-zubehoer-download: ein Zubehörteil (Hutschienen-Clip, Bohrlehre) herunterladen -
+ * ohne Kennung, für jede Box gleich - derselbe Download-Weg wie {@link ladeWerkstattGehaeuse}.
+ */
+export async function ladeWerkstattZubehoer(teil: string): Promise<void> {
+  const token = await freshToken();
+  const path = `/api/v1/admin/werkstatt/zubehoer/${encodeURIComponent(teil)}`;
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...bereichKopf(path),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message
+      ?? 'Die Zubehör-Druckdatei konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? `${teil}.3mf`;
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
 export interface RegisterInput {
   name: string;
   email: string;
   password: string;
+  /** D2 (Anlage-Flow a1): „Für mein Zuhause“ / „Für ein Unternehmen“ - setzt Segment und Betriebsart. */
+  zweck?: 'zuhause' | 'unternehmen';
 }
 
 export interface RegistrationResult {
@@ -7971,6 +8781,23 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
     throw new ApiError(res.status, message);
   }
   return (await res.json()) as RegistrationResult;
+}
+
+/** Ergebnis des Links aus der Bestätigungs-Mail - der Server unterscheidet abgelaufen/ungültig/schon verwendet bewusst nicht (§6.6: kein Hinweis, ob ein Token je existiert hat). */
+export type ZustellwegBestaetigungsErgebnis = 'bestaetigt' | 'abgelaufen';
+
+/**
+ * Bestätigt den eigenen E-Mail-Zustellweg über den Link aus der Mail
+ * (ZustellwegController#bestaetigen, §6.6). Deliberately NOT via request():
+ * der Klick kommt oft OHNE angemeldete Sitzung (anderes Gerät/Browser), und
+ * der Endpunkt selbst verlangt keine Anmeldung - ein Token-Refresh/Login-Zwang
+ * hier würde genau das kaputt machen, was der Link leisten soll.
+ */
+export async function zustellwegBestaetigen(token: string): Promise<ZustellwegBestaetigungsErgebnis> {
+  const res = await fetch(`${API_BASE}/api/v1/zustellwege/bestaetigen?token=${encodeURIComponent(token)}`);
+  if (res.status === 410) return 'abgelaufen';
+  if (!res.ok) throw new ApiError(res.status, 'Die Bestätigung ist zurzeit nicht möglich.');
+  return 'bestaetigt';
 }
 
 export type { ProfileState, SiteProfile, SiteProfiles } from './profiles';
@@ -8060,12 +8887,13 @@ export interface UemsGeraet {
   ausgebaut_am: string | null;
   komponenten: Array<{ entity_id: string; gueltig_ab: string; gueltig_bis: string | null }>;
   /**
-   * Die Datenquelle, aus der die Box dieses Gerät liest (`geraet.data_source_id`) — der EINZIGE
-   * Weg von einer Komponente zu ihrer Datenquelle, den die Schnittstellen heute anbieten
-   * (AP-13 IP-12, Befund: `…/data-sources` nennt ihre Geräte und Komponenten nicht). `null` =
+   * Die Datenquelle, aus der die Box dieses Gerät liest (`geraet.data_source_id`). Denselben Verweis
+   * liefert seit GE-6 auch `…/data-sources` von der anderen Seite (`UemsDatenquelle.geraete`). `null` =
    * nicht erhoben; dann steht kein Box-Satz, nie eine geratene Box.
    */
   data_source_id?: string | null;
+  /** Die Geräte-ID dieses Einbaus hinter seiner Datenquelle (Modbus-Unit); `null` = nicht erhoben. */
+  geraete_id?: number | null;
   /*
    * Die übrigen Felder von `GeraetDto.Geraet` — die Geräteseite (AP-04 IP-12)
    * braucht sie für die Karte „Gerät“. Optional, weil das Protokoll und seine
@@ -8084,7 +8912,21 @@ export interface UemsGeraet {
   vorgaenger?: UemsGeraetVorgaenger[];
 }
 
-/** Eine Energiekarte im Steckplatz eines Controllers; `steckplatz` null = nicht erhoben. */
+/**
+ * Eine Anlagensteuerung (`GET /api/v1/sites/{siteId}/anlagensteuerungen`, UEMS EZ-6) — hier nur mit den Feldern,
+ * die die Geräteseite für den Programmstand braucht (EZ-16); die volle Form ist `Anlagensteuerung` (EZ-10).
+ */
+export interface AnlagensteuerungKurz {
+  geraet_id: string;
+  entity_id: string;
+  programmstand: Programmstand;
+}
+
+/**
+ * Ein Teil eines Controllers: eine Energiekarte im Steckplatz (`steckplatz` null = nicht erhoben) oder -
+ * seit UEMS EZ-6 - eine Erzeugungseinheit (`teilart` `erzeugungseinheit`) mit TE-Nr. an einer
+ * Anlagensteuerung. Die Einheiten-Felder fehlen an einem älteren Backend und sind an einer Karte null.
+ */
 export interface UemsGeraetTeil {
   id: string;
   teilart: string;
@@ -8094,6 +8936,183 @@ export interface UemsGeraetTeil {
   seriennummer: string | null;
   eingebaut_am: string;
   ausgebaut_am: string | null;
+  te_nr?: number | null;
+  einheit_art?: ErzeugungseinheitArt | null;
+  nennleistung_kw?: number | null;
+  registry_unit_id?: string | null;
+  typ_bild?: string | null;
+}
+
+// ---- Anlagensteuerung einer Erzeugeranlage (UEMS EZ-6, Konzept „Erzeuger am WAGO-Modbus-Server“ §4.2) ----
+// Die Formen von `AnlagensteuerungDto` - `snake_case` wie das Backend; „nicht erhoben“ ist null, nie 0.
+// Die Ableitungen für Steuerung, Geräteseite und Einstellungen stehen in `anlagensteuerung.ts` (EZ-10).
+
+export type ErzeugungseinheitArt = 'pv_wechselrichter' | 'bhkw_motor';
+export type DirektvermarkterKanal = 'keiner' | 'relais_ma' | 'modbus';
+export type Einspeisemanagement = 'statisch' | 'stufen' | 'fernwirk';
+
+/** Eine Erzeugungseinheit (Wechselrichter oder BHKW-Motor) mit ihrer TE-Nr. im Registerbild. */
+export interface Erzeugungseinheit {
+  teil_id: string;
+  te_nr: number;
+  einheit_art: ErzeugungseinheitArt | null;
+  /** Die Anzeige; Umbenennen ändert nur sie - Nummer und Messreihe bleiben. */
+  bezeichnung: string | null;
+  typ: string | null;
+  /** Der Typname, den das Bild nennt (Konzept §3.10); null = nicht gelesen oder leer. */
+  typ_bild: string | null;
+  nennleistung_kw: number | null;
+  /** MaStR-Einheitennummer (SEE…). */
+  registry_unit_id: string | null;
+  eingebaut_am: string;
+}
+
+export interface Anlagensteuerung {
+  geraet_id: string;
+  kennzeichen: string;
+  einbau_kennzeichen: string;
+  bezeichnung: string | null;
+  hersteller: string | null;
+  typ: string | null;
+  eingebaut_am: string;
+  /** Die Komponente vom Typ `anlagensteuerung`, an der die Punkte `erzeuger.*` hängen. */
+  entity_id: string;
+  datenquelle: { id: string; kennzeichen: string; adresse: string | null; unit_id: number | null; box_id: string | null } | null;
+  fassung: {
+    id: string;
+    bildart: string;
+    basisadresse: number;
+    funktionscode: number;
+    wortfolge: string;
+    te_anzahl: number;
+    anlagenart: 'pv' | 'bhkw' | 'gemischt';
+    steuerung_kennung: number | null;
+    rse_stufen: { stufe: number; prozent: number }[] | null;
+    veraltet_netzpunkt_s: number;
+    /** Soll des Programmstands (JJMM) aus der Fassung; null = es gilt die Bibliothek (EZ-16). */
+    programmstand_soll: number | null;
+    gueltig_ab: string;
+  } | null;
+  einheiten: Erzeugungseinheit[];
+  /** Programmstand Ist gegen Soll (UEMS EZ-16). */
+  programmstand: Programmstand;
+}
+
+export interface AnlagensteuerungListe {
+  einrichtung: { moeglich: boolean; grund: 'keine_box' | 'box_ohne_faehigkeit' | null; boxen: { device_id: string; faehig: boolean }[] };
+  steuerungen: Anlagensteuerung[];
+}
+
+/** `POST /api/v1/sites/{siteId}/anlagensteuerungen` (UEMS EZ-6/EZ-15): Steuerung, Fassung und Einheiten in einem Schritt. */
+export interface AnlagensteuerungAnlegen {
+  data_source_id: string;
+  unit_id: number;
+  bezeichnung: string | null;
+  hersteller: string | null;
+  typ: string | null;
+  basisadresse: number;
+  funktionscode: 3 | 4;
+  wortfolge: 'big' | 'little';
+  anlagenart: 'pv' | 'bhkw' | 'gemischt';
+  steuerung_kennung: number | null;
+  rse_stufen: { stufe: number; prozent: number }[] | null;
+  einheiten: {
+    te_nr: number;
+    einheit_art: ErzeugungseinheitArt | null;
+    bezeichnung: string | null;
+    typ: string | null;
+    typ_bild: string | null;
+    nennleistung_kw: number | null;
+    registry_unit_id: string | null;
+  }[];
+  /** Erstbelegung Netz und Vermarktung (EZ-15): belegt nur, was an der Anlage noch leer ist. */
+  netz_vermarktung: {
+    direktvermarkter: string | null;
+    direktvermarkter_kanal: DirektvermarkterKanal | null;
+    einspeisemanagement: Einspeisemanagement | null;
+    einspeisemanagement_prozent: number | null;
+  } | null;
+}
+
+/**
+ * Der jüngste Wert eines Punkts `erzeuger.*`. `zustand`: `keine_daten` (`wert` null, nie 0) · `aktuell`
+ * (Qualität gut, höchstens 120 s alt) · `veraltet`. Zustände tragen `wort`/`text`, Bitfelder die gesetzten
+ * `bits`; außerhalb des Vokabulars bleibt der Rohwert ohne Wort.
+ */
+export interface AnlagensteuerungWert {
+  point_key: string;
+  abschnitt: string;
+  feld: string;
+  te_nr: number | null;
+  art: string;
+  einheit: string | null;
+  wert: number | null;
+  gemessen_am: string | null;
+  qualitaet: string | null;
+  zustand: 'keine_daten' | 'aktuell' | 'veraltet';
+  wort: string | null;
+  text: string | null;
+  bits: { bit: number; wort: string; text: string }[] | null;
+}
+
+export interface AnlagensteuerungWerte {
+  geraet_id: string;
+  entity_id: string;
+  stand: 'noch_keine_daten' | 'daten';
+  abgerufen_am: string;
+  werte: AnlagensteuerungWert[];
+}
+
+/** Stammdaten Netz und Vermarktung; `revision` 0 = noch nie gespeichert. */
+export interface NetzVermarktung {
+  site_id: string;
+  /** Vom Netzanschluss, an den die Anlage heute gebunden ist - hier nur gelesen. */
+  netzbetreiber: string | null;
+  direktvermarkter: string | null;
+  direktvermarkter_kanal: DirektvermarkterKanal | null;
+  einspeisemanagement: Einspeisemanagement | null;
+  einspeisemanagement_prozent: number | null;
+  namen_aus_bild: { netzbetreiber: string | null; direktvermarkter: string | null; gelesen_am: string | null } | null;
+  hinweise: { art: 'netzbetreiber_abweichung' | 'netzbetreiber_nicht_eingetragen' | string; text: string; bild: string | null; eintrag: string | null }[];
+  revision: number;
+}
+
+export interface NetzVermarktungAendern {
+  expected_revision: number;
+  direktvermarkter: string | null;
+  direktvermarkter_kanal: DirektvermarkterKanal | null;
+  einspeisemanagement: Einspeisemanagement | null;
+  einspeisemanagement_prozent: number | null;
+}
+
+/**
+ * Die Kurven des Bilds über ein Fenster der Historie (UEMS EZ-10); ein Eimer ohne Wert fehlt, nie 0. Seit GE-3
+ * steht je Einheit auch der Zählerstand Erzeugung `t_e` da (Einheit kWh) — die Energie heute der Einheiten-Seite.
+ */
+export interface AnlagensteuerungVerlauf {
+  geraet_id: string;
+  entity_id: string;
+  range: HistoryRange;
+  from: string;
+  to: string;
+  bucket_minutes: number;
+  kurven: {
+    point_key: string;
+    abschnitt: string;
+    feld: string;
+    te_nr: number | null;
+    einheit: 'W' | '%' | 'kWh';
+    eimer: { start: string; avg: number; min: number; max: number; last: number; n: number }[];
+  }[];
+}
+
+/** Ersetzt ALLE Angaben der Einheit - wer eine ändert, schickt die übrigen unverändert mit. */
+export interface ErzeugungseinheitAendern {
+  einheit_art: ErzeugungseinheitArt | null;
+  bezeichnung: string | null;
+  typ: string | null;
+  nennleistung_kw: number | null;
+  registry_unit_id: string | null;
 }
 
 /** Ein früherer Einbau desselben Geräts — „Z-5a · ausgebaut am 18.11.2026, 10:40 Uhr“. */
@@ -8460,6 +9479,24 @@ export interface UemsDatenquelle {
     box_alt: UemsDatenquelleBox | null;
     box_neu: UemsDatenquelleBox | null;
   } | null;
+  /**
+   * Die eingebauten Geräte, die über diesen Weg antworten (Konzept „Ein Gerät, ein Eintrag“, GE-6) — allein
+   * aus `geraet.data_source_id`, nie aus einer gleichen Adresse. Leer = Anschluss ohne Gerät, mehrere =
+   * Gateway oder Logger. Fehlt an einem älteren Backend.
+   */
+  geraete?: UemsDatenquelleGeraet[];
+}
+
+/** Ein eingebautes Gerät an einer Datenquelle (`Datenquelle.geraete[]`, GE-6). */
+export interface UemsDatenquelleGeraet {
+  id: string;
+  kennzeichen: string;
+  bezeichnung: string | null;
+  geraeteart: 'zaehler' | 'wechselrichter' | 'controller' | 'ladestation' | 'speicher' | 'sonstiges';
+  /** Die Geräte-ID auf dem Weg; `null` = nicht erhoben. */
+  geraete_id: number | null;
+  /** Die Komponenten, die das Gerät jetzt speist. */
+  komponenten: string[];
 }
 
 export interface UemsDatenquelleRueckmeldung {
@@ -9847,6 +10884,16 @@ export const api = {
   ocppTransactions: (siteId: string, limit = 200, signal?: AbortSignal) =>
     request<OcppTransaction[]>(`/api/v1/sites/${siteId}/ocpp/transactions?limit=${limit}`, { signal }),
   /**
+   * „Ladungen" mit Herkunft und Geld (Konzept „Ein Ort fürs Laden" e1,
+   * Scheibe 2): alle Ladepunkte der Anlage, ein Kalendermonat
+   * (`yyyy-MM`, Vorgabe der laufende Monat in Europe/Berlin).
+   */
+  ocppTransactionEconomics: (siteId: string, month?: string, signal?: AbortSignal) =>
+    request<OcppTransactionEconomics[]>(
+      `/api/v1/sites/${siteId}/ocpp/transactions/economics${month ? `?month=${encodeURIComponent(month)}` : ''}`,
+      { signal },
+    ),
+  /**
    * Die Zählerstands-Proben der Anlage. `from`/`pointKey` engen sie serverseitig
    * ein (`SiteOcppController.meterValues` kennt beide seit Slice 9) - die
    * Tages-Aufschlüsselung fragt damit GENAU den Register-Kanal ab dem
@@ -10117,6 +11164,12 @@ export const api = {
        * Feld zeichengleich wie vorher.
        */
       action?: 'voll' | 'pause';
+      /**
+       * „Bis Abstecken" (Audit W-10): `minutes` zählt dann nicht, die Box hält
+       * bis zum Ende der Sitzung mit ihrem Deckel für diesen Fall (14 h).
+       * Abwesend = das Verhalten von vorher (ohne Minuten 4 h).
+       */
+      untilUnplug?: boolean;
     },
   ) =>
     request<ChargingBoostResult>(`/api/v1/sites/${siteId}/charging-boost`, {
@@ -10140,6 +11193,12 @@ export const api = {
     request<CurtailmentStatus | undefined>(
       `/api/v1/sites/${siteId}/curtailment-status`,
     ).then((v) => v ?? null),
+  /** Erzeuger-Cockpit (EZ-8): null = keine Anlagensteuerung (204) oder älteres Backend (404). */
+  erzeugerJetzt: (siteId: string) =>
+    request<ErzeugerJetzt | undefined>(`/api/v1/sites/${siteId}/erzeuger/jetzt`).then(
+      (v) => v ?? null,
+      (e: unknown) => (e instanceof ApiError && e.status === 404 ? null : Promise.reject(e)),
+    ),
   /**
    * Der KOMMANDO-VERLAUF (Kommando-Transparenz V1): der Zeitraum EINER
    * Komponente - oder der ganzen Anlage, wenn keine gewählt ist. Ein älteres
@@ -10205,10 +11264,12 @@ export const api = {
   tenantContext: () => request<TenantContext>('/api/v1/tenant-context'),
   listSites: () => request<SichtbareListe<Site>>('/api/v1/sites'),
   siteDetail: (siteId: string) => request<SiteDetail>(`/api/v1/sites/${siteId}`),
-  createSite: (input: NeueAnlageInput) =>
+  /** `anfrageKennung`: dieselbe Kennung legt nie doppelt an (B3, Anlage-Flow a1). */
+  createSite: (input: NeueAnlageInput, anfrageKennung?: string) =>
     request<Site>('/api/v1/sites', {
       method: 'POST',
       body: JSON.stringify(input),
+      ...mitKennung(anfrageKennung),
     }),
   updateSite: (siteId: string, input: CreateSiteInput) =>
     request<Site>(`/api/v1/sites/${siteId}`, {
@@ -10224,16 +11285,38 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
+  /** Die Karte „Einspeisevergütung": der wirksame Satz mit Herkunft. */
+  einspeiseverguetung: (siteId: string) =>
+    request<Einspeiseverguetung>(`/api/v1/sites/${siteId}/einspeiseverguetung`),
+  /**
+   * Eigenen Satz setzen (ct/kWh) oder mit `null` auf die Herleitung zurücksetzen.
+   * Ohne Inbetriebnahmedatum braucht ein Satz die Antwort zu § 51a
+   * (`inbetriebnahmeAbSolarspitzengesetz`: in Betrieb ab dem 25.02.2025?).
+   */
+  setEinspeiseverguetung: (siteId: string, satzCtKwh: number | null, inbetriebnahmeAbSolarspitzengesetz?: boolean | null) =>
+    request<Einspeiseverguetung>(`/api/v1/sites/${siteId}/einspeiseverguetung`, {
+      method: 'PUT',
+      body: JSON.stringify(
+        inbetriebnahmeAbSolarspitzengesetz == null ? { satzCtKwh } : { satzCtKwh, inbetriebnahmeAbSolarspitzengesetz },
+      ),
+    }),
   /** 409 while the site still has devices (remove them first). */
   deleteSite: (siteId: string) =>
     request<void>(`/api/v1/sites/${siteId}`, { method: 'DELETE' }),
   siteDeletionPreview: (siteId: string) =>
     request<SiteDeletionPreview>(`/api/v1/sites/${siteId}/deletion-preview`),
   listDevices: () => request<SichtbareListe<Device>>('/api/v1/devices'),
-  claimDevice: (siteId: string, externalRef: string) =>
+  /**
+   * `anfrageKennung`: ein Wiederholen nach verlorener Antwort bekommt die erste Antwort (Anlage-Flow
+   * a1, Paket 2). `ersetzt`: Box verbinden S4 ("Andere Kennung", E4 = A) - die ID einer nie
+   * gemeldeten Box, die der Server in derselben Transaktion löst, bevor er diese Kennung verbindet
+   * (Vertrag Abschnitt 3.5); scheitert das Verbinden, bleibt sie unberührt.
+   */
+  claimDevice: (siteId: string, externalRef: string, anfrageKennung?: string, ersetzt?: string) =>
     request<Device>('/api/v1/devices/claim', {
       method: 'POST',
-      body: JSON.stringify({ siteId, externalRef }),
+      body: JSON.stringify(ersetzt ? { siteId, externalRef, ersetzt } : { siteId, externalRef }),
+      ...mitKennung(anfrageKennung),
     }),
   boxTauschen: (newId: string, oldId: string) =>
     request<BoxTauschAntwort>(`/api/v1/devices/${newId}/succeed/${oldId}`, { method: 'POST' }),
@@ -10285,6 +11368,30 @@ export const api = {
   componentTemplates: () => request<ComponentTemplate[]>('/api/v1/component-templates'),
   componentTemplate: (templateRef: string) =>
     request<ComponentTemplate>(`/api/v1/component-templates/${encodeURIComponent(templateRef)}`),
+  /**
+   * „Geräte suchen" (OpenAPI-Tag `geraetesuche`, docs/contracts/v2/mqtt-geraetesuche.md §7): startet auf der Box
+   * einen lesenden Suchlauf im Heimnetz. Netze, Ports und Dauer bestimmt allein die Box; der Körper nennt nur die
+   * Box. 409 `laeuft_schon`/`nicht_unterstuetzt`/`box_offline`, 429 `zu_oft` - der Körper der Ablehnung ist ein
+   * `GeraetesucheFehler` (`ApiError.body`).
+   */
+  geraetesucheStarten: (siteId: string, deviceId: string, kennung: string) =>
+    request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId }),
+      ...mitKennung(kennung),
+    }),
+  /** Eine Suche: solange sie läuft, fragt das Portal alle 2 s und hört danach auf. */
+  geraetesuche: (siteId: string, suchId: string, signal?: AbortSignal) =>
+    request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche/${suchId}`, { signal }),
+  /** Abbrechen: die Funde bis dahin gelten; eine beendete Suche bleibt, wie sie ist. */
+  geraetesucheAbbrechen: (siteId: string, suchId: string) =>
+    request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche/${suchId}`, { method: 'DELETE' }),
+  /** Die Suchen der letzten 30 Tage, jüngste zuerst; nur Zahlen je Gruppe, nie die Funde (DP-3 A). */
+  geraetesucheVerlauf: (siteId: string, deviceId?: string | null, signal?: AbortSignal) =>
+    request<{ suchen: GeraetesucheVerlaufEintrag[] }>(
+      `/api/v1/sites/${siteId}/geraetesuche${deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : ''}`,
+      { signal },
+    ),
   /** Die Komponenten einer Anlage samt Autoritäts- und Soll/Ist-Stand (Stufe 1). */
   siteComponents: (siteId: string) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components`),
@@ -10327,6 +11434,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  /**
+   * „Auf ‚aus‘ stellen“ (Heizstab V1, HZ-5): die Box stellt an jedem Ausgang des Shelly „nach Stromausfall: aus“
+   * ein - nur auf diesen Klick. Die Antwort trägt je Ausgang die danach gelesene Einstellung (`ausgaenge`).
+   */
+  nachStromausfallAus: (
+    siteId: string,
+    body: { templateRef: string; templateVersion?: number; connection: Record<string, unknown>; deviceId?: string; entityId?: string },
+  ) =>
+    request<ProbeAntwort>(`/api/v1/sites/${siteId}/component-nach-stromausfall-aus`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   /** Komponente anlegen (422 ohne bestandenen Verbindungstest). */
   createComponent: (siteId: string, body: SaveComponentBody) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components`, {
@@ -10336,6 +11455,20 @@ export const api = {
   /** Verbindung ändern - eine NEUE Fassung; die alte bleibt abrufbar. */
   updateComponent: (siteId: string, entityId: string, body: SaveComponentBody) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components/${entityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /**
+   * Zählerbaum-Konzept (R5 „Seit wann?"): umhängen. `seitWann` ist das
+   * geschlossene Vokabular `schon_immer` (ersetzt den laufenden Abschnitt ab
+   * seinem Beginn) oder `ab_tag` (mit `ab`, einem ISO-Datum JJJJ-MM-TT).
+   */
+  haengtAnSetzen: (
+    siteId: string,
+    entityId: string,
+    body: { haengtAn: string | null; seitWann: 'schon_immer' | 'ab_tag'; ab?: string },
+  ) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components/${entityId}/haengt-an`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
@@ -10377,60 +11510,6 @@ export const api = {
   /** Ein selbst definiertes Gerät entfernen - samt seinem Lese-Flow. */
   deleteCustomComponent: (siteId: string, entityId: string) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components/custom/${entityId}`, {
-      method: 'DELETE',
-    }),
-  /**
-   * Die KURVEN-VORLAGEN der SoC-Ableitung (P5b/P5d).
-   *
-   * ⚠ Sie kommen vom Server, damit das Portal die Stützpunkte NICHT nachbaut:
-   * eine Kennlinie im Frontend wäre ein Zwilling von `soccurves/catalog.json`
-   * und dürfte von ihm abdriften - und eine abgedriftete Kennlinie ist ein
-   * falscher Ladestand mit Nachkommastellen.
-   */
-  socCurveTemplates: () => request<SocCurveTemplate[]>('/api/v1/soc-curve-templates'),
-  /**
-   * Die Feld-Zuordnung EINMAL vorschauen (P5d): die Box lauscht kurz auf dem
-   * Broker des Kunden und antwortet je Zuordnung mit Roh- UND skaliertem Wert.
-   *
-   * ⚠ Sie schreibt NICHTS und ist ausdrücklich KEINE Voraussetzung des
-   * Speicherns - anders als `testComponentConnection`. Eine Box, die noch
-   * nicht lauschen kann, antwortet `not_supported`; das ist eine Aussage über
-   * die Box, nie über die Zuordnung.
-   */
-  previewBattery: (
-    siteId: string,
-    body: Record<string, unknown>,
-    /**
-     * Beim BEARBEITEN die Komponente: nur dann kann der Server ein
-     * gespeichertes Geheimnis wieder einsetzen, damit die Vorschau exakt das
-     * tut, was das Speichern täte. Ohne sie müsste der Kunde seinen
-     * BMS-Schlüssel für jede Vorschau neu eintippen.
-     */
-    entityId?: string | null,
-  ) =>
-    request<ProbeAntwort>(
-      `/api/v1/sites/${siteId}/components/battery/preview`
-      + (entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''),
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      },
-    ),
-  /** Eine selbst angebundene Batterie anlegen (P5 Ebene 1 + P5b Ebene 2). */
-  createBattery: (siteId: string, body: Record<string, unknown>) =>
-    request<SiteComponents>(`/api/v1/sites/${siteId}/components/battery`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
-  updateBattery: (siteId: string, entityId: string, body: Record<string, unknown>) =>
-    request<SiteComponents>(`/api/v1/sites/${siteId}/components/battery/${entityId}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
-  /** Eine selbst angebundene Batterie entfernen - samt ihrem Lese-Flow. */
-  deleteBattery: (siteId: string, entityId: string) =>
-    request<SiteComponents>(`/api/v1/sites/${siteId}/components/battery/${entityId}`, {
       method: 'DELETE',
     }),
   /**
@@ -10661,12 +11740,26 @@ export const api = {
         at ? `&at=${at}` : ''
       }`,
     ),
+  /** Die Energie eines Geräts je Eimer nach der Zählerregel (Unterverteilungen C2). */
+  entityEnergy: (siteId: string, entityId: string, range: HistoryRange, at?: string) =>
+    request<EntityEnergy>(
+      `/api/v1/sites/${siteId}/entities/${entityId}/energy?range=${range}${at ? `&at=${at}` : ''}`,
+    ),
   /**
    * Save the site's battery master data by hand and maintain its controlling
    * device link ("Ihr Wechselrichter steuert diesen Speicher"). Omit deviceId
    * to auto-link the site's single device; pass it to pick on a multi-device
    * site. Returns the site's assets after the save.
    */
+  /**
+   * Die Leistung der Solarmodule von Hand (ohne MaStR-Nummer, Anlage-Flow a1 Paket 2): setzt die PV-Summe
+   * der Anlage wie das Register; ein später übernommener Erzeuger bucht seine eigenen kWp dazu.
+   */
+  savePv: (siteId: string, capacityKwp: number) =>
+    request<SiteAsset[]>(`/api/v1/sites/${siteId}/pv`, {
+      method: 'PUT',
+      body: JSON.stringify({ capacityKwp }),
+    }),
   saveBattery: (siteId: string, input: SaveBatteryInput) =>
     request<SiteAsset[]>(`/api/v1/sites/${siteId}/battery`, {
       method: 'PUT',
@@ -10697,6 +11790,13 @@ export const api = {
     request<PriceHistory>(`/api/v1/sites/${siteId}/price-history?range=${range}&at=${at}`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
   /**
+   * S1: Sonne/Verbrauch des aktiven Modells (48h, Viertelstunde), "gestern
+   * erwartet" (der Abendlauf 17:45 ± 15 min des Vortags) und der S4-Ausblick
+   * (stündlich, ab übermorgen, `forecast_weekly`). Mandantenbezogen wie jede
+   * `/sites/**`-Route - eine fremde Anlage ist 404.
+   */
+  forecast: (siteId: string) => request<ForecastResponse>(`/api/v1/sites/${siteId}/forecast`),
+  /**
    * Ohne `mode` byte-gleich wie bisher (der jüngste Lauf); `mode: 'day'` holt
    * den Tages-Splice — siehe {@link ScheduleMode}. Ein Backend ohne den
    * Parameter beantwortet `mode=day` mit einem 400, der Aufrufer fällt dann
@@ -10716,6 +11816,15 @@ export const api = {
     ),
   forecastQuality: (siteId: string, days = 30) =>
     request<ForecastQuality>(`/api/v1/sites/${siteId}/forecast-quality?days=${days}`),
+
+  /**
+   * Das Blatt "Rückblick" (S3, Bericht Abschnitt 9): je Prognoseart die
+   * letzten sieben Tage des aktiven Modells, "am Vortag erwartet" neben
+   * "gemessen", dazu der Rückblick-Satz. Mandantenbezogen wie jede
+   * `/sites/**`-Route - eine fremde Anlage ist 404.
+   */
+  rueckblick: (siteId: string) =>
+    request<RueckblickResponse>(`/api/v1/sites/${siteId}/forecast-rueckblick`),
 
   /**
    * Der Prognose-Schalter DIESER Anlage: welches Modell je Prognoseart sie
@@ -10788,6 +11897,38 @@ export const api = {
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
 
+  /**
+   * Die Anlagensteuerungen einer Erzeugeranlage (UEMS EZ-6). `null` = älteres Backend (404) - die Seiten
+   * zeigen dann, was sie heute zeigen.
+   */
+  anlagensteuerungen: (siteId: string) =>
+    request<AnlagensteuerungListe>(`/api/v1/sites/${siteId}/anlagensteuerungen`).catch((e: unknown) =>
+      e instanceof ApiError && e.status === 404 ? null : Promise.reject(e),
+    ),
+  /** Der jüngste Wert je Punkt `erzeuger.*`; ohne Wert `keine_daten`, nie 0. */
+  anlagensteuerungWerte: (siteId: string, geraetId: string) =>
+    request<AnlagensteuerungWerte>(`/api/v1/sites/${siteId}/anlagensteuerungen/${geraetId}/werte`),
+  /** Die Kurven des Bilds für Verlauf › Messwerte (UEMS EZ-10), im Fenster der Historie. */
+  anlagensteuerungVerlauf: (siteId: string, geraetId: string, range: HistoryRange, at?: string) => {
+    const q = new URLSearchParams({ range });
+    if (at) q.set('at', at);
+    return request<AnlagensteuerungVerlauf>(`/api/v1/sites/${siteId}/anlagensteuerungen/${geraetId}/verlauf?${q.toString()}`);
+  },
+  /** Stammdaten Netz und Vermarktung; `null` = älteres Backend (404). */
+  netzVermarktung: (siteId: string) =>
+    request<NetzVermarktung>(`/api/v1/sites/${siteId}/netz-vermarktung`).catch((e: unknown) =>
+      e instanceof ApiError && e.status === 404 ? null : Promise.reject(e),
+    ),
+  netzVermarktungAendern: (siteId: string, body: NetzVermarktungAendern) =>
+    request<NetzVermarktung>(`/api/v1/sites/${siteId}/netz-vermarktung`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** Ersetzt die Angaben einer Erzeugungseinheit; Umbenennen ändert nur die Anzeige. */
+  erzeugungseinheitAendern: (geraetId: string, teNr: number, body: ErzeugungseinheitAendern) =>
+    request<Erzeugungseinheit>(`/api/v1/geraete/${geraetId}/anlagensteuerung/einheiten/${teNr}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+
   /** AP-05 IP-9/IP-10: Kartendaten dokumentieren; Steckplatz kommt aus der physischen Zuordnung. */
   wagoKarteEintragen: (siteId: string, entityId: string, body: {
     // Der Name der Schnittstelle ist `expectedRevision` (WagoMetadataService.KartenEintrag);
@@ -10817,6 +11958,8 @@ export const api = {
    */
   wagoKartenAnlegen: (siteId: string, body: {
     karten: { steckplatz: number; kartentyp: number | null; komponente: SaveComponentBody }[];
+    /** Der Anschluss der Steuerung (GE-6): der Controller verweist darauf. */
+    dataSourceId?: string | null;
   }) => request<WagoKartenAnlage>(`/api/v1/sites/${siteId}/wago/karten`, {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -10927,7 +12070,8 @@ export const api = {
     device_id: string; unit_id: number; register: number;
     register_kind?: string; data_type?: string; word_order?: string;
     /** `wago_kopf`: der Kopf eines WAGO-Registerbilds an der Basisadresse `register` (ohne `data_type`). */
-    op?: 'read' | 'wago_kopf';
+    /** `erzeuger_kopf` (EZ-15): Kopf, Einheiten und Namen eines Erzeuger-Registerbilds; der Block steht in `antwort`. */
+    op?: 'read' | 'wago_kopf' | 'erzeuger_kopf';
   }) => request<UemsDatenquellePruefergebnis>(
     `/api/v1/sites/${siteId}/data-sources/${id}/reachability-check`,
     { method: 'POST', body: JSON.stringify(body) },
@@ -11233,8 +12377,26 @@ export const api = {
     request<StandortKurzzeichenVorschlag>('/api/v1/standorte/kurzzeichen-vorschlag'),
 
   /** Legt einen Standort an; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
-  standortAnlegen: (body: StandortStammdaten) =>
-    request<StandortAmStichtag>('/api/v1/standorte', { method: 'POST', body: JSON.stringify(body) }),
+  standortAnlegen: (body: StandortStammdaten, anfrageKennung?: string) =>
+    request<StandortAmStichtag>('/api/v1/standorte', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...mitKennung(anfrageKennung),
+    }),
+
+  /**
+   * Adressvorschläge beim Anlegen (`GET /api/v1/orte/suche`, Anlage-Flow a1 D4): Straße und
+   * Hausnummer genügen, nur Deutschland, Österreich und die Schweiz; 503, wenn die Datenquelle fehlt.
+   */
+  orteSuche: (q: string, signal?: AbortSignal) =>
+    request<OrteSuchAntwort>(`/api/v1/orte/suche?q=${encodeURIComponent(q)}`, signal ? { signal } : {}),
+
+  /**
+   * Die Adresse zu einem Kartenpunkt (`GET /api/v1/orte/rueckwaerts`, Task vp-anlage-adresse-ux):
+   * ein Klick oder ein gezogener Pin löst sich damit in eine lesbare Adresse auf, wenn erreichbar.
+   */
+  orteRueckwaerts: (breitengrad: number, laengengrad: number, signal?: AbortSignal) =>
+    request<OrteSuchAntwort>(`/api/v1/orte/rueckwaerts?lat=${breitengrad}&lon=${laengengrad}`, signal ? { signal } : {}),
 
   /** Schreibt die Stammdaten eines Standorts — die GANZE Menge, ein fehlendes Feld ist leer. */
   standortBearbeiten: (id: string, body: StandortStammdaten) =>
@@ -11690,7 +12852,15 @@ export const api = {
    * UEMS AP-03 IP-4: die Selbstauskunft — wer fragt und was er darf. Die Berichts-Dialoge (AP-12 IP-14) lesen daraus,
    * welche Hebel sie zeigen; entscheiden tut weiter die Route.
    */
-  selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
+  /**
+   * `tenantId` stampft den `X-Tenant-Id`-Kopf NUR für diesen Aufruf (wie
+   * `registerWritePreview`) - die Plattform liest damit `kundenbereich.beendet`
+   * eines einzelnen Mandanten, ohne den globalen Mandanten-Umschalter zu
+   * verstellen. Kein neuer Endpoint: dieselbe Selbstauskunft, die jede Person
+   * über ihren eigenen Kundenbereich liest (N1).
+   */
+  selbstauskunft: (tenantId?: string) =>
+    request<Selbstauskunft>('/api/v1/me', tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
   /**
    * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
    * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).

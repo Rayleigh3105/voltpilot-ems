@@ -38,6 +38,16 @@ const (
 	TypeWallbox       = "wallbox"
 	TypeHeatingRod    = "heating-rod"
 	TypeGenericLoad   = "generic-load"
+	// TypeAnlagensteuerung is the plant controller of an Erzeugeranlage (UEMS
+	// EZ-6): a SPS whose VoltPilot-Registerbild Erzeuger the palette reads. It
+	// is no inverter and no PV source - componentapply turns its driver into a
+	// plant-controller source the measurement binding resolves (EZ-21).
+	TypeAnlagensteuerung = "anlagensteuerung"
+	// TypeSubMeter is a pure meter in a sub-distribution (Unterzähler, cloud
+	// type catalog `sub-meter`, Konzept vp-unterzaehler-anzeige C1): it
+	// measures a part of the house and is never switched. Before it, the cloud
+	// created such a meter as a measure-only `generic-load`.
+	TypeSubMeter = "sub-meter"
 )
 
 // The D-14 command vocabulary, shared with edge-desired and mqtt-schedule-2.0.
@@ -176,6 +186,12 @@ type Entity struct {
 	// classes and D-4/D-5/D-6 stay untouched. ABSENT = false: an older cloud
 	// and every unclaimed component behave byte-for-byte as before.
 	OwnerClaimed bool `json:"owner_claimed,omitempty"`
+	// Heizstab is the heating-rod controller block (Heizstab-Konzept V1,
+	// docs/contracts/v2/heizstab-regler.md): the cloud's Steuerart of a
+	// heating rod as parameters for the box's own controller (internal/
+	// heizstab) instead of a Node-RED flow. OPTIONAL + ADDITIVE: absent = no
+	// controller, byte-identical; an older box ignores it.
+	Heizstab json.RawMessage `json:"heizstab,omitempty"`
 	// RoleAssignment is the portal's stored capability->role assignment of
 	// this component (Befund L4). Until it travelled, PUT …/topology-roles
 	// only wrote the cloud table and the box always resolved through
@@ -404,6 +420,14 @@ type Commands struct {
 	LimitPct   *float64 `json:"limit_pct,omitempty"`
 	OnOff      *bool    `json:"on_off,omitempty"`
 	Mode       string   `json:"mode,omitempty"`
+
+	// Outputs is the explicit output set of a heating rod's manual
+	// per-phase switch (heizstab-shelly.md "Handeingriff je Phase"): the
+	// channel numbers to run, riding ONLY with a setpoint_kw that stays the
+	// power ceiling every guard clamps. A driver that knows no output set
+	// ignores it; the stage path honours it only while it fits the granted
+	// setpoint (restrict-only). Absent = the stage choice from the setpoint.
+	Outputs []int `json:"outputs,omitempty"`
 }
 
 // Empty reports whether no command is set.
@@ -456,6 +480,13 @@ func (e Entity) GuardChainLimits() guards.Limits {
 		SolarOnlyCharge: e.Guards.Limits.ChargeFromGridAllowed == nil ||
 			!*e.Guards.Limits.ChargeFromGridAllowed,
 	}
+	// EN-1 A (2026-11-02): an entity that EXPLICITLY may not charge from the
+	// grid is under the Netzladen-Sperre too - charge <= measured pv - load -
+	// reserve, never while the site imports. An absent flag keeps the D-8
+	// fail-safe FK3 clamp; the plant's own posture (the v1 plan, extraSolarOnly
+	// in ClampCommands) arms the lock for every storage of an EEG plant.
+	l.StrictExclusivity = e.Guards.Limits.ChargeFromGridAllowed != nil &&
+		!*e.Guards.Limits.ChargeFromGridAllowed
 	if v := e.Guards.Limits.MaxChargeKw; v != nil {
 		l.MaxChargeKw = *v
 	}
@@ -520,6 +551,7 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 		limits = tightenLimits(limits, *extra)
 	}
 	limits.SolarOnlyCharge = limits.SolarOnlyCharge || extraSolarOnly
+	limits.StrictExclusivity = limits.StrictExclusivity || extraSolarOnly
 	noteLimit := func(stage string, before, after float64) {
 		if after != before {
 			stages = append(stages, guards.ClampStage{Stage: stage, Before: before, After: after})
@@ -563,6 +595,11 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 			v := consumerCap(*c.SetpointKw, e.capMax(CmdSetpointKw), e.Guards.Limits.MaxConsumptionKw)
 			noteLimit(guards.StageRatedBand, *c.SetpointKw, v)
 			out.SetpointKw = &v
+			// The output set rides with the setpoint and only with it: the
+			// setpoint stays the ceiling the driver judges the set against.
+			if len(c.Outputs) > 0 {
+				out.Outputs = append([]int(nil), c.Outputs...)
+			}
 		}
 		if c.LimitKw != nil && e.allows(CmdLimitKw) {
 			v := consumerCap(*c.LimitKw, e.capMax(CmdLimitKw), e.Guards.Limits.MaxConsumptionKw)
@@ -633,6 +670,13 @@ func (e Entity) category() string {
 		// Guard-safe: with no actuate capability the capability gate (allows)
 		// refuses every command whatever the category says.
 		return catConsumer
+	case TypeSubMeter:
+		// Pinned like house-load and for the same reason: a sub-meter declares
+		// no actuate capability, so the inference below would call it a METER
+		// and the topology would put the hall's load into the Netz node. It is
+		// a part of the house - category consumer like in the cloud catalog.
+		// Guard-safe: without an actuate capability no command passes.
+		return catConsumer
 	}
 	if e.Guards.Failsafe.Behavior == "measure-only" || len(e.Capabilities.Actuate) == 0 {
 		return catMeasureOnly
@@ -695,72 +739,19 @@ func consumerCap(v float64, capMax, rated *float64) float64 {
 	return math.Round(v*1000) / 1000
 }
 
-// strictTolerance is the tolerance of the composed strict clamp: the smaller
-// one when both sides are strict, the strict side's own otherwise (a non-strict
-// side carries no tolerance worth keeping).
-func strictTolerance(a, b guards.Limits) float64 {
-	switch {
-	case a.StrictExclusivity && b.StrictExclusivity:
-		return math.Min(a.StrictToleranceKw, b.StrictToleranceKw)
-	case a.StrictExclusivity:
-		return a.StrictToleranceKw
-	case b.StrictExclusivity:
-		return b.StrictToleranceKw
-	}
-	return 0
-}
-
 // tightenLimits composes two limit sets, most restrictive wins: the narrower
 // band, the tighter SoC window, solar-only if either demands it. This is how
 // the v1 device config (env-derived guards.Limits) and the registry guard
 // config both stay binding on one write path.
 func tightenLimits(a, b guards.Limits) guards.Limits {
 	return guards.Limits{
-		MaxChargeKw:     math.Min(a.MaxChargeKw, b.MaxChargeKw),
-		MaxDischargeKw:  math.Min(a.MaxDischargeKw, b.MaxDischargeKw),
-		SocMinPct:       math.Max(a.SocMinPct, b.SocMinPct),
-		SocMaxPct:       math.Min(a.SocMaxPct, b.SocMaxPct),
-		SolarOnlyCharge: a.SolarOnlyCharge || b.SolarOnlyCharge,
-		// MiSpeL MP-45: strict if either side demands it, with the smaller
-		// tolerance of the strict sides (most restrictive wins).
+		MaxChargeKw:       math.Min(a.MaxChargeKw, b.MaxChargeKw),
+		MaxDischargeKw:    math.Min(a.MaxDischargeKw, b.MaxDischargeKw),
+		SocMinPct:         math.Max(a.SocMinPct, b.SocMinPct),
+		SocMaxPct:         math.Min(a.SocMaxPct, b.SocMaxPct),
+		SolarOnlyCharge:   a.SolarOnlyCharge || b.SolarOnlyCharge,
 		StrictExclusivity: a.StrictExclusivity || b.StrictExclusivity,
-		StrictToleranceKw: strictTolerance(a, b),
-		// The BMS envelope (P5c) rides through the tightening like every
-		// other bound. The registry side never carries one - it is a LIVE
-		// statement of the pack, not stored configuration - so in practice
-		// exactly one side has it; two would compose the same way as the
-		// numbers above.
-		Bms: tightenBms(a.Bms, b.Bms),
 	}
-}
-
-// tightenBms composes two BMS envelopes into the more restrictive one. nil on
-// a side means "said nothing" and never restricts.
-func tightenBms(a, b *guards.BmsEnvelope) *guards.BmsEnvelope {
-	if a == nil {
-		return b
-	}
-	if b == nil {
-		return a
-	}
-	return &guards.BmsEnvelope{
-		ChargeKw:         minKnown(a.ChargeKw, b.ChargeKw),
-		DischargeKw:      minKnown(a.DischargeKw, b.DischargeKw),
-		ChargeBlocked:    a.ChargeBlocked || b.ChargeBlocked,
-		DischargeBlocked: a.DischargeBlocked || b.DischargeBlocked,
-	}
-}
-
-// minKnown is math.Min with NaN meaning "no statement" instead of poisoning
-// the result: an absent limit must not silently erase a present one.
-func minKnown(a, b float64) float64 {
-	if math.IsNaN(a) {
-		return b
-	}
-	if math.IsNaN(b) {
-		return a
-	}
-	return math.Min(a, b)
 }
 
 // clampLimitKw keeps a generation cap non-negative and within the nameplate.

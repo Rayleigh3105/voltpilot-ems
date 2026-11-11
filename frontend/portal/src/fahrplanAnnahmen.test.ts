@@ -25,18 +25,18 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
     const z = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: 0.42, pvKw: 0.6, tage: 7, fenster: 7 } });
     expect(z.map((x) => x.key)).toEqual(['vorhersage', 'prognosen']);
     expect(z[0]).toMatchObject({
-      titel: 'Vorhersage, letzte 7 Tage',
-      text: `Ø Abweichung je Viertelstunde: Verbrauch 0,4${NBSP}kW · PV 0,6${NBSP}kW.`,
+      titel: 'Treffsicherheit',
+      text: `Die Vorhersage lag in den letzten 7 Tagen im Mittel so weit daneben: Verbrauch 0,4${NBSP}kW · PV 0,6${NBSP}kW je Viertelstunde.`,
     });
     // Eine fehlende Art bleibt weg - sie wird nie zur Null.
     const nurPv = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: null, pvKw: 0.6, tage: 1, fenster: 1 } });
     expect(nurPv[0]).toMatchObject({
-      titel: 'Vorhersage, letzter Tag',
-      text: `Ø Abweichung je Viertelstunde: PV 0,6${NBSP}kW.`,
+      titel: 'Treffsicherheit',
+      text: `Die Vorhersage lag am letzten Tag im Mittel so weit daneben: PV 0,6${NBSP}kW je Viertelstunde.`,
     });
     // Weniger bewertete Tage als das Fenster: das steht dabei - kein kürzeres Fenster.
     const teils = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: 0.4, pvKw: null, tage: 3, fenster: 7 } });
-    expect(teils[0].titel).toBe('Vorhersage, letzte 7 Tage (3 bewertet)');
+    expect(teils[0].text).toContain('in den letzten 7 Tagen (3 bewertet)');
     // Ohne Bewertung keine Zeile.
     for (const vorhersage of [null, { verbrauchKw: null, pvKw: null, tage: 7, fenster: 7 }]) {
       expect(planAnnahmen({ ...BASIS, vorhersage }).some((x) => x.key === 'vorhersage')).toBe(false);
@@ -65,8 +65,7 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
       einspeisegrenze: `Einspeisegrenze: 30,0${NBSP}kW am Netzanschluss.`,
       lastspitze: `Lastspitzen: Ziel: höchstens 8,0${NBSP}kW Netzbezug.`,
       '14a': `§ 14a: ${FALLBACK_14A_NOTE}`,
-      neu: 'Neu geplant: Zuletzt um 14:00 Uhr; VoltPilot plant alle 15 Minuten neu.',
-      prognosen: `Prognosen: ${FORECAST_FOOTNOTE}`,
+      neu: 'Neu geplant: Zuletzt um 14:00 Uhr, alle 15 Minuten neu – mit Ihrer Verbrauchs- und PV-Prognose.',
     });
   });
 
@@ -87,5 +86,73 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
     expect(z.map((x) => x.key)).toEqual(['bogen', 'ausblick', 'nachtreserve', 'prognosen']);
     const ohneLage = planAnnahmen({ ...BASIS, horizont });
     expect(ohneLage[0]).toMatchObject({ key: 'horizont', text: horizont });
+  });
+
+  it('nennt die Einspeisevergütung mit Herkunft und verlinkt „ändern" (Sonnen-Erzählung §4.5)', () => {
+    const z = planAnnahmen({
+      ...BASIS,
+      verguetung: {
+        satzCtKwh: 8.1,
+        herkunft: 'EEG, Inbetriebnahme 15.06.2024',
+        luecke: false,
+        aendernHref: '#/anlage/a1/einstellungen/geld',
+      },
+    });
+    expect(z.find((x) => x.key === 'verguetung')).toMatchObject({
+      titel: 'Ihre Einspeisevergütung',
+      text: `8,1${NBSP}ct je kWh (EEG, Inbetriebnahme 15.06.2024).`,
+      link: { href: '#/anlage/a1/einstellungen/geld', text: 'ändern' },
+    });
+  });
+
+  it('zeigt die Lücke, ist die Vergütung nicht hinterlegt - nie einen erfundenen Satz', () => {
+    const z = planAnnahmen({
+      ...BASIS,
+      verguetung: { satzCtKwh: null, herkunft: null, luecke: true, aendernHref: '#/anlage/a1/einstellungen/geld' },
+    });
+    expect(z.find((x) => x.key === 'verguetung')?.text).toBe('Vergütung nicht hinterlegt.');
+  });
+
+  it('ohne Vergütungs-Angabe bleibt die Zeile ganz weg', () => {
+    expect(planAnnahmen(BASIS).some((x) => x.key === 'verguetung')).toBe(false);
+  });
+
+  it('nennt die Stunden ohne Vergütung (§ 51a), sobald der Lauf sie trägt', () => {
+    const nullstunden = 'Von 10:00 bis 14:30 gibt es für eingespeisten Strom keine Vergütung (negative Börsenpreise, § 51a EEG). In dieser Zeit füllt VoltPilot lieber den Speicher.';
+    const z = planAnnahmen({ ...BASIS, nullstunden });
+    expect(z.find((x) => x.key === 'nullstunden')).toMatchObject({ titel: 'Stunden ohne Vergütung', text: nullstunden });
+    expect(planAnnahmen(BASIS).some((x) => x.key === 'nullstunden')).toBe(false);
+  });
+
+  it('nennt die Umstellung zuerst, widersprechen sich Stammdaten und jüngster Lauf (§5.3)', () => {
+    const z = planAnnahmen({ ...BASIS, umstellung: true, horizont: 'Der Fahrplan reicht bis zum Tagesende.' });
+    expect(z[0]).toMatchObject({
+      key: 'umstellung',
+      titel: 'Ihre Änderung',
+      text: 'Ihre Änderung gilt ab dem nächsten Plan (spätestens in 15 Minuten).',
+    });
+    // Ohne Widerspruch (Vorgabe false/fehlend) keine Zeile.
+    expect(planAnnahmen({ ...BASIS, umstellung: false }).some((x) => x.key === 'umstellung')).toBe(false);
+    expect(planAnnahmen(BASIS).some((x) => x.key === 'umstellung')).toBe(false);
+  });
+
+  it('Netzladen bei festem Strompreis trägt den Hinweis, mit dem echten Satz wenn bekannt (§5.3)', () => {
+    const mitSatz = planAnnahmen({ ...BASIS, tarifArt: 'fest', tarifParamCtKwh: 30, netzladenErlaubt: true });
+    expect(mitSatz.find((x) => x.key === 'netzladen')?.text).toBe(
+      `Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung). Bei Ihrem festen Strompreis (30,0${NBSP}ct je kWh) lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.`,
+    );
+    const ohneSatz = planAnnahmen({ ...BASIS, tarifArt: 'fest', tarifParamCtKwh: null, netzladenErlaubt: true });
+    expect(ohneSatz.find((x) => x.key === 'netzladen')?.text).toBe(
+      'Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung). Bei einem festen Strompreis lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.',
+    );
+    // Kein Hinweis bei dynamischem Tarif oder ohne Tarif - und keiner ohne Netzladen.
+    const dynamisch = planAnnahmen({ ...BASIS, tarifArt: 'dynamisch', tarifParamCtKwh: 4.5, netzladenErlaubt: true });
+    expect(dynamisch.find((x) => x.key === 'netzladen')?.text).toBe(
+      'Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung).',
+    );
+    const festOhneNetzladen = planAnnahmen({ ...BASIS, tarifArt: 'fest', tarifParamCtKwh: 30, netzladenErlaubt: false });
+    expect(festOhneNetzladen.find((x) => x.key === 'netzladen')?.text).toBe(
+      'Der Speicher lädt nur aus Sonnenstrom (Ihre Einstellung).',
+    );
   });
 });

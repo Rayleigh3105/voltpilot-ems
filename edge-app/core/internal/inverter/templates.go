@@ -276,9 +276,9 @@ func BuiltinTemplates() []Template {
 				Channels:            nil,
 				Writes:              nil,
 				RatedKw:             rated,
-				ControlTier:         b.ControlTier,
+				ControlTier:         b.ControlTierOf(m),
 				CertificationStatus: TemplateCertBuiltin,
-				Note:                joinNote(b.Note, m.Note),
+				Note:                templateNote(b, m),
 			})
 		}
 	}
@@ -287,6 +287,16 @@ func BuiltinTemplates() []Template {
 
 // joinNote setzt Marken- und Modell-Hinweis zu EINEM Anzeigetext zusammen, ohne
 // etwas zu erfinden: fehlt einer, bleibt der andere allein stehen.
+// templateNote: the model's note followed by the brand's - unless the model is
+// another kind of device than its brand (a Shelly meter under the relay
+// brand): the brand's note speaks about the brand's kind and would mislead.
+func templateNote(b Brand, m Model) string {
+	if b.DeviceTypeOf(m) != b.DeviceType {
+		return strings.TrimSpace(m.Note)
+	}
+	return joinNote(b.Note, m.Note)
+}
+
 func joinNote(brandNote, modelNote string) string {
 	brandNote = strings.TrimSpace(brandNote)
 	modelNote = strings.TrimSpace(modelNote)

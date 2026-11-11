@@ -1,0 +1,61 @@
+name: Werkstatt-Gehäuse-Bild
+
+# Baut das Bau-Image der Gehäuse-Druckdatei (services/werkstatt-dienst/gehaeuse,
+# Werkstatt-Automatik P10), prüft es mit einem Auftrag für die Probe-Referenz
+# unter den Bedingungen des Jobs (test/gehaeuse-bild-probe.sh) und schiebt es in
+# die Registry. Von Hand gestartet, wenn sich das Gehäuse-Programm, seine
+# Umgebung oder Bambu Studio ändert. Nur linux/amd64: Bambu Studio gibt es
+# kopflos nur dafür.
+#
+# Der Werkstatt-Dienst nimmt das Bild nur nach Digest (VP_GEHAEUSE_IMAGE); der
+# letzte Schritt nennt ihn. Den Wert trägt der Betreiber im gitops-Repo ein
+# (services/werkstatt-dienst/docs/runbook.md, Gehäuse-Druckdatei).
+#
+# Secrets wie deploy.yaml: FORGEJO_USERNAME / FORGEJO_PASSWORD (Registry).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bild:
+    name: Bau-Image prüfen und schieben
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Bild bauen (lokal)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/werkstatt-dienst/gehaeuse/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: vp-werkstatt-gehaeuse-probe:lokal
+          cache-from: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-gehaeuse:buildcache
+      - name: Auftrag wie der Job (PS-8)
+        env:
+          VP_PROBE_BILD: vp-werkstatt-gehaeuse-probe:lokal
+        run: sh services/werkstatt-dienst/test/gehaeuse-bild-probe.sh
+      - name: Login to Forgejo Registry
+        uses: docker/login-action@v3
+        with:
+          registry: git.tecmaxx.de
+          username: ${{ secrets.FORGEJO_USERNAME }}
+          password: ${{ secrets.FORGEJO_PASSWORD }}
+      - name: Bild schieben
+        id: schieben
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/werkstatt-dienst/gehaeuse/Dockerfile
+          platforms: linux/amd64
+          push: true
+          cache-from: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-gehaeuse:buildcache
+          cache-to: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-gehaeuse:buildcache,mode=max
+          tags: |
+            git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-gehaeuse:${{ github.sha }}
+      - name: Digest für VP_GEHAEUSE_IMAGE
+        run: echo "VP_GEHAEUSE_IMAGE=git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-gehaeuse@${{ steps.schieben.outputs.digest }}"

@@ -16,6 +16,7 @@ Referenz für Probes, Shutdown, Speicherpfade und Skalierungsgrenzen der Cloud-D
 | `weather-collector` | `GET :8098/health` | `GET :8098/ready` | 30 s | 1 (Singleton) |
 | `simulation` | `GET :8095/health` | `GET :8095/health` | 30 s | **1** (In-Memory-Job-Registry) |
 | `flowc` | `GET :8099/health` | `GET :8099/health` | 15 s | ja (zustandslos) |
+| `werkstatt-dienst` | `GET :8100/health` | `GET :8100/ready` | 30 s | **1** (eine Werkbank-Brücke, Protokolle auf RWO-Volume) |
 
 Grace-Period-Werte sind die vorgesehenen Manifestwerte; im ausgerollten Manifest prüfen. Eine API-Aufteilung in mehrere eigenständige Instanzen ist hier keine bereits implementierte Skalierungszusage.
 
@@ -46,6 +47,7 @@ API braucht beschreibbare CA- und ACL-Verzeichnisse. `acl.conf` als **Verzeichni
 | Ingest | Normale MQTT-Abonnements vervielfachen Konsum; keine automatische Shared-Subscription-Skalierung |
 | Collector / Optimierung | Periodische Aufgaben sind nicht als verteilte Arbeitswarteschlange gebaut |
 | Simulation | In-Memory-Job-Registry; Neustart verliert laufende Jobs |
+| Werkstatt-Dienst | Ein Werkstatt-Anschluss, eine Box zur Zeit; eigener Namespace `werkstatt-prod` (PodSecurity `restricted`), Application mit Sync von Hand ([Runbook](../services/werkstatt-dienst/docs/runbook.md)) |
 
 Writer kann über seine Kafka-Consumer-Group verteilt werden. Frontend und Flow-Compiler sind grundsätzlich zustandslos. Zusätzliche API-Instanzen verlangen zuvor eine Lösung für die genannten Zustände; Session-Affinity allein löst sie nicht vollständig.
 
@@ -83,6 +85,8 @@ API: `GET /metrics`, intern ohne Token. Frontend-nginx veröffentlicht diesen in
 | `voltpilot_metrics_collect_age_seconds` | – | Sekunden seit dem letzten ERFOLGREICHEN Sammel-Lauf |
 | `voltpilot_metrics_collect_duration_seconds` | – | Dauer des letzten Sammel-Laufs |
 
+**Serverzeit je Route:** `http_server_requests_seconds_{count,sum,max,bucket}` mit `uri` (Routen-Vorlage, etwa `/api/v1/overview`, nie die aufgelöste Adresse), `method`, `status`, `outcome`. Die Buckets stehen fest in `application.yml` (`management.metrics.distribution.slo.http.server.requests`: 50 ms, 100 ms, 250 ms, 500 ms, 1 s, 2,5 s, 5 s, 10 s), gesichert durch `HttpLaufzeitMetrikTest`. Anteil langsamer Aufrufe einer Route: `1 - sum(rate(http_server_requests_seconds_bucket{uri="/api/v1/overview",le="0.5"}[5m])) / sum(rate(http_server_requests_seconds_count{uri="/api/v1/overview"}[5m]))`. So ist ohne Labor sichtbar, welche Route langsam ist (Scout `vp-anlagen-cockpit-perf`, Rang 7).
+
 Unbekanntes Alter ist keine Null; dafür existieren Zustandsmetriken. Ein `never` bei einer neuen Anlage ist anders zu behandeln als `older_than_window` nach früheren Plänen. Aggregation über Instanzen verhindert doppelte Alarme.
 
 ```promql
@@ -112,6 +116,44 @@ sie kommen mit AP-14 IP-10; bis dahin ist die Metrik vorhanden, aber unbewacht.
 Der gebaute Kapazitätswächter ist davon getrennt; Details stehen unter
 [UEMS-Speicher-Wächter](agents/root/uems-speicher-waechter.md), die UEMS-Betriebsüberwachung
 vollständig unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
+
+## Logs
+
+Alle Dienste schreiben auf stdout. `api`, `ingest` und `timescale-writer` können je Ereignis eine JSON-Zeile schreiben; die Felder unten sind der Vertrag für die Log-Verarbeitung im Cluster. Das Format ist in allen drei Diensten dieselbe `logback-spring.xml`.
+
+| Umgebungsvariable | Wert | Wirkung |
+|---|---|---|
+| `VOLTPILOT_LOGGING_FORMAT` | `text` (**Vorgabe**) | Die Textzeile von Spring Boot, unverändert; Stapelspuren mehrzeilig |
+| | `json` | Eine JSON-Zeile je Ereignis |
+
+Jeder andere Wert bleibt bei `text` (auch `JSON` groß geschrieben): ein Tippfehler im Manifest hindert keinen Dienst am Start. `LOGGING_LEVEL_*` gilt in beiden Formaten. Das Umschalten ist eine Zeile je Deployment im GitOps-Repository und kein Teil dieses Repositorys.
+
+| Feld | Inhalt |
+|---|---|
+| `@timestamp` | Zeitpunkt des Ereignisses in UTC mit Millisekunden, `2026-10-13T20:09:33.732Z` |
+| `level` | `TRACE` \| `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
+| `logger` | Name des Loggers |
+| `thread` | Name des Fadens |
+| `message` | Die Meldung; ein Zeilenumbruch steht als `\n` in der Zeichenkette |
+| `stack_trace` | **Nur mit Ausnahme.** Die ganze Stapelspur samt `Caused by` in üblicher Reihenfolge als eine Zeichenkette, höchstens 65 536 Zeichen |
+| `request_id` | Vorgangs-Kennung. **Fehlt, wenn die Zeile zu keinem Vorgang gehört** |
+| `tenant_id` | Interne Mandanten-Kennung (UUID). **Fehlt, wenn unbekannt** |
+
+Weitere Felder gibt es nicht: nur diese zwei MDC-Schlüssel erreichen die Zeile. Unbekannt ist kein leerer Wert, das Feld fehlt dann. Log-Zeilen nennen interne Kennungen (Mandant, Anlage, Gerät, Konto), keinen Benutzernamen und keine E-Mail-Adresse. `request_id` und `tenant_id` sind Felder zum Filtern, keine Etiketten des Log-Speichers.
+
+| Dienst | Ein Vorgang ist | `request_id` | `tenant_id` |
+|---|---|---|---|
+| `api` | eine HTTP-Anfrage | `X-Request-ID` des Ingress, sonst erzeugt (32 Hex-Zeichen); steht als `X-Request-ID` in jeder Antwort | der Mandant, unter dem die Datenbank gerade gelesen wird (Token, Mandanten-Wahl des Portal-Admins, Unterstützung) |
+| `ingest` | eine MQTT-Nachricht | die Kennung, die die Nachricht beim Eingang erhält (UUID) | das Mandanten-Segment des Topics `ems/{tenant}/…`; fehlt bei `provision/…` |
+| `timescale-writer` | ein Kafka-Datensatz | `topic-partition@offset`, etwa `telemetry.raw-0@42`; eine erneute Zustellung trägt dieselbe | das erste Segment des Schlüssels `{tenant_id}:{site_id}` |
+
+- Eine mitgeschickte `X-Request-ID` gilt nur mit höchstens 64 Zeichen aus `A–Z a–z 0–9 . _ -`; alles andere wird ersetzt, nie abgewiesen. Der Frontend-nginx reicht den Kopf in beide Richtungen unverändert durch.
+- In der `api` trägt auch Tomcats eigene Zeile zu einer unbehandelten Ausnahme (Status 500 samt Stapelspur) beide Kennungen.
+- Läufer und MQTT-Listener der `api` gehören zu keiner Anfrage: ohne `request_id`, aber mit `tenant_id`, solange sie für einen Mandanten arbeiten.
+- Zwei Zeilen entstehen erst nach dem Vorgang und tragen die Felder nicht, nennen dieselbe Kennung aber im Text: Spring Kafka nach einem gescheiterten Datensatz (`… exhausted for telemetry.raw-0@42`) und der MQTT-Adapter des `ingest` nach einem Wurf des Handlers (`Unhandled exception for GenericMessage [… id=…]`).
+- Jede JSON-Zeile beginnt mit `{` und ist für sich vollständig. Ein Sammler, der mehrzeilige Text-Stapelspuren am Zeilenanfang mit Datum zusammensetzt, muss JSON-Zeilen davon ausnehmen, sonst hängt er sie an das vorige Ereignis.
+
+Belege: `LogformatTest` in den drei Diensten (JSON-Felder; Textzeile gleich der eingebauten Vorgabe von Spring Boot), `VorgangsKennungTest`, `TenantContextLogKennungTest`, `KeycloakAdminClientLogTest`, `NachrichtenVorgangTest`, `DatensatzVorgangTest`, `WriterPipeTest`.
 
 ## Migrationen und Rollouts
 

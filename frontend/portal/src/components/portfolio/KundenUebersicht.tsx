@@ -10,6 +10,7 @@ import type {
 } from '../../kundenUebersicht';
 import { Erklaert } from '../VerlaufRahmen';
 import { RowMenu, type RowMenuItem } from '../RowMenu';
+import { Skeleton } from '../States';
 import { B, H, UNTEN, flaeche, pfad } from './kurveGeometrie';
 import './KundenUebersicht.css';
 
@@ -28,7 +29,9 @@ export function KundenUebersicht({
   aktionen,
   bloecke,
   heute,
+  heuteLaedt = false,
   kurve,
+  kurveLaedt = false,
   jetzt,
   anlagen,
   hrefFor,
@@ -41,7 +44,11 @@ export function KundenUebersicht({
   aktionen: RowMenuItem[];
   bloecke: readonly UebersichtBlock[];
   heute: HeuteKarte | null;
+  /** CLS (Befund 8): die Steuerzeile wartet noch auf die Erlöse — Platz dafür reservieren statt sie erst später einblenden. */
+  heuteLaedt?: boolean;
   kurve: TagesKurve | null;
+  /** CLS (Befund 8): die Tageskurve wartet noch auf die Historie — Platz dafür reservieren statt sie erst später einblenden. */
+  kurveLaedt?: boolean;
   jetzt: JetztBlock | null;
   anlagen: readonly AnlagenKarte[];
   hrefFor: (id: string) => string;
@@ -51,7 +58,10 @@ export function KundenUebersicht({
   hinweis?: ReactNode;
 }) {
   const block = (b: UebersichtBlock) => {
-    if (b === 'heute' && heute) return <HeuteBlock key="heute" heute={heute} kurve={kurve} />;
+    if (b === 'heute' && heute)
+      return (
+        <HeuteBlock key="heute" heute={heute} heuteLaedt={heuteLaedt} kurve={kurve} kurveLaedt={kurveLaedt} />
+      );
     if (b === 'jetzt' && jetzt && jetzt.werte.length > 0) return <JetztBlockView key="jetzt" jetzt={jetzt} />;
     if (b === 'anlagen' && anlagen.length > 0) return <AnlagenBlock key="anlagen" anlagen={anlagen} hrefFor={hrefFor} />;
     return null;
@@ -83,7 +93,17 @@ export function KundenUebersicht({
   );
 }
 
-function HeuteBlock({ heute, kurve }: { heute: HeuteKarte; kurve: TagesKurve | null }) {
+function HeuteBlock({
+  heute,
+  heuteLaedt,
+  kurve,
+  kurveLaedt,
+}: {
+  heute: HeuteKarte;
+  heuteLaedt: boolean;
+  kurve: TagesKurve | null;
+  kurveLaedt: boolean;
+}) {
   const s = heute.steuerung;
   return (
     <section className="vp-vr-card vp-ku-heute" aria-label="Heute">
@@ -105,7 +125,7 @@ function HeuteBlock({ heute, kurve }: { heute: HeuteKarte; kurve: TagesKurve | n
           </span>
         )}
       </div>
-      {s && (
+      {s ? (
         <div className={`vp-ku-steuer is-${s.ton}`}>
           <span className="vp-ku-steuer-t">
             <span className="vp-ku-steuer-n">
@@ -117,8 +137,32 @@ function HeuteBlock({ heute, kurve }: { heute: HeuteKarte; kurve: TagesKurve | n
           </span>
           <span className="vp-ku-steuer-w">{s.wert}</span>
         </div>
+      ) : (
+        heuteLaedt && (
+          // CLS (Befund 8): dieselbe Zeilen-Anatomie wie oben, nur mit Platzhaltern —
+          // sonst schiebt das spätere Einblenden „Jetzt" und „Ihre Anlagen" nach unten.
+          <div className="vp-ku-steuer" aria-hidden="true">
+            <span className="vp-ku-steuer-t">
+              <span className="vp-ku-steuer-n">
+                <Skeleton width={120} height={16} />
+              </span>
+              {/* `unter` ist ein Fließtext (`overflow-wrap: anywhere`) und bricht am
+                  Telefon oft auf zwei bis drei Zeilen - zwei Platzhalterzeilen
+                  nähern die reale Höhe deutlich besser an als eine einzelne. */}
+              <span className="vp-ku-steuer-u" style={{ display: 'grid', gap: 2 }}>
+                <Skeleton width="92%" height={12} />
+                <Skeleton width="58%" height={12} />
+              </span>
+            </span>
+            <Skeleton width={56} height={24} />
+          </div>
+        )
       )}
-      {kurve && kurve.max > 0 && <TagesKurveSvg kurve={kurve} />}
+      {kurve && kurve.max > 0 ? (
+        <TagesKurveSvg kurve={kurve} />
+      ) : (
+        kurveLaedt && <TagesKurvePlatzhalter />
+      )}
       {(heute.erzeugt || heute.verbraucht) && (
         <div className="vp-ku-legende">
           {heute.erzeugt && (
@@ -148,6 +192,24 @@ function TagesKurveSvg({ kurve }: { kurve: TagesKurve }) {
     <div className="vp-ku-kurve-rahmen">
       <Kurve kurve={kurve} jetztX={jetztX} max={max} />
       <div className="vp-ku-achse" aria-hidden="true">
+        {['00', '06', '12', '18', '24'].map((h) => (
+          <span key={h}>{h}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * CLS (Befund 8): reserviert exakt die Höhe von {@link TagesKurveSvg} —
+ * dieselben Klassen `vp-ku-kurve`/`vp-ku-achse` (inklusive ihrer
+ * 720-px-Regel), nur mit einem Schimmer statt der SVG und echten Werten.
+ */
+function TagesKurvePlatzhalter() {
+  return (
+    <div className="vp-ku-kurve-rahmen" aria-hidden="true">
+      <div className="vp-ku-kurve vp-skeleton" />
+      <div className="vp-ku-achse">
         {['00', '06', '12', '18', '24'].map((h) => (
           <span key={h}>{h}</span>
         ))}

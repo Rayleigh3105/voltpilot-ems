@@ -74,13 +74,17 @@ import type {
   TopologyEntity,
 } from './api';
 import { deviceLiveStatus } from './api';
-import { channelLabel } from './channels';
+import { channelLabel, channelLabelFor } from './channels';
 import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
+import { toComponentHealth, type ComponentHealth } from './komponentenHealth';
+import { anlagensteuerungGeraetId, komponenteGeraetId } from './geraetAdresse';
 import { EV_CHARGER } from './ladepunkte';
 import { reconcileProducerPv } from './pvReconcile';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
-import { socHerkunft, SOC_HERKUNFT_KANAL } from './socHerkunft';
+
+// Das Modul `komponentenHealth.ts` trägt die Abbildung; hier bleibt sie unter dem alten Namen erreichbar.
+export { toComponentHealth, type ComponentHealth };
 
 /** The customer-facing component role buckets. */
 export type ComponentRole = 'pv' | 'storage' | 'grid' | 'house' | 'consumer';
@@ -94,16 +98,6 @@ export const COMPONENT_ROLE_ORDER: ComponentRole[] = [
   'consumer',
 ];
 
-/**
- * Live health of a device / component. `ok` / `stale` / `never` are the v2
- * entity states; **`unknown` is the H2 fix**: before it, `toHealth(undefined)`
- * returned `ok`, so on deploy day — when NO edge sends the E1b heartbeat and
- * `observed` is null for every component — every device reported a green
- * „verbunden" while the cockpit on the same plant said „Ihr Gerät meldet sich
- * nicht". A green dot on a dead device is worse than no dot, so an absent
- * report is now its own honest, grey state ("noch keine Rückmeldung").
- */
-export type ComponentHealth = 'ok' | 'stale' | 'never' | 'unknown';
 
 /** German role labels — the customer names for the roles. */
 export const COMPONENT_ROLE_LABELS: Record<ComponentRole, string> = {
@@ -187,6 +181,12 @@ export interface PlantComponent {
    */
   renameable: boolean;
   role: ComponentRole;
+  /**
+   * Der Typ der Entität aus dem Typkatalog (`sub-meter`, `heating-rod`, …); absent = unbekannt (eine vom Portal
+   * gebildete Zeile ohne eigene Entität). Nur zum Unterscheiden innerhalb einer Rolle - ein Unterzähler ist
+   * `consumer` wie ein Heizstab, zählt aber anders (Aufbau-Gruppen).
+   */
+  entityType?: string;
   /** One plain-German line describing what this component is/does. */
   summary: string;
   /** The device(s) that feed/host this component (edge source ids). */
@@ -215,7 +215,7 @@ export interface PlantComponent {
    * am Prüfstand erteilt hat; ein selbst gebautes Gerät kann sie ausschließlich
    * über den Schalt-Test des Kunden bekommen.
    */
-  freigabeQuelle: 'pruefstand' | 'vorlage' | 'selbst' | null;
+  freigabeQuelle: 'pruefstand' | 'erprobung' | 'vorlage' | 'selbst' | null;
   /**
    * Darf der KUNDE das Schalten dieser Komponente selbst freigeben? Nur ein
    * selbst gebautes Modbus-Gerät - für alles andere erteilt VoltPilot die
@@ -245,6 +245,11 @@ export interface PlantComponent {
    * Gerät des Moduls und die Nummer des Ausgangs. Absent/null = kein Ausgang.
    */
   io?: { modulGeraetId: string; kanal: number } | null;
+  /**
+   * Zählerbaum-Konzept (E1 A): die Eltern-Komponente im elektrischen Baum
+   * HEUTE, oder `null` = hängt an der Wurzel (dem Netzanschluss).
+   */
+  haengtAn: string | null;
 }
 
 /** K4: ein Verbraucher am Relais-Ausgang eines I/O-Moduls (aus seinem Profil). */
@@ -283,6 +288,12 @@ export interface PlantDevice {
   roles: ComponentRole[];
   /** „Liefert Daten" — the device's state in one word. */
   state: string;
+  /**
+   * VoltPilot steuert dieses Gerät, statt es abzulesen: jede seiner Komponenten hat einen Schreibweg, und es
+   * hat noch nie Messwerte gemeldet (Heizstab am Shelly Pro 3, der nicht misst). Dann ist „wartet auf die
+   * ersten Daten" falsch - es schickt von sich aus nichts -, und kein Grund zur Aufmerksamkeit.
+   */
+  nurGesteuert: boolean;
   /** „Misst Netz, Speicher, Haus und eigene PV · steuert den Speicher". */
   summary: string;
 }
@@ -367,6 +378,9 @@ function inferCategory(entityType: string): string {
   }
 }
 
+/** Die Anlagensteuerung einer Erzeugeranlage (UEMS EZ-6): nur messen, ein Gerät für sich (EZ-10). */
+export const ANLAGENSTEUERUNG_TYPE = 'anlagensteuerung';
+
 /** Der Typ, den die Selbstbau-Tür für ein freigegebenes Schalt-Gerät vergibt. */
 const SELF_BUILT_SWITCH_TYPE = 'modbus-load';
 
@@ -384,8 +398,13 @@ const SELF_BUILT_TYPES = new Set(['modbus-generic', SELF_BUILT_SWITCH_TYPE]);
  *   geprüfte Vorlage; die Vorlagen-Stufe unterscheidet erst Stufe 6, solange
  *   nennen wir die belastbarere der beiden).
  */
-function freigabeQuelleFor(entityType: string): 'pruefstand' | 'selbst' {
-  return entityType === SELF_BUILT_SWITCH_TYPE ? 'selbst' : 'pruefstand';
+function freigabeQuelleFor(entityType: string, certificationStatus?: string | null): 'pruefstand' | 'erprobung' | 'selbst' {
+  if (entityType === SELF_BUILT_SWITCH_TYPE) return 'selbst';
+  // Der Katalog-Stand des Typs (EntityDto.certificationStatus): nur `certified` - oder ein Typ ohne Stand
+  // (Wechselrichter, deren Freigabe am Modell hängt) - trägt „Von VoltPilot freigegeben“.
+  return certificationStatus && certificationStatus !== 'certified' && certificationStatus !== 'per_device'
+    ? 'erprobung'
+    : 'pruefstand';
 }
 
 /**
@@ -447,6 +466,10 @@ function componentSummary(
   if (entityType === 'ev-charger') {
     return 'Ladepunkt — die Ladeleistung verteilt das Lastmanagement';
   }
+  // Ein Unterzähler misst einen Teil des Hauses (eine Unterverteilung) und wird nie geschaltet.
+  if (entityType === 'sub-meter') {
+    return 'Unterzähler — misst einen Teil des Verbrauchs';
+  }
   switch (role) {
     case 'pv':
       return 'Erzeugt Solarstrom';
@@ -480,19 +503,6 @@ function worstHealth(items: ComponentHealth[]): ComponentHealth {
   return worst;
 }
 
-/**
- * The ONE health mapping of the customer surfaces (H2) — shared with the
- * Komponenten-Board (`livePuls.ts`) and the Verlauf rail (`verlauf.ts`) so a
- * dot can never mean two different things.
- *
- * **Only a literal `ok` is green.** Anything the backend does not (yet) report
- * — `undefined`, `null`, the honest `syncStatus: "unreported"`, an unknown
- * future word — becomes `unknown`, NOT `ok`. Fail-open on health is a lie.
- */
-export function toComponentHealth(raw: string | null | undefined): ComponentHealth {
-  if (raw === 'stale' || raw === 'never' || raw === 'ok') return raw;
-  return 'unknown';
-}
 
 /** The measured values (Messwerte) an entity reports. */
 function componentChannels(entity: SiteEntity): Messwert[] {
@@ -501,7 +511,7 @@ function componentChannels(entity: SiteEntity): Messwert[] {
   for (const m of entity.capabilities?.measure ?? []) {
     if (seen.has(m.channel)) continue;
     seen.add(m.channel);
-    out.push({ label: channelLabel(m.channel), raw: m.channel });
+    out.push({ label: channelLabelFor(m.channel, entity.entityType), raw: m.channel });
   }
   return out;
 }
@@ -525,6 +535,28 @@ function sourceReadingIndex(sources: SiteSource[] | null | undefined): Map<strin
       hasReading: s.pvKw != null && s.health !== 'never',
       health: s.health === 'stale' ? 'stale' : s.health === 'ok' ? 'ok' : 'unknown',
     });
+  }
+  return idx;
+}
+
+/** What a box-read meter reports about itself: its health and its own value (kW). */
+interface MeterReading {
+  health: ComponentHealth;
+  valueKw: number;
+}
+
+/**
+ * Index the box-read METERS (`/sources`: a grid meter's signed `powerKw`, a sub-meter's
+ * `loadKw`) by their edge source id - only those with a value and a reported health, so a
+ * component pinned to one can say „Liefert Daten" with its own number. A point that never
+ * delivered, or a role without a meter value, is not in the index (absent, never a 0).
+ */
+function meterReadingIndex(sources: SiteSource[] | null | undefined): Map<string, MeterReading> {
+  const idx = new Map<string, MeterReading>();
+  for (const s of sources ?? []) {
+    const valueKw = s.role === 'grid-meter' ? s.powerKw : s.role === 'consumer' ? s.loadKw : null;
+    if (valueKw == null || (s.health !== 'ok' && s.health !== 'stale')) continue;
+    idx.set(s.sourceId, { health: s.health, valueKw });
   }
   return idx;
 }
@@ -587,6 +619,29 @@ export const PLATFORM_COMPONENT_TYPES = ['battery-hybrid', 'house-load'] as cons
  * mirrors this by ALSO guarding on the role (`COMPOSED_BASE_ROLES`).
  */
 export const COMPOSED_BASE_TYPES = ['grid-meter', 'house-load'] as const;
+
+/**
+ * Die Anbindungs-Herkünfte einer Komponente, die ÜBER EINE VORLAGE im Portal
+ * angelegt wurde (Server: `ComponentService.SOURCE_KIND_BUILTIN` /
+ * `SOURCE_KIND_CERTIFIED`, Spalte `measurement_point.source_kind`). Eine solche
+ * Zeile trägt immer eine eigene Verbindung (IP, Port, Kanäle …) - sie ist ein
+ * Gerät mit eigenem Weg zur Box, auch solange die Box die daraus abgeleitete
+ * Quelle noch nicht gemeldet hat. `composed` (von der Plattform aus den
+ * Stammdaten zusammengesetzt) und `null` (vor dem Begriff entstanden) sind es
+ * nicht.
+ */
+const EIGENER_TRANSPORT_KINDS: ReadonlySet<string> = new Set(['builtin', 'certified']);
+
+/**
+ * Hat diese Komponente einen eigenen Weg zur Box, den der Wechselrichter nicht
+ * misst? Der Wechselrichter selbst (`battery-hybrid`) trägt zwar seine
+ * Verbindung aus derselben Vorlage - er IST aber das Gerät, das die Box als
+ * Wechselrichter meldet, und bleibt damit das Hauptgerät der Anlage.
+ */
+export function eigenerTransport(e: Pick<SiteEntity, 'entityType' | 'sourceKind'> | undefined | null): boolean {
+  if (!e || e.entityType === BATTERY_HYBRID_TYPE) return false;
+  return e.sourceKind != null && EIGENER_TRANSPORT_KINDS.has(e.sourceKind);
+}
 
 /** What a customer may do with one component row. */
 export interface ComponentActions {
@@ -716,6 +771,51 @@ export function assignChoices(
   return out;
 }
 
+/** Was „Geräte suchen“ einer wartenden Komponente anbietet: ihr Zuordnen, mit Vorschlag. */
+export interface WiederVerbindenAusSuche {
+  komponente: PlantComponent;
+  /** Die eine freie, passende Meldung an der Adresse des Fundes - vorgewählt, nie still gespeichert. */
+  vorschlag: string | null;
+}
+
+/**
+ * „Geräte suchen“ hat ein Gerät gefunden, das die Anlage schon kennt (Abgleich über die Adresse) - wartet
+ * die Komponente dazu auf ihr Gerät, führt der Fund direkt in ihr Zuordnen (Live-Fall „Zuhause“,
+ * 04.11.2026: der Heizstab „nicht mehr verbunden“, die Suche fand seinen Shelly und zeigte nur
+ * „✓ eingerichtet“ - kein Weg weiter).
+ *
+ * Sie wartet, wenn ihr Pin ins Leere zeigt (`orphanedPin`), oder wenn sie noch keinen trägt und die Box
+ * an der Adresse des Fundes eine freie, passende Quelle meldet. Eine lebende Bindung wartet nie.
+ *
+ * ⚠ Die Adresse beweist keine Gerätegleichheit (Hausregel). Sie wählt nur VOR: gespeichert wird erst
+ * mit „Übernehmen“ im Zuordnen-Dialog, und nur bei genau einer freien Quelle an dieser Adresse - bei
+ * zweien wählt der Kunde selbst.
+ */
+export function wiederVerbindenAusSuche(
+  komponenteId: string,
+  adresse: { ip: string | null; port: number | null },
+  components: PlantComponent[],
+  entities: SiteEntity[],
+  localSetup: EntityLocalSetup[],
+  sources?: SiteSource[] | null,
+): WiederVerbindenAusSuche | null {
+  const komponente = components.find((c) => c.entityId === komponenteId && c.aspect === 'main');
+  const entity = entities.find((e) => e.id === komponenteId);
+  if (!komponente || !entity || !componentActions(komponente, entity).canRepin) return null;
+  const hostById = new Map(localSetup.map((l) => [l.id, l] as const));
+  const ip = adresse.ip?.trim().toLowerCase() || null;
+  const anAdresse = assignChoices(komponente, entities, localSetup, sources).filter((ch) => {
+    if (ch.current || ch.heldByLabel != null || ip == null) return false;
+    const l = hostById.get(ch.sourceId);
+    const host = l?.host?.trim().toLowerCase() || null;
+    return host === ip && (adresse.port == null || l?.port == null || l.port === adresse.port);
+  });
+  const ohnePin = entity.edgeSourceId == null || entity.edgeSourceId === '';
+  const wartet = entity.orphanedPin === true || (ohnePin && anAdresse.length > 0);
+  if (!wartet) return null;
+  return { komponente, vorschlag: anAdresse.length === 1 ? anAdresse[0].sourceId : null };
+}
+
 /** The choice a component is currently assigned to, or null (orphaned/unpinned). */
 export function currentChoice(choices: AssignChoice[]): AssignChoice | null {
   return choices.find((c) => c.current) ?? null;
@@ -792,6 +892,15 @@ export function deleteConsequences(
  * deren Pin beim Tauschen freigegeben wurde. Vorher fielen alle drei heraus
  * (`orphanedPin` ist dort `null`, nicht `true`), und der Dialog bot nur „Als
  * neue Komponente anlegen" an - die namenlose Parallel-Komponente.
+ *
+ * <p><b>⚠ Ein VERBRAUCHER passt auf jeden Verbraucher-Typ</b> (Live-Fall
+ * „Zuhause“, 04.11.2026). Die Box meldet nur die Rolle `consumer`; welcher
+ * Verbraucher es ist (Heizstab, Wallbox, allgemeine Last), weiß sie nicht. Der
+ * vorgeschlagene Typ ist für einen Shelly `generic-load` - der wartende
+ * HEIZSTAB desselben Shelly kam deshalb nie als „Wieder verbinden“ vor, und
+ * „Fertig“ legte eine zweite Komponente „Heizstab“ daneben an. Die Regel ist
+ * jetzt die des Servers (`requireRoleFit`, hier `sourceFitsType`): jede wartende
+ * Komponente der Verbraucher-Seite; der vorgeschlagene Typ steht vorn.
  */
 export function reconnectCandidates(
   source: AdoptableSource,
@@ -799,12 +908,14 @@ export function reconnectCandidates(
 ): ReconnectCandidate[] {
   const type = source.suggestedType ?? suggestEntityType(source.role, source.brand);
   if (!type) return [];
+  const passt = (e: SiteEntity) =>
+    source.role === 'consumer' ? sourceFitsType(source.role, e.entityType) : e.entityType === type;
+  const wartet = (e: SiteEntity) =>
+    e.orphanedPin === true || e.edgeSourceId == null || e.edgeSourceId === '';
   return entities
-    .filter(
-      (e) =>
-        e.entityType === type
-        && (e.orphanedPin === true || e.edgeSourceId == null || e.edgeSourceId === ''),
-    )
+    .filter((e) => passt(e) && wartet(e))
+    // Stabil: erst der vorgeschlagene Typ, sonst die Reihenfolge der Anlage.
+    .sort((a, b) => Number(b.entityType === type) - Number(a.entityType === type))
     .map((e) => ({
       entityId: e.id,
       label: componentLabel(e.label, componentRole(e.entityType, null), e.typeLabel),
@@ -959,8 +1070,18 @@ export function plantHeadline(devices: PlantDevice[], components: PlantComponent
       text: 'Noch kein Gerät gemeldet — sobald sich eines meldet, erscheint hier Ihre Anlage.',
     };
   }
-  const silent = devices.find((d) => d.health !== 'ok');
-  if (!silent) return { tone: 'ok', text: `${base} — alle liefern Daten.` };
+  const silent = devices.find((d) => d.health !== 'ok' && !d.nurGesteuert);
+  if (!silent) {
+    const gesteuert = devices.filter((d) => d.nurGesteuert).length;
+    return {
+      tone: 'ok',
+      text: gesteuert === 0
+        ? `${base} — alle liefern Daten.`
+        : gesteuert === devices.length
+          ? `${base} — alle von VoltPilot gesteuert.`
+          : `${base} — ${countWord(devices.length - gesteuert, 'liefert', 'liefern')} Daten, ${gesteuert} von VoltPilot gesteuert.`,
+    };
+  }
   const why =
     silent.health === 'stale'
       ? 'meldet sich gerade nicht'
@@ -984,18 +1105,10 @@ function readingFor(
     case 'storage': {
       const soc = caps.get(SOC_CHANNEL);
       if (soc != null) {
-        /*
-          P5b/P5d: ein BERECHNETER Ladestand sagt es. Die Herkunft steht in
-          `soc_source_code` NEBEN dem Wert (je Messzeitpunkt), also gibt es
-          nichts zu raten - und ohne diesen Kanal bleibt es beim neutralen
-          „geladen": „gemessen" zu schreiben, weil nichts dagegenspricht, wäre
-          eine Behauptung über eine Herkunft, die niemand gemeldet hat.
-        */
-        const herkunft = socHerkunft(caps.get(SOC_HERKUNFT_KANAL));
         return {
           value: round1(soc),
           unit: '%',
-          caption: herkunft?.berechnet ? herkunft.kurz : 'geladen',
+          caption: 'geladen',
         };
       }
       const p = caps.get(BATTERY_CHANNEL);
@@ -1136,6 +1249,7 @@ export function plantModel(
     capsById.set(te.id, caps);
   }
   const sourceByEdgeId = sourceReadingIndex(sources);
+  const meterByEdgeId = meterReadingIndex(sources);
 
   // The per-device PV split: the SAME reconciliation the energy flow uses, so
   // the Anlagen-Modell can never disagree with the cockpit's PV number. On a
@@ -1179,6 +1293,20 @@ export function plantModel(
       const src = e.edgeSourceId != null ? sourceByEdgeId.get(e.edgeSourceId) : undefined;
       if (src?.hasReading) health = src.health;
     }
+    // Dasselbe für einen Zähler, den die Box als eigene Quelle liest (Unterzähler, Netz-Zähler): er
+    // hat auf einer Box ohne Wechselrichter keine eigene telemetry_v2, ein Unterzähler nie
+    // (Schramm „Zuhause“, 07.11.2026) - die Box meldet seinen Wert aber im Herzschlag. Liefert die
+    // gepinnte Quelle, sagt die Zeile das samt Wert, statt für immer „Wartet auf die ersten Daten“.
+    // Nur Anzeige an der eigenen Zeile: in den Energiefluss geht er dadurch nicht ein.
+    let zaehlerWert: number | null = null;
+    if ((role === 'consumer' || role === 'grid') && health !== 'ok' && e.edgeSourceId != null) {
+      const src = meterByEdgeId.get(e.edgeSourceId);
+      if (src != null) {
+        health = src.health;
+        // Ein veralteter Wert steht nie als aktueller da - „Meldet sich gerade nicht" ohne Zahl.
+        zaehlerWert = src.health === 'ok' ? src.valueKw : null;
+      }
+    }
     components.push({
       id: e.id,
       entityId: e.id,
@@ -1188,21 +1316,27 @@ export function plantModel(
       derivedLabel: componentLabel(null, role, e.typeLabel),
       renameable: true,
       role,
+      entityType: e.entityType,
       summary: componentSummary(role, control, primary, e.entityType),
       deviceIds: [],
       provenance: null,
       reading: orphaned
         ? null
-        : readingFor(role, caps, role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null),
+        : readingFor(
+          role,
+          zaehlerWert != null && !caps.has('power_kw') ? new Map(caps).set('power_kw', zaehlerWert) : caps,
+          role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null,
+        ),
       channels: componentChannels(e),
       control,
       schaltbar,
-      freigabeQuelle: schaltbar ? freigabeQuelleFor(e.entityType) : null,
+      freigabeQuelle: schaltbar ? freigabeQuelleFor(e.entityType, e.certificationStatus) : null,
       freigabeFaehig: SELF_BUILT_TYPES.has(e.entityType),
       primary,
       health,
       measuredVia,
       orphaned,
+      haengtAn: e.haengtAn ?? null,
     });
     // The PV ASPECT of a hybrid inverter: the composed backfill mints no own
     // producer for the modules hanging on the inverter itself, so without this
@@ -1234,6 +1368,7 @@ export function plantModel(
         health,
         measuredVia: null,
         orphaned: false,
+        haengtAn: e.haengtAn ?? null,
       });
     }
   }
@@ -1262,6 +1397,7 @@ export function plantModel(
       health: 'ok',
       roles: [],
       state: '',
+      nurGesteuert: false,
       summary: '',
     });
   };
@@ -1279,6 +1415,8 @@ export function plantModel(
     if (l.kind !== 'source') continue;
     const entityId = pinnedEntityBySource.get(l.id) ?? l.adoptedEntityId;
     if (entityId == null) continue;
+    // EZ-22: die Quelle einer Anlagensteuerung ist nur ihr Transport (EZ-21) - das Gerät ist die Steuerung (EZ-10).
+    if (entities.some((e) => e.id === entityId && e.entityType === ANLAGENSTEUERUNG_TYPE)) continue;
     const comps = componentsOfEntity(entityId);
     linkDevice(
       l.id,
@@ -1320,12 +1458,38 @@ export function plantModel(
     if (entities.find((e) => e.id === c.entityId)?.entityType === EV_CHARGER) assigned.add(c.id);
   }
 
+  // EZ-10. Eine ANLAGENSTEUERUNG (Erzeuger-Registerbild, UEMS EZ-6) ist ein Gerät für sich: die Box liest
+  //    sie über eine Datenquelle, und sie ist kein Teil des Wechselrichters (ohne diesen Schritt nähme sie 2.).
+  //    Ihre Seite heißt `as-<Entität>` (`geraetAdresse.ts`) - auch mit Pin (EZ-22): die Quelle, die die Box seit
+  //    EZ-21 für sie meldet, ist ihr Transport, kein zweites Gerät. Über den Pin landete sie sonst auf einer
+  //    gewöhnlichen Quellen-Seite und trug dort das Gesicht eines Zählers (Gore, Neue Halle).
+  for (const e of entities) {
+    if (e.entityType !== ANLAGENSTEUERUNG_TYPE) continue;
+    const comps = componentsOfEntity(e.id).filter((c) => !assigned.has(c.id));
+    if (comps.length === 0) continue;
+    linkDevice(anlagensteuerungGeraetId(e.id), e.label?.trim() || 'Anlagensteuerung', null, comps.map((c) => c.id));
+  }
+
   // 2. The inverter (gateway) feeds the composed entities — those not adopted
-  //    from a source. The first reported inverter takes them; extras get [].
+  //    from a source AND without a transport of their own. The first reported
+  //    inverter takes them; extras get [].
+  //
+  //    Eine im Portal über eine Vorlage angelegte Komponente (Heizstab am Shelly,
+  //    Fronius-Erzeuger, eigener Netz-Zähler) hat ihren EIGENEN Weg zur Box;
+  //    der Wechselrichter misst sie nicht. Bis die Box die daraus abgeleitete
+  //    Quelle meldet (Erstbindung, 1.), trägt sie keinen Pin - und landete hier
+  //    als „gemessen über Deye SUN-29.9K" auf der Karte des Wechselrichters: der
+  //    eben eingerichtete Heizstab stand im Aufbau auf KEINER eigenen Karte
+  //    (Live-Fall „Zuhause", 02.11.2026, zweiter Teil - die Box hatte den Push
+  //    mit dem Stab abgelehnt, also meldete sie die Quelle nie). Sie bleibt
+  //    unzugeordnet und bekommt in 4. ihr eigenes Gerät. Der Wechselrichter
+  //    selbst (battery-hybrid) IST das gemeldete Gerät und bleibt bei 2.
   const inverters = localSetup.filter((l) => l.kind === 'inverter');
-  const composed = components.filter(
-    (c) => !assigned.has(c.id) && !entities.find((e) => e.id === c.entityId)?.edgeSourceId,
-  );
+  const composed = components.filter((c) => {
+    if (assigned.has(c.id)) return false;
+    const e = entities.find((x) => x.id === c.entityId);
+    return !e?.edgeSourceId && !eigenerTransport(e);
+  });
   inverters.forEach((inv, i) => {
     const comps = i === 0 ? composed.map((c) => c.id) : [];
     linkDevice(
@@ -1344,14 +1508,55 @@ export function plantModel(
     // A PROVEN orphan has no reported device — inventing a synthetic box for it
     // would contradict the row's own „nicht mehr verbunden" (vp-vier-erzeuger-p9).
     if (c.orphaned) continue;
-    const deviceId = entities.find((e) => e.id === c.entityId)?.deviceId;
+    const e = entities.find((x) => x.id === c.entityId);
+    // Ein Gerät mit eigenem Weg (2.) ist kein Teil eines Ersatzgeräts der Box.
+    if (eigenerTransport(e)) continue;
+    const deviceId = e?.deviceId;
     if (deviceId == null) continue;
     const list = byDeviceId.get(deviceId) ?? [];
     list.push(c);
     byDeviceId.set(deviceId, list);
   }
+  // EZ-20. Besteht der Rest aus NUR der Grundausstattung (Netz + Haus, über die Box zusammengesetzt) und meldet die
+  //    Box keinen Wechselrichter, ist er kein Gerät: das Ersatzgerät hieße „Wechselrichter“ (Gore Pleinfeld, reine
+  //    Verbraucher-Anlage) - ein Gerät, das es nicht gibt. Das gilt mit Anlagensteuerung (die Wechselrichter sind
+  //    Einheiten der Steuerung) wie ohne sie. Netz und Haus bleiben Komponenten (Energiefluss, Cockpit), sie stehen
+  //    nur an keiner Karte. Eine frisch verbundene Box, deren Wechselrichter noch nicht meldet, zeigt kurz nur die Box.
+  const mitSteuerung = entities.some((e) => e.entityType === ANLAGENSTEUERUNG_TYPE);
+  const ohneGemeldetenWr = inverters.length === 0;
+  const nurGrundausstattung = (comps: PlantComponent[]): boolean =>
+    comps.every((c) => {
+      const e = entities.find((x) => x.id === c.entityId);
+      return e != null && e.edgeSourceId == null &&
+        (COMPOSED_BASE_TYPES as readonly string[]).includes(e.entityType);
+    });
   for (const [deviceId, comps] of byDeviceId) {
+    if ((mitSteuerung || ohneGemeldetenWr) && nurGrundausstattung(comps)) continue;
     linkDevice(`dev:${deviceId}`, fallbackDeviceLabel(comps), null, comps.map((c) => c.id));
+  }
+
+  // 4. Was jetzt noch an keinem Gerät hängt, bekommt sein eigenes - statt zu verschwinden.
+  //    Eine im Portal angelegte Komponente trägt keinen Pin, bis die Box die daraus abgeleitete
+  //    Quelle meldet (ComponentRebind, Erstbindung), und keine Gerätebindung. Meldet die Box
+  //    einen Wechselrichter, nimmt er sie (2.); meldet sie keinen - der Wechselrichter ließ sich
+  //    nicht speichern, oder die Anlage hat gar keinen -, stand sie bisher auf KEINER Karte:
+  //    der eben eingerichtete Heizstab war „weg" (Live-Fall „Zuhause", 02.11.2026). Nur der
+  //    Hauptaspekt bekommt ein Gerät; ein PV-Aspekt folgt seinem Träger. Bewiesene Waisen
+  //    bleiben, was sie sind (R6) - sie haben ihren eigenen Wohnort in der Liste. Und die
+  //    GRUNDAUSSTATTUNG der Plattform (Netz und Haus über die Box, ein nur komponierter, nie
+  //    eingerichteter Speicher) ist kein Gerät, das jemand eingerichtet hat (EZ-20): sie bleibt
+  //    Komponente ohne Karte, wie bisher.
+  const grundausstattung = (c: PlantComponent): boolean => {
+    const e = entities.find((x) => x.id === c.entityId);
+    return e != null && e.edgeSourceId == null && !eigenerTransport(e) &&
+      ((COMPOSED_BASE_TYPES as readonly string[]).includes(e.entityType) || e.sourceKind === 'composed');
+  };
+  const ohneGeraet = new Set<string>();
+  for (const c of components) {
+    if (assigned.has(c.id) || c.orphaned || c.aspect !== 'main' || grundausstattung(c)) continue;
+    const geschwister = componentsOfEntity(c.entityId).filter((k) => !assigned.has(k.id));
+    linkDevice(komponenteGeraetId(c.entityId), c.label, null, geschwister.map((k) => k.id));
+    for (const k of geschwister) ohneGeraet.add(k.id);
   }
 
   // Finalise device health + the verb sub-line from their components.
@@ -1362,7 +1567,12 @@ export function plantModel(
       .filter((c): c is PlantComponent => c != null);
     d.health = worstHealth(comps.map((c) => c.health));
     d.roles = deviceRoles(comps);
-    d.state = deviceState(d.health);
+    // Nur `never` (nie eine Lesung): ein Gerät, das früher Werte lieferte und verstummt (`stale`), bleibt eine
+    // Störung, und ohne Rückmeldung der Box (`unknown`) wird nichts behauptet.
+    d.nurGesteuert = d.health === 'never' && comps.length > 0 &&
+      comps.every((c) => c.aspect === 'main' && c.schaltbar && !c.orphaned);
+    // Das Wort ist das der Steuer-Marke (`CONTROL_BADGE`): es sagt, WAS das Gerät für VoltPilot ist, nicht „bereit“.
+    d.state = d.nurGesteuert ? CONTROL_BADGE : deviceState(d.health);
     d.summary = deviceSummary(comps);
   }
 
@@ -1383,7 +1593,8 @@ export function plantModel(
         c.derivedLabel = c.label;
       }
     }
-    if (c.role === 'house' || label == null) {
+    if (c.role === 'house' || label == null || ohneGeraet.has(c.id)) {
+      // Ein Gerät, das sich selbst trägt (4.), misst nicht „über" sich selbst.
       c.provenance = null;
       continue;
     }

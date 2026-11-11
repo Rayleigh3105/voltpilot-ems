@@ -100,6 +100,7 @@ function geldFuerAlle(): Earnings {
       name: s.name,
       plantKind: 'eigenverbrauch',
       dailySaved: [{ day: heute, savedEur: 12.5, savedSteuerungEur: 12.5 }],
+      steuerungMonatMitBestandEur: 30,
       peakShaving: { avoidedEur: 4800, avoidedKw: 40 },
     })),
     totals: {},
@@ -429,7 +430,10 @@ describe('A13 · Geld-Regel: „Die Messdatenkunden brauchen keine Geldanzeige."
     expect(k.vermiedeneSpitzeEur).toBe(4800);
     expect(vorteilUnterzeile(k.erloesHeuteAnlagen, 3, k.geldNamen)).toBe('gegenüber Speicher ohne Steuerung · 1 von 3 Anlagen · nur Werk Ahrenberg – Halle 1');
     const z = anlagenZeilen({ overview: { sites: AHRENBERG } as never, earnings: geldFuerAlle(), dichte: 'komfortabel', now: JETZT, geld });
-    expect(Object.fromEntries(z.map((r) => [r.id, r.heuteEur]))).toEqual({ [an1]: 12.5, [an2]: null, [an3]: null });
+    // Die Spalte zeigt den Monat mit Bestand (Bedienkonzept P3, P3-4 A) — nur für Halle 1.
+    expect(Object.fromEntries(z.map((r) => [r.id, r.monatEur]))).toEqual({ [an1]: 30, [an2]: null, [an3]: null });
+    expect(k.erloesMonatEur).toBe(30);
+    expect(k.erloesMonatAnlagen).toBe(1);
     // Ohne Regel (jede andere Flotte) zählt wie bisher jede Anlage.
     expect(portfolioKennzahlen({ sites: AHRENBERG } as never, geldFuerAlle(), JETZT).erloesHeuteEur).toBeCloseTo(37.5, 5);
   });

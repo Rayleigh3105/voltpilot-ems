@@ -15,6 +15,7 @@
     "charge_from_grid_allowed": "Storage guard posture per decision D-8: false OR ABSENT = the entity must never charge from the grid (commanded charge clamped to measured available PV; unknown PV blocks charge entirely). Only an explicit true releases the clamp.",
     "signs": "Shared with mqtt-telemetry-2.0 and the command vocabulary: storage setpoint_kw/battery_power_kw + = charge, - = discharge; grid power_kw + = import, - = export; generation is only ever capped (limit_kw/limit_pct reduce-only), never commanded to produce; consumer setpoint_kw + = consume (never negative - V2G out of scope)."
   },
+  "x-anlagensteuerung-driver-rule": "UEMS EZ-21: eine Entitaet vom Typ `anlagensteuerung` traegt im Registry-Push den Treiber $defs/anlagensteuerung_driver (Transport ihrer Datenquelle: communication modbus_tcp, connection ip/port/unit_id, interval_s 5, data_source_id = Kennzeichen der Datenquelle; KEINE brand/model/family/role) und den Pin `edge_source_id` = sources.DeterministicID der Quelle, die die Box daraus ableitet (Rolle plant-controller; Rechenweg und Faelle: anlagensteuerung-quelle-vectors.json). Die Box (componentapply) leitet daraus eine Quelle in edge/sources/config ab, ohne Wechselrichter-Katalog und ohne sie selbst zu pollen; die Palette bindet die Komponente ueber den Pin daran und liest das Erzeuger-Bild. Gesendet NUR an eine Box, die `anlagensteuerung_quelle` meldet (edge-supports.md): ein aelterer Applier lehnt einen Treiber mit Verbindung und ohne Marke ab und verweigert damit den GANZEN Push. Jede andere Box bekommt den Push Byte fuer Byte wie vorher (die Steuerung dann hoechstens mit driver.data_source_id und ohne Pin).",
   "oneOf": [
     {
       "$ref": "#/$defs/config"
@@ -291,6 +292,112 @@
         }
       ]
     },
+    "anlagensteuerung_driver": {
+      "type": "object",
+      "description": "Der Treiber einer Anlagensteuerung (x-anlagensteuerung-driver-rule, UEMS EZ-21). Die Werte sind die der Datenquelle, unveraendert: die Box setzt keinen Port und keine Geraete-ID ein, weil der Pin aus genau diesen Werten gerechnet ist.",
+      "required": [
+        "communication",
+        "connection",
+        "interval_s"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "communication": {
+          "type": "string",
+          "const": "modbus_tcp"
+        },
+        "interval_s": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "data_source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "connection": {
+          "type": "object",
+          "required": [
+            "ip",
+            "port",
+            "unit_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ip": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "unit_id": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          }
+        }
+      }
+    },
+    "heizstab": {
+      "type": "object",
+      "title": "Parameterblock des Heizstab-Reglers der Box (heizstab-regler.md)",
+      "description": "OPTIONAL + ADDITIV (Heizstab-Konzept V1): die Steuerart eines Heizstabs mit Shelly-Ausgangsmenge (driver.connection.channels, heizstab-shelly.md) als Parameter des Reglers im Go-Core statt eines Regel-Flows. Fehlt der Block oder nennt er keinen Modus, den die Box ausführt, gibt es keinen Regler (byte-gleich). Die Cloud sendet ihn nur an eine Box mit der Fähigkeit heizstab_regler.",
+      "additionalProperties": false,
+      "required": [
+        "modus"
+      ],
+      "properties": {
+        "modus": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "ueberschuss = PV-Überschuss in Stufen (V1). Jeder andere Wert: kein Regler."
+        },
+        "reserve_kw": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Was als Einspeisung stehen bleibt (Vorgabe 0,2 kW)."
+        },
+        "hoechste_stufe": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Höchstens so viele Ausgänge zugleich (0/fehlt = die oberste Stufe des Treibers)."
+        },
+        "vorrang": {
+          "enum": [
+            "speicher_zuerst",
+            "heizstab_zuerst"
+          ],
+          "description": "Aus der Reihenfolge bei knapper Leistung (HZ-6): unter dem Speicher = speicher_zuerst (Vorgabe), darüber = heizstab_zuerst (die gemessene Ladeleistung des Speichers zählt als verfügbar). Eine Entladung zählt in beiden Fällen gegen den Stab."
+        },
+        "mindestlauf_s": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vorgabe 300."
+        },
+        "mindestpause_s": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vorgabe 300."
+        },
+        "haltezeit_s": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Wartezeit nach jedem Wechsel, bevor es aufwärts geht. Vorgabe 120."
+        },
+        "schaltungen_je_stunde": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Schaltungen (je geschaltetem Ausgang gezählt) in der gleitenden Stunde. Vorgabe 12."
+        }
+      }
+    },
     "descriptor": {
       "type": "object",
       "description": "One entity as the registry knows it. driver is an OPTIONAL opaque connection block for Layer-1 self-wiring (brand/model/family/communication/connection in the v1 sources busEntry shape); E1a carries it through verbatim, the v2 driver layer consumes it in a later increment.",
@@ -366,6 +473,9 @@
           "type": "object",
           "description": "Der OPAQUE Layer-1-Anbindungsblock (brand/model/family/communication/connection in der v1-sources-busEntry-Form). Seit Stufe 1 ist er fuer eine PORTAL-verwaltete Anlage der LESEPFAD selbst: die Box leitet daraus ihre lokale Geraete-Konfiguration ab. Fuer eine box-verwaltete Anlage bleibt er - wie seit E1a - reine Durchreichung fuer die Schreib-Executoren (go-e/Shelly)."
         },
+        "heizstab": {
+          "$ref": "#/$defs/heizstab"
+        },
         "flex_requirements": {
           "type": "array",
           "maxItems": 32,
@@ -417,6 +527,9 @@
         },
         "driver": {
           "type": "object"
+        },
+        "heizstab": {
+          "$ref": "#/$defs/heizstab"
         },
         "flex_requirements": {
           "type": "array",
@@ -500,6 +613,18 @@
           "properties": {
             "setpoint_kw": {
               "type": "number"
+            },
+            "outputs": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              },
+              "description": "Additive (heizstab-shelly.md, Handeingriff je Phase): the explicit output set that rides with the granted setpoint_kw of a heating rod; never without setpoint_kw."
             },
             "limit_kw": {
               "type": "number",

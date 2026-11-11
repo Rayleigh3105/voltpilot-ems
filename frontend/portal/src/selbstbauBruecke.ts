@@ -8,7 +8,8 @@
  * **(a) Gerät → Regel.** Eine Selbstbau-Komponente ist das am besten geeignete
  * Gerät für eine freie Regel, weil sie je Entität lokal publiziert; ihre
  * Messwerte stehen also sofort als Bedingung zur Verfügung. Der Absprung öffnet
- * den geführten Baukasten mit genau diesem Messwert vorbefüllt.
+ * den geführten Baukasten mit genau dieser Komponente vorausgewählt (`?komponente=`,
+ * `SteuerungSeite.tsx`); die Bedingung selbst wählt der Kunde im Baukasten.
  *
  * **(b) Regel → Gerät.** Findet der Kunde in der leeren Auswahl keinen
  * passenden Messwert, bietet die Fläche „Eigenes Gerät (Modbus) anlegen" an,
@@ -20,8 +21,7 @@
  * ausdrücklich nicht gibt.
  */
 
-import type { GuidedRule } from './flows/guidedBuilder';
-import { regelAktion, type SchaltArt } from './schaltFreigabe';
+import type { SchaltArt } from './schaltFreigabe';
 
 /** Eine Komponente, wie die Brücke sie braucht (bewusst schmal). */
 export type BrueckenKomponente = {
@@ -72,65 +72,6 @@ export const GERAET_ANLEGEN_LABEL = 'Eigenes Gerät (Modbus) anlegen';
 export const GERAET_ANLEGEN_HINWEIS =
   'Kein passender Messwert dabei? Sie können Ihr eigenes Modbus-Gerät anlegen - '
   + 'seine Messwerte stehen danach hier zur Auswahl.';
-
-/**
- * Die Vorbefüllung des geführten Baukastens aus einer Komponente.
- *
- * Der ERSTE Messwert wird gewählt - er ist der, den der Kunde beim Anlegen
- * zuerst beschrieben hat, also mit hoher Wahrscheinlichkeit der wichtigste.
- * Schwelle und Richtung bleiben bewusst bei neutralen Vorgaben: eine geratene
- * Schwelle wäre eine Behauptung über ein Gerät, das wir nicht kennen.
- *
- * @returns null, wenn die Komponente keinen Messwert hat
- */
-export function vorbefuellteRegel(k: BrueckenKomponente): GuidedRule | null {
-  const kanal = k.channels?.[0];
-  if (!kanal) return null;
-  return {
-    conditions: [
-      {
-        kind: 'entity',
-        entityId: k.entityId,
-        channel: kanal.channel,
-        direction: 'above',
-        threshold: 0,
-      },
-    ],
-    combinator: 'and',
-    action: vorbefuellteAktion(k),
-  };
-}
-
-/**
- * Die Vorgabe-Geltungsdauer eines Wunsches (die der Kunden-Vorlagen). Ein
- * Wunsch verfällt IMMER - so zieht der Arbiter ihn zurück, wenn die Bedingung
- * endet, ohne dass jemand ihn ausdrücklich zurücknehmen muss.
- */
-const WUNSCH_TTL_S = 300;
-
-/**
- * Die AKTION der vorbefüllten Regel (Anforderung 9): ein FREIGEGEBENER Schalter
- * dieser Komponente ist sie - sonst bleibt sie offen.
- *
- * ⚠ Ohne Freigabe wird nie eine Schalt-Aktion vorbelegt. `regelAktion` ist die
- * eine Stelle, die das entscheidet (dieselbe, die auch die Komponenten-Karte
- * fragt): eine Aktion anzubieten, die nichts bewirken kann, wäre ein Knopf ins
- * Leere - und die leere Benachrichtigung ist bewusst leer, denn was passieren
- * soll, weiß nur der Kunde.
- */
-export function vorbefuellteAktion(k: BrueckenKomponente): GuidedRule['action'] {
-  const s = k.schalter;
-  const aktion = s ? regelAktion({ schaltbar: s.schaltbar }, s.art) : null;
-  if (aktion === 'onoff') {
-    return { kind: 'onoff', entityId: k.entityId, ttlS: WUNSCH_TTL_S };
-  }
-  if (aktion === 'setpoint') {
-    // Der kleinste freigegebene Sollwert ist der einzige Wert, den wir aus der
-    // Freigabe WISSEN - jeder andere wäre geraten. Er liegt in der Klemme.
-    return { kind: 'setpoint', entityId: k.entityId, value: s?.min ?? 0, ttlS: WUNSCH_TTL_S };
-  }
-  return { kind: 'notify', message: '' };
-}
 
 /** Der Vorschlag für den Regel-Namen. */
 export function vorbefuellterName(k: BrueckenKomponente): string {

@@ -34,20 +34,22 @@ class CatalogTest(unittest.TestCase):
             self.assertEqual(p["freigabe"], "keine", p["id"])
 
     def test_e4b_profiles_are_complete_and_unreleased(self):
-        # Captain E4 B: SMA, Fronius GEN24 and Huawei in parallel - complete, but bound to nothing (K9 builds the adapters).
-        for pid in ("sma", "fronius_gen24", "huawei"):
+        # Captain E4 B: SMA and Fronius GEN24 in parallel - complete, but bound to
+        # nothing (K9 builds the adapters). Huawei left this set with
+        # vp-huawei-anbindung-w1 (K9 built its read + control adapter).
+        for pid in ("sma", "fronius_gen24"):
             p = BY_ID[pid]
             self.assertIsNone(p["bindung"], pid)
             self.assertTrue(p["quellen"], pid)
             with_sequence = [k for k, c in p["absichten"].items() if c["schreibfolge"]]
             self.assertGreaterEqual(len(with_sequence), 5, pid)
-        for pid in ("sma", "huawei"):
+        for pid in ("sma",):
             grades = {c["sicherheit"] for c in BY_ID[pid]["absichten"].values()}
             self.assertTrue(grades & {"C", "D"}, pid)
 
     def test_built_families_are_bound(self):
         bound = {pid for pid, p in BY_ID.items() if p["bindung"]}
-        self.assertEqual(bound, {"deye_hp3_remote", "deye_tou", "fronius_pv", "kostal", "kaco_nh3"})
+        self.assertEqual(bound, {"deye_hp3_remote", "deye_tou", "fronius_pv", "kostal", "kaco_nh3", "huawei"})
         for pid in bound | {"fronius_gen24"}:
             self.assertIsNotNone(BY_ID[pid]["adapter"], pid)
 

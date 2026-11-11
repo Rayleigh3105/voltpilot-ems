@@ -21,8 +21,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -52,6 +53,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class PortalApiTest {
@@ -146,6 +148,9 @@ class PortalApiTest {
 
     @Autowired
     com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+    @Autowired
+    com.voltpilot.api.repo.EarningsRepository earningsRepo;
 
     // ---- token validation ---------------------------------------------------
 
@@ -401,7 +406,7 @@ class PortalApiTest {
         // Tenant A claims a brand-new device into its own site -> 201.
         ResponseEntity<Map<String, Object>> ok = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-fresh-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-fresh-01")),
                         bearer(token("demo", "demo"))),
                 new ParameterizedTypeReference<>() {});
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -420,7 +425,7 @@ class PortalApiTest {
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> fresh = devices.getBody().stream()
-                .filter(d -> "edge-fresh-01".equals(d.get("externalRef"))).findFirst().orElseThrow();
+                .filter(d -> TestKennung.box("edge-fresh-01").equals(d.get("externalRef"))).findFirst().orElseThrow();
         assertThat(fresh.get("lastSeenAt")).isNull();
         Map<String, Object> seeded = devices.getBody().stream()
                 .filter(d -> "demo-inverter-01".equals(d.get("externalRef"))).findFirst().orElseThrow();
@@ -429,7 +434,7 @@ class PortalApiTest {
         // Tenant B tries to claim tenant A's already-claimed device -> 409.
         ResponseEntity<String> conflict = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", HAMBURG_SITE, "externalRef", "demo-inverter-01"),
+                new HttpEntity<>(Map.of("siteId", HAMBURG_SITE, "externalRef", TestKennung.box("edge-fresh-01")),
                         bearer(token("demo2", "demo2"))),
                 String.class);
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -485,7 +490,7 @@ class PortalApiTest {
                 new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-TYPO-9999"),
                         bearer(demo)),
                 String.class);
-        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // No ghost device row was created.
         ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
@@ -523,7 +528,7 @@ class PortalApiTest {
                 new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-abcdefk"),
                         bearer(demo)),
                 String.class);
-        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         ResponseEntity<List<Map<String, Object>>> afterTypo = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
@@ -574,7 +579,7 @@ class PortalApiTest {
         // A fresh claim has never reported -> lastSeenAt is null.
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-lastseen-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-lastseen-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -593,7 +598,7 @@ class PortalApiTest {
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> mine = res.getBody().stream()
-                .filter(d -> "edge-lastseen-01".equals(d.get("externalRef")))
+                .filter(d -> TestKennung.box("edge-lastseen-01").equals(d.get("externalRef")))
                 .findFirst().orElseThrow();
         String lastSeenAt = (String) mine.get("lastSeenAt");
         assertThat(lastSeenAt).isNotNull();
@@ -616,7 +621,7 @@ class PortalApiTest {
         String demo = token("demo", "demo");
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-v2only-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-v2only-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -632,7 +637,7 @@ class PortalApiTest {
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()
-                .filter(d -> "edge-v2only-01".equals(d.get("externalRef")))
+                .filter(d -> TestKennung.box("edge-v2only-01").equals(d.get("externalRef")))
                 .findFirst().orElseThrow();
         assertThat((String) mine.get("lastSeenAt")).isNotNull();
         assertThat(java.time.Instant.parse((String) mine.get("lastSeenAt")))
@@ -651,7 +656,7 @@ class PortalApiTest {
         // online indicator).
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-backlog-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-backlog-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -667,7 +672,7 @@ class PortalApiTest {
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()
-                .filter(d -> "edge-backlog-01".equals(d.get("externalRef")))
+                .filter(d -> TestKennung.box("edge-backlog-01").equals(d.get("externalRef")))
                 .findFirst().orElseThrow();
         String lastSeenAt = (String) mine.get("lastSeenAt");
         assertThat(lastSeenAt).isNotNull();
@@ -734,7 +739,7 @@ class PortalApiTest {
         String siteId = (String) siteRes.getBody().get("id");
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-chatty-01"), bearer(demo)),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box("edge-chatty-01")), bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String deviceId = (String) claimed.getBody().get("id");
@@ -801,7 +806,7 @@ class PortalApiTest {
         // And the freshly-created site can immediately host a device claim.
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", newSiteId, "externalRef", "edge-spandau-01"),
+                new HttpEntity<>(Map.of("siteId", newSiteId, "externalRef", TestKennung.box("edge-spandau-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -896,7 +901,7 @@ class PortalApiTest {
         String siteId = (String) created.getBody().get("id");
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-wegwerf-01"),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box("edge-wegwerf-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         String deviceId = (String) claim.getBody().get("id");
@@ -963,7 +968,7 @@ class PortalApiTest {
 
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-unclaim-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         String deviceId = (String) claim.getBody().get("id");
@@ -980,7 +985,7 @@ class PortalApiTest {
         assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updated.getBody()).containsEntry("kind", "battery");
         assertThat(updated.getBody()).containsEntry("name", "Speicher Keller");
-        assertThat(updated.getBody()).containsEntry("externalRef", "edge-unclaim-01");
+        assertThat(updated.getBody()).containsEntry("externalRef", TestKennung.box("edge-unclaim-01"));
 
         // Ein Standortwechsel ist kein Geräte-Feature mehr: weder Vorprüfung,
         // Mutation noch ein Hintergrundstatus bleiben als Route erreichbar.
@@ -1026,7 +1031,7 @@ class PortalApiTest {
         // The ref is claimable again (fresh row, fresh id) - the ausgebaut row keeps it as provenance.
         ResponseEntity<Map<String, Object>> reclaimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-unclaim-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(reclaimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -1243,7 +1248,7 @@ class PortalApiTest {
     private String claimDevice(String token, String externalRef) {
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", externalRef),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box(externalRef)),
                         bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claim.getStatusCode()).isIn(HttpStatus.CREATED, HttpStatus.OK);
@@ -1378,6 +1383,155 @@ class PortalApiTest {
                 url("/api/v1/sites/" + BERLIN_SITE + "/weather"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void forecastReturnsTheActiveModelsLatestRunAndIsTenantScoped() {
+        // S1 ("der Lesepunkt"): seed one quarter-hour row for each of the shipped
+        // baselines (writer bypasses RLS) - the resolved active models without
+        // any choice configured.
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES (now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', 'pv', 'pv-physical', 7.75, now(), 15, 'test') "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES (now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', 'load', 'load-persistence', 3.5, now(), 15, 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<String> own = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(own.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(own.getBody())
+                .contains("\"activePvModel\":\"pv-physical\"")
+                .contains("\"activeLoadModel\":\"load-persistence\"")
+                .contains("7.75")
+                .contains("3.5");
+
+        // forecast carries no RLS (compressed - cannot get one); the fence is
+        // Geltungsbereich.requireSite before the query, same 404 as /weather.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void forecastYesterdayExpectedPicksTheRunClosestToTheEveningTargetNeverTheNewer() {
+        // "Gestern erwartet": the run closest to 17:45 Europe/Berlin of the
+        // PREVIOUS day wins. BOTH runs below sit inside the ±15 min tolerance
+        // window, so this pins the ORDER BY abs(distance) itself - the run
+        // 14 min off must never beat the one 1 min off, even though it is
+        // NEWER (further inside the window, closer to "now").
+        ZoneId berlin = ZoneId.of("Europe/Berlin");
+        ZonedDateTime target = LocalDate.now(berlin).minusDays(1).atTime(17, 45).atZone(berlin);
+        Instant close = target.toInstant().plusSeconds(60);
+        Instant far = target.toInstant().plusSeconds(14 * 60);
+        Instant slot = LocalDate.now(berlin).minusDays(1).atStartOfDay(berlin).toInstant()
+                .plusSeconds(10 * 3600);
+
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES ('" + slot + "', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE
+                + "', 'pv', 'pv-physical', 6.25, '" + close + "', 0, 'test') ON CONFLICT DO NOTHING");
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES ('" + slot + "', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE
+                + "', 'pv', 'pv-physical', 94.0, '" + far + "', 0, 'test') ON CONFLICT DO NOTHING");
+
+        ResponseEntity<String> resp = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // The "far" run (14 min off, but still inside the ±15 min window) is
+        // also the overall NEWEST run for this model - it rightly wins the
+        // unrelated "latest run" fields, so only the yesterdayExpected
+        // fragment itself is asserted on here, not the whole body.
+        int at = resp.getBody().indexOf("\"yesterdayExpected\"");
+        assertThat(at).as("yesterdayExpected present").isPositive();
+        String yesterdayExpected = resp.getBody().substring(at);
+        assertThat(yesterdayExpected).contains("6.25").doesNotContain("94.0");
+    }
+
+    @Test
+    void forecastWeeklyReadsForecastWeekly() {
+        // S4 ("die Woche je Stunde"): the hourly outlook lives in its OWN
+        // table (forecast_weekly, RLS-scoped unlike forecast - it is not
+        // compressed) and surfaces under the response's "weekly" field.
+        exec("INSERT INTO forecast_weekly "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, method) "
+                + "VALUES (now() + interval '72 hours', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', 'pv', 'pv-physical', 4.5, now(), 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<String> own = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(own.getStatusCode()).isEqualTo(HttpStatus.OK);
+        int at = own.getBody().indexOf("\"weekly\"");
+        assertThat(at).as("weekly present").isPositive();
+        assertThat(own.getBody().substring(at)).contains("4.5");
+    }
+
+    @Test
+    void forecastRueckblickReturnsTheActiveModelsRecentDaysAndIsTenantScoped() {
+        // S3 ("Rückblick"): the sheet reads lead_days = 1 of the ACTIVE model
+        // only - here the shipped PV baseline with no site choice configured.
+        for (int tagVorher = 1; tagVorher <= 3; tagVorher++) {
+            exec("INSERT INTO forecast_rueckblick "
+                    + "(day, tenant_id, site_id, kind, model, lead_days, "
+                    + "erwartet_kwh, gemessen_kwh, mae_kw, n_slots) VALUES "
+                    + "(CURRENT_DATE - " + tagVorher + ", "
+                    + "'00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
+                    + "'pv', 'pv-physical', 1, 12.50, 11." + tagVorher + "0, 0.8, 96) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        ResponseEntity<String> own = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast-rueckblick"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(own.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(own.getBody())
+                .contains("\"kind\":\"pv\"")
+                .contains("\"model\":\"pv-physical\"")
+                .contains("12.5")
+                .contains("11.1")
+                // fewer than KindRueckblickDto.MIN_TAGE (10) evaluated days: no sentence yet.
+                .contains("\"abweichungKwh\":null")
+                .contains("\"bewerteteTage\":3");
+
+        // RLS on forecast_rueckblick itself, same fence as every other site route.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast-rueckblick"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void forecastRueckblickSentenceAppearsOnlyFromTenEvaluatedDaysOnward() {
+        // "Fehlend ist keine Null": the 0,8-quantile sentence stays null until
+        // at least KindRueckblickDto.MIN_TAGE (10) days are evaluated.
+        for (int tagVorher = 1; tagVorher <= 10; tagVorher++) {
+            exec("INSERT INTO forecast_rueckblick "
+                    + "(day, tenant_id, site_id, kind, model, lead_days, "
+                    + "erwartet_kwh, gemessen_kwh, mae_kw, n_slots) VALUES "
+                    + "(CURRENT_DATE - " + tagVorher + ", "
+                    + "'10000000-0000-0000-0000-000000000001', '" + HAMBURG_SITE + "', "
+                    + "'load', 'load-persistence', 1, 10.0, 9.0, 0.5, 96) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        ResponseEntity<String> resp = rest.exchange(
+                url("/api/v1/sites/" + HAMBURG_SITE + "/forecast-rueckblick"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        int at = resp.getBody().indexOf("\"kind\":\"load\"");
+        assertThat(at).as("load kind present").isPositive();
+        String load = resp.getBody().substring(at);
+        assertThat(load).contains("\"bewerteteTage\":10").doesNotContain("\"abweichungKwh\":null");
     }
 
     @Test
@@ -2780,6 +2934,52 @@ class PortalApiTest {
         assertThat(monthPower).hasSize(1);
         assertThat(monthPower.get(0)).containsEntry("start", "2026-06-14T22:00:00Z"); // Berlin day
 
+        // Energy per bucket (Unterverteilungen C2). Without a counter: power × duration of the
+        // 15-min buckets, (4+6)/2 × 0.25 h + 8 × 0.25 h = 3.25 kWh.
+        ResponseEntity<Map<String, Object>> energyDay = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/energy?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(energyDay.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(energyDay.getBody()).containsEntry("source", "leistung").containsEntry("bucketMinutes", 15)
+                .containsEntry("counterFalls", false);
+        assertThat(num(energyDay.getBody(), "totalKwh")).isEqualTo(3.25);
+        // With a counter the INCREASE wins: 100,0 → 101,5 → 102,0 across the two buckets = 2,0 kWh
+        // (not the power integration), and the week sums it from the hourly rollup.
+        exec("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                + "entity_id, channel, value) VALUES "
+                + "('2026-06-15T10:00:00Z','2026-06-15T10:00:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','energy_kwh', 100.0), "
+                + "('2026-06-15T10:07:00Z','2026-06-15T10:07:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','energy_kwh', 101.5), "
+                + "('2026-06-15T10:20:00Z','2026-06-15T10:20:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','energy_kwh', 102.0)");
+        energyDay = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/energy?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(energyDay.getBody()).containsEntry("source", "zaehler");
+        assertThat(num(energyDay.getBody(), "totalKwh")).isEqualTo(2.0);
+        List<Map<String, Object>> energyBuckets = (List<Map<String, Object>>) energyDay.getBody().get("buckets");
+        assertThat(energyBuckets).hasSize(2);
+        assertThat(energyBuckets.get(0)).containsEntry("start", "2026-06-15T10:00:00Z");
+        assertThat(num(energyBuckets.get(0), "kwh")).isEqualTo(1.5);
+        assertThat(num(energyBuckets.get(1), "kwh")).isEqualTo(0.5);
+        exec("CALL refresh_telemetry_v2_rollups('2026-06-01T00:00:00Z')");
+        ResponseEntity<Map<String, Object>> energyWeek = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/energy?range=week&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(energyWeek.getBody()).containsEntry("source", "zaehler").containsEntry("bucketMinutes", 60);
+        assertThat(num(energyWeek.getBody(), "totalKwh")).isEqualTo(2.0);
+        ResponseEntity<String> foreignEnergy = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId + "/energy"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreignEnergy.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
         // Foreign site's tenant cannot read it (RLS 404 on the entity lookup).
         ResponseEntity<String> foreign = rest.exchange(
                 url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId + "/history"),
@@ -3245,14 +3445,14 @@ class PortalApiTest {
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "x-1", "entityType", "battery-hybrid"),
                         bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // A free installer type (modbus-generic) is likewise not a guided type -> 422.
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "x-2", "entityType", "modbus-generic"),
                         bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // An unknown type -> 400.
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
@@ -3331,7 +3531,7 @@ class PortalApiTest {
                 url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "src-ghost"), bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Reconnect to the re-appeared source: same entity, no duplicate row.
         ResponseEntity<Map<String, Object>> repin = rest.exchange(
@@ -3385,7 +3585,7 @@ class PortalApiTest {
                 url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "src-wb"), bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Foreign tenant: 404 via RLS, and the pin provably unchanged.
         assertThat(rest.exchange(
@@ -3523,11 +3723,11 @@ class PortalApiTest {
                 + "'{\"measure\":[{\"channel\":\"soc_pct\"}]}'::jsonb, '{}'::jsonb)");
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + hybrid),
                 HttpMethod.DELETE, new HttpEntity<>(bearer(demo)), String.class)
-                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(rest.exchange(
                 url("/api/v1/sites/" + siteId + "/v2-entities/" + hybrid + "/edge-source"),
                 HttpMethod.POST, new HttpEntity<>(Map.of("sourceId", "src-a"), bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // A foreign tenant can neither see nor delete it (RLS 404).
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + wr1),
@@ -4452,9 +4652,19 @@ class PortalApiTest {
                 url("/api/v1/earnings?range=all"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(all.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // The fleet is the whole tenant of a database that other tests of this class seed too (on
+        // 2026-03-03 and 2026-03-10), so the rule is pinned, not the calendar date: the fleet starts
+        // at the earliest first covered day of its own sites, this test's April day is among them,
+        // and the window opens at that day's Berlin midnight.
+        String fleetFirst = list(all.getBody(), "sites").stream()
+                .map(x -> (String) x.get("firstCoveredDate")).filter(java.util.Objects::nonNull)
+                .min(java.util.Comparator.naturalOrder()).orElseThrow();
+        assertThat(fleetFirst).isLessThanOrEqualTo("2026-04-14");
+        assertThat(siteRow(all.getBody(), dv)).containsEntry("firstCoveredDate", "2026-04-14");
         assertThat(map(all.getBody(), "totals"))
-                .containsEntry("firstCoveredDate", "2026-04-14");
-        assertThat(all.getBody()).containsEntry("from", "2026-04-13T22:00:00Z");
+                .containsEntry("firstCoveredDate", fleetFirst);
+        assertThat(all.getBody()).containsEntry("from", java.time.LocalDate.parse(fleetFirst)
+                .atStartOfDay(com.voltpilot.api.history.HistoryRange.ZONE).toInstant().toString());
         // The all-range DV aggregate still carries the April slots.
         assertThat(num(siteRow(all.getBody(), dv), "savedEur")).isCloseTo(-0.025, eps);
 
@@ -5776,7 +5986,7 @@ class PortalApiTest {
     private String claimDeviceInto(String token, String siteId, String externalRef) {
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", externalRef),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box(externalRef)),
                         bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claim.getStatusCode()).isIn(HttpStatus.CREATED, HttpStatus.OK);
@@ -5943,7 +6153,7 @@ class PortalApiTest {
             for (Vec v : vectors) {
                 var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
                         "eigenverbrauch", false, v.tarifArt(), v.param(),
-                        null, null, null, null, null, v.sheet());
+                        null, null, null, null, null, null, null, v.sheet());
                 Double expected = new com.voltpilot.api.optimizer.SlotEconomics(site,
                         com.voltpilot.api.optimizer.EegRates.defaults(), Map.of(), flag)
                         .importPriceCtKwh(v.spot());
@@ -6000,7 +6210,7 @@ class PortalApiTest {
             for (Vec v : vectors) {
                 var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
                         "eigenverbrauch", false, v.tarifArt(), v.param(),
-                        null, null, null, null, null, v.sheet());
+                        null, null, null, null, null, null, null, v.sheet());
                 Double ct = new com.voltpilot.api.optimizer.SlotEconomics(site,
                         com.voltpilot.api.optimizer.EegRates.defaults(), Map.of(), flag)
                         .importPriceCtKwh(v.spot());
@@ -6117,6 +6327,13 @@ class PortalApiTest {
      * spot + Marktprämie valuation (the Java twin's netzladen-first guard
      * would strip it - re-gating would silently change live DV numbers, out
      * of B2's byte-identical-for-DV contract).
+     *
+     * <p>Since the Einspeisevergütung card the SQL also reads the
+     * customer-stated rate {@code s.einspeiseverguetung_ct_kwh}: the legacy
+     * vectors below bind it NULL (byte-identical to before), and the SHARED
+     * vectors of {@code docs/contracts/einspeiseverguetung-vectors.json} - the
+     * same cases pricing.py's test_pricing.py runs - pin the stated-rate
+     * branch, plus the {@code exportVerguetungQuelleSql} label per case.
      */
     @Test
     void exportValueSqlMatchesTheSlotEconomicsCompositionVectors() {
@@ -6156,7 +6373,7 @@ class PortalApiTest {
         for (Vec v : vectors) {
             var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
                     v.plantKind(), v.netzladen(), "ohne", null, v.aw(),
-                    v.commissioned(), v.kwp(), null, null, null);
+                    v.commissioned(), v.kwp(), null, null, null, null, null);
             Map<LocalDate, com.voltpilot.api.optimizer.SlotEconomics.MarketValue> mvs =
                     v.mvCt() == null ? Map.of()
                             : Map.of(com.voltpilot.api.optimizer.SlotEconomics.berlinMonth(slot),
@@ -6166,7 +6383,7 @@ class PortalApiTest {
                     com.voltpilot.api.optimizer.EegRates.defaults(), mvs)
                     .exportValueCtKwh(v.spot(), slot);
             Double actual = evalExportValueSql(v.plantKind(), v.netzladen(), v.aw(), v.mvCt(),
-                    v.commissioned(), v.kwp(), v.spot(), slot);
+                    v.commissioned(), v.kwp(), null, null, v.spot(), slot).ct();
             if (expected == null) {
                 assertThat(actual).as(v.toString()).isNull();
             } else {
@@ -6174,18 +6391,37 @@ class PortalApiTest {
             }
         }
 
+        // The SHARED vectors: the customer-stated rate, against the very same
+        // expectations pricing.py and SlotEconomicsTest check - and the label
+        // the Einspeise-Erlös carries for each case.
+        Instant geteilt = com.voltpilot.api.optimizer.EinspeiseverguetungVektoren.slot();
+        for (var f : com.voltpilot.api.optimizer.EinspeiseverguetungVektoren.faelle()) {
+            ExportSql sql = evalExportValueSql(f.veraeusserungsform(), f.netzladen(),
+                    f.anzulegenderWertCtKwh(), f.monatsmarktwertCtKwh(), f.inbetriebnahme(),
+                    f.leistungKwp(), f.angegebenCtKwh(), f.inbetriebnahmeAbSolarspitzengesetz(),
+                    f.spotEurMwh(), geteilt);
+            if (f.einspeisewertCtKwh() == null) {
+                assertThat(sql.ct()).as(f.fall()).isNull();
+            } else {
+                assertThat(sql.ct()).as(f.fall()).isNotNull().isCloseTo(f.einspeisewertCtKwh(), eps);
+            }
+            assertThat(sql.quelle()).as(f.fall() + " (quelle)").isEqualTo(f.quelle());
+            assertThat(sql.priced()).as(f.fall() + " (priced)").isEqualTo(f.quelle() != null);
+        }
+
         // The pinned DEVIATION: Java (the optimizer's rule) strips the premium
         // from a netzladen DV site; the earnings SQL deliberately keeps it -
         // today's crediting, so DV sites stay byte-identical under the B2 fix.
         var netzladenDv = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
-                "direktvermarktung", true, "ohne", null, 8.11, null, null, null, null, null);
+                "direktvermarktung", true, "ohne", null, 8.11, null, null, null, null, null, null,
+                null);
         assertThat(new com.voltpilot.api.optimizer.SlotEconomics(netzladenDv,
                 com.voltpilot.api.optimizer.EegRates.defaults(),
                 Map.of(com.voltpilot.api.optimizer.SlotEconomics.berlinMonth(slot),
                         new com.voltpilot.api.optimizer.SlotEconomics.MarketValue(5.0, false)))
                 .exportValueCtKwh(100.0, slot)).isCloseTo(10.0, eps);
-        assertThat(evalExportValueSql("direktvermarktung", true, 8.11, 5.0, null, null, 100.0, slot))
-                .isCloseTo(13.11, eps);
+        assertThat(evalExportValueSql("direktvermarktung", true, 8.11, 5.0, null, null, null, null,
+                100.0, slot).ct()).isCloseTo(13.11, eps);
 
         // MiSpeL MP-12: the Marktwertbasis aus dem Förderweg, vector for vector -
         // Jahresmarktwert instead of the Monatsmarktwert (5.0) on a MiSpeL day,
@@ -6204,7 +6440,8 @@ class PortalApiTest {
                 new MispelVec(false, 7.0, null, 100.0),
                 new MispelVec(false, 7.0, true, -40.0))) {
             var dv = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
-                    "direktvermarktung", false, "ohne", null, 8.11, null, null, null, null, null);
+                    "direktvermarktung", false, "ohne", null, 8.11, null, null, null, null, null, null,
+                    null);
             var basis = new com.voltpilot.api.optimizer.SlotEconomics.Marktwertbasis(
                     v.mispel() ? java.util.Set.of(LocalDate.of(2026, 6, 15)) : java.util.Set.of(),
                     v.jwCt() == null ? Map.of()
@@ -6217,8 +6454,8 @@ class PortalApiTest {
                             new com.voltpilot.api.optimizer.SlotEconomics.MarketValue(5.0, false)))
                     .mitMarktwertbasis(basis)
                     .exportValueCtKwh(v.spot(), slot);
-            Double actual = evalExportValueSql("direktvermarktung", false, 8.11, 5.0, null, null,
-                    v.spot(), slot, v.mispel(), v.jwCt(), v.awListe());
+            Double actual = evalExportValueSql("direktvermarktung", false, 8.11, 5.0, null, null, null,
+                    null, v.spot(), slot, v.mispel(), v.jwCt(), v.awListe()).ct();
             if (expected == null) {
                 assertThat(actual).as(v.toString()).isNull();
             } else {
@@ -6227,24 +6464,34 @@ class PortalApiTest {
         }
     }
 
-    /** Evaluates the generated export-value SQL over one bound vector row. */
-    private static Double evalExportValueSql(String plantKind, boolean netzladen, Double aw,
-            Double mvCt, LocalDate commissioned, Double kwp, Double spot, Instant slot) {
-        // No Förderweg Fassung = the LEFT JOINs' all-NULL side (fw, jw, aw).
-        return evalExportValueSql(plantKind, netzladen, aw, mvCt, commissioned, kwp, spot, slot,
-                null, null, null);
+    /** One evaluated vector row: the export value and the two honesty labels. */
+    private record ExportSql(Double ct, String quelle, boolean priced) {
     }
 
-    /** ... with the Marktwertbasis aliases of SlotEconomics.marktwertbasisJoinSql bound. */
-    private static Double evalExportValueSql(String plantKind, boolean netzladen, Double aw,
-            Double mvCt, LocalDate commissioned, Double kwp, Double spot, Instant slot,
+    /** Evaluates the generated export-value SQL (and its labels) over one bound vector row. */
+    private static ExportSql evalExportValueSql(String plantKind, boolean netzladen, Double aw,
+            Double mvCt, LocalDate commissioned, Double kwp, Double angegeben,
+            Boolean abSolarspitzengesetz, Double spot, Instant slot) {
+        // No Förderweg Fassung = the LEFT JOINs' all-NULL side (fw, jw, aw).
+        return evalExportValueSql(plantKind, netzladen, aw, mvCt, commissioned, kwp, angegeben,
+                abSolarspitzengesetz, spot, slot, null, null, null);
+    }
+
+    /** ... with the Marktwertbasis aliases of SlotEconomics.marktwertbasisJoinSql bound (MiSpeL MP-12). */
+    private static ExportSql evalExportValueSql(String plantKind, boolean netzladen, Double aw,
+            Double mvCt, LocalDate commissioned, Double kwp, Double angegeben,
+            Boolean abSolarspitzengesetz, Double spot, Instant slot,
             Boolean mispel, Double jwCt, Boolean awListe) {
         String sql = "SELECT "
                 + com.voltpilot.api.optimizer.SlotEconomics.exportValueCtSql(
                         "p.price_eur_mwh", "r.bucket",
                         com.voltpilot.api.optimizer.EegRates.defaults())
-                + " AS ct FROM (VALUES (?::text, ?::boolean, ?::numeric))"
-                + " AS s(plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh)"
+                + " AS ct, " + com.voltpilot.api.optimizer.SlotEconomics.exportVerguetungQuelleSql()
+                + " AS quelle, " + com.voltpilot.api.optimizer.SlotEconomics.exportVerguetungPricedSql()
+                + " AS priced"
+                + " FROM (VALUES (?::text, ?::boolean, ?::numeric, ?::numeric, ?::boolean))"
+                + " AS s(plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh,"
+                + " einspeiseverguetung_ct_kwh, inbetriebnahme_ab_solarspitzengesetz)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS mv(value_ct_kwh)"
                 + " CROSS JOIN (VALUES (?::boolean)) AS fw(mispel)"
                 + " CROSS JOIN (VALUES (?::numeric, FALSE)) AS jw(value_ct_kwh, provisional)"
@@ -6258,20 +6505,23 @@ class PortalApiTest {
             ps.setString(1, plantKind);
             ps.setBoolean(2, netzladen);
             ps.setObject(3, aw);
+            ps.setObject(4, angegeben);
+            ps.setObject(5, abSolarspitzengesetz);
             // A missing monthly_market_value / pv-asset row = the LEFT JOIN's
             // all-NULL side - bind it exactly like that.
-            ps.setObject(4, mvCt);
-            ps.setObject(5, mispel);
-            ps.setObject(6, jwCt);
-            ps.setObject(7, awListe);
-            ps.setObject(8, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
-            ps.setObject(9, kwp);
-            ps.setObject(10, spot);
-            ps.setObject(11, java.sql.Timestamp.from(slot));
+            ps.setObject(6, mvCt);
+            ps.setObject(7, mispel);
+            ps.setObject(8, jwCt);
+            ps.setObject(9, awListe);
+            ps.setObject(10, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
+            ps.setObject(11, kwp);
+            ps.setObject(12, spot);
+            ps.setObject(13, java.sql.Timestamp.from(slot));
             try (java.sql.ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 java.math.BigDecimal ct = rs.getBigDecimal("ct");
-                return ct == null ? null : ct.doubleValue();
+                return new ExportSql(ct == null ? null : ct.doubleValue(), rs.getString("quelle"),
+                        rs.getBoolean("priced"));
             }
         } catch (Exception e) {
             throw new IllegalStateException("vector eval failed", e);
@@ -7561,6 +7811,7 @@ class PortalApiTest {
         org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
         Map<String, Object> s51aBody = siteEarningsDay(demo, s51a, "2026-03-03");
         assertThat(s51aBody).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg")
                 .containsEntry("tarifPriced", true)
                 // Not Direktvermarktung -> no premium claim, and no negative
                 // spot "revenue" a fixed remuneration does not have.
@@ -7574,7 +7825,8 @@ class PortalApiTest {
         assertThat(num(s51aBody, "savedEur")).isCloseTo(0.05295, eps);
 
         Map<String, Object> altBody = siteEarningsDay(demo, alt, "2026-03-03");
-        assertThat(altBody).containsEntry("exportVerguetungPriced", true);
+        assertThat(altBody).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg");
         assertThat(num(altBody, "einspeiseErloesEur")).isCloseTo(0.12165, eps);
         assertThat(num(altBody, "baselineEur")).isCloseTo(0.02835, eps);
         assertThat(num(altBody, "actualEur")).isCloseTo(-0.06165, eps);
@@ -7582,7 +7834,8 @@ class PortalApiTest {
         assertThat(num(altBody, "nettoErgebnisEur")).isCloseTo(0.45165, eps);
 
         Map<String, Object> bareBody = siteEarningsDay(demo, bare, "2026-03-03");
-        assertThat(bareBody).containsEntry("exportVerguetungPriced", false);
+        assertThat(bareBody).containsEntry("exportVerguetungPriced", false)
+                .containsEntry("exportVerguetungQuelle", null);
         assertThat(num(bareBody, "einspeiseErloesEur")).isCloseTo(0.075, eps);
         assertThat(num(bareBody, "baselineEur")).isCloseTo(0.0, eps);
         assertThat(num(bareBody, "actualEur")).isCloseTo(-0.015, eps);
@@ -7607,12 +7860,203 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
         Map<String, Object> s51aRow = siteRow(fleet, s51a);
-        assertThat(s51aRow).containsEntry("exportVerguetungPriced", true);
+        assertThat(s51aRow).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg");
         assertThat(num(s51aRow, "einspeiseErloesEur")).isCloseTo(0.0741, eps);
         assertThat(num(s51aRow, "savedEur")).isCloseTo(0.05295, eps);
         Map<String, Object> bareRow = siteRow(fleet, bare);
         assertThat(bareRow).containsEntry("exportVerguetungPriced", false);
         assertThat(num(bareRow, "einspeiseErloesEur")).isCloseTo(0.075, eps);
+    }
+
+    /**
+     * Die Karte "Einspeisevergütung" Ende zu Ende: die Herleitung aus dem EEG
+     * steht mit Herkunft da, eine eigene Angabe wirkt SOFORT in jeder Euro-Zahl
+     * der Erlöse und im Fahrplan-Preis, und das Zurücksetzen stellt die
+     * Herleitung Zahl für Zahl wieder her.
+     *
+     * <p>Seed am 2026-03-10 in der Zone CH (ein Tag, den kein anderer Test
+     * besitzt): dieselben zwei Viertelstunden wie der B2-Test - 10:00Z zu 100
+     * EUR/MWh (1,0 kWh Einspeisung), 18:00Z zu -50 EUR/MWh (0,5 kWh). Die
+     * PV-Anlage ist am 2025-06-01 mit 9,8 kWp in Betrieb gegangen: hergeleitet
+     * 7,94 ct, § 51a gilt (auch für die Angabe). Vorher, noch OHNE PV-Eintrag,
+     * prüft der Test die Pflicht-Antwort zu § 51a (vor/ab dem 25.02.2025).
+     * <pre>
+     *   hergeleitet: einspeise = 1,0*0,0794 + 0,5*0 = 0,0794
+     *   angegeben 12,5 ct: einspeise = 1,0*0,125 + 0,5*0 = 0,125
+     * </pre>
+     */
+    @Test
+    void einspeiseverguetungKarteAngabeWirktInErloesenUndFahrplanUndSetztZurueck() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String site = createSiteWithTarif(demo, "Einspeise Angabe", "CH", "eigenverbrauch",
+                "fest", "30");
+        String base = "/api/v1/sites/" + site + "/einspeiseverguetung";
+
+        // Ohne Grundlage: keine Zahl, nur der Grund.
+        Map<String, Object> ohne = getSheet(demo, base);
+        assertThat(ohne).containsEntry("zustand", "ohne_angabe")
+                .containsEntry("wirksamCtKwh", null)
+                .containsEntry("hergeleitetCtKwh", null)
+                .containsEntry("angegebenCtKwh", null);
+
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-03-10T10:00:00Z', 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-03-10T18:00:00Z', 'CH', 'PT15M', -50.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                + "('2026-03-10T10:00:00Z', '" + tenantA + "', '" + site
+                + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
+                + "('2026-03-10T18:00:00Z', '" + tenantA + "', '" + site
+                + "', 0.5, 1.0, 0.2, 0.5, 0.0, 0.3, 90) "
+                + "ON CONFLICT DO NOTHING");
+        org.assertj.core.data.Offset<Double> eps0 = org.assertj.core.data.Offset.offset(1e-9);
+
+        // 0. Ohne Inbetriebnahmedatum braucht ein eigener Satz die Antwort zu
+        //    § 51a - sonst rechnete der Plan ihn still in Negativpreis-Stunden.
+        ResponseEntity<Map<String, Object>> ohneAntwort = rest.exchange(url(base), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("satzCtKwh", 6.0), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ohneAntwort.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) ohneAntwort.getBody().get("message")).contains("vor oder ab dem 25.02.2025");
+        assertThat(getSheet(demo, base)).containsEntry("angegebenCtKwh", null);
+        Map<String, Object> abStichtag = new java.util.HashMap<>(Map.of("satzCtKwh", 6.0,
+                "inbetriebnahmeAbSolarspitzengesetz", true));
+        assertThat(putSheet(demo, base, abStichtag)).containsEntry("zustand", "angegeben")
+                .containsEntry("inbetriebnahmeAbSolarspitzengesetz", true)
+                .containsEntry("ohneVerguetungBeiNegativpreis", true);
+        Map<String, Object> mitNull = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(mitNull).containsEntry("exportVerguetungQuelle", "angegeben");
+        // 1,0 kWh x 6 ct + 0,5 kWh x 0 (die negative Viertelstunde, § 51a)
+        assertThat(num(mitNull, "einspeiseErloesEur")).isCloseTo(0.06, eps0);
+        Map<String, Object> vorStichtag = new java.util.HashMap<>(Map.of("satzCtKwh", 6.0,
+                "inbetriebnahmeAbSolarspitzengesetz", false));
+        assertThat(putSheet(demo, base, vorStichtag)).containsEntry("ohneVerguetungBeiNegativpreis", false);
+        // 1,0 kWh x 6 ct + 0,5 kWh x 6 ct: vor dem Stichtag gilt der Satz auch bei negativem Preis
+        assertThat(num(siteEarningsDay(demo, site, "2026-03-10"), "einspeiseErloesEur"))
+                .isCloseTo(0.09, eps0);
+        // Zurücksetzen löscht Satz UND Antwort: wieder Börsenpreis, keine erfundene Zahl.
+        assertThat(putSheet(demo, base, nullValue("satzCtKwh"))).containsEntry("zustand", "ohne_angabe")
+                .containsEntry("inbetriebnahmeAbSolarspitzengesetz", null);
+        // 1,0 kWh x 10 ct + 0,5 kWh x (-5 ct)
+        assertThat(num(siteEarningsDay(demo, site, "2026-03-10"), "einspeiseErloesEur"))
+                .isCloseTo(0.075, eps0);
+
+        exec("INSERT INTO asset (id, tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES (gen_random_uuid(), '" + tenantA + "', '" + site
+                + "', 'pv', '2025-06-01', 9.8)");
+        // Ein Fahrplan-Slot zu positivem Börsenpreis: sein Einspeisewert ist der
+        // Preis, mit dem der Optimierer plant.
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw,"
+                + " grid_kw, price_eur_mwh) VALUES (now(), '" + tenantA + "', '" + site + "',"
+                + " '22222222-2222-2222-2222-222222222222', now(), 0.0, -1.0, 100.0)"
+                + " ON CONFLICT DO NOTHING");
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        // 1. Hergeleitet aus dem EEG, mit Herkunft.
+        Map<String, Object> eeg = getSheet(demo, base);
+        assertThat(eeg).containsEntry("zustand", "eeg")
+                .containsEntry("inbetriebnahme", "2025-06-01")
+                .containsEntry("eegEndeAm", "2045-12-31")
+                .containsEntry("ohneVerguetungBeiNegativpreis", true)
+                .containsEntry("hergeleitetGenaehert", false)
+                .containsEntry("angegebenCtKwh", null);
+        assertThat(num(eeg, "wirksamCtKwh")).isCloseTo(7.94, eps);
+        assertThat(num(eeg, "hergeleitetCtKwh")).isCloseTo(7.94, eps);
+        Map<String, Object> vorher = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(vorher).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg");
+        assertThat(num(vorher, "einspeiseErloesEur")).isCloseTo(0.0794, eps);
+        assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(7.94, eps);
+
+        // 2. Eigener Satz (deutsches Komma): wirkt in Erlösen und Fahrplan.
+        Map<String, Object> angegeben = putSheet(demo, base, mapOf("satzCtKwh", "12,5"));
+        assertThat(angegeben).containsEntry("zustand", "angegeben");
+        assertThat(num(angegeben, "wirksamCtKwh")).isCloseTo(12.5, eps);
+        assertThat(num(angegeben, "angegebenCtKwh")).isCloseTo(12.5, eps);
+        assertThat(num(angegeben, "hergeleitetCtKwh")).as("die Herleitung bleibt sichtbar")
+                .isCloseTo(7.94, eps);
+        assertThat(getSheet(demo, base)).isEqualTo(angegeben);
+        Map<String, Object> mit = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(mit).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "angegeben");
+        // § 51a hängt weiter am Inbetriebnahmedatum: die negative Viertelstunde bleibt 0.
+        assertThat(num(mit, "einspeiseErloesEur")).isCloseTo(0.125, eps);
+        assertThat(num(mit, "nettoErgebnisEur")).isCloseTo(
+                num(mit, "einspeiseErloesEur") + num(mit, "eigenverbrauchsWertEur")
+                        - num(mit, "stromkostenEur"), eps);
+        assertThat(num(mit, "stromkostenEur") - num(mit, "einspeiseErloesEur"))
+                .isCloseTo(num(mit, "actualEur"), eps);
+        assertThat(num(mit, "baselineEur") - num(mit, "actualEur"))
+                .isCloseTo(num(mit, "savedEur"), eps);
+        assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(12.5, eps);
+        // Mit Datum entscheidet das Datum: eine mitgesendete Antwort wird nicht gespeichert.
+        Map<String, Object> mitAntwort = new java.util.HashMap<>(Map.of("satzCtKwh", 12.5,
+                "inbetriebnahmeAbSolarspitzengesetz", false));
+        assertThat(putSheet(demo, base, mitAntwort)).containsEntry("inbetriebnahmeAbSolarspitzengesetz", null)
+                .containsEntry("ohneVerguetungBeiNegativpreis", true);
+        Map<String, Object> fleet = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-03-10"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        assertThat(siteRow(fleet, site)).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "angegeben");
+        assertThat(num(siteRow(fleet, site), "einspeiseErloesEur")).isCloseTo(0.125, eps);
+
+        // 3. Ungültige Angaben sind deutsche 400er und ändern nichts.
+        for (Map<String, Object> falsch : List.of(new java.util.HashMap<String, Object>(),
+                mapOf("satzCtKwh", -1), mapOf("satzCtKwh", 100.5), mapOf("satzCtKwh", "abc"))) {
+            ResponseEntity<Map<String, Object>> r = rest.exchange(url(base), HttpMethod.PUT,
+                    new HttpEntity<>(falsch, bearer(demo)), new ParameterizedTypeReference<>() {});
+            assertThat(r.getStatusCode()).as(String.valueOf(falsch)).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat((String) r.getBody().get("message")).as(String.valueOf(falsch)).contains("ct/kWh");
+        }
+        assertThat(num(getSheet(demo, base), "angegebenCtKwh")).isCloseTo(12.5, eps);
+
+        // 4. Ein anderer Mandant sieht und ändert nichts (404, nie 403).
+        String demo2 = token("demo2", "demo2");
+        assertThat(rest.exchange(url(base), HttpMethod.GET, new HttpEntity<>(bearer(demo2)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url(base), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("satzCtKwh", 3.0), bearer(demo2)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(num(getSheet(demo, base), "angegebenCtKwh")).isCloseTo(12.5, eps);
+
+        // 5. Zurücksetzen: die Herleitung gilt wieder, Zahl für Zahl.
+        Map<String, Object> zurueck = putSheet(demo, base, nullValue("satzCtKwh"));
+        assertThat(zurueck).isEqualTo(eeg);
+        Map<String, Object> danach = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(danach).containsEntry("exportVerguetungQuelle", "eeg");
+        assertThat(num(danach, "einspeiseErloesEur")).isCloseTo(0.0794, eps);
+        assertThat(num(danach, "savedEur")).isCloseTo(num(vorher, "savedEur"), eps);
+        assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(7.94, eps);
+
+        // 6. Direktvermarktung: kein fester Satz zu setzen, zurücksetzen geht immer.
+        String dv = createSiteWithTarif(demo, "Einspeise DV", "CH", "direktvermarktung",
+                "fest", "30");
+        String dvBase = "/api/v1/sites/" + dv + "/einspeiseverguetung";
+        assertThat(getSheet(demo, dvBase)).containsEntry("zustand", "direktvermarktung")
+                .containsEntry("wirksamCtKwh", null);
+        ResponseEntity<Map<String, Object>> dvSetzen = rest.exchange(url(dvBase), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("satzCtKwh", 8.0), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(dvSetzen.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) dvSetzen.getBody().get("message")).contains("Direktvermarktung");
+        assertThat(putSheet(demo, dvBase, nullValue("satzCtKwh")))
+                .containsEntry("zustand", "direktvermarktung");
+    }
+
+    /** Der Einspeisewert des jüngsten Fahrplan-Slots einer Anlage (ct/kWh). */
+    private double fahrplanEinspeisewert(String token, String siteId) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/schedule"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> first = (Map<String, Object>) ((List<?>) res.getBody().get("slots")).get(0);
+        return ((Number) first.get("exportValueCtKwh")).doubleValue();
     }
 
     /**
@@ -7961,6 +8405,163 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * Die Steuerung MIT BESTAND auf beiden Routen (Bedienkonzept
+     * vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 P3-1 bis P3-4 A):
+     * derselbe Tag wie oben, aber mit gemessenem Ladestand und einem
+     * Monatsanker (50 % am Monatsende davor), damit der Bestand rechenbar ist -
+     *
+     * <pre>
+     *   Anker 5,0 kWh = Vergleichsspeicher 00:00 → Vorsprung 00:00 = 0
+     *   Slot A  pv 3,0 load 1,0  stur laedt 1,25 → 6,25   gemessen 60 %
+     *   Slot B  pv 0,0 load 2,0  stur entlaedt 1,25 → 5,0 gemessen 40 % = 4,0 kWh
+     *   Kasse  savedSteuerung = 0,200 − 0,125 = 0,075 → 0,08 €
+     *   Bestand (4,0 − 5,0 − 0) × 30 ct × √0,92 = −1,0 × 28,77 ct = −0,29 €
+     *   mit Bestand 0,08 − 0,29 = −0,21 €, Grund anders_geladen
+     * </pre>
+     *
+     * <p>Die Anlagen-Route trägt den Block {@code steuerungZeitraum} (Monat,
+     * 7 Tage, Tag, Tage des Fensters), die Mandanten-Route die Tageswerte und
+     * den Monat, beide die Zahl des gewählten Zeitraums mit Bestand.
+     */
+    @Test
+    void steuerungMitBestandAufBeidenRouten() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String site = createSiteWithTarif(demo, "Mit Bestand Tagesreihe", "CH",
+                "eigenverbrauch", "fest", "30");
+        try {
+            exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                    + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
+                    + site + "', 'battery', 10, 5, 5, 100)");
+            String noon = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
+                    + " + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
+            for (String offset : new String[] {"0", "15"}) {
+                exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
+                        + " currency, source) SELECT " + noon + " + interval '" + offset
+                        + " minutes', 'CH', 'PT15M', 200.0, 'EUR', 'test'"
+                        + " ON CONFLICT (bidding_zone, resolution, ts)"
+                        + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
+            }
+            // Der Monatsanker: 50 % im letzten Eimer vor dem Monatsersten (ohne Energie).
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct,"
+                    + " n_samples) SELECT (date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                    + " AT TIME ZONE 'Europe/Berlin') - interval '15 minutes', '" + tenantA
+                    + "', '" + site + "', 50, 90 ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                    + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
+                    + " battery_discharge_kwh, soc_last_pct, n_samples) SELECT " + noon + ", '"
+                    + tenantA + "', '" + site + "', 3.0, 1.0, 0.0, 0.0, 2.0, 0.0, 60, 90"
+                    + " ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                    + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
+                    + " battery_discharge_kwh, soc_last_pct, n_samples) SELECT " + noon
+                    + " + interval '15 minutes', '" + tenantA + "', '" + site
+                    + "', 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 40, 90 ON CONFLICT DO NOTHING");
+            org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+            java.time.LocalDate heute = java.time.LocalDate.now(
+                    com.voltpilot.api.history.HistoryRange.ZONE);
+            String today = heute.toString();
+
+            Map<String, Object> anlage = siteEarningsDay(demo, site, today);
+            assertThat(num(anlage, "savedSteuerungEur")).isCloseTo(0.075, eps);
+            assertThat(num(anlage, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> zeitraum = (Map<String, Object>) anlage.get("steuerungZeitraum");
+            assertThat(zeitraum).isNotNull();
+            assertThat(num(zeitraum, "bezugCtKwh")).isCloseTo(30.0, eps);
+            assertThat(num(zeitraum, "bewertungCtKwh")).isCloseTo(28.77, eps);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> tag = (Map<String, Object>) zeitraum.get("heute");
+            assertThat(tag).containsEntry("tag", today)
+                    .containsEntry("gruende", List.of("anders_geladen"));
+            assertThat(num(tag, "steuerungEur")).isCloseTo(0.08, eps);
+            assertThat(num(tag, "vorsprungStartKwh")).isCloseTo(0.0, eps);
+            assertThat(num(tag, "vorsprungEndeKwh")).isCloseTo(-1.0, eps);
+            assertThat(num(tag, "bestandEur")).isCloseTo(-0.29, eps);
+            assertThat(num(tag, "mitBestandEur")).isCloseTo(-0.21, eps);
+            // „Heute bis 12:30“: das Ende des letzten gemessenen Eimers.
+            assertThat(java.time.Instant.parse((String) tag.get("messungBis"))).isEqualTo(
+                    heute.atTime(12, 30).atZone(com.voltpilot.api.history.HistoryRange.ZONE)
+                            .toInstant());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> monat = (Map<String, Object>) zeitraum.get("monat");
+            assertThat(monat).containsEntry("von", heute.withDayOfMonth(1).toString())
+                    .containsEntry("bis", today);
+            assertThat(num(monat, "mitBestandEur")).isCloseTo(-0.21, eps);
+            // Der Tag läuft noch: die 7 Tage davor - ohne gemessenen Tag leer, nie 0.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> sieben = (Map<String, Object>) zeitraum.get("sieben");
+            assertThat(sieben).containsEntry("von", heute.minusDays(7).toString())
+                    .containsEntry("bis", heute.minusDays(1).toString())
+                    .containsEntry("mitBestandEur", null);
+            assertThat(zeitraum).containsEntry("tage", List.of());
+
+            Map<String, Object> body = rest.exchange(
+                    url("/api/v1/earnings?range=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            Map<String, Object> row = siteRow(body, site);
+            assertThat(num(row, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(num(row, "steuerungMonatMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(row).doesNotContainKey("steuerungZeitraum");
+            Map<String, Object> entry = list(row, "dailySaved").stream()
+                    .filter(x -> today.equals(x.get("day"))).findFirst().orElseThrow();
+            assertThat(num(entry, "mitBestandEur")).isCloseTo(-0.21, eps);
+
+            // Jeder andere Zeitraum: dieselbe Zählweise, kein Tagesblock.
+            Map<String, Object> monatAnlage = rest.exchange(
+                    url("/api/v1/sites/" + site + "/earnings?range=month"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            assertThat(num(monatAnlage, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(monatAnlage).containsEntry("steuerungZeitraum", null);
+            Map<String, Object> monatFlotte = siteRow(rest.exchange(
+                    url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody(), site);
+            assertThat(num(monatFlotte, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(monatFlotte).containsEntry("steuerungMonatMitBestandEur", null);
+        } finally {
+            exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + site + "'");
+            exec("DELETE FROM asset WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
+    /**
+     * Diagnose fuer {@link #siteEarningsCarryTheStorageBankOfTheMeasuredDay} (ungeklaerter Last-Flake
+     * des vollen Modullaufs, Triage bdeg (g)): ruft {@link EarningsRepository#storageBank} ein ZWEITES
+     * Mal direkt mit einem frischen {@code now} auf, zeigt dessen Fenster und das Antwort-JSON. Weicht
+     * ein kuenftiger Fehlschlag zwischen der Server-Antwort und diesem direkten Zweitaufruf ab, ist das
+     * der Fingerabdruck eines Zeitfensters, das zwischen beiden Aufrufen eine Grenze (15-Min-Eimer,
+     * Mitternacht, Lambda-Lookback) uebersprungen hat - sonst war es die Server-Antwort selbst.
+     */
+    private String speicherKontext(String phase, String siteId, java.time.Instant von, java.time.Instant bis,
+            java.time.Instant jetztImTestaufbau, Map<String, Object> body) {
+        java.time.Instant frischesJetzt = java.time.Instant.now();
+        // storageBank liest RLS-geschuetzte Tabellen (asset, telemetry, telemetry_rollup_15m,
+        // schedule): ohne TenantContext saehe dieser direkte Zweitaufruf vom Testthread aus nichts.
+        com.voltpilot.api.tenant.TenantContext.set(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        com.voltpilot.api.repo.SpeicherBank.Bestand direkt;
+        try {
+            direkt = earningsRepo.storageBank(UUID.fromString(siteId), von, bis, frischesJetzt);
+        } finally {
+            com.voltpilot.api.tenant.TenantContext.clear();
+        }
+        String bodyJson;
+        try {
+            bodyJson = objectMapper.writeValueAsString(body);
+        } catch (Exception e) {
+            bodyJson = String.valueOf(body);
+        }
+        return phase + " | Fenster [" + von + ", " + bis + ") | jetzt(Testaufbau)=" + jetztImTestaufbau
+                + " jetzt(frisch bei dieser Pruefung)=" + frischesJetzt
+                + " | storageBank() direkt mit frischem jetzt: deltaKwh=" + direkt.deltaKwh()
+                + " wertCtKwh=" + direkt.wertCtKwh() + " wertEur=" + direkt.wertEur()
+                + " basis=" + direkt.basis() + " | Antwort der HTTP-Route: " + bodyJson;
+    }
+
     private Map<String, Object> siteEarningsDay(String token, String siteId, String at) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/sites/" + siteId + "/earnings?range=day&at=" + at), HttpMethod.GET,
@@ -8049,18 +8650,22 @@ class PortalApiTest {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = res.getBody();
         org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-6);
+        java.time.Instant tagVon = tag.atStartOfDay(berlin).toInstant();
+        java.time.Instant tagBis = tag.plusDays(1).atStartOfDay(berlin).toInstant();
+        String kontextTag = speicherKontext("tag", site, tagVon, tagBis, tagBis.minusMillis(1), body);
 
-        assertThat(num(body, "speicherDeltaKwh")).isCloseTo(44.2, eps);
-        assertThat(num(body, "speicherWertCtKwh")).isCloseTo(18.9, eps);
-        assertThat(num(body, "speicherWertEur")).isCloseTo(8.3538, org.assertj.core.data.Offset.offset(5e-4));
-        assertThat(body).containsEntry("speicherWertBasis", "plan");
+        assertThat(num(body, "speicherDeltaKwh")).as(kontextTag).isCloseTo(44.2, eps);
+        assertThat(num(body, "speicherWertCtKwh")).as(kontextTag).isCloseTo(18.9, eps);
+        assertThat(num(body, "speicherWertEur")).as(kontextTag)
+                .isCloseTo(8.3538, org.assertj.core.data.Offset.offset(5e-4));
+        assertThat(body).as(kontextTag).containsEntry("speicherWertBasis", "plan");
         // Der Posten steht NEBEN der Kasse, nie darin - und genau deshalb braucht
         // die Fläche die zweite Zeile: die gemessene Zahlungsbilanz dieses Tages
         // ist NEGATIV (−0,295 €, die Mittagsladung als entgangener Einspeise-
         // Erlös), während 44,2 kWh im Speicher liegen. Erst beide zusammen
         // ergeben die ehrliche Tageszahl.
-        assertThat(num(body, "savedEur")).isCloseTo(-0.295, org.assertj.core.data.Offset.offset(1e-9));
-        assertThat(num(body, "savedEur") + num(body, "speicherWertEur"))
+        assertThat(num(body, "savedEur")).as(kontextTag).isCloseTo(-0.295, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(body, "savedEur") + num(body, "speicherWertEur")).as(kontextTag)
                 .isCloseTo(8.06, org.assertj.core.data.Offset.offset(0.01));
 
         // FK2-Rückfall + negatives Vorzeichen: der Vortag verbraucht die Bank
@@ -8073,10 +8678,15 @@ class PortalApiTest {
                 url("/api/v1/sites/" + site + "/earnings?range=day&at=" + vortag),
                 HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
-        assertThat(num(gestern, "speicherDeltaKwh")).isCloseTo(-16.9, eps);
-        assertThat(num(gestern, "speicherWertCtKwh")).isCloseTo(15.5, eps);
-        assertThat(num(gestern, "speicherWertEur")).isCloseTo(-2.6195, org.assertj.core.data.Offset.offset(5e-4));
-        assertThat(gestern).containsEntry("speicherWertBasis", "terminal");
+        java.time.Instant vortagVon = vortag.atStartOfDay(berlin).toInstant();
+        java.time.Instant vortagBis = tagVon;
+        String kontextGestern = speicherKontext("gestern", site, vortagVon, vortagBis,
+                vortagBis.minusMillis(1), gestern);
+        assertThat(num(gestern, "speicherDeltaKwh")).as(kontextGestern).isCloseTo(-16.9, eps);
+        assertThat(num(gestern, "speicherWertCtKwh")).as(kontextGestern).isCloseTo(15.5, eps);
+        assertThat(num(gestern, "speicherWertEur")).as(kontextGestern)
+                .isCloseTo(-2.6195, org.assertj.core.data.Offset.offset(5e-4));
+        assertThat(gestern).as(kontextGestern).containsEntry("speicherWertBasis", "terminal");
 
         // Am LAUFENDEN Tag gewinnt das rohe Sample über den Rollup-Stand - sonst
         // hinkte die Bestandszeile dem kWh-Satz daneben 15 Minuten hinterher.
@@ -8110,9 +8720,11 @@ class PortalApiTest {
                 url("/api/v1/sites/" + site + "/earnings?range=day"),
                 HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        String kontextHeute = speicherKontext("heute (laufender Tag)", site, laufenderTagStart,
+                laufenderTagStart.plus(java.time.Duration.ofDays(1)), jetzt, heute);
         // 40 % (roh) gegen 92 % zu Mitternacht - NICHT die 20 % des Rollups.
-        assertThat(num(heute, "speicherDeltaKwh")).isCloseTo(-33.8, eps);
-        assertThat(num(heute, "speicherWertCtKwh")).isCloseTo(20.0, eps);
+        assertThat(num(heute, "speicherDeltaKwh")).as(kontextHeute).isCloseTo(-33.8, eps);
+        assertThat(num(heute, "speicherWertCtKwh")).as(kontextHeute).isCloseTo(20.0, eps);
 
         // Ohne primären Speicher wird NICHTS behauptet - vier ehrliche Nullen.
         Map<String, Object> ohne = rest.exchange(

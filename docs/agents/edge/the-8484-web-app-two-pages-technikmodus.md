@@ -48,10 +48,12 @@ up, one job on one page). There is no third page: `inverter.html` and
   expert exception lives in ④ Erweitert. Page-wide warning rule: ONE message,
   once, in its owning group, with the stable "seit HH:MM" stamp
   (control.js `trackStateSince`); the group row carries only the dot.
-- **The guided commissioning flow** (Einrichten, four steps ending at "Daten
-  kommen an"; releasing CONTROL is deliberately its OWN block below it) is
+- **The guided commissioning flow** (Einrichten, three steps ending at "Daten
+  kommen an": 1 Mit dem Portal koppeln, 2 Geräte einrichten, 3 Messwerte
+  prüfen; coupling comes first and is never locked, no device type is a
+  prerequisite; releasing CONTROL is deliberately its OWN block below it) is
   DERIVED from the existing APIs - no new endpoint, no persisted wizard
-  progress. Once all four are done it DISAPPEARS entirely (no green banner -
+  progress. Once all three are done it DISAPPEARS entirely (no green banner -
   Betrieb's status hero is the single health voice) and returns only when a
   step regresses. The Portal-Kopplung card follows the pairing itself: visible
   while unpaired, `.tech-only` once paired (the reference then lives in the

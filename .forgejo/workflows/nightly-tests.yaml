@@ -1,0 +1,250 @@
+name: Nightly test gate (main, no deploy)
+
+# Nachtlauf-Empfehlung aus der Wartungsrunde 07./08.11.2026 (Befund B1,
+# firstmate-Bericht .../vp-wartung-tests-t1/report.md): bis zu diesem Workflow
+# lief auf main nie automatisch ein Test, wodurch sich 21 rote Testklassen
+# unbemerkt angesammelt hatten. Dieser Lauf meldet nur - er baut, pusht und
+# deployt NICHTS, und ruehrt das gitops-Repo nicht an.
+#
+# Testumfang deckungsgleich mit dem Testjob von deploy.yaml (api/ingest/
+# timescale-writer per Maven, die Python-Dienste per Pytest), ERGAENZT um
+# marketing-adapter (dort noch gar nicht verdrahtet) und um Portal-Vitest
+# (`npm test`), das deploy.yaml bisher auslaesst (nur typecheck+build).
+# Katalog-/Shell-Selbstchecks und die Portal-CSP/Cache/Bundle/Layout-Smokes
+# bleiben bewusst aussen vor - die laufen bereits bei jedem deploy.yaml-Lauf;
+# dieser Workflow haelt sein eigenes Thema (automatischer Testlauf) klein.
+#
+# `fail-fast: false` ist bewusst anders als im Deploy-Gate: dort lohnt ein
+# frueher Abbruch (Buildzeit sparen), hier soll eine Nacht genau zeigen, WAS
+# ueberall rot ist - nicht nur die erste rote Matrixzeile.
+#
+# Docker-Sicherheit (Empfehlung "Sicherheit der Daten zuerst"): dieser Lauf
+# faehrt auf demselben Runner-Label (ubuntu-latest-mo) wie der bestehende
+# deploy.yaml-Testjob und fuehrt GENAU DIESELBEN Testbefehle aus - er fuegt
+# keine neue Docker-Operation hinzu. Kein docker-compose-Projekt wird hier
+# gestartet und kein `down -v` abgesetzt; die einzigen Docker-Zugriffe sind
+# Testcontainers (api/ingest/timescale-writer; Standard-Zufallsnamen, siehe
+# unten) und vereinzelte `docker run --name vp-kundenbereich-...-<uuid>` in
+# den Python-Pytest-Suiten (per-Lauf-eindeutig, raeumen sich im `finally`
+# selbst weg). Keine Secrets noetig - dieser Workflow baut und pusht keine
+# Images und bumpt kein gitops-Tag.
+#
+# Einziger fixer Testcontainers-Name im Repo (UemsBestandSteuerungAus-
+# EinemStueckTest, System-Property `buehne.container-prefix`) wird nur vom
+# lokalen Vergleichswerkzeug tools/buehne-vorher-nachher/run.sh gesetzt
+# (PID-eindeutig) - in diesem Workflow bleibt die Property leer, also
+# Testcontainers-Standardname (zufaellig, kollisionssicher).
+
+on:
+  schedule:
+    # 01:00 UTC = 02:00/03:00 Europe/Berlin (je Sommer-/Winterzeit) - nachts,
+    # und auf dem einzigen ubuntu-latest-mo-Runner nicht gleichzeitig mit
+    # einem von Hand ausgeloesten deploy-fast.yaml (workflow_dispatch, i.d.R.
+    # tagsueber von einem Menschen gestartet).
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ubuntu-latest-mo
+    # Je Matrixzeile eigene Obergrenze (`matrix.timeout`, Default 45 - dieselbe
+    # Grenze wie im Deploy-Gate, Lauf 2587 sass sonst >2.5 h auf einer
+    # livelocked Suite fest): `api` allein braucht mehr, siehe unten.
+    timeout-minutes: ${{ matrix.timeout || 45 }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Lief am 09./10./11.11.2026 (Lauf 554/557/560) dreimal in Folge
+          # exakt in die 45-min-Grenze (45:0x min, abgebrochen, nicht fertig
+          # geworden); der eigene workflow_dispatch-Lauf dieses PRs (PR-Text)
+          # lief danach ebenso exakt in eine angehobene 90-min-Grenze - OHNE
+          # Anzeichen eines Hängers (die letzte Zeile war eine laufende
+          # Flyway-Migration, kein stehender Test), dafür mit
+          # "context deadline exceeded" am Docker-Socket DES RUNNERS selbst
+          # beim Abschluss. Die Suite ist seit dem letzten gemessenen Deploy-
+          # Gate-Lauf (09.08.2026, ~20 min) deutlich gewachsen, UND der Runner
+          # wirkt gerade zusätzlich belastet (Docker-Daemon antwortete am
+          # Ende nicht mehr). 180 min als Reserve gegen beides; der echte
+          # Bedarf ohne diese Belastung ist noch nicht gemessen - Befund und
+          # Einordnung im PR-Text, kein zweiter Blindflug mit noch mehr
+          # Minuten, falls auch das nicht reicht.
+          - name: api
+            type: jvm
+            path: services/api
+            timeout: 180
+          - name: ingest
+            type: jvm
+            path: services/ingest
+          - name: timescale-writer
+            type: jvm
+            path: services/timescale-writer
+          - name: market-data
+            type: python
+            path: services/market-data
+            pip_install: "-e '.[dev]'"
+          # ml = xgboost/numpy, damit die Shadow-Challenger-Tests (test_ml.py)
+          # laufen statt zu skippen; der Ubuntu-Runner bringt libgomp mit.
+          - name: forecast
+            type: python
+            path: services/forecast
+            pip_install: "-e '.[dev,ml]'"
+          # solver = das HiGHS-Wheel (fuer die verhaltensechten MILP-Tests);
+          # ../forecast = der Geschwister-Pfad fuer den Persistenz-Fallback.
+          # -m 'not slow' entspricht dem CI-Kurzlauf aus docs/development.md.
+          # ABWEICHUNG von docs/development.md und deploy.yaml: dort fehlt die
+          # Extra `db` (psycopg), wodurch 24 DB-gestuetzte Tests lokal UND im
+          # bestehenden Deploy-Gate zuverlaessig rot sind (Befund B4,
+          # vp-wartung-tests-t1/report.md: "No module named 'psycopg'" - keine
+          # echte Regression, nur die fehlende Extra). Ein naechtlicher
+          # Meldelauf mit 24 fix eingebackenen roten Tests waere ab dem ersten
+          # Lauf wertlos (trainiert nur, ihn zu ignorieren) - deshalb hier
+          # zusaetzlich `db` installiert. deploy.yaml/docs/development.md
+          # bleiben unangetastet (eigenes Thema, andere Lane).
+          - name: optimization
+            type: python
+            path: services/optimization
+            pip_install: "-e '.[dev,solver,db]' -e ../forecast"
+            pytest_args: "-m 'not slow'"
+          # Noch nicht in deploy.yaml verdrahtet (kein eigenes Deploy-Image),
+          # hat aber eine eigene Pytest-Suite - die soll nicht unbeobachtet
+          # rot werden.
+          - name: marketing-adapter
+            type: python
+            path: services/marketing-adapter
+            pip_install: "-e '.[dev]'"
+          - name: frontend
+            type: frontend
+            path: frontend/portal
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ---- JVM services (Maven wrapper; Testcontainers-Tests ueberspringen
+      #      sich selbst ohne Docker - siehe AGENTS.md) -----------------------
+      - name: Set up JDK 21
+        if: matrix.type == 'jvm'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # MeasurementEdgeProvenanceTest startet den echten Go-Zwilling aus
+      # edge-app/core (go.mod: go 1.24.0) als Unterprozess - ohne das Werkzeug
+      # auf dem Runner scheitert der Prozessstart selbst (nicht der Test:
+      # "Cannot run program go ... No such file or directory"), seit der
+      # naechtliche Lauf zum ersten Mal wirklich `mvn test` fuer ingest
+      # ausfuehrt (vorher lief hier nie ein Go-Setup, deploy.yaml bringt es
+      # nur fuer sein eigenes ota-release-Werkzeug mit).
+      - name: Set up Go
+        if: matrix.name == 'ingest'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Maven test
+        if: matrix.type == 'jvm'
+        working-directory: ${{ matrix.path }}
+        run: ./mvnw -B test
+
+      # ---- Python services --------------------------------------------------
+      - name: Set up Python
+        if: matrix.type == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Pytest
+        if: matrix.type == 'python'
+        working-directory: ${{ matrix.path }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install ${{ matrix.pip_install }}
+          pytest ${{ matrix.pytest_args }}
+
+      # Diagnose fuer optimization (Lauf 554/557/560: die vier `docker run`-
+      # Wegwerf-Postgres-Fixtures - test_kundenbereich_db.py,
+      # test_ladepunkt_db.py, test_morgen_ueberschuss_db.py,
+      # test_vorsprung_budget_db.py - erhalten nach dem 90-s-Bereitschafts-
+      # Fenster durchgaengig "Connection refused", obwohl `docker run` selbst
+      # ohne Fehler zurueckkehrt und derselbe Aufbau in forecasts
+      # test_kundenbereich_db.py auf demselben Runner gruen ist. `optimization`
+      # laeuft alphabetisch als vorletzte Matrixzeile, nach api/forecast/
+      # frontend/ingest/market-data/marketing-adapter auf demselben Runner
+      # (sequentiell, keine zwei Matrixzeilen gleichzeitig - Lauf 554 zeigt
+      # lueckenlos aneinanderschliessende Start-/Endzeiten) - Verdacht:
+      # Plattenplatz/Docker-Zustand nach den vorherigen, teils Testcontainers-
+      # schweren Zeilen. Gibt nur aus, loest nichts auf - Befund in den naechsten
+      # PR, sobald die Ausgabe vorliegt.
+      - name: "Diagnose (optimization): Docker-/Plattenzustand"
+        if: always() && matrix.name == 'optimization'
+        run: |
+          echo "--- df -h ---"
+          df -h
+          echo "--- docker system df ---"
+          docker system df || true
+          echo "--- docker ps -a ---"
+          docker ps -a || true
+          echo "--- docker images ---"
+          docker images || true
+
+      # ---- Frontend (typecheck + Vitest + Build, siehe docs/development.md) -
+      - name: Set up Node
+        if: matrix.type == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm install
+
+      - name: Typecheck
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run typecheck
+
+      - name: Vitest
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm test
+
+      - name: Build
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run build
+
+  # Red-run notification. Forgejo markiert den Lauf (Actions-Tab, Commit-
+  # Status) bereits rot, sobald eine Matrixzeile scheitert - derselbe
+  # bestehende Weg wie im Deploy-Gate (deploy.yaml:notify-failure). Diese
+  # Datei nutzt ihn unveraendert; ein zusaetzlicher Push-Kanal (z. B. ein
+  # ntfy.sh-Topic oder eine E-Mail-Aktion) existiert im Repo noch nicht - ein
+  # Vorschlag dazu steht im Bericht statt hier eingebaut zu werden.
+  notify-failure:
+    name: Notify on red nightly run
+    needs: [test]
+    if: failure()
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 10
+
+    steps:
+      - name: Summarise the failed run
+        run: |
+          {
+            echo "## :red_circle: Nightly test gate failed"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| test | ${{ needs.test.result }} |"
+            echo ""
+            echo "Kein Deploy betroffen - dieser Workflow baut, pusht und deployt nichts."
+            echo "Commit \`${{ github.sha }}\` lief nur durch den Testgate."
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          echo "Nightly test gate failed for ${{ github.sha }} - see job results above." >&2
+          exit 1

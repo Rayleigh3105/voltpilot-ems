@@ -181,12 +181,26 @@ pq() { docker exec "$P-db" psql -U voltpilot -d voltpilot -Atc "$1"; }
 docker run -d --name "$P-kc" --network "$P-net" \
   -e POSTGRES_PASSWORD=kc -e POSTGRES_USER=keycloak -e POSTGRES_DB=keycloak \
   "$KC_IMG" >/dev/null
+#
+# pg_isready kann gegen den KURZLEBIGEN Init-Server des offiziellen Postgres-
+# Images antworten (derselbe Unix-Socket-Pfad wie der endgueltige Server);
+# der naechste Befehl landet dann moeglicherweise genau in der Neustart-Luecke
+# und schlaegt fehl, obwohl "bereit" gemeldet wurde. Deshalb wird hier direkt
+# der echte Seed-Befehl wiederholt, bis ER gelingt, statt einem schwaecheren
+# Bereitschafts-Proxy zu vertrauen (empirisch belegt: pg_isready meldet nach
+# ~3s bereit, der direkt folgende Befehl scheitert in der ~1,5s-Neustart-Luecke).
+KC_SEEDED=0
 for _ in $(seq 1 60); do
-  docker exec "$P-kc" pg_isready -U keycloak -d keycloak >/dev/null 2>&1 && break
+  if docker exec "$P-kc" psql -U keycloak -d keycloak -Atc \
+       "CREATE TABLE realm_probe(id int primary key, name text); INSERT INTO realm_probe VALUES (1,'voltpilot');" >/dev/null 2>&1; then
+    KC_SEEDED=1
+    break
+  fi
   sleep 1
 done
-docker exec "$P-kc" psql -U keycloak -d keycloak -Atc \
-  "CREATE TABLE realm_probe(id int primary key, name text); INSERT INTO realm_probe VALUES (1,'voltpilot');" >/dev/null
+if [ "$KC_SEEDED" -ne 1 ]; then
+  fail "keycloak-DB: realm_probe-Tabelle konnte nicht angelegt werden (Server kam nicht hoch)"
+fi
 
 # --- Seed: Hypertable mit komprimierten Chunks (die forecast-Situation) ------
 docker exec -i "$P-db" psql -U voltpilot -d voltpilot -q -v ON_ERROR_STOP=1 <<'SQL' >/dev/null

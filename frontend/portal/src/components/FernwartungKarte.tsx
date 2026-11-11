@@ -2,7 +2,8 @@
  * Die Karte „Fernwartung" auf der Box-Seite - NUR in der Plattform-Schicht
  * („Technik & Diagnose › plattform"), nie für den Kunden (O3).
  *
- * Sie zeigt den Tunnel dieser Box, laufende Fenster und ob der Tunnel-Dienst
+ * Sie zeigt den Tunnel dieser Box, ob sie laut Tunnel-Dienst verbunden ist,
+ * laufende Fenster mit dem Stand der Anmeldung und ob der Tunnel-Dienst
  * abholt; sie öffnet und schließt Fenster. Zugänge und das volle Protokoll
  * wohnen auf „Geräte › Fernwartung" (Link).
  */
@@ -15,15 +16,17 @@ import { adminApi } from '../admin/adminApi';
 import {
   abrufLage,
   boxAnmeldung,
+  boxVerbindung,
   fensterTeile,
   fensterTon,
   oeffnenSperre,
-  UNBEKANNT_SATZ,
+  RUECKMELDUNG_TAKT_MS,
   type FernwartungBox,
   type FernwartungTechniker,
   type FernwartungUebersicht,
 } from '../adminFernwartung';
 import { fernwartungHash } from '../nav';
+import { useFreshnessPoll } from '../useFreshnessPoll';
 import { FensterDialog, LageZeile, SchluesselDialog } from './FernwartungDialoge';
 import { BoxAnmeldungBlock } from './FernwartungSsh';
 import '../pages/admin/Fernwartung.css';
@@ -59,6 +62,9 @@ export function FernwartungKarte({ edgeRef }: { edgeRef: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edgeRef]);
 
+  // Still nachladen: Verbindung und abgeholter Schlüssel ändern sich ohne Zutun im Portal.
+  useFreshnessPoll(() => void laden(), RUECKMELDUNG_TAKT_MS);
+
   async function schliessen(id: string) {
     setBusy(true);
     setFehler(null);
@@ -73,7 +79,7 @@ export function FernwartungKarte({ edgeRef }: { edgeRef: string }) {
   }
 
   const sperre = box ? oeffnenSperre(box, techniker) : null;
-  const anmeldung = box ? boxAnmeldung(box, techniker) : null;
+  const anmeldung = box ? boxAnmeldung(box, techniker, uebersicht, jetzt) : null;
 
   return (
     <section className="vp-fw-karte" data-testid="fw-karte" aria-labelledby="fw-karte-titel">
@@ -100,6 +106,7 @@ export function FernwartungKarte({ edgeRef }: { edgeRef: string }) {
       )}
       {box && (
         <>
+          <LageZeile lage={boxVerbindung(box, uebersicht, jetzt)} testId="fw-karte-verbindung" />
           {box.laufendeFenster.length === 0 ? (
             <p className="vp-muted" style={{ margin: 0 }}>
               Kein Fenster offen - Techniker erreichen die Box nicht.
@@ -136,7 +143,6 @@ export function FernwartungKarte({ edgeRef }: { edgeRef: string }) {
         </>
       )}
       {uebersicht && box !== undefined && <LageZeile lage={abrufLage(uebersicht, jetzt)} testId="fw-karte-dienst" />}
-      {box && <p className="vp-note" style={{ margin: 0 }}>{UNBEKANNT_SATZ}</p>}
       {fehler && <p className="vp-alert vp-alert-err">{fehler}</p>}
       <p style={{ margin: 0 }}>
         <a href={fernwartungHash(edgeRef)} className="vp-box-oberflaeche">

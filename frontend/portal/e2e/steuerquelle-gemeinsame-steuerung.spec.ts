@@ -28,8 +28,9 @@ async function oeffne(page: Page, breite: number, zustand: string | null) {
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
   await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=box-halle1');
   await expect(page.getByRole('heading', { name: 'Box Halle 1', level: 1 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
-  await expect(page.locator('.vp-box-quellen')).toContainText('DQ-1');
+  // GE-4: „Geräte an dieser Box“ — DQ-1 steht dort als Anschluss (kein gespeicherter Verweis auf ein Gerät).
+  await expect(page.getByRole('heading', { name: 'Geräte an dieser Box' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
+  await expect(page.locator('[data-box-weg="DQ-1"]')).toContainText('Kennung DQ-1');
   await page.evaluate(() => document.fonts.ready);
   await page.waitForLoadState('networkidle');
 }
@@ -37,9 +38,9 @@ async function oeffne(page: Page, breite: number, zustand: string | null) {
 async function ablegen(page: Page, name: string) {
   if (!BILDER) return;
   mkdirSync(BILDER, { recursive: true });
-  const quellen = page.getByTestId('box-quellen');
-  await quellen.scrollIntoViewIfNeeded();
-  await quellen.screenshot({ path: join(BILDER, `${name}.png`) });
+  const block = page.getByTestId('box-geraete-block');
+  await block.scrollIntoViewIfNeeded();
+  await block.screenshot({ path: join(BILDER, `${name}.png`) });
 }
 
 // Je Lage EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): die Bühne lädt
@@ -48,7 +49,7 @@ async function ablegen(page: Page, name: string) {
 for (const breite of [375, 1440]) {
   test(`AP-15 IP-26 · Steuerquelle bei ${breite} px: ohne Gemeinsame Steuerung steht der Satz von heute`, async ({ page }) => {
     await oeffne(page, breite, null);
-    const dq1 = page.locator('.vp-box-quellen li').filter({ hasText: 'DQ-1' });
+    const dq1 = page.locator('[data-box-weg="DQ-1"]');
     await expect(dq1).toContainText(BESTAND);
     await expect(dq1.getByRole('button', { name: 'Zuständige Box wechseln' })).toHaveCount(0);
     await ablegen(page, `vorher-${breite}`);

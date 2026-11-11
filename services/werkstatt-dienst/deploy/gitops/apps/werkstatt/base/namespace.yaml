@@ -1,0 +1,11 @@
+# Werkstatt-Dienst: eigener Namespace nach der Regel <projekt>-<umgebung>.
+# PodSecurity "restricted": kein Host-Netz, kein root, keine Capabilities.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: werkstatt-prod
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

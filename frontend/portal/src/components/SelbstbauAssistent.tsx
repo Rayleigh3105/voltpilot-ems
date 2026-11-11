@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
-import { api, ApiError, type SiteComponents, type SiteComponentTemplate } from '../api';
+import { api, ApiError, type GeraetesucheBezug, type SiteComponents, type SiteComponentTemplate } from '../api';
 import { prefill } from '../eigeneVorlagen';
 import { AUTO_TEST_MS, neueKomponente } from '../anlegenFlow';
 import {
@@ -59,7 +59,10 @@ export function SelbstbauAssistent({
   siteId,
   vorlage,
   vorher,
+  startAdresse = null,
+  startFund = null,
   onZurueck,
+  zurueckLabel,
   onClose,
   onGespeichert,
 }: {
@@ -73,14 +76,27 @@ export function SelbstbauAssistent({
   vorlage?: SiteComponentTemplate | null;
   /** Die Komponenten VOR dem Anlegen - die neue wird belegt, nie geraten. */
   vorher: { id: string }[];
+  /**
+   * Ein Exemplar, das die Gerätesuche gefunden hat („Vielleicht ein Energie-Gerät": offener Modbus-Port ohne
+   * Kennung) - seine Adresse und sein Port stehen schon im Anschluss; die Messwerte beschreibt der Kunde selbst.
+   */
+  startAdresse?: { host: string; port: number | null } | null;
+  /** Der Bezug auf diesen Fund und seine Suche - das Anlegen schickt ihn mit; null = ohne Bezug. */
+  startFund?: GeraetesucheBezug | null;
   /** Zurück in den Katalog; null = die Seite wurde nicht aus dem Katalog geöffnet. */
   onZurueck?: (() => void) | null;
+  zurueckLabel?: string;
   onClose: () => void;
   onGespeichert: (result: SiteComponents, info: SelbstbauErgebnis) => void;
 }) {
   const start = vorlage ? prefill(vorlage) : null;
   const [verbindung, setVerbindung] = useState<VerbindungForm>(
-    start ? { host: '', port: start.port, unitId: start.unitId } : neueVerbindung(),
+    () => {
+      const v = start ? { host: '', port: start.port, unitId: start.unitId } : neueVerbindung();
+      return startAdresse
+        ? { ...v, host: startAdresse.host, port: startAdresse.port === null ? v.port : String(startAdresse.port) }
+        : v;
+    },
   );
   const [zeilen, setZeilen] = useState<MesswertZeile[]>(
     start && start.zeilen.length ? start.zeilen.map((z) => ({ ...neueZeile(), ...z })) : [neueZeile()],
@@ -175,7 +191,7 @@ export function SelbstbauAssistent({
     setSpeichern(true);
     setFehler(null);
     try {
-      const result = await api.createCustomComponent(siteId, speicherRumpf(name, verbindung, zeilen));
+      const result = await api.createCustomComponent(siteId, speicherRumpf(name, verbindung, zeilen, startFund));
       const id = neueKomponente(vorher, result.components);
       const titel = name.trim() || 'Eigenes Modbus-Gerät';
       let hinweis: string | null = null;
@@ -212,6 +228,7 @@ export function SelbstbauAssistent({
       titel="Gerät einrichten"
       onClose={onClose}
       onZurueck={onZurueck}
+      zurueckLabel={zurueckLabel}
       kopf={
         <EinrichtenKopf
           titel={vorlage ? vorlage.label : 'Modbus-TCP-Gerät'}

@@ -221,3 +221,20 @@ describe('die Brücke zur Regel-Welt', () => {
     expect(regelAktion({ schaltbar: true }, 'setpoint')).toBe('setpoint');
   });
 });
+
+describe('Freigabe-Zustand eines im Katalog freigegebenen Typs', () => {
+  it('nennt die Freigabe, behauptet aber keinen Prüfstandslauf (der Heizstab hat keinen)', () => {
+    const z = freigabeZustand({ schaltbar: true, quelle: 'pruefstand' });
+    expect(z).toMatchObject({ wort: 'Von VoltPilot freigegeben', ton: 'ok' });
+    expect(z.satz).toContain('freigegeben');
+    expect(z.satz).not.toMatch(/Prüfstand/);
+  });
+});
+
+describe('Freigabe-Zustand eines nur im Simulator geprüften Typs', () => {
+  it('sagt „Noch nicht am Prüfstand“ statt „Von VoltPilot freigegeben“', () => {
+    const z = freigabeZustand({ schaltbar: true, quelle: 'erprobung' });
+    expect(z).toMatchObject({ stufe: 'erprobung', wort: 'Noch nicht am Prüfstand', ton: 'unbekannt' });
+    expect(z.satz).not.toMatch(/freigegeben/);
+  });
+});

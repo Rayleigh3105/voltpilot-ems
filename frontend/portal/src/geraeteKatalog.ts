@@ -32,7 +32,7 @@ import type { AdoptableSource } from './rollen';
 
 export type KatalogKategorie = 'wr' | 'laden' | 'schalten' | 'batterie' | 'zaehler' | 'selbst' | 'weitere';
 export type KatalogChip = 'alle' | KatalogKategorie;
-export type KatalogWeg = 'ocpp' | 'bms' | 'modbus';
+export type KatalogWeg = 'ocpp' | 'modbus' | 'anlagensteuerung';
 
 export const KATEGORIE_LABEL: Record<KatalogKategorie, string> = {
   wr: 'Wechselrichter',
@@ -55,7 +55,7 @@ export const KATEGORIE_SYMBOL: Record<KatalogKategorie, { kategorie: AufbauKateg
   weitere: { kategorie: 'grid', icon: 'cpu' },
 };
 
-/** Die drei Wege ohne Vorlage - im Katalog gewöhnliche Einträge. */
+/** Die Wege ohne Vorlage - im Katalog gewöhnliche Einträge. */
 export const WEGE: Record<
   KatalogWeg,
   { titel: string; zusatz: string; kategorie: KatalogKategorie; stichworte: string }
@@ -68,17 +68,19 @@ export const WEGE: Record<
     kategorie: 'laden',
     stichworte: 'ladesäule ladestation ladepunkt ocpp wallbox säule',
   },
-  bms: {
-    titel: 'Batterie mit eigenem BMS',
-    zusatz: 'Über MQTT oder HTTP/JSON · z. B. DIYBMS, Seplos, JK',
-    kategorie: 'batterie',
-    stichworte: 'batterie speicher akku bms diybms seplos jk mqtt http json shunt',
-  },
   modbus: {
     titel: 'Modbus-TCP-Gerät',
     zusatz: 'Selbst beschreiben: Adresse, Register, Messwerte',
     kategorie: 'selbst',
     stichworte: 'modbus tcp register eigenbau selbst sensor gerät',
+  },
+  // UEMS EZ-15 (EW-14 A): die Steuerung einer Erzeugeranlage, die das VoltPilot-Registerbild Erzeuger trägt -
+  // das Bild beschreibt die Anlage selbst, darum kein Register von Hand.
+  anlagensteuerung: {
+    titel: 'Anlagensteuerung (SPS mit VoltPilot-Bild)',
+    zusatz: 'BHKW oder PV mit WAGO oder anderem Controller',
+    kategorie: 'weitere',
+    stichworte: 'anlagensteuerung sps wago pfc200 controller bhkw biogas erzeuger',
   },
 };
 
@@ -257,15 +259,43 @@ export interface KatalogChipInfo {
 }
 
 /** Die Arten als Filter über dem Katalog - mit ihrer Zahl, „Weitere" nur, wenn es welche gibt. */
+/**
+ * Ein Schalter (`deviceType: switch`, heute der Shelly) steht nicht als Modell im Katalog: als eigenes Gerät entstünde er
+ * als Messgerät ohne Rolle, das die Box nicht anwendet (VoltPilotGATE, 02.11.2026), und die API lehnt ihn ab. Er entsteht
+ * nur über „Geräte suchen“ als Heizstab. Über „Zähler" bleibt er wählbar: dort ist er das Gerät, über das gemessen wird,
+ * und hat damit eine Rolle.
+ *
+ * Dasselbe gilt für die HTTP-Schnittstelle einer Wallbox (`deviceType: wallbox`, heute go-e): nur lesend, ohne Rolle für
+ * die Box, von der API abgelehnt. Eine Wallbox kommt über OCPP.
+ */
+export function alsModellAngeboten(t: ComponentTemplate, chip: KatalogChip): boolean {
+  const typ = (t.deviceType ?? '').trim();
+  if (typ === 'wallbox') return false;
+  return chip === 'zaehler' || typ !== 'switch';
+}
+
+/** Der Satz, der sagt, wo ein Schalter stattdessen entsteht. */
+export const SCHALTER_HINWEIS =
+  'Einen Shelly-Schalter übernehmen Sie über „Geräte suchen“ als Heizstab. Einen einzelnen Schaltausgang als eigenes '
+  + 'Gerät kann die Box keiner Rolle zuordnen.';
+
+/** Der Satz, der sagt, wie eine Wallbox stattdessen angebunden wird. */
+export const WALLBOX_HINWEIS =
+  'Eine Wallbox binden Sie über „Ladesäule mit OCPP 1.6“ an: Sie tragen die angezeigte Adresse in der Wallbox als '
+  + 'OCPP-Server ein, sie meldet sich dann bei Ihrer Box. Über ihre HTTP-Schnittstelle allein kann die Box sie keiner Rolle '
+  + 'zuordnen.';
+
 export function katalogChips(templates: ComponentTemplate[], vorlagen: SiteComponentTemplate[]): KatalogChipInfo[] {
-  const zahl = (k: KatalogKategorie) => templates.filter((t) => kategorieVon(t) === k).length;
+  const zahl = (k: KatalogKategorie) =>
+    templates.filter((t) => kategorieVon(t) === k && alsModellAngeboten(t, 'alle')).length;
   const zaehler = zahl('zaehler');
+  const batterien = zahl('batterie');
   const chips: KatalogChipInfo[] = [
     { id: 'alle', label: 'Alle', anzahl: null },
     { id: 'wr', label: KATEGORIE_LABEL.wr, anzahl: zahl('wr') },
     { id: 'laden', label: KATEGORIE_LABEL.laden, anzahl: zahl('laden') + 1 },
     { id: 'schalten', label: KATEGORIE_LABEL.schalten, anzahl: zahl('schalten') },
-    { id: 'batterie', label: KATEGORIE_LABEL.batterie, anzahl: zahl('batterie') + 1 },
+    { id: 'batterie', label: KATEGORIE_LABEL.batterie, anzahl: batterien > 0 ? batterien : null },
     { id: 'zaehler', label: KATEGORIE_LABEL.zaehler, anzahl: zaehler > 0 ? zaehler : null },
     { id: 'selbst', label: KATEGORIE_LABEL.selbst, anzahl: 1 + vorlagen.length },
   ];
@@ -302,9 +332,13 @@ function leereAnsicht(): KatalogAnsicht {
 /** Die Ansicht des Katalogs für Suche, Art und Marke. */
 export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
   const out = leereAnsicht();
+  const templates = e.templates.filter((t) => alsModellAngeboten(t, e.chip));
+  const nichtAngeboten = e.templates.filter((t) => !alsModellAngeboten(t, e.chip));
+  const schalter = nichtAngeboten.filter((t) => (t.deviceType ?? '').trim() !== 'wallbox');
+  const wallboxen = nichtAngeboten.filter((t) => (t.deviceType ?? '').trim() === 'wallbox');
   const begriffe = suchBegriffe(e.q);
   const inArt = (k: KatalogKategorie) => e.chip === 'alle' || e.chip === k;
-  const zaehlerVorlagen = e.templates.filter((t) => kategorieVon(t) === 'zaehler');
+  const zaehlerVorlagen = templates.filter((t) => kategorieVon(t) === 'zaehler');
 
   if (begriffe.length > 0) {
     // --- Suche: über alles, was die gewählte Art zulässt -------------------
@@ -330,12 +364,20 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
         ),
       );
     }
-    // Über „Zähler" sucht man das Gerät, ÜBER das gemessen wird - also in allem.
+    // Über „Zähler" sucht man den Zähler ODER das Gerät, ÜBER das gemessen wird -
+    // also in allem, auch wenn es Zähler-Vorlagen gibt.
     const suchraum =
-      e.chip === 'alle' || (e.chip === 'zaehler' && zaehlerVorlagen.length === 0)
-        ? e.templates
-        : e.templates.filter((t) => kategorieVon(t) === e.chip);
+      e.chip === 'alle' || e.chip === 'zaehler'
+        ? templates
+        : templates.filter((t) => kategorieVon(t) === e.chip);
     const suche = modellSuche(suchraum, e.q);
+    const sucheHinweise = [
+      (e.chip === 'alle' || e.chip === 'schalten') && modellSuche(schalter, e.q).treffer.length > 0 ? SCHALTER_HINWEIS : null,
+      (e.chip === 'alle' || e.chip === 'laden') && modellSuche(wallboxen, e.q).treffer.length > 0 ? WALLBOX_HINWEIS : null,
+    ].filter(Boolean);
+    if (sucheHinweise.length > 0) {
+      out.hinweis = sucheHinweise.join(' ');
+    }
     const wegTreffer = (Object.keys(WEGE) as KatalogWeg[]).filter(
       (w) => inArt(WEGE[w].kategorie) && passt(normalisiereSuche(`${WEGE[w].titel} ${WEGE[w].zusatz} ${WEGE[w].stichworte}`), begriffe),
     );
@@ -365,7 +407,7 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
   // --- Eine Marke aufgeklappt: ihre Modelle ---------------------------------
   if (e.marke) {
     const raum =
-      e.chip === 'zaehler' || e.chip === 'alle' ? e.templates : e.templates.filter((t) => kategorieVon(t) === e.chip);
+      e.chip === 'zaehler' || e.chip === 'alle' ? templates : templates.filter((t) => kategorieVon(t) === e.chip);
     const modelle = raum
       .filter((t) => t.brand === e.marke)
       .sort((a, b) => deutsch(a.modelLabel, b.modelLabel));
@@ -377,7 +419,7 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
   }
 
   // --- Blättern nach Art ------------------------------------------------------
-  const vonArt = (k: KatalogKategorie) => e.templates.filter((t) => kategorieVon(t) === k);
+  const vonArt = (k: KatalogKategorie) => templates.filter((t) => kategorieVon(t) === k);
   const modelleUndWege = (k: KatalogKategorie) => [
     ...vonArt(k).sort((a, b) => deutsch(modellTitel(a), modellTitel(b))).map(modellEintrag),
     ...wegeFuer(k).map(wegEintrag),
@@ -403,23 +445,33 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
       return out;
     case 'zaehler':
       if (zaehlerVorlagen.length > 0) {
-        out.gruppen.push(...gruppe('zaehler', KATEGORIE_LABEL.zaehler, modelleUndWege('zaehler')));
+        // Erst die Zähler, dann - wie vor der ersten Zähler-Vorlage - das Gerät, über
+        // das gemessen wird (ein Wechselrichter mit Zähler am Netzpunkt bleibt so wählbar).
+        out.gruppen.push(
+          ...gruppe('zaehler', KATEGORIE_LABEL.zaehler, modelleUndWege('zaehler')),
+          ...gruppe(
+            'zaehler-geraet',
+            'Oder das Gerät, über das gemessen wird',
+            markenEintraege(templates.filter((t) => kategorieVon(t) !== 'zaehler')),
+          ),
+        );
         return out;
       }
       out.hinweis = keineVorlageHinweis('zaehler');
-      out.gruppen.push(...gruppe('zaehler', 'Gerät wählen, über das gemessen wird', markenEintraege(e.templates)));
+      out.gruppen.push(...gruppe('zaehler', 'Gerät wählen, über das gemessen wird', markenEintraege(templates)));
       return out;
     case 'laden':
       out.gruppen.push(...gruppe('laden', KATEGORIE_LABEL.laden, modelleUndWege('laden')));
-      out.hinweis =
-        'Eine Wallbox mit Vorlage liest VoltPilot über ihre Schnittstelle. Eine Ladesäule mit OCPP meldet '
-        + 'sich selbst bei Ihrer Box; Sie geben sie nur frei.';
+      out.hinweis = WALLBOX_HINWEIS;
       return out;
     case 'schalten':
       out.gruppen.push(...gruppe('schalten', KATEGORIE_LABEL.schalten, modelleUndWege('schalten')));
-      if (vonArt('schalten').some((t) => (t.deviceType ?? '') === 'io_module')) {
-        out.hinweis = 'Beim I/O-Modul ordnen Sie danach jeden Ausgang einem Verbraucher zu.';
-      }
+      out.hinweis = [
+        vonArt('schalten').some((t) => (t.deviceType ?? '') === 'io_module')
+          ? 'Beim I/O-Modul ordnen Sie danach jeden Ausgang einem Verbraucher zu.'
+          : null,
+        schalter.length > 0 ? SCHALTER_HINWEIS : null,
+      ].filter(Boolean).join(' ') || null;
       return out;
     case 'batterie':
       out.gruppen.push(...gruppe('batterie', KATEGORIE_LABEL.batterie, modelleUndWege('batterie')));
@@ -449,8 +501,9 @@ export function wahlFuer(eintrag: KatalogEintrag, chip: KatalogChip): KatalogWah
         art: 'modell',
         template: eintrag.template,
         // Über „Zähler" gewählt, misst das Gerät den Hausanschluss (K2) - es sei
-        // denn, es IST eine Zähler-Vorlage; dann ergibt sich die Rolle ohnehin.
-        rolle: chip === 'zaehler' ? 'grid-meter' : null,
+        // denn, es IST eine Zähler-Vorlage: dann fragt der Fluss, ob Netz-Zähler
+        // oder Unterzähler.
+        rolle: chip === 'zaehler' && (eintrag.template.deviceType ?? '').trim() !== 'meter' ? 'grid-meter' : null,
       };
     case 'weg':
       return { art: 'weg', weg: eintrag.weg };

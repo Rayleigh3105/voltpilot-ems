@@ -115,8 +115,10 @@ public class ConsumerRequirementLedgerWriter {
                 effectiveLevel = EnergyConfirmation.ASSUMED;
             }
         }
+        // Heizstab V1: a heating rod in stages brings the assumed energy of its CONFIRMED stages
+        // (written forward per heartbeat), never rated power x time.
         Evidence ev = new Evidence(runtime, r.state(), r.reasonCode(), r.confirmed(), effectiveLevel,
-                measuredEnergy, profile.ratedPowerKw());
+                measuredEnergy, profile.ratedPowerKw(), r.stufeEnergieKwhHeute());
         List<Row> rows = ConsumerRequirementLedger.evaluate(r.entityId(), reqs, ev, now, ZONE);
         for (Row row : rows) {
             store.upsert(siteId, r.entityId(), row);

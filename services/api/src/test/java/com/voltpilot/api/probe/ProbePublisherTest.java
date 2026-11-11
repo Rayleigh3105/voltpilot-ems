@@ -166,4 +166,18 @@ class ProbePublisherTest {
                 .isEqualTo(ProbePublisher.envelope(TENANT, SITE, DEVICE, "9f2c41ab77d0e315",
                         Instant.parse("2026-09-23T10:00:00Z"), null, null, List.of(minimal())));
     }
+
+    /** EZ-15: der Kopf des Erzeuger-Bilds geht in derselben Form als {@code erzeuger_kopf} hinaus. */
+    @Test
+    void anErzeugerHeadGoesOutInTheContractShape() throws Exception {
+        byte[] raw = ProbePublisher.envelope(TENANT, SITE, DEVICE, "e25a0b9c3e77d301",
+                Instant.parse("2026-10-21T20:05:00Z"), null,
+                new ProbePublisher.ErzeugerKopfOp("erreichbarkeit", "192.168.20.40", 503, 1, "input", 0, "big"),
+                List.of());
+        JsonNode ops = new ObjectMapper().readTree(raw).path("ops");
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0).toString()).isEqualTo("{\"op\":\"erzeuger_kopf\",\"transport\":\"modbus_tcp\","
+                + "\"id\":\"erreichbarkeit\",\"host\":\"192.168.20.40\",\"port\":503,\"unit_id\":1,"
+                + "\"register_kind\":\"input\",\"address\":0,\"word_order\":\"big\"}");
+    }
 }

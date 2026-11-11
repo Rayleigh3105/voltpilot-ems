@@ -46,6 +46,7 @@ import type {
   EarningsRange,
   HistoryRange,
   HistoryTotals,
+  SteuerungZeitraum,
 } from './api';
 import { periodLabel } from './anlage';
 import {
@@ -68,6 +69,7 @@ import type { PeakBandView } from './peakBand';
 import { quoteSatz, quoteUnplausibel, quoteZahl } from './quoteUnplausibel';
 import { planSentence, type PlanWordingKind } from './schedule';
 import { speicherAussage, type SpeicherAussage, type SpeicherKontext } from './speicherAussage';
+import { steuerungKarte, steuerungKurz, type SteuerungKarte } from './steuerungZeitraum';
 import { winterSatz } from './winterSatz';
 import type { ActiveMode, CockpitBlock, CockpitBlockId, MoneyStream } from './surface';
 import type { SiteCharging } from './ladepunkte';
@@ -337,8 +339,18 @@ export interface HeroMoney {
   attribution: string | null;
   /** Der volle Wortlaut als Tooltip der Kurzform; null ohne Aussage. */
   attributionTitel?: string | null;
+  /**
+   * Die zweite Zeile der Zurechnung in der Tagesansicht mit Bestand
+   * (Bedienkonzept P3, P3-4 A): „letzte 7 Tage + 9,45 € · heute bis 08:15
+   * + 0,01 €“ unter „Steuerung diesen Monat + 25,86 €“. null sonst.
+   */
+  attributionZweit?: string | null;
+  /** Die Karte mit Bestand für die Cockpit-Erlöskarte (dieselbe wie auf der Erlöse-Seite). */
+  zeitraumKarte?: SteuerungKarte | null;
   /** true = the selected earnings window is still running. */
   attributionInterim?: boolean;
+  /** true = der Zeitraum läuft noch („heute bisher“), unabhängig davon, ob es eine Zurechnung gibt. */
+  laeuft?: boolean;
   /** Measured battery inventory, valued by the plan and NEVER added to cash. */
   bestand?: BestandZeile | null;
   /**
@@ -422,7 +434,13 @@ export function cockpitHero(input: {
    * durch — deshalb sind die Tarif-Felder OPTIONAL angehängt: fehlen sie, sagt
    * die Erklärung die vorsichtigere Fassung („Börsenpreis").
    */
-  money?: (CockpitMoney & Partial<SteuerungFormelInput> & { selbstverbrauchKwh?: number | null }) | null;
+  money?:
+    | (CockpitMoney &
+        Partial<SteuerungFormelInput> & {
+          selbstverbrauchKwh?: number | null;
+          steuerungZeitraum?: SteuerungZeitraum | null;
+        })
+    | null;
   range: EarningsRange;
   at?: Date;
   now: Date;
@@ -435,6 +453,13 @@ export function cockpitHero(input: {
    * nichts. Ohne sie steht unter der Monatszahl kein Anker.
    */
   jahrAnker?: SpeicherKontext['jahrAnker'];
+  /**
+   * Hat die Anlage einen Speicher (`roleCounts.storage > 0`)? `false` = sicher keiner: dann gibt es keine
+   * Steuerungs-Aussage, auch wenn der Server `no_battery_data` meldet - die Steuerungs-Zeile mit Strich und
+   * „Zwischenstand“ stünden auf einer Anlage, die nichts zu steuern hat (Konzept `vp-cockpit-privat-konzept`, N1).
+   * `undefined`/`null` = unbekannt, die Aussage bleibt wie bisher.
+   */
+  mitSpeicher?: boolean | null;
 }): CockpitHeroView {
   const label = periodLabel(input.range, input.at ?? input.now, input.now);
   const rings: HeroRing[] = [];
@@ -472,8 +497,12 @@ export function cockpitHero(input: {
   // GANZEN Speicher (§2.2), und die Erlöse-Seite nennt ihn seither so. Ohne
   // die gemeinsame Ableitung sagte das Cockpit „Steuerung −2,67 €" und die
   // Erlöse-Seite „Steuerung +1,45 €" über dieselbe Stunde.
-  const speicher = speicherAussage(input.money, { now: input.now, jahrAnker: input.jahrAnker ?? null });
-  const attribution = speicher?.hatAussage ? speicher.kurz : null;
+  const speicher = input.mitSpeicher === false ? null : speicherAussage(input.money, { now: input.now, jahrAnker: input.jahrAnker ?? null });
+  // Die Tagesansicht mit Bestand (Bedienkonzept P3, P3-4 A): vorn der Monat,
+  // darunter 7 Tage und Tag - dieselben Zahlen wie die Erlöse-Seite.
+  const zeitraum = input.range === 'day' && input.mitSpeicher !== false ? (input.money?.steuerungZeitraum ?? null) : null;
+  const kurz = zeitraum ? steuerungKurz(zeitraum, running) : null;
+  const attribution = kurz ? kurz.zeile : speicher?.hatAussage ? speicher.kurz : null;
   const money: HeroMoney | null =
     total == null
       ? null
@@ -486,8 +515,11 @@ export function cockpitHero(input: {
           kosten: total < 0,
           speicher: speicher?.hatAussage ? speicher : null,
           attribution,
-          attributionTitel: speicher?.kurzTitel ?? null,
+          attributionTitel: kurz ? kurz.titel : (speicher?.kurzTitel ?? null),
+          attributionZweit: kurz?.zweit ?? null,
+          zeitraumKarte: zeitraum ? steuerungKarte(zeitraum, running) : null,
           attributionInterim: running && attribution != null,
+          laeuft: running,
           bestand: bestandZeile(input.money, input.now),
           winterSatz: winterSatz({
             pvKwh: input.totals?.pvGenerationKwh,
@@ -504,6 +536,7 @@ export function cockpitHero(input: {
                   tarifParamCtKwh: input.money?.tarifParamCtKwh ?? null,
                   tarifPriced: input.money?.tarifPriced ?? null,
                   exportVerguetungPriced: input.money?.exportVerguetungPriced ?? null,
+                  exportVerguetungQuelle: input.money?.exportVerguetungQuelle ?? null,
                   bezugspreisCtKwh: input.money?.bezugspreisCtKwh ?? null,
                   plantKind: input.money?.plantKind ?? null,
                   marktpraemieEur: input.money?.marktpraemieEur ?? null,

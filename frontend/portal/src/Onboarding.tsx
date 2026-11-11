@@ -5,37 +5,44 @@ import { startklarSatz } from './anlageFlow';
 import { AnlageFlow } from './components/AnlageFlow';
 
 /**
- * Guided first-run onboarding: the full-page host of the ONE "Anlage anlegen"
- * flow (captain decision 5) - Anlage benennen + Adresse + Anlagentyp, Gerät
- * verbinden, Speicher optional; after a claimed device it waits for the first
- * data ("Ihre Anlage ist verbunden"). Shown to any customer without a device,
- * so the path from "frisches Konto" to "Anlage sendet Daten" is one sequenced
- * flow instead of disconnected forms. Skippable at every step ("Später
- * einrichten"); a customer who already created an Anlage resumes at the
- * Gerät step. The flow itself lives in components/AnlageFlow.tsx and is
- * shared with the "Anlage anlegen" drawer for existing customers.
+ * Der Einrichtungs-Assistent der ERSTEN Anlage: der ganzseitige Wirt des EINEN Anlege-Flusses
+ * (`components/AnlageFlow.tsx`, Adresse · Box · Anlage). Er erscheint einmal - für einen Kunden ohne
+ * Anlage - und endet im Cockpit der neuen Anlage (D7); was danach offen ist, zeigt die Einrichtungs-Karte
+ * dort, nie wieder ein Vollbild. „Später einrichten“ geht jederzeit.
  */
 export function OnboardingWizard({
   sites,
+  vorschlagKennung = null,
+  onSiteCreated,
   onDone,
   onSkip,
 }: {
   sites: Site[];
-  /** Modus „nur messen“ (`anlegeNurMessen.ts`): mit dem Ziel „Standort › Messstellen“. */
+  /** Die Referenz aus dem Direktlink vom Gehäuse (`koppelLink.ts`): steht im Schritt „Box“ im Feld. */
+  vorschlagKennung?: string | null;
+  /** B1 (Anlage-Flow a1): die neue Anlage steht sofort in der Anlagenliste des Wirts. */
+  onSiteCreated?: (site: Site) => void;
+  /** Das Ziel am Ende: das Cockpit der neuen Anlage, im Modus „nur messen“ ihre Messstellen. */
   onDone: (ziel?: Route) => void;
   onSkip: () => void;
 }) {
   return (
     <div className="vp-onboarding">
       <Card padding="lg" radius="lg">
+        {/* Dieser Vollbild-Assistent (ganzseitiger Wirt ohne Reiter oder Seitenleiste) hat sonst
+            kein h1; „Willkommen …" bleibt h2, damit ein Schritt-h3 (z. B. „Ihre VoltPilot-Box")
+            keine Stufe überspringt (1.3.1). */}
+        <h1 className="vp-sr-only">Anlage anlegen</h1>
         <h2 style={{ marginBottom: 4 }}>Willkommen bei VoltPilot</h2>
         <AnlageFlow
+          wirt="assistent"
           sites={sites}
-          waitForFirstData
+          vorschlagKennung={vorschlagKennung}
+          onSiteCreated={onSiteCreated}
           onDone={onDone}
           onSkipAll={onSkip}
-          // Die Schrittzahl folgt dem Fluss — im Modus „nur messen“ drei, sonst vier — und
-          // steht erst, wenn das feststeht (sonst stünde einen Augenblick die falsche Zahl da).
+          // Die Schrittzahl folgt dem Fluss (mit Standort-Schritt vier) und steht erst, wenn das
+          // feststeht (sonst stünde einen Augenblick die falsche Zahl da).
           kopf={(schritte) =>
             schritte && (
               <p className="vp-muted" style={{ margin: '0 0 8px' }}>

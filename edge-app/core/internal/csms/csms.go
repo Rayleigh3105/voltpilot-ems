@@ -20,15 +20,26 @@ import (
 const (
 	DefaultPort    = 8887
 	DefaultURLPath = "/ocpp"
-	// DefaultHeartbeatInterval is what BootNotification hands the station. 300 s
-	// is the OCPP field default; the heartbeat is a liveness anchor, not a
-	// control loop — the control loop rides MeterValues and the profile TTL.
-	DefaultHeartbeatInterval = 300 * time.Second
+	// DefaultHeartbeatInterval is what BootNotification hands the station. The
+	// heartbeat is a liveness anchor, not a control loop — the control loop
+	// rides MeterValues and the profile TTL.
+	//
+	// ⚠ It must stay well inside the websocket's read wait (socketPongWait,
+	// 60 s): an idle station with no car sends nothing else, and a socket that
+	// stays silent that long is closed by the library (W-07). The OCPP field
+	// default of 300 s dropped every idle station once a minute. The heartbeat
+	// answer also carries the box clock, which the station sets its own by.
+	DefaultHeartbeatInterval = 30 * time.Second
 	// DefaultMeterInterval is the MeterValues cadence we ASK the station for
 	// (ChangeConfiguration MeterValueSampleInterval). 10 s is the Konzept §3.1
 	// figure: fast enough for a seconds-scale budget loop, slow enough not to
 	// flood a cheap firmware.
 	DefaultMeterInterval = 10 * time.Second
+	// CallTimeout bounds ONE request to a station (W-08). Every request gets
+	// its own deadline, whatever the caller's context allows for all of them
+	// together: a station on a slow WLAN answers each call late, and a set-up
+	// is many calls.
+	CallTimeout = 10 * time.Second
 )
 
 // Options configure the central system.
@@ -113,6 +124,10 @@ type Server struct {
 	// notification, never a queue (the OTA-blocker lesson: a per-tick signal
 	// is noise the real signal drowns in).
 	changed chan struct{}
+	// observed is the same signal for a SECOND reader: the status heartbeat
+	// (agent/ocpp_status_kick.go). The allocator drains `changed`, so the two
+	// cannot share one channel without stealing each other's wake-ups.
+	observed chan struct{}
 
 	// transport is the ocpp-go half. It is created in Start and is the ONLY
 	// place the library is touched besides ocppmap.go.
@@ -122,11 +137,30 @@ type Server struct {
 	profileMu          sync.Mutex
 	control            ocppcontrol.Policy
 	startWatermarks    map[string]startWatermark
+	// stackOwned records per station the boot (BootedAt) in which commissioning
+	// already cleared the foreign profile stack under the 0-W guard. A retry or
+	// a re-commissioning in the same boot resumes behind it instead of capping
+	// the car at 0 W again (W-08). Runtime only: after a box restart nobody
+	// knows what the station holds, so the first set-up takes the stack again.
+	stackOwned map[string]time.Time
+	// clockResyncAt paces the request to a station to set its clock (W-09).
+	clockResyncAt      map[string]time.Time
 	controlTest        *ControlTest
 	seenTags           []string
 	rejectedRevision   int64
 	controlRejection   string
 	measurementDesired MeasurementConfiguration
+	// klopfen remembers refused identities for 24 h (klopftan.go).
+	klopfen klopfListe
+	// commissionWake is closed (and replaced) whenever a station's set-up
+	// state or connection moves, so a StartTransaction waiting for the set-up
+	// after a BootNotification re-checks at once (awaitStartReady).
+	commissionWake chan struct{}
+	// startPending counts per connector ("<id>#<connector>") the starts that
+	// are waiting for the set-up right now (awaitStartReady): such a plug is
+	// about to get its transaction and must not be reported as „kein
+	// Ladevorgang" in the meantime.
+	startPending map[string]int
 }
 
 // New builds the server and loads the persisted allowlist. It never opens a
@@ -160,9 +194,14 @@ func New(opts Options) (*Server, error) {
 		commands:           commands,
 		log:                opts.Log,
 		chargers:           map[string]*ChargerState{},
+		stackOwned:         map[string]time.Time{},
+		clockResyncAt:      map[string]time.Time{},
 		nextTxID:           saved.NextTransactionID,
 		changed:            make(chan struct{}, 1),
+		observed:           make(chan struct{}, 1),
 		measurementDesired: measurementDesired,
+		commissionWake:     make(chan struct{}),
+		startPending:       map[string]int{},
 	}
 	journal.RestoreCommandMappings(commands.wireMappings())
 	if saved.Control != nil {
@@ -172,9 +211,10 @@ func New(opts Options) (*Server, error) {
 		s.control = *saved.Control
 	}
 	s.controlTest = saved.ControlTest
-	s.startWatermarks = saved.StartWatermarks
-	if s.startWatermarks == nil {
-		s.startWatermarks = map[string]startWatermark{}
+	s.startWatermarks = map[string]startWatermark{}
+	loadedAt := opts.Now()
+	for key, mark := range saved.StartWatermarks {
+		s.startWatermarks[key] = mark.onBoxClock(loadedAt)
 	}
 	for _, c := range saved.Chargers {
 		s.chargers[c.ID] = &ChargerState{Charger: c}
@@ -184,11 +224,17 @@ func New(opts Options) (*Server, error) {
 		if !ok || tx.ConnectorID < 1 || tx.ConnectorID > maxConnectors || tx.TransactionID < 1 || tx.StartedAt.IsZero() {
 			continue
 		}
-		if key := ocppcontrol.Key(tx.ChargePointID, tx.ConnectorID); tx.StartedAt.After(s.startWatermarks[key].At) {
-			s.startWatermarks[key] = startWatermark{At: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef}
+		// A session persisted before W-09 may be dated ahead of the box clock;
+		// its live samples would all look older than its own start.
+		startedAt := tx.StartedAt
+		if startedAt.After(loadedAt) {
+			startedAt = loadedAt
+		}
+		if key := ocppcontrol.Key(tx.ChargePointID, tx.ConnectorID); startedAt.After(s.startWatermarks[key].At) {
+			s.startWatermarks[key] = startWatermark{At: startedAt, StationAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef}
 		}
 		c.connector(tx.ConnectorID).Session = &Session{TransactionID: tx.TransactionID,
-			StartedAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef, Reconciling: true,
+			StartedAt: startedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef, Reconciling: true,
 			StationTransactionID: tx.StationTransactionID, MeterStartUnknown: tx.MeterStartUnknown}
 		if s.nextTxID <= tx.TransactionID {
 			s.nextTxID = tx.TransactionID + 1
@@ -223,9 +269,18 @@ func (s *Server) Enabled() bool { return s.opts.Enabled }
 // "re-decide", never "here is what happened".
 func (s *Server) Changed() <-chan struct{} { return s.changed }
 
+// Observed is Changed for the status heartbeat: a coalescing wake-up on every
+// station report and every registry change. A receive means "look again",
+// never "here is what happened".
+func (s *Server) Observed() <-chan struct{} { return s.observed }
+
 func (s *Server) notifyChanged() {
 	select {
 	case s.changed <- struct{}{}:
+	default:
+	}
+	select {
+	case s.observed <- struct{}{}:
 	default:
 	}
 }
@@ -421,6 +476,8 @@ func (s *Server) Remove(id string) error {
 	err := s.persistLocked()
 	if err != nil {
 		s.chargers[id] = previous
+	} else {
+		delete(s.stackOwned, id)
 	}
 	t := s.transport
 	s.mu.Unlock()

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { VP_MARK } from './components/VpLoader';
 
 /**
  * Wächter über die App-Hülle (Manifest, Icons, Service Worker, Offline-Seite).
@@ -167,6 +168,35 @@ describe('offline.html', () => {
     expect(inline).toEqual([]);
     expect(offline).toContain('href="/"');
     expect(offline).not.toContain('onclick');
+  });
+
+  it('zeigt neben „VoltPilot" das echte Zeichen der Marke (VP_MARK), nicht den alten Blitz', () => {
+    const doc = new DOMParser().parseFromString(offlineRaw, 'text/html');
+    const svg = doc.querySelector('.vp-brand svg.vp-mark');
+    expect(svg, 'kein Zeichen in .vp-brand').not.toBeNull();
+    const dots = svg!.querySelectorAll('circle');
+    const bolts = svg!.querySelectorAll('path');
+    expect(dots).toHaveLength(1);
+    expect(bolts).toHaveLength(1);
+    expect({
+      cx: dots[0].getAttribute('cx'),
+      cy: dots[0].getAttribute('cy'),
+      r: dots[0].getAttribute('r'),
+      fill: dots[0].getAttribute('fill')?.toUpperCase(),
+    }).toEqual({
+      cx: String(VP_MARK.dot.cx),
+      cy: String(VP_MARK.dot.cy),
+      r: String(VP_MARK.dot.r),
+      fill: VP_MARK.dot.fill.toUpperCase(),
+    });
+    expect(bolts[0].getAttribute('d')).toBe(VP_MARK.bolt.d);
+    expect(bolts[0].getAttribute('fill')?.toUpperCase()).toBe(VP_MARK.bolt.fill.toUpperCase());
+    // Ohne `id` und ohne Verlauf - flächig wie im Logo.
+    expect(svg!.querySelector('[id]')).toBeNull();
+    expect(svg!.outerHTML).not.toMatch(/url\(#/);
+    expect(doc.querySelector('.vp-word')?.textContent).toBe('VoltPilot');
+    // Der frühere generische Blitz steht nirgends mehr.
+    expect(offlineRaw).not.toContain('M13 2 4 14h6');
   });
 
   it('sagt ehrlich, was los ist - und was trotzdem weiterläuft', () => {

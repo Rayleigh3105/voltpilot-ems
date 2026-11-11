@@ -13,9 +13,9 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * MiSpeL MP-2 (W1 = D): der Ausschließlichkeits-Prüfer als Auswertung für den Betreiber — je Anlage die Monate und
- * das Kalenderjahr, für die Flotte die Jahreswerte jeder Anlage mit Speicher. Nur lesend; keine Steuerung (die strenge
- * Variante ist MP-45), keine Oberfläche. Die Rechnung steht in {@link AusschliesslichkeitsPruefer}.
+ * MiSpeL MP-2: der Ausschließlichkeits-Prüfer als Auswertung für den Betreiber — je Anlage die Monate und das
+ * Kalenderjahr, für die Flotte die Jahreswerte jeder Anlage mit Speicher und verbotenem Netzladen. Nur lesend; keine
+ * Steuerung (die Netzladen-Sperre sitzt in Plan und Box), keine Kennzahl, keine Oberfläche. Die Rechnung steht in {@link AusschliesslichkeitsPruefer}.
  */
 @Service
 public class AusschliesslichkeitsPruefungService {
@@ -45,8 +45,7 @@ public class AusschliesslichkeitsPruefungService {
             new OffeneFrage("rechtsfolge", "Nach der Beschreibung der BNetzA entfällt bei Netzstrom im Speicher die"
                     + " Förderfähigkeit der Netzeinspeisung aus dem (Mischstrom-)Speicher nach der"
                     + " Ausschließlichkeitsoption für das gesamte Kalenderjahr. Ob ein Netzbetreiber deshalb Förderung"
-                    + " zurückfordern kann, klärt die Rechtsanfrage (W1 = D); bis dahin lädt der EEG-Modus weiter nach"
-                    + " FK3.", "A1 S. 11"),
+                    + " zurückfordern kann, ist eine Rechtsfrage und hier nicht entschieden.", "A1 S. 11"),
             new OffeneFrage("messwerte", "Gerätewerte der Box (Verdichtung telemetry_rollup_15m), keine mess- und"
                     + " eichrechtskonformen Viertelstundenwerte des Messstellenbetreibers: eine Einordnung, keine"
                     + " Bestimmung förder- oder umlagerelevanter Mengen.", "T S. 28; § 21 Abs. 4 S. 2 EnFG"));
@@ -76,9 +75,12 @@ public class AusschliesslichkeitsPruefungService {
         });
     }
 
-    /** Jede Anlage mit erfasstem Speicher, ein Kalenderjahr bis {@code stand}; je Anlage eine Abfrage. */
+    /**
+     * Jede Anlage mit erfasstem Speicher und verbotenem Netzladen, ein Kalenderjahr bis {@code stand}; je Anlage eine
+     * Abfrage.
+     */
     public FlottenPruefung flotte(int jahr, Instant stand) {
-        List<FlottenZeile> zeilen = repo.anlagenMitSpeicher().stream()
+        List<FlottenZeile> zeilen = repo.anlagenMitSpeicherOhneNetzladen().stream()
                 .map(a -> new FlottenZeile(a, pruefe(a, jahr, stand).jahr())).toList();
         return new FlottenPruefung(jahr, stand, WERTE, LESART, zeilen, OFFENE_FRAGEN);
     }

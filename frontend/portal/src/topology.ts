@@ -45,31 +45,9 @@ const CANONICAL_ROLE_ORDER: Role[] = [
 /** The one channel treated as a SoC input (never a flow member). */
 const SOC_CHANNEL = 'soc_pct';
 
-/**
- * Die BMS-Grenzen und -Freigaben des Speicher-Knotens (P6 Speiser-Bindung).
- * Wie `soc_pct` sind sie EIGENSCHAFTEN des Speichers, nie Fluss-Mitglieder:
- * ein Ampere und ein Ja/Nein sind keine Kilowatt, und sie in `value_kw` zu
- * summieren machte aus der Speichen-Breite eine Zahl mit zwei Bedeutungen.
- */
-const CHARGE_LIMIT_CHANNEL = 'charge_limit_a';
-const DISCHARGE_LIMIT_CHANNEL = 'discharge_limit_a';
-const CHARGE_ALLOWED_CHANNEL = 'charge_allowed';
-const DISCHARGE_ALLOWED_CHANNEL = 'discharge_allowed';
-
 /** Speist dieser Kanal eine EIGENSCHAFT des Speicher-Knotens statt seines Flusses? */
 function isStorageAttribute(channel: string): boolean {
-  return (
-    channel === SOC_CHANNEL
-    || channel === CHARGE_LIMIT_CHANNEL
-    || channel === DISCHARGE_LIMIT_CHANNEL
-    || channel === CHARGE_ALLOWED_CHANNEL
-    || channel === DISCHARGE_ALLOWED_CHANNEL
-  );
-}
-
-/** Gehört dieser Kanal in den `limits`-Block? */
-function isLimitChannel(channel: string): boolean {
-  return isStorageAttribute(channel) && channel !== SOC_CHANNEL;
+  return channel === SOC_CHANNEL;
 }
 
 /** Die Entitäts-TYPEN, die Ladepunkte sind. */
@@ -104,17 +82,13 @@ export const MODBUS_GENERIC_TYPE = 'modbus-generic';
 export const MODBUS_LOAD_TYPE = 'modbus-load';
 
 /**
- * Die SELBST ANGEBUNDENE Batterie des Kunden (P5, Konzept
- * `vp-deye-diybms-luecke-l5` §3.2b): ein DIYBMS/Seplos/JK/ESP, per MQTT
- * gelesen und Feld für Feld auf die Standard-Batteriekanäle abgebildet.
- *
- * ⚠ Sie ist Kategorie `storage` - ohne diesen Eintrag liefen ihr `soc_pct` und
- * ihr `power_kw` VON SELBST in den Speicher-Knoten, also genau die automatische
- * Bindung, die der Captain-Entscheid E6 ausschließt („nie eine
- * Namens-Heuristik"). In den Speicher-Knoten kommt sie ausschließlich über die
- * AUSDRÜCKLICHE Speiser-Bindung (P6), die als Rollen-Zuordnung gespeichert wird.
+ * Die komponierte Haus-Last (v1→v2-Rückfüllung): Bezug + Erzeugung − Einspeisung
+ * ± Speicher, „alles hinter dem Netzanschluss". Jeder andere Verbraucher-Posten
+ * (ein Unterzähler, ein Heizstab) steckt physikalisch schon in diesem Wert - der
+ * Knotenwert des Verbraucher-Knotens ist deshalb DIESER eine Posten, nie die
+ * Summe aller (Zählerbaum-Konzept N3/R1, docs/contracts/v2/zaehlerbaum.md §3).
  */
-export const USER_DEFINED_BATTERY_TYPE = 'user-defined-battery';
+export const HOUSE_LOAD_TYPE = 'house-load';
 
 /**
  * Ist dieser Entitäts-TYP selbst gebaut? An der Kategorie ist es - wie beim
@@ -124,11 +98,7 @@ export const USER_DEFINED_BATTERY_TYPE = 'user-defined-battery';
  * antworten.
  */
 export function isSelfBuiltType(entityType: string): boolean {
-  return (
-    entityType === MODBUS_GENERIC_TYPE
-    || entityType === MODBUS_LOAD_TYPE
-    || entityType === USER_DEFINED_BATTERY_TYPE
-  );
+  return entityType === MODBUS_GENERIC_TYPE || entityType === MODBUS_LOAD_TYPE;
 }
 
 export interface CapabilityInput {
@@ -147,6 +117,12 @@ export interface EntityInput {
   category: string;
   health: string;
   capabilities: CapabilityInput[];
+  /**
+   * Die Zählerbaum-Eltern-Entität (`haengt_an`, Konzept
+   * vp-zaehlerbaum-konzept) - fehlend/`undefined` = an der Wurzel (dem
+   * Netzanschluss), die Vorgabe für jede Bestandsanlage am ersten Tag.
+   */
+  parent_entity_id?: string;
 }
 
 export interface Input {
@@ -158,47 +134,25 @@ export interface FlowMember {
   label: string;
   primary: boolean;
   value_kw?: number;
+  haengt_an?: string;
 }
 
 /**
- * WOHER eine EIGENSCHAFT eines Knotens kommt. Es gibt sie, weil eine
- * Eigenschaft des Speicher-Knotens nicht vom Gerät stammen muss, dessen
- * Kilowatt der Knoten führt: die Speiser-Bindung (P6) lässt die eigene Batterie
- * des Kunden den Ladestand liefern, während der Hybrid-Wechselrichter die
- * Leistung weiter misst. Ohne sie stünde dort eine Prozentzahl, zu der niemand
- * sagen könnte, wessen sie ist - und „Ladestand von: <Batterie>" ist genau der
- * Satz, den die Bindung dem Kunden schuldet.
+ * WOHER eine EIGENSCHAFT eines Knotens kommt. Ohne sie stünde im Speicher-Knoten
+ * eine Prozentzahl, zu der niemand sagen könnte, wessen sie ist - auch wenn der
+ * Ladestand von einem anderen Kandidaten stammt als die Kilowatt.
  */
 export interface NodeSource {
   entity_id: string;
   label: string;
 }
 
-/**
- * Was das BMS des Speicher-Knotens gerade zulässt (P6). Jedes Feld ist
- * optional - ein nicht zugeordneter oder schweigender Kanal ist ABWESEND, nie
- * eine erfundene 0 (die an einer Grenze „Laden verboten" hieße) und nie ein
- * erfundenes „ja".
- *
- * Alle vier kommen aus EINER Entität (`source`): eine Ladegrenze des einen BMS
- * neben der Entladegrenze eines anderen wäre ein Block mit zwei Bedeutungen.
- */
-export interface NodeLimits {
-  source: NodeSource;
-  charge_limit_a?: number;
-  discharge_limit_a?: number;
-  charge_allowed?: boolean;
-  discharge_allowed?: boolean;
-}
-
 export interface FlowNode {
   role: Role;
   value_kw?: number;
   soc_pct?: number;
-  /** WELCHE Entität den Ladestand geliefert hat (P6). */
+  /** WELCHE Entität den Ladestand geliefert hat. */
   soc_source?: NodeSource;
-  /** Die BMS-Hülle des Speicher-Knotens (P6); nur am Speicher, nur wenn gemeldet. */
-  limits?: NodeLimits;
   flow_active: boolean;
   direction?: 'in' | 'out';
   members: FlowMember[];
@@ -305,15 +259,17 @@ interface RoleCap {
 
 function member(rc: RoleCap): FlowMember {
   // Key order matches the Go FlowMember struct (entity_id, label, primary,
-  // value_kw) so JSON.stringify is byte-identical across the two twins.
+  // value_kw, haengt_an) so JSON.stringify is byte-identical across the two
+  // twins.
   const m: FlowMember = { entity_id: rc.entity.id, label: rc.entity.label, primary: rc.cap.primary };
   if (rc.cap.value != null) m.value_kw = round3(rc.cap.value);
+  if (rc.entity.parent_entity_id != null) m.haengt_an = rc.entity.parent_entity_id;
   return m;
 }
 
 /**
  * Assemble a FlowNode inserting keys in the canonical order (role, value_kw,
- * soc_pct, soc_source, limits, flow_active, direction, members) that Go's
+ * soc_pct, soc_source, flow_active, direction, members) that Go's
  * json.Marshal emits, so JSON.stringify(node) is byte-identical to the Go twin.
  */
 function makeNode(
@@ -321,7 +277,6 @@ function makeNode(
   valueKw: number | undefined,
   socPct: number | undefined,
   socSource: NodeSource | undefined,
-  limits: NodeLimits | undefined,
   flowActive: boolean,
   direction: 'in' | 'out' | undefined,
   members: FlowMember[],
@@ -330,59 +285,10 @@ function makeNode(
   if (valueKw !== undefined) n.value_kw = valueKw;
   if (socPct !== undefined) n.soc_pct = socPct;
   if (socSource !== undefined) n.soc_source = socSource;
-  if (limits !== undefined) n.limits = limits;
   n.flow_active = flowActive;
   if (direction) n.direction = direction;
   n.members = members;
   return n;
-}
-
-/**
- * Die BMS-Hülle des Speicher-Knotens aus den Grenz-Kanälen EINER Entität: der
- * maßgeblichen, wenn eine so markiert ist, sonst der ersten, die einen Wert
- * trägt. Zwei BMS, deren Kappen sich zu einem Block mischen, beschrieben eine
- * Hülle, die keines von beiden hat.
- *
- * `undefined`, wenn niemand eine Grenze meldet - die ehrliche Antwort für jede
- * Anlage, deren Batterie über einen Katalog-Treiber gelesen wird: die meldet
- * keinen dieser Kanäle.
- */
-function limitsOf(caps: RoleCap[]): NodeLimits | undefined {
-  let owner = '';
-  let label = '';
-  let ownerPrimary = false;
-  for (const rc of caps) {
-    if (!isLimitChannel(rc.cap.channel) || rc.cap.value == null) continue;
-    if (owner === '' || (rc.cap.primary && !ownerPrimary)) {
-      owner = rc.entity.id;
-      label = rc.entity.label;
-      ownerPrimary = rc.cap.primary;
-    }
-  }
-  if (owner === '') return undefined;
-  const out: NodeLimits = { source: { entity_id: owner, label } };
-  for (const rc of caps) {
-    if (rc.entity.id !== owner || rc.cap.value == null) continue;
-    switch (rc.cap.channel) {
-      case CHARGE_LIMIT_CHANNEL:
-        out.charge_limit_a = round3(rc.cap.value);
-        break;
-      case DISCHARGE_LIMIT_CHANNEL:
-        out.discharge_limit_a = round3(rc.cap.value);
-        break;
-      case CHARGE_ALLOWED_CHANNEL:
-        // Eine Freigabe reist als ZAHL durch die Telemetrie (der v2-Kanal-
-        // Vertrag kennt nur Zahlen); alles außer 0 heißt „ja".
-        out.charge_allowed = rc.cap.value !== 0;
-        break;
-      case DISCHARGE_ALLOWED_CHANNEL:
-        out.discharge_allowed = rc.cap.value !== 0;
-        break;
-      default:
-        break;
-    }
-  }
-  return out;
 }
 
 /** pv / consumer: value = |Σ flow members|, direction fixed by role. */
@@ -399,12 +305,35 @@ function sumNode(role: Role, caps: RoleCap[]): FlowNode {
     }
   }
   if (!hasValue) {
-    return makeNode(role, undefined, undefined, undefined, undefined, false, undefined, members);
+    return makeNode(role, undefined, undefined, undefined, false, undefined, members);
   }
   const mag = round3(Math.abs(sum));
   const active = mag > DEADBAND_KW;
   const dir = active ? (isConsuming(role) ? 'out' : 'in') : undefined;
-  return makeNode(role, mag, undefined, undefined, undefined, active, dir, members);
+  return makeNode(role, mag, undefined, undefined, active, dir, members);
+}
+
+/**
+ * Der Verbraucher-Knoten (Zählerbaum-Konzept N3/R1): ist eine komponierte
+ * Haus-Last ({@link HOUSE_LOAD_TYPE}) unter den Mitgliedern, ist IHR Wert der
+ * Knotenwert - jedes andere Mitglied (ein Unterzähler, ein Heizstab) steckt
+ * schon in diesem einen Wert, eine Summe über alle zählte doppelt. Ohne eine
+ * solche Haus-Last (ältere/synthetische Eingaben) bleibt die Summe aller
+ * Mitglieder wie bisher ({@link sumNode}) - byte-identisch zu jedem Fall ohne
+ * Haus-Mitglied.
+ */
+function consumerNode(role: Role, caps: RoleCap[]): FlowNode {
+  const haus = caps.find((rc) => rc.entity.type === HOUSE_LOAD_TYPE);
+  if (!haus) return sumNode(role, caps);
+  const members = caps.map((rc) => member(rc));
+  const v = haus.cap.value;
+  if (v == null) {
+    return makeNode(role, undefined, undefined, undefined, false, undefined, members);
+  }
+  const mag = round3(Math.abs(v));
+  const active = mag > DEADBAND_KW;
+  const dir = active ? 'out' : undefined;
+  return makeNode(role, mag, undefined, undefined, active, dir, members);
 }
 
 /** storage: Σ measured battery power + SoC from the primary (else first). */
@@ -425,22 +354,20 @@ function storageNode(role: Role, caps: RoleCap[]): FlowNode {
       }
       continue;
     }
-    if (isLimitChannel(rc.cap.channel)) continue;
     members.push(member(rc));
     if (rc.cap.value != null) {
       sum += rc.cap.value;
       hasValue = true;
     }
   }
-  const limits = limitsOf(caps);
   if (!hasValue) {
-    return makeNode(role, undefined, soc, socSource, limits, false, undefined, members);
+    return makeNode(role, undefined, soc, socSource, false, undefined, members);
   }
   const mag = round3(Math.abs(sum));
   const active = mag > DEADBAND_KW;
   // charge (+) -> hub->battery (out), discharge (-) -> battery->hub (in).
   const dir = active ? (sum > 0 ? 'out' : 'in') : undefined;
-  return makeNode(role, mag, soc, socSource, limits, active, dir, members);
+  return makeNode(role, mag, soc, socSource, active, dir, members);
 }
 
 /** grid: the maßgebliche (primary, else first) member's SIGNED value, never a sum. */
@@ -453,17 +380,17 @@ function gridNode(role: Role, caps: RoleCap[]): FlowNode {
   });
   if (primaryIdx === -1 && caps.length > 0) primaryIdx = 0;
   if (primaryIdx === -1) {
-    return makeNode(role, undefined, undefined, undefined, undefined, false, undefined, members);
+    return makeNode(role, undefined, undefined, undefined, false, undefined, members);
   }
   const v = caps[primaryIdx].cap.value;
   if (v == null) {
-    return makeNode(role, undefined, undefined, undefined, undefined, false, undefined, members);
+    return makeNode(role, undefined, undefined, undefined, false, undefined, members);
   }
   const mag = round3(Math.abs(v));
   const active = mag > DEADBAND_KW;
   // import (Bezug, +) -> in, export (-) -> out.
   const dir = active ? (v > 0 ? 'in' : 'out') : undefined;
-  return makeNode(role, mag, undefined, undefined, undefined, active, dir, members);
+  return makeNode(role, mag, undefined, undefined, active, dir, members);
 }
 
 /**
@@ -487,6 +414,7 @@ export function derive(input: Input): Topology {
     if (!caps) continue;
     if (role === 'grid') nodes.push(gridNode(role, caps));
     else if (role === 'storage') nodes.push(storageNode(role, caps));
+    else if (role === 'consumer') nodes.push(consumerNode(role, caps));
     else nodes.push(sumNode(role, caps));
   }
   return { schema_version: SCHEMA_VERSION, nodes };

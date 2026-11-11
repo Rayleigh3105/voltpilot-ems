@@ -50,7 +50,7 @@ flowchart LR
   Herstellerdokument auseinanderliegen (Fronius GEN24).
 - **`bindung`**: wie die Box das Profil findet – Marke, Registerfamilie und Modelle aus
   `edge-app/core/internal/inverter`, Steuerpfad aus der Rückmeldung von Layer 1 (`remote`/`tou` am Deye). Nur die
-  im Repo angebundenen Familien sind gebunden; SMA, Fronius GEN24 und Huawei sind vollständig, aber ungebunden (K9).
+  im Repo angebundenen Familien sind gebunden; SMA und Fronius GEN24 sind vollständig, aber ungebunden (K9).
 - **`firmware_bedingung`**: immer vom Gerät gelesen (`"gelesen": true`), nie getippt – am Deye das Sonden-Urteil
   `remote-pr978` des Fernsteuer-Blocks.
 - **`daempfung`**: `box_regelt: false` schaltet den gedämpften Folger ab (Dauerspeicher-Hebel, Konzept §6.5);
@@ -71,6 +71,29 @@ python3 catalog/control-profiles/tools/package_edge_runtime.py --check
 Dazu `go test ./internal/controlprofile/ ./internal/guards/` in `edge-app/core` (eingebettete Kopie gegen die
 Profile, Bindungen gegen den Wechselrichter-Katalog, Dämpfer und Budget) und
 `node --test edge-app/nodered/control-profiles.test.js` (Profil gegen Adapter und Zertifikat).
+
+## Freigabe-Bedingung je Hersteller: „Überschuss mit kurzen Verbrauchern“
+
+Seit dem 10.10.2026 (Entscheid E7 A) gehört zu jeder Freigabe eines Speicher-Wechselrichters ein bestandener Lauf
+„Überschuss mit kurzen Verbrauchern“ – am Prüfstand **und** am ersten echten Gerät, mit den zwei Zahlen „aus dem
+Speicher eingespeist“ und „Überschuss nicht aufgenommen“. Ablauf und Kriterien stehen in
+[`edge-app/nodered/CONTROL-BENCH.md`](../../edge-app/nodered/CONTROL-BENCH.md#pflichtlauf-überschuss-mit-kurzen-verbrauchern-jeder-speicher-den-die-box-nachregelt).
+
+Das Profil ist die Eingabe dieses Laufs: der Kern-Prüflauf (`TestSurplusWithShortConsumers` für die
+Lade-Viertelstunde, `TestShortConsumersInEverySlotKind` für Ruhe, Deck und ungeplante Lastdeckung, beide in
+`edge-app/core/internal/agent`) simuliert je gepacktem Profil mit `daempfung.box_regelt: true` ein Gerät mit dessen
+Einschwingzeit und Messtakt und fährt die echte Regelkette dagegen. Daraus folgt:
+
+- **Ein neues gebundenes Profil läuft automatisch mit** – nach `package_edge_runtime.py` erscheint seine Zeile im Lauf.
+- **Ohne gemessene Zeiten prüft der Lauf nur die Vorgabe** (15 s / 25 s). Einschwingzeit und Messtakt werden am
+  Prüfstand gemessen und mit Sicherheit A/B eingetragen; erst dann sagt die Zeile etwas über dieses Gerät.
+- Bevorzugt regelt das Gerät den Netzpunkt selbst und die Box setzt nur Grenzen (Entscheid vom 24.09.2026). Wo die Box
+  nachregelt, gilt die Haltezeit vor dem Entladen (60 s in jeder Viertelstunden-Art, Entscheid A vom 13.10.2026) und
+  „Einspeisung schlägt Einschwingzeit“ – beides unabhängig vom Hersteller, im Folger (`guards/loadfollow.go`), im
+  gedämpften Folger und mit der Uhr aus `guards/deficitcover.go`.
+
+Das Profil bleibt Wissen: ein bestandener Kern-Prüflauf ist keine Freigabe, sondern die Voraussetzung für den Tag am
+Prüfstand.
 
 ## Ändern
 

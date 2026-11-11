@@ -42,7 +42,7 @@ from uems_ahrenberg import AhrenbergScenario
 VERTRAEGE = Path(__file__).resolve().parents[2] / "docs/contracts/v2"
 VOKABULAR_VEKTOREN = VERTRAEGE / "events-vocabulary-vectors.json"
 
-KATALOGSTAND = "2026.08.26.3"
+KATALOGSTAND = "2026.09.23.3"
 ANGEWENDETE_FASSUNG = 1
 EREIGNIS_NAMESPACE = uuid.UUID("9b1c2d3e-4f50-5a6b-8c7d-0e1f2a3b4c5d")
 

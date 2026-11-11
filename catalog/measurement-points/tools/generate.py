@@ -821,9 +821,72 @@ def generate_wago(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
             )
 
 
+ERZEUGER_RANGE = {
+    "uint16": (0, 2**16 - 1), "bitfield16": (0, 2**16 - 1), "int16": (-(2**15), 2**15 - 1),
+    "uint32": (0, 2**32 - 1), "int32": (-(2**31), 2**31 - 1),
+}
+
+
+def generate_erzeuger(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
+    """Punkte am VoltPilot-Registerbild Erzeuger v1, schlanke Fassung (UEMS EZ-6, Konzept §3.7/EW-17).
+
+    Feste Abschnitte (Kopf-Werte, Anlage, Netzbetreiber, Direktvermarkter, Wirkung) haben einen festen
+    Offset; der Block je Einheit ist eine Vorlage `erzeuger.te[*].<feld>` mit index = te_nr (1 … 10):
+    Offset 28 + index · 10 + Feld = 38 + (te_nr − 1) · 10 + Feld. Basisadresse, Funktionscode und
+    Wortfolge sind Parameter der Anlage (Registerbild-Fassung), darum `base: parameter`, `endian: null`.
+    Ungültig ist das Typ-Maximum (`range.invalid`) — außer an den Zählern mit Überlauf (EZ-1 A2), die
+    statt dessen `wertebereich_modul`/`laeuft_ueber` tragen. `vokabular`, `bits` und `gueltig_wenn` der
+    Quelle sind Cloud-Wissen (uems/ErzeugerVokabular) und gehen nicht in den Punkt.
+    """
+    document = read_json(source_file(source))
+    bild = document["registerbild"]
+    block_prefix = f"{bild['einheit_ab'] - bild['einheitsblock']}+index*{bild['einheitsblock']}+"
+    for feld in document["felder"]:
+        template = feld["abschnitt"] == "te[*]"
+        width = feld["width_words"]
+        value_type = feld["value_type"]
+        lo, hi = ERZEUGER_RANGE[value_type]
+        invalid = int(feld["ungueltig"], 16) if feld["ungueltig"] else None
+        if invalid is not None:
+            bereich = ({"invalid": invalid, "max": invalid - 1, "min": lo} if invalid == hi
+                       else {"invalid": invalid, "max": hi, "min": lo})
+        yield base_point(
+            family=document["family"],
+            point_key=f"erzeuger.{feld['abschnitt']}.{feld['feld']}",
+            source_kind="erzeuger_registerbild",
+            address={"base": "parameter", "kind": "registerbild_relative",
+                     "offset_words": f"{block_prefix}{feld['offset']}" if template else feld["offset"],
+                     "width_words": width},
+            selector=f"registerbild:erzeuger-v{bild['hauptversion']}/{feld['abschnitt']}+{feld['offset']}",
+            width_bits=width * 16,
+            value_type=value_type,
+            signed=value_type.startswith("int"),
+            endian=None,
+            scale=feld["scale"],
+            unit=feld["unit"],
+            group=feld["group"],
+            label_de=feld["label_de"],
+            label_source=feld["feld"],
+            semantic_status="known",
+            aggregation_kind=feld["aggregation_kind"],
+            default_cadence_s=feld["kadenz_s"],
+            min_cadence_s=5,
+            long_term_cadence_s=long_term_cadence(
+                feld["unit"], feld["aggregation_kind"], f"{feld['group']} {feld['feld']}"),
+            poll_group=document["poll_group"],
+            source=source,
+            **({"range": bereich} if invalid is not None else {}),
+            **{key: feld[key] for key in ZAEHLER_DEKLARATION_FIELDS if key in feld},
+            dynamic=template,
+            point_key_template=template,
+            readable=True,
+        )
+
+
 ADAPTERS = {
     "builtin_inverter": generate_builtin_inverter,
     "deye": generate_deye,
+    "erzeuger": generate_erzeuger,
     "goe": generate_goe,
     "ocpp": generate_ocpp,
     "shelly": generate_shelly,

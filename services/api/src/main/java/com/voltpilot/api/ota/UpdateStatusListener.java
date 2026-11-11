@@ -3,6 +3,7 @@ package com.voltpilot.api.ota;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -13,18 +14,14 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -131,8 +128,7 @@ public class UpdateStatusListener extends Rueckmeldeweg {
     private final DeviceRepository devices;
     private final UpdateStatusRepository updateStatus;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public UpdateStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -144,72 +140,31 @@ public class UpdateStatusListener extends Rueckmeldeweg {
         this.password = password;
         this.devices = devices;
         this.updateStatus = updateStatus;
+        this.verbindung = new BrokerVerbindung(log, "update status", brokerUrl,
+                "voltpilot-api-updatestatus-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(STATUS_FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
+        ensureConnected();
+    }
+
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
+    @Scheduled(fixedDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}",
+            initialDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}")
+    public void ensureConnected() {
+        verbindung.sicherstellen();
+    }
+
+    boolean connectedForTest() { return verbindung.verbunden(); }
+
+    private void empfangen(String topic, MqttMessage message) {
         try {
-            connect();
+            handle(topic, message.getPayload());
         } catch (Exception e) {
-            log.warn("Update-status listener could not connect to {} yet: {} (auto-reconnect active)",
-                    brokerUrl, e.getMessage());
+            log.warn("Update status on '{}' failed: {}", topic, e.getMessage());
         }
-    }
-
-    private void connect() throws Exception {
-        synchronized (lock) {
-            if (client != null) {
-                return;
-            }
-            client = new MqttClient(brokerUrl, "voltpilot-api-updatestatus-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-            client.setCallback(new MqttCallbackExtended() {
-                @Override
-                public void connectComplete(boolean reconnect, String serverUri) {
-                    try {
-                        client.subscribe(STATUS_FILTER, 1, messageListener());
-                        log.info("Update-status listener subscribed to {} at {}", STATUS_FILTER,
-                                serverUri);
-                    } catch (Exception e) {
-                        log.warn("Update-status subscribe failed: {}", e.getMessage());
-                    }
-                }
-
-                @Override
-                public void connectionLost(Throwable cause) {
-                    log.warn("Update-status listener lost the broker connection: {} "
-                            + "(auto-reconnect active)",
-                            cause == null ? "unknown" : cause.getMessage());
-                }
-
-                @Override
-                public void messageArrived(String topic, MqttMessage message) {
-                }
-
-                @Override
-                public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken t) {
-                }
-            });
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-    }
-
-    private IMqttMessageListener messageListener() {
-        return (topic, message) -> {
-            try {
-                handle(topic, message.getPayload());
-            } catch (Exception e) {
-                log.warn("Update status on '{}' failed: {}", topic, e.getMessage());
-            }
-        };
     }
 
     /** Test-visible: parse one status heartbeat's version + update block. */
@@ -307,6 +262,12 @@ public class UpdateStatusListener extends Rueckmeldeweg {
                     // einem älteren Stand einen Knopf verweigern, den er sehr wohl
                     // bedienen kann.
                     reportedAt);
+            // Geräte & Updates G8: das Gerät, wenn der Herzschlag es nennt.
+            BoxGeraet.Angabe geraet = hasUpdate ? BoxGeraet.of(update.get("geraet")) : null;
+            if (geraet != null) {
+                updateStatus.geraet(deviceId, geraet.modell(), geraet.arch(), geraet.loader(),
+                        geraet.loaderStand());
+            }
         } finally {
             TenantContext.clear();
         }
@@ -350,14 +311,6 @@ public class UpdateStatusListener extends Rueckmeldeweg {
             seenAt = Instant.now();
         }
         devices.setLanAddress(deviceId, host, seenAt, source);
-    }
-
-    /**
-     * A boolean that is absent or not a boolean stays {@code null} - „the device
-     * did not say", never a fabricated no.
-     */
-    private static Boolean bool(JsonNode node) {
-        return node != null && node.isBoolean() ? node.booleanValue() : null;
     }
 
     /**
@@ -489,24 +442,6 @@ public class UpdateStatusListener extends Rueckmeldeweg {
 
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-            } catch (Exception e) {
-                log.debug("Update-status listener disconnect failed on shutdown: {}",
-                        e.getMessage());
-            }
-            try {
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("Update-status listener close failed on shutdown: {}", e.getMessage());
-            }
-            client = null;
-        }
+        verbindung.schliessen();
     }
 }

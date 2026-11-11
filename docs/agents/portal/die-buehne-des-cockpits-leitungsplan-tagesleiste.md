@@ -15,8 +15,36 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   im Browser ein erfundenes „lädt 332 kW“); dann gibt es keine Aufteilung und einen Satz dazu. Kanonische
   Rollenwerte (`pvRollen`/`verbrauchRollen`/`netzRollen` mit Zuordnung) haben Vorrang. Zahlen mit einer
   Nachkommastelle wie überall im Portal.
+- **Der Moment ist EIN Satz** (`flussBilanz.ts`, Schramm „Zuhause“ 07.11.2026: eine PV-Zuordnung nur am PIKO
+  ergab „Erzeugung 1,2 + Bezug 5,9 ≠ Verbrauch 9,6, Sonne deckt 12 %“, das Haus der Box enthielt alle vier
+  Erzeuger). Eine PV-Zuordnung ersetzt die Zahl der BETEILIGTEN Geräte (Wortlaut des Rollen-Dialogs), Erzeuger
+  ohne Zuordnung zählen mit ihrer Messung, das Blatt der Sonne nennt beide (`rollenListe(wert, weitere)`). Nur wo
+  jedes zugeordnete Gerät ein Erzeuger mit eigenem Wert ist; sonst (Rekonstruktion aus `/sources`, Hybrid ohne
+  eigene Reihe, Zähler als Erzeugung) bleibt die Zuordnung die ganze Sonne. Die Übersicht rechnet dieselbe Regel im
+  Server (`PvJeGeraet.java`). Ein Teil ohne
+  aktuellen Wert (`wertAktuell`, dieselbe Regel wie `aufbauBaum.komponenteAktuell`) zählt nicht still mit und steht
+  als „Nicht mitgezählt: …“ unter dem Satz (nur wenn die Anlage sonst lebt). Bleibt ein Rest über
+  max(0,3 kW; 10 %), gibt es keine Anteile, der Satz nennt beide Seiten (`widerspruchSatz`). Mit
+  Verbrauchs-Zuordnung zeigt „Verbrauch im Detail“ unter dem Fluss deren Aufschlüsselung, nie das Haus der Box mit
+  anderer Summe.
+- **Kopf und Zeitwahl (Konzept b1, 20.10.2026):** Der Kopf ist ein Raster mit festen Plätzen
+  (Telefon `uhr modus` / `marke marke`, Rechner eine Zeile); der Umschalter Jetzt/Heute bricht nie um.
+  Die Plan-Tätigkeit steht in der Marke („Plan · …“, abseits von jetzt gemessen „gemessen · Plan: …“),
+  es gibt keine zweite Plakette. Die Tagesleiste steht direkt unter dem Fluss: „Verbrauch im Detail“
+  schrumpft beim Verlassen von „jetzt“ von vier Zeilen auf eine, darunter sprang die Leiste nach dem
+  ersten Tipp 135 px unter dem Finger weg. Ein Finger wählt nur durch einen Tipp (`touch-action: pan-y`,
+  Loslassen unter 10 px vom Aufsetzpunkt), Wischen scrollt die Seite; die Maus zieht weiter. ‹ › gehen
+  je eine Viertelstunde, „Zurück zu Jetzt“ erscheint nur abseits von jetzt. „Tag abspielen“ und der
+  Hinweissatz entfallen. Beweis: `e2e/cockpit-buehne.spec.ts` (Wisch über CDP, Tipp, Lage der Leiste).
 - **Bewegung heißt live:** Punkte (`.vp-lp-punkte`, benannter Loop `vp-flow`) laufen nur bei `is-live`;
   unter `prefers-reduced-motion` entfallen sie im EINEN Block am Ende von `index.css`.
+- **Unterverteilungen** (Konzept `vp-unterzaehler-anzeige`, UV-1…UV-4 A, 07.11.2026): ein Unterzähler
+  (`sub-meter`) ist ein Mitglied des Verbraucher-Knotens und steht in „Verbrauch im Detail“ mit dem
+  Mess-Symbol, nie als eigener Kreis. Das Restwort folgt `site.profil` (`restWort`: privat „übriger Haushalt“,
+  gewerbe „ohne eigenen Zähler“). Die Technik-Ebene (`showTechnicalLayer`) hängt bei Gegenrichtung oder
+  Widerspruch „Wandlerrichtung oder Zuordnung prüfen“ an. Verlauf › Energie: Karte „Verbrauch nach Bereichen“
+  (`verbrauchBereiche`, dieselbe Restregel in kWh über `GET …/entities/{id}/energy`), nur mit Unterzähler.
+  Phasen und Zählerstände stehen auf der Geräteseite (`zaehlerWerte`) und unter Messwerte.
 - **Ein Gerät, eine Stelle:** Unter dem Fluss steht nur „Verbrauch im Detail“ (auch die Ladepunkte,
   `ladenKachelSichtbar: false`); die Erzeugung je Gerät steht nur im Blatt des Sonnen-Knotens. Die Blätter
   zeigen dieselbe Listenform vollständig (`ListeBlock` ohne `onOpen`, Zeilen verlinken auf Geräteseiten),
@@ -34,17 +62,44 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Netz heute, Steuerspalten). Börsenpreis und Laden tragen die Hülle selbst (`kachel`-Prop). Der
   Börsenpreis zeigt Stundenbalken (`strompreis.boersenKachel`: Mittel je Berliner Stunde, Drittel wie das
   Urteil, Lücke bleibt Lücke) und die zwei Fenster aus `streifenFenster` mit Ø-Preis.
-- **Rechte Spalte der Bühne (Rechner):** oben „Dieser Moment“ - die vier Werte der gewählten Uhrzeit,
-  von der Bühne per Portal in `.vp-hero-moment` geschrieben -, darunter die Leitkachel. Unter der
-  Tagesleiste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
+- **Rechte Spalte der Bühne (Rechner):** die Leitkachel oder, wenn der Fluss führt, „Heute“.
+  Sie steht nur neben Kopf, Satz und Leitungsplan (`EnergieBuehne seite`, `.vp-eb-reihe`, Konzept `vp-cockpit-privat-konzept` E4); Tagesleiste und Listen laufen darunter über die volle Breite.
+  Wächter: nie höher als die Fluss-Reihe, keine Lücke über 160 px (`e2e/cockpit-privat.spec.ts`).
+  Den Werteblock „Dieser Moment“ (die vier
+  Werte noch einmal, mit Menü ⋯ „Überwachen“) gibt es seit Konzept b1 nicht mehr (Entscheide E1/E3,
+  20.10.2026): die Werte stehen an den Knoten, und eine Überwachung entsteht nur unter Meldungen ›
+  Überwachungen („+ Überwachung“, `NeueUeberwachung.tsx`; Wächter `ueberwachenNurMeldungen.test.ts`).
+  Ohne Spalte ist die Bühne einspaltig. Unter der Liste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
   Sans) wie der Prototyp; der Zustand ist eine schmale Zeile ohne Modus-Fuß (`ZustandCard kompakt`).
 - **Leitkachel:** am Rechner rechts neben dem Fluss (`CockpitHero seite`), am Telefon erste Kachel:
-  Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, sonst „Unterm Strich“. Sie steht dann
+  Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, Lead `erloes-komposition` (Geld-Strom oder Stern) → „Unterm Strich“. Sie steht dann
   nicht noch einmal im Raster.
-- **Steuerzeile:** am Fuß der Bühne (Telefon und Rechner) Auftrag · Gerät · Wirkung (`steuerSpalten`); die
-  Wirkung nennt die Leistung nur, wenn sie vom Auftrag abweicht. Keine Bestätigungszeile am
+  Führt der Fluss (`energiefluss`, E3: Leit-Regel und Stern, kein Merkmal „privat“), gibt es keine Leitkachel.
+  Dann steht „Heute“ (`kacheln.heuteKachel`) neben dem Fluss bzw. als erste Kachel und ersetzt Autarkie, Eigenverbrauch und Sonne.
+  Der Euro wird die `GeldZeile` vor dem Zustand, die Telefon-Kopfzeile trägt kein Geld.
+- **Steuerzeile (Konzept b1, 20.10.2026, Entscheid E2):** EINE Zeile Auftrag › Gerät › Wirkung
+  (`steuerSpalten`, `ControlStrip variant="zeile"`), am Rechner unten in der Spalte, am Telefon und
+  ohne Spalte am Bühnenfuß; die Wirkung nennt die Leistung nur, wenn sie vom Auftrag abweicht. Die
+  Sätze (Plan, Gerät, Einspeisung, Ausblick, Einspeisegrenze) stehen unverändert, aber je Herkunft
+  gegliedert im Blatt „Warum?“ (Telefon `BottomSheet`, Rechner `Modal`) - vorher bis zu drei Absätze unter
+  der Bühne. Die Abweichung der Einspeisegrenze im Wechselrichter (`deviceLimitLine`) zählt die Zeile als
+  „1 Hinweis“; sie ist ein Befund im Zustand und im Kopf-Abzeichen (`health.ts` Schlüssel `grenze`, Hebel
+  Einstellungen). Der Folge-Satz nennt `executionTargetKw` „nach Solar verbleibenden Verbrauch“, nie
+  „Ihr Verbrauch“. Beweis: `e2e/cockpit-steuerzeile.spec.ts` (`help.html?steuerung=abweichung`). Keine Bestätigungszeile am
   Speicher-Knoten, kein Plan-Satz in der Leiste; der Zustand lässt Steuerungs- und Plan-Befunde weg, die in
   Steuerzeile bzw. Fahrplan-Kachel stehen. Börsenpreis im Satz nur abseits von „jetzt“.
+- **Erzeugeranlage an einer Anlagensteuerung (EZ-8, Konzept „Erzeuger am WAGO-Modbus-Server“, EW-11 A):**
+  kein Reiter, dieselben Flächen. Quelle `api.erzeugerJetzt` (`GET …/sites/{id}/erzeuger/jetzt`, 204/404 =
+  Cockpit wie bisher), Ableitung `erzeuger.ts` als eigenes Stück (lädt erst mit Anlagensteuerung,
+  Einstiegs-Budget). Kopf: Vorgaben als Abzeichen; Bühne: Moment aus dem Bild der Steuerung (nicht aus der
+  Hausbilanz), oberer Knoten „Erzeugung“ mit Motor/Sonne, „Hof“ = Erzeugung + Netzpunkt, ohne Netzpunkt
+  (EW-16 C) Netz und Hof „—“; Steuerzeile = Kette Netzbetreiber › Direktvermarkter › (eigene Grenze) ›
+  Anlage nur, wenn kein Speicher gesteuert wird (`!batteryLinked && controlStatus == null`), sonst bleibt
+  die Speicher-Zeile; Tagesleiste mit Spuren der Vorgaben; Kacheln „Motoren“/„Wechselrichter“ und
+  „Wer hat heute geregelt?“ (aus den Wechseln von `quelle_p`, `nb.bits`, `dv.bits`), Biogas „Unterm
+  Strich“ „—“. Gültigkeitsbit = 0 ist unbekannt, nie 0. Beweis: `erzeuger.test.ts`,
+  `ControlStrip.erzeuger.test.tsx`, `EnergieBuehne.erzeuger.test.tsx`, `e2e/cockpit-erzeuger.spec.ts`
+  (`help.html?erzeuger=buettner|gore`).
 - **Kachelgrößen:** `LayoutDocument.groessen` (Kachel-Id → `klein`|`breit`), Katalog-Liste `kacheln`
   (beide Kopien; Sonne Standard breit, Handel/Lastspitze nur breit), Server-Prüfung in
   `CockpitLayoutService.validateGroessen`. Wählbar im Anpassen-Modus unter der Kachel (`GroessenWahl`).
@@ -57,7 +112,8 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Gespeicherte Schichten gewinnen.
 - **Beweise:** `leitungsplan.test.ts`, `tagesleiste.test.ts`, `flussListen.test.ts`, `kacheln.test.ts`,
   `kacheln/CockpitKacheln.test.tsx`, `kachelGroessen.test.ts`, `AnlagenPage.test.tsx`; E2E
-  `cockpit-buehne`, `cockpit-rollen`, `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt),
-  `layout-waechter`. Browserprüfung: `e2e/help.html?betrieb=eigen#/anlage/help-site` (Eigenverbrauch)
+  `cockpit-buehne`, `cockpit-rollen`, `cockpit-fluss-bilanz` (Zuordnung, veralteter Erzeuger, Teilverbrauch),
+  `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt), `layout-waechter`, `cockpit-privat`
+  (`cockpit-privat.html?lage=abend|mittag|speicher|gewerbe`); Vitest `flussBilanz.test.ts`. Browserprüfung: `e2e/help.html?betrieb=eigen#/anlage/help-site` (Eigenverbrauch)
   bzw. ohne Parameter (Marktoptimierung), Uhr auf `2026-09-10T10:00:00Z`, `TZ=Europe/Berlin`. Bündel:
   Einstieg 210,6 kB gz (Grenze 230).

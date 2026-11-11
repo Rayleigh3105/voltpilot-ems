@@ -13,9 +13,11 @@ import '../designsystem/components/shell/shell.css';
 import '../src/index.css';
 
 /**
- * Die Ladegrenze (AP-01 IP-13) im Rahmen-Blatt von Steuerung › Laden: die echte Seite auf der Steuerungs-Bühne,
- * dazu der Netzanschluss der Anlage und der Rahmen mit Grundlast und Hausreserve. `?fall=` wählt gebunden,
- * ungebunden (Übergang) oder eine schon gespeicherte Grenze über der vereinbarten Leistung.
+ * Die Ladegrenze (AP-01 IP-13) im Rahmen-Blatt - seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) über die Zeile
+ * „Anschlussgrenze" der Einstellungen geöffnet, nicht mehr über „Rahmen" auf Steuerung › Laden. Die echte Seite
+ * auf der Steuerungs-Bühne liefert weiter den Netzanschluss der Anlage und den Rahmen mit Grundlast und
+ * Hausreserve. `?fall=` wählt gebunden, ungebunden (Übergang) oder eine schon gespeicherte Grenze über der
+ * vereinbarten Leistung.
  */
 installSteuerungFixtures();
 

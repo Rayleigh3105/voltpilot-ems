@@ -329,7 +329,7 @@ public class SiteConsumerController {
         requireSite(siteId);
         return overrides.activeForSite(siteId).stream()
                 .map(r -> new ConsumerOverrideDto(r.entityId(), r.kind(), r.targetCommand(),
-                        r.targetValue(), r.endsAt()))
+                        r.targetValue(), r.endsAt(), r.targetOutputs()))
                 .toList();
     }
 

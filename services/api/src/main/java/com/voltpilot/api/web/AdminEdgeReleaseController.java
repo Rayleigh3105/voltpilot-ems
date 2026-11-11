@@ -2,6 +2,8 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.ota.BoxArt;
+import com.voltpilot.api.ota.ReleaseManifest;
 import com.voltpilot.api.repo.EdgeReleaseRepository;
 import com.voltpilot.api.web.dto.CreateEdgeReleaseRequest;
 import com.voltpilot.api.web.dto.EdgeReleaseDto;
@@ -84,13 +86,16 @@ public class AdminEdgeReleaseController {
     private static final String PUBLISH = "hasAnyRole('platform-admin','edge-release-publisher')";
 
     /**
-     * Das Versionsschema aus D5: {@code edge-JJJJ.MM.N}. Bewusst eng - der
-     * Sinn des Registers ist eine wohldefinierte Ordnung, und ein hier
-     * eingetragener nackter Commit-SHA wäre genau der unvergleichbare Wert,
-     * den es ablöst. (Ein GERÄT darf durchaus eine SHA melden; die Oberfläche
-     * zeigt sie dann ehrlich als „nicht registriert".)
+     * Das Versionsschema aus D5: {@code edge-JJJJ.MM.N}, dazu die Edge-Light-
+     * Linie {@code edge-light-JJJJ.MM.N} (Entscheid E7) - genau das Muster des
+     * Vertrags ({@code ota-release-manifest.schema.json}, {@code release}).
+     * Bewusst eng - der Sinn des Registers ist eine wohldefinierte Ordnung,
+     * und ein hier eingetragener nackter Commit-SHA wäre genau der
+     * unvergleichbare Wert, den es ablöst. (Ein GERÄT darf durchaus eine SHA
+     * melden; die Oberfläche zeigt sie dann ehrlich als „nicht registriert".)
+     * Beide Linien teilen EINE {@code release_seq}-Ordnung.
      */
-    private static final Pattern VERSION = Pattern.compile("^edge-\\d{4}\\.\\d{2}\\.\\d+$");
+    private static final Pattern VERSION = Pattern.compile("^edge(-light)?-\\d{4}\\.\\d{2}\\.\\d+$");
 
     private final EdgeReleaseRepository releases;
     private final ObjectMapper json;
@@ -146,7 +151,15 @@ public class AdminEdgeReleaseController {
         String version = signed == null ? req.version().trim() : signed.release();
         if (!VERSION.matcher(version).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Die Version muss dem Schema edge-JJJJ.MM.N folgen (z. B. edge-2026.08.0).");
+                    "Die Version muss dem Schema edge-JJJJ.MM.N oder edge-light-JJJJ.MM.N folgen "
+                            + "(z. B. edge-2026.08.0).");
+        }
+        if (signed == null && BoxArt.LIGHT.equals(BoxArt.ofRelease(version, null))) {
+            // Edge Light hat keinen Stufe-0-Handpfad: eine Box wendet nur an,
+            // was ein geprüftes Manifest beschreibt (Prüfsummen je Architektur).
+            // Ein unsignierter Eintrag wäre ein Release, das keine Box je annimmt.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ein Edge-Light-Release braucht ein signiertes Manifest (Manifest und Signatur).");
         }
         java.util.Optional<EdgeReleaseDto> existing = releases.findByVersion(version);
         if (existing.isPresent()) {
@@ -157,6 +170,13 @@ public class AdminEdgeReleaseController {
             // ‚ist schon da' würde einen ABWEICHENDEN Commit verschlucken")
             // gilt unverändert - bytegleich verschluckt per Definition nichts.
             if (signed != null && isIdenticalRepeat(existing.get(), req)) {
+                // Geräte & Updates G4: ein wiederholter Tag-Lauf darf „Was ist neu"
+                // NACHTRAGEN, wo noch keine Angabe steht - nie eine Liste ersetzen.
+                List<String> aenderungen = aenderungen(req);
+                if (aenderungen != null && existing.get().aenderungen() == null
+                        && releases.aenderungenNachtragen(version, aenderungen)) {
+                    return ResponseEntity.ok(releases.findByVersion(version).orElseThrow());
+                }
                 return ResponseEntity.ok(existing.get());
             }
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -187,7 +207,8 @@ public class AdminEdgeReleaseController {
                 caller == null ? null : caller.getSubject(),
                 signed == null ? null : req.manifest(),
                 signed == null ? null : req.signature(),
-                signed == null ? null : signed.signingKeyId());
+                signed == null ? null : signed.signingKeyId(),
+                aenderungen(req));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -205,6 +226,22 @@ public class AdminEdgeReleaseController {
      * dem Manifest stammt. Ein gespeicherter UNSIGNIERTER Eintrag ist nie eine
      * Wiederholung: dort gäbe es nichts, woran Gleichheit festzumachen wäre.
      */
+    /**
+     * „Was ist neu" aus der Anfrage: getrimmt, leere Zeilen fallen weg.
+     * {@code null} = keine Angabe; eine LEERE Liste ist dagegen eine Aussage
+     * („seit dem letzten Tag der Linie keine Änderung an der Box").
+     */
+    static List<String> aenderungen(CreateEdgeReleaseRequest req) {
+        if (req.aenderungen() == null) {
+            return null;
+        }
+        return req.aenderungen().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(z -> !z.isEmpty())
+                .toList();
+    }
+
     private static boolean isIdenticalRepeat(EdgeReleaseDto stored, CreateEdgeReleaseRequest req) {
         return stored.manifest() != null
                 && stored.manifest().equals(req.manifest())
@@ -244,6 +281,21 @@ public class AdminEdgeReleaseController {
 
         JsonNode m = parse(manifest, "Manifest");
         JsonNode s = parse(signature, "Signaturdatei");
+
+        // Edge Light streng wie das Werkzeug (otaverify.ParseManifestStrict):
+        // Name, Backend light und nur binary-Artefakte gehören zusammen, und
+        // jedes Programm trägt seine Prüfsummen. Daraus liest später die
+        // Abruf-Route, was sie ausliefern darf. Die Docker-Linie bleibt beim
+        // bisherigen Widerspruchsfreiheits-Check (ihre Handpfade tragen
+        // Manifeste, die älter sind als der strenge Leser).
+        if (BoxArt.LIGHT.equals(BoxArt.ofRelease(text(m, "release"), manifest))) {
+            try {
+                ReleaseManifest.readStrict(manifest);
+            } catch (ReleaseManifest.InvalidManifestException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Das Edge-Light-Manifest hat nicht die Form des Vertrags: " + e.getMessage());
+            }
+        }
 
         String release = text(m, "release");
         String keyId = text(m, "signing_key_id");

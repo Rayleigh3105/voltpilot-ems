@@ -378,3 +378,130 @@ def test_profile_master_data_carries_into_the_entity():
     assert entity.min_off_slots == 1
     assert entity.max_starts_per_horizon == 4
     assert entity.requirements[0].required_kwh == pytest.approx(8.0)
+
+
+# ---------------------------------------------------------------------------
+# Steuerart „Günstig": the opportunistic pure-price window (D1)
+# ---------------------------------------------------------------------------
+
+
+def guenstig(grenze: float = 28.0, target: dict | None = None) -> dict:
+    """Wörtlich ``SteuerartDokument.quelle(QUELLE_GUENSTIG)`` der API."""
+    return {
+        "id": "guenstig",
+        "name": "Günstige Stunden",
+        "kind": "reactive",
+        "enforcement": "opportunistic",
+        "condition": {
+            "signal": "market.import_price_ct_kwh",
+            "operator": "lt",
+            "value": grenze,
+        },
+        "target": target or {"kind": "kw", "value": 11},
+    }
+
+
+def wallbox() -> ConsumerProfileRow:
+    return profile(control_kind="continuous", rated_power_kw=11.0)
+
+
+def test_guenstig_without_goal_compiles_to_its_price_window():
+    """Bericht vp-wallbox-modi-konzept §3.4: „Günstig" OHNE Ziel war bisher
+    gar keine Solver-Entität - an einer OCPP-Säule lud die Bahn `schnell`
+    dann jederzeit voll. Die Viertelstunden unter der Grenze sind jetzt ihr
+    Fenster, mit der Leistung des Ziels."""
+    slots = utc_slots(local_midnight_utc(2026, 9, 29), 96)
+    imp = [32.0 if 32 <= t < 80 else 22.0 for t in range(96)]  # tags teuer
+    entity = compile_consumer(
+        wallbox(), doc([guenstig()]), slots, 15, [p - 20 for p in imp], imp
+    )
+    assert entity is not None
+    (req,) = entity.requirements
+    assert req.requirement_id == "guenstig"
+    assert req.kind == "fixed_window"
+    assert req.window_slots == tuple(t for t in range(96) if imp[t] < 28.0)
+    assert req.target_kw == pytest.approx(11.0)
+    assert req.reason_code == REASON_PRICE_WINDOW
+    # Never a Pflichtlauf: the grid policy stays the consumer's own.
+    assert req.enforcement == "required_by_deadline"
+    assert req.grid_energy_policy is None
+    assert entity.has_local_source is False
+
+
+def test_guenstig_compares_the_import_price_never_the_spot():
+    slots = utc_slots(local_midnight_utc(2026, 9, 29), 96)
+    imp = [30.0] * 96  # Bezugspreis immer ueber der Grenze ...
+    spot = [8.0] * 96  # ... der nackte Boersenpreis immer darunter
+    entity = compile_consumer(wallbox(), doc([guenstig()]), slots, 15, spot, imp)
+    assert entity is not None
+    assert entity.requirements == ()
+
+
+def test_guenstig_with_no_cheap_slot_is_planned_off_never_left_unplanned():
+    """No slot of the horizon below the limit: the consumer still enters
+    the plan, with NO requirement - the solver fixes it off in every slot and
+    the publisher sends that off. Left out of the plan it would be
+    UNGOVERNED (an OCPP station then charges at full power)."""
+    slots = utc_slots(local_midnight_utc(2026, 9, 29), 96)
+    imp = [35.0] * 96
+    entity = compile_consumer(
+        wallbox(), doc([guenstig()]), slots, 15, [15.0] * 96, imp
+    )
+    assert entity is not None
+    assert entity.requirements == ()
+    assert entity.max_power_kw == pytest.approx(11.0)
+
+
+def test_guenstig_with_goal_keeps_both_window_and_deadline():
+    slots = utc_slots(local_midnight_utc(2026, 9, 29), 96)
+    imp = [32.0 if 32 <= t < 80 else 22.0 for t in range(96)]
+    ziel = {
+        "id": "bis_uhrzeit",
+        "name": "Bis 07:00 Uhr fertig",
+        "kind": "flexible_task",
+        "enforcement": "required_by_deadline",
+        "recurrence": {"days": "daily", "from": "19:00", "to": "07:00"},
+        "demand": {"energy_kwh": 20},
+        "target": {"kind": "kw", "value": 11},
+    }
+    entity = compile_consumer(
+        wallbox(), doc([guenstig(), ziel]), slots, 15, [p - 20 for p in imp], imp
+    )
+    kinds = {r.requirement_id.split("@")[0]: r.kind for r in entity.requirements}
+    assert kinds == {"guenstig": "fixed_window", "bis_uhrzeit": "flexible_task"}
+
+
+def test_sgready_release_on_cheap_power_compiles_the_same_window():
+    """``SgReady.policyDocument`` „Freigabe bei günstigem Strom": dieselbe
+    Form mit einem EIN-Ziel - dieselbe Lücke, dieselbe Reparatur."""
+    slots = utc_slots(local_midnight_utc(2026, 9, 29), 96)
+    imp = [20.0 if t < 16 else 30.0 for t in range(96)]
+    req = guenstig(grenze=25.0, target={"kind": "on_off", "value": True})
+    req["id"] = "freigabe_guenstig"
+    entity = compile_consumer(
+        profile(rated_power_kw=2.5), doc([req]), slots, 15, [p - 20 for p in imp], imp
+    )
+    (r,) = entity.requirements
+    assert r.window_slots == tuple(range(16))
+    assert r.target_kw == pytest.approx(2.5)
+
+
+def test_opportunistic_with_a_local_signal_stays_edge_work():
+    slots = utc_slots(local_midnight_utc(2026, 9, 29), 96)
+    ueberschuss = {
+        "id": "ueberschuss",
+        "kind": "reactive",
+        "enforcement": "opportunistic",
+        "condition": {
+            "signal": "site.pv_surplus_kw",
+            "operator": "gt",
+            "value": 1.4,
+            "reset_value": 1.05,
+            "max_age_s": 120,
+        },
+        "target": {"kind": "kw", "value": 11},
+    }
+    entity = compile_consumer(
+        wallbox(), doc([ueberschuss]), slots, 15, [10.0] * 96, [30.0] * 96
+    )
+    assert entity is None  # unchanged: the edge artifact executes it

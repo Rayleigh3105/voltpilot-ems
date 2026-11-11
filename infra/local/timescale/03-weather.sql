@@ -32,11 +32,16 @@ CREATE TABLE IF NOT EXISTS weather_forecast (
     temperature_c   NUMERIC(6, 2),
     cloud_cover_pct NUMERIC(5, 2),
     ghi_w_m2        NUMERIC(8, 2),                   -- shortwave / GHI
-    dni_w_m2        NUMERIC(8, 2),                   -- direct (beam)
+    dni_w_m2        NUMERIC(8, 2),                   -- direct (beam), HORIZONTAL (N1: mislabeled)
     dhi_w_m2        NUMERIC(8, 2),                   -- diffuse
+    dni_normal_w_m2 NUMERIC(8, 2),                   -- true beam-normal DNI (N1 fix, S0)
     source          TEXT          NOT NULL DEFAULT 'open-meteo',
     PRIMARY KEY (site_id, run_at, time)
 );
+-- Mirrors V20261111130000__weather_direct_normal_irradiance.sql for a DB that
+-- starts fresh from this bootstrap (the migration's ADD COLUMN IF NOT EXISTS
+-- is then a no-op, exactly like the table-creation precedent above).
+ALTER TABLE weather_forecast ADD COLUMN IF NOT EXISTS dni_normal_w_m2 NUMERIC(8, 2);
 
 SELECT create_hypertable('weather_forecast', 'time',
                          chunk_time_interval => INTERVAL '7 days',

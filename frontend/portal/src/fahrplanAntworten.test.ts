@@ -53,6 +53,7 @@ describe('antwortWeiter · „Wie geht es weiter?"', () => {
   it('nennt die nächsten zwei Phasen mit Startzeit und dem einen Wortschatz', () => {
     const a = antwortWeiter(modell(), 56, true)!;
     expect(a.antwort).toBe('Ab 14:30 Sonne speichern, ab 17:30 Verbrauch decken.');
+    expect(a.kurz).toEqual({ label: 'Als Nächstes', wert: '14:30 Sonne speichern', meta: 'dann 17:30 Verbrauch decken' });
     expect(a.zeit).toBeNull();
     expect(a.art).toBe('geplant');
     expect(a.ziel).toMatchObject({ von: 14 * 60 + 30, bis: 1440, ebene: 'taetigkeit' });
@@ -94,6 +95,7 @@ describe('antwortReicht · „Reicht der Speicher heute Abend?"', () => {
     const a = antwortReicht(modell(LAUF, (i) => ({ socPct: i === 95 ? 12 : 50 })))!;
     expect(a.antwort).toBe('Ja, bis Mitternacht.');
     expect(a.zusatz).toBe(`Um Mitternacht bleiben 12${NBSP}% im Speicher.`);
+    expect(a.kurz).toEqual({ label: 'Heute Abend', wert: 'Reicht bis 24 Uhr', meta: `12${NBSP}% bleiben` });
     expect(a.ziel).toMatchObject({ von: 17 * 60 + 30, bis: 1440, punkt: 1440, ebene: 'ladestand' });
   });
 
@@ -109,6 +111,7 @@ describe('antwortReicht · „Reicht der Speicher heute Abend?"', () => {
     const a = antwortReicht(modell(lauf, (i) => ({ slotFlags: i === 88 ? ['soc_floor'] : null })))!;
     expect(a.antwort).toBe('Bis 22:00 Uhr.');
     expect(a.zusatz).toBe('Dann ist er leer, und Ihr Haus bezieht den Rest aus dem Netz.');
+    expect(a.kurz).toMatchObject({ wert: 'Leer um 22:00', meta: 'danach Strom aus dem Netz' });
   });
 
   it('sagt ehrlich, wenn am Abend kein Entladen geplant ist', () => {
@@ -138,6 +141,49 @@ describe('antwortBringt · „Was bringt es heute?" (Messlatte E6)', () => {
     expect(a.art).toBe('gemessen');
     expect(a.nachtrag).toBe(false);
     expect(a.notiz).toBeNull();
+  });
+
+  it('führt am laufenden Tag mit dem Plan des Tages - der Zwischenstand steht leise darunter', () => {
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: -0.2, savedSpeicherEur: -0.17, savedSteuerungEur: -0.03, steuerungSplitReason: null },
+      { now: JETZT, steuerungGeplantEur: 6.39 },
+    );
+    const a = antwortBringt(aussage)!;
+    expect(aussage!.geplantWert).toBe(`+${NBSP}6,39${NBSP}€`);
+    expect(a.kurz).toEqual({ label: 'Heute geplant', wert: aussage!.geplantWert, meta: `bisher ${aussage!.wert}`, ton: 'plus' });
+    expect(aussage!.wert).toContain('0,03');
+    expect(a.art).toBe('geplant');
+    expect(a.antwort).toBe(`Geplant für heute: +${NBSP}6,39${NBSP}€ gegenüber demselben Speicher ohne smarte Steuerung.`);
+    // Der Satz der Messung bleibt der Zusatz, unverändert.
+    expect(a.zusatz).toBe(aussage!.satz);
+  });
+
+  it('trägt das Vorzeichen der Geldzahl mit - ein Minus bekommt nie die Farbe des Gewinns (Konzept k1 §7)', () => {
+    const tonVon = (geplant: number, gemessen: number) => {
+      const aussage = speicherAussage(
+        { ...tagesGeld, savedEur: gemessen, savedSpeicherEur: 0, savedSteuerungEur: gemessen, steuerungSplitReason: null },
+        { now: JETZT, steuerungGeplantEur: geplant },
+      );
+      return antwortBringt(aussage)!.kurz.ton;
+    };
+    expect(tonVon(-3.25, 1)).toBe('minus');
+    expect(tonVon(6.39, -0.03)).toBe('plus');
+    expect(tonVon(0, 1)).toBe('null');
+    // Ein ganzer, abgeschlossener Tag trägt das Vorzeichen der gemessenen Zahl.
+    const gestern = speicherAussage(
+      { ...tagesGeld, savedEur: -1.5, savedSpeicherEur: 0, savedSteuerungEur: -1.5, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    expect(antwortBringt(gestern, 'gestern')!.kurz.ton).toBe('minus');
+  });
+
+  it('nennt ohne Planwert und für einen ganzen Tag die gemessene Zahl', () => {
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: 1.25, savedSpeicherEur: 0.85, savedSteuerungEur: 0.4, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    expect(antwortBringt(aussage)!.kurz).toMatchObject({ label: 'Heute', wert: aussage!.wert });
+    expect(antwortBringt(aussage, 'gestern')!.kurz.label).toBe('Gestern');
   });
 
   it('nennt dazu die Energie, die für später im Speicher liegt (E6)', () => {
@@ -173,6 +219,45 @@ describe('antwortBringt · „Was bringt es heute?" (Messlatte E6)', () => {
   it('entfällt, wenn es nichts zu sagen gibt (älteres Backend, keine Kasse)', () => {
     expect(antwortBringt(speicherAussage({ ...tagesGeld, savedEur: 1.25 }, { now: JETZT }))).toBeNull();
     expect(antwortBringt(null)).toBeNull();
+  });
+
+  it('bleibt ohne die Sonnen-Erzählung (dritter Parameter weggelassen/null) unverändert', () => {
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: 1.25, savedSpeicherEur: 0.85, savedSteuerungEur: 0.4, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    expect(antwortBringt(aussage)).toEqual(antwortBringt(aussage, 'heute', null));
+  });
+});
+
+describe('antwortBringt · die Sonnen-Erzählung (Konzept vp-fahrplan-eigenverbrauch-konzept §4.3/§4.5, E2 = A)', () => {
+  it('zeigt „Aus eigenem Strom X %" statt Geld - unabhängig von der Steuerungs-Aussage', () => {
+    // Keine Steuerungs-Aussage da (`null`) - die Autarkie-Kachel braucht sie nicht.
+    const a = antwortBringt(null, 'heute', { pct: 91, quelle: 'gemischt' })!;
+    expect(a).not.toBeNull();
+    expect(a.kurz).toEqual({ label: 'Aus eigenem Strom', wert: '91 %', meta: 'heute, Rest geplant' });
+    expect(a.antwort).toContain('91 %');
+    expect(a.details).toBe('sonnenstrom');
+    // „Geld bleibt auf der Erlöse-Seite" (E2-Begründung): kein Link mehr dorthin.
+    expect(a.details).not.toBe('erloese');
+  });
+
+  it('sagt ehrlich, wenn der Teil bisher rein geplant ist (keine Messung heute)', () => {
+    const a = antwortBringt(null, 'heute', { pct: 100, quelle: 'geplant' })!;
+    expect(a.kurz.meta).toBe('geplant');
+    expect(a.zusatz).toMatch(/rein geplant/);
+  });
+
+  it('gilt nur für heute - gestern und morgen bleiben bei ihrer bisherigen Antwort', () => {
+    expect(antwortBringt(null, 'morgen', { pct: 80, quelle: 'gemischt' })).toBeNull();
+    const tagesGeld = { range: 'day' as const, from: TAG.toISOString(), to: MORGEN };
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: 1.25, savedSpeicherEur: 0.85, savedSteuerungEur: 0.4, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    // Gestern hat die Autarkie-Kachel (noch) keine eigene Fassung - die
+    // bestehende Geld-Antwort entscheidet, wie bisher, auch wenn `autarkie` gesetzt ist.
+    expect(antwortBringt(aussage, 'gestern', { pct: 80, quelle: 'gemischt' })).toEqual(antwortBringt(aussage, 'gestern'));
   });
 });
 

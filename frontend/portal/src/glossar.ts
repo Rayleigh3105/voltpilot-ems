@@ -202,6 +202,49 @@ export const LADEQUELLE = {
 } as const;
 
 /**
+ * Das VERSPRECHEN je Ladequelle (Konzept k1, Captain-Entscheid E2=A vom
+ * 23.10.2026): die Namen bleiben, darunter steht ÜBERALL dasselbe Versprechen
+ * in höchstens fünf Wörtern - auf der Karte, im Blatt „Womit laden?“, in der
+ * Fahrzeugliste, im Gerätblatt und in der Hilfe. `copy.test.ts` hält die Länge.
+ */
+export const LADEQUELLE_VERSPRECHEN: Record<keyof typeof LADEQUELLE, string> = {
+  sonne: 'Nur Überschuss, sonst Pause',
+  min: 'Immer etwas, Sonne obendrauf',
+  speicher: 'Sonne, dazu der Speicher-Rest',
+  guenstig: 'Netzstrom, wenn er billig ist',
+};
+
+/** Wann eine Ladequelle passt (Konzept k1, Abschnitt 4) - die Vergleichszeile am Rechner. */
+export const LADEQUELLE_GUT_WENN: Record<keyof typeof LADEQUELLE, string> = {
+  sonne: 'das Auto tagsüber steht',
+  min: 'es sicher vorangehen soll',
+  speicher: 'Sie abends heimkommen',
+  guenstig: 'der Tarif stündlich wechselt',
+};
+
+/**
+ * Der Anlagen-Standard eines Ladepunkts, dessen Kunde nie gewählt hat
+ * (Steuerart `sofort`, Konzept k1 E5=A): ehrlich gesagt, was er tut.
+ */
+export const LADEPUNKT_UNGESTEUERT = {
+  satz: 'Lädt immer sofort voll',
+  folge: 'VoltPilot steuert diesen Ladepunkt noch nicht. Netzstrom zu jedem Preis.',
+  knopf: 'Womit laden einstellen',
+} as const;
+
+/**
+ * Die drei Worte des Lademodus (Aus · Smart · Schnell) - EIN Satz Wörter für
+ * jede Stelle, die ihn nennt (Konzept „Ein Ort fürs Laden" e1, Abschnitt 4:
+ * geschaltet wird nur noch auf „Laden"; andere Stellen zeigen den Zustand und
+ * nennen ihn mit denselben Wörtern, nie mit eigenen).
+ */
+export const LADEPUNKT_MODUS = {
+  aus: 'Aus',
+  smart: 'Smart',
+  schnell: 'Schnell',
+} as const;
+
+/**
  * Die SZENEN der Steuerung (Konzept „Steuerung neu", E6; Glossar-Nachtrag
  * „Szene"): ein Tipp pausiert mehrere Geräte, bis der Kunde die Szene beendet.
  * Das Vokabular ist geschlossen - dieselben Schlüssel hält der Server
@@ -893,6 +936,44 @@ export const UEMS_VERANTWORTUNG =
 export { LADEN_BEI_BEZUG_WOLKE } from './glossarEinstieg';
 export { LADEN_BEI_BEZUG_FAHRPLAN } from './glossarEinstieg';
 
+/**
+ * Konzept „Ein Gerät, ein Eintrag“ (Captain 23.10.2026, GD-5 A; Bau GE-6): der Weg zu einem Gerät heißt am Gerät
+ * „Anbindung“, im Anlege-Assistenten ist er der Schritt „Anschluss“; die Kennung DQ-x steht nur klein daneben.
+ * „Datenquelle“ bleibt allein beim Anbinden eines Gateways oder Loggers, hinter dem mehrere Geräte antworten.
+ * Glossar: `docs/fachmodell/glossar.md` › Datenquelle (Abschnitt „Anbindung statt Datenquelle“).
+ */
+export const UEMS_ANBINDUNG = 'Anbindung';
+export const UEMS_ANSCHLUSS = 'Anschluss';
+export const UEMS_GATEWAY_ANBINDEN = 'Gateway oder Logger anbinden';
+
+/**
+ * Gerätesuche (Konzept „Geräte suchen“, Captain 30.10.2026, DP-1 C, DP-2 bis DP-7 A): der Knopf heißt „Geräte suchen“,
+ * die Sache „Gerätesuche“ (auch im Satz „Update nötig für: Gerätesuche“). Das Filterfeld des Aufbaus trägt darum
+ * „Liste durchsuchen“ - zwei Dinge mit einem Namen wären eins zu viel. Die Kachel im Katalog heißt „Im Heimnetz suchen“.
+ * Glossar: `docs/fachmodell/glossar.md` › Gerät (Abschnitt „Gerätesuche“).
+ */
+export const UEMS_GERAETE_SUCHEN = 'Geräte suchen';
+export const UEMS_GERAETESUCHE = 'Gerätesuche';
+export const UEMS_IM_HEIMNETZ_SUCHEN = 'Im Heimnetz suchen';
+export const UEMS_LISTE_DURCHSUCHEN = 'Liste durchsuchen';
+
+/**
+ * Die Gerätegruppen im Aufbau (Konzept „Geräte gruppiert“, Captain 07.11.2026, GR-1 A · GR-2 A · GR-3 A): fünf feste
+ * Gruppen in der Reihenfolge des Anlagenkopfs - dieselben Wörter wie Energiefluss und Cockpit. „Bereich“ ist kein
+ * Gruppenwort (Ortswort des Unternehmens). Regeln: `aufbauGruppen.ts`.
+ * Glossar: `docs/fachmodell/glossar.md` › Gerät (Abschnitt „Gerätegruppen im Aufbau“).
+ */
+export const AUFBAU_ERZEUGUNG = 'Erzeugung';
+export const AUFBAU_SPEICHER = 'Speicher';
+export const AUFBAU_NETZ = 'Netz';
+export const AUFBAU_VERBRAUCH = 'Verbrauch';
+export const AUFBAU_LADEN = 'Laden';
+
+/** Der Zwischenstand im Schritt „Anschluss“: der Weg ist gespeichert, das Gerät entsteht erst am Ende. */
+export function anschlussGespeichert(kennzeichen: string, abschluss: string): string {
+  return `${UEMS_ANSCHLUSS} gespeichert (Kennung ${kennzeichen}). Das Gerät entsteht erst mit „${abschluss}“.`;
+}
+
 // ---------------------------------------------------------------------------
 // 3 · Die Suchwörter der Einstellungen
 // ---------------------------------------------------------------------------
@@ -981,6 +1062,24 @@ export const GLOSSAR: GlossarEntry[] = [
       'konzessionsabgabe',
       'umsatzsteuer',
       'stromrechnung',
+    ],
+  },
+  {
+    id: 'einspeiseverguetung',
+    label: 'Einspeisevergütung',
+    group: 'geld',
+    fachwort: 'feste Einspeisevergütung (EEG)',
+    synonyms: [
+      'einspeiseverguetung',
+      'verguetung',
+      'verguetungssatz',
+      'einspeisung',
+      'eeg',
+      'einspeisetarif',
+      'volleinspeisung',
+      'altanlage',
+      'ausgefoerdert',
+      'ct/kwh',
     ],
   },
   {

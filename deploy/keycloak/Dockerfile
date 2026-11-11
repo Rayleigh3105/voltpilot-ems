@@ -52,6 +52,23 @@ ENV KC_DB=postgres \
 COPY --chown=1000:0 deploy/keycloak/themes/voltpilot /opt/keycloak/themes/voltpilot
 COPY --chown=1000:0 infra/prod/keycloak/voltpilot-realm.json /opt/keycloak/data/import/voltpilot-realm.json
 
+# Theme cache busting. Keycloak serves theme files under
+# /auth/resources/<tag>/login/voltpilot/... with max-age=30 days. The tag is
+# rolled when the database is migrated to a new Keycloak version and stored
+# there, so it only moves on a Keycloak upgrade: a new theme kept its URLs and
+# Cloudflare + browsers served the old CSS to the new
+# template for up to 30 days (20.10.2026: the tile stage rendered as black SVG
+# blobs). The theme therefore appends `?v=<assetVersion>` to every URL it owns
+# (template.ftl, css url()); here the `dev` placeholder becomes a hash of the
+# theme's CONTENT - an image without a theme change keeps its URLs and caches.
+# The two greps fail the build if a placeholder went missing or survived.
+RUN cd /opt/keycloak/themes/voltpilot \
+ && v=$(find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12) \
+ && sed -i "s/^assetVersion=dev$/assetVersion=$v/" login/theme.properties \
+ && find login/resources/css -name '*.css' -exec sed -i "s/?v=dev'/?v=$v'/g" {} + \
+ && grep -qx "assetVersion=$v" login/theme.properties \
+ && ! grep -rqF '?v=dev' login/resources/css
+
 RUN /opt/keycloak/bin/kc.sh build
 
 # ---------------------------------------------------------------------------

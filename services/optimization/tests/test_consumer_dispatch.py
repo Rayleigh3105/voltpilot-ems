@@ -271,6 +271,59 @@ def test_compiled_price_window_activates_deterministically():
     }
 
 
+def _guenstig_payload(import_ct: list[float]):
+    """Steuerart „Günstig" ohne Ziel an einer 11-kW-Säule, durch die echte
+    Kette: Policy der API -> compile_consumer -> co_optimize -> Nutzlast.
+
+    Profil und Dokument sind die der API (Audit W-02): Regelart und
+    Nennleistung legt ``ConsumerService.ensureProfile`` an, das Dokument
+    ``SteuerartDokument`` - beide gepinnt in
+    ``docs/contracts/v2/ladepunkt-profil-vectors.json``. Vorher stand hier ein
+    Profil ``continuous``, das die API nie anlegte."""
+    import json
+    from pathlib import Path
+
+    from voltpilot_optimization.consumer_inputs import (
+        ConsumerProfileRow,
+        compile_consumer,
+    )
+    from voltpilot_optimization.publisher_v2 import build_plan_v2_payload
+
+    vektoren = json.loads((Path(__file__).resolve().parents[3] / "docs" / "contracts"
+                           / "v2" / "ladepunkt-profil-vectors.json").read_text("utf-8"))
+    (fall,) = [f for f in vektoren["faelle"] if f["name"] == "guenstig"]
+    n = len(import_ct)
+    load = compile_consumer(
+        ConsumerProfileRow(entity_id=vektoren["entity_id"],
+                           control_kind=fall["profil"]["control_kind"],
+                           rated_power_kw=float(fall["profil"]["rated_power_kw"])),
+        fall["dokument"], horizon_slot_starts(T0, n), 15,
+        [p - 20.0 for p in import_ct], import_ct,
+    )
+    inp = make_input(
+        [(p - 20.0) * 10.0 for p in import_ct], [load],
+        import_price_eur_mwh=[p * 10.0 for p in import_ct],
+    )
+    payload = build_plan_v2_payload(solve(inp))
+    (entity,) = [e for e in payload["entities"] if e["entity_id"] == vektoren["entity_id"]]
+    return [s["commands"]["setpoint_kw"] for s in entity["slots"]]
+
+
+def test_guenstig_without_goal_runs_only_below_the_price_limit():
+    """Bericht vp-wallbox-modi-konzept §3.4: the published plan carries the
+    target in every slot below the limit and an EXPLICIT off in every other -
+    the off is what holds an OCPP station whose source lane alone would
+    charge at full power."""
+    imp = [32.0] * 8 + [22.0] * 8 + [32.0] * 8
+    setpoints = _guenstig_payload(imp)
+    assert len(setpoints) == len(imp)
+    assert setpoints == [0.0] * 8 + [11.0] * 8 + [0.0] * 8
+
+
+def test_guenstig_with_no_cheap_slot_publishes_off_for_the_whole_horizon():
+    assert _guenstig_payload([35.0] * 24) == [0.0] * 24
+
+
 # ---------------------------------------------------------------------------
 # Flexible tasks: contiguous vs splittable (E5) + earliness (D5)
 # ---------------------------------------------------------------------------

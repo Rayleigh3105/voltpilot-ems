@@ -217,10 +217,6 @@ func ClipWindow(in Intent, l Limits, r Reading, floorPct *float64) Window {
 		deviceSide := func(kw float64) float64 {
 			ll := l
 			ll.SolarOnlyCharge = false
-			// MiSpeL MP-45: the strict clamp is a measured-surplus rule just
-			// like the EEG one, and every intent the device regulates charges
-			// the surplus only - the supervision "laden_bei_bezug" watches the
-			// effect (nativemode.go), the lagging measurement does not clip it.
 			ll.StrictExclusivity = false
 			rr := r
 			rr.GridLimitKw = math.NaN()

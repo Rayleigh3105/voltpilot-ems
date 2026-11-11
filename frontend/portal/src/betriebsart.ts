@@ -127,13 +127,18 @@ export function showPortfolioNav(i: ShellInput): boolean {
 /**
  * Whether the "Übersicht" nav item renders in the sidebar. Wer eine
  * Flotten-Ebene hat, bekommt `Portfolio` STATTDESSEN (siehe
- * {@link showPortfolioNav}); Admins behalten sonst ihr heutiges
- * Immer-Übersicht-Verhalten, und ein Kunde ohne Flotten-Ebene hat gar keinen
+ * {@link showPortfolioNav}); ein Kunde ohne Flotten-Ebene hat gar keinen
  * Punkt (seine Welt IST die eine Anlage).
+ *
+ * Für einen Plattform-Admin ist der Punkt seit dem Umhängen der Geräte-Reiter
+ * überflüssig (die Kunden-Übersicht des GERADE gewählten Mandanten war nie
+ * seine Heimat - die ist Plattform › Übersicht, der eigene Weg in eine
+ * Kundensicht bleibt „Wie der Kunde es sieht"): die Adresse (`#/uebersicht`)
+ * bleibt für ihn gültig, nur der Navigationspunkt entfällt.
  */
 export function showOverviewNav(i: ShellInput): boolean {
+  if (i.isAdmin) return false;
   if (showPortfolioNav(i)) return false;
-  if (i.isAdmin) return true;
   if (!i.loaded || !i.tenantReady) return false;
   return isFleetShell(i.betriebsart, i.siteCount);
 }
@@ -415,12 +420,23 @@ export function canonicalShellRoute(input: {
     && !siteIds.includes(route.siteId);
   const standortSeite = route.page === 'standort';
 
-  // Admins keep their explicit customer overview. A fleet context has exactly
-  // one portfolio landing; without that shell level, old portfolio bookmarks
-  // return to the customer overview instead of rendering an orphaned surface.
+  // Admins in a tenant view land like that tenant's customer: a fleet context has exactly one portfolio landing;
+  // without that shell level and with ONE Anlage, the sole Anlage is the landing, so the shell carries its five areas
+  // (Cockpit · Fahrplan · Verlauf · Steuerung · Anlage). Before, the admin stayed on the bare customer overview
+  // (`#/uebersicht`) - the Anlage page without an open Anlage, so no areas in the sidebar. With no or several Anlagen
+  // outside a fleet context the customer overview stays (old portfolio bookmarks return there instead of rendering an
+  // orphaned surface).
   if (shell.isAdmin) {
+    const soleAdminSite = siteIds.length === 1 ? siteIds[0] : null;
     if (fleet) {
       if (route.page === 'uebersicht' || nakedAnlage || invalidSite || standortSeite) return pageRoute('portfolio');
+      return null;
+    }
+    if (soleAdminSite) {
+      if (route.page === 'uebersicht' || nakedAnlage || isPortfolioPage(route.page) || standortSeite) {
+        return anlageRoute(soleAdminSite);
+      }
+      if (invalidSite) return { ...route, siteId: soleAdminSite };
       return null;
     }
     if (isPortfolioPage(route.page) || invalidSite || standortSeite) return pageRoute('uebersicht');

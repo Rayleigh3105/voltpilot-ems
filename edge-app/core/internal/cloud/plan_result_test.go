@@ -63,7 +63,7 @@ func TestHerzschlagBlockNurWennGegeben(t *testing.T) {
 	sink := startStatusSink(t)
 	link := connectedLink(t, sink, "heartbeat-block")
 	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		StatusExtension{Supports: BuiltSupports()}); err != nil {
+		StatusExtension{Supports: BuiltSupports("")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := sink.last(t)["gemeinsame_steuerung"]; ok {
@@ -71,7 +71,7 @@ func TestHerzschlagBlockNurWennGegeben(t *testing.T) {
 	}
 	age := 4
 	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		StatusExtension{Supports: BuiltSupports(), GemeinsameSteuerung: &GemeinsameSteuerung{
+		StatusExtension{Supports: BuiltSupports(""), GemeinsameSteuerung: &GemeinsameSteuerung{
 			PlanID: "4711aaaa-0000-4000-8000-000000004711", Waechter: &Waechter{Einspeisung: "regelt"},
 			MesspunktAlterS: &age}}); err != nil {
 		t.Fatal(err)

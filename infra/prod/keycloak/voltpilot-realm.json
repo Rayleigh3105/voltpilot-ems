@@ -9,6 +9,7 @@
   "sslRequired": "external",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
+  "editUsernameAllowed": true,
   "accessTokenLifespan": 900,
   "rememberMe": true,
   "ssoSessionIdleTimeout": 43200,
@@ -41,7 +42,8 @@
       { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" },
       { "name": "partner", "description": "Partner account (installer, UEMS AP-03 E7): NEVER a tenant_id; reaches a customer area only through a granted Unterstuetzung" },
       { "name": "edge-release-publisher", "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target - see docs/ota-signing.md." },
-      { "name": "tunnel-dienst", "description": "Wartungstunnel: darf AUSSCHLIESSLICH den Soll-Stand lesen (GET /api/v1/fernwartung/soll). Kein Schreibrecht, keine Admin-Route - siehe docs/fernwartung.md." }
+      { "name": "tunnel-dienst", "description": "Wartungstunnel: darf AUSSCHLIESSLICH den Soll-Stand lesen (GET /api/v1/fernwartung/soll). Kein Schreibrecht, keine Admin-Route - siehe docs/fernwartung.md." },
+      { "name": "werkstatt-dienst", "description": "Werkstatt-Dienst: nur der eigene Baum /api/v1/werkstatt-dienst/** (laufende Freigabe lesen). Nie freigeben, nie Fenster oeffnen, keine Kunden, keine Admin-Route - siehe services/werkstatt-dienst." }
     ]
   },
   "clients": [
@@ -76,6 +78,23 @@
       "serviceAccountsEnabled": true,
       "fullScopeAllowed": true,
       "secret": "${VP_TUNNEL_DIENST_SECRET:change-me}",
+      "redirectUris": [],
+      "webOrigins": []
+    },
+    {
+      "clientId": "voltpilot-werkstatt-dienst",
+      "name": "VoltPilot Werkstatt-Dienst",
+      "description": "Workshop service (services/werkstatt-dienst). Client credentials only; the token carries werkstatt-dienst only. Ships DISABLED: enable after setting VP_WERKSTATT_DIENST_SECRET (infra/prod/keycloak/README.md).",
+      "enabled": false,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "secret": "${VP_WERKSTATT_DIENST_SECRET:change-me}",
       "redirectUris": [],
       "webOrigins": []
     },
@@ -140,7 +159,46 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "grafana",
+      "name": "Grafana (Betrieb)",
+      "description": "Anmeldung an Grafana, nur platform-admin (Claim grafana_roles im ID-Token). Scope roles und Full Scope bleiben AUS: das Zugriffstoken darf keine Rolle tragen (infra/prod/keycloak/live-realm-grafana.md).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["https://grafana.voltpilot.de/login/generic_oauth"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://grafana.voltpilot.de/login/generic_oauth"
+      },
+      "defaultClientScopes": ["basic", "profile", "email"],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "grafana_roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "grafana_roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
+  ],
+  "scopeMappings": [
+    { "client": "grafana", "roles": ["platform-admin"] }
   ],
   "users": [
     {
@@ -154,6 +212,12 @@
       "enabled": true,
       "serviceAccountClientId": "voltpilot-tunnel-dienst",
       "realmRoles": ["tunnel-dienst"]
+    },
+    {
+      "username": "service-account-voltpilot-werkstatt-dienst",
+      "enabled": true,
+      "serviceAccountClientId": "voltpilot-werkstatt-dienst",
+      "realmRoles": ["werkstatt-dienst"]
     },
     {
       "username": "service-account-voltpilot-api",
@@ -284,7 +348,7 @@
         "subComponents": {},
         "config": {
           "kc.user.profile.config": [
-            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
+            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
           ]
         }
       }

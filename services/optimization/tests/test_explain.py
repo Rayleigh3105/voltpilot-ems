@@ -245,17 +245,21 @@ def test_mu_is_none_without_the_peak_module():
 def test_eeg_pv_day_roles_store_pv_and_never_grid_charge():
     # EEG household: PV hump feeds the battery at the solar-only bound, the
     # expensive evening discharges - and guenstig_laden must NEVER appear on
-    # an EEG site (the Ausschliesslichkeitsprinzip in role form).
+    # an EEG site (the Ausschliesslichkeitsprinzip in role form). The house
+    # needs nothing at noon: since EN-2 A (2026-11-02) an EEG battery charges
+    # only the surplus, so the full PV reaches the bound only without load.
     n = 96
     prices = [100.0] * 64 + [300.0] * 32
     pv = [0.0] * 24 + [4.0] * 32 + [0.0] * 40
-    inp = make_input(prices, load=2.0, pv=pv, soc0_kwh=0.5, netzladen_erlaubt=False)
+    load = [2.0] * 24 + [0.0] * 32 + [2.0] * 40
+    inp = make_input(prices, load=load, pv=pv, soc0_kwh=0.5, netzladen_erlaubt=False)
     plan = solve(inp)
     roles = [s.slot_role for s in plan.slots]
     assert plan.fallback_14a is False
     assert "guenstig_laden" not in roles
     charge_roles = {s.slot_role for s in plan.slots if s.battery_kw > 0.05}
     assert charge_roles == {"pv_speichern"}
+    assert all(s.grid_kw <= 1e-6 for s in plan.slots if s.battery_kw > 0.05)
     # A full-power PV charge sits exactly on the solar-only bound (charge ==
     # pv - curtail) - the EEG binding must be flagged.
     bound_slots = [

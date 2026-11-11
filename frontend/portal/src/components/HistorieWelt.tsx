@@ -36,7 +36,6 @@ import {
   sprungLabel,
   sprungWert,
   streifenAnker,
-  streifenSlots,
   zeigtStreifen,
 } from '../historieZeit';
 import {
@@ -48,7 +47,7 @@ import {
 } from '../historieVergleich';
 import { PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { MiniShareBar } from './MiniChart';
-import { MonthStrip } from './MoneyView';
+import { VpMonatsRaster } from './VpMonatsRaster';
 
 import { Aufklapper } from './Aufklapper';
 // ⚠ `.vp-c-card` (die Karte der Variante C) wohnt hier — `VerlaufFuss` trägt
@@ -422,7 +421,7 @@ function Sprungfeld({
   const grenzen = sprungGrenzen(range, now, coverage);
   return (
     <VpDatePicker
-      className="vp-zl-jump"
+      className="vp-zl-jump is-kalender"
       ariaLabel={label}
       art={feld === 'week' ? 'woche' : feld === 'month' ? 'monat' : 'tag'}
       value={wert}
@@ -829,14 +828,20 @@ export function ZeitLeiste({
       {blattOffen && hatPopInhalt && (
         <ZeitPopover onClose={() => setBlattOffen(false)}>
           {streifen && (
-            <MonthStrip
-              slots={streifenSlots(now, coverage)}
-              selectedMonth={`${sprungWert(anchor, 'month')}-01`}
-              showValues={false}
+            // Der Monat als Raster unter seinem Jahr - vorher ein waagerecht
+            // scrollender Chip-Streifen ohne Jahr (Captain: „ich weiß nicht
+            // mal, was das ist"). Grenzen wie das Datum-Feld daneben.
+            <VpMonatsRaster
+              wert={sprungWert(anchor, 'month')}
+              heute={sprungWert(now, 'month')}
+              min={sprungGrenzen('month', now, coverage).min}
+              max={sprungGrenzen('month', now, coverage).max}
               ariaLabel="Monat anspringen"
-              onSelect={(monthIso) => {
-                const d = streifenAnker(monthIso, range, now);
+              ohneFuss
+              onWaehle={(monat) => {
+                const d = streifenAnker(`${monat}-01`, range, now);
                 if (d) onAnchor(d);
+                setBlattOffen(false);
               }}
             />
           )}

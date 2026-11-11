@@ -20,6 +20,10 @@ flowchart LR
 
 Quellen: [Workflow](../.forgejo/workflows/deploy.yaml), [Fast-Workflow](../.forgejo/workflows/deploy-fast.yaml), [Tag-Bump-Werkzeug](../tools/deploy/gitops-image-bump.sh).
 
+## Nächtlicher Testlauf
+
+Unabhängig vom releasegebundenen Testjob in **Build & Deploy** läuft nachts automatisch **Nightly test gate** (`.forgejo/workflows/nightly-tests.yaml`) gegen `main`: dieselben Testsuiten (api/ingest/timescale-writer per Maven, die Python-Dienste per Pytest, Portal-Typecheck/Vitest/Build), aber ohne Image-Build, Push oder gitops-Tag-Bump - reine Meldung, keine Secrets nötig. Ein roter Lauf ist im Actions-Tab des Repos sichtbar (Commit-Status); ein zusätzlicher Push-Kanal existiert noch nicht.
+
 ## CI-Zugangsdaten
 
 | Secret | Zweck |
@@ -79,9 +83,9 @@ Auf einer reinen Daten-VM ausschließlich die benötigten Datendienste verwalten
 
 ## Betrieb prüfen
 
-[Kubernetes-Betriebsvertrag](k8s-readiness.md): Probes, Singleton-Grenzen, Shutdown und Metriken. [MQTT-Sicherheit](security-mqtt.md): Zertifikate, ACL-Mounts und Reload.
+[Kubernetes-Betriebsvertrag](k8s-readiness.md): Probes, Singleton-Grenzen, Shutdown, Metriken und Logformat. [MQTT-Sicherheit](security-mqtt.md): Zertifikate, ACL-Mounts und Reload.
 
-Keycloak übernimmt Realm-Änderungen nur in einen neuen Realm (`--import-realm`); den laufenden Realm `voltpilot` stellt der Betreiber von Hand um. Die Anmelde-Härtung (Ereignisse, Passwort-Vorgabe, zweiter Faktor für `platform-admin`; UEMS AP-20 E12) hat dafür ein Prüfskript und eine Bestätigung mit Datum: [Live-Realm = Import](../infra/prod/keycloak/live-realm-import.md).
+Keycloak übernimmt Realm-Änderungen nur in einen neuen Realm (`--import-realm`); den laufenden Realm `voltpilot` stellt der Betreiber von Hand um. Die Anmelde-Härtung (Ereignisse, Passwort-Vorgabe, zweiter Faktor für `platform-admin`; UEMS AP-20 E12) hat dafür ein Prüfskript und eine Bestätigung mit Datum: [Live-Realm = Import](../infra/prod/keycloak/live-realm-import.md). Dasselbe gilt für den Client `grafana` (Anmeldung an Grafana über Keycloak, nur `platform-admin`; sein Zugriffstoken trägt mit Absicht keine Rolle): [Client für Grafana](../infra/prod/keycloak/live-realm-grafana.md).
 
 ```bash
 bash tools/deploy/test-gitops-image-bump.sh

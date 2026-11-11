@@ -305,6 +305,43 @@ public class EntityHistoryRepository {
         return channels;
     }
 
+    /**
+     * Die FEINEN Eimer der Energie-Kanäle eines Geräts über [from, to) - die Eingabe von
+     * {@link com.voltpilot.api.history.GeraeteEnergie}: am Tag die Viertelstunden aus der rohen
+     * {@code telemetry_v2}, sonst die Stunden aus {@code telemetry_v2_rollup_1h} (auch für Monat und
+     * Jahr: der Zuwachs über die Stundengrenzen ist genauer als ein Tages-Rollup, und eine
+     * Leistung integriert sich nur über belegte Stunden ehrlich). Reines v2: ein Unterzähler hat
+     * keine v1-Vergangenheit.
+     */
+    public Map<String, List<Bucket>> energySeries(UUID siteId, String entityId, HistoryRange range,
+            Instant from, Instant to) {
+        List<String> channels = List.of(com.voltpilot.api.history.GeraeteEnergie.ZAEHLER,
+                com.voltpilot.api.history.GeraeteEnergie.LEISTUNG);
+        if (range == HistoryRange.DAY) {
+            return group(jdbc.query(
+                    "SELECT time_bucket('15 minutes', time) AS bucket, channel, "
+                            + "avg(value) AS avg_value, min(value) AS min_value, "
+                            + "max(value) AS max_value, last(value, time) AS last_value, "
+                            + "count(*) AS n_samples "
+                            + "FROM telemetry_v2 WHERE site_id = ? AND entity_id = ? "
+                            + "AND channel IN (?, ?) AND time >= ? AND time < ? "
+                            + "GROUP BY 1, 2 ORDER BY channel, bucket",
+                    EntityHistoryRepository::mapRow, siteId, entityId, channels.get(0), channels.get(1),
+                    Timestamp.from(from), Timestamp.from(to)));
+        }
+        return group(jdbc.query(
+                "SELECT bucket, channel, avg_value, min_value, max_value, last_value, n_samples "
+                        + "FROM telemetry_v2_rollup_1h WHERE site_id = ? AND entity_id = ? "
+                        + "AND channel IN (?, ?) AND bucket >= ? AND bucket < ? ORDER BY channel, bucket",
+                EntityHistoryRepository::mapRow, siteId, entityId, channels.get(0), channels.get(1),
+                Timestamp.from(from), Timestamp.from(to)));
+    }
+
+    /** Die Breite der feinen Eimer von {@link #energySeries}. */
+    public static java.time.Duration energySeriesBucket(HistoryRange range) {
+        return range == HistoryRange.DAY ? java.time.Duration.ofMinutes(15) : java.time.Duration.ofHours(1);
+    }
+
     private record ChannelBucket(String channel, Bucket bucket) {}
 
     private static ChannelBucket mapRow(ResultSet rs, int rowNum) throws SQLException {

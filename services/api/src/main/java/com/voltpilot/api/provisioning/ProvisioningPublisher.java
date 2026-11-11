@@ -3,13 +3,12 @@ package com.voltpilot.api.provisioning;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -37,8 +36,7 @@ public class ProvisioningPublisher {
     private final String brokerUrl;
     private final String username;
     private final String password;
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public ProvisioningPublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -47,6 +45,21 @@ public class ProvisioningPublisher {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "provisioning", brokerUrl,
+                "voltpilot-api-provisioning-" + UUID.randomUUID(), true, username, password, null, null);
+    }
+
+    /**
+     * Stößt den Erstaufbau beim Start nur AN, blockiert den Start-Thread nie (Review-Fix: ein beim api-Start
+     * fehlender Broker hätte den Start sonst um bis zu {@link BrokerVerbindung#ZEITGRENZE_MS} je Weg verlängert -
+     * Risiko einer Neustart-Schleife der {@code startupProbe}). Der erste Versand wartet dafür selbst begrenzt auf
+     * den Erstaufbau ({@link BrokerVerbindung#verbundenerClient()}, wie vor der Migration das synchrone
+     * {@code MqttClient.connect()}); danach wartet kein Senden mehr auf die Verbindung, und Paho verbindet selbst
+     * neu.
+     */
+    @EventListener(ContextRefreshedEvent.class)
+    public void start() {
+        verbindung.sicherstellen();
     }
 
     /**
@@ -62,10 +75,9 @@ public class ProvisioningPublisher {
         }
         String payload = configPayload(externalRef, tenantId, siteId, deviceId);
         try {
-            synchronized (lock) {
-                connected().publish(ProvisioningTopics.configTopic(externalRef),
-                        payload.getBytes(StandardCharsets.UTF_8), 1, true);
-            }
+            verbindung.verbundenerClient()
+                    .publish(ProvisioningTopics.configTopic(externalRef), payload.getBytes(StandardCharsets.UTF_8), 1, true)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("Published retained provisioning config for ref '{}' (device {})", externalRef, deviceId);
             return true;
         } catch (Exception e) {
@@ -96,17 +108,18 @@ public class ProvisioningPublisher {
             return false;
         }
         try {
-            synchronized (lock) {
-                MqttClient c = connected();
-                // An empty retained publish deletes the retained message (MQTT 3.1.1 §3.3.1.3).
-                if (clearProvisioning) c.publish(ProvisioningTopics.configTopic(externalRef), new byte[0], 1, true);
-                c.publish(ProvisioningTopics.scheduleTopic(tenantId, siteId, deviceId),
-                        new byte[0], 1, true);
-                c.publish(ProvisioningTopics.planV2Topic(tenantId, siteId, deviceId),
-                        new byte[0], 1, true);
-                c.publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
-                        new byte[0], 1, true);
+            var c = verbindung.verbundenerClient();
+            // An empty retained publish deletes the retained message (MQTT 3.1.1 §3.3.1.3).
+            if (clearProvisioning) {
+                c.publish(ProvisioningTopics.configTopic(externalRef), new byte[0], 1, true)
+                        .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             }
+            c.publish(ProvisioningTopics.scheduleTopic(tenantId, siteId, deviceId), new byte[0], 1, true)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
+            c.publish(ProvisioningTopics.planV2Topic(tenantId, siteId, deviceId), new byte[0], 1, true)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
+            c.publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId), new byte[0], 1, true)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("Cleared retained provisioning config + schedule for ref '{}' (device {})",
                     externalRef, deviceId);
             return true;
@@ -130,10 +143,10 @@ public class ProvisioningPublisher {
             java.time.Instant purgedBefore) {
         String payload = purgeCommandPayload(tenantId, siteId, deviceId, purgedBefore);
         try {
-            synchronized (lock) {
-                connected().publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
-                        payload.getBytes(StandardCharsets.UTF_8), 1, true);
-            }
+            verbindung.verbundenerClient()
+                    .publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
+                            payload.getBytes(StandardCharsets.UTF_8), 1, true)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("Published retained purge_data command for device {} (purged_before {})",
                     deviceId, purgedBefore);
             return true;
@@ -152,10 +165,10 @@ public class ProvisioningPublisher {
     public boolean publishOcppCommand(UUID tenantId, UUID siteId, UUID deviceId,
             String payload) {
         try {
-            synchronized (lock) {
-                connected().publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
-                        payload.getBytes(StandardCharsets.UTF_8), 1, false);
-            }
+            verbindung.verbundenerClient()
+                    .publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
+                            payload.getBytes(StandardCharsets.UTF_8), 1, false)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("Published non-retained OCPP command for device {}", deviceId);
             return true;
         } catch (Exception e) {
@@ -186,42 +199,6 @@ public class ProvisioningPublisher {
      */
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-            } catch (Exception e) {
-                log.debug("Provisioning MQTT disconnect failed on shutdown: {}", e.getMessage());
-            }
-            try {
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("Provisioning MQTT close failed on shutdown: {}", e.getMessage());
-            }
-            client = null;
-        }
-    }
-
-    private MqttClient connected() throws Exception {
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-provisioning-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
+        verbindung.schliessen();
     }
 }

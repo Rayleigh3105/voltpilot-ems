@@ -189,6 +189,154 @@ test('flow router matches inverter-routing.route() for kaco_modbus (NH3-Register
   assert.strictEqual(outMsg.aiswei.conn.unit_id, expected.connection.unit_id);
 });
 
+test('flow router matches inverter-routing.route() for kaco_serial (seriell ueber RS485-zu-Ethernet-Wandler)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', label: 'KACO · Powador 3200 - INT',
+    family: 'kaco_serial', communication: 'kaco_serial',
+    connection: { ip: '192.168.0.40', port: 8899, address: 3 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.kacoSerial);
+  assert.ok(outMsg, 'der KACO-seriell-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(JSON.stringify(sel)));
+  assert.strictEqual(outMsg.kacoSerial.target, expected.target);
+  assert.strictEqual(outMsg.kacoSerial.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kacoSerial.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.kacoSerial.conn.address, expected.connection.address);
+  assert.strictEqual(outMsg.kacoSerial.family, expected.family);
+  // Die anderen Ausgaenge bleiben null auf diesem Weg.
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router refuses an out-of-range RS485-Adresse, idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', label: 'KACO · Powador 3200 - INT',
+    family: 'kaco_serial', communication: 'kaco_serial',
+    connection: { ip: '192.168.0.40', port: 8899, address: 99 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /1 und 32/);
+});
+
+// Die "KACO Powador seriell lesen"-Node (auto-kaco-serial) traegt eine
+// EINGEBETTETE woertliche Kopie von kaco/kaco-serial-decode.js. Drift-Waechter:
+// wer das Modul aendert, ohne build-flows.js neu laufen zu lassen, bekommt hier
+// eine rote Probe statt einen stillen veralteten Leser auszuliefern.
+test('flow auto-kaco-serial embeds the current kaco/kaco-serial-decode.js source', () => {
+  const func = byId['auto-kaco-serial'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'kaco/kaco-serial-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-kaco-serial node is out of sync with kaco/kaco-serial-decode.js - re-run build-flows.js',
+  );
+});
+
+// Der Energiequellen-Executor ("Quellen lesen (sequenziell)") liest einen zweiten
+// Wechselrichter ueber dieselben Decoder wie der Hauptweg. Pruefmuster aus dem
+// Anlagen-Befund (Go-live 2026-11): flows.json enthielt weder kaco_serial noch
+// huawei_modbus noch die Module im Quellen-Knoten - "Weiterer Erzeuger" blieb
+// "NICHT VERDRAHTET: unbekannte Kommunikation". Umgekehrt geprueft + Drift-Waechter.
+test('flows.json: the source executor wires kaco_serial, huawei_modbus and kostal_dxs with the current decoders', () => {
+  const store = byId['sources-store'].func;
+  const read = byId['sources-read'].func;
+  for (const way of ['kaco_serial', 'huawei_modbus', 'kostal_dxs']) {
+    assert.ok(store.includes("s.communication === '" + way + "'"), 'sources-store routes ' + way);
+    assert.ok(read.includes("plan.adapter === '" + way + "'"), 'sources-read executes ' + way);
+  }
+  assert.ok(read.includes(fs.readFileSync(path.join(__dirname, 'kaco/kaco-serial-decode.js'), 'utf8')),
+    'sources-read embeds kaco/kaco-serial-decode.js - re-run build-flows.js');
+  assert.ok(read.includes(fs.readFileSync(path.join(__dirname, 'huawei/huawei-decode.js'), 'utf8')),
+    'sources-read embeds huawei/huawei-decode.js - re-run build-flows.js');
+  assert.ok(read.includes(fs.readFileSync(path.join(__dirname, 'kostal/kostal-dxs-decode.js'), 'utf8')),
+    'sources-read embeds kostal/kostal-dxs-decode.js - re-run build-flows.js');
+});
+
+test('sources-store and sources-routing.planSources agree on the adapters for kaco_serial, huawei_modbus and kostal_dxs', () => {
+  const sourcesRouting = require('./sources-routing');
+  const cases = [
+    { communication: 'kaco_serial', family: 'kaco_serial', connection: { ip: '10.0.0.30', port: 4196, address: 1 } },
+    { communication: 'huawei_modbus', family: 'huawei_sun2000_luna', connection: { ip: '10.0.0.31', port: 502, unit_id: 0 } },
+    { communication: 'kostal_dxs', family: 'kostal_piko', connection: { ip: '10.0.0.32', port: 80 } },
+  ];
+  for (const sel of cases) {
+    const entry = { id: 'src-x', role: 'pv-generation', brand: 'x', model: 'y', ...sel, interval_s: 5, capacity_kwp: 3 };
+    const planned = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: [entry] }));
+    assert.strictEqual(planned.length, 1, sel.communication + ' is planned by sources-routing');
+    const flow = {};
+    runFunctionNode(byId['sources-store'].func, { msg: { payload: [entry] }, flow });
+    assert.strictEqual(flow.source_plans.length, 1, sel.communication + ' is planned by the flow node');
+    assert.strictEqual(flow.source_plans[0].adapter, planned[0].plan.adapter);
+    assert.strictEqual(flow.source_plans[0].conn.ip, planned[0].plan.connection.ip);
+    assert.strictEqual(flow.source_plans[0].conn.port, planned[0].plan.connection.port);
+  }
+});
+
+test('flow router matches inverter-routing.route() for huawei_modbus (SUN2000 + LUNA2000)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'huawei', label: 'Huawei · SUN2000-3KTL-M1',
+    family: 'huawei_sun2000_luna', communication: 'huawei_modbus',
+    connection: { ip: '192.168.0.50', port: 502, unit_id: 0, invert_grid_sign: false, invert_batt_sign: false },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.huawei);
+  assert.ok(outMsg, 'der Huawei-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(JSON.stringify(sel)));
+  assert.strictEqual(outMsg.huawei.target, expected.target);
+  assert.strictEqual(outMsg.huawei.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.huawei.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.huawei.conn.unit_id, expected.connection.unit_id);
+  assert.strictEqual(outMsg.huawei.conn.invert_grid_sign, expected.connection.invert_grid_sign);
+  assert.strictEqual(outMsg.huawei.conn.invert_batt_sign, expected.connection.invert_batt_sign);
+  // The inline HUAWEI_READS block plan must equal the decode module's planReads
+  // (one truth for the register blocks - the DEYE_READS drift-guard discipline).
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(outMsg.huawei.reads)),
+    JSON.parse(JSON.stringify(expected.reads)));
+  // Die anderen Ausgaenge bleiben null auf diesem Weg.
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router gates an unknown huawei_modbus family idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'huawei', label: 'Huawei',
+    family: 'unbekannt', communication: 'huawei_modbus',
+    connection: { ip: '192.168.0.50', port: 502 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /unbekannte Huawei-Familie/);
+});
+
+// Die "Huawei SUN2000 lesen"-Node (auto-huawei) traegt eine EINGEBETTETE
+// woertliche Kopie von huawei/huawei-decode.js. Drift-Waechter: wer das Modul
+// aendert, ohne build-flows.js neu laufen zu lassen, bekommt hier eine rote
+// Probe statt einen stillen veralteten Leser auszuliefern.
+test('flow auto-huawei embeds the current huawei/huawei-decode.js source', () => {
+  const func = byId['auto-huawei'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'huawei/huawei-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-huawei node is out of sync with huawei/huawei-decode.js - re-run build-flows.js',
+  );
+  // Same discipline as the other Modbus-TCP reads: explicit timeouts, an
+  // overlap guard, and non-silent failures.
+  assert.ok(func.includes('__HUAWEI.makeHuaweiReader({ net: net, connectTimeoutMs: 8000, readTimeoutMs: 8000 })'));
+  assert.ok(func.includes("context.get('hw_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
+  // The measured battery power rides the LOCAL bus only (field source "+
+  // charging" already matches VoltPilot's convention) - the node forwards
+  // battKw as battery_power_kw.
+  assert.ok(func.includes('reading.battery_power_kw = out.battKw'));
+});
+
 test('flow router matches inverter-routing.route() for kostal_modbus', () => {
   const sel = {
     schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PLENTICORE BI 10/26',
@@ -235,6 +383,95 @@ test('flow auto-kostal embeds the current kostal/kostal-decode.js source', () =>
   // The measured battery power rides the LOCAL bus only, decoded per the module
   // (register sign negated there) - the node forwards battKw as battery_power_kw.
   assert.ok(func.includes('reading.battery_power_kw = out.battKw'));
+});
+
+test('flow router matches inverter-routing.route() for kostal_dxs (Web-API)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PIKO 20',
+    family: 'kostal_piko', communication: 'kostal_dxs',
+    connection: { ip: '192.168.1.122', port: 80 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.kostalDxs);
+  assert.ok(outMsg, 'der KOSTAL-PIKO-Web-API-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(sel));
+  assert.strictEqual(outMsg.kostalDxs.target, expected.target);
+  assert.strictEqual(outMsg.kostalDxs.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kostalDxs.conn.port, expected.connection.port);
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router gates an unknown kostal_dxs family idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL',
+    family: 'kostal_piko_ba', communication: 'kostal_dxs',
+    connection: { ip: '192.168.1.122' },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /KOSTAL-PIKO-Familie/);
+});
+
+test('flow auto-kostal-dxs embeds the current kostal/kostal-dxs-decode.js source', () => {
+  const func = byId['auto-kostal-dxs'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'kostal/kostal-dxs-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-kostal-dxs node is out of sync with kostal/kostal-dxs-decode.js - re-run build-flows.js',
+  );
+  assert.ok(func.includes("context.get('kd_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
+});
+
+test('flow router matches inverter-routing.route() for kostal_piko_rtu (Ausweg)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PIKO 20',
+    family: 'kostal_piko_rtu', communication: 'kostal_piko_rtu',
+    connection: { ip: '192.168.0.50', port: 8899, unit_id: 3, cross_check_ip: '192.168.1.122' },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.kostalRtu);
+  assert.ok(outMsg, 'der KOSTAL-PIKO-RTU-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(sel));
+  assert.strictEqual(outMsg.kostalRtu.target, expected.target);
+  assert.strictEqual(outMsg.kostalRtu.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kostalRtu.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.kostalRtu.conn.unit_id, expected.connection.unit_id);
+  assert.strictEqual(outMsg.kostalRtu.conn.cross_check_ip, expected.connection.cross_check_ip);
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router gates a Modbus-Geraeteadresse ausserhalb 1..247 idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL',
+    family: 'kostal_piko_rtu', communication: 'kostal_piko_rtu',
+    connection: { ip: '192.168.0.50', unit_id: 999 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /1 und 247/);
+});
+
+test('flow auto-kostal-rtu embeds the current kostal/kostal-piko-rtu-decode.js source', () => {
+  const func = byId['auto-kostal-rtu'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'kostal/kostal-piko-rtu-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-kostal-rtu node is out of sync with kostal/kostal-piko-rtu-decode.js - re-run build-flows.js',
+  );
+  assert.ok(func.includes("context.get('kr_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
+  // The regular poll reads ONLY the fast register (no `blocks` override) - the
+  // Gegenprobe against the Web-API happens only in "Verbindung testen".
+  assert.ok(func.includes('read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id })'));
 });
 
 // --- Modbus-Datenspiegel: the router's learned-block merge -------------------
@@ -1130,6 +1367,32 @@ test('flow sources-store matches sources-routing.planSources for modbus + solarm
   );
 });
 
+// UEMS EZ-21: the address of an Anlagensteuerung rides edge/sources/config only
+// so the measurement binding can resolve the controller's pin; the palette
+// reads the Erzeuger image over it. The store must not plan it (no second poll
+// of the SPS) and must NAME it instead of warning NICHT VERDRAHTET - exactly
+// like sources-routing.planSources, which leaves it out.
+test('flow sources-store names a plant-controller source and plans no poll for it', () => {
+  const payload = [
+    { id: 'src-a', role: 'pv-generation', brand: 'generic_modbus', model: 'sunspec', family: 'sunspec',
+      communication: 'modbus_tcp', connection: { ip: '192.168.0.70', port: 502, unit_id: 2 } },
+    { id: 'src-2hv35pcn', role: 'plant-controller', brand: '', model: '',
+      family: 'voltpilot.erzeuger_registerbild_v1', communication: 'modbus_tcp',
+      connection: { ip: '192.168.4.165', port: 503, unit_id: 1, profile: '' }, interval_s: 5,
+      data_source_id: 'DQ-1' },
+  ];
+  const flow = {};
+  const context = {};
+  runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow, context });
+  const plans = JSON.parse(JSON.stringify(flow.source_plans));
+  assert.deepStrictEqual(plans.map((p) => p.id), ['src-a']);
+  const notes = JSON.parse(context.src_store_sig);
+  assert.ok(notes.some((t) => t.includes('src-2hv35pcn (plant-controller)') && t.includes('liest der Messplan')));
+  assert.ok(!notes.some((t) => t.includes('NICHT VERDRAHTET')), notes.join(' | '));
+  const routed = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: payload }));
+  assert.deepStrictEqual(routed.map((r) => r.id), ['src-a']);
+});
+
 // The "Quellen uebernehmen" node must ALSO plan a fronius_solar_api source (a
 // Fronius read over its Solar API v1 HTTP endpoint), matching the module.
 test('flow sources-store plans a fronius_solar_api source like the module', () => {
@@ -1292,6 +1555,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     'sunspec/sunspec-live.js',
     'goe/goe-api.js',
     'kostal/kostal-decode.js',
+    'huawei/huawei-decode.js',
   ];
   for (const rel of embeds) {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
@@ -1301,7 +1565,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     );
   }
   // And it wires the embedded modules into makeReadOnce the intended way.
-  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE, kostal: __KOSTAL'));
+  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE, kostal: __KOSTAL, kaco: __KACO, aiswei: __AISWEI, kacoSerial: __KACOSERIAL, huawei: __HUAWEI'));
 });
 
 // The "Fronius SunSpec lesen" node (auto-sunspec) carries EMBEDDED verbatim

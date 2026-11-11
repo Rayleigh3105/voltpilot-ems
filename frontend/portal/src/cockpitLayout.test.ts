@@ -275,6 +275,28 @@ describe('layoutResolve — Reihenfolge', () => {
     expect(r.lead).toBe('erloes-komposition');
   });
 
+  it('der Stern auf „Unterm Strich“ gilt auch ohne Geld-Strom, solange der Baustein da ist (E2/E3)', () => {
+    // Ein Haushalt ohne Vermarktung und ohne Lastspitzenkappung: die Regel sagt „Energiefluss“.
+    const ohneStern = layoutResolve({ canonical: CANONICAL_DESKTOP, verfuegbar: ALLE, blocks: blocks('energiefluss') });
+    expect(ohneStern.lead).toBe('energiefluss');
+    // Setzt der Kunde den Stern auf „Unterm Strich“, holt er den Euro als Leitkachel zurück ...
+    const mitStern = layoutResolve({
+      canonical: CANONICAL_DESKTOP,
+      verfuegbar: ALLE,
+      blocks: blocks('energiefluss'),
+      eigen: doc({ lead: 'erloes-komposition' }),
+    });
+    expect(mitStern.lead).toBe('erloes-komposition');
+    // ... aber nur, wo es den Baustein gibt (eine geldfreie Anlage hat ihn nicht).
+    const geldfrei = layoutResolve({
+      canonical: CANONICAL_DESKTOP,
+      verfuegbar: ALLE.filter((id) => id !== 'geld'),
+      blocks: blocks('energiefluss'),
+      eigen: doc({ lead: 'erloes-komposition' }),
+    });
+    expect(geldfrei.lead).toBe('energiefluss');
+  });
+
   it('der Kunde darf den Lead auf einen vorhandenen Block umlegen', () => {
     const r = layoutResolve({
       canonical: CANONICAL_DESKTOP,
@@ -378,7 +400,7 @@ describe('Reset-Ansage (E2: der Knopf SAGT, worauf er fällt)', () => {
   it('fällt auf die Vorgabe des Betreibers, wenn es eine gibt', () => {
     expect(resetZiel({ siteVorgabe: doc({ hidden: ['strompreis'] }) })).toEqual({
       ziel: 'vorgabe-anlage',
-      satz: 'Danach gilt wieder die Vorgabe Ihres Betreibers.',
+      satz: '„Zurücksetzen“ stellt die Vorgabe Ihres Betreibers wieder her.',
     });
     expect(resetZiel({ tenantVorgabe: doc({ lead: 'energiefluss' }) }).ziel).toBe('vorgabe-kunde');
   });
@@ -388,7 +410,7 @@ describe('Reset-Ansage (E2: der Knopf SAGT, worauf er fällt)', () => {
     // der Kunde selbst ausgelöst hat, und das Haus warnt nur dort, wo etwas
     // Unerwartetes passiert.
     for (const eingabe of [{}, { profil: 'privat' }, { siteVorgabe: doc({ hidden: ['geld'] }) }]) {
-      expect(resetZiel(eingabe).satz).toMatch(/^Danach gilt wieder /);
+      expect(resetZiel(eingabe).satz).toMatch(/^„Zurücksetzen“ stellt .* wieder her\.$/);
       expect(resetZiel(eingabe).satz).not.toContain('verworfen');
     }
   });

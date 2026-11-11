@@ -284,7 +284,10 @@ export const WR_AUTOMATIK_SATZ = 'Ihr Wechselrichter regelt den Speicher gerade 
  * In-Slot-Pflichten den KORRIGIERTEN Wert, aber nichts sagte, warum - also
  * standen zwei verschiedene Zahlen (Plan-Balken vs. geregelter Wert) ohne
  * Erklärung nebeneinander. Der Satz nennt die Richtung, den Plan-Wert und den
- * gemessenen Wert, dem gefolgt wird.
+ * gemessenen Wert, dem gefolgt wird - bei den Folge-Modi ist das der nach Solar
+ * verbleibende Verbrauch (Verbrauch − PV, `executionTargetKw`), nie der ganze
+ * Verbrauch des Hauses: „Ihr Verbrauch (0,8 kW)“ stand sonst neben 14,6 kW
+ * Verbrauch im Fluss (Konzept b1, 20.10.2026).
  *
  * **Nie eine Behauptung ohne Daten** (§7 Regel 4): ohne Ausführungs-Felder
  * (ältere Edge-Version) und bei `plan` gibt es KEINEN Satz - der Aufrufer
@@ -360,13 +363,13 @@ export function executionNote(status: ControlStatus | null): string | null {
     // Der Satz behauptet KEINE Preis-Abwägung - die hat für diesen Slot
     // niemand gemacht, genau darum gibt es das eigene Wort.
     return (
-      `${plannedPart}Ihre Entladung wird gerade auf den gemessenen Verbrauch${measured} ` +
+      `${plannedPart}Ihre Entladung wird gerade auf den nach Solar verbleibenden Verbrauch${measured} ` +
       'begrenzt: Der Rest bleibt im Speicher, statt ins Netz zu gehen.'
     );
   }
   if (mode === 'deficit_cover') {
     return (
-      `${plannedPart}Ihr Verbrauch${measured} wird gerade aus dem Speicher gedeckt, statt ` +
+      `${plannedPart}${plannedPart ? 'der' : 'Der'} nach Solar verbleibende Verbrauch${measured} wird gerade aus dem Speicher gedeckt, statt ` +
       'ihn einzukaufen. Der Fahrplan sieht in dieser Viertelstunde keine Ladung vor.'
     );
   }
@@ -396,17 +399,17 @@ export function executionNote(status: ControlStatus | null): string | null {
   if (status.executionDirection === 'reduce') {
     return (
       `${plannedPart}Ihr Haus braucht gerade weniger. Die Entladung wurde auf den ` +
-      `gemessenen Verbrauch${measured} begrenzt, damit kein Strom unnötig ins Netz geht.`
+      `nach Solar verbleibenden Verbrauch${measured} begrenzt, damit kein Strom unnötig ins Netz geht.`
     );
   }
   if (status.executionDirection === 'deepen') {
     return (
       `${plannedPart}Ihr Haus braucht gerade mehr. Die Entladung wurde auf den ` +
-      `gemessenen Verbrauch${measured} angehoben, damit kein Netzstrom nötig ist.`
+      `nach Solar verbleibenden Verbrauch${measured} angehoben, damit kein Netzstrom nötig ist.`
     );
   }
   // Nachführung ohne gemeldete Richtung: benennen, aber keine erfinden.
-  return `${plannedPart}Ihr Gerät folgt gerade dem gemessenen Verbrauch${measured}.`;
+  return `${plannedPart}Ihr Gerät folgt gerade dem nach Solar verbleibenden Verbrauch${measured}.`;
 }
 
 function num(v: number | null | undefined): number | null {

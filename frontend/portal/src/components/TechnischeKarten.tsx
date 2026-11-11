@@ -39,6 +39,7 @@ import {
   roleBoxes,
   rolePillsFor,
   setPrimaryAssignment,
+  massgeblichWaehlbar,
   suggestEntityType,
 } from '../rollen';
 import { InfoTip } from '../components/InfoTip';
@@ -395,7 +396,9 @@ function RoleBoxCard({
   onAssign: (entityId: string, channel: string) => void;
   onSetPrimary: (entityId: string, channel: string) => void;
 }) {
-  const showPrimary = box.members.filter((m) => !m.isSoc).length > 1;
+  // „maßgeblich“ nur für Netzwert und Ladestand (`massgeblichWaehlbar`); PV und Verbrauch summieren.
+  const waehlbar = (m: (typeof box.members)[number]) => massgeblichWaehlbar(box.role, m.channel);
+  const showPrimary = box.members.filter(waehlbar).length > 1;
   return (
     <div className={`vp-role-box vp-role-${box.role}`}>
       <div className="vp-role-box-head">
@@ -409,7 +412,7 @@ function RoleBoxCard({
       </div>
       <ul className="vp-role-members">
         {box.members.map((m) => (
-          <li key={m.entityId + m.channel} className={`vp-role-member${m.primary ? ' primary' : ''}`}>
+          <li key={m.entityId + m.channel} className={`vp-role-member${m.primary && waehlbar(m) ? ' primary' : ''}`}>
             <span className="vp-role-member-main">
               <span className="vp-role-member-name">
                 {m.entityLabel}
@@ -422,12 +425,12 @@ function RoleBoxCard({
               </span>
               <span className="vp-muted">{memberValue(m.value, m.unit, m.isSoc)}</span>
             </span>
-            {m.primary && !m.isSoc && (
+            {m.primary && waehlbar(m) && (
               <span className="vp-massgeblich" title="maßgebliche Messung">
                 maßgeblich ✓
               </span>
             )}
-            {!m.primary && !m.isSoc && showPrimary && (
+            {!m.primary && waehlbar(m) && showPrimary && (
               <button
                 type="button"
                 className="vp-role-member-action"

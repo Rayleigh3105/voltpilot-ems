@@ -6,6 +6,8 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
   api,
   ApiError,
+  type Anlagensteuerung,
+  type AnlagensteuerungVerlauf,
   type EntityHistory,
   type History,
   type HistoryRange,
@@ -13,9 +15,11 @@ import {
   type MessstelleVerlauf,
   type Site,
 } from '../api';
-import { fmtNum } from '../format';
 import { SUMMENWERT } from '../glossar';
 import { ladeSiteGesamtwerte } from '../gesamtwertQuelle';
+import { erzeugerGeraetId, erzeugerGruppe, istErzeugerZiel, seriesFromErzeugerVerlauf } from '../anlagensteuerung';
+import { einheitHref } from '../erzeugungseinheit';
+import { useBoxRef } from '../useBoxRef';
 import type { ComponentRole } from '../komponenten';
 import { isoDate } from '../periodNav';
 import {
@@ -42,6 +46,7 @@ import {
   type VerlaufSeries,
   type VerlaufTarget,
 } from '../verlauf';
+import { statKacheln, vorzeichenRegel, type StatKachel } from '../verlaufRichtung';
 import { BottomSheet } from './BottomSheet';
 import { ChartCardSkeleton, EmptyState, ErrorState } from './States';
 import { ChartSubtitle } from './ChartExplain';
@@ -148,6 +153,19 @@ function GroupList({
             ) : (
               g.deviceLine && <p className="vp-vg-device">{g.deviceLine}</p>
             )}
+            {/* GE-3: die Geräte hinter dem Ast (Wechselrichter einer Anlagensteuerung) mit eigener Seite. */}
+            {g.sprunge && (
+              <p className="vp-vg-device vp-vg-sprunge" data-testid="verlauf-sprunge">
+                {g.sprunge.map((sp, i) => (
+                  <span key={sp.href}>
+                    {i > 0 && ' · '}
+                    <a href={sp.href}>
+                      {sp.label} <Icon name="chevron-right" size={12} />
+                    </a>
+                  </span>
+                ))}
+              </p>
+            )}
             {g.items.map((it) => {
               const t = { entityId: it.entityId, channel: it.channel };
               const selected = isSelected(targets, t);
@@ -202,7 +220,23 @@ export function VerlaufExplorer({
   initialTargets: VerlaufTarget[];
 }) {
   // The tree: entities+topology → measurementTree; else the v1 site-level tree.
-  const [groups, setGroups] = useState<VerlaufGroup[] | null>(null);
+  const [baum, setGroups] = useState<VerlaufGroup[] | null>(null);
+  // UEMS EZ-10: die Äste der Anlagensteuerungen in einem eigenen Stand - EIN Wert, nie ein Anhängen an den Baum,
+  // damit die Auswahl `groups` nur dann eine neue Identität bekommt, wenn sich wirklich ein Ast ändert.
+  // `null` = ihre Antwort steht noch aus: bis dahin behält die Auswahl einen Deep-Link auf eine ihrer Kurven.
+  // UEMS EZ-10: die Steuerungen der Anlage; ihre Äste entstehen unten (GE-3: mit Sprung je Einheit, sobald die Box
+  // bekannt ist, unter deren Referenz die Seiten stehen).
+  const [erzSteuerungen, setErzSteuerungen] = useState<Anlagensteuerung[] | null>(null);
+  const erzBoxRef = useBoxRef(site.id, (erzSteuerungen?.length ?? 0) > 0);
+  const erzAeste = useMemo<VerlaufGroup[] | null>(
+    () =>
+      erzSteuerungen?.map((s) => erzeugerGruppe(s, (teNr) => einheitHref(site.id, erzBoxRef, s.entity_id, teNr))) ?? null,
+    [erzSteuerungen, erzBoxRef, site.id],
+  );
+  const groups = useMemo(
+    () => (baum && erzAeste && erzAeste.length > 0 ? [...baum, ...erzAeste] : baum),
+    [baum, erzAeste],
+  );
   const [isV1, setIsV1] = useState(false);
   const [treeErr, setTreeErr] = useState<string | null>(null);
   const [targets, setTargets] = useState<VerlaufTarget[]>(initialTargets);
@@ -213,7 +247,15 @@ export function VerlaufExplorer({
   useEffect(() => {
     let active = true;
     setGroups(null);
+    setErzSteuerungen(null);
     setTreeErr(null);
+    // UEMS EZ-10: je Anlagensteuerung ein Ast mit den Kurven ihres Registerbilds (Einheiten, Netzpunkt,
+    // Gasspeicher, Vorgaben) - die Punkte `erzeuger.*` sind keine Kanäle der Komponente. Auch neben dem
+    // v1-Baum: eine reine Erzeugeranlage hat oft keine gemessene Komponente sonst.
+    api
+      .anlagensteuerungen(site.id)
+      .then((liste) => active && setErzSteuerungen(liste?.steuerungen ?? []))
+      .catch(() => active && setErzSteuerungen([]));
     Promise.all([api.siteEntities(site.id), api.topology(site.id).catch(() => null)])
       .then(([entities, topology]) => {
         if (!active) return;
@@ -260,12 +302,14 @@ export function VerlaufExplorer({
   useEffect(() => {
     if (!groups) return;
     setTargets((prev) => {
-      const kept = prev.filter((t) => findItem(groups, t) != null);
+      const kept = prev.filter(
+        (t) => findItem(groups, t) != null || (erzAeste === null && istErzeugerZiel(t.entityId)),
+      );
       if (kept.length > 0) return kept.length === prev.length ? prev : kept;
       const first = firstTarget(groups);
       return first ? [first] : [];
     });
-  }, [groups]);
+  }, [groups, erzAeste]);
 
   // Keep the URL reflecting (measurements, range, anchor) - shareable/bookmarkable
   // via replaceState (no history spam, no reload).
@@ -300,6 +344,7 @@ export function VerlaufExplorer({
 
   const [entHist, setEntHist] = useState<Record<string, EntityHistory>>({});
   const [compHist, setCompHist] = useState<Record<string, MessstelleVerlauf>>({});
+  const [erzHist, setErzHist] = useState<Record<string, AnlagensteuerungVerlauf>>({});
   const [siteHist, setSiteHist] = useState<History | null>(null);
   const [loading, setLoading] = useState(false);
   const [dataErr, setDataErr] = useState<string | null>(null);
@@ -312,14 +357,19 @@ export function VerlaufExplorer({
     // Ein berechneter Wert (Gesamtwert) liest seinen Verlauf über die Messstelle,
     // ein gemessener über die Komponenten-Historie — beide fließen in dieselbe
     // Auswahl.
-    const realIds = entityIds.filter((id) => !istBerechnet(id));
+    const realIds = entityIds.filter((id) => !istBerechnet(id) && !istErzeugerZiel(id));
     const compIds = entityIds.filter(istBerechnet).map(berechneteMessstelleId);
+    const erzIds = entityIds.filter(istErzeugerZiel).map(erzeugerGeraetId);
+    const erzP = Promise.all(
+      erzIds.map((id) => api.anlagensteuerungVerlauf(site.id, id, range, at).then((v) => [id, v] as const)),
+    );
     const p = isV1
-      ? api.history(site.id, range, at).then((h) => {
+      ? Promise.all([api.history(site.id, range, at), erzP]).then(([h, erzPairs]) => {
           if (!active) return;
           setSiteHist(h);
           setEntHist({});
           setCompHist({});
+          setErzHist(Object.fromEntries(erzPairs));
         })
       : Promise.all([
           Promise.all(
@@ -330,10 +380,12 @@ export function VerlaufExplorer({
           Promise.all(
             compIds.map((id) => api.messstelleVerlauf(id, range).then((v) => [id, v] as const)),
           ),
-        ]).then(([entPairs, compPairs]) => {
+          erzP,
+        ]).then(([entPairs, compPairs, erzPairs]) => {
           if (!active) return;
           setEntHist(Object.fromEntries(entPairs));
           setCompHist(Object.fromEntries(compPairs));
+          setErzHist(Object.fromEntries(erzPairs));
           setSiteHist(null);
         });
     p.catch((e) => active && setDataErr(e instanceof ApiError ? e.message : 'Fehler')).finally(
@@ -359,6 +411,9 @@ export function VerlaufExplorer({
       if (istBerechnet(it.entityId)) {
         const v = compHist[berechneteMessstelleId(it.entityId)];
         series = v ? seriesFromMessstelleVerlauf(v, range) : null;
+      } else if (istErzeugerZiel(it.entityId)) {
+        const v = erzHist[erzeugerGeraetId(it.entityId)];
+        series = v ? seriesFromErzeugerVerlauf(v, it.channel) : null;
       } else if (isV1) {
         series = siteHist ? v1SeriesFromHistory(siteHist, it.channel) : null;
       } else {
@@ -375,7 +430,7 @@ export function VerlaufExplorer({
       });
     }
     return out;
-  }, [groups, items, ambiguous, isV1, siteHist, entHist, compHist, range]);
+  }, [groups, items, ambiguous, isV1, siteHist, entHist, compHist, erzHist, range]);
 
   const withData = selections?.filter((s) => !s.series.empty) ?? [];
   const empty = selections != null && withData.length === 0;
@@ -510,6 +565,8 @@ export function VerlaufExplorer({
               <div className="vp-verlauf-statblocks">
                 {withData.map((s) => {
                   const stats = verlaufStats(s.series);
+                  // Netz und Speicher sagen ihre Richtung in Worten statt mit Minus.
+                  const kacheln = statKacheln(stats, s.series.unit, vorzeichenRegel(s.channel, s.role));
                   return (
                     <div key={s.key} className="vp-verlauf-statblock">
                       {withData.length > 1 && (
@@ -524,25 +581,15 @@ export function VerlaufExplorer({
                       )}
                       <div className="vp-verlauf-stats" aria-label={`Kennzahlen im Zeitraum: ${s.label}`}>
                         <StatCell
-                          label="Minimum"
-                          value={fmtNum(stats.min?.value, s.series.unit)}
+                          kachel={kacheln.min}
                           note={stats.min ? atTime(stats.min.t, range) : null}
                         />
                         <StatCell
-                          label="Maximum"
-                          value={fmtNum(stats.max?.value, s.series.unit)}
+                          kachel={kacheln.max}
                           note={stats.max ? atTime(stats.max.t, range) : null}
                         />
-                        <StatCell
-                          label="Durchschnitt"
-                          value={fmtNum(stats.avg, s.series.unit)}
-                          note={null}
-                        />
-                        <StatCell
-                          label="Letzter Wert"
-                          value={fmtNum(stats.last, s.series.unit)}
-                          note={null}
-                        />
+                        <StatCell kachel={kacheln.avg} note={null} />
+                        <StatCell kachel={kacheln.last} note={null} />
                       </div>
                     </div>
                   );
@@ -609,11 +656,14 @@ function atTime(iso: string, range: HistoryRange): string {
   return 'am ' + d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 }
 
-function StatCell({ label, value, note }: { label: string; value: string; note: string | null }) {
+function StatCell({ kachel, note }: { kachel: StatKachel; note: string | null }) {
   return (
     <div className="vp-verlauf-stat">
-      <span className="vp-vs-label">{label}</span>
-      <span className="vp-vs-value">{value}</span>
+      <span className="vp-vs-label">{kachel.label}</span>
+      <span className="vp-vs-value">
+        {kachel.wert}
+        {kachel.wort && <span className="vp-vs-richtung"> {kachel.wort}</span>}
+      </span>
       {note && <span className="vp-vs-note">{note}</span>}
     </div>
   );

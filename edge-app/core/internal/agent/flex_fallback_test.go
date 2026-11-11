@@ -133,11 +133,15 @@ func TestDueDutySelfStartsAndAFreshPlanPreempts(t *testing.T) {
 	}
 
 	// A fresh v2 plan arrives: the fallback withdraws and the plan's own
-	// desire (already injected by the executors in the same pass) holds.
+	// desire (injected by the executors earlier in the same pass, as in the
+	// arbitration loop) holds.
+	on := true
 	a.arbMu.Lock()
 	a.curPlan2 = &plan2.Plan{PlanID: "p-fresh", ReceivedAt: now, SlotMinutes: 15,
-		Entities: []plan2.Entity{{ID: "pump-1"}}}
+		Entities: []plan2.Entity{{ID: "pump-1", Slots: []plan2.Slot{{
+			Start: now.Truncate(15 * time.Minute), Commands: entities.Commands{OnOff: &on}}}}}}
 	a.arbMu.Unlock()
+	a.runPlanExecutors(now)
 	a.runFlexFallback(now)
 	if dec, ok := a.arb.DecisionFor("pump-1"); ok && dec.HolderKind == "deadline-fallback" {
 		t.Fatalf("a fresh plan must silence the fallback: %+v", dec)

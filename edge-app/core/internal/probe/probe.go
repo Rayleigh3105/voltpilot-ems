@@ -70,6 +70,10 @@ const (
 	// It is what lets the wizard show WHAT answers under that base address
 	// before a single card has been assigned to anything.
 	OpWagoKopf = "wago_kopf"
+	// OpErzeugerKopf reads the head, the per-unit kind and rated power and the
+	// names of a "VoltPilot-Registerbild Erzeuger v1" (EZ-5) - no measurement.
+	// It is what the "Steuerung verbinden" step shows before anything is created.
+	OpErzeugerKopf = "erzeuger_kopf"
 	// OpSwitchSet is the ON/OFF switch of a FREE I/O-module output on the
 	// portal's device page: set_value stays until someone switches again - no
 	// auto-off. That is only acceptable for TransportEbyte: the module's own
@@ -77,6 +81,12 @@ const (
 	// driver re-checks identity, stack and ownership. A free Modbus register
 	// has no such net and never gets this op.
 	OpSwitchSet = "switch_set"
+	// OpNachStromausfallAus sets "nach Stromausfall: aus" on every output of a
+	// Shelly connection (HZ-5 = A of the heating-rod concept): the one write
+	// the operator triggers with explicit consent ("Auf ‚aus' stellen"), so a
+	// heating rod never comes back on after a power cut without the box. It
+	// changes a relay SETTING, not a switch state - nothing turns on or off.
+	OpNachStromausfallAus = "nach_stromausfall_aus"
 )
 
 // The finding vocabulary this package adds to the testconn rules. A finding is
@@ -86,6 +96,9 @@ const (
 	// HEAD of the WAGO register image. The controller answered - it just did not
 	// answer with our register image.
 	FindingChannelWagoKopf = "wago_kopf"
+	// FindingChannelErzeugerKopf is the same for the Erzeuger image: the
+	// controller answered, just not with our Erzeuger image.
+	FindingChannelErzeugerKopf = "erzeuger_kopf"
 	// FindingRuleRegisterbildUnbekannt: signature or major version foreign. Not
 	// a single card value is taken from such a reading. In normal operation the
 	// box reports the same finding as the source contract's error class
@@ -284,6 +297,9 @@ type OpResult struct {
 	// no business in Raw/Value. It rides a REFUSAL too - "what stood there?" is
 	// exactly what turns a rejection from a riddle into something actionable.
 	WagoKopf *WagoKopf `json:"wago_kopf,omitempty"`
+	// ErzeugerKopf is what an erzeuger_kopf op read - its OWN block for the same
+	// reason, and it rides a refusal too.
+	ErzeugerKopf *ErzeugerKopf `json:"erzeuger_kopf,omitempty"`
 	// Finding names WHICH channel violated WHICH plausibility rule. Machine
 	// readable next to the German sentence, so no surface parses prose.
 	Finding *Finding `json:"finding,omitempty"`
@@ -291,6 +307,21 @@ type OpResult struct {
 	// op_result.samples): one row per channel for a device whose readings are
 	// not the closed four-channel Reading - an I/O module's di_k/do_k states.
 	Samples []Sample `json:"samples,omitempty"`
+	// Ausgaenge are the outputs of a Shelly OUTPUT SET (one heating rod over
+	// several outputs, docs/contracts/v2/heizstab-shelly.md): per output the
+	// read switch state and the "nach Stromausfall" setting. Rides a
+	// test_connection of such a set and the nach_stromausfall_aus answer.
+	Ausgaenge []Ausgang `json:"ausgaenge,omitempty"`
+}
+
+// Ausgang is one output of a Shelly output set. Ein and NachStromausfall stay
+// ABSENT when not read - never a guessed value.
+type Ausgang struct {
+	Kanal int   `json:"kanal"`
+	Ein   *bool `json:"ein,omitempty"`
+	// NachStromausfall is the device's setting in the Gen2 vocabulary:
+	// off | on | restore_last | match_input.
+	NachStromausfall string `json:"nach_stromausfall,omitempty"`
 }
 
 // WagoKopf is the decoded head of a "VoltPilot-Registerbild WAGO v1". Every
@@ -318,6 +349,39 @@ type WagoKopf struct {
 	// Typenschild: the nameplate text, DISPLAY ONLY. Absent when not asked for,
 	// not answered or empty - never a fabricated empty string.
 	Typenschild string `json:"typenschild,omitempty"`
+}
+
+// ErzeugerKopf is the decoded head of a "VoltPilot-Registerbild Erzeuger v1"
+// with the units' kind, rated power and names. The gap-not-zero rule as in
+// WagoKopf: every field this reading did not produce is ABSENT - after a foreign
+// signature nothing but SignaturOK, after a foreign major version only the
+// version. A name that was read and is empty is "" ("keiner"); a name that was
+// not read (no names in the image, the read failed) is absent.
+type ErzeugerKopf struct {
+	SignaturOK bool   `json:"signatur_ok"`
+	Erkannt    bool   `json:"erkannt"`
+	Grund      string `json:"grund,omitempty"`
+
+	Hauptversion   *int   `json:"hauptversion,omitempty"`
+	Nebenversion   *int   `json:"nebenversion,omitempty"`
+	TeAnzahl       *int   `json:"te_anzahl,omitempty"`
+	Herzschlag     *int   `json:"herzschlag,omitempty"`
+	Programmstand  *int   `json:"programmstand,omitempty"`
+	SteuerungID    *int64 `json:"steuerung_id,omitempty"`
+	Anlagenart     *int   `json:"anlagenart,omitempty"`
+	BeschreibungAb *int   `json:"beschreibung_ab,omitempty"`
+
+	Einheiten            []ErzeugerEinheit `json:"einheiten,omitempty"`
+	NetzbetreiberName    *string           `json:"netzbetreiber_name,omitempty"`
+	DirektvermarkterName *string           `json:"direktvermarkter_name,omitempty"`
+}
+
+// ErzeugerEinheit is one unit (inverter or engine) of an Erzeuger image.
+type ErzeugerEinheit struct {
+	Einheit int     `json:"einheit"`
+	Art     *int    `json:"art,omitempty"`
+	NennKW  *int    `json:"nenn_kw,omitempty"`
+	TypName *string `json:"typ_name,omitempty"`
 }
 
 // Sample is one named channel of a test_connection read. Count 0 carries no
@@ -480,8 +544,17 @@ func ValidateOp(op Op) (code string, message string) {
 		return validateSwitch(op)
 	case OpWagoKopf:
 		return validateWagoKopf(op)
+	case OpErzeugerKopf:
+		// The same admission as a WAGO head read: private target, bounded
+		// port/unit, a stated register kind and a base address, no data_type.
+		return validateWagoKopf(op)
 	case OpSwitchSet:
 		return validateSwitchSet(op)
+	case OpNachStromausfallAus:
+		if !strings.EqualFold(strings.TrimSpace(op.Brand), "shelly") {
+			return ErrNotSupported, "Diese Einstellung gibt es nur an einem Shelly."
+		}
+		return validateTestConnection(op)
 	default:
 		return ErrNotSupported, "Diesen Prüfschritt kennt diese VoltPilot-Box nicht."
 	}
@@ -660,6 +733,18 @@ func FailedWagoKopf(id, code, message string, kopf *WagoKopf, finding *Finding) 
 		WagoKopf: kopf, Finding: finding}
 }
 
+// SucceededErzeugerKopf builds an answered erzeuger_kopf line.
+func SucceededErzeugerKopf(id string, kopf *ErzeugerKopf) OpResult {
+	return OpResult{ID: id, OK: true, ErzeugerKopf: kopf}
+}
+
+// FailedErzeugerKopf builds a REFUSED erzeuger_kopf line that still shows what
+// the box read.
+func FailedErzeugerKopf(id, code, message string, kopf *ErzeugerKopf, finding *Finding) OpResult {
+	return OpResult{ID: id, OK: false, ErrorCode: code, Message: message,
+		ErzeugerKopf: kopf, Finding: finding}
+}
+
 // validateSwitch admits the two WRITING ops. It re-applies every rule a read
 // carries - the reason the private-target rule exists does not care which op
 // asks, and a write is the one that matters most - and adds the rules that only
@@ -829,6 +914,15 @@ func SucceededSamples(id string, samples []Sample) OpResult {
 		samples = samples[:MaxSamples]
 	}
 	return OpResult{ID: id, OK: true, Samples: samples}
+}
+
+// SucceededAusgaenge builds an answered line of a Shelly output set: the named
+// samples (relay_on_<kanal>, so a surface that only knows samples still sees
+// a read device) plus the outputs block.
+func SucceededAusgaenge(id string, samples []Sample, ausgaenge []Ausgang) OpResult {
+	r := SucceededSamples(id, samples)
+	r.Ausgaenge = ausgaenge
+	return r
 }
 
 // FailedReading builds a REFUSED test_connection line that still shows what the

@@ -79,7 +79,7 @@ describe('stepList', () => {
     });
     const steps = stepList(doc, ENTITIES, live);
     const read = steps.find((s) => s.nodeId === readNode.id)!;
-    expect(read.value).toMatch(/-3,5/);
+    expect(read.value).toMatch(/−3,5/);
     expect(steps.every((s) => s.state === null)).toBe(true);
   });
 

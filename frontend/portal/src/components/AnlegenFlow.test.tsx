@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import { AnlegenFlow } from './AnlegenFlow';
+import { GS_SHELLY } from '../test/geraetesucheFixtures';
 import {
   recordCurrentNavigation,
   recordNewNavigation,
@@ -65,8 +66,6 @@ const readCustomComponent = vi.fn();
 const createCustomComponent = vi.fn();
 const matchComponent = vi.fn();
 const duplicateCustomComponent = vi.fn();
-// P5d: der Batterie-Weg holt seine Kurven-Vorlagen selbst.
-const socCurveTemplates = vi.fn();
 // Der Anbinde-Assistent hinter der Ladesäulen-Karte holt sich seine zwei Listen
 // selbst (Allowlist + gemeldete Säulen).
 const chargingConfig = vi.fn();
@@ -91,7 +90,6 @@ vi.mock('../api', async () => {
       createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
       matchComponent: (...a: unknown[]) => matchComponent(...a),
       duplicateCustomComponent: (...a: unknown[]) => duplicateCustomComponent(...a),
-      socCurveTemplates: () => socCurveTemplates(),
     },
   };
 });
@@ -162,7 +160,6 @@ function standardMocks() {
   });
   siteChargers.mockResolvedValue({ budget: null, chargers: [] });
   siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
-  socCurveTemplates.mockResolvedValue([]);
   testComponentConnection.mockResolvedValue({
     results: [{ id: 'verbindung', ok: true, reading: { pvKw: 12.4, socPct: 87 } }],
   });
@@ -232,6 +229,21 @@ describe('die Einrichten-Seite eines Katalog-Geräts', () => {
     expect(screen.getByText('vollständig')).toBeInTheDocument();
   });
 
+  it('schickt ein getipptes Zahlenfeld als ZAHL zu Test und Speichern - nie als Text', async () => {
+    // Scout vp-kundenanlage-drei-geraete (04.11.2026): "01"/"4196" kamen als Text an,
+    // die API speicherte sie und die Box lehnte den ganzen Push ab.
+    await bisZurVerbindung();
+    fireEvent.change(screen.getByLabelText('Port'), { target: { value: '4196' } });
+    fuelleFormular();
+    await waitFor(() => expect(testComponentConnection).toHaveBeenCalled());
+    const test = testComponentConnection.mock.calls.at(-1)![1].connection;
+    expect(test.port).toBe(4196);
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1].connection.port).toBe(4196);
+  });
+
   it('testet von selbst, sobald alles Nötige dasteht', async () => {
     await bisZumTest();
     await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1));
@@ -249,6 +261,51 @@ describe('die Einrichten-Seite eines Katalog-Geräts', () => {
     fireEvent.change(screen.getByLabelText(/Seriennummer/), { target: { value: '2985159064' } });
     expect(testComponentConnection).not.toHaveBeenCalled();
     await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1), { timeout: 2500 });
+  });
+
+  // Shelly Pro 3 an der VoltPilotGATE (31.10.2026), übernommen aus der Gerätesuche: „Ausgang 1"
+  // ist Schaltkanal 0. Er misst keine Leistung - sein echter Wert ist der Schaltzustand.
+  describe('Shelly Pro 3 aus der Gerätesuche', () => {
+    const oeffneShelly = () =>
+      render(
+        <AnlegenFlow
+          siteId="s1"
+          startTemplate={GS_SHELLY as never}
+          startVerbindung={{ ip: '192.168.178.43', port: 80, channel: 0 }}
+          startHerkunft="Aus der Gerätesuche: IP-Adresse des Shelly, Port · Ausgang 1."
+          onClose={() => {}}
+          onSaved={() => {}}
+        />,
+      );
+
+    it('so sah es bis zum Fix aus: ok ohne einen Kanal kam als Nein ohne Grund an', async () => {
+      componentTemplate.mockResolvedValue(GS_SHELLY);
+      testComponentConnection.mockResolvedValue({ requestId: 'r', results: [{ id: 'verbindung', ok: false }] });
+      oeffneShelly();
+      await screen.findByText('Die Prüfung ist fehlgeschlagen.');
+      expect(screen.getByText('Ohne gültige Werte des Geräts wird nicht gespeichert.')).toBeInTheDocument();
+      expect(speichernKnopf()).toBeDisabled();
+    });
+
+    it('der gelesene Schaltzustand besteht den Test - Ausgang 1 lässt sich speichern', async () => {
+      componentTemplate.mockResolvedValue(GS_SHELLY);
+      testComponentConnection.mockResolvedValue({
+        requestId: 'r',
+        results: [{ id: 'verbindung', ok: true, samples: [{ channel: 'relay_on', raw: 0, value: 0, count: 1 }] }],
+      });
+      oeffneShelly();
+      await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1));
+      expect(testComponentConnection.mock.calls[0][1].connection).toMatchObject({
+        ip: '192.168.178.43',
+        channel: 0,
+      });
+      await screen.findByText(/Diese Messwerte kommen gerade an/);
+      expect(screen.getByText('Schaltzustand')).toBeInTheDocument();
+      expect(screen.getByText('aus')).toBeInTheDocument();
+      expect(screen.getByText('bestanden')).toBeInTheDocument();
+      expect(screen.queryByText('Ohne gültige Werte des Geräts wird nicht gespeichert.')).toBeNull();
+      expect(screen.queryByText('Die Prüfung ist fehlgeschlagen.')).toBeNull();
+    });
   });
 
   it('hält „Speichern" zu, bis das Gerät wirklich geantwortet hat', async () => {
@@ -354,17 +411,44 @@ describe('die Aufgabe folgt dem Modell', () => {
     expect(wahl.querySelector('.is-on')?.textContent).toContain('Vorschlag');
   });
 
-  it('schlägt auf einer Anlage MIT Wechselrichter den weiteren Erzeuger vor - und sagt warum', async () => {
+  it('schlägt auf einer Anlage MIT angebundenem Wechselrichter den weiteren Erzeuger vor - und sperrt die Rolle mit Grund', async () => {
     siteComponents.mockResolvedValue({
       componentAuthority: 'portal',
-      components: [{ id: 'wr', role: 'inverter', definitionVersion: 1 }],
+      components: [{
+        id: 'wr', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Deye Scheune',
+        connection: { ip: '192.168.0.28', serial: '2985159064' }, definitionVersion: 2,
+      }],
     });
     oeffne();
     const wahl = await screen.findByTestId('rollen-wahl');
     await waitFor(() => expect(wahl.querySelector('.is-on')?.textContent).toContain('Weiterer Erzeuger'));
     expect(screen.getByText('Vorschlag, weil Ihre Anlage schon einen Hauptwechselrichter hat.')).toBeInTheDocument();
-    // ⚠ Blockiert wird nichts: der Server übernimmt eine komponierte Zeile.
+    // Genau EIN Wechselrichter: die Sperre steht an der Aufgabe, VOR Adresse und Test - mit dem
+    // nächsten Schritt, statt als 409 nach dem bestandenen Test (Live-Fall „Zuhause").
+    const knoepfe = Array.from(wahl.querySelectorAll('button'));
+    const wr = knoepfe.find((b) => b.textContent?.startsWith('Wechselrichter / Speicher'))!;
+    expect(wr).toBeDisabled();
+    expect(wr.textContent).toContain('bereits einen Wechselrichter („Deye Scheune“)');
+    expect(wr.textContent).toContain('Bearbeiten Sie ihn im Aufbau');
+    expect(knoepfe.find((b) => b.textContent?.startsWith('Weiterer Erzeuger'))).toBeEnabled();
+  });
+
+  it('eine nur komponierte, nie eingerichtete Wechselrichter-Zeile sperrt nichts - der erste Wechselrichter bleibt der Vorschlag', async () => {
+    // Die Plattform komponiert die battery-hybrid-Zeile aus den Eckdaten des Speichers, OHNE
+    // Anbindung; der Server füllt sie beim Speichern. Für die Fläche ist das kein Gerät.
+    siteComponents.mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [
+        { id: 'wr', role: 'battery-hybrid', entityType: 'battery-hybrid', connection: null, definitionVersion: 1 },
+        { id: 'netz', role: 'grid-meter', entityType: 'grid-meter', definitionVersion: 1 },
+      ],
+    });
+    oeffne();
+    const wahl = await screen.findByTestId('rollen-wahl');
+    await waitFor(() => expect(siteComponents).toHaveBeenCalled());
+    expect(wahl.querySelector('.is-on')?.textContent).toContain('Wechselrichter / Speicher');
     for (const b of wahl.querySelectorAll('button')) expect(b).toBeEnabled();
+    expect(screen.queryByText(/bereits einen Wechselrichter/)).toBeNull();
   });
 
   it('stellt bei der Wallbox gar keine Frage und legt sie als Verbraucher an', async () => {
@@ -399,14 +483,103 @@ describe('die Aufgabe folgt dem Modell', () => {
     expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'grid-meter' });
   });
 
+  it('Zählerbaum: „Wo hängt er?" fragt nur den Unterzähler, mit dem Netzanschluss vorbelegt', async () => {
+    const zaehler = {
+      ...template, templateRef: 'builtin:shelly:shelly-pro-3em', deviceType: 'meter',
+      brand: 'shelly', brandLabel: 'Shelly', model: 'shelly-pro-3em', modelLabel: 'Shelly Pro 3EM',
+    };
+    siteComponents.mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [
+        { id: 'c-netz', role: 'grid-meter', entityType: 'grid-meter', label: 'Netzanschluss', definitionVersion: 1 },
+        { id: 'c-halle', role: 'consumer', entityType: 'sub-meter', label: 'UV Halle', definitionVersion: 1 },
+      ],
+    });
+    await bisZurVerbindung({ startTemplate: zaehler as never, startRolle: 'consumer' });
+    const wohaengt = await screen.findByTestId('wo-haengt-er');
+    // Vorbelegt: der Netzanschluss - nie aus Messwerten geraten.
+    await waitFor(() => expect(wohaengt.querySelector('.is-on')?.textContent).toContain('Netzanschluss'));
+    expect(within(wohaengt).getByText('UV Halle')).toBeInTheDocument();
+
+    fireEvent.click(within(wohaengt).getByText('UV Halle'));
+    expect(screen.getByText(/misst dann einen Teil von/)).toHaveTextContent('UV Halle');
+
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'consumer', haengtAn: 'c-halle' });
+
+    cleanup();
+    createComponent.mockClear();
+    await bisZurVerbindung({ startTemplate: zaehler as never, startRolle: 'consumer' });
+    await screen.findByTestId('wo-haengt-er');
+    // Am Netzanschluss belassen (die Vorbelegung): keine Zuordnung geschrieben.
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1].haengtAn).toBeUndefined();
+  });
+
+  it('ein Netz-Zähler bekommt gar keine Frage „Wo hängt er?" (R6: die Wurzel hängt nirgends)', async () => {
+    const zaehler = {
+      ...template, templateRef: 'builtin:shelly:shelly-pro-3em', deviceType: 'meter',
+      brand: 'shelly', brandLabel: 'Shelly', model: 'shelly-pro-3em', modelLabel: 'Shelly Pro 3EM',
+    };
+    await bisZurVerbindung({ startTemplate: zaehler as never, startRolle: 'grid-meter' });
+    expect(screen.queryByTestId('wo-haengt-er')).toBeNull();
+  });
+
+  it('aus der Gerätesuche: der Bezug auf Suche und Fund reist beim Anlegen mit - ohne Fund keiner', async () => {
+    const wallbox = {
+      ...template,
+      templateRef: 'builtin:go-e:charger',
+      brand: 'go-e',
+      brandLabel: 'go-e',
+      model: 'charger',
+      modelLabel: 'go-e Charger',
+      deviceType: 'wallbox',
+    };
+    componentTemplates.mockResolvedValue([wallbox]);
+    const bezug = { suchId: '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d', fund: 'goe:204117' };
+    await bisZurVerbindung({ startTemplate: wallbox as never, startFund: bezug });
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1]).toMatchObject({ geraetesuche: bezug });
+
+    cleanup();
+    createComponent.mockClear();
+    await bisZurVerbindung({ startTemplate: wallbox as never });
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1].geraetesuche).toBeUndefined();
+  });
+
   it('sperrt den zweiten Netz-Zähler mit seinem Grund - auch im Fuß', async () => {
     siteComponents.mockResolvedValue({
       componentAuthority: 'portal',
-      components: [{ id: 'z', role: 'grid-meter', definitionVersion: 1 }],
+      components: [{ id: 'z', role: 'grid-meter', entityType: 'grid-meter', connection: { ip: '192.168.0.9' }, definitionVersion: 2 }],
     });
     oeffne({ startRolle: 'grid-meter' });
     expect((await screen.findAllByText(/bereits einen Netz-Zähler/)).length).toBeGreaterThan(0);
     expect(speichernKnopf()).toBeDisabled();
+  });
+
+  it('die beim Verbinden der Box komponierte Netz-Zeile (ohne Anbindung) sperrt den Netz-Zähler NICHT', async () => {
+    // Jede Anlage mit Box trägt sie - der Server füllt sie, statt eine zweite anzulegen.
+    siteComponents.mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ id: 'z', role: 'grid-meter', entityType: 'grid-meter', sourceKind: 'composed', definitionVersion: 1 }],
+    });
+    oeffne({ startRolle: 'grid-meter' });
+    await screen.findByLabelText(/IP-Adresse/);
+    await waitFor(() => expect(siteComponents).toHaveBeenCalled());
+    expect(screen.queryByText(/bereits einen Netz-Zähler/)).toBeNull();
   });
 });
 
@@ -505,6 +678,7 @@ describe('die anderen Türen desselben Flusses', () => {
       connection: { host: '192.168.1.50', port: 502, unitId: 1 },
       channels: [{ label: 'Vorlauf', address: 100 }],
     });
+    expect(createCustomComponent.mock.calls[0][1].geraetesuche).toBeUndefined();
     // Die Vorlage entsteht aus dem NEUEN Gerät - ohne Adresse.
     await waitFor(() => expect(duplicateCustomComponent).toHaveBeenCalledWith('s1', 'sb-1', 'Eigenes Modbus-Gerät'));
     expect(onFertig).toHaveBeenCalledWith({
@@ -514,6 +688,33 @@ describe('die anderen Türen desselben Flusses', () => {
       hinweis: 'Die Vorlage steht im Katalog unter „Selbst beschreiben".',
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('„Vielleicht · selbst beschreiben" aus der Gerätesuche: Adresse vorbelegt, das Anlegen trägt den Bezug', async () => {
+    readCustomComponent.mockResolvedValue({ ok: true, raw: 1, value: 1, receipt: true });
+    createCustomComponent.mockResolvedValue({ components: [{ id: 'sb-3' }] });
+    const bezug = { suchId: '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d', fund: 'modbus_offen:192.168.178.70:502' };
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        initialTyp="eigenbau"
+        startVerbindung={{ communication: 'modbus_tcp', ip: '192.168.178.70', port: 502 }}
+        startFund={bezug}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    expect((screen.getByLabelText('IP-Adresse des Geräts') as HTMLInputElement).value).toBe('192.168.178.70');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Vorlauf' } });
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '100' } });
+    await waitFor(() => expect(screen.getByTestId('einrichten-speichern')).toBeEnabled(), { timeout: 2500 });
+    fireEvent.click(screen.getByTestId('einrichten-speichern'));
+    await waitFor(() => expect(createCustomComponent).toHaveBeenCalled());
+    expect(createCustomComponent.mock.calls[0][1]).toMatchObject({
+      connection: { host: '192.168.178.70', port: 502 },
+      geraetesuche: bezug,
+    });
   });
 
   it('rechnet eine Handbuch-Nummer nie still um - die Modicon-Lesart ist ein Knopf', async () => {
@@ -1244,69 +1445,5 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     await waitFor(() => expect(updateComponent).toHaveBeenCalledWith(
       's1', 'wr-1', expect.objectContaining({ role: 'pv-generation', capacityKwp: 28 }),
     ));
-  });
-});
-
-/**
- * P5d: die eigene Batterie ist eine EIGENE Karte und ein EIGENER Assistent -
- * beim Anlegen wie beim Bearbeiten.
- */
-describe('AnlegenFlow · der Batterie-Weg (P5d)', () => {
-  beforeEach(() => {
-    standardMocks();
-  });
-
-  it('führt vom Batterie-Weg des Katalogs in den Batterie-Assistenten', async () => {
-    render(<AnlegenFlow siteId="s1" initialTyp="batterie" onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByTestId('anschlussart-mqtt')).toBeVisible();
-    // NICHT der Katalog-Weg: kein Anschluss einer Vorlage, sondern der des BMS.
-    expect(screen.getByText('Batterie mit eigenem BMS')).toBeInTheDocument();
-    expect(screen.queryByLabelText(/IP-Adresse des Datenloggers/)).toBeNull();
-  });
-
-  /**
-   * Der ENTITÄTSTYP entscheidet, nicht die Rolle: eine selbst angebundene
-   * Batterie ist Rolle „storage" und liefe sonst in das Katalog-Formular, das
-   * nach Marke und Modell fragt, die es bei ihr nicht gibt.
-   */
-  it('bearbeitet eine selbst angebundene Batterie in ihrem eigenen Assistenten', async () => {
-    const batterie = {
-      id: 'batt-1',
-      role: 'storage',
-      entityType: 'user-defined-battery',
-      label: 'Selbstbau-Pack',
-      brand: null,
-      model: null,
-      family: null,
-      communication: 'mqtt_local',
-      connection: {
-        schema_version: '1.0',
-        transport: 'mqtt_local',
-        broker: { host: '192.168.0.44', port: 1883 },
-        publish_interval_s: 15,
-        mappings: [],
-      },
-      templateRef: null,
-      templateVersion: null,
-      definitionVersion: 2,
-      edgeSourceId: null,
-      syncStatus: 'in_sync',
-    };
-    render(
-      <AnlegenFlow
-        siteId="s1"
-        siteName="Pilsting"
-        geraetKennung="batt-1"
-        bearbeiten={batterie}
-        inlineBearbeitung
-        onClose={() => {}}
-        onSaved={() => {}}
-      />,
-    );
-    expect(await screen.findByTestId('batterie-bearbeiten')).toBeVisible();
-    expect(screen.queryByTestId('geraet-bearbeiten')).toBeNull();
-    expect((screen.getByLabelText('Adresse des MQTT-Servers') as HTMLInputElement).value).toBe(
-      '192.168.0.44',
-    );
   });
 });

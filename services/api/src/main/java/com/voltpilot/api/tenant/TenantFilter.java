@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -22,6 +23,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <p>A malformed or missing {@code tenant_id} leaves the context empty, which
  * makes RLS default-deny (no tenant => no rows). The context is always cleared
  * in {@code finally} so pooled threads never leak a tenant.
+ *
+ * <p>Independently of the tenant, this filter also brackets the request with
+ * {@link AnfrageZeitgrenze}, which is how {@link AnfragePfadDataSource} tells an
+ * HTTP request's queries (statement/socket timeout) apart from a scheduled
+ * job's or listener's (none) - see its Javadoc.
  *
  * <p><b>Admin tenant switcher.</b> A Portal-Admin token (realm role
  * {@code platform-admin}, no {@code tenant_id} claim) may select a tenant via
@@ -49,11 +55,22 @@ public class TenantFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
+        boolean gescheitert = true;
+        AnfrageZeitgrenze.start();
         try {
             resolveTenant(request).ifPresent(TenantContext::set);
             filterChain.doFilter(request, response);
+            gescheitert = false;
         } finally {
+            AnfrageZeitgrenze.ende();
+            UUID tenant = TenantContext.get();
             TenantContext.clear();
+            if (gescheitert && tenant != null) {
+                // Die Zeile zu einer unbehandelten Ausnahme schreibt Tomcat erst, wenn jeder Filter
+                // zurückgekehrt ist. Sie soll den Mandanten trotzdem nennen: nur die Log-Kennung
+                // bleibt stehen (nie der TenantContext), bis VorgangsKennung die Anfrage abschließt.
+                MDC.put(TenantContext.LOG_KENNUNG, tenant.toString());
+            }
         }
     }
 

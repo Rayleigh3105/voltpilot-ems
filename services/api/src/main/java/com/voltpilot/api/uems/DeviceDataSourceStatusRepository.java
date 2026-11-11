@@ -84,6 +84,45 @@ public class DeviceDataSourceStatusRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** Alle aktuellen Meldungen der Datenquellen einer Anlage (Alerting Scheibe 1, zustand-Leser). */
+    public List<Status> findForSite(UUID siteId) {
+        return jdbc.query(
+                "SELECT health, error_class, since_at, read_at, requests_per_min, samples_per_min, "
+                        + "reported_at FROM device_data_source_status WHERE site_id = ?",
+                (rs, n) -> new Status(rs.getString("health"), rs.getString("error_class"),
+                        instant(rs.getTimestamp("since_at")), instant(rs.getTimestamp("read_at")),
+                        (Double) rs.getObject("requests_per_min"),
+                        (Double) rs.getObject("samples_per_min"),
+                        rs.getTimestamp("reported_at").toInstant()),
+                siteId);
+    }
+
+    /**
+     * Wie ein Satz eine gemeldete Quelle nennt (Konzept „Ein Gerät, ein Eintrag“, GE-6): ihre eingebauten
+     * Geräte (Bezeichnung, sonst Hersteller und Typ, sonst Kennzeichen) — allein über den Verweis
+     * {@code geraet.data_source_id}. Ohne Gerät ist es ein Anschluss, mit mehreren ein Gateway.
+     */
+    public record Benannt(String health, String errorClass, Instant since, String kennzeichen, String name,
+            List<String> geraete) {}
+
+    /** Je Box und Quelle der Anlage eine Zeile mit den Namen ihrer Geräte. */
+    public List<Benannt> benanntFuerSite(UUID siteId) {
+        return jdbc.query(
+                "SELECT s.health, s.error_class, s.since_at, d.kennzeichen, d.name, "
+                        + "COALESCE(array_agg(COALESCE(g.bezeichnung, NULLIF(concat_ws(' ', g.hersteller, g.typ), ''), "
+                        + "g.kennzeichen) ORDER BY length(g.kennzeichen), g.kennzeichen) "
+                        + "FILTER (WHERE g.id IS NOT NULL), '{}') AS geraete "
+                        + "FROM device_data_source_status s JOIN data_source d ON d.id = s.data_source_id "
+                        + "LEFT JOIN geraet g ON g.data_source_id = s.data_source_id "
+                        + "AND (g.ausgebaut_am IS NULL OR g.ausgebaut_am > now()) "
+                        + "WHERE s.site_id = ? GROUP BY s.device_id, s.data_source_id, s.health, s.error_class, "
+                        + "s.since_at, d.kennzeichen, d.name ORDER BY length(d.kennzeichen), d.kennzeichen",
+                (rs, n) -> new Benannt(rs.getString("health"), rs.getString("error_class"),
+                        instant(rs.getTimestamp("since_at")), rs.getString("kennzeichen"), rs.getString("name"),
+                        List.of((String[]) rs.getArray("geraete").getArray())),
+                siteId);
+    }
+
     public static Ableitung ableiten(Status status) {
         if (status == null) {
             return new Ableitung(Lieferzustand.MELDET_NOCH_NICHT_JE_QUELLE, null, null,

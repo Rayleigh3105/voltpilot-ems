@@ -13,7 +13,7 @@ export type HelpArticleId =
   | 'orientierung' | 'anlage-anlegen' | 'box-verbinden'
   | 'summenwerte' | 'cockpit' | 'fahrplan' | 'messwerte' | 'erloese' | 'marktpreise' | 'prognosen' | 'portfolio'
   | 'geraete-steuern' | 'betriebsmodelle' | 'regeln' | 'speicher' | 'lastspitzen' | 'ladepark' | 'ladevorgaenge'
-  | 'anlagenmodell' | 'geraete' | 'einstellungen' | 'standort-zuordnung-korrigieren'
+  | 'anlagenmodell' | 'geraete-suchen' | 'geraete' | 'einstellungen' | 'standort-zuordnung-korrigieren'
   | 'probleme' | 'glossar' | 'kontakt';
 
 export interface HelpSection {

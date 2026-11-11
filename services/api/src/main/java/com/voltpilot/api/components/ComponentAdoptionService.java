@@ -383,13 +383,14 @@ public class ComponentAdoptionService {
             return takeover;
         }
         if (ComponentService.ROLE_INVERTER.equals(item.role())) {
-            // Ohne komponierte battery-hybrid-Zeile fehlt der Anlage der
-            // Speicher-Stammsatz, aus dem sie entsteht - genau wie der
-            // Anlege-Weg lehnt die Übernahme das ab, statt eine Zeile zu
-            // erfinden, die der Rest des Systems aus dem Asset komponiert.
-            // ALLES ODER NICHTS: die Ausnahme rollt die ganze Übernahme zurück.
-            throw new NotAdoptableException("Für diese Anlage ist noch kein Wechselrichter "
-                    + "angelegt. Bitte tragen Sie zuerst die Eckdaten des Speichers ein.");
+            // Ohne Speicher-Stammsatz hat die Plattform noch keine battery-hybrid-
+            // Zeile komponiert. Bis zum 02.11.2026 WARTETE die Übernahme hier
+            // (NotAdoptableException, alles oder nichts) - und mit ihr jeder
+            // gemeldete Erzeuger und Verbraucher, in jedem Takt, bis jemand den
+            // Speicher eintrug. Jetzt entsteht die Zeile genau wie im Anlege-Weg;
+            // der Speicher frischt sie später aus seinem Stammsatz nach.
+            return KomponierteWechselrichterZeile.komponieren(entityRepo, entityRegistry,
+                    entityTypes, mapper, tenantId, siteId);
         }
         UUID created = entityRepo.createAdoptedPoint(tenantId, siteId, role, label, false,
                 item.template().brand(), item.capacityKwp(), item.registryUnitId(),
@@ -473,6 +474,11 @@ public class ComponentAdoptionService {
      * SCHREIBEN fest (die reine Regel kennt die Datenbank nicht). Sie rollt die
      * Transaktion zurück - alles oder nichts - und wird vom Aufrufer in einen
      * ehrlichen Ausgang übersetzt.
+     *
+     * <p>Seit dem 02.11.2026 wirft sie kein Schreiber mehr: der einzige Fall
+     * (kein Speicher-Stammsatz) komponiert die Wechselrichter-Zeile jetzt
+     * selbst ({@link KomponierteWechselrichterZeile}). Der Ausgang „wartet"
+     * im Abgleich bleibt für eine künftige Bedingung dieser Art bestehen.
      */
     public static class NotAdoptableException extends RuntimeException {
         public NotAdoptableException(String reason) {

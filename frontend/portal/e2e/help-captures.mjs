@@ -6,8 +6,15 @@ const STEUERUNG_UHR = '2026-09-29T11:10:00Z';
 export const captures = [
   { id: 'cockpit', title: 'Cockpit: Energie und Zustand', hash: plant(), root: 'main', points: [
     point('main h1', 'Der Anlagenname zeigt, welchen Standort Sie gerade betrachten.'),
-    point('text=PV-Erzeugung', 'Die Energieanzeige beschreibt die aktuelle Erzeugung und die weiteren Flüsse.'),
-    point('h2:has-text("Unterm Strich")', 'Das Ergebnis bezieht sich auf den hier gewählten Zeitraum.'),
+    point('.vp-lp-k-pv', 'Die Energieanzeige beschreibt die aktuelle Erzeugung und die weiteren Flüsse.'),
+    point('.vp-tl', 'Ein Tipp auf die Tagesleiste zeigt eine andere Viertelstunde, ‹ › gehen je 15 Minuten weiter.'),
+    point('.vp-steuer', 'Die Steuerzeile nennt Auftrag, Bestätigung und Wirkung; „Warum?“ öffnet die Gründe.'),
+  ] },
+  // Ein Haushalt, bei dem der Fluss führt (Konzept vp-cockpit-privat-konzept): eigene Bühne, eigene Uhr.
+  { id: 'cockpit-zuhause', title: 'Cockpit eines Haushalts: „Heute“ neben dem Energiefluss', seite: 'cockpit-privat', uhr: '2026-11-07T18:47:00Z', query: 'lage=abend', hash: '#/anlage/muehlbach', root: 'main', maxHeight: 1216, points: [
+    point('.vp-k-heute-held', 'Wie viel Ihres Stroms heute aus eigener Sonne kam, vom Morgen bis jetzt.'),
+    point('.vp-k-heute-reihe', 'Woher der Verbrauch kam: Sonne, Speicher oder Netz. Darunter, wohin die Sonne ging.'),
+    point('.vp-k-geldzeile', 'Der Betrag „Unterm Strich“ steht als ruhige Zeile am Ende; ein Tipp öffnet die Erlöse.'),
   ] },
   { id: 'orientierung', title: 'Navigation auf dem Rechner', hash: plant(), viewportOnly: true, points: [
     point('.vp-anlagenav', 'Die Bereiche führen zu den täglichen Aufgaben dieser Anlage.'),
@@ -21,9 +28,9 @@ export const captures = [
     point('.vp-bottombar', 'Die verfügbaren Bereiche bleiben unten erreichbar.'),
   ] },
   { id: 'anlage-anlegen', title: 'Eine Anlage einrichten', query: 'state=empty', hash: '#/uebersicht', root: 'main', maxHeight: 1400, points: [
-    point('.vp-anlage-flow input', 'Geben Sie der Anlage einen wiedererkennbaren Namen.'),
-    point('.leaflet-container', 'Der Standort hilft bei der Zuordnung der Wettervorhersage.'),
-    point('button:has-text("Weiter")', 'Mit Weiter speichern Sie diesen Schritt und gelangen zu den Registerdaten.'),
+    point('.vp-ort-wahl', 'Wo steht die Anlage? Am selben Ort oder an einer anderen Adresse - die Wahl nennt ihre Folge.'),
+    point('#flow-name', 'Ein Name, unter dem Sie die Anlage wiederfinden.'),
+    point('button:has-text("Weiter")', 'Mit Weiter entsteht die Anlage, und es geht zur Box.'),
   ] },
   { id: 'box-verbinden', title: 'Die Geräte-ID zuordnen', query: 'scene=claim', root: '.vp-modal', points: [
     point('input', 'Übertragen Sie die vollständige VoltPilot-Geräte-ID.'),
@@ -37,16 +44,15 @@ export const captures = [
   ] },
   { id: 'fahrplan', title: 'Fahrplan: der Tag im Bild', hash: plant('fahrplan'), root: 'main', maxHeight: 1500, points: [
     point('.vp-tb-tage', 'Gestern, heute, morgen: der Plan, wie er gestern galt, der von heute und, sobald die Börsenpreise da sind, der für morgen.'),
-    point('.vp-tb-band', 'Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen.'),
-    point('.vp-bf', 'Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde.'),
-    point('.vp-antw', 'Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild.'),
-    point('section[aria-label="Worauf Ihr Plan achtet"]', 'Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten.'),
+    point('.vp-tb-jetzt', 'Was der Speicher gerade tut, in Stichworten - und daneben, was als Nächstes kommt, ob er bis zum Abend reicht und was es bringen soll.'),
+    point('.vp-tband', 'Oben die Tätigkeiten mit Uhrzeit, darunter der Ladestand - links gemessen, rechts geplant -, unten Sonne und Preis. Mit der Maus zeigt eine Lupe jede Viertelstunde.'),
+    point('section[aria-label="Gut zu wissen"]', 'Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten.'),
   ] },
-  { id: 'fahrplan-uhr', title: 'Fahrplan am Telefon: die Tagesuhr', hash: plant('fahrplan'), mobile: true, viewportOnly: true, klick: 'Beenden', points: [
+  { id: 'fahrplan-uhr', title: 'Fahrplan am Telefon: die Uhr', hash: plant('fahrplan'), mobile: true, viewportOnly: true, points: [
     point('.vp-tb-tage', 'Hier wechseln Sie zwischen gestern, heute und morgen.'),
-    point('.vp-uhr', 'Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand.'),
-    point('.vp-tb-werte', 'Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn.'),
-    point('.vp-antw', 'Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle.'),
+    point('.vp-tb-status', 'Was der Speicher gerade tut. Ein Tipp zeigt, warum.'),
+    point('.vp-uhr', 'Die Uhr geht wie jede andere. Der Ring zeigt, was ab jetzt kommt.'),
+    point('.vp-antw', 'Reicht der Speicher bis zum Abend, und was soll es heute bringen?'),
   ] },
   { id: 'messwerte', title: 'Energie: Zeitraum, Mengen und Verlauf', hash: plant('messwerte'), root: 'main', maxHeight: 1750, points: [
     point('button:has-text("Woche")', 'Wählen Sie den Zeitrahmen passend zu Ihrer Frage.'),
@@ -58,20 +64,21 @@ export const captures = [
     point('[aria-label^="Erlöse ·"]', 'Das Ergebnis steht vorn; daneben die Posten, aus denen es entsteht.'),
     point('section[aria-label="Abrechnung"]', 'Die Abrechnung zeigt je Posten Menge, Durchschnittspreis und Betrag.'),
   ] },
-  { id: 'marktpreise', title: 'Börsenpreise im Tagesverlauf', hash: plant('marktpreise'), root: 'main', maxHeight: 1500, points: [
-    point('main h1', 'Marktpreise beschreiben die Börse, nicht automatisch Ihren vollständigen Tarif.'),
-    point('text=Ø im Zeitraum', 'Die Kennzahl gehört zum ausgewählten Zeitraum und ihrer angegebenen Einheit.'),
-    point('main canvas', 'Die Zeitachse zeigt die günstigen und teuren Abschnitte des Tages.'),
+  // Um 5 Uhr früh liegt in der Beispielreihe noch der ganze Tag vor jetzt - mit genug Spanne für drei Stufen.
+  { id: 'marktpreise', title: 'Börsenpreis jetzt und in den nächsten Stunden', uhr: '2026-09-10T03:00:00Z', hash: plant('marktpreise'), root: 'main', maxHeight: 1500, points: [
+    point('.vp-pz-antwort', 'Oben steht der Börsenpreis jetzt und wie er im Vergleich zu den kommenden Stunden liegt.'),
+    point('.vp-pz-kachel', 'Die zwei Kacheln schauen nur nach vorn: die günstigsten und die teuersten zwei Stunden.'),
+    point('.vp-pz-bild', 'Die dunkle Linie markiert jetzt. Ein Tipp auf einen Balken zeigt seine Viertelstunde oben.'),
   ] },
-  { id: 'wetter', title: 'Wetter und erwartete PV-Leistung', hash: plant('wetter'), root: 'main', points: [
-    point('main h1', 'Die Vorhersage bezieht sich auf den Standort der geöffneten Anlage.'),
-    point('text=erwartete Spitze heute', 'Diese Leistung ist vorhergesagt, nicht bereits gemessen.'),
-    point('main canvas', 'Der Verlauf macht die erwarteten Änderungen über den Tag sichtbar.'),
+  { id: 'wetter', title: 'Der Sonnen-Teppich: Sonne und Verbrauch', hash: plant('prognose'), root: 'main', points: [
+    point('.vp-pz-antwort', 'Oben steht, wie lange die Sonne reicht, und zwei Balken für Sonne und Verbrauch.'),
+    point('.vp-pt-teppich', 'Der Teppich zeigt sieben Tage je Stunde auf einen Blick; ein Tipp wählt den Tag für das Bild.'),
+    point('.vp-pt-bild', 'Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt.'),
   ] },
-  { id: 'prognose', title: 'Wie gut die Vorhersage zuletzt traf', hash: plant('fahrplan'), root: '[aria-label="Worauf Ihr Plan achtet"]', points: [
-    point('h3:has-text("Worauf Ihr Plan achtet")', 'Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage.'),
-    point('text=Vorhersage, letzte 7 Tage', 'Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent.'),
-    point('text=Prognosen:', 'Vorhersagen sind Annahmen; der Fahrplan wird laufend neu gerechnet.'),
+  { id: 'prognose', title: 'Wie gut die Vorhersage zuletzt traf', hash: plant('fahrplan'), root: '[aria-label="Gut zu wissen"]', points: [
+    point('h3:has-text("Gut zu wissen")', 'Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage.'),
+    point('text=Treffsicherheit:', 'Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent.'),
+    point('text=Neu geplant:', 'Vorhersagen sind Annahmen; der Fahrplan wird alle 15 Minuten neu gerechnet.'),
   ] },
   { id: 'portfolio', title: 'Anlagen im Portfolio', hash: '#/portfolio', root: 'main', points: [
     point('.vp-ku-status', 'Die Statuszeile sagt, ob alles läuft, und nennt eine Anlage, die Aufmerksamkeit braucht.'),
@@ -120,7 +127,7 @@ export const captures = [
   { id: 'modell', title: 'Aufbau: Anlagen, Boxen und Geräte', hash: plant('modell'), root: 'main', maxHeight: 1400, points: [
     point('.vp-auf-suche', 'Die Suche findet Namen, Modelle und Kennungen; die Filter daneben grenzen nach Art, Zustand, Box und Hersteller ein.'),
     point('.vp-auf-t-zeile.is-box', 'Die VoltPilot-Box verbindet die Geräte darunter mit VoltPilot.'),
-    point('[data-aufbau-geraet]', 'Ein Tippen auf ein Gerät öffnet den Kurzblick mit allen Werten.'),
+    point('[data-aufbau-geraet]', 'Ein Tippen auf ein Gerät führt direkt auf seine Geräteseite mit allen Werten.'),
     point('.vp-auf-neu-haupt', '„Gerät hinzufügen“ öffnet den Gerätekatalog; im Menü daneben legen Sie eine Box oder Anlage an.'),
   ] },
   { id: 'geraet-hinzufuegen', title: 'Gerät hinzufügen: der Gerätekatalog', hash: plant('modell'), root: '.vp-modal',

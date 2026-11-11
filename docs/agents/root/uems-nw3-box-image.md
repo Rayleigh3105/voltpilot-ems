@@ -97,7 +97,7 @@ Protokoll des Laufs vom 19.09.2026 gegen `origin/uems` `2edc6e1d`, mit
 [`docs/rollout/nw3-protokoll-edge-2026.09.4.json`](../../rollout/nw3-protokoll-edge-2026.09.4.json)
 — **12 grün, 0 rot, 1 Befund, 0 nicht gefahren**. Jeder Punkt trägt seinen Beleg
 (die Nachricht, die die Box wirklich gesendet hat). Die Naht zur api-Antwort für
-Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (seit dem 09.10.2026 5 Fälle, drei Stände).
+Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (seit dem 12.10.2026 8 Fälle, fünf Stände).
 
 Protokoll des Laufs vom 26.09.2026 gegen `origin/uems` `f694b525` (PR 1287), mit
 `--strecke`:
@@ -149,11 +149,62 @@ ist fester Wortlaut, und das Feld `herkunft` im Protokoll sagt auch für ein Com
 Release-Tag gebaut“. Der Lauf prüft eine frische Box am Simulator; nicht den Update-Pfad (NW-3u),
 keine Hardware, und kein Bild vom späteren Merge-Commit auf `main` oder vom `mispel`-Stand.
 
+Protokoll des Laufs vom 10.10.2026 für das Release-Paar `edge-2026.10.0` (Tag auf `main`
+`99944c896`, Box und Cloud aus demselben Commit), mit `--strecke`:
+[`docs/rollout/nw3-protokoll-edge-2026.10.0.json`](../../rollout/nw3-protokoll-edge-2026.10.0.json)
+— **13 grün, 0 rot, 0 Befund, 0 nicht gefahren**, dasselbe Bild wie am `uems`-Kopf. Es ist das
+erste getaggte Paar mit dem UEMS-Stand: Palette/Katalog `2026.09.23.3`, darum sind 3/4a/4b grün
+(`rejected` leer, 8 Umschläge gesendet = 8 Rohzeilen) und 6c ist kein Befund mehr (die Box ruht
+nach der Rückkehr weiter). Der Herzschlag trägt `supports[]` mit acht Namen (darunter
+`data_sources`), `battery_control` und `data_sources`. `paare.json` führt das Paar als viertes;
+`Nw3AusgeliefertesBoxImageTest` hat 7 Fälle, vier Stände. Zwei Dinge sagt der Lauf nicht: Punkt 7
+ist grün mit „Update nötig für: Rückmeldung je Datenquelle“, weil das Werkzeug nur die Tabelle
+liest (`ab_release: null`) — die Fläche liest `supports[]` und zeigt den Satz für diese Box nicht
+(Testfall `dasReleaseMitDemUemsStandMeldetSupportsUndBrauchtDarumKeinUpdate`). Und die
+Neuerungen des Release kommen am SunSpec-Simulator nicht vor: netzseitiger Drossel-Slot und
+`grid_target` (Deye P3/P4), Netzregler-Anzeige auf :8484, Fernwartung/Tunnel, Techniker-Zugang.
+`KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` wird mit der Nachpflege (PR 1488) auf
+`2026.09.23.3` gesetzt (Drehbuch §2.8 „beim Taggen nachziehen“).
+
+Protokoll des Laufs vom 12.10.2026 für das Release-Paar `edge-2026.10.1` (Tag auf `main`
+`c5b32cba7`, Box und Cloud aus demselben Commit), mit `--strecke`:
+[`docs/rollout/nw3-protokoll-edge-2026.10.1.json`](../../rollout/nw3-protokoll-edge-2026.10.1.json)
+— **13 grün, 0 rot, 0 Befund, 0 nicht gefahren**, dasselbe Bild wie 10.0 (Katalog
+`2026.09.23.3`, 7 Umschläge gesendet = 7 Rohzeilen, `supports[]` mit denselben acht Namen).
+`paare.json` führt das Paar als fünftes; `Nw3AusgeliefertesBoxImageTest` hat 8 Fälle, fünf Stände.
+Gegenüber 10.0 ändert sich an den Quellen des Image-Paars allein der Go-Core
+(Speicher-Korrekturen UE-1 bis UE-4, PR 1489/1490; unter `edge-app/nodered` nur die Anleitung
+`CONTROL-BENCH.md`). Die Fernwartungs-Ereignisliste (PR 1496) liegt unter `edge-light/openwrt`
+und gehört nicht zu diesem Paar.
+
+Die dreizehn Punkte berühren das Speicher-Verhalten nicht. Dafür lief am selben Tag der
+[Zusatzlauf „kurzer Verbraucher“](../../../tools/nw3-box-image/README.md#zusatzlauf-kurzer-verbraucher)
+je gegen 10.1 und als Gegenprobe gegen 10.0 (`docs/rollout/nw3-zusatz-kurzer-verbraucher-*.json`):
+
+| Fall | `edge-2026.10.0` | `edge-2026.10.1` |
+|---|---|---|
+| Lade-Viertelstunde, 9 Verbraucher | **rot**: Entlade-Sollwert in 25 Takten (bis −1,62 kW), 74,8 Wh aus dem Speicher eingespeist in 182 s | **grün**: kein Entlade-Sollwert, 0 Wh |
+| Ruhe-Viertelstunde, 6 Verbraucher (gemessen, kein Urteil) | 45,5 Wh in 120 s, längste Strecke 41 s | 22,3 Wh in 59 s, längste Strecke 20 s |
+
+Das ist ein Simulatorbeleg an einem Gerät mit reiner Totzeit (12 s), kein Prüflauf je
+Steuerprofil und kein Hardware-Prüfstand. In einer Viertelstunde **ohne** geplantes Laden speist
+der Speicher auch mit 10.1 nach einem kurzen Verbraucher noch ein: die Haltezeit von 60 s gilt
+nur in der Lade-Viertelstunde. In der Ruhe-Viertelstunde stand der Entlade-Befehl nach dem Ende
+des Verbrauchers noch 5 bis 12 s statt 13 bis 46 s - das passt zur schnelleren Rücknahme (UE-2).
+
+Daraus wurde der Entscheid A vom 13.10.2026: die Haltezeit gilt ab dem nächsten Box-Release
+(`edge-2026.10.2`) in **jeder** Viertelstunden-Art. Der Fall `ruhe` des Zusatzlaufs hat seitdem ein
+Urteil und wird mit jenem Release **grün** erwartet; 10.0 und 10.1 sind dann rot und die Gegenprobe
+([Erwartung je Stand](../../../tools/nw3-box-image/README.md#zusatzlauf-kurzer-verbraucher)). Gefahren
+ist das noch nicht - der Lauf braucht die gebauten Bilder des Paars.
+
 ## X2 ist kein Fehlerbild
 
-Die Fähigkeit der Tabelle `docs/contracts/v2/edge-capabilities.json` trägt
+Die Fähigkeiten der Tabelle `docs/contracts/v2/edge-capabilities.json` tragen
 `ab_release: null`. Darum sagt die Fläche „Update nötig für: Rückmeldung je
-Datenquelle" (bis B06, 23.09.2026, zusätzlich „Zuständigkeit ab Zeitpunkt“; das
-Protokoll vom 19.09.2026 zeigt noch den alten Satz) auch für die **neueste ausgelieferte**
-Box, und ob ihr Release im Register steht, ändert daran nichts. Das ist der
+Datenquelle, Gerätesuche" (bis B06, 23.09.2026, zusätzlich „Zuständigkeit ab Zeitpunkt“;
+„Gerätesuche“ seit dem 30.10.2026 mit dem Knopf „Geräte suchen“ - die Protokolle bis 10.1
+zeigen den Satz ohne sie, das vom 19.09.2026 noch den alten) auch für die **neueste ausgelieferte**
+Box, und ob ihr Release im Register steht, ändert daran nichts. Punkt 7 von `nw3.sh` erwartet den
+Satz mit beiden Namen. Das ist der
 Zustand der ganzen Flotte bis zum Edge-Release, das eine Fähigkeit mitbringt.

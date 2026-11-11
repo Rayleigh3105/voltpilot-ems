@@ -1,5 +1,5 @@
 {
-  "$comment": "Die GETEILTEN Vektoren des STUREN Speichers - der Referenz-Physik, gegen die die geplante UND die gemessene Ersparnis der Steuerung gerechnet wird (Captain 04.09.2026: 'du musst Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung'). ZWEI Zwillinge lesen diese Datei PER PFAD und muessen je Fall dieselbe Trajektorie und denselben Euro-Betrag liefern - Python services/optimization/voltpilot_optimization/simulation/greedy.py (KANONISCH; der Optimierer bewertet damit seine Messlatte, siehe voltpilot_optimization/stur.py) und Java services/api .../repo/StandardSpeicher.java (die gemessene Seite, savedSpeicherEur). Wer die Greedy-Semantik auf einer Seite aendert, aendert BEIDE Seiten UND diese Datei zusammen - das Muster von topology-vectors.json / lan-host-vectors.json / consumer-policy-vectors.json.",
+  "$comment": "Die GETEILTEN Vektoren des STUREN Speichers - der Referenz-Physik, gegen die die geplante UND die gemessene Ersparnis der Steuerung gerechnet wird (Captain 04.09.2026: 'du musst Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung'). ZWEI Zwillinge lesen diese Datei PER PFAD und muessen je Fall dieselbe Trajektorie und denselben Euro-Betrag liefern - Python services/optimization/voltpilot_optimization/simulation/greedy.py (KANONISCH; der Optimierer bewertet damit seine Messlatte, siehe voltpilot_optimization/stur.py) und Java services/api .../repo/StandardSpeicher.java (die gemessene Seite, savedSpeicherEur). Wer die Greedy-Semantik auf einer Seite aendert, aendert BEIDE Seiten UND diese Datei zusammen - das Muster von topology-vectors.json / lan-host-vectors.json / consumer-policy-vectors.json. Seit NS-1 A (Captain 15.10.2026, Untersuchung vp-herzogau-nie-schlechter-k5): die Bloecke kapazitaet und bewertung liest NUR die gemessene Seite (StandardSpeicherTest, SteuerungTageszahlTest) - die Messlatte im Portal rechnet mit der gemessenen Kapazitaet und gleich bewertet; der Optimierer plant mit dem Nennwert, seine Lauf-Messlatte stur_cost_eur ist nur Log und Beleg (den Planwert rechnet PlanMesslatte.java gegen denselben Walk).",
 
   "$regel": "Gleiche Physik wie der Plan (Kapazitaet, Leistungsgrenzen, sqrt(eta)-Split der Round-Trip-Effizienz, SoC-Band inkl. Reservations-Stack als Boden), NULL Preis-Bewusstsein: jeder PV-Ueberschuss laedt sofort bis an Leistungs- und SoC-Grenze, jedes Defizit entlaedt sofort bis an Leistungs- und Boden-Grenze. Der sture Speicher laedt NIE aus dem Netz (per Konstruktion: er laedt nur aus Ueberschuss), speist NIE aus dem Speicher ein (per Konstruktion: er entlaedt nur bis zum Defizit), regelt NIE ab und kennt weder Paragraph 14a noch eine Einspeisegrenze.",
 
@@ -77,14 +77,14 @@
     }
   ],
 
-  "$betriebsbereich": "M1 (Captain 29.09.2026 'mach alle drei', Minus-Untersuchung vp-erloes-minus-heute-u1 §9): das SoC-Band des sturen Speichers ist das Band der Batterie (asset.soc_min_pct/soc_max_pct, NULL = 5-95 %, inkonsistent = 5-95 %) - das PLANUNGSband des Optimierers und zugleich die Waechter-Grenze der Box -, GEWEITET um den gemessenen Betriebsbereich des echten Speichers derselben Anlage. Nie verengt: was die Steuerung planen darf, darf der Vergleichsspeicher auch. Gemessen je Berliner Monat: tief = der eimer_mindestens-t niedrigste soc_min_pct, hoch = der eimer_mindestens-t hoechste soc_max_pct der 15-min-Eimer des GANZEN Monats (unabhaengig vom abgefragten Fenster, sonst ergaeben die Tage den Monat nicht); weniger Eimer mit Ladestand = diese Seite fehlt. Ein Monat M nutzt das Extrem aus M und M-1 (je Seite, fehlende Seiten zaehlen nicht). Ein gemessener Wert ausserhalb 0-100 % zaehlt nicht. Die Reserven (Backup/Peak) heben den Boden DANACH wie immer an. Java: StandardSpeicher.batterie + EarningsRepository.monthBetriebsbereich; Python: stur.referenz_band + inputs._betriebsbereich_pct.",
+  "$betriebsbereich": "M1 (Captain 29.09.2026 'mach alle drei', Minus-Untersuchung vp-erloes-minus-heute-u1 §9): das SoC-Band des sturen Speichers ist das Band der Batterie (asset.soc_min_pct/soc_max_pct, NULL = 5-95 %, inkonsistent = 5-95 %) - das PLANUNGSband des Optimierers und zugleich die Waechter-Grenze der Box -, GEWEITET um den gemessenen Betriebsbereich des echten Speichers derselben Anlage. Nie verengt: was die Steuerung planen darf, darf der Vergleichsspeicher auch. Gemessen je Berliner Monat: tief = der eimer_mindestens-t niedrigste soc_min_pct, hoch = der eimer_mindestens-t hoechste soc_max_pct der 15-min-Eimer des GANZEN Monats (unabhaengig vom abgefragten Fenster, sonst ergaeben die Tage den Monat nicht); weniger Eimer mit Ladestand = diese Seite fehlt. Seit NS-1 A (Captain 15.10.2026) zaehlt NUR der eigene Monat, nicht mehr der Vormonat: die Box haelt das Planungsband als harte Waechter-Grenze (guards.Clamp Stufe 2, VP_SOC_MIN_PCT/VP_SOC_MAX_PCT); faehrt der echte Speicher trotzdem darueber hinaus (Pilsting September: 2-100 %, alte Box), bekommt der Vergleichsspeicher DESSELBEN Monats denselben Bereich, haelt der Waechter (Pilsting Oktober: 792 Minuten am Boden von 5 %), fahren beide dasselbe Band. Ein gemessener Wert ausserhalb 0-100 % zaehlt nicht. Die Reserven (Backup/Peak) heben den Boden DANACH wie immer an. Java: StandardSpeicher.batterie + EarningsRepository.monthBetriebsbereich; Python: stur.referenz_band + inputs._betriebsbereich_pct.",
 
   "betriebsbereich": {
     "eimer_mindestens": 4,
     "faelle": [
       {
         "name": "pilsting-september",
-        "why": "Der Deye plant 5-95 % (kein Band am Asset), faehrt aber gemessen 2-100 % (September 2026: 76 Eimer bei 2 %, 27 bei 100 %). Der Vergleichsspeicher bekommt denselben Bereich.",
+        "why": "Der Deye plant 5-95 % (kein Band am Asset), fuhr aber im September 2026 gemessen 2-100 % (76 Eimer bei 2 %, 27 bei 100 %; die Box hielt ihr Band damals nicht). Der Vergleichsspeicher desselben Monats bekommt denselben Bereich.",
         "capacity_kwh": 65.0,
         "band_pct": { "min": null, "max": null },
         "gemessen_pct": { "vormonat": { "tief": 5.0, "hoch": 95.0 }, "monat": { "tief": 2.0, "hoch": 100.0 } },
@@ -103,14 +103,24 @@
         "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
       },
       {
-        "name": "der-vormonat-traegt",
-        "why": "Am Monatsanfang hat der laufende Monat noch keine vier Eimer an den Grenzen: der Vormonat traegt den Bereich.",
+        "name": "pilsting-oktober",
+        "why": "NS-1 A: der September-Ausbruch auf 2-100 % (Vormonat) zaehlt im Oktober nicht mehr - der Waechter haelt 5-95 %, also faehrt der Vergleichsspeicher dasselbe Band wie die Steuerung (bis 14.10.2026 erbte der Oktober 2-100 %: 3,68 EUR Bandvorteil in 13 Tagen).",
+        "capacity_kwh": 65.0,
+        "band_pct": { "min": null, "max": null },
+        "gemessen_pct": { "vormonat": { "tief": 2.0, "hoch": 100.0 }, "monat": { "tief": 5.0, "hoch": 95.0 } },
+        "reserve_pct": { "backup": null, "peak": null },
+        "soc_min_fraction": 0.05, "soc_max_fraction": 0.95,
+        "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
+      },
+      {
+        "name": "der-vormonat-zaehlt-nicht",
+        "why": "Am Monatsanfang hat der laufende Monat noch keine vier Eimer an den Grenzen: er faehrt das Planungsband, bis er selbst ausbricht - der Vormonat traegt nichts mehr.",
         "capacity_kwh": 65.0,
         "band_pct": { "min": null, "max": null },
         "gemessen_pct": { "vormonat": { "tief": 2.0, "hoch": 100.0 }, "monat": { "tief": 5.0, "hoch": null } },
         "reserve_pct": { "backup": null, "peak": null },
-        "soc_min_fraction": 0.02, "soc_max_fraction": 1.0,
-        "soc_floor_kwh": 1.3, "soc_max_kwh": 65.0
+        "soc_min_fraction": 0.05, "soc_max_fraction": 0.95,
+        "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
       },
       {
         "name": "gepflegtes-band-geweitet",
@@ -159,6 +169,145 @@
       "soc_max_pct": [100.0, 100.0, 100.0, 97.0, 96.0, 95.0, 95.0, 60.0],
       "tief": 2.0,
       "hoch": 97.0
+    }
+  },
+
+  "$kapazitaet": "NS-1 A (Captain 15.10.2026, 'Kapazitaet aus der Messung'): der Vergleichsspeicher rechnet mit den kWh, die der echte Speicher je 100 Punkte SEINES Ladestands fasst - nicht mit dem Nennwert. Je Berliner Monat zaehlt jede Viertelstunde, in der der echte Speicher ARBEITET (|battery_charge_kwh - battery_discharge_kwh| >= arbeitet_ab_kwh) und deren Vorgaenger genau 15 Minuten davor einen soc_last_pct traegt; prozent = soc_last_pct - soc_last_pct des Vorgaengers. Lade-Viertelstunden (laden > entladen) zaehlen positiv, Entlade-Viertelstunden negativ: viertelstunden, laden_kwh = Summe +-laden, entladen_kwh = Summe +-entladen, prozentpunkte = Summe +-prozent. Ein Monat M nimmt die Summen aus M und M-1 zusammen. kapazitaet = 100 * (eta * laden_kwh - entladen_kwh / eta) / prozentpunkte (gespeichert wie StandardSpeicher.schritt, eta = sqrt(Round-Trip)). Der Nennwert gilt bei weniger als min_viertelstunden, ohne Bewegung (prozentpunkte <= 0) oder ausserhalb rahmen_anteil x Nennwert. Band, Reserven, Monatsanker und der echte Stand in kWh gelten dann auf dieser Kapazitaet. Begruendung der Grenzen: StandardSpeicher.ARBEITET_AB_KWH, KAPAZITAET_MIN_VIERTELSTUNDEN, KAPAZITAET_MIN/MAX_ANTEIL. Java: StandardSpeicher.kapazitaetKwh + EarningsRepository.monthLadestandsmessung. Die k4-Eichung 61,6 kWh rechnete gegen den Start-Ladestand der Optimierer-Laeufe, den der Optimierer auf 5-95 % klemmt; gegen den Ladestand der Eimer fasst der Speicher der Referenzanlage 59,7 kWh.",
+
+  "kapazitaet": {
+    "arbeitet_ab_kwh": 0.5,
+    "min_viertelstunden": 96,
+    "rahmen_anteil": { "min": 0.5, "max": 1.2 },
+    "faelle": [
+      {
+        "name": "pilsting-september",
+        "why": "Die Referenzanlage, echte Viertelstunden-Eimer 01.-28.09.2026 (GET /sites/{id}/history, Scout vp-erloes-minus-heute-u1): 1370 arbeitende Viertelstunden, nur Laden 58,0 kWh, nur Entladen 61,3 kWh je 100 % - zusammen 59,7 statt 65 kWh Nennwert.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 1370, "laden_kwh": 1617.634957, "entladen_kwh": -1558.933243, "prozentpunkte": 5323.0 },
+        "vormonat": null,
+        "kapazitaet_kwh": 59.68215672721857,
+        "soc_floor_kwh": 2.984107836360929, "soc_max_kwh": 56.698048890857635
+      },
+      {
+        "name": "pilsting-oktober-traegt-der-september",
+        "why": "Oktober aus dem 5-s-Ring der Box (14.10. 15:00 - 15.10. 13:30, nur 25 arbeitende Viertelstunden, allein 60,0 kWh): zusammen mit dem September belastbar.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 25, "laden_kwh": 38.610418, "entladen_kwh": -20.869353, "prozentpunkte": 98.0 },
+        "vormonat": { "viertelstunden": 1370, "laden_kwh": 1617.634957, "entladen_kwh": -1558.933243, "prozentpunkte": 5323.0 },
+        "kapazitaet_kwh": 59.687748000500044,
+        "soc_floor_kwh": 2.9843874000250024, "soc_max_kwh": 56.70336060047504
+      },
+      {
+        "name": "zu-wenig-viertelstunden",
+        "why": "Der Oktober-Ring allein: 25 von 96 Viertelstunden - der Nennwert.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 25, "laden_kwh": 38.610418, "entladen_kwh": -20.869353, "prozentpunkte": 98.0 },
+        "vormonat": null,
+        "kapazitaet_kwh": 65.0,
+        "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
+      },
+      {
+        "name": "genau-die-mindestmenge",
+        "why": "96 arbeitende Viertelstunden reichen.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 96, "laden_kwh": 120.0, "entladen_kwh": -110.0, "prozentpunkte": 380.0 },
+        "vormonat": null,
+        "kapazitaet_kwh": 60.46918007655169,
+        "soc_floor_kwh": 3.0234590038275844, "soc_max_kwh": 57.4457210727241
+      },
+      {
+        "name": "eine-zu-wenig",
+        "why": "95 arbeitende Viertelstunden reichen nicht.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 95, "laden_kwh": 120.0, "entladen_kwh": -110.0, "prozentpunkte": 380.0 },
+        "vormonat": null,
+        "kapazitaet_kwh": 65.0,
+        "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
+      },
+      {
+        "name": "keine-bewegung",
+        "why": "Energie ohne Aenderung des Ladestands (Ladestand eingefroren): keine Kapazitaet messbar.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 120, "laden_kwh": 10.0, "entladen_kwh": -10.0, "prozentpunkte": 0.0 },
+        "vormonat": null,
+        "kapazitaet_kwh": 65.0,
+        "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
+      },
+      {
+        "name": "mehr-als-dieser-speicher",
+        "why": "Ueber 120 % des Nennwerts (hier 258 kWh): eine Mehr-Box-Anlage summiert die Speicher-Energien, der Ladestand kommt nur vom primaeren - der Nennwert.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 200, "laden_kwh": 160.0, "entladen_kwh": -150.0, "prozentpunkte": 120.0 },
+        "vormonat": null,
+        "kapazitaet_kwh": 65.0,
+        "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
+      },
+      {
+        "name": "weniger-als-ein-speicher",
+        "why": "Unter 50 % des Nennwerts (hier 4 kWh) ist kein gealterter Speicher, sondern ein Messfehler - der Nennwert.",
+        "capacity_kwh": 65.0, "roundtrip_efficiency": 0.92,
+        "monat": { "viertelstunden": 200, "laden_kwh": 10.0, "entladen_kwh": -10.0, "prozentpunkte": 500.0 },
+        "vormonat": null,
+        "kapazitaet_kwh": 65.0,
+        "soc_floor_kwh": 3.25, "soc_max_kwh": 61.75
+      }
+    ],
+    "auswahl": {
+      "why": "Die Auswahl je Monat an der Rechenstelle selbst (Testcontainers, EarningsRepository.monthLadestandsmessung). Zeilen: [bucket (UTC), laden_kwh, entladen_kwh, soc_last_pct]. 10:00 ist nur Vorgaenger; 10:30 ruht (0,2 kWh) und ist trotzdem Vorgaenger von 10:45; 11:00 traegt keinen Ladestand, also zaehlen weder 11:00 noch 11:15; 12:00 folgt nach einer Luecke und zaehlt nicht, ist aber Vorgaenger von 12:15. Der Eimer 30.06. 21:45 UTC (23:45 Berlin) ist Vorgaenger des ersten Juli-Eimers.",
+      "eimer": [
+        ["2026-06-10T10:00:00Z", 0.0, 0.0, 50.0],
+        ["2026-06-10T10:15:00Z", 3.4, 0.1, 55.0],
+        ["2026-06-10T10:30:00Z", 0.2, 0.0, 55.0],
+        ["2026-06-10T10:45:00Z", 0.0, 2.0, 52.0],
+        ["2026-06-10T11:00:00Z", 1.0, 0.0, null],
+        ["2026-06-10T11:15:00Z", 1.0, 0.0, 54.0],
+        ["2026-06-10T12:00:00Z", 2.0, 0.0, 60.0],
+        ["2026-06-10T12:15:00Z", 2.0, 0.0, 63.0],
+        ["2026-06-10T12:30:00Z", 0.0, 0.6, 62.0],
+        ["2026-06-30T21:45:00Z", 0.0, 0.0, 70.0],
+        ["2026-06-30T22:00:00Z", 3.2, 0.0, 75.0]
+      ],
+      "monate": {
+        "2026-06-01": { "viertelstunden": 4, "laden_kwh": 5.4, "entladen_kwh": -2.5, "prozentpunkte": 12.0 },
+        "2026-07-01": { "viertelstunden": 1, "laden_kwh": 3.2, "entladen_kwh": 0.0, "prozentpunkte": 5.0 }
+      }
+    }
+  },
+
+  "$bewertung": "NS-1 A ('gleich bewertet'), ohne die Kachel zu schoenen: die echte Seite ist brutto je Probe bewertet (Bezug und Einspeisung getrennt, Migration V20260922170000), der sture Speicher netto je Viertelstunde. Bezieht und speist eine Anlage in derselben Viertelstunde, kostet sie das hin_und_her_eur = min(bezug, einspeisung) * (Bezugspreis - Einspeisewert) mehr als netto. Diesen Betrag traegt der Vergleichsspeicher mit (er geht vom Speicher-Anteil ab, savedEur bleibt brutto wie die Rechnung), wenn derselbe Speicher ihn stur auch gehabt haette: in einer Viertelstunde, in der der echte Speicher ARBEITET (|laden - entladen| >= kapazitaet.arbeitet_ab_kwh) - Regelverzug beim Folgen. Wartet der echte Speicher oder ist er leer, haette ein sturer Speicher das Hin und Her geschluckt: dann bleibt es bei der Steuerung (0). Referenzanlage 14.10. 15:00 - 15.10. 13:30 (Ring): 0,42 EUR Hin-und-Her, davon 0,18 EUR in arbeitenden Viertelstunden. Java: StandardSpeicher.hinUndHerEur, Walk.slot mit EchteViertelstunde.",
+
+  "bewertung": {
+    "faelle": [
+      { "name": "laedt", "laden_kwh": 2.4, "entladen_kwh": 0.0, "bezug_kwh": 0.2, "einspeisung_kwh": 0.8, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": 0.10, "hin_und_her_eur": 0.03, "why": "arbeitet: 0,2 kWh Hin und Her x 15 ct" },
+      { "name": "entlaedt", "laden_kwh": 0.0, "entladen_kwh": 2.4, "bezug_kwh": 0.7, "einspeisung_kwh": 0.1, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": 0.10, "hin_und_her_eur": 0.015, "why": "arbeitet: 0,1 kWh x 15 ct" },
+      { "name": "genau-die-schwelle", "laden_kwh": 0.5, "entladen_kwh": 0.0, "bezug_kwh": 0.4, "einspeisung_kwh": 0.4, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": 0.10, "hin_und_her_eur": 0.06, "why": "0,5 kWh arbeiten schon" },
+      { "name": "wartet", "laden_kwh": 0.3, "entladen_kwh": 0.0, "bezug_kwh": 0.5, "einspeisung_kwh": 0.6, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": 0.10, "hin_und_her_eur": 0.0, "why": "der echte Speicher wartet (0,3 kWh): ein sturer haette das Hin und Her geschluckt, es bleibt bei der Steuerung" },
+      { "name": "laedt-und-entlaedt", "laden_kwh": 1.0, "entladen_kwh": 0.6, "bezug_kwh": 0.3, "einspeisung_kwh": 0.3, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": 0.10, "hin_und_her_eur": 0.0, "why": "netto nur 0,4 kWh: zaehlt als Warten" },
+      { "name": "leer", "laden_kwh": 0.0, "entladen_kwh": 0.0, "bezug_kwh": 0.9, "einspeisung_kwh": 0.6, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": 0.10, "hin_und_her_eur": 0.0, "why": "der echte Speicher ist leer oder ruht" },
+      { "name": "negativer-einspeisewert", "laden_kwh": 3.0, "entladen_kwh": 0.0, "bezug_kwh": 0.3, "einspeisung_kwh": 0.5, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": -0.05, "hin_und_her_eur": 0.09, "why": "die eingespeiste Haelfte kostet zusaetzlich: 0,3 kWh x 30 ct" },
+      { "name": "nur-bezug", "laden_kwh": 0.0, "entladen_kwh": 2.0, "bezug_kwh": 0.6, "einspeisung_kwh": 0.0, "import_price_eur_kwh": 0.25, "export_value_eur_kwh": 0.10, "hin_und_her_eur": 0.0, "why": "kein Hin und Her" }
+    ],
+    "gleicher_speicher": {
+      "why": "Ende zu Ende (Testcontainers, SteuerungTageszahlTest): zwei Novembertage, jede Viertelstunde arbeitet. Der echte Speicher fasst 60 kWh je 100 % (65 kWh Nennwert, Round-Trip 100 %, damit die Zahlen rund bleiben): Lade-Viertelstunden laden 2,4 kWh (+4 Punkte), Entlade-Viertelstunden entladen 2,4 kWh (-4 Punkte), je acht im Wechsel. Der erste Eimer hat keinen Vorgaenger und zaehlt nicht zur Messung (191 Viertelstunden).",
+      "anlage": { "capacity_kwh": 65, "max_charge_kw": 30, "max_discharge_kw": 30, "roundtrip_efficiency_pct": 100, "bezug_ct_kwh": 25, "spot_eur_mwh": 100 },
+      "monatsanker": { "bucket": "2026-10-31T22:45:00Z", "soc_last_pct": 50.0 },
+      "von": "2026-11-01T23:00:00Z", "viertelstunden": 192, "block": 8,
+      "laden_viertelstunde": { "pv_kwh": 4.0, "load_kwh": 1.0, "grid_import_kwh": 0.2, "grid_export_kwh": 0.8, "battery_charge_kwh": 2.4, "battery_discharge_kwh": 0.0, "soc_delta_pct": 4.0 },
+      "entlade_viertelstunde": { "pv_kwh": 0.0, "load_kwh": 3.0, "grid_import_kwh": 0.7, "grid_export_kwh": 0.1, "battery_charge_kwh": 0.0, "battery_discharge_kwh": 2.4, "soc_delta_pct": -4.0 },
+      "erwartet": {
+        "kapazitaet_kwh": 60.0,
+        "je_tag": {
+          "saved_eur": 15.12,
+          "stur_eur": 21.6,
+          "hin_und_her_eur": 2.16,
+          "speicher_eur": 19.44,
+          "steuerung_eur": -4.32,
+          "steuerung_bisher_eur": -6.48,
+          "echt_soc_ende_kwh": 30.0,
+          "vergleich_soc_ende_kwh": 30.0
+        },
+        "$rechnung": "je Lade-Viertelstunde: saved = -0,2 x 0,25 - (3,0 - 0,8) x 0,10 = -0,27; stur laedt 3,0 kWh = -0,30; Hin und Her 0,2 x 0,15 = 0,03. Je Entlade-Viertelstunde: saved = (3,0 - 0,7) x 0,25 + 0,1 x 0,10 = 0,585; stur entlaedt 3,0 kWh = +0,75; Hin und Her 0,1 x 0,15 = 0,015. Je Tag 48 + 48: saved 15,12, stur 21,60, Hin und Her 2,16, Speicher-Anteil 19,44, Steuerung -4,32 (bisher, ohne Hin und Her: -6,48; netto gegen netto gerechnet ebenfalls -4,32, weil hier jede Viertelstunde arbeitet). Ende jedes Tages: der echte Speicher wieder bei 50 % = 30 kWh von 60 (mit dem Nennwert waeren es 32,5); der sture Speicher bei 30 kWh (Anker 50 % x 60, im Band 3-57 kWh)."
+      }
     }
   }
 }

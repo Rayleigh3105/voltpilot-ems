@@ -381,7 +381,7 @@ export function leistungsBeleg(vorher: number | null, nachher: number | null): s
  * Anzeige. „Gesperrt" ist dabei ein ZUSTAND, kein Fehler: ein Gerät, das nur
  * misst, ist vollständig in Ordnung.
  */
-export type FreigabeStufe = 'pruefstand' | 'vorlage' | 'selbst' | 'gesperrt';
+export type FreigabeStufe = 'pruefstand' | 'erprobung' | 'vorlage' | 'selbst' | 'gesperrt';
 
 export type FreigabeZustand = {
   stufe: FreigabeStufe;
@@ -394,7 +394,7 @@ export type FreigabeEingang = {
   /** Trägt die Komponente eine Schreib-Fähigkeit? */
   schaltbar: boolean;
   /** Woher die Freigabe kommt - der Selbstbau ist `selbst`. */
-  quelle?: 'pruefstand' | 'vorlage' | 'selbst' | null;
+  quelle?: 'pruefstand' | 'erprobung' | 'vorlage' | 'selbst' | null;
   releasedAt?: string | null;
 };
 
@@ -412,8 +412,19 @@ export function freigabeZustand(e: FreigabeEingang): FreigabeZustand {
       return {
         stufe: 'pruefstand',
         wort: 'Von VoltPilot freigegeben',
-        satz: 'VoltPilot hat dieses Modell am Prüfstand freigegeben.',
+        // Kein „am Prüfstand“: ein Katalog-Typ kann auch ohne Prüfstandslauf freigegeben sein (der
+        // Heizstab seit dem 04.11.2026 auf Entscheid des Captains) - der Satz behauptet nur die Freigabe.
+        satz: 'VoltPilot hat diesen Gerätetyp für die Steuerung freigegeben.',
         ton: 'ok',
+      };
+    case 'erprobung':
+      // Der Gerätetyp ist im Katalog nur am Simulator geprüft (`simulator_only` u. a.): „Von VoltPilot
+      // freigegeben … am Prüfstand“ wäre eine Zusage, die es nicht gibt.
+      return {
+        stufe: 'erprobung',
+        wort: 'Noch nicht am Prüfstand',
+        satz: 'VoltPilot hat diesen Gerätetyp bisher nur im Simulator geprüft, noch nicht am Prüfstand.',
+        ton: 'unbekannt',
       };
     case 'vorlage':
       return {

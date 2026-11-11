@@ -158,3 +158,84 @@ Reserve-Boden bemessen ist, und Kriterium 8 verlangt, sie zu messen.
 **Was der Prüfstand noch beweisen muss:** T am konkreten Gerät, der behaviorale
 Nachweis über mindestens 5 Minuten mit Lastwechsel, und der widersprüchlich
 belegte „sticky 0"-Fall (gibt ein weiter geschriebenes `0` intern zurück?).
+
+## 7. KOSTAL PIKO (10-20): Web-API oder Modbus RTU
+
+Die klassische PIKO-Baureihe ist eine ANDERE Plattform als die PLENTICORE BI
+oben: ein dreiphasiger **String-Wechselrichter ohne Batterie** (PIKO 10, 12, 15,
+17, 20; dieselbe Baureihe trug früher die Bezeichnung PIKO 3.0-20), mit
+Weboberfläche **ab UI 06**. Scout-Report
+`data/vp-kostal-piko20-anbindung/report.md`. **Nur lesen** — für beide Wege
+gibt es keinen dokumentierten Schreibweg.
+
+### 7.1 Web-API `dxs.json` (Vorgabe-Weg, `kostal_dxs`)
+
+| Was | Wert |
+|---|---|
+| Protokoll | HTTP GET, JSON-Antwort |
+| Port | **80** (Werk, nicht änderbar) |
+| Anmeldung | **keine** für Messwerte — fünf unabhängige Feldprojekte belegen das (evcc, openWB, ioBroker, Node-RED, pykostal), ebenso die Konfiguration des Kundenaltsystems, das genau diese API alle 5 s ohne Login liest |
+| Decoder | [`kostal/kostal-dxs-decode.js`](kostal/kostal-dxs-decode.js) — Go-Zwilling `edge-app/core/internal/kostaldxs` (Edge Light) |
+
+**Form:** `GET /api/dxs.json?dxsEntries=<id>&dxsEntries=<id>…` →
+`{"dxsEntries":[{"dxsId":67109120,"value":1234.5}, …],"status":{"code":0}}`.
+Jeder Wert wird über seine `dxsId` gelesen, NIE über die Position — das
+Kundenaltsystem selbst macht genau diesen Fehler (`dxsEntries[0]` blind
+übernehmen), der Decoder vermeidet ihn bewusst.
+
+**Takt:** der regelmäßige Poll liest NUR die AC-Gesamtleistung (dxs 67109120,
+`FAST_IDS`) — dieselbe Minimalität wie das Kundenaltsystem selbst (ein Wert
+alle 5 s), um den schwachen Webserver nicht stärker zu belasten als der
+laufende Betrieb. „Verbindung testen" liest zusätzlich Strings, Phasen,
+Status, Begrenzung, Energiezähler und Geräte-Identität (`ALL_IDS`) für die
+Sichtprüfung (Typ, UI-Fassung, Seriennummer, Firmware).
+
+### 7.2 Modbus RTU über einen RS485-zu-Ethernet-Wandler (Ausweg, `kostal_piko_rtu`)
+
+| Was | Wert |
+|---|---|
+| Protokoll | Modbus RTU, Funktion 03 (Holding Registers) |
+| Serielle Parameter | 19200 Baud, 8E1 |
+| Port des Wandlers | **8899** (Vorschlag — jeder Wandler setzt seinen eigenen; dieselbe Geräteklasse wie der Powador-serielle Weg, Abschnitt oben in diesem Dokument unter `kaco_serial` im Katalog) |
+| Geräteadresse | eine echte Modbus-Unit-ID (`unit_id`), am Gerät unter Kommunikation → RS485 eingestellt |
+| Decoder | [`kostal/kostal-piko-rtu-decode.js`](kostal/kostal-piko-rtu-decode.js) — Go-Zwilling `edge-app/core/internal/kostalrtu` |
+
+**Voraussetzung am Gerät:** Kommunikation → RS485 → Protokoll auf „Modbus"
+stellen (Werk: „KOSTAL", für weitere PIKO/Datenlogger am selben Bus).
+Anschließen heißt: Wechselrichter spannungsfrei schalten (Elektrofachkraft),
+die RS485-Klemme im Gehäuse verkabeln, einen RS485-zu-Ethernet-Wandler im
+transparenten TCP-Server-Modus setzen.
+
+**⚠ Die Registerkarte ist NICHT herstellerdokumentiert.** KOSTAL gibt die
+Beschreibung „KOSTAL Modbus Interface - RS485" nur über den Service heraus.
+Die hier genutzte Karte stammt aus einem Community-Treiber
+(thenebu/dbus-kostal-piko), der selbst angibt, „reverse-engineered and
+verified against the Piko's HTTP API" zu sein — an einem PIKO 17 (UI 06.53,
+FW 06.17). Deshalb ist dieser Weg der AUSWEG, nie die Vorgabe
+(`Model.Transports[0]` bleibt `kostal_dxs`), und **„Verbindung testen" führt
+auf diesem Weg zusätzlich die Gegenprobe gegen die Web-API aus**, wenn eine
+Gegenprobe-IP angegeben und beide Wege am selben physischen Gerät erreichbar
+sind — die eingebaute Absicherung gegen eine unbelegte Registerzuordnung
+(Feld `cross_check_ip`, nur vom Verbindungstest genutzt, nie vom
+regelmäßigen Poll).
+
+Kein Status-, kein Begrenzungsregister in dieser Karte (anders als die
+Web-API) — die Community-Quelle dokumentiert keines; ein geratenes Register
+wäre falsch, kein fehlendes Feld.
+
+### 7.3 Bewusst nicht angebunden
+
+- **PIKO BA (Batterie-Variante):** die Community-Quellen widersprechen sich
+  über die Batterie-Registerbedeutung, und ein Hybrid meldet seine
+  AC-Leistung als PV + Entladung − Ladung (dieselbe Lehre wie beim
+  KACO-NH3-Hybriden). Ohne ein belegtes Vorzeichen ließe sich die PV eines BA
+  nicht zuverlässig von der Batteriewirkung trennen — eine falsche PV-Zahl ist
+  schlimmer als keine. Mit dieser Fassung noch nicht anbindbar.
+- **Altgeräte mit Weboberfläche vor UI 06** (HTML `index.fhtml`, Login
+  `pvserver`, Platzhalterwerte „x x x" bei fehlenden Feldern): kein stabiles
+  Kennungs-Schema wie `dxs.json`, die HTML-Struktur ist nicht vertraglich
+  stabil — das Wartungsrisiko eines Scrapers steht in keinem Verhältnis zum
+  Nutzen eines Altgeräts. Mit dieser Fassung noch nicht anbindbar.
+- **Gerätesuche (Auto-Discovery) auf Port 80:** nicht gebaut — die Modelle
+  werden in der Einrichtung manuell gewählt, wie die meisten Marken im
+  Katalog. Eine spätere Stufe, kein Rückschritt.

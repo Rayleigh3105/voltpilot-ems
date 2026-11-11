@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { ControlStatus, CurtailmentStatus } from './api';
 import type { AdminFleetSite } from './admin/fleetApi';
 import {
+  boxVerbindung,
   controlMatrixInputs,
   controlMatrixRows,
   edgeStand,
   fleetBoxGroups,
   fleetPulse,
   fleetRows,
+  relAge,
   releaseIsRunning,
   sollRelease,
   sourceHealth,
+  verbindungZaehlung,
 } from './adminFleet';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
@@ -94,9 +97,22 @@ describe('fleetRows', () => {
     });
     expect(groups[0].boxes[0].software.text).toBe('edge-2026.09.0 ✓');
     expect(groups[0].boxes[0].capabilities.map((capability) => capability.name)).toEqual([
-      'Rückmeldung je Datenquelle',
+      'Rückmeldung je Datenquelle', 'Gerätesuche',
     ]);
     expect(groups[0].boxes[0].capabilities.every((capability) => capability.status === 'fehlt')).toBe(true);
+  });
+
+  it('N5 (vp-box-verbinden-konzept): a box that never enrolled says so, not "wartet auf erste Meldung"', () => {
+    const groups = fleetBoxGroups([site({
+      boxes: [
+        // never sent a CSR at all - the case from the 10.11. report that looked like a slow box.
+        { deviceId: 'd3', externalRef: 'edge-cyhchfr', name: null, fuehrtAnlage: null, lastSeenAt: null, edge: null, update: null, createdAt: ago(3 * 3600_000), anmeldung: null },
+        // sent a CSR but no heartbeat yet - still reads as "wartet auf erste Meldung", a different case.
+        { deviceId: 'd4', externalRef: 'edge-abcdefg', name: null, fuehrtAnlage: null, lastSeenAt: null, edge: null, update: null, createdAt: ago(30_000), anmeldung: { zuletztAngefragtAm: ago(10_000), schluesselAbgeholtAm: ago(10_000) } },
+      ],
+    })], NOW, []);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'd3')).toMatchObject({ connectionText: 'Nie angemeldet', lastSeenText: 'seit 3 Std.' });
+    expect(groups[0].boxes.find((b) => b.deviceId === 'd4')).toMatchObject({ connectionText: 'Wartet auf erste Meldung', lastSeenText: '—' });
   });
 
   it('uses each box report even when its version is unknown to the table', () => {
@@ -106,8 +122,8 @@ describe('fleetRows', () => {
       { deviceId: 'old', externalRef: 'VP-old', name: null, fuehrtAnlage: false,
         lastSeenAt: ago(1000), edge: null, update: null },
     ] })], NOW, []);
-    expect(groups[0].boxes.find((b) => b.deviceId === 'new')?.capabilities.map((c) => c.status)).toEqual(['vorhanden']);
-    expect(groups[0].boxes.find((b) => b.deviceId === 'old')?.capabilities.map((c) => c.status)).toEqual(['fehlt']);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'new')?.capabilities.map((c) => c.status)).toEqual(['vorhanden', 'fehlt']);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'old')?.capabilities.map((c) => c.status)).toEqual(['fehlt', 'fehlt']);
   });
 
   it('sorts attention first - a silent device beats a healthy plant', () => {
@@ -422,6 +438,42 @@ describe('edgeStand', () => {
     // Die Palette-Version reist weiter im flows-Block.
     expect(stand.paletteVersion).toBe('0.3.0');
   });
+
+  // Geräte & Updates S0: der Stand vom 05.11. - das jüngste Release ist Edge Light.
+  const GEMISCHT = [
+    { releaseSeq: 60, version: 'edge-light-2026.11.4', boxArt: 'light' as const },
+    { releaseSeq: 58, version: 'edge-2026.10.7', boxArt: 'docker' as const },
+    { releaseSeq: 57, version: 'edge-2026.10.5', boxArt: 'docker' as const },
+  ];
+
+  it('measures a Docker box against the newest DOCKER release, never against Edge Light (S0)', () => {
+    const stand = edgeStand(null, update('edge-2026.10.7-c39b18d9c2a4'), GEMISCHT, 'docker');
+    expect(stand.status).toBe('aktuell');
+    expect(stand.text).toBe('edge-2026.10.7 ✓');
+    const alt = edgeStand(null, update('edge-2026.10.5'), GEMISCHT, 'docker');
+    expect(alt.text).toBe('edge-2026.10.5 → edge-2026.10.7');
+  });
+
+  it('measures an Edge Light box against its own line; a hand build stays not registered', () => {
+    expect(edgeStand(null, update('edge-light-2026.11.4'), GEMISCHT, 'light').status).toBe('aktuell');
+    const hand = edgeStand(null, update('edge-light-g2ccd99197'), GEMISCHT, 'light');
+    expect(hand.status).toBe('nicht_registriert');
+    expect(hand.outdated).toBe(false);
+    expect(hand.title).toContain('Soll: edge-light-2026.11.4');
+  });
+
+  it('without box art the line comes from the release the stamp carries', () => {
+    expect(edgeStand(null, update('edge-2026.10.7'), GEMISCHT).status).toBe('aktuell');
+    expect(sollRelease(GEMISCHT, 'docker')?.version).toBe('edge-2026.10.7');
+    expect(sollRelease(GEMISCHT)?.version).toBe('edge-light-2026.11.4');
+  });
+
+  it('a line without any release has no yardstick - never the other line', () => {
+    const stand = edgeStand(null, update('edge-light-2026.11.0'), REGISTER, 'light');
+    expect(stand.status).toBe('kein_massstab');
+    expect(stand.outdated).toBe(false);
+    expect(stand.title).toContain('Für Edge Light ist noch kein Release registriert');
+  });
 });
 
 describe('controlMatrixInputs', () => {
@@ -580,5 +632,75 @@ describe('controlMatrixRows (B2 - die Pilsting-Sicht)', () => {
       NOW,
     );
     expect(rows.map((r) => r.siteName)).toEqual(['Ungefreigegeben', 'Gesund']);
+  });
+});
+
+describe('boxVerbindung - die EINE Online-Regel (E6: drei Stufen)', () => {
+  it('online bis zum 45-Sekunden-Fenster, an der Grenze noch online', () => {
+    expect(boxVerbindung(ago(20_000), NOW)).toEqual({
+      zustand: 'online', tone: 'ok', text: 'Verbunden', lastSeenText: 'vor 20 Sek.',
+    });
+    expect(boxVerbindung(ago(45_000), NOW).zustand).toBe('online');
+  });
+
+  it('verzögert zwischen 45 Sekunden und 5 Minuten - reine Anzeige, kein Alarmton', () => {
+    expect(boxVerbindung(ago(45_000 + 1), NOW)).toMatchObject({
+      zustand: 'verzoegert', tone: 'warn', text: 'Verzögert',
+    });
+    expect(boxVerbindung(ago(2 * 60_000), NOW).zustand).toBe('verzoegert');
+    expect(boxVerbindung(ago(5 * 60_000), NOW).zustand).toBe('verzoegert');
+  });
+
+  it('veraltet ist nicht aktuell: hinter dem 5-Minuten-Fenster meldet sie sich nicht', () => {
+    expect(boxVerbindung(ago(5 * 60_000 + 1), NOW)).toMatchObject({
+      zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht',
+    });
+    expect(boxVerbindung(ago(3 * 3600_000), NOW).lastSeenText).toBe('vor 3 Std.');
+  });
+
+  it('ein Tag steht in der Einzahl („vor 1 Tag“, nicht „vor 1 Tagen“)', () => {
+    expect(relAge(30 * 3600_000)).toBe('vor 1 Tag');
+    expect(relAge(36 * 3600_000)).toBe('vor 2 Tagen');
+    expect(boxVerbindung(ago(5 * 86400_000), NOW).lastSeenText).toBe('vor 5 Tagen');
+  });
+
+  it('ohne Meldung ist unbekannt, nie online', () => {
+    for (const leer of [null, undefined, '', 'kein-datum']) {
+      expect(boxVerbindung(leer, NOW)).toEqual({
+        zustand: 'nie', tone: 'off', text: 'Wartet auf erste Meldung', lastSeenText: '—',
+      });
+    }
+  });
+
+  it('die Plattform-Übersicht spricht denselben Wortlaut', () => {
+    const [group] = fleetBoxGroups([site({
+      boxes: [{
+        deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box', fuehrtAnlage: true,
+        lastSeenAt: ago(10 * 60_000), edge: null, update: null,
+      }],
+    })], NOW, []);
+    const v = boxVerbindung(ago(10 * 60_000), NOW);
+    expect(group.boxes[0].connectionText).toBe(v.text);
+    expect(group.boxes[0].connectionTone).toBe(v.tone);
+    expect(group.boxes[0].lastSeenText).toBe(v.lastSeenText);
+  });
+
+  it('zählt online · offline · nie gemeldet, Nullen bleiben stehen', () => {
+    expect(verbindungZaehlung(['online', 'online', 'offline', 'nie']).text)
+      .toBe('2 online · 1 offline · 1 nie gemeldet');
+    expect(verbindungZaehlung([]).text).toBe('0 online · 0 offline · 0 nie gemeldet');
+  });
+
+  it('zählt „verzögert" getrennt, ohne den Wortlaut der übrigen Zählung zu ändern', () => {
+    const z = verbindungZaehlung(['online', 'verzoegert', 'verzoegert', 'offline']);
+    expect(z).toMatchObject({ online: 1, verzoegert: 2, offline: 1, nie: 0 });
+    expect(z.text).toBe('1 online · 1 offline · 0 nie gemeldet');
+  });
+
+  it('trägt den genauen Zustand auch an `connectionZustand` - verzögert ist kein offline', () => {
+    const [group] = fleetBoxGroups([site({
+      boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0003', name: 'Box', fuehrtAnlage: true, lastSeenAt: ago(2 * 60_000), edge: null, update: null }],
+    })], NOW, []);
+    expect(group.boxes[0]).toMatchObject({ connectionZustand: 'verzoegert', connectionTone: 'warn' });
   });
 });

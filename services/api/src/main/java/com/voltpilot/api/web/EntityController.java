@@ -8,6 +8,9 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryRepository.RegistryState;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.entities.WechselrichterUntergrenze;
+import com.voltpilot.api.entities.WechselrichterUntergrenzeRepository;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EntityHistoryRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
@@ -63,11 +66,30 @@ public class EntityController {
      *  row (grid-meter / house-load derived from the gateway). The customer
      *  delete gate mirrors the server (vp-komp-loeschen E2): a null-pin row is
      *  deletable UNLESS it carries this marker, so a never-connected producer
-     *  can be removed while the plant's derived base stays protected. */
+     *  can be removed while the plant's derived base stays protected.
+     *  {@code certificationStatus}: the TYPE's catalog release state
+     *  ({@code simulator_only} etc., null = the type has none) - the portal
+     *  only says "Von VoltPilot freigegeben" without a restriction. */
     public record EntityDto(UUID id, String entityType, String typeLabel, String role,
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
             String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin,
-            java.math.BigDecimal capacityKwp, String sourceKind) {}
+            java.math.BigDecimal capacityKwp, String sourceKind, String certificationStatus,
+            SocMinDto socMin,
+            /** Zählerbaum-Konzept (E1 A): die Eltern-Komponente HEUTE, {@code null} = Wurzel. */
+            UUID haengtAn) {}
+
+    /**
+     * Woher der Min. Ladestand eines Speichers kommt - nur an der Speicher-Komponente einer Anlage, deren
+     * Entladegrenze am Wechselrichter gelesen wurde ({@code WechselrichterUntergrenze}); sonst {@code null} und die
+     * Anzeige bleibt wie vorher. {@code wirksamPct}: das Größere von VoltPilot-Wert und Lesung. {@code quelle}:
+     * {@code wechselrichter} (die Lesung bestimmt den Wert) oder {@code voltpilot}. {@code gelesenAm}: die letzte
+     * gültige Lesung; {@code aktuell} falsch, wenn sie älter als eine Stunde ist - der Wert gilt dann weiter.
+     * {@code letzteLesungVerworfen}: {@code unplausibel}/{@code veraltet}, wenn die jüngste Lesung nicht übernommen
+     * wurde.
+     */
+    public record SocMinDto(double wirksamPct, String quelle, java.math.BigDecimal wechselrichterPct,
+            java.math.BigDecimal voltpilotPct, Instant gelesenAm, Instant seit, boolean aktuell,
+            String letzteLesungVerworfen) {}
 
     /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
      *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
@@ -110,22 +132,44 @@ public class EntityController {
     public record EntityHistoryDto(String range, Instant from, Instant to, int bucketMinutes,
             Map<String, List<EntityHistoryRepository.Bucket>> channels) {}
 
+    /**
+     * Die Energie eines Geräts je Eimer des Zeitraums (Unterverteilungen, Konzept
+     * vp-unterzaehler-anzeige C2). {@code source} = {@code zaehler} (Zuwachs des Zählerstands),
+     * {@code leistung} (Leistung × Dauer) oder {@code null} (keine Reihe); {@code kwh} eines Eimers
+     * und {@code totalKwh} sind {@code null}, wo keine Zahl belegbar ist - nie eine 0.
+     */
+    public record EntityEnergyDto(String range, Instant from, Instant to, int bucketMinutes, String source,
+            List<EnergyBucketDto> buckets, Double totalKwh, boolean counterFalls) {}
+
+    public record EnergyBucketDto(Instant start, Double kwh) {}
+
     private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository registry;
     private final EntityObservedRepository observed;
     private final EntityHistoryRepository history;
     private final EntityTypeCatalog catalog;
     private final ObjectMapper mapper;
+    private final com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum;
+
+    /** Die am Wechselrichter gelesene Entladegrenze; ohne Spring (Tests mit {@code new …}) keine. */
+    private WechselrichterUntergrenzeRepository untergrenzen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void untergrenzen(WechselrichterUntergrenzeRepository untergrenzen) {
+        this.untergrenzen = untergrenzen;
+    }
 
     public EntityController(Geltungsbereich geltungsbereich, EntityRegistryRepository registry,
             EntityObservedRepository observed, EntityHistoryRepository history,
-            EntityTypeCatalog catalog, ObjectMapper mapper) {
+            EntityTypeCatalog catalog, ObjectMapper mapper,
+            com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum) {
         this.geltungsbereich = geltungsbereich;
         this.registry = registry;
         this.observed = observed;
         this.history = history;
         this.catalog = catalog;
         this.mapper = mapper;
+        this.zaehlerbaum = zaehlerbaum;
     }
 
     @GetMapping
@@ -165,7 +209,7 @@ public class EntityController {
             String sourceId = row.entityId().replaceFirst("^local:", "");
             reportedSourceIds.add(sourceId);
             EntityObservedRepository.EdgeLink link = row.edgeLink();
-            JsonNode conn = link == null ? null : parse(link.connectionJson());
+            JsonNode conn = link == null ? null : LenientJson.parse(mapper, link.connectionJson());
             localSetup.add(new LocalSetupDto(sourceId, row.entityType(), row.edgeRole(),
                     row.edgeBrand(), row.edgeModel(), row.label(), row.reportedAt(),
                     adoptedBySource.get(sourceId),
@@ -178,6 +222,9 @@ public class EntityController {
                     link == null ? null : link.intervalS()));
         }
 
+        WechselrichterUntergrenzeRepository.Eintrag gelesen = untergrenzen == null ? null
+                : untergrenzen.eintrag(siteId);
+        Map<UUID, UUID> haengtAn = zaehlerbaum.baum(siteId);
         List<EntityDto> entities = new ArrayList<>();
         for (EntityRow row : rows) {
             ObservedRow obs = byEntity.remove(row.id().toString());
@@ -187,13 +234,17 @@ public class EntityController {
                     : !reportedSourceIds.contains(row.edgeSourceId());
             entities.add(new EntityDto(row.id(), row.entityType(),
                     catalog.labelFor(row.entityType()), row.role(), row.label(), row.control(),
-                    row.deviceId(), parse(row.capabilitiesJson()), parse(row.guardConfigJson()),
+                    row.deviceId(), LenientJson.parse(mapper, row.capabilitiesJson()),
+                    LenientJson.parse(mapper, row.guardConfigJson()),
                     syncStatus(state, obs, !observedRows.isEmpty(), reportedRevision),
                     obs == null ? null
                             : new ObservedDto(obs.health(), obs.lastTelemetryAt(),
-                                    parse(obs.channelsJson()), obs.entityType(),
+                                    LenientJson.parse(mapper, obs.channelsJson()), obs.entityType(),
                                     obs.reportedAt()),
-                    row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind()));
+                    row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind(),
+                    certificationStatus(row.entityType()),
+                    gelesen != null && row.id().equals(gelesen.entityId()) ? socMin(siteId, gelesen) : null,
+                    haengtAn.get(row.id())));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());
@@ -202,6 +253,19 @@ public class EntityController {
                 : new RegistrySummaryDto(state.revision(), state.composedAt(), state.deviceId(),
                         reportedRevision, reportedAt);
         return new SiteEntitiesDto(summary, entities, localSetup, staleOnDevice);
+    }
+
+    private SocMinDto socMin(UUID siteId, WechselrichterUntergrenzeRepository.Eintrag gelesen) {
+        EntityRegistryRepository.BatteryAsset speicher = registry.batteryAsset(siteId);
+        java.math.BigDecimal voltpilot = speicher == null ? null : speicher.socMinPct();
+        java.math.BigDecimal ober = speicher == null ? null : speicher.socMaxPct();
+        java.math.BigDecimal wr = gelesen.stand().socMinPct();
+        double wirksam = WechselrichterUntergrenze.wirksamPct(voltpilot, wr, ober, EntityRegistryService.SOC_MIN_VORGABE_PCT);
+        boolean vomWr = WechselrichterUntergrenze.vomWechselrichter(voltpilot, wr, ober,
+                EntityRegistryService.SOC_MIN_VORGABE_PCT);
+        return new SocMinDto(wirksam, vomWr ? "wechselrichter" : "voltpilot", wr, voltpilot,
+                gelesen.stand().gelesenAm(), gelesen.stand().seit(),
+                WechselrichterUntergrenze.aktuell(gelesen.stand(), Instant.now()), gelesen.letzteLesungVerworfen());
     }
 
     /**
@@ -233,6 +297,41 @@ public class EntityController {
                         entity.entityType(), entity.deviceId());
         return new EntityHistoryDto(parsed.name().toLowerCase(), window.from(), window.to(),
                 parsed.bucketMinutes(), channels);
+    }
+
+    /**
+     * Energy of one entity per bucket of the range, by the counter rule
+     * ({@link com.voltpilot.api.history.GeraeteEnergie}): the increase of {@code energy_kwh}
+     * where the device counts, else {@code power_kw} × duration. Buckets are those of
+     * {@code /history} for the same range (day 15 min, week 1 h, month/year Berlin days), so a
+     * house value minus its measured parts adds up per bucket.
+     */
+    @GetMapping("/{entityId}/energy")
+    public EntityEnergyDto energy(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestParam(defaultValue = "day") String range,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate at) {
+        requireSite(siteId);
+        EntityRow entity = registry.entityForSite(siteId, entityId);
+        if (entity == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+        HistoryRange parsed = HistoryRange.parse(range);
+        if (parsed == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "range must be one of day|week|month|year");
+        }
+        LocalDate anchor = at != null ? at : LocalDate.now(HistoryRange.ZONE);
+        HistoryRange.Window window = parsed.window(anchor);
+        com.voltpilot.api.history.GeraeteEnergie.Ergebnis e = com.voltpilot.api.history.GeraeteEnergie.berechne(
+                history.energySeries(siteId, entityId.toString(), parsed, window.from(), window.to()),
+                EntityHistoryRepository.energySeriesBucket(parsed), parsed);
+        List<EnergyBucketDto> buckets = new ArrayList<>(e.eimer().size());
+        for (com.voltpilot.api.history.GeraeteEnergie.Eimer b : e.eimer()) {
+            buckets.add(new EnergyBucketDto(b.start(), b.kwh()));
+        }
+        return new EntityEnergyDto(parsed.name().toLowerCase(), window.from(), window.to(),
+                parsed.bucketMinutes(), e.quelle(), buckets, e.summeKwh(), e.zaehlerFaellt());
     }
 
     /**
@@ -293,18 +392,13 @@ public class EntityController {
         return value == null || value.isBlank() ? null : value;
     }
 
-    private JsonNode parse(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return mapper.readTree(json);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private void requireSite(UUID siteId) {
         geltungsbereich.requireSite(siteId);
+    }
+
+    /** Der Katalog-Freigabestand des Typs (null = keiner oder unbekannter Typ). */
+    private String certificationStatus(String entityType) {
+        EntityTypeCatalog.EntityType t = catalog.find(entityType);
+        return t == null ? null : t.certificationStatus();
     }
 }

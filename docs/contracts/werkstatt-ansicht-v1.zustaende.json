@@ -1,0 +1,3699 @@
+{
+  "angehalten_beim_erkennen": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102805-cf8d",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "Mango erkennen",
+      "erledigt": [],
+      "grund": "Brücke 192.168.0.157:22 nicht erreichbar: dial tcp 192.168.0.157:22: i/o timeout",
+      "fall": "bruecke_weg",
+      "loesung": {
+        "titel": "Die Brücke war während des Laufs weg.",
+        "schritte": [
+          "Am Raspberry Pi nachsehen: Strom und WLAN.",
+          "Das orange Kabel kurz abziehen und wieder einstecken."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "nochmal_moeglich": true
+    }
+  },
+  "angehalten_beim_neustart": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "neustart",
+      "titel": "Neustart-Probe",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel",
+        "lan"
+      ],
+      "grund": "kein frischer Handshake an wg_wartung nach dem Neustart",
+      "fall": "schritt_gescheitert",
+      "loesung": {
+        "titel": "Hier hat etwas nicht geklappt.",
+        "schritte": [
+          "Das orange Kabel kurz abziehen und wieder einstecken. Der Dienst versucht es noch einmal.",
+          "Klappt es wieder nicht: Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "nochmal_moeglich": true
+    }
+  },
+  "angehalten_gl_passwort": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "Mango erkennen",
+      "erledigt": [],
+      "grund": "Die Mango verlangt ein Passwort: Jemand hat ihre Werksfirmware schon eingerichtet.",
+      "handgriff": "Zurücksetzen: Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt, dann loslassen. Kabel und Strom bleiben stecken. Die Mango startet neu und ist danach wie neu; der Dienst macht von selbst weiter.",
+      "fall": "gl_passwort",
+      "loesung": {
+        "titel": "Diese Mango hat schon jemand eingerichtet.",
+        "schritte": [
+          "Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt. Dann loslassen.",
+          "Kabel und Strom bleiben stecken. Die Mango startet neu; das dauert ein paar Minuten."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "vorher": {
+        "system": "GL-Firmware, Fassung unbekannt (Passwort)",
+        "edge_light": "unbekannt"
+      }
+    }
+  },
+  "angehalten_halb_eigene": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "Mango erkennen",
+      "erledigt": [],
+      "grund": "Diese Mango hat der Lauf 2026-11-04-162800-ab12 begonnen und nicht fertig gemacht.",
+      "handgriff": "Zurücksetzen: Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt, dann loslassen. Kabel und Strom bleiben stecken. Die Mango startet neu und ist danach wie neu; der Dienst macht von selbst weiter.",
+      "fall": "halb_eigene",
+      "loesung": {
+        "titel": "Diese Mango ist nur halb eingerichtet.",
+        "schritte": [
+          "Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt. Dann loslassen.",
+          "Kabel und Strom bleiben stecken. Die Mango startet neu; das dauert ein paar Minuten."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      }
+    }
+  },
+  "angehalten_passwort_fremd": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "erkennen",
+      "titel": "Mango erkennen",
+      "erledigt": [],
+      "grund": "Das Gerät unter 192.168.1.1 verlangt ein Passwort: kein frisches OpenWrt.",
+      "handgriff": "Mango abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden.",
+      "fall": "passwort_fremd",
+      "loesung": {
+        "titel": "Diese Mango gehört nicht zur Werkstatt.",
+        "schritte": [
+          "Nicht zurücksetzen.",
+          "Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
+        ],
+        "selbst": false,
+        "zur_seite": true
+      },
+      "vorher": {
+        "system": "OpenWrt mit Passwort",
+        "edge_light": "unbekannt"
+      }
+    }
+  },
+  "angehalten_startlader": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "angehalten",
+      "schritt": "openwrt",
+      "titel": "OpenWrt aufspielen",
+      "erledigt": [
+        "erkennen",
+        "fassungen"
+      ],
+      "grund": "Die Mango nimmt das Abbild nicht an.",
+      "handgriff": "Startlader (Handgriff M4): Mango vom Strom, Reset-Knopf halten und Strom stecken, bis die Leuchte fünfmal blinkt.",
+      "fall": "abbild_abgelehnt",
+      "loesung": {
+        "titel": "Die Werksfirmware nimmt das neue System nicht an.",
+        "schritte": [
+          "Startlader: Mango vom Strom, Reset-Knopf halten und Strom wieder anstecken; nach etwa fünf Sekunden loslassen, wenn die Leuchte blinkt.",
+          "Am Rechner das neue System hochladen, wie unter „Details für Technik“ beschrieben. Das orange Kabel bleibt stecken."
+        ],
+        "selbst": true,
+        "zur_seite": false
+      },
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        }
+      ]
+    }
+  },
+  "fertig": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "ende": "2026-11-04T10:29:00Z",
+      "zustand": "fertig",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel",
+        "lan",
+        "neustart",
+        "probe",
+        "internet_weg",
+        "uebergabe"
+      ],
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        },
+        {
+          "schritt": "internet_weg",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "uebergabe",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_erkennen": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "erkennen",
+      "titel": "Mango erkennen",
+      "erledigt": [],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600
+    }
+  },
+  "laeuft_fassungen": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "fassungen",
+      "titel": "Fassungen der Freigabe bereitlegen",
+      "erledigt": [
+        "erkennen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_internet": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "internet",
+      "titel": "Internet über die Brücke (befristet)",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_internet_weg": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "internet_weg",
+      "titel": "Werkstatt-Internet entfernen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel",
+        "lan",
+        "neustart",
+        "probe"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        }
+      ]
+    }
+  },
+  "laeuft_lan": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "lan",
+      "titel": "LAN umstellen und neu starten",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        }
+      ]
+    }
+  },
+  "laeuft_neustart": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "neustart",
+      "titel": "Neustart-Probe",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel",
+        "lan"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_notfall": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "notfall",
+      "titel": "Notfall-Schlüssel",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_openwrt": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "openwrt",
+      "titel": "OpenWrt aufspielen",
+      "erledigt": [
+        "erkennen",
+        "fassungen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        }
+      ]
+    }
+  },
+  "laeuft_passwort": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "passwort",
+      "titel": "Root-Passwort setzen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_probe": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "probe",
+      "titel": "Probe im Fenster (im Portal)",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel",
+        "lan",
+        "neustart"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        }
+      ]
+    }
+  },
+  "laeuft_programm": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "programm",
+      "titel": "Edge Light einspielen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_tunnel": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "tunnel",
+      "titel": "Tunnel einrichten",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_tunnel_adresse": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "tunnel_adresse",
+      "titel": "Tunnel-Adresse aus dem Portal",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_tunnel_schluessel": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "tunnel_schluessel",
+      "titel": "Tunnel-Schlüssel erzeugen",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_uebergabe": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "uebergabe",
+      "titel": "Belege für die Abnahme",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel",
+        "lan",
+        "neustart",
+        "probe",
+        "internet_weg"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        },
+        {
+          "schritt": "internet_weg",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_wiedererkennen": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "wiedererkennen",
+      "titel": "Neustart in OpenWrt abwarten",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        }
+      ]
+    }
+  },
+  "mit_kabel": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    }
+  },
+  "ohne_kabel": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": false,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": []
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    }
+  },
+  "startet": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss": "Mango erkannt unter 192.168.8.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.",
+    "anschluss_fall": "startet",
+    "anschluss_loesung": {
+      "titel": "Die Mango startet noch.",
+      "schritte": [
+        "Nichts tun und nicht abziehen. Der Dienst fängt an, sobald sie fertig gestartet ist."
+      ],
+      "selbst": true,
+      "zur_seite": false
+    }
+  },
+  "unterspannung": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "anschluss": "Mango erkannt unter 192.168.8.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen. Die Brücke meldet Unterspannung: die Mango an ein eigenes USB-Netzteil.",
+    "anschluss_fall": "bruecke_unterspannung",
+    "anschluss_loesung": {
+      "titel": "Die Brücke hat zu wenig Strom.",
+      "schritte": [
+        "Die Mango nicht am USB des Raspberry Pi betreiben, sondern an einem eigenen USB-Netzteil.",
+        "Ein stärkeres Netzteil für den Pi nehmen, wenn es wieder kommt."
+      ],
+      "selbst": true,
+      "zur_seite": false
+    }
+  },
+  "wartet_probe": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "wartet",
+      "schritt": "probe",
+      "titel": "Probe im Fenster (im Portal)",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel",
+        "tunnel_adresse",
+        "tunnel",
+        "lan",
+        "neustart"
+      ],
+      "wartet_auf": "probe",
+      "hinweis": "Im Portal unter Geräte › Werkstatt bei edge-5t2dcy6: Fenster „Werkstatt-Probe“ öffnen, dich durch den Tunnel anmelden, den Host-Schlüssel lesen (hier im LAN gelesen: SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc), das Fenster schließen und den abgewiesenen Versuch machen. Dann: kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe probe erledigt",
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        }
+      ]
+    }
+  },
+  "wartet_tunnel_adresse": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "wartet",
+      "schritt": "tunnel_adresse",
+      "titel": "Tunnel-Adresse aus dem Portal",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm",
+        "tunnel_schluessel"
+      ],
+      "wartet_auf": "tunnel_adresse",
+      "hinweis": "Im Portal unter Geräte › Fernwartung „Tunnel-Schlüssel hinterlegen“: Referenz edge-5t2dcy6, Schlüssel QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ=. Dann die zugeteilte Adresse eintragen: kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe tunnel_adresse \u003cadresse\u003e",
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  }
+}

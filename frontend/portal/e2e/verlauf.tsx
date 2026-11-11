@@ -12,6 +12,7 @@ import { api } from '../src/api';
 import type { Earnings, EarningsRange, EarningsSite, History, HistoryRange, SiteEarnings, SiteEarningsRange } from '../src/api';
 import { installHelpFixtures } from './help-fixtures';
 import { earningsFor, historyFor, TODAY } from './verlauf-fixtures';
+import { vorgabenVerlaufBeispiel } from '../src/test/erzeugerFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -84,9 +85,18 @@ function earningsFuer(range: EarningsRange, at: string): Earnings {
 }
 
 const kunde = new URLSearchParams(location.search).get('kunde') === '1';
+// `?erzeuger=buettner|gore` (EZ-9, `verlauf-vorgaben.spec.ts`): dieselbe Bilanz, dazu die Vorgaben der
+// Erzeugeranlage als Ereignisse wie vom Server und ihre Zählung „Nach Art“.
+const erzParam = new URLSearchParams(location.search).get('erzeuger');
+const erzFall = erzParam === 'buettner' || erzParam === 'gore' ? erzParam : null;
+function mitVorgaben(h: History, range: HistoryRange): History {
+  if (!erzFall) return h;
+  const v = vorgabenVerlaufBeispiel(erzFall, range, new Date());
+  return { ...h, events: [...(h.events ?? []), ...v.events].sort((a, b) => a.start.localeCompare(b.start)), vorgaben: v.vorgaben };
+}
 const tenantContext = api.tenantContext;
 Object.assign(api, {
-  history: async (siteId: string, range: HistoryRange, at: string) => historyFuer(siteId, range, at || TODAY),
+  history: async (siteId: string, range: HistoryRange, at: string) => mitVorgaben(historyFuer(siteId, range, at || TODAY), range),
   siteEarnings: async (siteId: string, range: SiteEarningsRange = 'month', at?: string | null) =>
     siteEarningsFuer(siteId, range, at || TODAY),
   earnings: async (range: EarningsRange = 'month', at?: string | null) => earningsFuer(range, at || TODAY),

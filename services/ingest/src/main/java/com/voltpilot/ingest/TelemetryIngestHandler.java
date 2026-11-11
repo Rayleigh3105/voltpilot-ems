@@ -90,13 +90,13 @@ public class TelemetryIngestHandler {
             return;
         }
 
-        kafka.send(topic, event.kafkaKey(), json).whenComplete((res, ex) -> {
+        kafka.send(topic, event.kafkaKey(), json).whenComplete(NachrichtenVorgang.fortsetzen((res, ex) -> {
             if (ex != null) {
                 log.error("Failed to produce telemetry.raw for {}: {}", event.kafkaKey(), ex.getMessage());
             } else {
                 metriken.schreibzugBestaetigt(IngestMetriken.TELEMETRY, clock.instant());
             }
-        });
+        }));
         metriken.weitergereicht(IngestMetriken.TELEMETRY);
         if (log.isDebugEnabled()) {
             log.debug("Ingested telemetry {} -> {} (event_id={})", event.kafkaKey(), topic, event.event_id());

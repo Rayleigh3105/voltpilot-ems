@@ -19,6 +19,8 @@ import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
   | 'kunden-benutzer'
+  | 'meldungen'
+  | 'einstellungen'
   | 'hilfe'
   | 'portfolio'
   | 'portfolio-standorte'
@@ -40,11 +42,13 @@ export type PageId =
   | 'geraete-registry'
   | 'edge-updates'
   | 'fernwartung'
+  | 'werkstatt'
   | 'optimizer'
   | 'vorlagen'
   | 'komponenten-flotte'
   | 'steuerungs-freigabe'
-  | 'flows';
+  | 'flows'
+  | 'katalog';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
 export type AnlagenSub =
@@ -62,8 +66,16 @@ export type AnlagenSub =
   // standen trotzdem ausserhalb - Befund N3. Ihre alten Adressen leiten um
   // (`LEGACY_ROUTES`), also gilt jedes Lesezeichen weiter.
   | 'marktpreise'
+  // Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+  // Sonnen-Teppich, E2 = A): Reiter im Fahrplan/Ladepark, sonst ein eigener
+  // Bereich. `wetter` geht darin auf (Himmel/Temperatur stehen im Tagesbild)
+  // und leitet um (`LEGACY_SUBS`/`LEGACY_ROUTES`).
   | 'prognose'
-  | 'wetter'
+  // Das frühere `prognose` - die VoltPilot-interne Modellqualität (Kandidaten,
+  // Tagesfehler) der Anlage, nur Plattform-Admin. Umbenannt, als die Adresse
+  // `prognose` an die Kundenseite ging - kein Lesezeichen-Redirect nötig
+  // (interne Werkzeug-Adresse, nicht kundenseitig verlinkt).
+  | 'prognosemodelle'
   | 'technik'
   | 'modell'
   | 'steuerung'
@@ -79,7 +91,7 @@ export type AnlagenSub =
   | 'box';
 
 const SUBS = new Set<string>([
-  'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'wetter',
+  'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'prognosemodelle',
   'technik', 'modell', 'steuerung', 'laden', 'regeln', 'lastspitzen', 'ladevorgaenge', 'befehle',
   'geraet', 'box', 'energiebilanz',
 ]);
@@ -105,6 +117,9 @@ const SUBS = new Set<string>([
  *   erbt die Route, und `canonicalAnlageHash` schreibt die Adresse UNTER
  *   BEIBEHALTUNG der Parameter (`?m=`, `z=`, `at=`) um — jeder Deep-Link und
  *   jedes Lesezeichen bleibt gültig.
+ * - `wetter` -> `prognose` (Konzept vp-prognosen-konzept, E2 = A, 11.11.2026):
+ *   der Reiter „Wetter" geht in der Prognose auf - Himmel und Temperatur
+ *   stehen über dem Tagesbild statt auf einer eigenen Seite.
  */
 const LEGACY_SUBS: Record<string, AnlagenSub | null> = {
   optimierung: 'steuerung',
@@ -113,6 +128,7 @@ const LEGACY_SUBS: Record<string, AnlagenSub | null> = {
   live: null,
   historie: 'messwerte',
   verbraucher: 'steuerung',
+  wetter: 'prognose',
 };
 
 /**
@@ -217,7 +233,29 @@ export interface Route {
   bezugsgroesseId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
+  /**
+   * Nur bei `page === 'geraete-registry'` MIT Referenz: die GERÄTEAKTE einer
+   * Box statt der Geräte-Liste (Konzept `vp-adminview-konzept-k1` §4.2/4.4,
+   * Scheiben S2/S3) -
+   * `#/plattform/geraete/{ref}[/software|verbindung|anlage[/plan|flows]|einrichtung|verlauf]`.
+   * Absent = die Liste.
+   */
+  geraeteAkte?: { ref: string; reiter: GeraeteAkteReiter | null; werkzeug?: AnlageWerkzeug | null };
 }
+
+/** Ein Reiter der Geräteakte (§4.4, Scheibe S3). */
+export type GeraeteAkteReiter = 'software' | 'verbindung' | 'anlage' | 'einrichtung' | 'verlauf';
+
+const GERAETE_AKTE_REITER = new Set<string>(['software', 'verbindung', 'anlage', 'einrichtung', 'verlauf']);
+
+/**
+ * Ein WERKZEUG des Reiters „Anlage" (§4.2/4.4, Scheibe S3): öffnet mit
+ * vorgewählter Anlage - die Auswahl Mandant → Anlage entfällt
+ * (`#/plattform/geraete/{ref}/anlage/plan` bzw. `/flows`).
+ */
+export type AnlageWerkzeug = 'plan' | 'flows';
+
+const ANLAGE_WERKZEUGE = new Set<string>(['plan', 'flows']);
 
 /**
  * Das Ziel einer Geräte-Detailseite: die REFERENZ der VoltPilot-Box, dahinter
@@ -333,157 +371,170 @@ export function isPortfolioPage(page: PageId): boolean {
 }
 
 /**
- * Eine benannte Gruppe der Plattform-Navigation (Admin-Umbau Stufe 1
- * „Ordnung", Konzept `vp-admin-neu-konzept-a9` §3.1, Captain-Entscheid F1).
+ * Ein RAUM der Plattform-Navigation (Admin-Umbau Scheibe S1, Konzept
+ * `vp-adminview-konzept-k1` §4.1/4.2, Captain-Freigabe „alle Empfehlungen",
+ * E3 = A). Die vier Gruppen aus Stufe 1 waren selbst noch elf Seiten unter
+ * EINEM Dach - der neue Schnitt ist nach dem, was der Admin IST (Plattform ·
+ * Geräte · Benutzer), nicht mehr nach dem, was er TUT.
  *
- * Die Plattform-Gruppe war auf ELF flache Punkte gewachsen, weil jede
- * Ausbaustufe einen Punkt ANGEHÄNGT statt eingeordnet hat - die Reihenfolge
- * erzählte die Baugeschichte statt der Arbeit. Die Gruppen leiten sich aus den
- * belegten Abläufen ab (§2), nicht aus der Datenmodell-Nachbarschaft.
- *
- * `label: null` heißt „führt die Gruppe an, ohne eigene Überschrift" - das ist
- * die LANDUNG (Plattform-Übersicht), die schon unter dem „Plattform"-Label der
- * Schale steht und keine zweite Zeile über sich braucht.
+ * `page` nennt die LANDUNG des Raums - dort öffnet ein Klick auf den
+ * Raum-Punkt und dort leuchtet der Punkt, solange irgendeine Seite des Raums
+ * offen ist (siehe {@link navPageFor}).
  */
-export interface PlatformGroup {
-  key: string;
-  label: string | null;
-  pages: PageDef[];
+export interface PlattformRoom {
+  key: 'plattform' | 'geraete' | 'benutzer';
+  label: string;
+  icon: IconName;
+  page: PageId;
 }
 
 /**
- * Die Plattform-Navigation, gruppiert nach dem, was ein Betreiber TUT.
- *
- * Sie führt mit der **Plattform-Übersicht** - dem Flotten-Puls über ALLE
- * Mandanten (Captain-Entscheid Q1: ein eigener Nav-Punkt, die Mandanten-Seite
- * bleibt reine Verwaltung) und seit Stufe 1 auch die LANDUNG eines
- * Admin-Boots. Darunter vier Gruppen: die Flotte betreiben · eine Anlage tief
- * diagnostizieren · den Katalog pflegen · Kunden verwalten.
- *
- * **Zwei Punkte stehen hier bewusst schon an ihrem KÜNFTIGEN Platz, obwohl sie
- * eigene Nav-Punkte bleiben:** „Edge-Updates" neben „Geräte" (in Stufe 3 wird
- * es dessen zweiter Tab) und „Gerätetypen" neben „Steuerungs-Freigabe" (in
- * Stufe 3 wird es dessen dritte Sektion). Damit ist Stufe 3 ein reines
- * Entfernen dieser zwei Einträge und kein zweites Umsortieren.
- *
- * **Icons sind entdoppelt** (§1.5 B2): innerhalb dieser Liste trägt jeder Punkt
- * ein eigenes Icon - wer die Leiste scannt, konnte vorher vier Punkte nicht
- * unterscheiden (`settings` zweimal, `cpu` zweimal).
+ * Die drei Räume (§4.2): **Plattform** (alles Geräteübergreifende, mit
+ * Reitern - {@link PLATTFORM_BEREICH}), **Geräte** (die Liste aller Boxen -
+ * bis zur Geräteakte in S2 bleibt das die bestehende Registrierung) und
+ * **Benutzer** (Kundenliste und Kundenakte, Scheibe S5 - `MandantenPage`
+ * trägt beide weiter unter der PageId `mandanten`).
  */
-export const PLATFORM_GROUPS: PlatformGroup[] = [
-  {
-    key: 'landing',
-    label: null,
-    pages: [
-      {
-        id: 'plattform-uebersicht',
-        label: 'Plattform-Übersicht',
-        icon: 'dashboard',
-        adminOnly: true,
-      },
-    ],
-  },
-  {
-    key: 'flotte',
-    label: 'Flotte',
-    pages: [
-      // Updates are the default device workspace; registration keeps its
-      // existing route and device deep links as the secondary tab.
-      { id: 'edge-updates', label: 'Geräte', icon: 'cpu', adminOnly: true },
-      // Das PLATTFORM-Gedaechtnis der Steuerungs-Freigabe: ein Modell wird
-      // EINMAL am Pruefstand freigegeben, jede Anlage wird einzeln
-      // scharfgeschaltet. Seit Stufe 3 wohnen die steuerbaren GERÄTETYPEN als
-      // dritte Sektion hier - dieselbe Frage („was dürfen wir steuern?"), nur
-      // für die andere Geräteklasse.
-      { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'shield', adminOnly: true },
-    ],
-  },
-  {
-    key: 'anlagen-werkzeuge',
-    label: 'Anlagen-Werkzeuge',
-    pages: [
-      { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
-      { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
-    ],
-  },
-  {
-    key: 'katalog',
-    label: 'Katalog',
-    pages: [
-      // Einheitsmodell Stufe 6: eine geprüfte Gerätevorlage entsteht als
-      // DATENSATZ (kein Software-Release), und die Komponenten-Welt der Flotte
-      // ist an EINER Stelle sichtbar statt nur je Anlage.
-      { id: 'vorlagen', label: 'Gerätevorlagen', icon: 'layers', adminOnly: true },
-      { id: 'komponenten-flotte', label: 'Komponenten', icon: 'list', adminOnly: true },
-    ],
-  },
-  {
-    key: 'kunden',
-    label: 'Kunden',
-    pages: [
-      // Seit Stufe 4 „Feinschliff" trägt der Mandanten-Drawer die VOLLE
-      // Benutzer-Verwaltung (inkl. Passwort-Reset), deshalb ist „Benutzer"
-      // kein eigener Punkt mehr - die alte Route bleibt als Legacy gültig.
-      { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
-    ],
-  },
+export const PLATTFORM_ROOMS: PlattformRoom[] = [
+  { key: 'plattform', label: 'Plattform', icon: 'dashboard', page: 'plattform-uebersicht' },
+  { key: 'geraete', label: 'Geräte', icon: 'cpu', page: 'geraete-registry' },
+  { key: 'benutzer', label: 'Benutzer', icon: 'users', page: 'mandanten' },
 ];
 
-/** Ein Tab eines Plattform-BEREICHS (Stufe 3): eine eigene Route, ein Ort. */
+/** Ein Tab eines Plattform-BEREICHS: eine eigene Route, ein Ort. */
 export interface BereichTab {
   id: PageId;
   label: string;
 }
 
-/** Devices opens on Updates, with Registration as the secondary tab.
- * Both PageIds stay routable; navPageFor highlights the shared sidebar entry. */
-export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
-  host: 'edge-updates',
+/**
+ * Der Raum „Plattform" trägt zwei Reiter (§4.2/§4.3): die Landung
+ * (Plattform-Übersicht) und Katalog (Gerätevorlagen, Steuerungs-Freigabe,
+ * Komponenten - zusammengefasst hinter {@link KATALOG_TABS}). Software,
+ * Werkstatt und Fernwartung sind GERÄTEBEZOGENE Flächen und seit dem
+ * Umhängen (Captain-Entscheid „Ich finde auch das bei den Geräten … viel
+ * sinnvoller wäre") Reiter des Raums „Geräte" ({@link GERAETE_BEREICH}).
+ */
+export const PLATTFORM_BEREICH: { host: PageId; tabs: BereichTab[] } = {
+  host: 'plattform-uebersicht',
   tabs: [
-    { id: 'edge-updates', label: 'Updates' },
-    { id: 'geraete-registry', label: 'Registrierung' },
-    // Wartungstunnel der Boxen (Entscheid E5): Fenster, Techniker-Zugänge,
-    // Protokoll. Nur Plattform-Admins; der Kunde sieht davon nichts (O3).
+    { id: 'plattform-uebersicht', label: 'Übersicht' },
+    { id: 'katalog', label: 'Katalog' },
+  ],
+};
+
+/**
+ * Der Raum „Geräte" trägt seit dem Umhängen vier Reiter: die Landung
+ * (Geräte-Liste/-Akte) sowie **Software** (N5, Abschnitt 9 - EIN Name für die
+ * Seite, die bisher fünf trug: „Geräte", „Updates", „Geräte & Updates",
+ * „Edge-Updates" und die Route `edge-updates`), Werkstatt und Fernwartung -
+ * vom Raum „Plattform" umgehängt, weil sie gerätebezogene Flächen sind, nicht
+ * geräteübergreifende. Die Hash-Adressen bleiben unverändert
+ * (`#/plattform/software`, `#/plattform/werkstatt`, `#/plattform/fernwartung`) -
+ * nur die Reiterleiste, unter der sie rendern, und der Raum-Punkt, der dabei
+ * leuchtet, ändern sich.
+ */
+export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
+  host: 'geraete-registry',
+  tabs: [
+    { id: 'geraete-registry', label: 'Geräte' },
+    { id: 'edge-updates', label: 'Software' },
+    { id: 'werkstatt', label: 'Werkstatt' },
     { id: 'fernwartung', label: 'Fernwartung' },
   ],
 };
 
 /**
+ * Ein Unter-Reiter des Raums „Katalog" (§4.3). „Komponenten" ist mit Scheibe
+ * S3 entfallen (die Fassung Soll/Ist wohnt jetzt in der Akte › Anlage, die
+ * Ablehnung in der Übersicht „Auffällig" - S4, die Nutzung je Vorlage steht
+ * schon in „Gerätevorlagen" › „Genutzt von"); „Prognosemodelle" ist neu (N8:
+ * `AdminForecastModelController`/`adminApi.forecastModels` hatten Server und
+ * Funktion, aber keine Fläche).
+ */
+export type KatalogSektion = 'vorlagen' | 'modelle' | 'prognose';
+
+/** `kurz`: das Wort am Telefon - drei lange Namen passen bei 390 px nicht nebeneinander. */
+export const KATALOG_TABS: { id: KatalogSektion; label: string; kurz: string }[] = [
+  { id: 'vorlagen', label: 'Gerätevorlagen', kurz: 'Vorlagen' },
+  { id: 'modelle', label: 'Steuerungs-Freigabe', kurz: 'Freigabe' },
+  { id: 'prognose', label: 'Prognosemodelle', kurz: 'Prognose' },
+];
+
+/** Die bestehende Seite hinter einem Katalog-Unter-Reiter (`prognose` lebt als Sektion IN `KatalogBereich`, keine eigene `PageId`). */
+export function katalogSektionPage(sektion: KatalogSektion): PageId {
+  if (sektion === 'vorlagen') return 'vorlagen';
+  if (sektion === 'prognose') return 'katalog';
+  return 'steuerungs-freigabe';
+}
+
+/**
  * Plattform-Seiten, die als TAB eines Bereichs leben statt als eigener
  * Nav-Punkt. Sie sind vollwertige Routen (Lesezeichen, Deep-Links, der
  * Admin-Zaun in `App.tsx`) und stehen deshalb in {@link PLATFORM_PAGES} - nur
- * eben nicht in {@link PLATFORM_GROUPS}, das die NAVIGATION beschreibt.
+ * eben nicht als eigener Raum-Punkt.
  */
 export const PLATFORM_TAB_PAGES: PageDef[] = [
-  // Existing registration links remain valid, including ?geraet= references.
-  { id: 'geraete-registry', label: 'Registrierung', icon: 'plus', adminOnly: true },
+  { id: 'edge-updates', label: 'Software', icon: 'refresh-cw', adminOnly: true },
+  { id: 'werkstatt', label: 'Werkstatt', icon: 'sliders', adminOnly: true },
   { id: 'fernwartung', label: 'Fernwartung', icon: 'lock', adminOnly: true },
+  { id: 'katalog', label: 'Katalog', icon: 'archive', adminOnly: true },
+  // Nicht mehr in der Navigation (Scheibe S1 hält sich an Schale + Umhängen).
+  // Scheibe S3 hat ihnen in der Akte › Anlage einen Ort gegeben und die
+  // Alt-Adressen umgeleitet (`canonicalPlatformHash`); diese Routen bleiben
+  // nur noch GÜLTIG (ein Lesezeichen läuft nie ins Leere), erreicht werden sie
+  // über keinen Pfad mehr.
+  { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
+  { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
+  { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'shield', adminOnly: true },
+  { id: 'vorlagen', label: 'Gerätevorlagen', icon: 'layers', adminOnly: true },
+  { id: 'komponenten-flotte', label: 'Komponenten', icon: 'list', adminOnly: true },
 ];
 
 /**
- * Die flache Liste aller Plattform-Seiten: die Nav-Gruppen PLUS die Tab-Seiten.
- * Sie ist die EINE Wahrheit über die MENGE der Plattform-Routen und trägt
- * jeden Bestandsleser (den Admin-Zaun in `App.tsx`, `ALL_PAGES`); die Gruppen
- * beschreiben davon nur die PRÄSENTATION.
- *
- * **Admin boundary:** secondary tabs must stay in this list even though
- * they do not appear as separate sidebar entries.
+ * Die LANDUNG jedes Raums (die Punkte, die die Schale zeigt) - nur
+ * {@link PLATTFORM_ROOMS} selbst, keine Tab-Seite steht hier zusätzlich.
+ */
+const PLATFORM_LANDING_PAGES: PageDef[] = PLATTFORM_ROOMS.map((r) => ({
+  id: r.page,
+  label: r.label,
+  icon: r.icon,
+  adminOnly: true,
+}));
+
+/**
+ * Die flache Liste aller Plattform-Seiten: die Raum-Landungen PLUS die
+ * Tab-Seiten. Sie ist die EINE Wahrheit über die MENGE der Plattform-Routen
+ * und trägt jeden Bestandsleser (den Admin-Zaun in `App.tsx`, `ALL_PAGES`).
  */
 export const PLATFORM_PAGES: PageDef[] = [
-  ...PLATFORM_GROUPS.flatMap((g) => g.pages),
+  ...PLATFORM_LANDING_PAGES,
   ...PLATFORM_TAB_PAGES,
 ];
 
 /**
  * Der Nav-Punkt, unter dem eine Seite WOHNT - für die Hervorhebung in der
- * Schale. Für jede Seite sie selbst; für einen Tab sein Bereich (Tab Updates
- * lässt „Geräte" leuchten, nicht nichts).
+ * Schale. Für jede Seite sie selbst; für einen Reiter des Raums „Plattform"
+ * dessen Landung, für eine Katalog-Unterseite „Katalog".
  */
 export function navPageFor(page: PageId): PageId {
-  return GERAETE_BEREICH.tabs.some((t) => t.id === page) ? GERAETE_BEREICH.host : page;
+  if (PLATTFORM_BEREICH.tabs.some((t) => t.id === page)) return PLATTFORM_BEREICH.host;
+  if (GERAETE_BEREICH.tabs.some((t) => t.id === page)) return GERAETE_BEREICH.host;
+  if (KATALOG_TABS.some((t) => katalogSektionPage(t.id) === page)) return 'katalog';
+  return page;
 }
 
-/** Gehört diese Seite in den Geräte-Bereich (= ist sie einer seiner Tabs)? */
+/**
+ * Gehört diese Seite in den WRAPPER des Raums „Plattform" (= rendert sie die
+ * äußere Reiterleiste)? Nur die zwei Reiter selbst - eine Katalog-Unterseite
+ * über ihre EIGENE, alte Adresse (`#/vorlagen`, …) bleibt bewusst ungerahmt,
+ * damit sie nicht zweimal rendert.
+ */
+export function isPlattformBereich(page: PageId): boolean {
+  return PLATTFORM_BEREICH.tabs.some((t) => t.id === page);
+}
+
+/** Gehört diese Seite in den WRAPPER des Raums „Geräte" (die vier Reiter Liste/Software/Werkstatt/Fernwartung)? */
 export function isGeraeteBereich(page: PageId): boolean {
   return GERAETE_BEREICH.tabs.some((t) => t.id === page);
 }
@@ -497,6 +548,12 @@ export function anlagenLabel(siteCount: number | null): string {
 export const ALL_PAGES: PageDef[] = [
   { id: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle' },
   { id: 'kunden-benutzer', label: 'Benutzer', icon: 'users' },
+  // Alerting Scheibe 1 (Entscheid 4A): kein Eintrag in der Leiste - nur ein Label/Icon für die
+  // Kopfzeile und das Lesezeichen; die Glocke führt hin, nie ein Menüpunkt.
+  { id: 'meldungen', label: 'Meldungen', icon: 'bell' },
+  // Einstellungen Scheibe 1 (Entscheid 1A/7A): wie `meldungen` eine Seite ohne Leisten-Eintrag -
+  // der Einstieg ist allein das Avatar-Menü (`AppShell.tsx`).
+  { id: 'einstellungen', label: 'Einstellungen', icon: 'settings' },
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
   STANDORT_PAGE,
@@ -524,7 +581,9 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
   fahrplan: 'fahrplan',
   // Die Historie ist seit der Zwei-Welten-Struktur die Messwerte-Welt.
   historie: 'messwerte',
-  wetter: 'wetter',
+  // Wetter geht in der Prognose auf (siehe LEGACY_SUBS); dasselbe Ziel ohne
+  // Anlage im Pfad.
+  wetter: 'prognose',
   // The former Standorte/Geräte content now lives behind the Technik subpage
   // (money-centric v2: Technik moved behind the gear icon).
   standorte: 'technik',
@@ -537,41 +596,119 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
 };
 
 /**
- * Stillgelegte PLATTFORM-Seiten, die in eine andere Seite GEFALTET wurden -
- * das `LEGACY_ROUTES`-Muster auf Seiten-Ebene (Admin-Umbau Stufe 3/4, §6.3).
- *
- * **Der Unterschied zu einem TAB:** `edge-updates` bleibt eine ECHTE `PageId`
- * (sie rendert den Geräte-Bereich mit ihrem Tab), weil auch programmatische
- * Sprünge - der Flotten-Puls ruft `onNavigate('edge-updates')` - unverändert
- * funktionieren müssen. Eine Seite HIER dagegen existiert nicht mehr; ihr
- * Hash wird auf die aufnehmende Seite umgeschrieben, mitsamt dem
- * SEKTIONS-Anker, damit ein Lesezeichen genau dort landet, wo sein Inhalt
- * jetzt wohnt.
+ * Das Segment hinter `#/plattform/…` je Seite des Raums (leer = die Landung
+ * selbst, `#/plattform`). Nur die drei Raum-Landungen und die Reiter des
+ * Raums „Plattform" stehen hier - Katalog-Unterseiten (Vorlagen,
+ * Steuerungs-Freigabe, Komponenten) bleiben bei ihrer EIGENEN, flachen
+ * Adresse (`#/vorlagen`, …), denn der Katalog-Reiter adressiert sie über
+ * `?sektion=`, nicht über eine eigene Zeile dieser Tabelle.
  */
-const LEGACY_PLATFORM_PAGES: Record<string, { page: PageId; sektion?: string }> = {
-  // Stufe 3: dieselbe Betreiber-Frage („was dürfen wir steuern?"), nur für die
-  // andere Geräteklasse - deshalb eine Sektion der Steuerungs-Freigabe.
-  geraetetypen: { page: 'steuerungs-freigabe', sektion: 'geraetetypen' },
-  // Stufe 4 (F5): die Benutzer wohnen im Mandanten-Drawer. Es gibt hier
-  // ausdrücklich KEINEN Sektions-Anker - die alte Seite begann mit einer
-  // Mandanten-AUSWAHL, und welchen der Betreiber gemeint hat, weiß der Hash
-  // nicht; er landet deshalb auf der Liste, wo er ihn wählt.
-  benutzer: { page: 'mandanten' },
+const PLATTFORM_HASH_SEGMENT: Partial<Record<PageId, string>> = {
+  'plattform-uebersicht': '',
+  'edge-updates': 'software',
+  werkstatt: 'werkstatt',
+  fernwartung: 'fernwartung',
+  katalog: 'katalog',
+  'geraete-registry': 'geraete',
+  mandanten: 'benutzer',
+};
+
+/** Die Seite hinter einem `#/plattform/<segment>`-Pfad (umgekehrt zu {@link PLATTFORM_HASH_SEGMENT}). */
+const PLATTFORM_SEGMENT_PAGE: Record<string, PageId> = Object.fromEntries(
+  Object.entries(PLATTFORM_HASH_SEGMENT)
+    .filter(([, seg]) => seg !== '')
+    .map(([page, seg]) => [seg as string, page as PageId]),
+);
+
+/**
+ * Stillgelegte PLATTFORM-Seiten, die in eine andere Seite GEFALTET wurden -
+ * das `LEGACY_ROUTES`-Muster auf Seiten-Ebene. Anders als ein Tab existiert
+ * eine Seite HIER nicht mehr unter eigenem Namen; ihr Hash wird auf die
+ * aufnehmende Seite umgeschrieben, die ihrerseits KEINE eigene `PageId` ist
+ * (`geraetetypen`, `benutzer`) - {@link PAGE_IDS} kennt sie nicht, darum
+ * braucht `parseRoute` diese direkte Abbildung, nicht nur `canonicalPlatformHash`.
+ */
+const LEGACY_FOLDED_PLATFORM_PAGES: Record<string, PageId> = {
+  // Dieselbe Betreiber-Frage („was dürfen wir steuern?"), nur für die andere
+  // Geräteklasse - eine Sektion der Steuerungs-Freigabe, seit S1 im Katalog.
+  geraetetypen: 'steuerungs-freigabe',
+  // Die Benutzer wohnen im Mandanten-Drawer, seit S1 im Raum „Benutzer".
+  benutzer: 'mandanten',
 };
 
 /**
- * Die kanonische Adresse einer stillgelegten PLATTFORM-Seite, sonst null.
- * Der Aufrufer schreibt sie per `history.replaceState` (kein Verlaufseintrag,
- * kein `hashchange` - die geparste Route ist ohnehin identisch), genau wie
- * bei {@link canonicalAnlageHash}.
+ * Bestehende Seiten, die seit Scheibe S1 keine eigene Raum-Landung mehr sind,
+ * sondern ein UNTER-Reiter des Raums „Plattform › Katalog" (§4.3) - ihr Inhalt
+ * und ihre eigene Adresse bleiben unverändert gültig, die KANONISCHE Adresse
+ * zeigt aber auf den Katalog-Reiter.
+ */
+const LEGACY_KATALOG_PAGES: Record<string, KatalogSektion> = {
+  vorlagen: 'vorlagen',
+  'steuerungs-freigabe': 'modelle',
+};
+
+/**
+ * Die kanonische Adresse einer STILLGELEGTEN oder UMGEHÄNGTEN Plattform-Seite
+ * (Scheibe S1, Umzugstabelle §4.7), sonst null. Der Aufrufer schreibt sie per
+ * `history.replaceState` (kein Verlaufseintrag, kein `hashchange` - die
+ * geparste Route ist ohnehin identisch), genau wie bei {@link canonicalAnlageHash}.
+ * Vorhandene Parameter (`?geraet=`, `?box=`, `?werkbank=1`, `?sektion=`) reisen mit.
  */
 export function canonicalPlatformHash(hash: string): string | null {
-  const head = hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean)[0] ?? '';
-  const target = LEGACY_PLATFORM_PAGES[head];
-  if (!target) return null;
-  return target.sektion
-    ? `#/${target.page}?sektion=${encodeURIComponent(target.sektion)}`
-    : `#/${target.page}`;
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  const head = pathPart.split('/').filter(Boolean)[0] ?? '';
+
+  // Scheibe S2 (Umzugstabelle §4.7): eine Adresse mit Box-Referenz führt nicht
+  // mehr auf die alte Seite, sondern direkt in die Geräteakte - genau DORT
+  // wohnen die Fakten jetzt. Ohne Referenz bleibt es bei der Raum-Landung
+  // (unten, über {@link PLATTFORM_HASH_SEGMENT}).
+  if (head === 'geraete-registry') {
+    const ref = parseGeraetRef(hash);
+    if (ref) return geraeteAkteHash(ref);
+  }
+  if (head === 'fernwartung') {
+    const ref = parseFernwartungBox(hash);
+    if (ref) return geraeteAkteHash(ref, 'verbindung');
+  }
+  if (head === 'werkstatt' && !istWerkstattWerkbank(hash)) {
+    const ref = parseFernwartungBox(hash);
+    if (ref) return geraeteAkteHash(ref, 'einrichtung');
+  }
+
+  // Scheibe S3 (Umzugstabelle §4.7): die alten Anlagen-Werkzeuge lösen sich
+  // auf - ohne eine Box im Griff können sie nicht direkt in eine Akte
+  // springen, darum landen sie auf der Geräte-Liste MIT dem Werkzeug im
+  // Gepäck ("Box wählen, dann Werkzeug"); ein Klick dort öffnet `…/anlage/plan`
+  // bzw. `…/anlage/flows` dieser Box.
+  if (head === 'optimizer') return geraeteListeHash(null, 'plan');
+  if (head === 'flows') return geraeteListeHash(null, 'flows');
+  // Die Komponenten-Flotte löst sich auf: die Fassung Soll/Ist wohnt jetzt in
+  // der Akte › Anlage jeder Box.
+  if (head === 'komponenten-flotte') return geraeteListeHash('fassung');
+
+  if (head in LEGACY_FOLDED_PLATFORM_PAGES) {
+    const sektion = head === 'geraetetypen' ? 'geraetetypen' : null;
+    return sektion ? `#/plattform/katalog?sektion=${encodeURIComponent(sektion)}` : '#/plattform/benutzer';
+  }
+  if (head in LEGACY_KATALOG_PAGES) {
+    // Ein vorhandenes `?sektion=` (die alte Gerätetypen-Sektion der Steuerungs-Freigabe) bleibt
+    // erhalten statt vom Standard-Reiter des Katalogs überschrieben zu werden.
+    return query ? `#/plattform/katalog${query}` : `#/plattform/katalog?sektion=${LEGACY_KATALOG_PAGES[head]}`;
+  }
+  // Scheibe S5: der geöffnete Mandant stand bis dahin als `?mandant=<id>` in der
+  // Adresse (`mandantHash`), die Kundenakte adressiert ihn seitdem
+  // als PFAD-Segment (`#/plattform/geraete/{ref}`-Muster). Der Parameter reist
+  // mit, nur eben ins Segment umgeschrieben statt angehängt.
+  if (head === 'mandanten') {
+    const id = query ? new URLSearchParams(query.slice(1)).get('mandant') : null;
+    return id && id.trim() ? `#/plattform/benutzer/${encodeURIComponent(id.trim())}` : '#/plattform/benutzer';
+  }
+  const segment = PLATTFORM_HASH_SEGMENT[head as PageId];
+  if (segment !== undefined) {
+    return `${segment ? `#/plattform/${segment}` : '#/plattform'}${query}`;
+  }
+  return null;
 }
 
 /**
@@ -633,6 +770,20 @@ export function isRegisterRoute(): boolean {
 }
 
 /**
+ * Der Link aus der Bestätigungs-Mail (`#/zustellweg/bestaetigen?token=...`,
+ * `ZustellwegService#anfordern`): ihr Endpunkt verlangt bewusst keine
+ * Anmeldung (§6.6, der Klick kommt oft ohne angemeldete Sitzung) - die Route
+ * muss deshalb wie `#register` VOR/OHNE den Auth-Bootstrap rendern. Gibt den
+ * Token zurück, oder `null`, wenn der Hash diese Route nicht nennt oder der
+ * Token fehlt.
+ */
+export function zustellwegBestaetigenToken(): string | null {
+  const [pfad, ...rest] = window.location.hash.replace(/^#\/?/, '').split('?');
+  if (pfad !== 'zustellweg/bestaetigen') return null;
+  return new URLSearchParams(rest.join('?')).get('token')?.trim() || null;
+}
+
+/**
  * Nennt dieser Hash ein ZIEL, oder ist es der nackte Boot-Hash?
  *
  * `parseRoute` beantwortet die Frage nicht: es bildet den leeren Hash UND
@@ -651,6 +802,9 @@ export function parseRoute(hash: string): Route {
   const segments = raw.split('/').filter((s) => s.length > 0);
   const head = segments[0] ?? '';
 
+  // Meldungs-Center (Alerting Scheibe 1, Entscheid 4A): `#/meldungen`, kein Eintrag in der Leiste
+  // (die Glocke im Kopf führt hin); `?anlage=`/`?status=` liest die Seite selbst aus der Rohadresse.
+  if (head === 'meldungen') return pageRoute('meldungen');
   if (head === 'hilfe') {
     // Invalid slugs stay in help and receive a useful not-found page.
     let article = segments.slice(1).join('/');
@@ -785,11 +939,28 @@ export function parseRoute(hash: string): Route {
   if (head in LEGACY_ROUTES) {
     return { page: 'anlagen', siteId: null, sub: LEGACY_ROUTES[head] };
   }
+  // Die drei Räume (§4.2): `#/plattform[/software|werkstatt|fernwartung|katalog|geraete|benutzer]`.
+  // Ein unbekanntes oder fehlendes Segment ist die Landung (die Übersicht).
+  if (head === 'plattform') {
+    const segment = segments[1] ?? '';
+    // Die GERÄTEAKTE (Scheibe S2): `#/plattform/geraete/{ref}[/{reiter}]`. Ohne
+    // Referenz bleibt es die Liste (`geraete-registry` ohne `geraeteAkte`).
+    if (segment === 'geraete' && segments[2]) {
+      const ref = decodeURIComponent(segments[2]);
+      const reiterRaw = segments[3];
+      const reiter = reiterRaw && GERAETE_AKTE_REITER.has(reiterRaw) ? (reiterRaw as GeraeteAkteReiter) : null;
+      const werkzeugRaw = reiter === 'anlage' ? segments[4] : undefined;
+      const werkzeug = werkzeugRaw && ANLAGE_WERKZEUGE.has(werkzeugRaw) ? (werkzeugRaw as AnlageWerkzeug) : null;
+      return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter, werkzeug } };
+    }
+    const page = PLATTFORM_SEGMENT_PAGE[segment] ?? 'plattform-uebersicht';
+    return { page, siteId: null, sub: null };
+  }
   // Eine gefaltete Plattform-Seite landet auf ihrer AUFNEHMENDEN Seite - der
   // Anker reist über `canonicalPlatformHash` in die Adresse (die Route selbst
   // trägt ihn nicht, sie ist ja dieselbe Seite).
-  if (head in LEGACY_PLATFORM_PAGES) {
-    return { page: LEGACY_PLATFORM_PAGES[head].page, siteId: null, sub: null };
+  if (head in LEGACY_FOLDED_PLATFORM_PAGES) {
+    return { page: LEGACY_FOLDED_PLATFORM_PAGES[head], siteId: null, sub: null };
   }
   if (PAGE_IDS.has(head)) {
     return { page: head as PageId, siteId: null, sub: null };
@@ -922,6 +1093,15 @@ export function hashForRoute(route: Route): string {
     return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
+  // Die Geräteakte (Scheibe S2): `#/plattform/geraete/{ref}[/{reiter}]`.
+  if (route.page === 'geraete-registry' && route.geraeteAkte) {
+    return geraeteAkteHash(route.geraeteAkte.ref, route.geraeteAkte.reiter, route.geraeteAkte.werkzeug);
+  }
+  // Die drei Räume (§4.2): die Plattform-Landung und ihre Reiter/Unterräume
+  // schreiben sich zweistufig unter `#/plattform/…`, Geräte und Benutzer je
+  // mit einem Wort hinter dem Raum.
+  const plattformPfad = PLATTFORM_HASH_SEGMENT[route.page];
+  if (plattformPfad !== undefined) return plattformPfad ? `#/plattform/${plattformPfad}` : '#/plattform';
   return `#/${route.page}`;
 }
 
@@ -951,35 +1131,89 @@ export function standortRoute(standortId: string): Route {
  */
 export type StandortBereich = 'aufbau' | 'netzanschluesse' | 'gebaeude' | 'messstellen' | 'kennzahlen' | 'berichte';
 
-/** Was der Aufbau beim Öffnen gleich anbietet (`?neu=`): der Weg aus Cockpit, Kopf und Assistent in den EINEN Ort. */
-export type AufbauNeu = 'box' | 'geraet' | 'anlage';
+/**
+ * Was der Aufbau beim Öffnen gleich anbietet (`?neu=`): der Weg aus Cockpit, Kopf und Assistent in den EINEN Ort.
+ * `suche` öffnet „Geräte suchen" an der Box aus `box=` (Gerätesuche, Bericht §2: Geräte entstehen nur im Aufbau).
+ */
+export type AufbauNeu = 'box' | 'geraet' | 'anlage' | 'suche';
 
-const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'anlage']);
+const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'anlage', 'suche']);
 
 /**
  * Der Aufbau einer Anlage, optional mit einer Handlung, die er beim Öffnen gleich anbietet:
- * `#/anlage/{id}/modell?neu=box|geraet|anlage`.
+ * `#/anlage/{id}/modell?neu=box|geraet|anlage`. `an` nennt beim Gerät den Weg, an dem es hinzukommt
+ * (`?neu=geraet&an=DQ-3`, „Gerät an diesem Gateway hinzufügen", GE-5) — sein Kennzeichen, nie eine Adresse.
  */
-export function aufbauHash(siteId: string, neu?: AufbauNeu | null): string {
-  return `#/anlage/${siteId}/modell${neu ? `?neu=${neu}` : ''}`;
+export function aufbauHash(
+  siteId: string,
+  neu?: AufbauNeu | null,
+  opts: { an?: string | null; ref?: string | null } & AufbauSuche = {},
+): string {
+  const params = new URLSearchParams();
+  if (neu) params.set('neu', neu);
+  if (neu === 'geraet' && opts.an) params.set('an', opts.an);
+  // Der Direktlink vom Gehäuse (`koppelLink.ts`): die Referenz, die „Box hinzufügen“ vorausfüllt.
+  if (neu === 'box' && opts.ref) params.set('ref', opts.ref);
+  if (neu === 'suche') sucheParams(params, opts);
+  const q = params.toString();
+  return `#/anlage/${siteId}/modell${q ? `?${q}` : ''}`;
 }
 
 /**
  * Der Aufbau eines Standorts: `#/standort/{id}/aufbau[?anlage=…][&neu=…]`. `anlage` wählt, welche Anlage des
  * Standorts aufgeklappt und bearbeitbar ist (ohne: die erste).
  */
-export function standortAufbauHash(standortId: string, opts: { anlage?: string | null; neu?: AufbauNeu | null } = {}): string {
+export function standortAufbauHash(
+  standortId: string,
+  opts: { anlage?: string | null; neu?: AufbauNeu | null } & AufbauSuche = {},
+): string {
   const params = new URLSearchParams();
   if (opts.anlage) params.set('anlage', opts.anlage);
   if (opts.neu) params.set('neu', opts.neu);
+  if (opts.neu === 'suche') sucheParams(params, opts);
   const q = params.toString();
   return `#/standort/${standortId}/aufbau${q ? `?${q}` : ''}`;
 }
 
-/** Die Handlung aus `?neu=` (nur die drei bekannten), sonst null. */
+/**
+ * Die Gerätesuche aus `?neu=suche`: `box` = die Box, die sucht (ihre Kennung, nie eine Adresse), `such` = eine laufende
+ * Suche zum Mitansehen, `ansicht=verlauf` = erst „Letzte Suchen".
+ */
+export interface AufbauSuche {
+  box?: string | null;
+  such?: string | null;
+  verlauf?: boolean;
+}
+
+function sucheParams(params: URLSearchParams, opts: AufbauSuche): void {
+  if (opts.box) params.set('box', opts.box);
+  if (opts.such) params.set('such', opts.such);
+  if (opts.verlauf) params.set('ansicht', 'verlauf');
+}
+
+/** Box, laufende Suche und Ansicht aus `?neu=suche&box=…`; ohne `box` ist es die führende Box. */
+export function parseAufbauSuche(hash: string): Required<AufbauSuche> {
+  return {
+    box: befehleParam(hash, 'box'),
+    such: befehleParam(hash, 'such'),
+    verlauf: befehleParam(hash, 'ansicht') === 'verlauf',
+  };
+}
+
+/** Die Handlung aus `?neu=` (nur die bekannten), sonst null. */
 export function parseAufbauNeu(hash: string): AufbauNeu | null {
   const wert = befehleParam(hash, 'neu');
   return wert && AUFBAU_NEU.has(wert) ? (wert as AufbauNeu) : null;
+}
+
+/** Die Referenz aus `?ref=`, die „Box hinzufügen“ vorausfüllt (Direktlink vom Gehäuse); sonst null. */
+export function parseAufbauRef(hash: string): string | null {
+  return befehleParam(hash, 'ref');
+}
+
+/** Der Weg aus `?an=` (das Kennzeichen „DQ-3"), an dem ein neues Gerät hinzukommt; sonst null. */
+export function parseAufbauAn(hash: string): string | null {
+  return befehleParam(hash, 'an');
 }
 
 /** Die Anlage aus `?anlage=` des Standort-Aufbaus, sonst null. */
@@ -987,12 +1221,17 @@ export function parseAufbauAnlage(hash: string): string | null {
   return befehleParam(hash, 'anlage');
 }
 
-/** Dieselbe Adresse ohne `?neu=` — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
+/** Dieselbe Adresse ohne `?neu=` (und sein `an=`/`ref=`) — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
 export function ohneAufbauNeu(hash: string): string {
   const [path, ...rest] = hash.split('?');
   if (rest.length === 0) return hash;
   const params = new URLSearchParams(rest.join('?'));
   params.delete('neu');
+  params.delete('an');
+  params.delete('ref');
+  params.delete('box');
+  params.delete('such');
+  params.delete('ansicht');
   const query = params.toString();
   return `${path}${query ? `?${query}` : ''}`;
 }
@@ -1348,14 +1587,15 @@ export function parseKomponente(hash: string): string | null {
  *
  * ⚠ **Diese Adresse wird seit der Anlagen-Zentrale Stufe 3 (PR 3b) nur noch
  * GELESEN, nie mehr geschrieben.** `#/geraete-registry?geraet=<referenz>` war
- * die Adresse der zweiten, plattform-seitigen Vollansicht desselben Geräts;
- * die ist entfallen, ein verbundenes Gerät hat genau EINEN Ort
- * ({@link geraetSeiteHash}). Der Parameter bleibt der Deep-Link-VERTRAG:
- * jedes alte Lesezeichen leitet auf die Geräteseite weiter, und was nicht
- * weiterleitbar ist, bekommt einen ehrlichen Satz statt einer leeren Seite
- * (`adminGeraet.geraetLinkAusgang`). Der frühere Schreiber `geraetHash` ist
- * deshalb ERSATZLOS entfallen - eine Funktion, die eine Adresse erzeugt, auf
- * der nichts mehr wohnt, wäre eine Einladung, sie wieder zu benutzen.
+ * die Adresse der zweiten, plattform-seitigen Vollansicht desselben Geräts.
+ * Seit der Geräteakte (Konzept `vp-adminview-konzept-k1` §4.2, Scheibe S2)
+ * führt sie dorthin ({@link canonicalPlatformHash}, {@link geraeteAkteHash}) -
+ * nicht mehr auf die Geräteseite der Kundenansicht ({@link geraetSeiteHash}):
+ * die Akte ist der EINE Ort für PLATTFORM-Fakten einer Box, die Geräteseite
+ * bleibt der eine Ort für die Fakten, die der Kunde selbst sieht. Der frühere
+ * Schreiber `geraetHash` ist ERSATZLOS entfallen - eine Funktion, die eine
+ * Adresse erzeugt, auf der nichts mehr wohnt, wäre eine Einladung, sie wieder
+ * zu benutzen.
  *
  * **Der Schlüssel ist die REFERENZ, nicht die Geräte-UUID** - sie überlebt
  * Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also überlebt auch
@@ -1368,6 +1608,22 @@ export function parseKomponente(hash: string): string | null {
  */
 export function fernwartungHash(ref?: string | null): string {
   return ref && ref.trim() ? `#/fernwartung?box=${encodeURIComponent(ref.trim())}` : '#/fernwartung';
+}
+
+/** Die Werkstatt, auf Wunsch bei einer Box: `#/werkstatt?box=<referenz>` (dasselbe Muster wie die Fernwartung). */
+export function werkstattHash(ref?: string | null): string {
+  return ref && ref.trim() ? `#/werkstatt?box=${encodeURIComponent(ref.trim())}` : '#/werkstatt';
+}
+
+/** Die Werkstatt-Bildschirme an der Werkbank (WI-8 A): `#/werkstatt?werkbank=1`. */
+export function werkstattWerkbankHash(): string {
+  return '#/werkstatt?werkbank=1';
+}
+
+/** Ob ein Werkstatt-Hash die Bildschirme an der Werkbank meint. */
+export function istWerkstattWerkbank(hash: string): boolean {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  return rest.length > 0 && new URLSearchParams(rest.join('?')).get('werkbank') === '1';
 }
 
 /** Die Box aus einem `?box=`-Hash, oder null. */
@@ -1383,6 +1639,68 @@ export function parseGeraetRef(hash: string): string | null {
   if (rest.length === 0) return null;
   const value = new URLSearchParams(rest.join('?')).get('geraet');
   return value && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Die Adresse der GERÄTEAKTE (§4.2/4.4, Scheiben S2/S3):
+ * `#/plattform/geraete/{ref}[/{reiter}[/{werkzeug}]]`. Die Referenz ist die
+ * Box-Kennung, nicht die Geräte-UUID - dasselbe Lesezeichen-Argument wie bei
+ * {@link geraetSeiteHash}. `werkzeug` gilt nur unter `reiter === 'anlage'`.
+ */
+export function geraeteAkteHash(ref: string, reiter?: GeraeteAkteReiter | null, werkzeug?: AnlageWerkzeug | null): string {
+  const base = `#/plattform/geraete/${encodeURIComponent(ref)}`;
+  if (!reiter) return base;
+  const reiterBase = `${base}/${reiter}`;
+  return reiter === 'anlage' && werkzeug ? `${reiterBase}/${werkzeug}` : reiterBase;
+}
+
+/** Die Route der Geräteakte, zum Aufrufen über `onNavigate`. */
+export function geraeteAkteRoute(ref: string, reiter: GeraeteAkteReiter | null = null, werkzeug: AnlageWerkzeug | null = null): Route {
+  return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter, werkzeug } };
+}
+
+/**
+ * Die Adresse der GERÄTE-LISTE, auf Wunsch mit einem vorgewählten Filter-Chip
+ * oder einem WERKZEUG (Scheibe S3: die alten Adressen `#/optimizer`/`#/flows`
+ * landen hier, „Box wählen" - ein Klick öffnet das Werkzeug direkt in der
+ * Akte dieser Box).
+ */
+export function geraeteListeHash(filter?: string | null, werkzeug?: AnlageWerkzeug | null): string {
+  const params = new URLSearchParams();
+  if (filter && filter.trim()) params.set('filter', filter.trim());
+  if (werkzeug) params.set('werkzeug', werkzeug);
+  const query = params.toString();
+  return query ? `#/plattform/geraete?${query}` : '#/plattform/geraete';
+}
+
+/** Der vorgewählte Filter aus einem `?filter=`-Hash der Geräte-Liste, oder null. */
+export function parseGeraeteListeFilter(hash: string): string | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('filter');
+  return value && value.trim() ? value.trim() : null;
+}
+
+/** Das vorgewählte Werkzeug aus einem `?werkzeug=`-Hash der Geräte-Liste, oder null (Scheibe S3). */
+export function parseGeraeteListeWerkzeug(hash: string): AnlageWerkzeug | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('werkzeug');
+  return value && ANLAGE_WERKZEUGE.has(value) ? (value as AnlageWerkzeug) : null;
+}
+
+/** Adresse der Kundenakte (Scheibe S5, §4.2); ohne Kennung die Kundenliste. */
+export function mandantHash(id: string | null): string {
+  return id ? `#/plattform/benutzer/${encodeURIComponent(id)}` : '#/plattform/benutzer';
+}
+
+/** Der geöffnete Kunde aus `#/plattform/benutzer/<id>`; alles andere ist die Liste. */
+export function mandantAusHash(hash: string): string | null {
+  const [pfad] = hash.replace(/^#\/?/, '').split('?');
+  const segments = pfad.split('/').filter(Boolean);
+  if (segments[0] !== 'plattform' || segments[1] !== 'benutzer' || !segments[2]) return null;
+  const id = decodeURIComponent(segments[2]).trim();
+  return id ? id : null;
 }
 
 /**

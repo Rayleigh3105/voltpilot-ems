@@ -59,10 +59,36 @@ type persisted struct {
 
 // The last accepted start per connector prevents closed Start replays without
 // retaining a card history. Same-second starts with different evidence remain distinct.
+//
+// At is the start on the BOX clock and orders the starts; StationAt is the
+// station's own start time and only identifies a replay (W-09). A watermark
+// on the station clock let one start dated hours ahead refuse every later
+// start of that connector, across box restarts.
 type startWatermark struct {
 	At           time.Time `json:"at"`
+	StationAt    time.Time `json:"station_at,omitzero"`
 	MeterStartWh int       `json:"meter_start_wh"`
 	TagRef       string    `json:"tag_ref,omitempty"`
+}
+
+// stationTime is the replay identity; a watermark written before W-09 held
+// the station time in At.
+func (w startWatermark) stationTime() time.Time {
+	if w.StationAt.IsZero() {
+		return w.At
+	}
+	return w.StationAt
+}
+
+// onBoxClock heals a watermark persisted before W-09: its station time stays
+// the replay identity, and a time ahead of the box clock is clamped so it can
+// no longer refuse the next start.
+func (w startWatermark) onBoxClock(now time.Time) startWatermark {
+	w.StationAt = w.stationTime()
+	if w.At.After(now) {
+		w.At = now
+	}
+	return w
 }
 
 // Separate wire type deliberately excludes the live plaintext IDTag.

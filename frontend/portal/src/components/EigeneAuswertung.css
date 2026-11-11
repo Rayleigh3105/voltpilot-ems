@@ -182,5 +182,18 @@
 /* Der Knopf im Anpassen-Modus. */
 .vp-eigen-neu {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--vp-space-3, 12px);
   justify-content: flex-start;
+}
+/* Der Hinweis bricht am Telefon UNTER den Knopf, statt in einer schmalen Spalte
+   daneben sieben Zeilen hoch zu werden (UI-Runde Kundenseiten). */
+.vp-eigen-neu > .vp-eigen-hinweis {
+  flex: 1 1 18rem;
+  min-width: 0;
+  margin: 0;
+}
+.vp-eigen-neu > .vp-eigen-hinweis:empty {
+  display: none;
 }

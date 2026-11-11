@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityObservedRepository.ObservedRow;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -15,18 +16,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -54,6 +51,16 @@ public class EntityStatusListener extends Rueckmeldeweg {
     @org.springframework.beans.factory.annotation.Autowired
     void uebergaben(com.voltpilot.api.uems.UebergabeRepository repo) { this.uebergaben = repo; }
 
+    /**
+     * Die Erstbindung im Herzschlag: eine im Portal angelegte Komponente hängt an der Quelle, die die Box
+     * daraufhin meldet - sofort, nicht erst im Takt der Bestands-Übernahme (5 min). Ohne Spring (Tests) fehlt
+     * sie; dann bleibt es beim Takt.
+     */
+    private com.voltpilot.api.components.ComponentRebindService erstbindung;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void erstbindung(com.voltpilot.api.components.ComponentRebindService rebind) { this.erstbindung = rebind; }
+
     private static final String STATUS_FILTER = "ems/+/+/+/status";
 
     private final String brokerUrl;
@@ -63,8 +70,7 @@ public class EntityStatusListener extends Rueckmeldeweg {
     private final EntityObservedRepository observed;
     private final com.voltpilot.api.components.ComponentApplyRepository componentApply;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public EntityStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -78,71 +84,31 @@ public class EntityStatusListener extends Rueckmeldeweg {
         this.devices = devices;
         this.observed = observed;
         this.componentApply = componentApply;
+        this.verbindung = new BrokerVerbindung(log, "entity status", brokerUrl,
+                "voltpilot-api-entities-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(STATUS_FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
+        ensureConnected();
+    }
+
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
+    @Scheduled(fixedDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}",
+            initialDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}")
+    public void ensureConnected() {
+        verbindung.sicherstellen();
+    }
+
+    boolean connectedForTest() { return verbindung.verbunden(); }
+
+    private void empfangen(String topic, MqttMessage message) {
         try {
-            connect();
+            handle(topic, message.getPayload());
         } catch (Exception e) {
-            log.warn("Entity-status listener could not connect to {} yet: {} (auto-reconnect active)",
-                    brokerUrl, e.getMessage());
+            log.warn("Entity status on '{}' failed: {}", topic, e.getMessage());
         }
-    }
-
-    private void connect() throws Exception {
-        synchronized (lock) {
-            if (client != null) {
-                return;
-            }
-            client = new MqttClient(brokerUrl, "voltpilot-api-entities-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-            client.setCallback(new MqttCallbackExtended() {
-                @Override
-                public void connectComplete(boolean reconnect, String serverUri) {
-                    try {
-                        client.subscribe(STATUS_FILTER, 1, messageListener());
-                        log.info("Entity-status listener subscribed to {} at {}", STATUS_FILTER,
-                                serverUri);
-                    } catch (Exception e) {
-                        log.warn("Entity-status subscribe failed: {}", e.getMessage());
-                    }
-                }
-
-                @Override
-                public void connectionLost(Throwable cause) {
-                    log.warn("Entity-status listener lost the broker connection: {} (auto-reconnect active)",
-                            cause == null ? "unknown" : cause.getMessage());
-                }
-
-                @Override
-                public void messageArrived(String topic, MqttMessage message) {
-                }
-
-                @Override
-                public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {
-                }
-            });
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-    }
-
-    private IMqttMessageListener messageListener() {
-        return (topic, message) -> {
-            try {
-                handle(topic, message.getPayload());
-            } catch (Exception e) {
-                log.warn("Entity status on '{}' failed: {}", topic, e.getMessage());
-            }
-        };
     }
 
     /** Package-visible + test-visible: parse one heartbeat's entities block. */
@@ -219,6 +185,14 @@ public class EntityStatusListener extends Rueckmeldeweg {
             observed.replaceForDevice(deviceId, tenantId, siteId, reportedAt, rows);
             ingestComponentApply(entities.get("component_apply"), deviceId, tenantId, siteId,
                     reportedAt);
+            if (erstbindung != null && localSetup != null && localSetup.isArray() && !localSetup.isEmpty()) {
+                try {
+                    erstbindung.erstbindung(siteId);
+                } catch (RuntimeException e) {
+                    // Die Bindung ist eine Selbstheilung: scheitert sie, holt der Takt sie nach.
+                    log.warn("Erstbindung für Anlage {} nicht möglich: {}", siteId, e.toString());
+                }
+            }
             if (uebergaben != null) {
                 try {
                     uebergaben.herzschlag(tenantId, deviceId, revision, reportedAt);
@@ -277,7 +251,52 @@ public class EntityStatusListener extends Rueckmeldeweg {
                 textOrNull(block, "revision"), optInstant(block, "applied_at"),
                 textOrNull(block, "refused_revision"), textOrNull(block, "refused_reason"),
                 textOrNull(block, "held_revision"), textOrNull(block, "held_reason"),
-                reportedAt);
+                reportedAt, rejectedComponents(block.path("rejected_components")));
+    }
+
+    /** Obergrenzen für die übersprungenen Geräte eines Herzschlags. */
+    static final int MAX_REJECTED = 200;
+    static final int MAX_REJECTED_ID = 64;
+    static final int MAX_REJECTED_REASON = 500;
+
+    /**
+     * Die Geräte, die die Box beim Anwenden ÜBERSPRUNGEN hat
+     * ({@code rejected_components}: sie kann ihnen keine Rolle zuordnen und hat
+     * den Rest trotzdem angewandt), als JSON für die Spalte - oder
+     * {@code null}, wenn die Box keines meldet (auch: eine ältere Box ohne das
+     * Feld). Nur Einträge mit Kennung UND Grund reisen weiter, begrenzt in
+     * Zahl und Länge; erfunden oder ergänzt wird nichts.
+     */
+    String rejectedComponents(JsonNode list) {
+        if (list == null || !list.isArray()) {
+            return null;
+        }
+        List<Map<String, String>> out = new ArrayList<>();
+        for (JsonNode e : list) {
+            if (out.size() >= MAX_REJECTED) {
+                break;
+            }
+            String id = e.path("entity_id").asText("").trim();
+            String reason = e.path("reason").asText("").trim();
+            if (id.isEmpty() || reason.isEmpty() || id.length() > MAX_REJECTED_ID) {
+                continue;
+            }
+            if (reason.length() > MAX_REJECTED_REASON) {
+                reason = reason.substring(0, MAX_REJECTED_REASON);
+            }
+            Map<String, String> entry = new java.util.LinkedHashMap<>();
+            entry.put("entity_id", id);
+            entry.put("reason", reason);
+            out.add(entry);
+        }
+        if (out.isEmpty()) {
+            return null;
+        }
+        try {
+            return mapper.writeValueAsString(out);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            return null;
+        }
     }
 
     private static String textOrNull(JsonNode node, String field) {
@@ -350,23 +369,6 @@ public class EntityStatusListener extends Rueckmeldeweg {
 
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-            } catch (Exception e) {
-                log.debug("Entity listener disconnect failed on shutdown: {}", e.getMessage());
-            }
-            try {
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("Entity listener close failed on shutdown: {}", e.getMessage());
-            }
-            client = null;
-        }
+        verbindung.schliessen();
     }
 }

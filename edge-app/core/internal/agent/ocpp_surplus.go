@@ -1,8 +1,12 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -29,17 +33,26 @@ const boostReaperInterval = time.Minute
 
 // boost is ONE running override, remembered per connector key.
 //
-// ⚠ It is deliberately NOT persisted. A boost is a customer's decision about
-// the next few hours; a box that restarts and silently resumes charging a
-// vehicle from the grid — hours later, without anybody watching — would be a
-// promise nobody made. Falling back to the customer's standing priority is the
-// honest direction, and the button is one tap away.
+// ⚠ „Jetzt voll laden" is deliberately NOT persisted. A boost is a customer's
+// decision about the next few hours; a box that restarts and silently resumes
+// charging a vehicle from the grid — hours later, without anybody watching —
+// would be a promise nobody made. Falling back to the customer's standing
+// priority is the honest direction, and the button is one tap away.
+//
+// ⚠ „Laden pausieren" IS persisted (W-10, Audit vp-ocpp-haushalt-audit): it is
+// the restrict-only direction, and a pause „bis Abstecken" that a nightly
+// update silently lifted would charge a car its owner told to wait. It stays
+// bound to its transaction across the restart (transaction ids survive one),
+// so a NEW vehicle never inherits it.
 type boost struct {
 	until time.Time
 	// pause = this is „Laden pausieren" rather than „Jetzt voll laden" (P3b,
 	// Entscheid E5). ONE entry per connector holds ONE direction, so the two
 	// can never run at the same time and there is nothing to arbitrate.
 	pause bool
+	// untilUnplug = „bis Abstecken" (W-10): `until` is then only the
+	// BoostUntilUnplugMaxDuration cap, the session's end is the real one.
+	untilUnplug bool
 	// txID is the transaction the boost was granted for. A NEW session at the
 	// same connector is a NEW vehicle: „bis das Fahrzeug voll ist" ends when
 	// its session does, and inheriting a boost would charge a stranger's car
@@ -53,20 +66,115 @@ type boostStore struct {
 	items  map[string]boost
 	swept  time.Time
 	nextID int
+	// path is where the PAUSES are kept ("" = nowhere, the tests' store).
+	path string
+}
+
+// pauseFile holds the running pauses across a restart (tmp+rename, the
+// lastmgmt.json / flexfallback.json discipline).
+const pauseFile = "ocpp-pauses.json"
+
+type pauseRecord struct {
+	Key         string    `json:"key"`
+	TxID        int       `json:"tx_id"`
+	Until       time.Time `json:"until"`
+	UntilUnplug bool      `json:"until_unplug,omitempty"`
 }
 
 func newBoostStore() *boostStore { return &boostStore{items: map[string]boost{}} }
 
+// loadBoostStore restores the pauses kept in dir. An unreadable file starts
+// without them and says so - the customer's priority is the fallback, and the
+// pause is one tap away again.
+func loadBoostStore(dir string, now time.Time) *boostStore {
+	b := newBoostStore()
+	if dir == "" {
+		return b
+	}
+	b.path = filepath.Join(dir, pauseFile)
+	raw, err := os.ReadFile(b.path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn("gespeicherte Lade-Pausen unlesbar - es wird ohne gestartet", "err", err)
+		}
+		return b
+	}
+	var recs []pauseRecord
+	if err := json.Unmarshal(raw, &recs); err != nil {
+		slog.Warn("gespeicherte Lade-Pausen beschädigt - es wird ohne gestartet", "err", err)
+		return b
+	}
+	for _, r := range recs {
+		if r.Key == "" || r.TxID == 0 || !r.Until.After(now) {
+			continue
+		}
+		b.items[r.Key] = boost{until: r.Until, pause: true, untilUnplug: r.UntilUnplug, txID: r.TxID}
+	}
+	return b
+}
+
+// persistLocked writes the running pauses. Caller holds b.mu. A failed write
+// is logged, never fatal: the pause still holds in memory.
+func (b *boostStore) persistLocked() {
+	if b.path == "" {
+		return
+	}
+	recs := []pauseRecord{}
+	for k, v := range b.items {
+		if v.pause {
+			recs = append(recs, pauseRecord{Key: k, TxID: v.txID, Until: v.until.UTC(), UntilUnplug: v.untilUnplug})
+		}
+	}
+	sort.Slice(recs, func(i, j int) bool { return recs[i].Key < recs[j].Key })
+	raw, err := json.Marshal(recs)
+	if err != nil {
+		slog.Error("Lade-Pausen nicht speicherbar", "err", err)
+		return
+	}
+	tmp := b.path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+		slog.Warn("Lade-Pausen nicht gespeichert", "err", err)
+		return
+	}
+	if err := os.Rename(tmp, b.path); err != nil {
+		slog.Warn("Lade-Pausen nicht gespeichert", "err", err)
+	}
+}
+
+// deleteLocked drops one entry and persists when it was a pause.
+func (b *boostStore) deleteLocked(key string) {
+	it, ok := b.items[key]
+	if !ok {
+		return
+	}
+	delete(b.items, key)
+	if it.pause {
+		b.persistLocked()
+	}
+}
+
+// boostCap is how long ONE override may last at most.
+func boostCap(d time.Duration, untilUnplug bool) time.Duration {
+	if untilUnplug {
+		return lastmgmt.BoostUntilUnplugMaxDuration
+	}
+	if d <= 0 || d > lastmgmt.BoostMaxDuration {
+		return lastmgmt.BoostMaxDuration
+	}
+	return d
+}
+
 // grant starts (or replaces) an override for one connector. `pause` picks the
 // direction; granting one direction REPLACES the other, which is what a
 // customer tapping the other entry of the same menu means.
-func (b *boostStore) grant(key string, txID int, now time.Time, d time.Duration, pause bool) time.Time {
-	if d <= 0 || d > lastmgmt.BoostMaxDuration {
-		d = lastmgmt.BoostMaxDuration
-	}
-	until := now.Add(d)
+func (b *boostStore) grant(key string, txID int, now time.Time, d time.Duration, pause, untilUnplug bool) time.Time {
+	until := now.Add(boostCap(d, untilUnplug))
 	b.mu.Lock()
-	b.items[key] = boost{until: until, pause: pause, txID: txID}
+	prev, had := b.items[key]
+	b.items[key] = boost{until: until, pause: pause, untilUnplug: untilUnplug, txID: txID}
+	if pause || (had && prev.pause) {
+		b.persistLocked()
+	}
 	b.mu.Unlock()
 	return until
 }
@@ -74,7 +182,7 @@ func (b *boostStore) grant(key string, txID int, now time.Time, d time.Duration,
 // cancel ends a boost at once („doch nicht").
 func (b *boostStore) cancel(key string) {
 	b.mu.Lock()
-	delete(b.items, key)
+	b.deleteLocked(key)
 	b.mu.Unlock()
 }
 
@@ -88,7 +196,7 @@ func (b *boostStore) until(key string, txID int, now time.Time) (time.Time, bool
 		b.swept = now
 		for k, v := range b.items {
 			if !v.until.After(now) {
-				delete(b.items, k)
+				b.deleteLocked(k)
 			}
 		}
 	}
@@ -97,14 +205,14 @@ func (b *boostStore) until(key string, txID int, now time.Time) (time.Time, bool
 		return time.Time{}, false
 	}
 	if !it.until.After(now) {
-		delete(b.items, key)
+		b.deleteLocked(key)
 		return time.Time{}, false
 	}
 	// An override belongs to ITS session. txID 0 = the connector reports no
 	// transaction (it stopped charging), which ends it too - „endet beim
 	// Abstecken" holds for BOTH directions.
 	if txID != it.txID {
-		delete(b.items, key)
+		b.deleteLocked(key)
 		return time.Time{}, false
 	}
 	return it.until, it.pause
@@ -124,18 +232,81 @@ func (b *boostStore) haelt(key string, txID int, now time.Time) (aktiv, pause bo
 	return true, it.pause
 }
 
+// endSessions drops every override whose session is OVER: the connector
+// reports no transaction at all, or another one. ocppApplyBoosts only meets
+// connectors that still charge, so without this an override „bis Abstecken"
+// outlived the unplugged car by up to 14 h - on the surface and in the pause
+// file.
+//
+// ⚠ A session the box is still reconciling after a restart is NOT over: it
+// carries its transaction, and the persisted pause must survive exactly that
+// moment. A connector the snapshot does not know is left alone, too.
+func (b *boostStore) endSessions(snap csms.Snapshot) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for key, it := range b.items {
+		live, known := sessionTxOf(snap, key)
+		if known && live != it.txID {
+			b.deleteLocked(key)
+		}
+	}
+}
+
+// sessionTxOf is the transaction a connector key („<id>#<n>") reports: 0 = no
+// session. known=false = the snapshot has no such connector.
+func sessionTxOf(snap csms.Snapshot, key string) (tx int, known bool) {
+	for _, c := range snap.Chargers {
+		for _, con := range c.Connectors {
+			if c.ID+"#"+fmt.Sprint(con.ID) != key {
+				continue
+			}
+			if con.Session == nil {
+				return 0, true
+			}
+			return con.Session.TransactionID, true
+		}
+	}
+	return 0, false
+}
+
 // ocppSurplus is THE source-lane derivation, shared by the executor and the
 // surface exactly like ocppBudget — the page must never show a lane the
 // stations were not given.
-func (a *Agent) ocppSurplus(now time.Time, set lastmgmt.Settings) lastmgmt.SurplusVerdict {
-	return a.ocppSurplusFor(now, set, set.SurplusPolicy)
+//
+// ⚠ It derives the lane under ocppLanePolicy, the policy the executor runs
+// (P5), never under the site default alone. The portal writes a source per
+// station only, so a site set up there has NO site default ("schnell" on the
+// box); deriving the heartbeat from that default reported `surplus_active=false`
+// while the executor held a „Nur Sonnenstrom" station at 0 kW - and the portal
+// then hid „Schnell" as an override with nothing to override.
+func (a *Agent) ocppSurplus(now time.Time, set lastmgmt.Settings, snap csms.Snapshot) lastmgmt.SurplusVerdict {
+	return a.ocppSurplusFor(now, set, ocppLanePolicy(set, snap))
 }
 
 // ocppSurplusFor is the same derivation under an EXPLICIT lane policy (P5): the
 // site default, or the most restrictive source any station declared for itself.
+//
+// ⚠ A blind lane names the wallbox when a charging station reports no power
+// (W-06): the lane's own sentence blames the connection point, and a customer
+// whose grid meter works would look for the fault in the wrong place.
 func (a *Agent) ocppSurplusFor(now time.Time, set lastmgmt.Settings,
 	lane lastmgmt.SurplusPolicy) lastmgmt.SurplusVerdict {
-	return a.ocpp.budget.Surplus(now, lane, set.StoragePriority)
+	v := a.ocpp.budget.Surplus(now, lane, set.StoragePriority)
+	if v.Blind && a.ocpp.srv.Snapshot().PowerUnreported(now, ocppMeterMaxAge) {
+		v.Reason = ocppPowerUnreportedReason(v.Active)
+	}
+	return v
+}
+
+// ocppPowerUnreportedReason is the blind lane's sentence when the wallbox is
+// the gap; solarOnly mirrors the lane's own two sentences.
+func ocppPowerUnreportedReason(solarOnly bool) string {
+	if solarOnly {
+		return "Die Wallbox meldet keine Leistung — ohne diesen Messwert lässt sich kein " +
+			"Sonnenüberschuss belegen, bei „Nur Sonnenstrom“ wird dann nicht geladen."
+	}
+	return "Die Wallbox meldet keine Leistung — ohne diesen Messwert lässt sich der " +
+		"Sonnenanteil nicht belegen, es gilt allein Ihre Anschlussgrenze."
 }
 
 // ocppLanePolicy is the policy the SITE lane is derived under (P5).
@@ -335,14 +506,21 @@ func (a *Agent) OcppBoost(req lastmgmt.BoostRequest) (lastmgmt.BoostResult, erro
 			Note: "Für diesen Ladevorgang gilt wieder Ihre Überschuss-Priorität."}, nil
 	}
 
-	txID, ok := ocppTransactionOf(rt.srv.Snapshot(), id, req.Connector)
+	snap := rt.srv.Snapshot()
+	txID, ok := ocppTransactionOf(snap, id, req.Connector)
 	if !ok {
-		return lastmgmt.BoostResult{}, &lastmgmt.ValidationError{
-			Msg: "An diesem Stecker läuft gerade kein Ladevorgang.",
+		msg := "An diesem Stecker läuft gerade kein Ladevorgang."
+		// A car is plugged in without a transaction: the refusal names the
+		// way out instead of leaving the customer at a dead end.
+		if c, found := snap.ChargerByID(id); found {
+			if con := c.ConnectorByID(req.Connector); con != nil && ocpConnectorWithoutSession(*con) {
+				msg = "An diesem Stecker läuft gerade kein Ladevorgang. " + lastmgmt.NoSessionText
+			}
 		}
+		return lastmgmt.BoostResult{}, &lastmgmt.ValidationError{Msg: msg}
 	}
 	d := time.Duration(req.Minutes) * time.Minute
-	until := rt.boosts.grant(key, txID, now, d, req.Pause)
+	until := rt.boosts.grant(key, txID, now, d, req.Pause, req.UntilUnplug)
 	a.publishOcppState()
 	a.ocppNudge()
 	note := "Dieser Ladevorgang lädt jetzt mit voller verfügbarer Leistung — auch mit Netzstrom. " +
@@ -355,8 +533,9 @@ func (a *Agent) OcppBoost(req lastmgmt.BoostRequest) (lastmgmt.BoostResult, erro
 	}
 	return lastmgmt.BoostResult{
 		Key: key, Active: true, Pause: req.Pause, UntilMs: until.UnixMilli(),
-		Duration: int(until.Sub(now) / time.Minute),
-		Note:     note,
+		Duration:    int(until.Sub(now) / time.Minute),
+		Note:        note,
+		UntilUnplug: req.UntilUnplug,
 	}, nil
 }
 

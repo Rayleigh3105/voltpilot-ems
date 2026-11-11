@@ -45,9 +45,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -126,7 +126,7 @@ class BerichtApiTest {
     @Autowired
     BerichtService dienst;
 
-    @MockBean
+    @MockitoBean
     KennzahlAufrufer aufrufer;
 
     @Autowired
@@ -1399,10 +1399,15 @@ class BerichtApiTest {
                 w.mandant(), site, box, entity);
         UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ? "
                 + "AND gueltig_bis IS NULL", UUID.class, entity);
+        // `created_at` fest auf denselben Stichtag wie `gueltig_ab` - sonst griffe die Spalten-Vorgabe
+        // `now()` (echte Uhr), die mit real verstreichender Zeit über jede gestellte Testuhr steigt und
+        // D4 (aenderungenSeit) eine Bindungsänderung vortäuschte, die es nie gab. `eingetragen_am` bleibt
+        // `now()` - der Check `rueckwirkend` verlangt `gueltig_ab` davor.
         root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, geraet_id, "
                 + "kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, actor_sub, "
-                + "actor_name, actor_art) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, 'energy_kwh', 'counter', "
-                + "'zaehlerstand', 'fuehrend', '2024-03-12T00:00:00Z', true, now(), 'sub', 'Probe', 'kunde')",
+                + "actor_name, actor_art, created_at) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, 'energy_kwh', 'counter', "
+                + "'zaehlerstand', 'fuehrend', '2024-03-12T00:00:00Z', true, now(), 'sub', 'Probe', 'kunde', "
+                + "'2024-03-12T00:00:00Z')",
                 w.mandant(), ms, entity, geraet);
         return ms;
     }
@@ -1419,15 +1424,17 @@ class BerichtApiTest {
         int stunden = TagRegeln.stunden(tag, zone);
         Instant beginn = tag.atStartOfDay(zone).toInstant();
         Instant ende = tag.plusDays(1).atStartOfDay(zone).toInstant();
+        // `berechnet_am` fest auf das Tagesende - sonst griffe `now()` (echte Uhr) und täuschte D4
+        // (aenderungenSeit) dieselbe vorgetäuschte Bindungsänderung vor wie bei `messstelle_quelle.created_at`.
         root.update("INSERT INTO messreihe_tag (tag, tenant_id, entity_id, messkanal, zeitzone, zeitzone_herkunft, beginn, "
                 + "ende, stunden, slots_erwartet, slots_vorhanden, slots_endgueltig, wertart, erhalten, erwartet, "
-                + "abdeckung_prozent, rolle, zustand, endgueltig_ab, version, menge, menge_zustand, kennzeichen) "
+                + "abdeckung_prozent, rolle, zustand, endgueltig_ab, version, menge, menge_zustand, kennzeichen, berechnet_am) "
                 + "VALUES (?, ?, (SELECT q.entity_id FROM messstelle_quelle q JOIN messstelle m ON m.id = q.messstelle_id "
                 + "WHERE m.tenant_id = ? AND m.kennzeichen = ?), 'energy_kwh', 'Europe/Berlin', 'vorgabe', ?, ?, ?, ?, ?, ?, "
-                + "'counter', ?, ?, 100, 'fuehrend', 'endgueltig', ?, 1, ?, 'vollständig', '[]'::jsonb)", tag, w.mandant(),
+                + "'counter', ?, ?, 100, 'fuehrend', 'endgueltig', ?, 1, ?, 'vollständig', '[]'::jsonb, ?)", tag, w.mandant(),
                 w.mandant(), kennzeichen, Timestamp.from(beginn), Timestamp.from(ende), stunden, stunden * 4, stunden * 4,
                 stunden * 4, stunden * 60, stunden * 60, Timestamp.from(ende.plus(java.time.Duration.ofDays(7))),
-                java.math.BigDecimal.valueOf(menge));
+                java.math.BigDecimal.valueOf(menge), Timestamp.from(ende));
     }
 
     /** K-2026-0007, wie die Kaskade sie schreibt: MS-12 am 18.10. in Version 2 — mit der Zeit der Kaskade. */

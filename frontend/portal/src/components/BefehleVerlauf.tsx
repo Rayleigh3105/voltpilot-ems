@@ -21,6 +21,7 @@ import {
   type VerlaufAktion,
   type VerlaufView,
 } from '../befehleVerlauf';
+import { useRollen } from '../rollen';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { ErrorState, Skeleton } from './States';
 import '../pages/Befehle.css';
@@ -66,6 +67,8 @@ export function useBefehleVerlauf(opts: {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  // „Sie" statt des eigenen Namens an einer Gerätesuche (Bild d1).
+  const ich = useRollen().selbst?.name ?? null;
 
   // Das Fenster ist die AUFBEWAHRUNG, nicht „heute": der Verlauf ist eine
   // Liste, keine Tages-Ansicht. Der Berliner Kalendertag wandert mit `now`,
@@ -136,8 +139,9 @@ export function useBefehleVerlauf(opts: {
   const view = useMemo(
     () => neuesteZuerst([history, ...mehr], now, {
       gefiltert: entityId != null || geraet != null,
+      ich,
     }),
-    [history, mehr, now, entityId, geraet],
+    [history, mehr, now, entityId, geraet, ich],
   );
 
   return {

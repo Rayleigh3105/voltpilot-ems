@@ -69,6 +69,33 @@ class ReleaseManifestVectorsTest {
     }
 
     @Test
+    @DisplayName("jeder Vektor: erzeugbar genau dann, wenn auch Go ihn streng liest (ParseManifestStrict)")
+    void everyVectorHasTheToolsVerdict() throws Exception {
+        JsonNode doc = MAPPER.readTree(Files.readString(CONTRACTS.resolve("ota-release-manifest-vectors.json")));
+        List<String> mismatches = new ArrayList<>();
+        int erzeugbar = 0;
+        for (JsonNode c : doc.get("faelle")) {
+            boolean want = c.get("erzeugbar").asBoolean();
+            boolean got;
+            try {
+                ReleaseManifest.readStrict(c.get("manifest").toString());
+                got = true;
+            } catch (ReleaseManifest.InvalidManifestException e) {
+                assertThat(e.getMessage()).as("ein Formfehler sagt, warum").isNotBlank();
+                got = false;
+            }
+            if (want != got) {
+                mismatches.add(c.get("name").asText() + ": erzeugbar " + want + ", Java sagt " + got);
+            }
+            if (got) {
+                erzeugbar++;
+            }
+        }
+        assertThat(mismatches).isEmpty();
+        assertThat(erzeugbar).as("beide Box-Arten sind erzeugbar").isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
     @DisplayName("ein Edge-Light-Release nennt seine Box-Art und seine Programme je Architektur")
     void anEdgeLightReleaseNamesItsBoxType() throws Exception {
         ReleaseManifest m = ReleaseManifest.read(

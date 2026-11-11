@@ -37,6 +37,46 @@ var (
 	deviceTypesHV = []int{0x0006, 0x0007, 0x0600, 0x0008, 0x0601}
 )
 
+// Spannungsklasse names the class of a device-identity code: "hv", "lv", or
+// ok=false for a code outside both lists (the device search reports no class
+// then - never a guessed one).
+func Spannungsklasse(code uint16) (string, bool) {
+	for _, c := range deviceTypesHV {
+		if int(code) == c {
+			return "hv", true
+		}
+	}
+	for _, c := range deviceTypesLV {
+		if int(code) == c {
+			return "lv", true
+		}
+	}
+	return "", false
+}
+
+// familyByType is ha-solarman's AUTODETECTION_DEYE (const.py at the pinned
+// commit ac1d88b83268beeb0511b8a1b7fc8e17deddc044): each device-type code
+// selects a register map, and the catalog manifest
+// (catalog/measurement-points/sources/manifest.json) names the family of each
+// map - deye_string.yaml = string, deye_hybrid.yaml = hybrid_1p,
+// deye_micro.yaml = micro, deye_p3.yaml = hybrid_3p (4P3 and 1P3 alike).
+var familyByType = map[uint16]string{
+	0x0002: FamilyString, 0x0200: FamilyString,
+	0x0003: FamilyHybrid1P, 0x0300: FamilyHybrid1P, 0x0103: FamilyHybrid1P, 0x0104: FamilyHybrid1P,
+	0x0004: FamilyMicro, 0x0400: FamilyMicro,
+	0x0005: FamilyHybrid3P, 0x0500: FamilyHybrid3P,
+	0x0006: FamilyHybrid3P, 0x0007: FamilyHybrid3P, 0x0600: FamilyHybrid3P, 0x0008: FamilyHybrid3P, 0x0601: FamilyHybrid3P,
+}
+
+// FamilieAusTyp names the family of a device-identity code, or ok=false for a
+// code the source does not map (the device search reports no family then -
+// never a guessed one). Only the device search uses it; the Node-RED module
+// has no twin of it, the poll is configured with its family.
+func FamilieAusTyp(code uint16) (string, bool) {
+	f, ok := familyByType[code]
+	return f, ok
+}
+
 // The BMS block a CAN-coupled battery fills (P4), 0x00D2..0x00DF.
 const (
 	bmsBlockStart = 0x00d2
@@ -162,20 +202,6 @@ var families = map[string]*family{
 func Known(familyName string) bool {
 	_, ok := families[familyName]
 	return ok
-}
-
-// Label is the German label of a family ("" when unknown).
-func Label(familyName string) string {
-	if f, ok := families[familyName]; ok {
-		return f.label
-	}
-	return ""
-}
-
-// HasBattery reports whether the family carries a battery.
-func HasBattery(familyName string) bool {
-	f, ok := families[familyName]
-	return ok && f.hasBattery
 }
 
 // PlanReads is the family's per-poll read plan (empty for an unknown family).

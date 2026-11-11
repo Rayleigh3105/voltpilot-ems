@@ -274,7 +274,7 @@ func (cl Client) session(ctx context.Context, cfg Config, fn func(*conn) error) 
 // identify reads the identity inside an open session.
 func identify(c *conn) (Identity, error) {
 	var id Identity
-	regs, err := c.readHolding(regHostModel, 12)
+	regs, err := c.ReadHolding(regHostModel, 12)
 	if err != nil {
 		return id, err
 	}
@@ -282,20 +282,20 @@ func identify(c *conn) (Identity, error) {
 	if !strings.HasPrefix(strings.ToUpper(id.Model), "M31-") {
 		return id, driverErr(ErrInvalidResponse, fmt.Sprintf("Kein Ebyte-M31-Gerät (Modell %q)", id.Model))
 	}
-	if regs, err = c.readHolding(regHostFirmware, 8); err != nil {
+	if regs, err = c.ReadHolding(regHostFirmware, 8); err != nil {
 		return id, err
 	}
 	id.Firmware = regString(regs)
-	if regs, err = c.readHolding(regMAC, 3); err != nil {
+	if regs, err = c.ReadHolding(regMAC, 3); err != nil {
 		return id, err
 	}
 	id.MAC = formatMAC(regs)
 
-	state, err := c.readHolding(regDeviceError, 1)
+	state, err := c.ReadHolding(regDeviceError, 1)
 	if err != nil {
 		return id, err
 	}
-	pending, err := c.readHolding(regNegotiationState, 1)
+	pending, err := c.ReadHolding(regNegotiationState, 1)
 	if err != nil {
 		return id, err
 	}
@@ -305,7 +305,7 @@ func identify(c *conn) (Identity, error) {
 	}
 
 	for slot := 0; slot < slotCount; slot++ {
-		regs, err := c.readHolding(uint16(regSlaveModels+slot*slotRegisters), slotRegisters)
+		regs, err := c.ReadHolding(uint16(regSlaveModels+slot*slotRegisters), slotRegisters)
 		if err != nil {
 			return id, err
 		}
@@ -362,11 +362,11 @@ func proveCounts(c *conn, di, do int) (bool, error) {
 		}
 		return true, nil
 	}
-	okDI, err := check(c.readDiscreteInputs, di)
+	okDI, err := check(c.ReadDiscreteInputs, di)
 	if err != nil {
 		return false, err
 	}
-	okDO, err := check(c.readCoils, do)
+	okDO, err := check(c.ReadCoils, do)
 	if err != nil {
 		return false, err
 	}
@@ -394,7 +394,7 @@ type State struct {
 
 func readWatchdog(c *conn, do int) (Watchdog, error) {
 	var w Watchdog
-	regs, err := c.readHolding(regOfflineTime, 3)
+	regs, err := c.ReadHolding(regOfflineTime, 3)
 	if err != nil {
 		return w, err
 	}
@@ -405,7 +405,7 @@ func readWatchdog(c *conn, do int) (Watchdog, error) {
 		if n > 100 {
 			n = 100
 		}
-		st, err := c.readHolding(uint16(regFaultState+off), uint16(n))
+		st, err := c.ReadHolding(uint16(regFaultState+off), uint16(n))
 		if err != nil {
 			return w, err
 		}
@@ -423,12 +423,12 @@ func readIO(c *conn, id Identity) (State, error) {
 	var st State
 	var err error
 	if id.DI > 0 {
-		if st.Inputs, err = c.readDiscreteInputs(0, uint16(id.DI)); err != nil {
+		if st.Inputs, err = c.ReadDiscreteInputs(0, uint16(id.DI)); err != nil {
 			return st, err
 		}
 	}
 	if id.DO > 0 {
-		if st.Outputs, err = c.readCoils(0, uint16(id.DO)); err != nil {
+		if st.Outputs, err = c.ReadCoils(0, uint16(id.DO)); err != nil {
 			return st, err
 		}
 	}
@@ -504,14 +504,14 @@ func (cl Client) SetOutput(ctx context.Context, cfg Config, channel int, on bool
 		}
 		// In pulse mode an ON write fires pulses instead of holding the
 		// relay: a consumer output must be in level mode.
-		mode, err := c.readHolding(uint16(regDOMode+channel-1), 1)
+		mode, err := c.ReadHolding(uint16(regDOMode+channel-1), 1)
 		if err != nil {
 			return err
 		}
 		if mode[0] != 0 {
 			return driverErr(ErrInvalidRequest, fmt.Sprintf("Ausgang %d steht im Impulsmodus; geschaltet wird nur im Pegelmodus", channel))
 		}
-		if err := c.writeSingleCoil(uint16(channel-1), on); err != nil {
+		if err := c.WriteSingleCoil(uint16(channel-1), on); err != nil {
 			return err
 		}
 		st, err = readIO(c, id)
@@ -573,15 +573,15 @@ func (cl Client) ArmWatchdog(ctx context.Context, cfg Config, setup WatchdogSetu
 			if end > len(faults) {
 				end = len(faults)
 			}
-			if err := c.writeRegisters(uint16(regFaultState+off), faults[off:end]); err != nil {
+			if err := c.WriteRegisters(uint16(regFaultState+off), faults[off:end]); err != nil {
 				return err
 			}
 		}
-		if err := c.writeRegisters(regOfflineTime, []uint16{uint16(tenths), 1}); err != nil {
+		if err := c.WriteRegisters(regOfflineTime, []uint16{uint16(tenths), 1}); err != nil {
 			return err
 		}
 		// The manual documents FC6 for the restart register.
-		return c.writeSingleRegister(regRestart, restartMagic)
+		return c.WriteSingleRegister(regRestart, restartMagic)
 	})
 	return id, de
 }

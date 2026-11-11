@@ -24,7 +24,7 @@ the §14a module is the ONLY one dropped in the infeasible-fallback build
 (``enforce_grid_limit=False``); solar-only, feed-in cap and peak shaving are
 deliberately present in BOTH builds (they can never cause infeasibility -
 curtailment can zero any export, the peak term is economic, and solar-only
-only bounds charging).
+only bounds charging: not charging always satisfies it).
 """
 
 from __future__ import annotations
@@ -75,16 +75,22 @@ class ReservationStackModule(SolverModule):
 
 @dataclass(frozen=True)
 class SolarOnlyChargeModule(SolverModule):
-    """EEG/DV solar-only charging (the netzladen_erlaubt machinery, FK3
-    PV-bus Bilanzierung): the subset of storages WITHOUT effective grid-charge
-    permission may jointly charge at most the site's uncurtailed produced PV -
-    ``sum(charge_e) <= sum(max(pv_p, 0) - curtail_p)`` per slot. For one EEG
-    storage and one producer this is byte-identical to v1's
-    ``charge <= max(pv, 0) - curtail``. Selected whenever at least one storage
-    lacks the effective permission (its per-entity flag); present in BOTH
-    builds - the §14a fallback must stay
-    EEG-clean. Storages WITH permission are unconstrained by it (a mixed site
-    arbitrages with the merchant battery while the EEG battery stays solar)."""
+    """EEG/DV solar-only charging (the netzladen_erlaubt machinery): the
+    subset of storages WITHOUT effective grid-charge permission
+
+    - may jointly charge at most the site's uncurtailed produced PV -
+      ``sum(charge_e) <= sum(max(pv_p, 0) - curtail_p)`` per slot (FK3), and
+    - never charges in a slot with site grid import -
+      ``import_t <= M_imp_t * (1 - is_charging_e,t)`` per such storage
+      (``strenge_ausschliesslichkeit``, EN-2 A of 2026-11-02, the v1 rule).
+
+    For one EEG storage and one producer both are byte-identical to v1's
+    ``charge <= max(pv, 0) - curtail`` and ``import <= M_imp * (1 -
+    is_charging)``. Selected whenever at least one storage lacks the
+    effective permission (its per-entity flag); present in BOTH builds - the
+    §14a fallback must stay EEG-clean. Storages WITH permission are
+    unconstrained by it, but their grid charging is site import, so an EEG
+    storage does not charge in the same slot."""
 
     name: str = "solar-only-charge"
 
@@ -100,6 +106,15 @@ class SolarOnlyChargeModule(SolverModule):
             return sum(model.charge[e, t] for e in solar_only) <= produced
 
         m.solar_only_charge = Constraint(m.T, rule=rule)
+
+        # The import variable's upper bound IS the site big-M (co_solver's
+        # _m_import), so the gate never cuts into a slot that does not charge.
+        def strenge(model, e, t):
+            return model.grid_import[t] <= model.grid_import[t].ub * (
+                1 - model.is_charging[e, t]
+            )
+
+        m.strenge_ausschliesslichkeit = Constraint(solar_only, m.T, rule=strenge)
 
 
 @dataclass(frozen=True)

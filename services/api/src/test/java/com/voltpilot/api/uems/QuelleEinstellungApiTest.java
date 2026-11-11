@@ -30,8 +30,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -88,6 +89,7 @@ import org.yaml.snakeyaml.Yaml;
  * (MS-01/MS-02 ← K-3 an GR-2, MS-11 ← K-8.2 an C-1), eingetragen, wie IP-13 sie schreibt.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class QuelleEinstellungApiTest {
@@ -448,7 +450,7 @@ class QuelleEinstellungApiTest {
     // ---- Der Hebel (W5) ------------------------------------------------------------------
 
     /**
-     * Der Hebel „Auf ×10 stellen" ruft den PUT der Komponente mit {@code power_scale = "10"}.
+     * Der Hebel „Auf ×10 stellen" ruft den PUT der Komponente mit {@code power_scale = 10} (die Zahl der Auswahl, nicht ihr Text).
      * Bisher: der Wert gilt sofort, der Verbindungstest bleibt Pflicht. Das bleibt — ohne Beleg 422
      * und dann auch KEINE Fassung. Mit Beleg steht danach in derselben Transaktion die Fassung 1 aus
      * der bisherigen Verbindung (Skalierung automatisch, beide Vorzeichen — seit Beginn der Speisung)
@@ -476,9 +478,9 @@ class QuelleEinstellungApiTest {
                     + "AND gueltig_bis IS NULL", UUID.class, komponente);
             assertThat(fassungenAn(geraet)).as("vor der ersten Änderung keine Fassung").isZero();
 
-            // Der Hebel setzt das Feld auf „10" (Text, wie SKALIERUNG_X10 im Portal).
+            // Der Hebel setzt das Feld auf 10 (der Optionswert des Schemas als Zahl; das Portal macht aus SKALIERUNG_X10 "10" vorher die Zahl).
             Map<String, Object> x10 = new LinkedHashMap<>(verbindung);
-            x10.put("power_scale", "10");
+            x10.put("power_scale", 10);
             Map<String, Object> bearbeiten = speichern(DEYE, "inverter", x10);
             bearbeiten.put("expectedRevision", fassungDerKomponente);
             ResponseEntity<String> ohneBeleg = komponentenRuf(HttpMethod.PUT, "/api/v1/sites/" + site + "/components/"
@@ -585,7 +587,7 @@ class QuelleEinstellungApiTest {
             try {
                 double fehlerVorher = fehlerZaehler();
                 Map<String, Object> x10 = new LinkedHashMap<>(verbindung);
-                x10.put("power_scale", "10");
+                x10.put("power_scale", 10);
                 receipts.record(site, DEYE, 1, x10);
                 Map<String, Object> bearbeiten = speichern(DEYE, "inverter", x10);
                 bearbeiten.put("expectedRevision", fassungDerKomponente);
@@ -942,7 +944,7 @@ class QuelleEinstellungApiTest {
 
     private void claim(String token, UUID site, String ref) {
         ResponseEntity<Map<String, Object>> r = rest.exchange("http://localhost:" + port + "/api/v1/devices/claim",
-                HttpMethod.POST, new HttpEntity<>(Map.of("externalRef", ref, "siteId", site.toString(),
+                HttpMethod.POST, new HttpEntity<>(Map.of("externalRef", com.voltpilot.api.TestKennung.box(ref), "siteId", site.toString(),
                         "kind", "inverter"), bearer(token)), new ParameterizedTypeReference<>() {});
         assertThat(r.getStatusCode().value()).isIn(200, 201);
     }

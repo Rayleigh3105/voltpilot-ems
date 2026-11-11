@@ -45,11 +45,14 @@ public class SiteChargingBoostController {
      * Der Rumpf. {@code minutes} ist optional (abwesend = der 4-Stunden-Deckel);
      * ein größerer Wunsch wird geklemmt, nie abgelehnt. {@code action} wählt die
      * Richtung ({@code voll} | {@code pause}) - ABWESEND = {@code voll}, also ist
-     * ein älterer Client zeichengleich wie vorher.
+     * ein älterer Client zeichengleich wie vorher. {@code untilUnplug} ist die
+     * Wahl „bis Abstecken" (Audit W-10): dann zählt {@code minutes} nicht, und
+     * es gilt der Deckel der Box für diesen Fall (14 h statt 4 h). ABWESEND =
+     * genau das Verhalten von vorher.
      */
     public record BoostRequest(@Size(max = 64) String chargePointId,
             @Min(1) @Max(64) int connectorId, @Min(1) @Max(240) Integer minutes, boolean cancel,
-            @Size(max = 16) String action) {}
+            @Size(max = 16) String action, boolean untilUnplug) {}
 
     private final ChargingBoostService service;
 
@@ -62,7 +65,7 @@ public class SiteChargingBoostController {
     public ChargingBoostService.BoostResult boost(@PathVariable UUID siteId,
             @Valid @RequestBody BoostRequest req, @AuthenticationPrincipal Jwt caller) {
         return service.boost(siteId, req.chargePointId(), req.connectorId(), req.minutes(),
-                req.cancel(), ChargingBoostService.Action.of(req.action()),
+                req.untilUnplug(), req.cancel(), ChargingBoostService.Action.of(req.action()),
                 caller == null ? "unbekannt" : caller.getSubject());
     }
 

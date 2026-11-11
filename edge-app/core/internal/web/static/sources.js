@@ -15,6 +15,10 @@
   var ROLE_ERZEUGER = "pv-generation";
   var ROLE_NETZ = "grid-meter";
   var ROLE_CONSUMER = "consumer";
+  // Die Adresse einer Anlagensteuerung (EZ-21): sie kommt nur aus dem Portal,
+  // ihr Bild liest der Messplan - sie ist kein Erzeuger und steht in keiner der
+  // drei Gruppen.
+  var ROLE_PLANT_CONTROLLER = "plant-controller";
   // Die GERÄTETYPEN, die als Verbraucher zählen (Wallbox, schaltbarer
   // Verbraucher). Sie filtern die Markenliste je Rolle: ein Verbraucher wählt
   // einen Verbraucher-Typ, ein Erzeuger/Netz alles andere - nie gemischt.
@@ -353,6 +357,7 @@
     });
     var erz = [], netz = [], verb = [];
     (list || []).forEach(function (s) {
+      if (s.role === ROLE_PLANT_CONTROLLER) return;
       if (s.role === ROLE_NETZ) netz.push(s);
       else if (s.role === ROLE_CONSUMER) verb.push(s);
       else erz.push(s);

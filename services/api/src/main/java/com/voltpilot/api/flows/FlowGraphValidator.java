@@ -105,8 +105,6 @@ public class FlowGraphValidator {
         checkClaims(doc, findings, nodesById, entities, foreignClaims);
         checkEntityReads(doc, findings, nodesById, entities);
         checkModbusReads(doc, findings, nodesById, entities);
-        checkMqttReads(doc, findings, nodesById, entities);
-        checkSocDerivations(doc, findings, nodesById, entities);
         return findings;
     }
 
@@ -195,17 +193,9 @@ public class FlowGraphValidator {
             // never reads a generic "einem generierten Flow vorbehalten".
             // A generated type without an origin kind is a catalog bug and
             // fails CLOSED (never a silent default onto someone else's origin).
-            //
-            // ⚠ `generated_origin` darf SEVERAL Arten nennen (eine Liste,
-            // P5-HTTP): der Ableiter vp.soc.derive gehört dem MQTT- und dem
-            // HTTP-Lesetyp gleichermaßen, weil er auf den STANDARD-Kanälen
-            // rechnet und den Transport gar nicht kennt. Ein Ebene-1-Lesetyp
-            // nennt weiterhin genau eine - einer, der unter der Herkunft seines
-            // Geschwisters gälte, ließe ein gefälschtes Dokument den anderen
-            // Transport aufsperren.
             if (type.path("generated").asBoolean(false)) {
-                java.util.List<String> want = originKinds(type.path("generated_origin"));
-                if (want.isEmpty() || !want.contains(doc.path("origin").path("kind").asText())) {
+                String want = type.path("generated_origin").asText("");
+                if (want.isEmpty() || !want.equals(doc.path("origin").path("kind").asText())) {
                     String owner = type.path("generated_origin_label")
                             .asText("einem generierten Flow");
                     findings.add(FlowValidationFinding.error("V-4", List.of(id), List.of(),
@@ -726,147 +716,6 @@ public class FlowGraphValidator {
                         List.of(previous, entry.getKey()), List.of(),
                         "Zwei Modbus-Lesen-Bausteine zeichnen denselben Messkanal \"" + channel
                                 + "\" der Entität \"" + entityId + "\" auf."));
-            }
-        }
-    }
-
-    /**
-     * Die Herkunfts-Arten, die ein generierter Katalog-Typ aufsperrt - ein
-     * einzelnes Wort ODER eine Liste.
-     *
-     * <p>Ein Typ ohne jede Angabe ist ein Katalog-Fehler und schlägt CLOSED
-     * fehl (nie ein stiller Vorgabewert auf die Herkunft eines anderen).
-     */
-    private static java.util.List<String> originKinds(com.fasterxml.jackson.databind.JsonNode raw) {
-        if (raw.isArray()) {
-            java.util.List<String> out = new java.util.ArrayList<>();
-            for (com.fasterxml.jackson.databind.JsonNode kind : raw) {
-                String value = kind.asText("");
-                if (!value.isEmpty()) {
-                    out.add(value);
-                }
-            }
-            return out;
-        }
-        String single = raw.asText("");
-        return single.isEmpty() ? java.util.List.of() : java.util.List.of(single);
-    }
-
-    /**
-     * P5-Ebene-1-Regeln für {@code vp.mqtt.read} UND {@code vp.http.read}: die
-     * Feld-Zuordnung einer selbst angebundenen Batterie.
-     *
-     * <p>Es ist die {@link #checkModbusReads}-Regel auf den zweiten Lese-Typ
-     * angewandt, und sie ist aus demselben Grund nötig: eine Zuordnung auf
-     * einen Kanal, den die Entität nicht DEKLARIERT, zeichnet nirgends auf -
-     * der Flow liefe, und der Messwert entstünde nie. Zusätzlich darf ein
-     * komponierter Typ (Wechselrichter, Netz-Zähler) hier nie Ziel sein: ein
-     * Flow darf niemals Messwerte in die Eingänge der Wächter-Kette einspeisen.
-     * Zwei Zuordnungen auf denselben Kanal sind ein V-5-Konflikt - ein Messwert
-     * hat genau eine Quelle.
-     */
-    private void checkMqttReads(JsonNode doc, List<FlowValidationFinding> findings,
-            Map<String, JsonNode> nodesById, Map<String, EntityCapabilities> entities) {
-        Map<String, String> mappedBy = new HashMap<>();
-        for (Map.Entry<String, JsonNode> entry : nodesById.entrySet()) {
-            JsonNode node = entry.getValue();
-            String type = node.path("type").asText();
-            // BEIDE Ebene-1-Lesetypen, und aus demselben Grund: die Regel gilt
-            // der ZUORDNUNG, nicht dem Transport.
-            if (!"vp.mqtt.read".equals(type) && !"vp.http.read".equals(type)) {
-                continue;
-            }
-            String entityId = node.path("parameters").path("entity_id").asText("");
-            if (entityId.isEmpty()) {
-                continue; // V-4 meldet den fehlenden Parameter
-            }
-            EntityCapabilities caps = entities.get(entityId);
-            if (caps == null) {
-                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
-                        entities.isEmpty()
-                                ? "Diese Anlage hat noch keine v2-Entitäten - bitte zuerst das "
-                                        + "Entitäten-Bootstrap ausführen (Plattform → Anlage)."
-                                : "Unbekannte Entität \"" + entityId + "\"."));
-                continue;
-            }
-            if (caps.composed()) {
-                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
-                        "Die Entität \"" + entityId + "\" wird aus den Stammdaten der Anlage "
-                                + "abgeleitet - Messwerte können hier nicht per Batterie-Baustein "
-                                + "eingespeist werden."));
-                continue;
-            }
-            for (JsonNode mapping : node.path("parameters").path("mappings")) {
-                String channel = mapping.path("channel").asText("");
-                if (channel.isEmpty()) {
-                    continue; // flowc meldet die kaputte Zeile
-                }
-                if (!caps.measure().contains(channel)) {
-                    findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()),
-                            List.of(), "Die Entität \"" + entityId + "\" misst den Kanal \""
-                                    + channel + "\" nicht."));
-                }
-                String previous = mappedBy.putIfAbsent(entityId + "#" + channel, entry.getKey());
-                if (previous != null) {
-                    findings.add(FlowValidationFinding.error("V-5",
-                            List.of(previous, entry.getKey()), List.of(),
-                            "Zwei Batterie-Zuordnungen zeichnen denselben Messkanal \"" + channel
-                                    + "\" der Entität \"" + entityId + "\" auf."));
-                }
-            }
-        }
-    }
-
-    /**
-     * P5b-Ebene-2-Regeln für {@code vp.soc.derive}: die SoC-ABLEITUNG einer
-     * selbst angebundenen Batterie.
-     *
-     * <p>Der Spiegel von {@link #checkMqttReads}, nur auf der SCHREIB-Seite der
-     * Kanäle: dieser Baustein zeichnet {@code soc_pct} und
-     * {@code soc_source_code} auf, also muss die Entität beide DEKLARIEREN -
-     * sonst liefe der Flow und der Messwert entstünde nie. Zwei Ableitungen auf
-     * DERSELBEN Batterie sind ein V-5-Konflikt: zwei Ladestände für einen
-     * Speicher wären zwei Wahrheiten, und welche in der Historie landet, hinge
-     * an der Zustellreihenfolge.
-     */
-    private void checkSocDerivations(JsonNode doc, List<FlowValidationFinding> findings,
-            Map<String, JsonNode> nodesById, Map<String, EntityCapabilities> entities) {
-        Map<String, String> derivedBy = new HashMap<>();
-        for (Map.Entry<String, JsonNode> entry : nodesById.entrySet()) {
-            JsonNode node = entry.getValue();
-            if (!"vp.soc.derive".equals(node.path("type").asText())) {
-                continue;
-            }
-            String entityId = node.path("parameters").path("entity_id").asText("");
-            if (entityId.isEmpty()) {
-                continue; // V-4 meldet den fehlenden Parameter
-            }
-            EntityCapabilities caps = entities.get(entityId);
-            if (caps == null) {
-                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
-                        "Unbekannte Entität \"" + entityId + "\"."));
-                continue;
-            }
-            if (caps.composed()) {
-                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
-                        "Die Entität \"" + entityId + "\" wird aus den Stammdaten der Anlage "
-                                + "abgeleitet - ihr Ladestand kann hier nicht berechnet werden."));
-                continue;
-            }
-            for (String channel : List.of("soc_pct", "soc_source_code")) {
-                if (!caps.measure().contains(channel)) {
-                    findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()),
-                            List.of(), "Die Entität \"" + entityId + "\" führt den Kanal \""
-                                    + channel + "\" nicht - ein abgeleiteter Ladestand hätte "
-                                    + "nichts, worin er landet."));
-                }
-            }
-            String previous = derivedBy.putIfAbsent(entityId, entry.getKey());
-            if (previous != null) {
-                findings.add(FlowValidationFinding.error("V-5",
-                        List.of(previous, entry.getKey()), List.of(),
-                        "Zwei Bausteine leiten den Ladestand derselben Batterie \"" + entityId
-                                + "\" ab - ein Speicher hat genau einen Ladestand."));
             }
         }
     }

@@ -250,7 +250,7 @@ describe('Schritt 4 — die Prüfliste aus Fakten: Standort, Box, Datenlage, Hau
       text: '4 von 5 Messstellen liefern Daten',
       fehlt: ['erste Daten MS-0003'],
       details: ['MS-0003 Montage Linie M1: Wartet auf erste Daten · Zähler Energiekarte EK-3 (Montage M1)'],
-      weg: { text: 'Zur Datenquelle', ziel: 2 },
+      weg: { text: 'Zur Anbindung', ziel: 2 },
     });
   });
 
@@ -264,7 +264,7 @@ describe('Schritt 4 — die Prüfliste aus Fakten: Standort, Box, Datenlage, Hau
       text: '1 von 2 Boxen verbunden',
       fehlt: ['Verbindung Box Halle 2'],
       details: ['Box Halle 2: offline'],
-      weg: { text: 'Zur Datenquelle', ziel: 2 },
+      weg: { text: 'Zur Anbindung', ziel: 2 },
     });
     const ohneBoxen = zeile(messenPruefliste({ standort: werkAhrenberg(), funktion: fs, geraete: null, register, jetzt: JETZT }), 'box')!;
     expect(ohneBoxen.bestanden).toBe(false);

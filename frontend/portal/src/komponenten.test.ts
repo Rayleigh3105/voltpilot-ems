@@ -17,6 +17,7 @@ import {
   reconnectCandidates,
   swapNote,
   toComponentHealth,
+  wiederVerbindenAusSuche,
   type AssignChoice,
   type ComponentRole,
   type PlantComponent,
@@ -304,6 +305,58 @@ describe('plantModel - a wallbox (adopted consumer source)', () => {
     expect(m.headline.tone).toBe('warn');
     expect(m.headline.text).toContain('Charger 3');
     expect(m.headline.text).toContain('meldet sich gerade nicht');
+  });
+});
+
+describe('plantModel - ein im Portal angelegter Heizstab am Shelly neben einem gemeldeten Wechselrichter', () => {
+  // Live-Fall „Zuhause" (02.11.2026): angelegt über die Vorlage builtin:shelly:shelly_http (sourceKind builtin),
+  // von der Box noch nicht als Quelle gemeldet (kein Pin), die Box meldet den Deye. Vorher nahm der erste
+  // gemeldete Wechselrichter ihn (Regel 2) - der Stab las sich „gemessen über Deye SUN-29.9K".
+  const netz = entity('e-netz', 'grid-meter', { sourceKind: 'composed', deviceId: 'box' });
+  const haus = entity('e-haus', 'house-load', { sourceKind: 'composed', deviceId: 'box' });
+  const stab = entity('e-hz', 'heating-rod', {
+    label: 'Heizstab', control: true, deviceId: null, sourceKind: 'builtin', syncStatus: 'pending',
+  });
+
+  it('ist ein Gerät mit eigenem Weg: eigene Karte, kein „gemessen über" den Wechselrichter', () => {
+    const m = plantModel([netz, haus, stab], null, [inverter('inv', 'Deye', 'SUN-29.9K')]);
+    expect(m.devices.map((d) => [d.id, d.componentIds])).toEqual([
+      ['inv', ['e-netz', 'e-haus']],
+      ['komp-e-hz', ['e-hz']],
+    ]);
+    const c = m.components.find((x) => x.id === 'e-hz')!;
+    expect(c.deviceIds).toEqual(['komp-e-hz']);
+    expect(c.provenance).toBeNull();
+  });
+
+  it('hängt an seiner gemeldeten Quelle, sobald die Box sie meldet (Erstbindung) - keine zweite Karte', () => {
+    const gebunden = { ...stab, edgeSourceId: 'src-shelly-set' };
+    const m = plantModel([netz, haus, gebunden], null, [
+      inverter('inv', 'Deye', 'SUN-29.9K'),
+      source('src-shelly-set', 'consumer', { brand: 'shelly', adoptedEntityId: 'e-hz' }),
+    ]);
+    expect(m.devices.map((d) => d.id)).toEqual(['src-shelly-set', 'inv']);
+    expect(m.devices.some((d) => d.id.startsWith('komp-'))).toBe(false);
+  });
+
+  it('trägt nicht „Von VoltPilot freigegeben“, solange sein Typ nur im Simulator geprüft ist', () => {
+    const schaltbar = {
+      capabilities: { measure: [{ channel: 'relay_on_0' }], actuate: [{ command: 'on_off' }] },
+    } as Partial<SiteEntity>;
+    const nurSimulator = { ...stab, ...schaltbar, certificationStatus: 'simulator_only' };
+    const c = plantModel([netz, haus, nurSimulator], null, [inverter('inv', 'Deye', 'SUN-29.9K')])
+      .components.find((x) => x.id === 'e-hz')!;
+    expect(c.schaltbar).toBe(true);
+    expect(c.freigabeQuelle).toBe('erprobung');
+    const freigegeben = { ...stab, ...schaltbar, certificationStatus: 'certified' };
+    expect(plantModel([netz, haus, freigegeben], null, []).components.find((x) => x.id === 'e-hz')!.freigabeQuelle)
+      .toBe('pruefstand');
+  });
+
+  it('der Wechselrichter aus derselben Vorlagen-Herkunft bleibt das Hauptgerät', () => {
+    const wr = entity('e-wr', 'battery-hybrid', { sourceKind: 'builtin', deviceId: 'box', control: true });
+    const m = plantModel([wr, netz, haus], null, [inverter('inv', 'Deye', 'SUN-29.9K')]);
+    expect(m.devices.map((d) => [d.id, d.componentIds])).toEqual([['inv', ['e-wr', 'e-netz', 'e-haus']]]);
   });
 });
 
@@ -614,6 +667,87 @@ describe('plantModel — F1: health from real data presence, not the edge echo',
     )!;
     expect(prod.health).toBe('never');
     expect(prod.measuredVia).toBe(MEASURED_VIA_INVERTER);
+  });
+});
+
+// Schramm „Zuhause“ (07.11.2026): drei KACO als Erzeuger übernommen, danach ein Shelly Pro 3EM am
+// Netzanschluss und zwei als Unterzähler - eine Box OHNE Wechselrichter. Was die Box als eigene
+// Quelle liest, meldet sie im Herzschlag (`/sources`); ein Unterzähler hat nie eine eigene
+// telemetry_v2. Ohne Rückfall stand jede dieser Zeilen für immer auf „Wartet auf die ersten Daten“.
+describe('plantModel — Zähler, die die Box als Quelle liest (Schramm „Zuhause“)', () => {
+  const nie = { health: 'never' as const, lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' };
+
+  function zuhause(sources: SiteSource[], pins: { halle?: string | null; netz?: string | null } = {}) {
+    const entities = [
+      entity('netz', 'grid-meter', { label: 'Netzanschluss', edgeSourceId: pins.netz ?? null, observed: nie }),
+      entity('haus', 'house-load', { label: 'Hausverbrauch', observed: nie }),
+      entity('halle', 'generic-load', {
+        label: 'UV Halle',
+        edgeSourceId: pins.halle === undefined ? 'src-halle' : pins.halle,
+        observed: nie,
+      }),
+      entity('kaco1', 'producer', {
+        label: 'Kaco 1',
+        edgeSourceId: 'src-wqng3qfp',
+        observed: nie,
+        capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+      }),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [
+        topoEntity('netz', 'grid-meter', 'meter', 'never'),
+        topoEntity('haus', 'house-load', 'consumer', 'never'),
+        topoEntity('halle', 'generic-load', 'consumer', 'never'),
+        topoEntity('kaco1', 'producer', 'producer', 'never'),
+      ],
+      topology: { schema_version: '1.0', nodes: [] },
+    };
+    const localSetup = [
+      source('src-halle', 'consumer', { brand: 'shelly', label: 'UV Halle', adoptedEntityId: 'halle' }),
+      source('src-wqng3qfp', 'pv-generation', { brand: 'kaco', label: 'Kaco 1', adoptedEntityId: 'kaco1' }),
+    ];
+    return plantModel(entities, topology, localSetup, sources);
+  }
+
+  it('ein Unterzähler, dessen Quelle liefert, sagt „Liefert Daten“ mit seinem eigenen Wert', () => {
+    const halle = zuhause([siteSource('src-halle', { role: 'consumer', loadKw: 2.34 })])
+      .components.find((c) => c.id === 'halle')!;
+    expect(halle.health).toBe('ok');
+    expect(halle.reading).toEqual({ value: 2.3, unit: 'kW', caption: null });
+    expect(deviceState(halle.health)).toBe('Liefert Daten');
+  });
+
+  it('der Netz-Zähler zeigt Bezug oder Einspeisung, bevor die Box ein Standort-Sample sendet', () => {
+    const netz = zuhause([siteSource('src-netz', { role: 'grid-meter', powerKw: -3.21 })], { netz: 'src-netz' })
+      .components.find((c) => c.id === 'netz')!;
+    expect(netz.health).toBe('ok');
+    expect(netz.reading).toEqual({ value: 3.2, unit: 'kW', caption: 'Einspeisung' });
+  });
+
+  it('ein veralteter Zähler sagt es - ohne einen alten Wert als aktuellen zu zeigen', () => {
+    const halle = zuhause([siteSource('src-halle', { role: 'consumer', loadKw: 2.34, health: 'stale' })])
+      .components.find((c) => c.id === 'halle')!;
+    expect(halle.health).toBe('stale');
+    expect(halle.reading).toBeNull();
+  });
+
+  it('ohne Pin wird nichts zugeordnet - weder nach Adresse noch nach Reihenfolge', () => {
+    const halle = zuhause([siteSource('src-halle', { role: 'consumer', loadKw: 2.34 })], { halle: null })
+      .components.find((c) => c.id === 'halle')!;
+    expect(halle.health).toBe('never');
+    expect(halle.reading).toBeNull();
+  });
+
+  it('ein Zähler-Wert geht nie in den Erzeuger: der KACO liest weiter nur seine eigene Quelle', () => {
+    const m = zuhause([
+      siteSource('src-halle', { role: 'consumer', loadKw: 2.34 }),
+      siteSource('src-wqng3qfp', { pvKw: 0.52, label: 'Kaco 1' }),
+    ]);
+    const kaco = m.components.find((c) => c.id === 'kaco1')!;
+    expect(kaco.health).toBe('ok');
+    // Gepinnt und geliefert: nichts davon steht noch als „noch nicht übernommen" daneben.
+    expect(m.newlyReported).toEqual([]);
   });
 });
 
@@ -1334,66 +1468,6 @@ describe('orphaned pins + reconnect candidates', () => {
   });
 });
 
-/**
- * P5b/P5d: WOHER der Ladestand kommt, steht in `soc_source_code` NEBEN dem
- * Wert - je Messzeitpunkt. Die Komponenten-Zeile liest ihn, damit Cockpit,
- * Geräteseite und Komponenten-Liste DIESELBE Wahrheit aus DERSELBEN Quelle
- * zeigen statt drei Vermutungen über den Gerätetyp.
- */
-describe('plantModel — die Herkunft eines berechneten Ladestands (P5d)', () => {
-  function batterieMit(code: number | null): ReturnType<typeof plantModel> {
-    const entities = [
-      entity('batt', 'user-defined-battery', {
-        label: 'Selbstbau-Pack',
-        capabilities: {
-          measure: [
-            { channel: 'soc_pct', unit: '%' },
-            { channel: 'soc_source_code', unit: '' },
-          ],
-        },
-      }),
-    ];
-    const caps = [
-      { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 41 },
-      ...(code == null
-        ? []
-        : [{ channel: 'soc_source_code', unit: '', role: null, primary: false, value: code }]),
-    ];
-    const topology: SiteTopology = {
-      schemaVersion: '1.0',
-      entities: [{ ...topoEntity('batt', 'user-defined-battery', 'storage', 'ok'), capabilities: caps }],
-      topology: { schema_version: '1.0', nodes: [] },
-    };
-    return plantModel(entities, topology, [], null);
-  }
-
-  function ladestand(code: number | null) {
-    return batterieMit(code).components.find((c) => c.entityId === 'batt')!.reading;
-  }
-
-  it('nennt die berechnete Herkunft als Wort unter der Zahl', () => {
-    expect(ladestand(2)).toEqual({ value: 41, unit: '%', caption: 'berechnet: Kennlinie' });
-    expect(ladestand(3)).toEqual({ value: 41, unit: '%', caption: 'berechnet: Ladungszählung' });
-  });
-
-  /**
-   * Ohne den Kanal bleibt es beim neutralen „geladen": „gemessen" zu
-   * schreiben, weil nichts dagegenspricht, wäre eine Behauptung über eine
-   * Herkunft, die niemand gemeldet hat - und fast jede Katalog-Batterie
-   * meldet den Kanal nie.
-   */
-  it('behauptet ohne den Kanal keine Herkunft', () => {
-    expect(ladestand(null)?.caption).toBe('geladen');
-    expect(ladestand(1)?.caption).toBe('geladen');
-  });
-
-  /** Ein Code außerhalb des Vokabulars wird verworfen, nie geraten. */
-  it('rät bei einem unbekannten Code nicht', () => {
-    expect(ladestand(7)?.caption).toBe('geladen');
-    expect(ladestand(0)?.caption).toBe('geladen');
-  });
-});
-
 describe('plantModel - K4: Verbraucher an den Relais eines I/O-Moduls', () => {
   const entities = [
     entity('batt', 'battery-hybrid', { control: true }),
@@ -1432,5 +1506,84 @@ describe('plantModel - K4: Verbraucher an den Relais eines I/O-Moduls', () => {
     ]);
     const heiz = ohneModul.components.find((c) => c.entityId === 'heiz');
     expect(heiz?.io ?? null).toBeNull();
+  });
+});
+
+/**
+ * Live-Fall „Zuhause“ (04.11.2026): der Heizstab hinter einem Shelly Pro 3 wartet auf sein Gerät
+ * („nicht mehr verbunden“), die Box meldet denselben Shelly unter einer neuen Kennung.
+ */
+describe('Heizstab wieder verbinden (Live-Fall „Zuhause“)', () => {
+  const stab = entity('stab', 'heating-rod', {
+    typeLabel: 'Heizstab',
+    label: 'Heizstab',
+    control: true,
+    edgeSourceId: 'src-weg00001',
+    orphanedPin: true,
+  });
+  const shelly = source('src-7q7pdrwh', 'consumer', {
+    brand: 'shelly',
+    model: 'shelly_http',
+    label: 'Heizstab',
+    communication: 'shelly_http',
+    host: '192.168.178.43',
+    port: 80,
+  });
+  const shellySource: AdoptableSource = {
+    id: 'src-7q7pdrwh',
+    role: 'consumer',
+    brand: 'shelly',
+    model: 'shelly_http',
+    label: 'Heizstab',
+    roleLabel: 'Verbraucher',
+    summary: 'Heizstab',
+    suggestedType: null,
+  };
+
+  it('„Gerät zuordnen“ bietet den wartenden Heizstab zum Wiederverbinden an', () => {
+    // Vorher: der vorgeschlagene Typ eines Shelly ist generic-load - der Heizstab fiel heraus,
+    // und „Fertig“ legte eine zweite Komponente „Heizstab“ daneben an.
+    expect(reconnectCandidates(shellySource, [stab])).toEqual([{ entityId: 'stab', label: 'Heizstab' }]);
+  });
+
+  it('der vorgeschlagene Typ steht vorn, ein Erzeuger passt nie auf eine Verbraucher-Meldung', () => {
+    const last = entity('last', 'generic-load', { typeLabel: 'Verbraucher', label: 'Pumpe', orphanedPin: true, edgeSourceId: 'src-x' });
+    const wr = entity('wr', 'producer', { typeLabel: 'Erzeuger', label: 'Dach', orphanedPin: true, edgeSourceId: 'src-y' });
+    expect(reconnectCandidates(shellySource, [stab, wr, last]).map((c) => c.entityId)).toEqual(['last', 'stab']);
+  });
+
+  it('„Geräte suchen“ führt zum Zuordnen des Heizstabs, die Quelle an der Adresse ist vorgewählt', () => {
+    const m = plantModel([stab], null, [shelly], []);
+    const w = wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [stab], [shelly], []);
+    expect(w?.komponente.entityId).toBe('stab');
+    expect(w?.vorschlag).toBe('src-7q7pdrwh');
+  });
+
+  it('ohne eindeutige Quelle an der Adresse wählt der Kunde selbst', () => {
+    const zweiter = source('src-zweiter1', 'consumer', { brand: 'shelly', host: '192.168.178.43', port: 80 });
+    const m = plantModel([stab], null, [shelly, zweiter], []);
+    const w = wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [stab], [shelly, zweiter], []);
+    expect(w?.komponente.entityId).toBe('stab');
+    expect(w?.vorschlag).toBeNull();
+    // Eine Quelle an einer anderen Adresse ist kein Vorschlag - die Komponente wartet trotzdem.
+    const anders = source('src-anders01', 'consumer', { brand: 'shelly', host: '192.168.178.99', port: 80 });
+    const m2 = plantModel([stab], null, [anders], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m2.components, [stab], [anders], [])?.vorschlag)
+      .toBeNull();
+  });
+
+  it('eine lebende Bindung wartet nie', () => {
+    const verbunden = { ...stab, edgeSourceId: 'src-7q7pdrwh', orphanedPin: false };
+    const m = plantModel([verbunden], null, [shelly], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [verbunden], [shelly], [])).toBeNull();
+  });
+
+  it('ohne Pin wartet sie nur, wenn die Box an dieser Adresse eine freie Quelle meldet', () => {
+    const ohnePin = { ...stab, edgeSourceId: null, orphanedPin: null };
+    const m = plantModel([ohnePin], null, [shelly], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [ohnePin], [shelly], [])?.vorschlag)
+      .toBe('src-7q7pdrwh');
+    const m2 = plantModel([ohnePin], null, [], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m2.components, [ohnePin], [], [])).toBeNull();
   });
 });

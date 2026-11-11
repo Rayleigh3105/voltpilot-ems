@@ -1,0 +1,106 @@
+#!/bin/sh
+# Probe des Dienst-Bilds (services/werkstatt-dienst/Dockerfile) unter den
+# Bedingungen von PodSecurity "restricted": Benutzer 10001, Dateisystem nur
+# lesbar, keine Capabilities, no-new-privileges; schreibbar nur /tmp und das
+# Datenverzeichnis. Ohne Brücke (die Adresse antwortet nicht) - geprüft wird,
+# dass der Dienst so startet, seine Betriebsseite antwortet, die
+# Werkstatt-Anzeige nur innen auf Loopback lauscht und die Logs dem
+# Betriebsvertrag folgen.
+#
+# Aufruf: services/werkstatt-dienst/test/dienst-container-probe.sh
+#   VP_PROBE_BEHALTEN=1  Bild und Container nicht wegräumen
+set -eu
+
+HIER=$(cd "$(dirname "$0")" && pwd)
+DIENST=$(cd "$HIER/.." && pwd)
+BILD=vp-werkstatt-dienst-probe:lokal
+NAME=vp-werkstatt-dienst-probe-$$
+
+command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 || { echo "FEHLER: Docker antwortet nicht" >&2; exit 2; }
+TMP=$(mktemp -d)
+. "$HIER/volumen.sh"
+aufraeumen() {
+  if [ "${VP_PROBE_BEHALTEN:-}" = 1 ]; then echo "behalten: $NAME, $TMP"; return; fi
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  docker volume rm "$NAME-daten" "$NAME-geheim" "$NAME-oeffentlich" >/dev/null 2>&1 || true
+  docker image rm "$BILD" >/dev/null 2>&1 || true
+  rm -rf "$TMP"
+}
+trap aufraeumen EXIT
+fehler=0
+ok() { echo "ok: $*"; }
+nein() { echo "FEHLER: $*"; fehler=1; }
+
+echo "== Bild bauen"
+docker build -q --build-arg FASSUNG=probe-1234 -t "$BILD" "$DIENST" >/dev/null
+
+mkdir -p "$TMP/geheim" "$TMP/oeffentlich"
+for k in werkbank-status werkbank-weiterleitung werkbank-pflege; do
+  ssh-keygen -q -t ed25519 -N '' -C "probe-$k" -f "$TMP/geheim/$k"
+  rm -f "$TMP/geheim/$k.pub"
+done
+ssh-keygen -q -t rsa -b 3072 -N '' -C voltpilot-notfall -f "$TMP/notfall"
+cp "$TMP/notfall.pub" "$TMP/oeffentlich/voltpilot-notfall.pub"
+chmod 0644 "$TMP"/geheim/*
+volumen_aus "$NAME-geheim" "$TMP/geheim" "$BILD"
+volumen_aus "$NAME-oeffentlich" "$TMP/oeffentlich" "$BILD"
+
+[ "$(docker run --rm "$BILD" fassung)" = probe-1234 ] && ok "Fassung aus dem Bau" || nein "Fassung"
+[ "$(docker run --rm --entrypoint id "$BILD" -u)" = 10001 ] && ok "läuft als 10001" || nein "Benutzer"
+docker run --rm --entrypoint sh "$BILD" -c 'gzip --version 2>&1 | head -n1' | grep -q 'gzip 1\.' && ok "GNU gzip für install.sh (gzip -n)" || nein "GNU gzip fehlt"
+# Ohne age-Empfänger und Schlüssel des Wartungsservers startet der Dienst nicht.
+ohne=$(docker run --rm -e VP_WERKBANK_ADRESSE=127.0.0.1:1 -v "$NAME-geheim:/etc/vp-werkstatt/geheim:ro" -v "$NAME-oeffentlich:/etc/vp-werkstatt/oeffentlich:ro" \
+  -e VP_WERKSTATT_NOTFALL_PUB=/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub "$BILD" 2>&1 || true)
+case "$ohne" in *VP_WERKSTATT_PASSWORT_EMPFAENGER*VP_WARTUNG_PUBKEY*) ok "ohne age-Empfänger und Wartungsserver: startet nicht, nennt beide" ;; *) nein "Start ohne Pflichtwerte: $ohne" ;; esac
+
+echo "== Dienst starten (wie im Pod)"
+docker volume create "$NAME-daten" >/dev/null
+docker run -d --name "$NAME" \
+  --read-only --tmpfs /tmp:rw,size=64m --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges \
+  -v "$NAME-daten:/var/lib/vp-werkstatt-dienst" \
+  -v "$NAME-geheim:/etc/vp-werkstatt/geheim:ro" -v "$NAME-oeffentlich:/etc/vp-werkstatt/oeffentlich:ro" \
+  -e VP_WERKBANK_ADRESSE=127.0.0.1:1 -e VP_WERKSTATT_NOTFALL_PUB=/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub \
+  -e VP_WERKSTATT_TAKT=2s -e VOLTPILOT_LOGGING_FORMAT=json \
+  -e VP_WERKSTATT_PASSWORT_EMPFAENGER=age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p \
+  -e VP_WARTUNG_PUBKEY=c2VydmVyc2NobHVlc3NlbGRlc3dhcnR1bmdzc2VydmU= \
+  "$BILD" >/dev/null
+# das Datenvolumen gehört root; im Pod setzt fsGroup die Rechte, hier vorher einmal
+docker run --rm -u 0 -v "$NAME-daten:/d" --entrypoint chown "$BILD" 10001:10001 /d
+docker restart "$NAME" >/dev/null
+# Die Betriebsseite fragt wget im Container selbst: Ein veröffentlichter Port
+# landet auf dem Docker-Host, nicht im Job des Runners (volumen.sh).
+betrieb() { docker exec "$NAME" wget -qO- "http://127.0.0.1:8100$1"; }
+i=0
+until betrieb /ready >/dev/null 2>&1; do
+  i=$((i + 1))
+  [ $i -lt 30 ] || break
+  sleep 1
+done
+[ "$(betrieb /health)" = ok ] && ok "/health" || nein "/health"
+[ "$(betrieb /ready)" = bereit ] && ok "/ready" || nein "/ready"
+sleep 3
+m=$(betrieb /metrics)
+for w in 'vp_werkstatt_werkbank_bereit 0' 'vp_werkstatt_freigabe_laufend 0' 'vp_werkstatt_info{fassung="probe-1234"} 1' 'vp_werkstatt_lauf_aktiv 0'; do
+  printf '%s\n' "$m" | grep -qF "$w" && ok "/metrics: $w" || nein "/metrics ohne $w"
+done
+betrieb / >/dev/null 2>&1 && nein "Werkstatt-Anzeige auf der Betriebsseite" || ok "Werkstatt-Anzeige nicht auf der Betriebsseite"
+innen=$(docker exec "$NAME" wget -qO- http://127.0.0.1:8101/zustand.json 2>/dev/null || true)
+case "$innen" in *'"werkbank"'*) ok "Werkstatt-Anzeige innen auf 127.0.0.1:8101" ;; *) nein "Werkstatt-Anzeige innen: $innen" ;; esac
+docker exec "$NAME" sh -c 'netstat -ltn 2>/dev/null' | grep -q '127.0.0.1:8101' && ok "Anzeige lauscht nur auf Loopback" || nein "Anzeige nicht auf Loopback"
+e=$(docker exec "$NAME" vp-werkstatt-dienst eingabe tunnel_adresse 10.10.16.5 2>&1 || true)
+case "$e" in *"kein Lauf"*) ok "Steuerung über kubectl exec erreichbar (ohne Lauf: abgelehnt)" ;; *) nein "Steuerung: $e" ;; esac
+logs=$(docker logs "$NAME" 2>&1)
+printf '%s\n' "$logs" | grep -q '"message":"Werkstatt-Dienst startet' && ok "Log als JSON-Zeile" || nein "Log: $logs"
+printf '%s\n' "$logs" | grep -q 'Brücke nicht bereit' && ok "Log nennt die fehlende Brücke" || nein "Log ohne Grund"
+printf '%s\n' "$logs" | grep -v '^{' | grep -q . && nein "Zeile ohne JSON im Log" || ok "jede Log-Zeile ist JSON"
+printf '%s\n' "$logs" | grep -q 'PRIVATE KEY' && nein "Schlüssel im Log" || ok "kein Schlüssel im Log"
+docker exec "$NAME" sh -c 'touch /usr/local/bin/x' 2>/dev/null && nein "Dateisystem schreibbar" || ok "Dateisystem nur lesbar"
+docker exec "$NAME" sh -c 'ls /var/lib/vp-werkstatt-dienst/laeufe' >/dev/null 2>&1 && ok "Datenverzeichnis angelegt" || nein "Datenverzeichnis"
+docker stop -t 10 "$NAME" >/dev/null
+docker logs "$NAME" 2>&1 | grep -q 'Werkstatt-Dienst beendet' && ok "beendet sich sauber bei SIGTERM" || nein "kein sauberes Ende"
+docker rm -f "$NAME" >/dev/null 2>&1 || true
+docker volume rm "$NAME-daten" "$NAME-geheim" "$NAME-oeffentlich" >/dev/null 2>&1 || true
+
+echo
+if [ "$fehler" = 0 ]; then echo "Probe des Dienst-Bilds: alles bestanden"; else echo "Probe des Dienst-Bilds: FEHLER"; fi
+exit "$fehler"

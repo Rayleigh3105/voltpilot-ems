@@ -32,6 +32,26 @@ type Config struct {
 	Ref string `json:"ref"`
 	// DataDir holds identity, certs, the telemetry buffer and the cached plan.
 	DataDir string `json:"data_dir"`
+	// OtaRAMDir is where Edge Light keeps the FLEETING update files (the
+	// retained assignment, the downloaded candidate, the probation files
+	// shared with the loader boot.sh). Only the Edge Light loader sets it
+	// (VP_OTA_RAM_DIR, a tmpfs path): on its flash, DataDir/ota keeps only
+	// what must survive a power loss (trust set, current.json, the attempt
+	// log). "" = DataDir/ota, the Docker box's single OTA directory.
+	OtaRAMDir string `json:"ota_ram_dir"`
+	// LoaderPath/LoaderInitPath are where Edge Light's loader (boot.sh) and
+	// its procd init script live in the flash. The CONFIRMED program renews
+	// both from its embedded copies when its embedded LOADER_STAND is newer
+	// (agent loader_pflege, internal/loaderstand) - never during probation,
+	// never a downgrade. Meaningless on the Docker box (the loop is gated on
+	// the box type).
+	LoaderPath     string `json:"loader_path"`
+	LoaderInitPath string `json:"loader_init_path"`
+	// BoxArt is the box type of the BINARY (geraetesuche.BoxArtDocker for
+	// vp-edge-core, BoxArtEdgeLight for vp-edge-light), set by
+	// edgemain.Options - never from the environment: what a build can do is
+	// a property of the build. "" = the Docker box.
+	BoxArt string `json:"-"`
 
 	// LocalMQTTAddr is the listen address of the embedded local bus that
 	// Layer 1 (Node-RED) connects to.
@@ -39,11 +59,12 @@ type Config struct {
 	// HTTPAddr is the listen address of the local web app + health endpoint.
 	HTTPAddr string `json:"http_addr"`
 	// LANHost is the customer-LAN endpoint of that web app, including the
-	// published host port (for example "192.168.178.42:8484"). The installer
-	// derives it from the host's non-VPN default route; VP_LAN_HOST can override
-	// it on unusual multi-homed installations. It is deliberately separate from
-	// HTTPAddr: the core listens inside a bridge container, while customers open
-	// the Docker host on the LAN.
+	// published host port (for example "192.168.178.42:8484"). The Docker
+	// installer derives it from the host's non-VPN default route; Edge Light
+	// detects it itself from its interfaces (agent/network.go). VP_LAN_HOST can
+	// override it on unusual multi-homed installations. It is deliberately
+	// separate from HTTPAddr: the core listens inside a bridge container, while
+	// customers open the Docker host on the LAN.
 	LANHost string `json:"lan_host"`
 
 	// Guard limits. Per-customer wiring sets the real battery values; the
@@ -250,6 +271,8 @@ func Defaults() Config {
 		MQTTHost:                    "mqtt.voltpilot.de",
 		MQTTPort:                    8883,
 		DataDir:                     "/data",
+		LoaderPath:                  "/usr/libexec/vp-edge-light/boot.sh",
+		LoaderInitPath:              "/etc/init.d/vp-edge-light",
 		LocalMQTTAddr:               ":1883",
 		HTTPAddr:                    ":8484",
 		MaxChargeKw:                 50,
@@ -382,6 +405,9 @@ func applyEnv(cfg *Config) {
 	num("VP_MQTT_PORT", &cfg.MQTTPort)
 	str("VP_REF", &cfg.Ref)
 	str("VP_DATA_DIR", &cfg.DataDir)
+	str("VP_OTA_RAM_DIR", &cfg.OtaRAMDir)
+	str("VP_LOADER_PATH", &cfg.LoaderPath)
+	str("VP_LOADER_INIT_PATH", &cfg.LoaderInitPath)
 	str("VP_LOCAL_MQTT_ADDR", &cfg.LocalMQTTAddr)
 	str("VP_HTTP_ADDR", &cfg.HTTPAddr)
 	str("VP_LAN_HOST", &cfg.LANHost)

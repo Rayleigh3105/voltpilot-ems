@@ -24,8 +24,4 @@ flowchart LR
 
 Ereignisvertrag: [telemetry-v2.raw](telemetry-v2-raw.event.schema.json). [Fixtures](examples/README.md), [Ingest](../../../services/ingest/README.md), [Writer](../../../services/timescale-writer/README.md).
 
-## SoC-Herkunft und BMS-Grenzen
-
-`soc_source_code` begleitet den jeweiligen SoC-Wert numerisch (1 gemessen, 2 Kennlinie, 3 Ladungszählung); unbekannt ist kein Code 0. Die Grenzkanäle `charge_limit_a`, `discharge_limit_a`, `charge_allowed` und `discharge_allowed` bleiben ebenfalls numerisch. Bedeutung und Alterung: [Entity-Vertrag](edge-entity-config.md#selbst-angebundene-batterien-und-schutzgrenzen).
-
 Der Ingest übernimmt eine vorhandene `seq` und prüft v2-Werte einzeln. Zurückgewiesene Werte erzeugen Ereignisse auf `events.raw`; sie verwerfen nicht automatisch alle anderen Werte desselben Umschlags. [Datenannahme](../../../services/ingest/README.md).

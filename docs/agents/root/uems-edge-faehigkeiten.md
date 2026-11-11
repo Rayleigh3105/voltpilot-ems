@@ -19,6 +19,9 @@
   23.09.2026 A, `cloud/geteilter_punkt_gemeldet_test.go`), wirksam erst mit einem Box-Release. Davor
   gebaut: Punktzustand, Status je Komponente, Revisions-Anstoß bei Wechsel des Worts, Summen-Wächter an
   Bilanz, Formel und Kennzahl samt Portal-Anzeige · [geteilter Punkt](uems-geteilter-punkt-box-schluessel.md).
+- `erzeuger_registerbild` (EZ-5): gemeldet, weil Kern (`erzeuger_registerbilder`, Probe `erzeuger_kopf`) und
+  Palette (`measurements/erzeuger-*.js`, Laufzeitkatalog 2026.10.21.1) das Erzeuger-Bild lesen; wirksam mit dem
+  Box-Release · [Box-Leser](uems-erzeuger-registerbild-box.md).
 - `edge-supports-vectors.json`: Go `cloud/edge_supports_test.go`, Java
   `EdgeSupportsListenerTest`, TS `edgeSupportsVectors.test.ts` gemeinsam prüfen.
   Die bestehenden `data-source-vectors.json`-Leser prüfen weiterhin die Tabellenregel.

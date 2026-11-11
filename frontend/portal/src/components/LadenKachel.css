@@ -142,6 +142,18 @@
 .vp-laden-kw { margin-left: 6px; color: var(--vp-stat-ink, #2c5282); }
 .vp-laden-go { align-self: center; color: var(--vp-text-gray); display: inline-flex; }
 
+/* Regelt VoltPilot eine Säule nicht, steht es in der Kachel - nicht grau auf einer Unterseite (Audit W-01/W-05). */
+.vp-laden-hinweis {
+  margin: var(--vp-space-2) 0 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .vp-laden-ruhend {
   margin: var(--vp-space-2) 0 0;
   padding-top: var(--vp-space-2);

@@ -1,6 +1,6 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioCockpit } from './PortfolioCockpit';
 import { api, type Earnings, type Overview, type OverviewSite, type Site } from '../api';
 
@@ -335,7 +335,7 @@ describe('Anpassen im Scope KUNDE (Stufe 3, wiederverwendet)', () => {
   it('der Reset SAGT sein Ziel - ohne mit dem Verlust zu drohen', async () => {
     renderCockpit();
     const leiste = await anpassenOeffnen();
-    expect(leiste.textContent).toContain('Danach gilt wieder der VoltPilot-Standard');
+    expect(leiste.textContent).toContain('„Zurücksetzen“ stellt den VoltPilot-Standard wieder her');
     expect(leiste.textContent).not.toContain('wird verworfen');
   });
 });
@@ -393,5 +393,46 @@ describe('Heute: Ergebnis und VoltPilot-Steuerung (Ü1–Ü5 = A)', () => {
     await within(screen.getByRole('region', { name: 'Heute' })).findByText(/VoltPilot-Steuerung/);
     const west = within(anlagen).getByText('Filiale West').closest('a') as HTMLElement;
     expect(nb(west.textContent)).toMatch(/Heute\s*—/);
+  });
+
+  // CLS-Befund 8: ein später eintreffender Erlös-/Historie-Abruf darf „Jetzt" und
+  // „Ihre Anlagen" nicht nach unten schieben — der Platz steht von Anfang an.
+  it('reserviert den Platz der Steuerzeile, solange die Erlöse unterwegs sind, und ersetzt ihn durch den echten Wert', async () => {
+    let settle!: (value: typeof ERLOESE_HEUTE) => void;
+    vi.spyOn(api, 'earnings').mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    renderCockpit({ titel: 'Meine Anlagen' });
+    const heute = await screen.findByRole('region', { name: 'Heute' });
+    expect(heute.querySelector('.vp-ku-steuer[aria-hidden="true"]')).not.toBeNull();
+
+    settle(ERLOESE_HEUTE);
+    await within(heute).findByText(/VoltPilot-Steuerung/);
+    expect(heute.querySelector('.vp-ku-steuer[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('räumt den Platzhalter der Steuerzeile wieder ab, wenn die Erlöse ohne Steuerung ankommen', async () => {
+    let settle!: (value: typeof LEERE_ERLOESE) => void;
+    vi.spyOn(api, 'earnings').mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    renderCockpit();
+    const heute = await screen.findByRole('region', { name: 'Heute' });
+    expect(heute.querySelector('.vp-ku-steuer[aria-hidden="true"]')).not.toBeNull();
+
+    settle(LEERE_ERLOESE);
+    await waitFor(() => expect(heute.querySelector('.vp-ku-steuer')).toBeNull());
+  });
+
+  it('reserviert den Platz der Tageskurve, solange die Historie unterwegs ist', async () => {
+    vi.spyOn(api, 'history').mockReturnValue(new Promise(() => {}));
+    renderCockpit();
+    const heute = await screen.findByRole('region', { name: 'Heute' });
+    await waitFor(() => expect(heute.querySelector('.vp-ku-kurve.vp-skeleton')).not.toBeNull());
+    expect(heute.querySelector('svg.vp-ku-kurve')).toBeNull();
   });
 });

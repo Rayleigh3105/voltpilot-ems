@@ -33,7 +33,7 @@ import java.util.Map;
  * <ul>
  *   <li>Kundenbenutzer → Kundenadministrator, unternehmensweit (AP-03 E12) — dasselbe Wort, das
  *       sein Protokolleintrag trägt.</li>
- *   <li>Plattform-Admin mit gewähltem Kundenbereich ({@code X-Tenant-Id}) → ein VoltPilot-Konto mit
+ *   <li>Plattform-Admin ohne Zugriff-Kontext → ein VoltPilot-Konto mit
  *       wirksamer Unterstützung, Art {@code voltpilot}, Umfang „Einrichten und Bedienen“ (AP-03 E8:
  *       „Admin-Zugriff wird Unterstützung“). Der größte Umfang ist Absicht: die Korrektur-Zeilen
  *       tragen für den Unterstützer „-“, er wird darum abgewiesen, WEIL er Unterstützer ist, nicht
@@ -80,9 +80,10 @@ public final class KorrekturRechte {
 
     /**
      * Der Aufrufer, seit AP-03 IP-6: die Zuweisungen aus dem Zugriff-Kontext ({@link RechtPruefung#aufrufer};
-     * seit IP-9 auch die BEENDETEN, die nichts freigeben und nur die Ablehnung benennen) —
-     * ohne Kontext und am Plattform-Umschalter bleibt es bei {@link #benutzer} (W3, bis IP-8). Das Ziel bleibt das
-     * Unternehmen: ein Bearbeiter je Standort wird abgewiesen, bis die Korrektur ihren Standort nennt.
+     * seit IP-9 auch die BEENDETEN, die nichts freigeben und nur die Ablehnung benennen; im Mandantensprung der
+     * Kundenadministrator des Sprungs, {@code RechtPruefung.SPRUNGRECHT}) — nur ohne Kontext bleibt es bei
+     * {@link #benutzer}. Das Ziel bleibt das Unternehmen: ein Bearbeiter je Standort wird abgewiesen, bis die
+     * Korrektur ihren Standort nennt.
      */
     public static Benutzer aufrufer(ProtokollAkteur wer) {
         return RechtPruefung.aufrufer().orElseGet(() -> benutzer(wer));

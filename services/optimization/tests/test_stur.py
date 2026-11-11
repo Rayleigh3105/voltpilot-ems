@@ -409,12 +409,12 @@ def _betriebsbereich() -> dict:
     return json.loads(VECTORS.read_text())["betriebsbereich"]
 
 
-def _vereint(*bereiche) -> tuple[float | None, float | None]:
-    """Die SQL-Vereinigung von Monat und Vormonat (``min(tief)``, ``max(hoch)``,
-    NULL zaehlt nicht) - wie ``inputs._betriebsbereich_pct``."""
-    tiefs = [b["tief"] for b in bereiche if b and b.get("tief") is not None]
-    hochs = [b["hoch"] for b in bereiche if b and b.get("hoch") is not None]
-    return (min(tiefs) if tiefs else None, max(hochs) if hochs else None)
+def _monat(bereich) -> tuple[float | None, float | None] | None:
+    """Der Bereich des laufenden Monats, wie ``inputs._betriebsbereich_pct`` ihn
+    liefert (NS-1 A: der Vormonat der Faelle zaehlt nicht)."""
+    if not bereich or (bereich.get("tief") is None and bereich.get("hoch") is None):
+        return None
+    return (bereich.get("tief"), bereich.get("hoch"))
 
 
 def test_the_operating_range_uses_the_same_bucket_count_as_the_java_twin():
@@ -443,7 +443,7 @@ def test_the_shared_vectors_pin_the_widened_band_of_the_stur_battery(case):
     inp = make_input(
         prices=[50.0], load=0.0, pv=0.0, battery=battery,
         soc0_kwh=battery.soc_max_kwh,
-        stur_betriebsbereich_pct=_vereint(gemessen["vormonat"], gemessen["monat"]),
+        stur_betriebsbereich_pct=_monat(gemessen["monat"]),
     )
     stur = stur_battery(inp)
     assert stur.soc_min_fraction == pytest.approx(case["soc_min_fraction"])
@@ -469,12 +469,12 @@ def test_the_widened_band_moves_only_the_messlatte_never_the_plan():
     assert mit.battery == battery
 
 
-def test_the_optimizer_reads_the_operating_range_of_this_and_the_previous_month(
+def test_the_optimizer_reads_the_operating_range_of_this_month_only(
     monkeypatch,
 ):
-    """Dieselbe Abfrage wie ``EarningsRepository.monthBetriebsbereich``: der
-    laufende und der Vormonat (Berlin), der vierte Eimer je Seite; ohne
-    Messwert kein Bereich, und ein Lesefehler kostet nie den Plan."""
+    """Dieselbe Regel wie ``EarningsRepository.monthBetriebsbereich``: der
+    laufende Monat (Berlin, seit NS-1 A ohne Vormonat), der vierte Eimer je
+    Seite; ohne Messwert kein Bereich, und ein Lesefehler kostet nie den Plan."""
     import sys
     from types import SimpleNamespace
     from zoneinfo import ZoneInfo
@@ -514,7 +514,7 @@ def test_the_optimizer_reads_the_operating_range_of_this_and_the_previous_month(
     seen["row"] = (2.0, 100.0)
     assert _betriebsbereich_pct("dsn", uuid4(), jetzt) == (2.0, 100.0)
     _, von, bis = seen["params"]
-    assert von == datetime(2026, 9, 1, tzinfo=ZoneInfo("Europe/Berlin"))
+    assert von == datetime(2026, 10, 1, tzinfo=ZoneInfo("Europe/Berlin"))
     assert bis == jetzt
     assert "[4]" in seen["sql"] and "soc_min_pct" in seen["sql"]
     seen["row"] = (None, None)

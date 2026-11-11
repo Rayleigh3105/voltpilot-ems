@@ -1,5 +1,7 @@
 package com.voltpilot.api.measurement;
 
+import com.voltpilot.api.erzeuger.AnlagensteuerungMessplan;
+import com.voltpilot.api.erzeuger.AnlagensteuerungQuelle;
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.tenant.TenantContext;
@@ -33,6 +35,22 @@ public class MeasurementConfigReconciler {
         this.beendete = beendete;
     }
 
+    /** UEMS EZ-18: der Messplan schon angelegter Anlagensteuerungen; ohne Spring (Tests mit {@code new …}) keiner. */
+    private AnlagensteuerungMessplan anlagensteuerungen;
+
+    @Autowired(required = false)
+    void setAnlagensteuerungMessplan(AnlagensteuerungMessplan anlagensteuerungen) {
+        this.anlagensteuerungen = anlagensteuerungen;
+    }
+
+    /** UEMS EZ-21: Pin und Registry-Push schon angelegter Anlagensteuerungen; ohne Spring keiner. */
+    private AnlagensteuerungQuelle anlagensteuerungQuellen;
+
+    @Autowired(required = false)
+    void setAnlagensteuerungQuelle(AnlagensteuerungQuelle anlagensteuerungQuellen) {
+        this.anlagensteuerungQuellen = anlagensteuerungQuellen;
+    }
+
     public MeasurementConfigReconciler(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementSelectionService selections, MeasurementConfigPublisher publisher) {
         this.adminJdbc = adminJdbc;
@@ -49,6 +67,8 @@ public class MeasurementConfigReconciler {
             initialDelayString = "${voltpilot.measurements.reconcile-initial-delay-ms:30000}")
     public void reconcile() {
         katalogstandNachliefern();
+        anlagensteuerungenNachholen();
+        anlagensteuerungQuellenNachholen();
         for (DeviceScope scope : pending()) {
             if (beendete.beendet(scope.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             TenantContext.set(scope.tenantId());
@@ -95,6 +115,42 @@ public class MeasurementConfigReconciler {
             } finally {
                 TenantContext.clear();
             }
+        }
+    }
+
+    /**
+     * UEMS EZ-18: eine Anlagensteuerung, deren zuständige Box für sie noch keine Auswahl hat, bekommt sie hier
+     * ({@link AnlagensteuerungMessplan#nachholen}); {@link #pending} liefert sie im selben Durchlauf aus. So liest
+     * eine vor dem Deploy angelegte Steuerung ohne weiteres Zutun, und nach einem Wechsel der zuständigen Box die neue.
+     */
+    void anlagensteuerungenNachholen() {
+        if (anlagensteuerungen == null) return;
+        try {
+            List<UUID> boxen = anlagensteuerungen.nachholen();
+            if (!boxen.isEmpty()) {
+                log.info("measurement plan of {} plant controller box(es) selected automatically: {}", boxen.size(),
+                        boxen);
+            }
+        } catch (RuntimeException e) {
+            log.warn("automatic plant controller measurement selection failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * UEMS EZ-21: eine Anlagensteuerung, deren zuständige Box {@code anlagensteuerung_quelle} meldet und deren Pin
+     * fehlt oder veraltet ist, bekommt ihn hier ({@link AnlagensteuerungQuelle#nachholen}) samt Registry-Push mit
+     * Treiber - so liest auch eine vor EZ-21 angelegte Steuerung (Gore), sobald ihre Box das Update hat.
+     */
+    void anlagensteuerungQuellenNachholen() {
+        if (anlagensteuerungQuellen == null) return;
+        try {
+            List<UUID> anlagen = anlagensteuerungQuellen.nachholen();
+            if (!anlagen.isEmpty()) {
+                log.info("plant controller source pinned and registry pushed for {} site(s): {}", anlagen.size(),
+                        anlagen);
+            }
+        } catch (RuntimeException e) {
+            log.warn("plant controller source catch-up failed: {}", e.getMessage());
         }
     }
 

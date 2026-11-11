@@ -3,7 +3,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type Bezugsbasis, type BezugsbasisFassung, type BezugsbasisFassungKurz, type Kennzahl } from '../api';
+import { ablehnungCode, api, type Bezugsbasis, type BezugsbasisFassung, type BezugsbasisFassungKurz, type Kennzahl } from '../api';
 import * as B from '../bezugsbasisAnlegen';
 import * as F from '../bezugsbasisFassungen';
 import * as Bz from '../bezugsbasisEbene';
@@ -21,11 +21,7 @@ export type NeueFassung = { anpassung: F.Anpassung; vorgaengerin: BezugsbasisFas
 
 type Karte = BezugsbasisFassungKurz & Partial<BezugsbasisFassung>;
 
-const code = (e: unknown): string | null => {
-  const body = e instanceof ApiError ? (e.body as { code?: unknown } | undefined) : undefined;
-  return typeof body?.code === 'string' ? body.code : null;
-};
-const pflegeSatz = (e: unknown) => F.PFLEGE_SATZ[code(e) ?? ''] ?? ablehnungSatz(e, B.AKTION_FEHLER);
+const pflegeSatz = (e: unknown) => F.PFLEGE_SATZ[ablehnungCode(e) ?? ''] ?? ablehnungSatz(e, B.AKTION_FEHLER);
 
 /**
  * Lädt je Fassung der Basis die volle Antwort (`GET …/fassungen/{n}`: Anpassungsgründe, Freigeber, Faktoren) und den

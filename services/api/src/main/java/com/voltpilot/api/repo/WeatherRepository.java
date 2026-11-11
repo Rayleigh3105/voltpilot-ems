@@ -38,7 +38,8 @@ public class WeatherRepository {
             return null;
         }
         List<WeatherPointDto> points = jdbc.query(
-                "SELECT time, temperature_c, cloud_cover_pct, ghi_w_m2, dni_w_m2, dhi_w_m2 "
+                "SELECT time, temperature_c, cloud_cover_pct, ghi_w_m2, dni_w_m2, dhi_w_m2, "
+                        + "dni_normal_w_m2 "
                         + "FROM weather_forecast WHERE site_id = ? AND run_at = ? "
                         + "ORDER BY time ASC",
                 (rs, i) -> new WeatherPointDto(
@@ -47,7 +48,8 @@ public class WeatherRepository {
                         rs.getBigDecimal("cloud_cover_pct"),
                         rs.getBigDecimal("ghi_w_m2"),
                         rs.getBigDecimal("dni_w_m2"),
-                        rs.getBigDecimal("dhi_w_m2")),
+                        rs.getBigDecimal("dhi_w_m2"),
+                        rs.getBigDecimal("dni_normal_w_m2")),
                 siteId, java.sql.Timestamp.from(runAt));
         return new WeatherForecastDto(runAt, points);
     }

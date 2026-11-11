@@ -4,7 +4,7 @@
  * Reiters und der Seite steht seit dem Verbessern-Konzept v1 (PR 2) in `massnahmenBild.ts`, „Maßnahme planen“ in
  * `massnahmePlanen.ts`; Wirkung, Bewertung und Anstöße in `massnahmeWirkung.ts` (IP-20).
  */
-import { ApiError, type Massnahme, type MassnahmeEintrag, type MassnahmeHerkunft } from './api';
+import { ablehnungCode, ApiError, type Massnahme, type MassnahmeEintrag, type MassnahmeHerkunft } from './api';
 import { monatWort } from './bezugsbasisVergleich';
 import {
   UEMS_ABWEICHUNG,
@@ -146,13 +146,8 @@ export const ABLEHNUNG: Record<string, string> = {
   einsparung_organisatorisch: `Eine organisatorische ${UEMS_MASSNAHME} trägt keine Zahl der Einsparung.`,
 };
 
-function code(e: unknown): string | null {
-  const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { code?: unknown }) : null;
-  return typeof body?.code === 'string' ? body.code : null;
-}
-
 export function ablehnungSatz(e: unknown): string {
-  const c = code(e);
+  const c = ablehnungCode(e);
   if (c && ABLEHNUNG[c]) return ABLEHNUNG[c];
   const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { message?: unknown }) : null;
   if (typeof body?.message === 'string' && body.message) return body.message;

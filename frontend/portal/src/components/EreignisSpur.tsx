@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { chartTheme, type ChartTheme } from '../chartTheme';
 import {
   CHIPS_SICHTBAR,
+  type EreignisBereich,
   type EreignisChip,
-  type EreignisFarbe,
   type EreignisSpurView,
 } from '../historieEreignisse';
 
@@ -23,20 +23,21 @@ import './Ereignisse.css';
  * Tag gibt es nichts feineres zu öffnen, dort ist er ruhige Information.
  */
 
-/** Ein reiner Farbschlüssel -> der aufgelöste Chart-Hex. */
-export function ereignisFarbe(t: ChartTheme, key: EreignisFarbe): string {
-  switch (key) {
-    case 'discharge':
-      return t.discharge;
+/**
+ * Ein Bereich -> der aufgelöste Chart-Hex: dieselben Rollenfarben wie im
+ * Energie-Diagramm (Markt = Preislinie, Netz, PV), Daten im ruhigen Achsengrau.
+ */
+export function ereignisFarbe(t: ChartTheme, bereich: EreignisBereich): string {
+  switch (bereich) {
+    case 'markt':
+      return t.cPrice;
     case 'pv':
-      return t.pv;
-    case 'flowGrid':
-      return t.flowGrid;
-    case 'gridCharge':
-      return t.gridCharge;
-    case 'cloud':
+      return t.cPv;
+    case 'netz':
+      return t.cGrid;
+    case 'daten':
     default:
-      return t.cloud;
+      return t.axis;
   }
 }
 

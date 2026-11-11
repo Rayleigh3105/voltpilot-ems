@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.voltpilot.api.chargers.QuellenEcho;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -114,6 +115,14 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
              */
             String connection,
             UUID entityId, Instant reportedAt,
+            /*
+             * quelle = die Bahn, die die BOX fuer diese Saeule faehrt (Echo im
+             * Herzschlag, Konzept k1 Regel 4); null = eine aeltere Box meldet
+             * es nicht. quelleUebernommen = Vergleich mit der Wahl je Saeule:
+             * true, false oder null (unbekannt - nie „uebernommen").
+             */
+            QuellenEcho.Echo quelle,
+            Boolean quelleUebernommen,
             List<ChargeConnectorDto> connectors) {}
 
     /** Ein Stecker: ein Fahrzeug, ein Anspruch auf das Budget. */

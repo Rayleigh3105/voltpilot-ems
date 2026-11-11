@@ -3,6 +3,7 @@
 const { catalogDocument, resolvePoint, derivedAddresses } = require('./measurement-driver');
 const { TARGET_PRIMARY, resolveTarget } = require('./measurement-binding');
 const wago = require('./wago-registerbild');
+const erzeuger = require('./erzeuger-registerbild');
 
 // Generated verbatim by package_edge_runtime.py from docs/contracts/v2.
 const budgetContract = require('./measurement-budget-vectors.json');
@@ -209,6 +210,83 @@ function registerbilderJeZiel(liste, binding) {
 }
 
 /**
+ * The per-installation parameters of an Erzeuger register image (EZ-5): base
+ * address, function code, word order and the Soll (te_anzahl, optionally
+ * steuerung_id and anlagenart) - per TARGET, like `registerbildFor`.
+ */
+function erzeugerbildFor(options, targetKey) {
+  if (options && options.erzeugerbilder
+      && Object.prototype.hasOwnProperty.call(options.erzeugerbilder, targetKey)) {
+    return options.erzeugerbilder[targetKey];
+  }
+  return null;
+}
+
+/** The plant kinds of `erzeuger_registerbilder[].anlagenart` as the image codes them. */
+const ANLAGENART_CODE = Object.freeze({ pv:1, bhkw:2, gemischt:3 });
+
+/**
+ * The Erzeuger register images of a desired config (`erzeuger_registerbilder`,
+ * mqtt-measurement-config 2.0, additive since EZ-6), re-keyed from the
+ * controller's component to the TARGET the planner reads over - the same rule
+ * as `registerbilderJeZiel`: an unresolvable component is dropped (its points
+ * are refused as driver_unavailable), two images on one target are both dropped.
+ * te_anzahl and anlagenart are the Soll of the head and always checked;
+ * steuerung_kennung ONLY when present - absent means "not assigned", never 0.
+ * veraltet_netzpunkt_s is the age of the grid-point reading above which it is
+ * uncertain. An entry the box cannot understand is dropped, never guessed.
+ */
+function erzeugerbilderJeZiel(liste, binding) {
+  const out = {}; const doppelt = new Set();
+  for (const bild of Array.isArray(liste) ? liste : []) {
+    if (!bild || typeof bild !== 'object' || typeof bild.entity_id !== 'string') continue;
+    if (!Object.hasOwn(ANLAGENART_CODE, bild.anlagenart)) continue;
+    const target = resolveTarget({ entity_id:bild.entity_id }, null, binding);
+    if (target.reason) continue;
+    if (Object.prototype.hasOwnProperty.call(out, target.key)) { doppelt.add(target.key); continue; }
+    out[target.key] = Object.freeze({ entity_id:bild.entity_id, basisadresse:bild.basisadresse,
+      funktionscode:bild.funktionscode, wortfolge:bild.wortfolge, te_anzahl:bild.te_anzahl,
+      soll:Object.freeze({ te_anzahl:bild.te_anzahl, anlagenart:ANLAGENART_CODE[bild.anlagenart],
+        ...(Number.isInteger(bild.steuerung_kennung) ? { steuerung_id:bild.steuerung_kennung } : {}),
+        ...(Number.isInteger(bild.veraltet_netzpunkt_s)
+          ? { alter_schwelle_s:bild.veraltet_netzpunkt_s } : {}) }) });
+  }
+  for (const key of doppelt) delete out[key];
+  return out;
+}
+
+/**
+ * ONE poll group per Erzeuger controller, read at the family's own cadence of
+ * 5 s (EW-5 A) whatever cadence a point asks for: a point's `cadence_s` is the
+ * longest gap between two of its samples (erzeuger-meldung.js), not a read
+ * rate. Up to 8 units fit one request, a unit block is never split (EZ-1 A1).
+ */
+function groupErzeugerbild(points, options) {
+  const gruppen = new Map();
+  for (const selected of points) {
+    const target = selected.target || { key:TARGET_PRIMARY, sourceId:null };
+    const key = erzeuger.pollGruppe(target.key);
+    const gruppe = gruppen.get(key) || { key, target, points:[] };
+    const triggerKey = selected.trigger_key || selected.point.point_key;
+    if (!gruppe.points.includes(triggerKey)) gruppe.points.push(triggerKey);
+    gruppen.set(key, gruppe);
+  }
+  const blocks = [];
+  for (const gruppe of gruppen.values()) {
+    const parameter = erzeugerbildFor(options, gruppe.target.key);
+    if (!parameter) continue; // refused as driver_unavailable in buildPlan already
+    for (const anfrage of erzeuger.planeAnfragen({ basisadresse:parameter.basisadresse,
+      teAnzahl:parameter.te_anzahl })) {
+      blocks.push({ key:gruppe.key, start:anfrage.start, count:anfrage.count,
+        cadence_s:erzeuger.LESETAKT_S, source_kind:erzeuger.QUELLENART, target:gruppe.target,
+        funktionscode:parameter.funktionscode, points:gruppe.points,
+        requestCostMs:requestCostMs(erzeuger.FAMILIE, erzeuger.QUELLENART) });
+    }
+  }
+  return blocks;
+}
+
+/**
  * ⚠ ONE poll group per CONTROLLER - the grouping key names target and cadence,
  * deliberately NOT the family. One controller can carry a 750-494 and a 750-495
  * side by side, and both live in the same register image; with the family in the
@@ -385,6 +463,27 @@ function buildPlan(config, options) {
       }
       continue;
     }
+    // ⚠ The same for an Erzeuger image (EZ-5): without its parameters there is
+    // no base address, and a unit the Soll does not have is not read at all.
+    if (erzeuger.istErzeugerPunkt(p)) {
+      const parameter = erzeugerbildFor(options, target.key);
+      const teile = erzeuger.punktTeile(s.point_key);
+      if (!parameter || !Number.isInteger(parameter.te_anzahl) || parameter.te_anzahl < 1 || !teile
+          || (Number.isInteger(teile.einheit)
+            && (teile.einheit < 1 || teile.einheit > parameter.te_anzahl))) {
+        abgelehnt('driver_unavailable'); continue;
+      }
+      // The template erzeuger.te[*] expands to exactly the units of the Soll.
+      const keys = teile.einheit === '*'
+        ? Array.from({ length:parameter.te_anzahl }, (_, i) => s.point_key.replace('[*]', `[${i + 1}]`))
+        : [s.point_key];
+      for (const key of keys) {
+        const concrete = key === p.point_key ? p : resolvePoint(key, discovery);
+        if (concrete) valid.push({ point:concrete, cadence_s:s.cadence_s, requested_key:s.point_key,
+          target, ...komponenteVon });
+      }
+      continue;
+    }
     if (p.point_key.includes('[*]') && p.family === 'sunspec.model_160') {
       const n = Number(discovery && discovery.models
         && discovery.models[160] && discovery.models[160].moduleCount);
@@ -419,11 +518,13 @@ function buildPlan(config, options) {
   const uniquePrerequisites = [...new Map(prerequisites.map((item) =>
     [`${item.target.key}:${item.point.point_key}:${item.cadence_s}:${item.trigger_key}`, item])).values()];
   const alleKandidaten = lesungen.concat(uniquePrerequisites);
-  const blocks = groupModbus(alleKandidaten.filter((x) => !wago.istRegisterbildPunkt(x.point)),
-    options).concat(groupRegisterbild(
-      alleKandidaten.filter((x) => wago.istRegisterbildPunkt(x.point)), options));
+  const blocks = groupModbus(alleKandidaten.filter((x) => !wago.istRegisterbildPunkt(x.point)
+    && !erzeuger.istErzeugerPunkt(x.point)), options).concat(groupRegisterbild(
+      alleKandidaten.filter((x) => wago.istRegisterbildPunkt(x.point)), options),
+    groupErzeugerbild(alleKandidaten.filter((x) => erzeuger.istErzeugerPunkt(x.point)), options));
   const nonModbusGroups = new Map();
-  for (const x of lesungen.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value','wago_registerbild'].includes(v.point.source_kind))) {
+  for (const x of lesungen.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value','wago_registerbild'].includes(v.point.source_kind)
+      && !erzeuger.istErzeugerPunkt(v.point))) {
     // Same rule as the modbus blocks: one HTTP request per (target, group).
     const key = `${x.target.key}:${x.point.poll_group}:${x.cadence_s}`; nonModbusGroups.set(key, x);
   }
@@ -443,6 +544,7 @@ function buildPlan(config, options) {
     decoderPrerequisites:uniquePrerequisites,
     byteOrder:options.byteOrder, byteOrders:options.byteOrders,
     registerbilder:options.registerbilder || {},
+    erzeugerbilder:options.erzeugerbilder || {},
     blocks, httpGroups:[...nonModbusGroups.entries()].map(([key, x]) => ({ key, target:x.target })),
     ocppConfiguration:choreography.changes,
     metrics };
@@ -458,5 +560,6 @@ class Scheduler {
 
 module.exports = { LIMITS, COST_MS, buildPlan, geteiltePunkte, ablehnungenVon, leseSchluessel,
   groupModbus, groupRegisterbild, registerbildFor, registerbilderJeZiel,
+  groupErzeugerbild, erzeugerbildFor, erzeugerbilderJeZiel,
   compatibleOcpp, Scheduler, decoderDependencies, discoveryFor, byteOrderFor, requestCostMs,
   requestsForUnits, estimateSources };

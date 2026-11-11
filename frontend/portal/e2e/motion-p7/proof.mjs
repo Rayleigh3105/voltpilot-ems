@@ -138,8 +138,8 @@ async function abschnittB(browser) {
   for (const [name, hash] of [...FLAECHEN, ['Geräteseite', null]]) {
     if (hash === null) {
       // Die Geräteseite hat keine feste Adresse — sie hängt an einer echten
-      // Komponente. Der Aufbau ist der Ort, an dem ihre Links stehen (die
-      // Box-Zeile führt auf ihre Seite, die Geräte über den Kurzblick).
+      // Komponente. Der Aufbau ist der Ort, an dem ihre Links stehen (Box-
+      // und Geräte-Zeile führen jetzt beide direkt auf ihre Seite).
       await go(page, `/anlage/${SITE}/modell`, 2600);
       // `…/geraet/{ref}` ODER `…/box/{ref}`: die BOX ist eine Tor-Seite mit
       // derselben Machart (Geräteseiten Stufe 1), und in der Demo-Anlage ist

@@ -80,7 +80,8 @@ Befehle im jeweils genannten Verzeichnis ausführen:
 | Forecast mit ML | `pip install -e '.[dev,ml]'` |
 | `frontend/portal` | `npm run typecheck`, `npm test`, `npm run build` |
 | `edge-app/core` | `go test ./...` |
-| `edge-app` | `node --test nodered/*.test.js nodered/deye/*.test.js` |
+| `edge-app/nodered` (ohne `vp-palette`) | `npm test` - deckt alle `*.test.js` ab, auch außerhalb von `nodered/` und `nodered/deye/`. `node --test` direkt an der Wurzel ausführen bricht ab: Node sammelt dabei jedes `test/`-Verzeichnis ein, auch die Mocha-Specs (`describe`) unter `vp-palette/test/` |
+| `edge-app/nodered/vp-palette` | `npm ci && npm test` (eigene Mocha-Suite) |
 
 Testcontainers-Tests können ohne Docker übersprungen werden; das ist kein bestandener Integrationstest. Weitere Prüfstände stehen in den jeweiligen READMEs. Die [Portal-Hilfe](../frontend/portal/src/help/README.md) hat eigene Screenshot- und Browserprüfungen.
 

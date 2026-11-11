@@ -1,5 +1,5 @@
 import { Recht } from '../components/Recht';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
@@ -17,6 +17,7 @@ import {
   type SiteTopology,
   type StandorteAmStichtag,
   type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
 import {
   CONTROL_BADGE,
@@ -24,12 +25,13 @@ import {
   ioBindungenAus,
   plantModel,
   reconnectCandidates,
+  wiederVerbindenAusSuche,
   type ComponentHealth,
   type PlantComponent,
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { fuehrendeBoxOf, boxRefOf } from '../geraetSeite';
-import { zentraleListe, zentraleSatz, type GeraeteKarte } from '../zentraleListe';
+import { ablehnungenAus, ablehnungSatz, BOX_LIEST_NICHT, zentraleListe, zentraleSatz, type GeraeteKarte } from '../zentraleListe';
 import {
   aufbauBaum,
   type AufbauAnlage,
@@ -43,7 +45,9 @@ import {
   tabellenZeilen,
   type AufbauFilter,
 } from '../aufbauTabelle';
-import { AufbauSymbol, AufbauTabelle } from '../components/AufbauTabelle';
+import { AufbauTabelle } from '../components/AufbauTabelle';
+import type { RowMenuItem } from '../components/RowMenu';
+import { AufbauSymbol } from '../components/AufbauSymbol';
 import type { SiteCharging } from '../ladepunkte';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';
@@ -53,6 +57,7 @@ import { UmbenennenDialog } from '../components/UmbenennenDialog';
 import { LadepunktFaehigkeitDialog } from '../components/LadepunktFaehigkeitDialog';
 import { faehigkeitZeile, type LadepunktAnsicht } from '../ladepunktErtraege';
 import { KomponenteLoeschenDialog, ZuordnungAendernDialog } from '../components/ZuordnungAendern';
+import { UmhaengenDialog } from '../components/UmhaengenDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
@@ -65,6 +70,7 @@ import { BEFEHLE_LABEL } from '../befehle';
 import { SPEICHER_BLATT_LABEL, SPEICHER_KACHEL } from '../geraetGesicht';
 import { abschnittHash } from '../geraetRahmen';
 import {
+  aufbauHash,
   befehleHash,
   komponenteHash,
   geraetBearbeitenHash,
@@ -73,11 +79,15 @@ import {
   modellBearbeitenKomponente,
   ohneAufbauNeu,
   ohneModellBearbeiten,
+  parseAufbauAn,
+  parseAufbauRef,
   parseAufbauNeu,
+  parseAufbauSuche,
   parseKomponente,
   type AufbauNeu,
 } from '../nav';
 import { abschlussTitel, type TypId } from '../anlegenFlow';
+import { gatewayAnhaengen, gatewayAnhaengenSatz, gatewayVorbelegung } from '../gatewaySeite';
 import { katalogFunde, type KatalogWahl, type KatalogWeg } from '../geraeteKatalog';
 import { GeraeteKatalog } from '../components/GeraeteKatalog';
 import {
@@ -90,15 +100,29 @@ import {
 } from '../components/TechnischeKarten';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { AnlegenFlow } from '../components/AnlegenFlow';
+import { GeraetesucheDialog, type GeraetesucheBehalten, type GeraetesucheUebernahme } from '../components/GeraetesucheDialog';
+import { HeizstabAnlegen } from '../components/HeizstabAnlegen';
+import { geraetesucheBezug } from '../geraetesucheHerkunft';
+import type { GeraetesucheFund } from '../geraetesuche';
+import { vorbelegung } from '../geraetesucheAnsicht';
+import { felder } from '../komponentenAssistent';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
 import { AnlageAnlegenDrawerLazy } from '../components/AnlageAnlegenDrawerLazy';
+import { StandortDialog } from '../components/StandortDialog';
+import { LazyBoundary } from '../components/Lazy';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { useMessenEinstieg } from '../messenEinstieg';
 import { browserSpeicher, entwurfLesen, messenEinstieg } from '../messenAssistent';
 import { ablehnungText, haltGrund, ohneMesswertHinweis, sollIstText, sollIstTon, verwaltungsHinweis } from '../komponentenAssistent';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useAnlagensteuerung } from '../useAnlagensteuerung';
 import { LIST_POLL_MS } from '../pollCadence';
 import '../components/Aufbau.css';
+
+/** UEMS EZ-15: der Anlege-Schritt „Steuerung verbinden“ - nachgeladen, erst wenn ihn jemand im Katalog wählt. */
+const AnlagensteuerungAssistent = lazy(() =>
+  import('../components/AnlagensteuerungAssistent').then((m) => ({ default: m.AnlagensteuerungAssistent })),
+);
 
 /**
  * Der Reiter **„Aufbau"** (Konzept „Anlage – neu gedacht", Entscheide E1–E6 = A
@@ -107,9 +131,10 @@ import '../components/Aufbau.css';
  *
  * - **Zahlen statt Sätze.** Jede Zeile trägt Name, Zustandspunkt und ihre Werte
  *   als kurze Chips; Erklärungen stehen erst im Kurzblick.
- * - **E2 · Tippen öffnet den Kurzblick** (zentriertes `Modal`, am Telefon ein
- *   Vollbild-Blatt): Werte je Komponente, Steuerung, alle Handlungen, und einen
- *   Tipp weiter die Geräteseite.
+ * - **E2 · Tippen springt auf die Geräteseite**; nur ein Gerät ohne eigene Seite
+ *   öffnet den Kurzblick (zentriertes `Modal`, am Telefon ein Vollbild-Blatt). Die
+ *   technische Sicht springt ebenso und erreicht ihren Kurzblick über „Technisch …“
+ *   im Zeilenmenü.
  * - **E3 · Alle Ebenen, immer.** Auch mit einer Anlage und einer Box steht der
  *   Baum gleich da - die Struktur ändert sich nicht, sobald eine zweite Box kommt.
  * - **Hinzufügen beginnt im Gerätekatalog** (Konzept „Aufbau und
@@ -162,6 +187,9 @@ export function AufbauSection({
   // Die Datenquellen der Anlagen im Baum (UEMS AP-06): WAS jede Box liest. Fail-soft — ohne sie fehlen genau
   // diese Zeilen, nie der Baum.
   const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
+  // Die UEMS-Geräte je Anlage: ihr `data_source_id` ist der einzige Verweis Weg → Gerät (GE-1). Ohne Antwort
+  // bleibt die Zuordnung einer Anlage unbekannt (null) — dann steht dort keine Anbindung, nie eine geratene.
+  const [uemsGeraete, setUemsGeraete] = useState<Record<string, UemsGeraet[] | null>>({});
   const [overview, setOverview] = useState<Overview | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -171,6 +199,8 @@ export function AufbauSection({
   const [kurzblickId, setKurzblickId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addBox, setAddBox] = useState<Device | null>(null);
+  // GE-5: das Kennzeichen des Gateways, an dem das Gerät hinzukommt (`?neu=geraet&an=DQ-3`); null = kein Weg vorgegeben.
+  const [addAn, setAddAn] = useState<string | null>(null);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
   // Der Katalog vor jedem Anlegen, das dort gewählte Modell und - nach dem
@@ -180,8 +210,20 @@ export function AufbauSection({
   const [anlegenLauf, setAnlegenLauf] = useState(0);
   const [erfolg, setErfolg] = useState<string | null>(null);
   const [boxAnmelden, setBoxAnmelden] = useState(false);
+  // Gerätesuche (Konzept „Geräte suchen“, Bericht §2): die Box, an der gesucht wird; `lauf` macht jedes Öffnen frisch.
+  // Solange der Anlege-Fluss darüber liegt, bleibt das Modal im Baum (verdeckt) - danach führt der Weg zur Liste zurück.
+  const [suche, setSuche] = useState<{ box: Device; suchId: string | null; start: 'suche' | 'verlauf'; lauf: number } | null>(null);
+  const [sucheFund, setSucheFund] = useState<
+    { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund; suchId: string | null } | null
+  >(null);
+  const [uebernommen, setUebernommen] = useState<ReadonlyMap<string, string>>(new Map());
+  const [sucheZuletzt, setSucheZuletzt] = useState<{ titel: string; n: number } | null>(null);
+  // Heizstab V1: „Alle Ausgänge zusammen“ aus der Gerätesuche - die Heizstab-Einrichtung über der Suche.
+  const [heizstabAus, setHeizstabAus] = useState<{ u: GeraetesucheUebernahme; boxId: string } | null>(null);
   const [boxVerwalten, setBoxVerwalten] = useState<string | null>(null);
   const [anlageAnlegen, setAnlageAnlegen] = useState(false);
+  const [adresseNachtragen, setAdresseNachtragen] = useState(false);
+  const [steuerungVerbinden, setSteuerungVerbinden] = useState(false);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
   const [rename, setRename] = useState<PlantComponent | null>(null);
   const [renameEntry, setRenameEntry] = useState<string | null>(() =>
@@ -190,7 +232,10 @@ export function AufbauSection({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [freigabe, setFreigabe] = useState<PlantComponent | null>(null);
   const [repin, setRepin] = useState<PlantComponent | null>(null);
+  // Aus „Geräte suchen“ geöffnet: die Quelle an der Adresse des Fundes ist vorgewählt (nie still gespeichert).
+  const [repinVorschlag, setRepinVorschlag] = useState<string | null>(null);
   const [remove, setRemove] = useState<PlantComponent | null>(null);
+  const [umhaengen, setUmhaengen] = useState<PlantComponent | null>(null);
   const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
   const [sofortBusy, setSofortBusy] = useState(false);
 
@@ -251,6 +296,10 @@ export function AufbauSection({
       (listen) => active && setDatenquellen(listen.flat()),
       () => active && setDatenquellen(null),
     );
+    Promise.all(ids.map((id) => api.uemsGeraete(id).then((a) => a.geraete, () => null))).then(
+      (listen) => active && setUemsGeraete(Object.fromEntries(ids.map((id, i) => [id, listen[i]]))),
+      () => active && setUemsGeraete({}),
+    );
     return () => {
       active = false;
     };
@@ -268,9 +317,15 @@ export function AufbauSection({
 
   // Die Werte altern: Live-Werte, Säulen und Zustandswörter frisch halten,
   // sonst stünde nach zehn Minuten ein alter Wert da, als wäre er aktuell.
+  // `/sources` gehört dazu: aus ihm stammen die Werte der Zähler ohne eigene Topologie und das „vor … Sek." jeder
+  // Zeile - einmal beim Öffnen geladen, stand dort sonst der Stand des Öffnens neben frischen Topologie-Werten.
   useFreshnessPoll(() => {
     setNow(Date.now());
-    api.topology(site.id).then(setTopology, () => {});
+    // Beide in EINEM Schritt übernehmen: die Zeilen lesen aus beiden, ein Zwischenstand mischte sonst zwei Abrufe.
+    void Promise.allSettled([api.topology(site.id), api.siteSources(site.id)]).then(([t, s]) => {
+      if (t.status === 'fulfilled') setTopology(t.value);
+      if (s.status === 'fulfilled') setSources(s.value);
+    });
     api.siteChargers(site.id).then(setCharging, () => {});
     api.overview().then(setOverview, () => {});
   }, LIST_POLL_MS);
@@ -297,10 +352,19 @@ export function AufbauSection({
             localSetup: data?.localSetup ?? null,
             sources,
             charging,
+            abgelehnt: ablehnungenAus(components),
             now,
           })
         : null,
-    [model, site.id, eigeneBoxen, devicesFetchedAt, boxRef, data, sources, charging, now],
+    [model, site.id, eigeneBoxen, devicesFetchedAt, boxRef, data, sources, charging, components, now],
+  );
+
+  // GE-3: die Erzeugungseinheiten jeder Anlagensteuerung stehen als Geräte unter ihr — mit Ist und Zustand aus den
+  // jüngsten Werten der Steuerung (Takt wie die Geräteseite). Fail-soft: ohne Antwort stehen keine Einheiten da.
+  const steuerungen = useAnlagensteuerung(site.id, true, false);
+  const anlagensteuerungen = useMemo(
+    () => ({ [site.id]: { liste: steuerungen.liste, werte: steuerungen.werte } }),
+    [site.id, steuerungen.liste, steuerungen.werte],
   );
 
   const baum = useMemo(
@@ -318,9 +382,11 @@ export function AufbauSection({
         overview: overview?.sites ?? null,
         nachbarKarten,
         datenquellen,
+        uemsGeraete,
+        anlagensteuerungen,
         now,
       }),
-    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, now],
+    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, uemsGeraete, anlagensteuerungen, now],
   );
 
   const satz = useMemo(() => (karten ? zentraleSatz(karten) : null), [karten]);
@@ -329,6 +395,7 @@ export function AufbauSection({
   // lässt seinen Entwurf liegen. Solange die Funktion an diesem Standort ein Entwurf ist, steht hier sein Knopf.
   const messen = useMessenEinstieg();
   const standortDesBaums = baum.wurzel?.art === 'standort' ? baum.wurzel.id : null;
+  const standortDesBaumsObjekt = standorte?.standorte.find((x) => x.id === standortDesBaums) ?? null;
   const [fortsetzen, setFortsetzen] = useState<{ text: string; standortId: string } | null>(null);
   useEffect(() => {
     const entwurf = entwurfLesen(browserSpeicher());
@@ -472,10 +539,12 @@ export function AufbauSection({
   const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
   const halt = haltGrund(components?.components[0]?.syncStatus, components?.heldReason);
   const verwaltung = components ? verwaltungsHinweis(components.componentAuthority, components.adoptedAt) : null;
-  const ohneMesswertById = useMemo(() => {
+  const zeilenHinweisById = useMemo(() => {
     const out = new Map<string, { badge: string; satz: string }>();
     for (const row of components?.components ?? []) {
-      const h = ohneMesswertHinweis(row.connection);
+      // Die Box wendet das Gerät nicht an: ihr Grund steht an der Zeile (wiegt mehr als ein fehlender Kanal).
+      const grund = row.rejectedReason?.trim();
+      const h = grund ? { badge: BOX_LIEST_NICHT, satz: ablehnungSatz(grund) } : ohneMesswertHinweis(row.connection);
       if (h) out.set(row.id, h);
     }
     return out;
@@ -496,21 +565,99 @@ export function AufbauSection({
   if (kurzblick) letzterKurzblick.current = kurzblick;
   const kurzblickInhalt = kurzblick ?? letzterKurzblick.current;
 
-  /** „Gerät hinzufügen" (allgemein oder an einer Box) beginnt im Katalog. */
-  const oeffneAnlegen = (box: Device | null) => {
+  /** „Gerät hinzufügen" (allgemein, an einer Box oder an einem Gateway) beginnt im Katalog. */
+  const oeffneAnlegen = (box: Device | null, an: string | null = null) => {
     setAddBox(box);
+    setAddAn(an);
     setErfolg(null);
     setKatalogOffen(true);
   };
+  /** „Geräte suchen“ an einer Box (Box-Seite, Katalog, leere Box im Aufbau, `?neu=suche`). */
+  const oeffneSuche = (box: Device, opts: { suchId?: string | null; start?: 'suche' | 'verlauf' } = {}) => {
+    setErfolg(null);
+    setUebernommen(new Map());
+    setSucheZuletzt(null);
+    setSucheFund(null);
+    setSuche((alt) => ({ box, suchId: opts.suchId ?? null, start: opts.start ?? 'suche', lauf: (alt?.lauf ?? 0) + 1 }));
+  };
+  /**
+   * Ein gefundenes Gerät, dessen Komponente auf ihr Gerät wartet: sie und die vorgewählte Quelle, sonst null
+   * (Live-Fall „Zuhause“, 04.11.2026 - die Suche fand den Shelly des Heizstabs und bot nichts an).
+   */
+  const wiederVerbindenFuer = (f: GeraetesucheFund) => {
+    if (!f.komponente || !model || !data) return null;
+    const ip = typeof f.verbindung.ip === 'string' ? f.verbindung.ip : null;
+    const port = typeof f.verbindung.port === 'number' ? f.verbindung.port : null;
+    return wiederVerbindenAusSuche(f.komponente.id, { ip, port }, model.components, data.entities, data.localSetup, sources);
+  };
+  /** Aus der Suche in den bestehenden Anlege-Fluss: Vorlage und Anschluss vorbelegt, der Test startet von selbst. */
+  const ausSucheAnlegen = (
+    f: { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund; suchId: string | null },
+  ) => {
+    if (!suche) return;
+    setSucheFund(f);
+    setAddBox(suche.box);
+    setAddAn(null);
+    setAnlegenLauf((n) => n + 1);
+    if (f.art === 'vorlage') setStart({ template: f.u.template, rolle: null });
+    else setAddTyp('eigenbau');
+    setAddOpen(true);
+  };
+  // Woher die Vorbelegung des Anlege-Flusses stammt: „Aus der Gerätesuche: IP-Adresse, Port, …“.
+  const sucheHerkunft = sucheFund?.art === 'vorlage'
+    ? `Aus der Gerätesuche: ${felder(sucheFund.u.template)
+      // Nur was die Suche selbst hergibt: vor dem Modellwechsel Getipptes steht nicht als „aus der Gerätesuche“ da.
+      .filter((x) => vorbelegung(sucheFund.u.fund, sucheFund.u.template)[x.key] !== undefined && x.key !== 'channel')
+      .map((x) => x.label)
+      .join(', ')}${sucheFund.u.kanal !== null ? ` · Ausgang ${sucheFund.u.kanal + 1}` : ''}.`
+    : null;
+  const sucheVorbelegung = sucheFund?.art === 'vorlage'
+    ? sucheFund.u.verbindung
+    : sucheFund?.art === 'selbst'
+      ? sucheFund.fund.verbindung
+      : null;
+
+  // Der Weg des Gateways, an dem das Gerät hinzukommt — aus den geladenen Wegen dieser Anlage, nie geraten.
+  const addWeg = addAn
+    ? (datenquellen ?? []).find((q) => q.kennzeichen === addAn && q.anlage === site.id && q.archiviert_am == null) ?? null
+    : null;
+
+  /**
+   * GE-5: das neue Gerät an sein Gateway hängen — der Weg „Zu DQ-3 hinzufügen" der Vorschlagsliste (AP-06 IP-4,
+   * Vertrag §3.2: dieselbe Adresse an derselben Box ist ein Gerät DIESER Quelle), kein zweiter. Zeigt der Server
+   * das Gerät dort nicht, hängt nichts — der Satz sagt es.
+   */
+  const anGatewayHaengen = (q: UemsDatenquelle, komponenteId: string, satz: string) => {
+    void api.datenquellenVorschlag(site.id)
+      .then((liste) => {
+        const bestaetigt = gatewayAnhaengen(liste, q.id, komponenteId);
+        return bestaetigt.length > 0
+          ? api.datenquellenVorschlagUebernehmen(site.id, bestaetigt).then(() => true)
+          : false;
+      })
+      .then(
+        (ok) => {
+          setErfolg(`${satz} ${gatewayAnhaengenSatz(q.kennzeichen, ok)}`);
+          if (ok) reload();
+        },
+        () => setErfolg(`${satz} ${gatewayAnhaengenSatz(q.kennzeichen, false)}`),
+      );
+  };
+
+  // Was jemand im Einrichten-Schritt getippt hat, bevor er zur Modellwahl zurückging: gilt für diesen Fund.
+  const [sucheBehalten, setSucheBehalten] = useState<GeraetesucheBehalten | null>(null);
 
   const schliesseAnlegen = () => {
     setAddOpen(false);
     setAddTyp(null);
     setStart(null);
     setVorlage(null);
+    setSucheFund(null);
   };
 
-  const WEG_TYP: Record<KatalogWeg, TypId> = { ocpp: 'ladesaeule', bms: 'batterie', modbus: 'eigenbau' };
+  const WEG_TYP: Record<Exclude<KatalogWeg, 'anlagensteuerung'>, TypId> = {
+    ocpp: 'ladesaeule', modbus: 'eigenbau',
+  };
 
   /** Was im Katalog gewählt wurde, öffnet den passenden Weg - die Box reist mit. */
   const katalogWahl = (wahl: KatalogWahl) => {
@@ -525,6 +672,11 @@ export function AufbauSection({
         setAddOpen(true);
         return;
       case 'weg':
+        // Die Anlagensteuerung (EZ-15) hat ihren eigenen Assistenten: das Bild beschreibt die Anlage selbst.
+        if (wahl.weg === 'anlagensteuerung') {
+          setSteuerungVerbinden(true);
+          return;
+        }
         setAddTyp(WEG_TYP[wahl.weg]);
         setAddOpen(true);
         return;
@@ -547,24 +699,55 @@ export function AufbauSection({
   const [neu, setNeu] = useState<AufbauNeu | null>(() =>
     typeof window === 'undefined' ? null : parseAufbauNeu(window.location.hash),
   );
+  const [neuAn, setNeuAn] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : parseAufbauAn(window.location.hash),
+  );
+  // `?neu=box&ref=` (Direktlink vom Gehäuse, `koppelLink.ts`): die Referenz steht in „Box hinzufügen“ im Feld.
+  const [neuRef, setNeuRef] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : parseAufbauRef(window.location.hash),
+  );
+  const [neuSuche, setNeuSuche] = useState(() =>
+    typeof window === 'undefined' ? parseAufbauSuche('') : parseAufbauSuche(window.location.hash),
+  );
+  const [boxVorschlag, setBoxVorschlag] = useState<string | null>(null);
   const [neuHinweis, setNeuHinweis] = useState<string | null>(null);
   useEffect(() => {
     const onHash = () => {
       const n = parseAufbauNeu(window.location.hash);
-      if (n) setNeu(n);
+      if (n) {
+        setNeu(n);
+        setNeuAn(parseAufbauAn(window.location.hash));
+        setNeuRef(parseAufbauRef(window.location.hash));
+        setNeuSuche(parseAufbauSuche(window.location.hash));
+      }
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   useEffect(() => {
     if (!neu) return;
-    if (neu === 'geraet' && (!data || !componentsDa)) return;
+    if ((neu === 'geraet' || neu === 'suche') && (!data || !componentsDa)) return;
     replaceCurrentNavigation(ohneAufbauNeu(window.location.hash));
     setNeu(null);
-    if (neu === 'box') setBoxAnmelden(true);
+    setNeuAn(null);
+    setNeuRef(null);
+    if (neu === 'suche') {
+      // Gesucht wird auch an einer Anlage, deren Geräte die Box pflegt - nur das Übernehmen entfällt dort.
+      const b = eigeneBoxen.find((d) => d.id === neuSuche.box) ?? fuehrendeBoxOf(devices, site.id);
+      if (b) oeffneSuche(b, { suchId: neuSuche.such, start: neuSuche.verlauf ? 'verlauf' : 'suche' });
+      else setNeuHinweis('An dieser Anlage ist noch keine VoltPilot-Box angemeldet – gesucht wird auf der Box.');
+      return;
+    }
+    if (neu === 'box') {
+      setBoxVorschlag(neuRef);
+      setBoxAnmelden(true);
+    }
     else if (neu === 'anlage') setAnlageAnlegen(true);
-    else if (portalManaged) oeffneAnlegen(fuehrendeBoxOf(devices, site.id));
-    else
+    else if (portalManaged) {
+      // „Gerät an diesem Gateway hinzufügen" (GE-5): an der Box, die das Gateway liest.
+      const gwBox = neuAn ? (datenquellen ?? []).find((q) => q.kennzeichen === neuAn)?.zustaendige_box ?? null : null;
+      oeffneAnlegen(eigeneBoxen.find((d) => d.id === gwBox?.id) ?? fuehrendeBoxOf(devices, site.id), neuAn);
+    } else
       setNeuHinweis(
         components?.componentAuthority === 'box'
           ? 'Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.'
@@ -577,6 +760,48 @@ export function AufbauSection({
   const ausKurzblick = (tu: () => void) => {
     setKurzblickId(null);
     tu();
+  };
+
+  /**
+   * Ein Gerät mit eigener Seite springt beim Tippen direkt dorthin - kein Kurzblick mehr dazwischen (Captain,
+   * 27.10.2026). „Bearbeiten", Sofortmaßnahmen und Entfernen stehen bereits auf der Geräteseite selbst; was der
+   * Kurzblick sonst je Komponente bot - Zuordnung ändern, Komponente löschen, Regel mit dieser Komponente
+   * erstellen - zieht ins „…“-Zeilenmenü, statt ein zweites UI-Muster zu erfinden.
+   */
+  const mehrFor = (g: AufbauGeraet): RowMenuItem[] => {
+    const items: RowMenuItem[] = [];
+    const mehrfach = g.karte.komponenten.length > 1;
+    for (const c of g.karte.komponenten) {
+      const suffix = mehrfach ? ` · ${c.label}` : '';
+      if (bietetRegelBruecke({ entityId: c.entityId, label: c.label, channels: c.channels.map((m) => ({ channel: m.raw })) })) {
+        items.push({
+          label: `${REGEL_BRUECKE_LABEL}${suffix}`,
+          icon: 'zap',
+          recht: 'betriebsweise.aendern',
+          onClick: () => {
+            window.location.hash = regelBrueckeHash(site.id, c.entityId);
+          },
+        });
+      }
+      if (c.orphaned) continue;
+      if (c.entityType === 'sub-meter') {
+        items.push({ label: `Woanders anhängen …${suffix}`, icon: 'link', recht: 'geraet.einrichten', onClick: () => setUmhaengen(c) });
+      }
+      const actions = componentActions(c, data?.entities.find((e) => e.id === c.entityId));
+      if (actions.canRepin) {
+        items.push({ label: `Zuordnung ändern${suffix}`, icon: 'link', recht: 'geraet.einrichten', onClick: () => setRepin(c) });
+      }
+      if (actions.canDelete) {
+        items.push({
+          label: `Komponente löschen${suffix}`,
+          icon: 'trash',
+          recht: 'komponente.loeschen',
+          danger: true,
+          onClick: () => setRemove(c),
+        });
+      }
+    }
+    return items;
   };
 
   if (rename) {
@@ -670,6 +895,7 @@ export function AufbauSection({
         <AufbauTabelle
           standortSicht={standortSicht ? { ...standortSicht, anlageName: site.name } : null}
           wurzel={baum.wurzel}
+          onAdresseNachtragen={standortDesBaumsObjekt ? () => setAdresseNachtragen(true) : undefined}
           anlagenZahl={baum.anlagen.length}
           boxZahl={baum.boxZahl}
           zeilen={zeilen}
@@ -679,6 +905,7 @@ export function AufbauSection({
           onFilter={setFilter}
           onAnlageUmschalten={(a) => umschalten(a, a.id, a.aktuell)}
           onBoxUmschalten={(b) => umschalten(null, b.id, true)}
+          onGatewayUmschalten={(id) => umschalten(null, id, true)}
           onGeraetUmschalten={(id) =>
             setGeraetOffen((alt) => {
               const neu = new Set(alt);
@@ -693,6 +920,10 @@ export function AufbauSection({
           onGeraetHinzufuegen={
             portalManaged ? (b) => oeffneAnlegen(b ? eigeneBoxen.find((d) => d.id === b.id) ?? null : fuehrendeBoxOf(devices, site.id)) : null
           }
+          onGeraeteSuchen={(b) => {
+            const d = eigeneBoxen.find((x) => x.id === b.id);
+            if (d) oeffneSuche(d);
+          }}
           geraetGesperrt={
             components && !portalManaged
               ? components.componentAuthority === 'box'
@@ -703,7 +934,9 @@ export function AufbauSection({
           onBoxHinzufuegen={() => setBoxAnmelden(true)}
           onAnlageHinzufuegen={() => setAnlageAnlegen(true)}
           onBoxVerwalten={(b) => setBoxVerwalten(b.id)}
-          hinweisFor={(g) => g.karte.komponenten.map((c) => ohneMesswertById.get(c.entityId)?.badge).find(Boolean) ?? null}
+          hinweisFor={(g) => g.karte.komponenten.map((c) => zeilenHinweisById.get(c.entityId)).find(Boolean) ?? null}
+          mehrFor={mehrFor}
+          showTechnical={showTechnical}
           technik={
             showTechnical ? (
               <button type="button" className="vp-auf-technik-add" onClick={() => setTechnikDrawer({ mode: 'create' })}>
@@ -745,7 +978,7 @@ export function AufbauSection({
             }
             sofortFor={(c) => consumers.find((x) => x.id === c.entityId && x.connection === 'connected') ?? null}
             // Die Ausnahme gilt dem Speicher: die PV-Zeile desselben Hybrids trägt sie nicht.
-            ohneMesswertFor={(c) => (c.aspect === 'main' ? ohneMesswertById.get(c.entityId) ?? null : null)}
+            ohneMesswertFor={(c) => (c.aspect === 'main' ? zeilenHinweisById.get(c.entityId) ?? null : null)}
             onSofort={(consumer, action) => ausKurzblick(() => setSofort({ consumer, action }))}
             onFreigabe={(c) => ausKurzblick(() => setFreigabe(c))}
             onRepin={(c) => ausKurzblick(() => setRepin(c))}
@@ -810,7 +1043,81 @@ export function AufbauSection({
         funde={katalogOffen ? katalogFunde(baum) : []}
         onClose={() => setKatalogOffen(false)}
         onWahl={katalogWahl}
+        onSuche={(() => {
+          const b = addBox ?? fuehrendeBoxOf(devices, site.id);
+          return b ? () => {
+            setKatalogOffen(false);
+            oeffneSuche(b);
+          } : null;
+        })()}
       />
+
+      {suche && (
+        <GeraetesucheDialog
+          // Eigener Präfix: der Anlege-Fluss daneben zählt seine Läufe ebenfalls ab 1.
+          key={`suche-${suche.lauf}`}
+          open={!addOpen && !katalogOffen && !vorlage && !heizstabAus}
+          siteId={site.id}
+          boxId={suche.box.id}
+          boxName={aktuelleAnlage.boxen.find((b) => b.id === suche.box.id)?.name ?? suche.box.name ?? 'VoltPilot-Box'}
+          zuletztGesehen={suche.box.lastSeenAt}
+          portalVerwaltet={portalManaged}
+          komponenten={components?.components ?? []}
+          suchId={suche.suchId}
+          start={suche.start}
+          uebernommen={uebernommen}
+          zuletzt={sucheZuletzt}
+          behalten={sucheBehalten}
+          onClose={() => {
+            setSuche(null);
+            setSucheBehalten(null);
+          }}
+          onUebernehmen={(u) => (u.alleAusgaenge
+            ? setHeizstabAus({ u, boxId: suche.box.id })
+            : ausSucheAnlegen({ art: 'vorlage', u }))}
+          onSelbst={(fund, suchId) => ausSucheAnlegen({ art: 'selbst', fund, suchId })}
+          onVonHand={() => {
+            const b = suche.box;
+            setSuche(null);
+            oeffneAnlegen(b);
+          }}
+          onAdresseGespeichert={(result) => {
+            setComponents(result);
+            reload();
+          }}
+          wartet={(f) => wiederVerbindenFuer(f) != null}
+          onWiederVerbinden={(f) => {
+            const w = wiederVerbindenFuer(f);
+            if (!w) return;
+            setSuche(null);
+            setSucheBehalten(null);
+            setRepinVorschlag(w.vorschlag);
+            setRepin(w.komponente);
+          }}
+        />
+      )}
+
+      {heizstabAus && (
+        <HeizstabAnlegen
+          siteId={site.id}
+          boxId={heizstabAus.boxId}
+          fund={heizstabAus.u.fund}
+          template={heizstabAus.u.template}
+          verbindung={heizstabAus.u.verbindung}
+          suchId={heizstabAus.u.suchId}
+          onClose={() => setHeizstabAus(null)}
+          onFertig={(result, titel) => {
+            const schluessel = heizstabAus.u.schluessel;
+            setHeizstabAus(null);
+            setComponents(result);
+            reload();
+            setErfolg(`${titel} ist angelegt. Automatisch heizt er, sobald Sie in der Steuerung „Mit Sonnenstrom“ wählen.`);
+            // Zurück zur Liste der Suche: der Schalter ist übernommen, seine Ausgänge gehören dem Heizstab.
+            setUebernommen((m) => new Map(m).set(schluessel, titel));
+            setSucheZuletzt((z) => ({ titel, n: (z?.n ?? 0) + 1 }));
+          }}
+        />
+      )}
 
       {(addOpen || vorlage) && (
         <AnlegenFlow
@@ -823,18 +1130,52 @@ export function AufbauSection({
           initialTyp={vorlage || start ? null : addTyp}
           startTemplate={start?.template ?? null}
           startRolle={start?.rolle ?? null}
-          onZurueck={() => {
+          startVerbindung={sucheVorbelegung ?? (addWeg ? gatewayVorbelegung(addWeg) : null)}
+          startHerkunft={sucheHerkunft}
+          startFund={
+            sucheFund?.art === 'vorlage'
+              ? geraetesucheBezug(sucheFund.u.suchId, sucheFund.u.fund.schluessel)
+              : sucheFund?.art === 'selbst'
+                ? geraetesucheBezug(sucheFund.suchId, sucheFund.fund.schluessel)
+                : null
+          }
+          zurueckLabel={
+            sucheFund?.art === 'vorlage' && sucheFund.u.ausModellwahl
+              ? 'Zurück zur Modellwahl'
+              : sucheFund
+                ? 'Zurück zur Gerätesuche'
+                : undefined
+          }
+          modellAendern={sucheFund?.art === 'vorlage' && sucheFund.u.ausModellwahl === true}
+          onZurueck={(stand) => {
+            const ausSuche = sucheFund !== null;
+            // Zurück zur Modellwahl: die Verbindungswerte gelten je Datenlogger und reisen zum nächsten Modell mit.
+            if (sucheFund?.art === 'vorlage' && sucheFund.u.ausModellwahl && stand) {
+              setSucheBehalten({ schluessel: sucheFund.u.fund.schluessel, verbindung: stand.verbindung });
+            }
             schliesseAnlegen();
-            setKatalogOffen(true);
+            // Aus der Suche zurück in die Suche (Modellwahl bzw. Liste), sonst in den Katalog.
+            if (!ausSuche) setKatalogOffen(true);
           }}
           onFertig={(info) => {
-            setErfolg([abschlussTitel(info.titel, info.uebernommen), info.hinweis].filter(Boolean).join(' '));
+            const satz = [abschlussTitel(info.titel, info.uebernommen), info.hinweis].filter(Boolean).join(' ');
+            setErfolg(satz);
+            if (sucheFund) {
+              // Zurück zur Liste der Suche (m5c): was übernommen ist, wandert nach unten - kein Sprung auf das Gerät.
+              const schluessel = sucheFund.art === 'vorlage' ? sucheFund.u.schluessel : sucheFund.fund.schluessel;
+              setUebernommen((m) => new Map(m).set(schluessel, info.titel));
+              setSucheZuletzt((z) => ({ titel: info.titel, n: (z?.n ?? 0) + 1 }));
+              setSucheBehalten(null);
+              return;
+            }
+            if (addWeg && info.id) anGatewayHaengen(addWeg, info.id, satz);
             // Auf das neue Gerät springen - die Zeile leuchtet kurz auf.
             if (info.id) window.location.hash = komponenteHash(site.id, info.id);
           }}
           onClose={() => {
             schliesseAnlegen();
             setAddBox(null);
+            setAddAn(null);
           }}
           onSaved={(result) => {
             setComponents(result);
@@ -843,13 +1184,41 @@ export function AufbauSection({
         />
       )}
 
+      {steuerungVerbinden && (
+        <LazyBoundary fallback={null}>
+          <AnlagensteuerungAssistent
+            site={site}
+            boxen={eigeneBoxen}
+            onClose={() => setSteuerungVerbinden(false)}
+            onFertig={(info) => {
+              setSteuerungVerbinden(false);
+              setErfolg(`${info.titel} angelegt.`);
+              reload();
+              // Auf die Geräteseite der neuen Steuerung (EZ-10).
+              window.location.hash = info.ziel;
+            }}
+          />
+        </LazyBoundary>
+      )}
+
       <AddDeviceDrawer
         open={boxAnmelden}
         title="VoltPilot-Box hinzufügen"
         // Eine Box gehört genau EINER Anlage; hier stehen alle Anlagen dieses Standorts zur Wahl, die offene zuerst.
         sites={anlagenDesBaums}
-        onClose={() => setBoxAnmelden(false)}
+        vorschlag={boxVorschlag}
+        onClose={() => {
+          setBoxAnmelden(false);
+          setBoxVorschlag(null);
+        }}
         onClaimed={() => onReload?.(site.id)}
+        onGeraeteSuchen={(d) => {
+          setBoxAnmelden(false);
+          setBoxVorschlag(null);
+          // Nur eine Box DIESER Anlage sucht hier; eine Box für eine andere Anlage des Standorts sucht in deren Aufbau.
+          if (d.siteId === site.id) oeffneSuche(d);
+          else window.location.hash = aufbauHash(d.siteId, 'suche', { box: d.id });
+        }}
       />
 
       {/* Die Box wohnt seit E5 hier: Name, Typ, Neu-Verbinden und Entfernen
@@ -860,6 +1229,24 @@ export function AufbauSection({
         onClose={() => setBoxVerwalten(null)}
         onChanged={() => onReload?.(site.id)}
       />
+
+      {adresseNachtragen && standortDesBaumsObjekt && standorte && (
+        // F16 (Anlage-Flow a1): die Adresse eines automatisch angelegten Standorts direkt am Aufbau -
+        // vorher nur versteckt unter Anlage › Einstellungen. Die Anlagen ohne Kartenpunkt übernehmen ihn.
+        <StandortDialog
+          open
+          standort={standortDesBaumsObjekt}
+          unternehmen={null}
+          standorte={standorte.standorte}
+          heute={standorte.stichtag}
+          onClose={() => setAdresseNachtragen(false)}
+          onGespeichert={() => {
+            setAdresseNachtragen(false);
+            reload();
+            onReload?.(site.id);
+          }}
+        />
+      )}
 
       <AnlageAnlegenDrawerLazy
         open={anlageAnlegen}
@@ -889,9 +1276,14 @@ export function AufbauSection({
           entities={data.entities}
           localSetup={data.localSetup}
           sources={sources}
-          onClose={() => setRepin(null)}
+          vorschlag={repinVorschlag}
+          onClose={() => {
+            setRepin(null);
+            setRepinVorschlag(null);
+          }}
           onSaved={() => {
             setRepin(null);
+            setRepinVorschlag(null);
             reload();
           }}
         />
@@ -906,6 +1298,19 @@ export function AufbauSection({
           onClose={() => setRemove(null)}
           onDeleted={() => {
             setRemove(null);
+            reload();
+          }}
+        />
+      )}
+
+      {umhaengen && (
+        <UmhaengenDialog
+          siteId={site.id}
+          component={umhaengen}
+          komponenten={model?.components ?? []}
+          onClose={() => setUmhaengen(null)}
+          onSaved={() => {
+            setUmhaengen(null);
             reload();
           }}
         />
@@ -1032,6 +1437,8 @@ function Kurzblick({
     <div className="vp-auf-kb">
       <p className="vp-auf-kb-sub">
         {geraet.unterzeile}
+        {/* GE-1: der Weg steht am Gerät — der Kurzblick nennt ihn und die Box, die ihn liest. */}
+        {geraet.anbindungText ? ` · ${geraet.anbindungText}` : ''}
         {box ? ` · an ${box.name}` : ''}
       </p>
       <p className="vp-auf-kb-zustand">
@@ -1085,7 +1492,7 @@ function KurzblickFuss({ geraet, editHref }: { geraet: AufbauGeraet; editHref: s
   const href = geraet.karte.href;
   return (
     <div className="vp-auf-kb-fuss">
-      {href ? (
+      {href && !geraet.einheit ? (
         <p className="vp-auf-kb-register">Register lesen und schreiben Sie auf der Geräteseite.</p>
       ) : null}
       <div className="vp-auf-kb-knoepfe">

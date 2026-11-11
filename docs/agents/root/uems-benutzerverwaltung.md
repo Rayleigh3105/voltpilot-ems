@@ -1,8 +1,8 @@
 # Benutzerverwaltung im Portal (AP-03 IP-13)
 
 `#/unternehmen/einstellungen/benutzer` wird über den Avatar geöffnet. `rollen.benutzerLesen()`
-verwendet `/me`: Kundenadministrator schreibend, Energiemanager lesend; andere Konten sehen weder
-Menü noch Inhalt. Die alte Adresse `#/benutzer` bleibt ein Plattform-Lesezeichen.
+verwendet `/me`: Kundenadministrator schreibend (auch die Plattform im Mandantensprung, `rollen.kundenadministrator`,
+29.10.2026), Energiemanager lesend; andere Konten sehen weder Menü noch Inhalt. Die alte Adresse `#/benutzer` bleibt ein Plattform-Lesezeichen.
 
 `BenutzerPage` zeigt Kontozustand, jede Rolle mit Geltungsbereich und künftige Zuweisungen.
 „Zugriff beenden“ entzieht eine einzelne Zuweisung über den vorhandenen `DELETE /api/v1/zugriff/{id}`.

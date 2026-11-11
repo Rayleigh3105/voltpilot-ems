@@ -158,13 +158,25 @@ public final class SteuerartProjektion {
      *
      * <p>⚠ Die Vorgabe eines Überschuss-Wunsches ist {@code pausieren} = „nur
      * Sonnenstrom": sie ist die ENGERE der beiden und damit die, die niemanden
-     * überrascht. Alles, was nicht „Überschuss" ist, fährt die Bahn
-     * {@code schnell} - sie ist keine Quellen-Politik, sondern ihre Abwesenheit.
+     * überrascht. „Sofort" fährt die Bahn {@code schnell} - sie ist keine
+     * Quellen-Politik, sondern ihre Abwesenheit.
+     *
+     * <p>⚠ „Günstig" fährt {@code nur_sonne}, NICHT {@code schnell}. Das
+     * Preisfenster führt der PLAN aus (Optimierer, Halter Klasse 60): im
+     * günstigen Slot befreit er die Säule aus der Bahn und deckelt auf das Ziel,
+     * im teuren deckelt er auf 0. Die Bahn gilt nur, wo KEIN frischer Plan
+     * hält - Wolke weg, Preise fehlen. Dort hiesse {@code schnell} „Netzstrom
+     * zu jedem Preis", also genau das Gegenteil der Wahl; {@code nur_sonne}
+     * heisst „Netzstrom nie zu einem unbekannten Preis, Sonnenüberschuss
+     * schon" (Bericht vp-wallbox-modi-konzept §3.4).
      *
      * @param quelle einer der {@code QUELLE_*}-Werte
      * @param ueberschussModus {@link #MODUS_MINDESTLEISTUNG} oder sonst irgendwas
      */
     public static String bahnAus(String quelle, String ueberschussModus) {
+        if (QUELLE_GUENSTIG.equals(quelle)) {
+            return POLICY_NUR_SONNE;
+        }
         if (!QUELLE_UEBERSCHUSS.equals(quelle)) {
             return POLICY_SCHNELL;
         }

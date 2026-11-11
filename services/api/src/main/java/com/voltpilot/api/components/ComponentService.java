@@ -7,6 +7,7 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.geraetesuche.GeraetesucheHerkunft;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -16,9 +17,11 @@ import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.templates.BuiltinComponentTemplates;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.QuelleEinstellungService;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
+import com.voltpilot.api.web.dto.GeraetesucheBezug;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
@@ -31,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -59,7 +63,9 @@ import org.springframework.web.server.ResponseStatusException;
  *       Frontend der Box ({@code static/sources.js}); ein zweiter Zähler ließe
  *       die Topologie das Netz doppelt zählen.</li>
  *   <li><b>Genau EIN Wechselrichter.</b> Er ist die {@code battery-hybrid}-Zeile
- *       der Anlage - die Auto-Komposition legt sie an, dieser Weg füllt ihre
+ *       der Anlage - die Auto-Komposition legt sie aus dem Speicher-Stammsatz
+ *       an, sonst entsteht sie beim Speichern des Wechselrichters
+ *       ({@link KomponierteWechselrichterZeile}); dieser Weg füllt ihre
  *       Anbindung. Ein zweiter wäre auf der Box nicht entscheidbar (der Applier
  *       lehnt ihn dort noch einmal ab).</li>
  *   <li><b>Marke/Modell/Familie/Kommunikationsart kommen aus der VORLAGE</b>,
@@ -109,6 +115,14 @@ public class ComponentService {
                 && DEVICE_TYPE_IO_MODULE.equals(template.deviceType())) {
             return ENTITY_TYPE_IO_MODULE;
         }
+        // Ein Zähler auf der Verbraucher-Seite ist ein UNTERZÄHLER (eine Unterverteilung, eine Halle):
+        // er misst einen Teil des Hauses und wird nie geschaltet. Als generic-load („Steuerbare Last")
+        // hieß er im Portal „Schaltbar per Regel" (Schramm „Zuhause", 07.11.2026; Konzept
+        // vp-unterzaehler-anzeige C1).
+        if (ROLE_CONSUMER.equals(role) && template != null
+                && ComponentDefaults.DEVICE_TYPE_METER.equals(template.deviceType())) {
+            return ComponentDefaults.TYPE_SUB_METER;
+        }
         return ROLE_ENTITY_TYPE.get(role);
     }
 
@@ -130,6 +144,13 @@ public class ComponentService {
     private final DeviceRepository deviceTopology;
     private final EntityTypeCatalog entityTypes;
     private final QuelleEinstellungService einstellungen;
+    private final ZaehlerbaumService zaehlerbaum;
+    private final KomponenteHaengtAnRepository haengtAnRepo;
+    /**
+     * Die Herkunft aus der Gerätesuche (Folgepaket vp-gs-folge-herkunft). Optional, damit die Tests, die diesen
+     * Dienst von Hand bauen, unverändert bleiben; im Kontext ist sie immer da.
+     */
+    private GeraetesucheHerkunft geraetesuche;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ComponentService(Geltungsbereich geltungsbereich, MeasurementPointRepository points,
@@ -138,7 +159,8 @@ public class ComponentService {
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
             AssetRepository assets, EntityObservedRepository observed,
             ComponentActivationOutboxService activationOutbox, DeviceRepository deviceTopology,
-            EntityTypeCatalog entityTypes, QuelleEinstellungService einstellungen) {
+            EntityTypeCatalog entityTypes, QuelleEinstellungService einstellungen,
+            ZaehlerbaumService zaehlerbaum, KomponenteHaengtAnRepository haengtAnRepo) {
         this.geltungsbereich = geltungsbereich;
         this.points = points;
         this.entityRepo = entityRepo;
@@ -153,6 +175,84 @@ public class ComponentService {
         this.deviceTopology = deviceTopology;
         this.entityTypes = entityTypes;
         this.einstellungen = einstellungen;
+        this.zaehlerbaum = zaehlerbaum;
+        this.haengtAnRepo = haengtAnRepo;
+    }
+
+    @Autowired(required = false)
+    void setGeraetesucheHerkunft(GeraetesucheHerkunft geraetesuche) {
+        this.geraetesuche = geraetesuche;
+    }
+
+    /** Heizstab V1, Paket 3: ein Heizstab als EIN Gerät über die Ausgänge eines Shelly. */
+    private com.voltpilot.api.consumers.HeizstabGeraet heizstab;
+
+    @Autowired(required = false)
+    void setHeizstabGeraet(com.voltpilot.api.consumers.HeizstabGeraet heizstab) {
+        this.heizstab = heizstab;
+    }
+
+    /** Ob dieses Anlegen einen Heizstab über eine Ausgangsmenge meint - und das prüfen. */
+    private boolean heizstabAnlegen(UUID siteId, String role, SaveComponentRequest req,
+            ComponentTemplateDto template) {
+        if (!com.voltpilot.api.consumers.HeizstabGeraet.gemeint(req.consumerType())) {
+            if (req.consumerType() != null && !req.consumerType().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unbekannte Verbraucherart.");
+            }
+            return false;
+        }
+        if (!ROLE_CONSUMER.equals(role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ein Heizstab ist ein Verbraucher.");
+        }
+        if (heizstab == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Ein Heizstab lässt sich derzeit nicht anlegen.");
+        }
+        heizstab.pruefe(siteId, null, template.communication(),
+                req.connection() == null ? Map.of() : req.connection());
+        return true;
+    }
+
+    /**
+     * Der Satz, mit dem das Anlegen eines einzelnen Schaltausgangs abgelehnt wird.
+     * Er nennt den Ausweg, nicht nur die Sperre.
+     */
+    static final String SCHALTER_OHNE_ROLLE = "Ein einzelner Schaltausgang lässt sich nicht als "
+            + "eigenes Gerät anlegen: die VoltPilot-Box kann ihm keine Rolle in der Anlage zuordnen "
+            + "und würde ihn nicht anwenden. Einen Heizstab legen Sie über „Geräte suchen“ an "
+            + "(alle Ausgänge zusammen).";
+
+    /**
+     * Der Satz, mit dem das Anlegen einer Wallbox über ihre HTTP-Schnittstelle abgelehnt wird. Er nennt den
+     * Weg, der funktioniert.
+     */
+    static final String WALLBOX_NUR_UEBER_OCPP = "Eine Wallbox lässt sich nicht über ihre HTTP-Schnittstelle "
+            + "als Verbraucher anlegen: sie ist nur lesend, die VoltPilot-Box kann ihr keine Rolle in der Anlage "
+            + "zuordnen und würde sie nicht anwenden. Binden Sie die Wallbox über OCPP an: Wählen Sie unter "
+            + "„Gerät hinzufügen“ „Ladesäule mit OCPP 1.6“ und tragen Sie die dort angezeigte Adresse in der "
+            + "Wallbox als OCPP-Server ein.";
+
+    /**
+     * Ein Schaltausgang (Vorlage {@code device_type: switch}, heute der Shelly) oder die HTTP-Schnittstelle einer
+     * Wallbox ({@code device_type: wallbox}, heute go-e, nur lesend) als eigenes Verbraucher-Gerät entstünde als
+     * reines Messgerät: {@code generic-load} ohne {@code actuate}, Rückfall {@code measure-only}
+     * ({@link ComponentDefaults}). Einem solchen Gerät kann die Box keine Rolle zuordnen - sie liest es nicht und
+     * meldet es als abgelehnt (am VoltPilotGATE hielten drei solche Ausgänge am 02.11.2026 sogar den ganzen Push
+     * auf). Angelegt wird ein Schalter deshalb nur als Heizstab über seine Ausgänge, eine Wallbox über OCPP.
+     * Bestehende Zeilen bleiben, wie sie sind; Bearbeiten ist nicht betroffen.
+     */
+    static void requireNoRolelessSwitch(String role, ComponentTemplateDto template,
+            boolean heizstabGeraet) {
+        if (heizstabGeraet || !ROLE_CONSUMER.equals(role)) {
+            return;
+        }
+        if ("switch".equals(template.deviceType())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, SCHALTER_OHNE_ROLLE);
+        }
+        if ("wallbox".equals(template.deviceType())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, WALLBOX_NUR_UEBER_OCPP);
+        }
     }
 
     // ---- Lesen ------------------------------------------------------------
@@ -182,9 +282,14 @@ public class ComponentService {
                 && !ComponentService.holds(soll, held)
                 && !ComponentAuthority.BOX.equals(reportedAuthority)
                 && entityRegistry.gatewayAmbiguous(siteId);
+        Map<UUID, GeraetesucheHerkunft.Herkunft> herkunft = geraetesuche == null ? Map.of()
+                : geraetesuche.herkunft(siteId);
         List<SiteComponentsDto.ComponentRowDto> rows = new ArrayList<>();
+        Map<String, String> rejected = ist == null ? Map.of() : ist.rejected();
+        Map<UUID, UUID> baum = zaehlerbaum.baum(siteId);
         for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
-            rows.add(toRow(row, soll, applied, held, reportedAuthority, gatewayAmbiguous));
+            rows.add(toRow(row, soll, applied, held, reportedAuthority, gatewayAmbiguous,
+                    herkunft.get(row.id()), rejected.get(row.id().toString()), baum.get(row.id())));
         }
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
@@ -253,14 +358,27 @@ public class ComponentService {
         deviceTopology.lockTopology(siteId);
         requireSite(siteId);
         requirePortalManaged(siteId);
+        // Ein Bezug auf die Gerätesuche wird VOR allem anderen geprüft: ein fremder, unbekannter oder abgelaufener
+        // Fund legt nichts an (Folgepaket vp-gs-folge-herkunft).
+        GeraetesucheHerkunft.Fund fund = fundAusSuche(siteId, req);
         String role = requireRole(req.role());
         ComponentTemplateDto template = requireTemplate(req.templateRef(), req.templateVersion());
+        // Heizstab V1: VOR der Verbindungstest-Pflicht geprüft - die Ablehnung soll den echten
+        // Grund nennen (Anschluss, belegter Ausgang, Box ohne Update), nicht das Folgeproblem.
+        boolean heizstabGeraet = heizstabAnlegen(siteId, role, req, template);
+        requireNoRolelessSwitch(role, template, heizstabGeraet);
         TestedConnection tested = requireTestedConnection(siteId, req, template);
 
         UUID tenantId = TenantContext.get();
         UUID entityId = resolveOrCreatePoint(siteId, tenantId, role, req, template);
+        netzZaehlerKanaele(siteId, entityId, role, template);
         int version = writeDefinition(siteId, tenantId, entityId, role, req, template, tested,
                 subject, "Angelegt");
+        if (heizstabGeraet) {
+            heizstab.profil(tenantId, siteId, entityId, tested.fields());
+        }
+        zaehlerbaum.einhaengenBeiAnlegen(siteId, entityId, req.haengtAn(), subject);
+        uebernommen(tenantId, siteId, fund, entityId);
         // L9: NACH dem Commit und mit Wiederholung, wie Bearbeiten und Rollback.
         // Ein Push INNERHALB der Transaktion hat zwei Fehlerformen, die beide
         // still sind: ein Broker-Ausfall genau hier wird nie wiederholt (erst
@@ -284,6 +402,7 @@ public class ComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         EntityRow existing = requireComponent(siteId, entityId);
+        GeraetesucheHerkunft.Fund fund = fundAusSuche(siteId, req);
         if (req.expectedRevision() == null || req.expectedRevision() < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Zum Bearbeiten fehlt die gelesene Fassung. Bitte laden Sie das Gerät neu.");
@@ -312,6 +431,12 @@ public class ComponentService {
         if (interval != null && interval > 0) desired.put("interval_s", interval);
         else desired.remove("interval_s");
 
+        boolean heizstabGeraet = heizstab != null
+                && com.voltpilot.api.consumers.HeizstabGeraet.TYP.equals(existing.entityType())
+                && com.voltpilot.api.consumers.HeizstabAusgaenge.istMenge(desired);
+        if (heizstabGeraet) {
+            heizstab.pruefe(siteId, entityId, template.communication(), desired);
+        }
         Map<String, Object> oldFingerprint = connectionFingerprint(old);
         Map<String, Object> newFingerprint = connectionFingerprint(desired);
         boolean clearReadingOverride = old.containsKey("reading_override")
@@ -360,15 +485,28 @@ public class ComponentService {
             einstellungen.fehlgeschlagen(entityId, template.communication(), existing.connectionJson(),
                     connJson, e);
         }
+        // Ein steuerbares Gerät bleibt beim Bearbeiten, was es ist: Typ, Schreibweg (control +
+        // actuate) und Schutzgrenzen gehören zusammen und ändern sich nur, wenn die Bearbeitung sie
+        // selbst neu bestimmt (Heizstab: aus der Ausgangsmenge; echter Typwechsel: Anlege-Vorgabe).
+        String editType = entityTypeForEdit(role, template, existing);
+        String editCapabilities = heizstabGeraet ? heizstab.capabilities(desired)
+                : capabilitiesForEdit(editType, role, existing, template);
+        boolean capabilitiesRetained = editCapabilities == null;
+        boolean controlAfter = heizstabGeraet || (capabilitiesRetained && existing.control());
+        String editGuards = heizstabGeraet ? heizstab.guards(desired)
+                : capabilitiesRetained && existing.control() ? null
+                        : ComponentDefaults.guards(mapper, role, req.capacityKwp());
         ComponentDefinitionRepository.Applied applied = definitions.applyEditDefinition(siteId,
-                entityId, req.expectedRevision(), dbRole, entityTypeFor(role, template),
+                entityId, req.expectedRevision(), dbRole, editType,
                 normalizeLabel(req.label()), capacity, template.brand(), template.model(),
                 template.family(), template.communication(), connJson,
                 SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
                         : SOURCE_KIND_BUILTIN,
-                template.templateRef(), template.version(),
-                capabilitiesForEdit(role, template, existing),
-                ComponentDefaults.guards(mapper, role, req.capacityKwp()));
+                template.templateRef(), template.version(), controlAfter,
+                // Heizstab V1: Fähigkeiten und Schutzgrenzen folgen der Ausgangsmenge (oberste Stufe
+                // als Obergrenze von Sollwert, Grenze und Klemme). Der allgemeine Bearbeitungs-Default
+                // („nur messen", Failsafe measure-only) würde dem Stab Schreibweg und Klemme nehmen.
+                editCapabilities, editGuards);
         if (applied == null) {
             EntityRow current = entityRepo.entityForSite(siteId, entityId);
             if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -388,8 +526,50 @@ public class ComponentService {
                     "family_changed", effectiveAt, existing.family(), template.family(), subject,
                     "Gerätefamilie geändert; frühere Messwerte behalten ihre damalige Interpretation.");
         }
+        if (fund != null && connectionChanged) {
+            // DP-7 A: dieselbe Komponente, neue Adresse aus der Suche. Ohne Änderung der Verbindung gibt es nichts
+            // zu protokollieren - der Bezug ist dann trotzdem geprüft.
+            geraetesuche.protokollieren(TenantContext.get(), siteId, fund,
+                    GeraetesucheHerkunft.ADRESSE_UEBERNOMMEN, entityId, akteur());
+        }
+        if (heizstabGeraet) {
+            // Neue Leistungen oder Stufen: das Stufenprofil folgt (levels_kw, Nennleistung).
+            heizstab.profil(TenantContext.get(), siteId, entityId, desired);
+        }
         activationOutbox.enqueue(TenantContext.get(), siteId, entityId, applied.version(), "component_edit");
         return list(siteId);
+    }
+
+    /** Der geprüfte Bezug auf einen Fund der Gerätesuche, oder {@code null} ohne Bezug (der Weg wie bisher). */
+    private GeraetesucheHerkunft.Fund fundAusSuche(UUID siteId, SaveComponentRequest req) {
+        return fundAusSuche(siteId, req.geraetesuche());
+    }
+
+    /**
+     * Derselbe Haken für die Selbstbau-Tür ({@code POST …/components/custom}, „Vielleicht · selbst beschreiben"):
+     * ein Weg, eine Prüfung, eine 422.
+     */
+    GeraetesucheHerkunft.Fund fundAusSuche(UUID siteId, GeraetesucheBezug bezug) {
+        if (bezug == null) {
+            return null;
+        }
+        if (geraetesuche == null) {
+            throw new IllegalStateException("Gerätesuche-Herkunft ist nicht verdrahtet");
+        }
+        return geraetesuche.pruefen(siteId, bezug);
+    }
+
+    /** Die Protokollzeile {@code uebernommen} einer angelegten Komponente; ohne Fund geschieht nichts. */
+    void uebernommen(UUID tenantId, UUID siteId, GeraetesucheHerkunft.Fund fund, UUID entityId) {
+        if (fund != null) {
+            geraetesuche.protokollieren(tenantId, siteId, fund, GeraetesucheHerkunft.UEBERNOMMEN, entityId, akteur());
+        }
+    }
+
+    /** Die Person der Anfrage im Protokoll-Vokabular - aus dem Token, nie aus dem Rumpf. */
+    private static ProtokollAkteur akteur() {
+        return ProtokollAkteur.aus(SecurityContextHolder.getContext().getAuthentication())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 
     /**
@@ -549,8 +729,11 @@ public class ComponentService {
         // Grund nennen („Die Spannungen müssen zwischen …"), nicht das
         // Folgeproblem („Bitte prüfen Sie zuerst die Verbindung").
         requireUsableVoltageBounds(connection);
+        // Ebenfalls VOR dem Beleg: ein Zahlenfeld als Text würde die Box später als GANZE
+        // Geräte-Konfiguration ablehnen ("cannot unmarshal string ... unit_id").
+        ComponentConnectionSchema.require(template, connection);
         if (!receipts.has(siteId, template.templateRef(), template.version(), connection)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät - erst danach lässt "
                             + "sie sich speichern.");
         }
@@ -561,7 +744,7 @@ public class ComponentService {
         }
         String accepted = req.acceptMissingChannel() == null ? "" : req.acceptMissingChannel().trim();
         if (!missing.equals(accepted)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Der Verbindungstest war unvollständig: " + channelLabel(missing)
                             + " fehlt. Bitte bestätigen Sie ausdrücklich, dass diese Komponente "
                             + "ohne diesen Wert betrieben werden soll.");
@@ -610,11 +793,25 @@ public class ComponentService {
      * Findet die Zeile, in die diese Komponente gehört - oder legt sie an.
      *
      * <p>Wechselrichter und Netz-Zähler sind PLATTFORM-KOMPONIERT: die
-     * Auto-Komposition legt sie beim Geräte-Claim an, dieser Weg füllt ihre
-     * Anbindung. Erzeuger und Verbraucher entstehen hier neu.
+     * Auto-Komposition legt sie beim Geräte-Claim an (den Wechselrichter nur
+     * mit Speicher-Stammsatz - fehlt er, entsteht die Zeile hier), dieser Weg
+     * füllt ihre Anbindung. Erzeuger und Verbraucher entstehen hier neu.
      */
     private UUID resolveOrCreatePoint(UUID siteId, UUID tenantId, String role,
             SaveComponentRequest req, ComponentTemplateDto template) {
+        if (heizstab != null && com.voltpilot.api.consumers.HeizstabGeraet.gemeint(req.consumerType())) {
+            // Heizstab V1: ein NEUES Gerät vom Typ heating-rod über die Ausgangsmenge - nie die
+            // Übernahme einer verwaisten Zeile (die gehörte zu einem einzelnen Ausgang).
+            Map<String, Object> conn = req.connection() == null ? Map.of() : req.connection();
+            // Steuerbar von Anfang an (control + actuate): ein Heizstab über eine Ausgangsmenge ist ein
+            // geschaltetes Gerät, keine Messung mit späterer Freigabe (HeizstabGeraet#capabilities).
+            UUID id = points.create(tenantId, siteId, role,
+                    ComponentLabels.toWrite(null, req.label(), "Heizstab"),
+                    template.brand(), template.model(), null, null, true);
+            entityRepo.setEntityConfig(id, com.voltpilot.api.consumers.HeizstabGeraet.TYP,
+                    heizstab.capabilities(conn), heizstab.guards(conn));
+            return id;
+        }
         String entityType = entityTypeFor(role, template);
 
         // Wechselrichter und Netz-Zähler sind PLATTFORM-KOMPONIERT: die
@@ -642,12 +839,14 @@ public class ComponentService {
                 return existing;
             }
             if (ROLE_INVERTER.equals(role)) {
-                // Ohne komponierte Zeile fehlt der Anlage der Speicher-Stammsatz,
-                // aus dem sie entsteht. Das ist eine Aussage über die
-                // Reihenfolge des Einrichtens, kein Fehler des Kunden.
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Für diese Anlage ist noch kein Wechselrichter angelegt. Bitte tragen Sie "
-                                + "zuerst die Eckdaten Ihres Speichers ein.");
+                // Ohne Speicher-Stammsatz hat die Plattform noch keine Zeile
+                // komponiert. Bis zum 02.11.2026 war das hier eine 409 („… tragen
+                // Sie zuerst die Eckdaten Ihres Speichers ein") - NACH bestandenem
+                // Test, zu einer Zeile, die der Kunde im Aufbau zu sehen glaubte.
+                // Die Reihenfolge des Einrichtens ist keine Bedingung mehr: die
+                // Zeile entsteht jetzt, der Speicher frischt sie später nach.
+                return KomponierteWechselrichterZeile.komponieren(entityRepo, entityRegistry,
+                        entityTypes, mapper, tenantId, siteId);
             }
         }
         if (ROLE_NETZ.equals(role) && points.countByRole(siteId, ROLE_NETZ) > 0) {
@@ -891,14 +1090,58 @@ public class ComponentService {
      * trägt) setzt sie neu - dann sind die alten Kanäle Aussagen über ein
      * anderes Gerät.
      */
-    private String capabilitiesForEdit(String role, ComponentTemplateDto template,
-            EntityRow existing) {
-        String targetType = entityTypeFor(role, template);
+    private String capabilitiesForEdit(String targetType, String role, EntityRow existing,
+            ComponentTemplateDto template) {
         String storedType = existing.entityType();
         if (targetType != null && storedType != null && targetType.equals(storedType.trim())) {
-            return null;
+            // Der Netz-Zähler bleibt grid-meter, aber seine Kanäle folgen dem GERÄT: über einen
+            // Zähler gelesen trägt er dessen Zählerstände und Phasen (netzZaehlerKanaele).
+            return ROLE_NETZ.equals(role)
+                    ? ComponentDefaults.netzZaehlerAbgleich(mapper, entityTypes, existing.capabilitiesJson(),
+                            template.communication())
+                    : null;
         }
         return ComponentDefaults.capabilities(mapper, entityTypes, targetType, role);
+    }
+
+    /**
+     * Ein Netz-Zähler, der über einen Zähler gelesen wird (Shelly Pro 3EM-400), meldet neben seiner
+     * Leistung Zählerstände und Phasen; seine Komponente muss sie nennen, sonst verwirft die Box sie
+     * (Box: {@code agent.meterEntityTelemetry}). Die Zeile ist meist die KOMPONIERTE grid-meter-Zeile
+     * der Anlage, die nur {@code power_kw} trägt - der Anlege-Weg ergänzt die Kanäle hier.
+     */
+    private void netzZaehlerKanaele(UUID siteId, UUID entityId, String role, ComponentTemplateDto template) {
+        if (!ROLE_NETZ.equals(role)) {
+            return;
+        }
+        EntityRow row = entityRepo.entityForSite(siteId, entityId);
+        if (row == null) {
+            return;
+        }
+        String caps = ComponentDefaults.netzZaehlerAbgleich(mapper, entityTypes, row.capabilitiesJson(),
+                template.communication());
+        if (caps != null) {
+            entityRepo.setCapabilities(entityId, caps);
+        }
+    }
+
+    /**
+     * Der Entitätstyp nach dem Bearbeiten. Die Rolle {@code consumer} übersetzt sich beim Anlegen in
+     * {@code generic-load}; ein Verbraucher mit einem genaueren Typ (Heizstab, Wallbox, Pumpe, ...)
+     * behält seinen Typ - sonst wäre jedes Bearbeiten eine stille Umwidmung zum Allerwelts-Verbraucher,
+     * mit allem, was am Typ hängt (Stufenprofil, Schreibweg, Katalog-Vorgaben).
+     */
+    private String entityTypeForEdit(String role, ComponentTemplateDto template, EntityRow existing) {
+        String target = entityTypeFor(role, template);
+        String stored = existing.entityType() == null ? null : existing.entityType().trim();
+        if (ROLE_CONSUMER.equals(role) && ROLE_ENTITY_TYPE.get(ROLE_CONSUMER).equals(target)
+                && stored != null && !stored.isEmpty()) {
+            EntityTypeCatalog.EntityType type = entityTypes == null ? null : entityTypes.find(stored);
+            if (type != null && "consumer".equals(type.category()) && !type.composed()) {
+                return stored;
+            }
+        }
+        return target;
     }
 
     private void requireCompatibleRoleChange(UUID siteId, UUID entityId, String role,
@@ -964,23 +1207,16 @@ public class ComponentService {
      *
      * <p>Die Fail-closed-Regel von {@link ComponentSecrets#maskedJson} greift,
      * wenn die Vorlage einer Komponente nicht (mehr) auflösbar ist: dann ist
-     * JEDER gespeicherte Schlüssel verdächtig. Für die drei Anschlüsse, die die
-     * api SELBST schreibt - der Modbus-Baukasten und die beiden Lesetypen der
-     * eigenen Batterie - gibt es aber gar keine Vorlage, die verschwinden
-     * könnte: ihre Form ist Code, und sie ist bekannt.
+     * JEDER gespeicherte Schlüssel verdächtig. Für den Anschluss, den die api
+     * SELBST schreibt - der Modbus-Baukasten -, gibt es aber gar keine Vorlage,
+     * die verschwinden könnte: seine Form ist Code, und sie ist bekannt.
      *
      * <p>Fail-closed dort anzuwenden wäre nicht sicherer, sondern nur
-     * unbrauchbar: das Bearbeiten-Formular bekäme statt Topic, Wertepfad und
-     * Skalierung acht Punkte zurück. Die Geheimnis-HEURISTIK bleibt dabei
-     * unverändert scharf - genau deshalb heißt der Schlüssel des HTTP-Anschlusses
-     * {@code auth_secret} und wohnt auf der obersten Ebene
-     * ({@link UserDefinedBatteryDefinition#SECRET_FIELD}): {@code isSecretKey}
-     * maskiert ihn auch ohne Vorlage.
+     * unbrauchbar: das Bearbeiten-Formular bekäme statt der Register acht
+     * Punkte zurück. Die Geheimnis-HEURISTIK bleibt dabei unverändert scharf.
      */
     private static boolean selfAuthored(String communication) {
-        return SelfBuildDefinition.COMMUNICATION.equals(communication)
-                || UserDefinedBatteryDefinition.COMMUNICATION.equals(communication)
-                || UserDefinedBatteryDefinition.COMMUNICATION_HTTP.equals(communication);
+        return SelfBuildDefinition.COMMUNICATION.equals(communication);
     }
 
     private ComponentDefinitionDto masked(ComponentDefinitionDto row) {
@@ -995,7 +1231,8 @@ public class ComponentService {
     }
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
-            String held, String reportedAuthority, boolean gatewayAmbiguous) {
+            String held, String reportedAuthority, boolean gatewayAmbiguous,
+            GeraetesucheHerkunft.Herkunft herkunft, String rejectedReason, UUID haengtAn) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         boolean failClosed = template == null && !selfAuthored(row.communication());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
@@ -1004,7 +1241,11 @@ public class ComponentService {
                         : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), failClosed),
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
-                syncStatus(soll, applied, held, reportedAuthority, gatewayAmbiguous));
+                syncStatus(soll, applied, held, reportedAuthority, gatewayAmbiguous),
+                herkunft == null ? null : new SiteComponentsDto.HerkunftDto(
+                        SiteComponentsDto.HerkunftDto.GERAETESUCHE, herkunft.suchId(), herkunft.gesuchtAm(),
+                        herkunft.uebernommenAm()),
+                rejectedReason, haengtAn);
     }
 
     private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {

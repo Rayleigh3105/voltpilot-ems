@@ -41,7 +41,7 @@
  * Rein + framework-frei (der `komponenten.ts`/`geraetSeite.ts`-Präzedenzfall).
  */
 import type {
-  ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
+  AnlagensteuerungWerte, ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
 } from './api';
 import { ladestandVon } from './ladestandVon';
 import { channelLabel } from './channels';
@@ -51,8 +51,11 @@ import { netzKwText, regeltNetzanschluss } from './curtailment';
 import { fmtNum } from './format';
 import type { GeraetArt, GeraetTon } from './geraetSeite';
 import type { PlantComponent } from './komponenten';
+import { anlagensteuerungIdOf } from './geraetAdresse';
+import { anlageZustand, bitVon, kwText, PUNKT, wertVon, werteJe } from './anlagensteuerung';
 import type { ChargeConnector, ChargePoint } from './ladepunkte';
 import { NO_DATA } from './nodata';
+import { stufeText, type StufeMeldung } from './heizstab';
 import type { FlowNode } from './topology';
 
 /**
@@ -191,6 +194,8 @@ export interface Gesicht {
    * dieses Modul spricht (`ebyte_modbus_tcp`), nie geraten.
    */
   ioModul: boolean;
+  /** UEMS EZ-10: die Seite einer Anlagensteuerung (`as-…`) - sie nennt sich so, nie „Verbraucher“. */
+  anlagensteuerung?: boolean;
   held: Held;
   /**
    * Was dieses Blatt HAT - fehlt ein Fach, fällt es still weg (S5: kein Kasten
@@ -230,16 +235,27 @@ export interface GesichtInput {
    */
   topologie?: TopologyEntity[] | null;
   /**
-   * Der SPEICHER-KNOTEN des Lesemodells (P6 Speiser-Bindung). Er trägt als
-   * einziger die Auskunft, WOHER der Ladestand kommt (`soc_source`) und was
-   * das BMS zulässt (`limits`) - beides muss nicht von diesem Gerät stammen:
-   * eine ausdrücklich gebundene Selbstbau-Batterie liefert den Ladestand,
-   * während der Hybrid-Wechselrichter die Leistung weiter misst.
+   * Der SPEICHER-KNOTEN des Lesemodells. Er trägt als einziger die Auskunft,
+   * WOHER der Ladestand kommt (`soc_source`) - das muss nicht dieses Gerät sein.
    *
    * `null`/absent = die Anlage hat keinen Speicher-Knoten; dann steht hier
    * nichts, nie ein geratener Wert.
    */
   speicherKnoten?: FlowNode | null;
+  /**
+   * Der PV- bzw. NETZ-KNOTEN des Lesemodells - dieselben Anlagen-weiten Knoten,
+   * aus denen das Dashboard seine Energiefluss-Grafik baut. Sie tragen den
+   * Plausibilitätsabgleich des Heizstabs (Teil A, Captain-Befund 05.11.2026):
+   * eine bestätigte Stufe behauptet ≈4,5 kW, während die gemessene Hausbilanz
+   * (PV + Netzbezug − Batterieladung) derselben Minute das nicht hergibt - das
+   * ist der Widerspruch, den die Seite heute verschweigt.
+   *
+   * `null`/absent = die Anlage hat keinen solchen Knoten (oder er wird hier
+   * nicht mitgegeben); dann unterbleibt JEDES Plausibilitätsurteil - unbekannt
+   * bleibt unbekannt, nie „heizt nicht".
+   */
+  pvKnoten?: FlowNode | null;
+  netzKnoten?: FlowNode | null;
   /**
    * Die Erfüllungs-Zeile eines Verbrauchers - WÖRTLICH die geteilte
    * `fulfilmentSummary(...).headline` (§5.4/§5.7). Leer = keine wiederkehrende
@@ -273,6 +289,15 @@ export interface GesichtInput {
    * erst, wenn der Verbraucher selbst weder Leistung noch Relais meldet.
    */
   ioAusgangAn?: boolean | null;
+  /**
+   * Heizstab V1: die gemeldete Stufe eines Heizstabs (`consumer-status.stufe`). Anwesend (auch `stufe: null`)
+   * heißt „dieses Gerät IST ein Heizstab“ - er meldet keine Leistung und kein `relay_on`, sondern die
+   * BESTÄTIGTE Stufe; ohne dieses Feld läse er sich als „meldet gerade keinen Wert“, während die Karte
+   * daneben „Heizt mit 2 Phasen“ sagt.
+   */
+  heizstab?: { stufe: StufeMeldung | null } | null;
+  /** UEMS EZ-10: die jüngsten Werte der Anlagensteuerung an ihrer Seite `as-…`. */
+  anlagensteuerungWerte?: AnlagensteuerungWerte | null;
   now?: number;
 }
 
@@ -282,7 +307,7 @@ export interface GesichtInput {
  * keine gibt - der Satz steht stattdessen im Technik-Aufklapper.
  */
 const OHNE_REGISTER = new Set([
-  'fronius_solar_api', 'goe_http_api', 'shelly_http', 'ocpp', 'ebyte_modbus_tcp',
+  'fronius_solar_api', 'goe_http_api', 'shelly_http', 'shelly_em_http', 'ocpp', 'ebyte_modbus_tcp',
 ]);
 
 /**
@@ -356,8 +381,9 @@ export const TYP_WORT: Record<Gattung, string> = {
 };
 
 /** Der Typ dieses Blatts - ein I/O-Modul und ein Eigenbau sagen, was sie sind. */
-export function typWort(g: Pick<Gesicht, 'gattung' | 'eigenbau' | 'ioModul'>): string {
+export function typWort(g: Pick<Gesicht, 'gattung' | 'eigenbau' | 'ioModul' | 'anlagensteuerung'>): string {
   if (g.ioModul) return 'I/O-Modul';
+  if (g.anlagensteuerung) return 'Anlagensteuerung';
   const basis = TYP_WORT[g.gattung];
   return g.eigenbau ? `${basis} (selbst beschrieben)` : basis;
 }
@@ -367,8 +393,11 @@ export function gattungVon(input: {
   art: GeraetArt;
   rolle: string | null;
   komponenten: PlantComponent[];
+  geraetId?: string;
 }): Gattung {
   if (input.art === 'ladepunkt') return 'ladepunkt';
+  // EZ-10: die Komponente einer Anlagensteuerung hat keine Rolle der Energiebilanz - kein Zähler, kein Verbraucher.
+  if (anlagensteuerungIdOf(input.geraetId ?? null)) return 'geraet';
   if (input.art === 'hauptgeraet') {
     return input.komponenten.some((c) => c.role === 'storage')
       ? 'wechselrichter-speicher'
@@ -533,13 +562,11 @@ function speicherTeil(input: GesichtInput): SpeicherTeil {
   let ladestandPct: number | null = null;
   const knoten = input.speicherKnoten ?? null;
   /*
-    P6 Speiser-Bindung: der Ladestand des Speicher-KNOTENS gewinnt, sobald er
-    von einem ANDEREN Gerät kommt als diesem - und die Kachel sagt dann, von
-    welchem. Der Grund ist der Live-Fall, für den es dieses Paket gibt: der Deye
-    im Spannungsmodus MISST keinen Ladestand, das DIYBMS des Kunden schon (über
-    die Kennlinie). Ohne diesen Zweig zeigte die Geräteseite weiter das
-    Schweigen des Wechselrichters, während das Cockpit daneben den gebundenen
-    Wert führt - zwei Flächen, eine Anlage, zwei Antworten.
+    Der Ladestand des Speicher-KNOTENS gewinnt, sobald er von einem ANDEREN
+    Gerät kommt als diesem - und die Kachel sagt dann, von welchem. Ohne diesen
+    Zweig zeigte die Geräteseite weiter das Schweigen dieses Geräts, während das
+    Cockpit daneben den Wert des anderen führt - zwei Flächen, eine Anlage, zwei
+    Antworten.
   */
   const quelle = knoten?.soc_source ?? null;
   const gebundenerSoc = quelle != null && quelle.entity_id !== c.entityId
@@ -580,33 +607,6 @@ function speicherTeil(input: GesichtInput): SpeicherTeil {
   const reserve = guardZahl(input.entities, c.entityId, 'soc_min_pct');
   if (reserve != null) {
     out.push({ key: 'reserve', label: 'Reserve', wert: `${reserve} %`, wort: 'nicht unterschritten' });
-  }
-  /*
-    P6: was das BMS gerade ZULÄSST. Eine gesperrte Richtung ist die wichtigere
-    Aussage als eine Zahl - sie erklärt einen ruhenden Speicher, den sonst
-    niemand erklärt. Ein abwesendes Feld wird ÜBERGANGEN, nie als „erlaubt"
-    gelesen.
-  */
-  const l = knoten?.limits ?? null;
-  if (l) {
-    if (l.charge_allowed === false || l.charge_limit_a != null) {
-      out.push({
-        key: 'bms-laden',
-        label: 'Laden (BMS)',
-        wert: l.charge_allowed === false ? 'gesperrt' : fmtNum(l.charge_limit_a ?? 0, 'A', 0),
-        wort: l.charge_allowed === false ? null : 'höchstens',
-      });
-    }
-    if (l.discharge_allowed === false || l.discharge_limit_a != null) {
-      out.push({
-        key: 'bms-entladen',
-        label: 'Entladen (BMS)',
-        wert: l.discharge_allowed === false
-          ? 'gesperrt'
-          : fmtNum(l.discharge_limit_a ?? 0, 'A', 0),
-        wort: l.discharge_allowed === false ? null : 'höchstens',
-      });
-    }
   }
   return { kacheln: out, ladestandPct, batterieKw: batt?.wert ?? null, reservePct: reserve };
 }
@@ -856,6 +856,67 @@ function heldZaehler(input: GesichtInput, eigenbau: boolean): Held {
 }
 
 /**
+ * Ist dieser Anlagen-Knoten FRISCH - trägt jedes seiner Mitglieder eine
+ * aktuelle Messung (`health === 'ok'`, 5-Minuten-Fenster)? Ein Knoten ohne
+ * Mitglieder (die Anlage hat diese Rolle schlicht nicht, z. B. keinen
+ * Speicher) ist dabei kein Problem: er trägt nichts zur Bilanz bei, also
+ * braucht er auch keine Frische.
+ */
+function knotenFrisch(
+  knoten: FlowNode | null | undefined,
+  entities: TopologyEntity[] | null | undefined,
+): boolean {
+  if (!knoten || knoten.members.length === 0) return true;
+  return knoten.members.every(
+    (m) => (entities ?? []).find((e) => e.id === m.entity_id)?.health === 'ok',
+  );
+}
+
+/**
+ * Das Vorzeichen eines Fluss-Knotens für die Hausbilanz: `erzeugendPositiv`
+ * sagt, welche Richtung („in" oder „out") das `+` in `house = pv + grid −
+ * batterie` trägt. Ruht der Fluss (unter der Rausch-Schwelle), ist sein
+ * Beitrag 0 - nicht unbekannt.
+ */
+function signierterFlussKw(knoten: FlowNode | null | undefined, inIstPositiv: boolean): number {
+  if (!knoten?.flow_active || knoten.value_kw == null) return 0;
+  const positiv = knoten.direction === 'in' ? inIstPositiv : !inIstPositiv;
+  return positiv ? knoten.value_kw : -knoten.value_kw;
+}
+
+/**
+ * Die GEMESSENE Hausbilanz einer Anlage - dieselbe Formel wie die
+ * Energiefluss-Grafik des Dashboards (`house = pv + grid − batterie`,
+ * `verbrauchssteuerung.md` „Physik"): PV-Erzeugung plus Netzbezug minus
+ * Batterieladung (eine Entladung zählt also positiv zum Hausverbrauch).
+ *
+ * ⚠ `null` ohne FRISCHE Messung an jedem beteiligten Knoten - eine veraltete
+ * Bilanz zählt nicht als frisch (Captain-Befund 05.11.2026: „Datenalter!").
+ * Eine Anlage ohne PV/Speicher liefert für die fehlende Rolle einfach 0, kein
+ * `null` - das ist kein fehlender Wert, sondern eine belegte Abwesenheit.
+ */
+function gemesseneHausbilanzKw(
+  pv: FlowNode | null | undefined,
+  grid: FlowNode | null | undefined,
+  speicher: FlowNode | null | undefined,
+  entities: TopologyEntity[] | null | undefined,
+): number | null {
+  // ⚠ OHNE das Topologie-Lesemodell selbst (noch nicht geladen, oder eine
+  // Seite, die es nicht mitgibt) ist auch ein fehlender PV-/Speicher-Knoten
+  // keine belegte Abwesenheit, sondern schlicht unbekannt - sonst läse eine
+  // noch ladende Seite jede Anlage als bilanzlos (Hausbilanz 0) und urteilte
+  // auf einer erfundenen Grundlage.
+  if (!entities || entities.length === 0) return null;
+  if (!knotenFrisch(pv, entities) || !knotenFrisch(grid, entities) || !knotenFrisch(speicher, entities)) {
+    return null;
+  }
+  const pvKw = signierterFlussKw(pv, true);
+  const netzKw = signierterFlussKw(grid, true);
+  const batterieKw = signierterFlussKw(speicher, false);
+  return pvKw + netzKw - batterieKw;
+}
+
+/**
  * Der Held der Gattung E (§5.4 Wallbox · §5.7 schaltbarer Verbraucher) - läuft
  * es, mit wie viel, und warum?
  *
@@ -883,6 +944,12 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
     ? leistung > LAEUFT_AB_KW
     : relais != null ? relais.wert > 0 : input.ioAusgangAn ?? null;
   const regeln = input.regeln ?? [];
+  if (input.heizstab && !freigabe && leistung == null) {
+    const hausbilanzKw = gemesseneHausbilanzKw(
+      input.pvKnoten, input.netzKnoten, input.speicherKnoten, input.topologie,
+    );
+    return heldHeizstab(input.heizstab.stufe, regeln, (input.erfuellung ?? '').trim(), hausbilanzKw);
+  }
   const satz = laeuft == null
     ? (freigabe
       ? 'Dieses Gerät meldet gerade keine Freigabe.'
@@ -957,6 +1024,80 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
     zeilen,
     balken: null,
     werte: { ...KEINE_WERTE, verbraucherKw: leistung, laeuft },
+  };
+}
+
+/**
+ * Ab wann die angenommene Stufenleistung klar über der gemessenen Hausbilanz
+ * liegt, zählt sie als Widerspruch - erst darüber, wegen Messunsicherheit,
+ * Rundung (die Kachel zeigt eine Nachkommastelle) und üblicher Netzgeräusche.
+ */
+const HEIZSTAB_WIDERSPRUCH_PUFFER_KW = 0.5;
+
+/**
+ * Der Held eines Heizstabs (Heizstab V1): er misst keine Leistung, er meldet seine BESTÄTIGTE Stufe. Die
+ * Zahl ist die Leistung dieser Stufe (Typenschild), darum steht „angenommen“ daran - nie „gemessen“.
+ * Unbekannt bleibt unbekannt (keine Stufe gemeldet), nie „aus“.
+ *
+ * ⚠ Teil A (Captain-Befund 05.11.2026): eine bestätigte Stufe beweist nur
+ * geschlossene Relais, kein fließender Strom - der eingebaute Thermostat des
+ * Stabs kann offen sein. Bisher setzte die Seite Annahme und Wirkung gleich
+ * („Heizt gerade." trotz 0 W). Mit einer FRISCHEN Hausbilanz hält sie jetzt die
+ * Probe: liegt die Annahme klar darüber, heißt der ehrliche Satz „eingeschaltet,
+ * aber nichts zu sehen" statt einer behaupteten Wirkung. Ohne frische Bilanz
+ * bleibt die Seite bei der bisherigen Aussage - unbekannt ist kein Widerspruch.
+ */
+function heldHeizstab(
+  stufe: StufeMeldung | null,
+  regeln: string[],
+  erfuellung: string,
+  hausbilanzKw: number | null,
+): Held {
+  const bestaetigt = stufe?.confirmed ?? null;
+  const laeuft = bestaetigt == null ? null : bestaetigt > 0;
+  const kwStufe = bestaetigt != null && bestaetigt > 0 ? num(stufe?.confirmed_kw ?? null) : null;
+  const widerspruch = kwStufe != null && hausbilanzKw != null
+    && kwStufe > Math.max(0, hausbilanzKw) + HEIZSTAB_WIDERSPRUCH_PUFFER_KW;
+  const satz = !stufe
+    ? 'Die Box hat noch keine Stufe gemeldet.'
+    : bestaetigt == null
+      ? 'Die Box hat die Stufe noch nicht bestätigt.'
+      : bestaetigt === 0
+        ? 'Heizt gerade nicht.'
+        : widerspruch
+          // Die Bilanz widerlegt die Annahme - vermutlich steht das Relais zu,
+          // aber der Thermostat des Stabs hat selbst abgeschaltet (0 W fließen).
+          ? 'Eingeschaltet, aber im Hausverbrauch ist davon nichts zu sehen - vermutlich hat der Thermostat abgeschaltet.'
+          // Stufe und Leistung stehen groß in der Kachel daneben - der Satz wiederholt sie nicht.
+          : 'Heizt gerade.';
+  const hinweis = regeln.length === 0
+    ? null
+    : regeln.length === 1
+      ? `Geschaltet von der Regel „${regeln[0]}".`
+      : `Geschaltet von den Regeln „${regeln.join('", „')}".`;
+  const zeilen = [widerspruch
+    // Die Tagesenergie zählt diese Stufe unverändert weiter mit - eine saubere
+    // Korrektur bräuchte eine eigene Ableitung (dokumentierter Befund, Teil A);
+    // ehrlich beschriftet statt still gelassen.
+    ? 'Energie: angenommen aus den bestätigten Stufen - für diese Minuten ungenau, der Hausverbrauch widerspricht'
+    : 'Energie: angenommen aus den bestätigten Stufen'];
+  if (erfuellung) zeilen.push(erfuellung);
+  return {
+    titel: 'Zustand',
+    kacheln: [{
+      key: 'stufe',
+      label: 'Stufe',
+      wert: bestaetigt == null ? NO_DATA : bestaetigt === 0 ? 'Aus' : stufeText(bestaetigt),
+      wort: kwStufe != null ? `≈\u00a0${fmtNum(kwStufe, 'kW')} · angenommen` : bestaetigt == null ? 'nicht bestätigt' : null,
+      ton: laeuft == null ? 'off' : widerspruch ? 'warn' : laeuft ? 'ok' : null,
+      gross: true,
+    }],
+    satz,
+    satzTon: laeuft == null ? 'off' : widerspruch ? 'warn' : 'ok',
+    hinweis,
+    zeilen,
+    balken: null,
+    werte: { ...KEINE_WERTE, verbraucherKw: null, laeuft },
   };
 }
 
@@ -1107,6 +1248,62 @@ function heldGeraet(input: GesichtInput, eigenbau: boolean): Held {
 }
 
 /**
+ * Der Held einer Anlagensteuerung (UEMS EZ-10): Erzeugung, Netzpunkt und die wirksame Grenze aus den Punkten
+ * `erzeuger.*` - jede nur mit ihrem Gültigkeitsbit, sonst „—“ (nie 0). Ohne Messung am Netzpunkt (EW-16 C)
+ * steht dort „—“ mit dem Wort „keine Messung“. EZ-22: dazu der Zustand der Anlage („läuft begrenzt“) und, wer
+ * die Grenze setzt („Netzbetreiber“) - beides aus dem Bild, ohne Wert nichts.
+ */
+/** Die Zustände einer Anlage, die Aufmerksamkeit brauchen. */
+const STOERUNG = new Set(['Störung', 'Not-Aus']);
+
+function heldAnlagensteuerung(werte: AnlagensteuerungWerte | null): Held {
+  const je = werteJe(werte);
+  const erzeugung = bitVon(je, PUNKT.aGueltig, 3) === false ? null : wertVon(je, PUNKT.erzeugung);
+  const nvpGueltig = bitVon(je, PUNKT.aGueltig, 0);
+  const ohneMessung = nvpGueltig === false && bitVon(je, PUNKT.aGueltig, 1) === false && bitVon(je, PUNKT.aGueltig, 2) === false;
+  const nvp = nvpGueltig ? wertVon(je, PUNKT.nvp) : null;
+  const grenze = bitVon(je, PUNKT.sBits, 0) === true ? wertVon(je, PUNKT.grenze) : null;
+  const grenzeVon = grenze != null && wertVon(je, PUNKT.quelleP) !== 0 ? je.get(PUNKT.quelleP)?.text ?? null : null;
+  const zustand = anlageZustand(je);
+  const leistung: HeldKachel[] = [
+    { key: 'erzeugung', label: 'Erzeugung', wert: kwText(erzeugung), wort: null, gross: true },
+    {
+      key: 'netz',
+      label: 'Netzpunkt',
+      wert: kwText(nvp == null ? null : Math.abs(nvp)),
+      wort: nvp == null ? (ohneMessung ? 'keine Messung' : null) : nvp < -50 ? 'Einspeisung' : nvp > 50 ? 'Bezug' : null,
+    },
+    { key: 'grenze', label: 'Wirksame Grenze', wert: kwText(grenze), wort: grenzeVon },
+  ];
+  const daten = leistung.some((k) => k.wert !== NO_DATA && k.wert !== '—');
+  const kacheln: HeldKachel[] = [
+    ...leistung.slice(0, 2),
+    {
+      key: 'zustand',
+      label: 'Anlage',
+      wert: zustand ?? '—',
+      wort: null,
+      ton: zustand == null ? null : STOERUNG.has(zustand) ? 'warn' : zustand.startsWith('läuft') ? 'ok' : null,
+    },
+    leistung[2],
+  ];
+  return {
+    titel: 'Jetzt',
+    kacheln,
+    satz: erzeugung != null ? `Die Anlage erzeugt gerade ${kwText(erzeugung)}.` : null,
+    satzTon: daten ? 'ok' : 'off',
+    hinweis: werte?.stand === 'noch_keine_daten'
+      ? 'Von dieser Steuerung liegen noch keine Daten vor.'
+      : werte && !daten
+        ? 'Die Steuerung meldet gerade keine gültige Leistung - die Einheiten stehen unter „Gerät & Verbindung“.'
+        : null,
+    zeilen: [],
+    balken: null,
+    werte: KEINE_WERTE,
+  };
+}
+
+/**
  * Das Gesicht dieser Seite - EIN Aufruf, EIN Ergebnis.
  *
  * Die Gattung entscheidet den Held und die Sektions-Folge; die Sektionen selbst
@@ -1125,8 +1322,11 @@ export function gesicht(input: GesichtInput): Gesicht {
   // Menge, mit der auch der Freigabe-Assistent gattert.
   const eigenbau = input.komponenten.some((c) => c.freigabeFaehig);
   const sektionen = sektionenVon({ gattung, registerMoeglich, eigenbau });
+  const anlagensteuerung = anlagensteuerungIdOf(input.geraetId) != null;
   const held = ioModul
     ? heldIoModul()
+    : anlagensteuerung
+    ? heldAnlagensteuerung(input.anlagensteuerungWerte ?? null)
     : gattung === 'wechselrichter-speicher'
     ? heldWechselrichter(input, true)
     : gattung === 'wechselrichter'
@@ -1147,7 +1347,7 @@ export function gesicht(input: GesichtInput): Gesicht {
     ? { ...held, hinweis: KEINE_MESSWERTE }
     : held;
 
-  return { gattung, eigenbau, ioModul, held: ehrlich, sektionen };
+  return { gattung, eigenbau, ioModul, anlagensteuerung, held: ehrlich, sektionen };
 }
 
 /**

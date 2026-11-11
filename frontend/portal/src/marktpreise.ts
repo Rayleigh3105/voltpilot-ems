@@ -1,27 +1,14 @@
-import type { HistoryRange, PriceBucket, PriceHistory, PriceRangeSummary } from './api';
+import type { HistoryRange, PriceBucket, PriceRangeSummary } from './api';
 import { NBSP } from './format';
 
 /**
- * Die Mobil-Fassung der Marktpreis-Seite (Konzept `data/vp-mobile-views-x1`
- * §7, Captain-Go 09.08.2026) — reine Ableitungen, der Render ist dünn.
+ * Die Ableitungen des Rückblicks der Preis-Seite (Tag, Woche, Monat, Jahr) —
+ * Kennzahl-Zeilen in ct/kWh, das Profi-Detail in EUR/MWh und die Tagesgrenze
+ * der Rückblick-Kurve. Die Hauptansicht (Antwort, Stufen, Fenster nach vorn)
+ * rechnet seit Fassung 3 des Konzepts „Preise und Wetter" `preisZeitstrahl.ts`.
  *
- * Der gemessene Befund war DOPPELUNG in zwei Einheiten: drei ct/kWh-Karten VOR
- * der Kurve und dieselbe Aussage noch einmal als Min/Ø/Max/Spanne in EUR/MWh
- * IM Chart-Block — vier Zahlen, zwei Einheiten, eine Botschaft. Und das
- * Wichtigste, **was Strom JETZT kostet**, stand nirgends zuerst.
- *
- * Drei Regeln, die hier hart verdrahtet sind:
- *
- *  1. **ct/kWh ist die Kunden-Einheit** (sie steht auf der Rechnung); EUR/MWh
- *     bleibt Profi-Detail hinter einem Aufklapper — der dokumentierte
- *     EUR/MWh-Grundsatz der Seite gilt weiter, er zieht nur um.
- *  2. **Kein erfundener Preis.** Ohne Viertelstunde, die JETZT läuft (Nacht vor
- *     der Veröffentlichung, Rückblick auf einen vergangenen Tag), gibt es
- *     keinen Helden — nie der zuletzt bekannte Wert als „jetzt".
- *  3. **Der Bezugspreis wird GELESEN, nie gerechnet.** Er kommt aus dem
- *     Fahrplan-Slot (`importPriceCtKwh`, die eine serverseitige Komposition),
- *     genau wie in `settingsSurface.bezugspreisVorschau` — aus Tarif-Feldern zu
- *     addieren wäre die zweite Preiswahrheit, die es nicht geben darf.
+ * **ct/kWh ist die Kunden-Einheit** (sie steht auf der Rechnung); EUR/MWh
+ * bleibt Profi-Detail.
  */
 
 /** EUR/MWh → ct/kWh. Die API rechnet in EUR/MWh, der Kunde liest ct/kWh. */
@@ -46,80 +33,6 @@ export function slotTime(iso: string | null): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
-/**
- * Das EINE Wort über dem Preis. Die Schwellen sind bewusst grob und in der
- * Rechnungs-Einheit gedacht: unter null zahlt die Börse fürs Abnehmen, bis
- * `GUENSTIG_CT` ist Strom billig, ab `TEUER_CT` teuer — dazwischen ist er
- * eben normal, und dann wird auch nichts behauptet.
- */
-export const GUENSTIG_CT = 5;
-export const TEUER_CT = 15;
-
-export type PreisTon = 'negativ' | 'guenstig' | 'normal' | 'teuer';
-
-export interface JetztPreis {
-  /** ct/kWh, vorzeichen-ehrlich. */
-  ct: number;
-  ton: PreisTon;
-  /** „Negativpreis" · „Günstig" · „Normal" · „Teuer" — das eine Wort. */
-  wort: string;
-  /** Was das Wort bedeutet, in einem Halbsatz. */
-  bedeutung: string;
-  /** Die Viertelstunde, für die der Preis gilt („14:15"). */
-  zeit: string | null;
-}
-
-function tonVon(ct: number): PreisTon {
-  if (ct < 0) return 'negativ';
-  if (ct <= GUENSTIG_CT) return 'guenstig';
-  if (ct >= TEUER_CT) return 'teuer';
-  return 'normal';
-}
-
-const WORT: Record<PreisTon, { wort: string; bedeutung: string }> = {
-  negativ: { wort: 'unter Null', bedeutung: 'Einspeisen kostet gerade Geld' },
-  guenstig: { wort: 'Günstig', bedeutung: 'gute Zeit zum Laden' },
-  normal: { wort: 'Normal', bedeutung: 'im üblichen Bereich' },
-  teuer: { wort: 'Teuer', bedeutung: 'gute Zeit zum Entladen' },
-};
-
-/**
- * Der Börsenpreis der Viertelstunde, die JETZT läuft — `[start, start + len)`,
- * dieselbe Semantik wie `settingsSurface.aktuellerPreisSlot` und der Edge.
- *
- * Null, sobald der Zeitraum das Jetzt nicht abdeckt (Rückblick, Lücke in der
- * Reihe, Bucket ohne Wert). **Der zuletzt bekannte Preis wird NIE als „jetzt"
- * ausgegeben** — dann sagt die Fläche lieber, dass sie es nicht weiß.
- */
-export function jetztPreis(history: PriceHistory | null, now: Date): JetztPreis | null {
-  if (!history || history.bucket !== 'PT15M') return null;
-  const len = 15 * 60_000;
-  const t = now.getTime();
-  for (const b of history.buckets) {
-    const start = Date.parse(b.ts);
-    if (!Number.isFinite(start)) continue;
-    if (t >= start && t < start + len) {
-      const ct = ctFromEurMwh(b.avgEurMwh);
-      if (ct == null) return null;
-      const ton = tonVon(ct);
-      return { ct, ton, ...WORT[ton], zeit: slotTime(b.ts) };
-    }
-  }
-  return null;
-}
-
-/**
- * „Ihr Bezugspreis 32,5 ct" — der Halbsatz neben dem Börsenpreis, der ihn
- * einordnet. **Gelesen, nicht gerechnet** (siehe Kopfkommentar); ohne Wert
- * entfällt er ersatzlos, statt eine Zahl zu erfinden.
- */
-export function bezugspreisNote(importPriceCtKwh: number | null | undefined): string | null {
-  if (importPriceCtKwh == null) return null;
-  const n = Number(importPriceCtKwh);
-  if (!Number.isFinite(n)) return null;
-  return `Ihr Bezugspreis ${ctLabel(n)}`;
 }
 
 export interface PreisZeile {
@@ -277,43 +190,6 @@ export interface TagWahl {
    * `null`, sobald die Reihe den Folgetag trägt.
    */
   chip: string | null;
-}
-
-/**
- * V3 · Heute/Morgen als **Segment**, nicht als Sprung-Chip.
- *
- * Bei 375 px liegen 96 (oder 192) Balken in ~343 px — die Kurve ist dann ein
- * Farbverlauf, kein Verlauf. Die Fläche zeigt deshalb EINEN Tag; das Segment
- * sagt zugleich, welcher zu sehen IST (der frühere Chip „Morgen ›" sagte nur,
- * wohin er springt).
- *
- * **Der Sonderzustand ist der eigentliche Gewinn** (§4.3): vor ~12:45 hat die
- * Börse den Folgetag noch nicht veröffentlicht. Bis P4 verschwand die Zeile
- * dann ersatzlos — der Kunde sah nicht, ob es morgen NICHT gibt oder ob die
- * Fläche es nur nicht zeigt. Jetzt steht dort der Grund.
- *
- * `null`, wenn es GAR NICHTS zu sagen gibt: ein vergangener Tag hat kein
- * „morgen", und ein einzelner Eintrag ohne Grund wäre ein Segment, das nichts
- * schaltet.
- */
-export function tagWahl(
-  buckets: readonly PriceBucket[],
-  zeigtHeute: boolean,
-): TagWahl | null {
-  if (tagesGrenze(buckets) > 0) {
-    return {
-      optionen: [
-        { id: 'heute', label: 'Heute' },
-        { id: 'morgen', label: 'Morgen' },
-      ],
-      chip: null,
-    };
-  }
-  if (!zeigtHeute) return null;
-  return {
-    optionen: [{ id: 'heute', label: 'Heute' }],
-    chip: 'Morgen ab ca. 13 Uhr',
-  };
 }
 
 /**

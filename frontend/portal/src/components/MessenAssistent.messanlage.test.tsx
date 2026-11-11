@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, type Device, type EdgeVersion, type Site, type SiteComponents } from '../api';
 import { steuerGeldWoerter, ZU_DEN_MESSSTELLEN } from '../anlegeNurMessen';
-import { MESSANLAGE_ANLEGEN, MESSANLAGE_RUECKKEHR, type EntwurfSpeicher } from '../messenAssistent';
+import { MESSANLAGE_ANLEGEN, type EntwurfSpeicher } from '../messenAssistent';
 import {
   ahrenbergFunktionen,
   funktionMessenEntwurf,
@@ -127,38 +127,36 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
 
     // Schritt 1: vorbelegt ist der Standort aus dem Assistenten — obwohl Ahrenberg steuert,
     // spricht der Fluss an Werk Lindach von Anfang an still (derselbe Fakt, kein Schalter).
-    expect(within(fluss).getByRole('combobox', { name: 'Standort *' })).toHaveTextContent('Werk Lindach (ST-2)');
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
+    expect(within(fluss).getByRole('radio', { name: /„Werk Lindach“/ })).toBeChecked();
+    expect(leiste()).toEqual(['Adresse', 'Box', 'Anlage']);
     expect(within(fluss).queryByRole('combobox', { name: 'Veräußerungsform' })).toBeNull();
     expect(within(fluss).queryByText(/Feineinstellungen/)).toBeNull();
     schweigt('Schritt 1 · Anlage');
-    fireEvent.change(within(fluss).getByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
+    fireEvent.change(within(fluss).getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
     fireEvent.click(within(fluss).getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(createSite).toHaveBeenCalledTimes(1));
     expect(createSite.mock.calls[0][0]).toMatchObject({ name: 'Halle 3', standortId: LINDACH, netzladenErlaubt: false, maxFeedInKw: null });
 
-    // Schritt 2: Register.
-    fireEvent.click(await within(fluss).findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    // Schritt 3: Gerät.
-    expect(await within(fluss).findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
-    schweigt('Schritt 3 · Gerät');
-    fireEvent.change(within(fluss).getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(within(fluss).getByRole('button', { name: 'Anlage anlegen' }));
+    // Schritt 2: Box.
+    expect(await within(fluss).findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
+    schweigt('Schritt 2 · Box');
+    fireEvent.change(within(fluss).getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
+    fireEvent.click(within(fluss).getByRole('button', { name: 'Box verbinden' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledTimes(1));
+    // Das Ergebnis nach dem Verbinden (QE-4 A) - weiter ohne Warten.
+    expect(await within(fluss).findByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeInTheDocument();
+    schweigt('Schritt 2 · Box, verbunden');
+    fireEvent.click(within(fluss).getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
 
-    // Fertig: EIN Knopf zurück — weder „Zu den Messstellen" noch „Zur Anlage", kein „Betrieb".
-    expect(await within(fluss).findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
-    expect(within(fluss).getByText(MESSANLAGE_RUECKKEHR.satz)).toBeInTheDocument();
-    expect(within(fluss).queryByRole('button', { name: ZU_DEN_MESSSTELLEN })).toBeNull();
-    expect(within(fluss).queryByRole('button', { name: 'Zur Anlage' })).toBeNull();
-    expect(within(fluss).queryByText('Wofür ist diese Anlage?')).toBeNull();
-    schweigt('Fertig');
-    fireEvent.click(within(fluss).getByRole('button', { name: MESSANLAGE_RUECKKEHR.knopf }));
+    // Schritt 3: Anlage - und danach ohne Fertig-Bildschirm zurück in den Assistenten (D7).
+    expect(await within(fluss).findByText('So geht es weiter')).toBeInTheDocument();
+    schweigt('Schritt 3 · Anlage');
+    fireEvent.click(within(fluss).getByRole('button', { name: 'Weiter' }));
 
     // Zurück im Assistenten auf Schritt 2 — die neue Anlage steht da, keine Adresse gewechselt.
     await schritt2();
     expect(screen.queryByRole('dialog', { name: 'Anlage anlegen' })).toBeNull();
-    expect(await screen.findByRole('button', { name: 'Datenquelle anlegen für Halle 3' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Gateway oder Logger anbinden für Halle 3' })).toBeInTheDocument();
     expect(screen.queryByTestId('messen-keine-anlage')).toBeNull();
     expect(window.location.hash).toBe('#/messen-start');
   });

@@ -57,6 +57,14 @@ describe('Voreinstellung je Betriebsmodell', () => {
     expect(canonicalFuer(true, 'eigenverbrauch')).toEqual(e);
   });
 
+  it('Eigenverbrauch: „Unterm Strich“ steht am Ende, vor dem Zustand (Konzept vp-cockpit-privat-konzept, E2 = A)', () => {
+    const e = canonicalFuer(false, 'eigenverbrauch');
+    // Führt der Fluss, ist der Euro dort eine ruhige Zeile - nicht mehr die erste Kachel unter der Bühne.
+    expect(e.indexOf('geld')).toBeGreaterThan(e.indexOf('kacheln'));
+    expect(e.indexOf('geld')).toBeGreaterThan(e.indexOf('strompreis'));
+    expect(e.indexOf('geld')).toBeLessThan(e.indexOf('zustand'));
+  });
+
   it('Marktoptimierung: der Börsenpreis folgt der Bühne; Lastspitze: die Kacheln', () => {
     const m = canonicalFuer(true, 'markt');
     expect(m.indexOf('strompreis')).toBe(m.indexOf('energiefluss') + 1);

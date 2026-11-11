@@ -3,11 +3,19 @@ import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
-import { GeraeteBereich } from '../src/pages/admin/GeraeteBereich';
+import { GeraeteBereich } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi } from '../src/admin/adminApi';
+import { fleetApi } from '../src/admin/fleetApi';
+import { ApiError } from '../src/api';
 import { keycloak } from '../src/auth';
-import { type EdgeUpdates, type FleetRow } from '../src/adminEdgeUpdates';
-import { type PageId } from '../src/nav';
+import {
+  GRUND_LIGHT_AUF_UNBEKANNT, GRUND_LIGHT_STUFE_1_LOADER, type EdgeUpdates, type FleetRow,
+} from '../src/adminEdgeUpdates';
+import type { AdminGeraeteAkte } from '../src/admin/adminApi';
+import { type AnlageWerkzeug, type GeraeteAkteReiter, type PageId, type Route } from '../src/nav';
+import type { WerkstattBox } from '../src/werkstatt';
+import type { WerkstattDienst, WerkstattFreigabe } from '../src/werkstattBank';
+import type { FernwartungBox, FernwartungUebersicht } from '../src/adminFernwartung';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -18,60 +26,302 @@ import '../designsystem/components/shell/shell.css';
 import '../src/index.css';
 
 const now = new Date().toISOString();
+const vor = (ms: number) => new Date(Date.now() - ms).toISOString();
+const MIN = 60_000;
+// Die drei Fakten einer Anfrage (Geräte & Updates G2), wie die API sie liefert.
+const anfrage = (o: { am: string; angenommen: string; angenommenAm?: string | null; grund?: string | null;
+  bestaetigt?: string; bestaetigtAm?: string | null; schritt?: string | null }) => ({
+  angefragt: { release: 'edge-2026.09.10', releaseSeq: 42, am: o.am, von: 'alex' },
+  angenommen: { stand: o.angenommen, am: o.angenommenAm ?? null, grund: o.grund ?? null },
+  bestaetigt: { stand: o.bestaetigt ?? 'offen', am: o.bestaetigtAm ?? null, schritt: o.schritt ?? null, grund: null },
+});
 const base: FleetRow = {
   deviceId: 'd1', label: 'VP-BOX-1001', externalRef: 'VP-BOX-1001', siteId: 's1',
   siteName: 'Solarpark Sonnenhof', tenantId: 't1', tenantName: 'Stadtwerke Musterstadt',
   ist: 'edge-2026.09.10-a18b472eab90', soll: 'edge-2026.09.10', sollSeq: 42,
   state: 'bestaetigt', reason: null, since: now, reportedAt: now, rolloutId: null, boxArt: 'docker',
   trust: { rootKeyIds: ['root'], trustSetKeyIds: ['release'], trustSetGeneratedAt: now, trustSetError: null },
+  // Geräte & Updates G1/G2: Linie, Linien-Stand, die eine Uhr und die drei Fakten (fiktiv).
+  linie: 'docker', stand: 'aktuell', stufe1: false, lastSeenAt: vor(40_000),
+  istRelease: 'edge-2026.09.10', releasesDahinter: 0, istSeit: '2026-09-11T08:30:00Z',
+  fakten: anfrage({ am: '2026-09-11T08:00:00Z', angenommen: 'ja', angenommenAm: '2026-09-11T08:02:00Z',
+    bestaetigt: 'ja', bestaetigtAm: '2026-09-11T08:30:00Z' }),
 };
+const aelter = { ist: 'edge-2026.09.02-73486bab2980', istRelease: 'edge-2026.09.02', releasesDahinter: 1, istSeit: null };
 const fleet: FleetRow[] = [
-  base,
-  { ...base, deviceId: 'd2', externalRef: 'edge-abcdefj', label: 'Box Werkstatt', siteName: 'Werkstatt am Bach',
-    ist: 'edge-2026.09.02-73486bab2980', state: 'laedt', reason: 'Das Update wird heruntergeladen.' },
-  { ...base, deviceId: 'd3', externalRef: 'VP-BOX-1003', label: 'VP-BOX-1003', siteName: 'Gewerbepark West',
-    tenantName: 'Muster Solar GmbH', ist: 'edge-2026.09.02-73486bab2980', state: 'blockiert',
-    blocker: 'platte', reason: 'Zu wenig freier Speicherplatz auf der Box.' },
-  { ...base, deviceId: 'd4', externalRef: 'VP-BOX-1004', label: 'VP-BOX-1004', siteName: 'Hof Lindenallee',
-    tenantName: 'Familie Beispiel', state: 'offline_holt_nach', ist: 'edge-2026.09.02-73486bab2980',
-    reportedAt: new Date(Date.now() - 4 * 3600_000).toISOString(), reason: 'Die Box meldet sich gerade nicht.' },
+  // Geräte & Updates G8: was die Box über ihr Gerät meldet (fiktiv).
+  { ...base, geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' },
+  // E6 (S7): drei ausgebliebene Herzschläge, läuft trotzdem ein Update - „Verzögert" bleibt reine Anzeige.
+  { ...base, ...aelter, deviceId: 'd2', externalRef: 'edge-abcdefj', label: 'Box Werkstatt', siteName: 'Werkstatt am Bach',
+    geraetModell: 'Intel(R) Client Systems NUC11TNHi5', geraetArch: 'amd64',
+    state: 'laedt', reason: 'Das Update wird heruntergeladen.', stand: 'laeuft', lastSeenAt: vor(2 * MIN),
+    fakten: anfrage({ am: vor(20 * MIN), angenommen: 'ja', angenommenAm: vor(18 * MIN), bestaetigt: 'laeuft', schritt: 'laedt' }) },
+  // §5.3 „Unbekannt": ein älterer Serverstand liefert das Feld gar nicht (kein `null`, keine Zahl).
+  { ...base, ...aelter, deviceId: 'd3', externalRef: 'VP-BOX-1003', label: 'VP-BOX-1003', siteName: 'Gewerbepark West',
+    tenantName: 'Muster Solar GmbH', state: 'blockiert', stand: 'gehalten', lastSeenAt: undefined,
+    blocker: 'platte', reason: 'Zu wenig freier Speicherplatz auf der Box.',
+    fakten: anfrage({ am: vor(20 * MIN), angenommen: 'zurueckgestellt', grund: 'Zu wenig freier Speicherplatz auf der Box.' }) },
+  { ...base, ...aelter, deviceId: 'd4', externalRef: 'VP-BOX-1004', label: 'VP-BOX-1004', siteName: 'Hof Lindenallee',
+    tenantName: 'Familie Beispiel', state: 'offline_holt_nach', stand: 'offline', lastSeenAt: vor(4 * 60 * MIN),
+    reportedAt: vor(4 * 60 * MIN), reason: 'Die Box meldet sich gerade nicht.',
+    fakten: anfrage({ am: vor(20 * MIN), angenommen: 'wartet' }) },
   { ...base, deviceId: 'd5', externalRef: 'VP-BOX-1005', label: 'VP-BOX-1005', siteName: 'Neubau am Feldrain',
     tenantName: 'Familie Beispiel', ist: null, soll: null, sollSeq: null, reportedAt: null, boxArt: null,
-    state: 'unbekannt', reason: 'Diese Box hat noch keine Version gemeldet.' },
-  // Edge Light, Stufe 1: am Stempel erkannt, Wurzel eingebacken, aber kein Vertrauens-Set.
+    state: 'unbekannt', reason: 'Diese Box hat noch keine Version gemeldet.',
+    linie: null, stand: 'unbekannt', lastSeenAt: null, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
+  // Edge Light, Stufe 1: am Stempel erkannt, Wurzel eingebacken, aber kein Vertrauens-Set,
+  // und ein Startprogramm, das nur die Fassung aus dem Flash startet.
   { ...base, deviceId: 'd6', externalRef: 'edge-m4ng0q1', label: 'Mango Hof', siteName: 'Kleingarten Ostend',
     tenantName: 'Familie Beispiel', ist: 'edge-light-g2d2bca1b6', soll: null, sollSeq: null,
-    state: 'aktuell', boxArt: 'light',
+    state: 'aktuell', boxArt: 'light', geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loader: 'flash',
     trust: { rootKeyIds: ['root'], trustSetKeyIds: [], trustSetGeneratedAt: null,
-      trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' } },
+      trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' },
+    linie: 'light', stand: 'hand', stufe1: true, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
+  // Geräte & Updates G6: zwei Docker-Boxen auf dem älteren Release, ohne Anfrage - sie bekommen es über den Dialog.
+  { ...base, ...aelter, deviceId: 'd7', externalRef: 'edge-bsp0001', label: 'edge-bsp0001', siteName: 'Ahrenberg Werk 1',
+    tenantName: 'Ahrenberg GmbH', geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64',
+    soll: null, sollSeq: null, state: 'aktuell', stand: 'aelter', fakten: null },
+  { ...base, ...aelter, deviceId: 'd8', externalRef: 'edge-bsp0002', label: 'edge-bsp0002', siteName: 'Ahrenberg Lager',
+    tenantName: 'Ahrenberg GmbH', geraetModell: 'Mini-PC', geraetArch: 'amd64',
+    soll: null, sollSeq: null, state: 'aktuell', stand: 'aelter', fakten: null },
 ];
 const data: EdgeUpdates = {
   fleet, rollouts: [], journal: [],
   releases: [
+    // Das jüngste Release ist eines für Edge Light (wie am 05.11.2026): es darf
+    // das Docker-Release nicht aus dem Blick drängen (Geräte & Updates S0).
+    { releaseSeq: 43, version: 'edge-light-2026.09.12', targetCommit: 'c0ffee12', signed: true, boxArt: 'light',
+      signingKeyId: 'release', createdAt: now, runningOnDevices: 0, notes: 'Edge Light: Leser für weitere Wechselrichter.' },
     { releaseSeq: 42, version: 'edge-2026.09.10', targetCommit: 'a18b472e', signed: true, boxArt: 'docker',
-      signingKeyId: 'release', createdAt: now, runningOnDevices: 1, notes: 'Verbesserte Verbindungsstabilität und zuverlässigere Updates.' },
+      signingKeyId: 'release', createdAt: '2026-09-10T12:00:00Z', runningOnDevices: 1, notes: 'Verbesserte Verbindungsstabilität und zuverlässigere Updates.' },
     { releaseSeq: 41, version: 'edge-2026.09.02', targetCommit: '73486bab', signed: true, boxArt: 'docker',
       signingKeyId: 'release', createdAt: '2026-09-02T12:00:00Z', runningOnDevices: 3, notes: null },
   ],
-  kpi: { known: 5, upToDate: 1, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-2026.09.10' },
+  // Die KPI älterer Portale misst am neuesten Release über BEIDE Linien; die
+  // Linien tragen das Urteil je Box-Art (so liefert es die API seit S0/G1).
+  kpi: { known: 5, upToDate: 0, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-light-2026.09.12' },
+  lines: [
+    { boxArt: 'docker', newestRelease: 'edge-2026.09.10', newestReleaseSeq: 42, devices: 6, known: 6, upToDate: 1,
+      releases: 2, stand: { hand: 0, fehler: 0, offline: 1, laeuft: 1, gehalten: 1, aktuell: 1, aelter: 2, unbekannt: 0 },
+      versions: [
+        { version: 'edge-2026.09.10', releaseSeq: 42, devices: ['d1'] },
+        { version: 'edge-2026.09.02', releaseSeq: 41, devices: ['d2', 'd3', 'd4', 'd7', 'd8'] },
+      ] },
+    { boxArt: 'light', newestRelease: 'edge-light-2026.09.12', newestReleaseSeq: 43, devices: 1, known: 1, upToDate: 0,
+      releases: 1, stand: { hand: 1, fehler: 0, offline: 0, laeuft: 0, gehalten: 0, aktuell: 0, aelter: 0, unbekannt: 0 },
+      versions: [
+        { version: 'edge-light-2026.09.12', releaseSeq: 43, devices: [] },
+        { version: 'edge-light-g2d2bca1b6', releaseSeq: null, devices: ['d6'] },
+      ] },
+  ],
+};
+// Die Release-Seiten (G4): Edge Light mit beiden Programmen fertig im Portal, Docker mit seinen Bildern.
+const releaseSeite = (releaseSeq: number) => {
+  const rel = data.releases.find((r) => r.releaseSeq === releaseSeq)!;
+  const light = rel.boxArt === 'light';
+  return {
+    releaseSeq, version: rel.version, boxArt: rel.boxArt ?? 'docker', signed: rel.signed, signingKeyId: rel.signingKeyId,
+    createdAt: rel.createdAt, targetCommit: rel.targetCommit, notes: rel.notes, erlaubtRueckschritt: false, minFromSeq: null,
+    aenderungen: light ? ['Leser für weitere Wechselrichter (#1693)'] : releaseSeq === 42
+      ? ['Core: Neuverbindung nach Funkloch (#1601)', 'Updater: Bilder vor dem Stoppen holen (#1588)'] : null,
+    inhalt: light
+      ? [{ typ: 'binary', name: 'vp-edge-light', arch: 'linux/mipsle', groesse: 14614743, gzGroesse: 4679121 },
+        { typ: 'binary', name: 'vp-edge-light', arch: 'linux/arm64', groesse: 13893816, gzGroesse: 4475301 }]
+      : [{ typ: 'oci-image', name: 'core', arch: null, groesse: null, gzGroesse: null },
+        { typ: 'oci-image', name: 'nodered', arch: null, groesse: null, gzGroesse: null }],
+    programme: light ? [
+      { arch: 'linux/mipsle', groesse: 4679121, empfangen: 4679121, fertig: true },
+      { arch: 'linux/arm64', groesse: 4475301, empfangen: 4475301, fertig: true },
+    ] : [],
+    laeuftAuf: fleet.filter((r) => r.istRelease === rel.version).map((r) => r.deviceId),
+    boxenDerLinie: fleet.filter((r) => r.linie === (light ? 'light' : 'docker')).length,
+    verteilt: releaseSeq === 42
+      ? [{ rolloutId: 'r42', state: 'active', createdBy: 'alex', createdAt: vor(20 * MIN), total: 3, confirmed: 0, failed: 0 },
+        { rolloutId: 'r41', state: 'done', createdBy: 'alex', createdAt: '2026-09-11T08:00:00Z', total: 1, confirmed: 1, failed: 0 }]
+      : [],
+  };
+};
+// Der Verlauf je Box (G3), neueste zuerst.
+const verlauf = (deviceId: string) => {
+  const e = (am: string, quelle: string, art: string, release: string | null, vorher: string | null = null, von: string | null = null) =>
+    ({ am, quelle, art, release, vorher, grund: null, von, rolloutId: null });
+  const eintraege: Record<string, ReturnType<typeof e>[]> = {
+    d1: [e('2026-09-11T08:30:00Z', 'box', 'stand', 'edge-2026.09.10-a18b472eab90', 'edge-2026.09.02-73486bab2980'),
+      e('2026-09-11T08:02:00Z', 'box', 'angenommen', 'edge-2026.09.10'),
+      e('2026-09-11T08:00:00Z', 'portal', 'angefragt', 'edge-2026.09.10', null, 'alex'),
+      e('2026-09-02T14:00:00Z', 'box', 'stand', 'edge-2026.09.02-73486bab2980', null)],
+    d2: [e(vor(18 * MIN), 'box', 'angenommen', 'edge-2026.09.10'),
+      e(vor(20 * MIN), 'portal', 'angefragt', 'edge-2026.09.10', null, 'alex'),
+      e('2026-09-03T09:00:00Z', 'box', 'stand', 'edge-2026.09.02-73486bab2980', null)],
+    d6: [e('2026-11-04T10:00:00Z', 'box', 'stand', 'edge-light-g2d2bca1b6', null)],
+  };
+  return { deviceId, eintraege: eintraege[deviceId] ?? [] };
+};
+// Die Eignung je Release (G1), wie die API sie aus denselben Boxen bildet.
+const eignung = (releaseSeq: number) => {
+  const rel = data.releases.find((r) => r.releaseSeq === releaseSeq)!;
+  const light = rel.boxArt === 'light';
+  const boxen = fleet.filter((r) => (light ? r.linie !== 'docker' : r.linie !== 'light')).map((r) => {
+    const seq = (v: string | null | undefined) => data.releases.find((x) => x.version === v)?.releaseSeq ?? null;
+    const offline = !r.lastSeenAt || Date.now() - Date.parse(r.lastSeenAt) > 5 * MIN;
+    let gruppe = 'bereit';
+    let grund: string | null = null;
+    if (light && r.linie == null) { gruppe = 'kann_nicht'; grund = GRUND_LIGHT_AUF_UNBEKANNT; }
+    else if (light && r.loader === 'flash') { gruppe = 'kann_nicht'; grund = GRUND_LIGHT_STUFE_1_LOADER; }
+    else if (r.istRelease === rel.version) gruppe = 'aktuell';
+    else if ((seq(r.istRelease) ?? 0) > releaseSeq) {
+      gruppe = 'kann_nicht'; grund = `Läuft schon ${r.istRelease} (neuer). Eine ältere Fassung lehnt die Box ab.`;
+    } else if (offline) { gruppe = 'wartet'; grund = 'Meldet sich gerade nicht – bekommt die Anfrage, sobald sie sich meldet.'; }
+    return { deviceId: r.deviceId, label: r.label, externalRef: r.externalRef, siteName: r.siteName,
+      tenantName: r.tenantName, ist: r.ist, gruppe, grund, lastSeenAt: r.lastSeenAt ?? null };
+  });
+  return { releaseSeq, version: rel.version, boxArt: rel.boxArt ?? 'docker', boxen, andereLinie: fleet.length - boxen.length };
+};
+const LETZTE_MELDUNG: Record<string, string | null> = {
+  d4: new Date(Date.now() - 4 * 3600_000).toISOString(),
+  d5: null,
+};
+// Scheibe S2 (Geräteakte, Geräte-Liste): eine Box in der Werkstatt (noch nicht
+// verbunden), eine gedruckte Aufkleber-ID ohne jedes Gerät dahinter.
+const werkstattBoxen: WerkstattBox[] = [
+  { id: 'w1', edgeRef: 'VP-WRK-0007', boxArt: 'edge-light', lanNetz: null, schritte: {}, notiz: null,
+    angelegtAm: vor(3 * 3600_000), angelegtVon: 'werkstatt', geaendertAm: vor(10 * MIN), abnahmen: [] },
+];
+const werkstattDienst: WerkstattDienst = {
+  ansicht: null, gemeldetAm: vor(5_000), dienstZeit: vor(5_000), alterSekunden: 5, aktuell: true, laeufe: [],
+};
+const gedrucktOhneGeraet = 'VP-5566-ZQTF';
+// Fernwartung je Box (Akte › Verbindung): d1 hat einen offenen Tunnel, der Rest sagt ehrlich, dass kein Schlüssel hinterlegt ist.
+const fernwartungUebersicht: FernwartungUebersicht = {
+  server: {
+    endpunkt: 'wartung.voltpilot.example', port: 51820, publicKey: 'srv-pub-key', eingerichtet: true,
+    boxNetz: '10.90.4.0/24', technikerNetz: '10.90.9.0/24',
+    boxServerAdresse: '10.90.4.1', technikerServerAdresse: '10.90.9.1',
+  },
+  maxFensterMinuten: 60, abrufe: [{ dienst: 'tunnel-dienst', zuletztAm: vor(20_000), peers: 1, fenster: 0 }],
+  boxenAktiv: 1, boxenGesperrt: 0, technikerAktiv: 0, technikerGesperrt: 0, fensterOffen: 0, fensterGeplant: 0,
+  stand: vor(20_000),
+};
+const fernwartungBoxen: Record<string, FernwartungBox> = {
+  'VP-BOX-1001': {
+    id: 'fw1', edgeRef: 'VP-BOX-1001', publicKey: 'box-pub-key', publicKeyKurz: 'box-pub…',
+    adresse: '10.90.4.12', status: 'aktiv', notiz: null,
+    angelegtAm: vor(90 * 24 * 3600_000), geaendertAm: vor(10 * MIN),
+    siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantId: 't1', tenantName: 'Stadtwerke Musterstadt',
+    laufendeFenster: [],
+  },
+};
+// L3/L2 (S6/S7): die Akte-in-einer-Antwort, herzschlagAm und messwertAm getrennt.
+// VP-BOX-1001 demonstriert den §5.3-Sonderfall: Herzschlag in Ordnung, Messwerte seit 8 Min. aus.
+const geraeteAkteVon = (ref: string): AdminGeraeteAkte => {
+  const r = fleet.find((f) => f.externalRef === ref);
+  if (!r) return { externalRef: ref, lebensabschnitt: 'gedruckt', lebensabschnittSeit: null, kopf: null, software: null, verbindung: null, einrichtung: null };
+  const herzschlagAm = r.lastSeenAt ?? null;
+  const messwertAm = ref === 'VP-BOX-1001' ? vor(8 * MIN) : herzschlagAm;
+  return {
+    externalRef: ref, lebensabschnitt: 'kunde', lebensabschnittSeit: null,
+    kopf: {
+      deviceId: r.deviceId, name: r.label, siteId: r.siteId, siteName: r.siteName,
+      tenantId: r.tenantId, tenantName: r.tenantName, herzschlagAm, messwertAm,
+      lastSeenAt: r.lastSeenAt ?? null, ausgebautAm: null,
+    },
+    software: null, verbindung: null, einrichtung: null,
+  };
 };
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
 Object.assign(adminApi, {
   edgeUpdates: async () => data,
-  listDevices: async () => fleet.map((d) => ({ ...d, provisioned: true, provisionedAt: now, kind: 'inverter', note: null })),
+  geraeteAkte: async (ref: string) => geraeteAkteVon(ref),
+  edgeRelease: async (releaseSeq: number) => releaseSeite(releaseSeq),
+  edgeEignung: async (releaseSeq: number) => eignung(releaseSeq),
+  boxVerlauf: async (deviceId: string) => verlauf(deviceId),
+  // Online-Status der Registrierung: je Box eine eigene letzte Meldung - zwei
+  // frisch, eine seit 4 Std. still, eine hat sich noch nie gemeldet; dazu eine
+  // gedruckte Aufkleber-ID ohne jedes Gerät dahinter (Geräte-Liste, S2).
+  listDevices: async () => [
+    ...fleet.map((d) => ({
+      ...d, provisioned: true, provisionedAt: now, kind: 'inverter', note: null,
+      lastSeenAt: d.deviceId! in LETZTE_MELDUNG
+        ? LETZTE_MELDUNG[d.deviceId!]
+        : new Date(Date.now() - 40_000).toISOString(),
+    })),
+    { deviceId: null, externalRef: gedrucktOhneGeraet, label: null, siteId: null, siteName: null, tenantId: null,
+      tenantName: null, kind: 'inverter', ist: null, soll: null, sollSeq: null, state: null, reason: null,
+      blocker: null, lastSeenAt: null, reportedAt: null, provisioned: true, note: 'Charge 2026-09',
+      provisionedAt: vor(5 * 24 * 3600_000) },
+  ],
   listPendingEnrollments: async () => [{ externalRef: 'edge-xyz234q', deviceInfo: 'Box im Lager', csrUpdatedAt: now, everIssued: false, issuedAt: null }],
   createRollout: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   setUpdateTarget: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   revertUpdateTarget: async () => { throw new Error('Vorschau: Keine Änderung an echten Boxen.'); },
   provisionDevice: async () => { throw new Error('Vorschau: Es wird keine Geräte-ID registriert.'); },
   deleteProvisionedDevice: async () => { throw new Error('Vorschau: Es wird keine Geräte-ID gelöscht.'); },
+  // Geräteakte (S2): Werkstatt, Fernwartung und ihr Protokoll - dieselben Antworten wie die Plattform-Seiten.
+  werkstattBoxen: async () => werkstattBoxen,
+  werkstattDienst: async () => werkstattDienst,
+  werkstattFreigaben: async () => [] as WerkstattFreigabe[],
+  fernwartungProtokoll: async () => [],
+  fernwartung: async () => fernwartungUebersicht,
+  fernwartungTechniker: async () => [],
+  fernwartungBox: async (ref: string) => {
+    const box = fernwartungBoxen[ref];
+    if (!box) throw new ApiError(404, `Für ${ref} ist kein Tunnel-Schlüssel hinterlegt.`);
+    return box;
+  },
+  fernwartungFensterSchliessen: async () => { throw new Error('Vorschau: Keine Änderung an echten Fenstern.'); },
+  // Reiter „Anlage" (Scheibe S3): Solarpark Sonnenhof (d1) führt ihre Anlage, hat einen frischen Plan,
+  // Batterie-Steuerung aktiv mit Beleg, und eine angewandte Komponenten-Fassung.
+  controlCandidates: async () => [
+    { deviceId: 'd1', tenantId: 't1', siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantName: 'Stadtwerke Musterstadt',
+      externalRef: 'VP-BOX-1001', activated: true, platformCertVerdict: null, platformCertModel: 'SUN-30K', certSource: 'platform',
+      activatedAt: vor(30 * 24 * 3600_000), activatedBy: 'alex' },
+  ],
+  componentFleet: async () => [
+    { siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantId: 't1', tenantName: 'Stadtwerke Musterstadt',
+      componentAuthority: 'portal', componentCount: 4, syncStatus: 'in_sync',
+      sources: { builtin: 4, certified: 0, custom: 0, composed: 0, unknown: 0 }, privateTemplates: 0 },
+  ],
+  activateControl: async () => { throw new Error('Vorschau: Keine Änderung an echter Steuerung.'); },
+  deactivateControl: async () => { throw new Error('Vorschau: Keine Änderung an echter Steuerung.'); },
+});
+Object.assign(fleetApi, {
+  fleet: async () => ({
+    sites: [{
+      siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantId: 't1', tenantName: 'Stadtwerke Musterstadt',
+      plantKind: 'pv_storage', netzladenErlaubt: true, tarifArt: null,
+      boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-1001', name: 'VP-BOX-1001', fuehrtAnlage: true, lastSeenAt: vor(40_000), edge: null, update: null }],
+      deviceCount: 1, onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: vor(40_000),
+      lastPlanGeneratedAt: vor(10 * MIN), hasStorage: true, batteryWithoutDevice: false,
+      sources: { total: 2, ok: 2, stale: 0, never: 0 }, edge: null, update: null,
+      control: {
+        deviceId: 'd1', commandedKw: -3.2, confirmedKw: -3.2, allMatch: true, controlEnabled: true,
+        certified: true, mismatchRoles: null, slotStart: vor(5 * MIN), checkedAt: vor(5 * MIN),
+      },
+      curtailment: {
+        deviceId: 'd1', units: 1, certifiedUnits: 1, controlEnabled: true, active: false,
+        appliedCapKw: null, allMatch: true, possibleOverride: false, checkedAt: vor(5 * MIN),
+        exportGuard: null, deviceExportLimit: null,
+      },
+      kwp: { configuredKwp: 29.6, observedPeakKw: 27.1, buckets: 120, verdict: 'ok', reason: '' },
+      forecast: [], pflege: [],
+    }],
+    releases: [],
+  }),
 });
 
 function Fixture() {
   const [page, setPage] = useState<PageId>('edge-updates');
-  return <AppShell page={page} onNavigate={setPage} isAdmin showOverview={false} showAddAnlage={false}
-    counts={{ sites: 6, devices: 6 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
-    <GeraeteBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />
+  const [geraeteAkte, setGeraeteAkte] = useState<{ ref: string; reiter: GeraeteAkteReiter | null; werkzeug?: AnlageWerkzeug | null } | null>(null);
+
+  function navigate(target: Route | PageId) {
+    if (typeof target === 'string') { setPage(target); setGeraeteAkte(null); return; }
+    setPage(target.page);
+    setGeraeteAkte(target.geraeteAkte ?? null);
+  }
+
+  return <AppShell page={page} onNavigate={(p) => navigate(p)} isAdmin showOverview={false} showAddAnlage={false}
+    counts={{ sites: 8, devices: 8 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
+    <GeraeteBereich page={page} geraeteAkte={geraeteAkte} onNavigate={navigate} />
   </AppShell>;
 }
 ReactDOM.createRoot(document.getElementById('root')!).render(<Fixture />);

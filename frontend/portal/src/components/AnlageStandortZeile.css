@@ -33,3 +33,30 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/*
+ * In der Einstellungs-Liste steht die Zeile unter lauter Zeilen mit Symbol, Titel und Wert darunter (linksbündig).
+ * Sie folgt ihnen: Titel oben, Name/Adresse/Verweise linksbündig darunter, bündig mit dem Titeltext der Nachbarzeilen
+ * (Symbolkachel 32 px + Abstand) - nicht als einzige Zeile mit rechts hängendem Wert.
+ */
+.vp-kv-row:has(> .vp-as) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 16px 10px 58px;
+}
+.vp-kv-row:has(> .vp-as) > .vp-kv-k {
+  color: var(--vp-text-dark);
+  font-weight: 600;
+}
+.vp-kv-row:has(> .vp-as) > .vp-as {
+  align-items: flex-start;
+  text-align: left;
+  font-weight: 400;
+}
+.vp-kv-row:has(> .vp-as) .vp-as-name {
+  color: var(--vp-text-dark);
+}
+.vp-kv-row:has(> .vp-as) .vp-as-verweis {
+  padding: 4px 0;
+}

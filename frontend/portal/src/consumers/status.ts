@@ -20,15 +20,30 @@ export interface ConsumerRuntimeStatus {
   runtimeSecondsToday?: number | null;
   startsToday?: number | null;
   reportedAt: string;
+  /** Heizstab V1: die gemeldete Stufe (befohlen und BESTÄTIGT, mit kW); null ohne Stufen. */
+  stufe?: import('../heizstab').StufeMeldung | null;
+  /** Heizstab V1: der Befund des Reglers der Box; null ohne Regler. */
+  heizstab?: import('../heizstab').ReglerMeldung | null;
+  /** Die angenommene Energie des Tages aus den bestätigten Stufen. */
+  stufeEnergieKwhHeute?: number | null;
 }
 
-/** §14.13 state → customer sentence (verbatim from the concept table). */
+/**
+ * §14.13 state → customer sentence (verbatim from the concept table).
+ *
+ * ⚠ `running_manual` (Teil B, Captain-Befund 05.11.2026): ein Handeingriff
+ * (Heizstab „Jetzt heizen", Wallbox „Jetzt starten", Speicher „Ladestand
+ * halten" - alle über dieselbe lokale Überschreibung) läuft NICHT „von
+ * VoltPilot geplant" - das behauptete bisher jede Fläche, weil das
+ * Vokabular kein eigenes Wort für Handbetrieb hatte.
+ */
 export const CONSUMER_STATE_TEXT: Record<string, string> = {
   disconnected: 'Noch nicht verbunden',
   offline: 'Gerät meldet sich nicht',
   ready: 'Bereit',
   running_forced: 'Läuft · Pflichtregel',
   running_optimized: 'Läuft · von VoltPilot geplant',
+  running_manual: 'Läuft · von Hand geschaltet',
   waiting: 'Wartet auf passenden Zeitpunkt',
   fulfilled: 'Tagesziel erfüllt',
   clamped: 'Begrenzt · Schutz/Netzvorgabe',
@@ -97,7 +112,7 @@ export function consumerStatusLine(
   const unconfirmed = entry.confirmed === false;
   let tone: ConsumerStatusLine['tone'] = 'off';
   if (entry.state === 'running_forced' || entry.state === 'running_optimized'
-    || entry.state === 'fulfilled') {
+    || entry.state === 'running_manual' || entry.state === 'fulfilled') {
     tone = 'ok';
   }
   if (entry.state === 'clamped' || entry.state === 'offline' || entry.state === 'missed'

@@ -29,12 +29,15 @@ class GeraetSchnittstelleVertragTest {
 
     private static final Path OPENAPI = Path.of("..", "..", "docs", "contracts", "openapi.yaml");
     private static final String MIGRATION = "/db/migration/V20260911200000__uems_geraet.sql";
+    /** Die Teilart weitete UEMS EZ-6 (Erzeugungseinheit); dort steht ihr CHECK heute. */
+    private static final String MIGRATION_TEILART = "/db/migration/V20261021193000__erzeuger_anlagensteuerung.sql";
     private static final PropertyNamingStrategies.SnakeCaseStrategy SNAKE =
             new PropertyNamingStrategies.SnakeCaseStrategy();
 
     private static Map<String, Object> schemas;
     private static Map<String, Object> paths;
     private static String migration;
+    private static String migrationTeilart;
 
     @BeforeAll
     @SuppressWarnings("unchecked")
@@ -46,6 +49,10 @@ class GeraetSchnittstelleVertragTest {
         }
         try (InputStream in = GeraetSchnittstelleVertragTest.class.getResourceAsStream(MIGRATION)) {
             migration = new String(Objects.requireNonNull(in, MIGRATION).readAllBytes(), StandardCharsets.UTF_8);
+        }
+        try (InputStream in = GeraetSchnittstelleVertragTest.class.getResourceAsStream(MIGRATION_TEILART)) {
+            migrationTeilart = new String(Objects.requireNonNull(in, MIGRATION_TEILART).readAllBytes(),
+                    StandardCharsets.UTF_8);
         }
     }
 
@@ -71,15 +78,15 @@ class GeraetSchnittstelleVertragTest {
     @Test
     void dieGeschlossenenWoerterSindDieDerMigration() {
         assertThat(liste(map(map(schema("Geraet"), "properties"), "geraeteart"), "enum"))
-                .containsExactlyElementsOf(checkWoerter("geraet_geraeteart_chk", "geraeteart"));
+                .containsExactlyElementsOf(checkWoerter(migration, "geraet_geraeteart_chk", "geraeteart"));
         assertThat(liste(map(map(schema("GeraetTeil"), "properties"), "teilart"), "enum"))
-                .containsExactlyElementsOf(checkWoerter("geraet_teil_teilart_chk", "teilart"));
+                .containsExactlyElementsOf(checkWoerter(migrationTeilart, "geraet_teil_teilart_chk", "teilart"));
     }
 
     /** Die Wörter aus {@code CONSTRAINT <name> CHECK (<spalte> IN ('a', 'b', …))} der Migration. */
-    private static List<String> checkWoerter(String constraint, String spalte) {
+    private static List<String> checkWoerter(String sql, String constraint, String spalte) {
         Matcher m = Pattern.compile("CONSTRAINT " + constraint + "\\s+CHECK\\s*\\(" + spalte
-                + "\\s+IN\\s*\\(([^)]*)\\)").matcher(migration);
+                + "\\s+IN\\s*\\(([^)]*)\\)").matcher(sql);
         assertThat(m.find()).as(constraint).isTrue();
         List<String> woerter = new ArrayList<>();
         Matcher w = Pattern.compile("'([^']*)'").matcher(m.group(1));

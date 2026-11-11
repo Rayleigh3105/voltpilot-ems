@@ -1,6 +1,7 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { VerlaufExplorer } from './VerlaufExplorer';
+import { GERAET_GORE, gore, goreVerlauf } from '../test/anlagensteuerungFixtures';
 import {
   api,
   type EntityHistory,
@@ -12,6 +13,11 @@ import {
 
 // The chart uses useEChart (canvas); jsdom has neither, so stub it.
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
+
+// UEMS EZ-10: der Explorer fragt je Anlage nach Anlagensteuerungen - ohne Belegung keine (nie ein echter Abruf).
+beforeEach(() => {
+  vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue(null);
+});
 
 const site: Site = {
   id: 's-1',
@@ -178,9 +184,10 @@ describe('VerlaufExplorer — F2a producer empty state', () => {
 
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
 
+    // Unter Volllast des Gesamtlaufs dauert der erste Abruf länger als die 1-s-Vorgabe (wie „lands on …“).
     await waitFor(() =>
       expect(screen.getByText('Wird über den Wechselrichter gemessen')).toBeInTheDocument(),
-    );
+    { timeout: 5000 });
     // The generic "Keine Werte" empty state must NOT be what a producer shows.
     expect(screen.queryByText('Keine Werte in diesem Zeitraum')).toBeNull();
   });
@@ -220,14 +227,16 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
   it('lands on a measuring component, never on the silent producer', async () => {
     const eh = mockFull();
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)));
+    // Der erste Abruf folgt erst auf Topologie und Auswahl - unter Volllast des Gesamtlaufs dauert das länger
+    // als die 1-s-Vorgabe von `waitFor` (einzeln stets grün, im vollen Lauf am 20.10.2026 rot).
+    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)), { timeout: 5000 });
     expect(eh).not.toHaveBeenCalledWith('s-1', 'pv2', 'day', expect.any(String));
   });
 
   it('puts up to 3 measurements on one chart and refuses the 4th', async () => {
     mockFull();
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
-    await screen.findByText('1 von 3 ausgewählt · max. 3');
+    await screen.findByText('1 von 3 ausgewählt · max. 3', undefined, { timeout: 5000 });
 
     // Add two more (a second channel of the same component + another component).
     fireEvent.click(screen.getAllByRole('option', { name: /Batterieleistung/ })[0]);
@@ -251,7 +260,7 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
   it('prefixes measurements with their component when several are compared', async () => {
     mockFull();
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
-    await screen.findByText('1 von 3 ausgewählt · max. 3');
+    await screen.findByText('1 von 3 ausgewählt · max. 3', undefined, { timeout: 5000 });
     fireEvent.click(screen.getAllByRole('option', { name: /^Leistung/ })[0]);
     // Two components -> the legend disambiguates ("Netzanschluss · Leistung").
     await waitFor(() =>
@@ -272,7 +281,7 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
         ]}
       />,
     );
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)));
+    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)), { timeout: 5000 });
     expect(eh).toHaveBeenCalledWith('s-1', 'grid', 'day', expect.any(String));
     await screen.findByText('2 von 3 ausgewählt · max. 3');
   });
@@ -297,5 +306,73 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
     );
     // The one that HAS values is still charted with its stats.
     expect(screen.getByLabelText(/Kennzahlen im Zeitraum: Batteriespeicher · Ladestand/)).toBeInTheDocument();
+  });
+});
+
+describe('VerlaufExplorer — Anlagensteuerung (UEMS EZ-10)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('je Anlagensteuerung ein Ast; eine Kurve je Einheit liest die Route der Anlagensteuerung, nie die Komponenten-Historie', async () => {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(fullPlant);
+    vi.spyOn(api, 'topology').mockResolvedValue(fullTopology);
+    const eh = vi.spyOn(api, 'entityHistory').mockResolvedValue(emptyHistory);
+    vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
+      einrichtung: { moeglich: true, grund: null, boxen: [] },
+      steuerungen: [gore()],
+    });
+    const verlauf = vi.spyOn(api, 'anlagensteuerungVerlauf').mockResolvedValue(goreVerlauf());
+    const ziel = { entityId: `erzeuger-${GERAET_GORE}`, channel: 'erzeuger.te[1].t_p_ist_w' };
+    render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[ziel]} />);
+    expect(await screen.findByText('Anlagensteuerung Gore', undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getAllByText('WR Dach Nord · Ist').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Vorgabe Netzbetreiber').length).toBeGreaterThan(0);
+    await waitFor(() => expect(verlauf).toHaveBeenCalledWith('s-1', GERAET_GORE, 'day', expect.any(String)), { timeout: 5000 });
+    expect(eh).not.toHaveBeenCalledWith('s-1', `erzeuger-${GERAET_GORE}`, expect.anything(), expect.anything());
+  });
+});
+
+describe('VerlaufExplorer — Richtung statt Vorzeichen in der Kennzahlen-Reihe', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  // Die Werte aus dem Bildschirmfoto: Netzanschluss · Leistung im Monat,
+  // −9,1 kW am 22.10., 11,3 kW am 05.10., Ø −0,5 kW, zuletzt −0,6 kW.
+  const monat: EntityHistory = {
+    range: 'month',
+    from: '2026-10-01T00:00:00Z',
+    to: '2026-11-01T00:00:00Z',
+    bucketMinutes: 1440,
+    channels: {
+      power_kw: [
+        { start: '2026-10-05T12:00:00Z', avg: 0.4, min: -2, max: 11.3, last: 0.4, n: 1 },
+        { start: '2026-10-22T12:00:00Z', avg: -1.3, min: -9.1, max: 1, last: -1.3, n: 1 },
+        { start: '2026-10-30T12:00:00Z', avg: -0.6, min: -3, max: 2, last: -0.6, n: 1 },
+      ],
+    },
+  };
+
+  it('nennt die Extreme nach ihrer Bedeutung und Ø/Letzter Wert mit Richtung, ohne Minus', async () => {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(fullPlant);
+    vi.spyOn(api, 'topology').mockResolvedValue(fullTopology);
+    vi.spyOn(api, 'entityHistory').mockResolvedValue(monat);
+    render(
+      <VerlaufExplorer
+        site={site}
+        range="month"
+        anchor={new Date('2026-10-15T12:00:00Z')}
+        initialTargets={[{ entityId: 'grid', channel: 'power_kw' }]}
+      />,
+    );
+    const reihe = await screen.findByLabelText(/Kennzahlen im Zeitraum:/, undefined, { timeout: 5000 });
+    const kacheln = Array.from(reihe.querySelectorAll('.vp-verlauf-stat')).map((k) =>
+      (k.textContent ?? '').replace(/ /g, ' '),
+    );
+    expect(kacheln).toEqual([
+      'Höchste Einspeisung9,1 kWam 22.10.',
+      'Höchster Bezug11,3 kWam 05.10.',
+      'Durchschnitt0,5 kW Einspeisung',
+      'Letzter Wert0,6 kW Einspeisung',
+    ]);
+    expect(reihe.textContent).not.toMatch(/[-−]\d/);
+    expect(reihe.textContent).not.toMatch(/Minimum|Maximum/);
   });
 });

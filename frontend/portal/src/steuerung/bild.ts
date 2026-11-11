@@ -39,8 +39,8 @@ import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
 import { LADEQUELLE } from '../glossar';
-import type { ChargePoint, ChargeConnector, SiteCharging } from '../ladepunkte';
-import { ladeZustand, aktuelleLeistung, ladestandAlter, messwertAlter } from '../ladepunkte';
+import type { ChargePoint, ChargeConnector, LadepunktSperre, LadeZustand, LadeZustandKind, SiteCharging } from '../ladepunkte';
+import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung, ladestandAlter, messwertAlter, boostbar, ladevorgangRows, schnellWirktNichtGrund, KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from '../ladepunkte';
 import type {
   RanglisteEintrag,
   SiteVerbraucher,
@@ -82,6 +82,14 @@ export interface Reihen {
   soc: (number | null)[];
   /** Börsenpreis (ct/kWh). */
   preis: (number | null)[];
+  /**
+   * Bezugspreis (ct/kWh): was eine kWh aus dem Netz diese Anlage kostet - der
+   * Preis, mit dem der Optimierer plant und gegen den „Günstig“ seine Grenze
+   * prüft (`importPriceCtKwh` des Fahrplans). Nur, wo der Fahrplan ihn trägt.
+   */
+  bezug: (number | null)[];
+  /** Einspeisewert (ct/kWh): was eine eingespeiste kWh bringt (`exportValueCtKwh`). */
+  einspeise: (number | null)[];
   /** Außentemperatur (°C). */
   temp: (number | null)[];
   /** Laut Plan abgeregelte PV (kW). */
@@ -114,6 +122,7 @@ export function reihen(i: ReihenInput): Reihen {
   const r = i.raster;
   const out: Reihen = {
     pv: leer(), last: leer(), netz: leer(), bat: leer(), soc: leer(), preis: leer(),
+    bezug: leer(), einspeise: leer(),
     temp: leer(), abgeregelt: leer(), gemessenBis: r.jetzt, morgenBekannt: false,
   };
   // Zukunft: der jüngste Fahrplan.
@@ -130,6 +139,8 @@ export function reihen(i: ReihenInput): Reihen {
     if (grenze != null) (out.speicherGrenze ??= leer<number>())[t] = grenze;
     const p = num(s.priceEurMwh);
     if (p != null) out.preis[t] = p / 10;
+    out.bezug[t] = num(s.importPriceCtKwh);
+    out.einspeise[t] = num(s.exportValueCtKwh);
   }
   // Vergangenheit: die gemessenen Viertelstunden des Tages (kWh → kW).
   for (const b of liste(i.verlauf?.buckets)) {
@@ -250,7 +261,41 @@ export interface LadepunktBezug {
   sitzungSeit: string | null;
   sitzungKwh: number | null;
   karte: string | null;
+  /**
+   * Läuft an diesem Stecker ein Ladevorgang? Die EINE Regel `ladungLaeuft`
+   * (dieselbe wie der Server) - nicht „fliesst gerade Strom“.
+   */
   laedt: boolean;
+  /**
+   * Steckt ein Auto, aber die Box kennt dazu keinen Ladevorgang? Dann der
+   * Satz mit dem Ausweg (neu einstecken), sonst null (`keinLadevorgang`).
+   */
+  keinLadevorgang: string | null;
+  /** Gemessene Leistung des Steckers (kW); null = nicht gemeldet. */
+  leistungKw: number | null;
+  /** Wann der Stecker zuletzt gemessen hat (ISO). */
+  gemessenAm: string | null;
+  /** Der Satz der Box zum Stecker („wartet auf Sonne“). */
+  grund: string | null;
+  /** Hat die Box die Wahl übernommen? (Server-Vergleich; null = unbekannt) */
+  uebernommen: boolean | null;
+  /** Wann die Box die Säule zuletzt gemeldet hat (ISO). */
+  gemeldetAm: string | null;
+  /** Das Zustandswort der EINEN Quelle (`ladeZustand`, Vektoren) - null ohne Stecker. */
+  zustand: LadeZustand | null;
+  /** Warum VoltPilot an dieser Säule gerade nichts bewirkt (Audit W-01/W-05/W-12), sonst null. */
+  sperre: LadepunktSperre | null;
+  /**
+   * Dieselbe Regel wie auf „Ladevorgänge“ und im Menü „Eingreifen“
+   * (`boostbar`, EINE Wahrheit für `POST /charging-boost`): „Jetzt voll
+   * laden“ kann hier strukturell nichts bewirken, wenn dort kein Knopf stünde.
+   */
+  boostbar: boolean;
+  /**
+   * Warum „Schnell“ hier nichts ändern kann (`schnellWirktNichtGrund`), aus
+   * DERSELBEN Zeile wie `boostbar`; `null`, solange es etwas ändert.
+   */
+  schnellGrund: string | null;
   /** MiSpeL MP-41b: der gemeldete Ladestand des Autos (%); `null` = nicht gemeldet oder veraltet - nie 0. */
   ladestandPct: number | null;
   /**
@@ -390,8 +435,9 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
     case 'freigabe_ueberschuss':
       if (freigabe || s.quelle === 'freigabe_ueberschuss') satz = 'Anheben bei Sonne';
       else if (g.ladepunkt) {
-        satz = s.ueberschussModus === 'mindestleistung' ? 'Sonne + Mindestleistung'
-          : s.ueberschussModus === 'speicher' ? LADEQUELLE.speicher : 'Nur Sonnenstrom';
+        // Dieselben Namen wie „Womit laden?“ (Konzept k1, E2=A).
+        satz = s.ueberschussModus === 'mindestleistung' ? LADEQUELLE.min
+          : s.ueberschussModus === 'speicher' ? LADEQUELLE.speicher : LADEQUELLE.sonne;
       }
       else satz = typeof s.schwelleKw === 'number' ? `Mit Sonnenstrom ab ${fKw(s.schwelleKw)}` : 'Mit Sonnenstrom';
       break;
@@ -399,7 +445,8 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
     case 'freigabe_guenstig': {
       const grenze = typeof s.preisgrenzeCtKwh === 'number' ? `${zahl1(s.preisgrenzeCtKwh)} ct` : null;
       const anheben = freigabe || s.quelle === 'freigabe_guenstig';
-      satz = grenze ? `${anheben ? 'Anheben unter' : 'Unter'} ${grenze}` : anheben ? 'Anheben, wenn günstig' : 'Günstige Stunden';
+      satz = g.ladepunkt ? (grenze ? `${LADEQUELLE.guenstig} unter ${grenze}` : LADEQUELLE.guenstig)
+        : grenze ? `${anheben ? 'Anheben unter' : 'Unter'} ${grenze}` : anheben ? 'Anheben, wenn günstig' : 'Günstige Stunden';
       break;
     }
     case 'feste_zeiten': {
@@ -408,7 +455,7 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
       break;
     }
     case 'sofort':
-      satz = g.ladepunkt ? 'Sofort laden' : 'Ohne Steuerung';
+      satz = g.ladepunkt ? 'Schnell · immer sofort voll' : 'Ohne Steuerung';
       break;
     default:
       satz = 'Eigene Regel';
@@ -463,6 +510,9 @@ export const ANGEHALTEN_ZUSTAND: { pill: [PillArt, string]; kurz: string; lang: 
   lang: 'Die Steuerung ist angehalten: VoltPilot schaltet das Gerät nicht; es gilt sein sicherer Zustand.',
 };
 
+/** Die Zustandswörter, in denen ein Ladepunkt „an“ ist: die Säule meldet Charging. */
+const LADEPUNKT_AN: ReadonlySet<LadeZustandKind> = new Set<LadeZustandKind>(['laedt', 'laedt_ohne_messung', 'nimmt_nichts']);
+
 /** Der Ladepunkt eines Eintrags und sein (erster) Stecker. */
 function ladepunktVon(
   e: VerbraucherEintrag,
@@ -476,6 +526,26 @@ function ladepunktVon(
   const cons = liste(cp.connectors);
   const con = cons.find((k) => k.charging) ?? cons.find((k) => k.sessionSince) ?? cons[0] ?? null;
   return { cp, con };
+}
+
+/**
+ * Dieselbe Regel wie auf *Ladevorgänge* und im Menü „Eingreifen“
+ * (`boostbar`, EINE Wahrheit für `POST /charging-boost`): ohne Stecker gibt
+ * es keine Zeile und damit nichts zu boosten.
+ */
+function boostbarFuer(
+  lp: { cp: ChargePoint; con: ChargeConnector | null },
+  charging: SiteCharging | null | undefined,
+  nowMs: number,
+): { boostbar: boolean; schnellGrund: string | null } {
+  const row = lp.con
+    ? ladevorgangRows([lp.cp], nowMs).find((r) => r.connectorId === lp.con!.connectorId) ?? null
+    : null;
+  const budget = budgetFuer(charging, lp.cp);
+  return {
+    boostbar: row ? boostbar(budget, row) : false,
+    schnellGrund: schnellWirktNichtGrund(budget, row),
+  };
 }
 
 function eingriffVon(
@@ -553,9 +623,15 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
     // --- Jetzt
     let jetztKw: number | null = null;
     let an: boolean | null = null;
-    if (lp?.con) {
+    if (lp?.con && !lp.cp.connected) {
+      // ⚠ Eine getrennte Säule: was ihr Stecker tut, weiß niemand - weder
+      // „lädt" noch „aus" (Vektor-Fall `getrennt`, Audit W-12).
+      an = null;
+    } else if (lp?.con) {
       jetztKw = aktuelleLeistung(lp.con, nowMs);
-      an = lp.con.charging === true;
+      // „An“ heisst: es fliesst (oder die Säule meldet Charging). `charging` allein ist die SITZUNG - die Box
+      // hält es auch für SuspendedEV/SuspendedEVSE wahr; ob geladen wird, sagt das Zustandswort (`ladeZustand`).
+      an = ladungLaeuft(lp.con) && LADEPUNKT_AN.has(ladeZustand(lp.con, lp.cp, nowMs).kind);
     } else if (st) {
       jetztKw = num(st.actualKw);
       an = /^running/.test(st.state) ? true : st.state === 'unknown' ? null : false;
@@ -611,11 +687,27 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
         ? {
             chargePointId: lp.cp.chargePointId,
             connectorId: lp.con?.connectorId ?? 1,
-            angesteckt: !!lp.con && lp.con.status != null && !/available|unavailable|faulted/i.test(lp.con.status),
-            sitzungSeit: lp.con?.sessionSince ?? null,
+            // ⚠ `connected=false` gewinnt vor jedem Status: der letzte Status
+            // einer stummen Säule ist keine Aussage über ein Auto (Audit W-12).
+            angesteckt: lp.cp.connected && !!lp.con && lp.con.status != null && !/available|unavailable|faulted/i.test(lp.con.status),
+            sitzungSeit: lp.cp.connected ? lp.con?.sessionSince ?? null : null,
             sitzungKwh: num(lp.con?.sessionKwh),
             karte: lp.con?.tagRef ?? null,
-            laedt: lp.con?.charging === true,
+            laedt: lp.cp.connected && ladungLaeuft(lp.con),
+            keinLadevorgang: lp.cp.connected && lp.con && keinLadevorgang(lp.con)
+              ? ladeZustand(lp.con, lp.cp, nowMs).reason ?? KEIN_LADEVORGANG_SATZ
+              : null,
+            leistungKw: num(lp.con?.powerKw),
+            gemessenAm: lp.con?.meteredAt ?? null,
+            grund: ladepunktPausenGrund(s?.quelle, lp.con?.reason) ?? lp.con?.reasonText ?? null,
+            uebernommen: lp.cp.quelleUebernommen ?? null,
+            gemeldetAm: lp.cp.reportedAt ?? null,
+            zustand: lp.con ? ladeZustand(lp.con, lp.cp, nowMs) : null,
+            sperre: ladepunktSperre(lp.cp, budgetFuer(i.charging, lp.cp), nowMs),
+            // ⚠ EIN Blick in `boostbar` reicht - dieselbe Zeile, die die
+            // Ladevorgänge-Seite und das Menü „Eingreifen“ fragen (Audit: zwei
+            // Regeln für `POST /charging-boost` waren Befund 3).
+            ...boostbarFuer(lp, i.charging, nowMs),
             ...ladestandVon(lp.con, nowMs),
             fahrzeugBidirektional: typeof lp.con?.bidirectional === 'boolean' ? lp.con.bidirectional : null,
           }
@@ -714,7 +806,30 @@ interface ZustandInput {
   an: boolean | null;
 }
 
+/**
+ * Der Pausengrund einer Säule im Wort des Kunden. An einer „Günstig“-Säule ohne
+ * frischen Plan fährt die Box die Bahn `nur_sonne` (#1569) und meldet als Grund
+ * `kein_ueberschuss` - gemeint ist dort: der Strom ist gerade nicht billig.
+ * `null` = der Satz der Box gilt unverändert.
+ */
+export function ladepunktPausenGrund(quelle: string | null | undefined, reasonCode: string | null | undefined): string | null {
+  return quelle === 'guenstig' && reasonCode === 'kein_ueberschuss' ? 'Wartet auf günstigen Preis' : null;
+}
+
 /** Pille und Satz eines Geräts - nur aus Gemeldetem. */
+/**
+ * Sagt der Satz der Säule nur das Zustandswort noch einmal - mit anderen Worten?
+ * „Kein Auto eingesteckt · Kein Fahrzeug angeschlossen." und „Lädt · Ladevorgang
+ * läuft." waren dieselbe Aussage zweimal (UI-Runde Kundenseiten, Befund #13). Ein
+ * Grund, der MEHR sagt (Sonnenstrom, Pause wegen Netzgrenze …), bleibt stehen.
+ */
+export function wiederholtDasWort(grund: string, kind: string): boolean {
+  const g = grund.trim().toLowerCase().replace(/[.!]+$/, '');
+  if (kind === 'frei' || kind === 'getrennt') return /^kein (auto|fahrzeug)( (eingesteckt|angeschlossen|verbunden))?$/.test(g);
+  if (kind === 'laedt' || kind === 'laedt_ohne_messung') return g === 'ladevorgang läuft' || g === 'lädt' || g === 'lädt gerade';
+  return false;
+}
+
 function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; lang: string } {
   const bis = z.eingriff?.bisMs != null ? uhrVon(z.r, z.eingriff.bisMs) : null;
   if (z.eingriff) {
@@ -725,18 +840,29 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
   if (z.pausiert) return { pill: ['lock', 'Pause'], kurz: 'Automatik pausiert', lang: 'Die Automatik ist pausiert; das Gerät ist in seinem sicheren Zustand.' };
   // --- Ladepunkt: das Wort der Säule.
   if (z.lp) {
-    if (!z.lp.cp.connected) return { pill: ['stale', 'keine Verbindung'], kurz: 'Ladepunkt meldet sich nicht', lang: 'Der Ladepunkt meldet sich gerade nicht bei der Box.' };
+    if (!z.lp.cp.connected) {
+      const satz = ladepunktSperre(z.lp.cp, null, z.r.nowMs)?.satz ?? 'Wallbox nicht erreichbar';
+      return { pill: ['stale', 'keine Verbindung'], kurz: satz, lang: `${satz}. Was sie gerade tut, weiß VoltPilot nicht.` };
+    }
     if (!z.lp.con) return { pill: ['stale', 'unbekannt'], kurz: STATUS_UNKNOWN_TEXT, lang: STATUS_UNKNOWN_TEXT };
     const lz = ladeZustand(z.lp.con, z.lp.cp, z.r.nowMs);
-    const grund = lz.reason ?? z.lp.con.reasonText ?? null;
-    const kurz = grund && grund !== lz.word ? `${lz.word} · ${grund}` : lz.word;
+    const grund = ladepunktPausenGrund(z.e.steuerart?.quelle, lz.reasonCode ?? z.lp.con.reason) ?? lz.reason ?? z.lp.con.reasonText ?? null;
+    // ⚠ Ein volles Auto wartet nicht auf VoltPilot: das Wort und sein Zusatz
+    // kommen aus den geteilten Vektoren („Auto pausiert · voll oder
+    // Auto-Timer", Audit W-21), nie „wartet".
+    const zusatz = lz.kind === 'auto_pausiert' ? lz.detail : null;
+    const kurz = [lz.word, grund && grund !== lz.word && !wiederholtDasWort(grund, lz.kind) ? grund : null, zusatz]
+      .filter(Boolean)
+      .join(' · ');
     const pill: [PillArt, string] =
       lz.kind === 'laedt' || lz.kind === 'laedt_ohne_messung' || lz.kind === 'startet' ? ['on', 'lädt']
         : lz.kind === 'getrennt' || lz.kind === 'frei' ? ['off', 'kein Auto']
           : lz.kind === 'beendet' ? ['done', 'fertig']
             : lz.kind === 'stoerung' || lz.kind === 'nicht_verfuegbar' ? ['lock', 'Störung']
               : lz.kind === 'reserviert' ? ['off', 'reserviert']
-                : ['wait', 'wartet'];
+                : lz.kind === 'auto_pausiert' ? ['wait', 'Auto pausiert']
+                  : lz.kind === 'kein_ladevorgang' ? ['wait', 'kein Ladevorgang']
+                    : ['wait', 'wartet'];
     return { pill, kurz, lang: `${kurz}.` };
   }
   // --- Verbraucher: Zustand und Grund, wie die Box sie meldet.
@@ -750,6 +876,11 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
     case 'running_forced':
     case 'running_optimized':
       pill = ['on', freigabe ? 'angehoben' : 'läuft'];
+      break;
+    case 'running_manual':
+      // Teil B (Captain-Befund 05.11.2026): ein Handeingriff ist weder eine
+      // Pflichtregel noch ein VoltPilot-Plan - die Pille sagt das ehrlich.
+      pill = ['on', 'von Hand'];
       break;
     case 'waiting':
       pill = ['wait', 'wartet'];
@@ -790,7 +921,10 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
 /**
  * Wann das Gerät nach seinem Auftrag voraussichtlich läuft - aus Prognose und
  * Preis. Sonnenstrom: wo der Plan mindestens die Nennleistung einspeisen
- * würde. Günstig: wo der Börsenpreis unter der Grenze liegt. Feste Zeiten:
+ * würde. Günstig: wo der BEZUGSPREIS unter der Grenze liegt - dieselbe Zahl,
+ * die der Server vergleicht (`market.import_price_ct_kwh`); ohne Bezugspreis
+ * erwartet die Viertelstunde nichts (der Börsenpreis läge systematisch zu
+ * tief, Konzept k1 Befund 6). Feste Zeiten:
  * im Fenster. Eine Frist ohne Plan erwartet nichts (die Box entscheidet).
  */
 export function erwarteteLaeufe(
@@ -817,7 +951,7 @@ export function erwarteteLaeufe(
       }
       case 'guenstig':
       case 'freigabe_guenstig': {
-        const p = rh.preis[t];
+        const p = rh.bezug[t];
         const g2 = num(s.preisgrenzeCtKwh);
         bits[t] = p != null && g2 != null && p < g2;
         break;
@@ -1098,12 +1232,22 @@ export function kopfsatz(
   return { vor: satz, sonne: null, nach: '' };
 }
 
-/** Die Unterzeile: „Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %“. */
-export function unterzeile(rh: Reihen, t: number, mitSpeicher: boolean): string {
+/**
+ * Die Unterzeile: „Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %“.
+ *
+ * `sonne` (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4):
+ * true, sobald die Anlage die Sonnen-Erzählung bekommt
+ * (`preisRolle(...).erzaehlung === 'sonne'`) - lässt den Börsenpreis ganz
+ * weg, statt ihn durch etwas zu ersetzen. Vorgabe `false` lässt jeden
+ * bestehenden Aufrufer unverändert.
+ */
+export function unterzeile(rh: Reihen, t: number, mitSpeicher: boolean, sonne = false): string {
   const m = moment(rh, t);
   const teile: string[] = [];
-  if (m.preis != null) teile.push(`Börsenpreis ${fCt(m.preis)}`);
-  else if (t >= TAG && !rh.morgenBekannt) teile.push('Preise für morgen kommen gegen 13 Uhr');
+  if (!sonne) {
+    if (m.preis != null) teile.push(`Börsenpreis ${fCt(m.preis)}`);
+    else if (t >= TAG && !rh.morgenBekannt) teile.push('Preise für morgen kommen gegen 13 Uhr');
+  }
   if (m.temp != null) teile.push(`${fGrad(m.temp)} draußen`);
   if (mitSpeicher && m.soc != null) teile.push(`Speicher ${fPct(m.soc)}`);
   return teile.join(' · ');
@@ -1120,10 +1264,20 @@ export function naechsterWechsel(g: GeraetBild, t: number): { t: number; an: boo
   return null;
 }
 
-/** Die Zeile unter dem Tagesbild zur gewählten Viertelstunde. */
-export function momentZeile(rh: Reihen, t: number, liste: GeraetBild[], jetzt: number): { kopf: string; zeile: string } {
+/**
+ * Die Zeile unter dem Tagesbild zur gewählten Viertelstunde - das Tooltip-
+ * Äquivalent von „Heute gesteuert" (B18). `sonne` (Vorgabe `false`, siehe
+ * {@link unterzeile}) lässt den Börsenpreis der gewählten Viertelstunde weg.
+ */
+export function momentZeile(
+  rh: Reihen,
+  t: number,
+  liste: GeraetBild[],
+  jetzt: number,
+  sonne = false,
+): { kopf: string; zeile: string } {
   const m = moment(rh, t);
-  const kopf = `${uhrTag(t)}–${uhr(t + 1)}${m.pv != null ? ` · Sonne ${fKw(m.pv)}` : ''}${m.preis != null ? ` · ${fCt(m.preis)}` : ''}`;
+  const kopf = `${uhrTag(t)}–${uhr(t + 1)}${m.pv != null ? ` · Sonne ${fKw(m.pv)}` : ''}${!sonne && m.preis != null ? ` · ${fCt(m.preis)}` : ''}`;
   const laufen = laufende(liste, t, jetzt);
   if (!laufen.length) return { kopf, zeile: 'Kein gesteuertes Gerät läuft.' };
   return {

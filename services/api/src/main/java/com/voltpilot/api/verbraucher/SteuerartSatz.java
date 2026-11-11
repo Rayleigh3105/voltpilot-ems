@@ -41,6 +41,17 @@ public final class SteuerartSatz {
 
     // --- Die Sperr-Gruende, woertlich (§3.1) --------------------------------
 
+    /**
+     * Die Box fuehrt die reaktive Verbraucherregel nicht aus: eine Edge Light ohne die Faehigkeit
+     * {@code verbraucherregeln} (edge-supports.md). „Solar-Ueberschuss" an einer Schaltlast, an
+     * SG-Ready oder an einem Heizstab, den nicht der Regler der Box fuehrt, wird zum Regel-Artefakt
+     * mit lokalem Signal ({@code vp-consumer-policy}); das fuehrt Edge Light erst ab dem Release
+     * mit dem Go-Zwilling aus (edge-light/docs/paritaet.md, Abschnitt E). Ohne die Sperre stuende
+     * die Wahl gespeichert und still. Zeit, Preis und „Fertig bis" sind davon NICHT betroffen: sie
+     * laufen ueber Fahrplan und Registry-Push im Core jeder Box.
+     */
+    public static final String GRUND_BOX_OHNE_REGELN =
+            "Ihre VoltPilot-Box führt Regeln nach dem Solar-Überschuss erst nach einem Update aus.";
     /** Der Tarif ist FLACH - es gibt gar keine guenstigen Stunden. */
     public static final String GRUND_TARIF_FEST =
             "Ihr Stromtarif hat keine stündlichen Preise.";
@@ -154,14 +165,30 @@ public final class SteuerartSatz {
              * „Sonne + Speicher": hat die Anlage einen Speicher, und welche
              * Kapazitaet ist gepflegt? null = keine gepflegt (nie 0).
              */
-            boolean hatSpeicher, BigDecimal speicherKapazitaetKwh) {
+            boolean hatSpeicher, BigDecimal speicherKapazitaetKwh,
+            /*
+             * „Solar-Ueberschuss" braeuchte an dieser Komponente eine reaktive
+             * Verbraucherregel, die ihre Box nicht ausfuehrt: Edge Light ohne
+             * Faehigkeit verbraucherregeln, und der Ueberschuss laeuft nicht schon
+             * im Core (Heizstab-Regler, Ladepunkt-Bahn). false = Docker-Box,
+             * meldende Edge Light ODER unbekannt - unbekannt sperrt nie still.
+             */
+            boolean boxOhneVerbraucherregeln) {
+
+        /** Der Kontext ohne die Box-Art (jeder Aufrufer vor 04.11.2026). */
+        public Kontext(String entityType, BigDecimal ratedPowerKw, BigDecimal minPowerKw,
+                String confirmationChannel, String tarifArt, boolean hatPv,
+                BigDecimal preisgrenzeVorgabeCtKwh, boolean hatSpeicher, BigDecimal speicherKapazitaetKwh) {
+            this(entityType, ratedPowerKw, minPowerKw, confirmationChannel, tarifArt, hatPv,
+                    preisgrenzeVorgabeCtKwh, hatSpeicher, speicherKapazitaetKwh, false);
+        }
 
         /** Der Kontext ohne Speicher-Fakten (jeder Aufrufer vor 06.10.2026). */
         public Kontext(String entityType, BigDecimal ratedPowerKw, BigDecimal minPowerKw,
                 String confirmationChannel, String tarifArt, boolean hatPv,
                 BigDecimal preisgrenzeVorgabeCtKwh) {
             this(entityType, ratedPowerKw, minPowerKw, confirmationChannel, tarifArt, hatPv,
-                    preisgrenzeVorgabeCtKwh, false, null);
+                    preisgrenzeVorgabeCtKwh, false, null, false);
         }
     }
 
@@ -320,6 +347,11 @@ public final class SteuerartSatz {
         if (ueberschuss) {
             if (!k.hatPv()) {
                 return GRUND_OHNE_PV;
+            }
+            // Nach der PV (ein Update schafft keine Erzeugung): der Ueberschuss
+            // waere hier eine Regel, die diese Box noch nicht ausfuehrt.
+            if (k.boxOhneVerbraucherregeln() && !VerbraucherService.istLadepunkt(k.entityType())) {
+                return GRUND_BOX_OHNE_REGELN;
             }
             // ⚠ Die SG-Ready-Freigabe braucht KEINE Nennleistung: sie schaltet
             // einen Kontakt, keine Leistung (P8). Ihre Schwelle hat eine eigene

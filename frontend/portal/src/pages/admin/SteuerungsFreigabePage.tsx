@@ -1,27 +1,26 @@
 /**
- * Plattform → **Steuerungs-Freigabe** (Captain-Order 10.08.2026).
+ * Plattform → Katalog → **Steuerungs-Freigabe** (Captain-Order 10.08.2026;
+ * Konzept `vp-adminview-konzept-k1` §4.4/§8, Scheibe S3: der Abschnitt
+ * „Anlagen" - die Scharfschaltung je Box - ist in die Akte › Anlage
+ * umgezogen; dort steht sie neben Plan, Fassung und den Werkzeugen statt an
+ * einem vierten Ort).
  *
- * Der Befund, den diese Seite behebt, wörtlich: „der Kunde hat auch einen Deye
- * und da muss ich die Steuerung freigeben, obwohl ich das schon mit einem
- * anderen Kunden gemacht hab - ich hätte gedacht das merken wir uns". Die
- * Freigabe eines MODELLS lebte bis hierher entweder in einer env-Datei
- * (flottenweit, auf die Registerfamilie geschlüsselt) oder als
+ * Der Befund, den diese Seite ursprünglich behoben hat, wörtlich: „der Kunde
+ * hat auch einen Deye und da muss ich die Steuerung freigeben, obwohl ich das
+ * schon mit einem anderen Kunden gemacht hab - ich hätte gedacht das merken
+ * wir uns". Die Freigabe eines MODELLS lebte bis hierher entweder in einer
+ * env-Datei (flottenweit, auf die Registerfamilie geschlüsselt) oder als
  * First-Light-Freigabe auf GENAU EINER Box - die Plattform hatte kein
  * Gedächtnis.
  *
- * Zwei Abschnitte, weil es zwei Entscheidungen sind:
- *
- *  1. **Freigegebene Modelle** - das Register. Ein Prüfstandslauf endet hier
- *     als Eintrag, EINMAL, und gilt danach für jeden Kunden.
- *  2. **Anlagen** - die Scharfschaltung. Sie bleibt ein ausdrücklicher Akt (es
- *     geht um Schreibzugriff auf den Wechselrichter eines Kunden), ist aber nur
- *     noch EIN Klick, sichtbar, sobald das Register das Modell deckt.
+ * Diese Seite bleibt darum das REGISTER (**Freigegebene Modelle** - ein
+ * Prüfstandslauf endet hier als Eintrag, EINMAL, und gilt danach für jeden
+ * Kunden) plus die read-only „Steuerbare Gerätetypen"-Sektion.
  *
  * ALLE Ableitung/Copy ist das reine `src/controlCertification.ts`
  * (unit-getestet); diese Seite lädt und rendert nur.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Input } from '../../../designsystem/components/forms/Input';
@@ -30,14 +29,9 @@ import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { VpPicker } from '../../components/VpPicker';
 import {
   adminApi,
-  type ControlCandidate,
   type ControlCertification,
 } from '../../admin/adminApi';
 import {
-  activateConsequences,
-  certSourceLabel,
-  deactivateConsequences,
-  plantCertView,
   registerRows,
   registerSummary,
   revokeConsequences,
@@ -45,18 +39,20 @@ import {
 import { parseSektion } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
 import { GeraetetypenSektion } from './GeraetetypenSektion';
+import './SteuerungsFreigabe.css';
 
 export function SteuerungsFreigabePage(): JSX.Element {
   const [register, setRegister] = useState<ControlCertification[] | null>(null);
-  const [plants, setPlants] = useState<ControlCandidate[] | null>(null);
+  // Nur noch für den EINEN Satz „X Modelle freigegeben · Y Anlagen aktiviert"
+  // über dem Register (ein Aggregat, kein zweites Urteil über eine einzelne
+  // Anlage - das steht seit S3 ausschließlich in ihrer Akte).
+  const [activations, setActivations] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [revoking, setRevoking] = useState<{ brand: string; model: string } | null>(null);
-  const [arming, setArming] = useState<ControlCandidate | null>(null);
-  const [disarming, setDisarming] = useState<ControlCandidate | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -65,7 +61,7 @@ export function SteuerungsFreigabePage(): JSX.Element {
       ([r, p]) => {
         if (!active) return;
         setRegister(r ?? []);
-        setPlants(p ?? []);
+        setActivations((p ?? []).filter((c) => c.activated).length);
       },
       () => active && setFailed(true),
     );
@@ -82,10 +78,10 @@ export function SteuerungsFreigabePage(): JSX.Element {
   const sektionRef = useRef<string | null>(parseSektion(window.location.hash));
   useEffect(() => {
     const sektion = sektionRef.current;
-    if (!sektion || !register || !plants) return;
+    if (!sektion || !register || activations == null) return;
     sektionRef.current = null;
     document.getElementById(`sektion-${sektion}`)?.scrollIntoView({ block: 'start' });
-  }, [register, plants]);
+  }, [register, activations]);
 
   async function run(action: () => Promise<unknown>): Promise<void> {
     setBusy(true);
@@ -105,11 +101,11 @@ export function SteuerungsFreigabePage(): JSX.Element {
   const rows = register ? registerRows(register) : [];
 
   return (
-    <div className="vp-admin-page">
+    <div className="vp-admin-page vp-cert-page">
       <AdminPageHead
         icon="settings"
         title="Steuerungs-Freigabe"
-        description="Ein Wechselrichter-Modell wird EINMAL am Prüfstand freigegeben und gilt danach für die ganze Flotte. Ob eine Anlage wirklich gesteuert wird, bleibt trotzdem eine ausdrückliche Entscheidung - ein Klick je Anlage."
+        description="Ein Wechselrichter-Modell wird einmal am Prüfstand freigegeben und gilt dann für die ganze Flotte. Scharfgeschaltet wird eine Anlage einzeln, im Reiter „Anlage“ ihrer Geräteakte."
       />
 
       {error && <div className="vp-alert-warn vp-cert-error">{error}</div>}
@@ -120,150 +116,78 @@ export function SteuerungsFreigabePage(): JSX.Element {
           onRetry={reload}
         />
       )}
-      {!failed && (!register || !plants) && <TableSkeleton rows={4} />}
+      {!failed && (!register || activations == null) && <TableSkeleton rows={4} />}
 
-      {!failed && register && plants && (
-        <>
-          <section className="vp-admin-sec">
-            <h2 className="vp-admin-sec-head">Freigegebene Modelle</h2>
-            <p className="vp-cert-summary">
-              {registerSummary(register, plants.filter((p) => p.activated).length)}
-            </p>
+      {!failed && register && activations != null && (
+        <section className="vp-admin-sec">
+          <h2 className="vp-admin-sec-head">Freigegebene Modelle</h2>
+          <p className="vp-cert-summary">
+            {registerSummary(register, activations)}
+          </p>
 
-            {rows.length === 0 ? (
-              <EmptyState
-                title="Noch kein Modell freigegeben"
-                description="Ein Prüfstandslauf endet hier als Eintrag - danach reicht bei jedem weiteren Kunden ein Klick."
-              />
-            ) : (
-              <Card radius="lg" style={{ padding: 0, overflow: 'hidden' }}>
-                <table className="vp-table responsive">
-                  <thead>
-                    <tr>
-                      <th>Modell</th>
-                      <th>Registerfamilie</th>
-                      <th>Prüfstand</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.key}>
-                        <td data-label="Modell">
-                          <div className="vp-cell-main">{r.model}</div>
-                          <div className="vp-cell-sub">{r.brand}</div>
-                        </td>
-                        <td data-label="Registerfamilie">
-                          <div className="vp-cell-main">{r.family}</div>
-                          {r.pathLabel && <div className="vp-cell-sub">{r.pathLabel}</div>}
-                        </td>
-                        <td data-label="Prüfstand">
-                          <div className="vp-cell-main">{r.certifiedAt}</div>
-                          {/* Ohne Aussage steht hier NICHTS - „nicht umgekehrt"
-                              wäre eine Behauptung über einen Lauf, der die
-                              Frage nie beantwortet hat. */}
-                          {r.signLabel && (
-                            <div className="vp-cell-sub">Vorzeichen: {r.signLabel}</div>
-                          )}
-                          {r.note && <div className="vp-cell-sub">{r.note}</div>}
-                        </td>
-                        <td data-label="">
-                          <Button
-                            variant="ghost"
-                            onClick={() => setRevoking({ brand: r.brand, model: r.model })}
-                          >
-                            Zurücknehmen
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-            )}
-
-            <CertifyForm
-              busy={busy}
-              onSubmit={(input) => run(() => adminApi.certifyControlModel(input))}
+          {rows.length === 0 ? (
+            <EmptyState
+              title="Noch kein Modell freigegeben"
+              description="Ein Prüfstandslauf endet hier als Eintrag - danach reicht bei jedem weiteren Kunden ein Klick."
             />
-          </section>
-
-          <section className="vp-admin-sec">
-            <h2 className="vp-admin-sec-head">Anlagen</h2>
-            <p className="vp-cert-summary">
-              Die Scharfschaltung bleibt eine ausdrückliche Entscheidung - es geht um
-              Schreibzugriff auf den Wechselrichter eines Kunden. Sie ist nur noch EIN Klick,
-              sobald das Register das Modell deckt.
-            </p>
-            {plants.length === 0 ? (
-              <EmptyState
-                title="Keine Anlage verbunden"
-                description="Sobald ein Gerät beansprucht ist, erscheint es hier."
-              />
-            ) : (
-              <Card radius="lg" style={{ padding: 0, overflow: 'hidden' }}>
-                <table className="vp-table responsive">
-                  <thead>
-                    <tr>
-                      <th>Anlage</th>
-                      <th>Mandant</th>
-                      <th>Zustand</th>
-                      <th />
+          ) : (
+            <Card radius="lg" style={{ padding: 0, overflow: 'hidden' }}>
+              <table className="vp-table responsive vp-zeilen vp-sf-tabelle">
+                <thead>
+                  <tr>
+                    <th>Modell</th>
+                    <th>Registerfamilie</th>
+                    <th>Prüfstand</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.key}>
+                      <td data-label="Modell" data-zeile="haupt">
+                        <div className="vp-cell-main">{r.model}</div>
+                        <div className="vp-cell-sub">{r.brand}</div>
+                      </td>
+                      <td data-label="Registerfamilie" data-zeile="neben" className="vp-zeilen-etikett">
+                        <div className="vp-cell-main">{r.family}</div>
+                        {r.pathLabel && <div className="vp-cell-sub">{r.pathLabel}</div>}
+                      </td>
+                      <td data-label="Prüfstand" data-zeile="neben" className="vp-zeilen-etikett">
+                        <div className="vp-cell-main">{r.certifiedAt}</div>
+                        {/* Ohne Aussage steht hier NICHTS - „nicht umgekehrt"
+                            wäre eine Behauptung über einen Lauf, der die
+                            Frage nie beantwortet hat. */}
+                        {r.signLabel && (
+                          <div className="vp-cell-sub">Vorzeichen: {r.signLabel}</div>
+                        )}
+                        {/* Der Prüfstandsbeleg ist lang und technisch: aufklappbar statt immer offen. */}
+                        {r.note && (
+                          <details className="vp-cert-nachweis">
+                            <summary>Nachweis</summary>
+                            <div className="vp-cell-sub">{r.note}</div>
+                          </details>
+                        )}
+                      </td>
+                      <td data-label="" data-zeile="fuss">
+                        <Button
+                          variant="ghost"
+                          onClick={() => setRevoking({ brand: r.brand, model: r.model })}
+                        >
+                          Zurücknehmen
+                        </Button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {plants.map((p) => {
-                      const view = plantCertView(p.activated, p.platformCertVerdict);
-                      return (
-                        <tr key={p.deviceId}>
-                          <td data-label="Anlage">
-                            <div className="vp-cell-main">{p.siteName}</div>
-                            <div className="vp-cell-sub">{p.externalRef}</div>
-                          </td>
-                          <td data-label="Mandant">{p.tenantName}</td>
-                          <td data-label="Zustand">
-                            <Badge variant={view.tone} dot>
-                              {view.label}
-                            </Badge>
-                            {/* Der Grund steht IMMER daneben - ein Zustandswort
-                                ohne Ursache ist ein Rätsel. */}
-                            {view.hint && <div className="vp-cell-sub">{view.hint}</div>}
-                            {p.activated && p.activatedBy && (
-                              <div className="vp-cell-sub">aktiviert durch {p.activatedBy}</div>
-                            )}
-                            {/* WORAUS die Freigabe kommt - das ist der
-                                Unterschied zwischen „haengt am Register" und
-                                „haengt an einer First-Light-Freigabe an DIESER
-                                Box": nur die erste faellt weg, wenn das Modell
-                                aus dem Register genommen wird. */}
-                            {certSourceLabel(p.certSource) && (
-                              <div className="vp-cell-sub">
-                                Freigabe: {certSourceLabel(p.certSource)}
-                              </div>
-                            )}
-                          </td>
-                          <td data-label="">
-                            {p.activated ? (
-                              <Button variant="ghost" onClick={() => setDisarming(p)}>
-                                Zurücknehmen
-                              </Button>
-                            ) : (
-                              /* Ein Knopf, der strukturell nichts bewirken kann,
-                                 wird nicht angeboten - dort steht der Grund. */
-                              view.canActivate && (
-                                <Button onClick={() => setArming(p)}>Steuerung aktivieren</Button>
-                              )
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </Card>
-            )}
-          </section>
-        </>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+
+          <CertifyForm
+            busy={busy}
+            onSubmit={(input) => run(() => adminApi.certifyControlModel(input))}
+          />
+        </section>
       )}
 
       {/* Stufe 3 (F4): dieselbe Frage, andere Geräteklasse - read-only, mit
@@ -274,7 +198,7 @@ export function SteuerungsFreigabePage(): JSX.Element {
         open={revoking != null}
         title="Modell aus dem Register nehmen?"
         intro={`„${revoking?.model ?? ''}" gilt danach nicht mehr als freigegeben.`}
-        consequences={revokeConsequences(revoking?.model ?? '', (plants ?? []).filter((p) => p.activated).length)}
+        consequences={revokeConsequences(revoking?.model ?? '', activations ?? 0)}
         confirmLabel="Zurücknehmen"
         tone="danger"
         busy={busy}
@@ -283,37 +207,6 @@ export function SteuerungsFreigabePage(): JSX.Element {
           const r = revoking;
           setRevoking(null);
           if (r) void run(() => adminApi.revokeControlModel(r.brand, r.model));
-        }}
-      />
-
-      <ConfirmDialog
-        open={arming != null}
-        title="Steuerung für diese Anlage aktivieren?"
-        intro={`VoltPilot darf danach den Wechselrichter von „${arming?.siteName ?? ''}" ansteuern.`}
-        consequences={activateConsequences(arming?.siteName ?? '')}
-        confirmLabel="Steuerung aktivieren"
-        busy={busy}
-        onCancel={() => setArming(null)}
-        onConfirm={() => {
-          const a = arming;
-          setArming(null);
-          if (a) void run(() => adminApi.activateControl(a.deviceId));
-        }}
-      />
-
-      <ConfirmDialog
-        open={disarming != null}
-        title="Steuerung dieser Anlage zurücknehmen?"
-        intro={`„${disarming?.siteName ?? ''}" wird danach nur noch ausgelesen.`}
-        consequences={deactivateConsequences(disarming?.siteName ?? '')}
-        confirmLabel="Zurücknehmen"
-        tone="danger"
-        busy={busy}
-        onCancel={() => setDisarming(null)}
-        onConfirm={() => {
-          const d = disarming;
-          setDisarming(null);
-          if (d) void run(() => adminApi.deactivateControl(d.deviceId));
         }}
       />
     </div>

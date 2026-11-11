@@ -226,6 +226,32 @@ describe('einspeiseProvenance (decision 3)', () => {
     );
   });
 
+  it('a rate the customer STATED is named as such - never „feste" (EEG) Vergütung', () => {
+    const mit = einspeiseProvenance(
+      makeMoney({
+        plantKind: 'eigenverbrauch',
+        exportVerguetungPriced: true,
+        exportVerguetungQuelle: 'angegeben',
+        einspeiseErloesEur: 0.1875,
+        eingespeistKwh: 1.5,
+      }),
+    );
+    expect(mit).toContain('Ø 12,5 ct/kWh');
+    expect(mit).toContain('Ihre angegebene Einspeisevergütung.');
+    expect(mit).not.toContain('feste');
+    expect(
+      einspeiseProvenance(
+        makeMoney({
+          plantKind: 'eigenverbrauch',
+          exportVerguetungPriced: true,
+          exportVerguetungQuelle: 'angegeben',
+          einspeiseErloesEur: 12.3,
+          eingespeistKwh: null,
+        }),
+      ),
+    ).toBe('Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zu Ihrer angegebenen Einspeisevergütung.');
+  });
+
   it('A1 · without the flag it is byte-identical to before (Börsenpreis), incl. Direktvermarktung', () => {
     // Flag missing → conservative Börsenpreis wording (unchanged).
     expect(einspeiseProvenance(makeMoney())).toContain('Börsenpreis Ihrer Einspeise-Zeiten');

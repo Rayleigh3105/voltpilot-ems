@@ -1,0 +1,115 @@
+/* Geräteakte (Konzept vp-adminview-konzept-k1 §4.4, Scheibe S2). */
+
+.vp-geraet-breit {
+  grid-column: 1 / -1;
+}
+
+/* Mobil-Durchgang (vp-adminview-mobile-rework): am Telefon klebt die
+   Reiterleiste unter der 68 px hohen Kopfzeile (`index.css` `.vp-topbar`,
+   GEMESSEN wie im Vorbild `components/BereichTabs.css` S1) - ein Reiter-
+   Wechsel braucht sonst jedes Mal den Rücksprung zum Seitenanfang, um die
+   Reiter wieder zu sehen. Nur am Telefon: am Rechner bleibt die Leiste im
+   normalen Fluss (Desktop darf nicht schlechter werden). */
+@media (max-width: 720px) {
+  .vp-geraete-akte .vp-bereich-tabs {
+    position: sticky;
+    top: 68px;
+    z-index: 10;
+    background: var(--vp-bg-light, #f7f9fc);
+  }
+
+  /* Die Kante, hinter der noch Reiter liegen, blendet weich aus - derselbe
+     Griff wie `components/BereichTabs.css` (`reiterRand.ts` setzt
+     `data-rand`), hier auf die Segment-Pillen dieser Leiste gemünzt statt auf
+     den Unterstrich-Stil. Nur am Telefon: am Rechner passen alle sechs Reiter
+     ohnehin nebeneinander. */
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::before,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::after {
+    content: '';
+    position: sticky;
+    z-index: 1;
+    flex: 0 0 24px;
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::before {
+    left: 0;
+    margin-right: -24px;
+    background: linear-gradient(to right, var(--vp-bg-light, #f7f9fc) 20%, transparent);
+  }
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::after {
+    right: 0;
+    margin-left: -24px;
+    background: linear-gradient(to left, var(--vp-bg-light, #f7f9fc) 20%, transparent);
+  }
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='links']::before,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='beide']::before,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='rechts']::after,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='beide']::after {
+    visibility: visible;
+  }
+}
+
+/* Kopf der Akte: Stand und Zustand gehören zusammen. Am Telefon steht der Zustand vorn
+   in EINER Zeile mit dem Stand, darunter die Knöpfe nebeneinander; die Kennzeile nennt
+   Referenz und Kunde › Anlage ohne „Box-Art unbekannt“ (die Einrichtung nennt sie). */
+.vp-akte-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2) var(--vp-space-3);
+}
+@media (max-width: 720px) {
+  .vp-akte-kennung { font-size: 0.875rem; row-gap: 2px; }
+  .vp-akte-kennung > :has([data-box-art='unbekannt']),
+  .vp-akte-kennung > [data-box-art='unbekannt'] { display: none !important; }
+  .vp-akte-aktionen { gap: var(--vp-space-2); }
+  .vp-akte-aktionen .vp-akte-status { flex: 1 1 100%; }
+  .vp-akte-aktionen .vp-akte-status [data-testid='akte-zustand'] { order: -1; }
+  .vp-akte-aktionen .vp-akte-status [data-testid='akte-stand'] { font-size: 0.8125rem; }
+  .vp-akte-aktionen > .vp-btn { flex: 1 1 0; min-width: 0; }
+  .vp-akte-aktionen > .vp-akte-menu { flex: 0 0 auto; }
+}
+
+.vp-akte-menu-liste {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border, #e2e2e2);
+  border-radius: var(--vp-radius-md, 10px);
+  box-shadow: var(--vp-shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+  padding: 4px;
+}
+
+.vp-akte-menu-liste button {
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--vp-radius-sm, 6px);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.vp-akte-menu-liste button:hover,
+.vp-akte-menu-liste button:focus-visible {
+  background: var(--vp-surface-hover, #f3f3f3);
+}
+
+/*
+ * Der Herzschlag-Punkt (§5.4): schlägt GENAU EINMAL, wenn eine Antwort einen
+ * neueren Herzschlag trägt als die vorige - ein Beleg, keine Dauer-Animation
+ * wie `vp-ustate-busy` ("hier bewegt sich etwas ohne Sie"). Läuft mit einer
+ * festen Dauer von 0 % bis 100 % ab (kein `infinite`) und braucht deshalb
+ * keinen Eintrag im `prefers-reduced-motion`-Block von `index.css`: unter
+ * `--vp-motion-scale: 0` steht sie sofort auf ihrem Endzustand.
+ */
+.vp-badge-dot-puls {
+  animation: vp-badge-dot-puls var(--vp-motion-chart) var(--vp-ease, ease-in-out) 1;
+}
+@keyframes vp-badge-dot-puls {
+  0% { transform: scale(1); opacity: 1; }
+  35% { transform: scale(1.7); opacity: 0.55; }
+  100% { transform: scale(1); opacity: 1; }
+}

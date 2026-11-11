@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/mqtt-geraetesuche.schema.json",
+  "title": "Gerätesuche: Auftrag Cloud -> Box (mqtt-geraetesuche 1.0)",
+  "description": "Der Auftrag auf ems/{tenant_id}/{site_id}/{device_id}/v2/geraetesuche (QoS 1, NICHT retained): eine Suche starten oder eine laufende abbrechen. Vertrag und Regeln: mqtt-geraetesuche.md; Fälle: geraetesuche-vectors.json (Familie auftrag). Die Box glaubt der Cloud nichts: Netze, Ports, Takt und Dauer bestimmt sie selbst (DP-5 A), der Auftrag kann sie weder erweitern noch nennen. Streng senden, tolerant annehmen: die Cloud sendet genau diese Form; die Box überliest unbekannte Felder und unbekannte Erkenner-Namen (additiv).",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/geraetesuche  (Cloud -> Box, QoS 1, NICHT retained)",
+  "anyOf": [
+    { "$ref": "#/$defs/starten" },
+    { "$ref": "#/$defs/abbrechen" }
+  ],
+  "$defs": {
+    "starten": {
+      "type": "object",
+      "title": "aktion starten",
+      "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "site_id", "device_id", "aktion", "such_id", "ausgeloest_am", "gueltig_bis"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "tenant_id": { "$ref": "#/$defs/uuid", "description": "Muss dem Topic entsprechen; sonst verwirft die Box den Auftrag still." },
+        "site_id": { "$ref": "#/$defs/uuid" },
+        "device_id": { "$ref": "#/$defs/uuid" },
+        "aktion": { "const": "starten" },
+        "such_id": { "$ref": "#/$defs/uuid", "description": "Die Zeile der Suche in der Cloud. Derselbe Auftrag zweimal (QoS 1 darf doppelt zustellen) startet nie eine zweite Suche." },
+        "ausgeloest_am": { "$ref": "#/$defs/zeit", "description": "Wann der Mensch den Knopf gedrückt hat; Beginn der Frist." },
+        "gueltig_bis": { "$ref": "#/$defs/zeit", "description": "ausgeloest_am + 120 s, nie später (Leser-Regel frist_zu_lang). Nach dieser Zeit beginnt die Box die Suche nicht mehr und meldet abgelehnt/abgelaufen." },
+        "erkenner": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Wahlfrei: nur diese Erkenner laufen lassen (Schnittmenge mit denen der Box). Fehlt das Feld, laufen alle, die die Box hat. Die Cloud kann damit nur einengen, nie erweitern; welche wirklich liefen, sagt das Ergebnis.",
+          "items": { "$ref": "#/$defs/erkenner" }
+        },
+        "ausgeloest_von": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Das JWT-Subject der Person; nur Papier-Spur im Log der Box, sonst ohne Wirkung. Namen und Rollen bleiben in der Cloud." }
+      }
+    },
+    "abbrechen": {
+      "type": "object",
+      "title": "aktion abbrechen",
+      "description": "Bricht die laufende Suche mit genau dieser such_id ab. Ohne laufende Suche dieser Kennung tut die Box nichts. Ein Abbruch verfällt nicht: er kann nur Lesen beenden.",
+      "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "site_id", "device_id", "aktion", "such_id", "ausgeloest_am"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "tenant_id": { "$ref": "#/$defs/uuid" },
+        "site_id": { "$ref": "#/$defs/uuid" },
+        "device_id": { "$ref": "#/$defs/uuid" },
+        "aktion": { "const": "abbrechen" },
+        "such_id": { "$ref": "#/$defs/uuid" },
+        "ausgeloest_am": { "$ref": "#/$defs/zeit" },
+        "ausgeloest_von": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "erkenner": {
+      "enum": ["solarman", "shelly", "goe", "netztechnik", "modbus_offen", "sunspec", "fronius_solar_api", "kaco_aiswei", "kostal", "huawei", "sma", "victron", "opendtu_ahoy", "ebyte", "wago", "mdns", "ssdp", "funkmodul"],
+      "description": "Das geschlossene Vokabular der Erkenner (Tabelle erkennungskatalog und wege in geraetesuche-vectors.json). mdns, ssdp und funkmodul sind Wege, keine Fund-Erzeuger, und laufen nur auf Edge Light."
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "zeit": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  }
+}

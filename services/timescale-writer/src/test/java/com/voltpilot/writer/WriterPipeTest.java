@@ -3,6 +3,8 @@ package com.voltpilot.writer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Connection;
@@ -22,11 +24,13 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
@@ -170,6 +174,53 @@ class WriterPipeTest {
         // RLS: visible to the owning tenant, invisible to another (portal parity).
         assertThat(rlsVisibleCount(TENANT_A)).isEqualTo(1);
         assertThat(rlsVisibleCount(TENANT_B)).isEqualTo(0);
+    }
+
+    /**
+     * Die Log-Zeile eines Verbrauchers trägt die zwei Kennungen des Datensatzes
+     * (docs/k8s-readiness.md, Abschnitt "Logs"): Spring Boot hat {@link DatensatzVorgang} an die
+     * Fabrik der {@code @KafkaListener} gehängt. Ein unlesbarer Datensatz ist der kürzeste Weg zu
+     * einer Zeile - und der Fall, in dem der Mandant NUR aus dem Schlüssel kommen kann.
+     */
+    @Test
+    void dieZeileDesVerbrauchersTraegtStelleUndMandantDesDatensatzes() throws Exception {
+        createTopic();
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(TelemetryRawConsumer.class);
+        // Das MDC gehört dem schreibenden Faden: beim Anhängen festhalten, nicht erst beim Nachsehen.
+        ListAppender<ILoggingEvent> zeilen = new ListAppender<>() {
+            @Override
+            protected void append(ILoggingEvent zeile) {
+                zeile.prepareForDeferredProcessing();
+                super.append(zeile);
+            }
+        };
+        zeilen.start();
+        logger.addAppender(zeilen);
+        try {
+            RecordMetadata stelle;
+            try (KafkaProducer<String, String> producer = producer()) {
+                stelle = producer.send(new ProducerRecord<>(RAW_TOPIC, TENANT_A + ":" + SITE, "kein json")).get();
+            }
+
+            ILoggingEvent zeile = null;
+            long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+            while (zeile == null && System.nanoTime() < deadline) {
+                zeile = List.copyOf(zeilen.list).stream()
+                        .filter(z -> z.getFormattedMessage().startsWith("Skipping unparseable telemetry.raw record"))
+                        .findFirst().orElse(null);
+                if (zeile == null) {
+                    Thread.sleep(100);
+                }
+            }
+
+            assertThat(zeile).as("Zeile zum unlesbaren Datensatz").isNotNull();
+            assertThat(zeile.getMDCPropertyMap()).containsOnly(
+                    Map.entry("request_id", RAW_TOPIC + "-" + stelle.partition() + "@" + stelle.offset()),
+                    Map.entry("tenant_id", TENANT_A));
+        } finally {
+            logger.detachAppender(zeilen);
+        }
     }
 
     /**

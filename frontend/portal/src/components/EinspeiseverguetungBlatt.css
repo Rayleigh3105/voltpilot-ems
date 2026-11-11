@@ -1,0 +1,32 @@
+/* Das Blatt „Einspeisevergütung": oben, was gerade gilt - dieselbe ruhige
+   Fläche wie die Folge-Zeile der Seite (Einstellungen.css `.vp-einst-folge`),
+   damit „Gilt jetzt" als Zustand liest und nicht als Eingabe. */
+.vp-verguetung-jetzt {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-paleblue-start, #eef4fb);
+}
+
+.vp-verguetung-jetzt-h {
+  font-size: 0.78rem;
+  font-weight: var(--vp-weight-semibold, 600);
+  color: var(--vp-navy-2, #2c5282);
+}
+
+.vp-verguetung-jetzt > .vp-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-verguetung-hinweis {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-verguetung-mastr {
+  justify-self: start;
+  align-self: flex-start;
+}

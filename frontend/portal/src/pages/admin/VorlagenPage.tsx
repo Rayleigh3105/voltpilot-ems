@@ -34,11 +34,14 @@ import {
   spur,
   umfang,
   bestand,
+  vorlagenSuche,
   type AdminVorlage,
   type VorlagenGruppe,
 } from '../../adminVorlagen';
+import './Vorlagen.css';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
+import { InfoTip } from '../../components/InfoTip';
 import { AdminPageHead } from './AdminPageHead';
 
 export function VorlagenPage(): JSX.Element {
@@ -49,6 +52,7 @@ export function VorlagenPage(): JSX.Element {
   const [drawer, setDrawer] = useState<{ base: VorlagenGruppe | null } | null>(null);
   const [ask, setAsk] = useState<{ gruppe: VorlagenGruppe; version: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [suche, setSuche] = useState('');
 
   async function reload() {
     setLoadError(null);
@@ -81,13 +85,22 @@ export function VorlagenPage(): JSX.Element {
   }
 
   const list = rows ? gruppen(rows) : [];
+  const sichtbar = vorlagenSuche(list, suche);
 
   return (
     <div className="vp-admin-page">
       <AdminPageHead
         icon="layers"
         title="Gerätevorlagen"
-        description="Eine geprüfte Vorlage ist ein Datensatz, kein Software-Update: sobald sie hier steht, bietet der Anlege-Assistent sie jedem Kunden an. Eingebaute Vorlagen kommen aus dem Geräte-Katalog der Edge-Software und werden hier nur angezeigt."
+        description={
+          <>
+            Eine geprüfte Vorlage ist ein Datensatz, kein Software-Update.{' '}
+            <InfoTip title="Gerätevorlagen" label="Mehr zu Gerätevorlagen">
+              Sobald sie hier steht, bietet der Anlege-Assistent sie jedem Kunden an. Eingebaute Vorlagen kommen aus dem
+              Geräte-Katalog der Edge-Software und werden hier nur angezeigt.
+            </InfoTip>
+          </>
+        }
         actions={
           <Button onClick={() => setDrawer({ base: null })} disabled={!rows}>
             ＋ Vorlage eintragen
@@ -113,12 +126,26 @@ export function VorlagenPage(): JSX.Element {
         </Card>
       ) : (
         <>
-          <p className="vp-muted" data-testid="bestand">
-            {bestand(list)}
-          </p>
+          <div className="vp-vorlagen-kopf">
+            <p className="vp-muted" data-testid="bestand">
+              {bestand(list)}
+            </p>
+            {/* Über hundert eingebaute Vorlagen: ohne Suche findet man die eigene nicht. */}
+            <div className="vp-vorlagen-suche">
+              <Input
+                label="Vorlage suchen"
+                type="search"
+                placeholder="Marke, Modell oder Verbindung"
+                value={suche}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuche(e.target.value)}
+              />
+            </div>
+          </div>
+          <span className="vp-sr-only" role="status">{sichtbar.length} von {list.length} Vorlagen angezeigt</span>
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div className="vp-table-scroll">
-              <table className="vp-table responsive" data-testid="vorlagen">
+              {/* Am Telefon (`vp-zeilen`): je Vorlage eine kompakte Zeile statt einer Etikett/Wert-Karte (122 Vorlagen ≈ 38.000 px). */}
+              <table className="vp-table responsive vp-zeilen vp-vorlagen-tabelle" data-testid="vorlagen">
                 <thead>
                   <tr>
                     <th>Gerät</th>
@@ -130,7 +157,12 @@ export function VorlagenPage(): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.map((g) => {
+                  {sichtbar.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="vp-muted">Keine Vorlage passt zu „{suche.trim()}“.</td>
+                    </tr>
+                  )}
+                  {sichtbar.map((g) => {
                     const neueste = g.fassungen[0];
                     const h = herkunft(g.kind);
                     const p = pruefstand(neueste.certificationStatus);
@@ -146,7 +178,7 @@ export function VorlagenPage(): JSX.Element {
                             setOpen(open === g.templateRef ? null : g.templateRef)
                           }
                         >
-                          <td data-label="Gerät">
+                          <td data-label="Gerät" data-zeile="haupt">
                             <span className="vp-cell-main">
                               <span>
                                 {g.brandLabel} · {g.modelLabel}
@@ -154,33 +186,46 @@ export function VorlagenPage(): JSX.Element {
                               <span className="vp-cell-sub">{g.communicationLabel}</span>
                             </span>
                           </td>
-                          <td data-label="Herkunft">
+                          <td data-label="Herkunft" data-zeile="neben" className="vp-vorlagen-marken">
                             <Badge variant={h.ton} dot>
                               {h.label}
                             </Badge>
                           </td>
-                          <td data-label="Prüfstand">
+                          <td data-label="Prüfstand" data-zeile="neben" className="vp-vorlagen-marken">
                             <Badge variant={p.ton}>{p.label}</Badge>
                           </td>
-                          <td data-label="In der Auswahl">
+                          <td data-label="In der Auswahl" data-zeile="neben" className="vp-zeilen-etikett">
                             {g.waehlbar ? (
                               `Fassung ${g.waehlbar.version}`
                             ) : (
                               <span className="vp-muted">Nicht wählbar</span>
                             )}
                           </td>
-                          <td data-label="Genutzt von">
+                          {/* Ungenutzt sagt am Telefon nichts - dort entfällt die Zeile. */}
+                          <td data-label="Genutzt von" data-zeile={g.benutztVon === 0 ? 'breit' : 'neben'} className="vp-zeilen-etikett">
                             {g.benutztVon === 0 ? (
                               <span className="vp-muted">—</span>
                             ) : (
                               `${g.benutztVon}`
                             )}
                           </td>
-                          <td>
-                            <Icon
-                              name={open === g.templateRef ? 'chevron-down' : 'chevron-right'}
-                              size={16}
-                            />
+                          <td data-zeile="aktion">
+                            {/* Ein Knopf, damit die Fassungen auch per Tastatur aufgehen. */}
+                            <button
+                              type="button"
+                              className="vp-vorlagen-auf"
+                              aria-expanded={open === g.templateRef}
+                              aria-label={`Fassungen von ${g.brandLabel} · ${g.modelLabel}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpen(open === g.templateRef ? null : g.templateRef);
+                              }}
+                            >
+                              <Icon
+                                name={open === g.templateRef ? 'chevron-down' : 'chevron-right'}
+                                size={16}
+                              />
+                            </button>
                           </td>
                         </tr>
                         {open === g.templateRef && (

@@ -129,6 +129,14 @@ func TestParseCommandTyping(t *testing.T) {
 		`{"type":"on_off","value":1}`,
 		`{"type":"mode","value":""}`,
 		`{"type":"warp","value":1}`,
+		// the explicit output set of a per-phase switch: only with setpoint_kw,
+		// 1..4 distinct output numbers 0..3
+		`{"type":"on_off","value":true,"outputs":[0]}`,
+		`{"type":"setpoint_kw","value":2,"outputs":[]}`,
+		`{"type":"setpoint_kw","value":2,"outputs":[4]}`,
+		`{"type":"setpoint_kw","value":2,"outputs":[0,0]}`,
+		`{"type":"setpoint_kw","value":2,"outputs":[0,1,2,3,0]}`,
+		`{"type":"setpoint_kw","value":2,"outputs":"0"}`,
 	}
 	for _, c := range bad {
 		if _, err := Parse("e1", []byte(mk(c)), now); err == nil {
@@ -138,6 +146,15 @@ func TestParseCommandTyping(t *testing.T) {
 	good, err := Parse("e1", []byte(mk(`{"type":"limit_pct","value":50}`)), now)
 	if err != nil || good.Commands.LimitPct == nil || *good.Commands.LimitPct != 50 {
 		t.Fatalf("limit_pct 50 must parse: %v %+v", err, good)
+	}
+	set, err := Parse("e1", []byte(mk(`{"type":"setpoint_kw","value":4,"outputs":[0,2]}`)), now)
+	if err != nil || set.Commands.SetpointKw == nil || *set.Commands.SetpointKw != 4 ||
+		len(set.Commands.Outputs) != 2 || set.Commands.Outputs[0] != 0 || set.Commands.Outputs[1] != 2 {
+		t.Fatalf("setpoint with outputs must parse: %v %+v", err, set)
+	}
+	plain, err := Parse("e1", []byte(mk(`{"type":"setpoint_kw","value":4}`)), now)
+	if err != nil || plain.Commands.Outputs != nil {
+		t.Fatalf("a setpoint without outputs carries none: %v %+v", err, plain)
 	}
 }
 

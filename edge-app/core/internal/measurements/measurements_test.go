@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -377,5 +378,96 @@ func TestRegisterbildFromTheCloudWithoutVariantAndControllerID(t *testing.T) {
 	}
 	if bytes.Contains(raw, []byte("variante")) || bytes.Contains(raw, []byte("controller_kennung")) {
 		t.Fatal("the fixture must show the cloud's shape: no variant, no controller id")
+	}
+}
+
+// EZ-5: the Erzeuger image travels next to the selections like a WAGO image -
+// additive, so a config without it parses (and marshals) exactly as before.
+// The shape is the cloud's (EZ-6, x-erzeuger-registerbilder-rule).
+func TestErzeugerbildIsAdditiveAndCarried(t *testing.T) {
+	ohne, err := ParseConfig(config(2, testID.TenantID), testID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundtrip, err := json.Marshal(ohne)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ohne.Erzeugerbilder != nil || bytes.Contains(roundtrip, []byte("erzeuger_registerbilder")) {
+		t.Fatalf("a config without erzeuger_registerbilder must carry none: %s", roundtrip)
+	}
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"examples", "mqtt-measurement-config.valid.erzeugerbild.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := ParseConfig(raw, testID, 1)
+	if err != nil {
+		t.Fatalf("erzeugerbild plan refused: %v", err)
+	}
+	if len(c.Erzeugerbilder) != 1 {
+		t.Fatalf("erzeugerbild lost: %#v", c.Erzeugerbilder)
+	}
+	b := c.Erzeugerbilder[0]
+	if b.Basisadresse != 0 || b.Funktionscode != 4 || b.Wortfolge != "big" || b.TeAnzahl != 3 ||
+		b.Anlagenart != "pv" || b.VeraltetNetzpunktS != 30 {
+		t.Fatalf("erzeugerbild garbled: %#v", b)
+	}
+	// Not assigned stays absent - never a zero that would silence the plant.
+	if b.SteuerungKennung != nil {
+		t.Fatalf("absent steuerung_kennung invented: %#v", b)
+	}
+	mit := registerbildConfig(`,"erzeuger_registerbilder":[{"entity_id":"00000000-0000-0000-0000-00000000000e","basisadresse":0,"funktionscode":4,"wortfolge":"big","te_anzahl":2,"anlagenart":"bhkw","steuerung_kennung":4712,"veraltet_netzpunkt_s":120}]`)
+	c, err = ParseConfig(mit, testID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := c.Erzeugerbilder[0]; *e.SteuerungKennung != 4712 || e.Anlagenart != "bhkw" || e.VeraltetNetzpunktS != 120 {
+		t.Fatalf("Soll garbled: %#v", e)
+	}
+}
+
+func TestErzeugerbildShapeIsChecked(t *testing.T) {
+	bild := func(felder string) string {
+		return `{"entity_id":"00000000-0000-0000-0000-00000000000e","basisadresse":0,"funktionscode":4,"wortfolge":"big","te_anzahl":3,"anlagenart":"pv","veraltet_netzpunkt_s":30` + felder + `}`
+	}
+	ohne := func(feld string) string {
+		voll := map[string]string{"entity_id": `"00000000-0000-0000-0000-00000000000e"`, "basisadresse": "0",
+			"funktionscode": "4", "wortfolge": `"big"`, "te_anzahl": "3", "anlagenart": `"pv"`, "veraltet_netzpunkt_s": "30"}
+		teile := []string{}
+		for _, k := range []string{"entity_id", "basisadresse", "funktionscode", "wortfolge", "te_anzahl", "anlagenart", "veraltet_netzpunkt_s"} {
+			if k != feld {
+				teile = append(teile, `"`+k+`":`+voll[k])
+			}
+		}
+		return "{" + strings.Join(teile, ",") + "}"
+	}
+	bad := map[string]string{
+		"foreign function code":  strings.Replace(bild(""), `"funktionscode":4`, `"funktionscode":6`, 1),
+		"foreign word order":     strings.Replace(bild(""), `"wortfolge":"big"`, `"wortfolge":"middle"`, 1),
+		"no unit":                strings.Replace(bild(""), `"te_anzahl":3`, `"te_anzahl":0`, 1),
+		"eleven units":           strings.Replace(bild(""), `"te_anzahl":3`, `"te_anzahl":11`, 1),
+		"past the address space": strings.Replace(bild(""), `"basisadresse":0`, `"basisadresse":65500`, 1),
+		"no entity":              strings.Replace(bild(""), `"00000000-0000-0000-0000-00000000000e"`, `""`, 1),
+		"plant kind as number":   strings.Replace(bild(""), `"anlagenart":"pv"`, `"anlagenart":1`, 1),
+		"foreign plant kind":     strings.Replace(bild(""), `"anlagenart":"pv"`, `"anlagenart":"wind"`, 1),
+		"zero threshold":         strings.Replace(bild(""), `"veraltet_netzpunkt_s":30`, `"veraltet_netzpunkt_s":0`, 1),
+		"no threshold":           ohne("veraltet_netzpunkt_s"),
+		"no plant kind":          ohne("anlagenart"),
+		"negative controller":    bild(`,"steuerung_kennung":-1`),
+		"unknown field":          bild(`,"unit_id":1`),
+	}
+	for name, body := range bad {
+		if _, err := ParseConfig(registerbildConfig(`,"erzeuger_registerbilder":[`+body+`]`), testID, 1); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+	if _, err := ParseConfig(registerbildConfig(`,"erzeuger_registerbilder":[`+bild("")+`,`+bild("")+`]`), testID, 1); err == nil {
+		t.Fatal("duplicate entity accepted")
+	}
+	// Ten units fit (138 words in two requests); the contract's ceiling.
+	zehn := strings.Replace(bild(""), `"te_anzahl":3`, `"te_anzahl":10`, 1)
+	if _, err := ParseConfig(registerbildConfig(`,"erzeuger_registerbilder":[`+zehn+`]`), testID, 1); err != nil {
+		t.Fatalf("ten units refused: %v", err)
 	}
 }

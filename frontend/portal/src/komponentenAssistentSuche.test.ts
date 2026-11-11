@@ -104,7 +104,10 @@ describe('die Modell-Suche findet über ALLE Marken hinweg', () => {
   });
 
   it('nennt den GRUND, wenn nichts passt - und den Weg daneben', () => {
-    const s = modellSuche(KATALOG, 'huawei');
+    // 'sma' statt 'huawei': SMA ist weiterhin eine vollständig dokumentierte,
+    // aber nicht angebotene Marke (siehe catalog/control-profiles/README.md) -
+    // Huawei ist das seit vp-huawei-anbindung-w1 nicht mehr.
+    const s = modellSuche(KATALOG, 'sma');
     expect(s.treffer).toEqual([]);
     expect(s.leer).toMatch(/Keine Vorlage passt/);
     expect(s.leer).toMatch(/Marken-Auswahl/);

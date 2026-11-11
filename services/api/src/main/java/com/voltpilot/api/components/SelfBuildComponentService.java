@@ -15,6 +15,7 @@ import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCompiler;
 import com.voltpilot.api.flows.FlowCompilerException;
 import com.voltpilot.api.flows.FlowDeployment;
+import com.voltpilot.api.geraetesuche.GeraetesucheHerkunft;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.consumers.ConsumerAuditRepository;
@@ -156,6 +157,9 @@ public class SelfBuildComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         requireGateway(siteId);
+        // Der Bezug auf die Gerätesuche zuerst, wie im Anlege-Weg der Vorlagen: ein fremder, unbekannter oder
+        // abgelaufener Fund legt nichts an.
+        GeraetesucheHerkunft.Fund fund = components.fundAusSuche(siteId, req.geraetesuche());
         Result def = requireValid(req);
         requireTested(siteId, def.transport());
 
@@ -165,6 +169,7 @@ public class SelfBuildComponentService {
                 null, capabilities(def.channels()), guards());
 
         write(siteId, tenantId, row.id(), def, label, req.note(), subject, "Angelegt");
+        components.uebernommen(tenantId, siteId, fund, row.id());
         return components.list(siteId);
     }
 
@@ -179,6 +184,11 @@ public class SelfBuildComponentService {
         requirePortalManaged(siteId);
         requireGateway(siteId);
         EntityRow existing = requireSelfBuilt(siteId, entityId);
+        if (req.geraetesuche() != null) {
+            // Der Haken gilt nur beim Anlegen; still verworfen wäre er eine Herkunft, die der Kunde zu sehen glaubt.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ein Fund der Gerätesuche lässt sich nur beim Anlegen übernehmen.");
+        }
         Result def = requireValid(req);
         requireTested(siteId, def.transport());
 
@@ -386,7 +396,7 @@ public class SelfBuildComponentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
         if (!SelfBuildDefinition.COMMUNICATION.equals(row.communication())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Komponente wurde nicht selbst angelegt und lässt sich hier nicht "
                             + "bearbeiten.");
         }
@@ -423,7 +433,7 @@ public class SelfBuildComponentService {
 
     private void requireTested(UUID siteId, Transport transport) {
         if (!receipts.has(siteId, RECEIPT_REF, receiptFields(transport))) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Bitte lesen Sie zuerst einen Messwert dieses Geräts - erst danach lässt es "
                             + "sich speichern.");
         }
@@ -465,7 +475,7 @@ public class SelfBuildComponentService {
         Transport transport = storedTransport(row);
         String valueError = SwitchDefinition.testValueError(sw, req.testValue());
         if (valueError != null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, valueError);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, valueError);
         }
         int raw = SwitchDefinition.testRaw(sw, req.testValue());
         ProbeResult res = probes.switchOp(siteId, null, entityId,
@@ -534,7 +544,7 @@ public class SelfBuildComponentService {
         String refusal = SwitchDefinition.requireRelease(tested,
                 Boolean.TRUE.equals(req.physicallyConfirmed()));
         if (refusal != null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, refusal);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, refusal);
         }
 
         UUID tenantId = TenantContext.get();

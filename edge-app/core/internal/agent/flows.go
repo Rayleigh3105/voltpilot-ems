@@ -50,6 +50,17 @@ func (a *Agent) newFlowDeployer() *flowdeploy.Deployer {
 	})
 }
 
+// SetLokaleFlowLaufzeit attaches a runtime that executes artifacts inside the
+// box program when there is no Node-RED - Edge Light's Go twin of the
+// generated consumer rule (internal/verbraucherregel). The Docker box never
+// calls it: its artifacts go to Node-RED.
+func (a *Agent) SetLokaleFlowLaufzeit(l flowdeploy.LokaleLaufzeit) {
+	if a.flowDep == nil {
+		return
+	}
+	a.flowDep.SetLokaleLaufzeit(l)
+}
+
 // onFlows handles the retained …/v2/flows payload from the cloud link.
 func (a *Agent) onFlows(payload []byte) {
 	if a.flowDep == nil {

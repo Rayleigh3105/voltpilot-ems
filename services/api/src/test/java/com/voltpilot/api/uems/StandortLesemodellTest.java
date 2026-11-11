@@ -412,7 +412,7 @@ class StandortLesemodellTest {
         Map<UUID, StandortBezug> mrz = StandortLesemodell.bezugJeAnlage(z, LocalDate.of(2027, 3, 15));
         assertThat(mrz.get(id("AN-2")))
                 .isEqualTo(new StandortBezug(id("ST-3"), "Werk Ahrenberg Nord", "ST-3",
-                        LocalDate.of(2027, 3, 1)));
+                        LocalDate.of(2027, 3, 1), true));
         assertThat(mrz.get(id("AN-1")).gueltigAb()).isEqualTo(LocalDate.of(2026, 10, 1));
         assertThat(StandortLesemodell.bezugJeAnlage(z, LocalDate.of(2027, 2, 15)).get(id("AN-2"))
                 .kurzzeichen()).isEqualTo("ST-1");

@@ -23,7 +23,7 @@
  *
  * Rein und framework-frei.
  */
-import type { HistoryBucket, HistoryRange, PeakShaving, SiteEarnings } from './api';
+import type { HistoryBucket, HistoryRange, PeakShaving, SiteEarnings, SteuerungZeitraum } from './api';
 import { eur, eurAmount, fmtNum, NBSP } from './format';
 import { durchschnittCt, erloesBegriff } from './erloesEbenen';
 import { rundeKaufmaennisch, sekundaerFuer, type SekundaerZiel } from './erloesZeilen';
@@ -31,7 +31,8 @@ import { billingPeriodLabel, LEER_TEXT, LEER_TEXT_FALLBACK } from './erloesKompo
 import { MISPEL_NETZLADEN } from './glossar';
 import { peakCounterfactualTip } from './moduleSurface';
 import type { ErloesVergleich } from './vergleichLaufend';
-import { MESSLATTE_DATIV, MESSLATTE_KURZ, type SpeicherAussage } from './speicherAussage';
+import { MESSLATTE_DATIV, MESSLATTE_KURZ, MESSLATTE_REGEL, type SpeicherAussage } from './speicherAussage';
+import { steuerungKachel } from './steuerungZeitraum';
 import {
   geldZellen,
   zeichenbar,
@@ -145,7 +146,10 @@ function einspeiseInfo(money: SiteEarnings): GeldErklaerung {
     };
   }
   if (money.exportVerguetungPriced) {
-    return { titel: 'Einspeisung', text: erloesBegriff('feste').erklaerung };
+    return {
+      titel: 'Einspeisung',
+      text: erloesBegriff(money.exportVerguetungQuelle === 'angegeben' ? 'angegeben' : 'feste').erklaerung,
+    };
   }
   return {
     titel: 'Einspeisung',
@@ -360,6 +364,31 @@ export interface MehrwertBand {
   info: string[];
   /** true = „Speicherdaten nachtragen ›" anbieten. */
   nachtrag: boolean;
+  /**
+   * Die zweite Zeile (nur Tagesansicht mit Bestand): „letzte 7 Tage
+   * + 9,45 €“ bzw. beim Zurückblättern „7.–13. Oktober − 0,29 €“ — immer Tinte.
+   */
+  zweit?: { label: string; wert: string } | null;
+}
+
+/**
+ * Die Kachel der TAGESANSICHT mit Bestand (Bedienkonzept
+ * vp-herzogau-p3-kachel-konzept §3, Captain 14.10.2026 HZ-3 A, P3-1 A): groß
+ * der Monat bis zum angezeigten Tag, darunter die letzten 7 abgeschlossenen
+ * Tage. Die Tageszahl selbst steht in der Karte „VoltPilots Steuerung“.
+ */
+export function mehrwertBandMitBestand(zeitraum: SteuerungZeitraum, laeuft: boolean): MehrwertBand {
+  const k = steuerungKachel(zeitraum, laeuft);
+  return {
+    label: 'VoltPilot-Steuerung',
+    titel: 'Mehrwert durch VoltPilot',
+    wert: k.wert,
+    ton: k.ton,
+    unter: k.unter,
+    info: k.info,
+    nachtrag: false,
+    zweit: k.zweit,
+  };
 }
 
 /**
@@ -410,10 +439,12 @@ export function mehrwertBand(speicher: SpeicherAussage | null, range: HistoryRan
       // Der Satz zur Zahl nur, wo er mehr sagt als Betrag + Unterzeile
       // (unter Null: warum ein Zwischenstand sinken kann).
       s.ton === 'plus' ? '' : (speicher.satz ?? ''),
-      `Verglichen wird mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
-      range === 'day'
-        ? 'Einzelne Tage schwanken: Was am Tagesende noch im Speicher liegt, zählt erst an dem Tag, an dem es genutzt wird.'
-        : '',
+      `Verglichen wird mit ${MESSLATTE_DATIV} — ${MESSLATTE_REGEL}. Nicht im Ergebnis enthalten.`,
+      speicher.mitBestand
+        ? 'Jeder Tag mit Bestand bewertet: Was am Tagesende mehr oder weniger im Speicher liegt als im Vergleichsspeicher, zählt zum Bezugspreis.'
+        : range === 'day'
+          ? 'Einzelne Tage schwanken: Was am Tagesende noch im Speicher liegt, zählt erst an dem Tag, an dem es genutzt wird.'
+          : '',
       ...bestand,
     ].filter(Boolean),
     nachtrag: false,

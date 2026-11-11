@@ -38,9 +38,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpEntity;
@@ -87,6 +88,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ul>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class AnlageUmzugApiTest {
@@ -131,19 +133,20 @@ class AnlageUmzugApiTest {
 
     // ---- Jeder MQTT-Sender der Anwendung, gezählt ------------------------------------------
 
-    @MockBean EntityRegistryPublisher entityRegistryPublisher;
-    @MockBean ProbePublisher probePublisher;
-    @MockBean ChargingConfigPublisher chargingConfigPublisher;
-    @MockBean ChargingBoostPublisher chargingBoostPublisher;
-    @MockBean RegisterWritePublisher registerWritePublisher;
-    @MockBean FlowDeploymentPublisher flowDeploymentPublisher;
-    @MockBean ControlCertificationPublisher controlCertificationPublisher;
-    @MockBean OtaTargetPublisher otaTargetPublisher;
-    @MockBean ProvisioningPublisher provisioningPublisher;
-    @MockBean MeasurementConfigPublisher measurementConfigPublisher;
-    @MockBean ConsumerOverridePublisher consumerOverridePublisher;
-    @MockBean VerbundAnteilePublisher verbundAnteilePublisher;
-    @MockBean SprungprobePublisher sprungprobePublisher;
+    @MockitoBean EntityRegistryPublisher entityRegistryPublisher;
+    @MockitoBean ProbePublisher probePublisher;
+    @MockitoBean ChargingConfigPublisher chargingConfigPublisher;
+    @MockitoBean ChargingBoostPublisher chargingBoostPublisher;
+    @MockitoBean RegisterWritePublisher registerWritePublisher;
+    @MockitoBean FlowDeploymentPublisher flowDeploymentPublisher;
+    @MockitoBean ControlCertificationPublisher controlCertificationPublisher;
+    @MockitoBean OtaTargetPublisher otaTargetPublisher;
+    @MockitoBean ProvisioningPublisher provisioningPublisher;
+    @MockitoBean MeasurementConfigPublisher measurementConfigPublisher;
+    @MockitoBean ConsumerOverridePublisher consumerOverridePublisher;
+    @MockitoBean VerbundAnteilePublisher verbundAnteilePublisher;
+    @MockitoBean SprungprobePublisher sprungprobePublisher;
+    @MockitoBean com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
 
     @LocalServerPort
     int port;
@@ -211,7 +214,7 @@ class AnlageUmzugApiTest {
         // Gezählt, nicht vermutet: kein Sender hat irgendetwas bekommen.
         Map<String, Integer> aufrufe = new LinkedHashMap<>();
         sender().forEach((name, mock) -> aufrufe.put(name, Mockito.mockingDetails(mock).getInvocations().size()));
-        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(13)
+        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(14)
                 .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
         assertThat(r.getBody().get("befehle").asInt()).isZero();
         // Und in der Datenbank ändern sich nur Zuordnung und Protokoll.
@@ -280,8 +283,10 @@ class AnlageUmzugApiTest {
         List<String> imQuelltext;
         try (Stream<Path> dateien = Files.walk(Path.of("src", "main", "java"))) {
             imQuelltext = dateien.filter(p -> p.toString().endsWith(".java"))
-                    // Wer MQTT importiert UND sendet — die Listener empfangen nur.
-                    .filter(p -> inhalt(p).contains("import org.eclipse.paho") && inhalt(p).contains(".publish("))
+                    // Wer über die gemeinsame Verbindung sendet — die Listener empfangen nur. Nicht
+                    // am paho-Import erkennen: ein Sender ohne eigenes MqttMessage (reiner
+                    // byte[]-Aufruf, #1798) braucht ihn nicht und fiele sonst durch.
+                    .filter(p -> inhalt(p).contains("BrokerVerbindung") && inhalt(p).contains(".publish("))
                     .map(p -> p.getFileName().toString().replace(".java", ""))
                     .sorted().toList();
         }
@@ -552,6 +557,7 @@ class AnlageUmzugApiTest {
         m.put("ConsumerOverridePublisher", consumerOverridePublisher);
         m.put("VerbundAnteilePublisher", verbundAnteilePublisher);
         m.put("SprungprobePublisher", sprungprobePublisher);
+        m.put("GeraetesuchePublisher", geraetesuchePublisher);
         return m;
     }
 

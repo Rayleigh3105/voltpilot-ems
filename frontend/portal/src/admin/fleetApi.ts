@@ -69,8 +69,17 @@ export interface AdminFleetBox {
   /** `null`: keine führende Box bestimmt; `false`: belegte weitere Box. */
   fuehrtAnlage: boolean | null;
   lastSeenAt: string | null;
+  /** Herzschlag und Messwert getrennt (L2); additiv neben `lastSeenAt`. */
+  herzschlagAm?: string | null;
+  messwertAm?: string | null;
   edge: AdminFleetEdge | null;
   update: AdminFleetUpdate | null;
+  /** Die Linie der Box (`ota.BoxArt`, additiv seit S0); `null`/fehlend = unbekannt. */
+  boxArt?: string | null;
+  /** Geclaimt am - Grundlage für "nie angemeldet seit …" (vp-box-verbinden-konzept N5). */
+  createdAt?: string | null;
+  /** `null`/fehlend = die Box hat sich seit dem Verbinden nie angemeldet. */
+  anmeldung?: { zuletztAngefragtAm: string | null; schluesselAbgeholtAm: string | null } | null;
 }
 
 /**
@@ -80,6 +89,11 @@ export interface AdminFleetBox {
 export interface AdminFleetRelease {
   releaseSeq: number;
   version: string;
+  /**
+   * Die Linie des Releases (`ota.BoxArt`, additiv seit Geräte & Updates S0).
+   * Fehlt sie (älterer Server), gilt das Release wie dort als Docker-Release.
+   */
+  boxArt?: 'docker' | 'light' | null;
 }
 
 /** Die kWp-Plausibilität (B4a) - `unbekannt` ist ein vollwertiges Urteil. */
@@ -152,6 +166,8 @@ export interface AdminFleetSite {
   feedIn?: AdminFleetFeedIn;
   forecast: AdminFleetForecast[];
   pflege: AdminFleetPflege[];
+  /** Die Linie der Box hinter `edge`/`update` (`ota.BoxArt`, additiv seit S0). */
+  boxArt?: string | null;
 }
 
 export interface AdminFleet {
@@ -159,8 +175,8 @@ export interface AdminFleet {
   unterstuetzungStandorte?: { id: string; tenantId: string; name: string }[];
   sites: AdminFleetSite[];
   /**
-   * Das Release-Register, NEUESTE zuerst - der erste Eintrag ist der
-   * flottenweite SOLL-Stand. Es reist mit, weil „veraltet" nur gegen diese
+   * Das Release-Register, NEUESTE zuerst - der Soll-Stand einer Box ist der
+   * erste Eintrag IHRER Linie (S0). Es reist mit, weil „veraltet" nur gegen diese
    * Ordnung eine Aussage ist: ein gemeldeter Stand wird DARIN gesucht, und was
    * das Register nicht kennt, ist „nicht registriert" - ausdrücklich nicht
    * „veraltet". Leer = kein Maßstab, also wird nichts behauptet.

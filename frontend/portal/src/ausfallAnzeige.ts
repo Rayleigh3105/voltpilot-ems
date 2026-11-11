@@ -14,7 +14,9 @@ export function messstelleAusfallSatz(
 
 export function standortAusfallSatz(ausfall: StandortAusfall | null | undefined): string | null {
   if (!ausfall || ausfall.boxen_ausgefallen < 1 || ausfall.messstellen_unvollstaendig < 1) return null;
-  return `${ausfall.boxen_ausgefallen} von ${ausfall.boxen_gesamt} Boxen meldet sich nicht · ${ausfall.messstellen_unvollstaendig} Messstellen unvollständig`;
+  const boxenVerb = ausfall.boxen_ausgefallen === 1 ? 'meldet sich nicht' : 'melden sich nicht';
+  const messstellenWort = ausfall.messstellen_unvollstaendig === 1 ? 'Messstelle' : 'Messstellen';
+  return `${ausfall.boxen_ausgefallen} von ${ausfall.boxen_gesamt} Boxen ${boxenVerb} · ${ausfall.messstellen_unvollstaendig} ${messstellenWort} unvollständig`;
 }
 
 export function anlageAusfallSatz(ausfall: StandortAusfall | null | undefined, anlageId: string): string | null {

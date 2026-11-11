@@ -27,4 +27,13 @@ describe('Ausfall-Anzeige — keine Ursache ohne Fakt', () => {
     const berechnet = { ...basis.messstellen[0], art: 'berechnet' as const, box: 'Box Halle 2', fehlt: ['MS-10'] };
     expect(messstelleAusfallSatz(berechnet, () => '14:00')).toBeNull();
   });
+
+  it('beugt den Numerus (Befund 2, vp-alerting-konzept-m1 §3.2)', () => {
+    expect(standortAusfallSatz({ ...basis, boxen_gesamt: 3, boxen_ausgefallen: 2 })).toBe(
+      '2 von 3 Boxen melden sich nicht · 6 Messstellen unvollständig',
+    );
+    expect(standortAusfallSatz({ ...basis, messstellen_unvollstaendig: 1 })).toBe(
+      '1 von 2 Boxen meldet sich nicht · 1 Messstelle unvollständig',
+    );
+  });
 });

@@ -103,7 +103,24 @@ const (
 
 // runDeyeReplay runs the closed loop second by second. damped selects the
 // Deye profile (as on the live box after this change) or none (as it ran).
+//
+// It runs the DAMPER ALONE: the plant posture is "grid charging allowed", so
+// neither the FK3 clamp nor the Netzladen-Sperre (EN-1 A, 2026-11-02) is in
+// the loop. Herzogau is an EEG plant, but in these windows the FK3 clamp never
+// bit (the PV stood far above every command), so this is the box of
+// 24.09.2026 exactly; the lock on top of the damper - which bounds every
+// charge the reserve below the surplus and therefore moves every level here -
+// has its own replays in netzladen_sperre_test.go.
 func runDeyeReplay(t *testing.T, s replayScenario, damped bool) replayResult {
+	t.Helper()
+	return runDeyeReplayPosture(t, s, damped, true, nil)
+}
+
+// runDeyeReplayPosture is runDeyeReplay with the site's grid-charge posture
+// (gridChargeAllowed true = no EEG clamp, no Netzladen-Sperre) and an optional
+// hook called after every box tick with the setpoint it published.
+func runDeyeReplayPosture(t *testing.T, s replayScenario, damped, gridChargeAllowed bool,
+	onTick func(a *Agent, sp float64)) replayResult {
 	t.Helper()
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
@@ -114,11 +131,11 @@ func runDeyeReplay(t *testing.T, s replayScenario, damped bool) replayResult {
 		}
 	}
 	setPlan := func(kw float64) {
-		no := false
+		gca := gridChargeAllowed
 		a.mu.Lock()
 		a.currentPlan = &plan.Plan{
 			SlotMinutes: 15, ReceivedAt: s.start, GeneratedAt: s.start,
-			GridChargeAllowed: &no, // EEG site: charge only from the PV bus
+			GridChargeAllowed: &gca, // false = EEG site: FK3 clamp + Netzladen-Sperre
 			Slots: []plan.Slot{{
 				Start:                 s.start.Truncate(15 * time.Minute),
 				BatterySetpointKw:     kw,
@@ -195,6 +212,9 @@ func runDeyeReplay(t *testing.T, s replayScenario, damped bool) replayResult {
 		if step%tickEvery == tickOffset {
 			a.applySetpoint(now)
 			sp := a.State.Get().SetpointKw
+			if onTick != nil {
+				onTick(a, sp)
+			}
 			if math.Abs(sp-lastSetpoint) > 0.005 { // register 1109 resolution: 10 W
 				res.changes++
 				writes = append(writes, write{tNow, sp})

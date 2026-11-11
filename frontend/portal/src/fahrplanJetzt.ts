@@ -229,6 +229,12 @@ export interface JetztInput {
   conflictStreak?: number;
   plantKind: PlanWordingKind;
   now: Date;
+  /**
+   * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept`,
+   * `preisRolle(...).erzaehlung === 'sonne'`); Vorgabe `false` lässt den
+   * Status-Satz unverändert (Preis-Erzählung).
+   */
+  sonne?: boolean;
 }
 
 /**
@@ -328,7 +334,8 @@ export function actionPhrase(
       case 'reserve_halten':
         return 'hält gerade Ladung als Reserve';
       case 'warten':
-        return 'ruht gerade';
+        // Dasselbe Wort wie Uhr, Band und Stationen („Warten"), nie „ruht".
+        return 'wartet gerade';
     }
   }
   if (dir === 'laden') return 'lädt gerade';
@@ -375,9 +382,15 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
       // Viertelstunde stehen. `maxFeedInKw` liegt hier ohnehin (der
       // Flussabgleich braucht es), also nennt der Abregel-Satz des Helden die
       // Einspeisegrenze mit ihrer Zahl - ohne einen zweiten Eingang.
-      slotWhy(slot, plantKind, curtail, input.slots ?? [], input.planFacts, {
-        maxFeedInKw: input.maxFeedInKw,
-      })
+      slotWhy(
+        slot,
+        plantKind,
+        curtail,
+        input.slots ?? [],
+        input.planFacts,
+        { maxFeedInKw: input.maxFeedInKw },
+        input.sonne ?? false,
+      )
     : null;
   // ... und der Steuerungs-Zustand aus der BESTEHENDEN Ableitung der Karte.
   const strip = controlStrip(input.control, now, input.expectControl, reason);
@@ -770,6 +783,27 @@ function leadLine(
   return `Geplant ist gerade: ${roleLabel(role, kind, flags, true, curtail)}`;
 }
 
+/**
+ * Der Zustand des Geräts in HÖCHSTENS FÜNF WÖRTERN - für die Jetzt-Zeile der
+ * Fahrplan-Seite, die in fünf Sekunden gelesen sein soll. Der volle Satz
+ * (`JetztHeldView.status`) bleibt der Titel bzw. die Erklärung dahinter; hier
+ * steht dieselbe Aussage nur kürzer, nie eine andere. `nur_plan` schweigt: ohne
+ * Gerät gibt es keinen Gerätezustand.
+ */
+export const ZUSTAND_KURZ: Readonly<Record<JetztState, string | null>> = {
+  planmaessig: 'Gerät folgt dem Plan',
+  angepasst: 'Gerät folgt dem Plan',
+  ruhe: 'Gerät folgt dem Plan',
+  sicherung: 'Gerät regelt ohne Fahrplan',
+  abweichung: 'Gerät meldet anderen Wert',
+  unbestaetigt: 'Keine aktuelle Rückmeldung',
+  veraltet: 'Plan ist nicht mehr aktuell',
+  aus: 'Steuerung ist ausgeschaltet',
+  nicht_freigegeben: 'Gerät noch nicht freigegeben',
+  wird_vorbereitet: 'Wechselrichter bestätigt noch nicht',
+  nur_plan: null,
+};
+
 function statusLine(
   state: JetztState,
   stripSentence: string | null,
@@ -789,7 +823,9 @@ function statusLine(
         ? `Der Wechselrichter meldet ${kw(confirmedKw)} statt ${kw(executedKw)} — bitte im Blick behalten`
         : 'Der Wechselrichter meldet einen anderen Wert als angefordert — bitte im Blick behalten';
     case 'veraltet':
-      return 'Dieser Fahrplan ist nicht mehr aktuell — Ihr Gerät regelt eigenständig weiter';
+      // „… regelt eigenständig weiter" sagt die Zeile darunter („Ihre Batterie regelt gerade
+      // eigenständig weiter") - hier stand es wortgleich ein zweites Mal.
+      return 'Dieser Fahrplan ist nicht mehr aktuell';
     case 'nur_plan':
       return 'So ist es geplant — Ihr Gerät meldet dazu keine Bestätigung';
     default:

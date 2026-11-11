@@ -53,23 +53,37 @@ export type BootOutcome =
   /** No session, first attempt: set the loop guard, redirect to Keycloak. */
   | { kind: 'autoLogin' }
   /** Manual login card (loop guard was set, or throttled - never redirect then). */
-  | { kind: 'login' };
+  | { kind: 'login' }
+  /**
+   * Direktlink vom Gehäuse ohne Sitzung (QE-1 A): die Empfangsseite statt der sofortigen
+   * Weiterleitung - auch bei einer vorgemerkten Referenz (Neuladen, Rückweg von der Anmeldeseite).
+   */
+  | { kind: 'koppel'; lesbar: boolean };
 
 /**
  * Decide what an unauthenticated/authenticated boot renders. Mirrors the
  * long-standing main.tsx branching, plus: a rate-limited/locked-out boot never
  * auto-redirects (the redirect could not succeed and would hide the German
  * "zu viele Versuche" explanation behind a Keycloak page).
+ *
+ * NOTE: the confirmation-mail link (`#/zustellweg/bestaetigen?token=...`) is
+ * NOT a case here - main.tsx short-circuits to its own screen BEFORE calling
+ * initAuth() at all, so that an unreachable/slow Keycloak can never block a
+ * link whose own API endpoint takes no login in the first place.
  */
 export function bootOutcome(input: {
   authenticated: boolean;
   registerRoute: boolean;
   guardWasSet: boolean;
   rateLimited: boolean;
+  /** Was die Empfangsseite zeigen könnte (`koppelLink.koppelEmpfang`); fehlt = keine Box. */
+  koppel?: 'gueltig' | 'unlesbar' | null;
 }): BootOutcome {
   if (input.authenticated) return { kind: 'app' };
   if (input.registerRoute) return { kind: 'register' };
   if (input.rateLimited) return { kind: 'login' };
+  // Die Empfangsseite leitet nie selbst weiter - eine Schleife über Keycloak kann sie nicht bilden.
+  if (input.koppel) return { kind: 'koppel', lesbar: input.koppel === 'gueltig' };
   if (!input.guardWasSet) return { kind: 'autoLogin' };
   return { kind: 'login' };
 }

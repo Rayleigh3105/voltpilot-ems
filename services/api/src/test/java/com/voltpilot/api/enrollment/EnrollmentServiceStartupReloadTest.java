@@ -171,7 +171,7 @@ class EnrollmentServiceStartupReloadTest {
         EnrollmentProperties props = new EnrollmentProperties(true, dir.resolve("ca").toString(),
                 acl.toString(), "mqtt.example", 8883, 825, 20_480);
         return new EnrollmentService(props, mock(EnrollmentRepository.class), devices,
-                providerOf(reloader));
+                providerOf(reloader), null);
     }
 
     private static BrokerAuthzReloader mockReloader(boolean accepted) {

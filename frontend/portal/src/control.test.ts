@@ -489,6 +489,10 @@ describe('executionNote', () => {
     expect(note).toContain('aus dem Speicher gedeckt');
     expect(note).toContain('1,4');
     expect(note).toContain('keine Ladung');
+    // Die Zahl ist der nach Solar verbleibende Verbrauch (Verbrauch − PV), nie „Ihr Verbrauch“:
+    // im Cockpit stand sonst „Ihr Verbrauch (0,8 kW)“ neben 14,6 kW Verbrauch im Fluss (Konzept b1).
+    expect(note).toContain('der nach Solar verbleibende Verbrauch (1,4');
+    expect(note).not.toContain('Ihr Verbrauch');
     // Kein Preis-Urteil: die Ökonomie bleibt beim Fahrplan, das ist eine
     // Vertrauensregel gegen sichtbaren Netzbezug.
     expect(note).not.toMatch(/teurer|billiger|lohnt|Preis/i);
@@ -636,7 +640,7 @@ describe('executionNote', () => {
 
   it('names a correction without a reported direction, but invents none', () => {
     const note = executionNote(status({ executionMode: 'follow', executionTargetKw: 5 }))!;
-    expect(note).toContain('gemessenen Verbrauch');
+    expect(note).toContain('nach Solar verbleibenden Verbrauch');
     expect(note).not.toContain('angehoben');
     expect(note).not.toContain('begrenzt');
   });

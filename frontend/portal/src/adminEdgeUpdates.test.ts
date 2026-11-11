@@ -4,10 +4,9 @@ import {
   blockerLever,
   boxArtLabel,
   canRollOut,
-  candidates,
   crossoverHint,
   crossoverState,
-  currentRolloutViews,
+  edgeUpdatesUrteil,
   eventLabel,
   freshnessLabel,
   isLoud,
@@ -15,26 +14,24 @@ import {
   kpiTone,
   kpiUnknownNote,
   loudBanner,
-  progressBackbone,
   releaseBoxArt,
   releaseSperre,
-  restingLine,
-  rolloutDeviceName,
-  rolloutStateLabel,
+  rolloutsLaufend,
   signatureLabel,
   sortFleet,
-  startSummary,
   stateLabel,
   trustSetSpread,
+  stufe1,
+  vertrauenGekreuzt,
   visibleJournal,
   zuweisbareReleases,
+  geraetZeile,
+  loaderLabel,
   type DeviceTrust,
-  type EdgeUpdates,
   type EdgeUpdatesRelease,
   type FleetRow,
   type JournalEntry,
   type Rollout,
-  type RolloutDevice,
 } from './adminEdgeUpdates';
 
 const row = (over: Partial<FleetRow> = {}): FleetRow => ({
@@ -61,10 +58,13 @@ describe('Zustands-Vokabular', () => {
     for (const s of [
       'aktuell', 'ausstehend', 'laedt', 'wendet_an', 'selbsttest', 'bestaetigt',
       'zurueckgerollt', 'offline_holt_nach', 'im_update_verstummt', 'fehlgeschlagen',
-      'zurueckgestellt', 'unbekannt',
+      'zurueckgestellt', 'unbekannt', 'zurueckgezogen',
     ]) {
       expect(stateLabel(s).label).not.toBe('unbekannt: ' + s);
     }
+    // Geräte & Updates G2: eine zurückgezogene Anfrage ist ruhig und hält nichts offen.
+    expect(stateLabel('zurueckgezogen')).toEqual({ label: 'zurückgezogen', tone: 'off', cls: 'calm' });
+    expect(isLoud('zurueckgezogen')).toBe(false);
     expect(stateLabel('bestaetigt').tone).toBe('ok');
     expect(stateLabel('fehlgeschlagen').tone).toBe('warn');
     // „offline" ist NIE ein Warnton - hinter NAT ist es der Normalfall.
@@ -213,6 +213,11 @@ describe('Puls-Kennzahl', () => {
     expect(kpiText(kpi)).toBe('3/4 aktuell · 2 im Rollout');
     expect(kpiText({ ...kpi, inRollout: 0, failed: 0 })).toBe('3/4 aktuell');
     expect(kpiText({ ...kpi, failed: 1 })).toContain('1 fehlgeschlagen');
+    // Je Linie (S0): aktuell heißt auf dem neuesten Release der EIGENEN Linie.
+    expect(kpiText({ ...kpi, inRollout: 0, failed: 0 }, [
+      { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 58, devices: 3, known: 3, upToDate: 3 },
+      { boxArt: 'light', newestRelease: 'edge-light-2026.11.4', newestReleaseSeq: 60, devices: 3, known: 2, upToDate: 1 },
+    ])).toBe('4/5 aktuell');
   });
 
   it('tönt rot vor gelb vor ruhig', () => {
@@ -222,14 +227,75 @@ describe('Puls-Kennzahl', () => {
   });
 });
 
-describe('Aktualisierung', () => {
-  it('benennt jeden Zustand einer Aktualisierung', () => {
-    expect(rolloutStateLabel('active').tone).toBe('busy');
-    expect(rolloutStateLabel('done').tone).toBe('ok');
-    // Die Zustände der Wellen-Ära (paused/halted) gibt es nicht mehr - und ein
-    // Wort, das dieser Stand nicht kennt, wird NIE zu „läuft".
-    expect(rolloutStateLabel('paused').label).toBe('unbekannt');
-    expect(rolloutStateLabel('irgendwas').label).toBe('unbekannt');
+describe('edgeUpdatesUrteil - die EINE Ableitung „aktuell/bekannt"', () => {
+  it('misst je Linie, wenn `lines` vorhanden ist', () => {
+    const u = edgeUpdatesUrteil(
+      { known: 6, upToDate: 3, unknown: 0, inRollout: 0, failed: 0, newestRelease: 'edge-light-2026.11.9' },
+      [
+        { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 5, devices: 3, known: 3, upToDate: 3 },
+        { boxArt: 'light', newestRelease: 'edge-light-2026.11.9', newestReleaseSeq: 9, devices: 3, known: 3, upToDate: 3 },
+      ],
+    );
+    expect(u).toEqual({ aktuell: 6, bekannt: 6, veraltet: 0 });
+  });
+
+  it('fällt ohne `lines` auf `kpi` zurück (älterer Server)', () => {
+    const u = edgeUpdatesUrteil({ known: 4, upToDate: 3, unknown: 0, inRollout: 0, failed: 0, newestRelease: 'x' });
+    expect(u).toEqual({ aktuell: 3, bekannt: 4, veraltet: 1 });
+  });
+});
+
+describe('rolloutsLaufend - nur WIRKLICH laufende Geräte, nicht jedes Vorkommen', () => {
+  const geraet = (over: Partial<Rollout['devices'][number]> = {}): Rollout['devices'][number] => ({
+    deviceId: 'd1', label: 'Box A', siteName: 'Anlage A', tenantName: 'Kunde A',
+    state: 'angefragt', reason: null, since: null, ...over,
+  });
+
+  it('zählt ein Gerät nicht mehr, sobald sein jüngster Eintrag bestätigt ist', () => {
+    const rollouts: Rollout[] = [{
+      id: 'r1', releaseVersion: 'edge-light-2026.11.9', releaseSeq: 9, state: 'laufend',
+      createdBy: 'admin', createdAt: '2026-11-07T13:39:00Z', total: 3, confirmed: 3, failed: 0,
+      devices: [
+        geraet({ deviceId: 'd1', state: 'bestaetigt' }),
+        geraet({ deviceId: 'd2', state: 'bestaetigt' }),
+        geraet({ deviceId: 'd3', state: 'bestaetigt' }),
+      ],
+    }];
+    expect(rolloutsLaufend(rollouts)).toBe(0);
+  });
+
+  it('zählt ein noch nicht abgeschlossenes Gerät', () => {
+    const rollouts: Rollout[] = [{
+      id: 'r1', releaseVersion: 'edge-light-2026.11.9', releaseSeq: 9, state: 'laufend',
+      createdBy: 'admin', createdAt: '2026-11-07T13:39:00Z', total: 2, confirmed: 1, failed: 0,
+      devices: [geraet({ deviceId: 'd1', state: 'bestaetigt' }), geraet({ deviceId: 'd2', state: 'angenommen' })],
+    }];
+    expect(rolloutsLaufend(rollouts)).toBe(1);
+  });
+
+  it('nimmt pro Gerät nur den JÜNGSTEN Eintrag (Listen-Reihenfolge neueste zuerst)', () => {
+    const rollouts: Rollout[] = [
+      {
+        id: 'r2', releaseVersion: 'edge-2026.10.8', releaseSeq: 6, state: 'laufend',
+        createdBy: 'admin', createdAt: '2026-11-07T14:00:00Z', total: 1, confirmed: 1, failed: 0,
+        devices: [geraet({ deviceId: 'd1', state: 'bestaetigt' })],
+      },
+      {
+        id: 'r1', releaseVersion: 'edge-2026.10.7', releaseSeq: 5, state: 'laufend',
+        createdBy: 'admin', createdAt: '2026-11-06T13:39:00Z', total: 1, confirmed: 0, failed: 0,
+        devices: [geraet({ deviceId: 'd1', state: 'angenommen' })],
+      },
+    ];
+    expect(rolloutsLaufend(rollouts)).toBe(0);
+  });
+
+  it('zählt ein entferntes Gerät nicht', () => {
+    const rollouts: Rollout[] = [{
+      id: 'r1', releaseVersion: 'edge-2026.10.7', releaseSeq: 5, state: 'laufend',
+      createdBy: 'admin', createdAt: '2026-11-07T13:39:00Z', total: 1, confirmed: 0, failed: 0,
+      devices: [geraet({ deviceId: 'd1', state: 'angenommen', removed: true })],
+    }];
+    expect(rolloutsLaufend(rollouts)).toBe(0);
   });
 });
 
@@ -376,151 +442,9 @@ describe('TOFU-Abschluss (Stufe 4)', () => {
   });
 });
 
-// ── Beobachten: Namen, Fortschritt, Frische ────────────────────────────────
+// ── Beobachten: Frische ────────────────────────────────────────────────────
 
-const rolloutDev = (over: Partial<RolloutDevice> = {}): RolloutDevice => ({
-  deviceId: 'd1', label: 'edge-a1', siteName: 'Pilsting', tenantName: 'Kunde A',
-  state: 'bestaetigt', reason: null, since: null, ...over,
-});
-
-const rolloutOf = (over: Partial<Rollout> = {}): Rollout => ({
-  id: 'r1', releaseVersion: 'edge-2026.08.1', releaseSeq: 14,
-  state: 'active', createdBy: 'admin', createdAt: '2026-08-05T09:12:00Z',
-  total: 0, confirmed: 0, failed: 0, devices: [], ...over,
-});
-
-const updates = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
-  releases: [], rollouts: [], fleet: [], journal: [],
-  kpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
-  ...over,
-});
-
-describe('Namen in der Geräte-Liste', () => {
-  it('rendert NIE eine UUID', () => {
-    const got = rolloutDeviceName(rolloutDev({
-      deviceId: '7a1f0c2e-1111-2222-3333-444455556666', siteName: null, label: null,
-    }));
-    expect(got.name).not.toContain('7a1f0c2e-1111');
-    expect(got.name).toContain('Entferntes Gerät');
-    expect(got.removed).toBe(true);
-  });
-
-  it('nimmt den Schnappschuss, wenn das Gerät weg ist - und sagt es', () => {
-    const got = rolloutDeviceName(rolloutDev({ siteName: 'Pilsting', removed: true }));
-    expect(got.name).toBe('Pilsting (entfernt)');
-    expect(got.removed).toBe(true);
-  });
-
-  it('nennt ein lebendes Gerät schlicht beim Namen', () => {
-    expect(rolloutDeviceName(rolloutDev())).toEqual({ name: 'Pilsting', removed: false });
-  });
-});
-
-describe('Fortschritts-Rückgrat', () => {
-  const board = (states: string[]) => ({
-    rollout: rolloutOf({ devices: states.map((_, i) => rolloutDev({ deviceId: `d${i}` })) }),
-    fleet: states.map((s, i) => row({ deviceId: `d${i}`, state: s })),
-  });
-
-  it('zählt je Klasse und hält offline AUS dem Nenner', () => {
-    const b = board(['bestaetigt', 'bestaetigt', 'wendet_an', 'blockiert', 'offline_holt_nach']);
-    const view = progressBackbone(b.rollout, b.fleet)!;
-    // Vier erreichbare Geräte - das offline-Gerät steht daneben, nie im Nenner.
-    expect(view.total).toBe(4);
-    expect(view.segments.find((s) => s.cls === 'calm')?.count).toBe(2);
-    expect(view.segments.find((s) => s.cls === 'busy')?.count).toBe(1);
-    expect(view.segments.find((s) => s.cls === 'blocked')?.count).toBe(1);
-    expect(view.asideNote).toContain('1 offline');
-    expect(view.asideNote).toContain('zählt nicht in die Quote');
-  });
-
-  it('nennt Geräte ohne Meldung getrennt, statt sie als Rückstand zu zählen', () => {
-    const b = board(['bestaetigt', 'unbekannt']);
-    const view = progressBackbone(b.rollout, b.fleet)!;
-    expect(view.total).toBe(1);
-    expect(view.asideNote).toContain('1 ohne Meldung');
-  });
-
-  it('folgt der LIVE-Wahrheit, nicht dem eingefrorenen Zustand der Zeile', () => {
-    const view = progressBackbone(
-      rolloutOf({ devices: [rolloutDev({ deviceId: 'd1', state: 'fehlgeschlagen' })] }),
-      [row({ deviceId: 'd1', state: 'bestaetigt' })],
-    )!;
-    expect(view.segments.find((s) => s.cls === 'calm')?.count).toBe(1);
-    expect(view.segments.find((s) => s.cls === 'incident')).toBeUndefined();
-  });
-
-  it('gibt es ohne Aktualisierung gar nicht', () => {
-    expect(progressBackbone(null, [])).toBeNull();
-  });
-});
-
-describe('Aktuelle Aktualisierungs-Karten', () => {
-  it('zeigt den Live-Status nur beim aktuell zugewiesenen Release', () => {
-    const current = rolloutOf({
-      id: 'r26',
-      releaseVersion: 'edge-2026.08.26',
-      releaseSeq: 26,
-      devices: [rolloutDev({ deviceId: 'd1', state: 'laedt' })],
-    });
-    const previous = rolloutOf({
-      id: 'r25',
-      releaseVersion: 'edge-2026.08.25',
-      releaseSeq: 25,
-      devices: [rolloutDev({ deviceId: 'd1', state: 'laedt' })],
-    });
-
-    const views = currentRolloutViews([current, previous], [row({
-      deviceId: 'd1',
-      soll: 'edge-2026.08.26',
-      sollSeq: 26,
-      rolloutId: 'r26',
-      state: 'laedt',
-    })]);
-
-    expect(views.map((view) => view.releaseVersion)).toEqual(['edge-2026.08.26']);
-  });
-
-  it('behält parallele aktuelle Releases für verschiedene Geräte sichtbar', () => {
-    const first = rolloutOf({
-      id: 'r1', releaseSeq: 26,
-      devices: [rolloutDev({ deviceId: 'd1' })],
-    });
-    const second = rolloutOf({
-      id: 'r2', releaseSeq: 25,
-      devices: [rolloutDev({ deviceId: 'd2' })],
-    });
-
-    expect(currentRolloutViews([first, second], [
-      row({ deviceId: 'd1', sollSeq: 26, rolloutId: 'r1' }),
-      row({ deviceId: 'd2', sollSeq: 25, rolloutId: 'r2' }),
-    ])).toHaveLength(2);
-  });
-});
-
-describe('Ruhezustand + Bezugszeit', () => {
-  it('sagt in EINEM Satz, wie die Flotte steht', () => {
-    const line = restingLine(updates({
-      kpi: { known: 4, upToDate: 4, unknown: 1, inRollout: 0, failed: 0,
-        newestRelease: 'edge-2026.08.1' },
-    }))!;
-    expect(line).toContain('4/4 Geräte auf edge-2026.08.1');
-    // „unbekannt" ist NIE „veraltet" - auch nicht in der Kurzform.
-    expect(line).toContain('unbekannt, nicht veraltet');
-    expect(line).toContain('Gerade wird nichts aktualisiert');
-  });
-
-  it('behauptet ohne Register keinen Maßstab', () => {
-    const line = restingLine(updates({
-      kpi: { known: 2, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
-    }))!;
-    expect(line).toContain('Kein Release im Register');
-  });
-
-  it('schweigt, solange eine Aktualisierung läuft', () => {
-    expect(restingLine(updates({ rollouts: [rolloutOf()] }))).toBeNull();
-  });
-
+describe('Bezugszeit', () => {
   it('nennt die Bezugszeit in Worten', () => {
     const t = 1_000_000_000_000;
     expect(freshnessLabel(t, t + 2_000)).toBe('Stand: gerade eben');
@@ -529,52 +453,13 @@ describe('Ruhezustand + Bezugszeit', () => {
     // Eine Zukunft rechnet nie negativ.
     expect(freshnessLabel(t, t - 5_000)).toBe('Stand: gerade eben');
   });
-});
 
-describe('Aktualisieren: Geräte-Auswahl + Zusammenfassung', () => {
-  it('zeigt je Gerät den ZUSTAND und nennt, was dagegen spricht - als HINWEIS', () => {
-    // Seit dem Ein-Schritt-Umbau gibt es keine Vorbedingung mehr: der Einwand
-    // erklärt, er sperrt nicht. Ein „festgenagelt" gibt es gar nicht mehr.
-    const list = candidates([
-      row({ deviceId: 'a', siteName: 'A', state: 'bestaetigt' }),
-      row({ deviceId: 'b', siteName: 'B', state: 'offline_holt_nach' }),
-      row({ deviceId: 'c', siteName: 'C', state: 'unbekannt' }),
-    ]);
-    const byName = new Map(list.map((c) => [c.name, c]));
-    expect(byName.get('A')!.caveat).toBeNull();
-    expect(byName.get('B')!.caveat).toContain('nachgeholt');
-    expect(byName.get('C')!.caveat).toContain('noch keinen Stand');
-    // JEDES Gerät bleibt wählbar - die Liste kennt keine Sperre.
-    expect(list).toHaveLength(3);
-  });
-
-  it('nennt einen offenen Crossover als Einwand - dort wirkt kein Release', () => {
-    const list = candidates([row({
-      deviceId: 'a', siteName: 'A', state: 'bestaetigt',
-      trust: { rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
-        trustSetError: 'kein Anker' },
-    })]);
-    expect(list[0].caveat).toContain('Vertrauen');
-  });
-
-  it('sagt vor dem Klick, was passiert - INKLUSIVE dessen, was nicht sofort passiert', () => {
-    const lines = startSummary(['a', 'd'], [
-      row({ deviceId: 'a', siteName: 'Pilsting' }),
-      row({ deviceId: 'b', siteName: 'B' }),
-      row({ deviceId: 'd', siteName: 'D', state: 'offline_holt_nach' }),
-    ]);
-    const text = lines.join(' ');
-    expect(text).toContain('2 Geräte');
-    expect(text).toContain('SOFORT');
-    expect(text).toContain('aktualisieren sich selbst');
-    // Das sieht später wie ein Fehler aus, wenn es hier nicht angekündigt wurde.
-    expect(text).toContain('nachgeholt');
-    // Der Satz, der den ganzen Umbau trägt.
-    expect(text).toContain('niemand muss an ein Gerät');
-  });
-
-  it('behauptet ohne Auswahl gar nichts', () => {
-    expect(startSummary([], [row()])).toEqual([]);
+  it('nennt eine fehlgeschlagene Aktualisierung statt eines wachsenden Alters (§5.2)', () => {
+    const t = new Date('2026-11-06T14:02:00Z').getTime();
+    expect(freshnessLabel(t, t + 120_000, true)).toContain('Aktualisierung schlägt fehl');
+    expect(freshnessLabel(t, t + 120_000, true)).toContain('Stand');
+    // Die Uhrzeit ist absolut (die Bezugszeit des letzten Erfolgs), nie ein Alter.
+    expect(freshnessLabel(t, t + 120_000, true)).not.toMatch(/vor \d/);
   });
 });
 
@@ -582,6 +467,11 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
   const pilotTrust: DeviceTrust = {
     rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
     trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.',
+  };
+  /** Nachgerüstet: Wurzel UND geprüftes Vertrauens-Set (Stufe 2). */
+  const stufe2Trust: DeviceTrust = {
+    rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
+    trustSetGeneratedAt: '2026-11-04T10:00:00Z', trustSetError: null,
   };
   const rel = (over: Partial<EdgeUpdatesRelease>): EdgeUpdatesRelease => ({
     releaseSeq: 40, version: 'edge-2026.10.0', targetCommit: null, notes: null, signed: true,
@@ -604,17 +494,29 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
 
   it('sperrt mit denselben Sätzen wie BoxArt.sperrgrund in der API', () => {
     // Wortgleich mit BoxArtTest.assignmentRule - die beiden laufen nicht auseinander.
-    expect(releaseSperre(rel({}), 'light')).toBe(
-      'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
-      + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.');
-    expect(releaseSperre(rel({ boxArt: 'light' }), 'docker'))
+    expect(releaseSperre(rel({}), 'light', stufe2Trust)).toBe(
+      'Release für die Docker-Box – diese Box ist eine Edge Light.');
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'docker', stufe2Trust))
       .toBe('Release für Edge Light – diese Box ist eine Docker-Box.');
-    expect(releaseSperre(rel({ boxArt: 'light' }), null)).toBe(
+    expect(releaseSperre(rel({ boxArt: 'light' }), null, stufe2Trust)).toBe(
       'Release für Edge Light – die Box-Art dieses Geräts ist unbekannt. Ein '
       + 'Edge-Light-Release geht nur an eine Box, die sich als Edge Light gemeldet hat.');
-    expect(releaseSperre(rel({}), 'docker')).toBeNull();
-    expect(releaseSperre(rel({}), null)).toBeNull();
-    expect(releaseSperre(rel({ boxArt: 'light' }), 'light')).toBeNull();
+    expect(releaseSperre(rel({}), 'docker', stufe2Trust)).toBeNull();
+    expect(releaseSperre(rel({}), null, null)).toBeNull();
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'light', stufe2Trust)).toBeNull();
+  });
+
+  it('sperrt ein Edge-Light-Release für eine Box mit Stufe 1 (S0, wie BoxArtTest.stufe1Sperre)', () => {
+    const satz = 'Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem '
+      + 'Portal an (kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel nachrüsten, '
+      + 'danach kommt jede Fassung über das Portal.';
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'light', pilotTrust)).toBe(satz);
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'light', null)).toBe(satz);
+    // Die Docker-Box hat ihren eigenen Crossover; Stufe 1 ist eine Edge-Light-Regel.
+    expect(releaseSperre(rel({}), 'docker', pilotTrust)).toBeNull();
+    expect(vertrauenGekreuzt(stufe2Trust)).toBe(true);
+    expect(vertrauenGekreuzt(pilotTrust)).toBe(false);
+    expect(vertrauenGekreuzt(undefined)).toBe(false);
   });
 
   it('zeigt Edge Light ohne Vertrauens-Set RUHIG als „Updates von Hand", nie als Fehler', () => {
@@ -647,34 +549,74 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
     const light = rel({ releaseSeq: 41, version: 'edge-2026.10.1', boxArt: 'light' });
     const unsigned = rel({ releaseSeq: 39, signed: false });
 
-    const mango = zuweisbareReleases([docker, unsigned], 'light');
+    const mango = zuweisbareReleases([docker, unsigned], 'light', stufe2Trust);
     expect(mango.passend).toEqual([]);
     expect(mango.signiert).toBe(1);
     expect(mango.hinweis).toBe('Das signierte Release passt nicht zu dieser Box. '
-      + 'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
-      + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.');
+      + 'Release für die Docker-Box – diese Box ist eine Edge Light.');
 
-    const box = zuweisbareReleases([light, docker], 'docker');
+    const box = zuweisbareReleases([light, docker], 'docker', null);
     expect(box.passend.map((r) => r.releaseSeq)).toEqual([40]);
     expect(box.hinweis).toBe('1 weiteres signiertes Release ist hier nicht zuweisbar: '
       + 'Release für Edge Light – diese Box ist eine Docker-Box.');
 
-    expect(zuweisbareReleases([docker], null).hinweis).toBeNull();
-    expect(zuweisbareReleases([light, docker], null).passend.map((r) => r.releaseSeq))
+    expect(zuweisbareReleases([docker], null, null).hinweis).toBeNull();
+    expect(zuweisbareReleases([light, docker], null, null).passend.map((r) => r.releaseSeq))
       .toEqual([40]);
+
+    // Nachgerüstet bekommt die Mango ihr Edge-Light-Release angeboten.
+    expect(zuweisbareReleases([light, docker], 'light', stufe2Trust).passend
+      .map((r) => r.releaseSeq)).toEqual([41]);
   });
 
-  it('graut im Rollout-Dialog unpassende Geräte aus - mit Grund, am Ende der Liste', () => {
-    const fleet = [
-      row({ deviceId: 'mango', siteName: 'Hof Linde', state: 'fehlgeschlagen', boxArt: 'light' }),
-      row({ deviceId: 'box', siteName: 'Pilsting', boxArt: 'docker' }),
-    ];
-    const c = candidates(fleet, rel({}));
-    expect(c.map((x) => x.deviceId)).toEqual(['box', 'mango']);
-    expect(c[0].sperre).toBeNull();
-    expect(c[1].sperre).toContain('diese Box ist eine Edge Light');
-    expect(c[1].boxArt).toBe('light');
-    // Ohne Release-Bezug gibt es keine Sperre (und die alte Ordnung bleibt).
-    expect(candidates(fleet).map((x) => x.sperre)).toEqual([null, null]);
+  it('G8: ein Loader, der nur die Flash-Fassung startet, ist Stufe 1 - auch mit gekreuztem Vertrauen (wie BoxArtTest.stufe1AmLoader)', () => {
+    const light = rel({ releaseSeq: 41, version: 'edge-light-2026.11.4', boxArt: 'light' });
+    expect(releaseSperre(light, 'light', stufe2Trust, 'flash')).toBe(
+      'Release für Edge Light – diese Box hat Stufe 1: ihr Loader startet immer die Fassung aus dem '
+      + 'Flash und kennt keine Updates. Einmal über den Wartungstunnel nachrüsten, danach kommt jede '
+      + 'Fassung über das Portal.');
+    expect(releaseSperre(light, 'light', stufe2Trust, 'update')).toBeNull();
+    expect(releaseSperre(light, 'light', stufe2Trust), 'nicht gemeldet: das Vertrauen entscheidet').toBeNull();
+    expect(releaseSperre(rel({}), 'docker', stufe2Trust, 'flash')).toBeNull();
+    expect(stufe1('light', stufe2Trust, 'flash')).toBe(true);
+    expect(stufe1('light', stufe2Trust, 'update')).toBe(false);
+    expect(stufe1('light', pilotTrust, null)).toBe(true);
+    expect(stufe1('docker', pilotTrust, 'flash')).toBe(false);
+    const cross = crossoverState(stufe2Trust, 'light', 'flash');
+    expect(cross.state).toBe('von_hand');
+    expect(cross.detail).toContain('Loader');
+    expect(crossoverState(stufe2Trust, 'light', 'update').state).toBe('gekreuzt');
+    expect(zuweisbareReleases([light], 'light', stufe2Trust, 'flash').hinweis)
+      .toContain('ihr Loader startet immer die Fassung aus dem Flash');
   });
+
+  it('G8: nennt das Gerät, wie die Box es meldet - nie geraten', () => {
+    expect(geraetZeile({ geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' }))
+      .toBe('Raspberry Pi 4 Model B Rev 1.4 · arm64');
+    expect(geraetZeile({ geraetModell: null, geraetArch: 'amd64' })).toBe('amd64');
+    expect(geraetZeile({})).toBe('Gerät nicht gemeldet');
+    // Loader-Selbstupdate: die gemeldete LOADER_STAND-Marke steht dahinter;
+    // nicht gemeldet (alter Loader, altes Programm) heißt still weglassen.
+    expect(geraetZeile({ geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loaderStand: 1 }))
+      .toBe('GL.iNet GL-MT300N-V2 · mipsle · Loader-Stand 1');
+    expect(geraetZeile({ geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loaderStand: null }))
+      .toBe('GL.iNet GL-MT300N-V2 · mipsle');
+    expect(loaderLabel('update')).toBe('kennt Updates (Stufe 2)');
+    expect(loaderLabel('flash')).toBe('startet nur die Fassung aus dem Flash (Stufe 1)');
+    expect(loaderLabel(null)).toBeNull();
+    expect(loaderLabel('uboot')).toBeNull();
+  });
+
+  it('nennt bei einer Box mit Stufe 1 den Weg zum Nachrüsten, auch neben anderen Gründen', () => {
+    const docker = rel({ releaseSeq: 42, version: 'edge-2026.11.0' });
+    const light = rel({ releaseSeq: 41, version: 'edge-light-2026.11.4', boxArt: 'light' });
+    // Das jüngere Docker-Release steht vorn - der Satz zur Stufe 1 gewinnt trotzdem.
+    const zuhause = zuweisbareReleases([docker, light], 'light', pilotTrust);
+    expect(zuhause.passend).toEqual([]);
+    expect(zuhause.hinweis).toBe('Keines der 2 signierten Releases passt zu dieser Box. '
+      + 'Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem Portal '
+      + 'an (kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel nachrüsten, danach '
+      + 'kommt jede Fassung über das Portal.');
+  });
+
 });

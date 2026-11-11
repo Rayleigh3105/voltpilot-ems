@@ -51,10 +51,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -180,10 +180,10 @@ class DatenquelleApiTest {
         }
     }
 
-    @MockBean
+    @MockitoBean
     ProbeService probes;
 
-    @MockBean
+    @MockitoBean
     DatenquelleBudgetService budgets;
 
     @Autowired
@@ -581,6 +581,10 @@ class DatenquelleApiTest {
                 "erreichbarkeit_geprueft", "erreichbarkeit_geprueft");
         assertThat(eintraege).extracting(e -> textOderNull(e.get("ergebnis")))
                 .containsExactly(null, "ok", null, "ok", "unreachable");
+        // GE-2: der Satz des Änderungsprotokolls reist mit — der „Verlauf der Anbindung“ formuliert nichts selbst.
+        assertThat(eintraege).extracting(e -> e.get("text").asText()).containsExactly(
+                "Zuständigkeit gewechselt", "Erreichbarkeit geprüft: ok", "Zuständigkeit gewechselt",
+                "Erreichbarkeit geprüft: ok", "Erreichbarkeit geprüft: unreachable");
         JsonNode zweiter = eintraege.get(0);
         assertThat(zweiter.at("/alt/box_name").asText()).isEqualTo("Box Halle 2 (neu)");
         assertThat(zweiter.at("/neu/box_name").asText()).isEqualTo("Box Halle 1");
@@ -635,6 +639,55 @@ class DatenquelleApiTest {
      * Vertrags ({@code pruefeZeitraum}) lehnt ihn ab, bevor die Datenbank es muss; die Rücknahme
      * eines geplanten Wechsels ist IP-12.
      */
+    /**
+     * Konzept „Ein Gerät, ein Eintrag“, GE-6: die Liste nennt je Weg seine eingebauten Geräte — allein über den
+     * gespeicherten Verweis {@code geraet.data_source_id}. Gegenprobe: ein Gerät an derselben Adresse ohne
+     * Verweis gehört nicht dazu, ein ausgebautes auch nicht mehr.
+     */
+    @Test
+    void dieListeNenntJeWegSeineGeraeteNurUeberDenGespeichertenVerweis() throws Exception {
+        Welt w = new Welt("Ahrenberg Geräte am Weg");
+        UHR.stelle(OffsetDateTime.now(ZoneOffset.UTC).toString());
+        UUID dq3 = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID halle1 = w.anlage("AN-1");
+        UUID e1 = w.box("E-1");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        UUID[] komponente = new UUID[3];
+        UUID[] geraet = new UUID[3];
+        for (int i = 0; i < 3; i++) {
+            komponente[i] = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                    + "entity_type, device_id, control, communication, connection_json, created_at) VALUES "
+                    + "(?, ?, 'modbus-generic', ?, 'modbus-generic', ?, false, true, "
+                    + "'{\"ip\":\"192.168.10.31\",\"port\":502}'::jsonb, now()) RETURNING id", UUID.class,
+                    w.mandant, halle1, "Unterzähler " + (i + 1), e1);
+            geraet[i] = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE tenant_id = ? "
+                    + "AND entity_id = ? AND gueltig_bis IS NULL", UUID.class, w.mandant, komponente[i]);
+        }
+        root.update("UPDATE geraet SET data_source_id = ?, geraete_id = 1, bezeichnung = 'Unterzähler Spritzguss' "
+                + "WHERE id = ?", dq3, geraet[0]);
+        root.update("UPDATE geraet SET data_source_id = ?, geraete_id = 2 WHERE id = ?", dq3, geraet[1]);
+
+        Antwort liste = ruf(jonas, HttpMethod.GET, basis(halle1), null);
+        assertThat(liste.status()).isEqualTo(200);
+        JsonNode q = liste.body().get("datenquellen").get(0);
+        assertThat(q.get("kennzeichen").asText()).isEqualTo("DQ-3");
+        assertThat(q.get("geraete").findValuesAsText("id")).as("das dritte Gerät hat nur dieselbe Adresse")
+                .containsExactly(geraet[0].toString(), geraet[1].toString());
+        JsonNode erstes = q.get("geraete").get(0);
+        assertThat(erstes.get("bezeichnung").asText()).isEqualTo("Unterzähler Spritzguss");
+        assertThat(erstes.get("geraete_id").asInt()).isEqualTo(1);
+        assertThat(erstes.get("geraeteart").asText()).isEqualTo("zaehler");
+        assertThat(erstes.get("komponenten")).extracting(JsonNode::asText).containsExactly(komponente[0].toString());
+        assertThat(q.get("geraete").get(1).get("bezeichnung").isNull()).isTrue();
+
+        // Ausgebaut zur nächsten vollen Minute (ein Einbau endet nie in seiner ersten); danach fehlt es.
+        root.update("UPDATE geraet SET ausgebaut_am = date_trunc('minute', now()) + interval '1 minute' "
+                + "WHERE id = ?", geraet[1]);
+        UHR.stelle(OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5).toString());
+        JsonNode eine = ruf(jonas, HttpMethod.GET, basis(halle1) + "/" + dq3, null).body();
+        assertThat(eine.get("geraete").findValuesAsText("id")).containsExactly(geraet[0].toString());
+    }
+
     @Test
     void einWechselGenauZumBeginnDesGeplantenLaesstKeinenLeerenZeitraumZurueck() throws Exception {
         Welt w = new Welt("Ahrenberg Lücke");
@@ -939,6 +992,58 @@ class DatenquelleApiTest {
         assertThat(ocpp.status()).isEqualTo(422);
         assertThat(ocpp.body().get("code").asText()).isEqualTo("pruefung_nicht_moeglich");
         verify(probes, never()).probeBox(any(), any(ProbePublisher.WagoKopfOp.class), anyList(), any());
+    }
+
+    /**
+     * UEMS EZ-15: der Anlege-Schritt „Steuerung verbinden“ prüft über denselben Weg mit {@code op: erzeuger_kopf}.
+     * Die Cloud schickt den Kopf-Schritt (Registerart ohne Angabe FC4, EW-2 A), wertet nur die Erreichbarkeit und
+     * reicht den gelesenen Block unverändert in {@code antwort} durch — ohne WAGO-Block, ohne Lese-Schritt.
+     */
+    @Test
+    void dieErzeugerPruefungSchicktDenKopfUndReichtDenBlockDurch() throws Exception {
+        Welt w = new Welt("Ahrenberg Erzeuger-Prüfung");
+        UUID dq4 = w.quelleAusReferenz("DQ-4", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID halle2 = w.anlage("AN-2");
+        UUID e2neu = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(halle2) + "/" + dq4;
+        UHR.stelle("2027-04-09T09:00:00+02:00");
+        Map<String, Object> erzeuger = Map.of("device_id", e2neu, "op", "erzeuger_kopf", "unit_id", 1, "register", 0,
+                "word_order", "big");
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.ErzeugerKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("e25a0b9c3e77d301", null, null, List.of(
+                        OpResult.ausErzeugerKopf("erreichbarkeit", true, null, null, null, new ProbeResult.ErzeugerKopf(
+                                true, true, null, 1, 0, 2, 500, 2611, 4712L, 2, 140, List.of(
+                                        new ProbeResult.ErzeugerEinheit(1, 2, 66, "MAN E0836LE"),
+                                        new ProbeResult.ErzeugerEinheit(2, 2, 33, "KW Energie Smartblock 33")),
+                                "N-ERGIE Netz GmbH", "WVV (Stadtwerke Würzburg)"))))));
+
+        Antwort erkannt = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", erzeuger);
+        assertThat(erkannt.status()).isEqualTo(200);
+        assertThat(erkannt.body().get("ergebnis").asText()).isEqualTo("ok");
+        assertThat(erkannt.body().get("gewertet").asBoolean()).isTrue();
+        assertThat(erkannt.body().has("wago")).isFalse();
+        JsonNode block = erkannt.body().get("antwort").get("results").get(0).get("erzeuger_kopf");
+        assertThat(block.get("te_anzahl").asInt()).isEqualTo(2);
+        assertThat(block.get("steuerung_id").asLong()).isEqualTo(4712L);
+        assertThat(block.get("einheiten").get(1).get("typ_name").asText()).isEqualTo("KW Energie Smartblock 33");
+        assertThat(block.get("netzbetreiber_name").asText()).isEqualTo("N-ERGIE Netz GmbH");
+
+        ArgumentCaptor<ProbePublisher.KopfOp> kopf = ArgumentCaptor.forClass(ProbePublisher.KopfOp.class);
+        verify(probes).probeBox(eq(e2neu), kopf.capture(), anyList(), eq("sub-jonas-wendlinger"));
+        assertThat(kopf.getValue()).isEqualTo(new ProbePublisher.ErzeugerKopfOp("erreichbarkeit", "192.168.20.10",
+                502, 1, "input", 0, "big"));
+        verify(probes, never()).probeBox(any(), anyList(), any());
+        JsonNode eintrag = ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").get(0);
+        assertThat(eintrag.get("art").asText()).isEqualTo("erreichbarkeit_geprueft");
+        assertThat(eintrag.get("neu").get("op").asText()).isEqualTo("erzeuger_kopf");
+
+        // Kein Datentyp am Kopf - benannt statt geraten.
+        Map<String, Object> mitTyp = new LinkedHashMap<>(erzeuger);
+        mitTyp.put("data_type", "u16");
+        Antwort typ = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", mitTyp);
+        assertThat(typ.status()).isEqualTo(400);
+        assertThat(typ.body().get("feld").asText()).isEqualTo("data_type");
     }
 
     // ============================================================ Bearbeiten · Urheber

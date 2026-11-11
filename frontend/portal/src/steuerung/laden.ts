@@ -2,9 +2,8 @@
  * Reiter „Laden“ - die reinen Ableitungen (Prototyp `ui-laden.js`).
  *
  * Das Netzanschluss-Band liest den Ladepark-Rahmen der Box (gemessene Hauslast,
- * Grenze, Sicherheitsabstand); der Ladeplan eines Ziels ist eine SCHÄTZUNG aus
- * Prognose und Preis - Sonne zuerst, dann die günstigsten Viertelstunden bis
- * zur Uhrzeit - und heißt auch so.
+ * Grenze, Sicherheitsabstand). Die Vorschau je Ladequelle samt Ladeziel - eine
+ * SCHÄTZUNG aus Prognose und Preis - rechnet `ladeVorschau.ts`.
  *
  * Die Anschlussgrenze prüft das Rahmen-Blatt wie der Server (`PUT
  * /charging-frame`, AP-01 IP-13) gegen den heute gebundenen Netzanschluss,
@@ -19,7 +18,7 @@ import {
   MISPEL_LADESTAND_ZULETZT, MISPEL_LAEDT_IMMER_SOFORT, MISPEL_PLAN_VON, MISPEL_ZURUECKSPEISEN_RUHT,
 } from '../glossar';
 import { KW, zahl as ergebnisZahl } from '../uemsErgebnis';
-import { messwertAlter, type SpeicherFreigabe } from '../ladepunkte';
+import { einspeisungKw, messwertAlter, type SpeicherFreigabe } from '../ladepunkte';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import { quellenAnteil, type GeraetBild, type Reihen } from './bild';
 import { liste } from './liste';
@@ -46,7 +45,7 @@ export const UEBERSCHUSS_MODUS: Record<Exclude<LadeQuelle, 'guenstig'>, string> 
  */
 export const OPTION_SONNE_SPEICHER = 'ueberschuss_speicher';
 
-export function ladeWahl(g: GeraetBild): LadeWahl {
+export function ladeWahl(g: Pick<GeraetBild, 'eingriff' | 'steuerart'>): LadeWahl {
   if (g.eingriff) return g.eingriff.art === 'aus' ? 'aus' : 'schnell';
   return g.steuerart?.quelle === 'sofort' ? 'schnell' : 'smart';
 }
@@ -56,21 +55,83 @@ export function ladeWahl(g: GeraetBild): LadeWahl {
  * {@link ladeWahl}): ein laufender Eingriff („Jetzt voll laden“/Pause) oder die
  * Steuerart `sofort` - der Anlagen-Standard „schnell“ einer Anlage, deren Kunde
  * nie gewählt hat (API `SteuerartProjektion.anlagenStandard`). Ein Eingriff
- * endet; steht die Steuerart auf `sofort`, wird „Smart“ zur Steuerart „Sonne
- * zuerst“, der Vorgabe innerhalb der Karte. Beides in EINEM Klick.
- *
- * Vorher beendete „Smart“ nur einen Eingriff: die Karte blieb bei `sofort` auf
- * „Schnell“, und „Nur Sonne“ (die Chips erscheinen nur unter „Smart“) war nie
- * erreichbar (Produktion, 04.10.2026).
+ * endet sofort; steht die Steuerart auf `sofort`, öffnet „Smart“ das Blatt
+ * „Womit laden?“ mit der sichtbaren Vorauswahl „Sonne + Minimum“ - gesetzt
+ * wird erst mit „So laden“ (Konzept k1, E5=A; vorher setzte der Tipp still
+ * „Sonne + Minimum“, Befund 10).
  */
 export function smartSchritte(g: Pick<GeraetBild, 'eingriff' | 'steuerart'>): {
   eingriffBeenden: boolean;
-  steuerart: LadeQuelle | null;
+  blattOeffnen: boolean;
 } {
+  const sofort = g.steuerart?.quelle === 'sofort';
   return {
-    eingriffBeenden: g.eingriff != null,
-    steuerart: g.steuerart?.quelle === 'sofort' ? 'min' : null,
+    // Mit `sofort` beendet erst „So laden“ den Eingriff - Abbrechen lässt alles, wie es war.
+    eingriffBeenden: g.eingriff != null && !sofort,
+    blattOeffnen: sofort,
   };
+}
+
+/** Warum „Aus“ oder „Schnell“ an einem Ladepunkt gerade nicht wählbar ist. */
+export interface LadeModusSperre {
+  /**
+   * `sperre`: VoltPilot regelt die Wallbox nicht (`SperreHinweis` sagt es),
+   * `kein_auto`: es steckt keins, `funktion`: die Steuerung ruht,
+   * `kein_ladevorgang`: es steckt eins, aber kein Ladevorgang läuft - Server
+   * und Box lehnten „Aus“ und „Schnell“ ab (`ladungLaeuft`),
+   * `wirkt_nicht`: „Schnell“ hätte hier nichts zu übersteuern.
+   */
+  art: 'sperre' | 'kein_auto' | 'funktion' | 'kein_ladevorgang' | 'wirkt_nicht';
+  satz: string;
+}
+
+/** Der Satz, wenn kein Auto steckt: Aus und Schnell gelten je Ladung. */
+export const LADEMODUS_OHNE_AUTO = 'Aus und Schnell gelten für eine Ladung, sobald ein Auto steckt.';
+
+/** Der Satz, wenn ein Auto steckt, die Ladung aber noch nicht begonnen hat (z. B. „startet“). */
+export const LADEMODUS_OHNE_LADUNG = 'Aus und Schnell gelten für eine laufende Ladung - sobald sie begonnen hat.';
+
+/**
+ * Ist „Aus“ bzw. „Schnell“ an diesem Ladepunkt wählbar? `null` = ja.
+ *
+ * ⚠ EINE Regel für die Karte im Reiter „Laden“ UND das Blatt des Ladepunkts.
+ * Bis hierher fragte nur die Karte `boostbar`; über „Aus“ ins Blatt ließ sich
+ * „Schnell“ trotzdem wählen - dieselbe Anlage hieß an einer Stelle „gesperrt“,
+ * an der anderen „wählbar“ (Befund `voltpilot-lademodus-schnellzugriff`).
+ * „Schnell“ ist dieselbe Regel wie auf „Ladevorgänge“ und im Menü „Eingreifen“
+ * (`boostbar`), und wo sie es versagt, trägt sie den Grund
+ * (`schnellWirktNichtGrund`) statt eines stummen grauen Knopfs.
+ */
+export function ladeModusSperre(
+  g: Pick<GeraetBild, 'ladepunkt' | 'eingriff' | 'steuerart'>,
+  funktionSperre: string | null,
+  modus: 'aus' | 'schnell',
+): LadeModusSperre | null {
+  const l = g.ladepunkt;
+  if (!l) return null;
+  if (l.sperre) return { art: 'sperre', satz: `${l.sperre.satz}. ${l.sperre.folge}` };
+  if (!l.angesteckt) return { art: 'kein_auto', satz: LADEMODUS_OHNE_AUTO };
+  if (funktionSperre) return { art: 'funktion', satz: funktionSperre };
+  // ⚠ Die Regel des Servers: „Aus“ und „Schnell“ greifen nur in einen LAUFENDEN
+  // Ladevorgang (`ladungLaeuft`). Ohne ihn stünde hier ein Knopf, der in
+  // „An diesem Stecker läuft gerade kein Ladevorgang.“ endet. Steckt das Auto
+  // ohne Ladevorgang, nennt der Satz den Ausweg.
+  if (!l.laedt) return { art: 'kein_ladevorgang', satz: l.keinLadevorgang ?? LADEMODUS_OHNE_LADUNG };
+  if (modus === 'schnell') {
+    // Ein Ladepunkt auf „Sofort“ lädt immer voll („immer“), ein laufendes
+    // „Schnell“ beendet „Smart“ - beides ist kein Übersteuern.
+    if (ladeWahl(g) !== 'schnell' && !l.boostbar) {
+      return { art: 'wirkt_nicht', satz: l.schnellGrund ?? 'Schnell ändert gerade nichts.' };
+    }
+  }
+  return null;
+}
+
+/** Die Ladequelle eines Auftrags an den Server (für die Rückmeldung). */
+export function quelleAusWunsch(w: { quelle: string; ueberschussModus?: string | null }): LadeQuelle | null {
+  if (w.quelle === 'guenstig') return 'guenstig';
+  if (w.quelle !== 'ueberschuss') return null;
+  return w.ueberschussModus === 'mindestleistung' ? 'min' : w.ueberschussModus === 'speicher' ? 'speicher' : 'sonne';
 }
 
 export function ladeQuelle(g: GeraetBild): LadeQuelle | null {
@@ -169,7 +230,13 @@ export function hatSpeicherGrenze(grenze: (number | null)[] | undefined, von: nu
 export interface Band {
   anschlussKw: number;
   teile: { k: 'haus' | 'lp' | 'frei' | 'res'; kw: number; label: string }[];
+  /** Was das Haus gerade aus dem Netz zieht; null = nicht gemeldet ODER die Anlage speist ein. */
   hausKw: number | null;
+  /**
+   * Was die Anlage gerade einspeist (Audit W-14) - null, solange der Rest der
+   * Box positiv ist (dann ist er Hauslast). 0 = das Laden nimmt den Überschuss ganz.
+   */
+  einspeisungKw: number | null;
   ladenNetzKw: number;
   freiKw: number;
   ladenKw: number;
@@ -192,7 +259,11 @@ export function band(rahmen: LadeparkRahmen | null | undefined, lp: GeraetBild[]
     ladenNetz += netz;
     if (netz > 0.05) lps.push({ k: 'lp', kw: netz, label: g.kurz });
   }
-  const haus = rahmen?.hausLastKw ?? null;
+  // ⚠ Der Rest der Box ist `Netz − Laden` MIT Vorzeichen - bei Einspeisung
+  // negativ. Er heißt dann nicht „Haus" und macht „frei" nie größer als den
+  // Anschluss (Audit W-14).
+  const rest = rahmen?.hausLastKw ?? null;
+  const haus = rest != null && rest < 0 ? null : rest;
   const frei = Math.max(0, anschluss - abstand - (haus ?? 0) - ladenNetz);
   return {
     anschlussKw: anschluss,
@@ -203,58 +274,22 @@ export function band(rahmen: LadeparkRahmen | null | undefined, lp: GeraetBild[]
       { k: 'res', kw: abstand, label: 'Abstand' },
     ],
     hausKw: haus,
+    einspeisungKw: einspeisungKw(rest, laden),
     ladenNetzKw: ladenNetz,
     freiKw: frei,
     ladenKw: laden,
   };
 }
 
-export interface Ladeplan {
-  kw: (number | null)[];
-  kwh: number;
-  pvKwh: number;
-  netzKwh: number;
-  eur: number;
-  fertig: number | null;
-  schafft: boolean;
-}
-
 /**
- * Wie ein Ladeziel voraussichtlich erfüllt wird: mit der Ladeleistung `kw`
- * zuerst in Viertelstunden mit Überschuss (höchster zuerst), dann - wenn
- * erlaubt - in den günstigsten. Eine Schätzung; die Box plant selbst.
+ * Bremst der Netzanschluss das Laden JETZT? (Konzept „Ein Ort fürs Laden"
+ * §5/§10, E5 = A): Steuerung › Laden zeigt die Anschlussgrenze seit dieser
+ * Scheibe nicht mehr als eigene Karte (sie wohnt in den Einstellungen) -
+ * nur noch EIN Satz, und nur, solange tatsächlich geladen wird UND für
+ * weitere Autos praktisch nichts mehr frei ist.
  */
-export function ladeplan(rh: Reihen, von: number, bis: number, zielKwh: number, kw: number, nurGuenstig: boolean): Ladeplan {
-  const ende = Math.min(bis, N);
-  const kandidaten: { t: number; sonne: number; preis: number }[] = [];
-  for (let t = von; t < ende; t++) {
-    kandidaten.push({ t, sonne: Math.max(0, -(rh.netz[t] ?? 0)), preis: rh.preis[t] ?? Number.POSITIVE_INFINITY });
-  }
-  const reihe = nurGuenstig
-    ? [...kandidaten].sort((a, b) => a.preis - b.preis)
-    : [
-        ...kandidaten.filter((k) => k.sonne > 0.5).sort((a, b) => b.sonne - a.sonne),
-        ...kandidaten.filter((k) => k.sonne <= 0.5).sort((a, b) => a.preis - b.preis),
-      ];
-  const out: (number | null)[] = Array.from({ length: N }, () => null);
-  let rest = zielKwh;
-  let pvKwh = 0;
-  let netzKwh = 0;
-  let eur = 0;
-  let fertig: number | null = null;
-  for (const k of reihe) {
-    if (rest <= 0.01) break;
-    if (!Number.isFinite(k.preis) && k.sonne <= 0.5) continue;
-    const e = Math.min(rest, kw / 4);
-    out[k.t] = e * 4;
-    const sonne = Math.min(e, k.sonne / 4);
-    pvKwh += sonne;
-    netzKwh += e - sonne;
-    if (Number.isFinite(k.preis)) eur += ((e - sonne) * k.preis) / 100;
-    rest -= e;
-    fertig = fertig == null ? k.t + 1 : Math.max(fertig, k.t + 1);
-  }
-  return { kw: out, kwh: zielKwh - Math.max(0, rest), pvKwh, netzKwh, eur, fertig, schafft: rest <= 0.3 };
+export function bandBremst(b: Band | null): boolean {
+  return b != null && b.ladenKw > 0.05 && b.freiKw < 0.5;
 }
 
 /** Die nächste Viertelstunde, an der es eine Uhrzeit ist („morgen 07:00“, falls heute vorbei). */

@@ -11,13 +11,20 @@ export const STANDORT_IDS: Record<string, string> = {
   'ST-3': '5a1d0000-0000-4000-8000-000000000003',
 };
 
-export function rechteSeed(kennung = 'JW'): { me: Selbstauskunft; benutzer: Benutzer; kundenbereich: Kundenbereich; jetzt: string } {
+/** Der Vertragsfall der Plattform-Administration im Mandantensprung (Zugang „umschalter“, Fälle `sprung-*`). */
+export const SPRUNG_FALL = 'sprung-lena-sieht-alle-standorte';
+
+/**
+ * `/me` der Person `kennung` aus ihrem ersten Vertragsfall — oder aus dem Fall `fallName`. Ein Plattform-Konto ohne
+ * Unterstützung (die gedachte Zuweisung des Sprungs) kommt über den Umschalter, sonst über eine Unterstützung.
+ */
+export function rechteSeed(kennung = 'JW', fallName?: string): { me: Selbstauskunft; benutzer: Benutzer; kundenbereich: Kundenbereich; jetzt: string } {
   // Die Rohform ist durch rechte.test.ts gegen das gemeinsame Schema geprüft.
   const fall = vektoren.cases.find((c) => {
     const i = c.input as { benutzer?: { kennung?: string }; kundenbereich?: unknown };
-    return i.benutzer?.kennung === kennung && i.kundenbereich;
+    return fallName ? c.name === fallName : i.benutzer?.kennung === kennung && i.kundenbereich;
   });
-  if (!fall) throw new Error(`Rechte-Seed fehlt: ${kennung}`);
+  if (!fall) throw new Error(`Rechte-Seed fehlt: ${fallName ?? kennung}`);
   const i = fall.input as any;
   const benutzer: Benutzer = { ...i.benutzer, zuweisungen: i.benutzer.zuweisungen.map((z: any) => ({
     rolle: z.rolle, standorte: z.standorte, umfang: z.umfang, art: z.art,
@@ -32,7 +39,8 @@ export function rechteSeed(kennung = 'JW'): { me: Selbstauskunft; benutzer: Benu
   return { benutzer, kundenbereich, jetzt, me: {
     kennung: benutzer.kennung, name: benutzer.name, konto: benutzer.konto, zustand: benutzer.zustand,
     kundenbereich: { id: FIXTURE_IDS.u, name: kundenbereich.name },
-    zugang: benutzer.konto === 'benutzer' ? 'konto' : 'unterstuetzung',
+    zugang: benutzer.konto === 'benutzer' ? 'konto'
+      : benutzer.konto === 'plattform' && benutzer.zuweisungen.every((z) => z.rolle !== 'unterstuetzer') ? 'umschalter' : 'unterstuetzung',
     rollen: [...new Set(sicht.standorte.flatMap((s) => s.rollen))],
     unternehmensweit: sicht.unternehmensweit,
     standorte: sicht.standorte.map((s) => ({

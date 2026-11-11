@@ -3,6 +3,7 @@ package com.voltpilot.api.consumers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.command.CommandLogWriter;
@@ -19,18 +20,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -73,13 +70,16 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
 
     /**
      * The §14.13 state vocabulary. The edge today claims a subset
-     * (running_forced/running_optimized/waiting/clamped/offline); the full
-     * customer set is whitelisted so a future edge can grow into it without a
-     * cloud release - but a word OUTSIDE it is discarded, never stored.
+     * (running_forced/running_optimized/running_manual/waiting/clamped/offline);
+     * the full customer set is whitelisted so a future edge can grow into it
+     * without a cloud release - but a word OUTSIDE it is discarded, never
+     * stored. running_manual (Teil B, Captain-Befund 05.11.2026) is the
+     * honest word for a human's own "Von Hand" override - it must never be
+     * confused with running_optimized ("von VoltPilot geplant").
      */
     static final Set<String> STATES = Set.of(
             "disconnected", "offline", "ready", "running_forced", "running_optimized",
-            "waiting", "fulfilled", "clamped", "missed", "unknown");
+            "running_manual", "waiting", "fulfilled", "clamped", "missed", "unknown");
 
     /**
      * The §15 reason vocabulary incl. the Inkrement-3 cycle-guard extension,
@@ -108,8 +108,7 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
     private final RuleEventWriter ruleEvents;
     private final CommandLogWriter commandLog;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public ConsumerRuntimeStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -126,71 +125,31 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
         this.ledger = ledger;
         this.ruleEvents = ruleEvents;
         this.commandLog = commandLog;
+        this.verbindung = new BrokerVerbindung(log, "consumer status", brokerUrl,
+                "voltpilot-api-consumers-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(STATUS_FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
+        ensureConnected();
+    }
+
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
+    @Scheduled(fixedDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}",
+            initialDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}")
+    public void ensureConnected() {
+        verbindung.sicherstellen();
+    }
+
+    boolean connectedForTest() { return verbindung.verbunden(); }
+
+    private void empfangen(String topic, MqttMessage message) {
         try {
-            connect();
+            handle(topic, message.getPayload());
         } catch (Exception e) {
-            log.warn("Consumer-status listener could not connect to {} yet: {} "
-                    + "(auto-reconnect active)", brokerUrl, e.getMessage());
+            log.warn("Consumer status on '{}' failed: {}", topic, e.getMessage());
         }
-    }
-
-    private void connect() throws Exception {
-        synchronized (lock) {
-            if (client != null) {
-                return;
-            }
-            client = new MqttClient(brokerUrl, "voltpilot-api-consumers-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-            client.setCallback(new MqttCallbackExtended() {
-                @Override
-                public void connectComplete(boolean reconnect, String serverUri) {
-                    try {
-                        client.subscribe(STATUS_FILTER, 1, messageListener());
-                        log.info("Consumer-status listener subscribed to {} at {}",
-                                STATUS_FILTER, serverUri);
-                    } catch (Exception e) {
-                        log.warn("Consumer-status subscribe failed: {}", e.getMessage());
-                    }
-                }
-
-                @Override
-                public void connectionLost(Throwable cause) {
-                    log.warn("Consumer-status listener lost the broker connection: {} "
-                            + "(auto-reconnect active)", cause == null ? "unknown" : cause.getMessage());
-                }
-
-                @Override
-                public void messageArrived(String topic, MqttMessage message) {
-                }
-
-                @Override
-                public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {
-                }
-            });
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-    }
-
-    private IMqttMessageListener messageListener() {
-        return (topic, message) -> {
-            try {
-                handle(topic, message.getPayload());
-            } catch (Exception e) {
-                log.warn("Consumer status on '{}' failed: {}", topic, e.getMessage());
-            }
-        };
     }
 
     /** Package-visible + test-visible: parse one heartbeat's consumers block. */
@@ -302,8 +261,10 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
             runtime = boundedInt(progress, "runtime_seconds_today", MAX_RUNTIME_SECONDS);
             starts = boundedInt(progress, "starts_today", MAX_STARTS);
         }
+        // Heizstab V1 (additive): the stage a heating rod over an output set reports and, where
+        // the box's controller drives it, the controller's verdict - both as checked excerpts.
         return new ConsumerRuntimeStatusRepository.Row(entityId, state, reason, actualKw,
-                confirmed, runtime, starts);
+                confirmed, runtime, starts, HeizstabStufe.stufe(node), null, HeizstabStufe.reglerJson(node));
     }
 
     private static Integer boundedInt(JsonNode node, String field, int max) {
@@ -356,23 +317,6 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
 
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-            } catch (Exception e) {
-                log.debug("Consumer listener disconnect failed on shutdown: {}", e.getMessage());
-            }
-            try {
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("Consumer listener close failed on shutdown: {}", e.getMessage());
-            }
-            client = null;
-        }
+        verbindung.schliessen();
     }
 }

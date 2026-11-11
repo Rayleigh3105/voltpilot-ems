@@ -48,6 +48,7 @@ vi.mock('../api', async (importOriginal) => {
 });
 
 const { MarktpreisePage } = await import('./DataPages');
+const { ZeitLeisteRahmen } = await import('../components/HistorieWelt');
 const { PrognosePage } = await import('./PrognosePage');
 
 const SITE = { id: 'site-22', name: 'Hof Lindenberg', biddingZone: 'DE-LU' } as never;
@@ -132,25 +133,26 @@ it('AP-13 Bestandsschutz · Verlauf Marktpreise ohne Messfunktion', async () => 
   priceHistoryMock.mockResolvedValue(historie());
   setzeBreite(false);
   const view = render(<MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />);
-  await screen.findByTestId('preis-chart');
+  await screen.findByText(/Börsenpreis · jetzt/);
   await bestandSnapshot('verlauf-marktpreise', view);
 });
 
 describe('P1 · V1 — der Seitenkopf ist unsichtbar', () => {
-  it('Marktpreise trägt eine sr-only-h1 und den früheren Lead-Satz am Fuß', async () => {
+  it('Marktpreise trägt eine sr-only-h1, der frühere Lead-Satz steht im Erklär-Blatt', async () => {
     setzeBreite(false);
     render(
       <MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />,
     );
-    await screen.findByTestId('preis-chart');
+    await screen.findByText(/Börsenpreis · jetzt/);
 
     const h1 = screen.getByRole('heading', { level: 1, name: 'Marktpreise' });
     expect(h1).toHaveClass('vp-sr-only');
     // Kein sichtbarer Kopf mehr - der war der Grund, warum die Reiterleiste sprang.
     expect(document.querySelector('.vp-page-head')).toBeNull();
-    // Der Lead-Satz ist NICHT verloren, nur umgezogen (wörtlich).
+    // Der Lead-Satz ist NICHT verloren (Fassung 3): wörtlich im Erklär-Blatt.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Was ist der Börsenpreis?' })[0]);
     expect(
-      screen.getByText('Was Strom an der Börse kostet - heute, morgen und im Rückblick.'),
+      await screen.findByText('Was Strom an der Börse kostet - heute, morgen und im Rückblick.'),
     ).toBeInTheDocument();
   });
 
@@ -173,33 +175,40 @@ describe('P1 · V1 — der Seitenkopf ist unsichtbar', () => {
   });
 });
 
-describe('P1 · V3 — EINE Zeit-Leiste, ihr Zeitraum in der Adresse', () => {
-  it('Marktpreise baut die Leiste nicht mehr nach und schreibt z=/at= mit', async () => {
+describe('P1 · V3 — Zeitraum in der Adresse (Marktpreise seit Fassung 3: im Rückblick)', () => {
+  /**
+   * Konzept „Preise und Wetter" Fassung 3, E3 = A (20.10.2026): die Zeitleiste
+   * steht nicht mehr über der Antwort. Woche, Monat und Jahr wohnen im
+   * Rückblick-Blatt; solange es offen ist, steht sein Zeitraum in der Adresse.
+   */
+  it('Marktpreise trägt keine Zeitleiste über der Antwort; der Rückblick schreibt z=/at=', async () => {
     setzeBreite(false);
     render(
       <MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />,
     );
+    await screen.findByText(/Börsenpreis · jetzt/);
+    expect(document.querySelector('.vp-zeitleiste')).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Woche' })).toBeNull();
+    expect(window.location.hash).toBe('#/anlage/site-22/marktpreise');
+
+    fireEvent.click(screen.getByRole('button', { name: /Rückblick/ }));
     await screen.findByTestId('preis-chart');
-
-    // Die geteilte Leiste, nicht die alte `.vp-seg` in einem `vp-page-head`.
-    expect(document.querySelector('.vp-zeitleiste')).not.toBeNull();
-    expect(window.location.hash).toContain('/marktpreise?z=tag');
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Woche' }));
-    await waitFor(() => expect(window.location.hash).toContain('z=woche'));
+    expect(window.location.hash).toContain('/marktpreise?z=woche');
+    fireEvent.click(screen.getByRole('tab', { name: 'Monat' }));
+    await waitFor(() => expect(window.location.hash).toContain('z=monat'));
   });
 
-  it('ein Lesezeichen OHNE Parameter bleibt gültig (Vorgabe Tag)', async () => {
+  it('ein Lesezeichen OHNE Parameter zeigt die Antwort, kein Blatt', async () => {
     setzeBreite(false);
     window.location.hash = '#/anlage/site-22/marktpreise';
     render(
       <MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />,
     );
-    await screen.findByTestId('preis-chart');
-    expect(screen.getByRole('tab', { name: 'Tag' })).toHaveAttribute('aria-selected', 'true');
+    await screen.findByText(/Börsenpreis · jetzt/);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('ein Lesezeichen MIT z= öffnet genau diesen Zeitraum', async () => {
+  it('ein Lesezeichen MIT z= öffnet den Rückblick mit genau diesem Zeitraum', async () => {
     setzeBreite(false);
     window.location.hash = '#/anlage/site-22/marktpreise?z=monat';
     render(
@@ -253,13 +262,24 @@ describe('P1 · E4 b2 — die Leiste klebt am Telefon und kollabiert beim Scroll
     delete globalThis.IntersectionObserver;
   });
 
+  /**
+   * Bis Fassung 3 trug Marktpreise die zweizeilige Leiste; seitdem prüft der
+   * Wächter den Rahmen selbst — sein Vertrag gilt für jeden Reiter, der eine
+   * zweite Zeile mitbringt.
+   */
+  function Leiste({ mobil }: { mobil: boolean }) {
+    return (
+      <ZeitLeisteRahmen
+        mobil={mobil}
+        zeile1={<div>Zeitraum</div>}
+        zeile2={<div>Blätterer</div>}
+      />
+    );
+  }
+
   it('kollabiert auf die erste Zeile und kommt beim Hochscrollen zurück', async () => {
     const waechter = stelleWaechter();
-    setzeBreite(true);
-    render(
-      <MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />,
-    );
-    await screen.findByTestId('preis-chart');
+    render(<Leiste mobil />);
 
     const leiste = document.querySelector('.vp-zeitleiste-mobil') as HTMLElement;
     expect(leiste).not.toBeNull();
@@ -290,12 +310,8 @@ describe('P1 · E4 b2 — die Leiste klebt am Telefon und kollabiert beim Scroll
     );
   });
 
-  it('ohne Beobachter kollabiert NICHTS — statt dass etwas kollabiert, das niemand auslöste', async () => {
-    setzeBreite(true);
-    render(
-      <MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />,
-    );
-    await screen.findByTestId('preis-chart');
+  it('ohne Beobachter kollabiert NICHTS — statt dass etwas kollabiert, das niemand auslöste', () => {
+    render(<Leiste mobil />);
     expect(
       (document.querySelector('.vp-zeitleiste-mobil') as HTMLElement).getAttribute(
         'data-kollabiert',
@@ -303,13 +319,9 @@ describe('P1 · E4 b2 — die Leiste klebt am Telefon und kollabiert beim Scroll
     ).toBeNull();
   });
 
-  it('am Rechner gibt es weder Wächter noch Kollaps — dort ist die Leiste EINE Zeile', async () => {
+  it('am Rechner gibt es weder Wächter noch Kollaps — dort ist die Leiste EINE Zeile', () => {
     stelleWaechter();
-    setzeBreite(false);
-    render(
-      <MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />,
-    );
-    await screen.findByTestId('preis-chart');
+    render(<Leiste mobil={false} />);
     expect(document.querySelector('.vp-zeitleiste-mobil')).toBeNull();
     expect(document.querySelector('.vp-zl-wache')).toBeNull();
   });

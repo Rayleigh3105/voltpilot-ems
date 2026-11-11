@@ -90,6 +90,7 @@
   scroll-margin-top: 96px;
 }
 
+.vp-einst-grp > h2,
 .vp-einst-grp > h3 {
   margin: 0 0 0 4px;
   font-family: var(--vp-font-body);
@@ -176,6 +177,12 @@ button.vp-einst-zeile:focus-visible {
   color: var(--vp-warn-ink);
 }
 
+/* Der Grund an einer Zeile ohne Blatt (Vergütung bei Netzladen/Direktvermarktung). */
+.vp-einst-grund {
+  display: block;
+  margin-top: 2px;
+}
+
 .vp-einst-ende {
   display: inline-flex;
   align-items: center;
@@ -188,7 +195,9 @@ button.vp-einst-zeile:focus-visible {
 }
 
 .vp-einst-zeile.is-gefahr .vp-einst-lab b {
-  color: var(--vp-chart-discharge);
+  /* Das Rot der Fehler-Hinweise (5,6 : 1); `--vp-chart-discharge` ist ein
+     Diagramm-Ton und hielt als Schrift auf Weiß nur 4,23 : 1 (WCAG 1.4.3). */
+  color: var(--vp-industry-end);
 }
 
 .vp-einst-tile {
@@ -229,7 +238,9 @@ button.vp-einst-zeile:focus-visible {
   border: 0;
   border-radius: var(--vp-radius-sm);
   background: transparent;
-  color: var(--vp-text-gray);
+  /* Auf `--vp-neutral-soft` hielt `--vp-text-gray` nur 4,39 : 1 (WCAG 1.4.3);
+     die Sekundärschrift des Hauses hält 6,7 : 1. */
+  color: var(--vp-c-muted-fg);
   font: inherit;
   font-size: 0.82rem;
   font-weight: var(--vp-weight-semibold);

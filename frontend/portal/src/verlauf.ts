@@ -27,6 +27,7 @@ import type {
   SiteTopology,
 } from './api';
 import { channelLabel, channelUnitHint } from './channels';
+import { V1_ENTITY } from './verlaufEntity';
 import {
   type ComponentHealth,
   type ComponentRole,
@@ -91,6 +92,10 @@ export interface VerlaufGroup {
    */
   measuredVia: string | null;
   items: VerlaufItem[];
+  /**
+   * GE-3: Sprünge auf die Seiten der Geräte hinter diesem Ast (die Wechselrichter einer Anlagensteuerung); fehlt = keine.
+   */
+  sprunge?: { label: string; href: string }[];
 }
 
 // --- Rail cleanup (B1-c) -----------------------------------------------------
@@ -235,11 +240,8 @@ export function measurementTree(
 
 // --- v1 fallback (entity-less site) ------------------------------------------
 
-/**
- * A synthetic entityId for a v1 site-level measurement. It carries no colon so
- * it round-trips through the `m={entityId}:{channel}` deep-link cleanly.
- */
-export const V1_ENTITY = 'anlage';
+// `V1_ENTITY` wohnt in `verlaufEntity.ts` (Bündel-Wächter), hier bleibt er unter dem alten Namen erreichbar.
+export { V1_ENTITY };
 
 /** One v1 site-level measurement, drawn from the `History` buckets. */
 interface V1ChannelDesc {

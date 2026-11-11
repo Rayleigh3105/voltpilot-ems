@@ -1,0 +1,128 @@
+{
+  "$comment": [
+    "Heizstab-Regler der Box (Vertrag: heizstab-regler.md): Szenarien Takt für Takt.",
+    "Gelesen von: edge-app/core/internal/heizstab/heizstab_vectors_test.go.",
+    "Die API prüft ihre Parameterblöcke gegen block_valid / block_invalid, sobald sie den Block baut."
+  ],
+  "$regel": "t und alle Zeiten im Zustand sind Sekunden relativ zu basis. grid = Netzpunkt (+ Bezug, - Einspeisung) in kW, batt = Speicher (+ laden, - entladen) in kW, rod = jetzige Leistung des Stabs (gemessen oder kW der bestätigten Stufe), null = keine Messung. grid_age = Alter der Netzmessung in Sekunden (fehlt = 0). Erwartet: stufe (Index, 0 = aus), code, changed, optional next_up (Sekunden).",
+  "basis": "2026-10-31T12:00:00Z",
+  "stages_pro3": [{"outputs": 1, "kw": 2.0}, {"outputs": 2, "kw": 4.0}, {"outputs": 3, "kw": 6.0}],
+  "block_valid": [
+    {"modus": "ueberschuss"},
+    {"modus": "ueberschuss", "reserve_kw": 0.2, "hoechste_stufe": 3, "vorrang": "speicher_zuerst", "mindestlauf_s": 300, "mindestpause_s": 300, "haltezeit_s": 120, "schaltungen_je_stunde": 12},
+    {"modus": "ueberschuss", "vorrang": "heizstab_zuerst", "hoechste_stufe": 1}
+  ],
+  "block_invalid": [
+    {"modus": "ueberschuss", "reserve_kw": -0.1},
+    {"modus": "ueberschuss", "vorrang": "wallbox_zuerst"},
+    {"modus": "ueberschuss", "mindestlauf_s": -1}
+  ],
+  "block_inactive": [
+    {"modus": "aus"},
+    {"modus": "guenstig"},
+    {}
+  ],
+  "scenarios": [
+    {"name": "Überschuss startet eine Phase erst nach 60 s", "params": {"modus": "ueberschuss"},
+     "steps": [
+       {"t": 0, "grid": -2.5, "rod": 0, "expect": {"stufe": 0, "code": "ueberschuss_pruefen", "changed": false, "next_up": 60}},
+       {"t": 30, "grid": -2.5, "rod": 0, "expect": {"stufe": 0, "code": "ueberschuss_pruefen", "changed": false, "next_up": 60}},
+       {"t": 60, "grid": -2.5, "rod": 0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": true}}
+     ]},
+    {"name": "Eigenlast zählt zurück: eine laufende Phase flattert nicht", "params": {"modus": "ueberschuss"},
+     "state": {"stufe": 1, "seit": -600, "zuletzt_ein": -600},
+     "steps": [
+       {"t": 0, "grid": -0.4, "rod": 2.0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": false}},
+       {"t": 60, "grid": -0.4, "rod": 2.0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": false}},
+       {"t": 120, "grid": 0.05, "rod": 2.0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": false}}
+     ]},
+    {"name": "Reserve nicht erfüllt: aus bleibt aus", "params": {"modus": "ueberschuss"},
+     "steps": [
+       {"t": 0, "grid": -2.1, "rod": 0, "expect": {"stufe": 0, "code": "kein_ueberschuss", "changed": false}},
+       {"t": 90, "grid": -2.1, "rod": 0, "expect": {"stufe": 0, "code": "kein_ueberschuss", "changed": false}}
+     ]},
+    {"name": "Zwei Phasen erst nach der Haltezeit", "params": {"modus": "ueberschuss"},
+     "state": {"stufe": 1, "seit": -30, "zuletzt_ein": -30},
+     "steps": [
+       {"t": 0, "grid": -2.5, "rod": 2.0, "expect": {"stufe": 1, "code": "haltezeit", "changed": false, "next_up": 90}},
+       {"t": 60, "grid": -2.5, "rod": 2.0, "expect": {"stufe": 1, "code": "haltezeit", "changed": false, "next_up": 90}},
+       {"t": 90, "grid": -2.5, "rod": 2.0, "expect": {"stufe": 2, "code": "ueberschuss", "changed": true}}
+     ]},
+    {"name": "Aufwärts eine Stufe auf einmal", "params": {"modus": "ueberschuss"},
+     "steps": [
+       {"t": 0, "grid": -8.0, "rod": 0, "expect": {"stufe": 0, "code": "ueberschuss_pruefen", "changed": false}},
+       {"t": 60, "grid": -8.0, "rod": 0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": true}},
+       {"t": 120, "grid": -6.0, "rod": 2.0, "expect": {"stufe": 1, "code": "haltezeit", "changed": false, "next_up": 180}},
+       {"t": 180, "grid": -6.0, "rod": 2.0, "expect": {"stufe": 2, "code": "ueberschuss", "changed": true}}
+     ]},
+    {"name": "Netzbezug 30 s: sofort auf die Stufe, die passt", "params": {"modus": "ueberschuss"},
+     "state": {"stufe": 3, "seit": -600, "zuletzt_ein": -600},
+     "steps": [
+       {"t": 0, "grid": 1.0, "rod": 6.0, "expect": {"stufe": 3, "code": "kein_ueberschuss", "changed": false}},
+       {"t": 15, "grid": 1.0, "rod": 6.0, "expect": {"stufe": 3, "code": "kein_ueberschuss", "changed": false}},
+       {"t": 30, "grid": 1.0, "rod": 6.0, "expect": {"stufe": 2, "code": "kein_ueberschuss", "changed": true}}
+     ]},
+    {"name": "Kurzer Netzbezug unter 30 s ändert nichts", "params": {"modus": "ueberschuss"},
+     "state": {"stufe": 2, "seit": -600, "zuletzt_ein": -600},
+     "steps": [
+       {"t": 0, "grid": 0.8, "rod": 4.0, "expect": {"stufe": 2, "code": "kein_ueberschuss", "changed": false}},
+       {"t": 20, "grid": -0.3, "rod": 4.0, "expect": {"stufe": 2, "code": "ueberschuss", "changed": false}},
+       {"t": 40, "grid": 0.8, "rod": 4.0, "expect": {"stufe": 2, "code": "kein_ueberschuss", "changed": false}}
+     ]},
+    {"name": "Mindestlauf hält die kleinste Stufe, höchstens so lange", "params": {"modus": "ueberschuss"},
+     "state": {"stufe": 1, "seit": -60, "zuletzt_ein": -60},
+     "steps": [
+       {"t": 0, "grid": 1.5, "rod": 2.0, "expect": {"stufe": 1, "code": "kein_ueberschuss", "changed": false}},
+       {"t": 30, "grid": 1.5, "rod": 2.0, "expect": {"stufe": 1, "code": "mindestlauf", "changed": false, "next_up": 240}},
+       {"t": 240, "grid": 1.5, "rod": 2.0, "expect": {"stufe": 0, "code": "kein_ueberschuss", "changed": true}}
+     ]},
+    {"name": "Mindestpause nach dem Ausschalten", "params": {"modus": "ueberschuss"},
+     "state": {"stufe": 0, "seit": -100, "zuletzt_aus": -100},
+     "steps": [
+       {"t": 0, "grid": -3.0, "rod": 0, "expect": {"stufe": 0, "code": "mindestpause", "changed": false, "next_up": 200}},
+       {"t": 60, "grid": -3.0, "rod": 0, "expect": {"stufe": 0, "code": "mindestpause", "changed": false, "next_up": 200}},
+       {"t": 200, "grid": -3.0, "rod": 0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": true}}
+     ]},
+    {"name": "Messwerte fehlen: keine neue Stufe, nach 60 s aus", "params": {"modus": "ueberschuss"},
+     "state": {"stufe": 2, "seit": -600, "zuletzt_ein": -600},
+     "steps": [
+       {"t": 0, "grid": null, "rod": 4.0, "expect": {"stufe": 2, "code": "messwerte_fehlen", "changed": false}},
+       {"t": 30, "grid": -5.0, "grid_age": 40, "rod": 4.0, "expect": {"stufe": 2, "code": "messwerte_fehlen", "changed": false}},
+       {"t": 60, "grid": -5.0, "rod": null, "expect": {"stufe": 0, "code": "messwerte_fehlen", "changed": true}}
+     ]},
+    {"name": "Speicher zuerst: was der Speicher lädt, ist kein Überschuss", "params": {"modus": "ueberschuss", "vorrang": "speicher_zuerst"},
+     "steps": [
+       {"t": 0, "grid": 0.0, "batt": 3.0, "rod": 0, "expect": {"stufe": 0, "code": "kein_ueberschuss", "changed": false}},
+       {"t": 60, "grid": 0.0, "batt": 3.0, "rod": 0, "expect": {"stufe": 0, "code": "kein_ueberschuss", "changed": false}}
+     ]},
+    {"name": "Heizstab zuerst: die Ladeleistung des Speichers zählt", "params": {"modus": "ueberschuss", "vorrang": "heizstab_zuerst"},
+     "steps": [
+       {"t": 0, "grid": 0.0, "batt": 3.0, "rod": 0, "expect": {"stufe": 0, "code": "ueberschuss_pruefen", "changed": false}},
+       {"t": 60, "grid": 0.0, "batt": 3.0, "rod": 0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": true}}
+     ]},
+    {"name": "Ein Speicher, der in den Stab entlädt, ist nie Überschuss", "params": {"modus": "ueberschuss", "vorrang": "heizstab_zuerst"},
+     "state": {"stufe": 1, "seit": -600, "zuletzt_ein": -600},
+     "steps": [
+       {"t": 0, "grid": 0.0, "batt": -2.0, "rod": 2.0, "expect": {"stufe": 1, "code": "kein_ueberschuss", "changed": false}},
+       {"t": 30, "grid": 0.0, "batt": -2.0, "rod": 2.0, "expect": {"stufe": 0, "code": "kein_ueberschuss", "changed": true}}
+     ]},
+    {"name": "Höchste Stufe: nur eine Phase, auch bei viel Sonne", "params": {"modus": "ueberschuss", "hoechste_stufe": 1},
+     "steps": [
+       {"t": 0, "grid": -8.0, "rod": 0, "expect": {"stufe": 0, "code": "ueberschuss_pruefen", "changed": false}},
+       {"t": 60, "grid": -8.0, "rod": 0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": true}},
+       {"t": 400, "grid": -6.0, "rod": 2.0, "expect": {"stufe": 1, "code": "ueberschuss", "changed": false}}
+     ]},
+    {"name": "Höchste Stufe gesenkt: sofort folgen", "params": {"modus": "ueberschuss", "hoechste_stufe": 1},
+     "state": {"stufe": 3, "seit": -600, "zuletzt_ein": -600},
+     "steps": [
+       {"t": 0, "grid": -2.0, "rod": 6.0, "expect": {"stufe": 1, "code": "hoechste_stufe", "changed": true}}
+     ]},
+    {"name": "Schaltgrenze je Stunde", "params": {"modus": "ueberschuss", "schaltungen_je_stunde": 2},
+     "state": {"stufe": 1, "seit": -300, "zuletzt_ein": -300, "schaltungen": [-3000, -300]},
+     "steps": [
+       {"t": 0, "grid": -2.5, "rod": 2.0, "expect": {"stufe": 1, "code": "schaltgrenze", "changed": false, "next_up": 600}},
+       {"t": 300, "grid": -2.5, "rod": 2.0, "expect": {"stufe": 1, "code": "schaltgrenze", "changed": false, "next_up": 600}},
+       {"t": 600, "grid": -2.5, "rod": 2.0, "expect": {"stufe": 2, "code": "ueberschuss", "changed": true}}
+     ]}
+  ]
+}

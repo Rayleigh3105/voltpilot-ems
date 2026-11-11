@@ -21,12 +21,18 @@ import java.util.List;
  * <p>Ebenso fehlt der {@code slug} eines Kanals mit Absicht: der Kunde vergibt
  * einen KLARTEXT-Namen, die Kennung leitet der Server ab. Getippte Kennungen
  * wären eine zweite Wahrheit über denselben Messwert.
+ *
+ * <p>{@code geraetesuche} ist derselbe Bezug wie im Anlege-Weg der Vorlagen
+ * ({@link SaveComponentRequest}): das Portal sendet ihn, wenn ein Fund
+ * „Vielleicht · selbst beschreiben" übernommen wurde. Er gilt nur beim
+ * Anlegen; absent = der Weg wie bisher.
  */
 public record SaveSelfBuildRequest(
         @Size(max = 200) String label,
         @NotNull @Valid Connection connection,
         @NotNull @Valid List<ChannelRequest> channels,
-        @Size(max = 200) String note) {
+        @Size(max = 200) String note,
+        @Valid GeraetesucheBezug geraetesuche) {
 
     /** Wo das Gerät im Netz des Kunden steht. */
     public record Connection(

@@ -1,0 +1,128 @@
+{
+  "beschreibung": "Geräte & Updates G8: auf welchem Gerät die Box läuft. 'erkennung' prüft die Box (Go, edge-app/core/internal/geraet), 'herzschlag' die Annahme der Cloud (Java, ota.BoxGeraet). Vertrag: box-geraet.md.",
+  "erkennung": [
+    {
+      "name": "GL.iNet Mango unter OpenWrt (sysinfo gewinnt vor cpuinfo)",
+      "arch": "mipsle",
+      "dateien": {
+        "tmp/sysinfo/model": "GL.iNet GL-MT300N-V2\n",
+        "proc/cpuinfo": "system type\t\t: MediaTek MT7628AN ver:1 eco:2\nmachine\t\t\t: GL.iNet GL-MT300N-V2 (alt)\n"
+      },
+      "erwartet": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle" }
+    },
+    {
+      "name": "Raspberry Pi mit Device-Tree (NUL am Ende)",
+      "arch": "arm64",
+      "dateien": { "proc/device-tree/model": "Raspberry Pi 5 Model B Rev 1.0\u0000" },
+      "erwartet": { "modell": "Raspberry Pi 5 Model B Rev 1.0", "arch": "arm64" }
+    },
+    {
+      "name": "Raspberry Pi im Docker-Container: Device-Tree maskiert, die Model-Zeile in /proc/cpuinfo bleibt",
+      "arch": "arm64",
+      "dateien": {
+        "proc/cpuinfo": "processor\t: 0\nBogoMIPS\t: 108.00\nFeatures\t: fp asimd evtstrm crc32 cpuid\n\nHardware\t: BCM2835\nRevision\t: c03114\nSerial\t\t: 10000000a1b2c3d4\nModel\t\t: Raspberry Pi 4 Model B Rev 1.4\n"
+      },
+      "erwartet": { "modell": "Raspberry Pi 4 Model B Rev 1.4", "arch": "arm64" }
+    },
+    {
+      "name": "PC mit DMI: Hersteller und Produkt",
+      "arch": "amd64",
+      "dateien": {
+        "sys/class/dmi/id/sys_vendor": "Intel(R) Client Systems\n",
+        "sys/class/dmi/id/product_name": "NUC11TNHi5\n"
+      },
+      "erwartet": { "modell": "Intel(R) Client Systems NUC11TNHi5", "arch": "amd64" }
+    },
+    {
+      "name": "PC: das Produkt nennt den Hersteller schon",
+      "arch": "amd64",
+      "dateien": {
+        "sys/class/dmi/id/sys_vendor": "HP\n",
+        "sys/class/dmi/id/product_name": "HP EliteDesk 800 G4 DM 35W\n"
+      },
+      "erwartet": { "modell": "HP EliteDesk 800 G4 DM 35W", "arch": "amd64" }
+    },
+    {
+      "name": "PC: Platzhalter des Herstellers fallen weg, das echte Produkt bleibt",
+      "arch": "amd64",
+      "dateien": {
+        "sys/class/dmi/id/sys_vendor": "System manufacturer\n",
+        "sys/class/dmi/id/product_name": "Z390 GAMING X\n"
+      },
+      "erwartet": { "modell": "Z390 GAMING X", "arch": "amd64" }
+    },
+    {
+      "name": "PC nur mit Platzhaltern: kein Modell, nie ein erfundenes",
+      "arch": "amd64",
+      "dateien": {
+        "sys/class/dmi/id/sys_vendor": "To Be Filled By O.E.M.\n",
+        "sys/class/dmi/id/product_name": "To Be Filled By O.E.M.\n"
+      },
+      "erwartet": { "modell": null, "arch": "amd64" }
+    },
+    {
+      "name": "Leerraum im Modell wird zusammengefasst",
+      "arch": "arm64",
+      "dateien": { "tmp/sysinfo/model": "  Raspberry Pi   4  Model B\t Rev 1.5 \n" },
+      "erwartet": { "modell": "Raspberry Pi 4 Model B Rev 1.5", "arch": "arm64" }
+    },
+    {
+      "name": "Nichts lesbar: kein Modell, die Architektur bleibt",
+      "arch": "amd64",
+      "dateien": {},
+      "erwartet": { "modell": null, "arch": "amd64" }
+    }
+  ],
+  "herzschlag": [
+    {
+      "name": "Edge Light auf der Mango, Loader kennt Updates (Stufe 2) und nennt seinen Stand",
+      "geraet": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": 1 },
+      "gespeichert": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": 1 }
+    },
+    {
+      "name": "Edge Light, Loader startet nur die Flash-Fassung (Stufe 1)",
+      "geraet": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "flash" },
+      "gespeichert": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "flash", "loader_stand": null }
+    },
+    {
+      "name": "Edge Light mit altem Loader ohne Marke: kein loader_stand, keine Angabe",
+      "geraet": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update" },
+      "gespeichert": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": null }
+    },
+    {
+      "name": "Docker-Box auf dem Raspberry Pi: ohne Loader",
+      "geraet": { "modell": "Raspberry Pi 4 Model B Rev 1.4", "arch": "arm64" },
+      "gespeichert": { "modell": "Raspberry Pi 4 Model B Rev 1.4", "arch": "arm64", "loader": null, "loader_stand": null }
+    },
+    {
+      "name": "ein unbekanntes Loader-Wort und eine krumme Architektur werden verworfen, nicht geraten",
+      "geraet": { "modell": "Mini-PC", "arch": "x86 64!", "loader": "uboot" },
+      "gespeichert": { "modell": "Mini-PC", "arch": null, "loader": null, "loader_stand": null }
+    },
+    {
+      "name": "ein krummer loader_stand wird verworfen, nie geraten: null oder kleiner 1",
+      "geraet": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": 0 },
+      "gespeichert": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": null }
+    },
+    {
+      "name": "ein loader_stand als Wort oder Bruch ist keine Zahl und wird verworfen",
+      "geraet": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": "drei" },
+      "gespeichert": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": null }
+    },
+    {
+      "name": "ein loader_stand jenseits der Obergrenze (1000000) wird verworfen",
+      "geraet": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": 1000001 },
+      "gespeichert": { "modell": "GL.iNet GL-MT300N-V2", "arch": "mipsle", "loader": "update", "loader_stand": null }
+    },
+    {
+      "name": "ein überlanges Modell wird nach dem Zusammenfassen des Leerraums hart auf 80 Zeichen gekürzt",
+      "geraet": { "modell": "  Sehr   langer Modellname 0123456789 0123456789 0123456789 0123456789 0123456789 Ende", "arch": "amd64" },
+      "gespeichert": { "modell": "Sehr langer Modellname 0123456789 0123456789 0123456789 0123456789 0123456789 En", "arch": "amd64", "loader": null, "loader_stand": null }
+    },
+    {
+      "name": "ein leeres Modell ist keine Angabe",
+      "geraet": { "modell": "   ", "arch": "arm64" },
+      "gespeichert": { "modell": null, "arch": "arm64", "loader": null, "loader_stand": null }
+    }
+  ]
+}

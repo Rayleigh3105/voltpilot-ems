@@ -31,8 +31,33 @@ LOAD_PERSISTENCE = "load-persistence"
 PV_PHYSICAL = "pv-physical"
 #: Challenger: gradient-boosted (XGBoost) load model on tabular features.
 LOAD_XGB = "load-xgb"
+#: S5 (E7 = A, Captain 11.11.2026): day-type profile (weekday vs. weekend/
+#: holiday mean per slot, :class:`voltpilot_forecast.load.ProfileLoadForecaster`).
+#: Ran only in the weekly outlook (S4) until now; S5 runs it on the regular
+#: quarter-hour horizon too (deterministic, no self-gate) so it accrues the
+#: same daily evaluations as every other load model and becomes a real
+#: candidate for the automatic switcher.
+LOAD_PROFILE = "load-profile"
 #: Challenger: physical PV model + learned residual correction (XGBoost).
 PV_RESIDUAL_XGB = "pv-residual-xgb"
+#: S0 (N1, Captain 11.11.2026: "Behebe den Lesefehler") - the HISTORICAL,
+#: mislabeled reading PV_PHYSICAL used until the fix: Open-Meteo's horizontal
+#: ``direct_radiation`` fed straight into the beam-normal DNI parameter
+#: (docs/forecasting.md). PV_PHYSICAL itself now reads the correct
+#: ``direct_normal_irradiance``; this id keeps the OLD computation running
+#: FOREVER as a comparison-only reference, so "alt gegen neu gegen gemessen"
+#: stays measured daily per site and the pauschale 14% loss assumption can
+#: later be checked against it.
+#:
+#: Deliberately ABSENT from KNOWN_MODELS below: unlike a real challenger it
+#: must never become active - not by convention, but because
+#: :func:`active_model` (env) and the api's per-site/platform model choice
+#: (``model_choice.py``, mirrored in ``ForecastModels.java``) both gate on
+#: membership here, so there is no path by which a human can select it. The
+#: daily evaluation still measures it: ``evaluate.py`` groups by the ``kind``
+#: COLUMN of the ``forecast`` table, never by this registry, so an unregistered
+#: id is scored exactly like any other.
+PV_PHYSICAL_LEGACY_DNI = "pv-physical-legacy-dni"
 
 #: The baseline per kind - the skill-score reference and the shipped default.
 BASELINE_MODELS: Mapping[ForecastKind, str] = {
@@ -40,14 +65,8 @@ BASELINE_MODELS: Mapping[ForecastKind, str] = {
     ForecastKind.PV: PV_PHYSICAL,
 }
 
-#: The challengers per kind - always shadow until promoted via env.
-CHALLENGER_MODELS: Mapping[ForecastKind, tuple[str, ...]] = {
-    ForecastKind.LOAD: (LOAD_XGB,),
-    ForecastKind.PV: (PV_RESIDUAL_XGB,),
-}
-
 KNOWN_MODELS: frozenset[str] = frozenset(
-    {LOAD_PERSISTENCE, PV_PHYSICAL, LOAD_XGB, PV_RESIDUAL_XGB}
+    {LOAD_PERSISTENCE, PV_PHYSICAL, LOAD_XGB, PV_RESIDUAL_XGB, LOAD_PROFILE}
 )
 
 # ---- active-model configuration (env) -----------------------------------------
@@ -84,14 +103,13 @@ def active_models(env: Mapping[str, str]) -> dict[ForecastKind, str]:
 
 
 def kind_of(model_id: str) -> ForecastKind:
-    """The forecast kind a model id belongs to."""
-    if model_id in (LOAD_PERSISTENCE, LOAD_XGB):
+    """The forecast kind a model id belongs to.
+
+    Deliberately unaware of ``PV_PHYSICAL_LEGACY_DNI`` - see its docstring:
+    nothing that calls this may ever be asked to resolve it.
+    """
+    if model_id in (LOAD_PERSISTENCE, LOAD_XGB, LOAD_PROFILE):
         return ForecastKind.LOAD
     if model_id in (PV_PHYSICAL, PV_RESIDUAL_XGB):
         return ForecastKind.PV
     raise ValueError(f"unknown forecast model id: {model_id!r}")
-
-
-def baseline_model(kind: ForecastKind) -> str:
-    """The skill-score reference model for ``kind``."""
-    return BASELINE_MODELS[kind]

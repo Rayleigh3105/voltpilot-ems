@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.web.dto.SichtbareListe;
 import com.voltpilot.api.zugriff.TeilansichtDienst;
 
+import com.voltpilot.api.erzeuger.AnlagensteuerungLesung;
 import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.history.HistoryRange;
@@ -13,6 +14,9 @@ import com.voltpilot.api.optimizer.SchedulePricingService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
+import com.voltpilot.api.repo.ForecastRepository;
+import com.voltpilot.api.repo.ForecastRueckblickRepository;
+import com.voltpilot.api.repo.ForecastWeeklyRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.CockpitLayoutRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
@@ -22,6 +26,7 @@ import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
+import com.voltpilot.api.tenant.AnfrageZeitgrenze;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.AnlageStandortService;
 import com.voltpilot.api.uems.BelegeImWeg;
@@ -33,7 +38,13 @@ import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.StandortRepository;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
+import com.voltpilot.api.web.dto.ForecastDto;
+import com.voltpilot.api.web.dto.RueckblickDto;
 import com.voltpilot.api.web.dto.ForecastQualityDto;
+import com.voltpilot.api.web.dto.ForecastSeriesDto;
+import com.voltpilot.api.web.dto.ForecastValueDto;
+import com.voltpilot.api.web.dto.WeeklyOutlookDto;
+import com.voltpilot.api.web.dto.YesterdayExpectedDto;
 import com.voltpilot.api.web.dto.HistoryDto;
 import com.voltpilot.api.web.dto.PriceHistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
@@ -52,6 +63,7 @@ import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -60,6 +72,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -92,7 +105,17 @@ public class SiteController {
     private final TeilansichtDienst teilansicht;
 
     private static final int MAX_POINTS = 5000;
+    /** Die Route der Anfrage-Kennung beim Anlegen (Tabelle {@code anfrage_kennung}). */
+    static final String ROUTE_ANLEGEN = "POST /api/v1/sites";
     private static final int MAX_PRICE_POINTS = 1000;
+    /** S4's weekly outlook always uses the Tagestyp profile - never the site's
+     * own active-model choice (unregistered, N4: {@code load.py}'s
+     * {@code ProfileLoadForecaster.model_id}). */
+    private static final String WEEKLY_LOAD_MODEL = "load-profile";
+    /** Der Rückblick vergleicht nur den Vortagslauf (S3, Bericht Abschnitt 9). */
+    private static final int RUECKBLICK_LEAD_DAYS = 1;
+    /** Bis zu sieben Tage im Blatt "Rückblick" (E5 = A). */
+    private static final int RUECKBLICK_TAGE = 7;
 
     private final SiteRepository sites;
     private final Geltungsbereich geltungsbereich;
@@ -101,6 +124,9 @@ public class SiteController {
     private final TelemetryRepository telemetry;
     private final PriceRepository prices;
     private final WeatherRepository weather;
+    private final ForecastRepository forecastRepo;
+    private final ForecastWeeklyRepository forecastWeekly;
+    private final ForecastRueckblickRepository forecastRueckblick;
     private final ScheduleRepository schedules;
     private final HistoryService history;
     private final ForecastQualityRepository forecastQuality;
@@ -115,6 +141,7 @@ public class SiteController {
     private final MessreihenBelege belege;
     private final NetzanschlussService netzanschluesse;
     private final BerichtsBelege berichtsBelege;
+    private final AnfrageKennungen anfrageKennungen;
     /** Der Förderweg (MiSpeL MP-5): mit Fassung bestimmt er den alten Netzlade-Schalter; als Setter, damit
      * Ausschnitt-Kontexte ohne ihn weiter starten. */
     private FoerderwegService foerderwege;
@@ -131,6 +158,9 @@ public class SiteController {
             TelemetryRepository telemetry,
             PriceRepository prices,
             WeatherRepository weather,
+            ForecastRepository forecastRepo,
+            ForecastWeeklyRepository forecastWeekly,
+            ForecastRueckblickRepository forecastRueckblick,
             ScheduleRepository schedules,
             HistoryService history,
             ForecastQualityRepository forecastQuality,
@@ -145,8 +175,10 @@ public class SiteController {
             MessreihenBelege belege,
             NetzanschlussService netzanschluesse,
             BerichtsBelege berichtsBelege,
-            Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht) {
+            Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht,
+            AnfrageKennungen anfrageKennungen) {
         this.sites = sites;
+        this.anfrageKennungen = anfrageKennungen;
         this.teilansicht = teilansicht;
         this.geltungsbereich = geltungsbereich;
         this.devices = devices;
@@ -154,6 +186,9 @@ public class SiteController {
         this.telemetry = telemetry;
         this.prices = prices;
         this.weather = weather;
+        this.forecastRepo = forecastRepo;
+        this.forecastWeekly = forecastWeekly;
+        this.forecastRueckblick = forecastRueckblick;
         this.schedules = schedules;
         this.history = history;
         this.forecastQuality = forecastQuality;
@@ -199,31 +234,67 @@ public class SiteController {
      * makes a site here, then claims devices into it.
  *
      * <p>Additively (Bestandsübernahme der Standorte, AP-02 IP-9) the new site
-     * gets its Standort in the SAME transaction: the given {@code standortId}, or
-     * the one Standort of the Kundenbereich when there is exactly one; none when
+     * gets its Standort in the SAME transaction: the given {@code standortId}; none when
      * there is none (unchanged); with several the choice is required (422
-     * {@code standort_waehlen}) - judged BEFORE the site is written. The response
+     * {@code standort_waehlen}) - judged BEFORE the site is written. A customer account
+     * must choose already with ONE Standort (Anlage-Flow a1, F16: never silently at the
+     * Standort of another Anlage); the platform and service accounts keep the old default
+     * of the one Standort as a transition. The response
      * stays the plain {@link SiteDto}; {@code GET /sites/{id}} shows the Standort.
      */
     // Recht: `anlage.verwalten` (die Anlage anlegen); die Zuordnung dazu `anlage.zuordnen`.
     @PostMapping
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     @Transactional
-    public ResponseEntity<SiteDto> createSite(@Valid @RequestBody CreateSiteRequest request,
-            Authentication auth) {
+    public ResponseEntity<?> createSite(@Valid @RequestBody CreateSiteRequest request,
+            Authentication auth,
+            @org.springframework.web.bind.annotation.RequestHeader(value = AnfrageKennungen.KOPF,
+                    required = false) String anfrageKopf) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
-        Optional<StandortRepository.Standort> standort = anlageStandort.zielBeimAnlegen(request.standortId());
+        // B3 (Anlage-Flow a1): dieselbe Anfrage-Kennung legt nie ein zweites Mal an - die Antwort
+        // der ersten kommt zurück (gesperrt bis zum Ende dieser Transaktion, gemerkt 24 h).
+        String kennung = AnfrageKennungen.kennung(anfrageKopf);
+        String fingerabdruck = kennung == null ? null : anfrageKennungen.fingerabdruck(request);
+        if (kennung != null) {
+            anfrageKennungen.sperren(ROUTE_ANLEGEN, kennung);
+            Optional<AnfrageKennungen.Gemerkt> gemerkt = anfrageKennungen.gemerkt(ROUTE_ANLEGEN, kennung,
+                    fingerabdruck);
+            if (gemerkt.isPresent()) {
+                return AnfrageKennungen.antwort(gemerkt.get());
+            }
+        }
+        Optional<StandortRepository.Standort> standort = anlageStandort.zielBeimAnlegen(request.standortId(),
+                Kundenkonto.ist(auth));
         ProtokollAkteur wer = standort.isPresent() ? OrtAnfrage.akteur(auth) : null;
+        // Anlage-Flow a1: die Anlage übernimmt Lage und Gebotszone ihres Standorts, solange sie keine
+        // eigenen nennt - die Adresse wird einmal erfasst, nicht je Anlage noch einmal.
+        java.math.BigDecimal breite = request.latitude();
+        java.math.BigDecimal laenge = request.longitude();
+        if (breite == null && laenge == null && standort.isPresent()) {
+            breite = standort.get().lageBreitengrad();
+            laenge = standort.get().lageLaengengrad();
+        }
+        String zone = request.biddingZone() == null || request.biddingZone().isBlank()
+                ? standort.map(s -> gebotszone(s.land())).orElse(request.biddingZoneOrDefault())
+                : request.biddingZoneOrDefault();
         SiteDto created = sites.create(tenantId, request.name().trim(),
-                request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
+                zone, breite, laenge,
                 request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
                 request.tarifArtOrDefault(), request.tarifParamOrNull(), request.netzladenErlaubt(),
                 request.maxFeedInKw());
         standort.ifPresent(s -> anlageStandort.beimAnlegen(created.id(), s, wer));
+        if (kennung != null) {
+            anfrageKennungen.merken(ROUTE_ANLEGEN, kennung, fingerabdruck, HttpStatus.CREATED, created);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /** Die Gebotszone aus dem Land des Standorts (wie {@code zoneForCountry} im Portal). */
+    static String gebotszone(String land) {
+        return "AT".equals(land) ? "AT" : "CH".equals(land) ? "CH" : "DE-LU";
     }
 
     /**
@@ -307,6 +378,14 @@ public class SiteController {
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId, Authentication auth) {
+        // vp-db-zeitgrenze: das Löschen der Serien-Daten unten räumt die GANZE Telemetrie-/
+        // Rollup-Historie der Anlage ohne Datumsgrenze ab (SeriesRepository#deleteForSite) - bei
+        // einer lange laufenden
+        // Anlage kann das realistisch an die 30-s-Anfrage-Zeitgrenze kommen. Eine Anlagenlöschung ist
+        // ohnehin durch das 409-„noch Geräte vorhanden"-Gate selten und bewusst endgültig; ausgenommen
+        // statt asynchron gemacht, weil kein Teilerfolg sinnvoll wäre (die Anlage soll danach restlos
+        // weg sein, nicht „noch in Arbeit").
+        AnfrageZeitgrenze.ausnahme();
         geltungsbereich.requireSite(siteId);
         int deviceCount = devices.countForSite(siteId);
         if (deviceCount > 0) {
@@ -440,6 +519,100 @@ public class SiteController {
         WeatherForecastDto forecast = weather.latestForSite(siteId);
         // No run stored yet: return an empty (but well-formed) forecast, not 404.
         return forecast != null ? forecast : new WeatherForecastDto(null, List.of());
+    }
+
+    /**
+     * S1 ("der Lesepunkt", report vp-prognosen-konzept section 9): the site's
+     * PV/load forecast of its ACTIVE model (same precedence
+     * {@link #forecastQuality(UUID, int)} resolves) - makes the forecast
+     * available to a site that only measures, independent of whether it has
+     * a Fahrplan. {@code forecast} itself carries no RLS and cannot get one
+     * (see {@link ForecastRepository}); {@code geltungsbereich.requireSite}
+     * is the fence here, exactly like every other site-scoped route - a
+     * foreign site is a 404.
+     *
+     * <p>{@code yesterdayExpected} is the evening run (17:45 ± 15 min Europe/
+     * Berlin) of the PREVIOUS day, restricted to yesterday's own slots - what
+     * VoltPilot expected for yesterday, read back today. {@code weekly} is
+     * the S4 hourly outlook from {@code forecast_weekly} ("übermorgen"
+     * onward): ALWAYS the physical PV model and the Tagestyp load profile,
+     * never the site's own active-model choice - an outlook product, not
+     * shadow-mode forecasting.
+     */
+    @GetMapping("/{siteId}/forecast")
+    public ForecastDto forecast(@PathVariable UUID siteId) {
+        geltungsbereich.requireSite(siteId);
+        Map<String, String> active = forecastModels.activeModels(siteId);
+        String pvModel = active.get(ForecastModels.KIND_PV);
+        String loadModel = active.get(ForecastModels.KIND_LOAD);
+
+        ForecastSeriesDto pv = forecastRepo.latest(siteId, ForecastModels.KIND_PV, pvModel);
+        ForecastSeriesDto load = forecastRepo.latest(siteId, ForecastModels.KIND_LOAD, loadModel);
+
+        LocalDate today = LocalDate.now(HistoryRange.ZONE);
+        LocalDate yesterday = today.minusDays(1);
+        Instant eveningTarget = yesterday.atTime(17, 45).atZone(HistoryRange.ZONE).toInstant();
+        Duration eveningTolerance = Duration.ofMinutes(15);
+        Instant yesterdayStart = yesterday.atStartOfDay(HistoryRange.ZONE).toInstant();
+        Instant yesterdayEnd = today.atStartOfDay(HistoryRange.ZONE).toInstant();
+        ForecastSeriesDto pvYesterday = forecastRepo.evening(
+                siteId, ForecastModels.KIND_PV, pvModel,
+                eveningTarget, eveningTolerance, yesterdayStart, yesterdayEnd);
+        ForecastSeriesDto loadYesterday = forecastRepo.evening(
+                siteId, ForecastModels.KIND_LOAD, loadModel,
+                eveningTarget, eveningTolerance, yesterdayStart, yesterdayEnd);
+
+        ForecastSeriesDto pvWeekly = forecastWeekly.latest(
+                siteId, ForecastModels.KIND_PV, ForecastModels.PV_PHYSICAL);
+        ForecastSeriesDto loadWeekly = forecastWeekly.latest(
+                siteId, ForecastModels.KIND_LOAD, WEEKLY_LOAD_MODEL);
+
+        return new ForecastDto(
+                pvModel, loadModel,
+                pv.runAt(), pv.points(),
+                load.runAt(), load.points(),
+                new YesterdayExpectedDto(
+                        pvYesterday.runAt(), pvYesterday.points(),
+                        loadYesterday.runAt(), loadYesterday.points()),
+                new WeeklyOutlookDto(
+                        pvWeekly.runAt(), pvWeekly.points(),
+                        loadWeekly.runAt(), loadWeekly.points()));
+    }
+
+    /**
+     * Das Blatt "Rückblick" (S3, Bericht Abschnitt 9, E5 = A): je Art (Sonne,
+     * Verbrauch) die letzten {@value #RUECKBLICK_TAGE} Tage des AKTIVEN
+     * Modells - "am Vortag erwartet" neben "gemessen" -, dazu der
+     * Rückblick-Satz (0,8-Quantil der Tagesabweichung über
+     * {@value RueckblickDto#FENSTER_TAGE} Tage). Derselbe Vortagsvergleich
+     * ({@code lead_days = 1}), den auch die Automatik aus S5 liest. Unter
+     * {@value RueckblickDto.KindRueckblickDto#MIN_TAGE} bewerteten Tagen
+     * bleibt {@code abweichungKwh} {@code null} - "Fehlend ist keine Null".
+     */
+    @GetMapping("/{siteId}/forecast-rueckblick")
+    public RueckblickDto forecastRueckblick(@PathVariable UUID siteId) {
+        geltungsbereich.requireSite(siteId);
+        Map<String, String> active = forecastModels.activeModels(siteId);
+        LocalDate since = LocalDate.now(HistoryRange.ZONE).minusDays(RueckblickDto.FENSTER_TAGE);
+        return new RueckblickDto(List.of(
+                rueckblickVonArt(siteId, ForecastModels.KIND_PV, active.get(ForecastModels.KIND_PV), since),
+                rueckblickVonArt(siteId, ForecastModels.KIND_LOAD, active.get(ForecastModels.KIND_LOAD), since)));
+    }
+
+    private RueckblickDto.KindRueckblickDto rueckblickVonArt(
+            UUID siteId, String kind, String model, LocalDate since) {
+        List<ForecastRueckblickRepository.RueckblickTag> tage =
+                forecastRueckblick.tage(siteId, kind, model, RUECKBLICK_LEAD_DAYS, RUECKBLICK_TAGE);
+        int bewertet = forecastRueckblick.bewertetTage(siteId, kind, model, RUECKBLICK_LEAD_DAYS, since);
+        Double abweichung = bewertet >= RueckblickDto.KindRueckblickDto.MIN_TAGE
+                ? forecastRueckblick.quantil80Kwh(siteId, kind, model, RUECKBLICK_LEAD_DAYS, since)
+                : null;
+        return new RueckblickDto.KindRueckblickDto(
+                kind, model,
+                tage.stream()
+                        .map(t -> new RueckblickDto.TagDto(t.day(), t.erwartetKwh(), t.gemessenKwh()))
+                        .toList(),
+                abweichung, bewertet);
     }
 
     /**
@@ -610,6 +783,15 @@ public class SiteController {
     @GetMapping("/{siteId}/sources")
     public List<SiteSourceDto> siteSources(@PathVariable UUID siteId) {
         geltungsbereich.requireSite(siteId);
-        return sourceStatus.forSite(siteId);
+        List<SiteSourceDto> quellen = sourceStatus.forSite(siteId);
+        return steuerungen == null ? quellen : steuerungen.inQuellen(siteId, quellen, Instant.now());
+    }
+
+    private AnlagensteuerungLesung steuerungen;
+
+    /** UEMS EZ-22: die Quelle einer Anlagensteuerung meldet sich mit der Lesung der Steuerung. */
+    @Autowired(required = false)
+    void setAnlagensteuerungLesung(AnlagensteuerungLesung steuerungen) {
+        this.steuerungen = steuerungen;
     }
 }

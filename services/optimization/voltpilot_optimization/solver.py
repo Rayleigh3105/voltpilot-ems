@@ -29,10 +29,8 @@ Formulation (per slot t, dt = 0.25 h):
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t, 0) - curtail_t                (charge from produced PV only,
                                                                     PV-bus Bilanzierung - FK3)
-    and, ONLY when strenge_aktiv (MiSpeL MP-45 operator switch, EEG mode, see below):
-               import_t <= tol / 0.25 h + M_imp_t * (1 - is_charging_t)  (no charging in a
-                                                                    quarter hour with grid
-                                                                    import - strict reading)
+               import_t <= M_imp_t * (1 - is_charging_t)           (no charging in a quarter hour
+                                                                    with grid import - EN-2 A)
     and, ONLY when leistungspreis_eur_kw is set (peak shaving, PS-1, see below):
                peak >= grid_import_t,  peak >= peak_so_far         (epigraph over the billing
                peak_below >= grid_import_t                          period's import peak)
@@ -193,63 +191,55 @@ Design decisions, deliberately:
   argument at the constant.
 
 - **The per-site grid-charging switch (``netzladen_erlaubt``, captain decision
-  2026-07-07; PV-bus semantics per FK3, captain decision 2026-07-16)** is
-  exactly ONE conditional constraint - merchant mode (``True``) builds the
+  2026-07-07; PV-bus bound per FK3, captain decision 2026-07-16; no charging
+  during import per EN-2 A, captain decision 2026-11-02)** is exactly TWO
+  conditional constraints - merchant mode (``True``) builds the
   identical model as before, so the two modes share every other rule (prices,
   forecasts, §14a, efficiency, curtailment, tie-breaks) and merchant plans are
   regression-identical to the pre-switch optimizer. EEG mode (``False``, the
-  DB default) enforces the Ausschliesslichkeitsprinzip with **PV-bus
-  Bilanzierung** (FK3, matching the captain's Excel reference spec and
-  DC-hybrid physics):
+  DB default) enforces the Ausschliesslichkeitsprinzip at the grid
+  connection point:
 
-  ``charge_t <= max(pv_t, 0) - curtail_t`` - the battery may charge up to the
-  full PV actually PRODUCED, **while the house draws its load from the grid in
-  parallel** (the PV bus feeds the battery, the grid feeds the load - two
-  separate flows on a DC-hybrid). This replaces the pre-FK3 Zähler
-  (meter-point) interpretation, which was strictly tighter (``charge <=
-  max(pv - load, 0)`` plus an import ban while charging) and forbade charging
-  on cloudy days (load > pv) that the reference spec allows. Subtracting
-  ``curtail_t`` is LOAD-BEARING: it is what keeps the documented Graustrom
-  loophole closed - at negative prices the model would otherwise curtail the
-  PV fully and cover a nominally "solar" charge with paid grid import (the
-  pre-FK3 import-ban constraint existed for exactly that and is now removed).
-  With the bound on pv - curtail, the charge power is always covered by
-  UNCURTAILED PV: in a charging slot the grid balance gives
-  ``import <= load_t`` (the import can at most feed the load, never the
-  battery), so the stored energy stays provably solar and the pricing layer
-  may still credit EEG remuneration (Marktprämie / feste Vergütung) on ALL
-  export in EEG mode - see :mod:`voltpilot_optimization.pricing`; the
-  premium-eligibility argument is preserved. Curtailment itself stays
-  unrestricted for the FEED-IN side - full curtailment while importing the
-  LOAD remains a legitimate (and EEG-clean) negative-price play; a fully
-  curtailed slot simply cannot charge.
+  ``charge_t <= max(pv_t, 0) - curtail_t`` (``solar_only_charge``, FK3) - the
+  battery never charges more than the PV actually PRODUCED. Subtracting
+  ``curtail_t`` is LOAD-BEARING: it keeps the documented Graustrom loophole
+  closed - at negative prices the model would otherwise curtail the PV fully
+  and cover a nominally "solar" charge with paid grid import. Curtailment
+  itself stays unrestricted for the FEED-IN side - full curtailment while
+  importing the LOAD remains a legitimate (and EEG-clean) negative-price
+  play; a fully curtailed slot simply cannot charge.
 
-- **Strenge Ausschliesslichkeit (MiSpeL MP-45, Kasten W1 = D: Option B
-  schaltbar bereithalten).** The BNetzA describes the Ausschliesslichkeits-
-  option more strictly than FK3: „kein Verbrauch im Stromspeicher ..., waehrend
-  es gleichzeitig einen Netzbezug gibt“ (Festlegung MiSpeL, Anlage 1 S. 11;
-  gleichzeitig = within the same 15-minute interval, Anlage 1 S. 7 Abschn. 1
-  „Zeitgleichheit“; Speichervorrang je Viertelstunde, § 21 Abs. 4 S. 3 EnFG,
-  Anlage 1 S. 14-15). With the operator switch on for an EEG site
-  (``config.mispel_strenge_site_ids``), ``strenge_ausschliesslichkeit``
-  forbids grid import in every charging slot beyond the tolerance:
-  ``import_t <= tol / 0.25 h + M_imp_t * (1 - is_charging_t)``. It reuses the
-  charge/discharge binary, so it adds no integer variable: a slot that
-  charges at all (``is_charging_t = 1``) imports at most the tolerance, a slot
-  that does not is unrestricted. With the default tolerance 0 this is exactly
-  the quantity the MP-2 Pruefer measures, (1)¼ = MIN [ Z1NB¼ ; Z2V¼ ] = 0
-  (Anlage 1 S. 33); with a tolerance > 0 it is conservative (it caps the
-  import, not the MIN). Off (the default) builds no constraint at all, so
-  every plan is byte-identical to FK3; a merchant site ignores the switch.
-  Present in BOTH builds like ``solar_only_charge`` - the infeasible-§14a
-  fallback must stay just as strict. Charging zero always satisfies it, so it
-  never makes a plan infeasible on its own.
+  ``import_t <= M_imp_t * (1 - is_charging_t)`` (``strenge_ausschliesslichkeit``,
+  ported from MiSpeL MP-45) - a slot that charges imports NOTHING. FK3 alone
+  let the house import its load in parallel while the PV bus fed the battery
+  ("two separate flows on a DC-hybrid"); in the balance at the connection
+  point that is grid power in the storage, which is how the Bundesnetzagentur
+  reads it since its MiSpeL determination of 2026-10-01 („kein Verbrauch im
+  Stromspeicher ..., waehrend es gleichzeitig einen Netzbezug gibt“, Anlage 1
+  S. 11; gleichzeitig = the same 15-minute interval, Anlage 1 S. 7). At
+  Herzogau on 2026-11-02 it charged 25.6 kWh while the house imported. With
+  both rules a charging slot's grid balance gives ``charge_t + curtail_t <=
+  pv_t - load_t``: the battery charges only from the forecast PV SURPLUS, so
+  the stored energy stays provably solar and the pricing layer may still
+  credit EEG remuneration (Marktprämie / feste Vergütung) on ALL export in
+  EEG mode - see :mod:`voltpilot_optimization.pricing`. It reuses the
+  charge/discharge binary, so it adds no integer variable, and charging zero
+  always satisfies it, so it never makes a plan infeasible on its own (the
+  "Speicher jetzt laden" preview's forced charge excepted, which is the
+  caller's lower bound). No tolerance: the determination knows none. Present
+  in BOTH builds - the infeasible-§14a fallback must stay just as clean. The
+  slot grid is the quarter hour (``SLOT_MINUTES``), so the rule per slot IS
+  the rule per quarter hour. The box enforces the same rule against MEASURED
+  values (``grid_charge_allowed`` false), because a forecast surplus is not a
+  measured one.
 
 - **Ehrliche Marge on grid-sourced charge (Captain-Entscheid E6 A,
-  24.09.2026; K0 vp-wr-k0-plandaten).** FK3 is a LEGAL statement (the PV bus
-  may feed the battery while the house imports), not an economic one:
-  economically every kW charged beyond the slot's PV surplus is a kW bought
-  at the import price. At a fixed-tariff site the model used to take that
+  24.09.2026; K0 vp-wr-k0-plandaten).** Economically every kW charged beyond
+  the slot's PV surplus is a kW bought at the import price. (In EEG mode the
+  rule ``strenge_ausschliesslichkeit`` above has since 2026-11-02 made that
+  part zero, so the hurdle only still binds where grid charging is allowed;
+  the example below is from the time FK3 alone let the PV bus charge while
+  the house imported.) At a fixed-tariff site the model used to take that
   purchase for a hairline gain - Herzogau 24.09. 14:00-14:30Z charged
   7,1/5,4/4,0 kW over the PV bus at 25 ct to sell at 28,8/29,1 ct, +0,5 to
   +0,8 ct/kWh after the round trip, lambda pinned at (25 + 0,5)/eta = 26,6.
@@ -327,7 +317,6 @@ from voltpilot_optimization.config import (
     peak_ratchet_eur_per_kw,
 )
 from voltpilot_optimization.domain import (
-    VIERTELSTUNDE_H,
     WIRKUNGSGRAD_LADEPUNKT,
     FahrzeugPlan,
     FahrzeugSlot,
@@ -630,45 +619,43 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     )
     if not inp.netzladen_erlaubt:
         # EEG mode (site.netzladen_erlaubt = false): the battery charges ONLY
-        # from PV the site actually PRODUCES - PV-bus Bilanzierung (FK3,
-        # captain decision 2026-07-16: the house may import its load in
-        # parallel, DC-hybrid physics). Present in BOTH builds - the
-        # infeasible-§14a fallback must stay EEG-clean. Subtracting curtail is
-        # load-bearing: a fully curtailed slot cannot charge, so the Graustrom
-        # loophole (curtail PV, cover the "solar" charge with paid import at
-        # negative prices) stays closed without the pre-FK3 import ban - via
-        # the grid balance, a charging slot's import never exceeds the load.
-        # Grid-charged energy is thus impossible by construction, preserving
-        # the EEG premium-eligibility argument in pricing.py (all export in
-        # EEG mode is provably solar). max(pv, 0) guards pathological negative
-        # forecasts (curtail's own bound already uses it).
+        # from PV the site actually PRODUCES (FK3, captain decision
+        # 2026-07-16). Present in BOTH builds - the infeasible-§14a fallback
+        # must stay EEG-clean. Subtracting curtail is load-bearing: a fully
+        # curtailed slot cannot charge, so the Graustrom loophole (curtail PV,
+        # cover the "solar" charge with paid import at negative prices) stays
+        # closed. max(pv, 0) guards pathological negative forecasts (curtail's
+        # own bound already uses it).
         m.solar_only_charge = Constraint(
             m.T,
             rule=lambda model, t: model.charge[t]
             <= max(inp.pv_kw[t], 0.0) - model.curtail[t],
         )
-    if inp.strenge_aktiv:
-        # MiSpeL MP-45 (W1 = D, Option B): the strict reading - no charging in
-        # a quarter hour with grid import (Anlage 1 S. 11). FK3 above keeps
-        # binding; this one tightens it: a charging slot imports at most the
-        # tolerance per quarter hour (default 0 kWh, domain constant). Built
-        # only with the operator switch on, so every other model is unchanged.
-        toleranz_kw = inp.strenge_toleranz_kwh / VIERTELSTUNDE_H
+        # EN-2 A (captain decision 2026-11-02, "der Speicher darf nie vom Netz
+        # beladen werden, wenn Netzladen aus ist"; ported from MiSpeL MP-45):
+        # a charging slot imports NOTHING - FK3 alone let the house import in
+        # parallel, which at the connection point is grid power in the storage
+        # (BNetzA MiSpeL, Anlage 1 S. 11). No tolerance, no new integer: the
+        # charge/discharge binary carries it, and charging zero always
+        # satisfies it. Together with the grid balance a charging slot gets
+        # charge + curtail <= pv - load, i.e. charging from the forecast PV
+        # SURPLUS only, which keeps the EEG premium-eligibility argument in
+        # pricing.py (all export in EEG mode is provably solar).
         m.strenge_ausschliesslichkeit = Constraint(
             m.T,
             rule=lambda model, t: model.grid_import[t]
-            <= toleranz_kw + _m_import(t) * (1 - model.is_charging[t]),
+            <= _m_import(t) * (1 - model.is_charging[t]),
         )
     # Ehrliche Marge (Captain-Entscheid E6 A, K0 vp-wr-k0-plandaten): at a
     # fixed-tariff site the grid-sourced part of a charge must earn the hurdle
     # AFTER the full round trip. grid_charge_kw is that part - the charge
     # beyond the slot's forecast PV surplus: in a deficit slot every charged
-    # kW is one more kW imported (FK3's PV bus feeds the battery, the grid the
-    # house), in a surplus slot only the charge above the surplus is. Adding
-    # curtail keeps "curtail PV, import the house" inside the count. FK3 itself
-    # (solar_only_charge) is untouched - EEG still lets the PV bus charge while
-    # the house imports; only the economics get the honest hurdle. Built only
-    # with a hurdle > 0, so a spot site's model is byte-identical.
+    # kW is one more kW imported, in a surplus slot only the charge above the
+    # surplus is. Adding curtail keeps "curtail PV, import the house" inside
+    # the count. In EEG mode strenge_ausschliesslichkeit above already pins
+    # that part to zero, so the hurdle binds only where grid charging is
+    # allowed. Built only with a hurdle > 0, so a spot site's model is
+    # byte-identical.
     hurdle_eur_per_kwh = inp.grid_charge_hurdle_ct_kwh / 100.0
     hurdle_cost = 0.0
     if hurdle_eur_per_kwh > 0.0:
@@ -1570,13 +1557,17 @@ def optimize(
     ``explain_plan`` gates the post-hoc Fahrplan-Warum extraction (see
     :func:`_with_explanation`); high-volume callers that discard the plan's
     presentation fields (the Ersparnis-Simulation's year chains) pass False.
+
+    Last comes the Vorsprung-Budget (NS-2 A, :func:`_vorsprung_budget`): it
+    checks the FINISHED plan - after every rule that stamped it - and is a
+    no-op (the same object) unless the site is switched on.
     """
     model = build_model(inp)
     _solve_plan(model, inp)
     plan = _mit_messlatte(_extract_plan(model, inp, plan_id, generated_at), model, inp, True)
-    if not explain_plan:
-        return plan
-    return _with_explanation(plan, model, inp, fallback_14a=False)
+    if explain_plan:
+        plan = _with_explanation(plan, model, inp, fallback_14a=False)
+    return _vorsprung_budget(plan, inp)
 
 
 def optimize_mit_rueckfall(
@@ -1601,9 +1592,21 @@ def optimize_ignoring_grid_limit(
     model = build_model(inp, enforce_grid_limit=False)
     _solve_plan(model, inp)
     plan = _mit_messlatte(_extract_plan(model, inp, plan_id, generated_at), model, inp, False)
-    if not explain_plan:
-        return plan
-    return _with_explanation(plan, model, inp, fallback_14a=True)
+    if explain_plan:
+        plan = _with_explanation(plan, model, inp, fallback_14a=True)
+    return _vorsprung_budget(plan, inp)
+
+
+def _vorsprung_budget(plan: SchedulePlan, inp: OptimizationInput) -> SchedulePlan:
+    """NS-2 A (Captain-Entscheid 15.10.2026): Monat und letzte 7 Tage mit
+    Bestand nie tiefer als das Budget unter dem sturen Speicher - wo der Plan
+    es täte, fährt der Slot stur, Grund ``vorsprung_aufgebraucht``. Geprüft
+    wird das ERGEBNIS, egal welche Regel den Slot gestempelt hat
+    (:mod:`voltpilot_optimization.vorsprung`). Regel aus = dasselbe Objekt;
+    ein Fehler kostet den Lauf die Regel, nie den Plan."""
+    from voltpilot_optimization.vorsprung import mit_budget
+
+    return mit_budget(plan, inp)[0]
 
 
 def _netz_kw(model: ConcreteModel, inp: OptimizationInput, t: int) -> float:
@@ -1774,11 +1777,25 @@ def _with_explanation(
         # gesteuert, faehrt sie diesen Eigenverbrauchs-Plan starr.
         if inp.battery_observed:
             trim = follow = absorb = unforeseen = limiting = False
+        # NS-5 B (Zwischenlösung je Anlage): welche Ruhe-Slots bis zum ersten
+        # Lade-Slot des Tages die Überschuss-Freigabe bekommen. Sie IST die
+        # Freigabe charge_surplus_to_battery, also gilt deren Schalter und
+        # jede Sperre oben auch für sie. Hält eine Kundenregel den Speicher,
+        # ruht der Plan nur, weil er ihn nicht führt - kein Morgenfenster.
+        morgen = (
+            _morgen_ueberschuss(inp, plan.slots)
+            if absorb and inp.morgen_ueberschuss and not inp.battery_held
+            else [False] * len(plan.slots)
+        )
         slots = [
             replace(
                 slot,
                 slot_role=why.slot_role,
-                slot_flags=why.slot_flags,
+                slot_flags=(
+                    why.slot_flags
+                    + _morgen_grund(inp, t, slot, why, morgen[t])
+                    + _ueberschuss_verbraucher_grund(inp, t)
+                ),
                 stored_value_ct_kwh=why.stored_value_ct_kwh,
                 grid_value_ct_kwh=why.grid_value_ct_kwh,
                 peak_pressure_eur_kw=why.peak_pressure_eur_kw,
@@ -1798,7 +1815,7 @@ def _with_explanation(
                     _cover_load_from_battery(inp, t, slot, why) if follow else None
                 ),
                 unplanned_load_discharge=(
-                    _unplanned_load_discharge(inp, t, slot, why)
+                    _unplanned_load_discharge(inp, t, slot, why, morgen[t])
                     if unforeseen
                     else None
                 ),
@@ -1816,9 +1833,20 @@ def _with_explanation(
                 # one more kWh beats selling it here, so the edge may charge the
                 # MEASURED surplus the 15-min PV forecast never saw. Same lambda
                 # again; its own kill-switch because it is the only one of the
-                # three duties that raises a charge.
+                # three duties that raises a charge. NS-5 B adds the morning
+                # window of a switched-on site on top
+                # (slot_trim.morgen_ueberschuss_slots).
                 charge_surplus_to_battery=(
-                    _charge_surplus_to_battery(inp, t, slot, why) if absorb else None
+                    (morgen[t] or _charge_surplus_to_battery(inp, t, slot, why))
+                    if absorb
+                    else None
+                ),
+                # NS-3 B: where the run took the surplus consumer out of the
+                # load, the edge holds this slot's planned charge against it -
+                # a change of the trim above, so it rides on the trim's own
+                # kill-switch and on every gate that silences it.
+                charge_hold_base_load_kw=(
+                    _charge_hold_base_load_kw(inp, t, slot, why) if trim else None
                 ),
                 # Erklaerbarkeit Stufe 1 (§4.2 C): what a RESTING slot rejected
                 # and by how much - pure presentation, never an input to a
@@ -1972,7 +2000,9 @@ def _limit_discharge_to_load(inp: OptimizationInput, t: int, slot, why) -> bool:
     )
 
 
-def _unplanned_load_discharge(inp: OptimizationInput, t: int, slot, why) -> bool:
+def _unplanned_load_discharge(
+    inp: OptimizationInput, t: int, slot, why, morgen: bool = False
+) -> bool:
     """The distinct idle-slot duty; never widens cover_load_from_battery."""
     from voltpilot_optimization.slot_trim import unplanned_load_discharge
 
@@ -1982,13 +2012,81 @@ def _unplanned_load_discharge(inp: OptimizationInput, t: int, slot, why) -> bool
         grid_kw=slot.grid_kw,
         # The opposite-direction duty is evaluated from the same slot/why
         # facts.  Never emit both grants even though the JSON schema remains
-        # additive/permissive for forward compatibility.
-        charge_surplus_to_battery=_charge_surplus_to_battery(inp, t, slot, why),
+        # additive/permissive for forward compatibility. A slot the NS-5 B
+        # morning window grants the surplus duty counts as granted here too;
+        # the box still covers a deficit there on its own (deficit_cover).
+        charge_surplus_to_battery=(
+            morgen or _charge_surplus_to_battery(inp, t, slot, why)
+        ),
         import_price_ct_kwh=inp.import_prices[t] / 10.0,
         stored_value_ct_kwh=why.stored_value_ct_kwh,
         wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
         one_way_efficiency=p.one_way_efficiency,
     )
+
+
+def _morgen_ueberschuss(inp: OptimizationInput, slots) -> list[bool]:
+    """NS-5 B: je Slot, ob die Morgenregel ihm die Überschuss-Freigabe gibt -
+    aus den EXTRAHIERTEN Slots des Plans (Sollwert, PV-Prognose, SoC-Bahn) und
+    dem gelesenen Tageszustand, siehe
+    :func:`voltpilot_optimization.slot_trim.morgen_ueberschuss_slots`."""
+    from voltpilot_optimization.slot_trim import morgen_ueberschuss_slots
+
+    return morgen_ueberschuss_slots(
+        slot_starts=[s.start for s in slots],
+        battery_kw=[s.battery_kw for s in slots],
+        pv_kw=[s.pv_kw for s in slots],
+        soc_kwh=[s.soc_kwh for s in slots],
+        soc_max_kwh=inp.battery.soc_max_kwh,
+        heute_geladen=inp.morgen_ueberschuss_heute_geladen,
+    )
+
+
+def _morgen_grund(
+    inp: OptimizationInput, t: int, slot, why, morgen: bool
+) -> tuple[str, ...]:
+    """Der Grund „Morgenüberschuss in den Speicher (Zwischenlösung NS-5 B)“ für
+    den Plan-Erklärtext - nur, wo erst die Morgenregel die Freigabe gibt."""
+    from voltpilot_optimization.slot_trim import SLOT_FLAG_MORGEN_UEBERSCHUSS
+
+    if not morgen or _charge_surplus_to_battery(inp, t, slot, why):
+        return ()
+    return (SLOT_FLAG_MORGEN_UEBERSCHUSS,)
+
+
+def _ueberschuss_verbraucher_grund(inp: OptimizationInput, t: int) -> tuple[str, ...]:
+    """Der Grund „Speicher vor Überschuss-Verbraucher (NS-3 B): Plan rechnet mit
+    der Grundlast“ für den Plan-Erklärtext - wo der Lauf den gemessenen
+    Verbraucher aus der Last genommen hat (die Grundlast ist ``load_kw``)."""
+    from voltpilot_optimization.ueberschuss_verbraucher import (
+        SLOT_FLAG_UEBERSCHUSS_VERBRAUCHER,
+    )
+
+    if not inp.ueberschuss_verbraucher or not inp.ueberschuss_verbraucher[t]:
+        return ()
+    return (SLOT_FLAG_UEBERSCHUSS_VERBRAUCHER,)
+
+
+def _charge_hold_base_load_kw(
+    inp: OptimizationInput, t: int, slot, why
+) -> float | None:
+    """NS-3 B: the load the edge holds this slot's planned charge against
+    (``charge_hold_base_load_kw``), or None.
+
+    Only where the run took the surplus consumer out of the load AND the slot
+    carries the trim duty - the hold is a change of exactly that duty (the
+    trim bound becomes ``pv - min(load, base)``), so without it there is
+    nothing to hold: an untrimmed charge already stands. A battery a customer
+    rule holds is the rule's, not the plan's. The value is the slot's own
+    planned load, i.e. the base load the solver computed the charge against.
+    """
+    if not inp.ueberschuss_verbraucher or not inp.ueberschuss_verbraucher[t]:
+        return None
+    if inp.battery_held or not _charge_from_surplus_only(inp, t, slot, why):
+        return None
+    if not math.isfinite(slot.load_kw) or slot.load_kw < 0.0:
+        return None
+    return round(slot.load_kw, 3)
 
 
 def _charge_surplus_to_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
@@ -2463,11 +2561,6 @@ def _extract_plan(
         # P5: hand the site's EEG posture to the edge so the solar-only-charge
         # rule is also enforced against MEASURED values, not just the forecast.
         grid_charge_allowed=inp.netzladen_erlaubt,
-        # MiSpeL MP-45: die strenge Ausschliesslichkeit samt Toleranz zur Box,
-        # damit die Klemme dieselbe Regel gegen MESSWERTE haelt. None = aus.
-        strict_exclusivity_tolerance_kwh=(
-            inp.strenge_toleranz_kwh if inp.strenge_aktiv else None
-        ),
         # MiSpeL MP-14: der Foerderweg zur Box - er entscheidet dort, ob
         # grid_charge_allowed die EEG-Klemme loesen darf.
         foerderweg=inp.foerderweg,

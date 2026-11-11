@@ -1,0 +1,975 @@
+{
+  "schema_version": "1.0",
+  "_comment": [
+    "VoltPilot-Registerbild Erzeuger v1, schlanke Fassung (Konzept vp-erzeuger-wago-konzept §3.7, EW-17 A),",
+    "mit dem EZ-1-Abgleich: max. 10 Einheiten (A1), n_zaehler/d_zaehler laufen 65535 -> 0 und 0xFFFF ist dort",
+    "ein Wert (A2), Gueltigkeitsbits je Feld (Lesart 5), t_bits Bit 4-9 (Lesart 7). Normalform fuer den",
+    "Messpunkt-Katalog (UEMS EZ-6): Basisadresse, Funktionscode und Wortfolge sind Parameter der Anlage",
+    "(Registerbild-Fassung in der Cloud), darum weder address.base noch endian. Feste Abschnitte haben einen",
+    "festen Offset, der Block je Einheit (te_nr 1..10) liegt bei 38 + (te_nr - 1) * 10 = 28 + te_nr * 10.",
+    "Der Kopf (Signatur, Wortfolge-Pruefwert, Version, Herzschlag, beschreibung_ab) prueft die Box; nur",
+    "te_anzahl, programmstand, steuerung_id und anlagenart sind Messpunkte. Namen ab beschreibung_ab sind",
+    "keine Messpunkte (Box liest sie selten, die Cloud speichert sie als Vorbelegung). ungueltig = Typ-Maximum;",
+    "vokabular/bits/gueltig_wenn sind Cloud-Wissen fuer die Anzeige und gehen nicht an die Box."
+  ],
+  "family": "voltpilot.erzeuger_registerbild_v1",
+  "registerbild": {
+    "hauptversion": 1,
+    "nebenversion": 0,
+    "kopflaenge": 12,
+    "einheit_ab": 38,
+    "einheitsblock": 10,
+    "max_einheiten": 10
+  },
+  "poll_group": "erzeuger:registerbild",
+  "felder": [
+    {
+      "abschnitt": "kopf",
+      "feld": "te_anzahl",
+      "offset": 5,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Kopf",
+      "label_de": "Einheiten im Bild (Wechselrichter oder Motoren)",
+      "ungueltig": "0xFFFF"
+    },
+    {
+      "abschnitt": "kopf",
+      "feld": "programmstand",
+      "offset": 7,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Kopf",
+      "label_de": "Stand des eingespielten Programms",
+      "ungueltig": "0xFFFF"
+    },
+    {
+      "abschnitt": "kopf",
+      "feld": "steuerung_id",
+      "offset": 8,
+      "width_words": 2,
+      "value_type": "uint32",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Kopf",
+      "label_de": "Kennung der Steuerung, von VoltPilot vergeben",
+      "ungueltig": "0xFFFFFFFF"
+    },
+    {
+      "abschnitt": "kopf",
+      "feld": "anlagenart",
+      "offset": 10,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Kopf",
+      "label_de": "Art der Anlage",
+      "ungueltig": "0xFFFF",
+      "vokabular": [
+        {
+          "wert": 1,
+          "wort": "pv",
+          "text": "PV"
+        },
+        {
+          "wert": 2,
+          "wort": "bhkw",
+          "text": "BHKW"
+        },
+        {
+          "wert": 3,
+          "wort": "gemischt",
+          "text": "gemischt"
+        }
+      ]
+    },
+    {
+      "abschnitt": "a",
+      "feld": "a_gueltig",
+      "offset": 12,
+      "width_words": 1,
+      "value_type": "bitfield16",
+      "aggregation_kind": "bitfield",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "Bit 0 Netzpunkt gültig · 1 Netzpunkt berechnet · 2 Netzpunkt-Messung tot · 3 Erzeugung gültig · 4 Gasspeicher gültig",
+      "ungueltig": "0xFFFF",
+      "bits": [
+        {
+          "bit": 0,
+          "wort": "netzpunkt_gueltig",
+          "text": "Netzpunkt gültig"
+        },
+        {
+          "bit": 1,
+          "wort": "netzpunkt_berechnet",
+          "text": "Netzpunkt berechnet"
+        },
+        {
+          "bit": 2,
+          "wort": "netzpunkt_messung_tot",
+          "text": "Netzpunkt-Messung tot"
+        },
+        {
+          "bit": 3,
+          "wort": "erzeugung_gueltig",
+          "text": "Erzeugung gültig"
+        },
+        {
+          "bit": 4,
+          "wort": "gasspeicher_gueltig",
+          "text": "Gasspeicher gültig"
+        }
+      ]
+    },
+    {
+      "abschnitt": "a",
+      "feld": "a_alter_s",
+      "offset": 13,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "gauge",
+      "unit": "s",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "Alter der Netzpunkt-Messung",
+      "ungueltig": "0xFFFF"
+    },
+    {
+      "abschnitt": "a",
+      "feld": "p_nvp_w",
+      "offset": 14,
+      "width_words": 2,
+      "value_type": "int32",
+      "aggregation_kind": "gauge",
+      "unit": "W",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "Leistung am Netzpunkt",
+      "ungueltig": "0x7FFFFFFF",
+      "gueltig_wenn": {
+        "feld": "a_gueltig",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "a",
+      "feld": "p_erzeugung_w",
+      "offset": 16,
+      "width_words": 2,
+      "value_type": "int32",
+      "aggregation_kind": "gauge",
+      "unit": "W",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "Summe aller Einheiten",
+      "ungueltig": "0x7FFFFFFF",
+      "gueltig_wenn": {
+        "feld": "a_gueltig",
+        "bit": 3
+      }
+    },
+    {
+      "abschnitt": "a",
+      "feld": "anlage_zustand",
+      "offset": 18,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "Zustand der ganzen Anlage",
+      "ungueltig": "0xFFFF",
+      "vokabular": [
+        {
+          "wert": 0,
+          "wort": "aus",
+          "text": "aus"
+        },
+        {
+          "wert": 1,
+          "wort": "bereit",
+          "text": "bereit"
+        },
+        {
+          "wert": 2,
+          "wort": "laeuft",
+          "text": "läuft"
+        },
+        {
+          "wert": 3,
+          "wort": "laeuft_begrenzt",
+          "text": "läuft begrenzt"
+        },
+        {
+          "wert": 4,
+          "wort": "stoerung",
+          "text": "Störung"
+        },
+        {
+          "wert": 5,
+          "wort": "hand_wartung",
+          "text": "Hand/Wartung"
+        },
+        {
+          "wert": 6,
+          "wort": "not_aus",
+          "text": "Not-Aus"
+        }
+      ]
+    },
+    {
+      "abschnitt": "a",
+      "feld": "a_bits",
+      "offset": 19,
+      "width_words": 1,
+      "value_type": "bitfield16",
+      "aggregation_kind": "bitfield",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "Bit 0 Not-Aus vor Ort · 1 NA-Schutz · 2 Sammelstörung · 3 Hand/Ort · 4 Wartung",
+      "ungueltig": "0xFFFF",
+      "bits": [
+        {
+          "bit": 0,
+          "wort": "not_aus_vor_ort",
+          "text": "Not-Aus vor Ort"
+        },
+        {
+          "bit": 1,
+          "wort": "na_schutz",
+          "text": "NA-Schutz"
+        },
+        {
+          "bit": 2,
+          "wort": "sammelstoerung",
+          "text": "Sammelstörung"
+        },
+        {
+          "bit": 3,
+          "wort": "hand_ort",
+          "text": "Hand/Ort"
+        },
+        {
+          "bit": 4,
+          "wort": "wartung",
+          "text": "Wartung"
+        }
+      ]
+    },
+    {
+      "abschnitt": "a",
+      "feld": "speicher_fuellstand",
+      "offset": 20,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "gauge",
+      "unit": "%",
+      "scale": {
+        "kind": "factor",
+        "value": 0.1
+      },
+      "kadenz_s": 5,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "Gasspeicher (Gassack)",
+      "ungueltig": "0xFFFF",
+      "gueltig_wenn": {
+        "feld": "a_gueltig",
+        "bit": 4
+      }
+    },
+    {
+      "abschnitt": "a",
+      "feld": "p_installiert_kw",
+      "offset": 21,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": "kW",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Anlage und Netzpunkt",
+      "label_de": "installierte Leistung",
+      "ungueltig": "0xFFFF"
+    },
+    {
+      "abschnitt": "nb",
+      "feld": "n_kanal",
+      "offset": 22,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Netzbetreiber",
+      "label_de": "Weg der Vorgabe",
+      "ungueltig": "0xFFFF",
+      "vokabular": [
+        {
+          "wert": 0,
+          "wort": "keiner",
+          "text": "keiner"
+        },
+        {
+          "wert": 1,
+          "wort": "feste_grenze",
+          "text": "feste Grenze"
+        },
+        {
+          "wert": 2,
+          "wort": "stufen",
+          "text": "Stufen"
+        },
+        {
+          "wert": 3,
+          "wort": "fernwirktechnik",
+          "text": "Fernwirktechnik"
+        }
+      ]
+    },
+    {
+      "abschnitt": "nb",
+      "feld": "n_bits",
+      "offset": 23,
+      "width_words": 1,
+      "value_type": "bitfield16",
+      "aggregation_kind": "bitfield",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Netzbetreiber",
+      "label_de": "Bit 0 Vorgabe gültig · 1 Verbindung steht · 2 Wirkleistung begrenzt · 3 Not-Aus · 4 cos-φ-Vorgabe · 5 Kennlinie",
+      "ungueltig": "0xFFFF",
+      "bits": [
+        {
+          "bit": 0,
+          "wort": "vorgabe_gueltig",
+          "text": "Vorgabe gültig"
+        },
+        {
+          "bit": 1,
+          "wort": "verbindung_steht",
+          "text": "Verbindung steht"
+        },
+        {
+          "bit": 2,
+          "wort": "wirkleistung_begrenzt",
+          "text": "Wirkleistung begrenzt"
+        },
+        {
+          "bit": 3,
+          "wort": "not_aus",
+          "text": "Not-Aus"
+        },
+        {
+          "bit": 4,
+          "wort": "cosphi_vorgabe",
+          "text": "cos-φ-Vorgabe"
+        },
+        {
+          "bit": 5,
+          "wort": "kennlinie",
+          "text": "Kennlinie"
+        }
+      ]
+    },
+    {
+      "abschnitt": "nb",
+      "feld": "n_p_prozent",
+      "offset": 24,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "gauge",
+      "unit": "%",
+      "scale": {
+        "kind": "factor",
+        "value": 0.1
+      },
+      "kadenz_s": 5,
+      "group": "Netzbetreiber",
+      "label_de": "Wirkleistungsgrenze",
+      "ungueltig": "0xFFFF",
+      "gueltig_wenn": {
+        "feld": "n_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "nb",
+      "feld": "n_cosphi",
+      "offset": 25,
+      "width_words": 1,
+      "value_type": "int16",
+      "aggregation_kind": "gauge",
+      "unit": "PF",
+      "scale": {
+        "kind": "factor",
+        "value": 0.001
+      },
+      "kadenz_s": 5,
+      "group": "Netzbetreiber",
+      "label_de": "cos-φ-Vorgabe",
+      "ungueltig": "0x7FFF",
+      "gueltig_wenn": {
+        "feld": "n_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "nb",
+      "feld": "n_seit_s",
+      "offset": 26,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "gauge",
+      "unit": "s",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Netzbetreiber",
+      "label_de": "seit der letzten Vorgabe",
+      "ungueltig": "0xFFFF"
+    },
+    {
+      "abschnitt": "nb",
+      "feld": "n_zaehler",
+      "offset": 27,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "counter",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Netzbetreiber",
+      "label_de": "Vorgaben seit Programmstart",
+      "ungueltig": null,
+      "wertebereich_modul": 65536,
+      "laeuft_ueber": true
+    },
+    {
+      "abschnitt": "dv",
+      "feld": "d_kanal",
+      "offset": 28,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Direktvermarkter",
+      "label_de": "Weg des Direktvermarkters",
+      "ungueltig": "0xFFFF",
+      "vokabular": [
+        {
+          "wert": 0,
+          "wort": "keiner",
+          "text": "keiner"
+        },
+        {
+          "wert": 1,
+          "wort": "relais_ma",
+          "text": "Relais und mA"
+        },
+        {
+          "wert": 2,
+          "wort": "modbus",
+          "text": "Modbus"
+        }
+      ]
+    },
+    {
+      "abschnitt": "dv",
+      "feld": "d_bits",
+      "offset": 29,
+      "width_words": 1,
+      "value_type": "bitfield16",
+      "aggregation_kind": "bitfield",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Direktvermarkter",
+      "label_de": "Bit 0 Abschnitt gültig · 1 Aktivierung · 2 Stopp · 3 bereit gemeldet · 4 aktiv gemeldet",
+      "ungueltig": "0xFFFF",
+      "bits": [
+        {
+          "bit": 0,
+          "wort": "abschnitt_gueltig",
+          "text": "Abschnitt gültig"
+        },
+        {
+          "bit": 1,
+          "wort": "aktivierung",
+          "text": "Aktivierung"
+        },
+        {
+          "bit": 2,
+          "wort": "stopp",
+          "text": "Stopp"
+        },
+        {
+          "bit": 3,
+          "wort": "bereit_gemeldet",
+          "text": "bereit gemeldet"
+        },
+        {
+          "bit": 4,
+          "wort": "aktiv_gemeldet",
+          "text": "aktiv gemeldet"
+        }
+      ]
+    },
+    {
+      "abschnitt": "dv",
+      "feld": "d_soll_w",
+      "offset": 30,
+      "width_words": 2,
+      "value_type": "uint32",
+      "aggregation_kind": "gauge",
+      "unit": "W",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Direktvermarkter",
+      "label_de": "Sollwert des Direktvermarkters",
+      "ungueltig": "0xFFFFFFFF",
+      "gueltig_wenn": {
+        "feld": "d_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "dv",
+      "feld": "d_seit_s",
+      "offset": 32,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "gauge",
+      "unit": "s",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Direktvermarkter",
+      "label_de": "seit der letzten Änderung",
+      "ungueltig": "0xFFFF",
+      "gueltig_wenn": {
+        "feld": "d_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "dv",
+      "feld": "d_zaehler",
+      "offset": 33,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "counter",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Direktvermarkter",
+      "label_de": "Abrufe seit Programmstart",
+      "ungueltig": null,
+      "gueltig_wenn": {
+        "feld": "d_bits",
+        "bit": 0
+      },
+      "wertebereich_modul": 65536,
+      "laeuft_ueber": true
+    },
+    {
+      "abschnitt": "wirkung",
+      "feld": "quelle_p",
+      "offset": 34,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Wirkung",
+      "label_de": "wer gerade begrenzt",
+      "ungueltig": "0xFFFF",
+      "vokabular": [
+        {
+          "wert": 0,
+          "wort": "keine_grenze",
+          "text": "keine Grenze"
+        },
+        {
+          "wert": 1,
+          "wort": "netzbetreiber",
+          "text": "Netzbetreiber"
+        },
+        {
+          "wert": 2,
+          "wort": "direktvermarkter",
+          "text": "Direktvermarkter"
+        },
+        {
+          "wert": 3,
+          "wort": "netzpunkt_regelung",
+          "text": "Netzpunkt-Regelung"
+        },
+        {
+          "wert": 4,
+          "wort": "hand",
+          "text": "Hand"
+        },
+        {
+          "wert": 5,
+          "wort": "not_aus",
+          "text": "Not-Aus"
+        },
+        {
+          "wert": 6,
+          "wort": "ersatzwert",
+          "text": "Ersatzwert"
+        }
+      ],
+      "gueltig_wenn": {
+        "feld": "s_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "wirkung",
+      "feld": "s_bits",
+      "offset": 35,
+      "width_words": 1,
+      "value_type": "bitfield16",
+      "aggregation_kind": "bitfield",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Wirkung",
+      "label_de": "Bit 0 gültig · 1 Anlage folgt",
+      "ungueltig": "0xFFFF",
+      "bits": [
+        {
+          "bit": 0,
+          "wort": "gueltig",
+          "text": "gültig"
+        },
+        {
+          "bit": 1,
+          "wort": "anlage_folgt",
+          "text": "Anlage folgt"
+        }
+      ]
+    },
+    {
+      "abschnitt": "wirkung",
+      "feld": "p_grenze_w",
+      "offset": 36,
+      "width_words": 2,
+      "value_type": "uint32",
+      "aggregation_kind": "gauge",
+      "unit": "W",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Wirkung",
+      "label_de": "wirksame Grenze",
+      "ungueltig": "0xFFFFFFFF",
+      "gueltig_wenn": {
+        "feld": "s_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "te[*]",
+      "feld": "t_zustand",
+      "offset": 0,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Einheit",
+      "label_de": "Zustand der Einheit",
+      "ungueltig": "0xFFFF",
+      "vokabular": [
+        {
+          "wert": 0,
+          "wort": "aus",
+          "text": "aus"
+        },
+        {
+          "wert": 1,
+          "wort": "bereit",
+          "text": "bereit"
+        },
+        {
+          "wert": 2,
+          "wort": "laeuft",
+          "text": "läuft"
+        },
+        {
+          "wert": 3,
+          "wort": "laeuft_begrenzt",
+          "text": "läuft begrenzt"
+        },
+        {
+          "wert": 4,
+          "wort": "stoerung",
+          "text": "Störung"
+        },
+        {
+          "wert": 5,
+          "wort": "hand_wartung",
+          "text": "Hand/Wartung"
+        },
+        {
+          "wert": 6,
+          "wort": "not_aus",
+          "text": "Not-Aus"
+        }
+      ],
+      "gueltig_wenn": {
+        "feld": "t_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "te[*]",
+      "feld": "t_bits",
+      "offset": 1,
+      "width_words": 1,
+      "value_type": "bitfield16",
+      "aggregation_kind": "bitfield",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Einheit",
+      "label_de": "Bit 0 Werte gültig · 1 Sollwert gültig · 2 DV bereit · 3 DV aktiv · 4–9 Gründe für „nicht bereit“",
+      "ungueltig": "0xFFFF",
+      "bits": [
+        {
+          "bit": 0,
+          "wort": "werte_gueltig",
+          "text": "Werte gültig"
+        },
+        {
+          "bit": 1,
+          "wort": "sollwert_gueltig",
+          "text": "Sollwert gültig"
+        },
+        {
+          "bit": 2,
+          "wort": "dv_bereit",
+          "text": "bereit für den Direktvermarkter"
+        },
+        {
+          "bit": 3,
+          "wort": "dv_aktiv",
+          "text": "vom Direktvermarkter aktiv"
+        },
+        {
+          "bit": 4,
+          "wort": "stoerung",
+          "text": "Störung"
+        },
+        {
+          "bit": 5,
+          "wort": "vorgabe_netzbetreiber",
+          "text": "Vorgabe des Netzbetreibers (§ 9 EEG)"
+        },
+        {
+          "bit": 6,
+          "wort": "hand_ort",
+          "text": "Hand/Ort"
+        },
+        {
+          "bit": 7,
+          "wort": "wartung",
+          "text": "Wartung"
+        },
+        {
+          "bit": 8,
+          "wort": "gasspeicher_leer",
+          "text": "Gasspeicher leer"
+        },
+        {
+          "bit": 9,
+          "wort": "sonstiger",
+          "text": "sonstiger Grund"
+        }
+      ]
+    },
+    {
+      "abschnitt": "te[*]",
+      "feld": "t_art",
+      "offset": 2,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": null,
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Einheit",
+      "label_de": "Art der Einheit (erklärt die Anlage)",
+      "ungueltig": "0xFFFF",
+      "vokabular": [
+        {
+          "wert": 1,
+          "wort": "pv_wechselrichter",
+          "text": "PV-Wechselrichter"
+        },
+        {
+          "wert": 2,
+          "wort": "bhkw_motor",
+          "text": "BHKW-Motor"
+        }
+      ]
+    },
+    {
+      "abschnitt": "te[*]",
+      "feld": "t_nenn_kw",
+      "offset": 3,
+      "width_words": 1,
+      "value_type": "uint16",
+      "aggregation_kind": "state",
+      "unit": "kW",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 60,
+      "group": "Einheit",
+      "label_de": "Nennleistung der Einheit (erklärt die Anlage)",
+      "ungueltig": "0xFFFF"
+    },
+    {
+      "abschnitt": "te[*]",
+      "feld": "t_p_ist_w",
+      "offset": 4,
+      "width_words": 2,
+      "value_type": "int32",
+      "aggregation_kind": "gauge",
+      "unit": "W",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Einheit",
+      "label_de": "Leistung der Einheit",
+      "ungueltig": "0x7FFFFFFF",
+      "gueltig_wenn": {
+        "feld": "t_bits",
+        "bit": 0
+      }
+    },
+    {
+      "abschnitt": "te[*]",
+      "feld": "t_p_soll_w",
+      "offset": 6,
+      "width_words": 2,
+      "value_type": "uint32",
+      "aggregation_kind": "gauge",
+      "unit": "W",
+      "scale": {
+        "kind": "none"
+      },
+      "kadenz_s": 5,
+      "group": "Einheit",
+      "label_de": "wirksamer Sollwert der Einheit",
+      "ungueltig": "0xFFFFFFFF",
+      "gueltig_wenn": {
+        "feld": "t_bits",
+        "bit": 1
+      }
+    },
+    {
+      "abschnitt": "te[*]",
+      "feld": "t_e",
+      "offset": 8,
+      "width_words": 2,
+      "value_type": "uint32",
+      "aggregation_kind": "counter",
+      "unit": "kWh",
+      "scale": {
+        "kind": "factor",
+        "value": 0.1
+      },
+      "kadenz_s": 60,
+      "group": "Einheit",
+      "label_de": "Zählerstand Erzeugung",
+      "ungueltig": "0xFFFFFFFF",
+      "gueltig_wenn": {
+        "feld": "t_bits",
+        "bit": 0
+      }
+    }
+  ]
+}

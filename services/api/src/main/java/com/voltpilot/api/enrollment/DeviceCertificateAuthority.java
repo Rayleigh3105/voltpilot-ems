@@ -96,7 +96,7 @@ class DeviceCertificateAuthority {
         this.clock = clock;
     }
 
-    record IssuedCertificate(String certPem, String serialHex) {
+    record IssuedCertificate(String certPem, String serialHex, Instant notAfter) {
     }
 
     /** The CA certificate PEM (what the device needs to verify the broker). */
@@ -150,7 +150,7 @@ class DeviceCertificateAuthority {
                 String serialHex = toSerialHex(serial);
                 String certPem = toPem(issued);
                 archive(issued, certPem, serialHex, subject, notAfter);
-                return new IssuedCertificate(certPem, serialHex);
+                return new IssuedCertificate(certPem, serialHex, notAfter);
             } catch (IOException | java.security.GeneralSecurityException
                     | org.bouncycastle.operator.OperatorCreationException e) {
                 throw new IllegalStateException("certificate issuance failed: " + e.getMessage(), e);

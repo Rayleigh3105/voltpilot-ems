@@ -20,7 +20,7 @@
     "test:layout": "test/layout-smoke.sh"
   },
   "dependencies": {
-    "echarts": "^5.5.1",
+    "echarts": "^6.1.0",
     "keycloak-js": "^26.0.5",
     "leaflet": "^1.9.4",
     "motion": "13.2.0",
@@ -28,6 +28,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.62.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

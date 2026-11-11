@@ -88,6 +88,7 @@ func (s *Server) SetControlPolicy(p ocppcontrol.Policy) error {
 				c.CommissionedAt = time.Time{}
 				c.CommissionError = "Neue Sicherheitseinstellungen noch nicht von der Säule bestätigt"
 			}
+			s.wakeStartWaitersLocked()
 		}
 	}
 	s.mu.Unlock()
@@ -124,7 +125,7 @@ func (s *Server) startReadyLocked(id string) bool {
 		if c.ID != id && len(s.control.PhaseLimitsA) == 0 {
 			continue
 		}
-		if !c.Connected || c.CommissionedAt.IsZero() || c.CommissionedAt.Before(c.ConnectedAt) || c.CommissionedAt.Before(c.BootedAt) || c.SafetyKey != s.control.SafetyKey() {
+		if !c.ProfilesInForce() || c.SafetyKey != s.control.SafetyKey() {
 			return false
 		}
 	}
@@ -135,6 +136,141 @@ func (s *Server) startReady(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.startReadyLocked(id)
+}
+
+// StartPending reports whether a StartTransaction for this connector is
+// waiting for the station's set-up right now (awaitStartReady).
+func (s *Server) StartPending(id string, connectorID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.startPending[ocppcontrol.Key(id, connectorID)] > 0
+}
+
+// startBlocked is startReady with the reason for a log line.
+func (s *Server) startBlocked(id string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.startReadyLocked(id) {
+		return "", false
+	}
+	return s.startBlockReasonLocked(id), true
+}
+
+// commissionRunning is the CommissionError while Commission is under way: the
+// station is being set up, the outcome is not known yet.
+const commissionRunning = "Sicherheitsprofile werden geprüft"
+
+// startCommissionWait bounds how long a StartTransaction (or Authorize) waits
+// for a station's set-up after its BootNotification. A go-e sends a
+// BootNotification on EVERY reconnect, and the set-up takes 3-4 s; a car that
+// starts in that window must not be refused for good, because the station
+// ends the refused transaction and does not try again while the car stays
+// plugged in. A variable so tests can shorten it.
+var startCommissionWait = 20 * time.Second
+
+// startAwaitsCommissionLocked reports whether the ONLY thing between this
+// station and a start is a set-up that has not finished since the last
+// BootNotification: every station the start rule looks at that is not ready
+// is connected and either not set up yet or being set up right now. A failed
+// set-up, a station that is offline or safety settings the stations have not
+// confirmed are not waited for - those stay a refusal as before.
+func (s *Server) startAwaitsCommissionLocked(id string) bool {
+	if s.control.Authorization.Mode != "allowlist" && len(s.control.PhaseLimitsA) == 0 {
+		return false
+	}
+	waiting := false
+	for _, c := range s.chargers {
+		if c.ID != id && len(s.control.PhaseLimitsA) == 0 {
+			continue
+		}
+		if c.ProfilesInForce() && c.SafetyKey == s.control.SafetyKey() {
+			continue
+		}
+		if !c.Connected || (c.CommissionError != "" && c.CommissionError != commissionRunning) {
+			return false
+		}
+		waiting = true
+	}
+	return waiting
+}
+
+// startBlockReasonLocked names, in German, why the start rule holds a start
+// back - for the log line of a refused StartTransaction.
+func (s *Server) startBlockReasonLocked(id string) string {
+	for _, c := range s.chargers {
+		if c.ID != id && len(s.control.PhaseLimitsA) == 0 {
+			continue
+		}
+		switch {
+		case c.ProfilesInForce() && c.SafetyKey == s.control.SafetyKey():
+			continue
+		case !c.Connected:
+			return fmt.Sprintf("Ladesäule %s ist nicht verbunden", c.ID)
+		case c.CommissionError != "":
+			return fmt.Sprintf("Ladesäule %s ist nicht eingerichtet: %s", c.ID, c.CommissionError)
+		default:
+			return fmt.Sprintf("Ladesäule %s ist seit ihrem Neustart noch nicht eingerichtet", c.ID)
+		}
+	}
+	return "Ladesäulen nicht eingerichtet"
+}
+
+// wakeStartWaitersLocked tells every waiting start to look again.
+func (s *Server) wakeStartWaitersLocked() {
+	close(s.commissionWake)
+	s.commissionWake = make(chan struct{})
+}
+
+// awaitStartReady holds a start that arrives while the station is still being
+// set up after its BootNotification, until the set-up is through - at most
+// startCommissionWait. It decides nothing: the admission itself stays the
+// atomic check in onStartTransaction, so a start still only counts once the
+// profiles are in force. A failed set-up ends the wait at once. A connector
+// that already holds a session is not held: a repeated StartTransaction after
+// a reconnect keeps its id without any new admission.
+//
+// Blocking here is safe: ocpp-go runs every incoming request in its own
+// goroutine, so the set-up's own requests to the station keep flowing.
+func (s *Server) awaitStartReady(id string, connectorID int) {
+	var deadline <-chan time.Time
+	for {
+		s.mu.Lock()
+		if c, ok := s.chargers[id]; ok && connectorID >= 1 && connectorID <= maxConnectors {
+			if con := c.ConnectorByID(connectorID); con != nil && con.Session != nil {
+				s.mu.Unlock()
+				return
+			}
+		}
+		if s.startReadyLocked(id) || !s.startAwaitsCommissionLocked(id) {
+			s.mu.Unlock()
+			return
+		}
+		wake := s.commissionWake
+		s.mu.Unlock()
+		if deadline == nil {
+			s.log.Info("Ladevorgang wartet auf die Einrichtung der Ladesäule nach ihrem Neustart",
+				"charge_point_id", id, "connector", connectorID, "max_wait", startCommissionWait.String())
+			timer := time.NewTimer(startCommissionWait)
+			defer timer.Stop()
+			deadline = timer.C
+			key := ocppcontrol.Key(id, connectorID)
+			s.mu.Lock()
+			s.startPending[key]++
+			s.mu.Unlock()
+			defer func() {
+				s.mu.Lock()
+				if s.startPending[key]--; s.startPending[key] <= 0 {
+					delete(s.startPending, key)
+				}
+				s.mu.Unlock()
+			}()
+		}
+		select {
+		case <-wake:
+		case <-deadline:
+			return
+		}
+	}
 }
 
 // absentAuthorizationKeys are the keys whose ABSENCE already is the safe state

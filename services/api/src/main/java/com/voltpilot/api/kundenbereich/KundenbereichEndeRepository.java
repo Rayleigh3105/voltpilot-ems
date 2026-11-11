@@ -54,6 +54,17 @@ public class KundenbereichEndeRepository {
         return jdbc.queryForList("SELECT tenant_id FROM device WHERE id = ?", UUID.class, deviceId).stream().findFirst();
     }
 
+    /**
+     * Der Kundenbereich einer Box über ihre externe Referenz (Plattform-Route
+     * {@code /admin/geraete/{ref}/loesen}) - dieselbe Zeile wie {@code AdminBoxLoesenRepository#befund},
+     * nur die Tenant-Spalte: eine schon ausgebaute Box (anderer Mandant könnte dieselbe Referenz später
+     * wiederverwenden) zählt hier nicht mehr zu einem Kundenbereich.
+     */
+    public Optional<UUID> kundenbereichDerBoxRef(String externalRef) {
+        return jdbc.queryForList("SELECT tenant_id FROM device WHERE external_ref = ? AND ausgebaut_am IS NULL",
+                UUID.class, externalRef).stream().findFirst();
+    }
+
     /** aktiv → beendet mit Protokoll; leer, wenn der Kundenbereich nicht (mehr) aktiv ist. */
     public Optional<KundenbereichEnde> beenden(UUID kundenbereich, String auftrag, String begruendung, int fristTage,
             ProtokollAkteur akteur) {

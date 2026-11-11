@@ -106,7 +106,14 @@ type station struct {
 	notSupported map[string]bool
 	// readOnly answers ChangeConfiguration with Rejected for these keys and
 	// keeps the stored value (a read-only key).
-	readOnly                   map[string]bool
+	readOnly map[string]bool
+	// rejectValue answers ChangeConfiguration with Rejected when it returns
+	// true (a value the firmware does not support, e.g. a measurand list).
+	rejectValue func(key, value string) bool
+	// refuseSet answers one SetChargingProfile with Rejected when it returns
+	// true; sets logs every profile the station was asked to store.
+	refuseSet                  func(storedProfile) bool
+	sets                       []storedProfile
 	targetedConfigurationReads int
 	fullConfigurationReads     int
 }
@@ -157,6 +164,10 @@ func (s *station) OnSetChargingProfile(r *smartcharging.SetChargingProfileReques
 		if sch.Duration != nil {
 			sp.duration = time.Duration(*sch.Duration) * time.Second
 		}
+	}
+	s.sets = append(s.sets, sp)
+	if s.refuseSet != nil && s.refuseSet(sp) {
+		return smartcharging.NewSetChargingProfileConfirmation(smartcharging.ChargingProfileStatusRejected), nil
 	}
 	s.profiles[[2]int{r.ConnectorId, p.ChargingProfileId}] = sp
 	return smartcharging.NewSetChargingProfileConfirmation(smartcharging.ChargingProfileStatusAccepted), nil
@@ -315,7 +326,7 @@ func (s *station) OnChangeConfiguration(r *core.ChangeConfigurationRequest) (*co
 	if s.notSupported[r.Key] {
 		return core.NewChangeConfigurationConfirmation(core.ConfigurationStatusNotSupported), nil
 	}
-	if s.readOnly[r.Key] {
+	if s.readOnly[r.Key] || (s.rejectValue != nil && s.rejectValue(r.Key, r.Value)) {
 		return core.NewChangeConfigurationConfirmation(core.ConfigurationStatusRejected), nil
 	}
 	s.config[r.Key] = r.Value
@@ -354,6 +365,14 @@ func (s *station) OnUnlockConnector(*core.UnlockConnectorRequest) (*core.UnlockC
 // verbunden" (which is how this bit once).
 func connectStation(t *testing.T, s *csms.Server, endpoint, id string, now func() time.Time) (ocpp16.ChargePoint, *station) {
 	t.Helper()
+	cp, st, _ := connectStoppableStation(t, s, endpoint, id, now)
+	return cp, st
+}
+
+// connectStoppableStation is connectStation plus the one stop a test may
+// call itself (the library panics on a second Stop).
+func connectStoppableStation(t *testing.T, s *csms.Server, endpoint, id string, now func() time.Time) (ocpp16.ChargePoint, *station, func()) {
+	t.Helper()
 	st := newStation(now)
 	cp := ocpp16.NewChargePoint(id, nil, nil)
 	cp.SetCoreHandler(st)
@@ -361,12 +380,13 @@ func connectStation(t *testing.T, s *csms.Server, endpoint, id string, now func(
 	if err := cp.Start(endpoint); err != nil {
 		t.Fatalf("station %s could not connect: %v", id, err)
 	}
-	t.Cleanup(sync.OnceFunc(cp.Stop))
+	stop := sync.OnceFunc(cp.Stop)
+	t.Cleanup(stop)
 	waitFor(t, "the CSMS recorded "+id+" as connected", func() bool {
 		c, ok := s.Snapshot().ChargerByID(id)
 		return ok && c.Connected
 	})
-	return cp, st
+	return cp, st, stop
 }
 
 // kwStr renders a nullable kW value for a failure message: "nil" reads better
@@ -544,8 +564,157 @@ func TestCommissioningReadsBeforeItCommands(t *testing.T) {
 	if maxP.duration != 0 || defP.duration != 0 {
 		t.Fatalf("a permanent profile must never expire: max=%v default=%v", maxP.duration, defP.duration)
 	}
-	if len(st.changed) != 1 || st.changed[0] != csms.KeyMeterValueSampleInterval+"=10" {
-		t.Fatalf("meter cadence not requested: %v", st.changed)
+	// W-06: the cadence AND what is metered - without a power value the loop
+	// is blind, and many stations meter only the energy register by default.
+	if len(st.changed) != 2 || st.changed[0] != csms.KeyMeterValueSampleInterval+"=10" ||
+		st.changed[1] != csms.KeyMeterValuesSampledData+"="+csms.SampledDataLists[0] {
+		t.Fatalf("meter cadence and measurands not requested: %v", st.changed)
+	}
+}
+
+// TestARefusedMeasurandListFallsBackToAShorterOne is W-06: a station refuses
+// the whole MeterValuesSampledData list when it lacks one measurand (an AC
+// station rarely knows the car's SoC). The answer is checked and the next,
+// shorter list asked for; a station that refuses every list is still set up.
+func TestARefusedMeasurandListFallsBackToAShorterOne(t *testing.T) {
+	s, endpoint := startServer(t, "SAEULE-1")
+	_, st := connectStation(t, s, endpoint, "SAEULE-1", time.Now)
+	st.mu.Lock()
+	st.rejectValue = func(key, value string) bool {
+		return key == csms.KeyMeterValuesSampledData && strings.Contains(value, "SoC")
+	}
+	st.mu.Unlock()
+	if err := s.Commission(ctx5(t), "SAEULE-1", 240, 15, 10*time.Second); err != nil {
+		t.Fatalf("commission: %v", err)
+	}
+	st.mu.Lock()
+	got := st.config[csms.KeyMeterValuesSampledData]
+	st.rejectValue = func(string, string) bool { return true }
+	st.mu.Unlock()
+	if got != csms.SampledDataLists[1] {
+		t.Fatalf("measurands = %q, want the list without SoC %q", got, csms.SampledDataLists[1])
+	}
+
+	if err := s.Commission(ctx5(t), "SAEULE-1", 200, 15, 10*time.Second); err != nil {
+		t.Fatalf("a station refusing every measurand list must still be set up: %v", err)
+	}
+	if c, _ := s.Snapshot().ChargerByID("SAEULE-1"); c.CommissionError != "" {
+		t.Fatalf("commission error %q", c.CommissionError)
+	}
+}
+
+// TestTheMeasurementPlanOwnsTheMeasurands: once the Node-RED measurement plan
+// set MeterValuesSampledData, commissioning never overrides it (W-06).
+func TestTheMeasurementPlanOwnsTheMeasurands(t *testing.T) {
+	s, endpoint := startServer(t, "SAEULE-1")
+	_, st := connectStation(t, s, endpoint, "SAEULE-1", time.Now)
+	plan := csms.MeasurementConfiguration{Revision: 1,
+		Values: map[string]string{csms.KeyMeterValuesSampledData: "Energy.Active.Import.Register,Power.Active.Import"}}
+	if err := s.SetMeasurementConfiguration(ctx5(t), plan); err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if err := s.Commission(ctx5(t), "SAEULE-1", 240, 15, 10*time.Second); err != nil {
+		t.Fatalf("commission: %v", err)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if got := st.config[csms.KeyMeterValuesSampledData]; got != plan.Values[csms.KeyMeterValuesSampledData] {
+		t.Fatalf("commissioning overrode the plan: %q", got)
+	}
+}
+
+// TestAReconnectWithoutARebootKeepsTheSetUp is W-07: a station that only lost
+// its socket still holds its profiles. It used to count as not set up until
+// commissioning ran again - which first capped its car at 0 W. Only a new
+// BootNotification voids the confirmation.
+func TestAReconnectWithoutARebootKeepsTheSetUp(t *testing.T) {
+	s, endpoint := startServer(t, "SAEULE-1")
+	_, _, stop := connectStoppableStation(t, s, endpoint, "SAEULE-1", time.Now)
+	if err := s.Commission(ctx5(t), "SAEULE-1", 240, 15, 0); err != nil {
+		t.Fatalf("commission: %v", err)
+	}
+	stop()
+	waitFor(t, "the CSMS saw the socket drop", func() bool {
+		c, _ := s.Snapshot().ChargerByID("SAEULE-1")
+		return !c.Connected
+	})
+	cp2, _ := connectStation(t, s, endpoint, "SAEULE-1", time.Now)
+	if c, _ := s.Snapshot().ChargerByID("SAEULE-1"); !c.ProfilesInForce() {
+		t.Fatalf("a reconnect without a reboot voided the set-up: %+v", c.CommissionedAt)
+	}
+	if err := s.ApplyLimit(ctx5(t), "SAEULE-1", 1, 4711, 11); err != nil {
+		t.Fatalf("live limit after a plain reconnect: %v", err)
+	}
+
+	if _, err := cp2.BootNotification("RigStation", "RigVendor"); err != nil {
+		t.Fatalf("boot: %v", err)
+	}
+	if c, _ := s.Snapshot().ChargerByID("SAEULE-1"); c.ProfilesInForce() {
+		t.Fatal("a reboot kept the old confirmation")
+	}
+	if err := s.ApplyLimit(ctx5(t), "SAEULE-1", 1, 4711, 11); err == nil {
+		t.Fatal("a live limit was sent to a rebooted station before it was set up again")
+	}
+}
+
+// TestARetryDoesNotCapTheCarAtZeroAgain is W-08: commissioning takes the
+// station's profile stack under a 0-W guard. A slow station failed late and
+// was set up again and again - each attempt capping the charging car at 0 W
+// once more. The guard runs once per station boot; a retry resumes behind it.
+func TestARetryDoesNotCapTheCarAtZeroAgain(t *testing.T) {
+	s, endpoint := startServer(t, "SAEULE-1")
+	cp, st := connectStation(t, s, endpoint, "SAEULE-1", time.Now)
+	refused := false
+	st.mu.Lock()
+	st.refuseSet = func(p storedProfile) bool {
+		// The final whole-station cap fails once - after the guard.
+		if !refused && p.purpose == types.ChargingProfilePurposeChargePointMaxProfile && p.limitW > 0 {
+			refused = true
+			return true
+		}
+		return false
+	}
+	st.mu.Unlock()
+	guards := func() int {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		n := 0
+		for _, p := range st.sets {
+			if p.purpose == types.ChargingProfilePurposeChargePointMaxProfile && p.limitW == 0 {
+				n++
+			}
+		}
+		return n
+	}
+
+	if err := s.Commission(ctx5(t), "SAEULE-1", 240, 15, 0); err == nil {
+		t.Fatal("the refused cap must fail the first attempt")
+	}
+	if err := s.Commission(ctx5(t), "SAEULE-1", 240, 15, 0); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if err := s.Commission(ctx5(t), "SAEULE-1", 200, 12, 0); err != nil {
+		t.Fatalf("new site numbers: %v", err)
+	}
+	if n := guards(); n != 1 {
+		t.Fatalf("0-W guard installed %d times in one station boot, want 1", n)
+	}
+	st.mu.Lock()
+	maxP := st.profiles[[2]int{0, csms.ProfileIDMax}]
+	st.mu.Unlock()
+	if maxP.limitW != 200000 {
+		t.Fatalf("whole-station cap = %v W, want the new 200 kW", maxP.limitW)
+	}
+
+	// A reboot may have lost the stack: the next set-up takes it again.
+	if _, err := cp.BootNotification("RigStation", "RigVendor"); err != nil {
+		t.Fatalf("boot: %v", err)
+	}
+	if err := s.Commission(ctx5(t), "SAEULE-1", 200, 12, 0); err != nil {
+		t.Fatalf("after reboot: %v", err)
+	}
+	if n := guards(); n != 2 {
+		t.Fatalf("0-W guards after a reboot = %d, want 2", n)
 	}
 }
 

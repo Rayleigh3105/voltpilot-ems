@@ -363,8 +363,18 @@ function ctAmount(value: number): string {
 export function parsePremiumInput(text: string): number | null | undefined {
   const trimmed = text.trim();
   if (!trimmed) return null;
-  const value = Number(trimmed.replace(',', '.'));
-  return Number.isFinite(value) && value >= 0 ? value : undefined;
+  return zahlInGrenzen(trimmed, 3, 100_000, false) ? Number(trimmed.replace(',', '.')) : undefined;
+}
+
+/**
+ * Passt eine getippte Zahl in die Grenzen des Servers (`CreateSiteRequest`: `@Digits`, Untergrenze)?
+ * Die Sätze dazu stehen in `zahlFehler.ts` (Anlage-Flow a1, F4) - sie braucht nur der Anlege-Schritt.
+ */
+export function zahlInGrenzen(text: string, stellen: number, unter: number, groesserNull: boolean): boolean {
+  const t = text.trim().replace(',', '.');
+  const value = Number(t);
+  if (!t || !Number.isFinite(value) || (groesserNull ? value <= 0 : value < 0) || value >= unter) return false;
+  return (t.split('.')[1]?.length ?? 0) <= stellen;
 }
 
 /** The stored anzulegender Wert as form text (German comma), '' when unset. */
@@ -382,8 +392,7 @@ export function premiumInputText(anzulegenderWertCtKwh: number | null): string {
 export function parseFeedInCapInput(text: string): number | null | undefined {
   const trimmed = text.trim();
   if (!trimmed) return null;
-  const value = Number(trimmed.replace(',', '.'));
-  return Number.isFinite(value) && value > 0 ? value : undefined;
+  return zahlInGrenzen(trimmed, 2, 1_000_000, true) ? Number(trimmed.replace(',', '.')) : undefined;
 }
 
 /**
@@ -408,13 +417,23 @@ export function tarifArtLabel(tarifArt: TarifArt, tarifParamCtKwh: number | null
  * es fehlen die Batterie-Stammdaten) — die Karte schweigt dann über Geld,
  * statt eine 0 oder eine Zahl auf der falschen Messlatte zu zeigen.
  */
-export function siteEarnText(kind: PlantKind, steuerungTodayEur: number | null): string | null {
-  if (steuerungTodayEur == null) return null;
-  // A value that ROUNDS to zero must render "+0,00 €", never "-0,00 €".
-  const value = Math.abs(steuerungTodayEur) < 0.005 ? 0 : steuerungTodayEur;
-  const signed = `${value >= 0 ? '+' : ''}${eurAmount(value)}`;
+export function siteEarnText(
+  kind: PlantKind,
+  steuerungEur: number | null,
+  /**
+   * `monat` = der laufende Monat mit Bestand (Bedienkonzept P3, HZ-3 A und
+   * P3-4 A: vorn steht der Monat, nie die Tageszahl); `heute` nur noch für
+   * ein älteres Backend ohne `steuerungMonatMitBestandEur`.
+   */
+  wann: 'heute' | 'monat' = 'heute',
+): string | null {
+  if (steuerungEur == null) return null;
+  // A value that ROUNDS to zero must render "+0,00 €", never "−0,00 €"; the
+  // minus is U+2212 like the Erlöse page (Bedienkonzept P3, Nebenbefund 2).
+  const value = Math.abs(steuerungEur) < 0.005 ? 0 : steuerungEur;
+  const signed = value >= 0 ? `+${eurAmount(value)}` : `−${eurAmount(Math.abs(value))}`;
   const verb = kind === 'direktvermarktung' ? 'mehr verdient' : 'gespart';
-  return `Heute ${signed} ${verb} durch die Steuerung`;
+  return `${wann === 'monat' ? 'Diesen Monat' : 'Heute'} ${signed} ${verb} durch die Steuerung`;
 }
 
 /**

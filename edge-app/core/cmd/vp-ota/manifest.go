@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -13,7 +18,7 @@ import (
 
 func cmdManifest(args []string) error {
 	fs := flag.NewFlagSet("manifest", flag.ExitOnError)
-	release := fs.String("release", "", "Release-Tag edge-JJJJ.MM.N (Pflicht)")
+	release := fs.String("release", "", "Release-Tag edge-JJJJ.MM.N oder edge-light-JJJJ.MM.N (Pflicht)")
 	seq := fs.Int64("seq", 0, "release_seq - die monotone Ordnung aus dem Register (Pflicht)")
 	commit := fs.String("commit", "", "target_commit im voltpilot-ems-Repo (Pflicht)")
 	minFrom := fs.Int64("min-from-seq", 0, "Anti-Rollback-Boden: darunter fehlt eine Zwischenstufe")
@@ -26,9 +31,12 @@ func cmdManifest(args []string) error {
 		"Eil-Release: der autonome Tausch verschiebt nicht, sondern stellt die Anlage zuerst bewusst neutral")
 	out := fs.String("out", "release.json", "Zieldatei")
 	var artifacts stringList
-	fs.Var(&artifacts, "artifact", "name=ref@sha256:… (mehrfach angebbar, Pflicht)")
+	fs.Var(&artifacts, "artifact", "name=ref@sha256:… (Docker-Box, mehrfach angebbar)")
+	var binaries stringList
+	fs.Var(&binaries, "binary",
+		"name:GOOS/GOARCH=programm[,programm.gz] (Edge Light, je Architektur einmal; ohne ,… gilt programm.gz)")
 	var backends stringList
-	fs.Var(&backends, "backend", "Apply-Backend, fuer das dieses Release gilt (Vorgabe: compose)")
+	fs.Var(&backends, "backend", "Apply-Backend, fuer das dieses Release gilt (Vorgabe: compose, mit --binary light)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `vp-ota manifest - unsigniertes release.json erzeugen
 
@@ -45,18 +53,37 @@ Beispiel:
     --min-from-seq 9 --state-schema 3 --key-id rel-2026-a \
     --out release.json
 
+Ein Edge-Light-Release (Box-Art light) traegt statt Images ein Programm je
+Architektur. Das Werkzeug liest die rohe Datei UND die gepackte Lieferung,
+prueft, dass die Lieferung genau das Programm entpackt, und schreibt
+Pruefsummen und Groessen beider ins Manifest:
+
+  vp-ota manifest \
+    --release edge-light-2026.11.1 --seq 14 --commit 3bf8c03 \
+    --binary vp-edge-light:linux/mipsle=dist/vp-edge-light-linux-mipsle \
+    --binary vp-edge-light:linux/arm64=dist/vp-edge-light-linux-arm64 \
+    --state-schema 3 --key-id rel-2026-a --out release.json
+
 `)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *release == "" || *seq == 0 || *commit == "" || *keyID == "" || len(artifacts) == 0 {
+	if *release == "" || *seq == 0 || *commit == "" || *keyID == "" || len(artifacts)+len(binaries) == 0 {
 		fs.Usage()
-		return errors.New("--release, --seq, --commit, --key-id und mindestens ein --artifact sind Pflicht")
+		return errors.New("--release, --seq, --commit, --key-id und mindestens ein --artifact oder --binary sind Pflicht")
+	}
+	if len(artifacts) > 0 && len(binaries) > 0 {
+		// Ein Manifest je Box-Art: die Gegenprobe unten lehnte das auch ab,
+		// hier steht der Grund in der Sprache der Optionen.
+		return errors.New("--artifact (Docker-Box) und --binary (Edge Light) gehoeren in verschiedene Releases")
 	}
 	if len(backends) == 0 {
 		backends = stringList{otaverify.BackendCompose}
+		if len(binaries) > 0 {
+			backends = stringList{otaverify.BackendLight}
+		}
 	}
 	if *validUntil != "" {
 		if _, err := time.Parse(time.RFC3339, *validUntil); err != nil {
@@ -90,6 +117,14 @@ Beispiel:
 		})
 	}
 
+	for _, b := range binaries {
+		a, err := binaryArtifact(b)
+		if err != nil {
+			return err
+		}
+		m.Artifacts = append(m.Artifacts, a)
+	}
+
 	raw, err := marshalDoc(m)
 	if err != nil {
 		return err
@@ -107,6 +142,56 @@ Beispiel:
 	fmt.Printf("Jetzt out-of-band signieren:\n")
 	fmt.Printf("  vp-ota sign --key <release>.key --domain %s --in %s\n", otaverify.DomainRelease, *out)
 	return nil
+}
+
+// binaryArtifact liest name:GOOS/GOARCH=programm[,programm.gz] und misst beide
+// Dateien. Die gepackte Lieferung muss GENAU das Programm entpacken: das Geraet
+// prueft den Download gegen gz_sha256 und das entpackte Programm gegen sha256 -
+// passten die beiden nicht zusammen, scheiterte jedes Update erst auf der Box.
+func binaryArtifact(spec string) (otaverify.Artifact, error) {
+	head, files, ok := strings.Cut(spec, "=")
+	if !ok {
+		return otaverify.Artifact{}, fmt.Errorf("--binary %q: erwartet wird name:GOOS/GOARCH=programm[,programm.gz]", spec)
+	}
+	name, arch, ok := strings.Cut(head, ":")
+	if !ok {
+		return otaverify.Artifact{}, fmt.Errorf("--binary %q: die Plattform fehlt (name:GOOS/GOARCH=…)", spec)
+	}
+	rawPath, gzPath, hasGz := strings.Cut(files, ",")
+	rawPath = strings.TrimSpace(rawPath)
+	if !hasGz {
+		gzPath = rawPath + ".gz"
+	}
+	gzPath = strings.TrimSpace(gzPath)
+	raw, err := os.ReadFile(rawPath)
+	if err != nil {
+		return otaverify.Artifact{}, fmt.Errorf("--binary %s: %w", head, err)
+	}
+	packed, err := os.ReadFile(gzPath)
+	if err != nil {
+		return otaverify.Artifact{}, fmt.Errorf("--binary %s: gepackte Lieferung: %w", head, err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(packed))
+	if err != nil {
+		return otaverify.Artifact{}, fmt.Errorf("--binary %s: %s ist kein gzip: %w", head, gzPath, err)
+	}
+	unpacked, err := io.ReadAll(zr)
+	if err != nil {
+		return otaverify.Artifact{}, fmt.Errorf("--binary %s: %s laesst sich nicht entpacken: %w", head, gzPath, err)
+	}
+	if !bytes.Equal(unpacked, raw) {
+		return otaverify.Artifact{}, fmt.Errorf("--binary %s: %s entpackt nicht genau %s", head, gzPath, rawPath)
+	}
+	sum := func(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+	return otaverify.Artifact{
+		Type:     otaverify.ArtifactBinary,
+		Name:     strings.TrimSpace(name),
+		Arch:     strings.TrimSpace(arch),
+		SHA256:   sum(raw),
+		Size:     int64(len(raw)),
+		GzSHA256: sum(packed),
+		GzSize:   int64(len(packed)),
+	}, nil
 }
 
 func cmdVerify(args []string) error {

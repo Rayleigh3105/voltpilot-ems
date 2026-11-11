@@ -32,6 +32,8 @@ export interface ManualOverride {
   targetCommand: string;
   targetValue?: number | null;
   endsAt: string;
+  /** Heizstab: die von Hand gewählten Ausgänge (Kanäle) - der Wunsch, nicht das Bestätigte. */
+  targetOutputs?: number[] | null;
 }
 
 /** The §9.4 ledger states → customer wording. */
@@ -242,7 +244,7 @@ export function consumerStrip(
     const actualKw = st?.actualKw ?? null;
     if (actualKw != null) sum = (sum ?? 0) + actualKw;
     const state = st?.state;
-    if (state === 'running_forced' || state === 'running_optimized') running++;
+    if (state === 'running_forced' || state === 'running_optimized' || state === 'running_manual') running++;
     else if (state === 'ready') ready++;
     if (state && (DISTURBED.has(state) || st?.confirmed === false)) disturbed++;
     rows.push({

@@ -11,7 +11,8 @@
   "family_overrides": {
     "custom": "unbenched_register",
     "wago.pm494": "wago_registerbild",
-    "wago.pm495": "wago_registerbild"
+    "wago.pm495": "wago_registerbild",
+    "voltpilot.erzeuger_registerbild_v1": "erzeuger_registerbild"
   },
   "aliases": {
     "modbus_holding": "modbus",
@@ -26,7 +27,8 @@
     "solarman_v5": "http",
     "ocpp_sampled_value": "ocpp",
     "ocpp": "ocpp",
-    "wago_registerbild": "wago_registerbild"
+    "wago_registerbild": "wago_registerbild",
+    "erzeuger_registerbild": "erzeuger_registerbild"
   },
   "families": {
     "modbus": {
@@ -60,6 +62,12 @@
       "request_cost_ms": 2000,
       "units_per_request": 1,
       "unit": "register_definition"
+    },
+    "erzeuger_registerbild": {
+      "_comment": "Erzeuger-Registerbild (Konzept Erzeuger am WAGO-Modbus-Server, EZ-5, EW-5 A, EW-17 A): 38 + 10 \u00b7 n W\u00f6rter, h\u00f6chstens 120 W\u00f6rter je Anfrage und ein Einheiten-Block nie auf zwei Anfragen verteilt - bis 8 Einheiten eine Anfrage, 9 und 10 zwei (EZ-1 A1). Gelesen wird alle 5 s; cadence_s einer Auswahl ist der l\u00e4ngste Abstand zweier Werte, darum stehen die Kan\u00e4le mit 60 s und die Lesung mit 5 s als eigene Zeile.",
+      "request_cost_ms": 400,
+      "units_per_request": 8,
+      "unit": "erzeugungseinheit"
     }
   },
   "cases": [
@@ -634,6 +642,146 @@
         "requests_per_minute": 12.0,
         "duty_cycle_percent": 40.0,
         "soft_warning": false,
+        "hard_rejected": true
+      }
+    },
+    {
+      "id": "EZ-Gore-3-Wechselrichter",
+      "sources": [
+        {
+          "channels": 43,
+          "cadence_s": 60,
+          "blocks": []
+        },
+        {
+          "channels": 0,
+          "cadence_s": 5,
+          "blocks": [
+            {
+              "source_kind": "erzeuger_registerbild",
+              "units": 3,
+              "family": "voltpilot.erzeuger_registerbild_v1"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 43.0,
+        "requests_per_minute": 12.0,
+        "duty_cycle_percent": 8.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "EZ-Buettner-2-Motoren",
+      "sources": [
+        {
+          "channels": 36,
+          "cadence_s": 60,
+          "blocks": []
+        },
+        {
+          "channels": 0,
+          "cadence_s": 5,
+          "blocks": [
+            {
+              "source_kind": "erzeuger_registerbild",
+              "units": 2,
+              "family": "voltpilot.erzeuger_registerbild_v1"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 36.0,
+        "requests_per_minute": 12.0,
+        "duty_cycle_percent": 8.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "EZ-8-Einheiten-eine-Anfrage",
+      "sources": [
+        {
+          "channels": 78,
+          "cadence_s": 60,
+          "blocks": []
+        },
+        {
+          "channels": 0,
+          "cadence_s": 5,
+          "blocks": [
+            {
+              "source_kind": "erzeuger_registerbild",
+              "units": 8,
+              "family": "voltpilot.erzeuger_registerbild_v1"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 78.0,
+        "requests_per_minute": 12.0,
+        "duty_cycle_percent": 8.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "EZ-10-Einheiten-zwei-Anfragen",
+      "sources": [
+        {
+          "channels": 92,
+          "cadence_s": 60,
+          "blocks": []
+        },
+        {
+          "channels": 0,
+          "cadence_s": 5,
+          "blocks": [
+            {
+              "source_kind": "erzeuger_registerbild",
+              "units": 10,
+              "family": "voltpilot.erzeuger_registerbild_v1"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 92.0,
+        "requests_per_minute": 24.0,
+        "duty_cycle_percent": 16.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "EZ-10-Einheiten-jeder-Wert-alle-5s",
+      "sources": [
+        {
+          "channels": 92,
+          "cadence_s": 5,
+          "blocks": []
+        },
+        {
+          "channels": 0,
+          "cadence_s": 5,
+          "blocks": [
+            {
+              "source_kind": "erzeuger_registerbild",
+              "units": 10,
+              "family": "voltpilot.erzeuger_registerbild_v1"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 1104.0,
+        "requests_per_minute": 24.0,
+        "duty_cycle_percent": 16.0,
+        "soft_warning": true,
         "hard_rejected": true
       }
     }

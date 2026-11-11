@@ -11,11 +11,13 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
   api,
+  type Betriebsart,
   type ControlStatus,
   type CurtailmentStatus,
   type SiteCharging,
   type Device,
   type EarningsRange,
+  type ForecastResponse,
   type History,
   type HistoryTotals,
   type Overview,
@@ -25,7 +27,6 @@ import {
   type StandortAusfall,
   type SiteEarnings,
   type SiteSource,
-  type TelemetryPoint,
 } from '../api';
 import { BATTERY_NO_DEVICE_WARNING, composeSiteSentence, siteLiveFresh, siteSnapshot } from '../fleet';
 import { plantKindLabel } from '../format';
@@ -42,7 +43,7 @@ import {
   komponenteHash,
 } from '../nav';
 import { useStaffel, mitStaffel } from '../staffel';
-import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
+import { boxRefOf, chargerGeraetId, einheitGeraetId } from '../geraetAdresse';
 import { tagAus } from '../tagesleiste';
 import type { Betrieb } from '../leitungsplan';
 import { verbrauchKomposition } from '../verbrauchKomposition';
@@ -97,6 +98,8 @@ import { GroessenWahl, type RasterGroesse } from '../components/kacheln/Kachel';
 import type { KachelAuftrag } from '../components/kacheln/CockpitKacheln';
 import { jetztFluss } from '../flussJetzt';
 import { steuerSpalten } from '../kacheln';
+import type { ErzeugerJetzt, ErzeugerVorgabenHeute } from '../api';
+import type { Programmstand } from '../programmstand';
 import type { WeatherPoint } from '../api';
 import {
   LEER_SATZ as EIGEN_LEER_SATZ,
@@ -108,7 +111,6 @@ import {
   type EigeneAuswertungWerte,
 } from '../eigeneAuswertung';
 import { EigenerBaustein } from '../components/EigeneAuswertung';
-import { EigeneAuswertungDialog } from '../components/EigeneAuswertungDialog';
 import {
   AnpassenHuelle,
   AnpassenLeiste,
@@ -130,19 +132,22 @@ import {
 import { CockpitHero } from '../components/CockpitHero';
 import { MobileStickyHead } from '../components/CockpitBlocks';
 import { ZustandCard } from '../components/ZustandCard';
-import { gateStrompreis } from '../strompreis';
-import { AnlageSetup } from '../components/AnlageSetup';
+import { KachelRaster } from '../components/kacheln/KachelRaster';
+import { gateStrompreis } from '../strompreisGate';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
-import { peakBand, quarterHourMeanImportKw } from '../peakBand';
+import { ersteWerteOffen } from '../ersteWerte';
+import { peakBand, serverQuarterHourMean } from '../peakBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { LazyBoundary } from '../components/Lazy';
+import { Fehlergrenze } from '../components/Fehlergrenze';
 import { BereichTabs } from '../components/BereichTabs';
-import { anlageSidebar, bereichLabel, tabsFor } from '../ebenenNav';
+import { anlageSidebar, bereichLabel, ladeSicht, tabsFor } from '../ebenenNav';
 import { useSiteEarnings } from '../useSiteEarnings';
 import { isoDate } from '../periodNav';
+import { schnellZeileRelevant } from '../ladeRegel';
 // Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
 // zeichnet keine von ihnen, zog aber über den statischen Import ihre gesamte
 // Fracht ins Einstiegs-Bündel: ECharts (jede Diagramm-Fläche), Leaflet (die
@@ -151,8 +156,23 @@ import { isoDate } from '../periodNav';
 const FahrplanSection = lazy(() =>
   SUB_CHUNK.daten().then((m) => ({ default: m.FahrplanSection })),
 );
-const WetterSection = lazy(() =>
-  SUB_CHUNK.daten().then((m) => ({ default: m.WetterSection })),
+// Anlage-Flow a1 (D7, D9): die Karten „Ihre Anlage ist live“ und „Wo steht …?“ über dem Cockpit - ein
+// eigenes Stück, das nur lädt, wenn eine Karte ansteht (die Entscheidung kostet hier nichts).
+const AnlageHinweise = lazy(() => import('../components/AnlageHinweise'));
+// „Auto steckt · Jetzt schnell laden“ (F3 b): ein eigenes Stück, das nur lädt, wenn an einer Säule eine Ladung
+// läuft (`ladungLaeuft` unten) - das erste Bild jeder anderen Anlage trägt es nicht (Einstiegs-Budget).
+const SchnellLadenZeile = lazy(() =>
+  import('../components/SchnellLadenZeile').then((m) => ({ default: m.SchnellLadenZeile })),
+);
+// Die Einrichtungs-Karte („Ihr Weg zum fertigen EMS“) steht nur an einer neuen, noch leeren Anlage - sie kommt
+// nachgeladen, das erste Bild jeder laufenden Anlage trägt sie nicht (Einstiegs-Budget, Anlage-Flow a1 Paket 2).
+const AnlageSetup = lazy(() => import('../components/AnlageSetup').then((m) => ({ default: m.AnlageSetup })));
+// Der Dialog „Eigene Auswertung“ öffnet nur aus dem Anpassen-Modus (beide Einstiege stehen dort) - er trägt den
+// Messwert-Baum (`verlauf`/`komponenten`) und kommt deshalb nachgeladen. `ladeEigeneAuswertung` ist die EINE
+// Aufrufstelle: der Anpassen-Modus holt das Stück vor, sobald er aufgeht, der Klick findet es schon da.
+const ladeEigeneAuswertung = () => import('../components/EigeneAuswertungDialog');
+const EigeneAuswertungDialog = lazy(() =>
+  ladeEigeneAuswertung().then((m) => ({ default: m.EigeneAuswertungDialog })),
 );
 const MesswerteSection = lazy(() =>
   SUB_CHUNK.messwerte().then((m) => ({ default: m.MesswerteSection })),
@@ -177,6 +197,8 @@ const BoxSeiteSection = lazy(() =>
 );
 /** Die Bausteine, die im Kachelraster unter der Bühne stehen. */
 const RASTER_BAUSTEINE = new Set<string>(['geld', 'strompreis', 'fahrplan', 'laden', 'kacheln']);
+/** Führt der Fluss, steht „Unterm Strich“ als Zeile über die volle Breite, nicht im Raster (E2 = A). */
+const GELD_ALS_ZEILE: ReadonlySet<string> = new Set(['geld']);
 const LEIT_BAUSTEIN: Record<'strompreis' | 'lastspitze' | 'geld', string> = {
   strompreis: 'strompreis',
   lastspitze: 'kacheln',
@@ -187,12 +209,15 @@ const LEIT_BAUSTEIN: Record<'strompreis' | 'lastspitze' | 'geld', string> = {
  * Der Stapel des Cockpits (Konzept „Cockpit als Tagesfilm“): aufeinander
  * folgende Kachel-Bausteine teilen EIN Raster, alles andere (Kopf, Bühne,
  * Zustand) steht über die volle Breite. Die Reihenfolge bleibt die aufgelöste;
- * am Telefon rückt die Leitkachel an den Anfang ihres Rasters.
+ * am Telefon rückt die Leitkachel an den Anfang ihres Rasters. `breit` nennt
+ * Raster-Bausteine, die gerade als Zeile über die volle Breite stehen („Unterm
+ * Strich“, wenn der Fluss führt).
  */
 function stapelMitRaster(
   order: readonly string[],
   knoten: (id: string) => ReactNode,
   leit: 'strompreis' | 'lastspitze' | 'geld' | null,
+  breit: ReadonlySet<string> = new Set(),
 ): ReactNode[] {
   const out: ReactNode[] = [];
   let lauf: { id: string; node: ReactNode }[] = [];
@@ -202,18 +227,18 @@ function stapelMitRaster(
     const i = vorn ? lauf.findIndex((x) => x.id === vorn) : -1;
     if (i > 0) lauf.unshift(...lauf.splice(i, 1));
     out.push(
-      <section key={`raster-${lauf[0].id}`} className="vp-kraster" aria-label="Kacheln">
+      <KachelRaster key={`raster-${lauf[0].id}`}>
         {lauf.map((x) => (
           <Fragment key={x.id}>{x.node}</Fragment>
         ))}
-      </section>,
+      </KachelRaster>,
     );
     lauf = [];
   };
   for (const id of order) {
     const node = knoten(id);
     if (node == null) continue;
-    if (RASTER_BAUSTEINE.has(id)) {
+    if (RASTER_BAUSTEINE.has(id) && !breit.has(id)) {
       lauf.push({ id, node });
     } else if (istEigen(id)) {
       lauf.push({ id, node: <div className="vp-k-platz is-breit">{node}</div> });
@@ -258,7 +283,12 @@ const MarktpreisePage = lazy(() =>
   SUB_CHUNK.daten().then((m) => ({ default: m.MarktpreisePage })),
 );
 const PrognosePage = lazy(() =>
-  SUB_CHUNK.prognose().then((m) => ({ default: m.PrognosePage })),
+  SUB_CHUNK.prognosemodelle().then((m) => ({ default: m.PrognosePage })),
+);
+// Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+// Sonnen-Teppich): Reiter im Fahrplan/Ladepark, sonst ihr eigener Bereich.
+const PrognoseSeite = lazy(() =>
+  SUB_CHUNK.prognose().then((m) => ({ default: m.PrognoseSeite })),
 );
 
 /** Re-render cadence of the "Stand vor X" freshness note. */
@@ -270,6 +300,13 @@ const TICK_MS = 5_000;
  * orientiert (`src/boot.ts`).
  */
 const ANLAGE_DECISION_TIMEOUT_MS = 10_000;
+/**
+ * Die Platzhalter der Teile, die die Übersichts-Zeile trägt, solange sie noch kommt (Rang 4a): so hoch wie das, was an
+ * ihre Stelle tritt, damit nichts springt. Die Höhen stehen als Eigenschaften am Stapel (`CockpitBlocks.css`,
+ * `--vp-platzhalter-buehne`/`-zustand`, je Desktop und Telefon), gemessen an der fertigen Landung.
+ */
+const BUEHNE_PLATZHALTER = 'var(--vp-platzhalter-buehne)';
+const ZUSTAND_PLATZHALTER = 'var(--vp-platzhalter-zustand)';
 
 export interface AnlagenPageProps {
   sites: Site[];
@@ -305,6 +342,15 @@ export interface AnlagenPageProps {
   misstHier?: boolean;
   /** Standort der Anlage für die additive, fail-soft Ausfall-Lesesicht. */
   standortId?: string | null;
+  /**
+   * „Ein Ort fürs Laden" §4.6 (E2 = A): welches Gesicht der Bereich mit den
+   * Ladepunkten trägt (Privatkunde „Laden" in der Steuerung, Betreiber
+   * „Ladepark" an der heutigen Ladevorgänge-Stelle). Ohne gespeicherte
+   * Betriebsart entscheidet die Zahl der Ladepunkte (`ladepunktAnzahl`).
+   */
+  betriebsart?: Betriebsart | null;
+  /** Aus `useAnlageSurface` - ohne zweiten Abruf gezählt. */
+  ladepunktAnzahl?: number | null;
 }
 
 /**
@@ -353,6 +399,8 @@ export function AnlagenPage(props: AnlagenPageProps) {
       geraet={route.geraet ?? null}
       isAdmin={isAdmin}
       surface={props.surface ?? null}
+      betriebsart={props.betriebsart ?? null}
+      ladepunktAnzahl={props.ladepunktAnzahl ?? null}
       onBack={() => onNavigate(anlageRoute(site.id))}
       onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
       onReload={props.onReload}
@@ -595,6 +643,8 @@ function AnlagenSubPage({
   geraet,
   isAdmin,
   surface,
+  betriebsart,
+  ladepunktAnzahl,
   onBack,
   onOpenSub,
   onReload,
@@ -608,6 +658,8 @@ function AnlagenSubPage({
   geraet: GeraetTarget | null;
   isAdmin: boolean;
   surface: AnlageSurface | null;
+  betriebsart: Betriebsart | null;
+  ladepunktAnzahl: number | null;
   onBack: () => void;
   onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
@@ -623,21 +675,24 @@ function AnlagenSubPage({
   // `rollen.showTechnicalLayer`) - hier als Prop, damit die Hülle im
   // Einstiegs-Bündel nicht die Rollen-Ableitung mitzieht.
   const technisch = isAdmin;
-  const sidebar = anlageSidebar(surface, undefined, undefined, technisch);
+  const sidebar = anlageSidebar(surface, undefined, undefined, technisch, betriebsart, ladepunktAnzahl);
   const tabs = tabsFor(sidebar, sub);
 
-  // E6 = A: die Prognosen-Seite ist ein Werkzeug für VoltPilot. Ein Kunde, der
-  // ein altes Lesezeichen öffnet, landet dort, wo die Treffsicherheit jetzt
-  // steht - im Fahrplan (ohne Speicher gibt es keinen, dann im Cockpit). Solange
-  // die Anlage noch lädt, ist das unbekannt: dann wird gewartet, und bis dahin
-  // steht ein Satz mit dem Weg da - nie eine leere Seite.
-  // `replace`: kein Verlaufseintrag, der Zurück-Knopf springt nicht im Kreis.
-  const prognoseUmleiten = sub === 'prognose' && !technisch;
-  const hatFahrplan = surface ? surface.deepViews.includes('fahrplan') : null;
+  // „Ein Ort fürs Laden" §4.6/§7.1 (E2 = A): „Ladevorgänge“ entfällt für
+  // Privatkunden - ein altes Lesezeichen (nav.ts-Disziplin: jedes Lesezeichen
+  // gilt) landet auf Steuerung › Laden, wo dieselbe Frage jetzt wohnt.
+  // Betreiber bleiben an Ort und Stelle (als „Ladepark“, siehe `anlageSidebar`
+  // oben) - nichts leitet dort um. Ohne gespeicherte Betriebsart entscheidet
+  // die Ladepunktzahl erst, sobald sie geladen ist (`ladeEntschieden`) - sonst
+  // träfe eine noch unbekannte Zahl kurz die Privatkunden-Annahme und würde
+  // auch einen Betreiber-Ladepark einen Augenblick umleiten.
+  const ladeEntschieden = betriebsart === 'betreiber' || betriebsart === 'endkunde' || ladepunktAnzahl != null;
+  const ladevorgaengeUmleiten =
+    sub === 'ladevorgaenge' && ladeEntschieden && ladeSicht(betriebsart, ladepunktAnzahl) === 'privatkunde';
   useEffect(() => {
-    if (!prognoseUmleiten || hatFahrplan == null) return;
-    window.location.replace(hashForRoute(anlageRoute(site.id, hatFahrplan ? 'fahrplan' : null)));
-  }, [prognoseUmleiten, hatFahrplan, site.id]);
+    if (!ladevorgaengeUmleiten) return;
+    window.location.replace(hashForRoute(anlageRoute(site.id, 'laden')));
+  }, [ladevorgaengeUmleiten, site.id]);
 
   /**
    * **Der Welt-Wechsel wohnt seit E3 in DIESEN Reitern** (Konzept
@@ -698,7 +753,7 @@ function AnlagenSubPage({
         />
       )}
       <LazyBoundary>
-        {sub === 'fahrplan' && <FahrplanSection site={site} />}
+        {sub === 'fahrplan' && <FahrplanSection site={site} ladepunkte={ladepunktAnzahl} />}
         {sub === 'messwerte' && (
           <MesswerteSection
             site={site}
@@ -712,7 +767,6 @@ function AnlagenSubPage({
           <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
         )}
         {sub === 'einzelwerte' && <EinzelwerteSection site={site} />}
-        {sub === 'wetter' && <WetterSection site={site} />}
         {/* Als Reiter des Verlaufs: die Anlage steht im Pfad, den Titel trägt
             der Seitenkopf oben - `embedded` unterdrückt darum Überschrift und
             Anlagen-Wähler der ehemals eigenständigen Seiten. */}
@@ -724,14 +778,15 @@ function AnlagenSubPage({
             embedded
           />
         )}
-        {sub === 'prognose' && !prognoseUmleiten && (
-          <PrognosePage sites={[site]} selectedSite={site.id} onSelectSite={() => {}} embedded />
+        {/* Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+            Sonnen-Teppich): für JEDE Anlage, mit und ohne Speicher, mit und
+            ohne PV - kein Admin-Tor mehr. */}
+        {sub === 'prognose' && (
+          <PrognoseSeite site={site} hatFahrplan={(surface?.deepViews ?? []).includes('fahrplan')} />
         )}
-        {prognoseUmleiten && (
-          <p className="vp-muted">
-            Wie gut die Vorhersage trifft, steht jetzt im{' '}
-            <a href={hashForRoute(anlageRoute(site.id, 'fahrplan'))}>Fahrplan</a>.
-          </p>
+        {/* Das frühere `prognose`: VoltPilot-interne Modellqualität, nur Plattform-Admin. */}
+        {sub === 'prognosemodelle' && technisch && (
+          <PrognosePage sites={[site]} selectedSite={site.id} onSelectSite={() => {}} embedded />
         )}
       {/* Der Aufbau zeigt die Boxen aus der Geräteliste, die die Schale ohnehin
           hält und frisch hält. Ihre Bezugszeit reist mit: der Zustand einer Box
@@ -771,7 +826,15 @@ function AnlagenSubPage({
           />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
-        {sub === 'ladevorgaenge' && <LadevorgaengeSection site={site} devices={devices} />}
+        {sub === 'ladevorgaenge' && !ladevorgaengeUmleiten && (
+          <LadevorgaengeSection site={site} devices={devices} />
+        )}
+        {ladevorgaengeUmleiten && (
+          <p className="vp-muted">
+            Das Laden steht jetzt in der{' '}
+            <a href={hashForRoute(anlageRoute(site.id, 'laden'))}>Steuerung › Laden</a>.
+          </p>
+        )}
         {/* Die BEFEHLE-Seite gehört einer KOMPONENTE - sie kommt als
             Hash-Parameter, damit jedes Lesezeichen dieselbe wieder öffnet. */}
         {sub === 'befehle' && (
@@ -787,6 +850,7 @@ function AnlagenSubPage({
             reiter={sub as 'steuerung' | 'laden' | 'regeln'}
             tabs={tabs}
             onOpenSub={onOpenSub}
+            devices={devices}
           />
         )}
         {sub === 'technik' && (
@@ -817,10 +881,13 @@ export function AnlageSeite({
   site,
   sites,
   devices,
+  onReload,
   onOpenSub,
   onHealthFacts,
   misstHier = false,
   standortId = null,
+  betriebsart,
+  ladepunktAnzahl,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -849,11 +916,64 @@ export function AnlageSeite({
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [weatherWhyText, setWeatherWhyText] = useState<string | null>(null);
   const [wetterPunkte, setWetterPunkte] = useState<WeatherPoint[] | null>(null);
+  // Die Kachel „Prognose" (Konzept vp-prognosen-konzept, Bericht §7): ersetzt
+  // „Sonne" und braucht darum dieselbe Prognose wie die Kundenseite, nicht
+  // mehr den Fahrplan-Plan - sie führt dann auch ohne Fahrplan und ohne PV.
+  const [prognoseKachelDaten, setPrognoseKachelDaten] = useState<ForecastResponse | null>(null);
   const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
   // Die Abregel-Wahrheit (PR 3): setzt die Anlage eine geplante Drosselung
   // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
   // Rücklese-Block), fail-soft - null = kein Beleg = Plan-Wortlaut.
   const [curtailStatus, setCurtailStatus] = useState<CurtailmentStatus | null>(null);
+  // Erzeugeranlage an einer Anlagensteuerung (EZ-8): das Bild der Steuerung - fail-soft, null = keine
+  // Anlagensteuerung oder älteres Backend; dann bleibt das Cockpit wie bisher.
+  const [erzeugerJetzt, setErzeugerJetzt] = useState<ErzeugerJetzt | null>(null);
+  // Die Ableitung (`erzeuger.ts`) ist ein eigenes Stück: sie lädt erst, wenn die Anlage eine
+  // Anlagensteuerung hat - das erste Bild jeder anderen Anlage trägt sie nicht (Einstiegs-Budget).
+  const [erzModul, setErzModul] = useState<typeof import('../erzeuger') | null>(null);
+  useEffect(() => {
+    if (!erzeugerJetzt || erzModul) return undefined;
+    let aktiv = true;
+    import('../erzeuger').then(
+      (m) => {
+        if (aktiv) setErzModul(m);
+      },
+      () => {},
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [erzeugerJetzt, erzModul]);
+  // UEMS EZ-16: der Programmstand der Anlagensteuerung - einmal je Steuerung, nicht im Takt (er wechselt nur
+  // mit einem neuen SPS-Programm). Fail-soft: ohne ihn steht im Blatt kein Grund „Programm“.
+  const erzSteuerungId = erzeugerJetzt?.steuerung.geraetId ?? null;
+  const [erzProgrammstand, setErzProgrammstand] = useState<Programmstand | null>(null);
+  // GE-3: die Entität der Steuerung — die Seiten ihrer Einheiten heißen `as-<Entität>~te-<n>`.
+  const [erzEntity, setErzEntity] = useState<string | null>(null);
+  useEffect(() => {
+    setErzProgrammstand(null);
+    setErzEntity(null);
+    if (!erzSteuerungId) return undefined;
+    let aktiv = true;
+    api.anlagensteuerungen(site.id).then(
+      (l) => {
+        const s = l?.steuerungen.find((x) => x.geraet_id === erzSteuerungId);
+        if (aktiv) setErzProgrammstand(s?.programmstand ?? null);
+        if (aktiv) setErzEntity(s?.entity_id ?? null);
+      },
+      () => {},
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [site.id, erzSteuerungId]);
+  // „Wer hat heute geregelt?“ (EZ-9): die heutigen Vorgaben vom Server (EZ-7) statt der Zustandswechsel im Portal -
+  // im Listentakt, über das Erzeuger-Stück (nur Anlagen mit Anlagensteuerung laden es).
+  const [erzHeute, setErzHeute] = useState<ErzeugerVorgabenHeute | null>(null);
+  useEffect(() => {
+    setErzHeute(null);
+    return erzSteuerungId && erzModul ? erzModul.heuteAbonnieren(site.id, setErzHeute, LIST_POLL_MS) : undefined;
+  }, [site.id, erzSteuerungId, erzModul]);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
   // Abruf hier: ein älteres Backend kennt die Route nicht, dann gibt es die
   // Kachel schlicht nicht.
@@ -861,9 +981,6 @@ export function AnlageSeite({
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [planFailed, setPlanFailed] = useState(false);
-  // U4: recent telemetry for the peak face's live ¼-h mean (fetched only when
-  // the cockpit leads with the Peak-Band - see the gated effect below).
-  const [peakSamples, setPeakSamples] = useState<TelemetryPoint[]>([]);
   // M3: today's Historie totals feed the Eigenverbrauchs-Block (Autarkie /
   // PV-Nutzung); since v3 M2 they ALSO feed the cockpit hero's rings and the
   // Haus/Netz widgets, so the projection path fetches them once for all of it.
@@ -998,6 +1115,14 @@ export function AnlageSeite({
         if (active) setCurtailStatus(null);
       },
     );
+    api.erzeugerJetzt(site.id).then(
+      (e) => {
+        if (active) setErzeugerJetzt(e);
+      },
+      () => {
+        if (active) setErzeugerJetzt(null);
+      },
+    );
     api.siteChargers(site.id).then(
       (c) => {
         if (active) setCharging(c);
@@ -1062,6 +1187,21 @@ export function AnlageSeite({
     };
   }, [site.id, reloadKey]);
 
+  useEffect(() => {
+    let active = true;
+    api.forecast(site.id).then(
+      (f) => {
+        if (active) setPrognoseKachelDaten(f);
+      },
+      () => {
+        if (active) setPrognoseKachelDaten(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
+
   // The battery-dispatch plan: drives the promoted Fahrplan band, the
   // Fahrplan-aktiv health item and whether control is expected.
   useEffect(() => {
@@ -1097,14 +1237,29 @@ export function AnlageSeite({
   // Daten-Takt über `useFreshnessPoll` (holt beim Aufwachen SOFORT nach), Uhr
   // daneben - sonst zeigt das Cockpit dem zurückkehrenden Kunden bis zu 30 s
   // lang die Zahlen von vorhin.
+  //
+  // ⚠ ZWEI Takte nach Datenart (Scout `vp-anlagen-cockpit-perf`, Rang 5; Regel in
+  // `pollCadence.ts`). LIVE (10 s): was GEMESSEN ist oder die Frische bestimmt -
+  // `/overview` trägt `live` (Fluss-Rückfall, Frische-Chip, `liveTs` für die
+  // Rollen), die Steuerungs-Rückmeldung, der Erzeuger-Stand, die Ladepunkte.
+  // LISTE (30 s): `/earnings` (Zeitraum-Summen, die Quelle rechnet sie aus
+  // 15-Minuten-Rollups) und `/schedule` (der Plan, den der Optimierer alle
+  // 15 Minuten neu schreibt) bewegen sich nicht schneller; beide sind mit dem
+  // Datenbestand die teuersten Aufrufe der Seite.
+  useFreshnessPoll(() => {
+    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
+      (e) => setSiteEarnings(e),
+      () => {},
+    );
+    api.schedule(site.id).then(
+      (p) => setPlan(p),
+      () => {},
+    );
+  }, LIST_POLL_MS);
   useFreshnessPoll(() => {
     setNow(new Date());
     api.overview().then(
       (o) => setOverview(o),
-      () => {},
-    );
-    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
-      (e) => setSiteEarnings(e),
       () => {},
     );
     api.controlStatus(site.id).then(
@@ -1115,15 +1270,16 @@ export function AnlageSeite({
       (c) => setCurtailStatus(c),
       () => {},
     );
-    api.schedule(site.id).then(
-      (p) => setPlan(p),
-      () => {},
-    );
     // ⚠ Die Ladepunkte gehören in DENSELBEN Takt wie der Hausverbrauch: ohne
     // ihn stand die Wallbox auf dem Stand beim Öffnen der Seite, und eine
     // danach gestartete Ladung landete ganz im „übrigen Haushalt", bis die
     // Seite neu geladen wurde. Ein Fehler behält den letzten Stand.
     const id = site.id;
+    // Das Bild der Anlagensteuerung (EZ-8): ein Fehler behält den letzten Stand - sein Alter sagt dann selbst, dass er veraltet.
+    api.erzeugerJetzt(id).then(
+      (e) => id === siteIdRef.current && setErzeugerJetzt(e),
+      () => {},
+    );
     api.siteChargers(id).then(
       (c) => id === siteIdRef.current && setCharging(c),
       () => {},
@@ -1155,17 +1311,30 @@ export function AnlageSeite({
   // Portal die alte Ansicht"-Defekts: die frühere Weiche entschied, BEVOR ihre
   // Eingaben geladen waren.
   const overviewPending = overview == null && !overviewFailed;
-  const decisionLoading = surfaceLoading || adaptiveLive.loading || overviewPending;
+  // ⚠ Erstbild nicht an `/overview` hängen (Scout `vp-anlagen-cockpit-perf`, Rang 4a): die Übersichts-Zeile
+  // entscheidet NUR über eine Frage - „noch nie Daten geliefert“ (Einrichtungspfad) oder „noch nicht
+  // geladen“ (`setupPathActive`, Tor 2-4). Hat die Anlage Komponenten oder Modi, ist der Einrichtungspfad
+  // ausgeschlossen, bevor die Zeile gelesen wird; dann steht der Stapel schon mit den Stammdaten
+  // (`/entities`, `/topology`, 20-60 ms), und nur die Teile, die die Zeile selbst trägt (Fluss, Zustand,
+  // Frische-Chip), laden mit Platzhaltern in Zielgröße nach. `/overview` ist der teuerste Aufruf der Landung
+  // (300-1.000 ms nach vier Monaten) und hielt bis hierher den Boot-Vorhang. Eine Anlage OHNE Komponenten
+  // und Modi (neu, leer, nicht zugeordnet) wartet unverändert auf die Zeile: nur sie kann der Einrichtungspfad
+  // sein, und eine falsche erste Fassung wäre genau der Defekt, den diese Weiche abschafft.
+  const einrichtungMoeglich = surface?.base.hasEntities === false && modes.length === 0;
+  const decisionLoading = surfaceLoading || adaptiveLive.loading || (overviewPending && einrichtungMoeglich);
   const decisionFailed = surfaceFailed || adaptiveLive.failed || overviewFailed;
   const [decisionTimedOut, setDecisionTimedOut] = useState(false);
+  // „Kein Dauer-Spinner“: die Frist gilt weiter auch für `/overview`, obwohl die Entscheidung nicht mehr auf sie
+  // wartet (Rang 4a) - eine Antwort, die nie kommt, wird wie bisher zum ehrlichen Fehler mit „Erneut versuchen“.
+  const decisionWartet = decisionLoading || overviewPending;
   useEffect(() => {
-    if (!decisionLoading) {
+    if (!decisionWartet) {
       setDecisionTimedOut(false);
       return undefined;
     }
     const timer = setTimeout(() => setDecisionTimedOut(true), ANLAGE_DECISION_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [decisionLoading, site.id, reloadKey]);
+  }, [decisionWartet, site.id, reloadKey]);
   const decision = anlageDecision({
     loading: decisionLoading,
     failed: decisionFailed,
@@ -1205,6 +1374,10 @@ export function AnlageSeite({
   // Einrichtungspfad, UND `projectionActive` (in `decision` verrechnet) wirklich
   // zutrifft - sonst ist es der ehrliche „nicht zugeordnet"-Endzustand.
   const showStack = decided && !showSetup && decision === 'stack';
+  // Anlage-Flow a1: die einmalige Karte „Ihre Anlage ist live“ (D7) steht, sobald die neue Anlage Werte
+  // zeigt; „Wo steht …?“ (D9), solange ihr Standort keine Adresse hat. Beide über dem Cockpit, nie an seiner Stelle.
+  const ersteWerteSteht = ersteWerteOffen(site.id) && (ovSite?.live != null || ovSite?.lastSeenAt != null);
+  const ortOhneAdresse = ovSite?.standort?.adresseFehlt === true ? ovSite.standort : null;
 
   // B1 · Welle 3 startet MIT Welle 2 (Perf-Review `vp-cockpit-perf-p7` §3).
   // `/history` und `/telemetry` hingen an `showStack`/`isPeakLead` und damit
@@ -1230,33 +1403,6 @@ export function AnlageSeite({
   }, [site.id, decided, showStack, isPeakLead]);
   /** Das Gate der Historie-Abrufe: echte Entscheidung, sonst die Erinnerung. */
   const fetchStack = fetchGate(showStack, decided, guess.face?.stack);
-  /** Dasselbe fuer das Telefon-Fenster des Peak-Bands. */
-  const fetchPeak = fetchGate(isPeakLead, decided, guess.face?.peak);
-
-  // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
-  // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
-  // 20-min window always covers the running quarter; polled on the 30 s cadence.
-  // Späte Antworten einer zuvor gewählten Anlage verwirft `siteIdRef` (oben).
-  const peakLoadRef = useRef<() => void>(() => {});
-  peakLoadRef.current = () => {
-    if (!fetchPeak) return;
-    const from = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-    const id = site.id;
-    api.telemetry(id, from).then(
-      (pts) => id === siteIdRef.current && setPeakSamples(pts),
-      () => {},
-    );
-  };
-  useEffect(() => {
-    if (!fetchPeak) {
-      setPeakSamples([]);
-      return;
-    }
-    peakLoadRef.current();
-  }, [site.id, fetchPeak, reloadKey, wake]);
-  // LIVE: das Viertelstunden-Band liest gemessene Telemetrie.
-  useFreshnessPoll(() => peakLoadRef.current(), LIVE_POLL_MS, fetchPeak);
-
   // M3: the Eigenverbrauchs-Block's Autarkie / PV-Nutzung come from the EXISTING
   // Historie totals of today (server-computed) - fetched ONLY while the stack
   // truly renders, so neither the setup nor the "nicht zugeordnet" end state
@@ -1333,11 +1479,15 @@ export function AnlageSeite({
     fetchStack && historyRangeForCockpit(range) != null,
   );
 
-  // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
-  // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
+  // The Peak-Band view: live ¼-h mean vs. the plan's Ziel + the PS-4 numbers.
+  // Alerting Scheibe 4: the running ¼-h import mean is now computed on the
+  // SERVER (AnlagenflussWerteLeser.netzLastspitzeLaufend, the same value the
+  // "Lastspitze droht" Überwachung reads) and arrives on `peakShaving` - the
+  // portal no longer derives it from its own telemetry poll (one truth, not two).
+  // Null when not the peak lead.
   const peakView = isPeakLead
     ? peakBand({
-        current: quarterHourMeanImportKw(peakSamples, now),
+        current: serverQuarterHourMean(siteEarnings?.peakShaving?.currentQuarterMeanKw),
         targetKw: plan?.peakTargetKw ?? null,
         peak: siteEarnings?.peakShaving ?? null,
       })
@@ -1457,6 +1607,7 @@ export function AnlageSeite({
     controlState: controlView?.state ?? null,
     batteryWithoutDevice: ovSite?.batteryWithoutDevice ?? false,
     batteryLinked,
+    geraeteGrenze: guardView?.deviceLimitLine ?? null,
   });
 
   // Report the facts only this page measures up to the shell badge, so header
@@ -1468,12 +1619,14 @@ export function AnlageSeite({
   const controlState = controlView?.state ?? null;
   const batteryKnown = ovSite != null;
   const batteryWithoutDevice = ovSite?.batteryWithoutDevice ?? false;
+  const geraeteGrenze = guardView?.deviceLimitLine ?? null;
   useEffect(() => {
     if (!onHealthFacts) return;
     onHealthFacts(site.id, {
       plan: planKnown ? { hasPlanToday, hasAnyPlan } : null,
       controlState,
       battery: batteryKnown ? { withoutDevice: batteryWithoutDevice, linked: batteryLinked } : null,
+      geraeteGrenze,
     });
   }, [
     onHealthFacts,
@@ -1485,6 +1638,7 @@ export function AnlageSeite({
     batteryKnown,
     batteryWithoutDevice,
     batteryLinked,
+    geraeteGrenze,
   ]);
 
   // The selected period instance (`at` = a tapped past month; null = current).
@@ -1496,7 +1650,12 @@ export function AnlageSeite({
   // v3 M2 · das Live-Cockpit: Hero (bestehendes Energiefluss-Diagramm groß +
   // Ringe + Geld + Fahrplan-Zeile) und das Widget-Raster. Beide Ableitungen
   // sind rein (`cockpitWidgets.ts`); hier wird nur gefüttert und gerendert.
+  // Hat die Anlage einen Speicher? Aus den ROLLEN der Übersichts-Zeile, nie aus der Telemetrie;
+  // `null` = noch unbekannt. Ohne Speicher gibt es keine Steuerungs-Aussage am Geld und kein
+  // Netzladen-Abzeichen (Konzept `vp-cockpit-privat-konzept`, N1/N3).
+  const mitSpeicher = ovSite?.roleCounts ? (ovSite.roleCounts.storage ?? 0) > 0 : null;
   const heroView = cockpitHero({
+    mitSpeicher,
     totals: rangeTotals,
     money: siteEarnings,
     range,
@@ -1548,7 +1707,8 @@ export function AnlageSeite({
     : fresh
       ? 'live'
       : 'stale';
-  const heroStale = liveSt === 'stale';
+  // Unbekannt ist nicht veraltet: solange die Übersichts-Zeile noch kommt (Rang 4a), dimmt nichts.
+  const heroStale = ovSite != null && liveSt === 'stale';
   const chip = ovSite && !showSetup ? liveChip(liveSt, ovSite.live?.ts ?? null, now) : null;
 
   // Die Kopfsatz-Regel der Bühne (Konzept §6.2): der Prosa-Satz doppelte im
@@ -1579,10 +1739,6 @@ export function AnlageSeite({
   const strompreisVerfuegbar = gateStrompreis(modes, site.tarifArt);
   // Der Fahrplan ist eine Kachel (Tagesuhr); gated wie die Fahrplan-Ansicht.
   const fahrplanVerfuegbar = (surface?.deepViews ?? []).includes('fahrplan');
-  // Die geschrumpfte Kopfzahl beim Scrollen: die zwei Anker (Geld + Zustand).
-  const sticky = isPhone
-    ? stickyHead({ money: heroView.money, status: showSetup ? null : (sentence ?? null) })
-    : null;
 
   // Die Referenz der Box dieser Anlage - dieselbe ehrliche Regel wie auf der
   // Box-Seite: eine Anlage hat GENAU EINE Box, und mehr als ein eigenes Gerät
@@ -1600,7 +1756,8 @@ export function AnlageSeite({
       ladenKachel({
         charging,
         links: {
-          uebersicht: () => hashForRoute(anlageRoute(site.id, 'ladevorgaenge')),
+          // Konzept „Ein Ort fürs Laden" e1, §4.2: alle Türen führen zu „Laden".
+          uebersicht: () => hashForRoute(anlageRoute(site.id, 'laden')),
           charger: (id) =>
             boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null,
         },
@@ -1612,6 +1769,9 @@ export function AnlageSeite({
   // (Cockpit Phase 1 / C2): der Abzweig hinter dem Haus und - falls eine Säule
   // an einem EIGENEN Netzanschluss hängt - ein Kreis am Hub daneben.
   const ladeKreise = useMemo(() => ladeFlussKnoten(charging), [charging]);
+  // Läuft an einer verbundenen Säule eine Ladung, oder steckt ein Auto ohne Ladevorgang? Nur dann lädt die Zeile
+  // „Jetzt schnell laden“ nach; ob sie einen Knopf oder den Ausweg anbietet, entscheidet sie selbst (`schnellZeilen`).
+  const ladungLaeuft = useMemo(() => schnellZeileRelevant(charging), [charging]);
 
   // --- Anwendungs-Programm Stufe 3 · das anpassbare Cockpit ------------------
   // Welche BAUSTEINE diese Anlage GERADE hat: dieselbe Ehrlichkeit wie bisher -
@@ -1626,7 +1786,8 @@ export function AnlageSeite({
     // Karte) rendert auch ohne Erlös-Komposition ehrlich - nur ihr
     // Zeitraum-Segment hängt an dem Block, genau wie vor dieser Stufe.
     const out: BausteinId[] = ['status', 'energiefluss', 'geld'];
-    if (controlView || guardView) out.push('steuerung');
+    // Eine Erzeugeranlage hat ihre Steuerzeile auch ohne Speicher-Auftrag: die Soll-Kette (EZ-8).
+    if (controlView || guardView || erzeugerJetzt) out.push('steuerung');
     if (fahrplanVerfuegbar) out.push('fahrplan');
     if (strompreisVerfuegbar) out.push('strompreis');
     // Die Kachel „Laden" erscheint, sobald ein Ladepunkt EXISTIERT - nicht
@@ -1636,11 +1797,13 @@ export function AnlageSeite({
     // Die Kacheln (Autarkie, Sonne, Speicher …) gibt es auf jedem Cockpit mit
     // Projektion; eine Kachel ohne Daten rendert sich selbst weg.
     if ((blocks ?? []).length > 0) out.push('kacheln');
-    if (ovSite != null && health.length > 0) out.push('zustand');
+    // Solange die Übersichts-Zeile noch kommt (Rang 4a), hält ein Platzhalter den Platz der Zustands-Karte;
+    // ohne die Zeile gäbe es nur erfundene „noch nicht verbunden“-Befunde.
+    if ((ovSite != null && health.length > 0) || (ovSite == null && overviewPending)) out.push('zustand');
     // UEMS AP-01 IP-8, Geld-Regel je Anlage: eine geldfreie Anlage hat weder
     // Geld-Held noch Steuerungs-Karte noch Marktpreise (`anlageGeld`).
     return bausteineOhneGeld(out, surface);
-  }, [blocks, controlView, guardView, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, health, ladenView, surface]);
+  }, [blocks, controlView, guardView, erzeugerJetzt, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, overviewPending, health, ladenView, surface]);
   // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
   // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
   // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine
@@ -1666,6 +1829,10 @@ export function AnlageSeite({
   const [eigenDialog, setEigenDialog] = useState<
     { offen: true; bearbeiten: EigeneAuswertungDef | null } | null
   >(null);
+  // Beide Einstiege des Dialogs stehen im Anpassen-Modus: sobald er aufgeht, ist das Stück schon unterwegs.
+  useEffect(() => {
+    if (layout.anpassen) void ladeEigeneAuswertung();
+  }, [layout.anpassen]);
   // Der Rollenabruf frischt mit dem Schnappschuss auf; Antworten einer vorigen
   // Anlage werden auch vor dem nächsten Effekt niemals am neuen Standort gezeigt.
   const [rollenStand, setRollenStand] = useState<{
@@ -1822,6 +1989,26 @@ export function AnlageSeite({
     [dayHistoryEffective, plan, now],
   );
   const buehneBetrieb: Betrieb = betriebAus(blocks);
+  // Erzeugeranlage an einer Anlagensteuerung (Konzept „Erzeuger am WAGO-Modbus-Server“, EZ-8, EW-11 A):
+  // Status oben, Bühne, Soll-Kette in der Steuerzeile, Spuren der Vorgaben und zwei Kacheln - kein Reiter.
+  const E = erzModul;
+  const erzLage = erzeugerJetzt && E ? E.erzeugerLage(erzeugerJetzt, now) : null;
+  const erzStatus = erzLage && E ? E.erzeugerStatus(erzLage) : [];
+  const erzTagesbeginn = new Date(now);
+  erzTagesbeginn.setHours(0, 0, 0, 0);
+  const erzGeregelt = erzLage && E ? E.geregeltHeute(erzHeute, erzLage, erzTagesbeginn.getTime()) : null;
+  const erzBoxRef = boxRefOf(devices, site.id);
+  const erzBuehne = erzeugerJetzt && erzLage && E
+    ? E.erzeugerBuehne(erzeugerJetzt, erzLage, buehneTag, now, (teNr) =>
+        erzEntity && erzBoxRef ? geraetSeiteHash(site.id, erzBoxRef, einheitGeraetId(erzEntity, teNr)) : null)
+    : null;
+  // Die Kette gilt für Anlagen, die VoltPilot nur liest; eine Speicheranlage behält ihre Steuerzeile.
+  const erzZeile =
+    erzLage && E && !batteryLinked && controlStatus == null
+      ? { kette: E.erzeugerKette(erzLage, now), blatt: E.erzeugerBlatt(erzLage, now, erzGeregelt), programmstand: erzProgrammstand }
+      : null;
+  // Biogas hat bis EZ-12 keine Erlöse: „Unterm Strich“ zeigt „—“ statt einer Zahl ohne Grundlage.
+  const erzGeldStrich = erzLage?.art === 'bhkw';
   // Das Blatt „Verbrauch“: woraus sich der Verbrauch zusammensetzt. Zwei
   // Durchläufe mit Absicht (wie früher im Komponenten-Board): der erste sagt,
   // WELCHE Geräte eine Tagessumme brauchen, der zweite trägt sie. Die
@@ -1835,12 +2022,14 @@ export function AnlageSeite({
       hausTodayKwh: dayTotalsEffective?.consumptionKwh ?? null,
       // Die Ladepunkte stehen wie im Prototyp auch in „Verbrauch im Detail“.
       ladenKachelSichtbar: false,
+      // Das Wort für den Rest folgt dem Anwendungsprofil (privat „übriger Haushalt“, gewerbe „ohne eigenen Zähler“).
+      profil: site.profil ?? null,
       links: {
         charger: (id: string) => (boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null),
         komponente: (entityId: string) => komponenteHash(site.id, entityId),
       },
     }),
-    [adaptiveLive.adaptive, adaptiveLive.topology, charging, consumerStatus, dayTotalsEffective, boxRef, site.id],
+    [adaptiveLive.adaptive, adaptiveLive.topology, charging, consumerStatus, dayTotalsEffective, boxRef, site.id, site.profil],
   );
   const buehneVerbrauchRoh = useMemo(() => verbrauchKomposition(verbrauchEingabe), [verbrauchEingabe]);
   const verbrauchHeuteKwh = useVerbrauchHeute(site.id, buehneVerbrauchRoh, charging?.chargers ?? null, verbrauchBlattOffen);
@@ -1861,6 +2050,9 @@ export function AnlageSeite({
     // Wie im Prototyp: die Sonne ist beim Eigenverbrauch breit, sonst klein -
     // solange niemand eine Größe gewählt hat.
     if (id === 'sonne' && buehneBetrieb !== 'eigenverbrauch' && !layout.resolved.groessen[id]) return 'klein';
+    // Steht „Heute“, fehlen Autarkie und Eigenverbrauch neben ihm: dann steht der Speicher breit (eine Reihe
+    // mit dem Fahrplan) - solange niemand eine Größe gewählt hat.
+    if (id === 'speicher' && heuteDa && !layout.resolved.groessen[id]) return 'breit';
     return kachelGroesse(id, layout.resolved.groessen);
   };
   const groessenFuss = (id: string, label: string): ReactNode => {
@@ -1875,25 +2067,61 @@ export function AnlageSeite({
       />
     );
   };
-  const jetztWerte = ovSite
-    ? jetztFluss(adaptiveLive.topology, siteSnapshot(ovSite.live), { pvTotalKw: null, loadKanonisch: null })
+  // Die Topologie trägt die Ist-Werte selbst; der Schnappschuss der Übersichts-Zeile ist nur ihr Rückfall. Darum
+  // stehen die Werte der Kacheln (Speicher) schon mit der Topologie da und warten nicht auf `/overview` (Rang 4a):
+  // sonst käme die Kachel erst mit der Zeile und schöbe das Raster auseinander.
+  const jetztWerte = ovSite || adaptiveLive.topology
+    ? jetztFluss(adaptiveLive.topology, siteSnapshot(ovSite?.live ?? null), { pvTotalKw: null, loadKanonisch: null })
     : null;
   const widgetIds = new Set(widgets.map((w) => w.id));
   const geldDa = heroView.money != null || hasBlock(blocks, 'erloes-komposition');
   // Die LEITKACHEL: am Rechner rechts neben dem Fluss, am Telefon die erste
-  // Kachel. Marktoptimierung führt mit dem Börsenpreis, Lastspitzenkappung
-  // mit der Lastspitze, sonst „Unterm Strich“.
+  // Kachel. Sie folgt der Leit-Regel des Layouts - Lastspitze, dann Geld-Strom,
+  // dann Fluss, und der Stern des Kunden gewinnt -, also derselben, die
+  // „Cockpit anpassen“ zeigt (Konzept `vp-cockpit-privat-konzept`, E3 = A).
+  // Marktoptimierung führt mit dem Börsenpreis, Lastspitzenkappung mit der
+  // Lastspitze, ein Geld-Strom oder der Stern auf „Unterm Strich“ mit dem Euro.
+  // Steht der Stern auf dem Energiefluss, gibt es keine Leitkachel - auch bei
+  // Marktoptimierung, deren Geld-Strom sonst die Leitung hätte.
   const leitArt: 'strompreis' | 'lastspitze' | 'geld' | null =
-    buehneBetrieb === 'markt' && zeigt('strompreis') && strompreisVerfuegbar
-      ? 'strompreis'
-      : effektiverLead === 'peak-band' && peakView != null && zeigt('kacheln')
-        ? 'lastspitze'
-        : zeigt('geld') && geldDa
-          ? 'geld'
-          : null;
+    effektiverLead === 'energiefluss' && erzLage == null
+      ? null
+      : // Eine Erzeugeranlage führt wie im Bild des Konzepts mit dem Börsenpreis, wo es ihn gibt.
+        (buehneBetrieb === 'markt' || erzLage != null) && zeigt('strompreis') && strompreisVerfuegbar
+        ? 'strompreis'
+        : effektiverLead === 'peak-band' && peakView != null && zeigt('kacheln')
+          ? 'lastspitze'
+          : (effektiverLead === 'erloes-komposition' || erzLage != null) && zeigt('geld') && geldDa
+            ? 'geld'
+            : null;
+  // Führt der FLUSS (keine Lastspitzenkappung, keine Vermarktung, kein Stern auf dem Euro - fast jeder
+  // Haushalt), steht neben ihm der Tag: der Block „Heute“ (E1 = A), und der Euro wird eine ruhige Zeile
+  // am Ende (E2 = A). „Heute“ gehört zu den Kennzahlen: wer sie ausblendet, blendet ihn mit aus.
+  const flussFuehrt = leitArt == null && erzLage == null && effektiverLead === 'energiefluss';
+  const heuteDa = flussFuehrt && zeigt('kacheln') && dayTotalsEffective?.consumptionKwh != null;
+  const heuteKnoten = (spalte: boolean) => (
+    <KachelSpaet
+      art="heute"
+      totals={dayTotalsEffective}
+      tag={buehneTag}
+      now={now}
+      mitSpeicher={mitSpeicher !== false}
+      spalte={spalte}
+      groesse="breit"
+      onOpen={() => onOpenSub('messwerte')}
+      platzRef={isPhone ? moneyRef : undefined}
+    />
+  );
+  // Die geschrumpfte Kopfzahl beim Scrollen: die zwei Anker (Geld + Zustand). Führt der Fluss, trägt
+  // sie keinen Euro (E2 = A) und erscheint nur noch, wenn der Zustand etwas meldet.
+  const sticky = isPhone
+    ? stickyHead({ money: flussFuehrt ? null : heroView.money, status: showSetup ? null : (sentence ?? null) })
+    : null;
   const inSeite = (art: string) => !isPhone && leitArt === art;
   const geldKachel = (seite: boolean) =>
-    zeigt('geld') && geldDa ? (
+    erzGeldStrich ? (
+      zeigt('geld') ? <KachelSpaet art="erzeuger-geld" groesse="klein" onOpen={() => onOpenSub('erloese')} /> : null
+    ) : zeigt('geld') && geldDa ? (
       <KachelSpaet
         art="geld"
         money={heroView.money}
@@ -1954,7 +2182,9 @@ export function AnlageSeite({
       />
     );
   };
-  const waerme = buehneVerbrauch?.gruppen.find((g) => g.id === 'waerme' && !g.collapsed)?.teile[0] ?? null;
+  // Die Kachel heißt „Wärmepumpe“: ein Heizstab der Gruppe „Wärme“ füllt sie nie (er steht in der Liste).
+  const waerme = buehneVerbrauch?.gruppen.find((g) => g.id === 'waerme' && !g.collapsed)?.teile
+    .find((t) => !t.heizstab) ?? null;
   // Die Reihenfolge der Kacheln je Betriebsmodell - wie im Prototyp
   // (`DEFAULTS`). „@geld“ ist der Platz von „Unterm Strich“, wenn der Baustein
   // `geld` direkt hinter den Kennzahlen steht (so die Voreinstellung).
@@ -1963,16 +2193,29 @@ export function AnlageSeite({
     markt: ['sonne', 'speicher', 'handel', '@geld', 'netz', 'wetter', 'waermepumpe', 'automatik'],
     spitze: ['lastspitze', 'sonne', '@geld', 'netz', 'speicher', 'handel', 'waermepumpe', 'automatik', 'wetter'],
   };
+  // Eine Erzeugeranlage zeigt ihre Einheiten und wer heute geregelt hat (Bild Cockpit des Konzepts);
+  // Speicher-, Autarkie- und Handelskacheln haben dort keine Grundlage.
+  // Bei Biogas steht „Unterm Strich“ („—“) als dritte Kachel hinter den Einheiten, wie im Bild.
+  const kachelReiheRoh = erzLage ? (erzGeldStrich ? ['einheiten', 'geregelt', '@geld'] : ['einheiten', 'geregelt']) : KACHEL_REIHE[buehneBetrieb];
+  // Steht „Heute“, trägt er Autarkie, Eigenverbrauch und „PV heute“ - diese Kacheln entfallen. Am Telefon ist
+  // „Heute“ selbst die erste Kachel; am Rechner steht er neben dem Fluss.
+  const kachelReihe = heuteDa
+    ? [...(isPhone ? ['heute'] : []), ...kachelReiheRoh.filter((id) => id !== 'autarkie' && id !== 'eigenverbrauch' && id !== 'sonne')]
+    : kachelReiheRoh;
   const reihe = layout.resolved.order;
   const geldImRaster =
     !layout.anpassen &&
+    // Führt der Fluss, steht der Euro als Zeile am Ende - nie zusätzlich im Raster.
+    !flussFuehrt &&
     !inSeite('geld') &&
-    KACHEL_REIHE[buehneBetrieb].includes('@geld') &&
-    reihe.indexOf('geld') === reihe.indexOf('kacheln') + 1 &&
+    kachelReihe.includes('@geld') &&
+    (erzGeldStrich || reihe.indexOf('geld') === reihe.indexOf('kacheln') + 1) &&
     reihe.includes('kacheln');
   const kachelKnoten = (id: string): ReactNode => {
     const basis = { groesse: groesseVon(id), fuss: groessenFuss(id, kachelDef(id)?.label ?? id) };
     switch (id) {
+      case 'heute':
+        return heuteKnoten(false);
       case 'autarkie':
         return <KachelSpaet {...basis} art="autarkie" totals={dayTotalsEffective} tag={buehneTag} onOpen={() => onOpenSub('messwerte')} />;
       case 'eigenverbrauch':
@@ -1998,11 +2241,10 @@ export function AnlageSeite({
           <KachelSpaet
             {...basis}
             art="sonne"
-            points={wetterPunkte}
+            forecast={prognoseKachelDaten}
+            weather={wetterPunkte}
             now={now}
-            totals={dayTotalsEffective}
-            tag={buehneTag}
-            onOpen={() => onOpenSub('wetter')}
+            onOpen={() => onOpenSub('prognose')}
           />
         );
       case 'handel':
@@ -2014,6 +2256,12 @@ export function AnlageSeite({
       case 'automatik':
       case 'wetter':
         return wertWidget(id);
+      case 'einheiten':
+        return erzLage && erzLage.einheiten.length > 0 ? (
+          <KachelSpaet art="einheiten" groesse={isPhone ? 'breit' : 'klein'} lage={erzLage} onOpen={() => onOpenSub('steuerung')} />
+        ) : null;
+      case 'geregelt':
+        return erzLage ? <KachelSpaet art="geregelt" groesse={isPhone ? 'breit' : 'klein'} zeilen={erzGeregelt} onOpen={() => onOpenSub('messwerte')} /> : null;
       default:
         return null;
     }
@@ -2033,17 +2281,22 @@ export function AnlageSeite({
           gemessenKw: jetztWerte?.werte.batt ?? null,
         })
       : null;
-  const steuerzeileSichtbar = zeigt('steuerung') && (controlView != null || guardView != null);
+  const steuerzeileSichtbar = zeigt('steuerung') && (controlView != null || guardView != null || erzZeile != null);
   // Der Zustand nennt nur, was nicht schon an seinem eigenen Ort steht: die
   // Steuerung steht in der Steuerzeile, der Plan in der Fahrplan-Kachel.
+  // Eine Erzeugeranlage, die VoltPilot nur liest, hat keinen Fahrplan - „noch keiner erstellt“ wäre kein Befund.
+  // Ein BEFUND (warn/off) bleibt trotzdem stehen: das Kopf-Abzeichen zählt ihn und springt hierher
+  // (`#zustand`) - fiele er weg, sagte die Zeile „Alles in Ordnung“ unter einer „Warnung“ im Kopf.
   const healthOhneDoppel = health.filter(
-    (h) => !(h.key === 'control' && steuerzeileSichtbar) && !(h.key === 'plan' && zeigt('fahrplan') && fahrplanVerfuegbar),
+    (h) =>
+      !(h.key === 'control' && steuerzeileSichtbar && h.state === 'ok') &&
+      !(h.key === 'plan' && ((zeigt('fahrplan') && fahrplanVerfuegbar && h.state === 'ok') || erzZeile != null)),
   );
 
   const bausteinNodes: Partial<Record<BausteinId, ReactNode>> = {
     energiefluss:
       ovSite == null ? (
-        <Skeleton height={320} radius="var(--vp-radius-lg)" />
+        <Skeleton height={BUEHNE_PLATZHALTER} radius="var(--vp-radius-lg)" />
       ) : (
         <CockpitHero
           topology={adaptiveLive.topology}
@@ -2064,11 +2317,20 @@ export function AnlageSeite({
             isPhone,
             now,
             onBlatt: (art) => { if (art === 'load') setVerbrauchBlattOffen(true); },
+            erzeuger: erzBuehne,
           }}
           /* Rechts neben dem Fluss: die Leitkachel (am Rechner). */
           showRail={!isPhone}
           seite={
-            inSeite('geld') ? geldKachel(true) : inSeite('strompreis') ? strompreisKachel(true) : inSeite('lastspitze') ? lastspitzeKachel() : null
+            inSeite('geld')
+              ? geldKachel(true)
+              : inSeite('strompreis')
+                ? strompreisKachel(true)
+                : inSeite('lastspitze')
+                  ? lastspitzeKachel()
+                  : heuteDa && !isPhone
+                    ? heuteKnoten(true)
+                    : null
           }
           /* Der Stift in der PV-Zusammensetzung — die Abkürzung zum
              Umbenennen dort, wo der Wunsch entsteht. Nach dem Speichern
@@ -2089,19 +2351,34 @@ export function AnlageSeite({
              sind beide null und das Diagramm zeichengleich zu vorher. */
           charging={ladeKreise.haus}
           chargingOwn={ladeKreise.eigen}
-          /* Die Steuerzeile am Fuß der Bühne - am Telefon und am Rechner
-             (Konzept „Cockpit als Tagesfilm“). Sie ist die einzige Fläche,
-             die einen abweichenden Sollwert meldet. */
-          footer={
+          /* Die Steuerzeile (Konzept b1, E2): am Rechner rechts unter der
+             Leitkachel, am Telefon am Fuß der Bühne. Sie ist die einzige
+             Fläche, die einen abweichenden Sollwert meldet; die Gründe stehen
+             in ihrem Blatt „Warum?“. */
+          steuerung={
             steuerzeileSichtbar ? (
-              <ControlStrip view={controlView} variant="bare" guard={guardView} spalten={steuerSpaltenView} />
+              <ControlStrip
+                view={controlView}
+                variant="zeile"
+                guard={guardView}
+                spalten={steuerSpaltenView}
+                isPhone={isPhone}
+                onOpenSub={onOpenSub}
+                erzeuger={erzZeile}
+              />
             ) : null
           }
         />
       ),
     /* Die Kacheln (Konzept „Cockpit als Tagesfilm“). Die Leitkachel steht
        am Rechner in der Bühne und deshalb nicht noch einmal im Raster. */
-    geld: inSeite('geld') || geldImRaster ? null : geldKachel(false),
+    geld: flussFuehrt
+      ? zeigt('geld') && heroView.money
+        ? <KachelSpaet art="geld-zeile" money={heroView.money} onOpen={() => onOpenSub('erloese')} />
+        : null
+      : inSeite('geld') || geldImRaster
+        ? null
+        : geldKachel(false),
     fahrplan: fahrplanVerfuegbar ? (
       <KachelSpaet
         art="fahrplan"
@@ -2115,18 +2392,18 @@ export function AnlageSeite({
     // Die Steuerung steht als Steuerzeile IN der Bühne (am Telefon und am Rechner).
     steuerung: null,
     strompreis: inSeite('strompreis') ? null : strompreisKachel(false),
-    /* Die Kachel „Laden": reine Anzeige, der Kopf springt auf
-       „Ladevorgänge“, jede Zeile auf ihre Geräteseite. */
+    /* Die Kachel „Laden": reine Anzeige, der Kopf springt auf „Laden“
+       (Konzept „Ein Ort fürs Laden" e1, §4.2), jede Zeile auf ihre Geräteseite. */
     laden: ladenView ? (
       <KachelSpaet
         art="laden"
         view={ladenView}
-        kachel={{ groesse: 'breit', onOpen: () => onOpenSub('ladevorgaenge') }}
+        kachel={{ groesse: 'breit', onOpen: () => onOpenSub('laden') }}
       />
     ) : null,
     kacheln: (
       <div className={layout.anpassen ? 'vp-kraster' : 'vp-k-gruppe'}>
-        {KACHEL_REIHE[buehneBetrieb].map((id) => (
+        {kachelReihe.map((id) => (
           <Fragment key={id}>{id === '@geld' ? (geldImRaster ? geldKachel(false) : null) : kachelKnoten(id)}</Fragment>
         ))}
       </div>
@@ -2148,10 +2425,21 @@ export function AnlageSeite({
             onOpenModus={() => onOpenSub('steuerung')}
           />
         </div>
+      ) : ovSite == null && overviewPending ? (
+        <div className="vp-cockpit-health" id="zustand" aria-hidden="true">
+          <Skeleton height={ZUSTAND_PLATZHALTER} radius="var(--vp-radius-lg)" />
+        </div>
       ) : null,
   };
 
   const ausfallText = anlageAusfallSatz(ausfall, site.id);
+  // Was Netzbetreiber, Direktvermarkter und Leitstelle gerade tun (EZ-8): Zeilen im Kopf „Status &
+  // Warnungen“, nur solange es gilt - am Telefon in der Statuszeile neben dem Frische-Chip.
+  const vorgabeBadges = erzStatus.map((st) => (
+    <Badge key={st.key} variant={st.ton === 'warn' ? 'warn' : 'tint'} dot={st.ton === 'warn'} data-testid={`erzeuger-status-${st.key}`}>
+      {st.text}
+    </Badge>
+  ));
 
   return (
     <>
@@ -2159,20 +2447,22 @@ export function AnlageSeite({
           Seite (nicht am Anpassen-Modus), damit ein Speichern den Modus nicht
           aufreisst - der Kunde arrangiert weiter, wo er war. */}
       {eigenDialog && (
-        <EigeneAuswertungDialog
-          open
-          siteId={site.id}
-          bearbeiten={eigenDialog.bearbeiten}
-          onSpeichern={(def) => {
-            layout.setzeEigene(def);
-            setEigenDialog(null);
-          }}
-          onEntfernen={(id) => {
-            layout.entferneEigene(id);
-            setEigenDialog(null);
-          }}
-          onAbbrechen={() => setEigenDialog(null)}
-        />
+        <LazyBoundary fallback={null}>
+          <EigeneAuswertungDialog
+            open
+            siteId={site.id}
+            bearbeiten={eigenDialog.bearbeiten}
+            onSpeichern={(def) => {
+              layout.setzeEigene(def);
+              setEigenDialog(null);
+            }}
+            onEntfernen={(id) => {
+              layout.entferneEigene(id);
+              setEigenDialog(null);
+            }}
+            onAbbrechen={() => setEigenDialog(null)}
+          />
+        </LazyBoundary>
       )}
       {/* vp-agg §2.5/C: der gerätefreie Gesamtwert-Assistent (Einstieg +
           Anzeige) ist aus der Cockpit-Bühne in die Auswertungen-/Verlauf-Fläche
@@ -2212,6 +2502,12 @@ export function AnlageSeite({
             <p className="vp-anlage-sentence tone-off">
               Der Status Ihrer Anlage konnte gerade nicht geladen werden.
             </p>
+          ) : showStack ? (
+            // Der Stapel steht schon, die Statuszeile kommt (Rang 4a). Im Normalfall (Ton „ok“, Fluss mit Werten) spricht
+            // sie gar nicht (`headSentenceVisible`): eine sichtbare Platzhalterzeile würde beim Eintreffen verschwinden
+            // und den ganzen Stapel anheben. Darum nur ein Hinweis für Vorlesegeräte; die Zeile erscheint nur, wenn sie
+            // etwas zu sagen hat.
+            <p className="vp-sr-only" role="status">Status wird geladen …</p>
           ) : (
             <p className="vp-anlage-sentence tone-off">Status wird geladen …</p>
           )}
@@ -2239,18 +2535,30 @@ export function AnlageSeite({
                   &nbsp;
                 </Badge>
               )}
+              {vorgabeBadges}
             </span>
           ) : (
-            chip && (
-              <Badge variant={chip.tone} dot>
-                {chip.label}
-              </Badge>
-            )
+            <>
+              {chip ? (
+                <Badge variant={chip.tone} dot>
+                  {chip.label}
+                </Badge>
+              ) : showStack && overviewPending ? (
+                // Der Frische-Chip kommt mit der Übersichts-Zeile (Rang 4a): sein Platz steht von Anfang an da, damit
+                // die Abzeichen daneben beim Eintreffen nicht rücken.
+                <Badge aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  Stand gerade eben
+                </Badge>
+              ) : null}
+              {!showSetup && vorgabeBadges}
+            </>
           )}
           {/* Stammdaten-Abzeichen: sie ändern sich nie und beantworten keine
               Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
           {!isPhone && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
-          {!isPhone && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
+          {/* Netzladen betrifft einen Speicher - eine Erzeugeranlage, die VoltPilot nur liest, hat keinen, und
+              eine Anlage ohne Speicher-Rolle auch nicht (Konzept `vp-cockpit-privat-konzept`, N3). */}
+          {!isPhone && !erzZeile && mitSpeicher !== false && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
           <div className="vp-anlage-actions">
             {/* Anwendungs-Programm Stufe 3 (E4): der Einstieg in den
                 Anpassen-Modus wohnt in der Cockpit-Kopfzeile - dort, wo der
@@ -2286,6 +2594,24 @@ export function AnlageSeite({
         </div>
       )}
 
+      {decided && (ersteWerteSteht || ortOhneAdresse || ovSite?.boxGeloestHinweis) && (
+        <Fehlergrenze>
+          <Suspense fallback={null}>
+          <AnlageHinweise
+            key={site.id}
+            site={site}
+            ersteWerte={ersteWerteSteht}
+            standort={ortOhneAdresse}
+            boxGeloest={ovSite?.boxGeloestHinweis ?? null}
+            onGespeichert={() => {
+              setReloadKey((k) => k + 1);
+              onReload(site.id);
+            }}
+          />
+          </Suspense>
+        </Fehlergrenze>
+      )}
+
       {decision === 'pending' ? (
         /* ===== Zwischenzustand: die Entscheidungs-Eingaben laufen noch =====
            Der eigentliche Fix (Captain-Nachtrag 06.08.2026): solange
@@ -2308,13 +2634,18 @@ export function AnlageSeite({
            Ausprägung "Neu / leer" (report §3): keine Entitäten, keine Modi,
            noch nie Daten - also keine Platzhalter-Karten, sondern die drei
            Schritte zum fertigen EMS. */
-        <AnlageSetup
-          site={site}
-          deviceCount={ovSite?.deviceCount ?? 0}
-          onOpenSteuerung={() => onOpenSub('steuerung')}
-          onOpenGeraete={() => onOpenSub('modell')}
-          onStay={setSetupPinned}
-        />
+        <Fehlergrenze>
+          <Suspense fallback={<AnlagePending />}>
+            <AnlageSetup
+              site={site}
+              deviceCount={ovSite?.deviceCount ?? 0}
+              onlineCount={ovSite ? ovSite.onlineCount : null}
+              onOpenSteuerung={() => onOpenSub('steuerung')}
+              onOpenGeraete={() => onOpenSub('modell')}
+              onStay={setSetupPinned}
+            />
+          </Suspense>
+        </Fehlergrenze>
       ) : showStack ? (
         /* ===== v3 M2 · Das Live-Cockpit ==================================
            Der Hero trägt das BESTEHENDE Energiefluss-Diagramm groß und
@@ -2339,6 +2670,33 @@ export function AnlageSeite({
         <div className={mitStaffel('vp-cockpit-stack', staffel)}>
           {sticky && !layout.anpassen && (
             <MobileStickyHead head={sticky} shown={scrolledPastMoney} />
+          )}
+
+          {/* „Auto steckt · Jetzt schnell laden“ (Kapitän 07.11.2026, F3 b): die
+              eine Handlung im Cockpit, nur solange ein Auto steckt und „Schnell“
+              etwas ändert, nur für Privatkunden. Beim Anordnen ruht sie. */}
+          {!layout.anpassen && ladungLaeuft && (
+            <Fehlergrenze>
+            <Suspense fallback={null}>
+            <SchnellLadenZeile
+              siteId={site.id}
+              charging={charging}
+              betriebsart={betriebsart}
+              ladepunktAnzahl={ladepunktAnzahl}
+              nowMs={now.getTime()}
+              onGesendet={() => {
+                // Die Box meldet alle 15 s; nicht erst mit dem nächsten Takt lesen (wie die Steuerung).
+                const id = site.id;
+                for (const ms of [4000, 12_000, 25_000]) {
+                  window.setTimeout(() => {
+                    if (id !== siteIdRef.current) return;
+                    api.siteChargers(id).then((c) => id === siteIdRef.current && setCharging(c), () => {});
+                  }, ms);
+                }
+              }}
+            />
+            </Suspense>
+            </Fehlergrenze>
           )}
 
           {/* Anwendungs-Programm Stufe 3 · der ANPASSEN-Modus (E4). Er liegt
@@ -2427,7 +2785,8 @@ export function AnlageSeite({
                 const node = istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id as BausteinId];
                 return node == null ? node : mitMessstellenWeg(id, node);
               },
-              isPhone ? leitArt : null)}
+              isPhone ? leitArt : null,
+              flussFuehrt ? GELD_ALS_ZEILE : undefined)}
           {/* Hat der Kunde die Bühne ausgeblendet, steht der Weg am Fuß des Stapels statt gar nicht. */}
           {!layout.resolved.order.includes('energiefluss') && (
             <CockpitMessstellenWeg siteId={site.id} misst={misstHier} />

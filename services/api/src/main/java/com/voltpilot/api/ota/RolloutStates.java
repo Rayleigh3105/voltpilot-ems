@@ -61,6 +61,13 @@ public final class RolloutStates {
     public static final String FEHLGESCHLAGEN = "fehlgeschlagen";
     public static final String ZURUECKGESTELLT = "zurueckgestellt";
     public static final String UNBEKANNT = "unbekannt";
+    /**
+     * Nur in einer Verteilung (Geräte &amp; Updates G2): die Anfrage dieser
+     * Verteilung gilt nicht mehr - zurückgezogen oder durch eine neuere Anfrage
+     * abgelöst. Sie hält die Verteilung nicht offen; was die Box jetzt tut, sagt
+     * die Zeile ihrer aktuellen Anfrage.
+     */
+    public static final String ZURUECKGEZOGEN = "zurueckgezogen";
 
     /**
      * Wie lange ein Gerät stumm sein darf, bevor es als offline gilt. Dasselbe
@@ -134,12 +141,16 @@ public final class RolloutStates {
                     "Das Gerät ist auf seinen vorherigen Stand zurückgerollt."));
         }
 
-        boolean silent = r.reportedAt() == null
-                || r.reportedAt().isBefore(now.minus(OFFLINE_AFTER));
+        // EINE Uhr (Geräte & Updates G2): „stumm" misst am letzten Lebenszeichen
+        // der Box (Serverzeit des Herzschlags, `lastSeenAt`) - derselben Uhr wie
+        // die Online-Spalte. Der Update-Block trägt den Zeitstempel der BOX; an
+        // ihm gemessen konnte eine Box zugleich „online" und „offline - holt
+        // nach" heißen. Ohne Lebenszeichen bleibt der Update-Block der Anker.
+        Instant zuletzt = lebenszeichen(r);
+        boolean silent = zuletzt == null || zuletzt.isBefore(now.minus(OFFLINE_AFTER));
 
         if ("applying".equals(r.state())) {
-            if (r.reportedAt() != null
-                    && r.reportedAt().isBefore(now.minus(SILENT_APPLYING_AFTER))) {
+            if (zuletzt != null && zuletzt.isBefore(now.minus(SILENT_APPLYING_AFTER))) {
                 // DER Zustand, für den `applying` durabel vor dem Stoppen
                 // gemeldet wird: ein Gerät, das MITTEN im Anwenden verstummt,
                 // ist etwas anderes als eines, das einfach offline ist.
@@ -196,6 +207,27 @@ public final class RolloutStates {
                     "Dieses Gerät meldet eine Sperre, aber keinen Grund dazu."));
         }
         return new Verdict(AUSSTEHEND, r.reason());
+    }
+
+    /**
+     * Das letzte Lebenszeichen einer Box - die EINE Uhr für „online": der
+     * Herzschlag (Serverzeit), sonst der Zeitstempel ihres Update-Blocks.
+     * {@code null} = sie hat sich nie gemeldet.
+     */
+    public static Instant lebenszeichen(Reported r) {
+        if (r == null) {
+            return null;
+        }
+        return r.lastSeenAt() != null ? r.lastSeenAt() : r.reportedAt();
+    }
+
+    /**
+     * Ist eine Box offline? Nur mit einem Lebenszeichen, das älter als
+     * {@link #OFFLINE_AFTER} ist - eine Box, die sich nie gemeldet hat, ist
+     * „unbekannt", nicht offline.
+     */
+    public static boolean offline(Instant lebenszeichen, Instant now) {
+        return lebenszeichen != null && lebenszeichen.isBefore(now.minus(OFFLINE_AFTER));
     }
 
     /** Zustände, die als „dieses Gerät ist fertig" zählen. */

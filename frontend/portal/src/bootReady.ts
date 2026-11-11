@@ -9,7 +9,8 @@ import { createContext, useContext, useEffect } from 'react';
  * Feedback-1 Punkt 6). Die Startseite (Cockpit/Flotte/Portfolio) meldet über
  * diesen Kontext, sobald ihre erste Datenladung steht; die Schale blendet dann
  * den Lader aus. Sicherheitsgrenze in `App.tsx` (~3 s), damit der Lader nie
- * endlos steht.
+ * endlos steht. Scheitert die Startseite beim Zeichnen, meldet an ihrer Stelle
+ * die `Fehlergrenze`: ihr Satz ist dann das erste Bild.
  *
  * Der Vorgabewert ist ein No-op: eine Startseite, die ausserhalb der Schale
  * gerendert wird (Tests, isolierte Harnesse), meldet ins Leere - kein Fehler.

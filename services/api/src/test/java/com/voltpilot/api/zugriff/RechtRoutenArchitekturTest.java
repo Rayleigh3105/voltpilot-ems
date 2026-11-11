@@ -46,6 +46,69 @@ class RechtRoutenArchitekturTest {
         String offen = "öffentlich (SecurityConfig permitAll) — kein Kundenkonto, kein Kundenbereich";
         m.put("RegistrationController#register", offen);
         m.put("EnrollmentController#submitCsr", offen);
+        m.put("FernwartungRueckmeldungController#melden",
+                "SecurityConfig bindet /api/v1/fernwartung/** an hasRole('tunnel-dienst') - kein Kundenkonto, "
+                        + "kein Kundenbereich; Kunden-, Publisher- und Admin-Token bekommen 403. Die Rückmeldung ist "
+                        + "nur Anzeige und fließt nie in den Soll-Stand (Entscheid K3 a des Kapitäns, 08.10.2026; "
+                        + "docs/contracts/fernwartung-rueckmeldung-v1.md).");
+        String werkstattDienst = "SecurityConfig bindet /api/v1/werkstatt-dienst/** an hasRole('werkstatt-dienst') - "
+                + "das Dienstkonto des Werkstatt-Dienstes, kein Kundenkonto, kein Kundenbereich (Boxen vor dem "
+                + "Versand, ungekoppelt); Kunden-, Admin- und andere Dienst-Token bekommen 403 (WerkstattEinloesenApiTest, "
+                + "für den Gehäuse-Upload WerkstattApiTest#boxDruckdateiHochUndHerunterladen).";
+        m.put("WerkstattDienstController#code", werkstattDienst);
+        m.put("WerkstattDienstController#fensterSchliessen", werkstattDienst);
+        m.put("WerkstattDienstController#abnahme", werkstattDienst);
+        m.put("WerkstattDienstController#ansicht", werkstattDienst);
+        m.put("WerkstattDienstController#gehaeuseHochladen", werkstattDienst);
+        m.put("WerkstattEinloesenController#einloesen",
+                "öffentlich (SecurityConfig permitAll, exakter Pfad) wie die Zertifikatsanfrage: die frisch "
+                        + "eingerichtete Box hat kein Konto; Nachweis sind Einmal-Code und Signatur mit dem "
+                        + "Geräteschlüssel, Rate-Limit vor jeder Arbeit (docs/contracts/werkstatt-einloesen-v1.md).");
+        m.put("MeldungenController#gesehen",
+                "Alerting Scheibe 1 (vp-alerting-konzept-m1 §6.6): \"Gesehen\" darf, wer die Meldung sieht - "
+                        + "die Sicht kommt allein aus dem site_scope-Zaun auf alarm, kein zusätzliches "
+                        + "Matrix-Recht (Entscheid 3B: freiwillig, keine Quittierungspflicht).");
+        m.put("MeldungenController#probelauf",
+                "Alerting Scheibe 2 (§6.4, §6.8 Entwurf 1): die Vorschau schreibt nichts (kein Anlegen) - "
+                        + "wie jede andere reine Leseroute dieser Ebene kein Matrix-Recht; "
+                        + "ProbelaufService.vorschau prüft den Standort-Zaun selbst (Geltungsbereich.requireSite).");
+        String eigeneBenachrichtigung = "Alerting Scheibe 3 (§6.6, §6.8 Entwurf 4): jede Person verwaltet nur IHRE "
+                + "eigenen Zustellwege/ihre eigene Ruhezeit - kein Matrix-Recht, wie MeController; die Person kommt "
+                + "aus dem Token (Authentication), nie aus dem Anfragekörper.";
+        m.put("ZustellwegController#anfordern", eigeneBenachrichtigung);
+        m.put("ZustellwegController#emailEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#emailAktiv", eigeneBenachrichtigung);
+        m.put("ZustellwegController#emailEntfernen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushAbonnieren", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushEntfernen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushName", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushAbmelden",
+                "Alerting Scheibe 3 (§6.6, §6.8 Entwurf 4, B8): beim Abmelden beendet das Portal DIESES "
+                        + "Geräts Abo über seinen Endpunkt - derselbe Eigen-Grund wie die übrigen Zustellweg-"
+                        + "Routen, kein Matrix-Recht; bestmöglich, ein fremdes/fehlendes Abo bleibt ohne Fehler.");
+        m.put("RuhezeitController#setzen", eigeneBenachrichtigung);
+        m.put("RuhezeitController#probe", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielAnlegen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielEntfernen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielBearbeiten", eigeneBenachrichtigung);
+        m.put("ZustellwegController#telegramVerbinden", eigeneBenachrichtigung);
+        m.put("ZustellwegController#telegramZielEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#telegramZielEntfernen", eigeneBenachrichtigung);
+        String probeSenden = "Einstellungen Scheibe 2 (Konzept-Entscheid 10A, §4.12): \"Probe senden\" schreibt "
+                + "keinen fremden Zustand - entweder nichts (eine Testnachricht an den eigenen, schon "
+                + "eingerichteten Weg) oder einen ephemeren, nie gespeicherten Testversand VOR dem Anlegen; "
+                + "kein Matrix-Recht, derselbe Eigen-Grund wie die übrigen Zustellweg-Routen.";
+        m.put("ZustellwegController#emailProbe", probeSenden);
+        m.put("ZustellwegController#pushProbe", probeSenden);
+        m.put("ZustellwegController#webhookProbe", probeSenden);
+        m.put("ZustellwegController#webhookProbeVorAnlegen", probeSenden);
+        m.put("ZustellwegController#telegramProbe", probeSenden);
+        m.put("TelegramWebhookController#webhook",
+                "Alerting Scheibe 6 (§7 Scheibe 6): Telegram selbst ruft den Update-Webhook auf - kein "
+                        + "Kundenkonto, kein Kundenbereich; geschützt über Telegrams eigenen secret_token-Header "
+                        + "und den unerratbaren 256-Bit-Verbindungs-Token selbst, nicht über die Rechte-Matrix.");
         return m;
     }
 
@@ -110,6 +173,15 @@ class RechtRoutenArchitekturTest {
         m.put("KorrekturFreigabeController#freigeben", korrektur);
         m.put("KorrekturFreigabeController#zuruecknehmen", korrektur);
         m.put("DeviceController#claim", "DeviceController.claim — RechtPruefung.pruefen an der Anlage aus siteId");
+        m.put("MeldungenController#anlegen", "UeberwachungAnlegenService.anlegen — ueberwachung.eigene (nur der "
+                + "anlegende Aufrufer selbst als Empfänger) bzw. ueberwachung.verwalten (andere Personen oder "
+                + "Rollen), RechteAbleitung.darf am Standort der Anlage aus dem Bezug im Körper (Alerting Scheibe 2)");
+        m.put("MeldungenController#scharfSchalten", "UeberwachungAnlegenService.scharfSchalten — dasselbe Muster "
+                + "wie beim Anlegen, ueberwachung.eigene/verwalten anhand der GESPEICHERTEN Empfänger der Regel, "
+                + "RechteAbleitung.darf an ihrem Standort (Alerting Scheibe 2, §6.8 Entwurf 1)");
+        m.put("MeldungenController#loeschen", "UeberwachungAnlegenService.loeschen — dasselbe Muster wie beim "
+                + "Anlegen/Scharfschalten, ueberwachung.eigene/verwalten anhand der GESPEICHERTEN Empfänger der "
+                + "Regel, RechteAbleitung.darf an ihrem Standort (Abnahme-Befund: eigene Überwachung löschen)");
         m.put("AblesungController#eingeben", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("AblesungController#berichtigen", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("BezugsgroesseController#anlegen", "BezugsgroesseController.geltungPruefen — Geltung aus dem Körper");
@@ -147,6 +219,13 @@ class RechtRoutenArchitekturTest {
             m.put("FeststellungController#" + r, "FeststellungService.schreibbar — energiemanagement.verwalten am "
                     + "Standort des Bezugs bzw. am Unternehmen");
         }
+        m.put("StummschaltungController#anlegen", "StummschaltungService.anlegen — ueberwachung.verwalten an der "
+                + "Geltung des Standorts der Auswahl (Regel/Anlage/Standort, Alerting Scheibe 3, §6.4)");
+        String externerEmpfaenger = "ExterneEmpfaengerService.pruefeVerwalten — IMMER ueberwachung.verwalten "
+                + "(ein externer Empfänger ist nie \"nur ich selbst\"), RechteAbleitung.darf am Standort der "
+                + "Regel (Alerting Scheibe 6, Entscheid 11B)";
+        m.put("MeldungenController#externenEmpfaengerHinzufuegen", externerEmpfaenger);
+        m.put("MeldungenController#externenEmpfaengerEntfernen", externerEmpfaenger);
         return m;
     }
 

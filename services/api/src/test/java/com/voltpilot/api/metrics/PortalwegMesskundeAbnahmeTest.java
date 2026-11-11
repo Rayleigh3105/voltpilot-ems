@@ -59,12 +59,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -184,11 +184,11 @@ class PortalwegMesskundeAbnahmeTest {
     @Autowired
     LueckenMelder melder;
 
-    @MockBean
+    @MockitoBean
     KennzahlAufrufer aufrufer;
 
     /** Die Probe verlässt die api über MQTT; hier antwortet die Box aus der Vorlage (siehe {@link #box}). */
-    @MockBean
+    @MockitoBean
     ProbePublisher probePublisher;
 
     @Autowired
@@ -470,6 +470,27 @@ class PortalwegMesskundeAbnahmeTest {
         assertThat(baukastenMs).as("der Baukasten-Zähler mit Angabe bekommt EINE Messstelle").hasSize(1);
 
         // ============================== nach dem Portal-Weg: die Werte der Box
+        // Der Portal-Weg stempelt Zuständigkeit, Einbau, Quittung und Bindung mit der ECHTEN Uhr; die Werte der
+        // Vorlage tragen aber den Tag, an dem sie aufgezeichnet wurde (03.11.2026). Läuft der Test später, läge die
+        // Übernahme NACH den Werten, und jeder Wert wäre ein Spiegel ohne Zuständigkeit. Die Übernahme gehört auf
+        // den Tag vor der Vorlage, wie an dem Tag, an dem der Kunde sie gemacht hätte.
+        // Die Wechsel-Wächter (nur ein noch nicht wirksamer Wechsel darf berichtigt werden) schweigen dabei, sonst
+        // wäre das Zurückdatieren selbst der Verstoß, den sie verhindern.
+        String uebernahme = "TIMESTAMPTZ '" + NOW.minus(Duration.ofDays(1)) + "'";
+        String kundenbereich = "tenant_id = '" + kb + "'";
+        root.execute("ALTER TABLE geraet DISABLE TRIGGER USER; ALTER TABLE geraet_komponente DISABLE TRIGGER USER; "
+                + "ALTER TABLE messstelle_quelle DISABLE TRIGGER USER; "
+                + "UPDATE data_source_assignment SET effective_from = LEAST(effective_from, " + uebernahme + ") WHERE "
+                + kundenbereich + "; "
+                + "UPDATE device_measurement_selection SET applied_at = LEAST(applied_at, " + uebernahme + ") WHERE "
+                + kundenbereich + "; "
+                + "UPDATE geraet SET eingebaut_am = LEAST(eingebaut_am, " + uebernahme + ") WHERE " + kundenbereich + "; "
+                + "UPDATE geraet_komponente SET gueltig_ab = LEAST(gueltig_ab, " + uebernahme + ") WHERE "
+                + kundenbereich + "; "
+                + "UPDATE messstelle_quelle SET gueltig_ab = LEAST(gueltig_ab, " + uebernahme + ") WHERE "
+                + kundenbereich + "; "
+                + "ALTER TABLE geraet ENABLE TRIGGER USER; ALTER TABLE geraet_komponente ENABLE TRIGGER USER; "
+                + "ALTER TABLE messstelle_quelle ENABLE TRIGGER USER");
         // (1) Jeder Zähler trägt eine Quelle, und die liest seine Box zu den Messzeiten der Vorlage (die
         // Zuständigkeit beginnt an der nächsten vollen Minute der echten Uhr; die Vorlage misst am 03.11.2026).
         Timestamp messzeit = Timestamp.from(NOW.minus(Duration.ofHours(1)));

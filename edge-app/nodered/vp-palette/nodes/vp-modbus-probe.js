@@ -38,6 +38,7 @@ const codec = require('../lib/modbus-tcp.js');
 const sharedBus = require('../../measurements/shared-bus-arbiter');
 const registerbild = require('../../measurements/wago-registerbild');
 const wagoKopf = require('../../measurements/wago-kopf');
+const erzeuger = require('../../measurements/erzeuger-registerbild');
 
 const REQUEST_TOPIC = 'edge/probe/request';
 const RESULT_TOPIC = 'edge/probe/result';
@@ -60,6 +61,15 @@ const MAX_OPS = 8;
  * Core - dieselbe Teilung wie ueberall auf diesem Kanal.
  */
 const OP_WAGO_KOPF = 'wago_kopf';
+
+/**
+ * Der Op-Typ `erzeuger_kopf` (EZ-5): Kopf, je Einheit Art und Nennleistung und die Namen eines
+ * „VoltPilot-Registerbild Erzeuger v1" fuer den Anlege-Schritt „Steuerung verbinden" - kein
+ * Messwert. Gelesen wird in Teilen dokumentierter Laenge: erst der Kopf (12 Woerter), dahinter
+ * die Einheiten-Bloecke (10 je Einheit ab Basis + 38) und die Namen ab Basis + `beschreibung_ab`
+ * (hoechstens sieben je Anfrage). Der Knoten DEKODIERT, das URTEIL faellt der Core.
+ */
+const OP_ERZEUGER_KOPF = 'erzeuger_kopf';
 
 /**
  * parse() is exported for unit tests: turn the local-bus JSON into the request,
@@ -192,6 +202,43 @@ function runWagoKopf(op, id, plan, readRegisters) {
     });
 }
 
+/**
+ * Eine `erzeuger_kopf`-Op ausfuehren. Scheitert die Lesung des Kopfs, scheitert die Op mit der
+ * Klasse der Lesung. Scheitern die Einheiten, ist das Bild nicht ganz (`zu_wenig_woerter`).
+ * Scheitern die Namen, fehlen sie im Bericht - das ist keine Ablehnung: ein Bild darf ohne
+ * Namen sein (`beschreibung_ab` 0), dann traegt man sie im Portal ein.
+ */
+function runErzeugerKopf(op, id, plan, readRegisters) {
+  const wortfolge = op.word_order === 'little' ? 'little' : 'big';
+  return readRegisters(plan)
+    .then((kopfWoerter) => {
+      const { grund, kopf } = erzeuger.liesKopf(kopfWoerter, wortfolge);
+      if (grund) return { id, ok: true, erzeuger_kopf: erzeuger.kopfBericht(kopfWoerter, { wortfolge }) };
+      const teile = erzeuger.kopfPlan(plan.addr, kopf);
+      const lies = (teil) => readRegisters(Object.assign({}, plan, { addr: teil.start, count: teil.count }))
+        .then((w) => (Array.isArray(w) && w.length >= teil.count ? w.slice(0, teil.count) : null))
+        .catch(() => null);
+      return lies(teile[0]).then((einheiten) => {
+        const namenTeile = teile.slice(1);
+        const namen = [];
+        const weiter = (i) => {
+          if (einheiten === null || i >= namenTeile.length) return Promise.resolve(namenTeile.length ? namen : null);
+          return lies(namenTeile[i]).then((w) => {
+            if (w === null) return null;
+            namen.push(...w);
+            return weiter(i + 1);
+          });
+        };
+        return weiter(0).then((namenWoerter) => ({ id, ok: true,
+          erzeuger_kopf: erzeuger.kopfBericht(kopfWoerter, { wortfolge, einheiten, namen: namenWoerter }) }));
+      });
+    })
+    .catch((err) => {
+      const c = classify(err && err.message);
+      return { id, ok: false, error_code: c.code, message: c.message };
+    });
+}
+
 function boundedInt(v, min, max, fallback) {
   const n = Math.floor(Number(v));
   if (!isFinite(n) || n < min || n > max) return fallback;
@@ -206,6 +253,19 @@ function runOps(ops, readRegisters) {
     if (i >= ops.length) return Promise.resolve(results);
     const op = ops[i];
     const id = typeof op.id === 'string' ? op.id : String(i);
+    if (op && op.op === OP_ERZEUGER_KOPF) {
+      const kopf = kopfPlan(op);
+      if (!kopf) {
+        results.push({
+          id: id, ok: false, error_code: ERR_INVALID_REQUEST,
+          message: 'Der Prüfschritt ist unvollständig.',
+        });
+        return step(i + 1);
+      }
+      return runErzeugerKopf(op, id, Object.assign({}, kopf, { count: erzeuger.KOPFLAENGE }), readRegisters)
+        .then((r) => { results.push(r); })
+        .then(() => step(i + 1));
+    }
     if (op && op.op === OP_WAGO_KOPF) {
       const kopf = kopfPlan(op);
       if (!kopf) {
@@ -310,5 +370,6 @@ module.exports.readPlan = readPlan;
 module.exports.kopfPlan = kopfPlan;
 module.exports.runOps = runOps;
 module.exports.OP_WAGO_KOPF = OP_WAGO_KOPF;
+module.exports.OP_ERZEUGER_KOPF = OP_ERZEUGER_KOPF;
 module.exports.REQUEST_TOPIC = REQUEST_TOPIC;
 module.exports.RESULT_TOPIC = RESULT_TOPIC;

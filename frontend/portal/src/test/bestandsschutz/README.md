@@ -71,10 +71,94 @@ lud die Energie-Bühne als eigenes Stück nach, und der Fall fotografierte ihren
 identisch); der Merge-Baum rendert sie **bytegleich** (21 496 Bytes) — Geld-Regel und `CockpitMessstellenWeg` ändern
 für eine Anlage ohne Messfunktion kein Byte.
 
+**Alerting Scheibe 2 (15.10.2026, Konzept `vp-alerting-konzept-m1` §6.3/§6.8, „Überwachen" am Wert):**
+`cockpit.html` bekommt an den vier Live-Kreisen von „Dieser Moment" (PV, Verbrauch, Speicher, Netz) je ein Menü ⋯
+(`RowMenu`, Eintrag „Überwachen") - dieselbe Fläche, über die diese Scheibe den vollen Weg „Vom Wert zur fertigen
+Regel: drei Taps" baut (`UeberwachenBlatt.tsx`, `EnergieBuehne.tsx`). Die Aufnahme ist mit `vitest -u` gegen den
+aktuellen Produktstand neu geschrieben (keine Reko aus einem historischen Archiv, anders als die main-Nachzüge
+oben) - das ist die bewusste, im Konzept beschriebene Änderung dieser Fläche, keine gefundene Abweichung: `git diff
+--stat` zeigt nur `cockpit.html` mit genau den neuen Menü-Knöpfen (die Fixture ist eine Zeile; kein anderes Byte
+änderte sich). Die Marke „überwacht" selbst erscheint in dieser Aufnahme nicht (die Fixture-Anlage hat noch keine
+aktive Überwachung) - ein Folgefall dafür ist nicht Teil dieser Bestandsschutz-Aufnahme.
+
+**Konzept b1, Teil 1 (20.10.2026, Kopf und Tagesleiste der Bühne):** `cockpit.html` folgt der beschlossenen
+Änderung der Bühne: die Marke steht hinter dem Umschalter (Raster mit festen Plätzen, der Platzhalter
+`vp-eb-sp` entfällt), „Tag abspielen“ und der Hinweissatz unter der Tagesleiste entfallen, an ihrer Stelle stehen
+die Knöpfe ‹ › („Eine Viertelstunde früher/später“). Neu geschrieben mit `vitest -u` am Produktstand wie bei
+Alerting Scheibe 2; der Token-Vergleich zeigt genau diese drei Stellen, kein anderes Byte.
+
+**Konzept b1, Teil 2 (20.10.2026, „Überwachen“ nur unter Meldungen, Entscheide E1/E3):** `cockpit.html` verliert
+den Werteblock „Dieser Moment“ in der rechten Spalte (`vp-hero-moment` mit den vier Werten und ihren Menüs ⋯
+„Werkzeuge: …“, die Alerting Scheibe 2 oben hinzugefügt hatte). Die Leitkachel bleibt. Neu geschrieben mit
+`vitest -u` am Produktstand; der Token-Vergleich zeigt genau diesen einen entfernten Block, kein anderes Byte.
+
+**Ereignisse am Diagramm (20.10.2026, Konzept `vp-verlauf-ereignisse-k1`, „Spur + Chronik am Diagramm"):**
+`verlauf-messwerte.html` bekommt genau zwei Hüllen und sonst kein Byte: `<div class="vp-vr-col">` um die
+Diagramm-Karte (die Ereignis-Karte steht in derselben linken Spalte direkt darunter) und
+`<div class="vp-vr-spurrahmen">` um das Diagramm (die Ereignis-Spur unter der Achse). Die Fixture dieses Falls trägt
+keine Ereignisse, darum erscheinen weder Spur noch Karte. Die Aufnahme ist mit `vitest -u` gegen den aktuellen
+Produktstand neu geschrieben - die beschlossene Änderung dieser Fläche; ein Zeichenvergleich alt/neu zeigt nur die
+vier eingefügten Tag-Stücke. `HistoryChart.tsx` bleibt bytegleich (`diagramme.json`); sein Feld `info.farbe` trägt
+seither den Bereich der Art.
+
+**Preise und Wetter, Fassung 3 (20.10.2026, Konzept `vp-preise-wetter-konzept-f3`, Entscheide E1–E8 = A):**
+`verlauf-marktpreise.html` zeigt die neu gebaute Preis-Seite: die Antwort zuerst (Börsenpreis jetzt mit einer
+Nachkommastelle, Stufe im Vergleich der kommenden Stunden, „noch bis"), das Bild mit Jetzt-Linie (in jsdom ohne
+Breite, also ohne SVG) und die Zeilen Rückblick, Fahrplan und Börsenpreis. Weg sind die Zeitleiste über der
+Antwort (E3: Woche, Monat, Jahr wohnen im Rückblick-Blatt), das Statement „Günstig · gute Zeit zum Laden" nach
+festen Schwellen, die fünf Kennzahl-Zeilen, das Profi-Detail auf der Fläche (jetzt im Erklär-Blatt) und der
+Fuß-Aufklapper (sein Lead-Satz steht wörtlich im Erklär-Blatt). Die Aufnahme ist mit `vitest -u` gegen den
+aktuellen Produktstand neu geschrieben - die bewusste, im Konzept beschlossene Änderung dieser Fläche, keine
+gefundene Abweichung; `git diff --stat` zeigt unter den Aufnahmen nur `verlauf-marktpreise.html`.
+`PriceHistoryChart.tsx` (in `diagramme.json`) ist unverändert: er zeichnet weiter die Kurve des Rückblicks.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.
 Damit sind HTML und unveränderte Diagrammquellen geprüft; dies ist keine Pixelaufnahme eines Browsers.
+
+**Ein Ort fürs Laden, Scheibe 3 (27.10.2026, Konzept `vp-wallbox-einbindung-konzept`, „Ladesäule anbinden“ führt in den Aufbau):**
+`verlauf-ladevorgaenge.html` ändert genau eine Stelle: der Knopf „Ladesäule anbinden“ im Kasten „Weitere Säule
+anbinden“ ist kein `<button>` mehr, der einen eigenen Drawer öffnet, sondern ein Link auf den Aufbau derselben
+Anlage (`aufbauHash(site.id, 'geraet')`, `href="#/anlage/s-lade/modell?neu=geraet"`) - derselbe Ort, an dem auch
+eine Anlage oder eine Box entsteht (Hausregel „Ein Ort zum Anlegen“). Die zugehörige `LadesaeuleAnbindenDrawer`-
+Komponente ist entfallen; ihr Formular-Körper `LadesaeuleAnbinden` lebt unverändert im Aufbau-Fluss
+(`AnlegenFlow.tsx`) weiter. Neu geschrieben mit `vitest -u` gegen den aktuellen Produktstand - die bewusste, von
+firstmate beauftragte Änderung dieser Fläche; der Zeichenvergleich alt/neu zeigt nur das eine getauschte Element.
+
+**Der Fluss geht auf (07.11.2026, Schramm „Zuhause“, `flussBilanz.ts`):** `cockpit.html` ändert genau den Satz der
+Bühne. Die Fixture zeigt keinen PV-Knoten (Erzeugung 0), Einspeisung 2,1 kW, Laden 1,2 kW und 1,1 kW Verbrauch aus
+dem Schnappschuss; die vier Werte gehen um 4,4 kW nicht auf. Statt „Netzbezug 0,0 kW. Der Speicher lädt mit
+1,2 kW nach.“ sagt der Satz jetzt, dass die Werte nicht zusammenpassen, mit beiden Seiten. Das ist die von firstmate
+beauftragte Änderung („sagt es, statt widersprüchliche Zahlen zu zeigen“), keine gefundene Abweichung. Neu
+geschrieben mit `vitest -u` am Produktstand; der Token-Vergleich alt/neu zeigt nur diesen einen Satz
+(19 295 → 19 400 Bytes), kein anderes Byte.
+
+**Fahrplan per Tastatur (07.11.2026, Wartung Barrierefreiheit `vp-wartung-a11y-w1`, WCAG 2.1.1):**
+`ScheduleChart.tsx` hat in `diagramme.json` einen neuen Hash.
+Die Slot-Auswahl unter „Alle Werte" ging bisher nur über den Klick auf die Zeichenfläche; mit `onSlotClick` ist der Diagramm-Behälter jetzt fokussierbar (`tabIndex`, `role="slider"`, `aria-value*`) und wählt mit Pfeilen, Pos1/Ende und Eingabe/Leertaste denselben Slot wie der Klick.
+Die ECharts-Option, also das gezeichnete Bild, ist unverändert; neu sind `nowSlotIndex` aus `schedule.ts`, der Tastatur-Handler und die Attribute am Behälter.
+Ohne `onSlotClick` (jeder Aufruf außer „Alle Werte" im Fahrplan) bleibt der Behälter ohne neue Attribute.
+Das ist die beauftragte Änderung dieser Fläche, keine gefundene Abweichung; keine HTML-Aufnahme ändert sich.
+
+**Die Spalte steht neben dem Fluss (08.11.2026, Konzept `vp-cockpit-privat-konzept`, Captain-Entscheid E4 = A):**
+`cockpit.html` (Fixture mit Lastspitzenkappung, die Lastspitze führt) verschiebt genau die rechte Spalte.
+Sie ist kein zweites Kartenfeld mehr, das so hoch wurde wie Fluss, Tagesleiste und Geräteliste zusammen, sondern steht in der Bühne neben Kopf, Satz und Leitungsplan (`vp-eb is-zweispaltig` > `vp-eb-reihe` > `vp-eb-links` + `vp-hero-side`); die Karte trägt dafür `vp-stage-norail`.
+Die Lastspitzen-Kachel samt Stern und alle Wörter und Zahlen sind unverändert.
+Das ist die beschlossene Änderung dieser Fläche, keine gefundene Abweichung.
+Neu geschrieben mit `vitest -u` am Produktstand; der Token-Vergleich alt/neu zeigt nur die zwei Hüllen und den Umzug der Spalte (19 400 → 19 493 Bytes).
+
+**Toter Code entfernt (10.11.2026, Code-Gesundheit, PR fm/vp-codehealth-befunde):** `HistoryChart.tsx`
+(`HistoryEnergieChart`) wurde als toter Code gelöscht — im Produktbundle nicht mehr importiert, zuletzt nur von
+`historyChartZoom.test.tsx` gerendert (mit gelöscht). Sein Eintrag in `diagramme.json` entfällt dadurch; die
+übrigen drei geschützten Dateien sind unverändert.
+
+**Ladevorgänge hat jetzt eine h1 (10.11.2026, Wartung Barrierefreiheit `vp-wartung-a11y-w1` Welle 2, WCAG 1.3.1):**
+`verlauf-ladevorgaenge.html` ändert genau ein Element: eine `vp-sr-only`-`<h1>Ladevorgänge</h1>` ganz am Anfang.
+Die Unterseite hatte (anders als „Einstellungen"/„Aufbau") kein `vp-page-head` und darum keine eigene h1; die
+sichtbare h2 „Ladevorgänge" weiter unten blieb die einzige Überschrift der Seite. Das ist die beauftragte
+Änderung dieser Fläche, keine gefundene Abweichung. Neu geschrieben mit `vitest -u` am Produktstand; der
+Zeichenvergleich alt/neu zeigt nur dieses eine Element (5 459 → 5 500 Bytes).
 
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 

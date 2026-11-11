@@ -4,6 +4,10 @@ import com.voltpilot.api.enrollment.Csrs;
 import com.voltpilot.api.enrollment.EnrollmentRepository;
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.enrollment.InvalidCsrException;
+import com.voltpilot.api.werkstatt.EinloesungRepository;
+import com.voltpilot.api.werkstatt.EinloesungService;
+import java.util.Optional;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
 import com.voltpilot.api.web.dto.EnrollmentCertificateDto;
@@ -65,13 +69,16 @@ public class EnrollmentController {
     private final EnrollmentRepository enrollments;
     private final ProvisionedDeviceRepository provisioned;
     private final EnrollmentRateLimiter rateLimiter;
+    private final EinloesungRepository werkstatt;
 
     public EnrollmentController(EnrollmentService enrollment, EnrollmentRepository enrollments,
-            ProvisionedDeviceRepository provisioned, EnrollmentRateLimiter rateLimiter) {
+            ProvisionedDeviceRepository provisioned, EnrollmentRateLimiter rateLimiter,
+            EinloesungRepository werkstatt) {
         this.enrollment = enrollment;
         this.enrollments = enrollments;
         this.provisioned = provisioned;
         this.rateLimiter = rateLimiter;
+        this.werkstatt = werkstatt;
     }
 
     @PostMapping("/{ref}/csr")
@@ -79,12 +86,26 @@ public class EnrollmentController {
             @Valid @RequestBody EnrollmentCsrRequest request, HttpServletRequest httpRequest) {
         rateLimit(httpRequest);
         String canonicalRef = canonicalRef(ref);
-        Csrs.parseAndValidate(request.csrPem());
+        PKCS10CertificationRequest csr = Csrs.parseAndValidate(request.csrPem());
+        // Eine erzeugte Kennung trägt ihr Prüfzeichen (edge-ref-vectors.json): eine
+        // falsche ist ein Tippfehler oder fremd und legt keine Anfrage an.
+        if (EdgeRef.isGeneratedFormat(canonicalRef) && !EdgeRef.isValid(canonicalRef)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "Das Prüfzeichen dieser Geräte-Referenz stimmt nicht. Bitte prüfen Sie die Referenz.");
+        }
+        // D2: Hat die Werkstatt den Geräteschlüssel festgehalten, gilt nur noch er.
+        Optional<EinloesungRepository.Festgehalten> fest = werkstatt.festgehalten(canonicalRef);
+        if (fest.isPresent() && !fest.get().geraeteSchluessel().equals(Csrs.schluesselSpki(csr))) {
+            log.warn("Enrollment CSR for ref '{}' refused: another key is pinned by the workshop", canonicalRef);
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", "error",
+                    "code", EinloesungService.FESTGEHALTEN,
+                    "message", "Für diese Geräte-Referenz ist ein anderer Geräteschlüssel festgehalten."));
+        }
         // Sticker refs pass the same manufacturing-registry gate as the claim
         // endpoint: a typo'd ID fails fast instead of enrolling a ghost.
         if (canonicalRef.startsWith(DeviceController.STICKER_PREFIX)
                 && provisioned.findKind(canonicalRef).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Geräte-Referenz ist uns nicht bekannt. Bitte prüfen Sie die "
                             + "Referenz auf dem Geräte-Aufkleber.");
         }

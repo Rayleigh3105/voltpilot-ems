@@ -46,23 +46,14 @@ const (
 // newArbiter builds the arbitration engine with the agent's environment.
 func (a *Agent) newArbiter() *desired.Arbiter {
 	return desired.New(desired.Deps{
-		Now:         func() time.Time { return time.Now().UTC() },
-		Reading:     a.entityGuardReading,
-		BmsEnvelope: a.bmsEnvelope,
+		Now:     func() time.Time { return time.Now().UTC() },
+		Reading: a.entityGuardReading,
 		EnvLimits: func() *guards.Limits {
-			// MiSpeL MP-45: the v1 plan's strict posture composes into every
-			// storage clamp exactly like ExtraSolarOnly below - only while a
-			// v1 plan exists, and only an explicit strict_exclusivity=true.
-			a.mu.Lock()
-			p := a.currentPlan
-			a.mu.Unlock()
 			return &guards.Limits{
-				MaxChargeKw:       a.Cfg.MaxChargeKw,
-				MaxDischargeKw:    a.Cfg.MaxDischargeKw,
-				SocMinPct:         a.Cfg.SocMinPct,
-				SocMaxPct:         a.Cfg.SocMaxPct,
-				StrictExclusivity: p.StrictExclusivityCharge(),
-				StrictToleranceKw: p.StrictToleranceKw(),
+				MaxChargeKw:    a.Cfg.MaxChargeKw,
+				MaxDischargeKw: a.Cfg.MaxDischargeKw,
+				SocMinPct:      a.Cfg.SocMinPct,
+				SocMaxPct:      a.Cfg.SocMaxPct,
 			}
 		},
 		ExtraSolarOnly: func() bool {
@@ -207,6 +198,9 @@ func (a *Agent) arbitrationLoop(ctx context.Context) {
 		// plan's market desire is already in place when the fallback withdraws
 		// (Inkrement 6; no-op unless VP_CONSUMER_CONTROL_ENABLED).
 		a.runFlexFallback(now)
+		// The heating-rod controller wishes in class 'flow'; the plan
+		// executors above already left the rods it owns alone (heizstabOwns).
+		a.runHeizstab(now)
 		a.arb.Tick()
 	}
 }
@@ -309,6 +303,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	a.arbMu.Unlock()
 
 	held := map[string]string{}
+	var v1 v1Injection
 	// The v1 plan commands the battery entity FIRST: while both plan eras
 	// exist (the E13a shadow phase - "v2 publishes, v1 controls"), the v1
 	// plan stays authoritative for the one entity it knows.
@@ -343,6 +338,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 					SolarOnly: p.SolarOnlyCharge(),
 				})
 				held[batt.ID] = "v1"
+				v1 = v1Injection{plan: p, slot: slotStart}
 			}
 		}
 	}
@@ -353,11 +349,15 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			if held[pe.ID] != "" {
 				continue
 			}
-			if reg.Find(pe.ID) == nil {
+			ent := reg.Find(pe.ID)
+			if ent == nil {
 				continue // unknown entity: logged-and-skipped territory
 			}
 			if reg.Claimed(pe.ID) {
 				continue // Stufe 3: an active customer rule owns this component
+			}
+			if a.heizstabOwns(pe.ID) {
+				continue // the box's heating-rod controller is that rule (heizstab.go)
 			}
 			cmds, slotStart, ok := v2.ActiveCommands(pe.ID, now)
 			if !ok {
@@ -372,6 +372,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 					continue
 				}
 			}
+			cmds = a.consumerCommands(*ent, cmds)
 			ttl := v2.ReceivedAt.Add(plan2.StaleAfter).Sub(now)
 			if ttl < time.Second {
 				continue
@@ -410,7 +411,127 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	}
 	a.arbMu.Lock()
 	a.planHeld = held
+	a.planV1 = v1
 	a.arbMu.Unlock()
+}
+
+// consumerCommandsFor puts a cloud-planned run into the vocabulary of the
+// entity it commands. Rein: kein Zustand, keine Uhr. Zwei Aufrufer: der
+// Plan-Ausführer (v2-Slot) und der Deadline-Fallback (flex_requirements).
+//
+// Both speak the GENERIC consumer word `setpoint_kw` (schedule 2.0: + =
+// consume, 0 = off) - the cloud does not know which commands a component
+// declared. A consumer that can only be LIMITED (an OCPP `ev-charger`
+// declares exactly `limit_kw`) would refuse that word at the capability gate,
+// and the wish would then hold nothing at all: no cap in the off slots, so the
+// station's source lane alone decided - „Günstig" charged at full power at any
+// price (Bericht vp-wallbox-modi-konzept §3.4), and neither a plan slot nor the
+// fallback ever served a charging deadline. For such a consumer the planned
+// consumption IS its limit: the vehicle draws at most that, 0 = it pauses.
+//
+// ⚠ Restrict-only by construction: a limit can only lower what the device
+// would do on its own, and every guard behind the arbiter binds it exactly
+// like a setpoint. A consumer that declares `setpoint_kw` keeps the word
+// unchanged, and nothing else is ever rewritten.
+//
+// The SAME holds for the switching word `on_off` (W-02, Audit
+// vp-ocpp-haushalt-audit): the cloud gives a station whose profile carries the
+// Regelart „Ein/Aus" exactly that word, and the capability gate refused it -
+// no holder, the station's lane alone decided, „Günstig" and „Ziel bis
+// Uhrzeit" never arrived. „aus" is a limit of 0; „an" is the station's own
+// ceiling `onKw` (its nameplate, else the box's commissioning ceiling - see
+// consumerOnKw), so it charges as far as budget and physics allow. Without a
+// known ceiling „an" is not translated: a number made up here would be a limit
+// nobody set.
+func consumerCommandsFor(e entities.Entity, c entities.Commands, onKw float64) entities.Commands {
+	if c.LimitKw != nil || e.Category() != "consumer" || !e.Supports(entities.CmdLimitKw) {
+		return c
+	}
+	if c.SetpointKw != nil && !e.Supports(entities.CmdSetpointKw) {
+		v := *c.SetpointKw
+		c.LimitKw = &v
+		c.SetpointKw = nil
+		return c
+	}
+	if c.OnOff != nil && c.SetpointKw == nil && !e.Supports(entities.CmdOnOff) {
+		kw := 0.0
+		if *c.OnOff {
+			kw = limitOnlyRatingKw(e)
+			if kw <= 0 {
+				kw = onKw
+			}
+			if kw <= 0 || math.IsNaN(kw) || math.IsInf(kw, 0) {
+				return c
+			}
+		}
+		c.LimitKw = &kw
+		c.OnOff = nil
+	}
+	return c
+}
+
+// limitOnlyRatingKw is the nameplate the registry declares for a limit-only
+// consumer: the `limit_kw` capability's maximum, else its consumption guard.
+// 0 = the registry does not say.
+func limitOnlyRatingKw(e entities.Entity) float64 {
+	for _, cap := range e.Capabilities.Actuate {
+		if cap.Command == entities.CmdLimitKw && cap.Max != nil && *cap.Max > 0 {
+			return *cap.Max
+		}
+	}
+	if v := e.Guards.Limits.MaxConsumptionKw; v != nil && *v > 0 {
+		return *v
+	}
+	return 0
+}
+
+// consumerCommands is consumerCommandsFor with the box's own knowledge of the
+// component: for an OCPP station the ceiling the box commissions it with
+// (rating × connectors, else the planable connection budget). Caller must not
+// hold entMu.
+func (a *Agent) consumerCommands(e entities.Entity, c entities.Commands) entities.Commands {
+	return consumerCommandsFor(e, c, a.consumerOnKw(e))
+}
+
+// consumerOnKw is what „an" means for a station the registry gives no
+// nameplate (the API composes an ev-charger without one): the SAME ceiling
+// ocppCommission installs as the station's TxDefault maximum. 0 = no station
+// behind this entity, or nothing honest is known (no connection limit).
+func (a *Agent) consumerOnKw(e entities.Entity) float64 {
+	rt := a.ocpp
+	if rt == nil || e.ChargePointID == "" {
+		return 0
+	}
+	set := rt.currentSettings().WithDefaults()
+	planable := set.GridLimitKw * (1 - set.MarginPct/100)
+	for _, c := range rt.srv.Snapshot().Chargers {
+		if c.ID == e.ChargePointID {
+			return ocppStationCeilingKw(c, planable)
+		}
+	}
+	return 0
+}
+
+// v1Injection names what the v1 plan executor last injected for the battery
+// entity: which plan, and which of its slots. The zero value = it commands
+// nothing (no active slot, a plan about to go stale, an owner claim, the
+// pause).
+type v1Injection struct {
+	plan *plan.Plan
+	slot time.Time
+}
+
+// planExecutorOutdated reports whether the v1 executor's standing injection
+// was made for another plan or slot than the one the setpoint path reads on
+// this tick: p, whether it has a slot for now (active) and that slot's start.
+// The executors run on the arbitration loop's own second, so for up to that
+// second after a new schedule or a slot boundary the answer is yes - and
+// applySetpoint then runs them itself before it asks for the holder's command.
+func (a *Agent) planExecutorOutdated(p *plan.Plan, slot time.Time, active bool) bool {
+	a.arbMu.Lock()
+	inj := a.planV1
+	a.arbMu.Unlock()
+	return inj.plan != nil && (inj.plan != p || !active || !inj.slot.Equal(slot))
 }
 
 // automationPaused reports the operator's „Automatik pausieren" (Steuerung
@@ -438,6 +559,7 @@ func (a *Agent) pausedWithdrawSet() map[string]string {
 	a.arbMu.Lock()
 	prev := a.planHeld
 	a.planHeld = map[string]string{}
+	a.planV1 = v1Injection{}
 	a.arbMu.Unlock()
 	return prev
 }

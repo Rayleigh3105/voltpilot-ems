@@ -2,6 +2,7 @@ package layer1
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -14,15 +15,30 @@ import (
 const TopicSourcesConfig = sources.TopicConfig
 
 // sourcePlan is one source Edge Light reads - the Go twin of a plan the
-// flow's "sources-store" node builds (build-flows.js). Only go-e today; every
-// other transport is named in the log, never silently skipped.
+// flow's "sources-store" node builds (build-flows.js): a go-e over HTTP, a
+// Huawei SUN2000 over Modbus TCP, a Powador behind its RS485 converter, a
+// SunSpec inverter (sunspec_tcp / fronius_sunspec), a Shelly meter or a classic
+// KOSTAL PIKO over its Web-API (kostal_dxs). Every other transport is named in
+// the log, never silently skipped - and ReadsAsSource tells the core the same
+// before it applies a portal plan.
 type sourcePlan struct {
 	ID   string
 	Role string
+	Comm string
 	IP   string
 	Port int
-	URL  string
+	URL  string // goe_http_api: the status URL
 	Addr string // the lane key: one request at a time per device
+
+	Huawei   *huaweiPlan     // huawei_modbus
+	Kaco     *kacoSerialPlan // kaco_serial
+	Sunspec  *sunspecPlan    // sunspec_tcp / fronius_sunspec
+	ShellyEM *shellyEMPlan   // shelly_em_http
+	Kostal   *kostalDxsPlan  // kostal_dxs
+
+	// DataSourceID is the assigned data source (DQ-…) the push named, the
+	// identity of the read receipt (else the local id).
+	DataSourceID string
 }
 
 // sourceNote is one line of the store node's log: warn = NICHT VERDRAHTET.
@@ -32,10 +48,42 @@ type sourceNote struct {
 }
 
 // The transports the flow can read as a source. Edge Light names the ones it
-// does not read yet instead of calling them unknown.
+// does not read yet instead of calling them unknown (kaco_serial, huawei_modbus
+// and the SunSpec way are read here, like in the flow's source executor).
 var knownSourceComms = map[string]bool{
 	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
 	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
+	"kostal_dxs": true,
+}
+
+// ReadsAsSource is THE answer to "does Edge Light read this transport as an
+// additional source in this role?" - "" when it does, else the German reason
+// (without the source id). parseSourcesConfig wires nothing it refuses, and the
+// core asks it before applying a portal plan (componentapply.Options), so a
+// device the box cannot read is reported to the portal with this reason instead
+// of waiting forever for its first value (Schramm, KOSTAL PIKO 20, 07.11.2026).
+//
+// It judges the transport and the role only; a connection the plan cannot use
+// (no IP, a bad unit id) is the plan's own, per-device refusal.
+func ReadsAsSource(comm, role string) string {
+	switch comm {
+	case goeapi.Family, CommHuaweiModbus, CommKacoSerial, CommSunSpecTCP, CommFroniusSunSpec:
+		return ""
+	case CommShellyEM:
+		if role == sources.RoleErzeuger {
+			return "ein Zähler liefert keinen PV-Wert (als Netz-Zähler oder Unterzähler/Verbraucher anlegen)"
+		}
+		return ""
+	case CommKostalDxs:
+		if role != sources.RoleErzeuger {
+			return "ein KOSTAL PIKO liefert nur seine Erzeugung (PV-Leistung), keinen Netz- oder Verbrauchswert (als Erzeuger anlegen)"
+		}
+		return ""
+	}
+	if knownSourceComms[comm] {
+		return "Edge Light liest die Anbindung \"" + comm + "\" als Energiequelle noch nicht"
+	}
+	return "unbekannte Kommunikation \"" + comm + "\""
 }
 
 // parseSourcesConfig is vp-sources-config (structural validation) followed by
@@ -58,6 +106,7 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 	if json.Unmarshal(obj["sources"], &list) != nil || list == nil {
 		return nil, nil, 0, false
 	}
+	dataSourceIDs := map[string]string{}
 	for i, raw := range list {
 		var s map[string]any
 		label := "Eintrag #" + strconv.Itoa(i+1)
@@ -88,10 +137,24 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			continue
 		}
 		entries++
+		if dq, _ := s["data_source_id"].(string); strings.TrimSpace(dq) != "" {
+			dataSourceIDs[id] = strings.TrimSpace(dq)
+		}
 		// --- the store node (role, then the transport) ---
 		role, _ := s["role"].(string)
+		// Die Adresse einer Anlagensteuerung (EZ-21) liest der Messplan, nicht
+		// die Selbstverdrahtung - benannt wie im Flow, nicht gewarnt.
+		if role == sources.RolePlantController {
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role +
+				"): Anlagensteuerung, liest der Messplan (Erzeuger-Bild) - keine Selbstverdrahtung"})
+			continue
+		}
 		if role != sources.RoleErzeuger && role != sources.RoleNetz && role != sources.RoleConsumer {
 			notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte Rolle \"" + role + "\""})
+			continue
+		}
+		if why := ReadsAsSource(comm, role); why != "" {
+			notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
 			continue
 		}
 		ip = strings.TrimSpace(ip)
@@ -99,17 +162,60 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 		case comm == goeapi.Family:
 			port := int(num(conn["port"], 80))
 			plans = append(plans, sourcePlan{
-				ID: id, Role: role, IP: ip, Port: port,
+				ID: id, Role: role, Comm: comm, IP: ip, Port: port,
 				// The store node always writes the port into the URL.
 				URL:  "http://" + ip + ":" + strconv.Itoa(port) + goeapi.StatusPath + "?filter=" + goeapi.StatusFilter,
 				Addr: ip + ":" + strconv.Itoa(port),
 			})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): goe_http_api " + ip + ":" + strconv.Itoa(port) + " -> Leseplan (go-e /api/status)"})
-		case knownSourceComms[comm]:
-			notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + "): Edge Light liest die Anbindung \"" + comm + "\" als Energiequelle noch nicht"})
-		default:
-			notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte Kommunikation \"" + comm + "\""})
+		case comm == CommHuaweiModbus:
+			// The same plan as for the primary inverter (the source entry
+			// carries the same connection fields).
+			hp, why := planHuawei(&selection{Family: family, Communication: comm, Connection: conn})
+			if hp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: hp.IP, Port: hp.Port, Addr: hp.Addr, Huawei: hp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): huawei_modbus " + hp.Addr + " Unit " + strconv.Itoa(int(hp.UnitID)) + " -> Leseplan (Huawei SUN2000, 4 Bloecke)"})
+		case comm == CommKacoSerial:
+			kp, why := planKacoSerial(&selection{Family: family, Communication: comm, Connection: conn})
+			if kp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: kp.IP, Port: kp.Port, Addr: kp.Addr, Kaco: kp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): kaco_serial " + kp.Addr + " Adresse " + strconv.Itoa(kp.Address) + " -> Leseplan (Powador #" + fmt.Sprintf("%02d", kp.Address) + "0)"})
+		case comm == CommShellyEM:
+			sp, why := planShellyEM(conn)
+			if sp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, ShellyEM: sp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): shelly_em_http " + sp.Addr + " -> Leseplan (Shelly.GetStatus, em:0)"})
+		case isSunSpecComm(comm):
+			// The flow's plan: port num(conn.port, 502), unit num(conn.unit_id, 1),
+			// model_type auto unless float/int_sf.
+			sp, why := planSunSpec(&selection{Family: family, Communication: comm, Connection: conn})
+			if sp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, Sunspec: sp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): " + comm + " " + sp.Addr + " -> Leseplan sunspec_live (unit " + strconv.Itoa(int(sp.UnitID)) + ", model_type " + sp.ModelType + ")"})
+		case comm == CommKostalDxs:
+			kp, why := planKostalDxs(&selection{Family: family, Communication: comm, Connection: conn})
+			if kp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: kp.IP, Port: kp.Port, Addr: kp.Addr, Kostal: kp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): kostal_dxs " + kp.Addr + " -> Leseplan (PIKO Web-API /api/dxs.json)"})
 		}
+	}
+	for i := range plans {
+		plans[i].DataSourceID = dataSourceIDs[plans[i].ID]
 	}
 	return plans, notes, entries, true
 }

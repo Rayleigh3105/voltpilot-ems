@@ -1,0 +1,119 @@
+/* Die Seite eines Mandanten (statt des früheren Dialogs): ein Zurück-Knopf, der Kopf
+   und je Abschnitt eine Karte - Stammdaten, Benutzer, Anlagen, Unterstützung, Offboarding. */
+.vp-mandant-zurueck { margin: 0 0 var(--vp-space-2); }
+.vp-mandant-seite { display: flex; flex-direction: column; gap: var(--vp-space-5); }
+.vp-mandant-seite > .vp-page-head { margin-bottom: 0; }
+.vp-mandant-karte .vp-section-head { margin-bottom: var(--vp-space-3); }
+.vp-mandant-karte .vp-section-head h2 { font-size: 1.05rem; margin: 0; }
+.vp-mandant-seite > .vp-unterstuetzung { margin: 0; }
+.vp-mandant-seite > .vp-unterstuetzung h3 { margin-top: 0; font-size: 1.05rem; }
+.vp-mandant-hinweis { margin: 0 0 var(--vp-space-3); font-size: 0.875rem; }
+.vp-mandant-stamm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--vp-space-3) var(--vp-space-5);
+  margin: 0;
+}
+.vp-mandant-stamm div { min-width: 0; }
+.vp-mandant-stamm dt { font-size: 0.8125rem; color: var(--vp-text-muted); margin-bottom: 0.15rem; }
+.vp-mandant-stamm dd { margin: 0; overflow-wrap: anywhere; }
+.vp-mandant-stamm dd.vp-mono { font-size: 0.8125rem; }
+.vp-mandant-seite .vp-danger-zone, .vp-mandant-seite > .vp-alert { margin: 0; }
+
+/* Die Zählung über der Liste: am Telefon kompakt nebeneinander statt drei volle Kacheln untereinander. */
+@media (max-width: 720px) {
+  .vp-kpis.vp-mandanten-pulse { grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); }
+  /* `!important` nur gegen die Inline-Größe der Symbolkachel. */
+  .vp-mandanten-pulse .vp-kpi > :first-child:not(:only-child) { display: none !important; }
+}
+
+/* Die Eingabezeile „Neuer Kunde" (Scheibe S5, E1 = A): keine Zebra-/Klick-Optik der übrigen Zeilen. */
+.vp-kunden-neu-zeile { background: var(--vp-bg-light); }
+.vp-kunden-neu-zeile td { vertical-align: middle; }
+
+/* Kundenakte-Kopf (§4.5): Kachel | Name, Segment + Zustand, Stammzeile | „Wie der Kunde es sieht" + Bearbeiten.
+   Ein Raster statt Flex: die Mitte behält ihre Breite (vorher schrumpfte sie neben dem breiten Knopf
+   am Telefon auf 26 px, Name und Zustand lagen übereinander). Die Stammzeile ist Fließtext - als
+   Flex-Zeile stand jedes Wort auf einer eigenen Zeile. */
+.vp-kundenakte-kopf {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--vp-space-3) var(--vp-space-4);
+  align-items: start;
+}
+.vp-kundenakte-kopf-mitte { min-width: 0; }
+.vp-kundenakte-kopf-mitte h1 { font-size: 1.3rem; line-height: 1.25; margin: 0; overflow-wrap: anywhere; }
+.vp-kundenakte-marken { display: flex; flex-wrap: wrap; gap: var(--vp-space-2); margin: var(--vp-space-2) 0 0; }
+.vp-kundenakte-unter { color: var(--vp-text-muted); margin: var(--vp-space-1) 0 0; font-size: 0.875rem; }
+.vp-kundenakte-kopf-rechts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+}
+/* Bis 900 px (Tablet hochkant, wie die zwei Spalten darunter) stehen die Knöpfe unter dem Namen. */
+@media (max-width: 900px) {
+  .vp-kundenakte-kopf { grid-template-columns: auto minmax(0, 1fr); }
+  .vp-kundenakte-kopf-rechts { grid-column: 1 / -1; justify-content: flex-start; }
+}
+@media (max-width: 720px) {
+  .vp-mandant-seite { gap: var(--vp-space-4); }
+  .vp-mandant-zurueck { margin: 0; }
+  /* Am Telefon trägt der Name die volle Breite; das Gebäude-Symbol sagt dort nichts Neues. */
+  .vp-kundenakte-kopf { grid-template-columns: minmax(0, 1fr); }
+  .vp-kundenakte-symbol { display: none !important; }
+  .vp-kundenakte-kopf-mitte h1 { font-size: 1.5rem; }
+}
+
+/* Personen: die E-Mail steht unter dem Namen und bricht nur am „@“ um (`<wbr>`), nie mitten im Wort. */
+.vp-person-mail { display: block; font-size: 0.85rem; overflow-wrap: normal; word-break: normal; }
+@media (max-width: 720px) {
+  .vp-kundenakte-kopf-rechts { flex-wrap: nowrap; }
+}
+
+/* Kundenliste: Name und Segment in einer Zeile, am Telefon darunter die Zahlen. */
+.vp-kundenliste-name { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--vp-space-2); row-gap: 2px; }
+.vp-kundenliste { --vp-zeilen-rand: var(--vp-space-4); }
+/* Personen stehen in einer gepolsterten Karte: die Zeilen brauchen keinen eigenen Rand. */
+.vp-kundenakte-personen .vp-zeilen { --vp-zeilen-rand: 0; }
+@media (max-width: 720px) {
+  /* Die ganze Zeile öffnet den Kunden; rechts bleibt nur der Pfeil, damit die Zahlen in eine Zeile passen. */
+  .vp-table.responsive.vp-zeilen.vp-kundenliste tr { column-gap: var(--vp-space-2); }
+  .vp-table.responsive.vp-zeilen.vp-kundenliste td[data-zeile='aktion'] .vp-btn { padding-inline: 4px; min-width: 32px; }
+}
+
+/* Die zwei Spalten: Personen breit, Anlagen/Zugriff/Vertrag gestapelt daneben - am Telefon untereinander. */
+.vp-kundenakte-spalten {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--vp-space-5);
+  align-items: start;
+}
+.vp-kundenakte-nebenspalte { display: flex; flex-direction: column; gap: var(--vp-space-5); min-width: 0; }
+@media (max-width: 900px) {
+  .vp-kundenakte-spalten { grid-template-columns: 1fr; }
+}
+
+.vp-kundenakte-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--vp-space-2); }
+.vp-kundenakte-liste li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-2) 0;
+  border-bottom: 1px solid var(--vp-border);
+  min-width: 0;
+}
+.vp-kundenakte-liste li:last-child { border-bottom: none; }
+.vp-kundenakte-liste-haupt { min-width: 0; overflow-wrap: anywhere; }
+
+/* B4 = A (vp-plattform-admin-box-benutzer-konzept): je Box ein Zustand statt nur einer Summe. */
+.vp-kundenakte-boxen { display: flex; flex-wrap: wrap; gap: var(--vp-space-1); justify-content: flex-end; }
+/* Punkt 7 (vp-kundenakte-fremde-personen): Abzeichen und „Vom Kunden lösen …" einer Box als Paar -
+   die Handlung bricht nie aus der Zeile, am Telefon umbricht das Paar gemeinsam. */
+.vp-kundenakte-box { display: inline-flex; align-items: center; gap: var(--vp-space-2); flex-wrap: wrap; justify-content: flex-end; }
+.vp-kundenakte-box .vp-linklike { white-space: nowrap; }
+.vp-kundenakte-box-link { text-decoration: none; border-radius: var(--vp-radius-full, 999px); }
+.vp-kundenakte-box-link:hover,
+.vp-kundenakte-box-link:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 1px; }

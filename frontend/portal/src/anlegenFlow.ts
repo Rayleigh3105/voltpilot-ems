@@ -21,6 +21,8 @@
  * WORTSCHATZ: Set A („Komponente", „Gerät", „Messwert").
  */
 
+import type { SiteComponentRow } from './api';
+import { kundenRolle } from './geraeteEdit';
 import {
   ROLLEN,
   rolleVerfuegbar,
@@ -31,7 +33,7 @@ import {
 /**
  * Die ART eines Anlege-Wegs. Seit dem Gerätekatalog (Konzept „Aufbau und
  * Gerätekatalog") ergibt sie sich aus dem gewählten Modell (`typFuerTemplate`)
- * oder aus dem gewählten Weg ohne Vorlage (Ladesäule, Batterie, Modbus-Gerät).
+ * oder aus dem gewählten Weg ohne Vorlage (Ladesäule, Modbus-Gerät).
  */
 export type TypId =
   | 'wechselrichter'
@@ -39,16 +41,14 @@ export type TypId =
   | 'ladesaeule'
   | 'verbraucher'
   | 'zaehler'
-  | 'batterie'
   | 'eigenbau';
 
 /**
  * Die Gerätetyp-Dimension des Katalogs, auf die eine Art hört.
  *
- * ⚠ `ladesaeule`, `batterie` und `eigenbau` haben KEINE: die erste erklärt nur
- * den Weg (die Säule wählt VoltPilot selbst an), die beiden anderen
- * beschreiben das Gerät selbst. Eine Vorlagen-Auswahl an ihnen wäre ein
- * Formular ohne Wirkung.
+ * ⚠ `ladesaeule` und `eigenbau` haben KEINE: die erste erklärt nur den Weg
+ * (die Säule wählt VoltPilot selbst an), die zweite beschreibt das Gerät
+ * selbst. Eine Vorlagen-Auswahl an ihnen wäre ein Formular ohne Wirkung.
  */
 const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   wechselrichter: ['inverter'],
@@ -59,7 +59,6 @@ const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   verbraucher: ['switch', 'io_module'],
   zaehler: ['meter'],
   ladesaeule: [],
-  batterie: [],
   eigenbau: [],
 };
 
@@ -87,9 +86,29 @@ const TYP_ROLLEN: Record<TypId, KomponentenRolle[]> = {
   verbraucher: ['consumer'],
   zaehler: ['grid-meter'],
   ladesaeule: [],
-  batterie: [],
   eigenbau: [],
 };
+
+/**
+ * Ein ECHTER Zähler - eine Vorlage mit `deviceType: meter`, seit 06.11.2026 der
+ * Shelly Pro 3EM - hat zwei Aufgaben: am Hausanschluss den Netz-Zähler oder in
+ * einer Unterverteilung einen Unterzähler. Die Box liest den Unterzähler als
+ * Verbraucher-Quelle (`consumer`), sein Wert geht nie in den Netzwert. Ein Gerät,
+ * über das nur gemessen wird (ein Wechselrichter mit Zähler am Netzpunkt), bleibt
+ * Netz-Zähler: als Unterzähler könnte die Box ihm keine Rolle zuordnen.
+ */
+const ZAEHLER_ROLLEN: KomponentenRolle[] = ['grid-meter', 'consumer'];
+
+/** Die Kundenworte der Verbraucher-Rolle eines Zählers (Glossar: Unterzähler). */
+export const UNTERZAEHLER_ROLLE = {
+  label: 'Unterzähler',
+  hint: 'Misst einen Teil der Anlage, zum Beispiel eine Unterverteilung oder eine Halle. Er zählt nicht als Netz-Zähler.',
+} as const;
+
+function rollenFuer(typ: TypId, deviceType?: string | null): KomponentenRolle[] {
+  if (typ === 'zaehler' && (deviceType ?? '').trim() === 'meter') return ZAEHLER_ROLLEN;
+  return TYP_ROLLEN[typ];
+}
 
 /**
  * Der Satz zu einer Art, hinter der KEINE eigene Vorlage steht.
@@ -164,10 +183,16 @@ export type RollenWahl = {
  * weiterer Erzeuger sein kann. Jede andere Art beantwortet sie selbst; dann
  * ist die Liste einelementig und die Fläche stellt keine Frage.
  */
-export function rollenWahl(typ: TypId, vorhandeneRollen: string[]): RollenWahl[] {
-  return TYP_ROLLEN[typ].map((rolle) => {
-    const def = ROLLEN.find((r) => r.id === rolle);
-    const status = rolleVerfuegbar(rolle, vorhandeneRollen);
+export function rollenWahl(
+  typ: TypId,
+  vorhandeneRollen: string[],
+  namen: Partial<Record<KomponentenRolle, string | null>> = {},
+  /** Der Gerätetyp der gewählten Vorlage: nur ein echter Zähler (`meter`) kann auch Unterzähler sein. */
+  deviceType?: string | null,
+): RollenWahl[] {
+  return rollenFuer(typ, deviceType).map((rolle) => {
+    const def = typ === 'zaehler' && rolle === 'consumer' ? UNTERZAEHLER_ROLLE : ROLLEN.find((r) => r.id === rolle);
+    const status = rolleVerfuegbar(rolle, vorhandeneRollen, namen);
     return {
       rolle,
       label: def?.label ?? rolle,
@@ -178,14 +203,49 @@ export function rollenWahl(typ: TypId, vorhandeneRollen: string[]): RollenWahl[]
   });
 }
 
+/** Die Geräte, die eine Anlage SCHON HAT - als Rollen-Liste für {@link rollenWahl}, mit ihren Namen. */
+export type VorhandeneGeraete = {
+  rollen: string[];
+  namen: Partial<Record<KomponentenRolle, string | null>>;
+};
+
+/**
+ * Was die Anlage schon hat, aus den Zeilen von `GET …/components` - in den Rollen des Assistenten.
+ *
+ * ⚠ Eine Zeile zählt nur MIT Anbindung. Die Plattform komponiert Zeilen OHNE Anbindung (Netz und
+ * Haus beim Verbinden der Box, den Speicher aus seinen Eckdaten); der Server füllt sie beim
+ * Speichern, statt eine zweite anzulegen. Zählten sie hier, sperrte die Fläche den Netz-Zähler
+ * auf jeder Anlage mit Box und schlüge auf einer Anlage mit komponiertem, aber nie eingerichtetem
+ * Speicher „Weiterer Erzeuger“ vor - als hätte sie schon einen Hauptwechselrichter. Die Rollen
+ * der Zeilen sind das v1-Vokabular (`battery-hybrid`), die Fläche fragt in ihrem eigenen
+ * (`kundenRolle`).
+ */
+export function vorhandeneGeraete(
+  zeilen: readonly SiteComponentRow[],
+  /** Die Zeile, die gerade bearbeitet wird - sie zählt nicht als „schon da“. */
+  ausser?: string | null,
+): VorhandeneGeraete {
+  const rollen: string[] = [];
+  const namen: VorhandeneGeraete['namen'] = {};
+  for (const zeile of zeilen) {
+    if (zeile.id === ausser) continue;
+    const conn = zeile.connection;
+    const angebunden = conn != null && typeof conn === 'object' && Object.keys(conn).length > 0;
+    if (!angebunden) continue;
+    const rolle = kundenRolle(zeile);
+    rollen.push(rolle);
+    if (namen[rolle] === undefined) namen[rolle] = zeile.label?.trim() || null;
+  }
+  return { rollen, namen };
+}
+
 /**
  * Die VORGESCHLAGENE Rolle einer Art - ein Vorschlag, nie eine Entscheidung.
  *
- * ⚠ Sie fällt NICHT auf eine unverfügbare Rolle zurück und blockiert
- * umgekehrt auch nichts: eine Anlage, deren Wechselrichter-Zeile von der
- * Plattform komponiert wurde, darf sehr wohl noch einen Wechselrichter
- * bekommen (der Server übernimmt die Zeile dann). Genau deshalb bleibt die
- * zweite Möglichkeit sichtbar und wählbar.
+ * ⚠ Sie fällt NICHT auf eine unverfügbare Rolle zurück. Hat die Anlage schon einen
+ * angebundenen Wechselrichter, ist die Rolle gesperrt (der Server lehnte einen zweiten
+ * beim Speichern ab) und der weitere Erzeuger ist die Antwort; eine nur komponierte,
+ * nie eingerichtete Zeile zählt dafür nicht ({@link vorhandeneGeraete}).
  */
 export function vorschlagRolle(
   typ: TypId,
@@ -197,8 +257,10 @@ export function vorschlagRolle(
    * der globale Einstieg zurück.
    */
   bevorzugt?: KomponentenRolle | null,
+  /** Der Gerätetyp der gewählten Vorlage ({@link rollenWahl}). */
+  deviceType?: string | null,
 ): KomponentenRolle | null {
-  const wahl = rollenWahl(typ, vorhandeneRollen);
+  const wahl = rollenWahl(typ, vorhandeneRollen, {}, deviceType);
   const frei = wahl.filter((w) => w.verfuegbar);
   if (frei.length === 0) return null;
   const ortsgebunden = frei.find((w) => w.rolle === bevorzugt);

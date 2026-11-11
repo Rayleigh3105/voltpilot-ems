@@ -1,4 +1,5 @@
 import { Recht } from '../components/Recht';
+import { HeizstabKarte } from '../components/HeizstabKarte';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -24,8 +25,10 @@ import {
   type SiteEntity,
   type SiteSource,
   type SiteTopology,
+  type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
-import { ausfallSchutz, type SiteCharging } from '../ladepunkte';
+import { ausfallSchutz, budgetFuer, type SiteCharging } from '../ladepunkte';
 import {
   chargePointIdOf,
   geraetSeite,
@@ -46,7 +49,8 @@ import {
   typWort,
   type Gesicht,
 } from '../geraetGesicht';
-import { ioBindungenAus, plantModel, type PlantComponent } from '../komponenten';
+import { zaehlerWerte } from '../zaehlerWerte';
+import { ANLAGENSTEUERUNG_TYPE, ioBindungenAus, plantModel, type PlantComponent } from '../komponenten';
 import { fmtNum } from '../format';
 import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment';
 import type { IconName } from '../../designsystem/components/core/Icon';
@@ -56,16 +60,17 @@ import { GeraetHerkunft } from '../components/GeraetHerkunft';
 import { GeraetGefahrenzone, gefahrMenueLabel } from '../components/GeraetGefahrenzone';
 import { GeraetSummenwerte } from '../components/GeraetSummenwerte';
 import { gefahrenzone } from '../geraetLoeschen';
+import { herkunftZeile } from '../geraetesucheHerkunft';
 import {
   anlageRoute,
   befehleGeraetHash,
   befehleHash,
+  geraeteAkteHash,
   geraetBearbeitenKomponente,
   geraetSeiteHash,
   hashForRoute,
   istGeraetBearbeitenHash,
   ohneGeraetBearbeiten,
-  pageRoute,
 } from '../nav';
 import {
   ABRUF_HINWEIS,
@@ -129,15 +134,11 @@ import { heuteKanal } from '../geraetHeute';
 import { verlaufHash } from '../verlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
-import { LIVE_POLL_MS } from '../pollCadence';
+import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
-import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UmbenennenDialog, type RenameTarget } from '../components/UmbenennenDialog';
-import { geraetView, type GeraetView } from '../adminGeraet';
-import { adminApi } from '../admin/adminApi';
-import { fleetApi } from '../admin/fleetApi';
 import { NO_DATA } from '../nodata';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { OcppWallboxPage } from './OcppWallboxPage';
@@ -170,6 +171,54 @@ import '../components/AnlagenModell.css';
 import './Befehle.css';
 import './GeraetSeite.css';
 import { AUFBAU_REITER } from '../ebenenNav';
+import { anlagensteuerungGeraetId, anlagensteuerungIdOf, boxRefOf } from '../geraetAdresse';
+import { aufbauBaum } from '../aufbauBaum';
+import { ablehnungenAus, zentraleListe } from '../zentraleListe';
+import { anbindungen as anbindungenVon, anbindungKurz, geraetImAufbau, kopfZustand } from '../geraetAnbindung';
+import { AnbindungAbschnitt, AnbindungVerlauf } from '../components/GeraetAnbindung';
+import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
+import { useAnlagensteuerung, useAnlagensteuerungWerte } from '../useAnlagensteuerung';
+import { einheitAdresseOf, gatewayKennzeichenOf } from '../geraetAdresse';
+import { EinheitSeiteSection } from './EinheitSeiteSection';
+import { GatewaySeiteSection } from './GatewaySeiteSection';
+
+/**
+ * Die Geräteseite einer Adresse: eine Erzeugungseinheit hinter einer Anlagensteuerung (`as-<Entität>~te-<n>`, GE-3)
+ * hat ihre eigene Seite im selben Rahmen ({@link EinheitSeiteSection}) — sie liest nur die Routen der Steuerung;
+ * ein Gateway (`dq-<n>`, GE-5) ebenso ({@link GatewaySeiteSection}); jede andere Kennung ist ein Gerät der Box.
+ */
+export function GeraetSeiteSection(props: Parameters<typeof GeraetSeiteKern>[0]) {
+  const einheit = einheitAdresseOf(props.geraetId);
+  const gateway = gatewayKennzeichenOf(props.geraetId);
+  if (gateway) {
+    return (
+      <GatewaySeiteSection
+        site={props.site}
+        boxRef={props.boxRef}
+        kennzeichen={gateway}
+        devices={props.devices ?? null}
+        devicesFetchedAt={props.devicesFetchedAt}
+      />
+    );
+  }
+  return einheit ? (
+    <EinheitSeiteSection
+      site={props.site}
+      boxRef={props.boxRef}
+      entityId={einheit.entityId}
+      teNr={einheit.teNr}
+      devices={props.devices}
+    />
+  ) : (
+    <GeraetSeiteKern {...props} />
+  );
+}
+
+/**
+ * Die Zeilen aus dem gemeldeten Bestand, die der Abschnitt „Anbindung" (GE-2) übernimmt, sobald ein gespeicherter
+ * Weg da ist: Weg, Adresse, lesende Box und Takt stehen dann genau einmal - dort.
+ */
+const ANBINDUNG_TRAEGT = new Set(['Anbindung', 'Adresse', 'Lesetakt', 'Gelesen über']);
 
 /**
  * Die GERÄTE-DETAILSEITE der Anlagen-Zentrale
@@ -193,7 +242,7 @@ import { AUFBAU_REITER } from '../ebenenNav';
  * still weg, statt die Seite unbenutzbar zu machen - nur der Entitäts-Abruf
  * trägt die Seite.
  */
-export function GeraetSeiteSection({
+function GeraetSeiteKern({
   site,
   boxRef: geraeteRef,
   geraetId,
@@ -271,11 +320,12 @@ export function GeraetSeiteSection({
    */
   const [pvZugeordnet, setPvZugeordnet] = useState(false);
   const [pvReload, setPvReload] = useState(0);
-  // Die PLATTFORM-Sicht: vier zusätzliche Reads, die es NUR hinter dem einen
-  // Tor überhaupt gibt (M7 `showTechnicalLayer`) - ein Kunde holt sie nie.
-  const [adminView, setAdminView] = useState<GeraetView | null>(null);
-  const [adminBusy, setAdminBusy] = useState(false);
-  const [adminFehler, setAdminFehler] = useState<string | null>(null);
+  // GE-2 „Anbindung": die Wege der Anlage und die UEMS-Geräte, deren `data_source_id` der einzige Verweis
+  // Weg → Gerät ist (dieselbe Zuordnung wie der Aufbau, GE-1). null = nicht geladen — dann kein Abschnitt.
+  const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
+  const [uemsGeraete, setUemsGeraete] = useState<UemsGeraet[] | null>(null);
+  const [gemeinsamZustand, setGemeinsamZustand] = useState<string | null>(null);
+  const [wechselQuelle, setWechselQuelle] = useState<UemsDatenquelle | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -290,6 +340,7 @@ export function GeraetSeiteSection({
     setEditError(null);
     setEntfernenOffen(false);
     setHeuteAusfall(false);
+    setWechselQuelle(null);
   }, [site.id, geraeteRef, geraetId]);
 
   useEffect(() => {
@@ -329,6 +380,10 @@ export function GeraetSeiteSection({
     };
     soft(api.topology(site.id), setTopology);
     soft(api.siteSources(site.id), setSources);
+    setDatenquellen(null);
+    setUemsGeraete(null);
+    soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
+    soft(api.uemsGeraete(site.id).then((a) => a.geraete), setUemsGeraete);
     void api.siteComponents(site.id).then(
       (value) => {
         if (!active) return;
@@ -380,54 +435,10 @@ export function GeraetSeiteSection({
       },
     );
     setNow(Date.now());
-    if (showTechnicalLayer()) {
-      // Fail-soft und ALLES-ODER-NICHTS: ohne die Geräte-Zeile gibt es keine
-      // Admin-Sicht - eine halbe Sicht wäre eine Aussage über ein Gerät, das
-      // wir nicht vollständig kennen.
-      void Promise.all([
-        adminApi.listDevices(),
-        fleetApi.fleet(),
-        adminApi.controlCandidates().catch(() => null),
-        adminApi.edgeUpdates().catch(() => null),
-      ]).then(
-        ([devs, flotte, candidates, updates]) => {
-          if (!active) return;
-          setAdminView(geraetView({
-            ref: geraeteRef,
-            devices: devs,
-            sites: flotte.sites,
-            candidates,
-            releases: updates?.releases ?? [],
-            journal: updates?.journal ?? [],
-          }, new Date()));
-        },
-        () => {
-          if (active) setAdminView(null);
-        },
-      );
-    }
     return () => {
       active = false;
     };
   }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey, pageRequest]);
-
-  /**
-   * Eine Admin-Handlung: ausführen, dann die Seite neu laden. Ein Fehlschlag
-   * wird BENANNT - eine Handlung, die still nichts tut, ist die schlechteste
-   * Rückmeldung.
-   */
-  async function adminAktion(fn: () => Promise<unknown>) {
-    setAdminBusy(true);
-    setAdminFehler(null);
-    try {
-      await fn();
-      setReloadKey((k) => k + 1);
-    } catch (e) {
-      setAdminFehler(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
-    } finally {
-      setAdminBusy(false);
-    }
-  }
 
   // Der stille Takt: Zustand UND Bezugszeit werden ZUSAMMEN gesetzt, ein
   // Fehlschlag lässt beides unberührt (die `liveness.ts`-Lehre).
@@ -447,6 +458,11 @@ export function GeraetSeiteSection({
       setNow(Date.now());
     });
   }, LIVE_POLL_MS);
+  // GE-2: die Box-Rückmeldung je Weg trägt den Zustand im Kopf mit. Sie kommt mit dem Herzschlag der Box, nicht
+  // im Takt der Messwerte - darum der ruhigere Listen-Takt; ein Fehlschlag lässt den letzten Stand stehen.
+  useFreshnessPoll(() => {
+    api.datenquellen(site.id).then((a) => setDatenquellen(a.datenquellen), () => {});
+  }, LIST_POLL_MS);
 
   /** K4: welche Verbraucher an welchem I/O-Ausgang hängen - aus ihren Profilen. */
   const ioBindungen = useMemo(() => ioBindungenAus(consumers), [consumers]);
@@ -455,6 +471,29 @@ export function GeraetSeiteSection({
     () => (data ? plantModel(data.entities, topology, data.localSetup, sources, ioBindungen) : null),
     [data, topology, sources, ioBindungen],
   );
+
+  // EZ-22: die Quelle, die die Box für eine Anlagensteuerung meldet (ihr Pin, EZ-21), ist kein eigenes Gerät -
+  // eine Adresse auf sie führt auf die Seite der Steuerung, mit ihren Parametern.
+  const steuerungDesPins = geraetId
+    ? data?.entities.find((e) => e.entityType === ANLAGENSTEUERUNG_TYPE && e.edgeSourceId === geraetId)?.id ?? null
+    : null;
+  useEffect(() => {
+    if (!steuerungDesPins) return;
+    const query = window.location.hash.split('?').slice(1).join('?');
+    window.location.replace(
+      `${geraetSeiteHash(site.id, geraeteRef, anlagensteuerungGeraetId(steuerungDesPins))}${query ? `?${query}` : ''}`,
+    );
+  }, [steuerungDesPins, site.id, geraeteRef]);
+
+  // UEMS EZ-10: die Seite `as-<Entität>` einer Anlagensteuerung - Gerät, Datenquelle und Werte kommen von ihren
+  // Routen (EZ-6); jede andere Seite fragt nichts davon.
+  const asEntity = anlagensteuerungIdOf(geraetId);
+  const asStand = useAnlagensteuerung(asEntity ? site.id : null, false);
+  const anlagensteuerung = useMemo(
+    () => (asEntity ? asStand.liste?.steuerungen.find((x) => x.entity_id === asEntity) ?? null : null),
+    [asEntity, asStand.liste],
+  );
+  const anlagensteuerungWerte = useAnlagensteuerungWerte(asEntity ? site.id : null, anlagensteuerung?.geraet_id ?? null);
 
   const view: GeraetSeiteView | null = useMemo(() => {
     if (!data) return null;
@@ -473,12 +512,72 @@ export function GeraetSeiteSection({
       charging,
       strategies,
       model,
+      anlagensteuerung,
+      anlagensteuerungWerte,
       now,
     });
   }, [
     data, geraeteRef, geraetId, site.name, site.id, devices, devicesFetchedAt,
-    sources, components, control, curtailment, charging, strategies, model, now,
+    sources, components, control, curtailment, charging, strategies, model, anlagensteuerung,
+    anlagensteuerungWerte, now,
   ]);
+
+  /**
+   * GE-2: das Gerät dieser Seite im AUFBAU — dieselbe Ableitung, die die Aufbau-Zeile zeichnet (GE-1). Von dort
+   * kommen seine Wege (nur über gespeicherte Verweise), das Gateway, hinter dem es antwortet, und die Regel für
+   * den einen Zustand im Kopf. Diese Seite ordnet nichts selbst zu.
+   */
+  const imAufbau = useMemo(() => {
+    if (!model || !data || !view?.gefunden || uemsGeraete == null || datenquellen == null) return null;
+    const eigeneBoxen = (devices ?? []).filter((d) => d.siteId === site.id);
+    const karten = zentraleListe({
+      siteId: site.id,
+      model,
+      devices: eigeneBoxen,
+      devicesFetchedAt,
+      boxRef: boxRefOf(devices, site.id),
+      localSetup: data.localSetup,
+      sources,
+      charging,
+      abgelehnt: ablehnungenAus(components),
+      now,
+    });
+    const baum = aufbauBaum({
+      siteId: site.id,
+      siteName: site.name,
+      standorte: null,
+      devices: devices ?? [],
+      devicesFetchedAt,
+      karten,
+      localSetup: data.localSetup,
+      charging,
+      registryBoxId: data.registry?.deviceId ?? null,
+      overview: null,
+      datenquellen,
+      uemsGeraete: { [site.id]: uemsGeraete },
+      now,
+    });
+    return geraetImAufbau(baum, view.komponenten.map((c) => c.entityId));
+  }, [model, data, view, uemsGeraete, datenquellen, devices, site.id, site.name, devicesFetchedAt, sources, charging, components, now]);
+  const steuerquelleDa = Boolean(imAufbau?.geraet.anbindungen
+    .some((a) => datenquellen?.find((q) => q.id === a.quelleId)?.steuerquelle));
+  useEffect(() => {
+    let aktiv = true;
+    setGemeinsamZustand(null);
+    // Nur eine Steuerquelle fragt die Gemeinsame Steuerung (die Weiche der Box-Seite, AP-15 T6).
+    if (!steuerquelleDa) return;
+    api.gemeinsameSteuerung(site.id).then(
+      (z) => aktiv && setGemeinsamZustand(z?.zustand ?? null),
+      () => aktiv && setGemeinsamZustand(null),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [site.id, steuerquelleDa]);
+  const anbindung = useMemo(
+    () => anbindungenVon({ imAufbau, datenquellen, devices: devices ?? [], siteId: site.id, gemeinsamZustand }),
+    [imAufbau, datenquellen, devices, site.id, gemeinsamZustand],
+  );
 
   const box = boxDevice;
   /** K4: diese Seite ist die eines Verbrauchers am Ausgang eines I/O-Moduls. */
@@ -660,17 +759,26 @@ export function GeraetSeiteSection({
       regeln: regelNamenOf(strategies, eigeneKomponenten),
       topologie: topology?.entities ?? null,
       speicherKnoten: topology?.topology.nodes.find((n) => n.role === 'storage') ?? null,
+      // Teil A (Captain-Befund 05.11.2026): dieselben Anlagen-weiten Knoten wie
+      // das Dashboard - der Heizstab-Held prüft seine Annahme gegen sie.
+      pvKnoten: topology?.topology.nodes.find((n) => n.role === 'pv') ?? null,
+      netzKnoten: topology?.topology.nodes.find((n) => n.role === 'grid') ?? null,
       // WÖRTLICH die geteilte Erfüllungs-Kopfzeile bzw. die geteilte
       // D3-Regel - ein zweites Urteil hier wäre eine zweite Wahrheit.
       erfuellung: fulfilment ? fulfilmentSummary(fulfilment).headline : null,
       gemessen: eigenerVerbraucher ? consumerHasMeasurement(eigenerVerbraucher) : null,
       nachweis: eigenerVerbraucher ? consumerNachweis(eigenerVerbraucher) : null,
       ioAusgangAn,
+      // Heizstab V1: die BESTÄTIGTE Stufe führt den Kopf (er misst keine Leistung).
+      heizstab: eigenerVerbraucher?.type === 'heating-rod'
+        ? { stufe: consumerStatus.find((st) => st.entityId === eigenerVerbraucher.id)?.stufe ?? null }
+        : null,
+      anlagensteuerungWerte,
       now,
     });
   }, [view, data, sources, charging, control, curtailment, strategies, topology, fulfilment,
     eigenerVerbraucher, geraetId, geraeteRef, box?.id, now, setupHier, kommunikation,
-    eigeneKomponenten, ioAusgangAn]);
+    eigeneKomponenten, ioAusgangAn, anlagensteuerungWerte, consumerStatus]);
 
   /**
    * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek.
@@ -721,6 +829,8 @@ export function GeraetSeiteSection({
     () => ladeparkZeilen(charging, geraetId),
     [charging, geraetId],
   );
+  /** Die Wallbox dieser Seite, wie die Box sie meldet (`null` = keine Säule). */
+  const wallbox = (charging?.chargers ?? []).find((item) => item.chargePointId === chargePointIdOf(geraetId)) ?? null;
 
   /**
    * Ein Gerät ohne Modbus-Register kann trotzdem MESSWERTE beobachten (D3):
@@ -757,11 +867,13 @@ export function GeraetSeiteSection({
   // ------------------------------------------------------------------
   // K4: ein Verbraucher am Relais eines Moduls ist KEINE Quelle der Box - der
   // Server kennt `io-…` nicht als Gerät. Seine Befehle hängen an seiner
-  // Komponente, also fragt die Seite nach ihr.
-  const ioVerbraucherEntity = ioVerbraucherIdOf(geraetId);
+  // Komponente, also fragt die Seite nach ihr. Dasselbe gilt für eine
+  // Anlagensteuerung (EZ-10): die Box liest sie über eine Datenquelle, und
+  // `?device=as-…` beantwortet der Server mit 404 „Gerät nicht gefunden.“.
+  const verlaufEntity = ioVerbraucherIdOf(geraetId) ?? asEntity;
   const verlauf = useBefehleVerlauf({
     siteId: site.id,
-    entityId: ioVerbraucherEntity,
+    entityId: verlaufEntity,
     geraetRef: geraetId ?? geraeteRef,
   });
 
@@ -1103,11 +1215,9 @@ export function GeraetSeiteSection({
           fallbackTitle={view.kopf.titel}
           backHref={komponentenHref}
           siteHref={anlageHref}
-          settingsHref={hashForRoute(anlageRoute(site.id, 'ladevorgaenge'))}
-          charger={(charging?.chargers ?? []).find(
-            (item) => item.chargePointId === chargePointIdOf(geraetId),
-          ) ?? null}
-          budget={charging?.budget ?? null}
+          settingsHref={hashForRoute(anlageRoute(site.id, 'laden'))}
+          charger={wallbox}
+          budget={wallbox ? budgetFuer(charging, wallbox) : charging?.budget ?? null}
           onRename={chargerRenameTarget ? () => {
             setEditNotice(null);
             setEditError(null);
@@ -1263,6 +1373,27 @@ export function GeraetSeiteSection({
         // sein Ziel und die Messung gehören in denselben Baustein wie sein
         // Schalter, nicht in einen zweiten daneben.
         const netzRegelung = eigenEinspeisung?.netz ? eigenEinspeisung : null;
+        // Heizstab: ein Heizstab über die Ausgänge eines Shelly hat seine eigene Steuerung (Smart zuerst, ein
+        // Schalter je Phase mit der BESTÄTIGTEN Stellung, Einstellungen zum Aufklappen) - sie ersetzt Zustandszeile
+        // und Segmente im Baustein seines Schalters.
+        const heizstabZeile = eigenerVerbraucher?.type === 'heating-rod'
+          ? (components?.components ?? []).find((r) => r.id === eigenerVerbraucher.id) ?? null
+          : null;
+        const heizstabKanaele = Array.isArray(heizstabZeile?.connection?.channels)
+          ? (heizstabZeile!.connection!.channels as unknown[]).length
+          : 0;
+        const heizstabKarte = eigenerVerbraucher && heizstabKanaele > 0 ? (
+          <HeizstabKarte
+            siteId={site.id}
+            consumer={eigenerVerbraucher}
+            status={consumerStatus.find((s) => s.entityId === eigenerVerbraucher.id) ?? null}
+            override={overrides.find((o) => o.entityId === eigenerVerbraucher.id) ?? null}
+            kanaele={heizstabKanaele}
+            komponente={heizstabZeile}
+            jetzt={new Date(now)}
+            onGeaendert={() => setReloadKey((k) => k + 1)}
+          />
+        ) : null;
         const steuerungBaustein: BausteinInhalt | null = steuerung
           ? {
             inhalt: (
@@ -1270,8 +1401,10 @@ export function GeraetSeiteSection({
                 view={steuerung}
                 busy={aktionBusy}
                 onAktion={segmentAusloesen}
-                zusatz={notAus || netzRegelung ? (
+                nurZusatz={heizstabKarte != null}
+                zusatz={notAus || netzRegelung || heizstabKarte ? (
                   <>
+                    {heizstabKarte}
                     {netzRegelung && (
                       <ZeilenListe
                         zeilen={[{
@@ -1304,6 +1437,25 @@ export function GeraetSeiteSection({
         // --- Heute ----------------------------------------------------------
         const heute = heuteBaustein(site.id, gesichtView, view, setHeuteAusfall, heuteAusfall);
 
+        // --- Zählerwerte (Unterverteilungen, Entscheid UV-3 A) ----------------
+        // Phasen und Zählerstände eines Shelly-Zählers - als Unterzähler wie am Netzanschluss.
+        const zaehler = zaehlerWerte(view.komponenten.map((c) => c.entityId), topology?.entities);
+        const zaehlerBaustein: BausteinInhalt | null = zaehler
+          ? {
+            titel: 'Zählerwerte',
+            kopfRechts: (
+              <a href={verlaufHash(site.id, ['power_l1_kw', 'power_l2_kw', 'power_l3_kw']
+                .filter((k) => zaehler.zeilen.some((z) => z.kanal === k))
+                .map((channel) => ({ entityId: zaehler.entityId, channel })), 'day')}>
+                Messwerte <Icon name="chevron-right" size={14} />
+              </a>
+            ),
+            inhalt: zaehler.stumm
+              ? <p className="vp-note">{zaehler.stumm}</p>
+              : <ZeilenListe zeilen={zaehler.zeilen.map((z) => ({ label: z.label, wert: z.wert }))} />,
+          }
+          : null;
+
         // --- Aktivität ------------------------------------------------------
         const history = verlauf.history;
         const aktivitaet: BausteinInhalt | null = gesichtView.sektionen.includes('befehle')
@@ -1319,8 +1471,8 @@ export function GeraetSeiteSection({
               </>
             ),
             kopfRechts: (
-              <a href={ioVerbraucherEntity
-                ? befehleHash(site.id, ioVerbraucherEntity)
+              <a href={verlaufEntity
+                ? befehleHash(site.id, verlaufEntity)
                 : befehleGeraetHash(site.id, geraetId ?? geraeteRef)}
               >
                 Alle <Icon name="chevron-right" size={14} />
@@ -1339,6 +1491,10 @@ export function GeraetSeiteSection({
           }
           : null;
 
+        // GE-2: EIN Zustand im Kopf - der eigene (bei der Steuerung das Werte-Alter, EZ-22) und die Box-Rückmeldung
+        // zu ihrem Weg nach der Regel der Aufbau-Zeile; der schlechtere gewinnt, mit Grund.
+        const kopfJetzt = kopfZustand(view.kopf.zustand, imAufbau);
+
         // --- Gerät & Verbindung --------------------------------------------
         const bezuege = view.steuerung.filter(
           (z) => z.label !== NOT_AUS_LABEL
@@ -1348,16 +1504,32 @@ export function GeraetSeiteSection({
         );
         // Ein I/O-Modul misst keine Größe - seine Zustände stehen im
         // Klemmenplan, und „Misst: I/O-Modul Keller" nennte nur sich selbst.
-        const misst = gesichtView.ioModul ? [] : eigeneKomponenten
+        // Ein Heizstab misst nichts: er SCHALTET seine Phasen über die Ausgänge des Shelly.
+        const misst = gesichtView.ioModul || heizstabZeile ? [] : eigeneKomponenten
           .filter((c) => (c.aspect === 'main' || c.role === 'pv') && !c.io)
           .map((c) => (c.primary ? `${c.label} (maßgeblich)` : c.label));
         // K4: was an den Ausgängen dieses Moduls hängt - geschaltet, nicht gemessen.
-        const schaltet = view.komponenten
-          .filter((c) => c.io && !ioVerbraucherSeite)
-          .map((c) => `${c.label} (DO${c.io?.kanal})`);
+        const schaltet = [
+          ...view.komponenten
+            .filter((c) => c.io && !ioVerbraucherSeite)
+            .map((c) => `${c.label} (DO${c.io?.kanal})`),
+          ...(heizstabZeile && eigenerVerbraucher && heizstabKanaele > 0
+            ? [`${eigenerVerbraucher.name} (${heizstabKanaele === 1 ? '1 Phase' : `${heizstabKanaele} Phasen`})`]
+            : []),
+        ];
+        // GE-2: mit einem gespeicherten Weg trägt der Abschnitt „Anbindung" Weg, Box und Takt - die Zeilen aus
+        // dem gemeldeten Bestand stünden sonst ein zweites Mal (und mit dem Wort „Datenquelle") daneben.
+        const mitAnbindung = anbindung.length > 0;
+        const verbindungZeilen = mitAnbindung
+          ? view.verbindung.filter((z) => !ANBINDUNG_TRAEGT.has(z.label))
+          : view.verbindung;
+        // Woher das Gerät stammt („aus der Gerätesuche vom …") - nur, wenn der Server eine Herkunft liest.
+        const herkunft = herkunftZeile((components?.components ?? [])
+          .find((row) => row.herkunft && view.komponenten.some((c) => c.entityId === row.id))?.herkunft);
         const detailZeilen: Zeile[] = [
           ...(view.kopf.modell ? [{ label: 'Modell', wert: view.kopf.modell }] : []),
-          ...view.verbindung,
+          ...(herkunft ? [herkunft] : []),
+          ...verbindungZeilen,
           ...(misst.length > 0
             ? [{ label: 'Misst', wert: Array.from(new Set(misst)).join(' · ') }]
             : []),
@@ -1366,15 +1538,19 @@ export function GeraetSeiteSection({
           ...bezuege,
         ];
         const details = {
-          kurz: [view.verbindung.find((z) => z.label === 'Anbindung')?.wert,
-            view.verbindung.find((z) => z.label === 'Lesetakt')?.wert]
-            .filter(Boolean).join(' · ') || null,
+          kurz: (mitAnbindung ? anbindungKurz(anbindung) : null)
+            ?? ([view.verbindung.find((z) => z.label === 'Anbindung')?.wert,
+              view.verbindung.find((z) => z.label === 'Lesetakt')?.wert]
+              .filter(Boolean).join(' · ') || null),
           inhalt: (
             <>
               {hinweisSatz && <p className="vp-note">{hinweisSatz}</p>}
-              {view.verbindungLeer && <p className="vp-note">{view.verbindungLeer}</p>}
+              {view.verbindungLeer && !mitAnbindung && <p className="vp-note">{view.verbindungLeer}</p>}
               {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
               <ZeilenListe zeilen={detailZeilen} />
+              {anbindung.map((a) => (
+                <AnbindungAbschnitt key={a.quelle.id} anbindung={a} onWechseln={() => setWechselQuelle(a.quelle)} />
+              ))}
               {/* Gerät, Einstellungen und Messkanäle (UEMS AP-04 IP-12): die
                   Herkunftskette von der Technik-Seite — welches Gerät eingebaut
                   ist, womit es misst und welche Messstelle ein Kanal speist. Ohne
@@ -1448,6 +1624,12 @@ export function GeraetSeiteSection({
             ),
           });
         }
+        if (mitAnbindung) {
+          technik.push({
+            id: 'anbindung',
+            inhalt: <AnbindungVerlauf siteId={site.id} quellen={anbindung.map((a) => a.quelle)} devices={devices ?? []} />,
+          });
+        }
         const summenwert = summenwertEinstieg(view);
         if (summenwert && boxDevice?.id && geraetId) {
           technik.push({
@@ -1489,9 +1671,10 @@ export function GeraetSeiteSection({
                   <div className="vp-geraet-versionen" data-testid="geraet-fassungen">
                     <p className="vp-geraet-sec-sub">
                       {(() => {
-                        const stand = editRow.syncStatus === 'in_sync' ? 'auf der Box aktiv'
-                          : editRow.syncStatus === 'pending' ? 'Aktivierung läuft'
-                            : 'Bestätigung der Box ausstehend';
+                        const stand = editRow.rejectedReason ? 'von der Box nicht angewandt'
+                          : editRow.syncStatus === 'in_sync' ? 'auf der Box aktiv'
+                            : editRow.syncStatus === 'pending' ? 'Aktivierung läuft'
+                              : 'Bestätigung der Box ausstehend';
                         return view.einrichtung.length > 0
                           ? `${stand.charAt(0).toUpperCase()}${stand.slice(1)}`
                           : `Fassung ${editRow.definitionVersion} · ${stand}`;
@@ -1500,6 +1683,11 @@ export function GeraetSeiteSection({
                     {components?.refusedReason && (
                       <p className="vp-assist-error" role="alert">
                         Die Box hat die neue Fassung abgelehnt: {components.refusedReason}. Die vorige Fassung läuft weiter.
+                      </p>
+                    )}
+                    {editRow.rejectedReason && (
+                      <p className="vp-assist-error" role="alert" data-testid="geraet-box-abgelehnt">
+                        Die Box wendet dieses Gerät nicht an: {editRow.rejectedReason}. Die übrigen Geräte der Anlage hat sie angewandt.
                       </p>
                     )}
                     <p>Jede Änderung ist eine neue Fassung. Eine Rückkehr schreibt wiederum eine neue Fassung; nichts wird gelöscht.</p>
@@ -1521,27 +1709,17 @@ export function GeraetSeiteSection({
         if (view.diagnose.length > 0) {
           technik.push({ id: 'rohdaten', inhalt: <ZeilenListe zeilen={view.diagnose} /> });
         }
-        if (showTechnicalLayer() && adminView) {
+        {/* E4 = A (Konzept `vp-adminview-konzept-k1` §4.6, Scheibe S2): die
+            Admin-Karten entfallen hier - jeder Box-Fakt hat seither genau
+            EINEN Ort, die Geräteakte. Für Admins steht nur noch der Weg hin. */}
+        if (showTechnicalLayer()) {
           technik.push({
             id: 'plattform',
             inhalt: (
               <div data-testid="geraet-admin">
-                <AdminGeraetKarten
-                  view={adminView}
-                  busy={adminBusy}
-                  onNavigateSteuerung={() => {
-                    window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
-                  }}
-                  onAssign={adminView.device.deviceId ? async (releaseSeq: number) => {
-                    await adminAktion(() => adminApi.setUpdateTarget(
-                      adminView.device.deviceId as string, { releaseSeq }));
-                  } : undefined}
-                  onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
-                    await adminAktion(() => adminApi.revertUpdateTarget(
-                      adminView.device.deviceId as string));
-                  } : undefined}
-                />
-                {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
+                <a className="vp-box-oberflaeche" href={geraeteAkteHash(geraeteRef)}>
+                  In der Geräteakte öffnen <Icon name="chevron-right" size={14} />
+                </a>
               </div>
             ),
           });
@@ -1554,10 +1732,13 @@ export function GeraetSeiteSection({
             brotkrume={{ anlageHref, komponentenHref }}
             kopf={{
               titel: view.kopf.titel,
-              typ: typWort(gesichtView),
+              // Ein Shelly in einer Unterverteilung ist ein Unterzähler, kein schaltbarer Verbraucher (UV-3 A).
+              typ: view.komponenten.some((c) => data?.entities.find((e) => e.id === c.entityId)?.entityType === 'sub-meter')
+                ? 'Unterzähler'
+                : typWort(gesichtView),
               modell: view.kopf.anschluss ?? view.kopf.modell,
               symbol: kopfSymbol(gesichtView),
-              zustand: view.kopf.zustand,
+              zustand: kopfJetzt,
               frische: src?.readAt ?? null,
               hinweis,
               abzeichen: (
@@ -1588,11 +1769,12 @@ export function GeraetSeiteSection({
                 <Icon name="pencil" size={15} /> Bearbeiten
               </button></Recht>
             ) : null}
-            veraltet={view.kopf.zustand.ton === 'warn'}
+            veraltet={kopfJetzt.ton === 'warn'}
             bausteine={{
               buehne,
               steuerung: steuerungBaustein,
               heute,
+              modul: zaehlerBaustein,
               aktivitaet,
             }}
             details={details}
@@ -1628,6 +1810,18 @@ export function GeraetSeiteSection({
               : 'Die Komponente wurde entfernt.');
             setData(null);
             setReloadKey((key) => key + 1);
+          }}
+        />
+      )}
+      {/* GE-2: „Zuständige Box wechseln" an der Anbindung - der Dialog der Box-Seite, kein zweiter. */}
+      {wechselQuelle && (
+        <DatenquelleWechselDialog
+          quelle={wechselQuelle}
+          devices={devices ?? []}
+          onClose={() => setWechselQuelle(null)}
+          onChanged={(neu) => {
+            setDatenquellen((alt) => alt?.map((q) => (q.id === neu.id ? neu : q)) ?? [neu]);
+            setWechselQuelle(neu);
           }}
         />
       )}

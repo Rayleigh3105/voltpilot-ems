@@ -1,5 +1,6 @@
 import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
 import { crossoverState } from './adminEdgeUpdates';
+import { boxVerbindung, type BoxErreichbarkeit, type BoxVerbindung } from './adminFleet';
 
 /**
  * Die reine Schicht der Plattform-Seite **„Geräte"**: der Onboarding-Funnel
@@ -81,7 +82,7 @@ export function funnelStages(
   let open = 0;
   let vonHand = 0;
   for (const d of connectedRows) {
-    const s = crossoverState(d.trust, d.boxArt).state;
+    const s = crossoverState(d.trust, d.boxArt, d.loader).state;
     if (s === 'gekreuzt') crossed += 1;
     else if (s === 'offen' || s === 'fehler') open += 1;
     // Edge Light ohne Stufe 2 ist keine offene Aufgabe, aber auch nicht
@@ -147,6 +148,28 @@ export function funnelStages(
   return stages;
 }
 
+/**
+ * Ein wartendes Gerät ist bei KEINEM Kunden eingerichtet — kein Kunde, kein
+ * Benutzer, keine Anlage (Firstmate vp-werkstatt-laeuft-anzeige, Captain
+ * 09.11.2026: „ist das verbunden? ist es schon beim Kunden eingerichtet?").
+ * Wahr für jede Zeile aus {@link pendingRows}, darum ein fester Satz statt
+ * eines Felds je Zeile.
+ */
+export const PENDING_KONTEXT = 'Noch bei keinem Kunden eingerichtet';
+
+/**
+ * Wortlaut der Erreichbarkeit EINES wartenden Geräts: dieselbe Schwelle wie
+ * die verbundene Flotte (`boxVerbindung`), aber nie „Verbunden" - das Gerät
+ * ist erreichbar, nicht mit einem Kunden verbunden.
+ */
+const PENDING_ERREICHBAR_TEXT: Record<BoxErreichbarkeit, string> = {
+  online: 'Online', verzoegert: 'Verzögert', offline: 'Meldet sich nicht', nie: 'Wartet auf erste Meldung',
+};
+
+export function pendingErreichbarText(v: BoxVerbindung): string {
+  return PENDING_ERREICHBAR_TEXT[v.zustand];
+}
+
 /** Eine Zeile der Sektion „Wartet auf Zuordnung". */
 export interface PendingRow {
   externalRef: string;
@@ -157,6 +180,8 @@ export interface PendingRow {
   hint: string;
   /** True für den Tippfehler-Verdacht (die Zeile wird bernstein markiert). */
   suspect: boolean;
+  /** Ist die Box gerade erreichbar? DIE Online-Regel der Plattform (`boxVerbindung`), dieselbe Schwelle wie die Flotte. */
+  erreichbar: BoxVerbindung;
 }
 
 /**
@@ -188,6 +213,7 @@ export function pendingRows(
             ? 'Vermutlich Tippfehler beim Kunden'
             : 'Frisch — normal während der Einrichtung',
         suspect,
+        erreichbar: boxVerbindung(p.csrUpdatedAt, now),
       };
     });
 }

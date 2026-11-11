@@ -21,7 +21,8 @@
  * `makeReadOnce(deps)` takes its dependencies injected so the same code runs in
  * a unit test (real `net`/`http` + in-process servers) and in the flow node
  * (`global.get('net')` etc. + the embedded decode modules):
- *   deps = { deye, modbus, fronius, solarman, sunspec, discovery, goe, net, http, https }
+ *   deps = { deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, kaco,
+ *            aiswei, kacoSerial, huawei, kostalDxs, kostalRtu, net, http, https }
  * (`sunspec` = sunspec/sunspec-live.js, `discovery` = sunspec/model-discovery.js,
  * both used for the real SunSpec-Modbus read path; `goe` = goe/goe-api.js, the
  * go-e Charger HTTP API v2 read path)
@@ -79,6 +80,10 @@ function makeReadOnce(deps) {
   const kostal = deps.kostal;
   const kaco = deps.kaco;
   const aiswei = deps.aiswei;
+  const kacoSerial = deps.kacoSerial;
+  const huawei = deps.huawei;
+  const kostalDxs = deps.kostalDxs;
+  const kostalRtu = deps.kostalRtu;
   const net = deps.net;
   const http = deps.http;
   const https = deps.https;
@@ -159,6 +164,28 @@ function makeReadOnce(deps) {
       return {
         adapter: 'kaco_modbus', ip, port: num(conn.port, 502), unitId: num(conn.unit_id, 1),
         invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
+      };
+    }
+    if (sel.communication === 'kaco_serial') {
+      const address = num(conn.address, 1);
+      if (address < 1 || address > 32) return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 1 und 32 liegen' };
+      return { adapter: 'kaco_serial', ip, port: num(conn.port, 8899), address };
+    }
+    if (sel.communication === 'huawei_modbus') {
+      return {
+        adapter: 'huawei_modbus', ip, port: num(conn.port, 502), unitId: num(conn.unit_id, 0),
+        invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
+      };
+    }
+    if (sel.communication === 'kostal_dxs') {
+      return { adapter: 'kostal_dxs', ip, port: num(conn.port, 80) };
+    }
+    if (sel.communication === 'kostal_piko_rtu') {
+      const unitId = num(conn.unit_id, 1);
+      if (unitId < 1 || unitId > 247) return { adapter: 'idle', reason: 'Modbus-Geräteadresse muss zwischen 1 und 247 liegen' };
+      return {
+        adapter: 'kostal_piko_rtu', ip, port: num(conn.port, 8899), unitId,
+        crossCheckIp: typeof conn.cross_check_ip === 'string' ? conn.cross_check_ip.trim() : '',
       };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
@@ -413,6 +440,34 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readHuawei reads the Huawei SUN2000 + LUNA2000 once via the embedded
+  // huawei/huawei-decode.js reader (the readKostal pattern: a connect probe
+  // classifies unreachable; the module reader then owns the four FC3 block
+  // reads/decode over its own connection - null or an empty decode =
+  // invalid_response). Read-only; the forced-setpoint control path stays
+  // hard-locked regardless of this test.
+  function readHuawei(plan, role) {
+    return new Promise((resolve) => {
+      const probe = new net.Socket();
+      probe.setNoDelay(true);
+      let settled = false;
+      const done = (res) => { if (settled) return; settled = true; try { probe.destroy(); } catch (e) { /* ignore */ } resolve(res); };
+      const t = setTimeout(() => done({ ok: false, error_code: ERR_UNREACHABLE }), CONNECT_TIMEOUT_MS);
+      probe.once('error', () => { clearTimeout(t); done({ ok: false, error_code: ERR_UNREACHABLE }); });
+      probe.connect(plan.port, plan.ip, () => {
+        clearTimeout(t);
+        try { probe.destroy(); } catch (e) { /* ignore */ }
+        const read = huawei.makeHuaweiReader({ net, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS });
+        read({ ip: plan.ip, port: plan.port, unitId: plan.unitId, invertGridSign: plan.invert_grid_sign, invertBattSign: plan.invert_batt_sign })
+          .then((out) => {
+            if (out && out.reading) return done({ ok: true, reading: toReading(out.reading, role) });
+            done({ ok: false, error_code: ERR_INVALID_RESPONSE });
+          })
+          .catch(() => done({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+      });
+    });
+  }
+
   // readKaco runs ONE cycle over the KACO/AISWEI HTTP interface (embedded
   // kaco/kaco-http.js): inventory (when no serial is given - it is NEVER
   // guessed), then inverter / meter / battery. Classifies: connect/transport
@@ -461,6 +516,132 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readKacoSerial liest EINMAL ueber den RS485-zu-Ethernet-Wandler der
+  // Powador-Altgeraete-Plattform (embedded kaco/kaco-serial-decode.js). Der
+  // Reader oeffnet/schliesst seine eigene TCP-Verbindung und liefert bei jedem
+  // Fehler null. Damit der Techniker im Termin den WAHREN Fehler sieht, beobachtet
+  // ein duenner net-Wrapper, wie weit der Zyklus kam: nie verbunden (abgewiesen,
+  // kein Weg zum Wandler) = unreachable; verbunden, aber kein einziges Byte
+  // zurueck (Baudrate/Verdrahtung/Adresse am Bus) = no_answer; Bytes da, aber
+  // kein gueltiges Frame (anderes Protokoll, Kommando-Byte-Mismatch) =
+  // invalid_response.
+  function readKacoSerial(plan, role) {
+    const seen = { connected: false, bytes: false };
+    const watchedNet = {
+      Socket: function () {
+        const sock = new net.Socket();
+        sock.on('connect', () => { seen.connected = true; });
+        sock.on('data', () => { seen.bytes = true; });
+        return sock;
+      },
+    };
+    const read = kacoSerial.makeKacoSerialReader({ net: watchedNet, timeoutMs: READ_TIMEOUT_MS });
+    const failure = () => ({
+      ok: false,
+      error_code: !seen.connected ? ERR_UNREACHABLE : (!seen.bytes ? ERR_NO_ANSWER : ERR_INVALID_RESPONSE),
+    });
+    return read({ ip: plan.ip, port: plan.port, address: plan.address }).then((out) => {
+      if (!out || !out.reading) return failure();
+      return { ok: true, reading: toReading(out.reading, role) };
+    }).catch(() => failure());
+  }
+
+  // readKostalDxs liest EINMAL die Web-API eines klassischen KOSTAL PIKO
+  // (embedded kostal/kostal-dxs-decode.js), mit ALL_IDS (+ Identitaet) fuer
+  // die Sichtpruefung. Transportfehler/kaputtes JSON werden vom Modul selbst
+  // zu `null`, deshalb genuegt ein connect-Probe fuer die Unreachable-Klasse,
+  // dann die Modul-eigene GET-Anfrage.
+  function readKostalDxs(plan, role) {
+    return new Promise((resolve) => {
+      const probe = new net.Socket();
+      probe.setNoDelay(true);
+      let settled = false;
+      const done = (res) => { if (settled) return; settled = true; try { probe.destroy(); } catch (e) { /* ignore */ } resolve(res); };
+      const t = setTimeout(() => done({ ok: false, error_code: ERR_UNREACHABLE }), CONNECT_TIMEOUT_MS);
+      probe.once('error', () => { clearTimeout(t); done({ ok: false, error_code: ERR_UNREACHABLE }); });
+      probe.connect(plan.port, plan.ip, () => {
+        clearTimeout(t);
+        try { probe.destroy(); } catch (e) { /* ignore */ }
+        const read = kostalDxs.makeKostalDxsReader({ http, https, timeoutMs: HTTP_TIMEOUT_MS });
+        const readTimer = setTimeout(() => done({ ok: false, error_code: ERR_NO_ANSWER }), READ_TIMEOUT_MS);
+        read({ ip: plan.ip, port: plan.port, ids: kostalDxs.ALL_IDS }).then((out) => {
+          clearTimeout(readTimer);
+          if (!out || !out.reading || typeof out.reading.pv_power_kw !== 'number') {
+            return done({ ok: false, error_code: ERR_INVALID_RESPONSE,
+              message: 'Keine AC-Leistung (dxs 67109120) in der Antwort - ist unter dieser IP ein KOSTAL-PIKO-Webserver mit Weboberflaeche ab UI 06 erreichbar?' });
+          }
+          done({ ok: true, reading: toReading(out.reading, role), message: kostalDxsIdentityMessage(out.meta) });
+        }).catch(() => { clearTimeout(readTimer); done({ ok: false, error_code: ERR_INVALID_RESPONSE }); });
+      });
+    });
+  }
+
+  // kostalDxsIdentityMessage names Typ/UI-Fassung/Firmware/Seriennummer/Status
+  // for the connection test's Sichtpruefung (report E4).
+  function kostalDxsIdentityMessage(m) {
+    m = m || {};
+    const parts = [];
+    if (m.type) parts.push('Typ: ' + m.type);
+    if (m.ui_version) parts.push('UI ' + m.ui_version);
+    if (m.fw_version) parts.push('FW ' + m.fw_version);
+    if (m.serial) parts.push('Seriennummer ' + m.serial);
+    if (m.status_text) parts.push('Status: ' + m.status_text);
+    if (typeof m.limitation_pct === 'number' && m.limitation_pct < 100) parts.push('Abregelung auf ' + m.limitation_pct + ' %');
+    return parts.join(' · ');
+  }
+
+  // readKostalPikoRtu liest den Modbus-RTU-Ausweg ueber das Modul (embedded
+  // kostal/kostal-piko-rtu-decode.js, makeKostalRtuReader) mit TEST_BLOCKS,
+  // und fuehrt - wenn eine Gegenprobe-IP angegeben ist - zusaetzlich einen
+  // frischen Web-API-Abruf GEGEN DIESELBE physische Box aus (report §9/E2:
+  // die Registerkarte ist nur community-belegt). Die Gegenprobe kann den
+  // erfolgreichen RTU-Test NICHT scheitern lassen - sie ist zusaetzliche,
+  // ehrlich benannte Evidenz. Ein duenner net-Wrapper beobachtet, wie weit
+  // der Zyklus kam (dieselbe Klassifikation wie readKacoSerial).
+  function readKostalPikoRtu(plan, role) {
+    const seen = { connected: false, bytes: false };
+    const watchedNet = {
+      Socket: function () {
+        const sock = new net.Socket();
+        sock.on('connect', () => { seen.connected = true; });
+        sock.on('data', () => { seen.bytes = true; });
+        return sock;
+      },
+    };
+    const read = kostalRtu.makeKostalRtuReader({ net: watchedNet, timeoutMs: READ_TIMEOUT_MS });
+    const failure = (message) => ({
+      ok: false,
+      error_code: !seen.connected ? ERR_UNREACHABLE : (!seen.bytes ? ERR_NO_ANSWER : ERR_INVALID_RESPONSE),
+      message,
+    });
+    return read({ ip: plan.ip, port: plan.port, unitId: plan.unitId, blocks: kostalRtu.TEST_BLOCKS }).then((res) => {
+      if (!res) return failure();
+      const out = kostalRtu.decode(res.blocks);
+      if (!out || !out.reading || typeof out.reading.pv_power_kw !== 'number') {
+        return failure('Keine AC-Leistung im erwarteten Register (30031) - Protokoll am Geraet auf "Modbus" gestellt? Registerkarte stimmt nicht (siehe KOSTAL.md).');
+      }
+      const verbose = kostalRtu.decodeVerbose(res.blocks);
+      return crossCheckAgainstWebApi(plan, verbose).then((message) => ({
+        ok: true, reading: toReading(out.reading, role), message,
+      }));
+    }).catch(() => failure());
+  }
+
+  function crossCheckAgainstWebApi(plan, verbose) {
+    const rtuKw = typeof verbose.pvPowerKw === 'number' ? verbose.pvPowerKw : null;
+    const base = rtuKw !== null ? 'RTU-AC-Leistung: ' + rtuKw.toFixed(3) + ' kW' : '';
+    if (!plan.crossCheckIp) {
+      return Promise.resolve(base ? base + ' · keine Gegenprobe (keine IP für die Web-API angegeben)' : 'Keine Gegenprobe (keine IP für die Web-API angegeben).');
+    }
+    const read = kostalDxs.makeKostalDxsReader({ http, https, timeoutMs: HTTP_TIMEOUT_MS });
+    return read({ ip: plan.crossCheckIp, port: kostalDxs.DEFAULT_PORT, ids: kostalDxs.FAST_IDS }).then((web) => {
+      const webKw = web && web.reading && typeof web.reading.pv_power_kw === 'number' ? web.reading.pv_power_kw : null;
+      if (webKw === null) return base + ' · Gegenprobe über die Web-API nicht erreichbar/ohne AC-Leistung (' + plan.crossCheckIp + ')';
+      if (rtuKw === null) return 'Gegenprobe Web-API: ' + webKw.toFixed(3) + ' kW';
+      return base + ' · Gegenprobe Web-API: ' + webKw.toFixed(3) + ' kW (Abweichung ' + Math.abs(rtuKw - webKw).toFixed(3) + ' kW)';
+    }).catch(() => base + ' · Gegenprobe über die Web-API nicht erreichbar (' + plan.crossCheckIp + ')');
+  }
+
   return function readOnce(selection, role) {
     const plan = planFor(selection);
     if (plan.adapter === 'idle') return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: plan.reason });
@@ -472,6 +653,10 @@ function makeReadOnce(deps) {
     if (plan.adapter === 'kostal_modbus') return readKostal(plan, role);
     if (plan.adapter === 'kaco_http') return readKaco(plan, role);
     if (plan.adapter === 'kaco_modbus') return readAiswei(plan, role);
+    if (plan.adapter === 'kaco_serial') return readKacoSerial(plan, role);
+    if (plan.adapter === 'huawei_modbus') return readHuawei(plan, role);
+    if (plan.adapter === 'kostal_dxs') return readKostalDxs(plan, role);
+    if (plan.adapter === 'kostal_piko_rtu') return readKostalPikoRtu(plan, role);
     return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST });
   };
 }

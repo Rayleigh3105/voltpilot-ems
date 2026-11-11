@@ -167,6 +167,19 @@ eq "ein Edge-Light-Tag zaehlt in der Docker-Nummerierung nicht mit" \
 	"edge-2026.10.4" \
 	"$(printf 'edge-2026.10.3\nedge-light-2026.10.9\nedge-light-2026.10.12\n' | ota_next_release 2026.10)"
 
+# Die Edge-Light-Linie hat dasselbe Schema mit eigenem Praefix und eigener
+# Nummerierung (.forgejo/workflows/edge-light-release.yaml).
+ota_check_light_release edge-light-2026.11.0 && ok "ein Edge-Light-Name geht durch den Edge-Light-Weg"
+fails "Edge-Light: einstelliger Monat abgelehnt" ota_check_light_release edge-light-2026.8.1
+fails "Edge-Light: fuehrende Null abgelehnt" ota_check_light_release edge-light-2026.11.01
+fails "Edge-Light: ein Docker-Name ist keiner" ota_check_light_release edge-2026.11.0
+fails "Edge-Light: alter Versionsstempel ist kein Release" ota_check_light_release edge-light-g70cc2059e
+eq "nur Edge-Light-Tags zaehlen in der Edge-Light-Nummerierung" \
+	"edge-light-2026.11.3" \
+	"$(printf 'edge-2026.11.7\nedge-light-2026.11.2\nedge-light-2026.11.02\nedge-light-2026.10.9\n' | ota_next_light_release 2026.11)"
+eq "ein Monat ohne Edge-Light-Tag beginnt bei 0" "edge-light-2026.12.0" \
+	"$(printf 'edge-2026.12.0\n' | ota_next_light_release 2026.12)"
+
 # Der Push-Header MUSS `Basic` sein: Forgejos Basic-Methode feuert auf
 # Git-Pfaden und nimmt den Token als PASSWORT (services/auth/basic.go);
 # `token <t>` ist dort keine gueltige Form - das ist der API-Weg daneben.
@@ -250,6 +263,13 @@ fails_saying "…und ein nur ENTFERNT vorhandener ebenso" \
 eq "…und es wurde dabei NICHTS ueberschrieben (der Tag zeigt noch auf denselben Commit)" \
 	"1" "$(git -C "$TAGWS" ls-remote --tags "file://$TMP/remote.git" 'refs/tags/edge-2026.08.25' | grep -c .)"
 fails "ein Name ausserhalb des Schemas legt gar nichts erst an" tagrun edge-2026.8.1 x
+# Die Edge-Light-Linie nimmt denselben Weg (edge-light-release.yaml), mit ihrem Schema.
+if out="$(tagrun edge-light-2026.11.0 "Werkstatt-Fassung" 2>&1)"; then
+	ok "ein Edge-Light-Tag wird angelegt und gepusht"
+else
+	bad "ein Edge-Light-Tag wird angelegt und gepusht" "Erfolg" "$out"
+fi
+fails "ein krummer Edge-Light-Name legt nichts an" tagrun edge-light-2026.11.01 x
 
 # Ohne Zugangsdaten darf NICHTS entstehen - und der automatische Actions-Token
 # ist hier bewusst kein Rueckfall (er loest keinen Lauf aus).
@@ -405,6 +425,51 @@ if command -v go >/dev/null 2>&1; then
 	eq "…und ein Wiederholungslauf ist still in Ordnung" \
 		"Register: bereits BYTEGLEICH eingetragen - Wiederholung, nichts geaendert." "$out"
 
+	# --- Edge Light: dieselbe Kette mit Programmen statt Images -------------
+	# Das Manifest traegt je Architektur Programm und Lieferung; es verifiziert
+	# auf dem Backend light und NUR dort (die Gegenpruefung in ota_sign waehlt
+	# das Backend nach dem Namen).
+	# 1,3 MB kaum packbare Bytes: das Hochladen ins Portal braucht drei Teile.
+	head -c 1300000 /dev/urandom >"$CER/vp-edge-light-linux-mipsle"
+	gzip -9 -n -c "$CER/vp-edge-light-linux-mipsle" >"$CER/vp-edge-light-linux-mipsle.gz"
+	mkdir -p "$CER/light"
+	(cd "$CORE" && go run ./cmd/vp-ota manifest \
+		--release edge-light-2026.08.0 --seq 15 --commit deadbeef0123 \
+		--binary "vp-edge-light:linux/mipsle=$CER/vp-edge-light-linux-mipsle" \
+		--state-schema "$(ota_state_schema "$ROOT/edge-app/core/otastate.schema")" \
+		--key-id rel-test --out "$CER/light/release.json") >/dev/null
+	(cd "$CORE" && go run ./cmd/vp-ota sign --key "$CER/rel-test.key" --domain release --in "$CER/light/release.json") >/dev/null
+	if (cd "$CORE" && go run ./cmd/vp-ota verify --root "$CER/root-test.pub" --backend light \
+		--trust-set "$CER/trust-set.json" --manifest "$CER/light/release.json") >/dev/null 2>&1; then
+		ok "das signierte Edge-Light-Release verifiziert auf dem Backend light"
+	else
+		bad "das signierte Edge-Light-Release verifiziert auf dem Backend light" "Urteil ok" "Pruefung fehlgeschlagen"
+	fi
+	fails "…und nicht auf der Docker-Box (compose)" \
+		env -C "$CORE" go run ./cmd/vp-ota verify --root "$CER/root-test.pub" \
+		--trust-set "$CER/trust-set.json" --manifest "$CER/light/release.json"
+	[ -f "$CER/light/register.json" ] && ok "auch fuer Edge Light liegt der Register-Rumpf daneben" ||
+		bad "Register-Rumpf Edge Light" "register.json" "fehlt"
+
+	# K2: registrieren, dann die Lieferung in Teilen ins Portal. Eine falsche
+	# Lieferung wird am Ende abgelehnt, die richtige gemeldet, eine Wiederholung
+	# endet sofort.
+	out="$(ota_register "$BASE" "$TOK" "$CER/light/register.json")"
+	eq "das Edge-Light-Release wird registriert" "Register: neu eingetragen." "$out"
+	cp "$CER/vp-edge-light-linux-mipsle" "$CER/falsch"
+	printf 'x' >>"$CER/falsch"
+	gzip -9 -n -c "$CER/falsch" >"$CER/falsch.gz"
+	fails "eine Lieferung, die nicht zum Manifest passt, wird abgelehnt" \
+		ota_light_upload "$BASE" "$TOK" edge-light-2026.08.0 linux/mipsle "$CER/falsch.gz"
+	out="$(ota_light_upload "$BASE" "$TOK" edge-light-2026.08.0 linux/mipsle "$CER/vp-edge-light-linux-mipsle.gz")"
+	eq "die Lieferung kommt in Teilen ins Portal und ist geprueft" \
+		"Programm linux/mipsle: im Portal ($(wc -c <"$CER/vp-edge-light-linux-mipsle.gz" | tr -d ' ') Bytes, geprueft)." "$out"
+	out="$(ota_light_upload "$BASE" "$TOK" edge-light-2026.08.0 linux/mipsle "$CER/vp-edge-light-linux-mipsle.gz")"
+	eq "…und ein Wiederholungslauf ist still in Ordnung" \
+		"Programm linux/mipsle: im Portal ($(wc -c <"$CER/vp-edge-light-linux-mipsle.gz" | tr -d ' ') Bytes, geprueft)." "$out"
+	fails "ohne Token kein Hochladen" \
+		ota_light_upload "$BASE" falsch edge-light-2026.08.0 linux/mipsle "$CER/vp-edge-light-linux-mipsle.gz"
+
 	# --- der ganze Veroeffentlichungs-Weg, einmal komplett ------------------
 	# ota_publish gegen den Stub: Release anlegen, VIER Assets anhaengen,
 	# registrieren. Danach dasselbe noch einmal - ein Wiederholungslauf darf
@@ -533,11 +598,57 @@ if grep -q -- '--root baked' "$HERE/release-publish.sh"; then
 else
 	bad "die Gegenpruefung laeuft gegen die EINGEBACKENE Wurzel" "--root baked" "fehlt"
 fi
+# Ein Edge-Light-Manifest wird gegen das Backend light gegengeprueft - gegen
+# compose hiesse es "deferred", und der Lauf braeche ab.
+if grep -q -- '--root baked --backend "\$backend"' "$HERE/release-publish.sh" &&
+	grep -q '"\$OTA_LIGHT_RELEASE_PREFIX"\*) backend=light' "$HERE/release-publish.sh"; then
+	ok "die Gegenpruefung waehlt das Backend nach der Release-Linie"
+else
+	bad "die Gegenpruefung waehlt das Backend nach der Release-Linie" "--backend light fuer edge-light-" "fehlt"
+fi
 if grep -qE 'ota_die .*Gegenpruefung' "$HERE/release-publish.sh"; then
 	ok "eine fehlgeschlagene Gegenpruefung bricht ab"
 else
 	bad "eine fehlgeschlagene Gegenpruefung bricht ab" "ota_die" "fehlt"
 fi
+
+# --- „Was ist neu" (Geraete & Updates G4) -----------------------------------
+# Ein Wegwerf-Repo mit beiden Linien: Box-Commits, Nicht-Box-Commits, ein Commit,
+# der nur einen Test aendert, und je zwei Tags.
+AENDWS="$TMP/aenderungen"
+mkdir -p "$AENDWS"
+(
+	cd "$AENDWS"
+	export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+	export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+	git init -q .
+	mkdir -p edge-app/core edge-app/nodered edge-light frontend
+	commit() { printf '%s\n' "$2" >>"$1"; git add -A; git commit -q -m "$3"; }
+	commit edge-app/core/a.go 1 "Basis"
+	git tag edge-2026.10.6
+	git tag edge-light-2026.11.3
+	commit frontend/x.ts 1 "Portal: nur das Portal"
+	commit edge-app/core/a.go 2 "Core: Heizstab je Phase"
+	commit edge-app/nodered/f.js 1 "Node-RED: Fronius-Block"
+	commit edge-light/l.sh 1 "Edge Light: Loader-Satz"
+	commit edge-app/core/a_test.go 1 "Core: nur ein Test"
+	git tag edge-2026.10.7
+	git tag edge-light-2026.11.4
+) >/dev/null
+aend() { (cd "$AENDWS" && GIT_CONFIG_GLOBAL=/dev/null ota_aenderungen "$1" "$2"); }
+aend edge-2026.10.7 "$TMP/docker.txt"
+eq "Docker-Box: Box-Aenderungen seit dem letzten edge-Tag, neueste zuerst - ohne Portal, Edge Light und reine Tests" \
+	"Node-RED: Fronius-Block|Core: Heizstab je Phase" \
+	"$(sed -E 's/ \([0-9a-f]+\)$//' "$TMP/docker.txt" | paste -sd'|' -)"
+aend edge-light-2026.11.4 "$TMP/light.txt"
+eq "Edge Light: nur edge-light und der geteilte Core, Node-RED gehoert nicht dazu" \
+	"Edge Light: Loader-Satz|Core: Heizstab je Phase" \
+	"$(sed -E 's/ \([0-9a-f]+\)$//' "$TMP/light.txt" | paste -sd'|' -)"
+eq "jede Zeile traegt den Kurz-SHA" "2" "$(grep -cE ' \([0-9a-f]{7,}\)$' "$TMP/docker.txt" || true)"
+rm -f "$TMP/erst.txt"
+aend edge-2026.10.6 "$TMP/erst.txt"
+eq "erstes Release der Linie: KEINE Datei (keine Angabe, nicht „nichts geaendert\")" "fehlt" \
+	"$([ -e "$TMP/erst.txt" ] && echo da || echo fehlt)"
 
 echo
 printf '%d bestanden, %d fehlgeschlagen\n' "$PASS" "$FAIL"

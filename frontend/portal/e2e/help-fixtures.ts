@@ -8,6 +8,15 @@ import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
 import { derive } from '../src/topology';
+import { zustellwegeFixture } from './zustellwege-fixture';
+import {
+  erzeugerBeispiel,
+  vorgabeDetailBeispiel,
+  vorgabenHeuteBeispiel,
+  vorgabenVerlaufBeispiel,
+  type ErzeugerFall,
+} from '../src/test/erzeugerFixtures';
+import type { HistoryRange } from '../src/api';
 
 export const NOW = '2026-09-10T10:00:00.000Z';
 const DAY = '2026-09-09T22:00:00.000Z';
@@ -18,7 +27,25 @@ export const site = {
   netzladenErlaubt: true, maxFeedInKw: 10, bezugspreisCtKwh: 29, einspeiseverguetungCtKwh: 8,
   leistungspreisEurKw: 80, abrechnung: 'jahr', socMinPct: 10, socMaxPct: 95,
 };
-export const sites = [site, { ...site, id: 'help-site-2', name: 'Werkstatt am Bach' }];
+// Scheibe S3 (Konzept `vp-fahrplan-eigenverbrauch-konzept`, Layout-Wächter
+// 375 × 812): Festtarif + feste Vergütung + Netzladen aus klassiert `preisRolle`
+// ausschließlich über den Stammdaten-Rückfall (dieser Lauf trägt noch keine
+// importPriceCtKwh/exportValueCtKwh-Felder, §5.3 „ältere Läufe") als die
+// Sonnen-Erzählung - ohne den geteilten Lauf/Plan zu verändern, den andere
+// Spezifikationen (z. B. die Reiterleiste `fahrplan`/`marktpreise`/`wetter`)
+// an `help-site`s dynamischem Tarif messen.
+export const siteSonne = {
+  ...site,
+  id: 'help-site-2',
+  name: 'Werkstatt am Bach',
+  tarifArt: 'fest' as const,
+  // `site.tarifParamCtKwh` (4,5) ist der Aufschlag des DYNAMISCHEN Tarifs von
+  // `help-site` - für einen festen Tarif ist dasselbe Feld der volle Preis
+  // (`fahrplanAnnahmen.planAnnahmen`), 30 ct trifft die Konzept-Beispiele.
+  tarifParamCtKwh: 30,
+  netzladenErlaubt: false,
+};
+export const sites = [site, siteSonne];
 export const devices = sites.map((s, i) => ({
   id: i ? 'help-box-2' : 'help-box', siteId: s.id, externalRef: i ? 'VP-DEMO-0002' : 'VP-DEMO-0001',
   kind: 'inverter', name: 'VoltPilot Box', status: 'active', lastSeenAt: NOW, createdAt: '2026-08-01T10:00:00Z',
@@ -42,6 +69,8 @@ export const entities = definitions.map((d) => ({
   syncStatus: 'in_sync', observed: { health: 'ok', lastTelemetryAt: NOW, reportedAt: NOW,
     channels: d.measures.map((m) => m.channel), appliedType: d.entityType }, edgeSourceId: null,
 }));
+const wallboxEntity = { ...entities[1], id: 'help-wallbox', entityType: 'ev-charger', typeLabel: 'Ladepunkt', role: 'consumer',
+  category: 'consumer', label: 'Wallbox Garage', control: true };
 const localSetup = [{ id: 'inverter', kind: 'inverter', role: 'storage', brand: 'deye', model: 'SUN-12K-SG04LP3-EU',
   family: 'deye-sg04lp3', label: 'Speicher Scheune', reportedAt: NOW, adoptedEntityId: 'help-battery',
   communication: 'solarman_v5', host: '192.0.2.10', port: 8899, serial: '1234567890' }];
@@ -67,6 +96,25 @@ const slots = Array.from({ length: 96 }, (_, i) => {
 const plan = { planId: 'help-plan', deviceId: 'help-box', generatedAt: NOW, slotMinutes: 15,
   savingsEur: 2.88, bankedValueEur: 0.6, socStartPct: 28, socEndPct: 28, peakTargetKw: 8,
   effectiveFloorSocPct: 10, fallback14a: false, slots };
+// Die Prognose (Konzept vp-prognosen-konzept): dieselbe Tageskurve wie `slots`
+// (Sonne 6-18 Uhr, Grundlast + Abendspitze 17-22 Uhr), nur über mehrere Tage
+// fortgesetzt - heute/morgen viertelstündlich, danach als Ausblick stündlich.
+const pvKwAt = (hour: number) => Math.max(0, Math.sin(((hour - 6) * Math.PI) / 12)) * 8;
+const loadKwAt = (hour: number) => 1.2 + (hour > 17 && hour < 22 ? 2.2 : 0.8);
+const forecastViertel = (vonI: number, bisI: number, fn: (h: number) => number) =>
+  Array.from({ length: bisI - vonI }, (_, k) => {
+    const i = vonI + k;
+    return { ts: ts(i), valueKw: Math.round(fn((i / 4) % 24) * 1000) / 1000 };
+  });
+const forecastStunden = (vonTag: number, bisTag: number, fn: (h: number) => number) => {
+  const out: { ts: string; valueKw: number }[] = [];
+  for (let tag = vonTag; tag < bisTag; tag++) {
+    for (let h = 0; h < 24; h++) {
+      out.push({ ts: new Date(new Date(DAY).getTime() + (tag * 24 + h) * 3600_000).toISOString(), valueKw: Math.round(fn(h) * 1000) / 1000 });
+    }
+  }
+  return out;
+};
 const buckets = slots.slice(0, 49).map((s) => ({
   start: s.start, pvKwh: s.pvKw / 4, loadKwh: s.loadKw / 4,
   gridImportKwh: Math.max(0, s.gridKw) / 4, gridExportKwh: Math.max(0, -s.gridKw) / 4,
@@ -165,10 +213,44 @@ export function installHelpFixtures() {
   const error = params.get('state') === 'error';
   const single = params.get('state') === 'single';
   const admin = params.get('state') === 'admin';
+  // Plattform-Sicht MIT Anlagen (technische Ebene des Aufbaus: Rollen & Zuordnung, „Komponente anlegen“).
+  const technik = params.get('technik') === '1';
+  // Ein Privatkunde, dessen Standort so heißt wie seine Adresse, mit langen Gerätenamen (Layout-Wächter).
+  if (technik) sessionStorage.setItem('vp-tenant-override', 'help-tenant');
+  // Die Geld-Kachel des Fahrplans („Heute geplant") mit Vorzeichen: `geld=minus` plant −3,25 €, `geld=plus` +3,25 €.
+  const geldFall = params.get('geld');
+  const geld = geldFall === 'minus' || geldFall === 'plus'
+    ? { savedEur: geldFall === 'minus' ? -0.4 : 0.4, savedSteuerungEur: geldFall === 'minus' ? -0.4 : 0.4, savedSpeicherEur: 0, steuerungSplitReason: null, steuerungPlannedEur: geldFall === 'minus' ? -3.25 : 3.25 }
+    : {};
+  const lang = params.get('lang') === '1';
+  // Eine Wallbox an der Anlage (`ev-charger`): schaltet in der Fahrplan-Seite die Wallbox-Hinweiszeile frei.
+  const wallbox = params.get('wallbox') === '1';
+  if (lang) {
+    Object.assign(sites[0], { name: 'Sandgrabener Straße 10a' });
+    // Das lange Kundenwort aus dem Betrieb: ein einziges Wort breiter als eine Rollen-Karte.
+    for (const e of [definitions[1], entities[1], topology.entities[1]]) e.label = 'Netzanschlusszähler';
+  }
   // Die Eigenverbrauchs-Fassung des Cockpits (ohne Marktoptimierung) für Browserprüfungen.
   const eigen = params.get('betrieb') === 'eigen';
+  // Die Steuerzeile mit Abweichung (Konzept b1, `cockpit-steuerzeile.spec.ts`): der Speicher gibt laut
+  // Auftrag 0,3 kW ab (Folge-Modus, nach Solar verbleibender Verbrauch 0,8 kW), die Einspeisegrenze ist
+  // 75 kW, im Wechselrichter stehen 70 kW - dieselbe Lage wie im Screenshot des Captains vom 20.10.2026.
+  const abweichung = params.get('steuerung') === 'abweichung';
+  // Eine Erzeugeranlage an einer Anlagensteuerung (EZ-8, `cockpit-erzeuger.spec.ts`): `buettner` =
+  // Biogas mit zwei Motoren, Netzbetreiber 60 %, Direktvermarkter ruft ab, kein Netzpunkt (EW-16 C);
+  // `gore` = PV mit drei Wechselrichtern, Nulleinspeisung, Leitstelle getrennt. Ohne Speicher und Plan.
+  const erzParam = params.get('erzeuger');
+  const erzFall: ErzeugerFall | null = erzParam === 'buettner' || erzParam === 'gore' ? erzParam : null;
+  if (erzFall) {
+    Object.assign(site, erzFall === 'buettner'
+      ? { name: 'Biogas Lindenhof', plantKind: 'direktvermarktung', maxFeedInKw: 99, netzladenErlaubt: false }
+      : { name: 'Solarpark Talweg', plantKind: 'eigenverbrauch', maxFeedInKw: null, netzladenErlaubt: false });
+    Object.assign(sites[0], site);
+  }
+  const ohneBilanz = <T extends object>(b: T) => ({ ...b, pvKwh: null, loadKwh: null, gridImportKwh: null, gridExportKwh: null,
+    batteryChargeKwh: null, batteryDischargeKwh: null, socMinPct: null, socMaxPct: null, socLastPct: null });
   Object.assign(keycloak, { token: 'help-fixture-token', authenticated: true, updateToken: async () => false,
-    tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', tenant_id: 'help-tenant', realm_access: { roles: [admin ? 'platform-admin' : 'operator'] } } });
+    tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', tenant_id: 'help-tenant', realm_access: { roles: [admin || technik ? 'platform-admin' : 'operator'] } } });
   // All API methods are isolated, including mutation buttons in captured screens.
   for (const key of Object.keys(api)) (api as Record<string, unknown>)[key] = async () => { throw new Error('Missing help fixture: ' + key); };
   const result = (value: unknown) => async () => structuredClone(value);
@@ -194,12 +276,25 @@ export function installHelpFixtures() {
     listSites: error ? async () => { throw new Error('Demo data unavailable'); } : result(sichtbareListe(empty || admin ? [] : single ? [site] : sites)),
     listDevices: result(sichtbareListe(empty || admin ? [] : single ? [devices[0]] : devices)),
     tenantContext: result({ tenantId: 'help-tenant', name: 'Beispielbetrieb', betriebsart: single || empty ? 'endkunde' : 'betreiber' }),
-    overview: result(overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
-    siteEarnings: result(money), history: result(history), schedule: result(plan), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
-    siteEntities: result({ registry: { revision: '1', composedAt: NOW, deviceId: 'help-box', reportedRevision: '1', reportedAt: NOW }, entities, localSetup, staleOnDevice: [] }),
+    overview: result(erzFall ? { ...overview, sites: overview.sites.map((o, i) => (i === 0 ? { ...o, ...site, batteryWithoutDevice: false, anwendungen: ['monitoring'],
+      live: { ts: NOW, pvKw: null, loadKw: null, gridKw: null, socPct: null } } : o)) } : overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
+    // Erzeugeranlagen haben in der ersten Fassung keine Erlöse (EW-7 A); Biogas zeigt „—“ bis EZ-12.
+    siteEarnings: erzFall ? async () => { throw new Error('Noch keine Erlöse für diese Anlage'); } : result({ ...money, ...geld }),
+    // Die Werte der Erzeugeranlage gehen nicht in die Hausbilanz (Konzept §4.2): der Tag trägt nur Preise -
+    // dafür die Vorgaben als Ereignisse und ihre Zählung (EZ-9).
+    history: erzFall
+      ? async (_siteId: string, range: HistoryRange) => structuredClone({ ...history, range, buckets: history.buckets.map(ohneBilanz),
+        coverage: null, ...vorgabenVerlaufBeispiel(erzFall, range, new Date()) })
+      : result(history),
+    schedule: erzFall ? async () => { throw new Error('Diese Anlage hat keinen Fahrplan'); } : result(plan),
+    // Jeder Abruf eine frische Lesung (sonst altert die Bühne nach zwei Minuten in „veraltet“).
+    erzeugerJetzt: async () => (erzFall ? erzeugerBeispiel(erzFall, new Date()) : null), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
+    siteEntities: result({ registry: { revision: '1', composedAt: NOW, deviceId: 'help-box', reportedRevision: '1', reportedAt: NOW }, entities: erzFall ? entities.filter((e) => e.id === 'help-grid') : wallbox ? [...entities, wallboxEntity] : entities, localSetup, staleOnDevice: [] }),
     topology: result(topology), usageProfile: result({ usageProfile: 'private', derivedProfile: 'private', override: null,
       emphasis: { money: 'prominent', peak: 'visible', flow: 'prominent', devices: 'prominent' },
-      signals: { hasStorage: true, hasPv: true, hasControllableConsumer: true, hasEvCharger: true, activeStrategyNodeTypes: ['strategy_peak_shaving'], plantKind: site.plantKind, hasLeistungspreis: true } }),
+      signals: erzFall
+        ? { hasStorage: false, hasPv: erzFall === 'gore', hasControllableConsumer: false, hasEvCharger: false, activeStrategyNodeTypes: [], plantKind: site.plantKind, hasLeistungspreis: false }
+        : { hasStorage: true, hasPv: true, hasControllableConsumer: true, hasEvCharger: true, activeStrategyNodeTypes: ['strategy_peak_shaving'], plantKind: site.plantKind, hasLeistungspreis: true } }),
     entityStrategies: result({}), cockpitLayout: result({ vorgabe: null, eigen: null }), tenantCockpitLayout: result({ vorgabe: null, eigen: null }),
     siteInterventions: result({ batteryOverride: null, automationPaused: false, interventions: [] }), suggestionStates: result({ states: {} }),
     siteRuleEvents: result([]),
@@ -222,8 +317,15 @@ export function installHelpFixtures() {
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
     siteSources: result([]), edgeVersions: result(sichtbareListe([])), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
-    controlStatus: result({ deviceId: 'help-box', commandedKw: 2.2, confirmedKw: 2.2, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'plan', executionPlannedKw: 2.2 }), curtailmentStatus: result(null), eigeneAuswertung: result(null), autoStart: result(null),
-    siteChargers: result(charging), chargingConfig: result({ siteId: site.id, gridLimitKw: 22, marginPct: 10, surplusPolicy: 'sonne_zuerst', storagePriority: 'speicher_vor_auto', priorityChargePointIds: ['CP-CARPORT'], chargePoints: [] }),
+    controlStatus: result(erzFall ? null : abweichung
+      ? { deviceId: 'help-box', commandedKw: -0.3, confirmedKw: -0.3, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'deficit_cover', executionPlannedKw: 0, executionTargetKw: 0.8 }
+      : { deviceId: 'help-box', commandedKw: 2.2, confirmedKw: 2.2, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'plan', executionPlannedKw: 2.2 }),
+    curtailmentStatus: result(erzFall ? null : abweichung
+      ? { deviceId: 'help-box', units: 1, certifiedUnits: 1, controlEnabled: true, active: false, appliedCapKw: null, allMatch: null, possibleOverride: false, checkedAt: NOW,
+        exportGuard: { limitKw: 75, state: 'ueberwacht', reason: 'Die Einspeisung liegt bei 0,0 kW von 75,0 kW.', capKw: null, limiting: false, blind: false, effective: true, reach: null },
+        deviceExportLimit: { limitKw: 70, register: '0x00e7', readAt: NOW } }
+      : null), eigeneAuswertung: result(null), autoStart: result(null),
+    siteChargers: erzFall ? async () => { throw new Error('Keine Ladepunkte an dieser Anlage'); } : result(charging), chargingConfig: result({ siteId: site.id, gridLimitKw: 22, marginPct: 10, surplusPolicy: 'sonne_zuerst', storagePriority: 'speicher_vor_auto', priorityChargePointIds: ['CP-CARPORT'], chargePoints: [] }),
     siteVerbraucher: result({
       verbraucher: charging.chargers.map((c) => ({ entityId: c.chargePointId, name: c.label, typ: 'ev-charger', typLabel: 'Ladepunkt',
         ladepunkt: true, chargePointId: c.chargePointId, steuerart: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'pausieren' }, regeln: 0 })),
@@ -242,7 +344,22 @@ export function installHelpFixtures() {
     prices: result({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: slots.map((s, i) => ({ ts: s.start, end: ts(i + 1), priceEurMwh: s.priceEurMwh })) }),
     priceHistory: result({ biddingZone: 'DE-LU', currency: 'EUR', bucket: 'PT15M', from: DAY, to: '2026-09-10T22:00:00Z',
       buckets: slots.map((s) => ({ ts: s.start, avgEurMwh: s.priceEurMwh, minEurMwh: s.priceEurMwh, maxEurMwh: s.priceEurMwh })), summary: { count: 96, coverageStart: DAY, coverageEnd: ts(96), cheapestTs: ts(28), mostExpensiveTs: ts(76), avgEurMwh: 65, minEurMwh: 30, maxEurMwh: 100 } }),
-    weather: result({ runAt: NOW, points: slots.map((s, i) => ({ ts: s.start, temperatureC: 18 + 7 * Math.sin(i / 96 * Math.PI), cloudCoverPct: 15, ghiWM2: s.pvKw * 100, dniWM2: s.pvKw * 80, dhiWM2: s.pvKw * 20 })) }),
+    weather: result({ runAt: NOW, points: slots.map((s, i) => ({ ts: s.start, temperatureC: 18 + 7 * Math.sin(i / 96 * Math.PI), cloudCoverPct: 15, ghiWM2: s.pvKw * 100, dniWM2: s.pvKw * 80, dhiWM2: s.pvKw * 20, dniNormalWM2: s.pvKw * 80 })) }),
+    // Der Sonnen-Teppich (Konzept vp-prognosen-konzept): unabhängig vom Fahrplan,
+    // darum nicht an `erzFall` gebunden - sie führt auch ohne Speicher.
+    forecast: result({
+      activePvModel: 'pv-physical', activeLoadModel: 'load-persistence',
+      pvRunAt: NOW, pvKw: forecastViertel(48, 192, pvKwAt),
+      loadRunAt: NOW, loadKw: forecastViertel(48, 192, loadKwAt),
+      yesterdayExpected: {
+        pvRunAt: NOW, pvKw: forecastViertel(0, 48, (h) => pvKwAt(h) * 0.85),
+        loadRunAt: NOW, loadKw: forecastViertel(0, 48, (h) => loadKwAt(h) * 1.1),
+      },
+      weekly: {
+        pvRunAt: NOW, pvKw: forecastStunden(2, 7, pvKwAt),
+        loadRunAt: NOW, loadKw: forecastStunden(2, 7, loadKwAt),
+      },
+    }),
     forecastQuality: result({ activeLoadModel: 'load-persistence', activePvModel: 'pv-physical', models: [
       ['load-persistence', 'load', true], ['pv-physical', 'pv', true], ['load-xgb', 'load', false], ['pv-residual-xgb', 'pv', false],
     ].map(([model, kind, active]) => ({ model, kind, active, status: 'ready', daysCollected: 35, daysRequired: 14, trainedAt: NOW, trainRows: 3360, featureImportance: [], updatedAt: NOW })),
@@ -250,18 +367,30 @@ export function installHelpFixtures() {
       day: '2026-09-0' + (i + 1), model, kind: j % 2 ? 'pv' : 'load', maeKw: .3 + .04 * i - (j > 1 ? .08 : 0), nmaePct: 10, biasKw: 0, skillVsBaseline: j > 1 ? .2 : null, nSlots: 96,
     }))).flat(), planAccuracy: [] }),
     siteForecastModels: result({ kinds: [], history: [] }), supplyPrice: result({ tarifArt: 'dynamisch', fixedPriceCtKwh: null, spotMarkupCtKwh: 4.5, gridFeeCtKwh: 8, taxesCtKwh: 2, vatPct: 19, source: 'manual' }),
+    // Die Karte „Einspeisevergütung" folgt dem Netzladen DER ANGEFRAGTEN Anlage
+    // (an: Börsenpreis, die Herleitung ruht) - `help-site-2` (Sonnen-Erzählung,
+    // Scheibe S3) hat Netzladen aus und trägt deshalb ihren eigenen EEG-Satz.
+    einspeiseverguetung: async (siteId: string) => {
+      const netzladenErlaubt = siteId === siteSonne.id ? siteSonne.netzladenErlaubt : site.netzladenErlaubt;
+      return structuredClone({
+        zustand: netzladenErlaubt ? 'netzladen' : 'eeg', wirksamCtKwh: netzladenErlaubt ? null : 7.86,
+        angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.86, hergeleitetGenaehert: false,
+        inbetriebnahme: '2025-09-01', leistungKwp: 10, eegEndeAm: '2045-12-31', ohneVerguetungBeiNegativpreis: true,
+        anzulegenderWertCtKwh: null,
+      });
+    },
     consumerSchedule: result({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
     siteProfiles: result({ profiles: [
-      ['marktvermarktung','Marktoptimierung',!eigen && !location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],
-      ['atypische-netznutzung','Atypische Netznutzung',false], ['lastmanagement','Ladepark-Lastmanagement',true],
+      ['marktvermarktung','Marktoptimierung',!eigen && !erzFall && !location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],
+      ['atypische-netznutzung','Atypische Netznutzung',false], ['lastmanagement','Ladepark-Lastmanagement',!erzFall],
     ].map(([id,label,active]) => ({ id,label,active, state: active ? 'an' : 'aus', derivedActive: active,
       unlocks: { views: [], widgets: [], moneyStream: null }, requirements: [], blockedReason: null, origin: 'masterdata',
       flowRef: null, gatedNodeTypes: [], gatedNodesEnabled: true, exklusivGruppe: id === 'lastmanagement' ? null : 'speicher', seit: '2026-08-01T10:00:00Z' })), weitere: [] }),
     // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort (main 41ed67c26, Wurzel des Aufbau-Baums;
     // die leere uems-Fassung derselben Route stand doppelt im Objekt und galt nie — die spätere gewinnt).
     standorte: result({ stichtag: '2026-09-10', nichtGezeigt: [], nochNichtZugeordnet: null, standorte: [{
-      id: 'help-standort', kurzzeichen: 'ST-1', name: 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
-      adresse: { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,
+      id: 'help-standort', kurzzeichen: 'ST-1', name: lang ? 'Sandgrabener Str. 10A' : 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
+      adresse: lang ? { strasse: 'Sandgrabener Str. 10A', plz: '86989', ort: 'Steingaden', land: 'DE' } : { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,
       anlagen: sites.map((s) => ({ id: s.id, name: s.name, gueltigAb: '2026-08-01', gueltigBis: null })),
       anlagenZahl: 2, gebaeudeZahl: 0, bereichZahl: 0, flaecheM2: null, flaecheQuelle: null }] }),
     createSite: async (input: object) => ({ ...site, ...input }), claimDevice: result(devices[0]),
@@ -269,13 +398,22 @@ export function installHelpFixtures() {
   Object.assign(entitiesApi, { typeCatalog: result({ catalog_version: '1.0', types: definitions.map((d) => ({ type: d.entityType, label: d.typeLabel, category: d.category, controllable: d.control, composed: false, default_failsafe: 'release' })) }) });
   Object.assign(consumersApi, { options: result({ types: [], signals: [], intents: [], hasStorage: true, reportedSources: [] }), list: result([]), status: result([]), overrides: result([]), fulfillment: result([]) });
   const realFetch = window.fetch.bind(window);
+  // `#/einstellungen`: die Benachrichtigungs-Routen sprechen dieselbe Antwort wie die Einstellungs-Bühne
+  // (`zustellwege=voll|leer|unbestaetigt|ohne-telegram`, Standard `voll`; `ruhezeitAktiv=1` meldet eine laufende Ruhezeit).
+  const zustellwege = zustellwegeFixture({ fall: params.get('zustellwege') ?? 'voll', ruhezeitAktiv: params.get('ruhezeitAktiv') === '1' });
   window.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
     if (!url.pathname.startsWith('/api/')) return realFetch(input, init);
+    const einstellung = await zustellwege(input, init);
+    if (einstellung) return einstellung;
     let data: unknown = [];
     if (url.pathname.endsWith('/flow-node-governance')) data = { gatedNodes: [] };
     if (url.pathname.endsWith('/flow-node-status')) data = { nodes: [], reportedAt: NOW };
     if (url.pathname.endsWith('/v2-entities')) data = [];
+    // Die Vorgaben einer Erzeugeranlage (EZ-7/EZ-9) kommen aus einem eigenen Stück über `request`.
+    const vorgabe = /\/erzeuger\/vorgaben\/([^/]+)$/.exec(url.pathname)?.[1];
+    if (erzFall && vorgabe === 'heute') data = vorgabenHeuteBeispiel(erzFall, new Date());
+    else if (erzFall && vorgabe) data = vorgabeDetailBeispiel(vorgabe, new Date());
     return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
 }

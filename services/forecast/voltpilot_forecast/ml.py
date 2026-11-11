@@ -195,9 +195,6 @@ class XgbLoadForecaster(LoadForecaster):
             return float("nan")
         return self._weather.temperature_at(ts)
 
-    def training_days(self, history: Sequence[Observation]) -> int:
-        return full_days(bucket_15min(history))
-
     def train(
         self, history: Sequence[Observation], run_at: datetime
     ) -> TrainingReport:
@@ -287,9 +284,6 @@ class PvResidualXgbForecaster(PvForecaster):
         self._weather = weather
         if physical is not None:
             self._physical = physical
-
-    def training_days(self, history: Sequence[Observation]) -> int:
-        return full_days(bucket_15min(history))
 
     def train(
         self,

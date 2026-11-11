@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { RollenKanonischerWert, SiteEntity, SiteSource, SiteTopology } from '../api';
@@ -8,7 +8,8 @@ import { flowHasValues } from '../liveDetail';
 import type { ChargingNodeOpts } from '../adaptiveFlow';
 import { cockpitRollenTopologie } from '../pvRolle';
 import { pvComposition } from '../pvComposition';
-import { jetztFluss } from '../flussJetzt';
+import type { ErzeugerBuehne } from '../erzeuger';
+import { flussBilanz } from '../flussBilanz';
 import type { Betrieb, Rolle } from '../leitungsplan';
 import type { PlanWordingKind } from '../schedule';
 import type { Tag } from '../tagesleiste';
@@ -22,6 +23,11 @@ import './CockpitBlocks.css';
 /**
  * Der obere Cockpit-Bereich: **die Bühne** (abgenommenes Konzept
  * `data/vp-cockpit-konzept-f4`, Richtung A; Captain-Go 30.07.2026).
+ *
+ * Seit Konzept `vp-cockpit-privat-konzept` (E4 = A, 08.11.2026) steht die
+ * rechte Spalte IN der Bühne neben Kopf, Satz und Leitungsplan; Tagesleiste und
+ * Listen laufen darunter über die volle Kartenbreite. Der Abschnitt zur
+ * Bilanz-Leiste unten beschreibt den Stand davor.
  *
  * Links, auf ~62 % der Kartenbreite, das **bestehende** Energiefluss-Diagramm —
  * `AdaptiveEnergyFlow` für eine migrierte Anlage (die vorhandene
@@ -42,9 +48,9 @@ import './CockpitBlocks.css';
  * KEINEN Leisten-Block beisteuert, bekommt gar keine Leiste (kein leerer
  * Rahmen, die Bühne wird dann einspaltig).
  *
- * Am Bühnenfuß, über die **volle** Kartenbreite, die schlanke Steuerungs-Zeile
- * (Sollwert → Bestätigung → Grund, `ControlStrip variant="bare"`): kein
- * Karte-in-Karte-Rahmen, keine leere Hälfte daneben.
+ * Die Steuerzeile (`ControlStrip variant="zeile"`, Konzept b1 vom 20.10.2026,
+ * Entscheid E2): am Rechner rechts unter der Leitkachel, am Telefon - und wo
+ * es keine Leitkachel gibt - am Bühnenfuß über die volle Kartenbreite.
  *
  * Render-only: alles Abgeleitete kommt aus `cockpitWidgets.ts` `cockpitHero`.
  *
@@ -62,6 +68,7 @@ export function CockpitHero({
   pins = null,
   onOpenSub,
   footer,
+  steuerung = null,
   ladenHinweis = null,
   showRail = true,
   seite = null,
@@ -91,6 +98,11 @@ export function CockpitHero({
    * Hälfte daneben leer (Befund P4 des Konzepts).
    */
   footer?: ReactNode;
+  /**
+   * Die Steuerzeile (Konzept b1, E2): rechts unter der Leitkachel, wenn es die
+   * rechte Spalte gibt, sonst am Bühnenfuß.
+   */
+  steuerung?: ReactNode;
   /**
    * Der Satz „Laden bei Bezug" (K8/B2, `ladenBeiBezug.ts`) - steht unter dem
    * Fluss, solange der Speicher lädt, während das Netz liefert. null = nichts.
@@ -142,33 +154,56 @@ export function CockpitHero({
     now: Date;
     /** Ein Knoten-Blatt geht auf/zu (z. B. um die Tagessummen je Gerät zu holen). */
     onBlatt?: (art: Rolle | null) => void;
+    /**
+     * Erzeugeranlage an einer Anlagensteuerung (EZ-8): der Moment kommt aus dem Bild der Steuerung,
+     * nicht aus der Hausbilanz der Box (die Werte gehen in V1 nicht in die Energiebilanz, Konzept §4.2).
+     */
+    erzeuger?: ErzeugerBuehne | null;
   } | null;
   /**
-   * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Existiert eine
-   * Standort-PV-Zuordnung, trägt die Cockpit-Zahl ein dezentes „berechnet" und ein Tipp öffnet die
-   * Aufschlüsselung je Gerät. null / keine Zuordnung = das Cockpit bleibt beim Rückfall
-   * `telemetry.pv_power_kw` und die Fläche rendert nichts.
+   * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Er ersetzt die Zahl
+   * der zugeordneten Geräte; Erzeuger ohne Zuordnung zählen mit ihrer eigenen Messung weiter
+   * (`flussBilanz`). Das Blatt der Sonne nennt beide. null / keine Zuordnung = das Cockpit bleibt bei
+   * der PV-Zusammensetzung.
    */
   pvRollen?: RollenKanonischerWert | null;
   verbrauchRollen?: RollenKanonischerWert | null;
   netzRollen?: RollenKanonischerWert | null;
 }) {
   const rollenTopologie = cockpitRollenTopologie(topology, [pvRollen, verbrauchRollen, netzRollen]);
-  const hasFlow = flowHasValues(rollenTopologie, snapshot);
-  // Existiert eine kanonische PV-Zuordnung, ist SIE die Herkunft der Cockpit-Zahl - dann tritt die
-  // rohe Quellen-Aufteilung (`PvBreakdownLine`) zurück, sie erklärte sonst eine andere Zahl.
-  const pvRolleAktiv = pvRollen?.zuordnung_vorhanden === true;
-  // Die EINE Ableitung der PV-Zusammensetzung: sie liefert die Zahl am
-  // Sonnen-Knoten UND „Erzeugung im Detail“ - beide können sich nicht
-  // widersprechen. Mit kanonischer PV-Rolle ist deren Wert die Zahl.
-  const composition = topology && !pvRolleAktiv ? pvComposition(rollenTopologie, sources, pins) : null;
+  const erzeuger = buehne?.erzeuger ?? null;
+  // Die EINE Ableitung der PV-Zusammensetzung aus der ROHEN Topologie: sie liefert die Zahl am
+  // Sonnen-Knoten UND „Erzeugung im Detail“ - beide können sich nicht widersprechen. Auch mit
+  // PV-Zuordnung: die Zuordnung ersetzt nur die Zahl der beteiligten Geräte, die übrigen Erzeuger
+  // zählen mit dieser Messung weiter (`flussBilanz`, Schramm „Zuhause“ 07.11.2026).
+  const composition = topology ? pvComposition(topology, sources, pins) : null;
+  // Der Moment „jetzt“ als EIN stimmiger Satz aus Erzeugung, Netz, Speicher und Verbrauch.
+  const bilanz = erzeuger ? null : flussBilanz({
+    topology,
+    snapshot,
+    pv: composition,
+    rollen: { pv: pvRollen, load: verbrauchRollen, grid: netzRollen },
+  });
+  // Was die Sonne zeigt, ist auch ein Fluss: eine reine Erzeugeranlage ohne Hauptgerät (Schramm
+  // „Zuhause“, 07.11.2026) hat ihre PV nur über die gepinnten Quellen - die Zahl am Sonnen-Knoten
+  // kommt genau daher. Ohne diese Zeile sagte das Cockpit „Ist Ihr Gerät mit Strom versorgt?“,
+  // während drei Wechselrichter lieferten.
+  const hasFlow = erzeuger != null || flowHasValues(rollenTopologie, snapshot) || composition?.totalKw != null;
   // Rechts neben dem Fluss steht am Rechner die LEITKACHEL (Konzept „Cockpit
-  // als Tagesfilm“) - „Unterm Strich“, der Börsenpreis oder die Lastspitze.
-  // Ohne sie wird die Bühne einspaltig.
-  const hasRail = showRail && (hasFlow || seite != null);
-  // Der Platz für „Dieser Moment“ (die vier Werte der gewählten Uhrzeit) - die
-  // Bühne schreibt hinein, damit die Werte dem Zeitschieber folgen.
-  const [momentZiel, setMomentZiel] = useState<HTMLDivElement | null>(null);
+  // als Tagesfilm“) - „Unterm Strich“, der Börsenpreis oder die Lastspitze -,
+  // und wenn der Fluss selbst führt, der Block „Heute“ (Konzept
+  // `vp-cockpit-privat-konzept`, E1/E4). Einen Werteblock „Dieser Moment“ gibt
+  // es dort nicht mehr (Konzept b1, E1): die Werte stehen an den Knoten.
+  // Die Spalte steht IN der Bühne, nur neben Kopf, Satz und Leitungsplan; nur
+  // wenn es keinen Fluss gibt (V14), bleibt sie die rechte Spalte der Karte.
+  const spalte = showRail && seite != null;
+  const seitenInhalt = spalte ? (
+    <>
+      <div className="vp-hero-leit">{seite}</div>
+      {steuerung && <div className="vp-hero-steuer">{steuerung}</div>}
+    </>
+  ) : null;
+  const hasRail = spalte && !hasFlow;
   return (
     <Card
       padding="lg"
@@ -180,23 +215,22 @@ export function CockpitHero({
         {hasFlow ? (
           <Suspense fallback={<div className="vp-eb-warten" aria-hidden="true" />}>
           <EnergieBuehne
-            jetzt={jetztFluss(rollenTopologie, snapshot, {
-              pvTotalKw: composition?.totalKw ?? null,
-              loadKanonisch: verbrauchRollen?.zuordnung_vorhanden ? { wert: verbrauchRollen.wert } : null,
-            })}
+            jetzt={erzeuger ? erzeuger.jetzt : bilanz!}
             stale={stale}
             betrieb={buehne?.betrieb ?? 'eigenverbrauch'}
             tag={buehne?.tag ?? null}
             zielKw={buehne?.zielKw ?? null}
             verbrauch={buehne?.verbrauch ?? null}
-            pv={composition}
+            pv={bilanz?.erzeugung ?? composition}
+            bilanz={bilanz}
             rollen={{ pv: pvRollen, load: verbrauchRollen, grid: netzRollen }}
             planKind={buehne?.planKind ?? 'eigenverbrauch'}
             isPhone={buehne?.isPhone ?? false}
             now={buehne?.now ?? new Date()}
             onBlatt={buehne?.onBlatt}
             onOpenSub={onOpenSub}
-            momentZiel={hasRail ? momentZiel : null}
+            erzeuger={erzeuger}
+            seite={seitenInhalt}
           />
           </Suspense>
         ) : (
@@ -212,14 +246,14 @@ export function CockpitHero({
             steht im Blatt des jeweiligen Knotens - nicht noch einmal hier. */}
       </div>
 
-      {hasRail && (
-        <div className="vp-hero-side">
-          {hasFlow && <div ref={setMomentZiel} className="vp-hero-moment" />}
-          {seite && <div className="vp-hero-leit">{seite}</div>}
+      {hasRail && <div className="vp-hero-side">{seitenInhalt}</div>}
+
+      {(footer || (steuerung && !spalte)) && (
+        <div className="vp-stage-foot">
+          {footer}
+          {!spalte && steuerung}
         </div>
       )}
-
-      {footer && <div className="vp-stage-foot">{footer}</div>}
     </Card>
   );
 }

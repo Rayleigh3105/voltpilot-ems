@@ -2,8 +2,15 @@ package com.voltpilot.api.components;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -187,6 +194,180 @@ class ComponentRebindTest {
                 MAPPER)).isEmpty();
     }
 
+    /** Was die Cloud für den Heizstab des Captains speichert (Anlage „Zuhause“, Shelly Pro 3). */
+    private static final String HEIZSTAB_GESPEICHERT = "{\"ip\":\"192.168.178.43\",\"port\":80,"
+            + "\"channels\":[0,1,2],\"output_kw\":[1.5,1.5,1.5],\"stages\":[1,2,3],"
+            + "\"anschluss\":\"stern_mit_n\",\"rotation\":\"daily\",\"interval_s\":5}";
+
+    /** Was die Box dazu in `local_setup` meldet (sources.json der VoltPilotGATE, 02.11.2026). */
+    private static final String HEIZSTAB_GEMELDET =
+            "{\"ip\":\"192.168.178.43\",\"port\":80,\"channels\":[0,1,2]}";
+
+    private static final UUID STAB = UUID.fromString("768a7939-567c-47fd-99ce-8e6df74ab857");
+
+    @Test
+    @DisplayName("Heizstab: die wartende Komponente findet ihre Shelly-Ausgangsmenge wieder")
+    void aWaitingHeatingRodIsReboundToItsOutputSet() {
+        // Der Fall „Zuhause“: der Pin zeigt ins Leere, die Box meldet denselben Shelly
+        // unter einer Kennung, die keine Komponente trägt. Bis zum 04.11.2026 blieb das
+        // so - `anschluss`/`rotation` stehen nur in der Cloud-Kopie, also passte der
+        // Fingerabdruck nie, und der Kunde sah „nicht mehr verbunden“.
+        List<ComponentRebind.Rebind> plan = ComponentRebind.decide(
+                List.of(new ComponentRebind.PinnedComponent(STAB, "src-weg00001", "consumer",
+                        "shelly_http", HEIZSTAB_GESPEICHERT, "Heizstab")),
+                List.of(new ComponentRebind.ReportedDevice("src-7q7pdrwh", "consumer",
+                        "shelly_http", HEIZSTAB_GEMELDET, "Heizstab")),
+                MAPPER);
+        assertThat(plan).singleElement().satisfies(r -> {
+            assertThat(r.pointId()).isEqualTo(STAB);
+            assertThat(r.fromSourceId()).isEqualTo("src-weg00001");
+            assertThat(r.toSourceId()).isEqualTo("src-7q7pdrwh");
+        });
+    }
+
+    @Test
+    @DisplayName("Heizstab: die Erstbindung gelingt ohne Klick")
+    void aNewHeatingRodIsBoundToItsReportedSource() {
+        assertThat(ComponentRebind.decide(
+                List.of(new ComponentRebind.PinnedComponent(STAB, null, "consumer",
+                        "shelly_http", HEIZSTAB_GESPEICHERT, "Heizstab")),
+                List.of(new ComponentRebind.ReportedDevice("src-7q7pdrwh", "consumer",
+                        "shelly_http", HEIZSTAB_GEMELDET, "Heizstab")),
+                MAPPER))
+                .extracting(ComponentRebind.Rebind::toSourceId).containsExactly("src-7q7pdrwh");
+    }
+
+    @Test
+    @DisplayName("Die Ausgangsmenge gehört zum Gerät: andere Menge, einzelner Ausgang = anderes Gerät")
+    void theOutputSetIsPartOfTheDevice() {
+        String stab = ComponentRebind.fingerprint("consumer", "shelly_http",
+                HEIZSTAB_GESPEICHERT, MAPPER);
+        assertThat(stab).isEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                HEIZSTAB_GEMELDET, MAPPER));
+        // Zwei Phasen sind ein anderes Gerät als drei (die Box: set:0,1 ≠ set:0,1,2).
+        assertThat(stab).isNotEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                "{\"ip\":\"192.168.178.43\",\"port\":80,\"channels\":[0,1]}", MAPPER));
+        // Die Reihenfolge ist die Phasenfolge.
+        assertThat(stab).isNotEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                "{\"ip\":\"192.168.178.43\",\"port\":80,\"channels\":[2,1,0]}", MAPPER));
+        // Ein einzelner Ausgang desselben Shelly ist nie der Stab.
+        assertThat(stab).isNotEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                "{\"ip\":\"192.168.178.43\",\"port\":80,\"channel\":0}", MAPPER));
+        assertThat(ComponentRebind.decide(
+                List.of(new ComponentRebind.PinnedComponent(STAB, "src-weg00001", "consumer",
+                        "shelly_http", HEIZSTAB_GESPEICHERT, "Heizstab")),
+                List.of(new ComponentRebind.ReportedDevice("src-ausgang0", "consumer",
+                        "shelly_http", "{\"ip\":\"192.168.178.43\",\"port\":80}", "Relais")),
+                MAPPER)).isEmpty();
+    }
+
+    /**
+     * Was die Cloud für einen im Portal übernommenen KACO Powador TL3 speichert: das
+     * Vorlagen-Formular (`builtin:kaco:powador-*-tl3`) samt Lese-Kadenz.
+     */
+    private static String kacoGespeichert(String ip) {
+        return "{\"ip\":\"" + ip + "\",\"port\":502,\"unit_id\":1,\"model_type\":\"auto\","
+                + "\"invert_grid_sign\":false,\"curtail_write_fc\":0,\"interval_s\":5}";
+    }
+
+    /**
+     * Was die Box dazu in `local_setup` meldet: dieselbe Verbindung, normalisiert - mit der
+     * Registerfamilie, die sie selbst einträgt (`sources.json` von edge-tgjn9gd, 07.11.2026).
+     */
+    private static String kacoGemeldet(String ip) {
+        return "{\"ip\":\"" + ip + "\",\"port\":502,\"unit_id\":1,\"profile\":\"sunspec_live\","
+                + "\"model_type\":\"auto\"}";
+    }
+
+    private static final UUID KACO_1 = UUID.fromString("2126f452-ac6e-4ec3-8446-a52fbeb8834e");
+    private static final UUID KACO_2 = UUID.fromString("33d64aa8-7e1d-484f-92bc-b0cce2cb97d3");
+    private static final UUID KACO_3 = UUID.fromString("ecc6ad92-0373-47a4-8cc2-20781426e2eb");
+
+    @Test
+    @DisplayName("Schramm: drei im Portal übernommene KACO finden ihre gemeldeten Quellen")
+    void threePortalCreatedKacoAreBoundToTheirReportedSources() {
+        // Der Live-Fall „Zuhause“ (07.11.2026): drei Powador TL3 über „Geräte suchen“ übernommen, die
+        // Box liest alle drei - und meldete sie daneben als „KACO gefunden · noch nicht übernommen“,
+        // weil ihre Verbindung ein `profile` trägt, das die Cloud-Kopie nie hat.
+        List<ComponentRebind.Rebind> plan = ComponentRebind.decide(
+                List.of(kaco(KACO_1, kacoGespeichert("192.168.1.147"), "Kaco 1"),
+                        kaco(KACO_2, kacoGespeichert("192.168.1.113"), "Kaco 2"),
+                        kaco(KACO_3, kacoGespeichert("192.168.1.156"), "Kaco 3")),
+                List.of(kacoQuelle("src-wqng3qfp", kacoGemeldet("192.168.1.147"), "Kaco 1"),
+                        kacoQuelle("src-sgw8hrpt", kacoGemeldet("192.168.1.113"), "Kaco 2"),
+                        kacoQuelle("src-5ahgajrq", kacoGemeldet("192.168.1.156"), "Kaco 3")),
+                MAPPER);
+
+        assertThat(plan).extracting(ComponentRebind.Rebind::pointId,
+                        ComponentRebind.Rebind::fromSourceId, ComponentRebind.Rebind::toSourceId)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(KACO_1, null, "src-wqng3qfp"),
+                        org.assertj.core.groups.Tuple.tuple(KACO_2, null, "src-sgw8hrpt"),
+                        org.assertj.core.groups.Tuple.tuple(KACO_3, null, "src-5ahgajrq"));
+    }
+
+    @Test
+    @DisplayName("Die Registerfamilie gehört nicht zum Gerät, Adresse und Unit-Id schon")
+    void theRegisterFamilyIsNotPartOfTheDevice() {
+        String gespeichert = ComponentRebind.fingerprint("pv-generation", "sunspec_tcp",
+                kacoGespeichert("192.168.1.147"), MAPPER);
+        assertThat(gespeichert).isEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.147"), MAPPER));
+        // Ein anderer Wechselrichter bleibt ein anderer - Adresse oder Unit-Id entscheiden.
+        assertThat(gespeichert).isNotEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.113"), MAPPER));
+        assertThat(gespeichert).isNotEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.147").replace("\"unit_id\":1",
+                        "\"unit_id\":2"), MAPPER));
+        // Ein ausdrücklich gewählter Modelltyp bleibt Teil des Vergleichs.
+        assertThat(gespeichert).isNotEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.147").replace("auto", "float"), MAPPER));
+    }
+
+    /**
+     * Das Gegenstück zum Wächter unten, aus der Richtung der Box: ein Feld, das die Box beim
+     * Normalisieren SELBST aus der Registerfamilie einträgt, steht in keiner Cloud-Kopie einer im
+     * Portal angelegten Komponente. Verglichen, ließe es jede Erstbindung dieses Transports still
+     * scheitern (Schramm, 07.11.2026: `profile`).
+     */
+    @Test
+    @DisplayName("Was die Box aus der Registerfamilie selbst einträgt, wird ignoriert")
+    void everyFieldTheBoxDerivesFromTheRegisterFamilyIsIgnored() throws Exception {
+        String go = Files.readString(Path.of("../../edge-app/core/internal/inverter/inverter.go"));
+        int start = go.indexOf("type Connection struct");
+        String struct = go.substring(start, go.indexOf("\n}\n", start));
+        java.util.Map<String, String> jsonByField = new java.util.HashMap<>();
+        Matcher field = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z0-9]*)\\s+\\S+\\s+`json:\"([a-z_0-9]+)")
+                .matcher(struct);
+        while (field.find()) {
+            jsonByField.put(field.group(1), field.group(2));
+        }
+        Set<String> derived = new LinkedHashSet<>();
+        Matcher assign = Pattern.compile("conn\\.([A-Z][A-Za-z0-9]*) = registerFamily").matcher(go);
+        while (assign.find()) {
+            derived.add(jsonByField.get(assign.group(1)));
+        }
+        assertThat(derived).as("die Box trägt die Registerfamilie mindestens als profile ein")
+                .contains("profile").doesNotContainNull();
+
+        String ohne = ComponentRebind.fingerprint("pv-generation", "x", "{\"ip\":\"10.0.0.1\"}", MAPPER);
+        for (String key : derived) {
+            assertThat(ComponentRebind.fingerprint("pv-generation", "x",
+                    "{\"ip\":\"10.0.0.1\",\"" + key + "\":\"sunspec_live\"}", MAPPER))
+                    .as("Feld \"%s\" trägt die Box selbst ein - es darf den Fingerabdruck nicht ändern", key)
+                    .isEqualTo(ohne);
+        }
+    }
+
+    private static ComponentRebind.PinnedComponent kaco(UUID id, String conn, String label) {
+        return new ComponentRebind.PinnedComponent(id, null, "pv-generation", "sunspec_tcp", conn,
+                label);
+    }
+
+    private static ComponentRebind.ReportedDevice kacoQuelle(String src, String conn, String label) {
+        return new ComponentRebind.ReportedDevice(src, "pv-generation", "sunspec_tcp", conn, label);
+    }
+
     @Test
     @DisplayName("Ohne Meldung und ohne Pin passiert nichts")
     void nothingHappensWithoutBothSides() {
@@ -195,5 +376,53 @@ class ComponentRebindTest {
         assertThat(ComponentRebind.decide(
                 List.of(pinned(WR1, "src-alt1", CONN_UNIT_1, "Fronius WR1")), List.of(), MAPPER))
                 .isEmpty();
+    }
+
+    /**
+     * Das MUSTER hinter dem Heizstab-Fall: jedes Verbindungsfeld, das die Cloud speichern kann, ist
+     * entweder ein Feld, das die Box in ihrer Quellen-Verbindung auch meldet (dann zählt es zum
+     * Fingerabdruck), oder ein reines Cloud-Feld (dann muss es ignoriert werden) - nie keins von
+     * beidem. Ein neues Schema-Feld, das die Box nicht trägt, ließ sonst jede Erstbindung und jeden
+     * Re-Pin still scheitern, und die gemeldete Quelle stand als „Neues Gerät gefunden" neben der
+     * eigenen Komponente (Heizstab „Zuhause", 04.11.2026).
+     */
+    @Test
+    @DisplayName("Jedes Verbindungsfeld ist entweder auf der Box zu Hause oder wird ignoriert")
+    void everyConnectionFieldIsEitherReportedByTheBoxOrIgnored() throws Exception {
+        Set<String> boxFields = new LinkedHashSet<>();
+        String go = Files.readString(Path.of("../../edge-app/core/internal/inverter/inverter.go"));
+        int start = go.indexOf("type Connection struct");
+        assertThat(start).as("inverter.Connection im Go-Code").isGreaterThan(0);
+        String struct = go.substring(start, go.indexOf("\n}\n", start));
+        Matcher tag = Pattern.compile("json:\"([a-z_0-9]+)").matcher(struct);
+        while (tag.find()) {
+            boxFields.add(tag.group(1));
+        }
+        assertThat(boxFields).as("die Box kennt mindestens Adresse und Ausgangsmenge")
+                .contains("ip", "port", "channels");
+
+        // Was die Cloud speichern kann: jedes Feld der Vorlagen ...
+        Set<String> cloudFields = new LinkedHashSet<>();
+        JsonNode templates = MAPPER.readTree(Files.readString(
+                Path.of("src/main/resources/componenttemplates/builtin.json"))).path("templates");
+        for (JsonNode t : templates) {
+            for (JsonNode f : t.path("transport_schema")) {
+                cloudFields.add(f.path("key").asText());
+            }
+        }
+        // ... und die Felder der Heizstab-Ausgangsmenge (HeizstabAusgaenge), die kein Schema führt.
+        cloudFields.addAll(List.of("channels", "channel", "output_kw", "stages", "rotation",
+                "anschluss", "on_timer_s", "interval_s"));
+
+        String ohne = ComponentRebind.fingerprint("consumer", "x", "{\"ip\":\"10.0.0.1\"}", MAPPER);
+        for (String key : cloudFields) {
+            String mit = ComponentRebind.fingerprint("consumer", "x",
+                    "{\"ip\":\"10.0.0.1\",\"" + key + "\":\"1\"}", MAPPER);
+            boolean ignoriert = ohne.equals(mit);
+            assertThat(ignoriert).as("Feld \"%s\": %s", key, boxFields.contains(key)
+                    ? "die Box meldet es, also muss der Fingerabdruck es vergleichen"
+                    : "die Box meldet es nie, also muss der Fingerabdruck es ignorieren")
+                    .isEqualTo(!boxFields.contains(key) && !"ip".equals(key));
+        }
     }
 }

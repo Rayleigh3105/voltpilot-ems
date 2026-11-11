@@ -4,6 +4,7 @@
 package quelle
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,10 @@ import (
 // SollPfad ist die Leseroute der API.
 const SollPfad = "/api/v1/fernwartung/soll"
 
+// MeldePfad ist die Route der Rückmeldung ans Portal (Vertrag:
+// docs/contracts/fernwartung-rueckmeldung-v1.md).
+const MeldePfad = "/api/v1/fernwartung/rueckmeldung"
+
 // MaxAntwort begrenzt, was der Dienst liest.
 const MaxAntwort = 4 << 20
 
@@ -27,6 +32,32 @@ const MaxAntwort = 4 << 20
 // sondern ein falscher Client oder ein falsches Secret - der Dienst meldet es
 // deshalb mit eigenem Wortlaut.
 var ErrAnmeldungAbgelehnt = errors.New("Anmeldung abgelehnt: Client oder Secret prüfen")
+
+// ErrKeinToken: für die Rückmeldung liegt kein gültiges Token bereit. Die
+// Rückmeldung holt nie selbst eines - das tut allein der Abruf des
+// Soll-Stands.
+var ErrKeinToken = errors.New("kein gültiges Token (das holt nur der Abruf des Soll-Stands)")
+
+// MeldeFehler: die API hat die Rückmeldung nicht angenommen.
+type MeldeFehler struct {
+	Status int
+	// Text ist der Anfang der Antwort (höchstens 300 Zeichen, eine Zeile).
+	Text string
+}
+
+func (e *MeldeFehler) Error() string {
+	if e.Text == "" {
+		return fmt.Sprintf("Rückmeldung: HTTP %d", e.Status)
+	}
+	return fmt.Sprintf("Rückmeldung: HTTP %d: %s", e.Status, e.Text)
+}
+
+// RouteFehlt: die API kennt die Rückmeldung nicht - ein älterer Stand der
+// API, kein Fehler dieser Meldung.
+func (e *MeldeFehler) RouteFehlt() bool {
+	return e.Status == http.StatusNotFound || e.Status == http.StatusMethodNotAllowed ||
+		e.Status == http.StatusNotImplemented
+}
 
 // API holt den Soll-Stand.
 type API struct {
@@ -156,4 +187,69 @@ func (a *API) holeToken(ctx context.Context, erzwingen bool) (string, error) {
 	a.token = t.AccessToken
 	a.gueltigBis = a.jetzt().Add(leben - min(leben/2, 30*time.Second))
 	return a.token, nil
+}
+
+// Melder schickt die Rückmeldung ans Portal. Er teilt mit dem Abruf des
+// Soll-Stands nur das Token und nimmt es, wie es gerade bereitliegt: eigener
+// HTTP-Client mit eigener Frist und eigenen Verbindungen, kein eigener Gang
+// zum Keycloak, keine Wiederholung. Was hier hängt oder scheitert, hält den
+// Abruf des Soll-Stands nicht auf.
+type Melder struct {
+	api  *API
+	http *http.Client
+}
+
+// Melder liefert den Absender der Rückmeldung; frist gilt für den ganzen
+// Aufruf.
+func (a *API) Melder(frist time.Duration) *Melder {
+	return &Melder{api: a, http: &http.Client{
+		Timeout:   frist,
+		Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConns: 1, IdleConnTimeout: 90 * time.Second},
+		// Das Token geht nur an die eingestellte Adresse, nie einer Umleitung nach.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
+}
+
+// bereitesToken liefert das Token, wenn es bereitliegt und noch gilt. Holt
+// der Abruf des Soll-Stands gerade eines, wartet diese Seite nicht darauf.
+func (a *API) bereitesToken() (string, bool) {
+	if !a.mu.TryLock() {
+		return "", false
+	}
+	defer a.mu.Unlock()
+	if a.token == "" || !a.jetzt().Before(a.gueltigBis) {
+		return "", false
+	}
+	return a.token, true
+}
+
+// Melde schickt den Rumpf als PUT an MeldePfad. Angenommen ist die Meldung
+// nur mit einer Antwort 2xx; alles andere ist ein *MeldeFehler,
+// ErrKeinToken oder ein Fehler des Netzes.
+func (m *Melder) Melde(ctx context.Context, rumpf []byte) error {
+	token, ok := m.api.bereitesToken()
+	if !ok {
+		return ErrKeinToken
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, m.api.Basis+MeldePfad, bytes.NewReader(rumpf))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := m.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("Rückmeldung senden: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
+		return nil
+	}
+	anfang, _ := io.ReadAll(io.LimitReader(res.Body, 300))
+	return &MeldeFehler{Status: res.StatusCode, Text: eineZeile(string(anfang))}
+}
+
+// eineZeile macht aus dem Anfang einer Antwort eine Zeile fürs Journal.
+func eineZeile(text string) string {
+	return strings.Join(strings.Fields(strings.ToValidUTF8(text, "?")), " ")
 }

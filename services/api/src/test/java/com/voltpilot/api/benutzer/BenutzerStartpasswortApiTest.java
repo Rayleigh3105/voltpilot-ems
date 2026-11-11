@@ -161,14 +161,21 @@ class BenutzerStartpasswortApiTest {
             Antwort fremd = api("POST", "/api/v1/benutzer/" + sub + "/startpasswort", token("demo2", "demo2"), null);
             assertThat(fremd.status()).isEqualTo(404);
             sonstigeAntworten.add(fremd.body());
-            Antwort support = api("POST", basis + "/" + sub + "/reset-password", plattform, Map.of("password", "Ignoriert"));
-            assertThat(support.status()).isEqualTo(403); sonstigeAntworten.add(support.body());
+            // N6: der Plattform-Admin vergibt jetzt selbst ein neues Startpasswort (derselbe Weg wie der
+            // Kundenadministrator) - vorher lehnte diese Route jeden Versuch mit 403 ab.
+            Antwort support = api("POST", basis + "/" + sub + "/reset-password", plattform, null);
+            assertThat(support.status()).isEqualTo(200);
+            String supportPasswort = einmal(support, geheimnisse);
+            assertThat(!supportPasswort.equals(passwort)).isTrue();
+            assertThat(protokoll(tenant, sub, "startpasswort_neu")).isEqualTo(1);
+            keinTokenOhneWechsel("ip14-ines", supportPasswort);
 
             Antwort neu = api("POST", "/api/v1/benutzer/" + sub + "/startpasswort", jonas, null);
             assertThat(neu.status()).isEqualTo(200);
             String neuesPasswort = einmal(neu, geheimnisse);
             assertThat(!neuesPasswort.equals(passwort)).isTrue();
-            assertThat(protokoll(tenant, sub, "startpasswort_neu")).isEqualTo(1);
+            assertThat(!neuesPasswort.equals(supportPasswort)).isTrue();
+            assertThat(protokoll(tenant, sub, "startpasswort_neu")).isEqualTo(2);
             keinTokenOhneWechsel("ip14-ines", neuesPasswort);
             assertThat(zustand(tenant, sub)).isEqualTo("aktiv");
             sonstigeAntworten.add(api("GET", basis, plattform, null).body());

@@ -1,6 +1,9 @@
 package cloud
 
-import "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
+import (
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
+)
 
 // StatusExtension keeps independent additive heartbeat blocks beside the legacy fields.
 // Nil omits a block. An empty DataSources slice clears the complete source set.
@@ -33,7 +36,66 @@ type StatusExtension struct {
 // exist in the cloud - point state, per-component status, revision push and the
 // summing guard at Bilanz, formula and Kennzahl, visible in the portal
 // (decision firstmate 23.09.2026 A, "Summen-Waechter komplett").
-func BuiltSupports() []string {
-	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
-		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component"}
+// erzeuger_registerbild (EZ-5): the core carries erzeugerbilder and the probe
+// op erzeuger_kopf, and the palette reads the Erzeuger image every 5 s and
+// sends its points with quality and events (measurements/erzeuger-*.js;
+// evidence measurements/erzeuger-laufzeit.test.js). The points themselves come
+// with the runtime catalog of the release that carries this reader.
+// anlagensteuerung_quelle (EZ-21): componentapply derives a plant-controller
+// source from the driver of an anlagensteuerung entity (no brand, no catalog)
+// and the palette binds the component to it through its pin
+// (componentapply/plant_controller_test.go). The cloud sends that driver only
+// to a box reporting this word - an older applier refuses a driver without a
+// brand and with it the whole push.
+//
+// geraetesuche (Gerätesuche, mqtt-geraetesuche 1.0): the agent runs a
+// device-search order with the search module of internal/geraetesuche/suche
+// and reports progress and one result (agent/geraetesuche.go). Both builds
+// carry it; what each box type can see differs (DP-2 A) and the result names
+// the recognisers that ran.
+//
+// heizstab_regler (Heizstab-Konzept V1): the agent runs the `heizstab` block of
+// a heating rod with a Shelly output set itself (internal/heizstab,
+// agent/heizstab.go) - surplus in stages without the cloud and without
+// Node-RED, so both builds carry it. The cloud sends the block only to a box
+// reporting this word; an older box would just ignore it.
+//
+// verbraucherregeln (Steuerarten auf Edge Light): the box runs the consumer
+// rules the cloud compiles from a Steuerart - the reactive rule with a local
+// signal as the generated vp-consumer-policy artifact (Docker box: the
+// palette; Edge Light: the Go twin internal/verbraucherregel behind the same
+// bus topics, held to verbraucherregel-vectors.json) and the time windows,
+// price windows and deadlines from plan and registry push in the core. Both
+// builds carry it; the portal unlocks those Steuerarten on an Edge Light only
+// for a box that reports it.
+//
+// heizstab_phasen (Handeingriff je Phase, heizstab-shelly.md): a setpoint_kw
+// desired may carry an explicit output set (`outputs`) and the stage path of
+// a Shelly output set switches exactly those outputs while they fit the
+// granted setpoint (shelly.ExplicitOutputs). The core runs the stage path in
+// both builds, so both carry it; the portal offers per-phase switches only
+// for a box reporting it.
+//
+// EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
+// Edge Light has no Node-RED palette, so the words whose way ends in the
+// palette - the shared point read once per target, the Erzeuger image reader
+// and the plant-controller binding - are the Docker box's only
+// (edge-supports-vectors.json box_arten).
+func BuiltSupports(boxArt string) []string {
+	out := []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
+		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}
+	if boxArt != geraetesuche.BoxArtEdgeLight {
+		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
+	}
+	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen")
+}
+
+// UpdateBackend is the apply backend a box type reports in update.backend and
+// verifies a release against: light for Edge Light (vp-edge-light), compose
+// for the Docker box.
+func UpdateBackend(boxArt string) string {
+	if boxArt == geraetesuche.BoxArtEdgeLight {
+		return UpdateBackendLight
+	}
+	return UpdateBackendCompose
 }

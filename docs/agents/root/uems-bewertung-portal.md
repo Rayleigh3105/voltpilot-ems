@@ -76,9 +76,10 @@ ausschließlich aus `/me`; ohne sie bleiben alle Angaben lesbar, aber ohne Schre
 
 ## Messabdeckung, Messmittel und Toleranz (AP-16 IP-18, Meilenstein M3)
 
-Die Abdeckungs-Tabelle (`components/MessabdeckungTabelle.tsx`, reines Modul `src/uemsMessabdeckung.ts`, seit a1 nicht
-mehr auf der Bewertung) liest `…/bewertung/messabdeckung`: je Einsatz und je Ort gemessen · geplant · Ersatz ·
-ungemessen, Rest-Zeilen je Anlage, Summe mit K8. Darüber die Prüfaufgaben-Zeile, auf der Einsatzseite die Karte
+Die Abdeckung liest `…/bewertung/messabdeckung`, das reine Modul `src/uemsMessabdeckung.ts` bildet sie ab:
+je Einsatz und je Ort gemessen · geplant · Ersatz · ungemessen, Rest-Zeilen je Anlage, Summe mit K8. Seit a1
+zeigt `VerbrauchPage`/`EnergieeinsatzSeite` sie direkt; die frühere eigene `components/MessabdeckungTabelle.tsx`
+hatte keine Aufrufstelle mehr und ist als toter Code gelöscht (Code-Gesundheit, 10.11.2026). Darüber die Prüfaufgaben-Zeile, auf der Einsatzseite die Karte
 „Messmittel“ (`components/EinsatzMessmittel.tsx`: Messstelle → führende Quelle der Hauptgröße → `…/geraete/{id}/messmittel`).
 Die Geräteseite trägt das Messmittel-Blatt mit Dialog (`components/MessmittelBlatt.tsx`, reines Modul `src/uemsMessmittel.ts`);
 die Befund-Zeile der Messstelle (`components/VergleichBefund.tsx`) je Zeile „Toleranz ändern“.

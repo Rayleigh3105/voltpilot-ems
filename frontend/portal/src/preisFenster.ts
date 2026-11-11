@@ -1,4 +1,3 @@
-import type { Kernaussage } from './chartKopf';
 import { ctFromEurMwh } from './marktpreise';
 
 /**
@@ -13,9 +12,14 @@ import { ctFromEurMwh } from './marktpreise';
  *  - den **JS-Farbverlauf** desselben Musters im Cockpit-Streifen.
  *
  * An ihrer Stelle steht die ruhige Preis-Linie plus höchstens drei benannte
- * Fenster, jedes MIT SEINEM WORT im Bild. Marktpreise-Seite und
- * Cockpit-Streifen lesen dieselbe Funktion, also können sie über denselben Tag
- * nichts Verschiedenes behaupten.
+ * Fenster, jedes MIT SEINEM WORT im Bild. Der Cockpit-Streifen und die
+ * Rückblick-Kurve der Preis-Seite lesen dieselbe Funktion.
+ *
+ * ⚠ **Die Hauptansicht der Preis-Seite zeigt seit dem 20.10.2026 Stufen**
+ * (Konzept „Preise und Wetter" Fassung 3, Entscheid E2 = A): Balken in drei
+ * Stufen im Vergleich der KOMMENDEN Stunden, mit Wort, Legende und
+ * Preisleiter — keine Farbskala ohne Skala. Die Regeln dafür stehen in
+ * `preisZeitstrahl.ts`; diese Datei bleibt die Grammatik der Linie.
  *
  * Vier Regeln, die nicht wegoptimiert werden dürfen:
  *
@@ -238,63 +242,6 @@ export function preisMarken(cts: readonly (number | null)[]): PreisMarke[] {
 }
 
 /* ---------------------------------------------------------------------------
- * K1 · Der Kernaussage-Satz über der Preis-Fläche
- * ------------------------------------------------------------------------- */
-
-/** „12" → „12 Uhr"; die Uhrzeit eines Slot-Index über seine Zeitstempel. */
-function stunde(iso: string | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
-/** Der ehrliche Grund, wenn kein Satz belegbar ist. */
-export const KEIN_SATZ_GRUND = 'Für diesen Zeitraum liegen noch keine Börsenpreise vor.';
-/** Der Grund, wenn die Reihe zwar Preise, aber keine Struktur hat. */
-export const FLACH_GRUND = 'In diesem Zeitraum schwankt der Börsenpreis kaum.';
-
-/**
- * Die Kernaussage der Tages-Preisfläche — ABGELEITET, nie geschrieben
- * (chartKopf-Regel): „Am günstigsten ist Strom zwischen 12:00 und 14:30 Uhr —
- * dann kostet er nichts.", Anker „Am teuersten um 19:30 mit 21,3 ct."
- *
- * Ohne Fenster steht der ehrliche GRUND da, nie ein erfundener Satz.
- */
-export function preisKern(
-  cts: readonly (number | null)[],
-  zeiten: readonly string[],
-  fenster: readonly PreisFenster[],
-): Kernaussage {
-  const werte = cts.filter((v): v is number => v != null);
-  if (werte.length === 0) {
-    return { wert: null, satz: null, grund: KEIN_SATZ_GRUND, ton: 'calm' };
-  }
-  const guenstig = fenster.find((f) => f.art === 'negativ') ?? fenster.find((f) => f.art === 'guenstig');
-  if (!guenstig) {
-    return { wert: null, satz: null, grund: FLACH_GRUND, ton: 'calm' };
-  }
-  const von = stunde(zeiten[guenstig.von]);
-  const bis = stunde(zeiten[guenstig.bis]);
-  const zeitraum = von && bis ? `zwischen ${von} und ${bis} Uhr` : null;
-  const schluss =
-    guenstig.art === 'negativ'
-      ? ' — dann kostet er nichts.'
-      : ` — im Schnitt ${ct1(guenstig.ct)} ct/kWh.`;
-  const satz = zeitraum
-    ? `Am günstigsten ist Strom ${zeitraum}${schluss}`
-    : `Am günstigsten ist Strom in ${fensterWort(guenstig.art, guenstig.bis - guenstig.von + 1, 15)}${schluss}`;
-
-  const marken = preisMarken(cts);
-  const hoch = marken.find((m) => m.art === 'hoch');
-  const hochZeit = hoch ? stunde(zeiten[hoch.index]) : null;
-  const anker =
-    hoch && hochZeit ? `Am teuersten um ${hochZeit} Uhr mit ${ct1(hoch.ct)} ct.` : null;
-
-  return { wert: null, satz, grund: null, ton: 'ok', anker };
-}
-
-/* ---------------------------------------------------------------------------
  * Bequemlichkeit für die zwei Aufrufer
  * ------------------------------------------------------------------------- */
 
@@ -322,46 +269,4 @@ export function fensterFuerSlot(
   index: number,
 ): PreisFenster | null {
   return fenster.find((f) => index >= f.von && index <= f.bis) ?? null;
-}
-
-/* ---------------------------------------------------------------------------
- * Die Wortzeile (K10) — beide Preis-Flächen rendern sie
- * ------------------------------------------------------------------------- */
-
-export interface FensterZeile {
-  art: FensterArt;
-  /** „die günstigsten 2½ Stunden". */
-  wort: string;
-  /** „12:00–14:15" — WANN. */
-  zeit: string;
-}
-
-/** „12:00" aus einem Zeitstempel; leer, wenn er unbrauchbar ist. */
-function hhmm(iso: string | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
-/**
- * Die Fenster als Wortzeile — Wort UND Zeitraum. Sie steht unmittelbar unter
- * dem Bild statt IM Canvas: ein 2½-Stunden-Band ist auf einer 48-Stunden-Achse
- * ~40 px breit, sein Wort ~150 px, und zwei solche Etiketten überlappten sich
- * im ersten Bau prompt gegenseitig und die Datums-Beschriftung der
- * Tagesgrenze. Ein Fenster ohne brauchbare Zeitstempel wird ausgelassen, statt
- * eine leere Spanne zu behaupten.
- */
-export function fensterZeilen(
-  fenster: readonly PreisFenster[],
-  zeiten: readonly string[],
-): FensterZeile[] {
-  const out: FensterZeile[] = [];
-  for (const f of fenster) {
-    const von = hhmm(zeiten[f.von]);
-    const bis = hhmm(zeiten[f.bis]);
-    if (!von || !bis) continue;
-    out.push({ art: f.art, wort: f.wort, zeit: `${von}–${bis}` });
-  }
-  return out;
 }
