@@ -64,6 +64,17 @@ def test_pv_physical_legacy_dni_can_never_become_active():
     assert registry.active_models({})[ForecastKind.PV] == "pv-physical"
 
 
+def test_load_profile_is_known_and_selectable():
+    """S5 (E7 = A, Captain 11.11.2026): anders als die legacy-DNI-Lesart ist
+    das Tagestyp-Modell ein ECHTER Kandidat - es MUSS wählbar sein, sonst
+    könnte die Automatik es nie übernehmen."""
+    assert registry.LOAD_PROFILE in registry.KNOWN_MODELS
+    assert registry.kind_of(registry.LOAD_PROFILE) is ForecastKind.LOAD
+    assert registry.active_model(
+        ForecastKind.LOAD, {"VOLTPILOT_ACTIVE_LOAD_MODEL": registry.LOAD_PROFILE}
+    ) == registry.LOAD_PROFILE
+
+
 def test_unknown_or_mismatched_active_model_fails_loudly():
     with pytest.raises(ValueError, match="not a known forecast model id"):
         registry.active_model(ForecastKind.LOAD, {"VOLTPILOT_ACTIVE_LOAD_MODEL": "typo"})

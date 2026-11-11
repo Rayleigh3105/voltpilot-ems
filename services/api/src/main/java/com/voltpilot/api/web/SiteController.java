@@ -13,6 +13,7 @@ import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.ForecastRepository;
+import com.voltpilot.api.repo.ForecastRueckblickRepository;
 import com.voltpilot.api.repo.ForecastWeeklyRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.CockpitLayoutRepository;
@@ -36,6 +37,7 @@ import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.StandortRepository;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.ForecastDto;
+import com.voltpilot.api.web.dto.RueckblickDto;
 import com.voltpilot.api.web.dto.ForecastQualityDto;
 import com.voltpilot.api.web.dto.ForecastSeriesDto;
 import com.voltpilot.api.web.dto.ForecastValueDto;
@@ -108,6 +110,10 @@ public class SiteController {
      * own active-model choice (unregistered, N4: {@code load.py}'s
      * {@code ProfileLoadForecaster.model_id}). */
     private static final String WEEKLY_LOAD_MODEL = "load-profile";
+    /** Der Rückblick vergleicht nur den Vortagslauf (S3, Bericht Abschnitt 9). */
+    private static final int RUECKBLICK_LEAD_DAYS = 1;
+    /** Bis zu sieben Tage im Blatt "Rückblick" (E5 = A). */
+    private static final int RUECKBLICK_TAGE = 7;
 
     private final SiteRepository sites;
     private final Geltungsbereich geltungsbereich;
@@ -118,6 +124,7 @@ public class SiteController {
     private final WeatherRepository weather;
     private final ForecastRepository forecastRepo;
     private final ForecastWeeklyRepository forecastWeekly;
+    private final ForecastRueckblickRepository forecastRueckblick;
     private final ScheduleRepository schedules;
     private final HistoryService history;
     private final ForecastQualityRepository forecastQuality;
@@ -143,6 +150,7 @@ public class SiteController {
             WeatherRepository weather,
             ForecastRepository forecastRepo,
             ForecastWeeklyRepository forecastWeekly,
+            ForecastRueckblickRepository forecastRueckblick,
             ScheduleRepository schedules,
             HistoryService history,
             ForecastQualityRepository forecastQuality,
@@ -170,6 +178,7 @@ public class SiteController {
         this.weather = weather;
         this.forecastRepo = forecastRepo;
         this.forecastWeekly = forecastWeekly;
+        this.forecastRueckblick = forecastRueckblick;
         this.schedules = schedules;
         this.history = history;
         this.forecastQuality = forecastQuality;
@@ -544,6 +553,42 @@ public class SiteController {
                 new WeeklyOutlookDto(
                         pvWeekly.runAt(), pvWeekly.points(),
                         loadWeekly.runAt(), loadWeekly.points()));
+    }
+
+    /**
+     * Das Blatt "Rückblick" (S3, Bericht Abschnitt 9, E5 = A): je Art (Sonne,
+     * Verbrauch) die letzten {@value #RUECKBLICK_TAGE} Tage des AKTIVEN
+     * Modells - "am Vortag erwartet" neben "gemessen" -, dazu der
+     * Rückblick-Satz (0,8-Quantil der Tagesabweichung über
+     * {@value RueckblickDto#FENSTER_TAGE} Tage). Derselbe Vortagsvergleich
+     * ({@code lead_days = 1}), den auch die Automatik aus S5 liest. Unter
+     * {@value RueckblickDto.KindRueckblickDto#MIN_TAGE} bewerteten Tagen
+     * bleibt {@code abweichungKwh} {@code null} - "Fehlend ist keine Null".
+     */
+    @GetMapping("/{siteId}/forecast-rueckblick")
+    public RueckblickDto forecastRueckblick(@PathVariable UUID siteId) {
+        geltungsbereich.requireSite(siteId);
+        Map<String, String> active = forecastModels.activeModels(siteId);
+        LocalDate since = LocalDate.now(HistoryRange.ZONE).minusDays(RueckblickDto.FENSTER_TAGE);
+        return new RueckblickDto(List.of(
+                rueckblickVonArt(siteId, ForecastModels.KIND_PV, active.get(ForecastModels.KIND_PV), since),
+                rueckblickVonArt(siteId, ForecastModels.KIND_LOAD, active.get(ForecastModels.KIND_LOAD), since)));
+    }
+
+    private RueckblickDto.KindRueckblickDto rueckblickVonArt(
+            UUID siteId, String kind, String model, LocalDate since) {
+        List<ForecastRueckblickRepository.RueckblickTag> tage =
+                forecastRueckblick.tage(siteId, kind, model, RUECKBLICK_LEAD_DAYS, RUECKBLICK_TAGE);
+        int bewertet = forecastRueckblick.bewertetTage(siteId, kind, model, RUECKBLICK_LEAD_DAYS, since);
+        Double abweichung = bewertet >= RueckblickDto.KindRueckblickDto.MIN_TAGE
+                ? forecastRueckblick.quantil80Kwh(siteId, kind, model, RUECKBLICK_LEAD_DAYS, since)
+                : null;
+        return new RueckblickDto.KindRueckblickDto(
+                kind, model,
+                tage.stream()
+                        .map(t -> new RueckblickDto.TagDto(t.day(), t.erwartetKwh(), t.gemessenKwh()))
+                        .toList(),
+                abweichung, bewertet);
     }
 
     /**

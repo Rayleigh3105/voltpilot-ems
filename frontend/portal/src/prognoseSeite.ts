@@ -1,4 +1,4 @@
-import type { ForecastResponse, ForecastValue, HistoryBucket, WeatherPoint } from './api';
+import type { ForecastResponse, ForecastValue, HistoryBucket, RueckblickKind, WeatherPoint } from './api';
 import {
   art,
   HIMMEL_WORT,
@@ -531,6 +531,48 @@ export function verbrauchsSpitzeSatz(tag: TeppichTag): string | null {
   const von = new Date(bestStart).getHours();
   const bis = new Date(bestStart + 3 * STUNDE_MS).getHours();
   return `Am meisten Verbrauch ${von}–${bis} Uhr`;
+}
+
+/* ---------------------------------------------------------------------------
+ * Das Blatt "Rückblick" (S3, Bericht Abschnitt 9, E5 = A): "am Vortag
+ * erwartet" neben "gemessen" - wie gut die Prognose lag. Die Zahlen kommen
+ * FERTIG vom Server (`forecast_rueckblick`); diese Ableitungen formatieren
+ * nur, sie rechnen nichts neu.
+ * ------------------------------------------------------------------------- */
+
+/** Unter dieser Zahl bewerteter Tage zeigt das Blatt keinen Rückblick-Satz (Server-Zwilling `RueckblickDto.KindRueckblickDto.MIN_TAGE`). */
+export const RUECKBLICK_MIN_TAGE = 10;
+
+export interface RueckblickZeile {
+  /** "Mo 10.11." */
+  tagWort: string;
+  erwartetKwh: number;
+  gemessenKwh: number;
+}
+
+/** Die Tage einer Art als Zeilen fürs Blatt, älteste zuerst (wie geliefert). */
+export function rueckblickZeilen(kind: RueckblickKind): RueckblickZeile[] {
+  return kind.tage.map((t) => ({
+    tagWort: wochentagDatum(new Date(`${t.day}T00:00:00`).getTime()),
+    erwartetKwh: t.erwartetKwh,
+    gemessenKwh: t.gemessenKwh,
+  }));
+}
+
+/**
+ * "An 8 von 10 Tagen höchstens 2 kWh daneben." - das 0,8-Quantil der
+ * Tagesabweichung kommt fertig vom Server (`abweichungKwh`); "8 von 10" ist
+ * die feste Redewendung für ein 80-%-Quantil, keine Zählung der tatsächlich
+ * bewerteten Tage. Unter {@link RUECKBLICK_MIN_TAGE} bewerteten Tagen bleibt
+ * es ehrlich bei "noch keine Bewertung" statt einer erfundenen Zahl.
+ */
+export function rueckblickSatz(kind: RueckblickKind): string {
+  if (kind.abweichungKwh == null) {
+    return kind.bewerteteTage === 0
+      ? 'Noch keine Bewertung.'
+      : `Noch keine Bewertung - erst ab ${RUECKBLICK_MIN_TAGE} Tagen (bisher ${kind.bewerteteTage}).`;
+  }
+  return `An 8 von 10 Tagen höchstens ${kwh0(kind.abweichungKwh)} kWh daneben.`;
 }
 
 export { HIMMEL_WORT };

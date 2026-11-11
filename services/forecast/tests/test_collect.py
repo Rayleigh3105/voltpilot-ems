@@ -206,18 +206,24 @@ def test_baselines_always_persist_model_tagged_series():
 
     load = forecasts.latest(SITE.site_id, ForecastKind.LOAD, registry.LOAD_PERSISTENCE)
     pv = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
+    profile = forecasts.latest(SITE.site_id, ForecastKind.LOAD, registry.LOAD_PROFILE)
     assert load is not None and load.model == "load-persistence"
     assert pv is not None and pv.model == "pv-physical"
+    # S5 (N4): das Tagestyp-Modell läuft jetzt auch auf dem regulären
+    # Horizont, deterministisch wie `persistence` - sonst gäbe es für die
+    # Automatik nie eine Tagesbewertung dieses Kandidaten.
+    assert profile is not None and profile.model == "load-profile"
     # 48 h since the optimizer plans a 48 h window (Captain-Entscheid
     # 28.08.2026) and may only extend it over REAL forecasts. This fixture
     # serves no weather, so the PV model runs on clear-sky physics, which is a
     # real model at any timestamp - the horizon is therefore unclipped.
-    assert len(load) == 192 and len(pv) == 192
+    assert len(load) == 192 and len(pv) == 192 and len(profile) == 192
     assert load.tenant_id == SITE.tenant_id  # tenant stamped for RLS
 
     # Baseline states are 'ready' - always live, nothing to collect.
     assert quality.model_states[(SITE.site_id, "load-persistence")].status == STATUS_READY
     assert quality.model_states[(SITE.site_id, "pv-physical")].status == STATUS_READY
+    assert quality.model_states[(SITE.site_id, "load-profile")].status == STATUS_READY
 
 
 @pytest.mark.skipif(not _HAS_ML, reason="optional [ml] extra not installed")
@@ -254,7 +260,7 @@ def test_challengers_above_the_gate_predict_in_shadow_with_a_training_trail():
         assert state.feature_importance  # the explainability trail
         assert all("label" in fi and "weight" in fi for fi in state.feature_importance)
     assert set(summary.saved_models) == {
-        "load-persistence", "pv-physical", "load-xgb", "pv-residual-xgb",
+        "load-persistence", "pv-physical", "load-profile", "load-xgb", "pv-residual-xgb",
     }
 
 

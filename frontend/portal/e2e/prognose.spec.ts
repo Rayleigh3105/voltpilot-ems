@@ -65,6 +65,44 @@ for (const width of [390, 1440]) {
     expect(fehler).toEqual([]);
   });
 
+  test(`Prognose bei ${width} px · Rückblick: Tage und Satz, mit PV beide Arten`, async ({ page }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') fehler.push(m.text());
+    });
+    await oeffnen(page, width, 'mit-speicher', JETZT);
+
+    await page.getByRole('button', { name: /Rückblick/ }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByText('Verbrauchsprognose (Last)')).toBeVisible();
+    await expect(page.getByText('PV-Prognose (Erzeugung)')).toBeVisible();
+    await expect(page.locator('.vp-pz-rblk-tabelle tbody tr')).toHaveCount(14);
+    await expect(page.getByText('An 8 von 10 Tagen höchstens 2 kWh daneben.')).toBeVisible();
+    await expect(page.getByText('An 8 von 10 Tagen höchstens 3 kWh daneben.')).toBeVisible();
+
+    await ohneUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+
+  test(`Prognose bei ${width} px · Rückblick ohne PV: keine Sonnen-Zeile, ehrlich`, async ({ page }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') fehler.push(m.text());
+    });
+    await oeffnen(page, width, 'nur-messen-ohne-pv', JETZT);
+
+    await page.getByRole('button', { name: /Rückblick/ }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByText('Verbrauchsprognose (Last)')).toBeVisible();
+    await expect(page.getByText('PV-Prognose (Erzeugung)')).toHaveCount(0);
+    await expect(page.locator('.vp-pz-rblk-tabelle tbody tr')).toHaveCount(7);
+
+    await ohneUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+
   test(`Prognose bei ${width} px · nur messen ohne PV: der Teppich zeigt nur den Verbrauch`, async ({ page }) => {
     const fehler: string[] = [];
     page.on('pageerror', (e) => fehler.push(e.message));

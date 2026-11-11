@@ -91,16 +91,28 @@ class ForecastModelsTest {
     }
 
     @Test
+    void theLoadProfileModelIsAKnownSelectableLoadCandidate() {
+        // S5 (E7 = A, Captain 11.11.2026): anders als die legacy-DNI-Lesart
+        // MUSS das Tagestyp-Modell wählbar sein, sonst könnte die Automatik
+        // (oder ein Kunde von Hand) es nie übernehmen.
+        assertThat(ForecastModels.kindOf(ForecastModels.LOAD_PROFILE))
+                .isEqualTo(ForecastModels.KIND_LOAD);
+        assertThat(ForecastModels.resolve(
+                        ForecastModels.KIND_LOAD, ForecastModels.LOAD_PROFILE, null))
+                .isEqualTo(ForecastModels.LOAD_PROFILE);
+    }
+
+    @Test
     void theVocabularyIsTheOneSharedWithTheForecastRegistry() {
         assertThat(ForecastModels.kinds()).containsExactly("load", "pv");
         assertThat(ForecastModels.modelsOf(ForecastModels.KIND_LOAD))
-                .containsExactly("load-persistence", "load-xgb");
+                .containsExactly("load-persistence", "load-xgb", "load-profile");
         assertThat(ForecastModels.modelsOf(ForecastModels.KIND_PV))
                 .containsExactly("pv-physical", "pv-residual-xgb");
         assertThat(ForecastModels.kindOf("pv-residual-xgb")).isEqualTo("pv");
         assertThat(ForecastModels.kindOf("nichts-davon")).isNull();
         assertThat(ForecastModels.isKind("waerme")).isFalse();
-        assertThat(ForecastModels.known()).hasSize(4);
+        assertThat(ForecastModels.known()).hasSize(5);
         // S0 (N1): die historische Lesart ist bewusst NICHT im Vokabular - sie
         // kann so nie aktiv gewählt werden, auch nicht als art-fremde Wahl.
         assertThat(ForecastModels.kindOf(ForecastModels.PV_PHYSICAL_LEGACY_DNI)).isNull();

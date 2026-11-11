@@ -37,6 +37,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Sequence
+from zoneinfo import ZoneInfo
 
 from voltpilot_forecast.domain import (
     ForecastKind,
@@ -48,6 +49,13 @@ from voltpilot_forecast.domain import (
     floor_to_slot,
     slot_means,
 )
+from voltpilot_forecast.holidays import is_german_holiday
+
+#: N4 (Captain 11.11.2026, S5): der Tagestyp gehört der ORTSZEIT der Anlage,
+#: nicht UTC - eine Viertelstunde nahe Mitternacht kann sonst, je nach
+#: Jahreszeit, auf den falschen deutschen Kalendertag und damit in den
+#: falschen Wochentags-Eimer fallen.
+BERLIN = ZoneInfo("Europe/Berlin")
 
 
 class LoadForecaster(ABC):
@@ -75,14 +83,20 @@ class LoadForecaster(ABC):
 
 
 def _slot_of_day(ts: datetime, slot_minutes: int) -> int:
-    """Index of the slot within the day (0 .. slots_per_day-1), UTC-based."""
-    ts = ensure_utc(ts)
-    minutes = ts.hour * 60 + ts.minute
+    """Index of the slot within the day (0 .. slots_per_day-1), Europe/Berlin-
+    based (N4: war UTC-basiert und verschob die Zuordnung mit der Jahreszeit)."""
+    local = ensure_utc(ts).astimezone(BERLIN)
+    minutes = local.hour * 60 + local.minute
     return minutes // slot_minutes
 
 
 def _is_weekend(ts: datetime) -> bool:
-    return ensure_utc(ts).weekday() >= 5  # Sat=5, Sun=6
+    """Werktag/Wochenende in Europe/Berlin, ein Feiertag zählt wie ein
+    Wochenende (N4: dasselbe Feiertags-Vokabular wie das lernende Modell,
+    :mod:`voltpilot_forecast.holidays`) - ein Haushalt verbraucht an
+    Weihnachten wie an einem Sonntag, nicht wie an dessen Wochentag."""
+    local = ensure_utc(ts).astimezone(BERLIN)
+    return local.weekday() >= 5 or is_german_holiday(local.date())  # Sat=5, Sun=6
 
 
 def _flat_last_value(

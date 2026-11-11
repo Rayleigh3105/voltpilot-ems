@@ -1477,6 +1477,64 @@ class PortalApiTest {
     }
 
     @Test
+    void forecastRueckblickReturnsTheActiveModelsRecentDaysAndIsTenantScoped() {
+        // S3 ("Rückblick"): the sheet reads lead_days = 1 of the ACTIVE model
+        // only - here the shipped PV baseline with no site choice configured.
+        for (int tagVorher = 1; tagVorher <= 3; tagVorher++) {
+            exec("INSERT INTO forecast_rueckblick "
+                    + "(day, tenant_id, site_id, kind, model, lead_days, "
+                    + "erwartet_kwh, gemessen_kwh, mae_kw, n_slots) VALUES "
+                    + "(CURRENT_DATE - " + tagVorher + ", "
+                    + "'00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
+                    + "'pv', 'pv-physical', 1, 12.50, 11." + tagVorher + "0, 0.8, 96) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        ResponseEntity<String> own = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast-rueckblick"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(own.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(own.getBody())
+                .contains("\"kind\":\"pv\"")
+                .contains("\"model\":\"pv-physical\"")
+                .contains("12.5")
+                .contains("11.1")
+                // fewer than KindRueckblickDto.MIN_TAGE (10) evaluated days: no sentence yet.
+                .contains("\"abweichungKwh\":null")
+                .contains("\"bewerteteTage\":3");
+
+        // RLS on forecast_rueckblick itself, same fence as every other site route.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast-rueckblick"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void forecastRueckblickSentenceAppearsOnlyFromTenEvaluatedDaysOnward() {
+        // "Fehlend ist keine Null": the 0,8-quantile sentence stays null until
+        // at least KindRueckblickDto.MIN_TAGE (10) days are evaluated.
+        for (int tagVorher = 1; tagVorher <= 10; tagVorher++) {
+            exec("INSERT INTO forecast_rueckblick "
+                    + "(day, tenant_id, site_id, kind, model, lead_days, "
+                    + "erwartet_kwh, gemessen_kwh, mae_kw, n_slots) VALUES "
+                    + "(CURRENT_DATE - " + tagVorher + ", "
+                    + "'10000000-0000-0000-0000-000000000001', '" + HAMBURG_SITE + "', "
+                    + "'load', 'load-persistence', 1, 10.0, 9.0, 0.5, 96) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        ResponseEntity<String> resp = rest.exchange(
+                url("/api/v1/sites/" + HAMBURG_SITE + "/forecast-rueckblick"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        int at = resp.getBody().indexOf("\"kind\":\"load\"");
+        assertThat(at).as("load kind present").isPositive();
+        String load = resp.getBody().substring(at);
+        assertThat(load).contains("\"bewerteteTage\":10").doesNotContain("\"abweichungKwh\":null");
+    }
+
+    @Test
     void scheduleEndpointReturnsLatestPlanTenantScoped() {
         // Seed two optimizer runs for tenant A's Berlin site (the optimizer writes
         // as the trusted backend role, bypassing RLS): an older single-slot run and

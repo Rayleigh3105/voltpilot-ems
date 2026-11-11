@@ -414,6 +414,16 @@ voltpilot:
   forecast:
     active-load-model: ${VOLTPILOT_ACTIVE_LOAD_MODEL:load-persistence}
     active-pv-model: ${VOLTPILOT_ACTIVE_PV_MODEL:pv-physical}
+    # S5 (Konzept vp-prognosen-konzept, E6 = B/E7 = A, Bericht R.4): die
+    # Verbrauchs-Automatik vergleicht taeglich das aktive Lastmodell gegen
+    # seine Kandidaten (forecast_rueckblick, 28 Tage) und uebernimmt den
+    # Gewinner selbst - eine Wahl von Hand schaltet sie je Anlage aus, bis
+    # der Kunde sie wieder einschaltet. `enabled` ist der Not-Aus - Vorgabe
+    # AN, im Testlauf AUS (surefire). Gilt ausdruecklich nur dem Verbrauch,
+    # nie der PV-Korrektur (die bleibt bei der Wahl von Hand).
+    automatik:
+      enabled: ${VOLTPILOT_FORECAST_AUTOMATIK_ENABLED:true}
+      cron: ${VOLTPILOT_FORECAST_AUTOMATIK_CRON:0 0 6 * * *}
   # Api-side MIRROR of the optimizer's platform tunables (services/optimization
   # voltpilot_optimization/config.py) feeding the admin optimizer panel and the
   # per-slot diagnostics. The api only DISPLAYS these - pass the SAME

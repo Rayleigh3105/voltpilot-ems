@@ -31,6 +31,13 @@ LOAD_PERSISTENCE = "load-persistence"
 PV_PHYSICAL = "pv-physical"
 #: Challenger: gradient-boosted (XGBoost) load model on tabular features.
 LOAD_XGB = "load-xgb"
+#: S5 (E7 = A, Captain 11.11.2026): day-type profile (weekday vs. weekend/
+#: holiday mean per slot, :class:`voltpilot_forecast.load.ProfileLoadForecaster`).
+#: Ran only in the weekly outlook (S4) until now; S5 runs it on the regular
+#: quarter-hour horizon too (deterministic, no self-gate) so it accrues the
+#: same daily evaluations as every other load model and becomes a real
+#: candidate for the automatic switcher.
+LOAD_PROFILE = "load-profile"
 #: Challenger: physical PV model + learned residual correction (XGBoost).
 PV_RESIDUAL_XGB = "pv-residual-xgb"
 #: S0 (N1, Captain 11.11.2026: "Behebe den Lesefehler") - the HISTORICAL,
@@ -59,7 +66,7 @@ BASELINE_MODELS: Mapping[ForecastKind, str] = {
 }
 
 KNOWN_MODELS: frozenset[str] = frozenset(
-    {LOAD_PERSISTENCE, PV_PHYSICAL, LOAD_XGB, PV_RESIDUAL_XGB}
+    {LOAD_PERSISTENCE, PV_PHYSICAL, LOAD_XGB, PV_RESIDUAL_XGB, LOAD_PROFILE}
 )
 
 # ---- active-model configuration (env) -----------------------------------------
@@ -101,7 +108,7 @@ def kind_of(model_id: str) -> ForecastKind:
     Deliberately unaware of ``PV_PHYSICAL_LEGACY_DNI`` - see its docstring:
     nothing that calls this may ever be asked to resolve it.
     """
-    if model_id in (LOAD_PERSISTENCE, LOAD_XGB):
+    if model_id in (LOAD_PERSISTENCE, LOAD_XGB, LOAD_PROFILE):
         return ForecastKind.LOAD
     if model_id in (PV_PHYSICAL, PV_RESIDUAL_XGB):
         return ForecastKind.PV

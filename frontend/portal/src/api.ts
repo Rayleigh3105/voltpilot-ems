@@ -1120,7 +1120,8 @@ export type ForecastModelId =
   | 'pv-physical'
   | 'load-xgb'
   | 'pv-residual-xgb'
-  | 'pv-physical-legacy-dni';
+  | 'pv-physical-legacy-dni'
+  | 'load-profile';
 
 export interface FeatureImportance {
   feature: string;
@@ -1181,6 +1182,32 @@ export interface ForecastQuality {
   models: ForecastModelState[];
   accuracy: ForecastAccuracyPoint[];
   planAccuracy: PlanAccuracyPoint[];
+}
+
+/** Ein Tag im Blatt "Rückblick" (S3, Bericht Abschnitt 9): "am Vortag erwartet" neben "gemessen". */
+export interface RueckblickTag {
+  day: string;
+  erwartetKwh: number;
+  gemessenKwh: number;
+}
+
+/**
+ * Der Rückblick EINER Prognoseart, immer des AKTIVEN Modells (S3, E5 = A).
+ * `abweichungKwh` (das 0,8-Quantil der Tagesabweichung über die letzten 28
+ * Tage) bleibt `null`, solange weniger als zehn Tage bewertet sind - "Fehlend
+ * ist keine Null".
+ */
+export interface RueckblickKind {
+  kind: 'load' | 'pv';
+  model: ForecastModelId;
+  /** Bis zu sieben Tage, älteste zuerst. */
+  tage: RueckblickTag[];
+  abweichungKwh: number | null;
+  bewerteteTage: number;
+}
+
+export interface RueckblickResponse {
+  kinds: RueckblickKind[];
 }
 
 export interface Device {
@@ -11710,6 +11737,15 @@ export const api = {
     ),
   forecastQuality: (siteId: string, days = 30) =>
     request<ForecastQuality>(`/api/v1/sites/${siteId}/forecast-quality?days=${days}`),
+
+  /**
+   * Das Blatt "Rückblick" (S3, Bericht Abschnitt 9): je Prognoseart die
+   * letzten sieben Tage des aktiven Modells, "am Vortag erwartet" neben
+   * "gemessen", dazu der Rückblick-Satz. Mandantenbezogen wie jede
+   * `/sites/**`-Route - eine fremde Anlage ist 404.
+   */
+  rueckblick: (siteId: string) =>
+    request<RueckblickResponse>(`/api/v1/sites/${siteId}/forecast-rueckblick`),
 
   /**
    * Der Prognose-Schalter DIESER Anlage: welches Modell je Prognoseart sie

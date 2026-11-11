@@ -34,6 +34,13 @@ public final class ForecastModels {
     public static final String LOAD_XGB = "load-xgb";
     public static final String PV_RESIDUAL_XGB = "pv-residual-xgb";
     /**
+     * S5 (E7 = A, Captain 11.11.2026): das Tagestyp-Modell (Mittel je
+     * Viertelstunde getrennt nach Werktag und Wochenende/Feiertag) - ein
+     * zweiter Kandidat derselben Automatik, nicht nur das lernende Modell.
+     * Zwilling: {@code voltpilot_forecast.registry.LOAD_PROFILE}.
+     */
+    public static final String LOAD_PROFILE = "load-profile";
+    /**
      * S0 (N1, Captain 11.11.2026): die HISTORISCHE, falsch gelesene
      * Direktstrahlung, die {@code pv-physical} bis zum Fix rechnete -
      * absichtlich NICHT hier im Vokabular (Zwilling:
@@ -46,7 +53,7 @@ public final class ForecastModels {
     public static final String PV_PHYSICAL_LEGACY_DNI = "pv-physical-legacy-dni";
 
     private static final Map<String, List<String>> MODELS_BY_KIND = Map.of(
-            KIND_LOAD, List.of(LOAD_PERSISTENCE, LOAD_XGB),
+            KIND_LOAD, List.of(LOAD_PERSISTENCE, LOAD_XGB, LOAD_PROFILE),
             KIND_PV, List.of(PV_PHYSICAL, PV_RESIDUAL_XGB));
 
     private static final Map<String, String> BASELINE_BY_KIND = Map.of(
@@ -86,7 +93,7 @@ public final class ForecastModels {
     }
 
     public static Set<String> known() {
-        return Set.of(LOAD_PERSISTENCE, PV_PHYSICAL, LOAD_XGB, PV_RESIDUAL_XGB);
+        return Set.of(LOAD_PERSISTENCE, PV_PHYSICAL, LOAD_XGB, PV_RESIDUAL_XGB, LOAD_PROFILE);
     }
 
     /**
