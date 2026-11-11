@@ -58,8 +58,9 @@ TAGE.forEach((t, d) => {
       temperatureC: Math.round(temp * 10) / 10,
       cloudCoverPct: Math.round(c),
       ghiWM2: Math.round(ghi(d, h + 0.5)),
-      dniWM2: Math.round(klar(h + 0.5) * 1.25 * Math.pow(1 - c / 100, 1.5)),
+      dniWM2: null,
       dhiWM2: null,
+      dniNormalWM2: Math.round(klar(h + 0.5) * 1.25 * Math.pow(1 - c / 100, 1.5)),
     });
   }
 });

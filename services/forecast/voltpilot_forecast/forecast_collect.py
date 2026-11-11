@@ -60,7 +60,7 @@ from voltpilot_forecast.openmeteo import (
     hour_label_for,
 )
 from voltpilot_forecast.pgdsn import dsn_from_env
-from voltpilot_forecast.pv import PhysicalPvForecaster
+from voltpilot_forecast.pv import PhysicalPvForecaster, PhysicalPvForecasterLegacyDni
 from voltpilot_forecast.quality_repository import (
     STATUS_COLLECTING,
     STATUS_READY,
@@ -220,7 +220,7 @@ def _weather_history(conn, site_id: str, since: datetime) -> list[WeatherPoint]:
         cur.execute(
             """
             SELECT DISTINCT ON (time) time, temperature_c, cloud_cover_pct,
-                   ghi_w_m2, dni_w_m2, dhi_w_m2
+                   ghi_w_m2, dni_w_m2, dhi_w_m2, dni_normal_w_m2
             FROM weather_forecast
             WHERE site_id = %s AND time >= %s
             ORDER BY time, run_at DESC
@@ -236,8 +236,9 @@ def _weather_history(conn, site_id: str, since: datetime) -> list[WeatherPoint]:
             ghi_w_m2=None if g is None else float(g),
             dni_w_m2=None if dn is None else float(dn),
             dhi_w_m2=None if dh is None else float(dh),
+            dni_normal_w_m2=None if dnn is None else float(dnn),
         )
-        for ts, t, c, g, dn, dh in rows
+        for ts, t, c, g, dn, dh, dnn in rows
     ]
 
 
@@ -370,18 +371,26 @@ def collect_site(
         location=location,
         plant=plant,
     )
-    provider = (
-        OpenMeteoWeatherProvider(
-            WeatherForecast(
-                tenant_id=site.tenant_id,
-                site_id=site.site_id,
-                latitude=location.latitude,
-                longitude=location.longitude,
-                run_at=now,
-                points=tuple(weather_points),
-            )
+    # N1 fix (Captain 11.11.2026: "Behebe den Lesefehler"): the ACTIVE model
+    # now gets the correctly-read beam-normal DNI (``direct_normal_irradiance``,
+    # ``use_true_dni=True``). The historical (mislabeled, horizontal-as-DNI)
+    # reading is built separately below, purely as the permanent comparison
+    # candidate - never the one fed to ``physical``/the baseline.
+    weather_forecast = (
+        WeatherForecast(
+            tenant_id=site.tenant_id,
+            site_id=site.site_id,
+            latitude=location.latitude,
+            longitude=location.longitude,
+            run_at=now,
+            points=tuple(weather_points),
         )
         if weather_points
+        else None
+    )
+    provider = (
+        OpenMeteoWeatherProvider(weather_forecast, use_true_dni=True)
+        if weather_forecast
         else None
     )
 
@@ -403,6 +412,24 @@ def collect_site(
         _baseline_state(site, registry.PV_PHYSICAL, ForecastKind.PV, now)
     )
     summary.saved_models.append(registry.PV_PHYSICAL)
+
+    # -- S0 comparison-only candidate (N1): the OLD, mislabeled reading --------
+    # Deterministic, not ML, so it runs independently of ``ml_available``. Kept
+    # running forever so "alt gegen neu gegen gemessen" stays measured daily
+    # per site and the pauschale 14% loss assumption can later be checked
+    # against it (report section 4.2). Only meaningful with real weather - the
+    # clear-sky fallback has no DNI distinction to make, so a site without
+    # weather simply gets no row for this model this cycle. Deliberately NOT
+    # a registry.KNOWN_MODELS entry (see PV_PHYSICAL_LEGACY_DNI): it can never
+    # become active, by construction.
+    if weather_forecast:
+        legacy_provider = OpenMeteoWeatherProvider(weather_forecast, use_true_dni=False)
+        legacy = PhysicalPvForecasterLegacyDni(legacy_provider)
+        forecasts.save(legacy.forecast(config, pv_hor, now))
+        quality.upsert_model_state(
+            _baseline_state(site, registry.PV_PHYSICAL_LEGACY_DNI, ForecastKind.PV, now)
+        )
+        summary.saved_models.append(registry.PV_PHYSICAL_LEGACY_DNI)
 
     if not ml_available:
         return summary

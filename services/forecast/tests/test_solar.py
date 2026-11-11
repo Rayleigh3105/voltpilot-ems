@@ -68,6 +68,45 @@ def test_poa_zero_at_night_and_positive_by_day():
     assert poa_night == 0.0
 
 
+def test_poa_irradiance_winter_midday_true_dni_far_exceeds_mislabeled_horizontal():
+    """N1 pin (report section 4.2, labor evidence): Open-Meteo's
+    ``direct_radiation`` is HORIZONTAL direct irradiance, not beam-normal DNI.
+    ``pv-physical`` fed it straight into ``dni_w_m2`` until the Captain's fix
+    (11.11.2026: "Behebe den Lesefehler"), starving the beam at low winter sun -
+    exactly the gap closed by feeding ``direct_normal_irradiance`` (the true
+    DNI) instead. The old reading lives on only as ``pv-physical-legacy-dni``,
+    a permanent, never-active comparison candidate.
+
+    Winter midday evidence, 20.01.2026 12:00 UTC, 48.7N/12.65E: GHI 363.0 W/m2,
+    the mislabeled horizontal reading 298.0 W/m2, the true DNI 826.7 W/m2
+    (labor/cache/archiv_dni_2025-11-01.json). Same GHI/DHI, same plant - only
+    the beam source differs, so every bit of the gap below traces to N1.
+    """
+    location = GeoLocation(48.7, 12.65)
+    winter_noon = solar_position(location, datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc))
+    assert 15.0 < winter_noon.elevation_deg < 25.0  # low winter sun, not dusk
+
+    ghi, dhi = 363.0, 65.0
+    mislabeled_horizontal_as_dni = 298.0  # today's bug: direct_radiation
+    true_dni = 826.7  # direct_normal_irradiance
+
+    poa_today = poa_irradiance(
+        winter_noon, ghi, tilt_deg=30, surface_azimuth_deg=180,
+        albedo=0.2, diffuse_fraction=0.15,
+        dni_w_m2=mislabeled_horizontal_as_dni, dhi_w_m2=dhi,
+    )
+    poa_fixed = poa_irradiance(
+        winter_noon, ghi, tilt_deg=30, surface_azimuth_deg=180,
+        albedo=0.2, diffuse_fraction=0.15,
+        dni_w_m2=true_dni, dhi_w_m2=dhi,
+    )
+    assert poa_today == pytest.approx(293.0148, abs=0.01)
+    assert poa_fixed == pytest.approx(696.6465, abs=0.01)
+    # The report's year-long finding: the fix roughly doubles to triples the
+    # winter POA beam at a given sun angle - never a rounding-sized nudge.
+    assert poa_fixed > 2.0 * poa_today
+
+
 def test_south_beats_north_facing_poa_in_northern_hemisphere():
     pos = solar_position(BERLIN, datetime(2026, 6, 21, 11, 0, tzinfo=timezone.utc))
     ghi = clear_sky_ghi(pos)

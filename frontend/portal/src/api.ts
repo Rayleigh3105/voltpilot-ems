@@ -403,8 +403,11 @@ export interface WeatherPoint {
   temperatureC: number | null;
   cloudCoverPct: number | null;
   ghiWM2: number | null;
+  /** Historische Lesart (Open-Meteo `direct_radiation`, waagerecht - N1). */
   dniWM2: number | null;
   dhiWM2: number | null;
+  /** Richtig gelesene Direktstrahlung senkrecht zur Sonne (`direct_normal_irradiance`, S0). */
+  dniNormalWM2: number | null;
 }
 
 export interface WeatherForecast {
@@ -1070,12 +1073,19 @@ export interface History {
  * every model's lifecycle, and the daily error/skill series from the
  * evaluation job. Model ids: load-persistence / pv-physical (Vergleichsmodelle),
  * load-xgb / pv-residual-xgb (lernende Kandidaten, shadow-only until promoted).
+ *
+ * `pv-physical-legacy-dni` (S0/N1, 11.11.2026) ist absichtlich NICHT in der
+ * Registry/im Schalter-Vokabular (`ForecastModels.java`,
+ * `voltpilot_forecast.registry`) - sie läuft trotzdem jeden Zyklus mit und
+ * taucht hier nur DESHALB auf, weil die tägliche Bewertung jede in
+ * `forecast_accuracy` stehende Modell-Id zeigt, nicht nur die bekannten.
  */
 export type ForecastModelId =
   | 'load-persistence'
   | 'pv-physical'
   | 'load-xgb'
-  | 'pv-residual-xgb';
+  | 'pv-residual-xgb'
+  | 'pv-physical-legacy-dni';
 
 export interface FeatureImportance {
   feature: string;

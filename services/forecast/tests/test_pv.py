@@ -11,7 +11,7 @@ from voltpilot_forecast.domain import (
     PlantSpec,
     SiteForecastConfig,
 )
-from voltpilot_forecast.pv import PhysicalPvForecaster
+from voltpilot_forecast.pv import PhysicalPvForecaster, PhysicalPvForecasterLegacyDni
 from voltpilot_forecast.weather import (
     ClearSkyWeatherProvider,
     IrradianceSample,
@@ -114,3 +114,57 @@ def test_weather_provider_is_swappable():
     )
     assert sum(boosted.values) > sum(base.values)
     assert boosted.method == "clear_sky_v1:double"
+
+
+# ---- S0 (N1): pv-physical now reads the true DNI; the old reading lives on
+# ---- as the never-active comparison candidate pv-physical-legacy-dni ------
+
+
+def test_legacy_candidate_tags_its_series_with_its_own_model_id():
+    series = PhysicalPvForecasterLegacyDni().forecast(
+        _config(PlantSpec(capacity_kwp=5.0)),
+        Horizon.hours(24),
+        datetime(2026, 1, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert series.model == "pv-physical-legacy-dni"
+    assert series.method == "clear_sky_v1_legacy_dni:clear_sky"
+
+
+def test_the_fixed_baseline_recovers_winter_generation_the_legacy_one_lost_to_n1():
+    """Same winter GHI/DHI (20.01.2026, report section 4.2) - only the beam
+    source differs, so the gap below is exactly what N1 cost before the fix.
+
+    ``pv-physical`` (fed the true DNI) is now the one that recovers the
+    winter yield; ``pv-physical-legacy-dni`` (fed the old, mislabeled
+    horizontal reading) is kept only so the daily evaluation can keep
+    comparing "alt gegen neu gegen gemessen".
+    """
+
+    class FixedIrradianceProvider(WeatherProvider):
+        name = "fixed"
+
+        def __init__(self, dni: float) -> None:
+            self._dni = dni
+
+        def irradiance(self, location, timestamps):
+            return [
+                IrradianceSample(ghi_w_m2=363.0, dni_w_m2=self._dni, dhi_w_m2=65.0)
+                for _ in timestamps
+            ]
+
+    location = GeoLocation(48.7, 12.65)
+    run_at = datetime(2026, 1, 20, 9, 0, tzinfo=timezone.utc)
+    horizon = Horizon.hours(6)
+    config = SiteForecastConfig(
+        tenant_id="t", site_id="s", location=location, plant=PlantSpec(capacity_kwp=100.0)
+    )
+
+    legacy = PhysicalPvForecasterLegacyDni(weather=FixedIrradianceProvider(298.0)).forecast(
+        config, horizon, run_at
+    )
+    fixed = PhysicalPvForecaster(weather=FixedIrradianceProvider(826.7)).forecast(
+        config, horizon, run_at
+    )
+    assert legacy.model == "pv-physical-legacy-dni"
+    assert fixed.model == "pv-physical"
+    assert sum(fixed.values) > 2.0 * sum(legacy.values)

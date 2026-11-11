@@ -362,7 +362,7 @@ export function installSteuerungFixtures() {
     history: result(verlauf),
     telemetry: result([{ ts: JETZT, powerKw: netz[J], socPct: soc[J], pvPowerKw: pv[J], loadKw: gesamtLast(J), gridLimitKw: 22 }]),
     prices: result({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: preis.map((p, i) => ({ ts: ts(i), end: ts(i + 1), priceEurMwh: p * 10 })) }),
-    weather: result({ runAt: JETZT, points: (D.temp as number[]).map((t, i) => ({ ts: ts(i), temperatureC: t, cloudCoverPct: 10, ghiWM2: 0, dniWM2: 0, dhiWM2: 0 })) }),
+    weather: result({ runAt: JETZT, points: (D.temp as number[]).map((t, i) => ({ ts: ts(i), temperatureC: t, cloudCoverPct: 10, ghiWM2: 0, dniWM2: 0, dhiWM2: 0, dniNormalWM2: 0 })) }),
     siteVerbraucher: result({ verbraucher, ladepunkte: { standard: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'pausieren' }, standardFolger: 0, gesamt: 2, rahmen }, rangliste }),
     saveRangliste: async (_s: string, eintraege: { art: string; entityId?: string }[]) => ({
       verbraucher, ladepunkte: { standard: null, standardFolger: 0, gesamt: 2, rahmen },

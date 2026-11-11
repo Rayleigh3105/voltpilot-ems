@@ -1,0 +1,23 @@
+-- =============================================================================
+-- V20261111130000 - S0 (Prognose-Konzept, N1, Captain 11.11.2026: "Behebe den
+--                   Lesefehler"): the correctly-read direct-normal irradiance,
+--                   stored ALONGSIDE the existing (mislabeled) reading.
+-- -----------------------------------------------------------------------------
+-- docs/forecasting.md / report `vp-prognosen-konzept`, section 4.2: Open-Meteo's
+-- `direct_radiation` is HORIZONTAL direct irradiance (direct_radiation +
+-- diffuse_radiation == shortwave_radiation exactly), not beam-normal DNI - but
+-- `weather_forecast.dni_w_m2` has always been read FROM `direct_radiation` and
+-- fed straight into the POA transposition's `dni_w_m2` parameter, which treats
+-- it AS beam-normal. That understates the PV forecast whenever the sun is low
+-- (worst in winter: roughly half the true yield at midday in January).
+--
+-- `dni_normal_w_m2` is the newly fetched `direct_normal_irradiance` (the TRUE
+-- DNI); the active `pv-physical` model now reads it
+-- (`OpenMeteoWeatherProvider(use_true_dni=True)`, services/forecast
+-- forecast_collect.py). The historical `dni_w_m2` column is left untouched and
+-- keeps being fetched/stored: it feeds the permanent, never-active comparison
+-- candidate `pv-physical-legacy-dni` (services/forecast registry.py/pv.py), so
+-- "alt gegen neu gegen gemessen" stays measured daily per site.
+-- =============================================================================
+
+ALTER TABLE weather_forecast ADD COLUMN IF NOT EXISTS dni_normal_w_m2 NUMERIC(8, 2);

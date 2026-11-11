@@ -33,6 +33,24 @@ PV_PHYSICAL = "pv-physical"
 LOAD_XGB = "load-xgb"
 #: Challenger: physical PV model + learned residual correction (XGBoost).
 PV_RESIDUAL_XGB = "pv-residual-xgb"
+#: S0 (N1, Captain 11.11.2026: "Behebe den Lesefehler") - the HISTORICAL,
+#: mislabeled reading PV_PHYSICAL used until the fix: Open-Meteo's horizontal
+#: ``direct_radiation`` fed straight into the beam-normal DNI parameter
+#: (docs/forecasting.md). PV_PHYSICAL itself now reads the correct
+#: ``direct_normal_irradiance``; this id keeps the OLD computation running
+#: FOREVER as a comparison-only reference, so "alt gegen neu gegen gemessen"
+#: stays measured daily per site and the pauschale 14% loss assumption can
+#: later be checked against it.
+#:
+#: Deliberately ABSENT from KNOWN_MODELS below: unlike a real challenger it
+#: must never become active - not by convention, but because
+#: :func:`active_model` (env) and the api's per-site/platform model choice
+#: (``model_choice.py``, mirrored in ``ForecastModels.java``) both gate on
+#: membership here, so there is no path by which a human can select it. The
+#: daily evaluation still measures it: ``evaluate.py`` groups by the ``kind``
+#: COLUMN of the ``forecast`` table, never by this registry, so an unregistered
+#: id is scored exactly like any other.
+PV_PHYSICAL_LEGACY_DNI = "pv-physical-legacy-dni"
 
 #: The baseline per kind - the skill-score reference and the shipped default.
 BASELINE_MODELS: Mapping[ForecastKind, str] = {
@@ -78,7 +96,11 @@ def active_models(env: Mapping[str, str]) -> dict[ForecastKind, str]:
 
 
 def kind_of(model_id: str) -> ForecastKind:
-    """The forecast kind a model id belongs to."""
+    """The forecast kind a model id belongs to.
+
+    Deliberately unaware of ``PV_PHYSICAL_LEGACY_DNI`` - see its docstring:
+    nothing that calls this may ever be asked to resolve it.
+    """
     if model_id in (LOAD_PERSISTENCE, LOAD_XGB):
         return ForecastKind.LOAD
     if model_id in (PV_PHYSICAL, PV_RESIDUAL_XGB):

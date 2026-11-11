@@ -254,7 +254,7 @@ export function lageDaten(lage: Lage): LageDaten {
       const h = (k % 24) + 0.5;
       const morgen = k >= 24;
       const g = glocke(h) * (morgen ? 360 : 430);
-      return { ts: iso(ms), temperatureC: r2(4 + 6 * Math.max(0, Math.sin((Math.PI * (h - 8)) / 12)) - (morgen ? 1 : 0)), cloudCoverPct: morgen ? 45 : 8, ghiWM2: r2(g), dniWM2: r2(g * 0.8), dhiWM2: r2(g * 0.2) };
+      return { ts: iso(ms), temperatureC: r2(4 + 6 * Math.max(0, Math.sin((Math.PI * (h - 8)) / 12)) - (morgen ? 1 : 0)), cloudCoverPct: morgen ? 45 : 8, ghiWM2: r2(g), dniWM2: r2(g * 0.8), dhiWM2: r2(g * 0.2), dniNormalWM2: r2(g * 0.8) };
     }),
   };
 

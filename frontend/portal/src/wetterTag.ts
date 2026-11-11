@@ -55,6 +55,7 @@ export interface WetterStunde {
   temp: number | null;
   wolken: number | null;
   ghi: number | null;
+  /** Direktstrahlung senkrecht zur Sonne (`dniNormalWM2`, richtig gelesen - N1/S0). */
   dni: number | null;
   art: HimmelArt | null;
 }
@@ -160,7 +161,10 @@ function stundenRaster(punkte: readonly WeatherPoint[]): WetterStunde[] {
         temp: mittel(liste, (p) => p.temperatureC),
         wolken,
         ghi,
-        dni: mittel(liste, (p) => p.dniWM2),
+        // N1/S0 (Captain 11.11.2026): die Sonnenstunden rechnen jetzt mit der
+        // richtig gelesenen Direktstrahlung senkrecht zur Sonne, nicht mehr
+        // mit der waagerechten (historischen) Lesart `dniWM2`.
+        dni: mittel(liste, (p) => p.dniNormalWM2),
         art: art(wolken, ghi),
       };
     });

@@ -33,6 +33,17 @@ public final class ForecastModels {
     /** Lernende Kandidaten - im Schatten, bis jemand sie bewusst übernimmt. */
     public static final String LOAD_XGB = "load-xgb";
     public static final String PV_RESIDUAL_XGB = "pv-residual-xgb";
+    /**
+     * S0 (N1, Captain 11.11.2026): die HISTORISCHE, falsch gelesene
+     * Direktstrahlung, die {@code pv-physical} bis zum Fix rechnete -
+     * absichtlich NICHT hier im Vokabular (Zwilling:
+     * {@code voltpilot_forecast.registry.PV_PHYSICAL_LEGACY_DNI}), damit sie
+     * nie aktiv gewählt werden kann, weder über die Umgebung noch über diesen
+     * Schalter. Die tägliche Bewertung sieht sie trotzdem: sie liest jede in
+     * {@code forecast_accuracy} stehende Modell-Id, nicht nur die hier
+     * bekannten.
+     */
+    public static final String PV_PHYSICAL_LEGACY_DNI = "pv-physical-legacy-dni";
 
     private static final Map<String, List<String>> MODELS_BY_KIND = Map.of(
             KIND_LOAD, List.of(LOAD_PERSISTENCE, LOAD_XGB),

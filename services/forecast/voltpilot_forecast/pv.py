@@ -13,6 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from voltpilot_forecast import registry
 from voltpilot_forecast.domain import (
     ForecastKind,
     ForecastPoint,
@@ -136,3 +137,31 @@ class PhysicalPvForecaster(PvForecaster):
         # geometry - so it only ever catches a slot whose irradiance does not
         # belong to that slot's sun.
         return apply_clear_sky_ceiling(config, list(timestamps), values)
+
+
+class PhysicalPvForecasterLegacyDni(PhysicalPvForecaster):
+    """S0 comparison-only candidate: the HISTORICAL, mislabeled DNI reading.
+
+    N1 (docs/forecasting.md): Open-Meteo's ``direct_radiation`` is horizontal,
+    not beam-normal, but ``pv-physical`` fed it straight into
+    :func:`~voltpilot_forecast.solar.poa_irradiance`'s ``dni_w_m2`` parameter,
+    which treats it AS beam-normal - understating the POA beam whenever the
+    sun is low (worst in winter). The captain ordered the reading error fixed
+    outright (11.11.2026: "Behebe den Lesefehler"), so ``pv-physical`` itself
+    now gets a weather provider reading ``direct_normal_irradiance``
+    (``OpenMeteoWeatherProvider(use_true_dni=True)``) - this class keeps the
+    OLD reading (``use_true_dni=False``) running forever as a never-active
+    reference, so "alt gegen neu gegen gemessen" stays measured daily per
+    site and the pauschale 14% loss assumption can later be checked against
+    it. Same plant parameters, same transposition, same derate as
+    ``pv-physical`` - the ONLY difference is the weather provider's DNI
+    source, so every difference in ``forecast_accuracy`` traces to exactly
+    that one reading.
+
+    Deliberately NOT in :data:`~voltpilot_forecast.registry.KNOWN_MODELS`
+    (see :data:`~voltpilot_forecast.registry.PV_PHYSICAL_LEGACY_DNI`): it can
+    never become the active model, by construction, not by convention.
+    """
+
+    method = "clear_sky_v1_legacy_dni"
+    model_id = registry.PV_PHYSICAL_LEGACY_DNI

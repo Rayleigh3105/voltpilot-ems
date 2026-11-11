@@ -101,5 +101,9 @@ class ForecastModelsTest {
         assertThat(ForecastModels.kindOf("nichts-davon")).isNull();
         assertThat(ForecastModels.isKind("waerme")).isFalse();
         assertThat(ForecastModels.known()).hasSize(4);
+        // S0 (N1): die historische Lesart ist bewusst NICHT im Vokabular - sie
+        // kann so nie aktiv gewählt werden, auch nicht als art-fremde Wahl.
+        assertThat(ForecastModels.kindOf(ForecastModels.PV_PHYSICAL_LEGACY_DNI)).isNull();
+        assertThat(ForecastModels.known()).doesNotContain(ForecastModels.PV_PHYSICAL_LEGACY_DNI);
     }
 }

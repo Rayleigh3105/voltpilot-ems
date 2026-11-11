@@ -12,7 +12,8 @@
     "cloud_cover": "%",
     "shortwave_radiation": "W/m²",
     "direct_radiation": "W/m²",
-    "diffuse_radiation": "W/m²"
+    "diffuse_radiation": "W/m²",
+    "direct_normal_irradiance": "W/m²"
   },
   "hourly": {
     "time": ["2026-07-01T00:00", "2026-07-01T01:00", "2026-07-01T02:00", "2026-07-01T12:00", "2026-07-01T13:00"],
@@ -20,6 +21,7 @@
     "cloud_cover": [80, 75, 60, 20, 10],
     "shortwave_radiation": [0.0, 0.0, 0.0, 720.0, 680.0],
     "direct_radiation": [0.0, 0.0, 0.0, 540.0, 500.0],
-    "diffuse_radiation": [0.0, 0.0, 0.0, 180.0, 180.0]
+    "diffuse_radiation": [0.0, 0.0, 0.0, 180.0, 180.0],
+    "direct_normal_irradiance": [0.0, 0.0, 0.0, 605.0, 560.0]
   }
 }

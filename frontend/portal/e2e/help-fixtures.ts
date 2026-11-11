@@ -325,7 +325,7 @@ export function installHelpFixtures() {
     prices: result({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: slots.map((s, i) => ({ ts: s.start, end: ts(i + 1), priceEurMwh: s.priceEurMwh })) }),
     priceHistory: result({ biddingZone: 'DE-LU', currency: 'EUR', bucket: 'PT15M', from: DAY, to: '2026-09-10T22:00:00Z',
       buckets: slots.map((s) => ({ ts: s.start, avgEurMwh: s.priceEurMwh, minEurMwh: s.priceEurMwh, maxEurMwh: s.priceEurMwh })), summary: { count: 96, coverageStart: DAY, coverageEnd: ts(96), cheapestTs: ts(28), mostExpensiveTs: ts(76), avgEurMwh: 65, minEurMwh: 30, maxEurMwh: 100 } }),
-    weather: result({ runAt: NOW, points: slots.map((s, i) => ({ ts: s.start, temperatureC: 18 + 7 * Math.sin(i / 96 * Math.PI), cloudCoverPct: 15, ghiWM2: s.pvKw * 100, dniWM2: s.pvKw * 80, dhiWM2: s.pvKw * 20 })) }),
+    weather: result({ runAt: NOW, points: slots.map((s, i) => ({ ts: s.start, temperatureC: 18 + 7 * Math.sin(i / 96 * Math.PI), cloudCoverPct: 15, ghiWM2: s.pvKw * 100, dniWM2: s.pvKw * 80, dhiWM2: s.pvKw * 20, dniNormalWM2: s.pvKw * 80 })) }),
     forecastQuality: result({ activeLoadModel: 'load-persistence', activePvModel: 'pv-physical', models: [
       ['load-persistence', 'load', true], ['pv-physical', 'pv', true], ['load-xgb', 'load', false], ['pv-residual-xgb', 'pv', false],
     ].map(([model, kind, active]) => ({ model, kind, active, status: 'ready', daysCollected: 35, daysRequired: 14, trainedAt: NOW, trainRows: 3360, featureImportance: [], updatedAt: NOW })),

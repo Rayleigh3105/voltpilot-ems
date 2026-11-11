@@ -16,8 +16,9 @@ function punkte(wolkenJeTag: number[], dni = true): WeatherPoint[] {
         temperatureC: 8 + (hell ? h - 8 : 0) - tag,
         cloudCoverPct: wolken,
         ghiWM2: hell ? 400 : 0,
-        dniWM2: dni ? (hell ? (wolken < 50 ? 300 : 40) : 0) : null,
+        dniWM2: null,
         dhiWM2: null,
+        dniNormalWM2: dni ? (hell ? (wolken < 50 ? 300 : 40) : 0) : null,
       });
     }
   });
@@ -162,8 +163,9 @@ describe('wetterModell · Stundenraster', () => {
         temperatureC: 10 + (q % 4),
         cloudCoverPct: 10,
         ghiWM2: hell ? 400 : 0,
-        dniWM2: hell ? 300 : 0,
+        dniWM2: null,
         dhiWM2: null,
+        dniNormalWM2: hell ? 300 : 0,
       });
     }
     const m = wetterModell({ punkte: fein, prognose: [], messung: null, jetzt: um(13, 50) });

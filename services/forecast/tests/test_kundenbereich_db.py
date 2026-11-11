@@ -75,6 +75,7 @@ CREATE TABLE plan_accuracy (
     realized_cost_eur NUMERIC, n_slots INTEGER, computed_at TIMESTAMPTZ,
     PRIMARY KEY (site_id, day));
 ALTER TABLE tenant ADD COLUMN IF NOT EXISTS beendet_am TIMESTAMPTZ;
+ALTER TABLE weather_forecast ADD COLUMN IF NOT EXISTS dni_normal_w_m2 NUMERIC(8, 2);
 """
 
 #: The five tables the forecast service writes per site.

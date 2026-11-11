@@ -535,7 +535,15 @@ def test_the_collector_clips_pv_but_never_load():
     forecasts = InMemoryForecastRepository()
     quality = InMemoryQualityRepository()
     rows = [
-        (p.timestamp, p.temperature_c, p.cloud_cover_pct, p.ghi_w_m2, p.dni_w_m2, p.dhi_w_m2)
+        (
+            p.timestamp,
+            p.temperature_c,
+            p.cloud_cover_pct,
+            p.ghi_w_m2,
+            p.dni_w_m2,
+            p.dhi_w_m2,
+            p.dni_normal_w_m2,
+        )
         for p in _weather(30)
     ]
     collect_site(
@@ -552,3 +560,92 @@ def test_the_collector_clips_pv_but_never_load():
     pv = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
     assert len(load) == 192
     assert len(pv) == _covered_slots(30)
+
+
+# ---- S0 (N1, Captain 11.11.2026): pv-physical now reads the true DNI; the
+# ---- old reading persists forever as pv-physical-legacy-dni, never active --
+
+
+def _weather_with_distinct_dni(hours: int, *, legacy_dni: float, true_dni: float):
+    """Like ``_weather()`` but with DISTINGUISHABLE legacy/true DNI, so a test
+    can tell which reading a persisted series actually used."""
+    first = NOW.replace(minute=0, second=0, microsecond=0)
+    return [
+        WeatherPoint(
+            timestamp=first + timedelta(hours=h),
+            temperature_c=18.0,
+            cloud_cover_pct=10.0,
+            ghi_w_m2=300.0,
+            dni_w_m2=legacy_dni,
+            dhi_w_m2=50.0,
+            dni_normal_w_m2=true_dni,
+        )
+        for h in range(hours)
+    ]
+
+
+def test_collect_site_persists_the_legacy_candidate_alongside_the_fixed_baseline():
+    """With real weather, pv-physical-legacy-dni runs every cycle exactly like
+    the baseline - same slots, both 'ready' - but pv-physical now reads the
+    TRUE DNI while the legacy candidate keeps the OLD, mislabeled one."""
+    forecasts = InMemoryForecastRepository()
+    quality = InMemoryQualityRepository()
+    points = _weather_with_distinct_dni(30, legacy_dni=150.0, true_dni=500.0)
+    rows = [
+        (
+            p.timestamp,
+            p.temperature_c,
+            p.cloud_cover_pct,
+            p.ghi_w_m2,
+            p.dni_w_m2,
+            p.dhi_w_m2,
+            p.dni_normal_w_m2,
+        )
+        for p in points
+    ]
+    summary = collect_site(
+        _FakeConnection(_telemetry_days(3), weather=rows),
+        forecasts,
+        quality,
+        SITE,
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+    )
+    assert registry.PV_PHYSICAL_LEGACY_DNI in summary.saved_models
+
+    baseline = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
+    legacy = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL_LEGACY_DNI)
+    assert len(legacy) == len(baseline)  # same clipped horizon, same cadence
+
+    state = quality.model_states[(SITE.site_id, registry.PV_PHYSICAL_LEGACY_DNI)]
+    assert state.status == STATUS_READY
+    assert state.kind == ForecastKind.PV.value
+
+    # The true DNI (500) exceeds the legacy horizontal reading (150) at every
+    # sunlit slot, so the corrected baseline must generate more than the
+    # permanently-old comparison candidate.
+    assert sum(baseline.values) > sum(legacy.values)
+
+
+def test_collect_site_skips_the_legacy_candidate_without_real_weather():
+    """No weather -> nothing to compare; only the clear-sky baseline runs."""
+    forecasts = InMemoryForecastRepository()
+    quality = InMemoryQualityRepository()
+    summary = collect_site(
+        _FakeConnection(_telemetry_days(3)),  # no weather rows
+        forecasts,
+        quality,
+        SITE,
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+    )
+    assert registry.PV_PHYSICAL in summary.saved_models
+    assert registry.PV_PHYSICAL_LEGACY_DNI not in summary.saved_models
+    assert (
+        forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL_LEGACY_DNI)
+        is None
+    )

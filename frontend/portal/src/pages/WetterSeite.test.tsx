@@ -42,8 +42,9 @@ function punkte(): WeatherPoint[] {
         temperatureC: 8 + (hell ? h - 8 : 0),
         cloudCoverPct: wolken,
         ghiWM2: hell ? 400 : 0,
-        dniWM2: hell ? (wolken < 50 ? 300 : 40) : 0,
+        dniWM2: null,
         dhiWM2: null,
+        dniNormalWM2: hell ? (wolken < 50 ? 300 : 40) : 0,
       });
     }
   });

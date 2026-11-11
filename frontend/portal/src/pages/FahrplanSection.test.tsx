@@ -572,6 +572,7 @@ describe('FahrplanSection · die Lage in „Gut zu wissen"', () => {
         ghiWM2: null,
         dniWM2: null,
         dhiWM2: null,
+        dniNormalWM2: null,
       })),
     });
     render(<FahrplanSection site={SITE} />);

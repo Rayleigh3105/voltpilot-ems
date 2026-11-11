@@ -65,6 +65,9 @@ def test_parses_hourly_points_with_all_channels():
     assert midday.ghi_w_m2 == 720.0
     assert midday.dni_w_m2 == 540.0
     assert midday.dhi_w_m2 == 180.0
+    # direct_normal_irradiance (N1): the TRUE beam-normal DNI, requested and
+    # parsed alongside the historical (mislabeled) direct_radiation reading.
+    assert midday.dni_normal_w_m2 == 605.0
 
 
 def test_parse_makes_times_utc_aware():
@@ -116,6 +119,7 @@ def test_source_builds_keyless_request():
     assert call["params"]["latitude"].startswith("52.52")
     assert call["params"]["timezone"] == "UTC"
     assert "shortwave_radiation" in call["params"]["hourly"]
+    assert "direct_normal_irradiance" in call["params"]["hourly"]
     # No key/token param anywhere - the source is keyless.
     assert "apikey" not in call["params"] and "key" not in call["params"]
     assert len(fc) == 5
@@ -192,6 +196,78 @@ def test_weather_provider_zero_outside_horizon():
         BERLIN, [datetime(2030, 1, 1, 12, 0, tzinfo=timezone.utc)]
     )
     assert samples[0].ghi_w_m2 == 0.0
+
+
+# ---- N1: the use_true_dni switch -----------------------------------------
+# ``use_true_dni=False`` is the HISTORICAL reading (pv-physical-legacy-dni,
+# the comparison-only candidate); ``use_true_dni=True`` is what pv-physical
+# itself now uses (Captain 11.11.2026: "Behebe den Lesefehler").
+
+
+def test_default_provider_reads_the_historical_mislabeled_horizontal_value():
+    """``use_true_dni=False`` - pv-physical-legacy-dni's reading.
+
+    Hour-sized request (two points an hour apart), same convention as
+    ``test_weather_provider_leaves_an_hour_sized_request_unshaped``: the
+    12:00 row's raw values come back untouched - no shaping ratio involved.
+    """
+    fc = parse_forecast_response(_fixture(), TENANT, SITE, RUN_AT)
+    provider = OpenMeteoWeatherProvider(forecast=fc)
+    assert provider.name == "open_meteo"
+    samples = provider.irradiance(
+        BERLIN,
+        [
+            datetime(2026, 7, 1, 11, 0, tzinfo=timezone.utc),
+            datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+        ],
+    )
+    assert samples[0].dni_w_m2 == 540.0  # direct_radiation, unchanged
+
+
+def test_true_dni_provider_reads_direct_normal_irradiance_instead():
+    """``use_true_dni=True`` - pv-physical's reading since the N1 fix: the
+    CORRECT column, same row, different field."""
+    fc = parse_forecast_response(_fixture(), TENANT, SITE, RUN_AT)
+    provider = OpenMeteoWeatherProvider(forecast=fc, use_true_dni=True)
+    assert provider.name == "open_meteo_dni"
+    samples = provider.irradiance(
+        BERLIN,
+        [
+            datetime(2026, 7, 1, 11, 0, tzinfo=timezone.utc),
+            datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+        ],
+    )
+    assert samples[0].dni_w_m2 == 605.0  # direct_normal_irradiance, not 540.0
+    # GHI/DHI are untouched by the switch - only the beam source differs.
+    assert samples[0].ghi_w_m2 == 720.0
+    assert samples[0].dhi_w_m2 == 180.0
+
+
+def test_true_dni_provider_falls_back_to_none_without_the_new_field():
+    """A point fetched before N1 shipped (no direct_normal_irradiance) must not
+    crash or silently reuse the mislabeled reading - it is honestly unknown."""
+    fc = parse_forecast_response(
+        json.dumps(
+            {
+                "latitude": 52.52,
+                "longitude": 13.4,
+                "hourly": {
+                    "time": ["2026-07-01T12:00"],
+                    "shortwave_radiation": [720.0],
+                    "direct_radiation": [540.0],
+                    "diffuse_radiation": [180.0],
+                },
+            }
+        ),
+        TENANT,
+        SITE,
+        RUN_AT,
+    )
+    provider = OpenMeteoWeatherProvider(forecast=fc, use_true_dni=True)
+    samples = provider.irradiance(
+        BERLIN, [datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)]
+    )
+    assert samples[0].dni_w_m2 is None
 
 
 # ---- collector store -----------------------------------------------------

@@ -65,23 +65,25 @@ class InMemoryWeatherForecastRepository(WeatherForecastRepository):
 _UPSERT_SQL = """
 INSERT INTO weather_forecast (
     time, tenant_id, site_id, run_at,
-    temperature_c, cloud_cover_pct, ghi_w_m2, dni_w_m2, dhi_w_m2, source
-) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    temperature_c, cloud_cover_pct, ghi_w_m2, dni_w_m2, dhi_w_m2,
+    dni_normal_w_m2, source
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, run_at, time)
 DO UPDATE SET
-    temperature_c   = EXCLUDED.temperature_c,
-    cloud_cover_pct = EXCLUDED.cloud_cover_pct,
-    ghi_w_m2        = EXCLUDED.ghi_w_m2,
-    dni_w_m2        = EXCLUDED.dni_w_m2,
-    dhi_w_m2        = EXCLUDED.dhi_w_m2,
-    source          = EXCLUDED.source;
+    temperature_c    = EXCLUDED.temperature_c,
+    cloud_cover_pct  = EXCLUDED.cloud_cover_pct,
+    ghi_w_m2         = EXCLUDED.ghi_w_m2,
+    dni_w_m2         = EXCLUDED.dni_w_m2,
+    dhi_w_m2         = EXCLUDED.dhi_w_m2,
+    dni_normal_w_m2  = EXCLUDED.dni_normal_w_m2,
+    source           = EXCLUDED.source;
 """
 
 _LATEST_RUN_SQL = "SELECT max(run_at) FROM weather_forecast WHERE site_id = %s"
 
 _LATEST_POINTS_SQL = """
 SELECT time, temperature_c, cloud_cover_pct, ghi_w_m2, dni_w_m2, dhi_w_m2,
-       tenant_id, source
+       tenant_id, source, dni_normal_w_m2
 FROM weather_forecast
 WHERE site_id = %s AND run_at = %s
 ORDER BY time
@@ -110,6 +112,7 @@ class TimescaleWeatherForecastRepository(WeatherForecastRepository):
                 p.ghi_w_m2,
                 p.dni_w_m2,
                 p.dhi_w_m2,
+                p.dni_normal_w_m2,
                 forecast.source,
             )
             for p in forecast.points
@@ -147,6 +150,7 @@ class TimescaleWeatherForecastRepository(WeatherForecastRepository):
                 ghi_w_m2=None if r[3] is None else float(r[3]),
                 dni_w_m2=None if r[4] is None else float(r[4]),
                 dhi_w_m2=None if r[5] is None else float(r[5]),
+                dni_normal_w_m2=None if r[8] is None else float(r[8]),
             )
             for r in fetched
         )

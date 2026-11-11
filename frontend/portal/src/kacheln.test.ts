@@ -207,6 +207,7 @@ describe('Sonne', () => {
     ghiWM2: h >= 7 && h <= 19 ? 800 - Math.abs(h - 13) * 120 : 0,
     dniWM2: null,
     dhiWM2: null,
+    dniNormalWM2: null,
   }));
 
   it('Sonnenstärke jetzt, Lage am Himmel, gemessen und erwartet', () => {

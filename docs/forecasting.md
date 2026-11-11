@@ -25,8 +25,20 @@ flowchart TD
 | `pv-physical` | Physikalische PV-Prognose |
 | `load-xgb` | Gelernte Lastprognose |
 | `pv-residual-xgb` | Gelernte Korrektur der physikalischen PV-Prognose |
+| `pv-physical-legacy-dni` | Dieselbe Physik mit der historischen, falsch gelesenen Direktstrahlung - reiner Vergleichs-Kandidat, siehe unten |
 
 Trainingsvoraussetzungen und Defaults stehen in [Registry](../services/forecast/voltpilot_forecast/registry.py) und [ML](../services/forecast/voltpilot_forecast/ml.py). Ohne ausreichende Daten wird `collecting` mit Fortschritt gemeldet; der Kandidat liefert dann keine vorgetäuschte Prognose. Training und Bewertung verwenden den vorgesehenen Berlin-Tagesbezug.
+
+### Die Direktstrahlung: Lesefehler N1 und sein Vergleichs-Kandidat (S0, 11.11.2026)
+
+Open-Meteo liefert `direct_radiation` WAAGERECHT, nicht senkrecht zur Sonne; die senkrechte Größe heißt dort `direct_normal_irradiance` (die echte DNI). `pv-physical` las bis zum 11.11.2026 `direct_radiation` als DNI - bei niedrigem Sonnenstand (Winter) unterschätzte das den Ertrag um mehr als die Hälfte (Scout-Bericht `vp-prognosen-konzept`, Abschnitt 4.2). Der Captain hat den Lesefehler ausdrücklich beheben lassen ("Behebe den Lesefehler"), nicht nur im Schatten mitlaufen lassen:
+
+- `pv-physical` liest seitdem `direct_normal_irradiance` (`OpenMeteoWeatherProvider(use_true_dni=True)`, `weather_forecast.dni_normal_w_m2`). Nichts an Modell-Id, Registry-Eintrag oder Auswahl-Mechanik ändert sich - nur die Eingangsgröße.
+- `pv-physical-legacy-dni` rechnet mit derselben Physik weiter die ALTE, falsch gelesene Reihe (`weather_forecast.dni_w_m2`, unverändert) - für immer, als reiner Vergleichs-Maßstab ("alt gegen neu gegen gemessen"), bis die pauschale Verlustannahme (14 %) mit genug Messwerten geprüft werden kann.
+- `pv-physical-legacy-dni` ist absichtlich NICHT in `KNOWN_MODELS`/`ForecastModels.known()`: sie kann nie als aktives Modell gewählt werden, weder über die Anlagen-/Plattform-Wahl noch über die Umgebungsvariable - das ist über den Vokabular-Zaun erzwungen, nicht nur vereinbart. Die tägliche Bewertung sieht sie trotzdem: `forecast_accuracy` gruppiert über die `kind`-Spalte der `forecast`-Tabelle, nie über diese Registry.
+- `pv-residual-xgb` baut auf `pv-physical` auf (`physical + gelernter Rest`) und berechnet seine Basis bei jedem Training live neu - ein Neustart des Collectors (jedes Deployment) trainiert den Rest automatisch gegen die neue, korrigierte Basis; es gibt keine doppelte Korrektur, weil nirgends eine alte Basis zwischengespeichert wird.
+
+Live wirkt der Fix erst mit einem Deploy, den firstmate mit dem Captain abstimmt.
 
 ## Auswahl und Rücknahme
 
