@@ -13,7 +13,7 @@ import { iso, mitternacht, tagPlus } from '../bezugsPeriode';
 import { VORGABE_ZEITZONE } from '../uemsZustand';
 import './BenutzerPage.css';
 
-const vorgang: Record<string, string> = { zuweisen: 'Zugriff gewährt', entziehen: 'Zugriff beendet', sperren: 'Benutzer gesperrt', entfernen: 'Benutzer entfernt', erste_anmeldung: 'Erste Anmeldung', startpasswort_neu: 'Startpasswort neu vergeben', gewaehren: 'Unterstützung gewährt', verlaengern: 'Unterstützung verlängert', beenden: 'Unterstützung beendet', ablaufen: 'Unterstützung abgelaufen', anfragen: 'Anfrage zur Unterstützung', notfall: 'Notfall-Zugriff' };
+const vorgang: Record<string, string> = { zuweisen: 'Zugriff gewährt', entziehen: 'Zugriff beendet', sperren: 'Benutzer gesperrt', entfernen: 'Benutzer entfernt', erste_anmeldung: 'Erste Anmeldung', startpasswort_neu: 'Startpasswort neu vergeben', konto_geaendert: 'Konto geändert', gewaehren: 'Unterstützung gewährt', verlaengern: 'Unterstützung verlängert', beenden: 'Unterstützung beendet', ablaufen: 'Unterstützung abgelaufen', anfragen: 'Anfrage zur Unterstützung', notfall: 'Notfall-Zugriff' };
 const tag = (zeit: number) => iso(zeit, VORGABE_ZEITZONE).slice(0, 10);
 export function BenutzerPage() {
   const rechte = useRollen();

@@ -117,6 +117,7 @@ export const AENDERUNGEN = [
   'ablaufen',
   'erste_anmeldung',
   'startpasswort_neu',
+  'konto_geaendert',
 ] as const;
 export type AenderungsArt = (typeof AENDERUNGEN)[number];
 
