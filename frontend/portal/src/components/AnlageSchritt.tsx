@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { NETZLADEN_ANLEGEN_HINWEIS } from '../mispelFoerderweg';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -736,8 +737,7 @@ function GeldTeil(p: {
               onChange={(v) => p.onNetzladen(v === 'erlaubt')}
             />
             <p className="vp-note" style={{ margin: 0 }}>
-              EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden (Ausschließlichkeitsprinzip).
-              Nur aktivieren, wenn Ihre Anlage keine EEG-Vergütung bezieht.
+              {NETZLADEN_ANLEGEN_HINWEIS}
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

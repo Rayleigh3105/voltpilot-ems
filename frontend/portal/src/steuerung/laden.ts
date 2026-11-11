@@ -22,7 +22,7 @@ import { einspeisungKw, messwertAlter, type SpeicherFreigabe } from '../ladepunk
 import type { LadeparkRahmen } from '../verbraucherZone';
 import { quellenAnteil, type GeraetBild, type Reihen } from './bild';
 import { liste } from './liste';
-import { N, TAG, fEur, uhr, uhrVon, zahl0, zahl1, type Raster } from './zeit';
+import { TAG, fEur, uhr, uhrVon, zahl0, zahl1, type Raster } from './zeit';
 
 export type LadeWahl = 'aus' | 'smart' | 'schnell';
 export type LadeQuelle = 'sonne' | 'min' | 'speicher' | 'guenstig';

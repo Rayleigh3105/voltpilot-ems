@@ -40,7 +40,8 @@ import { DreiZahlen, QuelleZeichen, VorschauBand, startEntwurf, wunschAus } from
 import { kwhText, mitAuto, uhrKurz, vorschauFuer, vorschauSaetze, type VorschauAnlage } from './ladeVorschau';
 import { rueckmeldung, type Gesendet } from './rueckmeldung';
 import type { BlattZustand, SeitenBild } from './seite';
-import { TAG, fCt, fEur, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
+import { Zeitband } from './Zeitband';
+import { N, TAG, fCt, fEur, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
 // `RahmenBlatt` ist seit „Ein Ort fürs Laden" Scheibe 4 auch außerhalb der Steuerung mountbar
 // (Einstellungen, `components/AnschlussgrenzeBlatt.tsx`) - diese Datei bringt ihre eigene
 // Styling-Abhängigkeit deshalb selbst mit, statt sich auf `SteuerungSeite.tsx`s Import zu
