@@ -149,6 +149,8 @@ export interface AdminDeviceRow {
   geraetArch?: string | null;
   /** Nur Edge Light: `update` (Stufe 2) oder `flash` (Stufe 1). */
   loader?: string | null;
+  /** Nur Edge Light: die `LOADER_STAND`-Marke des Loaders im Flash; `null` = nicht gemeldet. */
+  loaderStand?: number | null;
 }
 
 export interface ProvisionDeviceInput {

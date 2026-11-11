@@ -164,6 +164,12 @@ export interface FleetRow {
   geraetArch?: string | null;
   /** Nur Edge Light: `update` (Loader kennt Updates, Stufe 2) oder `flash` (Stufe 1). */
   loader?: string | null;
+  /**
+   * Nur Edge Light (Loader-Selbstupdate, additiv): die `LOADER_STAND`-Marke des
+   * Loaders im Flash. `null`/fehlend = nicht gemeldet (alter Loader ohne Marke,
+   * altes Programm) - nie still 0.
+   */
+  loaderStand?: number | null;
 }
 
 /**
@@ -704,10 +710,15 @@ export function crossoverHint(fleet: FleetRow[]): string | null {
 /**
  * Das Gerät in einer Zeile (Geräte & Updates G8): „Raspberry Pi 4 Model B Rev 1.4 ·
  * arm64". Was die Box nicht meldet, wird nicht ergänzt: ohne Modell steht nur die
- * Architektur, ohne beides „Gerät nicht gemeldet".
+ * Architektur, ohne beides „Gerät nicht gemeldet". Meldet Edge Light die
+ * `LOADER_STAND`-Marke ihres Loaders (Loader-Selbstupdate), steht sie dahinter -
+ * so ist ohne Wartungstunnel ablesbar, welche Box welchen Loader fährt.
  */
-export function geraetZeile(row: { geraetModell?: string | null; geraetArch?: string | null }): string {
+export function geraetZeile(row: {
+  geraetModell?: string | null; geraetArch?: string | null; loaderStand?: number | null;
+}): string {
   const teile = [row.geraetModell, row.geraetArch].filter((t): t is string => !!t && t.trim() !== '');
+  if (row.loaderStand != null && row.loaderStand >= 1) teile.push(`Loader-Stand ${row.loaderStand}`);
   return teile.length > 0 ? teile.join(' · ') : 'Gerät nicht gemeldet';
 }
 

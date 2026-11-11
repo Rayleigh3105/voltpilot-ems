@@ -231,8 +231,10 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
             Integer releasesDahinter, Instant istSeit, FaktenDto fakten,
             // Geräte & Updates G8 (additiv): das Gerät, wie die Box es meldet
             // (update.geraet; null = nicht gemeldet) - Modell, Architektur und
-            // bei Edge Light der Loader-Stand (update | flash).
-            String geraetModell, String geraetArch, String loader) {
+            // bei Edge Light der Loader-Stand (update | flash) samt der
+            // LOADER_STAND-Marke des Loaders im Flash (Loader-Selbstupdate;
+            // null = nicht gemeldet, alte Loader tragen keine Marke).
+            String geraetModell, String geraetArch, String loader, Integer loaderStand) {
     }
 
     /**

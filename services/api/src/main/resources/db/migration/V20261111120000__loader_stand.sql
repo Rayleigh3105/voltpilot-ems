@@ -1,0 +1,12 @@
+-- Edge Light Loader-Selbstupdate: welche Loader-Fassung eine Box fährt
+-- (update.geraet.loader_stand, Vertrag docs/contracts/v2/box-geraet.md).
+--
+-- loader_stand: die LOADER_STAND-Marke des Loaders im Flash, gelesen vom
+--   Programm (edge-app/core/internal/loaderstand). NULL = nicht gemeldet
+--   (alter Loader ohne Marke, altes Programm, Docker-Box). Damit ist ohne
+--   Wartungstunnel prüfbar, ob ein Loader-Fix eine Box erreicht hat.
+--
+-- Geschrieben nur, wenn ein Herzschlag den geraet-Block trägt
+-- (UpdateStatusRepository.geraet), wie geraet_modell/geraet_arch/loader
+-- (V20261105230000). Tabelle, Rechte und RLS bestehen seit V20260803010000.
+ALTER TABLE device_update_status ADD COLUMN IF NOT EXISTS loader_stand INTEGER;

@@ -39,6 +39,14 @@ type Config struct {
 	// what must survive a power loss (trust set, current.json, the attempt
 	// log). "" = DataDir/ota, the Docker box's single OTA directory.
 	OtaRAMDir string `json:"ota_ram_dir"`
+	// LoaderPath/LoaderInitPath are where Edge Light's loader (boot.sh) and
+	// its procd init script live in the flash. The CONFIRMED program renews
+	// both from its embedded copies when its embedded LOADER_STAND is newer
+	// (agent loader_pflege, internal/loaderstand) - never during probation,
+	// never a downgrade. Meaningless on the Docker box (the loop is gated on
+	// the box type).
+	LoaderPath     string `json:"loader_path"`
+	LoaderInitPath string `json:"loader_init_path"`
 	// BoxArt is the box type of the BINARY (geraetesuche.BoxArtDocker for
 	// vp-edge-core, BoxArtEdgeLight for vp-edge-light), set by
 	// edgemain.Options - never from the environment: what a build can do is
@@ -256,6 +264,8 @@ func Defaults() Config {
 		MQTTHost:                    "mqtt.voltpilot.de",
 		MQTTPort:                    8883,
 		DataDir:                     "/data",
+		LoaderPath:                  "/usr/libexec/vp-edge-light/boot.sh",
+		LoaderInitPath:              "/etc/init.d/vp-edge-light",
 		LocalMQTTAddr:               ":1883",
 		HTTPAddr:                    ":8484",
 		MaxChargeKw:                 50,
@@ -389,6 +399,8 @@ func applyEnv(cfg *Config) {
 	str("VP_REF", &cfg.Ref)
 	str("VP_DATA_DIR", &cfg.DataDir)
 	str("VP_OTA_RAM_DIR", &cfg.OtaRAMDir)
+	str("VP_LOADER_PATH", &cfg.LoaderPath)
+	str("VP_LOADER_INIT_PATH", &cfg.LoaderInitPath)
 	str("VP_LOCAL_MQTT_ADDR", &cfg.LocalMQTTAddr)
 	str("VP_HTTP_ADDR", &cfg.HTTPAddr)
 	str("VP_LAN_HOST", &cfg.LANHost)

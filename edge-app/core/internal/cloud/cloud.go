@@ -1205,6 +1205,12 @@ type GeraetSummary struct {
 	// protocol (it sets VP_OTA_RAM_DIR, Stufe 2), LoaderFlash when it always
 	// starts the version from the flash (Stufe 1). Omitted on the Docker box.
 	Loader string `json:"loader,omitempty"`
+	// LoaderStand is Edge Light only: the LOADER_STAND mark of the loader in
+	// the flash (internal/loaderstand) - which boot.sh/init revision this box
+	// actually runs, so a loader rollout is checkable from the portal instead
+	// of through the maintenance tunnel. Omitted (0) on old loaders without a
+	// mark and on the Docker box; additive, an older cloud ignores it.
+	LoaderStand int `json:"loader_stand,omitempty"`
 }
 
 const (

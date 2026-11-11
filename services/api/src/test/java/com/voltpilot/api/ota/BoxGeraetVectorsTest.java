@@ -24,6 +24,10 @@ class BoxGeraetVectorsTest {
         return n == null || n.isNull() ? null : n.asText();
     }
 
+    private static Integer zahl(JsonNode n) {
+        return n == null || n.isNull() ? null : n.asInt();
+    }
+
     @Test
     @DisplayName("jeder Herzschlag-Fall wird so gespeichert, wie der Vertrag sagt")
     void herzschlagNachDenVektoren() throws Exception {
@@ -36,6 +40,7 @@ class BoxGeraetVectorsTest {
             assertThat(a.modell()).as(f.get("name").asText()).isEqualTo(text(soll.get("modell")));
             assertThat(a.arch()).as(f.get("name").asText()).isEqualTo(text(soll.get("arch")));
             assertThat(a.loader()).as(f.get("name").asText()).isEqualTo(text(soll.get("loader")));
+            assertThat(a.loaderStand()).as(f.get("name").asText()).isEqualTo(zahl(soll.get("loader_stand")));
         }
     }
 

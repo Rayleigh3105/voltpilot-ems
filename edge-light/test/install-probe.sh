@@ -160,6 +160,17 @@ until x 'wget -q -O - http://127.0.0.1:8484/health' >"$ARBEIT/health" 2>/dev/nul
 grep -q '"ref":"edge-' "$ARBEIT/health" && ok "Programm laeuft, /health nennt die Referenz ($(sed -n 's/.*"ref":"\(edge-[^"]*\)".*/\1/p' "$ARBEIT/health"))" || falsch "Programm laeuft, /health nennt die Referenz"
 pruefe "Loader: lokale Kopie entpackt" 'logread -l 200 -e vp-edge-light | grep -q "lokale Kopie entpackt"'
 pruefe "Loader: keine Meldung \"weder base_url noch lokale Kopie\"" '! logread -l 200 -e vp-edge-light | grep -q "weder base_url noch lokale Kopie"'
+# Lader-Selbstupdate: der eingespielte Loader traegt seine LOADER_STAND-Marke
+# (so erkennt das Programm, ob sein eingebetteter Stand neuer ist), er meldet
+# sie beim Start, und das atomare Schreiben laesst keinen halben Rest zurueck.
+# Nur mit Marke im Quellstand - eine Gegenprobe mit einem alten Stand hat keine.
+STAND="$(sed -n 's/^LOADER_STAND=\([0-9][0-9]*\)$/\1/p' "$(dirname "$SKRIPT")/files/usr/libexec/vp-edge-light/boot.sh")"
+if [ -n "$STAND" ]; then
+  pruefe "Loader traegt LOADER_STAND=$STAND" "grep -qx 'LOADER_STAND=$STAND' /usr/libexec/vp-edge-light/boot.sh"
+  pruefe "Loader meldet seinen Stand" "logread -l 200 -e vp-edge-light | grep -q 'Loader Stand $STAND'"
+  pruefe "kein halber Schreibrest (.neu) von Loader/Dienst/Konfiguration" \
+    '[ ! -f /usr/libexec/vp-edge-light/boot.sh.neu ] && [ ! -f /etc/init.d/vp-edge-light.neu ] && [ ! -f /etc/config/vp-edge-light.neu ]'
+fi
 
 schritt "3b. Update-bereit"
 pruefe "Vertrauens-Set im Flash (kein RAM-Symlink mehr)" '[ -d /etc/vp-edge-light/ota ] && [ ! -L /etc/vp-edge-light/ota ] && [ -s /etc/vp-edge-light/ota/trust-set.json ] && [ -s /etc/vp-edge-light/ota/trust-set.json.sig ]'

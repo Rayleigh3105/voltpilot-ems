@@ -265,7 +265,8 @@ public class UpdateStatusListener extends Rueckmeldeweg {
             // Geräte & Updates G8: das Gerät, wenn der Herzschlag es nennt.
             BoxGeraet.Angabe geraet = hasUpdate ? BoxGeraet.of(update.get("geraet")) : null;
             if (geraet != null) {
-                updateStatus.geraet(deviceId, geraet.modell(), geraet.arch(), geraet.loader());
+                updateStatus.geraet(deviceId, geraet.modell(), geraet.arch(), geraet.loader(),
+                        geraet.loaderStand());
             }
         } finally {
             TenantContext.clear();

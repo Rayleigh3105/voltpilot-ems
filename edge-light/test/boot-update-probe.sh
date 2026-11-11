@@ -28,6 +28,12 @@
 #  10. mit dem ECHTEN Programm (edge-light/dist/vp-edge-light-linux-amd64, wenn
 #      gebaut): Probestart, probe.json vom Loader, Selbsttest des Programms
 #      ohne Cloud -> Urteil offen "keine Cloud-Verbindung in der Probezeit"
+#  11. Lader-Selbstupdate (echtes Programm): unter einem ALTEN Loader ohne
+#      LOADER_STAND-Marke spielt das Programm waehrend der Probe nichts ein;
+#      laeuft es als bestaetigte Fassung, ersetzt es Loader und Dienst-Init
+#      atomar durch seine eingebetteten Kopien (ein liegengebliebener halber
+#      Schreibrest .neu verschwindet); der neue Loader meldet seinen Stand,
+#      und ein zweiter Start schreibt nichts mehr (Flash schonen)
 #
 #   edge-light/test/boot-update-probe.sh
 #   VPBU_LOADER=<pfad>/boot.sh ...   Gegenprobe mit einem anderen Stand
@@ -328,6 +334,77 @@ if [ -f "$ECHT" ]; then
   warte "das Programm urteilt: offen, keine Cloud" "grep -q '\"offen\":true' $RAM/probe-urteil.json && grep -q 'keine Cloud-Verbindung in der Probezeit' $RAM/probe-urteil.json && grep -q 'z-echt' $RAM/probe-urteil.json" 120
   pruef "ohne Cloud wird nichts behalten" "! grep -q '^ok 60' $FEST/versuche && [ -f $RAM/probe.json ]"
   pruef "die Zuweisung des Programms liegt nicht im Flash" "[ ! -f $FEST/target.json ] && [ ! -f $FEST/core-signal.json ]"
+  x 'kill $(pidof vp-edge-light) 2>/dev/null; sleep 2' || true
+else
+  echo "  uebersprungen: $ECHT fehlt (edge-light/scripts/build.sh amd64)"
+fi
+
+schritt "11. Lader-Selbstupdate mit dem echten Programm (amd64)"
+# Das bestaetigte Programm erneuert Loader und Dienst-Init aus seinen
+# eingebetteten Kopien (agent/loader_pflege). Ein gruenes Behalten braucht die
+# Cloud, die es hier nicht gibt - die bestaetigte Fassung unter einem alten
+# Loader IST der Zustand nach "behalten" (alter Loader + neues Programm).
+# Die eingebetteten Kopien muessen dem Repo-Stand entsprechen: erst
+# edge-light/scripts/build.sh amd64, sonst scheitert der Byte-Vergleich.
+if [ -f "$ECHT" ]; then
+  LADER=/usr/libexec/vp-edge-light/boot.sh
+  INIT=/etc/init.d/vp-edge-light
+  STAND="$(sed -n 's/^LOADER_STAND=\([0-9][0-9]*\)$/\1/p' "$LOADER")"
+  docker cp "$LOADER" "$C:/probe/loader-soll" >/dev/null
+  docker cp "$HIER/../openwrt/files/etc/init.d/vp-edge-light" "$C:/probe/init-soll" >/dev/null
+
+  echo "-- 11a. waehrend der Probe spielt das Programm nichts ein"
+  frisch
+  # Der alte Loader der Mangos im Feld: kennt Updates, traegt aber keine
+  # LOADER_STAND-Marke (hier: der aktuelle Stand ohne Marke und Stand-Meldung).
+  x "sed '/^LOADER_STAND=/d; /Loader Stand/d' $LADER >/probe/alt-loader && cat /probe/alt-loader >$LADER
+     rm -f $INIT"
+  x "mkdir -p $RAM && gzip -1 -n -c /probe/echt >$RAM/kandidat.gz
+     rel=\$(/probe/echt version)
+     sha=\$(sha256sum /probe/echt | cut -d' ' -f1); gz=\$(sha256sum $RAM/kandidat.gz | cut -d' ' -f1)
+     size=\$(wc -c </probe/echt); gzsize=\$(wc -c <$RAM/kandidat.gz)
+     printf '{\"release\":\"%s\",\"release_seq\":70,\"arch\":\"linux/amd64\",\"sha256\":\"%s\",\"size\":%s,\"gz_sha256\":\"%s\",\"gz_size\":%s,\"zuweisung\":\"z-lader\",\"state_schema\":1}' \"\$rel\" \"\$sha\" \"\$size\" \"\$gz\" \"\$gzsize\" >$RAM/kandidat.json"
+  lauf
+  warte "die echte Fassung startet zur Probe (Marke start)" "grep -qx 'start 70 z-lader' $FEST/versuche" 60
+  # Die erste Pflege-Pruefung des Programms kommt nach ~30 s - sie muss die
+  # Probe sehen und still bleiben.
+  sleep 40
+  pruef "waehrend der Probe bleibt der alte Loader (keine Marke)" "! grep -q '^LOADER_STAND=' $LADER"
+  pruef "die Probe laeuft weiter" "[ -f $RAM/probe.json ]"
+  # Das echte Programm beachtet /probe/stopp nicht: erst beenden und auf das
+  # Ende des 11a-Loaders warten, sonst haelt es 8484/1883 besetzt und der
+  # naechste Start stirbt am belegten Port.
+  x 'kill $(pidof vp-edge-light) 2>/dev/null' || true
+  i=0; while ! x '[ -f /probe/lauf.rc ]' >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -gt 15 ] && break; sleep 1; done
+  strom_aus
+
+  echo "-- 11b. als bestaetigte Fassung: Loader und Dienst-Init werden erneuert"
+  x "gzip -1 -n -c /probe/echt >$LD/$N.gz
+     sha=\$(sha256sum /probe/echt | cut -d' ' -f1); gz=\$(sha256sum $LD/$N.gz | cut -d' ' -f1)
+     size=\$(wc -c </probe/echt); gzsize=\$(wc -c <$LD/$N.gz)
+     printf '%s  $N\n%s  $N.gz\ngroesse %s %s\n' \"\$sha\" \"\$gz\" \"\$size\" \"\$gzsize\" >$LD/$N.sha256"
+  # Strom weg mitten in einem frueheren Lader-Schreiben: der halbe Rest stoert
+  # nicht und verschwindet.
+  x "printf 'halb geschrie' >$LADER.neu"
+  lauf
+  warte "das bestaetigte Programm spielt den Loader ein (LOADER_STAND=$STAND)" "grep -qx 'LOADER_STAND=$STAND' $LADER" 90
+  pruef "boot.sh ist byte-gleich mit der eingebetteten Kopie" "cmp -s $LADER /probe/loader-soll"
+  pruef "das Init-Skript liegt daneben, byte-gleich" "cmp -s $INIT /probe/init-soll"
+  pruef "kein halber Schreibrest mehr (.neu)" "[ ! -f $LADER.neu ] && [ ! -f $INIT.neu ]"
+  pruef "das Programm laeuft dabei weiter" '[ ! -f /probe/lauf.rc ]'
+  x 'kill $(pidof vp-edge-light) 2>/dev/null' || true
+  i=0; while ! x '[ -f /probe/lauf.rc ]' >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -gt 15 ] && break; sleep 1; done
+
+  echo "-- 11c. der neue Loader meldet seinen Stand; ein zweiter Start schreibt nichts"
+  VOR_LADER="$(x "date -r $LADER +%s")"
+  VOR_INIT="$(x "date -r $INIT +%s")"
+  lauf
+  warte "der neue Loader meldet seinen Stand" "grep -q 'Loader Stand $STAND' /probe/lauf.err" 30
+  warte "die bestaetigte Fassung laeuft wieder" 'pidof vp-edge-light' 30
+  # Auch die zweite Pflege-Pruefung (nach ~30 s) darf nichts schreiben.
+  sleep 40
+  pruef "zweiter Start schreibt nichts (boot.sh unveraendert)" "[ \"\$(date -r $LADER +%s)\" = '$VOR_LADER' ]"
+  pruef "zweiter Start schreibt nichts (Init unveraendert)" "[ \"\$(date -r $INIT +%s)\" = '$VOR_INIT' ]"
   x 'kill $(pidof vp-edge-light) 2>/dev/null; sleep 2' || true
   x 'uci set vp-edge-light.main.portal_url=https://portal.voltpilot.de && uci commit vp-edge-light'
 else
