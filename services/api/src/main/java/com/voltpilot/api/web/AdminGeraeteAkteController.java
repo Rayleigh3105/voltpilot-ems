@@ -4,6 +4,8 @@ import com.voltpilot.api.enrollment.EnrollmentRepository;
 import com.voltpilot.api.fernwartung.FernwartungRepository.Zugang;
 import com.voltpilot.api.fernwartung.FernwartungService;
 import com.voltpilot.api.geraete.BoxBefundSql;
+import com.voltpilot.api.geraete.BoxEndgueltigAbgelehnt;
+import com.voltpilot.api.geraete.BoxEndgueltigLoeschenService;
 import com.voltpilot.api.geraete.BoxLoesenAbgelehnt;
 import com.voltpilot.api.geraete.BoxLoesenRegel;
 import com.voltpilot.api.geraete.BoxLoesenService;
@@ -13,6 +15,7 @@ import com.voltpilot.api.repo.AdminGeraeteListeRepository;
 import com.voltpilot.api.repo.AdminGeraeteListeRepository.GeraeteListeZeile;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.AdminGeraeteAkteDto;
+import com.voltpilot.api.web.dto.BoxEndgueltigDto;
 import com.voltpilot.api.web.dto.BoxLoesenDto.AnfrageDto;
 import com.voltpilot.api.web.dto.BoxLoesenDto.AnmeldungDto;
 import com.voltpilot.api.web.dto.BoxLoesenDto.BefundDto;
@@ -57,16 +60,19 @@ public class AdminGeraeteAkteController {
     private final FernwartungService fernwartung;
     private final WerkstattRepository werkstatt;
     private final BoxLoesenService loesen;
+    private final BoxEndgueltigLoeschenService endgueltig;
 
     public AdminGeraeteAkteController(AdminGeraeteAkteRepository akte,
             AdminGeraeteListeRepository liste, EnrollmentRepository enrollments,
-            FernwartungService fernwartung, WerkstattRepository werkstatt, BoxLoesenService loesen) {
+            FernwartungService fernwartung, WerkstattRepository werkstatt, BoxLoesenService loesen,
+            BoxEndgueltigLoeschenService endgueltig) {
         this.akte = akte;
         this.liste = liste;
         this.enrollments = enrollments;
         this.fernwartung = fernwartung;
         this.werkstatt = werkstatt;
         this.loesen = loesen;
+        this.endgueltig = endgueltig;
     }
 
     @GetMapping("/{ref}")
@@ -133,6 +139,41 @@ public class AdminGeraeteAkteController {
 
     @ExceptionHandler(BoxLoesenAbgelehnt.class)
     public org.springframework.http.ResponseEntity<Map<String, Object>> abgelehnt(BoxLoesenAbgelehnt e) {
+        return org.springframework.http.ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
+    /**
+     * Der Befund „Endgültig löschen" einer AUSGEBAUTEN Box (vierter Löschweg,
+     * vp-box-endgueltig-loeschen): informativ, prüft nichts unter Sperre - die verbindliche Prüfung
+     * läuft erst im POST, in {@link BoxEndgueltigLoeschenService}. Die Akte zeigt mit der Liste
+     * {@code daten} ruhig, WARUM eine Box bleibt - nie ein toter Knopf.
+     */
+    @GetMapping("/{ref}/endgueltig-loeschen")
+    public BoxEndgueltigDto.BefundDto endgueltigBefund(@PathVariable String ref) {
+        BoxEndgueltigLoeschenService.Befund b = endgueltig.befund(ref);
+        return new BoxEndgueltigDto.BefundDto(b.zeile().deviceId(), b.loeschbar(), b.daten(),
+                new BoxEndgueltigDto.FaktenDto(b.zeile().verbundenAm(), b.zeile().ausgebautAm(),
+                        b.zeile().tenantName(), b.zeile().siteName()));
+    }
+
+    /**
+     * Endgültig löschen: nur eine ausgebaute Box, die nie Daten geliefert hat ({@code BoxDatenBestand},
+     * Beleg-Regeln). Idempotent über die Geräte-ID aus dem Befund; 409 mit der Liste der Datenarten
+     * und nichts geändert, wenn doch Daten da sind ({@link #endgueltigAbgelehnt}). Werkstatt- und
+     * Fernwartungs-Protokolle bleiben.
+     */
+    @PostMapping("/{ref}/endgueltig-loeschen")
+    public BoxEndgueltigDto.ErgebnisDto endgueltigLoeschen(@PathVariable String ref,
+            @RequestBody BoxEndgueltigDto.AnfrageDto anfrage, Authentication auth) {
+        BoxEndgueltigLoeschenService.Ergebnis e = endgueltig.loeschen(ref, anfrage.deviceId(),
+                ProtokollAkteur.aus(auth).orElse(null));
+        return new BoxEndgueltigDto.ErgebnisDto(e.externalRef(), e.deviceId(), e.geloeschtAm(),
+                e.bereitsGeloescht());
+    }
+
+    @ExceptionHandler(BoxEndgueltigAbgelehnt.class)
+    public org.springframework.http.ResponseEntity<Map<String, Object>> endgueltigAbgelehnt(
+            BoxEndgueltigAbgelehnt e) {
         return org.springframework.http.ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 

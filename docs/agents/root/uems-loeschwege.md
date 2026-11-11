@@ -1,5 +1,7 @@
 # UEMS-Löschwege: Abmelden baut aus, Entfernen lehnt mit Liste ab (AP-07 IP-11)
 
+> Seit vp-box-endgueltig-loeschen (11.11.2026) gibt es einen VIERTEN Weg: [Endgültig löschen](#der-vierte-weg-endgültig-löschen-einer-ausgebauten-box-ohne-daten).
+
 Paket AP-07 §8 IP-11 (E8, AP-06 E7, W6). Captain 13.09.2026: **beim Abmelden und beim Tausch geht kein
 Datenbestand verloren.** Migration `V20260913150000__uems_loeschwege.sql`, Tests
 `UemsLoeschwegeMigrationTest`, `UemsLoeschwegeApiTest` (A14), `ComponentAdoptionAusgebauteBoxTest`,
@@ -20,6 +22,33 @@ steht EINMAL in `uems_messreihen_belege(p_site, p_box)` (SECURITY INVOKER, RLS);
 Kundensatz + Körper `BelegeImWeg`. Die Anlage-Funktion prüft dieselbe Regel selbst — ein Beleg ist für jede
 Rolle unlöschbar, die diesen Weg nimmt. Offboarding: `uems_messwerte_des_kundenbereichs_entfernen(tenant)`,
 nur Verwaltungsrolle, in `TenantRepository.offboard`.
+
+## Der vierte Weg: Endgültig löschen einer ausgebauten Box ohne Daten
+
+Captain 11.11.2026 (vp-box-endgueltig-loeschen): eine AUSGEBAUTE Box, die nie Daten geliefert hat, darf der
+Plattform-Admin endgültig löschen - die Zeile verschwindet aus der Geräteliste.
+`GET/POST /api/v1/admin/geraete/{ref}/endgueltig-loeschen` (platform-admin; POST mit `deviceId` aus dem Befund,
+idempotent über `box_endgueltig_geloescht_protokoll`, genau ein Eintrag je Geräte-ID).
+
+- **Was „keine Daten" heißt, steht EINMAL in `geraete/BoxDatenBestand`:** kein Herzschlag/LAN
+  (`device_status_seen_at`, `lan_seen_at`), keine Zeile in irgendeiner Aufzeichnung (Datenarten `messwerte`,
+  `messauswahl`, `meldungen`, `befehle`, `ocpp`, `rueckmeldungen`, `freigaben`, `komponenten`, `verlauf`),
+  kein Messstellen- oder Berichts-Beleg (`MessreihenBelege.derBox`, `BerichtsBelege`). Jede Tabelle mit
+  `device_id` ist dort GENAU EINER Klasse zugeordnet (Aufzeichnung blockiert; Kaskade unbedenklich nur für
+  reine Cloud-Absicht/Topologie; ohne FK bleibt); `BoxEndgueltigLoeschenMigrationTest` hält die Zuordnung
+  gegen das tatsächliche Schema vollständig - eine neue Tabelle ohne Eintrag fällt dort auf, im Zweifel gilt
+  „hat Daten"; hat die Box welche: 409 `box_hat_daten` + Liste. Eine Kaskade darf nie Historie löschen: der
+  Test hält jede als unbedenklich eingeordnete Kaskade auf reine Cloud-Absicht/Topologie begrenzt
+  (`device_site_assignment`, `data_source_aenderung`, `geraetesuche_protokoll` tragen bewusst keinen FK und
+  überleben wie `data_source_assignment`).
+- **Was bleibt:** Werkstatt, Fernwartung und `device_enrollment` adressieren die Kennung bzw. tragen keinen
+  FK auf `device` - ihre Protokolle überleben von selbst. Die Kennung bleibt wieder anmeldbar wie nach dem
+  Ausbau. Die DB-Rückversicherung ist dieselbe wie beim Lösen: RESTRICT-Tabellen lehnen das DELETE selbst ab
+  (23503 → 409). Nur `status = 'ausgebaut'` (sonst 409 `nicht_ausgebaut`); Mandantentrennung wie
+  `BoxLoesenService` (Befund BYPASSRLS read-only, Löschung + Protokoll über die App-Rolle im TenantContext).
+- **Portal:** Geräteakte einer ausgebauten Box zeigt die Karte „Ausgebaut" mit Befund - löschbar: Gefahren-Knopf
+  „Endgültig löschen …" mit Kennung-Abtippen; hat sie Daten: ruhige Erklärung, warum sie bleibt, nie ein toter
+  Knopf (`BoxEndgueltigLoeschenDialog`, Sätze in `boxEndgueltig.ts`).
 
 ## Berichts-Belege (AP-12 IP-4, IP-12)
 

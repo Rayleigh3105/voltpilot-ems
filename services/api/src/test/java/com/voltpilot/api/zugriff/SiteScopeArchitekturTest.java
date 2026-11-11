@@ -271,6 +271,22 @@ class SiteScopeArchitekturTest {
                     "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("geraete/BoxBefundSql.java", "device_measurement_sample", 1, Grund.PLATTFORM,
                     "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            // Endgültig löschen (vierter Löschweg, vp-box-endgueltig-loeschen): die EINE Bestands-
+            // Abfrage von BoxDatenBestand - dasselbe Muster wie BoxBefundSql darüber. Gelesen von
+            // AdminBoxEndgueltigRepository (BYPASSRLS, nur aus AdminGeraeteAkteController,
+            // platform-admin); das Statement selbst joint site/tenant, nur die EXISTS-Unterabfragen
+            // je Datenart zählen hier als "ohne site" - sie sind über d.id auf GENAU eine Box der
+            // schon gejointen Anlage gebunden.
+            new Erlaubt("geraete/BoxDatenBestand.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "telemetry_v2", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "device_measurement_sample", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "device_measurement_rollup_5m", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxDatenBestand.java", "device_measurement_rollup_15m", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
 
             // --- kein SQL
             new Erlaubt("uems/EreignisVokabular.java", "telemetry", 1, Grund.KEIN_SQL, "uems/EreignisVokabular.java",
