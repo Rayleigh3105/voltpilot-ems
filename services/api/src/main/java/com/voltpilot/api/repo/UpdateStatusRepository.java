@@ -102,9 +102,9 @@ public class UpdateStatusRepository {
      * bleibt die zuletzt gemeldete Angabe stehen. Nach {@link #upsert} im selben
      * Mandanten (RLS), die Zeile besteht also.
      */
-    public void geraet(UUID deviceId, String modell, String arch, String loader) {
-        jdbc.update("UPDATE device_update_status SET geraet_modell = ?, geraet_arch = ?, loader = ? "
-                + "WHERE device_id = ?", modell, arch, loader, deviceId);
+    public void geraet(UUID deviceId, String modell, String arch, String loader, Integer loaderStand) {
+        jdbc.update("UPDATE device_update_status SET geraet_modell = ?, geraet_arch = ?, loader = ?, "
+                + "loader_stand = ? WHERE device_id = ?", modell, arch, loader, loaderStand, deviceId);
     }
 
     // Bewusst NUR ein Schreibpfad: gelesen wird der Stand cross-tenant im

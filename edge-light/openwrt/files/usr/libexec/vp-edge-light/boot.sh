@@ -28,7 +28,10 @@
 # In den Flash schreibt der Loader nur: die Marken (versuche, feste
 # Obergrenze, eine Zeile je Schritt), und beim Behalten Pruefsummen + Kopie.
 # Was laufend geschrieben wird, liegt im RAM (HOT_DIRS). Ein Update tauscht nur
-# das Programm - Loader, Dienst und Wartungstunnel aendert es nie (Schicht 8).
+# das Programm - dieser Loader aendert Dienst und Wartungstunnel nie (Schicht
+# 8). Loader und Dienst-Init erneuert das BESTAETIGTE Programm selbst, wenn
+# sein eingebetteter Stand NEUER ist (LOADER_STAND unten, agent/loader_pflege);
+# den Wartungstunnel aendert auch das nie.
 #
 # base_url (Laden bei jedem Start, ungeprueft) ist abgeschafft: ein gesetzter
 # Wert wird ignoriert und gemeldet.
@@ -40,7 +43,17 @@
 # shellcheck source=/dev/null # OpenWrt-Systembibliothek, nur auf dem Geraet vorhanden
 . /lib/functions.sh
 
+# LOADER_STAND: die Fassung von Loader UND Dienst-Init (ein Stand fuer beide).
+# Das BESTAETIGTE Programm bringt beide eingebettet mit und erneuert sie im
+# Flash, wenn sein eingebetteter Stand NEUER ist (edge-app/core/internal/
+# loaderstand; nie waehrend der Probe, nie ein Rueckschritt). Bei JEDER
+# Aenderung an boot.sh oder dem Init-Skript den Stand erhoehen und den Verlauf
+# in loaderstand/stand-verlauf fortschreiben - ohne neuen Stand erreicht die
+# Aenderung keine Box im Feld. Kein Stand (alte Loader) zaehlt als 0.
+LOADER_STAND=1
+
 log() { logger -t vp-edge-light "$*"; echo "vp-edge-light: $*" >&2; }
+log "Loader Stand $LOADER_STAND"
 
 config_load vp-edge-light
 config_get BASE_URL main base_url ""

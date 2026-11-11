@@ -31,6 +31,9 @@ func (a *Agent) geraetSummary() *cloud.GeraetSummary {
 		if a.otaLightLoaderBereit() {
 			sum.Loader = cloud.LoaderUpdate
 		}
+		// Die LOADER_STAND-Marke des Loaders im Flash (loader_pflege.go);
+		// 0 (alter Loader ohne Marke, noch nicht gelesen) bleibt weg.
+		sum.LoaderStand = a.loaderStand()
 	}
 	return sum
 }

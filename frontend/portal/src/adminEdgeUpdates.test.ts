@@ -595,6 +595,12 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
       .toBe('Raspberry Pi 4 Model B Rev 1.4 · arm64');
     expect(geraetZeile({ geraetModell: null, geraetArch: 'amd64' })).toBe('amd64');
     expect(geraetZeile({})).toBe('Gerät nicht gemeldet');
+    // Loader-Selbstupdate: die gemeldete LOADER_STAND-Marke steht dahinter;
+    // nicht gemeldet (alter Loader, altes Programm) heißt still weglassen.
+    expect(geraetZeile({ geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loaderStand: 1 }))
+      .toBe('GL.iNet GL-MT300N-V2 · mipsle · Loader-Stand 1');
+    expect(geraetZeile({ geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loaderStand: null }))
+      .toBe('GL.iNet GL-MT300N-V2 · mipsle');
     expect(loaderLabel('update')).toBe('kennt Updates (Stufe 2)');
     expect(loaderLabel('flash')).toBe('startet nur die Fassung aus dem Flash (Stufe 1)');
     expect(loaderLabel(null)).toBeNull();

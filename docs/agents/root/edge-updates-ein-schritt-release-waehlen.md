@@ -173,11 +173,16 @@ Zuweisung desselben Release versucht wieder).
   /admin/edge-updates/releases/{seq}` zeigt Inhalt, Programme, Läuft-auf,
   Verteilungen.
 - **Gerät und Loader (Geräte & Updates G8):** Die Box meldet `update.geraet`
-  (Modell, Architektur, bei Edge Light `loader` update | flash; Vertrag
+  (Modell, Architektur, bei Edge Light `loader` update | flash und additiv
+  `loader_stand`, die `LOADER_STAND`-Marke des Loaders im Flash; Vertrag
   `docs/contracts/v2/box-geraet.md`). Stufe 1 = kein gekreuztes Vertrauen ODER
   `loader = flash` (`BoxArt.stufe1`, Portal `stufe1`); ohne Loader-Angabe
   entscheidet das Vertrauen. Gespeichert nur, wenn der Block kommt - sonst
-  bleibt die letzte Angabe.
+  bleibt die letzte Angabe. Loader und Dienst-Init erneuert das bestätigte
+  Programm selbst aus eingebetteten Kopien (Loader-Selbstupdate,
+  `edge-light/docs/boot-und-updates.md#loader-selbstupdate`); wer `boot.sh`
+  oder das Init-Skript ändert, erhöht `LOADER_STAND` und schreibt
+  `edge-app/core/internal/loaderstand/stand-verlauf` fort.
 
 ### Portal
 

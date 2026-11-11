@@ -29,9 +29,10 @@ else
 fi
 
 echo "--- 2.+3. Go-Zwillinge und Schicht 1 (mit Race-Detector)"
-go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
-go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/...
-# Das Update im Programm (Konzept vp-edge-light-update, K3): laden, pruefen, Probe.
+go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
+go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/...
+# Das Update im Programm (Konzept vp-edge-light-update, K3): laden, pruefen,
+# Probe - und die Lader-Pflege des bestaetigten Programms (Loader-Selbstupdate).
 go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/
 
 echo "--- 4. MIPS-Build (Mango)"

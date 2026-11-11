@@ -6,6 +6,10 @@
 # Vertrauens-Set in den Flash und spielt das Programm als BESTAETIGTE Fassung
 # ein (gzip im Flash, mit Pruefsumme). Danach kommen neue Fassungen signiert
 # ueber das Portal (Edge-Updates); der Loader tauscht und nimmt zurueck.
+# Fixes an Loader und Dienst-Init bringt seither jedes Programm eingebettet
+# mit und spielt sie als bestaetigte Fassung selbst ein (Loader-Selbstupdate,
+# LOADER_STAND in boot.sh) - dieses Skript bleibt fuer die Ersteinrichtung,
+# das Nachruesten von Stufe 1, die Tunnel-Skripte und die Konfiguration.
 #
 #   edge-light/scripts/build.sh mipsle        (oder die Fassung aus einem Release)
 #   edge-light/openwrt/install.sh root@192.168.1.1
@@ -143,12 +147,18 @@ fi
 
 echo "--- kopiere Loader und Dienst nach $TARGET"
 # Einzeldateien per cat|ssh: Dropbear auf OpenWrt bringt oft kein scp/sftp mit.
+# Atomar (temporaere Datei, dann mv, dann sync): Strom weg oder ein gerissener
+# Tunnel laesst nie einen halben Loader zurueck - dieselbe Regel, nach der das
+# Programm den Loader selbst erneuert (agent/loader_pflege). Das Programm
+# erneuert beide Dateien nur AUFWAERTS (LOADER_STAND): wer hier gezielt einen
+# aelteren Stand einspielt, muss den Dienst stoppen oder ein Programm mit
+# hoechstens diesem Stand fahren, sonst zieht das laufende Programm nach.
 for f in usr/libexec/vp-edge-light/boot.sh etc/init.d/vp-edge-light; do
   # shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
-  box_ssh "$TARGET" "mkdir -p /$(dirname "$f") && cat > /$f && chmod 0755 /$f" <"$HERE/files/$f"
+  box_ssh "$TARGET" "mkdir -p /$(dirname "$f") && cat > /$f.neu && chmod 0755 /$f.neu && mv -f /$f.neu /$f && sync" <"$HERE/files/$f"
 done
 # Die Konfiguration nur anlegen, nie eine bestehende ueberschreiben.
-box_ssh "$TARGET" "[ -f /etc/config/vp-edge-light ] || cat > /etc/config/vp-edge-light" <"$HERE/files/etc/config/vp-edge-light"
+box_ssh "$TARGET" "[ -f /etc/config/vp-edge-light ] || { cat > /etc/config/vp-edge-light.neu && mv -f /etc/config/vp-edge-light.neu /etc/config/vp-edge-light; }" <"$HERE/files/etc/config/vp-edge-light"
 
 echo "--- Vertrauens-Set in den Flash ($OTA_FEST)"
 # Bis Stufe 1 war ota ein Symlink in den RAM - dort ginge das Set beim

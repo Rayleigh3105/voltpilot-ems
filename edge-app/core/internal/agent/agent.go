@@ -634,6 +634,10 @@ type Agent struct {
 	ota otaState
 	// otaLight ist der Stand eines Edge-Light-Updates (ota_light.go).
 	otaLight otaLightState
+	// loaderPflege haelt den Loader-Stand im Flash fuer den Herzschlag und
+	// erneuert Loader und Dienst-Init aus den eingebetteten Kopien
+	// (loader_pflege.go, nur Edge Light).
+	loaderPflege loaderPflegeState
 	// otaRoots overrides the BAKED trust root - a TEST SEAM only (the repo
 	// carries no private key, so a test must mint its own throwaway root).
 	// nil = the production path: otaverify.BakedRoots(), i.e. rootkeys.json.
@@ -1156,6 +1160,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.done.Add(2)
 	go a.otaSignalLoop(ctx)
 	go a.otaSelfTestOnBoot(ctx)
+
+	// Edge Light: das bestaetigte Programm pflegt Loader und Dienst-Init aus
+	// seinen eingebetteten Kopien (loader_pflege.go). Auf der Docker-Box und
+	// ohne Loader-Pfade kehrt die Schleife sofort zurueck.
+	a.done.Add(1)
+	go a.loaderPflegeLoop(ctx, loaderPflegeErsterBlick, loaderPflegeTakt)
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)

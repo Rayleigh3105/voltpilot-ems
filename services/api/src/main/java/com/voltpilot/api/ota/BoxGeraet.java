@@ -17,6 +17,9 @@ import java.util.regex.Pattern;
  *   <li>{@code loader}: nur Edge Light, geschlossenes Vokabular
  *       {@value #LOADER_UPDATE} (Stufe 2) | {@value #LOADER_FLASH} (Stufe 1);
  *       ein anderes Wort wird verworfen, nie geraten.</li>
+ *   <li>{@code loader_stand}: nur Edge Light, die {@code LOADER_STAND}-Marke
+ *       des Loaders im Flash (Loader-Selbstupdate) - eine ganze Zahl von 1 bis
+ *       {@value #MAX_LOADER_STAND}, alles andere wird verworfen, nie geraten.</li>
  * </ul>
  */
 public final class BoxGeraet {
@@ -27,6 +30,7 @@ public final class BoxGeraet {
     public static final String LOADER_FLASH = "flash";
 
     static final int MAX_MODELL = 80;
+    static final int MAX_LOADER_STAND = 1_000_000;
     private static final Set<String> LOADER = Set.of(LOADER_UPDATE, LOADER_FLASH);
     private static final Pattern ARCH = Pattern.compile("^[a-z0-9_]{1,16}$");
 
@@ -34,7 +38,7 @@ public final class BoxGeraet {
     }
 
     /** Die angenommene Angabe; jedes Feld darf {@code null} sein. */
-    public record Angabe(String modell, String arch, String loader) {
+    public record Angabe(String modell, String arch, String loader, Integer loaderStand) {
     }
 
     /**
@@ -46,7 +50,7 @@ public final class BoxGeraet {
             return null;
         }
         return new Angabe(modell(text(geraet.get("modell"))), arch(text(geraet.get("arch"))),
-                loader(text(geraet.get("loader"))));
+                loader(text(geraet.get("loader"))), loaderStand(geraet.get("loader_stand")));
     }
 
     static String modell(String roh) {
@@ -69,6 +73,14 @@ public final class BoxGeraet {
 
     static String loader(String roh) {
         return roh != null && LOADER.contains(roh.trim()) ? roh.trim() : null;
+    }
+
+    static Integer loaderStand(JsonNode n) {
+        if (n == null || !n.isIntegralNumber()) {
+            return null;
+        }
+        long v = n.asLong();
+        return v >= 1 && v <= MAX_LOADER_STAND ? (int) v : null;
     }
 
     private static String text(JsonNode n) {
