@@ -489,14 +489,15 @@ class ComponentApiTest {
             ResponseEntity<String> wurzelUmhaengen = put(
                     "/api/v1/sites/" + site + "/components/" + netzId + "/haengt-an", customer,
                     Map.of("haengtAn", halleId.toString(), "seitWann", "schon_immer"));
-            assertThat(wurzelUmhaengen.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            // Boot 4 / Framework 7 löst 422 zum neuen Namen UNPROCESSABLE_CONTENT auf — der WERT zählt.
+            assertThat(wurzelUmhaengen.getStatusCode().value()).isEqualTo(422);
             assertThat(wurzelUmhaengen.getBody()).contains("hängt nirgends");
 
             // R6: kein Zyklus - UV Halle darf nicht an ihren eigenen Kompressor hängen.
             ResponseEntity<String> zyklus = put(
                     "/api/v1/sites/" + site + "/components/" + halleId + "/haengt-an", customer,
                     Map.of("haengtAn", kompressorId.toString(), "seitWann", "schon_immer"));
-            assertThat(zyklus.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(zyklus.getStatusCode().value()).isEqualTo(422);
             assertThat(zyklus.getBody()).contains("Kreis");
 
             // Umhängen „schon immer": der Kompressor hängt jetzt an der Wurzel.

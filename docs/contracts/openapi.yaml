@@ -33693,7 +33693,7 @@ components:
         hauptzaehler: { type: string }
     Bilanz:
       type: object
-      required: [anlage, periode, am, von, bis, zeitzone, hauptzaehler]
+      required: [anlage, periode, am, von, bis, zeitzone, hauptzaehler, unterverteilungen]
       properties:
         anlage: { $ref: "#/components/schemas/BilanzAnlage" }
         periode: { type: string, enum: [tag, monat, jahr] }
@@ -33702,9 +33702,13 @@ components:
         bis: { type: string, format: date, description: "Der LETZTE Tag der Periode (einschließlich)." }
         zeitzone: { type: string, example: Europe/Berlin }
         hauptzaehler: { type: array, items: { $ref: "#/components/schemas/BilanzHauptzaehler" } }
+        unterverteilungen:
+          type: array
+          items: { $ref: "#/components/schemas/BilanzHauptzaehler" }
+          description: "Zählerbaum S4 (zaehlerbaum.md, §4.3 Satz 2): je Unterverteilung — ein Unterzähler mit eigenen Unterzählern — ein Block derselben Form. Sein Rest zieht nur die direkten Kinder ab; nur mit mindestens einem Abschnitt in der Periode oder einer geführten Rest-Messstelle."
         ausserhalb_zugriff:
           type: string
-          description: "NUR wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb des Zugriffs des Lesers braucht (er selbst, sein Rest oder ein Term seiner Stellung; AP-03 R-A3/R-A6): Rest, zugeordnete Summe, Abdeckung und Live-Wert fehlen dann ganz. Ohne Namen, ohne Anzahl."
+          description: "NUR wenn ein Block fehlt, weil er eine Messstelle außerhalb des Zugriffs des Lesers braucht (er selbst, sein Rest oder ein Term seiner Stellung; AP-03 R-A3/R-A6): Rest, zugeordnete Summe, Abdeckung und Live-Wert fehlen dann ganz. Ohne Namen, ohne Anzahl."
           example: "umfasst Standorte außerhalb Ihres Zugriffs"
     BilanzAnlage:
       type: object
