@@ -204,6 +204,18 @@ public class DeviceRepository {
     }
 
     /**
+     * „Endgültig löschen" einer AUSGEBAUTEN Box, die nie Daten geliefert hat (vierter Löschweg,
+     * vp-box-endgueltig-loeschen) - das Gegenstück zu {@link #loesen}: hier MUSS die Box ausgebaut
+     * sein. Der Aufrufer ({@code BoxEndgueltigLoeschenService}) hat {@code BoxDatenBestand} und die
+     * Beleg-Regeln vorher unter {@link #lockReference} geprüft; die RESTRICT-Fremdschlüssel
+     * (V20260913150000) lehnen sonst dieses Statement selbst ab (23503). False heißt: RLS verbirgt
+     * die Box oder sie ist schon weg (=> 404).
+     */
+    public boolean endgueltigLoeschen(UUID deviceId) {
+        return jdbc.update("DELETE FROM device WHERE id = ? AND ausgebaut_am IS NOT NULL", deviceId) > 0;
+    }
+
+    /**
      * Stamp the purge watermark (migration V20260706000000): the timescale-writer
      * refuses telemetry whose OBSERVATION time is at or before this instant, so
      * replayed old samples can never resurrect purged history. Deliberately its

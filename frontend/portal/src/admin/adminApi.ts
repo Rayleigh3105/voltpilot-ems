@@ -432,6 +432,25 @@ export interface BoxLoesenBefund {
 
 export type BoxLoesenAnlass = 'falsche_kennung' | 'fremder_kunde' | 'doppelt_verbunden' | 'anderer_anlass';
 
+/**
+ * „Endgültig löschen" einer AUSGEBAUTEN Box (vierter Löschweg, vp-box-endgueltig-loeschen): der
+ * Befund nennt die Datenarten, an denen das Urteil hängt - nie nur ein Ja/Nein (Sätze: `boxEndgueltig.ts`).
+ */
+export interface BoxEndgueltigBefund {
+  deviceId: string;
+  loeschbar: boolean;
+  /** Reihenfolge der 409-Liste: herzschlag, messwerte, messauswahl, meldungen, befehle, ocpp, …, berichtsstaende. */
+  daten: string[];
+  fakten: { verbundenAm: string; ausgebautAm: string; tenantName: string; siteName: string };
+}
+
+export interface BoxEndgueltigErgebnis {
+  externalRef: string;
+  deviceId: string;
+  geloeschtAm: string;
+  bereitsGeloescht: boolean;
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -895,6 +914,17 @@ export const adminApi = {
     request<{ externalRef: string; anlass: string }>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`, {
       method: 'POST',
       body: JSON.stringify({ anlass, anlassText }),
+    }),
+
+  /** Endgültig löschen: der Befund einer AUSGEBAUTEN Box - informativ, prüft nichts unter Sperre. */
+  geraeteEndgueltigBefund: (ref: string) =>
+    request<BoxEndgueltigBefund>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/endgueltig-loeschen`),
+
+  /** Endgültig löschen: GENAU die Box aus dem Befund (idempotent; 409 mit der Liste, wenn doch Daten da sind). */
+  geraeteEndgueltigLoeschen: (ref: string, deviceId: string) =>
+    request<BoxEndgueltigErgebnis>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/endgueltig-loeschen`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId }),
     }),
 
   /** L5: Meldungen plattformweit (`status=verlauf` für erledigte). */

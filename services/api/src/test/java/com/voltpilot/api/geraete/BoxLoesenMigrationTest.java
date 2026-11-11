@@ -236,6 +236,9 @@ class BoxLoesenMigrationTest {
             Map.entry("box_update_verlauf", "OTA-Verlauf der Box, kein Messwert - Cloud-Zustand"),
             // Eigenes Protokoll - entsteht GENAU beim Löschen, kein FK (lebt per Definition darüber hinaus).
             Map.entry("box_loesen_protokoll", "Das eigene Audit-Protokoll von L1 selbst, kein device_id-FK."),
+            Map.entry("box_endgueltig_geloescht_protokoll", "Audit-Protokoll des vierten Löschwegs "
+                    + "(vp-box-endgueltig-loeschen), kein device_id-FK - nur AUSGEBAUTE Boxen, "
+                    + "die Lösen (ausgebaut_am IS NULL) nie trifft."),
             // v1/v2-Telemetrie tragen BEWUSST keinen Fremdschlüssel (V20260913150000) - die ANWENDUNG ist
             // hier die Rückversicherung, nicht die Datenbank: BoxLoesenRegel.messwertAm prüft beide direkt.
             Map.entry("telemetry", "Kein FK (V20260913150000) - BoxLoesenRegel.messwertAm prüft sie direkt."),

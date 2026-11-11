@@ -9,9 +9,10 @@ import { VpPicker } from '../../components/VpPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ApiError } from '../../api';
 import {
-  adminApi, type AdminDeviceRow, type AdminGeraeteAkte,
+  adminApi, type AdminDeviceRow, type AdminGeraeteAkte, type BoxEndgueltigBefund,
   type ControlCandidate, type PendingEnrollment, type Tenant,
 } from '../../admin/adminApi';
+import { ausgebautZeile, bleibtSatz, NIE_DATEN_SATZ } from '../../boxEndgueltig';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import {
   BOX_ART_LABELS, BOX_ART_UNBEKANNT, crossoverState, freshnessLabel, releaseBoxArt,
@@ -44,6 +45,7 @@ import {
 } from '../../nav';
 import { BoxArtChip } from './BoxArtChip';
 import { BoxLoesenDialog } from './BoxLoesenDialog';
+import { BoxEndgueltigLoeschenDialog } from './BoxEndgueltigLoeschenDialog';
 import { AdminPageHead } from './AdminPageHead';
 import { Zeitleiste } from './Zeitleiste';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
@@ -55,10 +57,12 @@ import './GeraeteAkte.css';
 /**
  * Die GERÄTEAKTE (Konzept `vp-adminview-konzept-k1` §4.4, Scheiben S2/S3):
  * EIN Ort für alles, was zu einer Box gehört. Sie adressiert die Box-KENNUNG
- * (nicht die UUID, §4.2) und setzt sich aus vorhandenen Antworten zusammen -
- * keine neue Schnittstelle (`/admin/edge-updates`, `/admin/devices`,
- * `/admin/enrollments/pending`, `/admin/fernwartung*`, `/admin/werkstatt/*`,
- * `/admin/fleet`, `/admin/control-candidates`, `/admin/component-fleet`).
+ * (nicht die UUID, §4.2) und setzt sich aus vorhandenen Antworten zusammen
+ * (`/admin/edge-updates`, `/admin/devices`, `/admin/enrollments/pending`,
+ * `/admin/fernwartung*`, `/admin/werkstatt/*`, `/admin/fleet`,
+ * `/admin/control-candidates`, `/admin/component-fleet`); nur eine AUSGEBAUTE
+ * Box lädt dazu den Befund `/admin/geraete/{ref}/endgueltig-loeschen`
+ * (vierter Löschweg, vp-box-endgueltig-loeschen).
  *
  * E1 = A: bearbeitet wird inline, auf dieser Seite - kein Fenster.
  * E4 = A: die Kundenseiten verlinken nur noch hierher.
@@ -107,6 +111,10 @@ export function GeraeteAktePage({
   // L1/L2 (Konzept vp-plattform-admin-box-benutzer-konzept): „Vom Kunden lösen" - der Dialog
   // teilt sich die Kopf-Karte UND den Menüeintrag (B4 = A, dieselbe Handlung, zwei Einstiege).
   const [loesenOffen, setLoesenOffen] = useState(false);
+  // Endgültig löschen (vierter Löschweg, vp-box-endgueltig-loeschen): nur für AUSGEBAUTE Boxen.
+  // Der Befund kommt EINMAL vom Server und speist Karte und Dialog - das Portal behauptet nichts.
+  const [endgueltigOffen, setEndgueltigOffen] = useState(false);
+  const [endgueltigBefund, setEndgueltigBefund] = useState<BoxEndgueltigBefund | null>(null);
 
   async function laden() {
     const [eu, dv, pe, wb, wd, wf, fw, ak] = await Promise.allSettled([
@@ -177,6 +185,19 @@ export function GeraeteAktePage({
   // B1-B4: „Verbunden, aber nie gemeldet" - verbunden (ein Kopf existiert), aber weder Herzschlag
   // noch Messwert je gesehen. Dieselbe Bedingung entscheidet die Karte (N8-sicher) UND das Menü.
   const nieGemeldet = akte?.kopf != null && akte.kopf.herzschlagAm == null && akte.kopf.messwertAm == null;
+  const ausgebaut = akte?.lebensabschnitt === 'ausgebaut';
+
+  useEffect(() => {
+    if (!ausgebaut) {
+      setEndgueltigBefund(null);
+      return;
+    }
+    let aktiv = true;
+    adminApi.geraeteEndgueltigBefund(boxRef)
+      .then((b) => { if (aktiv) setEndgueltigBefund(b); })
+      .catch(() => { /* ohne Befund keine Behauptung - Karte und Dialog sagen es dann selbst */ });
+    return () => { aktiv = false; };
+  }, [ausgebaut, boxRef]);
 
   useEffect(() => {
     if (!row) return;
@@ -222,10 +243,15 @@ export function GeraeteAktePage({
       <AktenKopf boxRef={boxRef} row={row} deviceRow={deviceRow} pendingRow={pendingRow} jetzt={jetzt}
         reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert} nieGemeldet={nieGemeldet}
         onLoesenOeffnen={() => setLoesenOffen(true)}
+        ausgebautAm={ausgebaut ? (akte?.kopf?.ausgebautAm ?? akte?.lebensabschnittSeit ?? null) : null}
+        onEndgueltigOeffnen={() => setEndgueltigOffen(true)}
         stand={pollFehler ? freshnessLabel(fetchedAt, tick, true) : `${freshnessLabel(fetchedAt, tick)} · alle 10 s`} />
       {actionError && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
       <BoxLoesenDialog open={loesenOffen} boxRef={boxRef} jetzt={jetzt} onClose={() => setLoesenOffen(false)}
         onGeloescht={() => { setLoesenOffen(false); onNavigate?.(pageRoute('geraete-registry')); }} />
+      <BoxEndgueltigLoeschenDialog open={endgueltigOffen} boxRef={boxRef} befund={endgueltigBefund}
+        onClose={() => setEndgueltigOffen(false)}
+        onGeloescht={() => { setEndgueltigOffen(false); onNavigate?.(pageRoute('geraete-registry')); }} />
 
       {reiter === 'software' ? (
         <SoftwareReiter row={row} ersterLeerLauf={ersterLeerLauf} verlauf={verlauf} jetzt={jetzt} busy={busy}
@@ -245,7 +271,9 @@ export function GeraeteAktePage({
         <VerlaufReiter verlauf={verlauf} jetzt={jetzt} fwProtokoll={fwProtokoll ?? []} />
       ) : (
         <UeberblickReiter row={row} ersterLeerLauf={ersterLeerLauf} jetzt={jetzt} onReiter={nav} akte={akte}
-          onJumpToTenant={onJumpToTenant} nieGemeldet={nieGemeldet} onLoesenOeffnen={() => setLoesenOffen(true)} />
+          onJumpToTenant={onJumpToTenant} nieGemeldet={nieGemeldet} onLoesenOeffnen={() => setLoesenOffen(true)}
+          ausgebaut={ausgebaut} endgueltigBefund={endgueltigBefund}
+          onEndgueltigOeffnen={() => setEndgueltigOffen(true)} />
       )}
     </div>
   );
@@ -280,7 +308,7 @@ function zustandBadgeAusVerbindung(v: BoxVerbindungSicht): { variant: 'ok' | 'wa
 
 function AktenKopf({
   boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate, pulsiert, stand, nieGemeldet,
-  onLoesenOeffnen,
+  onLoesenOeffnen, ausgebautAm, onEndgueltigOeffnen,
 }: {
   boxRef: string;
   row: FleetRow | null;
@@ -297,16 +325,21 @@ function AktenKopf({
   /** B1-B4: verbunden, aber weder Herzschlag noch Messwert je gesehen (N8: dann keine Fernwartung/Update). */
   nieGemeldet: boolean;
   onLoesenOeffnen: () => void;
+  /** Ausgebaut (vierter Löschweg): der Kopf sagt es, das Menü bietet „Endgültig löschen …" an. */
+  ausgebautAm: string | null;
+  onEndgueltigOeffnen: () => void;
 }) {
   const [menuOffen, setMenuOffen] = useState(false);
   const reiterRand = useReiterRand<HTMLDivElement>();
   const verbindung = row ? verbindungSicht(row, jetzt) : null;
   const name = row?.siteName?.trim() || deviceRow?.label || boxRef;
-  const zustandBadge = verbindung
-    ? zustandBadgeAusVerbindung(verbindung)
-    : pendingRow
-      ? { variant: 'off' as const, text: 'Meldet sich, wartet auf Zuordnung' }
-      : { variant: 'off' as const, text: 'Noch nicht verbunden' };
+  const zustandBadge = ausgebautAm != null
+    ? { variant: 'off' as const, text: `Ausgebaut · ${fmtRelative(ausgebautAm, jetzt)}` }
+    : verbindung
+      ? zustandBadgeAusVerbindung(verbindung)
+      : pendingRow
+        ? { variant: 'off' as const, text: 'Meldet sich, wartet auf Zuordnung' }
+        : { variant: 'off' as const, text: 'Noch nicht verbunden' };
 
   return (
     <>
@@ -361,6 +394,12 @@ function AktenKopf({
                       Vom Kunden lösen …
                     </button>
                   )}
+                  {ausgebautAm != null && (
+                    <button type="button" role="menuitem"
+                      onClick={() => { setMenuOffen(false); onEndgueltigOeffnen(); }}>
+                      Endgültig löschen …
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -382,7 +421,7 @@ function AktenKopf({
 // ── Überblick ───────────────────────────────────────────────────────────────
 
 function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpToTenant, nieGemeldet,
-  onLoesenOeffnen }: {
+  onLoesenOeffnen, ausgebaut, endgueltigBefund, onEndgueltigOeffnen }: {
   row: FleetRow | null;
   ersterLeerLauf: boolean;
   jetzt: Date;
@@ -393,7 +432,17 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpTo
   onJumpToTenant?: (tenantId: string, target: Route) => void;
   nieGemeldet: boolean;
   onLoesenOeffnen: () => void;
+  /** Der vierte Löschweg (vp-box-endgueltig-loeschen): die Karte „Ausgebaut" spricht den Befund. */
+  ausgebaut: boolean;
+  endgueltigBefund: BoxEndgueltigBefund | null;
+  onEndgueltigOeffnen: () => void;
 }) {
+  if (ausgebaut) {
+    return (
+      <AusgebautKarte akte={akte} befund={endgueltigBefund} jetzt={jetzt}
+        onEndgueltigOeffnen={onEndgueltigOeffnen} />
+    );
+  }
   if (ersterLeerLauf) {
     return (
       <Card padding="lg" radius="lg">
@@ -480,6 +529,55 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpTo
 
 // ── Vom Kunden lösen (L1/L2): der Dialog wohnt in `BoxLoesenDialog.tsx` - die Kundenakte
 // (Karte „Anlagen und Boxen") teilt ihn seit dem Befund vp-kundenakte-fremde-personen (Punkt 7).
+
+/**
+ * Die Karte „Ausgebaut" (vierter Löschweg, vp-box-endgueltig-loeschen): sie spricht den SERVER-Befund.
+ * Nie Daten geliefert → der Gefahren-Knopf „Endgültig löschen …" (Dialog mit Kennung-Abschrift);
+ * hat die Box Daten → die ruhige Erklärung, warum sie als Historie bleibt - nie ein toter Knopf.
+ */
+function AusgebautKarte({ akte, befund, jetzt, onEndgueltigOeffnen }: {
+  akte: AdminGeraeteAkte | null;
+  befund: BoxEndgueltigBefund | null;
+  jetzt: Date;
+  onEndgueltigOeffnen: () => void;
+}) {
+  const kopf = akte?.kopf ?? null;
+  const zeile = befund
+    ? ausgebautZeile(befund, jetzt)
+    : kopf
+      ? `${kopf.tenantName} › ${kopf.siteName} · Ausgebaut ${fmtRelative(kopf.ausgebautAm, jetzt)}`
+      : `Ausgebaut ${fmtRelative(akte?.lebensabschnittSeit ?? null, jetzt)}`;
+  return (
+    <div className="vp-geraet-grid">
+      <Card padding="lg" radius="lg" className="vp-geraet-sek" data-testid="akte-ausgebaut">
+        <h2><Icon name="archive" size={18} /> Ausgebaut</h2>
+        <p className="vp-muted" style={{ marginTop: 0 }}>{zeile}</p>
+        {befund == null ? (
+          <p className="vp-muted" data-testid="akte-ausgebaut-laedt">Der Datenbestand wird geprüft …</p>
+        ) : befund.loeschbar ? (
+          <>
+            <p data-testid="akte-ausgebaut-loeschbar">{NIE_DATEN_SATZ}</p>
+            <Button variant="outline" size="sm" className="vp-btn-danger"
+              onClick={onEndgueltigOeffnen}>
+              Endgültig löschen …
+            </Button>
+          </>
+        ) : (
+          // Nie ein toter Knopf: eine Box mit Daten bekommt die Erklärung statt eines gesperrten Wegs.
+          <p data-testid="akte-ausgebaut-bleibt">
+            {bleibtSatz(befund.daten)} Sie verschwindet erst mit ihrer Anlage.
+          </p>
+        )}
+      </Card>
+      <Card padding="lg" radius="lg" className="vp-geraet-sek">
+        <h2><Icon name="history" size={18} /> Verlauf bleibt lesbar</h2>
+        <p className="vp-muted" style={{ marginTop: 0 }}>
+          Werkstatt-, Fernwartungs- und Software-Protokolle dieser Kennung zeigt der Reiter „Verlauf“ weiter.
+        </p>
+      </Card>
+    </div>
+  );
+}
 
 // ── Software ──────────────────────────────────────────────────────────────
 
