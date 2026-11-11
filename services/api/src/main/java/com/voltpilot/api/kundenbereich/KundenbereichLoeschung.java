@@ -33,7 +33,7 @@ import org.springframework.stereotype.Component;
  * VERBINDUNG DES LÖSCHZUGS gelesen, nach der Sperre — eine Messung, die in der Lücke ankam, zählt.
  *
  * <p><b>Der Löschnachweis</b> ({@code mandant_loeschnachweis}, {@code V20260925223000}, Anlass seit
- * {@code V20261111200000}) entsteht im SELBEN Zug: ohne Personendaten des Kunden — der Bereich nur als Kennung,
+ * {@code V20261111210000}) entsteht im SELBEN Zug: ohne Personendaten des Kunden — der Bereich nur als Kennung,
  * die Zeilen je Tabelle vor dem Löschen, was danach noch mit seiner Kennung da ist ({@code verblieben}), die
  * Prüfsumme des letzten abgeschlossenen Gesamtabzugs (IP-17), wer vom Betrieb gelöscht hat. Die Tabellen kommen
  * aus dem Katalog (jede mit {@code tenant_id}), nicht aus der Liste des Löschwegs — sonst zählte der Nachweis
@@ -47,7 +47,7 @@ public class KundenbereichLoeschung {
     public static final String NICHT_BEENDET = "kundenbereich_nicht_beendet";
     public static final String FRIST_LAEUFT = "frist_laeuft";
 
-    /** Der Anlass einer Löschung — die Werte des DB-CHECKs (V20261111200000). */
+    /** Der Anlass einer Löschung — die Werte des DB-CHECKs (V20261111210000). */
     public enum Anlass {
         FRIST_ABGELAUFEN("frist_abgelaufen"),
         SOFORT_KEINE_DATEN("sofort_keine_daten");
@@ -221,7 +221,7 @@ public class KundenbereichLoeschung {
                 lock.execute();
             }
             // Beim Anlass „sofort, keine Daten" eines AKTIVEN Kunden gibt es kein Vertragsende: die drei
-            // Fristen-Spalten bleiben leer (V20261111200000). Ein BEENDETER datenfreier Kunde behält sein
+            // Fristen-Spalten bleiben leer (V20261111210000). Ein BEENDETER datenfreier Kunde behält sein
             // beendet_am im Nachweis - nur Frist und Stichtag entfallen, denn sofort heißt ohne sie.
             boolean frist = anlass == Anlass.FRIST_ABGELAUFEN;
             try (PreparedStatement st = con.prepareStatement("INSERT INTO mandant_loeschnachweis (kennzeichen,"

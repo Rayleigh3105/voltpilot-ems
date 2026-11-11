@@ -173,7 +173,8 @@ public final class KundeDatenBestand {
             m.put(t, verwaltung);
         }
         String protokoll = "Plattform-/Struktur-Protokoll ohne Kundeninhalt - der Löschweg behandelt es selbst";
-        for (String t : List.of("box_loesen_protokoll", "box_endgueltig_geloescht_protokoll", "ort_aenderung",
+        for (String t : List.of("box_loesen_protokoll", "box_endgueltig_geloescht_protokoll",
+                "box_ausbauen_protokoll", "ort_aenderung",
                 "data_source_aenderung", "data_source_assignment", "data_source_handover", "component_change_event",
                 "device_site_assignment", "device_succession", "geraetesuche", "geraetesuche_fund",
                 "geraetesuche_protokoll")) {

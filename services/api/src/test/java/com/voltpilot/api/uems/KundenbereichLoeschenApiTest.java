@@ -484,7 +484,7 @@ class KundenbereichLoeschenApiTest {
                 .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(Map.of("name", "Neu"))),
                 plattform());
         assertThat(gesperrt.getResponse().getStatus()).isEqualTo(409);
-        assertThat(json(gesperrt).get("message").asText()).startsWith("Der Vertrag dieses Kunden ist am ")
+        assertThat(json(gesperrt).get("message").asText()).startsWith("Der Kundenbereich ist seit ")
                 .doesNotContain("Ihr Vertrag");
 
         // Der Kunde selbst bleibt gesperrt (hier: die Plattform im Mandantensprung als Kundenadministrator).

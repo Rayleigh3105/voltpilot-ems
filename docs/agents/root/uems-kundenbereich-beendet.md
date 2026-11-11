@@ -18,12 +18,14 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
   Kundenkonto mit Zuweisung „Kundenadministrator" oder Bestandskonto; `/me` für alle — die
   Selbstauskunft trägt `kundenbereich.beendet {beendet_am, loeschung_fruehestens, liest, text}`
   (aktiv: `null`). Plattform-Routen mit `{tenantId}`/`{siteId}`/
-  `{deviceId}` im Pfad: jedes Nicht-GET 409 — der Satz spricht den BETREIBER an
-  (`KundenbereichEnde.textBetreiber`, „Der Vertrag dieses Kunden …") —, außer den
-  `BETREIBER_AUSNAHMEN` (EINE Liste voller Pfade, vp-kunde-sofort-loeschen: beenden,
-  wiederaufnehmen, `delete`, `offboarding/cleanup`, Konto sperren, „Vom Kunden lösen"
-  `geraete/{ref}/loesen`; eine neue Betreiber-Handlung am beendeten Kunden, etwa der
-  Box-Ausbau durch den Admin, trägt ihre Route dort ein). **Falle:** der Filter steht
+  `{deviceId}` im Pfad: jedes Nicht-GET 409 — der Satz spricht den Admin an
+  (`KundenbereichEnde.textAdmin`), nie der Kundensatz „Ihr Vertrag …" —, außer `ADMIN_AUSNAHMEN`
+  (beenden, wiederaufnehmen, `delete` — seit vp-kunde-sofort-loeschen auch SOFORT bei einem
+  datenfreien Kunden —, `offboarding/cleanup`, Konto sperren) und den Betreiber-Aktionen am
+  Box-Lebenszyklus über die externe Referenz (`ADMIN_BOX_BETREIBER_AKTIONEN`: Vom Kunden lösen,
+  Box ausbauen, endgültig löschen — EINE Stelle, vp-kunde-sofort-loeschen/vp-admin-box-ausbauen;
+  eine neue Betreiber-Handlung am beendeten Kunden trägt sich dort bzw. in `ADMIN_AUSNAHMEN` ein,
+  nirgendwo sonst). **Falle:** der Filter steht
   vor der Autorisierung — auf Plattform-Pfaden antwortet er nur einer Plattform-Rolle, sonst
   verriete er Zustand und Daten eines fremden Bereichs.
 - **Neue Route unter `/api/v1/admin/` mit Kundenbereich unter anderem Variablennamen** (z. B.
@@ -108,7 +110,7 @@ Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-lösc
   Wiederaufnahme gewinnt ganz oder findet nichts; der Datenbestand wird dort auf der Verbindung des Löschzugs
   erneut gelesen). Der Sofort-Weg gibt nie gemeldete Boxen VOR dem Abbau über `BoxLoesenService.beimKundenLoeschen`
   frei (ohne Protokollzeile — sie stürbe im selben Zug) und schreibt `mandant_loeschnachweis.anlass =
-  'sofort_keine_daten'` (Fristen-Spalten leer, `V20261111200000`) sowie das bleibende Plattform-Protokoll
+  'sofort_keine_daten'` (Fristen-Spalten leer, `V20261111210000`) sowie das bleibende Plattform-Protokoll
   `kundenbereich_geloescht_protokoll` MIT Namen (wer, wann, Anlass; append-only, nur Admin-Rolle). Die Löschbarkeit
   liest das Portal über `GET /api/v1/admin/tenants/loeschbarkeit` (Liste) und `…/{id}/loeschbarkeit` (mit Folgen),
   `AdminKundeLoeschbarkeitController`.
