@@ -8367,6 +8367,19 @@ export const STARTFENSTER_MS = 2_000;
 const STARTFENSTER_PFADE = new Set(['/api/v1/funktionen']);
 
 /**
+ * Erzwingt eine frische Antwort auf `/funktionen` - fürs ausdrückliche „Erneut prüfen" (Schritt 4 des
+ * Messen-Assistenten): das Startfenster oben teilt drei zeitgleiche Boot-Lesungen, nie einen bewussten
+ * Klick, der auf neue Daten (Telemetrie, Register) wartet. Ohne das bekäme ein Klick innerhalb von
+ * {@link STARTFENSTER_MS} nach dem letzten Laden dieselbe veraltete Antwort zurück (Befund
+ * vp-messen-assistent-e2e-rot: „Erneut prüfen" zeigte nach wartenden Messstellen weiter „wartet").
+ */
+export function vergissFunktionenStartfenster(): void {
+  for (const key of inFlight.keys()) {
+    if (key.endsWith('|/api/v1/funktionen')) inFlight.delete(key);
+  }
+}
+
+/**
  * Der je Aufruf gestempelte `X-Tenant-Id`-Kopf (Kundenakte, Plattform-Geräteseite) - sonst `null`.
  * Er gewinnt über den globalen Umschalter: ein Aufruf, der seinen Kunden AUSDRÜCKLICH nennt, trägt
  * NIE zusätzlich den `X-Kundenbereich` des offenen Umschalters. Vorher gingen beide Köpfe hinaus,
