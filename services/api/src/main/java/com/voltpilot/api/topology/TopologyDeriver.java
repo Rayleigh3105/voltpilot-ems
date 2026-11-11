@@ -74,6 +74,16 @@ public final class TopologyDeriver {
     public static final String TYPE_MODBUS_LOAD = "modbus-load";
 
     /**
+     * Die komponierte Haus-Last (v1→v2-Rückfüllung, {@code V2SiteBackfillRunner}):
+     * Bezug + Erzeugung − Einspeisung ± Speicher, "alles hinter dem
+     * Netzanschluss". Jeder andere Verbraucher-Posten (ein Unterzähler, ein
+     * Heizstab) steckt physikalisch schon in diesem Wert - der Knotenwert des
+     * Verbraucher-Knotens ist deshalb DIESER eine Posten, nie die Summe aller
+     * (Zählerbaum-Konzept N3/R1, docs/contracts/v2/zaehlerbaum.md §3).
+     */
+    public static final String TYPE_HOUSE_LOAD = "house-load";
+
+    /**
      * WHERE a charge point hangs (Cockpit Phase 1 / C1). {@code null}/blank =
      * the portal never said - read as haus, the safe direction: the house
      * measurement is assumed to contain it, exactly what the box's budget law
@@ -89,16 +99,30 @@ public final class TopologyDeriver {
     /** One resolved capability: channel, assigned role ("" = skip), maßgeblich, value. */
     public record CapabilityInput(String channel, String role, boolean primary, Double value) {}
 
-    /** One entity with its resolved capabilities. */
+    /**
+     * One entity with its resolved capabilities. {@code parentEntityId} is the
+     * Zählerbaum-Eltern-Entität ({@code haengt_an}, Konzept
+     * vp-zaehlerbaum-konzept) - {@code null} = an der Wurzel (dem
+     * Netzanschluss), die Vorgabe für jede Bestandsanlage am ersten Tag.
+     */
     public record EntityInput(String id, String type, String label, String category, String health,
-            List<CapabilityInput> capabilities) {}
+            List<CapabilityInput> capabilities,
+            @JsonProperty("parent_entity_id") String parentEntityId) {
+
+        /** Der Weg vor dem Zählerbaum: keine Eltern-Entität bekannt (hängt an der Wurzel). */
+        public EntityInput(String id, String type, String label, String category, String health,
+                List<CapabilityInput> capabilities) {
+            this(id, type, label, category, health, capabilities, null);
+        }
+    }
 
     /** The whole site as an entity graph. */
     public record Input(List<EntityInput> entities) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record FlowMember(@JsonProperty("entity_id") String entityId, String label,
-            boolean primary, @JsonProperty("value_kw") Double valueKw) {}
+            boolean primary, @JsonProperty("value_kw") Double valueKw,
+            @JsonProperty("haengt_an") String haengtAn) {}
 
     /**
      * WOHER eine EIGENSCHAFT eines Knotens kommt. Eine Eigenschaft des
@@ -253,6 +277,7 @@ public final class TopologyDeriver {
             nodes.add(switch (role) {
                 case ROLE_GRID -> gridNode(role, caps);
                 case ROLE_STORAGE -> storageNode(role, caps);
+                case ROLE_CONSUMER -> consumerNode(role, caps);
                 default -> sumNode(role, caps);
             });
         }
@@ -279,6 +304,40 @@ public final class TopologyDeriver {
         double mag = round3(Math.abs(sum));
         boolean active = mag > DEADBAND_KW;
         String dir = active ? (isConsuming(role) ? "out" : "in") : null;
+        return new FlowNode(role, mag, null, null, active, dir, members);
+    }
+
+    /**
+     * Der Verbraucher-Knoten (Zählerbaum-Konzept N3/R1): ist eine komponierte
+     * Haus-Last ({@link #TYPE_HOUSE_LOAD}) unter den Mitgliedern, ist IHR Wert
+     * der Knotenwert - jedes andere Mitglied (ein Unterzähler, ein Heizstab)
+     * steckt schon in diesem einen Wert, eine Summe über alle zählte doppelt.
+     * Ohne eine solche Haus-Last (ältere/synthetische Eingaben) bleibt die
+     * Summe aller Mitglieder wie bisher ({@link #sumNode}) - byte-identisch zu
+     * jedem Fall ohne Haus-Mitglied.
+     */
+    private static FlowNode consumerNode(String role, List<RoleCap> caps) {
+        RoleCap haus = null;
+        for (RoleCap rc : caps) {
+            if (TYPE_HOUSE_LOAD.equals(rc.entity().type())) {
+                haus = rc;
+                break;
+            }
+        }
+        if (haus == null) {
+            return sumNode(role, caps);
+        }
+        List<FlowMember> members = new ArrayList<>();
+        for (RoleCap rc : caps) {
+            members.add(member(rc));
+        }
+        Double v = haus.cap().value();
+        if (v == null) {
+            return new FlowNode(role, null, null, null, false, null, members);
+        }
+        double mag = round3(Math.abs(v));
+        boolean active = mag > DEADBAND_KW;
+        String dir = active ? "out" : null;
         return new FlowNode(role, mag, null, null, active, dir, members);
     }
 
@@ -345,7 +404,8 @@ public final class TopologyDeriver {
 
     private static FlowMember member(RoleCap rc) {
         Double v = rc.cap().value() == null ? null : round3(rc.cap().value());
-        return new FlowMember(rc.entity().id(), rc.entity().label(), rc.cap().primary(), v);
+        return new FlowMember(rc.entity().id(), rc.entity().label(), rc.cap().primary(), v,
+                rc.entity().parentEntityId());
     }
 
     /**

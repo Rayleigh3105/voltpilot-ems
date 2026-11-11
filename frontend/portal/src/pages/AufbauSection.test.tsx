@@ -858,6 +858,109 @@ describe('AufbauSection · nicht mehr verbunden', () => {
     expect(repin).toHaveBeenCalledTimes(1);
   });
 
+  /** Zählerbaum-Konzept: zwei Unterzähler zusätzlich zum Netzanschluss - für „Woanders anhängen …". */
+  function stubZaehlerbaum() {
+    stub();
+    vi.mocked(api.siteEntities).mockResolvedValue({
+      ...entities,
+      localSetup: [
+        ...entities.localSetup,
+        { id: 'src-uv-halle', kind: 'source', role: 'consumer', brand: 'shelly', model: 'shelly-pro-3em', label: 'UV Halle', reportedAt: '', adoptedEntityId: 'uv-halle' },
+        { id: 'src-uv-keller', kind: 'source', role: 'consumer', brand: 'shelly', model: 'shelly-pro-3em', label: 'UV Keller', reportedAt: '', adoptedEntityId: 'uv-keller' },
+      ],
+      entities: [
+        ...entities.entities,
+        {
+          id: 'uv-halle',
+          entityType: 'sub-meter',
+          typeLabel: 'Unterzähler',
+          role: 'consumer',
+          label: 'UV Halle',
+          control: false,
+          deviceId: 'gw',
+          capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
+          guards: null,
+          syncStatus: 'in_sync',
+          observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+          edgeSourceId: 'src-uv-halle',
+          haengtAn: null,
+        },
+        {
+          id: 'uv-keller',
+          entityType: 'sub-meter',
+          typeLabel: 'Unterzähler',
+          role: 'consumer',
+          label: 'UV Keller',
+          control: false,
+          deviceId: 'gw',
+          capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
+          guards: null,
+          syncStatus: 'in_sync',
+          observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+          edgeSourceId: 'src-uv-keller',
+          haengtAn: null,
+        },
+      ],
+    } as never);
+    vi.mocked(api.topology).mockResolvedValue({
+      ...topology,
+      entities: [
+        ...topology.entities,
+        {
+          id: 'uv-halle', entityType: 'sub-meter', typeLabel: 'Unterzähler', label: 'UV Halle', category: 'consumer', health: 'ok',
+          capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 7.7 }],
+        },
+        {
+          id: 'uv-keller', entityType: 'sub-meter', typeLabel: 'Unterzähler', label: 'UV Keller', category: 'consumer', health: 'ok',
+          capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 0.1 }],
+        },
+      ],
+    } as never);
+  }
+
+  it('hängt einen Unterzähler über „Woanders anhängen …" an einen anderen Zähler, mit der R5-Zeitwahl', async () => {
+    stubZaehlerbaum();
+    const umhaengen = vi.spyOn(api, 'haengtAnSetzen').mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    rendere();
+
+    const keller = await zeile('src-uv-keller');
+    fireEvent.click(within(keller).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Woanders anhängen/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Woanders anhängen' });
+    // Der Netzanschluss und „UV Halle" sind wählbar - „UV Keller" selbst nicht (kein Kreis).
+    expect(within(dialog).getByRole('radio', { name: /UV Halle/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /UV Keller/ })).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('radio', { name: /UV Halle/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+    await waitFor(() =>
+      expect(umhaengen).toHaveBeenCalledWith('s-1', 'uv-keller', { haengtAn: 'uv-halle', seitWann: 'schon_immer', ab: undefined }),
+    );
+  });
+
+  it('„umgebaut am …" schickt das gewählte Datum statt „schon immer"', async () => {
+    stubZaehlerbaum();
+    const umhaengen = vi.spyOn(api, 'haengtAnSetzen').mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    rendere();
+
+    const keller = await zeile('src-uv-keller');
+    fireEvent.click(within(keller).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Woanders anhängen/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Woanders anhängen' });
+
+    fireEvent.click(within(dialog).getByRole('radio', { name: /UV Halle/ }));
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Umgebaut am/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
+    await waitFor(() =>
+      expect(umhaengen).toHaveBeenCalledWith(
+        's-1',
+        'uv-keller',
+        expect.objectContaining({ haengtAn: 'uv-halle', seitWann: 'ab_tag', ab: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }),
+      ),
+    );
+  });
+
   it('löscht eine Komponente erst nach den genannten Folgen', async () => {
     stubPilsting();
     const remove = vi.spyOn(entitiesApi, 'removeComponent').mockResolvedValue(undefined);

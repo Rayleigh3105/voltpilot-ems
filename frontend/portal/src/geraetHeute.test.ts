@@ -125,7 +125,7 @@ describe('Werte und Richtung', () => {
     expect(heuteRichtung(-0.3, NETZ)).toBe('Einspeisung');
     expect(heuteRichtung(0.3, NETZ)).toBe('Bezug');
     // ⚠ Ohne Richtung wäre „0,3 kW" für −0,3 kW eine erfundene Aussage.
-    expect(heuteWert(-0.3, LAST)).toBe(`-0,3${NBSP}kW`);
+    expect(heuteWert(-0.3, LAST)).toBe(`−0,3${NBSP}kW`);
     expect(heuteRichtung(-0.3, LAST)).toBeNull();
   });
 

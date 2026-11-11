@@ -221,7 +221,8 @@ describe('verbrauchKomposition · der Rest ist eine Differenz, kein Gerät', () 
     const c = k({ topology: topo([{ ...HAUS, value_kw: 5.0 }, HEIZSTAB], ENTITIES) });
     expect(c.rest.kw).toBeNull();
     expect(c.rest.konflikt).toBe(true);
-    expect(c.rest.note).toBe('Messwerte passen nicht zusammen (-7,9 kW)');
+    // Echtes Minus, nie der ASCII-Bindestrich (Zählerbaum-Konzept N2).
+    expect(c.rest.note).toBe('Messwerte passen nicht zusammen (−7,9 kW)');
   });
 
   it('eine Rundungs-Differenz unter der Schwelle ist KEIN Widerspruch', () => {

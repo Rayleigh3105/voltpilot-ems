@@ -144,6 +144,8 @@ public class ComponentService {
     private final DeviceRepository deviceTopology;
     private final EntityTypeCatalog entityTypes;
     private final QuelleEinstellungService einstellungen;
+    private final ZaehlerbaumService zaehlerbaum;
+    private final KomponenteHaengtAnRepository haengtAnRepo;
     /**
      * Die Herkunft aus der Gerätesuche (Folgepaket vp-gs-folge-herkunft). Optional, damit die Tests, die diesen
      * Dienst von Hand bauen, unverändert bleiben; im Kontext ist sie immer da.
@@ -157,7 +159,8 @@ public class ComponentService {
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
             AssetRepository assets, EntityObservedRepository observed,
             ComponentActivationOutboxService activationOutbox, DeviceRepository deviceTopology,
-            EntityTypeCatalog entityTypes, QuelleEinstellungService einstellungen) {
+            EntityTypeCatalog entityTypes, QuelleEinstellungService einstellungen,
+            ZaehlerbaumService zaehlerbaum, KomponenteHaengtAnRepository haengtAnRepo) {
         this.geltungsbereich = geltungsbereich;
         this.points = points;
         this.entityRepo = entityRepo;
@@ -172,6 +175,8 @@ public class ComponentService {
         this.deviceTopology = deviceTopology;
         this.entityTypes = entityTypes;
         this.einstellungen = einstellungen;
+        this.zaehlerbaum = zaehlerbaum;
+        this.haengtAnRepo = haengtAnRepo;
     }
 
     @Autowired(required = false)
@@ -281,9 +286,10 @@ public class ComponentService {
                 : geraetesuche.herkunft(siteId);
         List<SiteComponentsDto.ComponentRowDto> rows = new ArrayList<>();
         Map<String, String> rejected = ist == null ? Map.of() : ist.rejected();
+        Map<UUID, UUID> baum = zaehlerbaum.baum(siteId);
         for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
             rows.add(toRow(row, soll, applied, held, reportedAuthority, gatewayAmbiguous,
-                    herkunft.get(row.id()), rejected.get(row.id().toString())));
+                    herkunft.get(row.id()), rejected.get(row.id().toString()), baum.get(row.id())));
         }
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
@@ -371,6 +377,7 @@ public class ComponentService {
         if (heizstabGeraet) {
             heizstab.profil(tenantId, siteId, entityId, tested.fields());
         }
+        zaehlerbaum.einhaengenBeiAnlegen(siteId, entityId, req.haengtAn(), subject);
         uebernommen(tenantId, siteId, fund, entityId);
         // L9: NACH dem Commit und mit Wiederholung, wie Bearbeiten und Rollback.
         // Ein Push INNERHALB der Transaktion hat zwei Fehlerformen, die beide
@@ -1225,7 +1232,7 @@ public class ComponentService {
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
             String held, String reportedAuthority, boolean gatewayAmbiguous,
-            GeraetesucheHerkunft.Herkunft herkunft, String rejectedReason) {
+            GeraetesucheHerkunft.Herkunft herkunft, String rejectedReason, UUID haengtAn) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         boolean failClosed = template == null && !selfAuthored(row.communication());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
@@ -1238,7 +1245,7 @@ public class ComponentService {
                 herkunft == null ? null : new SiteComponentsDto.HerkunftDto(
                         SiteComponentsDto.HerkunftDto.GERAETESUCHE, herkunft.suchId(), herkunft.gesuchtAm(),
                         herkunft.uebernommenAm()),
-                rejectedReason);
+                rejectedReason, haengtAn);
     }
 
     private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {

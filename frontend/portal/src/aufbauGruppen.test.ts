@@ -215,6 +215,20 @@ describe('gruppenKopf - Anzahl und ehrliche Summe (GR-3 A)', () => {
     expect(kopf.label).toBe('Verbrauch, 3 Geräte');
   });
 
+  it('Zählerbaum R1: eine Maschine hinter einer Unterverteilung bleibt eigene Zeile, geht aber nicht in die Summe ein', () => {
+    // Genau der gemeldete Fall: UV Halle 7,7 kW, UV Keller 0,1 kW, darin ein
+    // Kompressor mit 3,2 kW (hängt an UV Halle). Vorher zählte die Summe
+    // „zusammen 11,0 kW“ bei 8,1 kW Bezug.
+    const kompressor = verbraucher('kompressor', 'Kompressor', 3.2, 'generic-load');
+    kompressor.komponenten[0].haengtAn = 'k-u1';
+    const kopf = gruppenKopf(
+      'verbrauch',
+      [unterzaehler('u1', 'UV Halle', 7.7), unterzaehler('u2', 'UV Keller', 0.1), kompressor].map((k) => g(k)),
+    );
+    expect(kopf).toMatchObject({ anzahl: 3, summe: '7,8 kW', hinweis: null });
+    expect(kopf.label).toBe('Verbrauch, 3 Geräte, zusammen 7,8 kW');
+  });
+
   it('summiert das Netz nie (zwei Zähler messen oft denselben Anschluss) und nie einen Ladestand', () => {
     const zwei = gruppenKopf('netz', [netz('n1', 'Netz A', 3, 'Bezug'), netz('n2', 'Netz B', 3, 'Bezug')].map((k) => g(k)));
     expect(zwei).toMatchObject({ anzahl: 2, summe: null, hinweis: null });
@@ -315,6 +329,33 @@ describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
       'UV Halle',
       'UV Keller',
     ]);
+  });
+
+  it('Zählerbaum E2 A: ein Kompressor hinter UV Halle steht eine Ebene tiefer, nicht flach unter Verbrauch', () => {
+    const kompressor = verbraucher('kompressor', 'Kompressor', 3.2, 'generic-load');
+    kompressor.komponenten[0].haengtAn = 'k-src-c7a0'; // die Komponente von UV Halle
+    const mitKompressor = schramm({ karten: [...SCHRAMM, kompressor] });
+    const zeilen = tabellenZeilen(aufbauBaum(mitKompressor), LEERER_FILTER, OFFEN);
+    expect(lesen(zeilen)).toEqual([
+      'anlage',
+      'box',
+      '[Erzeugung 3 · 7,9 kW]',
+      'Kaco 1',
+      'Kaco 2',
+      'Kaco 3',
+      '[Netz 1]',
+      'Netzanschluss',
+      // Nur UV Halle und UV Keller sind Zeilen DIESER Gruppe (2, nicht 3) -
+      // der Kompressor steckt schon in UV Halles 7,9 kW.
+      '[Verbrauch 2 · 8,0 kW]',
+      'UV Halle',
+      'Kompressor',
+      'UV Keller',
+    ]);
+    const kompZeile = zeilen.find((z) => z.typ === 'geraet' && z.geraet.titel === 'Kompressor');
+    const halleZeile = zeilen.find((z) => z.typ === 'geraet' && z.geraet.titel === 'UV Halle');
+    expect(kompZeile?.typ === 'geraet' ? kompZeile.ebene : null)
+      .toBe((halleZeile?.typ === 'geraet' ? halleZeile.ebene : -1) + 1);
   });
 
   it('läuft nie gegen den Anlagenkopf: PV im Kopf = Summe unter Erzeugung (eine Zeitbasis, PR 1778)', () => {

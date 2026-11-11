@@ -73,7 +73,7 @@ function format(kanal: string, v: number | null): string {
   if (v == null || !Number.isFinite(v)) return '—';
   const zaehlerstand = kanal.endsWith('_kwh');
   const stellen = zaehlerstand ? 0 : 1;
-  // Ein Rauschen unter der letzten Stelle ist 0, kein „-0,0“; ein echtes Minus ist „−“.
+  // Ein Rauschen unter der letzten Stelle ist 0, kein „-0,0"; fmtNum liefert bereits das echte Minus.
   const gerundet = Math.round(v * 10 ** stellen) / 10 ** stellen;
-  return fmtNum(gerundet === 0 ? 0 : gerundet, zaehlerstand ? 'kWh' : 'kW', stellen).replace(/^-/, '−');
+  return fmtNum(gerundet === 0 ? 0 : gerundet, zaehlerstand ? 'kWh' : 'kW', stellen);
 }

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Was der Anlege-Assistent speichert (Einheitsmodell Stufe 1, Konzept
@@ -37,6 +38,11 @@ import java.util.Map;
  *     über „Übernehmen" vorbelegt hat (Folgepaket vp-gs-folge-herkunft). Der Server
  *     prüft ihn gegen Anlage, Mandant und die 30 Tage (DP-3 A), schreibt das Protokoll
  *     und hält die Herkunft an der Komponente fest. Absent = der Weg wie bisher.
+ * @param haengtAn Zählerbaum-Konzept (E1 A): hinter welcher Komponente dieser
+ *     Zähler oder gemessene Verbraucher eingebaut ist - {@code null} = an der
+ *     Wurzel (dem Netzanschluss), der Vorgabe des Berichts. Nur bei neuen
+ *     Komponenten gesetzt; ein späteres Umhängen läuft über den eigenen Weg
+ *     ({@code ZaehlerbaumService#umhaengen}), der die Frage „seit wann" stellt.
  */
 public record SaveComponentRequest(
         @NotBlank @Size(max = 200) String templateRef,
@@ -55,7 +61,17 @@ public record SaveComponentRequest(
          * Heizstab V1: {@code heating-rod} legt EIN Gerät über die Ausgangsmenge
          * ({@code connection.channels}) eines Shelly an (HeizstabGeraet); fehlt = der bisherige Weg.
          */
-        @Size(max = 40) String consumerType) {
+        @Size(max = 40) String consumerType,
+        UUID haengtAn) {
+
+    /** Der Weg vor dem Zählerbaum. */
+    public SaveComponentRequest(String templateRef, Integer templateVersion, String label, String role,
+            Map<String, Object> connection, BigDecimal capacityKwp, Integer intervalS, String note,
+            String acceptMissingChannel, Integer expectedRevision, Instant effectiveAt,
+            GeraetesucheBezug geraetesuche, String consumerType) {
+        this(templateRef, templateVersion, label, role, connection, capacityKwp, intervalS, note,
+                acceptMissingChannel, expectedRevision, effectiveAt, geraetesuche, consumerType, null);
+    }
 
     /** Der Weg vor dem Heizstab (V1, Paket 3). */
     public SaveComponentRequest(String templateRef, Integer templateVersion, String label, String role,
@@ -63,7 +79,7 @@ public record SaveComponentRequest(
             String acceptMissingChannel, Integer expectedRevision, Instant effectiveAt,
             GeraetesucheBezug geraetesuche) {
         this(templateRef, templateVersion, label, role, connection, capacityKwp, intervalS, note,
-                acceptMissingChannel, expectedRevision, effectiveAt, geraetesuche, null);
+                acceptMissingChannel, expectedRevision, effectiveAt, geraetesuche, null, null);
     }
 
     /** Der Weg ohne Gerätesuche - jeder Aufrufer vor dem Folgepaket „Herkunft". */

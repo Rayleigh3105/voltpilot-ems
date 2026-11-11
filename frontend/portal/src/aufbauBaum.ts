@@ -145,6 +145,12 @@ export interface AufbauGeraet {
    * messbar)? null = ihr Bericht sagt es nicht (keine Säule, kein Stecker gemeldet) - unbekannt ist kein „frei".
    */
   ladung: { laedt: boolean; kw: number | null } | null;
+  /**
+   * Zählerbaum-Konzept (E1 A): die Entity-Id der Eltern-Komponente im
+   * elektrischen Baum HEUTE, oder `null` = hängt an der Wurzel (dem
+   * Netzanschluss). Aus der ersten Komponente mit einem gesetzten `haengtAn`.
+   */
+  haengtAn: string | null;
 }
 
 /**
@@ -628,6 +634,7 @@ export function aufbauGeraet(
     einheit: null,
     gruppe,
     ladung: saeule ? ladungVon(saeule) : null,
+    haengtAn: karte.komponenten.find((c) => c.haengtAn != null)?.haengtAn ?? null,
   };
 }
 
@@ -895,6 +902,7 @@ function einheitenUnter(
         einheit: { steuerungId: steuerung.id, teNr: e.te_nr },
         gruppe: 'erzeugung' as const,
         ladung: null,
+        haengtAn: null,
       };
     });
 }

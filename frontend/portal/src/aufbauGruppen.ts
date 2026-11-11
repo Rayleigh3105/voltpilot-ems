@@ -78,6 +78,16 @@ export function istUnterzaehler(komponenten: readonly Pick<PlantComponent, 'enti
 }
 
 /**
+ * Zählerbaum-Konzept (R1): hängt dieses Gerät hinter einer anderen Komponente
+ * (einem Zähler), statt direkt an der Wurzel? Sein Wert steckt dann schon im
+ * Wert dieser Eltern-Komponente - der Gruppenkopf darf ihn nicht noch einmal
+ * mitzählen (`gruppenKopf` unten).
+ */
+export function haengtHinterEinemZaehler(komponenten: readonly Pick<PlantComponent, 'haengtAn'>[]): boolean {
+  return komponenten.some((c) => c.haengtAn != null);
+}
+
+/**
  * In welche Gruppe ein Gerät gehört - die erste, zu der es passt; null = es gehört in keine (ein Fund oder
  * „Nicht mehr verbunden": beide bleiben am Ende des Orts).
  */
@@ -189,13 +199,21 @@ export function gruppenKopf(
   let ohneWert = 0;
   if (!teilmenge) {
     if (gruppe === 'erzeugung' || gruppe === 'verbrauch') {
-      const kw = geraete.map((g) => zeilenKw(g, gruppe));
+      // Zählerbaum-Konzept R1: eine Zeile, die hinter einem Zähler dieser
+      // Gruppe hängt, steckt schon in dessen Wert - sie bekommt zwar eine
+      // eigene Zeile, geht aber nicht noch einmal in die Summe ein (genau der
+      // gemeldete Fall: UV Halle 7,7 kW samt Kompressor 3,2 kW darin, nie
+      // 7,7 + 3,2 im Kopf).
+      const zaehlbar = gruppe === 'verbrauch'
+        ? geraete.filter((g) => !haengtHinterEinemZaehler(g.karte.komponenten))
+        : geraete;
+      const kw = zaehlbar.map((g) => zeilenKw(g, gruppe));
       ohneWert = kw.filter((x) => x == null).length;
       const gemischt =
         gruppe === 'verbrauch' &&
-        geraete.some((g) => istUnterzaehler(g.karte.komponenten)) &&
-        geraete.some((g) => !istUnterzaehler(g.karte.komponenten));
-      if (anzahl >= 2 && ohneWert === 0 && !gemischt) {
+        zaehlbar.some((g) => istUnterzaehler(g.karte.komponenten)) &&
+        zaehlbar.some((g) => !istUnterzaehler(g.karte.komponenten));
+      if (zaehlbar.length >= 2 && ohneWert === 0 && !gemischt) {
         summe = fmtNum((kw as number[]).reduce((s, x) => s + x, 0), 'kW');
       }
     } else if (gruppe === 'laden') {

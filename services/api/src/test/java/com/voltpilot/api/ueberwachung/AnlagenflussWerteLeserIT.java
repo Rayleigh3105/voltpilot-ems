@@ -86,8 +86,13 @@ class AnlagenflussWerteLeserIT {
         DeviceChargerStatusRepository ladepunkte = new DeviceChargerStatusRepository(app);
         EntityRegistryService push = mock(EntityRegistryService.class);
         RollenZuordnungService rollen = mock(RollenZuordnungService.class);
+        com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum = new com.voltpilot.api.components.ZaehlerbaumService(
+                new com.voltpilot.api.zugriff.Geltungsbereich(app),
+                new com.voltpilot.api.components.KomponenteHaengtAnRepository(app),
+                mock(com.voltpilot.api.uems.MessstelleQuelleRepository.class),
+                mock(com.voltpilot.api.uems.MessstelleZuordnungService.class));
         TopologyService topologyService = new TopologyService(registry, topologyRepo, catalog,
-                new ObjectMapper(), ladepunkte, push, rollen);
+                new ObjectMapper(), ladepunkte, push, rollen, zaehlerbaum);
         PriceRepository preise = new PriceRepository(app);
         leser = new AnlagenflussWerteLeser(topologyService, ladepunkte, preise, app);
         katalog = new WerteKatalog();

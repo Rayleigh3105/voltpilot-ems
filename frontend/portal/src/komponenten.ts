@@ -245,6 +245,11 @@ export interface PlantComponent {
    * Gerät des Moduls und die Nummer des Ausgangs. Absent/null = kein Ausgang.
    */
   io?: { modulGeraetId: string; kanal: number } | null;
+  /**
+   * Zählerbaum-Konzept (E1 A): die Eltern-Komponente im elektrischen Baum
+   * HEUTE, oder `null` = hängt an der Wurzel (dem Netzanschluss).
+   */
+  haengtAn: string | null;
 }
 
 /** K4: ein Verbraucher am Relais-Ausgang eines I/O-Moduls (aus seinem Profil). */
@@ -1331,6 +1336,7 @@ export function plantModel(
       health,
       measuredVia,
       orphaned,
+      haengtAn: e.haengtAn ?? null,
     });
     // The PV ASPECT of a hybrid inverter: the composed backfill mints no own
     // producer for the modules hanging on the inverter itself, so without this
@@ -1362,6 +1368,7 @@ export function plantModel(
         health,
         measuredVia: null,
         orphaned: false,
+        haengtAn: e.haengtAn ?? null,
       });
     }
   }

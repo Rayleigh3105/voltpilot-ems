@@ -69,6 +69,8 @@ public record SiteComponentsDto(
      *     Abwesend heißt „nicht übersprungen" oder „die Box meldet das nicht".
      *     Gilt für den Stand, den die Box zuletzt beantwortet hat - der
      *     {@code syncStatus} bleibt daneben, wie er ist.
+     * @param haengtAn Zählerbaum-Konzept (E1 A): die Eltern-Komponente HEUTE,
+     *     oder {@code null} = an der Wurzel (dem Netzanschluss).
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ComponentRowDto(
@@ -89,7 +91,8 @@ public record SiteComponentsDto(
             String edgeSourceId,
             String syncStatus,
             HerkunftDto herkunft,
-            String rejectedReason) {}
+            String rejectedReason,
+            UUID haengtAn) {}
 
     /**
      * Die Herkunft einer Komponente - heute nur die Gerätesuche (Folgepaket

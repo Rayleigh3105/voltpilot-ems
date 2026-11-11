@@ -86,6 +86,16 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
     }
 
     /**
+     * VoltPilot selbst, ohne Person: die Übernahme von „hängt an" am Gerät in die elektrische
+     * Stellung der gebundenen Messstelle (Zählerbaum-Konzept, Vertrag
+     * {@code docs/contracts/v2/zaehlerbaum.md} §4). Derselbe Schritt, der eine Komponente im
+     * Aufbau umhängt, trägt die Stellung nach - im Protokoll als eigener Name erkennbar.
+     */
+    public static ProtokollAkteur zaehlerbaumUebernahme() {
+        return new ProtokollAkteur(null, "Zählerbaum-Übernahme", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
      * Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). Der Name kommt aus dem
      * Spiegel {@code benutzer.anzeigename} des eigenen Subjects (Konzept Nachweisen n1, Befund 4: „Ines Kaltenbach“
      * statt „ines“), sonst aus {@code preferred_username} - nie vor ihm aus dem Claim {@code name}: den darf jedes Konto

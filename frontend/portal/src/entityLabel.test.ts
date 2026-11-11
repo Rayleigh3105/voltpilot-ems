@@ -225,4 +225,8 @@ describe('technicalDeviceName: eine Transport-Kennung ist kein Modell', () => {
     expect(technicalDeviceName({ edgeLabel: null, brand: 'shelly', model: 'shelly_http' })).toBe('Shelly');
     expect(technicalDeviceName({ edgeLabel: null, brand: 'shelly', model: 'SPSW-003XE16EU' })).toBe('Shelly SPSW-003XE16EU');
   });
+
+  it('„shelly-pro-3em“ nennt das Zähler-Modell statt der doppelten Marke (Zählerbaum-Konzept N1)', () => {
+    expect(technicalDeviceName({ edgeLabel: null, brand: 'shelly', model: 'shelly-pro-3em' })).toBe('Shelly Pro 3EM');
+  });
 });

@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { fmtRelative, GERADE_EBEN, NBSP, seitDauer } from './format';
+import { fmtNum, fmtRelative, GERADE_EBEN, NBSP, seitDauer } from './format';
 
 const NOW = new Date('2026-09-10T10:00:00Z');
 const vor = (s: number) => new Date(NOW.getTime() - s * 1000).toISOString();
+
+describe('fmtNum — echtes Minus statt ASCII-Bindestrich (Zählerbaum-Konzept N2)', () => {
+  it('setzt bei einem negativen Wert U+2212, nie "-"', () => {
+    expect(fmtNum(-2.9, 'kW')).toBe(`−2,9${NBSP}kW`);
+    expect(fmtNum(-2.9, 'kW')).not.toContain('-');
+  });
+
+  it('bleibt bei null und positiven Werten unverändert', () => {
+    expect(fmtNum(null, 'kW')).toBe('-');
+    expect(fmtNum(2.9, 'kW')).toBe(`2,9${NBSP}kW`);
+    expect(fmtNum(0, 'kW')).toBe(`0,0${NBSP}kW`);
+  });
+});
 
 describe('fmtRelative — Datenalter in Worten', () => {
   it('sagt „gerade eben" statt „vor 0 Sek."', () => {

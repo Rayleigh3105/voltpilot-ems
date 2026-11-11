@@ -76,6 +76,14 @@ const (
 	TypeModbusLoad    = "modbus-load"
 )
 
+// TypeHouseLoad is the composed house load (v1->v2 backfill,
+// V2SiteBackfillRunner): Bezug + Erzeugung - Einspeisung +/- Speicher,
+// "everything behind the grid connection". Every other consumer-role member
+// (a sub-meter, a heating rod) is physically already inside this value - the
+// consumer node's value is therefore THIS one member, never the sum of all
+// (Zählerbaum-Konzept N3/R1, docs/contracts/v2/zaehlerbaum.md §3).
+const TypeHouseLoad = "house-load"
+
 // IsSelfBuiltType reports whether an entity TYPE was defined by the customer
 // themselves. Like IsChargingType this cannot be answered on the category: a
 // modbus-generic is category "meter" (it declares no actuate capability) and a
@@ -109,14 +117,18 @@ type CapabilityInput struct {
 	Value   *float64 `json:"value"`
 }
 
-// EntityInput is one entity with its resolved capabilities.
+// EntityInput is one entity with its resolved capabilities. ParentEntityID is
+// the Zählerbaum parent entity id (haengt_an, Konzept vp-zaehlerbaum-konzept) -
+// nil = at the root (the grid connection), the default for every pre-existing
+// plant on day one.
 type EntityInput struct {
-	ID           string            `json:"id"`
-	Type         string            `json:"type"`
-	Label        string            `json:"label"`
-	Category     string            `json:"category"`
-	Health       string            `json:"health"`
-	Capabilities []CapabilityInput `json:"capabilities"`
+	ID             string            `json:"id"`
+	Type           string            `json:"type"`
+	Label          string            `json:"label"`
+	Category       string            `json:"category"`
+	Health         string            `json:"health"`
+	Capabilities   []CapabilityInput `json:"capabilities"`
+	ParentEntityID *string           `json:"parent_entity_id,omitempty"`
 }
 
 // Input is the whole site as an entity graph.
@@ -130,6 +142,9 @@ type FlowMember struct {
 	Label    string   `json:"label"`
 	Primary  bool     `json:"primary"`
 	ValueKw  *float64 `json:"value_kw,omitempty"`
+	// HaengtAn carries through the entity's ParentEntityID unchanged - purely
+	// for display, never used in any calculation.
+	HaengtAn *string `json:"haengt_an,omitempty"`
 }
 
 // NodeSource names the entity ONE attribute of a node came from. An attribute
@@ -281,6 +296,8 @@ func Derive(in Input) Topology {
 			nodes = append(nodes, gridNode(role, caps))
 		case RoleStorage:
 			nodes = append(nodes, storageNode(role, caps))
+		case RoleConsumer:
+			nodes = append(nodes, consumerNode(role, caps))
 		default:
 			nodes = append(nodes, sumNode(role, caps))
 		}
@@ -319,6 +336,40 @@ func sumNode(role string, caps []roleCap) FlowNode {
 		} else {
 			node.Direction = "in"
 		}
+	}
+	return node
+}
+
+// consumerNode (Zählerbaum-Konzept N3/R1): if a composed house load
+// (TypeHouseLoad) is among the members, ITS value is the node value - every
+// other member (a sub-meter, a heating rod) is already inside that one value,
+// so summing all of them would double-count. Without such a house member
+// (older/synthetic inputs) the sum of all members stays as before (sumNode) -
+// byte-identical to every case without a house member.
+func consumerNode(role string, caps []roleCap) FlowNode {
+	var haus *roleCap
+	for i := range caps {
+		if caps[i].entity.Type == TypeHouseLoad {
+			haus = &caps[i]
+			break
+		}
+	}
+	if haus == nil {
+		return sumNode(role, caps)
+	}
+	members := make([]FlowMember, 0, len(caps))
+	for _, rc := range caps {
+		members = append(members, member(rc))
+	}
+	node := FlowNode{Role: role, Members: members}
+	if haus.cap.Value == nil {
+		return node
+	}
+	mag := round3(math.Abs(*haus.cap.Value))
+	node.ValueKw = &mag
+	if mag > DeadbandKw {
+		node.FlowActive = true
+		node.Direction = "out"
 	}
 	return node
 }
@@ -406,7 +457,8 @@ func gridNode(role string, caps []roleCap) FlowNode {
 }
 
 func member(rc roleCap) FlowMember {
-	m := FlowMember{EntityID: rc.entity.ID, Label: rc.entity.Label, Primary: rc.cap.Primary}
+	m := FlowMember{EntityID: rc.entity.ID, Label: rc.entity.Label, Primary: rc.cap.Primary,
+		HaengtAn: rc.entity.ParentEntityID}
 	if rc.cap.Value != nil {
 		v := round3(*rc.cap.Value)
 		m.ValueKw = &v

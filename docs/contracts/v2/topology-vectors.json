@@ -339,6 +339,110 @@
       }
     },
     {
+      "name": "zaehlerbaum-haus-und-unterzaehler-keine-doppelzaehlung",
+      "note": "Zählerbaum-Konzept N3/R1: Netz 8.1 kW, UV Halle 7.7 kW (sub-meter, Mitglied des Verbraucher-Knotens wie heute, haengt_an=null=Wurzel). Der Knotenwert ist NUR der Haus-Wert (8.1), nie 8.1+7.7 - das war der gemeldete Fehler (Screenshot „Verbrauch, 3 Geräte, zusammen 11,0 kW“).",
+      "input": {
+        "entities": [
+          {
+            "id": "H", "type": "house-load", "label": "Hausverbrauch", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 8.1 }
+            ]
+          },
+          {
+            "id": "UV1", "type": "sub-meter", "label": "UV Halle", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 7.7 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 8.1, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "H", "label": "Hausverbrauch", "primary": true, "value_kw": 8.1 },
+              { "entity_id": "UV1", "label": "UV Halle", "primary": false, "value_kw": 7.7 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "zaehlerbaum-maschine-hinter-unterverteilung-traegt-haengt-an",
+      "note": "Ein Kompressor hinter UV Halle (haengt_an = UV1) bleibt ein eigenes Mitglied mit eigenem Wert; der Knotenwert folgt weiter nur dem Haus (8.1) - die Ebene ist Sache der Liste/des Cockpits, nicht der Topologie.",
+      "input": {
+        "entities": [
+          {
+            "id": "H", "type": "house-load", "label": "Hausverbrauch", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 8.1 }
+            ]
+          },
+          {
+            "id": "UV1", "type": "sub-meter", "label": "UV Halle", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 7.7 }
+            ]
+          },
+          {
+            "id": "K1", "type": "generic-load", "label": "Kompressor", "category": "consumer", "health": "ok",
+            "parent_entity_id": "UV1",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 3.2 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 8.1, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "H", "label": "Hausverbrauch", "primary": true, "value_kw": 8.1 },
+              { "entity_id": "UV1", "label": "UV Halle", "primary": false, "value_kw": 7.7 },
+              { "entity_id": "K1", "label": "Kompressor", "primary": false, "value_kw": 3.2, "haengt_an": "UV1" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "zaehlerbaum-ohne-haus-mitglied-bleibt-die-summe-wie-bisher",
+      "note": "Ohne ein house-load-Mitglied (ältere/synthetische Eingabe) bleibt die Summe aller Mitglieder, byte-identisch zu jedem Fall ohne Haus-Mitglied (z. B. consumers-aggregate oben) - die Regel wirkt NUR, wenn ein Haus-Mitglied da ist.",
+      "input": {
+        "entities": [
+          {
+            "id": "UV1", "type": "sub-meter", "label": "UV Halle", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": true, "value": 7.7 }
+            ]
+          },
+          {
+            "id": "UV2", "type": "sub-meter", "label": "UV Keller", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 0.1 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "consumer", "value_kw": 7.8, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "UV1", "label": "UV Halle", "primary": true, "value_kw": 7.7 },
+              { "entity_id": "UV2", "label": "UV Keller", "primary": false, "value_kw": 0.1 }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "name": "charging-idle-and-unmeasured",
       "note": "A plugged-in car taking nothing is a MEASURED 0 (below the deadband, so no flow); a station that never metered contributes no value at all - it stays a member, but the sum is the measured one, never a fabricated 0.",
       "input": {
@@ -381,7 +485,7 @@
     { "name": "house-load-power", "type": "house-load", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer" },
     { "name": "heating-rod-power", "type": "heating-rod", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer" },
     { "name": "sub-meter-power", "type": "sub-meter", "category": "consumer", "channel": "power_kw", "connection": "", "expected": "consumer",
-      "note": "Unterverteilung (Konzept vp-unterzaehler-anzeige C1): a pure meter of a part of the house is a Verbraucher member like a heating rod - never the grid. The node SUM double-counts it with house-load like every measured consumer; readers take the house from the house-load member." },
+      "note": "Unterverteilung (Konzept vp-unterzaehler-anzeige C1, R1-Fix im Zählerbaum-Konzept): a pure meter of a part of the house is a Verbraucher member like a heating rod - never the grid. With a house-load member present the node value is the house value alone (see the zaehlerbaum-* consumer cases above), not a sum; readers never had to work around a doubled node value in the first place." },
     { "name": "sub-meter-counter-is-no-flow", "type": "sub-meter", "category": "consumer", "channel": "energy_kwh", "connection": "", "expected": "" },
     { "name": "sub-meter-phase-is-no-flow", "type": "sub-meter", "category": "consumer", "channel": "power_l1_kw", "connection": "", "expected": "",
       "note": "A phase power is a part of power_kw - as a flow member it would count the same load twice." },

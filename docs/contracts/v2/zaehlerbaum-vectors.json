@@ -1,0 +1,119 @@
+{
+  "_comment": [
+    "Shared vectors for ZaehlerbaumRegeln.haengtAnPruefen (Java:",
+    "services/api/.../components/ZaehlerbaumRegeln.java, TS:",
+    "frontend/portal/src/zaehlerbaum.ts). Each case gives the component, its",
+    "role/anlage, the candidate parent (or null for the root) and the active",
+    "tree (for the cycle walk); expected is the verdict. See",
+    "docs/contracts/v2/zaehlerbaum.md §2 R6 for the checked order."
+  ],
+  "schema_version": "1.0",
+  "cases": [
+    {
+      "name": "wurzel-ohne-eltern",
+      "note": "Kein Eltern (die Wurzel) ist immer gültig - die Vorgabe: was nicht ausdrücklich woanders hängt, hängt an der Wurzel.",
+      "input": {
+        "komponenteId": "netz-1", "eigeneAnlage": "anlage-a", "eigeneRolle": "grid-meter",
+        "eltern": null, "baum": []
+      },
+      "expected": { "gueltig": true, "grund": null, "kette": [] }
+    },
+    {
+      "name": "unterzaehler-haengt-am-netzanschluss",
+      "note": "Ein Unterzähler (keine eigene Rolle, Entitätstyp sub-meter) hängt gültig an einem Netz-Zähler.",
+      "input": {
+        "komponenteId": "uv-halle", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "netz-1", "anlage": "anlage-a", "rolle": "grid-meter", "entityType": "grid-meter" },
+        "baum": []
+      },
+      "expected": { "gueltig": true, "grund": null, "kette": [] }
+    },
+    {
+      "name": "maschine-haengt-an-unterzaehler",
+      "note": "Eine Maschine (ein Verbraucher mit eigener Messung) hängt gültig an einem Unterzähler - der Eltern-Typ ist sub-meter, nicht die Rolle.",
+      "input": {
+        "komponenteId": "kompressor", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "uv-halle", "anlage": "anlage-a", "rolle": "consumer", "entityType": "sub-meter" },
+        "baum": [ { "komponenteId": "uv-halle", "haengtAn": "netz-1" } ]
+      },
+      "expected": { "gueltig": true, "grund": null, "kette": [] }
+    },
+    {
+      "name": "netzanschluss-haengt-nirgends",
+      "note": "R6: der Netzanschluss (Rolle grid-meter) bekommt nie eine Eltern-Komponente, auch nicht versehentlich an einen Unterzähler.",
+      "input": {
+        "komponenteId": "netz-1", "eigeneAnlage": "anlage-a", "eigeneRolle": "grid-meter",
+        "eltern": { "id": "uv-halle", "anlage": "anlage-a", "rolle": "consumer", "entityType": "sub-meter" },
+        "baum": []
+      },
+      "expected": { "gueltig": false, "grund": "wurzel_haengt_nirgends", "kette": [] }
+    },
+    {
+      "name": "nicht-an-sich-selbst",
+      "note": "Nie an sich selbst, auch wenn Anlage und Typ sonst passen würden.",
+      "input": {
+        "komponenteId": "uv-halle", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "uv-halle", "anlage": "anlage-a", "rolle": "consumer", "entityType": "sub-meter" },
+        "baum": []
+      },
+      "expected": { "gueltig": false, "grund": "selbst", "kette": [] }
+    },
+    {
+      "name": "fremde-anlage",
+      "note": "Die Eltern-Komponente muss zur selben Anlage gehören.",
+      "input": {
+        "komponenteId": "uv-halle", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "netz-2", "anlage": "anlage-b", "rolle": "grid-meter", "entityType": "grid-meter" },
+        "baum": []
+      },
+      "expected": { "gueltig": false, "grund": "fremde_anlage", "kette": [] }
+    },
+    {
+      "name": "eltern-kein-zaehler",
+      "note": "Ein Heizstab (Rolle consumer, kein Zähler) darf nicht Eltern einer anderen Komponente werden - nur ein Netzanschluss oder ein Unterzähler sind Zähler.",
+      "input": {
+        "komponenteId": "kompressor", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "heizstab", "anlage": "anlage-a", "rolle": "consumer", "entityType": "generic-load" },
+        "baum": []
+      },
+      "expected": { "gueltig": false, "grund": "eltern_kein_zaehler", "kette": [] }
+    },
+    {
+      "name": "zyklus-direkt",
+      "note": "A hängt schon an B; B soll jetzt an A hängen - ein direkter Zweier-Kreis.",
+      "input": {
+        "komponenteId": "uv-b", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "uv-a", "anlage": "anlage-a", "rolle": "consumer", "entityType": "sub-meter" },
+        "baum": [ { "komponenteId": "uv-a", "haengtAn": "uv-b" } ]
+      },
+      "expected": { "gueltig": false, "grund": "zyklus", "kette": ["uv-b", "uv-a", "uv-b"] }
+    },
+    {
+      "name": "zyklus-ueber-mehrere-ebenen",
+      "note": "uv-c hängt an uv-b, uv-b hängt an uv-a; uv-a soll jetzt an uv-c hängen - ein Kreis über drei Ebenen.",
+      "input": {
+        "komponenteId": "uv-a", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "uv-c", "anlage": "anlage-a", "rolle": "consumer", "entityType": "sub-meter" },
+        "baum": [
+          { "komponenteId": "uv-b", "haengtAn": "uv-a" },
+          { "komponenteId": "uv-c", "haengtAn": "uv-b" }
+        ]
+      },
+      "expected": { "gueltig": false, "grund": "zyklus", "kette": ["uv-a", "uv-c", "uv-b", "uv-a"] }
+    },
+    {
+      "name": "tiefe-kette-ohne-kreis-ist-gueltig",
+      "note": "Eine neue Maschine hinter einer tief liegenden Unterverteilung ist gültig, auch wenn der bestehende Baum schon mehrere Ebenen hat.",
+      "input": {
+        "komponenteId": "maschine-2", "eigeneAnlage": "anlage-a", "eigeneRolle": "consumer",
+        "eltern": { "id": "uv-c", "anlage": "anlage-a", "rolle": "consumer", "entityType": "sub-meter" },
+        "baum": [
+          { "komponenteId": "uv-b", "haengtAn": "netz-1" },
+          { "komponenteId": "uv-c", "haengtAn": "uv-b" },
+          { "komponenteId": "maschine-1", "haengtAn": "uv-c" }
+        ]
+      },
+      "expected": { "gueltig": true, "grund": null, "kette": [] }
+    }
+  ]
+}

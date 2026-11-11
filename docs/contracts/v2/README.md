@@ -16,6 +16,7 @@ v2 ergänzt mehrere Entitäten je Box, typisierte Flows, Verbraucheranforderunge
 | Verbraucher | [Funktionsmodell](../../verbrauchssteuerung.md), [Policy](consumer-policy.schema.json), [Vektoren](consumer-policy-vectors.json) |
 | OCPP-Ladepunkt: Profil und Policy, wie die API sie anlegt | [Vektoren](ladepunkt-profil-vectors.json) — Regelart, Nennleistung, Dokument und Box-Anforderung; Optimierer-Tests und Box-Rig lesen ihr Profil nur von hier |
 | Anlagenprojektion | [Topologie](topology-read-model.md), [Nutzungsprofil](usage-profile.md) |
+| Zählerbaum: wo ein Zähler/Verbraucher im elektrischen Baum hängt | [Vertrag](zaehlerbaum.md), [Vektoren](zaehlerbaum-vectors.json) — Zwillinge `ZaehlerbaumRegeln` (Java) und `zaehlerbaum.ts` (TS) |
 | Quellen-Herzschlag | [Vertrag](data-source-status.md), [Schema](data-source-status.schema.json), [Vektoren](data-source-status-vectors.json) |
 | Zusätzliche Messpunkte | [Konfiguration](mqtt-measurement-config.schema.json), [Status](mqtt-measurement-config-status.schema.json), [Messungen](mqtt-measurement-samples.schema.json), [Ereignis](measurements-raw.event.schema.json) |
 | Registerbild Erzeuger (Steuerung → Box, EZ-1) | [Vertrag](erzeuger-registerbild.md), [Schema](erzeuger-registerbild.schema.json), [Vektoren](erzeuger-registerbild-vectors.json) — PV und BHKW an einem Modbus-Server (FC4 ab 0, Signatur „VP“ „EZ“); die Vektoren sind die Leserspezifikation für Box-Leser, Simulator und SPS-Baustein |

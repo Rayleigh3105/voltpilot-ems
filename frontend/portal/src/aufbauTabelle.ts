@@ -190,6 +190,7 @@ function geraeteZeilen(
   ebene: number,
   z: Aufklappzustand,
   einheiten: ReadonlyMap<string, AufbauGeraet[]> = new Map(),
+  zaehlerbaumKinder: ReadonlyMap<string, AufbauGeraet[]> = new Map(),
 ): void {
   for (const g of geraete) {
     if (g.art === 'neu') {
@@ -207,6 +208,13 @@ function geraeteZeilen(
     // GE-3: die Einheiten hinter einer Steuerung — Geräte, eine Ebene tiefer, immer sichtbar.
     for (const u of einheiten.get(g.id) ?? []) {
       out.push({ typ: 'geraet', key: u.id, ebene: ebene + 1, anlage, box, geraet: u, teilbar: false, offen: false });
+    }
+    // Zählerbaum-Konzept (E2 A „Baum in der Liste"): was hinter DIESEM Zähler
+    // hängt, eine Ebene tiefer, immer sichtbar (keine Aufklapp-Zeile, wie GE-3) -
+    // rekursiv, denn eine Unterverteilung kann selbst wieder Kinder tragen.
+    const kinder = zaehlerbaumKinder.get(g.id);
+    if (kinder && kinder.length > 0) {
+      geraeteZeilen(out, anlage, box, sortiereGeraete(kinder), ebene + 1, z, einheiten, zaehlerbaumKinder);
     }
   }
 }
@@ -234,7 +242,26 @@ function ortZeilen(
   for (const g of geraete) {
     if (g.einheit && trifftHier(g)) einheiten.set(g.einheit.steuerungId, [...(einheiten.get(g.einheit.steuerungId) ?? []), g]);
   }
-  const traegt = (g: AufbauGeraet) => !g.einheit && (trifftHier(g) || einheiten.has(g.id));
+  // Zählerbaum-Konzept (E2 A): wer hängt an welcher Komponente? Jede Komponente
+  // jedes Geräts kann Eltern sein - gesucht wird über ihre entityId, nicht über
+  // die Geräte-Id (ein Hybrid trägt mehrere Komponenten, Aspekt „pv" inklusive).
+  const geraetDerKomponente = new Map<string, AufbauGeraet>();
+  for (const g of geraete) {
+    for (const c of g.karte.komponenten) geraetDerKomponente.set(c.entityId, g);
+  }
+  const zaehlerbaumKinder = new Map<string, AufbauGeraet[]>();
+  for (const g of geraete) {
+    if (g.haengtAn == null || !trifftHier(g)) continue;
+    const eltern = geraetDerKomponente.get(g.haengtAn);
+    // Die Eltern-Komponente ist nicht (mehr) sichtbar (z. B. eine fremde
+    // Anlage im Protokoll) - dann steht die Zeile lieber an der Wurzel, als
+    // unauffindbar zu verschwinden.
+    if (!eltern) continue;
+    zaehlerbaumKinder.set(eltern.id, [...(zaehlerbaumKinder.get(eltern.id) ?? []), g]);
+  }
+  const haengtSichtbar = (g: AufbauGeraet) => g.haengtAn != null && geraetDerKomponente.has(g.haengtAn);
+  const traegt = (g: AufbauGeraet) =>
+    !g.einheit && !haengtSichtbar(g) && (trifftHier(g) || einheiten.has(g.id) || zaehlerbaumKinder.has(g.id));
   const gateways = wege.filter((w) => w.art === 'gateway');
   const amGateway = new Set(gateways.flatMap((w) => w.geraete.map((g) => g.id)));
   const direkt = geraete.filter((g) => !amGateway.has(g.id) && traegt(g));
@@ -245,7 +272,7 @@ function ortZeilen(
   const ort = box?.id ?? `${anlage.id}::ohne-box`;
   // Gruppiert (Konzept `vp-anlage-geraete-gruppiert`): je Gruppe ein Kopf, erst ab zwei Gruppen an diesem Ort -
   // gezählt über ALLE seine Geräte, damit ein Treffer auch unter Suche und Filter seine Gruppe zeigt.
-  const alleDirekt = geraete.filter((g) => !amGateway.has(g.id) && !g.einheit);
+  const alleDirekt = geraete.filter((g) => !amGateway.has(g.id) && !g.einheit && !haengtSichtbar(g));
   const mitKoepfen = gruppenZahl(alleDirekt) >= 2;
   const sortiert = sortiereGeraete(direkt);
   for (const gruppe of GRUPPEN_ORDNUNG) {
@@ -256,18 +283,23 @@ function ortZeilen(
       const teilmenge = darin.length !== alleDirekt.filter((g) => g.gruppe === gruppe).length;
       out.push({ typ: 'gruppe', key: `${ort}::gruppe::${gruppe}`, ebene, anlage, box, kopf: gruppenKopf(gruppe, darin, teilmenge) });
     }
-    geraeteZeilen(out, anlage, box, darin, ebene, z, einheiten);
+    geraeteZeilen(out, anlage, box, darin, ebene, z, einheiten, zaehlerbaumKinder);
   }
   // Funde und „Nicht mehr verbunden" gehören in keine Gruppe - sie bleiben am Ende der Geräte.
-  geraeteZeilen(out, anlage, box, sortiert.filter((g) => g.gruppe == null), ebene, z, einheiten);
+  geraeteZeilen(out, anlage, box, sortiert.filter((g) => g.gruppe == null), ebene, z, einheiten, zaehlerbaumKinder);
   for (const { w, geraete: dahinter } of sichtbar) {
     const offen = aktiv || z.offen(w.id, true);
     out.push({ typ: 'gateway', key: `${ort}::gateway::${w.id}`, ebene, anlage, box, weg: w, offen });
     // Hinter einem Gateway in derselben Reihenfolge, ohne eigene Köpfe.
-    if (offen) geraeteZeilen(out, anlage, box, sortiereGeraete(dahinter), ebene + 1, z, einheiten);
+    if (offen) geraeteZeilen(out, anlage, box, sortiereGeraete(dahinter), ebene + 1, z, einheiten, zaehlerbaumKinder);
   }
   for (const w of offene) out.push({ typ: 'anschluss', key: `${ort}::anschluss::${w.id}`, ebene, anlage, box, weg: w });
-  const unter = (liste: AufbauGeraet[]) => liste.reduce((n, g) => n + (einheiten.get(g.id)?.length ?? 0), 0);
+  // Rekursiv, denn eine Unterverteilung kann selbst wieder Kinder tragen (Zählerbaum, beliebig tief).
+  const unter = (liste: AufbauGeraet[]): number =>
+    liste.reduce((n, g) => {
+      const kinder = zaehlerbaumKinder.get(g.id) ?? [];
+      return n + (einheiten.get(g.id)?.length ?? 0) + kinder.length + unter(kinder);
+    }, 0);
   return (
     direkt.length + unter(direkt) + sichtbar.reduce((n, x) => n + 1 + x.geraete.length + unter(x.geraete), 0) + offene.length
   );

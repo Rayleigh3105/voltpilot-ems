@@ -152,6 +152,20 @@ export interface VerbrauchTeil {
    * darf nicht unsichtbar werden.
    */
   pruefen?: string;
+  /**
+   * Zählerbaum-Konzept (R1): die Eltern-Komponente im elektrischen Baum, oder
+   * `null` = hängt direkt am Haus. Ein Ladepunkt hat keinen eigenen Platz im
+   * Verbraucher-Knoten der Topologie und ist deshalb immer `null` (unverändert
+   * gegenüber heute).
+   */
+  haengtAn: string | null;
+  /**
+   * Nur an einem Zähler-Teil (Unterzähler) MIT eigenen Kindern gesetzt: sein
+   * eigener Rest „ohne eigenen Zähler" (R1 auf dieser Ebene statt am Haus).
+   * Dieselbe Regel wie {@link VerbrauchRest} am Haus, nur mit diesem Teil als
+   * Eltern-Wert statt {@code hausKw}.
+   */
+  eigenerRest?: VerbrauchRest;
 }
 
 /** Eine Gruppe der Aufschlüsselung. */
@@ -396,6 +410,7 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
         href: links.charger?.(c.chargePointId) ?? null,
         entityId: c.entityId ?? null,
         title: c.chargePointId,
+        haengtAn: null,
       });
       if (eigen) eigeneKeys.add(`cp:${c.chargePointId}`);
       continue;
@@ -444,6 +459,7 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
         href: links.charger?.(c.chargePointId) ?? null,
         entityId: c.entityId ?? null,
         title: `${c.chargePointId} · ${connectorName(con.connectorId)}`,
+        haengtAn: null,
       });
       if (eigen) eigeneKeys.add(`cp:${c.chargePointId}#${con.connectorId}`);
     }
@@ -494,6 +510,7 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
       href: links.komponente?.(m.entity_id) ?? null,
       entityId: m.entity_id,
       title: e?.typeLabel ?? null,
+      haengtAn: m.haengt_an ?? null,
       ...(unterzaehler ? { unterzaehler: true as const } : {}),
       ...(gegenrichtung ? { pruefen: `misst in Gegenrichtung - ${UNTERZAEHLER_PRUEFEN}` } : {}),
     });
@@ -501,14 +518,43 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
 
   if (teile.length === 0) return null;
 
+  // --- 2b. Jede Zähler-Ebene bekommt ihren EIGENEN Rest ---------------------
+  // Zählerbaum-Konzept R1: ein Kind steckt im Wert seines Elternknotens - eine
+  // Maschine hinter einer Unterverteilung wird vom HAUS nicht noch einmal
+  // abgezogen, sie gehört zum Rest IHRER Unterverteilung. `kinderVonEltern`
+  // gruppiert jeden Teil unter seiner direkten Eltern-Komponente (nicht jeder
+  // Vorfahre - R1 kennt nur direkte Kinder); ein Zähler-Teil ohne eigene Kinder
+  // bekommt keinen `eigenerRest` (nichts hängt dahinter, nichts zu zeigen).
+  const kinderVonEltern = new Map<string, VerbrauchTeil[]>();
+  for (const t of teile) {
+    if (t.haengtAn == null) continue;
+    const liste = kinderVonEltern.get(t.haengtAn) ?? [];
+    liste.push(t);
+    kinderVonEltern.set(t.haengtAn, liste);
+  }
+  for (const t of teile) {
+    if (!t.entityId) continue;
+    const kinder = kinderVonEltern.get(t.entityId);
+    if (!kinder || kinder.length === 0) continue;
+    const gemessenKinder = kinder.filter((k) => k.kw != null);
+    const summeKinder = gemessenKinder.reduce((s, k) => s + (k.kw as number), 0);
+    // Keine eigene Tagessumme je Ebene (nur das Haus liefert `hausTodayKwh`) -
+    // der Rest dieser Ebene bleibt bei der kW-Zahl, nie eine erfundene kWh.
+    t.eigenerRest = restZeile(t.kw, summeKinder, kinder, null, today, 'ohne eigenen Zähler');
+  }
+
   // --- 3. Der Rest ----------------------------------------------------------
   // ⚠ Gerechnet wird NUR mit den Teilen, die im Haus-Wert wirklich stecken. Ein
   // eigener Anschluss wird weder abgezogen (er war nie darin) noch macht er den
   // Rest unbestimmbar, wenn er sich der Zählung entzieht - seine Lücke ist eine
   // Lücke NEBEN dem Haus, nicht darin.
-  const hausTeile = eigeneKeys.size === 0
-    ? teile
-    : teile.filter((t) => !eigeneKeys.has(t.key));
+  //
+  // ⚠ Zählerbaum-Konzept R1: nur DIREKTE Kinder des Hauses werden vom Haus
+  // abgezogen. Eine Maschine hinter einer Unterverteilung (`haengtAn` zeigt auf
+  // einen anderen Teil, nicht auf die Wurzel) steckt schon im Wert IHRER
+  // Unterverteilung - ein zweiter Abzug am Haus wäre Doppelzählung (genau der
+  // gemeldete Fall: UV Halle 7,7 kW samt Kompressor 3,2 kW darin).
+  const hausTeile = teile.filter((t) => !eigeneKeys.has(t.key) && t.haengtAn == null);
   const gemessen = hausTeile.filter((t) => t.kw != null);
   const summeTeile = gemessen.reduce((s, t) => s + (t.kw as number), 0);
   const rest = restZeile(hausKw, summeTeile, hausTeile, input.hausTodayKwh ?? null, today,
@@ -631,7 +677,10 @@ function gruppieren(
     const list = buckets.get(id);
     if (!list || list.length === 0) continue;
     const sorted = sortieren(list);
-    const gemessen = sorted.filter((t) => t.kw != null);
+    // R1: eine verschachtelte Zeile (haengtAn gesetzt) steckt schon im Wert
+    // ihrer Eltern-Komponente - sie zählt in der Gruppen-Summe nicht noch
+    // einmal mit, auch wenn sie als eigene Zeile sichtbar bleibt.
+    const gemessen = sorted.filter((t) => t.kw != null && t.haengtAn == null);
     const kw = gemessen.length === 0
       ? null
       : round3(gemessen.reduce((s, t) => s + (t.kw as number), 0));
