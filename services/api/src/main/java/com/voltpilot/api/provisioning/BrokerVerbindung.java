@@ -212,6 +212,11 @@ public final class BrokerVerbindung {
         MqttConnectOptions options = new MqttConnectOptions();
         options.setCleanSession(cleanSession);
         options.setAutomaticReconnect(true);
+        // Pahos Vorgabe für den automatischen Wiederaufbau wächst exponentiell bis 128 s - nach
+        // einem laengeren Ausfall (mehrere gescheiterte Versuche) könnte der NÄCHSTE Versuch erst
+        // weit in der Zukunft liegen, selbst wenn der Broker längst wieder antwortet. 5 s bleibt
+        // weit unter jeder Frist, die ein Weg auf die Heilung wartet (BrokerVerbindungBrokerTest).
+        options.setMaxReconnectDelay(5_000);
         options.setConnectionTimeout(5);
         if (username != null && !username.isBlank()) {
             options.setUserName(username);

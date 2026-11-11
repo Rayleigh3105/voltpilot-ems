@@ -157,6 +157,9 @@ class CommandHistoryApiTest {
     @Autowired
     com.voltpilot.api.repo.DeviceSourceStatusRepository sourceStatusRepo;
 
+    @Autowired
+    com.voltpilot.api.web.SiteCommandHistoryController commandHistoryController;
+
     @BeforeEach
     void clearHistory() {
         // Die Anlage ist geteilt: ohne dieses Abräumen prüfte jeder Test die
@@ -169,6 +172,29 @@ class CommandHistoryApiTest {
             jdbc.update("DELETE FROM device_command_log");
             jdbc.update("DELETE FROM device_command_recording");
         });
+        // Vorgabe: die echte Uhr - `derZeitraumReichtBisZumMonatUndNieUeberDieAufbewahrungHinaus`
+        // rechnet absichtlich relativ zu HEUTE (dort steht, warum). Nur die drei Tests mit
+        // Zeitpunkten fest am 11./12./16.08.2026 stellen sich ihre eigene feste Uhr
+        // ({@link #mitFesterUhr}) - sonst wanderte die echte Uhr irgendwann an diesen
+        // Randfällen vorbei (90 Tage Aufbewahrung) und die Route lehnte mit 400 ab, ohne dass
+        // sich an den Daten etwas änderte.
+        commandHistoryController.uhrStellen(java.time.Clock.systemUTC());
+    }
+
+    /**
+     * Die Aufbewahrungsgrenze (CommandFilter#MAX_DAYS_BACK) der Leseroute fragt "heute" - fest
+     * auf den 17.08.2026 gestellt, EINEN Tag nach der 16.08.-Erzählung dieser Klasse, damit die
+     * Herzschläge vom 11./12./16.08.2026 unabhängig von der echten Uhrzeit innerhalb der
+     * 90-tägigen Aufbewahrung bleiben.
+     */
+    private void mitFesterUhr(Runnable test) {
+        commandHistoryController.uhrStellen(
+                java.time.Clock.fixed(java.time.Instant.parse("2026-08-17T06:00:00Z"), java.time.ZoneOffset.UTC));
+        try {
+            test.run();
+        } finally {
+            commandHistoryController.uhrStellen(java.time.Clock.systemUTC());
+        }
     }
 
     /** Führt {@code body} unter Mandant A aus (RLS-Sitzung wie ein Zuhörer). */
@@ -546,6 +572,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void derMitternachtsGrenzSlotGehoertZumVortagUndNichtInDenHeuteTab() {
+        mitFesterUhr(() -> {
         ControlStatusListener listener = controlListener();
         // 23:45:03 Berliner Zeit des 11.08. - die letzte Viertelstunde des Tages.
         // ⚠ Die Folge-Herzschläge sind PFLICHT und liegen bewusst unter
@@ -581,6 +608,7 @@ class CommandHistoryApiTest {
         assertThat(heute).noneMatch(e -> String.valueOf(e.get("startedAt"))
                 .startsWith("2026-08-11T21:45:03"));
         assertThat(heute).allMatch(e -> CommandLog.KIND_PERIODE.equals(e.get("kind")));
+        });
     }
 
     /**
@@ -595,6 +623,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void eineDurchlaufendeUndEineLaufendeAnweisungBleibenImFenster() {
+        mitFesterUhr(() -> {
         // Fenster des 12.08.: [2026-08-11T22:00:00Z, 2026-08-12T22:00:00Z)
         asTenantA(() -> {
             // (a) begann gestern 22:00, endete heute 06:00 - stundenlang in Kraft.
@@ -612,6 +641,7 @@ class CommandHistoryApiTest {
                 .map(e -> (Double) e.get("commandedKwFirst")).toList();
 
         assertThat(gezeigt).containsExactlyInAnyOrder(-1.0, -4.0);
+        });
     }
 
     /**
@@ -622,6 +652,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void derZeitstempelReistUnverschobenDurchIngestSpeicherUndAntwort() {
+        mitFesterUhr(() -> {
         // 10:30 Berliner Sommerzeit = 08:30 UTC.
         controlListener().handle(TOPIC, control("2026-08-12T10:30:00+02:00", -5.0, true, true,
                 true, "plan", -5.0, "[]"));
@@ -629,6 +660,7 @@ class CommandHistoryApiTest {
         List<Map<String, Object>> heute = entries(read(null, "2026-08-12"));
         assertThat(heute).hasSize(1);
         assertThat(heute.get(0).get("startedAt")).asString().startsWith("2026-08-12T08:30:00");
+        });
     }
 
     // -- Hilfen ---------------------------------------------------------------

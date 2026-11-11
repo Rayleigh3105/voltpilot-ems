@@ -379,6 +379,9 @@ class StandortLesemodellApiTest {
         assertThat(overview.path("sites")).isNotEmpty();
         List<String> erwartet = new ArrayList<>(OVERVIEW_SITE_FELDER);
         erwartet.add("standort");
+        // `boxGeloestHinweis` ist das additive Feld aus vp-plattform-admin-box-benutzer-konzept
+        // (B3) - wie `standort` ans Ende, nichts Bestehendes verschoben.
+        erwartet.add("boxGeloestHinweis");
         for (JsonNode zeile : overview.path("sites")) {
             assertThat(feldnamen(zeile)).containsExactlyElementsOf(erwartet);
             assertThat(zeile.path("standort").isNull()).isTrue();

@@ -197,6 +197,7 @@ class KundenbereichBeendetApiTest {
     private UUID tenant;
     private UUID site;
     private UUID box;
+    private String boxRef;
     private String kundenadmin;
     private String leserin;
 
@@ -213,8 +214,9 @@ class KundenbereichBeendetApiTest {
                 tenant, unternehmen);
         site = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone) VALUES (?, 'Werk', 'DE-LU') "
                 + "RETURNING id", UUID.class, tenant);
+        boxRef = "kb-ende-" + nr;
         box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) RETURNING id",
-                UUID.class, tenant, site, "kb-ende-" + nr);
+                UUID.class, tenant, site, boxRef);
         kundenadmin = "jw-" + nr;
         leserin = "berger-" + nr;
         spiegel(kundenadmin);
@@ -256,8 +258,11 @@ class KundenbereichBeendetApiTest {
                     if (admin && ausnahme(muster)) {
                         continue;
                     }
+                    // Vom Kunden lösen (L1) trägt die Box über ihre externe Referenz, kein {deviceId} -
+                    // trotzdem ein Kundenbereich (KundenbereichEndeFilter#ADMIN_BOX_REF), keine Ausnahme.
+                    boolean boxUeberReferenz = muster.equals("/api/v1/admin/geraete/{ref}/loesen");
                     if (admin && !muster.contains("{tenantId}") && !muster.contains("{siteId}")
-                            && !muster.contains("{deviceId}")) {
+                            && !muster.contains("{deviceId}") && !boxUeberReferenz) {
                         ohne.add(schluessel);
                         continue;
                     }
@@ -425,6 +430,7 @@ class KundenbereichBeendetApiTest {
                 case "tenantId" -> tenant.toString();
                 case "siteId" -> site.toString();
                 case "deviceId" -> box.toString();
+                case "ref" -> boxRef;
                 default -> name.toLowerCase().endsWith("id") ? UUID.randomUUID().toString() : "x";
             };
             m.appendReplacement(aus, Matcher.quoteReplacement(wert));
