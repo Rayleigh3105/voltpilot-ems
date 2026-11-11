@@ -66,8 +66,16 @@ export type AnlagenSub =
   // standen trotzdem ausserhalb - Befund N3. Ihre alten Adressen leiten um
   // (`LEGACY_ROUTES`), also gilt jedes Lesezeichen weiter.
   | 'marktpreise'
+  // Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+  // Sonnen-Teppich, E2 = A): Reiter im Fahrplan/Ladepark, sonst ein eigener
+  // Bereich. `wetter` geht darin auf (Himmel/Temperatur stehen im Tagesbild)
+  // und leitet um (`LEGACY_SUBS`/`LEGACY_ROUTES`).
   | 'prognose'
-  | 'wetter'
+  // Das frühere `prognose` - die VoltPilot-interne Modellqualität (Kandidaten,
+  // Tagesfehler) der Anlage, nur Plattform-Admin. Umbenannt, als die Adresse
+  // `prognose` an die Kundenseite ging - kein Lesezeichen-Redirect nötig
+  // (interne Werkzeug-Adresse, nicht kundenseitig verlinkt).
+  | 'prognosemodelle'
   | 'technik'
   | 'modell'
   | 'steuerung'
@@ -83,7 +91,7 @@ export type AnlagenSub =
   | 'box';
 
 const SUBS = new Set<string>([
-  'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'wetter',
+  'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'prognosemodelle',
   'technik', 'modell', 'steuerung', 'laden', 'regeln', 'lastspitzen', 'ladevorgaenge', 'befehle',
   'geraet', 'box', 'energiebilanz',
 ]);
@@ -109,6 +117,9 @@ const SUBS = new Set<string>([
  *   erbt die Route, und `canonicalAnlageHash` schreibt die Adresse UNTER
  *   BEIBEHALTUNG der Parameter (`?m=`, `z=`, `at=`) um — jeder Deep-Link und
  *   jedes Lesezeichen bleibt gültig.
+ * - `wetter` -> `prognose` (Konzept vp-prognosen-konzept, E2 = A, 11.11.2026):
+ *   der Reiter „Wetter" geht in der Prognose auf - Himmel und Temperatur
+ *   stehen über dem Tagesbild statt auf einer eigenen Seite.
  */
 const LEGACY_SUBS: Record<string, AnlagenSub | null> = {
   optimierung: 'steuerung',
@@ -117,6 +128,7 @@ const LEGACY_SUBS: Record<string, AnlagenSub | null> = {
   live: null,
   historie: 'messwerte',
   verbraucher: 'steuerung',
+  wetter: 'prognose',
 };
 
 /**
@@ -569,7 +581,9 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
   fahrplan: 'fahrplan',
   // Die Historie ist seit der Zwei-Welten-Struktur die Messwerte-Welt.
   historie: 'messwerte',
-  wetter: 'wetter',
+  // Wetter geht in der Prognose auf (siehe LEGACY_SUBS); dasselbe Ziel ohne
+  // Anlage im Pfad.
+  wetter: 'prognose',
   // The former Standorte/Geräte content now lives behind the Technik subpage
   // (money-centric v2: Technik moved behind the gear icon).
   standorte: 'technik',

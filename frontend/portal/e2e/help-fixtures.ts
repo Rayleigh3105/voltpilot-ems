@@ -96,6 +96,25 @@ const slots = Array.from({ length: 96 }, (_, i) => {
 const plan = { planId: 'help-plan', deviceId: 'help-box', generatedAt: NOW, slotMinutes: 15,
   savingsEur: 2.88, bankedValueEur: 0.6, socStartPct: 28, socEndPct: 28, peakTargetKw: 8,
   effectiveFloorSocPct: 10, fallback14a: false, slots };
+// Die Prognose (Konzept vp-prognosen-konzept): dieselbe Tageskurve wie `slots`
+// (Sonne 6-18 Uhr, Grundlast + Abendspitze 17-22 Uhr), nur über mehrere Tage
+// fortgesetzt - heute/morgen viertelstündlich, danach als Ausblick stündlich.
+const pvKwAt = (hour: number) => Math.max(0, Math.sin(((hour - 6) * Math.PI) / 12)) * 8;
+const loadKwAt = (hour: number) => 1.2 + (hour > 17 && hour < 22 ? 2.2 : 0.8);
+const forecastViertel = (vonI: number, bisI: number, fn: (h: number) => number) =>
+  Array.from({ length: bisI - vonI }, (_, k) => {
+    const i = vonI + k;
+    return { ts: ts(i), valueKw: Math.round(fn((i / 4) % 24) * 1000) / 1000 };
+  });
+const forecastStunden = (vonTag: number, bisTag: number, fn: (h: number) => number) => {
+  const out: { ts: string; valueKw: number }[] = [];
+  for (let tag = vonTag; tag < bisTag; tag++) {
+    for (let h = 0; h < 24; h++) {
+      out.push({ ts: new Date(new Date(DAY).getTime() + (tag * 24 + h) * 3600_000).toISOString(), valueKw: Math.round(fn(h) * 1000) / 1000 });
+    }
+  }
+  return out;
+};
 const buckets = slots.slice(0, 49).map((s) => ({
   start: s.start, pvKwh: s.pvKw / 4, loadKwh: s.loadKw / 4,
   gridImportKwh: Math.max(0, s.gridKw) / 4, gridExportKwh: Math.max(0, -s.gridKw) / 4,
@@ -326,6 +345,21 @@ export function installHelpFixtures() {
     priceHistory: result({ biddingZone: 'DE-LU', currency: 'EUR', bucket: 'PT15M', from: DAY, to: '2026-09-10T22:00:00Z',
       buckets: slots.map((s) => ({ ts: s.start, avgEurMwh: s.priceEurMwh, minEurMwh: s.priceEurMwh, maxEurMwh: s.priceEurMwh })), summary: { count: 96, coverageStart: DAY, coverageEnd: ts(96), cheapestTs: ts(28), mostExpensiveTs: ts(76), avgEurMwh: 65, minEurMwh: 30, maxEurMwh: 100 } }),
     weather: result({ runAt: NOW, points: slots.map((s, i) => ({ ts: s.start, temperatureC: 18 + 7 * Math.sin(i / 96 * Math.PI), cloudCoverPct: 15, ghiWM2: s.pvKw * 100, dniWM2: s.pvKw * 80, dhiWM2: s.pvKw * 20, dniNormalWM2: s.pvKw * 80 })) }),
+    // Der Sonnen-Teppich (Konzept vp-prognosen-konzept): unabhängig vom Fahrplan,
+    // darum nicht an `erzFall` gebunden - sie führt auch ohne Speicher.
+    forecast: result({
+      activePvModel: 'pv-physical', activeLoadModel: 'load-persistence',
+      pvRunAt: NOW, pvKw: forecastViertel(48, 192, pvKwAt),
+      loadRunAt: NOW, loadKw: forecastViertel(48, 192, loadKwAt),
+      yesterdayExpected: {
+        pvRunAt: NOW, pvKw: forecastViertel(0, 48, (h) => pvKwAt(h) * 0.85),
+        loadRunAt: NOW, loadKw: forecastViertel(0, 48, (h) => loadKwAt(h) * 1.1),
+      },
+      weekly: {
+        pvRunAt: NOW, pvKw: forecastStunden(2, 7, pvKwAt),
+        loadRunAt: NOW, loadKw: forecastStunden(2, 7, loadKwAt),
+      },
+    }),
     forecastQuality: result({ activeLoadModel: 'load-persistence', activePvModel: 'pv-physical', models: [
       ['load-persistence', 'load', true], ['pv-physical', 'pv', true], ['load-xgb', 'load', false], ['pv-residual-xgb', 'pv', false],
     ].map(([model, kind, active]) => ({ model, kind, active, status: 'ready', daysCollected: 35, daysRequired: 14, trainedAt: NOW, trainRows: 3360, featureImportance: [], updatedAt: NOW })),

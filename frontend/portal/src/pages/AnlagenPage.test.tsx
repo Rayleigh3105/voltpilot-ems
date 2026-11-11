@@ -388,11 +388,13 @@ describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anl
 });
 
 /**
- * E6 = A („Anlage – neu gedacht"): die Prognosen-Seite ist ein Werkzeug für
- * VoltPilot. Ein Kunde mit altem Lesezeichen landet dort, wo die
- * Treffsicherheit jetzt steht - im Fahrplan -, und nie auf einer leeren Seite.
+ * Konzept `vp-prognosen-konzept` (E1 = C, Sonnen-Teppich, 11.11.2026): die
+ * Adresse `prognose` ist die Kundenseite der Prognose - jede Anlage landet
+ * dort, mit und ohne Speicher, nie auf einer leeren Seite oder einer
+ * Umleitung. Die frühere VoltPilot-interne Seite (Modellqualität) heißt seither
+ * `prognosemodelle`.
  */
-describe('E6 = A · die Prognosen-Seite ist ein Werkzeug für VoltPilot', () => {
+describe('Konzept vp-prognosen-konzept · die Adresse `prognose` ist die Kundenseite', () => {
   const MIT_SPEICHER = anlageSurface({
     entities: [
       { id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } },
@@ -418,18 +420,12 @@ describe('E6 = A · die Prognosen-Seite ist ein Werkzeug für VoltPilot', () => 
     window.location.hash = '';
   });
 
-  it('führt einen Kunden mit altem Lesezeichen in den Fahrplan', async () => {
+  it('leitet einen Kunden NICHT mehr um - die Prognose ist die Kundenseite selbst', async () => {
     expect(MIT_SPEICHER.deepViews).toContain('fahrplan');
     window.location.hash = '#/anlage/s-1/prognose';
     renderPrognose(MIT_SPEICHER);
-    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/fahrplan'));
-  });
-
-  it('wartet, solange die Anlage lädt - und nennt bis dahin den Weg', () => {
-    window.location.hash = '#/anlage/s-1/prognose';
-    renderPrognose(null);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Prognose' })).toBeInTheDocument());
     expect(window.location.hash).toBe('#/anlage/s-1/prognose');
-    expect(screen.getByRole('link', { name: 'Fahrplan' })).toHaveAttribute('href', '#/anlage/s-1/fahrplan');
   });
 });
 

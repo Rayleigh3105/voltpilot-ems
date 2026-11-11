@@ -415,6 +415,41 @@ export interface WeatherForecast {
   points: WeatherPoint[];
 }
 
+/** Ein Prognosewert: mittlere Leistung `valueKw` ab `ts`. */
+export interface ForecastValue {
+  ts: string;
+  valueKw: number | null;
+}
+
+/**
+ * S1 ("der Lesepunkt", Konzept vp-prognosen-konzept): die Prognose einer
+ * Anlage, unabhängig davon, ob sie einen Fahrplan hat. `pvRunAt`/`loadRunAt`
+ * bleiben GETRENNT (nie eine gemeinsame Zeit) - ein ausgefallener
+ * Collector-Lauf einer Art versteckt sich nie in der Zeit der anderen.
+ * `null`/eine leere Liste heißt: diese Art hat noch nie gerechnet, nie eine
+ * erfundene Null.
+ */
+export interface ForecastResponse {
+  activePvModel: string;
+  activeLoadModel: string;
+  pvRunAt: string | null;
+  pvKw: ForecastValue[];
+  loadRunAt: string | null;
+  loadKw: ForecastValue[];
+  yesterdayExpected: {
+    pvRunAt: string | null;
+    pvKw: ForecastValue[];
+    loadRunAt: string | null;
+    loadKw: ForecastValue[];
+  };
+  weekly: {
+    pvRunAt: string | null;
+    pvKw: ForecastValue[];
+    loadRunAt: string | null;
+    loadKw: ForecastValue[];
+  };
+}
+
 /** Ein laufender Handeingriff (Steuerung Stufe 4). */
 export interface Intervention {
   kind: string;
@@ -11624,6 +11659,13 @@ export const api = {
   priceHistory: (siteId: string, range: HistoryRange, at: string) =>
     request<PriceHistory>(`/api/v1/sites/${siteId}/price-history?range=${range}&at=${at}`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
+  /**
+   * S1: Sonne/Verbrauch des aktiven Modells (48h, Viertelstunde), "gestern
+   * erwartet" (der Abendlauf 17:45 ± 15 min des Vortags) und der S4-Ausblick
+   * (stündlich, ab übermorgen, `forecast_weekly`). Mandantenbezogen wie jede
+   * `/sites/**`-Route - eine fremde Anlage ist 404.
+   */
+  forecast: (siteId: string) => request<ForecastResponse>(`/api/v1/sites/${siteId}/forecast`),
   /**
    * Ohne `mode` byte-gleich wie bisher (der jüngste Lauf); `mode: 'day'` holt
    * den Tages-Splice — siehe {@link ScheduleMode}. Ein Backend ohne den

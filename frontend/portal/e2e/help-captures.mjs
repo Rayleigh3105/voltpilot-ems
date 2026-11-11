@@ -70,10 +70,10 @@ export const captures = [
     point('.vp-pz-kachel', 'Die zwei Kacheln schauen nur nach vorn: die günstigsten und die teuersten zwei Stunden.'),
     point('.vp-pz-bild', 'Die dunkle Linie markiert jetzt. Ein Tipp auf einen Balken zeigt seine Viertelstunde oben.'),
   ] },
-  { id: 'wetter', title: 'Wetter und Sonnenstrom', hash: plant('wetter'), root: 'main', points: [
-    point('.vp-pz-antwort', 'Oben steht das Wetter jetzt; darunter, was die Anlage gerade und heute erzeugt.'),
-    point('.vp-wt-tage', 'Die Karten zeigen die nächsten Tage. Ein Tipp wählt den Tag für das Bild.'),
-    point('.vp-pz-bild', 'Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt.'),
+  { id: 'wetter', title: 'Der Sonnen-Teppich: Sonne und Verbrauch', hash: plant('prognose'), root: 'main', points: [
+    point('.vp-pz-antwort', 'Oben steht, wie lange die Sonne reicht, und zwei Balken für Sonne und Verbrauch.'),
+    point('.vp-pt-teppich', 'Der Teppich zeigt sieben Tage je Stunde auf einen Blick; ein Tipp wählt den Tag für das Bild.'),
+    point('.vp-pt-bild', 'Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt.'),
   ] },
   { id: 'prognose', title: 'Wie gut die Vorhersage zuletzt traf', hash: plant('fahrplan'), root: '[aria-label="Gut zu wissen"]', points: [
     point('h3:has-text("Gut zu wissen")', 'Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage.'),

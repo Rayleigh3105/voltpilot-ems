@@ -226,11 +226,11 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     // über Einträgen, von denen einer ebenfalls „Anlage" heißt.
     const { container } = renderShell();
     expect(container.querySelector('.vp-anlagenav .vp-nav-group-label')).toBeNull();
-    // Ohne Speicher/Ladepunkte gibt es den zweiten Bereich nicht (Gesetz 1:
-    // ein Bereich ohne Inhalt existiert nicht).
+    // Ohne Speicher/Ladepunkte gibt es den Bereich „Fahrplan" nicht - aber die
+    // Prognose ist UNBEDINGT (R.2) und füllt den zweiten Platz als eigener Bereich.
     expect(
       [...container.querySelectorAll('.vp-anlagenav .vp-nav-lbl')].map((n) => n.textContent),
-    ).toEqual(['Cockpit', 'Verlauf', 'Steuerung', 'Anlage']);
+    ).toEqual(['Cockpit', 'Prognose', 'Verlauf', 'Steuerung', 'Anlage']);
     // Und die früheren Einzel-Einträge sind Reiter geworden, keine Nav-Zeilen.
     expect(container.querySelector('.vp-anlagenav')?.textContent).not.toContain('Messwerte');
     expect(screen.queryByRole('button', { name: /Live-Daten/ })).toBeNull();
@@ -438,16 +438,17 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(screen.queryByRole('dialog', { name: 'Weitere Bereiche' })).toBeNull();
   });
 
-  it('rückt nach, wo ein Bereich fehlt - nie ein leerer Platz', () => {
+  it('rückt nach, wo ein Bereich fehlt - die Prognose füllt den Platz (R.2)', () => {
     renderShell();
     const bar = screen.getByLabelText(/Bereiche der Anlage/);
     expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
       'Cockpit',
+      'Prognose',
       'Verlauf',
       'Steuerung',
       'Anlage',
     ]);
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
   });
 
   it('die Leiste NAVIGIERT in ihren Bereich', () => {
@@ -859,11 +860,12 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
     const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
     expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
       'Cockpit',
+      'Prognose',
       'Verlauf',
       'Steuerung',
       'Anlage',
     ]);
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
     expect(bar.querySelector('[aria-current="page"]')?.textContent).toContain('Steuerung');
   });
 });

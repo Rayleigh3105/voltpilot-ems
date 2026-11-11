@@ -118,12 +118,12 @@ export const PRELOAD_DEADLINE_MS = 300;
 type Loader = () => Promise<unknown>;
 
 /**
- * Die Unterseiten, die sich EIN Stück teilen, nennen dasselbe: Fahrplan,
- * Wetter und Marktpreise wohnen zu dritt in `DataPages`.
+ * Die Unterseiten, die sich EIN Stück teilen, nennen dasselbe: Fahrplan und
+ * Marktpreise wohnen zu zweit in `DataPages`. Die Prognose (Wetter ist darin
+ * aufgegangen) hat ihr eigenes Stück (`PrognoseSeite`).
  */
 const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   fahrplan: SUB_CHUNK.daten,
-  wetter: SUB_CHUNK.daten,
   marktpreise: SUB_CHUNK.daten,
   messwerte: SUB_CHUNK.messwerte,
   energiebilanz: SUB_CHUNK.energiebilanz,
@@ -140,6 +140,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   technik: SUB_CHUNK.technik,
   befehle: SUB_CHUNK.befehle,
   prognose: SUB_CHUNK.prognose,
+  prognosemodelle: SUB_CHUNK.prognosemodelle,
 };
 
 /**

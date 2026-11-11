@@ -71,7 +71,8 @@ const ALL_SUBS: AnlagenSub[] = [
   'fahrplan',
   'messwerte',
   'erloese',
-  'wetter',
+  'prognose',
+  'prognosemodelle',
   'technik',
   'modell',
   'steuerung',
@@ -108,7 +109,7 @@ describe('parseRoute', () => {
       siteId: 'site-1',
       sub: null,
     });
-    for (const sub of ['fahrplan', 'messwerte', 'erloese', 'wetter'] as const) {
+    for (const sub of ['fahrplan', 'messwerte', 'erloese', 'prognose'] as const) {
       expect(parseRoute(`#/anlage/site-1/${sub}`)).toEqual({
         page: 'anlagen',
         siteId: 'site-1',
@@ -122,7 +123,8 @@ describe('parseRoute', () => {
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
     // Die Historie ist zwei Welten - ihre Route erbt die BASIS-Welt.
     expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'messwerte' });
-    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
+    // Die alte Wetter-Seite ist in der Prognose aufgegangen (Konzept vp-prognosen-konzept, E2 = A).
+    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'prognose' });
     // ...the entity lists land on the Technik subpage (its content moved there
     // behind the gear icon in the money-centric v2).
     expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
@@ -347,7 +349,8 @@ describe('M1: no route breaks when the tab bar is retired', () => {
     expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: null });
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
     expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'messwerte' });
-    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
+    // Die alte Wetter-Seite ist in der Prognose aufgegangen (Konzept vp-prognosen-konzept, E2 = A).
+    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'prognose' });
     expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
     expect(parseRoute('#/geraete')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
     expect(parseRoute('#/anlage/s-1/optimierung')).toEqual({

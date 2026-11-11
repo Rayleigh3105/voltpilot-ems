@@ -71,7 +71,6 @@ import { useIsPhone } from '../useIsPhone';
 import { ProvBadge } from '../components/HistorieWelt';
 import { TagSegment } from '../components/MarktpreiseMobil';
 import { PreisSeite } from './PreisSeite';
-import { WetterSeite } from './WetterSeite';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
 function useSiteData<T>(
@@ -188,17 +187,6 @@ export function MarktpreisePage(props: {
 
 // ---------------------------------------------------------------------------
 
-/**
- * **Der Reiter „Wetter"** — seit dem Konzept „Preise und Wetter" (Fassung 3,
- * E5 = A „Wetter zuerst", 20.10.2026) wohnt die Seite in `WetterSeite.tsx`:
- * Wetter jetzt, drei Tage, ein Bild für den gewählten Tag.
- */
-export function WetterSection({ site }: { site: Site }) {
-  return <WetterSeite site={site} />;
-}
-
-// ---------------------------------------------------------------------------
-
 /** Wie weit zurück die Live-Messwerte des Helden geholt werden. */
 const LIVE_WINDOW_MS = 15 * 60 * 1000;
 
@@ -208,7 +196,7 @@ const GELD_TAKT_MS = 5 * 60 * 1000;
 /** Wie der Fahrplan entsteht — als Info-Knopf über dem Diagramm bzw. in „Mehr erklären". */
 const FAHRPLAN_BERECHNUNG =
   'Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet - ' +
-  'für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell ' +
+  'für die nächsten 48 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell ' +
   'plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden: ' +
   'laden bei günstigem Strom oder PV-Überschuss, entladen wenn Strom teuer ist, ' +
   'Eigenverbrauch maximieren. Eingaben je Anlage sind die Börsen-Day-Ahead-Preise, ' +

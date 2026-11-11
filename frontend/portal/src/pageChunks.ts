@@ -72,7 +72,12 @@ export const SUB_CHUNK = {
   steuerung: () => import('./pages/SteuerungSection'),
   technik: () => import('./pages/AnlageTechnik'),
   befehle: () => import('./pages/BefehleSection'),
-  prognose: () => import('./pages/PrognosePage'),
+  // Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+  // Sonnen-Teppich). `prognosemodelle` ist das frühere `prognose` - die
+  // VoltPilot-interne Modellqualität; die Datei heisst weiter `PrognosePage`
+  // (keine Dateiumbenennung nötig, nur der Routen-Schlüssel ist frei geworden).
+  prognose: () => import('./pages/PrognoseSeite'),
+  prognosemodelle: () => import('./pages/PrognosePage'),
 } as const;
 
 /**

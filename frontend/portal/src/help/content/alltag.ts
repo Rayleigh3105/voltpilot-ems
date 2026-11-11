@@ -130,9 +130,9 @@ export const everydayArticles: HelpArticle[] = [
     summary: 'Vorhersagen für PV und Verbrauch sowie deren spätere Bewertung einordnen.',
     keywords: ['Wetter', 'Forecast', 'Vorhersage', 'Prognosequalität', 'Genauigkeit', 'Abweichung', 'Fahrplan'],
     sections: [
-      { id: 'wetter', title: 'Wetter beschreibt die erwarteten Bedingungen', paragraphs: [
-        "Oben steht das Wetter am Anlagenstandort: Symbol, Temperatur und ein Wort für den Himmel. Darunter steht, was Ihre Anlage gerade erzeugt (gemessen) und heute voraussichtlich erzeugt. Drei Karten zeigen die nächsten Tage; ein Tipp wählt den Tag für das Bild.",
-        "Im Bild ist gemessener Sonnenstrom gefüllt und erwarteter schraffiert; die dunkle Linie markiert jetzt. Liegt keine Sonnenstrom-Prognose vor, zeigt das Bild die Sonnenstärke laut Wetterdienst und sagt das dazu. Lokales Wetter kann von der Vorhersage abweichen; bei unplausiblen Ortsangaben prüfen Sie den Standort.",
+      { id: 'wetter', title: 'Der Sonnen-Teppich zeigt Sonne und Verbrauch auf einen Blick', paragraphs: [
+        "Oben steht, wie lange die Sonne heute reicht, und zwei Balken für Sonne und Verbrauch, je mit dem, was schon erzeugt bzw. verbraucht ist. Der Teppich darunter zeigt sieben Tage je Stunde: je Tag eine Zeile, je Stunde eine Spalte - kräftig, wo die Sonne den Verbrauch deckt. Ein Tipp auf einen Tag wählt ihn für das Bild darunter.",
+        "Im Bild ist gemessener Sonnenstrom gefüllt und erwarteter schraffiert; die dunkle Linie markiert jetzt. Ab übermorgen ist die Zeile ein Ausblick, heller gezeichnet - er reicht so weit, wie der Wetterdienst heute vorhersagt. Ohne PV zeigt der Teppich den Verbrauch. Lokales Wetter kann von der Vorhersage abweichen; bei unplausiblen Ortsangaben prüfen Sie den Standort.",
       ], figure: 'wetter' },
       { id: 'modelle', title: 'Prognose und Prognosequalität', paragraphs: [
         "Im Fahrplan steht unter „Gut zu wissen“, wie weit die Vorhersage zuletzt danebenlag: die mittlere Abweichung je Viertelstunde für Verbrauch und PV. Verglichen werden gespeicherte Vorhersagen mit Messungen; wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich. Welches Vorhersagemodell plant, betreut VoltPilot.",

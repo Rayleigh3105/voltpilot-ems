@@ -11,7 +11,7 @@
  *
  * Fehlend ist keine Null: ohne Messung gibt es die Kachel nicht bzw. „—“.
  */
-import type { HistoryTotals, WeatherPoint } from './api';
+import type { HistoryTotals } from './api';
 import { KNOWN_ROLES, roleLabel, type SlotRole } from './fahrplanWhy';
 import { kw, prozent, TOTBAND_KW } from './leitungsplan';
 import type { PlanWordingKind } from './schedule';
@@ -370,59 +370,13 @@ export function handelKachel(tag: Tag | null, kind: PlanWordingKind): { fenster:
   return { fenster, spanneCt: preise.length > 1 ? Math.max(...preise) - Math.min(...preise) : null };
 }
 
-/* ------------------------------------------------------------------- Sonne */
-
-export interface SonneKachelView {
-  /** Sonnenstärke jetzt in W/m² (Wettervorhersage am Standort); null = unbekannt. */
-  ghi: number | null;
-  /** 0..1: Lage der Sonne zwischen erstem und letztem Tageslicht. */
-  bogen: number | null;
-  /** PV heute gemessen (kWh). */
-  heuteKwh: number | null;
-  /** Gemessen bis jetzt + Plan danach (kWh); null ohne Plan oder wenn heute keine Sonne mehr kommt. */
-  erwartetKwh: number | null;
-}
-
-/** Die Wetterpunkte des heutigen Tages mit Sonnenstärke. */
-function heutePunkte(points: WeatherPoint[], now: Date): WeatherPoint[] {
-  const a = new Date(now); a.setHours(0, 0, 0, 0);
-  const b = new Date(a); b.setDate(b.getDate() + 1);
-  return points.filter((p) => { const t = Date.parse(p.ts); return t >= a.getTime() && t < b.getTime(); });
-}
-
-/** **Sonne**: Sonnenstärke am Standort und die Erzeugung des Tages (gemessen und erwartet). */
-export function sonneKachel(points: WeatherPoint[] | null, now: Date, totals: HistoryTotals | null | undefined, tag: Tag | null): SonneKachelView | null {
-  const heuteKwh = n(totals?.pvGenerationKwh);
-  let ghi: number | null = null;
-  let bogen: number | null = null;
-  if (points && points.length) {
-    const heute = heutePunkte(points, now);
-    let best: WeatherPoint | null = null;
-    for (const p of heute) {
-      if (Date.parse(p.ts) <= now.getTime() && (best == null || Date.parse(p.ts) > Date.parse(best.ts))) best = p;
-    }
-    ghi = n(best?.ghiWM2);
-    const hell = heute.filter((p) => (p.ghiWM2 ?? 0) > 5).map((p) => Date.parse(p.ts));
-    if (hell.length > 1) {
-      const a = Math.min(...hell);
-      const b = Math.max(...hell);
-      bogen = Math.min(1, Math.max(0, (now.getTime() - a) / (b - a || 1)));
-    }
-  }
-  let erwartetKwh: number | null = null;
-  if (tag && heuteKwh != null) {
-    let rest = 0;
-    let plan = false;
-    for (let i = tag.jetzt + 1; i < tag.viertel.length; i++) {
-      const p = tag.viertel[i].plan?.pv;
-      if (p != null) { rest += (p * VIERTEL_MS) / 3_600_000; plan = true; }
-    }
-    // Nach Sonnenuntergang ist „erwartet“ gleich „gemessen“ - eine Zeile ohne Aussage (Nebenbefund N4).
-    if (plan && rest >= HEUTE_REST_KWH) erwartetKwh = heuteKwh + rest;
-  }
-  if (ghi == null && heuteKwh == null) return null;
-  return { ghi, bogen, heuteKwh, erwartetKwh };
-}
+/* ---------------------------------------------------------------- Prognose */
+// Die frühere Kachel „Sonne" (Sonnenstärke + Tageserzeugung aus dem
+// Fahrplan-Plan) ist seit Konzept `vp-prognosen-konzept` (Bericht §7) die
+// Kachel „Prognose": sie führt immer, auch ohne Fahrplan und ohne PV, und
+// liest darum direkt `prognoseModell()` aus `prognoseSeite.ts` - dieselbe
+// Ableitung wie die Kundenseite, keine zweite. Die Komponente
+// (`CockpitKacheln.tsx` `PrognoseKachel`) ruft sie selbst auf.
 
 /* ------------------------------------------------------------- Lastspitze */
 

@@ -17,6 +17,7 @@ import {
   type SiteCharging,
   type Device,
   type EarningsRange,
+  type ForecastResponse,
   type History,
   type HistoryTotals,
   type Overview,
@@ -173,9 +174,6 @@ const ladeEigeneAuswertung = () => import('../components/EigeneAuswertungDialog'
 const EigeneAuswertungDialog = lazy(() =>
   ladeEigeneAuswertung().then((m) => ({ default: m.EigeneAuswertungDialog })),
 );
-const WetterSection = lazy(() =>
-  SUB_CHUNK.daten().then((m) => ({ default: m.WetterSection })),
-);
 const MesswerteSection = lazy(() =>
   SUB_CHUNK.messwerte().then((m) => ({ default: m.MesswerteSection })),
 );
@@ -285,7 +283,12 @@ const MarktpreisePage = lazy(() =>
   SUB_CHUNK.daten().then((m) => ({ default: m.MarktpreisePage })),
 );
 const PrognosePage = lazy(() =>
-  SUB_CHUNK.prognose().then((m) => ({ default: m.PrognosePage })),
+  SUB_CHUNK.prognosemodelle().then((m) => ({ default: m.PrognosePage })),
+);
+// Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+// Sonnen-Teppich): Reiter im Fahrplan/Ladepark, sonst ihr eigener Bereich.
+const PrognoseSeite = lazy(() =>
+  SUB_CHUNK.prognose().then((m) => ({ default: m.PrognoseSeite })),
 );
 
 /** Re-render cadence of the "Stand vor X" freshness note. */
@@ -675,19 +678,6 @@ function AnlagenSubPage({
   const sidebar = anlageSidebar(surface, undefined, undefined, technisch, betriebsart, ladepunktAnzahl);
   const tabs = tabsFor(sidebar, sub);
 
-  // E6 = A: die Prognosen-Seite ist ein Werkzeug für VoltPilot. Ein Kunde, der
-  // ein altes Lesezeichen öffnet, landet dort, wo die Treffsicherheit jetzt
-  // steht - im Fahrplan (ohne Speicher gibt es keinen, dann im Cockpit). Solange
-  // die Anlage noch lädt, ist das unbekannt: dann wird gewartet, und bis dahin
-  // steht ein Satz mit dem Weg da - nie eine leere Seite.
-  // `replace`: kein Verlaufseintrag, der Zurück-Knopf springt nicht im Kreis.
-  const prognoseUmleiten = sub === 'prognose' && !technisch;
-  const hatFahrplan = surface ? surface.deepViews.includes('fahrplan') : null;
-  useEffect(() => {
-    if (!prognoseUmleiten || hatFahrplan == null) return;
-    window.location.replace(hashForRoute(anlageRoute(site.id, hatFahrplan ? 'fahrplan' : null)));
-  }, [prognoseUmleiten, hatFahrplan, site.id]);
-
   // „Ein Ort fürs Laden" §4.6/§7.1 (E2 = A): „Ladevorgänge“ entfällt für
   // Privatkunden - ein altes Lesezeichen (nav.ts-Disziplin: jedes Lesezeichen
   // gilt) landet auf Steuerung › Laden, wo dieselbe Frage jetzt wohnt.
@@ -777,7 +767,6 @@ function AnlagenSubPage({
           <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
         )}
         {sub === 'einzelwerte' && <EinzelwerteSection site={site} />}
-        {sub === 'wetter' && <WetterSection site={site} />}
         {/* Als Reiter des Verlaufs: die Anlage steht im Pfad, den Titel trägt
             der Seitenkopf oben - `embedded` unterdrückt darum Überschrift und
             Anlagen-Wähler der ehemals eigenständigen Seiten. */}
@@ -789,14 +778,15 @@ function AnlagenSubPage({
             embedded
           />
         )}
-        {sub === 'prognose' && !prognoseUmleiten && (
-          <PrognosePage sites={[site]} selectedSite={site.id} onSelectSite={() => {}} embedded />
+        {/* Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
+            Sonnen-Teppich): für JEDE Anlage, mit und ohne Speicher, mit und
+            ohne PV - kein Admin-Tor mehr. */}
+        {sub === 'prognose' && (
+          <PrognoseSeite site={site} hatFahrplan={(surface?.deepViews ?? []).includes('fahrplan')} />
         )}
-        {prognoseUmleiten && (
-          <p className="vp-muted">
-            Wie gut die Vorhersage trifft, steht jetzt im{' '}
-            <a href={hashForRoute(anlageRoute(site.id, 'fahrplan'))}>Fahrplan</a>.
-          </p>
+        {/* Das frühere `prognose`: VoltPilot-interne Modellqualität, nur Plattform-Admin. */}
+        {sub === 'prognosemodelle' && technisch && (
+          <PrognosePage sites={[site]} selectedSite={site.id} onSelectSite={() => {}} embedded />
         )}
       {/* Der Aufbau zeigt die Boxen aus der Geräteliste, die die Schale ohnehin
           hält und frisch hält. Ihre Bezugszeit reist mit: der Zustand einer Box
@@ -926,6 +916,10 @@ export function AnlageSeite({
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [weatherWhyText, setWeatherWhyText] = useState<string | null>(null);
   const [wetterPunkte, setWetterPunkte] = useState<WeatherPoint[] | null>(null);
+  // Die Kachel „Prognose" (Konzept vp-prognosen-konzept, Bericht §7): ersetzt
+  // „Sonne" und braucht darum dieselbe Prognose wie die Kundenseite, nicht
+  // mehr den Fahrplan-Plan - sie führt dann auch ohne Fahrplan und ohne PV.
+  const [prognoseKachelDaten, setPrognoseKachelDaten] = useState<ForecastResponse | null>(null);
   const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
   // Die Abregel-Wahrheit (PR 3): setzt die Anlage eine geplante Drosselung
   // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
@@ -1187,6 +1181,21 @@ export function AnlageSeite({
         setWetterPunkte(w.points);
       },
       () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+    api.forecast(site.id).then(
+      (f) => {
+        if (active) setPrognoseKachelDaten(f);
+      },
+      () => {
+        if (active) setPrognoseKachelDaten(null);
+      },
     );
     return () => {
       active = false;
@@ -2232,11 +2241,10 @@ export function AnlageSeite({
           <KachelSpaet
             {...basis}
             art="sonne"
-            points={wetterPunkte}
+            forecast={prognoseKachelDaten}
+            weather={wetterPunkte}
             now={now}
-            totals={dayTotalsEffective}
-            tag={buehneTag}
-            onOpen={() => onOpenSub('wetter')}
+            onOpen={() => onOpenSub('prognose')}
           />
         );
       case 'handel':

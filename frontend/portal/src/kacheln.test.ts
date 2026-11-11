@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { History, HistoryTotals, SchedulePlan, ScheduleSlot, WeatherPoint } from './api';
+import type { History, HistoryTotals, SchedulePlan, ScheduleSlot } from './api';
 import {
   autarkieKachel,
   eigenverbrauchKachel,
@@ -8,7 +8,6 @@ import {
   heuteKachel,
   naechsteSchritte,
   netzKachel,
-  sonneKachel,
   speicherAusblick,
   speicherKachel,
   steuerSpalten,
@@ -199,36 +198,9 @@ describe('Heute (Konzept vp-cockpit-privat-konzept, E1 = A)', () => {
   });
 });
 
-describe('Sonne', () => {
-  const punkte: WeatherPoint[] = Array.from({ length: 24 }, (_, h) => ({
-    ts: new Date(2026, 8, 10, h).toISOString(),
-    temperatureC: 20,
-    cloudCoverPct: 10,
-    ghiWM2: h >= 7 && h <= 19 ? 800 - Math.abs(h - 13) * 120 : 0,
-    dniWM2: null,
-    dhiWM2: null,
-    dniNormalWM2: null,
-  }));
-
-  it('Sonnenstärke jetzt, Lage am Himmel, gemessen und erwartet', () => {
-    const s = sonneKachel(punkte, NOW, TOTALS, tagAus(history(), plan(), NOW))!;
-    expect(s.ghi).toBe(680);
-    expect(s.bogen).toBeGreaterThan(0.3);
-    expect(s.bogen).toBeLessThan(0.6);
-    expect(s.heuteKwh).toBe(20);
-    expect(s.erwartetKwh).toBeGreaterThan(20);
-  });
-
-  it('nach Sonnenuntergang keine Erwartung - sie wäre nur der gemessene Wert noch einmal (N4)', () => {
-    const abends = new Date(2026, 8, 10, 21, 0, 0);
-    expect(sonneKachel(punkte, abends, TOTALS, tagAus(history(), plan(), abends))!.erwartetKwh).toBeNull();
-  });
-
-  it('ohne Plan keine Erwartung, ohne alles keine Kachel', () => {
-    expect(sonneKachel(punkte, NOW, TOTALS, null)!.erwartetKwh).toBeNull();
-    expect(sonneKachel(null, NOW, null, null)).toBeNull();
-  });
-});
+// Die Kachel "Prognose" (ehemals "Sonne") liest seit `vp-prognosen-konzept`
+// direkt `prognoseModell()` - ihre Ableitung ist in `prognoseSeite.test.ts`
+// geprüft, nicht hier.
 
 describe('Die Steuerzeile: Auftrag, Gerät und Wirkung getrennt', () => {
   const basis = {

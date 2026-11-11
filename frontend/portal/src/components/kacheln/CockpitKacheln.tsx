@@ -1,6 +1,6 @@
 import { useId, type ComponentProps, type ReactNode, type Ref } from 'react';
 import { Icon, type IconName } from '../../../designsystem/components/core/Icon';
-import type { HistoryTotals, WeatherPoint } from '../../api';
+import type { ForecastResponse, HistoryTotals, WeatherPoint } from '../../api';
 import { chartTheme } from '../../chartTheme';
 import type { HeroMoney } from '../../cockpitWidgets';
 import {
@@ -11,12 +11,12 @@ import {
   handelKachel,
   heuteKachel,
   netzKachel,
-  sonneKachel,
   speicherKachel,
   type AnteilKachel,
   type HeuteTeil,
 } from '../../kacheln';
 import { kwh, prozent, zahl } from '../../leitungsplan';
+import { morgenSatz, prognoseModell, reichtSatz, verbrauchsSpitzeSatz } from '../../prognoseSeite';
 import type { PeakBandView } from '../../peakBand';
 import type { PlanWordingKind } from '../../schedule';
 import { uhrzeit, type Tag } from '../../tagesleiste';
@@ -499,81 +499,49 @@ export function HandelKachel({ tag, kind, ...b }: Basis & { tag: Tag | null; kin
   );
 }
 
-/* ----------------------------------------------------------------- Sonne */
+/* -------------------------------------------------------------- Prognose */
 
-function SonnenBogen({ f, ghi, w, h }: { f: number | null; ghi: number | null; w: number; h: number }) {
-  const x0 = 8;
-  const x1 = w - 8;
-  const base = h - 10;
-  const cy = 2 * 6 - base;
-  const p = f ?? 0;
-  const u = 1 - p;
-  const sx = x0 + (x1 - x0) * p;
-  const sy = u * u * base + 2 * u * p * cy + p * p * base;
-  const d = `M${x0},${base} Q${w / 2},${cy} ${x1},${base}`;
+function KachelBalken({ titel, betrag, max, farbe }: { titel: string; betrag: number | null; max: number; farbe: string }) {
+  const pct = betrag != null ? Math.min(100, Math.max(0, (betrag / max) * 100)) : 0;
   return (
-    <svg className="vp-k-bild" viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden="true">
-      <path d={d} fill="none" style={{ stroke: 'var(--vp-c-border, #e2e8f0)' }} strokeWidth={1.5} />
-      {/* Nur solange die Sonne unterwegs ist: nach Sonnenuntergang sähe ein voll oranger Bogen wie volle Sonne aus (N4). */}
-      {f != null && f > 0 && f < 1 && (
-        <path d={d} fill="none" style={{ stroke: FARBE.pv }} strokeWidth={2.5} strokeDasharray={`${(p * (x1 - x0) * 1.25).toFixed(0)} 999`} />
-      )}
-      <line x1={0} x2={w} y1={base} y2={base} style={{ stroke: 'var(--vp-c-border, #e2e8f0)' }} />
-      {f != null && f > 0 && f < 1 && (
-        <>
-          <circle cx={sx} cy={sy} r={8 + 8 * Math.min(1, Math.max(0, (ghi ?? 0) / 860))} style={{ fill: FARBE.pv }} opacity={0.22} />
-          <circle cx={sx} cy={sy} r={6} style={{ fill: FARBE.pv, stroke: 'var(--vp-c-card, #fff)' }} strokeWidth={2} />
-        </>
-      )}
-    </svg>
+    <li className="vp-k-mini">
+      <span>{titel}</span>
+      <b>{betrag != null ? `≈ ${kwh(betrag)}` : '—'}</b>
+      <span className="vp-k-spur" aria-hidden="true">
+        <i style={{ width: `${pct}%`, background: farbe }} />
+      </span>
+    </li>
   );
 }
 
-/** **Sonne**: Sonnenstärke am Standort und die Erzeugung heute, gemessen und erwartet. */
-export function SonneKachel({
-  points,
+/**
+ * **Prognose** (Bericht §7): ersetzt „Sonne" - der Satz („Sonne reicht
+ * 07:00–19:45"), zwei kleine Balken (Sonne, Verbrauch) und eine Zeile für
+ * morgen. Ohne PV bleibt nur der Verbrauchs-Balken; ein Tipp öffnet die
+ * Seite. Dieselbe Ableitung wie die Kundenseite (`prognoseSeite.ts`) - EINE
+ * Prognose, viele Leser.
+ */
+export function PrognoseKachel({
+  forecast,
+  weather,
   now,
-  totals,
-  tag,
   ...b
-}: Basis & { points: WeatherPoint[] | null; now: Date; totals: HistoryTotals | null; tag: Tag | null }) {
-  const s = sonneKachel(points, now, totals, tag);
-  if (!s) return null;
-  const breit = b.groesse !== 'klein';
-  const anteil = s.heuteKwh != null && s.erwartetKwh ? Math.min(1, s.heuteKwh / s.erwartetKwh) : null;
-  const zahl = (
-    <div>
-      <Gross wert={s.ghi == null ? '—' : String(Math.round(s.ghi))} einheit="W/m²" />
-      <p className="vp-k-sub">Sonnenstärke jetzt</p>
-    </div>
-  );
+}: Basis & { forecast: ForecastResponse | null; weather: WeatherPoint[] | null; now: Date }) {
+  const m = forecast ? prognoseModell({ forecast, weather: weather ?? [], messung: null, jetzt: now }) : null;
+  if (!m || m.tage.length === 0) return null;
+  const heute = m.tage[0];
+  const morgen = m.tage[1] as (typeof m.tage)[number] | undefined;
+  const satz = m.mitPv ? reichtSatz(heute) : verbrauchsSpitzeSatz(heute) ?? 'Noch keine Prognose für heute';
+  const morgenZeile = morgenSatz(morgen, m.mitPv);
+  const max = Math.max(heute.sonneKwh ?? 0, heute.verbrauchKwh ?? 0, 0.1);
   return (
-    <Kachel {...b} id="sonne" name="Sonne" icon="sun" ton="pv" ziel="Wetter" groesse={b.groesse ?? 'breit'}>
-      {breit ? (
-        <div className="vp-k-reihe">
-          <SonnenBogen f={s.bogen} ghi={s.ghi} w={150} h={58} />
-          {zahl}
-        </div>
-      ) : (
-        <>
-          <SonnenBogen f={s.bogen} ghi={s.ghi} w={140} h={50} />
-          {zahl}
-        </>
-      )}
-      {s.heuteKwh != null && (
-        <ul className="vp-k-minis">
-          <li className="vp-k-mini">
-            <span>PV heute gemessen</span>
-            <b>{kwh(s.heuteKwh)}</b>
-            {anteil != null && (
-              <span className="vp-k-spur is-erwartet" aria-hidden="true">
-                <i style={{ width: `${(100 * anteil).toFixed(1)}%`, background: FARBE.pv }} />
-              </span>
-            )}
-          </li>
-        </ul>
-      )}
-      {s.erwartetKwh != null && <p className="vp-k-sub">Erwartet heute: {kwh(s.erwartetKwh)} (Prognose)</p>}
+    <Kachel {...b} id="sonne" name="Prognose" icon="sun" ton="pv" ziel="Prognose" groesse={b.groesse ?? 'breit'}>
+      <p className="vp-k-sub">{satz}</p>
+      <ul className="vp-k-minis">
+        {m.mitPv && <KachelBalken titel="Sonne" betrag={heute.sonneKwh} max={max} farbe={FARBE.pv} />}
+        <KachelBalken titel="Verbrauch" betrag={heute.verbrauchKwh} max={max} farbe={FARBE.load} />
+      </ul>
+      {morgenZeile && <p className="vp-k-sub">{morgenZeile}</p>}
     </Kachel>
   );
 }
@@ -712,7 +680,7 @@ export type KachelAuftrag =
   | ({ art: 'speicher' } & ComponentProps<typeof SpeicherKachel>)
   | ({ art: 'fahrplan' } & ComponentProps<typeof FahrplanKachel>)
   | ({ art: 'handel' } & ComponentProps<typeof HandelKachel>)
-  | ({ art: 'sonne' } & ComponentProps<typeof SonneKachel>)
+  | ({ art: 'sonne' } & ComponentProps<typeof PrognoseKachel>)
   | ({ art: 'lastspitze' } & ComponentProps<typeof LastspitzeKachel>)
   | ({ art: 'waermepumpe' } & ComponentProps<typeof WaermepumpeKachel>)
   | ({ art: 'wert' } & ComponentProps<typeof WertKachel>)
@@ -734,7 +702,7 @@ export default function KachelSchalter(a: KachelAuftrag) {
     case 'speicher': return <SpeicherKachel {...a} />;
     case 'fahrplan': return <FahrplanKachel {...a} />;
     case 'handel': return <HandelKachel {...a} />;
-    case 'sonne': return <SonneKachel {...a} />;
+    case 'sonne': return <PrognoseKachel {...a} />;
     case 'lastspitze': return <LastspitzeKachel {...a} />;
     case 'waermepumpe': return <WaermepumpeKachel {...a} />;
     case 'wert': return <WertKachel {...a} />;

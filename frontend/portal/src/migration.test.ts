@@ -276,10 +276,11 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
     for (const input of [NIE_MIGRIERT, NICHTS_GELADEN]) {
       const s = anlageSurface(input);
       const sidebar = anlageSidebar(s);
-      // Ohne Speicher und ohne Ladepunkte fehlt der zweite Bereich ganz -
-      // „ein Bereich ohne Inhalt existiert nicht" (E3).
+      // Ohne Speicher und ohne Ladepunkte fehlt der Bereich „Fahrplan" -
+      // die Prognose ist UNBEDINGT (R.2) und füllt den zweiten Platz.
       expect(sidebar.bereiche.map((b) => b.key)).toEqual([
         'cockpit',
+        'prognose',
         'verlauf',
         'steuerung',
         'anlage',
