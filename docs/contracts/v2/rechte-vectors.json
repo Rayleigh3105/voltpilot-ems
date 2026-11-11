@@ -228,7 +228,8 @@
       "verlaengern",
       "ablaufen",
       "erste_anmeldung",
-      "startpasswort_neu"
+      "startpasswort_neu",
+      "konto_geaendert"
     ],
     "rolle_noetig_reihenfolge": [
       "leser",
