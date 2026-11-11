@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { KennungFeld } from '../components/KennungFeld';
 import { BoxUnterseite } from '../components/KoppelKachel';
-import { api, type Device } from '../api';
+import { DEVICE_ID_TAKEN_MSG, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { api, ApiError, neueAnfrageKennung, type Device } from '../api';
+import { kennungSendbar, pruefeKennung } from '../edgeRef';
 import { fmtRelative } from '../format';
 import { HelpLink } from '../help/HelpProvider';
 import { kennungWieGedruckt } from '../koppelLink';
@@ -55,7 +58,7 @@ export function BoxWeg({
       setJetzt(new Date());
       api.listDevices().then(
         (liste) => {
-          const neu = liste.eintraege.find((d) => d.id === box.id);
+          const neu = liste.eintraege.find((d) => d.id === stand.id);
           if (aktiv && neu) setStand(neu);
         },
         () => {
@@ -68,11 +71,17 @@ export function BoxWeg({
       aktiv = false;
       window.clearInterval(takt);
     };
-  }, [box.id]);
+    // Läuft die neue Box aus "Andere Kennung" (S4) weiter, ersetzt ihre ID die alte hier - der Takt
+    // fragt dann nach DIESER Box, nicht mehr nach der gelösten.
+  }, [stand.id]);
 
   const lage = wegLage(stand, jetzt);
   const gedruckt = kennungWieGedruckt(stand.externalRef);
   const zeigePruefHilfe = lage.hinweis === 'pruefen' || lage.hinweis === 'support';
+  // S4 (E4 = A): der Knopf tauscht nur eine Box, die sich nie gemeldet hat UND ihren Schlüssel nie
+  // abgeholt hat - vorab entschieden aus demselben Befund wie die Prüf-Hilfe (angefragtAm null
+  // schließt schluesselAbgeholtAm praktisch schon aus); der Server prüft es verbindlich noch einmal.
+  const kannAndereKennung = zeigePruefHilfe && stand.anmeldung?.schluesselAbgeholtAm == null;
 
   return (
     <section className="vp-koppel-seite vp-weg-seite" aria-live="polite" aria-labelledby="box-weg-titel">
@@ -85,7 +94,13 @@ export function BoxWeg({
       <h3 id="box-weg-titel">{lage.titel}</h3>
       <p className="vp-koppel-klein">{lage.satz}</p>
 
-      {zeigePruefHilfe && <PruefHilfe gedruckt={gedruckt} anlageName={anlageName} support={lage.hinweis === 'support'} />}
+      {zeigePruefHilfe && (
+        <PruefHilfe gedruckt={gedruckt} anlageName={anlageName} support={lage.hinweis === 'support'}>
+          {kannAndereKennung && (
+            <AndereKennung siteId={stand.siteId} ersetzteId={stand.id} onErsetzt={setStand} />
+          )}
+        </PruefHilfe>
+      )}
 
       {lage.hinweis === 'datensperre' && (
         <div className="vp-alert vp-alert-warn" role="status">
@@ -152,8 +167,18 @@ function StationEintrag({
   );
 }
 
-/** Ab 5:00: die drei Fragen, eine nach der anderen (Abschnitt 5/7.1). */
-function PruefHilfe({ gedruckt, anlageName, support }: { gedruckt: string; anlageName: string; support: boolean }) {
+/** Ab 5:00: die drei Fragen, eine nach der anderen (Abschnitt 5/7.1); `children` = S4 „Andere Kennung". */
+function PruefHilfe({
+  gedruckt,
+  anlageName,
+  support,
+  children,
+}: {
+  gedruckt: string;
+  anlageName: string;
+  support: boolean;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="vp-weg-pruefen">
       <h4>{WEG.pruefenTitel}</h4>
@@ -171,12 +196,105 @@ function PruefHilfe({ gedruckt, anlageName, support }: { gedruckt: string; anlag
         </p>
         <BoxUnterseite gedruckt={gedruckt} titel={WEG.erwarteteKennung(gedruckt)} />
       </div>
+      {children}
       {support && (
         <div className="vp-alert vp-alert-warn" role="status">
           <p style={{ margin: 0 }}>{WEG.zuLange(gedruckt, anlageName)}</p>
           <HelpLink article="kontakt">{WEG.support}</HelpLink>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Box verbinden S4 ("Andere Kennung", E4 = A, Vertrag Abschnitt 3.5): gibt die Box oben (die sich
+ * nie gemeldet hat) frei und verbindet die richtige in einem Schritt - dieselbe Eingabe/Prüfung wie
+ * beim ersten Verbinden ({@link KennungFeld}). Entscheiden tut der Server; eine Ablehnung ändert
+ * nichts an der bisherigen Box.
+ */
+function AndereKennung({
+  siteId,
+  ersetzteId,
+  onErsetzt,
+}: {
+  siteId: string;
+  ersetzteId: string;
+  onErsetzt: (neu: Device) => void;
+}) {
+  const [offen, setOffen] = useState(false);
+  const [kennung, setKennung] = useState('');
+  const [abgeschickt, setAbgeschickt] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const anfrageKennung = useRef(neueAnfrageKennung());
+
+  if (!offen) {
+    return (
+      <Button variant="outline" size="md" onClick={() => setOffen(true)}>
+        {WEG.andereKennungKnopf}
+      </Button>
+    );
+  }
+
+  async function senden() {
+    if (busy) return;
+    const pruefung = pruefeKennung(kennung);
+    if (!kennungSendbar(pruefung)) {
+      setAbgeschickt(true);
+      inputRef.current?.focus();
+      return;
+    }
+    setBusy(true);
+    setFehler(null);
+    try {
+      const neu = await api.claimDevice(siteId, pruefung.kennung, anfrageKennung.current, ersetzteId);
+      onErsetzt(neu);
+      setOffen(false);
+      setKennung('');
+      setAbgeschickt(false);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422) {
+        setFehler(DEVICE_ID_UNKNOWN_MSG);
+      } else if (e instanceof ApiError && e.status === 409) {
+        const grund = e.body && typeof e.body === 'object' ? (e.body as { grund?: unknown }).grund : null;
+        setFehler(grund === 'box_hat_sich_gemeldet' ? WEG.andereKennungGemeldetFehler : DEVICE_ID_TAKEN_MSG);
+      } else {
+        setFehler('Das hat gerade nicht geklappt. Bitte versuchen Sie es noch einmal.');
+      }
+      inputRef.current?.focus();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-weg-andere">
+      <p className="vp-koppel-klein">{WEG.andereKennungFrage}</p>
+      <KennungFeld
+        ref={inputRef}
+        id="weg-andere-kennung"
+        wert={kennung}
+        onWert={(w) => {
+          setKennung(w);
+          setFehler(null);
+        }}
+        abgeschickt={abgeschickt}
+        serverFehler={fehler}
+        onEnter={() => void senden()}
+      />
+      <p className="vp-note" style={{ margin: 0 }}>
+        {WEG.andereKennungHinweis}
+      </p>
+      <div className="vp-weg-andere-knoepfe">
+        <Button variant="outline" size="md" disabled={busy} onClick={() => setOffen(false)}>
+          {WEG.andereKennungAbbrechen}
+        </Button>
+        <Button variant="primary" size="md" disabled={busy} onClick={() => void senden()}>
+          {WEG.andereKennungSenden}
+        </Button>
+      </div>
     </div>
   );
 }

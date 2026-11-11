@@ -257,11 +257,14 @@ class SiteScopeArchitekturTest {
                     "web/AdminController.java", "hasRole('platform-admin')"),
             new Erlaubt("repo/TenantRepository.java", "telemetry_rollup_1d", 1, Grund.PLATTFORM,
                     "web/AdminController.java", "hasRole('platform-admin')"),
-            // Vom-Kunden-lösen-Befund (L1, vp-plattform-admin-box-benutzer-konzept): die geteilte
-            // Abfrage von AdminBoxLoesenRepository (vor dem Sperren) und BoxLoesenRepository (unter
-            // der Sperre, mit gesetztem TenantContext) - beide nur aus AdminGeraeteAkteController
-            // erreichbar (platform-admin) bzw. der Mandanten-Schreibweg selbst (keine Kundenroute
-            // liest diese drei Tabellen hier).
+            // Vom-Kunden-lösen-Befund (L1, vp-plattform-admin-box-benutzer-konzept) und Box verbinden
+            // S4 ("Andere Kennung", L4): die geteilte Abfrage von AdminBoxLoesenRepository (vor dem
+            // Sperren, BYPASSRLS, nur aus AdminGeraeteAkteController, platform-admin) und
+            // BoxLoesenRepository (unter der Sperre). Letztere erreichen zwei Wege denselben
+            // gezählten Text in DIESER Datei: der Admin-Weg mit gesetztem TenantContext
+            // (BenutzerService.erster-Muster) UND seit L4 DeviceController.claim (Kunde, ersetzt) -
+            // dort dicht, weil d.id vorher über das RLS-gezäunte devices.findById aufgelöst wird: ein
+            // fremder Mandant sieht die Zeile gar nicht, genau wie Grund.UEBER_GERAET anderswo.
             new Erlaubt("geraete/BoxBefundSql.java", "telemetry", 1, Grund.PLATTFORM,
                     "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("geraete/BoxBefundSql.java", "telemetry_v2", 1, Grund.PLATTFORM,

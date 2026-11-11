@@ -31,16 +31,27 @@ public class BoxLoesenRepository {
     }
 
     /**
+     * Wie {@link #befundUnterSperre}, aber mit den Stammdaten (Kennung, Anlage, verbunden am) für
+     * das Protokoll - gebraucht vom Kunden-Weg (Box verbinden S4, {@code DeviceController.claim} mit
+     * {@code ersetzt}), der die Geräte-ID schon aus der Anfrage hat und keinen zweiten, admin-
+     * geschützten Erst-Befund (wie {@link AdminBoxLoesenRepository}) braucht - der Aufrufer sitzt
+     * schon im eigenen Mandanten (RLS), nicht BYPASSRLS über jeden Mandanten.
+     */
+    public java.util.Optional<BoxBefundSql.Zeile> zeileUnterSperre(UUID deviceId) {
+        return jdbc.query("SELECT " + BoxBefundSql.FELDER + BoxBefundSql.VON
+                        + " WHERE d.id = ? AND d.ausgebaut_am IS NULL",
+                        BoxBefundSql::zeile, deviceId)
+                .stream().findFirst();
+    }
+
+    /**
      * Der Befund UNTER der Sperre, über die Geräte-ID (RLS scopt auf den gesetzten Mandanten). Ist
      * die Box inzwischen weg (gelöst, ausgebaut) oder gehört sie - ein gefälschter Pfad - einem
      * anderen Mandanten, ist sie {@code aktiv = false}: derselbe Grund {@code verbund} wie eine
      * schon ausgebaute Box, kein Absturz.
      */
     public BoxBefund befundUnterSperre(UUID deviceId) {
-        return jdbc.query("SELECT " + BoxBefundSql.FELDER + BoxBefundSql.VON
-                        + " WHERE d.id = ? AND d.ausgebaut_am IS NULL",
-                        BoxBefundSql::zeile, deviceId)
-                .stream().findFirst()
+        return zeileUnterSperre(deviceId)
                 .map(BoxBefundSql.Zeile::befund)
                 .orElse(new BoxBefund(false, null, null, null, false, null));
     }
