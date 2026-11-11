@@ -59,13 +59,22 @@ jobs:
         include:
           # Lief am 09./10./11.11.2026 (Lauf 554/557/560) dreimal in Folge
           # exakt in die 45-min-Grenze (45:0x min, abgebrochen, nicht fertig
-          # geworden) - die Suite ist seit dem letzten gemessenen Deploy-Gate-
-          # Lauf (09.08.2026, ~20 min) deutlich gewachsen. 90 min mit Reserve,
-          # gemessen am eigenen workflow_dispatch-Lauf dieses PRs (PR-Text).
+          # geworden); der eigene workflow_dispatch-Lauf dieses PRs (PR-Text)
+          # lief danach ebenso exakt in eine angehobene 90-min-Grenze - OHNE
+          # Anzeichen eines Hängers (die letzte Zeile war eine laufende
+          # Flyway-Migration, kein stehender Test), dafür mit
+          # "context deadline exceeded" am Docker-Socket DES RUNNERS selbst
+          # beim Abschluss. Die Suite ist seit dem letzten gemessenen Deploy-
+          # Gate-Lauf (09.08.2026, ~20 min) deutlich gewachsen, UND der Runner
+          # wirkt gerade zusätzlich belastet (Docker-Daemon antwortete am
+          # Ende nicht mehr). 180 min als Reserve gegen beides; der echte
+          # Bedarf ohne diese Belastung ist noch nicht gemessen - Befund und
+          # Einordnung im PR-Text, kein zweiter Blindflug mit noch mehr
+          # Minuten, falls auch das nicht reicht.
           - name: api
             type: jvm
             path: services/api
-            timeout: 90
+            timeout: 180
           - name: ingest
             type: jvm
             path: services/ingest
