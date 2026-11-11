@@ -19,8 +19,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -49,6 +50,7 @@ import org.testcontainers.utility.DockerImageName;
  * App-Rolle, das Protokoll append-only.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
             "voltpilot.fernwartung.server-public-key=LnLMuBG+dDEeaEKlQrdTlPifX2fk0hOaB/NFc/BudjE=",
@@ -147,10 +149,10 @@ class WerkstattApiTest {
                 "kabel");
 
         ResponseEntity<String> tippfehler = send(HttpMethod.POST, BASE + "/boxen", admin, Map.of("edgeRef", TIPPFEHLER));
-        assertThat(tippfehler.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(tippfehler.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(message(tippfehler)).contains("Prüfzeichen");
         assertThat(send(HttpMethod.POST, BASE + "/boxen", admin, Map.of("edgeRef", "edge-irgendwas-01"))
-                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(send(HttpMethod.POST, BASE + "/boxen", admin, Map.of("edgeRef", DOCKER, "boxArt", "raspi"))
                 .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(send(HttpMethod.GET, BASE + "/boxen/" + DOCKER, admin, null).getStatusCode())
@@ -171,10 +173,10 @@ class WerkstattApiTest {
         // ── LAN-Netz (Entscheid 6a): kein übliches Heimnetz, keins des Wartungsservers.
         ResponseEntity<String> ueblich = send(HttpMethod.PUT, BASE + "/boxen/" + BOX + "/lan-netz", admin,
                 Map.of("lanNetz", "192.168.1.1/24"));
-        assertThat(ueblich.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(ueblich.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(message(ueblich)).contains("Heimroutern");
         assertThat(send(HttpMethod.PUT, BASE + "/boxen/" + BOX + "/lan-netz", admin,
-                Map.of("lanNetz", "10.10.17.1/24")).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                Map.of("lanNetz", "10.10.17.1/24")).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // ── Abnahme: ohne LAN-Netz und ohne Tunnel geht nichts.
         Map<String, Object> abnahme = new HashMap<>(Map.of("hostSchluessel", HOST, "fassung", "edge-light-g9c3368e3a",
@@ -205,7 +207,7 @@ class WerkstattApiTest {
         String fensterId = json.readTree(geoeffnet.getBody()).get("id").asText();
 
         ResponseEntity<String> fremd = send(HttpMethod.POST, BASE + "/boxen/" + BOX + "/abnahme", admin, abnahme);
-        assertThat(fremd.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(fremd.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(message(fremd)).contains("gehört nicht zu");
 
         abnahme.put("probeFensterId", fensterId);
@@ -217,7 +219,7 @@ class WerkstattApiTest {
         unvollstaendig.put("pruefungen", List.of("root_passwort", "anmeldeprobe"));
         ResponseEntity<String> fehlt = send(HttpMethod.POST, BASE + "/boxen/" + BOX + "/abnahme", admin,
                 unvollstaendig);
-        assertThat(fehlt.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(fehlt.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(message(fehlt)).contains("notfall_schluessel").contains("neustart").doesNotContain("anmeldeprobe");
         unvollstaendig.put("pruefungen", List.of("root_passwort", "erfunden"));
         assertThat(send(HttpMethod.POST, BASE + "/boxen/" + BOX + "/abnahme", admin, unvollstaendig)
@@ -225,11 +227,11 @@ class WerkstattApiTest {
         Map<String, Object> falscherHost = new HashMap<>(abnahme);
         falscherHost.put("hostSchluessel", "MD5:aa:bb");
         assertThat(send(HttpMethod.POST, BASE + "/boxen/" + BOX + "/abnahme", admin, falscherHost)
-                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         Map<String, Object> falscheFassung = new HashMap<>(abnahme);
         falscheFassung.put("fassung", "edge light; rm -rf");
         assertThat(send(HttpMethod.POST, BASE + "/boxen/" + BOX + "/abnahme", admin, falscheFassung)
-                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         assertThat(send(HttpMethod.POST, FW + "/fenster/" + fensterId + "/schliessen", admin, null).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
@@ -283,7 +285,7 @@ class WerkstattApiTest {
                 Map.of("hostSchluessel", HOST, "fassung", "v1.2.3", "pruefungen", List.of("root_passwort",
                         "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu",
                         "lan_netz", "neustart", "update_bereit"), "probeFensterId", UUID.randomUUID().toString()));
-        assertThat(abnahme.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(abnahme.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(message(abnahme)).contains("nur für das Edge Light");
     }
 
@@ -364,7 +366,7 @@ class WerkstattApiTest {
 
         // ── Falsches Prüfzeichen: 422 wie überall in der Werkstatt.
         assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + TIPPFEHLER, admin, null).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // ── Der Fehlversuch: eingelöst, Tunnel-Schlüssel, offenes Probe-Fenster, ein Lauf, ein offener Code,
         //    festgehaltener Geräteschlüssel, offene Zertifikatsanfrage - aber nie abgenommen, nie gekoppelt.
@@ -557,7 +559,7 @@ class WerkstattApiTest {
         // Falsche Prüfsumme: 422, nichts gespeichert.
         ResponseEntity<String> falsch = putGehaeuse(dienst, BOX, "gehaeuse-" + BOX + ".3mf",
                 "0".repeat(64), erster);
-        assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Unbekannte Box: 404.
         assertThat(putGehaeuse(dienst, ref("wrkgeh"), "gehaeuse-x.3mf", sha1, erster).getStatusCode())
@@ -639,7 +641,7 @@ class WerkstattApiTest {
         assertThat(send(HttpMethod.POST, erneutPfad, dienst, null).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(send(HttpMethod.POST, erneutPfad, null, null).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(send(HttpMethod.POST, BASE + "/boxen/" + TIPPFEHLER + "/gehaeuse/neu", admin, null).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
 
     private ResponseEntity<String> putGehaeuse(String token, String edgeRef, String name, String sha256,

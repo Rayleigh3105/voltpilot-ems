@@ -20,7 +20,6 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
 import org.springframework.integration.mqtt.support.MqttHeaders;
@@ -28,6 +27,7 @@ import org.springframework.integration.support.MessageBuilder;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.support.InterceptableChannel;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * {@code request_id} und {@code tenant_id} je MQTT-Nachricht ({@link NachrichtenVorgang}). Ohne Docker:
@@ -152,7 +152,7 @@ class NachrichtenVorgangTest {
     class ImDienst {
 
         /** Ob events.raw existiert - in diesem Test gibt es kein Redpanda. */
-        @MockBean EventsTopicPruefung eventsTopic;
+        @MockitoBean EventsTopicPruefung eventsTopic;
 
         @Autowired List<MqttPahoMessageDrivenChannelAdapter> adapter;
 

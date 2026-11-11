@@ -234,21 +234,21 @@ public class DeviceController {
         // ghost device (Anlage-Flow a1, B4). Other free-form refs (dev seeds,
         // integrations) stay open to the platform and to service accounts.
         if (kundenkonto(auth) && !externalRef.startsWith(STICKER_PREFIX) && !EdgeRef.isValid(externalRef)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Unknown Geräte-ID '" + externalRef + "' - keine Kennung einer VoltPilot-Box");
         }
         String kind = request.kind();
         if (externalRef.startsWith(STICKER_PREFIX)) {
             Optional<String> provisionedKind = provisioned.findKind(externalRef);
             if (provisionedKind.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Unknown Geräte-ID '" + externalRef + "' - not a provisioned device");
             }
             if (kind == null || kind.isBlank()) {
                 kind = provisionedKind.get();
             }
         } else if (EdgeRef.isGeneratedFormat(externalRef) && !EdgeRef.isValid(externalRef)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Unknown Geräte-ID '" + externalRef + "' - Prüfzeichen ungültig (Tippfehler?)");
         }
         com.voltpilot.api.uems.ProtokollAkteur akteur = com.voltpilot.api.uems.ProtokollAkteur.aus(auth).orElse(null);

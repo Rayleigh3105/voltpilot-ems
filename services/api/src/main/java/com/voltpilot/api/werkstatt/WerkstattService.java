@@ -193,7 +193,7 @@ public class WerkstattService {
         try {
             lan = LanNetz.parse(text, List.of(fernwartungProps.boxNetzwerk(), fernwartungProps.technikerNetzwerk()));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
         }
         return repo.schreibend(() -> {
             Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
@@ -284,28 +284,28 @@ public class WerkstattService {
         }
         List<String> fehlend = WerkstattPruefungen.fehlend(abgehakt);
         if (!fehlend.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Abnahme braucht jede Prüfung der Werkstatt-Regel. Es fehlt: " + String.join(", ", fehlend)
                             + ".");
         }
         String host = hostSchluessel == null ? "" : hostSchluessel.trim();
         if (!HOST_SCHLUESSEL.matcher(host).matches()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Der Host-Schlüssel ist ein Fingerabdruck wie ssh-keygen -lf ihn zeigt: SHA256: und 43 Zeichen.");
         }
         String stand = fassung == null ? "" : fassung.trim();
         if (!FASSUNG.matcher(stand).matches()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Fassung ist der Name des Programms auf der Box, etwa edge-light-g9c3368e3a.");
         }
         if (probeFensterId == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Abnahme braucht das Fenster der Werkstatt-Probe.");
         }
         String text = notiz(notiz);
         Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
         if (!EDGE_LIGHT.equals(b.boxArt())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Eine Abnahme gibt es bisher nur für das Edge Light. Für die Docker-Box fehlt der Wartungstunnel "
                             + "für Linux und damit die Anmeldeprobe.");
         }
@@ -345,7 +345,7 @@ public class WerkstattService {
         List<String> leer = WerkstattPruefungen.ALLE.stream()
                 .filter(p -> belege.get(p) == null || belege.get(p).isBlank()).toList();
         if (!leer.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Abnahme braucht für jede Prüfung der Werkstatt-Regel einen Beleg. Es fehlt: "
                             + String.join(", ", leer) + ".");
         }
@@ -353,7 +353,7 @@ public class WerkstattService {
         for (String p : WerkstattPruefungen.ALLE) {
             String text = belege.get(p).trim();
             if (text.length() > MAX_BELEG) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Der Beleg von " + p + " ist länger als " + MAX_BELEG + " Zeichen.");
             }
             geordnet.put(p, text);
@@ -363,12 +363,12 @@ public class WerkstattService {
         try {
             lan = LanNetz.parse(a.lanNetz(), List.of(fernwartungProps.boxNetzwerk(), fernwartungProps.technikerNetzwerk()));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
         }
         String text = notiz(a.notiz());
         Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
         if (!EDGE_LIGHT.equals(b.boxArt())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Eine Abnahme gibt es bisher nur für das Edge Light.");
         }
         EinloesungRepository.Einloesung e = einloesungen.einloesungen(edgeRef).stream().findFirst()
@@ -412,7 +412,7 @@ public class WerkstattService {
         Fenster probe = fernwartung.fenster(edgeRef, null, FENSTER_SUCHE).stream()
                 .filter(f -> f.id().equals(probeFensterId))
                 .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Dieses Fenster gehört nicht zu " + edgeRef + "."));
         Instant jetzt = fernwartung.jetzt();
         if (probe.geschlossenAm() == null && probe.ende().isAfter(jetzt)) {
@@ -421,7 +421,7 @@ public class WerkstattService {
                             + "(Werkstatt-Regel 6).");
         }
         if (probe.geschlossenAm() != null && !probe.geschlossenAm().isAfter(probe.beginn())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieses Fenster wurde abgesagt, bevor es begann; es war nie offen.");
         }
         return probe;
@@ -436,7 +436,7 @@ public class WerkstattService {
         int anfang = t.indexOf(AGE_ANFANG);
         int ende = t.indexOf(AGE_ENDE);
         if (anfang != 0 || ende < 0 || t.length() > 4000 || !t.endsWith(AGE_ENDE)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Das Passwort muss mit age verschlüsselt sein (ASCII-Hülle, höchstens 4000 Zeichen).");
         }
         String rumpf = t.substring(AGE_ANFANG.length(), ende).replaceAll("\\s+", "");
@@ -444,13 +444,13 @@ public class WerkstattService {
         try {
             roh = java.util.Base64.getDecoder().decode(rumpf);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Das Passwort muss mit age verschlüsselt sein: der Rumpf ist kein Base64.");
         }
         String kopf = "age-encryption.org/v1\n";
         if (roh.length <= kopf.length()
                 || !new String(roh, 0, kopf.length(), java.nio.charset.StandardCharsets.US_ASCII).equals(kopf)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Das Passwort muss mit age verschlüsselt sein: kein age-Kopf.");
         }
         return t;

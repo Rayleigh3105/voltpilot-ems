@@ -21,11 +21,11 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
-import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
+import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -52,7 +52,7 @@ import org.springframework.web.context.WebApplicationContext;
  * <p>Ohne Datenbank: die Repository-Schicht ist eine Attrappe, geprüft wird der
  * Weg vom Sammler bis in den HTTP-Rumpf.
  */
-@AutoConfigureObservability
+@AutoConfigureMetrics
 @SpringBootTest(classes = FleetMetricsEndpointE2eTest.ScrapeApp.class,
         properties = {
             "voltpilot.security.oidc.enabled=true",

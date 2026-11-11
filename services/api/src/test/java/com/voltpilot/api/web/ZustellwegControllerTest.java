@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -41,7 +42,15 @@ class ZustellwegControllerTest {
 
     @BeforeEach
     void aufbauen() {
-        mvc = MockMvcBuilders.standaloneSetup(new ZustellwegController(zustellwege)).build();
+        mvc = MockMvcBuilders.standaloneSetup(new ZustellwegController(zustellwege))
+                // Standalone MockMvc skips Boot's autoconfiguration (and its
+                // spring.http.converters.preferred-json-mapper=jackson2), so Spring's own
+                // Jackson-3-by-default converter would otherwise apply here.
+                .setMessageConverters(
+                        new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                        new org.springframework.http.converter.StringHttpMessageConverter(),
+                        new MappingJackson2HttpMessageConverter())
+                .build();
     }
 
     @Test

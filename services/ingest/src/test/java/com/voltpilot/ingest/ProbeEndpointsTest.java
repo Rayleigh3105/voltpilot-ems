@@ -10,8 +10,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * The probe paths a Kubernetes manifest points at REALLY exist and answer
@@ -39,7 +39,7 @@ class ProbeEndpointsTest {
     @LocalServerPort int port;
 
     /** Whether the Redpanda topic events.raw exists - there is no Redpanda in this test. */
-    @MockBean EventsTopicPruefung eventsTopic;
+    @MockitoBean EventsTopicPruefung eventsTopic;
 
     private HttpResponse<String> get(String path) throws Exception {
         HttpClient client =

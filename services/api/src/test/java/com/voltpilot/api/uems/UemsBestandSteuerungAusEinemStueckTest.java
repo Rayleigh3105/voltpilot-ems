@@ -37,10 +37,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.ClassPathResource;
@@ -209,22 +209,22 @@ class UemsBestandSteuerungAusEinemStueckTest {
         }
     }
 
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) JwtDecoder decoder;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) KeycloakAdminClient keycloak;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) EntityRegistryPublisher registryPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ProbePublisher probePublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ChargingConfigPublisher chargingPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ChargingBoostPublisher boostPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) RegisterWritePublisher registerPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) FlowDeploymentPublisher flowPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ControlCertificationPublisher certificationPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) OtaTargetPublisher otaPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ProvisioningPublisher provisioningPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) MeasurementConfigPublisher measurementPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ConsumerOverridePublisher consumerPublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) VerbundAnteilePublisher verbundAnteilePublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) SprungprobePublisher sprungprobePublisher;
-    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE)
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) JwtDecoder decoder;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) KeycloakAdminClient keycloak;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) EntityRegistryPublisher registryPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ProbePublisher probePublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ChargingConfigPublisher chargingPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ChargingBoostPublisher boostPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) RegisterWritePublisher registerPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) FlowDeploymentPublisher flowPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ControlCertificationPublisher certificationPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) OtaTargetPublisher otaPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ProvisioningPublisher provisioningPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) MeasurementConfigPublisher measurementPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ConsumerOverridePublisher consumerPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) VerbundAnteilePublisher verbundAnteilePublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) SprungprobePublisher sprungprobePublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE)
     com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
     @Autowired ApplicationContext context;
     @Autowired MockMvc mvc;
@@ -299,7 +299,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     /**
      * #1798 zog alle Sender auf {@code BrokerVerbindung} (EIN Paho-Client je Weg, nie verworfen) um: der Publisher
      * hält keinen eigenen {@code client}-Feldnamen mehr, sondern ein {@code verbindung}-Feld. {@code publisher} ist
-     * hier ein {@code @MockBean} (Objenesis baut ihn ohne Konstruktor), also ist {@code verbindung} dort null -
+     * hier ein {@code @MockitoBean} (Objenesis baut ihn ohne Konstruktor), also ist {@code verbindung} dort null -
      * eine frische, echte {@link BrokerVerbindung} (reiner Sender: kein Abo, kein Eingang; der Konstruktor tut
      * nichts Blockierendes) wird gebaut, auf den vorgetäuschten {@link MqttAsyncClient} gesetzt und danach ERST dem
      * Mock zugewiesen.

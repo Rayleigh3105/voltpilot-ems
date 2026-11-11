@@ -15,11 +15,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
-import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
+import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -56,9 +56,9 @@ import org.springframework.web.context.WebApplicationContext;
 // entsteht dann gar nicht erst und /metrics antwortet 404. Das sieht aus wie ein
 // Konfigurationsfehler in der application.yml, ist aber eine reine TEST-Vorgabe
 // - wer sie nicht kennt, "repariert" die Produktionskonfiguration. Nur mit
-// @AutoConfigureObservability prueft dieser Test wirklich den Pfad, den ein
+// @AutoConfigureMetrics prueft dieser Test wirklich den Pfad, den ein
 // Scraper spaeter benutzt.
-@AutoConfigureObservability
+@AutoConfigureMetrics
 @SpringBootTest(classes = MetricsEndpointSecurityTest.MetricsOnlyApp.class,
         properties = {
             "voltpilot.security.oidc.enabled=true",

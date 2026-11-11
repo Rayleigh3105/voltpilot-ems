@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.13</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -24,20 +24,21 @@
              Testcontainers docker-java client negotiates (see services/api). -->
         <docker.api.version>1.44</docker.api.version>
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
-        <!-- Sicherheits-Patches über der Boot-BOM: Spring Boot 3.3 bekommt keine freien
-             Patches mehr (3.3.13 ist der letzte). Jede Zeile bleibt in der Linie der BOM und
-             schließt bekannte Advisories. Beim nächsten Wechsel der Boot-Linie entfernen,
-             sonst halten sie Versionen der alten Linie fest. -->
-        <tomcat.version>10.1.61</tomcat.version>
-        <logback.version>1.5.38</logback.version>
-        <postgresql.version>42.7.14</postgresql.version>
-        <spring-retry.version>2.0.13</spring-retry.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Boot 4 defaults to Jackson 3 (tools.jackson.*); this service's own code still
+             imports com.fasterxml.jackson.* directly (15 files). spring-boot-jackson2 keeps
+             classic Jackson 2 on the classpath alongside the Jackson 3 default so those files
+             keep compiling and behaving unchanged. Deprecated, slated for removal upstream -
+             the full move to tools.jackson.*/JsonMapper is its own follow-up task, not this one. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jackson2</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -57,11 +58,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
-        <!-- Consume telemetry.raw from Redpanda, write into the TimescaleDB
-             hypertable. -->
+        <!-- Consume telemetry.raw from Redpanda, write into the TimescaleDB hypertable.
+             Boot 4 moved Kafka autoconfiguration (KafkaAdmin/KafkaTemplate/listener wiring) out
+             of spring-boot-autoconfigure into its own spring-boot-kafka module; plain
+             spring-kafka no longer gets it transitively. spring-boot-starter-kafka pulls both
+             the autoconfigure module and spring-kafka itself. -->
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -113,9 +117,11 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <!-- Sicherheits-Patch (transitiv über kafka-clients 3.7.2): GHSA-gwq9-9ffj-mvrv,
-                 GHSA-q233-g92q-qxp6, GHSA-xqrx-qh46-34m7, behoben in 1.1.10.9. Mit dem
-                 nächsten Kafka-Wechsel entfernen. -->
+            <!-- Sicherheits-Patch (transitiv über kafka-clients): GHSA-gwq9-9ffj-mvrv,
+                 GHSA-q233-g92q-qxp6, GHSA-xqrx-qh46-34m7, behoben in 1.1.10.9. Bleibt auch
+                 nach dem Boot-4.1-Wechsel nötig: Boot 4.1.2 bringt selbst nur 1.1.10.7, also
+                 weiterhin hinter dem Patch. Beim nächsten Boot-Patch erneut prüfen, ob die
+                 Boot-eigene Version aufgeholt hat. -->
             <dependency>
                 <groupId>org.xerial.snappy</groupId>
                 <artifactId>snappy-java</artifactId>

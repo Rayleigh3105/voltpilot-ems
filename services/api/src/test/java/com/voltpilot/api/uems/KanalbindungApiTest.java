@@ -25,7 +25,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -104,7 +104,7 @@ class KanalbindungApiTest {
 
 
     @Autowired KanalbindungService bindungen;
-    @org.springframework.boot.test.mock.mockito.SpyBean
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     com.voltpilot.api.zugriff.Geltungsbereich geltung;
     @Autowired com.voltpilot.api.repo.TenantRepository tenants;
     private static final String KANAL="deye.hybrid_1p.battery.battery-state";

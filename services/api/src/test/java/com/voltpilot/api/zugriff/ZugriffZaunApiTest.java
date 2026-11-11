@@ -36,9 +36,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -51,6 +51,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -178,7 +179,7 @@ class ZugriffZaunApiTest {
     @Qualifier("requestMappingHandlerMapping")
     RequestMappingHandlerMapping mapping;
 
-    @SpyBean
+    @MockitoSpyBean
     ZugriffKontextLader lader;
 
     /** {@code true} = „vorher": der Lader lädt nichts, der Filter reicht durch. */
@@ -1322,7 +1323,9 @@ class ZugriffZaunApiTest {
         return ruf(MockMvcRequestBuilders.request(r.methode(), URI.create(r.pfad())), k);
     }
 
-    private Antwort ruf(MockHttpServletRequestBuilder anfrage, Konto k) throws Exception {
+    // Spring 7 split MockMultipartHttpServletRequestBuilder off MockHttpServletRequestBuilder's
+    // hierarchy; the common self-typed base both now extend is this abstract class.
+    private Antwort ruf(AbstractMockHttpServletRequestBuilder<?> anfrage, Konto k) throws Exception {
         anfrage.with(authentication(k.auth()));
         for (int i = 0; i < k.koepfe().length; i += 2) {
             anfrage.header(k.koepfe()[i], k.koepfe()[i + 1]);

@@ -267,18 +267,18 @@ public class WerkstattDienstController {
             @RequestParam String name, @RequestParam String sha256, @RequestBody(required = false) byte[] daten,
             @AuthenticationPrincipal Jwt caller) {
         if (!DATEINAME.matcher(name).matches()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Kein Dateiname einer Gehäuse-Druckdatei: " + name);
         }
         if (!SHA256.matcher(sha256).matches()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Keine SHA-256-Prüfsumme.");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Keine SHA-256-Prüfsumme.");
         }
         if (daten == null || daten.length == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Die Datei ist leer.");
         }
         String ist = sha256(daten);
         if (!ist.equals(sha256)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Prüfsumme passt nicht zu den Bytes.");
         }
         UUID boxId = werkstatt.box(edgeRef).box().id();

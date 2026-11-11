@@ -180,7 +180,7 @@ public class LaufSeiteService {
 
     private static void pruefeKennung(String kennung) {
         if (kennung == null || !KENNUNG.matcher(kennung).matches()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Kennung fehlt oder hat nicht die Form (lauf oder edgeRef).");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Kennung fehlt oder hat nicht die Form (lauf oder edgeRef).");
         }
     }
 

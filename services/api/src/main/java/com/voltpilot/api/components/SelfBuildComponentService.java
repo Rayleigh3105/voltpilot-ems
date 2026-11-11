@@ -396,7 +396,7 @@ public class SelfBuildComponentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
         if (!SelfBuildDefinition.COMMUNICATION.equals(row.communication())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Komponente wurde nicht selbst angelegt und lässt sich hier nicht "
                             + "bearbeiten.");
         }
@@ -433,7 +433,7 @@ public class SelfBuildComponentService {
 
     private void requireTested(UUID siteId, Transport transport) {
         if (!receipts.has(siteId, RECEIPT_REF, receiptFields(transport))) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Bitte lesen Sie zuerst einen Messwert dieses Geräts - erst danach lässt es "
                             + "sich speichern.");
         }
@@ -475,7 +475,7 @@ public class SelfBuildComponentService {
         Transport transport = storedTransport(row);
         String valueError = SwitchDefinition.testValueError(sw, req.testValue());
         if (valueError != null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, valueError);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, valueError);
         }
         int raw = SwitchDefinition.testRaw(sw, req.testValue());
         ProbeResult res = probes.switchOp(siteId, null, entityId,
@@ -544,7 +544,7 @@ public class SelfBuildComponentService {
         String refusal = SwitchDefinition.requireRelease(tested,
                 Boolean.TRUE.equals(req.physicallyConfirmed()));
         if (refusal != null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, refusal);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, refusal);
         }
 
         UUID tenantId = TenantContext.get();

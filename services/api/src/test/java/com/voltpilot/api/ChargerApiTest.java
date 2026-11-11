@@ -21,8 +21,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -33,7 +34,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -59,6 +60,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class ChargerApiTest {
@@ -119,7 +121,7 @@ class ChargerApiTest {
     @Autowired
     com.voltpilot.api.fahrzeuge.SiteVehicleRepository vehicles;
 
-    @MockBean
+    @MockitoBean
     ChargingConfigPublisher chargingConfigPublisher;
 
     private final ObjectMapper json = new ObjectMapper();
@@ -724,7 +726,7 @@ class ChargerApiTest {
                     HttpMethod.POST,
                     new HttpEntity<>(Map.of("chargePointId", "ahr-lp-02",
                             "deviceId", lesebox.toString()), bearer(customer)), String.class);
-            assertThat(zweiteBox.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(zweiteBox.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(zweiteBox.getBody()).contains("bereits an eine andere Box angebunden")
                     .contains("gemeinsamen Steuerung");
             assertThat(publishedChargingDevices()).isEmpty();

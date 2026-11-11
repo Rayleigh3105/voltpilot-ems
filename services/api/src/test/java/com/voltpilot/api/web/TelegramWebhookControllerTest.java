@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.voltpilot.api.versand.ZustellwegService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -34,6 +35,14 @@ class TelegramWebhookControllerTest {
     void aufbauen() {
         mvc = MockMvcBuilders
                 .standaloneSetup(new TelegramWebhookController(zustellwege, GEHEIMNIS))
+                // Standalone MockMvc skips Boot's autoconfiguration (and its
+                // spring.http.converters.preferred-json-mapper=jackson2), so Spring's own
+                // Jackson-3-by-default converter would otherwise apply here - and this
+                // controller's @RequestBody JsonNode can't be deserialized by Jackson 3 at all.
+                .setMessageConverters(
+                        new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                        new org.springframework.http.converter.StringHttpMessageConverter(),
+                        new MappingJackson2HttpMessageConverter())
                 .build();
     }
 
@@ -82,6 +91,11 @@ class TelegramWebhookControllerTest {
         for (String geheimnis : new String[] {"", "   ", null}) {
             MockMvc ohneGeheimnis = MockMvcBuilders
                     .standaloneSetup(new TelegramWebhookController(zustellwege, geheimnis))
+                    // Same Jackson-3-by-default converter issue as the shared mvc field above.
+                    .setMessageConverters(
+                            new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                            new org.springframework.http.converter.StringHttpMessageConverter(),
+                            new MappingJackson2HttpMessageConverter())
                     .build();
 
             ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")

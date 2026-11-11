@@ -16,8 +16,9 @@ import java.util.UUID;
 import javax.security.auth.x500.X500Principal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -59,6 +60,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class EnrollmentApiTest {
@@ -290,7 +292,7 @@ class EnrollmentApiTest {
     void unknownStickerRefIsRefusedLikeTheClaimEndpoint() throws Exception {
         String csr = TestPki.csrPem(TestPki.rsaKeyPair(2048), "CN=dev");
         assertThat(postCsr("VP-TYPO-9999", csr, null).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
 
     @Test

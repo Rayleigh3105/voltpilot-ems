@@ -2,6 +2,18 @@ spring:
   application:
     name: voltpilot-api
 
+  # Boot 4 defaults HTTP JSON (de)serialization to Jackson 3, which does not know how to
+  # serialize a classic com.fasterxml.jackson.databind.JsonNode (its own, unrelated type).
+  # Many response DTOs here embed such a JsonNode directly (e.g. AdminWerkstattController's
+  # AbnahmeDto.probe/belege) - under the Jackson 3 default converter, fields after an embedded
+  # classic JsonNode in the same object silently go missing from the response. Keeps the classic
+  # Jackson 2 MappingJackson2HttpMessageConverter (via spring-boot-jackson2) as the HTTP
+  # converter while this app still builds responses with classic Jackson 2 types; drop once the
+  # full Jackson 3 migration (tools.jackson.*) lands.
+  http:
+    converters:
+      preferred-json-mapper: jackson2
+
   # Ceiling for the graceful shutdown below: after this the remaining
   # in-flight work is cut and the JVM leaves. Must stay COMFORTABLY BELOW the
   # pod's terminationGracePeriodSeconds (recommendation: 20s here, 45s there,

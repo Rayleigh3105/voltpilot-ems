@@ -38,9 +38,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpEntity;
@@ -86,6 +87,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 // Diese Bestandsvorrichtung legt Orte mit dem alten Plattform-Testkonto an.
 // Der Produktionsstandard bleibt geschlossen; UnterstuetzungApiTest prüft ihn ohne Ausnahme.
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "voltpilot.uems.unterstuetzung.umschalter-enabled=true")
 class OrtVerschiebenApiTest {
@@ -133,20 +135,20 @@ class OrtVerschiebenApiTest {
 
     // ---- Jeder MQTT-Sender der Anwendung, gezählt ------------------------------------------
 
-    @MockBean EntityRegistryPublisher entityRegistryPublisher;
-    @MockBean ProbePublisher probePublisher;
-    @MockBean ChargingConfigPublisher chargingConfigPublisher;
-    @MockBean ChargingBoostPublisher chargingBoostPublisher;
-    @MockBean RegisterWritePublisher registerWritePublisher;
-    @MockBean FlowDeploymentPublisher flowDeploymentPublisher;
-    @MockBean ControlCertificationPublisher controlCertificationPublisher;
-    @MockBean OtaTargetPublisher otaTargetPublisher;
-    @MockBean ProvisioningPublisher provisioningPublisher;
-    @MockBean MeasurementConfigPublisher measurementConfigPublisher;
-    @MockBean ConsumerOverridePublisher consumerOverridePublisher;
-    @MockBean VerbundAnteilePublisher verbundAnteilePublisher;
-    @MockBean SprungprobePublisher sprungprobePublisher;
-    @MockBean com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
+    @MockitoBean EntityRegistryPublisher entityRegistryPublisher;
+    @MockitoBean ProbePublisher probePublisher;
+    @MockitoBean ChargingConfigPublisher chargingConfigPublisher;
+    @MockitoBean ChargingBoostPublisher chargingBoostPublisher;
+    @MockitoBean RegisterWritePublisher registerWritePublisher;
+    @MockitoBean FlowDeploymentPublisher flowDeploymentPublisher;
+    @MockitoBean ControlCertificationPublisher controlCertificationPublisher;
+    @MockitoBean OtaTargetPublisher otaTargetPublisher;
+    @MockitoBean ProvisioningPublisher provisioningPublisher;
+    @MockitoBean MeasurementConfigPublisher measurementConfigPublisher;
+    @MockitoBean ConsumerOverridePublisher consumerOverridePublisher;
+    @MockitoBean VerbundAnteilePublisher verbundAnteilePublisher;
+    @MockitoBean SprungprobePublisher sprungprobePublisher;
+    @MockitoBean com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
 
     @LocalServerPort
     int port;

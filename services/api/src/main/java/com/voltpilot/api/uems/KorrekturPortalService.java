@@ -305,8 +305,8 @@ public class KorrekturPortalService {
 
     private ErsatzwertLauf.Vorschau planen(Anlage a, String kennung) {
         var p = jdbc.execute((ConnectionCallback<ErsatzwertLauf.Vorschau>) con -> lauf.vorschau(con, tenant(), kennung, a));
-        if (p.ablehnung() != null) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, p.ablehnung());
-        if (p.perioden().isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Keine Änderung im Zeitraum.");
+        if (p.ablehnung() != null) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, p.ablehnung());
+        if (p.perioden().isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Keine Änderung im Zeitraum.");
         return p;
     }
 
@@ -365,7 +365,7 @@ public class KorrekturPortalService {
                 + "AND intervall_beginn >= ? AND intervall_beginn < ?", Boolean.class,
                 java.time.Duration.between(e.von(), e.bis()).getSeconds() / 900, tenant(), q.entityId(), q.kanal(),
                 Timestamp.from(e.von()), Timestamp.from(e.bis()))))
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "In diesem Zeitraum sind alle Werte gemessen – ein Ersatzwert ist nicht möglich.");
         if ((verteilen || betrag || ablesung) != (einheit != null && !einheit.isBlank())) throw ungueltig();
         return new Vorbereitet(new Anlage(e.methode(), q.entityId(), q.kanal(), m.id(), e.von(), e.bis(), e.zeitpunkt(),
@@ -415,7 +415,7 @@ public class KorrekturPortalService {
     }
     private static UUID tenant() { if (TenantContext.get() == null) throw nichtGefunden(); return TenantContext.get(); }
     private static void text(String s) { if (s == null || s.isBlank() || s.codePointCount(0, s.length()) < 10 || s.codePointCount(0, s.length()) > 500) throw ungueltig(); }
-    private static ResponseStatusException ungueltig() { return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Eingabe passt nicht zur Ersatzwert-Methode."); }
+    private static ResponseStatusException ungueltig() { return new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Eingabe passt nicht zur Ersatzwert-Methode."); }
     private static ResponseStatusException konflikt() { return new ResponseStatusException(HttpStatus.CONFLICT, "Dieser Vorgang ist bereits entschieden."); }
     private static ResponseStatusException nichtGefunden() { return new ResponseStatusException(HttpStatus.NOT_FOUND, "Korrektur nicht gefunden."); }
 }

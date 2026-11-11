@@ -11,8 +11,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -54,6 +55,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class AdminApiTest {
@@ -943,7 +945,7 @@ class AdminApiTest {
         assertThat(tenants.getBody()).extracting(t -> t.get("id")).doesNotContain(tenantId);
     }
 
-    @org.springframework.boot.test.mock.mockito.SpyBean
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     com.voltpilot.api.repo.TenantRepository offboardingTenants;
 
     @Test
@@ -2768,7 +2770,7 @@ class AdminApiTest {
         assertThat(rest.exchange(url("/api/v1/admin/sites/" + siteId + "/v2-entities"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("entityType", "battery-hybrid"), adminTenant),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         String batteryId = (String) rest.exchange(
                 url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.GET,
                 new HttpEntity<>(adminTenant),
@@ -2780,7 +2782,7 @@ class AdminApiTest {
                 HttpMethod.PUT,
                 new HttpEntity<>(Map.of("guards", Map.of("failsafe", Map.of("behavior", "off"))),
                         adminTenant),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Guard-config edit on the open type: valid replaces, garbage is 400.
         ResponseEntity<Map<String, Object>> edited = rest.exchange(
@@ -3083,7 +3085,7 @@ class AdminApiTest {
                 url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "bh-3", "entityType", "battery-hybrid"),
                         adminTenant), String.class).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // A customer cannot adopt (admin-only route -> 403).
         assertThat(rest.exchange(
@@ -4091,7 +4093,7 @@ class AdminApiTest {
         return res.getBody();
     }
 
-    @org.springframework.boot.test.mock.mockito.SpyBean
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     com.voltpilot.api.admin.KeycloakAdminClient keycloakAdmin;
 
     private Map<String, Object> createUser(String token, String tenantId, String username,

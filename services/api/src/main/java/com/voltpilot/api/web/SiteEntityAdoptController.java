@@ -159,7 +159,7 @@ public class SiteEntityAdoptController {
         }
         Set<String> reported = reportedSourceIds(siteId);
         if (!reported.contains(sourceId)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieses Gerät meldet sich derzeit nicht - verbinden ist nur mit einem "
                             + "aktuell gemeldeten Gerät möglich.");
         }
@@ -295,7 +295,7 @@ public class SiteEntityAdoptController {
         if (row.edgeSourceId() == null
                 && (EntityRegistryRepository.SOURCE_KIND_COMPOSED.equals(row.sourceKind())
                         || COMPOSED_BASE_ROLES.contains(row.role()))) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Komponente gehört zur Grundausstattung Ihrer Anlage und kann nicht "
                             + "entfernt werden.");
         }
@@ -322,7 +322,7 @@ public class SiteEntityAdoptController {
      */
     private void requireCustomerManaged(String entityType) {
         if (PLATFORM_MANAGED.contains(entityType)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Komponente richtet VoltPilot aus den Daten Ihrer Anlage ein - "
                             + "sie lässt sich hier nicht ändern.");
         }
@@ -346,7 +346,7 @@ public class SiteEntityAdoptController {
             default -> true;
         };
         if (!fits) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieses Gerät meldet eine andere Rolle als die Komponente - bitte als "
                             + "neue Komponente übernehmen.");
         }
@@ -366,7 +366,7 @@ public class SiteEntityAdoptController {
         }
         boolean guided = COMPOSED_ADOPTABLE.contains(type) || "consumer".equals(def.category());
         if (!guided) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Geräteart richtet VoltPilot für Sie ein — sprechen Sie uns an.");
         }
     }

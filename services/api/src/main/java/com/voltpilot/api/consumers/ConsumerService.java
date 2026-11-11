@@ -239,7 +239,7 @@ public class ConsumerService {
             throw badRequest("Unbekannte Regelart.");
         }
         if (!allowedControlKinds(type).contains(controlKind)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieses Gerät kann diese Regelart nicht ausführen.");
         }
         // ⚠ Die Nennleistung ist für die SG-Ready-Wärmepumpe OPTIONAL (P8): sie
@@ -347,7 +347,7 @@ public class ConsumerService {
                 "SELECT entity_type FROM measurement_point WHERE site_id = ? AND id = ?",
                 String.class, siteId, req.ioEntityId());
         if (type.isEmpty() || !IO_MODULE_TYPE.equals(type.get(0))) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Das gewählte Gerät ist kein I/O-Modul dieser Anlage.");
         }
         if (repo.ioChannelOwner(siteId, req.ioEntityId(), req.ioChannel()) != null) {
@@ -451,7 +451,7 @@ public class ConsumerService {
             throw badRequest("Unbekannte Regelart.");
         }
         if (type != null && !allowedControlKinds(type).contains(controlKind)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieses Gerät kann diese Regelart nicht ausführen.");
         }
         BigDecimal rated = req.ratedPowerKw() != null ? req.ratedPowerKw() : cur.ratedPowerKw();
@@ -588,7 +588,7 @@ public class ConsumerService {
         }
         EntityType type = catalog.find(entity.entityType());
         if (type == null || !"consumer".equals(type.category()) || !type.controllable()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Komponente lässt sich nicht steuern.");
         }
         String confirmationChannel = null;

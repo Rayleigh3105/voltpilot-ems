@@ -25,9 +25,10 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.ParameterizedTypeReference;
@@ -69,6 +70,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class SelfBuildComponentApiTest {
@@ -210,7 +212,7 @@ class SelfBuildComponentApiTest {
             ResponseEntity<String> blind = post("/api/v1/sites/" + site + "/components/custom",
                     customer, Map.of("label", "Wärmepumpe", "connection", conn,
                             "channels", channels));
-            assertThat(blind.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(blind.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(blind.getBody()).contains("Messwert dieses Geräts");
 
             recordReceipt(site, "192.168.1.50");
@@ -443,7 +445,7 @@ class SelfBuildComponentApiTest {
             ResponseEntity<String> ohneTest = post(path + "/switch-release", customer,
                     Map.of("switchDef", onOffSwitch(), "consumer", consumer(),
                             "physicallyConfirmed", true));
-            assertThat(ohneTest.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(ohneTest.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(json.readTree(ohneTest.getBody()).path("message").asText())
                     .contains("Schalt-Test");
 
@@ -454,7 +456,7 @@ class SelfBuildComponentApiTest {
             ResponseEntity<String> ohneBeleg = post(path + "/switch-release", customer,
                     Map.of("switchDef", onOffSwitch(), "consumer", consumer(),
                             "physicallyConfirmed", false));
-            assertThat(ohneBeleg.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(ohneBeleg.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(json.readTree(ohneBeleg.getBody()).path("message").asText())
                     .contains("Wirkung am Gerät");
 
@@ -531,7 +533,7 @@ class SelfBuildComponentApiTest {
             ResponseEntity<String> res = post(path + "/switch-release", customer,
                     Map.of("switchDef", anderes, "consumer", consumer(),
                             "physicallyConfirmed", true));
-            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(json.readTree(res.getBody()).path("message").asText())
                     .contains("Schalt-Test");
 

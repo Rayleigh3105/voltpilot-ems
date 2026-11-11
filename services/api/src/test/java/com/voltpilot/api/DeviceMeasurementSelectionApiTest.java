@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -46,7 +47,15 @@ class DeviceMeasurementSelectionApiTest {
         var reads = new MeasurementPointReadService(selections, catalog, targets, preview, sources);
         var controller = new DeviceMeasurementSelectionController(selections, catalog, null, null, null, reads);
         http = MockMvcBuilders.standaloneSetup(controller)
-                .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver()).build();
+                .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+                // Standalone MockMvc skips Boot's autoconfiguration (and its
+                // spring.http.converters.preferred-json-mapper=jackson2), so Spring's own
+                // Jackson-3-by-default converter would otherwise apply here.
+                .setMessageConverters(
+                        new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                        new org.springframework.http.converter.StringHttpMessageConverter(),
+                        new MappingJackson2HttpMessageConverter())
+                .build();
     }
 
     @Test void genPortReadsBothCatalogAddressesOnTheExistingReadLane() throws Exception {

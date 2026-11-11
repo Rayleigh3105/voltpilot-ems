@@ -273,7 +273,7 @@ public class AdminWerkstattController {
     public ResponseEntity<BoxDto> anlegen(@Valid @RequestBody BoxRequest req, @AuthenticationPrincipal Jwt caller) {
         String edgeRef = referenz(req.edgeRef());
         if (!EdgeRef.isGeneratedFormat(edgeRef) && !service.referenzBekannt(edgeRef)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Referenz " + edgeRef + " ist weder eine Box-Referenz mit Prüfzeichen (edge-xxxxxxx) "
                             + "noch der Plattform als Gerät bekannt.");
         }
@@ -422,7 +422,7 @@ public class AdminWerkstattController {
         }
         String ref = DeviceController.canonicalExternalRef(roh);
         if (EdgeRef.isGeneratedFormat(ref) && !EdgeRef.isValid(ref)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Das Prüfzeichen von " + ref + " stimmt nicht - bitte die Referenz an der Box prüfen.");
         }
         return ref;

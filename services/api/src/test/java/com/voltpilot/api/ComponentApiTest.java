@@ -22,8 +22,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -63,6 +64,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 @org.springframework.context.annotation.Import(ComponentApiTest.RecordingPublisherConfig.class)
@@ -222,7 +224,7 @@ class ComponentApiTest {
                     customer, saveBody(FRONIUS, "pv-generation", conn));
             assertThat(blind.getStatusCode())
                     .as("ohne Beleg wird kein Blind-Soll gespeichert")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(blind.getBody()).contains("Verbindung");
 
             // Ein Beleg für eine ANDERE Verbindung zählt nicht.
@@ -232,7 +234,7 @@ class ComponentApiTest {
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(FRONIUS, "pv-generation", conn)).getStatusCode())
                     .as("der Beleg hängt an GENAU dieser Verbindung")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
             // --- Anlegen --------------------------------------------------
             receipts.record(site, FRONIUS, 1, conn);
@@ -585,7 +587,7 @@ class ComponentApiTest {
 
             ResponseEntity<String> refused = post("/api/v1/sites/" + site + "/components",
                     customer, saveBody(shelly, "consumer", conn));
-            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(refused.getBody()).contains("einzelner Schaltausgang")
                     .contains("Geräte suchen");
             assertThat(getJson("/api/v1/sites/" + site + "/components", customer)
@@ -930,7 +932,7 @@ class ComponentApiTest {
             // 1 · Ohne ausdrueckliche Zustimmung wird NICHTS gespeichert.
             ResponseEntity<String> ohne = post("/api/v1/sites/" + site + "/components",
                     customer, saveBody(DEYE, "inverter", conn));
-            assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(ohne.getBody()).contains("Ladestand");
 
             // 2 · Eine Zustimmung zu einem ANDEREN Kanal gilt nicht - sonst waere
@@ -938,7 +940,7 @@ class ComponentApiTest {
             Map<String, Object> falsch = saveBody(DEYE, "inverter", conn);
             falsch.put("acceptMissingChannel", "pv_power_kw");
             assertThat(post("/api/v1/sites/" + site + "/components", customer, falsch)
-                    .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
             // 3 · Mit der richtigen Zustimmung wird gespeichert.
             Map<String, Object> ok = saveBody(DEYE, "inverter", conn);
@@ -1070,7 +1072,7 @@ class ComponentApiTest {
             assertThat(post("/api/v1/sites/" + site + "/components", customer,
                     saveBody(DEYE, "inverter", conn)).getStatusCode())
                     .as("ohne Zustimmung wird auch mit Schaetzung nichts gespeichert")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
             Map<String, Object> ok = saveBody(DEYE, "inverter", conn);
             ok.put("acceptMissingChannel", "soc_pct");

@@ -103,7 +103,7 @@ public class EinloesungService {
 
     public Ausgabe codeAusgeben(String edgeRef, boolean tausch, Akteur dienst) {
         if (edgeRef == null || !EdgeRef.isValid(edgeRef)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Einen Code gibt es nur für eine Kennung der Box mit gültigem Prüfzeichen (edge-…).");
         }
         technikerZugang();
@@ -158,7 +158,7 @@ public class EinloesungService {
         PKCS10CertificationRequest csr = Csrs.parseAndValidate(a.csrPem());
         String schluessel = EinloesenVertrag.spki(EinloesenVertrag.geraeteSchluessel(a.geraeteSchluessel()));
         if (!Csrs.schluesselSpki(csr).equals(schluessel)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Zertifikatsanfrage trägt einen anderen Schlüssel als die Einlösung.");
         }
         if (!a.fassung().equals(f.edgeLight().fassung())) {

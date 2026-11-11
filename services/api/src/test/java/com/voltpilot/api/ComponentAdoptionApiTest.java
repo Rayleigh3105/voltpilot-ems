@@ -26,8 +26,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -69,6 +70,7 @@ import org.testcontainers.utility.DockerImageName;
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 @org.springframework.context.annotation.Import(ComponentAdoptionApiTest.RecordingPublisherConfig.class)
@@ -844,7 +846,7 @@ class ComponentAdoptionApiTest {
                     + "'house-load','composed', '{\"measure\":[{\"channel\":\"power_kw\"}]}'::jsonb, "
                     + "'{}'::jsonb)");
             assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
-                    .as("house-load bleibt geschützt").isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .as("house-load bleibt geschützt").isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + pid + "'"))
                     .isEqualTo(1);
         } finally {
@@ -871,7 +873,7 @@ class ComponentAdoptionApiTest {
             assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
                     .as("pinloser synthetisierter Netz-Zähler bleibt geschützt, auch ohne "
                             + "source_kind (SF-1)")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + pid + "'"))
                     .isEqualTo(1);
         } finally {

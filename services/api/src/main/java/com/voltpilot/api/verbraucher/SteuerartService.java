@@ -262,7 +262,7 @@ public class SteuerartService {
         boolean ocpp = ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType());
         EntityType type = catalog.find(row.entityType());
         if (type == null || !"consumer".equals(type.category()) || !type.controllable()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Komponente lässt sich nicht steuern.");
         }
 
@@ -318,7 +318,7 @@ public class SteuerartService {
             SteuerartWunsch wunsch) {
         String chargePointId = entities.chargePointIdsByEntity(siteId).get(entityId);
         if (chargePointId == null || chargePointId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, OCPP_OHNE_KENNUNG);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, OCPP_OHNE_KENNUNG);
         }
         String quelle = wunsch == null ? null : wunsch.quelle();
         String modus = wunsch == null ? null : wunsch.ueberschussModus();

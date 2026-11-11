@@ -31,9 +31,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -113,10 +113,10 @@ class MessstelleVorschlagApiTest {
     }
 
     /** Die Zustellung an die Box — der Beweis „dieselben Pushes“ liest, was ankäme. */
-    @MockBean
+    @MockitoBean
     EntityRegistryPublisher registryPublisher;
 
-    @MockBean
+    @MockitoBean
     FlowDeploymentPublisher flowPublisher;
 
     @Autowired

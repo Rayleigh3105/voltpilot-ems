@@ -17,9 +17,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.ParameterizedTypeReference;
@@ -52,6 +53,7 @@ import org.testcontainers.utility.DockerImageName;
  * platform-admin gate (customer token = 403).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class FlowApiTest {
@@ -199,7 +201,7 @@ class FlowApiTest {
         // ... and simulate/activate refuse an invalid flow.
         ResponseEntity<JsonNode> simulateBroken = exchange(base + "/versions/1/simulate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
-        assertThat(simulateBroken.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(simulateBroken.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Repair, simulate: the dry-run runs over the site's real master data.
         exchange(base + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
@@ -284,7 +286,7 @@ class FlowApiTest {
         ResponseEntity<JsonNode> refused = exchange("/api/v1/admin/sites/" + BERLIN_SITE
                 + "/flows/" + flowId + "/versions/1/simulate", HttpMethod.POST, admin,
                 TENANT_A, Map.of());
-        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(refused.getBody().path("message").asText())
                 .contains("Validierungsfehler");
         // Clean up the draft so the shared BERLIN site's flow list stays

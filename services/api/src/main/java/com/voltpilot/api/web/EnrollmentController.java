@@ -90,7 +90,7 @@ public class EnrollmentController {
         // Eine erzeugte Kennung trägt ihr Prüfzeichen (edge-ref-vectors.json): eine
         // falsche ist ein Tippfehler oder fremd und legt keine Anfrage an.
         if (EdgeRef.isGeneratedFormat(canonicalRef) && !EdgeRef.isValid(canonicalRef)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Das Prüfzeichen dieser Geräte-Referenz stimmt nicht. Bitte prüfen Sie die Referenz.");
         }
         // D2: Hat die Werkstatt den Geräteschlüssel festgehalten, gilt nur noch er.
@@ -105,7 +105,7 @@ public class EnrollmentController {
         // endpoint: a typo'd ID fails fast instead of enrolling a ghost.
         if (canonicalRef.startsWith(DeviceController.STICKER_PREFIX)
                 && provisioned.findKind(canonicalRef).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Geräte-Referenz ist uns nicht bekannt. Bitte prüfen Sie die "
                             + "Referenz auf dem Geräte-Aufkleber.");
         }
