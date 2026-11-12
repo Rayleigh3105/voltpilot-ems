@@ -234,3 +234,29 @@ Playwright-Container (772 MB im Worktree); spätere Läufe mit `--ulimit core=0`
   Zurückspeisen sind an keiner echten Säule und keinem echten Auto geprüft.
 - **Keine Produktion:** nichts ist ausgerollt; die Migrationen liefen nur auf frischen Test-Datenbanken und in der
   Probe der Produktionsreihenfolge.
+
+## Nachtrag 12.11.2026: `mispel` und `main` noch einmal nachgezogen
+
+Nach dem Öffnen des PR führte der Kapitän in `mispel` MP-58 (#1529), MP-55 (#1533) und MP-59 (#1534) zusammen
+(`44036c5f0`), in `main` #1836, #1837 und #1820 (`16c7f96de`). Beide kamen mit je einem echten Merge-Commit dazu.
+
+| Commit | Ursache | Art | Was |
+|---|---|---|---|
+| `d5e4830da` | — | Merge | `origin/mispel` `44036c5f0`; Konflikte: Vertragsübersicht `docs/contracts/v2/README.md` (MiSpeL-Zeilen mit den neuen Migrationsnummern plus die neue Zeile `mispel-weg`), `runner.py`/`mispel_check.py` (Marge MP-59 ja, der entfernte MP-45-Schalter `strenge` nein) |
+| `4f3ddc535` | — | Merge | `origin/main` `16c7f96de`; Konflikte: `AnlageTechnik.tsx` (Himmelsrichtung aus #1820 mit `compassLabel`; `plantKindLabel` entfällt, weil die Zeile „Veräußerungsform“ dem „Förderweg“ gewichen ist) und sein Test (Helfer nimmt `weg` und `pvOver`) |
+| `d963fe853` | Spring Boot 4 gegen MP-55 | a | `MispelWegApiTest` mit denselben Ersetzungen wie `ad99b3a22` |
+| `ee5f970c2` | EN-2 A gegen MP-59 | a | der Posten „Netzladen-Handel mit Saldierung“ bei festem Preis trägt jetzt den Unterschied „heute nie Laden bei gleichzeitigem Netzbezug, mit MiSpeL schon“ (≈ 4,85 € im Test-Fenster statt ≈ 0); gegengeprüft auf reinem `mispel` und auf dem Merge ohne EN-2 A |
+
+**Migrationen:** keine neue von `mispel`; von `main` nur `V20261112080000` (#1837, Funktion und Trigger, keine
+Tabelle). Keine Nummer doppelt; die MiSpeL-Migrationen liegen vor #1834 (`V20261112043000`) und #1837. Keine neue
+Tabelle mit `tenant_id` oder `device_id`, `KundeDatenBestand`/`BoxDatenBestand` bleiben, wie sie sind; der Löschzug
+von #1837 (Alarm-Verlauf) steht neben den MiSpeL-Einträgen.
+
+**Geprüft** (nacheinander, Platte und Speicher vor jedem Schritt): Optimierer – die fünf berührten Testdateien
+(`test_mispel_check`, `test_mispel_check_lauf`, `test_mispel_check_lauf_db`, `test_pricing`, `test_simulation`) 125
+Fälle, nach `ee5f970c2` grün; Typen grün; Vitest der sechs berührten Dateien 270/270; api 28 Klassen (MP-55, Check,
+Förderweg, Vormerkung, Löschwege, `KundeDatenBestand`, Box-Löschwege, Gesamtabzug, Migrations-Wächter, die
+geänderten Klassen von #1820/#1836/#1837) 222 Tests, 1 Fehlschlag – `BoxEndgueltigLoeschenMigrationTest`
+(`box_ausbauen_protokoll`, auf `main` `16c7f96de` genauso, geerbt); `SiteScopeArchitekturTest` ist jetzt grün (#1820).
+Playwright Anlage › Technik und MiSpeL-Kern (12 Specs): desktop-chromium 126/126, mobile-chromium 98 grün und 28
+gewollt übersprungen.
