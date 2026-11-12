@@ -1,6 +1,6 @@
 # MiSpeL-Check je Anlage (MP-48)
 
-Stand 03.10.2026 · Vertrag 1.1 (additiv: Pauschaloption, MP-29) · Quelle: BNetzA-Festlegung zur Marktintegration
+Stand 19.10.2026 · Vertrag 1.2 (additiv: Pauschaloption MP-29, fester Strompreis MP-59) · Quelle: BNetzA-Festlegung zur Marktintegration
 von Speichern und Ladepunkten („MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Anlage 1 (Abgrenzungsoption),
 Anlage 2 (Pauschaloption), Tenor Ziff. 9a/9b; EEG § 19 Abs. 3b/3c, § 20 S. 2, § 53, Anlage 1 Nr. 2 S. 2. Konzept:
 MiSpeL-Fundament § 3 (Kundentypen, Annahmen), Bauplan § 8 Zeilen MP-13, MP-29 und MP-48; Bedienkonzept BK-48
@@ -132,6 +132,15 @@ deckt (aufs Fenster hochgerechnet, `quelle` nennt die Tage), sonst `angenommen` 
 `Konzessionsabgabe`, `Umsatzsteuer` die Gewerbe-Annahmen von MP-13 (`angenommen`); ohne Standort die Lage der
 Simulation.
 
+**Strombezug (MP-59)** — vor den Preisangaben: `Strombezug` ist die Tarifart der Anlage, wie der Optimierer sie liest
+(`site.tarif_art`): `fest` (`stammdaten`) mit `Arbeitspreis` (ct/kWh, `tarif_param_ct_kwh`, all-in) — der Check rechnet
+dann in jeder Viertelstunde mit diesem Preis und der ehrlichen Marge der Live-Planung auf Netzladen (2 ct/kWh,
+Captain-Entscheid E6 A), ohne Gutschrift der Saldierung: Umlagen und Netzentgelt stecken im Preis, die Entlastung
+erhält der Lieferant, und ob er sie weitergibt, ist Verhandlungssache (Konzept § 2.5) — sie steht als Annahme im
+Ergebnis des Checks, nie als Betrag. Das Preisblatt geht dann in keinen Betrag ein und steht nicht in `datenbasis`.
+`dynamisch` ist `börsenindiziert` (`stammdaten`), `ohne` (keine Tarifart hinterlegt) `börsenindiziert` (`angenommen`)
+— beide rechnen wie bisher mit Spot und Preisblatt.
+
 **Formelsatz:** der gewählte (`site_foerderweg`, `stammdaten`) — sonst aus den Zählerrollen der Messstellen, die
 heute an der Anlage stehen, nach dem Gebot der Bestnutzung (Anlage 1 Abschn. 3.2.3, S. 24; wie der Vorschlag aus
 MP-17), `angenommen` mit Satz in `quelle`:
@@ -162,7 +171,8 @@ nach der EU-Genehmigung (Tenor Ziff. 9 b): der Tag steht in `VOLTPILOT_MISPEL_PA
 `voltpilot.mispel.pauschaloption-ab` der API, leer = noch keine). Vorher legt der Schreiber trotzdem `fertig` ab,
 mit dem Satz „Information vor dem Wechsel: Die Pauschaloption ist … anwendbar …“ in `hinweis`.
 
-`nicht_unterstuetzt` außerdem für jeden Formelsatz außer A1/A10/A11/P1 und für A1 ohne anzulegenden Wert;
+`nicht_unterstuetzt` außerdem für jeden Formelsatz außer A1/A10/A11/P1, für A1 ohne anzulegenden Wert und für den
+festen Strompreis ohne `Arbeitspreis` (MP-59);
 `fehlgeschlagen` mit Satz für widersprüchliche Stammdaten (A10/A11 mit PV-Anlage, A10 mit gemessenem Verbrauch)
 und für jeden gescheiterten Lauf („Der Check konnte für diese Anlage nicht gerechnet werden: …“).
 

@@ -34,6 +34,14 @@ andere Formelsatz bekommt „noch nicht unterstützt“ statt einer Näherung
 Wert, die das Anlagenmodell der Simulation nicht kennt; P2-P5 Ladepunkt,
 mehrere Solaranlagen oder Wärmepumpenzähler ebenso).
 
+Der Bezug ist börsenindiziert mit Preisblatt oder - MP-59 - fest: der All-in-
+Arbeitspreis der Anlage in jeder Viertelstunde, wie die Preisschicht ihn für
+``site.tarif_art = 'fest'`` bildet, und mit der ehrlichen Marge der Live-
+Planung auf Netzladen. Beim festen Strompreis rechnet der Check ohne die
+Gutschrift der Saldierung: Umlagen und Netzentgelt stecken im Preis, die
+Entlastung kommt beim Lieferanten an, und ob er sie weitergibt, ist
+Verhandlungssache (Konzept § 2.5) - sie steht als Annahme, nie als Betrag.
+
 Preise und Wetter sind ohne Datenbank einspeisbar
 (:func:`voltpilot_optimization.simulation.data.price_rows_from_json`,
 :class:`ArchivDateiWetter`); alles hier ist reine Rechnung über injizierte
@@ -56,16 +64,20 @@ from voltpilot_forecast.pv import PhysicalPvForecaster
 from voltpilot_forecast.weather import IrradianceSample
 
 from voltpilot_optimization import mispel_abgrenzung, mispel_pauschal
+from voltpilot_optimization.config import FEST_GRID_CHARGE_HURDLE_CT_PER_KWH
 from voltpilot_optimization.domain import BatteryParams
 from voltpilot_optimization.marktwertbasis import MarktwertBasis
 from voltpilot_optimization.pricing import (
+    CT_PER_KWH_TO_EUR_PER_MWH,
     PLANT_KIND_DIREKTVERMARKTUNG,
     PLANT_KIND_EIGENVERBRAUCH,
     TARIF_DYNAMISCH,
+    TARIF_FEST,
     SiteTariff,
     SupplyPriceComponents,
     berlin_month,
     export_values,
+    grid_charge_hurdle_ct_kwh,
     import_prices,
     marktpraemie_eur_mwh,
     saldierte_bestandteile_eur_mwh,
@@ -103,6 +115,8 @@ PAUSCHAL_MAX_KWP = 30.0
 EV_ABZUG_CT = 0.4
 NICHT_UNTERSTUETZT = "noch nicht unterstützt"
 FAELLE = ("niedrig", "mittel", "hoch")
+#: Die Tarifarten des Checks (MP-59): börsenindiziert mit Preisblatt (bisher) oder fest.
+CHECK_TARIFARTEN = (TARIF_DYNAMISCH, TARIF_FEST)
 
 
 @dataclass(frozen=True)
@@ -174,6 +188,11 @@ class CheckAnlage:
     konzessionsabgabe_ct: float = 0.11
     ust_pct: float = 0.0  # Gewerbe mit Vorsteuerabzug
     zone: str = "DE-LU"
+    #: MP-59: der Bezug - ``dynamisch`` (börsenindiziert mit dem Preisblatt oben)
+    #: oder ``fest`` mit dem All-in-Arbeitspreis in ct/kWh (wie
+    #: ``site.tarif_param_ct_kwh``); das Preisblatt rechnet dann nicht gesondert.
+    tarif_art: str = TARIF_DYNAMISCH
+    arbeitspreis_ct: float | None = None
 
 
 #: Die Kundentypen des Prüfnachweises (Konzept § 3): die Gewerbe a2 und b und
@@ -302,13 +321,24 @@ def marktwerte_naeherung(
 
 def _tarif(anlage: CheckAnlage, fall: Fall) -> SiteTariff:
     """Börsenindizierter Bezug mit Preisblatt (ct/kWh netto): Spot + Netzentgelt-
-    Arbeitspreis + Stromsteuer + Konzessionsabgabe + Umlagen + Beschaffung."""
+    Arbeitspreis + Stromsteuer + Konzessionsabgabe + Umlagen + Beschaffung - oder
+    (MP-59) fest: :data:`pricing.TARIF_FEST` mit dem All-in-Arbeitspreis, ohne
+    Preisblatt (die Preisschicht ignorierte es ohnehin, ``pricing.py`` ``import_prices``)."""
+    plant_kind = (
+        PLANT_KIND_DIREKTVERMARKTUNG
+        if anlage.anzulegender_wert_ct is not None
+        else PLANT_KIND_EIGENVERBRAUCH
+    )
+    if anlage.tarif_art == TARIF_FEST:
+        return SiteTariff(
+            plant_kind=plant_kind,
+            tarif_art=TARIF_FEST,
+            tarif_param_ct_kwh=anlage.arbeitspreis_ct,
+            anzulegender_wert_ct_kwh=anlage.anzulegender_wert_ct,
+            pv_capacity_kwp=anlage.pv_kwp or None,
+        )
     return SiteTariff(
-        plant_kind=(
-            PLANT_KIND_DIREKTVERMARKTUNG
-            if anlage.anzulegender_wert_ct is not None
-            else PLANT_KIND_EIGENVERBRAUCH
-        ),
+        plant_kind=plant_kind,
         tarif_art=TARIF_DYNAMISCH,
         anzulegender_wert_ct_kwh=anlage.anzulegender_wert_ct,
         pv_capacity_kwp=anlage.pv_kwp or None,
@@ -321,6 +351,28 @@ def _tarif(anlage: CheckAnlage, fall: Fall) -> SiteTariff:
             ust_pct=anlage.ust_pct,
         ),
     )
+
+
+def _saldiert(anlage: CheckAnlage, tarif: SiteTariff) -> float:
+    """Was eine saldierte kWh an Bezugspreis-Bestandteilen spart (EUR/MWh), in Plan
+    und Bewertung. Beim festen Strompreis 0: die Entlastung erhält der Lieferant, ihre
+    Weitergabe ist Verhandlungssache (Konzept § 2.5) - sie steht nur als Annahme
+    (:func:`entlastung_fest_ct`), der Check rechnet keine Gutschrift, die nicht sicher ist."""
+    if anlage.tarif_art == TARIF_FEST:
+        return 0.0
+    return saldierte_bestandteile_eur_mwh(tarif)
+
+
+def entlastung_fest_ct(anlage: CheckAnlage) -> float:
+    """Die Entlastung je saldierter kWh beim festen Strompreis (ct/kWh): Umlagen und
+    Netzentgelt-Arbeitspreis aus dem Preisblatt der Anlage, gerechnet wie die
+    saldierten Bestandteile der Preisschicht (dieselbe Funktion)."""
+    blatt = SupplyPriceComponents(
+        netzentgelt_arbeitspreis_ct=anlage.netzentgelt_arbeitspreis_ct,
+        umlagen_ct=anlage.umlagen_ct,
+        ust_pct=anlage.ust_pct,
+    )
+    return saldierte_bestandteile_eur_mwh(SiteTariff(supply_price=blatt)) / CT_PER_KWH_TO_EUR_PER_MWH
 
 
 def _aw_viertelstunde(aw_ct: float, spot: float) -> float:
@@ -401,7 +453,9 @@ def rechne_fall(
     )
     tarif = _tarif(anlage, fall)
     imp = import_prices(tarif, spot)
-    saldiert = saldierte_bestandteile_eur_mwh(tarif)
+    saldiert = _saldiert(anlage, tarif)
+    # MP-59: die ehrliche Marge der Live-Planung beim festen Strompreis (E6 A), sonst 0.
+    hurdle = grid_charge_hurdle_ct_kwh(tarif)
     a1 = anlage.formelsatz == "A1"
 
     # heute: A1 = EEG-Modus (FK3, Monatsmarktwert); A10/A11 = Händler.
@@ -420,6 +474,7 @@ def rechne_fall(
     heute = run_milp_year(
         heute_data, battery, netzladen=not a1, max_workers=max_workers,
         export_eur_mwh=exp_heute, strenge=a1 and heute_streng, wiederholbar=True,
+        hurdle_ct_kwh=hurdle,
     )
     out_heute = evaluate(heute_data, heute, battery)
 
@@ -442,7 +497,7 @@ def rechne_fall(
     misch_data = replace(heute_data, import_eur_mwh=imp_misch, export_eur_mwh=exp_misch)
     mit = run_milp_year(
         misch_data, battery, netzladen=True, max_workers=max_workers,
-        export_eur_mwh=exp_misch, mischbetrieb=misch, wiederholbar=True,
+        export_eur_mwh=exp_misch, mischbetrieb=misch, wiederholbar=True, hurdle_ct_kwh=hurdle,
     )
 
     # Bewertung mit dem Rechenwerk: Bezug voll, Einspeisung Spot, Gutschrift
@@ -662,7 +717,8 @@ def rechne_fall_pauschal(
     )
     tarif = _tarif(anlage, fall)
     imp = import_prices(tarif, spot)
-    saldiert = saldierte_bestandteile_eur_mwh(tarif)
+    saldiert = _saldiert(anlage, tarif)
+    hurdle = grid_charge_hurdle_ct_kwh(tarif)
     aw = anlage.anzulegender_wert_ct or 0.0
     ev = einspeiseverguetung_ct(anlage)
     stammdaten = pauschal_stammdaten(anlage)
@@ -677,7 +733,7 @@ def rechne_fall_pauschal(
     # wiederholbar (MP-33c): die Knotengrenze statt der Wanduhr, wie im Abgrenzungs-Check.
     heute = run_milp_year(
         heute_data, battery, netzladen=False, max_workers=max_workers, export_eur_mwh=exp_heute,
-        wiederholbar=True,
+        wiederholbar=True, hurdle_ct_kwh=hurdle,
     )
     out_heute = evaluate(heute_data, heute, battery)
 
@@ -689,7 +745,7 @@ def rechne_fall_pauschal(
     mit_data = replace(heute_data, export_eur_mwh=list(spot))
     mit = run_milp_year(
         mit_data, battery, netzladen=True, max_workers=max_workers, export_eur_mwh=list(spot),
-        wiederholbar=True,
+        wiederholbar=True, hurdle_ct_kwh=hurdle,
         pauschal={
             "praemie": praemie,
             "aw": [_aw_viertelstunde(aw, p) for p in spot],
@@ -794,6 +850,10 @@ def mispel_check(
                 f"rechnet {', '.join(CHECK_FORMELSAETZE)} (Konzept § 8.5)."
             ),
         }
+    if anlage.tarif_art not in CHECK_TARIFARTEN:
+        raise ValueError(f"Tarifart {anlage.tarif_art!r}: der Check rechnet {' oder '.join(CHECK_TARIFARTEN)}")
+    if anlage.tarif_art == TARIF_FEST and not (anlage.arbeitspreis_ct or 0.0) > 0:
+        raise ValueError("Fester Strompreis braucht den Arbeitspreis der Anlage in ct/kWh")
     if anlage.formelsatz == "A1" and (anlage.anzulegender_wert_ct is None or anlage.pv_kwp <= 0):
         raise ValueError("A1 braucht eine PV-Anlage mit anzulegendem Wert")
     if anlage.formelsatz in ("A10", "A11") and anlage.pv_kwp > 0:
@@ -867,6 +927,8 @@ def mispel_check(
                 einspeiseverguetung_ct(anlage) if anlage.formelsatz in PAUSCHAL_FORMELSAETZE else None
             ),
             "pvJahreserzeugungKwh": anlage.pv_jahreserzeugung_kwh,
+            "tarifArt": anlage.tarif_art,
+            "arbeitspreisCt": anlage.arbeitspreis_ct,
         },
         "marktwerteSolarCt": {
             "monat": {m.isoformat()[:7]: round(v, 3) for m, v in sorted(monatsmw.items())},
@@ -884,6 +946,9 @@ def _annahmen(anlage: CheckAnlage, faelle: dict[str, Fall], heute_streng: bool) 
     def je_fall(attr: str):
         return {name: getattr(f, attr) for name, f in faelle.items()}
 
+    fest = anlage.tarif_art == TARIF_FEST
+    preis = f"{anlage.arbeitspreis_ct:g}".replace(".", ",") if fest else None
+
     a = {
         "Vergleich": Annahme(
             "gegen den sturen Speicher derselben Anlage", "Captain 04.09.2026", "belegt"),
@@ -896,6 +961,12 @@ def _annahmen(anlage: CheckAnlage, faelle: dict[str, Fall], heute_streng: bool) 
         "Speicher-Verschleiß ct je entladene kWh": Annahme(
             je_fall("verschleiss_ct"), "Konzept § 3; Plattform-Standard 4,0, Pilsting 1,0", "belegt"),
         "Rundlauf-Wirkungsgrad": Annahme(je_fall("wirkungsgrad"), "Konzept § 3", "Schätzung"),
+        "Strombezug": Annahme(
+            f"fest: {preis} ct/kWh all-in in jeder Viertelstunde; das Preisblatt unten steckt "
+            "darin und rechnet nicht gesondert"
+            if fest
+            else "börsenindiziert: Spot + Preisblatt je Viertelstunde",
+            "pricing.import_prices, dieselbe Preisschicht wie der Optimierer (site.tarif_art)", "belegt"),
         "Stromsteuer ct/kWh": Annahme(
             je_fall("stromsteuer_ct"),
             "§ 3 StromStG; „hoch“ = saldierbar über § 11a Abs. 3 StromStV (R1 O-7)", "Lesart"),
@@ -908,6 +979,17 @@ def _annahmen(anlage: CheckAnlage, faelle: dict[str, Fall], heute_streng: bool) 
             "Umlagen und Netzentgelt-Arbeitspreis auf die umlagereduzierende Menge (20); "
             "Leistungspreis bleibt", "§ 21 EnFG, § 118 Abs. 6 EnWG; Konzept § 8.5 (MP-10)", "belegt"),
     }
+    if fest:
+        a["Entlastung beim festen Strompreis ct/kWh"] = Annahme(
+            round(entlastung_fest_ct(anlage), 3),
+            "nicht eingerechnet: Umlagen und Netzentgelt-Arbeitspreis auf die saldierte Menge "
+            "entfallen beim Lieferanten; ob er sie an den Kunden weitergibt, ist beim Festpreis "
+            "all-in Verhandlungssache (Konzept § 2.5) - Plan und Posten rechnen ohne Gutschrift",
+            "Annahme")
+        a["Ehrliche Marge Netzladen ct/kWh"] = Annahme(
+            FEST_GRID_CHARGE_HURDLE_CT_PER_KWH,
+            "wie die Live-Planung beim festen Strompreis (Captain-Entscheid E6 A): nur im Plan, "
+            "nie im Betrag", "belegt")
     if anlage.formelsatz == "A1":
         a["Ausschließlichkeitsoption heute"] = (
             Annahme("streng: kein Laden bei gleichzeitigem Netzbezug (MP-45)",

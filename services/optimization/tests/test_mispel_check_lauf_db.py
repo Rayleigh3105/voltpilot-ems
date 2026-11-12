@@ -376,3 +376,54 @@ def test_pauschal_anlage_legt_p1_mit_hinweis_vor_der_genehmigung_ab(dsn, monkeyp
     # Ein anderer Formelsatz als die der Anlagen 1 und 2 bleibt verboten.
     with psycopg.connect(dsn, autocommit=True) as conn, pytest.raises(psycopg.errors.CheckViolation):
         conn.execute("UPDATE site_mispel_check SET formelsatz = 'P6' WHERE site_id = %s", (site,))
+
+
+#: Die Posten der Abgrenzungsoption A1 (MP-13) für einen Lauf ohne Solver.
+A1_POSTEN = (("Netzladen-Handel mit Saldierung", 0.0), ("Jahresmarktwert statt Monatsmarktwert", -127.0),
+             ("Zweiter Zähler Z2", -450.0), ("Gesonderter Bilanzkreis", -150.0))
+
+
+def test_fester_strompreis_der_anlage_erreicht_den_check(dsn, monkeypatch):
+    """MP-59: der Lauf liest ``site.tarif_art``/``tarif_param_ct_kwh`` über dieselbe Auflösung wie
+    der Optimierer (``load_battery_sites``) und übergibt Tarifart und Arbeitspreis dem Check; fest
+    ohne Preis legt ``nicht_unterstuetzt`` mit Satz ab, ohne zu rechnen."""
+    monkeypatch.setattr(lauf, "fenster", lambda heute, monate=12: FENSTER)
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        tenant = conn.execute("INSERT INTO tenant (name) VALUES ('MiSpeL-Festpreis') RETURNING id").fetchone()[0]
+        sites = {}
+        for name, preis in (("fest", 25.0), ("ohne_preis", None)):
+            site = conn.execute(
+                "INSERT INTO site (tenant_id, name, plant_kind, anzulegender_wert_ct_kwh, tarif_art, "
+                "tarif_param_ct_kwh) VALUES (%s, %s, 'direktvermarktung', 6.9, 'fest', %s) RETURNING id",
+                (tenant, name, preis)).fetchone()[0]
+            conn.execute("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                         "max_discharge_kw) VALUES (%s, %s, 'battery', 65, 30, 30)", (tenant, site))
+            conn.execute("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES (%s, %s, 'pv', 100)",
+                         (tenant, site))
+            sites[name] = site
+    eingaben = []
+
+    def rechne(anlage, d, beginn, monate):
+        eingaben.append(anlage)
+        posten = [{"posten": n, "eur": e, "herkunft": "h"} for n, e in A1_POSTEN]
+        return {"unterstuetzt": True, "faelle": {f: {"posten": posten} for f in mc.FAELLE},
+                "spanne": dict.fromkeys(mc.FAELLE, sum(e for _, e in A1_POSTEN)),
+                "fenster": {"von": "2026-05-30", "bis": "2026-06-01"}, "hinweis": None}
+
+    deps = mc.CheckDeps(load_prices=lambda *_: [])
+    berichte = lauf.lauf(dsn, deps, jetzt=JETZT, site_id=sites["fest"], rechne=rechne)
+    assert [b.stand for b in berichte] == ["fertig"]
+    assert (eingaben[0].formelsatz, eingaben[0].tarif_art, eingaben[0].arbeitspreis_ct) == ("A1", "fest", 25.0)
+    z = _zeilen(dsn)[sites["fest"]]
+    db = {a["angabe"]: a for a in z["datenbasis"]}
+    assert (db["Strombezug"]["wert"], db["Strombezug"]["herkunft"]) == ("fest", "stammdaten")
+    assert (db["Arbeitspreis"]["wert"], db["Arbeitspreis"]["einheit"]) == (25.0, "ct/kWh")
+    assert "Netzentgelt-Arbeitspreis" not in db
+    assert float(z["differenz_mittel_eur"]) == pytest.approx(-727.0)
+    assert [p["art"] for p in z["posten"]] == ["handel_saldierung", "jahresmarktwert", "zaehler_z2", "bilanzkreis"]
+
+    berichte = lauf.lauf(dsn, deps, jetzt=JETZT, site_id=sites["ohne_preis"], rechne=rechne)
+    assert [b.stand for b in berichte] == ["nicht_unterstuetzt"] and len(eingaben) == 1
+    z = _zeilen(dsn)[sites["ohne_preis"]]
+    assert (z["stand"], z["hinweis"], z["differenz_mittel_eur"]) == (
+        "nicht_unterstuetzt", lauf.FEST_OHNE_PREIS_SATZ, None)
