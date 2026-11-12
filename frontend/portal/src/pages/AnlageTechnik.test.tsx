@@ -1291,7 +1291,7 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
       inbetriebnahme: '2024-06-01',
       flaechen: [{ richtungGrad: 90, neigungGrad: 12.5, anteilKwp: 6.3, module: 15, quelle: 'register' }],
     });
-    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, null, [alt, neu]);
+    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, undefined, null, [alt, neu]);
 
     // Die Zeile nennt die Zahl der Einheiten, nicht mehr "Verknüpft".
     expect(zeile('Einheiten verwalten')).toHaveTextContent('2 Einheiten');
@@ -1313,7 +1313,7 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
       bestaetigtAm: null,
       flaechen: [],
     });
-    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, null, [
+    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, undefined, null, [
       bestaetigt,
       vorschlag,
     ]);
@@ -1458,7 +1458,7 @@ describe('Einstellungen · Strom & Geld an einer Erzeugeranlage (UEMS EZ-10)', (
 describe('Solaranlage · S5 (Zuordnung zu Wechselrichtern, "fehlt eine Einheit?")', () => {
   it('zeigt den Hinweis "fehlt eine Einheit?" nur, wenn das Flag gesetzt ist', async () => {
     const { restore } = await renderEinstellungen(
-      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, undefined, null,
       [registerEinheit()],
       { moeglicherweiseFehlendeEinheit: true, gemessenePeakKw: 12.5, summeKwp: 8.4, messwerteViertelstunden: 200 },
     );
@@ -1469,7 +1469,7 @@ describe('Solaranlage · S5 (Zuordnung zu Wechselrichtern, "fehlt eine Einheit?"
 
   it('ohne das Flag bleibt die Gruppe ohne diesen Hinweis', async () => {
     const { restore } = await renderEinstellungen(
-      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, undefined, null,
       [registerEinheit()],
     );
     const gruppe = document.querySelector('section#technik-registrierung')!;
@@ -1484,7 +1484,7 @@ describe('Solaranlage · S5 (Zuordnung zu Wechselrichtern, "fehlt eine Einheit?"
       freieGeraete: [],
     });
     const { restore } = await renderEinstellungen(
-      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, undefined, null,
       [registerEinheit()],
       undefined,
       { zuordnungen: [], freieGeraete: [{ id: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach', nennleistungKw: 8.4 }] },
@@ -1509,7 +1509,7 @@ describe('Solaranlage · S5 (Zuordnung zu Wechselrichtern, "fehlt eine Einheit?"
       freieGeraete: [{ id: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach', nennleistungKw: 8.4 }],
     });
     const { restore } = await renderEinstellungen(
-      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, undefined, null,
       [registerEinheit()],
       undefined,
       {
