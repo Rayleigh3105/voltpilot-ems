@@ -260,3 +260,31 @@ geänderten Klassen von #1820/#1836/#1837) 222 Tests, 1 Fehlschlag – `BoxEndgu
 (`box_ausbauen_protokoll`, auf `main` `16c7f96de` genauso, geerbt); `SiteScopeArchitekturTest` ist jetzt grün (#1820).
 Playwright Anlage › Technik und MiSpeL-Kern (12 Specs): desktop-chromium 126/126, mobile-chromium 98 grün und 28
 gewollt übersprungen.
+
+## Nachtrag 12./13.11.2026: `main` `b3ed4c5ff` nachgezogen
+
+Sieben PRs von `main` (#1838–#1844: mehrere MaStR-Einheiten S1–S5, Kunde löschen ohne Wartefrist und als
+serverseitiger Auftrag, UEMS-Tageslauf) kamen mit dem Merge-Commit `44b2185d5` dazu.
+
+| Commit | Ursache | Art | Was |
+|---|---|---|---|
+| `44b2185d5` | — | Merge | Konflikte: `SlotEconomics`/`OptimizerDiagnosticsService` (Marktwertbasis MP-12 und `UnitPv`/Einheiten-Blend S4 nebeneinander), `PortalApiTest` (Vektor-Bindung 7–14: Site-Id von S4 vorn, MiSpeL-Aliase danach), `inputs.py`/`test_freshness.py` (beide Importe, beide Attrappen), `AnlageTechnik.tsx` und Test (Förderweg und Register-Einheiten im selben Effekt, `PlantKind` entfällt) |
+| `55ba1c8d9` | Löschzug-Indexdeckung #1843 gegen die MiSpeL-Tabellen | b | neue Migration `V20261112032000`: tenant_id-Index für sechs `ladepunkt_*`-Tabellen, Index auf `site_pauschal_vormerkung.umgesetzt_in`; das SQL der umbenannten MiSpeL-Migrationen bleibt unverändert |
+| `1a0d4ce5a` | S4-Test gegen MP-12 | a | `evalExportValueSqlForRealSite` mit `marktwertbasisJoinSql` wie `EarningsRepository` |
+| `65c0bf7d6` | S3/S5-Tests gegen den Helfer-Parameter `weg` | a | sechs neue Aufrufe von `renderEinstellungen` mit `undefined` für den Förderweg |
+
+**Flyway:** keine Version doppelt; die neuen von `main` (`V20261112090000` bis `V20261112153000`) liegen über den
+MiSpeL-Migrationen, die neue `V20261112032000` gehört zum MiSpeL-Block vor #1834. **Zählerrolle und
+`register_einheit`/`einheit_geraet`:** keine gemeinsame Tabelle, kein gemeinsamer Index, keine Policy, kein
+Fremdschlüssel; die Einheiten sind MaStR-Einheiten mit einer Anzeige-Zuordnung zu Geräten, die Zählerrolle gehört
+zur Messstelle.
+
+**Geprüft** (nacheinander, Platte vor jedem Lauf über 3 GB): api 25 Klassen – `LoeschzugIndexdeckungTest`,
+`KundeDatenBestandMigrationTest`, `RegisterEinheitMigrationTest`, Gesamtabzug, Box lösen, Migrations-Wächter,
+`SlotEconomicsTest`, Marktwertbasis, Zählerrolle, Förderweg, Vormerkung grün; die drei Export-Vektorfälle des
+`PortalApiTest` nach `1a0d4ce5a` grün. Rot und auf `main` `b3ed4c5ff` genauso: `BoxEndgueltigLoeschenMigrationTest`
+(`box_ausbauen_protokoll`), `SiteScopeArchitekturTest` (`EinheitGeraetRepository` aus #1844). Flatterer aus #1843:
+`KundenbereichLoeschenApiTest` (auf `main` in zwei anderen Fällen rot) und einmal `LoeschzugKatalogApiTest` – der
+Lauf steht schon auf `fertig`, bevor sein Bericht nachgetragen ist. Optimierer (4 Dateien) 113/113, Typen grün,
+Vitest der acht berührten Dateien nach `65c0bf7d6` grün (`AnlageTechnik.test.tsx` 66/66), Playwright Anlage ›
+Technik (3 Specs, desktop) 31/31.
