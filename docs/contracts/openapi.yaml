@@ -5510,6 +5510,90 @@ paths:
         "400": { description: Neither pv nor storage present, or values out of range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/register-einheiten:
+    get:
+      tags: [registry]
+      summary: Every registered unit of the site (S1/S2, vp-mastr-mehrere-einheiten-konzept).
+      description: >
+        A site can carry several registered units (e.g. a 2014 roof and a
+        2024 garage) - the aggregate `asset` row stays the sum the rest of
+        the system reads; this lists the individual units underneath it.
+        `bestaetigtAm == null` marks a unit the background reconciliation
+        found at the same Lokation but the customer has not yet confirmed
+        (E5 - suggested once, nothing computes from it until confirmed).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's registered units, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegisterEinheit" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/mastr-lokation-lookup:
+    post:
+      tags: [registry]
+      summary: Fetch every unit sharing the typed unit's Lokation (nothing persisted).
+      description: >
+        S2 (Lokations-Suche): "eine Nummer genügt" - the customer types one
+        SEE number, this reads its Lokation (SEL...) and returns every unit
+        registered there, sorted by commissioning date. A unit of a
+        DIFFERENT operator than the typed one comes back pre-deselected
+        (`vorausgewaehlt: false`, `grund: anderer_betreiber`) - the operator
+        comparison happens only in memory at lookup time and is never
+        persisted. A unit without a known Lokation (heavily masked / older
+        records) comes back alone.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [einheitNummer]
+              properties:
+                einheitNummer: { type: string, example: SEE966831669444 }
+      responses:
+        "200":
+          description: Every unit at the Lokation, with the recommended selection.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MastrLokationPreview" }
+        "400": { description: Invalid unit number (German hint in `message`). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant, or no unit with this number in the registry. }
+        "502": { description: Registry currently unreachable. }
+  /api/v1/sites/{siteId}/mastr-lokation-apply:
+    post:
+      tags: [registry]
+      summary: Persist the customer-confirmed selection of a Lokations-Suche preview.
+      description: >
+        One upsert per unit in ONE transaction, idempotent on `(site_id,
+        registry_unit_id)` like `mastr-apply` - a re-apply (re-confirm)
+        updates the unit, it never creates a duplicate. At least one unit
+        (pv or storage) is required.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MastrLokationApplyRequest" }
+      responses:
+        "200":
+          description: The site's registered units after the apply.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegisterEinheit" }
+        "400": { description: No unit present, or values out of range. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
   /api/v1/sites/{siteId}/pv:
     put:
       tags: [registry]
@@ -26065,6 +26149,70 @@ components:
             maxChargeKw: { type: number, nullable: true }
             maxDischargeKw: { type: number, nullable: true }
             commissionedOn: { type: string, format: date, nullable: true }
+    RegisterEinheit:
+      type: object
+      description: >
+        One registered unit of a site (S1/S2, vp-mastr-mehrere-einheiten-
+        konzept Abschnitt 5.1): the WIRKSAM (customer-confirmed) layer.
+        `abweichungVonRegister` is a hint (the register has since reported a
+        different value) - never a silent change; `bestaetigtAm == null`
+        means an unconfirmed suggestion the background reconciliation found
+        (E5), nothing computes from it yet.
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [pv, speicher] }
+        registry: { type: string, nullable: true, example: mastr }
+        registryUnitId: { type: string, nullable: true, example: SEE966831669444 }
+        bezeichnung: { type: string, nullable: true }
+        inbetriebnahme: { type: string, format: date, nullable: true }
+        leistungKwp: { type: number, nullable: true }
+        speicherKwh: { type: number, nullable: true }
+        speicherKw: { type: number, nullable: true }
+        bestaetigtAm: { type: string, format: date-time, nullable: true }
+        registryFetchedAt: { type: string, format: date-time, nullable: true }
+        abweichungVonRegister: { type: boolean }
+    MastrLokationEinheit:
+      type: object
+      properties:
+        vorschau: { $ref: "#/components/schemas/MastrPreview" }
+        vorausgewaehlt:
+          type: boolean
+          description: False ONLY when the operator (ABR) is known to differ from the typed unit.
+        grund: { type: string, nullable: true, enum: [anderer_betreiber, null] }
+    MastrLokationPreview:
+      type: object
+      properties:
+        lokationMastrNummer: { type: string, nullable: true, example: SEL926735321862 }
+        einheiten:
+          type: array
+          items: { $ref: "#/components/schemas/MastrLokationEinheit" }
+    MastrLokationApplyRequest:
+      type: object
+      description: At least one unit (pv or storage) is required; same per-unit shape as MastrApplyRequest.
+      properties:
+        pv:
+          type: array
+          items:
+            type: object
+            required: [mastrNummer]
+            properties:
+              mastrNummer: { type: string, pattern: "SEE\\d{12}" }
+              capacityKwp: { type: number, nullable: true }
+              moduleCount: { type: integer, nullable: true }
+              azimuthDeg: { type: number, nullable: true }
+              tiltDeg: { type: number, nullable: true }
+              commissionedOn: { type: string, format: date, nullable: true }
+        storage:
+          type: array
+          items:
+            type: object
+            required: [mastrNummer]
+            properties:
+              mastrNummer: { type: string, pattern: "SEE\\d{12}" }
+              capacityKwh: { type: number, nullable: true }
+              maxChargeKw: { type: number, nullable: true }
+              maxDischargeKw: { type: number, nullable: true }
+              commissionedOn: { type: string, format: date, nullable: true }
     Teilansicht:
       type: object
       description: >

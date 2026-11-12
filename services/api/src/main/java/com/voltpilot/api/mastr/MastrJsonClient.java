@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -47,9 +49,77 @@ public class MastrJsonClient implements PlantRegistryClient {
         this.baseEndpoint = baseEndpoint;
     }
 
+    /**
+     * S2 (Lokations-Suche): a real Lokation never carries more units than
+     * this - the guard against the scout m1 trap, where a misspelled filter
+     * column is silently ignored and the backend echoes the FULL
+     * multi-million-row table instead of an error.
+     */
+    static final int MAX_UNITS_PER_LOCATION = 50;
+
     @Override
     public String sourceId() {
         return "mastr-json";
+    }
+
+    /**
+     * All units sharing one Lokation (Abschnitt 5.3): the key for "one number
+     * is enough" - the customer types one SEE number, this finds the rest at
+     * the same Netzanschlusspunkt. Two guards, same shape as {@link
+     * #fetchUnit}: {@code Total} must stay small (else the filter column is
+     * probably wrong and silently matching everything) and EVERY returned row
+     * must itself carry the requested Lokation (not just the query echoing
+     * it back).
+     */
+    @Override
+    public List<MastrUnit> fetchUnitsAtLocation(String locationNumber) throws RegistryLookupException {
+        MastrHttp.Response res;
+        try {
+            res = http.get(locationLookupUri(locationNumber));
+        } catch (IOException e) {
+            log.warn("mastr.json.unreachable.location", e);
+            throw unavailable(e);
+        }
+        if (res.status() != 200) {
+            log.warn("mastr.json.error status={}", res.status());
+            throw unavailable(null);
+        }
+        JsonNode root;
+        try {
+            root = mapper.readTree(res.body());
+        } catch (IOException e) {
+            log.warn("mastr.json.unparseable", e);
+            throw unavailable(e);
+        }
+        int total = root.path("Total").asInt(-1);
+        if (total == 0) {
+            return List.of();
+        }
+        if (total < 0 || total > MAX_UNITS_PER_LOCATION) {
+            log.warn("mastr.json.location_filter_suspicious total={} lokation={}", total, locationNumber);
+            throw unavailable(null);
+        }
+        List<MastrUnit> units = new ArrayList<>();
+        for (JsonNode u : root.path("Data")) {
+            String echo = text(u, "LokationMastrNr");
+            if (!locationNumber.equals(echo)) {
+                log.warn("mastr.json.location_mismatch expected={} echo={}", locationNumber, echo);
+                throw unavailable(null);
+            }
+            String unitNumber = text(u, "MaStRNummer");
+            if (unitNumber != null) {
+                units.add(map(unitNumber, u));
+            }
+        }
+        return List.copyOf(units);
+    }
+
+    URI locationLookupUri(String locationNumber) {
+        String filter = URLEncoder.encode(
+                "MaStR-Nr. der Lokation~eq~'" + locationNumber + "'", StandardCharsets.UTF_8);
+        return URI.create(baseEndpoint
+                + "?sort=InbetriebnahmeDatum-asc&page=1&pageSize=" + MAX_UNITS_PER_LOCATION
+                + "&filter=" + filter);
     }
 
     @Override
@@ -117,7 +187,8 @@ public class MastrJsonClient implements PlantRegistryClient {
                 storage ? intOrNull(u, "Batterietechnologie") : null,
                 text(u, "Plz"),
                 firstNonNull(text(u, "Ort"), text(u, "Gemeinde")),
-                null);
+                null,
+                text(u, "LokationMastrNr"), text(u, "AnlagenbetreiberMaStRNummer"));
     }
 
     private static RegistryLookupException unavailable(Throwable cause) {

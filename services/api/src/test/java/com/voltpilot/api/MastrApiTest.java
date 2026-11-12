@@ -60,6 +60,8 @@ class MastrApiTest {
 
     private static final String PV_UNIT = "SEE966831669444";
     private static final String STORAGE_UNIT = "SEE972142227037";
+    private static final String GARAGE_UNIT = "SEE912345678901";
+    private static final String LOCATION = "SEL926735321862";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -105,6 +107,11 @@ class MastrApiTest {
                 @Override
                 public Response get(URI uri) {
                     String q = uri.toString();
+                    // The Lokations-Suche filter must be checked before the
+                    // single-unit ones: it is also a GET to the same base URL.
+                    if (q.contains("der+Lokation") && q.contains(LOCATION)) {
+                        return new Response(200, fixture("json_lokation_" + LOCATION + ".json"));
+                    }
                     if (q.contains(PV_UNIT)) {
                         return new Response(200, fixture("json_pv_" + PV_UNIT + ".json"));
                     }
@@ -261,6 +268,83 @@ class MastrApiTest {
         ResponseEntity<Map<String, Object>> res = post(
                 "/api/v1/sites/" + BERLIN_SITE + "/mastr-apply", Map.of(), token("demo", "demo"));
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    // ---- S2: Lokations-Suche ---------------------------------------------------
+
+    @Test
+    void lokationLookupReturnsBothUnitsSortedByCommissioning() {
+        ResponseEntity<Map<String, Object>> res = post(
+                "/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-lookup",
+                Map.of("einheitNummer", PV_UNIT), token("demo", "demo"));
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        assertThat(body).containsEntry("lokationMastrNummer", LOCATION);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> einheiten = (List<Map<String, Object>>) body.get("einheiten");
+        assertThat(einheiten).hasSize(2);
+        // The garage (2024) comes before the roof (2026) - sorted by Inbetriebnahme.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> garage = (Map<String, Object>) einheiten.get(0).get("vorschau");
+        assertThat(garage).containsEntry("mastrNummer", GARAGE_UNIT).containsEntry("azimuthLabel", "Ost-West");
+        assertThat(einheiten.get(0)).containsEntry("vorausgewaehlt", true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> roof = (Map<String, Object>) einheiten.get(1).get("vorschau");
+        assertThat(roof).containsEntry("mastrNummer", PV_UNIT);
+        assertThat(einheiten.get(1)).containsEntry("vorausgewaehlt", true);
+    }
+
+    @Test
+    void lokationApplyPersistsBothUnitsIdempotently() {
+        String tok = token("demo", "demo");
+        post("/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-lookup",
+                Map.of("einheitNummer", PV_UNIT), tok);
+
+        Map<String, Object> request = Map.of("pv", List.of(
+                Map.of("mastrNummer", PV_UNIT, "capacityKwp", 6.05, "moduleCount", 13,
+                        "azimuthDeg", 180, "tiltDeg", 30, "commissionedOn", "2026-07-01"),
+                Map.of("mastrNummer", GARAGE_UNIT, "capacityKwp", 6.3, "moduleCount", 15,
+                        "commissionedOn", "2024-06-30")));
+        ResponseEntity<List<Map<String, Object>>> applied = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-apply"), HttpMethod.POST,
+                new HttpEntity<>(request, bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(applied.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(applied.getBody()).hasSize(2);
+        assertThat(applied.getBody()).anySatisfy(e -> assertThat(e).containsEntry("registryUnitId", PV_UNIT));
+        assertThat(applied.getBody()).anySatisfy(e -> assertThat(e).containsEntry("registryUnitId", GARAGE_UNIT));
+
+        // Idempotent: applying the SAME selection again does not duplicate.
+        ResponseEntity<List<Map<String, Object>>> reapplied = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-apply"), HttpMethod.POST,
+                new HttpEntity<>(request, bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(reapplied.getBody()).hasSize(2);
+
+        ResponseEntity<List<Map<String, Object>>> read = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/register-einheiten"), HttpMethod.GET,
+                new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(read.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(read.getBody()).hasSize(2);
+    }
+
+    @Test
+    void lokationEndpointsAreRlsScopedForeignSiteIs404() {
+        String tokenB = token("demo2", "demo2");
+
+        ResponseEntity<Map<String, Object>> lookup = post(
+                "/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-lookup",
+                Map.of("einheitNummer", PV_UNIT), tokenB);
+        assertThat(lookup.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<Map<String, Object>> apply = post(
+                "/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-apply",
+                Map.of("pv", List.of(Map.of("mastrNummer", PV_UNIT, "capacityKwp", 6.05))), tokenB);
+        assertThat(apply.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<String> read = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/register-einheiten"), HttpMethod.GET,
+                new HttpEntity<>(bearer(tokenB)), String.class);
+        assertThat(read.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     // ---- helpers ---------------------------------------------------------------

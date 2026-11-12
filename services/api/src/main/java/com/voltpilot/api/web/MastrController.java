@@ -3,11 +3,15 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.mastr.MastrService;
 import com.voltpilot.api.mastr.RegistryLookupException;
 import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.repo.RegisterEinheitRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.MastrApplyRequest;
+import com.voltpilot.api.web.dto.MastrLokationApplyRequest;
+import com.voltpilot.api.web.dto.MastrLokationPreviewDto;
 import com.voltpilot.api.web.dto.MastrLookupRequest;
 import com.voltpilot.api.web.dto.MastrPreviewDto;
+import com.voltpilot.api.web.dto.RegisterEinheitDto;
 import com.voltpilot.api.web.dto.SiteAssetDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -43,11 +47,14 @@ public class MastrController {
     private final Geltungsbereich geltungsbereich;
     private final AssetRepository assets;
     private final MastrService mastr;
+    private final RegisterEinheitRepository einheiten;
 
-    public MastrController(Geltungsbereich geltungsbereich, AssetRepository assets, MastrService mastr) {
+    public MastrController(Geltungsbereich geltungsbereich, AssetRepository assets, MastrService mastr,
+            RegisterEinheitRepository einheiten) {
         this.geltungsbereich = geltungsbereich;
         this.assets = assets;
         this.mastr = mastr;
+        this.einheiten = einheiten;
     }
 
     /** The site's asset master data incl. registry provenance (drawer display). */
@@ -98,6 +105,46 @@ public class MastrController {
             assets.autoLinkBatteryDevice(siteId);
         }
         return assets.findForSite(siteId);
+    }
+
+    /** S1/S2: every registered unit of the site, confirmed or still-suggested (Abschnitt 5.1). */
+    @GetMapping("/register-einheiten")
+    public List<RegisterEinheitDto> einheiten(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return einheiten.findForSite(siteId);
+    }
+
+    /**
+     * S2 (Lokations-Suche, Abschnitt 5.3): the typed unit plus every sibling
+     * at the same Lokation. NOT persisted - same confirm-first contract as
+     * {@link #lookup}.
+     */
+    @PostMapping("/mastr-lokation-lookup")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public MastrLokationPreviewDto lookupLokation(@PathVariable UUID siteId,
+            @Valid @RequestBody MastrLookupRequest request) throws RegistryLookupException {
+        requireSite(siteId);
+        return mastr.lookupLocation(request.einheitNummer());
+    }
+
+    /**
+     * Persist the customer-CONFIRMED selection of a Lokations-Suche preview,
+     * one unit per upsert in ONE transaction - idempotent on {@code (site_id,
+     * registry_unit_id)}, exactly like {@link #apply}.
+     */
+    @Transactional
+    @PostMapping("/mastr-lokation-apply")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public List<RegisterEinheitDto> applyLokation(@PathVariable UUID siteId,
+            @Valid @RequestBody MastrLokationApplyRequest request) {
+        requireSite(siteId);
+        if (request.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "At least one unit (pv/storage) is required");
+        }
+        UUID tenantId = TenantContext.get();
+        einheiten.applyUnits(tenantId, siteId, request.pv(), request.storage(), "mastr", Instant.now(), "kunde");
+        return einheiten.findForSite(siteId);
     }
 
     /**

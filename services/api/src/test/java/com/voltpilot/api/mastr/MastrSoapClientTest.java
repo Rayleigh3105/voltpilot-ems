@@ -180,6 +180,91 @@ class MastrSoapClientTest {
         assertThat(e.getMessage()).contains("nicht erreichbar");
     }
 
+    // ---- S2: Lokations-Suche --------------------------------------------------
+
+    @Test
+    void fetchUnitsAtLocationCallsGetLokationStromErzeugerThenFetchesEachUnit() throws Exception {
+        String lokationXml = lokationResponse("SEL926735321862",
+                "SEE966831669444", "SEE972142227037");
+        RecordingHttp http = new RecordingHttp(List.of(
+                new MastrHttp.Response(200, lokationXml),
+                new MastrHttp.Response(200, fixture("soap_solar_SEE966831669444.xml")),
+                new MastrHttp.Response(500, fixture("soap_fault_keine_daten.xml")),
+                new MastrHttp.Response(200, fixture("soap_storage_SEE972142227037.xml"))));
+
+        List<MastrUnit> units = client(http).fetchUnitsAtLocation("SEL926735321862");
+
+        assertThat(units).hasSize(2);
+        assertThat(units.get(0).unitNumber()).isEqualTo("SEE966831669444");
+        assertThat(units.get(0).kind()).isEqualTo(MastrUnit.Kind.SOLAR);
+        assertThat(units.get(1).unitNumber()).isEqualTo("SEE972142227037");
+        assertThat(units.get(1).kind()).isEqualTo(MastrUnit.Kind.STORAGE);
+        assertThat(http.calls).hasSize(4);
+        assertThat(http.calls.get(0).headers().get("SOAPAction")).isEqualTo("\"GetLokationStromErzeuger\"");
+    }
+
+    @Test
+    void fetchUnitsAtLocationIsEmptyWithoutConnectedUnits() throws Exception {
+        RecordingHttp http = new RecordingHttp(List.of(
+                new MastrHttp.Response(200, lokationResponse("SEL000000000000"))));
+        assertThat(client(http).fetchUnitsAtLocation("SEL000000000000")).isEmpty();
+    }
+
+    @Test
+    void fetchUnitsAtLocationRefusesAnEchoMismatch() {
+        RecordingHttp http = new RecordingHttp(List.of(
+                new MastrHttp.Response(200, lokationResponse("SEL999999999999"))));
+        RegistryLookupException e = catchThrowableOfType(
+                () -> client(http).fetchUnitsAtLocation("SEL926735321862"), RegistryLookupException.class);
+        assertThat(e.reason()).isEqualTo(RegistryLookupException.Reason.UNAVAILABLE);
+    }
+
+    @Test
+    void fetchUnitsAtLocationRefusesMoreUnitsThanAnyRealLocationHas() {
+        String[] manyUnits = new String[60];
+        for (int i = 0; i < manyUnits.length; i++) {
+            manyUnits[i] = String.format("SEE%012d", i);
+        }
+        RecordingHttp http = new RecordingHttp(List.of(
+                new MastrHttp.Response(200, lokationResponse("SEL926735321862", manyUnits))));
+        RegistryLookupException e = catchThrowableOfType(
+                () -> client(http).fetchUnitsAtLocation("SEL926735321862"), RegistryLookupException.class);
+        assertThat(e.reason()).isEqualTo(RegistryLookupException.Reason.UNAVAILABLE);
+    }
+
+    @Test
+    void buildEnvelopeWithCustomParamNameUsesTheGivenFieldName() {
+        String xml = MastrSoapClient.buildEnvelope("GetLokationStromErzeuger", "key-123", "SOM999",
+                "lokationMastrNummer", "SEL926735321862");
+        assertThat(xml).contains("<mod:lokationMastrNummer>SEL926735321862</mod:lokationMastrNummer>");
+        assertThat(xml).doesNotContain("einheitMastrNummer");
+    }
+
+    @Test
+    void parseRepeatedFieldCollectsEveryOccurrenceInOrder() {
+        List<String> values = MastrSoapClient.parseRepeatedField(
+                "<a:MaStRNummer>SEE1</a:MaStRNummer><a:Sonstiges>x</a:Sonstiges>"
+                        + "<a:MaStRNummer>SEE2</a:MaStRNummer>", "MaStRNummer");
+        assertThat(values).containsExactly("SEE1", "SEE2");
+    }
+
+    /** A minimal, well-formed GetLokationStromErzeugerAntwort fixture. */
+    private static String lokationResponse(String locationNumber, String... unitNumbers) {
+        StringBuilder verknuepft = new StringBuilder();
+        for (String unitNumber : unitNumbers) {
+            verknuepft.append("<a:VerknuepfteEinheiten><a:MaStRNummer>").append(unitNumber)
+                    .append("</a:MaStRNummer><a:Einheittyp>Stromerzeugung</a:Einheittyp>"
+                            + "<a:Einheitart>Solareinheit</a:Einheitart></a:VerknuepfteEinheiten>");
+        }
+        return "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>"
+                + "<GetLokationStromErzeugerResponse xmlns=\"https://www.marktstammdatenregister.de/Services/Public/1_2/Modelle/Anlage\">"
+                + "<GetLokationStromErzeugerAntwort xmlns:a=\"https://www.marktstammdatenregister.de/Services/Public/1_2/Modelle\">"
+                + "<a:Ergebniscode>OK</a:Ergebniscode>"
+                + "<a:MastrNummer>" + locationNumber + "</a:MastrNummer>"
+                + verknuepft
+                + "</GetLokationStromErzeugerAntwort></GetLokationStromErzeugerResponse></s:Body></s:Envelope>";
+    }
+
     @Test
     void parseAllFieldsIsNamespacePrefixAgnosticAndFirstWins() {
         Map<String, String> fields = MastrSoapClient.parseAllFields(
