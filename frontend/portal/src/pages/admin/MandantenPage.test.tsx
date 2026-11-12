@@ -17,9 +17,8 @@ const benutzerListe = vi.fn();
 const fleet = vi.fn();
 const createTenant = vi.fn();
 const deleteTenant = vi.fn();
-// vp-kunde-sofort-loeschen: Vorgabe „hat Daten" - die Bestandsfälle sehen keinen Sofort-Weg.
+// vp-kunde-sofort-loeschen-mit-daten: die Datenauskunft für den Löschdialog - gibt nie vor, ob gelöscht werden darf.
 const kundeLoeschbarkeit = vi.fn();
-const kundenLoeschbarkeit = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -39,7 +38,6 @@ vi.mock('../../admin/adminApi', () => ({
     beendenMandant: (...a: unknown[]) => beendenMandant(...a),
     wiederaufnehmenMandant: (...a: unknown[]) => wiederaufnehmenMandant(...a),
     kundeLoeschbarkeit: (...a: unknown[]) => kundeLoeschbarkeit(...a),
-    kundenLoeschbarkeit: (...a: unknown[]) => kundenLoeschbarkeit(...a),
   },
 }));
 
@@ -65,11 +63,9 @@ beforeEach(() => {
   fleet.mockReset().mockResolvedValue({ sites: [], unterstuetzungBis: {}, unterstuetzungStandorte: [], releases: [] });
   benutzerListe.mockReset().mockResolvedValue([]);
   kundeLoeschbarkeit.mockReset().mockResolvedValue({
-    tenantId: 't-1', sofortLoeschbar: false, daten: ['messwerte'], beendetAm: null,
-    loeschungFruehestens: null, fristAbgelaufen: false,
+    tenantId: 't-1', daten: ['messwerte'], beendetAm: null,
     folgen: { anlagen: 0, boxen: [], personen: 0 },
   });
-  kundenLoeschbarkeit.mockReset().mockResolvedValue([]);
   deleteTenant.mockReset();
 });
 
@@ -292,7 +288,7 @@ describe('MandantenPage - die Kundenakte', () => {
       kundenbereich: {
         id: 't-1',
         name: TENANT.name,
-        beendet: { beendet_am: '2026-11-11', loeschung_fruehestens: '2027-02-09', liest: true, text: '' },
+        beendet: { beendet_am: '2026-11-11', liest: true, text: '' },
       },
     });
     openDetail();
@@ -305,17 +301,16 @@ describe('MandantenPage - die Kundenakte', () => {
     expect(within(akte).queryByRole('button', { name: 'Person hinzufügen' })).not.toBeInTheDocument();
   });
 
-  it('sofort löschbar (Server-Urteil): Badge, Vertrag-Karte und Dialog mit Namens-Abschrift löschen sofort', async () => {
+  it('ohne Datenbestand: Badge, Vertrag-Karte und Dialog mit Namens-Abschrift löschen sofort', async () => {
     selbstauskunft.mockResolvedValue({
       kundenbereich: {
         id: 't-1',
         name: TENANT.name,
-        beendet: { beendet_am: '2026-11-11', loeschung_fruehestens: '2027-02-09', liest: true, text: '' },
+        beendet: { beendet_am: '2026-11-11', liest: true, text: '' },
       },
     });
     kundeLoeschbarkeit.mockResolvedValue({
-      tenantId: 't-1', sofortLoeschbar: true, daten: [], beendetAm: '2026-11-11',
-      loeschungFruehestens: '2027-02-09', fristAbgelaufen: false,
+      tenantId: 't-1', daten: [], beendetAm: '2026-11-11',
       folgen: { anlagen: 1, boxen: ['edge-cyhchfr'], personen: 1 },
     });
     const report = {
@@ -326,7 +321,7 @@ describe('MandantenPage - die Kundenakte', () => {
     deleteTenant.mockResolvedValue(report);
     openDetail();
     const akte = await screen.findByRole('region', { name: TENANT.name });
-    expect(await within(akte).findByText('beendet · sofort löschbar')).toBeInTheDocument();
+    expect(await within(akte).findByText('beendet')).toBeInTheDocument();
 
     fireEvent.click(within(akte).getAllByRole('button', { name: 'Kunde endgültig löschen …' })[0]);
     const dlg = await screen.findByRole('dialog', { name: 'Kunde endgültig löschen' });
@@ -344,23 +339,31 @@ describe('MandantenPage - die Kundenakte', () => {
     expect(screen.getByText('edge-cyhchfr - wieder anmeldbar')).toBeInTheDocument();
   });
 
-  it('mit Daten erklärt der Dialog ruhig, warum der Kunde bleibt - kein destruktiver Knopf', async () => {
+  it('mit Daten sagt der Dialog ehrlich, was verloren geht - und löscht trotzdem sofort', async () => {
     kundeLoeschbarkeit.mockResolvedValue({
-      tenantId: 't-1', sofortLoeschbar: false, daten: ['herzschlag', 'messwerte'], beendetAm: '2026-11-11',
-      loeschungFruehestens: '2027-02-09', fristAbgelaufen: false,
+      tenantId: 't-1', daten: ['herzschlag', 'messwerte'], beendetAm: '2026-11-11',
       folgen: { anlagen: 1, boxen: [], personen: 1 },
     });
+    const report = {
+      tenantId: 't-1', tenantName: TENANT.name, deletedSites: 1, deletedDevices: 0,
+      deletedTelemetryRows: 12, deletedUsers: ['anna'], failedUsers: [],
+      anlass: 'sofort_mit_daten', freigegebeneBoxen: [], loeschnachweis: null,
+    };
+    deleteTenant.mockResolvedValue(report);
     openDetail();
     const akte = await screen.findByRole('region', { name: TENANT.name });
     fireEvent.click(await within(akte).findByRole('button', { name: `Weitere Aktionen für ${TENANT.name}` }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Kunde endgültig löschen …' }));
     const dlg = await screen.findByRole('dialog', { name: 'Kunde endgültig löschen' });
     expect(dlg.textContent).toContain('Box-Herzschläge · Messwerte');
-    expect(dlg.textContent).toContain('frühestens am 09.02.2027');
+    expect(dlg.textContent).toContain('verloren');
     expect(dlg.textContent).toContain('Gesamtabzug');
-    expect(within(dlg).queryByRole('button', { name: 'Kunde endgültig löschen' })).not.toBeInTheDocument();
-    fireEvent.click(within(dlg).getByRole('button', { name: 'Verstanden' }));
-    expect(deleteTenant).not.toHaveBeenCalled();
+    fireEvent.change(within(dlg).getByLabelText('Zum Bestätigen den Kundennamen abtippen'), {
+      target: { value: TENANT.name },
+    });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Kunde endgültig löschen' }));
+    await waitFor(() => expect(deleteTenant).toHaveBeenCalledWith('t-1', TENANT.name));
+    expect(await screen.findByText(/wurde vollständig entfernt/)).toBeInTheDocument();
   });
 
   it('bricht die Rückfrage folgenlos ab', async () => {
@@ -416,12 +419,11 @@ describe('MandantenPage - die Kundenakte', () => {
     expect(onJumpToTenant).toHaveBeenCalledWith('t-1', 'uebersicht');
   });
 
-  it('N1: beendet den Vertrag mit Frist und schließt die Gefahrenzone bis zu deren Ablauf', async () => {
+  it('N1: beendet den Vertrag mit Frist - die Gefahrenzone bleibt immer offen (vp-kunde-sofort-loeschen-mit-daten)', async () => {
     openDetail();
     const akte = await screen.findByRole('region', { name: TENANT.name });
-    // Solange der Vertrag aktiv ist, ist Löschen nur möglich, wenn man zuerst beendet.
-    expect(within(akte).getByText(/erst, nachdem der Vertrag beendet wurde/)).toBeInTheDocument();
-    expect(within(akte).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
+    // Löschen ist von Anfang an möglich, auch ohne Vertragsende.
+    expect(within(akte).getByRole('button', { name: 'Mandant löschen (Offboarding)' })).toBeInTheDocument();
 
     fireEvent.click(within(akte).getByRole('button', { name: 'Kundenbereich beenden …' }));
     const dlg = await screen.findByRole('dialog', { name: /Vertrag beenden/ });
@@ -435,7 +437,7 @@ describe('MandantenPage - die Kundenakte', () => {
       kundenbereich: {
         id: 't-1',
         name: TENANT.name,
-        beendet: { beendet_am: '2029-01-01', loeschung_fruehestens: '2029-04-01', liest: true, text: '' },
+        beendet: { beendet_am: '2029-01-01', liest: true, text: '' },
       },
     });
     fireEvent.click(within(dlg).getByRole('button', { name: 'Vertrag beenden' }));
@@ -448,9 +450,9 @@ describe('MandantenPage - die Kundenakte', () => {
       }),
     );
     expect(await within(akte).findByText(/am 01.01.2029 beendet/)).toBeInTheDocument();
-    // Gelöscht wird erst nach der Frist (hier: in der Zukunft) - der Knopf bleibt deshalb aus.
-    expect(within(akte).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
-    expect(within(akte).getByText(/Die Frist läuft noch bis 01.04.2029/)).toBeInTheDocument();
+    // Auch nach dem Beenden bleibt der Löschweg sofort erreichbar - keine Frist sperrt mehr.
+    expect(within(akte).getByRole('button', { name: 'Mandant löschen (Offboarding)' })).toBeInTheDocument();
+    expect(within(akte).queryByText(/Frist/)).not.toBeInTheDocument();
   });
 });
 

@@ -162,10 +162,10 @@ public class AdminController {
      * disabled through the shared account path. Failed final deletions leave disabled
      * accounts and are reported/logged; the cleanup route can repeat them without a tenant row.
      *
-     * <p>UEMS AP-20 IP-18 (E10 = A, BT4, BT5): only a tenant in the state „beendet" whose period has run out
-     * ({@code 409 kundenbereich_nicht_beendet} / {@code 409 frist_laeuft}, checked BEFORE any account is blocked and
-     * again under the row lock in the teardown); the same transaction writes the deletion record
-     * {@code mandant_loeschnachweis} without the customer's personal data ({@link KundenbereichLoeschung}).
+     * <p>UEMS AP-20 IP-18 (E10 = A, BT4): there is no waiting period any more (vp-kunde-sofort-loeschen-mit-daten,
+     * Captain 12.11.2026) - every tenant is deleted immediately, with or without data, active or „beendet"; the same
+     * transaction writes the deletion record {@code mandant_loeschnachweis} without the customer's personal data
+     * ({@link KundenbereichLoeschung}).
      */
     @PostMapping("/tenants/{tenantId}/delete")
     public TenantOffboardingReportDto deleteTenant(@PathVariable UUID tenantId,
@@ -178,7 +178,6 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "confirmName does not match the tenant name");
         }
-        KundenbereichLoeschung.Anlass anlass = loeschung.pruefen(tenantId);
         ProtokollAkteur akteur = ProtokollAkteur.aus(auth)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
         KundenbereichLoeschung.Wache wache = loeschung.wache(tenantId, akteur);
@@ -193,18 +192,19 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
         }
 
-        // Sofort-Weg (vp-kunde-sofort-loeschen): nie gemeldete Boxen VOR dem Abbau über den Dienst
-        // „Vom Kunden lösen" freigeben - Broker, Zugang, Registry, Rollouts, Zertifizierung räumen wie
-        // beim Lösen von Hand, die Kennung ist sofort wieder anmeldbar. Eine Box, die sich doch gemeldet
-        // hat, lehnt dort mit 409 ab, bevor der Abbau beginnt (die Konten sind dann schon gesperrt -
-        // derselbe wiederholbare Zwischenstand wie bei einem DB-Fehler). Ausgebaute Boxen gehen über die
-        // Kaskade. Der Frist-Weg bleibt unverändert (Kaskade wie bisher).
+        // Sofort-Weg: nie gemeldete Boxen VOR dem Abbau über den Dienst „Vom Kunden lösen" freigeben -
+        // Broker, Zugang, Registry, Rollouts, Zertifizierung räumen wie beim Lösen von Hand, die Kennung
+        // ist sofort wieder anmeldbar. Eine Box, die sich doch gemeldet hat, lehnt dort individuell mit
+        // 409 ab - das sperrt NICHT mehr die Löschung selbst (vp-kunde-sofort-loeschen-mit-daten), sie
+        // geht stattdessen wie jede andere gemeldete Box über die Kaskade.
         List<String> freigegeben = new ArrayList<>();
-        if (anlass == KundenbereichLoeschung.Anlass.SOFORT_KEINE_DATEN) {
-            for (TenantDevice device : devices) {
+        for (TenantDevice device : devices) {
+            try {
                 if (boxLoesen.beimKundenLoeschen(device.externalRef(), akteur)) {
                     freigegeben.add(device.externalRef());
                 }
+            } catch (BoxLoesenAbgelehnt ex) {
+                // Gemeldet - bleibt für die Kaskade.
             }
         }
 
@@ -217,10 +217,6 @@ public class AdminController {
                 users.clear();
                 users.addAll(current);
             }, wache);
-        } catch (KundenbereichLoeschung.Verweigert ex) {
-            log.warn("Offboarding tenant {}: refused under the row lock ({}); accounts remain disabled", tenantId,
-                    ex.getMessage());
-            throw ex;
         } catch (RuntimeException ex) {
             // vp-kunde-loeschen-500: die EINE Transaktion ist zurückgerollt - nichts ist gelöscht, nur die
             // Konten bleiben gesperrt, der Weg ist wiederholbar. Der Fehler gehört mit Stack ins Log (vorher
@@ -255,12 +251,6 @@ public class AdminController {
                 cleanup.failedUsers(), nachweis.anlass().wert(), List.copyOf(freigegeben),
                 new TenantOffboardingReportDto.Loeschnachweis(nachweis.kennzeichen(), nachweis.geloeschtAm(),
                         nachweis.zaehlungen(), nachweis.verblieben(), nachweis.abzugSha256()));
-    }
-
-    /** IP-18: the delete route's refusal in the form of the UEMS refusals ({@code code}, {@code message}, facts). */
-    @ExceptionHandler(KundenbereichLoeschung.Verweigert.class)
-    public ResponseEntity<Map<String, Object>> loeschenVerweigert(KundenbereichLoeschung.Verweigert ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.koerper());
     }
 
     /** Der Löschzug scheiterte und wurde ganz zurückgerollt; die Konten bleiben gesperrt (vp-kunde-loeschen-500). */

@@ -34,8 +34,8 @@ import org.springframework.web.server.ResponseStatusException;
  * </ul>
  * Jeder Übergang ist einmalig: ein zweiter Aufruf bewegt nichts und antwortet 409 ({@code kundenbereich_schon_beendet}
  * bzw. {@code kundenbereich_nicht_beendet}). Beide schreiben das Plattform-Protokoll {@code kundenbereich_uebergang}.
- * Der Löschweg {@code POST …/delete} nimmt seit IP-18 nur einen beendeten Bereich nach der Frist
- * ({@code KundenbereichLoeschung}).
+ * Der Löschweg {@code POST …/delete} löscht seit vp-kunde-sofort-loeschen-mit-daten sofort, unabhängig von diesem
+ * Zustand ({@code KundenbereichLoeschung}).
  */
 @RestController
 @RequestMapping("/api/v1/admin/tenants/{tenantId}")
@@ -72,7 +72,7 @@ public class AdminKundenbereichEndeController {
                         "kundenbereich_schon_beendet"));
         beendete.vergessen(); // Rückmeldewege, Läufer und Rollout dieser Instanz sperren sofort
         return Map.of("zustand", "beendet", "beendet_am", beendet.beendetAm().toString(), "frist_tage",
-                beendet.fristTage(), "loeschung_fruehestens", beendet.loeschungFruehestens().toString());
+                beendet.fristTage());
     }
 
     /** Recht: {@code plattform.betrieb} — beendet → aktiv innerhalb der Frist (§5.6: Auftrag, Begründung). */

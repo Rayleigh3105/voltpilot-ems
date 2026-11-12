@@ -904,21 +904,17 @@ class AdminApiTest {
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("confirmName", "Weggezogen GmbH"), bearer(customer)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-
-        // UEMS AP-20 IP-18: an active tenant is refused (409) BEFORE any account is blocked - nothing moves.
-        ResponseEntity<Map<String, Object>> aktiv = offboard(admin, tenantId, "Weggezogen GmbH");
-        assertThat(aktiv.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(aktiv.getBody()).containsEntry("code", "kundenbereich_nicht_beendet");
         assertThat(queryLong("SELECT count(*) FROM device WHERE tenant_id = '" + tenantId + "'")).isEqualTo(1L);
         assertThat(tryToken("weggezogen-operator", "weg-pw-123")).containsKey("access_token");
-        vertragsendeUndFristAbgelaufen(tenantId);
 
-        // The exact name unlocks the cascade; the report says what was removed.
+        // vp-kunde-sofort-loeschen-mit-daten: an ACTIVE tenant with real data is deleted immediately - no
+        // contract end, no waiting period. The exact name unlocks the cascade; the report says what was removed.
         ResponseEntity<Map<String, Object>> report = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("confirmName", "Weggezogen GmbH"), bearer(admin)),
                 new ParameterizedTypeReference<>() {});
         assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(report.getBody()).containsEntry("anlass", "sofort_mit_daten");
         assertThat(report.getBody()).containsEntry("deletedSites", 1);
         assertThat(report.getBody()).containsEntry("deletedDevices", 1);
         assertThat(((Number) report.getBody().get("deletedTelemetryRows")).longValue()).isEqualTo(1L);
@@ -959,7 +955,6 @@ class AdminApiTest {
         Map<String, Object> tokens = tryToken("offboarding-fehler", "offboarding-pw-123");
         String before = (String) tokens.get("access_token");
         assertThat(before).isNotBlank();
-        vertragsendeUndFristAbgelaufen(tenantId);
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated directory deletion failure"))
                 .when(keycloakAdmin).deleteUser(userId);
         org.mockito.Mockito.doAnswer(invocation -> {
@@ -1014,7 +1009,6 @@ class AdminApiTest {
         String tenantId = (String) createTenant(admin, "Sperrfehler", "CI").get("id");
         String userId = (String) createUser(admin, tenantId, "offboarding-sperre",
                 "sperre@offboarding.example", "offboarding-pw-123").get("id");
-        vertragsendeUndFristAbgelaufen(tenantId);
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated blocking failure"))
                 .when(keycloakAdmin).setEnabled(userId, false);
         assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
@@ -1033,7 +1027,6 @@ class AdminApiTest {
         String userId = (String) createUser(admin, tenantId, "offboarding-datenbank",
                 "datenbank@offboarding.example", "offboarding-pw-123").get("id");
         String customer = token("offboarding-datenbank", "offboarding-pw-123");
-        vertragsendeUndFristAbgelaufen(tenantId);
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated database failure"))
                 .when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
         assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -1047,15 +1040,6 @@ class AdminApiTest {
         org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
         org.mockito.Mockito.doCallRealMethod().when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
         assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
-    }
-
-    /**
-     * UEMS AP-20 IP-18: the delete route takes only a tenant in the state „beendet" whose period has run out. The
-     * transition itself is {@code KundenbereichBeendetApiTest}'s; here the tenant is set 91 days back directly.
-     */
-    private static void vertragsendeUndFristAbgelaufen(String tenantId) {
-        exec("UPDATE tenant SET beendet_am = now() - interval '91 days', beendet_frist_tage = 90,"
-                + " beendet_von = 'Betrieb' WHERE id = '" + tenantId + "'");
     }
 
     private ResponseEntity<Map<String, Object>> offboard(String admin, String tenantId, String name) {

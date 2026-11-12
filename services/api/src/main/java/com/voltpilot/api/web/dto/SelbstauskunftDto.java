@@ -57,12 +57,11 @@ public record SelbstauskunftDto(
      * Der beendete Kundenbereich (UEMS AP-20 IP-16, RF-08) — die Quelle des Kopf-Hinweises im Portal.
      *
      * @param beendetAm der Kalendertag des Endes (Europe/Berlin)
-     * @param loeschungFruehestens Tag des Endes plus Frist, beim Abruf gerechnet
      * @param liest {@code true} nur für den Kundenadministrator; jede andere Person liest nicht mehr
      * @param text der Satz für DIESE Person — gebildet in der API ({@code KundenbereichEnde}), nie im Portal
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Beendet(String beendetAm, String loeschungFruehestens, boolean liest, String text) {}
+    public record Beendet(String beendetAm, boolean liest, String text) {}
 
     /**
      * Ein sichtbarer Standort.

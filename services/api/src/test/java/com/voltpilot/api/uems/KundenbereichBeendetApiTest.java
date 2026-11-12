@@ -361,10 +361,10 @@ class KundenbereichBeendetApiTest {
         JsonNode endeAdmin = JSON.readTree(ruf(get("/api/v1/me"), konto(kundenadmin))
                 .getResponse().getContentAsString(StandardCharsets.UTF_8)).path("kundenbereich").path("beendet");
         assertThat(endeAdmin.path("liest").asBoolean()).isTrue();
-        assertThat(endeAdmin.path("loeschung_fruehestens").asText()).isNotBlank();
+        assertThat(endeAdmin.path("beendet_am").asText()).isNotBlank();
         assertThat(endeAdmin.path("text").asText()).startsWith("Ihr Vertrag ist am ")
-                .contains("nur noch lesen").contains("frühestens am")
-                .endsWith("Bis dahin können Sie den Gesamtabzug laden."); // IP-17, §5.8
+                .contains("nur noch lesen").doesNotContain("frühestens")
+                .endsWith("Sie können den Gesamtabzug laden."); // IP-17, §5.8
         MvcResult meLeserin = ruf(get("/api/v1/me"), konto(leserin));
         assertThat(meLeserin.getResponse().getStatus()).as("die Selbstauskunft erreicht jede Person").isEqualTo(200);
         JsonNode endeLeserin = JSON.readTree(meLeserin.getResponse().getContentAsString(StandardCharsets.UTF_8))

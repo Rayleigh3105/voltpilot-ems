@@ -46,13 +46,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * UEMS AP-20 IP-18 — Vertragsende III, NW-5 für das Löschen nach der Frist (E10 = A, BT4, BT5, RF-08).
+ * UEMS AP-20 IP-18 - Vertragsende III, NW-5 für das sofortige Löschen (E10 = A, BT4; vp-kunde-sofort-loeschen-mit-
+ * daten, Captain 12.11.2026: keine Wartefrist mehr, mit oder ohne Daten, aktiv oder beendet).
  *
  * <ul>
- *   <li><b>RF-08 durchgespielt:</b> aktiv → {@code 409 kundenbereich_nicht_beendet}; beendet →
- *       {@code 409 frist_laeuft} mit „frühestens am"; der Kundenadministrator lädt den Gesamtabzug; einen Tag vor
- *       dem Ablauf noch 409, am Tag des Ablaufs gelöscht. Vor jeder 409 ist nichts bewegt — kein Konto gesperrt
- *       (Keycloak unberührt), keine Zeile weg.</li>
+ *   <li><b>Sofort, mit Daten:</b> ein aktiver Kunde mit echten Aufzeichnungen (Messwerte, ausgelöster Alarm mit
+ *       Verlauf, Messstellen, …) wird SOFORT gelöscht - kein Vertragsende, keine Frist nötig.</li>
  *   <li><b>Löschnachweis ohne Personendaten:</b> die Spalten sind genau die erwarteten, der Inhalt nennt weder Namen
  *       noch Konten, Anzeigenamen oder Auftragstexte; die Zählungen stimmen mit dem Katalog, die Prüfsumme mit dem
  *       letzten abgeschlossenen Abzug.</li>
@@ -60,9 +59,9 @@ import org.testcontainers.utility.DockerImageName;
  *       so viele Zeilen, wie der Nachweis nennt — keine. Auch die fünf append-only-Protokolle ohne Fremdschlüssel
  *       ({@link #PROTOKOLLE}, je eine Zeile mit einem Namen gesät) gehen nach der Mandantenzeile mit (Folge zu IP-18,
  *       V20260925234500).</li>
- *   <li><b>Bis dahin bleiben sie:</b> während der Laufzeit, auch „beendet" nach der Frist, ändert oder löscht sie
- *       keine Rolle — weder der Eigentümer noch die Verwaltungsrolle noch die App-Rolle. Die Rücknahme einer
- *       gescheiterten Selbstregistrierung ({@code TenantRepository.deleteById}) nimmt ihre Zeile ebenso mit.</li>
+ *   <li><b>Bis dahin bleiben sie:</b> während der Laufzeit ändert oder löscht sie keine Rolle — weder der Eigentümer
+ *       noch die Verwaltungsrolle noch die App-Rolle. Die Rücknahme einer gescheiterten Selbstregistrierung
+ *       ({@code TenantRepository.deleteById}) nimmt ihre Zeile ebenso mit.</li>
  *   <li><b>Der Nachweis bleibt:</b> niemand ändert oder löscht ihn, die App-Rolle sieht ihn nicht.</li>
  * </ul>
  */
@@ -186,56 +185,27 @@ class KundenbereichLoeschenApiTest {
                 kundenadmin);
     }
 
-    /** NW-5, RF-08: nicht beendet 409, vor der Frist 409, danach gelöscht — und der Löschnachweis bleibt. */
+    /** NW-5: ein aktiver Kunde mit Daten wird SOFORT gelöscht - und der Löschnachweis bleibt. */
     @Test
-    void rf08VorDerFrist409DanachGeloeschtMitLoeschnachweisOhnePersonendaten() throws Exception {
-        long vorher = zeilen();
-
-        // 1. Aktiv: der Löschweg verweigert, bevor ein Konto gesperrt wird.
-        MvcResult aktiv = loeschen();
-        assertThat(aktiv.getResponse().getStatus()).isEqualTo(409);
-        assertThat(json(aktiv).get("code").asText()).isEqualTo("kundenbereich_nicht_beendet");
-        assertThat(zeilen()).isEqualTo(vorher);
-        verifyNoInteractions(keycloak);
-
-        // 2. Beendet (Startwert 90 Tage): die Frist läuft — 409 mit dem ersten erlaubten Tag.
-        MvcResult beendet = ruf(post("/api/v1/admin/tenants/" + tenant + "/beenden")
-                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(Map.of("auftrag", AUFTRAG,
-                        "begruendung", BEGRUENDUNG, "confirmName", name))), plattform());
-        assertThat(beendet.getResponse().getStatus()).isEqualTo(200);
-        MvcResult frist = loeschen();
-        assertThat(frist.getResponse().getStatus()).isEqualTo(409);
-        JsonNode fristKoerper = json(frist);
-        assertThat(fristKoerper.get("code").asText()).isEqualTo("frist_laeuft");
-        assertThat(fristKoerper.get("loeschung_fruehestens").asText())
-                .isEqualTo(LocalDate.now(BERLIN).plusDays(90).toString());
-        assertThat(fristKoerper.get("message").asText()).contains("frühestens am");
-        assertThat(zeilen()).isEqualTo(vorher + 1); // nur die Protokollzeile kundenbereich_uebergang des Beendens
-        assertThat(root.queryForObject("SELECT count(*) FROM benutzer WHERE tenant_id = ? AND zustand = 'aktiv'",
-                Long.class, tenant)).isEqualTo(2L);
-        verifyNoInteractions(keycloak);
-
-        // 3. Mitnahme: der Kundenadministrator lädt den Gesamtabzug (IP-17).
+    void einAktiverKundeMitDatenWirdSofortGeloeschtMitLoeschnachweisOhnePersonendaten() throws Exception {
+        // 1. Mitnahme (bleibt als Angebot, keine Pflicht): der Kundenadministrator lädt den Gesamtabzug (IP-17).
         MvcResult abzug = ruf(get("/api/v1/unternehmen/abzug"), konto(kundenadmin));
         assertThat(abzug.getResponse().getStatus()).isEqualTo(200);
         String manifest = root.queryForObject("SELECT manifest_sha256 FROM kundenbereich_abzug WHERE tenant_id = ?"
                 + " AND abgeschlossen_am IS NOT NULL", String.class, tenant);
         assertThat(manifest).matches("[0-9a-f]{64}");
+        verifyNoInteractions(keycloak);
 
-        // 4. Zeitraffer: einen Tag vor dem Ablauf noch 409, am ersten erlaubten Tag gelöscht.
-        vertragsendeVor(89);
-        MvcResult knapp = loeschen();
-        assertThat(knapp.getResponse().getStatus()).isEqualTo(409);
-        assertThat(json(knapp).get("loeschung_fruehestens").asText()).isEqualTo(LocalDate.now(BERLIN).plusDays(1).toString());
-        vertragsendeVor(90);
+        // 2. Sofort gelöscht - aktiv, mit Daten, ohne jedes Vertragsende.
         Map<String, Long> katalogVorher = katalog();
         MvcResult geloescht = loeschen();
         assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
+        assertThat(json(geloescht).get("anlass").asText()).isEqualTo("sofort_mit_daten");
         JsonNode nachweis = json(geloescht).get("loeschnachweis");
         assertThat(nachweis.get("kennzeichen").asText()).matches("LN-" + LocalDate.now(BERLIN).getYear() + "-\\d{4}");
         assertThat(nachweis.get("abzugSha256").asText()).isEqualTo(manifest);
 
-        // 5. Der Bereich ist weg; die Zählungen sind die des Katalogs, verblieben ist genau, was noch da ist.
+        // 3. Der Bereich ist weg; die Zählungen sind die des Katalogs, verblieben ist genau, was noch da ist.
         assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isZero();
         Map<String, Long> zaehlungen = map(nachweis.get("zaehlungen"));
         Map<String, Long> verblieben = map(nachweis.get("verblieben"));
@@ -252,7 +222,8 @@ class KundenbereichLoeschenApiTest {
         System.out.printf("NW-5 IP-18: %s gelöscht, %d Tabellen gezählt, verblieben %s%n",
                 nachweis.get("kennzeichen").asText(), zaehlungen.size(), verblieben);
 
-        // 6. Der Löschnachweis: genau diese Spalten, keine Personendaten, die Kennung statt des Namens.
+        // 4. Der Löschnachweis: genau diese Spalten, keine Personendaten, die Kennung statt des Namens -
+        //    kein Vertragsende, also keine Fristen-Fakten (vp-kunde-sofort-loeschen-mit-daten).
         assertThat(root.queryForList("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public'"
                 + " AND table_name = 'mandant_loeschnachweis' ORDER BY ordinal_position", String.class))
                 .isEqualTo(SPALTEN);
@@ -260,7 +231,10 @@ class KundenbereichLoeschenApiTest {
                 tenant);
         assertThat(zeile.get("geloescht_von")).isEqualTo(BETREIBER);
         assertThat(zeile.get("abzug_sha256")).isEqualTo(manifest);
-        assertThat(zeile.get("frist_tage")).isEqualTo(90);
+        assertThat(zeile.get("anlass")).isEqualTo("sofort_mit_daten");
+        assertThat(zeile.get("beendet_am")).isNull();
+        assertThat(zeile.get("frist_tage")).isNull();
+        assertThat(zeile.get("loeschung_fruehestens")).isNull();
         String inhalt = root.queryForObject("SELECT row_to_json(n)::text FROM mandant_loeschnachweis n"
                 + " WHERE kundenbereich = ?", String.class, tenant);
         for (String person : List.of(name, "Ahrenberg", "Jonas Wendlinger", "Nora Berger", kundenadmin, leserin,
@@ -268,14 +242,13 @@ class KundenbereichLoeschenApiTest {
             assertThat(inhalt).as("Personendaten im Löschnachweis").doesNotContain(person);
         }
 
-        // 7. Kein zweites Löschen: der Bereich ist weg.
+        // 5. Kein zweites Löschen: der Bereich ist weg.
         assertThat(loeschen().getResponse().getStatus()).isEqualTo(404);
     }
 
     /** Der Nachweis bleibt, wie er geschrieben wurde: nie geändert, nie gelöscht, für die App-Rolle unsichtbar. */
     @Test
     void derLoeschnachweisBleibtUndNurDerBetriebLiestIhn() throws Exception {
-        vertragsendeVor(120);
         assertThat(loeschen().getResponse().getStatus()).isEqualTo(200);
         assertThatThrownBy(() -> root.update("UPDATE mandant_loeschnachweis SET frist_tage = 30 WHERE kundenbereich = ?",
                 tenant)).hasStackTraceContaining("bleibt");
@@ -346,7 +319,6 @@ class KundenbereichLoeschenApiTest {
      */
     @Test
     void derAlarmVerlaufBleibtAppendOnlyUndGehtNurImLoeschzug() throws Exception {
-        vertragsendeVor(120);
         assertThat(root.queryForObject("SELECT count(*) FROM alarm_verlauf WHERE tenant_id = ?", Long.class, tenant))
                 .isEqualTo(2L);
         JdbcTemplate admin = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), "voltpilot_admin",
@@ -379,19 +351,21 @@ class KundenbereichLoeschenApiTest {
                 .isZero();
     }
 
-    /** Eine Wiederaufnahme vor dem Löschen: der Bereich ist wieder aktiv und der Löschweg verweigert wieder. */
+    /** Eine Wiederaufnahme vor dem Löschen: der Bereich ist wieder aktiv - der Löschweg löscht trotzdem sofort. */
     @Test
-    void nachDerWiederaufnahmeVerweigertDerLoeschwegWieder() throws Exception {
+    void nachDerWiederaufnahmeLoeschtDerWegWeiterSofort() throws Exception {
         vertragsendeVor(120);
         MvcResult zurueck = ruf(post("/api/v1/admin/tenants/" + tenant + "/wiederaufnehmen")
                 .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(Map.of("auftrag", AUFTRAG,
                         "begruendung", BEGRUENDUNG))), plattform());
         assertThat(zurueck.getResponse().getStatus()).isEqualTo(200);
         MvcResult r = loeschen();
-        assertThat(r.getResponse().getStatus()).isEqualTo(409);
-        assertThat(json(r).get("code").asText()).isEqualTo("kundenbereich_nicht_beendet");
-        assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isOne();
-        verifyNoInteractions(keycloak);
+        assertThat(r.getResponse().getStatus()).as(text(r)).isEqualTo(200);
+        assertThat(json(r).get("anlass").asText()).isEqualTo("sofort_mit_daten");
+        assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isZero();
+        // Wieder aktiv zum Löschzeitpunkt: der Nachweis trägt kein Vertragsende mehr.
+        assertThat(root.queryForObject("SELECT beendet_am FROM mandant_loeschnachweis WHERE kundenbereich = ?",
+                java.sql.Timestamp.class, tenant)).isNull();
     }
 
     // ============================================================ Sofort löschen (vp-kunde-sofort-loeschen)
@@ -435,7 +409,6 @@ class KundenbereichLoeschenApiTest {
         MvcResult befund = ruf(get("/api/v1/admin/tenants/" + kunde.id() + "/loeschbarkeit"), plattform());
         assertThat(befund.getResponse().getStatus()).isEqualTo(200);
         JsonNode b = json(befund);
-        assertThat(b.get("sofortLoeschbar").asBoolean()).isTrue();
         assertThat(b.get("daten")).isEmpty();
         assertThat(b.get("beendetAm").isNull()).isTrue();
         assertThat(b.get("folgen").get("anlagen").asInt()).isEqualTo(1);
@@ -478,40 +451,32 @@ class KundenbereichLoeschenApiTest {
                 .hasStackTraceContaining("permission denied");
     }
 
-    /** Ein Kunde MIT Daten bleibt bei der Frist; die 409 und die Löschbarkeits-Route nennen die Datenarten. */
+    /**
+     * Ein Kunde MIT Daten, dessen Vertrag erst gestern beendet wurde (weit innerhalb der früheren 90-Tage-Frist),
+     * wird trotzdem sofort gelöscht (vp-kunde-sofort-loeschen-mit-daten) - die Löschbarkeits-Route nennt nur noch
+     * die Datenarten, nie mehr eine Frist.
+     */
     @Test
-    void einKundeMitDatenBleibtBeiDerFristMitDatenarten() throws Exception {
+    void einBeendeterKundeMitDatenInnerhalbDerFruehrenFristWirdSofortGeloescht() throws Exception {
+        vertragsendeVor(1);
         MvcResult befund = ruf(get("/api/v1/admin/tenants/" + tenant + "/loeschbarkeit"), plattform());
         assertThat(befund.getResponse().getStatus()).isEqualTo(200);
         JsonNode b = json(befund);
-        assertThat(b.get("sofortLoeschbar").asBoolean()).isFalse();
         List<String> daten = new java.util.ArrayList<>();
         b.get("daten").forEach(d -> daten.add(d.asText()));
         assertThat(daten).contains("messwerte", "messstellen");
+        assertThat(b.get("beendetAm").asText()).isEqualTo(LocalDate.now(BERLIN).minusDays(1).toString());
 
-        MvcResult aktiv = loeschen();
-        assertThat(aktiv.getResponse().getStatus()).isEqualTo(409);
-        assertThat(json(aktiv).get("code").asText()).isEqualTo("kundenbereich_nicht_beendet");
-        assertThat(json(aktiv).get("daten").get(0).asText()).isEqualTo("messwerte");
-
-        vertragsendeVor(1);
-        MvcResult frist = loeschen();
-        assertThat(frist.getResponse().getStatus()).isEqualTo(409);
-        assertThat(json(frist).get("code").asText()).isEqualTo("frist_laeuft");
-        assertThat(json(frist).get("daten")).isNotEmpty();
-        assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isOne();
-        // Die Liste für die Kundenliste kennt denselben Befund.
-        MvcResult alle = ruf(get("/api/v1/admin/tenants/loeschbarkeit"), plattform());
-        assertThat(alle.getResponse().getStatus()).isEqualTo(200);
-        JsonNode zeile = null;
-        for (JsonNode k : json(alle)) {
-            if (k.get("tenantId").asText().equals(tenant.toString())) {
-                zeile = k;
-            }
-        }
-        assertThat(zeile).isNotNull();
-        assertThat(zeile.get("sofortLoeschbar").asBoolean()).isFalse();
-        assertThat(zeile.get("beendetAm").asText()).isEqualTo(LocalDate.now(BERLIN).minusDays(1).toString());
+        MvcResult geloescht = loeschen();
+        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
+        assertThat(json(geloescht).get("anlass").asText()).isEqualTo("sofort_mit_daten");
+        assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isZero();
+        Map<String, Object> zeile = root.queryForMap("SELECT anlass, beendet_am, frist_tage, loeschung_fruehestens"
+                + " FROM mandant_loeschnachweis WHERE kundenbereich = ?", tenant);
+        assertThat(zeile.get("anlass")).isEqualTo("sofort_mit_daten");
+        assertThat(zeile.get("beendet_am")).isNotNull();
+        assertThat(zeile.get("frist_tage")).isNull();
+        assertThat(zeile.get("loeschung_fruehestens")).isNull();
     }
 
     /**
@@ -586,10 +551,6 @@ class KundenbereichLoeschenApiTest {
             }
         }
         return je;
-    }
-
-    private long zeilen() {
-        return katalog().values().stream().mapToLong(Long::longValue).sum();
     }
 
     private MvcResult loeschen() throws Exception {

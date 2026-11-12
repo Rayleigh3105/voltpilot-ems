@@ -14,12 +14,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Der Datenbestand eines Kundenbereichs für das sofortige Löschen (vp-kunde-sofort-loeschen) - die
- * Abfrage aus {@link KundeDatenBestand}, über die Admin-Verbindung ({@code voltpilot_admin},
- * BYPASSRLS) wie {@code KundenbereichEndeRepository}: der Befund gilt dem Betreiber über jeden
- * Mandanten, nie einer Kundenrolle. {@link #datenarten(Connection, UUID)} läuft zusätzlich auf der
- * VERBINDUNG DES LÖSCHZUGS, damit die Wache unter der {@code FOR UPDATE}-Sperre denselben Stand
- * sieht, den sie gleich löscht.
+ * Der Datenbestand eines Kundenbereichs für das Löschen (vp-kunde-sofort-loeschen-mit-daten: jeder
+ * Kundenbereich ist sofort löschbar, dieser Befund trägt nur noch den Anlass und die Dialog-Fakten,
+ * nie eine Sperre) - die Abfrage aus {@link KundeDatenBestand}, über die Admin-Verbindung
+ * ({@code voltpilot_admin}, BYPASSRLS) wie {@code KundenbereichEndeRepository}: der Befund gilt dem
+ * Betreiber über jeden Mandanten, nie einer Kundenrolle. {@link #datenarten(Connection, UUID)} läuft
+ * zusätzlich auf der VERBINDUNG DES LÖSCHZUGS, damit die Wache unter der {@code FOR UPDATE}-Sperre
+ * denselben Stand sieht, den sie gleich löscht.
  */
 @Repository
 public class KundeDatenBestandRepository {
@@ -41,12 +42,6 @@ public class KundeDatenBestandRepository {
     public Optional<Zeile> fuerKunde(UUID kundenbereich) {
         return jdbc.query(KundeDatenBestand.abfrage() + " WHERE t.id = ?",
                 KundeDatenBestandRepository::zeile, kundenbereich).stream().findFirst();
-    }
-
-    /** Der Bestand ALLER Kunden - für die Kundenliste (ein Abruf statt einer je Zeile). */
-    public List<Zeile> fuerAlle() {
-        return jdbc.query(KundeDatenBestand.abfrage() + " ORDER BY t.name, t.id",
-                KundeDatenBestandRepository::zeile);
     }
 
     /** Was ein Löschen umfasst - die Folgen-Fakten für den Bestätigungs-Dialog des Portals. */

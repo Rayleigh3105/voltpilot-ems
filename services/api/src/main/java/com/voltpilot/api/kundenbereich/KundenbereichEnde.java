@@ -10,9 +10,10 @@ import java.util.UUID;
 
 /**
  * Ein beendeter Kundenbereich (UEMS AP-20 IP-16, E10 = A, BT4, RF-08): seit {@code beendetAm} ist jeder Schreibweg
- * {@code 409 kundenbereich_beendet}, nur der Kundenadministrator liest noch. Gelöscht wird frühestens nach der Frist
- * ({@link #loeschungFruehestens}) — beim Abruf gerechnet, nie gespeichert. Ein aktiver Kundenbereich hat keinen
- * {@code KundenbereichEnde}; „aktiv" ist {@code tenant.beendet_am IS NULL}.
+ * {@code 409 kundenbereich_beendet}, nur der Kundenadministrator liest noch. Ein aktiver Kundenbereich hat keinen
+ * {@code KundenbereichEnde}; „aktiv" ist {@code tenant.beendet_am IS NULL}. Das Löschen selbst wartet seit
+ * vp-kunde-sofort-loeschen-mit-daten (Captain 12.11.2026) auf keine Frist mehr - {@code fristTage} bleibt als
+ * dokumentierter Vertragswert am Übergang „beenden" erhalten, ohne daraus ein Löschdatum zu versprechen.
  *
  * <p>Die Sätze stehen HIER und gehen über {@code GET /api/v1/me} ({@code kundenbereich.beendet}) und den Körper
  * der 409 ans Portal — nie dort nachgebaut. Den Gesamtabzug nennt nur der Satz an den Kundenadministrator
@@ -23,7 +24,7 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
     public static final String CODE = "kundenbereich_beendet";
     /** Startwert der Frist nach Vertragsende (§4.2, BT4) — die geltende steht im Vertrag mit dem Kunden. */
     public static final int FRIST_STARTWERT = 90;
-    /** Die Zone der Vertragsdaten: „beendet am" und „frühestens am" sind Kalendertage in Deutschland. */
+    /** Die Zone der Vertragsdaten: „beendet am" ist ein Kalendertag in Deutschland. */
     public static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
 
     private static final DateTimeFormatter DATUM = DateTimeFormatter.ofPattern("dd.MM.yyyy");
@@ -32,20 +33,9 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
         return beendetAm.atZone(ZONE).toLocalDate();
     }
 
-    /** Der erste Tag, an dem der Betreiber löschen darf: Tag des Endes plus Frist (RF-08: 30.06.2029 + 90 = 28.09.2029). */
-    public LocalDate loeschungFruehestens() {
-        return beendetAmTag().plusDays(fristTage);
-    }
-
-    /** Ob der Betreiber an diesem Kalendertag löschen darf (IP-18): ab {@link #loeschungFruehestens}, nie davor. */
-    public boolean fristAbgelaufen(LocalDate heute) {
-        return !heute.isBefore(loeschungFruehestens());
-    }
-
     /** Der Kopf-Hinweis für jede Person des Kundenbereichs. */
     public String text() {
-        return "Ihr Vertrag ist am " + beendetAmTag().format(DATUM) + " beendet. Ihre Daten können Sie nur noch lesen; "
-                + "gelöscht werden sie frühestens am " + loeschungFruehestens().format(DATUM) + ".";
+        return "Ihr Vertrag ist am " + beendetAmTag().format(DATUM) + " beendet. Ihre Daten können Sie nur noch lesen.";
     }
 
     /**
@@ -53,7 +43,7 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
      * (IP-17), den nur er laden kann.
      */
     public String textKundenadministrator() {
-        return text() + " Bis dahin können Sie den Gesamtabzug laden.";
+        return text() + " Sie können den Gesamtabzug laden.";
     }
 
     /**
@@ -73,7 +63,7 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
     /** Die Antwort an jede Person außer dem Kundenadministrator: sie liest nicht mehr (E10 „alles gesperrt"). */
     public String textNurKundenadministrator() {
         return "Ihr Vertrag ist am " + beendetAmTag().format(DATUM) + " beendet. Nur Ihr Kundenadministrator kann die "
-                + "Daten bis zur Löschung noch lesen.";
+                + "Daten noch lesen.";
     }
 
     /** Der Körper der 409 — Form der UEMS-Ablehnungen ({@code code}, {@code message}, Fakten). */
@@ -82,7 +72,6 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
         body.put("code", CODE);
         body.put("message", message);
         body.put("beendet_am", beendetAm.toString());
-        body.put("loeschung_fruehestens", loeschungFruehestens().toString());
         return body;
     }
 }
