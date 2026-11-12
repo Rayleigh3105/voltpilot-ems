@@ -181,6 +181,22 @@ public class KanalbindungLauf {
             kennzeichen.stream().distinct().toList());
     }
 
+    /**
+     * Gemeldete Datenlücken ({@code data_gap}), die den Abschnitt {@code (a, z)} der Bindung berühren — direkt an
+     * der Komponente gemeldete und solche der Box, die den Kanal im Abschnitt geliefert hat. {@code EXISTS} statt
+     * {@code IN (SELECT DISTINCT …)}: TimescaleDB 2.17 plant das DISTINCT auf der Hypertable als SkipScan und
+     * scheitert unter RLS daran („unsupported subplan type for SkipScan: Result“, XX000) —
+     * {@code KanalbindungDatenlueckenSkipScanTest} hält die Lage fest.
+     */
+    static List<BezugsdatenRegeln.Luecke> datenLuecken(JdbcTemplate j,Bindung b,Instant a,Instant z,Instant eingang) {
+        return j.query("SELECT greatest(von,?),least(bis,?),coalesce(nutzlast->>'quelle','Kanal ohne Werte') "
+            + "FROM (SELECT DISTINCT ON (ereignis_id) * FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' AND eingang<=? ORDER BY ereignis_id,eingang DESC) e WHERE von<? AND (bis IS NULL OR bis>?) "
+            + "AND ((entity_id=? AND (messkanal IS NULL OR messkanal=?)) OR (entity_id IS NULL AND EXISTS "
+            + "(SELECT 1 FROM device_measurement_sample w WHERE w.tenant_id=? AND w.entity_id=? AND w.point_key=? AND w.device_id=e.device_id AND w.time>=? AND w.time<=?)))",
+            (r,n)->new BezugsdatenRegeln.Luecke(r.getTimestamp(1).toInstant(),r.getTimestamp(2).toInstant(),r.getString(3)),
+            ts(a),ts(z),b.tenant(),ts(eingang),ts(z),ts(a),b.entity(),b.kanal(),b.tenant(),b.entity(),b.kanal(),ts(a),ts(z));
+    }
+
     private Ergebnis rechne(JdbcTemplate j,Connection con,Bindung b,Instant von,Instant bis,Instant eingang) throws Exception {
         Instant a=von.isBefore(b.von()) ? b.von() : von;
         Instant z=b.bis()!=null && b.bis().isBefore(bis) ? b.bis() : bis;
@@ -198,12 +214,7 @@ public class KanalbindungLauf {
         List<BezugsdatenRegeln.Luecke> luecken=new ArrayList<>();
         if (a.isAfter(von)) luecken.add(new BezugsdatenRegeln.Luecke(von,a,"vor Kanalbindung"));
         if (z.isBefore(bis)) luecken.add(new BezugsdatenRegeln.Luecke(z,bis,"nach Kanalbindung"));
-        luecken.addAll(j.query("SELECT greatest(von,?),least(bis,?),coalesce(nutzlast->>'quelle','Kanal ohne Werte') "
-            + "FROM (SELECT DISTINCT ON (ereignis_id) * FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' AND eingang<=? ORDER BY ereignis_id,eingang DESC) e WHERE von<? AND (bis IS NULL OR bis>?) "
-            + "AND ((entity_id=? AND (messkanal IS NULL OR messkanal=?)) OR (entity_id IS NULL AND device_id IN "
-            + "(SELECT DISTINCT device_id FROM device_measurement_sample WHERE tenant_id=? AND entity_id=? AND point_key=? AND time>=? AND time<=?)))",
-            (r,n)->new BezugsdatenRegeln.Luecke(r.getTimestamp(1).toInstant(),r.getTimestamp(2).toInstant(),r.getString(3)),
-            ts(a),ts(z),b.tenant(),ts(eingang),ts(z),ts(a),b.entity(),b.kanal(),b.tenant(),b.entity(),b.kanal(),ts(a),ts(z)));
+        luecken.addAll(datenLuecken(j,b,a,z,eingang));
         if (b.schwelle()!=null) {
             // Eine beendete/ersetzte Messstellenquelle verlängert die eingefrorene Quelle nicht.
             var abschnitte=j.query("SELECT greatest(gueltig_ab,?),least(gueltig_bis,?) FROM messstelle_quelle "
