@@ -1482,18 +1482,31 @@ describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () 
     };
   }
 
-  it('nennt die Fähigkeit im Kurzblick und öffnet den Dialog — nur am Ladepunkt', async () => {
+  it('öffnet die Fähigkeit aus dem Zeilenmenü der Wallbox — nur am Ladepunkt', async () => {
     stub();
     vi.mocked(api.siteEntities).mockResolvedValue({ ...entities, entities: [...entities.entities, WALLBOX] } as never);
     saeule();
     vi.spyOn(api, 'ladepunkte').mockResolvedValue(ladepunkt({}) as never);
     rendere();
-    const dialog = await kurzblick(zeileMit('Wallbox Garage'));
-    await within(dialog).findByText(/Laden und zurückspeisen · ins Haus \(V2H\) · ins Netz \(V2G\) · ab 15\.11\.2026/);
-    // Der Knopf (Recht geraet.einrichten) öffnet den Dialog mit der Fähigkeit dieses Ladepunkts.
-    fireEvent.click(within(dialog).getByRole('button', { name: /Laden und zurückspeisen/ }));
+    // Die Wallbox hat seit main eine eigene Geräteseite: der Eintrag steht im „…“-Zeilenmenü (Recht
+    // geraet.einrichten) und öffnet den Dialog mit der Fähigkeit dieses Ladepunkts.
+    fireEvent.click(within(await zeileMit('Wallbox Garage')).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Laden und zurückspeisen/ }));
     expect(await screen.findByText('Was kann dieser Ladepunkt?')).toBeInTheDocument();
     expect(screen.getByText(/prüft die Wallbox beim Anstecken/)).toBeInTheDocument();
+  });
+
+  it('nennt die Fähigkeit im technischen Kurzblick — nur am Ladepunkt', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    stub();
+    vi.mocked(api.siteEntities).mockResolvedValue({ ...entities, entities: [...entities.entities, WALLBOX] } as never);
+    saeule();
+    vi.spyOn(api, 'ladepunkte').mockResolvedValue(ladepunkt({}) as never);
+    rendere();
+    const dialog = await technischerKurzblick(zeileMit('Wallbox Garage'));
+    await within(dialog).findByText(/Laden und zurückspeisen · ins Haus \(V2H\) · ins Netz \(V2G\) · ab 15\.11\.2026/);
+    fireEvent.click(within(dialog).getByRole('button', { name: /Laden und zurückspeisen/ }));
+    expect(await screen.findByText('Was kann dieser Ladepunkt?')).toBeInTheDocument();
   });
 
   it('sagt „Nur laden“ für einen Ladepunkt ohne Rückspeisung — wie heute', async () => {
@@ -1503,8 +1516,10 @@ describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () 
     vi.spyOn(api, 'ladepunkte').mockResolvedValue(
       ladepunkt({ erfasst: false, nutzbarkeit: 'unidirektional', v2h: false, v2g: false, rueckspeiseleistung_kw: null, gueltig_ab: null }) as never,
     );
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     rendere();
-    const dialog = await kurzblick(zeileMit('Wallbox Garage'));
+    // Die Wallbox hat seit main eine eigene Geräteseite: ihr Kurzblick steht unter „Technisch …“.
+    const dialog = await technischerKurzblick(zeileMit('Wallbox Garage'));
     expect(await within(dialog).findByText('Nur laden')).toBeInTheDocument();
   });
 });

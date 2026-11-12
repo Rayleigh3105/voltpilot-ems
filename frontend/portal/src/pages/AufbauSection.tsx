@@ -800,6 +800,13 @@ export function AufbauSection({
           onClick: () => setRemove(c),
         });
       }
+      // MiSpeL MP-41a (BK-41): was der Ladepunkt kann, trägt der Installateur im Aufbau ein. Seit die Wallbox eine
+      // eigene Geräteseite hat, erreicht der Kurzblick nur die technische Sicht - der Eintrag zieht wie die übrigen
+      // Komponenten-Aktionen ins „…“-Zeilenmenü.
+      const ladepunkt = c.aspect === 'main' ? ladepunkte?.find((l) => l.komponente === c.entityId) ?? null : null;
+      if (ladepunkt) {
+        items.push({ label: `Laden und zurückspeisen${suffix}`, icon: 'zap', recht: 'geraet.einrichten', onClick: () => setFaehigkeitFuer(ladepunkt) });
+      }
     }
     return items;
   };
