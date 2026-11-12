@@ -293,7 +293,10 @@ function GuidedAdoptDrawer({
         label: label.trim() || undefined,
         maxPowerKw: leistung,
         capacityKwp: bekannt ? undefined : kwp,
-        registryUnitId: (values.mastr ?? '').trim() || bekannt?.mastrNummer || undefined,
+        // S0: die Anlagen-Nummer gehört der Anlage, nicht jedem übernommenen
+        // Erzeuger - sonst trägt bei mehreren Einheiten der Wechselrichter von
+        // 2024 die Nummer von 2014 (vp-mastr-mehrere-einheiten-konzept, S0).
+        registryUnitId: (values.mastr ?? '').trim() || undefined,
       });
       onAdopted(label.trim() || plan.typeLabel);
     } catch (e) {

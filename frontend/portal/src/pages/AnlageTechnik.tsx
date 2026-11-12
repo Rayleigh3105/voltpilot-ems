@@ -18,7 +18,7 @@ import {
 } from '../api';
 import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, premiumInputText, tarifArtLabel } from '../fleet';
 import { buildSitePayload } from '../anlage';
-import { fmtCoords, fmtNum, fmtRelative, zoneLabel } from '../format';
+import { compassLabel, fmtCoords, fmtNum, fmtRelative, zoneLabel } from '../format';
 import { settingsPageSettings, type ModeSettingDef } from '../modeSettings';
 import { parseSettingsAnchor, SETTING_HINT, settingsGroupFor, type TechnikAbschnitt } from '../settingsNav';
 import {
@@ -1465,7 +1465,7 @@ function RegistrierungInhalt({
     <div className="vp-einst-blatt">
       <p className="vp-note">
         Prognose und Optimierung rechnen mit den amtlich registrierten Werten
-        {lastFetched ? ` · zuletzt abgerufen ${fmtRelative(lastFetched)}` : ''}.
+        {lastFetched ? ` · zuletzt abgerufen ${fmtRelative(lastFetched)}` : '.'}
       </p>
       <dl className="vp-kv">
         {pv && (
@@ -1480,8 +1480,10 @@ function RegistrierungInhalt({
             <div className="vp-kv-row">
               <dt className="vp-kv-k">Ausrichtung / Neigung</dt>
               <dd className="vp-kv-v">
-                {pv.azimuthDeg != null ? fmtNum(pv.azimuthDeg, '°', 0) : 'Standard (Süd)'}
-                {' / '}
+                {pv.azimuthDeg != null
+                  ? compassLabel(pv.azimuthDeg) ?? fmtNum(pv.azimuthDeg, '°', 0)
+                  : 'Standard (Süd)'}
+                {' · '}
                 {pv.tiltDeg != null ? fmtNum(pv.tiltDeg, '°', 0) : 'Standard (30°)'}
               </dd>
             </div>

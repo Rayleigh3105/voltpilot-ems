@@ -59,7 +59,7 @@ public final class EinspeiseverguetungStand {
                 inbetrieb,
                 g.leistungKwp(),
                 inbetrieb == null ? null : LocalDate.of(inbetrieb.getYear() + 20, 12, 31),
-                SlotEconomics.solarspitzengesetzGilt(inbetrieb, g.inbetriebnahmeAbSolarspitzengesetz()),
+                SlotEconomics.solarspitzengesetzGilt(inbetrieb, g.inbetriebnahmeAbSolarspitzengesetz(), kwp),
                 direktvermarktung ? g.anzulegenderWertCtKwh() : null);
     }
 

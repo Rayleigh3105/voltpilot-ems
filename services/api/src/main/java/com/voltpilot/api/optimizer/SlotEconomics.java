@@ -501,7 +501,8 @@ public final class SlotEconomics {
             }
             double rate = angegeben != null ? angegeben
                     : eegRates.festeVerguetungCtPerKwh(commissioned, site.pvCapacityKwp());
-            if (solarspitzengesetzGilt(commissioned, site.inbetriebnahmeAbSolarspitzengesetz())) {
+            if (solarspitzengesetzGilt(commissioned, site.inbetriebnahmeAbSolarspitzengesetz(),
+                    site.pvCapacityKwp())) {
                 if (spotEurMwh == null) {
                     return null; // §51a needs the spot sign - unknown = unknowable
                 }
@@ -517,9 +518,17 @@ public final class SlotEconomics {
      * slots) applies: by the commissioning date when it is known - always,
      * even when an older answer is still stored - else by the customer's
      * answer "in Betrieb ab dem 25.02.2025" (null = not given = no §51a).
-     * Mirrors pricing.py {@code _solarspitzengesetz_gilt}.
+     * §51 Abs. 2 Nr. 1 EEG carves out plants under
+     * {@link EegRates#SOLARSPITZENGESETZ_KLEINANLAGE_KWP} until their smart
+     * meter year, which VoltPilot does not track yet (N1): an unknown or
+     * sub-threshold capacity never suspends. Mirrors pricing.py
+     * {@code _solarspitzengesetz_gilt}.
      */
-    public static boolean solarspitzengesetzGilt(LocalDate commissionedOn, Boolean abSolarspitzengesetz) {
+    public static boolean solarspitzengesetzGilt(
+            LocalDate commissionedOn, Boolean abSolarspitzengesetz, Double pvCapacityKwp) {
+        if (pvCapacityKwp == null || pvCapacityKwp < EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP) {
+            return false;
+        }
         if (commissionedOn != null) {
             return !commissionedOn.isBefore(EegRates.SOLARSPITZENGESETZ_CUTOFF);
         }
@@ -585,10 +594,15 @@ public final class SlotEconomics {
         // unknown and the CASE yields NULL - the Java twin's "unknowable".
         // Whether §51a applies at all is solarspitzengesetzGilt in SQL: the
         // commissioning date when known, else the customer's answer (a NULL
-        // date comparison is unknown, so only an explicit TRUE answer counts).
-        String s51aAware = "(CASE WHEN (pv.commissioned_on >= DATE '"
-                + EegRates.SOLARSPITZENGESETZ_CUTOFF + "'"
-                + " OR (pv.commissioned_on IS NULL AND s.inbetriebnahme_ab_solarspitzengesetz))"
+        // date comparison is unknown, so only an explicit TRUE answer counts)
+        // - AND ONLY for plants at/above SOLARSPITZENGESETZ_KLEINANLAGE_KWP
+        // (§51 Abs. 2 Nr. 1 EEG's smart-meter-year carve-out for smaller
+        // plants, not yet tracked - N1); an unknown pv_capacity_kwp makes the
+        // AND unknown too, so it never suspends, same as the Java twin.
+        String s51aAware = "(CASE WHEN (pv.pv_capacity_kwp >= "
+                + EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP
+                + " AND (pv.commissioned_on >= DATE '" + EegRates.SOLARSPITZENGESETZ_CUTOFF + "'"
+                + " OR (pv.commissioned_on IS NULL AND s.inbetriebnahme_ab_solarspitzengesetz)))"
                 + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN " + rate
                 + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
                 + " ELSE " + rate + " END)";

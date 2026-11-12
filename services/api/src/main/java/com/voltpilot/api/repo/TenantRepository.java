@@ -464,6 +464,26 @@ public class TenantRepository {
                     st.setObject(1, tenantId);
                     st.executeUpdate();
                 }
+                // Alerting m1: der Alarm-Verlauf ist append-only für JEDE Rolle (V20261015130000) und hält
+                // Mandant und Alarm per Fremdschlüssel - die EINE Ausnahme ist die Löschzug-Funktion
+                // (V20261112080000, Muster kennzahl_wert; Befund vp-kunde-loeschen-500: ein direktes DELETE
+                // scheiterte am Trigger, sobald je ein Alarm ausgelöst worden war). Sie geht vor dem Alarm.
+                // Ältere Migrationsstände ohne die Funktion gehen den alten Weg (dort hält der alte Trigger
+                // nur Zeilen, die kein Fixture sät).
+                try (var probe = con.prepareStatement(
+                        "SELECT to_regprocedure('uems_alarmverlauf_des_kundenbereichs_entfernen(uuid)') IS NOT NULL");
+                        var vorhanden = probe.executeQuery()) {
+                    vorhanden.next();
+                    if (vorhanden.getBoolean(1)) {
+                        try (var ps = con.prepareStatement(
+                                "SELECT uems_alarmverlauf_des_kundenbereichs_entfernen(?)")) {
+                            ps.setObject(1, tenantId);
+                            ps.executeQuery().close();
+                        }
+                    } else {
+                        deleteByTenant(con, "alarm_verlauf", tenantId);
+                    }
+                }
                 for (String table : new String[] {
                         // The Gemeinsame Steuerung (V20260921140000): a member holds its
                         // Messpunkt (data_source, RESTRICT) and goes before it; the Verbund
@@ -485,10 +505,10 @@ public class TenantRepository {
                         // Alerting m1 (V20261015130000 ff., Befund vp-kunde-sofort-loeschen): Überwachungen
                         // werden „ab Werk" je Anlage GESÄT - jeder Kundenbereich mit Anlage trägt welche,
                         // und alle halten den Mandanten (RESTRICT), Alarm und Überwachung auch den Standort
-                        // (NO ACTION). Verläufe vor dem Alarm, der Alarm vor seiner Überwachung; Instanz und
-                        // externer Empfänger kaskadieren an der Überwachung. Zustellwege und persönliche
-                        // Einstellungen halten nur den Mandanten.
-                        "alarm_verlauf", "benachrichtigung", "alarm", "alarm_kennzeichen_lauf",
+                        // (NO ACTION). Der Alarm-Verlauf ging oben über seine Löschzug-Funktion, der Alarm
+                        // vor seiner Überwachung; Instanz und externer Empfänger kaskadieren an der
+                        // Überwachung. Zustellwege und persönliche Einstellungen halten nur den Mandanten.
+                        "benachrichtigung", "alarm", "alarm_kennzeichen_lauf",
                         "ueberwachung", "telegram_ziel", "webhook_ziel", "zustellweg", "push_abo",
                         "stummschaltung", "ruhezeit_person", "taeglicher_rueckblick",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",

@@ -92,6 +92,29 @@ class MastrSoapClientTest {
     }
 
     @Test
+    void parsesWebdienstEnumNamesNotCatalogIds() throws Exception {
+        // The real webservice types Hauptausrichtung/-Neigungswinkel as string
+        // enums (mastrbasetypes.xsd), not the JSON backend's numeric catalog
+        // ids; a plain intOrNull() parse would silently drop them (N2).
+        String xml = "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>"
+                + "<GetEinheitSolarResponse xmlns=\"https://www.marktstammdatenregister.de/Services/Public/1_2/Modelle/Anlage\">"
+                + "<GetEinheitSolarAntwort xmlns:a=\"https://www.marktstammdatenregister.de/Services/Public/1_2/Modelle\">"
+                + "<a:Ergebniscode>OK</a:Ergebniscode>"
+                + "<a:EinheitMastrNummer>SEE900000000001</a:EinheitMastrNummer>"
+                + "<a:Hauptausrichtung>OstWest</a:Hauptausrichtung>"
+                + "<a:HauptausrichtungNeigungswinkel>Unter5</a:HauptausrichtungNeigungswinkel>"
+                + "</GetEinheitSolarAntwort></GetEinheitSolarResponse></s:Body></s:Envelope>";
+        RecordingHttp http = new RecordingHttp(List.of(new MastrHttp.Response(200, xml)));
+        MastrUnit unit = client(http).fetchUnit("SEE900000000001");
+
+        assertThat(unit.azimuthCatalogId()).isEqualTo(704);
+        assertThat(MastrCatalog.azimuthLabel(unit.azimuthCatalogId())).isEqualTo("Ost-West");
+        assertThat(unit.tiltCatalogId()).isNotNull();
+        assertThat(MastrCatalog.tiltLabel(unit.tiltCatalogId())).isEqualTo("unter 5 Grad");
+        assertThat(MastrCatalog.tiltDegrees(unit.tiltCatalogId())).isEqualByComparingTo(new BigDecimal("2.5"));
+    }
+
+    @Test
     void storageSeeNumberFallsThroughToTheStorageMethod() throws Exception {
         // A battery's SEE gets KeineDatenVorhanden from GetEinheitSolar first.
         RecordingHttp http = new RecordingHttp(List.of(

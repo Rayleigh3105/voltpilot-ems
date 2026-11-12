@@ -222,8 +222,13 @@ public class AdminController {
                     ex.getMessage());
             throw ex;
         } catch (RuntimeException ex) {
-            log.error("Offboarding tenant {}: database removal failed; accounts remain disabled; retry offboarding", tenantId);
-            throw ex;
+            // vp-kunde-loeschen-500: die EINE Transaktion ist zurückgerollt - nichts ist gelöscht, nur die
+            // Konten bleiben gesperrt, der Weg ist wiederholbar. Der Fehler gehört mit Stack ins Log (vorher
+            // ging er ohne unter) und als ehrlicher Satz ans Portal - ein 500 ist kein „Server nicht
+            // erreichbar" (Muster G6/m4 in api.ts: ein deutsches message-Feld ersetzt den Pauschalsatz).
+            log.error("Offboarding tenant {}: database removal failed; accounts remain disabled; retry offboarding",
+                    tenantId, ex);
+            throw new LoeschzugFehlgeschlagen();
         }
 
         // Broker cleanup (best-effort): clear each device's retained
@@ -256,6 +261,19 @@ public class AdminController {
     @ExceptionHandler(KundenbereichLoeschung.Verweigert.class)
     public ResponseEntity<Map<String, Object>> loeschenVerweigert(KundenbereichLoeschung.Verweigert ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.koerper());
+    }
+
+    /** Der Löschzug scheiterte und wurde ganz zurückgerollt; die Konten bleiben gesperrt (vp-kunde-loeschen-500). */
+    static final class LoeschzugFehlgeschlagen extends RuntimeException {
+    }
+
+    /** Ein 500 des Löschwegs sagt dem Portal, was wirklich geschah - statt „Server nicht erreichbar". */
+    @ExceptionHandler(LoeschzugFehlgeschlagen.class)
+    public ResponseEntity<Map<String, Object>> loeschenFehlgeschlagen(LoeschzugFehlgeschlagen ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "code", "loeschen_fehlgeschlagen",
+                "message", "Beim Löschen ist ein Fehler aufgetreten - es wurde nichts gelöscht."
+                        + " Die Konten des Kunden bleiben gesperrt; bitte versuchen Sie es erneut."));
     }
 
     /** Sofort-Weg: eine Box hat sich zwischen Prüfung und Freigabe doch gemeldet - dieselbe 409 wie beim Lösen. */

@@ -317,12 +317,26 @@ class SlotEconomicsTest {
     }
 
     @Test
-    void postSolarspitzengesetzPlantEarnsNothingAtNegativeSpot() {
+    void postSolarspitzengesetzSmallPlantKeepsTheRateAtNegativeSpot() {
+        // N1: § 51 Abs. 2 Nr. 1 EEG - under SOLARSPITZENGESETZ_KLEINANLAGE_KWP
+        // the §51a zero does not apply until the smart-meter year, which
+        // VoltPilot does not track yet, so the rate survives.
         SlotEconomics e = new SlotEconomics(
                 site("eigenverbrauch", false, "ohne", null, null,
                         LocalDate.of(2025, 3, 1), 5.0),
                 EegRates.defaults(), Map.of());
         assertThat(e.exportValueCtKwh(100.0, SLOT)).isEqualTo(7.94);
+        assertThat(e.exportValueCtKwh(-40.0, SLOT)).isEqualTo(7.94);
+    }
+
+    @Test
+    void postSolarspitzengesetzLargePlantEarnsNothingAtNegativeSpot() {
+        SlotEconomics e = new SlotEconomics(
+                site("eigenverbrauch", false, "ohne", null, null,
+                        LocalDate.of(2025, 3, 1), 150.0),
+                EegRates.defaults(), Map.of());
+        double rate = EegRates.defaults().festeVerguetungCtPerKwh(LocalDate.of(2025, 3, 1), 150.0);
+        assertThat(e.exportValueCtKwh(100.0, SLOT)).isEqualTo(rate);
         assertThat(e.exportValueCtKwh(-40.0, SLOT)).isEqualTo(0.0);
         assertThat(e.exportValueCtKwh(null, SLOT)).isNull(); // §51a needs the sign
     }
@@ -351,7 +365,7 @@ class SlotEconomicsTest {
     @Test
     void angegebeneVerguetungFolgtDenGeteiltenVektoren() {
         Instant slot = EinspeiseverguetungVektoren.slot();
-        assertThat(EinspeiseverguetungVektoren.faelle()).hasSizeGreaterThanOrEqualTo(21);
+        assertThat(EinspeiseverguetungVektoren.faelle()).hasSizeGreaterThanOrEqualTo(23);
         for (EinspeiseverguetungVektoren.Fall f : EinspeiseverguetungVektoren.faelle()) {
             SiteEconomics site = new SiteEconomics(f.veraeusserungsform(), f.netzladen(), "ohne",
                     null, f.anzulegenderWertCtKwh(), f.inbetriebnahme(), f.leistungKwp(),
@@ -385,7 +399,9 @@ class SlotEconomicsTest {
                 EegRates.defaults(), Map.of());
         assertThat(ohne.exportValueCtKwh(100.0, SLOT)).isEqualTo(7.94);
         assertThat(mit.exportValueCtKwh(100.0, SLOT)).isEqualTo(11.0);
-        assertThat(mit.exportValueCtKwh(-40.0, SLOT)).isEqualTo(0.0); // §51a am Datum
+        // N1: 5 kWp is under SOLARSPITZENGESETZ_KLEINANLAGE_KWP, so §51 Abs. 2
+        // Nr. 1 EEG keeps the rate at negative spot - not the date-only §51a.
+        assertThat(mit.exportValueCtKwh(-40.0, SLOT)).isEqualTo(11.0);
         assertThat(EegRates.defaults().festeVerguetungCtPerKwh(inbetrieb, 5.0)).isEqualTo(7.94);
         // Der Bezug bleibt unberührt: die Angabe ist eine Einspeise-Größe.
         assertThat(mit.importPriceCtKwh(100.0)).isEqualTo(ohne.importPriceCtKwh(100.0));
@@ -395,15 +411,29 @@ class SlotEconomicsTest {
     void paragraph51aFolgtDemDatumUndOhneDatumDerAntwort() {
         LocalDate alt = LocalDate.of(2023, 6, 15);
         LocalDate neu = LocalDate.of(2025, 2, 25); // der Stichtag selbst zählt schon
-        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, null)).isTrue();
-        assertThat(SlotEconomics.solarspitzengesetzGilt(neu.minusDays(1), null)).isFalse();
+        Double gross = 150.0; // >= SOLARSPITZENGESETZ_KLEINANLAGE_KWP
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, null, gross)).isTrue();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu.minusDays(1), null, gross)).isFalse();
         // Das Datum geht vor - eine gespeicherte Antwort ändert daran nichts.
-        assertThat(SlotEconomics.solarspitzengesetzGilt(alt, true)).isFalse();
-        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, false)).isTrue();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(alt, true, gross)).isFalse();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, false, gross)).isTrue();
         // Ohne Datum entscheidet die Antwort; ohne Antwort gilt § 51a nicht.
-        assertThat(SlotEconomics.solarspitzengesetzGilt(null, true)).isTrue();
-        assertThat(SlotEconomics.solarspitzengesetzGilt(null, false)).isFalse();
-        assertThat(SlotEconomics.solarspitzengesetzGilt(null, null)).isFalse();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(null, true, gross)).isTrue();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(null, false, gross)).isFalse();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(null, null, gross)).isFalse();
+    }
+
+    @Test
+    void paragraph51aGiltNichtUnterDerKleinanlagenSchwelleOhneSmartMeterJahr() {
+        // N1: § 51 Abs. 2 Nr. 1 EEG - unter 100 kW bleibt die Vergütung bei
+        // negativem Preis, bis zum Ende des Kalenderjahres des
+        // Smart-Meter-Einbaus. VoltPilot kennt dieses Jahr noch nicht, darum
+        // nie unterhalb der Schwelle unterbrechen (fehlende Angabe eingeschlossen).
+        LocalDate neu = LocalDate.of(2025, 3, 1);
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, null, 99.99)).isFalse();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, null, null)).isFalse();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, null, 100.0)).isTrue();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(null, true, 50.0)).isFalse();
     }
 
     // ---- persisted wear rate --------------------------------------------------

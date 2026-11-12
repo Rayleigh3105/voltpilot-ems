@@ -34,8 +34,17 @@ import java.util.List;
 public final class EegRates {
 
     /** Solarspitzengesetz (§51a EEG) entry into force: plants commissioned on/after
-     * this date earn NO feste Vergütung in negative-price slots. */
+     * this date earn NO feste Vergütung in negative-price slots - UNLESS §51
+     * Abs. 2 Nr. 1 EEG's carve-out applies (see {@link #SOLARSPITZENGESETZ_KLEINANLAGE_KWP}). */
     public static final LocalDate SOLARSPITZENGESETZ_CUTOFF = LocalDate.of(2025, 2, 25);
+
+    /** §51 Abs. 2 Nr. 1 EEG: the negative-price suspension never applies to a
+     * plant with less than this installed capacity, for periods before the
+     * end of the calendar year its smart meter is installed. VoltPilot does
+     * not yet track that year (N1, report vp-mastr-mehrere-einheiten-konzept),
+     * so an unknown or sub-threshold capacity keeps the full rate - the
+     * gesetzesnähere default until a "Smart Meter seit Jahr X" input exists. */
+    public static final double SOLARSPITZENGESETZ_KLEINANLAGE_KWP = 100.0;
 
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
 

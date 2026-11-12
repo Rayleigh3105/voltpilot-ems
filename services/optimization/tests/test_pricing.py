@@ -338,13 +338,27 @@ def test_feste_verguetung_is_flat_and_survives_negative_spot():
     assert values == [82.0] * 4
 
 
-def test_post_solarspitzengesetz_plant_earns_nothing_at_negative_spot():
-    # Commissioned after 2025-02-25 (§51a EEG): rate in non-negative slots,
-    # ZERO (never negative - the plant is not spot-settled) when spot < 0.
+def test_post_solarspitzengesetz_small_plant_keeps_the_rate_at_negative_spot():
+    # N1: §51 Abs. 2 Nr. 1 EEG - under SOLARSPITZENGESETZ_KLEINANLAGE_KWP,
+    # §51a's negative-price zero does not apply until the end of the calendar
+    # year the smart meter is installed (not tracked yet), so the rate
+    # survives at -20 EUR/MWh. _ev_tariff defaults to 8.0 kWp.
     values = export_values(
         _ev_tariff(date(2025, 6, 1)), False, SPOT, STARTS, {}
     )
-    assert values == [79.4, 79.4, 0.0, 79.4]  # the 2025-02 band: 7.94 ct
+    assert values == [79.4, 79.4, 79.4, 79.4]  # the 2025-02 band: 7.94 ct
+
+
+def test_post_solarspitzengesetz_large_plant_earns_nothing_at_negative_spot():
+    # Commissioned after 2025-02-25 (§51a EEG) AND at/above
+    # SOLARSPITZENGESETZ_KLEINANLAGE_KWP: rate in non-negative slots, ZERO
+    # (never negative - the plant is not spot-settled) when spot < 0.
+    kwp = 150.0
+    rate = feste_verguetung_ct_per_kwh(date(2025, 6, 1), kwp) * 10.0
+    values = export_values(
+        _ev_tariff(date(2025, 6, 1), kwp=kwp), False, SPOT, STARTS, {}
+    )
+    assert values == [rate, rate, 0.0, rate]
 
 
 def test_no_commissioning_date_degrades_to_spot():
@@ -453,7 +467,7 @@ def test_stated_rate_follows_the_shared_vectors():
         )
         assert value / 10.0 == pytest.approx(f["einspeisewertCtKwh"], abs=1e-9), f["fall"]
         geprueft += 1
-    assert geprueft >= 17
+    assert geprueft >= 20
 
 
 def test_stated_rate_leaves_the_schedule_untouched():
@@ -488,16 +502,21 @@ def test_stated_rate_in_merchant_mode_is_flagged_and_priced_at_spot(caplog):
 def test_stated_rate_without_date_needs_the_answer_for_its_zero_hours():
     # The Fahrplan concept's open question (vp-fahrplan-eigenverbrauch-konzept
     # §6.2): a stated rate without commissioning date must not earn in
-    # negative-price slots when the plant went live on/after 2025-02-25.
+    # negative-price slots when the plant went live on/after 2025-02-25 - at
+    # or above SOLARSPITZENGESETZ_KLEINANLAGE_KWP (N1: below it, or without a
+    # known capacity, §51 Abs. 2 Nr. 1 EEG keeps the rate regardless).
+    gross = 150.0
     ab = SiteTariff(
         plant_kind="eigenverbrauch",
         einspeiseverguetung_ct_kwh=6.0,
+        pv_capacity_kwp=gross,
         inbetriebnahme_ab_solarspitzengesetz=True,
     )
     assert export_values(ab, False, SPOT, STARTS, {}) == [60.0, 60.0, 0.0, 60.0]
     vor = SiteTariff(
         plant_kind="eigenverbrauch",
         einspeiseverguetung_ct_kwh=6.0,
+        pv_capacity_kwp=gross,
         inbetriebnahme_ab_solarspitzengesetz=False,
     )
     assert export_values(vor, False, SPOT, STARTS, {}) == [60.0] * 4
@@ -505,10 +524,23 @@ def test_stated_rate_without_date_needs_the_answer_for_its_zero_hours():
     datum = SiteTariff(
         plant_kind="eigenverbrauch",
         commissioned_on=date(2023, 6, 15),
+        pv_capacity_kwp=gross,
         einspeiseverguetung_ct_kwh=6.0,
         inbetriebnahme_ab_solarspitzengesetz=True,
     )
     assert export_values(datum, False, SPOT, STARTS, {}) == [60.0] * 4
+
+
+def test_stated_rate_without_capacity_never_suspends_at_negative_spot():
+    # N1: §51 Abs. 2 Nr. 1 EEG - without a known installed capacity VoltPilot
+    # cannot tell whether the under-100-kW carve-out applies, so it never
+    # zeroes (the gesetzesnähere default), even with an explicit "ja" answer.
+    ab = SiteTariff(
+        plant_kind="eigenverbrauch",
+        einspeiseverguetung_ct_kwh=6.0,
+        inbetriebnahme_ab_solarspitzengesetz=True,
+    )
+    assert export_values(ab, False, SPOT, STARTS, {}) == [60.0] * 4
 
 
 def test_stated_rate_spans_the_expiry_boundary_flat():

@@ -1,7 +1,7 @@
 {
   "$comment": "Die GETEILTEN Vektoren der Einspeiseverguetung: was eine eingespeiste kWh in einer Viertelstunde wert ist, wenn der Kunde seinen Satz SELBST angibt (site.einspeiseverguetung_ct_kwh, Karte 'Einspeiseverguetung' unter Einstellungen > Strom & Geld) - und dass ohne Angabe alles bleibt, wie es war. DREI Zwillinge lesen diese Datei PER PFAD und muessen je Fall denselben Einspeisewert liefern: Python services/optimization voltpilot_optimization/pricing.py export_values (der Optimierer plant damit, tests/test_pricing.py), Java services/api SlotEconomics.exportValueCtKwh (Fahrplan-Preise, Historie, Diagnose; SlotEconomicsTest) und sein SQL-Zwilling SlotEconomics.exportValueCtSql (jede Euro-Zahl der Erloese; PortalApiTest). Die Felder quelle und zustand liest nur die api: quelle ist SlotEconomics.exportVerguetungQuelleSql (die Beschriftung des Einspeise-Erloeses, ausgewertet gegen das Jahr von HEUTE - die Faelle sind so gewaehlt, dass sie bis 2043 gelten), zustand ist EinspeiseverguetungStand (die Karte). Wer die Regel auf einer Seite aendert, aendert alle Seiten UND diese Datei zusammen - das Muster von stur-speicher-vectors.json. Der EEG-Satzplan selbst (EegRates.java <-> config.py DEFAULT_EEG_RATE_SCHEDULE) steht NICHT hier: die Angabe ist eine Ebene darueber und aendert ihn nicht.",
 
-  "$regel": "Eine Angabe wirkt NUR bei Eigenverbrauch ohne Netzladen - genau dort, wo heute die Herleitung wirkt. Dort ersetzt sie den hergeleiteten Satz UND das Ende nach 20 Jahren (die Angabe ist die heutige Aussage des Kunden; sie braucht auch kein Inbetriebnahmedatum) und ist flach in jeder Viertelstunde - die Tranchen nach kWp spielen keine Rolle. Paragraph 51a EEG haengt weiter am Inbetriebnahmedatum: ab dem 25.02.2025 bei negativem Boersenpreis 0 (nie negativ), ohne Boersenpreis unbekannt (null). Ohne Inbetriebnahmedatum entscheidet die Antwort des Kunden inbetriebnahmeAbSolarspitzengesetz (true = ab dem 25.02.2025; die Route verlangt sie zu jeder Angabe ohne Datum); ohne Datum und ohne Antwort gibt es keinen Paragraph 51a. Ein Datum geht immer vor, auch vor einer gespeicherten Antwort. 0 ist eine Angabe, keine fehlende. Netzladen: Boersenpreis (Ausschliesslichkeitsprinzip), die Angabe ruht. Direktvermarktung: Boersenpreis + Marktpraemie, die Angabe ruht. Ohne Angabe gilt die bisherige Regel unveraendert: hergeleitet aus dem EEG, nach 20 Jahren oder ohne Inbetriebnahmedatum Boersenpreis.",
+  "$regel": "Eine Angabe wirkt NUR bei Eigenverbrauch ohne Netzladen - genau dort, wo heute die Herleitung wirkt. Dort ersetzt sie den hergeleiteten Satz UND das Ende nach 20 Jahren (die Angabe ist die heutige Aussage des Kunden; sie braucht auch kein Inbetriebnahmedatum) und ist flach in jeder Viertelstunde - die Tranchen nach kWp spielen keine Rolle fuer die HOEHE der Angabe. Paragraph 51a EEG haengt weiter am Inbetriebnahmedatum: ab dem 25.02.2025 bei negativem Boersenpreis 0 (nie negativ), ohne Boersenpreis unbekannt (null). Ohne Inbetriebnahmedatum entscheidet die Antwort des Kunden inbetriebnahmeAbSolarspitzengesetz (true = ab dem 25.02.2025; die Route verlangt sie zu jeder Angabe ohne Datum); ohne Datum und ohne Antwort gibt es keinen Paragraph 51a. Ein Datum geht immer vor, auch vor einer gespeicherten Antwort. N1 (Paragraph 51 Abs. 2 Nr. 1 EEG): die Nullstunde bei negativem Preis gilt erst ab leistungKwp >= 100 (SOLARSPITZENGESETZ_KLEINANLAGE_KWP) - darunter, UND ohne bekannte Leistung, bleibt die Verguetung bestehen, weil VoltPilot das Jahr des Smart-Meter-Einbaus noch nicht kennt. 0 ist eine Angabe, keine fehlende. Netzladen: Boersenpreis (Ausschliesslichkeitsprinzip), die Angabe ruht. Direktvermarktung: Boersenpreis + Marktpraemie, die Angabe ruht. Ohne Angabe gilt die bisherige Regel unveraendert: hergeleitet aus dem EEG, nach 20 Jahren oder ohne Inbetriebnahmedatum Boersenpreis.",
 
   "$einheiten": "spotEurMwh in EUR/MWh (Day-Ahead), alle Saetze und der Einspeisewert in ct/kWh (1 ct/kWh = 10 EUR/MWh). null = unbekannt bzw. nicht gepflegt.",
 
@@ -47,22 +47,40 @@
       "einspeisewertCtKwh": 9.0, "quelle": "angegeben", "zustand": "angegeben"
     },
     {
-      "fall": "Paragraph 51a gilt auch fuer die Angabe: negativer Preis = 0",
+      "fall": "Paragraph 51a gilt auch fuer die Angabe ab 100 kWp: negativer Preis = 0",
       "veraeusserungsform": "eigenverbrauch", "netzladen": false,
       "angegebenCtKwh": 9.0, "inbetriebnahmeAbSolarspitzengesetz": null,
-      "inbetriebnahme": "2025-06-01", "leistungKwp": 8.0,
+      "inbetriebnahme": "2025-06-01", "leistungKwp": 150.0,
       "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
       "spotEurMwh": -40.0,
       "einspeisewertCtKwh": 0.0, "quelle": "angegeben", "zustand": "angegeben"
     },
     {
-      "fall": "Paragraph 51a ohne Boersenpreis: unbekannt, nie geraten",
+      "fall": "N1 (Paragraph 51 Abs. 2 Nr. 1): unter 100 kWp bleibt die Angabe auch bei negativem Preis bestehen",
+      "veraeusserungsform": "eigenverbrauch", "netzladen": false,
+      "angegebenCtKwh": 9.0, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "inbetriebnahme": "2025-06-01", "leistungKwp": 8.0,
+      "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
+      "spotEurMwh": -40.0,
+      "einspeisewertCtKwh": 9.0, "quelle": "angegeben", "zustand": "angegeben"
+    },
+    {
+      "fall": "Paragraph 51a ab 100 kWp ohne Boersenpreis: unbekannt, nie geraten",
+      "veraeusserungsform": "eigenverbrauch", "netzladen": false,
+      "angegebenCtKwh": 9.0, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "inbetriebnahme": "2025-06-01", "leistungKwp": 150.0,
+      "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
+      "spotEurMwh": null,
+      "einspeisewertCtKwh": null, "quelle": "angegeben", "zustand": "angegeben"
+    },
+    {
+      "fall": "N1: unter 100 kWp braucht Paragraph 51a keinen Boersenpreis - die Angabe gilt immer",
       "veraeusserungsform": "eigenverbrauch", "netzladen": false,
       "angegebenCtKwh": 9.0, "inbetriebnahmeAbSolarspitzengesetz": null,
       "inbetriebnahme": "2025-06-01", "leistungKwp": 8.0,
       "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
       "spotEurMwh": null,
-      "einspeisewertCtKwh": null, "quelle": "angegeben", "zustand": "angegeben"
+      "einspeisewertCtKwh": 9.0, "quelle": "angegeben", "zustand": "angegeben"
     },
     {
       "fall": "Die Angabe gilt nach dem Ende der EEG-Verguetung (Anschlussvertrag)",
@@ -92,13 +110,22 @@
       "einspeisewertCtKwh": 6.0, "quelle": "angegeben", "zustand": "angegeben"
     },
     {
-      "fall": "Ohne Datum, Antwort 'ab dem 25.02.2025': Paragraph 51a setzt die Nullstunde",
+      "fall": "Ohne Datum, Antwort 'ab dem 25.02.2025', ab 100 kWp: Paragraph 51a setzt die Nullstunde",
+      "veraeusserungsform": "eigenverbrauch", "netzladen": false,
+      "angegebenCtKwh": 6.0, "inbetriebnahmeAbSolarspitzengesetz": true,
+      "inbetriebnahme": null, "leistungKwp": 150.0,
+      "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
+      "spotEurMwh": -40.0,
+      "einspeisewertCtKwh": 0.0, "quelle": "angegeben", "zustand": "angegeben"
+    },
+    {
+      "fall": "N1: ohne bekannte Leistung bleibt die Angabe bestehen (keine erfundene Schwelle)",
       "veraeusserungsform": "eigenverbrauch", "netzladen": false,
       "angegebenCtKwh": 6.0, "inbetriebnahmeAbSolarspitzengesetz": true,
       "inbetriebnahme": null, "leistungKwp": null,
       "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
       "spotEurMwh": -40.0,
-      "einspeisewertCtKwh": 0.0, "quelle": "angegeben", "zustand": "angegeben"
+      "einspeisewertCtKwh": 6.0, "quelle": "angegeben", "zustand": "angegeben"
     },
     {
       "fall": "Ohne Datum, Antwort 'ab dem 25.02.2025': positiver Preis, die Angabe gilt",
@@ -110,10 +137,10 @@
       "einspeisewertCtKwh": 6.0, "quelle": "angegeben", "zustand": "angegeben"
     },
     {
-      "fall": "Ohne Datum, Antwort 'ab dem 25.02.2025': ohne Boersenpreis unbekannt",
+      "fall": "Ohne Datum, Antwort 'ab dem 25.02.2025', ab 100 kWp: ohne Boersenpreis unbekannt",
       "veraeusserungsform": "eigenverbrauch", "netzladen": false,
       "angegebenCtKwh": 6.0, "inbetriebnahmeAbSolarspitzengesetz": true,
-      "inbetriebnahme": null, "leistungKwp": null,
+      "inbetriebnahme": null, "leistungKwp": 150.0,
       "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
       "spotEurMwh": null,
       "einspeisewertCtKwh": null, "quelle": "angegeben", "zustand": "angegeben"
@@ -137,10 +164,10 @@
       "einspeisewertCtKwh": 9.0, "quelle": "angegeben", "zustand": "angegeben"
     },
     {
-      "fall": "Das Datum geht vor: Inbetriebnahme 2025-06, eine alte Antwort 'vor' zaehlt nicht",
+      "fall": "Das Datum geht vor: Inbetriebnahme 2025-06 ab 100 kWp, eine alte Antwort 'vor' zaehlt nicht",
       "veraeusserungsform": "eigenverbrauch", "netzladen": false,
       "angegebenCtKwh": 9.0, "inbetriebnahmeAbSolarspitzengesetz": false,
-      "inbetriebnahme": "2025-06-01", "leistungKwp": 8.0,
+      "inbetriebnahme": "2025-06-01", "leistungKwp": 150.0,
       "anzulegenderWertCtKwh": null, "monatsmarktwertCtKwh": null,
       "spotEurMwh": -40.0,
       "einspeisewertCtKwh": 0.0, "quelle": "angegeben", "zustand": "angegeben"

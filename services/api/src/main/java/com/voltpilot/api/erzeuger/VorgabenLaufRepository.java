@@ -110,12 +110,17 @@ public class VorgabenLaufRepository {
     /**
      * Gemeldete Datenlücken ({@code data_gap}) der Boxen, die diese Steuerung in {@code (ab, bis]} gelesen haben:
      * die Box hat Werte verworfen — was in die Zeit fällt, ist unvollständig.
+     *
+     * <p>{@code EXISTS} statt {@code IN (SELECT DISTINCT …)}: TimescaleDB 2.17 plant das DISTINCT auf der
+     * Hypertable als SkipScan und scheitert unter RLS daran („unsupported subplan type for SkipScan: Result“,
+     * XX000) — {@code VorgabenDatenlueckenSkipScanTest} hält die Lage fest.
      */
     public List<Instant> datenluecken(UUID tenant, UUID entityId, Instant ab, Instant bis) {
         return jdbc.queryForList("SELECT e.occurred_at FROM device_measurement_event e "
                 + "WHERE e.tenant_id = ? AND e.event_kind = 'data_gap' AND e.occurred_at > ? AND e.occurred_at <= ? "
-                + "AND e.device_id IN (SELECT DISTINCT d.device_id FROM device_measurement_sample d "
-                + "WHERE d.tenant_id = ? AND d.entity_id = ? AND d.time > ? AND d.time <= ?) ORDER BY e.occurred_at",
+                + "AND EXISTS (SELECT 1 FROM device_measurement_sample d "
+                + "WHERE d.tenant_id = ? AND d.entity_id = ? AND d.device_id = e.device_id "
+                + "AND d.time > ? AND d.time <= ?) ORDER BY e.occurred_at",
                 Timestamp.class, tenant, Timestamp.from(ab), Timestamp.from(bis), tenant, entityId,
                 Timestamp.from(ab), Timestamp.from(bis)).stream().map(Timestamp::toInstant).toList();
     }

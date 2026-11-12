@@ -54,9 +54,19 @@ class EinspeiseverguetungStandTest {
         assertThat(d.angegebenCtKwh()).isNull();
         assertThat(d.hergeleitetGenaehert()).isFalse();
         assertThat(d.eegEndeAm()).isEqualTo(LocalDate.of(2045, 12, 31));
-        assertThat(d.ohneVerguetungBeiNegativpreis()).isTrue();
+        // N1: 9,8 kWp liegt unter der 100-kW-Schwelle des § 51 Abs. 2 Nr. 1 EEG -
+        // ohne bekanntes Smart-Meter-Jahr bleibt die Vergütung bei negativem Preis.
+        assertThat(d.ohneVerguetungBeiNegativpreis()).isFalse();
         assertThat(d.inbetriebnahme()).isEqualTo(LocalDate.of(2025, 6, 1));
         assertThat(d.leistungKwp()).isEqualByComparingTo("9.8");
+    }
+
+    @Test
+    void grossanlagenAbHundertKwpZeigenParagraph51aWeiterhin() {
+        EinspeiseverguetungDto d = EinspeiseverguetungStand.von(
+                grundlage("eigenverbrauch", false, null, LocalDate.of(2025, 6, 1), "150", "eeg"),
+                EegRates.defaults());
+        assertThat(d.ohneVerguetungBeiNegativpreis()).isTrue();
     }
 
     @Test
@@ -136,18 +146,29 @@ class EinspeiseverguetungStandTest {
 
     @Test
     void ohneDatumMachtDieAntwortParagraph51aSichtbar() {
-        // Eigener Satz ohne Inbetriebnahmedatum: die Antwort „ab dem 25.02.2025"
-        // macht die Nullstunden sichtbar, „davor" nimmt sie weg.
-        Grundlage ab = new Grundlage("eigenverbrauch", false, new BigDecimal("6"), true, null, null,
-                null, "angegeben");
+        // Eigener Satz ohne Inbetriebnahmedatum, ab 100 kWp (N1: sonst gilt
+        // Paragraph 51a nie): die Antwort „ab dem 25.02.2025" macht die
+        // Nullstunden sichtbar, „davor" nimmt sie weg.
+        Grundlage ab = new Grundlage("eigenverbrauch", false, new BigDecimal("6"), true, null,
+                new BigDecimal("150"), null, "angegeben");
         EinspeiseverguetungDto d = EinspeiseverguetungStand.von(ab, EegRates.defaults());
         assertThat(d.ohneVerguetungBeiNegativpreis()).isTrue();
         assertThat(d.inbetriebnahmeAbSolarspitzengesetz()).isTrue();
-        Grundlage vor = new Grundlage("eigenverbrauch", false, new BigDecimal("6"), false, null, null,
-                null, "angegeben");
+        Grundlage vor = new Grundlage("eigenverbrauch", false, new BigDecimal("6"), false, null,
+                new BigDecimal("150"), null, "angegeben");
         EinspeiseverguetungDto v = EinspeiseverguetungStand.von(vor, EegRates.defaults());
         assertThat(v.ohneVerguetungBeiNegativpreis()).isFalse();
         assertThat(v.inbetriebnahmeAbSolarspitzengesetz()).isFalse();
+    }
+
+    @Test
+    void ohneBekannteLeistungGiltParagraph51aNie() {
+        // N1: ohne Leistungsangabe kann VoltPilot die 100-kW-Schwelle nicht
+        // prüfen - die Vergütung bleibt, auch mit einer "ja"-Antwort.
+        Grundlage ab = new Grundlage("eigenverbrauch", false, new BigDecimal("6"), true, null, null,
+                null, "angegeben");
+        EinspeiseverguetungDto d = EinspeiseverguetungStand.von(ab, EegRates.defaults());
+        assertThat(d.ohneVerguetungBeiNegativpreis()).isFalse();
     }
 
     @Test
