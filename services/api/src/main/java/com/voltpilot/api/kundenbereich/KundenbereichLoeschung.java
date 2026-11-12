@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -63,6 +65,7 @@ public class KundenbereichLoeschung {
         }
     }
 
+    private static final Logger log = LoggerFactory.getLogger(KundenbereichLoeschung.class);
     private static final ObjectMapper JSON = new ObjectMapper();
     /** Derselbe Katalog, über den der Löschzug zuletzt löscht. */
     private static final String TABELLEN = TenantRepository.KATALOG_MIT_MANDANT;
@@ -101,6 +104,9 @@ public class KundenbereichLoeschung {
         public void vorDemAbbau(Connection con) throws SQLException {
             // FOR UPDATE before any DELETE: the rollup jobs hold FOR KEY SHARE on the tenant row while they write
             // (V20260926004700), so the teardown waits for a running job here instead of deadlocking with it later.
+            // Diese Wartezeit gehört einzeln ins Log (Prod-Befund vp-kunde-loeschen-504: in Produktion
+            // läuft device_measurement_rollup_job regelmäßig >1 min und hält solange JEDE Mandantenzeile).
+            long sperreStart = System.nanoTime();
             boolean gefunden;
             try (PreparedStatement st = con.prepareStatement(
                     "SELECT id, name, beendet_am FROM tenant WHERE id = ? FOR UPDATE")) {
@@ -112,13 +118,16 @@ public class KundenbereichLoeschung {
                     beendetAm = beendet == null ? null : beendet.toInstant();
                 }
             }
+            long sperreMs = (System.nanoTime() - sperreStart) / 1_000_000;
             // Der Datenbestand UNTER der Sperre, auf der Verbindung des Löschzugs: eine Messung, die
             // zwischen dem Lesen der Löschbarkeit und hier ankam, zählt noch mit - das entscheidet nur
             // noch den Anlass im Nachweis, nie mehr, OB gelöscht wird. Ein verschwundener Bereich (eine
             // gleichzeitige zweite Löschung) gilt vacuous als datenfrei; die Protokollzeile MIT Namen
             // scheitert dann ehrlich an ihrem eigenen NOT-NULL-Schutz (derselbe 500-Weg wie jeder andere
             // Löschzug-Fehler: nichts gelöscht, Konten bleiben gesperrt, wiederholbar).
+            long datenStart = System.nanoTime();
             List<String> daten = gefunden ? KundeDatenBestandRepository.datenarten(con, kundenbereich) : List.of();
+            long datenMs = (System.nanoTime() - datenStart) / 1_000_000;
             anlass = daten.isEmpty() ? Anlass.SOFORT_KEINE_DATEN : Anlass.SOFORT_MIT_DATEN;
             tabellen = new ArrayList<>();
             try (PreparedStatement st = con.prepareStatement(TABELLEN); ResultSet rs = st.executeQuery()) {
@@ -126,8 +135,12 @@ public class KundenbereichLoeschung {
                     tabellen.add(rs.getString(1));
                 }
             }
+            long zaehlungStart = System.nanoTime();
             zaehlungen = zaehlen(con);
             zaehlungen.put("tenant", 1L);
+            log.info("Löschzug {}: Bestand erhoben (Mandanten-Sperre {} ms, Datenarten {} ms,"
+                    + " Zählung {} ms über {} Tabellen)", kundenbereich, sperreMs, datenMs,
+                    (System.nanoTime() - zaehlungStart) / 1_000_000, tabellen.size());
             try (PreparedStatement st = con.prepareStatement("SELECT manifest_sha256, abgeschlossen_am"
                     + " FROM kundenbereich_abzug WHERE tenant_id = ? AND abgeschlossen_am IS NOT NULL"
                     + " ORDER BY abgeschlossen_am DESC, id LIMIT 1")) {

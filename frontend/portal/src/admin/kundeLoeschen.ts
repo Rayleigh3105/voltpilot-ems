@@ -1,4 +1,5 @@
-import type { KundeLoeschbarkeit } from './adminApi';
+import { ApiError } from '../api';
+import { adminApi, type KundeLoeschbarkeit, type KundeLoeschlauf } from './adminApi';
 
 /**
  * „Kunde endgültig löschen" (vp-kunde-sofort-loeschen-mit-daten): die Sätze der Kundenakte und der
@@ -41,6 +42,49 @@ export const KUNDE_KEINE_DATEN_SATZ = 'Dieser Kunde hat keinen Datenbestand.';
 export function kundeHatDatenSatz(befund: KundeLoeschbarkeit): string {
   return `Dieser Kunde hat Daten: ${kundeDatenListe(befund.daten)}. Sie gehen beim Löschen unwiderruflich `
     + 'verloren; vorher kann der Kundenadministrator den Gesamtabzug laden.';
+}
+
+/** „Wird gelöscht …": der Satz, solange der serverseitige Löschzug läuft (vp-kunde-loeschen-504). */
+export const KUNDE_WIRD_GELOESCHT_SATZ = 'Der Kunde wird gelöscht - das kann einige Minuten dauern. '
+  + 'Der Löschzug läuft auf dem Server weiter, auch wenn diese Ansicht geschlossen wird.';
+
+/**
+ * Fragt den Stand des Löschzugs ab, bis er terminal ist (vp-kunde-loeschen-504): alle 2 s, wie das
+ * Portal es dem Admin zeigt. Ein frisch „fertig" ohne Bericht bekommt drei weitere Nachfragen (der
+ * Bericht wird nach dem Commit nachgetragen); bleibt er aus, ist das Löschen trotzdem fertig.
+ * Kurze Abruffehler (z. B. ein Neustart der API) halten den Lauf nicht auf - erst fünf in Folge
+ * geben den Fehler weiter. `weiter` darf das Warten beenden (Dialog geschlossen): dann kommt der
+ * letzte bekannte Stand zurück.
+ */
+export async function kundeLoeschlaufAbwarten(
+  tenantId: string,
+  lauf: KundeLoeschlauf,
+  weiter: () => boolean = () => true,
+): Promise<KundeLoeschlauf> {
+  let berichtGeduld = 3;
+  let abrufFehler = 0;
+  for (;;) {
+    if (lauf.stand === 'gescheitert') return lauf;
+    if (lauf.stand === 'fertig' && (lauf.bericht != null || berichtGeduld-- <= 0)) return lauf;
+    if (!weiter()) return lauf;
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      lauf = await adminApi.kundeLoeschlauf(tenantId);
+      abrufFehler = 0;
+    } catch (e) {
+      if (++abrufFehler >= 5) throw e;
+    }
+  }
+}
+
+/** Der jüngste Löschzug eines Kunden - `null`, wenn nie einer lief (404) oder nicht abrufbar. */
+export async function kundeLoeschlaufLesen(tenantId: string): Promise<KundeLoeschlauf | null> {
+  try {
+    return (await adminApi.kundeLoeschlauf(tenantId)) ?? null;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    return null;
+  }
 }
 
 /** Die Folgenliste des Bestätigungs-Dialogs - aus den Server-Fakten, nie aus Portal-Annahmen. */

@@ -5,16 +5,14 @@ import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
-import com.voltpilot.api.geraete.BoxLoesenAbgelehnt;
-import com.voltpilot.api.geraete.BoxLoesenService;
-import com.voltpilot.api.kundenbereich.KundenbereichLoeschung;
-import com.voltpilot.api.provisioning.ProvisioningPublisher;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.KundenbereichLoeschService;
+import com.voltpilot.api.kundenbereich.KundenbereichLoeschlaufRepository;
 import com.voltpilot.api.repo.AdminEnrollmentRepository;
 import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
 import com.voltpilot.api.repo.AdminSiteRepository;
 import com.voltpilot.api.repo.TenantRepository;
-import com.voltpilot.api.repo.TenantRepository.OffboardCounts;
-import com.voltpilot.api.repo.TenantRepository.TenantDevice;
 import com.voltpilot.api.web.dto.AdminUserDto;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.CreateTenantRequest;
@@ -24,6 +22,7 @@ import com.voltpilot.api.web.dto.PendingEnrollmentDto;
 import com.voltpilot.api.web.dto.ProvisionDeviceRequest;
 import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
 import com.voltpilot.api.web.dto.SiteDto;
+import com.voltpilot.api.web.dto.KundenbereichLoeschlaufDto;
 import com.voltpilot.api.web.dto.TenantDto;
 import com.voltpilot.api.web.dto.TenantOffboardingReportDto;
 import com.voltpilot.api.web.dto.TenantOffboardingCleanupDto;
@@ -33,13 +32,11 @@ import com.voltpilot.api.benutzer.BenutzerService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import org.springframework.security.core.Authentication;
 import jakarta.validation.Valid;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -47,7 +44,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -84,30 +80,28 @@ public class AdminController {
     private final AdminProvisionedDeviceRepository provisionedDevices;
     private final AdminEnrollmentRepository enrollments;
     private final KeycloakAdminClient keycloak;
-    private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final BenutzerService benutzer;
     private final AdminBenutzerService adminBenutzer;
-    private final KundenbereichLoeschung loeschung;
-    private final BoxLoesenService boxLoesen;
+    private final KundenbereichLoeschService loeschService;
+    private final ObjectMapper json;
     private final AdminAnfrageKennungen anfrageKennungen;
     private final AnfrageKennungen fingerabdrucke;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
-            ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer,
-            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung, BoxLoesenService boxLoesen,
+            BenutzerService benutzer,
+            AdminBenutzerService adminBenutzer, KundenbereichLoeschService loeschService, ObjectMapper json,
             AdminAnfrageKennungen anfrageKennungen, AnfrageKennungen fingerabdrucke) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
         this.enrollments = enrollments;
         this.keycloak = keycloak;
-        this.provisioning = provisioning;
         this.benutzer = benutzer;
         this.adminBenutzer = adminBenutzer;
-        this.loeschung = loeschung;
-        this.boxLoesen = boxLoesen;
+        this.loeschService = loeschService;
+        this.json = json;
         this.anfrageKennungen = anfrageKennungen;
         this.fingerabdrucke = fingerabdrucke;
     }
@@ -157,18 +151,20 @@ public class AdminController {
     /**
      * Offboard a tenant - the most destructive action on the platform, so it is
      * type-to-confirm: the body must carry the tenant's EXACT name or nothing
-     * happens (400). The database cascade (sites, devices, assets, all series
-     * data, the tenant row) runs in ONE transaction, AFTER all accounts have been
-     * disabled through the shared account path. Failed final deletions leave disabled
-     * accounts and are reported/logged; the cleanup route can repeat them without a tenant row.
+     * happens (400). The teardown itself runs as a server-side Löschlauf
+     * ({@link KundenbereichLoeschService}, vp-kunde-loeschen-504): this route only
+     * STARTS it (202) - in production the run took ~60 s and the ingress (60-s
+     * limit) answered 504 although the teardown committed, so no single HTTP
+     * request may carry it any more. The portal polls {@link #loeschlauf} for the
+     * honest result. A second POST while a run is active returns the SAME run.
      *
      * <p>UEMS AP-20 IP-18 (E10 = A, BT4): there is no waiting period any more (vp-kunde-sofort-loeschen-mit-daten,
-     * Captain 12.11.2026) - every tenant is deleted immediately, with or without data, active or „beendet"; the same
-     * transaction writes the deletion record {@code mandant_loeschnachweis} without the customer's personal data
-     * ({@link KundenbereichLoeschung}).
+     * Captain 12.11.2026) - every tenant is deleted immediately, with or without data, active or „beendet"; the
+     * teardown transaction writes the deletion record {@code mandant_loeschnachweis} without the customer's personal
+     * data ({@link KundenbereichLoeschung}).
      */
     @PostMapping("/tenants/{tenantId}/delete")
-    public TenantOffboardingReportDto deleteTenant(@PathVariable UUID tenantId,
+    public ResponseEntity<KundenbereichLoeschlaufDto> deleteTenant(@PathVariable UUID tenantId,
             @Valid @RequestBody DeleteTenantRequest request, Authentication auth) {
         TenantDto tenant = tenants.findById(tenantId);
         if (tenant == null) {
@@ -180,96 +176,30 @@ public class AdminController {
         }
         ProtokollAkteur akteur = ProtokollAkteur.aus(auth)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
-        KundenbereichLoeschung.Wache wache = loeschung.wache(tenantId, akteur);
+        return ResponseEntity.accepted().body(dto(loeschService.starte(tenant, akteur, auth)));
+    }
 
-        // Collected BEFORE the cascade: afterwards the rows are gone.
-        List<TenantDevice> devices = tenants.devicesOfTenant(tenantId);
-        List<KeycloakUser> users;
-        try {
-            users = new ArrayList<>(adminBenutzer.offboardingSperren(tenantId));
-        } catch (RuntimeException ex) {
-            log.warn("Offboarding tenant {}: account blocking failed; database retained", tenantId);
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
-        }
+    /**
+     * Der Stand des jüngsten Löschzugs eines Kundenbereichs - die Route bleibt nach dem Löschen
+     * beantwortbar (der Lauf überlebt den Kundenbereich). 404 nur, wenn nie einer lief.
+     */
+    @GetMapping("/tenants/{tenantId}/loeschlauf")
+    public KundenbereichLoeschlaufDto loeschlauf(@PathVariable UUID tenantId) {
+        return loeschService.stand(tenantId).map(this::dto)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Kein Löschzug"));
+    }
 
-        // Sofort-Weg: nie gemeldete Boxen VOR dem Abbau über den Dienst „Vom Kunden lösen" freigeben -
-        // Broker, Zugang, Registry, Rollouts, Zertifizierung räumen wie beim Lösen von Hand, die Kennung
-        // ist sofort wieder anmeldbar. Eine Box, die sich doch gemeldet hat, lehnt dort individuell mit
-        // 409 ab - das sperrt NICHT mehr die Löschung selbst (vp-kunde-sofort-loeschen-mit-daten), sie
-        // geht stattdessen wie jede andere gemeldete Box über die Kaskade.
-        List<String> freigegeben = new ArrayList<>();
-        for (TenantDevice device : devices) {
+    private KundenbereichLoeschlaufDto dto(KundenbereichLoeschlaufRepository.Lauf lauf) {
+        TenantOffboardingReportDto bericht = null;
+        if (lauf.berichtJson() != null) {
             try {
-                if (boxLoesen.beimKundenLoeschen(device.externalRef(), akteur)) {
-                    freigegeben.add(device.externalRef());
-                }
-            } catch (BoxLoesenAbgelehnt ex) {
-                // Gemeldet - bleibt für die Kaskade.
+                bericht = json.readValue(lauf.berichtJson(), TenantOffboardingReportDto.class);
+            } catch (JsonProcessingException ex) {
+                log.warn("Löschzug {}: Bericht nicht lesbar", lauf.id(), ex);
             }
         }
-
-        OffboardCounts counts;
-        try {
-            counts = tenants.offboard(tenantId, () -> {
-                // Close the gap between the blocking commit and the teardown transaction:
-                // a concurrent account enable/create must not leave an enabled orphan.
-                List<KeycloakUser> current = adminBenutzer.offboardingResteSperren(tenantId);
-                users.clear();
-                users.addAll(current);
-            }, wache);
-        } catch (RuntimeException ex) {
-            // vp-kunde-loeschen-500: die EINE Transaktion ist zurückgerollt - nichts ist gelöscht, nur die
-            // Konten bleiben gesperrt, der Weg ist wiederholbar. Der Fehler gehört mit Stack ins Log (vorher
-            // ging er ohne unter) und als ehrlicher Satz ans Portal - ein 500 ist kein „Server nicht
-            // erreichbar" (Muster G6/m4 in api.ts: ein deutsches message-Feld ersetzt den Pauschalsatz).
-            log.error("Offboarding tenant {}: database removal failed; accounts remain disabled; retry offboarding",
-                    tenantId, ex);
-            throw new LoeschzugFehlgeschlagen();
-        }
-
-        // Broker cleanup (best-effort): clear each device's retained
-        // provisioning config + schedule so the hardware falls back to its
-        // watchdog default and the refs become claimable again.
-        provisioning.ifAvailable(p -> devices.forEach(d -> {
-            try {
-                p.clearRetained(d.externalRef(), tenantId, d.siteId(), d.id());
-            } catch (RuntimeException ex) {
-                log.warn("Offboarding tenant {}: retained cleanup failed for device {}", tenantId, d.id());
-            }
-        }));
-
-        TenantOffboardingCleanupDto cleanup = deleteOffboardingUsers(tenantId, users);
-        log.info("Offboarded tenant {} ('{}'): {} sites, {} devices, {} telemetry rows, "
-                + "{} users deleted, {} disabled users pending cleanup", tenantId, tenant.name(),
-                counts.sites(), counts.devices(), counts.telemetryRows(),
-                cleanup.deletedUsers().size(), cleanup.failedUsers().size());
-        KundenbereichLoeschung.Nachweis nachweis = wache.nachweis();
-        log.info("Offboarded tenant {}: deletion record {}, {} tables with remaining rows", tenantId,
-                nachweis.kennzeichen(), nachweis.verblieben().size());
-        return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
-                counts.devices() + freigegeben.size(), counts.telemetryRows(), cleanup.deletedUsers(),
-                cleanup.failedUsers(), nachweis.anlass().wert(), List.copyOf(freigegeben),
-                new TenantOffboardingReportDto.Loeschnachweis(nachweis.kennzeichen(), nachweis.geloeschtAm(),
-                        nachweis.zaehlungen(), nachweis.verblieben(), nachweis.abzugSha256()));
-    }
-
-    /** Der Löschzug scheiterte und wurde ganz zurückgerollt; die Konten bleiben gesperrt (vp-kunde-loeschen-500). */
-    static final class LoeschzugFehlgeschlagen extends RuntimeException {
-    }
-
-    /** Ein 500 des Löschwegs sagt dem Portal, was wirklich geschah - statt „Server nicht erreichbar". */
-    @ExceptionHandler(LoeschzugFehlgeschlagen.class)
-    public ResponseEntity<Map<String, Object>> loeschenFehlgeschlagen(LoeschzugFehlgeschlagen ex) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "code", "loeschen_fehlgeschlagen",
-                "message", "Beim Löschen ist ein Fehler aufgetreten - es wurde nichts gelöscht."
-                        + " Die Konten des Kunden bleiben gesperrt; bitte versuchen Sie es erneut."));
-    }
-
-    /** Sofort-Weg: eine Box hat sich zwischen Prüfung und Freigabe doch gemeldet - dieselbe 409 wie beim Lösen. */
-    @ExceptionHandler(BoxLoesenAbgelehnt.class)
-    public ResponseEntity<Map<String, Object>> boxLoesenAbgelehnt(BoxLoesenAbgelehnt ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.koerper());
+        return new KundenbereichLoeschlaufDto(lauf.id(), lauf.kundenbereich(), lauf.name(), lauf.stand(),
+                lauf.gestartetAm(), lauf.beendetAm(), lauf.fehler(), bericht);
     }
 
     /** Only the platform may repeat cleanup, and only after the tenant's data has been removed. */
@@ -286,28 +216,7 @@ public class AdminController {
             log.warn("Offboarding tenant {}: cleanup blocking failed; no accounts deleted", tenantId);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
         }
-        return deleteOffboardingUsers(tenantId, users);
-    }
-
-    private TenantOffboardingCleanupDto deleteOffboardingUsers(UUID tenantId, List<KeycloakUser> users) {
-        List<String> deletedUsers = new ArrayList<>();
-        List<String> failedUsers = new ArrayList<>();
-        for (KeycloakUser user : users) {
-            try {
-                keycloak.deleteUser(user.id());
-                deletedUsers.add(user.username());
-            } catch (RuntimeException ex) {
-                if (ex instanceof KeycloakAdminException kc && kc.status() == 404) {
-                    deletedUsers.add(user.username()); // Another retry already removed it.
-                    continue;
-                }
-                log.warn("Offboarding tenant {}: disabled Keycloak user {} pending cleanup", tenantId, user.id());
-                failedUsers.add(user.username());
-            }
-        }
-        log.info("Offboarding cleanup tenant {}: {} deleted, {} disabled users pending cleanup",
-                tenantId, deletedUsers.size(), failedUsers.size());
-        return new TenantOffboardingCleanupDto(tenantId, deletedUsers, failedUsers);
+        return loeschService.kontenEntfernen(tenantId, users);
     }
 
     // ---- sites (cross-tenant) ------------------------------------------------

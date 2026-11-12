@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.admin.KeycloakAdminClient;
@@ -211,8 +213,7 @@ class LoeschzugKatalogApiTest {
 
             vertragsendeVor(weg.id(), 91);
             MvcResult geloescht = loeschen(weg);
-            assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-            JsonNode nachweis = json(geloescht).get("loeschnachweis");
+            JsonNode nachweis = fertigerBericht(geloescht).get("loeschnachweis");
             Map<String, Long> zaehlungen = map(nachweis.get("zaehlungen"));
             Map<String, Long> verblieben = map(nachweis.get("verblieben"));
 
@@ -253,8 +254,7 @@ class LoeschzugKatalogApiTest {
 
             vertragsendeVor(weg.id(), 91);
             MvcResult geloescht = loeschen(weg);
-            assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-            Map<String, Long> verblieben = map(json(geloescht).get("loeschnachweis").get("verblieben"));
+            Map<String, Long> verblieben = map(fertigerBericht(geloescht).get("loeschnachweis").get("verblieben"));
             assertThat(verblieben).isEqualTo(Map.of("loeschzug_probe_ohne_recht", 1L,
                     "loeschzug_probe_append_only", 1L));
             assertThat(katalog(weg.id())).isEqualTo(verblieben);
@@ -298,8 +298,7 @@ class LoeschzugKatalogApiTest {
         long start = System.nanoTime();
         MvcResult geloescht = loeschen(weg);
         long ms = (System.nanoTime() - start) / 1_000_000;
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-        JsonNode nachweis = json(geloescht).get("loeschnachweis");
+        JsonNode nachweis = fertigerBericht(geloescht).get("loeschnachweis");
         long gezaehlt = map(nachweis.get("zaehlungen")).values().stream().mapToLong(Long::longValue).sum();
         assertThat(map(nachweis.get("verblieben"))).isEmpty();
         assertThat(katalog(nachbar.id()).values().stream().mapToLong(Long::longValue).sum()).isEqualTo(nachbarVorher);
@@ -366,10 +365,30 @@ class LoeschzugKatalogApiTest {
         return alles.toString();
     }
 
+    /** Der Löschweg seit vp-kunde-loeschen-504: POST startet den Lauf (202), der Statusweg trägt das Ergebnis. */
     private MvcResult loeschen(Bereich b) throws Exception {
-        return mvc.perform(post("/api/v1/admin/tenants/" + b.id() + "/delete").contentType(MediaType.APPLICATION_JSON)
-                .content(JSON.writeValueAsString(Map.of("confirmName", b.name()))).with(authentication(plattform())))
-                .andReturn();
+        MvcResult start = mvc.perform(post("/api/v1/admin/tenants/" + b.id() + "/delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("confirmName", b.name())))
+                .with(authentication(plattform()))).andReturn();
+        assertThat(start.getResponse().getStatus()).as(text(start)).isEqualTo(202);
+        long frist = System.nanoTime() + java.time.Duration.ofSeconds(180).toNanos();
+        while (true) {
+            MvcResult stand = mvc.perform(MockMvcRequestBuilders.get("/api/v1/admin/tenants/" + b.id() + "/loeschlauf")
+                    .with(authentication(plattform()))).andReturn();
+            assertThat(stand.getResponse().getStatus()).as(text(stand)).isEqualTo(200);
+            if (!"laeuft".equals(json(stand).get("stand").asText())) {
+                return stand;
+            }
+            assertThat(System.nanoTime()).as("Löschzug wird nicht fertig").isLessThan(frist);
+            Thread.sleep(100);
+        }
+    }
+
+    /** Der Lauf ist fertig; der Statusweg trägt den Bericht. */
+    private static JsonNode fertigerBericht(MvcResult lauf) throws Exception {
+        assertThat(json(lauf).get("stand").asText()).as(text(lauf)).isEqualTo("fertig");
+        return json(lauf).get("bericht");
     }
 
     private static Map<String, Long> map(JsonNode knoten) {

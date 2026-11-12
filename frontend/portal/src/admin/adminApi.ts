@@ -198,6 +198,26 @@ export interface VertragsendeUebergang {
   frist_tage?: number;
 }
 
+/**
+ * Der Löschzug als serverseitiger Auftrag (vp-kunde-loeschen-504): `POST …/delete` startet ihn nur
+ * noch (202) - in Produktion brauchte der Zug ~60 s und der Ingress (60-s-Grenze) antwortete 504,
+ * obwohl serverseitig gelöscht wurde. Das Portal fragt `GET …/loeschlauf`, bis `stand` nicht mehr
+ * `laeuft` ist. `fertig` heißt: die Abbau-Transaktion hat committet; `gescheitert` trägt in
+ * `fehler` den ehrlichen Satz (bei einem Rollback ausdrücklich „es wurde nichts gelöscht").
+ * `bericht` ist `null`, solange der Lauf läuft, nach einem Scheitern - oder wenn er bei einem
+ * Absturz nach dem Commit verloren ging (fertig bleibt fertig).
+ */
+export interface KundeLoeschlauf {
+  laufId: string;
+  tenantId: string;
+  name: string;
+  stand: 'laeuft' | 'fertig' | 'gescheitert';
+  gestartetAm: string;
+  beendetAm: string | null;
+  fehler: string | null;
+  bericht: TenantOffboardingReport | null;
+}
+
 /** Report of what the tenant offboarding removed (DB transactional, Keycloak best-effort). */
 export interface TenantOffboardingReport {
   tenantId: string;
@@ -498,12 +518,17 @@ export const adminApi = {
     }),
 
   // Type-to-confirm offboarding: confirmName must equal the tenant's exact
-  // name or the backend refuses (400) before touching anything.
+  // name or the backend refuses (400) before touching anything. Startet den
+  // serverseitigen Löschzug (202); das Ergebnis kommt über kundeLoeschlauf.
   deleteTenant: (tenantId: string, confirmName: string) =>
-    request<TenantOffboardingReport>(`/api/v1/admin/tenants/${tenantId}/delete`, {
+    request<KundeLoeschlauf>(`/api/v1/admin/tenants/${tenantId}/delete`, {
       method: 'POST',
       body: JSON.stringify({ confirmName }),
     }),
+
+  // Der Stand des jüngsten Löschzugs - nach dem Löschen weiter beantwortbar; 404, wenn nie einer lief.
+  kundeLoeschlauf: (tenantId: string) =>
+    request<KundeLoeschlauf>(`/api/v1/admin/tenants/${tenantId}/loeschlauf`),
 
   // vp-kunde-sofort-loeschen-mit-daten: was das sofortige Löschen umfasst (Datenarten, Folgen) -
   // nur lesend, der Löschweg bleibt deleteTenant; jeder Kunde ist sofort löschbar.

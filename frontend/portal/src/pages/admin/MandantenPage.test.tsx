@@ -19,6 +19,16 @@ const createTenant = vi.fn();
 const deleteTenant = vi.fn();
 // vp-kunde-sofort-loeschen-mit-daten: die Datenauskunft für den Löschdialog - gibt nie vor, ob gelöscht werden darf.
 const kundeLoeschbarkeit = vi.fn();
+// vp-kunde-loeschen-504: der Statusweg des serverseitigen Löschzugs.
+const kundeLoeschlauf = vi.fn();
+
+/** Ein fertiger Löschlauf, wie POST …/delete ihn liefert, wenn der Zug sofort durch ist. */
+function fertigerLauf(bericht: unknown) {
+  return {
+    laufId: 'lauf-1', tenantId: 't-1', name: TENANT.name, stand: 'fertig',
+    gestartetAm: '2026-11-12T10:50:00Z', beendetAm: '2026-11-12T10:51:00Z', fehler: null, bericht,
+  };
+}
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -38,6 +48,7 @@ vi.mock('../../admin/adminApi', () => ({
     beendenMandant: (...a: unknown[]) => beendenMandant(...a),
     wiederaufnehmenMandant: (...a: unknown[]) => wiederaufnehmenMandant(...a),
     kundeLoeschbarkeit: (...a: unknown[]) => kundeLoeschbarkeit(...a),
+    kundeLoeschlauf: (...a: unknown[]) => kundeLoeschlauf(...a),
   },
 }));
 
@@ -67,6 +78,8 @@ beforeEach(() => {
     folgen: { anlagen: 0, boxen: [], personen: 0 },
   });
   deleteTenant.mockReset();
+  // Kein laufender Zug beim Öffnen des Dialogs (404 wie der Server ohne je einen Lauf).
+  kundeLoeschlauf.mockReset().mockRejectedValue(Object.assign(new Error('Kein Löschzug'), { status: 404 }));
 });
 
 const TENANT = {
@@ -318,7 +331,7 @@ describe('MandantenPage - die Kundenakte', () => {
       deletedTelemetryRows: 0, deletedUsers: ['anna'], failedUsers: [],
       anlass: 'sofort_keine_daten', freigegebeneBoxen: ['edge-cyhchfr'], loeschnachweis: null,
     };
-    deleteTenant.mockResolvedValue(report);
+    deleteTenant.mockResolvedValue(fertigerLauf(report));
     openDetail();
     const akte = await screen.findByRole('region', { name: TENANT.name });
     expect(await within(akte).findByText('beendet')).toBeInTheDocument();
@@ -349,7 +362,7 @@ describe('MandantenPage - die Kundenakte', () => {
       deletedTelemetryRows: 12, deletedUsers: ['anna'], failedUsers: [],
       anlass: 'sofort_mit_daten', freigegebeneBoxen: [], loeschnachweis: null,
     };
-    deleteTenant.mockResolvedValue(report);
+    deleteTenant.mockResolvedValue(fertigerLauf(report));
     openDetail();
     const akte = await screen.findByRole('region', { name: TENANT.name });
     fireEvent.click(await within(akte).findByRole('button', { name: `Weitere Aktionen für ${TENANT.name}` }));

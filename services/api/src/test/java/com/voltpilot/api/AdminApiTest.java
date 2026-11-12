@@ -909,18 +909,14 @@ class AdminApiTest {
 
         // vp-kunde-sofort-loeschen-mit-daten: an ACTIVE tenant with real data is deleted immediately - no
         // contract end, no waiting period. The exact name unlocks the cascade; the report says what was removed.
-        ResponseEntity<Map<String, Object>> report = rest.exchange(
-                url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("confirmName", "Weggezogen GmbH"), bearer(admin)),
-                new ParameterizedTypeReference<>() {});
-        assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(report.getBody()).containsEntry("anlass", "sofort_mit_daten");
-        assertThat(report.getBody()).containsEntry("deletedSites", 1);
-        assertThat(report.getBody()).containsEntry("deletedDevices", 1);
-        assertThat(((Number) report.getBody().get("deletedTelemetryRows")).longValue()).isEqualTo(1L);
-        assertThat((List<?>) report.getBody().get("deletedUsers"))
+        Map<String, Object> report = fertigerBericht(offboard(admin, tenantId, "Weggezogen GmbH"));
+        assertThat(report).containsEntry("anlass", "sofort_mit_daten");
+        assertThat(report).containsEntry("deletedSites", 1);
+        assertThat(report).containsEntry("deletedDevices", 1);
+        assertThat(((Number) report.get("deletedTelemetryRows")).longValue()).isEqualTo(1L);
+        assertThat((List<?>) report.get("deletedUsers"))
                 .isEqualTo(List.of("weggezogen-operator"));
-        assertThat((List<?>) report.getBody().get("failedUsers")).isEmpty();
+        assertThat((List<?>) report.get("failedUsers")).isEmpty();
         assertThat(queryLong("SELECT count(*) FROM mandant_loeschnachweis WHERE kundenbereich = '" + tenantId + "'"))
                 .isEqualTo(1L);
 
@@ -964,9 +960,8 @@ class AdminApiTest {
         }).when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)),
                 org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
 
-        var report = offboard(admin, tenantId, "Offboarding Fehlerfall");
-        assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(report.getBody().get("failedUsers")).isEqualTo(List.of("offboarding-fehler"));
+        Map<String, Object> report = fertigerBericht(offboard(admin, tenantId, "Offboarding Fehlerfall"));
+        assertThat(report.get("failedUsers")).isEqualTo(List.of("offboarding-fehler"));
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isZero();
         assertThat(keycloakAdmin.getUser(userId).enabled()).isFalse();
         assertThat(tryToken("offboarding-fehler", "offboarding-pw-123")).doesNotContainKey("access_token");
@@ -1011,13 +1006,16 @@ class AdminApiTest {
                 "sperre@offboarding.example", "offboarding-pw-123").get("id");
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated blocking failure"))
                 .when(keycloakAdmin).setEnabled(userId, false);
-        assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        Map<String, Object> gescheitert = offboard(admin, tenantId, "Sperrfehler");
+        assertThat(gescheitert.get("stand")).isEqualTo("gescheitert");
+        assertThat((String) gescheitert.get("fehler")).contains("Benutzerverwaltung")
+                .contains("nichts gelöscht");
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
         org.mockito.Mockito.verify(offboardingTenants, org.mockito.Mockito.never()).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
         org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
         assertThat(cleanup(admin, tenantId).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         org.mockito.Mockito.doCallRealMethod().when(keycloakAdmin).setEnabled(userId, false);
-        assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
+        fertigerBericht(offboard(admin, tenantId, "Sperrfehler"));
     }
 
     @Test
@@ -1029,7 +1027,9 @@ class AdminApiTest {
         String customer = token("offboarding-datenbank", "offboarding-pw-123");
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated database failure"))
                 .when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
-        assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        Map<String, Object> gescheitert = offboard(admin, tenantId, "Datenbankfehler");
+        assertThat(gescheitert.get("stand")).isEqualTo("gescheitert");
+        assertThat((String) gescheitert.get("fehler")).contains("nichts gelöscht");
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
         assertThat(queryLong("SELECT count(*) FROM benutzer WHERE tenant_id = '" + tenantId
                 + "' AND sub = '" + userId + "' AND zustand = 'gesperrt'")).isEqualTo(1);
@@ -1039,12 +1039,45 @@ class AdminApiTest {
                 new HttpEntity<>(bearer(customer)), String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
         org.mockito.Mockito.doCallRealMethod().when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
-        assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
+        fertigerBericht(offboard(admin, tenantId, "Datenbankfehler"));
     }
 
-    private ResponseEntity<Map<String, Object>> offboard(String admin, String tenantId, String name) {
-        return rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
+    /** Der Löschweg seit vp-kunde-loeschen-504: POST startet den Lauf (202), der Statusweg trägt das Ergebnis. */
+    private Map<String, Object> offboard(String admin, String tenantId, String name) {
+        ResponseEntity<Map<String, Object>> start = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("confirmName", name), bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(start.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        return laufAbwarten(admin, tenantId);
+    }
+
+    /** Fragt den Statusweg wie das Portal, bis der Lauf terminal ist (bei „fertig" samt Bericht). */
+    private Map<String, Object> laufAbwarten(String admin, String tenantId) {
+        long frist = System.nanoTime() + java.time.Duration.ofSeconds(120).toNanos();
+        while (true) {
+            ResponseEntity<Map<String, Object>> stand = rest.exchange(
+                    url("/api/v1/admin/tenants/" + tenantId + "/loeschlauf"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+            assertThat(stand.getStatusCode()).isEqualTo(HttpStatus.OK);
+            Map<String, Object> lauf = stand.getBody();
+            boolean laeuft = "laeuft".equals(lauf.get("stand"));
+            boolean berichtFehlt = "fertig".equals(lauf.get("stand")) && lauf.get("bericht") == null;
+            if (!laeuft && !berichtFehlt) {
+                return lauf;
+            }
+            assertThat(System.nanoTime()).as("Löschzug wird nicht fertig: " + lauf).isLessThan(frist);
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> fertigerBericht(Map<String, Object> lauf) {
+        assertThat(lauf.get("stand")).as(String.valueOf(lauf)).isEqualTo("fertig");
+        return (Map<String, Object>) lauf.get("bericht");
     }
 
     private ResponseEntity<Map<String, Object>> cleanup(String admin, String tenantId) {

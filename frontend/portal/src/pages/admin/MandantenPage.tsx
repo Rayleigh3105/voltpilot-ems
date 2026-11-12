@@ -31,6 +31,7 @@ import {
   type TenantOffboardingReport,
 } from '../../admin/adminApi';
 import { KundeLoeschenDialog } from './KundeLoeschenDialog';
+import { kundeLoeschlaufAbwarten } from '../../admin/kundeLoeschen';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TableSkeleton, TextSkeleton } from '../../components/States';
@@ -387,9 +388,11 @@ function KundenlisteSeite({
           tenantName={loeschenTenant.name}
           onClose={() => setLoeschenTenant(null)}
           onGeloescht={(report) => {
+            const name = loeschenTenant.name;
             setLoeschenTenant(null);
-            setGeloeschtMeldung(`Der Kunde „${report.tenantName}" wurde vollständig entfernt`
-              + (report.freigegebeneBoxen.length > 0
+            // Ohne Bericht (bei einem Neustart nach dem Commit verloren): gelöscht ist gelöscht.
+            setGeloeschtMeldung(`Der Kunde „${report?.tenantName ?? name}" wurde vollständig entfernt`
+              + (report && report.freigegebeneBoxen.length > 0
                 ? `; die Box${report.freigegebeneBoxen.length === 1 ? '' : 'en'} ${report.freigegebeneBoxen.join(', ')} `
                   + (report.freigegebeneBoxen.length === 1 ? 'ist' : 'sind') + ' wieder anmeldbar.'
                 : '.'));
@@ -638,14 +641,21 @@ function KundenaktePage({
     setDeleteBusy(true);
     setDeleteError(null);
     try {
-      setReport(await adminApi.deleteTenant(tenant.id, tenant.name));
+      // Startet den serverseitigen Löschzug (vp-kunde-loeschen-504) und wartet auf sein Ergebnis -
+      // unabhängig davon, ob ein einzelner Request unter der 60-s-Grenze des Ingress bleibt.
+      const lauf = await kundeLoeschlaufAbwarten(tenant.id, await adminApi.deleteTenant(tenant.id, tenant.name));
+      if (lauf.stand === 'fertig') {
+        // Ohne Bericht (bei einem Neustart nach dem Commit verloren): zurück zur Kundenliste.
+        if (lauf.bericht) setReport(lauf.bericht);
+        else onDeleted();
+      } else {
+        setDeleteError(lauf.fehler ?? 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.');
+      }
     } catch (e) {
       setDeleteError(
-        e instanceof ApiError && e.status === 502
-          ? 'Die Benutzerverwaltung ist gerade nicht erreichbar - es wurde nichts gelöscht. Bitte versuchen Sie es später erneut.'
-          : e instanceof ApiError
-            ? `Löschen fehlgeschlagen: ${e.message}`
-            : 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.',
+        e instanceof ApiError
+          ? `Löschen fehlgeschlagen: ${e.message}`
+          : 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.',
       );
     } finally {
       setDeleteBusy(false);
@@ -1062,7 +1072,9 @@ function KundenaktePage({
           onClose={() => setLoeschenDialog(false)}
           onGeloescht={(r) => {
             setLoeschenDialog(false);
-            setReport(r);
+            // Ohne Bericht (bei einem Neustart nach dem Commit verloren): zurück zur Kundenliste.
+            if (r) setReport(r);
+            else onDeleted();
           }}
         />
       )}
