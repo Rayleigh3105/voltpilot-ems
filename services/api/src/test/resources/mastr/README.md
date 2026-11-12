@@ -9,3 +9,5 @@ Offline-Fixtures aus öffentlichen Daten zweier Wohnanlagen. CI ruft dafür kein
 | `soap_fault_keine_daten.xml` | Fehlerantwort für unbekannte Einheit |
 
 JSON-Daten: Marktstammdatenregister der Bundesnetzagentur, Datenlizenz Deutschland – Namensnennung – 2.0. SOAP-Requestform und `SOAPAction` wurden am 02.07.2026 geprüft; die Antwort-Fixtures bilden die WCF-/`Modelle`-Struktur nach.
+
+`Hauptausrichtung`/`HauptausrichtungNeigungswinkel` tragen im echten Webdienst Enum-Namen (`AnlagenartSolarAusrichtungEnum`/`-NeigungswinkelEnum`, `mastrbasetypes.xsd`), keine Katalog-Zahlen wie beim JSON-Backend; `soap_solar_SEE966831669444.xml` wurde entsprechend auf `Sued`/`Grad21Bis40` korrigiert (N2, aufgedeckt bei `vp-mastr-mehrere-einheiten-konzept`). Mit den alten Zahlen fielen beide Felder beim echten Abruf stumm auf `null` und die Prognose auf Süd/30°.

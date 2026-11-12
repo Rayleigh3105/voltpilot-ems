@@ -37,8 +37,8 @@
         <a:ArtDerSolaranlage>853</a:ArtDerSolaranlage>
         <a:Leistungsbegrenzung i:nil="true" />
         <a:EinheitlicheAusrichtungUndNeigungswinkel>true</a:EinheitlicheAusrichtungUndNeigungswinkel>
-        <a:Hauptausrichtung>699</a:Hauptausrichtung>
-        <a:HauptausrichtungNeigungswinkel>809</a:HauptausrichtungNeigungswinkel>
+        <a:Hauptausrichtung>Sued</a:Hauptausrichtung>
+        <a:HauptausrichtungNeigungswinkel>Grad21Bis40</a:HauptausrichtungNeigungswinkel>
         <a:Nebenausrichtung i:nil="true" />
         <a:NebenausrichtungNeigungswinkel i:nil="true" />
         <a:InAnspruchGenommeneFlaeche i:nil="true" />

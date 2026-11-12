@@ -125,6 +125,28 @@ function battery(over: Partial<SiteAsset> = {}): SiteAsset {
   };
 }
 
+function pv(over: Partial<SiteAsset> = {}): SiteAsset {
+  return {
+    id: 'a-pv',
+    type: 'pv',
+    deviceId: null,
+    capacityKwh: null,
+    maxChargeKw: null,
+    maxDischargeKw: null,
+    roundtripEfficiencyPct: null,
+    speicherschonung: null,
+    pvCapacityKwp: 8.4,
+    moduleCount: 20,
+    azimuthDeg: 180,
+    tiltDeg: 30,
+    commissionedOn: '2014-06-01',
+    registry: 'mastr',
+    registryUnitId: 'SEE123456789012',
+    registryFetchedAt: null,
+    ...over,
+  };
+}
+
 function device(over: Partial<Device> = {}): Device {
   return {
     id: 'd-1',
@@ -295,11 +317,15 @@ async function renderEinstellungen(
   devices: Device[] = [device({ id: 'd-1' })],
   verguetung: Einspeiseverguetung | Error = verguetungStand(),
   gridLimitKw: number | null = null,
+  pvOver: Partial<SiteAsset> | null = null,
 ) {
   const s: Site = { ...eegSite, ...over };
   const assets = vi
     .spyOn(api, 'siteAssets')
-    .mockResolvedValue(batteryOver == null ? [] : [battery({ deviceId: 'd-1', ...batteryOver })]);
+    .mockResolvedValue([
+      ...(batteryOver == null ? [] : [battery({ deviceId: 'd-1', ...batteryOver })]),
+      ...(pvOver == null ? [] : [pv(pvOver)]),
+    ]);
   const verguetungAbruf =
     verguetung instanceof Error
       ? vi.spyOn(api, 'einspeiseverguetung').mockRejectedValue(verguetung)
@@ -1130,6 +1156,19 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
     expect(zeile('Registrierung')).toHaveTextContent('Nicht verknüpft');
     fireEvent.click(zeile('Registrierung'));
     expect(await screen.findByRole('dialog', { name: 'Anlage verknüpfen' })).toBeInTheDocument();
+    restore();
+  });
+
+  it('zeigt Ausrichtung als Himmelsrichtung statt Gradzahl und ohne doppelten Punkt (N3/N4)', async () => {
+    const vorZweiStunden = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, {
+      registryFetchedAt: vorZweiStunden,
+    });
+    const b = await blatt('Registrierung');
+    // N4: "Süd · 30 °", nicht "180 ° / 30 °".
+    expect(within(b).getByText('Ausrichtung / Neigung').nextElementSibling).toHaveTextContent('Süd · 30 °');
+    // N3: fmtRelative liefert die Abkürzung schon mit Punkt - kein zweiter.
+    expect(within(b).queryByText(/Std\.\./)).toBeNull();
     restore();
   });
 

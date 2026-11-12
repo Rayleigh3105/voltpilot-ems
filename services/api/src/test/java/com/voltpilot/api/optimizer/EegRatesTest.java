@@ -75,6 +75,13 @@ class EegRatesTest {
     }
 
     @Test
+    void solarspitzengesetzKleinanlageThresholdMatchesThePythonConstant() {
+        // N1: §51 Abs. 2 Nr. 1 EEG's carve-out threshold, mirrored in
+        // config.py SOLARSPITZENGESETZ_KLEINANLAGE_KWP.
+        assertThat(EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP).isEqualTo(100.0);
+    }
+
+    @Test
     void envJsonOverrideReplacesTheScheduleWholesale() {
         EegRates custom = EegRates.fromJson(
                 "[{\"from\": \"2020-01-01\", \"le10\": 50.0, \"le40\": 40.0, \"le100\": 30.0}]");
