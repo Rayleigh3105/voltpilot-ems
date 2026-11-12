@@ -97,6 +97,11 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
   „MiSpeL · Jahresstand nach Anlage 2“ (Band förderfähig/indifferent/saldierungsfähig, „Sie stehen bei …“, die nächste
   kWh; im Monat eine Zeile mit Sprung) aus dem Jahreslauf MP-25
   ([Vertrag](../contracts/v2/mispel-pauschal.md#jahresstand-für-das-portal-mp-27)); Zwilling `mispelPauschal.ts`.
+- **Der Weg zu MiSpeL je Anlage (MP-55, BK-52 A):** nur lesend `GET /api/v1/sites/{siteId}/mispel-weg`
+  ([Vertrag](../contracts/v2/mispel-weg.md)): die Stationen der Strecke — Abgrenzungsoption (Gewerbe, acht),
+  Pauschaloption (Haushalt, acht), je Ladepunkt das Auto als Speicher (sechs) — mit Zustand, Satz zum Stand und Tür auf
+  die vorhandene Fläche, zusammengelesen aus Check, Förderweg, Vormerkung, Zählerrollen, Ladepunkt und Läufen; ohne
+  Tabelle. Das Blatt im Portal ist MP-56.
 - **Der alte Schalter `netzladen_erlaubt`** bietet das Portal seit MP-17 nur noch, wo der Förderweg Netzladen zulässt
   (sonst gesperrt mit Grund); ohne Fassung ist er der Bestand, mit Fassung bestimmt der Förderweg ([Vertrag § 6](../contracts/v2/mispel-foerderweg.md#6-der-alte-netzlade-schalter-bis-mp-17-w2--b),
   [Wegweiser Netzladen-Schalter](../agents/root/per-site-grid-charging-switch-site-netzl.md)).
