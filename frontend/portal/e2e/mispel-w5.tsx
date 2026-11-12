@@ -310,10 +310,19 @@ function Cockpit() {
 function Fahrplan() {
   const aussage = speicherAussage(tagesGeld(), { now: new Date(), steuerungGeplantEur: K.plan });
   const antwort = antwortBringt(aussage, fallId === 'heute' ? 'heute' : 'gestern');
+  // Wie das Tagesbild seit „Fahrplan in fünf Sekunden“ (main f032d14f3): die Antwort steht als Kachel
+  // (Telefon) bzw. Spalte (Rechner), ein Tipp klappt den ganzen Satz samt Gründen auf.
+  const [offen, setOffen] = React.useState<string | null>(null);
+  const form = window.innerWidth < 600 ? 'kacheln' : 'spalten';
   return (
     <div data-frame="fahrplan" style={{ maxWidth: 560, minWidth: 0 }}>
       <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-        <FahrplanAntworten antworten={antwort ? [antwort] : []} gewaehlt={null} onWahl={() => {}} form="liste" />
+        <FahrplanAntworten
+          antworten={antwort ? [antwort] : []}
+          gewaehlt={antwort && offen === antwort.key ? antwort.key : null}
+          onWahl={(a) => setOffen((cur) => (cur === a.key ? null : a.key))}
+          form={form}
+        />
         {aussage?.geplant && <p className="vp-tb-antwort-zusatz" data-planwert>{aussage.geplant}</p>}
       </Card>
     </div>

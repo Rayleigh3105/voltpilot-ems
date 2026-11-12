@@ -129,9 +129,15 @@ for (const breite of [375, 1440]) {
     test('Fahrplan „Was hat es gebracht?“: derselbe Satz, Planwert ohne MiSpeL-Gutschrift', async ({ page }) => {
       await oeffne(page, 'offen', 'fahrplan');
       const main = page.locator('main');
-      await expect(main).toContainText('Was hat es gebracht?');
-      await expect(main).toContainText('− 0,84 €');
-      await expect(main).toContainText('Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz');
+      // Seit „Fahrplan in fünf Sekunden“ (main f032d14f3) steht die Antwort als Kachel „Gestern“; die Frage
+      // trägt ihr Name, den Satz samt Netzladen-Zeile zeigt erst ein Tipp.
+      const kachel = main.getByRole('button', { name: /^Gestern:\s−\s0,84\s€.*Was hat es gebracht\?/ });
+      await expect(kachel).toBeVisible();
+      await expect(main.locator('.vp-antw-detail')).toHaveCount(0);
+      await kachel.click();
+      await expect(kachel).toHaveAttribute('aria-expanded', 'true');
+      await expect(main.locator('.vp-antw-detail')).toContainText('− 0,84 €');
+      await expect(main.locator('.vp-antw-detail')).toContainText('Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz');
       await expect(main.locator('[data-planwert]')).toHaveText(
         'Vorab geplant hatte der Fahrplan + 0,62 € durch die Steuerung — ohne MiSpeL-Gutschrift',
       );

@@ -31,13 +31,18 @@ async function oeffnen(page: Page, fall: string, mehr = '') {
   page.on('pageerror', (e) => fehler.push(e.message));
   await page.goto(LADEN(fall, mehr));
   await page.locator('.stn').first().waitFor();
-  await expect(page.getByRole('region', { name: 'Netzanschluss' })).toBeVisible();
+  // „Ein Ort fürs Laden“ Scheibe 4 (main #1599, E5 = A): die Karte „Netzanschluss“ ist von diesem Reiter
+  // entfallen - die Anschlussgrenze wohnt in den Einstellungen. Bereit ist der Reiter mit seinen Ladepunkten.
+  await expect(page.locator('.stn-main')).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   return fehler;
 }
 
 const wallbox = (page: Page) => page.getByRole('region', { name: 'Wallbox Werkstatt' });
 const carport = (page: Page) => page.getByRole('region', { name: 'Ladepunkt Carport' });
+// Seit der Ladekarte von main steht „Womit laden“ als Überschrift mit einem Knopf „… Womit laden – ändern“
+// (vorher die Frage „Womit laden?“).
+const womit = (karte: ReturnType<typeof wallbox>) => karte.getByRole('heading', { name: /^Womit laden/ });
 
 async function ohneUeberlauf(page: Page) {
   const b = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
@@ -96,14 +101,14 @@ test('fähiges Auto mit Ladestand: Ladestand, Reserve, Zurückspeisen in drei St
   // MP-41c: ohne Fahrzeug-Eintrag im Lauf (Betreiber-Schalter leer) sagt die Karte, dass die Anlage noch nicht plant.
   await expect(k.locator('[data-hinweis="nicht_eingeschaltet"]')).toHaveText('An dieser Anlage plant VoltPilot das Zurückspeisen noch nicht. Ihre Wahl ist gespeichert.');
   await expect(k.locator('[data-zeile="plan-zurueck"]')).toHaveCount(0);
-  // BK-41 A: kein „Womit laden?“ und kein Ladeziel in kWh - das Ladeziel ist „Abfahrt und Reserve“.
-  await expect(k.getByText('Womit laden?')).toHaveCount(0);
+  // BK-41 A: kein „Womit laden“ und kein Ladeziel in kWh - das Ladeziel ist „Abfahrt und Reserve“.
+  await expect(womit(k)).toHaveCount(0);
   await expect(k.locator('[data-zeile="abfahrt"]')).toContainText(`Abfahrt Mo–Fr 07:15 · 80 % (≈${NBSP}310${NBSP}km)`);
   await expect(k.locator('[data-zeile="abfahrt"]')).toContainText('Reserve 40 % · höchstens eine volle Ladung am Tag zurück');
   await expect(k.locator('[data-zeile="ertrag"]')).toContainText('September: 108 kWh ins Haus · 34 kWh ins Netz');
   await expect(k.locator('[data-zeile="ertrag"]')).toContainText('+15,42 € gegenüber nur laden · in Verlauf › Erlöse');
   // Der Ladepunkt „nur laden“ daneben bleibt wie heute.
-  await expect(carport(page).getByText('Womit laden?')).toBeVisible();
+  await expect(womit(carport(page))).toBeVisible();
   await expect(carport(page).getByRole('group', { name: 'Zurückspeisen' })).toHaveCount(0);
   await ohneUeberlauf(page);
   await foto(page, 'karte-mit-ladestand', k);
@@ -138,8 +143,9 @@ test('fähiges Auto ohne Ladestand: das heutige Ladeziel bleibt, Zurückspeisen 
   const k = wallbox(page);
   await expect(k.locator('[data-ladestand]')).toHaveCount(0);
   await expect(k.getByRole('group', { name: 'Zurückspeisen' })).toBeVisible();
-  await expect(k.getByText('Womit laden?')).toBeVisible();
-  await expect(k.locator('.lziel').filter({ hasText: 'Kein Ziel · lädt, wenn es passt' })).toBeVisible();
+  await expect(womit(k)).toBeVisible();
+  // Das Ladeziel in der Fassung der Ladekarte von main („Kein Ziel“ · „Ziel setzen“).
+  await expect(k.locator('.lziel').filter({ hasText: 'Kein Ziel' }).filter({ hasText: 'Ziel setzen' })).toBeVisible();
   await expect(k.locator('[data-zeile="abfahrt-reserve"]')).toContainText(`Abfahrt und Reserve · Reserve 40 % (≈${NBSP}150${NBSP}km)`);
   await expect(k.locator('[data-zeile="abfahrt-reserve"]')).toContainText('Gilt, sobald ein Auto mit Rückspeise-Funktion seinen Ladestand meldet');
   await ohneUeberlauf(page);
@@ -156,7 +162,7 @@ test('Auto ohne Rückspeise-Funktion: die Karte sagt es, das Auto lädt wie heut
   await expect(stufen.getByRole('button', { name: 'Ins Haus' })).toHaveAttribute('aria-pressed', 'true');
   await expect(k.locator('.wb-satz')).toHaveText('„Ins Haus“ gilt wieder, sobald ein Auto mit Rückspeise-Funktion ansteckt.');
   await expect(k.locator('[data-ladestand]')).toHaveCount(0);
-  await expect(k.getByText('Womit laden?')).toBeVisible();
+  await expect(womit(k)).toBeVisible();
   await expect(k.locator('[data-zeile="abfahrt-reserve"]')).toHaveCount(0);
   await ohneUeberlauf(page);
   await foto(page, 'karte-ohne-rueckspeisen', k);
@@ -180,7 +186,7 @@ test.describe('Bestandsschutz: Ladepunkte „nur laden“ zeichnen den Reiter by
   test.describe.configure({ mode: 'serial' });
   const reiter = async (page: Page, fall: string) => {
     await oeffnen(page, fall);
-    await expect(wallbox(page).getByText('Womit laden?')).toBeVisible();
+    await expect(womit(wallbox(page))).toBeVisible();
     await expect(page.getByRole('region', { name: 'Fahrzeuge' })).toBeVisible();
     return page.locator('.stn-main').innerHTML();
   };
@@ -224,9 +230,9 @@ test('angehaltener Standort (UEMS SZ-2 A): die Wallbox-Karte steht abgedimmt wie
   await expect(carport(page)).toHaveClass(/\bmatt\b/);
   await expect(k.getByRole('group', { name: 'Lademodus' }).getByRole('button', { name: 'Schnell' })).toBeDisabled();
   await expect(k.getByRole('note').filter({ hasText: 'sobald die Steuerung fortgesetzt ist' })).toBeVisible();
-  // Zurückspeisen ist die Freigabe des Fahrers, kein Eingriff - wie „Womit laden?“ am Carport bleibt sie einstellbar.
+  // Zurückspeisen ist die Freigabe des Fahrers, kein Eingriff - wie „Womit laden“ am Carport bleibt sie einstellbar.
   await expect(k.getByRole('group', { name: 'Zurückspeisen' }).getByRole('button', { name: 'Haus + Netz' })).toBeEnabled();
-  await expect(carport(page).getByRole('group', { name: 'Womit laden' }).getByRole('button').first()).toBeEnabled();
+  await expect(carport(page).getByRole('button', { name: /Womit laden – ändern$/ })).toBeEnabled();
   await ohneUeberlauf(page);
   expect(fehler).toEqual([]);
 });
@@ -295,7 +301,7 @@ test('BK-41c-2 A: Leistung alt, Ladestand frisch - der Ladestand zählt nach sei
   const k = wallbox(page);
   await expect(k.locator('[data-ladestand="62"] [data-alter]')).toHaveText(`≈${NBSP}240${NBSP}km · jetzt`);
   await expect(k.locator('[data-zeile="abfahrt"]')).toBeVisible();
-  await expect(k.getByText('Womit laden?')).toHaveCount(0);
+  await expect(womit(k)).toHaveCount(0);
   // Die Leistung behält ihre Uhr: 8 Minuten alt ist nicht aktuell.
   await expect(k.locator('.lp-kw')).toContainText('—');
   await ohneUeberlauf(page);
@@ -318,7 +324,7 @@ test('BK-41c-2 A: ein alter Ladestand sagt im Kopf, von wann er ist', async ({ p
   await expect(k.locator('[data-ladestand]')).toHaveCount(0);
   await expect(k.locator('.lp-h small').first()).toHaveText(`Kleinwagen · Karte 07cd… · Ladestand zuletzt 62${NBSP}% um 12:58 · angesteckt seit 08:00`);
   await expect(k.locator('[data-zeile="abfahrt-reserve"]')).toBeVisible();
-  await expect(k.getByText('Womit laden?')).toBeVisible();
+  await expect(womit(k)).toBeVisible();
   await ohneUeberlauf(page);
   await foto(page, 'karte-ladestand-alt', k);
   expect(fehler).toEqual([]);
@@ -328,7 +334,10 @@ test('BK-41c-3 A: dauerhaft „sofort“ - „Schnell“ markiert, Satz der Steu
   const fehler = await oeffnen(page, 'sofort', '&plan=zurueck');
   const k = wallbox(page);
   await expect(k.getByRole('group', { name: 'Lademodus' }).getByRole('button', { name: 'Schnell' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(k.getByText('Lädt immer sofort mit voller Leistung, auch mit Netzstrom — so ist dieser Ladepunkt eingestellt.')).toBeVisible();
+  // Die dauerhafte Steuerart „sofort“ spricht seit main die Ladekarte selbst („Schnell immer“, ungesteuert) -
+  // eine Fassung für jeden Ladepunkt; der MiSpeL-Teil der Karte ist der Satz zum Zurückspeisen darunter.
+  await expect(k.getByText('Lädt immer sofort voll', { exact: true })).toBeVisible();
+  await expect(k.getByText('VoltPilot steuert diesen Ladepunkt noch nicht. Netzstrom zu jedem Preis.')).toBeVisible();
   await expect(k.getByText('nur für diese Ladung')).toHaveCount(0);
   await expect(k.locator('.wb-satz')).toHaveAttribute('data-halt', 'lademodus_sofort');
   await expect(k.locator('.wb-satz')).toHaveText('Zurückspeisen ruht, solange „Schnell“ gilt — mit „Smart“ plant VoltPilot es wieder. Ihre Wahl „Ins Haus“ bleibt gespeichert.');
@@ -364,7 +373,7 @@ test.describe('Bestandsschutz MP-41c: ein Fahrzeug-Eintrag ändert an einem Lade
   test.describe.configure({ mode: 'serial' });
   const reiter = async (page: Page, plan: string) => {
     await oeffnen(page, 'nur-laden', `&plan=${plan}`);
-    await expect(wallbox(page).getByText('Womit laden?')).toBeVisible();
+    await expect(womit(wallbox(page))).toBeVisible();
     await expect(page.getByRole('region', { name: 'Fahrzeuge' })).toBeVisible();
     return page.locator('.stn-main').innerHTML();
   };

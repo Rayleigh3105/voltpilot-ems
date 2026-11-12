@@ -205,11 +205,8 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     }
   });
 
-  // Je Breite EIN Fall mit EINEM Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): zwei Aufrufe samt
-  // zweier Dialog-Wege in einem Fall waren unter vier Workern vereinzelt rot (Gesamtlauf mispel 05.10.2026, desktop und
-  // webkit). Die Zusicherungen sind dieselben.
-  for (const breite of [375, 1440]) {
-    test(`AP-06 IP-12 · Quellenübergabe: Prüfung, Folgen, geplanter Wechsel und Rücknahme bei ${breite} px`, async ({ page }) => {
+  test('AP-06 IP-12 · Quellenübergabe: Prüfung, Folgen, geplanter Wechsel und Rücknahme bei 375/1440', async ({ page }) => {
+    for (const breite of [375, 1440]) {
       await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
       await expect(page.getByRole('heading', { name: 'Geräte an dieser Box' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
       await page.getByRole('button', { name: 'Zuständige Box wechseln' }).first().click();
@@ -235,8 +232,8 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       await erneut.getByRole('button', { name: 'Rücknahme bestätigen' }).click();
       await expect(page.getByRole('dialog', { name: 'Zuständigkeit aktualisiert' }))
         .toContainText('Der geplante Wechsel wurde zurückgenommen.');
-    });
-  }
+    }
+  });
 
   test('AP-06 IP-12 · Box-Tausch beim Claim bleibt bei ausstehender Zustellung ehrlich (375)', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', 375);
@@ -254,9 +251,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await expect(dialog).toContainText('wird zugestellt, sobald die Box erreichbar ist');
   });
 
-  // Z4 in drei Fällen mit je EINEM Aufruf der Bühne (derselbe Entscheid): drei Aufrufe in einem Fall waren unter vier
-  // Workern vereinzelt rot (Gesamtlauf mispel 05.10.2026, tablet). Die Zusicherungen sind dieselben.
-  test('Z4 · Werk Lindach: eine Anlage — ihr Aufbau zeigt genau sie (375 px)', async ({ page }) => {
+  test('Z4 · Werk Lindach: eine Anlage — ihr Aufbau zeigt genau sie; ohne Gebäude L1 und die Messbereiche', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=lindach-aufbau', 375);
     await expect(page.locator('.vp-auf-t-zeile.is-anlage').first()).toBeVisible();
     const a = await messe(page);
@@ -264,10 +259,8 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     expect(a.leiste).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse']);
     await expect(page.locator('.vp-auf-t-zeile.is-anlage')).toHaveCount(1);
     await ablegen(page, 'lindach-aufbau-375', a);
-  });
 
-  for (const breite of [1440, 375]) {
-    test(`Z4 · Werk Lindach ohne Gebäude: L1 und die Messbereiche bei ${breite} px`, async ({ page }) => {
+    for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=lindach-gebaeude&orte=leer', breite);
       await expect(page.locator('[data-testid="ortsbaum-leer"]')).toBeVisible();
       await expect(page.locator('[data-testid="ortsbaum-leer"]')).toContainText('Gebäude sind optional');
@@ -280,13 +273,10 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       expect(m.seite).toEqual(breite < 721 ? [] : ['Übersicht', 'Aufbau', 'Messstellen', 'Netzanschlüsse']);
       expect(m.reiter).toEqual([]);
       await ablegen(page, `lindach-leer-${breite}`, m);
-    });
-  }
+    }
+  });
 
-  // Ü8 in drei Fällen mit je EINEM Aufruf der Bühne, der Kennzahlen-Fall mit zwei (Standort und das Lesezeichen des
-  // Unternehmens im Vergleich) — Entscheid firstmate gm-e2e-mehrfachaufruf = A: vier Aufrufe in einem Fall sprengten
-  // unter vier Workern die 30 s (Gesamtlauf mispel 05.10.2026). Die Zusicherungen sind dieselben.
-  test('Ü8 · Einstiege auf der Standort-Übersicht führen zu „Berichte dieses Standorts“ (375 px)', async ({ page }) => {
+  test('Ü8 · Einstiege auf der Standort-Übersicht führen zu „Berichte/Kennzahlen dieses Standorts“ — der Betriebskunde bekommt keinen', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 375, AM_20_11);
     await expect(page.getByTestId('einstieg-berichte')).toBeVisible();
     const m = await messe(page);
@@ -308,9 +298,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte\/BR-2026-0001$/);
     await page.getByRole('button', { name: 'Berichte dieses Standorts' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte$/);
-  });
 
-  test('Ü8 · Einstiege auf der Standort-Übersicht führen zu „Kennzahlen dieses Standorts“; das Lesezeichen des Unternehmens gilt (1440 px)', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440, AM_20_11);
     await page.getByTestId('einstieg-kennzahlen').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/kennzahlen$/);
@@ -329,9 +317,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     expect(u.route).toBe('#/portfolio/kennzahlen');
     expect(u.titel).toBe('Kennzahlen');
     expect(await page.locator('[data-kennzeichen]').count()).toBeGreaterThan(amStandort);
-  });
 
-  test('Ü8 · der Betriebskunde bekommt keine Einstiege (375 px)', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&messen=bestand&ansicht=werk', 375, AM_20_11);
     const betrieb = await messe(page);
     ohneQuerlauf(betrieb, 'betriebskunde-werk-375');
@@ -361,24 +347,16 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 });
 
 
-// Je Adresse EIN Fall (Entscheid firstmate gm-e2e-mehrfachaufruf = A): sieben Aufrufe in einem Fall sprengten unter
-// vier Workern auch die 90 s von test.slow (Gesamtlauf mispel 05.10.2026; je Aufruf ~745 Module, 9–13 s). Ein alter
-// Direktlink braucht die Übersicht als Vergleichstext — zwei Aufrufe, darum behält NUR dieser Fall test.slow.
 for (const breite of [1440, 375]) {
   // firstmate K2 (09.10.2026): „ohne Messfunktion" landete bisher trotzdem auf der Standort-
   // Übersicht (Werk Ahrenberg) - nur ohne deren neue Reiter. Jetzt bleibt dieselbe Betriebskunden-
   // Szene ganz auf der gewohnten Übersicht (`#/portfolio`, zeichengleich zu main): kein Standort
   // misst, also ist die Standort-/Unternehmensebene gar nicht erst die Landung (startansicht.test.ts
   // K2-Block). Die alten AP-13-Direktlinks konvergieren weiterhin alle auf EINE Fläche, jetzt diese.
-  for (const bereich of ['', '-gebaeude', '-aufbau', '-anlagen', '-boxen', '-kennzahlen', '-berichte']) {
-    const was = bereich ? `der alte AP-13-Direktlink „werk${bereich}“ landet auf der gewohnten Übersicht` : 'die gewohnte Übersicht';
-    test(`O18 · Betriebskunde bei ${breite} px: kein Standort misst — ${was}`, async ({ page }) => {
-      let uebersichtText = '';
-      if (bereich) {
-        test.slow(); // zwei Aufrufe: die Übersicht als Vergleich, dann der alte Direktlink
-        await oeffne(page, 'bild=unternehmen&messen=bestand&ansicht=werk', breite);
-        uebersichtText = (await messe(page)).text;
-      }
+  test(`O18 · Betriebskunde bei ${breite} px: kein Standort misst — alte AP-13-Direktlinks landen auf der gewohnten Übersicht`, async ({ page }) => {
+    test.slow(); // sieben Adressen nacheinander, jede lädt die ganze Bühne
+    let uebersichtText = '';
+    for (const bereich of ['', '-gebaeude', '-aufbau', '-anlagen', '-boxen', '-kennzahlen', '-berichte']) {
       await oeffne(page, `bild=unternehmen&messen=bestand&ansicht=werk${bereich}`, breite);
       const m = await messe(page);
       ohneQuerlauf(m, `betrieb${bereich}-${breite}`);
@@ -392,6 +370,6 @@ for (const breite of [1440, 375]) {
       expect(m.einstiege).toEqual([]);
       await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
       if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);
-    });
-  }
+    }
+  });
 }
