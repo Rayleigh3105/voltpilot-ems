@@ -150,6 +150,20 @@ class KundenbereichLoeschenApiTest {
                 + "RETURNING id", UUID.class, tenant, site, "kb-loeschen-" + nr);
         root.update("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES (now(), ?, ?, ?, 1.0)",
                 tenant, site, box);
+        // Wie in Produktion (Befund vp-kunde-loeschen-500, 12.11.2026): die ab-Werk-Überwachung hat für die
+        // Box einen Alarm AUSGELÖST - sein append-only Verlauf gehört zu jedem echten Kundenbereich. Ohne
+        // diese Zeilen fiele in keinem Test auf, dass der Löschzug den Verlauf nicht mitnehmen kann (der
+        // erste echte Löschversuch starb so mit 500 am eigenen Trigger; der Läufer läuft im Test nicht).
+        UUID regel = root.queryForObject("INSERT INTO ueberwachung (tenant_id, wertart, bezug, bedingung, schwere,"
+                + " empfaenger, herkunft, angelegt_von) VALUES (?, 'keine_daten', jsonb_build_object('anlage',"
+                + " ?::text), '{}'::jsonb, 'hinweis', '[]'::jsonb, 'ab_werk', 'laeufer') RETURNING id", UUID.class,
+                tenant, site);
+        UUID alarm = root.queryForObject("INSERT INTO alarm (tenant_id, kennzeichen, ueberwachung_id, fassung,"
+                + " bezug_kennung, wertart, schwere, ausgeloest_am) VALUES (?, 'AL-2026-000001', ?, 1,"
+                + " 'anlage:' || ?::text, 'keine_daten', 'hinweis', now()) RETURNING id", UUID.class, tenant, regel,
+                site);
+        root.update("INSERT INTO alarm_verlauf (tenant_id, alarm_id, art, text) VALUES (?, ?, 'ausgeloest',"
+                + " 'Box meldet sich nicht'), (?, ?, 'versand', 'Zustellung vermerkt')", tenant, alarm, tenant, alarm);
         kundenadmin = "jw-" + nr;
         leserin = "berger-" + nr;
         spiegel(kundenadmin, "Jonas Wendlinger");
@@ -322,6 +336,35 @@ class KundenbereichLoeschenApiTest {
             assertThat(root.queryForObject("SELECT count(*) FROM " + protokoll + " WHERE tenant_id = ?", Long.class,
                     tenant)).as(protokoll).isZero();
         }
+    }
+
+    /**
+     * vp-kunde-loeschen-500 (Produktion 12.11.2026): der Alarm-Verlauf bleibt append-only für jede Rolle,
+     * solange der Kundenbereich existiert - und der Löschzug nimmt ihn über seine EINE Ausnahme
+     * ({@code uems_alarmverlauf_des_kundenbereichs_entfernen}, V20261112080000) mit, statt am eigenen
+     * Trigger zu sterben (so starb der erste echte Löschversuch mit 500 „audit rows are append-only").
+     */
+    @Test
+    void derAlarmVerlaufBleibtAppendOnlyUndGehtNurImLoeschzug() throws Exception {
+        vertragsendeVor(120);
+        assertThat(root.queryForObject("SELECT count(*) FROM alarm_verlauf WHERE tenant_id = ?", Long.class, tenant))
+                .isEqualTo(2L);
+        JdbcTemplate admin = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), "voltpilot_admin",
+                "voltpilot_admin_test_pw"));
+        assertThatThrownBy(() -> root.update("DELETE FROM alarm_verlauf WHERE tenant_id = ?", tenant))
+                .hasStackTraceContaining("audit rows are append-only");
+        assertThatThrownBy(() -> root.update("UPDATE alarm_verlauf SET text = 'anders' WHERE tenant_id = ?", tenant))
+                .hasStackTraceContaining("audit rows are append-only");
+        assertThatThrownBy(() -> admin.update("DELETE FROM alarm_verlauf WHERE tenant_id = ?", tenant))
+                .hasStackTraceContaining("audit rows are append-only");
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        assertThatThrownBy(() -> app.queryForObject("SELECT uems_alarmverlauf_des_kundenbereichs_entfernen(?)",
+                Long.class, tenant)).hasStackTraceContaining("permission denied");
+
+        MvcResult geloescht = loeschen();
+        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
+        assertThat(root.queryForObject("SELECT count(*) FROM alarm_verlauf WHERE tenant_id = ?", Long.class, tenant))
+                .isZero();
     }
 
     /** Die Rücknahme einer gescheiterten Selbstregistrierung nimmt die Protokollzeile des Anlegens mit. */
