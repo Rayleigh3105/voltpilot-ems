@@ -562,9 +562,12 @@ def test_gewerbe_a1_mit_festem_strompreis_rechnet_ohne_gutschrift(mai_fenster, m
     posten = {p["posten"]: p["eur"] for p in f["posten"]}
     assert list(posten) == ["Netzladen-Handel mit Saldierung", "Jahresmarktwert statt Monatsmarktwert",
                             "Zweiter Zähler Z2", "Gesonderter Bilanzkreis"]
-    # Was im Handel bleibt, ist der Rand des geschrumpften Fensters: bei festem Preis ist gleich,
-    # wann der Speicher entlädt, die Fahrweisen enden mit verschiedenem Stand (≈ 5 kWh × 25 ct).
-    assert posten["Netzladen-Handel mit Saldierung"] == pytest.approx(0.0, abs=1.5)
+    # Was im Handel bleibt: heute lädt der Speicher seit EN-2 A (main, 02.11.2026) nie bei gleichzeitigem
+    # Netzbezug, mit MiSpeL (Abgrenzungsoption) darf er Sonnenstrom auch dann speichern - bei festem Preis
+    # verschiebt das nur, wann die Sonne den Verbrauch deckt, und die Fahrweisen enden am Rand des
+    # geschrumpften Fensters mit verschiedenem Stand. Ohne EN-2 A war der Posten ≈ 0 (≈ 5 kWh × 25 ct Rand);
+    # mit ihr rund 4,85 € in diesem Fenster. Der Kern von MP-59 steht oben: der Plan lädt nie aus dem Netz.
+    assert posten["Netzladen-Handel mit Saldierung"] == pytest.approx(4.85, abs=1.5)
     assert f["differenzEur"] == pytest.approx(sum(posten.values()), abs=0.02)
     assert r["anlage"]["tarifArt"] == "fest" and r["anlage"]["arbeitspreisCt"] == 25.0
     annahmen = {a["name"]: a for a in r["annahmen"]}
