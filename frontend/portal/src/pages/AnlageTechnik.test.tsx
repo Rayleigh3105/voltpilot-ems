@@ -370,7 +370,9 @@ async function renderEinstellungen(
   );
   // Auf den Asset-Abruf warten, sonst steht die Speicher-Gruppe noch im Skeleton.
   await screen.findByText(batteryOver == null ? 'Speicher hinzufügen' : 'Kapazität');
-  await screen.findByText(foerderwegAntwort(s, weg).begriff as string);
+  // In der Zeile „Förderweg“ selbst: „Einspeisevergütung“ heißt auch die Karte darunter (main, Strom & Geld).
+  const begriff = foerderwegAntwort(s, weg).begriff as string;
+  await waitFor(() => expect(document.getElementById('technik-foerderweg')).toHaveTextContent(begriff));
   return {
     onSiteSaved,
     rerender: (next: Site) =>
