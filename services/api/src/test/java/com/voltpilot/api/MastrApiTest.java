@@ -370,7 +370,147 @@ class MastrApiTest {
         assertThat(read.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    // ---- S5: einheit_geraet (Abschnitt 5.1/§8, "Zuordnung zu Wechselrichtern") --
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void geraetZuordnenUndEntfernenUeberDenEchtenEndpunkt() {
+        String tok = token("demo", "demo");
+        // EIGENE Anlage, nicht BERLIN_SITE: andere Tests lesen dort exakte
+        // Zählungen, eine fremde Zeile dort würde sie brechen.
+        String siteId = createSite(tok, "S5 Zuordnung", "DE-LU", "eigenverbrauch");
+        String einheitId = exec("INSERT INTO register_einheit (tenant_id, site_id, art, "
+                        + "registry_unit_id, inbetriebnahme, leistung_kwp, bestaetigt_am) "
+                        + "SELECT tenant_id, id, 'pv', 'SEE555555555555', '2020-01-01', 5.0, now() "
+                        + "FROM site WHERE id = '" + siteId + "' RETURNING id",
+                "id");
+        String mpId = exec("INSERT INTO measurement_point (tenant_id, site_id, role, label) "
+                        + "SELECT tenant_id, id, 'pv-generation', 'Wechselrichter Dach' "
+                        + "FROM site WHERE id = '" + siteId + "' RETURNING id",
+                "id");
+
+        // Anfangs frei, keine Zuordnung.
+        Map<String, Object> vorher = getMap("/api/v1/sites/" + siteId + "/einheit-geraet", tok);
+        assertThat((List<Object>) vorher.get("zuordnungen")).isEmpty();
+        assertThat((List<Map<String, Object>>) vorher.get("freieGeraete"))
+                .anySatisfy(k -> assertThat(k).containsEntry("id", mpId).containsEntry("art", "messpunkt"));
+
+        // Zuordnen.
+        ResponseEntity<Map<String, Object>> zugeordnet = post(
+                "/api/v1/sites/" + siteId + "/register-einheiten/" + einheitId + "/geraet",
+                Map.of("geraetId", mpId, "art", "messpunkt"), tok);
+        assertThat(zugeordnet.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> zuordnungen = (List<Map<String, Object>>) zugeordnet.getBody().get("zuordnungen");
+        assertThat(zuordnungen).hasSize(1);
+        Map<String, Object> zeile = zuordnungen.get(0);
+        assertThat(zeile).containsEntry("einheitId", einheitId).containsEntry("geraetId", mpId)
+                .containsEntry("bezeichnung", "Wechselrichter Dach");
+        assertThat((List<Object>) zugeordnet.getBody().get("freieGeraete")).isEmpty();
+        String linkId = (String) zeile.get("id");
+
+        // Persistiert: ein frischer GET zeigt dasselbe.
+        Map<String, Object> nachGet = getMap("/api/v1/sites/" + siteId + "/einheit-geraet", tok);
+        assertThat((List<Object>) nachGet.get("zuordnungen")).hasSize(1);
+
+        // Entfernen - wieder frei.
+        ResponseEntity<Map<String, Object>> entfernt = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/register-einheiten/" + einheitId + "/geraet/" + linkId),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(entfernt.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<Object>) entfernt.getBody().get("zuordnungen")).isEmpty();
+        assertThat((List<Map<String, Object>>) entfernt.getBody().get("freieGeraete"))
+                .anySatisfy(k -> assertThat(k).containsEntry("id", mpId));
+    }
+
+    @Test
+    void geraetZuordnenIst404BeiFremderEinheitOderFremdemGeraet() {
+        String tok = token("demo", "demo");
+        String siteId = createSite(tok, "S5 404", "DE-LU", "eigenverbrauch");
+        String einheitId = exec("INSERT INTO register_einheit (tenant_id, site_id, art, "
+                        + "registry_unit_id, inbetriebnahme, leistung_kwp, bestaetigt_am) "
+                        + "SELECT tenant_id, id, 'pv', 'SEE555555555556', '2020-01-01', 5.0, now() "
+                        + "FROM site WHERE id = '" + siteId + "' RETURNING id",
+                "id");
+        ResponseEntity<Map<String, Object>> fremdesGeraet = post(
+                "/api/v1/sites/" + siteId + "/register-einheiten/" + einheitId + "/geraet",
+                Map.of("geraetId", java.util.UUID.randomUUID().toString(), "art", "messpunkt"), tok);
+        assertThat(fremdesGeraet.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<Map<String, Object>> fremdeEinheit = post(
+                "/api/v1/sites/" + siteId + "/register-einheiten/" + java.util.UUID.randomUUID() + "/geraet",
+                Map.of("geraetId", java.util.UUID.randomUUID().toString(), "art", "messpunkt"), tok);
+        assertThat(fremdeEinheit.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void registerEinheitenHinweisFlagtGemesseneSpitzeUeberDerSumme() {
+        String tok = token("demo", "demo");
+        String siteId = createSite(tok, "S5 Hinweis", "DE-LU", "eigenverbrauch");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, registry_unit_id, "
+                        + "inbetriebnahme, leistung_kwp, bestaetigt_am) "
+                        + "SELECT tenant_id, id, 'pv', 'SEE555555555557', '2020-01-01', 5.0, now() "
+                        + "FROM site WHERE id = '" + siteId + "'",
+                null);
+
+        // Ohne genug Messwerte: kein Urteil.
+        Map<String, Object> ohneMessung = getMap(
+                "/api/v1/sites/" + siteId + "/register-einheiten-hinweis", tok);
+        assertThat(ohneMessung.get("moeglicherweiseFehlendeEinheit")).isEqualTo(false);
+
+        // 96 Viertelstunden mit 2,0 kWh PV je Bucket = 8,0 kW Spitze - deutlich
+        // über 5,0 kWp * 1,25 (6,25 kW).
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, n_samples) "
+                        + "SELECT now() - (n || ' minutes')::interval, tenant_id, id, 2.0, 1 "
+                        + "FROM site, generate_series(0, 95 * 15, 15) AS n WHERE site.id = '" + siteId + "'",
+                null);
+
+        Map<String, Object> mitMessung = getMap(
+                "/api/v1/sites/" + siteId + "/register-einheiten-hinweis", tok);
+        assertThat(mitMessung.get("moeglicherweiseFehlendeEinheit")).isEqualTo(true);
+        assertThat(((Number) mitMessung.get("gemessenePeakKw")).doubleValue()).isEqualTo(8.0);
+        assertThat(((Number) mitMessung.get("summeKwp")).doubleValue()).isEqualTo(5.0);
+    }
+
     // ---- helpers ---------------------------------------------------------------
+
+    /** A fresh, empty site under the caller's own tenant - never BERLIN_SITE's shared counts. */
+    @SuppressWarnings("unchecked")
+    private String createSite(String token, String name, String zone, String plantKind) {
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", name, "biddingZone", zone, "plantKind", plantKind),
+                        bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return (String) created.getBody().get("id");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getMap(String path, String token) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(url(path), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    /** Raw seeding/read, bypassing RLS (the container's own superuser) - like PortalApiTest's {@code exec}. */
+    private String exec(String sql, String returningColumn) {
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement()) {
+            if (returningColumn == null) {
+                st.execute(sql);
+                return null;
+            }
+            try (java.sql.ResultSet rs = st.executeQuery(sql)) {
+                rs.next();
+                return rs.getObject(returningColumn).toString();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
 
     private ResponseEntity<Map<String, Object>> post(String path, Map<String, ?> body, String token) {
         return rest.exchange(url(path), HttpMethod.POST, new HttpEntity<>(body, bearer(token)),

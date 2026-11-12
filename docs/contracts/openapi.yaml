@@ -5594,6 +5594,106 @@ paths:
         "400": { description: No unit present, or values out of range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/einheit-geraet:
+    get:
+      tags: [registry]
+      summary: S5 - every device assigned to a confirmed PV unit, plus every free candidate device.
+      description: >
+        vp-mastr-mehrere-einheiten-konzept §5.1/§8 ("Zuordnung zu
+        Wechselrichtern"): the voluntary link between a confirmed PV
+        `register_einheit` and the device that actually feeds it (a
+        `measurement_point` with role `pv-generation`, or an active
+        Anlagensteuerung `geraet_teil`). Display only - no computation
+        depends on this link.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Current assignments and free candidate devices.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EinheitGeraet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/register-einheiten/{einheitId}/geraet:
+    post:
+      tags: [registry]
+      summary: S5 - assign a free device to this confirmed unit.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: einheitId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [geraetId, art]
+              properties:
+                geraetId: { type: string, format: uuid }
+                art: { type: string, enum: [messpunkt, erzeugungseinheit] }
+      responses:
+        "200":
+          description: The site's assignments after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EinheitGeraet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site, unit or device not found for this tenant/site. }
+  /api/v1/sites/{siteId}/register-einheiten/{einheitId}/geraet/{linkId}:
+    delete:
+      tags: [registry]
+      summary: S5 - remove a device assignment (display only, nothing computes from it).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: einheitId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: linkId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's assignments after the removal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EinheitGeraet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/register-einheiten-hinweis:
+    get:
+      tags: [registry]
+      summary: S5 - "fehlt eine Einheit?" plausibility (measured PV peak vs. confirmed units' kWp sum).
+      description: >
+        vp-mastr-mehrere-einheiten-konzept §4.4/§8: the measured 30-day PV
+        peak (15-minute rollup) against the sum of confirmed PV units'
+        `leistung_kwp`. `moeglicherweiseFehlendeEinheit` is only ever true
+        with enough measured quarter-hours AND a maintained sum - never
+        guessed.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The plausibility verdict.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterEinheitHinweis" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/admin/register-abgleich:
+    get:
+      tags: [admin]
+      summary: S5 - Plattform-Admin "Register-Abgleich", cross-tenant.
+      description: >
+        vp-mastr-mehrere-einheiten-konzept §6/§8: four hint categories over
+        every site - measured peak over the confirmed sum, register changed
+        since confirmation, the same registry number confirmed at two
+        sites, and a PV asset never linked to the register. Read-only,
+        `platform-admin` only (`AdminFleetController` security pattern).
+      responses:
+        "200":
+          description: The four hint categories.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterAbgleich" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
   /api/v1/sites/{siteId}/pv:
     put:
       tags: [registry]
@@ -26167,6 +26267,75 @@ components:
         anteilKwp: { type: number }
         module: { type: integer, nullable: true }
         quelle: { type: string, enum: [register, vorschlag, kunde] }
+    EinheitGeraet:
+      type: object
+      description: >
+        S5 (vp-mastr-mehrere-einheiten-konzept §5.1): the device assignment
+        of a site - every existing link, plus every PV-capable device still
+        free for the "Gerät zuordnen" picker.
+      required: [zuordnungen, freieGeraete]
+      properties:
+        zuordnungen:
+          type: array
+          items: { $ref: "#/components/schemas/EinheitGeraetZeile" }
+        freieGeraete:
+          type: array
+          items: { $ref: "#/components/schemas/EinheitGeraetKandidat" }
+    EinheitGeraetZeile:
+      type: object
+      description: One existing assignment - which device feeds which unit.
+      required: [id, einheitId, geraetId, art, bezeichnung]
+      properties:
+        id: { type: string, format: uuid }
+        einheitId: { type: string, format: uuid }
+        geraetId: { type: string, format: uuid }
+        art: { type: string, enum: [messpunkt, erzeugungseinheit] }
+        bezeichnung: { type: string }
+    EinheitGeraetKandidat:
+      type: object
+      description: A PV-capable device not yet assigned to any unit.
+      required: [id, art, bezeichnung]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [messpunkt, erzeugungseinheit] }
+        bezeichnung: { type: string }
+        nennleistungKw: { type: number, nullable: true }
+    RegisterEinheitHinweis:
+      type: object
+      description: S5 (§4.4) - "fehlt eine Einheit?" plausibility for one site.
+      required: [moeglicherweiseFehlendeEinheit, messwerteViertelstunden]
+      properties:
+        moeglicherweiseFehlendeEinheit: { type: boolean }
+        gemessenePeakKw: { type: number, nullable: true }
+        summeKwp: { type: number, nullable: true }
+        messwerteViertelstunden: { type: integer }
+    RegisterAbgleich:
+      type: object
+      description: S5 (§6) - the Plattform-Admin "Register-Abgleich", four hint categories, cross-tenant.
+      required: [messungUeberSumme, registerGeaendert, nummerAnZweiAnlagen, ohneRegister]
+      properties:
+        messungUeberSumme:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+        registerGeaendert:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+        nummerAnZweiAnlagen:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+        ohneRegister:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+    RegisterAbgleichZeile:
+      type: object
+      description: One flagged site within a Register-Abgleich category.
+      required: [siteId, siteName, tenantId, tenantName, hinweis]
+      properties:
+        siteId: { type: string, format: uuid }
+        siteName: { type: string }
+        tenantId: { type: string, format: uuid }
+        tenantName: { type: string }
+        hinweis: { type: string }
     MastrLokationEinheit:
       type: object
       properties:
