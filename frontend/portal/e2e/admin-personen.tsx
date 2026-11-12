@@ -124,6 +124,13 @@ Object.assign(adminApi, {
     konten = konten.filter((k) => k.id !== userId);
     eintraege = eintraege.filter((e) => e.sub !== userId);
   },
+  // vp-kunde-sofort-loeschen: dieser Kunde hat Daten - kein Sofort-Weg in dieser Bühne.
+  kundeLoeschbarkeit: async () => ({
+    tenantId: TENANT_ID, sofortLoeschbar: false, daten: ['herzschlag', 'messwerte'], beendetAm: null,
+    loeschungFruehestens: null, fristAbgelaufen: false,
+    folgen: { anlagen: 1, boxen: [], personen: konten.length },
+  }),
+  kundenLoeschbarkeit: async () => [],
 });
 Object.assign(benutzerApi, { liste: async () => eintraege });
 Object.assign(fleetApi, {

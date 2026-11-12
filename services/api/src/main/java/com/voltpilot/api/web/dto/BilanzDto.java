@@ -23,7 +23,9 @@ public final class BilanzDto {
     /**
      * Die Bilanz einer Anlage in EINER Periode ({@code tag} · {@code monat} · {@code jahr}, die {@code am}
      * enthält; {@code von}/{@code bis} sind Tage, der letzte gehört dazu, Zeitzone des Standorts).
-     * {@code ausserhalb_zugriff} steht NUR, wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb
+     * {@code unterverteilungen} sind die Unterzähler mit eigenen Unterzählern (Zählerbaum S4, §4.3
+     * Satz 2) — je ein Block derselben Form, sein Rest zieht nur die direkten Kinder ab.
+     * {@code ausserhalb_zugriff} steht NUR, wenn ein Block fehlt, weil er eine Messstelle außerhalb
      * des Zugriffs braucht (AP-03 R-A3/R-A6) — der Hinweis ohne Namen, ohne Anzahl.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -35,11 +37,12 @@ public final class BilanzDto {
             LocalDate bis,
             String zeitzone,
             List<Hauptzaehler> hauptzaehler,
+            List<Hauptzaehler> unterverteilungen,
             @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
 
         public Bilanz(Anlage anlage, String periode, LocalDate am, LocalDate von, LocalDate bis, String zeitzone,
                 List<Hauptzaehler> hauptzaehler) {
-            this(anlage, periode, am, von, bis, zeitzone, hauptzaehler, null);
+            this(anlage, periode, am, von, bis, zeitzone, hauptzaehler, List.of(), null);
         }
     }
 
@@ -50,9 +53,10 @@ public final class BilanzDto {
     public record MessstelleRef(UUID id, String kennzeichen, String name) {}
 
     /**
-     * Die Bilanz EINES Hauptzählers Bezug. {@code rest_messstelle} ist die bestätigte Rest-Messstelle
-     * (E18) oder {@code null}; dann steht — solange er heute Hauptzähler der Anlage ist — ein
-     * {@code vorschlag} „Rest anlegen“ da. Der Rest selbst steht IMMER als Zeile in {@code abschnitte}.
+     * Die Bilanz EINES Hauptzählers Bezug — und seit dem Zählerbaum (S4) in derselben Form die einer
+     * Unterverteilung ({@code Bilanz.unterverteilungen}). {@code rest_messstelle} ist die bestätigte
+     * Rest-Messstelle (E18) oder {@code null}; dann steht — solange der Zähler heute einen Rest trägt —
+     * ein {@code vorschlag} „Rest anlegen“ da. Der Rest selbst steht IMMER als Zeile in {@code abschnitte}.
      * {@code stellung_geaendert}: in der Periode gelten verschiedene Terme — dann rechnet jeder
      * Abschnitt Tag für Tag, und es gibt keine Zahl über die ganze Periode (auch nicht als gespeicherter
      * Periodenwert, AP-10 IP-10: {@code terme_wechseln}).

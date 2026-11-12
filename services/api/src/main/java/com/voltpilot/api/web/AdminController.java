@@ -5,6 +5,8 @@ import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.geraete.BoxLoesenAbgelehnt;
+import com.voltpilot.api.geraete.BoxLoesenService;
 import com.voltpilot.api.kundenbereich.KundenbereichLoeschung;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.AdminEnrollmentRepository;
@@ -86,6 +88,7 @@ public class AdminController {
     private final BenutzerService benutzer;
     private final AdminBenutzerService adminBenutzer;
     private final KundenbereichLoeschung loeschung;
+    private final BoxLoesenService boxLoesen;
     private final AdminAnfrageKennungen anfrageKennungen;
     private final AnfrageKennungen fingerabdrucke;
 
@@ -93,7 +96,7 @@ public class AdminController {
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
             ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer,
-            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung,
+            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung, BoxLoesenService boxLoesen,
             AdminAnfrageKennungen anfrageKennungen, AnfrageKennungen fingerabdrucke) {
         this.tenants = tenants;
         this.sites = sites;
@@ -104,6 +107,7 @@ public class AdminController {
         this.benutzer = benutzer;
         this.adminBenutzer = adminBenutzer;
         this.loeschung = loeschung;
+        this.boxLoesen = boxLoesen;
         this.anfrageKennungen = anfrageKennungen;
         this.fingerabdrucke = fingerabdrucke;
     }
@@ -174,9 +178,10 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "confirmName does not match the tenant name");
         }
-        loeschung.pruefen(tenantId);
-        KundenbereichLoeschung.Wache wache = loeschung.wache(tenantId, ProtokollAkteur.aus(auth)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED)));
+        KundenbereichLoeschung.Anlass anlass = loeschung.pruefen(tenantId);
+        ProtokollAkteur akteur = ProtokollAkteur.aus(auth)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        KundenbereichLoeschung.Wache wache = loeschung.wache(tenantId, akteur);
 
         // Collected BEFORE the cascade: afterwards the rows are gone.
         List<TenantDevice> devices = tenants.devicesOfTenant(tenantId);
@@ -186,6 +191,21 @@ public class AdminController {
         } catch (RuntimeException ex) {
             log.warn("Offboarding tenant {}: account blocking failed; database retained", tenantId);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
+        }
+
+        // Sofort-Weg (vp-kunde-sofort-loeschen): nie gemeldete Boxen VOR dem Abbau über den Dienst
+        // „Vom Kunden lösen" freigeben - Broker, Zugang, Registry, Rollouts, Zertifizierung räumen wie
+        // beim Lösen von Hand, die Kennung ist sofort wieder anmeldbar. Eine Box, die sich doch gemeldet
+        // hat, lehnt dort mit 409 ab, bevor der Abbau beginnt (die Konten sind dann schon gesperrt -
+        // derselbe wiederholbare Zwischenstand wie bei einem DB-Fehler). Ausgebaute Boxen gehen über die
+        // Kaskade. Der Frist-Weg bleibt unverändert (Kaskade wie bisher).
+        List<String> freigegeben = new ArrayList<>();
+        if (anlass == KundenbereichLoeschung.Anlass.SOFORT_KEINE_DATEN) {
+            for (TenantDevice device : devices) {
+                if (boxLoesen.beimKundenLoeschen(device.externalRef(), akteur)) {
+                    freigegeben.add(device.externalRef());
+                }
+            }
         }
 
         OffboardCounts counts;
@@ -226,7 +246,8 @@ public class AdminController {
         log.info("Offboarded tenant {}: deletion record {}, {} tables with remaining rows", tenantId,
                 nachweis.kennzeichen(), nachweis.verblieben().size());
         return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
-                counts.devices(), counts.telemetryRows(), cleanup.deletedUsers(), cleanup.failedUsers(),
+                counts.devices() + freigegeben.size(), counts.telemetryRows(), cleanup.deletedUsers(),
+                cleanup.failedUsers(), nachweis.anlass().wert(), List.copyOf(freigegeben),
                 new TenantOffboardingReportDto.Loeschnachweis(nachweis.kennzeichen(), nachweis.geloeschtAm(),
                         nachweis.zaehlungen(), nachweis.verblieben(), nachweis.abzugSha256()));
     }
@@ -234,6 +255,12 @@ public class AdminController {
     /** IP-18: the delete route's refusal in the form of the UEMS refusals ({@code code}, {@code message}, facts). */
     @ExceptionHandler(KundenbereichLoeschung.Verweigert.class)
     public ResponseEntity<Map<String, Object>> loeschenVerweigert(KundenbereichLoeschung.Verweigert ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.koerper());
+    }
+
+    /** Sofort-Weg: eine Box hat sich zwischen Prüfung und Freigabe doch gemeldet - dieselbe 409 wie beim Lösen. */
+    @ExceptionHandler(BoxLoesenAbgelehnt.class)
+    public ResponseEntity<Map<String, Object>> boxLoesenAbgelehnt(BoxLoesenAbgelehnt ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.koerper());
     }
 

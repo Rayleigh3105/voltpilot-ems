@@ -7,6 +7,9 @@
 .vp-mandant-karte .vp-section-head h2 { font-size: 1.05rem; margin: 0; }
 .vp-mandant-seite > .vp-unterstuetzung { margin: 0; }
 .vp-mandant-seite > .vp-unterstuetzung h3 { margin-top: 0; font-size: 1.05rem; }
+/* In der Kundenakte steht die Karte in der Nebenspalte (nicht direkt unter .vp-mandant-seite):
+   derselbe Margin-Reset, sonst trägt sie 20 px über den Spaltenabstand hinaus und steht versetzt. */
+.vp-kundenakte-nebenspalte > .vp-unterstuetzung { margin: 0; }
 .vp-mandant-hinweis { margin: 0 0 var(--vp-space-3); font-size: 0.875rem; }
 .vp-mandant-stamm {
   display: grid;
@@ -68,8 +71,12 @@
 
 /* Personen: die E-Mail steht unter dem Namen und bricht nur am „@“ um (`<wbr>`), nie mitten im Wort. */
 .vp-person-mail { display: block; font-size: 0.85rem; overflow-wrap: normal; word-break: normal; }
+/* Am Telefon enger statt `nowrap`: seit dem Kopf-Menü (vp-kunde-sofort-loeschen) stehen DREI Knöpfe
+   in der Reihe - mit kleiner Lücke und ohne Leerraum-Polster des Auges passen sie in 390 px, ohne
+   die Seite zu verbreitern; reicht es doch nicht (Schmaleres als 390 px), bricht die Reihe sauber um. */
 @media (max-width: 720px) {
-  .vp-kundenakte-kopf-rechts { flex-wrap: nowrap; }
+  .vp-kundenakte-kopf-rechts { gap: var(--vp-space-1); }
+  .vp-kundenakte-kopf-rechts .vp-btn { padding-inline: 10px; }
 }
 
 /* Kundenliste: Name und Segment in einer Zeile, am Telefon darunter die Zahlen. */
@@ -96,17 +103,27 @@
 }
 
 .vp-kundenakte-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--vp-space-2); }
+/* `flex-wrap`: wird es eng, rückt das Box-Paar unter den Namen, statt ihn zusammenzudrücken. */
 .vp-kundenakte-liste li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--vp-space-3);
+  gap: var(--vp-space-2) var(--vp-space-3);
   padding: var(--vp-space-2) 0;
   border-bottom: 1px solid var(--vp-border);
   min-width: 0;
 }
 .vp-kundenakte-liste li:last-child { border-bottom: none; }
-.vp-kundenakte-liste-haupt { min-width: 0; overflow-wrap: anywhere; }
+/* `break-word` statt `anywhere`: der Anlagenname („Zuhause") bricht nie mitten im Wort, solange er in
+   die Zeile passt - erst ein Wort breiter als die ganze Zeile bricht als letzter Ausweg. */
+.vp-kundenakte-liste-haupt { min-width: 0; overflow-wrap: break-word; }
+/* Auch in der umgebrochenen eigenen Zeile bleibt das Box-Paar rechtsbündig. */
+.vp-kundenakte-liste li > .vp-kundenakte-box,
+.vp-kundenakte-liste li > .vp-kundenakte-boxen { margin-left: auto; }
+
+/* Vertrag-Karte: „Wiederaufnehmen" und „Kunde endgültig löschen …" als Reihe mit Lücke. */
+.vp-vertrag-aktionen { display: inline-flex; flex-wrap: wrap; gap: var(--vp-space-2); }
 
 /* B4 = A (vp-plattform-admin-box-benutzer-konzept): je Box ein Zustand statt nur einer Summe. */
 .vp-kundenakte-boxen { display: flex; flex-wrap: wrap; gap: var(--vp-space-1); justify-content: flex-end; }

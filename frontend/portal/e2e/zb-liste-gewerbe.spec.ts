@@ -87,9 +87,9 @@ for (const breite of BREITEN) {
         'Dach-PV',
         '[Netz, 1 Gerät]',
         'Netzanschluss',
-        // Nur die drei Unterverteilungen zählen am Werk (3 Geräte, 74,0 kW) -
-        // die sechs Maschinen dahinter stecken schon in ihren Werten.
-        `[Verbrauch, 3 Geräte, zusammen 74,0${NBSP}kW]`,
+        // Die drei Unterverteilungen haben kein gesetztes haengtAn (Bestand) -
+        // die Vorgabe hängt sie an den Netzanschluss; kein dritter Gruppenkopf
+        // mehr (nur noch Erzeugung und Netz haben direkte Geräte).
         'UV Büro',
         'UV Halle 1',
         'Abkantpresse',
@@ -100,7 +100,8 @@ for (const breite of BREITEN) {
       ]);
       const geraete = await geraeteMitEbene(tabelle);
       const ebeneVon = (name: string) => geraete.find((g) => g.name === name)?.ebene ?? -1;
-      // UV Halle 1/2 auf derselben Ebene wie UV Büro - direkte Kinder des Werks.
+      // Die drei Unterverteilungen eine Ebene unter dem Netzanschluss - Kinder der Wurzel, nicht mehr direkt daneben.
+      expect(ebeneVon('UV Büro')).toBe(ebeneVon('Netzanschluss') + 1);
       expect(ebeneVon('UV Halle 1')).toBe(ebeneVon('UV Büro'));
       expect(ebeneVon('UV Halle 2')).toBe(ebeneVon('UV Büro'));
       // Jede Maschine eine Ebene unter ihrer Unterverteilung.
@@ -108,6 +109,16 @@ for (const breite of BREITEN) {
       expect(ebeneVon('Abkantpresse')).toBe(ebeneVon('UV Halle 1') + 1);
       expect(ebeneVon('Schraubenkompressor')).toBe(ebeneVon('UV Halle 1') + 1);
       expect(ebeneVon('Absauganlage')).toBe(ebeneVon('UV Halle 2') + 1);
+      // E3 A: Netzanschluss trägt „… kW im Haus" mit Sonne (Bericht §3.1 „Werk Nord": 64,8 Bezug + 22,4 Sonne = 87,2 im Werk).
+      const wertZelle = tabelle.locator('[data-aufbau-geraet="src-netzanschluss"] .vp-auf-t-wert');
+      await expect(wertZelle.locator('.vp-auf-t-im-haus')).toHaveText(`87,2${NBSP}kW im Haus · mit 22,4${NBSP}kW Sonne`);
+      // Rest je Knoten, gewerblich (UV-4 A: „ohne eigenen Zähler" auch an der Wurzel, nicht „übriger Haushalt").
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"]')).toContainText('ohne eigenen Zähler');
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`13,2${NBSP}kW`);
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle1::rest"] .vp-auf-t-wert')).toHaveText(`19,8${NBSP}kW`);
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle2::rest"] .vp-auf-t-wert')).toHaveText(`2,2${NBSP}kW`);
+      // UV Büro hat keine Kinder - keine Rest-Zeile unter ihm.
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-buero::rest"]')).toHaveCount(0);
       await ohneQuerlauf(page, breite);
       await foto(page, tabelle, `gewerbe-${breite}`);
       expect(fehler).toEqual([]);

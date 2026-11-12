@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { ForecastValue, ScheduleSlot } from '../api';
+import type { ForecastValue, ScheduleSlot, WeatherPoint } from '../api';
 import { chartTheme } from '../chartTheme';
 import { withAlpha } from '../chartStyle';
 import { batteryDirection } from '../control';
@@ -15,7 +15,7 @@ import {
   type TeppichTag,
 } from '../prognoseSeite';
 import { useContainerWidth } from '../useContainerWidth';
-import { HIMMEL_WORT } from '../wetterTag';
+import { HIMMEL_WORT, stundenRaster } from '../wetterTag';
 import { WetterSymbol } from './WetterTag';
 import './PreisZeitstrahl.css';
 import './PrognoseTeppich.css';
@@ -30,7 +30,29 @@ import './PrognoseTeppich.css';
 
 const kwh0 = (v: number) => Math.round(v).toLocaleString('de-DE');
 const uhr = (ms: number) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const STUNDE_MS = 3600_000;
 const VIERTEL_MS = 15 * 60_000;
+/** Stundenbereich des Teppichs (Bericht R3.2): am Rechner 3-23 Uhr, am Telefon 5-22 Uhr - fest, nicht von den Daten abhängig. */
+const TEPPICH_STUNDEN_RECHNER: [number, number] = [3, 23];
+const TEPPICH_STUNDEN_TELEFON: [number, number] = [5, 22];
+/** Höhe der Säulen-Spur (hält Schritt mit `.vp-pt-zelle` in PrognoseTeppich.css). */
+const TEPPICH_ZEILE_PX = 28;
+/** Unter dieser Höhe wird eine Säule zum flachen Strich (Bericht R3.2: "Grundlast, Dämmerung"). */
+const TEPPICH_MIN_SAEULE_PX = 4.5;
+
+/**
+ * Ein runder Schritt für die Y-Achse des Tagesbilds (z. B. 0/20/40/60 statt
+ * einem dichten Zahlenstapel alle 2 kW - captain-Befund Runde 3). Rundet auf
+ * 1/2/2,5/5/10 × Zehnerpotenz, sodass bei `zielMarken` Marken herauskommt.
+ */
+function niceSchritt(max: number, zielMarken = 3): number {
+  if (max <= 0) return 1;
+  const roh = max / zielMarken;
+  const zehner = Math.pow(10, Math.floor(Math.log10(roh)));
+  const norm = roh / zehner;
+  const stufe = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  return stufe * zehner;
+}
 
 function InfoKnopf({ onClick }: { onClick: () => void }) {
   return (
@@ -52,6 +74,7 @@ function InfoKnopf({ onClick }: { onClick: () => void }) {
  */
 function Balken({
   titel,
+  ico,
   kwh,
   bisherKwh,
   bisherWort,
@@ -59,6 +82,7 @@ function Balken({
   farbe,
 }: {
   titel: string;
+  ico: 'sun' | 'home';
   kwh: number | null;
   bisherKwh: number | null;
   bisherWort: string;
@@ -68,7 +92,21 @@ function Balken({
   const pct = (v: number) => Math.min(100, Math.max(0, (v / max) * 100));
   return (
     <div className="vp-pt-balken-zeile">
-      <span className="vp-pt-balken-titel">{titel}</span>
+      <div className="vp-pt-balken-kopf">
+        <span className="vp-pt-balken-titel">
+          <Icon name={ico} size={16} />
+          {titel}
+        </span>
+        <span className="vp-pt-balken-zahl">
+          {kwh != null ? (
+            <>
+              ≈ {kwh0(kwh)} <small>kWh</small>
+            </>
+          ) : (
+            '–'
+          )}
+        </span>
+      </div>
       <span className="vp-pt-balken-spur" aria-hidden="true">
         {kwh != null && (
           <i
@@ -84,7 +122,6 @@ function Balken({
           <i className="vp-pt-balken-gemessen" style={{ width: `${pct(bisherKwh)}%`, background: withAlpha(farbe, 0.85) }} />
         )}
       </span>
-      <span className="vp-pt-balken-zahl">{kwh != null ? <>≈ {kwh0(kwh)} kWh</> : '–'}</span>
       {bisherKwh != null && bisherKwh >= 0.5 && <span className="vp-pt-balken-sub">{kwh0(bisherKwh)} {bisherWort}</span>}
     </div>
   );
@@ -119,28 +156,38 @@ export function PrognoseAntwort({
   return (
     <>
       <div className="vp-pz-label">
-        <span>Prognose am Standort · jetzt {uhr(m.jetztMs)}</span>
+        <span>Prognose für heute · jetzt {uhr(m.jetztMs)}</span>
         <InfoKnopf onClick={onInfo} />
       </div>
-      <div className="vp-pt-kopfsatz">
-        <b>{satz}</b>
-        {mengen && <span>{mengen}</span>}
+      <div className="vp-pt-antwort-raster">
+        <div className="vp-pt-antwort-links">
+          <div className="vp-pt-kopfzeile-himmel">
+            <span className="vp-pt-himmel-kachel" aria-hidden="true">
+              <WetterSymbol art={heute.art} groesse={28} />
+            </span>
+            <div className="vp-pt-kopfsatz">
+              <b>{satz}</b>
+              {mengen && <span>{mengen}</span>}
+            </div>
+          </div>
+          {morgenZeile && <p className="vp-pt-morgen">{morgenZeile}</p>}
+          {tipp && <p className="vp-pt-tipp">{tipp}</p>}
+        </div>
+        <div className="vp-pt-balken">
+          {m.mitPv && (
+            <Balken titel="Sonne heute" ico="sun" kwh={heute.sonneKwh} bisherKwh={heute.sonneBisherKwh} bisherWort="schon erzeugt" max={max} farbe={t.pv} />
+          )}
+          <Balken
+            titel="Verbrauch heute"
+            ico="home"
+            kwh={heute.verbrauchKwh}
+            bisherKwh={heute.verbrauchBisherKwh}
+            bisherWort="schon verbraucht"
+            max={max}
+            farbe={t.consumer}
+          />
+        </div>
       </div>
-      {morgenZeile && <p className="vp-pt-morgen">{morgenZeile}</p>}
-      <div className="vp-pt-balken">
-        {m.mitPv && (
-          <Balken titel="Sonne" kwh={heute.sonneKwh} bisherKwh={heute.sonneBisherKwh} bisherWort="schon erzeugt" max={max} farbe={t.pv} />
-        )}
-        <Balken
-          titel="Verbrauch"
-          kwh={heute.verbrauchKwh}
-          bisherKwh={heute.verbrauchBisherKwh}
-          bisherWort="schon verbraucht"
-          max={max}
-          farbe={t.consumer}
-        />
-      </div>
-      {tipp && <p className="vp-pt-tipp">{tipp}</p>}
     </>
   );
 }
@@ -156,42 +203,106 @@ export function PrognoseTippPhone({ m, heute }: { m: PrognoseModell; heute: Tepp
  * ========================================================================= */
 
 /**
- * Ein Tag je Zeile, eine Stunde je Spalte - Farbtiefe ist die Leistung
- * relativ zum stärksten Stunden-Mittel der Woche (`m.massstab`). Mit PV
- * färbt die Sonne orange, ohne PV der Verbrauch violett (Bericht 6.3: „ohne
- * PV trägt der Teppich violette Säulen"). Ab übermorgen (E3 = A) blasst die
- * Zeile - ein Ausblick, kein Versprechen.
+ * Die Säule einer Stunde: die HÖHE ist die Leistung relativ zum Maßstab der
+ * Woche (`m.massstab`), kräftig/blass ist die Deckung (Bericht R3.2: „Kräftig
+ * heißt: in dieser Stunde deckt die Sonne den Verbrauch. Blass heißt: Sie
+ * reicht nicht"), die Füllung (satt/schraffiert) ist die Herkunft. Sehr
+ * kleine Werte werden ein flacher Strich statt einer schrumpfenden Säule.
+ * `null` oder 0 bleibt ohne Säule - keine erfundene Nulllinie.
+ */
+function saeuleStil(
+  v: number | null | undefined,
+  massstab: number,
+  farbe: string,
+  deckt: boolean,
+  erwartet: boolean,
+): CSSProperties | undefined {
+  if (v == null || v <= 0.01) return undefined;
+  const intensitaet = Math.min(1, v / massstab);
+  const hoehePx = Math.max(intensitaet * TEPPICH_ZEILE_PX, TEPPICH_MIN_SAEULE_PX);
+  const alpha = deckt ? 0.82 : 0.38;
+  const grund = withAlpha(farbe, alpha);
+  return erwartet
+    ? {
+        height: `${hoehePx}px`,
+        background: withAlpha(farbe, alpha * 0.22),
+        backgroundImage: `repeating-linear-gradient(45deg, ${grund} 0 1.3px, transparent 1.3px 4px)`,
+      }
+    : { height: `${hoehePx}px`, background: grund };
+}
+
+/**
+ * Ein Tag je Zeile, eine Stunde je Spalte, rechts Sonne und Verbrauch des
+ * Tages in kWh (Bericht R3.2). Der Stundenbereich ist fest (3-23 Uhr am
+ * Rechner, 5-22 Uhr am Telefon), nicht von den vorhandenen Daten abhängig -
+ * eine fehlende Stunde bleibt einfach eine leere Spur. Mit PV färbt die
+ * Sonne orange, ohne PV der Verbrauch violett (Bericht 6.3: „ohne PV trägt
+ * der Teppich violette Säulen"). Ab übermorgen (E3 = A) blasst die Zeile -
+ * ein Ausblick, kein Versprechen. Die Jetzt-Linie steht nur in "Heute".
  */
 export function Teppich({
   m,
   gewaehlt,
   onWahl,
+  schmal,
 }: {
   m: PrognoseModell;
   gewaehlt: number;
   onWahl: (i: number) => void;
+  /** Telefon (Bericht R3.2: engerer Stundenbereich, schmalere Rand-Spalten). */
+  schmal: boolean;
 }) {
   const t = chartTheme();
   const farbe = m.mitPv ? t.pv : t.consumer;
-  const stunden = Array.from(new Set(m.tage.flatMap((tag) => tag.stunden.map((s) => new Date(s.start).getHours())))).sort(
-    (a, b) => a - b,
-  );
-  if (stunden.length === 0) return null;
-  const spalten = Array.from({ length: stunden[stunden.length - 1] - stunden[0] + 1 }, (_, i) => stunden[0] + i);
-  const raster = `72px repeat(${spalten.length}, minmax(0, 1fr))`;
+  if (m.tage.length === 0) return null;
+
+  const [vonStd, bisStd] = schmal ? TEPPICH_STUNDEN_TELEFON : TEPPICH_STUNDEN_RECHNER;
+  const spalten = Array.from({ length: bisStd - vonStd + 1 }, (_, i) => vonStd + i);
+  const labelW = schmal ? 50 : 72;
+  const kwhW = schmal ? 30 : 46;
+  const rechtsSpalten = m.mitPv ? 2 : 1;
+  const raster = `${labelW}px repeat(${spalten.length}, minmax(0, 1fr)) repeat(${rechtsSpalten}, ${kwhW}px)`;
+
+  const heute = m.tage[0];
+  const spaltenStartMs = heute.beginn + spalten[0] * STUNDE_MS;
+  const spaltenSpanMs = spalten.length * STUNDE_MS;
+  const jetztPct = Math.min(100, Math.max(0, ((m.jetztMs - spaltenStartMs) / spaltenSpanMs) * 100));
 
   return (
     <div className="vp-pt-teppich" role="group" aria-label="Sonne und Verbrauch, die nächsten Tage">
+      <div className="vp-pt-karte-kopf">
+        <h2>{m.mitPv ? 'Wann reicht die Sonne?' : 'Wann wird viel verbraucht?'}</h2>
+        <span>
+          <span className="vp-pt-teppich-unter-lang">sieben Tage, je Stunde</span>
+          <span className="vp-pt-teppich-unter-kurz">sieben Tage</span>
+        </span>
+      </div>
       <div className="vp-pt-zeile vp-pt-kopfzeile" style={{ gridTemplateColumns: raster }} aria-hidden="true">
         <span />
         {spalten.map((h) => (
           <span key={h} className="vp-pt-stunde">
-            {h}
+            {h % 3 === 0 ? h : ''}
           </span>
         ))}
+        {m.mitPv && (
+          <span className="vp-pt-kopf-ico">
+            <Icon name="sun" size={14} />
+          </span>
+        )}
+        <span className="vp-pt-kopf-ico">
+          <Icon name="home" size={14} />
+        </span>
       </div>
       {m.tage.map((tag, i) => {
         const wert = m.mitPv ? 'sonneKw' : 'verbrauchKw';
+        const istHeute = i === 0;
+        // Datenfehler 2: dieselbe Tagessumme, die "–" statt einer Zahl zeigt
+        // (zu wenig Stunden belegt, DECKUNG in `prognoseSeite.ts`), muss auch
+        // die Säulen sperren - sonst zeichnet die Zeile ein paar vereinzelte
+        // Säulen aus lückenhaften Daten, die wie "leer" aussehen, ohne zu
+        // sagen, dass die Prognose für diesen Tag fehlt ("Fehlend ist keine
+        // Null").
+        const unvollstaendig = m.mitPv ? tag.sonneKwh == null || tag.verbrauchKwh == null : tag.verbrauchKwh == null;
         return (
           <button
             key={tag.beginn}
@@ -202,30 +313,90 @@ export function Teppich({
             aria-label={`${tag.wort}${tag.art ? `, ${HIMMEL_WORT[tag.art]}` : ''}${tag.ausblick ? ', Ausblick' : ''}`}
             onClick={() => onWahl(i)}
           >
-            <span className="vp-pt-tag-name">
+            <span className="vp-pt-tag-name" style={{ gridColumn: 1, gridRow: 1 }}>
               <WetterSymbol art={tag.art} groesse={16} />
               {tag.wort}
             </span>
-            {spalten.map((h) => {
-              const s = tag.stunden.find((x) => new Date(x.start).getHours() === h);
-              const v = s?.[wert];
-              const intensitaet = v != null ? Math.min(1, v / m.massstab) : 0;
-              return (
+            {unvollstaendig ? (
+              <span
+                className="vp-pt-teppich-leer"
+                style={{ gridColumn: `2 / span ${spalten.length + rechtsSpalten}`, gridRow: 1 }}
+              >
+                noch keine Vorhersage
+              </span>
+            ) : (
+              <>
+                {spalten.map((h, hi) => {
+                  const s = tag.stunden.find((x) => new Date(x.start).getHours() === h);
+                  const v = s?.[wert];
+                  const stil = saeuleStil(v, m.massstab, farbe, m.mitPv ? (s?.deckt ?? false) : true, s?.herkunft === 'erwartet');
+                  return (
+                    <span key={h} className="vp-pt-zelle" style={{ gridColumn: hi + 2, gridRow: 1 }}>
+                      {stil && <i className="vp-pt-saeule" style={stil} />}
+                    </span>
+                  );
+                })}
+                {istHeute && (
+                  <span
+                    className="vp-pt-jetzt-spur"
+                    style={{ gridColumn: `2 / span ${spalten.length}`, gridRow: 1 }}
+                    aria-hidden="true"
+                  >
+                    <i className="vp-pt-jetzt-linie" style={{ left: `${jetztPct}%` }} />
+                  </span>
+                )}
+                {m.mitPv && (
+                  <span className="vp-pt-kwh vp-pt-kwh-sonne" style={{ gridColumn: spalten.length + 2, gridRow: 1 }}>
+                    {kwh0(tag.sonneKwh as number)}
+                  </span>
+                )}
                 <span
-                  key={h}
-                  className={`vp-pt-zelle${s?.deckt ? ' is-deckt' : ''}`}
-                  style={v != null ? { background: withAlpha(farbe, 0.12 + intensitaet * 0.68) } : undefined}
-                />
-              );
-            })}
+                  className="vp-pt-kwh vp-pt-kwh-verbrauch"
+                  style={{ gridColumn: spalten.length + rechtsSpalten + 1, gridRow: 1 }}
+                >
+                  {kwh0(tag.verbrauchKwh as number)}
+                </span>
+              </>
+            )}
           </button>
         );
       })}
-      {m.mitPv && (
-        <p className="vp-pt-hinweis">
-          <span className="vp-pt-punkt" aria-hidden="true" /> Sonne deckt den Verbrauch dieser Stunde
-        </p>
-      )}
+      <TeppichLegende mitPv={m.mitPv} />
+    </div>
+  );
+}
+
+/**
+ * Die Legende, mit PV wörtlich wie im Bericht (R3.2): "Sonne deckt den
+ * Verbrauch · reicht nicht · Ausblick" (kräftig/blass/Ausblick, die
+ * Deckungs-Dimension der Säulen). Ohne PV gibt es kein "deckt" - die Säulen
+ * unterscheiden nur Herkunft, darum "gemessen/erwartet/Ausblick" wie im
+ * Tagesbild (`PrognoseLegende`). Rechts immer der Hinweis auf die kWh-Spalten.
+ */
+function TeppichLegende({ mitPv }: { mitPv: boolean }) {
+  const t = chartTheme();
+  const farbe = mitPv ? t.pv : t.consumer;
+  const hatch = (alpha: number) => ({
+    background: withAlpha(farbe, alpha * 0.22),
+    backgroundImage: `repeating-linear-gradient(45deg, ${withAlpha(farbe, alpha)} 0 1.3px, transparent 1.3px 4px)`,
+  });
+  return (
+    <div className="vp-pt-teppich-legende">
+      <div className="vp-pz-legende">
+        <span>
+          <i style={{ background: withAlpha(farbe, 0.82) }} aria-hidden="true" />
+          {mitPv ? 'Sonne deckt den Verbrauch' : 'gemessen'}
+        </span>
+        <span>
+          <i style={mitPv ? { background: withAlpha(farbe, 0.38) } : hatch(0.82)} aria-hidden="true" />
+          {mitPv ? 'reicht nicht' : 'erwartet'}
+        </span>
+        <span>
+          <i style={{ background: withAlpha(farbe, 0.2) }} aria-hidden="true" />
+          Ausblick
+        </span>
+      </div>
+      <p className="vp-pt-teppich-legende-sub">rechts: ≈ kWh je Tag</p>
     </div>
   );
 }
@@ -326,8 +497,15 @@ function punkteAus(stunden: readonly TeppichStunde[], feld: 'sonneKw' | 'verbrau
     .map((s) => ({ stunde: new Date(s.start).getHours(), v: s[feld] as number, herkunft: s.herkunft }));
 }
 
-/** Vorabend-Werte (gestern erwartet) für die bereits vergangenen Stunden - nur heute, nur am Rechner. */
-function vorabendPunkte(werte: readonly ForecastValue[], tagBeginn: number, jetztMs: number): Punkt[] {
+/**
+ * Vorabend-Werte (gestern erwartet) für die bereits vergangenen Stunden -
+ * nur heute, nur am Rechner. Exportiert, damit `PrognoseSeite.tsx` dieselbe
+ * Regel benutzt, um zu entscheiden, ob die Legende "am Vorabend erwartet"
+ * zeigen darf (Datenfehler 3: die Legende stand bisher unabhängig davon, ob
+ * wirklich eine Linie gezeichnet wird - z. B. am ersten Tag nach S1, bevor
+ * der erste Abendlauf von gestern existiert).
+ */
+export function vorabendPunkte(werte: readonly ForecastValue[], tagBeginn: number, jetztMs: number): Punkt[] {
   return werte
     .map((w) => ({ stunde: new Date(Date.parse(w.ts)).getHours(), ms: Date.parse(w.ts), v: w.valueKw }))
     .filter((w) => Number.isFinite(w.ms) && w.ms >= tagBeginn && w.ms < jetztMs && w.v != null)
@@ -345,11 +523,14 @@ export function PrognoseTagesBild({
   tag,
   breit,
   vorabend,
+  weather,
 }: {
   m: PrognoseModell;
   tag: TeppichTag;
   breit: boolean;
   vorabend?: { pvKw: readonly ForecastValue[]; loadKw: readonly ForecastValue[] } | null;
+  /** Himmel und Temperatur über dem Bild, Stunde für Stunde (Bericht R3.2). */
+  weather?: readonly WeatherPoint[];
 }): ReactNode {
   const [ref, breite] = useContainerWidth<HTMLDivElement>();
   const t = chartTheme();
@@ -365,10 +546,17 @@ export function PrognoseTagesBild({
   const n = bisStunde - vonStunde + 1;
 
   const W = Math.max(240, Math.round(breite || 0));
-  const padL = breit ? 46 : 36;
+  const padL = breit ? 46 : 42;
   const padR = 6;
   const plotH = breit ? 220 : 140;
-  const oben = 8;
+  // Himmel + Temperatur über dem Bild brauchen eigenen Platz (Bericht R3.2:
+  // "Im Tagesbild fehlen Himmel/Temperatur oben" - captain-Befund). Das
+  // Jetzt-Schild bekommt eine EIGENE Zeile darunter, über der Fläche - sonst
+  // überdeckt es bei manchen Uhrzeiten die Temperatur-Zahl (captain-Befund
+  // Runde 2: "bei 11/12 Uhr steht 2? halb verdeckt").
+  const kopfH = 34;
+  const schildH = 22;
+  const oben = kopfH + schildH;
   const basis = oben + plotH;
   const H = basis + 22;
   const schritt = (W - padL - padR) / n;
@@ -381,7 +569,7 @@ export function PrognoseTagesBild({
 
   const alleWerte = [...sonnePunkte, ...verbrauchPunkte].map((p) => p.v);
   const max = Math.max(0, ...alleWerte);
-  const tick = max > 6 ? 2 : 1;
+  const tick = niceSchritt(max);
   const ymax = Math.max(tick * 2, Math.ceil((max * 1.12) / tick) * tick);
   const Y = (v: number) => basis - (v / ymax) * plotH;
   const mitte = (stunde: number) => X(stunde) + schritt / 2;
@@ -433,6 +621,17 @@ export function PrognoseTagesBild({
 
   const jetztX = istHeute && m.jetztMs >= tag.beginn ? X(new Date(m.jetztMs).getHours()) + (schritt * (new Date(m.jetztMs).getMinutes() / 60)) : null;
 
+  // Himmel-Symbol + Temperatur je Stunde, nur an den sichtbaren Achsenmarken
+  // (dieselbe Dichte wie die Stunden-Beschriftung unten). Erst auf den Tag
+  // eingrenzen - die Stunde allein wäre über mehrere Tage mehrdeutig.
+  const tagEnde = tag.beginn + 24 * STUNDE_MS;
+  const himmelJeStunde = new Map(
+    stundenRaster(weather ?? [])
+      .filter((s) => s.start >= tag.beginn && s.start < tagEnde)
+      .map((s) => [new Date(s.start).getHours(), s]),
+  );
+  const kopfStunden = stundenDesTages.filter((h, i) => stundenDesTages.indexOf(h) === i && h % (breit ? 2 : 3) === 0);
+
   return (
     <div ref={ref} className="vp-pt-bild">
       {breite > 0 && (
@@ -447,11 +646,51 @@ export function PrognoseTagesBild({
           {Array.from({ length: Math.round(ymax / tick) + 1 }, (_, k) => k * tick).map((v) => (
             <g key={v}>
               <line x1={padL} x2={W - padR} y1={Y(v)} y2={Y(v)} stroke={t.grid} />
-              <text x={padL - 6} y={Y(v) + 3.5} className="vp-pz-achse" textAnchor="end">
+              <text data-testid="vp-pt-y-marke" x={padL - 6} y={Y(v) + 3.5} className="vp-pz-achse" textAnchor="end">
                 {v === ymax ? `${v} kW` : v}
               </text>
             </g>
           ))}
+
+          {kopfStunden.map((h) => {
+            const s = himmelJeStunde.get(h);
+            if (!s) return null;
+            return (
+              <g key={h} data-testid="vp-pt-himmel-kopf" transform={`translate(${(mitte(h) - 7).toFixed(1)}, 0)`}>
+                <WetterSymbol art={s.art} groesse={14} />
+                {s.temp != null && (
+                  <text x={7} y={26} className="vp-pz-achse" textAnchor="middle">
+                    {Math.round(s.temp)}°
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {jetztX != null && (
+            <g data-testid="vp-pt-jetzt-schild">
+              {(() => {
+                const pillW = 68;
+                const pillH = 18;
+                const pillY = kopfH + (schildH - pillH) / 2;
+                const pillX = Math.min(Math.max(jetztX - pillW / 2, padL), W - padR - pillW);
+                return (
+                  <>
+                    <rect x={pillX} y={pillY} width={pillW} height={pillH} rx={9} fill={t.jetzt} />
+                    <text
+                      x={pillX + pillW / 2}
+                      y={pillY + pillH - 5}
+                      textAnchor="middle"
+                      className="vp-pz-achse"
+                      style={{ fill: '#fff', fontWeight: 700 }}
+                    >
+                      Jetzt {uhr(m.jetztMs)}
+                    </text>
+                  </>
+                );
+              })()}
+            </g>
+          )}
 
           {fGemessen && (
             <g>
@@ -487,13 +726,30 @@ export function PrognoseTagesBild({
 
           {jetztX != null && <line x1={jetztX} x2={jetztX} y1={oben} y2={basis} stroke={t.jetzt} strokeWidth={2} />}
 
-          {stundenDesTages
-            .filter((h, i) => stundenDesTages.indexOf(h) === i && h % (breit ? 1 : 2) === 0)
-            .map((h) => (
-              <text key={h} x={mitte(h)} y={H - 4} className="vp-pz-achse" textAnchor="middle">
-                {h}
+          {/* Wenige Marken in 3-Stunden-Schritten (Telefon: 6), an den
+              Stunden-GRENZEN (nicht der Zellenmitte) - so passt am Ende auch
+              "24" genau auf den rechten Rand (captain-Befund Runde 3: "jede
+              Stunde 0…23 wirkt gedrängt"). Die erste/letzte Marke hängt am
+              Rand statt darüber zu zentrieren, wie im Konzept. */}
+          {(() => {
+            const schrittStunden = breit ? 3 : 6;
+            const marken = Array.from({ length: Math.floor(24 / schrittStunden) + 1 }, (_, i) => i * schrittStunden).filter(
+              (h) => h >= vonStunde && h <= bisStunde + 1,
+            );
+            const letzte = marken[marken.length - 1];
+            return marken.map((h) => (
+              <text
+                data-testid="vp-pt-x-marke"
+                key={h}
+                x={X(h)}
+                y={H - 4}
+                className="vp-pz-achse"
+                textAnchor={h === 0 ? 'start' : h === letzte && h === bisStunde + 1 ? 'end' : 'middle'}
+              >
+                {h === 0 ? '0 Uhr' : h}
               </text>
-            ))}
+            ));
+          })()}
         </svg>
       )}
     </div>

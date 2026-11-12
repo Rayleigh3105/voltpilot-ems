@@ -618,9 +618,12 @@ class BilanzVectorsTest {
                         .isEmpty();
             }
             case "rest_aus_stellung" -> {
+                // Zählerbaum S4: ein Fall mit mehr Baum-Ebenen, als das Referenzunternehmen hat,
+                // bringt seine Stellungen als neutrale Platzhalter selbst mit (F20).
                 BilanzAbleitung.RestFassung ist = BilanzAbleitung.restAusStellung(
                         ein.path("hauptzaehler").asText(), LocalDate.parse(ein.path("tag").asText()),
-                        stellungenDesReferenzunternehmens());
+                        ein.has("stellungen") ? stellungen(ein.path("stellungen"))
+                                : stellungenDesReferenzunternehmens());
                 assertThat(ist.hauptzaehler()).as(why + " · Hauptzähler").isEqualTo(ein.path("hauptzaehler").asText());
                 assertThat(ist.anlage()).as(why + " · System").isEqualTo(str(soll.path("anlage")));
                 assertThat(ist.terme().stream().map(t -> t.messstelle() + ":" + t.rolle() + ":" + t.anteil()).toList())
@@ -644,6 +647,18 @@ class BilanzVectorsTest {
      * Die zeitgültigen Stellungen ALLER Messstellen des Referenzunternehmens — die Regel
      * {@code rest_aus_stellung} liest sie von dort und nicht aus einer Kopie in der Vektor-Datei.
      */
+    /** Die Stellungen, die ein Fall selbst mitbringt (F20) — dieselbe Form wie die Referenz-Ableitung. */
+    private static List<BilanzAbleitung.StellungZeile> stellungen(JsonNode zeilen) {
+        List<BilanzAbleitung.StellungZeile> raus = new ArrayList<>();
+        for (JsonNode z : zeilen) {
+            raus.add(new BilanzAbleitung.StellungZeile(z.path("messstelle").asText(),
+                    str(z.path("anlage")), z.path("stellung").asText(), str(z.path("richtung")),
+                    z.path("art").asText(), z.path("medium").asText(), str(z.path("unterzaehler_von")),
+                    tag(z.path("ab")), tag(z.path("bis"))));
+        }
+        return raus;
+    }
+
     static List<BilanzAbleitung.StellungZeile> stellungenDesReferenzunternehmens() throws Exception {
         List<BilanzAbleitung.StellungZeile> raus = new ArrayList<>();
         for (JsonNode m : lies(REFERENZ).path("messstellen")) {

@@ -4967,7 +4967,9 @@ export interface Bilanz {
   bis: string;
   zeitzone: string;
   hauptzaehler: BilanzHauptzaehler[];
-  /** NUR wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb des Zugriffs braucht (AP-03 R-A3). */
+  /** Zählerbaum S4: je Unterverteilung (Unterzähler mit eigenen Unterzählern) ein Block derselben Form. */
+  unterverteilungen?: BilanzHauptzaehler[];
+  /** NUR wenn ein Block fehlt, weil er eine Messstelle außerhalb des Zugriffs braucht (AP-03 R-A3). */
   ausserhalb_zugriff?: string;
 }
 
@@ -8377,6 +8379,19 @@ const inFlight = new Map<string, Promise<unknown>>();
  */
 export const STARTFENSTER_MS = 2_000;
 const STARTFENSTER_PFADE = new Set(['/api/v1/funktionen']);
+
+/**
+ * Erzwingt eine frische Antwort auf `/funktionen` - fürs ausdrückliche „Erneut prüfen" (Schritt 4 des
+ * Messen-Assistenten): das Startfenster oben teilt drei zeitgleiche Boot-Lesungen, nie einen bewussten
+ * Klick, der auf neue Daten (Telemetrie, Register) wartet. Ohne das bekäme ein Klick innerhalb von
+ * {@link STARTFENSTER_MS} nach dem letzten Laden dieselbe veraltete Antwort zurück (Befund
+ * vp-messen-assistent-e2e-rot: „Erneut prüfen" zeigte nach wartenden Messstellen weiter „wartet").
+ */
+export function vergissFunktionenStartfenster(): void {
+  for (const key of inFlight.keys()) {
+    if (key.endsWith('|/api/v1/funktionen')) inFlight.delete(key);
+  }
+}
 
 /**
  * Der je Aufruf gestempelte `X-Tenant-Id`-Kopf (Kundenakte, Plattform-Geräteseite) - sonst `null`.

@@ -209,6 +209,26 @@ export interface TenantOffboardingReport {
   deletedUsers: string[];
   /** Keycloak logins that could not be deleted - need manual cleanup. */
   failedUsers: string[];
+  /** vp-kunde-sofort-loeschen: warum gelöscht werden durfte. */
+  anlass: 'frist_abgelaufen' | 'sofort_keine_daten';
+  /** Die Kennungen der nie gemeldeten Boxen, die der Sofort-Weg freigegeben hat (wieder anmeldbar). */
+  freigegebeneBoxen: string[];
+}
+
+/**
+ * Die Löschbarkeit eines Kunden (vp-kunde-sofort-loeschen): sofort (keine Daten, `KundeDatenBestand`
+ * im Server) oder erst nach der Frist. `daten` nennt die gefundenen Datenarten (Sätze:
+ * `kundeLoeschen.ts`); `folgen` trägt nur die Einzel-Route, die Liste lässt sie weg.
+ */
+export interface KundeLoeschbarkeit {
+  tenantId: string;
+  sofortLoeschbar: boolean;
+  daten: string[];
+  /** Kalendertag (ISO, Europe/Berlin) oder `null` für einen aktiven Kunden. */
+  beendetAm: string | null;
+  loeschungFruehestens: string | null;
+  fristAbgelaufen: boolean;
+  folgen: { anlagen: number; boxen: string[]; personen: number } | null;
 }
 
 /**
@@ -432,6 +452,15 @@ export interface BoxLoesenBefund {
 
 export type BoxLoesenAnlass = 'falsche_kennung' | 'fremder_kunde' | 'doppelt_verbunden' | 'anderer_anlass';
 
+/** "Box ausbauen" ohne Mandantensprung (vp-admin-box-ausbauen): derselbe Anlass wie `BoxLoesenAnlass`. */
+export interface BoxAusbauenErgebnis {
+  externalRef: string;
+  deviceId: string;
+  ausgebautAm: string;
+  anlass: string;
+  bereitsAusgebaut: boolean;
+}
+
 /**
  * „Endgültig löschen" einer AUSGEBAUTEN Box (vierter Löschweg, vp-box-endgueltig-loeschen): der
  * Befund nennt die Datenarten, an denen das Urteil hängt - nie nur ein Ja/Nein (Sätze: `boxEndgueltig.ts`).
@@ -479,6 +508,13 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ confirmName }),
     }),
+
+  // vp-kunde-sofort-loeschen: wann der Betreiber löschen darf (sofort bei einem datenfreien Kunden,
+  // sonst nach der Frist) und was das Löschen umfasst - nur lesend, der Löschweg bleibt deleteTenant.
+  kundenLoeschbarkeit: () => request<KundeLoeschbarkeit[]>('/api/v1/admin/tenants/loeschbarkeit'),
+
+  kundeLoeschbarkeit: (tenantId: string) =>
+    request<KundeLoeschbarkeit>(`/api/v1/admin/tenants/${tenantId}/loeschbarkeit`),
 
   // Vertragsende I (N1, UEMS AP-20 IP-16): beenden mit Frist, wiederaufnehmen -
   // derselbe Kundenbereich, kein neuer. Der Löschweg (deleteTenant) bleibt
@@ -912,6 +948,17 @@ export const adminApi = {
   /** L1: löst die Verknüpfung, als wäre sie nie gewesen (409 mit Gründen, wenn die Regel es nicht erlaubt). */
   geraeteLoesen: (ref: string, anlass: BoxLoesenAnlass, anlassText: string | null) =>
     request<{ externalRef: string; anlass: string }>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`, {
+      method: 'POST',
+      body: JSON.stringify({ anlass, anlassText }),
+    }),
+
+  /**
+   * Box ausbauen ohne Mandantensprung (vp-admin-box-ausbauen): dieselbe Umsetzung wie "Gerät
+   * entfernen" des Kunden - die Messdaten bleiben. Idempotent (409 `box_hat_zustaendigkeiten`,
+   * solange die Box noch eine Datenquelle liest).
+   */
+  geraeteAusbauen: (ref: string, anlass: BoxLoesenAnlass, anlassText: string | null) =>
+    request<BoxAusbauenErgebnis>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/ausbauen`, {
       method: 'POST',
       body: JSON.stringify({ anlass, anlassText }),
     }),

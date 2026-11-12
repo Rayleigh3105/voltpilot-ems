@@ -391,9 +391,13 @@ class VerteilungVectorsTest {
                     formeln.add(new KostenstelleDoppelzaehlung.Formel(f.path("messstelle").asText(),
                             tag(f.path("gueltig_ab")), tag(f.path("gueltig_bis")), terme));
                 }
+                List<KostenstelleDoppelzaehlung.Stellung> stellungen = new ArrayList<>();
+                ein.path("stellungen").forEach(s -> stellungen.add(new KostenstelleDoppelzaehlung.Stellung(
+                        s.path("messstelle").asText(), str(s.path("unterzaehler_von")),
+                        tag(s.path("gueltig_ab")), tag(s.path("gueltig_bis")))));
                 KostenstelleDoppelzaehlung.Urteil ist = KostenstelleDoppelzaehlung.pruefe(
                         ein.path("kostenstelle").asText(), tag(ein.path("von")), tag(ein.path("bis")),
-                        ziele(ein.path("ziele")), quellen(ein.path("quellen")), formeln);
+                        ziele(ein.path("ziele")), quellen(ein.path("quellen")), formeln, stellungen);
                 List<String> enthalten = new ArrayList<>();
                 ist.enthalten().forEach(e -> enthalten.add(e.teil() + " in " + e.summe() + " · " + e.umfang() + " · "
                         + e.kette() + " · " + e.zeitraeume().stream().map(z -> z.von() + ".." + z.bis()).toList()

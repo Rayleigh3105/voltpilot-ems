@@ -1,4 +1,4 @@
-import type { ForecastResponse, ForecastValue, HistoryBucket, RueckblickKind, WeatherPoint } from './api';
+import type { ForecastResponse, ForecastValue, HistoryBucket, RueckblickKind, RueckblickResponse, WeatherPoint } from './api';
 import {
   art,
   HIMMEL_WORT,
@@ -359,7 +359,14 @@ export function prognoseModell(e: PrognoseEingaben): PrognoseModell {
   const heute = tagesBeginn(jetztMs);
   const anzahl = e.tage ?? 7;
   const tage: TeppichTag[] = [];
-  let massstab = 0;
+  // Sonne und Verbrauch GETRENNT verfolgen: der Teppich zeichnet nur EINE der
+  // beiden Reihen (mit PV die Sonne, sonst den Verbrauch, `Teppich.wert` in
+  // `PrognoseTeppich.tsx`) - ein gemeinsames Maximum ließ die Sonnen-Säulen
+  // einer Anlage mit viel Verbrauch und wenig PV (Gewerbe ohne/mit kleiner
+  // Anlage) unsichtbar werden, weil der Maßstab vom VERBRAUCH dominiert
+  // wurde, den dieselbe Zeile gar nicht zeigt.
+  let massstabSonne = 0;
+  let massstabVerbrauch = 0;
   let mitPv = false;
 
   for (let k = 0, beginn = heute; k < anzahl; k++, beginn = naechsterTag(beginn)) {
@@ -372,8 +379,8 @@ export function prognoseModell(e: PrognoseEingaben): PrognoseModell {
     if (tagStunden.length === 0) continue;
 
     for (const s of tagStunden) {
-      if (s.sonneKw != null) massstab = Math.max(massstab, s.sonneKw);
-      if (s.verbrauchKw != null) massstab = Math.max(massstab, s.verbrauchKw);
+      if (s.sonneKw != null) massstabSonne = Math.max(massstabSonne, s.sonneKw);
+      if (s.verbrauchKw != null) massstabVerbrauch = Math.max(massstabVerbrauch, s.verbrauchKw);
       if (s.sonneKw != null && s.sonneKw > 0.01) mitPv = true;
     }
 
@@ -429,10 +436,16 @@ export function prognoseModell(e: PrognoseEingaben): PrognoseModell {
   // 6.1): mit PV mindestens 40 % der Anlagenleistung, nicht die eigene Spitze
   // der Woche - sonst sähe eine trübe Winterwoche genauso "voll" aus wie ein
   // Sommertag. Nur wenn die Anlagenleistung wirklich unbekannt ist, bleibt
-  // die stärkste Stunde der Woche der Maßstab (begründeter Rückfall).
+  // die stärkste Stunde der Woche (Sonne ODER Verbrauch) der Maßstab
+  // (begründeter Rückfall - mit bekannter kWp bleibt die Sonne bei sich).
   const kwp = e.anlagenleistungKwp;
-  const massstabEhrlich = mitPv && kwp != null && kwp > 0 ? Math.max(massstab, 0.4 * kwp) : massstab;
-  return { jetztMs, tage, mitPv, massstab: Math.max(massstabEhrlich, 0.1) };
+  const massstab =
+    !mitPv
+      ? massstabVerbrauch
+      : kwp != null && kwp > 0
+        ? Math.max(massstabSonne, 0.4 * kwp)
+        : Math.max(massstabSonne, massstabVerbrauch);
+  return { jetztMs, tage, mitPv, massstab: Math.max(massstab, 0.1) };
 }
 
 function mehrheitsHimmel(stunden: readonly WetterStunde[]): HimmelArt | null {
@@ -557,6 +570,22 @@ export function rueckblickZeilen(kind: RueckblickKind): RueckblickZeile[] {
     erwartetKwh: t.erwartetKwh,
     gemessenKwh: t.gemessenKwh,
   }));
+}
+
+/**
+ * "Gestern: 311 erwartet, 321 gekommen" - die Unterzeile der Zeile
+ * "Rückblick" (Bericht 6.1/7, wörtlich wie im Konzeptbild). Der jüngste Tag
+ * der zur Seite passenden Art (Sonne mit PV, sonst Verbrauch); `null` ohne
+ * Tage - noch kein Rückblick, keine erfundene Zahl (die Zeile fällt dann auf
+ * den allgemeinen Text zurück).
+ */
+export function gesternSatz(rueckblick: RueckblickResponse | null, mitPv: boolean): string | null {
+  if (!rueckblick) return null;
+  const art = mitPv ? 'pv' : 'load';
+  const kind = rueckblick.kinds.find((k) => k.kind === art);
+  const gestern = kind?.tage[kind.tage.length - 1];
+  if (!gestern) return null;
+  return `Gestern: ${kwh0(gestern.erwartetKwh)} erwartet, ${kwh0(gestern.gemessenKwh)} gekommen`;
 }
 
 /**

@@ -205,17 +205,33 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
           )}
         </div>
       ) : (
-        bild.hauptzaehler.map((hz) => (
-          <Hauptzaehler
-            key={hz.key}
-            hz={hz}
-            zeitraum={bild.zeitraum}
-            laeuft={bild.laeuft}
-            darfAnlegen={darf(rechte, standortId, RECHT_REST_ANLEGEN)}
-            legtAn={legtAn}
-            onAnlegen={restAnlegen}
-          />
-        ))
+        <>
+          {bild.hauptzaehler.map((hz) => (
+            <Hauptzaehler
+              key={hz.key}
+              hz={hz}
+              zeitraum={bild.zeitraum}
+              laeuft={bild.laeuft}
+              darfAnlegen={darf(rechte, standortId, RECHT_REST_ANLEGEN)}
+              legtAn={legtAn}
+              onAnlegen={restAnlegen}
+            />
+          ))}
+          {/* Zählerbaum S4: je Unterverteilung (Unterzähler mit eigenen Unterzählern) ein Block derselben
+              Form - sein Rest zieht nur die direkten Kinder ab, jede Kilowattstunde zählt genau einmal. */}
+          {bild.unterverteilungen.map((hz) => (
+            <Hauptzaehler
+              key={hz.key}
+              hz={hz}
+              zeitraum={bild.zeitraum}
+              laeuft={bild.laeuft}
+              darfAnlegen={darf(rechte, standortId, RECHT_REST_ANLEGEN)}
+              legtAn={legtAn}
+              onAnlegen={restAnlegen}
+              testid="energiebilanz-unterverteilung"
+            />
+          ))}
+        </>
       )}
 
       {bilanz && bilanz !== 'fehler' && bild && <EnergiebilanzFuss anlage={site.id} am={bilanz.am} zone={bild.zone} />}
@@ -230,6 +246,7 @@ function Hauptzaehler({
   darfAnlegen,
   legtAn,
   onAnlegen,
+  testid = 'energiebilanz-hauptzaehler',
 }: {
   hz: HauptzaehlerBild;
   zeitraum: string;
@@ -237,13 +254,14 @@ function Hauptzaehler({
   darfAnlegen: boolean;
   legtAn: boolean;
   onAnlegen: (v: VorschlagBild) => void;
+  testid?: string;
 }) {
   const formal = `${hz.titel} · ${zeitraum}`;
   // Ein Zeitraum ohne Stellungswechsel hat genau einen Abschnitt mit genau einem Tag: er trägt die ganze Antwort.
   const einzeln = !hz.hinweis && hz.abschnitte.length === 1 && hz.abschnitte[0].tage.length === 1 ? hz.abschnitte[0] : null;
   const tag = einzeln?.tage[0] ?? null;
   return (
-    <article className="vp-bil-hz" data-testid="energiebilanz-hauptzaehler" aria-label={hz.titel}>
+    <article className="vp-bil-hz" data-testid={testid} aria-label={hz.titel}>
       {laeuft ? (
         <>
           {/* Der laufende Zeitraum hat noch keine Zahlen - der Weg des Teils ohne eigenen Zähler (mit der Live-Zeile)

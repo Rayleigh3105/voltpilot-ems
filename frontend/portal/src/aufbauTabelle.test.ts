@@ -168,19 +168,23 @@ const kurz = (rows: TabellenZeile[]) => rows.map((r) => `${r.typ}:${r.key}`);
 describe('tabellenZeilen — ohne Suche und Filter', () => {
   it('legt Anlage, Box und Geräte in Lese-Reihenfolge mit Ebenen aus', () => {
     const rows = zeilen();
+    // Zählerbaum-Vorgabe: heizstab (ohne gesetztes haengtAn) hängt an der Wurzel - dem Netzanschluss im Hybrid-
+    // Wechselrichter (HYBRID trägt eine Rolle grid) - darum steht er eine Ebene unter „inverter", kein eigener
+    // Verbrauch-Kopf mehr (Gruppiert, vp-anlage-geraete-gruppiert): je Gruppe ein Kopf, der Fund am Ende.
     expect(kurz(rows)).toEqual([
       'anlage:s-1',
       'box:b-1',
-      // Gruppiert (vp-anlage-geraete-gruppiert): je Gruppe ein Kopf auf der Ebene seiner Geräte, der Fund am Ende.
       'gruppe:b-1::gruppe::erzeugung',
       'geraet:inverter',
-      'gruppe:b-1::gruppe::verbrauch',
       'geraet:heizstab',
+      // Rest je Knoten (§3.1): inverter trägt keinen Haus-Wert (kein `overview` in dieser Eingabe) - "nicht
+      // bestimmbar" (R2) statt einer erfundenen Zahl.
+      'rest:inverter::rest',
       'gruppe:b-1::gruppe::laden',
       'geraet:cp-CP-1',
       'fund:neu:src-7',
     ]);
-    expect(rows.map((r) => r.ebene)).toEqual([0, 1, 2, 2, 2, 2, 2, 2, 2]);
+    expect(rows.map((r) => r.ebene)).toEqual([0, 1, 2, 2, 3, 3, 2, 2, 2]);
   });
 
   it('bietet nur Geräten mit mehreren Komponenten die Unterzeilen an', () => {
@@ -250,10 +254,13 @@ describe('tabellenZeilen — Suche', () => {
 
   it('öffnet Gruppen mit Treffern, auch wenn sie zugeklappt waren', () => {
     const zu: Aufklappzustand = { offen: () => false, geraete: new Set() };
+    // heizstab hängt an der Wurzel (dem Netzanschluss im Hybrid-Wechselrichter) - „inverter" trägt den Treffer
+    // mit, sein Kopf ist „Erzeugung", nicht mehr „Verbrauch".
     expect(kurz(zeilen({ q: 'heizstab' }, zu))).toEqual([
       'anlage:s-1',
       'box:b-1',
-      'gruppe:b-1::gruppe::verbrauch',
+      'gruppe:b-1::gruppe::erzeugung',
+      'geraet:inverter',
       'geraet:heizstab',
     ]);
   });
@@ -270,10 +277,14 @@ describe('tabellenZeilen — Filter', () => {
   });
 
   it('filtert nach Zustand: was Aufmerksamkeit braucht', () => {
+    // Zählerbaum-Vorgabe: heizstab (ohne gesetztes haengtAn) hängt an der Wurzel - hier der Netzanschluss im
+    // Hybrid-Wechselrichter (HYBRID trägt auch eine Rolle grid) - darum trägt „inverter" die Zeile mit, auch
+    // ohne selbst zu treffen, und heizstab steht eine Ebene darunter statt in einer eigenen Verbrauch-Gruppe.
     expect(kurz(zeilen({ zustand: ['achtung'] }))).toEqual([
       'anlage:s-1',
       'box:b-1',
-      'gruppe:b-1::gruppe::verbrauch',
+      'gruppe:b-1::gruppe::erzeugung',
+      'geraet:inverter',
       'geraet:heizstab',
     ]);
   });
@@ -305,10 +316,13 @@ describe('tabellenZeilen — Filter', () => {
   });
 
   it('verbindet Filter verschiedener Art mit UND, Werte eines Filters mit ODER', () => {
+    // Wie oben: heizstab hängt an der Wurzel (dem Netzanschluss im Hybrid-Wechselrichter) - „inverter" trägt die
+    // Zeile mit, obwohl sein eigener Art-Wert „Hybrid-Wechselrichter" den Filter nicht trifft.
     expect(kurz(zeilen({ art: ['Ladesäule', 'Verbraucher'] }))).toEqual([
       'anlage:s-1',
       'box:b-1',
-      'gruppe:b-1::gruppe::verbrauch',
+      'gruppe:b-1::gruppe::erzeugung',
+      'geraet:inverter',
       'geraet:heizstab',
       'gruppe:b-1::gruppe::laden',
       'geraet:cp-CP-1',

@@ -23,7 +23,8 @@
     "je Tag mit seinem Anteil; Fall F14 (Korrektur eines Eingangs, Version 1 bleibt lesbar).",
     "Fassung 1.3 (AP-10 IP-12, 14.09.2026): die Herkunft steht in allen drei Routen; jeder Herkunfts-Satz trägt `periode_ende` und Beträge ohne nachgestellte Nullen (`_abweichungen`). Die Ableitung aus gespeicherten Zeilen prüft `bilanzwert-herkunft-vectors.json`.",
     "Fassung 1.4 (Captain-Entscheid 14.09.2026, „Warnen — die Sicht sagt, welcher Posten in welchem enthalten ist, und ändert keine Zahl.“): Regel `doppelzaehlung` — welcher Posten einer Kostenstelle an welchen Tagen bereits in einem anderen enthalten ist (aus den Formeln je Tag, rekursiv über die Abhängigkeitsordnung, Kreis benannt), ganz oder zum Teil, nie mit einer Menge; Sätze `doppelt_*`. Die Regel `kostenstelle` und jede ihrer Erwartungen bleiben zeichengleich.",
-    "Fassung 1.5 (Messen PR4, Konzept vp-messen-konzept-m1 §10.3, Entscheid 3 vom 05.10.2026): Regel `ablesezeitraum` - ein Ablesezeitraum hat keine Tagesmengen und wird nie auf Tage verteilt; gilt der Anteil einer Kostenstelle an JEDEM Tag, den er berührt (halboffen, in der Zone der Messstelle), unverändert, bekommt sie Anteil × Menge als Ganzes, sonst keine Zahl (`anteil_wechselt_im_ablesezeitraum`). Die Regel `kostenstelle` liest eine Messstelle aus Ablesungen über Monat und Jahr in MONATEN statt Tagen (Fall F17, MS-21 Gas Verwaltung). Alle Erwartungen der Fassung 1.4 bleiben zeichengleich."
+    "Fassung 1.5 (Messen PR4, Konzept vp-messen-konzept-m1 §10.3, Entscheid 3 vom 05.10.2026): Regel `ablesezeitraum` - ein Ablesezeitraum hat keine Tagesmengen und wird nie auf Tage verteilt; gilt der Anteil einer Kostenstelle an JEDEM Tag, den er berührt (halboffen, in der Zone der Messstelle), unverändert, bekommt sie Anteil × Menge als Ganzes, sonst keine Zahl (`anteil_wechselt_im_ablesezeitraum`). Die Regel `kostenstelle` liest eine Messstelle aus Ablesungen über Monat und Jahr in MONATEN statt Tagen (Fall F17, MS-21 Gas Verwaltung). Alle Erwartungen der Fassung 1.4 bleiben zeichengleich.",
+    "Fassung 1.6 (Zählerbaum S4, Captain-Entscheide E1–E5 vom 10.11.2026): die Regel `doppelzaehlung` liest zusätzlich die STELLUNGEN (`eingang.stellungen`, „Unterzähler von“ je Tag) — eine Messstelle ist in jeder enthalten, unter der sie im elektrischen Baum hängt, ganz oder zum Teil (am Anteil der enthaltenden gemessen, c = 1), die Kette ist der Weg durch den Baum. Berechnete Messstellen tragen keine Stellung; Formel- und Baum-Weg überdecken sich nicht. Alle Fälle ohne `stellungen` bleiben zeichengleich."
   ],
   "schema_version": "1.5",
   "$schema_datei": "./verteilung.schema.json",
@@ -5888,7 +5889,8 @@
         "MS-22 Version 2 = 100 − 58 − 30 = 12 kWh, Kennzeichen „berechnet (Differenz) · nicht zugeordnet · korrigiert (Version 2)“ (bilanz-vectors.json F14).",
         "MS-17 geht seit 15.10.2026 zu 100 % an 4300, MS-18 an 4200; MS-16 und MS-22 haben keine Kostenstelle (Referenzdatei: „—“).",
         "Kostenstelle 4300 am 18.10.2026: gemessen 58 kWh (Version 2); nicht verteilt 100 kWh (MS-16) + 12 kWh (MS-22, Version 2) — der Rest wird NICHT auf 4200/4300 umgelegt.",
-        "Mit den Tageswerten von Version 1 dieselbe Sicht: 60 kWh und 10 kWh — die damalige Zahl bleibt auffindbar."
+        "Mit den Tageswerten von Version 1 dieselbe Sicht: 60 kWh und 10 kWh — die damalige Zahl bleibt auffindbar.",
+        "Zählerbaum S4: dieselbe Warnung aus der STELLUNG — eine Messstelle ist in jeder enthalten, unter der sie im elektrischen Baum hängt (über jede Ebene, je Tag; MS-93 ist ein neutraler Platzhalter hinter MS-17)."
       ],
       "pruefungen": [
         {
@@ -6444,6 +6446,253 @@
           },
           "ergebnis": {
             "enthalten": [],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Die Stellung zählt (Zählerbaum S4): MS-17 (Unterzähler von MS-16) ist an 4300 bereits in MS-16 enthalten — und der Platzhalter MS-93 hinter MS-17 in beiden, über jede Ebene",
+          "eingang": {
+            "kostenstelle": "4300",
+            "von": "2026-10-18",
+            "bis": "2026-10-18",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-16",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-17",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-93",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [],
+            "stellungen": [
+              {
+                "messstelle": "MS-17",
+                "unterzaehler_von": "MS-16",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              },
+              {
+                "messstelle": "MS-93",
+                "unterzaehler_von": "MS-17",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-17",
+                "summe": "MS-16",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-16",
+                  "MS-17"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-18",
+                    "bis": "2026-10-18"
+                  }
+                ],
+                "satz": "MS-17 ist bereits in MS-16 enthalten"
+              },
+              {
+                "teil": "MS-93",
+                "summe": "MS-16",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-16",
+                  "MS-17",
+                  "MS-93"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-18",
+                    "bis": "2026-10-18"
+                  }
+                ],
+                "satz": "MS-93 ist bereits in MS-16 enthalten"
+              },
+              {
+                "teil": "MS-93",
+                "summe": "MS-17",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-17",
+                  "MS-93"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-18",
+                    "bis": "2026-10-18"
+                  }
+                ],
+                "satz": "MS-93 ist bereits in MS-17 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Geht die enthaltende Messstelle nur zu 50 % an die Kostenstelle, ist der Unterzähler zum Teil enthalten — und nur an Tagen, an denen die Stellung gilt",
+          "eingang": {
+            "kostenstelle": "4300",
+            "von": "2026-10-14",
+            "bis": "2026-10-18",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-16",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "50",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "50",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-17",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [],
+            "stellungen": [
+              {
+                "messstelle": "MS-17",
+                "unterzaehler_von": "MS-16",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-17",
+                "summe": "MS-16",
+                "umfang": "teilweise",
+                "kette": [
+                  "MS-16",
+                  "MS-17"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-15",
+                    "bis": "2026-10-18"
+                  }
+                ],
+                "satz": "MS-17 ist zum Teil bereits in MS-16 enthalten"
+              }
+            ],
             "nicht_pruefbar": []
           }
         }

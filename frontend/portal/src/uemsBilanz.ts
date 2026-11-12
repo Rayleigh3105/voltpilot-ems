@@ -343,7 +343,10 @@ export function rest(
 
 // ----------------------------------------------------------------------- Rest aus der Stellung
 
-/** Fehler: an diesem Tag ist die Messstelle kein Hauptzähler Bezug — es gibt keinen Rest (§4.3). */
+/**
+ * Fehler: an diesem Tag trägt die Messstelle keinen Rest — sie ist weder Hauptzähler Bezug noch eine
+ * Unterverteilung mit Unterzählern (§4.3; Zählerbaum S4).
+ */
 export const REST_OHNE_HAUPTZAEHLER = 'rest_ohne_hauptzaehler';
 
 /**
@@ -387,13 +390,16 @@ export interface RestFassung {
  * speichert keine Terme. Zieht ein Unterzähler um, ändern sich beide Reste am selben Tag, ohne dass
  * jemand eine Formel anfasst (F7).
  *
- * - X muss an dem Tag Hauptzähler mit der Rolle Zufluss sein (Richtung Bezug), sonst
+ * - X ist an dem Tag Hauptzähler mit der Rolle Zufluss (Richtung Bezug) — oder, seit dem Zählerbaum
+ *   (S4, §4.3 Satz 2), ein Unterzähler mit eigenen Unterzählern: eine Unterverteilung. Sonst
  *   `rest_ohne_hauptzaehler`.
- * - Zufluss und Abfluss sind X selbst und die Erzeuger, Speicher (mit beiden Anteilen, E4) und der
- *   Hauptzähler Abgabe DESSELBEN Systems (Anlage); ein zweiter Hauptzähler Bezug (den der
- *   Messstellen-Vertrag §6 nicht zulässt) ginge nicht als zweiter Zufluss ein.
+ * - Beim Hauptzähler sind Zufluss und Abfluss X selbst und die Erzeuger, Speicher (mit beiden
+ *   Anteilen, E4) und der Hauptzähler Abgabe DESSELBEN Systems (Anlage); ein zweiter Hauptzähler
+ *   Bezug (den der Messstellen-Vertrag §6 nicht zulässt) ginge nicht als zweiter Zufluss ein.
+ * - Bei einer Unterverteilung ist der Zufluss X selbst — Erzeuger, Speicher und Abzweige hängen an
+ *   der Wurzel (Zählerbaum R4) und gehen nie in den Rest einer Unterverteilung ein.
  * - Zugeordnet sind genau die Unterzähler VON X — ein Unterzähler eines Unterzählers zählt im Rest
- *   von X nicht doppelt.
+ *   von X nicht doppelt, er steht im Rest SEINER Unterverteilung (R1).
  *
  * Reihenfolge: Zufluss (X zuerst) · Abfluss · zugeordnet, je in der Reihenfolge der Zeilen. Vermerke
  * wie „Stellung geändert (…)" leitet diese Regel NICHT ab.
@@ -410,6 +416,24 @@ export function restAusStellung(hauptzaehler: string, tag: string, zeilen: Stell
       unterzaehler_von: z.unterzaehler_von,
     });
   const xRollen = x ? rolleVon(x).rollen : [];
+  const xIstZugeordnet = xRollen.length === 1 && xRollen[0].rolle === ZUGEORDNET && xRollen[0].anteil === 'gesamt';
+  if (x && x.stellung === 'Unterzähler' && xIstZugeordnet) {
+    // §4.3 Satz 2 (Zählerbaum S4): der eigene Rest einer Unterverteilung — Zufluss ist sie selbst,
+    // zugeordnet sind genau ihre direkten Unterzähler; ohne Unterzähler trägt sie keinen Rest.
+    const zugeordnet: RestTerm[] = amTag
+      .filter((z) => z.messstelle !== x.messstelle && rolleVon(z).ziel === x.messstelle)
+      .map((z) => ({ messstelle: z.messstelle, rolle: ZUGEORDNET, anteil: 'gesamt' }));
+    if (zugeordnet.length === 0) {
+      return { hauptzaehler, anlage: null, terme: [], ausserhalb: [], fehler: REST_OHNE_HAUPTZAEHLER };
+    }
+    return {
+      hauptzaehler,
+      anlage: x.anlage,
+      terme: [{ messstelle: x.messstelle, rolle: ZUFLUSS, anteil: 'gesamt' }, ...zugeordnet],
+      ausserhalb: [],
+      fehler: null,
+    };
+  }
   const xIstZufluss = xRollen.length === 1 && xRollen[0].rolle === ZUFLUSS && xRollen[0].anteil === 'gesamt';
   if (!x || x.stellung !== 'Hauptzähler' || !xIstZufluss) {
     return { hauptzaehler, anlage: null, terme: [], ausserhalb: [], fehler: REST_OHNE_HAUPTZAEHLER };

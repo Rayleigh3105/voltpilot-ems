@@ -2178,6 +2178,7 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
 // Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
 const KENNZAHL_BESTAND: string[] = [
   'abweichungen.ts', // neu: eine Abweichung zitiert genau eine Kennzahl (AP-18 IP-18, A3; Spalte, Filter, Ablehnungen)
+  'admin/kundeLoeschen.ts', // neu: die Datenarten-Liste des Kunden-Löschwegs nennt „Kennzahlen" als das, was er verlöre (vp-kunde-sofort-loeschen)
   'begriffe.ts', // neu: „Was ist eine Maßnahme?“ und „gemessen an“ nennen die Kennzahl, an der die Wirkung gemessen wird (Konzept Verbessern v1 §7)
   'berichtDialoge.ts', // neu: „Bericht anlegen“ wählt Kennzahlen ab (AP-12 IP-14, V3)
   'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)

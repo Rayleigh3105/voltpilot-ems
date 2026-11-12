@@ -18,6 +18,17 @@ Gespeichert wird die Zuordnung am GERÄT im Aufbau (`komponente_haengt_an`, tage
 mit Messen übernimmt derselbe Schreibweg die elektrische Stellung der gebundenen Messstelle
 (§4).
 
+Die Vorgabe selbst schreibt keine Zeile: eine Komponente ohne eigene Zeile in
+`komponente_haengt_an` bekommt keine Migration, die `haengt_an` auf den Netzanschluss setzt. Jede
+Anzeige, die den Baum zeigt, liest stattdessen die EFFEKTIVE Eltern-Komponente -
+`ZaehlerbaumRegeln.effektiveEltern` (Java) / `effektiveEltern` (`zaehlerbaum.ts`), gegen dieselben
+Vektoren (`cases_effektive_eltern` in `zaehlerbaum-vectors.json`): das gesetzte `haengtAn`, wenn es
+eins gibt; sonst, für einen gemessenen Verbraucher (Rolle `consumer` - Unterzähler oder ein
+Verbraucher mit eigener Messung), der Netzanschluss der Anlage; gibt es keinen, bleibt es bei
+`null` (die heutige flache Anzeige). Erzeugung und Speicher sind von dieser Vorgabe nie betroffen
+(R4). Wer eine Anzeige um den Baum erweitert, ruft diese Funktion statt die Vorgabe ein zweites Mal
+nachzubauen.
+
 ## 2. Die Regeln (R1-R6)
 
 1. **R1 Jede Kilowattstunde genau einmal.** Ein Kind steckt im Wert seines Elternknotens. Ein
@@ -66,6 +77,19 @@ weil `MessstelleRegeln.stellungPruefen` ablehnt), ändert sich die Geräte-Zuord
 eine Prüfung meldet die Abweichung, statt sie still zu korrigieren oder die Geräte-Änderung
 abzulehnen. `docs/contracts/v2/messstelle.md` §6 (AP-04 E12) bleibt unverändert maßgeblich für
 die Stellung selbst.
+
+Mit S4 liest Messen den Baum an drei weiteren Stellen - dieselbe Regel, kein zweiter Baum:
+
+- **Vorschlagsliste der Bestandsübernahme** ([messstelle.md](messstelle.md) §11): ein Unterzähler
+  wird „Unterzähler von“ der Messstelle des nächsten Vorfahren im Baum, der eine hat -
+  vorgeschlagen oder bestehend; an der Wurzel des Bezug-Hauptzählers. Kinder stehen nach ihren
+  Eltern (Baum-Tiefe).
+- **Bilanz** ([bilanz.md](bilanz.md), Falle 10): eine Unterverteilung - ein Unterzähler mit
+  eigenen Unterzählern - trägt ihren eigenen Rest (§4.3 Satz 2): Zufluss sie selbst, zugeordnet
+  genau ihre direkten Unterzähler, rekursiv je Ebene, jede Kilowattstunde genau einmal (R1).
+- **Kostenstellen** ([verteilung.md](verteilung.md), Regel 13): eine Messstelle ist in jeder
+  enthalten, unter der sie im elektrischen Baum hängt - die Warnung „schon enthalten“ zählt auch
+  die Stellung, über jede Ebene, und ändert keine Zahl.
 
 ## 5. Außerhalb dieses Umfangs
 

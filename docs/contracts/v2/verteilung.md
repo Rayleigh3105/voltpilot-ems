@@ -112,6 +112,11 @@ Tagesmenge.
    und zugeordnet) ist nicht enthalten, ein Term auf den positiven/negativen Teil eines Messwerts trägt
    höchstens zum Teil. Es zählt die Einrichtung, nicht der Wert von heute: ein Term ohne Menge ist
    trotzdem enthalten. Nur Posten derselben Größe, Richtung und Einheit; ein Messkanal-Term ist kein Posten.
+   **Seit dem Zählerbaum (S4, Entscheide E1–E5 vom 10.11.2026) zählt auch die STELLUNG:** eine gemessene
+   Messstelle ist in jeder enthalten, unter der sie im elektrischen Baum hängt („Unterzähler von“, AP-04 §6,
+   über jede Ebene, je Tag) — die UV Halle misst den Kompressor dahinter mit. Ganz mit dem vollen Anteil der
+   enthaltenden an der Kostenstelle (Beitrag 1), sonst zum Teil; die Kette ist der Weg durch den Baum.
+   Berechnete Messstellen tragen keine Stellung — Formel- und Baum-Weg überdecken sich nicht.
 
 14. **Ein Ablesezeitraum geht als Ganzes - oder gar nicht (`ablesezeitraum`, Messen PR4, Fall F17).**
    Ein Ablesezeitraum hat keine Tagesmengen und wird nie auf Tage verteilt.

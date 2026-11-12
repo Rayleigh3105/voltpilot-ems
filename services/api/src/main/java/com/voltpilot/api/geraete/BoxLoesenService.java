@@ -46,8 +46,7 @@ public class BoxLoesenService {
     private static final Logger log = LoggerFactory.getLogger(BoxLoesenService.class);
 
     /** Geschlossenes Vokabular, DB-CHECK box_loesen_protokoll_anlass_chk (V20261110090000). */
-    private static final Set<String> ANLAESSE =
-            Set.of("falsche_kennung", "fremder_kunde", "doppelt_verbunden", "anderer_anlass");
+    private static final Set<String> ANLAESSE = BoxLoesenAnlass.VOKABULAR;
 
     private final AdminBoxLoesenRepository admin;
     private final BoxLoesenRepository repo;
@@ -104,7 +103,7 @@ public class BoxLoesenService {
      * {@link DeviceRepository#loesen} selbst, mit {@code adminWeg = false}.
      */
     public Ergebnis loesen(String externalRef, String anlass, String anlassText, ProtokollAkteur akteur) {
-        if (!ANLAESSE.contains(anlass)) {
+        if (anlass == null || !ANLAESSE.contains(anlass)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bitte wählen Sie einen Anlass.");
         }
         boolean brauchtText = "anderer_anlass".equals(anlass);
@@ -113,11 +112,34 @@ public class BoxLoesenService {
                     brauchtText ? "Bitte beschreiben Sie den Anlass." : "Ein Text gilt nur bei 'Anderer Anlass …'.");
         }
         BoxBefundSql.Zeile vorab = admin.befund(externalRef).orElseThrow(() -> unbekannt(externalRef));
+        imMandanten(vorab.tenantId(),
+                () -> tx.executeWithoutResult(status -> loesenGesperrt(vorab, anlass, anlassText, akteur)));
+        return new Ergebnis(externalRef, anlass);
+    }
+
+    /**
+     * Beim SOFORTIGEN Löschen eines datenfreien Kunden (vp-kunde-sofort-loeschen): dieselbe Freigabe wie
+     * „Vom Kunden lösen" - derselbe Dienst, dieselbe Prüfung unter Sperre, dieselben Aufräumwege (Broker,
+     * Zugang, Registry, Rollouts, Zertifizierung) -, nur OHNE Protokollzeile: {@code box_loesen_protokoll}
+     * stürbe im selben Aufruf mit dem Kunden ({@code TenantRepository.offboard} löscht es ausdrücklich).
+     * Eine schon ausgebaute Box geht über die Kaskade des Löschzugs ({@code false}); eine Box, die sich doch
+     * gemeldet hat, lehnt ab ({@link BoxLoesenAbgelehnt}) - der Löschweg bricht dann VOR dem Abbau ab.
+     */
+    public boolean beimKundenLoeschen(String externalRef, ProtokollAkteur akteur) {
+        BoxBefundSql.Zeile vorab = admin.befund(externalRef).orElse(null);
+        if (vorab == null) {
+            return false;
+        }
+        imMandanten(vorab.tenantId(),
+                () -> tx.executeWithoutResult(status -> loesenGesperrt(vorab, null, null, akteur)));
+        return true;
+    }
+
+    private void imMandanten(UUID tenantId, Runnable arbeit) {
         UUID vorherigerMandant = TenantContext.get();
         try {
-            TenantContext.set(vorab.tenantId());
-            tx.executeWithoutResult(status -> loesenGesperrt(vorab, anlass, anlassText, akteur));
-            return new Ergebnis(externalRef, anlass);
+            TenantContext.set(tenantId);
+            arbeit.run();
         } finally {
             if (vorherigerMandant == null) {
                 TenantContext.clear();
@@ -127,6 +149,7 @@ public class BoxLoesenService {
         }
     }
 
+    /** Der eine Freigabe-Zug unter Sperre; {@code anlass == null} heißt Kundenlöschung: keine Protokollzeile. */
     private void loesenGesperrt(BoxBefundSql.Zeile vorab, String anlass, String anlassText,
             ProtokollAkteur akteur) {
         devices.lockReference(vorab.externalRef());
@@ -174,9 +197,11 @@ public class BoxLoesenService {
             // Anwendungs-Regel nicht geprüft hat, trägt doch eine Zeile. Nichts geändert.
             throw new BoxLoesenAbgelehnt(List.of("messwerte"), befund);
         }
-        repo.protokollieren(new BoxLoesenRepository.Eintrag(tenantId, siteId, vorab.siteName(), deviceId,
-                vorab.externalRef(), vorab.verbundenAm(), akteur == null ? null : akteur.sub(),
-                akteur == null ? "VoltPilot" : akteur.name(), "plattform", anlass, anlassText, befund));
+        if (anlass != null) {
+            repo.protokollieren(new BoxLoesenRepository.Eintrag(tenantId, siteId, vorab.siteName(), deviceId,
+                    vorab.externalRef(), vorab.verbundenAm(), akteur == null ? null : akteur.sub(),
+                    akteur == null ? "VoltPilot" : akteur.name(), "plattform", anlass, anlassText, befund));
+        }
     }
 
     private static ResponseStatusException unbekannt(String externalRef) {

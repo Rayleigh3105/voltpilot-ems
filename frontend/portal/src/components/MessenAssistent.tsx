@@ -14,6 +14,7 @@ import {
   type StandortAmStichtag,
   type StandorteAmStichtag,
   type Unternehmen,
+  vergissFunktionenStartfenster,
 } from '../api';
 import { standortWahl } from '../anlageStandort';
 import {
@@ -324,6 +325,8 @@ export function MessenAssistent({
     if (schritt !== 4 || !standortId) return;
     let aktiv = true;
     setGeprueft(false);
+    // „Erneut prüfen" (pruefRunde > 0) will neue Daten sehen - nie das Startfenster der ersten Ladung teilen.
+    if (pruefRunde > 0) vergissFunktionenStartfenster();
     Promise.all([
       api.funktionen().catch(() => null),
       api.standorte().catch(() => null),

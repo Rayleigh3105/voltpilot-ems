@@ -239,6 +239,9 @@ class BoxLoesenMigrationTest {
             Map.entry("box_endgueltig_geloescht_protokoll", "Audit-Protokoll des vierten Löschwegs "
                     + "(vp-box-endgueltig-loeschen), kein device_id-FK - nur AUSGEBAUTE Boxen, "
                     + "die Lösen (ausgebaut_am IS NULL) nie trifft."),
+            Map.entry("box_ausbauen_protokoll", "Audit-Protokoll von Box ausbauen ohne Mandantensprung "
+                    + "(vp-admin-box-ausbauen), kein device_id-FK - die Box bleibt (ausgebaut), Lösen "
+                    + "(ausgebaut_am IS NULL) trifft sie danach nie mehr."),
             // v1/v2-Telemetrie tragen BEWUSST keinen Fremdschlüssel (V20260913150000) - die ANWENDUNG ist
             // hier die Rückversicherung, nicht die Datenbank: BoxLoesenRegel.messwertAm prüft beide direkt.
             Map.entry("telemetry", "Kein FK (V20260913150000) - BoxLoesenRegel.messwertAm prüft sie direkt."),

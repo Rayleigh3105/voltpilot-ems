@@ -77,6 +77,11 @@ export function istUnterzaehler(komponenten: readonly Pick<PlantComponent, 'enti
   return komponenten.some((c) => c.entityType === UNTERZAEHLER_TYP);
 }
 
+/** Misst dieses Gerät den Netzanschluss - die Wurzel des Zählerbaums? */
+export function istNetzanschluss(komponenten: readonly Pick<PlantComponent, 'role'>[]): boolean {
+  return komponenten.some((c) => c.role === 'grid');
+}
+
 /**
  * Zählerbaum-Konzept (R1): hängt dieses Gerät hinter einer anderen Komponente
  * (einem Zähler), statt direkt an der Wurzel? Sein Wert steckt dann schon im
@@ -85,6 +90,45 @@ export function istUnterzaehler(komponenten: readonly Pick<PlantComponent, 'enti
  */
 export function haengtHinterEinemZaehler(komponenten: readonly Pick<PlantComponent, 'haengtAn'>[]): boolean {
   return komponenten.some((c) => c.haengtAn != null);
+}
+
+/** Ab diesem Betrag heißt ein negativer Rest „Messwerte passen nicht zusammen" (R3) - dieselbe Toleranz wie die Rest-Zeile des Cockpits (`verbrauchKomposition.ts`). */
+const REST_KONFLIKT_TOLERANZ_KW = 0.2;
+
+/** Der Eingang von `restEinesKnotens`: eine gemessene Leistung (null = kein aktueller Wert) und ihr Name für die Begründung. */
+export interface RestEingabe {
+  kw: number | null;
+  label: string;
+}
+
+/** Der Rest-Wert eines Knotens, oder warum es keinen gibt (R2/R3). */
+export interface RestErgebnis {
+  kw: number | null;
+  note: string | null;
+  konflikt: boolean;
+}
+
+/**
+ * Der Rest EINES Knotens im Zählerbaum (Vertrag §3.1 „Rest je Knoten", §3.2 R1-R3): sein eigener Wert minus
+ * die Summe seiner DIREKTEN Kinder - dieselbe Regel wie die Rest-Zeile des Cockpits (`verbrauchKomposition.ts`
+ * `restZeile`), hier für jeden Knoten der Geräteliste statt nur für das Haus. R2: fehlt der eigene Wert oder
+ * der eines Kindes, ist der Rest „nicht bestimmbar", nie eine Zahl, die die Lücke verschweigt. R3: ein Rest
+ * unter der Toleranz heißt „Messwerte passen nicht zusammen", nie auf 0 geklemmt.
+ */
+export function restEinesKnotens(eigen: RestEingabe, kinder: readonly RestEingabe[]): RestErgebnis {
+  if (eigen.kw == null) {
+    return { kw: null, note: `nicht bestimmbar (${eigen.label} meldet sich gerade nicht)`, konflikt: false };
+  }
+  const blocker = kinder.find((k) => k.kw == null);
+  if (blocker) {
+    return { kw: null, note: `nicht bestimmbar (${blocker.label} meldet sich gerade nicht)`, konflikt: false };
+  }
+  const summe = kinder.reduce((s, k) => s + (k.kw as number), 0);
+  const diff = Math.round((eigen.kw - summe) * 1000) / 1000;
+  if (diff < -REST_KONFLIKT_TOLERANZ_KW) {
+    return { kw: null, note: `Messwerte passen nicht zusammen (${fmtNum(diff, 'kW')})`, konflikt: true };
+  }
+  return { kw: Math.max(diff, 0), note: null, konflikt: false };
 }
 
 /**

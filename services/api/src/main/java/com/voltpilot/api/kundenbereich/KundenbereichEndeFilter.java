@@ -38,10 +38,16 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * </ul>
  *
  * <p><b>Plattform-Routen</b>, die einen Kundenbereich im Pfad tragen ({@code /admin/tenants/{id}},
- * {@code /admin/sites/{siteId}}, {@code /admin/devices/{deviceId}}, {@code /admin/geraete/{ref}/loesen}):
+ * {@code /admin/sites/{siteId}}, {@code /admin/devices/{deviceId}}, {@code /admin/geraete/{ref}/...}):
  * jeder Schreibweg → 409, außer den Übergängen
  * selbst (beenden, wiederaufnehmen), dem Löschweg (bleibt in IP-16 unverändert; IP-18 verlangt dort „beendet" und die
- * abgelaufene Frist), dem Aufräumen nach dem Löschen und dem Sperren eines Kontos (schützt, ändert keine Daten).
+ * abgelaufene Frist), dem Aufräumen nach dem Löschen, dem Sperren eines Kontos (schützt, ändert keine Daten) und den
+ * Betreiber-Aktionen am Box-Lebenszyklus über die externe Referenz ({@link #ADMIN_BOX_BETREIBER_AKTIONEN}: Vom
+ * Kunden lösen, Box ausbauen, Kunde endgültig löschen - Captain-Auftrag 11.11.2026, vp-kunde-sofort-loeschen/
+ * vp-admin-box-ausbauen). Diese drei laufen GERADE WEGEN eines beendeten Kundenbereichs: der Betrieb muss eine Box
+ * zurücknehmen oder einen Kunden abschließend abbauen können, auch nachdem der Vertrag endete - EINE Stelle für
+ * alle drei, keine zweite Ausnahme pro Route. Jeder andere Plattform-Schreibweg an diesem Kundenbereich antwortet
+ * dem Admin in Admin-Sprache ({@link KundenbereichEnde#textAdmin()}), nie dem Kundensatz „Ihr Vertrag …".
  * Plattform-Routen ohne Kundenbereich (Vorlagen, Releases, Flotten-Rollouts, vorregistrierte Boxen) sperrt er nicht.
  *
  * <p>Welche Routen das sind, liest {@code KundenbereichBeendetApiTest} aus dem Routen-Verzeichnis (NW-5).
@@ -60,8 +66,17 @@ public class KundenbereichEndeFilter extends OncePerRequestFilter {
     private static final Pattern ADMIN_KUNDENBEREICH = Pattern.compile("^/api/v1/admin/tenants/" + UUID_MUSTER + "(/.*)?$");
     private static final Pattern ADMIN_ANLAGE = Pattern.compile("^/api/v1/admin/sites/" + UUID_MUSTER + "(/.*)?$");
     private static final Pattern ADMIN_BOX = Pattern.compile("^/api/v1/admin/devices/" + UUID_MUSTER + "(/.*)?$");
-    /** Vom Kunden lösen (L1, Vertrag Abschnitt 3.5): die Box über ihre externe Referenz, kein UUID-Pfad. */
-    private static final Pattern ADMIN_BOX_REF = Pattern.compile("^/api/v1/admin/geraete/([^/]+)/loesen$");
+    /** Die Box-Lebenszyklus-Aktionen über ihre externe Referenz, kein UUID-Pfad (Vertrag Abschnitt 3.3/3.5). */
+    private static final Pattern ADMIN_BOX_REF = Pattern.compile("^/api/v1/admin/geraete/([^/]+)/([^/]+)$");
+
+    /**
+     * Betreiber-Aktionen des Plattform-Admins am Box-Lebenszyklus, die EINE gemeinsame Ausnahme von der Sperre
+     * brauchen (Captain-Auftrag 11.11.2026, vp-kunde-sofort-loeschen + vp-admin-box-ausbauen): Vom Kunden lösen,
+     * Box ausbauen, Kunde endgültig löschen laufen GERADE WEGEN eines beendeten Kundenbereichs - der Betrieb muss
+     * eine Box zurücknehmen oder einen Kunden abschließend abbauen können, auch nachdem der Vertrag endete. EINE
+     * Stelle für alle drei - keine zweite Ausnahme pro Route (jede neue Box-Lebenszyklus-Route prüft hier mit).
+     */
+    public static final Set<String> ADMIN_BOX_BETREIBER_AKTIONEN = Set.of("loesen", "ausbauen", "endgueltig-loeschen");
 
     /**
      * Plattform-Schreibwege, die im beendeten Kundenbereich bleiben — als Rest hinter {@code /admin/tenants/{id}}.
@@ -101,7 +116,7 @@ public class KundenbereichEndeFilter extends OncePerRequestFilter {
             if (schreibend && plattform()) {
                 Optional<KundenbereichEnde> ende = kundenbereichImAdminPfad(pfad, repo).flatMap(repo::beendet);
                 if (ende.isPresent()) {
-                    antworte(response, ende.get(), ende.get().text());
+                    antworte(response, ende.get(), ende.get().textAdmin());
                     return;
                 }
             }
@@ -162,6 +177,9 @@ public class KundenbereichEndeFilter extends OncePerRequestFilter {
         }
         m = ADMIN_BOX_REF.matcher(pfad);
         if (m.matches()) {
+            if (ADMIN_BOX_BETREIBER_AKTIONEN.contains(m.group(2))) {
+                return Optional.empty();
+            }
             return repo.kundenbereichDerBoxRef(m.group(1));
         }
         return Optional.empty();

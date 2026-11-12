@@ -505,7 +505,7 @@ class MessstelleRegelnVectorsTest {
                     text(c.path("speist")))));
             komponenten.add(new VorschlagKomponente(k.path("id").asText(), k.path("anlage").asText(),
                     k.path("name").asText(), k.path("rolle").asText(), zeit(k.path("verlaufsbeginn")),
-                    zeit(k.path("speisung_ab")), kanaele));
+                    zeit(k.path("speisung_ab")), kanaele, text(k.path("haengt_an"))));
         });
         return new VorschlagEingang(standort, anlagen, komponenten, in.path("zaehler").asInt(),
                 texte(in.path("belegt")));

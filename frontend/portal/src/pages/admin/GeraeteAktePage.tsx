@@ -248,7 +248,8 @@ export function GeraeteAktePage({
         stand={pollFehler ? freshnessLabel(fetchedAt, tick, true) : `${freshnessLabel(fetchedAt, tick)} · alle 10 s`} />
       {actionError && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
       <BoxLoesenDialog open={loesenOffen} boxRef={boxRef} jetzt={jetzt} onClose={() => setLoesenOffen(false)}
-        onGeloescht={() => { setLoesenOffen(false); onNavigate?.(pageRoute('geraete-registry')); }} />
+        onGeloescht={() => { setLoesenOffen(false); onNavigate?.(pageRoute('geraete-registry')); }}
+        onAusgebaut={() => { setLoesenOffen(false); void laden(); }} />
       <BoxEndgueltigLoeschenDialog open={endgueltigOffen} boxRef={boxRef} befund={endgueltigBefund}
         onClose={() => setEndgueltigOffen(false)}
         onGeloescht={() => { setEndgueltigOffen(false); onNavigate?.(pageRoute('geraete-registry')); }} />
@@ -389,7 +390,9 @@ function AktenKopf({
                       Zur Geräte-Liste
                     </button>
                   )}
-                  {row && nieGemeldet && (
+                  {/* vp-admin-box-ausbauen: EIN Einstieg für beide Ergebnisse - hat die Box schon Daten
+                      (kein nieGemeldet), bietet der Dialog selbst "Box ausbauen" statt "Lösen" an. */}
+                  {row && ausgebautAm == null && (
                     <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onLoesenOeffnen(); }}>
                       Vom Kunden lösen …
                     </button>
