@@ -6684,7 +6684,10 @@ class PortalApiTest {
                 + " LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary"
                 + " LEFT JOIN monthly_market_value mv ON false"
                 + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
-                + " CROSS JOIN (VALUES (?::timestamptz)) AS r(bucket)"
+                + " CROSS JOIN (VALUES (?::timestamptz)) AS r(bucket) "
+                // MiSpeL MP-12: dieselben Aliase fw/jw/aw wie EarningsRepository (ohne Förderweg-Fassung
+                // die NULL-Seite der LEFT JOINs = der Bestand) - nach p/r, die LATERAL-Teile lesen r.bucket.
+                + com.voltpilot.api.optimizer.SlotEconomics.marktwertbasisJoinSql("s.id", "r.bucket")
                 + " WHERE s.id = ?::uuid";
         try (Connection c = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
