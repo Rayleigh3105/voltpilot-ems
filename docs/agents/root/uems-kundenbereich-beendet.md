@@ -133,6 +133,12 @@ Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-lösc
   `DELETE FROM tenant` (Löschzug und `deleteById`) und VOR `nachDemAbbau` — sonst zählte der Nachweis sie als
   `verblieben`. Während der Laufzeit bleibt alles append-only (jede Rolle), Standort- und Box-Löschen lassen die
   Einträge stehen.
+- **Append-only MIT FK auf den Mandanten braucht seine EIGENE Entfernen-Funktion (vp-kunde-loeschen-500, `V20261112080000`):**
+  `alarm_verlauf` hält Mandant und Alarm per RESTRICT und muss darum VOR der Mandantenzeile gehen — die Fünf-Tabellen-Ausnahme oben greift dort nie.
+  Das direkte DELETE des Löschzugs starb am eigenen Trigger, sobald je ein Alarm ausgelöst worden war (Produktion 12.11.2026: die ab-Werk-Überwachung einer nie gemeldeten Box; Tests säten nur die Überwachung, nie einen Alarm mit Verlauf).
+  Jetzt lässt `alarm_verlauf_nie_veraendert()` (Muster `kennzahl_wert`) NUR das DELETE aus `uems_alarmverlauf_des_kundenbereichs_entfernen(uuid)` (SECURITY DEFINER, nur Admin-Rolle) durch; `TenantRepository.offboard` ruft sie vor `DELETE FROM alarm`.
+  Scheitert der Löschzug, antwortet die Route 500 mit `code loeschen_fehlgeschlagen` und dem ehrlichen Satz (nichts gelöscht, Konten bleiben gesperrt, wiederholbar) statt des Spring-Standardkörpers, und der Fehler steht MIT Stack im Log.
+  Wächter: `KundenbereichLoeschenApiTest.derAlarmVerlaufBleibtAppendOnlyUndGehtNurImLoeschzug`; die Saat jedes Tests dort trägt einen ausgelösten Alarm mit Verlauf.
 - **Der Rest geht über den Katalog (Folge „Löschzug vollständig“):** der letzte Schritt des Löschzugs
   (`TenantRepository.katalogRestLoeschen`, nach den Protokollen, vor `nachDemAbbau`) liest
   `TenantRepository.KATALOG_MIT_MANDANT` — denselben Katalog, über den der Nachweis zählt — und löscht in jeder Tabelle,
