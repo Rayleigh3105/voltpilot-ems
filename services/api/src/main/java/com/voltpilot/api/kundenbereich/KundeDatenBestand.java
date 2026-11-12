@@ -54,7 +54,9 @@ public final class KundeDatenBestand {
                 "telemetry_rollup_1d", "telemetry_v2", "telemetry_v2_rollup_15m", "telemetry_v2_rollup_1h",
                 "telemetry_v2_rollup_1d", "device_measurement_sample", "device_measurement_event",
                 "device_measurement_point_state", "device_measurement_rollup_5m",
-                "device_measurement_rollup_15m", "bilanzwert_eingang"));
+                "device_measurement_rollup_15m", "bilanzwert_eingang",
+                // MiSpeL MP-15: die Werte des Messstellenbetreibers und ihr Einlesen (CSV/MSCONS).
+                "mispel_msb_import", "mispel_msb_wert"));
         m.put("messreihen", List.of("messreihe_berechnet_stand", "messreihe_ereignis", "messreihe_ersatzwert",
                 "messreihe_ersatzwert_wirkung", "messreihe_kaskade_wirkung", "messreihe_korrektur",
                 "messreihe_korrektur_vorschlag", "messreihe_luecke_stand", "messreihe_periode",
@@ -72,7 +74,9 @@ public final class KundeDatenBestand {
         m.put("ocpp", List.of("ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                 "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
                 "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
-                "ocpp_configuration_unknown_key", "ocpp_station_capability"));
+                "ocpp_configuration_unknown_key", "ocpp_station_capability",
+                // MiSpeL MP-38: signierte Zählerstände der Ladesäule (OCMF), aufgezeichnet wie ocpp_meter_sample.
+                "ladepunkt_signierter_messwert"));
         m.put("rueckmeldungen", List.of("device_control_status", "device_curtailment_status",
                 "device_curtailment_unit", "device_source_status", "device_data_source_status",
                 "consumer_runtime_status", "consumer_requirement_state", "device_battery_control",
@@ -84,12 +88,16 @@ public final class KundeDatenBestand {
         m.put("komponenten", List.of("entity_observed_state", "device_component_apply"));
         m.put("auswertungen", List.of("forecast_accuracy", "plan_accuracy", "forecast_rueckblick",
                 "taeglicher_rueckblick", "auffaelligkeit"));
-        m.put("erloese", List.of("schedule_savings_1d"));
+        // MiSpeL MP-33e: die Messlatte „nur laden“ je Viertelstunde trägt die Ertragszeile der Wallbox - ein
+        // Planwert, aber vergangene Viertelstunden ersetzt kein späterer Plan mehr; im Zweifel „hat Daten“.
+        m.put("erloese", List.of("schedule_savings_1d", "ladepunkt_messlatte"));
         m.put("alarme", List.of("alarm", "alarm_verlauf", "benachrichtigung"));
         m.put("messstellen", List.of("messstelle", "messstelle_aenderung", "messstelle_formel_fassung",
                 "messstelle_formel_term", "messstelle_groesse", "messstelle_kennzeichen", "messstelle_ort",
                 "messstelle_prozess", "messstelle_quelle", "messstelle_stellung", "messstelle_verteilung",
-                "messbedarf", "messbedarf_aenderung"));
+                "messbedarf", "messbedarf_aenderung",
+                // MiSpeL MP-6: die Zählerrolle gehört zur Messstelle (Fassungen ab einem Tag, gelöscht wird nie).
+                "messstelle_zaehlerrolle"));
         m.put("bezugsdaten", List.of("bezugsbasis", "bezugsbasis_aenderung", "bezugsbasis_anstoss",
                 "bezugsbasis_faktor", "bezugsbasis_fassung", "bezugsbasis_variable", "bezugsdaten_import",
                 "bezugsdaten_import_freigabe", "bezugsdaten_import_zeile", "bezugsdaten_vorlage",
@@ -111,6 +119,12 @@ public final class KundeDatenBestand {
                 "feststellung_wirksamkeit", "internes_audit", "internes_audit_eintrag",
                 "managementbewertung_beschluss", "managementbewertung_folge", "managementbewertung_sitzung",
                 "massnahme", "massnahme_aenderung", "massnahme_bewertung", "vorgang_anstoss"));
+        // MiSpeL (Festlegung der BNetzA vom 01.10.2026): was als Nachweis gegenüber dem Netzbetreiber dient oder ihn
+        // trägt - Förderweg und Fähigkeit des Ladepunkts als Fassungen (gelöscht wird nie), die Erklärung zur
+        // Pauschaloption, Monats- und Jahreslauf, die Rechnung des MiSpeL-Checks (entsteht nur auf Aufruf und ist die
+        // Grundlage der Förderweg-Wahl). Im Zweifel „hat Daten“.
+        m.put("mispel", List.of("site_foerderweg", "site_pauschal_vormerkung", "mispel_abgrenzung_monat",
+                "mispel_pauschal_jahr", "site_mispel_check", "ladepunkt_faehigkeit"));
         // Vom Kunden aufgebaute UEMS-Struktur (Geräte, Prozesse, Netzanschlüsse, Energieeinsätze):
         // kein Messwert, aber sein Arbeitsstand im Verzeichnis des Energiemanagements - im Zweifel Daten.
         m.put("uems_struktur", List.of("anlage_netzanschluss", "energieeinsatz", "energieeinsatz_aenderung",
@@ -148,6 +162,14 @@ public final class KundeDatenBestand {
                 "quelle_einstellung", "quelle_kadenz", "erzeuger_vorgabe", "anlage_netz_vermarktung",
                 "component_activation_outbox", "move_provisioning_operation", "ladepark_netzgrenze_zugestellt")) {
             m.put(t, einstellung);
+        }
+        // MiSpeL MP-33/MP-41: die Angaben des Fahrers am Ladepunkt - laufender Stand ohne Fassungen, kein Gegenstand
+        // der Festlegung (Migrationen V20261112030700, V20261112031500).
+        String fahrer = "Einstellung des Fahrers am Ladepunkt (Zurückspeisen, Reserve, Abfahrt, Anwesenheit) - "
+                + "laufender Stand ohne Fassungen, keine Aufzeichnung";
+        for (String t : List.of("ladepunkt_fahrer_einstellung", "ladepunkt_abfahrt", "ladepunkt_anwesenheit",
+                "ladepunkt_fahrzeugfenster")) {
+            m.put(t, fahrer);
         }
         String verbundConfig = "Steuerungsverbund-Einstellung (Laufzeit-Nachweise stehen unter 'rueckmeldungen')";
         for (String t : List.of("steuerungsverbund", "steuerungsverbund_aenderung", "steuerungsverbund_anteile",

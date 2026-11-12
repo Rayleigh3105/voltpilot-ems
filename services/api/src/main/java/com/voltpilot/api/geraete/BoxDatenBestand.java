@@ -65,7 +65,10 @@ public final class BoxDatenBestand {
         m.put("ocpp", List.of("ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                 "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
                 "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
-                "ocpp_configuration_unknown_key", "ocpp_station_capability"));
+                "ocpp_configuration_unknown_key", "ocpp_station_capability",
+                // MiSpeL MP-38: signierte Zählerstände der Ladesäule (OCMF) - ohne Fremdschlüssel auf device,
+                // darum prüft erst diese Liste sie.
+                "ladepunkt_signierter_messwert"));
         m.put("rueckmeldungen", List.of("device_control_status", "device_curtailment_status",
                 "device_curtailment_unit", "device_source_status", "device_data_source_status",
                 "consumer_runtime_status", "device_battery_control", "device_charge_connector",

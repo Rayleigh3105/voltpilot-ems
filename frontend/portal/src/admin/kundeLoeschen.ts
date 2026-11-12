@@ -27,6 +27,7 @@ export const KUNDE_DATENART_LABEL: Record<string, string> = {
   kennzahlen: 'Kennzahlen',
   berichte: 'Berichte',
   nachweise: 'Nachweise des Energiemanagements',
+  mispel: 'Förderweg und MiSpeL-Nachweise',
   uems_struktur: 'aufgebaute Energiemanagement-Struktur',
 };
 

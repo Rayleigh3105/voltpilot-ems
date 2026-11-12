@@ -268,6 +268,8 @@ class BoxLoesenMigrationTest {
             Map.entry("ocpp_configuration_key", SPIEGEL), Map.entry("ocpp_configuration_unknown_key", SPIEGEL),
             Map.entry("ocpp_station_capability", SPIEGEL), Map.entry("ocpp_action", SPIEGEL),
             Map.entry("ocpp_action_intent", ABSICHT), Map.entry("ocpp_action_audit", SPIEGEL),
+            // MiSpeL MP-38: der signierte Zählerstand kommt als Journal-Ereignis einer laufenden Ladesäulen-Sitzung.
+            Map.entry("ladepunkt_signierter_messwert", SPIEGEL),
             // Cloud-/Server-authored Absicht AN die Box (ABSICHT): entsteht ohne jede Rückmeldung.
             Map.entry("schedule", ABSICHT), Map.entry("rollout_device", ABSICHT),
             Map.entry("rollout_event", ABSICHT), Map.entry("device_update_target", ABSICHT),
