@@ -207,6 +207,13 @@ public class TenantRepository {
      * which run today's teardown against older schemas) decides and records inside the same transaction.
      */
     public OffboardCounts offboard(UUID tenantId, Runnable beforeTeardown, Abbauwache wache) {
+        // Der Beginn gehört ins Log (Prod-Befund vp-kunde-loeschen-504: ohne Startzeile war nicht
+        // sichtbar, WO ein 60-s-Lauf seine Zeit ließ), das Ende nennt jede Phase einzeln.
+        log.info("Löschzug {}: Abbau beginnt", tenantId);
+        Map<String, Long> phasen = new java.util.LinkedHashMap<>();
+        long[] uhr = {System.nanoTime()};
+        java.util.function.ObjLongConsumer<String> phase = (name, seit) ->
+                phasen.merge(name, (System.nanoTime() - seit) / 1_000_000, Long::sum);
         return jdbc.execute((java.sql.Connection con) -> {
             boolean autoCommit = con.getAutoCommit();
             con.setAutoCommit(false);
@@ -215,10 +222,18 @@ public class TenantRepository {
                     lock.setString(1, "uems-benutzerverwaltung:" + tenantId);
                     lock.execute();
                 }
+                phase.accept("advisory_sperre", uhr[0]);
+                uhr[0] = System.nanoTime();
                 if (wache != null) {
+                    // Die Wache protokolliert ihre eigenen Schritte (Mandanten-Sperre FOR UPDATE -
+                    // dort wartet der Zug auf laufende Verdichtungs-Jobs -, Datenbestand, Zählung).
                     wache.vorDemAbbau(con);
                 }
+                phase.accept("bestand_vorher", uhr[0]);
+                uhr[0] = System.nanoTime();
                 beforeTeardown.run();
+                phase.accept("konten_nachsperren", uhr[0]);
+                uhr[0] = System.nanoTime();
                 for (String table : new String[] {
                         "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                         "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
@@ -296,6 +311,8 @@ public class TenantRepository {
                     ps.setObject(1, tenantId);
                     ps.executeQuery().close();
                 }
+                phase.accept("reihen", uhr[0]);
+                uhr[0] = System.nanoTime();
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,
@@ -541,14 +558,25 @@ public class TenantRepository {
                         "unternehmen"}) {
                     deleteByTenant(con, table, tenantId);
                 }
+                phase.accept("uems", uhr[0]);
+                uhr[0] = System.nanoTime();
                 deleteByTenant(con, "tenant", tenantId, "id");
                 // After the tenant row, before the Löschnachweis counts what remains.
                 protokolleOhneMandantLoeschen(con, tenantId);
+                phase.accept("mandant", uhr[0]);
+                uhr[0] = System.nanoTime();
                 katalogRestLoeschen(con, tenantId);
+                phase.accept("katalog_rest", uhr[0]);
+                uhr[0] = System.nanoTime();
                 if (wache != null) {
                     wache.nachDemAbbau(con);
                 }
+                phase.accept("nachweis", uhr[0]);
+                uhr[0] = System.nanoTime();
                 con.commit();
+                phase.accept("commit", uhr[0]);
+                log.info("Löschzug {}: Abbau committet in {} ms - {}", tenantId,
+                        phasen.values().stream().mapToLong(Long::longValue).sum(), phasen);
                 return new OffboardCounts(sites, devices, telemetryRows);
             } catch (Exception e) {
                 con.rollback();

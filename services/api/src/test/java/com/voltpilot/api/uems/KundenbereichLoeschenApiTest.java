@@ -199,9 +199,9 @@ class KundenbereichLoeschenApiTest {
         // 2. Sofort gelöscht - aktiv, mit Daten, ohne jedes Vertragsende.
         Map<String, Long> katalogVorher = katalog();
         MvcResult geloescht = loeschen();
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-        assertThat(json(geloescht).get("anlass").asText()).isEqualTo("sofort_mit_daten");
-        JsonNode nachweis = json(geloescht).get("loeschnachweis");
+        JsonNode bericht = fertigerBericht(geloescht);
+        assertThat(bericht.get("anlass").asText()).isEqualTo("sofort_mit_daten");
+        JsonNode nachweis = bericht.get("loeschnachweis");
         assertThat(nachweis.get("kennzeichen").asText()).matches("LN-" + LocalDate.now(BERLIN).getYear() + "-\\d{4}");
         assertThat(nachweis.get("abzugSha256").asText()).isEqualTo(manifest);
 
@@ -249,7 +249,7 @@ class KundenbereichLoeschenApiTest {
     /** Der Nachweis bleibt, wie er geschrieben wurde: nie geändert, nie gelöscht, für die App-Rolle unsichtbar. */
     @Test
     void derLoeschnachweisBleibtUndNurDerBetriebLiestIhn() throws Exception {
-        assertThat(loeschen().getResponse().getStatus()).isEqualTo(200);
+        fertigerBericht(loeschen());
         assertThatThrownBy(() -> root.update("UPDATE mandant_loeschnachweis SET frist_tage = 30 WHERE kundenbereich = ?",
                 tenant)).hasStackTraceContaining("bleibt");
         assertThatThrownBy(() -> root.update("DELETE FROM mandant_loeschnachweis WHERE kundenbereich = ?", tenant))
@@ -304,7 +304,7 @@ class KundenbereichLoeschenApiTest {
             assertThat(vorher.get(protokoll)).as(protokoll).isPositive();
         }
 
-        assertThat(loeschen().getResponse().getStatus()).isEqualTo(200);
+        fertigerBericht(loeschen());
         for (String protokoll : PROTOKOLLE) {
             assertThat(root.queryForObject("SELECT count(*) FROM " + protokoll + " WHERE tenant_id = ?", Long.class,
                     tenant)).as(protokoll).isZero();
@@ -333,8 +333,7 @@ class KundenbereichLoeschenApiTest {
         assertThatThrownBy(() -> app.queryForObject("SELECT uems_alarmverlauf_des_kundenbereichs_entfernen(?)",
                 Long.class, tenant)).hasStackTraceContaining("permission denied");
 
-        MvcResult geloescht = loeschen();
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
+        fertigerBericht(loeschen());
         assertThat(root.queryForObject("SELECT count(*) FROM alarm_verlauf WHERE tenant_id = ?", Long.class, tenant))
                 .isZero();
     }
@@ -360,8 +359,7 @@ class KundenbereichLoeschenApiTest {
                         "begruendung", BEGRUENDUNG))), plattform());
         assertThat(zurueck.getResponse().getStatus()).isEqualTo(200);
         MvcResult r = loeschen();
-        assertThat(r.getResponse().getStatus()).as(text(r)).isEqualTo(200);
-        assertThat(json(r).get("anlass").asText()).isEqualTo("sofort_mit_daten");
+        assertThat(fertigerBericht(r).get("anlass").asText()).isEqualTo("sofort_mit_daten");
         assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isZero();
         // Wieder aktiv zum Löschzeitpunkt: der Nachweis trägt kein Vertragsende mehr.
         assertThat(root.queryForObject("SELECT beendet_am FROM mandant_loeschnachweis WHERE kundenbereich = ?",
@@ -415,11 +413,8 @@ class KundenbereichLoeschenApiTest {
         assertThat(b.get("folgen").get("boxen").get(0).asText()).isEqualTo(kunde.ref());
         assertThat(b.get("folgen").get("personen").asInt()).isEqualTo(1);
 
-        MvcResult geloescht = ruf(post("/api/v1/admin/tenants/" + kunde.id() + "/delete")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(JSON.writeValueAsString(Map.of("confirmName", kunde.name()))), plattform());
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-        JsonNode bericht = json(geloescht);
+        MvcResult geloescht = loeschen(kunde.id(), kunde.name());
+        JsonNode bericht = fertigerBericht(geloescht);
         assertThat(bericht.get("anlass").asText()).isEqualTo("sofort_keine_daten");
         assertThat(bericht.get("freigegebeneBoxen").get(0).asText()).isEqualTo(kunde.ref());
 
@@ -468,8 +463,7 @@ class KundenbereichLoeschenApiTest {
         assertThat(b.get("beendetAm").asText()).isEqualTo(LocalDate.now(BERLIN).minusDays(1).toString());
 
         MvcResult geloescht = loeschen();
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-        assertThat(json(geloescht).get("anlass").asText()).isEqualTo("sofort_mit_daten");
+        assertThat(fertigerBericht(geloescht).get("anlass").asText()).isEqualTo("sofort_mit_daten");
         assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isZero();
         Map<String, Object> zeile = root.queryForMap("SELECT anlass, beendet_am, frist_tage, loeschung_fruehestens"
                 + " FROM mandant_loeschnachweis WHERE kundenbereich = ?", tenant);
@@ -516,11 +510,8 @@ class KundenbereichLoeschenApiTest {
                 .isZero();
 
         // Sofort löschen trotz laufender Frist: der Nachweis behält das Vertragsende, ohne Fristen-Fakten.
-        MvcResult geloescht = ruf(post("/api/v1/admin/tenants/" + kunde.id() + "/delete")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(JSON.writeValueAsString(Map.of("confirmName", kunde.name()))), plattform());
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-        assertThat(json(geloescht).get("anlass").asText()).isEqualTo("sofort_keine_daten");
+        MvcResult geloescht = loeschen(kunde.id(), kunde.name());
+        assertThat(fertigerBericht(geloescht).get("anlass").asText()).isEqualTo("sofort_keine_daten");
         Map<String, Object> nachweis = root.queryForMap("SELECT anlass, beendet_am, frist_tage FROM"
                 + " mandant_loeschnachweis WHERE kundenbereich = ?", kunde.id());
         assertThat(nachweis.get("anlass")).isEqualTo("sofort_keine_daten");
@@ -554,8 +545,44 @@ class KundenbereichLoeschenApiTest {
     }
 
     private MvcResult loeschen() throws Exception {
-        return ruf(post("/api/v1/admin/tenants/" + tenant + "/delete").contentType(MediaType.APPLICATION_JSON)
-                .content(JSON.writeValueAsString(Map.of("confirmName", name))), plattform());
+        return loeschen(tenant, name);
+    }
+
+    /**
+     * Der Löschweg seit vp-kunde-loeschen-504: POST startet den Lauf (202), der Stand kommt vom
+     * Statusweg. Liefert die letzte Statusantwort (Stand {@code fertig}/{@code gescheitert}) - oder
+     * die POST-Antwort selbst, wenn schon sie ablehnt (404/400).
+     */
+    private MvcResult loeschen(UUID kunde, String kname) throws Exception {
+        MvcResult start = ruf(post("/api/v1/admin/tenants/" + kunde + "/delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("confirmName", kname))), plattform());
+        if (start.getResponse().getStatus() != 202) {
+            return start;
+        }
+        return laufAbwarten(kunde);
+    }
+
+    /** Fragt den Statusweg, bis der Lauf nicht mehr läuft (wie das Portal). */
+    private MvcResult laufAbwarten(UUID kunde) throws Exception {
+        long frist = System.nanoTime() + java.time.Duration.ofSeconds(120).toNanos();
+        while (true) {
+            MvcResult stand = ruf(get("/api/v1/admin/tenants/" + kunde + "/loeschlauf"), plattform());
+            assertThat(stand.getResponse().getStatus()).as(text(stand)).isEqualTo(200);
+            if (!"laeuft".equals(json(stand).get("stand").asText())) {
+                return stand;
+            }
+            assertThat(System.nanoTime()).as("Löschzug wird nicht fertig").isLessThan(frist);
+            Thread.sleep(100);
+        }
+    }
+
+    /** Der Lauf ist fertig; die Antwort des Statuswegs trägt den Bericht. */
+    private JsonNode fertigerBericht(MvcResult lauf) throws Exception {
+        assertThat(json(lauf).get("stand").asText()).as(text(lauf)).isEqualTo("fertig");
+        JsonNode bericht = json(lauf).get("bericht");
+        assertThat(bericht.isNull()).as("Bericht des fertigen Laufs").isFalse();
+        return bericht;
     }
 
     private static Map<String, Long> map(JsonNode knoten) {
