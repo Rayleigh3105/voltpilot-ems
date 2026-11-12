@@ -113,12 +113,13 @@ public final class KundeDatenBestand {
                 "massnahme", "massnahme_aenderung", "massnahme_bewertung", "vorgang_anstoss"));
         // Vom Kunden aufgebaute UEMS-Struktur (Geräte, Prozesse, Netzanschlüsse, Energieeinsätze):
         // kein Messwert, aber sein Arbeitsstand im Verzeichnis des Energiemanagements - im Zweifel Daten.
-        m.put("uems_struktur", List.of("anlage_netzanschluss", "energieeinsatz", "energieeinsatz_aenderung",
+        m.put("uems_struktur", List.of("anlage_netzanschluss", "einheit_flaeche", "einheit_geraet",
+                "energieeinsatz", "energieeinsatz_aenderung",
                 "energieeinsatz_einflussgroesse", "energieeinsatz_einstufung", "flaeche_gueltigkeit", "funktion",
                 "funktion_teilnahme", "geraet", "geraet_aenderung", "geraet_komponente", "geraet_teil",
                 "komponente_geraete_rueckfall", "komponente_haengt_an", "kostenstelle", "netzanschluss",
                 "netzanschluss_aenderung", "netzanschluss_grenze", "netzanschluss_kennzeichen",
-                "netzanschluss_vorschlag_entscheidung", "prozess"));
+                "netzanschluss_vorschlag_entscheidung", "prozess", "register_einheit"));
         // LinkedHashMap, nicht Map.copyOf: die Reihenfolge IST die Reihenfolge der 409-Liste.
         return Collections.unmodifiableMap(m);
     }
