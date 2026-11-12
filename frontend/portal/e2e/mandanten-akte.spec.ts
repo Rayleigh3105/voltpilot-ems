@@ -109,8 +109,8 @@ for (const breite of [DESKTOP, PHONE]) {
 }
 
 /**
- * vp-kunde-sofort-loeschen: ein datenfreier Kunde (Server-Urteil) ist sofort endgültig löschbar.
- * Badge „beendet · sofort löschbar", Kopf-Menü und Vertrag-Karte tragen den Weg; der Dialog
+ * vp-kunde-sofort-loeschen-mit-daten: ein datenfreier Kunde ist sofort endgültig löschbar - wie
+ * jeder andere Kunde auch. Badge „beendet", Kopf-Menü und Vertrag-Karte tragen den Weg; der Dialog
  * verlangt den abgetippten Namen, nennt die Folgen vom Server und endet auf dem Löschbericht.
  */
 for (const breite of [DESKTOP, PHONE]) {
@@ -121,7 +121,7 @@ for (const breite of [DESKTOP, PHONE]) {
     await page.goto('/e2e/mandanten-akte.html?vertrag=beendet&loeschbar=sofort');
     await page.waitForSelector('.vp-kundenakte');
 
-    await expect(page.getByText('beendet · sofort löschbar')).toBeVisible();
+    await expect(page.locator('.vp-kundenakte-marken')).toContainText('beendet');
 
     await page.getByRole('button', { name: 'Weitere Aktionen für Kunststoffwerk Ahrenberg GmbH' }).click();
     await page.getByRole('menuitem', { name: 'Kunde endgültig löschen …' }).click();
@@ -147,21 +147,24 @@ for (const breite of [DESKTOP, PHONE]) {
   });
 }
 
-/** Mit Daten: derselbe Einstieg erklärt ruhig (Datenarten, ab wann, Gesamtabzug) - kein Gefahren-Knopf. */
-test('Kunde mit Daten: der Dialog erklärt, warum er bleibt', async ({ page }) => {
+/**
+ * Mit Daten (vp-kunde-sofort-loeschen-mit-daten): derselbe Einstieg sagt ehrlich, was verloren
+ * geht (Datenarten, Gesamtabzug) - und löscht trotzdem sofort, kein toter Knopf mehr.
+ */
+test('Kunde mit Daten: der Dialog sagt ehrlich, was verloren geht - und löscht trotzdem', async ({ page }) => {
   await page.setViewportSize({ width: DESKTOP, height: 900 });
   await page.goto('/e2e/mandanten-akte.html?vertrag=beendet');
   await page.waitForSelector('.vp-kundenakte');
-  await expect(page.getByText('beendet · löschbar ab 01.01.2027')).toBeVisible();
+  await expect(page.locator('.vp-kundenakte-marken')).toContainText('beendet');
   await page.getByRole('button', { name: 'Weitere Aktionen für Kunststoffwerk Ahrenberg GmbH' }).click();
   await page.getByRole('menuitem', { name: 'Kunde endgültig löschen …' }).click();
   const dialog = page.getByRole('dialog', { name: 'Kunde endgültig löschen' });
   await expect(dialog).toContainText('Box-Herzschläge · Messwerte');
-  await expect(dialog).toContainText('frühestens am 01.01.2027');
+  await expect(dialog).toContainText('verloren');
   await expect(dialog).toContainText('Gesamtabzug');
-  await expect(dialog.getByRole('button', { name: 'Kunde endgültig löschen' })).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'Verstanden' }).click();
-  await expect(dialog).toBeHidden();
+  await dialog.getByLabel('Zum Bestätigen den Kundennamen abtippen').fill('Kunststoffwerk Ahrenberg GmbH');
+  await dialog.getByRole('button', { name: 'Kunde endgültig löschen' }).click();
+  await expect(page.getByRole('heading', { name: /Kunde gelöscht/ })).toBeVisible();
 });
 
 /**

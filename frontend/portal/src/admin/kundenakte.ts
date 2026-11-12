@@ -162,38 +162,22 @@ export function boxenZaehlung(tenantId: string, fleetSites: AdminFleetSite[]): n
   return fleetSites.filter((f) => f.tenantId === tenantId).reduce((sum, f) => sum + f.deviceCount, 0);
 }
 
-/** `beendet_am`/`loeschung_fruehestens` sind Kalendertage (`LocalDate.toString()`, YYYY-MM-DD). */
+/** `beendet_am` ist ein Kalendertag (`LocalDate.toString()`, YYYY-MM-DD). */
 export function datumDe(tag: string): string {
   const [jahr, monat, t] = tag.split('-');
   return `${t}.${monat}.${jahr}`;
 }
 
-/** Heutiger Kalendertag in der Vertragszone (Europe/Berlin), zum Vergleich mit `loeschung_fruehestens`. */
-function heuteBerlin(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
-}
-
-export function fristAbgelaufen(loeschungFruehestens: string): boolean {
-  return heuteBerlin() >= loeschungFruehestens;
-}
-
 /**
- * Der Zustand einer Zeile der Kundenliste bzw. des Kopfs der Kundenakte. `sofortLoeschbar` kommt vom
- * Server (`KundeDatenBestand`, vp-kunde-sofort-loeschen): ein beendeter Kunde OHNE Daten wartet auf
- * keine Frist - das Badge sagt „sofort löschbar" statt „löschbar ab …". Ein AKTIVER datenfreier Kunde
- * behält sein „aktiv" (jeder frisch angelegte Kunde ist datenfrei - das wäre nur Lärm).
+ * Der Zustand einer Zeile der Kundenliste bzw. des Kopfs der Kundenakte. Seit
+ * vp-kunde-sofort-loeschen-mit-daten ist JEDER Kunde sofort löschbar, mit oder ohne Daten - das
+ * Badge zeigt nur noch, ob der Vertrag beendet ist, kein Löschdatum mehr.
  */
 export function kundenZustand(
   vertragsende: SelbstauskunftKundenbereichBeendet | null | undefined,
   unterstuetzungBisText: string | null,
-  sofortLoeschbar = false,
 ): { ton: Ton; text: string } {
-  if (vertragsende) {
-    if (sofortLoeschbar) return { ton: 'off', text: 'beendet · sofort löschbar' };
-    return fristAbgelaufen(vertragsende.loeschung_fruehestens)
-      ? { ton: 'off', text: `beendet · löschbar ab ${datumDe(vertragsende.loeschung_fruehestens)}` }
-      : { ton: 'warn', text: `beendet · löschbar ab ${datumDe(vertragsende.loeschung_fruehestens)}` };
-  }
+  if (vertragsende) return { ton: 'off', text: 'beendet' };
   if (unterstuetzungBisText) return { ton: 'ok', text: `Unterstützung bis ${unterstuetzungBisText}` };
   return { ton: 'ok', text: 'aktiv' };
 }

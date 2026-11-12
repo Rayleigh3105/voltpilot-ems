@@ -2930,7 +2930,6 @@ export interface SelbstauskunftKundenbereich {
 
 export interface SelbstauskunftKundenbereichBeendet {
   beendet_am: string;
-  loeschung_fruehestens: string;
   liest: boolean;
   text: string;
 }

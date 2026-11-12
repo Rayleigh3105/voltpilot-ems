@@ -1,11 +1,11 @@
 import type { KundeLoeschbarkeit } from './adminApi';
-import { datumDe } from './kundenakte';
 
 /**
- * „Kunde endgültig löschen" (vp-kunde-sofort-loeschen): die Sätze der Kundenakte und der Kundenliste
- * als reines Modul - der Dialog erklärt mit ihnen ruhig, WARUM ein Kunde (noch) nicht löschbar ist
- * (nie ein toter Knopf), und spricht die Folgen. Das Urteil selbst kommt IMMER vom Server
- * (`KundeLoeschbarkeit` aus `KundeDatenBestand`); hier wird nichts entschieden, nur formuliert.
+ * „Kunde endgültig löschen" (vp-kunde-sofort-loeschen-mit-daten): die Sätze der Kundenakte und der
+ * Kundenliste als reines Modul. Jeder Kunde ist sofort löschbar, mit oder ohne Daten - der Dialog
+ * sagt nur ehrlich, WAS dabei verloren geht, und spricht die Folgen. Die Datenarten kommen IMMER
+ * vom Server (`KundeLoeschbarkeit` aus `KundeDatenBestand`); hier wird nichts entschieden, nur
+ * formuliert.
  */
 
 /** Die Datenarten der Befund-/409-Liste eines Kunden, in Kundenworten (Reihenfolge gibt der Server vor). */
@@ -34,24 +34,19 @@ export function kundeDatenListe(daten: string[]): string {
   return daten.map((d) => KUNDE_DATENART_LABEL[d] ?? d).join(' · ');
 }
 
-/** Sofort löschbar: der EINE Satz - er steht in Dialog und Gefahrenzone wörtlich gleich. */
-export const KUNDE_KEINE_DATEN_SATZ =
-  'Dieser Kunde hat keinen Datenbestand - er kann sofort endgültig gelöscht werden, ohne Frist.';
+/** Keine Daten: der EINE Satz - er steht in Dialog und Gefahrenzone wörtlich gleich. */
+export const KUNDE_KEINE_DATEN_SATZ = 'Dieser Kunde hat keinen Datenbestand.';
 
-/** Nicht sofort löschbar: die ruhige Erklärung mit dem Was, dem Ab-wann und dem Weg zum Gesamtabzug. */
-export function kundeBleibtSatz(befund: KundeLoeschbarkeit): string {
-  const was = `Dieser Kunde hat Daten: ${kundeDatenListe(befund.daten)}.`;
-  if (befund.loeschungFruehestens) {
-    return `${was} Gelöscht wird frühestens am ${datumDe(befund.loeschungFruehestens)}; bis dahin kann der `
-      + 'Kundenadministrator den Gesamtabzug laden.';
-  }
-  return `${was} Gelöscht wird erst, nachdem der Vertrag beendet wurde und die Frist abgelaufen ist; `
-    + 'bis dahin kann der Kundenadministrator den Gesamtabzug laden.';
+/** Hat Daten: der EINE Satz, was dabei verloren geht - kein Grund mehr, der das Löschen aufhält. */
+export function kundeHatDatenSatz(befund: KundeLoeschbarkeit): string {
+  return `Dieser Kunde hat Daten: ${kundeDatenListe(befund.daten)}. Sie gehen beim Löschen unwiderruflich `
+    + 'verloren; vorher kann der Kundenadministrator den Gesamtabzug laden.';
 }
 
 /** Die Folgenliste des Bestätigungs-Dialogs - aus den Server-Fakten, nie aus Portal-Annahmen. */
 export function kundeLoeschenFolgen(name: string, befund: KundeLoeschbarkeit): string[] {
   const folgen = befund.folgen;
+  const anlass = befund.daten.length === 0 ? 'sofort, keine Daten' : 'sofort, mit Daten';
   const liste = [
     `Der Kunde „${name}" mit allen Anlagen (${folgen ? folgen.anlagen : '…'}) und seinem Vertrag - endgültig.`,
     `Alle Personen (${folgen ? folgen.personen : '…'}) samt Konten und offenen Einladungen. Ein Konto, das auch `
@@ -62,6 +57,6 @@ export function kundeLoeschenFolgen(name: string, befund: KundeLoeschbarkeit): s
       + `${folgen.boxen.join(', ')}.`);
   }
   liste.push('Werkstatt-, Fernwartungs- und Plattform-Protokolle bleiben; die Löschung selbst wird mit Name, '
-    + 'Anlass („sofort, keine Daten") und Löschnachweis protokolliert.');
+    + `Anlass („${anlass}") und Löschnachweis protokolliert.`);
   return liste;
 }

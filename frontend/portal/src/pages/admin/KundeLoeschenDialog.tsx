@@ -3,14 +3,14 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { ApiError } from '../../api';
 import { adminApi, type KundeLoeschbarkeit, type TenantOffboardingReport } from '../../admin/adminApi';
-import { KUNDE_KEINE_DATEN_SATZ, kundeBleibtSatz, kundeLoeschenFolgen } from '../../admin/kundeLoeschen';
+import { KUNDE_KEINE_DATEN_SATZ, kundeHatDatenSatz, kundeLoeschenFolgen } from '../../admin/kundeLoeschen';
 
 /**
- * „Kunde endgültig löschen" (vp-kunde-sofort-loeschen): EIN Dialog für alle drei Einstiege - das
- * Kopf-Menü und die Vertrag-Karte der Kundenakte sowie das Zeilen-Menü der Kundenliste. Das Urteil
- * kommt vom Server (`GET …/loeschbarkeit`, nie vom Portal behauptet); hat der Kunde Daten, zeigt der
- * Dialog nur die ruhige Erklärung (welche Daten, ab wann löschbar, Weg Gesamtabzug) - kein Formular,
- * kein destruktiver Knopf. Löschbar wird erst nach dem ABTIPPEN des Kundennamens bestätigt (Muster
+ * „Kunde endgültig löschen" (vp-kunde-sofort-loeschen-mit-daten): EIN Dialog für alle drei Einstiege
+ * - das Kopf-Menü und die Vertrag-Karte der Kundenakte sowie das Zeilen-Menü der Kundenliste. Jeder
+ * Kunde ist sofort löschbar, mit oder ohne Daten; der Befund vom Server (`GET …/loeschbarkeit`)
+ * sagt nur noch ehrlich, WAS verloren geht (welche Daten, Weg Gesamtabzug) - nie, OB gelöscht werden
+ * darf. Gelöscht wird erst nach dem ABTIPPEN des Kundennamens (Muster
  * `BoxEndgueltigLoeschenDialog`); die Folgenliste kommt aus den Server-Fakten (`folgen`).
  */
 export function KundeLoeschenDialog({ open, tenantId, tenantName, onClose, onGeloescht }: {
@@ -63,22 +63,14 @@ export function KundeLoeschenDialog({ open, tenantId, tenantName, onClose, onGel
   }
 
   const geladen = befund != null;
-  const loeschbar = befund != null && (befund.sofortLoeschbar || befund.fristAbgelaufen);
   const intro = ladefehler
-    ? 'Die Löschbarkeit ließ sich nicht laden - bitte erneut öffnen.'
+    ? 'Die Datenauskunft ließ sich nicht laden - bitte erneut öffnen.'
     : !geladen
-      ? 'Die Löschbarkeit wird geladen …'
-      : befund.sofortLoeschbar
+      ? 'Die Datenauskunft wird geladen …'
+      : befund.daten.length === 0
         ? KUNDE_KEINE_DATEN_SATZ
-        : befund.fristAbgelaufen
-          ? `Der Vertrag ist beendet und die Frist ist abgelaufen - der Kunde kann endgültig gelöscht werden.`
-          : kundeBleibtSatz(befund);
-  const folgen = geladen && loeschbar
-    ? kundeLoeschenFolgen(tenantName, befund)
-    : geladen
-      ? ['Die Frist bleibt unverändert - gelöscht wird erst, wenn sie abgelaufen ist.',
-          'Der Gesamtabzug steht dem Kundenadministrator bis zur Löschung offen.']
-      : [];
+        : kundeHatDatenSatz(befund);
+  const folgen = geladen ? kundeLoeschenFolgen(tenantName, befund) : [];
 
   return (
     <ConfirmDialog
@@ -86,12 +78,12 @@ export function KundeLoeschenDialog({ open, tenantId, tenantName, onClose, onGel
       title="Kunde endgültig löschen"
       intro={intro}
       consequences={folgen}
-      confirmLabel={loeschbar ? (busy ? 'Wird gelöscht …' : 'Kunde endgültig löschen') : 'Verstanden'}
-      tone={loeschbar ? 'danger' : 'neutral'}
+      confirmLabel={busy ? 'Wird gelöscht …' : 'Kunde endgültig löschen'}
+      tone="danger"
       busy={busy || (!geladen && !ladefehler)}
-      onConfirm={!geladen ? onClose : loeschbar ? bestaetigen : onClose}
+      onConfirm={!geladen ? onClose : bestaetigen}
       onCancel={onClose}
-      extra={loeschbar && (
+      extra={geladen && (
         <div className="vp-endgueltig-abschrift">
           <Input value={abschrift} onChange={(e) => setAbschrift(e.target.value)}
             placeholder={tenantName} aria-label="Zum Bestätigen den Kundennamen abtippen"

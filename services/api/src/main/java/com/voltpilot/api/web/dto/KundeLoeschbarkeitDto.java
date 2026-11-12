@@ -4,19 +4,17 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Die Löschbarkeit eines Kundenbereichs (vp-kunde-sofort-loeschen): sofort (keine Daten) oder nach
- * der Frist. {@code daten} sind die gefundenen Datenarten aus {@code KundeDatenBestand} (leer =
- * sofort löschbar); {@code beendetAm}/{@code loeschungFruehestens} sind Kalendertage (ISO,
- * Europe/Berlin) oder {@code null} für einen aktiven Kunden; {@code folgen} trägt nur die
- * Einzel-Route ({@code GET /tenants/{id}/loeschbarkeit}), die Liste lässt sie weg.
+ * Die Datenauskunft eines Kundenbereichs für den Bestätigungs-Dialog „Kunde endgültig löschen"
+ * (vp-kunde-sofort-loeschen-mit-daten): JEDER Kunde ist sofort löschbar, mit oder ohne
+ * Datenbestand - dieser Befund trägt nur noch, was dabei verloren geht. {@code daten} sind die
+ * gefundenen Datenarten aus {@code KundeDatenBestand} (leer = keine Daten); {@code beendetAm} ist
+ * ein Kalendertag (ISO, Europe/Berlin) oder {@code null} für einen aktiven Kunden; {@code folgen}
+ * trägt nur die Einzel-Route ({@code GET /tenants/{id}/loeschbarkeit}).
  */
 public record KundeLoeschbarkeitDto(
         UUID tenantId,
-        boolean sofortLoeschbar,
         List<String> daten,
         String beendetAm,
-        String loeschungFruehestens,
-        boolean fristAbgelaufen,
         FolgenDto folgen) {
 
     /** Was das Löschen umfasst: Anlagen, nie ausgebaute Boxen (Kennungen werden wieder anmeldbar), Personen. */

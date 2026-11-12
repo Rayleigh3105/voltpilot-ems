@@ -196,7 +196,6 @@ export interface VertragsendeUebergang {
   zustand: 'beendet' | 'aktiv';
   beendet_am?: string;
   frist_tage?: number;
-  loeschung_fruehestens?: string;
 }
 
 /** Report of what the tenant offboarding removed (DB transactional, Keycloak best-effort). */
@@ -209,25 +208,22 @@ export interface TenantOffboardingReport {
   deletedUsers: string[];
   /** Keycloak logins that could not be deleted - need manual cleanup. */
   failedUsers: string[];
-  /** vp-kunde-sofort-loeschen: warum gelöscht werden durfte. */
-  anlass: 'frist_abgelaufen' | 'sofort_keine_daten';
+  /** vp-kunde-sofort-loeschen-mit-daten: ob der Kunde beim Löschen Daten hatte. */
+  anlass: 'sofort_keine_daten' | 'sofort_mit_daten';
   /** Die Kennungen der nie gemeldeten Boxen, die der Sofort-Weg freigegeben hat (wieder anmeldbar). */
   freigegebeneBoxen: string[];
 }
 
 /**
- * Die Löschbarkeit eines Kunden (vp-kunde-sofort-loeschen): sofort (keine Daten, `KundeDatenBestand`
- * im Server) oder erst nach der Frist. `daten` nennt die gefundenen Datenarten (Sätze:
+ * Was das sofortige Löschen eines Kunden umfasst (vp-kunde-sofort-loeschen-mit-daten): jeder Kunde
+ * ist sofort löschbar, mit oder ohne Daten. `daten` nennt die gefundenen Datenarten (Sätze:
  * `kundeLoeschen.ts`); `folgen` trägt nur die Einzel-Route, die Liste lässt sie weg.
  */
 export interface KundeLoeschbarkeit {
   tenantId: string;
-  sofortLoeschbar: boolean;
   daten: string[];
   /** Kalendertag (ISO, Europe/Berlin) oder `null` für einen aktiven Kunden. */
   beendetAm: string | null;
-  loeschungFruehestens: string | null;
-  fristAbgelaufen: boolean;
   folgen: { anlagen: number; boxen: string[]; personen: number } | null;
 }
 
@@ -509,10 +505,8 @@ export const adminApi = {
       body: JSON.stringify({ confirmName }),
     }),
 
-  // vp-kunde-sofort-loeschen: wann der Betreiber löschen darf (sofort bei einem datenfreien Kunden,
-  // sonst nach der Frist) und was das Löschen umfasst - nur lesend, der Löschweg bleibt deleteTenant.
-  kundenLoeschbarkeit: () => request<KundeLoeschbarkeit[]>('/api/v1/admin/tenants/loeschbarkeit'),
-
+  // vp-kunde-sofort-loeschen-mit-daten: was das sofortige Löschen umfasst (Datenarten, Folgen) -
+  // nur lesend, der Löschweg bleibt deleteTenant; jeder Kunde ist sofort löschbar.
   kundeLoeschbarkeit: (tenantId: string) =>
     request<KundeLoeschbarkeit>(`/api/v1/admin/tenants/${tenantId}/loeschbarkeit`),
 
