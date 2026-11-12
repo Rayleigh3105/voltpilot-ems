@@ -5,7 +5,7 @@ price expansion/gap policy, archive weather parsing, request validation."""
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -253,6 +253,50 @@ def test_archive_source_caches_per_rounded_coordinates():
     assert cache_key(52.52, 13.41, 2025) == cache_key(52.48, 13.44, 2025)
     source.hourly_irradiance(53.5, 10.0, 2025)
     assert http.calls == 2
+
+
+class _RecordingHttp:
+    def __init__(self):
+        self.params = []
+
+    def get(self, url, params, timeout):
+        from voltpilot_forecast.http import HttpResponse
+
+        self.params.append(dict(params))
+        return HttpResponse(200, _archive_body())
+
+
+def test_archive_source_fetches_running_year_only_up_to_yesterday():
+    # The archive answers HTTP 400 for an end date after today (UTC).
+    http = _RecordingHttp()
+    source = ArchiveWeatherSource(http_client=http, heute=lambda: date(2026, 10, 19))
+    source.hourly_irradiance(48.6, 12.7, 2025)
+    source.hourly_irradiance(48.6, 12.7, 2026)
+    assert [(p["start_date"], p["end_date"]) for p in http.params] == [
+        ("2025-01-01", "2025-12-31"),
+        ("2026-01-01", "2026-10-18"),
+    ]
+    assert source.hourly_irradiance(48.6, 12.7, 2027) == {}
+    assert len(http.params) == 2
+
+
+def test_archive_source_on_new_year_asks_nothing_for_the_new_year():
+    http = _RecordingHttp()
+    source = ArchiveWeatherSource(http_client=http, heute=lambda: date(2027, 1, 1))
+    assert source.hourly_irradiance(48.6, 12.7, 2027) == {}
+    source.hourly_irradiance(48.6, 12.7, 2026)
+    assert [p["end_date"] for p in http.params] == ["2026-12-31"]
+
+
+def test_archive_source_refetches_running_year_on_the_next_day():
+    http = _RecordingHttp()
+    tag = [date(2026, 10, 19)]
+    source = ArchiveWeatherSource(http_client=http, heute=lambda: tag[0])
+    source.hourly_irradiance(48.6, 12.7, 2026)
+    source.hourly_irradiance(48.6, 12.7, 2026)
+    tag[0] = date(2026, 10, 20)
+    source.hourly_irradiance(48.6, 12.7, 2026)
+    assert [p["end_date"] for p in http.params] == ["2026-10-18", "2026-10-19"]
 
 
 def test_archive_garbage_rejected():

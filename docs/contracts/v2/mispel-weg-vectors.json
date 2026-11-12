@@ -1,0 +1,555 @@
+{
+  "vertrag": "mispel-weg 1.0",
+  "stand": "2026-10-19",
+  "quelle": "Bedienkonzept MiSpeL für Interessenten, BK-52 A (Captain 13.10.2026), Teil A Stationstabelle und Abschnitt 3.3; Bauplan MP-55. Die sechs Demo-Fälle tragen den Stand, den infra/local/demo/demo.sh mispel (DemoMispelAufbau) anlegt.",
+  "leser": [
+    "services/api/src/test/java/com/voltpilot/api/mispel/MispelWegRegelnTest.java",
+    "services/api/src/test/java/com/voltpilot/api/mispel/MispelWegApiTest.java"
+  ],
+  "zustaende": ["erledigt", "jetzt", "offen", "wartet", "gesperrt"],
+  "wer": ["portal", "aussen", "beides", "voltpilot"],
+  "ziele": ["check", "foerderweg", "messstellen_register", "partnerangaben", "nachweis", "erloese", "aufbau", "wallbox_karte"],
+  "stationsfolgen": {
+    "abgrenzung": {
+      "titel": "Ihr Weg zu MiSpeL",
+      "stationen": [
+        { "nr": 1, "schluessel": "rechnen", "titel": "Rechnen: Lohnt es sich?", "wer": "portal",
+          "erklaerung": "Dieselbe Anlage, heute gegen mit MiSpeL – über ein ganzes Jahr." },
+        { "nr": 2, "schluessel": "foerderweg", "titel": "Förderweg wählen", "wer": "portal",
+          "erklaerung": "Je Einspeisestelle gibt es genau einen Förderweg; MiSpeL setzt die Direktvermarktung voraus." },
+        { "nr": 3, "schluessel": "zaehler", "titel": "Zähler klären", "wer": "beides",
+          "erklaerung": "Zwei geeichte Zähler: am Netzanschluss und am Speicher. Hängen Solarstränge am selben Wechselrichter wie der Speicher, zusätzlich eine geeichte Messung auf der Gleichstromseite. Ohne Solaranlage genügt der Zähler am Netzanschluss." },
+        { "nr": 4, "schluessel": "direktvermarkter", "titel": "Direktvermarkter beauftragen", "wer": "aussen",
+          "erklaerung": "Der Direktvermarkter führt die ganze Einspeisung in einem gesonderten Bilanzkreis. Den Vertrag schließen Sie; im Portal tragen Sie ihn ein." },
+        { "nr": 5, "schluessel": "einverstaendnis", "titel": "Einverständnis einholen", "wer": "aussen",
+          "erklaerung": "Bis 30.09.2027 müssen Netzbetreiber und Messstellenbetreiber einverstanden sein; danach nicht mehr." },
+        { "nr": 6, "schluessel": "wechsel", "titel": "Wechsel zum Monatsersten", "wer": "portal",
+          "erklaerung": "Der neue Förderweg gilt ab einem Monatsersten. Sie merken ihn im Portal vor; bis dahin bleibt alles, wie es ist." },
+        { "nr": 7, "schluessel": "monat", "titel": "Monat rechnen und abgleichen", "wer": "voltpilot",
+          "erklaerung": "Nach jedem Monat bestimmt VoltPilot die Mengen in Grün, Gelb und Rot und vergleicht die eigenen Gerätewerte mit denen des Messstellenbetreibers." },
+        { "nr": 8, "schluessel": "nachweis", "titel": "Nachweis weitergeben", "wer": "beides",
+          "erklaerung": "Der Monatsnachweis geht an Lieferant, Direktvermarkter und Netzbetreiber; der Jahresnachweis ist für die Mitteilung Ihres Lieferanten, die bis 31.05. des Folgejahres fällig ist." }
+      ]
+    },
+    "pauschal": {
+      "titel": "Ihr Weg zu MiSpeL",
+      "stationen": [
+        { "nr": 1, "schluessel": "rechnen", "titel": "Rechnen: Lohnt es sich?", "wer": "portal",
+          "erklaerung": "Ihre Anlage, heute gegen mit Pauschaloption." },
+        { "nr": 2, "schluessel": "vormerken", "titel": "Pauschaloption vormerken", "wer": "portal",
+          "erklaerung": "Vormerken kostet nichts und ändert heute nichts." },
+        { "nr": 3, "schluessel": "voraussetzungen", "titel": "Voraussetzungen prüfen", "wer": "portal",
+          "erklaerung": "Solaranlagen bis zusammen 30 kWp; Solaranlage, Speicher und Anschluss gehören derselben Person; keine feste Vergütung und kein Mieterstrom mehr." },
+        { "nr": 4, "schluessel": "direktvermarkter", "titel": "Direktvermarkter beauftragen", "wer": "aussen",
+          "erklaerung": "Auch ein Haushalt braucht für MiSpeL einen Direktvermarkter. Den Vertrag schließen Sie; im Portal tragen Sie ihn ein." },
+        { "nr": 5, "schluessel": "eu_genehmigung", "titel": "Genehmigung der EU-Kommission", "wer": "aussen",
+          "erklaerung": "Die Pauschaloption ist erst anwendbar, wenn die EU-Kommission sie genehmigt hat." },
+        { "nr": 6, "schluessel": "wechsel", "titel": "Wechsel am Monatsersten danach", "wer": "voltpilot",
+          "erklaerung": "VoltPilot stellt Ihre Anlage am ersten Monatsersten nach der Genehmigung um – Sie müssen nichts mehr tun." },
+        { "nr": 7, "schluessel": "jahresstand", "titel": "Jahresstand verfolgen", "wer": "voltpilot",
+          "erklaerung": "Bis 500 kWh je kWp und Jahr gibt es die Marktprämie; darüber ein Zwischenbereich, danach entfallen Umlagen." },
+        { "nr": 8, "schluessel": "jahresnachweis", "titel": "Jahresnachweis", "wer": "beides",
+          "erklaerung": "Einmal im Jahr für die Abrechnung Ihres Lieferanten." }
+      ]
+    },
+    "ladepunkt": {
+      "titel": "Das Auto als Speicher",
+      "stationen": [
+        { "nr": 1, "schluessel": "ladepunkt", "titel": "Ladepunkt eintragen", "wer": "portal",
+          "erklaerung": "Ein Ladepunkt, der zurückspeisen kann, zählt wie ein Speicher – egal, welches Auto angesteckt ist." },
+        { "nr": 2, "schluessel": "zaehler", "titel": "Zähler am Ladepunkt", "wer": "beides",
+          "erklaerung": "Ein geeichter Zähler an der Wallbox – oder ihre signierten Messwerte." },
+        { "nr": 3, "schluessel": "fahrzeugfenster", "titel": "Wann ist das Auto da?", "wer": "portal",
+          "erklaerung": "Sie sagen, wann das Auto üblicherweise angesteckt ist, wie voll es zur Abfahrt sein soll und was immer drin bleibt." },
+        { "nr": 4, "schluessel": "rueckspeisen_waehlen", "titel": "Zurückspeisen wählen", "wer": "portal",
+          "erklaerung": "Aus · Ins Haus · Haus + Netz." },
+        { "nr": 5, "schluessel": "rueckspeisen_fahren", "titel": "Zurückspeisen fahren", "wer": "voltpilot",
+          "erklaerung": "Die Box gibt den Entladebefehl an die Wallbox." },
+        { "nr": 6, "schluessel": "monat", "titel": "Monat rechnen", "wer": "voltpilot",
+          "erklaerung": "Der Strom, mit dem Sie fahren, bleibt voll belastet; Strom, der woanders geladen wurde, zählt beim Zurückspeisen nicht mit." }
+      ]
+    }
+  },
+  "faelle": [
+    {
+      "name": "Werk Talheim",
+      "demo": "Demo MiSpeL Gewerbe GmbH · Ausschließlichkeitsoption, Check A1 „lohnt sich“",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "gewerbe",
+        "check": { "stand": "fertig", "formelsatz": "A1", "mittel_eur": 1899, "hinweis": null },
+        "foerderweg": { "foerderweg": "marktpraemie_ausschliesslichkeit", "formelsatz": null, "einverstaendnis": true,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 750, "pauschaloption_ab": null,
+        "zaehler": [
+          { "kennzeichen": "MS-11", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-12", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-13", "rolle": "Z2", "urteil": "tauglich" },
+          { "kennzeichen": "MS-14", "rolle": "Z2", "urteil": "tauglich" }
+        ],
+        "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "3 von 8 erledigt · jetzt: Förderweg wählen",
+        "strecken": [
+          { "art": "abgrenzung", "titel": "Ihr Weg zu MiSpeL", "komponente_id": null, "erledigt": 3, "gesamt": 8,
+            "satz": "3 von 8 erledigt · jetzt: Förderweg wählen",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "+ 1.899 € im Jahr · lohnt sich voraussichtlich",
+                "tuer": { "ziel": "check", "beschriftung": "Rechnung ansehen" } },
+              { "nr": 2, "zustand": "jetzt", "stand": "Heute: Marktprämie mit Ausschließlichkeitsoption",
+                "tuer": { "ziel": "foerderweg", "beschriftung": "Förderweg ändern" } },
+              { "nr": 3, "zustand": "erledigt", "stand": "Netzanschluss: tauglich · Speicher: tauglich",
+                "tuer": { "ziel": "messstellen_register", "beschriftung": "Zähler im Register ansehen" } },
+              { "nr": 4, "zustand": "offen", "stand": "Noch keiner eingetragen",
+                "tuer": { "ziel": "partnerangaben", "beschriftung": "Partner eintragen" } },
+              { "nr": 5, "zustand": "erledigt", "stand": "Bestätigt",
+                "tuer": { "ziel": "foerderweg", "beschriftung": "Förderweg ändern" } },
+              { "nr": 6, "zustand": "offen", "stand": "Frühestens zum 01.11.2026",
+                "tuer": { "ziel": "foerderweg", "beschriftung": "Förderweg ändern" } },
+              { "nr": 7, "zustand": "offen", "stand": "Beginnt mit dem ersten Monat nach dem Wechsel", "tuer": null },
+              { "nr": 8, "zustand": "offen", "stand": "Erster Nachweis frühestens Anfang Dezember 2026", "tuer": null }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Kühlhaus Seebach",
+      "demo": "Demo MiSpeL Gewerbe GmbH · Abgrenzungsoption A1 seit 01.10.2026, Monatslauf Oktober",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "gewerbe", "check": null,
+        "foerderweg": { "foerderweg": "marktpraemie_abgrenzung", "formelsatz": "A1", "einverstaendnis": true,
+                        "direktvermarkter": "Nordstrom Direkt GmbH", "bilanzkreis_gesondert": true, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 100, "pauschaloption_ab": null,
+        "zaehler": [
+          { "kennzeichen": "MS-01", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-02", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-03", "rolle": "Z2", "urteil": "tauglich" },
+          { "kennzeichen": "MS-04", "rolle": "Z2", "urteil": "tauglich" }
+        ],
+        "monat": { "monat": "2026-10", "stand": "vorlaeufig" }, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "6 von 8 erledigt · läuft: Monat rechnen und abgleichen",
+        "strecken": [
+          { "art": "abgrenzung", "erledigt": 6, "gesamt": 8,
+            "satz": "6 von 8 erledigt · läuft: Monat rechnen und abgleichen",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "Nicht im Portal gerechnet – der Förderweg ist schon gewählt" },
+              { "nr": 2, "zustand": "erledigt", "stand": "Heute: Marktprämie mit Abgrenzungsoption · Formelsatz A1" },
+              { "nr": 3, "zustand": "erledigt", "stand": "Netzanschluss: tauglich · Speicher: tauglich" },
+              { "nr": 4, "zustand": "erledigt", "stand": "Eingetragen: Nordstrom Direkt GmbH · gesonderter Bilanzkreis",
+                "tuer": { "ziel": "partnerangaben", "beschriftung": "Partner ansehen" } },
+              { "nr": 5, "zustand": "erledigt", "stand": "Bestätigt" },
+              { "nr": 6, "zustand": "erledigt", "stand": "Seit 01.10.2026" },
+              { "nr": 7, "zustand": "wartet", "stand": "Oktober 2026 vorläufig",
+                "tuer": { "ziel": "erloese", "beschriftung": "Monat ansehen" } },
+              { "nr": 8, "zustand": "wartet", "stand": "Vorläufig für Oktober 2026 – weitergeben, wenn der Monat endgültig ist",
+                "tuer": { "ziel": "nachweis", "beschriftung": "Nachweis öffnen" } }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Autohaus Brenner",
+      "demo": "Demo MiSpeL Gewerbe GmbH · ungefördert mit Netzladen, Check A1 „lohnt sich nicht“",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "gewerbe",
+        "check": { "stand": "fertig", "formelsatz": "A1", "mittel_eur": -555, "hinweis": null },
+        "foerderweg": { "foerderweg": "ungefoerdert", "formelsatz": null, "einverstaendnis": true,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 100, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "2 von 8 erledigt · gerechnet: lohnt sich voraussichtlich nicht",
+        "strecken": [
+          { "art": "abgrenzung", "erledigt": 2, "gesamt": 8,
+            "satz": "2 von 8 erledigt · gerechnet: lohnt sich voraussichtlich nicht",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "− 555 € im Jahr · lohnt sich voraussichtlich nicht" },
+              { "nr": 2, "zustand": "jetzt", "stand": "Heute: ungeförderte Direktvermarktung, ohne Formelsatz der Anlage 1" },
+              { "nr": 3, "zustand": "offen", "stand": "Noch keine Zählerrolle im Register" },
+              { "nr": 4, "zustand": "offen", "stand": "Noch keiner eingetragen" },
+              { "nr": 5, "zustand": "erledigt", "stand": "Bestätigt" },
+              { "nr": 6, "zustand": "offen", "stand": "Frühestens zum 01.11.2026" },
+              { "nr": 7, "zustand": "offen" },
+              { "nr": 8, "zustand": "offen" }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Haus Kröger",
+      "demo": "Haus Kröger · Einspeisevergütung, Pauschaloption vorgemerkt „Termin offen“, Check P1",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "privat",
+        "check": { "stand": "fertig", "formelsatz": "P1", "mittel_eur": 25,
+                   "hinweis": "Information vor dem Wechsel: Die Pauschaloption ist erst ab dem Monatsersten nach der EU-Genehmigung anwendbar (Festlegung, Tenor Ziff. 9 b); gerechnet ist der Basisfall P1." },
+        "foerderweg": { "foerderweg": "einspeiseverguetung", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null,
+        "pauschal_vormerkung": { "steckersolar_kwp": 0.8, "ein_betreiber_bestaetigt": true, "steckersolar_dv_bestaetigt": true,
+                                 "direktvermarkter": "Sonnenstrom Direkt eG", "bilanzkreis_gesondert": false },
+        "solar_kwp": 9.2, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "4 von 8 erledigt · wartet auf die EU",
+        "strecken": [
+          { "art": "pauschal", "titel": "Ihr Weg zu MiSpeL", "erledigt": 4, "gesamt": 8,
+            "satz": "4 von 8 erledigt · wartet auf die EU",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "+ 25 € im Jahr · lohnt sich voraussichtlich" },
+              { "nr": 2, "zustand": "erledigt", "stand": "Vorgemerkt · Termin offen",
+                "tuer": { "ziel": "foerderweg", "beschriftung": "Vormerkung ansehen" } },
+              { "nr": 3, "zustand": "erledigt", "stand": "9,2 kWp + Steckersolar 0,8 kWp · bestätigt",
+                "tuer": { "ziel": "foerderweg", "beschriftung": "Voraussetzungen ansehen" } },
+              { "nr": 4, "zustand": "erledigt", "stand": "Eingetragen: Sonnenstrom Direkt eG" },
+              { "nr": 5, "zustand": "wartet", "stand": "Ausstehend – einen Termin gibt es nicht", "tuer": null },
+              { "nr": 6, "zustand": "gesperrt", "stand": "Wartet auf die Genehmigung", "tuer": null },
+              { "nr": 7, "zustand": "gesperrt", "stand": "Beginnt mit dem Wechsel", "tuer": null },
+              { "nr": 8, "zustand": "gesperrt", "stand": "Beginnt mit dem Wechsel", "tuer": null }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Haus Sommer",
+      "demo": "Haus Sommer · Pauschal-Fassung ab 01.10.2026 als Vorgriff der Demo, Jahreslauf 2026",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "privat", "check": null,
+        "foerderweg": { "foerderweg": "marktpraemie_pauschal", "formelsatz": null, "einverstaendnis": true,
+                        "direktvermarkter": "Sonnenstrom Direkt eG", "bilanzkreis_gesondert": false, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 9.8, "pauschaloption_ab": null,
+        "zaehler": [
+          { "kennzeichen": "MS-01", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-02", "rolle": "Z1", "urteil": "tauglich" }
+        ],
+        "monat": null, "jahr": { "jahr": 2026, "stand": "vorlaeufig" }, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "5 von 8 erledigt · wartet auf die EU",
+        "strecken": [
+          { "art": "pauschal", "erledigt": 5, "gesamt": 8, "satz": "5 von 8 erledigt · wartet auf die EU",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "Nicht im Portal gerechnet – der Förderweg ist schon gewählt" },
+              { "nr": 2, "zustand": "erledigt", "stand": "Heute: Marktprämie mit Pauschaloption" },
+              { "nr": 3, "zustand": "erledigt", "stand": "Mit dem Förderweg eingetragen" },
+              { "nr": 4, "zustand": "erledigt", "stand": "Eingetragen: Sonnenstrom Direkt eG" },
+              { "nr": 5, "zustand": "wartet", "stand": "Ausstehend – einen Termin gibt es nicht" },
+              { "nr": 6, "zustand": "erledigt", "stand": "Seit 01.10.2026" },
+              { "nr": 7, "zustand": "wartet", "stand": "2026 läuft, vorläufig",
+                "tuer": { "ziel": "erloese", "beschriftung": "Jahresstand ansehen" } },
+              { "nr": 8, "zustand": "offen",
+                "stand": "Noch nicht erfasst: einen Jahresnachweis der Pauschaloption gibt es im Portal noch nicht", "tuer": null }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Haus Albers",
+      "demo": "Haus Albers · Wallbox „Garage“ bidirektional V2H/V2G, Abgrenzungsoption A2, kein stationärer Speicher",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": false, "profil": "privat", "check": null,
+        "foerderweg": { "foerderweg": "marktpraemie_abgrenzung", "formelsatz": "A2", "einverstaendnis": true,
+                        "direktvermarkter": "Sonnenstrom Direkt eG", "bilanzkreis_gesondert": false, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 9.9, "pauschaloption_ab": null,
+        "zaehler": [
+          { "kennzeichen": "MS-01", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-02", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-03", "rolle": "Z2", "urteil": "tauglich" },
+          { "kennzeichen": "MS-04", "rolle": "Z2", "urteil": "tauglich" }
+        ],
+        "monat": { "monat": "2026-10", "stand": "vorlaeufig" }, "jahr": null,
+        "ladepunkte": [
+          { "komponente_id": "a1be2500-0000-4000-8000-000000000001", "label": "Wallbox Garage", "bidirektional": true,
+            "z2_urteile": ["tauglich", "tauglich"], "mindest_soc_pct": 40,
+            "anwesenheit": [
+              { "wochentag": 1, "ankunft": "17:45", "abfahrt": "07:15", "abfahrt_soc_pct": 80 },
+              { "wochentag": 2, "ankunft": "17:45", "abfahrt": "07:15", "abfahrt_soc_pct": 80 },
+              { "wochentag": 3, "ankunft": "17:45", "abfahrt": "07:15", "abfahrt_soc_pct": 80 },
+              { "wochentag": 4, "ankunft": "17:45", "abfahrt": "07:15", "abfahrt_soc_pct": 80 },
+              { "wochentag": 5, "ankunft": "17:45", "abfahrt": "07:15", "abfahrt_soc_pct": 80 }
+            ],
+            "rueckspeisen": "v2h" }
+        ]
+      },
+      "erwartet": {
+        "satz": "4 von 6 erledigt · Zurückspeisen noch aus",
+        "strecken": [
+          { "art": "ladepunkt", "titel": "Das Auto als Speicher", "komponente_id": "a1be2500-0000-4000-8000-000000000001",
+            "erledigt": 4, "gesamt": 6, "satz": "4 von 6 erledigt · Zurückspeisen noch aus",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "Wallbox Garage · kann laden und zurückspeisen",
+                "tuer": { "ziel": "aufbau", "beschriftung": "Aufbau ansehen" } },
+              { "nr": 2, "zustand": "erledigt", "stand": "Zähler an der Wallbox: tauglich",
+                "tuer": { "ziel": "messstellen_register", "beschriftung": "Zähler im Register ansehen" } },
+              { "nr": 3, "zustand": "erledigt", "stand": "Mo–Fr 17:45 bis 07:15 · Abfahrt 80 % · nie unter 40 %",
+                "tuer": { "ziel": "wallbox_karte", "beschriftung": "Abfahrt und Reserve" } },
+              { "nr": 4, "zustand": "erledigt", "stand": "Gewählt: Ins Haus",
+                "tuer": { "ziel": "wallbox_karte", "beschriftung": "Wallbox-Karte" } },
+              { "nr": 5, "zustand": "gesperrt",
+                "stand": "Bei VoltPilot noch ausgeschaltet – erst nach der Prüfung an echter Wallbox und echtem Auto", "tuer": null },
+              { "nr": 6, "zustand": "wartet", "stand": "Oktober 2026 vorläufig",
+                "tuer": { "ziel": "erloese", "beschriftung": "Erträge am Ladepunkt" } }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Rand: weder Speicher noch Ladepunkt",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": false, "profil": "gewerbe", "check": null,
+        "foerderweg": { "foerderweg": "einspeiseverguetung", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": null },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": null, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "Diese Anlage hat keinen Speicher und keinen Ladepunkt im Aufbau – MiSpeL betrifft sie nicht.",
+        "strecken": []
+      }
+    },
+    {
+      "name": "Rand: Gewerbe mit vorgemerkter Abgrenzungsoption",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "gewerbe",
+        "check": { "stand": "fertig", "formelsatz": "A1", "mittel_eur": 1899, "hinweis": null },
+        "foerderweg": { "foerderweg": "marktpraemie_ausschliesslichkeit", "formelsatz": null, "einverstaendnis": true,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": "2026-10-01" },
+        "vormerkung": { "foerderweg": "marktpraemie_abgrenzung", "formelsatz": "A1", "einverstaendnis": true,
+                        "direktvermarkter": "Nordstrom Direkt GmbH", "bilanzkreis_gesondert": true, "gueltig_ab": "2026-11-01" },
+        "pauschal_vormerkung": null, "solar_kwp": 750, "pauschaloption_ab": null,
+        "zaehler": [
+          { "kennzeichen": "MS-11", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-13", "rolle": "Z2", "urteil": "nicht_pruefbar" }
+        ],
+        "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "4 von 8 erledigt · jetzt: Zähler klären",
+        "strecken": [
+          { "art": "abgrenzung", "erledigt": 4, "satz": "4 von 8 erledigt · jetzt: Zähler klären",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt" },
+              { "nr": 2, "zustand": "erledigt", "stand": "Gewählt: Marktprämie mit Abgrenzungsoption · Formelsatz A1 ab 01.11.2026" },
+              { "nr": 3, "zustand": "jetzt", "stand": "Netzanschluss: tauglich · Speicher: nicht prüfbar" },
+              { "nr": 4, "zustand": "erledigt", "stand": "Eingetragen: Nordstrom Direkt GmbH · gesonderter Bilanzkreis" },
+              { "nr": 5, "zustand": "erledigt" },
+              { "nr": 6, "zustand": "wartet", "stand": "Vorgemerkt zum 01.11.2026",
+                "tuer": { "ziel": "foerderweg", "beschriftung": "Vormerkung ansehen" } },
+              { "nr": 7, "zustand": "offen", "stand": "Beginnt mit dem ersten Monat nach dem Wechsel" },
+              { "nr": 8, "zustand": "offen", "stand": "Erster Nachweis frühestens Anfang Dezember 2026" }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Rand: Gewerbe mit endgültigem Monat",
+      "eingang": {
+        "heute": "2026-11-10", "speicher": true, "profil": "gewerbe", "check": null,
+        "foerderweg": { "foerderweg": "marktpraemie_abgrenzung", "formelsatz": "A1", "einverstaendnis": true,
+                        "direktvermarkter": "Nordstrom Direkt GmbH", "bilanzkreis_gesondert": true, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 100, "pauschaloption_ab": null,
+        "zaehler": [
+          { "kennzeichen": "MS-01", "rolle": "Z1", "urteil": "tauglich" },
+          { "kennzeichen": "MS-03", "rolle": "Z2", "urteil": "tauglich" }
+        ],
+        "monat": { "monat": "2026-10", "stand": "endgueltig" }, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "7 von 8 erledigt · jetzt: Nachweis weitergeben",
+        "strecken": [
+          { "art": "abgrenzung", "erledigt": 7,
+            "stationen": [
+              { "nr": 7, "zustand": "erledigt", "stand": "Oktober 2026 endgültig" },
+              { "nr": 8, "zustand": "jetzt", "stand": "Nachweis für Oktober 2026 liegt bereit",
+                "tuer": { "ziel": "nachweis", "beschriftung": "Nachweis öffnen" } }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Rand: Haushalt ohne Check und ohne Vormerkung",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "privat", "check": null,
+        "foerderweg": { "foerderweg": "einspeiseverguetung", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": null },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": null, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "0 von 8 erledigt · wartet auf die EU",
+        "strecken": [
+          { "art": "pauschal", "erledigt": 0,
+            "stationen": [
+              { "nr": 1, "zustand": "jetzt", "stand": "Noch nicht gerechnet" },
+              { "nr": 2, "zustand": "offen", "stand": "Noch nicht vorgemerkt",
+                "tuer": { "ziel": "foerderweg", "beschriftung": "Pauschaloption vormerken" } },
+              { "nr": 3, "zustand": "offen", "stand": "Noch nicht geprüft – das geschieht beim Vormerken" },
+              { "nr": 4, "zustand": "offen", "stand": "Noch keiner eingetragen" },
+              { "nr": 5, "zustand": "wartet" },
+              { "nr": 6, "zustand": "gesperrt" },
+              { "nr": 7, "zustand": "gesperrt" },
+              { "nr": 8, "zustand": "gesperrt" }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Rand: Haushalt nach der EU-Genehmigung, Vormerkung steht",
+      "eingang": {
+        "heute": "2027-03-20", "speicher": true, "profil": "privat",
+        "check": { "stand": "fertig", "formelsatz": "P1", "mittel_eur": 25, "hinweis": null },
+        "foerderweg": { "foerderweg": "einspeiseverguetung", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null,
+        "pauschal_vormerkung": { "steckersolar_kwp": 0, "ein_betreiber_bestaetigt": true, "steckersolar_dv_bestaetigt": false,
+                                 "direktvermarkter": "Sonnenstrom Direkt eG", "bilanzkreis_gesondert": false },
+        "solar_kwp": 9.2, "pauschaloption_ab": "2027-03-15",
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "5 von 8 erledigt · läuft: Wechsel am Monatsersten danach",
+        "strecken": [
+          { "art": "pauschal", "erledigt": 5,
+            "stationen": [
+              { "nr": 2, "zustand": "erledigt", "stand": "Vorgemerkt · Umstellung zum 01.10.2027" },
+              { "nr": 3, "zustand": "erledigt", "stand": "9,2 kWp · bestätigt" },
+              { "nr": 5, "zustand": "erledigt", "stand": "Genehmigt · anwendbar ab 15.03.2027" },
+              { "nr": 6, "zustand": "wartet",
+                "stand": "Umstellung zum 01.10.2027 · früher nur mit Einverständnis von Netz- und Messstellenbetreiber" },
+              { "nr": 7, "zustand": "offen", "stand": "Beginnt mit dem Wechsel" },
+              { "nr": 8, "zustand": "offen" }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Rand: Haushalt nach der EU-Genehmigung, Vormerkung steht, nach dem 30.09.2027",
+      "eingang": {
+        "heute": "2027-10-10", "speicher": true, "profil": "privat", "check": null,
+        "foerderweg": { "foerderweg": "einspeiseverguetung", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": "2026-10-01" },
+        "vormerkung": null,
+        "pauschal_vormerkung": { "steckersolar_kwp": 0, "ein_betreiber_bestaetigt": true, "steckersolar_dv_bestaetigt": false,
+                                 "direktvermarkter": null, "bilanzkreis_gesondert": null },
+        "solar_kwp": 9.2, "pauschaloption_ab": "2027-03-15",
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "4 von 8 erledigt · jetzt: Direktvermarkter beauftragen",
+        "strecken": [
+          { "art": "pauschal", "erledigt": 4,
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "Nicht im Portal gerechnet – die Pauschaloption ist schon vorgemerkt" },
+              { "nr": 2, "zustand": "erledigt", "stand": "Vorgemerkt · Umstellung zum 01.11.2027" },
+              { "nr": 4, "zustand": "jetzt", "stand": "Noch keiner eingetragen" },
+              { "nr": 6, "zustand": "wartet", "stand": "Umstellung zum 01.11.2027" }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Rand: Haushalt über 30 kWp nimmt den Weg der Abgrenzungsoption",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "privat", "check": null,
+        "foerderweg": { "foerderweg": "einspeiseverguetung", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": null },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 45, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "0 von 8 erledigt · jetzt: Rechnen: Lohnt es sich?",
+        "strecken": [ { "art": "abgrenzung", "erledigt": 0,
+          "stationen": [ { "nr": 1, "zustand": "jetzt", "stand": "Noch nicht gerechnet" },
+                         { "nr": 2, "zustand": "offen", "stand": "Heute: Einspeisevergütung" } ] } ]
+      }
+    },
+    {
+      "name": "Rand: Check fehlgeschlagen",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "gewerbe",
+        "check": { "stand": "fehlgeschlagen", "formelsatz": null, "mittel_eur": null, "hinweis": "Es fehlen Messwerte für das Jahr." },
+        "foerderweg": { "foerderweg": "marktpraemie_ausschliesslichkeit", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": null },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 100, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null, "ladepunkte": []
+      },
+      "erwartet": {
+        "satz": "0 von 8 erledigt · jetzt: Rechnen: Lohnt es sich?",
+        "strecken": [ { "art": "abgrenzung",
+          "stationen": [ { "nr": 1, "zustand": "jetzt", "stand": "Es fehlen Messwerte für das Jahr." },
+                         { "nr": 5, "zustand": "offen", "stand": "Noch nicht bestätigt · nötig bis 30.09.2027",
+                           "tuer": { "ziel": "foerderweg", "beschriftung": "Einverständnis bestätigen" } } ] } ]
+      }
+    },
+    {
+      "name": "Rand: Gewerbe mit Speicher und Wallboxen",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": true, "profil": "gewerbe", "check": null,
+        "foerderweg": { "foerderweg": "marktpraemie_ausschliesslichkeit", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": null },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 100, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null,
+        "ladepunkte": [
+          { "komponente_id": "b0000000-0000-4000-8000-000000000001", "label": "Wallbox Hof", "bidirektional": false,
+            "z2_urteile": [], "mindest_soc_pct": null, "anwesenheit": [], "rueckspeisen": null },
+          { "komponente_id": "b0000000-0000-4000-8000-000000000002", "label": "Wallbox Flotte", "bidirektional": true,
+            "z2_urteile": ["tauglich", "nicht_tauglich"], "mindest_soc_pct": null,
+            "anwesenheit": [
+              { "wochentag": 1, "ankunft": "18:00", "abfahrt": "06:30", "abfahrt_soc_pct": null },
+              { "wochentag": 3, "ankunft": "18:00", "abfahrt": "06:30", "abfahrt_soc_pct": null },
+              { "wochentag": 6, "ankunft": "08:00", "abfahrt": "20:00", "abfahrt_soc_pct": 60 },
+              { "wochentag": 7, "ankunft": "08:00", "abfahrt": "20:00", "abfahrt_soc_pct": 60 }
+            ],
+            "rueckspeisen": "aus" }
+        ]
+      },
+      "erwartet": {
+        "satz": "0 von 8 erledigt · jetzt: Rechnen: Lohnt es sich?",
+        "strecken": [
+          { "art": "abgrenzung", "komponente_id": null },
+          { "art": "ladepunkt", "komponente_id": "b0000000-0000-4000-8000-000000000002", "erledigt": 3,
+            "satz": "3 von 6 erledigt · Zurückspeisen noch aus",
+            "stationen": [
+              { "nr": 1, "zustand": "erledigt", "stand": "Wallbox Flotte · kann laden und zurückspeisen" },
+              { "nr": 2, "zustand": "jetzt", "stand": "Zähler an der Wallbox: nicht tauglich" },
+              { "nr": 3, "zustand": "erledigt", "stand": "Mo 18:00 bis 06:30; Mi 18:00 bis 06:30; Sa–So 08:00 bis 20:00 · Abfahrt 60 %" },
+              { "nr": 4, "zustand": "erledigt", "stand": "Gewählt: Aus" },
+              { "nr": 5, "zustand": "gesperrt" },
+              { "nr": 6, "zustand": "offen", "stand": "Beginnt mit dem ersten Monat in der Abgrenzungsoption" }
+            ] }
+        ]
+      }
+    },
+    {
+      "name": "Rand: nur ein Ladepunkt, der laden kann, ohne Speicher",
+      "eingang": {
+        "heute": "2026-10-19", "speicher": false, "profil": "privat", "check": null,
+        "foerderweg": { "foerderweg": "einspeiseverguetung", "formelsatz": null, "einverstaendnis": false,
+                        "direktvermarkter": null, "bilanzkreis_gesondert": null, "gueltig_ab": null },
+        "vormerkung": null, "pauschal_vormerkung": null, "solar_kwp": 8, "pauschaloption_ab": null,
+        "zaehler": [], "monat": null, "jahr": null,
+        "ladepunkte": [
+          { "komponente_id": "c0000000-0000-4000-8000-000000000001", "label": null, "bidirektional": false,
+            "z2_urteile": [], "mindest_soc_pct": null, "anwesenheit": [], "rueckspeisen": null }
+        ]
+      },
+      "erwartet": {
+        "satz": "0 von 6 erledigt · Zurückspeisen noch aus",
+        "strecken": [
+          { "art": "ladepunkt", "erledigt": 0,
+            "stationen": [
+              { "nr": 1, "zustand": "jetzt", "stand": "Ladepunkt · nur Laden eingetragen" },
+              { "nr": 2, "zustand": "offen", "stand": "Kein Zähler am Ladepunkt im Register" },
+              { "nr": 3, "zustand": "offen", "stand": "Noch nicht eingetragen" },
+              { "nr": 4, "zustand": "offen", "stand": "Noch nicht gewählt – bis dahin aus" },
+              { "nr": 5, "zustand": "gesperrt" },
+              { "nr": 6, "zustand": "offen" }
+            ] }
+        ]
+      }
+    }
+  ]
+}

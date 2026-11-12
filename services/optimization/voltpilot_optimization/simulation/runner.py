@@ -324,6 +324,7 @@ def solve_chunk(payload: dict) -> dict:
     commit_days = payload["commit_days"]
     misch = payload.get("mischbetrieb")
     wiederholbar = payload.get("wiederholbar", False)
+    hurdle = payload.get("hurdle", 0.0)
     pauschal = payload.get("pauschal")
 
     from voltpilot_optimization.solver import optimize_mit_rueckfall
@@ -357,6 +358,8 @@ def solve_chunk(payload: dict) -> dict:
         )
         if wiederholbar:
             inp = replace(inp, wiederholbar=True)
+        if hurdle > 0.0:
+            inp = replace(inp, grid_charge_hurdle_ct_kwh=hurdle)
         if misch is not None:
             inp = replace(
                 inp,
@@ -434,6 +437,7 @@ def chunk_payloads(
     mischbetrieb: dict | None = None,
     wiederholbar: bool = False,
     pauschal: dict | None = None,
+    hurdle_ct_kwh: float = 0.0,
 ) -> list[dict]:
     """Build the per-chunk solve payloads (pickle-friendly plain dicts).
 
@@ -442,6 +446,9 @@ def chunk_payloads(
     with the MP-11 Monatszustand; ``export_eur_mwh`` must then be bare spot.
     ``wiederholbar`` (MP-33c) ends the Mischbetrieb search at the node limit
     instead of the wall clock: the same input, the same dispatch under any load.
+    ``hurdle_ct_kwh`` (MiSpeL MP-59) is the ehrliche Marge of a fixed-tariff
+    site (:func:`voltpilot_optimization.pricing.grid_charge_hurdle_ct_kwh`),
+    as the live plan prices it; 0 (the default) adds nothing to the payload.
     ``pauschal`` (MiSpeL-Check, MP-29): ``{"praemie": [EUR/MWh je Slot],
     "aw": [AW¼ ct/kWh je Slot], "saldiert": EUR/MWh, "formelsatz": "P1",
     "stammdaten": {"Pinst": str, "SKinst": str}}`` plans every solve with the
@@ -498,6 +505,8 @@ def chunk_payloads(
         )
         if wiederholbar:
             payloads[-1]["wiederholbar"] = True
+        if hurdle_ct_kwh > 0.0:
+            payloads[-1]["hurdle"] = hurdle_ct_kwh
         if mischbetrieb is not None:
             payloads[-1]["mischbetrieb"] = {
                 "praemie": ext_praemie[lo:hi],
@@ -541,6 +550,7 @@ def run_milp_year(
     mischbetrieb: dict | None = None,
     wiederholbar: bool = False,
     pauschal: dict | None = None,
+    hurdle_ct_kwh: float = 0.0,
 ) -> Dispatch:
     """Scenario (c) over the whole year: chained 48h/24h chunks.
 
@@ -549,7 +559,8 @@ def run_milp_year(
     chunk slots hold 0.0) so callers can publish progressive monthly rows.
     """
     payloads = chunk_payloads(
-        data, battery, netzladen, export_eur_mwh, mischbetrieb, wiederholbar, pauschal
+        data, battery, netzladen, export_eur_mwh, mischbetrieb, wiederholbar, pauschal,
+        hurdle_ct_kwh,
     )
     n = len(data.slot_starts)
     dispatch = Dispatch(
