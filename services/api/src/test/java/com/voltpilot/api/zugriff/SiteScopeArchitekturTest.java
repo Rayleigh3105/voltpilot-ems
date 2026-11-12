@@ -287,6 +287,32 @@ class SiteScopeArchitekturTest {
                     "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("geraete/BoxDatenBestand.java", "device_measurement_rollup_15m", 1, Grund.PLATTFORM,
                     "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            // Kunde sofort löschen (vp-kunde-sofort-loeschen): KundeDatenBestand ordnet wie BoxDatenBestand
+            // jede Tabelle ihrer Datenart zu; die Bestands-Abfrage entsteht dynamisch (abfrage(), für den
+            // Scanner unsichtbar) und läuft nur über AdminKundeLoeschbarkeitController (platform-admin)
+            // und die Wache des Löschzugs. Der Scanner sieht nur das Vokabular-Literal.
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry_rollup_15m", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry_rollup_1h", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry_rollup_1d", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry_v2", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry_v2_rollup_15m", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry_v2_rollup_1h", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "telemetry_v2_rollup_1d", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "device_measurement_sample", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "device_measurement_rollup_5m", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("kundenbereich/KundeDatenBestand.java", "device_measurement_rollup_15m", 1, Grund.PLATTFORM,
+                    "web/AdminKundeLoeschbarkeitController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
 
             // --- kein SQL
             new Erlaubt("uems/EreignisVokabular.java", "telemetry", 1, Grund.KEIN_SQL, "uems/EreignisVokabular.java",
