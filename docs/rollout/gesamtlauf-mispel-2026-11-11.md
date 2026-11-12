@@ -225,7 +225,7 @@ Playwright-Container (772 MB im Worktree); spätere Läufe mit `--ulimit core=0`
 - **Die volle api-Suite lief nicht durch:** 562 von 858 Klassen, dann war die Platte voll; neu gestartet wurde sie
   nicht (der Platz gehörte einem anderen Auftrag). Gezielt nachgeholt sind die Löschwege, Box-Löschwege,
   Gesamtabzug, Architektur-Wächter, die MiSpeL-Migrationen und die nie gelaufenen Pakete `chargers` und
-  `optimizer` (Stapel 2). Rund 250 Klassen anderer Pakete (`zugriff`, `metrics`, `measurement`, `entities`,
+  `optimizer` (Stapel 2). 270 von 860 Klassen, vor allem der Pakete (`zugriff`, `metrics`, `measurement`, `entities`,
   `consumers`, `web`, `erzeuger`, `registerwrite`, …) sind auf diesem Stand nicht gelaufen.
 - **Der zweite Merge (`d06da7e38`) ist schmaler geprüft:** Typen, die Löschwege samt neuer Wächter, die 18 von ihm
   berührten Vitest-Dateien, die Playwright-Nachläufe; Optimierer, Box und die übrige Vitest-Suite liefen auf dem
