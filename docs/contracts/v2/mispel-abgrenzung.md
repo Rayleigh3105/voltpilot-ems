@@ -146,7 +146,7 @@ Formeln von A1 mit drei Fallunterscheidungen (A1 S. 34–37):
   MP-24/MP-25 im Vertrag [MiSpeL-Pauschal](./mispel-pauschal.md) (A2 S. 29; Fälle `p2-ladepunkt-rechengroesse-0-2`,
   `p3-speicher-und-ladepunkt-guenstigere-rechengroesse`); auch dort ist Fremdtankstrom nicht erkennbar (A1 S. 16).
 - **Förderweg und Monatslauf** — A2–A4 sind als Formelsatz wählbar ([Förderweg](./mispel-foerderweg.md)); die Wahl
-  A3 statt A4 und A11 statt A1 bis A4 bindet bis zum Ende des Kalenderjahres (S. 24). `V20261111200800` erweitert
+  A3 statt A4 und A11 statt A1 bis A4 bindet bis zum Ende des Kalenderjahres (S. 24). `V20261112030800` erweitert
   die Formelsatz-CHECKs von `site_foerderweg` und `mispel_abgrenzung_monat`; der Monatslauf liest in A4 sechs Zähler
   (Prüfnachweis mit Docker: `MispelAbgrenzungMonatslaufTest#monatslaufA4MitZ3AmSpeicher`). Der Optimierer plant
   A2–A4 noch nicht im Mischbetrieb (`pricing.MISCHBETRIEB_FORMELSAETZE` bleibt A1, A5, A5-Variante): das Fahrzeug
@@ -238,7 +238,7 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
   Fn. 21, S. 29–31) und `ladepunkt_<befund>:<MS>` je Fehler-Befund, z. B. `unidirektional_hinter_z2` (A1 S. 25)). `wertequelle` des Laufs ist `geraet`, sobald ein
   Zähler vom Gerät liest — auch mit Wertequelle „Messstellenbetreiber“, solange für ihn keine Werte eingelesen sind
   (dann zusätzlich `msb_werte_fehlen:<MS>`, MP-15). Die Datenbank hält endgültig = Messstellenbetreiber + lückenlos selbst (CHECK).
-- **Nachweis:** `mispel_abgrenzung_monat` (`V20261111200400`, RLS + FORCE, App nur SELECT/INSERT) je Lauf als
+- **Nachweis:** `mispel_abgrenzung_monat` (`V20261112030400`, RLS + FORCE, App nur SELECT/INSERT) je Lauf als
   Fassung: kanonischer JSON-**Text** (Festlegung, Vertrag + Fassung, Rechenwerk-Version, Zähler mit Zählpunkt,
   MSB, Eichstatus, Wertequelle und Urteil, AW-Regeln, Lücken, je Viertelstunde Eingänge und Zwischenwerte,
   Monatswerte) und SHA-256 über genau diese Bytes. Gleiche Prüfsumme = keine neue Fassung. Zahlen exakt (Dezimal
@@ -396,7 +396,7 @@ eichrechtskonform erfasste Messwerte „scheidet [...] aus“ (ebd.). Bedienkonz
   werden geprüft (abgeschnittene Datei). Trennzeichen aus `UNA`, Freigabezeichen `?`, Zeichensatz UNOC.
   Die Umsetzung in der Marktkommunikation ist „nicht Regelungsgegenstand dieser Festlegung“ (Tenor S. 28; MaKo-Rahmen
   durch die BK6, S. 92) — CSV und MSCONS wählt VoltPilot; beide landen in derselben Ablage mit derselben Ampel.
-- **Speicher** (`V20261111201100`, RLS + FORCE; `format` `csv` | `mscons` seit `V20261111201200`): `mispel_msb_import` (Datei, Messstelle, Prüfsumme, Zeitraum) und
+- **Speicher** (`V20261112031100`, RLS + FORCE; `format` `csv` | `mscons` seit `V20261112031200`): `mispel_msb_import` (Datei, Messstelle, Prüfsumme, Zeitraum) und
   `mispel_msb_wert` je Zählpunkt, Richtung und Viertelstunde (Schlüssel) — nicht je Messstelle: ein Zählerwechsel bringt
   einen neuen Zählpunkt, die Werte des alten bleiben. Ein späterer Import ersetzt den Wert derselben Viertelstunde
   (`ersetzt` zählt sie); App nur SELECT/INSERT und UPDATE `(kwh, import_id)`.

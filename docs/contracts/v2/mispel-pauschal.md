@@ -239,7 +239,7 @@ Rumpfjahr `[rumpfVon, rumpfBis]`:
   endgültigen Viertelstunden, ÜNB-AW, vorbeigegangenem Zeitraum — und erst, wenn die Pauschaloption gilt
   (`voltpilot.mispel.pauschaloption-ab` gesetzt und erreicht, T S. 3 Ziff. 9 b); sonst `vorlaeufig` mit
   `eu_genehmigung_ausstehend` (Vorbau E7 = B: gerechnet wird trotzdem).
-- **Gespeichert** in `mispel_pauschal_jahr` (`V20261111200600`, RLS + FORCE, App-Rolle nur SELECT/INSERT): Fassungen
+- **Gespeichert** in `mispel_pauschal_jahr` (`V20261112030600`, RLS + FORCE, App-Rolle nur SELECT/INSERT): Fassungen
   je Anlage und `tag_von`, Nachweis als kanonischer JSON-**Text** + SHA-256 (nie `jsonb`), gleiche Prüfsumme schreibt
   nichts. Der Nachweis trägt je Viertelstunde eine Zeile in der Folge von `spalten` (Eingänge, „AW¼ > 0“, SP¼, ¼-Formeln)
   — ein Jahr hat bis 35 136 Viertelstunden.

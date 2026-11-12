@@ -10,12 +10,12 @@ misst und was der Optimierer über das Fahrzeug am Ladepunkt weiß. Er steuert n
 
 | Datei | Rolle |
 |---|---|
-| `services/api/src/main/resources/db/migration/V20261111200700__mispel_ladepunkt_bidirektional.sql` | `ladepunkt_faehigkeit` (Fassungen), `ladepunkt_fahrzeugfenster`, `ladepunkt_anwesenheit` (RLS + FORCE) |
+| `services/api/src/main/resources/db/migration/V20261112030700__mispel_ladepunkt_bidirektional.sql` | `ladepunkt_faehigkeit` (Fassungen), `ladepunkt_fahrzeugfenster`, `ladepunkt_anwesenheit` (RLS + FORCE) |
 | `services/api/.../mispel/LadepunktRegeln.java` | die reinen Regeln (Form, Einordnung, Befunde) |
 | `services/api/.../mispel/LadepunktService.java` | Lesen mit Z2 und Befunden, Setzen als Fassung, `anlage(site, tag)` für MP-32/MP-33 |
 | `services/api/.../web/SiteLadepunktBidirektionalController.java` | `GET`/`PUT /api/v1/sites/{siteId}/ladepunkte/…` |
 | `…/mispel/LadepunktRegelnTest.java` · `…/mispel/LadepunktBidirektionalApiTest.java` · `…/uems/LadepunktBidirektionalMigrationTest.java` | Regeln rein · Routen gegen die Datenbank · Migration auf befüllter Datenbank |
-| `services/api/src/main/resources/db/migration/V20261111201500__mispel_ladepunkt_fahrer_einstellungen.sql` | MP-41a: `ladepunkt_fahrer_einstellung`, `ladepunkt_abfahrt` (RLS + FORCE) |
+| `services/api/src/main/resources/db/migration/V20261112031500__mispel_ladepunkt_fahrer_einstellungen.sql` | MP-41a: `ladepunkt_fahrer_einstellung`, `ladepunkt_abfahrt` (RLS + FORCE) |
 | `services/api/.../mispel/LadepunktErtraege.java` · `…/LadepunktErtragService.java` | MP-41a: Erträge am Ladepunkt im Monat aus dem Monatslauf (A2–A4) |
 | `…/mispel/LadepunktErtraegeApiTest.java` | MP-41a: A2-Monatslauf mit Fremdtankstrom → Route `ertraege` |
 
@@ -157,7 +157,7 @@ Gesendet wird daraus der Block `fahrzeug` im [Fahrplan 2.0](./mqtt-schedule-2.0.
 Der **Ist-Stand** neben Fähigkeit (§ 2) und Wunsch (§ 5, § 5a): was das gerade angesteckte Fahrzeug der Wallbox
 meldet. Die Box reicht es je Stecker im Herzschlag-Block `chargers[].connectors[]` (`ems/{t}/{s}/{d}/status`, additiv,
 ohne eingefrorenes Schema, `schema_version` bleibt `1.0`) in die Cloud; sie legt es in `device_charge_connector` ab
-(V20261111201900) und zeigt es am Stecker der Ladepunkt-Sicht `GET /api/v1/sites/{id}/chargers` (`ChargeConnector`).
+(V20261112031900) und zeigt es am Stecker der Ladepunkt-Sicht `GET /api/v1/sites/{id}/chargers` (`ChargeConnector`).
 
 | Herzschlag (Box) | Sicht (Cloud) | Regel |
 |---|---|---|

@@ -35,7 +35,7 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * MiSpeL MP-48 gegen die Datenbank: {@code GET /api/v1/sites/{siteId}/mispel-check} über {@code site_mispel_check}
- * (V20261111201000, Vertrag {@code docs/contracts/v2/mispel-check.md}), auf einer frisch migrierten Datenbank.
+ * (V20261112031000, Vertrag {@code docs/contracts/v2/mispel-check.md}), auf einer frisch migrierten Datenbank.
  *
  * <p><b>Prüfnachweis:</b> ohne Zeile „wird gerechnet“ und nie ein Betrag; ein positives (Kundentyp a4) und ein
  * negatives Ergebnis (a2) mit den Posten der Beispielrechnung (Konzept § 3) kommen mit Vorzeichen zurück; die

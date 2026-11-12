@@ -15,7 +15,7 @@ import org.springframework.stereotype.Repository;
 
 /**
  * Die Werte des Messstellenbetreibers ({@code mispel_msb_wert}) und ihre Importe ({@code mispel_msb_import}),
- * V20261111201100 (Format {@code mscons} ab V20261111201200). RLS + FORCE: jede Abfrage sieht nur den Mandanten der
+ * V20261112031100 (Format {@code mscons} ab V20261112031200). RLS + FORCE: jede Abfrage sieht nur den Mandanten der
  * Anfrage. MiSpeL MP-15, MP-15b.
  */
 @Repository

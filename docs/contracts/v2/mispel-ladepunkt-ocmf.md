@@ -13,7 +13,7 @@ die des Messstellenbetreibers (MP-15); die signierten Werte stehen daneben am La
 |---|---|
 | `edge-app/core/internal/ocmf` | OCMF lesen (`Parse`, `Decode`, `ReadingTime`) und Signatur prüfen (`Verify`), alle Verfahren der OCMF-Tabelle 22 |
 | `edge-app/core/internal/csms/signed_meter.go` | 1.6 `SignedData` und 2.0.1 `signedMeterValue` abgreifen, prüfen, als Journal-Ereignis melden |
-| `services/api/src/main/resources/db/migration/V20261111201400__mispel_ladepunkt_signierter_messwert.sql` | `ladepunkt_signierter_messwert` (je Ablesung, RLS + FORCE) |
+| `services/api/src/main/resources/db/migration/V20261112031400__mispel_ladepunkt_signierter_messwert.sql` | `ladepunkt_signierter_messwert` (je Ablesung, RLS + FORCE) |
 | `services/api/.../ocpp/OcppRepository.java` | nimmt das Ereignis `SignedMeterValue` an |
 | `services/api/.../mispel/LadepunktRepository.java` · `LadepunktRegeln.eichstatusSigniert` | letzte signierte Ablesung am Ladepunkt, Eichstatus daraus |
 

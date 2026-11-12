@@ -115,7 +115,7 @@ DO UPDATE SET
 
 
 #: MiSpeL MP-33e: die Messlatte „nur laden“ je Ladepunkt und Viertelstunde
-#: (api-Migration ``V20261111201800``, Vertrag ``mispel-messlatte-nur-laden.md``
+#: (api-Migration ``V20261112031800``, Vertrag ``mispel-messlatte-nur-laden.md``
 #: § 3). Ein Plan ersetzt eine Zeile nur, wenn er nicht aelter ist - so haelt
 #: die Ablage den Plan, der fuer die Viertelstunde galt (wie ``schedule`` ueber
 #: ``DISTINCT ON (time) … generated_at DESC``), und derselbe Plan ein zweites

@@ -689,7 +689,7 @@ def load_foerderwege(
     Der Tag ist der Berliner Kalendertag des Laufs (gesetzliche Zeit, A1 S.
     33). Er gilt fuer den ganzen Horizont: der Vertrag kennt kein Vormerken (§
     5), eine Fassung fuer morgen gibt es also nie. Vor der api-Migration
-    ``V20261111200300`` fehlt die Tabelle - das ist genau „keine Fassung“.
+    ``V20261112030300`` fehlt die Tabelle - das ist genau „keine Fassung“.
     """
     import psycopg  # lazy: optional [db] extra
 
@@ -723,7 +723,7 @@ def load_mispel_bisher(dsn: str, site_id: UUID, jetzt: datetime) -> Bisher | Non
     Aus dem Nachweis (Vertrag ``mispel-abgrenzung.md``, kanonischer JSON-Text)
     kommen die Monatswerte seines Schluessels und die Zahl der gerechneten
     Viertelstunden. ``None`` = kein Monatsstand, der Lauf plant wie MP-10:
-    ohne Tabelle (vor der api-Migration ``V20261111200400``), ohne Lauf fuer
+    ohne Tabelle (vor der api-Migration ``V20261112030400``), ohne Lauf fuer
     die laufende Periode, mit einem Formelsatz ohne Saldierung nach (16) (A10,
     A11) oder ohne bestimmbare Summe - unbekannt ist keine Null.
     """
@@ -788,7 +788,7 @@ def load_fahrzeugspeicher(
     ueber ``device_charge_point.entity_id``); die Regeln rechnet
     :mod:`voltpilot_optimization.fahrzeugspeicher`. ``None`` = kein Fahrzeug im
     Modell, der Lauf plant byte-gleich wie vorher: ohne Tabellen (vor der
-    api-Migration ``V20261111200700``), ohne bidirektionalen Ladepunkt, in einem
+    api-Migration ``V20261112030700``), ohne bidirektionalen Ladepunkt, in einem
     Foerderweg, der ihn nicht zulaesst, oder ohne vollstaendige Angaben (Log
     ``fahrzeugspeicher.nicht_geplant`` mit Grund). Bei mehreren Ladepunkten
     plant der Lauf den ersten (nach Komponente) - Mehr-Fahrzeug ist offen.
@@ -1029,7 +1029,7 @@ def load_fahrer_einstellungen(dsn: str, site_id: UUID) -> dict[str, "fz_regeln.F
     """Die Einstellungen des Fahrers je Ladepunkt der Anlage (MiSpeL MP-33f,
     Vertrag ``mispel-ladepunkt-bidirektional.md`` § 5a, Tabellen von MP-41a).
 
-    Eigene Verbindung: fehlen die Tabellen (api vor ``V20261111201500``), endet
+    Eigene Verbindung: fehlen die Tabellen (api vor ``V20261112031500``), endet
     nur dieser Teil - ohne Tabelle gibt es keine Freigabe, jeder Ladepunkt gilt
     als ``aus`` (Log ``fahrzeugspeicher.fahrer_tabelle_fehlt``). Ein fehlender
     Ladepunkt im Ergebnis heisst ebenso ``aus`` (§ 5a: ohne Zeile ``aus``).
@@ -1087,7 +1087,7 @@ def load_mispel_pauschal_bisher(
     Aus dem Nachweis (Vertrag ``mispel-pauschal.md``, kanonischer JSON-Text)
     kommen Formelsatz, Basisfall, Stammdaten und die Jahreswerte seines
     Schluessels. ``None`` = kein Jahresstand, die Anlage plant wie vor MP-26:
-    ohne Tabelle (vor der api-Migration ``V20261111200600``), ohne Lauf fuer
+    ohne Tabelle (vor der api-Migration ``V20261112030600``), ohne Lauf fuer
     den laufenden Zeitraum, mit einem Sonderfall P4, P4-Variante oder P5
     (:data:`mispel_jahresstand.FORMELSAETZE`) oder ohne bestimmbaren
     Jahreswert - unbekannt ist keine Null.

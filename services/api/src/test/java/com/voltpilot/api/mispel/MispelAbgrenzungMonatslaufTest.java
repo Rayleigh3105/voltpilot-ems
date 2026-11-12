@@ -264,7 +264,7 @@ class MispelAbgrenzungMonatslaufTest {
 
     /**
      * MP-32: Basisfall A4 — Z2 vor Stromspeicher und Ladepunkt, Z3 am Stromspeicher allein (A1 S. 31–32). Der Lauf
-     * liest sechs Zähler, rechnet wie der Vektorfall und speichert den Formelsatz A4 (V20261111200800).
+     * liest sechs Zähler, rechnet wie der Vektorfall und speichert den Formelsatz A4 (V20261112030800).
      */
     @Test
     void monatslaufA4MitZ3AmSpeicher() throws Exception {

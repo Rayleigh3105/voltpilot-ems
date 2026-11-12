@@ -9,7 +9,7 @@ Regeln das Register dabei hält. Er ändert den [Messstellen-Vertrag](./messstel
 
 | Datei | Rolle |
 |---|---|
-| `services/api/src/main/resources/db/migration/V20261111200200__mispel_messstelle_zaehlerrolle.sql` | Tabelle `messstelle_zaehlerrolle` (Fassungen, RLS + FORCE) |
+| `services/api/src/main/resources/db/migration/V20261112030200__mispel_messstelle_zaehlerrolle.sql` | Tabelle `messstelle_zaehlerrolle` (Fassungen, RLS + FORCE) |
 | `services/api/.../uems/ZaehlerrolleRegeln.java` | die reinen Regeln (ohne Spring, Datenbank, Uhr) |
 | `services/api/.../uems/ZaehlerrolleService.java` | Lesen mit Befunden, Setzen als Fassung, `anlage(site, tag)` für das Rechenwerk |
 | `services/api/.../web/MessstelleZaehlerrolleController.java` | `GET`/`PUT /api/v1/messstellen/{id}/zaehlerrolle` |

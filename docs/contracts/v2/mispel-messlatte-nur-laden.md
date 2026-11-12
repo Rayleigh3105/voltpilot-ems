@@ -11,7 +11,7 @@ nicht. Er ist VoltPilots Vergleichsmaßstab, die Mengen bucht er trotzdem nach A
 | Rechnung | `services/optimization/voltpilot_optimization/solver.py` `messlatte_nur_laden` |
 | Ergebnis | `domain.MesslatteNurLaden` an `FahrzeugPlan.messlatte_nur_laden` (`SchedulePlan.fahrzeug`) |
 | Prüfung | `services/optimization/tests/test_mispel_fahrzeug_a2.py` |
-| Ablage (MP-33e) | `ladepunkt_messlatte` (`V20261111201800`), geschrieben von `persistence.messlatte_rows` im Schreiblauf des Plans |
+| Ablage (MP-33e) | `ladepunkt_messlatte` (`V20261112031800`), geschrieben von `persistence.messlatte_rows` im Schreiblauf des Plans |
 | Lesen (MP-33e) | `LadepunktMesslatteRepository` → `LadepunktErtragService` → § 6a `posten`, `vergleich` |
 | Prüfung (MP-33e) | `tests/test_mispel_messlatte_ablage.py` (Schreiber, Monatslauf A2) · `LadepunktErtraegeApiTest` |
 

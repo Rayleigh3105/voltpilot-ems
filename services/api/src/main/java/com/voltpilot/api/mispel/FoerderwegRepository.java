@@ -14,7 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Die Fassungen des Förderwegs ({@code site_foerderweg}, V20261111200300) und die beiden Spiegel-Spalten der Anlage
+ * Die Fassungen des Förderwegs ({@code site_foerderweg}, V20261112030300) und die beiden Spiegel-Spalten der Anlage
  * ({@code site.netzladen_erlaubt}, {@code site.plant_kind}), alles unter RLS. Eine Fassung wird nie gelöscht und nie
  * umgeschrieben: die App-Rolle darf nur {@code aufgehoben_am} setzen.
  */

@@ -79,7 +79,7 @@ CREATE TABLE site_supply_price (
     site_id UUID PRIMARY KEY, netzentgelt_arbeitspreis_ct NUMERIC,
     stromsteuer_ct NUMERIC, konzessionsabgabe_ct NUMERIC, umlagen_ct NUMERIC,
     vertriebsaufschlag_ct NUMERIC, ust_pct NUMERIC, komponenten_stand TEXT);
--- Die Spalten, die der Lauf liest (V20261111200200, AP-04 Stellung, V20260701030000).
+-- Die Spalten, die der Lauf liest (V20261112030200, AP-04 Stellung, V20260701030000).
 CREATE TABLE messstelle_stellung (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), messstelle_id UUID NOT NULL, site_id UUID NOT NULL,
     gueltig_ab DATE NOT NULL, gueltig_bis DATE, aufgehoben_am TIMESTAMPTZ);
@@ -137,9 +137,9 @@ def dsn():
                           "07-mispel-marktdaten.sql"):
                 conn.execute((DDL / datei).read_text())
             conn.execute(_API_ZUSATZ)
-            conn.execute(_migration("V20261111200300"))
-            conn.execute(_migration("V20261111201000"))
-            conn.execute(_migration("V20261111201300"))  # MP-29: Formelsätze der Pauschaloption
+            conn.execute(_migration("V20261112030300"))
+            conn.execute(_migration("V20261112031000"))
+            conn.execute(_migration("V20261112031300"))  # MP-29: Formelsätze der Pauschaloption
             rows = [r for r in price_rows_from_json(json.loads(PREISE.read_text()))
                     if START - timedelta(hours=2) <= r[0] <= SLOTS[-1] + timedelta(hours=2)]
             with conn.cursor() as cur:
@@ -337,7 +337,7 @@ P1_POSTEN = (("Einspeisung mit Marktprämie statt Einspeisevergütung", -20.0),
 
 def test_pauschal_anlage_legt_p1_mit_hinweis_vor_der_genehmigung_ab(dsn, monkeypatch):
     """MP-29: eine Anlage im Förderweg Pauschal bekommt ein Ergebnis mit Formelsatz P1 statt
-    ``nicht_unterstuetzt`` - der CHECK der Tabelle kennt P1 (V20261111201300) -, und vor der
+    ``nicht_unterstuetzt`` - der CHECK der Tabelle kennt P1 (V20261112031300) -, und vor der
     EU-Genehmigung steht der Satz dazu in ``hinweis``."""
     monkeypatch.setattr(lauf, "fenster", lambda heute, monate=12: FENSTER)
     with psycopg.connect(dsn, autocommit=True) as conn:

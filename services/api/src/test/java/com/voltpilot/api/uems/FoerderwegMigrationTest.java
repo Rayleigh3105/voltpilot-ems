@@ -25,7 +25,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Die Migration {@code V20261111200300} (MiSpeL MP-5, Förderweg je Einspeisestelle) auf einer BEFÜLLTEN Datenbank:
+ * Die Migration {@code V20261112030300} (MiSpeL MP-5, Förderweg je Einspeisestelle) auf einer BEFÜLLTEN Datenbank:
  * Anlagen mit allen vier Schalter-Kombinationen vorher, dann bis zum neuesten Stand. Geprüft wird: kein Bestand
  * ändert sich (Fingerabdruck), {@code site_foerderweg} beginnt leer, jede Anlage hat den Förderweg ihrer Schalter
  * und dessen Spiegel ist bitgenau der Schalter; RLS + FORCE, beschnittene Rechte, der Mandantenzaun. Die frische
@@ -34,7 +34,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class FoerderwegMigrationTest {
 
-    private static final String DIESE = "20261111200300";
+    private static final String DIESE = "20261112030300";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";

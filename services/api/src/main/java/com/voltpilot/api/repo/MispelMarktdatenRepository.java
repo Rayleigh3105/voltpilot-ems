@@ -36,7 +36,7 @@ import org.springframework.stereotype.Repository;
  *
  * <p>Welche AW-Regel für eine Anlage gilt, ist ein Stammdatum der Anlage (Förderweg, MP-5); dieser
  * Leser nimmt sie als Eingang. Marktweite Daten: kein Mandant, kein RLS, die App-Rolle liest
- * ({@code GRANT SELECT} in {@code V20261111200100}).
+ * ({@code GRANT SELECT} in {@code V20261112030100}).
  */
 @Repository
 public class MispelMarktdatenRepository {
