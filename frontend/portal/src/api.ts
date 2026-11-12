@@ -5160,6 +5160,59 @@ export interface MastrApplyInput {
   };
 }
 
+/**
+ * S2 (Lokations-Suche, vp-mastr-mehrere-einheiten-konzept Abschnitt 5.3): eine
+ * Einheit am selben Netzanschluss wie die getippte Nummer, mit Vorauswahl.
+ * `vorausgewaehlt` ist nur dann `false`, wenn die Betreibernummer bekannt und
+ * anders ist - nie eine Vermutung ohne Angabe.
+ */
+export interface MastrLokationEinheit {
+  vorschau: MastrPreview;
+  vorausgewaehlt: boolean;
+  grund: 'anderer_betreiber' | null;
+}
+
+export interface MastrLokationPreview {
+  lokationMastrNummer: string | null;
+  einheiten: MastrLokationEinheit[];
+}
+
+export type MastrLokationApplyInput = {
+  pv?: NonNullable<MastrApplyInput['pv']>[];
+  storage?: NonNullable<MastrApplyInput['storage']>[];
+};
+
+/** Eine Dachfläche einer PV-Einheit (die Sonnenrose); eine Ost-West-Einheit hat zwei. */
+export interface EinheitFlaeche {
+  richtungGrad: number;
+  neigungGrad: number | null;
+  anteilKwp: number;
+  module: number | null;
+  quelle: 'register' | 'vorschlag' | 'kunde';
+}
+
+/**
+ * Eine registrierte Einheit einer Anlage (S1/S2, Abschnitt 5.1): die
+ * wirksame, vom Kunden bestätigte Schicht. `bestaetigtAm == null` markiert
+ * einen Vorschlag des Hintergrund-Abgleichs (E5), den der Kunde noch nicht
+ * bestätigt hat - nichts rechnet damit.
+ */
+export interface RegisterEinheit {
+  id: string;
+  art: 'pv' | 'speicher';
+  registry: string | null;
+  registryUnitId: string | null;
+  bezeichnung: string | null;
+  inbetriebnahme: string | null;
+  leistungKwp: number | null;
+  speicherKwh: number | null;
+  speicherKw: number | null;
+  bestaetigtAm: string | null;
+  registryFetchedAt: string | null;
+  abweichungVonRegister: boolean;
+  flaechen: EinheitFlaeche[];
+}
+
 export interface TelemetryPoint {
   ts: string;
   powerKw: number | null;
@@ -11719,6 +11772,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  /** S2: jede Einheit am selben Netzanschluss wie die getippte Nummer. Nichts gespeichert. */
+  mastrLokationLookup: (siteId: string, einheitNummer: string) =>
+    request<MastrLokationPreview>(`/api/v1/sites/${siteId}/mastr-lokation-lookup`, {
+      method: 'POST',
+      body: JSON.stringify({ einheitNummer }),
+    }),
+  /** S2: die bestätigte Auswahl einer Lokations-Suche übernehmen. */
+  mastrLokationApply: (siteId: string, input: MastrLokationApplyInput) =>
+    request<RegisterEinheit[]>(`/api/v1/sites/${siteId}/mastr-lokation-apply`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  /** S1: jede registrierte Einheit der Anlage (Sonnenrose, Einheit-Blatt). */
+  registerEinheiten: (siteId: string) =>
+    request<RegisterEinheit[]>(`/api/v1/sites/${siteId}/register-einheiten`),
   prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
   priceHistory: (siteId: string, range: HistoryRange, at: string) =>

@@ -3,6 +3,7 @@ package com.voltpilot.api.web.dto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -26,5 +27,6 @@ public record RegisterEinheitDto(
         BigDecimal speicherKw,
         Instant bestaetigtAm,
         Instant registryFetchedAt,
-        boolean abweichungVonRegister) {
+        boolean abweichungVonRegister,
+        List<EinheitFlaecheDto> flaechen) {
 }

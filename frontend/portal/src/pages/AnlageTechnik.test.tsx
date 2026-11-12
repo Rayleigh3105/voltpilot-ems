@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
-import { api, type Device, type Einspeiseverguetung, type Site, type SiteAsset, type SupplyPrice } from '../api';
+import { api, type Device, type Einspeiseverguetung, type RegisterEinheit, type Site, type SiteAsset, type SupplyPrice } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { buettner, buettnerNv } from '../test/anlagensteuerungFixtures';
@@ -143,6 +143,25 @@ function pv(over: Partial<SiteAsset> = {}): SiteAsset {
     registry: 'mastr',
     registryUnitId: 'SEE123456789012',
     registryFetchedAt: null,
+    ...over,
+  };
+}
+
+function registerEinheit(over: Partial<RegisterEinheit> = {}): RegisterEinheit {
+  return {
+    id: 'e-1',
+    art: 'pv',
+    registry: 'mastr',
+    registryUnitId: 'SEE123456789012',
+    bezeichnung: null,
+    inbetriebnahme: '2014-06-01',
+    leistungKwp: 8.4,
+    speicherKwh: null,
+    speicherKw: null,
+    bestaetigtAm: '2026-11-12T10:00:00Z',
+    registryFetchedAt: null,
+    abweichungVonRegister: false,
+    flaechen: [{ richtungGrad: 180, neigungGrad: 30, anteilKwp: 8.4, module: 20, quelle: 'register' }],
     ...over,
   };
 }
@@ -318,6 +337,7 @@ async function renderEinstellungen(
   verguetung: Einspeiseverguetung | Error = verguetungStand(),
   gridLimitKw: number | null = null,
   pvOver: Partial<SiteAsset> | null = null,
+  registerEinheitenOver: RegisterEinheit[] = [],
 ) {
   const s: Site = { ...eegSite, ...over };
   const assets = vi
@@ -326,6 +346,7 @@ async function renderEinstellungen(
       ...(batteryOver == null ? [] : [battery({ deviceId: 'd-1', ...batteryOver })]),
       ...(pvOver == null ? [] : [pv(pvOver)]),
     ]);
+  const registerEinheiten = vi.spyOn(api, 'registerEinheiten').mockResolvedValue(registerEinheitenOver);
   const verguetungAbruf =
     verguetung instanceof Error
       ? vi.spyOn(api, 'einspeiseverguetung').mockRejectedValue(verguetung)
@@ -367,7 +388,10 @@ async function renderEinstellungen(
         />,
       ),
     verguetungAbruf,
-    restore: () => [assets, preview, supply, schedule, verguetungAbruf, chargingConfig].forEach((m) => m.mockRestore()),
+    restore: () =>
+      [assets, registerEinheiten, preview, supply, schedule, verguetungAbruf, chargingConfig].forEach((m) =>
+        m.mockRestore(),
+      ),
   };
 }
 
@@ -1169,6 +1193,48 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
     expect(within(b).getByText('Ausrichtung / Neigung').nextElementSibling).toHaveTextContent('Süd · 30 °');
     // N3: fmtRelative liefert die Abkürzung schon mit Punkt - kein zweiter.
     expect(within(b).queryByText(/Std\.\./)).toBeNull();
+    restore();
+  });
+
+  it('zeigt die Sonnenrose und beide Einheiten bei mehreren PV-Einheiten (E1=B)', async () => {
+    const alt = registerEinheit({ id: 'e-alt', registryUnitId: 'SEE111111111111', leistungKwp: 8.4, inbetriebnahme: '2014-06-01' });
+    const neu = registerEinheit({
+      id: 'e-neu',
+      registryUnitId: 'SEE222222222222',
+      leistungKwp: 6.3,
+      inbetriebnahme: '2024-06-01',
+      flaechen: [{ richtungGrad: 90, neigungGrad: 12.5, anteilKwp: 6.3, module: 15, quelle: 'register' }],
+    });
+    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, null, [alt, neu]);
+
+    // Die Zeile nennt die Zahl der Einheiten, nicht mehr "Verknüpft".
+    expect(zeile('Einheiten verwalten')).toHaveTextContent('2 Einheiten');
+    // Die Sonnenrose steht schon auf der Übersicht, vor dem Öffnen.
+    expect(document.querySelector('.vp-sonnenrose')).toBeInTheDocument();
+    expect(screen.getByText('14,7')).toBeInTheDocument();
+
+    const b = await blatt('Einheiten verwalten');
+    expect(within(b).getByText(/SEE111111111111/)).toBeInTheDocument();
+    expect(within(b).getByText(/SEE222222222222/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('zeigt eine unbestätigte Vorschlags-Einheit (E5) als Hinweis, nicht in der Summe', async () => {
+    const bestaetigt = registerEinheit({ leistungKwp: 8.4 });
+    const vorschlag = registerEinheit({
+      id: 'e-vorschlag',
+      registryUnitId: 'SEE333333333333',
+      bestaetigtAm: null,
+      flaechen: [],
+    });
+    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, null, [
+      bestaetigt,
+      vorschlag,
+    ]);
+
+    // Nur die bestätigte Einheit steht in der Summe/Zeile - EINE Einheit, nicht zwei.
+    expect(zeile('Einheiten verwalten')).toHaveTextContent('1 Einheit');
+    expect(screen.getByText(/weitere Einheit an Ihrem Anschluss gefunden/)).toBeInTheDocument();
     restore();
   });
 

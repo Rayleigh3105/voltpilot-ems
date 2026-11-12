@@ -26154,6 +26154,19 @@ components:
         bestaetigtAm: { type: string, format: date-time, nullable: true }
         registryFetchedAt: { type: string, format: date-time, nullable: true }
         abweichungVonRegister: { type: boolean }
+        flaechen:
+          type: array
+          description: Roof faces (the Sonnenrose's data); empty when direction/power are not both known.
+          items: { $ref: "#/components/schemas/EinheitFlaeche" }
+    EinheitFlaeche:
+      type: object
+      description: One roof face of a PV unit - an Ost-West unit has two.
+      properties:
+        richtungGrad: { type: number, description: Clockwise from North; 180 = South. }
+        neigungGrad: { type: number, nullable: true }
+        anteilKwp: { type: number }
+        module: { type: integer, nullable: true }
+        quelle: { type: string, enum: [register, vorschlag, kunde] }
     MastrLokationEinheit:
       type: object
       properties:

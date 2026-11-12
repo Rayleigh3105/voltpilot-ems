@@ -325,6 +325,29 @@ class MastrApiTest {
                 new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
         assertThat(read.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(read.getBody()).hasSize(2);
+
+        // Die Einheit mit bekannter Ausrichtung bekommt eine Fläche (Sonnenrose);
+        // die Garage ohne Ausrichtung in diesem Apply keine geratene.
+        Map<String, Object> roofEntry = read.getBody().stream()
+                .filter(e -> PV_UNIT.equals(e.get("registryUnitId"))).findFirst().orElseThrow();
+        Map<String, Object> garageEntry = read.getBody().stream()
+                .filter(e -> GARAGE_UNIT.equals(e.get("registryUnitId"))).findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> roofFlaechen = (List<Map<String, Object>>) roofEntry.get("flaechen");
+        assertThat(roofFlaechen).hasSize(1);
+        assertThat(((Number) roofFlaechen.get(0).get("richtungGrad")).doubleValue()).isEqualTo(180.0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> garageFlaechen = (List<Map<String, Object>>) garageEntry.get("flaechen");
+        assertThat(garageFlaechen).isEmpty();
+
+        // Abschnitt 5.2: die Summen-Zeile (asset.pv_capacity_kwp) synchronisiert
+        // auf Σ beider Einheiten - die Rechnung hinkt sonst der Sonnenrose nach.
+        ResponseEntity<List<Map<String, Object>>> assets = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/assets"), HttpMethod.GET,
+                new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+        Map<String, Object> pvAsset = assets.getBody().stream()
+                .filter(a -> "pv".equals(a.get("type"))).findFirst().orElseThrow();
+        assertThat(((Number) pvAsset.get("pvCapacityKwp")).doubleValue()).isEqualTo(12.35);
     }
 
     @Test

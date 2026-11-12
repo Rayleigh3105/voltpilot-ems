@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.web.dto.EinheitFlaecheDto;
 import com.voltpilot.api.web.dto.MastrApplyRequest;
 import com.voltpilot.api.web.dto.RegisterEinheitDto;
 import java.math.BigDecimal;
@@ -7,7 +8,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -33,10 +37,27 @@ public class RegisterEinheitRepository {
         this.jdbc = jdbc;
     }
 
+    /** Every registered unit of a site, each with its roof faces (Abschnitt 5.1, the Sonnenrose's data). */
     public List<RegisterEinheitDto> findForSite(UUID siteId) {
+        Map<UUID, List<EinheitFlaecheDto>> flaechenByEinheit = jdbc.query(
+                "SELECT ef.einheit_id, ef.richtung_grad, ef.neigung_grad, ef.anteil_kwp, ef.module, ef.quelle "
+                        + "FROM einheit_flaeche ef JOIN register_einheit re ON re.id = ef.einheit_id "
+                        + "WHERE re.site_id = ? ORDER BY ef.richtung_grad",
+                rs -> {
+                    Map<UUID, List<EinheitFlaecheDto>> result = new LinkedHashMap<>();
+                    while (rs.next()) {
+                        UUID einheitId = rs.getObject("einheit_id", UUID.class);
+                        result.computeIfAbsent(einheitId, k -> new ArrayList<>()).add(new EinheitFlaecheDto(
+                                rs.getBigDecimal("richtung_grad"), rs.getBigDecimal("neigung_grad"),
+                                rs.getBigDecimal("anteil_kwp"), rs.getObject("module", Integer.class),
+                                rs.getString("quelle")));
+                    }
+                    return result;
+                },
+                siteId);
         return jdbc.query(
                 "SELECT " + COLUMNS + " FROM register_einheit WHERE site_id = ? ORDER BY inbetriebnahme, created_at",
-                RegisterEinheitRepository::map, siteId);
+                (rs, rowNum) -> map(rs, flaechenByEinheit), siteId);
     }
 
     /**
@@ -62,12 +83,36 @@ public class RegisterEinheitRepository {
                             tenantId, einheitId, p.azimuthDeg(), p.tiltDeg(), p.capacityKwp(), p.moduleCount());
                 }
             }
+            // Mehrere Einheiten: die Summen-Zeile bleibt die Zahl, mit der
+            // Prognose/Optimierer/Erlöse HEUTE rechnen (Abschnitt 5.2) - ohne
+            // diese Synchronisierung zeigte die Sonnenrose mehr kWp, als dem
+            // Kunden tatsächlich gerechnet wird. Richtung/Neigung bleiben
+            // einspurig (eine Fläche) bis S4 - bewusste, dokumentierte Lücke.
+            syncAssetPvSum(tenantId, siteId);
         }
         if (storage != null) {
             for (MastrApplyRequest.StorageApply s : storage) {
                 upsertSpeicher(tenantId, siteId, s, registry, fetchedAt, bestaetigtVon);
             }
         }
+    }
+
+    /**
+     * Syncs the site's aggregate PV nameplate to Σ known register_einheit
+     * powers (Abschnitt 5.2) - called only after a batch that touched at
+     * least one PV unit, so a storage-only apply never zeroes an existing
+     * sum. An unconfirmed suggestion ({@code leistung_kwp IS NULL}) is
+     * excluded by {@code SUM}'s own null-skipping, matching "fehlt sie,
+     * rechnet die Anlage wie heute" for every OTHER unit's contribution.
+     */
+    private void syncAssetPvSum(UUID tenantId, UUID siteId) {
+        jdbc.update(
+                "INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) "
+                        + "SELECT ?, ?, 'pv', COALESCE(SUM(leistung_kwp), 0) FROM register_einheit "
+                        + "WHERE site_id = ? AND art = 'pv' "
+                        + "ON CONFLICT (site_id, type) WHERE is_primary DO UPDATE SET "
+                        + "pv_capacity_kwp = EXCLUDED.pv_capacity_kwp",
+                tenantId, siteId, siteId);
     }
 
     private UUID upsertPv(UUID tenantId, UUID siteId, MastrApplyRequest.PvApply p, String registry,
@@ -168,12 +213,14 @@ public class RegisterEinheitRepository {
                 rLeistungKwp, rInbetriebnahme, rModule, Timestamp.from(fetchedAt), siteId, registryUnitId);
     }
 
-    private static RegisterEinheitDto map(ResultSet rs, int rowNum) throws SQLException {
+    private static RegisterEinheitDto map(ResultSet rs, Map<UUID, List<EinheitFlaecheDto>> flaechenByEinheit)
+            throws SQLException {
         Timestamp bestaetigt = rs.getTimestamp("bestaetigt_am");
         Timestamp abgerufen = rs.getTimestamp("r_abgerufen_am");
         java.sql.Date inbetrieb = rs.getDate("inbetriebnahme");
+        UUID id = rs.getObject("id", UUID.class);
         return new RegisterEinheitDto(
-                rs.getObject("id", UUID.class),
+                id,
                 rs.getString("art"),
                 rs.getString("registry"),
                 rs.getString("registry_unit_id"),
@@ -184,6 +231,7 @@ public class RegisterEinheitRepository {
                 rs.getBigDecimal("speicher_kw"),
                 bestaetigt != null ? bestaetigt.toInstant() : null,
                 abgerufen != null ? abgerufen.toInstant() : null,
-                rs.getBoolean("abweichung"));
+                rs.getBoolean("abweichung"),
+                flaechenByEinheit.getOrDefault(id, List.of()));
     }
 }
