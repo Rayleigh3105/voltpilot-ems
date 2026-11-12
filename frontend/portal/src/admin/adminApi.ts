@@ -196,7 +196,26 @@ export interface VertragsendeUebergang {
   zustand: 'beendet' | 'aktiv';
   beendet_am?: string;
   frist_tage?: number;
-  loeschung_fruehestens?: string;
+}
+
+/**
+ * Der Löschzug als serverseitiger Auftrag (vp-kunde-loeschen-504): `POST …/delete` startet ihn nur
+ * noch (202) - in Produktion brauchte der Zug ~60 s und der Ingress (60-s-Grenze) antwortete 504,
+ * obwohl serverseitig gelöscht wurde. Das Portal fragt `GET …/loeschlauf`, bis `stand` nicht mehr
+ * `laeuft` ist. `fertig` heißt: die Abbau-Transaktion hat committet; `gescheitert` trägt in
+ * `fehler` den ehrlichen Satz (bei einem Rollback ausdrücklich „es wurde nichts gelöscht").
+ * `bericht` ist `null`, solange der Lauf läuft, nach einem Scheitern - oder wenn er bei einem
+ * Absturz nach dem Commit verloren ging (fertig bleibt fertig).
+ */
+export interface KundeLoeschlauf {
+  laufId: string;
+  tenantId: string;
+  name: string;
+  stand: 'laeuft' | 'fertig' | 'gescheitert';
+  gestartetAm: string;
+  beendetAm: string | null;
+  fehler: string | null;
+  bericht: TenantOffboardingReport | null;
 }
 
 /** Report of what the tenant offboarding removed (DB transactional, Keycloak best-effort). */
@@ -209,25 +228,22 @@ export interface TenantOffboardingReport {
   deletedUsers: string[];
   /** Keycloak logins that could not be deleted - need manual cleanup. */
   failedUsers: string[];
-  /** vp-kunde-sofort-loeschen: warum gelöscht werden durfte. */
-  anlass: 'frist_abgelaufen' | 'sofort_keine_daten';
+  /** vp-kunde-sofort-loeschen-mit-daten: ob der Kunde beim Löschen Daten hatte. */
+  anlass: 'sofort_keine_daten' | 'sofort_mit_daten';
   /** Die Kennungen der nie gemeldeten Boxen, die der Sofort-Weg freigegeben hat (wieder anmeldbar). */
   freigegebeneBoxen: string[];
 }
 
 /**
- * Die Löschbarkeit eines Kunden (vp-kunde-sofort-loeschen): sofort (keine Daten, `KundeDatenBestand`
- * im Server) oder erst nach der Frist. `daten` nennt die gefundenen Datenarten (Sätze:
+ * Was das sofortige Löschen eines Kunden umfasst (vp-kunde-sofort-loeschen-mit-daten): jeder Kunde
+ * ist sofort löschbar, mit oder ohne Daten. `daten` nennt die gefundenen Datenarten (Sätze:
  * `kundeLoeschen.ts`); `folgen` trägt nur die Einzel-Route, die Liste lässt sie weg.
  */
 export interface KundeLoeschbarkeit {
   tenantId: string;
-  sofortLoeschbar: boolean;
   daten: string[];
   /** Kalendertag (ISO, Europe/Berlin) oder `null` für einen aktiven Kunden. */
   beendetAm: string | null;
-  loeschungFruehestens: string | null;
-  fristAbgelaufen: boolean;
   folgen: { anlagen: number; boxen: string[]; personen: number } | null;
 }
 
@@ -502,17 +518,20 @@ export const adminApi = {
     }),
 
   // Type-to-confirm offboarding: confirmName must equal the tenant's exact
-  // name or the backend refuses (400) before touching anything.
+  // name or the backend refuses (400) before touching anything. Startet den
+  // serverseitigen Löschzug (202); das Ergebnis kommt über kundeLoeschlauf.
   deleteTenant: (tenantId: string, confirmName: string) =>
-    request<TenantOffboardingReport>(`/api/v1/admin/tenants/${tenantId}/delete`, {
+    request<KundeLoeschlauf>(`/api/v1/admin/tenants/${tenantId}/delete`, {
       method: 'POST',
       body: JSON.stringify({ confirmName }),
     }),
 
-  // vp-kunde-sofort-loeschen: wann der Betreiber löschen darf (sofort bei einem datenfreien Kunden,
-  // sonst nach der Frist) und was das Löschen umfasst - nur lesend, der Löschweg bleibt deleteTenant.
-  kundenLoeschbarkeit: () => request<KundeLoeschbarkeit[]>('/api/v1/admin/tenants/loeschbarkeit'),
+  // Der Stand des jüngsten Löschzugs - nach dem Löschen weiter beantwortbar; 404, wenn nie einer lief.
+  kundeLoeschlauf: (tenantId: string) =>
+    request<KundeLoeschlauf>(`/api/v1/admin/tenants/${tenantId}/loeschlauf`),
 
+  // vp-kunde-sofort-loeschen-mit-daten: was das sofortige Löschen umfasst (Datenarten, Folgen) -
+  // nur lesend, der Löschweg bleibt deleteTenant; jeder Kunde ist sofort löschbar.
   kundeLoeschbarkeit: (tenantId: string) =>
     request<KundeLoeschbarkeit>(`/api/v1/admin/tenants/${tenantId}/loeschbarkeit`),
 

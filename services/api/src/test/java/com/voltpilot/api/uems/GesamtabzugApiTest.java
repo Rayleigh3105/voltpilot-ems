@@ -326,7 +326,7 @@ public class GesamtabzugApiTest {
         assertThat(r.getResponse().getStatus()).as(r.getResponse().getContentAsString()).isEqualTo(200);
         JsonNode manifest = JSON.readTree(entpacken(r.getResponse().getContentAsByteArray()).get("manifest.json"));
         assertThat(manifest.path("zustand").asText()).isEqualTo("beendet");
-        assertThat(manifest.path("loeschung_fruehestens").asText()).isNotBlank();
+        assertThat(manifest.path("beendet_am").asText()).isNotBlank();
         assertThat(root.queryForObject("SELECT zustand FROM kundenbereich_abzug WHERE tenant_id = ? AND "
                 + "abgeschlossen_am IS NOT NULL", String.class, tenant)).isEqualTo("beendet");
 
@@ -338,7 +338,7 @@ public class GesamtabzugApiTest {
         }
         JsonNode me = JSON.readTree(ruf(get("/api/v1/me"), konto(kundenadmin)).getResponse()
                 .getContentAsString(StandardCharsets.UTF_8)).path("kundenbereich").path("beendet");
-        assertThat(me.path("text").asText()).endsWith("Bis dahin können Sie den Gesamtabzug laden.");
+        assertThat(me.path("text").asText()).endsWith("Sie können den Gesamtabzug laden.");
     }
 
     /**

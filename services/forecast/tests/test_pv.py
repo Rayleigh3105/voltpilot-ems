@@ -168,3 +168,66 @@ def test_the_fixed_baseline_recovers_winter_generation_the_legacy_one_lost_to_n1
     assert legacy.model == "pv-physical-legacy-dni"
     assert fixed.model == "pv-physical"
     assert sum(fixed.values) > 2.0 * sum(legacy.values)
+
+
+# ---- S4 (firstmate 2026-11-12): Bestandsanlagen bleiben byte-gleich -------
+
+
+def test_single_face_plants_is_byte_identical_to_the_legacy_single_plant():
+    # Form (a): a backfilled unit with its own face (direction/tilt known) -
+    # one summand in the new `plants` path must equal the legacy `plant`
+    # path exactly, slot for slot (IEEE754 "0.0 + x == x", no rounding).
+    run_at = datetime(2026, 6, 21, 3, 0, tzinfo=timezone.utc)
+    horizon = Horizon.hours(24)
+    face = PlantSpec(capacity_kwp=8.4, azimuth_deg=180.0, tilt_deg=30.0)
+    legacy = PhysicalPvForecaster().forecast(
+        SiteForecastConfig(tenant_id="t", site_id="s", location=BERLIN, plant=face),
+        horizon, run_at,
+    )
+    per_face = PhysicalPvForecaster().forecast(
+        SiteForecastConfig(
+            tenant_id="t", site_id="s", location=BERLIN, plant=None, plants=(face,)
+        ),
+        horizon, run_at,
+    )
+    assert per_face.values == legacy.values
+
+
+def test_face_without_direction_falls_back_to_dach_defaults_byte_identical():
+    # Form (a) variant: a confirmed unit without its own einheit_flaeche row
+    # still gets ONE PlantSpec at full capacity with the DACH defaults
+    # (south, 30 deg) - the exact same defaults load_sites applies when
+    # asset.azimuth_deg/tilt_deg are NULL (forecast_collect.load_sites).
+    run_at = datetime(2026, 6, 21, 3, 0, tzinfo=timezone.utc)
+    horizon = Horizon.hours(24)
+    legacy = PhysicalPvForecaster().forecast(
+        SiteForecastConfig(
+            tenant_id="t", site_id="s", location=BERLIN, plant=PlantSpec(capacity_kwp=8.4)
+        ),
+        horizon, run_at,
+    )
+    per_face = PhysicalPvForecaster().forecast(
+        SiteForecastConfig(
+            tenant_id="t", site_id="s", location=BERLIN, plant=None,
+            plants=(PlantSpec(capacity_kwp=8.4),),
+        ),
+        horizon, run_at,
+    )
+    assert per_face.values == legacy.values
+
+
+def test_clear_sky_ceiling_single_face_is_byte_identical_to_legacy_plant():
+    from voltpilot_forecast.pvceiling import clear_sky_ceiling_kw
+
+    at = datetime(2026, 6, 21, 10, 0, tzinfo=timezone.utc)
+    face = PlantSpec(capacity_kwp=8.4, azimuth_deg=180.0, tilt_deg=30.0)
+    legacy = clear_sky_ceiling_kw(
+        SiteForecastConfig(tenant_id="t", site_id="s", location=BERLIN, plant=face), at
+    )
+    per_face = clear_sky_ceiling_kw(
+        SiteForecastConfig(
+            tenant_id="t", site_id="s", location=BERLIN, plant=None, plants=(face,)
+        ),
+        at,
+    )
+    assert per_face == legacy

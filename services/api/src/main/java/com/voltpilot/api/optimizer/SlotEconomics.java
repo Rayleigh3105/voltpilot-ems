@@ -178,6 +178,16 @@ public final class SlotEconomics {
             "(aw.aw_groesser_null IS NULL OR jw.value_ct_kwh IS NULL OR jw.provisional)";
 
     /**
+     * One confirmed PV {@code register_einheit} feeding the §24 Abs. 3 EEG
+     * per-unit blend (S4, vp-mastr-mehrere-einheiten-konzept §5.2): its own
+     * kWp and commissioning date. {@code commissionedOn == null} is a Lücke
+     * (report §5.2) - that unit's share floats at bare spot, exactly like a
+     * plant without a date. The Python twin is pricing.py's {@code PvEinheit}.
+     */
+    public record UnitPv(double kwp, LocalDate commissionedOn) {
+    }
+
+    /**
      * One site's structured supply-price sheet (the {@code site_supply_price}
      * row - the pricing.py {@code SupplyPriceComponents} twin): volumetric
      * Bezugspreis components in ct/kWh NETTO, all nullable (NULL = unknown,
@@ -514,6 +524,82 @@ public final class SlotEconomics {
     }
 
     /**
+     * The §24 Abs. 3 EEG kWp-share blend across confirmed PV units (S4,
+     * vp-mastr-mehrere-einheiten-konzept §5.2): {@code Wert = Σ (Anteil_i nach
+     * kWp × Wert der Einheit_i)}. A {@code null}/empty {@code units}, a
+     * merchant ({@code netzladenErlaubt}) or non-{@code eigenverbrauch} site,
+     * or a non-positive total kWp all fall back to
+     * {@link #exportValueCtKwh(Double, Instant)} UNCHANGED - the legacy
+     * single-asset path, byte-identical for a site whose one confirmed unit
+     * carries the SAME commissioning date/kWp as {@code site.pvCommissionedOn()}
+     * /{@code site.pvCapacityKwp()} (its share is exactly 1.0, and
+     * {@code 1.0 * x == x} in IEEE754 - every DB-backed caller feeds that
+     * invariant, since {@code asset.pv_capacity_kwp} is kept as Σ
+     * {@code register_einheit.leistung_kwp}, S1's {@code syncAssetPvSum}).
+     *
+     * <p>A customer-STATED rate ({@link SiteEconomics#einspeiseverguetungCtKwh})
+     * still applies FLAT across every unit (report §5.2: "gilt für alle
+     * Einheiten") - only its §51a suspension is evaluated per unit, from each
+     * unit's own kWp/date (falling back to the site's
+     * {@code inbetriebnahmeAbSolarspitzengesetz} answer for a unit without
+     * one, exactly like the legacy branch). Otherwise each unit prices from
+     * its OWN commissioning date and OWN kWp (tranche bands evaluated PER
+     * UNIT - the § 24 Abs. 1 twelve-month pooling across siblings is a
+     * documented, deliberate S4 simplification, see the PR body), floating at
+     * bare spot once its OWN 20-year remuneration has ended or while its
+     * commissioning date is unknown (report §5.2 Lücken). Mirrors pricing.py
+     * {@code _feste_verguetung_values_per_unit}; the Python twin is the
+     * authority. The SQL twin is {@link #exportValueCtSql}.
+     */
+    public Double exportValueCtKwh(List<UnitPv> units, Double spotEurMwh, Instant slotStart) {
+        if (units == null || units.isEmpty() || site.netzladenErlaubt()
+                || !"eigenverbrauch".equals(site.plantKind())) {
+            return exportValueCtKwh(spotEurMwh, slotStart);
+        }
+        double totalKwp = 0.0;
+        for (UnitPv unit : units) {
+            totalKwp += unit.kwp();
+        }
+        if (totalKwp <= 0.0) {
+            return exportValueCtKwh(spotEurMwh, slotStart);
+        }
+        Double angegeben = site.einspeiseverguetungCtKwh();
+        double sum = 0.0;
+        for (UnitPv unit : units) {
+            Double unitValue;
+            if (angegeben != null) {
+                unitValue = suspendedToZero(angegeben, unit, spotEurMwh);
+            } else if (unit.commissionedOn() == null
+                    || EegRates.remunerationExpired(unit.commissionedOn(), slotStart)) {
+                unitValue = spotCt(spotEurMwh);
+            } else {
+                double rate = eegRates.festeVerguetungCtPerKwh(unit.commissionedOn(), unit.kwp());
+                unitValue = suspendedToZero(rate, unit, spotEurMwh);
+            }
+            if (unitValue == null) {
+                return null; // §51a needs the spot sign - unknowable, like the single-unit path
+            }
+            sum += (unit.kwp() / totalKwp) * unitValue;
+        }
+        return sum;
+    }
+
+    /** {@code rate}, or 0 at negative spot, or {@code null} if unknowable - §51a
+     * evaluated for ONE unit (its own kWp/date, falling back to the site's
+     * answer without a date), the per-unit twin of the inline check in
+     * {@link #exportValueCtKwh(Double, Instant)}. */
+    private Double suspendedToZero(double rate, UnitPv unit, Double spotEurMwh) {
+        if (!solarspitzengesetzGilt(unit.commissionedOn(),
+                site.inbetriebnahmeAbSolarspitzengesetz(), unit.kwp())) {
+            return rate;
+        }
+        if (spotEurMwh == null) {
+            return null;
+        }
+        return spotEurMwh >= 0 ? rate : 0.0;
+    }
+
+    /**
      * Whether §51a EEG (Solarspitzengesetz: no remuneration in negative-price
      * slots) applies: by the commissioning date when it is known - always,
      * even when an older answer is still stored - else by the customer's
@@ -573,10 +659,30 @@ public final class SlotEconomics {
      * date and past the 20-year end, while §51a stays on the commissioning
      * date - or, without one, on {@code s.inbetriebnahme_ab_solarspitzengesetz}
      * (the shared vectors of {@code einspeiseverguetung-vectors.json}).
+     *
+     * <p><b>S4 (vp-mastr-mehrere-einheiten-konzept §5.2).</b> When the site is
+     * {@code eigenverbrauch} and may not grid-charge, has no customer-stated
+     * rate, has AT LEAST ONE confirmed PV {@code register_einheit}, and EVERY
+     * confirmed PV unit carries a known {@code leistung_kwp} (the Lücken rule
+     * - one incomplete unit falls the WHOLE site back to the legacy
+     * {@code pv}-row formula below, never a guessed split), the fixed value is
+     * the §24 Abs. 3 EEG kWp-share blend over those units instead: each unit
+     * prices from its OWN {@code inbetriebnahme}/{@code leistung_kwp}
+     * (tranche bands per unit, the twelve-month pooling across siblings is a
+     * documented S4 simplification), floating at bare spot once its OWN
+     * 20-year end has passed or while its OWN date is unknown - a customer-
+     * stated rate still applies flat across every unit, only its §51a
+     * suspension staying per unit. Mirrors
+     * {@link #exportValueCtKwh(List, Double, Instant)} /
+     * pricing.py {@code _feste_verguetung_values_per_unit} byte for byte; a
+     * site with exactly one confirmed, complete unit reduces to the legacy
+     * formula below EXACTLY (its NUMERIC share is {@code x / x = 1}, exact,
+     * never a float rounding).
      */
     public static String exportValueCtSql(String spotEurMwhExpr, String slotStartExpr,
             EegRates eegRates) {
         String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
+        String yearExpr = "EXTRACT(YEAR FROM (" + slotStartExpr + " AT TIME ZONE 'Europe/Berlin'))";
         String rate = "COALESCE(s.einspeiseverguetung_ct_kwh, "
                 + eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp") + ")";
         // The DV premium exactly as the earnings' PREMIUM_ELIGIBLE /
@@ -606,10 +712,49 @@ public final class SlotEconomics {
                 + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN " + rate
                 + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
                 + " ELSE " + rate + " END)";
-        return "(CASE WHEN " + eegFixedAppliesSql("EXTRACT(YEAR FROM ("
-                + slotStartExpr + " AT TIME ZONE 'Europe/Berlin'))")
-                + " THEN " + s51aAware
-                + " ELSE " + spotCt + " + " + premiumCt + " END)";
+        String legacyValue = "(CASE WHEN " + eegFixedAppliesSql(yearExpr)
+                + " THEN " + s51aAware + " ELSE " + spotCt + " + " + premiumCt + " END)";
+
+        // S4 multi-unit blend - see the Javadoc above. Only ever substituted
+        // for the eigenverbrauch/no-netzladen fixed branch, never for DV or
+        // merchant mode (those keep legacyValue's ELSE untouched).
+        String perUnitRate = eegRates.festeVerguetungCtSql("re.inbetriebnahme", "re.leistung_kwp");
+        String perUnitS51a = "(CASE WHEN (re.leistung_kwp >= "
+                + EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP
+                + " AND re.inbetriebnahme >= DATE '" + EegRates.SOLARSPITZENGESETZ_CUTOFF + "')"
+                + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN " + perUnitRate
+                + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
+                + " ELSE " + perUnitRate + " END)";
+        // A customer-stated rate is flat across every unit (report §5.2); only
+        // §51a's suspension still reads the unit's own date/kWp.
+        String perUnitAngegeben = "(CASE WHEN (re.leistung_kwp >= "
+                + EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP
+                + " AND re.inbetriebnahme >= DATE '" + EegRates.SOLARSPITZENGESETZ_CUTOFF + "')"
+                + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN s.einspeiseverguetung_ct_kwh"
+                + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
+                + " ELSE s.einspeiseverguetung_ct_kwh END)";
+        String perUnitValue = "(CASE WHEN s.einspeiseverguetung_ct_kwh IS NOT NULL THEN " + perUnitAngegeben
+                + " WHEN re.inbetriebnahme IS NULL OR " + yearExpr
+                + " > EXTRACT(YEAR FROM re.inbetriebnahme) + 20 THEN " + spotCt
+                + " ELSE " + perUnitS51a + " END)";
+        // SUM() silently skips NULL rows - wrong here, since one unit's
+        // unknowable §51a share (NULL spot) must make the WHOLE blend
+        // unknowable (the null-vs-zero discipline, like the Java/SQL single-
+        // unit twins), not quietly drop that unit's weight. bool_or(v IS
+        // NULL) catches it before SUM ever runs.
+        String multiUnitBlend = "(SELECT CASE WHEN bool_or(q.v IS NULL) THEN NULL ELSE SUM(q.w * q.v) END"
+                + " FROM (SELECT (re.leistung_kwp / total.kwp) AS w, " + perUnitValue + " AS v"
+                + "       FROM register_einheit re, (SELECT SUM(leistung_kwp) AS kwp FROM register_einheit"
+                + "         WHERE site_id = s.id AND art = 'pv' AND bestaetigt_am IS NOT NULL) total"
+                + "       WHERE re.site_id = s.id AND re.art = 'pv' AND re.bestaetigt_am IS NOT NULL) q)";
+        String readyMultiUnit = "(EXISTS (SELECT 1 FROM register_einheit re0 WHERE re0.site_id = s.id"
+                + "   AND re0.art = 'pv' AND re0.bestaetigt_am IS NOT NULL)"
+                + " AND NOT EXISTS (SELECT 1 FROM register_einheit re1 WHERE re1.site_id = s.id"
+                + "   AND re1.art = 'pv' AND re1.bestaetigt_am IS NOT NULL AND re1.leistung_kwp IS NULL))";
+
+        return "(CASE WHEN (s.plant_kind = 'eigenverbrauch' AND NOT s.netzladen_erlaubt) AND "
+                + readyMultiUnit + " THEN " + multiUnitBlend
+                + " ELSE " + legacyValue + " END)";
     }
 
     /**

@@ -122,6 +122,12 @@ class SiteRow:
     #: MaStR "Anlage verknüpfen" step). None = fall back to the observed-peak
     #: capacity estimate below.
     plant: PlantSpec | None = None
+    #: S4 (vp-mastr-mehrere-einheiten-konzept §5.2): one PlantSpec per roof
+    #: face across every CONFIRMED PV register_einheit of the site ("Prognose
+    #: je Fläche, Leistung addiert") - an empty tuple (the default) falls
+    #: `collect_site` back to the single `plant` above, byte-identically
+    #: (see :func:`load_pv_flaechen`).
+    plants: tuple[PlantSpec, ...] = ()
 
 
 @dataclass
@@ -180,6 +186,9 @@ def load_sites(conn) -> list[SiteRow]:
             """
         )
         rows = cur.fetchall()
+    # S4: the site's confirmed PV register_einheit faces, if any (an empty
+    # entry falls `collect_site` back to the single `plant` below).
+    flaechen = load_pv_flaechen(conn)
     sites = []
     for tenant_id, site_id, lat, lon, kwp, azimuth, tilt in rows:
         location = (
@@ -196,8 +205,99 @@ def load_sites(conn) -> list[SiteRow]:
             if kwp is not None
             else None
         )
-        sites.append(SiteRow(str(tenant_id), str(site_id), location, plant))
+        sites.append(
+            SiteRow(
+                str(tenant_id),
+                str(site_id),
+                location,
+                plant,
+                tuple(flaechen.get(str(site_id), [])),
+            )
+        )
     return sites
+
+
+def load_pv_flaechen(conn) -> dict[str, list[PlantSpec]]:
+    """``{site_id: [PlantSpec, ...]}`` - one per roof face across every
+    CONFIRMED PV ``register_einheit`` of the site (S4, vp-mastr-mehrere-
+    einheiten-konzept §5.2: "Prognose je Fläche, Leistung addiert").
+
+    A unit without any confirmed ``einheit_flaeche`` row still contributes
+    ONE PlantSpec at its full ``leistung_kwp`` with the DACH defaults (south,
+    30°) - the same single-asset fallback :func:`load_sites` already applies,
+    simply per unit instead of per site. This module only ever reads already
+    degree-converted columns, never the register's raw catalog words (same as
+    :func:`load_sites` today), so a unit's RAW register direction is NOT read
+    here while no Fläche is confirmed yet - a documented S4 simplification
+    (report's "Einheit ohne Fläche: Register-Richtung" collapses into "ohne
+    beides: Süd/30°").
+
+    A site where ANY confirmed PV unit is missing ``leistung_kwp`` is left out
+    of the returned mapping entirely - the report's Lücken rule, mirroring
+    the optimizer's ``load_pv_einheiten``.
+
+    Before the S1 migration (``register_einheit``/``einheit_flaeche`` absent -
+    an older DB snapshot, or a test fixture that only creates the forecast
+    service's own tables), this is "no faces" for every site, exactly like
+    :func:`voltpilot_optimization.inputs.load_pv_einheiten`. The caller's
+    connection is NOT autocommit, so the aborted SELECT is rolled back before
+    returning - otherwise every later query on the SAME connection (``conn``
+    is shared across the whole collection cycle, see :func:`run_cycle`) would
+    fail with "current transaction is aborted".
+    """
+    import psycopg  # noqa: PLC0415 - optional [db] extra
+
+    with conn.cursor() as cur:
+        try:
+            cur.execute(
+                """
+                SELECT re.site_id, re.id, re.leistung_kwp,
+                       ef.richtung_grad, ef.neigung_grad, ef.anteil_kwp
+                FROM register_einheit re
+                LEFT JOIN einheit_flaeche ef ON ef.einheit_id = re.id
+                WHERE re.art = 'pv' AND re.bestaetigt_am IS NOT NULL
+                ORDER BY re.site_id, re.inbetriebnahme NULLS LAST, re.created_at, ef.richtung_grad
+                """
+            )
+            rows = cur.fetchall()
+        except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+            conn.rollback()
+            return {}
+    leistung_by_unit: dict[str, float] = {}
+    flaechen_by_unit: dict[str, list[tuple[float, float, float]]] = {}
+    unit_order: dict[str, list[str]] = {}
+    incomplete_sites: set[str] = set()
+    for site_id, einheit_id, leistung_kwp, richtung, neigung, anteil in rows:
+        site_id, einheit_id = str(site_id), str(einheit_id)
+        if leistung_kwp is None:
+            incomplete_sites.add(site_id)
+            continue
+        if einheit_id not in leistung_by_unit:
+            leistung_by_unit[einheit_id] = float(leistung_kwp)
+            flaechen_by_unit[einheit_id] = []
+            unit_order.setdefault(site_id, []).append(einheit_id)
+        if richtung is not None and neigung is not None and anteil is not None:
+            flaechen_by_unit[einheit_id].append(
+                (float(richtung), float(neigung), float(anteil))
+            )
+    by_site: dict[str, list[PlantSpec]] = {}
+    for site_id, einheit_ids in unit_order.items():
+        if site_id in incomplete_sites:
+            continue
+        plants: list[PlantSpec] = []
+        for einheit_id in einheit_ids:
+            faces = flaechen_by_unit[einheit_id]
+            if faces:
+                for richtung, neigung, anteil in faces:
+                    plants.append(
+                        PlantSpec(
+                            capacity_kwp=anteil, azimuth_deg=richtung, tilt_deg=neigung
+                        )
+                    )
+            else:
+                plants.append(PlantSpec(capacity_kwp=leistung_by_unit[einheit_id]))
+        by_site[site_id] = plants
+    return by_site
 
 
 def _telemetry_history(
@@ -417,6 +517,7 @@ def collect_site(
         site_id=site.site_id,
         location=location,
         plant=plant,
+        plants=site.plants,
     )
     # N1 fix (Captain 11.11.2026: "Behebe den Lesefehler"): the ACTIVE model
     # now gets the correctly-read beam-normal DNI (``direct_normal_irradiance``,

@@ -69,6 +69,24 @@ class ViertelstundeRegelnTest {
         assertThat(ViertelstundeRegeln.zustellart(List.of())).isNull();
     }
 
+    /**
+     * Prod-Befund 12.11.2026: {@code zustellartTag} bekommt schon VERDICHTETE Zustellarten der
+     * Viertelstunden, nicht Rohwerte — ein Element kann selbst {@code gemischt} sein und muss BEIDE
+     * Seiten zählen, sonst schreibt ein Tag mit einer gemischten und einer rein direkten
+     * Viertelstunde fälschlich {@code direkt}, obwohl er nachgelieferte Werte enthält
+     * ({@code messreihe_tag_zustellart_chk}).
+     */
+    @Test
+    void dieTagesZustellartZaehltGemischtAlsBeideSeiten() {
+        assertThat(ViertelstundeRegeln.zustellartTag(List.of("gemischt"))).isEqualTo("gemischt");
+        assertThat(ViertelstundeRegeln.zustellartTag(List.of("gemischt", "direkt"))).isEqualTo("gemischt");
+        assertThat(ViertelstundeRegeln.zustellartTag(List.of("gemischt", "nachgeliefert"))).isEqualTo("gemischt");
+        assertThat(ViertelstundeRegeln.zustellartTag(List.of("direkt", "direkt"))).isEqualTo("direkt");
+        assertThat(ViertelstundeRegeln.zustellartTag(List.of("nachgeliefert"))).isEqualTo("nachgeliefert");
+        assertThat(ViertelstundeRegeln.zustellartTag(List.of("direkt", "nachgeliefert"))).isEqualTo("gemischt");
+        assertThat(ViertelstundeRegeln.zustellartTag(List.of())).isNull();
+    }
+
     // ------------------------------------------------------------------ AP-08 IP-2
 
     /**

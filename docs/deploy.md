@@ -70,12 +70,27 @@ Auf einer reinen Daten-VM ausschließlich die benötigten Datendienste verwalten
 
 ## Kundenbereich löschen (Vertragsende)
 
-**Regel BT5 (UEMS AP-20, gilt ab sofort, auch auf `main`):** kein Löschen eines Kundenbereichs ohne schriftlichen Auftrag des Kunden und angebotene Mitnahme seiner Daten. Den Auftrag legt der Betreiber zu den Vertragsunterlagen; keine Route prüft ihn — er ist die Hand des Betreibers. Es wird nicht anonymisiert: nach Vertragsende, Mitnahme und Frist wird gelöscht (E10 = A, BT4).
+**Regel (UEMS AP-20, seit vp-kunde-sofort-loeschen-mit-daten, Captain 12.11.2026):** der Plattform-Admin löscht
+jeden Kundenbereich sofort endgültig - mit oder ohne Datenbestand, aktiv oder beendet, ohne vorheriges
+Vertragsende und ohne Wartefrist. Es wird nicht anonymisiert: der Gesamtabzug bleibt im Löschdialog ein Angebot
+an den Kundenadministrator, keine Pflicht und keine Bedingung fürs Löschen (E10 = A, BT4).
 
-1. **Beenden:** `POST /api/v1/admin/tenants/{id}/beenden` mit Auftrag, Begründung, Name eintippen und Frist in Tagen (Startwert 90; die geltende steht im Vertrag). Danach schreibt niemand mehr in den Bereich, nur der Kundenadministrator liest. Innerhalb der Frist nimmt `…/wiederaufnehmen` ihn zurück — derselbe Bereich, kein neuer.
-2. **Mitnahme anbieten:** der Kundenadministrator lädt den Gesamtabzug (`GET /api/v1/unternehmen/abzug`; im Portal im Hinweis „beendet“ und unter „Unternehmen › Einstellungen“). Jeder abgeschlossene Abruf steht mit Prüfsumme im Protokoll `kundenbereich_abzug`.
-3. **Nach der Frist löschen:** `POST /api/v1/admin/tenants/{id}/delete` (Name eintippen). Vorher antwortet die Route `409 kundenbereich_nicht_beendet` bzw. `409 frist_laeuft` mit `loeschung_fruehestens` — bevor ein Konto gesperrt wird.
-4. **Der Löschnachweis bleibt:** `mandant_loeschnachweis`, Kennzeichen `LN-JJJJ-nnnn`, auch im Bericht der Route unter `loeschnachweis`: Kennung des Bereichs, beendet am, Frist, gelöscht am und von wem (Betrieb), Zeilen je Tabelle, `verblieben` und die Prüfsumme des letzten Gesamtabzugs — ohne Namen, Konten oder Auftragstexte des Kunden. Niemand ändert oder löscht ihn; nur die Admin-Rolle der Datenbank liest ihn.
+1. **Beenden (eigene, unabhängige Funktion):** `POST /api/v1/admin/tenants/{id}/beenden` mit Auftrag, Begründung,
+   Name eintippen und Frist in Tagen (Startwert 90; die geltende steht im Vertrag). Danach schreibt niemand mehr
+   in den Bereich, nur der Kundenadministrator liest. `…/wiederaufnehmen` nimmt ihn jederzeit zurück - derselbe
+   Bereich, kein neuer. Diese Frist sperrt das Löschen nicht (mehr); sie ist reine Vertragsdokumentation.
+2. **Mitnahme anbieten:** der Kundenadministrator kann jederzeit den Gesamtabzug laden (`GET
+   /api/v1/unternehmen/abzug`; im Portal im Hinweis „beendet“ und unter „Unternehmen › Einstellungen“, und als
+   Angebot im Löschdialog). Jeder abgeschlossene Abruf steht mit Prüfsumme im Protokoll `kundenbereich_abzug`.
+3. **Sofort löschen:** `POST /api/v1/admin/tenants/{id}/delete` (Name eintippen) löscht sofort, unabhängig vom
+   Zustand des Vertrags oder vom Datenbestand. Nie gemeldete Boxen werden dabei einzeln über „Vom Kunden lösen"
+   freigegeben (Kennung sofort wieder anmeldbar); eine Box, die doch gemeldet hat, geht stattdessen über die
+   Kaskade - das lehnt die Löschung selbst nicht ab.
+4. **Der Löschnachweis bleibt:** `mandant_loeschnachweis`, Kennzeichen `LN-JJJJ-nnnn`, auch im Bericht der Route
+   unter `loeschnachweis`: Kennung des Bereichs, Anlass (`sofort_keine_daten` | `sofort_mit_daten`; `beendet_am`
+   nur, wenn der Vertrag zum Löschzeitpunkt beendet war - sonst leer, wie Frist und Fristtag), gelöscht am und von
+   wem (Betrieb), Zeilen je Tabelle, `verblieben` und die Prüfsumme des letzten Gesamtabzugs - ohne Namen, Konten
+   oder Auftragstexte des Kunden. Niemand ändert oder löscht ihn; nur die Admin-Rolle der Datenbank liest ihn.
 
 - **`verblieben` ist leer:** die append-only-Protokolle ohne Fremdschlüssel (`ort_aenderung`, `messstelle_aenderung`, `data_source_aenderung`, `component_change_event`, `device_site_assignment`) tragen Firmen- und Personennamen und gehen im Löschzug nach der Mandantenzeile mit. Ihr Trigger lässt ein Löschen nur zu, wenn die Mandantenzeile nicht mehr existiert — während der Vertragslaufzeit, auch „beendet“, ändert oder löscht sie niemand (`V20260925234500`). Alles Übrige mit `tenant_id` ohne Fremdschlüssel (`telemetry_v2` und ihre Rollups, Status-, Befehls- und Plantabellen der Boxen, Fluss-Quittungen, Ausgangslisten — einige mit `actor_name`) löscht der letzte Schritt des Löschzugs über den **Katalog** (`TenantRepository.KATALOG_MIT_MANDANT`, keine Handliste): jede Tabelle, die die Admin-Rolle löschen darf, bekommt ein DELETE nach Kennung — eine neue Tabelle geht also ohne Pflege mit. Nennt ein Nachweis trotzdem eine Tabelle, ist das ein Befund (kein Löschrecht der Admin-Rolle oder ein append-only-Trigger; einen scheiternden Trigger nennt zusätzlich das Log „Löschzug …: nicht löschbar“). Zeilen früher gelöschter Mandanten (vor diesen Regeln, in den Protokollen und in den Tabellen ohne Fremdschlüssel) liegen noch; das ist ein eigener, bewusster Handgriff des Betreibers, kein Teil des Löschwegs und keine Migration — finden lassen sie sich je Katalog-Tabelle mit `WHERE tenant_id IS NOT NULL AND tenant_id NOT IN (SELECT id FROM tenant)`.
 - **Sicherungen** ([Backup-Runbook](backup-restore.md)) enthalten den Bereich weiter, bis sie nach ihrer eigenen Aufbewahrung wegfallen; der Löschweg erreicht sie nicht.

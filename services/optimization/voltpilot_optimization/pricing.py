@@ -163,6 +163,22 @@ DEFAULT_SUPPLY_COMPONENTS = SupplyPriceComponents(
 
 
 @dataclass(frozen=True)
+class PvEinheit:
+    """One CONFIRMED PV ``register_einheit`` (S4, vp-mastr-mehrere-einheiten-
+    konzept §5.2): its own commissioning date and installed capacity, feeding
+    the §24 Abs. 3 EEG kWp-share blend in :func:`_feste_verguetung_values`.
+    ``commissioned_on`` may be ``None`` (a Lücke: that unit's share prices at
+    bare spot, exactly like a plant without a date); ``capacity_kwp`` is never
+    ``None`` here - a caller with an incomplete unit passes an EMPTY tuple on
+    ``SiteTariff.pv_einheiten`` instead, falling the whole site back to the
+    legacy aggregate computation (the report's "fehlt einer Einheit die
+    Leistung, rechnet die ganze Anlage wie heute" rule)."""
+
+    capacity_kwp: float
+    commissioned_on: date | None = None
+
+
+@dataclass(frozen=True)
 class SiteTariff:
     """The pricing-relevant site master data (all customer-maintained; every
     field's absence degrades that side of the pricing to bare spot).
@@ -182,6 +198,21 @@ class SiteTariff:
     legacy import model, byte-identically). The defaults reproduce today's
     symmetric-spot model exactly, so an un-wired caller can never invent a
     price.
+
+    ``pv_einheiten`` (S4) lists the site's CONFIRMED PV ``register_einheit``
+    rows (Abschnitt 5.1) - an empty tuple (the default) is the legacy single-
+    plant path above, byte-identically; one or more entries switch
+    ``_feste_verguetung_values`` to the per-unit §24 Abs. 3 EEG blend (see its
+    docstring). A single entry reduces to the legacy formula EXACTLY (its
+    share is 1.0, and ``1.0 * x == x`` in IEEE754) PROVIDED the caller fed the
+    same commissioning date/capacity on both ``pv_einheiten[0]`` and the
+    legacy fields - which every DB-backed caller does, since
+    ``asset.pv_capacity_kwp`` is kept as Σ ``register_einheit.leistung_kwp``
+    (S1's ``syncAssetPvSum``). ``inbetriebnahme_ab_solarspitzengesetz`` is
+    NOT consulted in the per-unit branch (it is a single, site-level answer
+    to a question the multi-unit flow never asks per unit); a unit without
+    its own commissioning date simply floats at spot, matching the Lücken
+    rule above.
     """
 
     plant_kind: str = PLANT_KIND_EIGENVERBRAUCH
@@ -193,6 +224,7 @@ class SiteTariff:
     einspeiseverguetung_ct_kwh: float | None = None
     inbetriebnahme_ab_solarspitzengesetz: bool | None = None
     supply_price: SupplyPriceComponents | None = None
+    pv_einheiten: tuple[PvEinheit, ...] = ()
 
 
 def structured_import_prices(
@@ -558,7 +590,15 @@ def _feste_verguetung_values(
     commissioning date - and, while that is unknown, on the customer's answer
     (:func:`_solarspitzengesetz_gilt`). The shared vectors
     ``docs/contracts/einspeiseverguetung-vectors.json`` pin this against the
-    api's SlotEconomics (Java + SQL) twins."""
+    api's SlotEconomics (Java + SQL) twins.
+
+    S4 (vp-mastr-mehrere-einheiten-konzept §5.2): with ``tariff.pv_einheiten``
+    populated, the whole function below is bypassed for the §24 Abs. 3 EEG
+    per-unit blend of :func:`_feste_verguetung_values_per_unit` - kept as a
+    SEPARATE function (rather than threading unit loops through this one) so
+    the single-plant path stays textually, provably untouched."""
+    if tariff.pv_einheiten:
+        return _feste_verguetung_values_per_unit(tariff, spot, slot_starts, schedule, ctx)
     if tariff.einspeiseverguetung_ct_kwh is not None:
         logger.info(
             "pricing.einspeiseverguetung_angegeben",
@@ -638,6 +678,109 @@ def _feste_verguetung_values(
         if is_expired
         else (0.0 if suspend_negative and price < 0 else rate_eur_mwh)
         for price, is_expired in zip(spot, expired)
+    ]
+
+
+def _feste_verguetung_values_per_unit(
+    tariff: SiteTariff,
+    spot: list[float],
+    slot_starts: list[datetime],
+    schedule: tuple[EegRateBand, ...] | None,
+    ctx: dict,
+) -> list[float]:
+    """The §24 Abs. 3 EEG kWp-share blend across ``tariff.pv_einheiten`` (S4,
+    vp-mastr-mehrere-einheiten-konzept §5.2): ``Wert = Σ (Anteil_i nach kWp ×
+    Wert der Einheit_i)``.
+
+    ``Wert der Einheit_i``: the customer-STATED rate when given (flat across
+    EVERY unit, exactly like the legacy branch above - only its §51a
+    suspension is evaluated per unit, from the unit's OWN commissioning date/
+    capacity, falling back to the site's ``inbetriebnahme_ab_solarspitzengesetz``
+    answer for a unit without one, exactly like the legacy single-plant
+    case); otherwise the EEG schedule blended from the unit's OWN
+    commissioning date and OWN capacity - tranche bands (10/40/100 kWp) are
+    evaluated PER UNIT, not pooled across siblings commissioned within the
+    same 12 months (§ 24 Abs. 1 EEG's grouping rule for the banding SIZE is a
+    documented, deliberate S4 simplification: the report's worked examples
+    never have units that close together, and pooling needs a build-order
+    decision of its own - see the PR body); the Börsenpreis once a unit's
+    20-year remuneration has ended, or while its commissioning date is
+    unknown (the report's Lücken rule - that unit's share simply floats at
+    spot, like a plant without a date).
+
+    A SINGLE confirmed unit reproduces the legacy formula above EXACTLY: its
+    share is ``capacity_kwp / capacity_kwp == 1.0`` (IEEE754, always exact),
+    and every DB-backed caller feeds ``pv_einheiten[0]`` the same date/
+    capacity as the legacy ``tariff.commissioned_on``/``pv_capacity_kwp``
+    fields (S1's ``syncAssetPvSum`` keeps ``asset.pv_capacity_kwp`` as Σ
+    ``register_einheit.leistung_kwp``) - so ``1.0 * wert == wert`` bit for
+    bit.
+    """
+    units = tariff.pv_einheiten
+    total_kwp = sum(u.capacity_kwp for u in units)
+    if total_kwp <= 0.0:
+        # Defensive only: callers never build pv_einheiten with a non-positive
+        # total (every confirmed PV register_einheit carries capacity_kwp >
+        # 0) - never divide by zero regardless.
+        return list(spot)
+    angegeben = tariff.einspeiseverguetung_ct_kwh
+    rows: list[list[float]] = []
+    for unit in units:
+        if angegeben is not None:
+            rate_eur_mwh = angegeben * CT_PER_KWH_TO_EUR_PER_MWH
+            suspend_negative = _solarspitzengesetz_gilt(
+                unit.commissioned_on,
+                tariff.inbetriebnahme_ab_solarspitzengesetz,
+                unit.capacity_kwp,
+            )
+            rows.append(
+                [0.0 if suspend_negative and price < 0 else rate_eur_mwh for price in spot]
+            )
+            continue
+        if unit.commissioned_on is None:
+            rows.append(list(spot))
+            continue
+        expired = [
+            _remuneration_expired(unit.commissioned_on, start) for start in slot_starts
+        ]
+        rate_eur_mwh = (
+            feste_verguetung_ct_per_kwh(unit.commissioned_on, unit.capacity_kwp, schedule)
+            * CT_PER_KWH_TO_EUR_PER_MWH
+        )
+        suspend_negative = _solarspitzengesetz_gilt(
+            unit.commissioned_on,
+            tariff.inbetriebnahme_ab_solarspitzengesetz,
+            unit.capacity_kwp,
+        )
+        rows.append(
+            [
+                price if is_expired else (0.0 if suspend_negative and price < 0 else rate_eur_mwh)
+                for price, is_expired in zip(spot, expired)
+            ]
+        )
+    if any(
+        unit.commissioned_on is not None and _remuneration_expired(unit.commissioned_on, start)
+        for unit in units
+        for start in slot_starts
+        if angegeben is None
+    ):
+        logger.info(
+            "pricing.feste_verguetung_expired_per_unit",
+            extra={
+                "context": {
+                    **ctx,
+                    "reason": (
+                        "at least one confirmed PV unit's 20-year EEG "
+                        "remuneration has ended within this horizon - its "
+                        "share degrades to bare spot from the expiry "
+                        "boundary (Marktwert-adjacent)"
+                    ),
+                }
+            },
+        )
+    return [
+        sum((unit.capacity_kwp / total_kwp) * row[i] for unit, row in zip(units, rows))
+        for i in range(len(spot))
     ]
 
 

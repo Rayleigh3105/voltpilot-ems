@@ -104,8 +104,8 @@ def clear_sky_ceiling_kw(
     below the horizon the answer is exactly ``0.0``: the clear-sky envelope of a
     set sun is zero, and no headroom multiplies it back up.
     """
-    plant = config.plant
-    if plant is None or plant.capacity_kwp <= 0.0:
+    plants = [p for p in config.effective_plants if p.capacity_kwp > 0.0]
+    if not plants:
         return None
     factor = ceiling_headroom() if headroom is None else headroom
 
@@ -118,21 +118,27 @@ def clear_sky_ceiling_kw(
     # and give the sky whatever GHI it does not account for.
     dni = clear_sky_dni(position)
     dhi = max(0.0, ghi - dni * position.cos_zenith)
-    poa = poa_irradiance(
-        position,
-        ghi,
-        tilt_deg=plant.tilt_deg,
-        surface_azimuth_deg=plant.azimuth_deg,
-        albedo=plant.albedo,
-        diffuse_fraction=0.0,  # unused: dni/dhi are given
-        dni_w_m2=dni,
-        dhi_w_m2=dhi,
-    )
-    envelope = max(poa, ghi)  # never tighter than a horizontal plane
+    # S4: one envelope PER FACE (each has its own orientation), capped at its
+    # own capacity, then summed - a single-face site reproduces the formula
+    # below exactly (one term, nothing to blend).
+    total_kw = 0.0
+    for plant in plants:
+        poa = poa_irradiance(
+            position,
+            ghi,
+            tilt_deg=plant.tilt_deg,
+            surface_azimuth_deg=plant.azimuth_deg,
+            albedo=plant.albedo,
+            diffuse_fraction=0.0,  # unused: dni/dhi are given
+            dni_w_m2=dni,
+            dhi_w_m2=dhi,
+        )
+        envelope = max(poa, ghi)  # never tighter than a horizontal plane
 
-    kw = plant.capacity_kwp * (envelope / STC_IRRADIANCE_W_M2)
-    kw *= 1.0 - plant.system_loss_fraction
-    return min(kw * factor, plant.capacity_kwp)
+        kw = plant.capacity_kwp * (envelope / STC_IRRADIANCE_W_M2)
+        kw *= 1.0 - plant.system_loss_fraction
+        total_kw += min(kw * factor, plant.capacity_kwp)
+    return total_kw
 
 
 def apply_clear_sky_ceiling(

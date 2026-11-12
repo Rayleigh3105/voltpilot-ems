@@ -223,4 +223,26 @@ public final class ViertelstundeRegeln {
         }
         return nach ? NACHGELIEFERT : null;
     }
+
+    /**
+     * Die Zustellart des TAGES aus den schon verdichteten Zustellarten seiner Viertelstunden — NICHT
+     * aus Rohwerten, darum eine eigene Regel statt {@link #zustellart}: eine Viertelstunde kann
+     * selbst schon {@code gemischt} sein (sie enthielt sowohl einen direkten als auch einen
+     * nachgelieferten Rohwert), und dieses Wort trägt BEIDE Seiten — anders als {@code direkt} oder
+     * {@code nachgeliefert}, die {@link #zustellart} allein erkennt. Ein Tag, dessen einzige
+     * Viertelstunde mit Zustellart {@code gemischt} ist, ist selbst {@code gemischt}, nie {@code
+     * null} — sonst verträgt sich das Ergebnis nicht mit einem {@code n_nachgeliefert} &gt; 0
+     * ({@code messreihe_tag_zustellart_chk}).
+     */
+    public static String zustellartTag(List<String> arten) {
+        boolean direkt = arten.stream().anyMatch(a -> DIREKT.equals(a) || GEMISCHT.equals(a));
+        boolean nach = arten.stream().anyMatch(a -> NACHGELIEFERT.equals(a) || GEMISCHT.equals(a));
+        if (direkt && nach) {
+            return GEMISCHT;
+        }
+        if (direkt) {
+            return DIREKT;
+        }
+        return nach ? NACHGELIEFERT : null;
+    }
 }

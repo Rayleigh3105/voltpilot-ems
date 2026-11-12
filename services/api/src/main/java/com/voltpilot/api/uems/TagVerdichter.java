@@ -536,7 +536,20 @@ public class TagVerdichter {
                 for (int p = 0; p < werte.length; p++) {
                     ps.setObject(p + 1, werte[p]);
                 }
-                int n = ps.executeUpdate();
+                int n;
+                try {
+                    n = ps.executeUpdate();
+                } catch (SQLException e) {
+                    // Eine schlechte Zeile darf nicht als anonymer DB-Fehler im Log stehen: Mandant
+                    // und Messreihe gehören dazu, sonst ist sie ohne Produktionszugriff nicht zu
+                    // finden. Der Abbruch selbst (und die sichere Entnahme-Rücknahme) bleiben wie
+                    // sie sind — SQLState und Fehlercode wandern mit, damit Spring weiterhin
+                    // dieselbe Exception-Klasse übersetzt.
+                    throw new SQLException("UEMS Tages-Verdichtung: Mandant " + t.tenant()
+                            + ", Reihe " + t.entity() + "/" + t.kanal() + ", Tag " + t.tag()
+                            + ": " + e.getMessage(),
+                            e.getSQLState(), e.getErrorCode(), e);
+                }
                 geschrieben += n;
                 if (n > 0) {
                     // Ein geschriebener Tag macht seinen MONAT neu fällig — in DERSELBEN
@@ -728,7 +741,7 @@ public class TagVerdichter {
         z.put("version", 1);
         z.put("n_nachgeliefert", nNachgeliefert);
         z.put("letzte_eingangszeit", ts(letzteEingangszeit));
-        z.put("zustellart", ViertelstundeRegeln.zustellart(zustellarten));
+        z.put("zustellart", ViertelstundeRegeln.zustellartTag(zustellarten));
         z.put("ereignisse", ereignisJson(ereignisse));
         // Zählerstand: aus den Periodenständen (IP-5). Momentanwert/Intervallmenge: aus der Regel
         // von IP-3 — ein Momentanwert trägt NIE eine Menge (M6), seine Energie steht in `energie`.

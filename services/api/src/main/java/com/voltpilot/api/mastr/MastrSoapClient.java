@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +72,7 @@ public class MastrSoapClient implements PlantRegistryClient {
                     "Dieses Nummernpräfix wird noch nicht unterstützt.");
         }
         for (String method : methods) {
-            Map<String, String> fields = call(method, unitNumber);
+            Map<String, String> fields = call(method, "einheitMastrNummer", unitNumber);
             if (fields != null) {
                 return method.equals("GetEinheitStromSpeicher")
                         ? mapStorage(unitNumber, fields)
@@ -83,11 +84,58 @@ public class MastrSoapClient implements PlantRegistryClient {
                         + "Bitte prüfen Sie die Nummer in Ihrer Registrierungsbestätigung.");
     }
 
+    /**
+     * S2 (Lokations-Suche, Abschnitt 5.3): every unit sharing the given
+     * Lokation, via {@code GetLokationStromErzeuger} (returns only the
+     * connected unit numbers, {@code VerknuepfteEinheiten}) then one detail
+     * fetch per unit ({@link #fetchUnit}) - the webservice has no "give me
+     * everything at once" call. Includes the unit the customer already
+     * resolved (it IS connected to its own Lokation); the caller dedupes.
+     */
+    @Override
+    public List<MastrUnit> fetchUnitsAtLocation(String locationNumber) throws RegistryLookupException {
+        String xml = rawCall("GetLokationStromErzeuger", "lokationMastrNummer", locationNumber);
+        if (xml == null) {
+            return List.of();
+        }
+        // Guard 1: the response must itself echo the requested Lokation (the
+        // top-level, singular "MastrNummer" field - NOT the repeated
+        // per-unit "MaStRNummer" below, different casing by design, WSDL
+        // GetLokationErzeugerVerbraucherBasisAntwort).
+        String echoedLocation = parseAllFields(xml).get("MastrNummer");
+        if (!locationNumber.equals(echoedLocation)) {
+            log.warn("mastr.soap.location_mismatch expected={} echo={}", locationNumber, echoedLocation);
+            throw unavailable(null);
+        }
+        List<String> unitNumbers = parseRepeatedField(xml, "MaStRNummer");
+        // Guard 2: a real Lokation never carries more units than this.
+        if (unitNumbers.size() > MastrJsonClient.MAX_UNITS_PER_LOCATION) {
+            log.warn("mastr.soap.location_too_many count={} lokation={}", unitNumbers.size(), locationNumber);
+            throw unavailable(null);
+        }
+        List<MastrUnit> units = new ArrayList<>();
+        for (String unitNumber : unitNumbers) {
+            units.add(fetchUnit(unitNumber));
+        }
+        return List.copyOf(units);
+    }
+
     // ---- SOAP plumbing -------------------------------------------------------
 
     /** Exact envelope shape the WCF endpoint accepts (see class doc). */
     static String buildEnvelope(String method, String apiKey, String marktakteurNummer,
             String einheitMastrNummer) {
+        return buildEnvelope(method, apiKey, marktakteurNummer, "einheitMastrNummer", einheitMastrNummer);
+    }
+
+    /**
+     * Same envelope shape, generalized over the ONE request-specific
+     * parameter: {@code einheitMastrNummer} for the per-unit calls,
+     * {@code lokationMastrNummer} for {@code GetLokationStromErzeuger}
+     * (mastrbasetypes.xsd {@code GetLokationErzeugerVerbraucherBasisParameter}).
+     */
+    static String buildEnvelope(String method, String apiKey, String marktakteurNummer,
+            String paramName, String paramValue) {
         return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
                 + "<soapenv:Envelope xmlns:soapenv=\"" + NS_SOAP + "\" xmlns:anl=\"" + NS_ANLAGE
                 + "\" xmlns:mod=\"" + NS_MODELLE + "\">\n"
@@ -96,8 +144,8 @@ public class MastrSoapClient implements PlantRegistryClient {
                 + "      <mod:apiKey>" + escapeXml(apiKey) + "</mod:apiKey>\n"
                 + "      <mod:marktakteurMastrNummer>" + escapeXml(marktakteurNummer)
                 + "</mod:marktakteurMastrNummer>\n"
-                + "      <mod:einheitMastrNummer>" + escapeXml(einheitMastrNummer)
-                + "</mod:einheitMastrNummer>\n"
+                + "      <mod:" + paramName + ">" + escapeXml(paramValue)
+                + "</mod:" + paramName + ">\n"
                 + "    </anl:" + method + "Request>\n"
                 + "  </soapenv:Body>\n"
                 + "</soapenv:Envelope>";
@@ -120,9 +168,33 @@ public class MastrSoapClient implements PlantRegistryClient {
         return fields;
     }
 
-    /** @return parsed fields, or {@code null} when this METHOD has no data (try the next). */
-    private Map<String, String> call(String method, String unitNumber) throws RegistryLookupException {
-        String body = buildEnvelope(method, apiKey, marktakteurNummer, unitNumber);
+    /**
+     * EVERY occurrence of one tag name, in document order (unlike {@link
+     * #parseAllFields}, which keeps only the first) - needed for a
+     * repeated element like {@code VerknuepfteEinheiten}'s per-unit
+     * {@code MaStRNummer} (S2 location lookup).
+     */
+    static List<String> parseRepeatedField(String xml, String tagName) {
+        List<String> values = new ArrayList<>();
+        Matcher m = FIELD.matcher(xml);
+        while (m.find()) {
+            if (tagName.equals(m.group(1))) {
+                String value = m.group(2).trim();
+                if (!value.isEmpty()) {
+                    values.add(value);
+                }
+            }
+        }
+        return values;
+    }
+
+    /**
+     * @return the raw response body, or {@code null} when this call has no
+     *     data ("KeineDatenVorhanden" / "nicht gefunden" - try the next
+     *     method, or an empty Lokation result).
+     */
+    private String rawCall(String method, String paramName, String paramValue) throws RegistryLookupException {
+        String body = buildEnvelope(method, apiKey, marktakteurNummer, paramName, paramValue);
         MastrHttp.Response res;
         try {
             res = http.post(endpoint, Map.of(
@@ -153,7 +225,13 @@ public class MastrSoapClient implements PlantRegistryClient {
         if (ergebniscode.contains("KeineDatenVorhanden")) {
             return null;
         }
-        return fields;
+        return xml;
+    }
+
+    /** @return parsed fields, or {@code null} when this call has no data (try the next method). */
+    private Map<String, String> call(String method, String paramName, String paramValue) throws RegistryLookupException {
+        String xml = rawCall(method, paramName, paramValue);
+        return xml == null ? null : parseAllFields(xml);
     }
 
     private static RegistryLookupException unavailable(Throwable cause) {
@@ -184,7 +262,8 @@ public class MastrSoapClient implements PlantRegistryClient {
                 f.get("Postleitzahl"),
                 firstNonNull(f.get("Ort"), f.get("Gemeinde")),
                 // Cross-link to a co-located storage unit (SOAP-only field).
-                f.get("SpeicherAmGleichenOrt"));
+                f.get("SpeicherAmGleichenOrt"),
+                f.get("LokationMastrNummer"), f.get("AnlagenbetreiberMastrNummer"));
     }
 
     private MastrUnit mapStorage(String unitNumber, Map<String, String> f) {
@@ -208,7 +287,8 @@ public class MastrSoapClient implements PlantRegistryClient {
                 f.get("Postleitzahl"),
                 firstNonNull(f.get("Ort"), f.get("Gemeinde")),
                 // Cross-link back to the co-registered PV unit (SOAP-only field).
-                f.get("GemeinsamRegistrierteSolareinheitMastrNummer"));
+                f.get("GemeinsamRegistrierteSolareinheitMastrNummer"),
+                f.get("LokationMastrNummer"), f.get("AnlagenbetreiberMastrNummer"));
     }
 
     private static String operatingStatus(Map<String, String> f) {

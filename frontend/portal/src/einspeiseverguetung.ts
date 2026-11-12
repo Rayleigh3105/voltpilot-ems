@@ -55,6 +55,34 @@ export function satzText(ctKwh: number): string {
   return fmtNum(ctKwh, 'ct/kWh', 2);
 }
 
+/**
+ * Eine Einheit im Rechenweg des Mischsatzes (S4, vp-mastr-mehrere-einheiten-
+ * konzept §5.2) - mit dem Anteil, den die Seite aus der Leistung rechnet
+ * (der Server liefert nur die rohen Zahlen, siehe das Modul-Vorwort oben).
+ */
+export interface RechenwegZeile {
+  inbetriebnahme: string | null;
+  leistungKwp: number;
+  satzCtKwh: number;
+  /** Anteil an der Summe aller Einheiten, 0 bis 100. */
+  anteilProzent: number;
+}
+
+/**
+ * Der Rechenweg des Mischsatzes - leer ohne mindestens zwei Einheiten (dann
+ * zeigt die Karte wie bisher den Anlagen-Satz allein, ohne Rechenweg).
+ */
+export function mischsatzRechenweg(s: Einspeiseverguetung): RechenwegZeile[] {
+  if (s.einheiten.length < 2) return [];
+  const summeKwp = s.einheiten.reduce((acc, e) => acc + e.leistungKwp, 0);
+  return s.einheiten.map((e) => ({
+    inbetriebnahme: e.inbetriebnahme,
+    leistungKwp: e.leistungKwp,
+    satzCtKwh: e.satzCtKwh,
+    anteilProzent: summeKwp > 0 ? (e.leistungKwp / summeKwp) * 100 : 0,
+  }));
+}
+
 /** Kann die Karte hier einen eigenen Satz annehmen? Genau dort, wo er auch wirkt. */
 export function angabeMoeglich(zustand: EinspeiseverguetungZustand): boolean {
   return zustand !== 'netzladen' && zustand !== 'direktvermarktung';
@@ -77,7 +105,11 @@ export interface VerguetungZeile {
 export function verguetungZeile(s: Einspeiseverguetung): VerguetungZeile {
   switch (s.zustand) {
     case 'angegeben':
-      return { wert: wirksam(s), sub: 'von Ihnen angegeben', warn: false };
+      return {
+        wert: wirksam(s),
+        sub: s.einheiten.length >= 2 ? `von Ihnen angegeben · Mischsatz aus ${s.einheiten.length} Einheiten` : 'von Ihnen angegeben',
+        warn: false,
+      };
     case 'eeg':
       return { wert: wirksam(s), sub: herleitungHerkunft(s), warn: false };
     case 'eeg_abgelaufen':
@@ -95,8 +127,9 @@ export function verguetungZeile(s: Einspeiseverguetung): VerguetungZeile {
   }
 }
 
-/** „hergeleitet aus EEG, Inbetriebnahme 01.06.2025". */
+/** „hergeleitet aus EEG, Inbetriebnahme 01.06.2025" bzw. „Mischsatz aus 2 Einheiten". */
 function herleitungHerkunft(s: Einspeiseverguetung): string {
+  if (s.einheiten.length >= 2) return `Mischsatz aus ${s.einheiten.length} Einheiten`;
   return s.inbetriebnahme
     ? `hergeleitet aus EEG, Inbetriebnahme ${tagText(s.inbetriebnahme)}`
     : 'hergeleitet aus EEG';
@@ -123,6 +156,11 @@ export function giltJetzt(s: Einspeiseverguetung): GiltJetzt {
  * gilt: so sieht der Kunde, worauf „zurücksetzen" ihn bringt.
  */
 export function herleitungOption(s: Einspeiseverguetung): string {
+  if (s.einheiten.length >= 2) {
+    return s.hergeleitetCtKwh == null
+      ? `Für mindestens eine Ihrer ${s.einheiten.length} Einheiten fehlt das Inbetriebnahmedatum oder ihre Vergütung ist beendet - für diesen Anteil gilt dann der Börsenpreis.`
+      : `${satzText(s.hergeleitetCtKwh)} · Mischsatz aus ${s.einheiten.length} Einheiten, siehe Rechenweg unten.`;
+  }
   if (s.inbetriebnahme == null || s.hergeleitetCtKwh == null) {
     // Der Weg zum Datum („Anlage verknüpfen ›") steht unter der Wahl.
     return 'Ohne Inbetriebnahmedatum keine Herleitung - es gilt der Börsenpreis.';
@@ -143,6 +181,11 @@ export function herleitungOption(s: Einspeiseverguetung): string {
  * die Frage {@link STICHTAG_FRAGE}; null heißt hier: nichts festzustellen.
  */
 export function negativpreisSatz(s: Einspeiseverguetung): string | null {
+  if (s.einheiten.length >= 2) {
+    return s.ohneVerguetungBeiNegativpreis
+      ? 'Bei negativem Börsenpreis gibt es für mindestens eine Ihrer Einheiten keine Vergütung (§ 51a EEG) - das gilt auch für einen eigenen Satz.'
+      : null;
+  }
   if (s.inbetriebnahme == null) return null;
   if (s.ohneVerguetungBeiNegativpreis) {
     return 'Bei negativem Börsenpreis gibt es für Ihre Anlage keine Vergütung (§ 51a EEG) - das gilt auch für einen eigenen Satz.';

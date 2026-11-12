@@ -21,7 +21,10 @@ public record TenantOffboardingReportDto(
         long deletedTelemetryRows,
         List<String> deletedUsers,
         List<String> failedUsers,
-        /** vp-kunde-sofort-loeschen: der Anlass der Löschung ({@code frist_abgelaufen} | {@code sofort_keine_daten}). */
+        /**
+         * vp-kunde-sofort-loeschen-mit-daten: der Anlass der Löschung ({@code sofort_keine_daten} |
+         * {@code sofort_mit_daten}; {@code frist_abgelaufen} nur noch in historischen Datensätzen).
+         */
         String anlass,
         /** Die Kennungen der nie gemeldeten Boxen, die der Sofort-Weg über „Vom Kunden lösen" freigegeben hat. */
         List<String> freigegebeneBoxen,

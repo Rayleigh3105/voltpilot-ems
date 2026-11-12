@@ -1,5 +1,7 @@
 package com.voltpilot.api.mastr;
 
+import java.util.List;
+
 /**
  * Anti-corruption port for plant-registry lookups (the {@code
  * DayAheadPriceSource} pattern): callers depend on this, never on MaStR
@@ -15,6 +17,21 @@ public interface PlantRegistryClient {
      * (e.g. {@code SEE966831669444}).
      */
     MastrUnit fetchUnit(String unitNumber) throws RegistryLookupException;
+
+    /**
+     * All units sharing one Lokation (S2, vp-mastr-mehrere-einheiten-konzept
+     * Abschnitt 5.3) - the key for "one number is enough": the customer's
+     * one typed SEE number finds every unit at the same Netzanschlusspunkt.
+     * Includes the unit the customer already resolved (it IS connected to
+     * its own Lokation); the caller dedupes. {@code default} (rather than a
+     * second abstract method) keeps this a functional interface, so the
+     * single-method test fakes of {@code MastrServiceTest} - which never
+     * exercise the location search - still compile as lambdas.
+     */
+    default List<MastrUnit> fetchUnitsAtLocation(String locationNumber) throws RegistryLookupException {
+        throw new RegistryLookupException(RegistryLookupException.Reason.UNAVAILABLE,
+                "Die Lokations-Suche ist für diese Quelle nicht verfügbar.");
+    }
 
     /** Short source id for logs ("mastr-soap" / "mastr-json"). */
     default String sourceId() {

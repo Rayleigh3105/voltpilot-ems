@@ -45,6 +45,7 @@ public class OptimizerDiagnosticsService {
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
 
     private final OptimizerDiagnosticsRepository repo;
+    private final com.voltpilot.api.repo.RegisterEinheitRepository einheiten;
     private final OptimizerProperties properties;
     private final EegRates eegRates;
     private final String activeLoadModel;
@@ -52,14 +53,23 @@ public class OptimizerDiagnosticsService {
 
     public OptimizerDiagnosticsService(
             OptimizerDiagnosticsRepository repo,
+            com.voltpilot.api.repo.RegisterEinheitRepository einheiten,
             OptimizerProperties properties,
             @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
             @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.repo = repo;
+        this.einheiten = einheiten;
         this.properties = properties;
         this.eegRates = EegRates.fromJson(properties.eegRatesJson());
         this.activeLoadModel = activeLoadModel;
         this.activePvModel = activePvModel;
+    }
+
+    /** S4: the site's confirmed PV units for the §24 Abs. 3 EEG blend (empty =
+     * not "ready" - {@link SlotEconomics#exportValueCtKwh(List, Double, Instant)}
+     * then falls back to the legacy single-asset path unchanged). */
+    public List<SlotEconomics.UnitPv> pvUnitsFor(UUID siteId) {
+        return einheiten.findConfirmedPvForPricing(siteId);
     }
 
     /** The site's context, or null when RLS hides the site (=> 404 upstream). */
@@ -127,13 +137,14 @@ public class OptimizerDiagnosticsService {
                 properties.defaultSupplyComponents())
                 .mitMarktwertbasis(rows.isEmpty() ? null
                         : marktwertbasisFor(site, rows.get(0).time(), rows.get(rows.size() - 1).time()));
+        List<SlotEconomics.UnitPv> pvUnits = pvUnitsFor(site.siteId());
 
         List<Double> importCt = new ArrayList<>(rows.size());
         List<Double> exportCt = new ArrayList<>(rows.size());
         for (SlotRow row : rows) {
             Double spot = toDouble(row.priceEurMwh());
             importCt.add(economics.importPriceCtKwh(spot));
-            exportCt.add(economics.exportValueCtKwh(spot, row.time()));
+            exportCt.add(economics.exportValueCtKwh(pvUnits, spot, row.time()));
         }
         List<Double> approxStoredCt = economics.storedEnergyValuesCtKwh(importCt, exportCt);
 

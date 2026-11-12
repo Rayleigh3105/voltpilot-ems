@@ -2,9 +2,13 @@ package com.voltpilot.api.optimizer;
 
 import com.voltpilot.api.repo.EinspeiseverguetungRepository.Grundlage;
 import com.voltpilot.api.web.dto.EinspeiseverguetungDto;
+import com.voltpilot.api.web.dto.EinspeiseverguetungDto.EinheitMischsatzDto;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Der Stand der Karte "Einspeisevergütung": aus der {@link Grundlage} einer
@@ -35,7 +39,10 @@ public final class EinspeiseverguetungStand {
     private EinspeiseverguetungStand() {
     }
 
-    /** Der Stand der Karte aus der Grundlage einer Anlage. */
+    /** Der Stand der Karte aus der Grundlage einer Anlage, ohne Einheiten (die
+     * bisherige, unveränderte Anlagen-Rechnung - weiterhin der einzige Weg bei
+     * weniger als zwei bestätigten PV-Einheiten, siehe {@link #von(Grundlage,
+     * List, EegRates)}). */
     public static EinspeiseverguetungDto von(Grundlage g, EegRates rates) {
         LocalDate inbetrieb = g.inbetriebnahme();
         Double kwp = g.leistungKwp() == null ? null : g.leistungKwp().doubleValue();
@@ -60,7 +67,77 @@ public final class EinspeiseverguetungStand {
                 g.leistungKwp(),
                 inbetrieb == null ? null : LocalDate.of(inbetrieb.getYear() + 20, 12, 31),
                 SlotEconomics.solarspitzengesetzGilt(inbetrieb, g.inbetriebnahmeAbSolarspitzengesetz(), kwp),
-                direktvermarktung ? g.anzulegenderWertCtKwh() : null);
+                direktvermarktung ? g.anzulegenderWertCtKwh() : null,
+                List.of());
+    }
+
+    /**
+     * Der Stand der Karte MIT den bestätigten PV-Einheiten (S4, vp-mastr-
+     * mehrere-einheiten-konzept §5.2: "zeigt den Mischsatz mit Rechenweg").
+     * Bei weniger als zwei Einheiten, bei Direktvermarktung, mit Netzladen,
+     * oder wenn der Mischsatz nicht eindeutig feststeht (eine Einheit ohne
+     * Datum und keine Angabe, oder eine abgelaufene Einheit ohne Angabe),
+     * fällt diese Methode auf {@link #von(Grundlage, EegRates)} zurück -
+     * UNVERÄNDERT, also für jede Bestandsanlage mit genau einer Einheit
+     * byte-gleich (ihr Anteil wäre exakt 1.0 ohnehin, aber diese Methode
+     * berührt den Pfad für weniger als zwei Einheiten gar nicht erst).
+     */
+    public static EinspeiseverguetungDto von(Grundlage g, List<SlotEconomics.UnitPv> einheiten,
+            EegRates rates) {
+        if (einheiten == null || einheiten.size() < 2
+                || "direktvermarktung".equals(g.plantKind()) || g.netzladenErlaubt()) {
+            return von(g, rates);
+        }
+        double totalKwp = 0.0;
+        for (SlotEconomics.UnitPv u : einheiten) {
+            totalKwp += u.kwp();
+        }
+        // Der hergeleitete Mischsatz steht wie beim Einzel-Asset UNABHAENGIG
+        // davon, ob er gerade wirkt (das Blatt zeigt ihn als Vorschau der
+        // Karte „Aus dem EEG herleiten" auch, wenn eine Angabe aktiv ist) -
+        // nur wenn JEDE Einheit ein eigenes, nicht abgelaufenes Datum hat;
+        // sonst null (eine solche Einheit waere nur am Boersenpreis zu
+        // bewerten, der nicht in einen einzelnen ct/kWh-Mischsatz passt).
+        boolean jedeDatiertUndAktiv = einheiten.stream().allMatch(u ->
+                u.commissionedOn() != null
+                        && !EegRates.remunerationExpired(u.commissionedOn(), Instant.now()));
+        BigDecimal hergeleitet = null;
+        if (jedeDatiertUndAktiv) {
+            double summe = 0.0;
+            for (SlotEconomics.UnitPv u : einheiten) {
+                summe += (u.kwp() / totalKwp) * rates.festeVerguetungCtPerKwh(u.commissionedOn(), u.kwp());
+            }
+            hergeleitet = ct(summe);
+        }
+        boolean angegeben = g.angegebenCtKwh() != null;
+        if (!angegeben && !jedeDatiertUndAktiv) {
+            // Weder Angabe noch eindeutige Herleitung: die Anlagen-Rechnung bleibt.
+            return von(g, rates);
+        }
+        List<EinheitMischsatzDto> rechenweg = new ArrayList<>();
+        boolean irgendeinS51a = false;
+        for (SlotEconomics.UnitPv u : einheiten) {
+            double satz = angegeben
+                    ? g.angegebenCtKwh().doubleValue()
+                    : rates.festeVerguetungCtPerKwh(u.commissionedOn(), u.kwp());
+            rechenweg.add(new EinheitMischsatzDto(
+                    u.commissionedOn(), BigDecimal.valueOf(u.kwp()), ct(satz)));
+            irgendeinS51a |= SlotEconomics.solarspitzengesetzGilt(
+                    u.commissionedOn(), g.inbetriebnahmeAbSolarspitzengesetz(), u.kwp());
+        }
+        return new EinspeiseverguetungDto(
+                angegeben ? "angegeben" : "eeg",
+                angegeben ? g.angegebenCtKwh() : hergeleitet,
+                g.angegebenCtKwh(),
+                null, // mehrere Einheiten: die Antwort ist je Einheit im Rechenweg, nicht hier
+                hergeleitet, // die Vorschau „Aus dem EEG herleiten" - unabhaengig von angegeben
+                false,
+                null, // keine EINE Inbetriebnahme - siehe einheiten
+                null, // keine EINE Leistung - siehe einheiten
+                null, // kein EIN Ende - jede Einheit hat ihr eigenes
+                irgendeinS51a,
+                null,
+                List.copyOf(rechenweg));
     }
 
     /**

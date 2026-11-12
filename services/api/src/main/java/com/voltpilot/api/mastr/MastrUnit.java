@@ -28,7 +28,13 @@ public record MastrUnit(
         Integer batteryTechnologyId,
         String postalCode,
         String city,
-        String linkedUnitNumber) {
+        String linkedUnitNumber,
+        // S2 (Lokations-Suche, vp-mastr-mehrere-einheiten-konzept): die
+        // Lokation (SEL...) - der Schlüssel für "eine Nummer genügt" - und die
+        // Betreibernummer (ABR...), NUR für den In-Memory-Abgleich beim Abruf
+        // (Abschnitt 5.3), NIE gespeichert (Datenschutz, Abschnitt 4.5).
+        String locationNumber,
+        String operatorNumber) {
 
     /** Storage units are ALSO SEE-numbered; the registry data tells them apart. */
     public enum Kind { SOLAR, STORAGE }

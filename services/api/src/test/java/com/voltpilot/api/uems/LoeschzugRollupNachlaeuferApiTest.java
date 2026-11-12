@@ -148,8 +148,7 @@ class LoeschzugRollupNachlaeuferApiTest {
             geloescht = loeschzug.get(60, TimeUnit.SECONDS);
         }
 
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
-        JsonNode nachweis = json(geloescht).get("loeschnachweis");
+        JsonNode nachweis = fertigerBericht(geloescht).get("loeschnachweis");
         assertThat(nachweis.get("verblieben").size()).as("verblieben im Löschnachweis").isZero();
         assertThat(katalog(weg.id())).as("E10 = A: keine Zeile des gelöschten Bereichs, auch kein Bucket").isEmpty();
         assertThat(verdichtet(root, nachbar.id())).as("der Nachbar ist verdichtet").containsOnlyKeys(VERDICHTUNGEN);
@@ -189,17 +188,24 @@ class LoeschzugRollupNachlaeuferApiTest {
                     + " Nachbar verdichtet in %s%n", ms, verdichtet(lauf, nachbar.id()));
         }
 
-        MvcResult geloescht = loeschen(weg);
-        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
+        fertigerBericht(loeschen(weg));
         assertThat(katalog(weg.id())).isEmpty();
     }
 
-    /** Die drei Jobs, wie der Scheduler sie ruft, in der Transaktion der Verbindung. */
+    /**
+     * Die Verdichtungen, wie der Scheduler sie ruft, in der Transaktion der Verbindung. Die
+     * Box-Verdichtung committet seit V20261112153000 je Stufe (vp-kunde-loeschen-504) - ihr
+     * Job-Rumpf ließe sich hier nicht mehr in einer offenen Transaktion halten, also laufen ihre
+     * beiden Stufen direkt: GENAU die Einheit, die ihre Sperren bis zum Commit hält.
+     */
     private static void laufen(Connection con) throws Exception {
         try (Statement st = con.createStatement()) {
-            for (String job : JOBS) {
-                st.execute("CALL " + job + "(0, '{}'::jsonb)");
-            }
+            st.execute("CALL telemetry_rollups_job(0, '{}'::jsonb)");
+            st.execute("CALL telemetry_v2_rollups_job(0, '{}'::jsonb)");
+            st.execute("CALL refresh_device_measurement_rollup('device_measurement_rollup_5m',"
+                    + " INTERVAL '5 minutes', now()-INTERVAL '90 days')");
+            st.execute("CALL refresh_device_measurement_rollup('device_measurement_rollup_15m',"
+                    + " INTERVAL '15 minutes', now()-INTERVAL '90 days')");
         }
     }
 
@@ -289,15 +295,39 @@ class LoeschzugRollupNachlaeuferApiTest {
         return je;
     }
 
+    /** Der Löschweg seit vp-kunde-loeschen-504: POST startet den Lauf (202), der Statusweg trägt das Ergebnis. */
     private MvcResult loeschen(Bereich b) {
         try {
-            return mvc.perform(post("/api/v1/admin/tenants/" + b.id() + "/delete")
+            MvcResult start = mvc.perform(post("/api/v1/admin/tenants/" + b.id() + "/delete")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(JSON.writeValueAsString(Map.of("confirmName", b.name())))
                     .with(authentication(plattform()))).andReturn();
+            assertThat(start.getResponse().getStatus()).as(text(start)).isEqualTo(202);
+            long frist = System.nanoTime() + TimeUnit.SECONDS.toNanos(180);
+            while (true) {
+                MvcResult stand = mvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/v1/admin/tenants/" + b.id() + "/loeschlauf")
+                                .with(authentication(plattform()))).andReturn();
+                assertThat(stand.getResponse().getStatus()).as(text(stand)).isEqualTo(200);
+                JsonNode lauf = json(stand);
+                boolean laeuft = "laeuft".equals(lauf.get("stand").asText());
+                boolean berichtFehlt = "fertig".equals(lauf.get("stand").asText()) && lauf.get("bericht").isNull();
+                if (!laeuft && !berichtFehlt) {
+                    return stand;
+                }
+                assertThat(System.nanoTime()).as("Löschzug wird nicht fertig").isLessThan(frist);
+                Thread.sleep(100);
+            }
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /** Der Lauf ist fertig; der Statusweg trägt den Bericht. */
+    private static JsonNode fertigerBericht(MvcResult lauf) throws Exception {
+        assertThat(json(lauf).get("stand").asText()).as(text(lauf)).isEqualTo("fertig");
+        return json(lauf).get("bericht");
     }
 
     private static JsonNode json(MvcResult r) throws Exception {

@@ -1,9 +1,15 @@
 package com.voltpilot.api.mastr;
 
+import com.voltpilot.api.web.dto.MastrLokationEinheitDto;
+import com.voltpilot.api.web.dto.MastrLokationPreviewDto;
 import com.voltpilot.api.web.dto.MastrPreviewDto;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 
 /**
@@ -26,6 +32,46 @@ public class MastrService {
     public MastrPreviewDto lookup(String rawNumber) throws RegistryLookupException {
         String unitNumber = MastrNumbers.requireSee(rawNumber);
         MastrUnit unit = registry.fetchUnit(unitNumber);
+        return preview(unit);
+    }
+
+    /**
+     * S2 (Lokations-Suche, Abschnitt 5.3): the typed unit plus every sibling
+     * at the same Lokation ("eine Nummer genügt"), sorted by commissioning
+     * date. A unit of a DIFFERENT operator than the typed one is returned
+     * but pre-deselected (the ABR comparison happens only here, in memory -
+     * neither operator number is ever persisted, Abschnitt 4.5). A unit
+     * without a known Lokation (heavily masked / older records) comes back
+     * alone - the customer can still add further numbers by hand later.
+     */
+    public MastrLokationPreviewDto lookupLocation(String rawNumber) throws RegistryLookupException {
+        String unitNumber = MastrNumbers.requireSee(rawNumber);
+        MastrUnit anchor = registry.fetchUnit(unitNumber);
+        if (anchor.locationNumber() == null) {
+            return new MastrLokationPreviewDto(null,
+                    List.of(new MastrLokationEinheitDto(preview(anchor), true, null)));
+        }
+        // Dedupe by unit number - the anchor is itself connected to its own
+        // Lokation and reappears in fetchUnitsAtLocation.
+        Map<String, MastrUnit> byNumber = new LinkedHashMap<>();
+        byNumber.put(anchor.unitNumber(), anchor);
+        for (MastrUnit sibling : registry.fetchUnitsAtLocation(anchor.locationNumber())) {
+            byNumber.putIfAbsent(sibling.unitNumber(), sibling);
+        }
+        List<MastrLokationEinheitDto> einheiten = byNumber.values().stream()
+                .sorted(Comparator.comparing(MastrUnit::commissionedOn,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(u -> {
+                    boolean andererBetreiber = anchor.operatorNumber() != null && u.operatorNumber() != null
+                            && !Objects.equals(anchor.operatorNumber(), u.operatorNumber());
+                    return new MastrLokationEinheitDto(preview(u), !andererBetreiber,
+                            andererBetreiber ? "anderer_betreiber" : null);
+                })
+                .toList();
+        return new MastrLokationPreviewDto(anchor.locationNumber(), einheiten);
+    }
+
+    private MastrPreviewDto preview(MastrUnit unit) {
         return unit.kind() == MastrUnit.Kind.STORAGE ? previewStorage(unit) : previewSolar(unit);
     }
 

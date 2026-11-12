@@ -29,6 +29,14 @@ STC_IRRADIANCE_W_M2 = 1000.0  # standard-test-condition reference irradiance
 DEFAULT_DIFFUSE_FRACTION = 0.15  # clear-sky diffuse share when only GHI is known
 
 
+def active_plants(config: SiteForecastConfig) -> list:
+    """The site's plant(s) with positive capacity, zero-capacity ones dropped -
+    the shared "is there anything to forecast" gate for :mod:`pv` and
+    :mod:`pvceiling` (S4: one or more faces via ``effective_plants``, never
+    the legacy single ``plant`` alone)."""
+    return [p for p in config.effective_plants if p.capacity_kwp > 0.0]
+
+
 class PvForecaster(ABC):
     """Interface for PV generation forecasting over the optimization horizon.
 
@@ -74,7 +82,7 @@ class PhysicalPvForecaster(PvForecaster):
         timestamps = horizon.slot_starts(run_at)
         method = f"{self.method}:{self._weather.name}"
 
-        if config.plant is None or config.plant.capacity_kwp == 0.0:
+        if not active_plants(config):
             points = [ForecastPoint(ts, 0.0) for ts in timestamps]
             return ForecastSeries(
                 kind=ForecastKind.PV,
@@ -111,26 +119,29 @@ class PhysicalPvForecaster(PvForecaster):
         base value for HISTORICAL slots when learning the residual. Semantics
         are identical to :meth:`forecast`; a site without a plant yields zeros.
         """
-        if config.plant is None or config.plant.capacity_kwp == 0.0:
+        plants = active_plants(config)
+        if not plants:
             return [0.0 for _ in timestamps]
-        plant = config.plant
         samples = self._weather.irradiance(config.location, timestamps)
         values: list[float] = []
         for ts, sample in zip(timestamps, samples):
             position = solar_position(config.location, ts)
-            poa = poa_irradiance(
-                position,
-                sample.ghi_w_m2,
-                tilt_deg=plant.tilt_deg,
-                surface_azimuth_deg=plant.azimuth_deg,
-                albedo=plant.albedo,
-                diffuse_fraction=self._diffuse_fraction,
-                dni_w_m2=sample.dni_w_m2,
-                dhi_w_m2=sample.dhi_w_m2,
-            )
-            dc_kw = plant.capacity_kwp * (poa / STC_IRRADIANCE_W_M2)
-            ac_kw = dc_kw * (1.0 - plant.system_loss_fraction)
-            values.append(max(0.0, min(ac_kw, plant.capacity_kwp)))
+            total_ac_kw = 0.0
+            for plant in plants:
+                poa = poa_irradiance(
+                    position,
+                    sample.ghi_w_m2,
+                    tilt_deg=plant.tilt_deg,
+                    surface_azimuth_deg=plant.azimuth_deg,
+                    albedo=plant.albedo,
+                    diffuse_fraction=self._diffuse_fraction,
+                    dni_w_m2=sample.dni_w_m2,
+                    dhi_w_m2=sample.dhi_w_m2,
+                )
+                dc_kw = plant.capacity_kwp * (poa / STC_IRRADIANCE_W_M2)
+                ac_kw = dc_kw * (1.0 - plant.system_loss_fraction)
+                total_ac_kw += max(0.0, min(ac_kw, plant.capacity_kwp))
+            values.append(total_ac_kw)
         # The clear-sky backstop (:mod:`voltpilot_forecast.pvceiling`). On a
         # correctly aligned weather series this is a no-op by construction -
         # real irradiance never exceeds clear-sky irradiance through the same

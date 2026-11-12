@@ -2760,6 +2760,90 @@ button.vp-cl-item.is-off .vp-cl-label {
   margin-top: 2px;
   color: var(--vp-action);
 }
+/* Sonnenrose (E1=B, vp-mastr-mehrere-einheiten-konzept): die Gruppe "Solaranlage" */
+.vp-solaranlage-vorschau {
+  padding: var(--vp-space-4) 0;
+}
+.vp-sonnenrose {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vp-space-3);
+  margin: 0;
+  max-width: 100%;
+}
+.vp-sonnenrose svg {
+  max-width: 100%;
+  height: auto;
+}
+.vp-sonnenrose-grid {
+  stroke: var(--vp-border);
+  stroke-width: 1;
+}
+.vp-sonnenrose-rim {
+  fill: none;
+  stroke: var(--vp-border);
+  stroke-width: 1;
+}
+.vp-sonnenrose-sonnenweg {
+  fill: var(--vp-text-muted);
+  font-size: 11px;
+  font-weight: var(--vp-weight-medium);
+}
+.vp-sonnenrose-summe {
+  fill: var(--vp-text-dark);
+  font-size: 22px;
+  font-weight: var(--vp-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.vp-sonnenrose-summe-einheit {
+  fill: var(--vp-text-muted);
+  font-size: 11px;
+}
+.vp-sonnenrose-legende {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  width: 100%;
+  margin: 0;
+  font-size: var(--vp-text-sm);
+}
+.vp-sonnenrose-legende-zeile {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  color: var(--vp-text-dark);
+}
+.vp-sonnenrose-schwatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+/* S5 (§5.1, "Zuordnung zu Wechselrichtern"): die Geräte je PV-Einheit */
+.vp-geraete-zuordnung {
+  margin-top: var(--vp-space-4);
+}
+.vp-geraete-zuordnung-zeile {
+  display: grid;
+  gap: var(--vp-space-1);
+  padding: var(--vp-space-2) 0;
+  border-top: 1px solid var(--vp-hair, var(--vp-border));
+}
+.vp-geraete-zuordnung-liste {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.vp-geraete-zuordnung-liste li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  font-size: 0.9rem;
+}
 /* Fertig-summary key/value list */
 .vp-summary-list {
   display: grid;

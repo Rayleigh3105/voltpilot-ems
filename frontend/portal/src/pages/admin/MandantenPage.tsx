@@ -16,7 +16,6 @@ import { ApiError, ablehnungCode, api, neueAnfrageKennung, type SelbstauskunftKu
 import {
   anlagenBoxenZeilen,
   datumDe,
-  fristAbgelaufen,
   kundenZahlenText,
   kundenZustand,
   personenListe,
@@ -28,11 +27,11 @@ import type { AdminFleetSite } from '../../admin/fleetApi';
 import {
   adminApi,
   type AdminUser,
-  type KundeLoeschbarkeit,
   type Tenant,
   type TenantOffboardingReport,
 } from '../../admin/adminApi';
 import { KundeLoeschenDialog } from './KundeLoeschenDialog';
+import { kundeLoeschlaufAbwarten } from '../../admin/kundeLoeschen';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TableSkeleton, TextSkeleton } from '../../components/States';
@@ -172,8 +171,6 @@ function KundenlisteSeite({
   // Je Mandant: `undefined` = noch nicht geladen, sonst das Ergebnis (oder `'fehler'`).
   const [konten, setKonten] = useState<Record<string, AdminUser[] | 'fehler'>>({});
   const [vertragsende, setVertragsende] = useState<Record<string, SelbstauskunftKundenbereichBeendet | null | 'fehler'>>({});
-  // vp-kunde-sofort-loeschen: EIN Abruf für alle Zeilen - „sofort löschbar" (Badge) und das Zeilen-Menü.
-  const [loeschbarkeit, setLoeschbarkeit] = useState<Record<string, KundeLoeschbarkeit>>({});
   const [loeschenTenant, setLoeschenTenant] = useState<Tenant | null>(null);
   const [geloeschtMeldung, setGeloeschtMeldung] = useState<string | null>(null);
   // L6 (S6): serverseitige Personensuche über ALLE Kunden ergänzt die lokale
@@ -187,13 +184,6 @@ function KundenlisteSeite({
       setUnterstuetzungBis(f.unterstuetzungBis ?? null);
     }).catch(() => { setFleet([]); setUnterstuetzungBis(null); });
   }, []);
-
-  useEffect(() => {
-    void adminApi.kundenLoeschbarkeit()
-      .then((liste) => setLoeschbarkeit(Object.fromEntries(liste.map((l) => [l.tenantId, l]))))
-      .catch(() => setLoeschbarkeit({}));
-    // Nach jedem Nachladen der Liste (etwa nach einem Löschen) frisch.
-  }, [tenants]);
 
   // Personenzahl und Vertragsende kommen bis zur Lesemodell-Scheibe S6 (L6) aus
   // den VORHANDENEN Einzel-Antworten je Mandant - bewusst N Aufrufe statt eines
@@ -236,13 +226,11 @@ function KundenlisteSeite({
       anzahlAnlagen: anlagen?.length ?? null,
       anzahlBoxen: boxen,
       anzahlPersonen: konten[t.id] === 'fehler' ? null : konten[t.id]?.length ?? undefined,
-      sofortLoeschbar: loeschbarkeit[t.id]?.sofortLoeschbar === true,
       zustand: vende === 'fehler'
         ? null
-        : kundenZustand(vende, bis ? new Date(bis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : null,
-            loeschbarkeit[t.id]?.sofortLoeschbar === true),
+        : kundenZustand(vende, bis ? new Date(bis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : null),
     };
-  }), [tenants, fleet, unterstuetzungBis, konten, vertragsende, loeschbarkeit]);
+  }), [tenants, fleet, unterstuetzungBis, konten, vertragsende]);
 
   const gefiltert = useMemo(() => {
     const q = suche.trim().toLowerCase();
@@ -360,16 +348,15 @@ function KundenlisteSeite({
                   </td>
                   <td data-label="" data-zeile="aktion" style={{ textAlign: 'right' }}
                     onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                    {/* Zeilen-Menü nur, wenn der Server „sofort löschbar" meldet (vp-kunde-sofort-loeschen). */}
-                    {z.sofortLoeschbar && (
-                      <RowMenu
-                        label={`Weitere Aktionen für ${z.tenant.name}`}
-                        items={[{
-                          label: 'Kunde endgültig löschen …', icon: 'trash', danger: true,
-                          onClick: () => setLoeschenTenant(z.tenant),
-                        }]}
-                      />
-                    )}
+                    {/* Der Löschweg ist immer erreichbar (vp-kunde-sofort-loeschen-mit-daten): der Dialog
+                        sagt bei einem Kunden mit Daten ehrlich, was verloren geht - kein toter Knopf. */}
+                    <RowMenu
+                      label={`Weitere Aktionen für ${z.tenant.name}`}
+                      items={[{
+                        label: 'Kunde endgültig löschen …', icon: 'trash', danger: true,
+                        onClick: () => setLoeschenTenant(z.tenant),
+                      }]}
+                    />
                     <Button
                       variant="ghost"
                       size="sm"
@@ -401,9 +388,11 @@ function KundenlisteSeite({
           tenantName={loeschenTenant.name}
           onClose={() => setLoeschenTenant(null)}
           onGeloescht={(report) => {
+            const name = loeschenTenant.name;
             setLoeschenTenant(null);
-            setGeloeschtMeldung(`Der Kunde „${report.tenantName}" wurde vollständig entfernt`
-              + (report.freigegebeneBoxen.length > 0
+            // Ohne Bericht (bei einem Neustart nach dem Commit verloren): gelöscht ist gelöscht.
+            setGeloeschtMeldung(`Der Kunde „${report?.tenantName ?? name}" wurde vollständig entfernt`
+              + (report && report.freigegebeneBoxen.length > 0
                 ? `; die Box${report.freigegebeneBoxen.length === 1 ? '' : 'en'} ${report.freigegebeneBoxen.join(', ')} `
                   + (report.freigegebeneBoxen.length === 1 ? 'ist' : 'sind') + ' wieder anmeldbar.'
                 : '.'));
@@ -553,9 +542,6 @@ function KundenaktePage({
   const [vertragDialog, setVertragDialog] = useState<'beenden' | 'wiederaufnehmen' | null>(null);
   const [vertragBusy, setVertragBusy] = useState(false);
   const [vertragError, setVertragError] = useState<string | null>(null);
-  // vp-kunde-sofort-loeschen: das Server-Urteil „sofort löschbar" (KundeDatenBestand) - speist das
-  // Badge, das Kopf-Menü, die Vertrag-Karte und die Gefahrenzone. `undefined` = noch nicht gelesen.
-  const [loeschbarkeit, setLoeschbarkeit] = useState<KundeLoeschbarkeit | undefined>(undefined);
   const [loeschenDialog, setLoeschenDialog] = useState(false);
 
   async function reload() {
@@ -578,13 +564,6 @@ function KundenaktePage({
       setLoadError(
         e instanceof ApiError ? e.message : 'Die Kundendaten konnten nicht geladen werden.',
       );
-    }
-    // Getrennt vom Pflicht-Laden: ohne das Urteil bleibt die Akte voll benutzbar,
-    // nur Badge-Zusatz und Sofort-Weg fehlen dann.
-    try {
-      setLoeschbarkeit(await adminApi.kundeLoeschbarkeit(tenant.id));
-    } catch {
-      setLoeschbarkeit(undefined);
     }
   }
 
@@ -662,14 +641,21 @@ function KundenaktePage({
     setDeleteBusy(true);
     setDeleteError(null);
     try {
-      setReport(await adminApi.deleteTenant(tenant.id, tenant.name));
+      // Startet den serverseitigen Löschzug (vp-kunde-loeschen-504) und wartet auf sein Ergebnis -
+      // unabhängig davon, ob ein einzelner Request unter der 60-s-Grenze des Ingress bleibt.
+      const lauf = await kundeLoeschlaufAbwarten(tenant.id, await adminApi.deleteTenant(tenant.id, tenant.name));
+      if (lauf.stand === 'fertig') {
+        // Ohne Bericht (bei einem Neustart nach dem Commit verloren): zurück zur Kundenliste.
+        if (lauf.bericht) setReport(lauf.bericht);
+        else onDeleted();
+      } else {
+        setDeleteError(lauf.fehler ?? 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.');
+      }
     } catch (e) {
       setDeleteError(
-        e instanceof ApiError && e.status === 502
-          ? 'Die Benutzerverwaltung ist gerade nicht erreichbar - es wurde nichts gelöscht. Bitte versuchen Sie es später erneut.'
-          : e instanceof ApiError
-            ? `Löschen fehlgeschlagen: ${e.message}`
-            : 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.',
+        e instanceof ApiError
+          ? `Löschen fehlgeschlagen: ${e.message}`
+          : 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.',
       );
     } finally {
       setDeleteBusy(false);
@@ -760,7 +746,7 @@ function KundenaktePage({
   const anlagenZeilen: AnlageBoxZeile[] | null = sites && fleetSites ? anlagenBoxenZeilen(sites, fleetSites) : null;
   // Die Zustand-Zeile im Kopf zeigt vorerst nur das Vertragsende; die laufende
   // Unterstützung steht gleich darunter in der Karte „Zugriff" selbst.
-  const zustand = kundenZustand(vertragsende, null, loeschbarkeit?.sofortLoeschbar === true);
+  const zustand = kundenZustand(vertragsende, null);
 
   const wieDerKundeEsSieht = (
     <Button variant="outline" onClick={() => onJumpToTenant(tenant.id, 'uebersicht')} iconLeft={<Icon name="eye" size={16} />}>
@@ -1018,45 +1004,33 @@ function KundenaktePage({
               ) : vertragsende ? (
                 <>
                   <div className="vp-alert vp-alert-info" style={{ marginTop: 0 }}>
-                    {loeschbarkeit?.sofortLoeschbar
-                      ? <>Der Vertrag ist am {datumDe(vertragsende.beendet_am)} beendet. Der Kunde hat
-                          keinen Datenbestand und kann sofort endgültig gelöscht werden - ohne Frist.</>
-                      : <>Der Vertrag ist am {datumDe(vertragsende.beendet_am)} beendet. Die Daten lassen sich
-                          nur noch lesen; gelöscht werden sie frühestens am{' '}
-                          {datumDe(vertragsende.loeschung_fruehestens)}.</>}
+                    Der Vertrag ist am {datumDe(vertragsende.beendet_am)} beendet. Die Daten lassen sich nur
+                    noch lesen.
                   </div>
                   {vertragError && <div className="vp-alert vp-alert-err">{vertragError}</div>}
                   <span className="vp-vertrag-aktionen">
                     <Button variant="outline" size="sm" onClick={() => setVertragDialog('wiederaufnehmen')}>
                       Wiederaufnehmen
                     </Button>
-                    {loeschbarkeit?.sofortLoeschbar && (
-                      <Button variant="outline" size="sm" onClick={() => setLoeschenDialog(true)}>
-                        Kunde endgültig löschen …
-                      </Button>
-                    )}
+                    <Button variant="outline" size="sm" onClick={() => setLoeschenDialog(true)}>
+                      Kunde endgültig löschen …
+                    </Button>
                   </span>
                 </>
               ) : (
                 <>
                   <p className="vp-muted" style={{ marginTop: 0 }}>
-                    {loeschbarkeit?.sofortLoeschbar
-                      ? <>Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar.
-                          Dieser Kunde hat keinen Datenbestand und kann auch sofort endgültig gelöscht
-                          werden.</>
-                      : <>Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar.
-                          Gelöscht wird ein Kunde erst nach Ablauf der Frist, in der Gefahrenzone unten.</>}
+                    Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar. Gelöscht
+                    werden kann der Kunde jederzeit, in der Gefahrenzone unten.
                   </p>
                   {vertragError && <div className="vp-alert vp-alert-err">{vertragError}</div>}
                   <span className="vp-vertrag-aktionen">
                     <Button variant="outline" size="sm" onClick={() => setVertragDialog('beenden')}>
                       Kundenbereich beenden …
                     </Button>
-                    {loeschbarkeit?.sofortLoeschbar && (
-                      <Button variant="outline" size="sm" onClick={() => setLoeschenDialog(true)}>
-                        Kunde endgültig löschen …
-                      </Button>
-                    )}
+                    <Button variant="outline" size="sm" onClick={() => setLoeschenDialog(true)}>
+                      Kunde endgültig löschen …
+                    </Button>
                   </span>
                 </>
               )}
@@ -1077,18 +1051,6 @@ function KundenaktePage({
           typeToConfirm={tenant.name}
           busy={deleteBusy}
           error={deleteError}
-          disabledReason={
-            // Sofort löschbar (Server-Urteil, vp-kunde-sofort-loeschen): kein Grund sperrt mehr.
-            loeschbarkeit?.sofortLoeschbar
-              ? null
-              : vertragsende === undefined
-                ? null
-                : vertragsende === null
-                  ? 'Gelöscht werden kann ein Kunde mit Daten erst, nachdem der Vertrag beendet wurde und die Frist abgelaufen ist.'
-                  : !fristAbgelaufen(vertragsende.loeschung_fruehestens)
-                    ? `Die Frist läuft noch bis ${datumDe(vertragsende.loeschung_fruehestens)} - vorher kann nicht gelöscht werden.`
-                    : null
-          }
           onConfirm={() => void offboard()}
         />
       </section>
@@ -1110,7 +1072,9 @@ function KundenaktePage({
           onClose={() => setLoeschenDialog(false)}
           onGeloescht={(r) => {
             setLoeschenDialog(false);
-            setReport(r);
+            // Ohne Bericht (bei einem Neustart nach dem Commit verloren): zurück zur Kundenliste.
+            if (r) setReport(r);
+            else onDeleted();
           }}
         />
       )}

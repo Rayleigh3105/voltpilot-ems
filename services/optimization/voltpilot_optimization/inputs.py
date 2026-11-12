@@ -104,6 +104,7 @@ from voltpilot_optimization.domain import WIRKUNGSGRAD_LADEPUNKT, Fahrzeugspeich
 from voltpilot_optimization.pricing import (
     FOERDERWEG_PAUSCHAL,
     MISCHBETRIEB_FORMELSAETZE,
+    PvEinheit,
     SiteTariff,
     SupplyPriceComponents,
     berlin_month,
@@ -512,6 +513,10 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     # V20261109090000, WechselrichterUntergrenze): hebt die Untergrenze des
     # SoC-Bandes an. Eine Anlage ohne Zeile bleibt Wort fuer Wort wie vorher.
     untergrenzen = load_wechselrichter_untergrenzen(dsn, site_id)
+    # S4 (vp-mastr-mehrere-einheiten-konzept §5.2): per-unit §24 Abs. 3 EEG
+    # blend; a site absent here (or with an incomplete unit) keeps planning
+    # on the legacy asset aggregate below, byte-identically.
+    pv_einheiten = load_pv_einheiten(dsn, site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -644,6 +649,10 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                             if ab_solarspitzengesetz is not None
                             else None
                         ),
+                        # S4: the site's confirmed PV register_einheit rows
+                        # (empty tuple = legacy single-plant fields above,
+                        # byte-identically - report §5.2).
+                        pv_einheiten=tuple(pv_einheiten.get(site_id, [])),
                         # No site_supply_price row = None = the legacy import
                         # model, byte-identically (report §3.1 rollout rule).
                         supply_price=(
@@ -1231,6 +1240,71 @@ def load_wechselrichter_untergrenzen(
         logger.warning("wechselrichter_untergrenze.schema_missing")
         return {}
     return {_uuid(sid): float(pct) for sid, pct in rows if pct is not None}
+
+
+def load_pv_einheiten(dsn: str, site_id: UUID | None = None) -> dict[UUID, list[PvEinheit]]:
+    """``{site_id: [PvEinheit, ...]}`` for the §24 Abs. 3 EEG per-unit blend
+    (S4, vp-mastr-mehrere-einheiten-konzept §5.2): every CONFIRMED PV
+    ``register_einheit`` row (``bestaetigt_am IS NOT NULL``) of the site, in
+    commissioning order.
+
+    A site missing from the returned mapping (or mapped to an EMPTY list) has
+    no per-unit data and :func:`pricing.export_values` falls back to the
+    legacy single-plant ``SiteTariff`` fields - for a site with ZERO confirmed
+    PV units (manual entry, no MaStR link; or none confirmed yet) this is
+    simply "no units", but the SAME empty-list signal also covers the
+    report's Lücken rule ("fehlt einer Einheit die Leistung, rechnet die
+    ganze Anlage wie heute"): a site where ANY confirmed PV unit lacks
+    ``leistung_kwp`` is DROPPED from the mapping entirely rather than split
+    with a missing share - the whole site keeps planning on the legacy
+    aggregate until that unit's capacity is known. Before the S1 migration
+    (``register_einheit`` table absent) this is "no units" for every site,
+    exactly like :func:`load_fuehrende_boxen`.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    sql = (
+        "SELECT site_id, inbetriebnahme, leistung_kwp FROM register_einheit "
+        "WHERE art = 'pv' AND bestaetigt_am IS NOT NULL"
+    )
+    params: tuple = ()
+    if site_id is not None:
+        sql += " AND site_id = %s"
+        params = (site_id,)
+    sql += " ORDER BY site_id, inbetriebnahme NULLS LAST, created_at"
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("pv_einheiten.schema_missing")
+        return {}
+    by_site: dict[UUID, list[PvEinheit]] = {}
+    incomplete: set[UUID] = set()
+    for sid, inbetriebnahme, kwp in rows:
+        sid = _uuid(sid)
+        if kwp is None:
+            incomplete.add(sid)
+            continue
+        by_site.setdefault(sid, []).append(
+            PvEinheit(capacity_kwp=float(kwp), commissioned_on=inbetriebnahme)
+        )
+    for sid in incomplete:
+        logger.warning(
+            "pv_einheiten.incomplete_unit_falls_back_to_legacy",
+            extra={
+                "context": {
+                    "site_id": str(sid),
+                    "reason": (
+                        "a confirmed PV register_einheit is missing "
+                        "leistung_kwp - the whole site plans on the legacy "
+                        "asset aggregate until it is known"
+                    ),
+                }
+            },
+        )
+        by_site.pop(sid, None)
+    return by_site
 
 
 def _uuid(value) -> UUID:

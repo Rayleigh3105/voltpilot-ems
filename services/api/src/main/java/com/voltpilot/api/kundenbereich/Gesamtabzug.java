@@ -329,7 +329,6 @@ public class Gesamtabzug {
         m.put("kundenbereich", Map.of("id", abruf.kundenbereich().toString(), "name", abruf.name()));
         m.put("zustand", abruf.beendet().isPresent() ? "beendet" : "aktiv");
         m.put("beendet_am", abruf.beendet().map(e -> e.beendetAmTag().toString()).orElse(null));
-        m.put("loeschung_fruehestens", abruf.beendet().map(e -> e.loeschungFruehestens().toString()).orElse(null));
         m.put("gebildet_am", abruf.begonnenAm().toString());
         m.put("gebildet_fuer", abruf.wer().name());
         m.put("hinweis", "Beim Abruf gebildet, auf dem Server nicht gespeichert. sha256 ist die SHA-256 über die Bytes der "

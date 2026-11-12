@@ -107,6 +107,63 @@ class MastrJsonClientTest {
         assertThat(e.getMessage()).contains("nicht erreichbar");
     }
 
+    // ---- S2: Lokations-Suche --------------------------------------------------
+
+    @Test
+    void locationLookupUriUsesTheExactKendoFilterSyntax() {
+        MastrJsonClient client = new MastrJsonClient(null, BASE);
+        assertThat(client.locationLookupUri("SEL926735321862").toString())
+                .isEqualTo(BASE + "?sort=InbetriebnahmeDatum-asc&page=1&pageSize=50"
+                        + "&filter=MaStR-Nr.+der+Lokation%7Eeq%7E%27SEL926735321862%27");
+    }
+
+    @Test
+    void fetchUnitsAtLocationReturnsEveryUnitSharingTheLocation() throws Exception {
+        String body = "{\"Data\":["
+                + "{\"MaStRNummer\":\"SEE966831669444\",\"LokationMastrNr\":\"SEL926735321862\","
+                + "\"EnergietraegerName\":\"Solare Strahlungsenergie\",\"Bruttoleistung\":8.4},"
+                + "{\"MaStRNummer\":\"SEE912345678901\",\"LokationMastrNr\":\"SEL926735321862\","
+                + "\"EnergietraegerName\":\"Speicher\",\"Bruttoleistung\":6.3}"
+                + "],\"Total\":2}";
+        List<MastrUnit> units = clientWithBody(body).fetchUnitsAtLocation("SEL926735321862");
+
+        assertThat(units).hasSize(2);
+        assertThat(units.get(0).unitNumber()).isEqualTo("SEE966831669444");
+        assertThat(units.get(0).kind()).isEqualTo(MastrUnit.Kind.SOLAR);
+        assertThat(units.get(1).unitNumber()).isEqualTo("SEE912345678901");
+        assertThat(units.get(1).kind()).isEqualTo(MastrUnit.Kind.STORAGE);
+        assertThat(units).allSatisfy(u -> assertThat(u.locationNumber()).isEqualTo("SEL926735321862"));
+    }
+
+    @Test
+    void fetchUnitsAtLocationIsEmptyWithoutResults() throws Exception {
+        assertThat(clientWithBody("{\"Data\":[],\"Total\":0}").fetchUnitsAtLocation("SEL000000000000"))
+                .isEmpty();
+    }
+
+    @Test
+    void fetchUnitsAtLocationRefusesASuspiciouslyLargeResult() {
+        // Same silently-ignored-filter trap as the single-unit lookup.
+        String body = "{\"Data\":[{\"MaStRNummer\":\"SEE111111111111\",\"LokationMastrNr\":\"SEL926735321862\","
+                + "\"EnergietraegerName\":\"Solare Strahlungsenergie\"}],\"Total\":6262962}";
+        RegistryLookupException e = catchThrowableOfType(
+                () -> clientWithBody(body).fetchUnitsAtLocation("SEL926735321862"),
+                RegistryLookupException.class);
+        assertThat(e.reason()).isEqualTo(RegistryLookupException.Reason.UNAVAILABLE);
+    }
+
+    @Test
+    void fetchUnitsAtLocationRefusesARowAtAnotherLocation() {
+        String body = "{\"Data\":[{\"MaStRNummer\":\"SEE966831669444\",\"LokationMastrNr\":\"SEL926735321862\","
+                + "\"EnergietraegerName\":\"Solare Strahlungsenergie\"},"
+                + "{\"MaStRNummer\":\"SEE999999999999\",\"LokationMastrNr\":\"SEL999999999999\","
+                + "\"EnergietraegerName\":\"Solare Strahlungsenergie\"}],\"Total\":2}";
+        RegistryLookupException e = catchThrowableOfType(
+                () -> clientWithBody(body).fetchUnitsAtLocation("SEL926735321862"),
+                RegistryLookupException.class);
+        assertThat(e.reason()).isEqualTo(RegistryLookupException.Reason.UNAVAILABLE);
+    }
+
     @Test
     void wcfDateDecodesEpochMillis() {
         assertThat(MastrJsonClient.wcfDate("/Date(1782864000000)/"))

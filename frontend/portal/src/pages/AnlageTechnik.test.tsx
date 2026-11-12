@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
-import { api, type Device, type Einspeiseverguetung, type Site, type SiteAsset, type SupplyPrice } from '../api';
+import {
+  api,
+  type Device,
+  type EinheitGeraet,
+  type Einspeiseverguetung,
+  type RegisterEinheit,
+  type RegisterEinheitHinweis,
+  type Site,
+  type SiteAsset,
+  type SupplyPrice,
+} from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { mispelApi, type FoerderwegAnsicht } from '../mispelFoerderwegApi';
@@ -145,6 +155,25 @@ function pv(over: Partial<SiteAsset> = {}): SiteAsset {
     registry: 'mastr',
     registryUnitId: 'SEE123456789012',
     registryFetchedAt: null,
+    ...over,
+  };
+}
+
+function registerEinheit(over: Partial<RegisterEinheit> = {}): RegisterEinheit {
+  return {
+    id: 'e-1',
+    art: 'pv',
+    registry: 'mastr',
+    registryUnitId: 'SEE123456789012',
+    bezeichnung: null,
+    inbetriebnahme: '2014-06-01',
+    leistungKwp: 8.4,
+    speicherKwh: null,
+    speicherKw: null,
+    bestaetigtAm: '2026-11-12T10:00:00Z',
+    registryFetchedAt: null,
+    abweichungVonRegister: false,
+    flaechen: [{ richtungGrad: 180, neigungGrad: 30, anteilKwp: 8.4, module: 20, quelle: 'register' }],
     ...over,
   };
 }
@@ -306,6 +335,7 @@ function verguetungStand(over: Partial<Einspeiseverguetung> = {}): Einspeiseverg
     eegEndeAm: '2045-12-31',
     ohneVerguetungBeiNegativpreis: true,
     anzulegenderWertCtKwh: null,
+    einheiten: [],
     ...over,
   };
 }
@@ -360,6 +390,11 @@ async function renderEinstellungen(
   gridLimitKw: number | null = null,
   weg?: FoerderwegWert,
   pvOver: Partial<SiteAsset> | null = null,
+  registerEinheitenOver: RegisterEinheit[] = [],
+  registerHinweisOver: RegisterEinheitHinweis = {
+    moeglicherweiseFehlendeEinheit: false, gemessenePeakKw: null, summeKwp: null, messwerteViertelstunden: 0,
+  },
+  einheitGeraetOver: EinheitGeraet = { zuordnungen: [], freieGeraete: [] },
 ) {
   const s: Site = { ...eegSite, ...over };
   const fw = vi.spyOn(mispelApi, 'foerderweg').mockResolvedValue(foerderwegAntwort(s, weg));
@@ -369,6 +404,9 @@ async function renderEinstellungen(
       ...(batteryOver == null ? [] : [battery({ deviceId: 'd-1', ...batteryOver })]),
       ...(pvOver == null ? [] : [pv(pvOver)]),
     ]);
+  const registerEinheiten = vi.spyOn(api, 'registerEinheiten').mockResolvedValue(registerEinheitenOver);
+  const registerHinweis = vi.spyOn(api, 'registerEinheitenHinweis').mockResolvedValue(registerHinweisOver);
+  const einheitGeraet = vi.spyOn(api, 'einheitGeraet').mockResolvedValue(einheitGeraetOver);
   const verguetungAbruf =
     verguetung instanceof Error
       ? vi.spyOn(api, 'einspeiseverguetung').mockRejectedValue(verguetung)
@@ -413,7 +451,10 @@ async function renderEinstellungen(
         />,
       ),
     verguetungAbruf,
-    restore: () => [assets, preview, supply, schedule, verguetungAbruf, chargingConfig, fw].forEach((m) => m.mockRestore()),
+    restore: () =>
+      [assets, registerEinheiten, registerHinweis, einheitGeraet, preview, supply, schedule, verguetungAbruf, chargingConfig, fw].forEach((m) =>
+        m.mockRestore(),
+      ),
   };
 }
 
@@ -1241,6 +1282,48 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
     restore();
   });
 
+  it('zeigt die Sonnenrose und beide Einheiten bei mehreren PV-Einheiten (E1=B)', async () => {
+    const alt = registerEinheit({ id: 'e-alt', registryUnitId: 'SEE111111111111', leistungKwp: 8.4, inbetriebnahme: '2014-06-01' });
+    const neu = registerEinheit({
+      id: 'e-neu',
+      registryUnitId: 'SEE222222222222',
+      leistungKwp: 6.3,
+      inbetriebnahme: '2024-06-01',
+      flaechen: [{ richtungGrad: 90, neigungGrad: 12.5, anteilKwp: 6.3, module: 15, quelle: 'register' }],
+    });
+    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, null, [alt, neu]);
+
+    // Die Zeile nennt die Zahl der Einheiten, nicht mehr "Verknüpft".
+    expect(zeile('Einheiten verwalten')).toHaveTextContent('2 Einheiten');
+    // Die Sonnenrose steht schon auf der Übersicht, vor dem Öffnen.
+    expect(document.querySelector('.vp-sonnenrose')).toBeInTheDocument();
+    expect(screen.getByText('14,7')).toBeInTheDocument();
+
+    const b = await blatt('Einheiten verwalten');
+    expect(within(b).getByText(/SEE111111111111/)).toBeInTheDocument();
+    expect(within(b).getByText(/SEE222222222222/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('zeigt eine unbestätigte Vorschlags-Einheit (E5) als Hinweis, nicht in der Summe', async () => {
+    const bestaetigt = registerEinheit({ leistungKwp: 8.4 });
+    const vorschlag = registerEinheit({
+      id: 'e-vorschlag',
+      registryUnitId: 'SEE333333333333',
+      bestaetigtAm: null,
+      flaechen: [],
+    });
+    const { restore } = await renderEinstellungen({}, null, null, null, undefined, undefined, null, null, [
+      bestaetigt,
+      vorschlag,
+    ]);
+
+    // Nur die bestätigte Einheit steht in der Summe/Zeile - EINE Einheit, nicht zwei.
+    expect(zeile('Einheiten verwalten')).toHaveTextContent('1 Einheit');
+    expect(screen.getByText(/weitere Einheit an Ihrem Anschluss gefunden/)).toBeInTheDocument();
+    restore();
+  });
+
   it('nennt den Weg an der Zeile, solange der Anlage noch eine Box zugeordnet ist - ohne Blatt', async () => {
     const { restore } = await renderEinstellungen();
     const loeschen = document.getElementById('technik-loeschen') as HTMLElement;
@@ -1369,5 +1452,76 @@ describe('Einstellungen · Strom & Geld an einer Erzeugeranlage (UEMS EZ-10)', (
     await waitFor(() => expect(within(gruppe).getByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('WVV · über Modbus'));
     restore();
     [liste, nv, put].forEach((m) => m.mockRestore());
+  });
+});
+
+describe('Solaranlage · S5 (Zuordnung zu Wechselrichtern, "fehlt eine Einheit?")', () => {
+  it('zeigt den Hinweis "fehlt eine Einheit?" nur, wenn das Flag gesetzt ist', async () => {
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      { moeglicherweiseFehlendeEinheit: true, gemessenePeakKw: 12.5, summeKwp: 8.4, messwerteViertelstunden: 200 },
+    );
+    const gruppe = document.querySelector('section#technik-registrierung')!;
+    expect(await within(gruppe).findByText(/fehlt eine weitere Einheit/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('ohne das Flag bleibt die Gruppe ohne diesen Hinweis', async () => {
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+    );
+    const gruppe = document.querySelector('section#technik-registrierung')!;
+    await within(gruppe).findByText('1 Einheit');
+    expect(within(gruppe).queryByText(/fehlt eine weitere Einheit/)).toBeNull();
+    restore();
+  });
+
+  it('ordnet ein freies Gerät einer Einheit zu und zeigt es danach als zugeordnet', async () => {
+    const zuordnen = vi.spyOn(api, 'einheitGeraetZuordnen').mockResolvedValue({
+      zuordnungen: [{ id: 'link-1', einheitId: 'e-1', geraetId: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach' }],
+      freieGeraete: [],
+    });
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      undefined,
+      { zuordnungen: [], freieGeraete: [{ id: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach', nennleistungKw: 8.4 }] },
+    );
+    const dialog = await blatt('Einheiten verwalten');
+    expect(within(dialog).getByText('Kein Gerät zugeordnet')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '+ Gerät zuordnen' }));
+    const zuordnenDialog = await screen.findByRole('dialog', { name: 'Gerät zuordnen' });
+    fireEvent.click(within(zuordnenDialog).getByRole('combobox', { name: /Welches Gerät/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /Wechselrichter Dach/ }));
+    fireEvent.click(within(zuordnenDialog).getByRole('button', { name: 'Zuordnen' }));
+    await waitFor(() => expect(zuordnen).toHaveBeenCalledWith(eegSite.id, 'e-1', 'mp-1', 'messpunkt'));
+    expect(await within(dialog).findByText('Wechselrichter Dach')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Wechselrichter Dach nicht mehr zuordnen' })).toBeInTheDocument();
+    restore();
+    zuordnen.mockRestore();
+  });
+
+  it('entfernt eine bestehende Zuordnung', async () => {
+    const entfernen = vi.spyOn(api, 'einheitGeraetEntfernen').mockResolvedValue({
+      zuordnungen: [],
+      freieGeraete: [{ id: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach', nennleistungKw: 8.4 }],
+    });
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      undefined,
+      {
+        zuordnungen: [{ id: 'link-1', einheitId: 'e-1', geraetId: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach' }],
+        freieGeraete: [],
+      },
+    );
+    const dialog = await blatt('Einheiten verwalten');
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Wechselrichter Dach nicht mehr zuordnen' }));
+    await waitFor(() => expect(entfernen).toHaveBeenCalledWith(eegSite.id, 'e-1', 'link-1'));
+    expect(await within(dialog).findByText('Kein Gerät zugeordnet')).toBeInTheDocument();
+    restore();
+    entfernen.mockRestore();
   });
 });

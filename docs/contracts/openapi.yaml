@@ -5510,6 +5510,190 @@ paths:
         "400": { description: Neither pv nor storage present, or values out of range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/register-einheiten:
+    get:
+      tags: [registry]
+      summary: Every registered unit of the site (S1/S2, vp-mastr-mehrere-einheiten-konzept).
+      description: >
+        A site can carry several registered units (e.g. a 2014 roof and a
+        2024 garage) - the aggregate `asset` row stays the sum the rest of
+        the system reads; this lists the individual units underneath it.
+        `bestaetigtAm == null` marks a unit the background reconciliation
+        found at the same Lokation but the customer has not yet confirmed
+        (E5 - suggested once, nothing computes from it until confirmed).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's registered units, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegisterEinheit" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/mastr-lokation-lookup:
+    post:
+      tags: [registry]
+      summary: Fetch every unit sharing the typed unit's Lokation (nothing persisted).
+      description: >
+        S2 (Lokations-Suche): "eine Nummer genügt" - the customer types one
+        SEE number, this reads its Lokation (SEL...) and returns every unit
+        registered there, sorted by commissioning date. A unit of a
+        DIFFERENT operator than the typed one comes back pre-deselected
+        (`vorausgewaehlt: false`, `grund: anderer_betreiber`) - the operator
+        comparison happens only in memory at lookup time and is never
+        persisted. A unit without a known Lokation (heavily masked / older
+        records) comes back alone.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [einheitNummer]
+              properties:
+                einheitNummer: { type: string, example: SEE966831669444 }
+      responses:
+        "200":
+          description: Every unit at the Lokation, with the recommended selection.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MastrLokationPreview" }
+        "400": { description: Invalid unit number (German hint in `message`). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant, or no unit with this number in the registry. }
+        "502": { description: Registry currently unreachable. }
+  /api/v1/sites/{siteId}/mastr-lokation-apply:
+    post:
+      tags: [registry]
+      summary: Persist the customer-confirmed selection of a Lokations-Suche preview.
+      description: >
+        One upsert per unit in ONE transaction, idempotent on `(site_id,
+        registry_unit_id)` like `mastr-apply` - a re-apply (re-confirm)
+        updates the unit, it never creates a duplicate. At least one unit
+        (pv or storage) is required.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MastrLokationApplyRequest" }
+      responses:
+        "200":
+          description: The site's registered units after the apply.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegisterEinheit" }
+        "400": { description: No unit present, or values out of range. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/einheit-geraet:
+    get:
+      tags: [registry]
+      summary: S5 - every device assigned to a confirmed PV unit, plus every free candidate device.
+      description: >
+        vp-mastr-mehrere-einheiten-konzept §5.1/§8 ("Zuordnung zu
+        Wechselrichtern"): the voluntary link between a confirmed PV
+        `register_einheit` and the device that actually feeds it (a
+        `measurement_point` with role `pv-generation`, or an active
+        Anlagensteuerung `geraet_teil`). Display only - no computation
+        depends on this link.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Current assignments and free candidate devices.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EinheitGeraet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/register-einheiten/{einheitId}/geraet:
+    post:
+      tags: [registry]
+      summary: S5 - assign a free device to this confirmed unit.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: einheitId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [geraetId, art]
+              properties:
+                geraetId: { type: string, format: uuid }
+                art: { type: string, enum: [messpunkt, erzeugungseinheit] }
+      responses:
+        "200":
+          description: The site's assignments after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EinheitGeraet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site, unit or device not found for this tenant/site. }
+  /api/v1/sites/{siteId}/register-einheiten/{einheitId}/geraet/{linkId}:
+    delete:
+      tags: [registry]
+      summary: S5 - remove a device assignment (display only, nothing computes from it).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: einheitId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: linkId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's assignments after the removal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EinheitGeraet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/register-einheiten-hinweis:
+    get:
+      tags: [registry]
+      summary: S5 - "fehlt eine Einheit?" plausibility (measured PV peak vs. confirmed units' kWp sum).
+      description: >
+        vp-mastr-mehrere-einheiten-konzept §4.4/§8: the measured 30-day PV
+        peak (15-minute rollup) against the sum of confirmed PV units'
+        `leistung_kwp`. `moeglicherweiseFehlendeEinheit` is only ever true
+        with enough measured quarter-hours AND a maintained sum - never
+        guessed.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The plausibility verdict.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterEinheitHinweis" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/admin/register-abgleich:
+    get:
+      tags: [admin]
+      summary: S5 - Plattform-Admin "Register-Abgleich", cross-tenant.
+      description: >
+        vp-mastr-mehrere-einheiten-konzept §6/§8: four hint categories over
+        every site - measured peak over the confirmed sum, register changed
+        since confirmation, the same registry number confirmed at two
+        sites, and a PV asset never linked to the register. Read-only,
+        `platform-admin` only (`AdminFleetController` security pattern).
+      responses:
+        "200":
+          description: The four hint categories.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterAbgleich" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
   /api/v1/sites/{siteId}/pv:
     put:
       tags: [registry]
@@ -5805,12 +5989,12 @@ paths:
         directory cleanup with POST /tenants/{tenantId}/offboarding/cleanup.
         Existing customer JWTs of a removed tenant are rejected with 401,
         including GET /api/v1/me.
-        UEMS AP-20 IP-18 (E10 = A, BT4, BT5): only a tenant in the state
-        „beendet“ whose period has run out (`loeschung_fruehestens`, a calendar
-        day in Europe/Berlin) is deleted; otherwise 409 `kundenbereich_nicht_beendet`
-        or 409 `frist_laeuft`, answered before any account is blocked. The same
-        transaction writes the deletion record `mandant_loeschnachweis`
-        (`loeschnachweis` in the report) without the customer's personal data.
+        UEMS AP-20 IP-18 (E10 = A, BT4): every tenant is deleted immediately,
+        with or without data, active or „beendet“ - there is no waiting period
+        any more. The same transaction writes the deletion record
+        `mandant_loeschnachweis` (`loeschnachweis` in the report, `anlass`
+        `sofort_keine_daten` | `sofort_mit_daten`) without the customer's
+        personal data.
       parameters:
         - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -5828,21 +6012,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant not found. }
-        "409":
-          description: >
-            `kundenbereich_nicht_beendet` (the tenant is not „beendet“) or
-            `frist_laeuft` (the period after the end of contract has not run
-            out yet). Nothing is blocked or deleted.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [code, message]
-                properties:
-                  code: { type: string, enum: [kundenbereich_nicht_beendet, frist_laeuft] }
-                  message: { type: string }
-                  beendet_am: { type: string, format: date-time }
-                  loeschung_fruehestens: { type: string, format: date }
         "502": { description: Accounts could not be completely listed or disabled; no database teardown. }
   /api/v1/admin/tenants/{tenantId}/offboarding/cleanup:
     post:
@@ -5873,10 +6042,10 @@ paths:
         aktiv -> beendet with Auftrag, Begruendung and the tenant's EXACT name (type-to-confirm, like the
         offboarding). From then on every write route of the Kundenbereich answers 409 kundenbereich_beendet
         (customer routes and platform routes carrying its tenant, site or device); only the
-        Kundenadministrator still reads (GET /api/v1/me carries kundenbereich.beendet). fristTage defaults to 90 (the contract's value is the operator's);
-        loeschung_fruehestens = day of the end + fristTage, Europe/Berlin. The transition is written to the
-        platform protocol kundenbereich_uebergang and happens once - a second call is 409.
-        The offboarding route is unchanged by this package.
+        Kundenadministrator still reads (GET /api/v1/me carries kundenbereich.beendet). fristTage defaults to 90 (the contract's value is the operator's) and
+        is recorded only as a documented contract value - it no longer gates deletion (vp-kunde-sofort-loeschen-mit-daten).
+        The transition is written to the platform protocol kundenbereich_uebergang and happens once - a second call is 409.
+        The offboarding route is unaffected by this state.
       parameters:
         - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -5902,7 +6071,6 @@ paths:
                   zustand: { type: string, enum: [beendet] }
                   beendet_am: { type: string, format: date-time }
                   frist_tage: { type: integer }
-                  loeschung_fruehestens: { type: string, format: date }
         "400": { description: confirmName does not match the tenant's name, or a mandatory field is empty. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -23236,17 +23404,16 @@ components:
         beendet:
           description: >
             UEMS AP-20 IP-16 - null while the Kundenbereich is aktiv. Once beendet, every other customer
-            route answers this person 409 kundenbereich_beendet {code, message, beendet_am,
-            loeschung_fruehestens} unless liest is true (the Kundenadministrator), and every write route
-            answers it to everyone.
+            route answers this person 409 kundenbereich_beendet {code, message, beendet_am} unless liest
+            is true (the Kundenadministrator), and every write route answers it to everyone. The sentence
+            never promises a deletion date (vp-kunde-sofort-loeschen-mit-daten): there is no waiting period.
           nullable: true
           allOf: [{ $ref: "#/components/schemas/SelbstauskunftKundenbereichBeendet" }]
     SelbstauskunftKundenbereichBeendet:
       type: object
-      required: [beendet_am, loeschung_fruehestens, liest, text]
+      required: [beendet_am, liest, text]
       properties:
         beendet_am: { type: string, format: date }
-        loeschung_fruehestens: { type: string, format: date, description: day of the end + Frist, computed on request }
         liest: { type: boolean, description: true only for the Kundenadministrator }
         text: { type: string, description: the sentence for THIS person, built by the API }
     SelbstauskunftStandort:
@@ -26065,6 +26232,152 @@ components:
             maxChargeKw: { type: number, nullable: true }
             maxDischargeKw: { type: number, nullable: true }
             commissionedOn: { type: string, format: date, nullable: true }
+    RegisterEinheit:
+      type: object
+      description: >
+        One registered unit of a site (S1/S2, vp-mastr-mehrere-einheiten-
+        konzept Abschnitt 5.1): the WIRKSAM (customer-confirmed) layer.
+        `abweichungVonRegister` is a hint (the register has since reported a
+        different value) - never a silent change; `bestaetigtAm == null`
+        means an unconfirmed suggestion the background reconciliation found
+        (E5), nothing computes from it yet.
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [pv, speicher] }
+        registry: { type: string, nullable: true, example: mastr }
+        registryUnitId: { type: string, nullable: true, example: SEE966831669444 }
+        bezeichnung: { type: string, nullable: true }
+        inbetriebnahme: { type: string, format: date, nullable: true }
+        leistungKwp: { type: number, nullable: true }
+        speicherKwh: { type: number, nullable: true }
+        speicherKw: { type: number, nullable: true }
+        bestaetigtAm: { type: string, format: date-time, nullable: true }
+        registryFetchedAt: { type: string, format: date-time, nullable: true }
+        abweichungVonRegister: { type: boolean }
+        flaechen:
+          type: array
+          description: Roof faces (the Sonnenrose's data); empty when direction/power are not both known.
+          items: { $ref: "#/components/schemas/EinheitFlaeche" }
+    EinheitFlaeche:
+      type: object
+      description: One roof face of a PV unit - an Ost-West unit has two.
+      properties:
+        richtungGrad: { type: number, description: Clockwise from North; 180 = South. }
+        neigungGrad: { type: number, nullable: true }
+        anteilKwp: { type: number }
+        module: { type: integer, nullable: true }
+        quelle: { type: string, enum: [register, vorschlag, kunde] }
+    EinheitGeraet:
+      type: object
+      description: >
+        S5 (vp-mastr-mehrere-einheiten-konzept §5.1): the device assignment
+        of a site - every existing link, plus every PV-capable device still
+        free for the "Gerät zuordnen" picker.
+      required: [zuordnungen, freieGeraete]
+      properties:
+        zuordnungen:
+          type: array
+          items: { $ref: "#/components/schemas/EinheitGeraetZeile" }
+        freieGeraete:
+          type: array
+          items: { $ref: "#/components/schemas/EinheitGeraetKandidat" }
+    EinheitGeraetZeile:
+      type: object
+      description: One existing assignment - which device feeds which unit.
+      required: [id, einheitId, geraetId, art, bezeichnung]
+      properties:
+        id: { type: string, format: uuid }
+        einheitId: { type: string, format: uuid }
+        geraetId: { type: string, format: uuid }
+        art: { type: string, enum: [messpunkt, erzeugungseinheit] }
+        bezeichnung: { type: string }
+    EinheitGeraetKandidat:
+      type: object
+      description: A PV-capable device not yet assigned to any unit.
+      required: [id, art, bezeichnung]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [messpunkt, erzeugungseinheit] }
+        bezeichnung: { type: string }
+        nennleistungKw: { type: number, nullable: true }
+    RegisterEinheitHinweis:
+      type: object
+      description: S5 (§4.4) - "fehlt eine Einheit?" plausibility for one site.
+      required: [moeglicherweiseFehlendeEinheit, messwerteViertelstunden]
+      properties:
+        moeglicherweiseFehlendeEinheit: { type: boolean }
+        gemessenePeakKw: { type: number, nullable: true }
+        summeKwp: { type: number, nullable: true }
+        messwerteViertelstunden: { type: integer }
+    RegisterAbgleich:
+      type: object
+      description: S5 (§6) - the Plattform-Admin "Register-Abgleich", four hint categories, cross-tenant.
+      required: [messungUeberSumme, registerGeaendert, nummerAnZweiAnlagen, ohneRegister]
+      properties:
+        messungUeberSumme:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+        registerGeaendert:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+        nummerAnZweiAnlagen:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+        ohneRegister:
+          type: array
+          items: { $ref: "#/components/schemas/RegisterAbgleichZeile" }
+    RegisterAbgleichZeile:
+      type: object
+      description: One flagged site within a Register-Abgleich category.
+      required: [siteId, siteName, tenantId, tenantName, hinweis]
+      properties:
+        siteId: { type: string, format: uuid }
+        siteName: { type: string }
+        tenantId: { type: string, format: uuid }
+        tenantName: { type: string }
+        hinweis: { type: string }
+    MastrLokationEinheit:
+      type: object
+      properties:
+        vorschau: { $ref: "#/components/schemas/MastrPreview" }
+        vorausgewaehlt:
+          type: boolean
+          description: False ONLY when the operator (ABR) is known to differ from the typed unit.
+        grund: { type: string, nullable: true, enum: [anderer_betreiber, null] }
+    MastrLokationPreview:
+      type: object
+      properties:
+        lokationMastrNummer: { type: string, nullable: true, example: SEL926735321862 }
+        einheiten:
+          type: array
+          items: { $ref: "#/components/schemas/MastrLokationEinheit" }
+    MastrLokationApplyRequest:
+      type: object
+      description: At least one unit (pv or storage) is required; same per-unit shape as MastrApplyRequest.
+      properties:
+        pv:
+          type: array
+          items:
+            type: object
+            required: [mastrNummer]
+            properties:
+              mastrNummer: { type: string, pattern: "SEE\\d{12}" }
+              capacityKwp: { type: number, nullable: true }
+              moduleCount: { type: integer, nullable: true }
+              azimuthDeg: { type: number, nullable: true }
+              tiltDeg: { type: number, nullable: true }
+              commissionedOn: { type: string, format: date, nullable: true }
+        storage:
+          type: array
+          items:
+            type: object
+            required: [mastrNummer]
+            properties:
+              mastrNummer: { type: string, pattern: "SEE\\d{12}" }
+              capacityKwh: { type: number, nullable: true }
+              maxChargeKw: { type: number, nullable: true }
+              maxDischargeKw: { type: number, nullable: true }
+              commissionedOn: { type: string, format: date, nullable: true }
     Teilansicht:
       type: object
       description: >
@@ -29399,7 +29712,7 @@ components:
         (Börsenpreis, nie eine erfundene Zahl), netzladen = Netzladen erlaubt
         (Börsenpreis, eine Angabe ruht), direktvermarktung = Börsenpreis +
         Marktprämie (kein fester Satz).
-      required: [zustand, hergeleitetGenaehert, ohneVerguetungBeiNegativpreis]
+      required: [zustand, hergeleitetGenaehert, ohneVerguetungBeiNegativpreis, einheiten]
       properties:
         zustand:
           type: string
@@ -29414,6 +29727,24 @@ components:
         eegEndeAm: { type: string, format: date, nullable: true, description: "Letzter Tag der EEG-Vergütung (31.12. des 20. Jahres nach dem Inbetriebnahmejahr)." }
         ohneVerguetungBeiNegativpreis: { type: boolean, description: "§ 51a EEG gilt (Inbetriebnahme ab 25.02.2025 nach dem Datum, ohne Datum nach der Antwort) - auch für einen angegebenen Satz." }
         anzulegenderWertCtKwh: { type: number, nullable: true, description: "Nur bei Direktvermarktung: der anzulegende Wert der Marktprämie." }
+        einheiten:
+          type: array
+          description: >
+            S4 (vp-mastr-mehrere-einheiten-konzept §5.2): bei zwei oder mehr
+            bestätigten PV-Einheiten mit je einem eigenen Satz der Rechenweg
+            des Mischsatzes (`wirksamCtKwh` ist dann Σ Anteil nach kWp × Satz
+            der Einheit); leer bei weniger als zwei Einheiten, oder wenn der
+            Mischsatz nicht eindeutig feststeht - die Karte zeigt dann wie
+            bisher den Anlagen-Satz, ohne Rechenweg.
+          items: { $ref: "#/components/schemas/EinspeiseverguetungEinheit" }
+    EinspeiseverguetungEinheit:
+      type: object
+      description: Eine Einheit im Rechenweg des Mischsatzes (Einspeiseverguetung.einheiten).
+      required: [leistungKwp, satzCtKwh]
+      properties:
+        inbetriebnahme: { type: string, format: date, nullable: true }
+        leistungKwp: { type: number }
+        satzCtKwh: { type: number }
     UsageProfile:
       type: object
       description: >

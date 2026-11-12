@@ -7,15 +7,19 @@ import {
   EIGENER_SATZ_BEISPIELE,
   giltJetzt,
   herleitungOption,
+  mischsatzRechenweg,
   parseVerguetungInput,
   ruhtErklaerung,
+  satzText,
   STICHTAG_FEHLER,
   STICHTAG_FRAGE,
   STICHTAG_WAHL,
+  tagText,
   VERGUETUNG_EINGABE_FEHLER,
   verguetungHinweise,
   verguetungInputText,
 } from '../einspeiseverguetung';
+import { fmtNum } from '../format';
 import { Recht } from './Recht';
 import './EinspeiseverguetungBlatt.css';
 import './SettingEditors.css';
@@ -77,6 +81,7 @@ export function EinspeiseverguetungBlatt({
       <p className="vp-note">{jetzt.herkunft}</p>
     </div>
   );
+  const rechenweg = mischsatzRechenweg(stand);
 
   const ruht = ruhtErklaerung(stand);
   if (!angabeMoeglich(stand.zustand)) {
@@ -134,6 +139,19 @@ export function EinspeiseverguetungBlatt({
   return (
     <div className="vp-setting-editform">
       {kopf}
+      {rechenweg.length > 0 && (
+        <div className="vp-verguetung-rechenweg" data-testid="verguetung-rechenweg">
+          <span className="vp-verguetung-jetzt-h">Rechenweg des Mischsatzes</span>
+          <ul className="vp-verguetung-rechenweg-liste">
+            {rechenweg.map((z) => (
+              <li key={`${z.inbetriebnahme ?? 'ohne-datum'}-${z.leistungKwp}`}>
+                {fmtNum(z.anteilProzent, '%', 0)} · {fmtNum(z.leistungKwp, 'kWp', 1)} × {satzText(z.satzCtKwh)}
+                {z.inbetriebnahme && <> · seit {tagText(z.inbetriebnahme)}</>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <fieldset className="vp-pricemode">
         <legend className="vp-tarif-label">Womit soll gerechnet werden?</legend>
         <div className="vp-pricemode-cards">

@@ -27,7 +27,8 @@ const now = Date.now();
 const iso = (deltaMs: number) => new Date(now + deltaMs).toISOString();
 const TENANT_ID = 't1';
 const beendet = new URLSearchParams(window.location.search).get('vertrag') === 'beendet';
-// vp-kunde-sofort-loeschen: `?loeschbar=sofort` spielt den datenfreien Kunden (Server-Urteil).
+// vp-kunde-sofort-loeschen-mit-daten: `?loeschbar=sofort` spielt den datenfreien Kunden; jeder Kunde
+// ist ohnehin sofort löschbar, der Parameter wählt nur, was der Dialog an Daten zeigt.
 const sofort = new URLSearchParams(window.location.search).get('loeschbar') === 'sofort';
 
 Object.assign(keycloak, {
@@ -102,21 +103,17 @@ Object.assign(adminApi, {
     werkNordBoxen = werkNordBoxen.filter((b) => b.externalRef !== ref);
     return { externalRef: ref, anlass: 'falsche_kennung' };
   },
-  // vp-kunde-sofort-loeschen: das Server-Urteil der Akte; ohne `?loeschbar=sofort` hat der Kunde Daten.
+  // vp-kunde-sofort-loeschen-mit-daten: die Datenauskunft der Akte; ohne `?loeschbar=sofort` hat der Kunde Daten.
   kundeLoeschbarkeit: async () => ({
     tenantId: TENANT_ID,
-    sofortLoeschbar: sofort,
     daten: sofort ? [] : ['herzschlag', 'messwerte'],
     beendetAm: beendet ? '2026-10-01' : null,
-    loeschungFruehestens: beendet ? '2027-01-01' : null,
-    fristAbgelaufen: false,
     folgen: { anlagen: sites.length, boxen: ['VP-BB22'], personen: konten.length },
   }),
-  kundenLoeschbarkeit: async () => [],
   deleteTenant: async (_tenantId: string, confirmName: string) => ({
     tenantId: TENANT_ID, tenantName: confirmName, deletedSites: sites.length, deletedDevices: 1,
     deletedTelemetryRows: 0, deletedUsers: konten.map((k) => k.username), failedUsers: [],
-    anlass: 'sofort_keine_daten', freigegebeneBoxen: ['VP-BB22'],
+    anlass: sofort ? 'sofort_keine_daten' : 'sofort_mit_daten', freigegebeneBoxen: ['VP-BB22'],
   }),
 });
 Object.assign(benutzerApi, { liste: async () => [] });
@@ -132,7 +129,7 @@ Object.assign(fleetApi, {
 Object.assign(api, {
   selbstauskunft: async () => ({
     kundenbereich: beendet
-      ? { beendet: { beendet_am: '2026-10-01', loeschung_fruehestens: '2027-01-01' } }
+      ? { beendet: { beendet_am: '2026-10-01' } }
       : { beendet: null },
   }),
 });

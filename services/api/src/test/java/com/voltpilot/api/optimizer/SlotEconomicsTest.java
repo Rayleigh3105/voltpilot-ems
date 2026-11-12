@@ -384,6 +384,54 @@ class SlotEconomicsTest {
         }
     }
 
+    /**
+     * S4: eine einzelne Einheit muss die GETEILTEN Einzelanlage-Vektoren
+     * ({@code einspeiseverguetung-vectors.json}, dieselben 23+ Faelle wie
+     * oben) byte-gleich reproduzieren - ihr Anteil ist exakt 1.0
+     * (IEEE754-exakt), und jede DB-gestuetzte Anlage speist dieselbe
+     * kWp/Datum in beide Pfade.
+     */
+    @Test
+    void einzelneEinheitIstByteGleichZumBestehendenPfad() {
+        Instant slot = EinspeiseverguetungVektoren.slot();
+        for (EinspeiseverguetungVektoren.Fall f : EinspeiseverguetungVektoren.faelle()) {
+            SiteEconomics siteEcon = new SiteEconomics(f.veraeusserungsform(), f.netzladen(), "ohne",
+                    null, f.anzulegenderWertCtKwh(), f.inbetriebnahme(), f.leistungKwp(),
+                    f.angegebenCtKwh(), f.inbetriebnahmeAbSolarspitzengesetz(), 0.92, 4.0, null);
+            Map<LocalDate, MarketValue> mv = f.monatsmarktwertCtKwh() == null ? Map.of()
+                    : Map.of(SlotEconomics.berlinMonth(slot),
+                            new MarketValue(f.monatsmarktwertCtKwh(), false));
+            SlotEconomics economics = new SlotEconomics(siteEcon, EegRates.defaults(), mv);
+            Double legacy = economics.exportValueCtKwh(f.spotEurMwh(), slot);
+            Double kwp = f.leistungKwp() == null ? 0.0 : f.leistungKwp();
+            List<SlotEconomics.UnitPv> units = kwp > 0
+                    ? List.of(new SlotEconomics.UnitPv(kwp, f.inbetriebnahme()))
+                    : List.of();
+            Double perUnit = economics.exportValueCtKwh(units, f.spotEurMwh(), slot);
+            assertThat(perUnit).as(f.fall()).isEqualTo(legacy);
+        }
+    }
+
+    /**
+     * S4: die Paragraph 24 Abs. 3 EEG-Blende ueber mehrere Einheiten
+     * ({@code einspeiseverguetung-mehreinheiten-vectors.json}) - dieselben
+     * Faelle prueft {@code test_pricing.py} am Optimierer.
+     */
+    @Test
+    void mehrereEinheitenFolgenDenGeteiltenVektoren() {
+        Instant slot = MehreinheitenVektoren.slot();
+        assertThat(MehreinheitenVektoren.faelle()).hasSizeGreaterThanOrEqualTo(7);
+        for (MehreinheitenVektoren.Fall f : MehreinheitenVektoren.faelle()) {
+            SiteEconomics siteEcon = new SiteEconomics("eigenverbrauch", false, "ohne",
+                    null, null, null, null,
+                    f.angegebenCtKwh(), f.inbetriebnahmeAbSolarspitzengesetz(), 0.92, 4.0, null);
+            SlotEconomics economics = new SlotEconomics(siteEcon, EegRates.defaults(), Map.of());
+            Double wert = economics.exportValueCtKwh(f.einheiten(), f.spotEurMwh(), slot);
+            assertThat(wert).as(f.fall()).isNotNull()
+                    .isCloseTo(f.einspeisewertCtKwh(), within(1e-9));
+        }
+    }
+
     @Test
     void angegebeneVerguetungLaesstDenSatzplanUnberuehrt() {
         // Die Angabe ist eine Ebene ÜBER dem Satzplan: dieselbe Anlage ohne

@@ -60,6 +60,8 @@ class MastrApiTest {
 
     private static final String PV_UNIT = "SEE966831669444";
     private static final String STORAGE_UNIT = "SEE972142227037";
+    private static final String GARAGE_UNIT = "SEE912345678901";
+    private static final String LOCATION = "SEL926735321862";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -105,6 +107,11 @@ class MastrApiTest {
                 @Override
                 public Response get(URI uri) {
                     String q = uri.toString();
+                    // The Lokations-Suche filter must be checked before the
+                    // single-unit ones: it is also a GET to the same base URL.
+                    if (q.contains("der+Lokation") && q.contains(LOCATION)) {
+                        return new Response(200, fixture("json_lokation_" + LOCATION + ".json"));
+                    }
                     if (q.contains(PV_UNIT)) {
                         return new Response(200, fixture("json_pv_" + PV_UNIT + ".json"));
                     }
@@ -263,7 +270,247 @@ class MastrApiTest {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    // ---- S2: Lokations-Suche ---------------------------------------------------
+
+    @Test
+    void lokationLookupReturnsBothUnitsSortedByCommissioning() {
+        ResponseEntity<Map<String, Object>> res = post(
+                "/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-lookup",
+                Map.of("einheitNummer", PV_UNIT), token("demo", "demo"));
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        assertThat(body).containsEntry("lokationMastrNummer", LOCATION);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> einheiten = (List<Map<String, Object>>) body.get("einheiten");
+        assertThat(einheiten).hasSize(2);
+        // The garage (2024) comes before the roof (2026) - sorted by Inbetriebnahme.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> garage = (Map<String, Object>) einheiten.get(0).get("vorschau");
+        assertThat(garage).containsEntry("mastrNummer", GARAGE_UNIT).containsEntry("azimuthLabel", "Ost-West");
+        assertThat(einheiten.get(0)).containsEntry("vorausgewaehlt", true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> roof = (Map<String, Object>) einheiten.get(1).get("vorschau");
+        assertThat(roof).containsEntry("mastrNummer", PV_UNIT);
+        assertThat(einheiten.get(1)).containsEntry("vorausgewaehlt", true);
+    }
+
+    @Test
+    void lokationApplyPersistsBothUnitsIdempotently() {
+        String tok = token("demo", "demo");
+        post("/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-lookup",
+                Map.of("einheitNummer", PV_UNIT), tok);
+
+        Map<String, Object> request = Map.of("pv", List.of(
+                Map.of("mastrNummer", PV_UNIT, "capacityKwp", 6.05, "moduleCount", 13,
+                        "azimuthDeg", 180, "tiltDeg", 30, "commissionedOn", "2026-07-01"),
+                Map.of("mastrNummer", GARAGE_UNIT, "capacityKwp", 6.3, "moduleCount", 15,
+                        "commissionedOn", "2024-06-30")));
+        ResponseEntity<List<Map<String, Object>>> applied = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-apply"), HttpMethod.POST,
+                new HttpEntity<>(request, bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(applied.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(applied.getBody()).hasSize(2);
+        assertThat(applied.getBody()).anySatisfy(e -> assertThat(e).containsEntry("registryUnitId", PV_UNIT));
+        assertThat(applied.getBody()).anySatisfy(e -> assertThat(e).containsEntry("registryUnitId", GARAGE_UNIT));
+
+        // Idempotent: applying the SAME selection again does not duplicate.
+        ResponseEntity<List<Map<String, Object>>> reapplied = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-apply"), HttpMethod.POST,
+                new HttpEntity<>(request, bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(reapplied.getBody()).hasSize(2);
+
+        ResponseEntity<List<Map<String, Object>>> read = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/register-einheiten"), HttpMethod.GET,
+                new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(read.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(read.getBody()).hasSize(2);
+
+        // Die Einheit mit bekannter Ausrichtung bekommt eine Fläche (Sonnenrose);
+        // die Garage ohne Ausrichtung in diesem Apply keine geratene.
+        Map<String, Object> roofEntry = read.getBody().stream()
+                .filter(e -> PV_UNIT.equals(e.get("registryUnitId"))).findFirst().orElseThrow();
+        Map<String, Object> garageEntry = read.getBody().stream()
+                .filter(e -> GARAGE_UNIT.equals(e.get("registryUnitId"))).findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> roofFlaechen = (List<Map<String, Object>>) roofEntry.get("flaechen");
+        assertThat(roofFlaechen).hasSize(1);
+        assertThat(((Number) roofFlaechen.get(0).get("richtungGrad")).doubleValue()).isEqualTo(180.0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> garageFlaechen = (List<Map<String, Object>>) garageEntry.get("flaechen");
+        assertThat(garageFlaechen).isEmpty();
+
+        // Abschnitt 5.2: die Summen-Zeile (asset.pv_capacity_kwp) synchronisiert
+        // auf Σ beider Einheiten - die Rechnung hinkt sonst der Sonnenrose nach.
+        ResponseEntity<List<Map<String, Object>>> assets = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/assets"), HttpMethod.GET,
+                new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+        Map<String, Object> pvAsset = assets.getBody().stream()
+                .filter(a -> "pv".equals(a.get("type"))).findFirst().orElseThrow();
+        assertThat(((Number) pvAsset.get("pvCapacityKwp")).doubleValue()).isEqualTo(12.35);
+    }
+
+    @Test
+    void lokationEndpointsAreRlsScopedForeignSiteIs404() {
+        String tokenB = token("demo2", "demo2");
+
+        ResponseEntity<Map<String, Object>> lookup = post(
+                "/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-lookup",
+                Map.of("einheitNummer", PV_UNIT), tokenB);
+        assertThat(lookup.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<Map<String, Object>> apply = post(
+                "/api/v1/sites/" + BERLIN_SITE + "/mastr-lokation-apply",
+                Map.of("pv", List.of(Map.of("mastrNummer", PV_UNIT, "capacityKwp", 6.05))), tokenB);
+        assertThat(apply.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<String> read = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/register-einheiten"), HttpMethod.GET,
+                new HttpEntity<>(bearer(tokenB)), String.class);
+        assertThat(read.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // ---- S5: einheit_geraet (Abschnitt 5.1/§8, "Zuordnung zu Wechselrichtern") --
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void geraetZuordnenUndEntfernenUeberDenEchtenEndpunkt() {
+        String tok = token("demo", "demo");
+        // EIGENE Anlage, nicht BERLIN_SITE: andere Tests lesen dort exakte
+        // Zählungen, eine fremde Zeile dort würde sie brechen.
+        String siteId = createSite(tok, "S5 Zuordnung", "DE-LU", "eigenverbrauch");
+        String einheitId = exec("INSERT INTO register_einheit (tenant_id, site_id, art, "
+                        + "registry_unit_id, inbetriebnahme, leistung_kwp, bestaetigt_am) "
+                        + "SELECT tenant_id, id, 'pv', 'SEE555555555555', '2020-01-01', 5.0, now() "
+                        + "FROM site WHERE id = '" + siteId + "' RETURNING id",
+                "id");
+        String mpId = exec("INSERT INTO measurement_point (tenant_id, site_id, role, label) "
+                        + "SELECT tenant_id, id, 'pv-generation', 'Wechselrichter Dach' "
+                        + "FROM site WHERE id = '" + siteId + "' RETURNING id",
+                "id");
+
+        // Anfangs frei, keine Zuordnung.
+        Map<String, Object> vorher = getMap("/api/v1/sites/" + siteId + "/einheit-geraet", tok);
+        assertThat((List<Object>) vorher.get("zuordnungen")).isEmpty();
+        assertThat((List<Map<String, Object>>) vorher.get("freieGeraete"))
+                .anySatisfy(k -> assertThat(k).containsEntry("id", mpId).containsEntry("art", "messpunkt"));
+
+        // Zuordnen.
+        ResponseEntity<Map<String, Object>> zugeordnet = post(
+                "/api/v1/sites/" + siteId + "/register-einheiten/" + einheitId + "/geraet",
+                Map.of("geraetId", mpId, "art", "messpunkt"), tok);
+        assertThat(zugeordnet.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> zuordnungen = (List<Map<String, Object>>) zugeordnet.getBody().get("zuordnungen");
+        assertThat(zuordnungen).hasSize(1);
+        Map<String, Object> zeile = zuordnungen.get(0);
+        assertThat(zeile).containsEntry("einheitId", einheitId).containsEntry("geraetId", mpId)
+                .containsEntry("bezeichnung", "Wechselrichter Dach");
+        assertThat((List<Object>) zugeordnet.getBody().get("freieGeraete")).isEmpty();
+        String linkId = (String) zeile.get("id");
+
+        // Persistiert: ein frischer GET zeigt dasselbe.
+        Map<String, Object> nachGet = getMap("/api/v1/sites/" + siteId + "/einheit-geraet", tok);
+        assertThat((List<Object>) nachGet.get("zuordnungen")).hasSize(1);
+
+        // Entfernen - wieder frei.
+        ResponseEntity<Map<String, Object>> entfernt = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/register-einheiten/" + einheitId + "/geraet/" + linkId),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+        assertThat(entfernt.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<Object>) entfernt.getBody().get("zuordnungen")).isEmpty();
+        assertThat((List<Map<String, Object>>) entfernt.getBody().get("freieGeraete"))
+                .anySatisfy(k -> assertThat(k).containsEntry("id", mpId));
+    }
+
+    @Test
+    void geraetZuordnenIst404BeiFremderEinheitOderFremdemGeraet() {
+        String tok = token("demo", "demo");
+        String siteId = createSite(tok, "S5 404", "DE-LU", "eigenverbrauch");
+        String einheitId = exec("INSERT INTO register_einheit (tenant_id, site_id, art, "
+                        + "registry_unit_id, inbetriebnahme, leistung_kwp, bestaetigt_am) "
+                        + "SELECT tenant_id, id, 'pv', 'SEE555555555556', '2020-01-01', 5.0, now() "
+                        + "FROM site WHERE id = '" + siteId + "' RETURNING id",
+                "id");
+        ResponseEntity<Map<String, Object>> fremdesGeraet = post(
+                "/api/v1/sites/" + siteId + "/register-einheiten/" + einheitId + "/geraet",
+                Map.of("geraetId", java.util.UUID.randomUUID().toString(), "art", "messpunkt"), tok);
+        assertThat(fremdesGeraet.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<Map<String, Object>> fremdeEinheit = post(
+                "/api/v1/sites/" + siteId + "/register-einheiten/" + java.util.UUID.randomUUID() + "/geraet",
+                Map.of("geraetId", java.util.UUID.randomUUID().toString(), "art", "messpunkt"), tok);
+        assertThat(fremdeEinheit.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void registerEinheitenHinweisFlagtGemesseneSpitzeUeberDerSumme() {
+        String tok = token("demo", "demo");
+        String siteId = createSite(tok, "S5 Hinweis", "DE-LU", "eigenverbrauch");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, registry_unit_id, "
+                        + "inbetriebnahme, leistung_kwp, bestaetigt_am) "
+                        + "SELECT tenant_id, id, 'pv', 'SEE555555555557', '2020-01-01', 5.0, now() "
+                        + "FROM site WHERE id = '" + siteId + "'",
+                null);
+
+        // Ohne genug Messwerte: kein Urteil.
+        Map<String, Object> ohneMessung = getMap(
+                "/api/v1/sites/" + siteId + "/register-einheiten-hinweis", tok);
+        assertThat(ohneMessung.get("moeglicherweiseFehlendeEinheit")).isEqualTo(false);
+
+        // 96 Viertelstunden mit 2,0 kWh PV je Bucket = 8,0 kW Spitze - deutlich
+        // über 5,0 kWp * 1,25 (6,25 kW).
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, n_samples) "
+                        + "SELECT now() - (n || ' minutes')::interval, tenant_id, id, 2.0, 1 "
+                        + "FROM site, generate_series(0, 95 * 15, 15) AS n WHERE site.id = '" + siteId + "'",
+                null);
+
+        Map<String, Object> mitMessung = getMap(
+                "/api/v1/sites/" + siteId + "/register-einheiten-hinweis", tok);
+        assertThat(mitMessung.get("moeglicherweiseFehlendeEinheit")).isEqualTo(true);
+        assertThat(((Number) mitMessung.get("gemessenePeakKw")).doubleValue()).isEqualTo(8.0);
+        assertThat(((Number) mitMessung.get("summeKwp")).doubleValue()).isEqualTo(5.0);
+    }
+
     // ---- helpers ---------------------------------------------------------------
+
+    /** A fresh, empty site under the caller's own tenant - never BERLIN_SITE's shared counts. */
+    @SuppressWarnings("unchecked")
+    private String createSite(String token, String name, String zone, String plantKind) {
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", name, "biddingZone", zone, "plantKind", plantKind),
+                        bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return (String) created.getBody().get("id");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getMap(String path, String token) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(url(path), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    /** Raw seeding/read, bypassing RLS (the container's own superuser) - like PortalApiTest's {@code exec}. */
+    private String exec(String sql, String returningColumn) {
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement()) {
+            if (returningColumn == null) {
+                st.execute(sql);
+                return null;
+            }
+            try (java.sql.ResultSet rs = st.executeQuery(sql)) {
+                rs.next();
+                return rs.getObject(returningColumn).toString();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
 
     private ResponseEntity<Map<String, Object>> post(String path, Map<String, ?> body, String token) {
         return rest.exchange(url(path), HttpMethod.POST, new HttpEntity<>(body, bearer(token)),

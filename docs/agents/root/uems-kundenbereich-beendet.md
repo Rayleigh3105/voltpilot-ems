@@ -2,7 +2,7 @@
 
 E10 = A, BT4, RF-08: der Betreiber setzt einen Kundenbereich auf „beendet"; danach ist jeder
 Schreibweg `409 kundenbereich_beendet`, nur der Kundenadministrator liest noch, die Datenannahme
-verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, Löschnachweis) stehen unten.
+verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (sofortiges Löschen, Löschnachweis) stehen unten.
 
 - **Zustand:** `tenant.beendet_am` / `beendet_frist_tage` / `beendet_von` (`V20260925170000`).
   NULL = aktiv — bewusst keine Zustandsspalte mit Default (sie änderte jede Bestandszeile, der
@@ -16,12 +16,13 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
 - **Sperre:** `KundenbereichEndeFilter` in der `secured`-Kette nach dem `ZugriffFilter` — vor
   Handler, Körper-Leser und `RechtInterceptor`. Kundenrouten: jedes Nicht-GET 409; Lesen nur
   Kundenkonto mit Zuweisung „Kundenadministrator" oder Bestandskonto; `/me` für alle — die
-  Selbstauskunft trägt `kundenbereich.beendet {beendet_am, loeschung_fruehestens, liest, text}`
-  (aktiv: `null`). Plattform-Routen mit `{tenantId}`/`{siteId}`/
+  Selbstauskunft trägt `kundenbereich.beendet {beendet_am, liest, text}` (aktiv: `null`); der Satz
+  verspricht seit vp-kunde-sofort-loeschen-mit-daten kein Löschdatum mehr (kein `loeschung_fruehestens`
+  irgendwo im Körper). Plattform-Routen mit `{tenantId}`/`{siteId}`/
   `{deviceId}` im Pfad: jedes Nicht-GET 409 — der Satz spricht den Admin an
   (`KundenbereichEnde.textAdmin`), nie der Kundensatz „Ihr Vertrag …" —, außer `ADMIN_AUSNAHMEN`
-  (beenden, wiederaufnehmen, `delete` — seit vp-kunde-sofort-loeschen auch SOFORT bei einem
-  datenfreien Kunden —, `offboarding/cleanup`, Konto sperren) und den Betreiber-Aktionen am
+  (beenden, wiederaufnehmen, `delete` - seit vp-kunde-sofort-loeschen-mit-daten IMMER, mit oder ohne
+  Daten -, `offboarding/cleanup`, Konto sperren) und den Betreiber-Aktionen am
   Box-Lebenszyklus über die externe Referenz (`ADMIN_BOX_BETREIBER_AKTIONEN`: Vom Kunden lösen,
   Box ausbauen, endgültig löschen — EINE Stelle, vp-kunde-sofort-loeschen/vp-admin-box-ausbauen;
   eine neue Betreiber-Handlung am beendeten Kunden trägt sich dort bzw. in `ADMIN_AUSNAHMEN` ein,
@@ -95,24 +96,30 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
 - **Nachweis:** `GesamtabzugApiTest` (NW-5: Manifest-Prüfsummen, 403, „beendet“, 1 Mio. Messzeilen mit offenem
   Cursor beim Empfang und +1 MB lebendem Speicher), `GesamtabzugTest`, `ZugriffZaunApiTest` (`NACH_IP4`).
 
-## Löschen nach der Frist (IP-18) — oder sofort ohne Daten
+## Sofort löschen (IP-18)
 
-`POST /api/v1/admin/tenants/{id}/delete` (`AdminController` → `kundenbereich/KundenbereichLoeschung`), BT4, BT5, RF-08 Schritt 4–5.
-Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-löschen-vertragsende).
+`POST /api/v1/admin/tenants/{id}/delete` (`AdminController` → `kundenbereich/KundenbereichLoeschung`), BT4, RF-08 Schritt 4–5.
+Betreiber-Ablauf: [Deployment](../../deploy.md#kundenbereich-löschen-vertragsende).
 
-- **Wache:** „beendet“ und ab `KundenbereichEnde.loeschungFruehestens` (Kalendertag Berlin) — ODER SOFORT, wenn der
-  Kunde KEINE DATEN hat (vp-kunde-sofort-loeschen, Captain 11.11.2026: doppelt angelegte Kunden; aktiv oder beendet,
-  ohne Frist). Was „keine Daten“ heißt, steht EINMAL in `kundenbereich/KundeDatenBestand` (Muster `BoxDatenBestand`:
-  jede Tabelle mit `tenant_id` genau einer Klasse zugeordnet, `KundeDatenBestandMigrationTest` hält das vollständig,
-  im Zweifel „hat Daten“). Sonst `409 kundenbereich_nicht_beendet` bzw. `409 frist_laeuft` (Körper `code`, `message`,
-  `beendet_am`, `loeschung_fruehestens`, `daten` = gefundene Datenarten). Zweimal: `pruefen` VOR dem Sperren der
-  Konten, dann `Wache.vorDemAbbau` im Löschzug unter `FOR UPDATE` auf der Mandantenzeile (eine gleichzeitige
-  Wiederaufnahme gewinnt ganz oder findet nichts; der Datenbestand wird dort auf der Verbindung des Löschzugs
-  erneut gelesen). Der Sofort-Weg gibt nie gemeldete Boxen VOR dem Abbau über `BoxLoesenService.beimKundenLoeschen`
-  frei (ohne Protokollzeile — sie stürbe im selben Zug) und schreibt `mandant_loeschnachweis.anlass =
-  'sofort_keine_daten'` (Fristen-Spalten leer, `V20261111210000`) sowie das bleibende Plattform-Protokoll
-  `kundenbereich_geloescht_protokoll` MIT Namen (wer, wann, Anlass; append-only, nur Admin-Rolle). Die Löschbarkeit
-  liest das Portal über `GET /api/v1/admin/tenants/loeschbarkeit` (Liste) und `…/{id}/loeschbarkeit` (mit Folgen),
+- **Keine Wache mehr, die ablehnt (vp-kunde-sofort-loeschen-mit-daten, Captain 12.11.2026):** der Plattform-Admin
+  löscht JEDEN Kundenbereich sofort endgültig - mit oder ohne Datenbestand, aktiv oder beendet, ohne Vertragsende
+  und ohne Frist. `KundenbereichEnde.loeschungFruehestens`/`fristAbgelaufen` gibt es nicht mehr (die Methoden sind
+  mit der Gate-Logik entfernt); `fristTage` bleibt nur ein dokumentierter Vertragswert am Übergang „beenden" (siehe
+  oben), ohne dass daraus je ein Löschdatum folgt. `KundenbereichLoeschung.Wache.vorDemAbbau` liest den Datenbestand
+  nur noch EINMAL, unter `FOR UPDATE` auf der Mandantenzeile im Löschzug selbst (auf der Verbindung des Löschzugs -
+  eine Messung, die zwischendurch ankam, zählt noch mit), um zu entscheiden, welcher `Anlass` in den Nachweis
+  geht: leer → `sofort_keine_daten`, sonst → `sofort_mit_daten`. Was „keine Daten" heißt, steht weiter EINMAL in
+  `kundenbereich/KundeDatenBestand` (Muster `BoxDatenBestand`: jede Tabelle mit `tenant_id` genau einer Klasse
+  zugeordnet, `KundeDatenBestandMigrationTest` hält das vollständig, im Zweifel „hat Daten") - das entscheidet aber
+  nur noch den Anlass, nie mehr, OB gelöscht wird. Der Sofort-Weg gibt nie gemeldete Boxen VOR dem Abbau über
+  `BoxLoesenService.beimKundenLoeschen` frei (ohne Protokollzeile - sie stürbe im selben Zug), für JEDE Box
+  einzeln; eine Box, die doch gemeldet hat, lehnt dort individuell mit `BoxLoesenAbgelehnt` ab (gefangen, kein Grund
+  mehr, die Löschung selbst abzulehnen) und geht stattdessen über die Kaskade. Der Löschzug schreibt
+  `mandant_loeschnachweis.anlass` (`sofort_keine_daten` | `sofort_mit_daten`; Fristen-Spalten für BEIDE leer,
+  `V20261111210000`/`V20261112090000`; der historische Anlass `frist_abgelaufen` steht nur noch in
+  Bestandszeilen) sowie das bleibende Plattform-Protokoll `kundenbereich_geloescht_protokoll` MIT Namen (wer, wann,
+  Anlass; append-only, nur Admin-Rolle). Die Datenauskunft für den Bestätigungs-Dialog liest das Portal über
+  `GET /api/v1/admin/tenants/{id}/loeschbarkeit` (Datenarten, Vertragsende, Folgen; keine Gate-Felder mehr),
   `AdminKundeLoeschbarkeitController`.
 - **`TenantRepository.offboard(id, runnable, wache)`:** die Wache läuft in DERSELBEN Transaktion vor dem ersten und
   nach dem letzten DELETE. `offboard(id)`/`offboard(id, runnable)` bleiben ohne Wache — **nur für die
@@ -179,7 +186,7 @@ Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-lösc
   mitten im Zyklus, Nachbar; überspringt sich ohne psycopg/Docker) in beiden Diensten. `optimizer_cycle_stat` ist
   global (kein `tenant_id`).
 - **`offboarding/cleanup`** nimmt nicht denselben Löschweg: nur Keycloak-Konten, und nur ohne Mandantenzeile.
-- **Nachweis:** `KundenbereichLoeschenApiTest` (NW-5: RF-08 mit Zeitraffer 89/90 Tage, Spalten und Inhalt ohne
-  Personendaten, `verblieben` = Katalog danach = leer, Nachweis unveränderlich, die fünf Protokolle vorher
-  unveränderlich für jede Rolle), `AdminApiTest` (Löschweg-Fälle mit
-  `vertragsendeUndFristAbgelaufen`).
+- **Nachweis:** `KundenbereichLoeschenApiTest` (NW-5: ein aktiver Kunde MIT Daten wird sofort gelöscht, ein
+  beendeter Kunde MIT Daten innerhalb der früheren 90-Tage-Frist ebenso, Spalten und Inhalt ohne Personendaten,
+  `verblieben` = Katalog danach = leer, Nachweis unveränderlich, die fünf Protokolle vorher unveränderlich für
+  jede Rolle), `AdminApiTest` (Löschweg-Fälle löschen eine aktive Mandantenzeile direkt, ohne Vertragsende).

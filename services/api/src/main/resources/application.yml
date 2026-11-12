@@ -459,6 +459,15 @@ voltpilot:
   mastr:
     api-key: ${MASTR_API_KEY:}
     marktakteur-nummer: ${MASTR_MARKTAKTEUR_NUMMER:}
+    # S2 Hintergrund-Abgleich (RegisterAbgleichLaeufer, vp-mastr-mehrere-
+    # einheiten-konzept Abschnitt 5.4): re-reads confirmed units and suggests
+    # new siblings at the same Lokation. Deliberately OFF by default - unlike
+    # every other Kundenbereich-Laeufer, this one calls the LIVE
+    # Marktstammdatenregister automatically for every confirmed unit; an
+    # operator opts in explicitly once the captain has decided the keyless
+    # backend should carry that load.
+    register-abgleich:
+      enabled: ${VOLTPILOT_MASTR_REGISTER_ABGLEICH_ENABLED:false}
   provisioning:
     enabled: ${VOLTPILOT_PROVISIONING_ENABLED:false}
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}

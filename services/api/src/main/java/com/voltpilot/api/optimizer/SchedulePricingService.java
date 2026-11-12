@@ -53,12 +53,13 @@ public class SchedulePricingService {
             return plan;
         }
         String source = economics.importPriceSource();
+        List<SlotEconomics.UnitPv> pvUnits = diagnostics.pvUnitsFor(siteId);
         List<ScheduleSlotDto> priced = new ArrayList<>(slots.size());
         for (ScheduleSlotDto slot : slots) {
             Double spot = slot.priceEurMwh() == null ? null : slot.priceEurMwh().doubleValue();
             priced.add(slot.withPrices(
                     ct(economics.importPriceCtKwh(spot)),
-                    ct(economics.exportValueCtKwh(spot, slot.start())),
+                    ct(economics.exportValueCtKwh(pvUnits, spot, slot.start())),
                     source));
         }
         return new SchedulePlanDto(plan.planId(), plan.deviceId(), plan.generatedAt(),

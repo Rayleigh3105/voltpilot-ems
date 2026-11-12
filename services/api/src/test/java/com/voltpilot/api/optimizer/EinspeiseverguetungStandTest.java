@@ -7,6 +7,7 @@ import com.voltpilot.api.web.dto.EinspeiseverguetungDto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -192,5 +193,111 @@ class EinspeiseverguetungStandTest {
                 korrigiert);
         assertThat(d.hergeleitetCtKwh()).isEqualByComparingTo("9.99");
         assertThat(d.wirksamCtKwh()).isEqualByComparingTo("9.99");
+    }
+
+    // ---- S4: der Mischsatz mit Rechenweg bei mehreren Einheiten --------------
+
+    @Test
+    void wenigerAlsZweiEinheitenBleibtDieAnlagenRechnungUnberuehrt() {
+        Grundlage g = grundlage("eigenverbrauch", false, null, LocalDate.of(2023, 6, 15), "8", "eeg");
+        EinspeiseverguetungDto ohne = EinspeiseverguetungStand.von(g, List.of(), EegRates.defaults());
+        EinspeiseverguetungDto einzeln = EinspeiseverguetungStand.von(
+                g, List.of(new SlotEconomics.UnitPv(8.0, LocalDate.of(2023, 6, 15))), EegRates.defaults());
+        EinspeiseverguetungDto legacy = EinspeiseverguetungStand.von(g, EegRates.defaults());
+        assertThat(ohne).isEqualTo(legacy);
+        assertThat(einzeln).isEqualTo(legacy);
+        assertThat(einzeln.einheiten()).isEmpty();
+    }
+
+    @Test
+    void zweiEinheitenMischenSichNachKwpAnteilReportBeispiel() {
+        // report.md §2.7/§4.2: Süddach 2014 (8,4 kWp) + Garage 2024 (6,3 kWp) ->
+        // (8,4*13,70 + 6,3*8,11) / 14,7 = 11,30 ct/kWh.
+        Grundlage g = grundlage("eigenverbrauch", false, null, null, null, "eeg");
+        EinspeiseverguetungDto d = EinspeiseverguetungStand.von(
+                g,
+                List.of(
+                        new SlotEconomics.UnitPv(8.4, LocalDate.of(2014, 6, 1)),
+                        new SlotEconomics.UnitPv(6.3, LocalDate.of(2024, 6, 1))),
+                EegRates.defaults());
+        assertThat(d.zustand()).isEqualTo("eeg");
+        assertThat(d.wirksamCtKwh()).isEqualByComparingTo("11.304");
+        assertThat(d.einheiten()).hasSize(2);
+        assertThat(d.einheiten().get(0).inbetriebnahme()).isEqualTo(LocalDate.of(2014, 6, 1));
+        assertThat(d.einheiten().get(0).leistungKwp()).isEqualByComparingTo("8.4");
+        assertThat(d.einheiten().get(0).satzCtKwh()).isEqualByComparingTo("13.7");
+        assertThat(d.einheiten().get(1).satzCtKwh()).isEqualByComparingTo("8.11");
+        // Keine EINE Inbetriebnahme/Leistung/Ende mehr - der Rechenweg trägt sie.
+        assertThat(d.inbetriebnahme()).isNull();
+        assertThat(d.leistungKwp()).isNull();
+        assertThat(d.eegEndeAm()).isNull();
+    }
+
+    @Test
+    void eineAngabeZeigtDieHerleitungsvorschauAlsMischsatzDaneben() {
+        // Wie beim Einzel-Asset steht der hergeleitete Satz als Vorschau der
+        // Option „Aus dem EEG herleiten", auch wenn gerade eine Angabe wirkt.
+        Grundlage g = grundlage("eigenverbrauch", false, "20", null, null, "angegeben");
+        EinspeiseverguetungDto d = EinspeiseverguetungStand.von(
+                g,
+                List.of(
+                        new SlotEconomics.UnitPv(8.4, LocalDate.of(2014, 6, 1)),
+                        new SlotEconomics.UnitPv(6.3, LocalDate.of(2024, 6, 1))),
+                EegRates.defaults());
+        assertThat(d.zustand()).isEqualTo("angegeben");
+        assertThat(d.wirksamCtKwh()).isEqualByComparingTo("20");
+        assertThat(d.hergeleitetCtKwh()).isEqualByComparingTo("11.304");
+    }
+
+    @Test
+    void eineAngabeMischtSichFlachAberParagraph51aBleibtJeEinheit() {
+        Grundlage g = grundlage("eigenverbrauch", false, "12.5", null, null, "angegeben");
+        EinspeiseverguetungDto d = EinspeiseverguetungStand.von(
+                g,
+                List.of(
+                        new SlotEconomics.UnitPv(5.0, LocalDate.of(2023, 6, 15)),
+                        new SlotEconomics.UnitPv(150.0, LocalDate.of(2025, 6, 1))),
+                EegRates.defaults());
+        assertThat(d.zustand()).isEqualTo("angegeben");
+        // Beide Einheiten tragen denselben angegebenen Satz im Rechenweg.
+        assertThat(d.einheiten().get(0).satzCtKwh()).isEqualByComparingTo("12.5");
+        assertThat(d.einheiten().get(1).satzCtKwh()).isEqualByComparingTo("12.5");
+        assertThat(d.wirksamCtKwh()).isEqualByComparingTo("12.5");
+        // Die 150-kWp-Einheit ab 25.02.2025 macht Paragraph 51a sichtbar.
+        assertThat(d.ohneVerguetungBeiNegativpreis()).isTrue();
+    }
+
+    @Test
+    void eineEinheitOhneDatumOderAbgelaufenFaelltAufDieAnlagenRechnungZurueck() {
+        Grundlage g = grundlage("eigenverbrauch", false, null, null, null, "eeg");
+        EinspeiseverguetungDto legacy = EinspeiseverguetungStand.von(g, EegRates.defaults());
+        EinspeiseverguetungDto ohneDatum = EinspeiseverguetungStand.von(
+                g,
+                List.of(
+                        new SlotEconomics.UnitPv(5.0, LocalDate.of(2023, 6, 15)),
+                        new SlotEconomics.UnitPv(5.0, null)),
+                EegRates.defaults());
+        assertThat(ohneDatum).isEqualTo(legacy);
+        EinspeiseverguetungDto abgelaufen = EinspeiseverguetungStand.von(
+                g,
+                List.of(
+                        new SlotEconomics.UnitPv(5.0, LocalDate.of(2004, 6, 1)),
+                        new SlotEconomics.UnitPv(5.0, LocalDate.of(2023, 6, 15))),
+                EegRates.defaults());
+        assertThat(abgelaufen).isEqualTo(legacy);
+    }
+
+    @Test
+    void direktvermarktungUndNetzladenZeigenNieEinenMischsatz() {
+        Grundlage dv = new Grundlage("direktvermarktung", false, null, null, null, null,
+                new BigDecimal("8.11"), null);
+        List<SlotEconomics.UnitPv> einheiten = List.of(
+                new SlotEconomics.UnitPv(8.4, LocalDate.of(2014, 6, 1)),
+                new SlotEconomics.UnitPv(6.3, LocalDate.of(2024, 6, 1)));
+        assertThat(EinspeiseverguetungStand.von(dv, einheiten, EegRates.defaults()).einheiten())
+                .isEmpty();
+        Grundlage netz = grundlage("eigenverbrauch", true, null, null, null, null);
+        assertThat(EinspeiseverguetungStand.von(netz, einheiten, EegRates.defaults()).einheiten())
+                .isEmpty();
     }
 }

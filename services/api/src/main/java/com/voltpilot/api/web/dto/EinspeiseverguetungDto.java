@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Die Karte "Einspeisevergütung" einer Anlage (Einstellungen › Strom &amp; Geld):
@@ -51,6 +52,13 @@ import java.time.LocalDate;
  *     angegebenen Satz
  * @param anzulegenderWertCtKwh bei Direktvermarktung der anzulegende Wert der
  *     Marktprämie (null = nicht hinterlegt), sonst null
+ * @param einheiten S4 (vp-mastr-mehrere-einheiten-konzept §5.2): bei ZWEI oder
+ *     mehr bestätigten PV-Einheiten mit je einem eigenen Satz der Rechenweg
+ *     des Mischsatzes - {@code wirksamCtKwh} ist dann Σ (Anteil nach kWp ×
+ *     Satz der Einheit); bei weniger als zwei Einheiten, oder wenn der
+ *     Mischsatz nicht eindeutig feststeht (eine Einheit ohne Datum, eine
+ *     abgelaufene Einheit ohne Angabe), leer - die Karte zeigt dann wie
+ *     bisher den Anlagen-Satz, ohne Rechenweg
  */
 public record EinspeiseverguetungDto(
         String zustand,
@@ -63,5 +71,17 @@ public record EinspeiseverguetungDto(
         BigDecimal leistungKwp,
         LocalDate eegEndeAm,
         boolean ohneVerguetungBeiNegativpreis,
-        BigDecimal anzulegenderWertCtKwh) {
+        BigDecimal anzulegenderWertCtKwh,
+        List<EinheitMischsatzDto> einheiten) {
+
+    /**
+     * Eine Einheit im Rechenweg des Mischsatzes: ihre Inbetriebnahme, Leistung
+     * und ihr EIGENER Satz (angegeben: flach für jede Einheit gleich; sonst aus
+     * dem EEG-Satzplan für ihr eigenes Datum und ihre eigene Leistung). Die
+     * Portal-Seite rechnet daraus den Anteil (Leistung ÷ Summe) - hier steht
+     * nur, was der Server schon weiß.
+     */
+    public record EinheitMischsatzDto(
+            LocalDate inbetriebnahme, BigDecimal leistungKwp, BigDecimal satzCtKwh) {
+    }
 }
