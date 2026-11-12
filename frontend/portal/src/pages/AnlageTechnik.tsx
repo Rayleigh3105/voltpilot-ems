@@ -10,10 +10,12 @@ import {
   api,
   ApiError,
   type Device,
+  type EinheitGeraet,
   type Einspeiseverguetung,
   type Erzeugungseinheit,
   type PlantKind,
   type RegisterEinheit,
+  type RegisterEinheitHinweis,
   type Site,
   type SiteAsset,
   type SiteDeletionPreview,
@@ -234,6 +236,9 @@ export function TechnikSection({
   // (Sonnenrose) - lädt mit den Assets, scheitert aber FAIL-SOFT (ein alter
   // Fehler hier darf die Anlage nicht unlesbar machen, anders als assetsError).
   const [registerEinheiten, setRegisterEinheiten] = useState<RegisterEinheit[] | null>(null);
+  // S5 (§4.4, "fehlt eine Einheit?"): fail-soft wie registerEinheiten - ein
+  // Fehler hier zeigt einfach keinen Hinweis, nie einen Fehlerzustand.
+  const [registerHinweis, setRegisterHinweis] = useState<RegisterEinheitHinweis | null>(null);
   const [preview, setPreview] = useState<SiteDeletionPreview | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -296,11 +301,16 @@ export function TechnikSection({
       .then((a) => !cancelled && setAssets(a))
       // „Nicht geladen" ist nicht „keine": ein Fehler zeigt sich als Fehler.
       .catch(() => !cancelled && setAssetsError(true));
+    setRegisterHinweis(null);
     api
       .registerEinheiten(site.id)
       .then((e) => !cancelled && setRegisterEinheiten(e))
       // Fail-soft: ohne Einheiten zeigt die Gruppe einfach ihren heutigen Stand.
       .catch(() => !cancelled && setRegisterEinheiten([]));
+    api
+      .registerEinheitenHinweis(site.id)
+      .then((h) => !cancelled && setRegisterHinweis(h))
+      .catch(() => undefined);
     api
       .siteDeletionPreview(site.id)
       .then((p) => !cancelled && setPreview(p))
@@ -785,6 +795,17 @@ export function TechnikSection({
                     </button>
                   </div>
                 )}
+                {/* S5 (§4.4): nur ohne konkreten Vorschlag - sonst zwei
+                    Hinweise für dieselbe Vermutung. */}
+                {unbestaetigteVorschlaege.length === 0 && registerHinweis?.moeglicherweiseFehlendeEinheit && (
+                  <div className="vp-alert vp-alert-info" role="status" style={{ marginTop: 'var(--vp-space-3)' }}>
+                    Die gemessene PV-Spitze liegt deutlich über der Summe Ihrer bestätigten Einheiten - fehlt eine
+                    weitere Einheit an Ihrem Anschluss?{' '}
+                    <button type="button" className="vp-linklike" onClick={() => setMastrOpen(true)}>
+                      Anlage verknüpfen
+                    </button>
+                  </div>
+                )}
               </div>
             ) : null
           }
@@ -942,6 +963,7 @@ export function TechnikSection({
             />
           ) : (
             <RegistrierungInhalt
+              siteId={site.id}
               assets={linkedAssets}
               registerEinheiten={registerEinheiten ?? []}
               lastFetched={lastFetched ?? null}
@@ -1369,12 +1391,14 @@ function Wirkung({ id }: { id: ModeSettingDef['id'] }) {
 
 /** Die registrierten Werte aus dem Marktstammdatenregister - mit dem Weg zum Neuabruf. */
 function RegistrierungInhalt({
+  siteId,
   assets,
   registerEinheiten,
   lastFetched,
   onAbrufen,
   onVorschlagAnsehen,
 }: {
+  siteId: string;
   assets: SiteAsset[];
   /** S1/S2/S3: jede Einheit der Anlage, bestätigt oder vorgeschlagen (E5). */
   registerEinheiten: RegisterEinheit[];
@@ -1455,6 +1479,7 @@ function RegistrierungInhalt({
           </dl>
         )
       )}
+      {pvEinheiten.length > 0 && <GeraeteZuordnung siteId={siteId} einheiten={pvEinheiten} />}
       {speicherEinheiten.length > 0 ? (
         <dl className="vp-kv">
           {speicherEinheiten.map((e) => (
@@ -1479,6 +1504,117 @@ function RegistrierungInhalt({
           {pvEinheiten.length > 0 ? 'Weitere Einheit verknüpfen' : 'Neu aus dem Register abrufen'}
         </Button>
       </Recht>
+    </div>
+  );
+}
+
+/**
+ * S5 (vp-mastr-mehrere-einheiten-konzept §5.1/§8, "Zuordnung zu
+ * Wechselrichtern"): je bestätigter PV-Einheit die Geräte, die sie speisen -
+ * freiwillig, reine Anzeige, keine Berechnung hängt daran. Lädt die
+ * Zuordnung EINMAL für die ganze Anlage (ein Fetch, nicht je Einheit).
+ */
+function GeraeteZuordnung({ siteId, einheiten }: { siteId: string; einheiten: RegisterEinheit[] }) {
+  const [daten, setDaten] = useState<EinheitGeraet | null>(null);
+  const [zuordnenFuer, setZuordnenFuer] = useState<string | null>(null);
+  const [auswahl, setAuswahl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const laden = () => {
+    api
+      .einheitGeraet(siteId)
+      .then(setDaten)
+      .catch(() => undefined);
+  };
+  useEffect(laden, [siteId]);
+
+  if (daten == null) return null;
+
+  async function zuordnen() {
+    if (!zuordnenFuer || !auswahl) return;
+    const kandidat = daten!.freieGeraete.find((k) => `${k.art}:${k.id}` === auswahl);
+    if (!kandidat) return;
+    setBusy(true);
+    try {
+      const neu = await api.einheitGeraetZuordnen(siteId, zuordnenFuer, kandidat.id, kandidat.art);
+      setDaten(neu);
+      setZuordnenFuer(null);
+      setAuswahl(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function entfernen(einheitId: string, linkId: string) {
+    const neu = await api.einheitGeraetEntfernen(siteId, einheitId, linkId);
+    setDaten(neu);
+  }
+
+  return (
+    <div className="vp-geraete-zuordnung">
+      <h4 className="vp-kv-k" style={{ marginBottom: 'var(--vp-space-2)' }}>
+        Geräte
+      </h4>
+      {einheiten.map((e) => {
+        const zugeordnet = daten.zuordnungen.filter((z) => z.einheitId === e.id);
+        return (
+          <div key={e.id} className="vp-geraete-zuordnung-zeile">
+            {/* NIE die rohe registryUnitId wiederholen - sie steht schon in
+                der Liste darüber; ein zweiter Treffer macht Text-Suchen dort
+                mehrdeutig. */}
+            <span className="vp-note">
+              {e.bezeichnung ?? (e.inbetriebnahme ? `Einheit seit ${e.inbetriebnahme.slice(0, 4)}` : 'Einheit')}
+            </span>
+            <ul className="vp-geraete-zuordnung-liste">
+              {zugeordnet.map((z) => (
+                <li key={z.id}>
+                  {z.bezeichnung}
+                  <Recht aktion="geraet.einrichten">
+                    <button
+                      type="button"
+                      className="vp-linklike"
+                      aria-label={`${z.bezeichnung} nicht mehr zuordnen`}
+                      onClick={() => void entfernen(e.id, z.id)}
+                    >
+                      entfernen
+                    </button>
+                  </Recht>
+                </li>
+              ))}
+              {zugeordnet.length === 0 && <li className="vp-note">Kein Gerät zugeordnet</li>}
+            </ul>
+            {daten.freieGeraete.length > 0 && (
+              <Recht aktion="geraet.einrichten">
+                <Button variant="ghost" size="sm" onClick={() => setZuordnenFuer(e.id)}>
+                  + Gerät zuordnen
+                </Button>
+              </Recht>
+            )}
+          </div>
+        );
+      })}
+      <Modal open={zuordnenFuer != null} onClose={() => setZuordnenFuer(null)} title="Gerät zuordnen">
+        <div className="vp-setting-editform">
+          <VpPicker
+            label="Welches Gerät speist diese Einheit?"
+            options={daten.freieGeraete.map((k) => ({
+              value: `${k.art}:${k.id}`,
+              label: k.bezeichnung,
+              sub: k.nennleistungKw != null ? fmtNum(k.nennleistungKw, 'kW', 1) : null,
+            }))}
+            value={auswahl}
+            onChange={setAuswahl}
+          />
+          <div className="vp-setting-editactions">
+            <Button variant="ghost" size="sm" onClick={() => setZuordnenFuer(null)} disabled={busy}>
+              Abbrechen
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => void zuordnen()} disabled={busy || !auswahl}>
+              {busy ? 'Wird zugeordnet …' : 'Zuordnen'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

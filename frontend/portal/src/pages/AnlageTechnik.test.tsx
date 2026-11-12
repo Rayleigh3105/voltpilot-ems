@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
-import { api, type Device, type Einspeiseverguetung, type RegisterEinheit, type Site, type SiteAsset, type SupplyPrice } from '../api';
+import {
+  api,
+  type Device,
+  type EinheitGeraet,
+  type Einspeiseverguetung,
+  type RegisterEinheit,
+  type RegisterEinheitHinweis,
+  type Site,
+  type SiteAsset,
+  type SupplyPrice,
+} from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { buettner, buettnerNv } from '../test/anlagensteuerungFixtures';
@@ -339,6 +349,10 @@ async function renderEinstellungen(
   gridLimitKw: number | null = null,
   pvOver: Partial<SiteAsset> | null = null,
   registerEinheitenOver: RegisterEinheit[] = [],
+  registerHinweisOver: RegisterEinheitHinweis = {
+    moeglicherweiseFehlendeEinheit: false, gemessenePeakKw: null, summeKwp: null, messwerteViertelstunden: 0,
+  },
+  einheitGeraetOver: EinheitGeraet = { zuordnungen: [], freieGeraete: [] },
 ) {
   const s: Site = { ...eegSite, ...over };
   const assets = vi
@@ -348,6 +362,8 @@ async function renderEinstellungen(
       ...(pvOver == null ? [] : [pv(pvOver)]),
     ]);
   const registerEinheiten = vi.spyOn(api, 'registerEinheiten').mockResolvedValue(registerEinheitenOver);
+  const registerHinweis = vi.spyOn(api, 'registerEinheitenHinweis').mockResolvedValue(registerHinweisOver);
+  const einheitGeraet = vi.spyOn(api, 'einheitGeraet').mockResolvedValue(einheitGeraetOver);
   const verguetungAbruf =
     verguetung instanceof Error
       ? vi.spyOn(api, 'einspeiseverguetung').mockRejectedValue(verguetung)
@@ -390,7 +406,7 @@ async function renderEinstellungen(
       ),
     verguetungAbruf,
     restore: () =>
-      [assets, registerEinheiten, preview, supply, schedule, verguetungAbruf, chargingConfig].forEach((m) =>
+      [assets, registerEinheiten, registerHinweis, einheitGeraet, preview, supply, schedule, verguetungAbruf, chargingConfig].forEach((m) =>
         m.mockRestore(),
       ),
   };
@@ -1367,5 +1383,76 @@ describe('Einstellungen · Strom & Geld an einer Erzeugeranlage (UEMS EZ-10)', (
     await waitFor(() => expect(within(gruppe).getByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('WVV · über Modbus'));
     restore();
     [liste, nv, put].forEach((m) => m.mockRestore());
+  });
+});
+
+describe('Solaranlage · S5 (Zuordnung zu Wechselrichtern, "fehlt eine Einheit?")', () => {
+  it('zeigt den Hinweis "fehlt eine Einheit?" nur, wenn das Flag gesetzt ist', async () => {
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      { moeglicherweiseFehlendeEinheit: true, gemessenePeakKw: 12.5, summeKwp: 8.4, messwerteViertelstunden: 200 },
+    );
+    const gruppe = document.querySelector('section#technik-registrierung')!;
+    expect(await within(gruppe).findByText(/fehlt eine weitere Einheit/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('ohne das Flag bleibt die Gruppe ohne diesen Hinweis', async () => {
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+    );
+    const gruppe = document.querySelector('section#technik-registrierung')!;
+    await within(gruppe).findByText('1 Einheit');
+    expect(within(gruppe).queryByText(/fehlt eine weitere Einheit/)).toBeNull();
+    restore();
+  });
+
+  it('ordnet ein freies Gerät einer Einheit zu und zeigt es danach als zugeordnet', async () => {
+    const zuordnen = vi.spyOn(api, 'einheitGeraetZuordnen').mockResolvedValue({
+      zuordnungen: [{ id: 'link-1', einheitId: 'e-1', geraetId: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach' }],
+      freieGeraete: [],
+    });
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      undefined,
+      { zuordnungen: [], freieGeraete: [{ id: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach', nennleistungKw: 8.4 }] },
+    );
+    const dialog = await blatt('Einheiten verwalten');
+    expect(within(dialog).getByText('Kein Gerät zugeordnet')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '+ Gerät zuordnen' }));
+    const zuordnenDialog = await screen.findByRole('dialog', { name: 'Gerät zuordnen' });
+    fireEvent.click(within(zuordnenDialog).getByRole('combobox', { name: /Welches Gerät/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /Wechselrichter Dach/ }));
+    fireEvent.click(within(zuordnenDialog).getByRole('button', { name: 'Zuordnen' }));
+    await waitFor(() => expect(zuordnen).toHaveBeenCalledWith(eegSite.id, 'e-1', 'mp-1', 'messpunkt'));
+    expect(await within(dialog).findByText('Wechselrichter Dach')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Wechselrichter Dach nicht mehr zuordnen' })).toBeInTheDocument();
+    restore();
+    zuordnen.mockRestore();
+  });
+
+  it('entfernt eine bestehende Zuordnung', async () => {
+    const entfernen = vi.spyOn(api, 'einheitGeraetEntfernen').mockResolvedValue({
+      zuordnungen: [],
+      freieGeraete: [{ id: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach', nennleistungKw: 8.4 }],
+    });
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      undefined,
+      {
+        zuordnungen: [{ id: 'link-1', einheitId: 'e-1', geraetId: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach' }],
+        freieGeraete: [],
+      },
+    );
+    const dialog = await blatt('Einheiten verwalten');
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Wechselrichter Dach nicht mehr zuordnen' }));
+    await waitFor(() => expect(entfernen).toHaveBeenCalledWith(eegSite.id, 'e-1', 'link-1'));
+    expect(await within(dialog).findByText('Kein Gerät zugeordnet')).toBeInTheDocument();
+    restore();
+    entfernen.mockRestore();
   });
 });

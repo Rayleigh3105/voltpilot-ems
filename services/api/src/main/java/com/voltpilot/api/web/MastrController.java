@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.mastr.MastrService;
 import com.voltpilot.api.mastr.RegistryLookupException;
 import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.repo.EinheitGeraetRepository;
 import com.voltpilot.api.repo.RegisterEinheitRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
@@ -11,7 +12,9 @@ import com.voltpilot.api.web.dto.MastrLokationApplyRequest;
 import com.voltpilot.api.web.dto.MastrLokationPreviewDto;
 import com.voltpilot.api.web.dto.MastrLookupRequest;
 import com.voltpilot.api.web.dto.MastrPreviewDto;
+import com.voltpilot.api.web.dto.EinheitGeraetDto;
 import com.voltpilot.api.web.dto.RegisterEinheitDto;
+import com.voltpilot.api.web.dto.RegisterEinheitHinweisDto;
 import com.voltpilot.api.web.dto.SiteAssetDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -23,6 +26,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,13 +52,15 @@ public class MastrController {
     private final AssetRepository assets;
     private final MastrService mastr;
     private final RegisterEinheitRepository einheiten;
+    private final EinheitGeraetRepository einheitGeraet;
 
     public MastrController(Geltungsbereich geltungsbereich, AssetRepository assets, MastrService mastr,
-            RegisterEinheitRepository einheiten) {
+            RegisterEinheitRepository einheiten, EinheitGeraetRepository einheitGeraet) {
         this.geltungsbereich = geltungsbereich;
         this.assets = assets;
         this.mastr = mastr;
         this.einheiten = einheiten;
+        this.einheitGeraet = einheitGeraet;
     }
 
     /** The site's asset master data incl. registry provenance (drawer display). */
@@ -145,6 +151,79 @@ public class MastrController {
         UUID tenantId = TenantContext.get();
         einheiten.applyUnits(tenantId, siteId, request.pv(), request.storage(), "mastr", Instant.now(), "kunde");
         return einheiten.findForSite(siteId);
+    }
+
+    /**
+     * S5 (Abschnitt 5.1/§8, „Zuordnung zu Wechselrichtern"): jede bestehende
+     * Geräte-Zuordnung der Anlage, dazu jedes PV-fähige Gerät, das noch frei
+     * ist - für den Zuordnen-Dialog in der Gruppe "Solaranlage".
+     */
+    @GetMapping("/einheit-geraet")
+    public EinheitGeraetDto einheitGeraet(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return new EinheitGeraetDto(
+                einheitGeraet.zuordnungenFuerSite(siteId).stream()
+                        .map(z -> new EinheitGeraetDto.Zeile(z.id(), z.einheitId(), z.geraetId(), z.art(), z.bezeichnung()))
+                        .toList(),
+                einheitGeraet.geraeteFuerSite(siteId).stream()
+                        .filter(k -> k.zugeordnetAn() == null)
+                        .map(k -> new EinheitGeraetDto.Kandidat(k.id(), k.art(), k.bezeichnung(), k.nennleistungKw()))
+                        .toList());
+    }
+
+    /** Ordnet ein freies Gerät dieser Einheit zu - 404, wenn Einheit oder Gerät nicht an dieser Anlage hängen. */
+    @PostMapping("/register-einheiten/{einheitId}/geraet")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public EinheitGeraetDto geraetZuordnen(@PathVariable UUID siteId, @PathVariable UUID einheitId,
+            @Valid @RequestBody EinheitGeraetZuordnenRequest request) {
+        requireSite(siteId);
+        if (einheiten.findForSite(siteId).stream().noneMatch(e -> e.id().equals(einheitId))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Einheit not found at this site");
+        }
+        boolean geraetGehoertZurAnlage = einheitGeraet.geraeteFuerSite(siteId).stream()
+                .anyMatch(k -> k.id().equals(request.geraetId()) && k.art().equals(request.art()));
+        if (!geraetGehoertZurAnlage) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Geraet not found at this site");
+        }
+        UUID tenantId = TenantContext.get();
+        UUID messpunkt = "messpunkt".equals(request.art()) ? request.geraetId() : null;
+        UUID geraetTeil = "erzeugungseinheit".equals(request.art()) ? request.geraetId() : null;
+        einheitGeraet.zuordnen(tenantId, einheitId, messpunkt, geraetTeil);
+        return einheitGeraet(siteId);
+    }
+
+    /** Entfernt eine Geräte-Zuordnung (Anzeige-only, keine Berechnung hängt daran). */
+    @DeleteMapping("/register-einheiten/{einheitId}/geraet/{linkId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public EinheitGeraetDto geraetEntfernen(@PathVariable UUID siteId, @PathVariable UUID einheitId,
+            @PathVariable UUID linkId) {
+        requireSite(siteId);
+        einheitGeraet.entfernen(einheitId, linkId);
+        return einheitGeraet(siteId);
+    }
+
+    /**
+     * S5 (Abschnitt 4.4, „fehlt eine Einheit?"): die gemessene PV-Spitze der
+     * letzten 30 Tage gegen die Summe der bestätigten PV-Einheiten - dasselbe
+     * Plausibilitäts-Fenster wie {@code AdminFleetController.PV_PEAK_LOOKBACK}.
+     */
+    @GetMapping("/register-einheiten-hinweis")
+    public RegisterEinheitHinweisDto registerEinheitenHinweis(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        java.math.BigDecimal summe = einheiten.findForSite(siteId).stream()
+                .filter(e -> "pv".equals(e.art()) && e.bestaetigtAm() != null && e.leistungKwp() != null)
+                .map(RegisterEinheitDto::leistungKwp)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        EinheitGeraetRepository.PvPeak peak = einheitGeraet.gemessenePeak(siteId,
+                Instant.now().minus(java.time.Duration.ofDays(30)));
+        return new RegisterEinheitHinweisDto(
+                einheitGeraet.moeglicherweiseFehlendeEinheit(summe, peak),
+                peak.peakKw(), summe, peak.buckets());
+    }
+
+    /** Welches Gerät ({@code messpunkt}|{@code erzeugungseinheit}) einer Einheit zugeordnet wird. */
+    public record EinheitGeraetZuordnenRequest(@jakarta.validation.constraints.NotNull UUID geraetId,
+            @jakarta.validation.constraints.Pattern(regexp = "messpunkt|erzeugungseinheit") String art) {
     }
 
     /**

@@ -5227,6 +5227,54 @@ export interface RegisterEinheit {
   flaechen: EinheitFlaeche[];
 }
 
+/** S5: eine bestehende Geräte-Zuordnung - welches Gerät speist welche Einheit. */
+export interface EinheitGeraetZeile {
+  id: string;
+  einheitId: string;
+  geraetId: string;
+  art: 'messpunkt' | 'erzeugungseinheit';
+  bezeichnung: string;
+}
+
+/** S5: ein noch freies, PV-fähiges Gerät der Anlage (für den Zuordnen-Dialog). */
+export interface EinheitGeraetKandidat {
+  id: string;
+  art: 'messpunkt' | 'erzeugungseinheit';
+  bezeichnung: string;
+  nennleistungKw: number | null;
+}
+
+/** S5: die Geräte-Zuordnung der Anlage (vp-mastr-mehrere-einheiten-konzept §5.1). */
+export interface EinheitGeraet {
+  zuordnungen: EinheitGeraetZeile[];
+  freieGeraete: EinheitGeraetKandidat[];
+}
+
+/** S5 (§4.4): "fehlt eine Einheit?" - gemessene PV-Spitze gegen die Summe der bestätigten Einheiten. */
+export interface RegisterEinheitHinweis {
+  moeglicherweiseFehlendeEinheit: boolean;
+  gemessenePeakKw: number | null;
+  summeKwp: number | null;
+  messwerteViertelstunden: number;
+}
+
+/** S5 (§6): eine Zeile des Plattform-Admin "Register-Abgleich". */
+export interface RegisterAbgleichZeile {
+  siteId: string;
+  siteName: string;
+  tenantId: string;
+  tenantName: string;
+  hinweis: string;
+}
+
+/** S5: der Plattform-Admin "Register-Abgleich", vier Hinweis-Kategorien. */
+export interface RegisterAbgleich {
+  messungUeberSumme: RegisterAbgleichZeile[];
+  registerGeaendert: RegisterAbgleichZeile[];
+  nummerAnZweiAnlagen: RegisterAbgleichZeile[];
+  ohneRegister: RegisterAbgleichZeile[];
+}
+
 export interface TelemetryPoint {
   ts: string;
   powerKw: number | null;
@@ -11801,6 +11849,22 @@ export const api = {
   /** S1: jede registrierte Einheit der Anlage (Sonnenrose, Einheit-Blatt). */
   registerEinheiten: (siteId: string) =>
     request<RegisterEinheit[]>(`/api/v1/sites/${siteId}/register-einheiten`),
+  /** S5: Zuordnungen + freie Geräte für den "Gerät zuordnen"-Dialog. */
+  einheitGeraet: (siteId: string) => request<EinheitGeraet>(`/api/v1/sites/${siteId}/einheit-geraet`),
+  einheitGeraetZuordnen: (siteId: string, einheitId: string, geraetId: string, art: 'messpunkt' | 'erzeugungseinheit') =>
+    request<EinheitGeraet>(`/api/v1/sites/${siteId}/register-einheiten/${einheitId}/geraet`, {
+      method: 'POST',
+      body: JSON.stringify({ geraetId, art }),
+    }),
+  einheitGeraetEntfernen: (siteId: string, einheitId: string, linkId: string) =>
+    request<EinheitGeraet>(`/api/v1/sites/${siteId}/register-einheiten/${einheitId}/geraet/${linkId}`, {
+      method: 'DELETE',
+    }),
+  /** S5 (§4.4): "fehlt eine Einheit?" - gemessene Spitze gegen die Summe der bestätigten Einheiten. */
+  registerEinheitenHinweis: (siteId: string) =>
+    request<RegisterEinheitHinweis>(`/api/v1/sites/${siteId}/register-einheiten-hinweis`),
+  /** S5 (§6): der Plattform-Admin "Register-Abgleich", cross-tenant. */
+  adminRegisterAbgleich: () => request<RegisterAbgleich>('/api/v1/admin/register-abgleich'),
   prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
   priceHistory: (siteId: string, range: HistoryRange, at: string) =>
