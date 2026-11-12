@@ -113,6 +113,47 @@ public class RegisterEinheitRepository {
                         + "ON CONFLICT (site_id, type) WHERE is_primary DO UPDATE SET "
                         + "pv_capacity_kwp = EXCLUDED.pv_capacity_kwp",
                 tenantId, siteId, siteId);
+        // S4 (vp-mastr-mehrere-einheiten-konzept §5.2): with GENAU einer
+        // bestätigten PV-Einheit bleibt asset.commissioned_on ihr eigenes
+        // Inbetriebnahmedatum - die Legacy-Rechnung (ohne den S4-Mehreinheiten-
+        // Zweig) liest sonst ein veraltetes Datum. Mit zwei oder mehr ist das
+        // Datum zweideutig und bleibt unberührt: diese Rechnung liest dann
+        // register_einheit direkt, nicht mehr asset.commissioned_on.
+        jdbc.update(
+                "UPDATE asset SET commissioned_on = sub.inbetriebnahme FROM ("
+                        + "  SELECT inbetriebnahme, COUNT(*) OVER () AS n FROM register_einheit"
+                        + "  WHERE site_id = ? AND art = 'pv' AND bestaetigt_am IS NOT NULL"
+                        + ") sub "
+                        + "WHERE asset.site_id = ? AND asset.type = 'pv' AND asset.is_primary AND sub.n = 1",
+                siteId, siteId);
+    }
+
+    /**
+     * Confirmed PV units for the S4 §24 Abs. 3 EEG per-unit blend
+     * ({@link com.voltpilot.api.optimizer.SlotEconomics.UnitPv}), or an EMPTY
+     * list when the site is not "ready" for it: no confirmed PV unit, or ANY
+     * confirmed unit missing {@code leistung_kwp} (report §5.2 Lücken - the
+     * whole site then stays on the legacy single-asset computation, never a
+     * guessed split).
+     */
+    public List<com.voltpilot.api.optimizer.SlotEconomics.UnitPv> findConfirmedPvForPricing(UUID siteId) {
+        List<Object[]> rows = jdbc.query(
+                "SELECT leistung_kwp, inbetriebnahme FROM register_einheit "
+                        + "WHERE site_id = ? AND art = 'pv' AND bestaetigt_am IS NOT NULL "
+                        + "ORDER BY inbetriebnahme NULLS LAST, created_at",
+                (rs, i) -> new Object[] {
+                        rs.getBigDecimal("leistung_kwp"),
+                        rs.getObject("inbetriebnahme", java.time.LocalDate.class)},
+                siteId);
+        if (rows.isEmpty() || rows.stream().anyMatch(r -> r[0] == null)) {
+            return List.of();
+        }
+        List<com.voltpilot.api.optimizer.SlotEconomics.UnitPv> units = new ArrayList<>();
+        for (Object[] r : rows) {
+            units.add(new com.voltpilot.api.optimizer.SlotEconomics.UnitPv(
+                    ((BigDecimal) r[0]).doubleValue(), (java.time.LocalDate) r[1]));
+        }
+        return units;
     }
 
     private UUID upsertPv(UUID tenantId, UUID siteId, MastrApplyRequest.PvApply p, String registry,

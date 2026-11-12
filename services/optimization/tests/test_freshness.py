@@ -21,7 +21,7 @@ wohnt in ``test_soc_source.py``.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -34,7 +34,9 @@ from voltpilot_optimization.inputs import (
     BatterySite,
     gather_inputs,
     load_battery_sites,
+    load_pv_einheiten,
 )
+from voltpilot_optimization.pricing import PvEinheit
 
 NOW = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
 SITE = UUID("00000000-0000-0000-0000-000000000002")
@@ -266,6 +268,11 @@ class _SitesCursor:
             return
         if "SELECT s.id, s.lead_device_id FROM site s" in sql:
             # AP-15 Folgepunkt (load_fuehrende_boxen): keine Mehr-Box-Anlage.
+            self._rows = []
+            return
+        if "FROM register_einheit" in sql:
+            # S4 (load_pv_einheiten): keine bestaetigten Einheiten - jede
+            # Anlage bleibt bei den Legacy-Feldern (byte-identisch).
             self._rows = []
             return
         assert "FROM asset" in sql
@@ -662,3 +669,108 @@ def test_sql_column_guards_raise_instead_of_asserting():
         _fresh_measurement(
             "dsn://unused", SITE, "load_kw", NOW, timedelta(hours=1)
         )
+
+
+# ---- S4 (firstmate 2026-11-12): load_pv_einheiten Lücken-/Legacy-Formen ----
+
+
+class _PvEinheitenCursor:
+    def __init__(self, rows):
+        self._rows = rows
+        self._result: list = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=()):
+        sql = " ".join(sql.split())
+        assert "FROM register_einheit" in sql
+        assert "bestaetigt_am IS NOT NULL" in sql
+        self._result = self._rows
+
+    def fetchall(self):
+        return self._result
+
+
+def _pv_einheiten_conn(rows, monkeypatch):
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cursor(self):
+            return _PvEinheitenCursor(rows)
+
+    module = SimpleNamespace(
+        connect=lambda dsn: _Conn(),
+        errors=SimpleNamespace(UndefinedTable=RuntimeError, UndefinedColumn=RuntimeError),
+    )
+    monkeypatch.setitem(sys.modules, "psycopg", module)
+
+
+def test_load_pv_einheiten_form_a_eine_vollstaendige_einheit(monkeypatch):
+    site = uuid4()
+    _pv_einheiten_conn([(site, date(2023, 6, 15), Decimal("8.0"))], monkeypatch)
+    result = load_pv_einheiten("dsn://unused")
+    assert result == {site: [PvEinheit(capacity_kwp=8.0, commissioned_on=date(2023, 6, 15))]}
+
+
+def test_load_pv_einheiten_form_b_kwp_null_verwirft_die_ganze_anlage(monkeypatch):
+    # (b) a confirmed unit whose leistung_kwp is NULL - because a component
+    # with its own kWp hangs off the site (the S1 backfill leaves it empty) -
+    # must drop the WHOLE site, never a guessed share, exactly like the
+    # forecast's load_pv_flaechen and the api's findConfirmedPvForPricing.
+    site = uuid4()
+    _pv_einheiten_conn([(site, date(2019, 4, 1), None)], monkeypatch)
+    assert load_pv_einheiten("dsn://unused") == {}
+
+
+def test_load_pv_einheiten_form_c_ohne_inbetriebnahme(monkeypatch):
+    site = uuid4()
+    _pv_einheiten_conn([(site, None, Decimal("8.0"))], monkeypatch)
+    assert load_pv_einheiten("dsn://unused") == {site: [PvEinheit(capacity_kwp=8.0, commissioned_on=None)]}
+
+
+def test_load_pv_einheiten_form_d_keine_zeilen_ist_eine_leere_zuordnung(monkeypatch):
+    _pv_einheiten_conn([], monkeypatch)
+    assert load_pv_einheiten("dsn://unused") == {}
+
+
+def test_load_pv_einheiten_mixed_site_one_good_one_incomplete_drops_entirely(monkeypatch):
+    # A sibling WITH leistung_kwp must not save the site either - the whole
+    # site stays on the legacy aggregate until every confirmed unit is known.
+    site = uuid4()
+    rows = [
+        (site, date(2014, 6, 1), Decimal("8.4")),
+        (site, date(2024, 6, 1), None),
+    ]
+    _pv_einheiten_conn(rows, monkeypatch)
+    assert load_pv_einheiten("dsn://unused") == {}
+
+
+def test_load_pv_einheiten_missing_table_degrades_to_empty(monkeypatch):
+    class _RaisingCursor(_PvEinheitenCursor):
+        def execute(self, sql, params=()):
+            raise RuntimeError("relation \"register_einheit\" does not exist")
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cursor(self):
+            return _RaisingCursor([])
+
+    module = SimpleNamespace(
+        connect=lambda dsn: _Conn(),
+        errors=SimpleNamespace(UndefinedTable=RuntimeError, UndefinedColumn=RuntimeError),
+    )
+    monkeypatch.setitem(sys.modules, "psycopg", module)
+    assert load_pv_einheiten("dsn://unused") == {}

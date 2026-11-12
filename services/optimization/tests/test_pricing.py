@@ -33,6 +33,7 @@ from voltpilot_optimization.domain import (
 )
 from voltpilot_optimization.pricing import (
     DEFAULT_SUPPLY_COMPONENTS,
+    PvEinheit,
     SiteTariff,
     SupplyPriceComponents,
     berlin_month,
@@ -418,6 +419,176 @@ def test_expiry_is_evaluated_per_slot_across_the_horizon_boundary():
     # Pre-2025 plant: no §51a suspension, so the -20 slot still earns the rate
     # while remunerated; both post-expiry slots degrade to bare spot.
     assert values == [rate, rate, 100.0, -20.0]
+
+
+# ---- export side: S4 per-unit §24 Abs. 3 EEG blend --------------------------
+
+
+def test_single_pv_einheit_is_byte_identical_to_the_legacy_single_plant_path():
+    # The hard S4 invariant (firstmate 2026-11-12): an existing plant with
+    # exactly one confirmed register_einheit must plan BYTE-IDENTICALLY to
+    # today - across every already-pinned case above, not just one.
+    cases = [
+        (date(2023, 6, 15), 8.0, None),
+        (date(2025, 6, 1), 150.0, None),
+        (None, 8.0, None),
+        (date(2004, 6, 1), 8.0, None),
+        (date(2023, 6, 15), 8.0, 12.5),
+    ]
+    for commissioned, kwp, angegeben in cases:
+        legacy = SiteTariff(
+            plant_kind="eigenverbrauch",
+            commissioned_on=commissioned,
+            pv_capacity_kwp=kwp,
+            einspeiseverguetung_ct_kwh=angegeben,
+        )
+        per_unit = SiteTariff(
+            plant_kind="eigenverbrauch",
+            commissioned_on=commissioned,
+            pv_capacity_kwp=kwp,
+            einspeiseverguetung_ct_kwh=angegeben,
+            pv_einheiten=(PvEinheit(capacity_kwp=kwp, commissioned_on=commissioned),),
+        )
+        assert export_values(legacy, False, SPOT, STARTS, {}) == export_values(
+            per_unit, False, SPOT, STARTS, {}
+        ), (commissioned, kwp, angegeben)
+
+
+def test_two_pv_einheiten_blend_by_kwp_share_report_example():
+    # report.md §2.7/§4.2: Süddach 2014 (8,4 kWp) + Garage 2024 (6,3 kWp) ->
+    # (8.4*13.70 + 6.3*8.11) / 14.7 = 11.30 ct/kWh.
+    tariff = SiteTariff(
+        plant_kind="eigenverbrauch",
+        pv_einheiten=(
+            PvEinheit(capacity_kwp=8.4, commissioned_on=date(2014, 6, 1)),
+            PvEinheit(capacity_kwp=6.3, commissioned_on=date(2024, 6, 1)),
+        ),
+    )
+    [value] = export_values(tariff, False, [100.0], [T0], {})
+    assert value / 10.0 == pytest.approx(11.30, abs=0.01)
+
+
+def test_pv_einheit_without_a_date_floats_its_share_at_spot():
+    # The Lücken rule: a unit missing ONLY its commissioning date prices its
+    # own share at bare spot while a dated sibling keeps its EEG rate.
+    tariff = SiteTariff(
+        plant_kind="eigenverbrauch",
+        pv_einheiten=(
+            PvEinheit(capacity_kwp=5.0, commissioned_on=date(2023, 6, 15)),
+            PvEinheit(capacity_kwp=5.0, commissioned_on=None),
+        ),
+    )
+    rate = feste_verguetung_ct_per_kwh(date(2023, 6, 15), 5.0) * 10.0
+    [value] = export_values(tariff, False, [100.0], [T0], {})
+    assert value == pytest.approx(0.5 * rate + 0.5 * 100.0)
+
+
+def test_pv_einheiten_expire_independently():
+    # Each unit's 20-year end is its OWN - an old unit degrades to spot while
+    # a younger sibling keeps earning, blended by kWp share.
+    tariff = SiteTariff(
+        plant_kind="eigenverbrauch",
+        pv_einheiten=(
+            PvEinheit(capacity_kwp=5.0, commissioned_on=date(2004, 6, 1)),  # expired
+            PvEinheit(capacity_kwp=5.0, commissioned_on=date(2023, 6, 15)),  # alive
+        ),
+    )
+    rate = feste_verguetung_ct_per_kwh(date(2023, 6, 15), 5.0) * 10.0
+    [value] = export_values(tariff, False, [100.0], [T0], {})
+    assert value == pytest.approx(0.5 * 100.0 + 0.5 * rate)
+
+
+def test_pv_einheiten_negative_price_suspension_is_per_unit():
+    # A small pre-2025 unit keeps the rate at negative spot (N1), a large
+    # post-Solarspitzengesetz sibling earns 0 - blended, not all-or-nothing.
+    tariff = SiteTariff(
+        plant_kind="eigenverbrauch",
+        pv_einheiten=(
+            PvEinheit(capacity_kwp=5.0, commissioned_on=date(2023, 6, 15)),
+            PvEinheit(capacity_kwp=150.0, commissioned_on=date(2025, 6, 1)),
+        ),
+    )
+    small_rate = feste_verguetung_ct_per_kwh(date(2023, 6, 15), 5.0) * 10.0
+    total = 155.0
+    [value] = export_values(tariff, False, [-20.0], [T0], {})
+    assert value == pytest.approx((5.0 / total) * small_rate + (150.0 / total) * 0.0)
+
+
+def test_pv_einheiten_stated_rate_is_flat_but_suspension_is_per_unit():
+    # The customer's stated rate feeds EVERY unit's "Wert der Einheit" flatly
+    # (report §5.2); only §51a's suspension still reads each unit's own date.
+    tariff = SiteTariff(
+        plant_kind="eigenverbrauch",
+        einspeiseverguetung_ct_kwh=12.5,
+        pv_einheiten=(
+            PvEinheit(capacity_kwp=5.0, commissioned_on=date(2023, 6, 15)),
+            PvEinheit(capacity_kwp=150.0, commissioned_on=date(2025, 6, 1)),
+        ),
+    )
+    total = 155.0
+    [value] = export_values(tariff, False, [-20.0], [T0], {})
+    assert value == pytest.approx((5.0 / total) * 125.0 + (150.0 / total) * 0.0)
+
+
+def test_pv_einheit_missing_date_falls_back_to_the_sites_solarspitzengesetz_answer():
+    # n=1 byte-identity for the angegeben branch even without a per-unit date:
+    # the single confirmed unit falls back to the SITE's answer, exactly like
+    # the legacy single-plant formula would with the same inputs.
+    legacy = SiteTariff(
+        plant_kind="eigenverbrauch",
+        einspeiseverguetung_ct_kwh=9.0,
+        pv_capacity_kwp=150.0,
+        inbetriebnahme_ab_solarspitzengesetz=True,
+    )
+    per_unit = SiteTariff(
+        plant_kind="eigenverbrauch",
+        einspeiseverguetung_ct_kwh=9.0,
+        pv_capacity_kwp=150.0,
+        inbetriebnahme_ab_solarspitzengesetz=True,
+        pv_einheiten=(PvEinheit(capacity_kwp=150.0, commissioned_on=None),),
+    )
+    assert export_values(legacy, False, [-20.0], [T0], {}) == export_values(
+        per_unit, False, [-20.0], [T0], {}
+    )
+
+
+#: The SHARED multi-unit vectors - the same cases the api's SlotEconomicsTest
+#: (Java, exportValueCtKwh(List<UnitPv>, ...)) and PortalApiTest (the SQL
+#: twin over register_einheit) run, read by path. The single-unit reduction
+#: is proven by test_single_pv_einheit_is_byte_identical_to_the_legacy_single_
+#: plant_path above against the OTHER vectors file; this one only pins the
+#: BLEND across several units.
+EINSPEISEVERGUETUNG_MEHREINHEITEN_VECTORS = (
+    Path(__file__).resolve().parents[3]
+    / "docs"
+    / "contracts"
+    / "einspeiseverguetung-mehreinheiten-vectors.json"
+)
+
+
+def test_multi_unit_blend_follows_the_shared_vectors():
+    doc = json.loads(EINSPEISEVERGUETUNG_MEHREINHEITEN_VECTORS.read_text(encoding="utf-8"))
+    slot = datetime.fromisoformat(doc["slot"].replace("Z", "+00:00"))
+    geprueft = 0
+    for f in doc["faelle"]:
+        tariff = SiteTariff(
+            plant_kind="eigenverbrauch",
+            einspeiseverguetung_ct_kwh=f["angegebenCtKwh"],
+            inbetriebnahme_ab_solarspitzengesetz=f["inbetriebnahmeAbSolarspitzengesetz"],
+            pv_einheiten=tuple(
+                PvEinheit(
+                    capacity_kwp=e["leistungKwp"],
+                    commissioned_on=(
+                        date.fromisoformat(e["inbetriebnahme"]) if e["inbetriebnahme"] else None
+                    ),
+                )
+                for e in f["einheiten"]
+            ),
+        )
+        [value] = export_values(tariff, False, [f["spotEurMwh"]], [slot], {})
+        assert value / 10.0 == pytest.approx(f["einspeisewertCtKwh"], abs=1e-9), f["fall"]
+        geprueft += 1
+    assert geprueft >= 7
 
 
 # ---- export side: the customer-STATED rate (a layer above the schedule) ------

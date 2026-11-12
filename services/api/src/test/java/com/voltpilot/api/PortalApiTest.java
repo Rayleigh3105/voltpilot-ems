@@ -6424,6 +6424,244 @@ class PortalApiTest {
                 100.0, slot).ct()).isCloseTo(13.11, eps);
     }
 
+    /**
+     * S4 (vp-mastr-mehrere-einheiten-konzept §5.2): the SQL multi-unit branch
+     * of {@code exportValueCtSql} against a REAL site and REAL
+     * {@code register_einheit} rows (not the synthetic VALUES harness above,
+     * which only exercises the legacy single-asset fallback) - the report's
+     * worked example (Süddach 2014, 8,4 kWp + Garage 2024, 6,3 kWp -> 11,30
+     * ct/kWh), the SAME case {@code test_pricing.py} and
+     * {@code SlotEconomicsTest} run. Also pins the Lücken readiness gate: a
+     * second site with one confirmed unit missing {@code leistung_kwp} must
+     * fall back to the legacy single-asset row, byte-identically.
+     */
+    @Test
+    void exportValueSqlBlendsRealRegisterEinheitRowsByKwpShare() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        Instant slot = Instant.parse("2026-06-15T12:00:00Z");
+
+        String zweiEinheiten = createSite(demo, "Zwei Einheiten S4", "AT", "eigenverbrauch");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, inbetriebnahme, leistung_kwp,"
+                + " bestaetigt_am) VALUES "
+                + "('" + tenantA + "', '" + zweiEinheiten + "', 'pv', '2014-06-01', 8.4, now()), "
+                + "('" + tenantA + "', '" + zweiEinheiten + "', 'pv', '2024-06-01', 6.3, now())");
+        assertThat(evalExportValueSqlForRealSite(zweiEinheiten, 100.0, slot))
+                .isCloseTo(11.304285714285715, org.assertj.core.data.Offset.offset(1e-9));
+
+        // Lücken: a second confirmed unit without leistung_kwp drops the
+        // WHOLE site back to the legacy pv-asset row (unconfirmed by the
+        // apply flow until that unit's power is known) - never a guessed
+        // split, report §5.2.
+        String unvollstaendig = createSite(demo, "Unvollstaendige Einheit S4", "AT", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES ('" + tenantA + "', '" + unvollstaendig + "', 'pv', '2023-06-15', 8.0)");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, inbetriebnahme, leistung_kwp,"
+                + " bestaetigt_am) VALUES "
+                + "('" + tenantA + "', '" + unvollstaendig + "', 'pv', '2023-06-15', 8.0, now()), "
+                + "('" + tenantA + "', '" + unvollstaendig + "', 'pv', '2025-01-01', NULL, now())");
+        Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
+                LocalDate.of(2023, 6, 15), 8.0, null, null, 100.0, slot).ct();
+        assertThat(evalExportValueSqlForRealSite(unvollstaendig, 100.0, slot))
+                .isCloseTo(legacy, org.assertj.core.data.Offset.offset(1e-9));
+    }
+
+    /**
+     * S4 (firstmate 2026-11-12, vor dem Merge von #1842 verlangt): die
+     * {@code kwp/kwp == 1.0}-Begründung deckt nur den sauberen Fall - diese
+     * Probe belegt es für fünf Formen einer BESTANDSANLAGE, jede gegen ECHTES
+     * Postgres, SQL-Zwilling UND Repository gemeinsam:
+     * <ol>
+     *   <li>(a) eine rückgefüllte Einheit mit kWp und Datum;</li>
+     *   <li>(b) eine rückgefüllte Einheit mit kWp = NULL, weil an der Anlage
+     *       eine Erzeuger-Komponente mit eigener kWp hängt (S1-Rückfüllung
+     *       lässt die Leistung dann leer);</li>
+     *   <li>(c) eine bestätigte Einheit ohne Inbetriebnahmedatum;</li>
+     *   <li>(d) eine Anlage ganz ohne {@code register_einheit};</li>
+     *   <li>(e) eine Anlage mit vom Kunden angegebener Vergütung.</li>
+     * </ol>
+     * Jede Form wird einmal bei positivem und einmal bei negativem
+     * Börsenpreis geprüft (Fall (a) zusätzlich mit einer 150-kWp-Einheit ab
+     * 25.02.2025, um die § 51a-Aussetzung IDENTISCH über beide Pfade zu
+     * belegen - die 8-kWp-Fälle liegen alle unter der SOLARSPITZENGESETZ_
+     * KLEINANLAGE_KWP-Schwelle und lösen sie nie aus).
+     */
+    @Test
+    void bestandsanlagenFormenBleibenByteGleichZumLegacyPfad() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        Instant slot = Instant.parse("2026-06-15T12:00:00Z");
+        double[] spots = {100.0, -20.0};
+
+        // (a) eine rückgefüllte Einheit mit kWp und Datum - wie die S1-
+        // Migration eine Bestandsanlage mit genau einer MaStR-Nummer anlegt.
+        String a = createSite(demo, "S4 Form a", "AT", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES ('" + tenantA + "', '" + a + "', 'pv', '2023-06-15', 8.0)");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, inbetriebnahme, leistung_kwp,"
+                + " bestaetigt_am) VALUES ('" + tenantA + "', '" + a + "', 'pv', '2023-06-15', 8.0, now())");
+        for (double spot : spots) {
+            Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
+                    LocalDate.of(2023, 6, 15), 8.0, null, null, spot, slot).ct();
+            assertThat(evalExportValueSqlForRealSite(a, spot, slot))
+                    .as("Form (a), spot=" + spot)
+                    .isCloseTo(legacy, org.assertj.core.data.Offset.offset(1e-9));
+            assertThat(findConfirmedPvForPricingSql(a))
+                    .as("Form (a): Repository liest genau die eine Einheit")
+                    .containsExactly(new Object[] {8.0, LocalDate.of(2023, 6, 15)});
+        }
+        // Dieselbe Form, aber groß und ab dem Solarspitzengesetz-Stichtag -
+        // § 51a muss bei negativem Preis in BEIDEN Pfaden identisch zuschlagen.
+        String aGross = createSite(demo, "S4 Form a gross", "AT", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES ('" + tenantA + "', '" + aGross + "', 'pv', '2025-06-01', 150.0)");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, inbetriebnahme, leistung_kwp,"
+                + " bestaetigt_am) VALUES ('" + tenantA + "', '" + aGross
+                + "', 'pv', '2025-06-01', 150.0, now())");
+        for (double spot : spots) {
+            Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
+                    LocalDate.of(2025, 6, 1), 150.0, null, null, spot, slot).ct();
+            assertThat(evalExportValueSqlForRealSite(aGross, spot, slot))
+                    .as("Form (a) groß/§51a, spot=" + spot)
+                    .isCloseTo(legacy, org.assertj.core.data.Offset.offset(1e-9));
+        }
+
+        // (b) eine rückgefüllte Einheit mit kWp = NULL, weil eine Erzeuger-
+        // Komponente mit eigener kWp an der Anlage hängt (die S1-Migration
+        // lässt leistung_kwp dann bewusst leer, Abschnitt 5.4) - die Anlage
+        // bleibt auf der Summen-Zeile, hier mit anderer kWp als die Einheit
+        // je gehabt hätte, um eine stille Vermischung auszuschließen.
+        String b = createSite(demo, "S4 Form b", "AT", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES ('" + tenantA + "', '" + b + "', 'pv', '2019-04-01', 12.0)");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, inbetriebnahme, leistung_kwp,"
+                + " bestaetigt_am) VALUES ('" + tenantA + "', '" + b + "', 'pv', '2019-04-01', NULL, now())");
+        for (double spot : spots) {
+            Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
+                    LocalDate.of(2019, 4, 1), 12.0, null, null, spot, slot).ct();
+            assertThat(evalExportValueSqlForRealSite(b, spot, slot))
+                    .as("Form (b), spot=" + spot)
+                    .isCloseTo(legacy, org.assertj.core.data.Offset.offset(1e-9));
+            assertThat(findConfirmedPvForPricingSql(b))
+                    .as("Form (b): Repository verwirft die Anlage ganz (Lücke)")
+                    .isEmpty();
+        }
+
+        // (c) eine bestätigte Einheit ohne Inbetriebnahmedatum.
+        String c = createSite(demo, "S4 Form c", "AT", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp)"
+                + " VALUES ('" + tenantA + "', '" + c + "', 'pv', 8.0)");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, leistung_kwp, bestaetigt_am)"
+                + " VALUES ('" + tenantA + "', '" + c + "', 'pv', 8.0, now())");
+        for (double spot : spots) {
+            Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
+                    null, 8.0, null, null, spot, slot).ct();
+            assertThat(evalExportValueSqlForRealSite(c, spot, slot))
+                    .as("Form (c), spot=" + spot)
+                    .isCloseTo(legacy, org.assertj.core.data.Offset.offset(1e-9));
+            assertThat(findConfirmedPvForPricingSql(c))
+                    .as("Form (c): Repository liest die Einheit ohne Datum")
+                    .containsExactly(new Object[] {8.0, null});
+        }
+
+        // (d) eine Anlage ganz ohne register_einheit - nie mit MaStR
+        // verknüpft, der reine Legacy-Pfad.
+        String d = createSite(demo, "S4 Form d", "AT", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES ('" + tenantA + "', '" + d + "', 'pv', '2021-09-01', 5.5)");
+        for (double spot : spots) {
+            Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
+                    LocalDate.of(2021, 9, 1), 5.5, null, null, spot, slot).ct();
+            assertThat(evalExportValueSqlForRealSite(d, spot, slot))
+                    .as("Form (d), spot=" + spot)
+                    .isCloseTo(legacy, org.assertj.core.data.Offset.offset(1e-9));
+            assertThat(findConfirmedPvForPricingSql(d))
+                    .as("Form (d): keine Einheit, keine register_einheit-Zeile")
+                    .isEmpty();
+        }
+
+        // (e) eine Anlage mit vom Kunden angegebener Vergütung UND genau
+        // einer bestätigten Einheit - die Angabe muss in beiden Pfaden
+        // gleichermaßen über den Satzplan gewinnen.
+        String e = createSite(demo, "S4 Form e", "AT", "eigenverbrauch");
+        exec("INSERT INTO asset (tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES ('" + tenantA + "', '" + e + "', 'pv', '2023-06-15', 8.0)");
+        exec("INSERT INTO register_einheit (tenant_id, site_id, art, inbetriebnahme, leistung_kwp,"
+                + " bestaetigt_am) VALUES ('" + tenantA + "', '" + e + "', 'pv', '2023-06-15', 8.0, now())");
+        exec("UPDATE site SET einspeiseverguetung_ct_kwh = 12.5 WHERE id = '" + e + "'");
+        for (double spot : spots) {
+            Double legacy = evalExportValueSql("eigenverbrauch", false, null, null,
+                    LocalDate.of(2023, 6, 15), 8.0, 12.5, null, spot, slot).ct();
+            assertThat(evalExportValueSqlForRealSite(e, spot, slot))
+                    .as("Form (e), spot=" + spot)
+                    .isCloseTo(legacy, org.assertj.core.data.Offset.offset(1e-9));
+        }
+    }
+
+    /** {@code RegisterEinheitRepository.findConfirmedPvForPricing} nachgebaut
+     * als rohes SQL (ohne RLS-Session/TenantContext in diesem Testlauf nötig) -
+     * dieselbe Abfrage, dieselbe Lücken-Regel, direkt gegen Postgres. */
+    private static List<Object[]> findConfirmedPvForPricingSql(String siteId) {
+        List<Object[]> rows = new java.util.ArrayList<>();
+        boolean anyNull = false;
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.PreparedStatement ps = c.prepareStatement(
+                        "SELECT leistung_kwp, inbetriebnahme FROM register_einheit "
+                                + "WHERE site_id = ?::uuid AND art = 'pv' AND bestaetigt_am IS NOT NULL "
+                                + "ORDER BY inbetriebnahme NULLS LAST, created_at")) {
+            ps.setObject(1, java.util.UUID.fromString(siteId));
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    java.math.BigDecimal kwp = rs.getBigDecimal("leistung_kwp");
+                    if (kwp == null) {
+                        anyNull = true;
+                    }
+                    rows.add(new Object[] {kwp == null ? null : kwp.doubleValue(),
+                            rs.getObject("inbetriebnahme", LocalDate.class)});
+                }
+            }
+        } catch (Exception ex) {
+            throw new IllegalStateException("findConfirmedPvForPricing probe failed", ex);
+        }
+        return anyNull ? List.of() : rows;
+    }
+
+    /** {@code exportValueCtSql} against the REAL {@code site}/{@code asset}/
+     * {@code register_einheit} rows of an already-created site - unlike
+     * {@link #evalExportValueSql}, which only ever synthesizes the row. */
+    private static Double evalExportValueSqlForRealSite(String siteId, Double spot, Instant slot) {
+        // Bind spot/slot by COLUMN NAME (p.price_eur_mwh / r.bucket), exactly
+        // like evalExportValueSql above - exportValueCtSql repeats its expr
+        // arguments verbatim several times in the generated text, so a raw
+        // "?"  placeholder there would multiply into several positional
+        // parameters instead of one.
+        String sql = "SELECT "
+                + com.voltpilot.api.optimizer.SlotEconomics.exportValueCtSql(
+                        "p.price_eur_mwh", "r.bucket",
+                        com.voltpilot.api.optimizer.EegRates.defaults())
+                + " AS ct FROM site s"
+                + " LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary"
+                + " LEFT JOIN monthly_market_value mv ON false"
+                + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
+                + " CROSS JOIN (VALUES (?::timestamptz)) AS r(bucket)"
+                + " WHERE s.id = ?::uuid";
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setObject(1, spot);
+            ps.setObject(2, java.sql.Timestamp.from(slot));
+            ps.setObject(3, java.util.UUID.fromString(siteId));
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                java.math.BigDecimal ct = rs.getBigDecimal("ct");
+                return ct == null ? null : ct.doubleValue();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("real-site vector eval failed", e);
+        }
+    }
+
     /** One evaluated vector row: the export value and the two honesty labels. */
     private record ExportSql(Double ct, String quelle, boolean priced) {
     }
@@ -6439,8 +6677,8 @@ class PortalApiTest {
                 + " AS ct, " + com.voltpilot.api.optimizer.SlotEconomics.exportVerguetungQuelleSql()
                 + " AS quelle, " + com.voltpilot.api.optimizer.SlotEconomics.exportVerguetungPricedSql()
                 + " AS priced"
-                + " FROM (VALUES (?::text, ?::boolean, ?::numeric, ?::numeric, ?::boolean))"
-                + " AS s(plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh,"
+                + " FROM (VALUES (?::uuid, ?::text, ?::boolean, ?::numeric, ?::numeric, ?::boolean))"
+                + " AS s(id, plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh,"
                 + " einspeiseverguetung_ct_kwh, inbetriebnahme_ab_solarspitzengesetz)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS mv(value_ct_kwh)"
                 + " CROSS JOIN (VALUES (?::date, ?::numeric)) AS pv(commissioned_on, pv_capacity_kwp)"
@@ -6449,18 +6687,24 @@ class PortalApiTest {
         try (Connection c = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
                 java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, plantKind);
-            ps.setBoolean(2, netzladen);
-            ps.setObject(3, aw);
-            ps.setObject(4, angegeben);
-            ps.setObject(5, abSolarspitzengesetz);
+            // S4: a fresh, never-referenced site id - exportValueCtSql's new
+            // multi-unit branch correlates against register_einheit by
+            // site_id, so it needs ONE to bind; no row anywhere points at it,
+            // so EXISTS(...) is always false and every vector below keeps
+            // exercising the legacy single-asset formula, byte-identically.
+            ps.setObject(1, java.util.UUID.randomUUID());
+            ps.setString(2, plantKind);
+            ps.setBoolean(3, netzladen);
+            ps.setObject(4, aw);
+            ps.setObject(5, angegeben);
+            ps.setObject(6, abSolarspitzengesetz);
             // A missing monthly_market_value / pv-asset row = the LEFT JOIN's
             // all-NULL side - bind it exactly like that.
-            ps.setObject(6, mvCt);
-            ps.setObject(7, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
-            ps.setObject(8, kwp);
-            ps.setObject(9, spot);
-            ps.setObject(10, java.sql.Timestamp.from(slot));
+            ps.setObject(7, mvCt);
+            ps.setObject(8, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
+            ps.setObject(9, kwp);
+            ps.setObject(10, spot);
+            ps.setObject(11, java.sql.Timestamp.from(slot));
             try (java.sql.ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 java.math.BigDecimal ct = rs.getBigDecimal("ct");

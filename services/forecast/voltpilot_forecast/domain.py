@@ -122,12 +122,33 @@ class SiteForecastConfig:
     ``plant`` is ``None`` for a site without PV; PV forecasting then yields an
     all-zero series. ``tenant_id``/``site_id`` are opaque strings here (UUIDs in
     the DB) so this library stays free of the persistence layer's types.
+
+    ``plants`` (S4, vp-mastr-mehrere-einheiten-konzept §5.2) is one
+    :class:`PlantSpec` per roof face (``einheit_flaeche``) across every
+    CONFIRMED PV ``register_einheit`` of the site - "Prognose je Fläche,
+    Leistung addiert". An EMPTY tuple (the default) means "no per-face data":
+    :attr:`effective_plants` then falls back to the single legacy ``plant``,
+    byte-identically - the forecast's own Lücken rule mirrors pricing.py's.
     """
 
     tenant_id: str
     site_id: str
     location: GeoLocation
     plant: PlantSpec | None = None
+    plants: tuple[PlantSpec, ...] = ()
+
+    @property
+    def effective_plants(self) -> tuple[PlantSpec, ...]:
+        """The plant(s) to forecast: ``plants`` when given, else the single
+        legacy ``plant`` as a one-tuple, else empty (no PV). A single-entry
+        ``plants`` matching ``plant`` reproduces every single-plant formula
+        exactly - summing one term changes nothing (IEEE754 ``0.0 + x == x``,
+        and capacity caps apply per-plant before the sum, same as today)."""
+        if self.plants:
+            return self.plants
+        if self.plant is not None:
+            return (self.plant,)
+        return ()
 
 
 @dataclass(frozen=True)

@@ -316,6 +316,20 @@ export interface Einspeiseverguetung {
   ohneVerguetungBeiNegativpreis: boolean;
   /** Bei Direktvermarktung der anzulegende Wert, sonst null. */
   anzulegenderWertCtKwh: number | null;
+  /**
+   * S4: bei zwei oder mehr bestätigten PV-Einheiten mit je einem eigenen Satz
+   * der Rechenweg des Mischsatzes (`wirksamCtKwh` ist dann Σ Anteil × Satz);
+   * leer bei weniger als zwei Einheiten oder wenn der Mischsatz nicht
+   * eindeutig feststeht (Karte zeigt dann wie bisher den Anlagen-Satz).
+   */
+  einheiten: EinspeiseverguetungEinheit[];
+}
+
+/** Eine Einheit im Rechenweg des Mischsatzes ({@link Einspeiseverguetung.einheiten}). */
+export interface EinspeiseverguetungEinheit {
+  inbetriebnahme: string | null;
+  leistungKwp: number;
+  satzCtKwh: number;
 }
 
 export interface CreateSiteInput {

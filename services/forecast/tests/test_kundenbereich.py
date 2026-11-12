@@ -117,7 +117,14 @@ def test_every_site_list_a_cycle_writes_from_filters_ended_areas(monkeypatch):
     monkeypatch.setitem(sys.modules, "psycopg", fake_psycopg)
     weather_collect.load_sites_with_coordinates("dsn")
 
-    assert len(conn.statements) == 3
-    for sql in conn.statements:
+    # S4's load_pv_flaechen (called once, inside load_sites) is a
+    # register_einheit-only lookup, not itself a site-list query - it has no
+    # tenant join or beendet filter of its own (register_einheit cascades off
+    # site/tenant deletion instead), so it is excluded from the per-statement
+    # check below.
+    site_list_statements = [s for s in conn.statements if "FROM register_einheit" not in s]
+    assert len(conn.statements) == 4
+    assert len(site_list_statements) == 3
+    for sql in site_list_statements:
         assert "JOIN tenant t ON t.id = s.tenant_id" in sql
         assert NICHT_BEENDET in sql

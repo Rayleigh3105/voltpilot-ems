@@ -323,6 +323,7 @@ function verguetungStand(over: Partial<Einspeiseverguetung> = {}): Einspeiseverg
     eegEndeAm: '2045-12-31',
     ohneVerguetungBeiNegativpreis: true,
     anzulegenderWertCtKwh: null,
+    einheiten: [],
     ...over,
   };
 }

@@ -16,6 +16,7 @@ from voltpilot_forecast.forecast_collect import (
     CollectorConfig,
     SiteRow,
     collect_site,
+    load_pv_flaechen,
     load_sites,
 )
 from voltpilot_forecast.quality_repository import (
@@ -177,10 +178,16 @@ class _SiteQueryConn:
                 return False
 
             def execute(self, sql, params=()):
+                if "FROM register_einheit" in sql:
+                    # S4 load_pv_flaechen: no confirmed units in this fixture -
+                    # every site keeps planning on site.plant, byte-identically.
+                    self._result = []
+                    return
                 assert "FROM site s" in sql and "type = 'pv'" in sql
+                self._result = conn._rows
 
             def fetchall(self):
-                return conn._rows
+                return self._result
 
         return _Cur()
 
@@ -199,6 +206,71 @@ def test_load_sites_builds_the_plant_from_the_pv_asset_row():
     assert sites[0].plant == PlantSpec(capacity_kwp=6.05, azimuth_deg=180.0, tilt_deg=30.0)
     assert sites[1].plant == PlantSpec(capacity_kwp=0.8, azimuth_deg=180.0, tilt_deg=30.0)
     assert sites[2].plant is None and sites[2].location is None
+
+
+class _FlaechenConn:
+    """Serves only the load_pv_flaechen query with canned rows."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def cursor(self):
+        rows = self._rows
+
+        class _Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, params=()):
+                assert "FROM register_einheit re" in sql
+                assert "LEFT JOIN einheit_flaeche ef" in sql
+
+            def fetchall(self):
+                return rows
+
+        return _Cur()
+
+
+def test_load_pv_flaechen_builds_one_plantspec_per_confirmed_face():
+    # S4 report example §2.7: Süddach 2014 (8.4 kWp, one face) + Garage 2024
+    # Ost-West (6.3 kWp split 90/270 - already two einheit_flaeche rows, the
+    # api's own job per S2/S3) - two units, three faces total.
+    rows = [
+        ("s1", "e1", 8.4, 180.0, 30.0, 8.4),
+        ("s1", "e2", 6.3, 90.0, 12.5, 3.15),
+        ("s1", "e2", 6.3, 270.0, 12.5, 3.15),
+    ]
+    flaechen = load_pv_flaechen(_FlaechenConn(rows))
+    assert flaechen["s1"] == [
+        PlantSpec(capacity_kwp=8.4, azimuth_deg=180.0, tilt_deg=30.0),
+        PlantSpec(capacity_kwp=3.15, azimuth_deg=90.0, tilt_deg=12.5),
+        PlantSpec(capacity_kwp=3.15, azimuth_deg=270.0, tilt_deg=12.5),
+    ]
+
+
+def test_load_pv_flaechen_unit_without_a_face_falls_back_to_full_capacity_south():
+    rows = [("s1", "e1", 8.4, None, None, None)]
+    flaechen = load_pv_flaechen(_FlaechenConn(rows))
+    assert flaechen["s1"] == [PlantSpec(capacity_kwp=8.4)]
+
+
+def test_load_pv_flaechen_incomplete_unit_drops_the_whole_site():
+    # The Lücken rule (report §5.2): a confirmed unit missing leistung_kwp
+    # falls the WHOLE site back to the legacy asset aggregate, not just that
+    # one unit - never split with a missing share.
+    rows = [
+        ("s1", "e1", 8.4, 180.0, 30.0, 8.4),
+        ("s1", "e2", None, None, None, None),
+    ]
+    flaechen = load_pv_flaechen(_FlaechenConn(rows))
+    assert "s1" not in flaechen
+
+
+def test_load_pv_flaechen_empty_result_is_an_empty_mapping():
+    assert load_pv_flaechen(_FlaechenConn([])) == {}
 
 
 def test_baselines_always_persist_model_tagged_series():

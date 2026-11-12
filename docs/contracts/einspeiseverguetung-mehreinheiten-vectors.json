@@ -1,0 +1,91 @@
+{
+  "$comment": "S4 (vp-mastr-mehrere-einheiten-konzept, Captain-Entscheide E3=A/E4=A vom 11.11.2026): die GETEILTEN Vektoren fuer den Paragraph 24 Abs. 3 EEG-Anteil ueber MEHRERE register_einheit-Zeilen je Anlage. Erganzt docs/contracts/einspeiseverguetung-vectors.json (EIN Satz je Anlage, bleibt unveraendert) um den Mehreinheiten-Zweig. DREI Zwillinge lesen diese Datei: Python services/optimization voltpilot_optimization/pricing.py export_values mit SiteTariff.pv_einheiten (tests/test_pricing.py), Java services/api SlotEconomics.exportValueCtKwh(List<UnitPv>, Double, Instant) (SlotEconomicsTest) und sein SQL-Zwilling SlotEconomics.exportValueCtSql ueber register_einheit (PortalApiTest). Die einzelne Anlage (eine Einheit) ist in der ANDEREN Datei geprueft, byte-gleich; diese Datei prueft nur die BLENDE ueber mehrere Einheiten.",
+  "$regel": "Wert = Summe ueber Einheiten (Anteil nach kWp * Wert der Einheit). Ohne Angabe: jede Einheit nach ihrem EIGENEN Inbetriebnahmedatum und ihrer EIGENEN kWp (Satzplan-Tranchen je Einheit, kein Pooling ueber 12 Monate - dokumentierte S4-Vereinfachung); eine Einheit ohne Datum oder nach ihrem EIGENEN 20-Jahre-Ende rechnet mit dem Boersenpreis, waehrend eine andere Einheit der Anlage weiter ihren Satz bekommt. Mit Angabe: die Angabe gilt FLACH fuer jede Einheit (keine Blende der Hoehe), nur Paragraph 51a bleibt je Einheit (eigenes Datum/eigene kWp, ohne Datum die Antwort der Anlage).",
+  "$einheiten": "spotEurMwh in EUR/MWh, einspeisewertCtKwh in ct/kWh (wie in der anderen Vektordatei). einheiten[].leistungKwp in kWp, einheiten[].inbetriebnahme als Datum oder null.",
+
+  "slot": "2026-06-15T12:00:00Z",
+
+  "faelle": [
+    {
+      "fall": "Zwei Einheiten mischen nach kWp-Anteil (report.md Abschnitt 2.7/4.2: Sueddach 2014 + Garage 2024)",
+      "angegebenCtKwh": null, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "einheiten": [
+        {"leistungKwp": 8.4, "inbetriebnahme": "2014-06-01"},
+        {"leistungKwp": 6.3, "inbetriebnahme": "2024-06-01"}
+      ],
+      "spotEurMwh": 100.0,
+      "einspeisewertCtKwh": 11.304285714285715
+    },
+    {
+      "fall": "Eine Einheit ohne Datum schwimmt mit ihrem Anteil am Boersenpreis, die andere behaelt ihren Satz",
+      "angegebenCtKwh": null, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "einheiten": [
+        {"leistungKwp": 5.0, "inbetriebnahme": "2023-06-15"},
+        {"leistungKwp": 5.0, "inbetriebnahme": null}
+      ],
+      "spotEurMwh": 100.0,
+      "einspeisewertCtKwh": 9.1
+    },
+    {
+      "fall": "Einheiten laufen unabhaengig ab: die alte faellt auf den Boersenpreis, die juengere verguetet weiter",
+      "angegebenCtKwh": null, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "einheiten": [
+        {"leistungKwp": 5.0, "inbetriebnahme": "2004-06-01"},
+        {"leistungKwp": 5.0, "inbetriebnahme": "2023-06-15"}
+      ],
+      "spotEurMwh": 100.0,
+      "einspeisewertCtKwh": 9.1
+    },
+    {
+      "fall": "Paragraph 51a wirkt je Einheit: die kleine Alt-Einheit behaelt bei negativem Preis ihren Satz (N1), die grosse neue wird 0",
+      "angegebenCtKwh": null, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "einheiten": [
+        {"leistungKwp": 5.0, "inbetriebnahme": "2023-06-15"},
+        {"leistungKwp": 150.0, "inbetriebnahme": "2025-06-01"}
+      ],
+      "spotEurMwh": -20.0,
+      "einspeisewertCtKwh": 0.2645161290322581
+    },
+    {
+      "fall": "Die Angabe gilt flach fuer jede Einheit, nur Paragraph 51a bleibt je Einheit",
+      "angegebenCtKwh": 12.5, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "einheiten": [
+        {"leistungKwp": 5.0, "inbetriebnahme": "2023-06-15"},
+        {"leistungKwp": 150.0, "inbetriebnahme": "2025-06-01"}
+      ],
+      "spotEurMwh": -20.0,
+      "einspeisewertCtKwh": 0.4032258064516129
+    },
+    {
+      "fall": "Eine Einheit ohne Datum faellt bei der Angabe auf die Antwort der Anlage zum Solarspitzengesetz zurueck",
+      "angegebenCtKwh": 9.0, "inbetriebnahmeAbSolarspitzengesetz": true,
+      "einheiten": [
+        {"leistungKwp": 150.0, "inbetriebnahme": null}
+      ],
+      "spotEurMwh": -20.0,
+      "einspeisewertCtKwh": 0.0
+    },
+    {
+      "fall": "Drei Einheiten, gemischt: abgelaufen, klein und negativ-gesichert, gross und ausgesetzt",
+      "angegebenCtKwh": null, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "einheiten": [
+        {"leistungKwp": 3.0, "inbetriebnahme": "2004-06-01"},
+        {"leistungKwp": 4.0, "inbetriebnahme": "2023-06-15"},
+        {"leistungKwp": 120.0, "inbetriebnahme": "2025-06-01"}
+      ],
+      "spotEurMwh": -20.0,
+      "einspeisewertCtKwh": 0.21102362204724406
+    },
+    {
+      "fall": "Dieselben drei Einheiten bei positivem Preis: keine Einheit ist ausgesetzt",
+      "angegebenCtKwh": null, "inbetriebnahmeAbSolarspitzengesetz": null,
+      "einheiten": [
+        {"leistungKwp": 3.0, "inbetriebnahme": "2004-06-01"},
+        {"leistungKwp": 4.0, "inbetriebnahme": "2023-06-15"},
+        {"leistungKwp": 120.0, "inbetriebnahme": "2025-06-01"}
+      ],
+      "spotEurMwh": 100.0,
+      "einspeisewertCtKwh": 6.28503937007874
+    }
+  ]
+}

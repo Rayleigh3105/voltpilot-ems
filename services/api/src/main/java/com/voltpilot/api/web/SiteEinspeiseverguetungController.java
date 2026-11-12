@@ -5,6 +5,7 @@ import com.voltpilot.api.optimizer.EinspeiseverguetungStand;
 import com.voltpilot.api.optimizer.OptimizerProperties;
 import com.voltpilot.api.repo.EinspeiseverguetungRepository;
 import com.voltpilot.api.repo.EinspeiseverguetungRepository.Grundlage;
+import com.voltpilot.api.repo.RegisterEinheitRepository;
 import com.voltpilot.api.web.dto.EinspeiseverguetungDto;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.zugriff.Recht;
@@ -53,12 +54,15 @@ public class SiteEinspeiseverguetungController {
     private static final int SATZ_SCALE = 3;
 
     private final EinspeiseverguetungRepository repo;
+    private final RegisterEinheitRepository einheiten;
     private final Geltungsbereich geltungsbereich;
     private final EegRates eegRates;
 
     public SiteEinspeiseverguetungController(EinspeiseverguetungRepository repo,
-            Geltungsbereich geltungsbereich, OptimizerProperties optimizer) {
+            RegisterEinheitRepository einheiten, Geltungsbereich geltungsbereich,
+            OptimizerProperties optimizer) {
         this.repo = repo;
+        this.einheiten = einheiten;
         this.geltungsbereich = geltungsbereich;
         // Derselbe Satzplan wie Optimierer und Erlöse (OPTIMIZER_EEG_RATES_JSON).
         this.eegRates = EegRates.fromJson(optimizer.eegRatesJson());
@@ -132,7 +136,10 @@ public class SiteEinspeiseverguetungController {
         if (g == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
-        return EinspeiseverguetungStand.von(g, eegRates);
+        // S4: der Mischsatz mit Rechenweg bei zwei oder mehr bestätigten
+        // PV-Einheiten (EinspeiseverguetungStand faellt sonst unveraendert auf
+        // die Anlagen-Rechnung zurueck).
+        return EinspeiseverguetungStand.von(g, einheiten.findConfirmedPvForPricing(siteId), eegRates);
     }
 
     /** Der Satz: null setzt zurück; sonst ct/kWh zwischen 0 und 100. */
