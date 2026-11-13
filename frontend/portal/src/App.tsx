@@ -705,6 +705,28 @@ function UnifiedPortal() {
         return;
       }
       try {
+        // The tenant-context read is fail-soft: an older backend (or a
+        // transient blip) leaves the frame on its last known value - never a
+        // broken portal, and never a mid-session shell flip from one failed
+        // background poll. A never-succeeding read keeps the initial null =
+        // the v1 site-count fallback.
+        // IP-5: die Standorte reisen im SELBEN Schnappschuss wie die Anlagen —
+        // die Weiche sieht beide zugleich und ersetzt die Adresse genau einmal.
+        // Fail-soft wie der Kontext; eine Hintergrund-Auffrischung behält den
+        // letzten Stand.
+        //
+        // ⚠ Die Stammdaten laufen GLEICHZEITIG mit `/me`, nicht danach (Performance-Runde
+        // vp-perf-portal-reaktiv): keiner der vier Abrufe braucht die Selbstauskunft als Eingabe - der
+        // Server schneidet jede Antwort selbst auf die Rechte zu. Vorher stand vor jedem ersten Bild eine
+        // ganze `/me`-Runde mehr. Benutzt werden die Antworten erst NACH `/me`: ohne Standort verwirft der
+        // Zweig unten sie still (ihre Ablehnung wird hier aufgefangen, nie als roter Balken).
+        const stammdaten = Promise.all([
+          api.listSites().then((antwort) => antwort.eintraege),
+          api.listDevices().then((antwort) => antwort.eintraege),
+          api.tenantContext().catch(() => null),
+          opts?.background ? Promise.resolve(undefined) : orteLaden(),
+        ]);
+        stammdaten.catch(() => undefined);
         const me = await api.selbstauskunft();
         if (nummer !== ladeNummer.current) return;
         setSelbstauskunft(me);
@@ -716,21 +738,7 @@ function UnifiedPortal() {
           setError(null);
           return;
         }
-        // The tenant-context read is fail-soft: an older backend (or a
-        // transient blip) leaves the frame on its last known value - never a
-        // broken portal, and never a mid-session shell flip from one failed
-        // background poll. A never-succeeding read keeps the initial null =
-        // the v1 site-count fallback.
-        // IP-5: die Standorte reisen im SELBEN Schnappschuss wie die Anlagen —
-        // die Weiche sieht beide zugleich und ersetzt die Adresse genau einmal.
-        // Fail-soft wie der Kontext; eine Hintergrund-Auffrischung behält den
-        // letzten Stand.
-        const [s, d, ctx, orte] = await Promise.all([
-          api.listSites().then((antwort) => antwort.eintraege),
-          api.listDevices().then((antwort) => antwort.eintraege),
-          api.tenantContext().catch(() => null),
-          opts?.background ? Promise.resolve(undefined) : orteLaden(),
-        ]);
+        const [s, d, ctx, orte] = await stammdaten;
         if (nummer !== ladeNummer.current) return;
         setSites(s);
         if (orte !== undefined) setOrteQuelle(orte ? {
