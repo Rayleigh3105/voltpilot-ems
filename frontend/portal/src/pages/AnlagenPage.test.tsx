@@ -416,6 +416,13 @@ describe('Konzept vp-prognosen-konzept · die Adresse `prognose` ist die Kundens
     );
   }
 
+  // Dieselbe Falle wie bei Ladevorgaenge unten: PrognoseSeite laedt per React.lazy nach, und
+  // unter Last (Lauf 586: nach den api-Fuenfteln auf demselben Runner) dauerte der erste Import
+  // laenger als die Frist von waitFor - vorgewaermt loest lazy sofort auf.
+  beforeAll(async () => {
+    await SUB_CHUNK.prognose();
+  });
+
   afterEach(() => {
     window.location.hash = '';
   });
