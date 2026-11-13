@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { EbenenCockpit } from './EbenenCockpit';
 import { api, type Earnings, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
 import type { Route } from '../nav';
@@ -196,4 +196,29 @@ it('AP-02 O18 · ein reiner Betriebskunde lädt und sieht die Vorschlagsfläche 
   expect(holen).not.toHaveBeenCalled();
   expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Standorte einrichten' })).toBeNull();
+});
+
+describe('Poll-Takte der Übersicht nach Datenart', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('Live-Bild alle 10 s, die Erlöse (15-Minuten-Rollups) nur alle 5 min', async () => {
+    // Nur die Intervalle fälschen: Promises und waitFor laufen weiter auf der echten Uhr.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    renderCockpit();
+    await waitFor(() => expect(api.earnings).toHaveBeenCalled());
+    const start = { overview: vi.mocked(api.overview).mock.calls.length, earnings: vi.mocked(api.earnings).mock.calls.length };
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(vi.mocked(api.overview).mock.calls.length).toBe(start.overview + 3);
+    expect(vi.mocked(api.earnings).mock.calls.length).toBe(start.earnings);
+
+    await act(async () => {
+      vi.advanceTimersByTime(270_000);
+    });
+    expect(vi.mocked(api.earnings).mock.calls.length).toBe(start.earnings + 1);
+  });
 });

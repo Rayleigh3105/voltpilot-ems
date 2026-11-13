@@ -1935,7 +1935,7 @@ describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
     vi.useRealTimers();
   });
 
-  it('Ist-Werte und Frische alle 10 s, Zeitraum-Summen und Plan nur alle 30 s', async () => {
+  it('Ist-Werte und Frische alle 10 s, der Plan alle 30 s, die Erlöse nur alle 5 min', async () => {
     // Nur die Intervalle fälschen: Promises und waitFor laufen weiter auf der echten Uhr.
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const overview = vi.spyOn(api, 'overview');
@@ -1964,8 +1964,16 @@ describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
       vi.advanceTimersByTime(20_000);
     });
     expect(overview.mock.calls.length).toBe(start.overview + 3);
-    expect(earnings.mock.calls.length).toBe(start.earnings + 1);
+    expect(earnings.mock.calls.length).toBe(start.earnings);
     expect(plan.mock.calls.length).toBe(start.plan + 1);
+
+    // Die Erlöse kommen aus 15-Minuten-Rollups (`ERLOES_POLL_MS`): erst nach fünf Minuten der nächste Abruf.
+    await act(async () => {
+      vi.advanceTimersByTime(270_000);
+    });
+    expect(overview.mock.calls.length).toBe(start.overview + 30);
+    expect(plan.mock.calls.length).toBe(start.plan + 10);
+    expect(earnings.mock.calls.length).toBe(start.earnings + 1);
   });
 });
 

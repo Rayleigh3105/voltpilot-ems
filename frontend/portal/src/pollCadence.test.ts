@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { LIST_POLL_MS, LIVE_POLL_MS } from './pollCadence';
+import { ERLOES_POLL_MS, LIST_POLL_MS, LIVE_POLL_MS } from './pollCadence';
 
 /**
  * DIE POLL-TAKTE HABEN EINEN ORT - und dieser Test hält ihn.
@@ -29,6 +29,14 @@ describe('Die Takte selbst', () => {
     // `liveness.ts` urteilt gegen 5 Minuten; ein Takt darüber könnte ein
     // verstummtes Gerät erst mit Verzögerung als solches erkennen.
     expect(LIST_POLL_MS).toBeLessThan(5 * 60_000);
+  });
+
+  it('fragt die Erlöse seltener als die Listen, aber mindestens dreimal je Rollup-Lauf', () => {
+    // Der Datenbank-Job `telemetry_rollups_job` frischt die 15-Minuten-Rollups alle 15 Minuten auf
+    // (V20260701030000); aus ihnen rechnet der Server die Erlöse. Schneller zu fragen bringt dieselbe Zahl.
+    const ROLLUP_JOB_MS = 15 * 60_000;
+    expect(ERLOES_POLL_MS).toBeGreaterThan(LIST_POLL_MS);
+    expect(ERLOES_POLL_MS * 3).toBeLessThanOrEqual(ROLLUP_JOB_MS);
   });
 });
 

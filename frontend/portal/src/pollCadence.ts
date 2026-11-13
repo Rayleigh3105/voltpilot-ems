@@ -48,8 +48,29 @@ export const LIVE_POLL_MS = 10_000;
  * Flow-Editor und Zeitraum-Aggregate (Historie-Summen).
  *
  * Auch INNERHALB des Cockpits gilt die Zuordnung je Datenart, nicht je Seite:
- * `/earnings` (Summen aus 15-Minuten-Rollups) und `/schedule` (der Plan, den
- * der Optimierer alle 15 Minuten neu schreibt) laufen hier; `/overview` bleibt
- * beim Live-Takt, weil es den Live-Schnappschuss und die Frische trägt.
+ * `/schedule` (der Plan, den der Optimierer alle 15 Minuten neu schreibt, nach
+ * einer Änderung auch früher) läuft hier; `/overview` bleibt beim Live-Takt,
+ * weil es den Live-Schnappschuss und die Frische trägt; die Erlöse haben ihren
+ * eigenen, langsameren Takt ({@link ERLOES_POLL_MS}).
  */
 export const LIST_POLL_MS = 30_000;
+
+/**
+ * Der Takt der ERLÖSE (`/earnings`, `/sites/{id}/earnings`): Cockpit,
+ * Portfolio-Cockpit und Anlagen-Seite.
+ *
+ * **Warum fünf Minuten:** die Erlöse rechnet der Server aus den
+ * 15-Minuten-Rollups der Telemetrie, und die frischt ein Datenbank-Job alle
+ * 15 Minuten auf (`telemetry_rollups_job`); nur der Speicher-Bestand des
+ * laufenden Tages folgt dem jüngsten Ladestand, und der wandert langsam. Wer
+ * alle 10 s fragte, bekam rund 90-mal dieselbe Zahl - und `/earnings` ist mit
+ * der Preisreihe (`PriceSlots`) die teuerste Lese-Abfrage des Portals
+ * (Lasttest 05.11.2026: mehr als die Hälfte der Portal-DB-Zeit, Rang 3 der
+ * Maßnahmen). Fünf Minuten sind ein Drittel des Rollup-Takts: eine neue
+ * Viertelstunde steht spätestens fünf Minuten nach ihrem Rollup im Portal.
+ *
+ * Was NICHT wartet: die Rückkehr in einen verdeckten Tab holt sofort nach
+ * (`useFreshnessPoll`), ein Zeitraum-Wechsel fragt sofort, ein Neuladen
+ * ohnehin.
+ */
+export const ERLOES_POLL_MS = 5 * 60_000;

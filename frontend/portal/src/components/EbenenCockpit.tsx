@@ -76,7 +76,7 @@ import { useReportFirstPaint } from '../bootReady';
 import './PortfolioCockpit.css';
 import './EbenenCockpit.css';
 // LIVE: die Kennzahlen-Leiste zeigt gemessene Ist-Werte (PV jetzt, Netz).
-import { LIVE_POLL_MS } from '../pollCadence';
+import { ERLOES_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 
 /** Re-render cadence of the freshness/liveness derivations. */
 const TICK_MS = 5_000;
@@ -274,11 +274,15 @@ export function EbenenCockpit({
       (o) => setOverview(o),
       () => {},
     );
+  }, LIVE_POLL_MS);
+  // Die Erlöse im eigenen Takt (`pollCadence.ts`): sie kommen aus 15-Minuten-Rollups, der Live-Takt holte
+  // rund 90-mal dieselbe Zahl der teuersten Lese-Abfrage.
+  useFreshnessPoll(() => {
     api.earnings('day').then(
       (e) => setEarnings(e),
       () => {},
     );
-  }, LIVE_POLL_MS);
+  }, ERLOES_POLL_MS);
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);

@@ -51,7 +51,7 @@ import { useVerbrauchHeute } from '../useVerbrauchHeute';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE für alles Gemessene (Cockpit, Steuerung, Viertelstunden-Band), LIST für
 // die Zeitraum-Aggregate der Historie.
-import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
+import { ERLOES_POLL_MS, LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
@@ -1238,24 +1238,27 @@ export function AnlageSeite({
   // daneben - sonst zeigt das Cockpit dem zurückkehrenden Kunden bis zu 30 s
   // lang die Zahlen von vorhin.
   //
-  // ⚠ ZWEI Takte nach Datenart (Scout `vp-anlagen-cockpit-perf`, Rang 5; Regel in
+  // ⚠ DREI Takte nach Datenart (Scout `vp-anlagen-cockpit-perf`, Rang 5; Regel in
   // `pollCadence.ts`). LIVE (10 s): was GEMESSEN ist oder die Frische bestimmt -
   // `/overview` trägt `live` (Fluss-Rückfall, Frische-Chip, `liveTs` für die
   // Rollen), die Steuerungs-Rückmeldung, der Erzeuger-Stand, die Ladepunkte.
-  // LISTE (30 s): `/earnings` (Zeitraum-Summen, die Quelle rechnet sie aus
-  // 15-Minuten-Rollups) und `/schedule` (der Plan, den der Optimierer alle
-  // 15 Minuten neu schreibt) bewegen sich nicht schneller; beide sind mit dem
-  // Datenbestand die teuersten Aufrufe der Seite.
+  // LISTE (30 s): `/schedule` (der Plan, den der Optimierer alle 15 Minuten neu
+  // schreibt, nach einer Änderung auch früher). ERLÖSE (5 min): `/earnings`
+  // (Zeitraum-Summen aus 15-Minuten-Rollups, die teuerste Lese-Abfrage).
   useFreshnessPoll(() => {
-    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
-      (e) => setSiteEarnings(e),
-      () => {},
-    );
     api.schedule(site.id).then(
       (p) => setPlan(p),
       () => {},
     );
   }, LIST_POLL_MS);
+  // ERLÖSE (5 min, `ERLOES_POLL_MS`): dieselben 15-Minuten-Rollups, aber ohne Neuplanung dazwischen - ein
+  // Zeitraum-Wechsel fragt ohnehin sofort (Effekt oben).
+  useFreshnessPoll(() => {
+    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
+      (e) => setSiteEarnings(e),
+      () => {},
+    );
+  }, ERLOES_POLL_MS);
   useFreshnessPoll(() => {
     setNow(new Date());
     api.overview().then(
