@@ -68,7 +68,8 @@ class UemsEnergiemanagementMigrationTest {
             "20261005220000", // Konzept Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() (Zählerablesung).
             "20261007004500", // Nachweisen n1, PR 1: ersetzt energiemanagement_vokabular() als Vereinigung (Block teil).
             "20261007014500", // Konzept Nachweisen n1, Entscheid 10: Original je Fassung an energiemanagement_dokument_fassung.
-            "20261007150000"); // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
+            "20261007150000", // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
+            "20261112150000"); // #1843 Löschzug-Indexdeckung I: idx_energiemanagement_anwendungsbereich_tenant/idx_energiemanagement_person_tenant.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
