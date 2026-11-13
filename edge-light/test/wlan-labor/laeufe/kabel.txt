@@ -1,0 +1,21 @@
+# Lauf kabel: zurueck zum Kabelweg - ohne Verbindung an WAN verweigert, mit Kabel eigenes Netz der Box, DHCP der Box und NAT; wiederholbar
+# Kabel zum Router: veth wan0 (Box) <-> wankabel (ns kunde, 192.168.179.1/24 mit DHCP), zunaechst ohne Verbindung
+ip link add wan0 type veth peer name wankabel; ip link set wankabel netns kunde; ip netns exec kunde ip addr add 192.168.179.1/24 dev wankabel; uci set network.wan=interface; uci set network.wan.device='wan0'; uci set network.wan.proto='dhcp'; uci commit network
+ip netns exec kunde dnsmasq --conf-file=/dev/null --port=0 --interface=wankabel --bind-interfaces --dhcp-range=192.168.179.100,192.168.179.150,12h --dhcp-leasefile=/tmp/kabel.leases --pid-file=/var/run/kabel-dnsmasq.pid; uci show firewall | grep -E "network=.*'wan'" | head -2
+@120 /etc/init.d/network reload; sleep 5; ifstatus wan | jsonfilter -e '@.up'
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; cat /tmp/v.out /tmp/v.rc; gleich "verbinden: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "im WLAN-Weg: Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "im WLAN-Weg: Geraet ohne Adresse vom Router ($KABELIP)";; esac
+@60 $W kabel > /tmp/k1.out; echo "rc=$?" > /tmp/k1.rc; cat /tmp/k1.out /tmp/k1.rc; gleich "kabel ohne Verbindung an WAN: Rueckgabe" "$(cat /tmp/k1.rc)" "rc=7"; gleich "kabel ohne Verbindung: WLAN-Weg bleibt" "$($W status | sed -n s/^modus=//p)" wlan
+# Kabel stecken
+@90 ip netns exec kunde ip link set wankabel up; i=0; while [ $i -lt 60 ] && ! ifstatus wan | grep -q '"up": true'; do sleep 1; i=$((i+1)); done; echo "wan oben nach $i s: $(ifstatus wan | jsonfilter -e '@["ipv4-address"][0].address')"
+@120 $W kabel > /tmp/k2.out; echo "rc=$?" > /tmp/k2.rc; cat /tmp/k2.out /tmp/k2.rc; gleich "kabel mit Verbindung: Rueckgabe" "$(cat /tmp/k2.rc)" "rc=0"; gleich "kabel: Ergebnis" "$(wert ergebnis /tmp/k2.out)" kabel
+@30 $W status > /tmp/st.out; cat /tmp/st.out; gleich "danach: modus" "$(wert modus /tmp/st.out)" kabel; gleich "danach: Relay aus" "$(wert relay /tmp/st.out)" aus; gleich "danach: DHCP der Box an" "$(wert lan_dhcp /tmp/st.out)" an; gleich "danach: keine Zone heimnetz" "$(wert zone_heimnetz /tmp/st.out)" nein
+gleich "danach: kein WLAN-Client in der Konfiguration" "$(uci -q get wireless.vp_wlan)" ""; sleep 5; gleich "danach: keine Client-Schnittstelle" "$(iw dev | grep -c 'type managed')" 0
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 10.213.0.*) pruef_ok "danach: Geraet bekommt wieder eine Adresse der Box ($KABELIP)";; *) pruef_fehler "danach: Geraet ohne Adresse der Box ($KABELIP)";; esac
+pruefe "danach: Geraet erreicht den Router ueber das Kabel der Box (NAT)" ip netns exec kabel ping -c 2 -W 2 192.168.179.1; pruefe "danach: Box erreicht das Geraet" ping -c 2 -W 2 $KABELIP
+@60 $W kabel > /tmp/k3.out; echo "rc=$?" > /tmp/k3.rc; gleich "kabel ein zweites Mal: Rueckgabe" "$(cat /tmp/k3.rc)" "rc=0"
+# Funkmodul aus (von Hand oder ab Werk in aelterem OpenWrt), das offene WLAN "OpenWrt" darauf nicht einzeln aus: verbinden schaltet nur den Client ein
+@60 uci set wireless.radio0.disabled='1'; uci -q delete wireless.default_radio0.disabled; uci commit wireless; wifi reload; sleep 5; gleich "Ausgangslage: Funkmodul aus" "$($W status | sed -n s/^funkmodul=//p)" aus
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v5.out; echo "rc=$?" > /tmp/v5.rc; cat /tmp/v5.out /tmp/v5.rc; gleich "Funkmodul aus: verbinden Rueckgabe" "$(cat /tmp/v5.rc)" "rc=0"; gleich "Funkmodul aus: danach an" "$($W status | sed -n s/^funkmodul=//p)" an
+gleich "Funkmodul aus: das offene WLAN OpenWrt bleibt aus (disabled)" "$(uci -q get wireless.default_radio0.disabled)" 1; sleep 3; gleich "Funkmodul aus: kein Access Point der Box" "$(iw dev | grep -c 'type AP')" 0
+@120 $W kabel > /tmp/k4.out; echo "rc=$?" > /tmp/k4.rc; gleich "danach kabel: Rueckgabe" "$(cat /tmp/k4.rc)" "rc=0"; sleep 5; gleich "danach kabel: kein Access Point der Box" "$(iw dev | grep -c 'type AP')" 0; gleich "danach kabel: keine Client-Schnittstelle" "$(iw dev | grep -c 'type managed')" 0

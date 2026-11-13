@@ -28,6 +28,7 @@ edge-light/test/verbraucherregel-probe.sh  # Fahrplan-Slot und reaktive Verbrauc
 edge-light/test/install-probe.sh    # install.sh gegen OpenWrt im Container (nach build.sh amd64)
 edge-light/test/boot-speicher-probe.sh  # Speicherpruefung des Loaders gegen OpenWrt im Container
 edge-light/test/boot-update-probe.sh    # Update im Loader (Tausch, Probe, Behalten, Zurueck, Strom weg) gegen OpenWrt im Container
+edge-light/test/wlan-anschluss-probe.sh # WLAN-Anschluss (Kabel oder WLAN) gegen OpenWrt 25.12.5 mit simuliertem Funk im Emulator (test/wlan-labor)
 edge-light/labor/laborbau.sh <aus> <seq> [mipsle|amd64]  # Laborbeweis: Wegwerf-Wurzel, Labor-Fassungen P1-P11 (labor/README.md)
 edge-light/labor/labor-probe.sh     # Trockenlauf des Labor-Pakets gegen OpenWrt im Container (echte Programme)
 ```
@@ -80,7 +81,9 @@ edge-light/
     ├── qemu-smoke.sh          MIPS-Programm unter qemu gegen simulierten Logger
     ├── mango-labtest.sh       Start + Messung auf einem echten Mango per SSH (ohne Portal)
     ├── service-tunnel-probe.sh  service-tunnel.sh gegen OpenWrt im Container (Wechsel alt → Wartungsserver)
-    └── wartung-anmeldung-probe.sh  Fenster-Schlüssel: echte SSH-Anmeldung durch einen echten Tunnel (OpenWrt 25.12, Tunnel-Dienst aus dem Repo); Protokoll der Box und Ereignisliste
+    ├── wartung-anmeldung-probe.sh  Fenster-Schlüssel: echte SSH-Anmeldung durch einen echten Tunnel (OpenWrt 25.12, Tunnel-Dienst aus dem Repo); Protokoll der Box und Ereignisliste
+    ├── wlan-anschluss-probe.sh  WLAN-Anschluss der Box (scan, messen, verbinden, kabel, Störfälle) gegen OpenWrt mit simuliertem Funk
+    └── wlan-labor/            das Labor dazu: OpenWrt 25.12.5 im Emulator v86, mac80211_hwsim, Abbilder und Pakete per hole.sh außerhalb des Repos
 ```
 
 **Der Go-Code liegt in `edge-app/core`**, nicht hier – aus einem harten Grund: Go erlaubt den Zugriff auf `internal/`-Pakete nur innerhalb des Moduls. Edge Light *ist* der bestehende Core plus neue Pakete; eine Kopie wäre sofort eine zweite Wahrheit. Die neuen Pakete:

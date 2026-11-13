@@ -1,0 +1,7 @@
+# Lauf messen: Signal und Urteil gegen die Schwelle (Vorgabe -70 dBm), Rueckgabe 0 reicht, 3 reicht nicht, 4 nicht gefunden
+@120 $W messen Kunde-WLAN > /tmp/m.out; echo "rc=$?" > /tmp/m.rc; cat /tmp/m.out /tmp/m.rc
+gleich "messen Kunde-WLAN: Rueckgabe" "$(cat /tmp/m.rc)" "rc=0"; gleich "messen: Urteil" "$(wert urteil /tmp/m.out)" reicht; gleich "messen: Schwelle" "$(wert schwelle /tmp/m.out)" -70; gleich "messen: Verschluesselung" "$(wert verschluesselung /tmp/m.out)" psk2
+pruefe "messen: Signal in dBm, zwischen -100 und 0" sh -c 's=$(sed -n s/^signal=//p /tmp/m.out); [ "$s" -le 0 ] && [ "$s" -ge -100 ]'
+@120 VP_WLAN_SCHWELLE=-20 $W messen Kunde-WLAN > /tmp/m2.out; echo "rc=$?" > /tmp/m2.rc; cat /tmp/m2.out /tmp/m2.rc; gleich "messen mit Schwelle -20: Rueckgabe" "$(cat /tmp/m2.rc)" "rc=3"; gleich "messen mit Schwelle -20: Urteil" "$(wert urteil /tmp/m2.out)" reicht_nicht
+@120 $W messen Gibt-es-nicht > /tmp/m3.out; echo "rc=$?" > /tmp/m3.rc; cat /tmp/m3.out /tmp/m3.rc; gleich "messen unbekanntes Netz: Rueckgabe" "$(cat /tmp/m3.rc)" "rc=4"; gleich "messen unbekanntes Netz: Ergebnis" "$(wert ergebnis /tmp/m3.out)" nicht_gefunden
+@120 $W messen Nachbar-WLAN > /tmp/m4.out; gleich "messen Nachbar-WLAN: Verschluesselung" "$(wert verschluesselung /tmp/m4.out)" sae
