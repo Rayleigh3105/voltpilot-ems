@@ -500,6 +500,23 @@ describe('tabsFor - EINE Ableitung für Leiste und Reiter', () => {
     expect(tabsFor(anlageSidebar(nurSpeicher), 'fahrplan').map((t) => t.sub)).toEqual(['fahrplan', 'prognose']);
   });
 
+  it('Erlöse ohne eigenen Reiter (Privat-Nebenbefund 1): offen hat die Seite ihren aktiven Reiter', () => {
+    const s = anlageSidebar(PRIVAT);
+    // Die Seitenleiste und jede andere Verlauf-Seite bleiben bei Energie · Messwerte.
+    expect(tabsOf(s.bereiche, 'verlauf')).toEqual(['messwerte', 'einzelwerte']);
+    expect(tabsFor(s, 'messwerte').map((t) => t.sub)).toEqual(['messwerte', 'einzelwerte']);
+    // „Unterm Strich“ führt hierher - der Reiter steht an seinem Platz.
+    expect(tabsFor(s, 'erloese').map((t) => t.sub)).toEqual(['messwerte', 'erloese', 'einzelwerte']);
+    expect(tabsFor(s, 'erloese').find((t) => t.sub === 'erloese')?.label).toBe('Erlöse');
+    const bilanz = anlageSidebar({ ...PRIVAT!, energiebilanz: true });
+    expect(tabsFor(bilanz, 'erloese').map((t) => t.sub)).toEqual(['messwerte', 'energiebilanz', 'erloese', 'einzelwerte']);
+    // Markt/Lastspitze: unverändert, kein doppelter Reiter.
+    for (const surf of [MARKT, PEAK, ALLE]) {
+      const m = anlageSidebar(surf);
+      expect(tabsFor(m, 'erloese')).toEqual(tabsFor(m, 'messwerte'));
+    }
+  });
+
   it('benennt den Bereich, in dem eine Unterseite wohnt', () => {
     const s = anlageSidebar(ALLE);
     expect(bereichLabel(s, 'marktpreise')).toBe('Fahrplan');

@@ -29,6 +29,7 @@
 import type { HistoryCoverage, HistoryRange } from './api';
 import type { EnergieSummeKey } from './energieBilanz';
 import { isCurrentPeriod } from './energieBilanz';
+import { eurAmount } from './format';
 import { isoWeek, periodLabel, shiftAnchor } from './periodNav';
 
 /** Unter dieser Änderung sagt die Seite „etwa wie" statt einer Richtung. */
@@ -46,8 +47,13 @@ export type DeltaWertung = 'gut' | 'schlecht' | 'neutral';
 export interface DeltaView {
   richtung: DeltaRichtung;
   wertung: DeltaWertung;
-  /** Gerundete Änderung in Prozent, Betrag (das Vorzeichen steckt in `richtung`). */
-  pct: number;
+  /**
+   * Gerundete Änderung in Prozent, Betrag (das Vorzeichen steckt in `richtung`).
+   * `null`, wenn die Änderung als Euro-Betrag steht ({@link geldDelta}).
+   */
+  pct: number | null;
+  /** Die Änderung als Euro-Betrag („1,65 €"), nur ohne Prozent ({@link geldDelta}). */
+  betrag?: string;
   /** Die fertige Zeile: „18 % mehr als im Juni" / „etwa wie im Juni". */
   text: string;
   /** Der ausführliche Titel mit beiden Zahlen. */
@@ -212,6 +218,10 @@ export function delta(
   if (jetzt == null || vorher == null) return null;
   if (!Number.isFinite(jetzt) || !Number.isFinite(vorher)) return null;
   if (Math.abs(vorher) < BASIS_EPSILON) return null;
+  // Wechselt der Wert das Vorzeichen, ist jeder Prozentsatz Unsinn („461 %
+  // weniger" von +0,36 € auf −1,29 €) - für Geld steht dann der Betrag
+  // ({@link geldDelta}), sonst gibt es keine Zeile.
+  if (jetzt * vorher < 0) return null;
 
   const roh = ((jetzt - vorher) / Math.abs(vorher)) * 100;
   const pct = Math.round(Math.abs(roh));
@@ -227,6 +237,46 @@ export function delta(
   const titel =
     `Zeitraum: ${fmt(jetzt)} · ${name === 'der Vorperiode' ? 'Vorperiode' : name}: ${fmt(vorher)}`;
   return { richtung, wertung, pct, text, titel };
+}
+
+/**
+ * Unter diesem Betrag der Vorperiode ist ein Euro-Wert keine Prozent-Basis:
+ * 0,30 € gegen 1,50 € wären „400 % mehr" für einen Euro und zwanzig.
+ */
+export const GELD_BASIS_EUR = 1;
+
+/**
+ * Das Δ eines EURO-Betrags (Ergebnis, Erlös). Wie {@link delta}, solange beide
+ * Seiten dasselbe Vorzeichen tragen und die Vorperiode mindestens
+ * {@link GELD_BASIS_EUR} hat; sonst steht die Differenz in Euro („1,65 €
+ * weniger als am Vortag") statt eines Prozentsatzes - ein Ergebnis, das von
+ * +0,36 € auf −1,29 € fällt, ist nicht „461 % weniger".
+ */
+export function geldDelta(
+  jetzt: number | null | undefined,
+  vorher: number | null | undefined,
+  mehrIstBesser: MehrIstBesser = null,
+  name = 'der Vorperiode',
+): DeltaView | null {
+  if (jetzt == null || vorher == null) return null;
+  if (!Number.isFinite(jetzt) || !Number.isFinite(vorher)) return null;
+  if (jetzt * vorher >= 0 && Math.abs(vorher) >= GELD_BASIS_EUR) {
+    return delta(jetzt, vorher, mehrIstBesser, name);
+  }
+  const diff = jetzt - vorher;
+  const flach = Math.abs(diff) < BASIS_EPSILON;
+  const richtung: DeltaRichtung = flach ? 'gleich' : diff > 0 ? 'mehr' : 'weniger';
+  const wertung: DeltaWertung =
+    flach || mehrIstBesser == null
+      ? 'neutral'
+      : (richtung === 'mehr') === mehrIstBesser
+        ? 'gut'
+        : 'schlecht';
+  const betrag = eurAmount(Math.abs(diff));
+  const text = flach ? `etwa wie ${praep(name)}` : `${betrag} ${richtung} als ${praep(name)}`;
+  const titel =
+    `Zeitraum: ${eurAmount(jetzt)} · ${name === 'der Vorperiode' ? 'Vorperiode' : name}: ${eurAmount(vorher)}`;
+  return { richtung, wertung, pct: null, betrag, text, titel };
 }
 
 /** „im Juni" / „am Vortag" / „in der Vorwoche" / „2025" — im richtigen Fall. */

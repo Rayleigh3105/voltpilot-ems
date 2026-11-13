@@ -5,7 +5,8 @@ import { selbstauskunft, useRollen } from '../rollen';
 import { enddatum, UMFANG, unterstuetzungApi, unterstuetzungFehler } from '../unterstuetzung';
 import { UnterstuetzungBeenden, UnterstuetzungDialog } from './UnterstuetzungDialog';
 import './Unterstuetzung.css';
-export function UnterstuetzungKarte() {
+/** `orte`: das Wort für Standorte aus `benutzerWorte` (Haushalt: „Orte“). */
+export function UnterstuetzungKarte({ orte = 'Standorte' }: { orte?: string } = {}) {
   const rechte = useRollen(); const erlaubt = rechte.darf('unterstuetzung.verwalten', null);
   const kopf = useRef<HTMLHeadingElement>(null);
   const [liste, setListe] = useState<Unterstuetzung[] | null>(null);
@@ -22,7 +23,7 @@ export function UnterstuetzungKarte() {
   useEffect(() => { setListe(null); setAnfragen([]); setHinweise([]); void laden(); window.addEventListener('vp-unterstuetzung-geaendert', laden); return () => window.removeEventListener('vp-unterstuetzung-geaendert', laden); }, [laden]);
   if (!erlaubt) return null;
   async function ablehnen(id: string) { try { await unterstuetzungApi.ablehnen(id); await laden(); } catch (e) { setFehler(unterstuetzungFehler(e)); } }
-  return <section className="vp-unterstuetzung" aria-label="Unterstützung"><h2 ref={kopf} tabIndex={-1}>Unterstützung</h2><p>Befristeter Zugriff für Installateur oder VoltPilot-Support. Sie bestimmen Standorte, Umfang und Ende.</p>
+  return <section className="vp-unterstuetzung" aria-label="Unterstützung"><h2 ref={kopf} tabIndex={-1}>Unterstützung</h2><p>Befristeter Zugriff für Installateur oder VoltPilot-Support. Sie bestimmen {orte}, Umfang und Ende.</p>
     <Button onClick={e => { e.currentTarget.focus(); setDialog({}); }}>Unterstützung gewähren</Button>
     {fehler && <p role="alert">{fehler} <Button variant="ghost" onClick={() => void laden()}>Erneut versuchen</Button></p>}
     {liste?.length === 0 && anfragen.length === 0 && <p>Derzeit gibt es keine Unterstützung.</p>}

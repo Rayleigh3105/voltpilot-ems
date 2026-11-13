@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { delta } from './historieVergleich';
+import { delta, geldDelta, GELD_BASIS_EUR } from './historieVergleich';
 import {
   berlinStunde,
   erloesVergleich,
@@ -466,7 +466,11 @@ describe('Ehrlichkeit', () => {
       vorherSeries: nullig,
     })!;
     expect(v.modus).toBe('gleicher_zeitpunkt');
-    expect(v.chip).toBeNull();
+    // Seit Privat-Nebenbefund 2 steht statt „kein Chip“ (die Karte las dann
+    // „etwa wie gestern“) die Differenz in Euro - nie ein Prozent.
+    expect(v.chip!.text).not.toMatch(/%/);
+    expect(v.chip!.text).toMatch(/€ mehr$/);
+    expect(v.chip!.wertung).toBe('neutral');
     expect(v.betraege).toContain('Bis 12 Uhr');
   });
 });
@@ -479,5 +483,58 @@ describe('vollerVergleichsName', () => {
     expect(vollerVergleichsName(anchor, 'month')).toBe('ganzer August');
     expect(vollerVergleichsName(anchor, 'year')).toBe('ganzes Jahr 2025');
     expect(vollerVergleichsName(anchor, 'month', 'vorjahr')).toBe('ganzer September 2025');
+  });
+});
+
+describe('Nebenbefund 2 · kein Prozent über einen Vorzeichenwechsel oder eine Basis nahe null', () => {
+  it('der Fall aus dem Foto: +0,36 € → −1,29 € ist „1,65 € weniger“, nie „461 % weniger“', () => {
+    expect(Math.round(Math.abs(((-1.29 - 0.358) / 0.358) * 100))).toBe(460);
+    const d = geldDelta(-1.29, 0.358, null, 'dem Vortag')!;
+    expect(d.pct).toBeNull();
+    expect(d.richtung).toBe('weniger');
+    expect(d.text.replace(/\u00a0/g, ' ')).toBe('1,65 € weniger als am Vortag');
+  });
+  it('delta() selbst gibt über einen Vorzeichenwechsel keinen Prozentsatz', () => {
+    expect(delta(-1.29, 0.358)).toBeNull();
+    expect(delta(2, -3)).toBeNull();
+  });
+  it('Basis unter einem Euro: Betrag statt Prozent; ab einem Euro gleichen Vorzeichens wie bisher', () => {
+    expect(geldDelta(1.5, 0.3, true, 'dem Vortag')!.text.replace(/\u00a0/g, ' ')).toBe('1,20 € mehr als am Vortag');
+    expect(geldDelta(1.5, 0.3, true, 'dem Vortag')!.wertung).toBe('gut');
+    expect(geldDelta(150, 100, true, 'dem Vortag')).toEqual(delta(150, 100, true, 'dem Vortag'));
+    expect(geldDelta(-2, -1.5, null, 'dem Vortag')!.pct).toBe(33);
+    expect(GELD_BASIS_EUR).toBe(1);
+  });
+  it('gleicher Zeitpunkt mit Vorzeichenwechsel: Chip ohne Prozent, neutral', () => {
+    const heute: VergleichsEimer[] = [
+      { start: '2026-11-13T05:00:00Z', nettoEur: -1.29 },
+    ];
+    const gestern: VergleichsEimer[] = [
+      { start: '2026-11-12T05:00:00Z', nettoEur: 0.358 },
+    ];
+    const v = erloesVergleich({
+      range: 'day',
+      anchor: new Date('2026-11-13T11:15:00Z'),
+      now: new Date('2026-11-13T11:15:00Z'),
+      jetztEur: -1.29,
+      vorherEur: 0.5,
+      jetztSeries: heute,
+      vorherSeries: gestern,
+    })!;
+    expect(v.modus).toBe('gleicher_zeitpunkt');
+    expect(v.chip!.text.replace(/\u00a0/g, ' ')).toBe('1,65 € weniger');
+    expect(v.chip!.wertung).toBe('neutral');
+  });
+  it('abgeschlossener Tag mit Vorzeichenwechsel: Betrag mit Wertung', () => {
+    const v = erloesVergleich({
+      range: 'day',
+      anchor: new Date('2026-11-10T11:00:00Z'),
+      now: new Date('2026-11-13T11:15:00Z'),
+      jetztEur: -0.4,
+      vorherEur: 2.1,
+    })!;
+    expect(v.chip!.pct).toBeNull();
+    expect(v.chip!.text.replace(/\u00a0/g, ' ')).toBe('2,50 € weniger als am Vortag');
+    expect(v.chip!.wertung).toBe('schlecht');
   });
 });

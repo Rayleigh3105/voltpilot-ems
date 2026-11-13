@@ -3,7 +3,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { benutzerApi, benutzerFehler, EINSICHT_BIS_VERGANGEN, KUNDENROLLEN, rechteVorschau, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag, type BenutzerZuweisung } from '../benutzer';
-import { ROLLE_KUNDENWORT, type Rolle } from '../rechte';
+import { type Rolle } from '../rechte';
+import { benutzerWorte, type BenutzerWorte } from '../benutzerWorte';
 import { useRollen } from '../rollen';
 import { heute, tag } from '../bewertung';
 import { ApiError } from '../api';
@@ -11,18 +12,11 @@ import { BenutzerAnlegenDialog } from './BenutzerAnlegenDialog';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 
-/** Die Rollen-Beschreibung im Rollen-Wähler — je zuweisbare Rolle ein Satz (`copy.test.ts` hält sie vollständig). */
-export const ROLLE_BESCHREIBUNG: Record<string, string> = {
-  kundenadministrator: 'Verwaltet Benutzer, Daten und Steuerung im ganzen Unternehmen.',
-  energiemanager: 'Pflegt Daten an allen Standorten; bedient keine Steuerung und verwaltet keine Benutzer.',
-  bearbeiter: 'Pflegt Daten an ausgewählten Standorten; bedient keine Steuerung.',
-  bedienberechtigt: 'Bedient die Steuerung an ausgewählten Standorten; pflegt keine Messdaten und erteilt keine Freigaben.',
-  leser: 'Sieht Daten an ausgewählten Standorten; ändert nichts.',
-  einsicht: 'Sieht das Energiemanagement des ganzen Unternehmens und kann nichts ändern — für Leitung und Prüfende, auch befristet.',
-};
-export function RechteVorschau({ rolle, standorte }: { rolle: Rolle; standorte: string[] }) {
+/** Seit Nebenbefund 5 in `benutzerWorte.ts` (Unternehmens- und Haushaltswörter); hier für bestehende Importe. */
+export { ROLLE_BESCHREIBUNG } from '../benutzerWorte';
+export function RechteVorschau({ rolle, standorte, worte = benutzerWorte('gewerbe') }: { rolle: Rolle; standorte: string[]; worte?: BenutzerWorte }) {
   const v = rechteVorschau(rolle, standorte);
-  if (!unternehmensrolle(rolle) && !standorte.length) return <p>Wählen Sie mindestens einen Standort.</p>;
+  if (!unternehmensrolle(rolle) && !standorte.length) return <p>{worte.mindestensEiner}</p>;
   return <div className="vp-benutzer-folgen" aria-label="Folgen der Rolle">
     {[true, false].map(erlaubt => {
       const eintraege = v.filter(x => x.erlaubt === erlaubt);
@@ -37,8 +31,10 @@ export function RechteVorschau({ rolle, standorte }: { rolle: Rolle; standorte: 
 }
 
 /** N2 → vorhandene N3-Hülle. Die einmalige Passwortausgabe bleibt im IP-14-Dialog. */
-export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
+export function BenutzerEinladen({ onClose, onCreated, bearbeiten, worte = benutzerWorte('gewerbe') }: {
   onClose: () => void; onCreated: () => void; bearbeiten?: { konto: BenutzerEintrag; zuweisung?: BenutzerZuweisung };
+  /** Unternehmens- oder Haushaltswörter (`benutzerTon` aus dem Profil der Anlagen). */
+  worte?: BenutzerWorte;
 }) {
   const { selbst } = useRollen();
   const standorte = selbst?.standorte ?? [];
@@ -62,19 +58,19 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
   const pruefen = () => {
     if (bis && bis < heute()) { setFehler(EINSICHT_BIS_VERGANGEN); return false; }
     if (!uw && !anlage.standorte.length) {
-      setFehler('Wählen Sie mindestens einen Standort.');
+      setFehler(worte.mindestensEiner);
       standortFeld.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
       return false;
     }
     setFehler(''); return true;
   };
   const auswahl = <>
-    {!uw && <div ref={standortFeld}><VpPicker label="Standorte" values={anlage.standorte}
+    {!uw && <div ref={standortFeld}><VpPicker label={worte.orte} values={anlage.standorte}
       options={standorte.map(s => ({ value: s.id, label: s.name }))}
       onChangeMany={ids => { setFehler(''); setAnlage(a => ({ ...a, standorte: ids })); }} error={fehler || undefined} />
-      {standorte.length > 1 && <Button variant="ghost" onClick={() => { setFehler(''); setAnlage(a => ({ ...a, standorte: standorte.map(s => s.id) })); }}>Alle aktuellen Standorte</Button>}
-      <p className="vp-note">Neue Standorte müssen später ausdrücklich zugewiesen werden.</p></div>}
-    <RechteVorschau rolle={anlage.rolle as Rolle} standorte={daten.standorte} />
+      {standorte.length > 1 && <Button variant="ghost" onClick={() => { setFehler(''); setAnlage(a => ({ ...a, standorte: standorte.map(s => s.id) })); }}>{worte.alleAktuellen}</Button>}
+      <p className="vp-note">{worte.neueSpaeter}</p></div>}
+    <RechteVorschau rolle={anlage.rolle as Rolle} standorte={daten.standorte} worte={worte} />
   </>;
   // „Weitere Rolle zuweisen“ mit „Einsicht“ trägt zusätzlich einen Grund; mit Frist oder Grund geht die Zuweisung über
   // `POST /api/v1/zugriff` (AP-19 IP-13). Beim Ändern reist die Frist im Wechsel mit (`gueltig_bis`, AP-19 Folge IP-13).
@@ -98,7 +94,7 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
     finally { setBusy(false); }
   }
   return <>
-    {schritt === 1 && <Modal open onClose={() => { if (!busy) schliessen(); }} title={bearbeiten ? 'Rolle und Standorte ändern' : 'Benutzer anlegen · Schritt 1 von 2'}
+    {schritt === 1 && <Modal open onClose={() => { if (!busy) schliessen(); }} title={bearbeiten ? worte.rolleUndOrteAendern : 'Benutzer anlegen · Schritt 1 von 2'}
       footer={<><Button variant="ghost" disabled={busy} onClick={schliessen}>Abbrechen</Button><Button disabled={busy} onClick={() => {
         if (bearbeiten) { void speichern(); return; }
         const ungueltig = form.current?.querySelector<HTMLInputElement>('input:invalid');
@@ -118,20 +114,20 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
           <div className="vp-benutzer-zwei"><Input label="Vorname" value={anlage.vorname} onChange={e => setAnlage(a => ({ ...a, vorname: e.target.value }))} />
             <Input label="Nachname" value={anlage.nachname} onChange={e => setAnlage(a => ({ ...a, nachname: e.target.value }))} /></div>
         </>}
-        <VpPicker label="Rolle" value={anlage.rolle} options={KUNDENROLLEN.map(r => ({ ...r, sub: ROLLE_BESCHREIBUNG[r.value] }))}
+        <VpPicker label="Rolle" value={anlage.rolle} options={KUNDENROLLEN.map(r => ({ ...r, label: worte.rolle(r.value), sub: worte.beschreibung(r.value) }))}
           onChange={rolle => setAnlage(a => ({ ...a, rolle }))} />
-        <p>{ROLLE_BESCHREIBUNG[anlage.rolle]}</p>
+        <p>{worte.beschreibung(anlage.rolle)}</p>
         {einsicht && <div className="vp-benutzer-zwei">
           <VpDatePicker label="Gültig bis einschließlich (wahlfrei)" value={einsichtBis || null} min={heute()} onChange={v => { setFehler(''); setEinsichtBis(v ?? ''); }} />
           {einsichtWeitere && <Input label="Grund (wahlfrei)" value={einsichtGrund} onChange={e => setEinsichtGrund(e.target.value)} placeholder="etwa Internes Audit, Nachweise lesen" />}
         </div>}
-        {bearbeiten && <><p>Die Änderung gilt sofort. Andere Rollen und Standorte bleiben erhalten.</p>{auswahl}</>}
+        {bearbeiten && <><p>Die Änderung gilt sofort. Andere Rollen und {worte.orte} bleiben erhalten.</p>{auswahl}</>}
         {fehler && <p role="alert">{fehler}</p>}
       </form>
     </Modal>}
     {!bearbeiten && schritt === 2 && <BenutzerAnlegenDialog open={schritt === 2} onClose={() => setSchritt(1)} anlage={daten}
-      rollenname={ROLLE_KUNDENWORT[anlage.rolle as Rolle] + (bis ? ` · gültig bis einschließlich ${tag(bis)}` : '')} standortnamen={standorte.filter(s => daten.standorte.includes(s.id)).map(s => s.name)}
-      pruefen={pruefen} onCreated={() => { onCreated(); schliessen(); }}>
+      rollenname={worte.rolle(anlage.rolle) + (bis ? ` · gültig bis einschließlich ${tag(bis)}` : '')} standortnamen={standorte.filter(s => daten.standorte.includes(s.id)).map(s => s.name)}
+      alleOrte={worte.alleOrteDesGanzen} pruefen={pruefen} onCreated={() => { onCreated(); schliessen(); }}>
       <p className="vp-note">Schritt 2 von 2 · Zugriff und Startpasswort</p>{auswahl}
     </BenutzerAnlegenDialog>}
   </>;

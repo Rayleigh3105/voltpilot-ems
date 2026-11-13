@@ -1921,7 +1921,7 @@ function UnifiedPortal() {
               onListe={() => navigate(standortBereichRoute(standortOffen.id, 'berichte'))}
             />
           )}
-          {page === 'kunden-benutzer' && <BenutzerPage />}
+          {page === 'kunden-benutzer' && <BenutzerPage sites={sites} />}
           {page === 'meldungen' && <MeldungenPage />}
           {page === 'einstellungen' && <EinstellungenPage />}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}

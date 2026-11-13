@@ -455,8 +455,26 @@ const OHNE_BEREICHS_REITER: ReadonlySet<AnlagenSub> = new Set(['geraet', 'box'])
 export function tabsFor(sidebar: AnlageSidebar, sub: AnlagenSub | null): BereichTab[] {
   if (sub != null && OHNE_BEREICHS_REITER.has(sub)) return [];
   const key = bereichFor(sub, sidebar);
-  const tabs = sidebar.bereiche.find((b) => b.key === key)?.tabs ?? [];
+  const tabs = mitOffenenErloesen(sidebar.bereiche.find((b) => b.key === key)?.tabs ?? [], sub);
   return tabs.length > 1 ? tabs : [];
+}
+
+/**
+ * **Erlöse ohne eigenen Reiter** (Privatkunde, Nebenbefund 1): auf einer Anlage
+ * ohne `erloes-historie` führt „Unterm Strich“ im Cockpit trotzdem auf die
+ * Erlöse-Seite - dort steht die Zahl samt Abrechnung. Ist sie offen, steht ihr
+ * Reiter darum an seinem Platz in der Leiste und ist aktiv; die Seitenleiste
+ * und jede andere Seite bleiben unverändert. Wo der Reiter schon da ist
+ * (Markt, Lastspitze), ändert sich nichts.
+ */
+function mitOffenenErloesen(tabs: BereichTab[], sub: AnlagenSub | null): BereichTab[] {
+  if (sub !== 'erloese' || tabs.length === 0 || tabs.some((t) => t.sub === 'erloese')) return tabs;
+  const erloese = VERLAUF_TABS.find((t) => t.sub === 'erloese')!;
+  // Hinter „Energie“ (und „Energiebilanz“), vor „Messwerte“ - wie in VERLAUF_TABS.
+  const danach = tabs.findIndex((t) => t.sub === 'einzelwerte');
+  const out = [...tabs];
+  out.splice(danach < 0 ? out.length : danach, 0, { key: erloese.key, label: erloese.label, sub: erloese.sub });
+  return out;
 }
 
 /** Die Beschriftung des Bereichs, in dem eine Unterseite wohnt. */

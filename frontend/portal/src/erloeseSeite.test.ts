@@ -16,7 +16,8 @@ import {
   vergleichUnter,
 } from './erloeseSeite';
 import { speicherAussage } from './speicherAussage';
-import type { ErloesVergleich } from './vergleichLaufend';
+import { gleicheStundeZeile, type ErloesVergleich } from './vergleichLaufend';
+import { geldDelta } from './historieVergleich';
 
 interface Fixture {
   id: string;
@@ -190,6 +191,19 @@ describe('vergleichUnter · Wertung nur, wo sie ehrlich ist', () => {
   it('laufender Tag: gleiche Stunde', () => {
     const v = { ...basis, modus: 'gleicher_zeitpunkt' as const, bisStunde: 12, chip: { ...basis.chip!, richtung: 'weniger' as const, text: '25 % weniger' } };
     expect(vergleichUnter(v, null)).toEqual({ text: '25 % weniger als gestern bis 12 Uhr', pfeil: '↓' });
+  });
+  it('Vorzeichenwechsel (Nebenbefund 2, Foto ist-erloese-1440): Euro-Differenz statt „461 % weniger“', () => {
+    // Bis 12 Uhr: gestern +0,36 €, heute −1,29 € - früher „461 % weniger als gestern bis 12 Uhr“.
+    const v = gleicheStundeZeile({
+      bisStunde: 12,
+      jetztEur: -1.29,
+      vorherEur: 0.358,
+      delta: geldDelta(-1.29, 0.358, null, 'dem Vortag'),
+    });
+    const u = vergleichUnter(v, null)!;
+    expect(u.text).not.toMatch(/%/);
+    expect(nurText(u.text)).toBe('1,65 € weniger als gestern bis 12 Uhr');
+    expect(u.pfeil).toBe('↓');
   });
   it('laufender Monat: nur der Betrag der ganzen Vergleichsperiode, kein Prozent', () => {
     const v = { ...basis, modus: 'nur_betraege' as const, chip: null };

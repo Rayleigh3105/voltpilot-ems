@@ -48,7 +48,7 @@ import {
   type EnergieSummeKey,
 } from './energieBilanz';
 import { nettoEur } from './erloesNetto';
-import { delta } from './historieVergleich';
+import { geldDelta } from './historieVergleich';
 import {
   erloesVergleich,
   gleicheStundeZeile,
@@ -615,7 +615,7 @@ export function portfolioVergleich(input: {
     // die einzige Lesart, in der am laufenden Tag ein Prozentsatz stehen darf.
     // Gewertet wird dabei nicht (`null` = neutral): ein trüber Vormittag sagt
     // nichts über den Tag.
-    const d = delta(server.jetztEur, server.vorherEur, null, 'dem Vortag');
+    const d = geldDelta(server.jetztEur, server.vorherEur, null, 'dem Vortag');
     return gleicheStundeZeile({
       bisStunde: server.bisStunde,
       jetztEur: server.jetztEur,

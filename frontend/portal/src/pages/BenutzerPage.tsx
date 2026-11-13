@@ -5,8 +5,9 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { benutzerApi, benutzerFehler, type BenutzerEintrag, type BenutzerZuweisung, type ZugriffProtokoll } from '../benutzer';
 import { gesamtabzugLaden, useRollen } from '../rollen';
 import { GesamtabzugKnopf } from '../components/GesamtabzugKnopf';
-import { datumZeit, ROLLE_KUNDENWORT } from '../rechte';
+import { datumZeit } from '../rechte';
 import { BenutzerEinladen } from '../components/BenutzerEinladen';
+import { benutzerTon, benutzerWorte } from '../benutzerWorte';
 import { StartpasswortNeuVergeben } from '../components/StartpasswortNeuVergeben';
 import { VpDatePicker } from '../components/VpDatePicker';
 import { iso, mitternacht, tagPlus } from '../bezugsPeriode';
@@ -15,8 +16,12 @@ import './BenutzerPage.css';
 
 const vorgang: Record<string, string> = { zuweisen: 'Zugriff gewährt', entziehen: 'Zugriff beendet', sperren: 'Benutzer gesperrt', entfernen: 'Benutzer entfernt', erste_anmeldung: 'Erste Anmeldung', startpasswort_neu: 'Startpasswort neu vergeben', konto_geaendert: 'Konto geändert', gewaehren: 'Unterstützung gewährt', verlaengern: 'Unterstützung verlängert', beenden: 'Unterstützung beendet', ablaufen: 'Unterstützung abgelaufen', anfragen: 'Anfrage zur Unterstützung', notfall: 'Notfall-Zugriff' };
 const tag = (zeit: number) => iso(zeit, VORGABE_ZEITZONE).slice(0, 10);
-export function BenutzerPage() {
+/**
+ * `sites`: die Anlagen des Kunden — ihr Anwendungsprofil wählt Unternehmens- oder Haushaltswörter (`benutzerTon`).
+ */
+export function BenutzerPage({ sites }: { sites?: readonly { profil?: string | null }[] } = {}) {
   const rechte = useRollen();
+  const worte = benutzerWorte(benutzerTon(sites));
   const schreiben = rechte.darf('benutzer.verwalten', null);
   const [liste, setListe] = useState<BenutzerEintrag[] | null>(null);
   const [fehler, setFehler] = useState('');
@@ -74,17 +79,17 @@ export function BenutzerPage() {
     {fehler && !entzug && <p role="alert" className="vp-alert vp-alert-err">{fehler}</p>}
     {!protokoll && <>
       {!liste && !fehler && <p role="status">Benutzer werden geladen…</p>}
-      {liste?.length === 1 && schreiben && <p className="vp-benutzer-leer">Bisher arbeiten Sie allein. Legen Sie Kolleginnen und Kollegen an und bestimmen Sie, was sie sehen und bedienen dürfen.</p>}
+      {liste?.length === 1 && schreiben && <p className="vp-benutzer-leer">{worte.allein}</p>}
       {liste?.map(konto => <article key={konto.sub} className="vp-benutzer-karte">
         <div><h2>{konto.anzeigename}{konto.sub === rechte.selbst?.kennung ? ' · Sie' : ''}</h2><p>{konto.email}</p><span className="vp-benutzer-chip">{konto.zustand === 'angelegt' ? 'Angelegt · erste Anmeldung ausstehend' : konto.zustand === 'gesperrt' ? 'Gesperrt' : 'Aktiv'}</span></div>
         <div className="vp-benutzer-zuweisungen">{konto.zuweisungen.length === 0 && <p>Derzeit kein Zugriff zugewiesen.</p>}
           {konto.zuweisungen.map(z => <div key={z.id} className="vp-benutzer-zuweisung">
-            <span className="vp-benutzer-chip">{ROLLE_KUNDENWORT[z.rolle]}</span>
-            <p>{z.standort_id ? (z.standort_name ? `Gilt für ${z.standort_name}.` : 'Der zugewiesene Standort ist nicht verfügbar.') : 'Gilt für alle Standorte des Unternehmens, auch künftige.'}</p>
+            <span className="vp-benutzer-chip">{worte.rolle(z.rolle)}</span>
+            <p>{z.standort_id ? (z.standort_name ? `Gilt für ${z.standort_name}.` : worte.ortNichtVerfuegbar) : worte.giltFuerAlle}</p>
             {Date.parse(z.gueltig_ab) > Date.now() && <p className="vp-note">Eingerichtet · gültig ab {datumZeit(z.gueltig_ab)}</p>}
             {z.gueltig_bis && <p className="vp-note">Gültig bis einschließlich {new Date(z.gueltig_bis).toLocaleDateString('de-DE')}</p>}
             {schreiben && konto.sub !== rechte.selbst?.kennung && konto.zustand !== 'gesperrt' && <div className="vp-benutzer-aktionen">
-              <Button variant="ghost" size="sm" onClick={e => { e.currentTarget.focus(); setBearbeiten({ konto, zuweisung: z }); }}>Rolle und Standorte ändern</Button>
+              <Button variant="ghost" size="sm" onClick={e => { e.currentTarget.focus(); setBearbeiten({ konto, zuweisung: z }); }}>{worte.rolleUndOrteAendern}</Button>
               <Button variant="ghost" size="sm" onClick={e => { e.currentTarget.focus(); ausloeser.current = e.currentTarget; setEntzug({ konto, entfernen: false, zuweisung: z }); }}>Zugriff beenden</Button>
             </div>}
           </div>)}
@@ -97,24 +102,24 @@ export function BenutzerPage() {
         </div>}
       </article>)}
     </>}
-    <UnterstuetzungKarte />
+    <UnterstuetzungKarte orte={worte.orte} />
     {protokoll && <section aria-label="Zugriffsprotokoll"><h2>Zugriffsprotokoll</h2>
-      <p className="vp-note">Zeiten in {VORGABE_ZEITZONE} (Zeitzone des Unternehmens).</p>
+      <p className="vp-note">Zeiten in {VORGABE_ZEITZONE} ({worte.zeitzone}).</p>
       <div className="vp-benutzer-zwei"><VpDatePicker label="Von" value={von} onChange={setVon} /><VpDatePicker label="Bis einschließlich" value={bis} onChange={setBis} /></div>
       <p className="vp-note">Wählen Sie höchstens ein Jahr.</p>
       {eintraege?.length === 0 && <p>In diesem Zeitraum gibt es keine Einträge.</p>}
       {eintraege && eintraege.length > 1000 && <p role="status">Es gibt weitere Einträge. Wählen Sie einen kürzeren Zeitraum.</p>}
       <div className="vp-benutzer-protokoll">{eintraege?.slice(0, 1000).map(e => <article className="vp-benutzer-karte" key={e.id}>
-        <time dateTime={e.zeit}>{datumZeit(e.zeit, VORGABE_ZEITZONE)}</time><h3>{e.betroffener}</h3><p>{vorgang[e.aktion] ?? 'Zugriff geändert'}{e.rolle ? ` · ${ROLLE_KUNDENWORT[e.rolle]}` : ''}</p>
-        <p>{e.standort ?? 'Unternehmen'} · von {e.urheber}</p>{e.grund && <p>{e.grund}</p>}
+        <time dateTime={e.zeit}>{datumZeit(e.zeit, VORGABE_ZEITZONE)}</time><h3>{e.betroffener}</h3><p>{vorgang[e.aktion] ?? 'Zugriff geändert'}{e.rolle ? ` · ${worte.rolle(e.rolle)}` : ''}</p>
+        <p>{e.standort ?? worte.ganzes} · von {e.urheber}</p>{e.grund && <p>{e.grund}</p>}
       </article>)}</div>
     </section>}
     {gesamtabzugLaden(rechte.selbst) && <section className="vp-benutzer-abzug" aria-label="Gesamtabzug"><h2>Gesamtabzug</h2>
       <GesamtabzugKnopf /></section>}
-    {schreiben && (anlegen || bearbeiten) && <BenutzerEinladen bearbeiten={bearbeiten} onClose={() => { setAnlegen(false); setBearbeiten(undefined); }} onCreated={() => setRevision(x => x + 1)} />}
+    {schreiben && (anlegen || bearbeiten) && <BenutzerEinladen worte={worte} bearbeiten={bearbeiten} onClose={() => { setAnlegen(false); setBearbeiten(undefined); }} onCreated={() => setRevision(x => x + 1)} />}
     <Modal open={!!entzug && schreiben} onClose={() => { if (!busy) zurueck(); }} title={entzug?.zuweisung ? 'Zugriff beenden' : entzug?.entfernen ? 'Benutzer entfernen' : 'Benutzer sperren'}
       footer={<><Button variant="ghost" disabled={busy} onClick={zurueck}>Abbrechen</Button><Button disabled={busy} onClick={() => void beenden()}>{entzug?.zuweisung ? 'Zugriff beenden' : entzug?.entfernen ? 'Entfernen' : 'Sperren'}</Button></>}>
-      {entzug?.zuweisung ? <><p><strong>{entzug.konto.anzeigename}</strong> verliert diese Zuweisung sofort: {ROLLE_KUNDENWORT[entzug.zuweisung.rolle]} · {entzug.zuweisung.standort_name ?? 'Unternehmen'}.</p><p>Andere Zuweisungen bleiben erhalten.</p></>
+      {entzug?.zuweisung ? <><p><strong>{entzug.konto.anzeigename}</strong> verliert diese Zuweisung sofort: {worte.rolle(entzug.zuweisung.rolle)} · {entzug.zuweisung.standort_name ?? worte.ganzes}.</p><p>Andere Zuweisungen bleiben erhalten.</p></>
         : <p><strong>{entzug?.konto.anzeigename}</strong> verliert den Zugriff sofort. Auch künftige Zuweisungen enden.</p>}
       <p>Gesetzte Handeingriffe bleiben bis zu ihrem Ablauf oder bis eine berechtigte Person sie beendet. Der Vorgang wird protokolliert.</p>
       {fehler && <p role="alert">{fehler}</p>}

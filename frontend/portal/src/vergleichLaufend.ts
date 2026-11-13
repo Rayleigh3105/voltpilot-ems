@@ -41,7 +41,7 @@ import type { HistoryRange } from './api';
 import { isCurrentPeriod } from './energieBilanz';
 import { eurAmount } from './format';
 import {
-  delta,
+  geldDelta,
   laufendHinweis,
   vergleichsName,
   type DeltaView,
@@ -132,7 +132,7 @@ export function vergleichBisStunde(
   // `mehrIstBesser = null` ⇒ `wertung: 'neutral'` per Hausregel; die Wertung
   // wird darunter zusätzlich festgeschrieben, damit ein späterer `true`-Griff
   // nicht unbemerkt ein rotes Urteil zurückbringt (B3).
-  const d = delta(jetztEur, vorherEur, null, name);
+  const d = geldDelta(jetztEur, vorherEur, null, name);
   return { bisStunde: stunde, jetztEur, vorherEur, delta: d };
 }
 
@@ -196,10 +196,14 @@ export function vollerVergleichsName(
   return `ganzer ${name}`;
 }
 
-/** „25 % weniger" — der Chip. `null` bei „etwa wie" (nur, wenn er abweicht). */
+/**
+ * „25 % weniger" — der Chip; ohne tragfähige Prozent-Basis der Betrag („1,65 €
+ * weniger", {@link geldDelta}). `null` bei „etwa wie" (nur, wenn er abweicht).
+ */
 function kurzerChip(d: DeltaView | null): DeltaView | null {
   if (!d || d.richtung === 'gleich') return null;
-  return { ...d, wertung: 'neutral', text: `${d.pct} % ${d.richtung}` };
+  const wie = d.pct == null ? d.betrag : `${d.pct} %`;
+  return { ...d, wertung: 'neutral', text: `${wie} ${d.richtung}` };
 }
 
 /**
@@ -250,7 +254,7 @@ export function erloesVergleich(input: ErloesVergleichInput): ErloesVergleich | 
     // Mehr Ergebnis ist eindeutig besser — die Wertung bleibt, wie sie war.
     return {
       modus: 'ganze_periode',
-      chip: delta(jetztEur, vorherEur, true, name),
+      chip: geldDelta(jetztEur, vorherEur, true, name),
       betraege: null,
       satz: null,
       bisStunde: null,

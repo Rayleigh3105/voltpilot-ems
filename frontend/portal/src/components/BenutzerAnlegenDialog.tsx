@@ -6,10 +6,12 @@ import { useRollen } from '../rollen';
 import { StartpasswortAnzeige } from './StartpasswortAnzeige';
 
 /** N3: IP-13 übergibt die Person, Rolle und ausgewählten Standorte aus N2. */
-export function BenutzerAnlegenDialog({ open, onClose, anlage, rollenname, standortnamen, onCreated, children, pruefen }: {
+export function BenutzerAnlegenDialog({ open, onClose, anlage, rollenname, standortnamen, onCreated, children, pruefen, alleOrte = 'Alle Standorte des Unternehmens' }: {
   open: boolean; onClose: () => void; anlage: BenutzerAnlage; rollenname: string;
   children?: ReactNode; pruefen?: () => boolean;
   standortnamen: string[]; onCreated: (konto: BenutzerKonto) => void;
+  /** Die Zeile ohne Standortwahl (Haushaltswort aus `benutzerWorte`). */
+  alleOrte?: string;
 }) {
   const rechte = useRollen();
   const [antwort, setAntwort] = useState<BenutzerAngelegt | null>(null);
@@ -37,7 +39,7 @@ export function BenutzerAnlegenDialog({ open, onClose, anlage, rollenname, stand
         {busy ? 'Wird angelegt…' : 'Benutzer anlegen'}</Button>}</>}>
     <p><strong>{anlage.vorname || anlage.nachname ? `${anlage.vorname ?? ''} ${anlage.nachname ?? ''}`.trim() : anlage.username}</strong><br />{anlage.email}</p>
     {antwort ? <StartpasswortAnzeige passwort={antwort.startpasswort} /> : <>
-      <p><strong>{rollenname}</strong><br />{standortnamen.length ? standortnamen.join(' · ') : 'Alle Standorte des Unternehmens'}</p>
+      <p><strong>{rollenname}</strong><br />{standortnamen.length ? standortnamen.join(' · ') : alleOrte}</p>
       {children}
       <p>Sie vergeben ein Startpasswort. Es wird beim Anlegen für Sie erstellt und einmal angezeigt. Bei der ersten Anmeldung muss die Person ein eigenes Passwort festlegen.</p>
       {!erlaubt && <p role="alert">Nur der Kundenadministrator kann Benutzer anlegen.</p>}
