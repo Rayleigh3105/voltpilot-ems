@@ -245,8 +245,6 @@ def load_pv_flaechen(conn) -> dict[str, list[PlantSpec]]:
     is shared across the whole collection cycle, see :func:`run_cycle`) would
     fail with "current transaction is aborted".
     """
-    import psycopg  # noqa: PLC0415 - optional [db] extra
-
     with conn.cursor() as cur:
         try:
             cur.execute(
@@ -260,7 +258,16 @@ def load_pv_flaechen(conn) -> dict[str, list[PlantSpec]]:
                 """
             )
             rows = cur.fetchall()
-        except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        except Exception as exc:  # noqa: BLE001 - narrowed below, conn is a fake in offline tests
+            # Lazy on purpose (like every other psycopg usage here, mirroring
+            # the callers): a fake test conn never raises, so this import -
+            # and the [db] extra it needs - is never touched by the
+            # dependency-free unit tests. Importing it unconditionally above
+            # the try broke that (S4, #1842): ModuleNotFoundError without [db].
+            import psycopg  # noqa: PLC0415 - optional [db] extra
+
+            if not isinstance(exc, (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn)):
+                raise
             conn.rollback()
             return {}
     leistung_by_unit: dict[str, float] = {}
