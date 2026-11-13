@@ -57,24 +57,48 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Lief am 09./10./11.11.2026 (Lauf 554/557/560) dreimal in Folge
-          # exakt in die 45-min-Grenze (45:0x min, abgebrochen, nicht fertig
-          # geworden); der eigene workflow_dispatch-Lauf dieses PRs (PR-Text)
-          # lief danach ebenso exakt in eine angehobene 90-min-Grenze - OHNE
-          # Anzeichen eines Hängers (die letzte Zeile war eine laufende
-          # Flyway-Migration, kein stehender Test), dafür mit
-          # "context deadline exceeded" am Docker-Socket DES RUNNERS selbst
-          # beim Abschluss. Die Suite ist seit dem letzten gemessenen Deploy-
-          # Gate-Lauf (09.08.2026, ~20 min) deutlich gewachsen, UND der Runner
-          # wirkt gerade zusätzlich belastet (Docker-Daemon antwortete am
-          # Ende nicht mehr). 180 min als Reserve gegen beides; der echte
-          # Bedarf ohne diese Belastung ist noch nicht gemessen - Befund und
-          # Einordnung im PR-Text, kein zweiter Blindflug mit noch mehr
-          # Minuten, falls auch das nicht reicht.
-          - name: api
+          # Lauf 578/582 (12./13.11.2026): der `api`-Job endete beide Naechte
+          # exakt bei 180 min ("the runner cancelled the job because it
+          # exceeds the maximum run time"), mitten in einer Flyway-Migration -
+          # kein Haenger, nur zu wenig Zeit. Nachgemessen (Lauf-582-Log): von
+          # 836 Testklassen liefen in 180 min nur 320 durch (~34 s/Klasse,
+          # davon ~355 Testcontainers-Klassen mit eigenem Postgres-Container
+          # UND eigenem Flyway-Lauf je Klasse - 202 volle Migrationen allein
+          # in diesen 180 min). Der ganze Satz braucht so ~470 min; eine noch
+          # hoehere Grenze ist kein Fix, nur ein spaeterer Abbruch (die Suite
+          # waechst weiter). Fix: EIN Surefire-Lauf, fuenf Matrixzeilen -
+          # jede waehlt per `find`+`awk 'NR % 5 == shardIndex'` ihr Fuenftel
+          # der *Test.java-Klassen (siehe "Maven test"-Schritt), ohne eine
+          # Docker-Container MEHR gleichzeitig als heute (sequenziell auf dem
+          # einzigen Runner, nicht mehr Testcontainers-Nebenlast). Neue
+          # Testklassen wandern automatisch in ihr Fuenftel, ohne Pflege
+          # hier. timeout:130 bei ~94 min/Fuenftel (167 Klassen) laesst der
+          # Suite noch Raum zu wachsen, bevor die Grenze wieder knapp wird.
+          - name: api-1
             type: jvm
             path: services/api
-            timeout: 180
+            timeout: 130
+            shard: '1/5'
+          - name: api-2
+            type: jvm
+            path: services/api
+            timeout: 130
+            shard: '2/5'
+          - name: api-3
+            type: jvm
+            path: services/api
+            timeout: 130
+            shard: '3/5'
+          - name: api-4
+            type: jvm
+            path: services/api
+            timeout: 130
+            shard: '4/5'
+          - name: api-5
+            type: jvm
+            path: services/api
+            timeout: 130
+            shard: '5/5'
           - name: ingest
             type: jvm
             path: services/ingest
@@ -150,7 +174,25 @@ jobs:
       - name: Maven test
         if: matrix.type == 'jvm'
         working-directory: ${{ matrix.path }}
-        run: ./mvnw -B test
+        env:
+          SHARD: ${{ matrix.shard }}
+        # Nur fuer die api-Fuenftel gesetzt (siehe Matrix oben): waehlt das
+        # eigene Fuenftel der *Test.java-Klassen per Modulo auf der
+        # sortierten, vollstaendigen Liste - deterministisch und ohne
+        # Pflege, auch wenn Klassen dazukommen oder wegfallen. Ohne SHARD
+        # (ingest/timescale-writer) laeuft `mvn test` unveraendert komplett.
+        run: |
+          filter=""
+          if [ -n "$SHARD" ]; then
+            idx="${SHARD%%/*}"
+            total="${SHARD##*/}"
+            filter=$(find src/test/java -name '*Test.java' \
+              | sed -e 's#^src/test/java/##' -e 's#\.java$##' -e 's#/#.#g' \
+              | LC_ALL=C sort \
+              | awk -v n="$total" -v i="$((idx - 1))" 'NR % n == i' \
+              | paste -sd, -)
+          fi
+          ./mvnw -B test ${filter:+-Dtest="$filter"}
 
       # ---- Python services --------------------------------------------------
       - name: Set up Python
@@ -174,13 +216,17 @@ jobs:
       # Fenster durchgaengig "Connection refused", obwohl `docker run` selbst
       # ohne Fehler zurueckkehrt und derselbe Aufbau in forecasts
       # test_kundenbereich_db.py auf demselben Runner gruen ist. `optimization`
-      # laeuft alphabetisch als vorletzte Matrixzeile, nach api/forecast/
+      # laeuft als eine der letzten Matrixzeilen, nach api-*/forecast/
       # frontend/ingest/market-data/marketing-adapter auf demselben Runner
-      # (sequentiell, keine zwei Matrixzeilen gleichzeitig - Lauf 554 zeigt
-      # lueckenlos aneinanderschliessende Start-/Endzeiten) - Verdacht:
+      # (sequentiell, keine zwei Matrixzeilen gleichzeitig) - Verdacht:
       # Plattenplatz/Docker-Zustand nach den vorherigen, teils Testcontainers-
-      # schweren Zeilen. Gibt nur aus, loest nichts auf - Befund in den naechsten
-      # PR, sobald die Ausgabe vorliegt.
+      # schweren Zeilen. BESTAETIGT in Lauf 582 (dieser Diagnose-Schritt):
+      # Overlay-Dateisystem bei 99 % (1.7 GB frei von 122 GB), 39 GB davon
+      # reclaimable Docker-Images von VOELLIG ANDEREN Projekten auf diesem
+      # geteilten Runner (kulisso, bookflow, immo-calc, ...). Gibt weiterhin
+      # nur aus, loest nichts auf: das Aufraeumen eines geteilten Runners ist
+      # keine Aenderung an diesem Repo und nicht Sache einer einzelnen Lane -
+      # Befund im PR-Text an den Betreiber des Runners.
       - name: "Diagnose (optimization): Docker-/Plattenzustand"
         if: always() && matrix.name == 'optimization'
         run: |

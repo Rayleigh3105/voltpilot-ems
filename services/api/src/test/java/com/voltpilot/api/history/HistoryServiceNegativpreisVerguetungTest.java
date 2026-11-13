@@ -54,8 +54,13 @@ class HistoryServiceNegativpreisVerguetungTest {
 
     private static SiteEconomics siteEconomics(String plantKind, boolean netzladen,
             LocalDate commissioned, Double anzulegenderWertCtKwh) {
+        // 120 kWp - ueber der Kleinanlagen-Schwelle (SlotEconomics.solarspitzengesetzGilt,
+        // EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP = 100, § 51 Abs. 2 Nr. 1 EEG): unter 100 kWp
+        // greift § 51a nie, ganz unabhaengig vom Inbetriebnahmedatum - der Test unten
+        // (mitSolarspitzengesetzWirdKeineVerguetungStattNegativpreisGemeldet) braucht eine Anlage,
+        // fuer die diese Schwelle keine Rolle spielt, um § 51a wirklich auszuloesen.
         return new SiteEconomics(plantKind, netzladen, "ohne", null, anzulegenderWertCtKwh,
-                commissioned, 9.0, null, null, 0.92, 4.0, null);
+                commissioned, 120.0, null, null, 0.92, 4.0, null);
     }
 
     @Test

@@ -193,13 +193,18 @@ def test_covering_earlier_moves_the_same_energy_and_the_same_money():
 
     def totals(plan):
         return (
-            round(sum(-s.battery_kw for s in plan.slots if s.battery_kw < 0) * 0.25, 6),
-            round(sum(s.battery_kw for s in plan.slots if s.battery_kw > 0) * 0.25, 6),
-            round(sum(max(-s.grid_kw, 0.0) for s in plan.slots) * 0.25, 6),
-            round(sum(s.cost_eur for s in plan.slots), 6),
+            sum(-s.battery_kw for s in plan.slots if s.battery_kw < 0) * 0.25,
+            sum(s.battery_kw for s in plan.slots if s.battery_kw > 0) * 0.25,
+            sum(max(-s.grid_kw, 0.0) for s in plan.slots) * 0.25,
+            sum(s.cost_eur for s in plan.slots),
         )
 
-    assert totals(with_fix) == totals(without)
+    # Zwei unabhaengige HiGHS-Loesungen, nicht dieselbe Rechnung zweimal: das
+    # LP-Rauschen zwischen ihnen liegt bei ~1e-6 (Rechnerarchitektur, siehe
+    # #1821) - eine Rundung auf 6 Nachkommastellen lag genau an dieser Kante.
+    # abs=1e-4 EUR/kWh bleibt zwei Groessenordnungen ueber dem Rauschen und
+    # weit unter jeder realen Aufloesung (Cent, Wh).
+    assert totals(with_fix) == pytest.approx(totals(without), abs=1e-4)
     # ... und der alte Plan hatte das Parken wirklich (sonst beweist der Test
     # oben nichts).
     assert parked_slots(without), "die Vorlage muss den Gleichstand enthalten"
