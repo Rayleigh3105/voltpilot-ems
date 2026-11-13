@@ -150,6 +150,78 @@ Nach den Messläufen, api mit `-Xmx2g`.
 | SMTP-Server nimmt an und schweigt | Zustell-Lauf hängt, mit ihm jeder `@Scheduled`-Job (ein Scheduler-Thread) | Abbruch nach 30 s | `VersandConfigSmtpZeitgrenzeTest` |
 | Keycloak-Admin nimmt an und schweigt | Request-Thread hängt, der Token-Abruf hält alle weiteren auf | Abbruch nach 5 s Aufbau / 20 s Antwort | `KeycloakAdminClientZeitgrenzeTest` |
 
+## Portal-Reaktivität (Runde 13.11.2026)
+
+Runde `vp-perf-portal-reaktiv`, nur Portal, Stand `b3ed4c5ff`. Der Host lief mit Load 30 bis 80 aus anderen Bahnen.
+Seitenzeiten gegen die echte Labor-API streuten so stark, dass eine unveränderte Seite zwischen 1,5 und 6,2 s lag.
+Deshalb misst diese Runde im **Wiedergabe-Labor**: Die Antworten der Labor-API (`labor.sh`, Bestand `befuellung-4-monate.sql`)
+werden einmal aufgezeichnet und dann je Variante mit fester Antwortzeit wiedergegeben. Server- und Keycloak-Last fallen
+damit heraus (`baseline/wiedergabe.mjs`). Der Build wird mit gzip und Cache-Kopf wie in `nginx.conf` ausgeliefert
+(`baseline/serve-dist.mjs`), Varianten laufen verzahnt (`baseline/wechsel.mjs`). Bytes, Abrufzahlen und Kettenzeiten
+sind lastunabhängig. Absolute Seitenzeiten sind es auch hier nicht: Mobil mit 4-facher CPU-Drosselung streuten sie bei
+Load 40 bis 80 zwischen 4 und 11 s.
+
+### Ausgangswerte
+
+JS, das eine Seite in den ersten 8 s lädt (gzip, Einstieg inklusive, ohne Leerlauf-Vorladen; `baseline/js-je-route.mjs`):
+
+| Seite | JS | Stücke |
+|---|---:|---:|
+| Anlagen-Cockpit `#/anlage/{id}` (demo2) | 355,9 kB | 21 |
+| Aufbau `…/modell` | 462,8 kB | 46 |
+| Verlauf `…/messwerte` | 526,5 kB | 29 |
+| Steuerung › Geräte `…/steuerung` | 391,3 kB | 31 |
+| Meldungen `#/meldungen` | 327,4 kB | 24 |
+| Übersicht / Portfolio `#/portfolio` (demo, 3 Anlagen) | 560,7 kB | 78 |
+| Gerätedetail `…/geraet/{box}/{gerät}` | 765,4 kB | 67 |
+
+Jede Anlagenseite lädt danach im Leerlauf (spätestens nach 4 s) Verlauf und Diagramme vor, rund 250 kB gz (`useVerlaufVorladen`).
+
+Start-Kette jedes Aufrufs (Neuladen, Direktlink), beobachtet im Netzprotokoll:
+`Token (refreshStoredTokens)` → `Token (keycloak-js init, updateToken(-1))` → `/me` → `sites, devices, tenant-context, standorte, unternehmen` → Seitendaten.
+Beim Anlagen-Cockpit warten 25 bis 34 Seitenabrufe auf diese Kette. Die Rollen (`rollen/pv|consumer|grid`) fragt es einmal vor und einmal nach `/overview`.
+
+Abfragetakte, 65 s offene Seite (`wiedergabe.mjs takt`):
+
+| Seite | Abrufe | davon |
+|---|---:|---|
+| Übersicht / Portfolio | 16 | `overview` 6, `earnings?range=day` 6, `meldungen/zahl` 2, `devices` 2 |
+| Anlagen-Cockpit | 52 | je 7× `topology`, `overview`, `control-status`, `curtailment-status`, `erzeuger/jetzt`, `chargers`; je 2× `earnings`, `schedule`, `history?range=day`, `meldungen/zahl`, `devices` |
+
+React bei 60 s offenem Anlagen-Cockpit (Profiling-Build, Desktop, `wiedergabe.mjs profil`): 47 Übergaben mit zusammen
+297 ms Renderzeit. Davon 213 ms im Funktionskörper von `AnlageSeite`, also gut 5 ms je Neu-Rendern. Auslöser sind die Uhr
+(alle 5 s) und je eine Übergabe pro Antwort des Live-Takts. Mit 4-facher CPU-Drosselung ergibt das rund 1,2 s Hauptthread
+je Minute.
+
+### Geändert
+
+| PR | Was | Nachher |
+|---|---|---|
+| [#1853](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1853) | Dialoge und Diagramm der Kundenseiten erst beim Öffnen laden (Anlage anlegen samt Leaflet, Steuern einrichten, Geräte-Assistent, Box wechseln, Messwert-Verlauf mit echarts); ihre Stile tragen die Seiten selbst | Übersicht 560,7 → 457,6 kB, Gerätedetail 765,4 → 528,1 kB, Aufbau 462,8 → 447,3 kB, Steuerung 391,3 → 378,7 kB; Einstieg unverändert (256,15 kB gz) |
+| [#1854](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1854) | Erlöse im eigenen Takt `ERLOES_POLL_MS` = 5 min statt 10 s (Übersicht, Portfolio-Cockpit) bzw. 30 s (Anlagen-Seite); Lasttest Rang 3 | 65 s offen: Übersicht 16 → 10 Abrufe, Anlagen-Cockpit 52 → 50; `/earnings` je Seite und Stunde 360 bzw. 120 → 12 |
+| [#1856](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1856) | Stammdaten beim Start gleichzeitig mit `/me` | Seitendaten starten nach `/me`-Start nach 425 statt 805 ms (150 ms je Antwort, Median aus 5 Läufen; `baseline/start-kette.mjs`) |
+
+### Offene Hebel, nach Wirkung gereiht
+
+1. **Zweiter Token-Abruf vor jedem ersten Bild.** keycloak-js 26 frischt beim `init` mit Tokens immer einmal auf
+   (`updateToken(-1)`, `node_modules/keycloak-js/lib/keycloak.js`). Das passiert direkt nach dem eigenen Abruf in
+   `refreshStoredTokens`. Das kostet eine Keycloak-Runde je Aufruf. Abhilfe braucht `timeSkew` und den Ablauf-Zeitgeber
+   von keycloak-js. Das ist Anmeldung und gehört deshalb in eine eigene Aufgabe mit Auth-Tests.
+2. **Seitendaten warten auf die Stammdaten.** Die Anlagen-Seite fragt erst, wenn `/sites` da ist, obwohl die
+   Anlagen-ID in der Adresse steht. Abhilfe: nach Route vorab anfragen, mit einem kurzen Teilfenster wie
+   `STARTFENSTER_MS` für `/funktionen`.
+3. **Live-Takt des Anlagen-Cockpits.** Es fragt sechs Endpunkte alle 10 s ab, rund 42 Abrufe je Minute und offener Seite,
+   und rendert dabei je Antwort neu. Abhilfe: unveränderte Antworten behalten (keine Übergabe), Takte bündeln
+   (API-seitig ein Live-Lesemodell) und die teuren Ableitungen in `AnlageSeite` memoisieren.
+4. **Leerlauf-Vorladen von Verlauf und echarts** (rund 250 kB gz) auf jeder Anlagenseite nach spätestens 4 s. Am
+   Telefon konkurriert das mit dem Live-Takt. Abhilfe: erst nach der ersten Interaktion oder ohne festen Timeout vorladen.
+5. **Doppelte Rollen-Abrufe beim Start** (3 Abrufe je Aufruf, vor und nach `/overview`).
+6. **Meldungen** ziehen rund 70 kB statisch mit (Messstellen-, Kennzahl- und Energieziel-Bilder); nach Meldungsart teilen.
+7. **Summenwert-Dialoge auf der Gerätedetailseite** (≈ 18 kB gz) hängen am Hook `useSummenwertAssistent`.
+
+Ebenfalls aufgefallen: Nachgeladene Stücke plus kalter Vite-Server reißen unter Last `findBy`- und 5-s-Grenzen in
+Vitest und Playwright. Die Seiten-Tests laden die Stücke deshalb in `beforeAll` vor.
+
 ## Wiederholen
 
 ```bash
@@ -171,3 +243,19 @@ uptime                                  # Last mitschreiben
 
 Die Standort-ID der Anlage „Zuhause“ steht nach dem ersten api-Start in `anlage_standort`.
 Warmstart: `./labor.sh stop` ist nicht nötig; die api per PID (`$TMPDIR/vp-perf-labor/api-15743.pid`) beenden und `labor.sh api` erneut rufen.
+
+Portal-Reaktivität (Wiedergabe-Labor, nach `labor.sh start`, `api`, `befuellen`; Bänder und Builds außerhalb des Repos):
+
+```bash
+cd docs/performance/baseline
+W=$TMPDIR/vp-perf-labor; S2=10000000-0000-0000-0000-000000000002
+node wiedergabe.mjs aufnehmen --user demo2 --band $W/demo2.json --seiten "cockpit=#/anlage/$S2;aufbau=#/anlage/$S2/modell;verlauf=#/anlage/$S2/messwerte"
+# je Variante ein Build (VITE_API_BASE= VITE_KEYCLOAK_URL=http://localhost:15744/auth npx vite build --outDir $W/dist-<v>) und ein Port
+node serve-dist.mjs 15861 $W/dist-vorher & node serve-dist.mjs 15862 $W/dist-nachher &
+node wechsel.mjs --user demo2 --band $W/demo2.json --profil mobil --varianten "vorher=15861;nachher=15862" --seiten "cockpit=#/anlage/$S2"
+node js-je-route.mjs 15861 $W/demo2.json "#/anlage/$S2" $W/dist-vorher       # JS je Route, ohne Leerlauf-Vorladen
+node start-kette.mjs 15861 $W/demo2.json "#/anlage/$S2" 5 150                 # Start-Wasserfall ab /me
+node wiedergabe.mjs takt --base http://localhost:15861 --user demo2 --band $W/demo2.json --sek 65 --seiten "cockpit=#/anlage/$S2"
+```
+
+Die Bänder enthalten Labor-Tokens: nach dem Lauf löschen, nie einchecken.
