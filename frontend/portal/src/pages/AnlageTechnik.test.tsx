@@ -1455,4 +1455,45 @@ describe('Solaranlage · S5 (Zuordnung zu Wechselrichtern, "fehlt eine Einheit?"
     restore();
     entfernen.mockRestore();
   });
+
+  it('eine fehlgeschlagene Zuordnung bleibt nicht stumm, sondern zeigt einen Satz', async () => {
+    const zuordnen = vi.spyOn(api, 'einheitGeraetZuordnen').mockRejectedValue(new Error('down'));
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      undefined,
+      { zuordnungen: [], freieGeraete: [{ id: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach', nennleistungKw: 8.4 }] },
+    );
+    const dialog = await blatt('Einheiten verwalten');
+    fireEvent.click(within(dialog).getByRole('button', { name: '+ Gerät zuordnen' }));
+    const zuordnenDialog = await screen.findByRole('dialog', { name: 'Gerät zuordnen' });
+    fireEvent.click(within(zuordnenDialog).getByRole('combobox', { name: /Welches Gerät/ }));
+    fireEvent.click(await screen.findByRole('option', { name: /Wechselrichter Dach/ }));
+    fireEvent.click(within(zuordnenDialog).getByRole('button', { name: 'Zuordnen' }));
+    expect(await within(zuordnenDialog).findByRole('alert')).toHaveTextContent('nicht zugeordnet werden');
+    // Der Dialog bleibt offen - kein stilles Verschwinden ohne Ergebnis.
+    expect(screen.getByRole('dialog', { name: 'Gerät zuordnen' })).toBeInTheDocument();
+    restore();
+    zuordnen.mockRestore();
+  });
+
+  it('eine fehlgeschlagene Entfernung bleibt nicht stumm, sondern zeigt einen Satz', async () => {
+    const entfernen = vi.spyOn(api, 'einheitGeraetEntfernen').mockRejectedValue(new Error('down'));
+    const { restore } = await renderEinstellungen(
+      {}, {}, null, null, [device({ id: 'd-1' })], verguetungStand(), null, null,
+      [registerEinheit()],
+      undefined,
+      {
+        zuordnungen: [{ id: 'link-1', einheitId: 'e-1', geraetId: 'mp-1', art: 'messpunkt', bezeichnung: 'Wechselrichter Dach' }],
+        freieGeraete: [],
+      },
+    );
+    const dialog = await blatt('Einheiten verwalten');
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Wechselrichter Dach nicht mehr zuordnen' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('nicht entfernt werden');
+    // Die Zuordnung steht unverändert weiter - nichts ist klammheimlich verschwunden.
+    expect(within(dialog).getByText('Wechselrichter Dach')).toBeInTheDocument();
+    restore();
+    entfernen.mockRestore();
+  });
 });

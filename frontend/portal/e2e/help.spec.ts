@@ -73,7 +73,7 @@ test('nested screenshot viewing closes independently and keeps the form behind h
   await form.locator('input').fill('edge-abcdefj');
   await form.getByRole('link', { name: 'Hilfe beim Verbinden' }).click();
   const help = page.getByRole('dialog', { name: 'Hilfe zur Ansicht', exact: true });
-  const image = help.getByRole('button', { name: 'Screenshot vergrößern: Die Geräte-ID zuordnen', exact: true });
+  const image = help.getByRole('button', { name: 'Vergrößern: Screenshot Die Geräte-ID zuordnen', exact: true });
   await image.click();
   const zoom = page.getByRole('dialog', { name: 'Screenshot: Die Geräte-ID zuordnen', exact: true });
   await expect(zoom).toBeVisible();

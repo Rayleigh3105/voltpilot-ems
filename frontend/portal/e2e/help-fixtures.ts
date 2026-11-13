@@ -377,6 +377,9 @@ export function installHelpFixtures() {
         angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.86, hergeleitetGenaehert: false,
         inbetriebnahme: '2025-09-01', leistungKwp: 10, eegEndeAm: '2045-12-31', ohneVerguetungBeiNegativpreis: true,
         anzulegenderWertCtKwh: null,
+        // S4 (vp-mastr-mehrere-einheiten-konzept §5.2): der Server liefert `einheiten` immer als Liste, nie `null`
+        // (EinspeiseverguetungStand.von gibt `List.of()` zurück) - unter einer Einheit kein Rechenweg.
+        einheiten: [],
       });
     },
     consumerSchedule: result({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),

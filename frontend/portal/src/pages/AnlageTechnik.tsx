@@ -1519,6 +1519,8 @@ function GeraeteZuordnung({ siteId, einheiten }: { siteId: string; einheiten: Re
   const [zuordnenFuer, setZuordnenFuer] = useState<string | null>(null);
   const [auswahl, setAuswahl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const [entfernenBusy, setEntfernenBusy] = useState<string | null>(null);
 
   const laden = () => {
     api
@@ -1535,19 +1537,30 @@ function GeraeteZuordnung({ siteId, einheiten }: { siteId: string; einheiten: Re
     const kandidat = daten!.freieGeraete.find((k) => `${k.art}:${k.id}` === auswahl);
     if (!kandidat) return;
     setBusy(true);
+    setFehler(null);
     try {
       const neu = await api.einheitGeraetZuordnen(siteId, zuordnenFuer, kandidat.id, kandidat.art);
       setDaten(neu);
       setZuordnenFuer(null);
       setAuswahl(null);
+    } catch {
+      setFehler('Das Gerät konnte nicht zugeordnet werden. Bitte versuchen Sie es erneut.');
     } finally {
       setBusy(false);
     }
   }
 
   async function entfernen(einheitId: string, linkId: string) {
-    const neu = await api.einheitGeraetEntfernen(siteId, einheitId, linkId);
-    setDaten(neu);
+    setEntfernenBusy(linkId);
+    setFehler(null);
+    try {
+      const neu = await api.einheitGeraetEntfernen(siteId, einheitId, linkId);
+      setDaten(neu);
+    } catch {
+      setFehler('Das Gerät konnte nicht entfernt werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setEntfernenBusy(null);
+    }
   }
 
   return (
@@ -1555,6 +1568,11 @@ function GeraeteZuordnung({ siteId, einheiten }: { siteId: string; einheiten: Re
       <h4 className="vp-kv-k" style={{ marginBottom: 'var(--vp-space-2)' }}>
         Geräte
       </h4>
+      {fehler && (
+        <div className="vp-alert vp-alert-err" role="alert" style={{ marginBottom: 'var(--vp-space-2)' }}>
+          {fehler}
+        </div>
+      )}
       {einheiten.map((e) => {
         const zugeordnet = daten.zuordnungen.filter((z) => z.einheitId === e.id);
         return (
@@ -1574,9 +1592,10 @@ function GeraeteZuordnung({ siteId, einheiten }: { siteId: string; einheiten: Re
                       type="button"
                       className="vp-linklike"
                       aria-label={`${z.bezeichnung} nicht mehr zuordnen`}
+                      disabled={entfernenBusy === z.id}
                       onClick={() => void entfernen(e.id, z.id)}
                     >
-                      entfernen
+                      {entfernenBusy === z.id ? 'wird entfernt …' : 'entfernen'}
                     </button>
                   </Recht>
                 </li>
@@ -1585,7 +1604,7 @@ function GeraeteZuordnung({ siteId, einheiten }: { siteId: string; einheiten: Re
             </ul>
             {daten.freieGeraete.length > 0 && (
               <Recht aktion="geraet.einrichten">
-                <Button variant="ghost" size="sm" onClick={() => setZuordnenFuer(e.id)}>
+                <Button variant="ghost" size="sm" onClick={() => { setFehler(null); setZuordnenFuer(e.id); }}>
                   + Gerät zuordnen
                 </Button>
               </Recht>
@@ -1605,6 +1624,11 @@ function GeraeteZuordnung({ siteId, einheiten }: { siteId: string; einheiten: Re
             value={auswahl}
             onChange={setAuswahl}
           />
+          {fehler && (
+            <div className="vp-alert vp-alert-err" role="alert" style={{ marginTop: 'var(--vp-space-2)' }}>
+              {fehler}
+            </div>
+          )}
           <div className="vp-setting-editactions">
             <Button variant="ghost" size="sm" onClick={() => setZuordnenFuer(null)} disabled={busy}>
               Abbrechen
