@@ -5,6 +5,7 @@
  * request(), so it wins over the shell's module-global switcher override).
  */
 import { api, request } from '../api';
+import { shortEntityLabel } from '../entityLabel';
 import { optimizerApi } from '../optimizerApi';
 import type { SimulationStatus } from '../simulation';
 import type { EditorEntity, FlowDocument } from './model';
@@ -66,7 +67,7 @@ export interface FlowSimulationStatus extends SimulationStatus {
 }
 
 /** Raw v2 entity row of the admin registry endpoint. */
-interface EntityAdminDto {
+export interface EntityAdminDto {
   id: string;
   entityType: string | null;
   role: string;
@@ -79,6 +80,31 @@ interface EntityAdminDto {
 
 function tenantHeaders(tenantId: string): RequestInit {
   return { headers: { 'X-Tenant-Id': tenantId } };
+}
+
+/**
+ * Die Entitäten einer Anlage in der Sicht des Editors. Ohne eigenen Namen trägt eine Entität das
+ * Wort ihres Typs („Batteriespeicher"), nie ihre Kennung - Admin-Durchgang F19: die Knoten zeigten
+ * „7f1f999e-21cf-…". Zwei gleiche Wörter bekommen eine laufende Nummer, damit die Auswahl eindeutig bleibt.
+ */
+export function editorEntities(rows: EntityAdminDto[]): EditorEntity[] {
+  const mitTyp = rows.filter((row) => row.entityType != null);
+  const namen = mitTyp.map((row) => (row.label && row.label.trim() ? row.label.trim() : shortEntityLabel({ entityType: row.entityType })));
+  const gesamt = new Map<string, number>();
+  for (const n of namen) gesamt.set(n, (gesamt.get(n) ?? 0) + 1);
+  const gezaehlt = new Map<string, number>();
+  return mitTyp.map((row, i) => {
+    const name = namen[i];
+    const nr = (gezaehlt.get(name) ?? 0) + 1;
+    gezaehlt.set(name, nr);
+    return {
+      id: row.id,
+      entityType: row.entityType ?? '',
+      label: (gesamt.get(name) ?? 0) > 1 ? `${name} ${nr}` : name,
+      measure: row.capabilities?.measure?.map((m) => m.channel) ?? [],
+      actuate: row.capabilities?.actuate?.map((a) => a.command) ?? [],
+    };
+  });
 }
 
 export const flowsApi = {
@@ -159,15 +185,7 @@ export const flowsApi = {
       `/api/v1/admin/sites/${siteId}/v2-entities`,
       tenantHeaders(tenantId),
     );
-    return rows
-      .filter((row) => row.entityType != null)
-      .map((row) => ({
-        id: row.id,
-        entityType: row.entityType ?? '',
-        label: row.label && row.label.trim() ? row.label : row.id,
-        measure: row.capabilities?.measure?.map((m) => m.channel) ?? [],
-        actuate: row.capabilities?.actuate?.map((a) => a.command) ?? [],
-      }));
+    return editorEntities(rows);
   },
 };
 

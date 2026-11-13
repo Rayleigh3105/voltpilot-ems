@@ -332,7 +332,7 @@
       "certification_status": "per_device",
       "certified_at": null,
       "certification_notes": "Die Freigabe erfolgt JE GERAET ueber den gefuehrten Schalt-Test (Einheitsmodell Stufe 4), nicht je Typ: fuer frei definierte Geraete ist eine Pruefstands-Zertifizierung strukturell unmoeglich - es gibt kein Modell, das man auf einen Tisch stellen koennte. Der Betreiber-Not-Aus und das Verbraucher-Flag gelten unveraendert.",
-      "label": "Eigenes Schaltgeraet (Modbus)",
+      "label": "Eigenes Schaltgerät (Modbus)",
       "category": "consumer",
       "controllable": true,
       "composed": false,

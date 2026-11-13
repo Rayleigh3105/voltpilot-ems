@@ -399,7 +399,7 @@ export function fleetRows(
     const sources = sourceHealth(site.sources);
     const edge = edgeStand(site.edge, site.update, releases, site.boxArt);
     const live = liveCell(site, now);
-    const plan = planCell(site.lastPlanGeneratedAt, now);
+    const plan = planCell(site.lastPlanGeneratedAt, now, site.hasStorage);
     const devices = deviceCell(site);
     return {
       siteId: site.siteId,
@@ -540,9 +540,15 @@ function liveCell(site: AdminFleetSite, now: Date): { text: string; tone: Tone }
   return { text: relAge(age), tone: age <= ONLINE_WINDOW_MS ? 'ok' : 'warn' };
 }
 
-/** Das Alter des letzten Optimierer-Laufs - auch wiederverwendet in der Akte › Anlage (Scheibe S3). */
-export function planCell(lastRun: string | null, now: Date): { text: string; tone: Tone } {
-  if (!lastRun) return { text: 'kein aktueller Plan', tone: 'warn' };
+/**
+ * Das Alter des letzten Optimierer-Laufs - auch wiederverwendet in der Akte › Anlage (Scheibe S3).
+ * Der Optimierer plant nur Anlagen mit Speicher: eine Anlage ohne Speicher und ohne Lauf fehlt
+ * nichts, sie ist keine Warnung (Admin-Durchgang F1: „5 ohne frischen Plan" zählte sie mit).
+ */
+export const OHNE_SPEICHER_KEIN_PLAN = 'ohne Speicher kein Plan';
+
+export function planCell(lastRun: string | null, now: Date, hasStorage = true): { text: string; tone: Tone } {
+  if (!lastRun) return hasStorage ? { text: 'kein aktueller Plan', tone: 'warn' } : { text: OHNE_SPEICHER_KEIN_PLAN, tone: 'off' };
   const age = now.getTime() - Date.parse(lastRun);
   return { text: relAge(age), tone: age > PLAN_STALE_MS ? 'warn' : 'ok' };
 }

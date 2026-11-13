@@ -450,7 +450,8 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpTo
     return (
       <Card padding="lg" radius="lg">
         <p className="vp-muted" style={{ marginTop: 0 }}>
-          Diese Box ist noch nicht mit einem Kundenkonto verbunden. Den Stand ihrer Einrichtung zeigt der Reiter „Einrichtung“.
+          Noch bei keinem Kunden. Verbunden wird die Box beim Kunden: in seiner Anlage unter Aufbau mit
+          „VoltPilot-Box hinzufügen“ und der Kennung von ihrem Aufkleber.
         </p>
         <Button variant="outline" size="sm" onClick={() => onReiter('einrichtung')}>Zur Einrichtung</Button>
       </Card>
@@ -470,7 +471,7 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpTo
         <Card padding="lg" radius="lg" className="vp-geraet-sek" data-testid="akte-nie-gemeldet">
           <h2><Icon name="plug" size={18} /> Verbunden, aber nie gemeldet</h2>
           <p className="vp-muted" style={{ marginTop: 0 }}>
-            {row!.tenantName} › {row!.siteName} · Verbunden seit {fmtRelative(akte?.lebensabschnittSeit ?? null, jetzt)}
+            {row!.tenantName} › {row!.siteName} · Verbunden {fmtRelative(akte?.lebensabschnittSeit ?? null, jetzt)}
             {' '}· Herzschlag nie · Messwerte keine.
           </p>
           <Button variant="outline" size="sm" onClick={onLoesenOeffnen}>Vom Kunden lösen …</Button>
@@ -821,7 +822,7 @@ function AnlageReiter({
     return <TableSkeleton rows={4} cols={1} />;
   }
 
-  const plan = planCell(site.lastPlanGeneratedAt, jetzt);
+  const plan = planCell(site.lastPlanGeneratedAt, jetzt, site.hasStorage);
   const matrix = controlMatrixRow(
     { siteId: site.siteId, siteName: site.siteName, tenantId: site.tenantId, tenantName: site.tenantName, control: site.control, curtailment: site.curtailment },
     jetzt,
@@ -836,7 +837,9 @@ function AnlageReiter({
 
       <AufklapperKarte icon="calendar" titel="Plan" urteil={plan.text} className="vp-geraet-sek">
         <p><Badge variant={plan.tone} dot>{plan.text}</Badge></p>
-        <p className="vp-muted vp-text-sm">Letzter Lauf des Optimierers für diese Anlage.</p>
+        <p className="vp-muted vp-text-sm">
+          {site.hasStorage ? 'Letzter Lauf des Optimierers für diese Anlage.' : 'Der Optimierer plant nur Anlagen mit Speicher.'}
+        </p>
       </AufklapperKarte>
 
       <Card padding="lg" radius="lg" className="vp-geraet-sek">

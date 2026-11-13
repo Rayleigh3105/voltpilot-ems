@@ -18,6 +18,9 @@ import {
   datumDe,
   kundenZahlenText,
   kundenZustand,
+  OHNE_STANDORT_SATZ,
+  unterstuetzungBisText,
+  VERTRAG_BEENDEN_SATZ,
   personenListe,
   type AnlageBoxZeile,
   type KundenPerson,
@@ -31,9 +34,7 @@ import {
   type TenantOffboardingReport,
 } from '../../admin/adminApi';
 import { KundeLoeschenDialog } from './KundeLoeschenDialog';
-import { kundeLoeschlaufAbwarten } from '../../admin/kundeLoeschen';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
-import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TableSkeleton, TextSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
 import { BoxLoesenDialog } from './BoxLoesenDialog';
@@ -85,9 +86,15 @@ export function MandantenPage({
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  const detail = detailId ? tenants.find((t) => t.id === detailId) ?? null : null;
+  // Die zuletzt gezeigte Akte bleibt, bis die Liste nachgeladen hat: ein frisch angelegter Kunde
+  // steht noch nicht darin, ein gerade gelöschter nicht mehr - sein Löschbericht bleibt trotzdem stehen.
+  const gemerkt = useRef<Tenant | null>(null);
+  const gefunden = detailId ? tenants.find((t) => t.id === detailId) ?? null : null;
+  if (gefunden) gemerkt.current = gefunden;
+  const detail = gefunden ?? (detailId && gemerkt.current?.id === detailId ? gemerkt.current : null);
 
   function oeffne(t: Tenant) {
+    gemerkt.current = t;
     setDetailId(t.id);
     window.location.hash = mandantHash(t.id);
     window.scrollTo?.({ top: 0 });
@@ -110,7 +117,8 @@ export function MandantenPage({
           tenant={detail}
           onClose={zurueck}
           onJumpToTenant={onJumpToTenant}
-          onChanged={(t) => onReloadTenants(t?.id)}
+          // Ohne Kennung: eine Kennung schaltete die Schale auf „Wie der Kunde es sieht" (Admin-Durchgang F7).
+          onChanged={() => onReloadTenants()}
           onDeleted={() => {
             zurueck();
             onReloadTenants();
@@ -228,7 +236,7 @@ function KundenlisteSeite({
       anzahlPersonen: konten[t.id] === 'fehler' ? null : konten[t.id]?.length ?? undefined,
       zustand: vende === 'fehler'
         ? null
-        : kundenZustand(vende, bis ? new Date(bis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : null),
+        : kundenZustand(vende, bis ? unterstuetzungBisText(bis) : null),
     };
   }), [tenants, fleet, unterstuetzungBis, konten, vertragsende]);
 
@@ -326,7 +334,9 @@ function KundenlisteSeite({
                   onAbbrechen={() => setNeuOffen(false)}
                   onAngelegt={(t) => {
                     setNeuOffen(false);
-                    onReloadTenants(t.id);
+                    onReloadTenants();
+                    // Der nächste Schritt (erster Kundenadministrator, Anlage) steht in der Akte.
+                    onOeffnen(t);
                   }}
                 />
               )}
@@ -515,6 +525,7 @@ function KundenaktePage({
   const [eintraege, setEintraege] = useState<BenutzerEintrag[] | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
   const [fleetSites, setFleetSites] = useState<AdminFleetSite[] | null>(null);
+  const [unterstuetzungBis, setUnterstuetzungBis] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Load failure kept distinct from action errors (and the loading `null`), so a
   // failed load shows a retryable ErrorState instead of permanent skeletons.
@@ -534,8 +545,6 @@ function KundenaktePage({
   // „Anlagen und Boxen" - derselbe Dialog wie in der Geräteakte, der Befund kommt vom Server.
   const [loesenBox, setLoesenBox] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [report, setReport] = useState<TenantOffboardingReport | null>(null);
   // Vertragsende I (N1): `undefined` = noch nicht gelesen, `null` = aktiv.
   const [vertragsende, setVertragsende] = useState<SelbstauskunftKundenbereichBeendet | null | undefined>(undefined);
@@ -559,6 +568,7 @@ function KundenaktePage({
       setEintraege(e);
       setSites(s);
       setFleetSites(f.sites.filter((fs) => fs.tenantId === tenant.id));
+      setUnterstuetzungBis(f.unterstuetzungBis?.[tenant.id] ?? null);
       setVertragsende(selbst.kundenbereich?.beendet ?? null);
     } catch (e) {
       setLoadError(
@@ -569,6 +579,10 @@ function KundenaktePage({
 
   useEffect(() => {
     void reload();
+    // Ein Notfall-Zugriff wirkt sofort: die Marke im Kopf folgt ihm ohne Neuladen der Seite.
+    const nachUnterstuetzung = () => void reload();
+    window.addEventListener('vp-unterstuetzung-geaendert', nachUnterstuetzung);
+    return () => window.removeEventListener('vp-unterstuetzung-geaendert', nachUnterstuetzung);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant.id]);
 
@@ -635,31 +649,6 @@ function KundenaktePage({
     const angelegt = await adminApi.createPerson(tenant.id, anlage);
     await reload();
     return angelegt;
-  }
-
-  async function offboard() {
-    setDeleteBusy(true);
-    setDeleteError(null);
-    try {
-      // Startet den serverseitigen Löschzug (vp-kunde-loeschen-504) und wartet auf sein Ergebnis -
-      // unabhängig davon, ob ein einzelner Request unter der 60-s-Grenze des Ingress bleibt.
-      const lauf = await kundeLoeschlaufAbwarten(tenant.id, await adminApi.deleteTenant(tenant.id, tenant.name));
-      if (lauf.stand === 'fertig') {
-        // Ohne Bericht (bei einem Neustart nach dem Commit verloren): zurück zur Kundenliste.
-        if (lauf.bericht) setReport(lauf.bericht);
-        else onDeleted();
-      } else {
-        setDeleteError(lauf.fehler ?? 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.');
-      }
-    } catch (e) {
-      setDeleteError(
-        e instanceof ApiError
-          ? `Löschen fehlgeschlagen: ${e.message}`
-          : 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.',
-      );
-    } finally {
-      setDeleteBusy(false);
-    }
   }
 
   async function beenden(auftrag: string, begruendung: string, fristTage: number) {
@@ -744,9 +733,9 @@ function KundenaktePage({
 
   const personen: KundenPerson[] | null = konten && eintraege ? personenListe(konten, eintraege) : null;
   const anlagenZeilen: AnlageBoxZeile[] | null = sites && fleetSites ? anlagenBoxenZeilen(sites, fleetSites) : null;
-  // Die Zustand-Zeile im Kopf zeigt vorerst nur das Vertragsende; die laufende
-  // Unterstützung steht gleich darunter in der Karte „Zugriff" selbst.
-  const zustand = kundenZustand(vertragsende, null);
+  // Die Zustand-Zeile im Kopf: Vertragsende oder laufende Unterstützung - dieselbe Marke wie
+  // in der Kundenliste (Admin-Durchgang F13: die Akte zeigte eine laufende Unterstützung nie).
+  const zustand = kundenZustand(vertragsende, unterstuetzungBis ? unterstuetzungBisText(unterstuetzungBis) : null);
 
   const wieDerKundeEsSieht = (
     <Button variant="outline" onClick={() => onJumpToTenant(tenant.id, 'uebersicht')} iconLeft={<Icon name="eye" size={16} />}>
@@ -932,11 +921,11 @@ function KundenaktePage({
           <div className="vp-kundenakte-nebenspalte">
             <AufklapperKarte icon="cpu" titel="Anlagen und Boxen" className="vp-mandant-karte"
               urteil={anlagenZeilen ? `${anlagenZeilen.length} Anlage${anlagenZeilen.length === 1 ? '' : 'n'}` : undefined}
-              aktionen={
+              aktionen={vertragsende === null ? (
                 <Button variant="ghost" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
                   Anlage anlegen
                 </Button>
-              }>
+              ) : undefined}>
               {loadError ? null : anlagenZeilen == null ? (
                 <TextSkeleton lines={3} />
               ) : anlagenZeilen.length === 0 ? (
@@ -1020,13 +1009,12 @@ function KundenaktePage({
               ) : (
                 <>
                   <p className="vp-muted" style={{ marginTop: 0 }}>
-                    Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar. Gelöscht
-                    werden kann der Kunde jederzeit, in der Gefahrenzone unten.
+                    Ein beendeter Vertrag lässt sich wiederaufnehmen. Gelöscht werden kann der Kunde jederzeit.
                   </p>
                   {vertragError && <div className="vp-alert vp-alert-err">{vertragError}</div>}
                   <span className="vp-vertrag-aktionen">
                     <Button variant="outline" size="sm" onClick={() => setVertragDialog('beenden')}>
-                      Kundenbereich beenden …
+                      Vertrag beenden …
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setLoeschenDialog(true)}>
                       Kunde endgültig löschen …
@@ -1038,21 +1026,6 @@ function KundenaktePage({
           </div>
         </div>
 
-        <DangerZone
-          actionLabel="Mandant löschen (Offboarding)"
-          description="Offboarding entfernt den Kunden mit allen Daten und Zugängen - die endgültigste Aktion auf der Plattform."
-          consequences={[
-            `Alle Anlagen (${sites?.length ?? '…'}) und Geräte des Kunden`,
-            'Alle Messdaten, Prognosen und Fahrpläne',
-            `Alle Benutzerkonten (${konten?.length ?? '…'}) - die Personen können sich nicht mehr anmelden`,
-            `Der Kunde „${tenant.name}" selbst`,
-          ]}
-          confirmLabel="Kunden endgültig löschen"
-          typeToConfirm={tenant.name}
-          busy={deleteBusy}
-          error={deleteError}
-          onConfirm={() => void offboard()}
-        />
       </section>
 
       <VertragsendeDialog
@@ -1073,8 +1046,12 @@ function KundenaktePage({
           onGeloescht={(r) => {
             setLoeschenDialog(false);
             // Ohne Bericht (bei einem Neustart nach dem Commit verloren): zurück zur Kundenliste.
-            if (r) setReport(r);
-            else onDeleted();
+            if (r) {
+              setReport(r);
+              // Admin-Durchgang F14: sofort, nicht erst bei „Zu den Kunden" - sonst bleibt der
+              // gelöschte Kunde in Umschalter und Zähler, wer anders weiternavigiert.
+              onChanged();
+            } else onDeleted();
           }}
         />
       )}
@@ -1100,9 +1077,7 @@ function KundenaktePage({
         />
       )}
       {/* Die zwei Rückfragen im HAUS-MUSTER statt eines nativen `confirm`:
-          sie stehen in einem Drawer, der schon eine Folgenliste kennt
-          (`DangerZone` darunter), und ein System-Popup daneben wäre die
-          schwächste Rückfrage der Fläche. */}
+          ein System-Popup wäre die schwächste Rückfrage der Fläche. */}
       <ConfirmDialog
         open={confirmUser != null}
         tone="danger"
@@ -1183,17 +1158,20 @@ function ErsterAdminFormular({
   onFertig: () => void;
 }) {
   const [form, setForm] = useState({ username: '', email: '', firstName: '', lastName: '' });
+  // Wie „Person hinzufügen": der Anmeldename folgt der E-Mail, bis jemand ihn selbst ändert.
+  const [anmeldenameBearbeitet, setAnmeldenameBearbeitet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+  const username = anmeldenameBearbeitet ? form.username : anmeldenameAusEmail(form.email);
 
   async function submit() {
-    if (!form.username.trim() || !form.email.trim()) return;
+    if (!username.trim() || !form.email.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await onAnlegen(form);
+      await onAnlegen({ ...form, username });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fehler');
     } finally {
@@ -1213,16 +1191,18 @@ function ErsterAdminFormular({
   return (
     <div className="vp-form-stack" style={{ marginTop: 'var(--vp-space-4)' }}>
       <p className="vp-note" style={{ marginTop: 0 }}>
-        Der erste Kundenadministrator wird für <b>{tenantName}</b> angelegt. Weitere Personen lädt diese Person selbst ein.
+        Der erste Kundenadministrator für <b>{tenantName}</b>.
       </p>
-      <Input label="Benutzername *" placeholder="z. B. kunde-01" value={form.username} onChange={set('username')} />
-      <Input label="E-Mail" type="email" placeholder="kunde@example.com" value={form.email} onChange={set('email')} />
+      <Input label="E-Mail *" type="email" placeholder="kunde@example.com" value={form.email} onChange={set('email')} />
+      <Input label="Anmeldename *" placeholder="z. B. kunde-01" value={username} autoComplete="off" spellCheck={false}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setAnmeldenameBearbeitet(true); setForm((f) => ({ ...f, username: e.target.value })); }}
+        hint="a-z, 0-9, Punkt, Bindestrich, Unterstrich; 3 bis 64 Zeichen." />
       <Input label="Vorname" value={form.firstName} onChange={set('firstName')} />
       <Input label="Nachname" value={form.lastName} onChange={set('lastName')} />
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
       <div style={{ display: 'flex', gap: 'var(--vp-space-2)' }}>
         <Button variant="ghost" size="sm" onClick={onAbbrechen} disabled={busy}>Abbrechen</Button>
-        <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !form.username.trim() || !form.email.trim()}>
+        <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !username.trim() || !form.email.trim()}>
           {busy ? 'Wird angelegt…' : 'Kundenadministrator anlegen'}
         </Button>
       </div>
@@ -1263,6 +1243,8 @@ function PersonHinzufuegenFormular({
   const [error, setError] = useState<string | null>(null);
 
   const jeStandort = !unternehmensrolle(rolle);
+  // Admin-Durchgang F9: ohne eine Anlage gibt es nichts zu wählen - der Server lehnte mit 422 ab.
+  const ohneStandort = jeStandort && sites.length === 0;
   const vorschlag = anmeldenameAusEmail(email);
   const effektiverAnmeldename = anmeldenameOffen ? anmeldename.trim() : vorschlag;
 
@@ -1325,6 +1307,9 @@ function PersonHinzufuegenFormular({
         {ROLLE_BESCHREIBUNG[rolle]}
         {jeStandort && sites.length === 1 ? ` Gilt für „${sites[0].name}".` : ''}
       </p>
+      {ohneStandort && (
+        <p className="vp-feld-fehler" role="note" style={{ margin: 0 }}>{OHNE_STANDORT_SATZ}</p>
+      )}
       {jeStandort && sites.length > 1 && (
         <VpPicker id="person-hinzufuegen-standorte" label="Standorte" values={standorte}
           options={sites.map((s) => ({ value: s.id, label: s.name }))}
@@ -1334,7 +1319,7 @@ function PersonHinzufuegenFormular({
       <div style={{ display: 'flex', gap: 'var(--vp-space-2)' }}>
         <Button variant="ghost" size="sm" onClick={onAbbrechen} disabled={busy}>Abbrechen</Button>
         <Button variant="primary" size="sm" onClick={() => void submit()}
-          disabled={busy || !email.trim() || !effektiverAnmeldename || (jeStandort && sites.length > 1 && standorte.length === 0)}>
+          disabled={busy || ohneStandort || !email.trim() || !effektiverAnmeldename || (jeStandort && sites.length > 1 && standorte.length === 0)}>
           {busy ? 'Wird angelegt…' : 'Person anlegen'}
         </Button>
       </div>
@@ -1512,7 +1497,7 @@ function VertragsendeDialog({
     >
       <p className="vp-note" style={{ marginTop: 0 }}>
         {beenden
-          ? 'Ab dem Beenden kann der Kunde seine Daten nur noch lesen; gelöscht werden sie frühestens nach der Frist.'
+          ? VERTRAG_BEENDEN_SATZ
           : 'Der Kunde kehrt in den aktiven Zustand zurück - derselbe Kundenbereich, kein neuer.'}
       </p>
       <Input label="Auftrag" value={auftrag} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAuftrag(e.target.value)} />

@@ -4,8 +4,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { ApiError } from '../../api';
 import { adminApi, type BoxLoesenAnlass, type BoxLoesenBefund } from '../../admin/adminApi';
-import { ausbaubar, ausbauenFolgen, nichtAusbaubarFolgen } from '../../boxAusbauen';
-import { fmtRelative } from '../../format';
+import { ausbaubar, ausbauenFolgen, befundSatz, nichtAusbaubarFolgen } from '../../boxAusbauen';
 
 /**
  * „Vom Kunden lösen" (L1, Vertrag Abschnitt 3.5, B1-B4 = A): EIN Dialog für alle Einstiege -
@@ -25,23 +24,6 @@ const ANLASS_OPTIONEN: VpOption[] = [
   { value: 'anderer_anlass', label: 'Anderer Anlass …' },
 ];
 
-const GRUND_SATZ: Record<string, (f: BoxLoesenBefund['fakten'], jetzt: Date) => string> = {
-  verbund: () => 'ist nicht mehr verbunden',
-  herzschlag: (f, jetzt) => `Herzschlag ${fmtRelative(f.herzschlagAm, jetzt)}`,
-  messwerte: (f, jetzt) => `Messwerte seit ${fmtRelative(f.messwertAm, jetzt)}`,
-  meldungen: (f, jetzt) => `Software-Meldung ${fmtRelative(f.meldungAm, jetzt)}`,
-  zustaendigkeit: () => 'liest noch eine Datenquelle',
-  angemeldet: () => 'hat ihren Schlüssel schon abgeholt',
-};
-
-function befundSatz(befund: BoxLoesenBefund, jetzt: Date): string {
-  if (befund.loesbar) {
-    const schluessel = befund.fakten.anmeldung.schluesselAbgeholtAm;
-    return `Hat sich nie gemeldet · Herzschlag nie · Messwerte keine · Anmeldung ${schluessel ? 'abgeholt, wird entzogen' : 'nie'}.`;
-  }
-  const teile = befund.gruende.map((g) => GRUND_SATZ[g]?.(befund.fakten, jetzt) ?? g);
-  return `Hat Daten gespeichert · ${teile.join(' · ')}.`;
-}
 
 export function BoxLoesenDialog({ open, boxRef, jetzt, onClose, onGeloescht, onAusgebaut }: {
   open: boolean;

@@ -165,8 +165,14 @@ public class FernwartungService {
     }
 
     public List<ProtokollEintrag> protokoll(String edgeRef, UUID technikerId, int limit) {
-        UUID boxId = edgeRef == null ? null : boxOder404(edgeRef).id();
-        return repo.protokoll(boxId, technikerId, begrenze(limit));
+        if (edgeRef == null) {
+            return repo.protokoll(null, technikerId, begrenze(limit));
+        }
+        // Eine Box ohne Tunnel-Schlüssel hat kein Protokoll - eine leere Liste, kein 404: die
+        // Geräteakte fragt jede Box alle 10 s danach (Admin-Durchgang F4: Konsolenfehler-Dauerfeuer).
+        return repo.box(edgeRef)
+                .map(box -> repo.protokoll(box.id(), technikerId, begrenze(limit)))
+                .orElse(List.of());
     }
 
     // ── Boxen ─────────────────────────────────────────────────────────────

@@ -106,6 +106,9 @@ class SiteScopeArchitekturTest {
                     "web/SiteController.java", "geltungsbereich.requireSite(siteId);"),
             new Erlaubt("repo/SeriesRepository.java", "telemetry_rollup_1d", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/SiteController.java", "geltungsbereich.requireSite(siteId);"),
+            // S5 „fehlt eine Einheit?": die PV-Spitze der Anlage; der Einstieg prüft sie vorher.
+            new Erlaubt("repo/EinheitGeraetRepository.java", "telemetry_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
+                    "web/MastrController.java", "geltungsbereich.requireSite(siteId);"),
             // Verlauf einer Komponente und Eigene Auswertung.
             new Erlaubt("repo/EntityHistoryRepository.java", "telemetry", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/EntityController.java", "geltungsbereich.requireSite"),

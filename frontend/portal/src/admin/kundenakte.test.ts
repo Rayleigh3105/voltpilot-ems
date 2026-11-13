@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anlagenBoxenZeilen, kundenZahlenText } from './kundenakte';
+import { anlagenBoxenZeilen, kundenZahlenText, unterstuetzungBisText } from './kundenakte';
 import type { Site } from '../api';
 import type { AdminFleetSite } from './fleetApi';
 
@@ -36,5 +36,18 @@ describe('anlagenBoxenZeilen (B4 = A: je Box, nicht nur eine Summe)', () => {
     const [zeile] = anlagenBoxenZeilen(sites, []);
     expect(zeile.unterzeile).toBe('Stand unbekannt');
     expect(zeile.boxen).toEqual([]);
+  });
+});
+
+describe('unterstuetzungBisText (Admin-Durchgang F13)', () => {
+  it('nennt den letzten Tag, wenn die Unterstützung um Mitternacht endet - wie der Kunde ihn bestätigt hat', () => {
+    // Bestätigt „bis einschließlich 13.12.2026"; der Server liefert das ausschließliche Ende.
+    expect(unterstuetzungBisText('2026-12-13T23:00:00Z')).toBe('13.12.2026');
+    // Sommerzeit: Mitternacht Berlin ist 22:00 UTC.
+    expect(unterstuetzungBisText('2027-07-01T22:00:00Z')).toBe('01.07.2027');
+  });
+
+  it('nennt Tag und Uhrzeit, wenn sie mitten am Tag endet (Notfall, 24 Stunden)', () => {
+    expect(unterstuetzungBisText('2026-11-14T13:20:00Z')).toBe('14.11.2026, 14:20');
   });
 });

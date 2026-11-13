@@ -228,6 +228,54 @@ describe('uebersichtKacheln', () => {
     expect(plan.zahl).toBe(1);
     expect(plan.kontext).toContain('5 Min.');
   });
+
+  it('Admin-Durchgang F1: eine Anlage ohne Speicher und ohne Lauf fehlt kein Plan - der Optimierer plant sie nie', () => {
+    // Wie in der Demo: 4 Speicher-Anlagen frisch geplant, 5 reine Mess-Anlagen ohne Lauf -
+    // die Kachel stand auf „5 ohne frischen Plan".
+    const k = uebersichtKacheln({
+      sites: [
+        site({ hasStorage: true, lastPlanGeneratedAt: ago(5 * 60_000) }),
+        site({ siteId: 's2', hasStorage: false, lastPlanGeneratedAt: null }),
+        site({ siteId: 's3', hasStorage: false, lastPlanGeneratedAt: null }),
+      ],
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
+    }, NOW);
+    const plan = k.find((x) => x.id === 'plan')!;
+    expect(plan.zahl).toBe(0);
+    expect(plan.wort).toBe('Alle Pläne frisch ✓');
+  });
+
+  it('Admin-Durchgang F1: eine Speicher-Anlage ohne Lauf bleibt eine Warnung', () => {
+    const k = uebersichtKacheln({
+      sites: [site({ hasStorage: true, lastPlanGeneratedAt: null })],
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
+    }, NOW);
+    expect(k.find((x) => x.id === 'plan')!.zahl).toBe(1);
+  });
+
+  it('Admin-Durchgang F18: meldet keine Box einen bewertbaren Stand, behauptet die Software-Kachel nicht „Alle aktuell"', () => {
+    // Wie in der Demo: kpi.known 0, unknown 6 - die Software-Seite sagt „keinen bewertbaren Stand".
+    const k = uebersichtKacheln({
+      sites: [], releases: [], edgeLines: [],
+      edgeKpi: { known: 0, upToDate: 0, unknown: 6, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
+    }, NOW);
+    const software = k.find((x) => x.id === 'software')!;
+    expect(software.zahl).toBe(6);
+    expect(software.ton).toBe('off');
+    expect(software.wort).toBe('ohne bewertbaren Stand');
+    expect(software.wort).not.toContain('aktuell');
+  });
+
+  it('Admin-Durchgang F18: Boxen ohne Stand neben aktuellen nennt der Kontext', () => {
+    const k = uebersichtKacheln({
+      sites: [], releases: [],
+      edgeLines: [{ boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 5, devices: 3, known: 3, upToDate: 3 }],
+      edgeKpi: { known: 3, upToDate: 3, unknown: 2, inRollout: 0, failed: 0, newestRelease: 'edge-2026.10.7' }, edgeRollouts: [],
+    }, NOW);
+    const software = k.find((x) => x.id === 'software')!;
+    expect(software.wort).toBe('Alle aktuell ✓');
+    expect(software.kontext).toContain('2 ohne Stand');
+  });
 });
 
 describe('uebersichtBrauchtDich', () => {
@@ -499,5 +547,23 @@ describe('uebersichtAuffaellig', () => {
     expect(zeilen).toHaveLength(2);
     expect(zeilen.some((z) => z.text.includes('Einspeisegrenze'))).toBe(true);
     expect(zeilen.some((z) => z.text.includes('Speicher knapp'))).toBe(true);
+  });
+
+  it('Admin-Durchgang F2: jede Zeile führt dorthin, wo der Hinweis behoben wird, und trägt die Begründung', () => {
+    const tarif = { code: 'tarif-fehlt', label: 'Stromtarif fehlt', detail: 'Die Anlage rechnet mit Standard-Komponenten.' };
+    const zeilen = uebersichtAuffaellig(
+      [
+        site({ pflege: [tarif] }),
+        site({ siteId: 's2', tenantId: 't-ohne-box', boxes: [], pflege: [tarif] }),
+      ],
+      [edgeRow({ externalRef: 'VP-ABGELEHNT', stand: 'aktuell', fakten: { angefragt: { release: 'x', releaseSeq: 2, am: null, von: null }, angenommen: { stand: 'abgelehnt', am: null, grund: null }, bestaetigt: { stand: 'offen', am: null, schritt: null, grund: null } } })],
+      NOW,
+    );
+    expect(zeilen.map((z) => z.ziel)).toEqual([
+      '#/plattform/geraete/VP-BOX-0001/anlage',
+      '#/plattform/benutzer/t-ohne-box',
+      '#/plattform/geraete/VP-ABGELEHNT/software',
+    ]);
+    expect(zeilen[0].detail).toBe('Die Anlage rechnet mit Standard-Komponenten.');
   });
 });
