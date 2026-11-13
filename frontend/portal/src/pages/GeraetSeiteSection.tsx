@@ -136,7 +136,7 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
 import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
-import { AnlegenFlow } from '../components/AnlegenFlow';
+import { AnlegenFlowLazy as AnlegenFlow } from '../components/AnlegenFlowLazy';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UmbenennenDialog, type RenameTarget } from '../components/UmbenennenDialog';
 import { NO_DATA } from '../nodata';
@@ -170,13 +170,18 @@ import '../components/AnlagenModell.css';
 // Geräteseite ankommt (im Browser gefunden).
 import './Befehle.css';
 import './GeraetSeite.css';
+// Die Assistenten-Stile (`vp-assist-*`) brauchen auch Flächen dieser Seite selbst; bis zum Nachladen des
+// Geräte-Assistenten (`AnlegenFlowLazy`) kamen sie nur nebenbei mit ihm. Wächter: `src/seitenBuendel.test.ts`.
+import '../components/KomponenteAssistent.css';
+// Ebenso die Stile der Datenquellen-Dialoge (`vp-dqa-*`), seit „Zuständige Box wechseln“ nachgeladen wird.
+import '../components/DatenquelleAnlegen.css';
 import { AUFBAU_REITER } from '../ebenenNav';
 import { anlagensteuerungGeraetId, anlagensteuerungIdOf, boxRefOf } from '../geraetAdresse';
 import { aufbauBaum } from '../aufbauBaum';
 import { ablehnungenAus, zentraleListe } from '../zentraleListe';
 import { anbindungen as anbindungenVon, anbindungKurz, geraetImAufbau, kopfZustand } from '../geraetAnbindung';
 import { AnbindungAbschnitt, AnbindungVerlauf } from '../components/GeraetAnbindung';
-import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
+import { DatenquelleWechselDialogLazy as DatenquelleWechselDialog } from '../components/DatenquelleWechselDialogLazy';
 import { useAnlagensteuerung, useAnlagensteuerungWerte } from '../useAnlagensteuerung';
 import { einheitAdresseOf, gatewayKennzeichenOf } from '../geraetAdresse';
 import { EinheitSeiteSection } from './EinheitSeiteSection';

@@ -56,14 +56,14 @@ import {
 import { useCockpitLayout } from '../useCockpitLayout';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsPhone } from '../useIsPhone';
-import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
+import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './AnlageAnlegenDrawerLazy';
 import { AnlagenTabelle } from './AnlagenTabelle';
 import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
 import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { FunktionenKarte } from './FunktionenKarte';
-import { SteuernAssistent } from './SteuernAssistent';
+import { SteuernAssistentLazy as SteuernAssistent } from './SteuernAssistentLazy';
 import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
 import { TieferEinsteigen } from './TieferEinsteigen';
 import { useRollen } from '../rollen';

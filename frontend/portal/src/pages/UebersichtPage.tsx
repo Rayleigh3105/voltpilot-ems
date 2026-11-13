@@ -7,7 +7,7 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { type Betriebsart, type Device, type Site } from '../api';
 import { isFleetShell } from '../betriebsart';
 import { anlageRoute, type Route } from '../nav';
-import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
+import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
 import { useMessenEinrichtenEintrag } from '../components/MessenEinrichtenEintrag';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
 import { AnlageSeite } from './AnlagenPage';

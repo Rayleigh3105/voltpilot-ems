@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { CHART_CHUNK, SUB_CHUNK } from './pageChunks';
 
 /**
@@ -14,14 +14,32 @@ import { CHART_CHUNK, SUB_CHUNK } from './pageChunks';
  *   beim Öffnen, wie bisher.
  */
 export function useVerlaufVorladen(aktiv: boolean): void {
+  useImLeerlaufLaden(() => {
+    for (const holen of [SUB_CHUNK.messwerte, SUB_CHUNK.erloese, CHART_CHUNK.energie, CHART_CHUNK.erloese]) {
+      holen().catch(() => undefined);
+    }
+  }, aktiv);
+}
+
+/**
+ * Der Leerlauf-Lader hinter {@link useVerlaufVorladen}, für jedes nachgeladene Stück, das ein Klick sofort finden soll
+ * (etwa der Geräte-Assistent im Aufbau, `AnlegenFlowLazy.tsx`). Dieselben Regeln: erst im Leerlauf, nie bei
+ * Datensparsamkeit oder `2g`, ein Fehler bleibt still. `laden` wird über eine Ref gehalten - ein neuer Rückruf je
+ * Render startet nichts neu.
+ */
+export function useImLeerlaufLaden(laden: () => void, aktiv: boolean): void {
+  const ladenRef = useRef(laden);
+  ladenRef.current = laden;
   useEffect(() => {
     if (!aktiv || typeof window === 'undefined') return;
     const netz = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
       .connection;
     if (netz?.saveData || netz?.effectiveType === 'slow-2g' || netz?.effectiveType === '2g') return;
     const lade = () => {
-      for (const holen of [SUB_CHUNK.messwerte, SUB_CHUNK.erloese, CHART_CHUNK.energie, CHART_CHUNK.erloese]) {
-        holen().catch(() => undefined);
+      try {
+        ladenRef.current();
+      } catch {
+        /* still: das Stück lädt dann beim Öffnen */
       }
     };
     const w = window as Window & {

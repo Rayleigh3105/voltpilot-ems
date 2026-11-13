@@ -1,6 +1,7 @@
-import { readFileSync, statSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { PORTAL_ROOT, statischErreichbar } from './test/statischErreichbar';
 
 /**
  * Der schnelle Zwilling von `test/bundle-smoke.sh` für die Stücke, die der Einstieg NICHT tragen darf
@@ -15,49 +16,8 @@ import { describe, expect, it } from 'vitest';
  * gelöscht.
  */
 
-const root = resolve(__dirname, '..');
-
-function aufloesen(von: string, spez: string): string | null {
-  if (!spez.startsWith('.')) return null; // Pakete verfolgen wir nicht
-  const basis = resolve(dirname(von), spez);
-  for (const k of ['', '.ts', '.tsx', '/index.ts', '/index.tsx', '.js', '.jsx']) {
-    try {
-      if (statSync(basis + k).isFile()) return basis + k;
-    } catch {
-      /* weiter */
-    }
-  }
-  return null;
-}
-
-/** Alle Module, die vom Einstieg aus über Wert-Imports statisch erreichbar sind - mit einem Import-Weg je Modul. */
-function erreichbar(einstieg: string): Map<string, string> {
-  const weg = new Map<string, string>();
-  const offen: Array<[string, string]> = [[resolve(root, einstieg), '']];
-  while (offen.length) {
-    const [datei, von] = offen.pop()!;
-    if (weg.has(datei)) continue;
-    weg.set(datei, von);
-    let s: string;
-    try {
-      s = readFileSync(datei, 'utf8');
-    } catch {
-      continue;
-    }
-    s = s
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/(?:^|\n)\s*(?:import|export)\s+type\s[^;]*?from\s*['"][^'"]+['"]\s*;?/g, '\n');
-    for (const m of s.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;'"]*?from\s*['"]([^'"]+)['"]/g)) {
-      const p = aufloesen(datei, m[1]);
-      if (p) offen.push([p, datei]);
-    }
-    for (const m of s.matchAll(/(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g)) {
-      const p = aufloesen(datei, m[1]);
-      if (p) offen.push([p, datei]);
-    }
-  }
-  return weg;
-}
+const root = PORTAL_ROOT;
+const erreichbar = statischErreichbar;
 
 /** Stück → warum es nicht in den Einstieg gehört. */
 const NICHT_IM_EINSTIEG: Record<string, string> = {

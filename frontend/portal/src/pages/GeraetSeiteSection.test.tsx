@@ -1,6 +1,6 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { sichtbareListe } from '../test/rollenFixtures';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { GeraetSeiteSection } from './GeraetSeiteSection';
 import * as auth from '../auth';
@@ -29,6 +29,12 @@ import {
 import { anbindungApi } from '../geraetAnbindung';
 import { gr4Einstellungen, gr4Z5b, k5Kanaele } from '../test/geraetHerkunftFixtures';
 import { ENTITY_GORE, gore, goreNv, goreWerte } from '../test/anlagensteuerungFixtures';
+
+// Die nachgeladenen Stücke der Seite (`…Lazy`-Hüllen) einmal vorab übersetzen: die Fälle prüfen das Verhalten,
+// nicht die erste Übersetzung eines Moduls durch Vitest (auf einer ausgelasteten Maschine länger als `findBy` wartet).
+beforeAll(async () => {
+  await Promise.all([import('../components/AnlegenFlow'), import('../components/DatenquelleWechselDialog')]);
+});
 
 const site: Site = {
   id: 's-1',

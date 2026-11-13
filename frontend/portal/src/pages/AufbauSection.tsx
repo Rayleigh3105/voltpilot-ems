@@ -29,7 +29,7 @@ import {
   type ComponentHealth,
   type PlantComponent,
 } from '../komponenten';
-import { showTechnicalLayer, type AdoptableSource } from '../rollen';
+import { showTechnicalLayer, useRollen, type AdoptableSource } from '../rollen';
 import { fuehrendeBoxOf, boxRefOf } from '../geraetSeite';
 import { ablehnungenAus, ablehnungSatz, BOX_LIEST_NICHT, zentraleListe, zentraleSatz, type GeraeteKarte } from '../zentraleListe';
 import {
@@ -97,7 +97,8 @@ import {
   type DrawerState,
 } from '../components/TechnischeKarten';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
-import { AnlegenFlow } from '../components/AnlegenFlow';
+import { AnlegenFlowLazy as AnlegenFlow, ladeAnlegenFlow } from '../components/AnlegenFlowLazy';
+import { useImLeerlaufLaden } from '../verlaufVorladen';
 import { GeraetesucheDialog, type GeraetesucheBehalten, type GeraetesucheUebernahme } from '../components/GeraetesucheDialog';
 import { HeizstabAnlegen } from '../components/HeizstabAnlegen';
 import { geraetesucheBezug } from '../geraetesucheHerkunft';
@@ -116,6 +117,9 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useAnlagensteuerung } from '../useAnlagensteuerung';
 import { LIST_POLL_MS } from '../pollCadence';
 import '../components/Aufbau.css';
+// Die Assistenten-Stile (`vp-assist-*`) brauchen auch Flächen dieser Seite selbst; bis zum Nachladen des
+// Geräte-Assistenten (`AnlegenFlowLazy`) kamen sie nur nebenbei mit ihm. Wächter: `src/seitenBuendel.test.ts`.
+import '../components/KomponenteAssistent.css';
 
 /** UEMS EZ-15: der Anlege-Schritt „Steuerung verbinden“ - nachgeladen, erst wenn ihn jemand im Katalog wählt. */
 const AnlagensteuerungAssistent = lazy(() =>
@@ -193,6 +197,10 @@ export function AufbauSection({
   // Aufgaben-Flächen
   const [kurzblickId, setKurzblickId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Der Geräte-Assistent kommt nachgeladen (`AnlegenFlowLazy`); wer Geräte einrichten darf, hat ihn nach dem ersten
+  // Bild schon im Leerlauf geholt - der Klick auf „Hinzufügen“ wartet dann auf kein Netz.
+  const rollenAufbau = useRollen();
+  useImLeerlaufLaden(() => void ladeAnlegenFlow().catch(() => undefined), rollenAufbau.darf('geraet.einrichten', rollenAufbau.standort));
   const [addBox, setAddBox] = useState<Device | null>(null);
   // GE-5: das Kennzeichen des Gateways, an dem das Gerät hinzukommt (`?neu=geraet&an=DQ-3`); null = kein Weg vorgegeben.
   const [addAn, setAddAn] = useState<string | null>(null);

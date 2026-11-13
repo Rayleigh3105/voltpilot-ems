@@ -32,7 +32,7 @@ import { flotteMitBestand } from '../steuerungZeitraum';
 import { portfolioSteuerungMonat } from '../portfolioSeite';
 import { KundenUebersicht } from './portfolio/KundenUebersicht';
 import { useFreshnessPoll } from '../useFreshnessPoll';
-import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
+import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './AnlageAnlegenDrawerLazy';
 import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
 import { RowMenu, type RowMenuItem } from './RowMenu';
 import { ErrorState, Skeleton } from './States';

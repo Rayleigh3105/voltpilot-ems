@@ -15,7 +15,7 @@ import { aufbauDerAnlage } from '../boxGeraete';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
 import { AnbindungAbschnitt, AnbindungVerlauf } from '../components/GeraetAnbindung';
-import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
+import { DatenquelleWechselDialogLazy as DatenquelleWechselDialog } from '../components/DatenquelleWechselDialogLazy';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import { GeraetRahmen, type BausteinInhalt } from '../components/GeraetRahmen';
 import { Recht } from '../components/Recht';
@@ -28,6 +28,9 @@ import { LIVE_POLL_MS } from '../pollCadence';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import './GeraetSeite.css';
 import './BoxSeite.css';
+// Die Stile der Datenquellen-Dialoge (`vp-dqa-*`) kamen bis zum Nachladen von „Zuständige Box wechseln“
+// (`DatenquelleWechselDialogLazy`) nur nebenbei mit ihm. Wächter: `src/seitenBuendel.test.ts`.
+import '../components/DatenquelleAnlegen.css';
 
 /**
  * Die GATEWAY-SEITE (Konzept „Ein Gerät, ein Eintrag", GE-5): ein Weg mit mehreren Geräten ist ein Kasten und hat

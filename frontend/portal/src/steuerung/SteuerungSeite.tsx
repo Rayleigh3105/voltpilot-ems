@@ -23,7 +23,7 @@ import { liste } from './liste';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, type Device, type Site, type SzeneKey } from '../api';
 import { Recht } from '../components/Recht';
-import { SteuernAssistent } from '../components/SteuernAssistent';
+import { SteuernAssistentLazy as SteuernAssistent } from '../components/SteuernAssistentLazy';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';
 import { STEUERN_EINSTIEG_MESSEN } from './funktion';

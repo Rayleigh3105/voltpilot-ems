@@ -1,5 +1,5 @@
 import { sichtbareListe } from '../test/rollenFixtures';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BoxSeiteSection } from './BoxSeiteSection';
 import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
@@ -20,6 +20,12 @@ import { consumersApi } from '../consumers/consumersApi';
 import { gatewayForm, goreForm } from '../test/boxGeraeteFixtures';
 import { gsAktivitaet, gsVerlauf } from '../test/geraetesucheFixtures';
 import { aufbauHash } from '../nav';
+
+// Die nachgeladenen Stücke der Seite (`…Lazy`-Hüllen) einmal vorab übersetzen: die Fälle prüfen das Verhalten,
+// nicht die erste Übersetzung eines Moduls durch Vitest (auf einer ausgelasteten Maschine länger als `findBy` wartet).
+beforeAll(async () => {
+  await Promise.all([import('../components/DatenquelleWechselDialog')]);
+});
 
 const site: Site = {
   id: 's-1',

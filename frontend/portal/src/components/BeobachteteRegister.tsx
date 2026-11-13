@@ -1,5 +1,5 @@
 import { Recht } from './Recht';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -36,13 +36,21 @@ import { ANDERES, MESSWERT_ARTEN, MESSWERT_FRAGE, definitionAusArt, einheitFehle
 import { NO_DATA } from '../nodata';
 import type { MiniPoint } from '../miniChart';
 import { MesswertHerkunftKarte, nachlieferungMarker, rohwerteHinweis } from './MesswertHerkunftKarte';
-import { useEChart } from '../useEChart';
 import { ConfirmDialog } from './ConfirmDialog';
+import { LazyBoundary } from './Lazy';
 import { MiniLineSpark } from './MiniChart';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import { VpTimePicker } from './VpTimePicker';
 import './Messwerte.css';
+
+/** Das Diagramm kommt mit dem Dialog, nicht mit der Geräteseite (eigenes Stück, `MesswertVerlaufChart.tsx`). */
+const HistoryChart = lazy(() => import('./MesswertVerlaufChart').then((m) => ({ default: m.HistoryChart })));
+
+/** Hält den Platz des Diagramms, bis sein Stück da ist - kein Springen der Hinweise darunter. */
+function HistoryChartPlatz() {
+  return <div className="vp-measure-chart-wrap"><div className="vp-measure-chart" aria-hidden="true" /></div>;
+}
 
 const ranges: Array<[MeasurementRange, string]> = [
   ['24h', '24 h'], ['7d', '7 Tage'], ['30d', '30 Tage'], ['90d', '90 Tage'],
@@ -104,63 +112,6 @@ interface Umschaltung {
   enabled: boolean;
   cadence: number;
   minCadence: number | null;
-}
-
-function HistoryChart({ history, onWaehlen }: { history: MeasurementHistory; onWaehlen: (index: number) => void }) {
-  const ref = useEChart((chart, width) => {
-    const numeric = history.data.some((d) => d.value != null);
-    const markerLines = history.markers.filter((m) => !m.until).map((m) => ({
-      xAxis: m.time,
-      label: { formatter: width < 620 ? '' : m.label, color: '#52606d' },
-      lineStyle: { color: '#8a94a3', type: 'dashed' as const },
-    }));
-    const markerBands = history.markers.filter((m) => m.until).map((m) => ([
-      { xAxis: m.time, name: nachlieferungMarker(history, m) },
-      { xAxis: m.until },
-    ]));
-    const gaps = history.data.filter((d) => d.gap).map((d) => ({
-      coord: [d.time, d.value], name: 'Datenlücke', value: 'Lücke',
-      itemStyle: { color: '#c25b26' },
-    }));
-    chart.setOption({
-      animation: false,
-      aria: { enabled: true, description: `Verlauf ${history.meta.label}` },
-      grid: { left: 48, right: 18, top: 28, bottom: 52, containLabel: true },
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'time', axisLabel: { hideOverlap: true } },
-      yAxis: { type: numeric ? 'value' : 'category', name: history.meta.unit ?? '' },
-      series: [{
-        name: history.meta.label,
-        type: numeric ? 'line' : 'scatter',
-        showSymbol: history.data.length < 60,
-        connectNulls: false,
-        data: history.data.map((d) => [d.time, d.value ?? d.text]),
-        lineStyle: { width: 2, color: '#1665d8' },
-        itemStyle: { color: '#1665d8' },
-        markLine: { silent: true, symbol: ['none', 'none'], data: markerLines },
-        markArea: {
-          silent: true,
-          label: { show: width >= 620, color: '#6b3a1e' },
-          itemStyle: { color: 'rgba(194, 91, 38, .12)' },
-          data: markerBands,
-        },
-        markPoint: { data: gaps },
-      }],
-    }, true);
-    chart.off('click');
-    chart.on('click', (p: { dataIndex?: number }) => {
-      if (typeof p.dataIndex === 'number') onWaehlen(p.dataIndex);
-    });
-  }, [history, onWaehlen]);
-  const waehleAusBild = (e: React.MouseEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const x = Math.min(Math.max(0, e.clientX - r.left - 48), Math.max(1, r.width - 66));
-    const index = Math.min(history.data.length - 1, Math.floor((x / Math.max(1, r.width - 66)) * history.data.length));
-    if (index >= 0) onWaehlen(index);
-  };
-  return <div className="vp-measure-chart-wrap" onClick={waehleAusBild}>
-    <div ref={ref} className="vp-measure-chart" role="img" aria-label={`Verlauf ${history.meta.label}`} />
-  </div>;
 }
 
 /** Eine Zeile des Katalog-Einschubs (der technische Blick auf einen Punkt). */
@@ -709,7 +660,7 @@ export function BeobachteteRegister({
         <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} aria-pressed={range === key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
         {range === 'free' && <div className="vp-measure-free"><div><VpDatePicker label="Von · Datum" value={freeFrom.split('T')[0]} onChange={(value) => setFreePart('from', 'date', value)} /><VpTimePicker label="Von · Uhrzeit" value={freeFrom.split('T')[1] ?? ''} onChange={(value) => setFreePart('from', 'time', value)} /></div><div><VpDatePicker label="Bis · Datum" value={freeTo.split('T')[0]} onChange={(value) => setFreePart('to', 'date', value)} /><VpTimePicker label="Bis · Uhrzeit" value={freeTo.split('T')[1] ?? ''} onChange={(value) => setFreePart('to', 'time', value)} /></div></div>}
         {history && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" aria-pressed={representation === 'decoded'} className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" aria-pressed={representation === 'raw'} className={representation === 'raw' ? 'is-active' : ''} disabled={!history.meta.rawAvailable} title={!history.meta.rawAvailable ? 'Rohwerte nicht mehr verfügbar (älter als 90 Tage)' : undefined} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
-        {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} onWaehlen={setHistoryIndex} /><p className="vp-measure-hint">{rohwerteHinweis(history) ?? history.meta.aggregationExplanation}</p><p className="vp-measure-hint">Tippen Sie auf einen Messwert, um seine Herkunft zu sehen.</p>{historyIndex !== null && <MesswertHerkunftKarte history={history} index={historyIndex} namen={{ geraete: geraeteNamen, boxen: boxNamen }} />}<ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {nachlieferungMarker(history, m)}</li>)}</ul></>}
+        {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><LazyBoundary fallback={<HistoryChartPlatz />}><HistoryChart history={history} onWaehlen={setHistoryIndex} /></LazyBoundary><p className="vp-measure-hint">{rohwerteHinweis(history) ?? history.meta.aggregationExplanation}</p><p className="vp-measure-hint">Tippen Sie auf einen Messwert, um seine Herkunft zu sehen.</p>{historyIndex !== null && <MesswertHerkunftKarte history={history} index={historyIndex} namen={{ geraete: geraeteNamen, boxen: boxNamen }} />}<ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {nachlieferungMarker(history, m)}</li>)}</ul></>}
       </Modal>
 
       <Modal open={customOpen} onClose={() => { setCustomOpen(false); setCustomError(null); }} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy || !gewaehlteArt || !!customEinheitFehler}>Jetzt aufzeichnen</Button></Recht></>}>

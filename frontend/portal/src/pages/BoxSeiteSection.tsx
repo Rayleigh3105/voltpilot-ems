@@ -39,7 +39,7 @@ import {
 import { GeraetBuehne } from '../components/GeraetBuehne';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { AddDeviceDrawer, unclaimConsequences } from '../components/DeviceDrawers';
-import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
+import { DatenquelleWechselDialogLazy as DatenquelleWechselDialog } from '../components/DatenquelleWechselDialogLazy';
 import { DatenquelleAnlegen } from '../components/DatenquelleAnlegen';
 import { Recht } from '../components/Recht';
 import {
