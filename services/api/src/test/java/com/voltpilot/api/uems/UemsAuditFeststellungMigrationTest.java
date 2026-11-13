@@ -56,7 +56,8 @@ class UemsAuditFeststellungMigrationTest {
             "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
             "20261005220000", // Konzept Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() (Zählerablesung).
             "20261007004500", // Nachweisen n1, PR 1: ersetzt energiemanagement_vokabular() als Vereinigung (Block teil).
-            "20261007150000"); // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
+            "20261007150000",
+            "20261112150000"); // #1843 Löschzug-Indexdeckung I: idx_energiemanagement_teil_vermerk_tenant auf dieser Tabelle. // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap19_ip16_test_pw";
     private static final List<String> TABELLEN = List.of("internes_audit", "internes_audit_eintrag", "feststellung",
             "feststellung_eintrag", "feststellung_wirksamkeit");
