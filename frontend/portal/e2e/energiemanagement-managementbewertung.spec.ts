@@ -30,8 +30,9 @@ const GRENZE =
 const VERANTWORTUNG =
   'Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.';
 const EINSICHT_LEER = 'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.';
+// Text-Runde Kunde: steht im Erklär-Blatt hinter dem i-Knopf, nicht mehr mit „Kalender-Abzug (.ics):“ am Fuß.
 const KALENDER_HINWEIS =
-  'Kalender-Abzug (.ics): Die Termine veralten in Ihrem Kalender, wenn sich eine Frist ändert; maßgeblich ist die Wiedervorlage im Portal.';
+  'Die Termine veralten in Ihrem Kalender, wenn sich eine Frist ändert; maßgeblich ist die Wiedervorlage im Portal.';
 
 async function oeffne(page: Page, query: string, breite: number, zeit: Date) {
   await page.clock.setFixedTime(zeit);
@@ -118,7 +119,7 @@ for (const breite of [375, 1440]) {
       // Konzept Wiedervorlage w1: Seitentitel wie der Reiter, ein Satz sagt, was das ist; Marken zählen Einträge.
       const w = page.getByTestId('wiedervorlage');
       await expect(w.getByRole('heading', { level: 1 })).toHaveText('Wiedervorlage');
-      await expect(w.getByTestId('wiedervorlage-kopf')).toHaveText('Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst. Stand 12.02.2029.');
+      await expect(w.getByTestId('wiedervorlage-kopf')).toHaveText('Alle Fristen Ihres Energiemanagements · Stand 12.02.2029.');
       await expect(w.getByTestId('wiedervorlage-marken').locator('.vp-k-marke')).toHaveText(['8 überfällig', '1 in den nächsten 30 Tagen']);
       const ueber = w.getByTestId('wiedervorlage-ueberfaellig').locator(':scope > li');
       await expect(ueber).toHaveCount(8);
@@ -132,12 +133,14 @@ for (const breite of [375, 1440]) {
       await expect(bald.first()).toContainText('M-2029-0001 · in 16 Tagen');
       await expect(bald.first()).toContainText('Jonas Wendlinger');
       await expect(w).not.toContainText(/seit \d+ Tagen/);
-      // Grenz- und Verantwortungs-Satz stehen einmal am Fuß, mit „Woher kommen diese Fristen?“.
+      // Grenz- und Verantwortungs-Satz stehen einmal am Fuß; Herkunft und Kalender-Vermerk hinter dem i-Knopf im Kopf.
       const fuss = w.getByTestId('wiedervorlage-fuss');
-      await expect(fuss).toContainText('Woher kommen diese Fristen?');
+      await expect(fuss).not.toContainText('Woher kommen diese Fristen?');
       await expect(fuss).toContainText(VERANTWORTUNG);
       await expect(fuss).toContainText(GRENZE);
-      await expect(fuss).toContainText(KALENDER_HINWEIS);
+      await w.getByRole('button', { name: 'Woher kommen diese Fristen?' }).click();
+      await expect(page.getByTestId('erklaer-blatt')).toContainText(KALENDER_HINWEIS);
+      await page.keyboard.press('Escape');
       await ohneQuerlauf(page, 'Wiedervorlage');
       await ablegen(page, `w1-wiedervorlage-${breite}`);
 

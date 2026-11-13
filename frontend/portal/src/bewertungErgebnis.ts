@@ -485,7 +485,7 @@ export const KRITERIEN_BEREITS_ENTSCHIEDEN =
   'Über die beantragten Kriterien hat inzwischen eine andere Person entschieden - hier steht der neue Stand.';
 
 export const KRITERIEN_EINLEITUNG =
-  'VoltPilot schlägt einen Bereich als wesentlich vor, wenn eines davon zutrifft. Entscheiden und begründen tut immer eine Person.';
+  'VoltPilot schlägt vor, wenn eines davon zutrifft. Entscheiden und begründen tut eine Person.';
 
 /** Die Kriterien als Sätze (§6.7); ohne Kürzel. */
 export function kriterienSaetze(f: Pick<BewertungKriterienFassung, 'werte' | 'gueltig_ab' | 'herkunft'>): { saetze: string[]; fussnote: string } {
@@ -605,7 +605,7 @@ export const FRUEHERE_BEWERTUNGEN = 'Frühere Bewertungen in den Nachweisen';
 /** Ohne ersetzte Stände führt der Kopf nur zu früheren Bewertungen (Berichte) - dann heißt er auch so. */
 export const FRUEHERE_BEWERTUNGEN_KURZ = 'Frühere Bewertungen';
 export const KEINE_BEWERTUNG_SATZ =
-  'Noch keine Bewertung festgestellt. Legen Sie eine an - der Entwurf entsteht aus Umfang, Bereichen, Einstufungen und Messwerten; freigegeben gilt er als Stand Nr.\u00a01.';
+  'Noch keine Bewertung festgestellt.';
 
 /** Ein Zeitpunkt als Datumsblock in der Zone der Bewertung: „30.04.“ über „2029“. */
 const datumsblock = (zeit: string, zone: string) => {

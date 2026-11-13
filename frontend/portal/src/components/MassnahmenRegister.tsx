@@ -153,7 +153,6 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
     <header className="vp-wv-kopf vp-mn-kopf">
       <div className="vp-wv-kopf-text">
         <h1>{B.TITEL}</h1>
-        <p className="vp-wv-meta">{B.UNTERTITEL}</p>
       </div>
       {darfPlanen && (
         <>

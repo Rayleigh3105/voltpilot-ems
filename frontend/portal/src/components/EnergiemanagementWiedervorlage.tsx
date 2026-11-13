@@ -19,7 +19,6 @@ import {
   UEMS_VERZEICHNIS,
   UEMS_WIEDERVORLAGE,
   UEMS_WIEDERVORLAGE_SATZ,
-  UEMS_WOHER_FRISTEN,
   UEMS_ZULETZT_ERLEDIGT,
 } from '../glossar';
 import { energiemanagementRoute } from '../nav';
@@ -43,7 +42,6 @@ import {
   jahresplanSatz,
   KALENDER_ABZUG,
   KALENDER_ABZUG_FEHLER,
-  KALENDER_ABZUG_HINWEIS,
   kopfSatz,
   LADEFEHLER,
   LADEFEHLER_TITEL,
@@ -62,7 +60,7 @@ import {
   OHNE_ZUSTAENDIGE,
   standTag,
   UEBERFAELLIG_ORDNUNG,
-  WOHER_SATZ,
+  WOHER_ERKLAERUNG,
   ZULETZT_FEHLER,
   zuletztErledigt,
   type Arbeitsliste,
@@ -74,6 +72,7 @@ import {
 } from '../wiedervorlage';
 import { Bereichsmarke, FristDatum, Kennzeichentext } from './FristDatum';
 import { GrenzSatz } from './GrenzSatz';
+import { ErklaerKnopf } from './nachweisen/ErklaerKnopf';
 import { RowMenu } from './RowMenu';
 import './kacheln/Kacheln.css';
 import './Wiedervorlage.css';
@@ -176,7 +175,8 @@ export function EnergiemanagementWiedervorlage({
         <div className="vp-wv-kopf-text">
           <h1>{UEMS_WIEDERVORLAGE}</h1>
           <p className="vp-wv-meta" data-testid="wiedervorlage-kopf">
-            {w ? kopfSatz(standTag(w.stichtag)) : `${UEMS_WIEDERVORLAGE_SATZ}.`}
+            {w ? kopfSatz(standTag(w.stichtag)) : `${UEMS_WIEDERVORLAGE_SATZ}.`}{' '}
+            <ErklaerKnopf klein erklaerung={WOHER_ERKLAERUNG} testId="wiedervorlage-woher" />
           </p>
         </div>
         <button
@@ -228,12 +228,6 @@ export function EnergiemanagementWiedervorlage({
       )}
       <ZuletztErledigt zuletzt={zuletzt} springe={springe} />
       <footer className="vp-wv-saetze" data-testid="wiedervorlage-fuss">
-        <p>
-          <b>{UEMS_WOHER_FRISTEN}</b> {WOHER_SATZ}
-        </p>
-        <p>
-          {KALENDER_ABZUG}: {KALENDER_ABZUG_HINWEIS}
-        </p>
         <GrenzSatz verantwortung />
       </footer>
     </div>

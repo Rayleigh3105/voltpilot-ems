@@ -703,17 +703,6 @@ button.vp-vb-reihe-ziel::after {
   border-radius: 50%;
   background: var(--vp-navy-1, #1e3a5f);
 }
-.vp-vb-tipp {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin: 0;
-  font-size: 0.6875rem;
-  color: var(--vp-c-muted-fg, #475569);
-}
-.vp-vb-tipp svg {
-  flex: 0 0 auto;
-}
 .vp-vb-nurvorleser {
   position: absolute;
   width: 1px;

@@ -754,10 +754,13 @@ function Auswertung({
               />
             </>
           )}
-          <span className="vp-kzs-tipp">
-            <Icon name="hand" size={13} />
-            {telefon ? S.TIPP_HANDY : S.TIPP_RECHNER}
-          </span>
+          {/* Am Telefon ist Antippen selbstverständlich; am Rechner nennt der Hinweis die Pfeiltasten. */}
+          {!telefon && (
+            <span className="vp-kzs-tipp">
+              <Icon name="hand" size={13} />
+              {S.TIPP_RECHNER}
+            </span>
+          )}
         </>
       )}
     </section>

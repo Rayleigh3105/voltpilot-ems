@@ -96,7 +96,7 @@ describe('die Seite einer Kennzahl (§6.5)', () => {
     welt();
     render(<KennzahlenPage kennzahlId={SEITE_IDS.kz4} onOeffnen={vi.fn()} onListe={vi.fn()} />);
     const karte = await screen.findByTestId('kennzahl-auffaelligkeit');
-    expect(t(karte.textContent)).toContain('Auffälligkeit zu März 2029 · offen. VoltPilot hat den Monat vermerkt');
+    expect(t(karte.textContent)).toContain('Auffälligkeit zu März 2029 · offen. Der Monat liegt über der Bezugsbasis');
     fireEvent.click(within(karte).getByTestId('auffaelligkeit-beantworten'));
     expect(within(karte).getByTestId('vermerk-eroeffnen')).toBeTruthy();
   });

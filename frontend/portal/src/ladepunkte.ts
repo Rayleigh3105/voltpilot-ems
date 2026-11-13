@@ -1649,11 +1649,11 @@ export function failsafeSum(budget: ChargingBudget | null): string | null {
  * Adresse wird nie erfunden, sondern nur weitergereicht.
  */
 export const ANBINDEN_EINSTIEG =
-  'Ladesäulen verbinden sich selbst: Sie tragen in der Säule die Adresse Ihres VoltPilot-Geräts und eine Kennung ein - danach meldet sich die Säule von allein.';
+  'Ladesäulen verbinden sich selbst: Sie tragen in der Säule die Adresse Ihrer Box und eine Kennung ein.';
 
 /** Nur eine eingetragene Kennung wird zugelassen - die Zusage als Satz. */
 export const ANBINDEN_ALLOWLIST =
-  'VoltPilot nimmt ausschließlich Ladesäulen an, deren Kennung eingetragen ist. Eine unbekannte Verbindung wird abgewiesen und protokolliert.';
+  'VoltPilot nimmt nur Ladesäulen mit eingetragener Kennung an.';
 
 // ---------------------------------------------------------------------------
 // Der Aktivieren-Dialog (Anschlussgrenze)

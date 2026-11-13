@@ -218,7 +218,8 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bere
   });
 
   it('Kopf: was die Seite ist und der Stand', () => {
-    expect(kopfSatz('12.02.2029')).toBe('Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst. Stand 12.02.2029.');
+    // Text-Runde Kunde: „das am längsten Überfällige zuerst“ steht schon im Kopf des Abschnitts „Überfällig“.
+    expect(kopfSatz('12.02.2029')).toBe('Alle Fristen Ihres Energiemanagements · Stand 12.02.2029.');
   });
 
   it('jede Art des Vokabulars hat Wort, Schritt und Bereich', () => {

@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { infozeile, TIPP_HINWEIS, VERBRAUCH_VERLAUF_TITEL, verlaufListe, type VerlaufBild } from '../verbrauch';
+import { infozeile, VERBRAUCH_VERLAUF_TITEL, verlaufListe, type VerlaufBild } from '../verbrauch';
 
 /**
  * „Strom je Monat“ (Konzept Auswerten a1 §6.12, Form 3 „Verlauf mit Vorjahr“): zwölf Säulen ab null, der gewählte
@@ -16,7 +16,6 @@ export function VerbrauchVerlauf({
   antwort,
   rechts,
   gewaehlt,
-  tippHinweis,
 }: {
   bild: VerlaufBild;
   /** Der Antwortsatz der Fläche — die Bezeichnung der Grafik für Vorleser. */
@@ -25,7 +24,6 @@ export function VerbrauchVerlauf({
   rechts: string;
   /** Der Monat, der zuerst in der Infozeile steht (`YYYY-MM`); ohne: der jüngste. */
   gewaehlt?: string;
-  tippHinweis: boolean;
 }) {
   const start = () => {
     const i = gewaehlt ? bild.saeulen.findIndex((s) => s.monat === gewaehlt) : -1;
@@ -161,15 +159,6 @@ export function VerbrauchVerlauf({
           </span>
         )}
       </div>
-      {tippHinweis && (
-        <p className="vp-vb-tipp">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M18 11V6a2 2 0 0 0-4 0v1M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8" />
-            <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
-          </svg>
-          {TIPP_HINWEIS}
-        </p>
-      )}
       <ul className="vp-vb-nurvorleser">
         {verlaufListe(bild).map((z) => (
           <li key={z}>{z}</li>

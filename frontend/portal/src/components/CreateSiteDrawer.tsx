@@ -157,8 +157,7 @@ export function CreateSiteDrawer({
             onChange={(v) => setPlantKind(v as PlantKind)}
           />
           <p className="vp-note" style={{ margin: 0 }}>
-            {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird:
-            „gespart" beim Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
+            {VERAEUSSERUNGSFORM_FRAGE}
           </p>
         </div>
         {plantKind === 'direktvermarktung' && (

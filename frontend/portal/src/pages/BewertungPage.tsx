@@ -54,7 +54,6 @@ export function BewertungPage({ onOeffnen }: { onOeffnen: (id: string) => void }
   return <BewertungUebersicht onOeffnen={onOeffnen} />;
 }
 
-const UNTERZEILE = 'Welche Bereiche Ihren Energieverbrauch wesentlich bestimmen - einmal im Jahr festgestellt.';
 const LEER_SATZ = 'Noch keine Bereiche festgelegt. Legen Sie fest, wofür Ihr Betrieb Energie einsetzt - dann zeigt VoltPilot hier die Verteilung.';
 
 function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void }) {
@@ -117,8 +116,8 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
       <div className="vp-be" data-testid="bewertung" lang="de">
         <header className="vp-be-kopf">
           <div className="vp-be-kopf-text">
+            {/* Was die Bewertung ist, sagt der Aufklapper direkt darunter - keine zweite Erklärzeile im Kopf. */}
             <h1>{UEMS_ENERGETISCHE_BEWERTUNG}</h1>
-            <p className="vp-be-meta">{UNTERZEILE}</p>
           </div>
           {verwalten && (
             <div className="vp-be-aktionen">

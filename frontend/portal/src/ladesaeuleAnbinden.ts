@@ -56,7 +56,7 @@ const KENNUNG = /^[A-Za-z0-9._-]{1,64}$/;
 
 /** Der Hinweis unter dem Kennungs-Feld — er sagt, WORAUF es ankommt. */
 export const KENNUNG_HILFE =
-  'Dieselbe Kennung tragen Sie gleich in der Säule ein — beide Seiten müssen zeichengleich übereinstimmen. Erlaubt sind Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich.';
+  'Dieselbe Kennung tragen Sie gleich zeichengleich in der Säule ein.';
 
 /**
  * Prüft die Kennung, bevor irgendetwas gespeichert wird — und nennt bei einer
@@ -127,7 +127,7 @@ export const ENDPUNKT_WEG =
  * den niemand erklären kann.
  */
 export const ENDPUNKT_ZWEI_FORMEN =
-  'Manche Säulen wollen die vollständige Adresse, andere nur den Teil bis „/ocpp" und hängen ihre Kennung selbst an. Steht in Ihrem Säulen-Handbuch nichts dazu, beginnen Sie mit der vollständigen.';
+  'Manche Säulen wollen nur den Teil bis „/ocpp" und hängen ihre Kennung selbst an. Im Zweifel die vollständige Adresse.';
 
 /**
  * Baut den `ws://`-Endpunkt, den ein Mensch in die Säule tippt.
@@ -160,7 +160,7 @@ export function endpunkt(
     return {
       url: null,
       basis: null,
-      satz: `VoltPilot kennt die Adresse Ihrer Box im Heimnetz noch nicht. ${ENDPUNKT_WEG}`,
+      satz: `Die Adresse Ihrer Box im Heimnetz ist noch unbekannt. ${ENDPUNKT_WEG}`,
       grund: 'keine-adresse',
     };
   }
@@ -240,7 +240,7 @@ export function meldung(charging: SiteCharging | null, kennung: string, nowMs?: 
       wort: 'Wartet auf die Wallbox',
       satz: cp
         ? 'Die VoltPilot-Box kennt diese Kennung, die Wallbox hat darunter aber noch nie angerufen. Prüfen Sie Adresse und Kennung in der Wallbox — beide müssen Zeichen für Zeichen stimmen.'
-        : 'Sobald sich die Wallbox unter dieser Kennung meldet, erscheint sie hier — mit Modell und Steckern, die sie selbst mitbringt.',
+        : 'Sobald sich die Wallbox unter dieser Kennung meldet, erscheint sie hier.',
       ton: 'warten',
     };
   }
@@ -294,7 +294,7 @@ function verbundenSatz(cp: ChargePoint, nowMs?: number): string {
 export const NENNLEISTUNG_FRAGE = 'Nennleistung je Stecker';
 
 export const NENNLEISTUNG_HILFE =
-  'Steht auf dem Typenschild der Wallbox. Mit ihr plant VoltPilot „Günstig“ und Ladeziele - ohne sie bleiben beide ungeplant.';
+  'Steht auf dem Typenschild der Wallbox.';
 
 /** Die Vorgabe: die übliche Haushalts-Wallbox. */
 export const NENNLEISTUNG_VORGABE_KW = 11;
@@ -404,7 +404,7 @@ export const ANSCHLUSS_FRAGE = 'Wo hängt diese Säule?';
  * in den Code, nicht in einen Dialog.
  */
 export const ANSCHLUSS_HILFE =
-  'Davon hängt ab, ob VoltPilot die Ladeleistung dieser Säule aus dem Netzbezug Ihrer Anlage herausrechnet. Im Zweifel gilt der Normalfall: hinter dem Hausanschluss.';
+  'Im Zweifel: hinter dem Hausanschluss.';
 
 export interface AnschlussOption {
   value: ChargerConnection;
@@ -603,7 +603,7 @@ export const KEINE_EINGETRAGEN =
  */
 export function abschluss(gemeldet: boolean): string {
   return gemeldet
-    ? 'Fertig — die Säule ist eingetragen und hat sich gemeldet. Ihre Leistung teilt sie sich ab jetzt mit den anderen; Anschlussgrenze und Ausfall-Schutz gelten unverändert.'
+    ? 'Fertig — die Säule ist eingetragen und hat sich gemeldet. Anschlussgrenze und Ausfall-Schutz gelten unverändert.'
     : 'Die Kennung ist eingetragen. Sobald Ihre Box das nächste Mal verbunden ist, übernimmt sie sie — danach lässt sie die Säule herein.';
 }
 
@@ -623,7 +623,7 @@ export function abschluss(gemeldet: boolean): string {
  */
 export function cockpitHinweis(gemeldet: boolean): string | null {
   return gemeldet
-    ? 'Im Cockpit finden Sie Ihre Ladepunkte ab jetzt automatisch: die Kachel „Laden" sagt, ob ein Auto steckt und wie viel gerade fliesst, und der Energiefluss zeigt „Laden" als Abzweig vom Hausverbrauch. Beides lässt sich unter „Anpassen" ausblenden.'
+    ? 'Im Cockpit erscheinen Ihre Ladepunkte ab jetzt von selbst: als Kachel „Laden" und im Energiefluss. Ausblenden unter „Anpassen".'
     : null;
 }
 

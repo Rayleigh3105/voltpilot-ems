@@ -18,7 +18,7 @@ it('AP-20 IP-17: der Kundenadministrator sieht den Satz der API (RF-08) und den 
   const hinweis = screen.getByRole('status');
   expect(hinweis).toHaveTextContent('Vertrag beendet');
   expect(hinweis).toHaveTextContent(text);
-  expect(hinweis).toHaveTextContent('Gesamtabzug laden — alle Stände, Berichte, Nachweise und Messreihen Ihres Unternehmens, mit Prüfsumme je Datei.');
+  expect(hinweis).toHaveTextContent('Alle Stände, Berichte, Nachweise und Messreihen Ihres Unternehmens, mit Prüfsumme je Datei.');
   expect(screen.getByRole('button', { name: 'Gesamtabzug laden' })).toBeEnabled();
 });
 

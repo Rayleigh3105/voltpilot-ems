@@ -1096,8 +1096,7 @@ export function ladestandHerkunftNote(
 }
 
 export const HORIZON_HINT =
-  'Der Fahrplan reicht bis zum Tagesende – sobald die Börsenpreise für morgen ' +
-  'vorliegen (ab ca. 13 Uhr), plant VoltPilot darüber hinaus.';
+  'Der Fahrplan reicht bis Mitternacht – sobald die Börsenpreise für morgen da sind (ab etwa 13 Uhr), auch weiter.';
 
 /**
  * Sonnen-sichere Fassung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.5):

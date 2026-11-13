@@ -55,7 +55,6 @@ export const BEZUGSBASIS_FESTLEGEN = `${UEMS_BEZUGSBASIS} festlegen`;
 export const BEANTWORTEN = 'Beantworten';
 export const KACHEL_GEMESSEN = 'Gemessen';
 export const KACHEL_ERWARTET = 'Erwartet';
-export const TIPP_HANDY = 'Monat antippen oder mit dem Finger über die Säulen fahren';
 export const TIPP_RECHNER = 'Monat anklicken oder mit den Pfeiltasten wechseln';
 export const LEGENDE_MEHR = 'mehr als erwartet';
 export const LEGENDE_WENIGER = 'weniger als erwartet';
@@ -550,6 +549,9 @@ export function zielKarte(a: KennzahlAuswertung, ziel: Energieziel | null): Ziel
 
 // ------------------------------------------------------------------ Auffälligkeit
 
+/** Text-Runde Kunde (13.11.2026): Tatsache und Zuständigkeit, ohne „VoltPilot hat vermerkt“. */
+export const AUFFAELLIG_SATZ = 'Der Monat liegt über der Bezugsbasis. Ob das eine Abweichung ist, sagt eine Person.';
+
 /** Die offene Auffälligkeit des Urteilsmonats (sonst die jüngste offene): „Auffälligkeit zu März 2029 · offen.“ */
 export function offeneAuffaelligkeit(vermerke: readonly Auffaelligkeit[], monat: string | null): { titel: string; satz: string; id: string } | null {
   const offen = vermerke.filter((v) => v.zustand === 'offen').sort((a, b) => (a.periode < b.periode ? 1 : -1));
@@ -558,7 +560,7 @@ export function offeneAuffaelligkeit(vermerke: readonly Auffaelligkeit[], monat:
   return {
     id: v.id,
     titel: `Auffälligkeit zu ${monatLang(v.periode)}${TRENNER}offen.`,
-    satz: 'VoltPilot hat den Monat vermerkt, weil er über der Bezugsbasis liegt. Ob das eine Abweichung ist, sagt eine Person.',
+    satz: AUFFAELLIG_SATZ,
   };
 }
 

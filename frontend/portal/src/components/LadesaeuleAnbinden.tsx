@@ -266,7 +266,7 @@ export function LadesaeuleAnbinden({
           label="Name der Säule (optional)"
           value={name}
           placeholder="z. B. Hof Nord"
-          hint="Nur für Ihre Anzeige - er darf sich vom Kennungs-Feld unterscheiden."
+          hint="Nur für Ihre Anzeige."
           onChange={(e: ChangeEvent<HTMLInputElement>) => setzeName(e.target.value)}
         />
         <Input
@@ -442,14 +442,14 @@ export function LadesaeuleAnbinden({
             ))}
           </ul>
         )}
-        <p className="vp-anbinden-note">{ENTFERNEN_HINWEIS}</p>
       </div>
 
       <ConfirmDialog
         open={!!entfernenZiel}
         title="Ladesäule entfernen"
         intro={entfernenZiel ? entfernenFrage(entfernenZiel.name) : ''}
-        consequences={entfernenZiel ? entfernenFolgen(entfernenZiel.name) : []}
+        /* Wann die Rücknahme wirkt, gehört zur Entscheidung - im Dialog statt dauerhaft unter der Liste. */
+        consequences={entfernenZiel ? [...entfernenFolgen(entfernenZiel.name), ENTFERNEN_HINWEIS] : []}
         confirmLabel="Kennung entfernen"
         tone="danger"
         busy={entfernenBusy}

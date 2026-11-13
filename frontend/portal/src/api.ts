@@ -8713,7 +8713,7 @@ export async function downloadMeasurementExport(
 
 /** UEMS AP-20 IP-17 (§5.8): der Knopf und seine Erklärung — ein Wortlaut für den Hinweis „beendet“ und das Konto-Menü. */
 export const GESAMTABZUG_KNOPF = 'Gesamtabzug laden';
-export const GESAMTABZUG_ERKLAERUNG = 'Gesamtabzug laden — alle Stände, Berichte, Nachweise und Messreihen Ihres Unternehmens, mit Prüfsumme je Datei.';
+export const GESAMTABZUG_ERKLAERUNG = 'Alle Stände, Berichte, Nachweise und Messreihen Ihres Unternehmens, mit Prüfsumme je Datei.';
 
 /**
  * UEMS AP-20 IP-17: lädt den Gesamtabzug (`GET /api/v1/unternehmen/abzug`, nur der Kundenadministrator, auch im

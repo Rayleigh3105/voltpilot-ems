@@ -43,7 +43,6 @@ export const VERBRAUCH_GESPERRT = 'Der Verbrauch je Bereich ist für Ihr Konto n
 export const ZAEHLER_PLANEN = 'Zähler planen';
 export const ABLESUNG_EINTRAGEN = 'Ablesung eintragen';
 export const ZUORDNUNG_PRUEFEN = 'Zuordnung prüfen';
-export const TIPP_HINWEIS = 'Monat antippen oder mit dem Finger über die Säulen fahren';
 export const WESENTLICH = 'wesentlich';
 
 /** Die Wahl der Zeitleiste: ein Monat oder die zwölf Monate bis zu ihm. */
