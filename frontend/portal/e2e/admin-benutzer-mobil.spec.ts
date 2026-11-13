@@ -55,11 +55,15 @@ test('390 px: der Kundenkopf - Name in voller Breite, darunter Zustand und die K
   });
   expect(mass.h1.width, 'der Name hat Platz (vorher 26 px)').toBeGreaterThan(300);
   expect(mass.marken.top).toBeGreaterThanOrEqual(mass.h1.bottom - 1);
-  expect(mass.knoepfe).toHaveLength(2);
+  // Seit vp-kunde-sofort-loeschen-mit-daten kommt das Kopf-Menü („Weitere Aktionen") als dritter
+  // Knopf dazu - alle drei bleiben in EINER Reihe unter Name und Zustand.
+  expect(mass.knoepfe).toHaveLength(3);
+  const tops = mass.knoepfe.map((k) => k.top);
   for (const k of mass.knoepfe) expect(k.top, 'kein Knopf liegt über Name oder Zustand').toBeGreaterThanOrEqual(mass.marken.bottom - 1);
-  expect(Math.abs(mass.knoepfe[0].top - mass.knoepfe[1].top), 'beide Knöpfe in einer Reihe').toBeLessThan(2);
+  expect(Math.max(...tops) - Math.min(...tops), 'alle Knöpfe in einer Reihe').toBeLessThan(2);
   await expect(kopf.getByRole('button', { name: 'Bearbeiten' })).toBeVisible();
   await expect(kopf.getByRole('button', { name: 'Wie der Kunde es sieht' })).toBeVisible();
+  await expect(kopf.getByRole('button', { name: /^Weitere Aktionen für /i })).toBeVisible();
   await keinUeberlauf(page);
 });
 

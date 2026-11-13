@@ -52,16 +52,19 @@ test('Plattform › Übersicht: vier Kacheln, Braucht dich, Flotte, Dienste - An
   const geraete = flotte.getByTestId('ueb-flotte-box');
   await expect(geraete).toHaveCount(9);
   // Störung vorn, dann Hinweise, dann die ruhigen.
-  await expect(geraete.nth(0)).toHaveAccessibleName(/^Familie Beispiel, Hof Lindenallee: offline/);
-  await expect(geraete.nth(1)).toHaveAccessibleName(/^Kunststoffwerk Ahrenberg, Werk Ahrenberg \(Box Halle 3\): verzögert/);
-  await expect(geraete.nth(2)).toHaveAccessibleName(/^Stadtwerke Musterstadt, Werkstatt am Bach: Update läuft/);
-  await expect(geraete.nth(3)).toHaveAccessibleName(/^Familie Beispiel, Kleingarten Ostend: nur von Hand/);
+  // WCAG 2.5.3 (Label in Name): das Zustandswort steht VORN und ohne Komma - ein Komma im Namen
+  // wäre kein Teilstring des sichtbaren Texts mehr (axe label-content-name-mismatch).
+  await expect(geraete.nth(0)).toHaveAccessibleName(/^offline Familie Beispiel Hof Lindenallee/);
+  await expect(geraete.nth(1)).toHaveAccessibleName(/^verzögert Kunststoffwerk Ahrenberg Werk Ahrenberg Box Halle 3/);
+  await expect(geraete.nth(2)).toHaveAccessibleName(/^Update läuft Stadtwerke Musterstadt Werkstatt am Bach/);
+  await expect(geraete.nth(3)).toHaveAccessibleName(/^nur von Hand Familie Beispiel Kleingarten Ostend/);
   await expect(geraete.nth(0)).toContainText('offline');
   // Mehrere Boxen an EINER Anlage tragen ihren Gerätenamen dazu - in einer eigenen Zeile.
   await expect(geraete.nth(1)).toContainText('Box Halle 3');
   await expect(flotte.getByText('Box Leitstand', { exact: true })).toBeVisible();
-  // Gesunde Boxen tragen kein Wort - nur ihre Leuchte.
-  await expect(geraete.nth(8)).toHaveAccessibleName(/: verbunden/);
+  // Gesunde Boxen tragen kein Wort - nur ihre Leuchte, auch nicht im Namen (sonst stünde dort ein
+  // Wort, das im sichtbaren Text gar nicht vorkommt).
+  await expect(geraete.nth(8)).toHaveAccessibleName(/^Stadtwerke Musterstadt Solarpark Sonnenhof: Geräteakte öffnen$/);
   await expect(geraete.nth(8)).not.toContainText('verbunden');
   await expect(flotte).not.toContainText('meldet sich nicht');
   // Eine Anlage ohne Box: ein Hinweis mit Weg zur Kundenakte statt einer Zeile „· 0".

@@ -51,7 +51,9 @@ for (const breite of [375, 1440]) {
     await dialog.getByLabel('Grund (Pflicht)').fill('Wechselrichter meldet Fehler F42'); await foto('Admin-Notfall');
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Kunststoffwerk Ahrenberg GmbH', exact: true })).toBeVisible();
+    // Die Kundenakte ist seit vp-adminview-umsetzung (E1) eine eigene Seite mit Adresse, kein Dialog
+    // mehr - die Fokus-Rückgabe zielt auf den Auslöser INNERHALB dieser Seite.
+    await expect(page.getByRole('region', { name: 'Kunststoffwerk Ahrenberg GmbH', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Notfall-Zugriff', exact: true })).toBeFocused();
     expect(fehler).toEqual([]);
     async function foto(name: string) {

@@ -103,6 +103,13 @@ Object.assign(adminApi, {
     werkNordBoxen = werkNordBoxen.filter((b) => b.externalRef !== ref);
     return { externalRef: ref, anlass: 'falsche_kennung' };
   },
+  // vp-admin-box-ausbauen: die gemeldete Box (VP-AA11) ist ausbaubar (kein verbund-/zustaendigkeit-
+  // Grund) - der Dialog bietet hier „Box ausbauen" statt der reinen Erklärung. Die Kundenakte
+  // reicht kein `onAusgebaut` durch, bleibt also beim einfachen Neuladen (Box bleibt in der Liste,
+  // wie bei der echten Geräteakte).
+  geraeteAusbauen: async (ref: string) => ({
+    externalRef: ref, deviceId: 'b1', ausgebautAm: iso(0), anlass: 'falsche_kennung', bereitsAusgebaut: false,
+  }),
   // vp-kunde-sofort-loeschen-mit-daten: die Datenauskunft der Akte; ohne `?loeschbar=sofort` hat der Kunde Daten.
   kundeLoeschbarkeit: async () => ({
     tenantId: TENANT_ID,
@@ -110,10 +117,17 @@ Object.assign(adminApi, {
     beendetAm: beendet ? '2026-10-01' : null,
     folgen: { anlagen: sites.length, boxen: ['VP-BB22'], personen: konten.length },
   }),
+  // vp-kunde-loeschen-504: der Server startet nur noch den Löschzug (202) - der Bericht kommt im
+  // `KundeLoeschlauf`, den `kundeLoeschlaufAbwarten` abwartet. Hier sofort „fertig" mit Bericht,
+  // ohne eine zweite Abfrage über `kundeLoeschlauf` zu brauchen.
   deleteTenant: async (_tenantId: string, confirmName: string) => ({
-    tenantId: TENANT_ID, tenantName: confirmName, deletedSites: sites.length, deletedDevices: 1,
-    deletedTelemetryRows: 0, deletedUsers: konten.map((k) => k.username), failedUsers: [],
-    anlass: sofort ? 'sofort_keine_daten' : 'sofort_mit_daten', freigegebeneBoxen: ['VP-BB22'],
+    laufId: 'lauf-1', tenantId: TENANT_ID, name: confirmName, stand: 'fertig' as const,
+    gestartetAm: iso(0), beendetAm: iso(0), fehler: null,
+    bericht: {
+      tenantId: TENANT_ID, tenantName: confirmName, deletedSites: sites.length, deletedDevices: 1,
+      deletedTelemetryRows: 0, deletedUsers: konten.map((k) => k.username), failedUsers: [],
+      anlass: sofort ? 'sofort_keine_daten' : 'sofort_mit_daten', freigegebeneBoxen: ['VP-BB22'],
+    },
   }),
 });
 Object.assign(benutzerApi, { liste: async () => [] });
