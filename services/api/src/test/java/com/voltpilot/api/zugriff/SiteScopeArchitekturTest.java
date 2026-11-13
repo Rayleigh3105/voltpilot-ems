@@ -195,10 +195,10 @@ class SiteScopeArchitekturTest {
             // --- liest je Anlage, zeigt nur sichtbare (Teilansicht der Summen: IP-10)
             new Erlaubt("repo/OverviewRepository.java", "telemetry_rollup_15m", 1, Grund.ZEIGT_NUR_SICHTBARE,
                     "web/OverviewController.java", "sites.findAll()"),
-            // Drei: Start-SoC, der Monatsanker des Vergleichsspeichers (main caf807de9, Tages-Einordnung) und sein
-            // gemessener Betriebsbereich je Monat (main #1310, M1) - je Anlage gerechnet, die Antwort nimmt nur die
-            // Zeilen aus sites.findAll().
-            new Erlaubt("repo/EarningsRepository.java", "telemetry_rollup_15m", 3, Grund.ZEIGT_NUR_SICHTBARE,
+            // Zwei: Start-SoC und der gemessene Betriebsbereich des Vergleichsspeichers je Monat (main #1310, M1) - je
+            // Anlage gerechnet, die Antwort nimmt nur die Zeilen aus sites.findAll(). Der Monatsanker (main caf807de9)
+            // liest seit #1850 über `FROM site s` (Standort-Zaun der site-Policy) und steht darum nicht mehr hier.
+            new Erlaubt("repo/EarningsRepository.java", "telemetry_rollup_15m", 2, Grund.ZEIGT_NUR_SICHTBARE,
                     "web/EarningsController.java", "sites.findAll()"),
             // Zwei: latestValues (Bestand) und liveValues mit 30-s-Mittel (main 5f155b124, K8) - dieselben Aufrufer.
             new Erlaubt("topology/TopologyRepository.java", "telemetry_v2", 2, Grund.ZEIGT_NUR_SICHTBARE,
