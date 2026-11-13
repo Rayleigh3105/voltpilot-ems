@@ -115,11 +115,13 @@ class ErinnerungUndZusammenfassungIT {
 
     private static final class Einreihung implements BenachrichtigungAusgang {
         final List<String> anlaesse = new ArrayList<>();
+        final List<String> inhalte = new ArrayList<>();
 
         @Override
         public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
                 String inhalt, Instant naechsterVersuch) {
             anlaesse.add(empfaengerSub + ":" + anlass + ":" + nr);
+            inhalte.add(inhalt);
         }
 
         @Override
@@ -265,6 +267,46 @@ class ErinnerungUndZusammenfassungIT {
             int zweiter = dienst.lauf(Instant.now());
             assertThat(zweiter).isEqualTo(0); // Dedup: heute schon geschickt
             assertThat(einreihung.anlaesse).isEmpty();
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /**
+     * Kunden-Alarmierung P4 (§6.5): was die Beruhigung heute bei dieser Person zurückhielt, steht in der Zusammenfassung
+     * - auch wenn es schon erledigt ist und darum nicht mehr unter den offenen Meldungen; eine andere Person, bei der
+     * nichts beruhigt wurde, sieht davon nichts.
+     */
+    @Test
+    void dieZusammenfassungNenntWasDieBeruhigungZurueckhielt() {
+        Welt w = welt("Zusammenfassung beruhigt");
+        TenantContext.set(w.tenant());
+        try {
+            app.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) "
+                    + "VALUES (?, 'sub-eva', 'benutzer', 'Eva', 'aktiv')", w.tenant());
+            String token = UUID.randomUUID().toString();
+            app.update("INSERT INTO zustellweg (tenant_id, benutzer_sub, weg, ziel, bestaetigung_token, "
+                    + "bestaetigung_ablauf, zusammenfassung_aktiv, zusammenfassung_uhrzeit) "
+                    + "VALUES (?, 'sub-eva', 'email', 'eva@example.test', ?, now() + interval '1 day', true, ?)",
+                    w.tenant(), token, LocalTime.now(java.time.ZoneId.of("Europe/Berlin")).minusMinutes(1));
+            zustellwege.bestaetigen(token, Instant.now());
+
+            UUID regel = regelAnlegen(w, "warnung");
+            UUID alarm = alarmAnlegen(w, regel, "warnung", Instant.now().minusSeconds(120));
+            app.update("UPDATE alarm SET zustand = 'erledigt', erledigt_am = now(), erledigt_durch = 'wert', "
+                    + "wieder_normal_am = now() WHERE id = ?", alarm);
+            app.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
+                    + "betreff, inhalt, zustand, grund, schwere) VALUES (?, 'alarm', ?, 'sub-eva', 'email', "
+                    + "'ausgeloest', 0, 'b', 'i', 'unterdrueckt', 'beruhigt', 'warnung')", w.tenant(), alarm);
+
+            TagesZusammenfassungService dienst = new TagesZusammenfassungService(repo, zustellwege, ruhezeitRepo,
+                    versandRepo);
+            Einreihung einreihung = new Einreihung();
+            dienst.setAusgang(einreihung);
+
+            assertThat(dienst.lauf(Instant.now())).isEqualTo(1);
+            assertThat(einreihung.inhalte).singleElement().asString()
+                    .contains(TagesZusammenfassungService.BERUHIGT_WORT).contains("erledigt");
         } finally {
             TenantContext.clear();
         }

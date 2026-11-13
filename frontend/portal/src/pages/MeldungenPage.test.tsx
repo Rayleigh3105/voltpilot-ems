@@ -208,3 +208,66 @@ describe('MeldungenPage · ein Ort (Kunden-Alarmierung P3)', () => {
     expect(wege).toHaveTextContent('Vorgabe - gilt, bis Sie etwas ändern');
   });
 });
+
+describe('MeldungenPage · Zustellstand und Ausfall (Kunden-Alarmierung P4)', () => {
+  const meldung = (id: string) => ({
+    id,
+    kennzeichen: 'AL-2026-000002',
+    wertart: 'box.erreichbar',
+    schwere: 'warnung' as const,
+    anlageId: 'anl-1',
+    anlageName: 'Hof Lindenberg',
+    standortId: null,
+    ausgeloestAm: '2026-11-13T11:18:00Z',
+    zustand: 'aktiv' as const,
+    wiederNormalAm: null,
+    gesehenVon: 'Eva',
+    gesehenAm: '2026-11-13T11:20:00Z',
+    erledigtAm: null,
+    bezugKennung: 'anlage:anl-1',
+    ueberwachungId: 'regel-1',
+    text: null,
+  });
+
+  it('jede Karte nennt, wie sie ankam; ein ausgefallener Weg steht als Karte darüber', async () => {
+    window.location.hash = '#/meldungen';
+    vi.spyOn(meldungenApi, 'jetzt').mockResolvedValue([meldung('a1')]);
+    vi.spyOn(benachrichtigungenApi, 'emailZustand').mockResolvedValue(undefined);
+    vi.spyOn(benachrichtigungenApi, 'pushAbos').mockResolvedValue([]);
+    const zustellung = vi.spyOn(benachrichtigungenApi, 'zustellung').mockResolvedValue([
+      {
+        meldungId: 'a1',
+        still: null,
+        stillDurch: null,
+        wege: [
+          { weg: 'email', anlass: 'ausgeloest', zustand: 'gesendet', grund: null, am: '2026-11-13T11:34:00Z', versuche: 1 },
+          { weg: 'webpush', anlass: 'ausgeloest', zustand: 'gesendet', grund: null, am: '2026-11-13T11:34:00Z', versuche: 1 },
+        ],
+      },
+    ]);
+    vi.spyOn(benachrichtigungenApi, 'ausfaelle').mockResolvedValue([
+      { weg: 'webpush', id: 'p1', name: 'Evas iPhone', seit: '2026-11-13T10:00:00Z' },
+    ]);
+    render(<MeldungenPage />);
+    expect(await screen.findByTestId('meldung-zustellung')).toHaveTextContent(/^Gemeldet: E-Mail .*12:34 · Push .*12:34$/);
+    expect(zustellung).toHaveBeenCalledWith(['a1']);
+    const ausfall = await screen.findByTestId('weg-ausfall');
+    expect(ausfall).toHaveTextContent('Push auf „Evas iPhone“ ist abgemeldet');
+    fireEvent.click(screen.getByRole('button', { name: 'Wege einstellen' }));
+    expect(await screen.findByTestId('meldungen-einstellen')).toBeInTheDocument();
+  });
+
+  it('ohne Antwort zum Zustellstand bleibt die Karte, wie sie ist - kein Fehler', async () => {
+    window.location.hash = '#/meldungen';
+    vi.spyOn(meldungenApi, 'jetzt').mockResolvedValue([meldung('a1')]);
+    vi.spyOn(benachrichtigungenApi, 'emailZustand').mockResolvedValue(undefined);
+    vi.spyOn(benachrichtigungenApi, 'pushAbos').mockResolvedValue([]);
+    vi.spyOn(benachrichtigungenApi, 'zustellung').mockRejectedValue(new Error('down'));
+    vi.spyOn(benachrichtigungenApi, 'ausfaelle').mockRejectedValue(new Error('down'));
+    render(<MeldungenPage />);
+    expect(await screen.findByTestId('meldung-karte')).toBeInTheDocument();
+    expect(screen.queryByTestId('meldung-zustellung')).toBeNull();
+    expect(screen.queryByTestId('weg-ausfall')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});

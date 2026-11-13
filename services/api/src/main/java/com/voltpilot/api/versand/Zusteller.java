@@ -128,6 +128,10 @@ public class Zusteller {
             ausgang.unterdrueckt(zeile.id(), "keine_sicht");
             return Vorpruefung.UNTERDRUECKT;
         }
+        Vorpruefung beruhigung = beruhigung(zeile, jetzt);
+        if (beruhigung != Vorpruefung.SENDEN) {
+            return beruhigung;
+        }
         Instant wann = ruhezeit.wannSenden(zeile.quelleId(), zeile.empfaengerSub(), zeile.weg(), zeile.anlass(),
                 jetzt);
         if (wann.isAfter(jetzt)) {
@@ -137,6 +141,50 @@ public class Zusteller {
                 ausgang.verschieben(zeile.id(), wann);
             }
             return Vorpruefung.VERSCHOBEN;
+        }
+        return Vorpruefung.SENDEN;
+    }
+
+    /** Kunden-Alarmierung P4 (§6.5): dieselbe Meldungsart am selben Bezug meldet höchstens einmal in diesem Abstand. */
+    static final Duration BERUHIGUNG = Duration.ofHours(6);
+
+    /**
+     * Beruhigung (Kunden-Alarmierung P4, Konzept §6.5) - je Person und Weg, damit sie genau das zählt, was diese
+     * Person wirklich erreicht hat:
+     * <ul>
+     *   <li><b>Auslösung:</b> ging ihr über diesen Weg in den letzten sechs Stunden schon eine andere Meldung derselben
+     *       Regel am selben Bezug zu, wartet diese Zeile bis sechs Stunden nach jener (Grund {@code beruhigt}). Ist die
+     *       Meldung bis dahin erledigt, entfällt sie (Grund {@code beruhigt}); gilt sie noch, geht sie dann hinaus -
+     *       eine Box, die nach einem kurzen Aussetzer endgültig weg ist, bleibt also nicht ungemeldet. Dasselbe Muster
+     *       wie die Ruhezeit, die danach unverändert prüft.</li>
+     *   <li><b>Entwarnung und Erinnerung</b> zu einer Meldung, deren Auslösung die Beruhigung für diese Person und
+     *       diesen Weg zurückhält oder entfallen ließ, entfallen (Grund {@code beruhigt}) - sie sprächen von etwas,
+     *       das nie ankam.</li>
+     * </ul>
+     * Was dazwischen passiert, steht in der Liste und mit seinem Zustellstand an der Meldung, und in der
+     * Tages-Zusammenfassung. Folge-Meldungen, Bündel, Erinnern und Ruhezeit bleiben, wie sie sind.
+     */
+    private Vorpruefung beruhigung(VersandRepository.Zeile zeile, Instant jetzt) {
+        if (zeile.quelleId() == null) {
+            return Vorpruefung.SENDEN;
+        }
+        if ("ausgeloest".equals(zeile.anlass())) {
+            var zuletzt = ausgang.zuletztGemeldetGleicheArt(zeile.tenantId(), zeile.quelleId(), zeile.empfaengerSub(),
+                    zeile.weg(), jetzt.minus(BERUHIGUNG));
+            if (zuletzt != null && zuletzt.isPresent()) {
+                ausgang.beruhigen(zeile.id(), zuletzt.get().plus(BERUHIGUNG));
+                return Vorpruefung.VERSCHOBEN;
+            }
+            if (ausgang.wurdeBeruhigt(zeile.id()) && ausgang.alarmErledigt(zeile.quelleId())) {
+                ausgang.unterdrueckt(zeile.id(), VersandRepository.GRUND_BERUHIGT);
+                return Vorpruefung.UNTERDRUECKT;
+            }
+            return Vorpruefung.SENDEN;
+        }
+        if (("wieder_normal".equals(zeile.anlass()) || "erinnerung".equals(zeile.anlass()))
+                && ausgang.ausloesungBeruhigt(zeile.quelleId(), zeile.empfaengerSub(), zeile.weg())) {
+            ausgang.unterdrueckt(zeile.id(), VersandRepository.GRUND_BERUHIGT);
+            return Vorpruefung.UNTERDRUECKT;
         }
         return Vorpruefung.SENDEN;
     }

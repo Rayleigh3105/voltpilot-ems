@@ -381,3 +381,70 @@
   color: var(--vp-c-primary);
   flex: 0 0 auto;
 }
+
+/* Kunden-Alarmierung P4: der Zustellstand an jeder Meldung - eine leise Zeile, kein zweiter Alarm. */
+.vp-meldung-zustellung {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-1);
+  margin: var(--vp-c-space-2) 0 0;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-meldung-zustellung svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.vp-meldung-zustellung.ton-wartet,
+.vp-meldung-zustellung.ton-fehler {
+  color: var(--vp-c-warn-fg);
+}
+
+.vp-meldungen-leise li .vp-meldung-zustellung {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* „Ein Weg fällt aus“: oben in Jetzt und Einstellen, bis wieder etwas ankommt. */
+.vp-meldungen-ausfall {
+  display: grid;
+  gap: var(--vp-c-space-3);
+  margin: var(--vp-c-space-3) 0 var(--vp-c-space-4);
+}
+
+.vp-meldungen-ausfall-karte {
+  display: flex;
+  gap: var(--vp-c-space-3);
+  align-items: flex-start;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-warn-fg);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+  min-width: 0;
+}
+
+.vp-meldungen-ausfall-karte > div {
+  min-width: 0;
+}
+
+.vp-meldungen-ausfall-karte h2 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-meldungen-ausfall-karte p {
+  margin: var(--vp-c-space-1) 0 var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+
+.vp-meldungen-ausfall-karte p:last-child {
+  margin-bottom: 0;
+}

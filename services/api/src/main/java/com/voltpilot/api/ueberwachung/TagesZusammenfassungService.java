@@ -32,6 +32,8 @@ public class TagesZusammenfassungService {
 
     private static final Duration FENSTER = Duration.ofMinutes(10);
     private static final ZoneId STANDARD_ZEITZONE = ZoneId.of("Europe/Berlin");
+    /** Kunden-Alarmierung P4: so steht eine Meldung da, die die Beruhigung nicht einzeln geschickt hat (§6.5). */
+    static final String BERUHIGT_WORT = "nicht einzeln gemeldet (gleiche Meldung kurz davor)";
 
     private final UeberwachungRepository repo;
     private final ZustellwegRepository zustellwege;
@@ -94,8 +96,16 @@ public class TagesZusammenfassungService {
         if (rueckblickId.isEmpty()) {
             return false; // heute schon geschickt
         }
-        List<AlarmZeile> alarme = repo.fuerZusammenfassung(tagBeginn).stream()
+        // Kunden-Alarmierung P4 (§6.5): was die Beruhigung bei dieser Person heute zurückhielt, steht hier - auch wenn
+        // es inzwischen erledigt ist und darum nicht mehr unter den offenen Meldungen.
+        java.util.Set<UUID> beruhigt = new java.util.HashSet<>(versandRepo.beruhigteSeit(benutzerSub, tagBeginn));
+        List<AlarmZeile> offeneUndHinweise = repo.fuerZusammenfassung(tagBeginn);
+        java.util.Set<UUID> schonDa = new java.util.HashSet<>(offeneUndHinweise.stream().map(AlarmZeile::id).toList());
+        List<AlarmZeile> alarme = java.util.stream.Stream.concat(offeneUndHinweise.stream(),
+                        beruhigt.stream().filter(id -> !schonDa.contains(id)).map(repo::alarm)
+                                .flatMap(Optional::stream))
                 .filter(a -> sicht.sichtbar(a.id(), benutzerSub, jetzt))
+                .sorted(java.util.Comparator.comparing(AlarmZeile::ausgeloestAm).reversed())
                 .toList();
         if (alarme.isEmpty()) {
             return false; // "nie leer" (§6.4 Nr. 6)
@@ -111,6 +121,7 @@ public class TagesZusammenfassungService {
             text.append("- ").append(MeldungsText.zeit(a.ausgeloestAm(), jetzt)).append(" · ")
                     .append(texte.titel(eingabe, jetzt)).append(" · ").append(SCHWERE_WORT.getOrDefault(a.schwere(),
                             "Hinweis")).append(" · ").append("erledigt".equals(a.zustand()) ? "erledigt" : "offen")
+                    .append(beruhigt.contains(a.id()) ? " · " + BERUHIGT_WORT : "")
                     .append(" (").append(a.kennzeichen()).append(")\n");
         }
         text.append("\nAlle Meldungen: ").append(basisUrl.replaceAll("/+$", "")).append("/#/meldungen\n");

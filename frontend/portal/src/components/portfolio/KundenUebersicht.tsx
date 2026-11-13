@@ -77,10 +77,20 @@ export function KundenUebersicht({
           <p className={`vp-ku-status is-${status.ton}`}>
             <span className="vp-ku-punkt" aria-hidden="true" />
             <span>{status.text}</span>
-            {status.zielId && (
-              <a className="vp-vr-link" href={hrefFor(status.zielId)}>
-                Zur Anlage ›
+            {status.meldungId ? (
+              <a
+                className="vp-vr-link"
+                href={`#/meldungen?meldung=${encodeURIComponent(status.meldungId)}`}
+                data-testid="uebersicht-zur-meldung"
+              >
+                Zur Meldung ›
               </a>
+            ) : (
+              status.zielId && (
+                <a className="vp-vr-link" href={hrefFor(status.zielId)}>
+                  Zur Anlage ›
+                </a>
+              )
             )}
           </p>
         )}

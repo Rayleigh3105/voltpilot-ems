@@ -38,7 +38,10 @@ import { RowMenu, type RowMenuItem } from './RowMenu';
 import { ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
 // LIVE: „Jetzt" und die Statuszeile zeigen gemessene Ist-Werte.
-import { ERLOES_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
+import { ERLOES_POLL_MS, LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
+import { meldungenApi, zaehltAlsOffen, type Meldung } from '../meldungenApi';
+import { ausgeloest } from '../meldungsText';
+import type { OffeneMeldung } from '../kundenUebersicht';
 
 /** Re-render cadence of the freshness/liveness derivations. */
 const TICK_MS = 5_000;
@@ -123,6 +126,9 @@ export function PortfolioCockpit({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
+  // Kunden-Alarmierung P4 (B9): dieselben offenen Meldungen, die die Glocke zählt - die Statuszeile spricht nie
+  // gegen sie. Fail-soft: ohne Antwort bleibt `null` und die Zeile liest nur die Live-Werte.
+  const [meldungen, setMeldungen] = useState<Meldung[] | null>(null);
 
   // Boot-Cover: das Portfolio hat sein erstes echtes Bild, sobald die Übersicht
   // steht, der Fehlerzustand greift oder es (leer) gar keine Anlage gibt.
@@ -167,6 +173,20 @@ export function PortfolioCockpit({
       active = false;
     };
   }, [reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+    meldungenApi.jetzt().then(
+      (m) => active && setMeldungen(m),
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
+  useFreshnessPoll(() => {
+    meldungenApi.jetzt().then(setMeldungen, () => undefined);
+  }, LIST_POLL_MS);
 
   useFreshnessPoll(() => {
     setNow(new Date());
@@ -384,7 +404,7 @@ export function PortfolioCockpit({
       <KundenUebersicht
         titel={titel}
         titelVersteckt={titelBereitsGenannt}
-        status={statusZeile(overview.sites, now)}
+        status={statusZeile(overview.sites, now, offeneMeldungen(meldungen, now))}
         aktionen={[
           { label: 'Anpassen', icon: 'sliders', recht: 'cockpit.anpassen', onClick: layout.start },
           ...aktionen,
@@ -431,4 +451,20 @@ export function PortfolioCockpit({
       {drawers}
     </>
   );
+}
+
+/**
+ * Die offenen Meldungen für die Statuszeile (Kunden-Alarmierung P4, B9): dieselbe Regel wie an der Glocke
+ * (`zaehltAlsOffen`), mit dem Titel aus demselben Text wie in Mail, Push und Meldungen-Seite (`meldungsText.ts`).
+ */
+function offeneMeldungen(meldungen: readonly Meldung[] | null, now: Date): OffeneMeldung[] | null {
+  if (!meldungen) return null;
+  return meldungen.filter(zaehltAlsOffen).map((m) => ({
+    id: m.id,
+    anlageId: m.anlageId,
+    schwere: m.schwere,
+    wertart: m.wertart,
+    titel: m.text ? ausgeloest(m.text, now).titel : `${m.anlageName ? `${m.anlageName}: ` : ''}Offene Meldung`,
+    ausgeloestAm: m.ausgeloestAm,
+  }));
 }

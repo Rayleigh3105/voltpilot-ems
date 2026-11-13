@@ -188,6 +188,33 @@ public class ZustellwegRepository {
                 TenantContext.get(), benutzerSub, endpoint) > 0;
     }
 
+    /**
+     * Ein Weg, den der Versand selbst abgeschaltet hat (Kunden-Alarmierung P4, „ein Weg fällt aus“): ein Push-Gerät,
+     * das der Push-Dienst als abgemeldet zurückwies (404/410), oder ein Team-Kanal, der dauerhaft nicht antwortet.
+     * {@code name} ist der Geräte- bzw. Kanalname, {@code seit} der Zeitpunkt, an dem der Versand es bemerkte.
+     */
+    public record AbgelaufenerWeg(UUID id, String name, Instant seit) {}
+
+    /** Die Push-Geräte dieser Person, die der Versand als abgemeldet abgeschaltet hat (jüngste zuerst). */
+    public List<AbgelaufenerWeg> abgelaufenePushAbos(String benutzerSub) {
+        return jdbc.query("""
+                SELECT id, geraet, abgelaufen_am FROM push_abo
+                 WHERE tenant_id = ? AND benutzer_sub = ? AND NOT aktiv AND abgelaufen_am IS NOT NULL
+                 ORDER BY abgelaufen_am DESC
+                """, (rs, n) -> new AbgelaufenerWeg(rs.getObject("id", UUID.class), rs.getString("geraet"),
+                        rs.getTimestamp("abgelaufen_am").toInstant()), TenantContext.get(), benutzerSub);
+    }
+
+    /** Die Team-Kanäle dieser Person, die der Versand als dauerhaft tot abgeschaltet hat (jüngste zuerst). */
+    public List<AbgelaufenerWeg> abgelaufeneWebhookZiele(String benutzerSub) {
+        return jdbc.query("""
+                SELECT id, name, abgelaufen_am FROM webhook_ziel
+                 WHERE tenant_id = ? AND benutzer_sub = ? AND NOT aktiv AND abgelaufen_am IS NOT NULL
+                 ORDER BY abgelaufen_am DESC
+                """, (rs, n) -> new AbgelaufenerWeg(rs.getObject("id", UUID.class), rs.getString("name"),
+                        rs.getTimestamp("abgelaufen_am").toInstant()), TenantContext.get(), benutzerSub);
+    }
+
     /** Alle aktiven Geräte-Abos einer Person für den Versand (§6.7: "Abo je Gerät" - der Zusteller fächert auf). */
     public List<WebPushAdapter.Abo> pushAbosFuerVersand(UUID tenantId, String benutzerSub, String schwere) {
         return admin.query("""

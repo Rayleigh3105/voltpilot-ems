@@ -286,6 +286,10 @@ public class UeberwachungsService {
 
     // --------------------------------------------------------------------- Aussaat (§7 Nr. 7, Entscheid 2A)
 
+    /** Der Verlauf-Eintrag einer Hinweis-Meldung, die KA-4 B „höchstens einmal am Tag“ still hält; der Zustellstand
+     * (Kunden-Alarmierung P4) liest ihn. */
+    public static final String VERSAND_HEUTE_SCHON = "heute schon gemeldet - kein Versand";
+
     private static final String WERTART_PREIS_JETZT = "anlage.preis.jetzt";
 
     /** KA-4 B: „Strom gerade günstig“ geht höchstens einmal am Tag je Anlage als Push hinaus. */
@@ -545,7 +549,7 @@ public class UeberwachungsService {
         if (hinweis && HINWEIS_EINMAL_AM_TAG.contains(regel.wertart())
                 && repo.heuteSchonAusgeloest(regel.id(), bezug.kennung(), alarmId,
                         tagesBeginn(jetzt, repo.alarm(alarmId).map(AlarmZeile::standortId).orElse(null)))) {
-            repo.alarmVerlauf(alarmId, "versand", null, "heute schon gemeldet - kein Versand", null);
+            repo.alarmVerlauf(alarmId, "versand", null, VERSAND_HEUTE_SCHON, null);
             return alarmId;
         }
         String kennzeichen = repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?");

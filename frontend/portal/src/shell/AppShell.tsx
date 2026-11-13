@@ -46,7 +46,7 @@ import type { AnlagenSub, Route } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
 import { GlockeButton } from './GlockeButton';
 import { ADMIN_SUCHE_PLATZHALTER, ADMIN_SUCHE_SUCHTEXT, adminSucheOptionen, adminSucheWert, adminSucheZiel } from './adminSuche';
-import { meldungenApi } from '../meldungenApi';
+import { meldungenApi, zaehltAlsOffen } from '../meldungenApi';
 import './Shell.css';
 import { HelpProvider, HelpLink } from '../help/HelpProvider';
 import type { HelpArticleId } from '../help/model';
@@ -276,18 +276,22 @@ export function AppShell({
 
   // Alerting Scheibe 1 (Entscheid 4A): "N Meldungen dieser Anlage" im Popover der
   // Zustands-Anzeige - die Anzahl ihrer nicht erledigten Meldungen (§6.2).
-  const [anlageMeldungen, setAnlageMeldungen] = useState(0);
+  // Kunden-Alarmierung P4 (B9): dieselbe Regel wie an der Glocke und in der Übersicht (`zaehltAlsOffen`) - Hinweise
+  // sind leise und zählen nirgends; bei genau einer führt der Link direkt zu ihr.
+  const [anlageMeldungen, setAnlageMeldungen] = useState<{ anzahl: number; eine: string | null }>({ anzahl: 0, eine: null });
   const anlageSiteId = anlage?.siteId ?? null;
   useEffect(() => {
     if (!anlageSiteId) {
-      setAnlageMeldungen(0);
+      setAnlageMeldungen({ anzahl: 0, eine: null });
       return;
     }
     let aktiv = true;
     meldungenApi
       .jetzt()
       .then((liste) => {
-        if (aktiv) setAnlageMeldungen(liste.filter((m) => m.anlageId === anlageSiteId).length);
+        if (!aktiv) return;
+        const offen = liste.filter((m) => m.anlageId === anlageSiteId && zaehltAlsOffen(m));
+        setAnlageMeldungen({ anzahl: offen.length, eine: offen.length === 1 ? offen[0].id : null });
       })
       .catch(() => {
         /* die Zustands-Anzeige zeigt ohne Link weiter, nie einen Fehler */
@@ -715,9 +719,11 @@ export function AppShell({
                 health={anlage.health}
                 onOpenDetail={() => anlage.onOpenSub(null)}
                 meldungenLink={{
-                  anzahl: anlageMeldungen,
+                  anzahl: anlageMeldungen.anzahl,
                   onOpen: () => {
-                    window.location.hash = `#/meldungen?anlage=${encodeURIComponent(anlage.siteId)}`;
+                    window.location.hash = anlageMeldungen.eine
+                      ? `#/meldungen?meldung=${encodeURIComponent(anlageMeldungen.eine)}`
+                      : `#/meldungen?anlage=${encodeURIComponent(anlage.siteId)}`;
                   },
                 }}
               />

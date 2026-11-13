@@ -550,6 +550,16 @@ const ZEILEN: Record<string, OverviewSite> = {
   [an2]: zeile(halle2, { gridKw: 96.5 }, { pv: 0, storage: 0, consumer: 1, grid: 1 }),
   [an3]: zeile(lindach, { gridKw: 38.7 }, { pv: 0, storage: 0, consumer: 0, grid: 1 }),
 };
+/**
+ * Kunden-Alarmierung P4 (B9, „eine Aussage“): `&box=stumm` - die Box von Halle 1 meldet sich seit 05:30 UTC nicht,
+ * die Meldung „Box meldet sich nicht“ (AL-2026-000123) ist seit 05:45 UTC offen; mit `&meldungen=keine` gibt es (noch)
+ * keine Meldung. Ohne diese Parameter bleibt die Bühne zeichengleich.
+ */
+const BOX_STUMM = params.get('box') === 'stumm';
+const BOX_STUMM_SEIT = '2026-10-20T05:30:00Z';
+if (BOX_STUMM) {
+  ZEILEN[an1] = { ...ZEILEN[an1], onlineCount: 0, lastSeenAt: BOX_STUMM_SEIT, live: { ...ZEILEN[an1].live!, ts: BOX_STUMM_SEIT } };
+}
 
 const SZENEN = {
   /** Ahrenberg bis 30.09.2026: der Standort aus der Bestandsübernahme, eine Anlage. */
@@ -1359,7 +1369,18 @@ const MELDUNGEN_BUEHNE: Array<{
   id: string; kennzeichen: string; wertart: string; schwere: string; anlageId: string | null;
   anlageName: string | null; standortId: string | null; ausgeloestAm: string; zustand: string;
   wiederNormalAm: string | null; gesehenVon: string | null; gesehenAm: string | null; erledigtAm: string | null;
-}> = [
+  text?: unknown;
+}> = params.get('meldungen') === 'keine' ? [] : BOX_STUMM ? [
+  { id: 'al-1', kennzeichen: 'AL-2026-000123', wertart: 'box.erreichbar', schwere: 'warnung',
+    anlageId: FIXTURE_IDS.an1, anlageName: 'Werk Ahrenberg – Halle 1', standortId: FIXTURE_IDS.st1,
+    ausgeloestAm: '2026-10-20T05:45:00Z', zustand: 'aktiv', wiederNormalAm: null,
+    gesehenVon: null, gesehenAm: null, erledigtAm: null,
+    text: {
+      wertart: 'box.erreichbar', herkunft: 'ab_werk', regelName: 'Box erreichbar', schwere: 'warnung', bezugArt: 'anlage',
+      ort: 'Werk Ahrenberg – Halle 1', bedingung: { art: 'zustand', ziel: ['nicht_erreichbar'], dauer_s: 900, erholen_s: 300 },
+      wert: { zahl: null, einheit: null, zustand: 'nicht_erreichbar', satz: null }, beginn: BOX_STUMM_SEIT, ende: null,
+    } },
+] : [
   { id: 'al-1', kennzeichen: 'AL-2026-000123', wertart: 'box.erreichbar', schwere: 'warnung',
     anlageId: FIXTURE_IDS.an1, anlageName: 'Halle 1', standortId: FIXTURE_IDS.st1,
     ausgeloestAm: '2026-11-03T13:15:00Z', zustand: 'aktiv', wiederNormalAm: null,

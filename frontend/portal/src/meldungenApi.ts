@@ -80,6 +80,16 @@ export interface UeberwachungsRegel {
  * `ueberwachungApi.ts` (dieselbe Begründung wie `werte`/`anlegen`/`probelauf` dort: jedes neue
  * Byte hier kostet jeden Besuch mit, auch ohne "Überwachungen" je zu öffnen).
  */
+/**
+ * Was als offene Meldung zählt (Kunden-Alarmierung P4, B9: eine Aussage) - an der Glocke, in der Übersicht und am
+ * Cockpit dieselbe Regel: nicht erledigt und kein Hinweis (Hinweise sind leise, KA-4 B). Die Zahl an der Glocke zählt
+ * davon die ungesehenen (`GET /meldungen/zahl`, `UeberwachungRepository#ungeseheneZahl`), Übersicht und Cockpit alle
+ * offenen - beide lesen dieselben Meldungen.
+ */
+export function zaehltAlsOffen(m: Pick<Meldung, 'zustand' | 'schwere'>): boolean {
+  return m.zustand !== 'erledigt' && m.schwere !== 'hinweis';
+}
+
 export const meldungenApi = {
   jetzt: () => request<{ meldungen: Meldung[] }>('/api/v1/meldungen?status=jetzt').then((r) => r.meldungen),
   verlauf: () => request<{ meldungen: Meldung[] }>('/api/v1/meldungen?status=verlauf').then((r) => r.meldungen),

@@ -22,12 +22,17 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'meldungen', category: 'alltag', title: 'Meldungen: was VoltPilot Ihnen sagt',
     summary: 'Hinter der Glocke: was gerade los ist, was war und wie Meldungen Sie per E-Mail und Push erreichen.',
-    keywords: ['Meldung', 'Glocke', 'Benachrichtigung', 'Alarm', 'E-Mail', 'Push', 'Handy', 'iPhone', 'Ruhezeit', 'Stumm', 'Überwachung', 'Probe', 'Leise'],
+    keywords: ['Meldung', 'Glocke', 'Benachrichtigung', 'Alarm', 'E-Mail', 'Push', 'Handy', 'iPhone', 'Ruhezeit', 'Stumm', 'Überwachung', 'Probe', 'Leise', 'Gemeldet', 'Beruhigt', 'Zustellung'],
     sections: [
       { id: 'jetzt', title: 'Jetzt: was gerade los ist', paragraphs: [
         'Die Glocke oben zeigt, wie viele Meldungen Sie noch nicht gesehen haben; rot heißt: etwas ist dringend. Ein Tipp öffnet „Jetzt“. Jede Karte sagt, was los ist, an welcher Anlage, seit wann und was meist dahintersteckt. „Zur Anlage“ führt dorthin, wo Sie nachsehen können.',
         'Was Sie hier sehen, gilt als gesehen - einen eigenen Knopf dafür gibt es nicht. Bei einer dringenden Meldung endet damit auch die Erinnerung.',
         'Hinweise wie „Strom gerade günstig“ stehen unter „Leise“. Sie zählen nicht an der Glocke und kommen ohne E-Mail.',
+      ] },
+      { id: 'zustellung', title: 'Ob eine Meldung angekommen ist', paragraphs: [
+        'Unter jeder Karte steht, wie die Meldung Sie erreicht hat, etwa „Gemeldet: E-Mail 12:34 · Push 12:34“. Ging nichts hinaus, steht dort der Grund: Ruhezeit, kein Weg eingeschaltet oder beruhigt.',
+        'Beruhigt heißt: Dieselbe Meldung an derselben Anlage kam in den letzten sechs Stunden schon einmal. Damit eine Anlage, die immer wieder kurz aussetzt, nicht jede Stunde schreibt, meldet sie sich höchstens einmal in sechs Stunden. Ist die Störung danach noch da, kommt die Meldung; ist sie vorbei, steht sie nur hier und in der Tages-Zusammenfassung.',
+        'Kommt über einen Weg nichts mehr an - eine E-Mail lässt sich nicht zustellen oder ein Handy hat Push abgemeldet -, steht oben in „Jetzt“ und unter „Einstellen“ ein Hinweis, bis wieder etwas ankommt.',
       ] },
       { id: 'stumm', title: 'Stumm schalten', paragraphs: [
         '„Stumm“ an einer Karte schaltet diese Überwachung für eine Stunde, bis morgen früh oder sieben Tage stumm, etwa während einer Wartung. Das gilt für alle, die diese Meldung bekommen; darum dürfen es Kundenadministrator, Energiemanager und Bearbeiter am Standort.',

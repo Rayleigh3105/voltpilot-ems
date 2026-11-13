@@ -4,7 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Switch } from '../../designsystem/components/forms/Switch';
 import { api, ladeMeldungenVerlaufCsv, type Anlagensteuerung } from '../api';
 import { currentUser } from '../auth';
-import { benachrichtigungenApi } from '../benachrichtigungenApi';
+import { benachrichtigungenApi, type WegAusfall, type Zustellstand } from '../benachrichtigungenApi';
 import { boxRefOf } from '../geraetAdresse';
 import { useBoxen } from '../useBoxRef';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -44,6 +44,7 @@ import { useRollen } from '../rollen';
 import { ueberwachungApi } from '../ueberwachungApi';
 import type { WertWahl } from '../ueberwachungAuswahl';
 import { useIsPhone } from '../useIsPhone';
+import { ausfallText, entwarnungSatz, zustellSatz, type ZustellSatz } from '../zustellstand';
 import { EinstellungenPage } from './EinstellungenPage';
 import '../components/BereichTabs.css';
 import './MeldungenPage.css';
@@ -133,6 +134,10 @@ export function MeldungenPage() {
   const [stummFuer, setStummFuer] = useState<string | null>(null);
   const [stummGesetzt, setStummGesetzt] = useState<Record<string, string>>({});
   const [einrichtung, setEinrichtung] = useEinrichtungsStand();
+  // Kunden-Alarmierung P4: wie jede Meldung die Person erreichte (Versand-Protokoll) und welche Wege gerade ausfallen.
+  // Beides nachrangig: ohne Antwort steht die Karte ohne Zustellstand da, nie mit einem Fehler.
+  const [zustellung, setZustellung] = useState<Record<string, Zustellstand>>({});
+  const [ausfaelle, setAusfaelle] = useState<WegAusfall[]>([]);
   const anlageFilter = anlageAusHash(window.location.hash);
   // Kunden-Alarmierung P1: „Ansehen“ in der Mail und der Tipp auf den Push zeigen auf EINE Meldung. Ist sie nicht
   // mehr offen, steht sie im Verlauf - einmal dorthin wechseln.
@@ -174,7 +179,17 @@ export function MeldungenPage() {
               return;
             }
             if (reiter === 'jetzt') alsGesehenMarkieren(m);
+            benachrichtigungenApi.zustellung(m.map((x) => x.id)).then(
+              (liste) => aktiv && setZustellung(Object.fromEntries(liste.map((z) => [z.meldungId, z]))),
+              () => undefined,
+            );
           });
+    if (reiter !== 'verlauf') {
+      benachrichtigungenApi.ausfaelle().then(
+        (a) => aktiv && setAusfaelle(a),
+        () => undefined,
+      );
+    }
     laden.catch(() => {
       if (aktiv) setFehler('Die Meldungen konnten nicht geladen werden. Bitte versuchen Sie es erneut.');
     });
@@ -362,6 +377,7 @@ export function MeldungenPage() {
 
       {reiter === 'einstellen' ? (
         <div className="vp-meldungen-einstellen" data-testid="meldungen-einstellen">
+          <WegAusfaelle ausfaelle={ausfaelle} jetzt={jetzt} />
           <EinstellungenPage ansicht="meldungen" />
           {fehler && regeln === null ? null : (
             <DasMeldenWir
@@ -381,6 +397,9 @@ export function MeldungenPage() {
         <p>Wird geladen …</p>
       ) : (
         <>
+          {reiter === 'jetzt' && (
+            <WegAusfaelle ausfaelle={ausfaelle} jetzt={jetzt} onEinstellen={() => setReiter('einstellen')} />
+          )}
           {karten.length === 0 ? (
             <div className="vp-meldungen-leer">
               <EmptyState
@@ -408,6 +427,8 @@ export function MeldungenPage() {
                   stummOffen={stummFuer === m.id}
                   stummGesetzt={stummGesetzt[m.id] ?? null}
                   busy={busy === m.id}
+                  zustell={zustellSatz(zustellung[m.id], jetzt, m.zustand === 'erledigt')}
+                  entwarnungZustell={reiter === 'verlauf' ? entwarnungSatz(zustellung[m.id], jetzt) : null}
                   onStummOeffnen={() => setStummFuer((alt) => (alt === m.id ? null : m.id))}
                   onStumm={(bis, label) => void stummSchalten(m, bis, label)}
                 />
@@ -421,6 +442,7 @@ export function MeldungenPage() {
               <ul>
                 {leise.map((m) => {
                   const text = m.text ? ausgeloest(m.text, jetzt) : null;
+                  const zustell = zustellSatz(zustellung[m.id], jetzt, m.zustand === 'erledigt');
                   return (
                     <li key={m.id}>
                       <span>{text ? titelOhneOrt(text.titel, m) : wertartSatzname(m.wertart)}</span>
@@ -429,6 +451,11 @@ export function MeldungenPage() {
                         {m.anlageName ? ' · ' : ''}
                         {zeitKurz(m.ausgeloestAm, jetzt)}
                       </span>
+                      {zustell && (
+                        <span className={`vp-meldung-zustellung ton-${zustell.ton}`} data-testid="leise-zustellung">
+                          {zustell.text}
+                        </span>
+                      )}
                     </li>
                   );
                 })}
@@ -541,6 +568,8 @@ function MeldungKarte({
   stummOffen,
   stummGesetzt,
   busy,
+  zustell,
+  entwarnungZustell,
   onStummOeffnen,
   onStumm,
 }: {
@@ -553,6 +582,10 @@ function MeldungKarte({
   stummOffen: boolean;
   stummGesetzt: string | null;
   busy: boolean;
+  /** Kunden-Alarmierung P4: wie diese Meldung die Person erreichte - `null`, solange der Stand fehlt. */
+  zustell: ZustellSatz | null;
+  /** Im Verlauf: die Entwarnung, wenn sie hinausging. */
+  entwarnungZustell: string | null;
   onStummOeffnen: () => void;
   onStumm: (bis: Date, label: string) => void;
 }) {
@@ -624,6 +657,15 @@ function MeldungKarte({
         {stummGesetzt && (
           <p className="vp-meldung-gesehen" role="status">
             Stumm für {stummGesetzt}. Meldungen dieser Überwachung gehen bis dahin nicht hinaus.
+          </p>
+        )}
+        {zustell && (
+          <p className={`vp-meldung-zustellung ton-${zustell.ton}`} data-testid="meldung-zustellung">
+            <Icon name={zustell.ton === 'gemeldet' ? 'check' : zustell.ton === 'fehler' ? 'alert-triangle' : 'bell'} size={14} />
+            <span>
+              {zustell.text}
+              {entwarnungZustell ? ` · ${entwarnungZustell}` : ''}
+            </span>
           </p>
         )}
         <p className="vp-meldung-kennzeichen">
@@ -789,6 +831,43 @@ function DasMeldenWir({
           <Icon name="plus" size={18} />
         </button>
       )}
+    </section>
+  );
+}
+
+/**
+ * „Ein Weg fällt aus“ (Kunden-Alarmierung P4): eine Karte je ausgefallenem Weg - in „Jetzt“ mit dem Weg zu „Einstellen“,
+ * dort ohne. Bisher stand ein Fehlschlag nur im Protokoll, ein abgemeldetes Push-Gerät war still aus.
+ */
+function WegAusfaelle({
+  ausfaelle,
+  jetzt,
+  onEinstellen,
+}: {
+  ausfaelle: readonly WegAusfall[];
+  jetzt: Date;
+  onEinstellen?: () => void;
+}) {
+  if (ausfaelle.length === 0) return null;
+  return (
+    <section className="vp-meldungen-ausfall" aria-label="Wege, über die gerade nichts ankommt" data-testid="weg-ausfall">
+      {ausfaelle.map((a) => {
+        const t = ausfallText(a, jetzt);
+        return (
+          <div key={`${a.weg}:${a.id ?? ''}`} className="vp-meldungen-ausfall-karte" role="status">
+            <Icon name="alert-triangle" size={18} />
+            <div>
+              <h2>{t.titel}</h2>
+              <p>{t.satz}</p>
+              {onEinstellen && (
+                <Button variant="outline" size="sm" onClick={onEinstellen}>
+                  Wege einstellen
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }

@@ -119,6 +119,31 @@ public class ZustellwegService {
                 ziel);
     }
 
+    /**
+     * Ein Weg, der ausgefallen ist (Kunden-Alarmierung P4): {@code weg} ist {@code email}, {@code webpush} oder
+     * {@code webhook}; {@code id} das Gerät bzw. der Kanal (bei E-Mail {@code null}), {@code name} die Adresse, der
+     * Geräte- oder Kanalname, {@code seit} der Zeitpunkt, an dem der Versand es bemerkte.
+     */
+    public record Ausfall(String weg, UUID id, String name, Instant seit) {}
+
+    /**
+     * Welche eigenen Wege gerade ausfallen (Kunden-Alarmierung P4, „Hinweis, wenn ein Weg ausfällt“): der
+     * eingeschaltete E-Mail-Weg, dessen letzte Zustellung endgültig scheiterte; Push-Geräte, die der Push-Dienst als
+     * abgemeldet zurückwies; Team-Kanäle, die dauerhaft nicht antworten. Bisher stand das nur im Protokoll und still
+     * am Weg. Ein abgeschalteter E-Mail-Weg ist kein Ausfall - das hat die Person selbst so gewählt.
+     */
+    public List<Ausfall> ausfaelle(String benutzerSub) {
+        List<Ausfall> liste = new java.util.ArrayList<>();
+        zustellwege.eigener(benutzerSub).filter(ZustellwegRepository.Zustellweg::aktiv)
+                .ifPresent(weg -> ausgang.emailAusfall(benutzerSub)
+                        .ifPresent(a -> liste.add(new Ausfall("email", null, weg.ziel(), a.seit()))));
+        zustellwege.abgelaufenePushAbos(benutzerSub)
+                .forEach(a -> liste.add(new Ausfall("webpush", a.id(), a.name(), a.seit())));
+        zustellwege.abgelaufeneWebhookZiele(benutzerSub)
+                .forEach(a -> liste.add(new Ausfall("webhook", a.id(), a.name(), a.seit())));
+        return liste;
+    }
+
     /** {@code true}, wenn der Token gültig war und die Adresse jetzt bestätigt ist. */
     public boolean bestaetigen(String token) {
         return zustellwege.bestaetigen(token, uhr.instant());

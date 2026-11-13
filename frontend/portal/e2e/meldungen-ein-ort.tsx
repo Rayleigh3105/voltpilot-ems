@@ -22,6 +22,8 @@ Object.assign(keycloak, { token: 'e2e-token', authenticated: true, updateToken: 
 const suche = new URLSearchParams(location.search);
 const unternehmen = suche.get('kunde') === 'unternehmen';
 const reiter = suche.get('reiter') ?? 'jetzt';
+// Kunden-Alarmierung P4: `?ausfall=1` lässt einen Weg ausfallen (privat: die E-Mail, im Unternehmen ein Push-Gerät).
+const ausfall = suche.get('ausfall') === '1';
 const anfragen: unknown[] = [];
 (window as unknown as { __anfragen: unknown[] }).__anfragen = anfragen;
 
@@ -126,6 +128,30 @@ const RUHE = unternehmen
   ? '{"werktags":{"von":"22:00","bis":"07:00"},"wochenende":"ganz"}'
   : '{"werktags":{"von":"22:00","bis":"07:00"},"wochenende":{"von":"22:00","bis":"07:00"}}';
 
+const nach = (min: number) => new Date(Date.now() + min * 60_000).toISOString();
+type Zeile = { weg: string; anlass: string; zustand: string; grund: string | null; am: string | null; versuche: number };
+const z = (weg: string, zustand: string, am: string | null, grund: string | null = null, anlass = 'ausgeloest'): Zeile =>
+  ({ weg, anlass, zustand, grund, am, versuche: zustand === 'wartet' ? 0 : 1 });
+const ohneWeg = (anlass = 'ausgeloest') => [z('webhook', 'unterdrueckt', null, 'kein_weg', anlass), z('telegram', 'unterdrueckt', null, 'kein_weg', anlass)];
+// Kunden-Alarmierung P4: der Zustellstand je Meldung - so, wie das Versand-Protokoll ihn für die angemeldete Person hält.
+const ZUSTELLUNG: Record<string, { still: string | null; stillDurch: string | null; wege: Zeile[] }> = unternehmen
+  ? {
+      'm-41': { still: null, stillDurch: null, wege: [z('email', 'gesendet', vor(6)), z('webpush', 'gesendet', vor(6)), ...ohneWeg()] },
+      'm-42': { still: null, stillDurch: null, wege: [z('email', 'wartet', nach(255), 'beruhigt'), z('webpush', 'wartet', nach(255), 'beruhigt'), ...ohneWeg()] },
+      'm-01': { still: null, stillDurch: null, wege: [z('email', 'gesendet', vor(60 * 26)), z('webpush', 'gesendet', vor(60 * 26)), z('email', 'gesendet', vor(60 * 26 - 42), null, 'wieder_normal'), ...ohneWeg()] },
+    }
+  : {
+      // Mit `?ausfall=1` scheiterte genau diese Mail - derselbe Fall wie die Karte „E-Mails kommen nicht an“.
+      'm-02': { still: null, stillDurch: null, wege: [ausfall ? z('email', 'fehlgeschlagen', vor(22)) : z('email', 'gesendet', vor(22)), z('webpush', 'unterdrueckt', null, 'kein_weg'), ...ohneWeg()] },
+      'm-03': { still: null, stillDurch: null, wege: [z('webpush', 'unterdrueckt', null, 'kein_weg')] },
+      'm-01': { still: null, stillDurch: null, wege: [z('email', 'gesendet', vor(60 * 26)), z('email', 'gesendet', vor(60 * 26 - 42), null, 'wieder_normal'), ...ohneWeg()] },
+    };
+const AUSFAELLE = !ausfall
+  ? []
+  : unternehmen
+    ? [{ weg: 'webpush', id: 'p-2', name: 'iPad Leitstand', seit: vor(95) }]
+    : [{ weg: 'email', id: null, name: EMAIL.ziel, seit: vor(22) }];
+
 const echtesFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.origin);
@@ -135,6 +161,11 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 
   if (p === '/api/v1/sites') return Response.json({ eintraege: ANLAGEN, teilansicht: { sichtbar: ANLAGEN.length, gesamt: ANLAGEN.length } });
   if (p === '/api/v1/meldungen') return Response.json({ meldungen: url.searchParams.get('status') === 'verlauf' ? VERLAUF : JETZT });
+  if (p === '/api/v1/meldungen/zustellung') {
+    const ids = (url.searchParams.get('ids') ?? '').split(',').filter((id) => ZUSTELLUNG[id]);
+    return Response.json({ zustellungen: ids.map((id) => ({ meldungId: id, ...ZUSTELLUNG[id] })) });
+  }
+  if (p === '/api/v1/zustellwege/ausfaelle') return Response.json(AUSFAELLE);
   if (p === '/api/v1/meldungen/zahl') return Response.json({ ungesehen: 1, dringend: unternehmen });
   const gesehen = p.match(/^\/api\/v1\/meldungen\/([^/]+)\/gesehen$/);
   if (gesehen) {

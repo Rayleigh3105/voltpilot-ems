@@ -8,7 +8,9 @@ import com.voltpilot.api.ueberwachung.UeberwachungRepository;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.AlarmZeile;
 import com.voltpilot.api.ueberwachung.UeberwachungsService;
 import com.voltpilot.api.web.dto.MeldungDto;
+import com.voltpilot.api.versand.VersandRepository;
 import com.voltpilot.api.web.dto.UeberwachungDto;
+import com.voltpilot.api.web.dto.ZustellstandDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -51,10 +53,12 @@ public class MeldungenController {
     private final UeberwachungAnlegenService anlegen;
     private final ProbelaufService probelauf;
     private final ExterneEmpfaengerService externeEmpfaenger;
+    private final VersandRepository versand;
 
     public MeldungenController(UeberwachungRepository repo, UeberwachungsService dienst,
             UeberwachungAnlegenService anlegen, ProbelaufService probelauf,
-            ExterneEmpfaengerService externeEmpfaenger) {
+            ExterneEmpfaengerService externeEmpfaenger, VersandRepository versand) {
+        this.versand = versand;
         this.repo = repo;
         this.dienst = dienst;
         this.anlegen = anlegen;
@@ -74,6 +78,58 @@ public class MeldungenController {
                 .map(a -> dto(a, angaben.get(a.id())))
                 .toList();
         return new MeldungDto.Liste(meldungen);
+    }
+
+    /** Höchstens so viele Meldungen fragt eine Anfrage nach ihrem Zustellstand (so viele zeigt auch die Liste). */
+    static final int ZUSTELLUNG_HOECHSTENS = LIMIT;
+
+    /**
+     * Der Zustellstand je Meldung (Kunden-Alarmierung P4): was mit diesen Meldungen an DIE PERSON ging, die fragt -
+     * „Gemeldet: E-Mail 12:34 · Push 12:34“ oder ehrlich „Nicht gesendet: …“. Rechte wie {@link #liste}: keine eigene
+     * Prüfung je Zeile, der Standort-Zaun ({@code site_scope} auf {@code alarm}) entscheidet, welche Meldungen die
+     * Verbindung sieht; eine unbekannte, fremde oder verborgene Kennung fehlt in der Antwort einfach. Der Mandant kommt
+     * aus dem Anmelde-Token, die Person aus {@code sub} - nie aus der Anfrage.
+     */
+    @GetMapping("/zustellung")
+    public ZustellstandDto.Liste zustellung(@RequestParam(name = "ids") List<String> ids, Authentication auth) {
+        List<UUID> kennungen;
+        try {
+            kennungen = ids.stream().flatMap(t -> java.util.Arrays.stream(t.split(","))).map(String::trim)
+                    .filter(t -> !t.isEmpty()).map(UUID::fromString).distinct().toList();
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ids sind Kennungen von Meldungen");
+        }
+        if (kennungen.size() > ZUSTELLUNG_HOECHSTENS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "höchstens " + ZUSTELLUNG_HOECHSTENS + " Meldungen je Anfrage");
+        }
+        String sub = auth != null && auth.getPrincipal() instanceof Jwt jwt ? jwt.getSubject()
+                : auth == null ? null : auth.getName();
+        if (sub == null || sub.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+        List<AlarmZeile> alarme = repo.alarme(kennungen);
+        List<UUID> sichtbar = alarme.stream().map(AlarmZeile::id).toList();
+        var heuteSchon = repo.heuteSchonGemeldet(sichtbar);
+        var zeilen = versand.zustellungen(sub, sichtbar).stream()
+                .collect(java.util.stream.Collectors.groupingBy(VersandRepository.Zustellung::alarmId));
+        java.util.Map<UUID, String> elternKennzeichen = new java.util.HashMap<>();
+        for (AlarmZeile a : alarme) {
+            if (a.unterdrueckDurch() != null) {
+                elternKennzeichen.put(a.id(), repo.alarm(a.unterdrueckDurch()).map(AlarmZeile::kennzeichen)
+                        .orElse(null));
+            }
+        }
+        List<ZustellstandDto> stand = alarme.stream().map(a -> {
+            String still = a.probelauf() ? "probelauf" : a.unterdrueckDurch() != null ? "abhaengig"
+                    : heuteSchon.contains(a.id()) ? "heute_schon" : null;
+            List<ZustellstandDto.Weg> wege = zeilen.getOrDefault(a.id(), List.of()).stream()
+                    .map(z -> new ZustellstandDto.Weg(z.weg(), z.anlass(), z.zustand(), z.grund(), z.am(),
+                            z.versuche()))
+                    .toList();
+            return new ZustellstandDto(a.id().toString(), still, elternKennzeichen.get(a.id()), wege);
+        }).toList();
+        return new ZustellstandDto.Liste(stand);
     }
 
     @GetMapping("/zahl")

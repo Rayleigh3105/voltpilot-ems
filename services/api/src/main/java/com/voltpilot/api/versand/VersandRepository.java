@@ -218,6 +218,129 @@ public class VersandRepository implements BenachrichtigungAusgang {
         return !zustaende.isEmpty() && zustaende.stream().allMatch("unterdrueckt"::equals);
     }
 
+    // --------------------------------------------------------------------- Beruhigung (Kunden-Alarmierung P4, §6.5)
+
+    /** Der Grund an einer Zeile, die die Beruhigung zurückhält ({@code wartet}) oder hat entfallen lassen. */
+    public static final String GRUND_BERUHIGT = "beruhigt";
+
+    /**
+     * Wann ging an diese Person über diesen Weg zuletzt eine ANDERE Meldung derselben Meldungsart am selben Bezug
+     * hinaus ({@code anlass = 'ausgeloest'}, wirklich {@code gesendet}), und zwar nach {@code seit}? Dieselbe Art am
+     * selben Bezug heißt: dieselbe Regel ({@code ueberwachung_id}) und dieselbe {@code bezug_kennung} - eine Regel ab
+     * Werk ist genau eine Meldungsart, eine eigene Überwachung ihre eigene. Zwei verschiedene Regeln beruhigen sich nie
+     * gegenseitig. Nur was angekommen ist, zählt: eine unterdrückte oder fehlgeschlagene Zeile ist keine Meldung.
+     */
+    public Optional<Instant> zuletztGemeldetGleicheArt(UUID tenantId, UUID alarmId, String empfaengerSub, String weg,
+            Instant seit) {
+        Timestamp am = admin.queryForObject("""
+                SELECT max(b.gesendet_am) FROM benachrichtigung b
+                  JOIN alarm a ON a.tenant_id = b.tenant_id AND a.id = b.quelle_id
+                  JOIN alarm d ON d.tenant_id = a.tenant_id AND d.id = ?
+                 WHERE b.tenant_id = ? AND b.empfaenger_sub = ? AND b.weg = ? AND b.quelle = 'alarm'
+                   AND b.anlass = 'ausgeloest' AND b.zustand = 'gesendet' AND b.gesendet_am > ?
+                   AND b.quelle_id <> d.id
+                   AND a.ueberwachung_id = d.ueberwachung_id AND a.bezug_kennung = d.bezug_kennung
+                """, Timestamp.class, alarmId, tenantId, empfaengerSub, weg, Timestamp.from(seit));
+        return Optional.ofNullable(am).map(Timestamp::toInstant);
+    }
+
+    /** Hält eine Zeile bis {@code bis} zurück (Grund {@link #GRUND_BERUHIGT}); sie bleibt {@code wartet}. */
+    public void beruhigen(UUID id, Instant bis) {
+        admin.update("UPDATE benachrichtigung SET naechster_versuch = ?, grund = ? WHERE id = ?", Timestamp.from(bis),
+                GRUND_BERUHIGT, id);
+    }
+
+    /** Wurde diese Zeile schon einmal von der Beruhigung zurückgehalten? */
+    public boolean wurdeBeruhigt(UUID id) {
+        return Boolean.TRUE.equals(admin.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM benachrichtigung WHERE id = ? AND grund = ?)", Boolean.class, id,
+                GRUND_BERUHIGT));
+    }
+
+    /** Ist die Meldung inzwischen erledigt (Wert zurück, Regel geändert oder aus)? */
+    public boolean alarmErledigt(UUID alarmId) {
+        return Boolean.TRUE.equals(admin.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM alarm WHERE id = ? AND zustand = 'erledigt')", Boolean.class, alarmId));
+    }
+
+    /**
+     * Hält die Beruhigung die Auslösung DIESER Meldung für genau diese Person und diesen Weg zurück (oder ließ sie
+     * entfallen)? Dann sind Entwarnung und Erinnerung dazu leer: sie sprächen von etwas, das nie angekommen ist.
+     */
+    public boolean ausloesungBeruhigt(UUID alarmId, String empfaengerSub, String weg) {
+        return Boolean.TRUE.equals(admin.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM benachrichtigung WHERE quelle = 'alarm' AND quelle_id = ?
+                                 AND anlass = 'ausgeloest' AND empfaenger_sub = ? AND weg = ?
+                                 AND grund = ? AND zustand <> 'gesendet')
+                """, Boolean.class, alarmId, empfaengerSub, weg, GRUND_BERUHIGT));
+    }
+
+    // --------------------------------------------------------------------- Zustellstand (Kunden-Alarmierung P4)
+
+    /**
+     * Eine Zeile des Versand-Protokolls zu einer Meldung, so wie die Person sie lesen darf: {@code am} ist beim
+     * Zustand {@code gesendet} der Sendezeitpunkt, bei {@code wartet} der nächste Versuch (Ruhezeit, Beruhigung,
+     * Wiederholung), sonst der Zeitpunkt des Einreihens.
+     */
+    public record Zustellung(UUID alarmId, String weg, String anlass, String zustand, String grund, Instant am,
+            int versuche) {}
+
+    /**
+     * Was mit den Meldungen {@code alarmIds} an DIESE Person ging - über die RLS-Verbindung des Aufrufers, mit
+     * {@code alarm} verbunden, damit der Standort-Zaun ({@code site_scope} auf {@code alarm}) auch hier entscheidet:
+     * eine Meldung hinter dem Zaun hat keinen Zustellstand.
+     */
+    public List<Zustellung> zustellungen(String empfaengerSub, List<UUID> alarmIds) {
+        if (alarmIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query("""
+                SELECT b.quelle_id, b.weg, b.anlass, b.zustand, b.grund, b.versuche,
+                       CASE b.zustand WHEN 'gesendet' THEN b.gesendet_am WHEN 'wartet' THEN b.naechster_versuch
+                            ELSE b.erstellt_am END AS am
+                  FROM benachrichtigung b
+                  JOIN alarm a ON a.tenant_id = b.tenant_id AND a.id = b.quelle_id
+                 WHERE b.quelle = 'alarm' AND b.empfaenger_sub = ? AND b.quelle_id = ANY (?::uuid[])
+                 ORDER BY b.erstellt_am, b.weg
+                """, (rs, n) -> new Zustellung(rs.getObject("quelle_id", UUID.class), rs.getString("weg"),
+                        rs.getString("anlass"), rs.getString("zustand"), rs.getString("grund"),
+                        rs.getTimestamp("am") == null ? null : rs.getTimestamp("am").toInstant(),
+                        rs.getInt("versuche")),
+                empfaengerSub, (Object) alarmIds.stream().map(UUID::toString).toArray(String[]::new));
+    }
+
+    /**
+     * Die Meldungen des Tages, die die Beruhigung bei dieser Person zurückhielt oder entfallen ließ - für die
+     * Tages-Zusammenfassung (§6.5 „was dazwischen passiert, steht in der Liste und in der Zusammenfassung“).
+     */
+    public List<UUID> beruhigteSeit(String empfaengerSub, Instant seit) {
+        return jdbc.query("""
+                SELECT DISTINCT b.quelle_id FROM benachrichtigung b
+                 WHERE b.quelle = 'alarm' AND b.anlass = 'ausgeloest' AND b.empfaenger_sub = ? AND b.grund = ?
+                   AND b.zustand <> 'gesendet' AND b.erstellt_am >= ?
+                """, (rs, n) -> rs.getObject(1, UUID.class), empfaengerSub, GRUND_BERUHIGT, Timestamp.from(seit));
+    }
+
+    /**
+     * Ein E-Mail-Weg fällt aus (Kunden-Alarmierung P4): die jüngste abgeschlossene Zustellung über den eigenen Weg
+     * ({@code ziel IS NULL} - nicht die Bestätigungs-Mail an eine neue Adresse) ist endgültig
+     * {@code fehlgeschlagen}. Ging danach wieder eine durch, ist nichts ausgefallen. Liefert den Zeitpunkt, seit dem
+     * und den letzten Fehlertext.
+     */
+    public Optional<EmailAusfall> emailAusfall(String empfaengerSub) {
+        return jdbc.query("""
+                SELECT zustand, erstellt_am, fehler FROM benachrichtigung
+                 WHERE empfaenger_sub = ? AND weg = 'email' AND ziel IS NULL
+                   AND zustand IN ('gesendet', 'fehlgeschlagen')
+                 ORDER BY erstellt_am DESC LIMIT 1
+                """, (rs, n) -> "fehlgeschlagen".equals(rs.getString("zustand"))
+                        ? new EmailAusfall(rs.getTimestamp("erstellt_am").toInstant(), rs.getString("fehler"))
+                        : null, empfaengerSub).stream().filter(java.util.Objects::nonNull).findFirst();
+    }
+
+    /** Siehe {@link #emailAusfall}. */
+    public record EmailAusfall(Instant seit, String fehler) {}
+
     /** Der Löschlauf (Entscheid 13A, 90 Tage) - unabhängig vom Zustand, wie {@code AblaufLaeufer}'s Takt. */
     public int loeschenAelterAls(Instant grenze) {
         return admin.update("DELETE FROM benachrichtigung WHERE erstellt_am < ?", Timestamp.from(grenze));

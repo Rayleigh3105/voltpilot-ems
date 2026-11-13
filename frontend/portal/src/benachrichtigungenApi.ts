@@ -92,7 +92,51 @@ export interface Stummschaltung {
   vonWem: string;
 }
 
+/**
+ * Der Zustellstand einer Meldung (Kunden-Alarmierung P4): was mit ihr an die angemeldete Person ging - aus dem
+ * Versand-Protokoll gelesen (`GET /api/v1/meldungen/zustellung`, `ZustellstandDto.java`). `still` nennt einen Grund,
+ * aus dem sie für niemanden hinausging; `wege` sind die Zeilen des Protokolls je Weg und Anlass.
+ */
+export interface Zustellstand {
+  meldungId: string;
+  still: 'probelauf' | 'abhaengig' | 'heute_schon' | null;
+  /** Bei `abhaengig`: das Kennzeichen der Meldung, unter der sie steht (Box oder Datenquelle). */
+  stillDurch: string | null;
+  wege: ZustellstandWeg[];
+}
+
+export interface ZustellstandWeg {
+  weg: 'email' | 'webpush' | 'webhook' | 'telegram' | string;
+  anlass: 'ausgeloest' | 'wieder_normal' | 'erinnerung' | string;
+  zustand: 'wartet' | 'gesendet' | 'fehlgeschlagen' | 'unterdrueckt' | string;
+  grund: string | null;
+  /** Gesendet um, wartet bis, sonst eingereiht um. */
+  am: string | null;
+  /** `> 0` bei `wartet`: ein Versuch scheiterte, der nächste folgt. */
+  versuche: number;
+}
+
+/** Ein eigener Weg, über den gerade nichts ankommt (Kunden-Alarmierung P4, `GET /api/v1/zustellwege/ausfaelle`). */
+export interface WegAusfall {
+  weg: 'email' | 'webpush' | 'webhook' | string;
+  /** Das Gerät bzw. der Kanal; bei E-Mail `null`. */
+  id: string | null;
+  /** Adresse, Geräte- oder Kanalname. */
+  name: string | null;
+  seit: string;
+}
+
 export const benachrichtigungenApi = {
+  // ----------------------------------------------------------------- Zustellstand und Ausfall (Kunden-Alarmierung P4)
+  /** Der Zustellstand je Meldung - höchstens 200 Kennungen je Anfrage (so viele zeigt auch die Liste). */
+  zustellung: (ids: readonly string[]) =>
+    ids.length === 0
+      ? Promise.resolve([] as Zustellstand[])
+      : request<{ zustellungen: Zustellstand[] }>(
+          `/api/v1/meldungen/zustellung?ids=${ids.slice(0, 200).map(encodeURIComponent).join(',')}`,
+        ).then((r) => r.zustellungen),
+  ausfaelle: () => request<WegAusfall[]>('/api/v1/zustellwege/ausfaelle'),
+
   // ----------------------------------------------------------------- E-Mail (Scheibe 0, Einstellungen Scheibe 3)
   emailZustand: () => request<EmailZustellweg | undefined>('/api/v1/zustellwege/email'),
   emailAnfordern: (ziel: string) =>

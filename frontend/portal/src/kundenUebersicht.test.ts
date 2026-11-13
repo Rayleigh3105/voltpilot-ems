@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { History, HistoryBucket, OverviewSite } from './api';
-import { standText, statusZeile, tagesKurve, ueberAnlagen, uebersichtBloecke } from './kundenUebersicht';
+import { standText, statusZeile, tagesKurve, ueberAnlagen, uebersichtBloecke, type OffeneMeldung } from './kundenUebersicht';
 
 function eimer(start: Date, pv: number, load: number): HistoryBucket {
   return {
@@ -87,6 +87,52 @@ describe('Statuszeile und Wörter', () => {
     expect(z.ton).toBe('warn');
     expect(z.text).toMatch(/^Werkstatt meldet sich .*nicht$/);
     expect(z.zielId).toBe('w');
+  });
+
+  describe('eine Aussage mit der Glocke (Kunden-Alarmierung P4, B9)', () => {
+    const offen = (over: Partial<OffeneMeldung>): OffeneMeldung => ({
+      id: 'm1',
+      anlageId: 'w',
+      schwere: 'warnung',
+      wertart: 'box.erreichbar',
+      titel: 'Werkstatt: Box meldet sich nicht',
+      ausgeloestAm: '2026-09-10T09:30:00Z',
+      ...over,
+    });
+    const stumm = site({ id: 'w', name: 'Werkstatt', onlineCount: 0, lastSeenAt: '2026-09-10T09:15:00Z' });
+
+    it('führt zur Meldung der Anlage, die sich nicht meldet', () => {
+      const z = statusZeile([site({}), stumm], now, [offen({})]);
+      expect(z.text).toMatch(/^Werkstatt meldet sich .*nicht$/);
+      expect(z.meldungId).toBe('m1');
+      expect(z.zielId).toBe('w');
+    });
+
+    it('sagt „noch ohne Meldung“, solange die Glocke nichts zeigt', () => {
+      const z = statusZeile([site({}), stumm], now, []);
+      expect(z.text).toMatch(/^Werkstatt meldet sich .*nicht · noch ohne Meldung$/);
+      expect(z.meldungId).toBeUndefined();
+    });
+
+    it('nennt ohne Verbindungsproblem die wichtigste offene Meldung statt „Alles in Ordnung“', () => {
+      const z = statusZeile([site({}), site({ id: 'y' })], now, [
+        offen({ id: 'w1', anlageId: 'x', wertart: 'anlage.netz.leistung', titel: 'X: Netzbezug hoch' }),
+        offen({ id: 'd1', anlageId: 'y', schwere: 'dringend', wertart: 'anlage.netz.lastspitze_laufend', titel: 'Y: Lastspitze droht', ausgeloestAm: '2026-09-10T08:00:00Z' }),
+        offen({ id: 'h1', anlageId: 'y', schwere: 'hinweis', wertart: 'anlage.preis.jetzt', titel: 'Strom gerade günstig' }),
+      ]);
+      expect(z).toEqual({ ton: 'warn', text: 'Y: Lastspitze droht · 1 weitere Meldung', zielId: 'y', meldungId: 'd1' });
+    });
+
+    it('Hinweise sind leise: sie machen aus „Alles in Ordnung“ nichts anderes', () => {
+      const z = statusZeile([site({})], now, [offen({ schwere: 'hinweis', anlageId: 'x' })]);
+      expect(z.text).toBe('Alles in Ordnung · 1 Anlage');
+    });
+
+    it('zählt eine Anlage nicht doppelt, die schon eine Meldung hat', () => {
+      const zweite = site({ id: 'v', name: 'Villa', onlineCount: 0, lastSeenAt: '2026-09-10T09:00:00Z' });
+      const z = statusZeile([stumm, zweite], now, [offen({}), offen({ id: 'm2', anlageId: 'v' })]);
+      expect(z.text).toMatch(/· 1 weitere Meldung$/);
+    });
   });
 
   it('spricht über „beide", „alle" oder „x von y" Anlagen', () => {

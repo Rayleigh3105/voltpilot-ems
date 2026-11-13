@@ -388,4 +388,83 @@ class ZustellerTest {
         assertThat(gesendet).isEqualTo(2);
         verify(email, times(2)).senden(eq("warnung@example.test"), anyString(), anyString());
     }
+
+    // ------------------------------------------------------------------ Beruhigung (Kunden-Alarmierung P4, §6.5)
+
+    private static VersandRepository.Zeile alarmZeile(UUID alarmId, String anlass) {
+        return new VersandRepository.Zeile(UUID.randomUUID(), TENANT, "alarm", alarmId, "sub-jonas", "email",
+                anlass, 0, "warnung@example.test", "Betreff", "Inhalt", 0, "warnung", null);
+    }
+
+    @Test
+    void eineAuslösungKurzNachDerselbenMeldungsartWartetSechsStundenNachDerLetzten() {
+        Instant jetzt = Instant.parse("2026-11-13T12:00:00Z");
+        Instant zuletzt = Instant.parse("2026-11-13T10:30:00Z");
+        VersandRepository.Zeile z = alarmZeile(UUID.randomUUID(), "ausgeloest");
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z));
+        when(zustellwege.hatAktivenEmailWeg(any(), any(), any())).thenReturn(true);
+        when(ausgang.zuletztGemeldetGleicheArt(TENANT, z.quelleId(), "sub-jonas", "email",
+                jetzt.minus(Zusteller.BERUHIGUNG))).thenReturn(Optional.of(zuletzt));
+
+        assertThat(zusteller.lauf(jetzt)).isZero();
+
+        verify(ausgang).beruhigen(z.id(), Instant.parse("2026-11-13T16:30:00Z"));
+        verify(email, never()).senden(anyString(), anyString(), anyString());
+        verify(ausgang, never()).unterdrueckt(any(), any());
+    }
+
+    @Test
+    void eineZurueckgehalteneAuslösungEntfaelltWennDieMeldungInzwischenErledigtIst() {
+        VersandRepository.Zeile z = alarmZeile(UUID.randomUUID(), "ausgeloest");
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z));
+        when(ausgang.zuletztGemeldetGleicheArt(any(), any(), any(), any(), any())).thenReturn(Optional.empty());
+        when(ausgang.wurdeBeruhigt(z.id())).thenReturn(true);
+        when(ausgang.alarmErledigt(z.quelleId())).thenReturn(true);
+
+        assertThat(zusteller.lauf(Instant.now())).isZero();
+
+        verify(ausgang).unterdrueckt(z.id(), VersandRepository.GRUND_BERUHIGT);
+        verify(email, never()).senden(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void eineZurueckgehalteneAuslösungGehtHinausWennDieMeldungNochGilt() {
+        VersandRepository.Zeile z = alarmZeile(UUID.randomUUID(), "ausgeloest");
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z));
+        when(zustellwege.hatAktivenEmailWeg(any(), any(), any())).thenReturn(true);
+        when(ausgang.zuletztGemeldetGleicheArt(any(), any(), any(), any(), any())).thenReturn(Optional.empty());
+        when(ausgang.wurdeBeruhigt(z.id())).thenReturn(true);
+        when(ausgang.alarmErledigt(z.quelleId())).thenReturn(false);
+
+        assertThat(zusteller.lauf(Instant.now())).isEqualTo(1);
+
+        verify(email).senden("warnung@example.test", "Betreff", "Inhalt");
+    }
+
+    @Test
+    void entwarnungUndErinnerungZuEinerBeruhigtenMeldungEntfallen() {
+        UUID alarm = UUID.randomUUID();
+        VersandRepository.Zeile entwarnung = alarmZeile(alarm, "wieder_normal");
+        VersandRepository.Zeile erinnerung = alarmZeile(alarm, "erinnerung");
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(entwarnung, erinnerung));
+        when(ausgang.ausloesungBeruhigt(alarm, "sub-jonas", "email")).thenReturn(true);
+
+        assertThat(zusteller.lauf(Instant.now())).isZero();
+
+        verify(ausgang).unterdrueckt(entwarnung.id(), VersandRepository.GRUND_BERUHIGT);
+        verify(ausgang).unterdrueckt(erinnerung.id(), VersandRepository.GRUND_BERUHIGT);
+        verify(email, never()).senden(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void ohneFruehereMeldungDerselbenArtGehtDieAuslösungSofortHinaus() {
+        VersandRepository.Zeile z = alarmZeile(UUID.randomUUID(), "ausgeloest");
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z));
+        when(zustellwege.hatAktivenEmailWeg(any(), any(), any())).thenReturn(true);
+        when(ausgang.zuletztGemeldetGleicheArt(any(), any(), any(), any(), any())).thenReturn(Optional.empty());
+
+        assertThat(zusteller.lauf(Instant.now())).isEqualTo(1);
+
+        verify(ausgang, never()).beruhigen(any(), any());
+    }
 }

@@ -58,33 +58,98 @@ export interface StatusZeile {
   text: string;
   /** Die Anlage, die Aufmerksamkeit braucht — Ziel des Links. */
   zielId: string | null;
+  /**
+   * Kunden-Alarmierung P4 (B9): die Meldung, von der die Zeile spricht — dann führt der Link zu ihr
+   * (`#/meldungen?meldung=…`) statt zur Anlage. Fehlt das Feld, gibt es keine.
+   */
+  meldungId?: string | null;
+}
+
+/**
+ * Eine offene Meldung, so wie die Übersicht sie braucht (Kunden-Alarmierung P4, B9): dieselben Meldungen, die die
+ * Glocke zählt (`GET /api/v1/meldungen?status=jetzt`, ohne Hinweise — `zaehltAlsOffen`), mit ihrem Titel aus dem
+ * Meldungstext.
+ */
+export interface OffeneMeldung {
+  id: string;
+  anlageId: string | null;
+  schwere: 'hinweis' | 'warnung' | 'dringend';
+  wertart: string;
+  titel: string;
+  ausgeloestAm: string;
+}
+
+/** Meldungsarten, die sagen, dass eine Anlage keine Daten schickt — dieselbe Lage wie „meldet sich nicht“. */
+const VERBINDUNGS_ARTEN = new Set(['box.erreichbar', 'datenquelle.liefert_daten']);
+
+function meldungenWort(n: number): string {
+  return n === 1 ? '1 weitere Meldung' : `${n} weitere Meldungen`;
 }
 
 /**
  * Die Statuszeile: grün mit der Zahl der Anlagen, sonst der GRUND mit der
  * Anlage, die ihn trägt („Werkstatt am Bach meldet sich seit 45 Min. nicht").
+ *
+ * Eine Aussage (Kunden-Alarmierung P4, B9): mit `offene` (den offenen Meldungen, die auch die Glocke zählt) spricht
+ * die Zeile nie gegen die Glocke. Steht zur Anlage, die sich nicht meldet, eine Meldung offen, führt der Link zu ihr;
+ * gibt es noch keine (die Regel wartet ihre Zeit ab, ist aus oder im Probelauf), sagt die Zeile „noch ohne Meldung“.
+ * Ohne Verbindungsproblem nennt sie die wichtigste offene Meldung statt „Alles in Ordnung“. Weitere Meldungen zählt
+ * sie dazu; weitere Anlagen nur, soweit sie nicht schon als Meldung gezählt sind. Ohne `offene` (noch nicht geladen
+ * oder ohne Antwort) bleibt es bei den Live-Werten allein.
  */
-export function statusZeile(sites: readonly OverviewSite[], now: Date): StatusZeile {
+export function statusZeile(
+  sites: readonly OverviewSite[],
+  now: Date,
+  offene?: readonly OffeneMeldung[] | null,
+): StatusZeile {
   const gesamt = sites.length;
   if (gesamt === 0) return { ton: 'off', text: 'Noch keine Anlage angelegt', zielId: null };
+  const meldungen = offene ? offene.filter((m) => m.schwere !== 'hinweis') : null;
   const mitStatus = sites.map((s) => ({ s, st: siteStatus(s) }));
   const problem =
     mitStatus.find((x) => x.st.label === 'Meldet sich nicht') ??
     mitStatus.find((x) => x.st.label === 'Wartet auf Daten') ??
     mitStatus.find((x) => x.st.label === 'Kein Gerät');
   if (!problem) {
+    if (meldungen && meldungen.length > 0) {
+      const top = [...meldungen].sort(
+        (a, b) =>
+          Number(b.schwere === 'dringend') - Number(a.schwere === 'dringend') ||
+          Date.parse(b.ausgeloestAm) - Date.parse(a.ausgeloestAm),
+      )[0];
+      const rest = meldungen.length - 1;
+      return {
+        ton: 'warn',
+        text: top.titel + (rest > 0 ? ` · ${meldungenWort(rest)}` : ''),
+        zielId: top.anlageId,
+        meldungId: top.id,
+      };
+    }
     return {
       ton: 'ok',
       text: `Alles in Ordnung · ${gesamt} ${anlagenWort(gesamt)}`,
       zielId: null,
     };
   }
-  const weitere = mitStatus.filter((x) => x.st.tone !== 'ok').length - 1;
-  const zusatz = weitere > 0 ? ` · ${weitere} weitere ${weitere === 1 ? 'Anlage braucht' : 'Anlagen brauchen'} Aufmerksamkeit` : '';
   const { s, st } = problem;
+  const passend =
+    st.label === 'Meldet sich nicht' && meldungen
+      ? (meldungen.find((m) => m.anlageId === s.id && VERBINDUNGS_ARTEN.has(m.wertart)) ?? null)
+      : null;
+  const mitMeldung = new Set((meldungen ?? []).map((m) => m.anlageId));
+  const weitereAnlagen = mitStatus.filter(
+    (x) => x.st.tone !== 'ok' && x.s.id !== s.id && !(meldungen && mitMeldung.has(x.s.id)),
+  ).length;
+  const weitereMeldungen = meldungen ? meldungen.filter((m) => m !== passend).length : 0;
+  const zusatz =
+    (weitereMeldungen > 0 ? ` · ${meldungenWort(weitereMeldungen)}` : '') +
+    (weitereAnlagen > 0
+      ? ` · ${weitereAnlagen} weitere ${weitereAnlagen === 1 ? 'Anlage braucht' : 'Anlagen brauchen'} Aufmerksamkeit`
+      : '');
   const text =
     st.label === 'Meldet sich nicht'
-      ? `${s.name} meldet sich ${seitDauer(s.lastSeenAt, now) ?? ''} nicht`.replace(/\s+/g, ' ')
+      ? `${s.name} meldet sich ${seitDauer(s.lastSeenAt, now) ?? ''} nicht`.replace(/\s+/g, ' ') +
+        (meldungen && !passend ? ' · noch ohne Meldung' : '')
       : st.label === 'Wartet auf Daten'
         ? `${s.name} wartet auf die ersten Daten`
         : `${s.name} hat noch kein Gerät`;
@@ -92,6 +157,7 @@ export function statusZeile(sites: readonly OverviewSite[], now: Date): StatusZe
     ton: st.label === 'Kein Gerät' ? 'off' : 'warn',
     text: text + zusatz,
     zielId: s.id,
+    ...(passend ? { meldungId: passend.id } : {}),
   };
 }
 

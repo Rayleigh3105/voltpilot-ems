@@ -653,6 +653,26 @@ public class UeberwachungRepository {
                 UeberwachungRepository::alarmZeile, id).stream().findFirst();
     }
 
+    /** Mehrere Meldungen nach Kennung (Kunden-Alarmierung P4, Zustellstand) - was der Standort-Zaun zeigt. */
+    public List<AlarmZeile> alarme(List<UUID> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE id = ANY (?::uuid[])",
+                UeberwachungRepository::alarmZeile, (Object) ids.stream().map(UUID::toString).toArray(String[]::new));
+    }
+
+    /** Welche dieser Meldungen hielt KA-4 B „höchstens einmal am Tag“ still (Verlauf-Eintrag beim Auslösen)? */
+    public java.util.Set<UUID> heuteSchonGemeldet(List<UUID> ids) {
+        if (ids.isEmpty()) {
+            return java.util.Set.of();
+        }
+        return new java.util.HashSet<>(jdbc.query("SELECT DISTINCT alarm_id FROM alarm_verlauf WHERE art = 'versand' "
+                + "AND text = ? AND alarm_id = ANY (?::uuid[])", (rs, n) -> rs.getObject(1, UUID.class),
+                UeberwachungsService.VERSAND_HEUTE_SCHON, (Object) ids.stream().map(UUID::toString)
+                        .toArray(String[]::new)));
+    }
+
     /** Jetzt = nicht erledigt; Verlauf = erledigt - höchstens {@code limit}, jüngste zuerst. */
     public List<AlarmZeile> liste(boolean erledigt, int limit) {
         return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE (zustand = 'erledigt') = ? "

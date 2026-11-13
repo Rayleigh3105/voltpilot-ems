@@ -156,3 +156,13 @@ describe('Kunden-Alarmierung P3 · ein Ort', () => {
     expect(empfaengerText(r, 'Sabine Sommer')).toBe('an Kundenadministratoren, Bearbeiter am Standort und Sie');
   });
 });
+
+describe('eine Aussage: was als offene Meldung zählt (Kunden-Alarmierung P4, B9)', () => {
+  it('Glocke, Übersicht und Cockpit zählen nach derselben Regel: offen und kein Hinweis', async () => {
+    const { zaehltAlsOffen } = await import('./meldungenApi');
+    expect(zaehltAlsOffen({ zustand: 'aktiv', schwere: 'warnung' })).toBe(true);
+    expect(zaehltAlsOffen({ zustand: 'gesehen', schwere: 'dringend' })).toBe(true);
+    expect(zaehltAlsOffen({ zustand: 'aktiv', schwere: 'hinweis' })).toBe(false);
+    expect(zaehltAlsOffen({ zustand: 'erledigt', schwere: 'dringend' })).toBe(false);
+  });
+});

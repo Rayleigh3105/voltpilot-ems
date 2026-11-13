@@ -164,6 +164,22 @@ public class ZustellwegController {
 
     // --------------------------------------------------------------------- Web-Push (Alerting Scheibe 3, §7)
 
+    /** Ein ausgefallener Weg (Kunden-Alarmierung P4) - siehe {@link ZustellwegService#ausfaelle}. */
+    public record AusfallDto(String weg, String id, String name, java.time.Instant seit) {
+        static AusfallDto aus(ZustellwegService.Ausfall a) {
+            return new AusfallDto(a.weg(), a.id() == null ? null : a.id().toString(), a.name(), a.seit());
+        }
+    }
+
+    /**
+     * „Ein Weg fällt aus“ (Kunden-Alarmierung P4): die eigenen Wege, über die gerade nichts ankommt - sichtbar in
+     * „Einstellen“ und als Karte in „Jetzt“. Wie jede Route hier nur für das eigene Konto ({@code sub} aus dem Token).
+     */
+    @GetMapping("/ausfaelle")
+    public List<AusfallDto> ausfaelle(Authentication auth) {
+        return zustellwege.ausfaelle(sub(auth)).stream().map(AusfallDto::aus).toList();
+    }
+
     @GetMapping("/push")
     public List<PushAboDto> pushAbos(Authentication auth) {
         return zustellwege.pushAboEigene(sub(auth)).stream().map(PushAboDto::aus).toList();
