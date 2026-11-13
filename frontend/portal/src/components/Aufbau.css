@@ -1225,6 +1225,15 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     grid-area: aktion;
     grid-column: auto;
   }
+  /* Anschluss ohne Gerät: „Gerät hinzufügen" ist zu lang für die feste 'auto'-Spalte neben dem auf
+     mindestens 60 % gesperrten Namen (gemessener Querlauf am Telefon) - die Aktion bekommt deshalb
+     ihre eigene volle Zeile statt der Namenszeile zu teilen. */
+  .vp-auf-t-zeile.is-anschluss {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'name'
+      'aktion';
+  }
   .vp-auf-t-plus .lbl {
     display: none;
   }

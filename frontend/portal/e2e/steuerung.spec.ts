@@ -166,9 +166,12 @@ test('Laden: Ladepunkte, Womit laden und Ladeziel ohne Überlauf', async ({ page
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
   await expect(wb.getByRole('button', { name: /Smart/ })).toHaveAttribute('aria-pressed', 'true');
   // Konzept k1: der gewählte Modus als eine Zeile mit Versprechen, Tagesband und zwei kurzen Sätzen.
-  const zeile = wb.getByRole('button', { name: 'Womit laden: Nur Sonne. Ändern' });
+  const zeile = wb.getByRole('button', { name: 'Nur Sonne: Nur Überschuss, sonst Pause. Womit laden – ändern' });
   await expect(zeile).toContainText('Nur Überschuss, sonst Pause');
-  await expect(zeile.getByRole('img', { name: /geschätzte Ladeleistung bis 7:00 Uhr/ })).toBeVisible();
+  // Die Vorschau ist bewusst `aria-hidden` (Name des Knopfs nennt Quelle und Aktion schon, Wartung
+  // Barrierefreiheit w1 Welle 2) - sichtbar bleibt sie trotzdem, nur nicht über `getByRole`.
+  await expect(zeile.locator('svg.vb')).toHaveAttribute('aria-label', /geschätzte Ladeleistung bis 7:00 Uhr/);
+  await expect(zeile.locator('svg.vb')).toBeVisible();
   // Das Ziel-Blatt fragt kein zweites „Womit?“ und nennt die Quelle der Karte.
   await page.getByRole('region', { name: 'Ladepunkt Carport' }).locator('.lziel').click();
   const ziel = page.getByRole('dialog', { name: /Ladeziel/ });
@@ -184,7 +187,7 @@ test('Laden: Ladepunkte, Womit laden und Ladeziel ohne Überlauf', async ({ page
 test('Laden: Womit laden? - Antippen zeigt, „So laden“ sendet, die Karte zeigt gesendet › übernommen › gemessen', async ({ page }, testInfo) => {
   const fehler = await oeffnen(page, LADEN);
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
-  const zeile = wb.getByRole('button', { name: /^Womit laden: / });
+  const zeile = wb.getByRole('button', { name: /Womit laden – ändern$/ });
   await zeile.click();
   const blatt = page.getByRole('dialog', { name: /Womit laden/ });
   await expect(blatt.getByRole('radio')).toHaveCount(4);
@@ -236,7 +239,7 @@ test('Laden: erster Besuch - „Lädt immer sofort voll“, nichts wird still ge
   await expect(lp).toContainText('Lädt immer sofort voll');
   await lp.getByRole('button', { name: 'Womit laden einstellen' }).click();
   await page.getByRole('dialog', { name: /Womit laden/ }).getByRole('button', { name: /So laden/ }).click();
-  await expect(lp.getByRole('button', { name: /^Womit laden: Sonne \+ Minimum/ })).toBeVisible();
+  await expect(lp.getByRole('button', { name: /^Sonne \+ Minimum:/ })).toBeVisible();
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
   expect(await ueberstehend(page)).toEqual([]);
   expect(fehler).toEqual([]);
@@ -245,13 +248,13 @@ test('Laden: erster Besuch - „Lädt immer sofort voll“, nichts wird still ge
 test('Laden: Sonne + Speicher mit Erklärzeile und Reserve ohne Überlauf', async ({ page }) => {
   const fehler = await oeffnen(page, LADEN);
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
-  await wb.getByRole('button', { name: /^Womit laden: / }).click();
+  await wb.getByRole('button', { name: /Womit laden – ändern$/ }).click();
   const blatt = page.getByRole('dialog', { name: /Womit laden/ });
   await expect(blatt.getByRole('radio')).toHaveCount(4);
   await blatt.getByText('Sonne + Speicher', { exact: true }).first().click();
   await blatt.getByRole('button', { name: /So laden/ }).click();
   await expect(page.getByRole('status')).toContainText('gesendet');
-  await expect(wb.getByRole('button', { name: /^Womit laden: Sonne \+ Speicher/ })).toBeVisible();
+  await expect(wb.getByRole('button', { name: /^Sonne \+ Speicher:/ })).toBeVisible();
   await expect(wb).toContainText('Der Speicher gibt gerade bis 2,4 kW frei und darf bis 15 % entladen');
   const reserve = page.getByRole('region', { name: 'Reserve für Sonne + Speicher' });
   await expect(reserve.getByRole('button', { name: '1 kWh · Vorgabe' })).toHaveAttribute('aria-pressed', 'true');
@@ -266,7 +269,7 @@ test('Laden: Sonne + Speicher mit Erklärzeile und Reserve ohne Überlauf', asyn
 test('Laden: Sonne + Speicher mit einem Speicher, den VoltPilot nur beobachtet', async ({ page }) => {
   const fehler = await oeffnen(page, LADEN_BEOBACHTET);
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
-  await wb.getByRole('button', { name: /^Womit laden: / }).click();
+  await wb.getByRole('button', { name: /Womit laden – ändern$/ }).click();
   const blatt = page.getByRole('dialog', { name: /Womit laden/ });
   await blatt.getByText('Sonne + Speicher', { exact: true }).first().click();
   await blatt.getByRole('button', { name: /So laden/ }).click();
@@ -350,7 +353,9 @@ test('Cockpit W-12: eine getrennte Wallbox - die Kachel sagt nicht „Kein Auto 
 test('Laden W-21: Auto voll - das Vektor-Wort statt „wartet“, keine Ladeankündigung', async ({ page }) => {
   await oeffnen(page, '/e2e/steuerung.html?wallbox=voll#/anlage/help-site/laden');
   const karte = lpKarte(page);
-  await expect(karte).toContainText('Auto pausiert · voll oder Auto-Timer');
+  // Der Satz ist eine Vorschau für sehende Nutzer (CSS-Inhalt, `aria-hidden`) - der Knopf-Name
+  // nennt Quelle und Aktion schon, siehe `zeile`-Kommentar weiter oben in dieser Datei.
+  await expect(karte.locator('.lq-satz')).toHaveAttribute('data-satz', 'Auto pausiert · voll oder Auto-Timer');
   await expect(karte.locator('.lp-kw')).toContainText('Auto pausiert');
   await expect(karte).not.toContainText('Lädt ab');
 });

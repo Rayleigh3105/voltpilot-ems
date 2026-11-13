@@ -2033,6 +2033,34 @@
       "nachher": "7cb1df86a0cec37d654482d103cd6124253c83fd4c0cf525b7c8b3ddfed43bce",
       "commit": "fm/vp-a11y-befunde",
       "grund": "Wartung Barrierefreiheit vp-wartung-a11y-w1 Welle 2 (2.5.3): der Name beginnt mit dem sichtbaren Text (Zustandswort, Ursache) und hängt „Zustand der Anlage – Details anzeigen“ an, statt umgekehrt; Handler und Popover bleiben."
+    },
+    {
+      "datei": "components/MastrDrawer.tsx",
+      "vorher": "b8080255db155e517f8d6afc5c28784090b4e02f47eb1137716ceb87e5cc1ac2",
+      "nachher": "655ed6f07fc3a6bf05a9398cdab1878b34133befb5a8198029d1f3017bda6753",
+      "commit": "c029440291a4dbf2946945ebc8f848fc5d41c87f",
+      "grund": "S3 (vp-mastr-mehrere-einheiten-konzept, #1840): „Übernehmen“ bleibt derselbe Knopf (Beschriftung, Handler `apply`, Recht `anlage.verwalten`), ist jetzt aber erst aktiv, wenn der neue Schritt „Richtung prüfen“ für jede Einheit ohne bekannte Himmelsrichtung beantwortet ist (`disabled` erweitert um `brauchenRichtung().some(...)`)."
+    },
+    {
+      "datei": "components/MastrDrawer.tsx",
+      "vorher": "bf9a12a0e1a27c586500ebb4b72ade69b1baf6bfdd2c995e77835103a5ca44e8",
+      "nachher": "5247f1c9462eb54aad73fc832aab22c3c63b512ad239cb01942ce5ed898fa47a",
+      "commit": "c029440291a4dbf2946945ebc8f848fc5d41c87f",
+      "grund": "S3 (vp-mastr-mehrere-einheiten-konzept, #1840, E2=A: eine Nummer genügt): dasselbe Feld (`value={pvNummer}`, `error={pvHint}`, derselbe `onChange`) heißt jetzt „MaStR-Nummer Ihrer Anlage“ statt „... der PV-Anlage“ - die Lokations-Suche findet seitdem jede Einheit an diesem Anschluss selbst, auch den Speicher."
+    },
+    {
+      "datei": "components/MastrDrawer.tsx",
+      "vorher": "0f24ff2dabee3d464d3e3e28fcb986cc256bdfb2643c7213469fce94375ef229",
+      "nachher": "6e0f495421e902b027cee1a2896c87c3aa53bd15f292b34631a2b78c11e9a6e8",
+      "commit": "c029440291a4dbf2946945ebc8f848fc5d41c87f",
+      "grund": "S3 (vp-mastr-mehrere-einheiten-konzept, #1840, E2=A): dasselbe Feld (`value={storageNummer}`, `error={storageHint}`, derselbe `onChange`) heißt jetzt „... einer weiteren Einheit an anderem Anschluss (optional)“ statt „... des Speichers (optional)“ und trägt zusätzlich einen `hint`, der erklärt, wann es gebraucht wird - die Lokations-Suche des ersten Felds deckt den Speicher am selben Anschluss bereits ab."
+    },
+    {
+      "datei": "pages/AnlageTechnik.tsx",
+      "vorher": "42399951e9ff032baf89ff235423129479d8b89accb1e539499665b5edf72137",
+      "nachher": "86372d142b325715dc893fc0445f1e4a345c21208897845203c378fdcd17cbd9",
+      "commit": "c029440291a4dbf2946945ebc8f848fc5d41c87f",
+      "grund": "S3 (vp-mastr-mehrere-einheiten-konzept, #1840): derselbe Knopf (`Button`, Recht `anlage.verwalten`, Handler `onAbrufen`) nennt sich jetzt „Weitere Einheit verknüpfen“ statt „Neu aus dem Register abrufen“, sobald schon mindestens eine bestätigte PV-Einheit da ist (`pvEinheiten.length > 0`); ohne bestätigte Einheit bleibt der Text wörtlich wie vorher - nur die Fassung mit der neuen Bedingung ist jetzt die einzige Quelle dafür."
     }
   ],
   "assistentZusammenfuehrung": {
