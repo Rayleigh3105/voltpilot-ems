@@ -1209,10 +1209,25 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     padding: 0;
   }
   .vp-auf-t-zeile.is-anlage,
-  .vp-auf-t-zeile.is-box,
+  .vp-auf-t-zeile.is-box {
+    grid-template-areas: 'name aktion';
+  }
+  /* `is-fund`/`is-anschluss` tragen einen beschrifteten Knopf („Übernehmen“, „Gerät hinzufügen“)
+     statt der kompakten Icon-Knöpfe von `is-anlage`/`is-box` - neben dem 60-%-Mindestmaß des Namens
+     lief er über den Bildschirmrand hinaus, abgeschnitten statt nur verschoben (ein `overflow:hidden`
+     eines Vorfahren hielt dabei sogar `scrollWidth` unauffällig). Er bekommt stattdessen eine eigene
+     volle Zeile darunter. */
   .vp-auf-t-zeile.is-fund,
   .vp-auf-t-zeile.is-anschluss {
-    grid-template-areas: 'name aktion';
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'name'
+      'aktion';
+  }
+  .vp-auf-t-zeile.is-fund > .vp-auf-t-aktion,
+  .vp-auf-t-zeile.is-anschluss > .vp-auf-t-aktion {
+    flex-wrap: wrap;
+    padding-top: 6px;
   }
   .vp-auf-t-zeile.is-anlage > .vp-auf-t-summe,
   .vp-auf-t-zeile.is-box > .vp-auf-t-zustand,
