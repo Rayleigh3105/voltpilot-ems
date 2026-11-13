@@ -2254,7 +2254,9 @@ class PortalApiTest {
                     .containsEntry("envDefault", "load-persistence")
                     .containsEntry("setByName", null)
                     .containsEntry("setAt", null);
-            assertThat(load.get("selectable")).isEqualTo(List.of("load-persistence", "load-xgb"));
+            // "selectable" ist der ganze Katalog der Art (ForecastModels.modelsOf), nicht nur die
+            // in diesem Test gesäten Modelle - seit #1826 (11.11.2026) zählt load-profile dazu.
+            assertThat(load.get("selectable")).isEqualTo(List.of("load-persistence", "load-xgb", "load-profile"));
             assertThat((List<?>) before.get("history")).isEmpty();
 
             // (2) Der Klick des KUNDEN - kein Admin nötig, kein 403.
@@ -7940,13 +7942,16 @@ class PortalApiTest {
      *   18:00Z spot -50: pv 0.5 load 1.0 imp 0.2 exp 0.5 dis 0.3
      *
      *   s51a (commissioned 2025-06-01, 20 kWp -> blended (10*7.94+10*6.88)/20
-     *         = 7.41 ct; §51a zeroes the negative-price slot):
-     *     einspeise = 1.0*0.0741 + 0.5*0      = 0.0741
-     *     baseline  = -1.5*0.0741 + 0.5*0.30  = 0.03885
-     *     actual    = -1.0*0.0741 + 0.06      = -0.0141
-     *     saved     = 0.03885 - (-0.0141)     = 0.05295
+     *         = 7.41 ct; §51a does NOT zero the negative-price slot - N1 (§ 51
+     *         Abs. 2 Nr. 1 EEG, EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP):
+     *         it only suspends remuneration from 100 kWp, 20 kWp stays exempt):
+     *     einspeise = 1.5*0.0741               = 0.11115
+     *     baseline  = -1.5*0.0741 + 0.5*0.30   = 0.03885
+     *     actual    = -1.5*0.0741 + 0.06       = -0.05115
+     *     saved     = 0.03885 - (-0.05115)     = 0.09
      *   alt (commissioned 2024-06-01, kWp unknown -> 8.11 ct, rate HOLDS in
-     *        the negative slot - pre-§51a plants keep their Vergütung):
+     *        the negative slot for the same reason: no kWp at/above the
+     *        threshold is known, so §51a never engages either):
      *     einspeise = 1.5*0.0811              = 0.12165
      *     baseline  = -1.5*0.0811 + 0.15      = 0.02835
      *     actual    = -1.5*0.0811 + 0.06      = -0.06165
@@ -8004,13 +8009,13 @@ class PortalApiTest {
                 // Not Direktvermarktung -> no premium claim, and no negative
                 // spot "revenue" a fixed remuneration does not have.
                 .containsEntry("marktpraemieEur", null);
-        assertThat(num(s51aBody, "einspeiseErloesEur")).isCloseTo(0.0741, eps);
+        assertThat(num(s51aBody, "einspeiseErloesEur")).isCloseTo(0.11115, eps);
         assertThat(num(s51aBody, "eigenverbrauchsWertEur")).isCloseTo(0.39, eps);
         assertThat(num(s51aBody, "stromkostenEur")).isCloseTo(0.06, eps);
-        assertThat(num(s51aBody, "nettoErgebnisEur")).isCloseTo(0.4041, eps);
+        assertThat(num(s51aBody, "nettoErgebnisEur")).isCloseTo(0.44115, eps);
         assertThat(num(s51aBody, "baselineEur")).isCloseTo(0.03885, eps);
-        assertThat(num(s51aBody, "actualEur")).isCloseTo(-0.0141, eps);
-        assertThat(num(s51aBody, "savedEur")).isCloseTo(0.05295, eps);
+        assertThat(num(s51aBody, "actualEur")).isCloseTo(-0.05115, eps);
+        assertThat(num(s51aBody, "savedEur")).isCloseTo(0.09, eps);
 
         Map<String, Object> altBody = siteEarningsDay(demo, alt, "2026-03-03");
         assertThat(altBody).containsEntry("exportVerguetungPriced", true)
@@ -8050,8 +8055,8 @@ class PortalApiTest {
         Map<String, Object> s51aRow = siteRow(fleet, s51a);
         assertThat(s51aRow).containsEntry("exportVerguetungPriced", true)
                 .containsEntry("exportVerguetungQuelle", "eeg");
-        assertThat(num(s51aRow, "einspeiseErloesEur")).isCloseTo(0.0741, eps);
-        assertThat(num(s51aRow, "savedEur")).isCloseTo(0.05295, eps);
+        assertThat(num(s51aRow, "einspeiseErloesEur")).isCloseTo(0.11115, eps);
+        assertThat(num(s51aRow, "savedEur")).isCloseTo(0.09, eps);
         Map<String, Object> bareRow = siteRow(fleet, bare);
         assertThat(bareRow).containsEntry("exportVerguetungPriced", false);
         assertThat(num(bareRow, "einspeiseErloesEur")).isCloseTo(0.075, eps);
@@ -8067,11 +8072,14 @@ class PortalApiTest {
      * besitzt): dieselben zwei Viertelstunden wie der B2-Test - 10:00Z zu 100
      * EUR/MWh (1,0 kWh Einspeisung), 18:00Z zu -50 EUR/MWh (0,5 kWh). Die
      * PV-Anlage ist am 2025-06-01 mit 9,8 kWp in Betrieb gegangen: hergeleitet
-     * 7,94 ct, § 51a gilt (auch für die Angabe). Vorher, noch OHNE PV-Eintrag,
+     * 7,94 ct - § 51a greift NICHT (§ 51 Abs. 2 Nr. 1 EEG, N1: unter 100 kWp,
+     * {@link com.voltpilot.api.optimizer.EegRates#SOLARSPITZENGESETZ_KLEINANLAGE_KWP}),
+     * die negative Viertelstunde zählt also wie jede andere. Vorher, noch OHNE
+     * PV-Eintrag (kein kWp bekannt - § 51a greift aus demselben Grund nicht),
      * prüft der Test die Pflicht-Antwort zu § 51a (vor/ab dem 25.02.2025).
      * <pre>
-     *   hergeleitet: einspeise = 1,0*0,0794 + 0,5*0 = 0,0794
-     *   angegeben 12,5 ct: einspeise = 1,0*0,125 + 0,5*0 = 0,125
+     *   hergeleitet: einspeise = 1,0*0,0794 + 0,5*0,0794 = 0,1191
+     *   angegeben 12,5 ct: einspeise = 1,0*0,125 + 0,5*0,125 = 0,1875
      * </pre>
      */
     @Test
@@ -8112,13 +8120,16 @@ class PortalApiTest {
         assertThat(getSheet(demo, base)).containsEntry("angegebenCtKwh", null);
         Map<String, Object> abStichtag = new java.util.HashMap<>(Map.of("satzCtKwh", 6.0,
                 "inbetriebnahmeAbSolarspitzengesetz", true));
+        // N1 (§ 51 Abs. 2 Nr. 1 EEG): ohne PV-Eintrag ist die kWp unbekannt, und § 51a greift
+        // erst ab 100 kWp - die Selbstauskunft "ab Stichtag" hebt die negative Viertelstunde
+        // deshalb NICHT auf 0 (EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP).
         assertThat(putSheet(demo, base, abStichtag)).containsEntry("zustand", "angegeben")
                 .containsEntry("inbetriebnahmeAbSolarspitzengesetz", true)
-                .containsEntry("ohneVerguetungBeiNegativpreis", true);
+                .containsEntry("ohneVerguetungBeiNegativpreis", false);
         Map<String, Object> mitNull = siteEarningsDay(demo, site, "2026-03-10");
         assertThat(mitNull).containsEntry("exportVerguetungQuelle", "angegeben");
-        // 1,0 kWh x 6 ct + 0,5 kWh x 0 (die negative Viertelstunde, § 51a)
-        assertThat(num(mitNull, "einspeiseErloesEur")).isCloseTo(0.06, eps0);
+        // 1,0 kWh x 6 ct + 0,5 kWh x 6 ct: ohne bekannte kWp bleibt die Vergütung bestehen
+        assertThat(num(mitNull, "einspeiseErloesEur")).isCloseTo(0.09, eps0);
         Map<String, Object> vorStichtag = new java.util.HashMap<>(Map.of("satzCtKwh", 6.0,
                 "inbetriebnahmeAbSolarspitzengesetz", false));
         assertThat(putSheet(demo, base, vorStichtag)).containsEntry("ohneVerguetungBeiNegativpreis", false);
@@ -8148,7 +8159,9 @@ class PortalApiTest {
         assertThat(eeg).containsEntry("zustand", "eeg")
                 .containsEntry("inbetriebnahme", "2025-06-01")
                 .containsEntry("eegEndeAm", "2045-12-31")
-                .containsEntry("ohneVerguetungBeiNegativpreis", true)
+                // N1: 9,8 kWp liegt unter der 100-kWp-Schwelle - § 51 Abs. 2 Nr. 1 EEG nimmt
+                // Kleinanlagen aus, § 51a greift hier nie (EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP).
+                .containsEntry("ohneVerguetungBeiNegativpreis", false)
                 .containsEntry("hergeleitetGenaehert", false)
                 .containsEntry("angegebenCtKwh", null);
         assertThat(num(eeg, "wirksamCtKwh")).isCloseTo(7.94, eps);
@@ -8156,7 +8169,8 @@ class PortalApiTest {
         Map<String, Object> vorher = siteEarningsDay(demo, site, "2026-03-10");
         assertThat(vorher).containsEntry("exportVerguetungPriced", true)
                 .containsEntry("exportVerguetungQuelle", "eeg");
-        assertThat(num(vorher, "einspeiseErloesEur")).isCloseTo(0.0794, eps);
+        // 1,0 kWh x 7,94 ct + 0,5 kWh x 7,94 ct: keine Nullstunde unter 100 kWp
+        assertThat(num(vorher, "einspeiseErloesEur")).isCloseTo(0.1191, eps);
         assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(7.94, eps);
 
         // 2. Eigener Satz (deutsches Komma): wirkt in Erlösen und Fahrplan.
@@ -8170,8 +8184,8 @@ class PortalApiTest {
         Map<String, Object> mit = siteEarningsDay(demo, site, "2026-03-10");
         assertThat(mit).containsEntry("exportVerguetungPriced", true)
                 .containsEntry("exportVerguetungQuelle", "angegeben");
-        // § 51a hängt weiter am Inbetriebnahmedatum: die negative Viertelstunde bleibt 0.
-        assertThat(num(mit, "einspeiseErloesEur")).isCloseTo(0.125, eps);
+        // N1: § 51a bleibt unter 100 kWp aus - die negative Viertelstunde zählt mit.
+        assertThat(num(mit, "einspeiseErloesEur")).isCloseTo(0.1875, eps);
         assertThat(num(mit, "nettoErgebnisEur")).isCloseTo(
                 num(mit, "einspeiseErloesEur") + num(mit, "eigenverbrauchsWertEur")
                         - num(mit, "stromkostenEur"), eps);
@@ -8184,14 +8198,14 @@ class PortalApiTest {
         Map<String, Object> mitAntwort = new java.util.HashMap<>(Map.of("satzCtKwh", 12.5,
                 "inbetriebnahmeAbSolarspitzengesetz", false));
         assertThat(putSheet(demo, base, mitAntwort)).containsEntry("inbetriebnahmeAbSolarspitzengesetz", null)
-                .containsEntry("ohneVerguetungBeiNegativpreis", true);
+                .containsEntry("ohneVerguetungBeiNegativpreis", false);
         Map<String, Object> fleet = rest.exchange(
                 url("/api/v1/earnings?range=day&at=2026-03-10"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
         assertThat(siteRow(fleet, site)).containsEntry("exportVerguetungPriced", true)
                 .containsEntry("exportVerguetungQuelle", "angegeben");
-        assertThat(num(siteRow(fleet, site), "einspeiseErloesEur")).isCloseTo(0.125, eps);
+        assertThat(num(siteRow(fleet, site), "einspeiseErloesEur")).isCloseTo(0.1875, eps);
 
         // 3. Ungültige Angaben sind deutsche 400er und ändern nichts.
         for (Map<String, Object> falsch : List.of(new java.util.HashMap<String, Object>(),
@@ -8217,7 +8231,7 @@ class PortalApiTest {
         assertThat(zurueck).isEqualTo(eeg);
         Map<String, Object> danach = siteEarningsDay(demo, site, "2026-03-10");
         assertThat(danach).containsEntry("exportVerguetungQuelle", "eeg");
-        assertThat(num(danach, "einspeiseErloesEur")).isCloseTo(0.0794, eps);
+        assertThat(num(danach, "einspeiseErloesEur")).isCloseTo(0.1191, eps);
         assertThat(num(danach, "savedEur")).isCloseTo(num(vorher, "savedEur"), eps);
         assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(7.94, eps);
 
