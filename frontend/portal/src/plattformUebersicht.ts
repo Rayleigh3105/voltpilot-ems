@@ -59,7 +59,7 @@ import type {
 import { zeitpunkt } from './adminFernwartung';
 import type { WerkstattDienst } from './werkstattBank';
 import type { Route } from './nav';
-import { geraeteAkteRoute, type GeraeteAkteReiter } from './nav';
+import { geraeteAkteHash, geraeteAkteRoute, mandantHash, type GeraeteAkteReiter } from './nav';
 
 export type UebersichtTon = Tone;
 
@@ -126,13 +126,28 @@ function softwareKachel(
 ): UebersichtKachel {
   // Dieselbe Wahrheit wie die Software-Seite (`adminEdgeUpdates.edgeUpdatesUrteil`,
   // Muster `kpiText`): je Linie gemessen, Rückfall auf `kpi` nur ohne `lines`.
-  const { veraltet } = edgeUpdatesUrteil(kpi, lines);
+  const { veraltet, bekannt } = edgeUpdatesUrteil(kpi, lines);
   const zahl = veraltet;
   const linienTexte = lines
     .filter((l) => l.devices > 0 && l.known - l.upToDate > 0)
     .map((l) => `${BOX_ART_LABELS[l.boxArt]} ${l.known - l.upToDate} älter`);
   const laufend = rolloutsLaufend(rollouts);
-  const teile = [laufend > 0 ? `${laufend} ${laufend === 1 ? 'läuft' : 'laufen'}` : null, ...linienTexte].filter(Boolean);
+  const ohneStand = kpi.unknown > 0 ? `${kpi.unknown} ohne Stand` : null;
+  const teile = [laufend > 0 ? `${laufend} ${laufend === 1 ? 'läuft' : 'laufen'}` : null, ...linienTexte, ohneStand].filter(Boolean);
+  // Admin-Durchgang F18: meldet KEINE Box einen bewertbaren Stand, ist „0 · Alle aktuell ✓"
+  // eine Behauptung ohne Grundlage - die Software-Seite sagt dazu „keinen bewertbaren Stand".
+  if (bekannt === 0 && kpi.unknown > 0) {
+    return {
+      id: 'software',
+      icon: 'refresh-cw',
+      label: 'Software',
+      zahl: kpi.unknown,
+      ton: 'off',
+      wort: 'ohne bewertbaren Stand',
+      wortKurz: 'ohne Stand',
+      kontext: laufend > 0 ? `${laufend} ${laufend === 1 ? 'läuft' : 'laufen'}` : '',
+    };
+  }
   return {
     id: 'software',
     icon: 'refresh-cw',
@@ -549,6 +564,14 @@ export interface AuffaelligZeile {
   key: string;
   ort: string;
   text: string;
+  /** Die Begründung des Servers (Pflege-Hinweis), sonst `null`. */
+  detail: string | null;
+  /**
+   * Wo der Hinweis behoben wird (Admin-Durchgang F2: vorher führte keine Zeile irgendwohin):
+   * die Akte › Anlage der führenden Box, ohne Box die Kundenakte, bei einer abgelehnten
+   * Anfrage die Akte › Software.
+   */
+  ziel: string;
 }
 
 /**
@@ -562,9 +585,15 @@ export function uebersichtAuffaellig(
   now: Date,
 ): AuffaelligZeile[] {
   const out: AuffaelligZeile[] = [];
+  const boxJeAnlage = new Map(sites.map((s) => {
+    const boxen = s.boxes ?? [];
+    return [s.siteId, (boxen.find((b) => b.fuehrtAnlage) ?? boxen[0])?.externalRef ?? null];
+  }));
   for (const site of fleetRows(sites, now)) {
+    const box = boxJeAnlage.get(site.siteId) ?? null;
+    const ziel = box ? geraeteAkteHash(box, 'anlage') : mandantHash(site.tenantId);
     for (const p of site.pflege) {
-      out.push({ key: `pflege-${site.siteId}-${p.code}`, ort: site.siteName, text: p.label });
+      out.push({ key: `pflege-${site.siteId}-${p.code}`, ort: site.siteName, text: p.label, detail: p.detail ?? null, ziel });
     }
   }
   for (const row of edgeFleet) {
@@ -574,6 +603,7 @@ export function uebersichtAuffaellig(
     out.push({
       key: `abgelehnt-${row.externalRef}`, ort: name,
       text: `Anfrage abgelehnt${row.fakten.angenommen.grund ? `: ${row.fakten.angenommen.grund}` : ''}`,
+      detail: null, ziel: geraeteAkteHash(row.externalRef, 'software'),
     });
   }
   return out;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ausbaubar, ausbauenFolgen, nichtAusbaubarFolgen } from './boxAusbauen';
+import { ausbaubar, ausbauenFolgen, befundSatz, nichtAusbaubarFolgen } from './boxAusbauen';
 
 describe('boxAusbauen', () => {
   it('eine Box mit Daten (Herzschlag, Messwerte) ist ausbaubar - genau der vorgesehene Fall', () => {
@@ -38,5 +38,25 @@ describe('boxAusbauen', () => {
   it('jeder andere blockierte Fall bleibt beim bisherigen Umweg-Satz', () => {
     const folgen = nichtAusbaubarFolgen(['verbund']);
     expect(folgen.join(' ')).toContain('Gerät entfernen');
+  });
+});
+
+describe('befundSatz (Admin-Durchgang F17)', () => {
+  const jetzt = new Date('2026-11-13T13:00:00Z');
+  const fakten = {
+    verbundenAm: '2026-01-01T00:00:00Z', herzschlagAm: null, messwertAm: '2026-11-13T10:00:00Z', meldungAm: null,
+    anmeldung: { zuletztAngefragtAm: null, schluesselAbgeholtAm: null },
+  };
+
+  it('nennt die LETZTE Messung „letzter Messwert vor …" statt „Messwerte seit vor …", ohne doppelten Punkt', () => {
+    const satz = befundSatz({ loesbar: false, gruende: ['messwerte'], fakten }, jetzt);
+    expect(satz).toBe('Hat Daten gespeichert · letzter Messwert vor 3\u00a0Std.');
+    expect(satz).not.toContain('seit vor');
+    expect(satz).not.toContain('..');
+  });
+
+  it('setzt den Schlusspunkt, wenn der letzte Teil keinen trägt', () => {
+    expect(befundSatz({ loesbar: false, gruende: ['zustaendigkeit'], fakten }, jetzt))
+      .toBe('Hat Daten gespeichert · liest noch eine Datenquelle.');
   });
 });

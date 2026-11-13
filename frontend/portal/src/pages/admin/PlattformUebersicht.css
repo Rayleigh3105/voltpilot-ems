@@ -383,8 +383,14 @@
 .vp-ueb-dienst-punkt.ok { background: var(--vp-ok-ink); }
 .vp-ueb-dienst-punkt.warn { background: var(--vp-warn-ink); }
 
-.vp-ueb-auffaellig-zeile { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: 0.82rem; }
-.vp-ueb-auffaellig-zeile span:first-child { color: var(--vp-text-muted); }
+.vp-ueb-auffaellig-zeile {
+  display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 0.82rem;
+  color: inherit; text-decoration: none; border-radius: var(--vp-radius-sm);
+}
+.vp-ueb-auffaellig-zeile span:first-child { flex: 1; min-width: 0; color: var(--vp-text-muted); }
+.vp-ueb-auffaellig-zeile svg { flex: none; color: var(--vp-text-muted); }
+.vp-ueb-auffaellig-zeile:hover span:last-of-type { text-decoration: underline; }
+.vp-ueb-auffaellig-zeile:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
 
 /* Die übrigen Plattform-Reiter als Zeilen am Ende - statt der waagrecht
    scrollenden Reiterleiste (nur am Telefon sichtbar, Konzept §4.3). */

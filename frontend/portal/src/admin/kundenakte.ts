@@ -47,6 +47,8 @@ function rollenText(eintrag: BenutzerEintrag | null): string {
 
 /** Konto- bzw. Rollen-Zustand einer Person; das UEMS-Lesemodell (`eintrag.zustand`) führt, Keycloak füllt nur die Lücke. */
 function personZustand(konto: AdminUser | null, eintrag: BenutzerEintrag | null): { ton: Ton; text: string } {
+  // Admin-Durchgang F6: ein Eintrag ohne Anmeldekonto stand in der Spalte „Konto" als „aktiv".
+  if (!konto && eintrag && eintrag.zustand !== 'entfernt') return { ton: 'warn', text: 'ohne Konto' };
   const zustand = eintrag?.zustand ?? (konto ? (konto.enabled ? 'aktiv' : 'gesperrt') : null);
   if (zustand === 'aktiv') return { ton: 'ok', text: 'aktiv' };
   if (zustand === 'angelegt') return { ton: 'warn', text: 'angelegt' };
@@ -180,6 +182,32 @@ export function kundenZustand(
   if (vertragsende) return { ton: 'off', text: 'beendet' };
   if (unterstuetzungBisText) return { ton: 'ok', text: `Unterstützung bis ${unterstuetzungBisText}` };
   return { ton: 'ok', text: 'aktiv' };
+}
+
+/** Eine Rolle je Standort braucht eine Anlage des Kunden. */
+export const OHNE_STANDORT_SATZ = 'Diese Rolle gilt je Standort, und der Kunde hat noch keine Anlage. '
+  + 'Erst eine Anlage anlegen oder eine Rolle für das ganze Unternehmen wählen.';
+
+/**
+ * Was „Vertrag beenden" bewirkt. Admin-Durchgang F11: hier stand „gelöscht werden sie frühestens
+ * nach der Frist" - seit #1839 ist jeder Kunde sofort löschbar, die Frist steuert nichts mehr.
+ */
+export const VERTRAG_BEENDEN_SATZ = 'Ab dem Beenden kann der Kunde seine Daten nur noch lesen. Die Frist aus dem Vertrag '
+  + 'wird nur vermerkt; gelöscht wird erst mit „Kunde endgültig löschen“.';
+
+/**
+ * Das Ende einer laufenden Unterstützung, wie der Kundenadministrator es bestätigt hat.
+ * Admin-Durchgang F13: die Liste zeigte „bis 14.12.2026, 00:00:00" für eine Unterstützung
+ * „bis einschließlich 13.12.2026" - der Server liefert das Ende AUSSCHLIESSLICH (Mitternacht).
+ * Endet sie um Mitternacht (Berlin), steht der letzte Tag da; sonst (Notfall, 24 Stunden)
+ * Tag und Uhrzeit.
+ */
+export function unterstuetzungBisText(bisIso: string): string {
+  const bis = new Date(bisIso);
+  const zeit = bis.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false });
+  const tag = (d: Date) => d.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric' });
+  if (zeit === '00:00' || zeit === '24:00') return tag(new Date(bis.getTime() - 1));
+  return `${tag(bis)}, ${zeit}`;
 }
 
 /** Die Zählungen einer Zeile der Kundenliste (`undefined` = lädt noch, `null` = nicht ladbar). */

@@ -23,6 +23,7 @@ import { BOX_ART_LABELS, BOX_ART_UNBEKANNT } from './adminEdgeUpdates';
 import type { BoxVerbindung } from './adminFleet';
 import { boxZeile, LINIEN, type BoxZeile } from './geraeteUpdates';
 import { pendingRows } from './onboardingFunnel';
+import { fmtRelative } from './format';
 import { loeschbar, type WerkstattBox } from './werkstatt';
 
 export type Lebensabschnitt = 'gedruckt' | 'wartet' | 'werkstatt' | 'verbunden' | 'ausgebaut';
@@ -162,6 +163,19 @@ export function geraeteListeZeilen(args: {
 }
 
 const RANG: Record<Lebensabschnitt, number> = { verbunden: 0, wartet: 1, werkstatt: 2, gedruckt: 3, ausgebaut: 4 };
+
+/**
+ * Der Zeitpunkt in der Spalte „Verbindung" einer Box, die (noch) nicht beim Kunden meldet.
+ * Admin-Durchgang F3: dort stand nur „vor 6 Min." - bei einer gedruckten Box die DRUCKZEIT,
+ * gelesen als letzte Meldung. Das Wort davor sagt, welches Ereignis die Zeit trägt.
+ */
+const SEIT_WORT: Record<RohZeile['lebensabschnitt'], string> = {
+  gedruckt: 'gedruckt', wartet: 'angemeldet', werkstatt: 'angelegt', ausgebaut: 'ausgebaut',
+};
+
+export function seitText(z: RohZeile, jetzt: Date): string {
+  return z.seit ? `${SEIT_WORT[z.lebensabschnitt]} ${fmtRelative(z.seit, jetzt)}` : '–';
+}
 
 // ── Filter ──────────────────────────────────────────────────────────────────
 

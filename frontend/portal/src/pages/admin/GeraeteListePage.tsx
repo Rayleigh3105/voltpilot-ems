@@ -12,11 +12,10 @@ import { RowMenu } from '../../components/RowMenu';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { Blende } from '../../components/Lazy';
 import { AdminPageHead } from './AdminPageHead';
-import { fmtRelative } from '../../format';
 import { freshnessLabel, type EdgeUpdates } from '../../adminEdgeUpdates';
 import {
   filterGeraeteListe, geraeteListeLinien, geraeteListeZeilen, listeChipZahlen, loeschKandidat,
-  LEERER_LISTE_FILTER, type GeraeteListeZeile, type ListeFilter, type LoeschKandidat,
+  LEERER_LISTE_FILTER, seitText, type GeraeteListeZeile, type ListeFilter, type LoeschKandidat,
 } from '../../geraeteListe';
 import { PENDING_KONTEXT, pendingErreichbarText } from '../../onboardingFunnel';
 import type { FlottenAnlage } from '../../adminKomponentenFlotte';
@@ -313,7 +312,7 @@ function GeraeteZeile({ z, jetzt, onOpen, werkstattBoxen, onLoeschenAnfragen }: 
             <small>{z.erreichbar.lastSeenText}</small>
           </div>
         ) : (
-          <span className="vp-muted">{z.seit ? fmtRelative(z.seit, jetzt) : '–'}</span>
+          <span className="vp-muted">{seitText(z, jetzt)}</span>
         )}
       </td>
       <td data-label="Software" data-zeile="neben">

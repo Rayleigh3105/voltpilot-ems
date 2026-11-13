@@ -5,6 +5,9 @@
  * (`BoxLoesenBefund.gruende`): keine zweite Abfrage, kein zweiter Server-Weg.
  */
 
+import type { BoxLoesenBefund } from './admin/adminApi';
+import { fmtRelative } from './format';
+
 /**
  * Ausbaubar = dieselbe Zuständigkeits-Prüfung wie der Server beim Ausbauen selbst
  * (`DeviceRepository#ausbauen`, 409 `box_hat_zustaendigkeiten`): die Box muss noch aktiv sein (kein
@@ -38,4 +41,26 @@ export function nichtAusbaubarFolgen(gruende: string[]): string[] {
         + 'es sieht" › Box › Datenquelle), dann lässt sie sich hier ausbauen.']
     : ['Der Kunde entfernt die Box selbst (Anlage › Box › ⋯ › Gerät entfernen) - die Daten bleiben.',
         'Gehören die Daten zu einer fremden Anlage, ist das ein Fall für die Unterstützung.'];
+}
+
+const GRUND_SATZ: Record<string, (f: BoxLoesenBefund['fakten'], jetzt: Date) => string> = {
+  verbund: () => 'ist nicht mehr verbunden',
+  herzschlag: (f, jetzt) => `Herzschlag ${fmtRelative(f.herzschlagAm, jetzt)}`,
+  // `messwertAm` ist die LETZTE Messung (BoxBefundSql: max(received_at)) - „seit" las sich wie die erste.
+  messwerte: (f, jetzt) => `letzter Messwert ${fmtRelative(f.messwertAm, jetzt)}`,
+  meldungen: (f, jetzt) => `Software-Meldung ${fmtRelative(f.meldungAm, jetzt)}`,
+  zustaendigkeit: () => 'liest noch eine Datenquelle',
+  angemeldet: () => 'hat ihren Schlüssel schon abgeholt',
+};
+
+/** Der Befund des Servers als ein Satz für den Dialog „Vom Kunden lösen" / „Box ausbauen". */
+export function befundSatz(befund: BoxLoesenBefund, jetzt: Date): string {
+  if (befund.loesbar) {
+    const schluessel = befund.fakten.anmeldung.schluesselAbgeholtAm;
+    return `Hat sich nie gemeldet · Herzschlag nie · Messwerte keine · Anmeldung ${schluessel ? 'abgeholt, wird entzogen' : 'nie'}.`;
+  }
+  const teile = befund.gruende.map((g) => GRUND_SATZ[g]?.(befund.fakten, jetzt) ?? g);
+  const satz = `Hat Daten gespeichert · ${teile.join(' · ')}`;
+  // „vor 3 Std." endet schon mit einem Punkt - kein zweiter dahinter (Admin-Durchgang F17).
+  return satz.endsWith('.') ? satz : `${satz}.`;
 }

@@ -53,11 +53,11 @@ test('Mandant ohne Standort: die Mandanten-Seite sagt, warum keine Unterstützun
   const dialog = await oeffne(page, 'Musterwerk Nord GmbH');
   const hinweis = dialog.getByRole('note');
   await expect(hinweis).toBeVisible();
-  await expect(hinweis).toContainText('Dieser Mandant hat noch keinen Standort.');
-  await expect(hinweis).toContainText('gelten immer für Standorte, nie für das ganze Unternehmen');
-  await expect(hinweis).toContainText('„Wie der Kunde es sieht“ öffnet sie trotzdem');
-  // Nichts wird versteckt: Anfrage, Notfall-Zugriff und Sprung bleiben, wie sie sind.
-  await expect(dialog.getByRole('button', { name: 'Unterstützung anfragen' })).toBeEnabled();
+  await expect(hinweis).toContainText('Unterstützung gilt je Standort, und dieser Kunde hat noch keinen.');
+  await expect(hinweis).toContainText('„Wie der Kunde es sieht“ geht trotzdem.');
+  // Admin-Durchgang F10: Anfrage und Notfall-Zugriff führten hier in Dialoge ohne Standort-Auswahl -
+  // sie stehen ohne Standort nicht mehr da; der Sprung bleibt.
+  await expect(dialog.getByRole('button', { name: 'Unterstützung anfragen' })).toHaveCount(0);
   await passt(page, dialog, 'p, h3, button, .vp-alert');
 
   await dialog.getByRole('button', { name: 'Wie der Kunde es sieht' }).click();

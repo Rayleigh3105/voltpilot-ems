@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   filterGeraeteListe, geraeteListeLinien, geraeteListeZeilen, listeChipZahlen, loeschKandidat, LEERER_LISTE_FILTER,
+  seitText,
 } from './geraeteListe';
 import type { AdminDeviceRow, PendingEnrollment } from './admin/adminApi';
 import type { FleetRow } from './adminEdgeUpdates';
@@ -207,5 +208,18 @@ describe('loeschKandidat: Lösch-Handlung nur ohne aktive Kunden-/Anlagen-Bindun
       geraeteListe: [{ externalRef: ref, lebensabschnitt: 'ausgebaut', seit: vor(1000), deviceId: null, siteId: null, tenantId: null, tenantName: null, name: null }],
     }, now);
     expect(loeschKandidat(ausgebaut, [])).toBeNull();
+  });
+});
+
+describe('seitText: die Zeit in der Spalte „Verbindung" nennt ihr Ereignis', () => {
+  const jetzt = new Date('2026-11-13T13:00:00Z');
+  const roh = (lebensabschnitt: 'gedruckt' | 'wartet' | 'werkstatt' | 'ausgebaut', seit: string | null) => ({
+    lebensabschnitt, ref: 'VP-DEMO-0001', name: 'VP-DEMO-0001', hinweis: '', seit, suspect: false, suchtext: '', erreichbar: null,
+  });
+
+  it('Admin-Durchgang F3: eine gedruckte Box zeigt „gedruckt vor …", nie eine nackte Zeit, die wie eine Meldung aussieht', () => {
+    expect(seitText(roh('gedruckt', '2026-11-13T12:54:00Z'), jetzt)).toBe('gedruckt vor 6 Min.');
+    expect(seitText(roh('ausgebaut', '2026-11-13T12:00:00Z'), jetzt)).toBe('ausgebaut vor 1 Std.');
+    expect(seitText(roh('werkstatt', null), jetzt)).toBe('–');
   });
 });

@@ -146,7 +146,7 @@ describe('fleetRows', () => {
 
   it('states a missing measurement as a gap, never as a zero', () => {
     const [row] = fleetRows(
-      [site({ deviceCount: 0, onlineCount: 0, lastSeenAt: null, lastPlanGeneratedAt: null })],
+      [site({ deviceCount: 0, onlineCount: 0, lastSeenAt: null, lastPlanGeneratedAt: null, hasStorage: true })],
       NOW,
     );
     expect(row.liveText).toBe('—');
@@ -155,6 +155,12 @@ describe('fleetRows', () => {
     // Nichts gemeldet -> unbekannt, nie "0 gesund".
     expect(row.sources).toBeNull();
     expect(row.edge.text).toBe('unbekannt');
+  });
+
+  it('Admin-Durchgang F1: an Anlage without storage never gets a plan - no warning, a plain fact', () => {
+    const [row] = fleetRows([site({ lastPlanGeneratedAt: null, hasStorage: false })], NOW);
+    expect(row.planText).toBe('ohne Speicher kein Plan');
+    expect(row.planTone).toBe('off');
   });
 
   it('a healthy row still SAYS so instead of leaving an empty cell', () => {

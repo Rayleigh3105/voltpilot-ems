@@ -194,8 +194,13 @@ describe('MandantenPage - die Kundenakte', () => {
     fireEvent.click(knopf);
     // Inline, kein Fenster (E1 = A).
     expect(screen.queryByRole('dialog')).toBeNull();
-    fireEvent.change(screen.getByLabelText('Benutzername *'), { target: { value: 'kunde-01' } });
-    fireEvent.change(screen.getByLabelText('E-Mail'), { target: { value: 'kunde@example.com' } });
+    fireEvent.change(screen.getByLabelText('E-Mail *'), { target: { value: 'kunde@example.com' } });
+    // Admin-Durchgang F8: der Anmeldename folgt der E-Mail wie bei „Person hinzufügen" ...
+    expect(screen.getByLabelText('Anmeldename *')).toHaveValue('kunde');
+    // ... und bleibt, sobald jemand ihn selbst ändert.
+    fireEvent.change(screen.getByLabelText('Anmeldename *'), { target: { value: 'kunde-01' } });
+    fireEvent.change(screen.getByLabelText('E-Mail *'), { target: { value: 'kunde@example.com' } });
+    expect(screen.getByLabelText('Anmeldename *')).toHaveValue('kunde-01');
     createUser.mockResolvedValue({ benutzer: { sub: 'u-2', anzeigename: 'kunde-01', email: 'kunde@example.com', zustand: 'angelegt' }, startpasswort: 'geheim123' });
     fireEvent.click(screen.getByRole('button', { name: 'Kundenadministrator anlegen' }));
     await waitFor(() => expect(createUser).toHaveBeenCalledWith('t-1', { username: 'kunde-01', email: 'kunde@example.com', firstName: undefined, lastName: undefined }));
@@ -332,7 +337,9 @@ describe('MandantenPage - die Kundenakte', () => {
       anlass: 'sofort_keine_daten', freigegebeneBoxen: ['edge-cyhchfr'], loeschnachweis: null,
     };
     deleteTenant.mockResolvedValue(fertigerLauf(report));
-    openDetail();
+    const onReloadTenants = vi.fn();
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={onReloadTenants} onJumpToTenant={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: `Details zu ${TENANT.name}` }));
     const akte = await screen.findByRole('region', { name: TENANT.name });
     expect(await within(akte).findByText('beendet')).toBeInTheDocument();
 
@@ -350,6 +357,54 @@ describe('MandantenPage - die Kundenakte', () => {
     await waitFor(() => expect(deleteTenant).toHaveBeenCalledWith('t-1', TENANT.name));
     expect(await screen.findByText(/wurde vollständig entfernt/)).toBeInTheDocument();
     expect(screen.getByText('edge-cyhchfr - wieder anmeldbar')).toBeInTheDocument();
+    // Admin-Durchgang F14: die Liste der Schale lädt sofort nach, ohne den Kunden zu wählen -
+    // nicht erst bei „Zu den Kunden" (sonst blieb er in Umschalter und Zähler).
+    expect(onReloadTenants).toHaveBeenCalledWith();
+  });
+
+  it('Admin-Durchgang F14: der Löschbericht bleibt stehen, auch wenn die nachgeladene Liste den Kunden nicht mehr kennt', async () => {
+    const report = {
+      tenantId: 't-1', tenantName: TENANT.name, deletedSites: 0, deletedDevices: 0,
+      deletedTelemetryRows: 0, deletedUsers: ['anna'], failedUsers: [],
+      anlass: 'sofort_mit_daten', freigegebeneBoxen: [], loeschnachweis: null,
+    };
+    deleteTenant.mockResolvedValue(fertigerLauf(report));
+    const { rerender } = render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: `Details zu ${TENANT.name}` }));
+    const akte = await screen.findByRole('region', { name: TENANT.name });
+    fireEvent.click(within(akte).getAllByRole('button', { name: 'Kunde endgültig löschen …' })[0]);
+    const dlg = await screen.findByRole('dialog', { name: 'Kunde endgültig löschen' });
+    fireEvent.change(within(dlg).getByLabelText('Zum Bestätigen den Kundennamen abtippen'), { target: { value: TENANT.name } });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Kunde endgültig löschen' }));
+    expect(await screen.findByText(/wurde vollständig entfernt/)).toBeInTheDocument();
+    rerender(<MandantenPage tenants={[]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    expect(screen.getByText(/wurde vollständig entfernt/)).toBeInTheDocument();
+    expect(screen.queryByText('Kunde nicht gefunden')).toBeNull();
+  });
+
+  it('Admin-Durchgang F13: die Akte zeigt eine laufende Unterstützung mit ihrem letzten Tag', async () => {
+    fleet.mockResolvedValue({ sites: [], unterstuetzungBis: { 't-1': '2026-12-13T23:00:00Z' }, unterstuetzungStandorte: [], releases: [] });
+    openDetail();
+    const akte = await screen.findByRole('region', { name: TENANT.name });
+    expect(await within(akte).findByText('Unterstützung bis 13.12.2026')).toBeInTheDocument();
+  });
+
+  it('Admin-Durchgang F6: ein Eintrag ohne Anmeldekonto steht nicht als „aktiv" in der Spalte Konto', async () => {
+    benutzerListe.mockResolvedValue([{ sub: 'nur-eintrag', anzeigename: 'Robert Falk', email: 'robert@example.com', zustand: 'aktiv', zuweisungen: [] }]);
+    openDetail();
+    const zeile = (await screen.findByText('Robert Falk')).closest('tr')!;
+    expect(within(zeile).getByText('ohne Konto')).toBeInTheDocument();
+    expect(within(zeile).queryByText('aktiv')).toBeNull();
+  });
+
+  it('Admin-Durchgang F9: ohne Anlage sagt „Person hinzufügen" bei einer Standort-Rolle, warum es nicht geht', async () => {
+    openDetail();
+    fireEvent.click(await screen.findByRole('button', { name: 'Person hinzufügen' }));
+    fireEvent.change(screen.getByLabelText('E-Mail'), { target: { value: 'lena@example.com' } });
+    // Vorgabe „Leser" gilt je Standort - der Kunde hat keine Anlage (listSites: []).
+    expect(screen.getByRole('note')).toHaveTextContent('Diese Rolle gilt je Standort, und der Kunde hat noch keine Anlage.');
+    expect(screen.getByRole('button', { name: 'Person anlegen' })).toBeDisabled();
+    expect(createPerson).not.toHaveBeenCalled();
   });
 
   it('mit Daten sagt der Dialog ehrlich, was verloren geht - und löscht trotzdem sofort', async () => {
@@ -435,11 +490,17 @@ describe('MandantenPage - die Kundenakte', () => {
   it('N1: beendet den Vertrag mit Frist - die Gefahrenzone bleibt immer offen (vp-kunde-sofort-loeschen-mit-daten)', async () => {
     openDetail();
     const akte = await screen.findByRole('region', { name: TENANT.name });
-    // Löschen ist von Anfang an möglich, auch ohne Vertragsende.
-    expect(within(akte).getByRole('button', { name: 'Mandant löschen (Offboarding)' })).toBeInTheDocument();
+    // Löschen ist von Anfang an möglich, auch ohne Vertragsende - über EINEN Weg mit EINEM Namen
+    // (Admin-Durchgang F5: daneben stand „Mandant löschen (Offboarding)", derselbe Server-Weg).
+    expect(within(akte).getByRole('button', { name: 'Kunde endgültig löschen …' })).toBeInTheDocument();
+    expect(within(akte).queryByRole('button', { name: /Offboarding/ })).toBeNull();
+    expect(within(akte).getByRole('button', { name: 'Anlage anlegen' })).toBeInTheDocument();
 
-    fireEvent.click(within(akte).getByRole('button', { name: 'Kundenbereich beenden …' }));
+    fireEvent.click(within(akte).getByRole('button', { name: 'Vertrag beenden …' }));
     const dlg = await screen.findByRole('dialog', { name: /Vertrag beenden/ });
+    // Admin-Durchgang F11: kein „gelöscht frühestens nach der Frist" mehr - die Frist steuert nichts.
+    expect(dlg.textContent).not.toContain('frühestens');
+    expect(dlg.textContent).toContain('Die Frist aus dem Vertrag wird nur vermerkt');
     fireEvent.change(within(dlg).getByLabelText('Auftrag'), { target: { value: 'TICKET-1' } });
     fireEvent.change(within(dlg).getByLabelText('Begründung'), { target: { value: 'Kunde hat gekündigt' } });
     fireEvent.change(within(dlg).getByLabelText(`Zur Bestätigung „${TENANT.name}" eintippen`), {
@@ -464,7 +525,9 @@ describe('MandantenPage - die Kundenakte', () => {
     );
     expect(await within(akte).findByText(/am 01.01.2029 beendet/)).toBeInTheDocument();
     // Auch nach dem Beenden bleibt der Löschweg sofort erreichbar - keine Frist sperrt mehr.
-    expect(within(akte).getByRole('button', { name: 'Mandant löschen (Offboarding)' })).toBeInTheDocument();
+    expect(within(akte).getByRole('button', { name: 'Kunde endgültig löschen …' })).toBeInTheDocument();
+    // Admin-Durchgang F12: eine Anlage lehnt der Server jetzt ab (409) - der Knopf steht nicht mehr da.
+    expect(within(akte).queryByRole('button', { name: 'Anlage anlegen' })).toBeNull();
     expect(within(akte).queryByText(/Frist/)).not.toBeInTheDocument();
   });
 });
@@ -559,6 +622,26 @@ describe('MandantenPage - die Kundenliste', () => {
     const [, kennung2] = createTenant.mock.calls[1];
     expect(kennung1).toMatch(/^portal-/);
     expect(kennung2).toBe(kennung1);
+  });
+
+  it('Admin-Durchgang F7: „Anlegen" öffnet die Akte des neuen Kunden und schaltet NICHT auf „Wie der Kunde es sieht"', async () => {
+    const NEU = { ...TENANT, id: 't-neu', name: 'Durchgang Testkunde GmbH' };
+    createTenant.mockReset().mockResolvedValue(NEU);
+    listUsers.mockResolvedValue([]);
+    listSites.mockResolvedValue([]);
+    selbstauskunft.mockResolvedValue({ kundenbereich: { id: 't-neu', name: NEU.name, beendet: null } });
+    const onReloadTenants = vi.fn();
+    // Die Liste der Schale kennt den neuen Kunden erst nach dem Nachladen.
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={onReloadTenants} onJumpToTenant={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Neuer Kunde' }));
+    fireEvent.change(screen.getByLabelText('Name des neuen Kunden'), { target: { value: NEU.name } });
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    expect(await screen.findByRole('region', { name: NEU.name })).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/plattform/benutzer/t-neu');
+    expect(await screen.findByRole('button', { name: 'Ersten Kundenadministrator anlegen' })).toBeInTheDocument();
+    // Eine Kennung hier wählte den Kunden in der Schale (Band „Wie der Kunde es sieht").
+    expect(onReloadTenants).toHaveBeenCalledWith();
+    expect(onReloadTenants).not.toHaveBeenCalledWith('t-neu');
   });
 
   it('legt bei einem Doppelklick nur einmal an', async () => {

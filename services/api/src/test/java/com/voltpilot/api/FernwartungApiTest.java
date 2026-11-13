@@ -913,6 +913,22 @@ class FernwartungApiTest {
     }
 
     /**
+     * Admin-Durchgang F4: die Geräteakte fragt das Protokoll JEDER Box alle 10 s ab. Eine Box ohne
+     * Tunnel-Schlüssel hat keines - das ist eine leere Liste, kein 404 (vorher ein Konsolenfehler
+     * je Abruf). Die Box-Route selbst bleibt beim 404, die Karte liest daraus „kein Schlüssel".
+     */
+    @Test
+    void dasProtokollEinerBoxOhneSchluesselIstLeerStattNichtGefunden() throws Exception {
+        String admin = token("admin", "admin");
+        String ohneSchluessel = "testbox-ohne-schluessel";
+        ResponseEntity<String> antwort = send(HttpMethod.GET, BASE + "/protokoll?box=" + ohneSchluessel, admin, null);
+        assertThat(antwort.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(json.readTree(antwort.getBody()).size()).isZero();
+        assertThat(send(HttpMethod.GET, BASE + "/boxen/" + ohneSchluessel, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * O3 und die Rollen-Grenze: der Kunde sieht nichts, das Dienstkonto liest
      * nur seinen Soll-Stand, der Release-Publisher erreicht hier nichts.
      */

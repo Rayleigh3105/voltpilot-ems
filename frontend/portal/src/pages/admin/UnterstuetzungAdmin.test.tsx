@@ -40,16 +40,15 @@ it('Kundenkonten erhalten keine Plattformaktionen', () => {
   vi.mocked(isPlatformAdmin).mockReturnValue(false); render(<UnterstuetzungAdmin tenantId="kunde" name="Ahrenberg" />);
   expect(screen.queryByRole('button')).toBeNull(); expect(fleetApi.fleet).not.toHaveBeenCalled();
 });
-it('Mandant ohne Standort: der Kasten sagt vor jedem Formular, warum keine Unterstützung geht - und dass der Sprung trotzdem geht', async () => {
+it('Mandant ohne Standort: ein Satz sagt, warum keine Unterstützung geht - und dass der Sprung trotzdem geht', async () => {
   render(<UnterstuetzungAdmin tenantId="ohne-standort" name="Sonnenhof Beispiel" />);
   const hinweis = await screen.findByRole('note');
-  expect(hinweis).toHaveTextContent('Dieser Mandant hat noch keinen Standort.');
-  expect(hinweis).toHaveTextContent('gelten immer für Standorte, nie für das ganze Unternehmen');
-  expect(hinweis).toHaveTextContent('„Wie der Kunde es sieht“ öffnet sie trotzdem');
-  expect(hinweis).not.toHaveTextContent('zurzeit nicht öffnen');
-  // Die Regel bleibt, wie sie ist: beide Wege stehen weiter da, nichts wird versteckt oder gesperrt.
-  expect(screen.getByRole('button', { name: 'Unterstützung anfragen' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Notfall-Zugriff', exact: true })).toBeEnabled();
+  expect(hinweis).toHaveTextContent('Unterstützung gilt je Standort, und dieser Kunde hat noch keinen.');
+  expect(hinweis).toHaveTextContent('„Wie der Kunde es sieht“ geht trotzdem.');
+  // Admin-Durchgang F10: beide Knöpfe öffneten Dialoge mit leerer Standort-Auswahl, die nie
+  // abschließbar waren - ohne Standort stehen sie nicht mehr da.
+  expect(screen.queryByRole('button', { name: 'Unterstützung anfragen' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Notfall-Zugriff', exact: true })).toBeNull();
 });
 it('Kein Hinweis, wenn der Mandant einen Standort hat', async () => {
   render(<UnterstuetzungAdmin tenantId="kunde" name="Kunststoffwerk Ahrenberg GmbH" />);

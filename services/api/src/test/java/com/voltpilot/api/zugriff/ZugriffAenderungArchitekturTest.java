@@ -113,10 +113,15 @@ class ZugriffAenderungArchitekturTest {
                 }
             }
         }
-        assertThat(gefunden).containsExactlyInAnyOrder("AdminBenutzerService.java", "AdminController.java", "StartpasswortKonten.java");
+        // Seit #1843 (Löschzug als serverseitiger Auftrag) löscht der Lösch-Dienst die Konten des
+        // Offboardings, nicht mehr der Controller - dieselbe eine Ausnahme, an ihrem neuen Ort.
+        assertThat(gefunden).containsExactlyInAnyOrder(
+                "AdminBenutzerService.java", "KundenbereichLoeschService.java", "StartpasswortKonten.java");
         String controller = Files.readString(JAVA.resolve("web/AdminController.java"));
-        assertThat(controller).doesNotContain("keycloak.setEnabled(", "keycloak.deleteUser(userId)");
-        assertThat(controller.split("keycloak.deleteUser", -1)).hasSize(2); // nur Mandanten-Offboarding
+        assertThat(controller).doesNotContain("keycloak.setEnabled(", "keycloak.deleteUser(");
+        String loeschDienst = Files.readString(JAVA.resolve("kundenbereich/KundenbereichLoeschService.java"));
+        assertThat(loeschDienst).doesNotContain("keycloak.setEnabled(");
+        assertThat(loeschDienst.split("keycloak.deleteUser", -1)).hasSize(2); // nur Mandanten-Offboarding
         assertThat(Files.readString(JAVA.resolve("admin/AdminBenutzerService.java")))
                 .contains("aenderung.kontoBeenden(", "hasRole('platform-admin')");
     }
@@ -134,8 +139,9 @@ class ZugriffAenderungArchitekturTest {
             }
         }
         assertThat(aufrufer).containsExactly("AdminBenutzerService.java");
-        String controller = Files.readString(JAVA.resolve("web/AdminController.java"));
-        assertThat(controller).contains("adminBenutzer.offboardingSperren(tenantId)",
+        // Der Löschzug (#1843) ruft die Offboarding-Sperren jetzt selbst - der Controller startet ihn nur.
+        String loeschDienst = Files.readString(JAVA.resolve("kundenbereich/KundenbereichLoeschService.java"));
+        assertThat(loeschDienst).contains("adminBenutzer.offboardingSperren(tenantId)",
                 "tenants.offboard(tenantId,", "adminBenutzer.offboardingResteSperren(tenantId)");
     }
 

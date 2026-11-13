@@ -618,17 +618,15 @@ function AuffaelligKarte({ zeilen }: { zeilen: ReturnType<typeof uebersichtAuffa
   return (
     <Card>
       <div className="vp-admin-sec-head" style={{ padding: 0, marginBottom: 6 }}>
-        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span>Auffällig</span>
-          <span className="vp-muted vp-text-sm">Tageswerte</span>
-        </h2>
+        <h2>Auffällig</h2>
       </div>
       <div data-testid="ueb-auffaellig">
         {zeilen.map((z) => (
-          <div className="vp-ueb-auffaellig-zeile" key={z.key}>
+          <a className="vp-ueb-auffaellig-zeile" key={z.key} href={z.ziel} title={z.detail ?? undefined}>
             <span>{z.ort}</span>
             <span>{z.text}</span>
-          </div>
+            <Icon name="chevron-right" size={14} />
+          </a>
         ))}
       </div>
     </Card>

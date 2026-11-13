@@ -145,6 +145,9 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
   it('eine noch nicht verbundene Box zeigt das ehrlich, statt eine leere Seite', async () => {
     render(<GeraeteAktePage boxRef="edge-neu" reiter={null} />);
     expect(await screen.findByTestId('akte-zustand')).toHaveTextContent('Noch nicht verbunden');
+    // Admin-Durchgang F15: der Überblick sagt, WO die Box einem Kunden zugeordnet wird -
+    // vorher schickte er nur in den Reiter „Einrichtung", der nichts dazu sagt.
+    expect(await screen.findByText(/Verbunden wird die Box beim Kunden/)).toHaveTextContent('„VoltPilot-Box hinzufügen“');
   });
 
   it('Reiter Einrichtung einer noch nicht verbundenen Box sagt ehrlich, dass nichts verzeichnet ist', async () => {
@@ -180,6 +183,13 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
       expect(screen.getByText('Angewandt')).toBeInTheDocument();
       expect(fleet).toHaveBeenCalled();
       expect(componentFleet).toHaveBeenCalled();
+    });
+
+    it('Admin-Durchgang F1: eine Anlage ohne Speicher hat keinen Plan - kein Warnton, ein Satz warum', async () => {
+      fleet.mockResolvedValue({ sites: [fleetSite({ hasStorage: false, lastPlanGeneratedAt: null })], releases: [] });
+      render(<GeraeteAktePage boxRef="edge-a1" reiter="anlage" />);
+      expect(await screen.findByText('Der Optimierer plant nur Anlagen mit Speicher.')).toBeInTheDocument();
+      expect(screen.queryByText('kein aktueller Plan')).toBeNull();
     });
 
     it('Scharfschalten: aktiviert über denselben Aufruf wie die frühere Steuerungs-Freigabe', async () => {
