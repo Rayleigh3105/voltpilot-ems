@@ -168,3 +168,18 @@ export function reiterAusHash(hash: string): 'jetzt' | 'verlauf' | 'regeln' | nu
   const wert = new URLSearchParams(hash.slice(frage + 1)).get('reiter');
   return wert === 'jetzt' || wert === 'verlauf' || wert === 'regeln' ? wert : null;
 }
+
+/**
+ * `?meldung=<Kennzeichen oder Kennung>` aus der rohen Adresse (Kunden-Alarmierung P1): der Link „Ansehen“ einer Mail
+ * und ein Tipp auf den Push führen zu DIESER Meldung - die Seite hebt sie hervor und zeigt sie zuerst.
+ */
+export function meldungAusHash(hash: string): string | null {
+  const frage = hash.indexOf('?');
+  if (frage < 0) return null;
+  return new URLSearchParams(hash.slice(frage + 1)).get('meldung');
+}
+
+/** Ob eine Meldung die aus der Adresse ist (Kennzeichen aus der Mail, Kennung aus dem Push). */
+export function istGemeinteMeldung(m: Meldung, gemeint: string | null): boolean {
+  return gemeint !== null && (m.kennzeichen === gemeint || m.id === gemeint);
+}

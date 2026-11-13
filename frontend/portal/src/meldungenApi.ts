@@ -1,4 +1,5 @@
 import { request } from './api';
+import type { MeldungsTextEingabe } from './meldungsText';
 
 /**
  * Der Zugang zum Meldungs-Center (Alerting Scheibe 1) - bewusst sein EIGENES, winziges Modul.
@@ -34,6 +35,11 @@ export interface Meldung {
   erledigtAm: string | null;
   /** Derselbe rohe Bezug wie am Alarm (Alerting Scheibe 5, §6.4 Nr. 7), z. B. `"kennzahl:<uuid>"`. */
   bezugKennung: string | null;
+  /**
+   * Die Eingabe des Meldungstexts (Kunden-Alarmierung P1) - dieselbe, aus der Mail und Push entstehen; gerendert mit
+   * `meldungsText.ts`. `null` nur bei einer Antwort ohne das Feld (ältere API).
+   */
+  text?: MeldungsTextEingabe | null;
 }
 
 /**

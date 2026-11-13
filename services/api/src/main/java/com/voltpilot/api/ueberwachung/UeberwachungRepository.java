@@ -522,6 +522,29 @@ public class UeberwachungRepository {
     }
 
     /**
+     * Was der Text einer Meldung aus ihrer Regel und ihrem Auslösen braucht (Kunden-Alarmierung P1): Herkunft, Name
+     * und Bedingung der Regel - auch einer inzwischen gelöschten - und der Wert beim Auslösen.
+     */
+    public record TextAngaben(String herkunft, String regelName, JsonNode bedingung, JsonNode wert) {}
+
+    public java.util.Map<UUID, TextAngaben> textAngaben(java.util.Collection<UUID> alarmIds) {
+        java.util.Map<UUID, TextAngaben> ergebnis = new java.util.HashMap<>();
+        if (alarmIds.isEmpty()) {
+            return ergebnis;
+        }
+        jdbc.query("""
+                SELECT a.id, u.herkunft, u.name, u.bedingung::text AS bedingung_json,
+                       a.wert_beim_ausloesen::text AS wert_json
+                  FROM alarm a JOIN ueberwachung u ON u.id = a.ueberwachung_id AND u.tenant_id = a.tenant_id
+                 WHERE a.id = ANY (?)
+                """, ps -> ps.setArray(1, ps.getConnection().createArrayOf("uuid", alarmIds.toArray())), rs -> {
+            ergebnis.put(rs.getObject("id", UUID.class), new TextAngaben(rs.getString("herkunft"),
+                    rs.getString("name"), json(rs.getString("bedingung_json")), json(rs.getString("wert_json"))));
+        });
+        return ergebnis;
+    }
+
+    /**
      * {@code gesehen_von} liest den Anzeigenamen des Kontos (Kunden-Alarmierung P0: „Gesehen von 8664636f-…“ zeigte die
      * Kennung). Ältere Zeilen tragen die Kennung ({@code sub}), neuere schon den Namen; ohne Spiegel-Zeile bleibt der
      * gespeicherte Wert. Jede Abfrage mit diesen Spalten liest {@code FROM alarm} ohne Alias.

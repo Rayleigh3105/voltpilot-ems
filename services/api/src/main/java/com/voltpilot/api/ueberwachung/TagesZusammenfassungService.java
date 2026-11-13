@@ -38,6 +38,11 @@ public class TagesZusammenfassungService {
     private final RuhezeitRepository ruhezeitRepo;
     private final VersandRepository versandRepo;
     private BenachrichtigungAusgang ausgang = BenachrichtigungAusgang.STUMM;
+    private static final java.util.Map<String, String> SCHWERE_WORT = java.util.Map.of("hinweis", "Hinweis",
+            "warnung", "Warnung", "dringend", "Dringend");
+    private MeldungsText texte = new WerteKatalog().meldungsText();
+    private UeberwachungsService dienst;
+    private String basisUrl = "http://localhost:5173";
     private UeberwachungSichtPruefung sicht = UeberwachungSichtPruefung.IMMER_SICHTBAR;
 
     public TagesZusammenfassungService(UeberwachungRepository repo, ZustellwegRepository zustellwege,
@@ -51,6 +56,15 @@ public class TagesZusammenfassungService {
     @Autowired(required = false)
     void setAusgang(BenachrichtigungAusgang ausgang) {
         this.ausgang = ausgang == null ? BenachrichtigungAusgang.STUMM : ausgang;
+    }
+
+    @Autowired(required = false)
+    void setTexte(WerteKatalog katalog, UeberwachungsService dienst,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl) {
+        this.texte = katalog.meldungsText();
+        this.dienst = dienst;
+        this.basisUrl = basisUrl;
     }
 
     @Autowired(required = false)
@@ -89,11 +103,17 @@ public class TagesZusammenfassungService {
         long offen = alarme.stream().filter(a -> !"erledigt".equals(a.zustand())).count();
         long erledigt = alarme.size() - offen;
         String betreff = String.format(Locale.GERMANY, "VoltPilot heute: %d offen, %d erledigt", offen, erledigt);
+        // Kunden-Alarmierung P1: je Meldung ihr Titel, die Zeit in Ortszeit und ein Wort statt Rohwerten.
         StringBuilder text = new StringBuilder("Ihre Meldungen heute:\n\n");
         for (AlarmZeile a : alarme) {
-            text.append("- ").append(a.kennzeichen()).append(" · ").append(a.schwere()).append(" · ")
-                    .append(a.zustand()).append('\n');
+            MeldungsText.Eingabe eingabe = dienst != null ? dienst.textEingabe(a)
+                    : UeberwachungsService.textEingabeNurRepo(repo, a);
+            text.append("- ").append(MeldungsText.zeit(a.ausgeloestAm(), jetzt)).append(" · ")
+                    .append(texte.titel(eingabe, jetzt)).append(" · ").append(SCHWERE_WORT.getOrDefault(a.schwere(),
+                            "Hinweis")).append(" · ").append("erledigt".equals(a.zustand()) ? "erledigt" : "offen")
+                    .append(" (").append(a.kennzeichen()).append(")\n");
         }
+        text.append("\nAlle Meldungen: ").append(basisUrl.replaceAll("/+$", "")).append("/#/meldungen\n");
         ausgang.email("zusammenfassung", rueckblickId.get(), benutzerSub, "zusammenfassung", betreff,
                 text.toString());
         return true;

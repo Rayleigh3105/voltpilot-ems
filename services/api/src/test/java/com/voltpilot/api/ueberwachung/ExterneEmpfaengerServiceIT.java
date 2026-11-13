@@ -197,7 +197,7 @@ class ExterneEmpfaengerServiceIT {
         UUID alarmId = UUID.randomUUID();
         TenantContext.set(w.tenant());
         try {
-            dienst.benachrichtigen(w.ueberwachung(), alarmId, "Netzbezug Halle 1", "warnung", Instant.now());
+            dienst.benachrichtigen(w.ueberwachung(), alarmId, "Netzbezug Halle 1", Instant.now());
 
             Map<String, Object> zeile = adminJdbc.queryForMap(
                     "SELECT ziel, betreff, inhalt, quelle FROM benachrichtigung "
@@ -239,7 +239,7 @@ class ExterneEmpfaengerServiceIT {
 
         TenantContext.set(w.tenant());
         try {
-            dienst.benachrichtigen(w.ueberwachung(), UUID.randomUUID(), "Netzbezug Halle 1", "warnung", Instant.now());
+            dienst.benachrichtigen(w.ueberwachung(), UUID.randomUUID(), "Netzbezug Halle 1", Instant.now());
             Long anzahl = adminJdbc.queryForObject(
                     "SELECT count(*) FROM benachrichtigung WHERE ziel = 'aussen4@example.test' AND anlass = 'ausgeloest'",
                     Long.class);

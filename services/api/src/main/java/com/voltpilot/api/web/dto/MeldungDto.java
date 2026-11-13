@@ -10,10 +10,15 @@ import java.util.List;
  * <p>{@code bezugKennung} ist derselbe rohe Bezug wie am Alarm (Alerting Scheibe 5, §6.4 Nr. 7:
  * "Zur Auffälligkeit" bei einer Meldung aus einer eigenen Überwachung auf Messstelle/Kennzahl/
  * Energieziel) - die Fläche parst daraus die Ziel-Kennung, ohne eine zweite Wahrheit über den Bezug.
+ *
+ * <p>{@code text} (Kunden-Alarmierung P1) ist die Eingabe des Meldungstexts - dieselbe, aus der Mail und Push
+ * gerendert werden; das Portal rendert sie mit {@code meldungsText.ts} (Vektoren
+ * {@code docs/contracts/v2/meldungs-text-vectors.json}).
  */
 public record MeldungDto(String id, String kennzeichen, String wertart, String schwere, String anlageId,
         String anlageName, String standortId, Instant ausgeloestAm, String zustand, Instant wiederNormalAm,
-        String gesehenVon, Instant gesehenAm, Instant erledigtAm, String bezugKennung) {
+        String gesehenVon, Instant gesehenAm, Instant erledigtAm, String bezugKennung,
+        com.voltpilot.api.ueberwachung.MeldungsText.Eingabe text) {
 
     public record Liste(List<MeldungDto> meldungen) {}
 

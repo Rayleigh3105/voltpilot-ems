@@ -30,10 +30,16 @@ function sortiert<T extends { wertart: string }>(eintraege: readonly T[]): T[] {
   return [...eintraege].sort((a, b) => a.wertart.localeCompare(b.wertart));
 }
 
+/** Die Meldungstexte (`meldung`, `zustandsworte`) spiegelt `meldungsTexte.ts`, geprüft von `meldungsTexte.sync.test.ts`. */
+function ohneTexte(e: RohEintrag & { meldung?: unknown; zustandsworte?: unknown }): RohEintrag {
+  const { meldung: _m, zustandsworte: _z, ...rest } = e;
+  return rest;
+}
+
 describe('werte-katalog sync', () => {
   it.skipIf(!existsSync(API_KATALOG))('jeder Server-Eintrag hat einen inhaltlich gleichen TS-Zwilling', () => {
     const roh: { eintraege: RohEintrag[] } = JSON.parse(readFileSync(API_KATALOG, 'utf8'));
-    expect(sortiert(WERTE_KATALOG)).toEqual(sortiert(roh.eintraege));
+    expect(sortiert(WERTE_KATALOG)).toEqual(sortiert(roh.eintraege.map(ohneTexte)));
   });
 
   it.skipIf(!existsSync(API_KATALOG))('kein Server-Eintrag fehlt im Zwilling und keiner ist zusätzlich erfunden', () => {

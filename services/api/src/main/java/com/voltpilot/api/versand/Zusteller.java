@@ -173,9 +173,16 @@ public class Zusteller {
             return ok ? 1 : 0;
         }
         VersandRepository.Zeile erste = sendbar.get(0);
-        StringBuilder inhalt = new StringBuilder(sendbar.size() + " Meldungen:\n");
+        // Kunden-Alarmierung P1: je Meldung ihr ganzer Text (Mail) bzw. ihr Titel (Push) - der Titel nennt die
+        // Anlage, der kurze Push-Text allein täte das nicht.
+        boolean push = "webpush".equals(erste.weg());
+        StringBuilder inhalt = new StringBuilder(push ? "" : sendbar.size() + " Meldungen:\n\n");
         for (VersandRepository.Zeile zeile : sendbar) {
-            inhalt.append("- ").append(zeile.inhalt()).append('\n');
+            if (push) {
+                inhalt.append(inhalt.isEmpty() ? "" : "; ").append(zeile.betreff());
+            } else {
+                inhalt.append(zeile.inhalt()).append('\n');
+            }
         }
         VersandRepository.Zeile gebuendelt = new VersandRepository.Zeile(erste.id(), erste.tenantId(),
                 erste.quelle(), erste.quelleId(), erste.empfaengerSub(), erste.weg(), erste.anlass(), erste.nr(),
@@ -259,8 +266,12 @@ public class Zusteller {
 
     /** Knappe JSON-Nutzlast für den {@code push}-Handler des Service-Workers (§6.8 Entwurf 4/frontend/public/sw.js). */
     private static String pushPayload(VersandRepository.Zeile zeile) {
+        // Kunden-Alarmierung P1: ein Tipp führt zu DIESER Meldung (das Portal sucht sie über ihre Kennung);
+        // ein Bündel aus mehreren Meldungen öffnet die Liste.
+        String url = "alarm".equals(zeile.quelle()) && zeile.quelleId() != null && zeile.buendelSchluessel() == null
+                ? "#/meldungen?meldung=" + zeile.quelleId() : "#/meldungen";
         return "{\"titel\":" + jsonText(zeile.betreff()) + ",\"text\":" + jsonText(zeile.inhalt())
-                + ",\"url\":\"#/meldungen\"}";
+                + ",\"url\":" + jsonText(url) + "}";
     }
 
     /**

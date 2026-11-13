@@ -88,6 +88,10 @@ public class UeberwachungsService {
     private final KennzahlService kennzahlen;
     private final EnergiezielService energieziele;
     private BenachrichtigungAusgang ausgang = BenachrichtigungAusgang.STUMM;
+    /** Die Adresse des Portals für die Links einer Mail (dieselbe wie im Bestätigungs-Link der Wege). */
+    private String basisUrl = "http://localhost:5173";
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
     /** Alerting Scheibe 6, Entscheid 11B: ohne Spring (reine Tests) bleibt es {@code null} - keine externen
      * Empfänger werden benachrichtigt. */
     private ExterneEmpfaengerService externeEmpfaenger;
@@ -150,6 +154,12 @@ public class UeberwachungsService {
     @Autowired(required = false)
     public void setAusgang(BenachrichtigungAusgang ausgang) {
         this.ausgang = ausgang == null ? BenachrichtigungAusgang.STUMM : ausgang;
+    }
+
+    @Autowired(required = false)
+    void setBasisUrl(@org.springframework.beans.factory.annotation.Value(
+            "${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl) {
+        this.basisUrl = basisUrl;
     }
 
     @Autowired(required = false)
@@ -491,23 +501,10 @@ public class UeberwachungsService {
         return "{\"wert\":" + lesung.zahlenwert() + ",\"einheit\":" + einheit + "}";
     }
 
-    /** Der Wert in Prosa, für Betreff und Text einer Nachricht (§6.8). */
-    private static String wertText(WerteLeser.Lesung lesung) {
-        if (!lesung.bekannt()) {
-            return "keine Daten";
-        }
-        if (lesung.zustandswort() != null) {
-            return lesung.zustandswort();
-        }
-        String einheit = lesung.einheit() == null ? "" : " " + lesung.einheit();
-        return String.format(java.util.Locale.GERMANY, "%.1f%s", lesung.zahlenwert(), einheit);
-    }
-
     // --------------------------------------------------------------------- Ausgelöst / wieder normal (§6.8)
 
     private UUID ausloesen(UeberwachungZeile regel, WerteLeser.Bezug bezug, UUID anlageId, boolean auswahl,
             Instant jetzt, WerteLeser.Lesung lesung) {
-        BezugAnzeige anzeige = anzeige(bezug, anlageId);
         String wertJson = wertJson(lesung);
         boolean probelauf = regel.imProbelauf(jetzt);
         // Abhängige Meldungen schweigen (§6.4 Nr. 7): meldet sich die Box/Datenquelle dieser Anlage
@@ -517,9 +514,14 @@ public class UeberwachungsService {
         UUID unterdrueckDurch = anlageId == null || GATENDE_WERTARTEN.contains(regel.wertart()) ? null
                 : repo.aktiverAlarmAufAnlage(anlageId, GATENDE_WERTARTEN).orElse(null);
         UUID alarmId = repo.alarmErzeugen(regel, bezug.kennung(), regel.standortId() != null
-                ? regel.standortId() : repo.standortHeute(anlageId), jetzt, wertJson, probelauf, unterdrueckDurch);
-        repo.alarmVerlauf(alarmId, "ausgeloest", null, (lesung.text() != null ? satzMitAnlage(anlageId, lesung)
-                : satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name())
+                ? regel.standortId() : repo.standortHeute(anlageId), jetzt, alarmWertJson(lesung), probelauf,
+                unterdrueckDurch);
+        // Kunden-Alarmierung P1: EIN Text für Mail, Push und Portal (MeldungsText, Vorlagen im Katalog).
+        MeldungsText.Eingabe eingabe = new MeldungsText.Eingabe(regel.wertart(), regel.herkunft(), regel.name(),
+                regel.schwere(), bezug.art(), ortName(bezug, anlageId), regel.bedingung(), textWert(lesung),
+                MeldungsText.beginn(jetzt, regel.bedingung()), null);
+        MeldungsText.Nachricht nachricht = katalog.meldungsText().ausgeloest(eingabe, jetzt);
+        repo.alarmVerlauf(alarmId, "ausgeloest", null, nachricht.titel()
                 + (probelauf ? " (Probelauf - hätte gemeldet)" : ""), wertJson);
         if (unterdrueckDurch != null) {
             String kennzeichenEltern = repo.alarm(unterdrueckDurch).map(AlarmZeile::kennzeichen).orElse("?");
@@ -531,11 +533,7 @@ public class UeberwachungsService {
         // Versand - "was sie gemeldet hätte", nicht was sie wirklich gemeldet hat.
         if (!probelauf && !"hinweis".equals(regel.schwere())) {
             String kennzeichen = repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?");
-            versenden(regel, alarmId, "ausgeloest",
-                    schwereWort(regel.schwere()) + ": " + titel(regel),
-                    lesung.text() != null ? satzMitAnlage(anlageId, lesung) + " Kennzeichen " + kennzeichen + "."
-                            : satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " meldet: "
-                                    + wertText(lesung) + ". Kennzeichen " + kennzeichen + ".", auswahl, jetzt);
+            versenden(regel, alarmId, "ausgeloest", nachricht, kennzeichen, auswahl, jetzt);
         }
         repo.alarmVerlauf(alarmId, "versand", null, probelauf ? "Probelauf - kein Versand" : "Versand eingereiht",
                 null);
@@ -557,83 +555,139 @@ public class UeberwachungsService {
         Optional<AlarmZeile> zeile = repo.alarm(alarmId);
         boolean probelauf = zeile.map(AlarmZeile::probelauf).orElse(false);
         boolean unterdrueckt = zeile.map(AlarmZeile::unterdrueckDurch).isPresent();
-        if (!probelauf && !unterdrueckt && !"hinweis".equals(regel.schwere())) {
-            BezugAnzeige anzeige = anzeige(bezug, anlageId);
-            versenden(regel, alarmId, "wieder_normal",
-                    "Wieder normal: " + titel(regel),
-                    lesung.text() != null
-                            ? satzMitAnlage(anlageId, lesung) + " Wieder normal seit "
-                                    + ErzeugerAlarme.Anzeige.zeit(jetzt) + "."
-                            : satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " ist seit "
-                                    + jetzt + " wieder normal.",
-                    auswahl, jetzt);
+        if (!probelauf && !unterdrueckt && !"hinweis".equals(regel.schwere()) && zeile.isPresent()) {
+            AlarmZeile alarm = zeile.get();
+            MeldungsText.Eingabe eingabe = new MeldungsText.Eingabe(regel.wertart(), regel.herkunft(), regel.name(),
+                    regel.schwere(), bezug.art(), ortName(bezug, anlageId), regel.bedingung(),
+                    textWert(repo.textAngaben(List.of(alarmId)).get(alarmId)),
+                    MeldungsText.beginn(alarm.ausgeloestAm(), regel.bedingung()),
+                    MeldungsText.ende(jetzt, regel.bedingung()));
+            MeldungsText.Nachricht nachricht = katalog.meldungsText().entwarnung(eingabe, jetzt);
+            versenden(regel, alarmId, "wieder_normal", nachricht, alarm.kennzeichen(), auswahl, jetzt);
         }
     }
 
-    /** „Anlage Gore: ‹Satz des Lesers›“ (EZ-11) - der Leser kennt den Zustand, die Überwachung den Anlagennamen. */
-    private String satzMitAnlage(UUID anlageId, WerteLeser.Lesung lesung) {
-        return anlageId == null ? lesung.text() : "Anlage " + anlageNameOder(anlageId) + ": " + lesung.text();
-    }
+    // --------------------------------------------------------------------- Text einer Meldung (P1)
 
-    private String anlageNameOder(UUID anlageId) {
-        String name = repo.anlageName(anlageId);
-        return name != null ? name : anlageId.toString();
-    }
-
-    /** Wie eine Meldung einen Bezug benennt - "der Anlage X" (Scheibe 1-4) oder "der Messstelle X"/
-     * "der Kennzahl X"/"des Energieziels X" (Scheibe 5, §6.8 - derselbe Satzbau, nur das Wort wechselt). */
-    private record BezugAnzeige(String praeposition, String name) {}
-
-    private BezugAnzeige anzeige(WerteLeser.Bezug bezug, UUID anlageId) {
+    /**
+     * Der Name, mit dem eine Meldung ihren Ort nennt (Kunden-Alarmierung P1): die Anlage (auch für Komponente und
+     * Einheit), sonst Messstelle, Kennzahl oder Energieziel - {@code null}, wenn keiner da ist (der Text sagt dann
+     * „Ihre Anlage“), nie eine Kennung.
+     */
+    private String ortName(WerteLeser.Bezug bezug, UUID anlageId) {
         return switch (bezug.art()) {
-            case "messstelle" -> new BezugAnzeige("der Messstelle", messstelleNameOder(bezug.id()));
-            case "kennzahl" -> new BezugAnzeige("der Kennzahl", kennzahlNameOder(bezug.id()));
-            case "energieziel" -> new BezugAnzeige("des Energieziels", energiezielNameOder(bezug.id()));
-            default -> new BezugAnzeige("der Anlage", anlageNameOder(anlageId));
+            case "messstelle" -> messstellen.finde(bezug.id()).map(MessstelleRepository.Messstelle::name).orElse(null);
+            case "kennzahl" -> kennzahlName(bezug.id());
+            case "energieziel" -> energiezielName(bezug.id());
+            default -> anlageId == null ? null : repo.anlageName(anlageId);
         };
     }
 
-    private String messstelleNameOder(UUID id) {
-        return messstellen.finde(id).map(MessstelleRepository.Messstelle::name).orElse(id.toString());
-    }
-
-    private String kennzahlNameOder(UUID id) {
+    private String kennzahlName(UUID id) {
         try {
             KennzahlDto.Kennzahl k = kennzahlen.eine(id);
             return k.name() != null ? k.name() : k.kennzeichen();
         } catch (KennzahlAbgelehnt e) {
-            return id.toString();
+            return null;
         }
     }
 
-    private String energiezielNameOder(UUID id) {
+    private String energiezielName(UUID id) {
         try {
             EnergiezielDto.Energieziel z = energieziele.eines(id);
             return z.wortlaut() != null ? z.wortlaut() : z.kennzeichen();
         } catch (VerbesserungAbgelehnt e) {
-            return id.toString();
+            return null;
         }
     }
 
-    /** Der Betreff-Name einer Regel: ihr eigener Name, sonst der Name ihrer Wertart im Katalog - nie „null“. */
-    private String titel(UeberwachungZeile regel) {
-        if (regel.name() != null) {
-            return regel.name();
+    private static MeldungsText.Wert textWert(WerteLeser.Lesung lesung) {
+        if (!lesung.bekannt()) {
+            return MeldungsText.Wert.UNBEKANNT;
         }
-        WerteKatalog.Eintrag eintrag = katalog.eintrag(regel.wertart());
-        return eintrag != null ? eintrag.name() : regel.wertart();
+        return new MeldungsText.Wert(lesung.zustandswort() == null ? lesung.zahlenwert() : null, lesung.einheit(),
+                lesung.zustandswort(), lesung.text());
     }
 
-    private static String satzname(UeberwachungZeile regel) {
-        return regel.name() != null ? regel.name() : regel.wertart();
+    /** Der Wert beim Auslösen aus {@code alarm.wert_beim_ausloesen} - dieselbe Form, die das Portal bekommt. */
+    static MeldungsText.Wert textWert(UeberwachungRepository.TextAngaben angaben) {
+        JsonNode w = angaben == null ? null : angaben.wert();
+        if (w == null || w.isNull() || w.isMissingNode()) {
+            return MeldungsText.Wert.UNBEKANNT;
+        }
+        return new MeldungsText.Wert(w.hasNonNull("wert") ? w.path("wert").asDouble() : null,
+                w.hasNonNull("einheit") ? w.path("einheit").asText() : null,
+                w.hasNonNull("zustand") ? w.path("zustand").asText() : null,
+                w.hasNonNull("satz") ? w.path("satz").asText() : null);
     }
 
-    private static String schwereWort(String schwere) {
-        return switch (schwere) {
-            case "dringend" -> "Dringend";
-            case "warnung" -> "Warnung";
-            default -> "Hinweis";
-        };
+    /**
+     * Die Text-Eingabe einer gespeicherten Meldung (Portal, Erinnerung, Tages-Zusammenfassung): derselbe Text wie
+     * beim Versand, aus Alarm, Regel und dem Wert beim Auslösen; die Entwarnung nur, wenn der Wert zurückkam.
+     */
+    public MeldungsText.Eingabe textEingabe(AlarmZeile alarm, UeberwachungRepository.TextAngaben angaben) {
+        return textEingabe(alarm, angaben, bezug -> ortName(bezug, anlageFuerBezug(bezug)));
+    }
+
+    /**
+     * Ohne Spring-Kontext (Tests, die Erinnerung oder Zusammenfassung von Hand bauen): derselbe Text, der Ort nur
+     * für einen Anlagen-Bezug aufgelöst.
+     */
+    static MeldungsText.Eingabe textEingabeNurRepo(UeberwachungRepository repo, AlarmZeile alarm) {
+        return textEingabe(alarm, repo.textAngaben(List.of(alarm.id())).get(alarm.id()),
+                bezug -> "anlage".equals(bezug.art()) ? repo.anlageName(bezug.id()) : null);
+    }
+
+    private static MeldungsText.Eingabe textEingabe(AlarmZeile alarm, UeberwachungRepository.TextAngaben angaben,
+            java.util.function.Function<WerteLeser.Bezug, String> ort) {
+        WerteLeser.Bezug bezug = bezugAusKennung(alarm.bezugKennung());
+        JsonNode bedingung = angaben == null ? null : angaben.bedingung();
+        Instant ende = alarm.wiederNormalAm() == null ? null : MeldungsText.ende(alarm.wiederNormalAm(), bedingung);
+        return new MeldungsText.Eingabe(alarm.wertart(), angaben == null ? null : angaben.herkunft(),
+                angaben == null ? null : angaben.regelName(), alarm.schwere(), bezug == null ? null : bezug.art(),
+                bezug == null ? null : ort.apply(bezug), bedingung, textWert(angaben),
+                MeldungsText.beginn(alarm.ausgeloestAm(), bedingung), ende);
+    }
+
+    /** Wie {@link #textEingabe(AlarmZeile, UeberwachungRepository.TextAngaben)}, die Angaben selbst gelesen. */
+    public MeldungsText.Eingabe textEingabe(AlarmZeile alarm) {
+        return textEingabe(alarm, repo.textAngaben(List.of(alarm.id())).get(alarm.id()));
+    }
+
+    /** {@code art:<uuid>} mit optionalem {@code ;te=<n>}/{@code ;kanal=<k>} zurück in einen Bezug ({@link WerteLeser.Bezug#kennung}). */
+    static WerteLeser.Bezug bezugAusKennung(String kennung) {
+        if (kennung == null) {
+            return null;
+        }
+        String[] artRest = kennung.split(":", 2);
+        if (artRest.length != 2) {
+            return null;
+        }
+        String[] idParam = artRest[1].split(";", 2);
+        UUID id = alsUuid(idParam[0]);
+        if (id == null) {
+            return null;
+        }
+        String parameter = idParam.length == 2 && idParam[1].contains("=") ? idParam[1].split("=", 2)[1] : null;
+        return new WerteLeser.Bezug(artRest[0], id, parameter);
+    }
+
+    /** Kunden-Alarmierung P1: der Wert beim Auslösen MIT dem Satz des Lesers - Mail und Portal lesen denselben. */
+    private static String alarmWertJson(WerteLeser.Lesung lesung) {
+        if (!lesung.bekannt()) {
+            return null;
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode n = JSON.createObjectNode();
+        if (lesung.zustandswort() != null) {
+            n.put("zustand", lesung.zustandswort());
+        } else {
+            n.put("wert", lesung.zahlenwert());
+            n.put("einheit", lesung.einheit());
+        }
+        if (lesung.text() != null) {
+            n.put("satz", lesung.text());
+        }
+        return n.toString();
     }
 
     // --------------------------------------------------------------------- Empfänger auflösen (§6.6)
@@ -653,22 +707,27 @@ public class UeberwachungsService {
      * {@code Zusteller} zu EINER Nachricht zusammenfinden; eine einfache Regel (Scheibe 1-3) sendet
      * unverändert sofort ohne Schlüssel.
      */
-    private void versenden(UeberwachungZeile regel, UUID alarmId, String anlass, String betreff, String inhalt,
-            boolean auswahl, Instant jetzt) {
+    private void versenden(UeberwachungZeile regel, UUID alarmId, String anlass, MeldungsText.Nachricht nachricht,
+            String kennzeichen, boolean auswahl, Instant jetzt) {
         String buendelSchluessel = auswahl ? buendelSchluessel(regel.id(), anlass, jetzt) : null;
         Instant naechsterVersuch = auswahl ? buendelFensterEnde(jetzt) : jetzt;
+        String betreff = nachricht.betreff();
+        String inhalt = katalog.meldungsText().mailText(nachricht, kennzeichen, basisUrl);
         for (String sub : empfaengerAufloesen(regel)) {
             ausgang.email("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
                     buendelSchluessel);
-            ausgang.webpush("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
-                    buendelSchluessel);
+            ausgang.webpush("alarm", alarmId, sub, anlass, 0, nachricht.pushTitel(), nachricht.pushText(),
+                    naechsterVersuch, regel.schwere(), buendelSchluessel);
             ausgang.webhook("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
                     buendelSchluessel);
             ausgang.telegram("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
                     buendelSchluessel);
         }
         if (externeEmpfaenger != null) {
-            externeEmpfaenger.benachrichtigen(regel.id(), alarmId, regel.name(), regel.schwere(), jetzt);
+            // Entscheid 11B: Außenstehende bekommen nur den Namen, keine Schwelle und keinen Messwert.
+            WerteKatalog.Eintrag eintrag = katalog.eintrag(regel.wertart());
+            String name = regel.name() != null ? regel.name() : eintrag != null ? eintrag.name() : "Überwachung";
+            externeEmpfaenger.benachrichtigen(regel.id(), alarmId, name, jetzt);
         }
     }
 

@@ -54,6 +54,7 @@ class ErzeugerUeberwachungTest {
     private static final UUID GERAET = UUID.randomUUID();
     private static final UUID KOMPONENTE = UUID.randomUUID();
     private static final Instant T0 = Instant.parse("2026-10-21T12:00:00Z");
+    private final Map<UUID, JsonNode> werteBeimAusloesen = new HashMap<>();
 
     private final UeberwachungRepository repo = mock(UeberwachungRepository.class);
     private final AnlagensteuerungRepository steuerungen = mock(AnlagensteuerungRepository.class);
@@ -93,7 +94,16 @@ class ErzeugerUeberwachungTest {
             alarme.add(id);
             alarmZeilen.put(id, new AlarmZeile(id, "A-2026-" + alarme.size(), REGEL, null, a.getArgument(1),
                     "erzeuger", "warnung", takt, "aktiv", null, null, null, null, false, 0, null, null));
+            // Kunden-Alarmierung P1: der Wert beim Auslösen trägt den Text auch der Entwarnung.
+            werteBeimAusloesen.put(id, a.getArgument(4) == null ? null : json(a.<String>getArgument(4)));
             return id;
+        });
+        when(repo.textAngaben(any())).thenAnswer(a -> {
+            Map<UUID, UeberwachungRepository.TextAngaben> out = new HashMap<>();
+            for (UUID id : a.<java.util.Collection<UUID>>getArgument(0)) {
+                out.put(id, new UeberwachungRepository.TextAngaben("eigen", null, null, werteBeimAusloesen.get(id)));
+            }
+            return out;
         });
         when(repo.alarm(any())).thenAnswer(a -> Optional.ofNullable(alarmZeilen.get(a.<UUID>getArgument(0))));
 
@@ -177,9 +187,9 @@ class ErzeugerUeberwachungTest {
         ArgumentCaptor<String> inhalt = ArgumentCaptor.forClass(String.class);
         verify(ausgang).email(eq("alarm"), any(), any(), eq("ausgeloest"), anyInt(), betreff.capture(),
                 inhalt.capture(), any(), any(), isNull());
-        assertThat(betreff.getValue()).isEqualTo("Warnung: Anlage folgt nicht");
-        assertThat(inhalt.getValue()).startsWith("Anlage Gore: Die Anlage erzeugt 100,0 kW mehr als die wirksame "
-                + "Grenze erlaubt").endsWith("Kennzeichen A-2026-1.");
+        assertThat(betreff.getValue()).isEqualTo("Gore: Anlage folgt der Vorgabe nicht");
+        assertThat(inhalt.getValue()).startsWith("Seit 14:00 Uhr: Die Anlage erzeugt 100,0 kW mehr als die wirksame "
+                + "Grenze erlaubt").contains("/#/meldungen?meldung=A-2026-1").endsWith("Meldung A-2026-1\n");
 
         lauf(600); // weiter erfüllt: keine zweite Meldung
         liefertBis = takt; // die Box liefert nicht mehr: die Werte veralten
@@ -199,9 +209,9 @@ class ErzeugerUeberwachungTest {
         verifyVersand("wieder_normal", 1);
         verify(ausgang).email(eq("alarm"), any(), any(), eq("wieder_normal"), anyInt(), betreff.capture(),
                 inhalt.capture(), any(), any(), isNull());
-        assertThat(betreff.getValue()).isEqualTo("Wieder normal: Anlage folgt nicht");
-        assertThat(inhalt.getValue()).startsWith("Anlage Gore: Die Anlage hält die wirksame Grenze ein.")
-                .endsWith("Wieder normal seit 21.10.2026 14:30 Uhr.");
+        assertThat(betreff.getValue()).isEqualTo("Gore: Anlage folgt der Vorgabe wieder");
+        assertThat(inhalt.getValue()).startsWith("Seit 14:25 Uhr folgt die Anlage wieder der Vorgabe.\n"
+                + "Das dauerte 25 Minuten.\n");
         assertThat(alarme).hasSize(1);
     }
 
@@ -240,8 +250,8 @@ class ErzeugerUeberwachungTest {
         // je Einheit = eine Auswahl: mit Bündel-Schlüssel, damit mehrere Einheiten in EINER Nachricht ankommen
         verify(ausgang).email(eq("alarm"), any(), any(), eq("ausgeloest"), anyInt(), anyString(), inhalt.capture(),
                 any(), any(), notNull());
-        assertThat(inhalt.getValue()).startsWith(
-                "Anlage Gore: Motor 2 ist nicht bereit für den Direktvermarkter. Grund: Wartung.");
+        assertThat(inhalt.getValue()).startsWith("Seit ")
+                .contains("Motor 2 ist nicht bereit für den Direktvermarkter. Grund: Wartung.");
     }
 
     @Test
@@ -314,9 +324,10 @@ class ErzeugerUeberwachungTest {
         ArgumentCaptor<String> inhalt = ArgumentCaptor.forClass(String.class);
         verify(ausgang).email(eq("alarm"), any(), any(), eq("ausgeloest"), anyInt(), betreff.capture(),
                 inhalt.capture(), any(), any(), isNull());
-        assertThat(betreff.getValue()).isEqualTo("Warnung: Programmstand veraltet");
-        assertThat(inhalt.getValue()).isEqualTo("Anlage Gore: Die Anlagensteuerung fährt den Programmstand 26.08, "
-                + "erwartet ist 26.10 (Stand der VoltPilot-Bibliothek). Kennzeichen A-2026-1.");
+        assertThat(betreff.getValue()).isEqualTo("Gore: Programmstand veraltet");
+        assertThat(inhalt.getValue()).startsWith("Seit gestern, 14:00 Uhr: Die Anlagensteuerung fährt den "
+                + "Programmstand 26.08, erwartet ist 26.10 (Stand der VoltPilot-Bibliothek).\n")
+                .endsWith("Meldung A-2026-1\n");
 
         liefertBis = takt; // die Box liefert nicht mehr
         lauf(87_000);
@@ -331,9 +342,8 @@ class ErzeugerUeberwachungTest {
         verifyVersand("wieder_normal", 1);
         verify(ausgang).email(eq("alarm"), any(), any(), eq("wieder_normal"), anyInt(), betreff.capture(),
                 inhalt.capture(), any(), any(), isNull());
-        assertThat(betreff.getValue()).isEqualTo("Wieder normal: Programmstand veraltet");
-        assertThat(inhalt.getValue()).startsWith("Anlage Gore: Die Anlagensteuerung fährt den Programmstand 26.10, "
-                + "erwartet ist 26.10 (Stand der VoltPilot-Bibliothek) - der Stand ist aktuell. Wieder normal seit ");
+        assertThat(betreff.getValue()).isEqualTo("Gore: Programmstand aktuell");
+        assertThat(inhalt.getValue()).startsWith("Seit 14:10 Uhr läuft der erwartete Programmstand.\n");
         assertThat(alarme).hasSize(1);
     }
 

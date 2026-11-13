@@ -108,25 +108,18 @@ public class ExterneEmpfaengerService {
      * Je Alarm-Auslösung an alle bestätigten, aktiven externen Empfänger DIESER Regel - knapp
      * (keine Messwerte/Detaildaten, nur ein Link ins Portal) und mit Abbestellen-Link in JEDER Mail
      * (Entscheid 11B). Läuft ohne Sicht-/Ruhezeit-Prüfung ({@link BenachrichtigungAusgang#emailExtern}).
+     * {@code titel} ist der Name der Regel oder ihrer Wertart - nie eine Schwelle oder ein Messwert.
      */
-    public void benachrichtigen(UUID ueberwachungId, UUID alarmId, String regelName, String schwere, Instant jetzt) {
+    public void benachrichtigen(UUID ueberwachungId, UUID alarmId, String titel, Instant jetzt) {
         for (ExterneEmpfaengerRepository.VersandZeile zeile : repo.fuerVersand(ueberwachungId)) {
             String abbestellenLink = basisUrl + "/#/ueberwachungen/externe-empfaenger/abbestellen?token="
                     + zeile.abbestellenToken();
-            String betreff = "VoltPilot: " + schwereWort(schwere) + " bei \"" + regelName + "\"";
-            String inhalt = "Eine Überwachung, über die Sie informiert werden, hat ausgelöst: \"" + regelName
-                    + "\".\n\nDetails im Portal: " + basisUrl + "/#/meldungen\n\nDiese Meldungen abbestellen: "
+            String betreff = "VoltPilot: " + titel;
+            String inhalt = "Eine Überwachung, über die Sie informiert werden, hat gemeldet: " + titel
+                    + ".\n\nDetails im Portal: " + basisUrl + "/#/meldungen\n\nDiese Meldungen abbestellen: "
                     + abbestellenLink;
             ausgang.emailExtern(alarmId, "extern:" + zeile.id(), "ausgeloest", betreff, inhalt, zeile.email());
         }
-    }
-
-    private static String schwereWort(String schwere) {
-        return switch (schwere) {
-            case "dringend" -> "Dringend";
-            case "warnung" -> "Warnung";
-            default -> "Hinweis";
-        };
     }
 
     private UeberwachungZeile regelOderNichtGefunden(UUID id) {

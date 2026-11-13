@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -32,6 +33,9 @@ public class ErinnerungsService {
     private final UeberwachungRepository repo;
     private final ZugriffRepository zugriffe;
     private BenachrichtigungAusgang ausgang = BenachrichtigungAusgang.STUMM;
+    private MeldungsText texte = new WerteKatalog().meldungsText();
+    private UeberwachungsService dienst;
+    private String basisUrl = "http://localhost:5173";
 
     public ErinnerungsService(UeberwachungRepository repo, ZugriffRepository zugriffe) {
         this.repo = repo;
@@ -41,6 +45,14 @@ public class ErinnerungsService {
     @Autowired(required = false)
     void setAusgang(BenachrichtigungAusgang ausgang) {
         this.ausgang = ausgang == null ? BenachrichtigungAusgang.STUMM : ausgang;
+    }
+
+    @Autowired(required = false)
+    void setTexte(WerteKatalog katalog, UeberwachungsService dienst,
+            @Value("${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl) {
+        this.texte = katalog.meldungsText();
+        this.dienst = dienst;
+        this.basisUrl = basisUrl;
     }
 
     public int lauf(Instant jetzt) {
@@ -56,13 +68,15 @@ public class ErinnerungsService {
                 continue; // Regel inzwischen gelöscht - keine Erinnerung ohne ihre Empfänger
             }
             int nr = alarm.erinnerungenGesendet() + 1;
-            String satz = satzname(regel);
-            String betreff = "Noch offen: " + satz;
-            String inhalt = satz + " meldet sich seit " + alarm.ausgeloestAm() + " ohne Reaktion. Kennzeichen "
-                    + alarm.kennzeichen() + ".";
+            // Kunden-Alarmierung P1: derselbe Text wie die Meldung selbst, davor „Noch offen“.
+            MeldungsText.Eingabe eingabe = dienst != null ? dienst.textEingabe(alarm)
+                    : UeberwachungsService.textEingabeNurRepo(repo, alarm);
+            MeldungsText.Nachricht nachricht = texte.erinnerung(eingabe, jetzt);
+            String inhalt = texte.mailText(nachricht, alarm.kennzeichen(), basisUrl);
             for (String sub : empfaengerAufloesen(regel)) {
-                ausgang.email("alarm", alarm.id(), sub, "erinnerung", nr, betreff, inhalt, jetzt);
-                ausgang.webpush("alarm", alarm.id(), sub, "erinnerung", nr, betreff, inhalt, jetzt, alarm.schwere());
+                ausgang.email("alarm", alarm.id(), sub, "erinnerung", nr, nachricht.betreff(), inhalt, jetzt);
+                ausgang.webpush("alarm", alarm.id(), sub, "erinnerung", nr, nachricht.pushTitel(),
+                        nachricht.pushText(), jetzt, alarm.schwere());
             }
             repo.erinnerungVermerken(alarm.id(), jetzt);
             repo.alarmVerlauf(alarm.id(), "versand", null, "Erinnerung " + nr + " eingereiht", null);
@@ -86,9 +100,5 @@ public class ErinnerungsService {
             }
         }
         return empfaenger;
-    }
-
-    private static String satzname(UeberwachungZeile regel) {
-        return regel.name() != null ? regel.name() : regel.wertart();
     }
 }

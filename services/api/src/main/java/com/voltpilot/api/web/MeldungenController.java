@@ -65,10 +65,12 @@ public class MeldungenController {
     public MeldungDto.Liste liste(@RequestParam(required = false) String status,
             @RequestParam(required = false) String anlage) {
         boolean verlauf = "verlauf".equals(status);
-        List<AlarmZeile> alarme = repo.liste(verlauf, LIMIT);
-        List<MeldungDto> meldungen = alarme.stream()
+        List<AlarmZeile> alarme = repo.liste(verlauf, LIMIT).stream()
                 .filter(a -> anlage == null || anlage.equals(anlageId(a)))
-                .map(this::dto)
+                .toList();
+        var angaben = repo.textAngaben(alarme.stream().map(AlarmZeile::id).toList());
+        List<MeldungDto> meldungen = alarme.stream()
+                .map(a -> dto(a, angaben.get(a.id())))
                 .toList();
         return new MeldungDto.Liste(meldungen);
     }
@@ -237,7 +239,7 @@ public class MeldungenController {
     public MeldungDto gesehen(@PathVariable UUID id, Authentication auth) {
         String wer = gesehenName(auth);
         dienst.gesehen(id, wer, Instant.now());
-        return repo.alarm(id).map(this::dto)
+        return repo.alarm(id).map(a -> dto(a, repo.textAngaben(List.of(id)).get(id)))
                 .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
     }
 
@@ -257,12 +259,13 @@ public class MeldungenController {
         return RechtPruefung.aufrufer().map(b -> b.name() != null ? b.name() : b.kennung()).orElse("unbekannt");
     }
 
-    private MeldungDto dto(AlarmZeile a) {
+    private MeldungDto dto(AlarmZeile a, com.voltpilot.api.ueberwachung.UeberwachungRepository.TextAngaben angaben) {
         String anlageId = anlageId(a);
         String anlageName = anlageId == null ? null : repo.anlageName(UUID.fromString(anlageId));
         return new MeldungDto(a.id().toString(), a.kennzeichen(), a.wertart(), a.schwere(), anlageId, anlageName,
                 a.standortId() == null ? null : a.standortId().toString(), a.ausgeloestAm(), a.zustand(),
-                a.wiederNormalAm(), a.gesehenVon(), a.gesehenAm(), a.erledigtAm(), a.bezugKennung());
+                a.wiederNormalAm(), a.gesehenVon(), a.gesehenAm(), a.erledigtAm(), a.bezugKennung(),
+                dienst.textEingabe(a, angaben));
     }
 
     private static String anlageId(AlarmZeile a) {

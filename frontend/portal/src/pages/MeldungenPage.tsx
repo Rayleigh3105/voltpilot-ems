@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ladeMeldungenVerlaufCsv, type Anlagensteuerung } from '../api';
@@ -13,6 +13,8 @@ import {
   anlageAusHash,
   einheitAusBezug,
   istEigeneUeberwachung,
+  istGemeinteMeldung,
+  meldungAusHash,
   meldungEinheitLink,
   meldungenApi,
   meldungQuelleLink,
@@ -26,6 +28,7 @@ import {
   WORT_EIGENE_UEBERWACHUNG,
   WORT_GESEHEN,
 } from '../meldungen';
+import { ausgeloest, entwarnung } from '../meldungsText';
 import { datumZeit } from '../rechteTexte';
 import { useRollen } from '../rollen';
 import { ueberwachungApi } from '../ueberwachungApi';
@@ -102,6 +105,10 @@ export function MeldungenPage() {
   const [neuOffen, setNeuOffen] = useState(false);
   const [neuWert, setNeuWert] = useState<WertWahl | null>(null);
   const anlageFilter = anlageAusHash(window.location.hash);
+  // Kunden-Alarmierung P1: „Ansehen“ in der Mail und der Tipp auf den Push zeigen auf EINE Meldung. Ist sie nicht
+  // mehr offen, steht sie im Verlauf - einmal dorthin wechseln.
+  const gemeint = meldungAusHash(window.location.hash);
+  const verlaufGesucht = useRef(false);
   const isPhone = useIsPhone();
   const { selbst } = useRollen();
   // Wer sich an irgendeinem Standort (oder am Unternehmen) selbst benachrichtigen lassen darf, sieht
@@ -118,7 +125,12 @@ export function MeldungenPage() {
             if (aktiv) setRegeln(r);
           })
         : (reiter === 'jetzt' ? meldungenApi.jetzt() : meldungenApi.verlauf()).then((m) => {
-            if (aktiv) setMeldungen(m);
+            if (!aktiv) return;
+            setMeldungen(m);
+            if (reiter === 'jetzt' && gemeint && !verlaufGesucht.current && !m.some((x) => istGemeinteMeldung(x, gemeint))) {
+              verlaufGesucht.current = true;
+              setReiter('verlauf');
+            }
           });
     laden.catch(() => {
       if (aktiv) setFehler('Die Meldungen konnten nicht geladen werden. Bitte versuchen Sie es erneut.');
@@ -126,10 +138,13 @@ export function MeldungenPage() {
     return () => {
       aktiv = false;
     };
-  }, [reiter, neuLaden]);
+  }, [reiter, neuLaden, gemeint]);
 
   const gefiltert = (meldungen ?? []).filter((m) => !anlageFilter || m.anlageId === anlageFilter);
-  const liste = reiter === 'verlauf' ? sortiereVerlauf(gefiltert) : sortiereJetzt(gefiltert);
+  const sortiert = reiter === 'verlauf' ? sortiereVerlauf(gefiltert) : sortiereJetzt(gefiltert);
+  const liste = gemeint
+    ? [...sortiert.filter((m) => istGemeinteMeldung(m, gemeint)), ...sortiert.filter((m) => !istGemeinteMeldung(m, gemeint))]
+    : sortiert;
 
   // GE-3: ein Alarm je Einheit führt auf die Seite der Einheit — dafür die Steuerungen ihrer Anlage und die Boxen,
   // nur wenn es solche Meldungen gibt. Fail-soft: ohne Antwort steht die Meldung ohne Weg da.
@@ -277,6 +292,7 @@ export function MeldungenPage() {
         // Fehlgeschlagen ist nicht „wird geladen": ohne Antwort steht nur der Fehlerzustand darüber.
         fehler && meldungen === null ? null : <MeldungListe
           meldungen={meldungen === null ? null : liste}
+          gemeint={gemeint}
           reiter={reiter}
           busy={busy}
           onGesehen={gesehen}
@@ -332,8 +348,11 @@ function MeldungListe({
   busy,
   onGesehen,
   einheitLink,
+  gemeint = null,
 }: {
   meldungen: Meldung[] | null;
+  /** Die Meldung aus der Adresse (`?meldung=`), hervorgehoben (Kunden-Alarmierung P1). */
+  gemeint?: string | null;
   reiter: Reiter;
   busy: string | null;
   onGesehen: (id: string) => void;
@@ -361,18 +380,40 @@ function MeldungListe({
     <ul className="vp-meldungen-liste">
       {meldungen.map((m) => {
         const quelle = meldungQuelleLink(m) ?? einheitLink?.(m) ?? null;
+        // Kunden-Alarmierung P1: derselbe Text wie in Mail und Push (meldungsText.ts ↔ MeldungsText.java).
+        const jetzt = new Date();
+        const text = m.text ? ausgeloest(m.text, jetzt) : null;
+        const ende = m.text && reiter === 'verlauf' ? entwarnung(m.text, jetzt) : null;
+        const hervor = istGemeinteMeldung(m, gemeint);
         return (
-        <li key={m.id} className={`vp-meldung schwere-${m.schwere}`}>
+        <li
+          key={m.id}
+          className={`vp-meldung schwere-${m.schwere}${hervor ? ' gemeint' : ''}`}
+          aria-current={hervor ? 'true' : undefined}
+          data-testid={hervor ? 'meldung-gemeint' : undefined}
+        >
           <span className="vp-meldung-dot" aria-hidden="true" />
           <div className="vp-meldung-inhalt">
             <div className="vp-meldung-kopf">
               <span className="vp-meldung-schwere">{SCHWERE_WORT[m.schwere]}</span>
               <span className="vp-meldung-seit">seit {datumZeit(m.ausgeloestAm)}</span>
             </div>
-            <p className="vp-meldung-satz">
-              {wertartSatzname(m.wertart)}
-              {m.anlageName ? ` der Anlage ${m.anlageName}` : ''}
-            </p>
+            {text ? (
+              <>
+                <p className="vp-meldung-titel" data-testid="meldung-titel">{text.titel}</p>
+                <p className="vp-meldung-satz" data-testid="meldung-text">{text.saetze.join(' ')}</p>
+                {ende && (
+                  <p className="vp-meldung-satz vp-meldung-entwarnung" data-testid="meldung-entwarnung">
+                    {ende.saetze.join(' ')}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="vp-meldung-satz">
+                {wertartSatzname(m.wertart)}
+                {m.anlageName ? ` der Anlage ${m.anlageName}` : ''}
+              </p>
+            )}
             <p className="vp-meldung-kennzeichen">
               {m.kennzeichen}
               {istEigeneUeberwachung(m.wertart) && (

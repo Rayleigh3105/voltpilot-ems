@@ -67,23 +67,32 @@ public class WerteKatalog {
             Vorschlag vorschlag, Vorlage vorlage) {}
 
     private final Map<String, Eintrag> eintraege;
+    private final MeldungsText meldungsText;
 
     public WerteKatalog() {
         this("wertekatalog/katalog.json");
     }
 
     WerteKatalog(String resource) {
-        this.eintraege = laden(resource);
+        JsonNode wurzel = lesen(resource);
+        this.eintraege = laden(wurzel);
+        this.meldungsText = new MeldungsText(wurzel);
     }
 
-    private static Map<String, Eintrag> laden(String resource) {
-        ObjectMapper json = new ObjectMapper();
-        JsonNode wurzel;
+    /** Die Texte der Meldungen (Kunden-Alarmierung P1) aus demselben Katalog. */
+    public MeldungsText meldungsText() {
+        return meldungsText;
+    }
+
+    static JsonNode lesen(String resource) {
         try (InputStream in = new ClassPathResource(resource).getInputStream()) {
-            wurzel = json.readTree(in);
+            return new ObjectMapper().readTree(in);
         } catch (IOException e) {
             throw new IllegalStateException("Werte-Katalog " + resource + " nicht lesbar", e);
         }
+    }
+
+    private static Map<String, Eintrag> laden(JsonNode wurzel) {
         Map<String, Eintrag> ergebnis = new LinkedHashMap<>();
         for (JsonNode n : wurzel.path("eintraege")) {
             Eintrag e = eintrag(n);

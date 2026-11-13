@@ -95,6 +95,25 @@
   overflow-wrap: anywhere;
 }
 
+/* Kunden-Alarmierung P1: Titel als Aussage, darunter die Sätze in normaler Schrift. */
+.vp-meldung-titel {
+  margin: var(--vp-c-space-1) 0 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-meldung-titel + .vp-meldung-satz,
+.vp-meldung-entwarnung {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-400);
+}
+
+.vp-meldung.gemeint {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 2px;
+}
+
 .vp-meldung-kennzeichen,
 .vp-meldung-gesehen {
   margin: var(--vp-c-space-1) 0 0;
