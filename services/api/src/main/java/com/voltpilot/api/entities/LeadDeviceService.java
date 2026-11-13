@@ -4,6 +4,10 @@ import com.voltpilot.api.entities.EntityRegistryRepository.BatteryAsset;
 import com.voltpilot.api.uems.FuehrendeBoxAbleitung;
 import com.voltpilot.api.uems.FuehrendeBoxAbleitung.Ergebnis;
 import com.voltpilot.api.uems.FuehrendeBoxAbleitung.Grund;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -47,5 +51,26 @@ public class LeadDeviceService {
         Ergebnis<UUID> ergebnis = FuehrendeBoxAbleitung.ableiten(repo.siteDeviceIds(siteId),
                 speicher == null ? null : speicher.deviceId(), repo.storedLeadDeviceId(siteId));
         return new FuehrendeBox(ergebnis.box(), ergebnis.grund());
+    }
+
+    /**
+     * {@link #fuehrendeBox(UUID)} für viele Anlagen: dieselbe Ableitung je Anlage, aber drei Abfragen
+     * insgesamt statt drei je Anlage (vp-perf-kundenpfade-api, {@code GET /devices} der Shell alle 30 s).
+     * Jede übergebene Anlage steht im Ergebnis, auch eine ohne Box (dann mit ihrem Grund).
+     */
+    public Map<UUID, FuehrendeBox> fuehrendeBoxen(Collection<UUID> siteIds) {
+        Map<UUID, FuehrendeBox> out = new HashMap<>();
+        if (siteIds.isEmpty()) {
+            return out;
+        }
+        Map<UUID, UUID> speicher = repo.batteryDeviceIds(siteIds);
+        Map<UUID, List<UUID>> boxen = repo.siteDeviceIds(siteIds);
+        Map<UUID, UUID> gespeichert = repo.storedLeadDeviceIds(siteIds);
+        for (UUID site : siteIds) {
+            Ergebnis<UUID> ergebnis = FuehrendeBoxAbleitung.ableiten(boxen.getOrDefault(site, List.of()),
+                    speicher.get(site), gespeichert.get(site));
+            out.put(site, new FuehrendeBox(ergebnis.box(), ergebnis.grund()));
+        }
+        return out;
     }
 }

@@ -638,6 +638,66 @@ public class EntityRegistryRepository {
     }
 
     /**
+     * {@link #siteDeviceIds(UUID)} für viele Anlagen in EINER Abfrage (vp-perf-kundenpfade-api): je
+     * Anlage ihre angemeldeten Boxen in derselben Reihenfolge; eine Anlage ohne Box fehlt.
+     */
+    public java.util.Map<UUID, List<UUID>> siteDeviceIds(java.util.Collection<UUID> siteIds) {
+        java.util.Map<UUID, List<UUID>> out = new java.util.HashMap<>();
+        if (siteIds.isEmpty()) {
+            return out;
+        }
+        jdbc.query("SELECT site_id, id FROM device WHERE site_id IN (" + platzhalter(siteIds.size())
+                        + ") AND ausgebaut_am IS NULL ORDER BY site_id, created_at, id",
+                rs -> {
+                    out.computeIfAbsent(rs.getObject("site_id", UUID.class), k -> new java.util.ArrayList<>())
+                            .add(rs.getObject("id", UUID.class));
+                },
+                siteIds.toArray());
+        return out;
+    }
+
+    /**
+     * Die Box des primären Speichers je Anlage ({@link #batteryAsset(UUID)}{@code .deviceId()}) für viele
+     * Anlagen in EINER Abfrage. Eine Anlage ohne Speicher oder mit Speicher ohne Box fehlt - für die
+     * Ableitung der führenden Box ist beides dasselbe {@code null}.
+     */
+    public java.util.Map<UUID, UUID> batteryDeviceIds(java.util.Collection<UUID> siteIds) {
+        java.util.Map<UUID, UUID> out = new java.util.HashMap<>();
+        if (siteIds.isEmpty()) {
+            return out;
+        }
+        jdbc.query("SELECT site_id, device_id FROM asset WHERE site_id IN (" + platzhalter(siteIds.size())
+                        + ") AND type = 'battery' AND is_primary AND device_id IS NOT NULL",
+                rs -> {
+                    out.put(rs.getObject("site_id", UUID.class), rs.getObject("device_id", UUID.class));
+                },
+                siteIds.toArray());
+        return out;
+    }
+
+    /**
+     * {@link #storedLeadDeviceId(UUID)} für viele Anlagen in EINER Abfrage; eine Anlage ohne gespeicherte
+     * Wahl (oder unter dem Mandanten unsichtbar) fehlt.
+     */
+    public java.util.Map<UUID, UUID> storedLeadDeviceIds(java.util.Collection<UUID> siteIds) {
+        java.util.Map<UUID, UUID> out = new java.util.HashMap<>();
+        if (siteIds.isEmpty()) {
+            return out;
+        }
+        jdbc.query("SELECT id, lead_device_id FROM site WHERE id IN (" + platzhalter(siteIds.size())
+                        + ") AND lead_device_id IS NOT NULL",
+                rs -> {
+                    out.put(rs.getObject("id", UUID.class), rs.getObject("lead_device_id", UUID.class));
+                },
+                siteIds.toArray());
+        return out;
+    }
+
+    private static String platzhalter(int n) {
+        return String.join(",", java.util.Collections.nCopies(n, "?"));
+    }
+
+    /**
      * Set (or clear, with null) the site's v1->v2 history cutover instant (MIG).
      * RLS-scoped: only a row visible under the session tenant is updated.
      * Returns true when a row was affected (the site exists for the tenant).

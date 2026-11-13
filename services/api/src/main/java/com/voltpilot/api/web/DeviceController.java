@@ -155,9 +155,11 @@ public class DeviceController {
         var liste = devices.findAll();
         var fuehrend = new java.util.HashMap<java.util.UUID, java.util.UUID>();
         if (leadDevices != null) {
-            liste.stream().map(DeviceDto::siteId).distinct().forEach(site -> {
-                java.util.UUID box = leadDevices.fuehrendeBox(site).box();
-                if (box != null) fuehrend.put(site, box);
+            // Drei Abfragen für alle Anlagen statt drei je Anlage (die Shell fragt alle 30 s).
+            var anlagen = liste.stream().map(DeviceDto::siteId).filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+            leadDevices.fuehrendeBoxen(anlagen).forEach((site, f) -> {
+                if (f.box() != null) fuehrend.put(site, f.box());
             });
         }
         return new SichtbareListe<>(liste.stream().map(d -> new DeviceDto(

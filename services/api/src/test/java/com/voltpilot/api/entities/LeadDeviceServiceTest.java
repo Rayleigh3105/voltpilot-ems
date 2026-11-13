@@ -80,6 +80,41 @@ class LeadDeviceServiceTest {
         return tests;
     }
 
+    /**
+     * {@code fuehrendeBoxen} (vp-perf-kundenpfade-api, {@code GET /devices}): ALLE Vektorfälle als je eine
+     * Anlage in EINEM Aufruf ergeben je Anlage genau die Box und den Grund des Einzelaufrufs. Die
+     * Massen-Abfragen liefern dabei, was ihre Einzel-Gegenstücke je Anlage liefern würden (eine Anlage
+     * ohne Box / ohne Speicher-Box / ohne Wahl fehlt in der Map).
+     */
+    @Test
+    void fuehrendeBoxenGibtJeAnlageDasselbeWieDerEinzelaufruf() throws Exception {
+        EntityRegistryRepository repo = mock(EntityRegistryRepository.class);
+        java.util.Map<UUID, List<UUID>> boxenJe = new java.util.HashMap<>();
+        java.util.Map<UUID, UUID> speicherJe = new java.util.HashMap<>();
+        java.util.Map<UUID, UUID> wahlJe = new java.util.HashMap<>();
+        java.util.Map<UUID, FuehrendeBox> erwartet = new java.util.LinkedHashMap<>();
+        int i = 0;
+        for (JsonNode c : MAPPER.readTree(Files.readString(VECTORS)).path("cases")) {
+            UUID site = UUID.nameUUIDFromBytes(("site-" + i++).getBytes(StandardCharsets.UTF_8));
+            JsonNode in = c.path("input");
+            List<UUID> boxen = new ArrayList<>();
+            in.path("boxen").forEach(b -> boxen.add(geraet(b.asText())));
+            UUID speicher = geraet(text(in.get("speicher_box")));
+            UUID wahl = geraet(text(in.get("gespeichert")));
+            if (!boxen.isEmpty()) boxenJe.put(site, boxen);
+            if (speicher != null) speicherJe.put(site, speicher);
+            if (wahl != null) wahlJe.put(site, wahl);
+            erwartet.put(site, fuehrendeBox(boxen, speicher == null ? null : speicherAn(speicher), wahl));
+        }
+        when(repo.siteDeviceIds(erwartet.keySet())).thenReturn(boxenJe);
+        when(repo.batteryDeviceIds(erwartet.keySet())).thenReturn(speicherJe);
+        when(repo.storedLeadDeviceIds(erwartet.keySet())).thenReturn(wahlJe);
+
+        assertThat(new LeadDeviceService(repo).fuehrendeBoxen(erwartet.keySet())).isEqualTo(erwartet);
+        assertThat(erwartet).hasSizeGreaterThanOrEqualTo(4);
+        assertThat(new LeadDeviceService(repo).fuehrendeBoxen(List.of())).isEmpty();
+    }
+
     // Die vier Fälle und die zwei Abnahmefälle noch einmal ausgeschrieben, damit ein roter Lauf
     // sie beim Namen nennt.
 
