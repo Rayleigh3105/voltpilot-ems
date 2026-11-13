@@ -41,8 +41,13 @@ export interface VorgabenBedingung {
   rueckkehrOben?: number;
 }
 
+/**
+ * Auf die Auflösung gerundet, OHNE Binär-Rechenrest: `Math.round(76) * 0.1` ist 7,6000000000000005 - genau diese
+ * Zahl stand im Feld „Rückkehrschwelle“ (Kunden-Alarmierung P0). Die Nachkommastellen der Auflösung begrenzen.
+ */
 function rundeAufAufloesung(x: number, aufloesung: number): number {
-  return Math.round(x / aufloesung) * aufloesung;
+  const stellen = Math.max(0, Math.ceil(-Math.log10(aufloesung) - 1e-9));
+  return Number((Math.round(x / aufloesung) * aufloesung).toFixed(stellen));
 }
 
 function rueckkehrAbstand(schwelle: number, aufloesung: number): number {

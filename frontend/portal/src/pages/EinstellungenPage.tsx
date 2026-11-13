@@ -345,14 +345,19 @@ export function EinstellungenPage() {
     };
   }, [ladeVersion]);
 
-  // Sprungmarke `?abschnitt=` (wie `settingsNav.ts` es für die Anlage tut) - einmal beim Laden.
+  // Sprungmarke `?abschnitt=` (wie `settingsNav.ts` es für die Anlage tut) - einmal, sobald die Gruppen stehen:
+  // beim ersten Zeichnen zeigt die Seite noch „Wird geladen“, das Ziel gab es dann nicht (Kunden-Alarmierung P0, der
+  // Rückweg vom Bestätigungs-Link führt hierher).
+  const sprungErledigt = useRef(false);
   useEffect(() => {
+    if (laden || sprungErledigt.current) return;
+    sprungErledigt.current = true;
     const q = window.location.hash.indexOf('?');
     if (q < 0) return;
     const ziel = new URLSearchParams(window.location.hash.slice(q + 1)).get('abschnitt');
     if (!ziel) return;
     document.getElementById(`einst-${ziel}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+  }, [laden]);
 
   // M4: der Browser-Endpunkt dieses Geräts, unabhängig vom Haupt-Ladevorgang (nie blockierend).
   useEffect(() => {
@@ -425,9 +430,18 @@ export function EinstellungenPage() {
     try {
       await benachrichtigungenApi.emailAnfordern(adresse);
       setFolge({ key: 'email', text: `Link an ${adresse} gesendet - bitte dort öffnen.`, istFehler: false });
-      setLadeVersion((v) => v + 1);
     } catch {
       setFolge({ key: 'email', text: SCHALT_FEHLER, istFehler: true });
+      setBusy(null);
+      return;
+    }
+    // Kunden-Alarmierung B3: den neuen Stand („Wartet auf Bestätigung“) nur für die E-Mail nachlesen - ein Neuladen
+    // der ganzen Seite schlösse das Blatt und nähme die Bestätigung „Link gesendet“ mit. Scheitert nur dieses
+    // Nachlesen, war das Senden trotzdem erfolgreich; der Stand kommt mit dem nächsten Laden.
+    try {
+      setEmail((await benachrichtigungenApi.emailZustand()) ?? null);
+    } catch {
+      // bewusst still: die Mail ist unterwegs, die Folge-Zeile sagt es
     } finally {
       setBusy(null);
     }
@@ -857,6 +871,7 @@ export function EinstellungenPage() {
         {blattInhalt?.art === 'email' && (
           <EmailBlatt
             email={email}
+            anmeldeAdresse={user.email ?? null}
             busy={busy != null}
             onAnfordern={emailAnfordern}
             onStufe={emailStufeSetzen}
@@ -1069,6 +1084,7 @@ function blattTitel(b: BlattArt | null): string {
 
 function EmailBlatt({
   email,
+  anmeldeAdresse,
   busy,
   onAnfordern,
   onStufe,
@@ -1078,6 +1094,8 @@ function EmailBlatt({
   folge,
 }: {
   email: EmailZustellweg | null;
+  /** Die Adresse der Anmeldung - B3: der Hinweis „Die Adresse ist vorbelegt“ stand über einem leeren Feld. */
+  anmeldeAdresse: string | null;
   busy: boolean;
   onAnfordern: (adresse: string) => void;
   onStufe: (stufe: ZweiStufen) => void;
@@ -1086,13 +1104,13 @@ function EmailBlatt({
   onProbe: () => void;
   folge: FolgeEintrag | null;
 }) {
-  const [adresse, setAdresse] = useState(email?.ziel ?? '');
+  const [adresse, setAdresse] = useState(email?.ziel ?? anmeldeAdresse ?? '');
   const [andereAnzeigen, setAndereAnzeigen] = useState(false);
 
   if (!email) {
     return (
       <div className="vp-einst-blatt">
-        <p className="vp-note">Die Adresse ist vorbelegt - ein Tipp genügt, der Link kommt sofort.</p>
+        {anmeldeAdresse && <p className="vp-note">Die Adresse ist vorbelegt - ein Tipp genügt, der Link kommt sofort.</p>}
         <Input label="E-Mail-Adresse" type="email" value={adresse} onChange={(e) => setAdresse(e.target.value)} placeholder="name@beispiel.de" />
         <Button type="button" size="md" disabled={busy || !adresse.trim()} onClick={() => onAnfordern(adresse.trim())}>
           Bestätigungs-Link senden

@@ -15,13 +15,18 @@ import '../src/index.css';
 /**
  * Einstellungen Scheibe 1 (Konzept `vp-einstellungen-konzept-e1`) - Bühne der echten
  * `EinstellungenPage` mit gestellten Routen, wie `gemeinsame-steuerung.tsx`. Parameter:
- * `fall=voll|leer|unbestaetigt` (Anhang-A-Fälle der Bühne des Konzepts).
+ * `fall=voll|leer|unbestaetigt` (Anhang-A-Fälle der Bühne des Konzepts), `anmeldeAdresse=`.
  */
 (keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
 
 const p = new URLSearchParams(location.search);
 const fall = p.get('fall') ?? 'voll';
+// `anmeldeAdresse=`: die Adresse der Anmeldung im Token (Kunden-Alarmierung B3, Vorbelegung des E-Mail-Wegs).
+const anmeldeAdresse = p.get('anmeldeAdresse');
+if (anmeldeAdresse) {
+  (keycloak as unknown as { tokenParsed: Record<string, unknown> }).tokenParsed = { name: 'Ines Kaltenbach', email: anmeldeAdresse };
+}
 
 const echtesFetch = window.fetch.bind(window);
 const zustellwege = zustellwegeFixture({ fall, ruhezeitAktiv: p.get('ruhezeitAktiv') === '1' });

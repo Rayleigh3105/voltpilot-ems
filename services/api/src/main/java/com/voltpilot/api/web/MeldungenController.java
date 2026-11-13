@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -232,11 +234,27 @@ public class MeldungenController {
 
     /** "Gesehen" (Entscheid 3B): freiwillig, speist nur den Verlauf - keine Quittierungspflicht. */
     @PostMapping("/{id}/gesehen")
-    public MeldungDto gesehen(@PathVariable UUID id) {
-        String wer = RechtPruefung.aufrufer().map(b -> b.name() != null ? b.name() : b.kennung()).orElse("unbekannt");
+    public MeldungDto gesehen(@PathVariable UUID id, Authentication auth) {
+        String wer = gesehenName(auth);
         dienst.gesehen(id, wer, Instant.now());
         return repo.alarm(id).map(this::dto)
                 .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+    }
+
+    /**
+     * Wer „gesehen“ tippt, steht mit seinem Namen im Verlauf (Kunden-Alarmierung P0): der Aufrufer der Rechte-Ableitung
+     * trägt als Namen nur die Kennung, darum zuerst der Name aus dem Token, dann die Anmeldung, zuletzt die Kennung.
+     */
+    static String gesehenName(Authentication auth) {
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            for (String claim : List.of("name", "preferred_username")) {
+                Object wert = jwt.getClaims().get(claim);
+                if (wert != null && !wert.toString().isBlank()) {
+                    return wert.toString().trim();
+                }
+            }
+        }
+        return RechtPruefung.aufrufer().map(b -> b.name() != null ? b.name() : b.kennung()).orElse("unbekannt");
     }
 
     private MeldungDto dto(AlarmZeile a) {

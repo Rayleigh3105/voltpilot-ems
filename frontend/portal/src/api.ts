@@ -8679,8 +8679,16 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     }
     throw new ApiError(res.status, message, errorBody);
   }
-  // 201 with body for claim; others JSON. 204 would be empty.
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+  // 201 with body for claim; others JSON. 204 is empty - and so is a 202 (`POST /zustellwege/email`) or a bare 200
+  // (`GET /zustellwege/bestaetigen`): an empty body is "no content", never a parse error. Before, the portal read
+  // every status except 204 as JSON and reported "Das hat nicht geklappt" for a request that had succeeded (Kunden-
+  // Alarmierung B3: the confirmation mail was already on its way).
+  if (res.status === 204) return undefined as T;
+  // Testdoppel, die nur `json()` tragen (viele Einheitstests stellen `fetch` als `{ ok, status, json }`), lesen
+  // weiter so; ein echter `Response` hat immer `text()`.
+  if (typeof res.text !== 'function') return (await res.json()) as T;
+  const text = await res.text();
+  return (text.trim() === '' ? undefined : JSON.parse(text)) as T;
 }
 
 export async function downloadMeasurementExport(

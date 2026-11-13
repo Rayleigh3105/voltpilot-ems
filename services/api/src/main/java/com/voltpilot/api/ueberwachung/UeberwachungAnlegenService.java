@@ -147,6 +147,7 @@ public class UeberwachungAnlegenService {
         }
 
         ObjectNode bedingung = vorgabenAnwenden(vorlageAnwenden(eintrag, (ObjectNode) anfrage.bedingung()));
+        paarPruefen(bedingung);
         String empfaengerJson = empfaengerJson(empfaenger);
         // Eine Alarm-Vorlage (EZ-11) ist ab dem Anlegen scharf: ihre Werte haben keine Rückschau, die ein
         // Probelauf nachspielen könnte (EW-9 A „alle Zustellwege sofort“) - 30 Tage stumm wären 30 Tage ohne Alarm.
@@ -367,13 +368,69 @@ public class UeberwachungAnlegenService {
             bedingung.put("erholen_s", VORGABE_ERHOLEN_S);
         }
         if (bedingung.has("schwelle") && !bedingung.has("rueckkehr")) {
-            String art = bedingung.path("art").asText("");
             double schwelle = bedingung.path("schwelle").asDouble();
-            double rueckkehr = "unter".equals(art) ? schwelle * (1 + VORGABE_RUECKKEHR_PROZENT)
-                    : schwelle * (1 - VORGABE_RUECKKEHR_PROZENT);
-            bedingung.put("rueckkehr", rueckkehr);
+            // Der Abstand vom BETRAG der Schwelle: bei einer negativen Schwelle (Einspeisung, negativer Preis) lag die
+            // Vorgabe sonst auf der falschen Seite. Gerundet, damit kein Rechenrest (7,6000000000000005) gespeichert wird.
+            double abstand = Math.abs(schwelle) * VORGABE_RUECKKEHR_PROZENT;
+            double rueckkehr = obenAusgeloest(bedingung) ? schwelle - abstand : schwelle + abstand;
+            bedingung.put("rueckkehr", ohneRechenrest(rueckkehr));
         }
         return bedingung;
+    }
+
+    /**
+     * Ein verdrehtes Paar aus Schwelle und Rückkehrschwelle lehnt der Server ab (Kunden-Alarmierung P0, B8): bei
+     * „über“ muss die Rückkehr bei oder unter der Schwelle liegen, bei „unter“ bei oder über ihr. Sonst schließt
+     * eine Meldung im selben Takt, in dem sie öffnet, und öffnet gleich wieder - im Labor flatterte so eine Regel
+     * mit Schwelle 5 und Rückkehr 7,6 ct/kWh. „Außerhalb“ prüft beide Grenzen und dass die untere unter der oberen
+     * liegt. Package-sichtbar: {@link ProbelaufService} prüft die Vorschau gleich.
+     */
+    static void paarPruefen(ObjectNode bedingung) {
+        String art = bedingung.path("art").asText("");
+        if (("ueber".equals(art) || "unter".equals(art) || "periode".equals(art)) && bedingung.has("schwelle")
+                && bedingung.has("rueckkehr")) {
+            double schwelle = zahl(bedingung, "schwelle");
+            double rueckkehr = zahl(bedingung, "rueckkehr");
+            if (obenAusgeloest(bedingung) ? rueckkehr > schwelle : rueckkehr < schwelle) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        obenAusgeloest(bedingung)
+                                ? "Die Rückkehrschwelle muss bei oder unter der Schwelle liegen."
+                                : "Die Rückkehrschwelle muss bei oder über der Schwelle liegen.");
+            }
+        }
+        if ("ausserhalb".equals(art) && bedingung.has("schwelle_unten") && bedingung.has("schwelle_oben")) {
+            double unten = zahl(bedingung, "schwelle_unten");
+            double oben = zahl(bedingung, "schwelle_oben");
+            double ruUnten = bedingung.has("rueckkehr_unten") ? zahl(bedingung, "rueckkehr_unten") : unten;
+            double ruOben = bedingung.has("rueckkehr_oben") ? zahl(bedingung, "rueckkehr_oben") : oben;
+            if (!(unten < oben) || ruUnten < unten || ruOben > oben || ruUnten > ruOben) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Die Grenzen passen nicht zusammen: unten < oben, die Rückkehr liegt zwischen den Grenzen.");
+            }
+        }
+    }
+
+    /** „über“ (und „periode“ mit {@code richtung = ueber}, der Vorgabe) löst oberhalb der Schwelle aus. */
+    private static boolean obenAusgeloest(ObjectNode bedingung) {
+        String art = bedingung.path("art").asText("");
+        if ("periode".equals(art)) {
+            return !"unter".equals(bedingung.path("richtung").asText("ueber"));
+        }
+        return !"unter".equals(art);
+    }
+
+    private static double zahl(ObjectNode bedingung, String feld) {
+        JsonNode n = bedingung.path(feld);
+        if (!n.isNumber() || !Double.isFinite(n.asDouble())) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "'" + feld + "' muss eine Zahl sein");
+        }
+        return n.asDouble();
+    }
+
+    /** Auf sechs Nachkommastellen - genug für jede Einheit des Katalogs, ohne Binär-Rechenrest. */
+    static double ohneRechenrest(double x) {
+        return java.math.BigDecimal.valueOf(x).setScale(6, java.math.RoundingMode.HALF_UP).stripTrailingZeros().doubleValue();
     }
 
     // Jackson statt Zeichenketten-Verkettung: eine Kundeneingabe (Kanalname, Rollenwort, Person)

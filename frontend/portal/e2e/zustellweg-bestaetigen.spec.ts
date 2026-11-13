@@ -42,7 +42,7 @@ for (const breite of [390, 1440] as const) {
     const fehler = await oeffne(page, breite, 'ein-echter-mail-token');
     await expect(page.getByRole('heading', { name: 'E-Mail-Adresse bestätigt' })).toBeVisible();
     await expect(page.getByText('Sie erhalten Meldungen von VoltPilot jetzt auch per E-Mail.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Weiter zum Meldungs-Center' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Zurück zu den Einstellungen' })).toBeVisible();
 
     expect(angefragterToken).toBe('ein-echter-mail-token');
     expect(await querlauf(page)).toBe(0);
@@ -50,11 +50,30 @@ for (const breite of [390, 1440] as const) {
   });
 }
 
-test('"Weiter" führt weg von der Bestätigungsroute (zum Meldungs-Center)', async ({ page }) => {
+test('"Zurück" führt weg von der Bestätigungsroute zu den Wegen in den Einstellungen', async ({ page }) => {
   await page.route('**/api/v1/zustellwege/bestaetigen*', (route) => route.fulfill({ status: 200, body: '' }));
   await oeffne(page, 1440);
-  await page.getByRole('button', { name: 'Weiter zum Meldungs-Center' }).click();
-  await page.waitForURL(/#\/meldungen$/);
+  await page.getByRole('button', { name: 'Zurück zu den Einstellungen' }).click();
+  await page.waitForURL(/#\/einstellungen\?abschnitt=wege$/);
+});
+
+// Kunden-Alarmierung P0: im Labor landete der Link im schon offenen Portal (derselbe Tab) auf der Startseite, die
+// Adresse blieb unbestätigt - ein Hash-Wechsel bootet nicht neu. Jetzt lädt das Portal neu und bestätigt.
+test('der Link wirkt auch im schon offenen Portal (derselbe Tab, nur der Hash wechselt)', async ({ page }) => {
+  let aufrufe = 0;
+  await page.route('**/api/v1/zustellwege/bestaetigen*', (route) => {
+    aufrufe += 1;
+    return route.fulfill({ status: 200, body: '' });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/#/uebersicht');
+  await page.waitForLoadState('domcontentloaded');
+  await page.evaluate(() => {
+    window.location.hash = '#/zustellweg/bestaetigen?token=im-offenen-portal';
+  });
+  // Nach dem Neuladen liefert der Dev-Server jede Quelldatei neu - mehr Zeit als die 5 s eines Hash-Wechsels.
+  await expect(page.getByRole('heading', { name: 'E-Mail-Adresse bestätigt' })).toBeVisible({ timeout: 30_000 });
+  expect(aufrufe).toBe(1);
 });
 
 test('ein ungültiger/abgelaufener/schon verwendeter Token zeigt einen ehrlichen Fehler mit nächstem Schritt', async ({
@@ -65,7 +84,7 @@ test('ein ungültiger/abgelaufener/schon verwendeter Token zeigt einen ehrlichen
 
   await expect(page.getByRole('heading', { name: 'Link nicht mehr gültig' })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('ungültig, abgelaufen oder schon verwendet');
-  await expect(page.getByRole('button', { name: 'Weiter zu VoltPilot' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zurück zu den Einstellungen' })).toBeVisible();
   // Der Browser selbst protokolliert jede Netzwerk-Antwort ≥400 als Konsolenfehler
   // ("Failed to load resource") - das ist die erwartete Nebenwirkung des mit 410
   // gemockten Endpunkts, keine Fehlfunktion der Seite (die `410` behandelt sie

@@ -28,6 +28,16 @@ final class ProbelaufSimulation {
     private ProbelaufSimulation() {
     }
 
+    /**
+     * Trägt die Reihe überhaupt einen bekannten Wert? Ohne einen solchen kann die Simulation nichts nachrechnen -
+     * ihr {@link Ergebnis#NICHTS} wäre dann „keine Vorschau möglich“, nicht „hätte nicht ausgelöst“
+     * (Kunden-Alarmierung P0: Börsenpreis und Ladepunkte haben keine Rückschau-Reihe, die Vorschau meldete trotzdem
+     * null Auslösungen, während die Bedingung gerade erfüllt war).
+     */
+    static boolean hatBekannteWerte(List<Punkt> reihe) {
+        return reihe.stream().anyMatch(p -> p.lesung() != null && p.lesung().bekannt());
+    }
+
     static Ergebnis simulieren(List<Punkt> reihe, JsonNode bedingung) {
         if (reihe.isEmpty()) {
             return Ergebnis.NICHTS;

@@ -60,11 +60,13 @@ public class ProbelaufService {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Bedingung fehlt");
         }
         ObjectNode bedingung = UeberwachungAnlegenService.vorgabenAnwenden((ObjectNode) entwurf.bedingung().deepCopy());
+        UeberwachungAnlegenService.paarPruefen(bedingung);
 
         Instant von = jetzt.minus(Duration.ofDays(FENSTER_TAGE));
         List<ProbelaufSimulation.Punkt> reihe = reiheFuer(eintrag, bezug, von, jetzt);
         ProbelaufSimulation.Ergebnis ergebnis = ProbelaufSimulation.simulieren(reihe, bedingung);
-        return new ProbelaufDto(FENSTER_TAGE, ergebnis.ausgeloest(), ergebnis.zuletzt(), ergebnis.gesamtdauerS());
+        return new ProbelaufDto(FENSTER_TAGE, ergebnis.ausgeloest(), ergebnis.zuletzt(), ergebnis.gesamtdauerS(),
+                ProbelaufSimulation.hatBekannteWerte(reihe));
     }
 
     private List<ProbelaufSimulation.Punkt> reiheFuer(WerteKatalog.Eintrag eintrag, WerteLeser.Bezug bezug,

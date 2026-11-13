@@ -15,6 +15,9 @@ import { AuthScreen, TrustRow } from './AuthScreen';
  * (kein Hinweis, ob ein Token je existiert hat) - die Fehlermeldung bleibt
  * deshalb ebenso allgemein, mit demselben nächsten Schritt für alle drei Fälle.
  */
+/** Die Wege („So erreichen wir Sie“) auf der Einstellungs-Seite - die Sprungmarke `?abschnitt=` scrollt dorthin. */
+export const ZURUECK_ZU_DEN_WEGEN = '#/einstellungen?abschnitt=wege';
+
 export function ZustellwegBestaetigenScreen({ token }: { token: string }) {
   const [zustand, setZustand] = useState<ZustellwegBestaetigungsErgebnis | 'laedt' | 'fehler'>('laedt');
   // Der Token ist einmalig (Server verbraucht ihn beim ersten Treffer, §6.7) -
@@ -40,9 +43,11 @@ export function ZustellwegBestaetigenScreen({ token }: { token: string }) {
   // Der Hash wechselt WEG von dieser Route, bevor die Seite neu lädt - sonst
   // bestätigte der nächste Boot denselben (jetzt verbrauchten) Token erneut
   // und zeigte sofort "abgelaufen". Danach entscheidet main.tsx wie gewohnt:
-  // angemeldet -> Meldungs-Center, sonst Keycloak-Login mit genau diesem Ziel.
+  // angemeldet -> zurück zu den Wegen ("So erreichen wir Sie", Kunden-Alarmierung
+  // P0: dort sieht man die bestätigte Adresse und kann eine Probe senden), sonst
+  // Keycloak-Login mit genau diesem Ziel.
   function weiterZuVoltpilot() {
-    window.location.hash = '#/meldungen';
+    window.location.hash = ZURUECK_ZU_DEN_WEGEN;
     window.location.reload();
   }
 
@@ -64,7 +69,7 @@ export function ZustellwegBestaetigenScreen({ token }: { token: string }) {
           Sie erhalten Meldungen von VoltPilot jetzt auch per E-Mail.
         </div>
         <Button variant="primary" size="lg" fullWidth onClick={weiterZuVoltpilot}>
-          Weiter zum Meldungs-Center
+          Zurück zu den Einstellungen
         </Button>
         <TrustRow />
       </AuthScreen>
@@ -86,7 +91,7 @@ export function ZustellwegBestaetigenScreen({ token }: { token: string }) {
         fullWidth
         onClick={istAbgelaufen ? weiterZuVoltpilot : () => window.location.reload()}
       >
-        {istAbgelaufen ? 'Weiter zu VoltPilot' : 'Erneut versuchen'}
+        {istAbgelaufen ? 'Zurück zu den Einstellungen' : 'Erneut versuchen'}
       </Button>
       <TrustRow />
     </AuthScreen>

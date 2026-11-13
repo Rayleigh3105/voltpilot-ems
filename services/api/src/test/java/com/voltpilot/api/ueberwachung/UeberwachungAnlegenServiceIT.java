@@ -321,6 +321,61 @@ class UeberwachungAnlegenServiceIT {
         }
     }
 
+    /**
+     * Kunden-Alarmierung P0: „Gesehen von 8664636f-…“ - ältere Zeilen tragen die Kennung. Gelesen wird der Name des
+     * Kontos; ein schon gespeicherter Name (neuere Zeilen) und eine Kennung ohne Konto bleiben, wie sie sind.
+     */
+    @Test
+    void gesehenVonLiestDenNamenDesKontosStattDerKennung() {
+        Welt w = welt("Gesehen GmbH");
+        benutzerMitRolle(w.tenant(), "8664636f-c75d-4dca-9f5f-2cb6c92be9a8", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        UUID regelId;
+        try {
+            app.update("UPDATE benutzer SET anzeigename = 'Ines Kaltenbach' WHERE sub = ?",
+                    "8664636f-c75d-4dca-9f5f-2cb6c92be9a8");
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"]}"), "warnung", null, null);
+            Benutzer leser = benutzerMitRolle(w.tenant(), "sub-gesehen-anleger", "leser", w.st1());
+            TenantContext.set(w.tenant());
+            regelId = UUID.fromString(dienst().anlegen(anfrage, leser, Instant.now()).id());
+        } finally {
+            TenantContext.clear();
+        }
+        UUID alteZeile = offenenAlarmEinfuegen(w.tenant(), w.st1(), regelId, w.anlage1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungRepository repo = new UeberwachungRepository(app);
+            repo.gesehen(alteZeile, "8664636f-c75d-4dca-9f5f-2cb6c92be9a8", Instant.now());
+            assertThat(repo.alarm(alteZeile).orElseThrow().gesehenVon()).isEqualTo("Ines Kaltenbach");
+            assertThat(repo.liste(false, 10).stream().filter(a -> a.id().equals(alteZeile)).findFirst().orElseThrow()
+                    .gesehenVon()).isEqualTo("Ines Kaltenbach");
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /** Kunden-Alarmierung P0: Schwelle 5 mit Rückkehr 7,6 ct/kWh flatterte im Labor - der Server lehnt das Paar ab. */
+    @Test
+    void einVerdrehtesPaarAusSchwelleUndRueckkehrWirdBeimAnlegenAbgelehnt() {
+        Welt w = welt("Paar GmbH");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-paar", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("anlage.preis.jetzt",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"ueber\",\"schwelle\":5,\"rueckkehr\":7.6}"), "warnung", null, null);
+            assertThatThrownBy(() -> dienst().anlegen(anfrage, leser, Instant.now()))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                    .hasMessageContaining("400");
+            assertThat(app.queryForObject("SELECT count(*) FROM ueberwachung WHERE angelegt_von = 'sub-paar'",
+                    Integer.class)).isZero();
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
     @Test
     void abWerkRegelLaesstSichUeberDieseRouteNichtLoeschen() {
         Welt w = welt("Ab-Werk-Löschung GmbH");

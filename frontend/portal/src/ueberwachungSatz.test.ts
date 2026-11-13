@@ -127,6 +127,13 @@ describe('vorgabenFuerBedingung', () => {
     expect(v.rueckkehrOben).toBeLessThan(10);
   });
 
+  it('die Rückkehrschwelle trägt keinen Rechenrest (Kunden-Alarmierung P0: „7,6000000000000005“)', () => {
+    expect(vorgabenFuerBedingung('ueber', 8).rueckkehr).toBe(7.6);
+    expect(vorgabenFuerBedingung('ueber', 5).rueckkehr).toBe(4.8);
+    expect(vorgabenFuerBedingung('unter', 10).rueckkehr).toBe(10.5);
+    expect(vorgabenFuerBedingung('ueber', 50, undefined, 1).rueckkehr).toBe(48);
+  });
+
   it('die Rückkehrschwelle unterschreitet nie die Auflösung der Größe', () => {
     // 1 % von 1 kW wäre 0,01 - die Auflösung 0,1 gewinnt.
     const v = vorgabenFuerBedingung('ueber', 1, undefined, 0.1);

@@ -90,6 +90,15 @@ const koppelAnnahme = koppelLinkAnnehmen(window.location, (url) =>
 // has no session: another device/browser) must never block it. Works
 // whether the browser happens to be logged in or not, since it never asks.
 const zustellwegToken = zustellwegBestaetigenToken();
+// Kunden-Alarmierung P0: derselbe Link im SCHON OFFENEN Portal (in die Adresszeile desselben Tabs eingefügt) ändert
+// nur den Hash - kein neuer Boot. Die App las ihn als unbekannte Route, zeigte die Startseite, und die Adresse blieb
+// unbestätigt. Darum neu laden: der Boot oben zeigt dann die Bestätigungsseite, die Anmeldung des Tabs bleibt
+// (`sessionStorage`). Vor der App angemeldet, also vor ihren `hashchange`-Hörern - die sehen den Link nie.
+window.addEventListener('hashchange', (e) => {
+  if (!zustellwegBestaetigenToken()) return;
+  e.stopImmediatePropagation();
+  window.location.reload();
+});
 if (zustellwegToken) {
   render(
     <Suspense fallback={<BootSplash />}>

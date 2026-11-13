@@ -12,7 +12,11 @@ import com.voltpilot.api.web.dto.WertverweisDto;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -157,14 +161,49 @@ public class WerteController {
             return List.of();
         }
         List<WertverweisDto> werte = new ArrayList<>();
+        Map<UUID, String> geraeteNamen = geraeteNamen(antwort.entities());
         for (EntityTopologyDto entity : antwort.entities()) {
             for (CapabilityDto cap : entity.capabilities()) {
                 String bezugJson = "{\"komponente\":\"" + entity.id() + "\",\"kanal\":\"" + cap.channel() + "\"}";
-                String name = (entity.label() != null ? entity.label() : entity.id().toString()) + " · " + cap.channel();
+                String name = geraeteNamen.get(entity.id()) + " · " + cap.channel();
                 werte.add(new WertverweisDto("geraet.messwert", name, familie.satzname(), familie.bedingungen(),
                         bezugJson, cap.value() != null, cap.value(), null, cap.unit()));
             }
         }
         return werte;
+    }
+
+    /**
+     * Der Name eines Geräts in der Werteliste (Kunden-Alarmierung P0: „2b103e53-9902-… · Ladestand“): der vergebene
+     * Name, sonst die Geräteart („Speicher“), bei mehreren unbenannten derselben Art durchnummeriert („Speicher 1“,
+     * „Speicher 2“, nach der Kennung geordnet) - nie die Kennung.
+     */
+    static Map<UUID, String> geraeteNamen(List<EntityTopologyDto> entities) {
+        Map<String, Integer> jeArt = new HashMap<>();
+        for (EntityTopologyDto e : entities) {
+            if (!hatText(e.label())) {
+                jeArt.merge(artWort(e), 1, Integer::sum);
+            }
+        }
+        Map<String, Integer> gezaehlt = new HashMap<>();
+        Map<UUID, String> namen = new LinkedHashMap<>();
+        // Nummeriert nach der Kennung: dieselbe Anlage bekommt bei jedem Abruf dieselben Nummern.
+        for (EntityTopologyDto e : entities.stream().sorted(Comparator.comparing(EntityTopologyDto::id)).toList()) {
+            if (hatText(e.label())) {
+                namen.put(e.id(), e.label().trim());
+                continue;
+            }
+            String art = artWort(e);
+            namen.put(e.id(), jeArt.get(art) > 1 ? art + " " + gezaehlt.merge(art, 1, Integer::sum) : art);
+        }
+        return namen;
+    }
+
+    private static String artWort(EntityTopologyDto e) {
+        return hatText(e.typeLabel()) ? e.typeLabel().trim() : "Gerät";
+    }
+
+    private static boolean hatText(String s) {
+        return s != null && !s.isBlank();
     }
 }

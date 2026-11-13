@@ -521,8 +521,16 @@ public class UeberwachungRepository {
                 """, wer, ts(jetzt), alarmId) > 0;
     }
 
+    /**
+     * {@code gesehen_von} liest den Anzeigenamen des Kontos (Kunden-Alarmierung P0: „Gesehen von 8664636f-…“ zeigte die
+     * Kennung). Ältere Zeilen tragen die Kennung ({@code sub}), neuere schon den Namen; ohne Spiegel-Zeile bleibt der
+     * gespeicherte Wert. Jede Abfrage mit diesen Spalten liest {@code FROM alarm} ohne Alias.
+     */
+    private static final String GESEHEN_VON_NAME = "COALESCE((SELECT NULLIF(btrim(b.anzeigename), '') FROM benutzer b "
+            + "WHERE b.tenant_id = alarm.tenant_id AND b.sub = alarm.gesehen_von), gesehen_von) AS gesehen_von";
+
     private static final String ALARM_SPALTEN = "id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, "
-            + "wertart, schwere, ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am, "
+            + "wertart, schwere, ausgeloest_am, zustand, wieder_normal_am, " + GESEHEN_VON_NAME + ", gesehen_am, erledigt_am, "
             + "probelauf, erinnerungen_gesendet, letzte_erinnerung_am, unterdrueckt_durch";
 
     public Optional<AlarmZeile> alarm(UUID id) {

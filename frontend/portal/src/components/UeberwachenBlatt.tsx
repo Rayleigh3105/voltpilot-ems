@@ -107,7 +107,16 @@ export function UeberwachenBlatt({
   const vorgaben = vorgabenFuerBedingung('ueber', vorschlag);
   const [dauerMinuten, setDauerMinuten] = useState((vorlage?.dauer_s ?? vorgaben.dauer_s) / 60);
   const [erholdauerMinuten, setErholdauerMinuten] = useState((vorlage?.erholen_s ?? vorgaben.erholen_s) / 60);
-  const [rueckkehr, setRueckkehr] = useState(vorgaben.rueckkehr ?? vorschlag);
+  // Kunden-Alarmierung P0: die Rückkehrschwelle FOLGT der Schwelle (5 % darunter, `vorgabenFuerBedingung`), bis die
+  // Person sie selbst ändert; ändert sie danach die Schwelle, folgt sie wieder. Vorher blieb sie beim Vorschlag
+  // stehen - im Labor Schwelle 5 mit Rückkehr 7,6 ct/kWh, die Meldung flatterte.
+  const [rueckkehrEigen, setRueckkehrEigen] = useState<number | null>(null);
+  const rueckkehr = rueckkehrEigen ?? vorgabenFuerBedingung('ueber', schwelle).rueckkehr ?? schwelle;
+  const paarVerdreht = Number.isFinite(rueckkehr) && Number.isFinite(schwelle) && rueckkehr > schwelle;
+  function schwelleAendern(wert: number) {
+    setSchwelle(wert);
+    setRueckkehrEigen(null);
+  }
   const [schwere, setSchwere] = useState<Schwere>(vorlage?.schwere ?? 'warnung');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
@@ -133,7 +142,7 @@ export function UeberwachenBlatt({
       : Number.isFinite(schwelleProzent) && schwelleProzent > 0
     : istZustandsform
       ? ziel.length > 0 && dauerMinuten > 0 && erholdauerMinuten > 0
-      : Number.isFinite(schwelle) && dauerMinuten > 0 && erholdauerMinuten > 0;
+      : Number.isFinite(schwelle) && Number.isFinite(rueckkehr) && !paarVerdreht && dauerMinuten > 0 && erholdauerMinuten > 0;
   const bezugKey = 'anlage' in bezug
     ? `anlage:${bezug.anlage}`
     : 'komponente' in bezug
@@ -229,7 +238,9 @@ export function UeberwachenBlatt({
     : ueberwachungSatz(eintrag, satzBedingung, schwere, istPeriodisch && periodenform === 'aenderung' ? '' : einheit);
   const probelaufText = probelauf == null
     ? null
-    : probelauf.ausgeloest === 0
+    : probelauf.moeglich === false
+      ? 'Für diesen Wert ist keine Vorschau möglich.'
+      : probelauf.ausgeloest === 0
       ? `In den letzten ${probelauf.fensterTage} Tagen hätte das nicht ausgelöst.`
       : `In den letzten ${probelauf.fensterTage} Tagen hätte das ${probelauf.ausgeloest} Mal ausgelöst.`;
 
@@ -415,7 +426,7 @@ export function UeberwachenBlatt({
                 type="number"
                 step="0.1"
                 value={schwelle}
-                onChange={(e) => setSchwelle(Number(e.target.value))}
+                onChange={(e) => schwelleAendern(Number(e.target.value))}
               />
               <Input
                 id={`${feldId}-rueckkehr`}
@@ -423,7 +434,8 @@ export function UeberwachenBlatt({
                 type="number"
                 step="0.1"
                 value={rueckkehr}
-                onChange={(e) => setRueckkehr(Number(e.target.value))}
+                error={paarVerdreht ? 'Muss bei oder unter der Schwelle liegen.' : undefined}
+                onChange={(e) => setRueckkehrEigen(Number(e.target.value))}
               />
             </>
           )}

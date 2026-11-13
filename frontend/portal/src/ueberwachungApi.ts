@@ -100,6 +100,12 @@ export interface ProbelaufVorschau {
   ausgeloest: number;
   zuletzt: string | null;
   gesamtdauerS: number;
+  /**
+   * `false`: die Rückschau hat für diesen Wert keinen einzigen bekannten Messpunkt (Börsenpreis, Ladepunkte, eine
+   * Anlage ohne Daten) - dann ist `ausgeloest = 0` keine Aussage, sondern „keine Vorschau möglich“ (Kunden-Alarmierung
+   * P0). Fehlt das Feld (älterer Server), gilt die Vorschau wie bisher.
+   */
+  moeglich?: boolean;
 }
 
 export const ueberwachungApi = {

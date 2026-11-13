@@ -106,6 +106,37 @@ test('in der Ruhezeit nennt das Kurzbild "wartet" statt der Wege', async ({ page
   await expect(kurzbild.getByText(/wartet bis/)).toBeVisible();
 });
 
+// ------------------------------------------------- Kunden-Alarmierung P0 (B3: der erste Schritt meldete einen Fehler)
+
+for (const breite of [390, 1440] as const) {
+  test(`E-Mail: der Link-Versand (202 ohne Rumpf) meldet Erfolg und zeigt den neuen Stand bei ${breite}px`, async ({ page }) => {
+    const fehler = await oeffne(page, breite, 'fall=leer&anmeldeAdresse=ines.kaltenbach%40ahrenberg.example');
+    await page.getByRole('button', { name: /^E-Mail/ }).click();
+    const blatt = page.getByRole('dialog', { name: 'E-Mail' });
+    // Vorbelegt heißt: das Feld trägt die Anmelde-Adresse, nicht nur der Hinweis darüber.
+    await expect(blatt.getByText('Die Adresse ist vorbelegt', { exact: false })).toBeVisible();
+    await expect(blatt.getByLabel('E-Mail-Adresse')).toHaveValue('ines.kaltenbach@ahrenberg.example');
+
+    await blatt.getByRole('button', { name: 'Bestätigungs-Link senden' }).click();
+    await expect(blatt.getByText('Link an ines.kaltenbach@ahrenberg.example gesendet - bitte dort öffnen.')).toBeVisible();
+    await expect(blatt.getByText('Das hat nicht geklappt', { exact: false })).toHaveCount(0);
+    await expect(blatt.getByRole('button', { name: 'Link erneut senden' })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: /^E-Mail/ })).toHaveText(/Wartet auf Bestätigung/);
+    expect(await querlauf(page)).toBe(0);
+    expect(fehler).toEqual([]);
+  });
+}
+
+test('E-Mail: ohne Anmelde-Adresse steht kein „vorbelegt“ über einem leeren Feld', async ({ page }) => {
+  await oeffne(page, 1440, 'fall=leer');
+  await page.getByRole('button', { name: /^E-Mail/ }).click();
+  const blatt = page.getByRole('dialog', { name: 'E-Mail' });
+  await expect(blatt.getByLabel('E-Mail-Adresse')).toHaveValue('');
+  await expect(blatt.getByText('Die Adresse ist vorbelegt', { exact: false })).toHaveCount(0);
+});
+
 // --------------------------------------------------------------------- Scheibe 2 (§4.12, Entscheid 10A)
 
 test('E-Mail: Probe senden meldet Erfolg, abschalten und entfernen wirken sofort', async ({ page }) => {

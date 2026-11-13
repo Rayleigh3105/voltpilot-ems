@@ -19,7 +19,7 @@ describe('ZustellwegBestaetigenScreen', () => {
 
     expect(screen.getByText(/Wir bestätigen Ihre E-Mail-Adresse/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('E-Mail-Adresse bestätigt')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /Weiter zum Meldungs-Center/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Zurück zu den Einstellungen/ })).toBeInTheDocument();
   });
 
   it('zeigt einen ehrlichen, allgemeinen Fehler für einen ungültigen/abgelaufenen/schon verwendeten Token', async () => {
@@ -28,7 +28,7 @@ describe('ZustellwegBestaetigenScreen', () => {
 
     await waitFor(() => expect(screen.getByText('Link nicht mehr gültig')).toBeInTheDocument());
     expect(screen.getByRole('alert')).toHaveTextContent(/ungültig, abgelaufen oder schon verwendet/);
-    expect(screen.getByRole('button', { name: /Weiter zu VoltPilot/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Zurück zu den Einstellungen/ })).toBeInTheDocument();
   });
 
   it('zeigt einen Wiederholen-Weg bei einem unerwarteten Serverfehler', async () => {
