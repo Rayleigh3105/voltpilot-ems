@@ -615,7 +615,8 @@ describe('BoxSeiteSection · Gerätesuche (Bericht §4 „Einstiege“, m1/m8/d1
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     const grund = await screen.findByTestId('geraetesuche-grund');
     expect(grund).toHaveTextContent('Update nötig für: Gerätesuche');
-    expect(within(grund).getByRole('link', { name: /Update planen/ })).toBeInTheDocument();
+    // Kunde: kein Link auf die Plattform-Seite Software (er führte still zur Übersicht).
+    expect(within(grund).queryByRole('link', { name: /Update planen/ })).toBeNull();
     const knopf = screen.getByRole('button', { name: 'Geräte suchen' });
     expect(knopf).toBeDisabled();
     expect(knopf).toHaveAttribute('aria-describedby', 'box-geraetesuche-grund');

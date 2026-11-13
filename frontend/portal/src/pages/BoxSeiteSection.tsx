@@ -67,6 +67,7 @@ import { LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
 import './GeraetSeite.css';
 import './BoxSeite.css';
+import { isPlatformAdmin } from '../auth';
 
 /**
  * Die BOX-Seite (`#/anlage/{siteId}/box[/{ref}]`, Scout
@@ -488,7 +489,8 @@ export function BoxSeiteSection({
               {view.faehigkeiten && (
                 <div className="vp-box-faehigkeiten" data-testid="box-faehigkeiten">
                   <b>{view.faehigkeiten}</b>
-                  {view.updateNoetig && (
+                  {/* Die Software-Seite ist eine Plattform-Seite: einen Kunden leitete der Link still zur Übersicht. */}
+                  {view.updateNoetig && isPlatformAdmin() && (
                     <a href={hashForRoute(pageRoute('edge-updates'))}>
                       Update planen <Icon name="chevron-right" size={14} />
                     </a>

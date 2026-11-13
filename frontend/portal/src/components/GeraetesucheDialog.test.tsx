@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as auth from '../auth';
 import { api, ApiError, type ProbeAntwort } from '../api';
 import type { Geraetesuche, GeraetesucheFehler } from '../geraetesuche';
 import {
@@ -490,8 +491,16 @@ describe('GeraetesucheDialog · wenn es nicht geht', () => {
     vi.spyOn(api, 'geraetesucheStarten').mockRejectedValue(fehler(409, { code: 'nicht_unterstuetzt' }));
     rendere();
     expect(await screen.findByText('Update nötig für: Gerätesuche')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Update planen/ })).toHaveAttribute('href', hashForRoute(pageRoute('edge-updates')));
+    // Die Software-Seite ist eine Plattform-Seite: der Link steht nur für die Plattform (ein Kunde landete still auf der Übersicht).
+    expect(screen.queryByRole('link', { name: /Update planen/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Erneut suchen' })).toBeNull();
+  });
+
+  it('Box zu alt, als Plattform: „Update planen“ führt zur Software-Seite', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    vi.spyOn(api, 'geraetesucheStarten').mockRejectedValue(fehler(409, { code: 'nicht_unterstuetzt' }));
+    rendere();
+    expect(await screen.findByRole('link', { name: /Update planen/ })).toHaveAttribute('href', hashForRoute(pageRoute('edge-updates')));
   });
 
   it('läuft schon (409 mit suchId): die laufende Suche mitansehen statt einer zweiten', async () => {
