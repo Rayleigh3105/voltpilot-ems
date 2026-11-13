@@ -122,7 +122,8 @@ export function MeldungenPage() {
     const laden =
       reiter === 'regeln'
         ? meldungenApi.regeln().then((r) => {
-            if (aktiv) setRegeln(r);
+            // Seit Kunden-Alarmierung P3 liefert die Liste auch ausgeschaltete Regeln - dieser Reiter zeigt die laufenden.
+            if (aktiv) setRegeln(r.filter((x) => x.aktiv));
           })
         : (reiter === 'jetzt' ? meldungenApi.jetzt() : meldungenApi.verlauf()).then((m) => {
             if (!aktiv) return;

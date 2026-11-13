@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -105,14 +106,47 @@ public class MeldungenController {
                 .body(datei);
     }
 
-    /** Reiter "Überwachungen" (§6.8): alle aktiven Regeln, ab Werk und eigene gemeinsam. */
+    /**
+     * Die Regeln des Kundenbereichs, ab Werk und eigene gemeinsam (§6.8) - seit Kunden-Alarmierung P3 auch die
+     * ausgeschalteten ({@code aktiv = false}), mit Bedingung, Empfängern und Fassung: die Liste "Das melden wir"
+     * zeigt je Zeile Wartezeit und Empfänger und schaltet sie an und aus.
+     */
     @GetMapping("/regeln")
     public UeberwachungDto.Liste regeln() {
-        List<UeberwachungDto> liste = repo.aktive().stream()
-                .map(r -> new UeberwachungDto(r.id().toString(), r.name(), r.wertart(), r.schwere(), r.herkunft(),
-                        true, r.probelaufBis(), r.bezug().toString()))
+        List<UeberwachungRepository.RegelMitSchalter> regeln = repo.alleRegeln();
+        var namen = repo.anzeigenamen(regeln.stream()
+                .flatMap(r -> UeberwachungAnlegenService.personen(r.regel().empfaenger()).stream())
+                .collect(java.util.stream.Collectors.toSet()));
+        List<UeberwachungDto> liste = regeln.stream()
+                .map(r -> UeberwachungAnlegenService.listenDto(r.regel(), r.aktiv(), namen))
                 .toList();
         return new UeberwachungDto.Liste(liste);
+    }
+
+    /**
+     * Eine Überwachung ändern (Kunden-Alarmierung P3, Konzept B8): die ganze neue Fassung aus Bedingung, Schwere,
+     * Name, wahlweise Empfängern und Probelauf; Wertart und Bezug bleiben. Offene Meldungen der Regel schließen mit
+     * {@code regel_geaendert}. Recht wie beim Anlegen - die genaue Prüfung steht in
+     * {@link UeberwachungAnlegenService#aendern} ({@code RechtRoutenArchitekturTest.DIENST}).
+     */
+    @PutMapping("/regeln/{id}")
+    @Recht(value = {"ueberwachung.eigene", "ueberwachung.verwalten"}, ziel = RechtZiel.DIENST)
+    public UeberwachungDto aendern(@PathVariable UUID id, @RequestBody UeberwachungDto.Aendern anfrage) {
+        return anlegen.aendern(id, anfrage, aufruferOderVerboten(), Instant.now());
+    }
+
+    /**
+     * Eine Überwachung an- oder ausschalten (Kunden-Alarmierung P3: "Das melden wir" als Schalter), auch eine ab
+     * Werk. Ausschalten schließt offene Meldungen mit {@code regel_geaendert}. Recht wie beim Anlegen - die genaue
+     * Prüfung steht in {@link UeberwachungAnlegenService#schalten} ({@code RechtRoutenArchitekturTest.DIENST}).
+     */
+    @PutMapping("/regeln/{id}/aktiv")
+    @Recht(value = {"ueberwachung.eigene", "ueberwachung.verwalten"}, ziel = RechtZiel.DIENST)
+    public UeberwachungDto schalten(@PathVariable UUID id, @RequestBody UeberwachungDto.Schalten anfrage) {
+        if (anfrage == null || anfrage.aktiv() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aktiv ist ein Pflichtfeld.");
+        }
+        return anlegen.schalten(id, anfrage.aktiv(), aufruferOderVerboten(), Instant.now());
     }
 
     /**

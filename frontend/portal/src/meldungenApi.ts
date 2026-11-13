@@ -61,6 +61,14 @@ export interface UeberwachungsRegel {
   aktiv: boolean;
   probelaufBis: string | null;
   bezugJson: string | null;
+  /** Kunden-Alarmierung P3 (nur in der Liste `regeln()` und nach Ändern/Schalten): Standort der Regel. */
+  standortId?: string | null;
+  /** Die gespeicherte Bedingung (roh, Form je Bedingungsart) - für Wartezeit und „Ändern“. */
+  bedingung?: Record<string, unknown> | null;
+  /** Die Empfänger, Personen mit Anzeigenamen (`name` ist `null` bei einer Rolle oder ohne Namen). */
+  empfaenger?: { person: string | null; rolle: string | null; name: string | null }[] | null;
+  /** Die Fassung der Regel; jede Änderung zählt hoch. */
+  fassung?: number | null;
 }
 
 /**

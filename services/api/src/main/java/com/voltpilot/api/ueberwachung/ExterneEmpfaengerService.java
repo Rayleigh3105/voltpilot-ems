@@ -132,7 +132,8 @@ public class ExterneEmpfaengerService {
         Kundenbereich kundenbereich = kundenbereich(jetzt);
         Ziel ziel = regel.standortId() == null ? Ziel.unternehmen()
                 : zielFuerStandort(ueberwachungen.standortKurzzeichen(regel.standortId()));
-        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(), aufrufer, kundenbereich,
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(),
+                AufruferStandorte.mitKurzzeichen(aufrufer, zugriffe.standorte()), kundenbereich,
                 "ueberwachung.verwalten", ziel, jetzt);
         if (!darf.darf()) {
             throw new RechtFehlt("ueberwachung.verwalten", darf);

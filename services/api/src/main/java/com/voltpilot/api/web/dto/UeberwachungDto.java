@@ -15,9 +15,39 @@ import java.util.List;
  * Familie {@code geraet.messwert} identifiziert die Wertart allein keinen Wert, erst Wertart+Bezug.
  */
 public record UeberwachungDto(String id, String name, String wertart, String schwere, String herkunft,
-        boolean aktiv, Instant probelaufBis, String bezugJson) {
+        boolean aktiv, Instant probelaufBis, String bezugJson, String standortId, JsonNode bedingung,
+        List<EmpfaengerAnzeige> empfaenger, Integer fassung) {
+
+    /**
+     * Die Kurzform ohne Bedingung und Empfänger - die Antwort von Anlegen und "scharf schalten", wie vor
+     * Kunden-Alarmierung P3.
+     */
+    public UeberwachungDto(String id, String name, String wertart, String schwere, String herkunft,
+            boolean aktiv, Instant probelaufBis, String bezugJson) {
+        this(id, name, wertart, schwere, herkunft, aktiv, probelaufBis, bezugJson, null, null, null, null);
+    }
 
     public record Liste(List<UeberwachungDto> ueberwachungen) {}
+
+    /**
+     * Ein Empfänger, wie die Liste "Das melden wir" ihn nennt (Kunden-Alarmierung P3): {@code person} ODER
+     * {@code rolle} wie gespeichert, dazu der Anzeigename der Person ({@code null}, wenn die Person keinen hat
+     * oder der Empfänger eine Rolle ist - die Rolle benennt das Portal).
+     */
+    public record EmpfaengerAnzeige(String person, String rolle, String name) {}
+
+    /**
+     * Eine Überwachung ändern (Kunden-Alarmierung P3, Konzept B8: "Regeln lassen sich nicht ändern"):
+     * Wertart und Bezug bleiben - wer etwas anderes überwachen will, legt eine neue Regel an. {@code bedingung}
+     * und {@code schwere} sind Pflicht (die ganze neue Fassung, kein Teil-Patch); {@code name} ersetzt den Namen
+     * ({@code null} = ohne Namen); ohne {@code empfaenger} bleiben die gespeicherten; {@code probelauf}:
+     * {@code true} startet (oder hält) die 30 Tage Mitzählen, {@code false} beendet sie, ohne Feld bleibt der Stand.
+     */
+    public record Aendern(JsonNode bedingung, String schwere, String name, List<EmpfaengerEintrag> empfaenger,
+            Boolean probelauf) {}
+
+    /** Eine Überwachung an- oder ausschalten (Kunden-Alarmierung P3, Schalter "Das melden wir"). */
+    public record Schalten(Boolean aktiv) {}
 
     /**
      * Der Bezug im Anfragekörper - {@code anlage} ODER {@code komponente}+{@code kanal} (§6.3) ODER

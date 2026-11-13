@@ -140,7 +140,8 @@ public class UeberwachungAnlegenService {
 
         Kundenbereich kundenbereich = kundenbereich(jetzt);
         Ziel ziel = standortId == null ? Ziel.unternehmen() : zielFuerStandort(repo.standortKurzzeichen(standortId));
-        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(), aufrufer, kundenbereich,
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(),
+                AufruferStandorte.mitKurzzeichen(aufrufer, zugriffe.standorte()), kundenbereich,
                 benoetigtesRecht, ziel, jetzt);
         if (!darf.darf()) {
             throw new RechtFehlt(benoetigtesRecht, darf);
@@ -221,7 +222,8 @@ public class UeberwachungAnlegenService {
         Kundenbereich kundenbereich = kundenbereich(jetzt);
         Ziel ziel = regel.standortId() == null ? Ziel.unternehmen()
                 : zielFuerStandort(repo.standortKurzzeichen(regel.standortId()));
-        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(), aufrufer, kundenbereich,
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(),
+                AufruferStandorte.mitKurzzeichen(aufrufer, zugriffe.standorte()), kundenbereich,
                 benoetigtesRecht, ziel, jetzt);
         if (!darf.darf()) {
             throw new RechtFehlt(benoetigtesRecht, darf);
@@ -254,7 +256,8 @@ public class UeberwachungAnlegenService {
         Kundenbereich kundenbereich = kundenbereich(jetzt);
         Ziel ziel = regel.standortId() == null ? Ziel.unternehmen()
                 : zielFuerStandort(repo.standortKurzzeichen(regel.standortId()));
-        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(), aufrufer, kundenbereich,
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(),
+                AufruferStandorte.mitKurzzeichen(aufrufer, zugriffe.standorte()), kundenbereich,
                 benoetigtesRecht, ziel, jetzt);
         if (!darf.darf()) {
             throw new RechtFehlt(benoetigtesRecht, darf);
@@ -267,6 +270,157 @@ public class UeberwachungAnlegenService {
             repo.alarmVerlauf(alarm.id(), "erledigt", null, "erledigt (Überwachung gelöscht)", null);
         }
         repo.loeschen(id, aufrufer.kennung(), jetzt);
+    }
+
+    /**
+     * Eine Überwachung ändern (Kunden-Alarmierung P3, Konzept B8): Bedingung, Schwere, Name, wahlweise Empfänger
+     * und Probelauf - Wertart und Bezug bleiben. Dieselben Prüfungen wie beim {@link #anlegen} (Bedingungsart aus dem
+     * Katalog, Vorgaben, verdrehtes Paar) und dasselbe Rechte-Muster wie {@link #scharfSchalten}/{@link #loeschen},
+     * angewandt auf die GESPEICHERTEN und - falls neu genannt - die NEUEN Empfänger: wer eine Rollen-Regel auf sich
+     * selbst umstellt, braucht trotzdem {@code ueberwachung.verwalten}.
+     *
+     * <p>Die neue Fassung beginnt neu: offene Meldungen der Regel schließen mit {@code regel_geaendert}, der
+     * technische Stand je Bezug wird vergessen. Eine Regel ab Werk lässt sich so anpassen (Wartezeit, Stufe), aber
+     * nicht löschen - sie bleibt die eine Zeile, die die Aussaat nie ein zweites Mal anlegt.
+     */
+    public UeberwachungDto aendern(UUID id, UeberwachungDto.Aendern anfrage, Benutzer aufrufer, Instant jetzt) {
+        UeberwachungZeile regel = repo.einzelneRegel(id)
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        if (anfrage == null || anfrage.bedingung() == null || !anfrage.bedingung().isObject()) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Bedingung fehlt");
+        }
+        WerteKatalog.Eintrag eintrag = katalog.eintrag(regel.wertart());
+        String bedingungsart = anfrage.bedingung().path("art").asText(null);
+        if (eintrag != null && (bedingungsart == null || !eintrag.bedingungen().contains(bedingungsart))) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Bedingungsart '" + bedingungsart + "' passt nicht zu '" + regel.wertart() + "'");
+        }
+        if (!SCHWEREN.contains(anfrage.schwere())) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "unbekannte Schwere '" + anfrage.schwere() + "'");
+        }
+        if (anfrage.name() != null && anfrage.name().isBlank()) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Ein Name darf nicht leer sein - ohne Namen bitte keinen senden.");
+        }
+        boolean auswahl = regel.bezug() != null && regel.bezug().has("alle");
+        String empfaengerJson = regel.empfaenger() == null ? "[]" : regel.empfaenger().toString();
+        // Wie beim Anlegen: eine Auswahl ("alle Anlagen") ist nie "nur ich selbst".
+        boolean nurIchSelbst = !auswahl && istNurIchSelbst(regel.empfaenger(), aufrufer.kennung());
+        if (anfrage.empfaenger() != null) {
+            if (anfrage.empfaenger().isEmpty()) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Eine Überwachung braucht mindestens einen Empfänger.");
+            }
+            empfaengerJson = empfaengerJson(anfrage.empfaenger());
+            nurIchSelbst = nurIchSelbst && anfrage.empfaenger().size() == 1
+                    && aufrufer.kennung().equals(anfrage.empfaenger().get(0).person())
+                    && anfrage.empfaenger().get(0).rolle() == null;
+        }
+        rechtPruefen(regel, nurIchSelbst, aufrufer, jetzt);
+
+        ObjectNode bedingung = anfrage.bedingung().deepCopy();
+        if (eintrag != null) {
+            bedingung = vorlageAnwenden(eintrag, bedingung);
+        }
+        bedingung = vorgabenAnwenden(bedingung);
+        paarPruefen(bedingung);
+
+        Instant probelaufBis = regel.probelaufBis();
+        if (Boolean.FALSE.equals(anfrage.probelauf())) {
+            probelaufBis = null;
+        } else if (Boolean.TRUE.equals(anfrage.probelauf()) && !regel.imProbelauf(jetzt)
+                && (eintrag == null || eintrag.vorlage() == null)) {
+            // Wie beim Anlegen (Kunden-Alarmierung P2, KA-3 A): nur gewählt, und nie bei einer Alarm-Vorlage.
+            probelaufBis = jetzt.plus(Duration.ofDays(PROBELAUF_TAGE));
+        }
+
+        if (!repo.aendern(id, anfrage.name(), bedingung.toString(), anfrage.schwere(), empfaengerJson, probelaufBis,
+                jetzt)) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
+        }
+        neuBeginnen(id, aufrufer, jetzt, "Überwachung geändert");
+        return dto(id);
+    }
+
+    /**
+     * An- oder ausschalten (Kunden-Alarmierung P3: "Das melden wir" als Schalterliste). Dasselbe Rechte-Muster wie
+     * {@link #scharfSchalten}/{@link #loeschen} anhand der GESPEICHERTEN Empfänger - eine Regel ab Werk (an Rollen)
+     * braucht also {@code ueberwachung.verwalten}. Anders als Löschen auch für Regeln ab Werk: ausgeschaltet bleibt
+     * die Zeile stehen und lässt sich wieder einschalten. Beim Ausschalten schließen offene Meldungen mit
+     * {@code regel_geaendert}; wiederholtes Schalten in dieselbe Richtung ändert nichts.
+     */
+    public UeberwachungDto schalten(UUID id, boolean aktiv, Benutzer aufrufer, Instant jetzt) {
+        UeberwachungZeile regel = repo.einzelneRegel(id)
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        rechtPruefen(regel, istNurIchSelbst(regel.empfaenger(), aufrufer.kennung()), aufrufer, jetzt);
+        if (repo.schalten(id, aktiv, jetzt) && !aktiv) {
+            neuBeginnen(id, aufrufer, jetzt, "Überwachung ausgeschaltet");
+        }
+        return dto(id);
+    }
+
+    /** Offene Meldungen der Regel schließen ({@code regel_geaendert}) und den Stand je Bezug vergessen. */
+    private void neuBeginnen(UUID id, Benutzer aufrufer, Instant jetzt, String grund) {
+        for (UeberwachungRepository.AlarmZeile alarm : repo.offeneAlarmeDerRegel(id)) {
+            repo.alarmSchliessenRegelGeaendert(alarm.id(), jetzt);
+            repo.alarmVerlauf(alarm.id(), "erledigt", aufrufer.kennung(), "erledigt (" + grund + ")", null);
+        }
+        repo.instanzenZuruecksetzen(id);
+    }
+
+    /** Die Regel nach einer Änderung, wie die Liste "Das melden wir" sie liest. */
+    private UeberwachungDto dto(UUID id) {
+        UeberwachungZeile r = repo.einzelneRegel(id)
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        boolean aktiv = repo.aktiv(id).orElse(false);
+        return listenDto(r, aktiv, repo.anzeigenamen(personen(r.empfaenger())));
+    }
+
+    /**
+     * Eine Regel in der Form der Liste (Kunden-Alarmierung P3): mit Bedingung, Empfängern (Personen mit
+     * Anzeigenamen) und Fassung. Öffentlich, weil {@code GET /regeln} dieselbe Form liefert.
+     */
+    public static UeberwachungDto listenDto(UeberwachungZeile r, boolean aktiv, java.util.Map<String, String> namen) {
+        List<UeberwachungDto.EmpfaengerAnzeige> empfaenger = new java.util.ArrayList<>();
+        if (r.empfaenger() != null && r.empfaenger().isArray()) {
+            for (JsonNode e : r.empfaenger()) {
+                String person = e.hasNonNull("person") ? e.path("person").asText() : null;
+                String rolle = e.hasNonNull("rolle") ? e.path("rolle").asText() : null;
+                empfaenger.add(new UeberwachungDto.EmpfaengerAnzeige(person, rolle,
+                        person == null ? null : namen.get(person)));
+            }
+        }
+        return new UeberwachungDto(r.id().toString(), r.name(), r.wertart(), r.schwere(), r.herkunft(), aktiv,
+                r.probelaufBis(), r.bezug() == null ? null : r.bezug().toString(),
+                r.standortId() == null ? null : r.standortId().toString(), r.bedingung(), empfaenger, r.fassung());
+    }
+
+    /** Die Personen-Kennungen unter den Empfängern einer Regel (für die Anzeigenamen). */
+    public static List<String> personen(JsonNode empfaenger) {
+        List<String> subs = new java.util.ArrayList<>();
+        if (empfaenger != null && empfaenger.isArray()) {
+            for (JsonNode e : empfaenger) {
+                if (e.hasNonNull("person")) {
+                    subs.add(e.path("person").asText());
+                }
+            }
+        }
+        return subs;
+    }
+
+    /** {@code ueberwachung.eigene} für "nur ich selbst", sonst {@code ueberwachung.verwalten} - am Standort der Regel. */
+    private void rechtPruefen(UeberwachungZeile regel, boolean nurIchSelbst, Benutzer aufrufer, Instant jetzt) {
+        String benoetigtesRecht = nurIchSelbst ? "ueberwachung.eigene" : "ueberwachung.verwalten";
+        Kundenbereich kundenbereich = kundenbereich(jetzt);
+        Ziel ziel = regel.standortId() == null ? Ziel.unternehmen()
+                : zielFuerStandort(repo.standortKurzzeichen(regel.standortId()));
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(),
+                AufruferStandorte.mitKurzzeichen(aufrufer, zugriffe.standorte()), kundenbereich,
+                benoetigtesRecht, ziel, jetzt);
+        if (!darf.darf()) {
+            throw new RechtFehlt(benoetigtesRecht, darf);
+        }
     }
 
     private static boolean istNurIchSelbst(com.fasterxml.jackson.databind.JsonNode empfaenger, String eigeneKennung) {

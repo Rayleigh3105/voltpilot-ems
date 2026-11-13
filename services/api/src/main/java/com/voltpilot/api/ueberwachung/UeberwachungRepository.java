@@ -279,7 +279,90 @@ public class UeberwachungRepository {
         return b.append(']').toString();
     }
 
+    // --------------------------------------------------------------------- Regel ändern und schalten (Kunden-Alarmierung P3)
+
+    /** Eine Regel samt Schalter - die Liste "Das melden wir" zeigt auch ausgeschaltete (Kunden-Alarmierung P3). */
+    public record RegelMitSchalter(UeberwachungZeile regel, boolean aktiv) {}
+
+    /** Ob die (nicht gelöschte) Regel eingeschaltet ist; leer, wenn es sie nicht gibt oder der Zaun sie verbirgt. */
+    public Optional<Boolean> aktiv(UUID id) {
+        return jdbc.query("SELECT aktiv FROM ueberwachung WHERE id = ? AND geloescht_am IS NULL",
+                (rs, n) -> rs.getBoolean("aktiv"), id).stream().findFirst();
+    }
+
+    /**
+     * An- oder ausschalten - {@code false}, wenn die Regel schon so steht (idempotent für den Dienst). Die Fassung
+     * bleibt: der Inhalt der Regel ändert sich nicht, nur ob der Läufer sie auswertet ({@link #aktive()}).
+     */
+    public boolean schalten(UUID id, boolean aktiv, Instant jetzt) {
+        return jdbc.update("""
+                UPDATE ueberwachung SET aktiv = ?, geaendert_am = ?
+                 WHERE id = ? AND geloescht_am IS NULL AND aktiv <> ?
+                """, aktiv, ts(jetzt), id, aktiv) > 0;
+    }
+
+    /**
+     * Die neue Fassung einer Regel (Kunden-Alarmierung P3): Name, Bedingung, Schwere, Empfänger und Probelauf in
+     * einem Zug, {@code fassung + 1}. Jede Meldung trägt die Fassung, mit der sie entstand ({@code alarm.fassung}).
+     * Ein {@code probelaufBis} ist wie beim Anlegen immer gewählt ({@code probelauf_gewaehlt}, Kunden-Alarmierung P2).
+     */
+    public boolean aendern(UUID id, String name, String bedingungJson, String schwere, String empfaengerJson,
+            Instant probelaufBis, Instant jetzt) {
+        return jdbc.update("""
+                UPDATE ueberwachung SET name = ?, bedingung = ?::jsonb, schwere = ?, empfaenger = ?::jsonb,
+                       probelauf_bis = ?, probelauf_gewaehlt = ?, fassung = fassung + 1, geaendert_am = ?
+                 WHERE id = ? AND geloescht_am IS NULL
+                """, name, bedingungJson, schwere, empfaengerJson, ts(probelaufBis), probelaufBis != null, ts(jetzt),
+                id) > 0;
+    }
+
+    /**
+     * Vergisst den technischen Stand je Bezug (Dauer, Erholung) einer geänderten oder ausgeschalteten Regel - die
+     * neue Fassung beginnt bei "normal", statt eine halb abgelaufene Wartezeit der alten Bedingung zu erben.
+     */
+    public void instanzenZuruecksetzen(UUID ueberwachungId) {
+        jdbc.update("DELETE FROM ueberwachung_instanz WHERE ueberwachung_id = ?", ueberwachungId);
+    }
+
+    /**
+     * Schließt einen offenen Alarm, weil seine Regel geändert oder ausgeschaltet wurde - der Grund
+     * {@code regel_geaendert} steht seit {@code V20261015130000} in {@code alarm_erledigt_durch_chk}. Wie beim
+     * Löschen kein {@code wieder_normal_am}: der Wert ist nicht zurückgekehrt.
+     */
+    public void alarmSchliessenRegelGeaendert(UUID alarmId, Instant jetzt) {
+        jdbc.update("""
+                UPDATE alarm SET zustand = 'erledigt', erledigt_am = ?, erledigt_durch = 'regel_geaendert'
+                 WHERE id = ? AND zustand <> 'erledigt'
+                """, ts(jetzt), alarmId);
+    }
+
+    /** Anzeigenamen der genannten Konten dieses Kundenbereichs ({@code sub} → Name); ohne Namen kein Eintrag. */
+    public java.util.Map<String, String> anzeigenamen(java.util.Collection<String> subs) {
+        java.util.Map<String, String> namen = new java.util.HashMap<>();
+        if (subs.isEmpty()) {
+            return namen;
+        }
+        jdbc.query("SELECT sub, anzeigename FROM benutzer WHERE sub = ANY (?) AND NULLIF(btrim(anzeigename), '') IS NOT NULL",
+                (java.sql.ResultSet rs) -> {
+                    namen.put(rs.getString("sub"), rs.getString("anzeigename"));
+                }, (Object) subs.toArray(new String[0]));
+        return namen;
+    }
+
     // --------------------------------------------------------------------- Regeln lesen
+
+    /**
+     * Jede nicht gelöschte Regel samt Schalter, älteste zuerst - die Liste "Das melden wir" (Kunden-Alarmierung P3)
+     * zeigt auch ausgeschaltete, damit man sie wieder einschalten kann.
+     */
+    public List<RegelMitSchalter> alleRegeln() {
+        return jdbc.query("""
+                SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
+                       bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
+                       herkunft, angelegt_von, probelauf_bis, ruhezeit::text AS ruhezeit_json, aktiv
+                  FROM ueberwachung WHERE geloescht_am IS NULL ORDER BY angelegt_am
+                """, (rs, n) -> new RegelMitSchalter(zeile(rs, n), rs.getBoolean("aktiv")));
+    }
 
     /** Alle aktiven Regeln des Kundenbereichs, älteste zuerst - ohne eine gelöschte (Entscheid 3B). */
     public List<UeberwachungZeile> aktive() {

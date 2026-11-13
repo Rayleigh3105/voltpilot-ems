@@ -73,7 +73,8 @@ public class StummschaltungService {
         };
 
         Ziel ziel = standortId == null ? Ziel.unternehmen() : zielFuerStandort(ueberwachung.standortKurzzeichen(standortId));
-        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(), aufrufer,
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(),
+                com.voltpilot.api.ueberwachung.AufruferStandorte.mitKurzzeichen(aufrufer, zugriffe.standorte()),
                 kundenbereich(jetzt), RECHT, ziel, jetzt);
         if (!darf.darf()) {
             throw new RechtFehlt(RECHT, darf);

@@ -85,6 +85,23 @@ export interface UeberwachungAnlegenEingabe {
   name?: string;
   /** Vorgabe `'eigen'`; `'steuerung'` nur für "In Überwachung umwandeln" (Alerting Scheibe 6, Entscheid 10A). */
   herkunft?: 'eigen' | 'steuerung';
+  /**
+   * Kunden-Alarmierung P3 (Entscheid KA-3 A): der Schalter „Erst 30 Tage mitzählen, nichts senden“. `false` meldet
+   * sofort, `true` zählt 30 Tage nur mit; ohne Feld gilt die Vorgabe des Servers.
+   */
+  probelauf?: boolean;
+}
+
+/**
+ * Der Anfragekörper von `PUT /api/v1/meldungen/regeln/{id}` (Kunden-Alarmierung P3): die ganze neue Fassung -
+ * Wertart und Bezug bleiben. Ohne `empfaenger` bleiben die gespeicherten, ohne `probelauf` der Stand.
+ */
+export interface UeberwachungAendernEingabe {
+  bedingung: UeberwachungBedingungEingabe;
+  schwere: Schwere;
+  name?: string | null;
+  empfaenger?: UeberwachungEmpfaengerEingabe[];
+  probelauf?: boolean;
 }
 
 /** Derselbe Entwurf wie `UeberwachungAnlegenEingabe`, aber ohne `empfaenger`/`name` (§6.8 Probelauf). */
@@ -126,4 +143,16 @@ export const ueberwachungApi = {
    */
   loeschen: (id: string) =>
     request<void>(`/api/v1/meldungen/regeln/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Regel ändern (Kunden-Alarmierung P3): offene Meldungen der Regel schließen, die neue Fassung beginnt neu. */
+  aendern: (id: string, anfrage: UeberwachungAendernEingabe) =>
+    request<UeberwachungsRegel>(`/api/v1/meldungen/regeln/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(anfrage),
+    }),
+  /** Regel an- oder ausschalten (Kunden-Alarmierung P3, „Das melden wir“), auch eine ab Werk. */
+  schalten: (id: string, aktiv: boolean) =>
+    request<UeberwachungsRegel>(`/api/v1/meldungen/regeln/${encodeURIComponent(id)}/aktiv`, {
+      method: 'PUT',
+      body: JSON.stringify({ aktiv }),
+    }),
 };
