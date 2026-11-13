@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * Eine Überwachung entsteht nur noch unter Meldungen › Überwachungen (Konzept b1, 20.10.2026,
- * Entscheid E3): „+ Überwachung“ → „Wo?“ → „Welcher Wert?“ → das vorhandene Blatt „Überwachen“.
+ * Eine Überwachung entsteht nur unter Meldungen › Einstellen (Konzept b1, 20.10.2026, Entscheid E3; seit
+ * Kunden-Alarmierung P3 ganz unten in „Das melden wir“): „Eigene Überwachung“ → „Wo?“ → „Welcher Wert?“ → das Blatt
+ * „Überwachen“.
  * Dazu der Abnahme-Befund aus Produktion ("wie kann ich diese denn wieder löschen also die
  * Überwachung?"): „Löschen“ fragt ehrlich zurück. GEMESSEN, nicht behauptet: die gesendeten
  * Anfragekörper, kein Querlauf, Konsole sauber.
@@ -14,13 +15,13 @@ async function oeffnen(page: Page, breite: number, person?: string) {
   await page.setViewportSize({ width: breite, height: breite < 720 ? 844 : 900 });
   await page.goto(`/e2e/ueberwachung-loeschen.html${person ? `?person=${person}` : ''}`);
   await expect(page.getByRole('heading', { name: 'Meldungen' })).toBeVisible();
-  await expect(page.getByTestId('meldungen-reiter-regeln')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('meldungen-reiter-einstellen')).toHaveAttribute('aria-selected', 'true');
   return fehler;
 }
 
 /** „+ Überwachung“ → Ort → Wert; gibt das Blatt „Überwachen“ zurück. */
 async function waehle(page: Page, ort: RegExp, wert: RegExp) {
-  await page.getByRole('button', { name: 'Überwachung', exact: true }).click();
+  await page.getByTestId('eigene-ueberwachung-neu').click();
   const neu = page.getByRole('dialog', { name: 'Neue Überwachung' });
   await expect(neu).toBeVisible();
   await neu.getByRole('combobox', { name: 'Wo?' }).click();
@@ -41,7 +42,7 @@ const ueberlauf = (page: Page) =>
 for (const breite of [390, 1440] as const) {
   test(`Überwachung unter Meldungen anlegen und wieder löschen bei ${breite}px`, async ({ page }) => {
     const fehler = await oeffnen(page, breite);
-    await expect(page.getByText('Noch keine Überwachung eingeschaltet.')).toBeVisible();
+    await expect(page.getByText(/Noch nichts eingerichtet/)).toBeVisible();
 
     const blatt = await waehle(page, /Halle 1/, /PV-Leistung/);
     await expect(blatt).toContainText('Überwachen: PV-Leistung');
@@ -49,9 +50,12 @@ for (const breite of [390, 1440] as const) {
     await expect(blatt).toHaveCount(0);
     expect(await anfragen(page)).toEqual([expect.objectContaining({ wertart: 'anlage.pv.leistung', bezug: { anlage: 'an-1' } })]);
 
-    const zeile = page.locator('.vp-regel', { hasText: 'PV-Leistung' });
+    const zeile = page.getByTestId('melden-wir-zeile').filter({ hasText: 'PV-Leistung' });
     await expect(zeile).toBeVisible();
-    await expect(zeile.getByRole('button', { name: 'Jetzt scharf schalten' })).toHaveCount(0);
+    // KA-3 A: ohne Probelauf gesendet, also kein „Jetzt melden“.
+    expect(await anfragen(page)).toEqual([expect.objectContaining({ probelauf: false })]);
+    await zeile.getByRole('button', { name: /PV-Leistung/ }).first().click();
+    await expect(zeile.getByRole('button', { name: 'Jetzt melden' })).toHaveCount(0);
 
     // Löschen fragt ehrlich zurück (Verlauf bleibt, Konto meldet nicht mehr) - erst dann weg.
     await zeile.getByRole('button', { name: /löschen$/i }).click();
@@ -61,8 +65,8 @@ for (const breite of [390, 1440] as const) {
     await expect(dialog.getByTestId('confirm-consequences')).toContainText('Meldungen');
     await dialog.getByRole('button', { name: 'Löschen' }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.locator('.vp-regel', { hasText: 'PV-Leistung' })).toHaveCount(0);
-    await expect(page.getByText('Noch keine Überwachung eingeschaltet.')).toBeVisible();
+    await expect(page.getByTestId('melden-wir-zeile').filter({ hasText: 'PV-Leistung' })).toHaveCount(0);
+    await expect(page.getByText(/Noch nichts eingerichtet/)).toBeVisible();
 
     expect(await ueberlauf(page)).toBe(0);
     expect(fehler).toEqual([]);
@@ -89,7 +93,7 @@ for (const breite of [390, 1440] as const) {
 test('eine Messstelle und ein Geräte-Kanal lassen sich ebenso wählen', async ({ page }) => {
   const fehler = await oeffnen(page, 1440);
   // Die Geräte einer Anlage stehen unter ihr, der Kanal in Kundenworten.
-  await page.getByRole('button', { name: 'Überwachung', exact: true }).click();
+  await page.getByTestId('eigene-ueberwachung-neu').click();
   const neu = page.getByRole('dialog', { name: 'Neue Überwachung' });
   await neu.getByRole('combobox', { name: 'Wo?' }).click();
   await page.getByRole('option', { name: /Halle 1/ }).click();
@@ -111,9 +115,10 @@ test('eine Messstelle und ein Geräte-Kanal lassen sich ebenso wählen', async (
   expect(fehler).toEqual([]);
 });
 
-test('„+ Überwachung“ folgt dem Recht: ein Bearbeiter am Standort sieht es, ein Unterstützer nicht', async ({ page }) => {
+test('„Eigene Überwachung“ folgt dem Recht: ein Bearbeiter am Standort sieht es, ein Unterstützer nicht', async ({ page }) => {
   await oeffnen(page, 1440, 'PH');
-  await expect(page.getByRole('button', { name: 'Überwachung', exact: true })).toBeVisible();
+  await expect(page.getByTestId('eigene-ueberwachung-neu')).toBeVisible();
   await oeffnen(page, 1440, 'TB');
-  await expect(page.getByRole('button', { name: 'Überwachung', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('das-melden-wir')).toBeVisible();
+  await expect(page.getByTestId('eigene-ueberwachung-neu')).toHaveCount(0);
 });

@@ -28,7 +28,7 @@ for (const width of [390, 1440]) {
     await expect(wiePruefen.getByRole('button', { name: 'Mehr als …' })).toHaveAttribute('aria-pressed', 'true');
 
     // Keine Dauer-/Erholdauer-Felder bei einer Periode (§6.4 Nr. 2).
-    await expect(blatt.getByLabel('Länger als (Minuten)')).toHaveCount(0);
+    await expect(blatt.getByRole('combobox', { name: 'Länger als' })).toHaveCount(0);
 
     const schwelle = blatt.getByLabel('Schwelle (kW)', { exact: true });
     await schwelle.fill('180');

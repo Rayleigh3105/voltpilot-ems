@@ -10,7 +10,8 @@
   font: 600 1rem/1.4 var(--vp-font-body);
   color: var(--vp-text-dark, #1e293b);
 }
-.vp-ueberwachen-probelauf {
+.vp-ueberwachen-probelauf,
+.vp-ueberwachen-erklaerung {
   margin: 0;
   font: 400 0.8125rem/1.4 var(--vp-font-body);
   color: var(--vp-text-gray, #475569);
@@ -33,4 +34,16 @@
 .vp-ueberwachen-schwere-label {
   font: 600 0.8125rem/1.2 var(--vp-font-body);
   color: var(--vp-text-gray, #475569);
+}
+
+/* Kunden-Alarmierung P3: „Feineinstellung“ klappt Rückkehrschwelle und Erholdauer auf. */
+.vp-ueberwachen-fein {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: var(--vp-c-space-1) 0;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  cursor: pointer;
 }

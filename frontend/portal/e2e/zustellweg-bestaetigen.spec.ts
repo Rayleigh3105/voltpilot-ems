@@ -54,7 +54,7 @@ test('"Zurück" führt weg von der Bestätigungsroute zu den Wegen in den Einste
   await page.route('**/api/v1/zustellwege/bestaetigen*', (route) => route.fulfill({ status: 200, body: '' }));
   await oeffne(page, 1440);
   await page.getByRole('button', { name: 'Zurück zu den Einstellungen' }).click();
-  await page.waitForURL(/#\/einstellungen\?abschnitt=wege$/);
+  await page.waitForURL(/#\/meldungen\?reiter=einstellen$/);
 });
 
 // Kunden-Alarmierung P0: im Labor landete der Link im schon offenen Portal (derselbe Tab) auf der Startseite, die

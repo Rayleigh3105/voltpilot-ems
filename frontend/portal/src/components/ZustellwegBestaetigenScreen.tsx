@@ -16,7 +16,7 @@ import { AuthScreen, TrustRow } from './AuthScreen';
  * deshalb ebenso allgemein, mit demselben nächsten Schritt für alle drei Fälle.
  */
 /** Die Wege („So erreichen wir Sie“) auf der Einstellungs-Seite - die Sprungmarke `?abschnitt=` scrollt dorthin. */
-export const ZURUECK_ZU_DEN_WEGEN = '#/einstellungen?abschnitt=wege';
+export const ZURUECK_ZU_DEN_WEGEN = '#/meldungen?reiter=einstellen';
 
 export function ZustellwegBestaetigenScreen({ token }: { token: string }) {
   const [zustand, setZustand] = useState<ZustellwegBestaetigungsErgebnis | 'laedt' | 'fehler'>('laedt');

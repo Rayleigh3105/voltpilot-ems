@@ -73,6 +73,25 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     regeln.splice(index, 1);
     return new Response(null, { status: 204 });
   }
+  const regelSchalten = url.pathname.match(/^\/api\/v1\/meldungen\/regeln\/([^/]+)\/aktiv$/);
+  if (regelSchalten && methode === 'PUT') {
+    const regel = regeln.find((r) => r.id === decodeURIComponent(regelSchalten[1]));
+    if (!regel) return new Response(null, { status: 404 });
+    regel.aktiv = JSON.parse(String(init?.body ?? '{}')).aktiv;
+    return Response.json(regel);
+  }
+  // Kunden-Alarmierung P3: „So erreichen wir Sie“ steht über der Liste - die Wege dieser Person (E-Mail, kein Push).
+  if (url.pathname === '/api/v1/zustellwege/email') {
+    return Response.json({ ziel: 'jonas@ahrenberg.example', bestaetigt: true, aktiv: true, abSchwere: 'warnung',
+      zusammenfassungAktiv: false, zusammenfassungUhrzeit: '07:00:00' });
+  }
+  if (url.pathname === '/api/v1/zustellwege/push') return Response.json([]);
+  if (url.pathname === '/api/v1/zustellwege/webhook') return Response.json([]);
+  if (url.pathname.startsWith('/api/v1/zustellwege/telegram')) return Response.json({ verfuegbar: false, ziele: [] });
+  if (url.pathname === '/api/v1/ruhezeit') {
+    return Response.json({ regeln: '{"werktags":[{"von":"22:00","bis":"07:00"}],"wochenende":"ganz"}', zeitzone: 'Europe/Berlin', dringendDurch: true });
+  }
+  if (url.pathname.startsWith('/api/v1/ruhezeit/probe')) return Response.json({ bis: null });
   if (url.pathname === '/api/v1/meldungen' && url.searchParams.get('status')) {
     return Response.json({ meldungen: [] });
   }
@@ -82,5 +101,5 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   return echtesFetch(input, init);
 };
 
-window.location.hash = '#/meldungen?reiter=regeln';
+window.location.hash = '#/meldungen?reiter=einstellen';
 ReactDOM.createRoot(document.getElementById('root')!).render(<MeldungenPage />);

@@ -38,12 +38,16 @@ import {
 import type { Schwere } from '../meldungenApi';
 import {
   aktuellerPushEndpoint,
+  geraetAboId,
   geraeteVorschlag,
+  merkeGeraetAboId,
+  vergissGeraetAboId,
   istIosOhneInstallierteApp,
   pushBeiAbmeldenAufraeumen,
   pushEinschalten,
   pushUnterstuetzt,
 } from '../push';
+import { MELDUNGEN_EINSTELLEN_HASH } from '../meldungen';
 import { ROLLE_KUNDENWORT, ROLLE_NOETIG_REIHENFOLGE } from '../rechte';
 import type { RuhezeitRegeln, RuhezeitTeilfenster } from '../ruhezeit';
 import { useRollen } from '../rollen';
@@ -62,31 +66,6 @@ import './EinstellungenPage.css';
 const SCHUTZ: Record<ZweiStufen, string> = { alle: 'Warnung und Dringend', nur_dringend: 'Nur Dringend' };
 const SCHWERE_LABEL: Record<Schwere, string> = { hinweis: 'Hinweis', warnung: 'Warnung', dringend: 'Dringend' };
 
-/** Der in diesem Browser SELBST eingeschaltete Push-Abo - lokal gemerkt, weil die API die
- * Endpunkt-Kennung nicht liefert (M4, Gerät erkennen bleibt Scheibe 2). Kein Konto-Datum: eine
- * Browser-Vorliebe wie die drei bestehenden `localStorage`-Schlüssel des Portals. */
-const PUSH_GERAET_SCHLUESSEL = 'vp-einst-push-geraet-abo-id';
-function geraetAboId(): string | null {
-  try {
-    return localStorage.getItem(PUSH_GERAET_SCHLUESSEL);
-  } catch {
-    return null;
-  }
-}
-function merkeGeraetAboId(id: string): void {
-  try {
-    localStorage.setItem(PUSH_GERAET_SCHLUESSEL, id);
-  } catch {
-    /* kein Speicher (privates Fenster) - "dieses Gerät" bleibt dann einfach unerkannt */
-  }
-}
-function vergissGeraetAboId(): void {
-  try {
-    localStorage.removeItem(PUSH_GERAET_SCHLUESSEL);
-  } catch {
-    /* siehe oben */
-  }
-}
 
 function kanalZielSatz(url: string): string {
   if (/webhook\.office\.com|logic\.azure\.com/i.test(url)) return 'Microsoft Teams';
@@ -278,8 +257,15 @@ function Folge({ eintrag }: { eintrag: FolgeEintrag | null }) {
   );
 }
 
-export function EinstellungenPage() {
+/**
+ * `ansicht = 'konto'` (Vorgabe, `#/einstellungen` im Konto-Menü): Konto, Passwort, Zwei-Schritt-Anmeldung, „Als App“ -
+ * die Wege verweisen nach „Meldungen › Einstellen“ (Kunden-Alarmierung P3, KA-6 A: hinter der Glocke liegt alles).
+ * `ansicht = 'meldungen'` (dort eingebettet): „So erreichen wir Sie“ - dieses Gerät, E-Mail, Ruhe, Probe senden, im
+ * Unternehmen die Zusammenfassung - aus denselben Bausteinen, ohne Kopf und Konto.
+ */
+export function EinstellungenPage({ ansicht = 'konto' }: { ansicht?: 'konto' | 'meldungen' } = {}) {
   const user = currentUser();
+  const meldungsAnsicht = ansicht === 'meldungen';
   const { selbst } = useRollen();
 
   const [laden, setLaden] = useState(true);
@@ -294,6 +280,8 @@ export function EinstellungenPage() {
   const [regeln, setRegeln] = useState<RuhezeitRegeln>({});
   const [zeitzone, setZeitzone] = useState('Europe/Berlin');
   const [dringendDurch, setDringendDurch] = useState(true);
+  // Kunden-Alarmierung P2 (KA-2 A): solange die Person nichts eingestellt hat, gilt die Vorgabe ihrer Kundenart.
+  const [ruhezeitVorgabe, setRuhezeitVorgabe] = useState(false);
   const [ruhezeitBis, setRuhezeitBis] = useState<Date | null>(null);
   // M4 (Scheibe 2): der echte Browser-Endpunkt erkennt "dieses Gerät" zuverlässig, auch in einem
   // Tab/Profil, das es nie selbst angelegt hat - der lokal gemerkte Schlüssel (Scheibe 1) bleibt
@@ -330,6 +318,7 @@ export function EinstellungenPage() {
         setRegeln(geleseneRegeln);
         setZeitzone(r.zeitzone);
         setDringendDurch(r.dringendDurch);
+        setRuhezeitVorgabe(r.vorgabe === true);
         return benachrichtigungenApi.ruhezeitProbe(r.regeln, r.zeitzone).then((bis) => {
           if (aktiv) setRuhezeitBis(bis ? new Date(bis) : null);
         });
@@ -356,6 +345,11 @@ export function EinstellungenPage() {
     if (q < 0) return;
     const ziel = new URLSearchParams(window.location.hash.slice(q + 1)).get('abschnitt');
     if (!ziel) return;
+    // Kunden-Alarmierung P3: Wege und Ruhezeit wohnen unter Meldungen › Einstellen - alte Sprungmarken führen dorthin.
+    if (!meldungsAnsicht && (ziel === 'wege' || ziel === 'ruhezeit')) {
+      window.location.replace(MELDUNGEN_EINSTELLEN_HASH);
+      return;
+    }
     document.getElementById(`einst-${ziel}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [laden]);
 
@@ -400,6 +394,7 @@ export function EinstellungenPage() {
     setBusy('ruhezeit');
     try {
       await benachrichtigungenApi.ruhezeitSetzen(JSON.stringify(naechste), zeitzone, naechsteDringendDurch);
+      setRuhezeitVorgabe(false);
       const bis = await benachrichtigungenApi.ruhezeitProbe(JSON.stringify(naechste), zeitzone);
       setRuhezeitBis(bis ? new Date(bis) : null);
       setFolge({ key: 'ruhezeit', text: 'Gespeichert.', istFehler: false });
@@ -485,6 +480,35 @@ export function EinstellungenPage() {
       setFolge(probeFolge('email', ergebnis));
     } catch {
       setFolge({ key: 'email', text: SCHALT_FEHLER, istFehler: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** „Probe senden“ (Kunden-Alarmierung P3): eine Probe an die E-Mail und an dieses Gerät, soweit eingerichtet. */
+  async function probeAnAlle() {
+    setBusy('probe-alle');
+    try {
+      const ziele: Promise<ProbeErgebnis>[] = [];
+      if (email?.aktiv) ziele.push(benachrichtigungenApi.emailProbe());
+      if (geraetAbo?.aktiv) ziele.push(benachrichtigungenApi.pushProbe(geraetAbo.id));
+      if (ziele.length === 0) {
+        setFolge({ key: 'probe-alle', text: 'Noch kein Weg eingeschaltet - erst E-Mail oder Push einrichten.', istFehler: true });
+        return;
+      }
+      const ergebnisse = await Promise.all(ziele);
+      const fehlschlag = ergebnisse.find((e) => !e.erfolgreich);
+      setFolge(
+        fehlschlag
+          ? { key: 'probe-alle', text: fehlschlag.fehler ?? SCHALT_FEHLER, istFehler: true }
+          : {
+              key: 'probe-alle',
+              text: `Probe gesendet${email?.aktiv ? ` an ${email.ziel}` : ''}${email?.aktiv && geraetAbo?.aktiv ? ' und' : ''}${geraetAbo?.aktiv ? ' an dieses Gerät' : ''}.`,
+              istFehler: false,
+            },
+      );
+    } catch {
+      setFolge({ key: 'probe-alle', text: SCHALT_FEHLER, istFehler: true });
     } finally {
       setBusy(null);
     }
@@ -673,9 +697,11 @@ export function EinstellungenPage() {
   if (laden) {
     return (
       <div className="vp-einst">
-        <header className="vp-meinst-kopf">
-          <h1>Einstellungen</h1>
-        </header>
+        {!meldungsAnsicht && (
+          <header className="vp-meinst-kopf">
+            <h1>Einstellungen</h1>
+          </header>
+        )}
         <p className="vp-note">Wird geladen …</p>
       </div>
     );
@@ -683,19 +709,23 @@ export function EinstellungenPage() {
   if (ladeFehler) {
     return (
       <div className="vp-einst">
-        <header className="vp-meinst-kopf">
-          <h1>Einstellungen</h1>
-        </header>
+        {!meldungsAnsicht && (
+          <header className="vp-meinst-kopf">
+            <h1>Einstellungen</h1>
+          </header>
+        )}
         <ErrorState message="Die Einstellungen konnten nicht geladen werden." onRetry={() => setLadeVersion((v) => v + 1)} />
       </div>
     );
   }
 
   return (
-    <div className="vp-einst">
+    <div className={`vp-einst${meldungsAnsicht ? ' vp-einst-in-meldungen' : ''}`} data-testid={meldungsAnsicht ? 'so-erreichen-wir-sie' : undefined}>
+      {!meldungsAnsicht && (
+      <>
       <header className="vp-meinst-kopf">
         <h1>Einstellungen</h1>
-        <p>Für Sie persönlich: wie eine Meldung Sie erreicht, Ruhezeit und Zusammenfassung, Ihr Konto, dieses Gerät.</p>
+        <p>Für Sie persönlich: Ihr Konto und dieses Gerät. Wie Meldungen Sie erreichen, stellen Sie unter Meldungen ein.</p>
       </header>
 
       <button type="button" className="vp-meinst-person" onClick={() => oeffne({ art: 'person' })} aria-haspopup="dialog">
@@ -709,15 +739,18 @@ export function EinstellungenPage() {
         </span>
         <Icon name="chevron-right" size={18} />
       </button>
+      </>
+      )}
 
+      {meldungsAnsicht && (
       <section className="vp-meinst-kurzbild" aria-labelledby="einst-kurzbild-h">
         <h2 id="einst-kurzbild-h">So erreicht Sie eine Meldung jetzt</h2>
         {kurzbild.zeilen.map((z) => (
           <p key={z.schwere} className="vp-meinst-kurzbild-zeile">
             <span className="vp-meinst-kurzbild-stufe">{SCHWERE_LABEL[z.schwere]}</span>
             <span>
-              {z.schwere === 'hinweis'
-                ? 'nur hier'
+              {z.schwere === 'hinweis' && z.wege.length === 0
+                ? 'nur hier, unter „Leise“'
                 : z.wartet
                   ? `wartet${ruhezeitBis ? ` bis ${ruhezeitBis.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr` : ''}`
                   : z.wege.length > 0
@@ -727,8 +760,25 @@ export function EinstellungenPage() {
           </p>
         ))}
       </section>
+      )}
 
       <div className="vp-einst-raster">
+        {!meldungsAnsicht && (
+          <Gruppe id="benachrichtigungen" titel="Meldungen">
+            <Zeile
+              icon="bell"
+              kat="navy"
+              label="Wie Meldungen Sie erreichen"
+              wert="E-Mail, Push, Ruhe"
+              sub="Jetzt unter Meldungen › Einstellen"
+              onClick={() => {
+                window.location.hash = MELDUNGEN_EINSTELLEN_HASH;
+              }}
+            />
+          </Gruppe>
+        )}
+        {meldungsAnsicht && (
+        <>
         <Gruppe id="wege" titel="So erreichen wir Sie">
           {/* Push, dieses Gerät - immer zuerst (§4.4), lokal anhand des selbst angelegten Abos erkannt (M4). */}
           <Zeile
@@ -754,7 +804,13 @@ export function EinstellungenPage() {
             label="E-Mail"
             wert={email ? <Adresse text={email.ziel} /> : 'Nicht eingerichtet'}
             warn={!!email && !email.bestaetigt}
-            sub={email && !email.bestaetigt ? 'Wartet auf Bestätigung' : null}
+            sub={
+              email && !email.bestaetigt
+                ? 'Wartet auf Bestätigung'
+                : email?.herkunft === 'anmeldung'
+                  ? 'Ihre Anmelde-Adresse - ab Werk eingeschaltet'
+                  : null
+            }
             onClick={() => oeffne({ art: 'email' })}
           />
           {webhookZiele.map((ziel) => (
@@ -778,6 +834,23 @@ export function EinstellungenPage() {
             />
           ))}
           <Zeile icon="plus" kat="navy" label="Weiteren Weg verbinden" onClick={() => oeffne({ art: 'weiterer-weg' })} />
+          <li>
+            <button
+              type="button"
+              className="vp-einst-zeile"
+              disabled={busy === 'probe-alle'}
+              onClick={() => void probeAnAlle()}
+              data-testid="probe-an-alle"
+            >
+              <Kachel icon="bell" kat="dynamic" />
+              <span className="vp-einst-lab">
+                <b>Probe senden</b>
+                <small>An E-Mail und dieses Gerät, ohne Ruhezeit</small>
+              </span>
+              <span className="vp-einst-ende" />
+            </button>
+            <Folge eintrag={folge?.key === 'probe-alle' ? folge : null} />
+          </li>
         </Gruppe>
 
         <Gruppe id="ruhezeit" titel="Ruhezeit und Zusammenfassung">
@@ -786,6 +859,7 @@ export function EinstellungenPage() {
             kat="navy"
             label="Ruhezeit"
             wert={RUHEZEIT_PRESET_LABEL[preset]}
+            sub={ruhezeitVorgabe ? 'Vorgabe - gilt, bis Sie etwas ändern' : null}
             onClick={() => oeffne({ art: 'ruhezeit' })}
           />
           <SchaltZeile
@@ -816,7 +890,11 @@ export function EinstellungenPage() {
             />
           )}
         </Gruppe>
+        </>
+        )}
 
+        {!meldungsAnsicht && (
+        <>
         <Gruppe id="konto" titel="Ihr Konto">
           {rolleUndZugangSichtbar && (
             <Zeile icon="users" kat="grid" label="Rolle und Zugang" onClick={() => oeffne({ art: 'rolle' })} />
@@ -843,6 +921,8 @@ export function EinstellungenPage() {
         <Gruppe id="geraet" titel="Dieses Gerät">
           <Zeile icon="smartphone" kat="battery" label="Als App auf diesem Gerät" onClick={() => oeffne({ art: 'geraet-app' })} />
         </Gruppe>
+        </>
+        )}
       </div>
 
       <Modal open={blatt != null} onClose={schliesse} title={blattTitel(blattInhalt)}>

@@ -14,7 +14,7 @@ export type HelpArticleId =
   | 'summenwerte' | 'cockpit' | 'fahrplan' | 'messwerte' | 'erloese' | 'marktpreise' | 'prognosen' | 'portfolio'
   | 'geraete-steuern' | 'betriebsmodelle' | 'regeln' | 'speicher' | 'lastspitzen' | 'ladepark' | 'ladevorgaenge'
   | 'anlagenmodell' | 'geraete-suchen' | 'geraete' | 'einstellungen' | 'standort-zuordnung-korrigieren'
-  | 'probleme' | 'glossar' | 'kontakt';
+  | 'probleme' | 'glossar' | 'kontakt' | 'meldungen';
 
 export interface HelpSection {
   id: string;

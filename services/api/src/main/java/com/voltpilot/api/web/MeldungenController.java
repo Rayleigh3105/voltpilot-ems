@@ -299,7 +299,7 @@ public class MeldungenController {
         return new MeldungDto(a.id().toString(), a.kennzeichen(), a.wertart(), a.schwere(), anlageId, anlageName,
                 a.standortId() == null ? null : a.standortId().toString(), a.ausgeloestAm(), a.zustand(),
                 a.wiederNormalAm(), a.gesehenVon(), a.gesehenAm(), a.erledigtAm(), a.bezugKennung(),
-                dienst.textEingabe(a, angaben));
+                dienst.textEingabe(a, angaben), a.ueberwachungId().toString());
     }
 
     private static String anlageId(AlarmZeile a) {

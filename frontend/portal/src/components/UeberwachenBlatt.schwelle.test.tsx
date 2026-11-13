@@ -33,7 +33,11 @@ function blatt() {
   );
 }
 
-const rueckkehrFeld = () => screen.getByLabelText(/Rückkehr/) as HTMLInputElement;
+// Kunden-Alarmierung P3: die Rückkehrschwelle rechnet das Portal und zeigt sie nur unter „Feineinstellung“.
+const rueckkehrFeld = () => {
+  if (!screen.queryByLabelText(/Rückkehr/)) fireEvent.click(screen.getByTestId('ueberwachen-feineinstellung'));
+  return screen.getByLabelText(/Rückkehr/) as HTMLInputElement;
+};
 const schwelleFeld = () => screen.getByLabelText(/^Schwelle/) as HTMLInputElement;
 
 afterEach(() => {
@@ -80,6 +84,30 @@ describe('UeberwachenBlatt · Schwelle und Rückkehrschwelle', () => {
     blatt();
     expect(await screen.findByText('Für diesen Wert ist keine Vorschau möglich.', {}, { timeout: 3000 })).toBeTruthy();
     expect(screen.queryByText(/hätte das nicht ausgelöst/)).toBeNull();
+  });
+
+  it('meldet sofort: der Schalter „Erst 30 Tage mitzählen“ ist sichtbar und aus (KA-3 A)', async () => {
+    probelauf.mockReturnValue(new Promise(() => {}));
+    anlegen.mockResolvedValue({ id: 'r1' });
+    blatt();
+    expect(screen.queryByLabelText(/Rückkehr/)).toBeNull();
+    const schalter = screen.getByRole('checkbox', { name: 'Erst 30 Tage mitzählen, nichts senden' }) as HTMLInputElement;
+    expect(schalter.checked).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Überwachung starten' }));
+    await waitFor(() => expect(anlegen).toHaveBeenCalledTimes(1));
+    expect(anlegen.mock.calls[0][0].probelauf).toBe(false);
+  });
+
+  it('„unter“ dreht die Rückkehr auf die andere Seite der Schwelle', async () => {
+    probelauf.mockReturnValue(new Promise(() => {}));
+    anlegen.mockResolvedValue({ id: 'r1' });
+    blatt();
+    fireEvent.click(screen.getByRole('button', { name: 'unter' }));
+    fireEvent.change(schwelleFeld(), { target: { value: '5' } });
+    expect(rueckkehrFeld().value).toBe('5.3');
+    fireEvent.click(screen.getByRole('button', { name: 'Überwachung starten' }));
+    await waitFor(() => expect(anlegen).toHaveBeenCalledTimes(1));
+    expect(anlegen.mock.calls[0][0].bedingung).toMatchObject({ art: 'unter', schwelle: 5, rueckkehr: 5.3 });
   });
 
   it('mit Rückschau bleibt die Aussage', async () => {

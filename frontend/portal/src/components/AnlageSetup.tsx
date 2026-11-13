@@ -1,4 +1,5 @@
 import { Recht } from './Recht';
+import { ErsteEinrichtung, einrichtungOffen, useEinrichtungsStand } from './ErsteEinrichtung';
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -112,6 +113,7 @@ export function AnlageSetup({
   const adoptedCount = data?.entities.length ?? 0;
 
   const view = setupPath({ deviceCount, onlineCount, reported, adoptedCount });
+  const [einrichtung, setEinrichtung] = useEinrichtungsStand();
 
   function runAction(step: SetupStep) {
     switch (step.action?.kind) {
@@ -179,6 +181,28 @@ export function AnlageSetup({
               </div>
             </li>
           ))}
+          {/* Kunden-Alarmierung P3 (KA-6 A): derselbe Stand und dieselbe Karte wie unter Meldungen › Jetzt - solange
+              kein Push-Gerät da ist, sonst erledigt. Kein Schritt von `setupPath`: er hängt an der Person, nicht an
+              der Anlage. */}
+          {einrichtung && (
+            <li className={`vp-setup-step is-${einrichtungOffen(einrichtung) ? 'todo' : 'done'}`} data-testid="setup-meldungen">
+              <span className="vp-setup-num" aria-hidden="true">
+                {einrichtungOffen(einrichtung) ? 4 : <Icon name="check" size={15} strokeWidth={3} />}
+              </span>
+              <div className="vp-setup-body">
+                <span className="vp-setup-title">
+                  {einrichtungOffen(einrichtung) ? 'Meldungen aufs Handy holen' : 'Meldungen erreichen Sie'}
+                </span>
+                <p className="vp-setup-line">
+                  Meldet sich die Box nicht oder fehlt etwas, sagen wir Bescheid - per E-Mail und, wenn Sie wollen, als
+                  Push auf diesem Gerät.
+                </p>
+                {einrichtungOffen(einrichtung) && (
+                  <ErsteEinrichtung stand={einrichtung} onStand={setEinrichtung} testId="setup-erste-einrichtung" />
+                )}
+              </div>
+            </li>
+          )}
         </ol>
 
         {loading && data == null && <TextSkeleton lines={1} />}

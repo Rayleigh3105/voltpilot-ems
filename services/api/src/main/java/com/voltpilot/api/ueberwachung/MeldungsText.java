@@ -141,7 +141,7 @@ public final class MeldungsText {
         text.append("\n\n");
         w.put("link", basis + "/#/meldungen?meldung=" + kennzeichen);
         text.append(vorlage(allgemein.path("link_meldung"), w)).append('\n');
-        w.put("link", basis + "/#/einstellungen");
+        w.put("link", basis + "/#/meldungen?reiter=einstellen");
         text.append(vorlage(allgemein.path("link_einstellen"), w)).append("\n\n");
         w.put("kennzeichen", kennzeichen);
         text.append(vorlage(allgemein.path("kennzeichen"), w)).append('\n');

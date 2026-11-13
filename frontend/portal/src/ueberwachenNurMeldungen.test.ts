@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * Vorher bot jede Fläche „Überwachen“ direkt am Wert an (Menü ⋯ und Marke „überwacht“ im Cockpit,
  * an Geräteseite, Aufbau, Messstelle, Kennzahl und Energieziel; Alerting Scheiben 2 und 5). Das sah
  * der Captain als fremd und unruhig an: eine Überwachung entsteht jetzt nur noch unter
- * Meldungen › Überwachungen („+ Überwachung“: Ort, Wert, dann das Blatt „Überwachen“). Der einzige
+ * Meldungen › Einstellen („Eigene Überwachung“: Ort, Wert, dann das Blatt „Überwachen“). Der einzige
  * zweite Weg ist das Umwandeln einer Steuerungsregel (Alerting Scheibe 6, Entscheid 10A) - dort
  * entsteht die Überwachung aus einer Regel, nicht an einem Wert.
  *
@@ -36,7 +36,7 @@ const QUELLEN = dateien(SRC).map((f) => ({ datei: f.slice(SRC.length + 1).replac
 
 /** Wer das Blatt „Überwachen“ öffnen darf - und warum. */
 const BLATT_ERLAUBT: Record<string, string> = {
-  'pages/MeldungenPage.tsx': '„+ Überwachung“ unter Meldungen › Überwachungen',
+  'pages/MeldungenPage.tsx': '„Eigene Überwachung“ unter Meldungen › Einstellen',
   'steuerung/SteuerungSeite.tsx': '„In Überwachung umwandeln“ an einer Steuerungsregel (Scheibe 6, Entscheid 10A)',
 };
 

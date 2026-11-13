@@ -21,7 +21,7 @@ import { VpPicker } from './VpPicker';
 import './NeueUeberwachung.css';
 
 /**
- * Das Blatt „Neue Überwachung“ unter Meldungen › Überwachungen (Konzept b1, 20.10.2026, E3): der
+ * Das Blatt „Neue Überwachung“ unter Meldungen › Einstellen (Konzept b1, 20.10.2026, E3): der
  * EINE Ort, an dem eine Überwachung entsteht. „Wo?“ wählt Anlage, Messstelle, Kennzahl oder
  * Energieziel, „Welcher Wert?“ listet, was sich dort überwachen lässt; ein Tipp auf einen Wert gibt
  * ihn an die Seite, die dann das vorhandene Blatt „Überwachen“ öffnet. Am Telefon `BottomSheet`, am

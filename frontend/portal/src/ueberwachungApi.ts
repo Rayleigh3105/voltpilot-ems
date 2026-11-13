@@ -5,7 +5,7 @@ import type { Bedingungsart, Periode } from './werteKatalog';
 /**
  * Die API-Aufrufe zum Anlegen und Verwalten einer Überwachung (Alerting Konzept §6.3/§6.8) - bewusst
  * NICHT in `meldungenApi.ts` (das Modul ist entry-gebündelt, `test/bundle-smoke.sh`). Angelegt wird
- * seit Konzept b1 (20.10.2026, Entscheid E3) nur noch unter Meldungen › Überwachungen
+ * seit Konzept b1 (20.10.2026, Entscheid E3) nur noch unter Meldungen › Einstellen
  * („+ Überwachung“: Ort, Wert, dann `UeberwachenBlatt`) und beim Umwandeln einer Steuerungsregel -
  * nie mehr am Wert einer anderen Fläche.
  */

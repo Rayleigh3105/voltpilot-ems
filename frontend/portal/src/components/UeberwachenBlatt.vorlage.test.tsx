@@ -13,7 +13,7 @@ vi.mock('../ueberwachungApi', () => ({
 import { UeberwachenBlatt } from './UeberwachenBlatt';
 
 /**
- * Die Erzeuger-Vorlagen im Blatt „Überwachen“ (UEMS EZ-11, EW-9 A): unter Glocke › Meldungen › Überwachungen
+ * Die Erzeuger-Vorlagen im Blatt „Überwachen“ (UEMS EZ-11, EW-9 A): unter Glocke › Meldungen › Einstellen
  * angelegt wie jede andere Überwachung, vorbelegt aus dem Katalog, mit den Schwellen der Vorlage als Felder - und
  * ohne Probelauf-Vorschau, weil es für diese Werte keine Rückschau gibt.
  */
@@ -81,8 +81,8 @@ describe('UeberwachenBlatt · Erzeuger-Vorlagen', () => {
     expect(sp(screen.getByText(/Sag mir Bescheid/).textContent)).toBe(
       'Sag mir Bescheid, sobald der Netzbetreiber die Anlage abschaltet (Not-Aus). · Warnung',
     );
-    const dauer = screen.getByLabelText('Länger als (Minuten, 0 = sofort)') as HTMLInputElement;
-    expect(dauer.value).toBe('0');
+    // P3: „Länger als“ ist eine Wahl; die Vorlage ohne Wartezeit bietet „sofort“ an und steht darauf.
+    expect(screen.getByRole('combobox', { name: 'Länger als' })).toHaveTextContent('sofort');
 
     fireEvent.click(screen.getByRole('button', { name: 'Überwachung starten' }));
     await waitFor(() => expect(anlegen).toHaveBeenCalledTimes(1));
@@ -112,9 +112,10 @@ describe('UeberwachenBlatt · Erzeuger-Vorlagen', () => {
         + 'erwartet. · Warnung',
     );
     expect(screen.getByText('Meldet ab dem Start, ohne Probelauf.')).toBeTruthy();
-    const dauer = screen.getByLabelText('Länger als (Minuten)') as HTMLInputElement;
-    expect(dauer.value).toBe('1440');
-    fireEvent.change(dauer, { target: { value: '2880' } });
+    const dauer = screen.getByRole('combobox', { name: 'Länger als' });
+    expect(dauer).toHaveTextContent('24 Std.');
+    fireEvent.click(dauer);
+    fireEvent.click(await screen.findByRole('option', { name: '48 Std.' }));
     expect(sp(screen.getByText(/Sag mir Bescheid/).textContent)).toContain('länger als 48 Stunden');
 
     fireEvent.click(screen.getByRole('button', { name: 'Überwachung starten' }));

@@ -106,7 +106,7 @@ export function mailText(n: MeldungsNachricht, kennzeichen: string, basisUrl: st
     n.saetze.join('\n'),
     '',
     vorlage(MELDUNG_ALLGEMEIN.link_meldung, { link: `${basis}/#/meldungen?meldung=${kennzeichen}` }),
-    vorlage(MELDUNG_ALLGEMEIN.link_einstellen, { link: `${basis}/#/einstellungen` }),
+    vorlage(MELDUNG_ALLGEMEIN.link_einstellen, { link: `${basis}/#/meldungen?reiter=einstellen` }),
     '',
     vorlage(MELDUNG_ALLGEMEIN.kennzeichen, { kennzeichen }),
   ];

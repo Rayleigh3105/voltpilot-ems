@@ -49,7 +49,7 @@ const ROLLEN = new Set<string>(KNOWN_ROLES);
  * darunter).
  *
  * Die vier Werte des Moments stehen an den Knoten - es gibt keinen zweiten Werteblock daneben, und
- * „Überwachen“ wohnt nur unter Meldungen › Überwachungen (Konzept b1, Entscheide E1/E3).
+ * „Überwachen“ wohnt nur unter Meldungen › Einstellen (Konzept b1, Entscheide E1/E3).
  *
  * Messung, Plan und Jetzt bleiben getrennt: die Marke oben sagt, was gerade
  * zu sehen ist („Live“, „gemessen“, „Plan · Tätigkeit“, „Energie · gemessen“),

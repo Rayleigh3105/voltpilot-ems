@@ -115,3 +115,30 @@ export async function pushBeiAbmeldenAufraeumen(): Promise<void> {
     // bestmöglich - siehe Klassenkommentar
   }
 }
+
+/** Der in diesem Browser SELBST eingeschaltete Push-Abo - lokal gemerkt, weil die API die
+ * Endpunkt-Kennung nicht liefert (M4, Gerät erkennen bleibt Scheibe 2); geteilt von der
+ * Einstellungs-Seite und der ersten Einrichtung unter Meldungen (Kunden-Alarmierung P3). Kein Konto-Datum: eine
+ * Browser-Vorliebe wie die drei bestehenden `localStorage`-Schlüssel des Portals. */
+const PUSH_GERAET_SCHLUESSEL = 'vp-einst-push-geraet-abo-id';
+export function geraetAboId(): string | null {
+  try {
+    return localStorage.getItem(PUSH_GERAET_SCHLUESSEL);
+  } catch {
+    return null;
+  }
+}
+export function merkeGeraetAboId(id: string): void {
+  try {
+    localStorage.setItem(PUSH_GERAET_SCHLUESSEL, id);
+  } catch {
+    /* kein Speicher (privates Fenster) - "dieses Gerät" bleibt dann einfach unerkannt */
+  }
+}
+export function vergissGeraetAboId(): void {
+  try {
+    localStorage.removeItem(PUSH_GERAET_SCHLUESSEL);
+  } catch {
+    /* siehe oben */
+  }
+}

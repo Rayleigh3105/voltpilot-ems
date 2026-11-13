@@ -136,3 +136,248 @@
   color: var(--vp-action, #2563eb);
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------- Kunden-Alarmierung P3: ein Ort */
+
+.vp-meldungen-aktionsfehler {
+  margin: var(--vp-c-space-3) 0 0;
+  color: var(--vp-c-destructive);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-meldung-karte h3.vp-meldung-titel {
+  margin: var(--vp-c-space-2) 0 0;
+}
+
+.vp-meldung-ort {
+  margin: var(--vp-c-space-1) 0 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-meldung-karte .vp-meldung-satz {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-400);
+}
+
+.vp-meldung-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-meldung-knoepfe a.vp-btn {
+  text-decoration: none;
+}
+
+.vp-meldung-stumm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-1) var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-meldungen-leise,
+.vp-meldungen-einrichtung {
+  margin-top: var(--vp-c-space-5);
+}
+
+.vp-meldungen-leise h2,
+.vp-meldungen-einrichtung h2 {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  margin: 0 0 var(--vp-c-space-2);
+}
+
+.vp-meldungen-leise ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-card);
+}
+
+.vp-meldungen-leise li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--vp-c-space-1) var(--vp-c-space-3);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+
+.vp-meldungen-leise li + li {
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-meldungen-leise-sub {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-meldungen-einrichtung {
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.vp-meldungen-leer + .vp-meldungen-einrichtung {
+  margin-top: 0;
+}
+
+/* Einstellen: „So erreichen wir Sie“ (Bausteine der Einstellungsseite), darunter „Das melden wir“. */
+.vp-meldungen-einstellen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-5);
+  margin-top: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-einst.vp-einst-in-meldungen {
+  padding: 0;
+  max-width: none;
+}
+
+.vp-melden-wir {
+  min-width: 0;
+}
+
+.vp-melden-wir-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+  margin-bottom: var(--vp-c-space-2);
+}
+
+.vp-melden-wir-kopf h3 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-melden-wir-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-card);
+}
+
+.vp-melden-wir-zeile + .vp-melden-wir-zeile {
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-melden-wir-haupt {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-3);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+}
+
+.vp-melden-wir-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.vp-melden-wir-text b {
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-melden-wir-text span {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-melden-wir-zeile.is-aus .vp-melden-wir-text b {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-melden-wir-details {
+  padding: 0 var(--vp-c-space-4) var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-melden-wir-details dl {
+  margin: 0;
+  display: grid;
+  gap: var(--vp-c-space-1);
+}
+
+.vp-melden-wir-details dl > div {
+  display: flex;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-melden-wir-details dt {
+  flex: 0 0 7.5em;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-melden-wir-details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-melden-wir-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-2);
+}
+
+.vp-melden-wir-neu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  width: 100%;
+  margin-top: var(--vp-c-space-3);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border: 1px dashed var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-melden-wir-neu > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-melden-wir-neu > span > span {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-melden-wir-neu > svg {
+  color: var(--vp-c-primary);
+  flex: 0 0 auto;
+}

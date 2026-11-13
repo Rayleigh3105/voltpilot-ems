@@ -15,6 +15,7 @@ export function helpForRoute(route: Route): HelpArticleId | null {
   if (route.page === 'portfolio-erloese') return 'erloese';
   if (route.page === 'portfolio-energiemanagement') return 'energiemanagement';
   if (route.page === 'portfolio' || route.page === 'uebersicht' || route.page === 'standort') return 'portfolio';
+  if (route.page === 'meldungen') return 'meldungen';
   return null;
 }
 

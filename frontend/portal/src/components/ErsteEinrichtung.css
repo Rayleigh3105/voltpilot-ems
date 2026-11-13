@@ -1,0 +1,80 @@
+/* Erste Einrichtung der Meldungen (Kunden-Alarmierung P3, KA-6 A). */
+
+.vp-erste-einrichtung {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  text-align: left;
+}
+
+.vp-ee-zeile {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.vp-ee-zeile > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-ee-zeile.is-ok > svg {
+  color: var(--vp-c-ok-fg);
+}
+
+.vp-ee-ios,
+.vp-ee-frage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-surface-muted, var(--vp-c-muted));
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ee-ios-kopf {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-ee-ios ol {
+  margin: 0;
+  padding-left: 1.25em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1);
+}
+
+.vp-ee-ios ol svg {
+  vertical-align: -2px;
+}
+
+.vp-ee-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-ee-hinweis {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-ee-fehler {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-destructive);
+}
+
+.vp-ee-sub {
+  color: var(--vp-c-muted-fg);
+}

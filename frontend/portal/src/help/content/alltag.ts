@@ -20,6 +20,39 @@ export const everydayArticles: HelpArticle[] = [
     ], related: ['messwerte', 'cockpit'],
   },
   {
+    id: 'meldungen', category: 'alltag', title: 'Meldungen: was VoltPilot Ihnen sagt',
+    summary: 'Hinter der Glocke: was gerade los ist, was war und wie Meldungen Sie per E-Mail und Push erreichen.',
+    keywords: ['Meldung', 'Glocke', 'Benachrichtigung', 'Alarm', 'E-Mail', 'Push', 'Handy', 'iPhone', 'Ruhezeit', 'Stumm', 'Überwachung', 'Probe', 'Leise'],
+    sections: [
+      { id: 'jetzt', title: 'Jetzt: was gerade los ist', paragraphs: [
+        'Die Glocke oben zeigt, wie viele Meldungen Sie noch nicht gesehen haben; rot heißt: etwas ist dringend. Ein Tipp öffnet „Jetzt“. Jede Karte sagt, was los ist, an welcher Anlage, seit wann und was meist dahintersteckt. „Zur Anlage“ führt dorthin, wo Sie nachsehen können.',
+        'Was Sie hier sehen, gilt als gesehen - einen eigenen Knopf dafür gibt es nicht. Bei einer dringenden Meldung endet damit auch die Erinnerung.',
+        'Hinweise wie „Strom gerade günstig“ stehen unter „Leise“. Sie zählen nicht an der Glocke und kommen ohne E-Mail.',
+      ] },
+      { id: 'stumm', title: 'Stumm schalten', paragraphs: [
+        '„Stumm“ an einer Karte schaltet diese Überwachung für eine Stunde, bis morgen früh oder sieben Tage stumm, etwa während einer Wartung. Das gilt für alle, die diese Meldung bekommen; darum dürfen es Kundenadministrator, Energiemanager und Bearbeiter am Standort.',
+      ] },
+      { id: 'einrichten', title: 'Meldungen aufs Handy holen', paragraphs: [
+        'Meldungen kommen per E-Mail an Ihre Adresse. Für Push tippen Sie unter „Alles ruhig“ oder im Cockpit unter „Ihr Weg zum fertigen EMS“ auf „Push auf diesem Handy einschalten“ und erlauben die Mitteilungen. Gleich danach schickt VoltPilot eine Probe und fragt, ob sie angekommen ist.',
+      ], steps: [
+        'Am iPhone geht Push nur aus der App auf dem Home-Bildschirm: in Safari unten auf „Teilen“ tippen.',
+        '„Zum Home-Bildschirm“ wählen und „Hinzufügen“ tippen.',
+        'VoltPilot vom Home-Bildschirm öffnen und unter Meldungen „Push einschalten“ tippen.',
+      ], note: 'Kommt die Probe nicht an, prüfen Sie in den Einstellungen des Geräts, ob Mitteilungen für VoltPilot erlaubt sind und ob „Nicht stören“ an ist.' },
+      { id: 'einstellen', title: 'Einstellen: Wege, Ruhe und was gemeldet wird', paragraphs: [
+        'Unter „Einstellen“ steht oben „So erreichen wir Sie“: dieses Gerät, die E-Mail, Ihre Ruhezeit und „Probe senden“. In der Ruhezeit warten Warnungen bis zum Morgen; Dringendes kommt immer durch.',
+        'Darunter steht „Das melden wir“: jede Meldungsart als Schalter, etwa „Box meldet sich nicht“ nach 15 Minuten. Ein Tipp auf eine Zeile zeigt, nach welcher Wartezeit sie meldet und wer sie bekommt. Ausgeschaltet bleibt die Zeile stehen und lässt sich wieder einschalten.',
+      ] },
+      { id: 'eigene', title: 'Eine eigene Überwachung', paragraphs: [
+        'Ganz unten legen Sie eine eigene Überwachung an: ein Wert, über oder unter einer Schwelle, länger als eine gewählte Zeit - zum Beispiel „Netzbezug über 10 kW, länger als 5 Minuten“. Wann die Meldung wieder endet, rechnet VoltPilot aus der Schwelle; ändern können Sie das unter „Feineinstellung“.',
+        'Eine neue Überwachung meldet sofort. Wer erst sehen will, wie oft sie auslösen würde, schaltet „Erst 30 Tage mitzählen, nichts senden“ ein; „Jetzt melden“ beendet das vorzeitig. Eine eigene Überwachung lässt sich jederzeit ändern oder löschen; ihr Verlauf bleibt.',
+      ] },
+      { id: 'verlauf', title: 'Verlauf', paragraphs: [
+        'Der Verlauf zeigt jede vergangene Meldung mit Beginn, Ende und Dauer. Als CSV können Sie ihn je Monat oder Jahr für Ihre Unterlagen herunterladen.',
+      ] },
+    ], related: ['cockpit', 'probleme', 'einstellungen'],
+  },
+  {
     id: 'cockpit', category: 'alltag', title: 'Das Cockpit lesen',
     summary: 'Zustand, Energieflüsse und aktuelle Messwerte Ihrer Anlage auf einen Blick.',
     keywords: ['Dashboard', 'Übersicht', 'Live', 'Energiefluss', 'Status', 'Warnung', 'Anpassen', 'Heute', 'Autarkie', 'Leitkachel', 'Stern'],

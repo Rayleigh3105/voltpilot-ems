@@ -336,6 +336,33 @@ class UeberwachungAendernApiTest {
         assertThat(JSON.readTree(koerper(ohneFeld)).path("probelaufBis").isNull()).isTrue();
     }
 
+    /**
+     * KA-4 B: ein Hinweis zählt nicht in der Glocke; die Meldung trägt die Kennung ihrer Regel (der Knopf „Stumm“
+     * der Karte schaltet genau sie stumm).
+     */
+    @Test
+    void dieGlockeZaehltKeineHinweiseUndDieMeldungNenntIhreRegel() throws Exception {
+        UUID regel = regel(tenant, st1, "eigen", "[{\"person\":\"jw\"}]", null);
+        long vorher = JSON.readTree(koerper(ruf(get("/api/v1/meldungen/zahl"), konto("jw")))).path("ungesehen").asLong();
+        UUID warnung = offeneMeldung(tenant, st1, regel);
+        UUID hinweisRegel = regel(tenant, st1, "eigen", "[{\"person\":\"jw\"}]", null);
+        UUID hinweis = offeneMeldung(tenant, st1, hinweisRegel);
+        root.update("UPDATE alarm SET schwere = 'hinweis' WHERE id = ?", hinweis);
+
+        JsonNode zahl = JSON.readTree(koerper(ruf(get("/api/v1/meldungen/zahl"), konto("jw"))));
+        assertThat(zahl.path("ungesehen").asLong()).as("nur die Warnung zählt").isEqualTo(vorher + 1);
+
+        JsonNode liste = JSON.readTree(koerper(ruf(get("/api/v1/meldungen?status=jetzt"), konto("jw"))));
+        boolean gefunden = false;
+        for (JsonNode m : liste.path("meldungen")) {
+            if (m.path("id").asText().equals(warnung.toString())) {
+                assertThat(m.path("ueberwachungId").asText()).isEqualTo(regel.toString());
+                gefunden = true;
+            }
+        }
+        assertThat(gefunden).isTrue();
+    }
+
     // ------------------------------------------------------------------ Welt
 
     private static UUID standort(UUID kunde, UUID unternehmen, String name, String kurzzeichen) {
@@ -369,8 +396,9 @@ class UeberwachungAendernApiTest {
         return root.queryForObject("""
                 INSERT INTO alarm (tenant_id, standort_id, kennzeichen, ueberwachung_id, fassung, bezug_kennung,
                        wertart, schwere, ausgeloest_am)
-                VALUES (?, ?, ?, ?, 1, 'anlage:x', 'anlage.netz.leistung', 'warnung', now()) RETURNING id
-                """, UUID.class, kunde, standort, String.format("AL-2026-%06d", ++kennzeichenNr), regel);
+                VALUES (?, ?, ?, ?, 1, 'anlage:' || (SELECT bezug ->> 'anlage' FROM ueberwachung WHERE id = ?),
+                       'anlage.netz.leistung', 'warnung', now()) RETURNING id
+                """, UUID.class, kunde, standort, String.format("AL-2026-%06d", ++kennzeichenNr), regel, regel);
     }
 
     private static void person(String wer, String rolle, UUID ort, String name) {

@@ -13,7 +13,7 @@ import type { Geraetesuche } from '../geraetesuche';
 
 describe('help handbook integrity', () => {
   it('ships the full handbook with unique slugs, sections and valid related articles', () => {
-    expect(HELP_ARTICLES).toHaveLength(30);
+    expect(HELP_ARTICLES).toHaveLength(31);
     expect(new Set(HELP_ARTICLES.map((a) => a.id)).size).toBe(HELP_ARTICLES.length);
     for (const article of HELP_ARTICLES) {
       expect(HELP_CATEGORIES.some((c) => c.id === article.category)).toBe(true);

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
+import { Switch } from '../../designsystem/components/forms/Switch';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { UeberwachungsRegel } from '../meldungenApi';
 import { WORT_ERHOLDAUER, WORT_RUECKKEHRSCHWELLE, WORT_UEBERWACHEN, SCHWERE_WORT } from '../meldungen';
@@ -22,6 +23,7 @@ import {
 } from '../ueberwachungSatz';
 import { katalogEintrag, type Periode } from '../werteKatalog';
 import { BottomSheet } from './BottomSheet';
+import { VpPicker } from './VpPicker';
 import './UeberwachenBlatt.css';
 
 /** Der Bezug einer Überwachung (§6.3): Anlage (ihre Live-Werte), Komponente+Kanal (Familie
@@ -72,6 +74,7 @@ export function UeberwachenBlatt({
   einheit = 'kW',
   titelZusatz,
   herkunft,
+  regel = null,
   onUeberwacht,
 }: {
   offen: boolean;
@@ -85,8 +88,15 @@ export function UeberwachenBlatt({
   titelZusatz?: string;
   /** Vorgabe `'eigen'`; `'steuerung'` nur für "In Überwachung umwandeln" (Alerting Scheibe 6, Entscheid 10A). */
   herkunft?: 'eigen' | 'steuerung';
+  /**
+   * Kunden-Alarmierung P3: eine bestehende Regel ändern statt eine neue anzulegen - das Blatt startet mit ihrer
+   * Bedingung, Stufe und ihrem Probelauf und speichert über `PUT /regeln/{id}` (Wertart und Bezug bleiben).
+   */
+  regel?: UeberwachungsRegel | null;
   onUeberwacht: (regel: UeberwachungsRegel) => void;
 }) {
+  const alt = (regel?.bedingung ?? null) as Record<string, unknown> | null;
+  const altZahl = (feld: string): number | null => (alt && typeof alt[feld] === 'number' ? (alt[feld] as number) : null);
   const eintrag = katalogEintrag(wertart);
   // Periodisch/Zustand folgt den `bedingungen` des Katalog-Eintrags, nicht seiner Leserart (Alerting
   // Scheibe 5, §6.3): `zaehlung` (messstelle.menge) ist ebenso periodisch wie `menge`/`geld`.
@@ -99,25 +109,39 @@ export function UeberwachenBlatt({
   const istVorlage = vorlage != null;
   const istZustandsform = !istVorlage && !istPeriodisch && (eintrag?.bedingungen.includes('zustand') ?? false);
   const [schwellen, setSchwellen] = useState<Record<string, number>>(() => ({ ...(vorlage?.schwellen ?? {}) }));
-  const [ziel, setZiel] = useState<string[]>([]);
+  const [ziel, setZiel] = useState<string[]>(() => (alt && Array.isArray(alt.ziel) ? (alt.ziel as string[]) : []));
   const kannAuswahl = 'anlage' in bezug;
 
-  const vorschlag = vorschlagSchwelle(aktuellerWert);
+  const vorschlag = altZahl('schwelle') ?? vorschlagSchwelle(aktuellerWert);
   const [schwelle, setSchwelle] = useState(vorschlag);
-  const vorgaben = vorgabenFuerBedingung('ueber', vorschlag);
-  const [dauerMinuten, setDauerMinuten] = useState((vorlage?.dauer_s ?? vorgaben.dauer_s) / 60);
-  const [erholdauerMinuten, setErholdauerMinuten] = useState((vorlage?.erholen_s ?? vorgaben.erholen_s) / 60);
+  // Kunden-Alarmierung P3: der Satz fragt „über“ ODER „unter“ (vier Wahlfelder: Wert, Richtung, Schwelle, Dauer).
+  const kannUnter = eintrag?.bedingungen.includes('unter') ?? false;
+  const [richtung, setRichtung] = useState<'ueber' | 'unter'>(alt?.art === 'unter' ? 'unter' : 'ueber');
+  const vorgaben = vorgabenFuerBedingung(richtung, vorschlag);
+  const [dauerMinuten, setDauerMinuten] = useState((altZahl('dauer_s') ?? vorlage?.dauer_s ?? vorgaben.dauer_s) / 60);
+  const [erholdauerMinuten, setErholdauerMinuten] = useState(
+    (altZahl('erholen_s') ?? vorlage?.erholen_s ?? vorgaben.erholen_s) / 60,
+  );
+  const [feinOffen, setFeinOffen] = useState(false);
+  // KA-3 A: „Erst 30 Tage mitzählen, nichts senden“ ist ein sichtbarer Schalter, Vorgabe aus - eine neue Regel
+  // meldet sofort. Beim Ändern gilt der Stand der Regel.
+  const [mitzaehlen, setMitzaehlen] = useState(regel ? regel.probelaufBis != null : false);
   // Kunden-Alarmierung P0: die Rückkehrschwelle FOLGT der Schwelle (5 % darunter, `vorgabenFuerBedingung`), bis die
   // Person sie selbst ändert; ändert sie danach die Schwelle, folgt sie wieder. Vorher blieb sie beim Vorschlag
   // stehen - im Labor Schwelle 5 mit Rückkehr 7,6 ct/kWh, die Meldung flatterte.
-  const [rueckkehrEigen, setRueckkehrEigen] = useState<number | null>(null);
-  const rueckkehr = rueckkehrEigen ?? vorgabenFuerBedingung('ueber', schwelle).rueckkehr ?? schwelle;
-  const paarVerdreht = Number.isFinite(rueckkehr) && Number.isFinite(schwelle) && rueckkehr > schwelle;
+  const [rueckkehrEigen, setRueckkehrEigen] = useState<number | null>(() => altZahl('rueckkehr'));
+  const rueckkehr = rueckkehrEigen ?? vorgabenFuerBedingung(richtung, schwelle).rueckkehr ?? schwelle;
+  const paarVerdreht = Number.isFinite(rueckkehr) && Number.isFinite(schwelle)
+    && (richtung === 'ueber' ? rueckkehr > schwelle : rueckkehr < schwelle);
+  function richtungAendern(r: 'ueber' | 'unter') {
+    setRichtung(r);
+    setRueckkehrEigen(null);
+  }
   function schwelleAendern(wert: number) {
     setSchwelle(wert);
     setRueckkehrEigen(null);
   }
-  const [schwere, setSchwere] = useState<Schwere>(vorlage?.schwere ?? 'warnung');
+  const [schwere, setSchwere] = useState<Schwere>(regel?.schwere ?? vorlage?.schwere ?? 'warnung');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
   const [probelauf, setProbelauf] = useState<ProbelaufVorschau | null>(null);
@@ -168,7 +192,7 @@ export function UeberwachenBlatt({
     }
     if (!istPeriodisch) {
       return {
-        art: 'ueber',
+        art: richtung,
         schwelle,
         rueckkehr,
         dauer_s: Math.round(dauerMinuten * 60),
@@ -221,7 +245,7 @@ export function UeberwachenBlatt({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     offen, gueltig, wertart, bezugKey, giltFuer, schwelle, rueckkehr, dauerMinuten, erholdauerMinuten, schwere,
-    periodenform, periode, richtungPeriode, richtungAenderung, schwelleProzent, istVorlage, schwellen,
+    periodenform, periode, richtungPeriode, richtungAenderung, schwelleProzent, istVorlage, schwellen, richtung,
   ]);
 
   if (!eintrag) return null;
@@ -232,7 +256,7 @@ export function UeberwachenBlatt({
       ? periodenform === 'aenderung'
         ? { art: 'aenderung', richtung: richtungAenderung, schwelleProzent, periode }
         : { art: 'periode', richtung: richtungPeriode, schwelle, periode }
-      : { art: 'ueber', schwelle, rueckkehr, dauer_s: dauerMinuten * 60 };
+      : { art: richtung, schwelle, rueckkehr, dauer_s: dauerMinuten * 60 };
   const satz = istVorlage
     ? vorlageSatz(wertart, Math.round(dauerMinuten * 60), schwellen, schwere)
     : ueberwachungSatz(eintrag, satzBedingung, schwere, istPeriodisch && periodenform === 'aenderung' ? '' : einheit);
@@ -249,14 +273,22 @@ export function UeberwachenBlatt({
     setBusy(true);
     setFehler('');
     try {
-      const regel = await ueberwachungApi.anlegen({
-        wertart,
-        bezug: bezugFuerAnfrage(),
-        bedingung: bedingungFuerAnfrage(),
-        schwere,
-        ...(herkunft ? { herkunft } : {}),
-      });
-      onUeberwacht(regel);
+      const gespeichert = regel
+        ? await ueberwachungApi.aendern(regel.id, {
+            bedingung: bedingungFuerAnfrage(),
+            schwere,
+            name: regel.name,
+            probelauf: mitzaehlen,
+          })
+        : await ueberwachungApi.anlegen({
+            wertart,
+            bezug: bezugFuerAnfrage(),
+            bedingung: bedingungFuerAnfrage(),
+            schwere,
+            ...(herkunft ? { herkunft } : {}),
+            ...(istVorlage ? {} : { probelauf: mitzaehlen }),
+          });
+      onUeberwacht(gespeichert);
       onClose();
     } catch {
       setFehler('Die Überwachung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
@@ -278,7 +310,7 @@ export function UeberwachenBlatt({
           {probelaufText}
         </p>
       )}
-      {kannAuswahl && (
+      {kannAuswahl && !regel && (
         <div className="vp-ueberwachen-schwere" role="group" aria-label="Gilt für">
           <span className="vp-ueberwachen-schwere-label">Gilt für</span>
           <div className="vp-seg vp-seg-compact">
@@ -418,45 +450,75 @@ export function UeberwachenBlatt({
               }}
             />
           ))}
+          {!istZustandsform && !istVorlage && kannUnter && (
+            <div className="vp-seg vp-seg-compact" role="group" aria-label="Richtung">
+              {(['ueber', 'unter'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  aria-pressed={richtung === r}
+                  className={richtung === r ? 'active' : ''}
+                  onClick={() => richtungAendern(r)}
+                >
+                  {r === 'ueber' ? 'über' : 'unter'}
+                </button>
+              ))}
+            </div>
+          )}
           {!istZustandsform && !istVorlage && (
+            <Input
+              id={`${feldId}-schwelle`}
+              label={`Schwelle (${einheit})`}
+              type="number"
+              step="0.1"
+              value={schwelle}
+              onChange={(e) => schwelleAendern(Number(e.target.value))}
+            />
+          )}
+          <VpPicker
+            label="Länger als"
+            ariaLabel="Länger als"
+            options={dauerOptionen(dauerMinuten, istVorlage && vorlage.dauer_s === 0)}
+            value={String(dauerMinuten)}
+            onChange={(v) => setDauerMinuten(Number(v))}
+          />
+          <button
+            type="button"
+            className="vp-ueberwachen-fein"
+            aria-expanded={feinOffen}
+            onClick={() => setFeinOffen((o) => !o)}
+            data-testid="ueberwachen-feineinstellung"
+          >
+            Feineinstellung {feinOffen ? '‹' : '›'}
+          </button>
+          {feinOffen && (
             <>
+              <p className="vp-ueberwachen-erklaerung">
+                Damit eine Meldung nicht flattert, endet sie erst, wenn der Wert eine Weile zurück ist. Beides rechnet
+                das Portal aus Ihrer Schwelle - ändern nur, wenn Sie es genau wollen.
+              </p>
+              {!istZustandsform && !istVorlage && (
+                <Input
+                  id={`${feldId}-rueckkehr`}
+                  label={`${WORT_RUECKKEHRSCHWELLE} (${einheit})`}
+                  type="number"
+                  step="0.1"
+                  value={rueckkehr}
+                  error={paarVerdreht ? (richtung === 'ueber' ? 'Muss bei oder unter der Schwelle liegen.' : 'Muss bei oder über der Schwelle liegen.') : undefined}
+                  onChange={(e) => setRueckkehrEigen(Number(e.target.value))}
+                />
+              )}
               <Input
-                id={`${feldId}-schwelle`}
-                label={`Schwelle (${einheit})`}
+                id={`${feldId}-erholdauer`}
+                label={`${WORT_ERHOLDAUER} (Minuten)`}
                 type="number"
-                step="0.1"
-                value={schwelle}
-                onChange={(e) => schwelleAendern(Number(e.target.value))}
-              />
-              <Input
-                id={`${feldId}-rueckkehr`}
-                label={`${WORT_RUECKKEHRSCHWELLE} (${einheit})`}
-                type="number"
-                step="0.1"
-                value={rueckkehr}
-                error={paarVerdreht ? 'Muss bei oder unter der Schwelle liegen.' : undefined}
-                onChange={(e) => setRueckkehrEigen(Number(e.target.value))}
+                step="1"
+                min="1"
+                value={erholdauerMinuten}
+                onChange={(e) => setErholdauerMinuten(Number(e.target.value))}
               />
             </>
           )}
-          <Input
-            id={`${feldId}-dauer`}
-            label={istVorlage && vorlage.dauer_s === 0 ? 'Länger als (Minuten, 0 = sofort)' : 'Länger als (Minuten)'}
-            type="number"
-            step="1"
-            min={istVorlage ? '0' : '1'}
-            value={dauerMinuten}
-            onChange={(e) => setDauerMinuten(Number(e.target.value))}
-          />
-          <Input
-            id={`${feldId}-erholdauer`}
-            label={`${WORT_ERHOLDAUER} (Minuten)`}
-            type="number"
-            step="1"
-            min="1"
-            value={erholdauerMinuten}
-            onChange={(e) => setErholdauerMinuten(Number(e.target.value))}
-          />
         </div>
       )}
       <div className="vp-ueberwachen-schwere" role="group" aria-label="Wie wichtig?">
@@ -469,9 +531,20 @@ export function UeberwachenBlatt({
           ))}
         </div>
       </div>
+      <p className="vp-ueberwachen-erklaerung" data-testid="ueberwachen-stufe-bedeutung">{SCHWERE_BEDEUTUNG[schwere]}</p>
+      {!istVorlage && (
+        <div data-testid="ueberwachen-mitzaehlen">
+          <Switch
+            id={`${feldId}-mitzaehlen`}
+            checked={mitzaehlen}
+            onChange={(e) => setMitzaehlen(e.target.checked)}
+            label="Erst 30 Tage mitzählen, nichts senden"
+          />
+        </div>
+      )}
       {fehler && <p role="alert">{fehler}</p>}
       <Button variant="primary" fullWidth disabled={busy || !gueltig} onClick={starten}>
-        Überwachung starten
+        {regel ? 'Speichern' : 'Überwachung starten'}
       </Button>
     </div>
   );
@@ -486,6 +559,22 @@ export function UeberwachenBlatt({
       {inhalt}
     </Modal>
   );
+}
+
+/** Was eine Stufe bedeutet (Kunden-Alarmierung P3, §6.2: „Unter der Stufe steht, was sie bedeutet“). */
+const SCHWERE_BEDEUTUNG: Record<Schwere, string> = {
+  hinweis: 'Hinweis: steht leise unter Meldungen, ohne E-Mail und ohne Push.',
+  warnung: 'Warnung: E-Mail und Push. Wartet in Ihrer Ruhezeit.',
+  dringend: 'Dringend: E-Mail und Push, auch in der Ruhezeit.',
+};
+
+/** Die Wahl „Länger als“: feste Stufen, dazu der gespeicherte Wert, falls er keine davon ist. */
+function dauerOptionen(aktuell: number, mitSofort: boolean): { value: string; label: string }[] {
+  const stufen = [...(mitSofort ? [0] : []), 1, 5, 15, 30, 60, 120, 240, 720, 1440, 2880];
+  if (Number.isFinite(aktuell) && !stufen.includes(aktuell)) stufen.push(aktuell);
+  return stufen
+    .sort((a, b) => a - b)
+    .map((m) => ({ value: String(m), label: m === 0 ? 'sofort' : m < 60 ? `${m} Min.` : `${m / 60} Std.` }));
 }
 
 /**

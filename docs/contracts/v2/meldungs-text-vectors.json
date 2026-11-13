@@ -44,7 +44,7 @@
           "pushTitel": "Hof Lindenberg · Box meldet sich nicht",
           "pushText": "Seit 12:18 Uhr keine Daten. Tippen für Einzelheiten."
         },
-        "mail": "Ihre VoltPilot-Box sendet seit 12:18 Uhr keine Daten.\nMeist ist das Internet oder der Strom an der Box unterbrochen. Die Anlage läuft vor Ort weiter.\nPrüfen Sie, ob die Box Strom hat und Ihr Router mit dem Internet verbunden ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000002\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000002\n",
+        "mail": "Ihre VoltPilot-Box sendet seit 12:18 Uhr keine Daten.\nMeist ist das Internet oder der Strom an der Box unterbrochen. Die Anlage läuft vor Ort weiter.\nPrüfen Sie, ob die Box Strom hat und Ihr Router mit dem Internet verbunden ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000002\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000002\n",
         "entwarnung": {
           "titel": "Hof Lindenberg: Box meldet sich wieder",
           "saetze": [
@@ -55,7 +55,7 @@
           "pushTitel": "Hof Lindenberg · Box meldet sich wieder",
           "pushText": "Seit 13:00 Uhr kommen wieder Daten."
         },
-        "entwarnung_mail": "Seit 13:00 Uhr kommen wieder Daten.\nDie Unterbrechung dauerte 42 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000002\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000002\n"
+        "entwarnung_mail": "Seit 13:00 Uhr kommen wieder Daten.\nDie Unterbrechung dauerte 42 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000002\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000002\n"
       }
     },
     {
@@ -100,7 +100,7 @@
           "pushTitel": "Hof Lindenberg · Gerät liefert keine Daten",
           "pushText": "Seit 8:55 Uhr fehlen Daten eines Geräts. Tippen für Einzelheiten."
         },
-        "mail": "Seit 8:55 Uhr fehlen Daten. Wechselrichter Süd liefert keine Daten — Verbindung abgelehnt (Kennung DQ-0007).\nMeist ist das Gerät ausgeschaltet oder seine Verbindung zur Box unterbrochen.\nPrüfen Sie, ob das Gerät eingeschaltet und mit der Box verbunden ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000011\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000011\n",
+        "mail": "Seit 8:55 Uhr fehlen Daten. Wechselrichter Süd liefert keine Daten — Verbindung abgelehnt (Kennung DQ-0007).\nMeist ist das Gerät ausgeschaltet oder seine Verbindung zur Box unterbrochen.\nPrüfen Sie, ob das Gerät eingeschaltet und mit der Box verbunden ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000011\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000011\n",
         "entwarnung": {
           "titel": "Hof Lindenberg: Gerät liefert wieder Daten",
           "saetze": [
@@ -111,7 +111,7 @@
           "pushTitel": "Hof Lindenberg · Gerät liefert wieder Daten",
           "pushText": "Seit 15:40 Uhr kommen wieder Daten."
         },
-        "entwarnung_mail": "Seit 15:40 Uhr kommen wieder Daten.\nDie Lücke dauerte 6 Stunden und 45 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000011\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000011\n"
+        "entwarnung_mail": "Seit 15:40 Uhr kommen wieder Daten.\nDie Lücke dauerte 6 Stunden und 45 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000011\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000011\n"
       }
     },
     {
@@ -155,7 +155,7 @@
           "pushTitel": "Demo Site Berlin · Gerät liefert keine Daten",
           "pushText": "Seit 8:55 Uhr fehlen Daten eines Geräts. Tippen für Einzelheiten."
         },
-        "mail": "Ein Gerät an Ihrer Anlage liefert seit 8:55 Uhr keine Daten.\nMeist ist das Gerät ausgeschaltet oder seine Verbindung zur Box unterbrochen.\nPrüfen Sie, ob das Gerät eingeschaltet und mit der Box verbunden ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000012\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000012\n",
+        "mail": "Ein Gerät an Ihrer Anlage liefert seit 8:55 Uhr keine Daten.\nMeist ist das Gerät ausgeschaltet oder seine Verbindung zur Box unterbrochen.\nPrüfen Sie, ob das Gerät eingeschaltet und mit der Box verbunden ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000012\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000012\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -200,7 +200,7 @@
           "pushTitel": "Demo Site Berlin · Strom gerade günstig",
           "pushText": "Börsenpreis 6,6 ct/kWh, günstiger als üblich. Tippen für Einzelheiten."
         },
-        "mail": "Der Börsenpreis liegt seit 13:00 Uhr bei 6,6 ct/kWh, unter dem Schnitt der letzten 30 Tage (8,3 ct/kWh).\nMeist gibt es gerade viel Wind- oder Sonnenstrom im Netz.\nHaben Sie einen dynamischen Stromtarif, lohnt es sich jetzt, Waschmaschine, Spülmaschine oder das Laden des Autos zu starten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000003\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000003\n",
+        "mail": "Der Börsenpreis liegt seit 13:00 Uhr bei 6,6 ct/kWh, unter dem Schnitt der letzten 30 Tage (8,3 ct/kWh).\nMeist gibt es gerade viel Wind- oder Sonnenstrom im Netz.\nHaben Sie einen dynamischen Stromtarif, lohnt es sich jetzt, Waschmaschine, Spülmaschine oder das Laden des Autos zu starten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000003\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000003\n",
         "entwarnung": {
           "titel": "Demo Site Berlin: Strom nicht mehr günstig",
           "saetze": [
@@ -211,7 +211,7 @@
           "pushTitel": "Demo Site Berlin · Strom nicht mehr günstig",
           "pushText": "Seit 15:45 Uhr liegt der Börsenpreis wieder über dem Schnitt der letzten 30 Tage."
         },
-        "entwarnung_mail": "Seit 15:45 Uhr liegt der Börsenpreis wieder über dem Schnitt der letzten 30 Tage.\nDie günstige Zeit dauerte 2 Stunden und 45 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000003\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000003\n"
+        "entwarnung_mail": "Seit 15:45 Uhr liegt der Börsenpreis wieder über dem Schnitt der letzten 30 Tage.\nDie günstige Zeit dauerte 2 Stunden und 45 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000003\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000003\n"
       }
     },
     {
@@ -247,13 +247,13 @@
           "saetze": [
             "Der Börsenpreis liegt seit 13:00 Uhr bei 31,2 ct/kWh.",
             "Sie haben eingestellt: melden bei Börsenpreis über 30,0 ct/kWh, länger als 5 Minuten.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Demo Site Berlin: Börsenpreis über 30,0 ct/kWh",
           "pushTitel": "Demo Site Berlin · Börsenpreis über 30,0 ct/kWh",
           "pushText": "Aktuell 31,2 ct/kWh. Tippen für Einzelheiten."
         },
-        "mail": "Der Börsenpreis liegt seit 13:00 Uhr bei 31,2 ct/kWh.\nSie haben eingestellt: melden bei Börsenpreis über 30,0 ct/kWh, länger als 5 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000004\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000004\n",
+        "mail": "Der Börsenpreis liegt seit 13:00 Uhr bei 31,2 ct/kWh.\nSie haben eingestellt: melden bei Börsenpreis über 30,0 ct/kWh, länger als 5 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000004\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000004\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -298,7 +298,7 @@
           "pushTitel": "Dringend · Werk Lindach · Lastspitze droht",
           "pushText": "Netzbezug 47,6 kW – große Verbraucher jetzt abschalten. Tippen für Einzelheiten."
         },
-        "mail": "Das laufende Viertelstunden-Mittel des Netzbezugs liegt seit 11:15 Uhr bei 47,6 kW, über der Warnschwelle von 45,6 kW.\nDie Warnschwelle liegt bei 95 % der bisher höchsten Spitze in diesem Abrechnungszeitraum; eine neue Spitze erhöht den Leistungspreis.\nSchalten Sie große Verbraucher jetzt ab oder verschieben Sie sie, bis die Viertelstunde vorbei ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000020\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000020\n",
+        "mail": "Das laufende Viertelstunden-Mittel des Netzbezugs liegt seit 11:15 Uhr bei 47,6 kW, über der Warnschwelle von 45,6 kW.\nDie Warnschwelle liegt bei 95 % der bisher höchsten Spitze in diesem Abrechnungszeitraum; eine neue Spitze erhöht den Leistungspreis.\nSchalten Sie große Verbraucher jetzt ab oder verschieben Sie sie, bis die Viertelstunde vorbei ist.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000020\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000020\n",
         "entwarnung": {
           "titel": "Werk Lindach: Viertelstunden-Mittel wieder unter der Warnschwelle",
           "saetze": [
@@ -309,7 +309,7 @@
           "pushTitel": "Werk Lindach · Viertelstunden-Mittel wieder unter der Warnschwelle",
           "pushText": "Seit 11:31 Uhr liegt das Viertelstunden-Mittel wieder unter der Warnschwelle."
         },
-        "entwarnung_mail": "Seit 11:31 Uhr liegt das Viertelstunden-Mittel wieder unter der Warnschwelle.\nDie Lage dauerte 16 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000020\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000020\n"
+        "entwarnung_mail": "Seit 11:31 Uhr liegt das Viertelstunden-Mittel wieder unter der Warnschwelle.\nDie Lage dauerte 16 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000020\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000020\n"
       }
     },
     {
@@ -346,13 +346,13 @@
           "saetze": [
             "Der Netzbezug liegt seit 18:00 Uhr bei 12,4 kW.",
             "Ihre Überwachung „Netz hoch“ meldet bei Netzbezug über 10,0 kW, länger als 5 Minuten.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Hof Lindenberg: Netzbezug über 10,0 kW",
           "pushTitel": "Hof Lindenberg · Netzbezug über 10,0 kW",
           "pushText": "Aktuell 12,4 kW. Tippen für Einzelheiten."
         },
-        "mail": "Der Netzbezug liegt seit 18:00 Uhr bei 12,4 kW.\nIhre Überwachung „Netz hoch“ meldet bei Netzbezug über 10,0 kW, länger als 5 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000031\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000031\n",
+        "mail": "Der Netzbezug liegt seit 18:00 Uhr bei 12,4 kW.\nIhre Überwachung „Netz hoch“ meldet bei Netzbezug über 10,0 kW, länger als 5 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000031\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000031\n",
         "entwarnung": {
           "titel": "Hof Lindenberg: Netzbezug wieder im Rahmen",
           "saetze": [
@@ -363,7 +363,7 @@
           "pushTitel": "Hof Lindenberg · Netzbezug wieder im Rahmen",
           "pushText": "Seit 19:25 Uhr ist der Netzbezug wieder im gewünschten Bereich."
         },
-        "entwarnung_mail": "Seit 19:25 Uhr ist der Netzbezug wieder im gewünschten Bereich.\nDie Abweichung dauerte eine Stunde und 25 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000031\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000031\n"
+        "entwarnung_mail": "Seit 19:25 Uhr ist der Netzbezug wieder im gewünschten Bereich.\nDie Abweichung dauerte eine Stunde und 25 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000031\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000031\n"
       }
     },
     {
@@ -392,13 +392,13 @@
           "saetze": [
             "Seit 11:02 Uhr kommen für die PV-Leistung keine Werte an.",
             "Sie haben eingestellt: melden bei PV-Leistung ohne Werte, länger als 15 Minuten.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Hof Lindenberg: PV-Leistung: keine Daten",
           "pushTitel": "Hof Lindenberg · PV-Leistung: keine Daten",
           "pushText": "Seit 11:02 Uhr keine Werte. Tippen für Einzelheiten."
         },
-        "mail": "Seit 11:02 Uhr kommen für die PV-Leistung keine Werte an.\nSie haben eingestellt: melden bei PV-Leistung ohne Werte, länger als 15 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000032\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000032\n",
+        "mail": "Seit 11:02 Uhr kommen für die PV-Leistung keine Werte an.\nSie haben eingestellt: melden bei PV-Leistung ohne Werte, länger als 15 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000032\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000032\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -437,13 +437,13 @@
           "saetze": [
             "Der Speicher-Ladestand liegt seit 6:15 Uhr bei 12 %.",
             "Sie haben eingestellt: melden bei Speicher-Ladestand außerhalb von 20 % bis 90 %, länger als 10 Minuten.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Hof Lindenberg: Speicher-Ladestand außerhalb von 20 % bis 90 %",
           "pushTitel": "Hof Lindenberg · Speicher-Ladestand außerhalb von 20 % bis 90 %",
           "pushText": "Aktuell 12 %. Tippen für Einzelheiten."
         },
-        "mail": "Der Speicher-Ladestand liegt seit 6:15 Uhr bei 12 %.\nSie haben eingestellt: melden bei Speicher-Ladestand außerhalb von 20 % bis 90 %, länger als 10 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000033\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000033\n",
+        "mail": "Der Speicher-Ladestand liegt seit 6:15 Uhr bei 12 %.\nSie haben eingestellt: melden bei Speicher-Ladestand außerhalb von 20 % bis 90 %, länger als 10 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000033\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000033\n",
         "entwarnung": {
           "titel": "Hof Lindenberg: Speicher-Ladestand wieder im Rahmen",
           "saetze": [
@@ -454,7 +454,7 @@
           "pushTitel": "Hof Lindenberg · Speicher-Ladestand wieder im Rahmen",
           "pushText": "Seit 7:45 Uhr ist der Speicher-Ladestand wieder im gewünschten Bereich."
         },
-        "entwarnung_mail": "Seit 7:45 Uhr ist der Speicher-Ladestand wieder im gewünschten Bereich.\nDie Abweichung dauerte eine Stunde und 30 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000033\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000033\n"
+        "entwarnung_mail": "Seit 7:45 Uhr ist der Speicher-Ladestand wieder im gewünschten Bereich.\nDie Abweichung dauerte eine Stunde und 30 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000033\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000033\n"
       }
     },
     {
@@ -490,13 +490,13 @@
           "saetze": [
             "Der Verbrauch im Zeitraum: 1.623 kWh.",
             "Sie haben eingestellt: melden bei Verbrauch im Zeitraum über 1.500 kWh.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Werk Lindach: Verbrauch im Zeitraum über 1.500 kWh",
           "pushTitel": "Werk Lindach · Verbrauch im Zeitraum über 1.500 kWh",
           "pushText": "Aktuell 1.623 kWh. Tippen für Einzelheiten."
         },
-        "mail": "Der Verbrauch im Zeitraum: 1.623 kWh.\nSie haben eingestellt: melden bei Verbrauch im Zeitraum über 1.500 kWh.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000034\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000034\n",
+        "mail": "Der Verbrauch im Zeitraum: 1.623 kWh.\nSie haben eingestellt: melden bei Verbrauch im Zeitraum über 1.500 kWh.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000034\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000034\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -534,13 +534,13 @@
           "saetze": [
             "Die Netzkosten im Zeitraum: 1.234,50 €.",
             "Sie haben eingestellt: melden bei Netzkosten im Zeitraum mit einem Anstieg um mehr als 20 %.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Werk Lindach: Netzkosten im Zeitraum um mehr als 20 % gestiegen",
           "pushTitel": "Werk Lindach · Netzkosten im Zeitraum um mehr als 20 % gestiegen",
           "pushText": "Aktuell 1.234,50 €. Tippen für Einzelheiten."
         },
-        "mail": "Die Netzkosten im Zeitraum: 1.234,50 €.\nSie haben eingestellt: melden bei Netzkosten im Zeitraum mit einem Anstieg um mehr als 20 %.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000035\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000035\n",
+        "mail": "Die Netzkosten im Zeitraum: 1.234,50 €.\nSie haben eingestellt: melden bei Netzkosten im Zeitraum mit einem Anstieg um mehr als 20 %.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000035\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000035\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -580,13 +580,13 @@
           "saetze": [
             "Seit gestern, 9:00 Uhr: nicht auf Kurs.",
             "Sie haben eingestellt: melden bei Energieziel-Kurs: nicht auf Kurs oder knapp dahinter.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Strom −10 % bis 2027: Energieziel-Kurs: nicht auf Kurs",
           "pushTitel": "Strom −10 % bis 2027 · Energieziel-Kurs: nicht auf Kurs",
           "pushText": "Seit gestern, 9:00 Uhr: nicht auf Kurs. Tippen für Einzelheiten."
         },
-        "mail": "Seit gestern, 9:00 Uhr: nicht auf Kurs.\nSie haben eingestellt: melden bei Energieziel-Kurs: nicht auf Kurs oder knapp dahinter.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000036\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000036\n",
+        "mail": "Seit gestern, 9:00 Uhr: nicht auf Kurs.\nSie haben eingestellt: melden bei Energieziel-Kurs: nicht auf Kurs oder knapp dahinter.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000036\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000036\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -625,13 +625,13 @@
           "saetze": [
             "Seit 10.11., 23:15 Uhr: liefert keine Werte.",
             "Sie haben eingestellt: melden bei Beobachtung der Messstelle: liefert keine Werte, länger als eine Stunde.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Ihre Messstelle: Beobachtung der Messstelle: liefert keine Werte",
           "pushTitel": "Ihre Messstelle · Beobachtung der Messstelle: liefert keine Werte",
           "pushText": "Seit 10.11., 23:15 Uhr: liefert keine Werte. Tippen für Einzelheiten."
         },
-        "mail": "Seit 10.11., 23:15 Uhr: liefert keine Werte.\nSie haben eingestellt: melden bei Beobachtung der Messstelle: liefert keine Werte, länger als eine Stunde.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000037\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000037\n",
+        "mail": "Seit 10.11., 23:15 Uhr: liefert keine Werte.\nSie haben eingestellt: melden bei Beobachtung der Messstelle: liefert keine Werte, länger als eine Stunde.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000037\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000037\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -677,7 +677,7 @@
           "pushTitel": "Solarpark Gore · Anlage folgt der Vorgabe nicht",
           "pushText": "Seit 14:30 Uhr folgt die Anlage der Vorgabe nicht. Tippen für Einzelheiten."
         },
-        "mail": "Seit 14:30 Uhr: Die Anlage erzeugt 12,0 kW mehr als die wirksame Grenze erlaubt (Toleranz 2,0 kW).\nMeist setzt ein Wechselrichter die Vorgabe der Anlagensteuerung nicht um.\nPrüfen Sie Wechselrichter und Anlagensteuerung. Hält das an, sagen Sie Ihrem Installateur Bescheid.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000040\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000040\n",
+        "mail": "Seit 14:30 Uhr: Die Anlage erzeugt 12,0 kW mehr als die wirksame Grenze erlaubt (Toleranz 2,0 kW).\nMeist setzt ein Wechselrichter die Vorgabe der Anlagensteuerung nicht um.\nPrüfen Sie Wechselrichter und Anlagensteuerung. Hält das an, sagen Sie Ihrem Installateur Bescheid.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000040\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000040\n",
         "entwarnung": {
           "titel": "Solarpark Gore: Anlage folgt der Vorgabe wieder",
           "saetze": [
@@ -688,7 +688,7 @@
           "pushTitel": "Solarpark Gore · Anlage folgt der Vorgabe wieder",
           "pushText": "Seit 14:55 Uhr folgt die Anlage wieder der Vorgabe."
         },
-        "entwarnung_mail": "Seit 14:55 Uhr folgt die Anlage wieder der Vorgabe.\nDas dauerte 25 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000040\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000040\n"
+        "entwarnung_mail": "Seit 14:55 Uhr folgt die Anlage wieder der Vorgabe.\nDas dauerte 25 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000040\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000040\n"
       }
     },
     {
@@ -732,7 +732,7 @@
           "pushTitel": "Hof Lindenberg · Ladeziel wird knapp",
           "pushText": "Auto lädt nicht, Abfahrt in weniger als zwei Stunden. Tippen für Einzelheiten."
         },
-        "mail": "Seit 6:10 Uhr steckt ein Auto, lädt aber nicht, und bis zur Abfahrtszeit sind es weniger als zwei Stunden.\nMeist hat das Auto das Laden angehalten oder die Wallbox wartet auf günstigeren Strom.\nBrauchen Sie das Ladeziel sicher, stellen Sie das Laden auf „Sofort laden“.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000050\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000050\n",
+        "mail": "Seit 6:10 Uhr steckt ein Auto, lädt aber nicht, und bis zur Abfahrtszeit sind es weniger als zwei Stunden.\nMeist hat das Auto das Laden angehalten oder die Wallbox wartet auf günstigeren Strom.\nBrauchen Sie das Ladeziel sicher, stellen Sie das Laden auf „Sofort laden“.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000050\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000050\n",
         "entwarnung": {
           "titel": "Hof Lindenberg: Auto lädt wieder oder ist abgesteckt",
           "saetze": [
@@ -742,7 +742,7 @@
           "pushTitel": "Hof Lindenberg · Auto lädt wieder oder ist abgesteckt",
           "pushText": "Seit 6:30 Uhr lädt das Auto wieder oder ist abgesteckt."
         },
-        "entwarnung_mail": "Seit 6:30 Uhr lädt das Auto wieder oder ist abgesteckt.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000050\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000050\n"
+        "entwarnung_mail": "Seit 6:30 Uhr lädt das Auto wieder oder ist abgesteckt.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000050\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000050\n"
       }
     },
     {
@@ -786,7 +786,7 @@
           "pushTitel": "Hof Lindenberg · Wallbox meldet sich nicht",
           "pushText": "Seit gestern, 23:50 Uhr keine Verbindung zur Wallbox. Tippen für Einzelheiten."
         },
-        "mail": "Ihre Wallbox meldet sich seit gestern, 23:50 Uhr nicht bei der Box.\nMeist hat die Wallbox keinen Strom oder ihre Netzwerkverbindung ist unterbrochen.\nPrüfen Sie, ob die Wallbox eingeschaltet ist und ihre Sicherung nicht ausgelöst hat.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000051\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000051\n",
+        "mail": "Ihre Wallbox meldet sich seit gestern, 23:50 Uhr nicht bei der Box.\nMeist hat die Wallbox keinen Strom oder ihre Netzwerkverbindung ist unterbrochen.\nPrüfen Sie, ob die Wallbox eingeschaltet ist und ihre Sicherung nicht ausgelöst hat.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000051\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000051\n",
         "entwarnung": {
           "titel": "Hof Lindenberg: Wallbox meldet sich wieder",
           "saetze": [
@@ -797,7 +797,7 @@
           "pushTitel": "Hof Lindenberg · Wallbox meldet sich wieder",
           "pushText": "Seit 8:20 Uhr ist die Wallbox wieder erreichbar."
         },
-        "entwarnung_mail": "Seit 8:20 Uhr ist die Wallbox wieder erreichbar.\nDie Unterbrechung dauerte 8 Stunden und 30 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000051\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000051\n"
+        "entwarnung_mail": "Seit 8:20 Uhr ist die Wallbox wieder erreichbar.\nDie Unterbrechung dauerte 8 Stunden und 30 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000051\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000051\n"
       }
     },
     {
@@ -840,7 +840,7 @@
           "pushTitel": "Hof Lindenberg · Auto fertig geladen",
           "pushText": "Fertig geladen seit 6:02 Uhr. Tippen für Einzelheiten."
         },
-        "mail": "Die Ladung ist seit 6:02 Uhr abgeschlossen.\nDiese Meldung haben Sie selbst eingeschaltet.\nNichts zu tun; das Auto ist bereit.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000052\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000052\n",
+        "mail": "Die Ladung ist seit 6:02 Uhr abgeschlossen.\nDiese Meldung haben Sie selbst eingeschaltet.\nNichts zu tun; das Auto ist bereit.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000052\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000052\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -879,13 +879,13 @@
           "saetze": [
             "Seit 10:00 Uhr: erreichbar.",
             "Sie haben eingestellt: melden bei Box erreichbar: erreichbar.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Hof Lindenberg: Box erreichbar: erreichbar",
           "pushTitel": "Hof Lindenberg · Box erreichbar: erreichbar",
           "pushText": "Seit 10:00 Uhr: erreichbar. Tippen für Einzelheiten."
         },
-        "mail": "Seit 10:00 Uhr: erreichbar.\nSie haben eingestellt: melden bei Box erreichbar: erreichbar.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000060\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000060\n",
+        "mail": "Seit 10:00 Uhr: erreichbar.\nSie haben eingestellt: melden bei Box erreichbar: erreichbar.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000060\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000060\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -922,13 +922,13 @@
           "saetze": [
             "Der Messwert liegt seit 9:58 Uhr bei 241,3.",
             "Sie haben eingestellt: melden bei Messwert der Komponente über 230,5, länger als 2 Minuten.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Ihre Anlage: Messwert der Komponente über 230,5",
           "pushTitel": "Ihre Anlage · Messwert der Komponente über 230,5",
           "pushText": "Aktuell 241,3. Tippen für Einzelheiten."
         },
-        "mail": "Der Messwert liegt seit 9:58 Uhr bei 241,3.\nSie haben eingestellt: melden bei Messwert der Komponente über 230,5, länger als 2 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000061\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000061\n",
+        "mail": "Der Messwert liegt seit 9:58 Uhr bei 241,3.\nSie haben eingestellt: melden bei Messwert der Komponente über 230,5, länger als 2 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000061\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000061\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }
@@ -967,13 +967,13 @@
           "saetze": [
             "Der Netzbezug liegt seit 11:55 Uhr bei −7,8 kW.",
             "Sie haben eingestellt: melden bei Netzbezug unter −5,0 kW, länger als 5 Minuten.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Hof Lindenberg: Netzbezug unter −5,0 kW",
           "pushTitel": "Hof Lindenberg · Netzbezug unter −5,0 kW",
           "pushText": "Aktuell −7,8 kW. Tippen für Einzelheiten."
         },
-        "mail": "Der Netzbezug liegt seit 11:55 Uhr bei −7,8 kW.\nSie haben eingestellt: melden bei Netzbezug unter −5,0 kW, länger als 5 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000062\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000062\n",
+        "mail": "Der Netzbezug liegt seit 11:55 Uhr bei −7,8 kW.\nSie haben eingestellt: melden bei Netzbezug unter −5,0 kW, länger als 5 Minuten.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000062\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000062\n",
         "entwarnung": {
           "titel": "Hof Lindenberg: Netzbezug wieder im Rahmen",
           "saetze": [
@@ -984,7 +984,7 @@
           "pushTitel": "Hof Lindenberg · Netzbezug wieder im Rahmen",
           "pushText": "Seit 14:20 Uhr ist der Netzbezug wieder im gewünschten Bereich."
         },
-        "entwarnung_mail": "Seit 14:20 Uhr ist der Netzbezug wieder im gewünschten Bereich.\nDie Abweichung dauerte 2 Stunden und 25 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000062\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000062\n"
+        "entwarnung_mail": "Seit 14:20 Uhr ist der Netzbezug wieder im gewünschten Bereich.\nDie Abweichung dauerte 2 Stunden und 25 Minuten.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000062\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000062\n"
       }
     },
     {
@@ -1017,13 +1017,13 @@
           "saetze": [
             "Seit 9:59 Uhr: Datenlücke.",
             "Sie haben eingestellt: melden bei Datenlücke der Box.",
-            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an."
+            "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen."
           ],
           "betreff": "Hof Lindenberg: Datenlücke der Box",
           "pushTitel": "Hof Lindenberg · Datenlücke der Box",
           "pushText": "Seit 9:59 Uhr: Datenlücke. Tippen für Einzelheiten."
         },
-        "mail": "Seit 9:59 Uhr: Datenlücke.\nSie haben eingestellt: melden bei Datenlücke der Box.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000063\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/einstellungen\n\nMeldung AL-2026-000063\n",
+        "mail": "Seit 9:59 Uhr: Datenlücke.\nSie haben eingestellt: melden bei Datenlücke der Box.\nSehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.\n\nAnsehen: https://portal.voltpilot.example/#/meldungen?meldung=AL-2026-000063\nLeiser stellen oder abmelden: https://portal.voltpilot.example/#/meldungen?reiter=einstellen\n\nMeldung AL-2026-000063\n",
         "entwarnung": null,
         "entwarnung_mail": null
       }

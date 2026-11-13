@@ -126,3 +126,33 @@ describe('Alarm je Einheit → Seite der Einheit (GE-3)', () => {
     expect(meldungQuelleLink(m)).toBeNull();
   });
 });
+
+describe('Kunden-Alarmierung P3 · ein Ort', () => {
+  it('alte Links auf „Überwachungen“ landen in „Einstellen“', async () => {
+    const { reiterAusHash } = await import('./meldungen');
+    expect(reiterAusHash('#/meldungen?reiter=regeln')).toBe('einstellen');
+    expect(reiterAusHash('#/meldungen?reiter=einstellen')).toBe('einstellen');
+    expect(reiterAusHash('#/meldungen?reiter=quatsch')).toBeNull();
+  });
+
+  it('Dauer, Wartezeit und Empfänger in Kundenwörtern', async () => {
+    const { dauerText, wartezeitText, empfaengerText, regelName } = await import('./meldungen');
+    expect(dauerText('2026-11-13T11:18:00Z', '2026-11-13T12:00:00Z')).toBe('42 Min.');
+    expect(dauerText('2026-11-13T09:00:00Z', '2026-11-13T12:05:00Z')).toBe('3 Std. 5 Min.');
+    expect(dauerText('2026-11-11T08:00:00Z', '2026-11-13T12:00:00Z')).toBe('2 Tage 4 Std.');
+    const r = {
+      id: 'r', name: null, wertart: 'box.erreichbar', schwere: 'warnung' as const, herkunft: 'ab_werk', aktiv: true,
+      probelaufBis: null, bezugJson: '{"anlage":"a"}', bedingung: { art: 'zustand', dauer_s: 900 },
+      empfaenger: [
+        { person: null, rolle: 'kundenadministrator', name: null },
+        { person: null, rolle: 'bearbeiter', name: null },
+        { person: 's1', rolle: null, name: 'Sabine Sommer' },
+      ],
+    };
+    expect(regelName(r)).toBe('Box meldet sich nicht');
+    expect(wartezeitText(r)).toBe('nach 15 Minuten');
+    expect(wartezeitText({ ...r, bedingung: { dauer_s: 3600 } })).toBe('nach 1 Stunde');
+    expect(wartezeitText({ ...r, bedingung: { dauer_s: 0 } })).toBe('meldet sofort');
+    expect(empfaengerText(r, 'Sabine Sommer')).toBe('an Kundenadministratoren, Bearbeiter am Standort und Sie');
+  });
+});

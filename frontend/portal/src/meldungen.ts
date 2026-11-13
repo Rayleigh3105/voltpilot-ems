@@ -11,7 +11,7 @@
  * Scheibe 2 (§6.3, §6.4, §6.8) fügt Wörter derselben, noch zurückgestellten Familie hinzu:
  * „Überwachen" (Titel des Blatts), „Rückkehrschwelle" und „Erholdauer" (die zwei genannten,
  * änderbaren Vorgaben der Bedingung, §9). Seit Konzept b1 (20.10.2026, E3) gibt es kein Menü-Verb
- * und keine Marke „überwacht“ mehr am Wert: angelegt wird nur unter Meldungen › Überwachungen.
+ * und keine Marke „überwacht“ mehr am Wert: angelegt wird nur unter Meldungen › Einstellen.
  * Dieselbe Begründung wie oben gilt unverändert: sie sind Teil der noch nicht fachmodell-reifen
  * Überwachungs-Mechanik, nicht eigenständige, von ihr unabhängige Begriffe.
  *
@@ -21,7 +21,7 @@
 import type { Anlagensteuerung } from './api';
 import { einheitGeraetId } from './geraetAdresse';
 import { meldungenApi } from './meldungenApi';
-import type { Meldung, Schwere } from './meldungenApi';
+import type { Meldung, Schwere, UeberwachungsRegel } from './meldungenApi';
 import { energiezielRoute, geraetSeiteHash, hashForRoute, kennzahlRoute, messstelleRoute } from './nav';
 import { katalogEintrag } from './werteKatalog';
 
@@ -162,11 +162,126 @@ export function anlageAusHash(hash: string): string | null {
  * Verzeichnis zeigt EINE Zeile, die direkt auf den Verlauf des Meldungs-Centers zeigt
  * (`#/meldungen?reiter=verlauf`) - derselbe Filter-Weg wie `anlageAusHash`, kein Routen-Feld.
  */
-export function reiterAusHash(hash: string): 'jetzt' | 'verlauf' | 'regeln' | null {
+export function reiterAusHash(hash: string): 'jetzt' | 'verlauf' | 'einstellen' | null {
   const frage = hash.indexOf('?');
   if (frage < 0) return null;
   const wert = new URLSearchParams(hash.slice(frage + 1)).get('reiter');
-  return wert === 'jetzt' || wert === 'verlauf' || wert === 'regeln' ? wert : null;
+  // Kunden-Alarmierung P3: „Überwachungen“ (`regeln`) ging in „Einstellen“ auf - alte Links landen dort.
+  if (wert === 'regeln' || wert === 'einstellen') return 'einstellen';
+  return wert === 'jetzt' || wert === 'verlauf' ? wert : null;
+}
+
+/** Der Weg zu „Meldungen › Einstellen“ (Kunden-Alarmierung P3, KA-6 A: hinter der Glocke liegt alles). */
+export const MELDUNGEN_EINSTELLEN_HASH = '#/meldungen?reiter=einstellen';
+
+/**
+ * „Leise“ (Kunden-Alarmierung P3, KA-4 B): ein Hinweis steht unter „Leise“, nicht als Karte, und zählt nicht in der
+ * Glocke - die Zahl an der Glocke heißt dann immer: Da ist etwas.
+ */
+export function istLeise(m: Meldung): boolean {
+  return m.schwere === 'hinweis';
+}
+
+/** Dauer zwischen zwei Zeitpunkten in Kundenwörtern: „42 Min.“, „3 Std. 5 Min.“, „2 Tage 4 Std.“. */
+export function dauerText(vonIso: string, bisIso: string): string {
+  const minuten = Math.max(0, Math.round((Date.parse(bisIso) - Date.parse(vonIso)) / 60000));
+  if (minuten < 1) return 'unter 1 Min.';
+  if (minuten < 60) return `${minuten} Min.`;
+  const stunden = Math.floor(minuten / 60);
+  if (stunden < 24) {
+    const rest = minuten % 60;
+    return rest ? `${stunden} Std. ${rest} Min.` : `${stunden} Std.`;
+  }
+  const tage = Math.floor(stunden / 24);
+  const restStd = stunden % 24;
+  return `${tage} ${tage === 1 ? 'Tag' : 'Tage'}${restStd ? ` ${restStd} Std.` : ''}`;
+}
+
+/**
+ * Die Meldungsarten in Kundenwörtern (Kunden-Alarmierung §6.3): eine Regel ab Werk heißt nach dem, was sie meldet,
+ * nicht nach ihrem Wert („Box meldet sich nicht“ statt „Box erreichbar“). Eine eigene Regel trägt ihren Namen
+ * oder den Satznamen ihres Werts.
+ */
+export const MELDUNGSART_WORT: Record<string, string> = {
+  'box.erreichbar': 'Box meldet sich nicht',
+  'datenquelle.liefert_daten': 'Gerät liefert keine Daten',
+  'ladepunkt.wallbox_meldet_sich_nicht': 'Wallbox meldet sich nicht',
+  'ladepunkt.ziel_wird_knapp': 'Ladeziel wird knapp',
+  'ladepunkt.ladung_fertig': 'Auto fertig geladen',
+  'anlage.preis.jetzt': 'Strom gerade günstig',
+  'anlage.netz.lastspitze_laufend': 'Lastspitze droht',
+};
+
+/** Reihenfolge der Meldungsarten in „Das melden wir“ (§6.3); eigene Überwachungen stehen dahinter. */
+const MELDUNGSART_RANG = Object.keys(MELDUNGSART_WORT);
+
+/** Der Name einer Regel in „Das melden wir“. */
+export function regelName(r: UeberwachungsRegel): string {
+  if (r.herkunft === 'ab_werk' && MELDUNGSART_WORT[r.wertart]) return MELDUNGSART_WORT[r.wertart];
+  return r.name ?? MELDUNGSART_WORT[r.wertart] ?? wertartSatzname(r.wertart);
+}
+
+/** Die Anlage einer Regel aus ihrem rohen Bezug (`{"anlage":"<id>"}`); `null` bei einer Auswahl oder ohne Anlage. */
+export function regelAnlage(r: UeberwachungsRegel): string | null {
+  if (!r.bezugJson) return null;
+  try {
+    const b = JSON.parse(r.bezugJson) as { anlage?: string };
+    return typeof b.anlage === 'string' ? b.anlage : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ab Werk zuerst in der Reihenfolge der Meldungsarten, dann eigene nach Namen. */
+export function sortiereRegeln(regeln: readonly UeberwachungsRegel[]): UeberwachungsRegel[] {
+  const rang = (r: UeberwachungsRegel) => {
+    const i = MELDUNGSART_RANG.indexOf(r.wertart);
+    return r.herkunft === 'ab_werk' ? (i < 0 ? MELDUNGSART_RANG.length : i) : MELDUNGSART_RANG.length + 1;
+  };
+  return [...regeln].sort((a, b) => rang(a) - rang(b) || regelName(a).localeCompare(regelName(b), 'de'));
+}
+
+/** Minuten in Kundenwörtern: „sofort“, „15 Minuten“, „1 Stunde“, „2 Stunden“. */
+export function minutenText(minuten: number): string {
+  if (minuten <= 0) return 'sofort';
+  if (minuten % 60 === 0) {
+    const h = minuten / 60;
+    return h === 1 ? '1 Stunde' : `${h} Stunden`;
+  }
+  return minuten === 1 ? '1 Minute' : `${minuten} Minuten`;
+}
+
+/** „Meldet nach“ einer Regel (§6.3): die Wartezeit ihrer Bedingung (`dauer_s`), sonst `null`. */
+export function wartezeitText(r: UeberwachungsRegel): string | null {
+  const dauer = r.bedingung && typeof r.bedingung.dauer_s === 'number' ? r.bedingung.dauer_s : null;
+  if (dauer == null) return null;
+  const minuten = Math.round(dauer / 60);
+  return minuten <= 0 ? 'meldet sofort' : `nach ${minutenText(minuten)}`;
+}
+
+/** Rollen als Empfänger in der Mehrzahl (KA-5: „an Administratoren, Energiemanager und Zuständige am Standort“). */
+const ROLLE_MEHRZAHL: Record<string, string> = {
+  kundenadministrator: 'Kundenadministratoren',
+  energiemanager: 'Energiemanager',
+  bearbeiter: 'Bearbeiter am Standort',
+  bedienberechtigt: 'Bedienberechtigte am Standort',
+  leser: 'Leser am Standort',
+  einsicht: 'Einsicht',
+};
+
+/** Die Empfänger einer Regel in einem Satz; die eigene Person (am Anzeigenamen erkannt) heißt „Sie“. */
+export function empfaengerText(r: UeberwachungsRegel, ichName: string | null): string | null {
+  const liste = r.empfaenger ?? [];
+  if (liste.length === 0) return null;
+  const namen = liste.map((e) =>
+    e.person
+      ? e.name != null && e.name === ichName
+        ? 'Sie'
+        : (e.name ?? 'eine Person')
+      : (ROLLE_MEHRZAHL[e.rolle ?? ''] ?? e.rolle ?? ''),
+  );
+  if (namen.length === 1) return namen[0] === 'Sie' ? 'an Sie' : `an ${namen[0]}`;
+  return `an ${namen.slice(0, -1).join(', ')} und ${namen[namen.length - 1]}`;
 }
 
 /**

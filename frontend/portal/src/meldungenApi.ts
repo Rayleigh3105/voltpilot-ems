@@ -40,6 +40,8 @@ export interface Meldung {
    * `meldungsText.ts`. `null` nur bei einer Antwort ohne das Feld (ältere API).
    */
   text?: MeldungsTextEingabe | null;
+  /** Die Regel der Meldung (Kunden-Alarmierung P3) - „Stumm“ an der Karte schaltet sie stumm. */
+  ueberwachungId?: string | null;
 }
 
 /**

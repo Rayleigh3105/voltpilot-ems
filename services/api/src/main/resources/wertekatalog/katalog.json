@@ -67,7 +67,7 @@
         "Ihre Überwachung „{name}“ meldet bei {wertname}{bedingung}{wartezeit}.",
         "Sie haben eingestellt: melden bei {wertname}{bedingung}{wartezeit}."
       ],
-      "was_tun": "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, legen Sie die Überwachung unter Meldungen › Überwachungen neu an.",
+      "was_tun": "Sehen Sie sich den Wert an. Passt die Grenze nicht mehr, ändern Sie die Überwachung unter Meldungen › Einstellen.",
       "push": [
         "Aktuell {wert}.",
         "Seit {beginn}: {zustandswort}.",

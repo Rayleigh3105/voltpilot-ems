@@ -15,7 +15,7 @@ for (const width of [390, 1440]) {
     await expect(blatt).toBeVisible();
     await expect(blatt.locator('.vp-ueberwachen-satz')).toContainText('mehr erzeugt, als die wirksame Grenze erlaubt');
     await expect(blatt.getByText('Meldet ab dem Start, ohne Probelauf.')).toBeVisible();
-    await expect(blatt.getByLabel('Länger als (Minuten)')).toHaveValue('5');
+    await expect(blatt.getByRole('combobox', { name: 'Länger als' })).toContainText('5 Min.');
 
     const kw = blatt.getByLabel('Toleranz mindestens (kW)');
     await expect(kw).toHaveValue('5');

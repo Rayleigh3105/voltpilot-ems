@@ -1,5 +1,5 @@
 /**
- * „+ Überwachung“ unter Meldungen › Überwachungen (Konzept b1, 20.10.2026, Entscheid E3): der EINE
+ * „+ Überwachung“ unter Meldungen › Einstellen (Konzept b1, 20.10.2026, Entscheid E3): der EINE
  * Ort, an dem eine Überwachung entsteht. Erst der Ort (Anlage, Messstelle, Kennzahl, Energieziel),
  * dann der Wert, dann das vorhandene Blatt „Überwachen“ (`UeberwachenBlatt`). Dieses Modul ist rein:
  * es baut die Auswahl-Zeilen, die Fläche rendert sie (`NeueUeberwachung.tsx`).
