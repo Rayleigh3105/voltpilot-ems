@@ -424,6 +424,38 @@ class SteuerungTageszahlTest {
     }
 
     /** Der längere Walk des Tagesbilds (7 Tage Vorlauf) ändert die Einordnung nicht. */
+    /**
+     * {@code /earnings?range=day} für heute rechnet Tagesbilder und 14-Tage-Reihe seit
+     * vp-perf-kundenpfade-api aus EINEM Walk ({@code tagesbilderUndReihe}). Je Anlage dieselben
+     * Tagesbilder und dieselbe Reihe wie die zwei Einzelaufrufe - über alle Welten dieser Klasse, am
+     * Monatsersten, am 2., am 14./15. (die Reihe beginnt vor bzw. nach dem Monatsersten), mitten im
+     * Monat und am Monatsende, laufend und abgeschlossen.
+     */
+    @Test
+    void einWalkFuerTagesbildUndReiheSagtDasselbe() {
+        int mitInhalt = 0;
+        for (String d : List.of("2026-04-29", "2026-04-30", "2026-05-01", "2026-05-02", "2026-05-14",
+                "2026-05-15", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-23", "2026-09-24",
+                "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-08",
+                "2026-10-31", "2026-11-01")) {
+            LocalDate tag = LocalDate.parse(d);
+            Instant reiheVon = from(tag.minusDays(13));
+            for (boolean laeuft : List.of(true, false)) {
+                EarningsRepository.TagUndReihe beides =
+                        earnings.tagesbilderUndReihe(from(tag), to(tag), laeuft, reiheVon);
+                assertThat(beides.tagesbilder()).as("Tagesbilder %s laeuft=%s", d, laeuft)
+                        .isEqualTo(earnings.tagesbilder(from(tag), to(tag), laeuft));
+                assertThat(beides.reihe()).as("Reihe %s laeuft=%s", d, laeuft)
+                        .isEqualTo(earnings.dailySavedPerSite(reiheVon, to(tag)));
+                if (!beides.tagesbilder().isEmpty() && !beides.reihe().isEmpty()) {
+                    mitInhalt++;
+                }
+            }
+        }
+        // Die Gleichheit soll nicht an leeren Maps hängen.
+        assertThat(mitInhalt).isGreaterThanOrEqualTo(10);
+    }
+
     @Test
     void tagesbildUndEinordnungSagenDasselbe() {
         for (String d : List.of("2026-09-23", "2026-09-24")) {

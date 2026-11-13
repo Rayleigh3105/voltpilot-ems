@@ -139,9 +139,17 @@ public class EarningsController {
         // Zeitraum aus dem Walk, den savedSpeicher ohnehin rechnet - kein
         // zusätzlicher Walk auf dieser teuren, oft abgefragten Route.
         boolean tag = !all && parsed == HistoryRange.DAY;
-        Map<UUID, EarningsRepository.Tagesbild> tagesbilder = tag
-                ? earnings.tagesbilder(from, to, to.isAfter(Instant.now()))
-                : Map.of();
+        // Die 14-Tage-Reihe endet heute. Endet der gewählte Tag auch heute (das Cockpit fragt ohne `at`),
+        // kommen Tagesbild und Reihe aus EINEM Walk statt aus zweien (vp-perf-kundenpfade-api) - dieselben
+        // Zahlen, je Anlage bewiesen in SteuerungTageszahlTest#einWalkFuerTagesbildUndReiheSagtDasselbe.
+        Instant reiheVon = HistoryRange.DAY.window(today.minusDays(DAILY_SAVED_DAYS - 1)).from();
+        Instant reiheBis = HistoryRange.DAY.window(today).to();
+        EarningsRepository.TagUndReihe tagUndReihe = tag && to.equals(reiheBis)
+                ? earnings.tagesbilderUndReihe(from, to, to.isAfter(Instant.now()), reiheVon)
+                : null;
+        Map<UUID, EarningsRepository.Tagesbild> tagesbilder = tagUndReihe != null
+                ? tagUndReihe.tagesbilder()
+                : tag ? earnings.tagesbilder(from, to, to.isAfter(Instant.now())) : Map.of();
         Map<UUID, EarningsRepository.Tageseinordnung> einordnungen = new HashMap<>();
         tagesbilder.forEach((id, b) -> {
             if (b.einordnung() != null) {
@@ -184,9 +192,9 @@ public class EarningsController {
         // wall clock, keyed on the ACTIVE PV model.
         Map<UUID, EarningsRepository.ExpectedMarketValue> expected =
                 earnings.expectedMarketValue(activePvModel, Instant.now());
-        Map<UUID, List<EarningsRepository.DailySaved>> daily = earnings.dailySavedPerSite(
-                HistoryRange.DAY.window(today.minusDays(DAILY_SAVED_DAYS - 1)).from(),
-                HistoryRange.DAY.window(today).to());
+        Map<UUID, List<EarningsRepository.DailySaved>> daily = tagUndReihe != null
+                ? tagUndReihe.reihe()
+                : earnings.dailySavedPerSite(reiheVon, reiheBis);
         // The peak-shaving proof (PS-4) is range-independent like the forward
         // market value: always the RUNNING billing period, anchored on today.
         Map<UUID, List<PeakShavingRepository.PeriodPeak>> peakPeriods =

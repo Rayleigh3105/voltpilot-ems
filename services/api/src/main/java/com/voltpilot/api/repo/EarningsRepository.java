@@ -1529,8 +1529,14 @@ public class EarningsRepository {
      */
     public Map<UUID, List<DailySaved>> dailySavedPerSite(Instant from, Instant to) {
         SpeicherWalk walk = savedSpeicherPerDay(from, to);
+        return reiheMitBestand(dailySaved(from, to, null, walk.perDay()), walk);
+    }
+
+    /** Die Tage einer {@link #dailySaved}-Reihe, je Tag mit dem Wert „mit Bestand“ aus {@code walk}. */
+    private static Map<UUID, List<DailySaved>> reiheMitBestand(Map<UUID, List<DailySaved>> reihen,
+            SpeicherWalk walk) {
         Map<UUID, List<DailySaved>> result = new HashMap<>();
-        dailySaved(from, to, null, walk.perDay()).forEach((siteId, reihe) -> {
+        reihen.forEach((siteId, reihe) -> {
             Map<LocalDate, SteuerungMitBestand.Bewertet> bewertet =
                     mitBestand(reihe, walk.tage().getOrDefault(siteId, Map.of()));
             result.put(siteId, reihe.stream().map(d -> {
@@ -1539,6 +1545,22 @@ public class EarningsRepository {
                         : new DailySaved(d.day(), d.savedEur(), d.savedSteuerungEur(),
                                 b.mitBestandEur());
             }).toList());
+        });
+        return result;
+    }
+
+    /**
+     * Die Tage einer Reihe ab {@code von} (Berliner Tag); eine Anlage ohne Tag darin fällt weg - wie
+     * bei einer {@link #dailySaved}-Abfrage, die erst bei {@code von} beginnt.
+     */
+    private static Map<UUID, List<DailySaved>> abTag(Map<UUID, List<DailySaved>> reihen, Instant von) {
+        LocalDate erster = von.atZone(ZONE).toLocalDate();
+        Map<UUID, List<DailySaved>> result = new HashMap<>();
+        reihen.forEach((siteId, reihe) -> {
+            List<DailySaved> ab = reihe.stream().filter(d -> !d.day().isBefore(erster)).toList();
+            if (!ab.isEmpty()) {
+                result.put(siteId, ab);
+            }
         });
         return result;
     }
@@ -1693,7 +1715,7 @@ public class EarningsRepository {
         Instant from = tag.atStartOfDay(ZONE).toInstant();
         Instant to = tag.plusDays(1).atStartOfDay(ZONE).toInstant();
         Map<UUID, SteuerungVorsprung.Stand> result = new HashMap<>();
-        tagesbilder(from, to, null, true, false).forEach((siteId, b) -> {
+        tagesbilder(from, to, null, true, false, null).tagesbilder().forEach((siteId, b) -> {
             SteuerungVorsprung.Stand stand =
                     SteuerungVorsprung.stand(b.zeitraum(), tag, b.vergleichKapazitaetKwh());
             if (stand != null) {
@@ -1710,7 +1732,7 @@ public class EarningsRepository {
      */
     public Map<UUID, Tageseinordnung> tageseinordnung(Instant from, Instant to) {
         Map<UUID, Tageseinordnung> result = new HashMap<>();
-        tagesbilder(from, to, null, false, false).forEach((id, b) -> {
+        tagesbilder(from, to, null, false, false, null).tagesbilder().forEach((id, b) -> {
             if (b.einordnung() != null) {
                 result.put(id, b.einordnung());
             }
@@ -1720,7 +1742,7 @@ public class EarningsRepository {
 
     /** Die {@link Tageseinordnung} EINER Anlage, oder null. */
     public Tageseinordnung tageseinordnungForSite(UUID site, Instant from, Instant to) {
-        Tagesbild b = tagesbilder(from, to, site, false, false).get(site);
+        Tagesbild b = tagesbilder(from, to, site, false, false, null).tagesbilder().get(site);
         return b == null ? null : b.einordnung();
     }
 
@@ -1731,7 +1753,26 @@ public class EarningsRepository {
      * Der Zeitraum trägt deshalb Monat und Tag, aber keine 7 Tage.
      */
     public Map<UUID, Tagesbild> tagesbilder(Instant from, Instant to, boolean laeuft) {
-        return tagesbilder(from, to, null, false, laeuft);
+        return tagesbilder(from, to, null, false, laeuft, null).tagesbilder();
+    }
+
+    /** {@link #tagesbilder(Instant, Instant, boolean)} und {@link #dailySavedPerSite} aus einem Walk. */
+    public record TagUndReihe(Map<UUID, Tagesbild> tagesbilder, Map<UUID, List<DailySaved>> reihe) {
+    }
+
+    /**
+     * Die Tagesbilder des Berliner Tages {@code [from, to)} UND die Tagesreihe {@code [reiheVon, to)} aus
+     * EINEM Walk und EINER Tagesabfrage (vp-perf-kundenpfade-api). {@code /earnings?range=day} fragte
+     * beides getrennt ab - zwei Walks samt Monatsanker, Betriebsbereich, Ladestandsmessung und
+     * Tagesabfrage, obwohl beide Fenster am selben {@code to} enden; das Cockpit fragt die Route im
+     * Sekundentakt der Kachel ab. Beide Ergebnisse sind je Anlage gleich den Einzelaufrufen
+     * {@code tagesbilder(from, to, laeuft)} und {@code dailySavedPerSite(reiheVon, to)}: der Walk
+     * verankert an jedem Berliner Monatsersten neu, also ist jeder Tag darin dieselbe Zahl wie in jedem
+     * anderen Fenster (Definition A, {@code SteuerungTageszahlTest}); jeder Teil liest nur seine Tage.
+     * Bewiesen in {@code SteuerungTageszahlTest#einWalkFuerTagesbildUndReiheSagtDasselbe}.
+     */
+    public TagUndReihe tagesbilderUndReihe(Instant from, Instant to, boolean laeuft, Instant reiheVon) {
+        return tagesbilder(from, to, null, false, laeuft, reiheVon);
     }
 
     /**
@@ -1743,11 +1784,15 @@ public class EarningsRepository {
      *     davor, sonst die 7 bis einschließlich dieses Tages
      */
     public Tagesbild tagesbildForSite(UUID site, Instant from, Instant to, boolean laeuft) {
-        return tagesbilder(from, to, site, true, laeuft).get(site);
+        return tagesbilder(from, to, site, true, laeuft, null).tagesbilder().get(site);
     }
 
-    private Map<UUID, Tagesbild> tagesbilder(Instant from, Instant to, UUID site,
-            boolean mitSieben, boolean laeuft) {
+    /**
+     * @param reiheVon {@code null}: nur die Tagesbilder; sonst zusätzlich die Tagesreihe
+     *     {@code [reiheVon, to)} aus demselben Walk (dann beginnt der Walk beim früheren der beiden)
+     */
+    private TagUndReihe tagesbilder(Instant from, Instant to, UUID site,
+            boolean mitSieben, boolean laeuft, Instant reiheVon) {
         LocalDate tag = from.atZone(ZONE).toLocalDate();
         LocalDate vortag = tag.minusDays(1);
         LocalDate monatsbeginn = tag.withDayOfMonth(1);
@@ -1764,9 +1809,12 @@ public class EarningsRepository {
             }
         }
         Instant scanFrom = erster.atStartOfDay(ZONE).toInstant();
-        SpeicherWalk walk = speicherWalk(scanFrom, to, site, true);
+        // Mit Reihe beginnt der EINE Walk beim früheren Fensteranfang; jeder Teil filtert seine Tage.
+        Instant walkVon = reiheVon != null && reiheVon.isBefore(scanFrom) ? reiheVon : scanFrom;
+        SpeicherWalk walk = speicherWalk(walkVon, to, site, true);
         Map<UUID, BigDecimal> geplant = steuerungGeplant(walk, from, to, site);
-        Map<UUID, List<DailySaved>> tage = dailySaved(scanFrom, to, site, walk.perDay());
+        Map<UUID, List<DailySaved>> alleTage = dailySaved(walkVon, to, site, walk.perDay());
+        Map<UUID, List<DailySaved>> tage = walkVon.equals(scanFrom) ? alleTage : abTag(alleTage, scanFrom);
         Map<UUID, BigDecimal> echtStartPct = startSocPct(from, site);
         Map<UUID, Tagesbild> result = new HashMap<>();
         tage.forEach((siteId, reihe) -> {
@@ -1819,7 +1867,8 @@ public class EarningsRepository {
                 result.put(siteId, new Tagesbild(einordnung, zeitraum, kapazitaet));
             }
         });
-        return result;
+        return new TagUndReihe(result,
+                reiheVon == null ? null : reiheMitBestand(abTag(alleTage, reiheVon), walk));
     }
 
     /**
