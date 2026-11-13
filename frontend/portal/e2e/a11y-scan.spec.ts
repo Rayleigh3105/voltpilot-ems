@@ -41,7 +41,6 @@ const SEITEN: { name: string; seite?: string; query?: string; hash?: string; uhr
   { name: 'Steuerung', seite: 'steuerung', hash: plant('steuerung'), uhr: STEUERUNG_UHR },
   { name: 'Laden', seite: 'steuerung', hash: plant('laden'), uhr: STEUERUNG_UHR },
   { name: 'Persönliche Einstellungen', seite: 'einstellungen' },
-  { name: 'Admin · Flotte', seite: 'admin-flotte' },
   { name: 'Admin · Plattform-Übersicht', seite: 'plattform-uebersicht' },
   { name: 'Admin · Benutzer', seite: 'benutzer' },
   { name: 'Admin · Mandantenakte', seite: 'mandanten-akte' },
