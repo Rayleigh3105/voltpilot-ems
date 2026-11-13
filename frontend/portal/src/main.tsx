@@ -19,13 +19,16 @@ import { BOOT_TIMEOUT_MS, BootTimeoutError, bootOutcome, withTimeout } from './b
 import { BootErrorBoundary, BootSplash } from './components/Boot';
 import { initInstallApp } from './installApp';
 import { koppelEmpfang, koppelLinkAnnehmen } from './koppelLink';
-import { isRegisterRoute, zustellwegBestaetigenToken } from './nav';
+import { isRegisterRoute, zustellwegAbmeldenToken, zustellwegBestaetigenToken } from './nav';
 import { registerServiceWorker } from './serviceWorker';
 
 // Die Bestätigungsseite braucht nur, wer den Link aus der Mail öffnet - ein Lazy-Stück, nicht Teil des
 // ersten Bilds (Bündel-Wächter `test/bundle-smoke.sh`). Bis es da ist, steht der Ladeschirm.
 const ZustellwegBestaetigenScreen = lazy(() =>
   import('./components/ZustellwegBestaetigenScreen').then((m) => ({ default: m.ZustellwegBestaetigenScreen })),
+);
+const ZustellwegAbmeldenScreen = lazy(() =>
+  import('./components/ZustellwegAbmeldenScreen').then((m) => ({ default: m.ZustellwegAbmeldenScreen })),
 );
 
 // App-Hülle. Beides läuft VOR dem Auth-Bootstrap, weil beides von ihm
@@ -94,8 +97,10 @@ const zustellwegToken = zustellwegBestaetigenToken();
 // nur den Hash - kein neuer Boot. Die App las ihn als unbekannte Route, zeigte die Startseite, und die Adresse blieb
 // unbestätigt. Darum neu laden: der Boot oben zeigt dann die Bestätigungsseite, die Anmeldung des Tabs bleibt
 // (`sessionStorage`). Vor der App angemeldet, also vor ihren `hashchange`-Hörern - die sehen den Link nie.
+// Kunden-Alarmierung P2 (KA-1 A): „Abmelden" unter jeder Mail - derselbe Weg ohne Anmeldung.
+const abmeldenToken = zustellwegAbmeldenToken();
 window.addEventListener('hashchange', (e) => {
-  if (!zustellwegBestaetigenToken()) return;
+  if (!zustellwegBestaetigenToken() && !zustellwegAbmeldenToken()) return;
   e.stopImmediatePropagation();
   window.location.reload();
 });
@@ -103,6 +108,12 @@ if (zustellwegToken) {
   render(
     <Suspense fallback={<BootSplash />}>
       <ZustellwegBestaetigenScreen token={zustellwegToken} />
+    </Suspense>,
+  );
+} else if (abmeldenToken) {
+  render(
+    <Suspense fallback={<BootSplash />}>
+      <ZustellwegAbmeldenScreen token={abmeldenToken} />
     </Suspense>,
   );
 } else {

@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * "Ruhezeit" in der Einstellungsfläche "So erreichen wir Sie" (Alerting Scheibe 3, Konzept §6.4,
- * §6.8 Entwurf 4): wiederkehrend je Person, Vorgabe "werktags 22 bis 7 Uhr, am Wochenende ganz",
+ * §6.8 Entwurf 4): wiederkehrend je Person, Vorgabe je Kundenart (KA-2 A, {@code RuhezeitService#vorgabe}),
  * Schalter "Dringendes trotzdem melden" (Entscheid 8A, Vorgabe AN). Jede Person verwaltet NUR ihre
  * eigene Ruhezeit - kein Recht über die Matrix nötig, wie {@link ZustellwegController}.
  */
@@ -23,13 +23,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/ruhezeit")
 public class RuhezeitController {
 
-    public record Zustand(String regeln, String zeitzone, boolean dringendDurch) {
+    /**
+     * {@code vorgabe} (Kunden-Alarmierung P2, KA-2 A): {@code true}, solange die Person nichts selbst eingestellt
+     * hat - dann zeigt {@code regeln} die Vorgabe ihrer Kundenart, die auch beim Versand gilt.
+     */
+    public record Zustand(String regeln, String zeitzone, boolean dringendDurch, boolean vorgabe) {
         static Zustand aus(RuhezeitRepository.RuhezeitPerson p) {
-            return new Zustand(p.regeln().toString(), p.zeitzone(), p.dringendDurch());
+            return new Zustand(p.regeln().toString(), p.zeitzone(), p.dringendDurch(), false);
         }
 
-        static Zustand vorgabe() {
-            return new Zustand(RuhezeitService.VORGABE_REGELN_JSON, "Europe/Berlin", true);
+        static Zustand vorgabe(RuhezeitRepository.RuhezeitPerson p) {
+            return new Zustand(p.regeln().toString(), p.zeitzone(), p.dringendDurch(), true);
         }
     }
 
@@ -46,7 +50,7 @@ public class RuhezeitController {
     @GetMapping
     public Zustand eigene(Authentication auth) {
         String sub = sub(auth);
-        return ruhezeit.eigene(sub).map(Zustand::aus).orElseGet(Zustand::vorgabe);
+        return ruhezeit.eigene(sub).map(Zustand::aus).orElseGet(() -> Zustand.vorgabe(ruhezeit.vorgabeHier()));
     }
 
     @PutMapping

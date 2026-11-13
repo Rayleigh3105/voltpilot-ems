@@ -84,8 +84,16 @@ public class UeberwachungRepository {
     }
 
     /**
+     * Die Empfänger einer Regel ab Werk (Kunden-Alarmierung P2, KA-5 A): Kundenadministrator und Energiemanager im
+     * ganzen Unternehmen, dazu Bearbeiter und Bedienberechtigt - jeder nur für seine Standorte, das entscheidet die
+     * Sicht-Prüfung beim Senden. Leser nicht. Der Bestand bekam die zwei Rollen mit {@code V20261113160000}.
+     */
+    static final String EMPFAENGER_AB_WERK = "[{\"rolle\":\"kundenadministrator\"},{\"rolle\":\"energiemanager\"},"
+            + "{\"rolle\":\"bearbeiter\"},{\"rolle\":\"bedienberechtigt\"}]";
+
+    /**
      * Sät die Zeile ab Werk (Entscheid 2A), idempotent (Teil-Index {@code uq_ueberwachung_ab_werk}).
-     * Empfänger: Kundenadministrator und Energiemanager als Rollen, erst beim Versand aufgelöst
+     * Empfänger: {@link #EMPFAENGER_AB_WERK} als Rollen, erst beim Versand aufgelöst
      * (§6.4 "Mehrere Empfänger") - so bekommt eine neue Kollegin die Meldungen ohne Regeländerung.
      */
     public void seedAbWerk(UUID anlageId, UUID standortId, WerteKatalog.Eintrag eintrag) {
@@ -94,7 +102,7 @@ public class UeberwachungRepository {
                 {"art":"zustand","ziel":%s,"dauer_s":%d,"erholen_s":%d}
                 """.formatted(toJsonArray(v.ziel()), v.dauerS(), v.erholenS());
         String bezug = "{\"anlage\":\"" + anlageId + "\"}";
-        String empfaenger = "[{\"rolle\":\"kundenadministrator\"},{\"rolle\":\"energiemanager\"}]";
+        String empfaenger = EMPFAENGER_AB_WERK;
         jdbc.update("""
                 INSERT INTO ueberwachung (tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
                        empfaenger, herkunft, aktiv, angelegt_von)
@@ -190,7 +198,7 @@ public class UeberwachungRepository {
                 {"art":"ueber","schwelle":%s,"rueckkehr":%s,"dauer_s":60,"erholen_s":300}
                 """.formatted(schwelle, rueckkehr);
         String bezug = "{\"anlage\":\"" + anlageId + "\"}";
-        String empfaenger = "[{\"rolle\":\"kundenadministrator\"},{\"rolle\":\"energiemanager\"}]";
+        String empfaenger = EMPFAENGER_AB_WERK;
         jdbc.update("""
                 INSERT INTO ueberwachung (tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
                        empfaenger, herkunft, aktiv, angelegt_von)
@@ -206,7 +214,8 @@ public class UeberwachungRepository {
      * oder, seit Scheibe 6 ({@code V20261017050000}, Entscheid 10A), {@code 'steuerung'} ("In
      * Überwachung umwandeln" einer alten {@code vp.notify.push}-Regelkarte) - die Rechte-Prüfung
      * (ueberwachung.eigene/verwalten) UND die Zulässigkeit des Herkunfts-Worts stehen in
-     * {@link UeberwachungAnlegenService}, nicht hier.
+     * {@link UeberwachungAnlegenService}, nicht hier. Ein {@code probelaufBis} ist seit Kunden-Alarmierung P2 (KA-3 A)
+     * immer gewählt - die Zeile trägt das als {@code probelauf_gewaehlt}.
      */
     public UUID erstelleSelbstAngelegt(UUID standortId, String name, String wertart, String bezugJson,
             String bedingungJson, String schwere, String empfaengerJson, String herkunft, String angelegtVon,
@@ -214,11 +223,11 @@ public class UeberwachungRepository {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO ueberwachung (id, tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
-                       empfaenger, herkunft, aktiv, angelegt_von, probelauf_bis)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, true, ?, ?)
+                       empfaenger, herkunft, aktiv, angelegt_von, probelauf_bis, probelauf_gewaehlt)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, true, ?, ?, ?)
                 """,
                 id, TenantContext.get(), standortId, name, wertart, bezugJson, bedingungJson, schwere,
-                empfaengerJson, herkunft, angelegtVon, ts(probelaufBis));
+                empfaengerJson, herkunft, angelegtVon, ts(probelaufBis), probelaufBis != null);
         return id;
     }
 
@@ -567,9 +576,10 @@ public class UeberwachungRepository {
                 + "ORDER BY ausgeloest_am DESC LIMIT ?", UeberwachungRepository::alarmZeile, erledigt, limit);
     }
 
+    /** Die Zahl an der Glocke. Hinweise zählen nicht mit (Kunden-Alarmierung P2, KA-4 B): sie stehen unter „Leise“. */
     public long ungeseheneZahl() {
-        Long n = jdbc.queryForObject(
-                "SELECT count(*) FROM alarm WHERE zustand <> 'erledigt' AND gesehen_von IS NULL", Long.class);
+        Long n = jdbc.queryForObject("SELECT count(*) FROM alarm WHERE zustand <> 'erledigt' AND gesehen_von IS NULL "
+                + "AND schwere <> 'hinweis'", Long.class);
         return n == null ? 0 : n;
     }
 
@@ -586,9 +596,24 @@ public class UeberwachungRepository {
      * (Entscheid 3B - {@code zustand = 'aktiv'} schließt beides aus).
      */
     public List<AlarmZeile> dringendOhneGesehenFuerErinnerung() {
+        // Kunden-Alarmierung P2 (KA-3): nur Meldungen, die auch hinausgingen - eine Probelauf-Meldung oder eine,
+        // die unter der Meldung ihrer Box steht, wurde nie gesendet und wird darum auch nicht erinnert.
         return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE zustand = 'aktiv' "
-                + "AND schwere = 'dringend' AND gesehen_von IS NULL AND erinnerungen_gesendet < 3",
+                + "AND schwere = 'dringend' AND gesehen_von IS NULL AND erinnerungen_gesendet < 3 "
+                + "AND NOT probelauf AND unterdrueckt_durch IS NULL",
                 UeberwachungRepository::alarmZeile);
+    }
+
+    /**
+     * KA-4 B „höchstens einmal am Tag“: gab es zu dieser Regel und diesem Bezug seit {@code tagesBeginn} schon eine
+     * andere Meldung (außerhalb eines Probelaufs)? Dann ging die schon hinaus, diese bleibt still.
+     */
+    public boolean heuteSchonAusgeloest(UUID regelId, String bezugKennung, UUID ohneAlarm, Instant tagesBeginn) {
+        Boolean b = jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM alarm WHERE ueberwachung_id = ? AND bezug_kennung = ? AND id <> ?
+                                 AND ausgeloest_am >= ? AND NOT probelauf)
+                """, Boolean.class, regelId, bezugKennung, ohneAlarm, ts(tagesBeginn));
+        return Boolean.TRUE.equals(b);
     }
 
     public void erinnerungVermerken(UUID alarmId, Instant jetzt) {

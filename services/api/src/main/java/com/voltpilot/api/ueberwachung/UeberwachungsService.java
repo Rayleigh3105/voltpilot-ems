@@ -288,6 +288,9 @@ public class UeberwachungsService {
 
     private static final String WERTART_PREIS_JETZT = "anlage.preis.jetzt";
 
+    /** KA-4 B: „Strom gerade günstig“ geht höchstens einmal am Tag je Anlage als Push hinaus. */
+    private static final Set<String> HINWEIS_EINMAL_AM_TAG = Set.of(WERTART_PREIS_JETZT);
+
     /** 5 % über der Schwelle (Hausregel §9: Rückkehr mindestens die Auflösung, hier ein fester Aufschlag). */
     private static final double PREIS_RUECKKEHR_AUFSCHLAG = 1.05;
 
@@ -531,11 +534,23 @@ public class UeberwachungsService {
         }
         // Probelauf (§6.4, §6.8 Entwurf 1): ausgewertet und im Verlauf nachweisbar, aber OHNE
         // Versand - "was sie gemeldet hätte", nicht was sie wirklich gemeldet hat.
-        if (!probelauf && !"hinweis".equals(regel.schwere())) {
-            String kennzeichen = repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?");
-            versenden(regel, alarmId, "ausgeloest", nachricht, kennzeichen, auswahl, jetzt);
+        if (probelauf) {
+            repo.alarmVerlauf(alarmId, "versand", null, "Probelauf - kein Versand", null);
+            return alarmId;
         }
-        repo.alarmVerlauf(alarmId, "versand", null, probelauf ? "Probelauf - kein Versand" : "Versand eingereiht",
+        boolean hinweis = "hinweis".equals(regel.schwere());
+        // Kunden-Alarmierung P2 (KA-4 B): ein Hinweis ist leise - er zählt nicht in der Glocke und geht nur als Push
+        // an Geräte, an denen die Person „ab Hinweis“ eingeschaltet hat. „Strom gerade günstig“ höchstens einmal am
+        // Tag je Anlage: eine zweite Auslösung desselben Tages steht in der Liste, geht aber nicht hinaus.
+        if (hinweis && HINWEIS_EINMAL_AM_TAG.contains(regel.wertart())
+                && repo.heuteSchonAusgeloest(regel.id(), bezug.kennung(), alarmId,
+                        tagesBeginn(jetzt, repo.alarm(alarmId).map(AlarmZeile::standortId).orElse(null)))) {
+            repo.alarmVerlauf(alarmId, "versand", null, "heute schon gemeldet - kein Versand", null);
+            return alarmId;
+        }
+        String kennzeichen = repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?");
+        versenden(regel, alarmId, "ausgeloest", nachricht, kennzeichen, auswahl, jetzt);
+        repo.alarmVerlauf(alarmId, "versand", null, hinweis ? "Versand eingereiht (nur Push)" : "Versand eingereiht",
                 null);
         return alarmId;
     }
@@ -713,17 +728,24 @@ public class UeberwachungsService {
         Instant naechsterVersuch = auswahl ? buendelFensterEnde(jetzt) : jetzt;
         String betreff = nachricht.betreff();
         String inhalt = katalog.meldungsText().mailText(nachricht, kennzeichen, basisUrl);
-        for (String sub : empfaengerAufloesen(regel)) {
-            ausgang.email("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
-                    buendelSchluessel);
+        // KA-4 B: ein Hinweis geht nur als Push (der Zusteller nimmt nur Geräte „ab Hinweis“), nie per E-Mail,
+        // Team-Kanal, Telegram oder an Außenstehende.
+        boolean nurPush = "hinweis".equals(regel.schwere());
+        UUID standortId = repo.alarm(alarmId).map(AlarmZeile::standortId).orElse(null);
+        for (String sub : empfaengerAufloesen(regel, standortId)) {
             ausgang.webpush("alarm", alarmId, sub, anlass, 0, nachricht.pushTitel(), nachricht.pushText(),
                     naechsterVersuch, regel.schwere(), buendelSchluessel);
+            if (nurPush) {
+                continue;
+            }
+            ausgang.email("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
+                    buendelSchluessel);
             ausgang.webhook("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
                     buendelSchluessel);
             ausgang.telegram("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
                     buendelSchluessel);
         }
-        if (externeEmpfaenger != null) {
+        if (externeEmpfaenger != null && !nurPush) {
             // Entscheid 11B: Außenstehende bekommen nur den Namen, keine Schwelle und keinen Messwert.
             WerteKatalog.Eintrag eintrag = katalog.eintrag(regel.wertart());
             String name = regel.name() != null ? regel.name() : eintrag != null ? eintrag.name() : "Überwachung";
@@ -744,6 +766,16 @@ public class UeberwachungsService {
      * prüft trotzdem erst der Zusteller zur Sendezeit. Package-sichtbar: {@link ErinnerungsService} teilt
      * dieselbe Auflösung. */
     Set<String> empfaengerAufloesen(UeberwachungZeile regel) {
+        return empfaengerAufloesen(regel, null);
+    }
+
+    /**
+     * Wie {@link #empfaengerAufloesen(UeberwachungZeile)}, für die Meldung an EINEM Standort (Kunden-Alarmierung P2,
+     * KA-5 A): wer eine Rolle nur an anderen Standorten hält (Bearbeiter, Bedienberechtigt, Leser), wird gar nicht
+     * erst eingereiht - sonst stünde für jede solche Person eine Zeile „unterdrückt · keine_sicht“ im Protokoll.
+     * Das ist nur Ordnung: die Sicht-Prüfung des Zustellers beim Senden bleibt die Grenze.
+     */
+    Set<String> empfaengerAufloesen(UeberwachungZeile regel, UUID standortDerMeldung) {
         Set<String> empfaenger = new LinkedHashSet<>();
         for (JsonNode e : regel.empfaenger()) {
             if (e.has("person")) {
@@ -752,12 +784,24 @@ public class UeberwachungsService {
                 var rolle = Rolle.vonCode(e.get("rolle").asText());
                 if (rolle != null) {
                     for (var m : zugriffe.wirksamImKundenbereich(rolle, Instant.now())) {
+                        UUID standortDerRolle = m.zeile().standortId();
+                        if (standortDerRolle != null && standortDerMeldung != null
+                                && !standortDerRolle.equals(standortDerMeldung)) {
+                            continue;
+                        }
                         empfaenger.add(m.zeile().benutzerSub());
                     }
                 }
             }
         }
         return empfaenger;
+    }
+
+    /** Beginn des Kalendertags in der Zeitzone des Standorts (sonst Europe/Berlin) - für KA-4 B „einmal am Tag“. */
+    private Instant tagesBeginn(Instant jetzt, UUID standortId) {
+        String zone = repo.standortZeitzone(standortId);
+        java.time.ZoneId z = zone == null ? java.time.ZoneId.of("Europe/Berlin") : java.time.ZoneId.of(zone);
+        return jetzt.atZone(z).toLocalDate().atStartOfDay(z).toInstant();
     }
 
     /** "Gesehen" (Entscheid 3B, freiwillig - speist nur den Verlauf, hält nichts auf). */

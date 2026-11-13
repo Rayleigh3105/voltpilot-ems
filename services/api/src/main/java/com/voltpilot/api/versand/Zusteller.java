@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
@@ -67,6 +68,14 @@ public class Zusteller {
     @Autowired(required = false)
     void setRuhezeit(RuhezeitPruefung ruhezeit) {
         this.ruhezeit = ruhezeit == null ? RuhezeitPruefung.IMMER_SOFORT : ruhezeit;
+    }
+
+    /** Die Adresse des Portals für den Abmelde-Link (dieselbe wie der Bestätigungs-Link, {@code ZustellwegService}). */
+    private String basisUrl = "http://localhost:5173";
+
+    @Autowired(required = false)
+    void setBasisUrl(@Value("${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl) {
+        this.basisUrl = basisUrl;
     }
 
     public Zusteller(VersandRepository ausgang, ZustellwegRepository zustellwege, EmailVersandAdapter email,
@@ -210,8 +219,18 @@ public class Zusteller {
             ausgang.unterdrueckt(zeile.id(), "kein_weg");
             return false;
         }
+        String inhalt = zeile.inhalt();
+        if (zeile.ziel() == null) {
+            // Kunden-Alarmierung P2 (KA-1 A): die Anmelde-Adresse gilt nur für Meldungen ab dem Einschalten.
+            if ("alarm".equals(zeile.quelle())
+                    && zustellwege.meldungVorDemAnmeldeWeg(zeile.tenantId(), zeile.empfaengerSub(), zeile.quelleId())) {
+                ausgang.unterdrueckt(zeile.id(), "vor_dem_weg");
+                return false;
+            }
+            inhalt = mitAbmelden(inhalt, zustellwege.abmeldeToken(zeile.tenantId(), zeile.empfaengerSub()).orElse(null));
+        }
         try {
-            email.senden(ziel, zeile.betreff(), zeile.inhalt());
+            email.senden(ziel, zeile.betreff(), inhalt);
         } catch (MailException e) {
             log.warn("Versand: E-Mail an Meldung {} fehlgeschlagen (Versuch {}): {}", zeile.id(),
                     zeile.versuche() + 1, e.toString());
@@ -221,6 +240,24 @@ public class Zusteller {
         ausgang.gesendet(zeile.id(), jetzt);
         nachwirkung(zeile, jetzt);
         return true;
+    }
+
+    /** Der Wortlaut unter jeder Mail eines Weges (KA-1 A); der Link funktioniert ohne Anmeldung. */
+    static final String ABMELDEN = "Keine E-Mails mehr von VoltPilot zu Meldungen: ";
+
+    /**
+     * Hängt „Abmelden“ an (Kunden-Alarmierung P2, KA-1 A): jede Mail über einen Weg trägt den Link, der den Weg ohne
+     * Anmeldung abschaltet ({@code #/zustellweg/abmelden}, {@code POST /api/v1/zustellwege/abmelden}). Ohne Schlüssel
+     * (kein Weg mehr) bleibt der Text, wie er ist.
+     */
+    String mitAbmelden(String inhalt, String token) {
+        if (token == null || token.isBlank()) {
+            return inhalt;
+        }
+        String basis = basisUrl == null ? "" : basisUrl.replaceAll("/+$", "");
+        String text = inhalt == null ? "" : inhalt;
+        return text + (text.endsWith("\n") ? "" : "\n") + "\n" + ABMELDEN + basis + "/#/zustellweg/abmelden?token="
+                + token + "\n";
     }
 
     /**

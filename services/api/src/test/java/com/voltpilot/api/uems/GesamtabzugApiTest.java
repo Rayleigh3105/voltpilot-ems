@@ -219,11 +219,12 @@ public class GesamtabzugApiTest {
 
         // Seit Alerting Scheibe 3 ff. tragen genau DREI Tabellen echte Zugangsdaten - Bearer-Geheimnisse, die
         // {@link Gesamtabzug#ZUGANGSDATEN} greift: zustellweg.bestaetigung_token (der unauthentifizierte
-        // Bestätigungs-Endpunkt findet seine Zeile einzig über ihn, SecureRandom, 256 Bit), telegram_ziel.verbindungs_token
+        // Bestätigungs-Endpunkt findet seine Zeile einzig über ihn, SecureRandom, 256 Bit) und seit Kunden-Alarmierung P2
+        // zustellweg.abmelde_token („Abmelden“ unter jeder Mail, ohne Anmeldung), telegram_ziel.verbindungs_token
         // (der Start-Link des Telegram-Bots) und ueberwachung_externer_empfaenger.bestaetigung_token/abbestellen_token
         // (die Links in der Mail an einen externen Empfänger). Jede andere Tabelle bleibt ohne ausgelassene Spalte.
         Map<String, Set<String>> zugangsdaten = Map.of(
-                "bestand/zustellweg.csv", Set.of("bestaetigung_token"),
+                "bestand/zustellweg.csv", Set.of("bestaetigung_token", "abmelde_token"),
                 "bestand/telegram_ziel.csv", Set.of("verbindungs_token"),
                 "bestand/ueberwachung_externer_empfaenger.csv", Set.of("bestaetigung_token", "abbestellen_token"));
         manifest.path("dateien").forEach(d -> {

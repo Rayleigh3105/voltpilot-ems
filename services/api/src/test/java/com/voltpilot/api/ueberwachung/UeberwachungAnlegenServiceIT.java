@@ -151,6 +151,35 @@ class UeberwachungAnlegenServiceIT {
         }
     }
 
+    /**
+     * Kunden-Alarmierung P2, KA-3 A: eine eigene Überwachung meldet sofort. „Erst 30 Tage mitzählen“ ist eine Wahl
+     * ({@code probelauf = true}), und die Zeile hält fest, dass sie gewählt war.
+     */
+    @Test
+    void eineEigeneUeberwachungMeldetSofortUndDerProbelaufIstEineWahl() {
+        Welt w = welt("Probelauf-Wahl GmbH");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-wahl", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            JsonNode bedingung = json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"]}");
+            UeberwachungDto sofort = dienst().anlegen(new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null), bedingung, "warnung", null,
+                    "Sofort"), leser, Instant.now());
+            UeberwachungDto gewaehlt = dienst().anlegen(new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null), bedingung, "warnung", null,
+                    "Erst mitzählen", null, true), leser, Instant.now());
+
+            assertThat(sofort.probelaufBis()).as("ohne Wahl: kein Probelauf").isNull();
+            assertThat(gewaehlt.probelaufBis()).isAfter(Instant.now().plus(java.time.Duration.ofDays(29)));
+            assertThat(app.queryForMap("SELECT probelauf_bis, probelauf_gewaehlt FROM ueberwachung WHERE id = ?::uuid",
+                    sofort.id())).containsEntry("probelauf_bis", null).containsEntry("probelauf_gewaehlt", false);
+            assertThat(app.queryForObject("SELECT probelauf_gewaehlt FROM ueberwachung WHERE id = ?::uuid",
+                    Boolean.class, gewaehlt.id())).isTrue();
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
     @Test
     void inUeberwachungUmwandelnLegtEineRegelMitHerkunftSteuerungAn() {
         Welt w = welt("Umwandeln GmbH");

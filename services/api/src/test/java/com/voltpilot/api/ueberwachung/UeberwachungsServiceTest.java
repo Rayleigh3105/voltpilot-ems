@@ -3,6 +3,7 @@ package com.voltpilot.api.ueberwachung;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -137,19 +138,75 @@ class UeberwachungsServiceTest {
         verify(repo).instanzSpeichern(eq(REGEL), eq(BEZUG), eq("aktiv"), eq(jetzt), any(), any(), eq(alarmId), any());
     }
 
+    /**
+     * Kunden-Alarmierung P2 (KA-4 B): ein Hinweis ist leise. Er geht nur als Push hinaus - der Zusteller nimmt dafür
+     * nur Geräte, an denen „ab Hinweis“ eingeschaltet ist -, nie per E-Mail, Team-Kanal oder Telegram.
+     */
     @Test
-    void einHinweisAlarmVersendetKeineEmail() {
+    void einHinweisGehtNurAlsPushHinausNieAlsEmail() {
         nichtsGesaet();
         when(repo.aktive()).thenReturn(List.of(regel("hinweis")));
         Instant jetzt = Instant.now();
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", jetzt.minusSeconds(901), null,
                 null, null, null));
         lese(WerteLeser.Lesung.zustand("nicht_erreichbar", jetzt));
-        when(repo.alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(UUID.randomUUID());
+        UUID alarmId = UUID.randomUUID();
+        when(repo.alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(alarmId);
 
         dienst.lauf(jetzt);
 
+        verify(ausgang).webpush(eq("alarm"), eq(alarmId), eq("sub-jonas"), eq("ausgeloest"), eq(0), anyString(),
+                anyString(), any(), eq("hinweis"), any());
+        verify(ausgang, never()).email(any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any());
+        verify(ausgang, never()).webhook(any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any());
+        verify(ausgang, never()).telegram(any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any());
+    }
+
+    private UeberwachungZeile preisHinweis() {
+        return new UeberwachungZeile(REGEL, null, 1, "Börsenpreis", "anlage.preis.jetzt",
+                json("{\"anlage\":\"" + ANLAGE + "\"}"),
+                json("{\"art\":\"unter\",\"schwelle\":8.0,\"rueckkehr\":8.4,\"dauer_s\":300,\"erholen_s\":300}"),
+                "hinweis", json("[{\"person\":\"sub-jonas\"}]"), "ab_werk", "system", null, null);
+    }
+
+    /** KA-4 B: „Strom gerade günstig“ höchstens einmal am Tag je Anlage - die zweite Meldung des Tages bleibt still. */
+    @Test
+    void stromGuenstigGehtHoechstensEinmalAmTagHinaus() {
+        nichtsGesaet();
+        when(repo.aktive()).thenReturn(List.of(preisHinweis()));
+        Instant jetzt = Instant.now();
+        when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", jetzt.minusSeconds(301), null,
+                null, null, null));
+        when(anlagenflussLeser.lese(any(), any(), any())).thenReturn(WerteLeser.Lesung.zahl(6.6, "ct/kWh", jetzt));
+        UUID alarmId = UUID.randomUUID();
+        when(repo.alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(alarmId);
+        when(zugriffe.wirksamImKundenbereich(any(), any())).thenReturn(List.of());
+        when(repo.heuteSchonAusgeloest(eq(REGEL), eq(BEZUG), eq(alarmId), any())).thenReturn(true);
+
+        dienst.lauf(jetzt);
+
+        verify(repo).alarmErzeugen(any(), eq(BEZUG), any(), any(), any(), anyBoolean(), any());
         verifyNoInteractions(ausgang);
+        verify(repo).alarmVerlauf(alarmId, "versand", null, "heute schon gemeldet - kein Versand", null);
+    }
+
+    @Test
+    void stromGuenstigGehtAlsErsteMeldungDesTagesAlsPushHinaus() {
+        nichtsGesaet();
+        when(repo.aktive()).thenReturn(List.of(preisHinweis()));
+        Instant jetzt = Instant.now();
+        when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", jetzt.minusSeconds(301), null,
+                null, null, null));
+        when(anlagenflussLeser.lese(any(), any(), any())).thenReturn(WerteLeser.Lesung.zahl(6.6, "ct/kWh", jetzt));
+        UUID alarmId = UUID.randomUUID();
+        when(repo.alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean(), any())).thenReturn(alarmId);
+        when(repo.heuteSchonAusgeloest(eq(REGEL), eq(BEZUG), eq(alarmId), any())).thenReturn(false);
+
+        dienst.lauf(jetzt);
+
+        verify(ausgang).webpush(eq("alarm"), eq(alarmId), eq("sub-jonas"), eq("ausgeloest"), eq(0), anyString(),
+                anyString(), any(), eq("hinweis"), any());
+        verify(ausgang, never()).email(any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any());
     }
 
     @Test

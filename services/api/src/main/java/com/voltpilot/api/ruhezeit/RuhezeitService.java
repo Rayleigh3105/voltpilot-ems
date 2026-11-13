@@ -12,8 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * "Ruhezeit" in der Einstellungsfläche "Meine Benachrichtigungen" (Alerting Scheibe 3, Konzept §6.4,
- * §6.8 Entwurf 4): wiederkehrend je Person, Vorgabe "werktags 22 bis 7 Uhr, am Wochenende ganz"
- * (§7 Scheibe 3). Validiert die Eingabe (gültige Zeiten, gültige Zeitzone) und wendet sie ohne
+ * §6.8 Entwurf 4): wiederkehrend je Person, Vorgabe je Kundenart ({@link #vorgabe(boolean)}, KA-2 A). Validiert die Eingabe (gültige Zeiten, gültige Zeitzone) und wendet sie ohne
  * Rechte-Prüfung an - jede Person verwaltet NUR ihre eigene Ruhezeit (wie
  * {@code ZustellwegService}: Recht {@code konto.eigenes}, geprüft am Controller).
  */
@@ -23,9 +22,45 @@ public class RuhezeitService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final List<String> ZEITZONEN = List.of("Europe/Berlin", "Europe/Vienna", "Europe/Zurich");
 
-    /** Vorgabe nach §7 Scheibe 3: werktags 22 bis 7 Uhr, am Wochenende ganz, Dringend durchbricht per Push. */
+    /**
+     * Vorgabe im Unternehmen (§7 Scheibe 3, bestätigt durch KA-2 A): werktags 22 bis 7 Uhr, am Wochenende ganz;
+     * Dringendes kommt durch.
+     */
     public static final String VORGABE_REGELN_JSON =
             "{\"werktags\":{\"von\":\"22:00\",\"bis\":\"07:00\"},\"wochenende\":\"ganz\"}";
+
+    /**
+     * Vorgabe Zuhause (Kunden-Alarmierung P2, KA-2 A, Betriebsart {@code endkunde}): nur nachts, jeden Tag 22 bis
+     * 7 Uhr - ein Haushalt kann am Wochenende handeln. Dringendes kommt durch.
+     */
+    public static final String VORGABE_ZUHAUSE_REGELN_JSON =
+            "{\"werktags\":{\"von\":\"22:00\",\"bis\":\"07:00\"},\"wochenende\":{\"von\":\"22:00\",\"bis\":\"07:00\"}}";
+
+    private static final String VORGABE_ZEITZONE = "Europe/Berlin";
+    private static final RuhezeitRepository.RuhezeitPerson VORGABE_UNTERNEHMEN = vorgabeAus(VORGABE_REGELN_JSON);
+    private static final RuhezeitRepository.RuhezeitPerson VORGABE_ZUHAUSE = vorgabeAus(VORGABE_ZUHAUSE_REGELN_JSON);
+
+    /**
+     * Die Ruhezeit einer Person, die selbst keine eingestellt hat (KA-2 A). Sie wird berechnet, nicht gespeichert:
+     * sie gilt sofort für jede Person ohne eigene Zeile, und wer selbst etwas eingestellt hat, behält es. Versand
+     * ({@code RuhezeitPruefungImpl}) und Fläche ({@code RuhezeitController}) lesen beide diese eine Stelle.
+     */
+    public static RuhezeitRepository.RuhezeitPerson vorgabe(boolean zuhause) {
+        return zuhause ? VORGABE_ZUHAUSE : VORGABE_UNTERNEHMEN;
+    }
+
+    /** Die Vorgabe des Kundenbereichs dieses Vorgangs ({@link #vorgabe(boolean)}). */
+    public RuhezeitRepository.RuhezeitPerson vorgabeHier() {
+        return vorgabe(repo.istZuhause());
+    }
+
+    private static RuhezeitRepository.RuhezeitPerson vorgabeAus(String regelnJson) {
+        try {
+            return new RuhezeitRepository.RuhezeitPerson(JSON.readTree(regelnJson), VORGABE_ZEITZONE, true);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     private final RuhezeitRepository repo;
 

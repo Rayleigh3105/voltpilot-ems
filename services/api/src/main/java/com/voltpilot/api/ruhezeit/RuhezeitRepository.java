@@ -68,6 +68,17 @@ public class RuhezeitRepository {
                 RuhezeitRepository::ruhezeitPerson, tenantId, benutzerSub).stream().findFirst();
     }
 
+    /**
+     * Zuhause (Kunden-Alarmierung P2, KA-2 A): der Kundenbereich hat die Betriebsart {@code endkunde} - dieselbe
+     * Unterscheidung wie der Preis-Hinweis ab Werk ({@code UeberwachungRepository#istEndkunde}, Entscheid 15C). Liest
+     * den Kundenbereich des laufenden Vorgangs ({@link TenantContext}; der Zusteller setzt ihn je Gruppe).
+     */
+    public boolean istZuhause() {
+        List<String> rows = jdbc.query("SELECT betriebsart FROM tenant WHERE id = ?", (rs, n) -> rs.getString(1),
+                TenantContext.get());
+        return !rows.isEmpty() && "endkunde".equals(rows.get(0));
+    }
+
     private static RuhezeitPerson ruhezeitPerson(ResultSet rs, int n) throws SQLException {
         return new RuhezeitPerson(json(rs.getString("regeln_json")), rs.getString("zeitzone"),
                 rs.getBoolean("dringend_durch"));

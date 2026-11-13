@@ -16,6 +16,8 @@ export interface EmailZustellweg {
   abSchwere: Schwere;
   zusammenfassungAktiv: boolean;
   zusammenfassungUhrzeit: string;
+  /** Kunden-Alarmierung P2 (KA-1 A): `anmeldung` = die Adresse des Kontos, ab Werk eingeschaltet; `eigen` = selbst eingetragen. */
+  herkunft?: 'eigen' | 'anmeldung';
 }
 
 /**
@@ -77,6 +79,8 @@ export interface RuhezeitZustand {
   regeln: string;
   zeitzone: string;
   dringendDurch: boolean;
+  /** Kunden-Alarmierung P2 (KA-2 A): `true`, solange die Person nichts eingestellt hat - `regeln` ist dann die Vorgabe ihrer Kundenart. */
+  vorgabe?: boolean;
 }
 
 export interface Stummschaltung {

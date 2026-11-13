@@ -28,9 +28,22 @@ describe('baueKurzbild', () => {
     { label: 'Team-Kanal', schwere: 'warnung', aktiv: false },
   ];
 
-  it('die Hinweis-Zeile hat nie einen Weg - Hinweise verlassen das Portal nicht', () => {
+  it('die Hinweis-Zeile hat ohne ein Gerät "ab Hinweis" keinen Weg', () => {
     const k = baueKurzbild(wege, null, true);
     expect(k.zeilen[0]).toEqual({ schwere: 'hinweis', wege: [], wartet: false });
+  });
+
+  it('ein Hinweis geht nur als Push an Geräte "ab Hinweis" - nie per E-Mail (KA-4 B)', () => {
+    const mitHinweis: KurzbildWeg[] = [
+      { label: 'E-Mail', schwere: 'hinweis', aktiv: true },
+      { label: 'Push', schwere: 'hinweis', aktiv: true },
+    ];
+    expect(baueKurzbild(mitHinweis, null, true).zeilen[0]).toEqual({ schwere: 'hinweis', wege: ['Push'], wartet: false });
+    expect(baueKurzbild(mitHinweis, new Date('2026-11-13T22:30:00Z'), true).zeilen[0]).toEqual({
+      schwere: 'hinweis',
+      wege: [],
+      wartet: true,
+    });
   });
 
   it('Warnung zeigt nur die ab Warnung aktiven Wege, Dringend zusätzlich die ab Dringend', () => {
@@ -60,8 +73,18 @@ describe('ruhezeitPresetVon / ruhezeitRegelnFuerPreset', () => {
     expect(ruhezeitPresetVon({})).toBe('keine');
   });
 
-  it('erkennt "Nachts 22 bis 7 Uhr" ohne Wochenend-Fenster', () => {
-    expect(ruhezeitPresetVon({ werktags: { von: '22:00', bis: '07:00' } })).toBe('nachts');
+  it('erkennt "Nachts 22 bis 7 Uhr" als jede Nacht, auch am Wochenende (Vorgabe Zuhause, KA-2 A)', () => {
+    expect(
+      ruhezeitPresetVon({ werktags: { von: '22:00', bis: '07:00' }, wochenende: { von: '22:00', bis: '07:00' } }),
+    ).toBe('nachts');
+    expect(ruhezeitRegelnFuerPreset('nachts', {})).toEqual({
+      werktags: { von: '22:00', bis: '07:00' },
+      wochenende: { von: '22:00', bis: '07:00' },
+    });
+  });
+
+  it('nur werktags nachts ist ehrlich "Eigene Zeiten" - am Wochenende gälte nachts keine Ruhe', () => {
+    expect(ruhezeitPresetVon({ werktags: { von: '22:00', bis: '07:00' } })).toBe('eigene');
   });
 
   it('erkennt "Nachts und am Wochenende" mit Wochenende ganz', () => {

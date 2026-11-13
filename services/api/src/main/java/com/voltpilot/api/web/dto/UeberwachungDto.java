@@ -56,13 +56,19 @@ public record UeberwachungDto(String id, String name, String wertart, String sch
      * zur fertigen Regel"; "steuerung" (Alerting Scheibe 6, Entscheid 10A: "In Überwachung
      * umwandeln") ist der einzige weitere Wert, den diese Route vom Client annimmt - "ab_werk" und
      * "vorschlag" bleiben serverseitige Vorgaben, nie über diese Route setzbar
-     * ({@code UeberwachungAnlegenService#anlegen}).
+     * ({@code UeberwachungAnlegenService#anlegen}). {@code probelauf} (Kunden-Alarmierung P2, KA-3 A): „Erst 30 Tage
+     * mitzählen, nichts senden“ - nur {@code true} schaltet ihn ein; fehlt das Feld, meldet die Regel sofort.
      */
     public record Anlegen(String wertart, BezugEintrag bezug, JsonNode bedingung, String schwere,
-            List<EmpfaengerEintrag> empfaenger, String name, String herkunft) {
+            List<EmpfaengerEintrag> empfaenger, String name, String herkunft, Boolean probelauf) {
         public Anlegen(String wertart, BezugEintrag bezug, JsonNode bedingung, String schwere,
                 List<EmpfaengerEintrag> empfaenger, String name) {
-            this(wertart, bezug, bedingung, schwere, empfaenger, name, null);
+            this(wertart, bezug, bedingung, schwere, empfaenger, name, null, null);
+        }
+
+        public Anlegen(String wertart, BezugEintrag bezug, JsonNode bedingung, String schwere,
+                List<EmpfaengerEintrag> empfaenger, String name, String herkunft) {
+            this(wertart, bezug, bedingung, schwere, empfaenger, name, herkunft, null);
         }
     }
 }

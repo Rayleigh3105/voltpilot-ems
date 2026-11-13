@@ -70,6 +70,7 @@ public class Gesamtabzug {
     /**
      * Namen von Zugangsdaten ({@link #zugangsdaten}): seit Alerting Scheibe 3 ff. trifft das genau die
      * Bearer-Geheimnisse {@code zustellweg.bestaetigung_token} (unauthentifizierter Bestätigungs-Endpunkt),
+     * {@code zustellweg.abmelde_token} („Abmelden“ unter jeder Mail, Kunden-Alarmierung P2),
      * {@code telegram_ziel.verbindungs_token} (Start-Link des Telegram-Bots) und
      * {@code ueberwachung_externer_empfaenger.bestaetigung_token}/{@code abbestellen_token} (Links in der Mail an
      * einen externen Empfänger).

@@ -44,9 +44,13 @@ export interface Kurzbild {
 
 const STUFEN: Schwere[] = ['hinweis', 'warnung', 'dringend'];
 
-/** Ein Weg mit `schwere` erreicht die gegebene Zeile - Hinweis verlässt das Portal nie (§2.5 Zusammenhang). */
-function erreichtZeile(wegSchwere: Schwere, zeile: Schwere): boolean {
-  if (zeile === 'hinweis') return false;
+/**
+ * Ein Weg mit `schwere` erreicht die gegebene Zeile. Ein Hinweis geht nur als Push an Geräte „ab Hinweis“
+ * (Kunden-Alarmierung P2, KA-4 B) - nie per E-Mail, Team-Kanal oder Telegram.
+ */
+function erreichtZeile(weg: KurzbildWeg, zeile: Schwere): boolean {
+  const wegSchwere = weg.schwere;
+  if (zeile === 'hinweis') return weg.label === 'Push' && wegSchwere === 'hinweis';
   const effektiv = wegSchwere === 'hinweis' ? 'warnung' : wegSchwere;
   return effektiv === 'warnung' ? true : zeile === 'dringend';
 }
@@ -58,9 +62,8 @@ function erreichtZeile(wegSchwere: Schwere, zeile: Schwere): boolean {
  */
 export function baueKurzbild(wege: KurzbildWeg[], ruhezeitBis: Date | null, dringendDurch: boolean): Kurzbild {
   const zeilen = STUFEN.map((schwere): KurzbildZeile => {
-    if (schwere === 'hinweis') return { schwere, wege: [], wartet: false };
-    const wartet = ruhezeitBis != null && (schwere === 'warnung' || !dringendDurch);
-    const aktive = wartet ? [] : wege.filter((w) => w.aktiv && erreichtZeile(w.schwere, schwere)).map((w) => w.label);
+    const wartet = ruhezeitBis != null && (schwere !== 'dringend' || !dringendDurch);
+    const aktive = wartet ? [] : wege.filter((w) => w.aktiv && erreichtZeile(w, schwere)).map((w) => w.label);
     return { schwere, wege: aktive, wartet };
   });
   return { ruhezeitBis, zeilen };
@@ -77,11 +80,21 @@ function gleichesFenster(a: RuhezeitTeilfenster | undefined, b: RuhezeitTeilfens
   return a?.von === b.von && a?.bis === b.bis;
 }
 
-/** Erkennt eine der fünf Vorgaben wieder - unbekannte Kombinationen sind ehrlich „Eigene Zeiten". */
+/**
+ * Erkennt eine der fünf Vorgaben wieder - unbekannte Kombinationen sind ehrlich „Eigene Zeiten". „Nachts 22 bis
+ * 7 Uhr" heißt jede Nacht, auch am Wochenende (Kunden-Alarmierung P2, KA-2 A: die Vorgabe Zuhause, die der Server
+ * liefert, `RuhezeitService.VORGABE_ZUHAUSE_REGELN_JSON`). Ein Fenster nur an Werktagen ist darum „Eigene Zeiten".
+ */
 export function ruhezeitPresetVon(regeln: RuhezeitRegeln): RuhezeitPresetId {
   const ohneWochenende = regeln.wochenende == null;
   if (!regeln.werktags && ohneWochenende) return 'keine';
-  if (gleichesFenster(regeln.werktags, NACHT) && ohneWochenende) return 'nachts';
+  if (
+    gleichesFenster(regeln.werktags, NACHT) &&
+    typeof regeln.wochenende === 'object' &&
+    gleichesFenster(regeln.wochenende, NACHT)
+  ) {
+    return 'nachts';
+  }
   if (gleichesFenster(regeln.werktags, NACHT) && regeln.wochenende === 'ganz') return 'nachts_wochenende';
   if (gleichesFenster(regeln.werktags, ARBEITSZEIT_ENDE) && regeln.wochenende === 'ganz') return 'ausserhalb_arbeitszeit';
   return 'eigene';
@@ -96,7 +109,7 @@ export function ruhezeitRegelnFuerPreset(preset: RuhezeitPresetId, vorher: Ruhez
     case 'keine':
       return {};
     case 'nachts':
-      return { werktags: { ...NACHT } };
+      return { werktags: { ...NACHT }, wochenende: { ...NACHT } };
     case 'nachts_wochenende':
       return { werktags: { ...NACHT }, wochenende: 'ganz' };
     case 'ausserhalb_arbeitszeit':

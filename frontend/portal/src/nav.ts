@@ -778,8 +778,20 @@ export function isRegisterRoute(): boolean {
  * Token fehlt.
  */
 export function zustellwegBestaetigenToken(): string | null {
+  return zustellwegLinkToken('zustellweg/bestaetigen');
+}
+
+/**
+ * Der Link „Abmelden" unter jeder Mail (`#/zustellweg/abmelden?token=...`, Kunden-Alarmierung P2, KA-1 A) - wie der
+ * Bestätigungs-Link ohne Anmeldung, darum ebenfalls vor `initAuth()` in `main.tsx` abgefangen.
+ */
+export function zustellwegAbmeldenToken(): string | null {
+  return zustellwegLinkToken('zustellweg/abmelden');
+}
+
+function zustellwegLinkToken(route: string): string | null {
   const [pfad, ...rest] = window.location.hash.replace(/^#\/?/, '').split('?');
-  if (pfad !== 'zustellweg/bestaetigen') return null;
+  if (pfad !== route) return null;
   return new URLSearchParams(rest.join('?')).get('token')?.trim() || null;
 }
 

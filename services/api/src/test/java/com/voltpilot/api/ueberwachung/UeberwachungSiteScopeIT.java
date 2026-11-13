@@ -341,6 +341,76 @@ class UeberwachungSiteScopeIT {
         }
     }
 
+    /**
+     * Kunden-Alarmierung P2, KA-5 A: eine Regel ab Werk geht im Unternehmen auch an Bearbeiter und Bedienberechtigte -
+     * jeder nur für seine Standorte; Leser nicht. Ein voller Lauf gegen echte Zeilen: die Box in Halle 1 (ST-1) fällt
+     * aus. Der Bearbeiter von ST-1 wird eingereiht, die Bedienberechtigte von ST-2 nicht (und ihre Sicht verweigert
+     * die Meldung ohnehin), der Leser von ST-1 nicht.
+     */
+    @Test
+    void abWerkGehtImUnternehmenAuchAnDieZustaendigenAmStandortNurFuerIhrenStandort() {
+        Welt w = welt("Zuständige GmbH");
+        String ka = "KA-" + UUID.randomUUID();
+        String bearbeiterSt1 = "BE1-" + UUID.randomUUID();
+        String bedienSt2 = "BB2-" + UUID.randomUUID();
+        String bedienSt1 = "BB1-" + UUID.randomUUID();
+        String leserSt1 = "LE1-" + UUID.randomUUID();
+        benutzerMitRolle(w.tenant(), ka, "kundenadministrator", null);
+        benutzerMitRolle(w.tenant(), bearbeiterSt1, "bearbeiter", w.st1());
+        benutzerMitRolle(w.tenant(), bedienSt2, "bedienberechtigt", w.st2());
+        benutzerMitRolle(w.tenant(), bedienSt1, "bedienberechtigt", w.st1());
+        benutzerMitRolle(w.tenant(), leserSt1, "leser", w.st1());
+        Instant t0 = Instant.now().minusSeconds(3600);
+        herzschlag(w.box1(), t0); // Box 2 sendet nie: unbekannt löst nie aus.
+
+        UeberwachungRepository repo = new UeberwachungRepository(app);
+        ZugriffRepository zugriffe = new ZugriffRepository(app);
+        UeberwachungsService dienst = new UeberwachungsService(repo, new WerteKatalog(),
+                new ZustandWerteLeser(new DeviceRepository(app), new DeviceDataSourceStatusRepository(app)),
+                org.mockito.Mockito.mock(EreignisWerteLeser.class), org.mockito.Mockito.mock(AnlagenflussWerteLeser.class),
+                org.mockito.Mockito.mock(MessreiheWerteLeser.class), org.mockito.Mockito.mock(MengeWerteLeser.class),
+                org.mockito.Mockito.mock(GeldWerteLeser.class), org.mockito.Mockito.mock(KennzahlWerteLeser.class),
+                org.mockito.Mockito.mock(ZaehlungWerteLeser.class), org.mockito.Mockito.mock(LadepunktWerteLeser.class),
+                zugriffe,
+                org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.MessstelleRepository.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));
+        Einreihung einreihung = new Einreihung();
+        dienst.setAusgang(einreihung);
+
+        TenantContext.set(w.tenant());
+        try {
+            dienst.lauf(t0);
+            assertThat(app.queryForList("SELECT empfaenger::text FROM ueberwachung WHERE herkunft = 'ab_werk' "
+                    + "AND wertart = 'box.erreichbar'", String.class))
+                    .as("ab Werk gesät mit vier Rollen, ohne Leser").hasSize(2)
+                    .allSatisfy(e -> assertThat(e).contains("\"bearbeiter\"", "\"bedienberechtigt\"",
+                            "\"kundenadministrator\"", "\"energiemanager\"").doesNotContain("leser"));
+            Instant t1 = t0.plusSeconds(400);
+            dienst.lauf(t1);
+            dienst.lauf(t1.plusSeconds(901));
+
+            UUID alarm = app.queryForObject("SELECT id FROM alarm WHERE zustand <> 'erledigt'", UUID.class);
+            assertThat(app.queryForObject("SELECT standort_id FROM alarm WHERE id = ?", UUID.class, alarm))
+                    .isEqualTo(w.st1());
+            assertThat(einreihung.empfaenger).anyMatch(e -> e.startsWith(ka + ":ausgeloest"))
+                    .anyMatch(e -> e.startsWith(bearbeiterSt1 + ":ausgeloest"))
+                    .anyMatch(e -> e.startsWith(bedienSt1 + ":ausgeloest"))
+                    .noneMatch(e -> e.startsWith(bedienSt2 + ":"))
+                    .noneMatch(e -> e.startsWith(leserSt1 + ":"));
+
+            UeberwachungSichtPruefungImpl sicht = new UeberwachungSichtPruefungImpl(repo, new WerteKatalog(), zugriffe);
+            assertThat(sicht.sichtbar(alarm, bearbeiterSt1, Instant.now())).isTrue();
+            assertThat(sicht.sichtbar(alarm, bedienSt1, Instant.now())).isTrue();
+            assertThat(sicht.sichtbar(alarm, bedienSt2, Instant.now()))
+                    .as("die Grenze beim Senden: Lindach sieht nichts aus Halle 1").isFalse();
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
     /** benutzer/zugriff sind nur über die Laufzeitrolle schreibbar (RLS); die Admin-Rolle hat kein INSERT. */
     private static void benutzerMitRolle(UUID tenant, String sub, String rolle, UUID standort) {
         TenantContext.set(tenant);

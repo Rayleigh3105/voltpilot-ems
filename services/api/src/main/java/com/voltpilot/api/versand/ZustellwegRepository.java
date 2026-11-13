@@ -27,13 +27,27 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class ZustellwegRepository {
 
-    /** Der eigene Zustellweg E-Mail, wie ihn „So erreichen wir Sie“ anzeigt. */
+    /**
+     * Der eigene Zustellweg E-Mail, wie ihn „So erreichen wir Sie“ anzeigt. {@code herkunft} (Kunden-Alarmierung P2,
+     * KA-1 A): {@code eigen} = selbst eingetragen und bestätigt, {@code anmeldung} = die Adresse des Kontos, gilt ohne
+     * Bestätigungs-Mail ({@code V20261113160000}).
+     */
     public record Zustellweg(UUID id, String ziel, Instant bestaetigtAm, boolean aktiv, String abSchwere,
-            boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit) {
+            boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit, String herkunft) {
+        public Zustellweg(UUID id, String ziel, Instant bestaetigtAm, boolean aktiv, String abSchwere,
+                boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit) {
+            this(id, ziel, bestaetigtAm, aktiv, abSchwere, zusammenfassungAktiv, zusammenfassungUhrzeit, HERKUNFT_EIGEN);
+        }
+
         public boolean bestaetigt() {
             return bestaetigtAm != null;
         }
     }
+
+    /** Selbst eingetragen und über den Link bestätigt (wie vor P2). */
+    public static final String HERKUNFT_EIGEN = "eigen";
+    /** Die Anmelde-Adresse des Kontos (KA-1 A) - Migration für den Bestand, Trigger an {@code benutzer} für Neue. */
+    public static final String HERKUNFT_ANMELDUNG = "anmeldung";
 
     /**
      * Ein Geräte-Abo für Web-Push (Alerting Scheibe 3, §6.7) - "Abo je Gerät". {@code endpoint} ist
@@ -74,7 +88,7 @@ public class ZustellwegRepository {
     /** Eigener Zustand (für die Anzeige „So erreichen wir Sie“), leer ohne jeden Eintrag. */
     public Optional<Zustellweg> eigener(String benutzerSub) {
         return jdbc.query("SELECT id, ziel, bestaetigt_am, aktiv, ab_schwere, zusammenfassung_aktiv, "
-                        + "zusammenfassung_uhrzeit FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ? "
+                        + "zusammenfassung_uhrzeit, herkunft FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ? "
                         + "AND weg = 'email'",
                 ZustellwegRepository::zustellweg, TenantContext.get(), benutzerSub).stream().findFirst();
     }
@@ -382,7 +396,9 @@ public class ZustellwegRepository {
     /**
      * Legt den eigenen E-Mail-Zustellweg an oder ändert ihn (eine Person, ein Weg - {@code uq_zustellweg_person_weg}):
      * eine geänderte Adresse ist wieder UNBESTÄTIGT, bis der neue Link geklickt wird - ein alter Link
-     * verliert dadurch seinen Token (der Teil-Index ist je Token eindeutig, nicht je Zeile).
+     * verliert dadurch seinen Token (der Teil-Index ist je Token eindeutig, nicht je Zeile). Wer eine Adresse
+     * selbst einträgt, macht den Weg zu seinem eigenen ({@code herkunft = 'eigen'}, P2): er folgt danach keiner
+     * geänderten Konto-Adresse mehr.
      */
     public UUID anlegenOderErneuern(String benutzerSub, String ziel, String token, Instant ablauf) {
         return jdbc.queryForObject("""
@@ -396,6 +412,7 @@ public class ZustellwegRepository {
                     bestaetigung_versandt_am = excluded.bestaetigung_versandt_am,
                     bestaetigt_am = CASE WHEN zustellweg.ziel = excluded.ziel THEN zustellweg.bestaetigt_am
                                          ELSE NULL END,
+                    herkunft = 'eigen',
                     geaendert_am = now()
                 RETURNING id
                 """, UUID.class, TenantContext.get(), benutzerSub, ziel, token, Timestamp.from(ablauf));
@@ -431,6 +448,37 @@ public class ZustellwegRepository {
                                  AND bestaetigt_am IS NOT NULL AND aktiv AND schwere_rang(?) >= schwere_rang(ab_schwere))
                 """, Boolean.class, tenantId, benutzerSub, schwere);
         return Boolean.TRUE.equals(b);
+    }
+
+    /**
+     * KA-1 A „nur für neue Meldungen“: {@code true}, wenn die Person ihre Mails über die Anmelde-Adresse bekommt und
+     * die Meldung VOR diesem Weg ausgelöst wurde - dann geht zu ihr nichts per E-Mail hinaus (auch keine Erinnerung,
+     * keine Entwarnung). Ein selbst eingerichteter Weg kennt diese Grenze nicht (Verhalten wie vor P2).
+     */
+    public boolean meldungVorDemAnmeldeWeg(UUID tenantId, String benutzerSub, UUID alarmId) {
+        Boolean b = admin.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM zustellweg w JOIN alarm a ON a.tenant_id = w.tenant_id AND a.id = ?
+                                WHERE w.tenant_id = ? AND w.benutzer_sub = ? AND w.weg = 'email'
+                                  AND w.herkunft = 'anmeldung' AND a.ausgeloest_am < w.erstellt_am)
+                """, Boolean.class, alarmId, tenantId, benutzerSub);
+        return Boolean.TRUE.equals(b);
+    }
+
+    /** Der Schlüssel für „Abmelden“ unter jeder Mail dieses Weges (KA-1 A), leer ohne E-Mail-Weg. */
+    public Optional<String> abmeldeToken(UUID tenantId, String benutzerSub) {
+        return admin.query("SELECT abmelde_token FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ? "
+                        + "AND weg = 'email'", (rs, n) -> rs.getString(1), tenantId, benutzerSub).stream()
+                .findFirst();
+    }
+
+    /**
+     * „Abmelden“ aus der Mail, ohne Anmeldung (KA-1 A): schaltet den Weg ab, die Zeile bleibt - so schaltet ihn kein
+     * späterer Lauf wieder ein, und die Person kann ihn im Portal selbst wieder einschalten. {@code true}, wenn der
+     * Schlüssel einen Weg kennt (auch einen schon abgeschalteten: zweimal Abmelden ist kein Fehler).
+     */
+    public boolean abmelden(String token) {
+        return admin.update("UPDATE zustellweg SET aktiv = false, geaendert_am = now() "
+                + "WHERE abmelde_token = ? AND weg = 'email'", token) == 1;
     }
 
     /** Eine Person mit eingeschalteter Tages-Zusammenfassung und ihrer gewünschten Uhrzeit (§6.4 Nr. 6). */
@@ -471,6 +519,6 @@ public class ZustellwegRepository {
         return new Zustellweg(rs.getObject("id", UUID.class), rs.getString("ziel"),
                 bestaetigtAm == null ? null : bestaetigtAm.toInstant(), rs.getBoolean("aktiv"),
                 rs.getString("ab_schwere"), rs.getBoolean("zusammenfassung_aktiv"),
-                rs.getObject("zusammenfassung_uhrzeit", LocalTime.class));
+                rs.getObject("zusammenfassung_uhrzeit", LocalTime.class), rs.getString("herkunft"));
     }
 }

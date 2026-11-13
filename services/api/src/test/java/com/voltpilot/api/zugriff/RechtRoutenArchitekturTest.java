@@ -87,6 +87,10 @@ class RechtRoutenArchitekturTest {
                 "Alerting Scheibe 3 (§6.6, §6.8 Entwurf 4, B8): beim Abmelden beendet das Portal DIESES "
                         + "Geräts Abo über seinen Endpunkt - derselbe Eigen-Grund wie die übrigen Zustellweg-"
                         + "Routen, kein Matrix-Recht; bestmöglich, ein fremdes/fehlendes Abo bleibt ohne Fehler.");
+        m.put("ZustellwegController#abmelden",
+                "Kunden-Alarmierung P2 (KA-1 A): \"Abmelden\" unter jeder Mail - öffentlich (SecurityConfig "
+                        + "permitAll, exakter Pfad), kein Kundenkonto nötig; Nachweis ist der feste, zufällige "
+                        + "Schlüssel des Weges, die einzige Wirkung ist \"diesen E-Mail-Weg abschalten\".");
         m.put("RuhezeitController#setzen", eigeneBenachrichtigung);
         m.put("RuhezeitController#probe", eigeneBenachrichtigung);
         m.put("ZustellwegController#webhookZielAnlegen", eigeneBenachrichtigung);

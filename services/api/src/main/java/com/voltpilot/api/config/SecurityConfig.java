@@ -133,6 +133,11 @@ public class SecurityConfig {
                 // keinen bestätigten Zustellweg; der einmalige, ablaufende Token
                 // selbst ist der Nachweis (ZustellwegController).
                 .requestMatchers(HttpMethod.GET, "/api/v1/zustellwege/bestaetigen").permitAll()
+                // Kunden-Alarmierung P2 (KA-1 A): „Abmelden“ unter jeder Mail - wer
+                // die Mail liest, ist oft nicht angemeldet. Der feste, zufällige
+                // Schlüssel des Weges ist der Nachweis; die Wirkung ist nur
+                // „Weg abschalten“ (ZustellwegController#abmelden).
+                .requestMatchers(HttpMethod.POST, "/api/v1/zustellwege/abmelden").permitAll()
                 // Alerting Scheibe 6: Telegram selbst ruft den Update-Webhook auf,
                 // ohne jedes Benutzer-Token - die Absicherung ist Telegrams eigener
                 // secret_token-Header, den TelegramWebhookController zeitkonstant

@@ -149,9 +149,11 @@ public class UeberwachungAnlegenService {
         ObjectNode bedingung = vorgabenAnwenden(vorlageAnwenden(eintrag, (ObjectNode) anfrage.bedingung()));
         paarPruefen(bedingung);
         String empfaengerJson = empfaengerJson(empfaenger);
-        // Eine Alarm-Vorlage (EZ-11) ist ab dem Anlegen scharf: ihre Werte haben keine Rückschau, die ein
-        // Probelauf nachspielen könnte (EW-9 A „alle Zustellwege sofort“) - 30 Tage stumm wären 30 Tage ohne Alarm.
-        Instant probelaufBis = eintrag.vorlage() != null ? null : jetzt.plus(Duration.ofDays(PROBELAUF_TAGE));
+        // Kunden-Alarmierung P2 (KA-3 A): eine eigene Überwachung meldet sofort. „Erst 30 Tage mitzählen, nichts
+        // senden“ ist eine Wahl ({@code probelauf = true}), Vorgabe aus. Eine Alarm-Vorlage (EZ-11) ist immer ab dem
+        // Anlegen scharf: ihre Werte haben keine Rückschau, die ein Probelauf nachspielen könnte (EW-9 A).
+        boolean probelaufGewaehlt = Boolean.TRUE.equals(anfrage.probelauf()) && eintrag.vorlage() == null;
+        Instant probelaufBis = probelaufGewaehlt ? jetzt.plus(Duration.ofDays(PROBELAUF_TAGE)) : null;
         String name = anfrage.name() == null && eintrag.vorlage() != null ? eintrag.name() : anfrage.name();
         UUID id = repo.erstelleSelbstAngelegt(standortId, name, anfrage.wertart(), bezugJson,
                 bedingung.toString(), anfrage.schwere(), empfaengerJson, herkunft, aufrufer.kennung(), probelaufBis);

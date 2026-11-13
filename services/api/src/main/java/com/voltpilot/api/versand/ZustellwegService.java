@@ -24,10 +24,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * „So erreichen wir Sie“ (§6.6): jede Person legt ihren Zustellweg E-Mail einmal selbst an und
- * bestätigt ihn über einen Link - bis dahin bekommt sie Meldungen nur im Portal. Der Benutzer-Spiegel
- * ist ungeprüft und veraltet still, darum wird hier NIE eine Adresse übernommen, die nicht diesen
- * eigenen Bestätigungsweg durchlaufen hat.
+ * „So erreichen wir Sie“ (§6.6): eine Person kann ihren Zustellweg E-Mail selbst anlegen und bestätigt ihn über
+ * einen Link. Seit Kunden-Alarmierung P2 (KA-1 A, {@code V20261113160000}) hat jedes Konto ab Werk einen Weg mit
+ * seiner Anmelde-Adresse ({@code herkunft = 'anmeldung'}, ohne Bestätigungs-Mail: die Adresse ist der
+ * Anmeldename); eine selbst eingetragene Adresse durchläuft weiter den Bestätigungsweg. Jede Mail trägt
+ * „Abmelden“ ({@link #abmelden}).
  */
 @Service
 public class ZustellwegService {
@@ -121,6 +122,14 @@ public class ZustellwegService {
     /** {@code true}, wenn der Token gültig war und die Adresse jetzt bestätigt ist. */
     public boolean bestaetigen(String token) {
         return zustellwege.bestaetigen(token, uhr.instant());
+    }
+
+    /**
+     * „Abmelden“ aus einer Mail, ohne Anmeldung (Kunden-Alarmierung P2, KA-1 A): schaltet den E-Mail-Weg ab, Adresse
+     * und Einstellungen bleiben. {@code false}, wenn der Schlüssel keinen Weg kennt.
+     */
+    public boolean abmelden(String token) {
+        return token != null && !token.isBlank() && zustellwege.abmelden(token.trim());
     }
 
     /** Zustell-Vorgabe und Tages-Zusammenfassung ändern (§6.4, §6.4 Nr. 6). */

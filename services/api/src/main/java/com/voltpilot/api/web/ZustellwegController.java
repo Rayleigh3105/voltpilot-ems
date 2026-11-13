@@ -37,13 +37,17 @@ public class ZustellwegController {
     public record Anfrage(String ziel) {}
 
     /** Der eigene Zustand, wie „So erreichen wir Sie“ ihn zeigt. */
+    /** {@code herkunft} (P2, KA-1 A): {@code eigen} oder {@code anmeldung} (die Adresse des Kontos, ab Werk). */
     public record Zustand(String ziel, boolean bestaetigt, boolean aktiv, String abSchwere,
-            boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit) {
+            boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit, String herkunft) {
         static Zustand aus(ZustellwegRepository.Zustellweg z) {
             return new Zustand(z.ziel(), z.bestaetigt(), z.aktiv(), z.abSchwere(), z.zusammenfassungAktiv(),
-                    z.zusammenfassungUhrzeit());
+                    z.zusammenfassungUhrzeit(), z.herkunft());
         }
     }
+
+    /** „Abmelden“ aus einer Mail (P2, KA-1 A): der Schlüssel aus dem Link. */
+    public record AbmeldenAnfrage(String token) {}
 
     /** Zustell-Vorgabe und Tages-Zusammenfassung ändern (§6.4, §6.4 Nr. 6). */
     public record EmailEinstellungen(String abSchwere, boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit) {}
@@ -135,6 +139,21 @@ public class ZustellwegController {
     @PostMapping("/email/probe")
     public ProbeAntwort emailProbe(Authentication auth) {
         return ProbeAntwort.aus(zustellwege.emailProbeSenden(sub(auth)));
+    }
+
+    /**
+     * Öffentlich, ohne Anmeldung - „Abmelden“ unter jeder Mail (Kunden-Alarmierung P2, KA-1 A). Ein POST, kein GET:
+     * Link-Prüfer von Mail-Diensten rufen Links aus Mails selbst auf und dürfen dabei niemanden abmelden; die
+     * Portal-Seite hinter dem Link fragt erst und sendet dann diesen Aufruf. 204 = abgeschaltet (auch wenn er es
+     * schon war), 410 = der Schlüssel kennt keinen Weg.
+     */
+    @PostMapping("/abmelden")
+    public ResponseEntity<Void> abmelden(@RequestBody AbmeldenAnfrage anfrage) {
+        if (anfrage == null || istLeer(anfrage.token())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "token ist ein Pflichtfeld.");
+        }
+        return zustellwege.abmelden(anfrage.token()) ? ResponseEntity.noContent().build()
+                : ResponseEntity.status(410).build();
     }
 
     /** Öffentlich, ohne Anmeldung - der Link aus der Bestätigungs-Mail. */

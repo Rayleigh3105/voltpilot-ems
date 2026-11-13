@@ -8889,6 +8889,25 @@ export async function zustellwegBestaetigen(token: string): Promise<ZustellwegBe
   return 'bestaetigt';
 }
 
+/** Ergebnis von „Abmelden" aus einer Mail: `unbekannt` = der Schlüssel kennt keinen Weg (mehr). */
+export type ZustellwegAbmeldenErgebnis = 'abgemeldet' | 'unbekannt';
+
+/**
+ * Schaltet den E-Mail-Weg über den Link „Abmelden" aus einer Mail ab (ZustellwegController#abmelden,
+ * Kunden-Alarmierung P2, KA-1 A). Wie `zustellwegBestaetigen` bewusst ohne request(): der Klick kommt meist ohne
+ * Sitzung, der Endpunkt verlangt keine Anmeldung. Ein POST: erst die Person sendet ihn, nie ein Link-Prüfer.
+ */
+export async function zustellwegAbmelden(token: string): Promise<ZustellwegAbmeldenErgebnis> {
+  const res = await fetch(`${API_BASE}/api/v1/zustellwege/abmelden`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (res.status === 410) return 'unbekannt';
+  if (!res.ok) throw new ApiError(res.status, 'Das Abmelden ist zurzeit nicht möglich.');
+  return 'abgemeldet';
+}
+
 export type { ProfileState, SiteProfile, SiteProfiles } from './profiles';
 export type {
   CockpitLayoutDocument,

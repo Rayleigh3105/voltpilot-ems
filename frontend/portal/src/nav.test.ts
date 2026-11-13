@@ -60,6 +60,7 @@ import {
   parseAufbauSuche,
   parseAufbauNeu,
   standortAufbauHash,
+  zustellwegAbmeldenToken,
   zustellwegBestaetigenToken,
 } from './nav';
 import { anlageSidebar } from './ebenenNav';
@@ -948,5 +949,18 @@ describe('zustellwegBestaetigenToken', () => {
     expect(zustellwegBestaetigenToken()).toBeNull();
     window.location.hash = '#/zustellweg/bestaetigen?token=%20';
     expect(zustellwegBestaetigenToken()).toBeNull();
+  });
+});
+
+// „Abmelden" unter jeder Mail (Kunden-Alarmierung P2, KA-1 A) - wie der Bestätigungs-Link vor dem Auth-Bootstrap.
+describe('zustellwegAbmeldenToken', () => {
+  it('liest den Token nur auf seiner eigenen Route', () => {
+    window.location.hash = '#/zustellweg/abmelden?token=xyz789';
+    expect(zustellwegAbmeldenToken()).toBe('xyz789');
+    expect(zustellwegBestaetigenToken()).toBeNull();
+    window.location.hash = '#/zustellweg/bestaetigen?token=xyz789';
+    expect(zustellwegAbmeldenToken()).toBeNull();
+    window.location.hash = '#/zustellweg/abmelden';
+    expect(zustellwegAbmeldenToken()).toBeNull();
   });
 });

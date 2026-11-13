@@ -1,7 +1,5 @@
 package com.voltpilot.api.ruhezeit;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.AlarmZeile;
@@ -33,18 +31,6 @@ import org.springframework.stereotype.Component;
 public class RuhezeitPruefungImpl implements RuhezeitPruefung {
 
     private static final ZoneId STANDARD_ZEITZONE = ZoneId.of("Europe/Berlin");
-
-    /**
-     * Die Vorgabe (B4, Entscheid 5A): wer die eigene Ruhezeit NIE anfasst, hat in
-     * {@code ruhezeit_person} keine Zeile - {@code fuerVersand} lieferte dafür bisher
-     * {@code Optional.empty()}, und ohne Person galt beim Versand NUR die Ruhezeit der Regel (oder gar
-     * keine). Die Fläche zeigt für denselben Fall längst die Vorgabe „werktags 22 bis 7 Uhr, am
-     * Wochenende ganz“ ({@code com.voltpilot.api.web.RuhezeitController.Zustand#vorgabe},
-     * {@link RuhezeitService#VORGABE_REGELN_JSON}) - was angezeigt wird, muss auch gelten, darum
-     * derselbe Wortlaut hier.
-     */
-    private static final RuhezeitRepository.RuhezeitPerson VORGABE = new RuhezeitRepository.RuhezeitPerson(
-            vorgabeRegeln(), "Europe/Berlin", true);
 
     private final UeberwachungRepository ueberwachung;
     private final RuhezeitRepository ruhezeitRepo;
@@ -90,8 +76,10 @@ public class RuhezeitPruefungImpl implements RuhezeitPruefung {
             return Instant.MAX;
         }
 
-        // B4: ohne eigene Zeile gilt die Vorgabe - genau die, die die Fläche für diesen Fall zeigt.
-        RuhezeitRepository.RuhezeitPerson person = ruhezeitRepo.fuerVersand(tenantId, empfaengerSub).orElse(VORGABE);
+        // B4: ohne eigene Zeile gilt die Vorgabe - genau die, die die Fläche für diesen Fall zeigt
+        // (RuhezeitController); seit P2 je Kundenart (KA-2 A: Zuhause nur nachts, Unternehmen auch am Wochenende).
+        RuhezeitRepository.RuhezeitPerson person = ruhezeitRepo.fuerVersand(tenantId, empfaengerSub)
+                .orElseGet(() -> RuhezeitService.vorgabe(ruhezeitRepo.istZuhause()));
         Instant ende = spaeteresEnde(person, alarm, jetzt);
         if (ende == null) {
             return jetzt; // keine Ruhezeit aktiv
@@ -123,13 +111,5 @@ public class RuhezeitPruefungImpl implements RuhezeitPruefung {
 
     private static ZoneId zone(String zeitzone) {
         return zeitzone == null ? STANDARD_ZEITZONE : ZoneId.of(zeitzone);
-    }
-
-    private static JsonNode vorgabeRegeln() {
-        try {
-            return new ObjectMapper().readTree(RuhezeitService.VORGABE_REGELN_JSON);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
     }
 }
