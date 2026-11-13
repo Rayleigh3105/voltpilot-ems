@@ -8,6 +8,7 @@ import { aufbauHash, hashForRoute, pageRoute } from '../nav';
 import { useRollen } from '../rollen';
 import { Recht } from './Recht';
 import './GeraetesucheEinstieg.css';
+import { isPlatformAdmin } from '../auth';
 
 /**
  * Die Einstiege in „Geräte suchen" auf der Box-Seite (Bericht §4 „Einstiege", m1, m8, d1): der Knopf im Kopf der Karte
@@ -98,7 +99,8 @@ export function GeraetesucheGrund({ lage, id }: { lage: KnopfLage; id: string })
     <p className={`vp-gs-einstieg-grund is-${lage.art}`} id={id} data-testid="geraetesuche-grund">
       <span className={`vp-health-dot ${lage.art === 'laeuft' ? 'vp-health-ok' : 'vp-health-off'}`} aria-hidden="true" />
       <span>{lage.satz}</span>
-      {lage.art === 'update' && (
+      {/* Nur die Plattform kann ein Update planen; einen Kunden führte der Link still zur Übersicht. */}
+      {lage.art === 'update' && isPlatformAdmin() && (
         <a href={hashForRoute(pageRoute('edge-updates'))}>
           Update planen <Icon name="chevron-right" size={14} />
         </a>

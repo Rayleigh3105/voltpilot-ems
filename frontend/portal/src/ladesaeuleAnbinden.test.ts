@@ -406,7 +406,9 @@ describe('Anschluss · haus|eigen', () => {
   });
 
   it('sagt die FOLGE in Kundensprache - nie die Formel der Box', () => {
-    expect(ANSCHLUSS_HILFE).toContain('Netzbezug');
+    // Text-Runde Kunde (13.11.2026): die Folge steht in den beiden Wahl-Sätzen, der Hinweis nennt nur die Vorgabe.
+    expect(ANSCHLUSS_HILFE).toContain('hinter dem Hausanschluss');
+    expect(ANSCHLUSS_OPTIONEN.map((o) => o.satz).join(' ')).toContain('Hausanschluss');
     expect(ANSCHLUSS_HILFE).not.toMatch(/budget\s*=|planbar|OCPP|power_kw/);
     for (const o of ANSCHLUSS_OPTIONEN) {
       expect(o.satz).not.toMatch(/OCPP|Entität|power_kw|Baustein|Anwendung/);

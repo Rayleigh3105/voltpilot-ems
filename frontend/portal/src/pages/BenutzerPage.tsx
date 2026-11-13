@@ -63,7 +63,7 @@ export function BenutzerPage() {
   }
   return <section className="vp-benutzer" aria-label="Benutzerverwaltung">
     <p className="vp-note">Unternehmen › Einstellungen</p>
-    <header className="vp-benutzer-kopf"><div><h1 ref={kopf} tabIndex={-1}>Benutzer</h1><p>Wer in Ihrem Unternehmen sehen, pflegen und bedienen darf.</p></div>
+    <header className="vp-benutzer-kopf"><div><h1 ref={kopf} tabIndex={-1}>Benutzer</h1></div>
       {schreiben && <Button onClick={e => { e.currentTarget.focus(); setAnlegen(true); }}>Benutzer anlegen</Button>}
     </header>
     {!schreiben && <p className="vp-note">Sie lesen die Benutzerliste. Änderungen übernimmt Ihr Kundenadministrator.</p>}

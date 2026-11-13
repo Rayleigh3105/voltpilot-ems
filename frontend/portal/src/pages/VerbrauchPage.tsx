@@ -344,7 +344,6 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
                   antwort={`Strom je Monat, ${zeitraumLang({ art: 'zwoelf', bis: z.bis })}`}
                   rechts={phone ? 'kWh' : zeitraumLang({ art: 'zwoelf', bis: z.bis })}
                   gewaehlt={z.bis}
-                  tippHinweis={phone}
                 />
               ) : verlaufFehlt ? (
                 <section className="vp-vb-karte vp-vb-verlauf" aria-label={VERBRAUCH_VERLAUF_TITEL} data-testid="verbrauch-verlauf-fehler">

@@ -197,7 +197,9 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       // „Update planen“ steht seit main d1b97ac39 in „Gerät & Verbindung“ — am Telefon zugeklappt.
       const details = page.getByTestId('baustein-details');
       if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) await details.locator(':scope > summary').click();
-      await expect(page.getByRole('link', { name: 'Update planen' })).toHaveAttribute('href', '#/edge-updates');
+      // Die Software-Seite ist eine Plattform-Seite (#1762): ein Kunde bekommt keinen Link, der ihn still zur Übersicht führte.
+      await expect(page.getByTestId('box-faehigkeiten')).toContainText('Update nötig');
+      await expect(page.getByRole('link', { name: 'Update planen' })).toHaveCount(0);
       const m = await messe(page);
       expect(m.dokument, `box-seite-${breite}: Querlauf des Dokuments`).toBe(0);
       expect(m.route).toMatch(/^#\/anlage\/[^/]+\/box\/VP-BOX-2024-0117$/);

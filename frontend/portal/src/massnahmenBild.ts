@@ -16,7 +16,6 @@ import { UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_MASSNAHMEN, UEMS_WIRKUN
 // ------------------------------------------------------------------ Wörter
 
 export const TITEL = UEMS_MASSNAHMEN;
-export const UNTERTITEL = 'Was Sie tun, um Energie zu sparen - und was es bringt.';
 export const KNOPF_PLANEN = `${UEMS_MASSNAHME} planen`;
 export const KNOPF_PLANEN_KURZ = 'Planen';
 export const KNOPF_UMSETZUNG = 'Umsetzung melden';
@@ -26,7 +25,7 @@ export const KNOPF_ANSEHEN = 'Ansehen';
 export const KNOPF_NEU_PRUEFEN = 'Neu prüfen';
 export const SO_LAEUFT = `So läuft eine ${UEMS_MASSNAHME}`;
 export const SO_LAEUFT_SATZ =
-  'Ab dem Monat nach der Umsetzung vergleicht VoltPilot zwölf Monate lang mit der Bezugsbasis. Maßnahmen ohne Kennzahl schließen Sie nach der Umsetzung mit einem Satz ab.';
+  'Ab dem Monat nach der Umsetzung vergleicht VoltPilot zwölf Monate lang mit der Bezugsbasis. Ohne Kennzahl schließen Sie mit einem Satz ab.';
 export const LADEFEHLER = `Die ${UEMS_MASSNAHMEN} ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.`;
 export const LADEFEHLER_SEITE = `Die ${UEMS_MASSNAHME} ließ sich gerade nicht laden. Ihre Daten sind nicht betroffen.`;
 export const LADEFEHLER_TITEL = 'Nicht geladen';

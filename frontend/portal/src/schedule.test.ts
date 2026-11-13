@@ -684,7 +684,7 @@ describe('horizonHint', () => {
   it('shows while the horizon ends within today', () => {
     const slots = [slot(9, 15, 0), slot(23, 45, 0)];
     expect(horizonHint(slots, NOW)).toBe(HORIZON_HINT);
-    expect(HORIZON_HINT).toContain('ab ca. 13 Uhr');
+    expect(HORIZON_HINT).toContain('ab etwa 13 Uhr');
   });
 
   it('stays silent once the plan reaches into tomorrow', () => {

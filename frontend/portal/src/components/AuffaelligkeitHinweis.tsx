@@ -5,6 +5,7 @@ import { api, type AuffaelligkeitenAlle, type Auffaelligkeit } from '../api';
 import { monatWort } from '../bezugsbasisVergleich';
 import { abweichungRoute, hashForRoute } from '../nav';
 import { merkeAbruf } from '../routenUhr';
+import { AUFFAELLIG_SATZ } from '../kennzahlSeite';
 import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';
 import { Recht } from './Recht';
 import '../pages/Abweichungen.css';
@@ -54,7 +55,7 @@ export function AuffaelligkeitHinweis({
   const satz =
     art === 'reiter'
       ? `${ueber ?? ''} Klären Sie zuerst, woran es lag - dann wissen Sie, welche Maßnahme hilft.`.trim()
-      : 'VoltPilot hat den Monat vermerkt, weil er über der Bezugsbasis liegt. Ob das eine Abweichung ist, sagt eine Person.';
+      : AUFFAELLIG_SATZ;
 
   return (
     <div className="vp-abw-hinweis" role="note" data-testid={`auffaelligkeit-hinweis-${art}`}>

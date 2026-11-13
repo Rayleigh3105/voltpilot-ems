@@ -235,9 +235,16 @@ describe('LadesaeuleAnbinden', () => {
     expect(await screen.findAllByText('Bereit zum Steuern')).toHaveLength(2);
   });
 
-  it('sagt, ab wann eine Rücknahme wirkt', async () => {
+  it('sagt in der Rückfrage, ab wann eine Rücknahme wirkt - nicht dauerhaft unter der Liste', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'halle', label: 'Halle' }],
+    });
     mount();
-    expect(await screen.findByText(/das nächste Mal verbunden/)).toBeTruthy();
+    await screen.findByText('Halle');
+    expect(screen.queryByText(/das nächste Mal verbunden/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Halle.*entfernen/ }));
+    expect(screen.getByText(/das nächste Mal verbunden/)).toBeTruthy();
   });
 
   it('zeigt die schon eingetragenen Kennungen mit ihrem Zustand', async () => {

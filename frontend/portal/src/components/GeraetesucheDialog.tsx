@@ -56,6 +56,7 @@ import { useIsPhone } from '../useIsPhone';
 import { AufbauSymbol } from './AufbauSymbol';
 import { Recht } from './Recht';
 import './GeraetesucheDialog.css';
+import { isPlatformAdmin } from '../auth';
 
 /**
  * „Geräte suchen" (Konzept vp-portal-geraetesuche-konzept, Board-Runde 1: die ruhige Handy-Fassung; Bericht §2–§4):
@@ -502,7 +503,8 @@ export function GeraetesucheDialog({
         <Radar ruhig />
         <h3 ref={titelRef} tabIndex={-1}>Die Suche hat nicht begonnen</h3>
         <p className="vp-gs-hinweis is-warn" role="status">{satz}</p>
-        {startFehler.code === 'nicht_unterstuetzt' && (
+        {/* Nur die Plattform kann ein Update planen; einen Kunden führte der Link still zur Übersicht. */}
+        {startFehler.code === 'nicht_unterstuetzt' && isPlatformAdmin() && (
           <a className="vp-gs-weg" href={hashForRoute(pageRoute('edge-updates'))}>
             Update planen <Icon name="chevron-right" size={14} />
           </a>

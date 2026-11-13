@@ -713,7 +713,7 @@ export function BeobachteteRegister({
       </Modal>
 
       <Modal open={customOpen} onClose={() => { setCustomOpen(false); setCustomError(null); }} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy || !gewaehlteArt || !!customEinheitFehler}>Jetzt aufzeichnen</Button></Recht></>}>
-        <p>Nur lesbare Modbus-Register. VoltPilot erfindet keine Semantik: Name, Einheit, Datentyp und Skala stammen aus Ihrer Gerätedokumentation.</p>
+        <p>Nur lesbare Modbus-Register. Name, Einheit, Datentyp und Skala stehen in Ihrer Gerätedokumentation.</p>
         <div className="vp-measure-custom">
           <Input label="Bezeichnung" value={custom.label} onChange={(e) => { setCustom({ ...custom, label: e.target.value }); setCustomEstimate(null); }} />
           <VpPicker label={MESSWERT_FRAGE} value={customArt || null} options={MESSWERT_ARTEN.map((a) => ({ value: a.value, label: a.label }))} hint={messwertHinweis(gewaehlteArt)} error={customEinheitFehler} onChange={(value) => { setCustomArt(value); setCustomEstimate(null); }} />

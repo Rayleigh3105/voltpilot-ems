@@ -26,7 +26,9 @@ import {
   UEMS_LAUT_AUFGABE,
   UEMS_MASSNAHME,
   UEMS_WIEDERVORLAGE_SATZ,
+  UEMS_WOHER_FRISTEN,
 } from './glossar';
+import type { Erklaerung } from './components/nachweisen/erklaerung';
 import { herkunftWort, quelleWort } from './managementbewertung';
 import {
   abweichungRoute,
@@ -183,14 +185,24 @@ export const KALENDER_ABZUG_HINWEIS =
 export const KALENDER_ABZUG_FEHLER = 'Der Kalender-Abzug ließ sich gerade nicht laden. Bitte versuchen Sie es noch einmal.';
 
 /** Der Kopf der Wiedervorlage: was die Seite ist und von wann die Fristen stammen. */
-export const kopfSatz = (stand: string) => `${UEMS_WIEDERVORLAGE_SATZ}, das am längsten Überfällige zuerst. Stand ${stand}.`;
+export const kopfSatz = (stand: string) => `${UEMS_WIEDERVORLAGE_SATZ} · Stand ${stand}.`;
 /**
  * „Woher kommen diese Fristen?“: Festlegung und Rhythmus, erledigt durch eine Entscheidung oder eine Ablesung am
  * Objekt, keine Erinnerung. Die Zählerablesung (Vertrag 1.2) folgt der Regel des Registers: zwei Monate nach der
  * letzten Ablesung.
  */
 export const WOHER_SATZ =
-  'VoltPilot leitet jede Frist aus Ihren Festlegungen ab: Überprüfungen im Rhythmus Ihrer Einstellung, internes Audit und Managementbewertung nach dem letzten Termin, Maßnahmen und Energieziele mit ihrem Termin, Zählerablesungen zwei Monate nach der letzten Ablesung. Erledigt ist eine Frist, sobald die Entscheidung oder die Ablesung am Objekt festgehalten ist. VoltPilot verschickt keine Erinnerungen.';
+  'Aus Ihren Festlegungen: Rhythmus, letzter Termin oder letzte Ablesung. Erledigt ist eine Frist, sobald Entscheidung oder Ablesung festgehalten sind. VoltPilot verschickt keine Erinnerungen.';
+
+/**
+ * Text-Runde Kunde (13.11.2026): die Herkunft der Fristen und der Kalender-Vermerk stehen nicht mehr dauerhaft am Fuß
+ * der Seite, sondern im Erklär-Blatt hinter dem i-Knopf im Kopf (Nachweisen n1, Entscheid 24; höchstens 45 Wörter).
+ */
+export const WOHER_ERKLAERUNG: Erklaerung = {
+  frage: UEMS_WOHER_FRISTEN,
+  klartext: WOHER_SATZ,
+  nichtVerwechseln: KALENDER_ABZUG_HINWEIS,
+};
 export const NOCH_KEINE_FRISTEN =
   'Noch keine Fristen. Sie entstehen, sobald Sie zum Beispiel eine Bezugsbasis freigeben, ein Dokument festhalten oder ein internes Audit durchführen.';
 export const LADEFEHLER_TITEL = 'Wiedervorlage nicht geladen';

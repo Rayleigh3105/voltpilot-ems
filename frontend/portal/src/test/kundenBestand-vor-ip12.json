@@ -2061,6 +2061,13 @@
       "nachher": "86372d142b325715dc893fc0445f1e4a345c21208897845203c378fdcd17cbd9",
       "commit": "c029440291a4dbf2946945ebc8f848fc5d41c87f",
       "grund": "S3 (vp-mastr-mehrere-einheiten-konzept, #1840): derselbe Knopf (`Button`, Recht `anlage.verwalten`, Handler `onAbrufen`) nennt sich jetzt „Weitere Einheit verknüpfen“ statt „Neu aus dem Register abrufen“, sobald schon mindestens eine bestätigte PV-Einheit da ist (`pvEinheiten.length > 0`); ohne bestätigte Einheit bleibt der Text wörtlich wie vorher - nur die Fassung mit der neuen Bedingung ist jetzt die einzige Quelle dafür."
+    },
+    {
+      "datei": "components/LadesaeuleAnbinden.tsx",
+      "vorher": "47a2540337e97a3726a009bfd4328365433909af37bdde3317d5b901262d37fe",
+      "nachher": "bb0e74e8ee46d470a886791122699dcf6851cc22d5f4ff6aa4258caf9a27476f",
+      "commit": "fm/vp-ux-text-kunde",
+      "grund": "Text-Runde Kunde (vp-ux-text-kunde): dasselbe Feld (Beschriftung, value, placeholder, onChange) trägt den kürzeren Hinweis „Nur für Ihre Anzeige.“ statt „Nur für Ihre Anzeige - er darf sich vom Kennungs-Feld unterscheiden.“; die Kennung steht direkt darunter mit eigenem Feld."
     }
   ],
   "assistentZusammenfuehrung": {

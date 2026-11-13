@@ -193,7 +193,7 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
       'neu',
       'refresh-cw',
       'Neu geplant',
-      `Zuletzt um ${uhr(e.planVon)} Uhr, alle ${e.slotMinutes} Minuten neu – mit Ihrer Verbrauchs- und PV-Prognose.`,
+      `Zuletzt um ${uhr(e.planVon)} Uhr, alle ${e.slotMinutes} Minuten neu.`,
       e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
     );
   }

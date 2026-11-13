@@ -397,11 +397,8 @@ export function AnlageStep({
   return (
     <div className="vp-onboarding-step vp-anlage-ort">
       <h3>{erste ? 'Wo steht Ihre Anlage?' : 'Wo steht die neue Anlage?'}</h3>
-      <p className="vp-muted">
-        {erste
-          ? 'Daraus kommen Wetter und Sonnenprognose.'
-          : 'Ein Name, unter dem Sie sie wiederfinden - und wo sie steht.'}
-      </p>
+      {/* Die zweite Anlage braucht keinen Satz, der die Frage wiederholt; bei der ersten nennt er die Folge. */}
+      {erste && <p className="vp-muted">Daraus kommen Wetter und Sonnenprognose.</p>}
       <div className="vp-anlage-ort-felder">
         {/* Volle Breite im Assistenten (Task vp-anlage-adresse-ux): die Karte bekommt eine eigene
             Spalte rechts (`vp-onboarding` scoped CSS) - alles andere bleibt links beisammen. */}
@@ -673,8 +670,7 @@ function GeldTeil(p: {
           onChange={(v) => p.onPlantKind(v as PlantKind)}
         />
         <p className="vp-note" style={{ margin: 0 }}>
-          {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird: „gespart" beim
-          Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
+          {VERAEUSSERUNGSFORM_FRAGE}
         </p>
       </div>
       <div>
@@ -688,7 +684,7 @@ function GeldTeil(p: {
         </button>
         {!p.advanced && (
           <p className="vp-note" style={{ margin: '4px 0 0' }}>
-            Stromtarif, Vergütung, Netzladen und Einspeisegrenze - jetzt oder später unter „Einstellungen".
+            Tarif, Vergütung, Netzladen, Einspeisegrenze - auch später unter „Einstellungen".
           </p>
         )}
       </div>

@@ -36,6 +36,10 @@ PV-Karte durch „Summenwerte dieses Geräts“. Der neue API-Leseweg ist in der
 explizit leer; Anlegen und Protokoll sind nach den wirksamen Rechten sichtbar. Das
 ist die beschlossene Änderung dieser Fläche, keine Neuaufnahme anderer Zahlen.
 
+**Text-Runde Kunde (fm/vp-ux-text-kunde, 13.11.2026):** `verlauf-ladevorgaenge.html` trägt in der Karte „Weitere Säule anbinden“ die beiden gekürzten Sätze aus `ladepunkte.ts` (`ANBINDEN_EINSTIEG`, `ANBINDEN_ALLOWLIST`).
+Der Wortvergleich der Aufnahme zeigt nur diese zwei Sätze; alle übrigen Bytes, Zahlen und Klassen sind unverändert.
+Das ist eine beschlossene Kürzung sichtbaren Texts, keine Neuaufnahme anderer Zahlen.
+
 **Nachzug main 8b8b6a03b (26.09.2026, echter Merge `main` → `uems`, Paket `vp-uems-nachzug-main-0926`):**
 main hat mehrere der aufgenommenen Flächen ausgeliefert neu gebaut. Die betroffenen Aufnahmen folgen der
 ausgelieferten Fläche; jede ist **nicht** per `--update` am Merge-Baum entstanden, sondern auf einem frischen

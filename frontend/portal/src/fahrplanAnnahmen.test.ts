@@ -65,7 +65,7 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
       einspeisegrenze: `Einspeisegrenze: 30,0${NBSP}kW am Netzanschluss.`,
       lastspitze: `Lastspitzen: Ziel: höchstens 8,0${NBSP}kW Netzbezug.`,
       '14a': `§ 14a: ${FALLBACK_14A_NOTE}`,
-      neu: 'Neu geplant: Zuletzt um 14:00 Uhr, alle 15 Minuten neu – mit Ihrer Verbrauchs- und PV-Prognose.',
+      neu: 'Neu geplant: Zuletzt um 14:00 Uhr, alle 15 Minuten neu.',
     });
   });
 

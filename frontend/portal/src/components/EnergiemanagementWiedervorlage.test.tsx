@@ -5,7 +5,7 @@ import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { ABLESUNG, ableseRunde, wvDemo, wvLeer, wvNormal, wvR12, zuletztDemo, zuletztLeer } from '../test/wiedervorlageFixtures';
-import { KALENDER_ABZUG_FEHLER, LADEFEHLER, NOCH_KEINE_FRISTEN, NUR_EINSICHT, WOHER_SATZ, ZULETZT_FEHLER } from '../wiedervorlage';
+import { KALENDER_ABZUG_FEHLER, KALENDER_ABZUG_HINWEIS, LADEFEHLER, NOCH_KEINE_FRISTEN, NUR_EINSICHT, WOHER_SATZ, ZULETZT_FEHLER } from '../wiedervorlage';
 import { EnergiemanagementWiedervorlage } from './EnergiemanagementWiedervorlage';
 
 const ladeAus = async () => {
@@ -31,9 +31,7 @@ describe('Die Wiedervorlage als Arbeitsliste (Konzept Wiedervorlage w1)', () => 
     render(<EnergiemanagementWiedervorlage />);
     await ladeAus();
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Wiedervorlage');
-    expect(screen.getByTestId('wiedervorlage-kopf').textContent).toBe(
-      'Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst. Stand 12.02.2029.',
-    );
+    expect(screen.getByTestId('wiedervorlage-kopf').textContent?.trim()).toBe('Alle Fristen Ihres Energiemanagements · Stand 12.02.2029.');
     const marken = screen.getByTestId('wiedervorlage-marken');
     expect([...marken.children].map((m) => m.textContent)).toEqual(['8 überfällig', '1 in den nächsten 30 Tagen', 'Jahresplan']);
     expect(screen.getByRole('heading', { name: 'Überfällig · 8' })).toBeTruthy();
@@ -60,7 +58,12 @@ describe('Die Wiedervorlage als Arbeitsliste (Konzept Wiedervorlage w1)', () => 
       'Jahresplan anzeigenAlle Fristen nach den nächsten 30 Tagen, nach Monaten',
     );
     const fuss = screen.getByTestId('wiedervorlage-fuss');
-    expect(fuss.textContent).toContain(`Woher kommen diese Fristen? ${WOHER_SATZ}`);
+    // Text-Runde Kunde: Herkunft und Kalender-Vermerk eine Ebene tiefer (i-Knopf im Kopf), die Grenz-Sätze bleiben am Fuß.
+    expect(fuss.textContent).not.toContain(WOHER_SATZ);
+    fireEvent.click(screen.getByRole('button', { name: 'Woher kommen diese Fristen?' }));
+    const blatt = await screen.findByTestId('erklaer-blatt');
+    expect(blatt.textContent).toContain(WOHER_SATZ);
+    expect(blatt.textContent).toContain(KALENDER_ABZUG_HINWEIS);
     expect(fuss.textContent).toContain(UEMS_VERANTWORTUNG);
     expect(fuss.textContent).toContain(UEMS_NORMGRENZE);
   });
