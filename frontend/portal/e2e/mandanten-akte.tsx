@@ -117,10 +117,17 @@ Object.assign(adminApi, {
     beendetAm: beendet ? '2026-10-01' : null,
     folgen: { anlagen: sites.length, boxen: ['VP-BB22'], personen: konten.length },
   }),
+  // vp-kunde-loeschen-504: der Server startet nur noch den Löschzug (202) - der Bericht kommt im
+  // `KundeLoeschlauf`, den `kundeLoeschlaufAbwarten` abwartet. Hier sofort „fertig" mit Bericht,
+  // ohne eine zweite Abfrage über `kundeLoeschlauf` zu brauchen.
   deleteTenant: async (_tenantId: string, confirmName: string) => ({
-    tenantId: TENANT_ID, tenantName: confirmName, deletedSites: sites.length, deletedDevices: 1,
-    deletedTelemetryRows: 0, deletedUsers: konten.map((k) => k.username), failedUsers: [],
-    anlass: sofort ? 'sofort_keine_daten' : 'sofort_mit_daten', freigegebeneBoxen: ['VP-BB22'],
+    laufId: 'lauf-1', tenantId: TENANT_ID, name: confirmName, stand: 'fertig' as const,
+    gestartetAm: iso(0), beendetAm: iso(0), fehler: null,
+    bericht: {
+      tenantId: TENANT_ID, tenantName: confirmName, deletedSites: sites.length, deletedDevices: 1,
+      deletedTelemetryRows: 0, deletedUsers: konten.map((k) => k.username), failedUsers: [],
+      anlass: sofort ? 'sofort_keine_daten' : 'sofort_mit_daten', freigegebeneBoxen: ['VP-BB22'],
+    },
   }),
 });
 Object.assign(benutzerApi, { liste: async () => [] });
