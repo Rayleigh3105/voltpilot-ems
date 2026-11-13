@@ -6,6 +6,9 @@
 }
 .vp-anlage-ort-haupt {
   display: grid;
+  /* Ohne feste Spalte wuchs die implizite Spalte auf die Mindestbreite des längsten Inhalts (334 px in 308 px am
+     Telefon): Ortskarten und Namensfeld standen über den Kartenrand hinaus. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--vp-space-4);
   min-width: 0;
 }
