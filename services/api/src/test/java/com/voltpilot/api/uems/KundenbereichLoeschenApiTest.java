@@ -569,7 +569,12 @@ class KundenbereichLoeschenApiTest {
         while (true) {
             MvcResult stand = ruf(get("/api/v1/admin/tenants/" + kunde + "/loeschlauf"), plattform());
             assertThat(stand.getResponse().getStatus()).as(text(stand)).isEqualTo(200);
-            if (!"laeuft".equals(json(stand).get("stand").asText())) {
+            JsonNode lauf = json(stand);
+            boolean laeuft = "laeuft".equals(lauf.get("stand").asText());
+            // Der Bericht landet NACH dem Commit, der "fertig" setzt (vp-kunde-loeschen-504) -
+            // wie LoeschzugRollupNachlaeuferApiTest, sonst liest fertigerBericht() manchmal zu früh.
+            boolean berichtFehlt = "fertig".equals(lauf.get("stand").asText()) && lauf.get("bericht").isNull();
+            if (!laeuft && !berichtFehlt) {
                 return stand;
             }
             assertThat(System.nanoTime()).as("Löschzug wird nicht fertig").isLessThan(frist);

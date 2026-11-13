@@ -61,7 +61,8 @@ class UemsBezugsbasisMigrationTest {
             "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
             "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
             "20261006213000", // Konzept Verbessern PR 1: weitet verbesserung_vokabular() um kurs_lage (Vereinigung).
-            "20261007120100"); // Verbessern v1 PR 2 (neu nummeriert): Art und Einsparung der Maßnahme, weitet das Vokabular.
+            "20261007120100", // Verbessern v1 PR 2 (neu nummeriert): Art und Einsparung der Maßnahme, weitet das Vokabular.
+            "20261112150000"); // #1843 Löschzug-Indexdeckung I: idx_bezugsbasis_faktor_tenant auf dieser Tabelle.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

@@ -109,7 +109,8 @@ class UemsZugriffMigrationTest {
             "20261007014500", // Nachweisen n1, Entscheid 10: Original je Fassung an der Dokument-Fassung von 013500.
             "20261007120100", // Verbessern v1 PR 2 (neu nummeriert): Art und Einsparung der Maßnahme, weitet das Vokabular.
             "20261007150000", // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
-            "20261110210000"); // Plattform-Admin Personen (P1/N1, #1814): weitet zugriff_vokabular() um konto_geaendert.
+            "20261110210000", // Plattform-Admin Personen (P1/N1, #1814): weitet zugriff_vokabular() um konto_geaendert.
+            "20261112150000"); // #1843 Löschzug-Indexdeckung I: idx_bewertung_aenderung_tenant auf dieser Tabelle.
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");
