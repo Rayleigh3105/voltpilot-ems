@@ -74,7 +74,10 @@ class FlowDeploymentPublishBrokerTest {
     }
 
     private String awaitRetained(String topic) throws Exception {
-        String payload = awaitRetainedOrNull(topic, 10000);
+        // Lauf 582: 10 s reichten nicht, als zur selben Zeit Hikari-Pools leer liefen und der
+        // Publisher "lost the broker connection" meldete (ein stark belasteter Runner, nicht ein
+        // hängender Broker) - 20 s lassen demselben Reconnect mehr Luft, ohne etwas zu verschleiern.
+        String payload = awaitRetainedOrNull(topic, 20000);
         assertThat(payload).as("retained payload on " + topic).isNotNull();
         return payload;
     }

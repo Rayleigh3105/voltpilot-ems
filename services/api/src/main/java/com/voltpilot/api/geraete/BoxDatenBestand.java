@@ -90,6 +90,9 @@ public final class BoxDatenBestand {
     /** Kein Fremdschlüssel auf {@code device}: diese Zeilen überleben das Löschen absichtlich. */
     public static final Map<String, String> BLEIBT_OHNE_FK = Map.ofEntries(
             Map.entry("box_loesen_protokoll", "Audit-Protokoll von L1 - lebt per Definition über die Box hinaus"),
+            Map.entry("box_ausbauen_protokoll",
+                    "Admin-Audit-Protokoll des Ausbau-Wegs (V20261111200000) - wie box_loesen_protokoll ohne FK, "
+                            + "lebt per Definition über die Box hinaus"),
             Map.entry("box_endgueltig_geloescht_protokoll",
                     "Das eigene Audit-Protokoll dieses Wegs - entsteht GENAU beim Löschen"),
             Map.entry("device_enrollment", "Einrichtungs-/Zertifikats-Historie der Referenz - bleibt (Spec Punkt 2)"),

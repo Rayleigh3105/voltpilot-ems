@@ -2619,8 +2619,13 @@ class AdminApiTest {
                         "role", "consumer", "primary", false))));
         Map<String, Object> nodes2 = topologyNodes(reassigned);
         assertThat(num((Map<String, Object>) nodes2.get("pv"), "value_kw")).isEqualTo(18.9);
-        assertThat(num((Map<String, Object>) nodes2.get("consumer"), "value_kw")).isEqualTo(44.2);
-        assertThat(((Map<String, Object>) nodes2.get("consumer")).get("direction")).isEqualTo("out");
+        // Since MIG (hasSize(4) above): the synthesized Hausverbrauch is a member of every
+        // consumer node too, and its own (missing) reading - not a sum of the other members -
+        // is the node's value (TopologyDeriver#consumerNode, "eine Summe über alle zählte
+        // doppelt"); the reassigned producer's 44.2 therefore never surfaces here.
+        Map<String, Object> consumer2 = (Map<String, Object>) nodes2.get("consumer");
+        assertThat(consumer2.get("value_kw")).isNull();
+        assertThat(consumer2.get("direction")).isNull();
 
         // Clearing the override (blank role) reverts to the DefaultRole mapping.
         Map<String, Object> cleared = putRoles(siteId, adminTenant, Map.of(
