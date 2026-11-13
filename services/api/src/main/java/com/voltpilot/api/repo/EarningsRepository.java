@@ -1423,23 +1423,62 @@ public class EarningsRepository {
      * Eintrag, und der Walk startet am Boden. Die Monatsliste kommt aus den
      * Daten selbst, damit {@code range=all} (ab EPOCH) keine leeren Jahrzehnte
      * abfragt.
+     *
+     * <p><b>Form (vp-perf-kundenpfade-api, gemessen 13.11.2026).</b> Früher
+     * bildete ein {@code SELECT DISTINCT site_id, Monat} über ALLE Eimer des
+     * Fensters die Paare - bei vier Anlagen und 44 Tagen 11 520 Zeilen für acht
+     * Paare (≈ 37 ms, je {@code /earnings?range=day} zweimal, wächst mit Anlagen ×
+     * Tagen). Jetzt treibt {@code site} die Anlagen, der erste Eimer im Fenster
+     * (Index {@code (site_id, bucket)}, {@code LIMIT 1}) begrenzt die Monatsreihe
+     * nach unten - so bleiben die leeren Jahrzehnte von {@code range=all} weiter
+     * ungefragt -, und je Monat prüft eine Index-Probe mit {@code LIMIT 1}, ob die
+     * Anlage darin einen Eimer hat: 1-3 ms, 26-120 statt 307-456 Buffer.
+     * Dieselben Paare, derselbe Anker ({@code MonthAnchorRewriteEqualityTest}
+     * gegen die alte Form wörtlich). Der Zaun: zusätzlich zur Mandanten-Policy
+     * der Rollups gilt jetzt die {@code site}-Policy (Standort-Zaun); der Walk
+     * selbst liest nur Anlagen über {@code JOIN site}, ein Anker einer dort
+     * unsichtbaren Anlage wurde nie gelesen.
      */
+    static final String MONTH_ANCHOR_SQL_KOPF =
+            "SELECT m.site_id, m.month_start,"
+                    + " (SELECT x.soc_last_pct FROM telemetry_rollup_15m x"
+                    + "   WHERE x.site_id = m.site_id AND x.soc_last_pct IS NOT NULL"
+                    + "     AND x.bucket >= m.month_start - interval '"
+                    + EarningsRepository.SOC_START_LOOKBACK_DAYS + " days'"
+                    + "     AND x.bucket < m.month_start"
+                    + "   ORDER BY x.bucket DESC LIMIT 1) AS soc_last_pct "
+                    + "FROM (SELECT s.id AS site_id, mo.month_start"
+                    + "   FROM site s"
+                    + "   CROSS JOIN LATERAL (SELECT e.bucket AS erster FROM telemetry_rollup_15m e"
+                    + "     WHERE e.site_id = s.id AND e.bucket >= ? AND e.bucket < ?"
+                    + "     ORDER BY e.bucket LIMIT 1) b"
+                    + "   CROSS JOIN LATERAL (SELECT g AT TIME ZONE 'Europe/Berlin' AS month_start,"
+                    + "       (g + interval '1 month') AT TIME ZONE 'Europe/Berlin' AS month_end"
+                    + "     FROM generate_series(date_trunc('month', b.erster AT TIME ZONE 'Europe/Berlin'),"
+                    + "       date_trunc('month', (?::timestamptz - interval '1 microsecond')"
+                    + "         AT TIME ZONE 'Europe/Berlin'),"
+                    + "       interval '1 month') g) mo"
+                    + "   CROSS JOIN LATERAL (SELECT 1 FROM telemetry_rollup_15m e"
+                    + "     WHERE e.site_id = s.id AND e.bucket >= greatest(?::timestamptz, mo.month_start)"
+                    + "       AND e.bucket < least(?::timestamptz, mo.month_end) LIMIT 1) ex";
+
+    /** Die Bindungen von {@link #MONTH_ANCHOR_SQL_KOPF} plus optional der Anlage. */
+    static Object[] monthAnchorArgs(Instant walkFrom, Instant to, UUID site) {
+        Timestamp f = Timestamp.from(walkFrom);
+        Timestamp t = Timestamp.from(to);
+        return site == null ? new Object[] {f, t, t, f, t} : new Object[] {f, t, t, f, t, site};
+    }
+
+    /** Die vollständige Anker-Abfrage für alle Anlagen ({@code site == null}) oder eine. */
+    static String monthAnchorSql(UUID site) {
+        return MONTH_ANCHOR_SQL_KOPF + (site == null ? "" : "   WHERE s.id = ?") + ") m";
+    }
+
     private Map<UUID, Map<LocalDate, BigDecimal>> monthAnchorSocPct(
             Instant walkFrom, Instant to, UUID site) {
         Map<UUID, Map<LocalDate, BigDecimal>> result = new HashMap<>();
         jdbc.query(
-                "SELECT m.site_id, m.month_start,"
-                        + " (SELECT x.soc_last_pct FROM telemetry_rollup_15m x"
-                        + "   WHERE x.site_id = m.site_id AND x.soc_last_pct IS NOT NULL"
-                        + "     AND x.bucket >= m.month_start - interval '"
-                        + SOC_START_LOOKBACK.toDays() + " days'"
-                        + "     AND x.bucket < m.month_start"
-                        + "   ORDER BY x.bucket DESC LIMIT 1) AS soc_last_pct "
-                        + "FROM (SELECT DISTINCT r.site_id,"
-                        + "   date_trunc('month', r.bucket AT TIME ZONE 'Europe/Berlin')"
-                        + "     AT TIME ZONE 'Europe/Berlin' AS month_start"
-                        + "   FROM telemetry_rollup_15m r"
-                        + "   WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site) + ") m",
+                monthAnchorSql(site),
                 rs -> {
                     BigDecimal soc = rs.getBigDecimal("soc_last_pct");
                     if (soc != null) {
@@ -1449,9 +1488,7 @@ public class EarningsRepository {
                                         .atZone(ZONE).toLocalDate(), soc);
                     }
                 },
-                site == null
-                        ? new Object[] {Timestamp.from(walkFrom), Timestamp.from(to)}
-                        : new Object[] {Timestamp.from(walkFrom), Timestamp.from(to), site});
+                monthAnchorArgs(walkFrom, to, site));
         return result;
     }
 
@@ -2024,7 +2061,9 @@ public class EarningsRepository {
      * Anlage davor nie gemessen hat; nach einer Woche Stille wird über den
      * Anfangsbestand ohnehin nichts mehr behauptet.
      */
-    private static final Duration SOC_START_LOOKBACK = Duration.ofDays(7);
+    /** Die Rückschau in Tagen als Konstante, weil {@link #MONTH_ANCHOR_SQL_KOPF} sie im Initialisierer braucht. */
+    private static final long SOC_START_LOOKBACK_DAYS = 7;
+    private static final Duration SOC_START_LOOKBACK = Duration.ofDays(SOC_START_LOOKBACK_DAYS);
 
     /** Die Länge eines Rollup-Eimers und eines Fahrplan-Slots. */
     private static final Duration SLOT = Duration.ofMinutes(15);
