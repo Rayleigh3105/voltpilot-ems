@@ -1,0 +1,11 @@
+# Lauf wiederfinden (S6): Grundlage von edge-app/core/internal/geraetesuche/suche/wiederfinden.go - das Kabelgeraet wechselt beim Weg Kabel/WLAN die Adresse, seine MAC bleibt gleich, und die ARP-Tabelle der Box (/proc/net/arp, was SystemNachbarn in netze.go liest) zeigt sie danach unter der neuen Adresse; die Box erreicht das Geraet ohne Eingriff weiter
+@60 ALT=$(dhcp_neu kabel kabel1); echo "alt=$ALT"; case "$ALT" in 10.213.0.*) pruef_ok "Geraet zu Beginn mit Adresse der Box ($ALT)";; *) pruef_fehler "Geraet ohne Adresse der Box ($ALT)";; esac
+MAC=$(ip netns exec kabel cat /sys/class/net/kabel1/address); echo "mac=$MAC"
+pruefe "Box erreicht das Geraet unter der alten Adresse" ping -c 2 -W 2 $ALT; sleep 1
+pruefe "ARP der Box kennt die MAC unter der alten Adresse" grep -qi "^$ALT .*$MAC" /proc/net/arp
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/wv.out; echo "rc=$?" > /tmp/wv.rc; gleich "verbinden: Rueckgabe" "$(cat /tmp/wv.rc)" "rc=0"
+@60 NEU=$(dhcp_neu kabel kabel1); echo "neu=$NEU"; case "$NEU" in 192.168.178.*) pruef_ok "Geraet danach mit Adresse vom Router ($NEU)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($NEU)";; esac
+pruefe "die Adresse hat sich tatsaechlich geaendert" sh -c "[ '$NEU' != '$ALT' ]"
+gleich "MAC des Geraets unveraendert" "$(ip netns exec kabel cat /sys/class/net/kabel1/address)" "$MAC"
+pruefe "Box erreicht das Geraet unter der neuen Adresse, ohne dass am Geraet etwas geaendert wurde" ping -c 2 -W 2 $NEU; sleep 1
+pruefe "ARP der Box kennt die MAC jetzt unter der neuen Adresse (die Grundlage, auf der Wiederfinden es dort verifiziert)" grep -qi "^$NEU .*$MAC" /proc/net/arp

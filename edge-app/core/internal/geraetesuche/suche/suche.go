@@ -92,6 +92,16 @@ type Bekannt struct {
 	Modell     string
 	// Rolle is the source role (plant-controller marks a WAGO controller).
 	Rolle string
+	// MAC is the identity the box pinned for this device ("00:54:2c:84:9b:90",
+	// "" = none pinned). In the WLAN way (relayd) the customer router, not the
+	// box, hands out addresses, so a lease can move the device at any time
+	// (netze.go S6, contract "Verträge und Identitäten" in AGENTS.md). With a
+	// MAC pinned, Wiederfinden (wiederfinden.go, meldeWiederfinden below)
+	// looks for it elsewhere in this run's own ARP picture when the
+	// configured address falls silent or answers as someone else - never
+	// adopting on the MAC alone, only on what the device's own recogniser
+	// then confirms there.
+	MAC string
 }
 
 // geraet is one address of the search, in RAM only.
@@ -277,10 +287,17 @@ func (l *Lauf) melde(f geraetesuche.Fund) bool {
 func (l *Lauf) Suche(ctx context.Context) Ausgang {
 	geraete := l.nachbarnFinden(ctx)
 
+	// Wiederfinden (S6): for every Bekannt device with a pinned MAC, whether
+	// its configured address still carries it, or that MAC turned up
+	// elsewhere in THIS run's own ARP picture - never a result by itself,
+	// only where next to verify by the device's own protocol.
+	plan := planWiederfinden(l.u.BoxArt, l.u.Bekannt, geraete)
+
 	// What the box already reads is never connected again; it is reported
 	// from the configuration at the end (unless the search found the same
-	// device under another address - then the fresh find wins).
-	bekannt := l.bekannteAdressen()
+	// device under another address - then the fresh find wins, or Wiederfinden
+	// confirmed it moved).
+	bekannt := l.bekannteAdressen(plan)
 	ziele := make([]*geraet, 0, len(geraete))
 	for _, g := range geraete {
 		if !bekannt[g.ip] {
@@ -291,7 +308,7 @@ func (l *Lauf) Suche(ctx context.Context) Ausgang {
 
 	l.geraeteAnsprechen(ctx, ziele)
 	gezaehlt := l.geraeteErkennen(ctx, ziele)
-	l.bekannteMelden()
+	l.bekannteMelden(plan)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -623,9 +640,18 @@ func (l *Lauf) geraeteErkennen(ctx context.Context, ziele []*geraet) weitereZahl
 
 // ---------------------------------------------------------------- what the box reads
 
-func (l *Lauf) bekannteAdressen() map[netip.Addr]bool {
+// bekannteAdressen never re-probes an address Wiederfinden still trusts (the
+// configured one, unconfirmed or MAC-less devices alike - the "Ein-Client-
+// Geräte" rule). An address Wiederfinden no longer vouches for (silent, or a
+// different MAC there now) is left OUT: whatever actually answers there gets
+// probed and reported like any other address, instead of being hidden behind
+// a stale claim.
+func (l *Lauf) bekannteAdressen(plan []wiederfindenPlan) map[netip.Addr]bool {
 	out := map[netip.Addr]bool{}
-	for _, b := range l.u.Bekannt {
+	for i, b := range l.u.Bekannt {
+		if i < len(plan) && !plan[i].intakt {
+			continue
+		}
 		if ip, err := netip.ParseAddr(b.IP); err == nil && probeZiel(ip, l.bereiche) == "" {
 			if _, _, ok := bekanntPaar(b); ok {
 				out[ip] = true
@@ -637,9 +663,15 @@ func (l *Lauf) bekannteAdressen() map[netip.Addr]bool {
 
 // bekannteMelden reports what the box already reads, from its configuration
 // (liest_box_schon: true). A device the search found again under another
-// address keeps only the fresh find: its schluessel is taken.
-func (l *Lauf) bekannteMelden() {
-	for _, b := range l.u.Bekannt {
+// address keeps only the fresh find: its schluessel is taken. A device
+// Wiederfinden no longer vouches for goes through meldeWiederfinden instead:
+// the stale claim at its old address is never repeated.
+func (l *Lauf) bekannteMelden(plan []wiederfindenPlan) {
+	for i, b := range l.u.Bekannt {
+		if i < len(plan) && !plan[i].intakt {
+			l.meldeWiederfinden(b, plan[i])
+			continue
+		}
 		f, ok := bekanntFund(b)
 		if !ok {
 			continue
@@ -649,6 +681,38 @@ func (l *Lauf) bekannteMelden() {
 			continue
 		}
 		l.melde(f)
+	}
+}
+
+// meldeWiederfinden is S6's second half: a pinned MAC no longer answers at its
+// configured address. It never adopts on the MAC alone (AGENTS.md "Verträge
+// und Identitäten": an address or a MAC alone proves no device identity) -
+// only a candidate address this run's OWN recognisers already confirmed, in
+// the normal probe/recognise pass, as the right kind of device counts, and
+// where the box knows the serial, the right one. Without a confirmed
+// candidate the device is reported as missing by staying out of the result
+// rather than repeating a stale "already reading" claim - the state stays
+// visible in its absence instead of a wrong reassurance.
+func (l *Lauf) meldeWiederfinden(b Bekannt, p wiederfindenPlan) {
+	if !p.kandidat.IsValid() {
+		return
+	}
+	erk, _, ok := bekanntPaar(b)
+	if !ok {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i := range l.funde {
+		f := &l.funde[i]
+		if f.Erkenner != erk || f.Verbindung.IP != p.kandidat.String() {
+			continue
+		}
+		if b.Serial != "" && f.Seriennummer != "" && f.Seriennummer != b.Serial {
+			return // a different device's serial answers there: not adopted
+		}
+		f.LiestBoxSchon = true
+		return
 	}
 }
 

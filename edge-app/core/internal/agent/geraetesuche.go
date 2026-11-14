@@ -125,7 +125,7 @@ func (a *Agent) geraetesucheBekannt() []suche.Bekannt {
 			return
 		}
 		out = append(out, suche.Bekannt{Communication: comm, IP: c.IP, Port: c.Port, Serial: c.Serial,
-			UnitID: c.MbSlaveID, Familie: family, Hersteller: brand, Modell: model, Rolle: role})
+			UnitID: c.MbSlaveID, Familie: family, Hersteller: brand, Modell: model, Rolle: role, MAC: c.MAC})
 	}
 	if a.invStore != nil {
 		if sel, ok, err := a.invStore.Load(); err == nil && ok {
@@ -155,12 +155,13 @@ func (a *Agent) geraetesucheBekannt() []suche.Bekannt {
 			Port   json.RawMessage `json:"port"`
 			Serial json.RawMessage `json:"serial"`
 			UnitID json.RawMessage `json:"unit_id"`
+			MAC    string          `json:"mac"`
 		}
 		if json.Unmarshal(d.Connection, &c) != nil || c.IP == "" {
 			continue
 		}
 		out = append(out, suche.Bekannt{Communication: d.Communication, IP: c.IP, Port: zahlAus(c.Port),
-			Serial: textAus(c.Serial), UnitID: zahlAus(c.UnitID)})
+			Serial: textAus(c.Serial), UnitID: zahlAus(c.UnitID), MAC: c.MAC})
 	}
 	return out
 }

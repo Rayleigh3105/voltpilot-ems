@@ -2160,7 +2160,11 @@ type Connection struct {
 	// ebyte_modbus_tcp: the MAC the device answered with at setup
 	// ("00:54:2c:84:9b:90"). With DHCP an address proves no device identity;
 	// the core refuses to read or switch when another MAC answers. Empty =
-	// pinned by the box on first contact (internal/ebyte store).
+	// pinned by the box on first contact (internal/ebyte store). Carried
+	// through generically to the device search's Wiederfinden (S6,
+	// geraetesuche/suche/wiederfinden.go): whichever communication a MAC ends
+	// up pinned for, the search uses it the same way to look for a moved
+	// device, never only this one.
 	MAC string `json:"mac,omitempty"`
 
 	// fronius_solar_api (InvertGridSign above is shared as the sign escape hatch)
