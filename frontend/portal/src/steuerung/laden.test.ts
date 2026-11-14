@@ -43,7 +43,7 @@ describe('AP-01 IP-13 · Grenzprüfung', () => {
   it('folgt der Reihenfolge des Servers: Anschluss, vereinbarte Leistung, Grundlage, Ladebudget', () => {
     expect(grenzePruefung(180, { zustand: 'fehler' }, null, 96.5, 30)).toMatch(/nicht geprüft werden/);
     expect(grenzePruefung(220, gebunden, null, null, null)).toMatch(/^220\s?kW liegen über 200\s?kW vereinbarter Leistung — bitte prüfen\.$/);
-    expect(grenzePruefung(180, gebunden, null, null, 30)).toBe('Für die Prüfung fehlen die Grundlast der letzten 7 Tage oder die Hausreserve.');
+    expect(grenzePruefung(180, gebunden, null, null, 30)).toBe('Für die Prüfung fehlen die Hauslast der letzten 7 Tage oder die Hausreserve.');
     expect(grenzePruefung(120, gebunden, null, 96.5, 30)).toMatch(/kein Ladebudget/);
     expect(grenzePruefung(180, gebunden, null, 96.5, 30)).toBeNull();
   });
@@ -55,7 +55,7 @@ describe('AP-01 IP-13 · Grenzprüfung', () => {
     expect(grenzePruefung(null, gebunden, null, 96.5, 30)).toBeNull();
   });
 
-  it('rechnet das Ladebudget nur mit Grundlast und Hausreserve', () => {
+  it('rechnet das Ladebudget nur mit Hauslast und Hausreserve', () => {
     expect(ladebudgetKw(180, 96.5, 30)).toBe(53.5);
     expect(ladebudgetKw(180, null, 30)).toBeNull();
   });

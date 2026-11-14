@@ -553,6 +553,7 @@
     { "id": "eigenverbrauch", "label": "Eigenverbrauch", "groessen": ["klein"], "standard": "klein" },
     { "id": "speicher", "label": "Speicher", "groessen": ["klein", "breit"], "standard": "klein" },
     { "id": "waermepumpe", "label": "Wärmepumpe", "groessen": ["klein"], "standard": "klein" },
+    { "id": "grundlast", "label": "Grundlast", "groessen": ["klein"], "standard": "klein" },
     { "id": "sonne", "label": "Sonne", "groessen": ["klein", "breit"], "standard": "breit" },
     { "id": "handel", "label": "Handel", "groessen": ["breit"], "standard": "breit" },
     { "id": "lastspitze", "label": "Lastspitze", "groessen": ["breit"], "standard": "breit" },

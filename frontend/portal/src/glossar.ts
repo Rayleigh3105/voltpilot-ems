@@ -1144,6 +1144,19 @@ export const GLOSSAR: GlossarEntry[] = [
   },
 ];
 
+/**
+ * Privatkunde (Bedienkonzept `vp-privatkunde-bedienkonzept` §5, BK-1 bis BK-3 = A) — die **Grundlast**: was im
+ * Haus immer läuft, auch nachts; gemessen als niedrigste Viertelstunde der Nacht, in Watt. Nicht die „Grundlast“
+ * der Bezugsbasis ({@link UEMS_GRUNDLAST}, der feste Teil eines Modells in kWh je Periode) — gleiches Wort, andere
+ * Fläche. Im Laden-Rahmen heißt die höchste Hauslast der letzten 7 Tage seitdem {@link HAUSLAST}.
+ * Glossar: `docs/fachmodell/glossar.md` › Grundlast (Privatkunde).
+ */
+export const GRUNDLAST = 'Grundlast';
+export const GRUNDLAST_TYPISCHE_NACHT = 'typische Nacht';
+export const GRUNDLAST_LAEUFT_IMMER = 'läuft immer';
+export const GRUNDLAST_UNTERZEILE = 'läuft immer, auch nachts';
+export const HAUSLAST = 'Hauslast';
+
 // ---------------------------------------------------------------------------
 // 4 · Vergleichen
 // ---------------------------------------------------------------------------

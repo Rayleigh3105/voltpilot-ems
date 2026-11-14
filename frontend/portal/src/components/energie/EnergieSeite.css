@@ -812,3 +812,67 @@ button.vp-vr-zeile:hover,
     text-align: left;
   }
 }
+
+/* --- Grundlast (Bedienkonzept Privatkunde §5.1, BK-1 = A) --------------------
+   Kopfzeile „typische Nacht …“ mit der großen Zahl, ein Balken je Nacht (Jahr: je Monat), darunter die
+   Aufteilung wie bei „Verbrauch nach Bereichen“ und ein ruhiger Satz. Eine Nacht ohne Wertung ist ein
+   grauer Strich am Boden, nie eine Null-Säule; eine offene Nacht bleibt leer. */
+.vp-vr-grundlast-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--vp-c-space-3);
+  margin-top: var(--vp-c-space-2);
+}
+.vp-vr-grundlast-kopf span {
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-navy);
+  min-width: 0;
+}
+.vp-vr-grundlast-kopf b {
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-navy);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-grundlast-balken {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 64px;
+  margin-top: var(--vp-c-space-4);
+}
+.vp-vr-grundlast-saeule {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.vp-vr-grundlast-saeule > i {
+  display: block;
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  opacity: 0.85;
+}
+.vp-vr-grundlast-saeule.is-ohne > i {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--vp-neutral-soft);
+  opacity: 1;
+}
+.vp-vr-grundlast-teile {
+  margin-top: var(--vp-c-space-4);
+}
+.vp-vr-grundlast-teile dt {
+  color: var(--vp-navy);
+}
+.vp-vr-grundlast-teile > div.is-rest dt {
+  color: var(--vp-text-gray);
+}
+.vp-vr-grundlast-satz {
+  margin: var(--vp-c-space-4) 0 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-gray);
+}

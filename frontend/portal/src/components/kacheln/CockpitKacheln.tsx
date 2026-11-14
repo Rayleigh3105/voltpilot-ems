@@ -1,6 +1,6 @@
-import { useId, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { useEffect, useId, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import { Icon, type IconName } from '../../../designsystem/components/core/Icon';
-import type { ForecastResponse, HistoryTotals, WeatherPoint } from '../../api';
+import { api, type ForecastResponse, type Grundlast, type HistoryTotals, type WeatherPoint } from '../../api';
 import { chartTheme } from '../../chartTheme';
 import type { HeroMoney } from '../../cockpitWidgets';
 import {
@@ -15,6 +15,8 @@ import {
   type AnteilKachel,
   type HeuteTeil,
 } from '../../kacheln';
+import { GRUNDLAST } from '../../glossar';
+import { grundlastKachel } from '../../grundlast';
 import { kwh, prozent, zahl } from '../../leitungsplan';
 import { morgenSatz, prognoseModell, reichtSatz, verbrauchsSpitzeSatz } from '../../prognoseSeite';
 import type { PeakBandView } from '../../peakBand';
@@ -649,6 +651,38 @@ export function WaermepumpeKachel({ teil, ...b }: Basis & { teil: VerbrauchTeil 
   );
 }
 
+/* ------------------------------------------------------------- Grundlast */
+
+/**
+ * **Grundlast** (Bedienkonzept Privatkunde §5.1, BK-1 = A): die typische Nacht der letzten 14 Nächte in Watt,
+ * „läuft immer“, der Wert von vor einem Monat. Holt sich die Zahl selbst (`z=aktuell`); ohne gemessenen
+ * Hausverbrauch erscheint sie nicht. Der Kopf springt in Verlauf › Energie, Woche.
+ */
+export function GrundlastKachel({ siteId, ...b }: Basis & { siteId: string }) {
+  const [g, setG] = useState<{ siteId: string; g: Grundlast | null } | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    api.grundlast(siteId, 'aktuell').then(
+      (r) => aktiv && setG({ siteId, g: r }),
+      () => aktiv && setG({ siteId, g: null }),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [siteId]);
+  const k = grundlastKachel(g?.siteId === siteId ? g.g : null);
+  if (!k) return null;
+  return (
+    <Kachel {...b} id="grundlast" name={GRUNDLAST} icon="plug" ton="load" ziel="Verlauf">
+      <div>
+        <Gross wert={k.zahl} einheit={k.einheit ?? undefined} />
+        <p className="vp-k-zustand">{k.zustand}</p>
+      </div>
+      {k.sub && <p className="vp-k-sub">{k.sub}</p>}
+    </Kachel>
+  );
+}
+
 /* ------------------------------------------------------ Einfache Kacheln */
 
 /** Eine Kachel mit einer Zahl und einer ruhigen Zeile (Wetter, Geräte-Automatik). */
@@ -683,6 +717,7 @@ export type KachelAuftrag =
   | ({ art: 'sonne' } & ComponentProps<typeof PrognoseKachel>)
   | ({ art: 'lastspitze' } & ComponentProps<typeof LastspitzeKachel>)
   | ({ art: 'waermepumpe' } & ComponentProps<typeof WaermepumpeKachel>)
+  | ({ art: 'grundlast' } & ComponentProps<typeof GrundlastKachel>)
   | ({ art: 'wert' } & ComponentProps<typeof WertKachel>)
   | ({ art: 'strompreis' } & ComponentProps<typeof Strompreis>)
   | ({ art: 'laden' } & ComponentProps<typeof Laden>)
@@ -705,6 +740,7 @@ export default function KachelSchalter(a: KachelAuftrag) {
     case 'sonne': return <PrognoseKachel {...a} />;
     case 'lastspitze': return <LastspitzeKachel {...a} />;
     case 'waermepumpe': return <WaermepumpeKachel {...a} />;
+    case 'grundlast': return <GrundlastKachel {...a} />;
     case 'wert': return <WertKachel {...a} />;
     case 'strompreis': return <Strompreis {...a} />;
     case 'laden': return <Laden {...a} />;

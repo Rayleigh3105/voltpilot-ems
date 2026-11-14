@@ -1011,7 +1011,7 @@ describe('AP-01 IP-13 · Kundenwörter im Grenze-Schritt', () => {
     // Seit dem Nachzug „Steuerung neu“ wohnt der Rahmen im Rahmen-Blatt des Reiters Laden (Paket 1c bringt die Prüfung dorthin).
     const quelle = readFileSync(join(SRC, 'steuerung/LadenReiter.tsx'), 'utf8');
     expect(quelle).toContain('Heute ist kein Netzanschluss gebunden. Tragen Sie für den Übergang die vereinbarte Leistung im Dialog ein.');
-    expect(quelle).toContain('Grundlast der letzten 7 Tage');
+    expect(quelle).toContain('Hauslast der letzten 7 Tage');
     expect(quelle).toContain('Hausreserve');
     expect(quelle).toContain('Ladebudget');
     expect(quelle.replace(/\.vereinbart_kw/g, '')).not.toMatch(/grid_limit_kw|max_house_load_kw/);

@@ -250,13 +250,13 @@ public class ChargingConfigService {
         Double reserve = rahmen == null ? null : rahmen.houseReserveKw();
         if (grundlast == null || reserve == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "Für die Plausibilitätsprüfung fehlen die Grundlast der letzten 7 Tage oder die Hausreserve. VoltPilot richtet diese Werte ein.");
+                    "Für die Plausibilitätsprüfung fehlen die Hauslast der letzten 7 Tage oder die Hausreserve. VoltPilot richtet diese Werte ein.");
         }
         BigDecimal budget = grenze.subtract(BigDecimal.valueOf(grundlast))
                 .subtract(BigDecimal.valueOf(reserve));
         if (budget.signum() <= 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "Die Grundlast der letzten 7 Tage (" + kw(BigDecimal.valueOf(grundlast))
+                    "Die Hauslast der letzten 7 Tage (" + kw(BigDecimal.valueOf(grundlast))
                             + " kW) und die Hausreserve (" + kw(BigDecimal.valueOf(reserve))
                             + " kW) lassen innerhalb von " + kw(grenze)
                             + " kW kein Ladebudget übrig.");

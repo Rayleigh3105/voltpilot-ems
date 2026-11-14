@@ -14,6 +14,8 @@ import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { installHelpFixtures } from './help-fixtures';
 import { lageDaten, type Lage } from './cockpit-privat-daten';
+import { grundlastAntwort, type GrundlastFall } from './grundlast-fixtures';
+import type { GrundlastZeitraum } from '../src/api';
 import { sichtbareListe } from '../src/test/rollenFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -85,6 +87,17 @@ if (lageParam === 'gewerbe') {
     siteVerbraucher: result({ verbraucher: [], ladepunkte: null, rangliste: [] }),
     siteProfiles: result({ profiles: [], weitere: [] }),
     telemetry: result([]),
+    // Grundlast (Bedienkonzept Privatkunde §5): Mühlbach wie Schramm mit UV Halle/UV Keller, Birkenweg ohne
+    // Unterzähler; `?grundlast=voll|luecke|wenig|stufe|nie` wählt den Fall.
+    grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) =>
+      grundlastAntwort({
+        heute: d.now.slice(0, 10),
+        basisW: d.site.id === 'muehlbach' ? 310 : 220,
+        teile: d.site.id === 'muehlbach'
+          ? [{ entityId: 'mb-uv-halle', label: 'UV Halle', anteil: 0.6 }, { entityId: 'mb-uv-keller', label: 'UV Keller', anteil: 0.1 }]
+          : undefined,
+        fall: (q.get('grundlast') ?? 'voll') as GrundlastFall,
+      }, z, at),
     einspeiseverguetung: result({ zustand: 'eeg', wirksamCtKwh: 7.9, angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.9, hergeleitetGenaehert: false, inbetriebnahme: '2021-04-01', leistungKwp: 19.8, eegEndeAm: '2041-12-31', ohneVerguetungBeiNegativpreis: false, anzulegenderWertCtKwh: null }),
     entityHistory: async (_site: string, entityId: string) => ({
       range: 'day', from: d.money.from, to: d.money.to, bucketMinutes: 15,
