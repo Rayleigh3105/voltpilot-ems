@@ -322,7 +322,9 @@ describe('Steuerung · Reiter Regeln', () => {
     zeige('regeln');
     fireEvent.click(await screen.findByRole('button', { name: /Neue Regel/ }));
     const blatt = await screen.findByRole('dialog', { name: 'Neue Regel' });
-    expect(within(blatt).getByLabelText('Regel als Satz')).toHaveTextContent(/Börsenpreis.*unter.*10,0 ct\/kWh/);
+    // N2 (report.md §11): eine frische Regel startet mit 'zeit', nicht mehr mit dem
+    // gesperrten Preis-Baustein (`neuerEntwurf` ohne Vorlage).
+    expect(within(blatt).getByLabelText('Regel als Satz')).toHaveTextContent(/Uhrzeit.*22:00.*06:00/);
     fireEvent.click(within(blatt).getByRole('button', { name: 'Weiter: Folgen' }));
     const folgen = await screen.findByRole('dialog', { name: 'Folgen prüfen' });
     fireEvent.click(within(folgen).getByRole('button', { name: /Regel aktivieren/ }));
@@ -854,8 +856,11 @@ describe('Steuerung · Steuern & Optimieren (UEMS)', () => {
     const { unmount } = render(<SteuerungSection site={site} reiter="regeln" tabs={TABS} onOpenSub={vi.fn()} />);
     await screen.findByTestId('steuern-ruhe');
     const regel = await waitFor(() => document.getElementById('regel-f-1')!);
-    await waitFor(() => expect(regel).toHaveTextContent('wirkt nicht'));
-    expect(regel).toHaveTextContent('bis Sie fortsetzen');
+    // `REGEL` (oben) hat eine Preis-Bedingung: N2 (report.md §11) zeigt dafür
+    // immer „kommt noch“, auch angehalten - das ist der fundamentalere Grund,
+    // unabhängig vom Fortsetzen. Die `matt`-Klasse (SZ-2 A) bleibt trotzdem.
+    await waitFor(() => expect(regel).toHaveTextContent('kommt noch'));
+    expect(regel).toHaveTextContent('wird auf der Box noch nicht ausgeführt');
     expect(regel).toHaveClass('matt');
     unmount();
     zeige('laden');
