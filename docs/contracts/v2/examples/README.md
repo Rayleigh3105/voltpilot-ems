@@ -7,7 +7,7 @@ Ausführbare JSON-Fixtures für Schema- und Laufzeitprüfungen. Dateinamen und I
 | `consumer-policy.*.json` | 3 | 1 |
 | `edge-desired.*.json` | 3 | 1 |
 | `edge-entity.*.json` | 6 | 1 |
-| `flow-artifact.*.json` | 2 | 1 |
+| `flow-artifact.*.json` | 3 | 1 |
 | `flow-graph.*.json` | 14 | 3 |
 | `mqtt-measurement-config-status.*.json` | 1 | 0 |
 | `mqtt-measurement-config.*.json` | 7 | 1 |
@@ -31,6 +31,8 @@ Prüfpfade: Optimierung `tests/test_contract_v2.py`, API-Validatoren, `edge-app/
 
 | Datei | Erwartung |
 |---|---|
+| `flow-artifact.valid.steuerlogik.json` | Artefakt des Logik-Dienstes für das Beispiel der Wärmepumpe (Bündelformat `steuerlogik`); gepinnt von `logikdienst_test.go`, von den API-Tests als Antwort des Dienstes benutzt. |
+| `steuerlogik-rueckmeldung.valid.waermepumpe.json` | Herzschlag-Block `logik` desselben Beispiels nach 21 Minuten Mitlauf; gepinnt von `logiklauf_test.go`, gelesen von den Vektoren der API. |
 | `flow-graph.valid.mqtt-battery.json` | Gültiger Referenzfall; Erwartung bleibt durch Schema und Validator-Tests festgelegt. |
 | `flow-graph.valid.mqtt-battery-protected.json` | Gültiger Referenzfall; Erwartung bleibt durch Schema und Validator-Tests festgelegt. |
 | `flow-graph.valid.http-battery.json` | Gültiger Referenzfall; Erwartung bleibt durch Schema und Validator-Tests festgelegt. |

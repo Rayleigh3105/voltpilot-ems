@@ -258,6 +258,7 @@ class BoxLoesenMigrationTest {
             Map.entry("steuerungsverbund_mitglied", SPIEGEL), Map.entry("steuerungsverbund_geraet", SPIEGEL),
             Map.entry("steuerungsverbund_anteil_verlust", SPIEGEL),
             Map.entry("steuerungsverbund_sprungprobe", SPIEGEL),
+            Map.entry("steuerlogik_lauf", SPIEGEL), Map.entry("steuerlogik_wechsel", SPIEGEL),
             Map.entry("data_source_box_receipt", SPIEGEL), Map.entry("device_component_apply", SPIEGEL),
             // OCPP: jede dieser Zeilen setzt eine laufende Ladesäulen-Sitzung voraus, also Meldungen der
             // Box - derselbe Grund wie SPIEGEL, hier einzeln benannt (Report Abschnitt 3.1 "OCPP ocpp_*").

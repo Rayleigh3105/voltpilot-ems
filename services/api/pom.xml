@@ -522,6 +522,9 @@
                         <!-- The AP-06 per-data-source status listener is ON in production.
                              Unit tests drive handle() without opening a broker connection. -->
                         <voltpilot.uems.data-source-status.mqtt-listener-enabled>false</voltpilot.uems.data-source-status.mqtt-listener-enabled>
+                        <!-- The Steuerlogik heartbeat listener (block `logik`) is ON in production as well;
+                             its tests drive handle() directly. -->
+                        <voltpilot.steuerlogik.mqtt-listener-enabled>false</voltpilot.steuerlogik.mqtt-listener-enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

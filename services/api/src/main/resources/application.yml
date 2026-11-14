@@ -446,6 +446,16 @@ voltpilot:
       enabled: ${VOLTPILOT_FLOWS_ACTIVATION_ENABLED:false}
     compiler:
       base-url: ${VOLTPILOT_FLOWS_COMPILER_BASE_URL:http://flowc:8099}
+  # Steuerlogik Stufe 2 (docs/contracts/v2/steuerlogik.md): `dienst.base-url` is
+  # the logic service beside the api (edge-app/core/cmd/vp-logik-dienst, compose
+  # service "logik-dienst") that reads, checks and packs a logic - the api never
+  # reads the language itself. The heartbeat block `logik` (the logic running
+  # along on the box) is ingested by its own listener: production default ON,
+  # Surefire turns it off and its tests call handle() directly.
+  steuerlogik:
+    mqtt-listener-enabled: ${VOLTPILOT_STEUERLOGIK_MQTT_LISTENER_ENABLED:true}
+    dienst:
+      base-url: ${VOLTPILOT_STEUERLOGIK_DIENST_BASE_URL:http://logik-dienst:8101}
   # Ersparnis-Simulation: the internal Python simulation service (the
   # optimization image's simulate-serve entrypoint, compose service
   # "simulation"). The api owns auth/tenancy/master-data resolution and

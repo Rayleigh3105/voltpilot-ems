@@ -77,7 +77,8 @@ public final class KundeDatenBestand {
                 "device_curtailment_unit", "device_source_status", "device_data_source_status",
                 "consumer_runtime_status", "consumer_requirement_state", "device_battery_control",
                 "device_charge_connector", "device_charge_point", "device_charging_budget", "flow_device_ack",
-                "flow_node_status", "data_source_box_receipt", "wechselrichter_untergrenze",
+                "flow_node_status", "steuerlogik_lauf", "steuerlogik_wechsel", "data_source_box_receipt",
+                "wechselrichter_untergrenze",
                 "steuerungsverbund_mitglied", "steuerungsverbund_geraet", "steuerungsverbund_anteil_verlust",
                 "steuerungsverbund_sprungprobe", "steuerungsverbund_steckerprobe", "steuerungsverbund_bilanz",
                 "steuerung_vorsprung"));
@@ -143,7 +144,7 @@ public final class KundeDatenBestand {
         String einstellung = "Einstellung/Absicht der Cloud - keine Aufzeichnung, wird mit dem Kunden hinfällig";
         for (String t : List.of("device_override", "consumer_override", "consumer_policy", "consumer_profile",
                 "flow_definition", "flow_claim", "flow_layout", "flow_gated_node_enablement", "cockpit_layout",
-                "site_scene", "site_suggestion_state", "site_profile_state", "site_forecast_automatik",
+                "steuerlogik", "site_scene", "site_suggestion_state", "site_profile_state", "site_forecast_automatik",
                 "site_forecast_model_choice", "site_charge_point_allowlist", "site_charge_point_priority",
                 "site_charge_point_rank", "site_charging_config", "site_supply_price", "site_vehicle_tag",
                 "quelle_einstellung", "quelle_kadenz", "erzeuger_vorgabe", "anlage_netz_vermarktung",
