@@ -2016,6 +2016,40 @@ describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
     expect(plan.mock.calls.length).toBe(start.plan + 10);
     expect(earnings.mock.calls.length).toBe(start.earnings + 1);
   });
+
+  it('die Rollen kommen beim Öffnen EINMAL - erst eine neuere Live-Zeit holt sie wieder (vp-perf2-portal, Idee 5)', async () => {
+    // Vorher fragte die Seite die drei Rollen beim Öffnen zweimal: vor `/overview` und noch einmal, sobald dessen
+    // Live-Zeit da war - obwohl der erste Abruf erst nach dem Übersichts-Abruf hinausging.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const basis = await api.overview();
+    let ts = Date.parse('2026-11-14T08:00:00Z');
+    const overview = vi.spyOn(api, 'overview').mockImplementation(async () => ({
+      ...basis,
+      sites: basis.sites.map((s) => ({ ...s, live: { ...s.live!, ts: new Date(ts).toISOString() } })),
+    }));
+    const lesen = vi.spyOn(api, 'rollenWert').mockImplementation(async (_siteId, role) => ({
+      role, zuordnung_vorhanden: false, wert: null, einheit: 'kW', unvollstaendig: false, geraete: [], stand: null,
+    }));
+    const ruhen = () => act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    renderSeite();
+    await waitFor(() => expect(overview).toHaveBeenCalled());
+    await waitFor(() => expect(lesen).toHaveBeenCalledTimes(3));
+    await ruhen();
+    expect(lesen).toHaveBeenCalledTimes(3);
+
+    // Der Takt bringt eine NEUE Live-Zeit: die Rollen von vorhin sind älter - neu holen.
+    ts += 10_000;
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await waitFor(() => expect(lesen).toHaveBeenCalledTimes(6));
+
+    // Dieselbe Live-Zeit noch einmal (die Box hat nichts Neues geschickt): nichts zu holen.
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await ruhen();
+    expect(lesen).toHaveBeenCalledTimes(6);
+    for (const role of ['pv', 'consumer', 'grid']) expect(lesen).toHaveBeenCalledWith('s-1', role);
+  });
 });
 
 /**

@@ -877,6 +877,12 @@ function AnlagenSubPage({
  * that used to live on Standorte/Geräte), and Mehr (Historie & Erlöse,
  * Wetter). All wording derivation is pure (fleet.ts / schedule.ts).
  */
+/** `/overview` samt dem Zeitpunkt des Aufrufs (für den Rollen-Abruf der Anlagen-Seite, `rollenAbrufRef`). */
+function overviewHolen() {
+  const gesendet = Date.now();
+  return api.overview().then((o) => ({ o, gesendet }));
+}
+
 export function AnlageSeite({
   site,
   sites,
@@ -1044,13 +1050,19 @@ export function AnlageSeite({
     failed: surfaceFailed,
   } = useAnlageSurface(site, reloadKey);
 
+  // Wann ging der Übersichts-Abruf hinaus, dessen Antwort gerade gilt? Der Rollen-Abruf vergleicht seine
+  // eigene Sendezeit damit (unten bei `rollenAbrufRef`). Gestempelt beim AUFRUF: teilt der Aufruf eine schon
+  // laufende Anfrage, liegt der Stempel etwas zu spät - dann holt der Rollen-Abruf eher einmal zu oft als zu selten.
+  const overviewGesendetRef = useRef(0);
+
   // Status + live snapshot: the site's overview row (device health + newest
   // sample) - the same source the fleet cards render from.
   useEffect(() => {
     let active = true;
-    api.overview().then(
-      (o) => {
+    overviewHolen().then(
+      ({ o, gesendet }) => {
         if (!active) return;
+        overviewGesendetRef.current = gesendet;
         setOverview(o);
         setOverviewFailed(false);
       },
@@ -1261,8 +1273,11 @@ export function AnlageSeite({
   }, ERLOES_POLL_MS);
   useFreshnessPoll(() => {
     setNow(new Date());
-    api.overview().then(
-      (o) => setOverview(o),
+    overviewHolen().then(
+      ({ o, gesendet }) => {
+        overviewGesendetRef.current = gesendet;
+        setOverview(o);
+      },
       () => {},
     );
     api.controlStatus(site.id).then(
@@ -1890,15 +1905,35 @@ export function AnlageSeite({
   }, [site.id, eigenIds, reloadKey]);
   // Drei unabhängige Lesewege, gemeinsam übernommen: ein fehlgeschlagener Abruf
   // verbirgt nur seine Aufschlüsselung. Die Flottenzahl bleibt die aus /overview.
+  //
+  // ⚠ Eine neue Live-Zeit holt die Rollen nur, wenn die vorliegende Antwort ÄLTER ist als sie
+  // (Performance-Runde vp-perf2-portal, Idee 5): beim Öffnen fragt die Seite die Rollen, noch bevor
+  // `/overview` die erste Live-Zeit bringt - kam deren Antwort danach, fragte die Live-Zeit dieselben
+  // drei Rollen ein zweites Mal. Ging der Rollen-Abruf erst NACH dem Übersichts-Abruf hinaus, dessen
+  // Live-Zeit gerade gilt, sieht er mindestens deren Stand; ein zweiter brächte nichts Neueres.
+  // Jeder weitere Takt (neue Übersicht, neue Live-Zeit) holt wie bisher neu. `stand` allein taugt dafür
+  // nicht: ohne Zuordnung oder ohne liefernde Geräte ist er leer.
+  // Übernommen wird nur die Antwort des JÜNGSTEN Abrufs - auch eine, deren Abruf vor der neuen Live-Zeit
+  // losging und die darum nicht wiederholt wird.
   const liveTs = ovSite?.live?.ts ?? null;
+  const rollenAbrufRef = useRef<{ siteId: string; reloadKey: number; gesendet: number; nummer: number } | null>(null);
   useEffect(() => {
-    let aktiv = true;
+    const letzter = rollenAbrufRef.current;
+    if (
+      liveTs != null &&
+      letzter?.siteId === site.id &&
+      letzter.reloadKey === reloadKey &&
+      letzter.gesendet >= overviewGesendetRef.current
+    ) {
+      return;
+    }
+    const abruf = { siteId: site.id, reloadKey, gesendet: Date.now(), nummer: (letzter?.nummer ?? 0) + 1 };
+    rollenAbrufRef.current = abruf;
     Promise.all(['pv', 'consumer', 'grid'].map((rolle) =>
-      api.rollenWert(site.id, rolle).catch(() => null),
+      api.rollenWert(abruf.siteId, rolle).catch(() => null),
     )).then((werte) => {
-      if (aktiv) setRollenStand({ siteId: site.id, werte });
+      if (rollenAbrufRef.current?.nummer === abruf.nummer) setRollenStand({ siteId: abruf.siteId, werte });
     });
-    return () => { aktiv = false; };
   }, [site.id, liveTs, reloadKey]);
   const eigenWerteById = useMemo(() => werteNachId(eigenWerte), [eigenWerte]);
   /**
