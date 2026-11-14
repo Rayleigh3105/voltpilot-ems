@@ -812,3 +812,12 @@ button.vp-vr-zeile:hover,
     text-align: left;
   }
 }
+
+/* --- Erzeugung nach Einheiten (Anlagen-Check, Bedienkonzept vp-privatkunde-bedienkonzept BK-4 = A) ----------
+   Dieselbe Bauart wie „Verbrauch nach Bereichen“; eine Einheit, die weniger liefert, im Warn-Ton. */
+.vp-vr-einheiten .vp-vr-kv > div.is-warn dd {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-vr-einheiten .vp-vr-foot + .vp-vr-foot {
+  margin-top: 4px;
+}

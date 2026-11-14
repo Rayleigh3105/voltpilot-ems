@@ -15,6 +15,7 @@ import { api } from '../src/api';
 import type { EntityEnergy, History, HistoryRange } from '../src/api';
 import { derive } from '../src/topology';
 import { installHelpFixtures } from './help-fixtures';
+import { installAnlagenCheck } from './anlagen-check-fixtures';
 import { historyFor, TODAY } from './verlauf-fixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -127,5 +128,8 @@ Object.assign(api, {
     ? async () => { throw new Error('404'); }
     : async (_siteId: string, entityId: string, range: HistoryRange, at?: string) => energieFuer(entityId, range, at ?? TODAY),
 });
+
+// Anlagen-Check (`?solar=…`, `?bilanz=…`, `?einheiten=wr`): nur wenn die Adresse einen Fall nennt.
+installAnlagenCheck();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App initialAuth />);

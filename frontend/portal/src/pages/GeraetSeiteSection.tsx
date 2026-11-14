@@ -150,6 +150,7 @@ import {
   type MenueEintrag,
   type TechnikTeil,
 } from '../components/GeraetRahmen';
+import { useSpeicherBilanzBaustein } from '../components/SpeicherBilanzKarte';
 import { GeraetBuehne, grosseZahl, nebenKacheln, type BuehneGrafik } from '../components/GeraetBuehne';
 import { GeraetSteuerung } from '../components/GeraetSteuerung';
 import { GeraetHeute } from '../components/GeraetHeute';
@@ -784,6 +785,8 @@ function GeraetSeiteKern({
   }, [view, data, sources, charging, control, curtailment, strategies, topology, fulfilment,
     eigenerVerbraucher, geraetId, geraeteRef, box?.id, now, setupHier, kommunikation,
     eigeneKomponenten, ioAusgangAn, anlagensteuerungWerte, consumerStatus]);
+  // Die Speicher-Bilanz (Anlagen-Check, BK-7 = A) steht auf der Seite des Speichers - dem Hybrid-Wechselrichter.
+  const speicherBilanzBaustein = useSpeicherBilanzBaustein(site.id, gesichtView?.gattung === 'wechselrichter-speicher');
 
   /**
    * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek.
@@ -1779,6 +1782,7 @@ function GeraetSeiteKern({
               buehne,
               steuerung: steuerungBaustein,
               heute,
+              bilanz: speicherBilanzBaustein,
               modul: zaehlerBaustein,
               aktivitaet,
             }}
