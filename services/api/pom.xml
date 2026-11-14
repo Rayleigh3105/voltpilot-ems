@@ -467,6 +467,11 @@
                              Vorgabe. -->
                         <voltpilot.uems.plan-zustellung.enabled>false</voltpilot.uems.plan-zustellung.enabled>
                         <voltpilot.uems.verbund-bilanz.enabled>false</voltpilot.uems.verbund-bilanz.enabled>
+                        <!-- Der 15-Minuten-Takt der Preis-Zuleitung zur Box: dieselbe
+                             @Scheduled-Falle, im Testlauf aus, in PRODUKTION an
+                             (matchIfMissing). Wer ihn prueft, ruft
+                             PreisZuleitungTakt.run(now) selbst. -->
+                        <voltpilot.preiszuleitung.enabled>false</voltpilot.preiszuleitung.enabled>
                         <voltpilot.uems.vorbehalt.enabled>false</voltpilot.uems.vorbehalt.enabled>
                         <!-- Der Vorbehalt im Viertelstunden-Takt (IP-13 Folge): im Testlauf aus, in
                              PRODUKTION an. Wer ihn prueft, ruft VorbehaltViertelstundeLaeufer.lauf(jetzt)

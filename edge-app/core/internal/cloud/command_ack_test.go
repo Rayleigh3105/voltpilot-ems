@@ -78,6 +78,7 @@ func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
 		OnFlows: handler, OnUpdateTarget: handler,
 		OnProbeRequest: handler, OnRegisterWrite: handler, OnDesiredDownlink: handler,
 		OnControlCert: handler, OnChargingConfig: handler, OnChargingBoost: handler,
+		OnPriceCurrent:      handler,
 		OnMeasurementConfig: func([]byte) bool { return true },
 	})
 	if err != nil {
@@ -92,7 +93,7 @@ func TestNewRegistersEveryLocalDownlinkRouteBeforeConnect(t *testing.T) {
 	want := map[string]bool{}
 	for _, leaf := range []string{"schedule", "command", "v2/entities", "v2/plan", "v2/flows",
 		"v2/update", "v2/control-certification", "v2/charging-config",
-		"v2/charging-boost", "v2/probe", "v2/register-write", "v2/desired",
+		"v2/charging-boost", "v2/price", "v2/probe", "v2/register-write", "v2/desired",
 		"v2/measurement-config"} {
 		want[link.topic(leaf)] = true
 	}

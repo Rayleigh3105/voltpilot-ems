@@ -162,8 +162,20 @@
 //	                decision event per state change (accepted/clamped/
 //	                rejected/superseded/expired/released/fallback).
 //
-// RESERVED local topics for compiled flow data nodes (E2 flowc; fed by the
-// core with E4 - until then subscribers stay idle-safe):
+// Platform data-feed topics for compiled flow data nodes (E2 flowc):
+//
+//	edge/price/current  core -> flows  RETAINED current spot price scalar
+//	                (what vp.price.current reads): the internal/pricefeed
+//	                mirror of the cloud downlink .../v2/price (contract
+//	                docs/contracts/v2/mqtt-price-current.md). Fresh payload
+//	                {schema_version, price_ct_kwh, unit, slot_start,
+//	                slot_end, valid_until, bidding_zone}; past valid_until
+//	                or on a cloud withdraw the mirror REPLACES it with the
+//	                explicit stale marker {schema_version, stale:true} - an
+//	                old price must read as unknown, never as current.
+//
+// RESERVED local topics (fed by the core with a later stage - until then
+// subscribers stay idle-safe):
 //
 //	edge/prices       core -> flows  RETAINED day-ahead price series.
 //	edge/forecast/pv  core -> flows  RETAINED site PV forecast.
@@ -244,6 +256,11 @@ const (
 	// per-target connection manager).
 	TopicRegisterWriteRequest = "edge/register-write/request"
 	TopicRegisterWriteResult  = "edge/register-write/result"
+	// TopicPriceCurrent carries the RETAINED current spot price (or the
+	// explicit stale marker) the internal/pricefeed mirror publishes - see
+	// the package header. Read by compiled flows through vp-feed
+	// ("price_current") and, later, by the rule-language core.
+	TopicPriceCurrent = "edge/price/current"
 	// TopicControlGate is the RETAINED plant-wide control gate the core owns:
 	// {control_enabled, consumer_control_enabled}. A Node-RED executor cannot
 	// read the box's env, and the per-entity command's `control_enabled` field

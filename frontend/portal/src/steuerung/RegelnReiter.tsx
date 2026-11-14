@@ -193,14 +193,14 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter, onUmwandeln }: {
   const ruht = k.an && bild.funktion.angehalten;
   let pill: ReactNode;
   if (!k.an) pill = <span className="pill off"><i />aus</span>;
-  // N2 (report.md §11): die Box führt eine Preis-Bedingung noch nicht aus - ehrlich als
-  // "kommt noch" zeigen statt "wartet" zu versprechen, egal ob angehalten oder nicht.
-  else if (k.preisNichtAusgefuehrt) pill = <span className="pill lock"><i />kommt noch</span>;
+  // Die Box führt die Preis-Bedingung dieser Regel (noch) nicht aus - ehrlich
+  // zeigen statt "wartet" zu versprechen, egal ob angehalten oder nicht.
+  else if (k.preisHinweis) pill = <span className="pill lock"><i />{k.preisHinweis.art === 'neu_einschalten' ? 'neu einschalten' : 'kommt noch'}</span>;
   else if (ruht) pill = <span className="pill lock"><i />wirkt nicht</span>;
   else if (jetzt) pill = <span className="pill on"><i />greift gerade</span>;
   else pill = <span className="pill wait"><i />wartet</span>;
   const info: string[] = [];
-  if (k.preisNichtAusgefuehrt) info.push('wird auf der Box noch nicht ausgeführt - der Preis-Baustein kommt noch');
+  if (k.preisHinweis) info.push(k.preisHinweis.text);
   else if (ruht) info.push('bis Sie fortsetzen');
   else {
     if (k.an && vorbei.length) info.push(`heute schon ${spannenText(vorbei, 2)}`);

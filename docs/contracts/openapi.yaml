@@ -28980,6 +28980,21 @@ components:
         points:
           type: array
           items: { $ref: "#/components/schemas/PricePoint" }
+        boxFeed:
+          type: object
+          description: >-
+            Ob die Box dieser Anlage den aktuellen Börsenpreis gespeist bekommt
+            (Vertrag docs/contracts/v2/mqtt-price-current.md). Das Portal
+            entsperrt daran den Preis-Baustein des Regel-Baukastens; der
+            Probelauf rechnet dann auf genau den points dieser Antwort - den
+            Reihen, aus denen auch der Feed veröffentlicht.
+          properties:
+            aktiv: { type: boolean }
+            grund:
+              type: string
+              nullable: true
+              description: Sperr-Grund, genau dann gesetzt, wenn aktiv=false.
+              enum: [kein_dynamischer_tarif, keine_zone, keine_box, edge_light]
     PricePoint:
       type: object
       properties:

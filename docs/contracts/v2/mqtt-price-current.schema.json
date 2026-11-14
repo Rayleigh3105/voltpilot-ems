@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mqtt-price-current.schema.json",
+  "title": "Aktueller Börsenpreis 1.0 (…/v2/price, Cloud -> Box, QoS1, retained)",
+  "description": "Der aktuelle Börsenpreis-Slot für Kundenregeln auf der Box (vp.price.current / edge/price/current). DATEN, nie ein Befehl: der Fahrplan bleibt die Entscheidung der Cloud (edge-app plan.go). Retained ist der Verteilmechanismus (eine offline gewesene Box holt sich den Stand beim Verbindungsaufbau selbst ab); ein LEERES retained Payload zieht das Dokument zurück, und der lokale Preis ist ab dann ausdrücklich unbekannt. Tarifgrundlage ist dieselbe wie Erlösanzeige und Optimierer: day_ahead_prices der Gebotszone der Anlage, Viertelstunde schlägt Stunde (SlotEconomics / PriceWindowSource). Veröffentlicht nur für Anlagen ohne erklärten Festtarif (site.tarif_art != 'fest' - 'dynamisch' und 'ohne' sind genau die Anlagen, deren Bezug die Erlösanzeige je Slot zum Börsenpreis bewertet).",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/price  (Cloud -> Box, QoS1, retained)",
+  "x-freshness": "Ein Preis ist aktuell in [slot_start, slot_end + 5 min Slack) nach der Uhr der Box. Danach - oder nach einem Rückzug - gilt die Preis-Bedingung jeder Regel als unbekannt und die Regel handelt nicht; die Box spiegelt dafür auf edge/price/current die ausdrückliche Marke {\"schema_version\":\"1.0\",\"stale\":true} (internal/pricefeed). Nie auf einem alten Preis weiterschalten.",
+  "type": "object",
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "generated_at", "slot_start", "slot_end", "price_ct_kwh", "unit", "bidding_zone"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid", "description": "die Box des Topics (Topic- und Payload-Identität; ein fremd adressiertes Dokument wird stumm verworfen)" },
+    "generated_at": { "type": "string", "format": "date-time", "description": "Veröffentlichungszeit der Cloud (Nachvollziehbarkeit, keine Frischegrundlage)" },
+    "slot_start": { "type": "string", "format": "date-time" },
+    "slot_end": { "type": "string", "format": "date-time", "description": "Slotende (15 oder 60 Minuten nach slot_start, je Auflösung der Zone)" },
+    "price_ct_kwh": { "type": "number", "description": "der nackte Börsenpreis des Slots in ct/kWh (price_eur_mwh / 10) - exakt die Zahl, die das Portal als Börsenpreis zeigt und auf der der Probelauf rechnet; negativ ist ein Preis, kein Fehler" },
+    "unit": { "const": "ct/kWh" },
+    "bidding_zone": { "type": "string", "minLength": 1, "examples": ["DE-LU", "AT", "CH"] }
+  }
+}

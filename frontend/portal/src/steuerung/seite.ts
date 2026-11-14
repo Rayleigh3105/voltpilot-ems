@@ -62,7 +62,7 @@ export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBil
   // Welche aktive Regel greift gerade? (Die Bedingung gilt jetzt.)
   const regelJetzt: Record<string, string> = {};
   const rhJetzt = rh;
-  for (const k of regelKarten(d.flows, bezugAus(d.editorEntities), {})) {
+  for (const k of regelKarten(d.flows, bezugAus(d.editorEntities, d.preise?.boxFeed ?? null), {})) {
     if (!k.an || !k.entwurf) continue;
     if (greift(k.entwurf, rhJetzt, r.jetzt, r.jetzt + 1)[0]) regelJetzt[k.entwurf.dann.g] = k.name;
   }

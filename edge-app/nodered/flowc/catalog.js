@@ -86,6 +86,17 @@ function fnNode(ctx, node, name, params, body, outputs) {
 }
 
 const THRESHOLD_BODY = [
+  '// Ein als unbekannt markierter Eingang (der Preis-Wächter unten): die',
+  '// Bedingung gilt NICHT - unbekannt zählt nie als Treffer, exakt wie im',
+  '// Portal-Probelauf. Aktiv false statt Stille, damit ein UND-Kombinator',
+  '// nicht auf dem letzten bekannten true sitzen bleibt und die Regel auf',
+  '// einem alten Preis weiterschaltet.',
+  'if (msg._vp_unbekannt === true) {',
+  '  context.set("on", false);',
+  '  delete msg._vp_unbekannt;',
+  '  msg.payload = false;',
+  '  return msg;',
+  '}',
   'let on = context.get("on") || false;',
   'const v = Number(msg.payload);',
   'if (!isFinite(v)) return null;',
@@ -98,6 +109,33 @@ const THRESHOLD_BODY = [
   '}',
   'context.set("on", on);',
   'msg.payload = on;',
+  'return msg;',
+].join('\n');
+
+// vp.price.current's PRICE GUARD: the second node of the compiled chain
+// [vp-feed "price_current", this]. The feed emits the RAW local-bus payload
+// (docs/contracts/v2/mqtt-price-current.md local shape); only a FRESH price
+// becomes a number for the downstream threshold. Everything else - the
+// mirror's explicit stale marker, an expired valid_until (core gone while
+// Node-RED kept the cached last payload), a malformed document - travels on
+// as an UNKNOWN-marked non-number, which the threshold turns into "condition
+// does not hold". The freshness clock is the box's own (core and Node-RED
+// share the machine), so no cross-clock skew enters here.
+const PRICE_GUARD_BODY = [
+  'const p = msg.payload;',
+  'const v = p && typeof p === "object" ? Number(p.price_ct_kwh) : NaN;',
+  'const bis = p && typeof p === "object" && typeof p.valid_until === "string"',
+  '  ? Date.parse(p.valid_until) : NaN;',
+  'if (isFinite(v) && p.stale !== true && isFinite(bis) && bis > Date.now()) {',
+  '  node.status({ fill: "green", shape: "dot", text: v + " ct/kWh" });',
+  '  delete msg._vp_unbekannt;',
+  '  msg.payload = v;',
+  '  return msg;',
+  '}',
+  'const veraltet = (p && typeof p === "object" && p.stale === true) || (isFinite(v) && !(bis > Date.now()));',
+  'node.status({ fill: "grey", shape: "ring", text: veraltet ? "Preis veraltet" : "Preis unbekannt" });',
+  'msg._vp_unbekannt = true;',
+  'msg.payload = NaN;',
   'return msg;',
 ].join('\n');
 
@@ -300,10 +338,15 @@ const TYPES = {
   },
 
   'vp.price.current': {
-    version: '1.0.0',
+    version: '1.1.0',
     runtimes: ['edge', 'cloud'],
     minPalette: '0.2.0',
     triggerable: true,
+    // Compiles to a CHAIN: the vp-feed subscriber (trigger anchor, re-emits
+    // the cached payload) followed by the generated price guard, whose output
+    // is the node's `value` port. compile.js wires chain members in order and
+    // lets outgoing edges leave the LAST member.
+    chainCompile: true,
     ports: { in: { trigger: { type: 'event' } }, out: { value: { type: 'number' } } },
     validate(p) {
       if (p && p.zone !== undefined && ['DE-LU', 'AT', 'CH'].indexOf(p.zone) < 0) {
@@ -325,6 +368,17 @@ const TYPES = {
         name: node.label || 'Aktueller Strompreis',
         core: ctx.coreId,
         feed: 'price_current',
+      }, {
+        id: ctx.nrId(node.id) + '-frisch',
+        type: 'function',
+        z: ctx.tabId,
+        name: 'Preis-Wächter',
+        func: '// generiert von flowc - NICHT von Hand bearbeiten\n' + PRICE_GUARD_BODY,
+        outputs: 1,
+        noerr: 0,
+        initialize: '',
+        finalize: '',
+        libs: [],
       }];
     },
   },

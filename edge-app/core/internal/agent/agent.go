@@ -55,6 +55,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/pricefeed"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/registerwrite"
@@ -509,6 +510,11 @@ type Agent struct {
 	entIdentity  entities.Identity
 	entAppliedAt time.Time
 	entReadings  map[string]entReading
+
+	// priceFeedMirror is the edge/price/current mirror of the cloud's
+	// .../v2/price downlink (agent/price_feed.go, internal/pricefeed).
+	priceFeedMu     sync.Mutex
+	priceFeedMirror *pricefeed.Feed
 
 	// Einheitsmodell Stufe 1 (agent/component_apply.go): WHO owns this plant's
 	// device configuration, and which push revision was last applied. The
@@ -1543,6 +1549,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnControlCert:    a.onControlCert,
 		OnChargingConfig: a.onChargingConfig,
 		OnChargingBoost:  a.onChargingBoost,
+		// Der aktuelle Börsenpreis für Kundenregeln - gespiegelt auf
+		// edge/price/current mit Frische-Wächter (agent/price_feed.go).
+		OnPriceCurrent: a.onPriceCurrent,
 		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
 		// siehe override.go.
 		OnDesiredDownlink:   a.onDesiredDownlink,
@@ -5626,6 +5635,11 @@ func (a *Agent) Stop() {
 	}
 	a.linkMu.Unlock()
 	a.stopOcpp()
+	a.priceFeedMu.Lock()
+	if a.priceFeedMirror != nil {
+		a.priceFeedMirror.Close()
+	}
+	a.priceFeedMu.Unlock()
 	if a.Bus != nil {
 		_ = a.Bus.Close()
 	}

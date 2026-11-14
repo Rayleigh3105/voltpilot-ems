@@ -1,6 +1,16 @@
 // Package plan caches the cloud battery-dispatch schedule and selects the
 // setpoint for "now".
 //
+// The price principle, stated precisely: THE CLOUD DECIDES THE SCHEDULE. The
+// edge never derives a dispatch decision from a price - every "the edge never
+// evaluates a price" note on the slot duties below means exactly that, and
+// the guards only enforce what the plan already decided. Since the price
+// feed (internal/pricefeed, edge/price/current) the box DOES evaluate
+// CUSTOMER RULES - "Wenn der Börsenpreis unter X liegt ..." - on a price the
+// cloud delivered, freshness-guarded, as mere wishes into the arbitration.
+// That is not a second price decision on the schedule: a stale or missing
+// price makes the condition unknown and the rule does not act.
+//
 // Contract: docs/contracts/mqtt-schedule.schema.json (FROZEN). The plan is
 // received retained on ems/{t}/{s}/{d}/schedule, persisted to disk (so a
 // reboot without network still has it) and considered STALE when no fresh

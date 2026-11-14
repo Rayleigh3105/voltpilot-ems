@@ -16,6 +16,7 @@
  */
 import { liste } from './liste';
 import type { EditorEntity } from '../flows/model';
+import type { PriceBoxFeed } from '../api';
 import type { FlowSummary } from '../flows/flowsApi';
 import { GUIDED_WISH_TTL_S, parseGuidedFlow } from '../flows/guidedBuilder';
 import { istGenerierteVerbraucherregel } from '../regeln/zustand';
@@ -64,16 +65,38 @@ export interface Bezug {
   netzId: string | null;
   /** Der Speicher (für den Ladestand). */
   speicherId: string | null;
+  /**
+   * Die Preis-Zuleitung der Box (`PriceSeries.boxFeed`, Vertrag
+   * mqtt-price-current.md): `aktiv` genau dort, wo die Box den Börsenpreis
+   * gespeist bekommt und Regeln ausführen kann. `null` = noch nicht geladen.
+   */
+  preisFeed: PriceBoxFeed | null;
 }
 
 const KOMMT = 'kommt noch';
 
+/**
+ * Warum der Preis-Baustein gesperrt ist (`null` = wählbar): der Grund der
+ * Zuleitung im Klartext. Ohne Antwort (lädt / ältere API) bleibt er gesperrt -
+ * ein Baustein, der nichts bewirken kann, wird nicht angeboten.
+ */
+export function preisGesperrt(feed: PriceBoxFeed | null): string | null {
+  if (feed?.aktiv) return null;
+  switch (feed?.grund) {
+    case 'kein_dynamischer_tarif': return 'kein zeitveränderlicher Tarif';
+    case 'keine_zone': return 'keine Preiszone';
+    case 'keine_box': return 'keine VoltPilot-Box';
+    case 'edge_light': return 'führt diese Box nicht aus';
+    default: return KOMMT;
+  }
+}
+
 export function vars(b: Bezug): Record<VarId, VarDef> {
   return {
-    // N2 (report.md §11, needs-decision n2-preis-feed): die Box liest nie einen Preis
-    // (reserviertes, ungespeistes Thema) - gesperrt wie jeder andere Baustein, der nichts
-    // bewirken kann, bis eine eigene Zuleitung entschieden ist.
-    preis: { kat: 'Preis', label: 'Börsenpreis', icon: 'euro', einheit: 'ct/kWh', ops: ['unter', 'ueber'], min: -5, max: 40, schritt: 0.5, def: 10, gesperrt: KOMMT },
+    // Der Preis-Baustein folgt der Zuleitung (mqtt-price-current.md): wählbar
+    // genau dort, wo die Box den Börsenpreis gespeist bekommt und Regeln
+    // ausführen kann - sonst gesperrt, mit dem Grund im Klartext.
+    preis: { kat: 'Preis', label: 'Börsenpreis', icon: 'euro', einheit: 'ct/kWh', ops: ['unter', 'ueber'], min: -5, max: 40, schritt: 0.5, def: 10, gesperrt: preisGesperrt(b.preisFeed) },
     rang: { kat: 'Preis', label: 'Günstigste Stunden', icon: 'trend', einheit: 'Std', ops: ['unter'], min: 1, max: 8, schritt: 1, def: 3, gesperrt: KOMMT },
     sonne: { kat: 'Sonne', label: 'Sonnen-Überschuss', icon: 'sun', einheit: 'kW', ops: ['ueber', 'unter'], min: 0.5, max: 30, schritt: 0.5, def: 2, gesperrt: b.netzId ? null : 'kein Netzanschluss-Zähler' },
     soc: { kat: 'Speicher', label: 'Ladestand Speicher', icon: 'battery', einheit: '%', ops: ['unter', 'ueber'], min: 5, max: 100, schritt: 5, def: 90, gesperrt: b.speicherId ? null : 'kein Speicher' },
@@ -239,15 +262,17 @@ export function notifyUmwandlung(regel: GuidedRule): NotifyUmwandlung | null {
 /** Gilt eine Bedingung in Viertelstunde t? `null` = unbekannt (kein Wert). */
 export function gilt(c: Bedingung, rh: Reihen, t: number): boolean | null {
   switch (c.v) {
-    case 'preis':
-      // N2 (report.md §11): eine Preis-Bedingung kompiliert auf die Box zu
-      // `vp.price.current`, das Thema `edge/price/current` liest - reserviert,
-      // der Core speist es nicht (kein Sender im Core). `rh.preis` kommt vom
-      // Markt-Tagespreis des Portals, ein ANDERER Pfad als der Box-Feed; ihn
-      // hier zu lesen hieße, Schaltzeiten zu zeigen, die die Box nicht
-      // ausführen kann. Bis das Thema gespeist wird (needs-decision), gilt
-      // eine Preis-Bedingung im Probelauf wie am Gerät: nie bekannt.
-      return null;
+    case 'preis': {
+      // Seit der Preis-Zuleitung (mqtt-price-current.md) rechnet der Probelauf
+      // mit DEMSELBEN Börsenpreis, den die Box gespeist bekommt: `rh.preis`
+      // sind die day_ahead_prices der Zone (`/prices`), aus genau denen auch
+      // der Feed veröffentlicht. Ohne Zuleitung (`rh.preisBox` false) bleibt
+      // die Bedingung unbekannt - wie die Box, die ohne Preis nicht schaltet.
+      if (!rh.preisBox) return null;
+      const p = rh.preis[t];
+      if (p == null) return null;
+      return c.op === 'unter' ? p < (c.w as number) : p > (c.w as number);
+    }
     case 'sonne': {
       const n = rh.netz[t];
       if (n == null) return null;
@@ -320,7 +345,7 @@ export function probelauf(r: RegelEntwurf, rh: Reihen, g: GeraetBild | null, von
     if (p != null) eur += (netz * p) / 100;
   });
   const preisBaustein = r.wenn.some((c) => c.v === 'preis');
-  const unbekannt = preisBaustein && !rh.morgenBekannt;
+  const unbekannt = preisBaustein && (!rh.preisBox || !rh.morgenBekannt);
   let niedrigster: number | null = null;
   for (let t = von; t < N; t++) {
     const p = rh.preis[t];
@@ -386,20 +411,25 @@ export function regelnReiterSichtbar(x: { bereit: boolean; ziele: number; regeln
   return !x.bereit || x.ziele > 0 || x.regeln > 0 || x.szenen;
 }
 
-export function bezugAus(editor: EditorEntity[] | null): Bezug {
+export function bezugAus(editor: EditorEntity[] | null, preisFeed: PriceBoxFeed | null = null): Bezug {
   const netz = liste(editor).find((e) => e.entityType === 'grid-meter' && e.measure.includes('power_kw')) ?? null;
   const sp = liste(editor).find((e) => e.measure.includes('soc_pct')) ?? null;
-  return { netzId: netz?.id ?? null, speicherId: sp?.id ?? null };
+  return { netzId: netz?.id ?? null, speicherId: sp?.id ?? null, preisFeed };
 }
 
-export function neuerEntwurf(ziele: GeraetBild[], opts: { geraet?: string; vorlage?: string } = {}): RegelEntwurf {
+export function neuerEntwurf(ziele: GeraetBild[], opts: { geraet?: string; vorlage?: string } = {}, b?: Bezug): RegelEntwurf {
   const v = opts.vorlage ? VORLAGEN.find((x) => x.id === opts.vorlage) : null;
   const g = opts.geraet ? ziele.find((x) => x.id === opts.geraet) ?? null : v ? vorlagenZiel(v, ziele) : ziele[0] ?? null;
+  // Ohne Vorlage startet die Regel mit dem Preis-Baustein, wo die Zuleitung
+  // ihn trägt (die ursprüngliche Vorgabe des Baukastens) - sonst mit 'zeit',
+  // dem einen Baustein, der auf jeder Anlage wählbar ist: der Wähler darf nie
+  // auf einer gesperrten Option stehen.
+  const preisFrei = b != null && preisGesperrt(b.preisFeed) == null;
   return {
-    // N2 (report.md §11): ohne Vorlage startet die Regel mit 'zeit', nicht mit
-    // dem gesperrten Preis-Baustein - der wäre im Wähler ohnehin nicht wählbar.
-    name: v ? v.titel : g ? `${g.name} nach Zeitplan` : 'Neue Regel',
-    wenn: v ? v.wenn.map((c) => ({ ...c })) : [{ v: 'zeit', op: 'zwischen', w: [88, 24] }],
+    name: v ? v.titel : g ? (preisFrei ? `${g.name} bei günstigem Preis` : `${g.name} nach Zeitplan`) : 'Neue Regel',
+    wenn: v ? v.wenn.map((c) => ({ ...c })) : preisFrei
+      ? [{ v: 'preis', op: 'unter', w: 10 }]
+      : [{ v: 'zeit', op: 'zwischen', w: [88, 24] }],
     oder: false,
     dann: { g: g?.id ?? '', a: 'an' },
   };
@@ -420,12 +450,32 @@ export interface RegelKarte {
   /** Nicht `null`, wenn die Karte „In Überwachung umwandeln" anbieten darf (Entscheid 10A). */
   notifyUmwandlung: NotifyUmwandlung | null;
   /**
-   * N2 (report.md §11, needs-decision n2-preis-feed): eine Preis-Bedingung
-   * kompiliert zu einem Thema, das die Box nicht gespeist bekommt - diese
-   * Regel bleibt sichtbar und eingeschaltet (nichts wird gelöscht), aber sie
-   * schaltet auf der Box nicht, bis das entschieden ist.
+   * Warum der Preis-Baustein dieser Regel (noch) nicht auf der Box schaltet -
+   * `null`, sobald er es tut. `zuleitung_fehlt`: die Anlage bekommt den Preis
+   * nicht gespeist (Grund in `text`). `neu_einschalten`: die Zuleitung steht,
+   * aber das AKTIVE Artefakt ist vor der Preis-Wächter-Kette kompiliert -
+   * einmal aus- und wieder einschalten kompiliert neu, dann fällt der Hinweis.
    */
-  preisNichtAusgefuehrt: boolean;
+  preisHinweis: { art: 'zuleitung_fehlt' | 'neu_einschalten'; text: string } | null;
+}
+
+/** Der Preis-Hinweis einer Karte (siehe {@link RegelKarte.preisHinweis}). */
+function preisHinweisFuer(f: FlowSummary, guided: GuidedRule | null, bezug: Bezug): RegelKarte['preisHinweis'] {
+  if (!guided || !guided.conditions.some((c) => c.kind === 'price')) return null;
+  if (!bezug.preisFeed?.aktiv) {
+    const grund = preisGesperrt(bezug.preisFeed);
+    return {
+      art: 'zuleitung_fehlt',
+      text: `wird auf der Box noch nicht ausgeführt${grund && grund !== KOMMT ? ` - ${grund}` : ' - der Preis-Baustein kommt noch'}`,
+    };
+  }
+  if (f.activeVersion != null && f.preisBausteinAktiv === false) {
+    return {
+      art: 'neu_einschalten',
+      text: 'einmal aus- und wieder einschalten, dann schaltet der Preis-Baustein auf der Box',
+    };
+  }
+  return null;
 }
 
 export function regelKarten(flows: FlowSummary[] | null, bezug: Bezug, namen: Record<string, string>): RegelKarte[] {
@@ -449,7 +499,7 @@ export function regelKarten(flows: FlowSummary[] | null, bezug: Bezug, namen: Re
       entwurf: entwurf ? { ...entwurf, flowId: f.flowId, version: f.latestVersion } : null,
       version: f.latestVersion,
       notifyUmwandlung: guided ? notifyUmwandlung(guided) : null,
-      preisNichtAusgefuehrt: guided ? guided.conditions.some((c) => c.kind === 'price') : false,
+      preisHinweis: preisHinweisFuer(f, guided, bezug),
     });
   }
   return out;

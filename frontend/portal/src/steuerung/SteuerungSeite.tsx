@@ -129,7 +129,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   const flowApi = useMemo(() => customerFlowApi(site.id), [site.id]);
-  const bezug = useMemo(() => bezugAus(daten.editorEntities), [daten.editorEntities]);
+  const bezug = useMemo(() => bezugAus(daten.editorEntities, daten.preise?.boxFeed ?? null), [daten.editorEntities, daten.preise]);
   const namen = useMemo(() => {
     const out: Record<string, string> = {};
     for (const e of liste(daten.editorEntities)) out[e.id] = e.label;
@@ -438,7 +438,8 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
           meldung(res.message || 'Die Regel ist gespeichert, aber nicht aktiv.', true);
         } else {
           const r = bild.raster;
-          const k = regelKarten([{ ...v, latestVersion: v.flowVersion, latestLifecycle: v.lifecycle, activeVersion: v.flowVersion, latestDocument: v.document, versions: [v.flowVersion], simulation: null }], bezug, namen)[0];
+          // Frisch aktiviert = frisch kompiliert: das Artefakt führt den Preis-Baustein aus.
+          const k = regelKarten([{ ...v, latestVersion: v.flowVersion, latestLifecycle: v.lifecycle, activeVersion: v.flowVersion, latestDocument: v.document, versions: [v.flowVersion], simulation: null, preisBausteinAktiv: true }], bezug, namen)[0];
           const bits = k?.entwurf ? spannen(greift(k.entwurf, bild.reihen, r.jetzt), r.jetzt) : [];
           meldung(`Regel „${e.name.trim()}“ ist aktiv. ${bits.length ? (bits[0][0] === r.jetzt ? 'Sie greift jetzt.' : `Greift als Nächstes ${uhrTag(bits[0][0])}.`) : 'Sie greift bis morgen Abend nicht.'}`);
         }
@@ -863,7 +864,7 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
       if (vorhanden && !vorhanden.entwurf) {
         return <FreieRegel k={k} karte={vorhanden} />;
       }
-      const start = vorhanden?.entwurf ?? neuerEntwurf(ziele, { geraet: blatt.geraet, vorlage: blatt.vorlage });
+      const start = vorhanden?.entwurf ?? neuerEntwurf(ziele, { geraet: blatt.geraet, vorlage: blatt.vorlage }, bezug);
       return (
         <RegelBlatt
           k={k}
