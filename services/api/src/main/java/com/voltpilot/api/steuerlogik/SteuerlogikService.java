@@ -41,6 +41,8 @@ public class SteuerlogikService {
     static final int MAX_TEXT = 256 * 1024;
     /** Höchstens so viele Zeilen trägt ein Tag des Vergleichsprotokolls in der Antwort. */
     static final int MAX_WECHSEL = 2000;
+    /** Wie lange das Vergleichsprotokoll bleibt. */
+    public static final Duration PROTOKOLL_DAUER = Duration.ofDays(90);
 
     /** Ein ehrlicher Halt der Annahme: Code, Satz, bei einer Sperre der Prüfbericht. */
     public static final class Abgelehnt extends RuntimeException {
@@ -186,7 +188,4 @@ public class SteuerlogikService {
         Instant bis = tag.plusDays(1).atStartOfDay(ZONE).toInstant();
         return logiken.wechsel(siteId, logikId, von, bis, MAX_WECHSEL);
     }
-
-    /** Wie lange das Vergleichsprotokoll bleibt. */
-    public static final Duration PROTOKOLL_DAUER = Duration.ofDays(90);
 }
