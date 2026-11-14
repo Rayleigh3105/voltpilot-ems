@@ -15,6 +15,7 @@ v2 ergänzt mehrere Entitäten je Box, typisierte Flows, Verbraucheranforderunge
 | Flow-Graph und Artefakt | [Graph](flow-graph.md), [Artefakt](flow-artifact.md), [Graph-Schema](flow-graph.schema.json), [Artefakt-Schema](flow-artifact.schema.json) |
 | Verbraucher | [Funktionsmodell](../../verbrauchssteuerung.md), [Policy](consumer-policy.schema.json), [Vektoren](consumer-policy-vectors.json) |
 | Steuerlogik (freie Regelsprache, Kern im Go-Core) | [Vertrag](steuerlogik.md), [Schema](steuerlogik.schema.json), [Wortliste](steuerlogik-woerter.json), [Vektoren](steuerlogik-vectors.json), [Beispiele](steuerlogik/) — Kern `edge-app/core/internal/logik`, Schreibform `…/logik/textform` |
+| Preis-Zuleitung: der aktuelle Börsenpreis für Kundenregeln (Cloud → Box retained, Spiegel `edge/price/current` mit Frische-Wächter) | [Vertrag](mqtt-price-current.md), [Schema](mqtt-price-current.schema.json) — Sender `com.voltpilot.api.preis`, Spiegel `edge-app/core/internal/pricefeed`, Leser `vp.price.current` (flowc-Preis-Wächter) |
 | OCPP-Ladepunkt: Profil und Policy, wie die API sie anlegt | [Vektoren](ladepunkt-profil-vectors.json) — Regelart, Nennleistung, Dokument und Box-Anforderung; Optimierer-Tests und Box-Rig lesen ihr Profil nur von hier |
 | Anlagenprojektion | [Topologie](topology-read-model.md), [Nutzungsprofil](usage-profile.md) |
 | Zählerbaum: wo ein Zähler/Verbraucher im elektrischen Baum hängt | [Vertrag](zaehlerbaum.md), [Vektoren](zaehlerbaum-vectors.json) — Zwillinge `ZaehlerbaumRegeln` (Java) und `zaehlerbaum.ts` (TS) |
