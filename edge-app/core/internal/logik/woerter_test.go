@@ -104,12 +104,13 @@ func TestWortlisteUndKernSindDeckungsgleich(t *testing.T) {
 		"if", "known", "unknown", "time_window", "in_schedule", "holds", "since", "running", "last", "min", "max"})
 	gleicheMengen(t, "handlung", englisch(t, w, "handlung"), []string{"start", "if"})
 	gleicheMengen(t, "geraet_eigenschaft", englisch(t, w, "geraet_eigenschaft"), []string{
-		"on", "level", "power", "kw_per_output", "output_hours_today", "requested"})
+		"on", "level", "power", "kw_per_output", "output_hours_today", "requested", "setpoint", "mode"})
 	gleicheMengen(t, "betriebsart", englisch(t, w, "betriebsart"), Betriebsarten)
 	gleicheMengen(t, "quelle_fest", englisch(t, w, "quelle_fest"), []string{
 		"site.grid", "site.pv", "battery.power", "battery.soc", "sun.elevation", "price.current"})
 	gleicheMengen(t, "signal", englisch(t, w, "signal"), []string{
-		"temperature", "room_temperature", "open", "door_open", "defrost", "fault", "running"})
+		"temperature", "room_temperature", "open", "door_open", "defrost", "fault", "running",
+		"humidity", "outdoor_temperature", "supply_temperature", "return_temperature"})
 
 	// Die reservierten Wörter sind die Formelwörter plus unknown und else (Vertrag 17.2).
 	gleicheMengen(t, "formelwort + unknown/else", append(englisch(t, w, "formelwort"), "unknown", "else"), Reserviert)
@@ -128,6 +129,8 @@ func TestQuellenHabenEineGroesse(t *testing.T) {
 		"x.temperature": {GroesseTemp, false}, "x.room_temperature": {GroesseTemp, false},
 		"x.open": {GroesseZahl, true}, "x.door_open": {GroesseZahl, true},
 		"x.defrost": {GroesseZahl, true}, "x.fault": {GroesseZahl, true}, "x.running": {GroesseZahl, true},
+		"x.humidity": {GroesseProzent, false}, "x.outdoor_temperature": {GroesseTemp, false},
+		"x.supply_temperature": {GroesseTemp, false}, "x.return_temperature": {GroesseTemp, false},
 	}
 	gesehen := map[string]bool{}
 	for _, q := range englisch(t, w, "quelle_fest") {

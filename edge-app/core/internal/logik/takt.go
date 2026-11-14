@@ -21,6 +21,10 @@ type GeraetStamm struct {
 	KwJeAusgang     *float64    // Leistung je Ausgang (Angabe am Gerät)
 	Ausgaenge       int         // Zahl der Ausgänge; 0 heißt 3 (wie das Referenzlabor)
 	SollwertBereich *[2]float64 // Bereich, auf den das Gerät einen Sollwert begrenzt
+	SollwertSchritt *float64    // Schrittweite des Geräts; der Sollwert wird darauf gerundet
+	Betriebsarten   []string    // die Betriebsarten, die das Gerät kennt; leer heißt: nicht bekannt
+	Sollwert        *float64    // zurückgelesener Sollwert des Geräts in °C
+	Betriebsart     string      // zurückgelesene Betriebsart; leer heißt: unbekannt
 }
 
 // Eingabe ist alles, was ein Takt von außen bekommt.
@@ -412,14 +416,7 @@ func (L *Logik) takt(st *Lauf, ein *Eingabe, opt taktOpt) TaktErgebnis {
 			o.HatSollwert = true
 			x := L.rechneSicher(st, ein, b, &ereignisse, ein.Jetzt)
 			if x.Art == WertZahl {
-				if br := stamm.SollwertBereich; br != nil {
-					if x.V < br[0] {
-						x.V = br[0]
-					}
-					if x.V > br[1] {
-						x.V = br[1]
-					}
-				}
+				x.V = aufGeraet(x.V, stamm)
 				o.Sollwert = &x
 			}
 		}
@@ -427,7 +424,12 @@ func (L *Logik) takt(st *Lauf, ein *Eingabe, opt taktOpt) TaktErgebnis {
 			o.HatBetriebsart = true
 			x := L.rechneSicher(st, ein, b, &ereignisse, ein.Jetzt)
 			if x.Art == WertWort {
-				o.Betriebsart = x.W
+				if kenntBetriebsart(stamm, x.W) {
+					o.Betriebsart = x.W
+				} else {
+					// Ein Wort, das das Gerät nicht kennt, ist kein Wunsch: es gilt sein Ruhewert.
+					ereignisse = append(ereignisse, Ereignis{T: ein.Jetzt, Was: "fehler", Text: "Das Gerät kennt die Betriebsart „" + x.W + "“ nicht"})
+				}
 			} else if x.Art != WertUnbekannt {
 				ereignisse = append(ereignisse, Ereignis{T: ein.Jetzt, Was: "fehler", Text: "Die Betriebsart ist ein Wort: „" + b.src + "“"})
 			}
@@ -489,4 +491,40 @@ func (L *Logik) lageJetzt(st *Lauf, ein *Eingabe, fehlerAus *[]Ereignis) Lage {
 // jsRound rundet wie JavaScript Math.round: halbe Werte zur nächsthöheren Zahl.
 func jsRound(x float64) float64 {
 	return math.Floor(x + 0.5)
+}
+
+// aufGeraet rundet einen Sollwert auf die Schrittweite des Geräts (gezählt ab dem unteren
+// Ende seines Bereichs, sonst ab 0) und begrenzt ihn auf den Bereich. Halbe Schritte runden
+// zum nächsthöheren Wert, wie jsRound.
+func aufGeraet(v float64, stamm GeraetStamm) float64 {
+	if s := stamm.SollwertSchritt; s != nil && *s > 0 {
+		basis := 0.0
+		if br := stamm.SollwertBereich; br != nil {
+			basis = br[0]
+		}
+		v = basis + jsRound((v-basis)/ *s)**s
+		v = math.Round(v*1e9) / 1e9 // Rundungsrest der Gleitkommazahl
+	}
+	if br := stamm.SollwertBereich; br != nil {
+		if v < br[0] {
+			v = br[0]
+		}
+		if v > br[1] {
+			v = br[1]
+		}
+	}
+	return v
+}
+
+// kenntBetriebsart sagt, ob das Gerät die Betriebsart kennt; ohne Liste gilt jedes Wort.
+func kenntBetriebsart(stamm GeraetStamm, w string) bool {
+	if len(stamm.Betriebsarten) == 0 {
+		return true
+	}
+	for _, b := range stamm.Betriebsarten {
+		if b == w {
+			return true
+		}
+	}
+	return false
 }

@@ -12,7 +12,7 @@ import (
 
 const vertragPfad = "../../../../../docs/contracts/v2/steuerlogik"
 
-var logiken = []string{"heizung-treu", "heizung", "wasser", "kuehlraum", "waermepumpe", "klima"}
+var logiken = []string{"heizung-treu", "heizung", "wasser", "kuehlraum", "waermepumpe", "klima", "waermepumpe-modbus"}
 
 func TestSchreibformErgibtKanonischeForm(t *testing.T) {
 	for _, name := range logiken {

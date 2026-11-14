@@ -152,6 +152,20 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 			}
 		}
 	}
+	// Eine Betriebsart, die im Text fest steht, muss das Gerät kennen, wenn die Anlage seine
+	// Liste nennt (Klima, Heizung, Kälte: die geschlossene Liste je Gerät).
+	for _, g := range L.AusgangListe {
+		b, ok := L.Ausgaenge[g]["mode"]
+		if !ok || len(anlage[g].Betriebsarten) == 0 {
+			continue
+		}
+		for _, w := range festeBetriebsarten(b) {
+			if !kenntBetriebsart(GeraetStamm{Betriebsarten: anlage[g].Betriebsarten}, w) {
+				fehl("outputs.%s.mode: das Gerät kennt die Betriebsart „%s“ nicht (es kennt %s)", g, w,
+					strings.Join(anlage[g].Betriebsarten, ", "))
+			}
+		}
+	}
 	if L.Anzeige != nil {
 		if _, ok := L.Werte[L.Anzeige.Wert]; !ok {
 			fehl("display.input: „%s“ steht nicht unter inputs", L.Anzeige.Wert)
@@ -385,4 +399,23 @@ func (L *Logik) zusammenImBereich(nr int) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// festeBetriebsarten sammelt die Betriebsarten, die in einem Ausdruck als Wort stehen.
+func festeBetriebsarten(b *baum) []string {
+	if b == nil {
+		return nil
+	}
+	var out []string
+	if b.t == kName {
+		for _, w := range Betriebsarten {
+			if b.n == w {
+				out = append(out, w)
+			}
+		}
+	}
+	for _, x := range append([]*baum{b.x, b.l, b.r}, b.args...) {
+		out = append(out, festeBetriebsarten(x)...)
+	}
+	return out
 }

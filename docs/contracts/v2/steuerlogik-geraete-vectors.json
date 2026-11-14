@@ -1,0 +1,130 @@
+{
+ "$comment": [
+  "Vertragsvektoren der Steuerlogik für Geräte mit Sollwert und Betriebsart (Klima, Heizung, Kälte; Schritte K2 und K3 des Konzepts).",
+  "Leser: edge-app/core/internal/logik (geraete_vectors_test.go) und der Dienst neben der API (logikdienst_test.go).",
+  "Je Fall eine Logik aus steuerlogik/ mit den Angaben der Anlage zum Gerät; die Proben hier ersetzen die Proben der Logik.",
+  "Von Hand geschrieben (nicht aus dem Referenzlabor); alle Namen sind erfunden."
+ ],
+ "$regel": "Ein Sollwert wird auf die Schrittweite des Geräts gerundet, gezählt ab dem unteren Ende seines Bereichs (halbe Schritte nach oben), dann auf den Bereich begrenzt. Eine Betriebsart, die das Gerät nicht kennt, ist kein Wunsch (es gilt der Ruhewert) und ein Fehler-Ereignis; steht sie fest im Text, sperrt die Prüfung. Das ideale Gerät der Probe folgt jedem Wunsch und meldet ihn als zurückgelesenen Sollwert und Betriebsart (gerät.setpoint, gerät.mode).",
+ "schema_version": "1.0",
+ "faelle": [
+  {
+   "name": "Wärmepumpe mit Band 40 bis 55 °C in Schritten von 1 K",
+   "datei": "steuerlogik/waermepumpe-modbus.logic.json",
+   "anlage": {"wp": {"setpoint_range": [40, 55], "setpoint_step": 1, "modes": ["normal", "boost"]}},
+   "befunde": [],
+   "proben": [
+    {
+     "name": "Mit Sonnenstrom wird angehoben, die Lage liest den Sollwert zurück",
+     "given": {"speicher": "45 °C", "aussen": "8 °C", "stoerung": "off", "netz": "-3 kW"},
+     "after": "11 min",
+     "expect": {"wp.setpoint": "55 °C", "wp.mode": "boost", "status": "Speichert Sonnenstrom"},
+     "besteht": true
+    },
+    {
+     "name": "Der Sollwert wird auf den Schritt der Wärmepumpe gerundet, halbe Schritte nach oben",
+     "given": {"speicher": "45 °C", "aussen": "8 °C", "stoerung": "off", "netz": "0.5 kW", "warmwasser": "47.5 °C"},
+     "after": "1 min",
+     "expect": {"wp.setpoint": "48 °C", "wp.mode": "normal", "status": "Normalbetrieb"},
+     "besteht": true
+    },
+    {
+     "name": "Über ihr Band hebt die Logik die Wärmepumpe nicht",
+     "given": {"speicher": "45 °C", "aussen": "8 °C", "stoerung": "off", "netz": "-3 kW", "anheben": "12 K"},
+     "after": "11 min",
+     "expect": {"wp.setpoint": "55 °C", "status": "Speichert Sonnenstrom"},
+     "besteht": true
+    },
+    {
+     "name": "Ohne die Angabe der Anlage wären es 60 °C: die Probe sieht die Klemme",
+     "given": {"speicher": "45 °C", "aussen": "8 °C", "stoerung": "off", "netz": "-3 kW", "anheben": "12 K"},
+     "after": "11 min",
+     "expect": {"wp.setpoint": "60 °C"},
+     "besteht": false,
+     "abweichungen": [{"stelle": "wp.setpoint", "soll": "60 °C", "ist": "55 °C"}]
+    }
+   ]
+  },
+  {
+   "name": "Wärmepumpe, die nur „normal“ kennt",
+   "datei": "steuerlogik/waermepumpe-modbus.logic.json",
+   "anlage": {"wp": {"setpoint_range": [40, 55], "setpoint_step": 1, "modes": ["normal"]}},
+   "befunde": ["outputs.wp.mode: das Gerät kennt die Betriebsart „boost“ nicht (es kennt normal)"],
+   "proben": [
+    {
+     "name": "Mit Sonnenstrom gibt es keinen Wunsch zur Betriebsart, der Sollwert gilt weiter",
+     "given": {"speicher": "45 °C", "aussen": "8 °C", "stoerung": "off", "netz": "-3 kW"},
+     "after": "11 min",
+     "expect": {"wp.setpoint": "55 °C", "wp.mode": "none", "status": "Normalbetrieb"},
+     "besteht": true
+    },
+    {
+     "name": "Ohne Sonnenstrom kennt sie das Wort",
+     "given": {"speicher": "45 °C", "aussen": "8 °C", "stoerung": "off", "netz": "0.5 kW"},
+     "after": "1 min",
+     "expect": {"wp.setpoint": "48 °C", "wp.mode": "normal"},
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "Kühlraum, dessen Regler erst ab 3 °C einstellbar ist",
+   "datei": "steuerlogik/kuehlraum.logic.json",
+   "anlage": {"regler": {"setpoint_range": [3, 8], "setpoint_step": 0.5}},
+   "befunde": [],
+   "proben": [
+    {
+     "name": "Kälte auf Vorrat endet am unteren Ende des Reglers",
+     "given": {"raum": "4.2 °C", "tuer": "off", "abtau": "off", "netz": "-3 kW"},
+     "after": "6 min",
+     "expect": {"speichern": "on", "regler.setpoint": "3 °C", "status": "Kühlt auf Vorrat"},
+     "besteht": true
+    },
+    {
+     "name": "1,3 K tiefer wird auf den halben Schritt des Reglers gerundet",
+     "given": {"raum": "4.2 °C", "tuer": "off", "abtau": "off", "netz": "-3 kW", "normal": "5 °C", "vorrat": "1.3 K"},
+     "after": "6 min",
+     "expect": {"regler.setpoint": "3.5 °C"},
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "Klimagerät mit Kühlen, Heizen und Lüften",
+   "datei": "steuerlogik/klima.logic.json",
+   "anlage": {"klima": {"setpoint_range": [16, 30], "setpoint_step": 0.5, "modes": ["cool", "heat", "fan_only"]}},
+   "befunde": [],
+   "proben": [
+    {
+     "name": "Mit Sonnenstrom wird anderthalb Grad tiefer vorgekühlt",
+     "given": {"raum": "27 °C", "fenster": "off", "netz": "-2 kW", "weekday": "tue", "clock": "12:00"},
+     "after": "6 min",
+     "expect": {"klima.on_off": "on", "klima.mode": "cool", "klima.setpoint": "23.5 °C", "status": "Kühlt mit Sonnenstrom vor"},
+     "besteht": true
+    },
+    {
+     "name": "Eine Wunschtemperatur unter dem Band des Geräts wird auf 16 °C begrenzt",
+     "given": {"raum": "27 °C", "fenster": "off", "netz": "-2 kW", "weekday": "tue", "clock": "12:00", "wunsch": "17 °C", "vorkuehlen": "3 K"},
+     "after": "6 min",
+     "expect": {"klima.setpoint": "16 °C"},
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "Klimagerät, das nicht kühlen kann",
+   "datei": "steuerlogik/klima.logic.json",
+   "anlage": {"klima": {"modes": ["heat", "fan_only"]}},
+   "befunde": ["outputs.klima.mode: das Gerät kennt die Betriebsart „cool“ nicht (es kennt heat, fan_only)"],
+   "proben": [
+    {
+     "name": "Die Logik schaltet ein, wünscht aber keine Betriebsart",
+     "given": {"raum": "27 °C", "fenster": "off", "netz": "0.5 kW", "weekday": "tue", "clock": "10:00"},
+     "after": "2 min",
+     "expect": {"klima.on_off": "on", "klima.mode": "none", "klima.setpoint": "25 °C"},
+     "besteht": true
+    }
+   ]
+  }
+ ]
+}

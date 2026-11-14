@@ -15,6 +15,8 @@ type ProbenGeraet struct {
 	KwJeAusgang     *float64
 	Ausgaenge       int
 	SollwertBereich *[2]float64
+	SollwertSchritt *float64
+	Betriebsarten   []string
 }
 
 // Abweichung ist eine Erwartung, die nach dem Lauf nicht zutrifft.
@@ -41,7 +43,8 @@ func (L *Logik) FuehreProbe(p *Probe, anlage map[string]ProbenGeraet) (*ProbenEr
 	for _, k := range L.GeraetListe {
 		a := anlage[k]
 		stufe := 0.0
-		ein.Geraete[k] = GeraetStamm{Stufe: &stufe, KwJeAusgang: a.KwJeAusgang, Ausgaenge: a.Ausgaenge, SollwertBereich: a.SollwertBereich}
+		ein.Geraete[k] = GeraetStamm{Stufe: &stufe, KwJeAusgang: a.KwJeAusgang, Ausgaenge: a.Ausgaenge,
+			SollwertBereich: a.SollwertBereich, SollwertSchritt: a.SollwertSchritt, Betriebsarten: a.Betriebsarten}
 	}
 	neu := false
 	for i, k := range p.Gegeben.keys {
@@ -160,6 +163,13 @@ func (L *Logik) FuehreProbe(p *Probe, anlage map[string]ProbenGeraet) (*ProbenEr
 			}
 			stamm := ein.Geraete[k]
 			stamm.Stufe = &stufe
+			if o.Sollwert != nil {
+				v := o.Sollwert.V
+				stamm.Sollwert = &v
+			}
+			if o.Betriebsart != "" {
+				stamm.Betriebsart = o.Betriebsart
+			}
 			ein.Geraete[k] = stamm // ideales Gerät: folgt dem Wunsch
 		}
 	}

@@ -182,7 +182,9 @@
     "leistung": "power",
     "kw_je_ausgang": "kw_per_output",
     "ausgangsstunden_heute": "output_hours_today",
-    "wunsch": "requested"
+    "wunsch": "requested",
+    "sollwert": "setpoint",
+    "betriebsart": "mode"
   },
   "betriebsart": {
     "normal": "normal",
@@ -209,7 +211,11 @@
     "tuer_offen": "door_open",
     "abtauung": "defrost",
     "stoerung": "fault",
-    "laeuft": "running"
+    "laeuft": "running",
+    "luftfeuchte": "humidity",
+    "aussentemperatur": "outdoor_temperature",
+    "vorlauf": "supply_temperature",
+    "ruecklauf": "return_temperature"
   },
   "schema_def": {
     "kennung": "identifier",
