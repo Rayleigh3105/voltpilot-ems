@@ -95,6 +95,10 @@ for (const breite of [DESKTOP, PHONE]) {
     await edit.getByRole('combobox', { name: 'Rolle' }).click();
     await page.getByRole('option', { name: 'Leser' }).click();
     await expect(edit.getByText('Die Änderung gilt sofort und steht im Zugriffsprotokoll des Kunden.')).toBeVisible();
+    // Genau eine bestehende Zuweisung (der Regelfall, Rückmeldung zu PR #1882): kein Warnhinweis,
+    // keine zusätzliche Bestätigung nötig.
+    await expect(edit.getByText(/^Ersetzt \d+ Zuweisungen/)).toHaveCount(0);
+    await expect(edit.getByRole('checkbox')).toHaveCount(0);
 
     // Regel wie beim Kundenadministrator: eine Standort-Rolle braucht mindestens einen Standort.
     const speichern = edit.getByRole('button', { name: 'Änderungen speichern' });
@@ -111,6 +115,58 @@ for (const breite of [DESKTOP, PHONE]) {
 
     await expect(page.getByText('Kundenadministrator')).toHaveCount(0);
     await expect(page.getByText('Leser')).toBeVisible();
+
+    await keinUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+}
+
+/**
+ * Rückmeldung zu PR #1882: trägt eine Person MEHR als eine Zuweisung, nennt der Dialog vor dem
+ * Speichern genau, welche davon durch die gewählte Rolle wegfallen, und verlangt dafür eine
+ * ausdrückliche Bestätigung - „Speichern" bleibt bis dahin gesperrt.
+ */
+for (const breite of [DESKTOP, PHONE]) {
+  test(`Bearbeiten warnt und verlangt Bestätigung bei mehreren bestehenden Zuweisungen · ${breite}px`, async ({ page }) => {
+    const fehler = fehlerAufzeichnen(page);
+    await page.setViewportSize({ width: breite, height: breite === PHONE ? 844 : 900 });
+    await page.goto('/e2e/admin-personen.html?mehrfach=1');
+    await page.waitForSelector('.vp-kundenakte');
+
+    await page.getByRole('button', { name: 'Aktionen für zweifach' }).click();
+    await page.getByRole('menuitem', { name: 'Bearbeiten' }).click();
+    const edit = page.getByRole('dialog', { name: /Benutzer bearbeiten: zweifach/ });
+
+    // Ohne das Rolle-Feld zu berühren: kein Warnhinweis, obwohl die Person zwei Zuweisungen trägt.
+    await expect(edit.getByText(/^Ersetzt \d+ Zuweisungen/)).toHaveCount(0);
+
+    await edit.getByRole('combobox', { name: 'Rolle' }).click();
+    await page.getByRole('option', { name: 'Energiemanager' }).click();
+    await expect(edit.getByText('Ersetzt 2 Zuweisungen: Leser · Zuhause, Einsicht.')).toBeVisible();
+
+    const speichern = edit.getByRole('button', { name: 'Änderungen speichern' });
+    await expect(speichern).toBeDisabled();
+    const bestaetigung = edit.getByRole('checkbox', { name: 'Ich habe gesehen, welche Zuweisungen dadurch wegfallen.' });
+    await expect(bestaetigung).not.toBeChecked();
+
+    await bestaetigung.check();
+    await expect(speichern).toBeEnabled();
+    // Die Auswahl erneut berühren setzt die Bestätigung zurück - kein stilles Weiterwirken einer
+    // Bestätigung auf eine andere, inzwischen gewählte Rolle.
+    await edit.getByRole('combobox', { name: 'Rolle' }).click();
+    await page.getByRole('option', { name: 'Bearbeiter' }).click();
+    await edit.getByRole('combobox', { name: 'Standorte' }).click();
+    await page.getByRole('option', { name: 'Zuhause', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await expect(bestaetigung).not.toBeChecked();
+    await expect(speichern).toBeDisabled();
+
+    await bestaetigung.check();
+    await expect(speichern).toBeEnabled();
+    await speichern.click();
+    await expect(edit).toHaveCount(0);
+    await expect(page.getByText('Einsicht')).toHaveCount(0);
+    await expect(page.getByText('Bearbeiter')).toBeVisible();
 
     await keinUeberlauf(page);
     expect(fehler).toEqual([]);

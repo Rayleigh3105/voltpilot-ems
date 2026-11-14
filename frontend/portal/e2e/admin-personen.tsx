@@ -66,6 +66,20 @@ if (new URLSearchParams(window.location.search).get('verwaist') === '1') {
   eintraege = [...eintraege, { sub: 'verwaist-1', anzeigename: 'Verwaiste Person',
     email: 'verwaist@example.de', zustand: 'aktiv', zuweisungen: [] }];
 }
+// Rückmeldung zu PR #1882: `?mehrfach=1` legt eine Person MIT ZWEI Zuweisungen dazu (Hauptrolle
+// „Leser" an einem Standort UND zusätzlich „Einsicht" unternehmensweit) - der Fall, in dem das
+// Bearbeiten-Formular vor dem Speichern warnen und bestätigen lassen muss, welche davon wegfallen.
+if (new URLSearchParams(window.location.search).get('mehrfach') === '1') {
+  konten = [...konten, { id: 'mz', username: 'zweifach', email: 'mara.zweifach@example.de',
+    firstName: 'Mara', lastName: 'Zweifach', enabled: true, tenantId: TENANT_ID }];
+  eintraege = [...eintraege, { sub: 'mz', anzeigename: 'Mara Zweifach', email: 'mara.zweifach@example.de',
+    zustand: 'aktiv', zuweisungen: [
+      { id: 'z-mz-1', rolle: 'leser', standort_id: 'zuhause', standort_name: 'Zuhause',
+        gueltig_ab: iso(-30 * 86_400_000), gueltig_bis: null },
+      { id: 'z-mz-2', rolle: 'einsicht', standort_id: null, standort_name: null,
+        gueltig_ab: iso(-30 * 86_400_000), gueltig_bis: null },
+    ] }];
+}
 
 let naechsteId = 1;
 function neueSub(): string { return 'sub-' + naechsteId++; }

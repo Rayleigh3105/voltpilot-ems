@@ -31,6 +31,11 @@ import type { SelbstauskunftStandort } from '../../api';
  * dieser EINE Rolle-Dialog ersetzt sie alle durch die gewählte Rolle und Standorte - wie der
  * Kundenadministrator es Zeile für Zeile tut, nur in einem Feld. Ohne Berührung des Rolle-/Standort-Felds
  * geht kein Zugriffs-Aufruf hinaus; nur Anmeldename/E-Mail/Name ändern sich dann.
+ *
+ * Trägt die Person MEHR als eine Zuweisung, nennt der Dialog vor dem Speichern genau, welche davon
+ * wegfallen, und verlangt dafür eine ausdrückliche Bestätigung (Rückmeldung zu PR #1882: ein stiller
+ * Ersatz könnte Zugriffe entfernen, die niemand entfernen wollte) - „Speichern" bleibt bis dahin
+ * gesperrt. Bei genau einer bestehenden Zuweisung (dem Regelfall) entfällt dieser Schritt.
  */
 export function EditUserDrawer({
   tenant,
@@ -57,14 +62,22 @@ export function EditUserDrawer({
     [...new Set(bisher.flatMap((z) => (z.standort_id ? [z.standort_id] : [])))],
   );
   const [rolleBeruehrt, setRolleBeruehrt] = useState(false);
+  const [mehrfachBestaetigt, setMehrfachBestaetigt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const anmeldenameGeaendert = username.trim() !== user.username;
   const jeStandort = !unternehmensrolle(rolle);
   const ohneStandort = rolleBeruehrt && jeStandort && standorte.length === 0;
+  // Rückmeldung zu PR #1882: mehr als eine bestehende Zuweisung braucht die ausdrückliche
+  // Bestätigung, welche davon wegfallen - sonst lässt sich hier nicht speichern.
+  const mehrfach = bisher.length > 1;
+  const wegfallend = bisher
+    .map((z) => `${KUNDENROLLEN.find((r) => r.value === z.rolle)?.label ?? z.rolle}${z.standort_name ? ' · ' + z.standort_name : ''}`)
+    .join(', ');
+  const mehrfachOffen = rolleBeruehrt && mehrfach && !mehrfachBestaetigt;
 
   async function save() {
-    if (ohneStandort) return;
+    if (ohneStandort || mehrfachOffen) return;
     setBusy(true);
     setError(null);
     try {
@@ -99,7 +112,7 @@ export function EditUserDrawer({
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Abbrechen
           </Button>
-          <Button variant="primary" onClick={save} disabled={busy || !username.trim() || ohneStandort}>
+          <Button variant="primary" onClick={save} disabled={busy || !username.trim() || ohneStandort || mehrfachOffen}>
             {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
           </Button>
         </>
@@ -146,7 +159,7 @@ export function EditUserDrawer({
           label="Rolle"
           value={rolle}
           options={KUNDENROLLEN.map((r) => ({ ...r, sub: ROLLE_BESCHREIBUNG[r.value] }))}
-          onChange={(v) => { setRolleBeruehrt(true); setRolle(v); setStandorte([]); }}
+          onChange={(v) => { setRolleBeruehrt(true); setMehrfachBestaetigt(false); setRolle(v); setStandorte([]); }}
         />
         <p className="vp-note" style={{ margin: 0 }}>{ROLLE_BESCHREIBUNG[rolle]}</p>
         {jeStandort && (
@@ -155,13 +168,26 @@ export function EditUserDrawer({
             label="Standorte"
             values={standorte}
             options={alleStandorte.map((s) => ({ value: s.id, label: s.name }))}
-            onChangeMany={(ids) => { setRolleBeruehrt(true); setStandorte(ids); }}
+            onChangeMany={(ids) => { setRolleBeruehrt(true); setMehrfachBestaetigt(false); setStandorte(ids); }}
           />
         )}
         {ohneStandort && (
           <p className="vp-feld-fehler" role="alert" style={{ margin: 0 }}>Wählen Sie mindestens einen Standort.</p>
         )}
-        {rolleBeruehrt && (
+        {rolleBeruehrt && mehrfach && (
+          <div className="vp-alert vp-alert-warn" role="alert">
+            <p style={{ margin: 0 }}>Ersetzt {bisher.length} Zuweisungen: {wegfallend}.</p>
+            <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', margin: '8px 0 0' }}>
+              <input
+                type="checkbox"
+                checked={mehrfachBestaetigt}
+                onChange={(e) => setMehrfachBestaetigt(e.target.checked)}
+              />
+              <span>Ich habe gesehen, welche Zuweisungen dadurch wegfallen.</span>
+            </label>
+          </div>
+        )}
+        {rolleBeruehrt && !mehrfachOffen && (
           <p className="vp-note" style={{ margin: 0 }}>
             Die Änderung gilt sofort und steht im Zugriffsprotokoll des Kunden.
           </p>
