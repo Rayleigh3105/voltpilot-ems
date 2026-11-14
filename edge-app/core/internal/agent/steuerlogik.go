@@ -114,10 +114,18 @@ func istFuehlerTemperatur(pointKey string) bool {
 }
 
 // logikQuelle reads one input of a logic. Known: site.grid, site.pv,
-// battery.power, battery.soc and <entity>.temperature of a Fühler with
-// exactly one temperature probe. Everything else is unknown - more probes on
-// one entity is ambiguous, and a guess would be invented.
+// battery.power, battery.soc, price.current (the spot price of the price feed,
+// ct/kWh, while it is valid) and <entity>.temperature of a Fühler with exactly
+// one temperature probe. Everything else is unknown - more probes on one
+// entity is ambiguous, and a guess would be invented.
 func (a *Agent) logikQuelle(source string, now time.Time) logik.EinWert {
+	if source == "price.current" {
+		ct, seit, ok := a.priceFeed().Current(now)
+		if !ok {
+			return logik.EinWert{}
+		}
+		return messwert(logikMesswert{v: ct, at: seit}, now)
+	}
 	a.logikIn.mu.Lock()
 	defer a.logikIn.mu.Unlock()
 	if w, ok := a.logikIn.site[source]; ok {

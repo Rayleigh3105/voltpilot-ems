@@ -1139,6 +1139,10 @@ func groesseDerQuelle(von string) (Groesse, bool) {
 		return GroesseProzent, false
 	case "sun.elevation":
 		return GroesseWinkel, false
+	case "price.current":
+		// Der Börsenpreis in ct/kWh (mqtt-price-current.md); die Sprache hat
+		// keine Geld-Einheit, er ist eine Zahl.
+		return GroesseZahl, false
 	}
 	return GroesseZahl, false
 }

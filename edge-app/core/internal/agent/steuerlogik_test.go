@@ -23,6 +23,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logikdienst"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/pricefeed"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 )
 
@@ -209,5 +210,28 @@ func TestLogikQuelleBleibtEhrlich(t *testing.T) {
 	}
 	if w := a.logikQuelle("f1.open", now); w.Zahl != nil || w.Bool != nil {
 		t.Fatalf("an input contact is not bound in this stage: %+v", w)
+	}
+
+	// The spot price of the price feed while it is valid; unknown before and
+	// after (mqtt-price-current.md: stale counts as unknown).
+	a.priceFeedMirror = pricefeed.New(func([]byte) error { return nil })
+	if w := a.logikQuelle("price.current", now); w.Zahl != nil {
+		t.Fatalf("no price yet: %+v", w)
+	}
+	slot := now.UTC().Truncate(15 * time.Minute)
+	raw, _ = json.Marshal(map[string]any{"schema_version": "1.0", "tenant_id": "t", "site_id": "s", "device_id": "d",
+		"generated_at": slot.Format(time.RFC3339), "slot_start": slot.Format(time.RFC3339),
+		"slot_end": slot.Add(15 * time.Minute).Format(time.RFC3339), "price_ct_kwh": 4.2, "unit": "ct/kWh",
+		"bidding_zone": "DE-LU"})
+	doc, err := pricefeed.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.priceFeedMirror.Accept(doc)
+	if w := a.logikQuelle("price.current", now); w.Zahl == nil || *w.Zahl != 4.2 {
+		t.Fatalf("fresh price: %+v", w)
+	}
+	if w := a.logikQuelle("price.current", slot.Add(21*time.Minute)); w.Zahl != nil {
+		t.Fatalf("expired price must be unknown: %+v", w)
 	}
 }
