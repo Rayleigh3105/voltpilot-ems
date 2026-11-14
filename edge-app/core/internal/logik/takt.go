@@ -502,7 +502,7 @@ func aufGeraet(v float64, stamm GeraetStamm) float64 {
 		if br := stamm.SollwertBereich; br != nil {
 			basis = br[0]
 		}
-		v = basis + jsRound((v-basis)/ *s)**s
+		v = basis + jsRound((v-basis) / *s)**s
 		v = math.Round(v*1e9) / 1e9 // Rundungsrest der Gleitkommazahl
 	}
 	if br := stamm.SollwertBereich; br != nil {
