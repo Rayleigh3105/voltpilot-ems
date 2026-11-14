@@ -16,6 +16,7 @@ Referenz für Probes, Shutdown, Speicherpfade und Skalierungsgrenzen der Cloud-D
 | `weather-collector` | `GET :8098/health` | `GET :8098/ready` | 30 s | 1 (Singleton) |
 | `simulation` | `GET :8095/health` | `GET :8095/health` | 30 s | **1** (In-Memory-Job-Registry) |
 | `flowc` | `GET :8099/health` | `GET :8099/health` | 15 s | ja (zustandslos) |
+| `logik-dienst` | `GET :8101/health` | `GET :8101/health` | 15 s | ja (zustandslos); Manifest im GitOps-Repo noch anzulegen |
 | `werkstatt-dienst` | `GET :8100/health` | `GET :8100/ready` | 30 s | **1** (eine Werkbank-Brücke, Protokolle auf RWO-Volume) |
 
 Grace-Period-Werte sind die vorgesehenen Manifestwerte; im ausgerollten Manifest prüfen. Eine API-Aufteilung in mehrere eigenständige Instanzen ist hier keine bereits implementierte Skalierungszusage.
