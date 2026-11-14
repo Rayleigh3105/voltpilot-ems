@@ -82,6 +82,15 @@ class SteuerlogikRueckmeldungVectorsTest {
                 fall.path("warum_saetze").forEach(n -> sollSaetze.add(n.asText()));
                 assertThat(saetze).as("Überschriften für den Kunden").containsExactlyElementsOf(sollSaetze);
             }
+            // Bedingungen sind Sätze: nie ein Feld formel; allgemein reist nur als echtes Ja.
+            int allgemein = 0;
+            for (JsonNode gruppe : sauber.path("warum")) {
+                for (JsonNode b : gruppe.path("bedingungen")) {
+                    assertThat(b.has("formel")).as("keine Formel in „Warum?“").isFalse();
+                    if (b.path("allgemein").asBoolean(false)) allgemein++;
+                }
+            }
+            assertThat(allgemein).as("allgemeine Bedingungen").isEqualTo(fall.path("allgemeine_bedingungen").asInt(0));
             assertThat(sauber.path("meldungen")).as("Meldungen").hasSize(fall.path("meldungen").asInt());
         }
         for (var w : g.wechsel()) {

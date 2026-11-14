@@ -222,8 +222,16 @@
   "speicher1_warm": {
    "name": "Speicher 1 ist warm",
    "type": "boolean",
-   "on_when": "t1 >= ziel",
-   "off_when": "unknown(t1) or t1 < ziel - 3 K",
+   "on_when": [
+    {
+     "Speicher 1 hat das Ziel erreicht": "t1 >= ziel"
+    }
+   ],
+   "off_when": [
+    {
+     "Speicher 1 liegt 3 K unter dem Ziel oder hat keinen Wert": "unknown(t1) or t1 < ziel - 3 K"
+    }
+   ],
    "on_text": "Speicher 1 gilt als warm",
    "off_text": "Speicher 1 braucht wieder Wärme",
    "after_restart": "off"
@@ -231,8 +239,16 @@
   "vorrang": {
    "name": "Warmwasser vor Batterie",
    "type": "boolean",
-   "on_when": "vorrang_bis > 0 °C and t1 < vorrang_ziel - 3 K",
-   "off_when": "not (vorrang_bis > 0 °C) or unknown(t1) or t1 >= vorrang_ziel",
+   "on_when": [
+    {
+     "Der Vorrang ist eingeschaltet und Speicher 1 liegt 3 K unter dem Vorrang-Ziel": "vorrang_bis > 0 °C and t1 < vorrang_ziel - 3 K"
+    }
+   ],
+   "off_when": [
+    {
+     "Der Vorrang ist aus, oder Speicher 1 hat das Vorrang-Ziel erreicht oder keinen Wert": "not (vorrang_bis > 0 °C) or unknown(t1) or t1 >= vorrang_ziel"
+    }
+   ],
    "on_text": "Warmwasser bekommt Vorrang vor der Batterie",
    "off_text": "Die Batterie lädt wieder zuerst",
    "after_restart": "off"
@@ -286,14 +302,22 @@
      "name": "blind",
      "text": "Ohne Werte vom Wechselrichter wird nicht weiter geheizt",
      "set": 0,
-     "when": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)"
+     "when": [
+      {
+       "Ein Wert vom Wechselrichter fehlt seit 1 Minute": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)"
+      }
+     ]
     },
     {
      "name": "zurueck",
      "text": "Eine Heizstufe weniger",
      "by": -1,
      "not_before": "2 min",
-     "when": "heizstufe > 0",
+     "when": [
+      {
+       "Es läuft mindestens eine Heizstufe": "heizstufe > 0"
+      }
+     ],
      "when_any": [
       {
        "Die Batterie muss aushelfen": "speicher < -entladung_max"

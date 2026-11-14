@@ -70,6 +70,8 @@ for (const breite of [390, 1440] as const) {
     await expect(blatt.locator('.lg-geraete')).toContainText('Mindestlaufzeit');
     // Ein Zielwert als Regler in seinem Bereich; „mehr“ stellt einen Schritt höher und sendet die Form des Dokuments.
     await expect(blatt.getByText('Das stellen Sie ein')).toBeVisible();
+    // Der Regler zeigt den Wert, der auf der Box gilt - derselbe wie in „Was gerade entscheidet“ und im Verlauf.
+    await expect(blatt.locator('.lg-regler').filter({ hasText: 'Nie kälter als' }).locator('output')).toHaveText(/^42\s°C$/);
     const ziel = blatt.locator('.lg-regler').filter({ hasText: 'Mit Sonnenstrom bis' });
     await expect(ziel.locator('output')).toHaveText('57 °C');
     await ziel.getByRole('button', { name: 'Mit Sonnenstrom bis mehr' }).click();
@@ -87,6 +89,11 @@ for (const breite of [390, 1440] as const) {
     const alle = await titel.allTextContents();
     expect(alle.length).toBeGreaterThan(2);
     expect(alle.join(' | ')).not.toMatch(/netzheizen|zurueck|versuch|blind|[a-z]_[a-z]|(^|\| )[a-z]/);
+    // Jede Bedingung ist ein Satz: keine Formel, keine Code-Schrift im ganzen Blatt.
+    await expect(blatt.locator('code')).toHaveCount(0);
+    const bedingungen = await blatt.locator('.lg-check li').allTextContents();
+    expect(bedingungen.length).toBeGreaterThan(5);
+    expect(bedingungen.join(' | ')).not.toMatch(/[<>=()]|unknown|holds|stufe > 0/);
     if (BILDER) {
       // Für das Bild aller Gruppen kurz ein hohes Fenster: das Blatt wächst mit und zeigt alle auf einmal.
       await page.setViewportSize({ width: breite, height: 2400 });

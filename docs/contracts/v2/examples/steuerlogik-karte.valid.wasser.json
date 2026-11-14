@@ -60,7 +60,7 @@
     "optionen" : null,
     "zielwert" : true,
     "darf" : "customer",
-    "wert" : "40 °C",
+    "wert" : "42 °C",
     "wertBox" : "42 °C",
     "text" : "42 °C",
     "hilfe" : null,
@@ -122,7 +122,7 @@
     "aendern" : true,
     "uebernommen" : true
   } ],
-  "stand" : 0,
+  "stand" : 1,
   "standBox" : 1,
   "warum" : [ {
     "was" : "an",
@@ -133,15 +133,14 @@
     "zustand" : "warm",
     "bedingungen" : [ {
       "ok" : false,
-      "name" : "t >= ziel",
+      "name" : "Der Speicher hat das Ziel erreicht",
       "werte" : [ {
         "name" : "Speicher",
         "text" : "55 °C"
       }, {
         "name" : "Mit Sonnenstrom bis",
         "text" : "57 °C"
-      } ],
-      "formel" : true
+      } ]
     } ]
   }, {
     "was" : "an",
@@ -181,7 +180,7 @@
     "zustand" : "stufe",
     "bedingungen" : [ {
       "ok" : false,
-      "name" : "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)",
+      "name" : "Ein Wert vom Wechselrichter fehlt seit 1 Minute",
       "werte" : [ {
         "name" : "Netzbezug",
         "text" : "0,1 kW"
@@ -191,8 +190,7 @@
       }, {
         "name" : "Batterie",
         "text" : "50 %"
-      } ],
-      "formel" : true
+      } ]
     } ]
   }, {
     "was" : "schritt",
@@ -204,12 +202,11 @@
     "zustand" : "stufe",
     "bedingungen" : [ {
       "ok" : false,
-      "name" : "stufe > 0 and not frei",
+      "name" : "Der Heizstab läuft, der Speicher braucht keine Wärme",
       "werte" : [ {
         "name" : "Speicher",
         "text" : "55 °C"
-      } ],
-      "formel" : true
+      } ]
     } ]
   }, {
     "was" : "schritt",
@@ -221,9 +218,8 @@
     "zustand" : "stufe",
     "bedingungen" : [ {
       "ok" : false,
-      "name" : "stufe > 0",
-      "werte" : [ ],
-      "formel" : true
+      "name" : "Der Heizstab läuft",
+      "werte" : [ ]
     } ]
   }, {
     "was" : "schritt",

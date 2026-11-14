@@ -3,6 +3,7 @@ import type { SteuerlogikKarte, SteuerlogikStellwert, SteuerlogikVerlauf, Steuer
 import gepinnt from '../../../docs/contracts/v2/examples/steuerlogik-karte.valid.wasser.json';
 import {
   erfuellt,
+  geltend,
   fusszeile,
   geraetZeile,
   gruppen,
@@ -101,10 +102,19 @@ describe('die Werte', () => {
 });
 
 describe('die Liste „Warum?“', () => {
-  it('stellt benannte Bedingungen vor reine Formeln und urteilt dreiwertig', () => {
-    const w = warumSortiert(karte().warum);
-    expect(w[0].bedingungen.every((b) => !b.formel)).toBe(true);
-    expect(w[w.length - 1].bedingungen.some((b) => b.formel)).toBe(true);
+  it('stellt Gruppen mit eigenen Sätzen vor allgemeine und urteilt dreiwertig', () => {
+    const g0 = karte().warum![0];
+    const allgemein = { ...g0, eigen: false, bedingungen: [{ name: 'Eine Bedingung Ihres Fachbetriebs', ok: null, allgemein: true }] };
+    const w = warumSortiert([allgemein, ...karte().warum!]);
+    expect(w[0].bedingungen.every((b) => !b.allgemein)).toBe(true);
+    expect(w[w.length - 1]).toBe(allgemein);
+    // Zuerst, was gerade nahe dran ist: im Beispiel „Heizt aus dem Netz“ (das Fenster stimmt) und „Eine Phase mehr“.
+    expect(warumSortiert(karte().warum).slice(0, 2).map((g) => g.satz)).toEqual(['Heizt aus dem Netz bis 50\u00a0°C', 'Eine Phase mehr']);
+    // Das gepinnte Beispiel benennt jede Bedingung: keine Formel, kein allgemeiner Satz.
+    for (const g of karte().warum!) for (const b of g.bedingungen) {
+      expect(b.allgemein).toBeFalsy();
+      expect(b.name).not.toMatch(/[()<>=]|unknown|holds/);
+    }
     expect(erfuellt({ ...w[0], modus: 'alle', bedingungen: [{ name: 'a', ok: true }, { name: 'b', ok: null }] })).toBeNull();
     expect(erfuellt({ ...w[0], modus: 'eines', bedingungen: [{ name: 'a', ok: false }, { name: 'b', ok: true }] })).toBe(true);
     expect(erfuellt({ ...w[0], modus: 'alle', bedingungen: [{ name: 'a', ok: false }, { name: 'b', ok: null }] })).toBe(false);
@@ -133,6 +143,29 @@ describe('die Überschriften im Blatt „Warum?“', () => {
       expect(g.eigen).toBe(true);
       expect(warumTitel(g)).not.toMatch(/netzheizen|zurueck|versuch|blind|[a-z]_[a-z]|^[a-z]/);
     }
+  });
+});
+
+describe('der Wert, den der Regler zeigt', () => {
+  it('ist der Wert der Box, wenn übernommen, und das Ziel, solange die Änderung offen ist', () => {
+    const mindest = wert(karte(), 'mindest');
+    // Die Box meldet den Stand der Cloud: der Regler zeigt, was dort gilt.
+    expect(geltend({ ...mindest, wert: '42 °C', wertBox: '42 °C', uebernommen: true })).toBe('42 °C');
+    expect(geltend({ ...mindest, wert: '40 °C', wertBox: '42 °C', uebernommen: true })).toBe('42 °C');
+    // Gerade gestellt, die Box hat es noch nicht: das Ziel, nie der alte Wert der Box.
+    expect(geltend({ ...mindest, wert: '45 °C', wertBox: '42 °C', uebernommen: false })).toBe('45 °C');
+    // Noch keine Meldung der Box: der Wert der Cloud.
+    expect(geltend({ ...mindest, wert: '42 °C', wertBox: null, uebernommen: true })).toBe('42 °C');
+  });
+
+  it('stimmt im gepinnten Beispiel mit der Box und mit „Warum?“ überein', () => {
+    const k = karte();
+    const mindest = wert(k, 'mindest');
+    expect(geltend(mindest)).toBe('42 °C');
+    expect(mindest.wertBox).toBe('42 °C');
+    const imWarum = (k.warum ?? []).flatMap((g) => g.bedingungen).flatMap((b) => b.werte ?? [])
+      .filter((x) => x.name === 'Nie kälter als').map((x) => x.text);
+    expect(new Set(imWarum)).toEqual(new Set(['42\u00a0°C']));
   });
 });
 

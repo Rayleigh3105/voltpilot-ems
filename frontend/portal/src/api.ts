@@ -9613,8 +9613,11 @@ export interface SteuerlogikWarum {
   modus: 'alle' | 'eines';
   wartet_s?: number;
   /** ok null = unbekannt, nie „nein“. */
-  /** `formel`: der Text nennt keinen Namen, `name` ist die Formel selbst. */
-  bedingungen: { name: string; ok: boolean | null; formel?: boolean; werte?: { name: string; text: string }[] }[];
+  /**
+   * `name` ist immer ein Satz (der Name aus dem Text oder einer aus dem Wortschatz der Box), nie eine Formel;
+   * `allgemein`: die Box konnte die Bedingung nicht übersetzen, `name` ist „Eine Bedingung Ihres Fachbetriebs“.
+   */
+  bedingungen: { name: string; ok: boolean | null; allgemein?: boolean; werte?: { name: string; text: string }[] }[];
 }
 
 export interface SteuerlogikGeraetVergleich {

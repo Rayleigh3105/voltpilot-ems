@@ -94,9 +94,10 @@ type LogikWarum struct {
 type LogikBedingung struct {
 	Name string `json:"name"`
 	Ok   *bool  `json:"ok"`
-	// Formel: the text names no condition, Name is the formula itself.
-	Formel bool        `json:"formel,omitempty"`
-	Werte  []LogikWert `json:"werte,omitempty"`
+	// Allgemein: an unnamed condition the core could not put into a sentence;
+	// Name is then the general sentence. Name is never a formula.
+	Allgemein bool        `json:"allgemein,omitempty"`
+	Werte     []LogikWert `json:"werte,omitempty"`
 }
 
 // LogikWert is a value inside a condition.

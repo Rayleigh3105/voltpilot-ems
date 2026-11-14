@@ -1102,7 +1102,7 @@
           {
             "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
             "flow_version": 1,
-            "content_hash": "sha256:82c322f48c837b682f02ea6709903f62d08166b3bf472f4ece889fb4585e7835",
+            "content_hash": "sha256:a204a09389982493dafe1cfbbcb66c14ff6b3b9ac49c150764fcfb4a86d1ce92",
             "name": "Warmwasser",
             "zustand": "scharf",
             "scharf_seit": "2026-11-14T09:00:00Z",
@@ -1237,9 +1237,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "t >= ziel",
+                    "name": "Der Speicher hat das Ziel erreicht",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Speicher",
@@ -1301,9 +1300,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)",
+                    "name": "Ein Wert vom Wechselrichter fehlt seit 1 Minute",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Netzbezug",
@@ -1331,9 +1329,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "stufe > 0 and not frei",
+                    "name": "Der Heizstab läuft, der Speicher braucht keine Wärme",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Speicher",
@@ -1353,9 +1350,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "stufe > 0",
-                    "ok": false,
-                    "formel": true
+                    "name": "Der Heizstab läuft",
+                    "ok": false
                   }
                 ]
               },
@@ -1626,9 +1622,9 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "t >= ziel",
+                    "name": "Eine Bedingung Ihres Fachbetriebs",
                     "ok": false,
-                    "formel": true,
+                    "allgemein": true,
                     "werte": [
                       {
                         "name": "Speicher",
@@ -1690,9 +1686,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)",
+                    "name": "Ein Wert vom Wechselrichter fehlt seit 1 Minute",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Netzbezug",
@@ -1720,9 +1715,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "stufe > 0 and not frei",
+                    "name": "Der Heizstab läuft, der Speicher braucht keine Wärme",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Speicher",
@@ -1742,9 +1736,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "stufe > 0",
-                    "ok": false,
-                    "formel": true
+                    "name": "Der Heizstab läuft",
+                    "ok": false
                   }
                 ]
               },
@@ -1882,6 +1875,7 @@
         "Eine Phase weniger",
         "Eine Phase mehr"
       ],
+      "allgemeine_bedingungen": 1,
       "meldungen": 1
     },
     {
@@ -2034,9 +2028,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "t >= ziel",
+                    "name": "Der Speicher hat das Ziel erreicht",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Speicher",
@@ -2070,7 +2063,8 @@
                         "name": "Netz erlaubt bis",
                         "text": "22:00"
                       }
-                    ]
+                    ],
+                    "allgemein": "ja"
                   },
                   {
                     "name": "Der Speicher ist seit 2 Minuten zu kalt",
@@ -2098,9 +2092,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)",
+                    "name": "Ein Wert vom Wechselrichter fehlt seit 1 Minute",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Netzbezug",
@@ -2128,9 +2121,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "stufe > 0 and not frei",
+                    "name": "Der Heizstab läuft, der Speicher braucht keine Wärme",
                     "ok": false,
-                    "formel": true,
                     "werte": [
                       {
                         "name": "Speicher",
@@ -2150,9 +2142,8 @@
                 "modus": "alle",
                 "bedingungen": [
                   {
-                    "name": "stufe > 0",
-                    "ok": false,
-                    "formel": true
+                    "name": "Der Heizstab läuft",
+                    "ok": false
                   }
                 ]
               },
@@ -2300,6 +2291,7 @@
         "Eine Phase weniger",
         "Eine Phase mehr"
       ],
+      "allgemeine_bedingungen": 0,
       "meldungen": 1
     }
   ]

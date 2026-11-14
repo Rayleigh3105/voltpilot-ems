@@ -29,13 +29,14 @@ type WarumGruppe struct {
 	Bedingungen []WarumBedingung `json:"bedingungen"`
 }
 
-// WarumBedingung ist eine Bedingung mit ihrem Stand; Ok nil heißt unbekannt. Formel sagt, dass der
-// Text keinen Namen trägt und Name die Formel selbst ist (die Oberfläche zeigt sie als Formel).
+// WarumBedingung ist eine Bedingung mit ihrem Stand; Ok nil heißt unbekannt. Name ist immer ein
+// Satz: der Name aus dem Text, sonst ein Satz aus dem Wortschatz (saetze.go). Allgemein sagt, dass
+// sich die Bedingung nicht übersetzen ließ und Name allgemeinSatz ist - nie eine Formel.
 type WarumBedingung struct {
-	Name   string      `json:"name"`
-	Ok     *bool       `json:"ok"`
-	Formel bool        `json:"formel,omitempty"`
-	Werte  []WarumWert `json:"werte,omitempty"`
+	Name      string      `json:"name"`
+	Ok        *bool       `json:"ok"`
+	Allgemein bool        `json:"allgemein,omitempty"`
+	Werte     []WarumWert `json:"werte,omitempty"`
 }
 
 // WarumWert ist ein Wert, der in einer Bedingung steckt: ein gemessener Wert oder ein Stellwert.
@@ -159,13 +160,14 @@ func wortSatz(z *Zustand, was string, s *Schritt) string {
 	if z.HatName {
 		return z.Name + " " + tut
 	}
-	return strings.ToUpper(tut[:1]) + tut[1:]
+	return grossAnfang(tut)
 }
 
 func (L *Logik) warumBedingung(st *Lauf, ein *Eingabe, b *Bedingung) WarumBedingung {
 	wb := WarumBedingung{Name: b.Name}
 	if wb.Name == "" {
-		wb.Name, wb.Formel = b.Baum.src, true
+		satz, ok := L.bedingungSatz(b.Baum)
+		wb.Name, wb.Allgemein = satz, !ok
 	}
 	if x, err := L.rechne(st, ein, b.Baum, 0); err == nil && x.Art == WertBool {
 		ok := x.B

@@ -159,6 +159,11 @@ func TestWarumSatzNieDieKennung(t *testing.T) {
 		if !g.Eigen || g.Satz == "" || g.Satz == g.Zustand || g.Satz == g.Schritt {
 			t.Fatalf("das Beispiel bringt für jede Gruppe einen Satz: %+v", g)
 		}
+		for _, b := range g.Bedingungen {
+			if b.Allgemein || strings.ContainsAny(b.Name, "()<>=") {
+				t.Fatalf("das Beispiel benennt jede Bedingung: %+v", b)
+			}
+		}
 		if g.Zustand == "netzheizen" && g.Was == "an" {
 			gefunden = true
 			if g.Satz != "Heizt aus dem Netz bis 50\u00a0°C" {

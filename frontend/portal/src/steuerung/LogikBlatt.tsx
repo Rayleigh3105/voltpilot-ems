@@ -146,7 +146,7 @@ export function LogikBlatt({ siteId, karte, jetzt, onClose, onStelle }: LogikBla
                         <Ic n={b.ok === true ? 'check' : b.ok === false ? 'minus' : 'help'} s={15} />
                       </span>
                       <span>
-                        {b.formel ? <code>{b.name}</code> : b.name}
+                        {b.name}
                         {b.werte?.length ? <small>{b.werte.map((x) => `${x.name} ${x.text}`).join(' · ')}</small> : null}
                       </span>
                     </li>
@@ -191,7 +191,7 @@ export function LogikBlatt({ siteId, karte, jetzt, onClose, onStelle }: LogikBla
                 {fachbetrieb.map((s) => (
                   <li key={s.kennung}>
                     <span>{s.name}</span>
-                    <b>{s.text ?? wertText(s, geltend(s))}<Ic n="lock" s={14} /></b>
+                    <b>{s.uebernommen && s.text ? s.text : wertText(s, geltend(s))}<Ic n="lock" s={14} /></b>
                   </li>
                 ))}
               </ul>

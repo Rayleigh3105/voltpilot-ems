@@ -77,6 +77,8 @@ Ein Takt, jede Sekunde, in dieser Reihenfolge: Werte lesen und ihr Alter prüfen
 - **Sätze für „Warum?“**: `on_text` und `off_text` eines Schalters und `text` eines Zählerschritts sind die Überschriften der Gruppen im Blatt „Warum?“, mit Platzhaltern wie die Lage („Heizt aus dem Netz bis {netz_ziel}“).
   Fehlt einer, bildet der Kern einen Satz aus dem Wortschatz („„Netzheizen“ beginnt“, „Heizstufe um 1 höher“, „Auf 0“); die Kennung eines Zustands oder Schritts erscheint nie vor dem Kunden.
   Die Prüfung nennt jede Gruppe, die das Blatt zeigt und für die der Text keinen Satz hat, in einem Hinweis.
+  Ebenso jede Bedingung: eine benannte trägt ihren Namen, eine ohne Namen übersetzt der Kern aus dem Wortschatz (Vergleiche mit Eingängen, Stellwerten und benannten Zuständen, `unknown`/`known`, `holds`, `time_window`, `running`, `since`, `and`/`or`; „„Netzbezug“ liegt über 0,3 kW, seit mindestens 10 min“).
+  Was sich nicht übersetzen lässt (eine Formel aus `formulas`, ein Zustand ohne Namen, Rechnen jenseits von „Wert ± Zahl“), heißt im Blatt „Eine Bedingung Ihres Fachbetriebs“, und die Prüfung nennt die Stelle mit ihrer Formel; die Formel selbst steht nie in „Warum?“, sie gehört in die Ansicht des Texts für den Fachbetrieb.
 
 Anzeige der Werte: deutsche Schreibweise (Komma, schmales Leerzeichen vor der Einheit, echtes Minus), Leistungen unter 10 kW mit einer oder zwei Stellen, Hälften runden vom Nullpunkt weg (wie das Referenzlabor); die Lagesätze der Tagesvektoren prüfen das Zeichen für Zeichen.
 
@@ -173,6 +175,7 @@ Ein gestellter Wert ist keine Fassung (Bericht 6.6 Punkt 4): er reist im Bündel
 Der Dienst prüft vor dem Speichern Art, Einheit, Bereich, Schritt, Auswahl und die Bedingungen unter `constraints` mit allen Werten zusammen (422 `stellwerte_passen_nicht`); die Box prüft beim Annehmen dasselbe und nimmt ein Bündel mit einem unpassenden Wert nicht an.
 Eine neue Fassung übernimmt die Werte, die passen; die anderen fallen auf ihre Vorgabe, die Antwort und das Protokoll nennen sie (`verworfen`).
 Die API hält je Logik die Werte und ihren Stand (`steuerlogik_einstellung`); die Box meldet den Stand zurück (`stellwerte.stand` im Herzschlag), und erst dann zeigt das Portal einen Wert als übernommen.
+Regler und Schalter zeigen den Wert, der auf der Box gilt; solange eine Änderung offen ist, ihr Ziel mit „wird übernommen …“, nie den alten Wert.
 Die Beschreibung der Werte (Name, Art, Einheit, Bereich, Schritt in der Einheit der Vorgabe, `editable_by`, Zielwert) steht im Prüfbericht (`bericht.stellwerte`), so liest das Portal die Sprache nicht.
 
 ### Für den Kunden

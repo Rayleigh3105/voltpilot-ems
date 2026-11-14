@@ -225,7 +225,18 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 	}
 	// Die Sätze für den Kunden im Blatt „Warum?“: Platzhalter wie in der Lage; fehlt einer für eine
 	// Gruppe, die das Blatt zeigt, sagt es ein Hinweis (dort steht dann ein Satz aus dem Wortschatz).
-	var ohneSatz []string
+	var ohneSatz, ohneWort []string
+	// Eine Bedingung ohne Namen, die sich nicht übersetzen lässt, liest der Kunde als allgemeinSatz.
+	bedingungenOhneWort := func(wo string, liste []Bedingung) {
+		for _, c := range liste {
+			if c.Name != "" {
+				continue
+			}
+			if _, ok := L.bedingungSatz(c.Baum); !ok {
+				ohneWort = append(ohneWort, wo+" („"+c.Baum.src+"“)")
+			}
+		}
+	}
 	for _, z := range L.Zustaende {
 		switch z.Art {
 		case "boolean":
@@ -237,18 +248,28 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 			if z.AusText == "" && (z.Aus != nil || z.AusEines != nil) {
 				ohneSatz = append(ohneSatz, "states."+z.Kennung+".off_text")
 			}
+			bedingungenOhneWort("states."+z.Kennung+".on_when", z.An)
+			bedingungenOhneWort("states."+z.Kennung+".on_when_any", z.AnEines)
+			bedingungenOhneWort("states."+z.Kennung+".off_when", z.Aus)
+			bedingungenOhneWort("states."+z.Kennung+".off_when_any", z.AusEines)
 		case "counter":
 			for _, s := range z.Schritte {
 				pruefeText("text von „"+z.Name+"“, Schritt "+s.Name, s.Text)
 				if s.Text == "" && (s.Alle != nil || s.Eines != nil) {
 					ohneSatz = append(ohneSatz, "states."+z.Kennung+".steps."+s.Name+".text")
 				}
+				bedingungenOhneWort("states."+z.Kennung+".steps."+s.Name+".when", s.Alle)
+				bedingungenOhneWort("states."+z.Kennung+".steps."+s.Name+".when_any", s.Eines)
 			}
 		}
 	}
 	if len(ohneSatz) > 0 {
 		b.Hinweise = append(b.Hinweise, "Ohne Satz für den Kunden im Blatt „Warum?“ (dort steht dann ein Satz "+
 			"aus dem Wortschatz): "+strings.Join(ohneSatz, ", "))
+	}
+	if len(ohneWort) > 0 {
+		b.Hinweise = append(b.Hinweise, "Bedingungen ohne Namen, die sich nicht in einen Satz übersetzen lassen "+
+			"(im Blatt „Warum?“ steht dann „"+allgemeinSatz+"“; bitte benennen): "+strings.Join(ohneWort, ", "))
 	}
 	// Wörter dürfen keinen anderen Namen verdecken; Schrittnamen sind auch Wörter.
 	istName := func(w string) bool {

@@ -286,7 +286,8 @@ public final class SteuerlogikRueckmeldung {
                 } else {
                     bn.putNull("ok");
                 }
-                if (b.path("formel").asBoolean(false)) bn.put("formel", true);
+                // Ein Satz, nie eine Formel: allgemein heißt, die Box konnte die Bedingung nicht übersetzen.
+                if (b.path("allgemein").asBoolean(false)) bn.put("allgemein", true);
                 ArrayNode werte = bn.putArray("werte");
                 for (JsonNode w : b.path("werte")) {
                     if (werte.size() >= MAX_WERTE) break;

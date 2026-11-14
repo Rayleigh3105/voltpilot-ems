@@ -91,8 +91,16 @@
  "states": {
   "warm": {
    "type": "boolean",
-   "on_when": "t >= ziel",
-   "off_when": "unknown(t) or t < ziel - 3 K",
+   "on_when": [
+    {
+     "Der Speicher hat das Ziel erreicht": "t >= ziel"
+    }
+   ],
+   "off_when": [
+    {
+     "Der Speicher liegt 3 K unter dem Ziel oder hat keinen Wert": "unknown(t) or t < ziel - 3 K"
+    }
+   ],
    "on_text": "Der Speicher gilt als warm",
    "off_text": "Der Speicher braucht wieder Wärme",
    "after_restart": "off"
@@ -132,20 +140,32 @@
      "name": "blind",
      "text": "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
      "set": 0,
-     "when": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)"
+     "when": [
+      {
+       "Ein Wert vom Wechselrichter fehlt seit 1 Minute": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)"
+      }
+     ]
     },
     {
      "name": "voll",
      "text": "Der Speicher ist warm, der Heizstab geht aus",
      "set": 0,
-     "when": "stufe > 0 and not frei"
+     "when": [
+      {
+       "Der Heizstab läuft, der Speicher braucht keine Wärme": "stufe > 0 and not frei"
+      }
+     ]
     },
     {
      "name": "zurueck",
      "text": "Eine Phase weniger",
      "by": -1,
      "not_before": "2 min",
-     "when": "stufe > 0",
+     "when": [
+      {
+       "Der Heizstab läuft": "stufe > 0"
+      }
+     ],
      "when_any": [
       {
        "Die Batterie muss aushelfen": "speicher < -0.15 kW"

@@ -144,9 +144,12 @@ export function wertText(s: SteuerlogikStellwert, wert: unknown): string {
   return s.einheit ? `${t}${NB}${s.einheit}` : t;
 }
 
-/** Der Wert, wie er gerade gilt: was die Box meldet, solange die Cloud nichts Neueres gestellt hat. */
+/** Der Wert, den Regler, Schalter und Anzeige zeigen: was auf der Box gilt; ist eine Änderung offen, ihr Ziel. */
 export function geltend(s: SteuerlogikStellwert): unknown {
-  return s.uebernommen || s.wertBox == null ? s.wert : s.wertBox;
+  // Offen (die Box hat den Stand der Cloud noch nicht): das Ziel, das gerade übernommen wird - nie der alte Wert.
+  // Übernommen: was auf der Box gilt.
+  if (!s.uebernommen) return s.wert;
+  return s.wertBox ?? s.wert;
 }
 
 /** Ein Schalter ist an, wenn sein Wert „on“ ist. */
@@ -267,11 +270,12 @@ export function wartetText(s: number | undefined): string | null {
 }
 
 /**
- * Die Gruppen in der Reihenfolge für Menschen: zuerst die mit benannten Bedingungen und einem Satz der Logik, dann
- * die, deren Text nur Formeln trägt - sonst in der Reihenfolge des Textes.
+ * Die Gruppen in der Reihenfolge für Menschen: zuerst, was gerade nahe dran ist (schon eine Bedingung erfüllt), dann
+ * die mit eigenen Sätzen vor denen mit nur allgemeinen - sonst in der Reihenfolge des Textes.
  */
 export function warumSortiert(gruppen: SteuerlogikWarum[] | null): SteuerlogikWarum[] {
-  const gewicht = (g: SteuerlogikWarum) => (g.eigen ? 1 : 0) + (g.bedingungen.some((b) => !b.formel) ? 2 : 0);
+  const gewicht = (g: SteuerlogikWarum) =>
+    (g.bedingungen.some((b) => b.ok === true) ? 4 : 0) + (g.bedingungen.some((b) => !b.allgemein) ? 2 : 0) + (g.eigen ? 1 : 0);
   return (gruppen ?? []).map((g, i) => ({ g, i })).sort((a, b) => gewicht(b.g) - gewicht(a.g) || a.i - b.i).map((x) => x.g);
 }
 

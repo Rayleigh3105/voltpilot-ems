@@ -348,6 +348,13 @@ class SteuerlogikScharfApiTest {
         JsonNode karte = einzigeKarte(w, "bedienberechtigt");
         assertThat(karte.path("stoerungen").get(0).path("code").asText()).isEqualTo("haelt_an");
 
+        // Der Kundenadministrator stellt „Nie kälter als“ auf 42 °C (Stand 1) - der Wert, den der gepinnte Block der
+        // Box mit Stand 1 meldet: Cloud und Box stimmen überein, wie im Betrieb.
+        Antwort mindest = als(w, "kundenadministrator", put(w.kunde() + "/" + logik + "/stellwerte/mindest")
+                .content("{\"wert\":\"42 °C\"}"));
+        assertThat(mindest.status()).as(mindest.body().toString()).isEqualTo(200);
+        assertThat(mindest.body().path("stand").asInt()).isEqualTo(1);
+
         // Der Herzschlag mit dem gepinnten scharfen Block der Box.
         SteuerlogikRueckmeldungListener eingang = new SteuerlogikRueckmeldungListener("tcp://127.0.0.1:9", "", "",
                 devices, logiken, tx);
@@ -370,18 +377,20 @@ class SteuerlogikScharfApiTest {
         assertThat(werte.get("netz_ab").path("frei").asBoolean()).isFalse();
         assertThat(werte.get("netz_ab").path("aendern").asBoolean()).as("Wert des Fachbetriebs").isFalse();
         assertThat(werte.get("mindest").path("wertBox").asText()).isEqualTo("42 °C");
+        assertThat(werte.get("mindest").path("wert").asText()).as("Cloud und Box: derselbe Wert").isEqualTo("42 °C");
+        assertThat(werte.get("mindest").path("uebernommen").asBoolean()).isTrue();
         pinneKarte(karte);
 
         // Bedienberechtigt: der Zielwert ja, der Wert des Fachbetriebs nicht.
         Antwort ziel = als(w, "bedienberechtigt", put(w.kunde() + "/" + logik + "/stellwerte/ziel")
                 .content("{\"wert\":\"60 °C\"}"));
         assertThat(ziel.status()).as(ziel.body().toString()).isEqualTo(200);
-        assertThat(ziel.body().path("stand").asInt()).isEqualTo(1);
+        assertThat(ziel.body().path("stand").asInt()).isEqualTo(2);
         SteuerlogikDienst.Auftrag letzter = auftraege.get(auftraege.size() - 1);
         assertThat(letzter.scharf()).isTrue();
         assertThat(letzter.werte().werte().get("ziel").asText()).isEqualTo("60 °C");
         assertThat(einzigesSteuerlogikArtefakt(letzterSatz(w)).path("bundle").path("settings").path("revision")
-                .asInt()).isEqualTo(1);
+                .asInt()).isEqualTo(2);
         Antwort fachbetrieb = als(w, "bedienberechtigt", put(w.kunde() + "/" + logik + "/stellwerte/netz_ab")
                 .content("{\"wert\":\"07:00\"}"));
         assertThat(fachbetrieb.status()).isEqualTo(403);
@@ -391,7 +400,7 @@ class SteuerlogikScharfApiTest {
         Antwort admin = als(w, "kundenadministrator", put(w.kunde() + "/" + logik + "/stellwerte/netz_ab")
                 .content("{\"wert\":\"07:00\"}"));
         assertThat(admin.status()).as(admin.body().toString()).isEqualTo(200);
-        assertThat(admin.body().path("stand").asInt()).isEqualTo(2);
+        assertThat(admin.body().path("stand").asInt()).isEqualTo(3);
         assertThat(einzigeKarte(w, "kundenadministrator").path("stellwerte").toString()).contains("\"07:00\"");
 
         // Was nicht passt, lehnt der Dienst ab - und nichts ändert sich.
@@ -401,7 +410,7 @@ class SteuerlogikScharfApiTest {
                 .content("{\"wert\":\"90 °C\"}"));
         assertThat(zuHoch.status()).isEqualTo(422);
         assertThat(root.queryForObject("SELECT stand FROM steuerlogik_einstellung WHERE logik_id = ?", Long.class,
-                logik)).isEqualTo(2L);
+                logik)).isEqualTo(3L);
         // Zwei gleichzeitige Änderungen überschreiben einander nicht still: ein veralteter Stand schreibt nichts.
         TenantContext.set(w.mandant());
         try {
@@ -428,7 +437,7 @@ class SteuerlogikScharfApiTest {
         verlauf.path("schritte").forEach(s -> {
             if ("stellwert".equals(s.path("was").asText())) gestellt.add(s.path("daten").path("kennung").asText());
         });
-        assertThat(gestellt).containsExactly("netz_ab", "ziel");
+        assertThat(gestellt).containsExactly("netz_ab", "ziel", "mindest");
 
         // Eine Störung (Fühler ohne Wert, Lage "Störung Fühler") steht auf der Karte und wird eine Meldung.
         eingang.handle(topic(w), herzschlag(w, logik, hash, "fault"));
