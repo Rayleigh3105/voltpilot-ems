@@ -29,6 +29,7 @@ const (
 	FcReadCoils          = 0x01
 	FcReadDiscreteInputs = 0x02
 	FcReadHolding        = 0x03
+	FcReadInput          = 0x04
 	FcWriteSingleCoil    = 0x05
 	FcWriteSingleReg     = 0x06
 	FcWriteMultipleCoils = 0x0F
@@ -169,7 +170,16 @@ func (c *Client) ReadDiscreteInputs(addr, count uint16) ([]bool, error) {
 
 // ReadHolding is FC3: count registers from addr, big-endian words.
 func (c *Client) ReadHolding(addr, count uint16) ([]uint16, error) {
-	body, err := c.Exchange([]byte{FcReadHolding, byte(addr >> 8), byte(addr), byte(count >> 8), byte(count)})
+	return c.readRegisters(FcReadHolding, addr, count)
+}
+
+// ReadInput is FC4 (input registers).
+func (c *Client) ReadInput(addr, count uint16) ([]uint16, error) {
+	return c.readRegisters(FcReadInput, addr, count)
+}
+
+func (c *Client) readRegisters(fc byte, addr, count uint16) ([]uint16, error) {
+	body, err := c.Exchange([]byte{fc, byte(addr >> 8), byte(addr), byte(count >> 8), byte(count)})
 	if err != nil {
 		return nil, err
 	}

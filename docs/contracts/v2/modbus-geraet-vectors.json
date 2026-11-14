@@ -1,0 +1,137 @@
+{
+ "$comment": [
+  "Vektoren des eigenen Modbus-Geräts mit mehreren Lese- und Schreibwerten (Steuerlogik K3, docs/contracts/v2/modbus-geraet.md).",
+  "Leser: edge-app/core/internal/modbusgeraet (vectors_test.go; alle Abschnitte) und die API (ModbusGeraetDefinitionVectorsTest; definitionen und roh).",
+  "Alle Adressen und Namen sind erfunden."
+ ],
+ "$regel": "Ein Sollwert in °C wird auf min + n * Schritt gerundet (halbe Schritte nach oben), auf [min, max] begrenzt und als (Wert - offset) / scale geschrieben, kaufmännisch vom Nullpunkt weg gerundet, s16 im Zweierkomplement. Ohne Wunsch, bei geschlossenem Steuerungs-Tor oder bei einer Störung des Geräts bekommt jeder Schreibwert seinen Ruhewert. Ohne Freigabe schreibt die Box nichts.",
+ "schema_version": "1.0",
+ "geraete": {
+  "klima": {
+   "schema_version": 1,
+   "transport": {"host": "192.168.10.50", "port": 502, "unit_id": 1},
+   "channels": [
+    {"slug": "raum", "label": "Raumtemperatur", "unit": "°C", "signal": "room_temperature",
+     "register": {"kind": "input", "address": 0, "data_type": "s16"}, "scale": 0.1, "offset": 0, "min_read_interval_s": 10},
+    {"slug": "stoerung", "label": "Störung", "unit": "", "signal": "fault",
+     "register": {"kind": "holding", "address": 5, "data_type": "u16", "bit": 3}},
+    {"slug": "verdichter", "label": "Verdichter läuft", "unit": "", "signal": "running",
+     "register": {"kind": "discrete", "address": 2}}
+   ],
+   "controls": {
+    "min_change_interval_s": 120,
+    "values": [
+     {"slug": "ein", "label": "Ein", "kind": "on_off", "register": {"kind": "coil", "address": 0},
+      "on_value": 1, "off_value": 0, "rest": false},
+     {"slug": "soll", "label": "Solltemperatur", "kind": "setpoint_c", "register": {"kind": "holding", "address": 10, "data_type": "s16"},
+      "scale": 0.1, "offset": 0, "min": 16, "max": 30, "step": 0.5, "rest": 24, "readback": {"kind": "holding", "address": 11}},
+     {"slug": "betrieb", "label": "Betriebsart", "kind": "mode", "register": {"kind": "holding", "address": 12},
+      "modes": {"cool": 1, "heat": 2, "fan_only": 3}, "rest": "cool"}
+    ],
+    "freigabe": {"released_at": "2026-11-14T10:00:00Z", "released_by": "installer", "evidence": "Test bestanden"}
+   }
+  },
+  "kuehlraum": {
+   "transport": {"host": "192.168.10.60"},
+   "channels": [
+    {"slug": "raum", "label": "Kühlraum", "unit": "°C", "signal": "room_temperature",
+     "register": {"kind": "holding", "address": 100, "data_type": "s16"}, "scale": 0.1},
+    {"slug": "tuer", "label": "Tür", "unit": "", "signal": "door_open", "register": {"kind": "discrete", "address": 0}},
+    {"slug": "abtau", "label": "Abtauung", "unit": "", "signal": "defrost", "register": {"kind": "holding", "address": 101, "bit": 0}},
+    {"slug": "stoerung", "label": "Störung", "unit": "", "signal": "fault", "register": {"kind": "holding", "address": 101, "bit": 1}}
+   ],
+   "controls": {
+    "values": [
+     {"slug": "soll", "label": "Sollwert", "kind": "setpoint_c", "register": {"kind": "holding", "address": 200, "data_type": "u16"},
+      "write_fc": 6, "scale": 0.1, "offset": -50, "min": 2, "max": 8, "step": 0.5, "rest": 4}
+    ]
+   }
+  }
+ },
+ "definitionen": [
+  {"name": "Klimagerät mit drei Schreibwerten", "geraet": "klima", "fehler": []},
+  {"name": "Kühlraum mit Offset, noch ohne Freigabe", "geraet": "kuehlraum", "fehler": []},
+  {"name": "Ein Signal, das die Wortliste nicht kennt", "geraet": "klima", "aendere": {"channels[0].signal": "pressure"}, "fehler": ["signal"]},
+  {"name": "Ein Ja/Nein-Signal auf einem ganzen Register", "geraet": "klima", "aendere": {"channels[0].signal": "fault", "channels[1].signal": "open"}, "fehler": ["signal_bool"]},
+  {"name": "Eine Temperatur ohne °C", "geraet": "klima", "aendere": {"channels[0].unit": "K"}, "fehler": ["signal_unit"]},
+  {"name": "Dasselbe Signal zweimal", "geraet": "kuehlraum", "aendere": {"channels[3].signal": "defrost"}, "fehler": ["signal_twice"]},
+  {"name": "Bit 16 gibt es nicht", "geraet": "klima", "aendere": {"channels[1].register.bit": 16}, "fehler": ["bit"]},
+  {"name": "Ein Bit in einem 32-Bit-Wert", "geraet": "klima", "aendere": {"channels[1].register.data_type": "u32"}, "fehler": ["bit"]},
+  {"name": "Zwei Sollwerte an einem Gerät", "geraet": "klima", "aendere": {"controls.values[2].kind": "setpoint_c", "controls.values[2].min": 16, "controls.values[2].max": 30, "controls.values[2].rest": 24}, "fehler": ["control_twice"]},
+  {"name": "Band verkehrt herum", "geraet": "klima", "aendere": {"controls.values[1].min": 30, "controls.values[1].max": 16}, "fehler": ["band"]},
+  {"name": "Ruhewert außerhalb des Bands", "geraet": "klima", "aendere": {"controls.values[1].rest": 12}, "fehler": ["rest"]},
+  {"name": "Schritt größer als das Band", "geraet": "klima", "aendere": {"controls.values[1].step": 20}, "fehler": ["step"]},
+  {"name": "Eine Betriebsart, die die Sprache nicht kennt", "geraet": "klima", "aendere": {"controls.values[2].modes.eco": 4}, "fehler": ["mode_word"]},
+  {"name": "Zwei Betriebsarten auf demselben Wert", "geraet": "klima", "aendere": {"controls.values[2].modes.heat": 1}, "fehler": ["modes"]},
+  {"name": "Ruhe-Betriebsart, die das Gerät nicht kennt", "geraet": "klima", "aendere": {"controls.values[2].rest": "dry"}, "fehler": ["rest"]},
+  {"name": "Eine Spule kennt nur 0 und 1", "geraet": "klima", "aendere": {"controls.values[0].on_value": 2}, "fehler": ["on_off_values"]},
+  {"name": "Eine Spule mit Funktionscode 16", "geraet": "klima", "aendere": {"controls.values[0].write_fc": 16}, "fehler": ["write_fc"]},
+  {"name": "Abstand unter 10 s", "geraet": "klima", "aendere": {"controls.min_change_interval_s": 5}, "fehler": ["change_interval"]},
+  {"name": "Mit dieser Skalierung passt -10 °C nicht in u16", "geraet": "kuehlraum", "aendere": {"controls.values[0].offset": 0, "controls.values[0].min": -10}, "fehler": ["raw_range"]},
+  {"name": "Ein Eingangsregister lässt sich nicht schreiben", "geraet": "klima", "aendere": {"controls.values[1].register.kind": "input"}, "fehler": ["register"]},
+  {"name": "Ein Sollwert wird als Wort zurückgelesen, nicht als Bit", "geraet": "klima", "aendere": {"controls.values[1].readback.kind": "coil"}, "fehler": ["readback"]},
+  {"name": "Ein Schreibwert heißt wie ein Messwert", "geraet": "klima", "aendere": {"controls.values[1].slug": "raum"}, "fehler": ["control_slug"]},
+  {"name": "Ohne Adresse kein Gerät", "geraet": "klima", "aendere": {"transport.host": ""}, "fehler": ["transport"]}
+ ],
+ "roh": [
+  {"geraet": "klima", "slug": "soll", "wert": 21.5, "roh": 215},
+  {"geraet": "klima", "slug": "soll", "wert": 16, "roh": 160},
+  {"geraet": "kuehlraum", "slug": "soll", "wert": 4, "roh": 540},
+  {"geraet": "kuehlraum", "slug": "soll", "wert": 2.5, "roh": 525},
+  {"geraet": "klima", "slug": "betrieb", "wert": "heat", "roh": 2},
+  {"geraet": "klima", "slug": "ein", "wert": true, "roh": 1},
+  {"geraet": "klima", "slug": "ein", "wert": false, "roh": 0}
+ ],
+ "plan": [
+  {"name": "Ein, 21,26 °C wird 21,5 °C, Heizen", "geraet": "klima",
+   "befehle": {"on_off": true, "setpoint_c": 21.26, "mode": "heat"}, "tor": true, "stoerung": false, "grund": "",
+   "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 1, "rest": false},
+              {"slug": "soll", "address": 10, "fc": 16, "raw": 215, "rest": false},
+              {"slug": "betrieb", "address": 12, "fc": 16, "raw": 2, "rest": false}]},
+  {"name": "Unter dem Band wird es 16 °C", "geraet": "klima",
+   "befehle": {"setpoint_c": -5}, "tor": true, "stoerung": false, "grund": "",
+   "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},
+              {"slug": "soll", "address": 10, "fc": 16, "raw": 160, "rest": false},
+              {"slug": "betrieb", "address": 12, "fc": 16, "raw": 1, "rest": true}]},
+  {"name": "Ohne Wunsch gelten die Ruhewerte", "geraet": "klima",
+   "befehle": {}, "tor": true, "stoerung": false, "grund": "",
+   "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},
+              {"slug": "soll", "address": 10, "fc": 16, "raw": 240, "rest": true},
+              {"slug": "betrieb", "address": 12, "fc": 16, "raw": 1, "rest": true}]},
+  {"name": "Steuerung aus: Ruhewerte trotz Wunsch", "geraet": "klima",
+   "befehle": {"on_off": true, "setpoint_c": 21, "mode": "heat"}, "tor": false, "stoerung": false, "grund": "steuerung_aus",
+   "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},
+              {"slug": "soll", "address": 10, "fc": 16, "raw": 240, "rest": true},
+              {"slug": "betrieb", "address": 12, "fc": 16, "raw": 1, "rest": true}]},
+  {"name": "Störung des Geräts: nie dagegen arbeiten", "geraet": "klima",
+   "befehle": {"on_off": true, "setpoint_c": 21, "mode": "heat"}, "tor": true, "stoerung": true, "grund": "geraet_stoerung",
+   "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},
+              {"slug": "soll", "address": 10, "fc": 16, "raw": 240, "rest": true},
+              {"slug": "betrieb", "address": 12, "fc": 16, "raw": 1, "rest": true}]},
+  {"name": "Eine Betriebsart ohne Wert im Gerät wird die Ruhe-Betriebsart", "geraet": "klima",
+   "befehle": {"mode": "dry"}, "tor": true, "stoerung": false, "grund": "",
+   "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},
+              {"slug": "soll", "address": 10, "fc": 16, "raw": 240, "rest": true},
+              {"slug": "betrieb", "address": 12, "fc": 16, "raw": 1, "rest": true}]},
+  {"name": "Ohne Freigabe schreibt die Box nichts", "geraet": "kuehlraum",
+   "befehle": {"setpoint_c": 3}, "tor": true, "stoerung": false, "grund": "nicht_freigegeben", "writes": []}
+ ],
+ "dekodieren": [
+  {"register": {"kind": "holding", "address": 0, "data_type": "s16"}, "regs": [65336], "scale": 0.1, "offset": 0, "wert": -20},
+  {"register": {"kind": "holding", "address": 0, "data_type": "u32", "word_order": "big"}, "regs": [1, 2], "scale": 1, "offset": 0, "wert": 65538},
+  {"register": {"kind": "holding", "address": 0, "data_type": "u32", "word_order": "little"}, "regs": [1, 2], "scale": 1, "offset": 0, "wert": 131073},
+  {"register": {"kind": "input", "address": 0, "data_type": "float32"}, "regs": [16840, 0], "scale": 1, "offset": 0, "wert": 25},
+  {"register": {"kind": "holding", "address": 0, "bit": 3}, "regs": [8], "scale": 1, "offset": 0, "wert": 1},
+  {"register": {"kind": "holding", "address": 0, "bit": 3}, "regs": [7], "scale": 1, "offset": 0, "wert": 0},
+  {"register": {"kind": "discrete", "address": 0}, "bits": [true], "scale": 1, "offset": 0, "wert": 1},
+  {"register": {"kind": "holding", "address": 0, "data_type": "u32"}, "regs": [1], "scale": 1, "offset": 0, "wert": null},
+  {"register": {"kind": "holding", "address": 100, "data_type": "u16"}, "regs": [540], "scale": 0.1, "offset": -50, "wert": 4}
+ ],
+ "rueckmeldung": [
+  {"geraet": "klima", "slug": "soll", "regs": [215], "ist": {"setpoint_c": 21.5}},
+  {"geraet": "klima", "slug": "betrieb", "regs": [2], "ist": {"mode": "heat"}},
+  {"geraet": "klima", "slug": "betrieb", "regs": [9], "ist": {}},
+  {"geraet": "klima", "slug": "ein", "bits": [true], "ist": {"on": true}},
+  {"geraet": "kuehlraum", "slug": "soll", "regs": [525], "ist": {"setpoint_c": 2.5}}
+ ]
+}
