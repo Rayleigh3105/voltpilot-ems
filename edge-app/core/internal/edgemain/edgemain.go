@@ -103,12 +103,18 @@ func Main(o Options) {
 		}
 	}
 
+	einr := web.NewEinrichtung(a.State.Get().Ref, cfg.WlanSkript, cfg.EinrichtAddr)
+	webApp := web.Handler(a.State, a, a, a, a.History(), a, a, a, a, a, a, a, a, a, einr)
 	httpSrv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		// Der Beobachter lernt aus JEDER Anfrage die Adresse, unter der die Box
 		// wirklich erreicht wurde - die eine Tatsache, die sie ueber sich
 		// selbst nicht sagen konnte (D5). Er aendert an keiner Antwort etwas.
-		Handler:           a.WebObserver(web.Handler(a.State, a, a, a, a.History(), a, a, a, a, a, a, a, a, a)),
+		// Die Schranke der Einrichtungsseite liegt aussen: Anfragen aus dem
+		// Einrichtungs-WLAN sehen nur die Einrichtungsseite, und ihr
+		// Host-Header (etwa die Anmelde-Erkennung eines Handys) erreicht den
+		// Beobachter nie.
+		Handler:           einr.Schranke(a.WebObserver(webApp), webApp),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

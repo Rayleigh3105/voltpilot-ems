@@ -19,10 +19,24 @@
 #   kabel        Rueckweg: ohne Kabel verweigert, mit Kabel eigenes Netz und NAT;
 #                ein ausgeschaltetes Funkmodul geht nur fuer den Client an
 #   stoerfaelle  im WLAN-Weg B: Router aus, Passwort am Router geaendert
+#   einrichtung  Einrichtungs-WLAN (einrichtung-wlan.sh, S4): erster Start ohne
+#                Kabel oeffnet sofort; eigenes Netz und eigene Zone (ein Handy
+#                erreicht nur DHCP, DNS und die Seite der Box), mit Kabel
+#                schliesst es nach der Ruhefrist
+#   fenster      Ausfall im WLAN-Weg B: nach AUSFALL feste Fenster
+#                (Einrichtungs-WLAN / Versuch), Notweg laesst die Box die
+#                Geraete weiterlesen, Rueckkehr raeumt alles von selbst
+#   routerausfall  force_link: die Box liest waehrend eines Routerausfalls
+#                weiter und holt nach einem Routertausch (gleicher Name,
+#                neues Netz) ueber den Waechter eine frische Adresse
+#   einrichtung-weg  Ende-zu-Ende: das echte Go-Programm der Einrichtungsseite
+#                (cmd/einrichtung-probe, GOARCH=386) im Emulator - Kennung mit
+#                Sperre, Schranke, Netzliste, verbinden bis zum WLAN-Weg B
+#                (braucht das Go-Werkzeug auf dem Rechner)
 # Dazu, ohne Urteil: messung-relay (die Messung aus dem Konzept, Abschnitt
 # 6.4: Zone und lokale Adresse am Relay).
 #
-#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle sechs)
+#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle zehn)
 #   VP_WLAN_LABOR_CACHE=<verz>  Zwischenspeicher fuer Abbilder, Pakete, v86
 #                               (Vorgabe ~/.cache/vp-wlan-labor, rund 250 MB)
 #   VP_WLAN_LABOR_AUS=<verz>    Protokolle, je Lauf <lauf>.log (Vorgabe: neu unter /tmp)
@@ -37,9 +51,12 @@ set -eu
 HIER="$(cd "$(dirname "$0")" && pwd -P)"
 LABOR="$HIER/wlan-labor"
 SKRIPT="$HIER/../openwrt/files/usr/libexec/vp-edge-light/wlan-anschluss.sh"
+EINRICHT="$HIER/../openwrt/files/usr/libexec/vp-edge-light/einrichtung-wlan.sh"
+HOTPLUG91="$HIER/../openwrt/files/etc/hotplug.d/iface/91-vp-einrichtung"
+KERN="$HIER/../../edge-app/core"
 CACHE="${VP_WLAN_LABOR_CACHE:-$HOME/.cache/vp-wlan-labor}"
 AUS="${VP_WLAN_LABOR_AUS:-$(mktemp -d "${TMPDIR:-/tmp}/vp-wlan-probe.XXXXXX")}"
-LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle}"
+LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle einrichtung fenster routerausfall einrichtung-weg}"
 
 command -v node >/dev/null 2>&1 || { echo "FEHLER: node fehlt (>= 22)" >&2; exit 2; }
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] || { echo "FEHLER: node >= 22 noetig" >&2; exit 2; }
@@ -56,7 +73,15 @@ rm -rf "$hdb"
 mkdir -p "$hdb/skript" "$hdb/werkzeug"
 cp -R "$CACHE/repo" "$hdb/"
 cp "$LABOR/werkzeug/"*.sh "$hdb/werkzeug/"
-cp "$SKRIPT" "$hdb/skript/"
+cp "$SKRIPT" "$EINRICHT" "$HOTPLUG91" "$hdb/skript/"
+# einrichtung-weg fuehrt das ECHTE Go-Programm der Einrichtungsseite im
+# Emulator aus: fuer das 32-Bit-OpenWrt (x86/generic) gebaut, ohne cgo.
+case " $LAEUFE " in *" einrichtung-weg "*)
+  command -v go >/dev/null 2>&1 || { echo "FEHLER: der Lauf einrichtung-weg braucht das Go-Werkzeug (oder den Lauf weglassen)" >&2; exit 2; }
+  echo "== baue einrichtung-probe (GOOS=linux GOARCH=386)"
+  (cd "$KERN" && GOOS=linux GOARCH=386 CGO_ENABLED=0 go build -trimpath -o "$hdb/skript/einrichtung-probe" ./cmd/einrichtung-probe)
+  ;;
+esac
 (cd "$hdb" && COPYFILE_DISABLE=1 tar --format=ustar --uid 0 --gid 0 --uname root --gname root \
   -cf "$AUS/hdb.tar" repo werkzeug skript 2>/dev/null) ||
   (cd "$hdb" && tar --format=ustar --owner=0 --group=0 -cf "$AUS/hdb.tar" repo werkzeug skript)

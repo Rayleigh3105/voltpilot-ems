@@ -1,0 +1,33 @@
+# Lauf einrichtung: erster Start ohne Kabel - das Einrichtungs-WLAN "VoltPilot-Einrichtung" oeffnet sofort; ein Handy bekommt DHCP und DNS auf die Box und erreicht NUR die Seite der Box; kommt ein Kabel mit Verbindung, schliesst es nach der Ruhefrist von selbst
+EV="VP_EINRICHT_RUHE=20"
+# Erster Takt: keine Verbindung, kein Kunden-WLAN, nie ein Kabel -> sofort offen
+@90 env $EV $E takt; sleep 4; $E status | head -3; gleich "erster Start ohne Kabel: Einrichtungs-WLAN offen" "$($E status | sed -n s/^einrichtung=//p)" offen
+pruefe "Access Point VoltPilot-Einrichtung sendet" sh -c "iw dev | grep -q 'ssid VoltPilot-Einrichtung'"
+gleich "eigener dnsmasq der Einrichtung laeuft" "$($E status | sed -n s/^dns=//p)" an
+# Ein zweiter Takt aendert nichts (kein zweiter Abschnitt, kein zweiter dnsmasq)
+@60 env $EV $E takt; gleich "zweiter Takt: genau eine Zone einrichtung" "$(uci show firewall | grep -c "name='einrichtung'")" 1; gleich "zweiter Takt: genau ein DNS-Faenger" "$(pgrep -f 'port=5353' | wc -l | tr -d ' ')" 1
+# Das Handy verbindet sich mit dem offenen Netz (wpa_supplicant wie ein echtes Handy; er kommt auch von selbst wieder, wenn der Access Point kurz weg ist) und holt sich eine Adresse
+printf 'ctrl_interface=/var/run/handy-wpa\nnetwork={\n ssid="VoltPilot-Einrichtung"\n key_mgmt=NONE\n}\n' > /tmp/handy.conf
+@120 ip netns exec handy wpa_supplicant -B -i handy0 -c /tmp/handy.conf -P /var/run/handy-wpa.pid 2>&1 | tail -1; i=0; while [ $i -lt 45 ] && ! ip netns exec handy iw dev handy0 link | grep -q Connected; do sleep 1; i=$((i+1)); done; ip netns exec handy iw dev handy0 link | head -1; pruefe "Handy am Einrichtungs-WLAN angemeldet" sh -c "ip netns exec handy iw dev handy0 link | grep -q Connected"
+info "vp_einricht up=$(ifstatus vp_einricht | jsonfilter -e '@.up') dhcp-Meldungen: $(logread 2>/dev/null | grep -c 'no address range') ohne Bereich"
+@90 HANDYIP=$(dhcp_neu handy handy0); echo "handy=$HANDYIP"; case "$HANDYIP" in 10.213.1.*) pruef_ok "Handy bekommt eine Adresse im Einrichtungsnetz ($HANDYIP)";; *) pruef_fehler "Handy ohne Adresse im Einrichtungsnetz ($HANDYIP)";; esac
+# DNS der Einrichtung: jeder Name zeigt auf die Box (Anmelde-Erkennung des Handys)
+pruefe "DNS zeigt jeden Namen auf die Box" sh -c "ip netns exec handy nslookup anmeldung.beispiel 10.213.1.1 2>/dev/null | sed -n '/^Name/,\$p' | grep -qF 10.213.1.1"
+# Zone: nur DHCP, DNS und die Seite; Port 80 an die Box landet auf der Seite
+pruefe "Handy erreicht die Seite der Box (8484)" tcp handy 10.213.1.1 8484
+pruefe "Anmelde-Erkennung: Port 80 an die Box landet auf der Seite" sh -c "ip netns exec handy uclient-fetch -q -T 4 -O - http://10.213.1.1/marke.txt 2>/dev/null | grep -qx vp-seite"
+verneine "Handy erreicht SSH der Box nicht (22)" tcp handy 10.213.1.1 22
+verneine "Handy erreicht LuCI nicht (443)" tcp handy 10.213.1.1 443
+verneine "Handy erreicht den lokalen Bus nicht (1883)" tcp handy 10.213.1.1 1883
+verneine "Handy erreicht die Seite nicht ueber die LAN-Adresse der Box (Schranke der Web-App bliebe sonst umgehbar)" tcp handy 10.213.0.1 8484
+verneine "Handy erreicht das Geraet am Kabel nicht (80)" tcp handy $KABELIP 80
+verneine "Handy erreicht das Geraet am Kabel nicht (502)" tcp handy $KABELIP 502
+# Kabel mit Verbindung stecken: wan0 (Box) <-> wankabel (ns kunde) mit DHCP
+ip link add wan0 type veth peer name wankabel; ip link set wankabel netns kunde; ip netns exec kunde ip addr add 192.168.179.1/24 dev wankabel; ip netns exec kunde ip link set wankabel up; uci set network.wan=interface; uci set network.wan.device='wan0'; uci set network.wan.proto='dhcp'; uci commit network
+ip netns exec kunde dnsmasq --conf-file=/dev/null --port=0 --interface=wankabel --bind-interfaces --dhcp-range=192.168.179.100,192.168.179.150,12h --dhcp-leasefile=/tmp/kabel.leases --pid-file=/var/run/kabel-dnsmasq.pid; echo dnsmasq-kabel=$?
+@120 /etc/init.d/network reload; i=0; while [ $i -lt 60 ] && ! ifstatus wan | grep -q '"up": true'; do sleep 1; i=$((i+1)); done; echo "wan oben nach $i s"
+@60 env $EV $E takt; gleich "mit Kabel: Verbindung da, WLAN noch offen (Ruhefrist)" "$($E status | sed -n s/^einrichtung=//p)-$($E status | sed -n s/^verbindung=//p)" offen-ja
+@90 sleep 21; env $EV $E takt; sleep 3; gleich "nach der Ruhefrist: Einrichtungs-WLAN zu" "$($E status | sed -n s/^einrichtung=//p)" zu
+gleich "keine vp_einricht-Reste in der Konfiguration" "$(uci show 2>/dev/null | grep -c vp_einricht)" 0
+gleich "dnsmasq der Einrichtung beendet" "$($E status | sed -n s/^dns=//p)" aus
+pruefe "die Seite der Box ist am Kabel weiter erreichbar" tcp kabel 10.213.0.1 8484

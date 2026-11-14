@@ -1,0 +1,47 @@
+# Lauf einrichtung-weg: Ende-zu-Ende gegen die ECHTE Web-App der Einrichtungsseite (cmd/einrichtung-probe, dieselbe Umsetzung wie auf der Box) - Kennung mit Sperre, Schranke, Netzliste aus dem echten Scan, verbinden bis zum WLAN-Weg B, Ergebnis nach dem WLAN-Wechsel des Handys
+. /tmp/labor/werkzeug/http.sh
+pruefe "nc (busybox) ist da" sh -c "command -v nc"
+# Den Stellvertreter auf 8484 gegen das echte Probe-Programm tauschen
+kill $(cat /var/run/w8484.pid); sleep 1; cp /tmp/labor/skript/einrichtung-probe /tmp/einrichtung-probe; chmod 0755 /tmp/einrichtung-probe
+VP_REF=edge-wrk7abg VP_WLAN_SKRIPT=$W VP_EINRICHT_ADDR=10.213.1.1 VP_HTTP_ADDR=:8484 /tmp/einrichtung-probe > /tmp/probe.log 2>&1 & echo "probe_pid=$!"
+@60 i=0; while [ $i -lt 30 ] && ! netstat -ltn 2>/dev/null | grep -q ':8484 '; do sleep 1; i=$((i+1)); done; pruefe "die Web-App der Probe hoert auf 8484" sh -c "netstat -ltn 2>/dev/null | grep -q ':8484 '"
+# Einrichtungs-WLAN auf, Handy hinein
+@90 $E takt; sleep 4; gleich "Einrichtungs-WLAN offen" "$($E status | sed -n s/^einrichtung=//p)" offen
+printf 'ctrl_interface=/var/run/handy-wpa\nnetwork={\n ssid="VoltPilot-Einrichtung"\n key_mgmt=NONE\n}\n' > /tmp/handy.conf
+@150 ip netns exec handy wpa_supplicant -B -i handy0 -c /tmp/handy.conf -P /var/run/handy-wpa.pid 2>&1 | tail -1; i=0; while [ $i -lt 45 ] && ! ip netns exec handy iw dev handy0 link | grep -q Connected; do sleep 1; i=$((i+1)); done; HANDYIP=$(dhcp_neu handy handy0); echo "handy=$HANDYIP"; case "$HANDYIP" in 10.213.1.*) pruef_ok "Handy im Einrichtungs-WLAN ($HANDYIP)";; *) pruef_fehler "Handy ohne Adresse ($HANDYIP)";; esac
+# Anmeldestand offen, aber ohne die Kennung der Box
+@60 http_ruf handy 10.213.1.1 8484 GET /api/einrichtung/anmeldung > /dev/null; gleich "Anmeldestand: Status" "$(http_status)" 200; pruefe "Anmeldestand: verfuegbar" grep -q '"verfuegbar":true' /tmp/http.antwort; verneine "die Antwort nennt die Kennung nicht" grep -qi wrk7abg /tmp/http.antwort
+# Die Schranke: im Einrichtungs-WLAN gibt es nur die Einrichtungsseite
+@60 http_ruf handy 10.213.1.1 8484 GET /einrichtung.html > /dev/null; gleich "Seite: Status" "$(http_status)" 200; pruefe "Seite: die Schritte stehen drin" grep -q sAnmeldung /tmp/http.antwort
+@60 http_ruf handy 10.213.1.1 8484 GET /einrichten.html > /dev/null; gleich "einrichten.html: umgelenkt" "$(http_status)-$(sed -n 's/^Location: //p' /tmp/http.antwort | head -n 1)" "302-/einrichtung.html"
+@60 http_ruf handy 10.213.1.1 8484 GET /api/state > /dev/null; gleich "api/state: umgelenkt, kein Zustand der Anlage im Einrichtungs-WLAN" "$(http_status)" 302
+# Falsche Kennung zaehlt, die richtige meldet an (jede Schreibweise)
+@60 http_ruf handy 10.213.1.1 8484 POST /api/einrichtung/anmeldung "" '{"kennung":"EDGE-FALSCH1"}' > /dev/null; gleich "falsche Kennung: Status" "$(http_status)" 403; pruefe "falsche Kennung: Versuche gezaehlt" grep -q '"versuche_frei":4' /tmp/http.antwort
+@60 http_ruf handy 10.213.1.1 8484 POST /api/einrichtung/anmeldung "" '{"kennung":"EDGE-WRK7ABG"}' > /dev/null; gleich "richtige Kennung: Status" "$(http_status)" 200; KEKS=$(http_cookie); pruefe "Sitzungs-Cookie gesetzt" sh -c "[ -n \"$KEKS\" ]"
+# Netzliste aus dem echten Scan - waehrend der Access Point der Box sendet. Der erste Scan auf einem sendenden Access Point kann leer sein; die Seite hat dafuer den Knopf "Erneut suchen", hier dieselben Wiederholungen (Frist je Abruf 50 s: ein Scan kann dauern)
+@120 $W scan > /tmp/sc.out 2>&1; info "Skript-Scan direkt: rc=$? zeilen=$(wc -l < /tmp/sc.out | tr -d ' ')"
+@120 http_ruf - 127.0.0.1 8484 GET /api/einrichtung/netze "$KEKS" "" 50 > /dev/null; info "Netzliste von der Box selbst: Status $(http_status), $(tail -n 1 /tmp/http.antwort | head -c 120)"
+@300 i=0; while [ $i -lt 5 ]; do http_ruf handy 10.213.1.1 8484 GET /api/einrichtung/netze "$KEKS" "" 50 > /dev/null; grep -q '"ssid":"Kunde-WLAN"' /tmp/http.antwort && break; sleep 3; i=$((i+1)); done; info "Netzliste nach $((i+1)) Suchlaeufen: $(tail -n 1 /tmp/http.antwort | head -c 150)"; gleich "Netzliste: Status" "$(http_status)" 200; pruefe "Netzliste: das Kunden-WLAN steht drin" grep -q '"ssid":"Kunde-WLAN"' /tmp/http.antwort
+# verbinden ueber die Web-App: 202 sofort, der Lauf arbeitet im Hintergrund weiter, waehrend das Funkmodul zum Kunden-WLAN wechselt
+@60 http_ruf handy 10.213.1.1 8484 POST /api/einrichtung/verbinden "$KEKS" '{"ssid":"Kunde-WLAN","passwort":"kundenpasswort"}' > /dev/null; gleich "verbinden: angenommen" "$(http_status)" 202
+@240 i=0; while [ $i -lt 60 ]; do http_ruf - 127.0.0.1 8484 GET /api/einrichtung/verbinden "$KEKS" > /dev/null; grep -q '"laeuft":false' /tmp/http.antwort && break; sleep 3; i=$((i+1)); done; cat /tmp/http.antwort | tail -n 1
+pruefe "verbinden: beendet" grep -q '"laeuft":false' /tmp/http.antwort; pruefe "verbinden: Rueckgabe 0" grep -q '"rc":0' /tmp/http.antwort; pruefe "verbinden: Urteil reicht" grep -q '"urteil":"reicht"' /tmp/http.antwort
+gleich "danach: WLAN-Weg B steht" "$($W status | sed -n s/^modus=//p)-$($W status | sed -n s/^relay=//p)" wlan-an
+@60 KABELIP2=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP2"; case "$KABELIP2" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP2)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP2)";; esac
+# Der Moment aus Bildschirm 6W: die Box ist verbunden, der Access Point sendet wieder (jetzt auf dem Router-Kanal), das Handy (wpa_supplicant) kommt von selbst zurueck und holt das Ergebnis ab. Der erste Wiedereinstieg kann auf dem alten Kanal stattfinden und stirbt mit dem Kanalwechsel - deshalb lange Geduld und je Abruf eine kurze Frist
+@120 i=0; while [ $i -lt 60 ] && ! ip netns exec handy iw dev handy0 link | grep -q Connected; do sleep 2; i=$((i+1)); done; pruefe "Handy wieder im Einrichtungs-WLAN" sh -c "ip netns exec handy iw dev handy0 link | grep -q Connected"
+http_ruf - 127.0.0.1 8484 GET /api/einrichtung/verbinden "$KEKS" > /dev/null; info "Gegenprobe von der Box selbst: Status $(http_status)"
+APIF=$(ubus call network.wireless status | jsonfilter -e "@.radio0.interfaces[@.section='vp_einricht'].ifname"); info "AP $APIF: $(iw dev $APIF info | sed -n 's/.*\(channel [0-9]*\).*/\1/p' | head -n 1); Handy: $(ip netns exec handy iw dev handy0 link | tr '\n' ' ' | head -c 140)"
+info "Antwort-Weg der Box: $(ip route get 10.213.1.159 2>&1 | head -n 1)"
+info "Regeln: $(ip rule show | head -n 6 | tr '\n' ';' | head -c 200)"
+tcpdump -n -l -i $APIF -c 8 'tcp port 8484 or arp' > /tmp/td-ap.txt 2>/dev/null & TD=$!
+@60 http_ruf handy 10.213.1.1 8484 GET /api/einrichtung/anmeldung "" "" 6 > /dev/null; sleep 2; kill $TD 2>/dev/null; info "am AP: $(wc -l < /tmp/td-ap.txt | tr -d ' ') Pakete"
+info "p1: $(sed -n 1p /tmp/td-ap.txt | head -c 130)"; info "p2: $(sed -n 2p /tmp/td-ap.txt | head -c 130)"; info "p3: $(sed -n 3p /tmp/td-ap.txt | head -c 130)"; info "p4: $(sed -n 4p /tmp/td-ap.txt | head -c 130)"
+info "Nachbar: $(ip neigh show dev $APIF 2>/dev/null | head -n 2 | tr '\n' ';')"
+# Bleibt die Anmeldung nach dem Kanalwechsel stumm (hwsim haelt sie fuer verbunden), schaltet das Handy sein WLAN einmal aus und an - wie ein echter Nutzer. Hilfsfunktion, damit keine Konsolenzeile zu lang wird (die serielle Konsole verliert sonst das Zeilenende)
+wlan_an_aus() { kill $(cat /var/run/handy-wpa.pid) 2>/dev/null; sleep 2; ip netns exec handy wpa_supplicant -B -i handy0 -c /tmp/handy.conf -P /var/run/handy-wpa.pid >/dev/null 2>&1; sleep 4; }
+@600 i=0; while [ $i -lt 12 ]; do http_ruf handy 10.213.1.1 8484 GET /api/einrichtung/verbinden "$KEKS" "" 6 > /dev/null; [ "$(http_status)" = 200 ] && break; [ $i = 4 ] && wlan_an_aus; sleep 4; i=$((i+1)); done; info "Ergebnis abgeholt nach $((i+1)) Versuchen"
+gleich "Handy holt das Ergebnis ab" "$(http_status)" 200; pruefe "Ergebnis: verbunden" grep -q '"rc":0' /tmp/http.antwort
+# Die Ruhefrist schliesst das Einrichtungs-WLAN von selbst
+@90 env "VP_EINRICHT_RUHE=10" $E takt; sleep 11; env "VP_EINRICHT_RUHE=10" $E takt; sleep 3; gleich "nach der Ruhefrist: Einrichtungs-WLAN zu" "$($E status | sed -n s/^einrichtung=//p)" zu
+info "probe.log: $(tail -n 2 /tmp/probe.log | tr '\n' ' ')"

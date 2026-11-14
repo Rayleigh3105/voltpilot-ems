@@ -176,6 +176,12 @@ pruefe "WLAN-Anschluss: Skript liegt ausfuehrbar auf der Box, ohne Schreibrest" 
   '[ -x /usr/libexec/vp-edge-light/wlan-anschluss.sh ] && [ ! -f /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu ]'
 pruefe "WLAN-Anschluss: install.sh richtet nichts ein (kein WLAN-Client, kein Relay)" \
   '! uci -q get wireless.vp_wlan && ! uci -q get network.vp_relay'
+pruefe "Einrichtungs-WLAN: Waechter und Hotplug-Haken liegen auf der Box, ohne Schreibrest" \
+  '[ -x /usr/libexec/vp-edge-light/einrichtung-wlan.sh ] && [ -f /etc/hotplug.d/iface/91-vp-einrichtung ] && [ ! -f /usr/libexec/vp-edge-light/einrichtung-wlan.sh.neu ] && [ ! -f /etc/hotplug.d/iface/91-vp-einrichtung.neu ]'
+pruefe "Einrichtungs-WLAN: der Takt steht in der crontab, cron protokolliert still (Stufe 9)" \
+  '[ "$(grep -c "einrichtung-wlan.sh takt # vp-einrichtung-wlan$" /etc/crontabs/root)" = 1 ] && [ "$(uci -q get system.@system[0].cronloglevel)" = 9 ]'
+pruefe "Einrichtungs-WLAN: install.sh oeffnet es nicht selbst (kein vp_einricht)" \
+  '! uci -q get wireless.vp_einricht && ! uci -q get network.vp_einricht'
 
 schritt "3b. Update-bereit"
 pruefe "Vertrauens-Set im Flash (kein RAM-Symlink mehr)" '[ -d /etc/vp-edge-light/ota ] && [ ! -L /etc/vp-edge-light/ota ] && [ -s /etc/vp-edge-light/ota/trust-set.json ] && [ -s /etc/vp-edge-light/ota/trust-set.json.sig ]'
@@ -205,6 +211,8 @@ if VP_LIGHT_ARCH=amd64 VP_LIGHT_MANIFEST="$MANIFEST" "$SKRIPT" root@box >"$ARBEI
 [ "$(zeilen "$ARBEIT/ssh-i.log")" = "$VOR" ] && ok "ohne VP_SSH_KEY kein -i" || falsch "ohne VP_SSH_KEY kein -i"
 pruefe "Bauart bleibt amd64" '[ "$(uci get vp-edge-light.main.arch)" = amd64 ]'
 pruefe "Firewall-Regel bleibt EINE (kein Doppel beim zweiten Aufruf)" '[ "$(uci show firewall | grep -c "dest_port=.8887.")" = 1 ]'
+pruefe "cron-Zeile des Einrichtungs-WLANs bleibt EINE (kein Doppel beim zweiten Aufruf)" \
+  '[ "$(grep -c "vp-einrichtung-wlan$" /etc/crontabs/root)" = 1 ]'
 
 schritt "Ergebnis"
 echo "  $OK ok, $FEHLER Fehler ($(x 'grep DISTRIB_DESCRIPTION /etc/openwrt_release' | cut -d"'" -f2))"
