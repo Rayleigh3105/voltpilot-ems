@@ -1,0 +1,31 @@
+/* Steuerlogik Stufe 2 — das Blatt der Plattform (nur Plattform-Rolle). Gestrichelter Rand wie das Betreiber-Blatt:
+   so sieht VoltPilot auf einen Blick, was Kunden nie sehen. */
+.vp-slm { display: grid; gap: var(--vp-c-space-4); min-width: 0; padding: var(--vp-c-space-4); border: 1px dashed var(--vp-border); border-radius: var(--vp-c-radius); color: var(--vp-c-fg); font-family: var(--vp-c-font); }
+.vp-slm > * { min-width: 0; }
+.vp-slm p { margin: 0; line-height: var(--vp-c-lh-text); overflow-wrap: anywhere; }
+.vp-slm h2, .vp-slm h3 { margin: 0; }
+.vp-slm h3 { font-size: var(--vp-c-fs-16); }
+.vp-slm-kopf { display: grid; gap: var(--vp-c-space-1); }
+.vp-slm-leise { color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-14); }
+.vp-slm-warn { color: var(--vp-warn-ink); font-weight: var(--vp-c-fw-600); }
+.vp-slm-ok { color: var(--vp-ok-ink); }
+.vp-slm-fehler { color: var(--vp-industry-end); margin: 0; padding-left: var(--vp-c-space-5); display: grid; gap: var(--vp-c-space-1); overflow-wrap: anywhere; }
+p.vp-slm-fehler { padding-left: 0; }
+.vp-slm-logik { display: grid; gap: var(--vp-c-space-3); min-width: 0; padding: var(--vp-c-space-3); border-radius: var(--vp-c-radius); background: var(--vp-c-muted); }
+.vp-slm-logik > * { min-width: 0; }
+.vp-slm-logik-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--vp-c-space-1) var(--vp-c-space-3); }
+.vp-slm-logik-kopf > span { font-size: var(--vp-c-fs-14); }
+.vp-slm-tabelle { overflow-x: auto; max-width: 100%; }
+.vp-slm table { border-collapse: collapse; width: 100%; font-size: var(--vp-c-fs-14); }
+.vp-slm th, .vp-slm td { text-align: left; vertical-align: top; padding: var(--vp-c-space-2); border-bottom: 1px solid var(--vp-border); }
+.vp-slm thead th { color: var(--vp-c-muted-fg); font-weight: normal; white-space: nowrap; }
+.vp-slm tbody th { font-weight: var(--vp-c-fw-600); white-space: nowrap; }
+.vp-slm-caption { caption-side: top; text-align: left; padding-bottom: var(--vp-c-space-1); color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-14); }
+.vp-slm-aktionen { display: flex; flex-wrap: wrap; gap: var(--vp-c-space-2); }
+.vp-slm-annahme { display: grid; gap: var(--vp-c-space-3); min-width: 0; }
+.vp-slm-text { font-family: var(--vp-c-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); resize: vertical; }
+@media (max-width: 600px) {
+  .vp-slm { padding: var(--vp-c-space-3); }
+  .vp-slm th, .vp-slm td { padding: var(--vp-c-space-1); }
+  .vp-slm table { font-size: var(--vp-c-fs-12, 0.75rem); }
+}
