@@ -1114,15 +1114,17 @@ public class EntityRegistryService {
     }
 
     private static final java.util.Set<String> COMMAND_VOCAB =
-            java.util.Set.of("setpoint_kw", "on_off", "limit_pct", "limit_kw", "mode");
+            java.util.Set.of("setpoint_kw", "setpoint_c", "on_off", "limit_pct", "limit_kw", "mode");
     private static final java.util.Set<String> FAILSAFE_VOCAB =
-            java.util.Set.of("self-consumption", "off", "release", "measure-only");
+            java.util.Set.of("self-consumption", "off", "release", "measure-only", "rest");
     private static final java.util.Set<String> NUMERIC_LIMIT_KEYS = java.util.Set.of(
             "max_charge_kw", "max_discharge_kw", "soc_min_pct", "soc_max_pct",
             "max_generation_kw", "max_consumption_kw",
             // The consumer cycle-guard limits (Verbrauchssteuerung Inkrement 3,
             // edge-entity.schema.json guard_limits - additive).
-            "min_on_seconds", "min_off_seconds", "max_starts_per_day", "ramp_kw_per_min");
+            "min_on_seconds", "min_off_seconds", "max_starts_per_day", "ramp_kw_per_min",
+            // The change guard of a device that regulates itself (Steuerlogik K2).
+            "min_change_interval_s");
 
     /** Contract-shape validation of an explicit capabilities override. */
     private ObjectNode validatedCapabilities(JsonNode node) {
@@ -1143,7 +1145,7 @@ public class EntityRegistryService {
         for (JsonNode a : node.path("actuate")) {
             if (!a.isObject() || !COMMAND_VOCAB.contains(a.path("command").asText(""))) {
                 throw badConfig("Unbekanntes Kommando in capabilities.actuate "
-                        + "(erlaubt: setpoint_kw, on_off, limit_pct, limit_kw, mode)");
+                        + "(erlaubt: setpoint_kw, setpoint_c, on_off, limit_pct, limit_kw, mode)");
             }
         }
         return (ObjectNode) node;
@@ -1157,7 +1159,7 @@ public class EntityRegistryService {
         String behavior = node.path("failsafe").path("behavior").asText("");
         if (!FAILSAFE_VOCAB.contains(behavior)) {
             throw badConfig("guards.failsafe.behavior muss eines von "
-                    + "self-consumption, off, release, measure-only sein");
+                    + "self-consumption, off, release, measure-only, rest sein");
         }
         JsonNode limits = node.get("limits");
         if (limits != null) {

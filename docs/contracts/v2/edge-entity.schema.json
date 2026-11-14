@@ -73,6 +73,11 @@
               "unit": {
                 "type": "string",
                 "maxLength": 16
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "The customer's plain name of the channel (self-built devices); the box ignores it."
               }
             }
           }
@@ -90,6 +95,7 @@
                 "type": "string",
                 "enum": [
                   "setpoint_kw",
+                  "setpoint_c",
                   "on_off",
                   "limit_pct",
                   "limit_kw",
@@ -111,7 +117,16 @@
                   "minLength": 1,
                   "maxLength": 64
                 },
-                "description": "The declared mode set (command 'mode' only)."
+                "description": "The declared mode set (command 'mode' only). For a device that regulates itself (Steuerlogik K2) the words of the Steuerlogik word list (normal, boost, cool, heat, fan_only, dry, auto, start) its definition maps to register values."
+              },
+              "step": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Steuerlogik K2, command setpoint_c only: the device's step; the granted value is rounded onto min + n * step (halves up) before the band clamp."
+              },
+              "rest": {
+                "description": "Steuerlogik K2: the device's rest value (Ruhewert) - a boolean for on_off, °C for setpoint_c (inside [min, max]), a declared mode for mode. The failsafe 'rest' commands it when nothing else does, and a holder that leaves this command out gets it too.",
+                "type": ["boolean", "number", "string"]
               }
             }
           }
@@ -176,6 +191,11 @@
           "type": "number",
           "minimum": 0,
           "description": "Consumer cycle guard (additive): the commanded setpoint may change by at most this many kW per minute while ON (both directions - a hold toward the wish, never a raise beyond it). Absent = axis inactive."
+        },
+        "min_change_interval_s": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Change guard (Steuerlogik K2, additive): two changes of the entity's setpoint_c, or of its mode, are at least this many seconds apart; an earlier change holds the previously granted value (stage guard:change_interval) - the rest values of the failsafe included. The first value is never held. Absent = axis inactive."
         }
       }
     },
@@ -192,8 +212,10 @@
             "self-consumption",
             "off",
             "release",
-            "measure-only"
-          ]
+            "measure-only",
+            "rest"
+          ],
+          "description": "rest (Steuerlogik K2): a device that regulates itself is left at the rest values its capabilities declare, through the same guard chain (band, change interval, cycle guard)."
         }
       }
     },
@@ -642,6 +664,10 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 64
+            },
+            "setpoint_c": {
+              "type": "number",
+              "description": "Steuerlogik K2: the granted setpoint in °C of a device that regulates itself (band, step and change interval applied)."
             }
           }
         }

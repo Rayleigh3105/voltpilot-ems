@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -115,6 +115,12 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   ([Rückmeldung](steuerlogik-rueckmeldung.md); Beleg `agent/steuerlogik_test.go`). Beide Box-Arten melden es, der Kern
   steckt im Core. Die Cloud liefert eine Logik nur an eine Box mit diesem Wort; eine ältere Box quittiert das
   Bündelformat als Fehler.
+- `modbus_geraet` (Steuerlogik K3, 14.11.2026): die Box liest und schreibt ein eigenes Modbus-Gerät mit Schreibwerten
+  (Block `controls` der Selbstbau-Definition, [Modbus-Gerät](modbus-geraet.md)) selbst im Core: Kanäle mit Signalen als
+  Eingänge der [Steuerlogik](steuerlogik.md), Sollwert in °C mit Band und Schritt, Betriebsart aus der Liste des Geräts,
+  Ein/Aus, Ruhewerte ohne Wunsch und bei einer Störung des Geräts, der Schalt-Test über die eigene Verbindung
+  (Beleg `agent/modbusgeraet_test.go`). Beide Box-Arten melden es. Die Cloud liefert eine Definition mit `controls` nur
+  an eine Box mit diesem Wort und kompiliert für dieses Gerät keinen Node-RED-Flow; eine ältere Box ließe es ungelesen.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "5b8d2e40-1c7a-4f3e-9d21-6a0b4c8e2f17",
+  "entity_type": "modbus-device",
+  "label": "Klimagerät Büro",
+  "capabilities": {
+    "measure": [
+      {
+        "channel": "raum",
+        "unit": "°C",
+        "label": "Raumtemperatur"
+      },
+      {
+        "channel": "stoerung",
+        "unit": "",
+        "label": "Störung"
+      },
+      {
+        "channel": "verdichter",
+        "unit": "",
+        "label": "Verdichter läuft"
+      }
+    ],
+    "actuate": [
+      {
+        "command": "on_off",
+        "rest": false
+      },
+      {
+        "command": "setpoint_c",
+        "min": 16.0,
+        "max": 30.0,
+        "step": 0.5,
+        "rest": 24
+      },
+      {
+        "command": "mode",
+        "modes": [
+          "cool",
+          "heat",
+          "fan_only"
+        ],
+        "rest": "cool"
+      }
+    ]
+  },
+  "guards": {
+    "limits": {
+      "min_change_interval_s": 120,
+      "min_on_seconds": 300,
+      "min_off_seconds": 180
+    },
+    "failsafe": {
+      "behavior": "rest"
+    }
+  },
+  "driver": {
+    "communication": "modbus_baukasten",
+    "connection": {
+      "schema_version": "1.0",
+      "transport": {
+        "host": "192.168.10.50",
+        "port": 502,
+        "unit_id": 1
+      },
+      "channels": [
+        {
+          "slug": "raum",
+          "label": "Raumtemperatur",
+          "unit": "°C",
+          "signal": "room_temperature",
+          "register": {
+            "kind": "input",
+            "address": 0,
+            "data_type": "s16"
+          },
+          "scale": 0.1,
+          "offset": 0,
+          "min_read_interval_s": 10
+        },
+        {
+          "slug": "stoerung",
+          "label": "Störung",
+          "unit": "",
+          "signal": "fault",
+          "register": {
+            "kind": "holding",
+            "address": 5,
+            "data_type": "u16",
+            "bit": 3
+          }
+        },
+        {
+          "slug": "verdichter",
+          "label": "Verdichter läuft",
+          "unit": "",
+          "signal": "running",
+          "register": {
+            "kind": "discrete",
+            "address": 2
+          }
+        }
+      ],
+      "controls": {
+        "min_change_interval_s": 120,
+        "min_on_seconds": 300,
+        "min_off_seconds": 180,
+        "values": [
+          {
+            "slug": "ein",
+            "label": "Ein",
+            "kind": "on_off",
+            "register": {
+              "kind": "coil",
+              "address": 0
+            },
+            "on_value": 1,
+            "off_value": 0,
+            "rest": false
+          },
+          {
+            "slug": "soll",
+            "label": "Solltemperatur",
+            "kind": "setpoint_c",
+            "register": {
+              "kind": "holding",
+              "address": 10,
+              "data_type": "s16"
+            },
+            "scale": 0.1,
+            "offset": 0,
+            "min": 16,
+            "max": 30,
+            "step": 0.5,
+            "rest": 24,
+            "readback": {
+              "kind": "holding",
+              "address": 11
+            }
+          },
+          {
+            "slug": "betrieb",
+            "label": "Betriebsart",
+            "kind": "mode",
+            "register": {
+              "kind": "holding",
+              "address": 12
+            },
+            "modes": {
+              "cool": 1,
+              "heat": 2,
+              "fan_only": 3
+            },
+            "rest": "cool"
+          }
+        ],
+        "freigabe": {
+          "released_at": "2026-11-14T10:00:00Z",
+          "released_by": "installer",
+          "evidence": "Test bestanden"
+        }
+      }
+    }
+  },
+  "revision": "2026-11-14T10:00:00Z"
+}

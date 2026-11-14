@@ -184,6 +184,7 @@ public class SelfBuildComponentService {
         requirePortalManaged(siteId);
         requireGateway(siteId);
         EntityRow existing = requireSelfBuilt(siteId, entityId);
+        requireOhneSchreibwerte(existing);
         if (req.geraetesuche() != null) {
             // Der Haken gilt nur beim Anlegen; still verworfen wäre er eine Herkunft, die der Kunde zu sehen glaubt.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -403,6 +404,19 @@ public class SelfBuildComponentService {
         return row;
     }
 
+    /**
+     * Ein Gerät mit Schreibwerten (K3, {@link ModbusGeraetService}) wird nur
+     * über seinen eigenen Weg geändert: diese Tür kennt seine Schreibwerte und
+     * Signale nicht und würde sie beim Speichern still verwerfen.
+     */
+    private void requireOhneSchreibwerte(EntityRow row) {
+        if (parseJson(row.connectionJson() == null ? "{}" : row.connectionJson()).has("controls")) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Dieses Gerät hat Schreibwerte (Sollwert, Betriebsart, Ein/Aus) und wird über "
+                            + "„Gerät mit Schreibwerten“ geändert.");
+        }
+    }
+
     private Result requireValid(SaveSelfBuildRequest req) {
         Result def = SelfBuildDefinition.validate(transport(req), channels(req));
         if (!def.ok()) {
@@ -466,11 +480,15 @@ public class SelfBuildComponentService {
      * Ein-Wert eine andere Zusage - beides entwertet den Test, wie eine
      * geaenderte Verbindung den Verbindungstest entwertet.
      */
-    @Transactional(readOnly = true)
+    // Nicht readOnly: der Test schreibt seine Audit-Spur (bestanden ODER
+    // fehlgeschlagen) - in einer lesenden Transaktion endete ein Test, der das
+    // Gerät schon geschaltet hatte, mit 500.
+    @Transactional
     public SwitchTestResult switchTest(UUID siteId, UUID entityId, SwitchTestRequest req,
             String subject) {
         requireSite(siteId);
         EntityRow row = requireSelfBuilt(siteId, entityId);
+        requireOhneSchreibwerte(row);
         SwitchDefinition.NormalizedSwitch sw = requireValidSwitch(req.switchDef());
         Transport transport = storedTransport(row);
         String valueError = SwitchDefinition.testValueError(sw, req.testValue());
@@ -529,6 +547,7 @@ public class SelfBuildComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         EntityRow row = requireSelfBuilt(siteId, entityId);
+        requireOhneSchreibwerte(row);
         SwitchDefinition.NormalizedSwitch sw = requireValidSwitch(req.switchDef());
         List<String> consumerErrors = SwitchDefinition.validateConsumer(req.consumer());
         if (!consumerErrors.isEmpty()) {

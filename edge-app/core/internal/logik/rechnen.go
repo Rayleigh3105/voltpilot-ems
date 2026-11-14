@@ -475,6 +475,16 @@ func (L *Logik) hole(st *Lauf, ein *Eingabe, n string, tiefe int) (Wert, error) 
 					return zahlW(0, GroesseZahl), nil
 				}
 				return zahlW(lauf.wunsch, GroesseZahl), nil
+			case "setpoint":
+				if stamm.Sollwert == nil {
+					return unbekanntW(), nil
+				}
+				return zahlW(*stamm.Sollwert, GroesseTemp), nil
+			case "mode":
+				if stamm.Betriebsart == "" {
+					return unbekanntW(), nil
+				}
+				return wortW(stamm.Betriebsart), nil
 			default:
 				return Wert{}, fehler("Gerät kennt „%s“ nicht", eig)
 			}
@@ -562,6 +572,10 @@ func (L *Logik) groesse(b *baum, pfad []string) (Groesse, error) {
 					return GroesseKW, nil
 				case "output_hours_today":
 					return GroesseDauer, nil
+				case "setpoint":
+					return GroesseTemp, nil
+				case "mode":
+					return GroesseWort, nil
 				}
 				return "", fehler("Gerät kennt „%s“ nicht (in „%s“)", eig, n)
 			}

@@ -1132,6 +1132,9 @@ func groesseDerQuelle(von string) (Groesse, bool) {
 	if strings.HasSuffix(von, "temperature") {
 		return GroesseTemp, false
 	}
+	if strings.HasSuffix(von, ".humidity") {
+		return GroesseProzent, false
+	}
 	switch von {
 	case "site.grid", "battery.power", "site.pv":
 		return GroesseKW, false

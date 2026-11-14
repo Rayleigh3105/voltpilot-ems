@@ -133,6 +133,9 @@ class SelfBuildComponentApiTest {
     @Autowired
     ComponentConnectionReceipts receipts;
 
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    com.voltpilot.api.probe.ProbeService probes;
+
     private final ObjectMapper json = new ObjectMapper();
 
     // -- Der Besitzer-Zaun --------------------------------------------------
@@ -546,6 +549,34 @@ class SelfBuildComponentApiTest {
             assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(json.readTree(bad.getBody()).path("message").asText())
                     .contains("nie wieder ausschalten");
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Ein BESTANDENER Schalt-Test antwortet mit seinem Ergebnis und hinterlässt
+     * seine Spur. Regression: der Test lief in einer lesenden Transaktion, und
+     * das Schreiben der Audit-Spur endete mit 500 - nachdem die Box das Gerät
+     * schon geschaltet hatte.
+     */
+    @Test
+    void aPassedSwitchTestAnswersAndLeavesItsAuditTrail() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSiteWithDevice(customer, "Selbstbau-Test", "sb-test-01");
+        try {
+            UUID entity = createDevice(customer, site, "Lüfter", channel("Leistung", 40));
+            org.mockito.Mockito.doReturn(new com.voltpilot.api.probe.ProbeResult("r", null, null, List.of(
+                    new com.voltpilot.api.probe.ProbeResult.OpResult("schalten", true, null, null, null, null, null,
+                            null, new com.voltpilot.api.probe.ProbeResult.Switched(1, 30, null, null), null, null))))
+                    .when(probes).switchOp(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                            org.mockito.ArgumentMatchers.any());
+            ResponseEntity<String> res = post("/api/v1/sites/" + site + "/components/custom/" + entity
+                    + "/switch-test", customer, Map.of("switchDef", onOffSwitch()));
+            assertThat(res.getStatusCode()).as(res.getBody()).isEqualTo(HttpStatus.OK);
+            assertThat(json.readTree(res.getBody()).path("passed").asBoolean()).isTrue();
+            assertThat(auditTypes(site, entity)).contains("switch_tested");
         } finally {
             deleteSite(site);
         }

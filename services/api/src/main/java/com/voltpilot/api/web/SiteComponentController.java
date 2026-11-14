@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.components.ComponentConnectionReceipts;
 import com.voltpilot.api.components.ComponentConnectionSchema;
 import com.voltpilot.api.components.ComponentService;
+import com.voltpilot.api.components.ModbusGeraetService;
 import com.voltpilot.api.components.SelfBuildComponentService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
@@ -77,12 +78,14 @@ public class SiteComponentController {
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
     private final com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum;
+    private final ModbusGeraetService geraete;
 
     public SiteComponentController(Geltungsbereich geltungsbereich, ComponentService components,
             ComponentConnectionReceipts receipts,
             ProbeService probes, SelfBuildComponentService selfBuild,
-            com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum) {
+            com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum, ModbusGeraetService geraete) {
         this.selfBuild = selfBuild;
+        this.geraete = geraete;
         this.geltungsbereich = geltungsbereich;
         this.components = components;
         this.receipts = receipts;
@@ -259,6 +262,49 @@ public class SiteComponentController {
     public SiteComponentsDto switchRevoke(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.switchRevoke(siteId, entityId, subject(jwt));
+    }
+
+    // ---- Gerät mit Schreibwerten (Steuerlogik K3) ---------------------------
+
+    /** Ein eigenes Modbus-Gerät mit Schreibwerten anlegen; die Box liest und schreibt es selbst. */
+    @PostMapping("/components/custom/geraet")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public SiteComponentsDto createGeraet(@PathVariable UUID siteId,
+            @RequestBody ModbusGeraetService.SpeichernRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return geraete.speichern(siteId, null, request, subject(jwt));
+    }
+
+    /** Die Definition eines Selbstbau-Geräts mit Schreibwerten ersetzen - eine neue Fassung. */
+    @PutMapping("/components/custom/{entityId}/geraet")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public SiteComponentsDto updateGeraet(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestBody ModbusGeraetService.SpeichernRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return geraete.speichern(siteId, entityId, request, subject(jwt));
+    }
+
+    /** Der Test EINES Schreibwerts: schreibt einmal, zurück auf den Ruhewert nach 30 s. */
+    @PostMapping("/components/custom/{entityId}/geraet/test")
+    @Recht(value = "schalttest.durchfuehren", ziel = RechtZiel.ANLAGE)
+    public SelfBuildComponentService.SwitchTestResult testGeraet(@PathVariable UUID siteId,
+            @PathVariable UUID entityId, @RequestBody ModbusGeraetService.TestRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return geraete.test(siteId, entityId, request, subject(jwt));
+    }
+
+    /** Die Freigabe der Schreibwerte - nur mit bestandenem Test je Schreibwert UND bestätigter Wirkung. */
+    @PostMapping("/components/custom/{entityId}/geraet/freigabe")
+    @Recht(value = "freigabe.erteilen", ziel = RechtZiel.ANLAGE)
+    public SiteComponentsDto freigabeGeraet(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestBody ModbusGeraetService.FreigabeRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return geraete.freigeben(siteId, entityId, request, subject(jwt));
+    }
+
+    /** Nimmt die Freigabe der Schreibwerte zurück - die Box liest weiter, schreibt nichts mehr. */
+    @DeleteMapping("/components/custom/{entityId}/geraet/freigabe")
+    @Recht(value = "freigabe.erteilen", ziel = RechtZiel.ANLAGE)
+    public SiteComponentsDto freigabeGeraetZuruecknehmen(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return geraete.zuruecknehmen(siteId, entityId, subject(jwt));
     }
 
     /** Die PRIVATEN Vorlagen dieser Anlage (kein Katalog, kein Teilen). */

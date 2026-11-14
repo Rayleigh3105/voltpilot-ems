@@ -328,6 +328,19 @@
       "default_actuate": []
     },
     {
+      "type": "modbus-device",
+      "certification_status": "per_device",
+      "certified_at": null,
+      "certification_notes": "Ein eigenes Modbus-Geraet mit Schreibwerten (Steuerlogik K3, docs/contracts/v2/modbus-geraet.md): Klimageraet, Waermepumpe, Kuehlstellenregler. Das Geraet regelt selbst; VoltPilot verschiebt den Sollwert in °C im freigegebenen Band, waehlt die Betriebsart aus der zugeordneten Liste und schaltet frei. Die Freigabe erfolgt JE GERAET ueber einen bestandenen Test je Schreibwert und die bestaetigte Wirkung, nicht je Typ. Der Betreiber-Not-Aus und das Verbraucher-Flag gelten unveraendert.",
+      "label": "Eigenes Gerät mit Sollwert (Modbus)",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "rest",
+      "default_measure": [],
+      "default_actuate": []
+    },
+    {
       "type": "modbus-load",
       "certification_status": "per_device",
       "certified_at": null,

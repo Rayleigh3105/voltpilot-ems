@@ -93,6 +93,8 @@ type Decision struct {
 	Clamped bool
 	// Cycle is the consumer cycle guard's active hold, nil when none.
 	Cycle *guards.CycleHold
+	// Change are the held changes of the change guard (K2), nil when none.
+	Change []guards.ChangeHold
 }
 
 type entState struct {
@@ -106,12 +108,17 @@ type entState struct {
 	// ONE temporal clamp every consumer command runs through - plan desires,
 	// flow desires and the failsafe alike (Verbrauchssteuerung §13.1).
 	cycle *guards.CycleGuard
+	// change is the change guard of a device that regulates itself (K2): two
+	// changes of its setpoint_c or mode are at least the registry interval
+	// apart. nil when the entity declares no interval.
+	change *guards.ChangeGuard
 
 	lastGranted     entities.Commands
 	lastSource      string
 	lastFingerprint string
 	lastClamped     bool
 	lastCycle       *guards.CycleHold
+	lastChange      []guards.ChangeHold
 	commandCleared  bool // retained command currently cleared
 }
 
@@ -160,6 +167,15 @@ func (a *Arbiter) SetEntities(reg entities.Registry) {
 // house-load) never get one; a registry re-push updates the limits WITHOUT
 // resetting the timing state.
 func (st *entState) syncCycleGuard(loc *time.Location) {
+	if iv := st.entity.ChangeInterval(); iv > 0 {
+		if st.change == nil {
+			st.change = guards.NewChangeGuard(iv)
+		} else {
+			st.change.SetInterval(iv)
+		}
+	} else {
+		st.change = nil
+	}
 	if st.entity.Category() != "consumer" || len(st.entity.Capabilities.Actuate) == 0 {
 		st.cycle = nil
 		return
@@ -283,7 +299,7 @@ func (a *Arbiter) DecisionFor(entityID string) (Decision, bool) {
 		return Decision{}, false
 	}
 	dec := Decision{Source: st.lastSource, Granted: st.lastGranted,
-		Clamped: st.lastClamped, Cycle: st.lastCycle}
+		Clamped: st.lastClamped, Cycle: st.lastCycle, Change: append([]guards.ChangeHold(nil), st.lastChange...)}
 	if st.holderKey != "" {
 		if d := st.desires[st.holderKey]; d != nil {
 			dec.HolderKind = string(d.Source.Kind)
@@ -441,6 +457,9 @@ func (a *Arbiter) capabilityGate(e entities.Entity, d *Desired) (Reason, bool) {
 	if c.SetpointKw != nil && !e.Supports(entities.CmdSetpointKw) {
 		return unsupported(entities.CmdSetpointKw)
 	}
+	if c.SetpointC != nil && !e.Supports(entities.CmdSetpointC) {
+		return unsupported(entities.CmdSetpointC)
+	}
 	if c.LimitKw != nil && !e.Supports(entities.CmdLimitKw) {
 		return unsupported(entities.CmdLimitKw)
 	}
@@ -584,12 +603,14 @@ type eventCtx struct {
 // publishes the retained command, and emits the arbitration event.
 func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ctx eventCtx) {
 	r := a.reading(st.entity.ID)
-	granted, stages := a.clampFor(st, holder, now, r)
+	wish := withRest(st.entity, holder)
+	granted, stages := a.clampFor(st, wish, now, r)
 	// The consumer cycle guard runs LAST (its holds are temporal; the value
 	// clamps above already bounded the level it may hold).
 	granted, cycleStages, hold := applyCycle(st, now, granted)
 	stages = append(stages, cycleStages...)
 	st.lastCycle = hold
+	granted, changeReasons := applyChange(st, now, granted)
 
 	source := "desired"
 	if holder.Source.Kind == SourcePlanExecutor {
@@ -599,23 +620,24 @@ func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ct
 
 	outcome := ctx.outcome
 	if outcome == "" {
-		if grantedMatchesWish(holder, granted) {
+		if grantedMatchesWish(wish, granted) {
 			outcome = "accepted"
 		} else {
 			outcome = "clamped"
 		}
 	}
-	st.lastClamped = !grantedMatchesWish(holder, granted)
+	st.lastClamped = !grantedMatchesWish(wish, granted)
 	reasons := append([]Reason{}, ctx.reasons...)
 	for _, s := range stages {
 		reasons = append(reasons, Reason{Stage: s.Stage,
 			Detail: fmt.Sprintf("%.3f -> %.3f", s.Before, s.After)})
 	}
+	reasons = append(reasons, changeReasons...)
 	subject := ctx.subject
 	if subject == nil {
 		subject = holder.Ref()
 	}
-	fp := cycleFingerprint(fingerprint(st.holderKey, source, granted), hold)
+	fp := changeFingerprint(cycleFingerprint(fingerprint(st.holderKey, source, granted), hold), st.lastChange)
 	if !ctx.force && fp == st.lastFingerprint {
 		st.lastGranted, st.lastSource = granted, source
 		return
@@ -687,6 +709,13 @@ func (a *Arbiter) fallToFailsafe(st *entState, now time.Time, subject *SourceRef
 			st.lastCycle = nil
 		}
 	}
+	if publish {
+		var changeReasons []Reason
+		granted, changeReasons = applyChange(st, now, granted)
+		reasons = append(reasons, changeReasons...)
+	} else {
+		st.lastChange = nil
+	}
 	st.lastClamped = false
 	source := "failsafe"
 	if publish {
@@ -694,7 +723,7 @@ func (a *Arbiter) fallToFailsafe(st *entState, now time.Time, subject *SourceRef
 	} else {
 		a.clearCommand(st)
 	}
-	fp := cycleFingerprint(fingerprint("", source, granted), st.lastCycle)
+	fp := changeFingerprint(cycleFingerprint(fingerprint("", source, granted), st.lastCycle), st.lastChange)
 	changed := fp != st.lastFingerprint
 	st.lastFingerprint = fp
 	st.lastGranted, st.lastSource = granted, source
@@ -728,6 +757,61 @@ func (a *Arbiter) fallToFailsafe(st *entState, now time.Time, subject *SourceRef
 // onKwThreshold separates "commanded to run" from "commanded off" on a
 // setpoint (mirrors the guard deadband discipline).
 const onKwThreshold = 0.005
+
+// withRest completes the wish of a device with failsafe "rest" (K2): a command
+// the holder does not carry gets the device's rest value, so what the executor
+// writes is exactly what the guards - the change guard above all - saw.
+func withRest(e entities.Entity, d *Desired) *Desired {
+	if e.Guards.Failsafe.Behavior != "rest" {
+		return d
+	}
+	rest := e.RestCommands()
+	c := d.Commands
+	changed := false
+	if c.OnOff == nil && rest.OnOff != nil {
+		c.OnOff, changed = rest.OnOff, true
+	}
+	if c.SetpointC == nil && rest.SetpointC != nil {
+		c.SetpointC, changed = rest.SetpointC, true
+	}
+	if c.Mode == "" && rest.Mode != "" {
+		c.Mode, changed = rest.Mode, true
+	}
+	if !changed {
+		return d
+	}
+	out := *d
+	out.Commands = c
+	return &out
+}
+
+// applyChange runs the setpoint_c and mode of a command set through the
+// entity's change guard (K2) and returns the holds as event reasons.
+func applyChange(st *entState, now time.Time, granted entities.Commands) (entities.Commands, []Reason) {
+	st.lastChange = nil
+	if st.change == nil || (granted.SetpointC == nil && granted.Mode == "") {
+		return granted, nil
+	}
+	sp, mode, holds := st.change.Apply(now, granted.SetpointC, granted.Mode)
+	out := granted
+	out.SetpointC, out.Mode = sp, mode
+	st.lastChange = holds
+	var reasons []Reason
+	for _, h := range holds {
+		reasons = append(reasons, Reason{Stage: guards.StageChangeInterval,
+			Detail: fmt.Sprintf("%s held until %s", h.Field, h.Until.UTC().Format(time.RFC3339))})
+	}
+	return out, reasons
+}
+
+// changeFingerprint makes a newly biting or releasing change hold a decision
+// change, like cycleFingerprint.
+func changeFingerprint(fp string, holds []guards.ChangeHold) string {
+	for _, h := range holds {
+		fp += "|change:" + h.Field
+	}
+	return fp
+}
 
 // applyCycle runs one command set through the entity's stateful cycle guard
 // (no-op for non-consumers). The guard decides the temporal ON/OFF state and
@@ -834,6 +918,20 @@ func (a *Arbiter) failsafeCommand(st *entState, now time.Time) (entities.Command
 			return entities.Commands{SetpointKw: &zero}, true
 		}
 		return entities.Commands{}, false
+	case "rest":
+		// A device that regulates itself (K2) is left at its rest values - its
+		// own normal setpoint and mode, on or off as declared - through the same
+		// guard chain as any wish.
+		rest := e.RestCommands()
+		if rest.Empty() {
+			return entities.Commands{}, false
+		}
+		d := &Desired{EntityID: e.ID, Commands: rest, Source: Source{Kind: SourcePlanExecutor}}
+		granted, _ := a.clampFor(st, d, now, a.reading(e.ID))
+		if granted.Empty() {
+			return entities.Commands{}, false
+		}
+		return granted, true
 	default: // release, measure-only: nothing commanded, limits cleared
 		return entities.Commands{}, false
 	}
@@ -881,7 +979,7 @@ func (a *Arbiter) holderRef(st *entState) *SourceRef {
 
 // commandJSON renders one $defs/command entry from a command set. preferred
 // picks the echoed entry for multi-entry (plan) sets; empty = dominance order
-// setpoint > limit_kw > limit_pct > on_off > mode.
+// setpoint_kw > setpoint_c > limit_kw > limit_pct > on_off > mode.
 func commandJSON(c entities.Commands, preferred string) map[string]any {
 	entry := func(t string, v any) map[string]any {
 		m := map[string]any{"type": t, "value": v}
@@ -895,6 +993,10 @@ func commandJSON(c entities.Commands, preferred string) map[string]any {
 		case entities.CmdSetpointKw:
 			if c.SetpointKw != nil {
 				return entry(preferred, *c.SetpointKw)
+			}
+		case entities.CmdSetpointC:
+			if c.SetpointC != nil {
+				return entry(preferred, *c.SetpointC)
 			}
 		case entities.CmdLimitKw:
 			if c.LimitKw != nil {
@@ -918,6 +1020,8 @@ func commandJSON(c entities.Commands, preferred string) map[string]any {
 	switch {
 	case c.SetpointKw != nil:
 		return entry(entities.CmdSetpointKw, *c.SetpointKw)
+	case c.SetpointC != nil:
+		return entry(entities.CmdSetpointC, *c.SetpointC)
 	case c.LimitKw != nil:
 		return entry(entities.CmdLimitKw, *c.LimitKw)
 	case c.LimitPct != nil:
@@ -958,7 +1062,8 @@ func grantedMatchesWish(d *Desired, granted entities.Commands) bool {
 		return a == nil || roundW(*a) == roundW(*b)
 	}
 	c := d.Commands
-	if !eq(c.SetpointKw, granted.SetpointKw) || !eq(c.LimitKw, granted.LimitKw) || !eq(c.LimitPct, granted.LimitPct) {
+	if !eq(c.SetpointKw, granted.SetpointKw) || !eq(c.SetpointC, granted.SetpointC) ||
+		!eq(c.LimitKw, granted.LimitKw) || !eq(c.LimitPct, granted.LimitPct) {
 		return false
 	}
 	if (c.OnOff == nil) != (granted.OnOff == nil) || (c.OnOff != nil && *c.OnOff != *granted.OnOff) {

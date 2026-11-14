@@ -7,6 +7,7 @@ Die YAML-Schreibform für Menschen liest `edge-app/core/internal/logik/textform`
 Seit Stufe 2, zweiter Teil, wird eine Logik ausgeliefert und läuft auf der Box mit (siehe [Auslieferung und Mitlauf](#auslieferung-und-mitlauf)); sie schaltet nichts und beansprucht kein Gerät, sie äußert je Takt nur, was die Geräte tun sollen.
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
+Für Geräte mit Sollwert und Betriebsart (K2/K3) kommen [steuerlogik-geraete-vectors.json](steuerlogik-geraete-vectors.json) und das siebte Beispiel `waermepumpe-modbus` dazu, von Hand geschrieben; dort ist der Kern die Referenz (`geraete_vectors_test.go`, im Dienst `logikdienst_test.go`).
 Die Box liest sie in `logik_vectors_test.go`, `tage_test.go` und `textform/textform_test.go`; der Dienst neben der API besteht sie in beiden Schreibformen (`logikdienst/logikdienst_test.go`), weil er dieselben Leser benutzt.
 Die Vektoren stammen aus dem Referenzlabor des Konzepts; der Kern muss jeden Vektor genau wie das Labor entscheiden, Abweichungen sind Fehler, keine Auslegung.
 Alle Namen in den Beispielen sind erfunden.
@@ -55,8 +56,8 @@ Ein Ausdruck, der sich zur Laufzeit nicht rechnen lässt, gilt als unbekannt und
 
 Formeln: `and`, `or`, `not`, Vergleiche, `+ - * /`, Klammern; Rangfolge von schwach nach stark: `or`, `and`, `not`, Vergleich, `+ -`, `* /`, Vorzeichen.
 Funktionen: `min`, `max`, `if(bedingung, dann, sonst)`, `known`, `unknown`, `time_window(von, bis)` (über Mitternacht erlaubt; `von` zählt mit, `bis` nicht; gleich oder unbekannt heißt rund um die Uhr), `in_schedule(zeitplan)`, `holds(bedingung, dauer)`, `since(zustand)`, `running(timer)`, `last(counter)`.
-Feste Quellen: `site.grid` (kW, + Bezug), `site.pv` (kW), `battery.power` (kW, + laden), `battery.soc` (%), `sun.elevation` (°), `price.current` (Börsenpreis in ct/kWh als Zahl ohne Einheit, [Preis-Zuleitung](mqtt-price-current.md)); dazu `gerät.signal` mit den Signalen der Wortliste.
-Geräte-Eigenschaften: `gerät.on`, `.level`, `.power`, `.kw_per_output`, `.output_hours_today` (Summe der Einschaltzeit aller Ausgänge seit Mitternacht), `.requested` (was die Logik im letzten Takt wollte).
+Feste Quellen: `site.grid` (kW, + Bezug), `site.pv` (kW), `battery.power` (kW, + laden), `battery.soc` (%), `sun.elevation` (°), `price.current` (Börsenpreis in ct/kWh als Zahl ohne Einheit, [Preis-Zuleitung](mqtt-price-current.md)); dazu `gerät.signal` mit den Signalen der Wortliste: `temperature`, `room_temperature`, `outdoor_temperature`, `supply_temperature`, `return_temperature` (°C), `humidity` (%), `open`, `door_open`, `defrost`, `fault`, `running` (Ja/Nein).
+Geräte-Eigenschaften: `gerät.on`, `.level`, `.power`, `.kw_per_output`, `.output_hours_today` (Summe der Einschaltzeit aller Ausgänge seit Mitternacht), `.requested` (was die Logik im letzten Takt wollte), `.setpoint` (der zurückgelesene Sollwert in °C) und `.mode` (die zurückgelesene Betriebsart); ohne Rücklesung sind die beiden unbekannt.
 `clock` ist die Uhrzeit; die Wochentage heißen `mon` bis `sun`; die Betriebsarten `normal`, `boost`, `cool`, `heat`, `fan_only`, `dry`, `auto`, `start`.
 
 ## Zustände und Takt
@@ -68,7 +69,8 @@ Ein Takt, jede Sekunde, in dieser Reihenfolge: Werte lesen und ihr Alter prüfen
 - **Zähler** (`counter`): je Takt gilt der erste zutreffende Schritt; `not_before` zählt ab dem letzten Wechsel und darf eine Formel sein; `set` rundet halbe Werte zur nächsthöheren Zahl; das Ziel wird auf `min` bis `max` begrenzt; ein Schritt ohne Änderung zählt nicht als Wechsel.
 - **`after_restart`**: `on`/`off`/Zahl setzt den Wert, `keep` behält nur den Wert (beim Zeitgeber die Frist); `since` und `last` zählen nach einem Neustart ab dem Neustart; beim allerersten Start heißt `keep` aus, `min` beziehungsweise Zeitgeber steht.
   Stellwerte und Tageszähler bleiben bei einem Neustart erhalten.
-- **Ausgänge**: `level` wird gerundet und auf die Ausgänge des Geräts begrenzt, `setpoint` vom Gerät auf seinen Bereich, `percent` auf 0 bis 100.
+- **Ausgänge**: `level` wird gerundet und auf die Ausgänge des Geräts begrenzt, `setpoint` auf die Schrittweite des Geräts gerundet (ab dem unteren Ende seines Bereichs, halbe Schritte nach oben) und auf seinen Bereich begrenzt, `percent` auf 0 bis 100.
+  Eine Betriebsart, die das Gerät nicht kennt (die Liste nennt die Anlage), ist kein Wunsch und ein Fehler-Ereignis; es gilt der Ruhewert des Geräts.
 - **Meldungen** gehen einmal hinaus, wenn die Bedingung eintritt, und frühestens nach `repeat_after` (Vorgabe eine Stunde) erneut.
 - **Lage**: die erste zutreffende Zeile gilt; im Satz steht `{formel}` für einen Wert in deutscher Schreibweise mit Einheit.
 
@@ -78,7 +80,7 @@ Anzeige der Werte: deutsche Schreibweise (Komma, schmales Leerzeichen vor der Ei
 
 Pflicht vor dem Scharfschalten ist die Prüfung (E5 = C); der Kern baut ihre sperrenden Punkte:
 
-1. **Aufbau und Einheiten**: jeder Ausdruck lesbar, jeder Name bekannt, Einheiten passen, keine Formel hängt von sich selbst ab; jedes beanspruchte Gerät hat einen Ausgang und umgekehrt; die letzte Lage-Zeile ist `else`; Sätze und Hilfen mit `{formel}` sind rechenbar; kein Wort verdeckt einen Namen.
+1. **Aufbau und Einheiten**: jeder Ausdruck lesbar, jeder Name bekannt, Einheiten passen, keine Formel hängt von sich selbst ab; jedes beanspruchte Gerät hat einen Ausgang und umgekehrt; die letzte Lage-Zeile ist `else`; Sätze und Hilfen mit `{formel}` sind rechenbar; kein Wort verdeckt einen Namen; eine Betriebsart, die fest im Text eines Ausgangs `mode` steht, kennt das Gerät, wenn die Anlage seine Liste nennt.
 2. **Stellwerte**: die Vorgabe liegt im Bereich; die Bedingungen unter `constraints` gelten mit den Vorgaben; dazu die Angabe, ob sie sich im erlaubten Bereich verletzen lassen (dann begrenzt die Oberfläche den Regler).
    Ein Stellwert in °C ist ein Zielwert und braucht einen Bereich, weil der Kunde ihn immer stellt (E2 = B); `editable_by` hat an ihm keine Wirkung.
 3. **Proben**: jeder Fall wird durchgespielt, mit einem Gerät, das jedem Wunsch folgt.
@@ -87,6 +89,16 @@ Pflicht vor dem Scharfschalten ist die Prüfung (E5 = C); der Kern baut ihre spe
 
 Die Punkte 4 bis 6 des Konzepts (Ausfall je Eingang, Flattern, Schutzzeiten) sind Hinweise im Dialog und kommen mit der Oberfläche (Stufe 4).
 Ob ein Gerät existiert, zum Steuern freigegeben und von keiner anderen Regel beansprucht ist, prüft die Auslieferung (Regel V-5 im [Graphvertrag](flow-graph.md)), nicht der Kern.
+
+## Geräte mit Sollwert und Betriebsart (K2/K3)
+
+Klima, Heizung, Kälte (Bericht Abschnitt 15): Das Gerät regelt selbst; die Logik verschiebt seinen Sollwert, wählt seine Betriebsart, gibt frei und meldet.
+
+- **Angaben der Anlage**: Bereich und Schrittweite des Sollwerts und die Liste der Betriebsarten kommen aus den Fähigkeiten des Geräts im Registry-Push (`setpoint_c` mit `min`, `max`, `step`; `mode` mit `modes`), auf der Box (`agent/steuerlogik.go`) wie im Dienst neben der API (`anlageAusRegistry`); die Proben sehen dieselbe Klemme wie die Box.
+- **Eingänge**: ein [eigenes Modbus-Gerät mit Schreibwerten](modbus-geraet.md) liefert jedes Signal, das seine Definition einem Kanal zuordnet, als `<gerät>.<signal>`; die Rücklesung seiner Schreibwerte ist `.on`, `.setpoint` und `.mode`.
+- **Ausgänge als Befehle** (`agent/steuerlogik_befehle.go`, für das Scharfschalten): `on_off` wird `on_off`, ein Sollwert in °C wird `setpoint_c`, einer in kW `setpoint_kw`, eine Betriebsart `mode`; ohne Wunsch kein Befehl. Band, Schritt, Liste, Abstand zwischen Änderungen und Ruhewerte setzt der Arbiter durch ([Arbitrierung](edge-desired-arbitration.md#geräte-die-selbst-regeln-steuerlogik-k2)).
+- **Mitlauf**: der Vergleich „würde schalten“ gegen „ist geschaltet“ umfasst Sollwert (gleich innerhalb 0,05 K) und Betriebsart, wo das Gerät sie zurückliest.
+- **Beleg**: die Beispiele Kühlraum und Klimagerät laufen in `agent/modbusgeraet_test.go` gegen ein gestelltes Modbus-Gerät (`modbusgeraet/geraetsim`) mit echten Ausgängen: Sollwert schreiben, Betriebsart wechseln, Band und Abstand greifen, Störung und Steuerung aus.
 
 ## Rechte und Rollen (entschieden 14.11.2026)
 

@@ -117,7 +117,28 @@ const GUARD_LIMIT_LABELS: Record<string, string> = {
   max_generation_kw: 'Max. Erzeugung',
   max_consumption_kw: 'Max. Leistung',
   charge_from_grid_allowed: 'Netzladen erlaubt',
+  min_on_seconds: 'Mindestlaufzeit',
+  min_off_seconds: 'Mindestpause',
+  max_starts_per_day: 'Max. Starts je Tag',
+  ramp_kw_per_min: 'Max. Leistungsänderung',
+  min_change_interval_s: 'Abstand zwischen Änderungen',
 };
+
+const DEZIMAL = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 });
+
+/** Ein Grenzwert mit seiner Einheit: kW, %, Sekunden (ab einer Minute in Minuten) oder eine Anzahl. */
+function grenzwertText(key: string, raw: number): string {
+  if (key.endsWith('_seconds') || key.endsWith('_s')) {
+    return raw >= 60 && raw % 60 === 0 ? `${DEZIMAL.format(raw / 60)} min` : `${DEZIMAL.format(raw)} s`;
+  }
+  if (key === 'max_starts_per_day') {
+    return DEZIMAL.format(raw);
+  }
+  if (key === 'ramp_kw_per_min') {
+    return `${DEZIMAL.format(raw)} kW/min`;
+  }
+  return `${DEZIMAL.format(raw)}${key.endsWith('_pct') ? ' %' : ' kW'}`;
+}
 
 /** One guard limit rendered as a read-only label/value pair (German). */
 export interface GuardRow {
@@ -162,9 +183,10 @@ export function guardRows(entity: SiteEntity, jetzt: Date = new Date()): GuardRo
       rows.push({ label, value: socMinText(socMin, jetzt) });
     } else if (typeof raw === 'boolean') {
       rows.push({ label, value: raw ? 'ja' : 'nein' });
+    } else if (typeof raw === 'number') {
+      rows.push({ label, value: grenzwertText(key, raw) });
     } else {
-      const unit = key.endsWith('_pct') ? ' %' : ' kW';
-      rows.push({ label, value: `${raw}${unit}` });
+      rows.push({ label, value: String(raw) });
     }
   }
   // Eine Komponente ohne eigene Grenze im Schutz (sie stammt nicht aus dem Speicher-Stammsatz) zeigt die gelesene
@@ -184,6 +206,7 @@ const FAILSAFE_LABELS: Record<string, string> = {
   off: 'Aus',
   release: 'Freigeben',
   'measure-only': 'Nur messen',
+  rest: 'Ruhewerte des Geräts',
 };
 
 /** German label for a failsafe behavior (used in the admin editor too). */

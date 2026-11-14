@@ -1,0 +1,203 @@
+{
+ "logic": 1,
+ "name": "Wärmepumpe Warmwasser",
+ "description": "Ist Sonnenstrom übrig, hebt die Wärmepumpe das Warmwasser an und speichert Sonnenstrom so als Wärme. Sonst hält sie den normalen Sollwert.\n",
+ "devices": {
+  "wp": {
+   "entity": "waermepumpe-keller",
+   "name": "Wärmepumpe"
+  }
+ },
+ "inputs": {
+  "speicher": {
+   "source": "waermepumpe-keller.temperature",
+   "name": "Warmwasser",
+   "max_age": "5 min"
+  },
+  "aussen": {
+   "source": "waermepumpe-keller.outdoor_temperature",
+   "name": "Außen",
+   "max_age": "15 min"
+  },
+  "stoerung": {
+   "source": "waermepumpe-keller.fault",
+   "name": "Störung",
+   "max_age": "2 min"
+  },
+  "netz": {
+   "source": "site.grid",
+   "name": "Netzbezug",
+   "max_age": "60 s"
+  }
+ },
+ "settings": {
+  "warmwasser": {
+   "name": "Warmwasser normal",
+   "default": "48 °C",
+   "range": [
+    "40 °C",
+    "55 °C"
+   ],
+   "step": "1 K",
+   "editable_by": "customer"
+  },
+  "anheben": {
+   "name": "Mit Sonnenstrom höher um",
+   "default": "7 K",
+   "range": [
+    "0 K",
+    "12 K"
+   ],
+   "step": "1 K"
+  },
+  "ab_kw": {
+   "name": "Sonnenstrom übrig ab",
+   "default": "2 kW",
+   "range": [
+    "1 kW",
+    "8 kW"
+   ],
+   "step": "0.5 kW"
+  }
+ },
+ "formulas": {
+  "uebrig": "max(0 kW, -netz)"
+ },
+ "states": {
+  "sonne_da": {
+   "name": "Sonnenstrom ist übrig",
+   "type": "boolean",
+   "on_when": "holds(uebrig >= ab_kw, 10 min)",
+   "off_when": "unknown(netz) or holds(uebrig < 0.5 kW, 10 min)",
+   "after_restart": "off"
+  }
+ },
+ "outputs": {
+  "wp": {
+   "setpoint": "if(sonne_da, warmwasser + anheben, warmwasser)",
+   "mode": "if(sonne_da, boost, normal)"
+  }
+ },
+ "display": {
+  "input": "speicher",
+  "scale": [
+   "30 °C",
+   "65 °C"
+  ],
+  "marks": [
+   {
+    "name": "Normal",
+    "at": "warmwasser"
+   },
+   {
+    "name": "Mit Sonne",
+    "at": "warmwasser + anheben"
+   }
+  ]
+ },
+ "status": [
+  {
+   "when": "stoerung",
+   "title": "Störung",
+   "type": "fault",
+   "text": "Die Wärmepumpe meldet eine Störung. VoltPilot verstellt nichts, bis sie behoben ist."
+  },
+  {
+   "when": "unknown(wp.setpoint)",
+   "title": "Keine Rückmeldung",
+   "type": "waiting",
+   "text": "Die Wärmepumpe meldet ihren Sollwert nicht. Sie hält, was zuletzt eingestellt war."
+  },
+  {
+   "when": "sonne_da and wp.mode == boost",
+   "title": "Speichert Sonnenstrom",
+   "type": "solar",
+   "text": "Das Warmwasser wird mit Sonnenstrom auf {wp.setpoint} angehoben. Jetzt sind es {speicher}."
+  },
+  {
+   "else": true,
+   "title": "Normalbetrieb",
+   "type": "idle",
+   "text": "Die Wärmepumpe hält {wp.setpoint}. Außen sind es {aussen}."
+  }
+ ],
+ "tests": [
+  {
+   "name": "Mittags ist Sonnenstrom übrig, dann wird das Warmwasser angehoben",
+   "given": {
+    "speicher": "45 °C",
+    "aussen": "8 °C",
+    "stoerung": "off",
+    "netz": "-3 kW"
+   },
+   "after": "11 min",
+   "expect": {
+    "sonne_da": "on",
+    "wp.setpoint": "55 °C",
+    "wp.mode": "boost",
+    "status": "Speichert Sonnenstrom"
+   }
+  },
+  {
+   "name": "Ohne Sonnenstrom gilt der normale Sollwert",
+   "given": {
+    "speicher": "45 °C",
+    "aussen": "8 °C",
+    "stoerung": "off",
+    "netz": "0.5 kW"
+   },
+   "after": "11 min",
+   "expect": {
+    "sonne_da": "off",
+    "wp.setpoint": "48 °C",
+    "wp.mode": "normal",
+    "status": "Normalbetrieb"
+   }
+  },
+  {
+   "name": "Eine kurze Wolke ändert nichts",
+   "given": {
+    "speicher": "50 °C",
+    "aussen": "8 °C",
+    "stoerung": "off",
+    "netz": "0.3 kW",
+    "sonne_da": "on"
+   },
+   "after": "5 min",
+   "expect": {
+    "sonne_da": "on",
+    "wp.setpoint": "55 °C",
+    "wp.mode": "boost"
+   }
+  },
+  {
+   "name": "Meldet die Wärmepumpe eine Störung, zeigt die Lage sie zuerst",
+   "given": {
+    "speicher": "45 °C",
+    "aussen": "8 °C",
+    "stoerung": "on",
+    "netz": "-3 kW"
+   },
+   "after": "11 min",
+   "expect": {
+    "status": "Störung"
+   }
+  },
+  {
+   "name": "Fällt der Netzwert aus, gilt sofort der normale Sollwert",
+   "given": {
+    "speicher": "50 °C",
+    "aussen": "8 °C",
+    "stoerung": "off",
+    "netz": "unknown",
+    "sonne_da": "on"
+   },
+   "after": "1 min",
+   "expect": {
+    "sonne_da": "off",
+    "wp.setpoint": "48 °C",
+    "wp.mode": "normal"
+   }
+  }
+ ]
+}

@@ -74,7 +74,7 @@
      "source": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z][a-z0-9_]*$",
-      "description": "Quelle als gerät.kanal, dazu anlage, speicher, sonne, preis."
+      "description": "Quelle als gerät.signal (temperature, room_temperature, outdoor_temperature, supply_temperature, return_temperature, humidity, open, door_open, defrost, fault, running; Tabelle signal der Wortliste), dazu site.grid, site.pv, battery.power, battery.soc, sun.elevation, price.current."
      },
      "name": {
       "type": "string",
@@ -160,11 +160,11 @@
      },
      "setpoint": {
       "$ref": "#/$defs/expression",
-      "description": "Wert mit Einheit; das Gerät begrenzt ihn auf seinen Bereich."
+      "description": "Wert mit Einheit (°C wird setpoint_c, kW setpoint_kw); auf die Schrittweite des Geräts gerundet und auf seinen Bereich begrenzt. Zurückgelesen als gerät.setpoint."
      },
      "mode": {
       "$ref": "#/$defs/expression",
-      "description": "Eines der Wörter, die das Gerät kennt."
+      "description": "Eine Betriebsart der Wortliste (normal, boost, cool, heat, fan_only, dry, auto, start), die das Gerät kennt; ein anderes Wort ist kein Wunsch. Zurückgelesen als gerät.mode."
      },
      "percent": {
       "$ref": "#/$defs/expression",

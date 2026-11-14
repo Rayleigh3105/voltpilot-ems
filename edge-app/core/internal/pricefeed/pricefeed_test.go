@@ -131,8 +131,11 @@ func TestWatchdogMarksStaleAfterValidUntil(t *testing.T) {
 	c := &capture{}
 	f := New(c.publish)
 	defer f.Close()
-	start := time.Now().Add(-15 * time.Minute).Add(-Slack).Add(300 * time.Millisecond)
-	// valid_until = start + 15 min + Slack = now + 300 ms.
+	// valid_until = start + 15 min + Slack lands on the next whole second at
+	// least 300 ms ahead: the document carries RFC 3339 seconds, so a deadline
+	// with a fraction would be truncated - up to a second into the past.
+	bis := time.Now().Add(1300 * time.Millisecond).Truncate(time.Second)
+	start := bis.Add(-15 * time.Minute).Add(-Slack)
 	f.Accept(doc(t, start, start.Add(15*time.Minute), 12.0))
 	if p := c.last(t); p["stale"] == true {
 		t.Fatalf("fresh price immediately stale: %v", p)

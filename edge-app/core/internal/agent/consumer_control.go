@@ -114,6 +114,7 @@ func (a *Agent) consumerControlLoop(ctx context.Context) {
 		a.runGoeControlPass(ctx, a.goeDoer, lastFP, lastAssert, switchers, time.Now())
 		a.runShellyControlPass(ctx, a.shellyDoerRef(), shellyFP, shellyAssert, time.Now())
 		a.runEbyteControlPass(ctx, time.Now())
+		a.runModbusGeraetControlPass(ctx, time.Now())
 	}
 }
 

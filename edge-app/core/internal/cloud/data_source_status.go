@@ -86,6 +86,12 @@ type StatusExtension struct {
 // both builds, so both carry it; the cloud delivers a logic only to a box
 // reporting it.
 //
+// modbus_geraet (Steuerlogik K3): the core reads and writes a self-built
+// Modbus device with write values itself (agent/modbusgeraet.go) - setpoint in
+// °C, mode, on/off, rest values, the switch test through its own connection.
+// Both builds carry the core path; the cloud ships a definition with controls
+// only to a box reporting it and compiles no Node-RED flow for that device.
+//
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
 // Edge Light has no Node-RED palette, so the words whose way ends in the
 // palette - the shared point read once per target, the Erzeuger image reader
@@ -97,7 +103,8 @@ func BuiltSupports(boxArt string) []string {
 	if boxArt != geraetesuche.BoxArtEdgeLight {
 		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
 	}
-	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf")
+	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
+		"modbus_geraet")
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and

@@ -1290,7 +1290,7 @@
 
 .vp-zr-vor {
   color: var(--vp-c-muted-fg, #475569);
-  font-size: 0.875rem;
+  font-size: var(--vp-c-fs-14);
 }
 
 /* Der Auslöser des Hauspickers ohne eigenen Rand: der Rand gehört dem Feld mit dem Wort. */
@@ -1346,6 +1346,7 @@
   /* Fünf Abschnitte nach ihrem Wort, nicht gleich breit: „Zeitraum“ braucht mehr als „Tag“. */
   .vp-zeitleiste-mobil.mit-zeitraum .vp-zl-row-1 > .vp-seg > button {
     flex: 1 1 auto;
+    min-height: 44px; /* wie `.vp-seg button` am Telefon (index.css) */
     padding-left: 6px;
     padding-right: 6px;
   }
