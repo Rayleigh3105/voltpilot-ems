@@ -28,7 +28,7 @@ Konfiguration, Telemetrie und Kommandos: [Entity-Vertrag](edge-entity-config.md)
 
 ## Wunsch und Priorität
 
-Kommandos: `setpoint_kw`, `on_off`, `limit_pct`, `limit_kw`, `mode`. Speicher: positive Leistung lädt, negative entlädt. Verbraucher: positive Leistung bedeutet Verbrauch. Limits begrenzen; sie fordern keine Erzeugung an. Capability-/Wertebereichsprüfung bleibt erforderlich.
+Kommandos: `setpoint_kw`, `setpoint_c`, `on_off`, `limit_pct`, `limit_kw`, `mode`. Speicher: positive Leistung lädt, negative entlädt. Verbraucher: positive Leistung bedeutet Verbrauch. Limits begrenzen; sie fordern keine Erzeugung an. Capability-/Wertebereichsprüfung bleibt erforderlich.
 
 | Rang | Klasse / Fall |
 |---|---|
@@ -55,6 +55,15 @@ Ein Override ist auf höchstens 14.400 Sekunden begrenzt und hebt keine Guards a
 - `ttl_s` ist erforderlich: 1–86.400 Sekunden, zeitlich an `min(issued_at, Empfang)` gebunden. Zukunftsdatierung verlängert sie nicht.
 - Nach Ablauf/Freigabe übernimmt der nächste gültige Wunsch, sonst der konfigurierte Failsafe. Keine Erinnerung an einen abgelaufenen Sollwert als Ersatz.
 - Veraltete Pläne ziehen ihre Markt-Wünsche zurück; [Planfrische und Ausnahmen](mqtt-schedule-2.0.md) gelten zusätzlich.
+
+## Geräte, die selbst regeln (Steuerlogik K2)
+
+Ein Klimagerät, eine Wärmepumpe oder ein Kühlstellenregler bekommt einen Sollwert in °C (`setpoint_c`), eine Betriebsart (`mode`) und Ein/Aus; geregelt wird im Gerät ([Modbus-Gerät](modbus-geraet.md)).
+
+- `setpoint_c` wird auf den `step` der Fähigkeit gerundet (ab `min`, halbe Schritte nach oben) und auf `[min, max]` begrenzt (Stufe `guard:setpoint_band`); ohne vollständiges Band kein Befehl. Eine Betriebsart außerhalb von `modes` fällt weg.
+- Failsafe `rest`: ohne Wunsch gelten die Ruhewerte (`rest`) der Fähigkeiten, durch dieselben Wächter. Ein Halter, der einen Befehl dieses Geräts nicht nennt, bekommt dafür den Ruhewert.
+- `min_change_interval_s`: zwei Änderungen von `setpoint_c` oder `mode` liegen mindestens so weit auseinander; eine frühere Änderung hält den zuletzt gewährten Wert (Stufe `guard:change_interval`, Grund `guard_change_interval`), auch für die Ruhewerte. Der erste Wert wird nie gehalten; der Wächter vergisst bei einem Neustart wie der Zyklus-Wächter.
+- `on_off` läuft durch den Zyklus-Wächter (Mindestlauf, Mindestpause).
 
 ## Rückmeldung und Vertrauensgrenze
 

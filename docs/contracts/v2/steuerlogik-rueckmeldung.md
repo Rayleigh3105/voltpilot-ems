@@ -28,7 +28,7 @@ Beispiel: [steuerlogik-rueckmeldung.valid.waermepumpe.json](examples/steuerlogik
 
 Je Gerät: `entity_id`, `name` (wie in der Logik); `wunsch` (was der Kern jetzt schalten würde) und `ist` (der beobachtete Schaltstand), beide als Stand `{stufe, ein, sollwert, betriebsart, anteil}` mit nur den Feldern, die die Ausgangsart hat; fehlt `ist`, ist der Stand unbekannt, nie „aus“.
 Dazu die Zähler des Tages: `verglichen_s` (Sekunden, in denen beide Seiten bekannt waren), `abweichend_s` (davon verschieden), `laengste_abweichung_s`, `wunsch_wechsel`, `ist_wechsel`.
-Eine Stufe gegen Ein/Aus vergleicht „0 heißt aus“; Sollwert, Betriebsart und Anteil hat die Box noch keinen beobachteten Stand und vergleicht sie nicht.
+Eine Stufe gegen Ein/Aus vergleicht „0 heißt aus“; Sollwert (gleich innerhalb 0,05 K) und Betriebsart vergleicht die Box, wo das Gerät sie zurückliest ([Modbus-Gerät](modbus-geraet.md)), und ein Gerät mit mehreren Ausgängen weicht ab, sobald einer abweicht; der Anteil hat keinen beobachteten Stand.
 
 Eine Zeile des Protokolls: `nr` (zählt je Lauf ab 1, eine Lücke ist sichtbar), `t`, `geraet`, `was` (`wunsch` oder `ist`), `neu` (der neue Stand dieser Seite), `andere` (die andere Seite in derselben Sekunde), `lage` (Titel der Lage in dieser Sekunde).
 Der Anfangsstand eines Laufs ist kein Wechsel; gezählt werden Änderungen danach, auch zu und von unbekannt.
@@ -36,8 +36,9 @@ Der Anfangsstand eines Laufs ist kein Wechsel; gezählt werden Änderungen danac
 ## Wie die Box beobachtet
 
 - Eingänge: Netz (`site.grid`), PV (`site.pv`), Speicherleistung (`battery.power`, + laden) und Ladestand (`battery.soc`) aus derselben gesicherten Hausbilanz, die jeder Schutz der Box liest, je mit eigenem Alter; `<gerät>.temperature` aus den Fühler-Proben der Stufe 1, wenn das Gerät genau eine Temperatur meldet (mehrere sind mehrdeutig und bleiben unbekannt); `sun.elevation` aus der Lage im Bündel; `price.current` aus der [Preis-Zuleitung](mqtt-price-current.md), solange der Preis gilt.
-  Alles andere ist in dieser Stufe unbekannt; der Kern behandelt es nach `max_age`.
-- Ist: die Rücklesung der eigenen Ausgangsmenge, wenn die Box selbst steuert; sonst die angeheftete Quelle des Geräts (`edge_source_id`), solange sie frisch ist (Shelly: Ausgänge oder Relais).
+  `<gerät>.<signal>` eines eigenen Modbus-Geräts mit Schreibwerten, dessen Definition das Signal einem Kanal zuordnet.
+  Alles andere ist unbekannt; der Kern behandelt es nach `max_age`.
+- Ist: die Rücklesung der eigenen Ausgangsmenge, wenn die Box selbst steuert; bei einem eigenen Modbus-Gerät mit Schreibwerten dessen Rücklesung (Ein, Sollwert, Betriebsart, höchstens 60 s alt); sonst die angeheftete Quelle des Geräts (`edge_source_id`), solange sie frisch ist (Shelly: Ausgänge oder Relais).
   Ohne Pin und ohne Rücklesung ist der Stand unbekannt.
 - Takt jede Sekunde, unabhängig vom Schiedsrichter; die Zähler beginnen um Mitternacht der Anlage und mit jedem Start des Programms neu.
 

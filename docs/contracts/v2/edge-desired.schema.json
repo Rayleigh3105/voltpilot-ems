@@ -36,7 +36,7 @@
       "required": ["type"],
       "additionalProperties": false,
       "properties": {
-        "type": { "type": "string", "enum": ["setpoint_kw", "on_off", "limit_pct", "limit_kw", "mode"] },
+        "type": { "type": "string", "enum": ["setpoint_kw", "setpoint_c", "on_off", "limit_pct", "limit_kw", "mode"] },
         "value": {},
         "outputs": {
           "type": "array",
@@ -55,6 +55,10 @@
         {
           "if": { "properties": { "type": { "const": "setpoint_kw" } } },
           "then": { "required": ["value"], "properties": { "value": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "setpoint_c" } } },
+          "then": { "required": ["value"], "properties": { "value": { "type": "number", "description": "Sollwert in °C eines Geräts, das selbst regelt (Steuerlogik K2): die Box rundet auf den Schritt der Fähigkeit und begrenzt auf ihr Band [min, max]; ohne vollständiges Band kein Befehl." } } }
         },
         {
           "if": { "properties": { "type": { "const": "on_off" } } },
