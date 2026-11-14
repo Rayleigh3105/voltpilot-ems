@@ -49,6 +49,14 @@ import {
   UEMS_LISTE_DURCHSUCHEN,
 } from './glossar';
 import { AUFBAU_ERZEUGUNG, AUFBAU_LADEN, AUFBAU_NETZ, AUFBAU_SPEICHER, AUFBAU_VERBRAUCH } from './glossar';
+import {
+  ANLAGEN_CHECK_GANZE_ANLAGE,
+  ANLAGEN_CHECK_KARTE,
+  ANLAGEN_CHECK_SOLARANLAGE,
+  ANLAGEN_CHECK_SPEICHER_BILANZ,
+  ANLAGEN_CHECK_VOLLZYKLEN,
+  ANLAGEN_CHECK_WIE_ERWARTET,
+} from './glossar';
 import { GATEWAY_ANBINDEN, MESSEN_SCHRITTE, ZUR_DATENQUELLE } from './messenAssistent';
 import {
   UEMS_ABWEICHUNG,
@@ -1093,6 +1101,25 @@ describe('Gerätesuche · ein Name je Sache (Konzept „Geräte suchen“, Beric
     expect(glossar).toContain('Gerätegruppen im Aufbau');
     for (const k of ['AUFBAU_ERZEUGUNG', 'AUFBAU_SPEICHER', 'AUFBAU_NETZ', 'AUFBAU_VERBRAUCH', 'AUFBAU_LADEN']) {
       expect(glossar, k).toContain(k);
+    }
+  });
+
+  it('Anlagen-Check: die Wörter stehen zuerst im Glossar, die Flächen nehmen sie aus glossar.ts', () => {
+    expect([ANLAGEN_CHECK_SOLARANLAGE, ANLAGEN_CHECK_KARTE, ANLAGEN_CHECK_GANZE_ANLAGE, ANLAGEN_CHECK_WIE_ERWARTET,
+      ANLAGEN_CHECK_SPEICHER_BILANZ, ANLAGEN_CHECK_VOLLZYKLEN]).toEqual([
+      'Solaranlage', 'Erzeugung nach Einheiten', 'Ganze Anlage', 'liefert wie erwartet', 'Speicher-Bilanz', 'Vollzyklen',
+    ]);
+    const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+    for (const k of ['ANLAGEN_CHECK_SOLARANLAGE', 'ANLAGEN_CHECK_KARTE', 'ANLAGEN_CHECK_GANZE_ANLAGE',
+      'ANLAGEN_CHECK_WIE_ERWARTET', 'ANLAGEN_CHECK_SPEICHER_BILANZ', 'ANLAGEN_CHECK_VOLLZYKLEN']) {
+      expect(glossar, k).toContain(k);
+    }
+    expect(lies('src/components/kacheln/CockpitKacheln.tsx')).toContain('name={ANLAGEN_CHECK_SOLARANLAGE}');
+    expect(lies('src/components/energie/EinheitenKarte.tsx')).toContain('titel={ANLAGEN_CHECK_KARTE}');
+    expect(lies('src/anlagenCheck.ts')).toContain('ANLAGEN_CHECK_SPEICHER_BILANZ');
+    // Kein Geld und kein Wort über Steuern im Anlagen-Check (Regeln des Captains, Konzept §4).
+    for (const datei of ['src/anlagenCheck.ts', 'src/components/energie/EinheitenKarte.tsx', 'src/components/SpeicherBilanzKarte.tsx']) {
+      expect(visibleTexts(lies(datei)).filter((t) => /€|Euro|Steuer/.test(t)), datei).toEqual([]);
     }
   });
 });

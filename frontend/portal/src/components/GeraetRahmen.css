@@ -221,7 +221,7 @@
 }
 
 /* Am Telefon lösen sich die Spalten auf, und `order` stellt die kanonische
-   Reihenfolge her: Jetzt · Steuerung · Modul · Heute · Aktivität · Details. */
+   Reihenfolge her: Jetzt · Steuerung · Modul · Heute · Bilanz · Aktivität · Details. */
 .vp-kern-spalte,
 .vp-kern-unten {
   display: contents;
@@ -230,6 +230,8 @@
 .vp-kern-karte.is-steuerung { order: 2; }
 .vp-kern-karte.is-modul { order: 3; }
 .vp-kern-karte.is-heute { order: 4; }
+/* Die Speicher-Bilanz folgt „Heute“ (gleiche Ordnung, die Quellreihenfolge entscheidet). */
+.vp-kern-karte.is-bilanz { order: 4; }
 .vp-kern-karte.is-aktivitaet { order: 5; }
 .vp-kern-zeile.is-details { order: 6; }
 .vp-kern-zeile.is-knopf { order: 7; }

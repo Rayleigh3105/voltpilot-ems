@@ -1,0 +1,136 @@
+{
+  "_hinweis": "Vektoren der Regel 'faellt ab' (AnlagenCheckRegel, Bedienkonzept vp-privatkunde-bedienkonzept §6.4). Je Fall: bis = letzter abgeschlossener Tag; je Reihe kwp und je Tag [gemessen, erwartet, luecke] von alt nach neu, endend an bis; null = kein Wert. Erwartet: das rollende Urteil der Kachel.",
+  "faelle": [
+    {
+      "name": "alle wie erwartet, vier Einheiten",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "k1", "kwp": 20, "tage": [[100,100,false],[98,100,false],[101,100,false],[99,100,false],[100,100,false],[102,100,false],[100,100,false]]},
+        {"id": "k2", "kwp": 20, "tage": [[97,100,false],[99,100,false],[98,100,false],[99,100,false],[97,100,false],[98,100,false],[99,100,false]]},
+        {"id": "k3", "kwp": 14, "tage": [[69,70,false],[70,70,false],[69,70,false],[68,70,false],[70,70,false],[69,70,false],[69,70,false]]},
+        {"id": "piko", "kwp": 20, "tage": [[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false]]}
+      ],
+      "erwartet": {"gesamt": "WIE_ERWARTET", "fensterTage": 7, "sonnenTage": 7,
+        "einheiten": {"k1": ["WIE_ERWARTET", 1.0], "k2": ["WIE_ERWARTET", 0.981], "k3": ["WIE_ERWARTET", 0.988], "piko": ["WIE_ERWARTET", 1.0]}}
+    },
+    {
+      "name": "Kaco 3 faellt seit Mittwoch ab",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "k1", "kwp": 20, "tage": [[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false]]},
+        {"id": "k2", "kwp": 20, "tage": [[98,100,false],[98,100,false],[98,100,false],[98,100,false],[98,100,false],[98,100,false],[98,100,false]]},
+        {"id": "k3", "kwp": 14, "tage": [[70,70,false],[70,70,false],[42,70,false],[42,70,false],[42,70,false],[42,70,false],[42,70,false]]}
+      ],
+      "erwartet": {"gesamt": "WENIGER", "fensterTage": 7, "sonnenTage": 7,
+        "einheiten": {"k1": ["WIE_ERWARTET", 1.0], "k2": ["WIE_ERWARTET", 0.98], "k3": ["WENIGER", 0.714, "2026-06-10"]}}
+    },
+    {
+      "name": "alle gleich schwach ist Wetter, nicht eine Einheit",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "a", "kwp": 10, "tage": [[35,50,false],[35,50,false],[35,50,false],[35,50,false],[35,50,false],[35,50,false],[35,50,false]]},
+        {"id": "b", "kwp": 10, "tage": [[36,50,false],[36,50,false],[36,50,false],[36,50,false],[36,50,false],[36,50,false],[36,50,false]]}
+      ],
+      "erwartet": {"gesamt": "WIE_ERWARTET", "fensterTage": 7, "sonnenTage": 7,
+        "einheiten": {"a": ["WIE_ERWARTET", 0.7], "b": ["WIE_ERWARTET", 0.72]}}
+    },
+    {
+      "name": "unter 80 % aber nur 10 Punkte hinter den anderen",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "a", "kwp": 10, "tage": [[44,50,false],[44,50,false],[44,50,false],[44,50,false],[44,50,false],[44,50,false],[44,50,false]]},
+        {"id": "b", "kwp": 10, "tage": [[39,50,false],[39,50,false],[39,50,false],[39,50,false],[39,50,false],[39,50,false],[39,50,false]]}
+      ],
+      "erwartet": {"gesamt": "WIE_ERWARTET", "fensterTage": 7, "sonnenTage": 7,
+        "einheiten": {"a": ["WIE_ERWARTET", 0.88], "b": ["WIE_ERWARTET", 0.78]}}
+    },
+    {
+      "name": "Messwerte fehlen seit Dienstag geht vor weniger",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "k1", "kwp": 20, "tage": [[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false]]},
+        {"id": "k2", "kwp": 20, "tage": [[98,100,false],[98,100,false],[98,100,false],[98,100,false],[98,100,false],[98,100,false],[98,100,false]]},
+        {"id": "k3", "kwp": 14, "tage": [[70,70,false],[70,70,false],[null,70,false],[null,70,false],[null,70,false],[null,70,false],[null,70,false]]}
+      ],
+      "erwartet": {"gesamt": "MESSWERTE_FEHLEN", "fensterTage": 7, "sonnenTage": 7,
+        "einheiten": {"k1": ["WIE_ERWARTET", 1.0], "k2": ["WIE_ERWARTET", 0.98], "k3": ["FEHLT", null, null, "2026-06-10"]}}
+    },
+    {
+      "name": "Luecken-Tage fallen heraus, der Rest urteilt (setzt periodisch aus)",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "k1", "kwp": 20, "tage": [[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false],[100,100,false]]},
+        {"id": "k3", "kwp": 14, "tage": [[30,70,true],[69,70,false],[25,70,true],[70,70,false],[20,70,true],[68,70,false],[69,70,false]]}
+      ],
+      "erwartet": {"gesamt": "WIE_ERWARTET", "fensterTage": 7, "sonnenTage": 7,
+        "einheiten": {"k1": ["WIE_ERWARTET", 1.0], "k3": ["WIE_ERWARTET", 0.986]}}
+    },
+    {
+      "name": "zu wenig Sonne: 7 Tage reichen nicht, 14 auch nicht",
+      "modus": "EINHEITEN", "bis": "2026-12-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "a", "kwp": 10, "tage": [[2,3,false],[2,3,false],[2,3,false],[6,6,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[6,6,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false]]},
+        {"id": "b", "kwp": 10, "tage": [[2,3,false],[2,3,false],[2,3,false],[6,6,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[6,6,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false]]}
+      ],
+      "erwartet": {"gesamt": "ZU_WENIG_SONNE", "fensterTage": 14, "sonnenTage": 2,
+        "einheiten": {"a": ["OFFEN", null], "b": ["OFFEN", null]}}
+    },
+    {
+      "name": "zu wenig Sonne in 7 Tagen, 14 Tage reichen",
+      "modus": "EINHEITEN", "bis": "2026-12-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "a", "kwp": 10, "tage": [[10,10,false],[10,10,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[10,10,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false]]},
+        {"id": "b", "kwp": 10, "tage": [[5,10,false],[5,10,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[5,10,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false],[2,3,false]]}
+      ],
+      "erwartet": {"gesamt": "WENIGER", "fensterTage": 14, "sonnenTage": 3,
+        "einheiten": {"a": ["WIE_ERWARTET", 1.0], "b": ["WENIGER", 0.5]}}
+    },
+    {
+      "name": "abgeregelte Tage werden nicht gewertet",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": ["2026-06-10", "2026-06-13"],
+      "reihen": [
+        {"id": "a", "kwp": 10, "tage": [[50,50,false],[50,50,false],[20,50,false],[50,50,false],[50,50,false],[20,50,false],[50,50,false]]},
+        {"id": "b", "kwp": 10, "tage": [[49,50,false],[49,50,false],[20,50,false],[49,50,false],[49,50,false],[20,50,false],[49,50,false]]}
+      ],
+      "erwartet": {"gesamt": "WIE_ERWARTET", "fensterTage": 7, "sonnenTage": 5, "abgeregelteTage": 2,
+        "einheiten": {"a": ["WIE_ERWARTET", 1.0], "b": ["WIE_ERWARTET", 0.98]}}
+    },
+    {
+      "name": "noch zu frueh: Erwartung erst seit gestern",
+      "modus": "EINHEITEN", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "a", "kwp": 10, "tage": [[50,null,false],[50,null,false],[50,null,false],[50,null,false],[50,null,false],[50,null,false],[50,50,false]]},
+        {"id": "b", "kwp": 10, "tage": [[50,null,false],[50,null,false],[50,null,false],[50,null,false],[50,null,false],[50,null,false],[50,50,false]]}
+      ],
+      "erwartet": {"gesamt": "NOCH_ZU_FRUEH", "fensterTage": 14, "sonnenTage": 1,
+        "einheiten": {"a": ["OFFEN", null], "b": ["OFFEN", null]}}
+    },
+    {
+      "name": "ganze Anlage: 75 % ist noch kein weniger",
+      "modus": "GANZE_ANLAGE", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "anlage", "kwp": 10, "tage": [[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false],[30,40,false]]}
+      ],
+      "erwartet": {"gesamt": "WIE_ERWARTET", "fensterTage": 14, "sonnenTage": 14,
+        "einheiten": {"anlage": ["WIE_ERWARTET", 0.75]}}
+    },
+    {
+      "name": "ganze Anlage: unter 70 % ueber 14 Tage",
+      "modus": "GANZE_ANLAGE", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "anlage", "kwp": 10, "tage": [[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false],[26,40,false]]}
+      ],
+      "erwartet": {"gesamt": "WENIGER", "fensterTage": 14, "sonnenTage": 14,
+        "einheiten": {"anlage": ["WENIGER", 0.65]}}
+    },
+    {
+      "name": "ganze Anlage: fehlende Rueckblick-Tage sind keine Null",
+      "modus": "GANZE_ANLAGE", "bis": "2026-06-14", "abgeregelt": [],
+      "reihen": [
+        {"id": "anlage", "kwp": 10, "tage": [[null,null,false],[null,null,false],[null,null,false],[null,null,false],[null,null,false],[null,null,false],[null,null,false],[null,null,false],[null,null,false],[null,null,false],[null,null,false],[38,40,false],[39,40,false],[40,40,false]]}
+      ],
+      "erwartet": {"gesamt": "WIE_ERWARTET", "fensterTage": 14, "sonnenTage": 3,
+        "einheiten": {"anlage": ["WIE_ERWARTET", 0.975]}}
+    }
+  ]
+}

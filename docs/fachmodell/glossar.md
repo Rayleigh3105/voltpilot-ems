@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 65 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 68 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -98,6 +98,9 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Meldung](#meldung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)
 - [Zustellweg](#zustellweg) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)
 - [Ruhezeit](#ruhezeit) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3, Entscheid 8A (15.10.2026)
+- [Solaranlage (Anlagen-Check) · liefert wie erwartet](#solaranlage-anlagen-check--liefert-wie-erwartet) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-4 = BK-5 = A (14.11.2026)
+- [Erzeugung nach Einheiten](#erzeugung-nach-einheiten) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-4 = A (14.11.2026)
+- [Speicher-Bilanz · Vollzyklen](#speicher-bilanz--vollzyklen) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-7 = A (14.11.2026)
 
 ## Kundenbereich
 
@@ -1660,3 +1663,45 @@ Werktags und Wochenende getrennt einstellbar, das Wochenende auch als „ganz“
 **Heute im Code.** `RuhezeitTeilfenster`/`RuhezeitRegeln` (PORTAL/ruhezeit.ts:1-24); Zeile „Ruhezeit“ und Option „keine Ruhezeit“ der Einstellungs-Seite (Scheibe 1, PORTAL/pages/EinstellungenPage.tsx:609,1175); Schalter „Dringendes trotzdem melden“ (:616).
 
 **Abgrenzung.** Nicht die Stummschaltung (unterdrückt eine einzelne Regel/Anlage befristet, unabhängig von der Uhrzeit — heute nur als API, noch ohne eigene Kundenformulierung im Markup).
+
+## Solaranlage (Anlagen-Check) · liefert wie erwartet
+
+*Sicht: Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-4 = BK-5 = A (14.11.2026)*
+
+**Die Kachel „Solaranlage“ im Cockpit beantwortet „Liefert meine Anlage, was sie soll?“: je Einheit die gemessene Erzeugung der letzten 7 Tage gegen die am Vortag erwartete — oben eine Aussage („Alle 4 liefern wie erwartet“ oder „Kaco 3 liefert weniger“), darunter je Einheit Prozent und Balken.**
+
+Verglichen wird je Einheit, sobald mindestens zwei bestätigte PV-Einheiten ein gemessenes Gerät zugeordnet haben; sonst die ganze Anlage („Ganze Anlage“, über 14 Tage, Kachel klein). Gewertet werden nur Sonnentage (Erwartung ab 0,5 kWh je kWp), ohne abgeregelte Tage und ohne Tage mit Lücken; unter 3 Sonnentagen in 7 Tagen gilt das Fenster von 14 Tagen, dann „Zu wenig Sonne für einen Vergleich“. Eine Einheit „liefert weniger“ unter 80 % und mindestens 15 Punkte hinter dem Median der anderen, die ganze Anlage erst unter 70 %. Fehlen einer Einheit Messwerte, heißt es „Von … fehlen Messwerte“ (nie „liefert weniger“). Die Zahlen sind Startwerte, nicht vom Captain entschieden. „liefert wie erwartet“ steht ausdrücklich da — Schweigen wäre keine Auskunft.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Haus am Mühlbach: Kaco 1 101 %, Kaco 2 98 %, Kaco 3 76 %, PIKO 100 % — „Kaco 3 liefert weniger“; letzte 7 Tage · gemessen gegen erwartet.
+
+**Heute im Code.** Regel `AnlagenCheckRegel` mit Vektoren `anlagencheck/regel-vektoren.json` (API), Route `GET /api/v1/sites/{id}/anlagen-check`; Erwartung je Einheit `solar_erwartung_einheit` (Prognose-Dienst `einheit_erwartung.py`); Wörter PORTAL/anlagenCheck.ts, Konstanten `ANLAGEN_CHECK_SOLARANLAGE`, `ANLAGEN_CHECK_GANZE_ANLAGE`, `ANLAGEN_CHECK_WIE_ERWARTET` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht der Rückblick der Prognose (der misst die Prognose, nicht die Anlage); keine Meldung hinter der Glocke (eigenes Folgepaket A6).
+
+## Erzeugung nach Einheiten
+
+*Sicht: Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-4 = A (14.11.2026)*
+
+**Die Karte in Verlauf › Energie, Spiegel von „Verbrauch nach Bereichen“: je Einheit gemessen und erwartet im gewählten Zeitraum, Säulen je Tag nach Einheiten, ein Satz.**
+
+Sie folgt dem Zeitraum der Seite (Woche, Monat, Jahr; ein Tag zeigt nur die Mengen). Die kWh zählen alle abgeschlossenen Tage, das Prozent nur die gewerteten. Der Satz sagt seit wann („Carport liefert seit Mittwoch weniger als erwartet.“) oder „Alle 3 liefern wie erwartet.“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** 249,7 kWh · erwartet 262 kWh; Dach Scheune 152,3 kWh · 98 %, Carport 22,8 kWh · 74 %.
+
+**Heute im Code.** PORTAL/components/energie/EinheitenKarte.tsx; Wörter PORTAL/anlagenCheck.ts, Konstante `ANLAGEN_CHECK_KARTE` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht „Verbrauch nach Bereichen“ (Unterzähler); nicht die Einheiten-Verwaltung unter Anlage › Einstellungen.
+
+## Speicher-Bilanz · Vollzyklen
+
+*Sicht: Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-7 = A (14.11.2026)*
+
+**Die Karte „Speicher-Bilanz · 30 Tage“ auf der Geräteseite des Speichers: Wirkungsgrad, Vollzyklen und Verlust der letzten 30 Tage, ein Satz gegen die eigenen letzten 12 Monate.**
+
+Wirkungsgrad = (heraus + Ladestand-Unterschied × Kapazität) ÷ hinein — ohne diesen Ausgleich zeigte das Labor 84 % statt 90 %. Vollzyklen = heraus ÷ nutzbare Kapazität („seit Beginn“ über alle Messwerte). Verlust = hinein − heraus − was noch im Speicher steckt („Wärme und Eigenbedarf“). Ohne bekannte Kapazität: 90 Tage, keine Vollzyklen. Unter etwa 5 Vollzyklen „Noch zu wenig geladen für eine Bilanz“. Der Satz bewertet nicht: „Unauffällig – wie in den letzten 12 Monaten (90–92 %).“ oder „Niedriger als in den letzten 12 Monaten (…).“. „12 Monate ›“ zeigt dieselben Zahlen je Monat.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** 91 % · 212 kWh hinein, 193 kWh heraus · 19 Vollzyklen, seit Beginn 412 · Verlust 19 kWh.
+
+**Heute im Code.** Regel `SpeicherBilanzRegel`, Route `GET /api/v1/sites/{id}/speicher-bilanz`; Karte PORTAL/components/SpeicherBilanzKarte.tsx, Konstanten `ANLAGEN_CHECK_SPEICHER_BILANZ`, `ANLAGEN_CHECK_VOLLZYKLEN` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht der Speicher-Wirkungsgrad des Optimierers (eine Annahme in den Stammdaten, `roundtrip_efficiency_pct`).

@@ -5312,6 +5312,101 @@ paths:
               schema: { $ref: "#/components/schemas/ForecastQuality" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/anlagen-check:
+    get:
+      tags: [forecast-quality]
+      summary: Anlagen-Check - liefert die Solaranlage, was sie soll?
+      description: >
+        Bedienkonzept vp-privatkunde-bedienkonzept §9.2 A2 (BK-4/BK-5 = A). `kachel` ist das Urteil der Kachel
+        „Solaranlage“ über die letzten 7 abgeschlossenen Tage (mit zu wenig Sonne 14; die ganze Anlage immer 14),
+        `zeitraum` (nur mit `z`) die Karte „Erzeugung nach Einheiten“ für den Zeitraum des Verlaufs. Verglichen wird je
+        bestätigter PV-Einheit (gemessen = `pv_power_kw` der zugeordneten Geräte, erwartet = `solar_erwartung_einheit`
+        des aktiven PV-Modells), sobald mindestens zwei Einheiten ein Gerät mit Messreihe haben; sonst die ganze Anlage
+        aus `forecast_rueckblick`. Die Regel „fällt ab“ ist `AnlagenCheckRegel` (Vektoren
+        `services/api/src/test/resources/anlagencheck/regel-vektoren.json`); Zahlen ungerundet. Fremde Anlage 404.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: z
+          in: query
+          required: false
+          schema: { type: string, enum: [tag, woche, monat, jahr] }
+          description: Zeitraum der Karte; ohne nur die Kachel (`zeitraum` = null).
+        - name: at
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Ein Tag im Zeitraum (Europe/Berlin), Vorgabe heute.
+      responses:
+        "200":
+          description: Kachel und (mit z) Zeitraum.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pv, modus, kachel, ohneGeraet]
+                properties:
+                  pv: { type: boolean, description: false = keine PV, keine Kachel und keine Karte. }
+                  modus: { type: string, enum: [einheiten, ganze_anlage] }
+                  kachel: { $ref: "#/components/schemas/AnlagenCheckUrteil" }
+                  zeitraum:
+                    nullable: true
+                    allOf: [{ $ref: "#/components/schemas/AnlagenCheckUrteil" }]
+                    description: >
+                      Wie das Urteil, dazu z, bisAbgeschlossen (null = noch kein abgeschlossener Tag), gemessenKwh,
+                      erwartetKwh, eimer (tag|monat) und saeulen [{start, kwh[] je Einheit}]; gesamt ist null für z=tag.
+                  ohneGeraet: { type: array, items: { type: string } }
+        "400": { description: z ist nicht tag, woche, monat oder jahr. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/speicher-bilanz:
+    get:
+      tags: [forecast-quality]
+      summary: Speicher-Bilanz der letzten 30 Tage (Wirkungsgrad mit Ladestand-Ausgleich, Vollzyklen, Verlust).
+      description: >
+        Bedienkonzept vp-privatkunde-bedienkonzept §9.2 A5 (BK-7 = A), Regel `SpeicherBilanzRegel`: Fenster 30
+        abgeschlossene Tage (ohne Kapazität 90, dann ohne Vollzyklen); Wirkungsgrad = (heraus + Ladestand-Unterschied ×
+        Kapazität) ÷ hinein; dazu die letzten 12 vollen Monate und der Satz gegen deren Spanne. Quelle Tagesrollups
+        (v1, nach dem Umstieg v2). zustand normal | wenig (unter 5 Vollzyklen) | ohne_daten. Fremde Anlage 404.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die Bilanz.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [zustand, von, bis, fensterTage, monate]
+                properties:
+                  zustand: { type: string, enum: [normal, wenig, ohne_daten] }
+                  von: { type: string, format: date }
+                  bis: { type: string, format: date }
+                  fensterTage: { type: integer }
+                  tageMitDaten: { type: integer }
+                  hineinKwh: { type: number, nullable: true }
+                  herausKwh: { type: number, nullable: true }
+                  ausgleichKwh: { type: number, nullable: true }
+                  wirkungsgrad: { type: number, nullable: true, description: Anteil 0..1. }
+                  verlustKwh: { type: number, nullable: true }
+                  vollzyklen: { type: number, nullable: true }
+                  vollzyklenSeitBeginn: { type: number, nullable: true }
+                  kapazitaetKwh: { type: number, nullable: true }
+                  vergleichMin: { type: number, nullable: true }
+                  vergleichMax: { type: number, nullable: true }
+                  vergleichMonate: { type: integer }
+                  satz: { type: string, nullable: true, enum: [unauffaellig, niedriger, null] }
+                  monate:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        monat: { type: string, example: "2026-10" }
+                        hineinKwh: { type: number }
+                        herausKwh: { type: number }
+                        wirkungsgrad: { type: number, nullable: true }
+                        vollzyklen: { type: number, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/forecast-models:
     get:
       tags: [forecast-quality]
@@ -20498,6 +20593,30 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    AnlagenCheckUrteil:
+      type: object
+      description: Urteil „fällt ab“ über ein Fenster (Bedienkonzept vp-privatkunde-bedienkonzept §6.4).
+      properties:
+        gesamt: { type: string, enum: [wie_erwartet, weniger, messwerte_fehlen, zu_wenig_sonne, noch_zu_frueh] }
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        fensterTage: { type: integer }
+        sonnenTage: { type: integer }
+        abgeregelteTage: { type: integer }
+        einheiten:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              gemessenKwh: { type: number, nullable: true }
+              erwartetKwh: { type: number, nullable: true }
+              verhaeltnis: { type: number, nullable: true }
+              zustand: { type: string, enum: [wie_erwartet, weniger, fehlt, offen] }
+              keineWerteSeit: { type: string, format: date, nullable: true }
+              wenigerSeit: { type: string, format: date, nullable: true }
+              gewerteteTage: { type: integer }
     EdgeLightProgrammStand:
       type: object
       required: [version, arch, empfangen, groesse, fertig]

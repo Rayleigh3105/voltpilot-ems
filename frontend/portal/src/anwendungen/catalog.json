@@ -558,7 +558,8 @@
     { "id": "lastspitze", "label": "Lastspitze", "groessen": ["breit"], "standard": "breit" },
     { "id": "netz", "label": "Netz heute", "groessen": ["klein"], "standard": "klein" },
     { "id": "automatik", "label": "Geräte-Automatik", "groessen": ["klein", "breit"], "standard": "klein" },
-    { "id": "wetter", "label": "Wetter", "groessen": ["klein", "breit"], "standard": "klein" }
+    { "id": "wetter", "label": "Wetter", "groessen": ["klein", "breit"], "standard": "klein" },
+    { "id": "solaranlage", "label": "Solaranlage", "groessen": ["klein", "breit"], "standard": "breit" }
   ],
   "presets": [
     {

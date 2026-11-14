@@ -66,6 +66,8 @@ Pro Viertelstunde zählt die jüngste Prognose, die **vor oder zum Slotbeginn** 
 
 Die historische Spalte `skill_vs_baseline` trägt weiterhin ihren Namen, obwohl die Referenz das aktive Modell sein kann. `plan_accuracy` vergleicht nur Slots mit den erforderlichen Plan-, Mess- und Preisdaten. Fehlende Daten sind keine Nullabweichung.
 
+**Erwartung je Einheit (Anlagen-Check).** Derselbe tägliche Lauf wie `forecast_rueckblick` (`rueckblick.py`) teilt den Abend-Lauf je Viertelstunde nach dem physikalischen Anteil jeder bestätigten PV-Einheit (ihre Dachflächen, Wetter des Tages, ohne Wetter klarer Himmel) und legt die Tagessumme in `solar_erwartung_einheit` ab (`einheit_erwartung.py`). Die Einheiten summieren sich zur Tagessumme des Abend-Laufs; rückwirkend nur, solange `forecast` den Abend-Lauf hält (`rueckblick run --days-back`). Der Vergleich gegen die Messung (Regel „fällt ab“) ist `AnlagenCheckRegel` in der API.
+
 ## PV-Nowcast
 
 Der Optimierer kann den nahen PV-Horizont anhand des jüngsten gemessenen Fehlers korrigieren. Diese begrenzte, abklingende Korrektur wird nicht unter dem Namen des ursprünglichen Prognosemodells zurückgeschrieben.

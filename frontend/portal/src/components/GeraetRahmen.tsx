@@ -131,7 +131,11 @@ export interface TechnikTeil {
   inhalt: ReactNode;
 }
 
-type KernBausteine = Partial<Record<Exclude<BausteinId, 'details'> | 'modul', BausteinInhalt | null>>;
+/**
+ * `modul` ist das Zusatz-Modul (ohne eigene Adresse); `bilanz` eine Auswertung unter „Heute“ (die Speicher-Bilanz,
+ * Bedienkonzept vp-privatkunde-bedienkonzept BK-7 = A) - beide tragen ihren Titel selbst.
+ */
+type KernBausteine = Partial<Record<Exclude<BausteinId, 'details'> | 'modul' | 'bilanz', BausteinInhalt | null>>;
 
 export function GeraetRahmen({
   testId,
@@ -375,14 +379,14 @@ export function GeraetRahmen({
     );
   }
 
-  const karte = (id: Exclude<BausteinId, 'details'> | 'modul', b: BausteinInhalt | null | undefined) => {
+  const karte = (id: Exclude<BausteinId, 'details'> | 'modul' | 'bilanz', b: BausteinInhalt | null | undefined) => {
     if (!b) return null;
-    const titel = b.titel?.trim() || (id === 'modul' ? '' : BAUSTEIN_TITEL[id]);
+    const titel = b.titel?.trim() || (id === 'modul' || id === 'bilanz' ? '' : BAUSTEIN_TITEL[id]);
     const titelId = `geraet-baustein-${id}-titel`;
     return (
       <section
         key={id}
-        id={id === 'modul' ? undefined : ankerId(id)}
+        id={id === 'modul' || id === 'bilanz' ? undefined : ankerId(id)}
         tabIndex={-1}
         className={`vp-kern-karte is-${id}`}
         data-baustein={id}
@@ -424,6 +428,7 @@ export function GeraetRahmen({
           {karte('buehne', bausteine.buehne)}
           {modulSpalte === 'links' && karte('modul', bausteine.modul)}
           {karte('heute', bausteine.heute)}
+          {karte('bilanz', bausteine.bilanz)}
         </div>
         <div className={mitStaffel('vp-kern-spalte is-rechts', staffel)}>
           {karte('steuerung', bausteine.steuerung)}

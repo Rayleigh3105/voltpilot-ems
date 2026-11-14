@@ -13,6 +13,7 @@ import { api } from '../src/api';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { installHelpFixtures } from './help-fixtures';
+import { installAnlagenCheck } from './anlagen-check-fixtures';
 import { lageDaten, type Lage } from './cockpit-privat-daten';
 import { sichtbareListe } from '../src/test/rollenFixtures';
 import '../designsystem/tokens/fonts.css';
@@ -101,5 +102,8 @@ if (lageParam === 'gewerbe') {
   });
   Object.assign(consumersApi, { options: result({ types: [], signals: [], intents: [], hasStorage: d.lage === 'speicher', reportedSources: [] }), list: result([]), status: result([]), overrides: result([]), fulfillment: result([]) });
 }
+
+// Anlagen-Check (`?solar=…`, `?bilanz=…`, `?einheiten=wr`): nur wenn die Adresse einen Fall nennt.
+installAnlagenCheck();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App initialAuth />);

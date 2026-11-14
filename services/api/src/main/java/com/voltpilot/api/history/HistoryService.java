@@ -445,7 +445,7 @@ public class HistoryService {
      * v2 buckets at/after it, ordered by start. No bucket start can satisfy both
      * predicates, so the result never gaps and never overlaps.
      */
-    static List<HistoryBucketDto> splice(List<HistoryBucketDto> v1, List<HistoryBucketDto> v2,
+    public static List<HistoryBucketDto> splice(List<HistoryBucketDto> v1, List<HistoryBucketDto> v2,
             Instant cutover) {
         java.util.List<HistoryBucketDto> merged = new java.util.ArrayList<>();
         for (HistoryBucketDto b : v1) {

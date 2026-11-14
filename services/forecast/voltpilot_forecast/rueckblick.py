@@ -10,6 +10,10 @@ measured kWh for the same PAIRED quarter-hours, plus their mean absolute
 error in kW (:func:`voltpilot_forecast.evaluation.forecast_metrics` - the
 exact quantity S5's automatic switcher compares, Bericht R.4).
 
+For PV the same pass also stores the evening run split PER UNIT
+(``solar_erwartung_einheit``, Anlagen-Check A1 - see
+:mod:`voltpilot_forecast.einheit_erwartung`).
+
 Idempotent by construction (PK-targeted upsert). Cadence: triggered from the
 same point as the daily evaluation (``forecast_collect.py``'s ``serve``
 loop, alongside ``evaluate.run_for``), so no extra container.
@@ -25,7 +29,9 @@ import logging
 import os
 from datetime import date, datetime, time, timedelta, timezone
 
+from voltpilot_forecast import einheit_erwartung
 from voltpilot_forecast.anlage import anlage_slot_kw, fuehrende_box
+from voltpilot_forecast.einheit_erwartung import EinheitErwartungRepository
 from voltpilot_forecast.domain import ForecastKind, ensure_utc
 from voltpilot_forecast.evaluation import BERLIN, berlin_day_bounds, forecast_metrics
 from voltpilot_forecast.kundenbereich import NICHT_BEENDET
@@ -160,21 +166,71 @@ def _evening_run_values(
 
 # ---- the Rückblick pass --------------------------------------------------------
 
-def rueckblick_day(conn, repository: RueckblickRepository, day: date) -> int:
+def _slot_zeiten(start: datetime, end: datetime) -> list[datetime]:
+    zeiten, t = [], start
+    while t < end:
+        zeiten.append(t)
+        t += timedelta(minutes=15)
+    return zeiten
+
+
+def rueckblick_day(
+    conn,
+    repository: RueckblickRepository,
+    day: date,
+    einheit_repository: EinheitErwartungRepository | None = None,
+) -> int:
     """Rückblick-Zeilen für einen Berliner Tag, jede Anlage, jedes Modell mit
-    einer Prognose. Gibt die Zahl der geschriebenen Zeilen zurück."""
+    einer Prognose. Gibt die Zahl der geschriebenen Zeilen zurück.
+
+    Mit ``einheit_repository`` legt derselbe Lauf für PV zusätzlich die
+    Erwartung JE EINHEIT ab (Anlagen-Check A1,
+    :mod:`voltpilot_forecast.einheit_erwartung`) - unabhängig von der
+    Mess-Deckung der Anlage, denn „erwartet" braucht keine Messung."""
     start, end = berlin_day_bounds(day)
     rows = 0
     with conn.cursor() as cur:
+        einheiten_je_site = (
+            einheit_erwartung.load_pv_einheiten(cur) if einheit_repository is not None else {}
+        )
         for tenant_id, site_id in _sites(cur):
+            einheiten = einheiten_je_site.get(site_id, [])
+            leistung: dict[str, list[float]] | None = None
+            zeiten = _slot_zeiten(start, end)
             for kind in ForecastKind:
                 column = _KIND_COLUMNS[kind]
                 actual = _actuals(cur, site_id, column, start, end)
-                if not actual:
+                je_einheit = kind is ForecastKind.PV and bool(einheiten)
+                if not actual and not je_einheit:
                     continue
                 for model in _models_with_predictions(cur, site_id, kind.value, start, end):
                     predicted = _evening_run_values(cur, site_id, kind.value, model, start, end)
                     if not predicted:
+                        continue
+                    if je_einheit:
+                        if leistung is None:
+                            leistung = einheit_erwartung.physikalische_leistung(
+                                einheit_erwartung.site_ort(cur, site_id),
+                                einheiten,
+                                zeiten,
+                                einheit_erwartung.wetter_des_tages(cur, site_id, start, end),
+                                site_id=site_id,
+                                tenant_id=tenant_id,
+                            )
+                        for zeile in einheit_erwartung.zeilen_fuer_tag(
+                            day=day,
+                            tenant_id=tenant_id,
+                            site_id=site_id,
+                            model=model,
+                            lead_days=LEAD_DAYS_VORTAG,
+                            predicted=predicted,
+                            zeiten=zeiten,
+                            einheiten=einheiten,
+                            leistung=leistung,
+                        ):
+                            einheit_repository.upsert(zeile)
+                            rows += 1
+                    if not actual:
                         continue
                     metrics = forecast_metrics(predicted, actual)
                     if metrics is None or metrics.n_slots < int(SLOTS_PER_DAY * MIN_COVERAGE):
@@ -204,9 +260,10 @@ def run_for(dsn: str, day: date, days_back: int = 1) -> None:
 
     with psycopg.connect(dsn) as conn:
         repository = TimescaleRueckblickRepository(conn)
+        einheiten = einheit_erwartung.TimescaleEinheitErwartungRepository(conn)
         for offset in range(days_back):
             target = day - timedelta(days=offset)
-            rows = rueckblick_day(conn, repository, target)
+            rows = rueckblick_day(conn, repository, target, einheiten)
             print(f"voltpilot-forecast-rueckblick: day={target.isoformat()} rows={rows}")
 
 

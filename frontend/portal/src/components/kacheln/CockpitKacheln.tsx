@@ -1,6 +1,6 @@
-import { useId, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { useEffect, useId, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import { Icon, type IconName } from '../../../designsystem/components/core/Icon';
-import type { ForecastResponse, HistoryTotals, WeatherPoint } from '../../api';
+import type { AnlagenCheck, ForecastResponse, HistoryTotals, WeatherPoint } from '../../api';
 import { chartTheme } from '../../chartTheme';
 import type { HeroMoney } from '../../cockpitWidgets';
 import {
@@ -15,6 +15,9 @@ import {
   type AnteilKachel,
   type HeuteTeil,
 } from '../../kacheln';
+import { solarKachel } from '../../anlagenCheck';
+import { anlagenCheckApi } from '../../anlagenCheckApi';
+import { ANLAGEN_CHECK_SOLARANLAGE } from '../../glossar';
 import { kwh, prozent, zahl } from '../../leitungsplan';
 import { morgenSatz, prognoseModell, reichtSatz, verbrauchsSpitzeSatz } from '../../prognoseSeite';
 import type { PeakBandView } from '../../peakBand';
@@ -669,6 +672,55 @@ export function WertKachel({
   );
 }
 
+/* ----------------------------------------------------------- Solaranlage */
+
+/**
+ * **Solaranlage** (Anlagen-Check, Bedienkonzept vp-privatkunde-bedienkonzept §6.1, BK-4 = A): oben die Aussage als
+ * Marke, je Einheit eine Zeile - gemessen gefüllt auf der schraffierten Spur der Erwartung -, unten das Fenster. Das
+ * Urteil bildet der Server; Wörter und Rundung `anlagenCheck.ts`. Breit ab zwei Zeilen, sonst klein.
+ */
+export function SolarKachel({ siteId, neuLaden, ...b }: Basis & { siteId: string; neuLaden?: number }) {
+  const [check, setCheck] = useState<{ siteId: string; c: AnlagenCheck | null } | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    anlagenCheckApi.anlagenCheck(siteId).then(
+      (c) => aktiv && setCheck({ siteId, c }),
+      () => aktiv && setCheck({ siteId, c: null }),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [siteId, neuLaden]);
+  const modell = check?.siteId === siteId ? solarKachel(check.c) : null;
+  if (!modell) return null;
+  return (
+    <Kachel
+      {...b}
+      id="solaranlage"
+      name={ANLAGEN_CHECK_SOLARANLAGE}
+      icon="sun"
+      ton="pv"
+      ziel="Verlauf"
+      groesse={modell.klein ? 'klein' : (b.groesse ?? 'breit')}
+      className="vp-k-solar"
+    >
+      <Marke art={modell.marke.art}>{modell.marke.text}</Marke>
+      <ul className="vp-k-minis">
+        {modell.zeilen.map((z) => (
+          <li key={z.id} className={`vp-k-mini${z.warn ? ' is-warn' : ''}`}>
+            <span>{z.name}</span>
+            <b className={z.wort ? 'is-text is-ruhig' : undefined}>{z.wert}</b>
+            <span className="vp-k-spur is-erwartet" aria-hidden="true">
+              <i style={{ width: `${z.fuellung}%`, background: z.warn ? 'var(--vp-k-pv)' : FARBE.pv }} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="vp-k-sub">{modell.fuss}</p>
+    </Kachel>
+  );
+}
+
 /** Ein Auftrag an das nachgeladene Stück: welche Kachel mit welchen Daten. */
 export type KachelAuftrag =
   | ({ art: 'geld' } & ComponentProps<typeof GeldKachel>)
@@ -688,7 +740,8 @@ export type KachelAuftrag =
   | ({ art: 'laden' } & ComponentProps<typeof Laden>)
   | ({ art: 'einheiten' } & ComponentProps<typeof EinheitenKachel>)
   | ({ art: 'geregelt' } & ComponentProps<typeof GeregeltKachel>)
-  | ({ art: 'erzeuger-geld' } & ComponentProps<typeof ErzeugerGeldKachel>);
+  | ({ art: 'erzeuger-geld' } & ComponentProps<typeof ErzeugerGeldKachel>)
+  | ({ art: 'solaranlage' } & ComponentProps<typeof SolarKachel>);
 
 /** Der eine Einstieg des nachgeladenen Stücks (React.lazy braucht einen Standard-Export). */
 export default function KachelSchalter(a: KachelAuftrag) {
@@ -711,6 +764,7 @@ export default function KachelSchalter(a: KachelAuftrag) {
     case 'einheiten': return <EinheitenKachel {...a} />;
     case 'geregelt': return <GeregeltKachel {...a} />;
     case 'erzeuger-geld': return <ErzeugerGeldKachel {...a} />;
+    case 'solaranlage': return <SolarKachel {...a} />;
     default: return null;
   }
 }

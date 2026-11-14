@@ -1224,6 +1224,86 @@ export interface RueckblickResponse {
   kinds: RueckblickKind[];
 }
 
+/**
+ * Anlagen-Check (Bedienkonzept vp-privatkunde-bedienkonzept §6, `GET /sites/{id}/anlagen-check`): je Einheit
+ * (oder die ganze Anlage) gemessen gegen am Vortag erwartet. Zahlen ungerundet, das Portal rundet nur zur Anzeige.
+ */
+export type AnlagenCheckGesamt = 'wie_erwartet' | 'weniger' | 'messwerte_fehlen' | 'zu_wenig_sonne' | 'noch_zu_frueh';
+export type AnlagenCheckZustand = 'wie_erwartet' | 'weniger' | 'fehlt' | 'offen';
+
+export interface AnlagenCheckEinheit {
+  id: string;
+  name: string;
+  gemessenKwh: number | null;
+  erwartetKwh: number | null;
+  /** gemessen ÷ erwartet über die gewerteten Tage (Anteil, 1 = 100 %); null ohne Urteil. */
+  verhaeltnis: number | null;
+  zustand: AnlagenCheckZustand;
+  keineWerteSeit: string | null;
+  wenigerSeit: string | null;
+  gewerteteTage: number;
+}
+
+export interface AnlagenCheckUrteil {
+  gesamt: AnlagenCheckGesamt;
+  von: string;
+  bis: string;
+  fensterTage: number;
+  sonnenTage: number;
+  abgeregelteTage: number;
+  einheiten: AnlagenCheckEinheit[];
+}
+
+export interface AnlagenCheckZeitraum {
+  z: 'tag' | 'woche' | 'monat' | 'jahr';
+  von: string;
+  bis: string;
+  /** Letzter abgeschlossener Tag im Zeitraum; null = noch keiner (heute). */
+  bisAbgeschlossen: string | null;
+  gemessenKwh: number | null;
+  erwartetKwh: number | null;
+  /** Urteil über den Zeitraum; null für einen einzelnen Tag. */
+  gesamt: AnlagenCheckGesamt | null;
+  sonnenTage: number;
+  abgeregelteTage: number;
+  einheiten: AnlagenCheckEinheit[];
+  eimer: 'tag' | 'monat';
+  saeulen: { start: string; kwh: (number | null)[] }[];
+}
+
+export interface AnlagenCheck {
+  /** false: die Anlage erzeugt keinen Solarstrom - keine Kachel, keine Karte. */
+  pv: boolean;
+  modus: 'einheiten' | 'ganze_anlage';
+  kachel: AnlagenCheckUrteil;
+  zeitraum: AnlagenCheckZeitraum | null;
+  /** PV-Einheiten ohne gemessenes Gerät, die im Einheiten-Modus nicht verglichen werden. */
+  ohneGeraet: string[];
+}
+
+/** Speicher-Bilanz der Geräteseite (`GET /sites/{id}/speicher-bilanz`, Bedienkonzept §6.5). */
+export interface SpeicherBilanz {
+  zustand: 'normal' | 'wenig' | 'ohne_daten';
+  von: string;
+  bis: string;
+  fensterTage: number;
+  tageMitDaten: number;
+  hineinKwh: number | null;
+  herausKwh: number | null;
+  ausgleichKwh: number | null;
+  /** Anteil (0..1), mit Ladestand-Ausgleich. */
+  wirkungsgrad: number | null;
+  verlustKwh: number | null;
+  vollzyklen: number | null;
+  vollzyklenSeitBeginn: number | null;
+  kapazitaetKwh: number | null;
+  vergleichMin: number | null;
+  vergleichMax: number | null;
+  vergleichMonate: number;
+  satz: 'unauffaellig' | 'niedriger' | null;
+  monate: { monat: string; hineinKwh: number; herausKwh: number; wirkungsgrad: number | null; vollzyklen: number | null }[];
+}
+
 export interface Device {
   id: string;
   siteId: string;
@@ -11964,6 +12044,7 @@ export const api = {
    */
   rueckblick: (siteId: string) =>
     request<RueckblickResponse>(`/api/v1/sites/${siteId}/forecast-rueckblick`),
+
 
   /**
    * Der Prognose-Schalter DIESER Anlage: welches Modell je Prognoseart sie

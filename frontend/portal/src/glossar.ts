@@ -947,6 +947,19 @@ export const AUFBAU_NETZ = 'Netz';
 export const AUFBAU_VERBRAUCH = 'Verbrauch';
 export const AUFBAU_LADEN = 'Laden';
 
+/**
+ * **Anlagen-Check** (Bedienkonzept vp-privatkunde-bedienkonzept, BK-4/BK-5/BK-7 = A): die Kachel im Cockpit, die
+ * Karte im Verlauf, die eine Zeile ohne Zuordnung und die Karte auf der Geräteseite des Speichers. Wörter der
+ * Aussagen in `anlagenCheck.ts`. Glossar: `docs/fachmodell/glossar.md` › Solaranlage (Anlagen-Check),
+ * Erzeugung nach Einheiten, Speicher-Bilanz · Vollzyklen.
+ */
+export const ANLAGEN_CHECK_SOLARANLAGE = 'Solaranlage';
+export const ANLAGEN_CHECK_KARTE = 'Erzeugung nach Einheiten';
+export const ANLAGEN_CHECK_GANZE_ANLAGE = 'Ganze Anlage';
+export const ANLAGEN_CHECK_WIE_ERWARTET = 'liefert wie erwartet';
+export const ANLAGEN_CHECK_SPEICHER_BILANZ = 'Speicher-Bilanz';
+export const ANLAGEN_CHECK_VOLLZYKLEN = 'Vollzyklen';
+
 /** Der Zwischenstand im Schritt „Anschluss“: der Weg ist gespeichert, das Gerät entsteht erst am Ende. */
 export function anschlussGespeichert(kennzeichen: string, abschluss: string): string {
   return `${UEMS_ANSCHLUSS} gespeichert (Kennung ${kennzeichen}). Das Gerät entsteht erst mit „${abschluss}“.`;

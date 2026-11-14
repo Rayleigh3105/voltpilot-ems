@@ -2228,9 +2228,9 @@ export function AnlageSeite({
   // (`DEFAULTS`). „@geld“ ist der Platz von „Unterm Strich“, wenn der Baustein
   // `geld` direkt hinter den Kennzahlen steht (so die Voreinstellung).
   const KACHEL_REIHE: Record<Betrieb, string[]> = {
-    eigenverbrauch: ['autarkie', 'eigenverbrauch', 'speicher', 'waermepumpe', 'sonne', 'handel', 'lastspitze', 'automatik'],
-    markt: ['sonne', 'speicher', 'handel', '@geld', 'netz', 'wetter', 'waermepumpe', 'automatik'],
-    spitze: ['lastspitze', 'sonne', '@geld', 'netz', 'speicher', 'handel', 'waermepumpe', 'automatik', 'wetter'],
+    eigenverbrauch: ['autarkie', 'eigenverbrauch', 'speicher', 'solaranlage', 'waermepumpe', 'sonne', 'handel', 'lastspitze', 'automatik'],
+    markt: ['sonne', 'speicher', 'handel', '@geld', 'netz', 'solaranlage', 'wetter', 'waermepumpe', 'automatik'],
+    spitze: ['lastspitze', 'sonne', '@geld', 'netz', 'speicher', 'solaranlage', 'handel', 'waermepumpe', 'automatik', 'wetter'],
   };
   // Eine Erzeugeranlage zeigt ihre Einheiten und wer heute geregelt hat (Bild Cockpit des Konzepts);
   // Speicher-, Autarkie- und Handelskacheln haben dort keine Grundlage.
@@ -2271,6 +2271,21 @@ export function AnlageSeite({
             socPct={jetztWerte?.socPct ?? null}
             battKw={jetztWerte?.werte.batt ?? null}
             onOpen={() => onOpenSub('fahrplan')}
+          />
+        );
+      case 'solaranlage':
+        // Anlagen-Check (BK-4 = A): Abruf, Urteil und Wörter liegen ganz im nachgeladenen Kachel-Stück (Einstiegs-
+        // Budget, `test/bundle-smoke.sh`); ohne PV oder ohne Urteil zeigt es nichts.
+        return (
+          <KachelSpaet
+            {...basis}
+            art="solaranlage"
+            siteId={site.id}
+            neuLaden={reloadKey}
+            onOpen={() => {
+              // Die Adresse von `historieHash(id, 'messwerte', 'week')` - ohne `historieWelten` (Einstieg).
+              window.location.hash = `#/anlage/${site.id}/messwerte?z=woche`;
+            }}
           />
         );
       case 'waermepumpe':

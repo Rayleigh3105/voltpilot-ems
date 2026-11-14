@@ -294,6 +294,15 @@ button.vp-k-kopf:focus-visible {
   border-radius: 3px;
   background: var(--vp-k-hue);
 }
+/* Solaranlage (Anlagen-Check): eine Einheit, die weniger liefert, steht im Warn-Ton; ein Wort statt einer Zahl
+   („keine Werte seit Di.“, „—“) ruhig. */
+.vp-k-mini.is-warn > b {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-k-mini > b.is-ruhig {
+  font-weight: 500;
+  color: var(--vp-c-muted-fg, #475569);
+}
 .vp-k-spur.is-erwartet {
   background: repeating-linear-gradient(135deg, var(--vp-k-pv-soft) 0 4px, var(--vp-c-card, #fff) 4px 7px);
   box-shadow: inset 0 0 0 1px var(--vp-k-pv-soft);

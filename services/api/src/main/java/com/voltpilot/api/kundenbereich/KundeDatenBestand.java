@@ -83,7 +83,7 @@ public final class KundeDatenBestand {
                 "steuerung_vorsprung"));
         m.put("komponenten", List.of("entity_observed_state", "device_component_apply"));
         m.put("auswertungen", List.of("forecast_accuracy", "plan_accuracy", "forecast_rueckblick",
-                "taeglicher_rueckblick", "auffaelligkeit"));
+                "solar_erwartung_einheit", "taeglicher_rueckblick", "auffaelligkeit"));
         m.put("erloese", List.of("schedule_savings_1d"));
         m.put("alarme", List.of("alarm", "alarm_verlauf", "benachrichtigung"));
         m.put("messstellen", List.of("messstelle", "messstelle_aenderung", "messstelle_formel_fassung",
