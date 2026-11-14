@@ -9,7 +9,8 @@
 #   3. die Go-Schicht 1 (layer1) inklusive des Integrationstests
 #      "unveraenderter Kern + Go-Schicht 1" und die Geraetesuche
 #      (geraetesuche, gegen simulierte Geraete); der Kern der Steuerlogik
-#      (logik) und ihr Mitlauf (logiklauf),
+#      (logik) und ihr Mitlauf (logiklauf), das eigene Modbus-Geraet mit
+#      Schreibwerten (modbusgeraet),
 #   4. das Programm laesst sich fuer MIPS bauen (der Mango).
 #
 #   edge-light/scripts/test.sh
@@ -30,13 +31,15 @@ else
 fi
 
 echo "--- 2.+3. Go-Zwillinge und Schicht 1 (mit Race-Detector)"
-go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/logik/... ./internal/logiklauf/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
-go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/logik/... ./internal/logiklauf/...
+go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
+go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/...
 # Das Update im Programm (Konzept vp-edge-light-update, K3): laden, pruefen,
 # Probe - und die Lader-Pflege des bestaetigten Programms (Loader-Selbstupdate).
 go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/
 # Steuerlogik (Stufe 2): der Kern laeuft auf beiden Box-Arten mit, ohne zu schalten.
-go_run CGO_ENABLED=1 -- test -count=1 -race -run 'Steuerlogik|LogikQuelle' ./internal/agent/
+# Klima, Heizung, Kaelte (K2/K3): das eigene Modbus-Geraet mit Schreibwerten liest
+# und schreibt der Core selbst, gegen ein gestelltes Geraet.
+go_run CGO_ENABLED=1 -- test -count=1 -race -run 'Steuerlogik|LogikQuelle|LogikBefehle|ModbusGeraet|KlimaLogik|KuehlraumLogik' ./internal/agent/
 
 echo "--- 4. MIPS-Build (Mango)"
 go_run GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
