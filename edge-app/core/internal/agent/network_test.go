@@ -212,3 +212,69 @@ func TestTheDockerBoxDoesNotDetectAnAddressFromItsContainerInterfaces(t *testing
 		t.Fatalf("Docker box must behave as before: %+v", n)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Konzept vp-edge-light-wlan (E1=B, S5): wie die Box zum Router kommt, dazu
+// bei WLAN das Signal. wlanVerbindungFn replaces the real script read, same
+// discipline as netzSchnittstellen/netzRouten above.
+// ---------------------------------------------------------------------------
+
+func wlanSignal(dbm int) *int { return &dbm }
+
+func TestNetworkSummaryCarriesLinkKindAndSignalWhenKnown(t *testing.T) {
+	a := withNetStore(t)
+	mangoNetze(t, a, "eth0.2")
+	a.wlanVerbindungFn = func() (string, *int) { return "wlan", wlanSignal(-62) }
+
+	n := a.networkSummary()
+	if n == nil || n.LinkKind != "wlan" || n.SignalDbm == nil || *n.SignalDbm != -62 {
+		t.Fatalf("link kind/signal missing: %+v", n)
+	}
+}
+
+func TestNetworkSummaryOmitsSignalOnCable(t *testing.T) {
+	a := withNetStore(t)
+	mangoNetze(t, a, "eth0.2")
+	a.wlanVerbindungFn = func() (string, *int) { return "kabel", nil }
+
+	n := a.networkSummary()
+	if n == nil || n.LinkKind != "kabel" || n.SignalDbm != nil {
+		t.Fatalf("cable must never carry a signal: %+v", n)
+	}
+}
+
+// A box that knows only its link (no LAN address, no observed Host) must
+// still send the block - the fix of 04.11.2026 (TestABoxThatKnowsNothing...)
+// was never meant to swallow a fact this one DOES know.
+func TestNetworkSummaryIsSentForLinkKindAloneEvenWithoutAnAddress(t *testing.T) {
+	a := withNetStore(t)
+	a.wlanVerbindungFn = func() (string, *int) { return "wlan", wlanSignal(-80) }
+
+	n := a.networkSummary()
+	if n == nil || n.LinkKind != "wlan" {
+		t.Fatalf("link kind alone must still produce a block: %+v", n)
+	}
+}
+
+// "keins" (nothing configured yet) and an unknown word must both read as
+// "unbekannt", never as a fabricated connection type.
+func TestNetworkSummaryNeverInventsALinkKind(t *testing.T) {
+	a := withNetStore(t)
+	a.wlanVerbindungFn = func() (string, *int) { return "", nil }
+
+	if n := a.networkSummary(); n != nil {
+		t.Fatalf("nothing else known either - no block expected: %+v", n)
+	}
+}
+
+// A Docker box (and an Edge Light box with no injected function and no
+// script on this machine) must not try to shell out and must report nothing.
+func TestWlanVerbindungIsEmptyWithoutEdgeLightOrAnInjectedFunction(t *testing.T) {
+	a := withNetStore(t)
+	a.Cfg.BoxArt = geraetesuche.BoxArtDocker
+	a.Cfg.WlanSkript = "/usr/libexec/vp-edge-light/wlan-anschluss.sh"
+	kind, signal := a.wlanVerbindung()
+	if kind != "" || signal != nil {
+		t.Fatalf("the Docker box must never read the Edge Light script: kind=%q signal=%v", kind, signal)
+	}
+}

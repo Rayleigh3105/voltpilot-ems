@@ -25,6 +25,15 @@ import java.util.UUID;
  * endpoint (or the own interface address on a non-containerized install).
  * <b>All three null = the box does not report it (yet) - NEVER "not
  * reachable".</b>
+ *
+ * <p><b>{@code linkKind}/{@code signalDbm}/{@code linkSeenAt}/{@code
+ * linkWeakSince}</b> (Konzept vp-edge-light-wlan, E1=B, Scheibe S5): how Edge
+ * Light currently reaches the customer's router - {@code "kabel"} or {@code
+ * "wlan"} - and, for wlan, the signal it measured itself. {@code
+ * linkWeakSince} is when the signal last fell below the weak threshold
+ * WITHOUT an intervening recovery (see {@code DeviceRepository}); {@code
+ * null} means it is not currently weak, or nothing is known. A Docker box
+ * never reports any of this.
  */
 public record DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
         String status, Instant lastSeenAt, Instant createdAt,
@@ -32,7 +41,17 @@ public record DeviceDto(UUID id, UUID siteId, String externalRef, String kind, S
         /** Additive portal fact: this is the one box that currently leads its Anlage. */
         Boolean fuehrtAnlage,
         /** vp-box-verbinden-konzept S2: null when the box has never requested a certificate. */
-        AnmeldungDto anmeldung) {
+        AnmeldungDto anmeldung,
+        String linkKind, Integer signalDbm, Instant linkSeenAt, Instant linkWeakSince) {
+
+    /** The pre-link-status shape, without Konzept vp-edge-light-wlan's facts. */
+    public DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
+            String status, Instant lastSeenAt, Instant createdAt,
+            String lanHost, Instant lanSeenAt, String lanSource,
+            Boolean fuehrtAnlage, AnmeldungDto anmeldung) {
+        this(id, siteId, externalRef, kind, name, status, lastSeenAt, createdAt,
+                lanHost, lanSeenAt, lanSource, fuehrtAnlage, anmeldung, null, null, null, null);
+    }
 
     /** The pre-S2 shape, without the enrollment fact. */
     public DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,

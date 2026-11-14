@@ -376,3 +376,53 @@ func TestHeartbeatOmitsTheNetworkBlockWhenTheBoxKnowsNothing(t *testing.T) {
 		})
 	}
 }
+
+// Konzept vp-edge-light-wlan (E1=B, Scheibe S5): wie die Box zum Router
+// kommt, dazu bei WLAN das Signal - additive Felder desselben network-Blocks.
+func TestHeartbeatCarriesLinkKindAndSignalWhenKnown(t *testing.T) {
+	sink := startStatusSink(t)
+	signal := -62
+	link := connectedLinkWith(t, sink, "edge-light-2026.11.14", func() *NetworkSummary {
+		return &NetworkSummary{
+			ReportedAt: "2026-11-14T09:00:00Z",
+			LinkKind:   "wlan",
+			SignalDbm:  &signal,
+		}
+	})
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	net, ok := sink.last(t)["network"].(map[string]any)
+	if !ok {
+		t.Fatalf("network block missing: %v", sink.last(t)["network"])
+	}
+	if net["link_kind"] != "wlan" {
+		t.Fatalf("network.link_kind = %v, want wlan", net["link_kind"])
+	}
+	if dbm, ok := net["signal_dbm"].(float64); !ok || dbm != -62 {
+		t.Fatalf("network.signal_dbm = %v, want -62", net["signal_dbm"])
+	}
+}
+
+// Am Kabel gibt es kein Signal zu melden.
+func TestHeartbeatOmitsSignalDbmOnCable(t *testing.T) {
+	sink := startStatusSink(t)
+	link := connectedLinkWith(t, sink, "edge-light-2026.11.14", func() *NetworkSummary {
+		return &NetworkSummary{ReportedAt: "2026-11-14T09:00:00Z", LinkKind: "kabel"}
+	})
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	net, ok := sink.last(t)["network"].(map[string]any)
+	if !ok {
+		t.Fatalf("network block missing: %v", sink.last(t)["network"])
+	}
+	if net["link_kind"] != "kabel" {
+		t.Fatalf("network.link_kind = %v, want kabel", net["link_kind"])
+	}
+	if _, ok := net["signal_dbm"]; ok {
+		t.Fatalf("network.signal_dbm must be omitted on cable, got %v", net["signal_dbm"])
+	}
+}

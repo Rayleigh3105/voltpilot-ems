@@ -507,6 +507,10 @@ for (const breite of BREITEN) {
       expect(await woerter(), 'Box').toEqual([]);
       await fluss.getByLabel('Kennung').fill('vp-demo-0001');
       await fluss.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+      // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - kein Steuerwort hier auch nicht.
+      await expect(fluss.getByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeVisible();
+      expect(await woerter(), 'Wahl Kabel/WLAN').toEqual([]);
+      await fluss.getByRole('button', { name: 'Mit Netzwerkkabel' }).click();
       // Der Weg statt Warte-Bildschirm (vp-box-verbinden-konzept E1=B, #1811): sofort der Start-Fortschritt,
       // kein Steuerwort - dann weiter, ohne auf den Herzschlag zu warten.
       await expect(fluss.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();

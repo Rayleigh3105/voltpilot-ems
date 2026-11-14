@@ -214,8 +214,13 @@ for (const breite of BREITEN) {
     await ohneQuerlauf(page, breite, 'qr-5-assistent-box');
     await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
 
+    // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft unverändert weiter.
+    await expect(page.getByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'qr-5b-verbindung-wahl');
+    await page.getByRole('button', { name: 'Mit Netzwerkkabel' }).click();
+
     // M8: verbunden, aber noch kein Lebenszeichen - kein „meldet sich“.
-    await expect(page.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
     expect(cloud.claims).toEqual([REF]);
     expect(await page.evaluate(() => [sessionStorage.getItem('vp.koppel.ref'), localStorage.getItem('vp.koppel.vormerk')])).toEqual([null, null]);
     await ohneQuerlauf(page, breite, 'qr-6-wartet');
@@ -225,8 +230,8 @@ for (const breite of BREITEN) {
     await page.clock.runFor(11_000);
     await expect(page.getByRole('heading', { name: 'Ihre Box ist online' })).toBeVisible();
     await ohneQuerlauf(page, breite, 'qr-7-online');
-    await page.getByRole('button', { name: 'Weiter: Geräte übernehmen' }).click();
-    await expect(page.getByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Weiter: Ihre Anlage' }).click();
+    await expect(page.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
     expect(fehler).toEqual([]);
   });
 

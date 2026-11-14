@@ -380,6 +380,61 @@ describe('boxSeite · die drei Kacheln', () => {
       expect(JSON.stringify(k)).not.toContain(lanHost);
     }
   });
+
+  /**
+   * Konzept vp-edge-light-wlan-s5 (E1=B): Art der Verbindung und Signal
+   * reiten auf der Verbindungs-Kachel, nicht als vierte Kachel.
+   */
+  it('zeigt Netzwerkkabel ohne Warnung, auch online', () => {
+    const k = kachel(boxSeite(input({ devices: [{ ...BOX, linkKind: 'kabel' }] })), 'verbindung');
+    expect(k.zeilen).toContain('Netzwerkkabel');
+    expect(k.ton).toBe('ok');
+  });
+
+  it('zeigt WLAN mit gutem Empfang ohne Warnung', () => {
+    const k = kachel(boxSeite(input({
+      devices: [{ ...BOX, linkKind: 'wlan', signalDbm: -55, linkWeakSince: null }],
+    })), 'verbindung');
+    expect(k.zeilen).toContain('WLAN · Empfang gut');
+    expect(k.ton).toBe('ok');
+  });
+
+  it('warnt, wenn das Signal LÄNGER (mehr als 5 Minuten) schwach ist - ein einzelner Ausreißer nicht', () => {
+    const geradeErst = kachel(boxSeite(input({
+      devices: [{ ...BOX, linkKind: 'wlan', signalDbm: -80, linkWeakSince: new Date(NOW - 60_000).toISOString() }],
+    })), 'verbindung');
+    expect(geradeErst.zeilen).toContain('WLAN · Empfang gut');
+    expect(geradeErst.ton).toBe('ok');
+
+    const schonLange = kachel(boxSeite(input({
+      devices: [{ ...BOX, linkKind: 'wlan', signalDbm: -80, linkWeakSince: new Date(NOW - 6 * 60_000).toISOString() }],
+    })), 'verbindung');
+    expect(schonLange.zeilen).toContain('WLAN · Empfang schwach');
+    expect(schonLange.zeilen.some((z) => z.includes('näher an den Router'))).toBe(true);
+    expect(schonLange.ton).toBe('warn');
+  });
+
+  it('nennt den Weg über das Einrichtungs-WLAN, wenn eine zuletzt per WLAN laufende Box jetzt still ist', () => {
+    const device: Device = {
+      ...BOX, linkKind: 'wlan', lastSeenAt: new Date(NOW - 20 * 60_000).toISOString(),
+    };
+    const v = boxSeite(input({ devices: [device], now: NOW }));
+    expect(v.zustand.ton).toBe('warn');
+    const k = kachel(v, 'verbindung');
+    expect(k.zeilen.some((z) => z.includes('VoltPilot-Einrichtung'))).toBe(true);
+  });
+
+  it('nennt den Einrichtungs-WLAN-Weg NICHT für eine Box, die noch nie online war', () => {
+    const k = kachel(boxSeite(input({
+      devices: [{ ...BOX, linkKind: 'wlan', lastSeenAt: null }],
+    })), 'verbindung');
+    expect(k.zeilen.some((z) => z.includes('VoltPilot-Einrichtung'))).toBe(false);
+  });
+
+  it('behauptet ohne jedes Wissen weder Kabel noch WLAN', () => {
+    const k = kachel(boxSeite(input()), 'verbindung');
+    expect(k.zeilen.join(' ')).not.toMatch(/Kabel|WLAN/);
+  });
 });
 
 describe('boxSeite · der Software-Stand', () => {

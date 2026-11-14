@@ -166,6 +166,9 @@ async function bisSchritt3(box: 'verbinden' | 'versuchen' | 'spaeter') {
   fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
   if (box === 'versuchen') return;
+  // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft unverändert weiter.
+  expect(await screen.findByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Mit Netzwerkkabel/ }));
   // E1 = B (Der Weg): nach dem Verbinden fünf Stationen statt eines Warte-Bildschirms - weiter geht es ohne Warten.
   expect(await screen.findByRole('heading', { name: 'Ihre Box startet' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));

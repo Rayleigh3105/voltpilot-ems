@@ -476,6 +476,10 @@ type Agent struct {
 	// Light's own networks (network.go, netzUmgebung) in tests only.
 	netzSchnittstellen func() ([]suche.Schnittstelle, error)
 	netzRouten         func() ([]suche.Route, error)
+	// wlanVerbindungFn replaces the real wlan-anschluss.sh "status" read
+	// (wlanverbindung.go, networkSummary) in tests only - a unit test never
+	// shells out to a script that exists only on an OpenWrt Edge Light box.
+	wlanVerbindungFn func() (kind string, signalDbm *int)
 	// netzNachbarn / netzAnstoss replace the ARP reader and the UDP nudge
 	// (wiederfinden.go, wiederfindenUmgebung) in tests only - a unit test
 	// sends nothing into a real network, same discipline as netzSchnittstellen.

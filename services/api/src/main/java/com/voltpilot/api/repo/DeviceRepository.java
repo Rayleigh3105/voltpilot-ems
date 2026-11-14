@@ -66,6 +66,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
+                        + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
                         + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d WHERE d.ausgebaut_am IS NULL ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
@@ -76,6 +77,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
+                        + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
                         + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d WHERE d.id = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
@@ -89,7 +91,9 @@ public class DeviceRepository {
     public Optional<DeviceDto> findByExternalRef(String externalRef) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
-                        + "d.lan_host, d.lan_seen_at, d.lan_source, " + lastSeen("d") + " AS last_seen, "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, "
+                        + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
+                        + lastSeen("d") + " AS last_seen, "
                         + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d "
                         + "WHERE d.external_ref = ? AND d.ausgebaut_am IS NULL",
@@ -122,6 +126,7 @@ public class DeviceRepository {
                         + "VALUES (?, ?, ?, ?, 'claimed', ?, ?) "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
+                        + "link_kind, signal_dbm, link_seen_at, link_weak_since, "
                         + "NULL::timestamptz AS last_seen, " + anmeldungColumns("?"),
                 DeviceRepository::mapDevice,
                 tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind,
@@ -139,6 +144,7 @@ public class DeviceRepository {
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? AND ausgebaut_am IS NULL "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
+                        + "link_kind, signal_dbm, link_seen_at, link_weak_since, "
                         + lastSeen("device") + " AS last_seen, " + anmeldungColumns("device.external_ref"),
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
@@ -260,6 +266,41 @@ public class DeviceRepository {
     }
 
     /**
+     * The weak-signal threshold Edge Light is measured against (Bericht
+     * vp-edge-light-wlan-konzept, Abschnitt 0.1/4.2): -70 dBm or better is
+     * "reicht". Lives here, next to the one write path that evaluates it.
+     */
+    public static final int SIGNAL_SCHWACH_DBM = -70;
+
+    /**
+     * Records how Edge Light currently reaches the customer's router
+     * (Konzept vp-edge-light-wlan, E1=B) - "kabel" or "wlan" - and, for wlan,
+     * the signal it measured itself. Replaced on every heartbeat that carries
+     * it, same discipline as {@link #setLanAddress}: a heartbeat without the
+     * fact leaves the stored one untouched rather than wiping it.
+     *
+     * <p>{@code linkWeakSince} is maintained HERE, not by the caller: it is
+     * the moment the signal last fell below {@link #SIGNAL_SCHWACH_DBM}
+     * WITHOUT an intervening recovery. A streak that is still running is kept
+     * ({@code COALESCE(link_weak_since, ?)}); a cable, an unknown link, or a
+     * signal back at or above the threshold clears it. Computing it in one
+     * statement avoids a read-modify-write race between two heartbeats.
+     *
+     * <p>RLS-scoped like every other write here.
+     */
+    public boolean setLinkStatus(UUID deviceId, String kind, Integer signalDbm,
+            java.time.Instant seenAt) {
+        java.sql.Timestamp seenAtTs = seenAt == null ? null : java.sql.Timestamp.from(seenAt);
+        return jdbc.update(
+                "UPDATE device SET link_kind = ?, signal_dbm = ?, link_seen_at = ?, "
+                        + "link_weak_since = CASE WHEN ? = 'wlan' AND ? < ? "
+                        + "THEN COALESCE(link_weak_since, ?) ELSE NULL END "
+                        + "WHERE id = ?",
+                kind, signalDbm, seenAtTs, kind, signalDbm, SIGNAL_SCHWACH_DBM, seenAtTs,
+                deviceId) > 0;
+    }
+
+    /**
      * Records the cloud ARRIVAL of a valid status heartbeat. The listener has
      * already checked topic/payload identity and selected the tenant in
      * {@link com.voltpilot.api.tenant.TenantContext}; RLS therefore keeps a
@@ -281,6 +322,10 @@ public class DeviceRepository {
         java.sql.Timestamp lastSeen = rs.getTimestamp("last_seen");
         java.sql.Timestamp createdAt = rs.getTimestamp("created_at");
         java.sql.Timestamp lanSeen = rs.getTimestamp("lan_seen_at");
+        java.sql.Timestamp linkSeen = rs.getTimestamp("link_seen_at");
+        java.sql.Timestamp linkWeakSince = rs.getTimestamp("link_weak_since");
+        int signalDbmRaw = rs.getInt("signal_dbm");
+        boolean signalDbmNull = rs.wasNull();
         return new DeviceDto(
                 rs.getObject("id", UUID.class),
                 rs.getObject("site_id", UUID.class),
@@ -294,7 +339,11 @@ public class DeviceRepository {
                 lanSeen == null ? null : lanSeen.toInstant(),
                 rs.getString("lan_source"),
                 null,
-                anmeldung(rs));
+                anmeldung(rs),
+                rs.getString("link_kind"),
+                signalDbmNull ? null : signalDbmRaw,
+                linkSeen == null ? null : linkSeen.toInstant(),
+                linkWeakSince == null ? null : linkWeakSince.toInstant());
     }
 
     /**

@@ -1410,6 +1410,22 @@ export interface Device {
    * sendet den Block gar nicht - beides liest sich wie „nie", nie wie „aus".
    */
   anmeldung?: DeviceAnmeldung | null;
+  /**
+   * Konzept vp-edge-light-wlan (E1=B, Scheibe S5): wie Edge Light gerade zum
+   * Kundenrouter kommt. `null`/fehlend = die Box meldet es (noch) nicht - eine
+   * Docker-Box kennt die Frage nicht - NIE „keine Verbindung".
+   */
+  linkKind?: 'kabel' | 'wlan' | null;
+  /** WLAN-Signal in dBm, von der Box selbst gemessen; nur bei `linkKind` `'wlan'` belegt. */
+  signalDbm?: number | null;
+  /** Der Frische-Anker von `linkKind`/`signalDbm`; er reist immer MIT. */
+  linkSeenAt?: string | null;
+  /**
+   * Seit wann das Signal ununterbrochen unter der Schwelle liegt (-70 dBm
+   * oder schwächer, siehe `SIGNAL_SCHWACH_DBM`); `null` = gerade nicht
+   * schwach oder unbekannt.
+   */
+  linkWeakSince?: string | null;
 }
 
 /** Siehe {@link Device.anmeldung}. */

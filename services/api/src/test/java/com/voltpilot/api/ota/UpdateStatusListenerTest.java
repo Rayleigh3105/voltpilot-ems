@@ -476,4 +476,70 @@ class UpdateStatusListenerTest {
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
                 any());
     }
+
+    // -----------------------------------------------------------------
+    // Konzept vp-edge-light-wlan (E1=B, Scheibe S5): wie Edge Light gerade
+    // zum Kundenrouter kommt, dazu bei WLAN das Signal.
+    // -----------------------------------------------------------------
+
+    @Test
+    void aWlanHeartbeatStoresTheLinkKindAndItsSignal() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-light-2026.11.14\","
+                + "\"network\":{\"reported_at\":\"2026-11-14T09:00:00Z\","
+                + "\"link_kind\":\"wlan\",\"signal_dbm\":-62}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLinkStatus(eq(DEVICE), eq("wlan"), eq(-62),
+                eq(Instant.parse("2026-11-14T09:00:00Z")));
+    }
+
+    /** Am Kabel gibt es kein Signal zu melden - eine erfundene Zahl wäre schlimmer als keine. */
+    @Test
+    void aCableHeartbeatStoresTheLinkKindWithoutAnyInventedSignal() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-light-2026.11.14\","
+                + "\"network\":{\"reported_at\":\"2026-11-14T09:00:00Z\","
+                + "\"link_kind\":\"kabel\",\"signal_dbm\":-62}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLinkStatus(eq(DEVICE), eq("kabel"), eq((Integer) null),
+                eq(Instant.parse("2026-11-14T09:00:00Z")));
+    }
+
+    /** Ein Wort außerhalb des Vokabulars (ein künftiger Skript-Stand) wird VERWORFEN statt gespeichert. */
+    @Test
+    void anUnknownLinkKindIsDroppedInsteadOfStored() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-light-2026.11.14\","
+                + "\"network\":{\"reported_at\":\"2026-11-14T09:00:00Z\","
+                + "\"link_kind\":\"mesh\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices, never()).setLinkStatus(any(), any(), any(), any());
+    }
+
+    /** Ohne link_kind wird nichts geschrieben - eine Docker-Box sendet das Feld nie. */
+    @Test
+    void aNetworkBlockWithoutLinkKindStoresNoLinkStatus() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-2026.08.10\","
+                + "\"network\":{\"reported_at\":\"2026-08-21T09:12:00Z\","
+                + "\"host\":\"192.168.254.51:8484\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices, never()).setLinkStatus(any(), any(), any(), any());
+    }
+
+    /** Ein absurder Wert (außerhalb jedes plausiblen Funk-Bereichs) wird verworfen, nicht gespeichert. */
+    @Test
+    void anImplausibleSignalIsDroppedInsteadOfStored() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-light-2026.11.14\","
+                + "\"network\":{\"reported_at\":\"2026-11-14T09:00:00Z\","
+                + "\"link_kind\":\"wlan\",\"signal_dbm\":5}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLinkStatus(eq(DEVICE), eq("wlan"), eq((Integer) null), any());
+    }
 }

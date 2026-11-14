@@ -103,6 +103,13 @@ public class UpdateStatusListener extends Rueckmeldeweg {
             "sicherung", "unlesbar");
 
     /**
+     * Konzept vp-edge-light-wlan (E1=B): wie Edge Light gerade zum
+     * Kundenrouter kommt. Ein Wort außerhalb davon wird VERWORFEN wie ein
+     * unbekannter Update-Zustand.
+     */
+    private static final Set<String> KNOWN_LINK_KINDS = Set.of("kabel", "wlan");
+
+    /**
      * A sanity bound on the free-text fields. They reach an operator surface,
      * and a device is not the authority on how long our columns are.
      */
@@ -182,11 +189,14 @@ public class UpdateStatusListener extends Rueckmeldeweg {
         String version = text(json.get("version"));
         JsonNode update = json.get("update");
         boolean hasUpdate = update != null && update.isObject();
-        // Die eigene Erreichbarkeit der Box (Anlagen-Zentrale Stufe 2, D5) ist
-        // wie `version` ein TOP-LEVEL-Feld und wird deshalb HIER gelesen: dies
-        // ist der eine Zuhörer, der ohne Unterblock nicht früh zurückkehrt -
-        // genau die Eigenschaft, für die er in OTA Stufe 0 entstanden ist. Ein
-        // eigener Geschwister-Zuhörer wäre eine zweite Broker-Verbindung, eine
+        // Die eigene Erreichbarkeit der Box (Anlagen-Zentrale Stufe 2, D5) und,
+        // seit Konzept vp-edge-light-wlan (E1=B), wie Edge Light gerade zum
+        // Kundenrouter kommt (link_kind/signal_dbm) sind wie `version`
+        // TOP-LEVEL-Felder desselben `network`-Blocks und werden deshalb HIER
+        // gelesen: dies ist der eine Zuhörer, der ohne Unterblock nicht früh
+        // zurückkehrt - genau die Eigenschaft, für die er in OTA Stufe 0
+        // entstanden ist. Ein eigener Geschwister-Zuhörer wäre eine zweite
+        // Broker-Verbindung, eine
         // zweite Identitätsprüfung für dieselben Bytes UND ein neues, per
         // Vorgabe ausgeschaltetes Flag, das im gitops-Repo nachgezogen werden
         // müsste (die dokumentierte Falle). Er SCHREIBT dafür in ein anderes
@@ -227,6 +237,7 @@ public class UpdateStatusListener extends Rueckmeldeweg {
             }
             if (hasNetwork) {
                 storeLanAddress(deviceId, network);
+                storeLinkStatus(deviceId, network);
             }
             if (version == null && !hasUpdate) {
                 return; // NUR die Adresse gemeldet - nichts über den Stand zu sagen
@@ -311,6 +322,49 @@ public class UpdateStatusListener extends Rueckmeldeweg {
             seenAt = Instant.now();
         }
         devices.setLanAddress(deviceId, host, seenAt, source);
+    }
+
+    /**
+     * Speichert, wie Edge Light gerade zum Kundenrouter kommt (Konzept
+     * vp-edge-light-wlan, E1=B, Scheibe S5) - "kabel" oder "wlan" - und bei
+     * WLAN das Signal, das die Box selbst gemessen hat. Ohne {@code link_kind}
+     * wird NICHTS geschrieben: eine Docker-Box sendet das Feld nie, und ein
+     * gespeicherter Wert überlebt so einen Herzschlag, der ihn nicht trägt,
+     * statt zu verschwinden - dieselbe Regel wie {@link #storeLanAddress}.
+     * Ein Wort außerhalb des Vokabulars wird VERWORFEN statt gespeichert,
+     * dieselbe Disziplin wie {@link #state}.
+     */
+    private void storeLinkStatus(UUID deviceId, JsonNode network) {
+        String kind = text(network.get("link_kind"));
+        if (kind == null) {
+            return;
+        }
+        if (!KNOWN_LINK_KINDS.contains(kind)) {
+            log.warn("unknown link kind '{}' reported - dropped instead of stored", kind);
+            return;
+        }
+        // Ein Signal ohne WLAN waere eine erfundene Aussage (dieselbe Regel
+        // steht als CHECK-Constraint in der Datenbank, V20261114120000).
+        Integer signal = "wlan".equals(kind) ? signalDbm(network.get("signal_dbm")) : null;
+        Instant seenAt = optInstant(network, "reported_at");
+        if (seenAt == null) {
+            seenAt = Instant.now();
+        }
+        devices.setLinkStatus(deviceId, kind, signal, seenAt);
+    }
+
+    /**
+     * WLAN-Signal in dBm - anders als die Sequenznummern, die {@link #number}
+     * schützt, in der Praxis immer negativ. Ein Wert außerhalb eines
+     * plausiblen Funk-Bereichs wird verworfen statt eine absurde Zahl auf
+     * einem Chart zu zeigen.
+     */
+    private static Integer signalDbm(JsonNode node) {
+        if (node == null || node.isNull() || !node.canConvertToInt()) {
+            return null;
+        }
+        int v = node.asInt();
+        return v < -120 || v > 0 ? null : v;
     }
 
     /**

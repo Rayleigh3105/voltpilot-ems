@@ -10,7 +10,7 @@ import { kennungSendbar, pruefeKennung } from '../edgeRef';
 import { fmtRelative } from '../format';
 import { HelpLink } from '../help/HelpProvider';
 import { kennungWieGedruckt } from '../koppelLink';
-import { WEG } from '../koppelTexte';
+import { VERBINDUNG, WEG } from '../koppelTexte';
 import { BoxZeichnung } from './BoxZeichnung';
 import { STATION_LABEL, STATION_REIHENFOLGE, wegLage, type StationKey, type StationState, type WegLage } from './wegLage';
 import '../components/KoppelBand.css';
@@ -93,6 +93,23 @@ export function BoxWeg({
 
       <h3 id="box-weg-titel">{lage.titel}</h3>
       <p className="vp-koppel-klein">{lage.satz}</p>
+
+      {lage.verbindung.art && (
+        <Badge variant={lage.verbindung.schwach ? 'warn' : 'tint'} dot className="vp-koppel-chip vp-verbindung-chip">
+          {lage.verbindung.art === 'kabel'
+            ? VERBINDUNG.kabel
+            : lage.verbindung.schwach
+              ? VERBINDUNG.wlanSchwach
+              : VERBINDUNG.wlanGut}
+        </Badge>
+      )}
+      {lage.verbindung.schwach && <p className="vp-koppel-klein">{VERBINDUNG.schwachHinweis}</p>}
+
+      {lage.einrichtungshinweis && (
+        <div className="vp-alert vp-alert-warn" role="status">
+          <p style={{ margin: 0 }}>{lage.einrichtungshinweis}</p>
+        </div>
+      )}
 
       {zeigePruefHilfe && (
         <PruefHilfe gedruckt={gedruckt} anlageName={anlageName} support={lage.hinweis === 'support'}>

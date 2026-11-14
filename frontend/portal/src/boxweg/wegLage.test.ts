@@ -103,3 +103,29 @@ describe('wegLage · die Szenarien aus Bericht Abschnitt 4.3/5', () => {
     expect(lage.chipText).toBe('Startet · 0:00');
   });
 });
+
+describe('wegLage · Konzept vp-edge-light-wlan-s5 (E1=B): Verbindung und der Weg zurück', () => {
+  it('Online per WLAN mit gutem Empfang trägt die Verbindung, ohne Einrichtungs-Hinweis', () => {
+    const lage = wegLage(box({ lastSeenAt: nach(10_000).toISOString(), linkKind: 'wlan', signalDbm: -55 }), nach(10_000));
+    expect(lage.verbindung).toEqual({ art: 'wlan', schwach: false });
+    expect(lage.einrichtungshinweis).toBeNull();
+  });
+
+  it('Noch nie online: keine Verbindung behauptet, egal was später gemeldet würde', () => {
+    const lage = wegLage(box(), nach(30_000));
+    expect(lage.verbindung.art).toBeNull();
+    expect(lage.einrichtungshinweis).toBeNull();
+  });
+
+  it('Still, zuletzt per WLAN da: der Weg über das Einrichtungs-WLAN wird genannt', () => {
+    const lage = wegLage(box({ lastSeenAt: new Date(T0.getTime() + 60_000).toISOString(), linkKind: 'wlan' }), nach(60_000 + 6 * 60_000));
+    expect(lage.stale).toBe(true);
+    expect(lage.einrichtungshinweis).toMatch(/VoltPilot-Einrichtung/);
+  });
+
+  it('Still, zuletzt per Kabel da: kein WLAN-Hinweis (es gibt kein Einrichtungs-WLAN zu nennen)', () => {
+    const lage = wegLage(box({ lastSeenAt: new Date(T0.getTime() + 60_000).toISOString(), linkKind: 'kabel' }), nach(60_000 + 6 * 60_000));
+    expect(lage.stale).toBe(true);
+    expect(lage.einrichtungshinweis).toBeNull();
+  });
+});

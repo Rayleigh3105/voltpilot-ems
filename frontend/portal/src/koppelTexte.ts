@@ -28,7 +28,8 @@ export const EMPFANG = {
   bereit: [
     'Ihre E-Mail-Adresse und ein Passwort mit mindestens 12 Zeichen',
     'Die Adresse, an der die Anlage steht',
-    'Die Box mit Netzteil und einem Netzwerkkabel zum Router. Einstecken können Sie sie auch später.',
+    'Die Box mit Netzteil. Mit Netzwerkkabel zum Router oder über WLAN - Sie wählen es beim Verbinden. '
+      + 'Einstecken können Sie sie auch später.',
   ],
   kontoErstellen: 'Konto erstellen',
   schonKonto: 'Ich habe schon ein Konto',
@@ -149,6 +150,55 @@ export const WEG = {
   andereKennungHinweis: 'Diese Kennung gibt die Box oben frei und verbindet die neue - wie beim ersten Verbinden.',
   andereKennungGemeldetFehler:
     'Diese Box hat sich inzwischen selbst gemeldet - sie lässt sich nicht mehr durch eine andere ersetzen.',
+} as const;
+
+/**
+ * „Wie soll Ihre Box ins Internet?" (Konzept vp-edge-light-wlan-s5, E5=A): die
+ * Wahl zwischen Netzwerkkabel und WLAN, direkt nach dem Verbinden mit der
+ * Kennung (Bericht Abschnitt 0.1, Bildschirm 1). „Mit Netzwerkkabel" führt
+ * unverändert in den bisherigen Weg (`WEG`); „Über WLAN" zuerst zu
+ * `WLAN_EINRICHTEN`.
+ */
+export const VERBINDUNG_WAHL = {
+  titel: 'Wie soll Ihre Box ins Internet?',
+  kabelTitel: 'Mit Netzwerkkabel',
+  kabelZeile: 'Die Box steht nahe am Router.',
+  wlanTitel: 'Über WLAN',
+  wlanZeile: 'Kein Kabel bis zum Router.',
+  hinweis: 'Sie können das später jederzeit wechseln.',
+} as const;
+
+/**
+ * Über WLAN (Bericht Abschnitt 0.1, Bildschirme 2W/2W'): die Box bleibt ohne
+ * Netzwerkkabel, der Kunde verbindet sein Handy oder seinen Computer mit dem
+ * Einrichtungs-WLAN der Box und trägt dort die Kennung ein, die hier steht.
+ */
+export const WLAN_EINRICHTEN = {
+  titel: 'Über WLAN',
+  schritte: [
+    'Nur das Netzteil einstecken - kein Netzwerkkabel.',
+    'Am Handy oder Computer das WLAN „VoltPilot-Einrichtung“ wählen.',
+    'Die Seite der Box öffnet sich. Tragen Sie dort die Kennung unten ein.',
+  ],
+  kennungTitel: 'Kennung',
+  kennungZeile: 'Dieselbe Kennung steht auch unten auf der Box.',
+  zurueck: 'Zurück',
+  weiter: 'Weiter',
+} as const;
+
+/**
+ * Die Art der Verbindung (Konzept vp-edge-light-wlan-s5, E1=B): wie der Weg
+ * (`BoxWeg.tsx`) und die Box-Seite (`BoxSeiteSection.tsx`) zeigen, was die Box
+ * über `linkKind`/`signalDbm` meldet (die Fakten dazu liefert `boxVerbindung.ts`).
+ */
+export const VERBINDUNG = {
+  kabel: 'Netzwerkkabel',
+  wlanGut: 'WLAN · Empfang gut',
+  wlanSchwach: 'WLAN · Empfang schwach',
+  schwachHinweis: 'Der WLAN-Empfang ist schwach. Rücken Sie die Box näher an den Router, wenn möglich.',
+  stillWlanHinweis:
+    'Passwort oder Router gewechselt? Nach 10 Minuten ohne WLAN öffnet die Box wieder das WLAN '
+    + '„VoltPilot-Einrichtung“. Geben Sie dort Ihre Kennung und das neue Passwort ein.',
 } as const;
 
 /** M10 · Diese Box gehört schon zu Ihnen. */

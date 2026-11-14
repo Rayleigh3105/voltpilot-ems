@@ -8,6 +8,8 @@ import { kennungSendbar, pruefeKennung } from '../edgeRef';
 import { KennungFeld } from './KennungFeld';
 import { BoxFremdKonto } from './BoxVerbunden';
 import { BoxWeg } from '../boxweg/BoxWeg';
+import { VerbindungsWahl } from '../boxweg/VerbindungsWahl';
+import { WlanEinrichten } from '../boxweg/WlanEinrichten';
 import { KoppelBand } from './KoppelBand';
 import { kennungWieGedruckt, vergissKoppelRef } from '../koppelLink';
 import { bandText, SCHRITT_BOX } from '../koppelTexte';
@@ -401,6 +403,9 @@ function GeraetStep({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [verbunden, setVerbunden] = useState<Device | null>(null);
+  // Konzept vp-edge-light-wlan-s5: nach dem Verbinden erst die Wahl Kabel/WLAN,
+  // bei WLAN zuerst die Anleitung - danach läuft beides im selben BoxWeg zusammen.
+  const [wegSchritt, setWegSchritt] = useState<'wahl' | 'wlan' | 'weg'>('wahl');
   const [fremd, setFremd] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const kennung = useRef(neueAnfrageKennung());
@@ -449,6 +454,24 @@ function GeraetStep({
     }
   }
 
+  if (verbunden && wegSchritt === 'wahl') {
+    return (
+      <div className="vp-onboarding-step">
+        <VerbindungsWahl onWahl={(wahl) => setWegSchritt(wahl === 'wlan' ? 'wlan' : 'weg')} />
+      </div>
+    );
+  }
+  if (verbunden && wegSchritt === 'wlan') {
+    return (
+      <div className="vp-onboarding-step">
+        <WlanEinrichten
+          externalRef={verbunden.externalRef}
+          onWeiter={() => setWegSchritt('weg')}
+          onZurueck={() => setWegSchritt('wahl')}
+        />
+      </div>
+    );
+  }
   if (verbunden) {
     return (
       <div className="vp-onboarding-step">

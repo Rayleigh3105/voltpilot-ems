@@ -46,6 +46,8 @@ import { technicalDeviceName } from './entityLabel';
 import { abregelZiel, releaseNote } from './curtailment';
 import { boxGeraeteBlock, type BoxGeraeteBlock } from './boxGeraete';
 import { boxUebersicht } from './boxUebersicht';
+import { verbindungsStand, warZuletztWlan } from './boxVerbindung';
+import { VERBINDUNG } from './koppelTexte';
 
 /** Eine der drei Kacheln des Kopfes. */
 export interface BoxKachel {
@@ -242,14 +244,31 @@ export function boxKacheln(
     ? { ...device, lanHost: host, lanSeenAt: host ? device.lanSeenAt : null }
     : undefined;
   const lan = lanZeile(safeDevice, now);
+  // Konzept vp-edge-light-wlan-s5 (E1=B): Art der Verbindung und Signal reiten
+  // auf derselben Kachel wie der Online-Zustand, den sie ergänzen - keine
+  // vierte Kachel für zwei zusätzliche Zeilen.
+  const verbindung = device ? verbindungsStand(device, new Date(now)) : { art: null, schwach: false };
+  const verbindungZeilen: string[] = [];
+  if (zustand.detail) verbindungZeilen.push(`Letzte Meldung ${zustand.detail}`);
+  if (verbindung.art) {
+    verbindungZeilen.push(
+      verbindung.art === 'kabel' ? VERBINDUNG.kabel : verbindung.schwach ? VERBINDUNG.wlanSchwach : VERBINDUNG.wlanGut,
+    );
+  }
+  if (verbindung.schwach) verbindungZeilen.push(VERBINDUNG.schwachHinweis);
+  // „Ihre Box meldet sich nicht" (Bericht 0.1): nur die STILLE Box (schon
+  // einmal da, jetzt nicht), nie eine, die noch nie etwas sendete.
+  if (zustand.ton === 'warn' && device && warZuletztWlan(device)) {
+    verbindungZeilen.push(VERBINDUNG.stillWlanHinweis);
+  }
   return [
     {
       key: 'verbindung',
       label: 'Verbindung',
       wert: zustand.wort,
-      ton: zustand.ton,
+      ton: verbindung.schwach && zustand.ton === 'ok' ? 'warn' : zustand.ton,
       satz: ANBINDUNG_SATZ,
-      zeilen: zustand.detail ? [`Letzte Meldung ${zustand.detail}`] : [],
+      zeilen: verbindungZeilen,
     },
     softwareKachel(edge),
     {
