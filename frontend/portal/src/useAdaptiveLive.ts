@@ -4,6 +4,7 @@ import { hasTopology } from './adaptiveLive';
 import { useFreshnessPoll } from './useFreshnessPoll';
 // LIVE: die Topologie trägt die gemessenen Ist-Werte des Energieflusses.
 import { LIVE_POLL_MS } from './pollCadence';
+import { useTaktZustand } from './gleicheAntwort';
 
 /**
  * Fetches the AE1 topology read-model + the AE7 usage profile of a site for the
@@ -34,7 +35,9 @@ export interface AdaptiveLive {
  * depends on it exactly like `siteId`.
  */
 export function useAdaptiveLive(siteId: string, retryKey: number | string = 0): AdaptiveLive {
-  const [topology, setTopology] = useState<SiteTopology | null>(null);
+  // Eine inhaltlich gleiche Takt-Antwort behält das alte Objekt - die Seite rendert dann nicht neu
+  // (`gleicheAntwort.ts`, Performance-Runde vp-perf2-portal).
+  const [topology, setTopology] = useTaktZustand<SiteTopology | null>(null);
   const [profile, setProfile] = useState<SiteUsageProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -79,7 +82,9 @@ export function useAdaptiveLive(siteId: string, retryKey: number | string = 0): 
   // Stand von vorhin und den echten 30 s später.
   useFreshnessPoll(() => {
     api.topology(idRef.current).then(
-      (t) => setTopology((prev) => (t && t.entities.length ? t : prev)),
+      (t) => {
+        if (t && t.entities.length) setTopology(t);
+      },
       () => {},
     );
   }, LIVE_POLL_MS);

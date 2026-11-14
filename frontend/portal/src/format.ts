@@ -3,8 +3,25 @@
 /** Non-breaking space: keeps a number and its unit on one line. */
 export const NBSP = ' ';
 
+/**
+ * Die Zahlformate der heißen Pfade stehen EINMAL als `Intl.NumberFormat` bereit: `toLocaleString` baut bei jedem
+ * Aufruf einen neuen Formatierer, und das Anlagen-Cockpit formatiert je Neu-Rendern Dutzende Zahlen (CPU-Profil der
+ * Performance-Runde vp-perf2-portal: `fmtNum` und `eur` allein ≈ 60 ms je Minute offener Seite). Die Ausgabe ist dieselbe -
+ * `toLocaleString(locale, optionen)` IST `new Intl.NumberFormat(locale, optionen).format(v)`.
+ */
+const EUR_FORMAT = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const STELLEN_FORMAT = new Map<number, Intl.NumberFormat>();
+function stellenFormat(digits: number): Intl.NumberFormat {
+  let f = STELLEN_FORMAT.get(digits);
+  if (!f) {
+    f = new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    STELLEN_FORMAT.set(digits, f);
+  }
+  return f;
+}
+
 export function eur(v: number): string {
-  return v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return EUR_FORMAT.format(v);
 }
 
 /** "1,57 €" with a non-breaking space before the sign. */
@@ -139,9 +156,6 @@ export function fmtNum(v: number | null | undefined, unit: string, digits = 1): 
   if (v == null) return '-';
   const num = Number(v);
   const vorzeichen = num < 0 ? '−' : '';
-  const n = `${vorzeichen}${Math.abs(num).toLocaleString('de-DE', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })}`;
+  const n = `${vorzeichen}${stellenFormat(digits).format(Math.abs(num))}`;
   return unit ? `${n}${NBSP}${unit}` : n;
 }

@@ -118,6 +118,7 @@ import {
   AusgeblendetZeile,
 } from '../components/CockpitAnpassen';
 import { useAnlageSurface } from '../useAnlageSurface';
+import { useTaktZustand } from '../gleicheAntwort';
 import { CockpitMessstellenWeg } from '../components/CockpitMessstellenWeg';
 import type { AnlageSurface } from '../surface';
 import { bausteineOhneGeld, unterseiteOhneGeld } from '../anlageGeld';
@@ -905,7 +906,7 @@ export function AnlageSeite({
    */
   onBackToList?: (() => void) | null;
 }) {
-  const [overview, setOverview] = useState<Overview | null>(null);
+  const [overview, setOverview] = useTaktZustand<Overview | null>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
   const [ausfall, setAusfall] = useState<StandortAusfall | null>(null);
   // Das GEMESSENE Geld dieser Anlage. Seit dem Perf-Audit (vp-portal-perf-a4,
@@ -926,14 +927,14 @@ export function AnlageSeite({
   // „Sonne" und braucht darum dieselbe Prognose wie die Kundenseite, nicht
   // mehr den Fahrplan-Plan - sie führt dann auch ohne Fahrplan und ohne PV.
   const [prognoseKachelDaten, setPrognoseKachelDaten] = useState<ForecastResponse | null>(null);
-  const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
+  const [controlStatus, setControlStatus] = useTaktZustand<ControlStatus | null>(null);
   // Die Abregel-Wahrheit (PR 3): setzt die Anlage eine geplante Drosselung
   // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
   // Rücklese-Block), fail-soft - null = kein Beleg = Plan-Wortlaut.
-  const [curtailStatus, setCurtailStatus] = useState<CurtailmentStatus | null>(null);
+  const [curtailStatus, setCurtailStatus] = useTaktZustand<CurtailmentStatus | null>(null);
   // Erzeugeranlage an einer Anlagensteuerung (EZ-8): das Bild der Steuerung - fail-soft, null = keine
   // Anlagensteuerung oder älteres Backend; dann bleibt das Cockpit wie bisher.
-  const [erzeugerJetzt, setErzeugerJetzt] = useState<ErzeugerJetzt | null>(null);
+  const [erzeugerJetzt, setErzeugerJetzt] = useTaktZustand<ErzeugerJetzt | null>(null);
   // Die Ableitung (`erzeuger.ts`) ist ein eigenes Stück: sie lädt erst, wenn die Anlage eine
   // Anlagensteuerung hat - das erste Bild jeder anderen Anlage trägt sie nicht (Einstiegs-Budget).
   const [erzModul, setErzModul] = useState<typeof import('../erzeuger') | null>(null);
@@ -983,16 +984,16 @@ export function AnlageSeite({
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
   // Abruf hier: ein älteres Backend kennt die Route nicht, dann gibt es die
   // Kachel schlicht nicht.
-  const [charging, setCharging] = useState<SiteCharging | null>(null);
-  const [plan, setPlan] = useState<SchedulePlan | null>(null);
+  const [charging, setCharging] = useTaktZustand<SiteCharging | null>(null);
+  const [plan, setPlan] = useTaktZustand<SchedulePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [planFailed, setPlanFailed] = useState(false);
   // M3: today's Historie totals feed the Eigenverbrauchs-Block (Autarkie /
   // PV-Nutzung); since v3 M2 they ALSO feed the cockpit hero's rings and the
   // Haus/Netz widgets, so the projection path fetches them once for all of it.
-  const [dayTotals, setDayTotals] = useState<HistoryTotals | null>(null);
+  const [dayTotals, setDayTotals] = useTaktZustand<HistoryTotals | null>(null);
   // Der ganze Tagesverlauf (Viertelstunden) für die Tagesleiste der Bühne.
-  const [dayHistory, setDayHistory] = useState<History | null>(null);
+  const [dayHistory, setDayHistory] = useTaktZustand<History | null>(null);
   // v3.2 M1: the hero rings (Autarkie / Eigenverbrauch) follow the SELECTED
   // period tab, so they read range-scoped Historie totals (day/month/year) -
   // distinct from `dayTotals`, which stays "today" for the widget grid. The
@@ -1000,7 +1001,7 @@ export function AnlageSeite({
   // v3.2 M2: the SAME range-scoped Historie also feeds the rich widget-detail
   // modal's Verlauf chart (one fetch, buckets + totals), so we keep the whole
   // `History` and derive the totals from it.
-  const [rangeHistory, setRangeHistory] = useState<History | null>(null);
+  const [rangeHistory, setRangeHistory] = useTaktZustand<History | null>(null);
   const rangeTotals: HistoryTotals | null = rangeHistory?.totals ?? null;
   // The site's measurement points (primary inverter + configured sources), so
   // the hero can explain a multi-inverter site's composite PV (#524).
@@ -1853,7 +1854,7 @@ export function AnlageSeite({
   }, [layout.anpassen]);
   // Der Rollenabruf frischt mit dem Schnappschuss auf; Antworten einer vorigen
   // Anlage werden auch vor dem nächsten Effekt niemals am neuen Standort gezeigt.
-  const [rollenStand, setRollenStand] = useState<{
+  const [rollenStand, setRollenStand] = useTaktZustand<{
     siteId: string; werte: (RollenKanonischerWert | null)[];
   } | null>(null);
   const [pvRollen, verbrauchRollen, netzRollen] = rollenStand?.siteId === site.id

@@ -435,6 +435,9 @@ function grundText(
 }
 
 const BERLIN = 'Europe/Berlin';
+// Je ein Formatierer statt `toLocaleDateString` je Aufruf (gleiche Ausgabe; Performance-Runde vp-perf2-portal).
+const BERLIN_TAG_ZAHL = new Intl.DateTimeFormat('de-DE', { day: 'numeric', timeZone: BERLIN });
+const BERLIN_MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long', timeZone: BERLIN });
 
 /**
  * Der Anker unter der TAGESZAHL: der Monat bis einschließlich dieses Tages
@@ -446,9 +449,9 @@ function monatsAnker(money: SpeicherEingabe, now: Date, laeuft: boolean): Speich
   if (eur == null) return null;
   const tag = money.from ? new Date(money.from) : now;
   if (Number.isNaN(tag.getTime())) return null;
-  const d = Number(tag.toLocaleDateString('de-DE', { day: 'numeric', timeZone: BERLIN }));
+  const d = Number(BERLIN_TAG_ZAHL.format(tag));
   if (d <= 1) return null;
-  const monat = tag.toLocaleDateString('de-DE', { month: 'long', timeZone: BERLIN });
+  const monat = BERLIN_MONAT.format(tag);
   return {
     label: laeuft ? `${monat} bisher` : `1.–${d}. ${monat}`,
     wert: tonWort(eur).wort,

@@ -87,12 +87,15 @@ export function spanne(von: string, bis: string): string {
   return `${a.d}.${NBSP}${MONATE[a.m - 1]} – ${b.d}.${NBSP}${MONATE[b.m - 1]}`;
 }
 
+// Ein Formatierer für alle Aufrufe statt `toLocaleTimeString` je Aufruf (gleiche Ausgabe; Performance-Runde vp-perf2-portal).
+const BERLIN_UHRZEIT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+
 /** „08:15“ in Berliner Zeit; null ohne Zeitpunkt. */
 export function uhrzeit(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return null;
-  return t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+  return BERLIN_UHRZEIT.format(t);
 }
 
 function zahl(v: number | null | undefined): number | null {

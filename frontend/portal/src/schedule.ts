@@ -865,8 +865,14 @@ export function dayBoundaries<T extends { start: string }>(
 
 /** The plan's slots that fall on the local calendar day of `now`. */
 export function todaySlots<T extends { start: string }>(slots: T[], now: Date): T[] {
-  const day = now.toDateString();
-  return slots.filter((s) => new Date(s.start).toDateString() === day);
+  // Über die Grenzen des Ortstages statt `toDateString` je Slot (gleiches Ergebnis, auch an der Zeitumstellung;
+  // ein ungültiger Start fällt wie vorher heraus) - das Cockpit ruft das je Neu-Rendern für ~200 Slots (Performance-Runde vp-perf2-portal).
+  const von = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const bis = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+  return slots.filter((s) => {
+    const t = Date.parse(s.start);
+    return t >= von && t < bis;
+  });
 }
 
 /**

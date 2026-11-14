@@ -50,9 +50,12 @@ export function buildSitePayload(site: Site, overrides: Partial<CreateSiteInput>
   };
 }
 
+const BERLIN_TAG = new Intl.DateTimeFormat('sv-SE', { timeZone: ZONE });
+
 /** A moment as its Europe/Berlin ISO day ("2026-07-07"). */
 function berlinDay(at: Date): string {
-  return at.toLocaleDateString('sv-SE', { timeZone: ZONE });
+  // Ein Formatierer für alle Aufrufe statt `toLocaleDateString` je Aufruf (gleiche Ausgabe; Performance-Runde vp-perf2-portal).
+  return Number.isNaN(at.getTime()) ? 'Invalid Date' : BERLIN_TAG.format(at);
 }
 
 /** Parse an ISO day ("2026-07-01") into a Date at local noon (no tz surprises). */

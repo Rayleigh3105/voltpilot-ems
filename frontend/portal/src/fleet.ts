@@ -82,9 +82,12 @@ export function fleetHeadline(kind: FleetKind): string {
 
 // ---- Realized earnings wording (Phase 2: the hero shows MEASURED money) ------
 
+const BERLIN_TAG = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' });
+
 /** The date of a moment as a Europe/Berlin ISO day string. */
 export function berlinDay(at: Date): string {
-  return at.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+  // Ein Formatierer für alle Aufrufe statt `toLocaleDateString` je Aufruf (gleiche Ausgabe; Performance-Runde vp-perf2-portal).
+  return Number.isNaN(at.getTime()) ? 'Invalid Date' : BERLIN_TAG.format(at);
 }
 
 /** German period phrase: "heute" / "im Juli" / "im Jahr 2026" / "seit ...". */
