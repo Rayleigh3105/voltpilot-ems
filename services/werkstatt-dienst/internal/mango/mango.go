@@ -248,6 +248,7 @@ func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 		lauf.Schritt{Kennung: "passwort", Titel: "Root-Passwort setzen", Frist: 2 * time.Minute, Tun: l.passwortSetzen},
 		lauf.Schritt{Kennung: "notfall", Titel: "Notfall-Schlüssel", Frist: time.Minute, Tun: l.notfallSchluessel},
 		lauf.Schritt{Kennung: "programm", Titel: "Edge Light einspielen", Frist: 10 * time.Minute, Tun: l.programmEinspielen},
+		lauf.Schritt{Kennung: "einrichtung_wlan", Titel: "Einrichtungs-WLAN vorbereiten (Land DE, relayd)", Frist: 3 * time.Minute, Tun: l.einrichtungsWlanVorbereiten},
 		lauf.Schritt{Kennung: "tunnel_schluessel", Titel: "Tunnel-Schlüssel erzeugen", Frist: 5 * time.Minute, Tun: l.tunnelSchluessel},
 		l.adressSchritt(),
 		lauf.Schritt{Kennung: "tunnel", Titel: "Tunnel einrichten", Frist: 10 * time.Minute, Tun: l.tunnelEinrichten},

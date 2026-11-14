@@ -192,6 +192,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel",
@@ -246,6 +247,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -784,6 +790,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel",
@@ -835,6 +842,11 @@
           "zeile": "belegt"
         },
         {
+          "schritt": "einrichtung_wlan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
           "schritt": "tunnel_schluessel",
           "dauer_s": 0,
           "zeile": "belegt"
@@ -871,6 +883,146 @@
         },
         {
           "schritt": "uebergabe",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
+    }
+  },
+  "laeuft_einrichtung_wlan": {
+    "schema": "vp-werkstatt-ansicht.v1",
+    "zeit": "2026-11-04T10:29:00Z",
+    "werkbank": {
+      "adresse": "192.168.0.157:22",
+      "bereit": true,
+      "fassung_soll": "7124660edc034247",
+      "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+      "status": {
+        "schema": "vp-werkbank-status.v1",
+        "fassung": "7124660edc034247",
+        "zeit": "2026-11-02T09:00:00Z",
+        "werkstatt": {
+          "schnittstelle": "eth0",
+          "kabel": true,
+          "adressen": [
+            "192.168.8.2/24",
+            "192.168.1.2/24",
+            "10.213.0.2/24"
+          ]
+        },
+        "netz": {
+          "schnittstelle": "wlan0",
+          "oben": true,
+          "adressen": [
+            "192.0.2.50/24"
+          ],
+          "energiesparen": "aus"
+        },
+        "durchleitung": {
+          "ip_forward": true,
+          "firewall": true
+        },
+        "antworten": [
+          {
+            "adresse": "192.168.8.1",
+            "macs": [
+              "94:83:c4:17:47:e3"
+            ]
+          }
+        ]
+      },
+      "status_zeit": "2026-11-04T10:29:00Z",
+      "einrichten": {
+        "zeit": "2026-11-04T10:29:00Z",
+        "weg": "eingerichtet",
+        "fassung": "7124660edc034247",
+        "ausgabe": "einrichten: Fassung eingerichtet"
+      }
+    },
+    "freigabe": {
+      "laufend": true,
+      "freigabe": {
+        "schema": "vp-werkstatt-freigabe.v1",
+        "kennung": "2026-11-mango-1",
+        "box_art": "mango",
+        "erteilt_von": "Betreiber",
+        "erteilt_am": "2026-11-04T10:01:23Z",
+        "gueltig_bis": "2026-12-04T10:01:23Z",
+        "obergrenze": 20,
+        "openwrt": {
+          "fassung": "25.12.5",
+          "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+        },
+        "edge_light": {
+          "fassung": "edge-light-2026.11.0",
+          "quelle": "https://git.tecmaxx.de/x/",
+          "programm_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "skripte_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      },
+      "boxen": 0
+    },
+    "lauf": {
+      "kennung": "2026-11-04-102855-049e",
+      "freigabe": "2026-11-mango-1",
+      "box_art": "mango",
+      "box": "edge-5t2dcy6",
+      "beginn": "2026-11-04T10:29:00Z",
+      "zustand": "laeuft",
+      "schritt": "einrichtung_wlan",
+      "titel": "Einrichtungs-WLAN vorbereiten (Land DE, relayd)",
+      "erledigt": [
+        "erkennen",
+        "fassungen",
+        "openwrt",
+        "wiedererkennen",
+        "internet",
+        "passwort",
+        "notfall",
+        "programm"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
           "dauer_s": 0,
           "zeile": "belegt"
         }
@@ -1270,6 +1422,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel",
@@ -1317,6 +1470,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -1446,6 +1604,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel"
@@ -1490,6 +1649,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -1604,6 +1768,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel",
@@ -1649,6 +1814,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2119,6 +2289,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel",
@@ -2165,6 +2336,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2422,6 +2598,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse"
       ],
@@ -2465,6 +2642,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2574,6 +2756,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel"
       ],
       "schritt_seit": "2026-11-04T10:29:00Z",
@@ -2616,6 +2799,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -2719,7 +2907,8 @@
         "internet",
         "passwort",
         "notfall",
-        "programm"
+        "programm",
+        "einrichtung_wlan"
       ],
       "schritt_seit": "2026-11-04T10:29:00Z",
       "schritt_frist_s": 3600,
@@ -2761,6 +2950,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         }
@@ -2860,6 +3054,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel",
@@ -2908,6 +3103,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -3469,6 +3669,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel",
@@ -3517,6 +3718,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },
@@ -3641,6 +3847,7 @@
         "passwort",
         "notfall",
         "programm",
+        "einrichtung_wlan",
         "tunnel_schluessel"
       ],
       "wartet_auf": "tunnel_adresse",
@@ -3685,6 +3892,11 @@
         },
         {
           "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "einrichtung_wlan",
           "dauer_s": 0,
           "zeile": "belegt"
         },

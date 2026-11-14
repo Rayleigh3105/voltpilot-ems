@@ -44,6 +44,9 @@ type Mango struct {
 	// 0 = keiner. OhneVertrauensSet: /health meldet kein geprüftes Set.
 	BestaetigterStand int64
 	OhneVertrauensSet bool
+	// RelaydNichtVerfuegbar: apk add relayd schlägt fehl (kein Paket im Mirror
+	// erreichbar), S1.
+	RelaydNichtVerfuegbar bool
 	// Anmelden antwortet auf werkstatt-anmelden (P7): Code von der
 	// Standardeingabe, Tunnel- und Host-Schlüssel aus den Argumenten; nil =
 	// Befehl unbekannt (wie eine Box ohne den Befehl).
@@ -62,6 +65,8 @@ type Mango struct {
 	gateway      string
 	dns          []string
 	lan          string
+	land         string // wireless.radio0.country, S1
+	relayd       bool   // Paket relayd auf der Box, S1
 	edge, laeuft bool
 	tunnel       string
 	befehle      []string
@@ -448,6 +453,21 @@ func (m *Mango) exec(ch ssh.Channel, b string) (code int, abreissen bool) {
 			aus("%s\n", z)
 		}
 		m.mu.Unlock()
+	case strings.Contains(b, "wireless.radio0.country=DE") && strings.Contains(b, "uci commit wireless"): // S1
+		m.mu.Lock()
+		m.land = "DE"
+		if !m.RelaydNichtVerfuegbar {
+			m.relayd = true
+		}
+		m.mu.Unlock()
+	case strings.Contains(b, "uci -q get wireless.radio0.country"): // S1, Beleg lesen
+		m.mu.Lock()
+		land, relayd := m.land, "fehlt"
+		if m.relayd {
+			relayd = "da"
+		}
+		m.mu.Unlock()
+		aus("land=%s\nrelayd=%s\n", land, relayd)
 	case strings.Contains(b, "/etc/vp-edge-light/ref"):
 		m.mu.Lock()
 		aus("ref=%s\nlan=%s\nstart=S60vp-wartung S95vp-edge-light \n", m.Ref, m.lan)

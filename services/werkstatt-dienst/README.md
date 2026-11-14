@@ -45,6 +45,7 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 | `passwort` | zufällig (20 Zeichen wie das Portal), erst verschlüsselt für den age-Schlüssel „Box-Passwörter“ (WI-6 A), dann über die Standardeingabe gesetzt | „ohne Passwort abgewiesen“, `passwort_age` |
 | `notfall` | der Notfall-Schlüssel als einziger dauerhafter Schlüssel | eine Zeile, Fingerabdruck |
 | `programm` | `install.sh` aus dem Skriptstand, Neustart von `vp-edge-light` | „Pruefsumme auf dem Geraet bestaetigt“, `/health` mit Referenz (Prüfzeichen gültig) und der Fassung der Freigabe |
+| `einrichtung_wlan` | `wireless.radio0.country=DE` setzen, `apk add relayd`, solange die Brücke noch Internet gibt (S1, Konzept `vp-edge-light-wlan`) | Land DE, Paket relayd auf der Box |
 | `tunnel_schluessel` | `service-tunnel.sh … key` | öffentlicher Schlüssel, Referenz |
 | `tunnel_adresse` (ohne API) | **wartet auf dich**: Schlüssel im Portal hinterlegen, Adresse eintragen | die Adresse |
 | `einloesen` (mit API, statt `tunnel_adresse`) | Einmal-Code holen, die Box löst ihn mit `werkstatt-anmelden` selbst ein (Code über die Standardeingabe): Geräteschlüssel festgehalten (D2), Tunnel-Schlüssel hinterlegt, Adresse zugeteilt, Probe-Fenster offen | Freigabe, Adresse, Probe-Fenster, sha256 des Geräteschlüssels; der Code nie |
@@ -53,7 +54,7 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 | `neustart` | Neustart-Probe unter der neuen Adresse | derselbe Host-Schlüssel, dieselbe Referenz, Startdienste, ein dauerhafter Schlüssel, frischer Handshake |
 | `probe` | mit Techniker-Zugang: der Dienst meldet sich durch den Tunnel an (WireGuard im Prozess), liest den Host-Schlüssel, schließt das Probe-Fenster, der neue Versuch endet mit „Connection timed out“; sonst **wartet auf dich**: Probe im Fenster im Portal (Werkstatt-Regel 4–6), dann `eingabe probe erledigt` | Host-Schlüssel durch den Tunnel und im LAN, Box-Log zu Anmeldung und Ende, der abgewiesene Versuch (bzw. deine Bestätigung) |
 | `internet_weg` | Werkstatt-Internet wieder aus der Netz-Einstellung | kein Gateway, kein DNS über die Brücke |
-| `uebergabe` | Belege für die Abnahme, je Prüfung der Werkstatt-Regel; mit API schließt der Dienst vorher das Probe-Fenster der Einlösung und schreibt die Abnahme selbst (`quelle: dienst`, Passwort nur verschlüsselt); mit Gehäuse-Bau bestellt er danach die Druckdatei, ohne auf sie zu warten | Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, die neun Prüfungen, mit API die Kennung der Abnahme, die Bestellung des Gehäuses |
+| `uebergabe` | Belege für die Abnahme, je Prüfung der Werkstatt-Regel; mit API schließt der Dienst vorher das Probe-Fenster der Einlösung und schreibt die Abnahme selbst (`quelle: dienst`, Passwort nur verschlüsselt); mit Gehäuse-Bau bestellt er danach die Druckdatei, ohne auf sie zu warten | Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, die zehn Prüfungen, mit API die Kennung der Abnahme, die Bestellung des Gehäuses |
 
 Bei dir bleiben in V1a: die Tunnel-Adresse aus dem Portal eintragen, die Probe im Fenster der Fernwartung (der
 Lauf wartet darauf, bevor er den Weg über die Brücke entfernt: ohne ihn steht der Tunnel in der Werkstatt nicht
@@ -173,6 +174,6 @@ test/gehaeuse-bild-probe.sh             # Bau-Image (amd64): ein Auftrag wie der
 Die Go-Tests sprechen nur mit Attrappen im Prozess (`internal/attrappe`: SSH-Server, die sich wie die Brücke und
 wie eine Mango ab Werk bis zur Neustart-Probe verhalten, dazu Attrappen der beiden Skripte). Die Box-Probe fährt
 einen ganzen Lauf ab frischem OpenWrt gegen ein echtes OpenWrt 25.12.5 (x86-64) mit den echten Skripten und einem
-echten Wartungsserver (`vp-tunnel-dienst`); die GL-Werksfirmware und `sysupgrade` gibt es nur in der Attrappe. Die Brücken-Probe braucht Docker mit `--privileged` (Netz-Namensräume im Container) und baut ein
+echten Wartungsserver (`vp-tunnel-dienst`); die GL-Werksfirmware, `sysupgrade` und das Funkmodul (kein Land DE, Schritt `einrichtung_wlan`) gibt es nur in der Attrappe bzw. an der echten Mango. Die Brücken-Probe braucht Docker mit `--privileged` (Netz-Namensräume im Container) und baut ein
 Debian-trixie-Bild; beide Proben räumen ihre Bilder wieder weg. Am echten Gerät ersetzen sie nichts: Prüfsteine
-PS-11 bis PS-13 im [Runbook](docs/runbook.md#prüfsteine-am-echten-gerät).
+PS-11 bis PS-14 im [Runbook](docs/runbook.md#prüfsteine-am-echten-gerät).

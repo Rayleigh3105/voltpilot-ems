@@ -1,0 +1,26 @@
+# Lauf werkstatt (S1, Konzept vp-edge-light-wlan Abschnitt 6.1/6.4): eine
+# frisch durch die Werkstatt gegangene Box - Land DE und das Paket relayd sind
+# schon da, wie der Schritt einrichtung_wlan des Werkstatt-Diensts sie
+# hinterlaesst (services/werkstatt-dienst/internal/mango/schritte.go). Beim
+# Kunden gibt es dann keine Paketquelle mehr, weder lokal noch im Netz: Das
+# Einrichtungs-WLAN oeffnet trotzdem sofort, und verbinden gelingt ohne jeden
+# Versuch, relayd nachzuladen - apk ist dafuer absichtlich nicht mehr da, jeder
+# Aufruf schluege sofort fehl.
+gleich "Werkstatt: Land DE schon gesetzt" "$(uci -q get wireless.radio0.country)" DE
+pruefe "Werkstatt: relayd schon auf der Box" command -v relayd
+APK="$(command -v apk)"; mv "$APK" "$APK.aus"
+command -v apk >/dev/null 2>&1 && pruef_fehler "apk haette weg sein sollen" || pruef_ok "beim Kunden: keine Paketquelle mehr, apk selbst ist weg"
+rm -f /etc/apk/repositories.d/distfeeds.list
+
+# Erster Start ohne Kabel: das Einrichtungs-WLAN oeffnet sofort, ganz ohne jede Paketquelle
+@60 $E takt; $E status > /tmp/w-e.out; cat /tmp/w-e.out
+gleich "Einrichtungs-WLAN oeffnet ohne Paketquelle" "$(wert einrichtung /tmp/w-e.out)" offen
+gleich "Land bleibt DE" "$(uci -q get wireless.radio0.country)" DE
+$E zu
+
+# verbinden mit dem Kunden-WLAN gelingt, obwohl apk nicht mehr da ist
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/w-v.out; echo "rc=$?" > /tmp/w-v.rc; cat /tmp/w-v.out /tmp/w-v.rc
+gleich "verbinden ohne Paketquelle: Rueckgabe" "$(cat /tmp/w-v.rc)" "rc=0"
+gleich "verbinden ohne Paketquelle: Ergebnis" "$(wert ergebnis /tmp/w-v.out)" verbunden
+pruefe "relayd laeuft (kein Nachladen noetig)" pgrep -x relayd
+@30 $W status > /tmp/w-s.out; gleich "status nach verbinden: WLAN" "$(wert wlan_zustand /tmp/w-s.out)" COMPLETED

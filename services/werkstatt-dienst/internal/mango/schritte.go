@@ -672,6 +672,42 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 	return b.Mit("update_bereit", "ja"), nil
 }
 
+// ---- S1: Einrichtungs-WLAN der Werkstatt (Konzept vp-edge-light-wlan, Entscheid E6=B, Abschnitt 6.1/6.4) --------
+
+// einrichtungsWlanVorbereiten setzt auf jeder Box country DE am Funkmodul und
+// bringt das Paket relayd mit, solange die Werkstatt-Brücke noch Internet
+// gibt (Schritt internet). Ohne Land gelten die Kanäle 12 und 13 nur
+// eingeschränkt; ohne relayd scheitert der WLAN-Weg beim Kunden ohne
+// Internet (wlan-anschluss.sh, Fall "relayd_fehlt"). Je Box wird dabei
+// nichts Eigenes erzeugt: Das Einrichtungs-WLAN "VoltPilot-Einrichtung"
+// baut der Wächter aus S4 (einrichtung-wlan.sh) bei Bedarf selbst auf;
+// dieser Schritt liefert nur die zwei Voraussetzungen, die er dafür ohne
+// Internet nicht mehr selbst beschaffen kann.
+// Ein Gerät ganz ohne Funkmodul (etwa das x86-64-Abbild der Probe
+// test/box-probe.sh, keine echte Mango) überspringt nur das Land; relayd
+// bringt der Schritt trotzdem mit (nur an der echten Mango gemessen, PS-14).
+func (l *Lauf) einrichtungsWlanVorbereiten(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
+	befehl := "if uci -q get wireless.radio0 >/dev/null 2>&1; then uci set wireless.radio0.country=DE && uci commit wireless; fi\n" +
+		"command -v relayd >/dev/null 2>&1 || (apk update >/dev/null 2>&1 && apk add relayd >/dev/null 2>&1); true"
+	if _, err := l.fuehre(ctx, befehl, ""); err != nil {
+		return nil, fmt.Errorf("Einrichtungs-WLAN der Werkstatt: %w", err)
+	}
+	w, _, err := l.v.Werte(ctx, "if uci -q get wireless.radio0 >/dev/null 2>&1; then echo land=$(uci -q get wireless.radio0.country); else echo land=kein_funkmodul; fi\n"+
+		"if command -v relayd >/dev/null 2>&1; then echo relayd=da; else echo relayd=fehlt; fi")
+	if err != nil {
+		return nil, err
+	}
+	b := protokoll.Beleg{}.Mit("land", w["land"]).Mit("relayd", w["relayd"])
+	if w["land"] != "DE" && w["land"] != "kein_funkmodul" {
+		return b, fmt.Errorf("wireless.radio0.country meldet %q statt DE", w["land"])
+	}
+	if w["relayd"] != "da" {
+		return b, errors.New("Paket relayd fehlt auf der Box (ohne Internet beim Kunden scheitert der WLAN-Weg)")
+	}
+	l.belege["einrichtung_wlan_bereit"] = "Schritt einrichtung_wlan: Land " + w["land"] + ", Paket relayd auf der Box"
+	return b, nil
+}
+
 // ---- P5: Tunnel -----------------------------------------------------------------------
 
 var pubMuster = regexp.MustCompile(`^[A-Za-z0-9+/]{43}=$`)
@@ -1185,7 +1221,7 @@ echo "weg=$(ip -4 route show default | head -n1)"`)
 // Pruefungen der Werkstatt-Regel (docs/contracts/werkstatt-pruefungen.json) in
 // ihrer Reihenfolge; anmeldeprobe und fenster_zu bleiben in V1a Handgriffe im
 // Portal, bestätigt im Schritt probe.
-var Pruefungen = []string{"root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit"}
+var Pruefungen = []string{"root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit", "einrichtung_wlan_bereit"}
 
 func (l *Lauf) uebergabe(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
 	b := protokoll.Beleg{}.

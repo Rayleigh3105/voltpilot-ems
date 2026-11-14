@@ -29,7 +29,7 @@ import {
 
 const ZAHLWORT = ['null', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf'];
 
-/** „neun“: so viele Prüfungen hat die Abnahme (Vektor werkstatt-pruefungen.json, Zwilling `PRUEFUNGEN`). */
+/** „zehn“: so viele Prüfungen hat die Abnahme (Vektor werkstatt-pruefungen.json, Zwilling `PRUEFUNGEN`). */
 export const PRUEFUNGEN_WORT = ZAHLWORT[PRUEFUNGEN.length] ?? String(PRUEFUNGEN.length);
 
 // ── Schritte ───────────────────────────────────────────────────────────────
@@ -44,6 +44,10 @@ export const SCHRITT_TEXT: Record<string, { titel: string; tut: string }> = {
   passwort: { titel: 'Root-Passwort setzen', tut: 'Setzt ein zufälliges Passwort; abgelegt wird es nur verschlüsselt.' },
   notfall: { titel: 'Notfall-Schlüssel', tut: 'Legt genau einen Notfall-Schlüssel der Technik auf die Box.' },
   programm: { titel: 'Edge Light einspielen', tut: 'Installiert das Programm, startet es und wartet, bis es sich mit seiner Referenz meldet.' },
+  einrichtung_wlan: {
+    titel: 'Einrichtungs-WLAN vorbereiten',
+    tut: 'Setzt das Funkmodul auf Land DE und bringt das Paket relayd mit, solange die Werkstatt noch Internet gibt.',
+  },
   tunnel_schluessel: { titel: 'Tunnel-Schlüssel erzeugen', tut: 'Die Box erzeugt ihren Schlüssel für den Wartungstunnel.' },
   einloesen: { titel: 'Bei VoltPilot anmelden (Einmal-Code)', tut: 'Die Box löst einen Einmal-Code ein; das Portal hält ihren Geräteschlüssel fest.' },
   tunnel_adresse: { titel: 'Tunnel-Adresse aus dem Portal', tut: 'Wartet auf die Tunnel-Adresse aus dem Portal.' },

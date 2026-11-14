@@ -450,9 +450,9 @@ describe('Werkstatt: Bildschirme an der Werkbank', () => {
     expect(schritte.querySelector('[data-schritt="programm"]')).toHaveAttribute('data-zustand', 'lauf');
     const jetzt = screen.getByTestId('wsb-jetzt');
     expect(jetzt).toHaveTextContent('Edge Light einspielen');
-    expect(jetzt).toHaveTextContent(/Schritt \d+ von 16/);
+    expect(jetzt).toHaveTextContent(/Schritt \d+ von 17/);
     expect(jetzt).toHaveTextContent('Frist 10 Min');
-    expect(jetzt).toHaveTextContent('Danach: Tunnel-Schlüssel erzeugen');
+    expect(jetzt).toHaveTextContent('Danach: Einrichtungs-WLAN vorbereiten');
     // Software: Freigabe, OpenWrt mit Prüfsumme, Edge Light, vorher
     const sw = screen.getByTestId('wsb-software');
     expect(sw).toHaveTextContent('Freigabe 2026-11-mango-1');
@@ -825,7 +825,7 @@ describe('Werkstatt: Nochmal versuchen und zur Seite legen', () => {
     expect(screen.queryByTestId('ws-zur-seite')).toBeNull();
   });
 
-  it('Fertig nennt neun Prüfungen und zeigt, was jetzt auf der Box ist; ein neueres Release nur als Hinweis', async () => {
+  it('Fertig nennt zehn Prüfungen und zeigt, was jetzt auf der Box ist; ein neueres Release nur als Hinweis', async () => {
     window.location.hash = '#/werkstatt?werkbank=1';
     werkstattDienst.mockResolvedValue(dienst({ zustand: 'fertig', ende: '2026-11-02T10:22:00Z' }));
     // Die Box-Art ist das Wort der API (EdgeUpdatesDto.ReleaseDto.boxArt: docker | light).
@@ -833,7 +833,7 @@ describe('Werkstatt: Nochmal versuchen und zur Seite legen', () => {
       { releaseSeq: 10, version: '2026.12.0', signed: false, boxArt: 'light' }] });
     render(<WerkstattPage />);
     fireEvent.click(await screen.findByTestId('wsb-mango'));
-    expect(screen.getByTestId('wsb-fertig')).toHaveTextContent('Alle neun Prüfungen bestanden · 17 Min');
+    expect(screen.getByTestId('wsb-fertig')).toHaveTextContent('Alle zehn Prüfungen bestanden · 17 Min');
     const sw = screen.getByTestId('wsb-software');
     expect(sw).toHaveTextContent('Auf dieser Box');
     expect(within(sw).getByTestId('wsb-soft-edge-light')).toHaveTextContent('✓ update-bereit');

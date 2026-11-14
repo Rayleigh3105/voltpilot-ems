@@ -21,7 +21,8 @@ public final class WerkstattPruefungen {
             "fenster_zu",
             "lan_netz",
             "neustart",
-            "update_bereit");
+            "update_bereit",
+            "einrichtung_wlan_bereit");
 
     private WerkstattPruefungen() {
     }
