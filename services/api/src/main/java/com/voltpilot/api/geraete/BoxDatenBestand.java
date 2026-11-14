@@ -72,7 +72,7 @@ public final class BoxDatenBestand {
                 "device_charge_point", "device_charging_budget", "flow_device_ack", "flow_node_status",
                 "data_source_box_receipt", "wechselrichter_untergrenze", "steuerungsverbund_mitglied",
                 "steuerungsverbund_geraet", "steuerungsverbund_anteil_verlust",
-                "steuerungsverbund_sprungprobe"));
+                "steuerungsverbund_sprungprobe", "steuerlogik_lauf", "steuerlogik_wechsel"));
         m.put("freigaben", List.of("device_control_activation"));
         m.put("komponenten", List.of("entity_observed_state", "device_component_apply"));
         // LinkedHashMap, nicht Map.copyOf: die Reihenfolge IST die Reihenfolge der 409-Liste.

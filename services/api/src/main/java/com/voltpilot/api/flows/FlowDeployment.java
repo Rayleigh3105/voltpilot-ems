@@ -72,6 +72,15 @@ public final class FlowDeployment {
             throw new IllegalArgumentException("Flow-Artefakt: content_hash ist kein sha256.");
         }
         JsonNode bundle = artifact.path("bundle");
+        if ("steuerlogik".equals(bundle.path("format").asText())) {
+            // Steuerlogik (flow-artifact.md §2.1): the logic travels as JSON TEXT so the
+            // hash also covers the order of its keys; no Node-RED fields beside it.
+            if (!bundle.path("logic").isTextual() || bundle.path("logic").asText().isEmpty()
+                    || bundle.has("tab_ids") || bundle.has("nodered_flows")) {
+                throw new IllegalArgumentException("Flow-Artefakt: bundle ist unvollständig.");
+            }
+            return;
+        }
         if (!"nodered-tabs".equals(bundle.path("format").asText())
                 || !bundle.path("tab_ids").isArray() || bundle.path("tab_ids").isEmpty()
                 || !bundle.path("nodered_flows").isArray()

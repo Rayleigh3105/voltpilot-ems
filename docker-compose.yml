@@ -428,6 +428,10 @@ services:
       # on but the sidecar down, activation refuses honestly (flow stays
       # "simuliert"), never half-activated.
       VOLTPILOT_FLOWS_COMPILER_BASE_URL: ${VOLTPILOT_FLOWS_COMPILER_BASE_URL:-http://flowc:8099}
+      # Steuerlogik: the logic service (see the `logik-dienst` service below)
+      # and the heartbeat block `logik` of a logic running along on the box.
+      VOLTPILOT_STEUERLOGIK_DIENST_BASE_URL: ${VOLTPILOT_STEUERLOGIK_DIENST_BASE_URL:-http://logik-dienst:8101}
+      VOLTPILOT_STEUERLOGIK_MQTT_LISTENER_ENABLED: "true"
     ports:
       - "${API_PORT:-8090}:8090"
     healthcheck:
@@ -811,6 +815,23 @@ services:
       FLOWC_PORT: "8099"
     ports:
       - "127.0.0.1:${FLOWC_PORT:-8099}:8099"
+
+  # ---------------------------------------------------------------------------
+  # logik-dienst: the Steuerlogik service beside the api (Steuerlogik Stufe 2;
+  # edge-app/core/cmd/vp-logik-dienst). It reads a logic with the box's own
+  # readers, runs the contract's check and builds the artifact with its hash -
+  # the api never reads the language itself. Go stdlib HTTP, internal-only,
+  # /health probed by the image. In the `flows` profile next to flowc.
+  # ---------------------------------------------------------------------------
+  logik-dienst:
+    build:
+      context: ./edge-app/core
+      dockerfile: cmd/vp-logik-dienst/Dockerfile
+    container_name: voltpilot-logik-dienst
+    profiles: ["flows"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LOGIK_DIENST_PORT:-8101}:8101"
 
 volumes:
   timescale-data:

@@ -9573,6 +9573,109 @@ export interface UemsSprungprobe {
  * `GET /api/v1/admin/sites/{siteId}/gemeinsame-steuerung` (AP-15 IP-24, nur Plattform-Rolle): je Box, was nur der
  * Betreiber sieht. `null` heißt „nicht gemeldet“ — nie eine Null.
  */
+/**
+ * Steuerlogik Stufe 2 (docs/contracts/v2/steuerlogik-rueckmeldung.md): eine Logik läuft auf der Box mit und
+ * schaltet nichts; das Blatt der Plattform zeigt Fassungen, Quittung und den Vergleich „würde“ gegen „ist“.
+ * Nur `/api/v1/admin/**` — Kundenkonten laden das nie.
+ */
+export interface SteuerlogikStand {
+  stufe?: number;
+  ein?: boolean;
+  sollwert?: number;
+  betriebsart?: string;
+  anteil?: number;
+}
+
+export interface SteuerlogikGeraetVergleich {
+  entity_id: string;
+  /** Name des Geräts in der Logik. */
+  name?: string;
+  wunsch?: SteuerlogikStand;
+  /** Fehlt = der Schaltstand ist unbekannt, nie „aus“. */
+  ist?: SteuerlogikStand;
+  verglichen_s: number;
+  abweichend_s: number;
+  laengste_abweichung_s: number;
+  wunsch_wechsel: number;
+  ist_wechsel: number;
+}
+
+export interface SteuerlogikRueckmeldung {
+  flow_id: string;
+  flow_version: number;
+  content_hash: string;
+  name: string;
+  zustand: 'mitlaufend';
+  seit: string;
+  tag?: string;
+  lage?: { nr: number; titel: string; art?: string; satz?: string };
+  zustaende?: Record<string, string>;
+  unbekannt?: string[];
+  fehler: number;
+  geraete?: Record<string, SteuerlogikGeraetVergleich>;
+}
+
+export interface SteuerlogikBericht {
+  name?: string;
+  sperrt?: boolean;
+  befunde?: string[];
+  proben?: { name: string; besteht: boolean; abweichungen: { stelle: string; soll: string; ist: string }[] }[];
+  hinweise?: string[];
+}
+
+export interface SteuerlogikFassung {
+  fassung: number;
+  zustand: 'mitlaufend' | 'stillgelegt';
+  contentHash: string;
+  bericht: SteuerlogikBericht | null;
+  angelegtAm: string;
+  angelegtVon: string | null;
+  stillgelegtAm: string | null;
+}
+
+export interface SteuerlogikLogik {
+  logikId: string;
+  name: string;
+  fassungen: SteuerlogikFassung[];
+  quittung: { fassung: number; contentHash: string; zustand: 'active' | 'error' | 'unsupported'; detail: string | null; gemeldetAm: string } | null;
+  laeufe: { box: string; fassung: number; contentHash: string; zustand: 'mitlaufend'; seit: string; rueckmeldung: SteuerlogikRueckmeldung | null; gemeldetAm: string }[];
+}
+
+export interface SteuerlogikBlatt {
+  box: string | null;
+  boxKann: boolean;
+  logiken: SteuerlogikLogik[];
+}
+
+export interface SteuerlogikAngenommen {
+  logikId: string;
+  fassung: number;
+  name: string;
+  contentHash: string;
+  bericht: SteuerlogikBericht | null;
+  box: string;
+  veroeffentlicht: boolean;
+}
+
+export interface SteuerlogikWechsel {
+  box: string;
+  fassung: number;
+  laufSeit: string;
+  nr: number;
+  t: string;
+  geraet: string;
+  was: 'wunsch' | 'ist';
+  neu: SteuerlogikStand | null;
+  andere: SteuerlogikStand | null;
+  lage: string | null;
+}
+
+export interface SteuerlogikProtokoll {
+  logikId: string;
+  tag: string;
+  wechsel: SteuerlogikWechsel[];
+}
+
 export interface UemsBetreiberblatt {
   boxen: UemsBoxStand[];
   zweischritt?: UemsZweischritt | null;
@@ -12351,6 +12454,22 @@ export const api = {
   /** Betreiber-Blatt (IP-24): nur die Plattform-Rolle; die Handgriffe unter `/admin` (I4). */
   gemeinsameSteuerungBlatt: (siteId: string) =>
     request<UemsBetreiberblatt>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung`),
+
+  /** Steuerlogik Stufe 2: das Blatt der Plattform (Fassungen, Quittung, Mitlauf). */
+  steuerlogikBlatt: (siteId: string) => request<SteuerlogikBlatt>(`/api/v1/admin/sites/${siteId}/steuerlogik`),
+  /** Eine Logik als Text annehmen; mit `logikId` eine neue Fassung, die die laufende ablöst. */
+  steuerlogikAnnehmen: (siteId: string, text: string, logikId?: string) =>
+    request<SteuerlogikAngenommen>(
+      logikId ? `/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/fassungen` : `/api/v1/admin/sites/${siteId}/steuerlogik`,
+      { method: 'POST', body: JSON.stringify({ text }) },
+    ),
+  steuerlogikStilllegen: (siteId: string, logikId: string) =>
+    request<{ stillgelegt: boolean }>(`/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/stilllegen`, { method: 'POST' }),
+  /** Das Vergleichsprotokoll eines Tages der Anlage (ohne `tag` heute). */
+  steuerlogikWechsel: (siteId: string, logikId: string, tag?: string) =>
+    request<SteuerlogikProtokoll>(
+      `/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/wechsel${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`,
+    ),
 
   gemeinsameSteuerungBetreiber: (siteId: string, schritt: 'scharfschalten' | 'fortsetzen') =>
     request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/${schritt}`, { method: 'POST' }),

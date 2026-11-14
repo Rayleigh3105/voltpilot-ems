@@ -4,10 +4,10 @@ Eine Logik ist ein Text, der frei beschreibt, wie mehrere Geräte einer Anlage z
 Herkunft: Steuerlogik-Konzept, entschieden am 14.11.2026 (E1 = A Regelsprache mit Kern auf der Box, E9 = B englische Wörter).
 Der Kern liest die kanonische JSON-Form, prüft sie und wertet sie im Takt aus: `edge-app/core/internal/logik`, lauffähig auf beiden Box-Arten.
 Die YAML-Schreibform für Menschen liest `edge-app/core/internal/logik/textform`; die Box selbst braucht kein YAML.
-In dieser Ausbaustufe schaltet der Kern nichts und ist an keine Auslieferung angeschlossen; er äußert je Takt nur, was die Geräte tun sollen.
+Seit Stufe 2, zweiter Teil, wird eine Logik ausgeliefert und läuft auf der Box mit (siehe [Auslieferung und Mitlauf](#auslieferung-und-mitlauf)); sie schaltet nichts und beansprucht kein Gerät, sie äußert je Takt nur, was die Geräte tun sollen.
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
-Die Box liest sie in `logik_vectors_test.go`, `tage_test.go` und `textform/textform_test.go`; jeder spätere Leser der Sprache (der Dienst neben der API, Stufe 2 zweiter Teil) muss dieselben Vektoren bestehen.
+Die Box liest sie in `logik_vectors_test.go`, `tage_test.go` und `textform/textform_test.go`; der Dienst neben der API besteht sie in beiden Schreibformen (`logikdienst/logikdienst_test.go`), weil er dieselben Leser benutzt.
 Die Vektoren stammen aus dem Referenzlabor des Konzepts; der Kern muss jeden Vektor genau wie das Labor entscheiden, Abweichungen sind Fehler, keine Auslegung.
 Alle Namen in den Beispielen sind erfunden.
 
@@ -55,6 +55,7 @@ Ein Ausdruck, der sich zur Laufzeit nicht rechnen lässt, gilt als unbekannt und
 
 Formeln: `and`, `or`, `not`, Vergleiche, `+ - * /`, Klammern; Rangfolge von schwach nach stark: `or`, `and`, `not`, Vergleich, `+ -`, `* /`, Vorzeichen.
 Funktionen: `min`, `max`, `if(bedingung, dann, sonst)`, `known`, `unknown`, `time_window(von, bis)` (über Mitternacht erlaubt; `von` zählt mit, `bis` nicht; gleich oder unbekannt heißt rund um die Uhr), `in_schedule(zeitplan)`, `holds(bedingung, dauer)`, `since(zustand)`, `running(timer)`, `last(counter)`.
+Feste Quellen: `site.grid` (kW, + Bezug), `site.pv` (kW), `battery.power` (kW, + laden), `battery.soc` (%), `sun.elevation` (°), `price.current` (Börsenpreis in ct/kWh als Zahl ohne Einheit, [Preis-Zuleitung](mqtt-price-current.md)); dazu `gerät.signal` mit den Signalen der Wortliste.
 Geräte-Eigenschaften: `gerät.on`, `.level`, `.power`, `.kw_per_output`, `.output_hours_today` (Summe der Einschaltzeit aller Ausgänge seit Mitternacht), `.requested` (was die Logik im letzten Takt wollte).
 `clock` ist die Uhrzeit; die Wochentage heißen `mon` bis `sun`; die Betriebsarten `normal`, `boost`, `cool`, `heat`, `fan_only`, `dry`, `auto`, `start`.
 
@@ -93,11 +94,27 @@ Ob ein Gerät existiert, zum Steuern freigegeben und von keiner anderen Regel be
 Temperaturen stellt der Kunde immer, in ihrem Bereich (E2 = B).
 Der Kundenadministrator darf an einer Logik alles, was der Fachbetrieb darf, einschließlich Bereiche und `editable_by` (E3 = B und ihre Lesart); das setzt die Oberfläche in Stufe 4 um, der Kern unterscheidet nicht nach Rolle.
 
-## Ausführung (die nächsten Teile der Stufe 2)
+## Auslieferung und Mitlauf
 
-Der Kern äußert nur Wünsche; Schiedsrichter und Schutzgrenzen der Box bleiben, wie sie sind.
-Für die Anbindung gilt das Muster des [Heizstab-Reglers](heizstab-regler.md): Klasse `flow` (Rang 40), TTL 45 s, in jedem Takt erneuert, Quelle nur intern; die Geräte einer Logik tragen `owner_claimed`; ohne die Schalter der Box geht kein Wunsch hinaus.
-Auslieferung über `v2/flows` mit Hash und Fähigkeit in `supports[]`, Rückmeldung im Herzschlag und der Zustand auf der Platte folgen im zweiten Teil der Stufe 2 und sind hier noch nicht gebaut.
+Stufe 2, zweiter Teil (gebaut): Die Logik kommt noch als Datei von VoltPilot, eine Oberfläche für Kunden folgt in den Stufen 3 bis 5.
+
+- **Dienst neben der API** (`edge-app/core/cmd/vp-logik-dienst`, Paket `internal/logikdienst`, Compose-Dienst `logik-dienst`, Port 8101): nimmt den Text als YAML-Schreibform oder kanonisches JSON, liest ihn mit denselben Lesern wie die Box, prüft ihn und baut das Artefakt; eine Logik, die die Prüfung sperrt, verlässt den Dienst nicht.
+  `POST /pruefe {text, anlage?, registry?}` liefert kanonische Form und Bericht, `POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?}` das Artefakt (422 bei unlesbar oder gesperrt, mit Bericht), `GET /health`.
+  Die Geräte der Proben (Ausgänge, kW je Ausgang) liest der Dienst aus `registry`, dem Registry-Inhalt der Anlage, wie die Box ihn bekommt, mit dem Treiber-Leser der Box (`shelly.Config.OutputFacts`); `anlage` je Gerät der Logik geht vor. Ohne diese Angaben gelten die Vorgaben der Proben, und eine Probe, die an der Leistung hängt, sperrt.
+  Die API liest die Sprache nirgends selbst; sie ruft nur diesen Dienst (`SteuerlogikDienstClient`).
+- **Annahme** (nur Plattform): `POST /api/v1/admin/sites/{siteId}/steuerlogik {text}` legt eine Logik an, `POST …/{logikId}/fassungen` eine neue Fassung, die die laufende ablöst, `POST …/{logikId}/stilllegen` legt sie still.
+  Abgelegt in `steuerlogik` als Text (wie gekommen), kanonische Form und Artefakt, alle drei als TEXT: JSONB ordnete Schlüssel um.
+  Ehrliche Halte vor jeder Änderung: keine eindeutige führende Box, die Box meldet `steuerlogik_mitlauf` nicht, der Dienst lehnt ab oder ist nicht erreichbar.
+- **Auslieferung**: über den vollständigen Satz auf `v2/flows` ([Flow-Artefakt](flow-artifact.md#steuerlogik)), Bündelformat `steuerlogik`, nur an eine führende Box mit der Fähigkeit `steuerlogik_mitlauf` ([supports](edge-supports.md)).
+  Die Logik reist als JSON-Text, damit der Hash auch die Reihenfolge der Zustände schützt; dazu der Ort der Anlage (Zeitzone, Lage für den Sonnenstand).
+  `required_entities` nennt die Geräte der Logik ohne Fähigkeit: die Box prüft nur, dass sie sie kennt.
+- **Mitlauf** (`internal/logiklauf`, beide Box-Arten): jede Sekunde mit den echten Eingängen; was fehlt, ist unbekannt.
+  Erzwungen, nicht eingestellt: das Paket importiert nur den Kern, den Sonnenstand und die Herzschlag-Typen (Test der Importliste), seine Abhängigkeiten sind reine Lesewege, und `agent/steuerlogik_test.go` belegt am echten Weg, dass weder der Schiedsrichter einen Wunsch noch das Gerät einen Schaltbefehl sieht.
+  Der gemerkte Zustand liegt gedrosselt in `<data_dir>/logik-laeufe.json` (bei Wechseln, höchstens alle 30 s, beim Angleichen und Beenden); nach einem Neustart gelten die Regeln von `after_restart`.
+- **Rückmeldung**: der Herzschlag-Block `logik` mit Fassung, Lage, Zuständen und dem Vergleich „würde schalten“ gegen „ist geschaltet“ ([Rückmeldung](steuerlogik-rueckmeldung.md)).
+
+Für das Schalten (Stufe 3) gilt das Muster des [Heizstab-Reglers](heizstab-regler.md): Klasse `flow` (Rang 40), TTL 45 s, in jedem Takt erneuert, Quelle nur intern; die Geräte einer Logik tragen `owner_claimed`; ohne die Schalter der Box geht kein Wunsch hinaus.
+Dafür kommt ein eigenes Wort in `supports[]`; eine Box mit nur `steuerlogik_mitlauf` schaltet nie.
 
 ## Versionsregeln
 

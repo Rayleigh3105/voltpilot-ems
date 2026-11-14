@@ -85,6 +85,8 @@ public class FlowActivationService {
     private final boolean activationEnabled;
     private final Clock clock;
     private final UpdateStatusRepository updateStatus;
+    /** Further artifact sources of the set (Steuerlogik); empty in tests that build the service by hand. */
+    private List<WeitereArtefakte> weitere = List.of();
 
     /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
@@ -120,6 +122,15 @@ public class FlowActivationService {
         this.activationEnabled = activationEnabled;
         this.clock = clock;
         this.updateStatus = updateStatus;
+    }
+
+    /**
+     * The further artifact sources of the deployment set (Steuerlogik Stufe 2): optional, so the hand-built
+     * services of the tests keep their constructor and publish flows only.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setWeitereArtefakte(List<WeitereArtefakte> weitere) {
+        this.weitere = weitere == null ? List.of() : List.copyOf(weitere);
     }
 
     /** Activate one validated version. Never throws for the honest stops. */
@@ -267,7 +278,8 @@ public class FlowActivationService {
 
     /**
      * The COMPLETE desired state for the gateway: every active edge flow's
-     * stored artifact of this site (never a diff, contract §3).
+     * stored artifact of this site plus the further sources (the Steuerlogiken
+     * running along) - never a diff, contract §3.
      */
     boolean publishDeploymentSet(UUID siteId, UUID gateway) {
         FlowDeploymentPublisher pub = publisher.getIfAvailable();
@@ -287,6 +299,9 @@ public class FlowActivationService {
                             row.flowId(), row.flowVersion(), e.getMessage());
                 }
             }
+        }
+        for (WeitereArtefakte quelle : weitere) {
+            artifacts.addAll(quelle.artefakte(siteId, gateway));
         }
         ObjectNode deployment = FlowDeployment.deploymentSet(mapper, tenantId, siteId, gateway,
                 clock.instant(), artifacts);

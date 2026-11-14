@@ -696,12 +696,12 @@ type TestView struct {
 // Snapshot is the /api/calibration payload. The Session fills the pure fields; the
 // agent decorates Available/Reason/ControlEnabled/Family/Certified before serving.
 type Snapshot struct {
-	Available      bool    `json:"available"` // a battery inverter is selected (agent-set)
-	Reason         string  `json:"reason"`    // German note when unavailable/blocked (agent-set)
-	Armed          bool    `json:"armed"`
-	Phase          Phase   `json:"phase"`
-	MaxKw          float64 `json:"max_kw"`
-	TtlSeconds     int     `json:"ttl_seconds"`
+	Available  bool    `json:"available"` // a battery inverter is selected (agent-set)
+	Reason     string  `json:"reason"`    // German note when unavailable/blocked (agent-set)
+	Armed      bool    `json:"armed"`
+	Phase      Phase   `json:"phase"`
+	MaxKw      float64 `json:"max_kw"`
+	TtlSeconds int     `json:"ttl_seconds"`
 	// RatedKw is the selected inverter's nameplate AC power in kW (agent-set; 0 =
 	// unknown). TestSteps is the offered test-power ladder in kW, derived from RatedKw
 	// (agent-set via TestStepsForRated). When RatedKw is 0 the ladder is the fixed
@@ -711,10 +711,10 @@ type Snapshot struct {
 	// AdminGate reports whether the calibration MUTATION endpoints require the admin
 	// secret (agent-set: a secret is configured). Read-only views stay open. When true
 	// the surface prompts for the admin password and sends it with each action.
-	AdminGate bool `json:"admin_gate"`
-	ControlEnabled bool    `json:"control_enabled"` // global kill-switch on (agent-set)
-	Family         string  `json:"family"`          // register-map family (agent-set)
-	Certified      bool    `json:"certified"`       // already certified (agent-set)
+	AdminGate      bool   `json:"admin_gate"`
+	ControlEnabled bool   `json:"control_enabled"` // global kill-switch on (agent-set)
+	Family         string `json:"family"`          // register-map family (agent-set)
+	Certified      bool   `json:"certified"`       // already certified (agent-set)
 	// DeviceCertified reports whether the release was granted ON THIS DEVICE by
 	// First-Light (the persisted per-device grant), as opposed to the fleet-wide
 	// VP_CONTROL_CERTIFIED_FAMILIES allowlist. Certified is the MERGE of both

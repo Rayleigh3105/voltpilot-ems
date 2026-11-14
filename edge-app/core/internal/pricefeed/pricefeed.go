@@ -125,13 +125,17 @@ type Feed struct {
 	publish Publisher
 	now     func() time.Time
 
-	mu      sync.Mutex
-	timer   *time.Timer
+	mu    sync.Mutex
+	timer *time.Timer
 	// validUntil of the price currently standing on the local topic; zero
 	// while nothing fresh stands there.
 	validUntil time.Time
 	// staleMarked = the stale marker is the topic's current retained state.
 	staleMarked bool
+	// price/slotStart of the price standing on the local topic (valid while
+	// validUntil is set) - read by the Steuerlogik running along.
+	price     float64
+	slotStart time.Time
 }
 
 // New builds a feed publishing through publish. Nothing is published until
@@ -177,8 +181,21 @@ func (f *Feed) Accept(d *Doc) {
 		return
 	}
 	f.validUntil = validUntil
+	f.price, f.slotStart = price, d.slotStart
 	f.staleMarked = false
 	f.rearmLocked(validUntil.Sub(now))
+}
+
+// Current is the price standing on the local topic and the start of its slot;
+// ok=false while no fresh price stands there (never received, expired by the
+// clock, or withdrawn) - the same honest "unknown" the topic carries.
+func (f *Feed) Current(now time.Time) (ctKwh float64, slotStart time.Time, ok bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.validUntil.IsZero() || !f.validUntil.After(now) {
+		return 0, time.Time{}, false
+	}
+	return f.price, f.slotStart, true
 }
 
 // Withdraw handles the cloud's retained-clear: the price is explicitly

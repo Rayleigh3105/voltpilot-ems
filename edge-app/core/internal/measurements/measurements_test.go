@@ -337,14 +337,14 @@ func TestRegisterbildIsAdditiveAndLeavesATodaysBoxUntouched(t *testing.T) {
 func TestRegisterbildShapeIsChecked(t *testing.T) {
 	karte := `[{"steckplatz":2,"kartentyp":494,"variante":1}]`
 	bad := map[string]string{
-		"foreign function code": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":6,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
-		"foreign word order":    `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"middle","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
-		"past the address space": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":65000,"funktionscode":3,"wortfolge":"big","kartenzahl":40,"controller_kennung":1,"karten":` + karte + `}`,
+		"foreign function code":         `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":6,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
+		"foreign word order":            `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"middle","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
+		"past the address space":        `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":65000,"funktionscode":3,"wortfolge":"big","kartenzahl":40,"controller_kennung":1,"karten":` + karte + `}`,
 		"cards do not match kartenzahl": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":2,"controller_kennung":1,"karten":` + karte + `}`,
-		"foreign card type": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":[{"steckplatz":2,"kartentyp":493,"variante":0}]}`,
-		"two cards in one slot": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":2,"controller_kennung":1,"karten":[{"steckplatz":2,"kartentyp":494,"variante":1},{"steckplatz":2,"kartentyp":495,"variante":1}]}`,
-		"no entity":             `{"entity_id":"","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
-		"unknown field":         `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `,"unit_id":1}`,
+		"foreign card type":             `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":[{"steckplatz":2,"kartentyp":493,"variante":0}]}`,
+		"two cards in one slot":         `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":2,"controller_kennung":1,"karten":[{"steckplatz":2,"kartentyp":494,"variante":1},{"steckplatz":2,"kartentyp":495,"variante":1}]}`,
+		"no entity":                     `{"entity_id":"","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
+		"unknown field":                 `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `,"unit_id":1}`,
 	}
 	for name, body := range bad {
 		if _, err := ParseConfig(registerbildConfig(`,"registerbilder":[`+body+`]`), testID, 1); err == nil {

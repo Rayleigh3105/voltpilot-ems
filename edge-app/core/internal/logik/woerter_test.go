@@ -107,7 +107,7 @@ func TestWortlisteUndKernSindDeckungsgleich(t *testing.T) {
 		"on", "level", "power", "kw_per_output", "output_hours_today", "requested"})
 	gleicheMengen(t, "betriebsart", englisch(t, w, "betriebsart"), Betriebsarten)
 	gleicheMengen(t, "quelle_fest", englisch(t, w, "quelle_fest"), []string{
-		"site.grid", "site.pv", "battery.power", "battery.soc", "sun.elevation"})
+		"site.grid", "site.pv", "battery.power", "battery.soc", "sun.elevation", "price.current"})
 	gleicheMengen(t, "signal", englisch(t, w, "signal"), []string{
 		"temperature", "room_temperature", "open", "door_open", "defrost", "fault", "running"})
 
@@ -124,7 +124,7 @@ func TestQuellenHabenEineGroesse(t *testing.T) {
 	}{
 		"site.grid": {GroesseKW, false}, "site.pv": {GroesseKW, false},
 		"battery.power": {GroesseKW, false}, "battery.soc": {GroesseProzent, false},
-		"sun.elevation": {GroesseWinkel, false},
+		"sun.elevation": {GroesseWinkel, false}, "price.current": {GroesseZahl, false},
 		"x.temperature": {GroesseTemp, false}, "x.room_temperature": {GroesseTemp, false},
 		"x.open": {GroesseZahl, true}, "x.door_open": {GroesseZahl, true},
 		"x.defrost": {GroesseZahl, true}, "x.fault": {GroesseZahl, true}, "x.running": {GroesseZahl, true},

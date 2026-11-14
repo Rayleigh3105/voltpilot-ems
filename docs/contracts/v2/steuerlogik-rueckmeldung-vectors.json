@@ -1,0 +1,1005 @@
+{
+ "$comment": [
+  "Vektoren des Herzschlag-Blocks logik (steuerlogik-rueckmeldung.md). Schreiber: die Box (edge-app/core/internal/logiklauf);",
+  "Leser: die API (services/api .../steuerlogik/SteuerlogikRueckmeldung, SteuerlogikRueckmeldungVectorsTest). Je Fall der Block und was davon",
+  "angenommen wird: Zahl der Läufe, Zahl der Protokollzeilen, die Geräte und unbekannten Eingänge des ersten Laufs."
+ ],
+ "schema_version": "1.0",
+ "faelle": [
+  {
+   "name": "beispiel",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     }
+    ]
+   },
+   "laeufe": 1,
+   "wechsel": 2,
+   "geraete": [
+    "wp"
+   ],
+   "unbekannt": []
+  },
+  {
+   "name": "unbekannter_zustand_faellt_weg",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "schaltet",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     }
+    ]
+   },
+   "laeufe": 0,
+   "wechsel": 0
+  },
+  {
+   "name": "kaputter_hash_faellt_weg",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:xyz",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     }
+    ]
+   },
+   "laeufe": 0,
+   "wechsel": 0
+  },
+  {
+   "name": "fassung_null_faellt_weg",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 0,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     }
+    ]
+   },
+   "laeufe": 0,
+   "wechsel": 0
+  },
+  {
+   "name": "doppelte_logik_zaehlt_einmal",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     }
+    ]
+   },
+   "laeufe": 1,
+   "wechsel": 2
+  },
+  {
+   "name": "zeile_mit_unbekanntem_was_faellt_allein_weg",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "schaltet",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     }
+    ]
+   },
+   "laeufe": 1,
+   "wechsel": 1
+  },
+  {
+   "name": "geraet_ohne_gueltige_entity_faellt_allein_weg",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "a b",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ]
+     }
+    ]
+   },
+   "laeufe": 1,
+   "wechsel": 2,
+   "geraete": []
+  },
+  {
+   "name": "unbekannte_eingaenge_nur_als_kennung",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": [
+       {
+        "nr": 1,
+        "t": "2026-11-14T10:20:00Z",
+        "geraet": "wp",
+        "was": "wunsch",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": false
+        },
+        "lage": "Speichert Sonnenstrom"
+       },
+       {
+        "nr": 2,
+        "t": "2026-11-14T10:21:01Z",
+        "geraet": "wp",
+        "was": "ist",
+        "neu": {
+         "ein": true
+        },
+        "andere": {
+         "ein": true
+        },
+        "lage": "Speichert Sonnenstrom"
+       }
+      ],
+      "unbekannt": [
+       "puffer",
+       "Nicht Gueltig"
+      ]
+     }
+    ]
+   },
+   "laeufe": 1,
+   "wechsel": 2,
+   "geraete": [
+    "wp"
+   ],
+   "unbekannt": [
+    "puffer"
+   ]
+  },
+  {
+   "name": "hoechstens_acht_laeufe",
+   "block": {
+    "laeufe": [
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a00",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a01",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a02",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a03",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a04",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a05",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a06",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a07",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     },
+     {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a08",
+      "flow_version": 1,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "name": "Wärmepumpe",
+      "zustand": "mitlaufend",
+      "seit": "2026-11-14T10:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+       "nr": 1,
+       "titel": "Speichert Sonnenstrom",
+       "art": "solar",
+       "satz": "Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 42 °C von höchstens 55 °C."
+      },
+      "zustaende": {
+       "empfehlung": "on"
+      },
+      "geraete": {
+       "wp": {
+        "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
+        "wunsch": {
+         "ein": true
+        },
+        "ist": {
+         "ein": true
+        },
+        "verglichen_s": 1320,
+        "abweichend_s": 61,
+        "laengste_abweichung_s": 61,
+        "wunsch_wechsel": 1,
+        "ist_wechsel": 1
+       }
+      },
+      "wechsel": []
+     }
+    ]
+   },
+   "laeufe": 8,
+   "wechsel": 0
+  },
+  {
+   "name": "kein_array_kein_lauf",
+   "block": {
+    "laeufe": {}
+   },
+   "laeufe": 0,
+   "wechsel": 0
+  }
+ ]
+}

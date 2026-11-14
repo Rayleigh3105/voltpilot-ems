@@ -110,3 +110,31 @@ func index(t *testing.T, liste []string, s string) int {
 	t.Fatalf("Schlüssel „%s“ fehlt in %v", s, liste)
 	return -1
 }
+
+// Die JSON-Ausgabe eines gelesenen Baums liest sich verlustfrei zurück -
+// für jede Vektor-Logik (die zweite Hälfte des Dienst-Wegs: YAML -> JSON).
+func TestJSONRundreise(t *testing.T) {
+	for _, name := range logiken {
+		t.Run(name, func(t *testing.T) {
+			roh, err := os.ReadFile(vertragPfad + "/" + name + ".logic.yaml")
+			if err != nil {
+				t.Fatalf("Schreibform lesen: %v", err)
+			}
+			k, err := Lies(roh)
+			if err != nil {
+				t.Fatalf("Lies: %v", err)
+			}
+			js, err := k.JSON()
+			if err != nil {
+				t.Fatalf("JSON: %v", err)
+			}
+			wieder, err := LiesJSON(js)
+			if err != nil {
+				t.Fatalf("LiesJSON der eigenen Ausgabe: %v", err)
+			}
+			if ok, wo := Gleich(k, wieder); !ok {
+				t.Fatalf("Rundreise verliert: %s", wo)
+			}
+		})
+	}
+}

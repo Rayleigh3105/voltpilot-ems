@@ -199,7 +199,8 @@
     "anlage.sonne": "site.pv",
     "speicher.leistung": "battery.power",
     "speicher.ladestand": "battery.soc",
-    "sonne.hoehe": "sun.elevation"
+    "sonne.hoehe": "sun.elevation",
+    "preis.aktuell": "price.current"
   },
   "signal": {
     "temperatur": "temperature",

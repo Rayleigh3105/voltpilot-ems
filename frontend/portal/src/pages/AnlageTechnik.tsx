@@ -176,6 +176,14 @@ const GemeinsameSteuerungBetreiberBlatt = lazy(() =>
 );
 
 /**
+ * Steuerlogik Stufe 2: das Blatt des Mitlaufs lädt nur für die Plattform-Rolle (eigener Chunk) — Kundenkonten laden
+ * es nie.
+ */
+const SteuerlogikMitlaufBlatt = lazy(() =>
+  import('./admin/SteuerlogikMitlaufBlatt').then((m) => ({ default: m.SteuerlogikMitlaufBlatt })),
+);
+
+/**
  * Die Karte „Gemeinsame Steuerung“ (UEMS AP-15 IP-23, §5.2) als eigener Abschnitt der Einstellungen — erscheint
  * nur, wenn die Anlage steuert UND mehr als eine Box hat; wer nur misst, sieht sie nie. Seit „Anlage – neu
  * gedacht“ (E5) eine Gruppe wie die übrigen, unter ihnen; `?abschnitt=gemeinsam` springt sie an. Exportiert
@@ -850,6 +858,13 @@ export function TechnikSection({
       </div>
 
       <GemeinsameSteuerungAbschnitt siteId={site.id} siteDevices={siteDevices} daten={gemeinsam} deepLinked={anchored === 'gemeinsam'} />
+
+      {/* Steuerlogik Stufe 2: Logiken, die auf der Box mitlaufen - nur hinter dem EINEN Rollen-Tor. */}
+      {showTechnicalLayer() && (
+        <Suspense fallback={null}>
+          <SteuerlogikMitlaufBlatt siteId={site.id} />
+        </Suspense>
+      )}
 
       {/* Stufe ③: was ohne Einstellung mitläuft - aus derselben Ableitung wie
           auf der Steuerung; „EEG: nur Solarladen" nur, wenn es gilt. */}

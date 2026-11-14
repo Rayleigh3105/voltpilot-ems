@@ -38,8 +38,8 @@ func okCond() GridConditions {
 func TestGridStartRefusesEveryOpenGate(t *testing.T) {
 	t0 := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	cases := []struct {
-		name  string
-		mut   func(*GridConditions)
+		name   string
+		mut    func(*GridConditions)
 		needle string
 	}{
 		{"Not-Aus", func(c *GridConditions) { c.ControlEnabled = false }, "Not-Aus"},
@@ -102,12 +102,12 @@ func TestGridStepSequenceAndNeutralOnlyOnSideChange(t *testing.T) {
 	// die batterieseitige Ruhe; ihn zusaetzlich zu markieren hiesse, den
 	// Vorgaenger-Zustand fuer einen Wechsel zu halten, den es nicht gab.
 	type want struct {
-		at        time.Duration
-		step      string
-		side      string
-		neutral   bool
-		target    *float64
-		pvCap     bool
+		at      time.Duration
+		step    string
+		side    string
+		neutral bool
+		target  *float64
+		pvCap   bool
 	}
 	wants := []want{
 		{0, GridStepNeutral, GridSideBattery, false, f(0), false},

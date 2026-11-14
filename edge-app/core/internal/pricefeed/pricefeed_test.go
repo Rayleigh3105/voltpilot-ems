@@ -185,3 +185,28 @@ func TestWithdrawPublishesStaleMarker(t *testing.T) {
 		t.Fatalf("stale marker must carry no price: %s", raw)
 	}
 }
+
+// The Steuerlogik running along reads the price through Current: the standing
+// price within its validity, unknown before the first document, after
+// valid_until and after a withdrawal - never a stale price.
+func TestCurrentNurSolangeDerPreisGilt(t *testing.T) {
+	c := &capture{}
+	now := time.Date(2026, 11, 14, 11, 0, 3, 0, time.UTC)
+	f := newWithClock(c.publish, func() time.Time { return now })
+	defer f.Close()
+	if _, _, ok := f.Current(now); ok {
+		t.Fatal("no document yet: unknown")
+	}
+	slot := now.Truncate(15 * time.Minute)
+	f.Accept(doc(t, slot, slot.Add(15*time.Minute), -1.2))
+	if p, start, ok := f.Current(now); !ok || p != -1.2 || !start.Equal(slot) {
+		t.Fatalf("fresh price: %v %v %v", p, start, ok)
+	}
+	if _, _, ok := f.Current(slot.Add(20 * time.Minute)); ok {
+		t.Fatal("after valid_until (slot end + slack) the price is unknown")
+	}
+	f.Withdraw()
+	if _, _, ok := f.Current(now); ok {
+		t.Fatal("withdrawn: unknown")
+	}
+}

@@ -282,12 +282,19 @@ jobs:
           - component: flowc
             context: ./edge-app/nodered/flowc
             build_args: ""
+          # logik-dienst: the Steuerlogik service beside the api (Steuerlogik
+          # Stufe 2); core module context, it reads the language with the box's
+          # own packages.
+          - component: logik-dienst
+            context: ./edge-app/core
+            dockerfile: ./edge-app/core/cmd/vp-logik-dienst/Dockerfile
+            build_args: ""
           # Repo-root context like the optimizer: the image bakes the realm
           # import (infra/prod/keycloak) AND the login theme
           # (deploy/keycloak/themes), which live in different directories.
           # Compose still defaults to the upstream image; the k8s Deployment
           # pulls this one (deploy/keycloak/README.md). Kept in lockstep with
-          # deploy-fast.yaml so both pipelines publish the same nine images.
+          # deploy-fast.yaml so both pipelines publish the same ten images.
           - component: keycloak
             context: .
             dockerfile: ./deploy/keycloak/Dockerfile

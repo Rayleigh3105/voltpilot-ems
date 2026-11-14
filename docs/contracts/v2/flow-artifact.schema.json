@@ -63,7 +63,7 @@
               "entity_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
               "capabilities": {
                 "type": "array",
-                "minItems": 1,
+                "description": "Empty = the entity only has to exist on the box (a Steuerlogik running along observes it and switches nothing).",
                 "items": {
                   "type": "string",
                   "pattern": "^(measure|actuate):[a-z0-9_]{1,64}$",
@@ -74,25 +74,49 @@
           }
         },
         "bundle": {
-          "type": "object",
-          "required": ["format", "tab_ids", "nodered_flows"],
-          "additionalProperties": false,
-          "description": "The compiled runtime payload. v1 format: the Node-RED node array for this flow's tab(s), generated exclusively from catalog node implementations (vp-palette nodes + generated wiring - NO function nodes with free code in user flows). Tabs carry the ownership marker (flow-artifact.md §tab-ownership) so the reseed mechanism can tell artifact tabs from vendor template tabs.",
-          "properties": {
-            "format": { "type": "string", "const": "nodered-tabs" },
-            "tab_ids": {
-              "type": "array",
-              "minItems": 1,
-              "items": { "type": "string", "minLength": 1, "maxLength": 64 },
-              "description": "Ids of the tab nodes contained in nodered_flows; deterministic per (flow_id, flow_version) so redeploys replace instead of duplicating."
-            },
-            "nodered_flows": {
-              "type": "array",
-              "minItems": 1,
-              "items": { "type": "object", "required": ["id", "type"] },
-              "description": "The Node-RED node objects (including the tab node(s)), exactly as they will appear in the runtime's flow configuration."
+          "oneOf": [
+            {
+            "type": "object",
+            "required": ["format", "tab_ids", "nodered_flows"],
+            "additionalProperties": false,
+            "description": "The compiled runtime payload. v1 format: the Node-RED node array for this flow's tab(s), generated exclusively from catalog node implementations (vp-palette nodes + generated wiring - NO function nodes with free code in user flows). Tabs carry the ownership marker (flow-artifact.md §tab-ownership) so the reseed mechanism can tell artifact tabs from vendor template tabs.",
+            "properties": {
+              "format": { "type": "string", "const": "nodered-tabs" },
+              "tab_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+                "description": "Ids of the tab nodes contained in nodered_flows; deterministic per (flow_id, flow_version) so redeploys replace instead of duplicating."
+              },
+              "nodered_flows": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "object", "required": ["id", "type"] },
+                "description": "The Node-RED node objects (including the tab node(s)), exactly as they will appear in the runtime's flow configuration."
+              }
             }
-          }
+            },
+            {
+              "type": "object",
+              "required": ["format", "logic"],
+              "additionalProperties": false,
+              "description": "Steuerlogik (flow-artifact.md §Steuerlogik, steuerlogik.md): one logic document as canonical JSON TEXT - a string so the content hash also covers the order of its keys, which is semantic - plus the place of the plant. Built only by the logic service beside the api; delivered only to a box reporting steuerlogik_mitlauf.",
+              "properties": {
+                "format": { "type": "string", "const": "steuerlogik" },
+                "logic": { "type": "string", "minLength": 2, "maxLength": 262144, "description": "The canonical JSON of the logic (steuerlogik.schema.json), as text." },
+                "site": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Where the plant is: timezone for clock and day, location for the sun elevation. A missing location leaves the sun unknown.",
+                  "properties": {
+                    "timezone": { "type": "string", "minLength": 1, "maxLength": 64 },
+                    "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+                    "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+                  }
+                }
+              }
+            }
+          ]
         },
         "signature": {
           "type": "string",

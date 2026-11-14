@@ -93,6 +93,12 @@
       "meaning": "Ein Wunsch setpoint_kw darf eine ausdrückliche Ausgangsmenge outputs (Kanalnummern) tragen; der Stufenweg eines Shelly-Heizstabs schaltet genau diese Ausgänge, solange ihre Zahl eine erlaubte Stufe ist und ihre kW in den gewährten Sollwert nach allen Schutzgrenzen passen (heizstab-shelly.md, Handeingriff je Phase). Sonst wählt die Box die Stufe aus dem Sollwert wie bisher. Erst dann zeigt das Portal Schalter je Phase und die Cloud sendet outputs; eine ältere Box überliest das Feld.",
       "advertised": true,
       "evidence": "edge-app/core/internal/shelly/group_vectors_test.go"
+    },
+    {
+      "name": "steuerlogik_mitlauf",
+      "meaning": "Die Box nimmt im Satz auf v2/flows ein Artefakt im Bündelformat steuerlogik an (flow-artifact.md, steuerlogik.md) und lässt die Logik im Kern mitlaufen: jede Sekunde mit den echten Eingängen der Box, ohne zu schalten und ohne ein Gerät zu beanspruchen; was sie schalten würde, steht neben dem, was geschaltet ist, im Herzschlag-Block logik (steuerlogik-rueckmeldung.md). Erst dann liefert die Cloud eine Logik aus; eine ältere Box quittiert das Bündelformat als Fehler.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/agent/steuerlogik_test.go"
     }
   ],
   "cases": [

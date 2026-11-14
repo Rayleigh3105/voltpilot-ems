@@ -3045,6 +3045,122 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [admin]
+      summary: Steuerlogik der Anlage - Fassungen, Quittung der Box und Mitlauf (Stufe 2, zweiter Teil).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle; ein Kundenkonto bekommt 403), lesend, über den
+        `X-Tenant-Id`-Umschalter auf dem RLS-Pfad. Je Logik die Fassungen (jüngste zuerst) mit Prüfbericht, die Quittung
+        der Box aus `flows.applied` und der jüngste Herzschlag-Block `logik` je Box (docs/contracts/v2/
+        steuerlogik-rueckmeldung.md); dazu die führende Box und ob sie `steuerlogik_mitlauf` kann. Eine fremde Anlage
+        ist 404.
+      responses:
+        "200":
+          description: Das Blatt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikBlatt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+    post:
+      tags: [admin]
+      summary: Eine Logik als Text annehmen (Fassung 1) und mitlaufen lassen.
+      description: >
+        Recht `plattform.betrieb`. Der Text ist die YAML-Schreibform oder die kanonische JSON-Form
+        (docs/contracts/v2/steuerlogik.md). Der Logik-Dienst neben der API liest und prüft ihn und baut das Artefakt;
+        die API legt es ab und liefert den vollständigen Satz auf `v2/flows` an die führende Box, wo die Logik
+        mitläuft, ohne zu schalten. Ehrliche Halte ohne jede Änderung: 409 `keine_box` / `box_ohne_mitlauf`,
+        422 `logik_unlesbar` / `pruefung_sperrt` (mit `bericht`), 503 `dienst_nicht_erreichbar`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SteuerlogikText" }
+      responses:
+        "201":
+          description: Angenommen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikAngenommen" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "409": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "422": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "503": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik/{logikId}/fassungen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Eine neue Fassung einer Logik annehmen; sie löst die mitlaufende ab.
+      description: Recht `plattform.betrieb`. Dieselben Halte wie beim Anlegen; eine fremde oder unbekannte Logik ist 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SteuerlogikText" }
+      responses:
+        "201":
+          description: Angenommen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikAngenommen" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "409": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "422": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "503": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik/{logikId}/stilllegen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Die mitlaufende Fassung stilllegen; der Satz geht ohne sie an die Box.
+      description: Recht `plattform.betrieb`. `stillgelegt` ist false, wenn keine Fassung mitlief.
+      responses:
+        "200":
+          description: Stillgelegt.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stillgelegt]
+                properties: { stillgelegt: { type: boolean } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik/{logikId}/wechsel:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: tag, in: query, required: false, schema: { type: string, format: date }, description: "Tag der Anlage (Europe/Berlin); ohne Angabe heute." }
+    get:
+      tags: [admin]
+      summary: Das Vergleichsprotokoll "würde schalten" gegen "ist geschaltet" eines Tages.
+      description: >
+        Recht `plattform.betrieb`, lesend. Die Zeilen aller Boxen und Läufe dieser Logik in [Tagesbeginn, nächster
+        Tagesbeginn), älteste zuerst, höchstens 2000. Je Zeile Lauf (`laufSeit`) und laufende Nummer (`nr`): eine
+        Lücke in `nr` ist ein verlorener Herzschlag. Aufbewahrt 90 Tage.
+      responses:
+        "200":
+          description: Das Protokoll.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikProtokoll" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
   /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/anteil-verlust:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -20468,6 +20584,20 @@ components:
         naechste Seite auch bei gleichen Zeitstempeln genau hinter dem letzten
         gelieferten Eintrag ansetzt.
   responses:
+    SteuerlogikAbgelehnt:
+      description: Ein ehrlicher Halt der Steuerlogik-Routen, nichts wurde geändert.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [grund, message]
+            properties:
+              grund:
+                type: string
+                enum: [anlage_unbekannt, logik_unbekannt, text_fehlt, text_zu_gross, keine_box, box_ohne_mitlauf,
+                  logik_unlesbar, pruefung_sperrt, dienst_nicht_erreichbar, anfrage]
+              message: { type: string }
+              bericht: { type: object, description: "Prüfbericht des Logik-Dienstes bei pruefung_sperrt." }
     EnergieeinsatzAbgelehnt:
       description: Lesbare Ablehnung mit stabiler Kennung; kein Schreibvorgang bei Ablehnung.
       content:
@@ -20695,6 +20825,89 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    SteuerlogikText:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, maxLength: 262144, description: "Die Logik als YAML-Schreibform oder kanonisches JSON." }
+    SteuerlogikAngenommen:
+      type: object
+      required: [logikId, fassung, name, contentHash, box, veroeffentlicht]
+      properties:
+        logikId: { type: string, format: uuid }
+        fassung: { type: integer, minimum: 1 }
+        name: { type: string }
+        contentHash: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        bericht: { type: object, description: "Prüfbericht des Logik-Dienstes." }
+        box: { type: string, format: uuid }
+        veroeffentlicht: { type: boolean, description: "Ob der Satz auf v2/flows an die Box ging." }
+    SteuerlogikBlatt:
+      type: object
+      required: [boxKann, logiken]
+      properties:
+        box: { type: string, format: uuid, nullable: true }
+        boxKann: { type: boolean }
+        logiken:
+          type: array
+          items:
+            type: object
+            properties:
+              logikId: { type: string, format: uuid }
+              name: { type: string }
+              fassungen:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fassung: { type: integer }
+                    zustand: { type: string, enum: [mitlaufend, stillgelegt] }
+                    contentHash: { type: string }
+                    bericht: { type: object }
+                    angelegtAm: { type: string, format: date-time }
+                    angelegtVon: { type: string, nullable: true }
+                    stillgelegtAm: { type: string, format: date-time, nullable: true }
+              quittung:
+                type: object
+                nullable: true
+                properties:
+                  fassung: { type: integer }
+                  contentHash: { type: string }
+                  zustand: { type: string, enum: [active, error, unsupported] }
+                  detail: { type: string, nullable: true }
+                  gemeldetAm: { type: string, format: date-time }
+              laeufe:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    box: { type: string, format: uuid }
+                    fassung: { type: integer }
+                    contentHash: { type: string }
+                    zustand: { type: string, enum: [mitlaufend] }
+                    seit: { type: string, format: date-time }
+                    rueckmeldung: { type: object, description: "Der bereinigte Block logik.laeufe[] ohne Protokoll (steuerlogik-rueckmeldung.md)." }
+                    gemeldetAm: { type: string, format: date-time }
+    SteuerlogikProtokoll:
+      type: object
+      required: [logikId, tag, wechsel]
+      properties:
+        logikId: { type: string, format: uuid }
+        tag: { type: string, format: date }
+        wechsel:
+          type: array
+          items:
+            type: object
+            properties:
+              box: { type: string, format: uuid }
+              fassung: { type: integer }
+              laufSeit: { type: string, format: date-time }
+              nr: { type: integer }
+              t: { type: string, format: date-time }
+              geraet: { type: string }
+              was: { type: string, enum: [wunsch, ist] }
+              neu: { type: object, nullable: true }
+              andere: { type: object, nullable: true }
+              lage: { type: string, nullable: true }
     AnlagenCheckUrteil:
       type: object
       description: Urteil „fällt ab“ über ein Fenster (Bedienkonzept vp-privatkunde-bedienkonzept §6.4).
