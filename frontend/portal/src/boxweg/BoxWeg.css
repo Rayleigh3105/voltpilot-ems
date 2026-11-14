@@ -158,3 +158,54 @@
     margin-left: auto;
   }
 }
+
+/* "Wie soll Ihre Box ins Internet?" (Konzept vp-edge-light-wlan-s5): zwei gleichwertige Karten. */
+.vp-btn.vp-wahl-karte {
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  white-space: normal;
+  height: auto;
+  min-height: 64px;
+  padding: var(--vp-space-3) var(--vp-space-4);
+  gap: 2px;
+}
+.vp-wahl-karte-titel {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.vp-wahl-karte-zeile {
+  font-size: 0.85rem;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* Über WLAN: die Schritte zum Einrichtungs-WLAN, dann die Kennung zum Vergleich. */
+.vp-wlan-schritte {
+  counter-reset: wlan-schritt;
+}
+.vp-wlan-schritte li {
+  counter-increment: wlan-schritt;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: start;
+}
+.vp-wlan-schritte li::before {
+  content: counter(wlan-schritt);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--vp-radius-full);
+  background: var(--vp-tint);
+  color: var(--vp-action);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* Verbindungsanzeige (Weg und Box-Seite): Signal-Warnung und der Weg zurück ins Einrichtungs-WLAN. */
+.vp-verbindung-chip {
+  justify-self: start;
+}

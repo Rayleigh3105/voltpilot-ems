@@ -166,7 +166,7 @@ public class DeviceController {
                 d.id(), d.siteId(), d.externalRef(), d.kind(), d.name(), d.status(),
                 d.lastSeenAt(), d.createdAt(), d.lanHost(), d.lanSeenAt(), d.lanSource(),
                 fuehrend.get(d.siteId()) == null ? null : d.id().equals(fuehrend.get(d.siteId())),
-                d.anmeldung()))
+                d.anmeldung(), d.linkKind(), d.signalDbm(), d.linkSeenAt(), d.linkWeakSince()))
                 .toList(), teilansicht.jetzt());
     }
 

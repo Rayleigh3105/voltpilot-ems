@@ -192,6 +192,9 @@ describe('M6 · Assistent, Schritt „Box“ mit der Kennung aus dem QR-Code', (
     expect(screen.getByText('Wir merken uns die Kennung bis morgen in diesem Browser.')).toBeInTheDocument();
     expect(claim).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft unverändert weiter.
+    expect(await screen.findByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Mit Netzwerkkabel/ }));
     expect(await screen.findByRole('heading', { name: 'Ihre Box startet' })).toBeInTheDocument();
     expect(claim).toHaveBeenCalledWith('s-1', REF, expect.any(String));
     expect(offeneKoppelRef()).toBeNull();

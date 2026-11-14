@@ -28266,6 +28266,34 @@ components:
             (device_enrollment, nur fuers eigene Geraet). null/fehlend = die
             Box hat sich seit dem Verbinden nie angemeldet, oder ein aelteres
             Backend sendet den Block gar nicht.
+        linkKind:
+          type: string
+          nullable: true
+          enum: [kabel, wlan]
+          description: >
+            Konzept vp-edge-light-wlan (E1=B): wie Edge Light gerade zum
+            Kundenrouter kommt. null = die Box meldet es (noch) nicht (eine
+            Docker-Box kennt die Frage nicht) - NIE "keine Verbindung".
+        signalDbm:
+          type: integer
+          nullable: true
+          example: -62
+          description: >
+            WLAN-Signal in dBm, von der Box selbst gemessen; nur bei linkKind
+            "wlan" belegt.
+        linkSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Der Frische-Anker von linkKind/signalDbm; er reist immer MIT.
+        linkWeakSince:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Seit wann das Signal ununterbrochen unter der Schwelle liegt
+            (-70 dBm oder schwaecher); null = gerade nicht schwach oder
+            unbekannt.
     Anmeldung:
       type: object
       properties:

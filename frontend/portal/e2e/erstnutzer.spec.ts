@@ -278,13 +278,18 @@ for (const breite of BREITEN) {
     await ohneQuerlauf(page, breite, 'erst-5-box');
     await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
 
+    // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft unverändert weiter.
+    await expect(page.getByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'erst-5c-verbindung-wahl');
+    await page.getByRole('button', { name: 'Mit Netzwerkkabel' }).click();
+
     // Das ehrliche Ergebnis (QE-4 A): verbunden, noch kein Lebenszeichen - weiter geht es ohne Warten.
-    await expect(page.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
     await ohneQuerlauf(page, breite, 'erst-5b-box-wartet');
     await page.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }).click();
 
     // 3 · Anlage - die Box hat sich noch nicht gemeldet; ihre Geräte kommen im Hintergrund dazu (D7).
-    await expect(page.getByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
     expect(cloud.posts.at(-1)).toMatchObject({ pfad: 'claim', body: { externalRef: 'edge-k7m2xq3' } });
     expect(cloud.posts.at(-1)?.kennung).toMatch(/:box:edge-k7m2xq3$/);
     await ohneQuerlauf(page, breite, 'erst-6-box-sucht');

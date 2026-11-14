@@ -3387,6 +3387,86 @@ class PortalApiTest {
         assertThat(fremd.getBody()).noneMatch(d -> deviceId.equals(d.get("id")));
     }
 
+    /**
+     * Konzept vp-edge-light-wlan (E1=B, Scheibe S5): wie Edge Light gerade zum
+     * Kundenrouter kommt - "kabel" oder "wlan" - und bei WLAN das Signal. Wie
+     * {@link #theBoxOwnReachabilityIsIngestedAndTenantScoped}, über den
+     * echten Zuhörer gegen eine echte Datenbank, damit die Migration
+     * (V20261114120000), die CASE-Anweisung in {@code setLinkStatus} und die
+     * REST-Projektion tatsächlich zusammenpassen - nicht nur im Mock.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theBoxLinkKindAndSignalAreIngestedWithAWeakSignalStreak() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "WLAN-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-wlan-01");
+
+        java.util.function.Function<String, Map<String, Object>> device = id -> {
+            ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
+                    url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+            return res.getBody().stream().filter(d -> id.equals(d.get("id"))).findFirst()
+                    .orElseThrow();
+        };
+
+        // Vor jeder Meldung wird NICHTS behauptet.
+        assertThat(device.apply(deviceId)).containsEntry("linkKind", null)
+                .containsEntry("signalDbm", null).containsEntry("linkSeenAt", null)
+                .containsEntry("linkWeakSince", null);
+
+        var listener = new com.voltpilot.api.ota.UpdateStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, updateStatusRepo);
+        String topic = "ems/" + tenantA + "/" + siteId + "/" + deviceId + "/status";
+        java.util.function.Consumer<String> heartbeat = network -> listener.handle(topic,
+                ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantA + "\",\"site_id\":\""
+                        + siteId + "\",\"device_id\":\"" + deviceId + "\",\"online\":true,"
+                        + "\"version\":\"edge-light-2026.11.14\",\"network\":" + network + "}")
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        // Ein schwaches Signal (-80, unter der Schwelle -70) beginnt eine Serie.
+        heartbeat.accept("{\"reported_at\":\"2026-11-14T09:00:00Z\","
+                + "\"link_kind\":\"wlan\",\"signal_dbm\":-80}");
+        Map<String, Object> schwach = device.apply(deviceId);
+        assertThat(schwach).containsEntry("linkKind", "wlan").containsEntry("signalDbm", -80);
+        assertThat((String) schwach.get("linkWeakSince")).startsWith("2026-11-14T09:00:00");
+
+        // Weiter schwach (-75): die Serie bleibt bei ihrem ERSTEN Zeitpunkt stehen.
+        heartbeat.accept("{\"reported_at\":\"2026-11-14T09:00:15Z\","
+                + "\"link_kind\":\"wlan\",\"signal_dbm\":-75}");
+        Map<String, Object> weiterSchwach = device.apply(deviceId);
+        assertThat(weiterSchwach).containsEntry("signalDbm", -75);
+        assertThat((String) weiterSchwach.get("linkWeakSince")).startsWith("2026-11-14T09:00:00");
+
+        // Erholt (-55, über der Schwelle): die Serie endet.
+        heartbeat.accept("{\"reported_at\":\"2026-11-14T09:00:30Z\","
+                + "\"link_kind\":\"wlan\",\"signal_dbm\":-55}");
+        assertThat(device.apply(deviceId)).containsEntry("signalDbm", -55)
+                .containsEntry("linkWeakSince", null);
+
+        // Schwach vergeht noch ein zweites Mal - EIN NEUER Beginn, nicht der alte.
+        heartbeat.accept("{\"reported_at\":\"2026-11-14T09:01:00Z\","
+                + "\"link_kind\":\"wlan\",\"signal_dbm\":-80}");
+        assertThat((String) device.apply(deviceId).get("linkWeakSince"))
+                .startsWith("2026-11-14T09:01:00");
+
+        // Auf Kabel umgestellt: kein Signal, keine Serie - nie eine erfundene Zahl.
+        heartbeat.accept("{\"reported_at\":\"2026-11-14T09:02:00Z\",\"link_kind\":\"kabel\"}");
+        assertThat(device.apply(deviceId)).containsEntry("linkKind", "kabel")
+                .containsEntry("signalDbm", null).containsEntry("linkWeakSince", null);
+
+        // Ein Herzschlag ohne link_kind lässt den gespeicherten Stand stehen.
+        listener.handle(topic, ("{\"tenant_id\":\"" + tenantA + "\",\"site_id\":\"" + siteId
+                + "\",\"device_id\":\"" + deviceId + "\",\"version\":\"edge-light-2026.11.15\"}")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(device.apply(deviceId)).containsEntry("linkKind", "kabel");
+    }
+
     /** The day-range channel map of one entity (helper for the splice test). */
     @SuppressWarnings("unchecked")
     private Map<String, Object> entityDayChannels(String token, String siteId, String entityId,

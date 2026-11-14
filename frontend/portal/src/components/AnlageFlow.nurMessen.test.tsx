@@ -163,6 +163,10 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
     schweigt('Schritt 2 · Box, abgelehnt');
     fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft unverändert weiter.
+    expect(await screen.findByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeInTheDocument();
+    schweigt('Schritt 2 · Box, Wahl Kabel/WLAN');
+    fireEvent.click(screen.getByRole('button', { name: /Mit Netzwerkkabel/ }));
     // Das Ergebnis nach dem Verbinden (QE-4 A) spricht auch kein Steuer- oder Geldwort.
     expect(await screen.findByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeInTheDocument();
     schweigt('Schritt 2 · Box, verbunden');

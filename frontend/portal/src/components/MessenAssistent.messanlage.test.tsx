@@ -143,6 +143,10 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
     fireEvent.change(within(fluss).getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
     fireEvent.click(within(fluss).getByRole('button', { name: 'Box verbinden' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledTimes(1));
+    // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft unverändert weiter.
+    expect(await within(fluss).findByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeInTheDocument();
+    schweigt('Schritt 2 · Box, Wahl Kabel/WLAN');
+    fireEvent.click(within(fluss).getByRole('button', { name: /Mit Netzwerkkabel/ }));
     // Das Ergebnis nach dem Verbinden (QE-4 A) - weiter ohne Warten.
     expect(await within(fluss).findByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeInTheDocument();
     schweigt('Schritt 2 · Box, verbunden');

@@ -1,5 +1,6 @@
 import { deviceLiveStatus, type Device } from '../api';
-import { WEG } from '../koppelTexte';
+import { verbindungsStand, warZuletztWlan, type VerbindungsStand } from '../boxVerbindung';
+import { VERBINDUNG, WEG } from '../koppelTexte';
 
 /**
  * Die Lage-Regeln des Wegs (vp-box-verbinden-konzept, Bericht Abschnitt 4.3/5,
@@ -31,6 +32,14 @@ export interface WegLage {
   stale: boolean;
   /** Steckte die Box schon vor dem Verbinden (Anmeldung vor dem Claim)? */
   liefSchon: boolean;
+  /** Konzept vp-edge-light-wlan-s5: wie die Box gerade zum Router kommt. */
+  verbindung: VerbindungsStand;
+  /**
+   * Box ohne Verbindung, zuletzt per WLAN da (Bericht 0.1, „Ihre Box meldet
+   * sich nicht"): der Weg zurück über das Einrichtungs-WLAN - `null`, solange
+   * die Box online ist oder noch nie eines wusste.
+   */
+  einrichtungshinweis: string | null;
 }
 
 const SEK = 1000;
@@ -65,6 +74,13 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
   const stale = liveStatus === 'stale';
   const liefSchon = angemeldet && createdAt != null && angefragtAm! < createdAt;
   const eingesteckt: StationState = angemeldet || everSeen ? 'done' : 'dashed';
+  const verbindung = verbindungsStand(device, jetzt);
+  // Nur eine Box, die schon einmal online war und es jetzt nicht mehr ist,
+  // bekommt den Weg zurück genannt - eine Box, die noch nie etwas sendete,
+  // hat auch noch kein WLAN gewusst, das wieder öffnen könnte.
+  const einrichtungshinweis = everSeen && !online && warZuletztWlan(device)
+    ? VERBINDUNG.stillWlanHinweis
+    : null;
 
   if (everSeen) {
     return {
@@ -83,6 +99,8 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
       online,
       stale,
       liefSchon,
+      verbindung,
+      einrichtungshinweis,
     };
   }
 
@@ -105,6 +123,8 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
         online: false,
         stale: false,
         liefSchon,
+        verbindung,
+        einrichtungshinweis,
       };
     }
     return {
@@ -123,6 +143,8 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
       online: false,
       stale: false,
       liefSchon,
+      verbindung,
+      einrichtungshinweis,
     };
   }
 
@@ -138,6 +160,8 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
       online: false,
       stale: false,
       liefSchon,
+      verbindung,
+      einrichtungshinweis,
     };
   }
   if (seit >= UMSCHALT_PRUEFEN_MS) {
@@ -151,6 +175,8 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
       online: false,
       stale: false,
       liefSchon,
+      verbindung,
+      einrichtungshinweis,
     };
   }
   if (seit >= UMSCHALT_LAENGER_MS) {
@@ -164,6 +190,8 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
       online: false,
       stale: false,
       liefSchon,
+      verbindung,
+      einrichtungshinweis,
     };
   }
   return {
@@ -176,6 +204,8 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
     online: false,
     stale: false,
     liefSchon,
+    verbindung,
+    einrichtungshinweis,
   };
 }
 

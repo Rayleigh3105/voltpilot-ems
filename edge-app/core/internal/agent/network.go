@@ -59,6 +59,11 @@ func (a *Agent) WebObserver(next http.Handler) http.Handler {
 // ws://10.10.1.25:8887/ocpp into a charge point that cannot reach it. So an
 // observation that came in over the box's own tunnel is dropped here: it is
 // true about the tunnel and worthless to the customer.
+//
+// Edge Light additionally reports LinkKind/SignalDbm (Konzept
+// vp-edge-light-wlan, E1=B, S5): how it currently reaches the router - "kabel"
+// or "wlan" - and, for wlan, the signal it measured itself. See
+// wlanverbindung.go; the Docker box never has either.
 func (a *Agent) networkSummary() *cloud.NetworkSummary {
 	if a.net == nil {
 		return nil
@@ -75,7 +80,8 @@ func (a *Agent) networkSummary() *cloud.NetworkSummary {
 			obs.Host, obs.SeenAt = "", time.Time{}
 		}
 	}
-	if obs.Empty() && !hasLANHost {
+	linkKind, signalDbm := a.wlanVerbindung()
+	if obs.Empty() && !hasLANHost && linkKind == "" {
 		return nil
 	}
 	out := &cloud.NetworkSummary{
@@ -84,6 +90,8 @@ func (a *Agent) networkSummary() *cloud.NetworkSummary {
 		Host:       obs.Host,
 		IP:         obs.IP,
 		Iface:      obs.Iface,
+		LinkKind:   linkKind,
+		SignalDbm:  signalDbm,
 	}
 	if !obs.SeenAt.IsZero() {
 		out.SeenAt = obs.SeenAt.UTC().Format(time.RFC3339)

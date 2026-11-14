@@ -321,10 +321,14 @@ for (const breite of BREITEN) {
     await dialog.getByLabel('Kennung').fill('k7m2xq3');
     await expect(dialog.getByText('Kennung stimmt: edge-k7m2xq3')).toBeVisible();
     await dialog.getByRole('button', { name: 'Box verbinden', exact: true }).click();
-    // Das ehrliche Ergebnis nach dem Verbinden (QE-4 A), dann weiter ohne Warten.
-    await expect(dialog.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
+    // Konzept vp-edge-light-wlan-s5 (E5=A): erst die Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft unverändert weiter.
+    await expect(dialog.getByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Mit Netzwerkkabel' }).click();
+    // Das ehrliche Ergebnis nach dem Verbinden (QE-4 A): der Mock claimt mit einem alten
+    // createdAt (2026-10-20), die Lage springt deshalb sofort auf die 15-Minuten-Eskalation.
+    await expect(dialog.getByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }).click();
-    await expect(dialog.getByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
     await schweigt(page, 'Schritt 3 · Anlage');
     await messeUndFotografiere(page, breite, 'messen-3-anlage');
     expect(cloud.angelegt).toEqual([

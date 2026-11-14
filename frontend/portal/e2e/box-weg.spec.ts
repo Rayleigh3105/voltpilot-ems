@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { kennungWieGedruckt } from '../src/koppelLink';
 
 /**
  * Der Weg (vp-box-verbinden-konzept, E1 = B, entschieden 10.11.2026): fünf
@@ -49,12 +50,17 @@ interface Cloud {
   /** Die Box, die der Weg gerade verfolgt - ändert sich nach S4 ("Andere Kennung") auf die neue. */
   id: string;
   ref: string;
+  /** Konzept vp-edge-light-wlan-s5 (E1=B): wie die Box gerade zum Router kommt, plus Signal. */
+  linkKind?: 'kabel' | 'wlan' | null;
+  signalDbm?: number | null;
+  linkWeakSince?: string | null;
 }
 
 function box(cloud: Cloud) {
   return {
     id: cloud.id, siteId: ANLAGE.id, externalRef: cloud.ref, kind: 'edge', name: null, status: 'claimed',
     lastSeenAt: cloud.lastSeenAt, createdAt: cloud.createdAt, anmeldung: cloud.anmeldung,
+    linkKind: cloud.linkKind ?? null, signalDbm: cloud.signalDbm ?? null, linkWeakSince: cloud.linkWeakSince ?? null,
   };
 }
 
@@ -160,6 +166,16 @@ async function bisZurBox(page: Page) {
   await expect(page.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
 }
 
+/**
+ * Konzept vp-edge-light-wlan-s5 (E5=A): nach "Box verbinden" steht erst die
+ * Wahl Kabel/WLAN - "Mit Netzwerkkabel" läuft danach unverändert in denselben
+ * Weg (`BoxWeg`) weiter, den dieser Test seit vp-box-verbinden-konzept prüft.
+ */
+async function waehleKabel(page: Page) {
+  await expect(page.getByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeVisible();
+  await page.getByRole('button', { name: 'Mit Netzwerkkabel' }).click();
+}
+
 test.beforeEach(({}, info) => {
   test.skip(info.project.name !== 'desktop-chromium', 'Die Breiten 390 und 1440 px stellt der Test selbst ein.');
 });
@@ -179,6 +195,7 @@ for (const breite of [390, 1440] as const) {
     await ohneQuerlauf(page, breite, 'box-kennung');
 
     await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await waehleKabel(page);
 
     // 0:00 - startet.
     await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
@@ -238,6 +255,7 @@ for (const breite of [390, 1440] as const) {
     await page.setViewportSize({ width: breite, height: hoehe });
     await bisZurBox(page);
     await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await waehleKabel(page);
     await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
 
     // Vor 5:00 (noch kein Problem): "Andere Kennung" erscheint nicht - der Fall ist noch zu früh.
@@ -289,10 +307,70 @@ for (const breite of [390, 1440] as const) {
     await page.setViewportSize({ width: breite, height: hoehe });
     await bisZurBox(page);
     await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await waehleKabel(page);
     await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
     await page.waitForTimeout(300);
     const laufend = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').length);
     expect(laufend, 'keine laufende Animation unter prefers-reduced-motion').toBe(0);
+  });
+
+  /**
+   * Konzept vp-edge-light-wlan-s5 (E1=B, E5=A): "Über WLAN" führt zur
+   * Anleitung mit der Kennung, dann in denselben Weg wie "Mit Netzwerkkabel" -
+   * der Herzschlag meldet Art der Verbindung und Signal, der Weg zeigt sie
+   * und warnt bei länger schwachem Empfang (Bericht Abschnitt 0.1/4.2).
+   */
+  test(`Der Weg: Über WLAN zeigt die Anleitung, dann Verbindungsart und Signal - ${breite}px`, async ({ page }) => {
+    const cloud: Cloud = {
+      sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null,
+      id: URSPRUNG_ID, ref: REF,
+    };
+    await verdrahte(page, cloud);
+    await page.clock.install();
+    await page.setViewportSize({ width: breite, height: hoehe });
+    await bisZurBox(page);
+    await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'verbindung-wahl');
+
+    await page.getByRole('button', { name: 'Über WLAN' }).click();
+    await expect(page.getByRole('heading', { name: 'Über WLAN' })).toBeVisible();
+    await expect(page.getByText('VoltPilot-Einrichtung')).toBeVisible();
+    await expect(page.getByText(kennungWieGedruckt(REF))).toBeVisible();
+    await ohneQuerlauf(page, breite, 'wlan-einrichten');
+
+    // "Zurück" führt zur Wahl zurück, ohne irgendetwas verbunden zu haben.
+    await page.getByRole('button', { name: 'Zurück' }).click();
+    await expect(page.getByRole('heading', { name: 'Wie soll Ihre Box ins Internet?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Über WLAN' }).click();
+    await page.getByRole('button', { name: 'Weiter' }).click();
+
+    // Derselbe Weg wie beim Kabel - jetzt mit einer WLAN-Box.
+    await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
+    cloud.lastSeenAt = new Date(await page.evaluate(() => Date.now())).toISOString();
+    cloud.linkKind = 'wlan';
+    cloud.signalDbm = -58;
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist online' })).toBeVisible();
+    await expect(page.getByText('WLAN · Empfang gut')).toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-wlan-gut');
+
+    // Länger schwaches Signal: die Warnung erscheint, mit dem Hinweis zum Umhängen.
+    const schwachSeit = new Date(await page.evaluate(() => Date.now())).toISOString();
+    cloud.signalDbm = -82;
+    cloud.linkWeakSince = schwachSeit;
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(6 * 60_000);
+    await expect(page.getByText('WLAN · Empfang schwach')).toBeVisible();
+    await expect(page.getByText(/näher an den Router/)).toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-wlan-schwach');
+
+    // Box wird still: der Weg zurück über das Einrichtungs-WLAN wird genannt (Bericht 0.1).
+    await page.clock.runFor(6 * 60_000);
+    await expect(page.getByRole('heading', { name: 'Box verbunden – sie meldet sich gerade nicht' })).toBeVisible();
+    await expect(page.getByText(/VoltPilot-Einrichtung/)).toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-wlan-still');
   });
 }
 
@@ -306,6 +384,7 @@ test('Der Weg: axe-core ohne neue Funde (online und Prüf-Hilfe, 1440px)', async
   await page.setViewportSize({ width: 1440, height: 900 });
   await bisZurBox(page);
   await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+  await waehleKabel(page);
   await page.clock.runFor(5 * 60_000 + 1000);
   await expect(page.getByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeVisible();
   // Nur der neue Weg selbst (`.vp-onboarding-step`), nicht der Kopf der Seite - dessen

@@ -625,6 +625,14 @@ type NetworkSummary struct {
 	// IP / Iface: the own interface address, non-containerized installs only.
 	IP    string `json:"ip,omitempty"`
 	Iface string `json:"iface,omitempty"`
+	// LinkKind is how Edge Light currently reaches the customer's router
+	// (Konzept vp-edge-light-wlan, E1=B): "kabel" (the WAN cable) or "wlan"
+	// (the vp_wlan client). "" (omitted) on the Docker box, which has no such
+	// choice, or when Edge Light has not set up either yet.
+	LinkKind string `json:"link_kind,omitempty"`
+	// SignalDbm is the WLAN signal strength Edge Light itself measured
+	// (wlan-anschluss.sh status); present only alongside LinkKind == "wlan".
+	SignalDbm *int `json:"signal_dbm,omitempty"`
 }
 
 // SourcesSummary is the additive status-heartbeat block reporting the
