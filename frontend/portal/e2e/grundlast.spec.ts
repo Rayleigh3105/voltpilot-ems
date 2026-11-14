@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect as basisExpect, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 
 // Grundlast (Bedienkonzept Privatkunde §5, Variante A; BK-1…BK-3 = A): Karte in Verlauf › Energie nach
@@ -7,6 +7,8 @@ import { mkdir } from 'node:fs/promises';
 // Birkenweg ohne Unterzähler). Bilder: GRUNDLAST_BILDER=<Ordner>.
 
 const bilder = process.env.GRUNDLAST_BILDER;
+// Karte und Kachel holen ihre Zahl nach dem Verlauf; unter Last dauert das länger als die Vorgabe von 5 s.
+const expect = basisExpect.configure({ timeout: 20000 });
 
 async function pruefe(page: Page, name: string, fehler: string[], ziel?: ReturnType<Page['locator']>) {
   expect(fehler).toEqual([]);
@@ -91,6 +93,21 @@ for (const width of [1440, 375]) {
     await expect(karte(page)).toHaveCount(0);
     expect(fehler).toEqual([]);
   });
+
+  for (const [lage, name, teile] of [['abend', 'muehlbach', true], ['speicher', 'birkenweg', false]] as const) {
+    test(`Verlauf › Energie: Karte Grundlast (${name}) bei ${width} px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1100 });
+      const fehler = fehlerSammler(page);
+      await page.goto(`/e2e/cockpit-privat.html?lage=${lage}&profil=privat#/anlage/${name}/messwerte?z=woche&at=2026-11-04`);
+      const k = karte(page);
+      await expect(k).toContainText('typische Nacht der Woche');
+      await expect(k.locator('.vp-vr-grundlast-saeule')).toHaveCount(7);
+      if (teile) await expect(k).toContainText('übriger Haushalt');
+      else await expect(k.locator('.vp-vr-grundlast-teile')).toHaveCount(0);
+      await k.scrollIntoViewIfNeeded();
+      await pruefe(page, `verlauf-woche-${name}-${width}`, fehler, k);
+    });
+  }
 
   for (const [lage, name] of [['abend', 'muehlbach'], ['speicher', 'birkenweg']] as const) {
     test(`Cockpit: Kachel Grundlast (${name}) bei ${width} px, Absprung in den Verlauf`, async ({ page }) => {
