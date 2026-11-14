@@ -201,6 +201,8 @@ func (a *Agent) onMeasurementSamples(_ string, payload []byte) {
 		slog.Warn("local measurement batch rejected", "err", err)
 		return
 	}
+	// A Steuerlogik running along reads the Fühler temperatures of the batch.
+	a.logikObserveSamples(payload)
 	// An Append may have evicted older envelopes. The box reports that loss
 	// itself as a data_gap with erkannt_aus = verdraengung (AP-07 IP-19).
 	a.meldeVerdraengung()

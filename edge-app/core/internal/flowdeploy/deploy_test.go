@@ -383,8 +383,8 @@ func TestVersionSatisfies(t *testing.T) {
 		{"0.2.1", "0.2.0", true},
 		{"0.2.0", "0.2.1", false},
 		{"1.0.0", "0.9.9", true},
-		{"dev", "2.0.0", true},   // unstamped build passes (documented)
-		{"", "2.0.0", true},      // unknown installed passes
+		{"dev", "2.0.0", true},      // unstamped build passes (documented)
+		{"", "2.0.0", true},         // unknown installed passes
 		{"1.0.0", "garbage", false}, // garbled gate refuses
 		{"2.1.3-rc1", "2.1.3", true},
 	}

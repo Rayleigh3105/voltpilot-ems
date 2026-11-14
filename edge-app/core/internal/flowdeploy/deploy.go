@@ -62,11 +62,29 @@ type RequiredEntity struct {
 	Capabilities []string `json:"capabilities"`
 }
 
-// Bundle is the compiled Node-RED payload.
+// Bundle is the runtime payload: Node-RED tabs ("nodered-tabs") or one
+// Steuerlogik document ("steuerlogik", flow-artifact.md §2.1). The fields of
+// the OTHER format stay absent (omitempty), so re-marshalling for the content
+// hash reproduces the cloud's bundle.
 type Bundle struct {
 	Format       string            `json:"format"`
-	TabIDs       []string          `json:"tab_ids"`
-	NoderedFlows []json.RawMessage `json:"nodered_flows"`
+	TabIDs       []string          `json:"tab_ids,omitempty"`
+	NoderedFlows []json.RawMessage `json:"nodered_flows,omitempty"`
+	// Logic is the canonical Steuerlogik document as JSON TEXT. A string, not
+	// an object: the order of its keys is semantic (states, given), and the
+	// content hash canonicalizes objects by sorting their keys - only a string
+	// keeps the order under the hash. Only the core's strict reader parses it.
+	Logic string `json:"logic,omitempty"`
+	// Site is where the plant is (timezone, location) for the logic's clock
+	// and sun elevation; absent parts stay unknown on the box.
+	Site *BundleSite `json:"site,omitempty"`
+}
+
+// BundleSite is the place of the plant a Steuerlogik computes in.
+type BundleSite struct {
+	Timezone  string   `json:"timezone,omitempty"`
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
 }
 
 // Deployment is the parsed retained set.
@@ -138,7 +156,12 @@ func (dep *Deployer) verifyArtifact(a Artifact, raw []byte) (string, string) {
 	if len(raw) > maxArtifactBytes {
 		return "error", fmt.Sprintf("Artefakt überschreitet das Größenbudget (%d Bytes)", maxArtifactBytes)
 	}
-	if a.Bundle.Format != "nodered-tabs" || len(a.Bundle.TabIDs) == 0 || len(a.Bundle.NoderedFlows) == 0 {
+	istLogik := a.Bundle.Format == FormatSteuerlogik
+	if istLogik {
+		if a.Bundle.Logic == "" || len(a.Bundle.TabIDs) != 0 || len(a.Bundle.NoderedFlows) != 0 {
+			return "error", "Bundle-Format nicht unterstützt oder leer"
+		}
+	} else if a.Bundle.Format != "nodered-tabs" || len(a.Bundle.TabIDs) == 0 || len(a.Bundle.NoderedFlows) == 0 || a.Bundle.Logic != "" || a.Bundle.Site != nil {
 		return "error", "Bundle-Format nicht unterstützt oder leer"
 	}
 	// Integrity: re-canonicalize the bundle and verify the hash.
@@ -152,6 +175,18 @@ func (dep *Deployer) verifyArtifact(a Artifact, raw []byte) (string, string) {
 	}
 	if hash != a.ContentHash {
 		return "error", "content_hash stimmt nicht mit dem Bundle überein"
+	}
+	if istLogik {
+		// A Steuerlogik bundle never touches Node-RED: no tab marker, no
+		// palette gate. The core-version gate and the entity requirements
+		// still apply.
+		if dep.logik == nil {
+			return "unsupported", "Steuerlogik läuft auf dieser Box nicht"
+		}
+		if ok, why := dep.logik.Annehmbar(a); !ok {
+			return "error", why
+		}
+		return dep.verifyCommonGates(a, "")
 	}
 	// The reseed coexistence contract (D-12) depends on the ownership marker:
 	// refuse a bundle whose tabs are unmarked instead of deploying tabs the
@@ -182,13 +217,20 @@ func (dep *Deployer) verifyArtifact(a Artifact, raw []byte) (string, string) {
 		}
 		pal = v
 	}
-	if !versionSatisfies(pal, a.MinPaletteVersion) {
+	return dep.verifyCommonGates(a, pal)
+}
+
+// verifyCommonGates runs the gates both bundle formats share: the version
+// gates (the palette gate only where a palette is in play - pal empty skips
+// it) and the capability requirements. No partial deploys.
+func (dep *Deployer) verifyCommonGates(a Artifact, pal string) (string, string) {
+	if pal != "" && !versionSatisfies(pal, a.MinPaletteVersion) {
 		return "unsupported", fmt.Sprintf("benötigt Palette >= %s (installiert: %s)", a.MinPaletteVersion, pal)
 	}
 	if !versionSatisfies(dep.coreVersion, a.MinCoreVersion) {
 		return "unsupported", fmt.Sprintf("benötigt Core >= %s (installiert: %s)", a.MinCoreVersion, dep.coreVersion)
 	}
-	// Capability requirements vs the entity registry view. No partial deploys.
+	// Capability requirements vs the entity registry view.
 	reg := dep.registry()
 	for _, req := range a.RequiredEntities {
 		e := reg.Find(req.EntityID)
@@ -315,6 +357,22 @@ type LokaleLaufzeit interface {
 	Angleichen([]Artifact) error
 }
 
+// FormatSteuerlogik is the bundle format of one Steuerlogik document.
+const FormatSteuerlogik = "steuerlogik"
+
+// LogikLaufzeit runs Steuerlogik bundles inside the box program - the core of
+// docs/contracts/v2/steuerlogik.md running along on BOTH box kinds. It
+// computes and reports; nothing of it reaches the arbiter in this stage.
+type LogikLaufzeit interface {
+	// Annehmbar says whether the core reads this logic document; the German
+	// reason of a refusal lands in the ack (state error - the Dienst beside
+	// the API already checked it, a failure here is a real defect).
+	Annehmbar(Artifact) (bool, string)
+	// Angleichen runs exactly these verified Steuerlogik artifacts (stops the
+	// rest).
+	Angleichen([]Artifact) error
+}
+
 // Deps wires the deployer into the agent.
 type Deps struct {
 	// NR is the Node-RED admin client; nil = flow deployment disabled (a
@@ -331,6 +389,8 @@ type Deps struct {
 	Identity func() Identity
 	// Lokal runs artifacts when NR is nil (Edge Light); nil = none.
 	Lokal LokaleLaufzeit
+	// Logik runs Steuerlogik bundles (both box kinds); nil = unsupported.
+	Logik LogikLaufzeit
 }
 
 // Deployer consumes deployments and tracks acks.
@@ -342,6 +402,7 @@ type Deployer struct {
 	registry    func() entities.Registry
 	identity    func() Identity
 	lokal       LokaleLaufzeit
+	logik       LogikLaufzeit
 
 	applied     []cloud.AppliedFlow
 	current     *Deployment
@@ -361,7 +422,21 @@ func NewDeployer(d Deps) *Deployer {
 		id = func() Identity { return Identity{} }
 	}
 	return &Deployer{nr: d.NR, dir: d.DataDir, coreVersion: d.CoreVersion,
-		registry: reg, identity: id, lokal: d.Lokal}
+		registry: reg, identity: id, lokal: d.Lokal, logik: d.Logik}
+}
+
+// SetLogikLaufzeit attaches the Steuerlogik runtime after start and re-applies
+// the current or persisted set at once - same semantics as SetLokaleLaufzeit.
+func (dep *Deployer) SetLogikLaufzeit(l LogikLaufzeit) {
+	dep.mu.Lock()
+	defer dep.mu.Unlock()
+	dep.logik = l
+	if dep.current == nil {
+		dep.loadPersistedLocked()
+	}
+	if dep.current != nil {
+		dep.applyLocked()
+	}
 }
 
 // SetLokaleLaufzeit attaches the local runtime after start (the Edge Light
@@ -466,6 +541,7 @@ func (dep *Deployer) applyLocked() {
 	d := dep.current
 	acks := make([]cloud.AppliedFlow, 0, len(d.Artifacts))
 	verified := make([]Artifact, 0, len(d.Artifacts))
+	logiken := make([]Artifact, 0, 1)
 	ackIdx := map[string]int{}
 	for i, a := range d.Artifacts {
 		ack := cloud.AppliedFlow{FlowID: a.FlowID, FlowVersion: a.FlowVersion, ContentHash: a.ContentHash}
@@ -473,6 +549,9 @@ func (dep *Deployer) applyLocked() {
 		switch {
 		case state != "active":
 			ack.State, ack.Detail = state, detail
+		case a.Bundle.Format == FormatSteuerlogik:
+			ack.State = "active"
+			logiken = append(logiken, a)
 		case dep.nr == nil && dep.lokal == nil:
 			ack.State = "error"
 			ack.Detail = "Flow-Runtime nicht konfiguriert (VP_NODERED_ADMIN_URL)"
@@ -495,6 +574,17 @@ func (dep *Deployer) applyLocked() {
 		for _, a := range verified {
 			acks[ackIdx[a.FlowID]].State = "error"
 			acks[ackIdx[a.FlowID]].Detail = "Übernahme in die Flow-Runtime fehlgeschlagen: " + err.Error()
+		}
+	}
+	// The Steuerlogik runtime converges separately - also on an empty list,
+	// so a withdrawn logic stops at once.
+	if dep.logik != nil {
+		if lerr := dep.logik.Angleichen(logiken); lerr != nil {
+			slog.Warn("steuerlogik convergence failed", "err", lerr)
+			for _, a := range logiken {
+				acks[ackIdx[a.FlowID]].State = "error"
+				acks[ackIdx[a.FlowID]].Detail = "Übernahme in den Kern fehlgeschlagen: " + lerr.Error()
+			}
 		}
 	}
 	dep.applied = acks

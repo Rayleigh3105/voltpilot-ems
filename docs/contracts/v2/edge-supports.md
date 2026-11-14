@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -108,6 +108,13 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   `shelly.ExplicitOutputs`, Beleg `shelly/group_vectors_test.go`). Beide Box-Arten melden es, der Stufenweg steckt im
   Core. Das Portal zeigt die Schalter je Phase nur einer Box mit diesem Wort, sonst die Stufenwahl; die Cloud sendet
   `outputs` nur an eine solche Box. Eine ältere Box überliest das Feld und wählt die Stufe aus dem Sollwert.
+- `steuerlogik_mitlauf` (Steuerlogik Stufe 2, zweiter Teil, 14.11.2026): die Box nimmt im Satz auf `v2/flows` ein
+  Artefakt im Bündelformat `steuerlogik` an ([Flow-Artefakt](flow-artifact.md), [Steuerlogik](steuerlogik.md)) und
+  lässt die Logik im Kern mitlaufen: jede Sekunde mit den echten Eingängen, ohne zu schalten und ohne ein Gerät zu
+  beanspruchen. Was sie schalten würde, steht neben dem, was geschaltet ist, im Herzschlag-Block `logik`
+  ([Rückmeldung](steuerlogik-rueckmeldung.md); Beleg `agent/steuerlogik_test.go`). Beide Box-Arten melden es, der Kern
+  steckt im Core. Die Cloud liefert eine Logik nur an eine Box mit diesem Wort; eine ältere Box quittiert das
+  Bündelformat als Fehler.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

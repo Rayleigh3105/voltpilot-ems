@@ -49,6 +49,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logiklauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
@@ -649,6 +650,10 @@ type Agent struct {
 	ebyteStore   *ebyte.Store
 	ebyteRun     *ebyteState
 
+	// logik runs delivered Steuerlogiken along (agent/steuerlogik.go): it
+	// computes and reports, it never switches. logikIn are its inputs.
+	logik   *logiklauf.Laufzeit
+	logikIn logikEingaenge
 	// flowDep consumes the retained flow deployment set (agent/flows.go).
 	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
 	// but acks 'error' honestly instead of materializing tabs.
@@ -978,6 +983,8 @@ func New(cfg config.Config) (*Agent, error) {
 	a.arbWake = make(chan struct{}, 1)
 	a.arb = a.newArbiter()
 	a.flowDep = a.newFlowDeployer()
+	a.logik = a.newLogikLaufzeit(nil)
+	a.flowDep.SetLogikLaufzeit(logikAdapter{a.logik})
 	a.entMu.Lock()
 	reg := a.entRegistry
 	a.entMu.Unlock()
@@ -1160,6 +1167,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	// every other source read path; idles cheaply without shelly sources.
 	a.startShellySourcePoll(ctx)
 	a.startShellySensorPoll(ctx)
+	a.startLogikMitlauf(ctx)
 	a.startEbyteSourcePoll(ctx)
 	// OCPP charge points: the CSMS the stations dial + the load-management
 	// executor. A no-op while VP_OCPP_ENABLED is off (the default), so a box
@@ -1614,7 +1622,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 				a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
 				a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(a.boxArt()),
-					GemeinsameSteuerung: a.gemeinsameSteuerung()}); err != nil {
+					GemeinsameSteuerung: a.gemeinsameSteuerung(), Logik: a.logikSummary()}); err != nil {
 				slog.Warn("status publish failed", "err", err)
 			}
 			return true
@@ -1996,6 +2004,8 @@ func (a *Agent) foldSiteSample(ts time.Time, measurements, primary map[string]fl
 	// The heating-rod controller (heizstab.go) decides on the SAME gated
 	// composite connection point and the explicitly passed battery power.
 	a.heizstabObserve(ts, measurements, battKw)
+	// A Steuerlogik running along reads the same gated composite values.
+	a.logikObserve(ts, measurements, battKw)
 
 	// Netz-Sollwert-Test (agent/gridtest.go): der PV-Stabilitaets-Beobachter
 	// laeuft IMMER (die Voraussetzung „Sonne stabil" muss schon VOR dem

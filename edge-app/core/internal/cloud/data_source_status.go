@@ -14,6 +14,8 @@ type StatusExtension struct {
 	// GemeinsameSteuerung: nil = no block (a box without a plan 2.0 sends the
 	// heartbeat it sent before AP-15 IP-10, apart from supports[]).
 	GemeinsameSteuerung *GemeinsameSteuerung
+	// Logik: nil = no Steuerlogik runs along (no block).
+	Logik *LogikSummary
 }
 
 // BuiltSupports advertises only capabilities implemented by this runtime bundle.
@@ -76,6 +78,14 @@ type StatusExtension struct {
 // both builds, so both carry it; the portal offers per-phase switches only
 // for a box reporting it.
 //
+// steuerlogik_mitlauf (Steuerlogik Stufe 2, second part): the box accepts a
+// bundle of format steuerlogik on v2/flows and runs the logic along in the
+// core (internal/logiklauf, agent/steuerlogik.go) - computing with the real
+// inputs every second, switching nothing, claiming nothing - and reports
+// wish against observed state in the heartbeat block logik. The core runs in
+// both builds, so both carry it; the cloud delivers a logic only to a box
+// reporting it.
+//
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
 // Edge Light has no Node-RED palette, so the words whose way ends in the
 // palette - the shared point read once per target, the Erzeuger image reader
@@ -87,7 +97,7 @@ func BuiltSupports(boxArt string) []string {
 	if boxArt != geraetesuche.BoxArtEdgeLight {
 		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
 	}
-	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen")
+	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf")
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and
