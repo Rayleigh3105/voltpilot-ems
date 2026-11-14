@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
@@ -84,9 +85,13 @@ type Bericht struct {
 	Proben     []Probe    `json:"proben"`
 	Hinweise   []string   `json:"hinweise"`
 	// Geraete and Eingaenge name what the logic switches and reads, so the
-	// API can show them and later check them against the plant (V-5).
+	// API can show them and check them against the plant (V-5).
 	Geraete   []Geraet  `json:"geraete"`
 	Eingaenge []Eingang `json:"eingaenge"`
+	// Stellwerte describe the settings for the API and the portal (name, kind,
+	// unit, range, step, who may set them, target value after E2 = B), so
+	// neither has to read the language.
+	Stellwerte []logik.StellwertInfo `json:"stellwerte"`
 }
 
 // Zusammen is a constraint between settings with its state.
@@ -115,6 +120,10 @@ type Geraet struct {
 	Kennung  string `json:"kennung"`
 	EntityID string `json:"entity_id"`
 	Name     string `json:"name"`
+	// Ausgaenge are the output kinds the logic sets for it (level, on_off,
+	// setpoint, mode, percent): the API checks them against what the box can
+	// execute before it arms the logic.
+	Ausgaenge []string `json:"ausgaenge"`
 }
 
 // Eingang is one input the logic reads.
@@ -210,7 +219,7 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 	pb := L.Pruefe(fakten.kern())
 	b := &Bericht{Name: L.Name, Sperrt: pb.Sperrt(), Ausdruecke: pb.Ausdruecke,
 		Befunde: []string{}, Zusammen: []Zusammen{}, Proben: []Probe{}, Hinweise: []string{},
-		Geraete: []Geraet{}, Eingaenge: []Eingang{}}
+		Geraete: []Geraet{}, Eingaenge: []Eingang{}, Stellwerte: L.StellwertInfos()}
 	for _, f := range pb.Befunde {
 		b.Befunde = append(b.Befunde, f.Text)
 	}
@@ -227,7 +236,13 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 	b.Hinweise = append(b.Hinweise, pb.Hinweise...)
 	for _, k := range L.GeraetListe {
 		g := L.Geraete[k]
-		b.Geraete = append(b.Geraete, Geraet{Kennung: k, EntityID: g.Entity, Name: g.Name})
+		d := Geraet{Kennung: k, EntityID: g.Entity, Name: g.Name, Ausgaenge: []string{}}
+		for _, art := range []string{"level", "on_off", "setpoint", "mode", "percent"} {
+			if _, ok := L.Ausgaenge[k][art]; ok {
+				d.Ausgaenge = append(d.Ausgaenge, art)
+			}
+		}
+		b.Geraete = append(b.Geraete, d)
 	}
 	for _, k := range L.WertListe {
 		e := L.Werte[k]
@@ -259,6 +274,40 @@ type Auftrag struct {
 	FlowVersion int             `json:"flow_version"`
 	CompiledAt  time.Time       `json:"compiled_at"`
 	Site        *Ort            `json:"site,omitempty"`
+	// Armed builds the artifact of an armed logic (Stufe 3, "scharf"): its
+	// wishes go to the arbiter, and the required entities name the command
+	// the box will switch with.
+	Armed bool `json:"armed,omitempty"`
+	// Settings are the set values (the document's form) with their revision;
+	// nil = none, the bundle then carries no settings at all.
+	Settings *Einstellung `json:"settings,omitempty"`
+	// SettingsKeepFitting is for a NEW version: a value that no longer fits
+	// (name, unit or range changed, report §8.9) falls back to its default and
+	// is named in the answer instead of refusing the version.
+	SettingsKeepFitting bool `json:"settings_keep_fitting,omitempty"`
+}
+
+// Einstellung are set values with their revision.
+type Einstellung struct {
+	Revision int64                      `json:"revision"`
+	Values   map[string]json.RawMessage `json:"values"`
+}
+
+// Verworfen is a set value a new version does not take, with the reason.
+type Verworfen struct {
+	Kennung string `json:"kennung"`
+	Grund   string `json:"grund"`
+}
+
+// ErrStellwerte marks set values that do not fit the logic (range, step,
+// kind, constraints); the German reason follows.
+var ErrStellwerte = errors.New("Stellwerte passen nicht")
+
+// Gebaut is what Artefakt answers besides the artifact and the report: the
+// set values the bundle carries and those a new version dropped.
+type Gebaut struct {
+	Settings  *Einstellung `json:"settings,omitempty"`
+	Verworfen []Verworfen  `json:"verworfen,omitempty"`
 }
 
 // ErrSperrt marks a readable logic the check blocks (E5 = C).
@@ -271,42 +320,73 @@ var ErrAuftrag = errors.New("Auftrag unvollständig")
 // blocked logic is ErrSperrt and comes with its report; no artifact leaves
 // this service for a logic the check blocks.
 func Artefakt(a Auftrag) (json.RawMessage, *Bericht, error) {
+	art, b, _, err := ArtefaktMitWerten(a)
+	return art, b, err
+}
+
+// ArtefaktMitWerten is Artefakt with the set values it took: set values that
+// do not fit are ErrStellwerte, or with SettingsKeepFitting dropped and named.
+func ArtefaktMitWerten(a Auftrag) (json.RawMessage, *Bericht, *Gebaut, error) {
+	art, b, gebaut, err := artefakt(a)
+	return art, b, gebaut, err
+}
+
+func artefakt(a Auftrag) (json.RawMessage, *Bericht, *Gebaut, error) {
 	if !uuidMuster.MatchString(a.FlowID) {
-		return nil, nil, fmt.Errorf("%w: flow_id ist keine UUID", ErrAuftrag)
+		return nil, nil, nil, fmt.Errorf("%w: flow_id ist keine UUID", ErrAuftrag)
 	}
 	if a.FlowVersion < 1 {
-		return nil, nil, fmt.Errorf("%w: flow_version ab 1", ErrAuftrag)
+		return nil, nil, nil, fmt.Errorf("%w: flow_version ab 1", ErrAuftrag)
 	}
 	if a.Site != nil && a.Site.Timezone != "" {
 		if _, err := time.LoadLocation(a.Site.Timezone); err != nil {
-			return nil, nil, fmt.Errorf("%w: Zeitzone %q unbekannt", ErrAuftrag, a.Site.Timezone)
+			return nil, nil, nil, fmt.Errorf("%w: Zeitzone %q unbekannt", ErrAuftrag, a.Site.Timezone)
 		}
 	}
 	g, err := Pruefe([]byte(a.Text), a.Anlage, a.Registry)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if g.Bericht.Sperrt {
-		return nil, g.Bericht, ErrSperrt
+		return nil, g.Bericht, nil, ErrSperrt
 	}
-	bundle := flowdeploy.Bundle{Format: flowdeploy.FormatSteuerlogik, Logic: string(g.Kanonisch)}
+	L, err := logik.Lesen(g.Kanonisch)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("%w: %s", ErrUnlesbar, err.Error())
+	}
+	gebaut := &Gebaut{}
+	bundle := flowdeploy.Bundle{Format: flowdeploy.FormatSteuerlogik, Logic: string(g.Kanonisch), Armed: a.Armed}
+	if a.Settings != nil {
+		werte, verworfen, err := stellwerte(L, a.Settings.Values, a.SettingsKeepFitting)
+		if err != nil {
+			return nil, g.Bericht, nil, err
+		}
+		bundle.Settings = &flowdeploy.BundleSettings{Revision: a.Settings.Revision, Values: werte}
+		gebaut.Settings = &Einstellung{Revision: a.Settings.Revision, Values: werte}
+		gebaut.Verworfen = verworfen
+	}
 	if a.Site != nil && (a.Site.Timezone != "" || a.Site.Latitude != nil || a.Site.Longitude != nil) {
 		bundle.Site = &flowdeploy.BundleSite{Timezone: a.Site.Timezone, Latitude: a.Site.Latitude,
 			Longitude: a.Site.Longitude}
 	}
 	bundleRaw, err := json.Marshal(bundle)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	hash, err := flowdeploy.ContentHash(bundleRaw)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	required := []map[string]any{}
 	for _, d := range g.Bericht.Geraete {
-		// In this stage the logic switches nothing: the box only checks that
-		// the device it observes exists.
-		required = append(required, map[string]any{"entity_id": d.EntityID, "capabilities": []string{}})
+		// Running along, the logic switches nothing: the box only checks that
+		// the device it observes exists. Armed, the box must actuate with the
+		// command it will switch the device with.
+		caps := []string{}
+		if a.Armed {
+			caps = SchaltRecht(d, L.SollwertGroesse(d.Kennung), a.Registry)
+		}
+		required = append(required, map[string]any{"entity_id": d.EntityID, "capabilities": caps})
 	}
 	compiledAt := a.CompiledAt
 	if compiledAt.IsZero() {
@@ -329,9 +409,120 @@ func Artefakt(a Auftrag) (json.RawMessage, *Bericht, error) {
 	}
 	raw, err := json.Marshal(art)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return raw, g.Bericht, nil
+	return raw, g.Bericht, gebaut, nil
+}
+
+// stellwerte checks set values against the logic and writes them in the
+// document's form. Strict: a value that does not fit refuses all. Keep
+// fitting (a new version): it falls back to its default and is named; if the
+// fitting values together break a constraint, all fall back.
+func stellwerte(L *logik.Logik, roh map[string]json.RawMessage, behalten bool) (map[string]json.RawMessage, []Verworfen, error) {
+	gelesen := map[string]any{}
+	var verworfen []Verworfen
+	for _, k := range sortiert(roh) {
+		var v any
+		if json.Unmarshal(roh[k], &v) != nil {
+			if !behalten {
+				return nil, nil, fmt.Errorf("%w: Stellwert %s nicht lesbar", ErrStellwerte, k)
+			}
+			verworfen = append(verworfen, Verworfen{Kennung: k, Grund: "nicht lesbar"})
+			continue
+		}
+		if _, err := L.LiesStellwert(k, v); err != nil {
+			if !behalten {
+				return nil, nil, fmt.Errorf("%w: %s", ErrStellwerte, err.Error())
+			}
+			verworfen = append(verworfen, Verworfen{Kennung: k, Grund: err.Error()})
+			continue
+		}
+		gelesen[k] = v
+	}
+	werte, err := L.PruefeStellwerte(gelesen)
+	if err != nil {
+		if !behalten {
+			return nil, nil, fmt.Errorf("%w: %s", ErrStellwerte, err.Error())
+		}
+		for _, k := range sortiert(gelesen) {
+			verworfen = append(verworfen, Verworfen{Kennung: k, Grund: err.Error()})
+		}
+		werte = nil
+	}
+	out := map[string]json.RawMessage{}
+	for k, w := range werte {
+		raw, err := json.Marshal(L.StellwertRoh(k, w))
+		if err != nil {
+			return nil, nil, err
+		}
+		out[k] = raw
+	}
+	return out, verworfen, nil
+}
+
+func sortiert[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SchaltRecht are the commands an armed logic switches a device with, exactly
+// as the box will (agent/steuerlogik_scharf.go, logikBefehl): a level on a
+// Shelly output set -> setpoint_kw (heizstab-regler.md), any other level and
+// on_off -> on_off; a mode -> mode, at an SG-Ready heat pump without mode the
+// contact (on_off, E10 = A); a setpoint in °C -> setpoint_c, in kW ->
+// setpoint_kw (K2). A share needs no capability here - the API refuses to arm
+// it. Without the device in the registry nothing is required (the API never
+// arms a logic whose device the registry does not know). The box checks the
+// result against its registry when it takes the bundle.
+func SchaltRecht(d Geraet, sollwert logik.Groesse, registry json.RawMessage) []string {
+	var reg entities.Registry
+	if len(registry) == 0 || json.Unmarshal(registry, &reg) != nil {
+		return []string{}
+	}
+	e := reg.Find(d.EntityID)
+	if e == nil {
+		return []string{}
+	}
+	cfg, isShelly := shelly.ParseDriver(e.Driver)
+	set := map[string]bool{}
+	for _, art := range d.Ausgaenge {
+		switch art {
+		case "level":
+			if isShelly && cfg.IsGroup() {
+				set["actuate:"+entities.CmdSetpointKw] = true
+			} else {
+				set["actuate:"+entities.CmdOnOff] = true
+			}
+		case "on_off":
+			set["actuate:"+entities.CmdOnOff] = true
+		case "mode":
+			if sgReadyKontakt(*e) {
+				set["actuate:"+entities.CmdOnOff] = true
+			} else {
+				set["actuate:"+entities.CmdMode] = true
+			}
+		case "setpoint":
+			switch sollwert {
+			case logik.GroesseTemp:
+				set["actuate:"+entities.CmdSetpointC] = true
+			case logik.GroesseKW:
+				set["actuate:"+entities.CmdSetpointKw] = true
+			}
+		}
+	}
+	return sortiert(set)
+}
+
+// sgReadyKontakt says whether a logic's mode reaches this device as its
+// SG-Ready contact: a heat pump on SG-Ready that declares no mode of its own
+// gets boost as the contact closed (state 3) and normal as open (E10 = A).
+// The box decides the same (agent.logikBefehl; agreement test there).
+func sgReadyKontakt(e entities.Entity) bool {
+	return e.Type == "heat-pump-sgready" && !e.Supports(entities.CmdMode)
 }
 
 // artefaktID is derived like flowc's: the same (flow, version) yields the

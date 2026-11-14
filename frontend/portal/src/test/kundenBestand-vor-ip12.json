@@ -2070,6 +2070,13 @@
       "grund": "Text-Runde Kunde (vp-ux-text-kunde): dasselbe Feld (Beschriftung, value, placeholder, onChange) trägt den kürzeren Hinweis „Nur für Ihre Anzeige.“ statt „Nur für Ihre Anzeige - er darf sich vom Kennungs-Feld unterscheiden.“; die Kennung steht direkt darunter mit eigenem Feld."
     },
     {
+      "datei": "components/ConfirmDialog.tsx",
+      "vorher": "e4c11fc932da48c6cdc6c7415ba031481144e1876c95b50137f1225d557cf9ff",
+      "nachher": "c637cea74630b33ef4a39c4a941284c14a20a836fa02b706d3894da16967f3be",
+      "commit": "fm/vp-logik-s3-scharf",
+      "grund": "Steuerlogik Stufe 3 (vp-logik-s3-scharf): derselbe Bestätigen-Knopf (Text, Variante, onConfirm) ist zusätzlich gesperrt, wenn der Aufrufer `confirmDisabled` setzt (Scharfschalten, solange ein zweiter Herr ein Gerät führt); Abbrechen bleibt immer möglich. Ohne die Prop (Vorgabe false) verhält sich jeder bestehende Dialog wie vorher."
+    },
+    {
       "datei": "pages/MesswerteSection.tsx",
       "vorher": "4c511c4c7d33af3dcc7a139ea74bfc589e209bf5f0cd4c2d065326390b2d2c53",
       "nachher": "66e0f9455c3bfb3e923e7c44ddd123b7a420fb9fb137734b3da23b74222fae09",

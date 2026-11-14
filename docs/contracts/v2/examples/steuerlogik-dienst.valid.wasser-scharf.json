@@ -1,0 +1,182 @@
+{
+  "artifact": {
+    "artifact_id": "4302028c-48f3-4211-8765-6a9303bd40d6",
+    "bundle": {
+      "format": "steuerlogik",
+      "logic": "{\"logic\":1,\"name\":\"Warmwasser\",\"description\":\"Ein Speicher wird mit Sonnenstrom geheizt und fällt nie unter eine Mindesttemperatur.\",\"devices\":{\"heizstab\":{\"entity\":\"7b0c2f4e-1a2b-4c3d-8e9f-0a1b2c3d4e5f\",\"name\":\"Heizstab\"}},\"inputs\":{\"t\":{\"source\":\"fuehler-speicher-oben.temperature\",\"name\":\"Speicher\",\"max_age\":\"5 min\"},\"netz\":{\"source\":\"site.grid\",\"name\":\"Netzbezug\",\"max_age\":\"60 s\"},\"speicher\":{\"source\":\"battery.power\",\"name\":\"Batterie lädt mit\",\"max_age\":\"60 s\"},\"ladestand\":{\"source\":\"battery.soc\",\"name\":\"Batterie\",\"max_age\":\"5 min\"},\"sonne\":{\"source\":\"sun.elevation\",\"name\":\"Sonnenstand\"}},\"settings\":{\"ziel\":{\"name\":\"Mit Sonnenstrom bis\",\"default\":\"57 °C\",\"range\":[\"45 °C\",\"65 °C\"],\"step\":\"1 K\",\"editable_by\":\"customer\"},\"mindest\":{\"name\":\"Nie kälter als\",\"default\":\"40 °C\",\"range\":[\"30 °C\",\"50 °C\"],\"step\":\"1 K\",\"editable_by\":\"customer\"},\"netz_ziel\":{\"name\":\"Aus dem Netz bis\",\"default\":\"50 °C\",\"range\":[\"40 °C\",\"60 °C\"],\"step\":\"1 K\",\"editable_by\":\"customer\"},\"netz_ab\":{\"name\":\"Netz erlaubt ab\",\"default\":\"06:00\",\"editable_by\":\"customer\"},\"netz_bis\":{\"name\":\"Netz erlaubt bis\",\"default\":\"22:00\",\"editable_by\":\"customer\"}},\"constraints\":[{\"Aus dem Netz bis liegt mindestens 5 K über Nie kälter als\":\"netz_ziel \\u003e= mindest + 5 K\"},{\"Aus dem Netz bis liegt nicht über dem Ziel mit Sonnenstrom\":\"netz_ziel \\u003c= ziel\"}],\"formulas\":{\"netzfenster\":\"time_window(netz_ab, netz_bis)\",\"frei\":\"known(t) and not warm\"},\"states\":{\"warm\":{\"type\":\"boolean\",\"on_when\":\"t \\u003e= ziel\",\"off_when\":\"unknown(t) or t \\u003c ziel - 3 K\",\"after_restart\":\"off\"},\"netzheizen\":{\"type\":\"boolean\",\"on_when\":[{\"Uhrzeit liegt im Fenster\":\"netzfenster\"},{\"Der Speicher ist seit 2 Minuten zu kalt\":\"holds(t \\u003c mindest, 2 min)\"}],\"off_when_any\":[{\"Fühler fehlt\":\"unknown(t)\"},{\"Der Speicher ist warm genug\":\"t \\u003e= netz_ziel\"},{\"Uhrzeit liegt außerhalb des Fensters\":\"not netzfenster\"}],\"after_restart\":\"off\"},\"stufe\":{\"type\":\"counter\",\"min\":0,\"max\":3,\"after_restart\":0,\"steps\":[{\"name\":\"blind\",\"set\":0,\"when\":\"holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)\"},{\"name\":\"voll\",\"set\":0,\"when\":\"stufe \\u003e 0 and not frei\"},{\"name\":\"zurueck\",\"by\":-1,\"not_before\":\"2 min\",\"when\":\"stufe \\u003e 0\",\"when_any\":[{\"Die Batterie muss aushelfen\":\"speicher \\u003c -0.15 kW\"},{\"Das Netz muss aushelfen\":\"netz \\u003e 0.3 kW\"}]},{\"name\":\"versuch\",\"by\":1,\"not_before\":\"6 min\",\"when\":[{\"Der Speicher ist noch nicht warm\":\"frei\"},{\"Das Netz hilft nicht aus\":\"netz \\u003c 0.3 kW\"},{\"Die Batterie ist voll\":\"ladestand \\u003e 95 %\"},{\"Die Sonne steht hoch genug\":\"sonne \\u003e 5°\"},{\"Die Batterie hilft nicht aus\":\"speicher \\u003e -0.15 kW\"}]}]}},\"outputs\":{\"heizstab\":{\"level\":\"if(netzheizen, 3, if(frei, stufe, 0))\"}},\"status\":[{\"when\":\"unknown(t)\",\"title\":\"Störung Fühler\",\"type\":\"fault\",\"text\":\"Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.\"},{\"when\":\"netzheizen\",\"title\":\"Heizt aus dem Netz\",\"type\":\"grid\",\"text\":\"Der Speicher war unter {mindest} gefallen und steht bei {t}. Der Heizstab heizt aus dem Netz bis {netz_ziel}.\"},{\"when\":\"not netzfenster and t \\u003c mindest\",\"title\":\"Nachtsperre\",\"type\":\"waiting\",\"text\":\"Der Speicher liegt mit {t} unter {mindest}. Nachts wird nicht aus dem Netz geheizt, ab {netz_ab} Uhr schaltet der Heizstab zu.\"},{\"when\":\"stufe \\u003e 0\",\"title\":\"Heizt mit Sonnenstrom\",\"type\":\"solar\",\"text\":\"Der Heizstab läuft mit Sonnenstrom, bis der Speicher {ziel} hat.\"},{\"when\":\"warm\",\"title\":\"Speicher ist warm\",\"type\":\"idle\",\"text\":\"Der Speicher hat sein Ziel von {ziel} erreicht.\"},{\"else\":true,\"title\":\"Wartet auf Sonnenstrom\",\"type\":\"waiting\",\"text\":\"Sobald Sonnenstrom übrig ist, heizt der Heizstab bis {ziel}.\"}],\"tests\":[{\"name\":\"Kalter Morgen\",\"given\":{\"t\":\"38 °C\",\"netz\":\"0.4 kW\",\"speicher\":\"0 kW\",\"ladestand\":\"20 %\",\"sonne\":\"-10°\",\"clock\":\"06:30\"},\"after\":\"3 min\",\"expect\":{\"netzheizen\":\"on\",\"heizstab.level\":3,\"status\":\"Heizt aus dem Netz\"}},{\"name\":\"Kalte Nacht\",\"given\":{\"t\":\"38 °C\",\"netz\":\"0.4 kW\",\"speicher\":\"0 kW\",\"ladestand\":\"20 %\",\"sonne\":\"-30°\",\"clock\":\"02:00\"},\"after\":\"15 min\",\"expect\":{\"netzheizen\":\"off\",\"heizstab.level\":0,\"status\":\"Nachtsperre\"}},{\"name\":\"Sonne am Mittag\",\"given\":{\"t\":\"46 °C\",\"netz\":\"0 kW\",\"speicher\":\"0 kW\",\"ladestand\":\"98 %\",\"sonne\":\"40°\"},\"after\":\"13 min\",\"expect\":{\"stufe\":2,\"heizstab.level\":2,\"status\":\"Heizt mit Sonnenstrom\"}},{\"name\":\"Speicher ist warm\",\"given\":{\"t\":\"57.2 °C\",\"netz\":\"0 kW\",\"speicher\":\"0 kW\",\"ladestand\":\"98 %\",\"sonne\":\"40°\",\"stufe\":3},\"after\":\"1 min\",\"expect\":{\"heizstab.level\":0,\"status\":\"Speicher ist warm\"}},{\"name\":\"Fühler fällt aus\",\"given\":{\"t\":\"unknown\",\"netz\":\"0 kW\",\"speicher\":\"0 kW\",\"ladestand\":\"98 %\",\"sonne\":\"40°\",\"stufe\":2},\"after\":\"1 min\",\"expect\":{\"heizstab.level\":0,\"status\":\"Störung Fühler\"}}]}",
+      "site": {
+        "timezone": "Europe/Berlin",
+        "latitude": 48.1,
+        "longitude": 11.6
+      },
+      "armed": true,
+      "settings": {
+        "revision": 1,
+        "values": {
+          "mindest": "42 °C"
+        }
+      }
+    },
+    "compiled_at": "2026-11-14T12:00:00Z",
+    "compiler_version": "1.0.0",
+    "content_hash": "sha256:4de18efc758490dfa61d317d092564e5416e30393810b6bbfb90c1987700f5e5",
+    "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+    "flow_version": 1,
+    "kind": "artifact",
+    "min_core_version": "0.1.0",
+    "min_palette_version": "0.0.0",
+    "required_entities": [
+      {
+        "capabilities": [
+          "actuate:setpoint_kw"
+        ],
+        "entity_id": "7b0c2f4e-1a2b-4c3d-8e9f-0a1b2c3d4e5f"
+      }
+    ],
+    "runtime": "edge",
+    "schema_version": "1.0"
+  },
+  "bericht": {
+    "name": "Warmwasser",
+    "sperrt": false,
+    "ausdruecke": 29,
+    "befunde": [],
+    "zusammen": [
+      {
+        "name": "Aus dem Netz bis liegt mindestens 5 K über Nie kälter als",
+        "gilt": true,
+        "im_bereich_verletzbar": true
+      },
+      {
+        "name": "Aus dem Netz bis liegt nicht über dem Ziel mit Sonnenstrom",
+        "gilt": true,
+        "im_bereich_verletzbar": true
+      }
+    ],
+    "proben": [
+      {
+        "name": "Kalter Morgen",
+        "besteht": true,
+        "abweichungen": []
+      },
+      {
+        "name": "Kalte Nacht",
+        "besteht": true,
+        "abweichungen": []
+      },
+      {
+        "name": "Sonne am Mittag",
+        "besteht": true,
+        "abweichungen": []
+      },
+      {
+        "name": "Speicher ist warm",
+        "besteht": true,
+        "abweichungen": []
+      },
+      {
+        "name": "Fühler fällt aus",
+        "besteht": true,
+        "abweichungen": []
+      }
+    ],
+    "hinweise": [],
+    "geraete": [
+      {
+        "kennung": "heizstab",
+        "entity_id": "7b0c2f4e-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+        "name": "Heizstab",
+        "ausgaenge": [
+          "level"
+        ]
+      }
+    ],
+    "eingaenge": [
+      {
+        "kennung": "t",
+        "source": "fuehler-speicher-oben.temperature",
+        "name": "Speicher"
+      },
+      {
+        "kennung": "netz",
+        "source": "site.grid",
+        "name": "Netzbezug"
+      },
+      {
+        "kennung": "speicher",
+        "source": "battery.power",
+        "name": "Batterie lädt mit"
+      },
+      {
+        "kennung": "ladestand",
+        "source": "battery.soc",
+        "name": "Batterie"
+      },
+      {
+        "kennung": "sonne",
+        "source": "sun.elevation",
+        "name": "Sonnenstand"
+      }
+    ],
+    "stellwerte": [
+      {
+        "kennung": "ziel",
+        "name": "Mit Sonnenstrom bis",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "57 °C",
+        "von": 45,
+        "bis": 65,
+        "schritt": 1,
+        "darf": "customer",
+        "zielwert": true
+      },
+      {
+        "kennung": "mindest",
+        "name": "Nie kälter als",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "40 °C",
+        "von": 30,
+        "bis": 50,
+        "schritt": 1,
+        "darf": "customer",
+        "zielwert": true
+      },
+      {
+        "kennung": "netz_ziel",
+        "name": "Aus dem Netz bis",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "50 °C",
+        "von": 40,
+        "bis": 60,
+        "schritt": 1,
+        "darf": "customer",
+        "zielwert": true
+      },
+      {
+        "kennung": "netz_ab",
+        "name": "Netz erlaubt ab",
+        "art": "uhrzeit",
+        "vorgabe": "06:00",
+        "darf": "customer",
+        "zielwert": false
+      },
+      {
+        "kennung": "netz_bis",
+        "name": "Netz erlaubt bis",
+        "art": "uhrzeit",
+        "vorgabe": "22:00",
+        "darf": "customer",
+        "zielwert": false
+      }
+    ]
+  },
+  "settings": {
+    "revision": 1,
+    "values": {
+      "mindest": "42 °C"
+    }
+  }
+}

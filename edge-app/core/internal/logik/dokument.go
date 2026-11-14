@@ -183,6 +183,9 @@ type Stellwert struct {
 	HatDarf     bool
 	Hilfe       any // nil, string oder [2]string{whenOn, whenOff}
 	Optionen    *jObjekt
+	// vorgabeText ist die Vorgabe, wie der Text sie schreibt ("30 min"): ihre Einheit ist die
+	// Einheit, in der Oberfläche und Bündel den Wert zeigen und schreiben (StellwertInfos).
+	vorgabeText string
 }
 
 // Zielwert nach E2 = B: jeder Stellwert in °C. Ihn darf der Kunde immer ändern, in seinem Bereich.
@@ -902,6 +905,7 @@ func liesStellwert(L *Logik, k string, o *jObjekt) (*Stellwert, error) {
 		if s.Vorgabe, err = LiesWert(o.wert("default")); err != nil {
 			return nil, fehler("%s.default: %s", wo, err.Error())
 		}
+		s.vorgabeText, _ = o.wert("default").(string)
 		if s.Art == "boolean" && s.Vorgabe.Art != WertBool {
 			return nil, fehler("%s.default: on oder off", wo)
 		}

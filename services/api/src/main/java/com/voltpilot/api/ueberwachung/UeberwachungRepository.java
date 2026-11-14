@@ -83,6 +83,11 @@ public class UeberwachungRepository {
         return jdbc.queryForList("SELECT DISTINCT site_id FROM ocpp_station", UUID.class);
     }
 
+    /** Anlagen mit einer scharfen Steuerlogik (Grundlage der Aussaat von {@code steuerlogik.stoerung}). */
+    public List<UUID> anlagenMitScharferLogik() {
+        return jdbc.queryForList("SELECT DISTINCT site_id FROM steuerlogik WHERE zustand = 'scharf'", UUID.class);
+    }
+
     /**
      * Die Empfänger einer Regel ab Werk (Kunden-Alarmierung P2, KA-5 A): Kundenadministrator und Energiemanager im
      * ganzen Unternehmen, dazu Bearbeiter und Bedienberechtigt - jeder nur für seine Standorte, das entscheidet die

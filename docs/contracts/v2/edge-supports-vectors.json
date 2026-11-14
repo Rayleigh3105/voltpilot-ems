@@ -105,6 +105,12 @@
       "meaning": "Die Box liest und schreibt ein eigenes Modbus-Gerät mit Schreibwerten (Block controls der Selbstbau-Definition, modbus-geraet.md) selbst im Core, auf beiden Box-Arten: Kanäle mit Signalen als Eingänge der Steuerlogik, Sollwert in °C mit Band und Schritt, Betriebsart aus der Liste des Geräts, Ein/Aus, Ruhewerte ohne Wunsch und bei einer Störung des Geräts, Schalt-Test über die eigene Verbindung. Erst dann liefert die Cloud eine Definition mit controls aus und kompiliert für dieses Gerät keinen Node-RED-Flow; eine ältere Box ließe es ungelesen.",
       "advertised": true,
       "evidence": "edge-app/core/internal/agent/modbusgeraet_test.go"
+    },
+    {
+      "name": "steuerlogik_scharf",
+      "meaning": "Die Box nimmt auch eine scharf geschaltete Steuerlogik an (bundle.armed, gestellte Werte in bundle.settings; flow-artifact.md, steuerlogik.md) und gibt ihre Wünsche an den Schiedsrichter: Klasse flow (Rang 40), 45 s gültig, je Takt erneuert, Quelle nur intern. Plan und Fristen-Rückfall lassen ihre Geräte in Ruhe, ein Gerät hat nie zwei Herren, und ohne die Schalter der Box geht kein Wunsch hinaus. Erst dann schaltet die Cloud eine Logik scharf; eine Box mit nur steuerlogik_mitlauf schaltet nie nach einer Logik.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/agent/steuerlogik_scharf_test.go"
     }
   ],
   "cases": [

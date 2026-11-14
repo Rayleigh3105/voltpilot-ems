@@ -92,6 +92,14 @@ type StatusExtension struct {
 // Both builds carry the core path; the cloud ships a definition with controls
 // only to a box reporting it and compiles no Node-RED flow for that device.
 //
+// steuerlogik_scharf (Steuerlogik Stufe 3): the box also takes an ARMED
+// Steuerlogik bundle (bundle.armed, set values in bundle.settings) and hands
+// its wishes to the arbiter - class flow, rank 40, TTL 45 s, its devices
+// owned against plan and deadline fallback, never a second master
+// (agent/steuerlogik_scharf.go). Both builds carry it; the cloud arms a logic
+// only on a box reporting it, and a box with only steuerlogik_mitlauf never
+// switches after a logic.
+//
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
 // Edge Light has no Node-RED palette, so the words whose way ends in the
 // palette - the shared point read once per target, the Erzeuger image reader
@@ -104,7 +112,7 @@ func BuiltSupports(boxArt string) []string {
 		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
 	}
 	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
-		"modbus_geraet")
+		"modbus_geraet", "steuerlogik_scharf")
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and

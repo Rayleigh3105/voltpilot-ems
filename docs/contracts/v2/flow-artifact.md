@@ -29,13 +29,14 @@ Format `nodered-tabs`; deterministische Tab-/Knoten-IDs ermöglichen Ersetzen st
 
 ### Steuerlogik
 
-Format `steuerlogik` ([Steuerlogik](steuerlogik.md#auslieferung-und-mitlauf)): `bundle = {format: "steuerlogik", logic: "<kanonisches JSON als Text>", site?: {timezone, latitude, longitude}}`, keine Felder des Node-RED-Formats daneben.
+Format `steuerlogik` ([Steuerlogik](steuerlogik.md#auslieferung-und-mitlauf)): `bundle = {format: "steuerlogik", logic: "<kanonisches JSON als Text>", site?: {timezone, latitude, longitude}, armed?: true, settings?: {revision, values}}`, keine Felder des Node-RED-Formats daneben.
+`armed` (Stufe 3, [scharf](steuerlogik.md#scharf)) gibt die Wünsche der Logik an den Schiedsrichter; `settings` sind die gestellten Werte mit ihrem Stand ([Stellwerte](steuerlogik.md#stellwerte)). Beide stehen unter dem Hash, so belegt die Quittung, dass die Box genau diesen Zustand und genau diese Werte hält.
 Die Logik ist ein String, kein Objekt: der Hash kanonisiert Objekte mit sortierten Schlüsseln, die Reihenfolge der Zustände ist aber die Reihenfolge der Auswertung - nur als Text steht sie unter dem Hash.
 `site` ist der Ort der Anlage für Uhrzeit, Tageswechsel und Sonnenstand; fehlt die Lage, bleibt der Sonnenstand unbekannt.
-Gebaut wird es nur vom Logik-Dienst; die Cloud liefert es nur an eine Box mit `steuerlogik_mitlauf`.
+Gebaut wird es nur vom Logik-Dienst; die Cloud liefert es nur an eine Box mit `steuerlogik_mitlauf`, ein scharfes nur an eine mit `steuerlogik_scharf`. Eine Box mit nur `steuerlogik_mitlauf` kennt `armed` und `settings` nicht, rechnet den Hash ohne sie und quittiert ein scharfes Bündel als `error` - sie schaltet nie nach einer Logik.
 Beide Box-Arten geben es an den Kern im Programm, nie an Node-RED oder den Verbraucherregel-Zwilling; das Tor `min_palette_version` gilt für dieses Format nicht, `min_core_version` und `required_entities` gelten.
 Eine Box ohne den Kern quittiert `unsupported` („Steuerlogik läuft auf dieser Box nicht“), eine ältere Box das unbekannte Format als `error`.
-Beispiel: [flow-artifact.valid.steuerlogik.json](examples/flow-artifact.valid.steuerlogik.json) (gepinnt vom Dienst).
+Beispiele: [flow-artifact.valid.steuerlogik.json](examples/flow-artifact.valid.steuerlogik.json) (mitlaufend) und die ganze Antwort des Dienstes für ein scharfes Bündel mit gestelltem Wert, [steuerlogik-dienst.valid.wasser-scharf.json](examples/steuerlogik-dienst.valid.wasser-scharf.json), beide gepinnt vom Dienst.
 
 Budget: 256 KiB je Artefakt, 512 KiB je serialisiertem Deployment gemäß Schema-Anmerkungen. Größere Payloads nicht still in einen ungeprüften Downloadpfad auslagern.
 
@@ -43,7 +44,7 @@ Budget: 256 KiB je Artefakt, 512 KiB je serialisiertem Deployment gemäß Schema
 
 Der Core persistiert Artefakte und aktualisiert Node-RED über dessen Admin-API. Zurückgezogene Wünsche laufen entsprechend ihrer TTL aus; der nächste gültige Besitzer beziehungsweise Failsafe übernimmt.
 
-**Edge Light** hat kein Node-RED. Dort führt das Programm dasselbe Artefakt selbst aus, wenn es nur aus generierten Verbraucherregeln besteht (`vp-consumer-policy` mit seinen `inject`-Auslösern): der Go-Zwilling `internal/verbraucherregel` liest dieselben Topics des lokalen Busses und sendet denselben Wunsch wie der Palette-Knoten ([Vektoren](verbraucherregel-vectors.json)). Er steht beim Tor `min_palette_version` für den Palette-Stand 0.5.0. Jedes andere Node-RED-Bündel, etwa eine Automation aus dem Flow-Editor, quittiert Edge Light als `unsupported` mit dem Grund; eine [Steuerlogik](#steuerlogik) läuft im Kern beider Box-Arten. Ein unverändertes Artefakt läuft mit seinem Zustand weiter, ein geändertes startet neu, ein zurückgezogenes hört auf zu erneuern.
+**Edge Light** hat kein Node-RED. Dort führt das Programm dasselbe Artefakt selbst aus, wenn es nur aus generierten Verbraucherregeln besteht (`vp-consumer-policy` mit seinen `inject`-Auslösern): der Go-Zwilling `internal/verbraucherregel` liest dieselben Topics des lokalen Busses und sendet denselben Wunsch wie der Palette-Knoten ([Vektoren](verbraucherregel-vectors.json)). Er steht beim Tor `min_palette_version` für den Palette-Stand 0.5.0. Jedes andere Node-RED-Bündel, etwa eine Automation aus dem Flow-Editor, quittiert Edge Light als `unsupported` mit dem Grund; eine [Steuerlogik](#steuerlogik) läuft im Kern beider Box-Arten. Eine Steuerlogik mit unverändertem Text läuft mit ihrem Zustand weiter, auch wenn sich Zustand (scharf) oder gestellte Werte ändern; eine neue Fassung übernimmt die Zustände gleichen Namens und gleicher Art; eine zurückgezogene hört auf zu erneuern, und eine scharfe gibt ihre Geräte sofort frei.
 
 ## Reseed und Bestätigung
 

@@ -1,12 +1,13 @@
 package cloud
 
 // LogikSummary is the additive status-heartbeat block "logik"
-// (docs/contracts/v2/steuerlogik-rueckmeldung.md): which Steuerlogik runs
-// along on this box in which version, its state, and the comparison log
-// "würde schalten" (the core's wish) against "ist geschaltet" (the observed
-// switch state). Strictly REPORTING - in this stage the core switches nothing.
-// nil = nothing runs along (block omitted, the heartbeat stays byte for byte
-// what it was).
+// (docs/contracts/v2/steuerlogik-rueckmeldung.md): which Steuerlogik runs on
+// this box in which version and state (along or armed), and the comparison
+// log "würde schalten" (the core's wish) against "ist geschaltet" (the
+// observed switch state). An armed logic adds what the arbiter granted and
+// why a wish was held back, its set values with their help sentences and the
+// "Warum?" list. nil = no logic runs (block omitted, the heartbeat stays byte
+// for byte what it was).
 type LogikSummary struct {
 	Laeufe []LogikLauf `json:"laeufe"`
 }
@@ -17,8 +18,14 @@ type LogikLauf struct {
 	FlowVersion int    `json:"flow_version"`
 	ContentHash string `json:"content_hash"`
 	Name        string `json:"name"`
-	// Zustand is "mitlaufend" in this stage: computing, never switching.
+	// Zustand is "mitlaufend" (computing, never switching) or "scharf" (its
+	// wishes go to the arbiter, its devices belong to it).
 	Zustand string `json:"zustand"`
+	// ScharfSeit is when this box began switching after this logic (RFC 3339).
+	ScharfSeit string `json:"scharf_seit,omitempty"`
+	// Halt says why an armed logic switches nothing right now (the box's
+	// switches are off, "Automatik pausieren"); nil = it switches.
+	Halt *LogikHalt `json:"halt,omitempty"`
 	// Seit is when this version started running along on this box (RFC 3339).
 	Seit string `json:"seit"`
 	// Tag is the local day (YYYY-MM-DD) the counters below belong to; they
@@ -37,6 +44,69 @@ type LogikLauf struct {
 	// Wechsel are the latest changes of wish and observed state, oldest first,
 	// at most the contract's bound; Nr counts up per run so a reader sees a gap.
 	Wechsel []LogikWechsel `json:"wechsel,omitempty"`
+	// Stellwerte are the set values as they apply in the run, with their revision.
+	Stellwerte *LogikStellwerte `json:"stellwerte,omitempty"`
+	// Warum is the "Warum?" list: per state the named conditions that decide
+	// next, with their standing and the values behind them.
+	Warum []LogikWarum `json:"warum,omitempty"`
+	// Meldungen are the logic's own latest notifications, oldest first.
+	Meldungen []LogikMeldung `json:"meldungen,omitempty"`
+}
+
+// LogikHalt is a reason in code and sentence.
+type LogikHalt struct {
+	Code string `json:"code"`
+	Text string `json:"text"`
+}
+
+// LogikStellwerte are the set values of a run: Stand is the revision the box
+// applied (the portal shows a value as taken once this reaches it).
+type LogikStellwerte struct {
+	Stand int64            `json:"stand"`
+	Werte []LogikStellwert `json:"werte,omitempty"`
+}
+
+// LogikStellwert is one set value: the document's form, its display text and
+// the help sentence with today's values.
+type LogikStellwert struct {
+	Kennung string `json:"kennung"`
+	Wert    any    `json:"wert"`
+	Text    string `json:"text"`
+	Hilfe   string `json:"hilfe,omitempty"`
+}
+
+// LogikWarum is one group of the "Warum?" list.
+type LogikWarum struct {
+	Zustand     string           `json:"zustand"`
+	Name        string           `json:"name"`
+	Was         string           `json:"was"`
+	Schritt     string           `json:"schritt,omitempty"`
+	Modus       string           `json:"modus"`
+	WartetS     int              `json:"wartet_s,omitempty"`
+	Bedingungen []LogikBedingung `json:"bedingungen"`
+}
+
+// LogikBedingung is a named condition with its standing; Ok null = unknown.
+type LogikBedingung struct {
+	Name string `json:"name"`
+	Ok   *bool  `json:"ok"`
+	// Formel: the text names no condition, Name is the formula itself.
+	Formel bool        `json:"formel,omitempty"`
+	Werte  []LogikWert `json:"werte,omitempty"`
+}
+
+// LogikWert is a value inside a condition.
+type LogikWert struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+// LogikMeldung is one notification of the logic (its notifications section).
+type LogikMeldung struct {
+	Nr   int64    `json:"nr"`
+	T    string   `json:"t"`
+	An   []string `json:"an,omitempty"`
+	Text string   `json:"text"`
 }
 
 // LogikLage is the state of the logic as title and sentence for the customer.
@@ -63,6 +133,14 @@ type LogikGeraet struct {
 	LaengsteAbweichungS int `json:"laengste_abweichung_s"`
 	WunschWechsel       int `json:"wunsch_wechsel"`
 	IstWechsel          int `json:"ist_wechsel"`
+	// Armed only: Befehl is what the arbiter granted the device (after the
+	// guards), Halter the source holding it when that is not this logic (e.g.
+	// "local-ui" for a manual intervention), Schutz a guard that held the wish
+	// back, Konflikt a second master the box refused to fight.
+	Befehl   *LogikStand `json:"befehl,omitempty"`
+	Halter   string      `json:"halter,omitempty"`
+	Schutz   *LogikHalt  `json:"schutz,omitempty"`
+	Konflikt *LogikHalt  `json:"konflikt,omitempty"`
 }
 
 // LogikStand is a switch state: a level (outputs on), on/off, a setpoint, a

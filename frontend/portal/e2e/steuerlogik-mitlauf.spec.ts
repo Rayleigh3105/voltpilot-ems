@@ -59,3 +59,29 @@ test('eine Box ohne die Fähigkeit bekommt kein Formular', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Prüfen und ausliefern' })).toHaveCount(0);
   expect(fehler).toEqual([]);
 });
+
+test('Scharf schalten: die Hinweise stehen gesammelt im Dialog, eine Bestätigung genügt', async ({ page }) => {
+  const fehler = await oeffnen(page, 375, 'scharf');
+  await page.getByRole('button', { name: 'Scharf schalten …' }).click();
+  const dialog = page.getByRole('dialog', { name: '„Wärmepumpe“ scharf schalten?' });
+  await expect(dialog).toContainText('Ab jetzt schaltet die Box nach Fassung 2: Wärmepumpe gehört der Logik.');
+  await expect(dialog).toContainText('Home Assistant');
+  await expect(dialog).toContainText('Der Kunde stellt selbst: Sonnenstrom in Wärme speichern, Speicher höchstens.');
+  if (process.env.BILDER_DIR) await page.screenshot({ path: `${process.env.BILDER_DIR}/plattform-scharf-dialog-375.png`, animations: 'disabled' });
+  await dialog.getByRole('button', { name: 'Gelesen, scharf schalten' }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { scharfAufrufe: number[] }).scharfAufrufe)).toEqual([2]);
+  await ohneUeberlauf(page);
+  expect(fehler).toEqual([]);
+});
+
+test('Scharf schalten: ein zweiter Herr sperrt die Bestätigung, Abbrechen bleibt', async ({ page }) => {
+  const fehler = await oeffnen(page, 1440, 'konflikt');
+  await page.getByRole('button', { name: 'Scharf schalten …' }).click();
+  const dialog = page.getByRole('dialog', { name: '„Wärmepumpe“ scharf schalten?' });
+  await expect(dialog).toContainText('Gesperrt: Für „Wärmepumpe“ gilt eine Steuerart.');
+  await expect(dialog.getByRole('button', { name: 'Gelesen, scharf schalten' })).toBeDisabled();
+  if (process.env.BILDER_DIR) await page.screenshot({ path: `${process.env.BILDER_DIR}/plattform-zweiter-herr-1440.png`, animations: 'disabled' });
+  await dialog.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(fehler).toEqual([]);
+});

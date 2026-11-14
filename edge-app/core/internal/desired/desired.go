@@ -92,6 +92,13 @@ const SourceDeadlineFallback SourceKind = "deadline-fallback"
 // kind, so no publisher can impersonate the controller.
 const SourceHeizstab SourceKind = "heizstab"
 
+// SourceSteuerlogik is the CORE-INTERNAL runner of an armed Steuerlogik
+// (internal/logiklauf, agent/steuerlogik_scharf.go; Stufe 3 "scharf"): a
+// logic the customer's portal delivered, wishing in class 'flow' (rank 40)
+// like the heating-rod controller. It only ever enters via SubmitInternal -
+// Parse rejects the kind, so no publisher can impersonate a logic.
+const SourceSteuerlogik SourceKind = "steuerlogik"
+
 // Source identifies a desired's emitter. Flow sources carry the compiler-
 // stamped flow identity.
 type Source struct {

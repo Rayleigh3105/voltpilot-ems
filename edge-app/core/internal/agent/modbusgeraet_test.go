@@ -42,6 +42,9 @@ type mbStand struct {
 	ort    *time.Location
 	netz   float64
 	mit    *logiklauf.Laufzeit // optional: the same logic running along (Stufe 2)
+	// scharf: the logic is the agent's own run, armed - its wishes go out
+	// through runSteuerlogik (Stufe 3) instead of the hand-made submission.
+	scharf bool
 }
 
 // mbDefinitionJSON is a released definition for the stand-in at addr.
@@ -120,6 +123,15 @@ func (s *mbStand) sekunden(n int) {
 		now := s.uhr
 		s.a.logikObserve(now, map[string]float64{"power_kw": s.netz}, nil)
 		s.a.runModbusGeraetPoll(ctx, now)
+		if s.scharf {
+			s.mit.Tick(now)
+			s.a.runSteuerlogik(now)
+			s.arb.Tick()
+			if now.Unix()%5 == 0 {
+				s.a.runModbusGeraetControlPass(ctx, now)
+			}
+			continue
+		}
 		ort := now.In(s.ort)
 		ein := &logik.Eingabe{Jetzt: float64(now.Unix()), DT: 1,
 			UhrMin: float64(ort.Hour()*60+ort.Minute()) + float64(ort.Second())/60,

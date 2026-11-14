@@ -5,13 +5,14 @@ package agent
 // every second with the box's real inputs (internal/logiklauf) and reports in
 // the heartbeat what it would switch next to what is switched. This file only
 // READS: the site sample, the Fühler samples of Stufe 1 and the observed
-// switch state of a device. Nothing here holds the arbiter or a driver - the
-// run's wishes never become a command (steuerlogik_test.go proves it on the
-// real path).
+// switch state of a device. A logic running along never becomes a command
+// (steuerlogik_test.go proves it on the real path); only an ARMED logic's
+// wishes go to the arbiter, in steuerlogik_scharf.go.
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -43,6 +44,23 @@ type logikEingaenge struct {
 	mu      sync.Mutex
 	site    map[string]logikMesswert            // source name -> value
 	fuehler map[string]map[string]logikMesswert // entity -> point_key -> °C
+	// relais is the read relay state of a single Shelly relay the box drives
+	// itself (the control pass's readback): 1 = on, 0 = off.
+	relais map[string]logikMesswert
+}
+
+// logikMerkeRelais keeps the relay state the control pass just read back.
+func (a *Agent) logikMerkeRelais(entityID string, on bool, at time.Time) {
+	a.logikIn.mu.Lock()
+	defer a.logikIn.mu.Unlock()
+	if a.logikIn.relais == nil {
+		a.logikIn.relais = map[string]logikMesswert{}
+	}
+	v := 0.0
+	if on {
+		v = 1
+	}
+	a.logikIn.relais[entityID] = logikMesswert{v: v, at: at}
 }
 
 // logikSiteKanaele maps the source names of the language to the channels of
@@ -200,6 +218,14 @@ func (a *Agent) logikGeraet(entityID string, now time.Time) (logik.GeraetStamm, 
 			return stamm, ist
 		}
 	}
+	a.logikIn.mu.Lock()
+	r, gelesen := a.logikIn.relais[entityID]
+	a.logikIn.mu.Unlock()
+	if gelesen && now.Sub(r.at) <= heizstabStageMaxAge {
+		on := r.v > 0
+		ist.Ein = &on
+		return stamm, ist
+	}
 	if sourceID == "" {
 		return stamm, ist
 	}
@@ -253,11 +279,19 @@ func geraetFakten(e entities.Entity, stamm *logik.GeraetStamm) {
 type logikAdapter struct{ lz *logiklauf.Laufzeit }
 
 func (ad logikAdapter) Annehmbar(art flowdeploy.Artifact) (bool, string) {
-	if _, err := logiklauf.Lies([]byte(art.Bundle.Logic)); err != nil {
+	L, err := logiklauf.Lies([]byte(art.Bundle.Logic))
+	if err != nil {
 		return false, "Logik nicht lesbar: " + err.Error()
 	}
 	if _, err := logiklauf.Zone(auftragOrt(art.Bundle.Site)); err != nil {
 		return false, "Zeitzone der Anlage unbekannt"
+	}
+	werte, err := auftragStellwerte(art.Bundle.Settings)
+	if err != nil {
+		return false, err.Error()
+	}
+	if _, err := L.PruefeStellwerte(werte); err != nil {
+		return false, "Stellwerte passen nicht: " + err.Error()
 	}
 	return true, ""
 }
@@ -265,10 +299,36 @@ func (ad logikAdapter) Annehmbar(art flowdeploy.Artifact) (bool, string) {
 func (ad logikAdapter) Angleichen(arts []flowdeploy.Artifact) error {
 	auftraege := make([]logiklauf.Auftrag, 0, len(arts))
 	for _, art := range arts {
-		auftraege = append(auftraege, logiklauf.Auftrag{FlowID: art.FlowID, Fassung: art.FlowVersion,
-			Hash: art.ContentHash, Dokument: []byte(art.Bundle.Logic), Ort: auftragOrt(art.Bundle.Site)})
+		werte, err := auftragStellwerte(art.Bundle.Settings)
+		if err != nil {
+			return err
+		}
+		a := logiklauf.Auftrag{FlowID: art.FlowID, Fassung: art.FlowVersion, Hash: art.ContentHash,
+			Dokument: []byte(art.Bundle.Logic), Ort: auftragOrt(art.Bundle.Site), Scharf: art.Bundle.Armed,
+			Stellwerte: werte}
+		if art.Bundle.Settings != nil {
+			a.StellStand = art.Bundle.Settings.Revision
+		}
+		auftraege = append(auftraege, a)
 	}
 	return ad.lz.Angleichen(auftraege)
+}
+
+// auftragStellwerte decodes the set values of a bundle into the document's
+// form the core reads (strings, numbers, schedule lists).
+func auftragStellwerte(s *flowdeploy.BundleSettings) (map[string]any, error) {
+	out := map[string]any{}
+	if s == nil {
+		return out, nil
+	}
+	for k, roh := range s.Values {
+		var v any
+		if err := json.Unmarshal(roh, &v); err != nil {
+			return nil, fmt.Errorf("Stellwert %s nicht lesbar", k)
+		}
+		out[k] = v
+	}
+	return out, nil
 }
 
 func auftragOrt(s *flowdeploy.BundleSite) logiklauf.Ort {
@@ -306,17 +366,20 @@ func (a *Agent) startLogikMitlauf(ctx context.Context) {
 				return
 			case now := <-t.C:
 				a.logik.Tick(now)
+				a.runSteuerlogik(now)
 			}
 		}
 	}()
 }
 
-// logikSummary is the heartbeat block; nil while nothing runs along.
+// logikSummary is the heartbeat block; nil while nothing runs.
 func (a *Agent) logikSummary() *cloud.LogikSummary {
 	if a.logik == nil {
 		return nil
 	}
-	return a.logik.Summary()
+	sum := a.logik.Summary()
+	a.logikScharfSummary(sum, time.Now().UTC())
+	return sum
 }
 
 func endlich(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }

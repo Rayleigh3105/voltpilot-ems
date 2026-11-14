@@ -206,6 +206,9 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 		}
 		a.publishShellyReadback(e.ID, res, now)
 		a.publishShellyEntityTelemetry(e.ID, res, now)
+		if res.OK && res.Verdict.On != nil {
+			a.logikMerkeRelais(e.ID, *res.Verdict.On, now)
+		}
 		lastFP[e.ID] = fp
 		lastAssert[e.ID] = now
 	}

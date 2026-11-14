@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
-import { api, type SteuerlogikBlatt, type SteuerlogikLogik, type SteuerlogikProtokoll } from '../../api';
+import { api, type SteuerlogikBlatt, type SteuerlogikLogik, type SteuerlogikProtokoll, type SteuerlogikVorschau } from '../../api';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import {
   ablehnungSaetze,
   abweichungSatz,
   dauer,
+  istScharf,
   laufendeFassung,
   quittungSatz,
   standText,
@@ -15,10 +16,12 @@ import {
 import './SteuerlogikMitlaufBlatt.css';
 
 /**
- * Steuerlogik Stufe 2, zweiter Teil — das Blatt der Plattform: VoltPilot gibt eine Logik als Datei ab, sie läuft auf
- * der Box mit und schaltet nichts. Je Logik die Fassung, die Quittung der Box, die Lage und je Gerät, was sie schalten
- * würde, neben dem, was geschaltet ist; dazu das Protokoll des Tages. NUR hinter `showTechnicalLayer()` (eigener
- * Chunk) — Kundenkonten laden das nie; ihre Oberfläche kommt in den Stufen 3 bis 5.
+ * Das Blatt der Plattform für Steuerlogiken: VoltPilot gibt eine Logik als Datei ab, sie läuft auf der Box mit und
+ * schaltet nichts (Stufe 2) - je Logik die Fassung, die Quittung der Box, die Lage und je Gerät, was sie schalten
+ * würde, neben dem, was geschaltet ist; dazu das Protokoll des Tages. Stufe 3: „Scharf schalten“ ist ein eigener
+ * Schritt mit den gesammelten Hinweisen und einer Bestätigung (E5 = C); ein zweiter Herr steht im Dialog und sperrt;
+ * „Zurück zur vorigen Fassung“ und „Stilllegen“ wirken sofort. NUR hinter `showTechnicalLayer()` (eigener Chunk) -
+ * Kundenkonten laden das nie; sie sehen die Karte der Logik in der Steuerung.
  */
 export function SteuerlogikMitlaufBlatt({ siteId, jetzt }: { siteId: string; jetzt?: Date }) {
   const [blatt, setBlatt] = useState<SteuerlogikBlatt | null>(null);
@@ -55,7 +58,8 @@ export function SteuerlogikMitlaufBlatt({ siteId, jetzt }: { siteId: string; jet
                 : 'Die Box meldet die Fähigkeit steuerlogik_mitlauf nicht. Erst die Box aktualisieren.'}
           </p>
           {blatt.logiken.map((l) => (
-            <LogikKarte key={l.logikId} siteId={siteId} logik={l} jetzt={jetzt} onGeaendert={neuLaden} />
+            <LogikKarte key={l.logikId} siteId={siteId} logik={l} jetzt={jetzt} onGeaendert={neuLaden}
+              boxKannScharf={blatt.boxKannScharf === true} />
           ))}
           {blatt.logiken.length === 0 && <p className="vp-slm-leise">An dieser Anlage läuft noch keine Logik mit.</p>}
           {blatt.box != null && blatt.boxKann && (
@@ -72,13 +76,20 @@ function LogikKarte({
   logik,
   jetzt,
   onGeaendert,
+  boxKannScharf,
 }: {
   siteId: string;
   logik: SteuerlogikLogik;
   jetzt?: Date;
   onGeaendert: () => void;
+  boxKannScharf: boolean;
 }) {
   const fassung = laufendeFassung(logik);
+  const scharf = istScharf(logik);
+  const aktiv = logik.fassungen.find((f) => f.fassung === fassung) ?? null;
+  const hatVorige = fassung != null && logik.fassungen.some((f) => f.fassung < fassung);
+  const [vorschau, setVorschau] = useState<SteuerlogikVorschau | null>(null);
+  const [zurueckOffen, setZurueckOffen] = useState(false);
   const quittung = quittungSatz(logik, fassung);
   const lauf = logik.laeufe.find((l) => l.fassung === fassung) ?? logik.laeufe[0] ?? null;
   const r = lauf?.rueckmeldung ?? null;
@@ -95,6 +106,26 @@ function LogikKarte({
       setProtokoll(null);
       setProtokollFehler(true);
     });
+  };
+
+  const schritt = async (fn: () => Promise<unknown>, zu: () => void) => {
+    setBusy(true);
+    setFehler([]);
+    try {
+      await fn();
+      zu();
+      onGeaendert();
+    } catch (e) {
+      setFehler(ablehnungSaetze(e));
+      zu();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const oeffneScharf = () => {
+    setFehler([]);
+    api.steuerlogikVorschau(siteId, logik.logikId).then(setVorschau, (e) => setFehler(ablehnungSaetze(e)));
   };
 
   const stilllegen = async () => {
@@ -117,7 +148,11 @@ function LogikKarte({
       <header className="vp-slm-logik-kopf">
         <h3>{logik.name}</h3>
         <span className="vp-slm-leise">
-          {fassung != null ? `Fassung ${fassung} · läuft mit, schaltet nichts` : 'stillgelegt'}
+          {fassung == null
+            ? 'stillgelegt'
+            : scharf
+              ? `Fassung ${fassung} · scharf${aktiv?.scharfAm ? ` seit ${uhrzeit(aktiv.scharfAm)}` : ''}, die Box schaltet nach ihr`
+              : `Fassung ${fassung} · läuft mit, schaltet nichts`}
         </span>
         <span className={`vp-slm-${quittung.ton}`}>{quittung.text}</span>
       </header>
@@ -214,26 +249,80 @@ function LogikKarte({
         <Button variant="outline" size="sm" onClick={() => setNeueFassung((o) => !o)} aria-expanded={neueFassung}>
           Neue Fassung
         </Button>
+        {fassung != null && !scharf && boxKannScharf && (
+          <Button size="sm" onClick={oeffneScharf}>
+            Scharf schalten …
+          </Button>
+        )}
+        {hatVorige && (
+          <Button variant="outline" size="sm" onClick={() => setZurueckOffen(true)}>
+            Zurück zur vorigen Fassung
+          </Button>
+        )}
         {fassung != null && (
           <Button variant="ghost" size="sm" onClick={() => setStillOffen(true)}>
             Stilllegen
           </Button>
         )}
       </div>
+      {fassung != null && !scharf && !boxKannScharf && (
+        <p className="vp-slm-leise">Scharf schalten geht erst, wenn die Box steuerlogik_scharf meldet.</p>
+      )}
       {neueFassung && (
         <Annahme
           siteId={siteId}
           logikId={logik.logikId}
           titel={`Neue Fassung von „${logik.name}“`}
-          knopf="Prüfen und ablösen"
+          knopf={scharf ? 'Prüfen und scharf ablösen' : 'Prüfen und ablösen'}
+          scharf={scharf}
           onAngenommen={() => { setNeueFassung(false); onGeaendert(); }}
         />
       )}
       <ConfirmDialog
+        open={vorschau != null}
+        title={`„${logik.name}“ scharf schalten?`}
+        intro={vorschau?.moeglich
+          ? `Ab jetzt schaltet die Box nach Fassung ${vorschau.fassung}: ${vorschau.geraete.join(', ')} `
+            + `${vorschau.geraete.length === 1 ? 'gehört' : 'gehören'} der Logik.`
+          : 'Die Logik kann so nicht scharf gehen.'}
+        consequences={vorschau ? [
+          ...vorschau.konflikte.map((k) => `Gesperrt: ${k.text}`),
+          ...(vorschau.boxKann ? [] : ['Gesperrt: Die Box meldet steuerlogik_scharf nicht.']),
+          ...vorschau.hinweise,
+          'Fahrplan und Fristen lassen die Geräte in Ruhe; Eingriffe von Hand und die Schutzgrenzen der Box gehen weiter vor.',
+          ...(vorschau.kundeStellt.length ? [`Der Kunde stellt selbst: ${vorschau.kundeStellt.join(', ')}.`] : []),
+        ] : []}
+        confirmLabel="Gelesen, scharf schalten"
+        busy={busy}
+        confirmDisabled={!vorschau?.moeglich}
+        onConfirm={() => vorschau && void schritt(() => api.steuerlogikScharf(siteId, logik.logikId, vorschau.fassung), () => setVorschau(null))}
+        onCancel={() => setVorschau(null)}
+      />
+      <ConfirmDialog
+        open={zurueckOffen}
+        title={`„${logik.name}“ auf die vorige Fassung zurücknehmen?`}
+        intro={scharf
+          ? 'Die Box schaltet ab sofort wieder nach der vorigen Fassung.'
+          : 'Die vorige Fassung läuft ab sofort wieder mit.'}
+        consequences={[
+          'Zustände gleichen Namens übernimmt die Box; der Rest beginnt wie nach einem Neustart.',
+          'Gestellte Werte, die zur vorigen Fassung nicht passen, fallen auf ihre Vorgabe.',
+          'Der Schritt steht im Protokoll.',
+        ]}
+        confirmLabel="Zurücknehmen"
+        busy={busy}
+        onConfirm={() => void schritt(() => api.steuerlogikZurueck(siteId, logik.logikId), () => setZurueckOffen(false))}
+        onCancel={() => setZurueckOffen(false)}
+      />
+      <ConfirmDialog
         open={stillOffen}
         title={`„${logik.name}“ stilllegen?`}
-        intro="Die Box hört sofort auf, diese Logik mitlaufen zu lassen."
-        consequences={[
+        intro={scharf ? 'Die Box hört sofort auf, nach dieser Logik zu schalten.' : 'Die Box hört sofort auf, diese Logik mitlaufen zu lassen.'}
+        consequences={scharf ? [
+          'Ihre Geräte sind frei: ohne Wunsch gilt ihr Ruhewert, Fahrplan und Steuerart dürfen sie wieder führen.',
+          'Eine laufende Mindestlaufzeit hält ein Gerät noch bis zu ihrem Ende an.',
+          'Das Protokoll der letzten 90 Tage bleibt lesbar.',
+        ] : [
           'Geschaltet wird dadurch nichts anders: die Logik hat nie geschaltet.',
           'Das Protokoll der letzten 90 Tage bleibt lesbar.',
           'Eine neue Fassung lässt sie wieder mitlaufen.',
@@ -253,12 +342,15 @@ function Annahme({
   logikId,
   titel,
   knopf,
+  scharf = false,
   onAngenommen,
 }: {
   siteId: string;
   logikId?: string;
   titel: string;
   knopf: string;
+  /** Die neue Fassung löst eine scharfe ab und geht gleich scharf (das Senden bestätigt die Hinweise). */
+  scharf?: boolean;
   onAngenommen: () => void;
 }) {
   const [text, setText] = useState('');
@@ -286,7 +378,7 @@ function Annahme({
     setBusy(true);
     setFehler([]);
     try {
-      await api.steuerlogikAnnehmen(siteId, text, logikId);
+      await api.steuerlogikAnnehmen(siteId, text, logikId, scharf);
       setText('');
       onAngenommen();
     } catch (err) {
@@ -313,6 +405,12 @@ function Annahme({
         />
       </label>
       <input ref={datei} type="file" accept=".yaml,.yml,.json,text/plain,application/json" hidden onChange={waehle} />
+      {scharf && (
+        <p className="vp-slm-warn">
+          Die laufende Fassung ist scharf: die neue geht gleich scharf. Die bisherige Steuerung der Geräte muss aus sein;
+          das Portal kann das nicht prüfen.
+        </p>
+      )}
       {fehler.length > 0 && (
         <ul className="vp-slm-fehler" role="alert">
           {fehler.map((f) => <li key={f}>{f}</li>)}

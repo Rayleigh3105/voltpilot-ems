@@ -3099,8 +3099,12 @@ paths:
       - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
     post:
       tags: [admin]
-      summary: Eine neue Fassung einer Logik annehmen; sie löst die mitlaufende ab.
-      description: Recht `plattform.betrieb`. Dieselben Halte wie beim Anlegen; eine fremde oder unbekannte Logik ist 404.
+      summary: Eine neue Fassung einer Logik annehmen; sie löst die aktive ab.
+      description: >
+        Recht `plattform.betrieb`. Dieselben Halte wie beim Anlegen; eine fremde oder unbekannte Logik ist 404. Ist die
+        aktive Fassung scharf, geht die neue nur mit `scharf: true` und `bestaetigt: true` (sonst 409
+        `scharf_abloesen`) - die Geräte fielen sonst still aus der Steuerung. Gestellte Werte, die nicht mehr passen,
+        fallen auf ihre Vorgabe und stehen in `verworfen`.
       requestBody:
         required: true
         content:
@@ -3125,8 +3129,10 @@ paths:
       - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
     post:
       tags: [admin]
-      summary: Die mitlaufende Fassung stilllegen; der Satz geht ohne sie an die Box.
-      description: Recht `plattform.betrieb`. `stillgelegt` ist false, wenn keine Fassung mitlief.
+      summary: Die aktive Fassung stilllegen (mitlaufend oder scharf); der Satz geht ohne sie an die Box.
+      description: >
+        Recht `plattform.betrieb`. Wirkt sofort: die Box hört im nächsten Takt auf, ihre Geräte sind frei (der Besitz
+        fällt weg, die Box bekommt den Registry-Push). `stillgelegt` ist false, wenn keine Fassung aktiv war.
       responses:
         "200":
           description: Stillgelegt.
@@ -3161,6 +3167,196 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik/{logikId}/scharf:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [admin]
+      summary: Was der Dialog "Scharf schalten" zeigt (Stufe 3).
+      description: >
+        Recht `plattform.betrieb`, lesend. Prüfbericht der aktiven Fassung, die gesammelten Hinweise (E5 = C: eine
+        Bestätigung für alle), Konflikte mit anderen Herren je Gerät, die Geräte, die die Logik dann führt, und die
+        Werte, die der Kunde selbst stellt. `moeglich` ist false ohne `steuerlogik_scharf`, mit Konflikt oder wenn die
+        Fassung schon scharf ist. 409 `nichts_aktiv`.
+      responses:
+        "200":
+          description: Die Vorschau.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikVorschau" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "409": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+    post:
+      tags: [admin]
+      summary: Die aktive Fassung scharf schalten - die Box schaltet nach der Logik.
+      description: >
+        Recht `plattform.betrieb`. Ein eigener, protokollierter Schritt je Fassung, getrennt vom Mitlaufen: Pflicht
+        ist nur die Prüfung (beim Dienst) und eine Bestätigung der Hinweise. Ein Gerät hat nie zwei Herren - Steuerart,
+        Heizstab-Regler, Regel oder eine andere Logik am selben Gerät ist 409 `zweiter_herr` mit `konflikte`, nie
+        still aufgelöst. Danach gehören die Geräte der Logik (`flow_claim`, im Registry-Push `owner_claimed`), und der
+        Satz auf `v2/flows` trägt das scharfe Bündel. Weitere Halte: 409 `box_ohne_scharf`, `bestaetigung_fehlt`,
+        `fassung_veraltet`, `schon_scharf`, `nichts_aktiv`; 422 `pruefung_sperrt`; 503 `dienst_nicht_erreichbar`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fassung, bestaetigt]
+              properties:
+                fassung: { type: integer, minimum: 1, description: "Die Fassung, die der Dialog zeigte." }
+                bestaetigt: { type: boolean, description: "Die Hinweise des Dialogs sind gelesen." }
+      responses:
+        "200":
+          description: Scharf geschaltet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikAngenommen" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "409": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "422": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "503": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik/{logikId}/zurueck:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Zurück zur vorigen Fassung, im selben Zustand; wirkt sofort.
+      description: >
+        Recht `plattform.betrieb`. Die Fassung vor der aktiven wird erneut ausgeliefert (scharf bleibt scharf), mit den
+        gestellten Werten, die zu ihr passen (`verworfen` nennt die anderen); die Box übernimmt die Zustände gleichen
+        Namens. Protokolliert. 409 `keine_vorige`, `nichts_aktiv`, `zweiter_herr`.
+      responses:
+        "200":
+          description: Zurückgenommen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikAngenommen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "409": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "503": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik/{logikId}/stellwerte/{kennung}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,31}$" } }
+    put:
+      tags: [admin]
+      summary: Einen Wert stellen (Plattform; jeder Wert, in seinem Bereich).
+      description: Recht `plattform.betrieb`. Wie die Kundenroute, ohne Einschränkung nach `editable_by`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SteuerlogikWert" }
+      responses:
+        "200":
+          description: Gestellt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikGestellt" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "409": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "422": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/steuerlogik/{logikId}/protokoll:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: tag, in: query, required: false, schema: { type: string, format: date }, description: "Tag der Anlage (Europe/Berlin); ohne Angabe heute." }
+    get:
+      tags: [admin]
+      summary: Was Menschen an der Logik getan haben - angenommen, scharf, zurück, stillgelegt, Werte gestellt.
+      description: Recht `plattform.betrieb`, lesend. Jüngster Schritt zuerst, höchstens 500 je Tag.
+      responses:
+        "200":
+          description: Die Schritte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikSchritte" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/sites/{siteId}/steuerlogik:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [sites]
+      summary: Die scharfen Logiken der Anlage als Karten für den Kunden (Steuerlogik Stufe 3).
+      description: >
+        Lesend wie die Steuerung der Anlage. Je scharfe Logik: Lage aus dem jüngsten Herzschlag (mit `gemeldetAm`),
+        die Störungen (die erste zeigt die Karte), die Geräte mit Wunsch, Schaltstand, Befehl und Grund, die Werte mit
+        Bereich und dem Recht DIESES Aufrufers (`aendern`; E2 = B: Zielwerte in °C und `editable_by: customer` jeder
+        mit `betriebsweise.aendern`, die übrigen Kundenadministrator, Unterstützer und Plattform), die Liste "Warum?"
+        und die Meldungen der Logik. Mitlaufende Logiken sieht der Kunde nicht.
+      responses:
+        "200":
+          description: Die Karten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikKarten" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/sites/{siteId}/steuerlogik/{logikId}/verlauf:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: tag, in: query, required: false, schema: { type: string, format: date }, description: "Tag der Anlage (Europe/Berlin); ohne Angabe heute." }
+    get:
+      tags: [sites]
+      summary: Der Verlauf eines Tages - Schaltungen und Schritte von Menschen.
+      description: Lesend wie die Steuerung. Das Vergleichsprotokoll (Wunsch und Schaltstand) und das Protokoll der Schritte.
+      responses:
+        "200":
+          description: Der Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikVerlauf" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+  /api/v1/sites/{siteId}/steuerlogik/{logikId}/stellwerte/{kennung}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: logikId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,31}$" } }
+    put:
+      tags: [sites]
+      summary: Einen Wert der Logik stellen, in seinem Bereich.
+      description: >
+        Recht `betriebsweise.aendern`. Der Wert in der Form des Dokuments (`"72 °C"`, `"on"`, `"06:00"`, ein Wort,
+        ein Zeitplan); Bereich, Schritt und die Bedingungen zwischen den Werten prüft der Logik-Dienst (422
+        `stellwerte_passen_nicht`). Ein Wert des Fachbetriebs ohne passende Rolle ist 403 `recht_fehlt`. Der Wert
+        reist im Bündel an die Box; die Logik läuft weiter und behält ihren Zustand. Protokolliert mit wer und wann.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SteuerlogikWert" }
+      responses:
+        "200":
+          description: Gestellt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SteuerlogikGestellt" }
+        "400": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "404": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "409": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
+        "422": { $ref: "#/components/responses/SteuerlogikAbgelehnt" }
   /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/anteil-verlust:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -20834,6 +21030,8 @@ components:
       required: [text]
       properties:
         text: { type: string, maxLength: 262144, description: "Die Logik als YAML-Schreibform oder kanonisches JSON." }
+        scharf: { type: boolean, description: "Die neue Fassung geht gleich scharf (ein protokollierter Schritt); eine scharfe Fassung löst nur eine scharfe ab." }
+        bestaetigt: { type: boolean, description: "Die Hinweise des Dialogs sind gelesen (nur mit scharf)." }
     SteuerlogikAngenommen:
       type: object
       required: [logikId, fassung, name, contentHash, box, veroeffentlicht]
@@ -20845,12 +21043,118 @@ components:
         bericht: { type: object, description: "Prüfbericht des Logik-Dienstes." }
         box: { type: string, format: uuid }
         veroeffentlicht: { type: boolean, description: "Ob der Satz auf v2/flows an die Box ging." }
+        zustand: { type: string, enum: [mitlaufend, scharf] }
+        verworfen:
+          type: array
+          description: Gestellte Werte, die die Fassung nicht übernimmt (Name, Einheit oder Bereich passen nicht mehr); sie fallen auf ihre Vorgabe.
+          items: { type: object, properties: { kennung: { type: string }, grund: { type: string } } }
+    SteuerlogikWert:
+      type: object
+      required: [wert]
+      properties:
+        wert: { description: "Der Wert in der Form des Dokuments: Text (\"72 °C\", \"on\", \"06:00\", ein Wort), Zahl ohne Einheit oder Zeitplan." }
+    SteuerlogikGestellt:
+      type: object
+      required: [logikId, kennung, stand, veroeffentlicht]
+      properties:
+        logikId: { type: string, format: uuid }
+        kennung: { type: string }
+        wert: { description: "Der Wert, wie das Bündel ihn trägt." }
+        stand: { type: integer, minimum: 1, description: "Der Stand der Werte; übernommen ist der Wert, wenn die Box ihn zurückmeldet." }
+        veroeffentlicht: { type: boolean }
+    SteuerlogikKonflikt:
+      type: object
+      properties:
+        entityId: { type: string, format: uuid, nullable: true }
+        geraet: { type: string }
+        art: { type: string, enum: [geraet_unbekannt, kein_verbraucher, laden, nicht_freigegeben, ausgang_offen, heizstab_regler, steuerart, regel, logik] }
+        text: { type: string }
+    SteuerlogikVorschau:
+      type: object
+      properties:
+        logikId: { type: string, format: uuid }
+        fassung: { type: integer }
+        name: { type: string }
+        zustand: { type: string, enum: [mitlaufend, scharf] }
+        boxKann: { type: boolean, description: "Die führende Box meldet steuerlogik_scharf." }
+        bericht: { type: object }
+        hinweise: { type: array, items: { type: string } }
+        konflikte: { type: array, items: { $ref: "#/components/schemas/SteuerlogikKonflikt" } }
+        geraete: { type: array, items: { type: string } }
+        kundeStellt: { type: array, items: { type: string } }
+        moeglich: { type: boolean }
+    SteuerlogikSchritt:
+      type: object
+      properties:
+        fassung: { type: integer }
+        was: { type: string, enum: [angenommen, scharf, zurueck, stillgelegt, stellwert] }
+        am: { type: string, format: date-time }
+        von: { type: string, nullable: true, description: "Anzeigename des Kontos, sonst seine Kennung." }
+        rolle: { type: string, nullable: true }
+        daten: { type: object, nullable: true }
+    SteuerlogikSchritte:
+      type: object
+      properties:
+        logikId: { type: string, format: uuid }
+        tag: { type: string, format: date }
+        schritte: { type: array, items: { $ref: "#/components/schemas/SteuerlogikSchritt" } }
+    SteuerlogikKarten:
+      type: object
+      required: [logiken]
+      properties:
+        logiken:
+          type: array
+          items:
+            type: object
+            properties:
+              logikId: { type: string, format: uuid }
+              name: { type: string }
+              fassung: { type: integer }
+              scharfSeit: { type: string, format: date-time, nullable: true }
+              gemeldetAm: { type: string, format: date-time, nullable: true }
+              lage: { type: object, nullable: true, description: "nr, titel, art (solar, grid, waiting, idle, fault), satz." }
+              stoerungen: { type: array, items: { type: object, properties: { code: { type: string }, text: { type: string } } } }
+              geraete: { type: array, items: { type: object } }
+              stellwerte:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    kennung: { type: string }
+                    name: { type: string }
+                    art: { type: string, enum: [zahl, uhrzeit, boolean, select, schedule] }
+                    einheit: { type: string, nullable: true }
+                    von: { type: number, nullable: true }
+                    bis: { type: number, nullable: true }
+                    schritt: { type: number, nullable: true }
+                    optionen: { type: array, nullable: true, items: { type: object } }
+                    zielwert: { type: boolean }
+                    darf: { type: string, enum: [customer, customer_admin, installer] }
+                    wert: { description: "Der gestellte Wert der Cloud, sonst die Vorgabe." }
+                    wertBox: { nullable: true, description: "Was die Box gerade anwendet." }
+                    text: { type: string, nullable: true }
+                    hilfe: { type: string, nullable: true }
+                    frei: { type: boolean, description: "Gehört zu „Das stellen Sie ein“." }
+                    aendern: { type: boolean, description: "Ob dieser Aufrufer ihn ändern darf." }
+                    uebernommen: { type: boolean }
+              stand: { type: integer }
+              standBox: { type: integer, nullable: true }
+              warum: { type: array, nullable: true, items: { type: object } }
+              meldungen: { type: array, nullable: true, items: { type: object } }
+    SteuerlogikVerlauf:
+      type: object
+      properties:
+        logikId: { type: string, format: uuid }
+        tag: { type: string, format: date }
+        wechsel: { type: array, items: { type: object } }
+        schritte: { type: array, items: { $ref: "#/components/schemas/SteuerlogikSchritt" } }
     SteuerlogikBlatt:
       type: object
       required: [boxKann, logiken]
       properties:
         box: { type: string, format: uuid, nullable: true }
         boxKann: { type: boolean }
+        boxKannScharf: { type: boolean, description: "Die führende Box meldet steuerlogik_scharf." }
         logiken:
           type: array
           items:
@@ -20864,12 +21168,15 @@ components:
                   type: object
                   properties:
                     fassung: { type: integer }
-                    zustand: { type: string, enum: [mitlaufend, stillgelegt] }
+                    zustand: { type: string, enum: [mitlaufend, scharf, stillgelegt] }
                     contentHash: { type: string }
                     bericht: { type: object }
                     angelegtAm: { type: string, format: date-time }
                     angelegtVon: { type: string, nullable: true }
                     stillgelegtAm: { type: string, format: date-time, nullable: true }
+                    scharfAm: { type: string, format: date-time, nullable: true }
+                    scharfVon: { type: string, nullable: true }
+                    hinweise: { type: array, nullable: true, items: { type: string }, description: "Die Hinweise, die beim Scharfschalten bestätigt wurden." }
               quittung:
                 type: object
                 nullable: true
@@ -20887,10 +21194,16 @@ components:
                     box: { type: string, format: uuid }
                     fassung: { type: integer }
                     contentHash: { type: string }
-                    zustand: { type: string, enum: [mitlaufend] }
+                    zustand: { type: string, enum: [mitlaufend, scharf] }
                     seit: { type: string, format: date-time }
                     rueckmeldung: { type: object, description: "Der bereinigte Block logik.laeufe[] ohne Protokoll (steuerlogik-rueckmeldung.md)." }
                     gemeldetAm: { type: string, format: date-time }
+              einstellung:
+                type: object
+                nullable: true
+                properties:
+                  stand: { type: integer, description: "Der Stand der gestellten Werte (0 = keine)." }
+                  werte: { type: object, description: "Kennung -> Wert in der Form des Dokuments." }
     SteuerlogikProtokoll:
       type: object
       required: [logikId, tag, wechsel]

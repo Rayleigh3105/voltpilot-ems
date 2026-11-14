@@ -185,6 +185,19 @@ func (a *Agent) runFlexFallback(now time.Time) {
 	planFresh := v2.Fresh(now)
 
 	for entityID, reqs := range reqsByEntity {
+		if a.steuerlogikOwns(entityID) {
+			// An armed Steuerlogik owns the device: no second master, also not
+			// the deadline fallback (the cloud refuses that pairing anyway).
+			a.flexMu.Lock()
+			held := a.flexHeld[entityID]
+			delete(a.flexHeld, entityID)
+			a.flexMu.Unlock()
+			if held {
+				a.arb.Withdraw(entityID, desired.Source{Kind: desired.SourceDeadlineFallback}.Key(), false)
+				a.pokeArbitration()
+			}
+			continue
+		}
 		var active *flexfallback.Requirement
 		var activeVerdict flexfallback.Verdict
 		reason := flexfallback.ReasonOutsideWindow

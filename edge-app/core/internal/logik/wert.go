@@ -95,6 +95,8 @@ type Planfenster struct {
 	Von  float64
 	Bis  float64
 	Text string
+	// TageText sind die Tage, wie der Text sie schreibt ("mon-fri"); leer nach dem Laden von der Platte.
+	TageText string
 }
 
 // Die Wochentage der Sprache (E9: englische Wörter wie Home Assistant).
@@ -178,15 +180,20 @@ func liesPlan(roh any) (*Zeitplan, error) {
 				}
 			}
 		}
-		von, err := LiesWert(f.wert("from"))
+		vonText, ok1 := f.wert("from").(string)
+		bisText, ok2 := f.wert("to").(string)
+		if !ok1 || !ok2 {
+			return nil, fehler("Ein Zeitplan braucht from und to als Uhrzeit")
+		}
+		von, err := LiesWert(vonText)
 		if err != nil {
 			return nil, err
 		}
-		bis, err := LiesWert(f.wert("to"))
+		bis, err := LiesWert(bisText)
 		if err != nil {
 			return nil, err
 		}
-		if von.Art != WertZahl || bis.Art != WertZahl {
+		if von.Art != WertZahl || bis.Art != WertZahl || von.D != GroesseUhrzeit || bis.D != GroesseUhrzeit {
 			return nil, fehler("Ein Zeitplan braucht from und to als Uhrzeit")
 		}
 		sortiert := append([]int(nil), reihenfolge...)
@@ -195,8 +202,8 @@ func liesPlan(roh any) (*Zeitplan, error) {
 				sortiert[j], sortiert[j-1] = sortiert[j-1], sortiert[j]
 			}
 		}
-		text := titleTage(tageText) + " " + f.wert("from").(string) + " bis " + f.wert("to").(string)
-		p.Fenster = append(p.Fenster, Planfenster{Tage: sortiert, Von: von.V, Bis: bis.V, Text: text})
+		text := titleTage(tageText) + " " + vonText + " bis " + bisText
+		p.Fenster = append(p.Fenster, Planfenster{Tage: sortiert, Von: von.V, Bis: bis.V, Text: text, TageText: tageText})
 	}
 	return p, nil
 }

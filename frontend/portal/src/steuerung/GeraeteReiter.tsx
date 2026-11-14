@@ -28,6 +28,8 @@ import { Ic } from './Ic';
 import { negativpreisZeile } from '../moduleSurface';
 import { messBild, type MessTeil } from './messen';
 import { AnlagensteuerungKarten } from './AnlagensteuerungKarte';
+import { LogikKarte } from './LogikKarte';
+import type { SteuerlogikKarte } from '../api';
 import { vorschlag } from './neu';
 import type { BlattZustand, SeitenBild } from './seite';
 import { useBreite, zeitband } from './Zeitband';
@@ -78,6 +80,13 @@ export interface GeraeteReiterProps {
    * zum Tagesbild geöffnet, nie zum Schalten.
    */
   zuLaden: () => void;
+  /** Die scharfen Steuerlogiken (Stufe 3): je eine Karte nach „Jetzt“. */
+  logiken?: SteuerlogikKarte[] | null;
+  /** Gerät → Name der Logik, die es führt („Smart: Logik „…““). */
+  logikVon?: Map<string, string>;
+  logikSendet?: string | null;
+  onLogikWarum?: (logikId: string) => void;
+  onLogikSchalter?: (logikId: string, kennung: string, an: boolean) => void;
 }
 
 export function GeraeteReiter(p: GeraeteReiterProps) {
@@ -121,6 +130,16 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
   return (
     <>
       <JetztKarte bild={bild} t={t} sel={sel} sonne={sonne} onJetzt={() => { setSel(null); setTag(0); }} oeffne={p.oeffne} />
+      {(p.logiken ?? []).map((k) => (
+        <LogikKarte
+          key={k.logikId}
+          karte={k}
+          jetzt={new Date()}
+          sendet={p.logikSendet ?? null}
+          onWarum={() => p.onLogikWarum?.(k.logikId)}
+          onSchalter={(kennung, an) => p.onLogikSchalter?.(k.logikId, kennung, an)}
+        />
+      ))}
       {bild.einordnung.neu.map((g) => (
         <NeuKarte key={g.id} g={g} bild={bild} busy={p.busy === g.id} oeffne={p.oeffne} onUebernehmen={p.onUebernehmen} onNurMessen={p.onNurMessen} />
       ))}
@@ -135,6 +154,7 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
         onAnlage={p.onAnlage}
         busy={p.busy === 'reihenfolge'}
         zuLaden={p.zuLaden}
+        logikVon={p.logikVon}
       />
       <ImmerKarte
         bild={bild}
@@ -659,6 +679,7 @@ interface ListeProps {
   onAnlage: (g: GeraetBild | null) => void;
   busy: boolean;
   zuLaden: () => void;
+  logikVon?: Map<string, string>;
 }
 
 const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
@@ -690,13 +711,13 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
         id === SPEICHER ? (
           <SpeicherKarte key={id} bild={bild} platz={i + 1} oeffne={p.oeffne} />
         ) : (
-          <GeraetKarte key={id} g={alle.find((g) => g.id === id)!} bild={bild} platz={i + 1} oeffne={p.oeffne} zuLaden={p.zuLaden} />
+          <GeraetKarte key={id} g={alle.find((g) => g.id === id)!} bild={bild} platz={i + 1} oeffne={p.oeffne} zuLaden={p.zuLaden} logik={p.logikVon?.get(id)} />
         ),
       )}
       {bild.rest.length > 0 && <div className="linie">nach Zeit, Frist oder Preis</div>}
       {bild.rest.map((id) => {
         const g = alle.find((x) => x.id === id);
-        return g ? <GeraetKarte key={id} g={g} bild={bild} platz={null} oeffne={p.oeffne} zuLaden={p.zuLaden} /> : null;
+        return g ? <GeraetKarte key={id} g={g} bild={bild} platz={null} oeffne={p.oeffne} zuLaden={p.zuLaden} logik={p.logikVon?.get(id)} /> : null;
       })}
       <OffenZeilen bild={bild} oeffne={p.oeffne} onAnlage={p.onAnlage} />
       {/* Steuern-Regel #779: an einer Anlage ohne Teilnahme kein Anstoß, ein Gerät anzubinden. */}
@@ -710,8 +731,10 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
   );
 });
 
-function GeraetKarte({ g, bild, platz, oeffne, zuLaden }: {
+function GeraetKarte({ g, bild, platz, oeffne, zuLaden, logik }: {
   g: GeraetBild; bild: SeitenBild; platz: number | null; oeffne: (b: BlattZustand) => void; zuLaden: () => void;
+  /** Der Name der scharfen Logik, die das Gerät führt (Bericht 6.5: „Smart: Logik „Heizung““). */
+  logik?: string;
 }) {
   const r = bild.raster;
   const lp = !!g.eintrag.ladepunkt;
@@ -731,7 +754,9 @@ function GeraetKarte({ g, bild, platz, oeffne, zuLaden }: {
   }
   const zweite = g.eingriff
     ? <>Eingriff{g.eingriff.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ''} · dann wieder Smart</>
-    : <>Smart: <em>{g.auftrag}</em></>;
+    : logik
+      ? <>Smart: <em>Logik „{logik}“</em></>
+      : <>Smart: <em>{g.auftrag}</em></>;
   return (
     <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={(e) => { e.currentTarget.focus(); if (lp) zuLaden(); else oeffne({ art: 'geraet', id: g.id }); }}>
       <span className={`ico ${icoKlasse}`}>

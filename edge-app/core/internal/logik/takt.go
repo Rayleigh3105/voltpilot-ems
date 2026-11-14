@@ -516,6 +516,20 @@ func aufGeraet(v float64, stamm GeraetStamm) float64 {
 	return v
 }
 
+// SollwertGroesse ist die Größe des Sollwerts, den die Logik dem Gerät stellt (°C oder kW), leer
+// ohne Sollwert. Daraus folgt der Befehl, mit dem eine scharfe Logik das Gerät stellt.
+func (L *Logik) SollwertGroesse(geraet string) Groesse {
+	b, ok := L.Ausgaenge[geraet]["setpoint"]
+	if !ok {
+		return ""
+	}
+	d, err := L.groesse(b, nil)
+	if err != nil {
+		return ""
+	}
+	return d
+}
+
 // kenntBetriebsart sagt, ob das Gerät die Betriebsart kennt; ohne Liste gilt jedes Wort.
 func kenntBetriebsart(stamm GeraetStamm, w string) bool {
 	if len(stamm.Betriebsarten) == 0 {

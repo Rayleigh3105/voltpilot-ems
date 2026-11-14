@@ -662,6 +662,9 @@ type Agent struct {
 	// computes and reports, it never switches. logikIn are its inputs.
 	logik   *logiklauf.Laufzeit
 	logikIn logikEingaenge
+	// logikScharf is the memory of the armed logics (steuerlogik_scharf.go):
+	// which devices hold a wish, which were refused and why.
+	logikScharf logikScharfStand
 	// flowDep consumes the retained flow deployment set (agent/flows.go).
 	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
 	// but acks 'error' honestly instead of materializing tabs.

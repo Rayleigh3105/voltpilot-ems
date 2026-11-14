@@ -1,0 +1,284 @@
+{
+  "logikId" : "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+  "name" : "Warmwasser",
+  "fassung" : 1,
+  "scharfSeit" : "2026-11-14T09:00:00Z",
+  "gemeldetAm" : "2026-11-14T09:07:10Z",
+  "lage" : {
+    "nr" : 5,
+    "art" : "waiting",
+    "satz" : "Sobald Sonnenstrom übrig ist, heizt der Heizstab bis 57 °C.",
+    "titel" : "Wartet auf Sonnenstrom"
+  },
+  "stoerungen" : [ ],
+  "geraete" : [ {
+    "kennung" : "heizstab",
+    "entityId" : "7b0c2f4e-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+    "name" : "Heizstab",
+    "wunsch" : {
+      "stufe" : 0
+    },
+    "ist" : {
+      "stufe" : 3
+    },
+    "befehl" : {
+      "stufe" : 3
+    },
+    "halter" : null,
+    "schutz" : {
+      "code" : "guard_min_on",
+      "text" : "läuft - Mindestlaufzeit hält"
+    },
+    "konflikt" : null
+  } ],
+  "stellwerte" : [ {
+    "kennung" : "ziel",
+    "name" : "Mit Sonnenstrom bis",
+    "art" : "zahl",
+    "einheit" : "°C",
+    "von" : 45.0,
+    "bis" : 65.0,
+    "schritt" : 1.0,
+    "optionen" : null,
+    "zielwert" : true,
+    "darf" : "customer",
+    "wert" : "57 °C",
+    "wertBox" : "57 °C",
+    "text" : "57 °C",
+    "hilfe" : null,
+    "frei" : true,
+    "aendern" : true,
+    "uebernommen" : true
+  }, {
+    "kennung" : "mindest",
+    "name" : "Nie kälter als",
+    "art" : "zahl",
+    "einheit" : "°C",
+    "von" : 30.0,
+    "bis" : 50.0,
+    "schritt" : 1.0,
+    "optionen" : null,
+    "zielwert" : true,
+    "darf" : "customer",
+    "wert" : "40 °C",
+    "wertBox" : "42 °C",
+    "text" : "42 °C",
+    "hilfe" : null,
+    "frei" : true,
+    "aendern" : true,
+    "uebernommen" : true
+  }, {
+    "kennung" : "netz_ziel",
+    "name" : "Aus dem Netz bis",
+    "art" : "zahl",
+    "einheit" : "°C",
+    "von" : 40.0,
+    "bis" : 60.0,
+    "schritt" : 1.0,
+    "optionen" : null,
+    "zielwert" : true,
+    "darf" : "customer",
+    "wert" : "50 °C",
+    "wertBox" : "50 °C",
+    "text" : "50 °C",
+    "hilfe" : null,
+    "frei" : true,
+    "aendern" : true,
+    "uebernommen" : true
+  }, {
+    "kennung" : "netz_ab",
+    "name" : "Netz erlaubt ab",
+    "art" : "uhrzeit",
+    "einheit" : null,
+    "von" : null,
+    "bis" : null,
+    "schritt" : null,
+    "optionen" : null,
+    "zielwert" : false,
+    "darf" : "installer",
+    "wert" : "06:00",
+    "wertBox" : "06:00",
+    "text" : "06:00",
+    "hilfe" : null,
+    "frei" : false,
+    "aendern" : false,
+    "uebernommen" : true
+  }, {
+    "kennung" : "netz_bis",
+    "name" : "Netz erlaubt bis",
+    "art" : "uhrzeit",
+    "einheit" : null,
+    "von" : null,
+    "bis" : null,
+    "schritt" : null,
+    "optionen" : null,
+    "zielwert" : false,
+    "darf" : "customer",
+    "wert" : "22:00",
+    "wertBox" : "22:00",
+    "text" : "22:00",
+    "hilfe" : null,
+    "frei" : true,
+    "aendern" : true,
+    "uebernommen" : true
+  } ],
+  "stand" : 0,
+  "standBox" : 1,
+  "warum" : [ {
+    "was" : "an",
+    "name" : "warm",
+    "modus" : "alle",
+    "zustand" : "warm",
+    "bedingungen" : [ {
+      "ok" : false,
+      "name" : "t >= ziel",
+      "werte" : [ {
+        "name" : "Speicher",
+        "text" : "55 °C"
+      }, {
+        "name" : "Mit Sonnenstrom bis",
+        "text" : "57 °C"
+      } ],
+      "formel" : true
+    } ]
+  }, {
+    "was" : "an",
+    "name" : "netzheizen",
+    "modus" : "alle",
+    "zustand" : "netzheizen",
+    "bedingungen" : [ {
+      "ok" : true,
+      "name" : "Uhrzeit liegt im Fenster",
+      "werte" : [ {
+        "name" : "Netz erlaubt ab",
+        "text" : "06:00"
+      }, {
+        "name" : "Netz erlaubt bis",
+        "text" : "22:00"
+      } ]
+    }, {
+      "ok" : false,
+      "name" : "Der Speicher ist seit 2 Minuten zu kalt",
+      "werte" : [ {
+        "name" : "Speicher",
+        "text" : "55 °C"
+      }, {
+        "name" : "Nie kälter als",
+        "text" : "42 °C"
+      } ]
+    } ]
+  }, {
+    "was" : "schritt",
+    "name" : "stufe",
+    "modus" : "alle",
+    "schritt" : "blind",
+    "zustand" : "stufe",
+    "bedingungen" : [ {
+      "ok" : false,
+      "name" : "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)",
+      "werte" : [ {
+        "name" : "Netzbezug",
+        "text" : "0,1 kW"
+      }, {
+        "name" : "Batterie lädt mit",
+        "text" : "0,0 kW"
+      }, {
+        "name" : "Batterie",
+        "text" : "50 %"
+      } ],
+      "formel" : true
+    } ]
+  }, {
+    "was" : "schritt",
+    "name" : "stufe",
+    "modus" : "alle",
+    "schritt" : "voll",
+    "zustand" : "stufe",
+    "bedingungen" : [ {
+      "ok" : false,
+      "name" : "stufe > 0 and not frei",
+      "werte" : [ {
+        "name" : "Speicher",
+        "text" : "55 °C"
+      } ],
+      "formel" : true
+    } ]
+  }, {
+    "was" : "schritt",
+    "name" : "stufe",
+    "modus" : "alle",
+    "schritt" : "zurueck",
+    "zustand" : "stufe",
+    "bedingungen" : [ {
+      "ok" : false,
+      "name" : "stufe > 0",
+      "werte" : [ ],
+      "formel" : true
+    } ]
+  }, {
+    "was" : "schritt",
+    "name" : "stufe",
+    "modus" : "eines",
+    "schritt" : "zurueck",
+    "zustand" : "stufe",
+    "bedingungen" : [ {
+      "ok" : false,
+      "name" : "Die Batterie muss aushelfen",
+      "werte" : [ {
+        "name" : "Batterie lädt mit",
+        "text" : "0,0 kW"
+      } ]
+    }, {
+      "ok" : false,
+      "name" : "Das Netz muss aushelfen",
+      "werte" : [ {
+        "name" : "Netzbezug",
+        "text" : "0,1 kW"
+      } ]
+    } ]
+  }, {
+    "was" : "schritt",
+    "name" : "stufe",
+    "modus" : "alle",
+    "schritt" : "versuch",
+    "zustand" : "stufe",
+    "wartet_s" : 233,
+    "bedingungen" : [ {
+      "ok" : true,
+      "name" : "Der Speicher ist noch nicht warm",
+      "werte" : [ {
+        "name" : "Speicher",
+        "text" : "55 °C"
+      } ]
+    }, {
+      "ok" : true,
+      "name" : "Das Netz hilft nicht aus",
+      "werte" : [ {
+        "name" : "Netzbezug",
+        "text" : "0,1 kW"
+      } ]
+    }, {
+      "ok" : false,
+      "name" : "Die Batterie ist voll",
+      "werte" : [ {
+        "name" : "Batterie",
+        "text" : "50 %"
+      } ]
+    }, {
+      "ok" : true,
+      "name" : "Die Sonne steht hoch genug",
+      "werte" : [ {
+        "name" : "Sonnenstand",
+        "text" : "19°"
+      } ]
+    }, {
+      "ok" : true,
+      "name" : "Die Batterie hilft nicht aus",
+      "werte" : [ {
+        "name" : "Batterie lädt mit",
+        "text" : "0,0 kW"
+      } ]
+    } ]
+  } ],
+  "meldungen" : null
+}

@@ -25,6 +25,7 @@ import {
   type SiteEntities,
   type SiteInterventions,
   type SiteScene,
+  type SteuerlogikKarte,
   type SuggestionStates,
   type TelemetryPoint,
   type WeatherForecast,
@@ -74,6 +75,8 @@ export interface SteuerungDaten {
   funktionen: Funktionen | null;
   /** Gemessene Leistung je Gerät heute (kW je Viertelstunde). */
   gemessen: Record<string, (number | null)[]>;
+  /** Die scharfen Steuerlogiken der Anlage als Karten (Stufe 3); `null` = unbekannt. */
+  logiken: SteuerlogikKarte[] | null;
 }
 
 const LEER: SteuerungDaten = {
@@ -81,7 +84,7 @@ const LEER: SteuerungDaten = {
   chargingConfig: null, ocppTransactionEconomics: null, interventions: null, plan: null, consumerPlan: null, verlauf: null,
   preise: null, wetter: null, live: null, assets: null, profiles: null, fahrzeuge: null,
   flows: null, editorEntities: null, ruleEvents: null, entities: null, vorschlaege: null,
-  szene: null, funktionen: null, gemessen: {},
+  szene: null, funktionen: null, gemessen: {}, logiken: null,
 };
 
 const heuteIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
@@ -125,6 +128,7 @@ export function useSteuerungDaten(site: Site): SteuerungLaden {
       hole('charging', api.siteChargers(id)),
       hole('interventions', api.siteInterventions(id)),
       hole('live', api.telemetry(id, von)),
+      hole('logiken', api.siteSteuerlogik(id).then((r) => r.logiken)),
     ]);
   }, [site.id, hole]);
 

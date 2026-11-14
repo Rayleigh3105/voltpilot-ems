@@ -5,9 +5,11 @@ package logikdienst
 //
 //   POST /pruefe   {text, anlage?, registry?}     -> 200 {kanonisch, bericht}
 //                                                 |  422 {message}           (unreadable)
-//   POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?}
-//                                                 -> 200 {artifact, bericht}
+//   POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?,
+//                   armed?, settings?: {revision, values}, settings_keep_fitting?}
+//                                                 -> 200 {artifact, bericht, settings?, verworfen?}
 //                                                 |  422 {message, bericht?} (unreadable or blocked)
+//                                                 |  422 {message, grund: "stellwerte"} (set values do not fit)
 //   GET  /health                                  -> 200 {status, version, sprache}
 //   anything malformed                            -> 400 {message}
 
@@ -49,14 +51,21 @@ func Handler() http.Handler {
 		if !lies(w, r, &req) {
 			return
 		}
-		art, bericht, err := Artefakt(req)
+		art, bericht, gebaut, err := ArtefaktMitWerten(req)
 		if err != nil {
 			antworteFehler(w, err, bericht)
 			return
 		}
 		slog.Info("logik-dienst: Artefakt gebaut", "flow_id", req.FlowID, "flow_version", req.FlowVersion,
-			"name", bericht.Name)
-		schreibe(w, http.StatusOK, map[string]any{"artifact": art, "bericht": bericht})
+			"name", bericht.Name, "scharf", req.Armed)
+		antwort := map[string]any{"artifact": art, "bericht": bericht}
+		if gebaut.Settings != nil {
+			antwort["settings"] = gebaut.Settings
+		}
+		if len(gebaut.Verworfen) > 0 {
+			antwort["verworfen"] = gebaut.Verworfen
+		}
+		schreibe(w, http.StatusOK, antwort)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		schreibe(w, http.StatusNotFound, map[string]any{"message": "Nicht gefunden"})
@@ -83,6 +92,8 @@ func antworteFehler(w http.ResponseWriter, err error, bericht *Bericht) {
 		schreibe(w, http.StatusBadRequest, map[string]any{"message": err.Error()})
 	case errors.Is(err, ErrUnlesbar):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error()})
+	case errors.Is(err, ErrStellwerte):
+		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "stellwerte"})
 	case errors.Is(err, ErrSperrt):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "bericht": bericht})
 	default:

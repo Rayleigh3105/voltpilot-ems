@@ -26,6 +26,7 @@ edge-light/scripts/release.sh edge-light-JJJJ.MM.N <ausgabe>  # eine Fassung: mi
 edge-light/test/qemu-smoke.sh       # MIPS-Programm unter Emulation gegen simulierten Deye
 edge-light/test/verbraucherregel-probe.sh  # Fahrplan-Slot und reaktive Verbraucherregel gegen simulierte Verbraucher
 edge-light/test/steuerlogik-probe.sh       # Steuerlogik: Logik-Dienst baut, Box laesst mitlaufen, Herzschlag-Block logik, nichts geschaltet
+edge-light/test/steuerlogik-scharf-probe.sh # Steuerlogik scharf: echte Schaltanfragen an einen gestellten Shelly, Schutz, Zurueck, Stilllegen, zweiter Herr
 edge-light/test/install-probe.sh    # install.sh gegen OpenWrt im Container (nach build.sh amd64)
 edge-light/test/boot-speicher-probe.sh  # Speicherpruefung des Loaders gegen OpenWrt im Container
 edge-light/test/boot-update-probe.sh    # Update im Loader (Tausch, Probe, Behalten, Zurueck, Strom weg) gegen OpenWrt im Container

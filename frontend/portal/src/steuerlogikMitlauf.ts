@@ -55,7 +55,12 @@ export function quittungSatz(l: SteuerlogikLogik, laufendeFassung: number | null
 
 /** Die laufende Fassung einer Logik, sonst `null` (stillgelegt). */
 export function laufendeFassung(l: SteuerlogikLogik): number | null {
-  return l.fassungen.find((f) => f.zustand === 'mitlaufend')?.fassung ?? null;
+  return l.fassungen.find((f) => f.zustand === 'mitlaufend' || f.zustand === 'scharf')?.fassung ?? null;
+}
+
+/** Ob die aktive Fassung scharf ist (Stufe 3: die Box schaltet nach ihr). */
+export function istScharf(l: SteuerlogikLogik): boolean {
+  return l.fassungen.some((f) => f.zustand === 'scharf');
 }
 
 /** Die Sätze einer Ablehnung der Annahme: Grund, dazu Befunde und nicht bestandene Proben des Berichts. */

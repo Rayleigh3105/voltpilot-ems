@@ -57,6 +57,25 @@ class SteuerlogikRueckmeldungVectorsTest {
             fall.path("unbekannt").forEach(n -> soll.add(n.asText()));
             assertThat(unbekannt).as("unbekannte Eingänge").containsExactlyElementsOf(soll);
         }
+        if (fall.has("zustand")) {
+            JsonNode sauber = JSON.readTree(g.laeufe().get(0).rueckmeldungJson());
+            assertThat(sauber.path("zustand").asText()).as("Zustand").isEqualTo(fall.path("zustand").asText());
+            assertThat(g.laeufe().get(0).zustand()).isEqualTo(fall.path("zustand").asText());
+            if (fall.has("halt")) {
+                if (fall.path("halt").isNull()) {
+                    assertThat(sauber.has("halt")).as("ein Halt ohne gültigen Code fällt weg").isFalse();
+                } else {
+                    assertThat(sauber.path("halt").path("code").asText()).isEqualTo(fall.path("halt").asText());
+                }
+            }
+            JsonNode geraet = sauber.path("geraete").elements().next();
+            fall.path("geraet_felder").forEach(f -> assertThat(geraet.has(f.asText())).as("Gerät hat " + f).isTrue());
+            fall.path("ohne_geraet_felder").forEach(f -> assertThat(geraet.has(f.asText())).as("Gerät ohne " + f)
+                    .isFalse());
+            assertThat(sauber.path("stellwerte").path("werte")).as("Stellwerte").hasSize(fall.path("stellwerte").asInt());
+            assertThat(sauber.path("warum")).as("Warum-Gruppen").hasSize(fall.path("warum").asInt());
+            assertThat(sauber.path("meldungen")).as("Meldungen").hasSize(fall.path("meldungen").asInt());
+        }
         for (var w : g.wechsel()) {
             assertThat(w.deviceId()).isEqualTo(box);
             assertThat(w.laufSeit()).as("der Lauf ist der Schlüssel des Protokolls").isNotNull();

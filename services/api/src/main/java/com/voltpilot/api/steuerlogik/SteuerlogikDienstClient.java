@@ -6,13 +6,17 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.flows.FlowCompilerHttp;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Die Brücke zum Logik-Dienst ({@code POST {base}/artefakt}, internal/logikdienst/http.go): 200 trägt Artefakt und
- * Prüfbericht, 422 eine unlesbare Logik (nur {@code message}) oder eine gesperrte (mit {@code bericht}), alles andere
- * ist ein nicht erreichbarer Dienst. Den Hash rechnet nur der Dienst - die API prüft die Form und reicht weiter.
+ * Die Brücke zum Logik-Dienst ({@code POST {base}/artefakt}, internal/logikdienst/http.go): 200 trägt Artefakt,
+ * Prüfbericht und die gestellten Werte, 422 eine unlesbare Logik (nur {@code message}), eine gesperrte (mit
+ * {@code bericht}) oder unpassende Werte ({@code grund: stellwerte}), alles andere ist ein nicht erreichbarer Dienst. Den Hash rechnet nur der Dienst - die API prüft die Form und reicht weiter.
  */
 public class SteuerlogikDienstClient implements SteuerlogikDienst {
 
@@ -48,6 +52,14 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
                 log.warn("logik_dienst.registry_unlesbar: {}", e.getMessage());
             }
         }
+        if (auftrag.scharf()) request.put("armed", true);
+        if (auftrag.werte() != null) {
+            ObjectNode settings = request.putObject("settings");
+            settings.put("revision", auftrag.werte().stand());
+            ObjectNode values = settings.putObject("values");
+            auftrag.werte().werte().forEach(values::set);
+            if (auftrag.werteBehalten()) request.put("settings_keep_fitting", true);
+        }
         FlowCompilerHttp.Response response;
         try {
             response = http.post(baseUri.resolve("/artefakt"), json.writeValueAsString(request));
@@ -66,10 +78,24 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
                 log.warn("logik_dienst.unexpected_body");
                 throw SteuerlogikDienstException.nichtErreichbar();
             }
-            return new Artefakt(artefakt, body.path("bericht"));
+            SteuerlogikDienst.Werte werte = null;
+            JsonNode settings = body.get("settings");
+            if (settings != null && settings.isObject()) {
+                Map<String, JsonNode> values = new LinkedHashMap<>();
+                settings.path("values").fields().forEachRemaining(e -> values.put(e.getKey(), e.getValue()));
+                werte = new SteuerlogikDienst.Werte(settings.path("revision").asLong(), values);
+            }
+            List<SteuerlogikDienst.Verworfen> verworfen = new ArrayList<>();
+            for (JsonNode v : body.path("verworfen")) {
+                verworfen.add(new SteuerlogikDienst.Verworfen(v.path("kennung").asText(), v.path("grund").asText()));
+            }
+            return new Artefakt(artefakt, body.path("bericht"), werte, verworfen);
         }
         if (response.status() == 422 && body != null) {
             String message = body.path("message").asText("Die Logik wurde abgelehnt.");
+            if ("stellwerte".equals(body.path("grund").asText())) {
+                throw new SteuerlogikDienstException(SteuerlogikDienstException.STELLWERTE, message, null);
+            }
             JsonNode bericht = body.get("bericht");
             if (bericht != null && bericht.isObject()) {
                 throw new SteuerlogikDienstException(SteuerlogikDienstException.GESPERRT, message, bericht);

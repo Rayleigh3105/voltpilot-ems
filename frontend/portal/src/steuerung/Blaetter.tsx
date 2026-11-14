@@ -81,6 +81,8 @@ export interface BlattKontext {
   zu: () => void;
   /** Gibt es ein Gerät, das eine Regel schalten kann (`regelZiele`)? Ohne fallen die Einstiege in eine neue Regel weg. */
   neueRegel: boolean;
+  /** Steuerlogik Stufe 3: Gerät → Name der scharfen Logik, die es führt (dann gibt es dort keine Steuerart). */
+  logikVon?: Map<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -386,7 +388,12 @@ function GeraetBlattInhalt({ k, g, modus, siteId, einstellungenOffen }: {
       ) : (
         <div className="blk">
           <h3>Smart heißt hier</h3>
-          {!g.schreibbar ? (
+          {k.logikVon?.get(g.id) ? (
+            <p>
+              Die Logik „{k.logikVon.get(g.id)}“ führt dieses Gerät. Eingriffe von Hand gehen vor; eine Steuerart gilt
+              erst wieder, wenn die Logik stillgelegt ist.
+            </p>
+          ) : !g.schreibbar ? (
             <p>{g.nichtSchreibbarGrund ?? 'Die Steuerart lässt sich für dieses Gerät hier nicht ändern.'}</p>
           ) : (
             <ArtenWahl g={g} bild={bild} entwurf={entwurf} setEntwurf={setEntwurf} />

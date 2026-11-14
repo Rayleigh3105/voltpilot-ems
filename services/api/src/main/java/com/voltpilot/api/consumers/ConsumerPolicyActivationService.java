@@ -93,6 +93,14 @@ public class ConsumerPolicyActivationService {
         this.heizstab = heizstab;
     }
 
+    /** Steuerlogik Stufe 3 (optional wie oben): die Geräte scharfer Logiken haben schon einen Herrn. */
+    private com.voltpilot.api.repo.SteuerlogikRepository steuerlogiken;
+
+    @Autowired(required = false)
+    void steuerlogiken(com.voltpilot.api.repo.SteuerlogikRepository steuerlogiken) {
+        this.steuerlogiken = steuerlogiken;
+    }
+
     /** The @Autowired is LOAD-BEARING (two-constructor footgun, BrokerAuthzReloader). */
     @Autowired
     public ConsumerPolicyActivationService(ConsumerRepository repo,
@@ -146,6 +154,16 @@ public class ConsumerPolicyActivationService {
     @Transactional
     public ActivationOutcome activate(UUID siteId, UUID entityId, String actor) {
         ConsumerRow row = require(siteId, entityId);
+        // Ein Gerät hat nie zwei Herren (Steuerlogik Stufe 3): gehört es einer scharfen Logik, bekommt es keine
+        // Steuerart - auch keine, die nur der Fahrplan trägt; der Konflikt wird genannt, nicht still aufgelöst.
+        if (steuerlogiken != null) {
+            for (var b : steuerlogiken.scharfeGeraete(siteId)) {
+                if (b.entityId().equals(entityId)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "\"" + displayName(row)
+                            + "\" gehört der Logik \"" + b.name() + "\". Bitte die Logik zuerst stilllegen.");
+                }
+            }
+        }
         PolicyRow latest = repo.latestPolicy(siteId, entityId);
         if (latest == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

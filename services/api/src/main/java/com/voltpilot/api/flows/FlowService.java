@@ -147,6 +147,14 @@ public class FlowService {
     private final SimulationJobRegistry simulationJobs;
     private final ObjectMapper mapper;
 
+    /** Steuerlogik Stufe 3: die Geräte scharfer Logiken sind beansprucht (V-5 sieht sie wie fremde Flows). */
+    private com.voltpilot.api.repo.SteuerlogikRepository steuerlogiken;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void steuerlogiken(com.voltpilot.api.repo.SteuerlogikRepository steuerlogiken) {
+        this.steuerlogiken = steuerlogiken;
+    }
+
     public FlowService(SiteRepository sites, FlowLayoutRepository layouts,
             FlowStatusRepository flowStatus, FlowRepository flows, FlowCatalog catalog,
             FlowGraphValidator validator, EntityRegistryRepository entities,
@@ -766,6 +774,12 @@ public class FlowService {
             for (FlowClaims.DerivedClaim claim : FlowClaims.derive(doc, catalog)) {
                 claims.add(new ForeignClaim(claim.entityId(), row.flowId(), row.name(),
                         claim.delegated()));
+            }
+        }
+        if (steuerlogiken != null && "edge".equals(runtime)) {
+            for (var b : steuerlogiken.scharfeGeraete(siteId)) {
+                claims.add(new ForeignClaim(b.entityId().toString(), b.logikId(), "Logik „" + b.name() + "“",
+                        false));
             }
         }
         return claims;

@@ -38,6 +38,8 @@ import { useIsPhone } from '../useIsPhone';
 import { useRollen } from '../rollen';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
+import { LogikBlatt } from './LogikBlatt';
+import { herrschaft } from '../steuerlogikKarte';
 
 /**
  * Eigener Chunk statt eines statischen Imports (dasselbe Argument wie bei `AufbauTabelle.tsx`):
@@ -119,6 +121,9 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
   /** Je Ladepunkt die zuletzt gesendete Wahl dieser Sitzung (Rückmeldung in drei Schritten, Konzept k1). */
   const [gesendet, setGesendet] = useState<Record<string, Gesendet>>({});
   const [toast, setToast] = useState<{ text: string; warn?: boolean } | null>(null);
+  /** Das offene Blatt „Warum?“ einer Steuerlogik (Stufe 3) und der Wert, der gerade gesendet wird. */
+  const [logikBlatt, setLogikBlatt] = useState<string | null>(null);
+  const [logikSendet, setLogikSendet] = useState<string | null>(null);
   const [reoStart, setReoStart] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
   const meldung = useCallback((text: string, warn = false) => {
@@ -175,6 +180,25 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
     setBlatt({ art: 'regel', geraet: geraet ?? undefined, vorlage: vorlage && VORLAGEN.some((v) => v.id === vorlage) ? vorlage : undefined });
     replaceCurrentNavigation(window.location.hash.split('?')[0]);
   }, [reiter, daten.verbraucher]);
+
+  // Steuerlogik Stufe 3: wer welches Gerät führt, das offene Blatt und das Stellen eines Werts. Ein Wert gilt erst
+  // als übernommen, wenn die Box ihn zurückmeldet - darum lädt die Karte nach dem Senden neu, statt ihn zu behaupten.
+  const logikVon = useMemo(() => herrschaft(daten.logiken), [daten.logiken]);
+  const offeneLogik = logikBlatt ? (daten.logiken ?? []).find((k) => k.logikId === logikBlatt) ?? null : null;
+  const stelleLogikWert = async (logikId: string, kennung: string, wert: unknown) => {
+    setLogikSendet(kennung);
+    try {
+      await api.siteSteuerlogikWert(site.id, logikId, kennung, wert);
+      const neu = await api.siteSteuerlogik(site.id);
+      setze('logiken', neu.logiken);
+      meldung('Gespeichert. Die Box übernimmt den Wert gleich.');
+    } catch (e) {
+      meldung(fehlerText(e, 'Der Wert konnte nicht gespeichert werden.'), true);
+      throw e;
+    } finally {
+      setLogikSendet(null);
+    }
+  };
 
   const lauf = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -525,6 +549,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
     a: aktionen,
     zu,
     neueRegel: ziele.length > 0,
+    logikVon,
   };
 
   const rahmen = daten.verbraucher?.ladepunkte.rahmen ?? null;
@@ -629,6 +654,11 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
         onReoGestartet={() => setReoStart(null)}
         zuLaden={() => onOpenSub('laden')}
         mitRegeln={mitRegeln}
+        logiken={daten.logiken}
+        logikVon={logikVon}
+        logikSendet={logikSendet}
+        onLogikWarum={setLogikBlatt}
+        onLogikSchalter={(logikId, kennung, an) => void stelleLogikWert(logikId, kennung, an ? 'on' : 'off').catch(() => {})}
       />
     );
   }
@@ -735,6 +765,15 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
             </div>
           )}
         </div>
+      )}
+      {offeneLogik && (
+        <LogikBlatt
+          siteId={site.id}
+          karte={offeneLogik}
+          jetzt={now}
+          onClose={() => setLogikBlatt(null)}
+          onStelle={(kennung, wert) => stelleLogikWert(offeneLogik.logikId, kennung, wert)}
+        />
       )}
       {/* Kein zweites <main>: die Schale trägt schon das eine (`AppShell`). */}
       <div className={`stn-main ${reiter}`}>
