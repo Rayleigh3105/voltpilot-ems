@@ -351,6 +351,26 @@ public class EarningsRepository {
      */
     private final String eigenverbrauchsWertEur;
 
+    /**
+     * The money terms of {@link #aggregate} over the slot's prices computed ONCE per row (vp-perf2-server B4):
+     * {@link #pricesPerRow} evaluates the import price and the export value in a {@code LATERAL} subquery,
+     * the sums read {@code z.import_ct} / {@code z.export_ct}. Same templates as the inline fields above, only
+     * what stands for the price differs - so every term is the identical arithmetic on the identical value.
+     *
+     * <p>Why: inline, the aggregate's SQL repeats the two price compositions (with their {@code register_einheit}
+     * sub-selects) in seven money terms - 64 KB of text whose PLANNING measured 8-12 ms against ~1 ms execution,
+     * three times per {@code /earnings?range=day} (day + two comparison windows). {@code OFFSET 0} keeps the
+     * planner from pulling the subquery up and copying the expressions back into every term.
+     */
+    private final String aggBaselineEur;
+    private final String aggActualEur;
+    private final String aggEinspeiseErloesEur;
+    private final String aggEigenverbrauchsWertEur;
+    private final String aggStromkostenEur;
+
+    /** The per-row price subquery of {@link #aggregate} (alias {@code z}); see {@link #aggBaselineEur}. */
+    private final String pricesPerRow;
+
     /** The tarifPricedSql boolean for this flag setting (see {@link #tarifPriced}). */
     private final String tarifPricedExpr;
 
@@ -359,15 +379,29 @@ public class EarningsRepository {
 
     public EarningsRepository(JdbcTemplate jdbc, OptimizerProperties optimizer) {
         this.jdbc = jdbc;
-        this.importPriceEurKwh = "(" + SlotEconomics.importPriceCtSql(
-                "p.price_eur_mwh", optimizer.defaultSupplyComponents()) + " / 100.0)";
-        this.exportValueEurKwh = "(" + SlotEconomics.exportValueCtSql(
-                "p.price_eur_mwh", "r.bucket", EegRates.fromJson(optimizer.eegRatesJson()))
-                + " / 100.0)";
+        String importCt = SlotEconomics.importPriceCtSql("p.price_eur_mwh", optimizer.defaultSupplyComponents());
+        String exportCt = SlotEconomics.exportValueCtSql(
+                "p.price_eur_mwh", "r.bucket", EegRates.fromJson(optimizer.eegRatesJson()));
+        this.importPriceEurKwh = "(" + importCt + " / 100.0)";
+        this.exportValueEurKwh = "(" + exportCt + " / 100.0)";
         this.einspeiseErloesEur = "(r.grid_export_kwh * " + exportValueEurKwh + ")";
         this.stromkostenEur = "(r.grid_import_kwh * " + importPriceEurKwh + ")";
         this.eigenverbrauchsWertEur =
                 eigenverbrauchsWertEurSql(optimizer.defaultSupplyComponents());
+        // B4: the same terms over the per-row price columns (see aggBaselineEur). Only COVERED rows enter the
+        // sums, so only they evaluate the compositions - as inline, where FILTER guarded every argument.
+        this.pricesPerRow = "CROSS JOIN LATERAL (SELECT"
+                + " CASE WHEN " + COVERED + " THEN " + importCt + " END AS import_ct,"
+                + " CASE WHEN " + COVERED + " THEN " + exportCt + " END AS export_ct OFFSET 0) z ";
+        String aggImportEurKwh = "(z.import_ct / 100.0)";
+        String aggExportEurKwh = "(z.export_ct / 100.0)";
+        this.aggEinspeiseErloesEur = "(r.grid_export_kwh * " + aggExportEurKwh + ")";
+        this.aggStromkostenEur = "(r.grid_import_kwh * " + aggImportEurKwh + ")";
+        this.aggEigenverbrauchsWertEur = "(" + SELBSTVERBRAUCH_KWH + " * z.import_ct / 100.0)";
+        this.aggBaselineEur = "(GREATEST(r.load_kwh - r.pv_kwh, 0) * " + aggImportEurKwh
+                + " - GREATEST(r.pv_kwh - r.load_kwh, 0) * " + aggExportEurKwh + ")";
+        this.aggActualEur = "(r.grid_import_kwh * " + aggImportEurKwh
+                + " - r.grid_export_kwh * " + aggExportEurKwh + ")";
         // The SAME per-slot export rate values the metered AND the residual
         // export, so saved == baseline - actual stays an algebraic identity
         // (for DV the rate expands to spot + eligible premium, reproducing the
@@ -565,9 +599,9 @@ public class EarningsRepository {
                         + " count(*) AS bucket_count,"
                         + " count(*) FILTER (WHERE " + CHANNELS_OK + ") AS channel_buckets,"
                         + " count(*) FILTER (WHERE " + COVERED + ") AS covered_slots,"
-                        + " sum(" + baselineEur + ")"
+                        + " sum(" + aggBaselineEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS baseline_eur,"
-                        + " sum(" + actualEur + ")"
+                        + " sum(" + aggActualEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS actual_eur,"
                         + " min(r.bucket) FILTER (WHERE " + COVERED + ") AS first_covered,"
                         + " sum(r.grid_export_kwh * p.price_eur_mwh / 10)"
@@ -580,9 +614,9 @@ public class EarningsRepository {
                         + " bool_or(mv.provisional)"
                         + "   FILTER (WHERE " + mvFilter + " AND r.grid_export_kwh > 0)"
                         + "   AS market_value_provisional,"
-                        + " sum(" + einspeiseErloesEur + ")"
+                        + " sum(" + aggEinspeiseErloesEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS einspeise_erloes_eur,"
-                        + " sum(" + eigenverbrauchsWertEur + ")"
+                        + " sum(" + aggEigenverbrauchsWertEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS eigenverbrauchs_wert_eur,"
                         + " sum(" + SELBSTVERBRAUCH_KWH + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS selbstverbrauch_kwh,"
@@ -590,7 +624,7 @@ public class EarningsRepository {
                         + "   FILTER (WHERE " + COVERED + ") AS eingespeist_kwh,"
                         + " sum(" + BATTERIE_BEWEGT_KWH + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS batterie_bewegt_kwh,"
-                        + " sum(" + stromkostenEur + ")"
+                        + " sum(" + aggStromkostenEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS stromkosten_eur,"
                         + " sum(r.grid_import_kwh)"
                         + "   FILTER (WHERE " + COVERED + ") AS bezogen_kwh,"
@@ -607,6 +641,7 @@ public class EarningsRepository {
                         + PV_ASSET_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
+                        + pricesPerRow
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site) + " "
                         + "GROUP BY r.site_id",
                 rs -> {

@@ -271,6 +271,45 @@ hängt. Alle vier Zweige zusammen (Probe-Merge ohne Konflikte) ergeben einen Ein
 6. **Bündel-Budget:** Der Einstieg steht mit allen vier PRs bei 257,97 von 258 kB gz.
 7. **Meldungen** (≈ 70 kB statisch) und **Summenwert-Dialoge** (≈ 18 kB gz): unverändert, Hebel 6 und 7 oben.
 
+## Kunden-API, Welle 2 (14.11.2026)
+
+Diese Runde (`vp-perf2-server`, Ausgang `fd7412880`) setzt die Befunde B7, B3 und B4 der ersten Server-Runde um. Labor
+wie dort: eigener Compose-Stapel, TimescaleDB 2.17.2 mit `pg_stat_statements` und `track_planning`, api als Container,
+Modus „ruhig“ (Überwachung und Steuerungs-Vorsprung aus), 400 Lasttest-Anlagen, „Zuhause“ mit vier Monaten. Neu: zwei
+Lasttest-Mandanten mit 12 Anlagen und je einem Hauptzähler (Messstellen, Stellungen, Tages- und Monatswerte), damit
+`/portfolio/kpis` die Bilanz-Kette wirklich rechnet. Load 7 bis 60 aus anderen Bahnen; belastbar sind Anweisungen und
+Buffer je Aufruf und die Planungszeit in einer warmen Sitzung (`EXPLAIN` zwölfmal in einer Verbindung, Median).
+
+| Messung | vorher | nachher |
+|---|---:|---:|
+| `/portfolio/kpis`, 12 Anlagen ohne Hauptzähler, Anweisungen | 503 | 62 |
+| `/portfolio/kpis`, 4 Anlagen ohne Hauptzähler, Anweisungen | 211 | 62 |
+| `/portfolio/kpis`, 12 Anlagen mit Hauptzähler, Anweisungen | 1 539 | 869 |
+| `/earnings?range=day`, 4 Anlagen, Buffer je Aufruf | 89 335 | 28 756 |
+| `/earnings?range=day`, „Zuhause“, Buffer je Aufruf | 28 797 | 12 820 |
+| Erlös-Aggregat (3× je `/earnings?range=day`): SQL-Text, warme Planung | 64 280 Zeichen, 4,2–5,1 ms | 25 732, 2,3–2,5 ms |
+| `/earnings?range=day`, 4 Anlagen, p50 (A-B-A-B, Load 9–16) | 244 / 191 ms | 156 / 156 ms |
+
+### Geändert
+
+- B7 (#1877): `BilanzService.bilanzen` rechnet die Bilanzen aller Anlagen auf einem gemeinsamen Lesestand; Netzanschluss
+  gebündelt. Ohne Hauptzähler hängt die Anweisungszahl nicht mehr an der Anlagenzahl.
+- B3 (#1878): die Preis-Bedingung steht nicht mehr im WHERE der Zeilen-Abfragen. Dort machte sie den `LEFT JOIN
+  price_slot` zum inneren Join, und der Planer begann bei der Preis-CTE (geschätzt 9, tatsächlich 5 392 Zeilen) mit
+  einer Probe je Slot in jeden Rollup-Chunk.
+- B4: das Erlös-Aggregat rechnet Import-Preis und Export-Wert einmal je Viertelstunde (`LATERAL … OFFSET 0`) statt in
+  sieben Geldtermen.
+
+### Offene Hebel, nach Wirkung gereiht
+
+1. Mit Hauptzählern bleibt je Anlage ≈ +60 Anweisungen in `/portfolio/kpis`: das Werte-Lese-Modell
+   (`MessstelleWerteService.werte`) liest je Term und Periode ≈ 10 Abfragen, darunter mandantenweite Stände neu.
+2. Der Vergleichsspeicher-Walk behält ≈ 21 000 Buffer (4 Anlagen, 14 Tage): PV-Asset und Monatsmarktwert werden je
+   Viertelstunde per Index nachgeschlagen, weil der Join Anlage ⋈ Speicher auf eine Zeile geschätzt wird.
+3. Je Repository-Aufruf `set_config` und je Anfrage der Zugriffs-Kontext (B1/B2 der ersten Runde, sicherheitskritisch,
+   nicht Teil dieser Welle): rund zwei Drittel der Anweisungen jeder Kundenroute; die Zugriffs-Abfrage läuft je
+   `/earnings?range=day` rund zehnmal und wird jedes Mal neu geplant.
+
 ## Wiederholen
 
 ```bash
