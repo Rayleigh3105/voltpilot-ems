@@ -4,7 +4,7 @@
   "Leser: edge-app/core/internal/modbusgeraet (vectors_test.go; alle Abschnitte) und die API (ModbusGeraetDefinitionVectorsTest; definitionen und roh).",
   "Alle Adressen und Namen sind erfunden."
  ],
- "$regel": "Ein Sollwert in °C wird auf min + n * Schritt gerundet (halbe Schritte nach oben), auf [min, max] begrenzt und als (Wert - offset) / scale geschrieben, kaufmännisch vom Nullpunkt weg gerundet, s16 im Zweierkomplement. Ohne Wunsch, bei geschlossenem Steuerungs-Tor oder bei einer Störung des Geräts bekommt jeder Schreibwert seinen Ruhewert. Ohne Freigabe schreibt die Box nichts.",
+ "$regel": "Ein Sollwert in °C wird auf min + n * Schritt gerundet (halbe Schritte nach oben), auf [min, max] begrenzt und als (Wert - offset) / scale geschrieben, kaufmännisch vom Nullpunkt weg gerundet, s16 im Zweierkomplement. Ohne Wunsch oder bei einer Störung des Geräts bekommt jeder Schreibwert seinen Ruhewert. Ohne Freigabe und bei geschlossenem Steuerungs-Tor schreibt die Box nichts.",
  "schema_version": "1.0",
  "geraete": {
   "klima": {
@@ -98,11 +98,9 @@
    "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},
               {"slug": "soll", "address": 10, "fc": 16, "raw": 240, "rest": true},
               {"slug": "betrieb", "address": 12, "fc": 16, "raw": 1, "rest": true}]},
-  {"name": "Steuerung aus: Ruhewerte trotz Wunsch", "geraet": "klima",
+  {"name": "Steuerung aus: die Box schreibt nichts, auch keine Ruhewerte", "geraet": "klima",
    "befehle": {"on_off": true, "setpoint_c": 21, "mode": "heat"}, "tor": false, "stoerung": false, "grund": "steuerung_aus",
-   "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},
-              {"slug": "soll", "address": 10, "fc": 16, "raw": 240, "rest": true},
-              {"slug": "betrieb", "address": 12, "fc": 16, "raw": 1, "rest": true}]},
+   "writes": []},
   {"name": "Störung des Geräts: nie dagegen arbeiten", "geraet": "klima",
    "befehle": {"on_off": true, "setpoint_c": 21, "mode": "heat"}, "tor": true, "stoerung": true, "grund": "geraet_stoerung",
    "writes": [{"slug": "ein", "address": 0, "fc": 5, "raw": 0, "rest": true},

@@ -12,8 +12,9 @@
 // The device REGULATES ITSELF (report §15.1): the box moves its setpoint in °C
 // inside the released band, picks its operating mode from the closed list the
 // installer mapped, switches its enable on or off - and leaves it at its rest
-// values whenever there is no granted wish, the plant's control gate is shut or
-// the device reports a fault (never work against a fault of the device, §15.6).
+// values whenever there is no granted wish or the device reports a fault (never
+// work against a fault of the device, §15.6). With the plant's control gate shut
+// it writes nothing at all, like every other driver.
 package modbusgeraet
 
 import (
@@ -646,8 +647,8 @@ type Lage struct {
 }
 
 // Plan derives the writes for the granted commands. Every control gets a
-// value: the granted one, else its rest value. With the gate shut or a fault,
-// every control gets its rest value. Values are clamped again here (the guard
+// value: the granted one, else its rest value. With a fault every control gets
+// its rest value; with the gate shut (or no release) nothing is written. Values are clamped again here (the guard
 // chain clamped before; an executor never trusts its input).
 func Plan(d Definition, granted entities.Commands, l Lage) ([]Write, string) {
 	if d.Controls == nil {
@@ -659,7 +660,10 @@ func Plan(d Definition, granted entities.Commands, l Lage) ([]Write, string) {
 	case !d.Released():
 		return nil, "nicht_freigegeben"
 	case !l.Gate:
-		nurRuhe, grund = true, "steuerung_aus"
+		// control_enabled false: the driver layer writes nothing at all (the
+		// command contract), not even rest values - the plant's two switches
+		// are the operator's hand on the box.
+		return nil, "steuerung_aus"
 	case l.Fault:
 		nurRuhe, grund = true, "geraet_stoerung"
 	}

@@ -603,7 +603,8 @@ type eventCtx struct {
 // publishes the retained command, and emits the arbitration event.
 func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ctx eventCtx) {
 	r := a.reading(st.entity.ID)
-	granted, stages := a.clampFor(st, holder, now, r)
+	wish := withRest(st.entity, holder)
+	granted, stages := a.clampFor(st, wish, now, r)
 	// The consumer cycle guard runs LAST (its holds are temporal; the value
 	// clamps above already bounded the level it may hold).
 	granted, cycleStages, hold := applyCycle(st, now, granted)
@@ -619,13 +620,13 @@ func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ct
 
 	outcome := ctx.outcome
 	if outcome == "" {
-		if grantedMatchesWish(holder, granted) {
+		if grantedMatchesWish(wish, granted) {
 			outcome = "accepted"
 		} else {
 			outcome = "clamped"
 		}
 	}
-	st.lastClamped = !grantedMatchesWish(holder, granted)
+	st.lastClamped = !grantedMatchesWish(wish, granted)
 	reasons := append([]Reason{}, ctx.reasons...)
 	for _, s := range stages {
 		reasons = append(reasons, Reason{Stage: s.Stage,
@@ -756,6 +757,33 @@ func (a *Arbiter) fallToFailsafe(st *entState, now time.Time, subject *SourceRef
 // onKwThreshold separates "commanded to run" from "commanded off" on a
 // setpoint (mirrors the guard deadband discipline).
 const onKwThreshold = 0.005
+
+// withRest completes the wish of a device with failsafe "rest" (K2): a command
+// the holder does not carry gets the device's rest value, so what the executor
+// writes is exactly what the guards - the change guard above all - saw.
+func withRest(e entities.Entity, d *Desired) *Desired {
+	if e.Guards.Failsafe.Behavior != "rest" {
+		return d
+	}
+	rest := e.RestCommands()
+	c := d.Commands
+	changed := false
+	if c.OnOff == nil && rest.OnOff != nil {
+		c.OnOff, changed = rest.OnOff, true
+	}
+	if c.SetpointC == nil && rest.SetpointC != nil {
+		c.SetpointC, changed = rest.SetpointC, true
+	}
+	if c.Mode == "" && rest.Mode != "" {
+		c.Mode, changed = rest.Mode, true
+	}
+	if !changed {
+		return d
+	}
+	out := *d
+	out.Commands = c
+	return &out
+}
 
 // applyChange runs the setpoint_c and mode of a command set through the
 // entity's change guard (K2) and returns the holds as event reasons.

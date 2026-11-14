@@ -193,3 +193,23 @@ func TestRestWithoutDeclaredValuesClears(t *testing.T) {
 		t.Fatalf("failsafe rest without any rest value commands nothing: %+v", d.Granted)
 	}
 }
+
+func TestMissingCommandsCompletedWithRest(t *testing.T) {
+	h := newKlimaHarness(t)
+	// The logic wishes only a setpoint: on_off and mode get their rest values,
+	// and the event still says accepted (the completed wish is what was granted).
+	h.arb.SubmitInternal(h.logikDesire(f64(22), "", nil))
+	g := h.granted("klima-buero")
+	if g.OnOff == nil || *g.OnOff || g.Mode != "cool" || *g.SetpointC != 22 {
+		t.Fatalf("completed with rest values: %+v", g)
+	}
+	if d, _ := h.arb.DecisionFor("klima-buero"); d.Clamped {
+		t.Fatal("a completed wish is not a clamp")
+	}
+	// The mode then comes as heat inside the interval: held at the rest cool.
+	h.clock = h.clock.Add(30 * time.Second)
+	h.arb.SubmitInternal(h.logikDesire(f64(22), "heat", nil))
+	if g := h.granted("klima-buero"); g.Mode != "cool" {
+		t.Fatalf("the rest mode was a change the guard counted: %+v", g)
+	}
+}
