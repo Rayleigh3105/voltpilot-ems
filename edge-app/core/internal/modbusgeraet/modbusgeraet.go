@@ -142,11 +142,11 @@ type Controls struct {
 	// MinOnSeconds and MinOffSeconds are the cycle guard of the on_off value
 	// (the cloud puts them into guards.limits; listed here so both readers
 	// check the same definition).
-	MinOnSeconds  *int `json:"min_on_seconds,omitempty"`
-	MinOffSeconds *int `json:"min_off_seconds,omitempty"`
-	WatchdogAddress    *int      `json:"watchdog_address,omitempty"`
-	WatchdogValue      *int      `json:"watchdog_value,omitempty"`
-	Values             []Control `json:"values"`
+	MinOnSeconds    *int      `json:"min_on_seconds,omitempty"`
+	MinOffSeconds   *int      `json:"min_off_seconds,omitempty"`
+	WatchdogAddress *int      `json:"watchdog_address,omitempty"`
+	WatchdogValue   *int      `json:"watchdog_value,omitempty"`
+	Values          []Control `json:"values"`
 	// Freigabe is set by the cloud after the guided test and the installer's
 	// confirmation; without it the box writes nothing.
 	Freigabe json.RawMessage `json:"freigabe,omitempty"`
