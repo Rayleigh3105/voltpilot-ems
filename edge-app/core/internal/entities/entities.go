@@ -57,6 +57,11 @@ const (
 	CmdLimitPct   = "limit_pct"
 	CmdLimitKw    = "limit_kw"
 	CmdMode       = "mode"
+	// CmdSetpointC is a setpoint in °C (Steuerlogik K2): the target of a device
+	// that regulates itself - an air conditioner, a heat pump, a cold-room
+	// controller. The box moves the target inside the released band; the device
+	// keeps its own control loop.
+	CmdSetpointC = "setpoint_c"
 )
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -80,6 +85,13 @@ type ActuateCap struct {
 	Min     *float64 `json:"min,omitempty"`
 	Max     *float64 `json:"max,omitempty"`
 	Modes   []string `json:"modes,omitempty"`
+	// Step is the device's step of a setpoint_c (the granted value is rounded
+	// onto min + n*step, halves up). Absent = no rounding.
+	Step *float64 `json:"step,omitempty"`
+	// Rest is the device's rest value (Ruhewert, K2): what the failsafe "rest"
+	// commands when nothing else does - a bool for on_off, °C for setpoint_c, a
+	// declared mode for mode. Absent = this command has no rest value.
+	Rest json.RawMessage `json:"rest,omitempty"`
 }
 
 // Capabilities of one entity. A measure-only entity has no Actuate list.
@@ -104,6 +116,10 @@ type GuardLimits struct {
 	MinOffSeconds   *float64 `json:"min_off_seconds,omitempty"`
 	MaxStartsPerDay *float64 `json:"max_starts_per_day,omitempty"`
 	RampKwPerMin    *float64 `json:"ramp_kw_per_min,omitempty"`
+	// MinChangeIntervalSeconds is the change guard of a device that regulates
+	// itself (K2): two changes of its setpoint_c, or of its mode, are at least
+	// this far apart. Absent = axis inactive.
+	MinChangeIntervalSeconds *float64 `json:"min_change_interval_s,omitempty"`
 }
 
 // Failsafe is what the entity falls back to when nothing commands it.
@@ -416,6 +432,7 @@ func ParseTelemetry(topicEntityID string, payload []byte) (Telemetry, error) {
 // Commands carries the granted values keyed by the D-14 vocabulary.
 type Commands struct {
 	SetpointKw *float64 `json:"setpoint_kw,omitempty"`
+	SetpointC  *float64 `json:"setpoint_c,omitempty"`
 	LimitKw    *float64 `json:"limit_kw,omitempty"`
 	LimitPct   *float64 `json:"limit_pct,omitempty"`
 	OnOff      *bool    `json:"on_off,omitempty"`
@@ -432,7 +449,7 @@ type Commands struct {
 
 // Empty reports whether no command is set.
 func (c Commands) Empty() bool {
-	return c.SetpointKw == nil && c.LimitKw == nil && c.LimitPct == nil &&
+	return c.SetpointKw == nil && c.SetpointC == nil && c.LimitKw == nil && c.LimitPct == nil &&
 		c.OnOff == nil && c.Mode == ""
 }
 
@@ -618,6 +635,14 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 		if c.Mode != "" && e.allows(CmdMode) && e.modeDeclared(c.Mode) {
 			out.Mode = c.Mode
 		}
+		if c.SetpointC != nil && e.allows(CmdSetpointC) {
+			// The band is the installer's release at the device; a setpoint_c
+			// capability without both ends commands nothing (fail-closed).
+			if v, ok := e.setpointCBand(*c.SetpointC); ok {
+				noteLimit(guards.StageSetpointBand, *c.SetpointC, v)
+				out.SetpointC = &v
+			}
+		}
 	case catMeasureOnly:
 		// Measure-only by construction: every command is dropped.
 	}
@@ -722,6 +747,78 @@ func (e Entity) modeDeclared(mode string) bool {
 		return false
 	}
 	return false
+}
+
+// setpointCBand rounds a setpoint in °C onto the declared step (counted from
+// min, halves up) and clamps it to [min, max]. ok=false when the capability
+// declares no complete band or the value is not finite.
+func (e Entity) setpointCBand(v float64) (float64, bool) {
+	for _, cap := range e.Capabilities.Actuate {
+		if cap.Command != CmdSetpointC {
+			continue
+		}
+		if cap.Min == nil || cap.Max == nil || *cap.Min > *cap.Max || math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, false
+		}
+		return RoundSetpointC(v, *cap.Min, *cap.Max, cap.Step), true
+	}
+	return 0, false
+}
+
+// RoundSetpointC is the one rounding rule of a setpoint in °C, shared by the
+// guard chain and the Modbus device executor: onto min + n*step (halves up,
+// like the Steuerlogik core), then into [min, max].
+func RoundSetpointC(v, min, max float64, step *float64) float64 {
+	if step != nil && *step > 0 {
+		v = min + math.Floor((v-min) / *step+0.5)**step
+		v = math.Round(v*1e9) / 1e9
+	}
+	if v < min {
+		v = min
+	}
+	if v > max {
+		v = max
+	}
+	return v
+}
+
+// RestCommands are the rest values the capabilities declare (failsafe "rest",
+// K2): what a device that regulates itself is left at when nothing commands
+// it. A rest value that does not fit its command is left out.
+func (e Entity) RestCommands() Commands {
+	var out Commands
+	for _, cap := range e.Capabilities.Actuate {
+		if len(cap.Rest) == 0 {
+			continue
+		}
+		switch cap.Command {
+		case CmdOnOff:
+			var b bool
+			if json.Unmarshal(cap.Rest, &b) == nil {
+				out.OnOff = &b
+			}
+		case CmdSetpointC:
+			var v float64
+			if json.Unmarshal(cap.Rest, &v) == nil && !math.IsNaN(v) && !math.IsInf(v, 0) {
+				out.SetpointC = &v
+			}
+		case CmdMode:
+			var m string
+			if json.Unmarshal(cap.Rest, &m) == nil && m != "" {
+				out.Mode = m
+			}
+		}
+	}
+	return out
+}
+
+// ChangeInterval is the change guard's interval (0 = inactive).
+func (e Entity) ChangeInterval() time.Duration {
+	v := e.Guards.Limits.MinChangeIntervalSeconds
+	if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) || *v <= 0 {
+		return 0
+	}
+	return time.Duration(*v * float64(time.Second))
 }
 
 // consumerCap clamps a consumer command value to [0, min(capability max,

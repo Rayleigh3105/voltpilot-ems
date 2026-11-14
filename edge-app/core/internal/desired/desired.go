@@ -395,6 +395,12 @@ func parseCommand(raw json.RawMessage) (entities.Commands, string, error) {
 		}
 		out.SetpointKw = &v
 		out.Outputs = outputs
+	case entities.CmdSetpointC:
+		v, err := num()
+		if err != nil {
+			return out, "", err
+		}
+		out.SetpointC = &v
 	case entities.CmdLimitKw:
 		v, err := num()
 		if err != nil {
