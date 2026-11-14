@@ -151,6 +151,7 @@ const TYPE_SHORT: Record<string, string> = {
   'sub-meter': 'Unterzähler',
   // D3 customer dictionary (M7): "Messgerät", never the internal "Messpunkt".
   'modbus-generic': 'Messgerät',
+  fuehler: 'Fühler',
 };
 
 /** Per-role short names - the primary key, so a hybrid reads per ASPECT. */

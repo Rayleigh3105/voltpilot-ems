@@ -345,6 +345,17 @@
       ]
     },
     {
+      "type": "fuehler",
+      "label": "Fühler",
+      "category": "meter",
+      "controllable": false,
+      "composed": false,
+      "default_failsafe": "measure-only",
+      "_comment": "Steuerlogik-Konzept Stufe 1 (Fühler lesen): ein reines Lesegerät, kein Verbraucher und keine Rolle in der Energiebilanz - Temperaturen und Eingänge eines Shelly-Zusatzmoduls, auch an einem Shelly, das selbst nichts schaltet. Wie modbus-generic ohne feste Kanäle: die tatsächlichen Messpunkte kommen über den Messpunkt-Katalog der Familie shelly.gen1/shelly.gen2plus (edge-app/core/internal/shelly), nicht aus default_measure.",
+      "default_measure": [],
+      "default_actuate": []
+    },
+    {
       "type": "anlagensteuerung",
       "label": "Anlagensteuerung (SPS mit VoltPilot-Bild)",
       "category": "meter",
