@@ -30,6 +30,7 @@ import {
   tagSchluessel,
   zeichenbar,
   zellenArtFuer,
+  type Kalenderzelle,
   zellenBeschriftung,
   zellenZustand,
   type EnergieZelle,
@@ -292,9 +293,11 @@ export function energieBilanzView(
   anchor: Date,
   range: Exclude<HistoryRange, 'day'>,
   now: Date,
+  /** Die Zellen eines freien Zeitraums (Abrechnung prüfen) — dann gilt ihre Art statt der von `range`. */
+  vorgabe?: readonly Kalenderzelle[],
 ): EnergieBilanzView {
-  const zellen = energieZellen(history.buckets, anchor, range, now, history.coverage?.firstDataAt ?? null);
-  const art = zellenArtFuer(range);
+  const zellen = energieZellen(history.buckets, anchor, range, now, history.coverage?.firstDataAt ?? null, vorgabe);
+  const art = vorgabe ? (vorgabe[0]?.art ?? 'tag') : zellenArtFuer(range);
   const texte = zellen.map((z) => zellenBeschriftung(z.start, art, range));
   return {
     range,
@@ -302,7 +305,7 @@ export function energieBilanzView(
     achse: texte.map((t) => t.achse),
     titel: texte.map((t) => t.titel),
     leer: !zellen.some((z) => zeichenbar(z) && z.pvKwh != null),
-    drill: range === 'year' ? 'monat' : 'tag',
+    drill: art === 'monat' ? 'monat' : 'tag',
   };
 }
 
@@ -413,12 +416,16 @@ const p2 = (n: number) => String(n).padStart(2, '0');
  * der stärkste Tag.
  */
 export function energieSpitzen(history: History, range: HistoryRange): { titel: string; zeilen: Spitze[] } {
-  const minuten = history.bucketMinutes > 0 ? history.bucketMinutes : 15;
+  // `bucketMinutes = 0` = Kalendermonate (freier Zeitraum über 92 Tage).
+  const monatswerte = history.range === 'zeitraum' && history.bucketMinutes === 0;
+  const minuten = history.bucketMinutes > 0 ? history.bucketMinutes : monatswerte ? 1440 : 15;
   const tageswerte = minuten >= 1440;
   const faktor = tageswerte ? 1 : 60 / minuten;
   const einheit = tageswerte ? 'kWh' : 'kW';
   const wann = (d: Date) =>
-    range === 'day'
+    monatswerte
+      ? d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+      : range === 'day'
       ? `${p2(d.getHours())}:${p2(d.getMinutes())} Uhr`
       : range === 'week' && !tageswerte
         ? `${WT[d.getDay()]}. ${d.getHours()} Uhr`
@@ -438,7 +445,7 @@ export function energieSpitzen(history: History, range: HistoryRange): { titel: 
     };
   };
   return {
-    titel: tageswerte ? 'Stärkste Tage' : range === 'day' ? 'Spitzen · 15-Minuten-Mittel' : 'Spitzen · Stundenmittel',
+    titel: monatswerte ? 'Stärkste Monate' : tageswerte ? 'Stärkste Tage' : range === 'day' ? 'Spitzen · 15-Minuten-Mittel' : 'Spitzen · Stundenmittel',
     zeilen: [
       max('pvKwh', 'Erzeugung', 'pv'),
       max('loadKwh', 'Verbrauch', 'load'),
@@ -474,6 +481,8 @@ export function energieTabellenZellen(
   anchor: Date,
   range: HistoryRange,
   now: Date,
+  /** Die Zellen eines freien Zeitraums (Abrechnung prüfen). */
+  vorgabe?: readonly Kalenderzelle[],
 ): EnergieTabellenZelle[] {
   const first = history.coverage?.firstDataAt ?? null;
   const felder: (keyof HistoryBucket)[] = [
@@ -485,7 +494,7 @@ export function energieTabellenZellen(
     'batteryDischargeKwh',
   ];
   if (range !== 'day') {
-    return energieZellen(history.buckets, anchor, range, now, first).map((z) => ({
+    return energieZellen(history.buckets, anchor, range, now, first, vorgabe).map((z) => ({
       schluessel: z.schluessel,
       start: z.start,
       zustand: z.zustand,
@@ -522,9 +531,9 @@ function kwhZelle(v: number | null): { text: string; ton: null } {
   return { text: v == null ? '—' : fmtNum(v, 'kWh', 1), ton: null };
 }
 
-export function tabellenKopf(start: Date, range: HistoryRange): string {
+export function tabellenKopf(start: Date, range: HistoryRange, mitJahr = false): string {
   if (range === 'day') return `${start.getHours()}–${start.getHours() + 1} Uhr`;
-  if (range === 'year') return start.toLocaleDateString('de-DE', { month: 'long' });
+  if (range === 'year') return start.toLocaleDateString('de-DE', mitJahr ? { month: 'long', year: 'numeric' } : { month: 'long' });
   return `${WT[start.getDay()]}., ${p2(start.getDate())}.${p2(start.getMonth() + 1)}.`;
 }
 
@@ -532,6 +541,8 @@ export function energieTabelle(
   zellen: readonly EnergieTabellenZelle[],
   history: History,
   range: HistoryRange,
+  /** Monate mit Jahr — ein freier Zeitraum kann über ein Jahresende reichen. */
+  mitJahr = false,
 ): {
   zeilen: { id: string; kopf: string; zellen: { text: string; ton: null }[] | null; leer?: string }[];
   summe: { id: string; kopf: string; zellen: { text: string; ton: null }[] } | null;
@@ -539,7 +550,7 @@ export function energieTabelle(
   const zeilen: { id: string; kopf: string; zellen: { text: string; ton: null }[] | null; leer?: string }[] = [];
   for (const z of zellen) {
     if (z.zustand === 'zukunft' || z.zustand === 'vorher') continue;
-    const kopf = `${tabellenKopf(z.start, range)}${z.zustand === 'laeuft' ? ' · läuft' : ''}`;
+    const kopf = `${tabellenKopf(z.start, range, mitJahr)}${z.zustand === 'laeuft' ? ' · läuft' : ''}`;
     if (!z.werte.some((v) => v != null)) {
       zeilen.push({ id: z.schluessel, kopf, zellen: null, leer: z.zustand === 'laeuft' ? 'noch keine Werte' : 'keine Messwerte' });
       continue;
@@ -562,7 +573,12 @@ export function isoLokal(d: Date): string {
 }
 
 /** Die Tabelle als CSV (Semikolon, Dezimalkomma, kWh mit drei Stellen). */
-export function energieCsv(zellen: readonly EnergieTabellenZelle[], history: History, range: HistoryRange): string {
+export function energieCsv(
+  zellen: readonly EnergieTabellenZelle[],
+  history: History,
+  range: HistoryRange,
+  mitJahr = false,
+): string {
   const kopf = [
     'Beginn',
     'Zeitraum',
@@ -576,7 +592,7 @@ export function energieCsv(zellen: readonly EnergieTabellenZelle[], history: His
   const out = [kopf.join(';')];
   for (const z of zellen) {
     if (z.zustand === 'zukunft' || z.zustand === 'vorher') continue;
-    out.push([isoLokal(z.start), `"${tabellenKopf(z.start, range)}"`, ...z.werte.map(csvZahl)].join(';'));
+    out.push([isoLokal(z.start), `"${tabellenKopf(z.start, range, mitJahr)}"`, ...z.werte.map(csvZahl)].join(';'));
   }
   const summen = energieSummen(history.buckets);
   if (!summen.every((s) => s.kwh == null)) {
@@ -592,6 +608,7 @@ export function aufloesungText(history: History | null): string | null {
   if (m === 15) return '15-Minuten-Werte';
   if (m === 60) return 'Stundenwerte';
   if (m >= 1440) return 'Tageswerte';
+  if (m === 0 && history.range === 'zeitraum') return 'Monatswerte';
   return m > 0 ? `${m}-Minuten-Werte` : null;
 }
 

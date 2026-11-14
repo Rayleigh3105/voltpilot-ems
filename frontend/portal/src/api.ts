@@ -1087,8 +1087,51 @@ export interface HistoryCoverage {
   resolutionMinutes: number;
 }
 
+/**
+ * Der Zeitraum einer Historie-ANTWORT: einer der vier festen oder `zeitraum` (freier Zeitraum in ganzen Tagen,
+ * `GET …/history?from=&to=`, Abrechnung prüfen R1). `bucketMinutes` ist dort 1440 (Tage, bis 92 Tage) oder 0
+ * (Kalendermonate).
+ */
+/** Eine Richtung von „Abrechnung prüfen“ (`GET …/abrechnung`, R2). */
+export interface AbrechnungZeile {
+  /** `null` ohne jeden Messwert im Zeitraum — nie eine erfundene 0. */
+  mengeKwh: number | null;
+  herkunft: 'zaehler' | 'summe' | null;
+  /** Zählerstand am Beginn/Ende — nur bei `herkunft = 'zaehler'`. */
+  standVonKwh: number | null;
+  standBisKwh: number | null;
+  /** Ein Zähler war da, sprang aber zurück (Tausch) — darum die Summe. */
+  zaehlerFaellt: boolean;
+  fehlendeTage: number;
+  luecken: { von: string; bis: string }[];
+}
+
+/** Die gespeicherten Zahlen von der Rechnung für einen Zeitraum (R3). */
+export interface AbrechnungPruefung {
+  von: string;
+  bis: string;
+  bezugKwh: number | null;
+  einspeisungKwh: number | null;
+  geaendertAm: string;
+}
+
+export interface Abrechnung {
+  von: string;
+  bis: string;
+  tage: number;
+  /** Erster gemessener Tag der Anlage; `null` = noch nie gemessen. */
+  messbeginn: string | null;
+  tageVorMessbeginn: number;
+  bezug: AbrechnungZeile;
+  /** `null` = die Anlage speist im Zeitraum nicht ein und erzeugt nichts (nur Netzbezug). */
+  einspeisung: AbrechnungZeile | null;
+  rechnung: AbrechnungPruefung | null;
+}
+
+export type HistoryAntwortRange = HistoryRange | 'zeitraum';
+
 export interface History {
-  range: HistoryRange;
+  range: HistoryAntwortRange;
   from: string;
   to: string;
   bucketMinutes: number;
@@ -11988,6 +12031,29 @@ export const api = {
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
   history: (siteId: string, range: HistoryRange, at: string) =>
     request<History>(`/api/v1/sites/${siteId}/history?range=${range}&at=${at}`),
+  /** Freier Zeitraum in ganzen Tagen, beide eingeschlossen (Abrechnung prüfen R1). */
+  historyZeitraum: (siteId: string, von: string, bis: string) =>
+    request<History>(`/api/v1/sites/${siteId}/history?from=${von}&to=${bis}`),
+  /** Netzbezug und Einspeisung eines Zeitraums mit Zählerständen und Herkunft (R2). */
+  abrechnung: (siteId: string, von: string, bis: string) =>
+    request<Abrechnung>(`/api/v1/sites/${siteId}/abrechnung?von=${von}&bis=${bis}`),
+  /** „Frühere Prüfungen“: alle gespeicherten Zeiträume, der jüngste zuerst (R3). */
+  abrechnungPruefungen: (siteId: string) =>
+    request<AbrechnungPruefung[]>(`/api/v1/sites/${siteId}/abrechnung/pruefungen`),
+  /**
+   * Die Zahlen von der Rechnung speichern (R3). `null` je Feld löscht nur diese Zahl; beide `null` löschen die
+   * Prüfung (204 → `undefined`).
+   */
+  abrechnungPruefungSpeichern: (
+    siteId: string,
+    von: string,
+    bis: string,
+    werte: { bezugKwh: number | null; einspeisungKwh: number | null },
+  ) =>
+    request<AbrechnungPruefung | undefined>(`/api/v1/sites/${siteId}/abrechnung/pruefung?von=${von}&bis=${bis}`, {
+      method: 'PUT',
+      body: JSON.stringify(werte),
+    }),
   /** Ersparnis-Simulation: async job - POST starts (defaults from the site's
    * master data, body fields override), GET polls every ~2 s. */
   startSimulation: (siteId: string, input: SimulationRequestInput) =>

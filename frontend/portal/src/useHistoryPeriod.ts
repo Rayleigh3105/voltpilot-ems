@@ -40,7 +40,27 @@ export function useHistoryPeriod(
    */
   enabled = true,
 ): HistoryPeriod {
-  const key = historyCacheKey(siteId, range, at);
+  return useHistoryAbruf(historyCacheKey(siteId, range, at), () => api.history(siteId, range, at), enabled);
+}
+
+/**
+ * Der FREIE Zeitraum (Abrechnung prüfen, R1/R4): `…/history?from=&to=` mit denselben zwei Verhalten — Treffer
+ * sofort, Blättern leert nicht. Ohne Zeitraum (`null`) ruht der Abruf.
+ */
+export function useHistoryZeitraum(siteId: string, zeitraum: { von: string; bis: string } | null): HistoryPeriod {
+  const von = zeitraum?.von ?? '';
+  const bis = zeitraum?.bis ?? '';
+  return useHistoryAbruf(
+    `${siteId}|zeitraum|${von}|${bis}`,
+    () => api.historyZeitraum(siteId, von, bis),
+    zeitraum != null,
+  );
+}
+
+function useHistoryAbruf(key: string, abruf: () => Promise<History>, enabled: boolean): HistoryPeriod {
+  // Der Abruf gehört zum Schlüssel: eine neue Funktion je Render darf keinen neuen Abruf auslösen.
+  const abrufRef = useRef(abruf);
+  abrufRef.current = abruf;
   // Ein Treffer ist schon beim ersten Render da — kein Skelett-Blitzer.
   const [state, setState] = useState<{ key: string; value: History } | null>(() => {
     const hit = readHistoryCache(key);
@@ -68,8 +88,8 @@ export function useHistoryPeriod(
     let active = true;
     setLoading(true);
     setErr(null);
-    api
-      .history(siteId, range, at)
+    abrufRef
+      .current()
       .then((h) => {
         writeHistoryCache(key, h);
         // Eine spät eintreffende Antwort darf eine inzwischen gewählte andere
@@ -87,7 +107,7 @@ export function useHistoryPeriod(
     return () => {
       active = false;
     };
-  }, [siteId, range, at, key, reloadKey, enabled]);
+  }, [key, reloadKey, enabled]);
 
   const retry = useCallback(() => {
     bypassRef.current = keyRef.current;

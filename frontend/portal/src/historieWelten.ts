@@ -69,7 +69,8 @@ export const WELTEN: Record<WeltId, Welt> = {
     fussText:
       'Gemessene Werte Ihrer Anlage in Viertelstunden, zu Tages- und Monatssummen verdichtet. ' +
       'Einzelne Ausreißer werden auf dem Gerät durch den zuletzt gültigen Wert ersetzt, damit ' +
-      'Anzeige und Regelung ruhig bleiben — für eine Abrechnung sind diese Werte deshalb nicht geeignet.',
+      'Anzeige und Regelung ruhig bleiben. Unter „Zeitraum“ lässt sich eine Rechnung damit vergleichen — ' +
+      'abgerechnet wird aber nach dem Zähler Ihres Messstellenbetreibers.',
   },
   erloese: {
     id: 'erloese',

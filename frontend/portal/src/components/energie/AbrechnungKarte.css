@@ -1,0 +1,190 @@
+/* Abrechnung prüfen (Bedienkonzept vp-privatkunde-bedienkonzept §7.1, Fotos r-a und z-ab der Variante A). */
+
+.vp-ab-tabelle {
+  display: grid;
+  min-width: 0;
+}
+
+/* Rechner: vier Spalten — Menge mit grauer Herkunft · Gemessen · Laut Rechnung · Unterschied. */
+.vp-ab-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: var(--vp-c-space-3);
+  padding: 12px 0;
+  border-top: 1px solid var(--vp-border);
+  min-width: 0;
+}
+
+.vp-ab-kopf {
+  padding: 4px 0 8px;
+  border-top: 0;
+  font-size: var(--vp-c-fs-14, 0.875rem);
+  color: var(--vp-text-gray);
+}
+
+.vp-ab-c-zahl {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-ab-c-rechnung {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vp-ab-kopf .vp-ab-c-rechnung {
+  display: block;
+  text-align: right;
+  padding-right: 34px;
+}
+
+.vp-ab-c-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-ab-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-ab-marke {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--vp-c-chart-grid, #036672);
+}
+
+.vp-ab-marke.is-einspeisung {
+  background: var(--vp-c-chart-pv, #e65100);
+}
+
+.vp-ab-herkunft {
+  padding-left: 18px;
+  font-size: var(--vp-c-fs-14, 0.875rem);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+
+.vp-ab-gemessen {
+  font-weight: 700;
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-ab-eingabe {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vp-ab-input::placeholder {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--vp-text-gray);
+}
+
+.vp-ab-einheit,
+.vp-ab-wert-lesend {
+  color: var(--vp-c-fg, #1e293b);
+  white-space: nowrap;
+}
+
+.vp-ab-unterschied {
+  font-weight: 700;
+  color: var(--vp-c-fg, #1e293b);
+  white-space: nowrap;
+}
+
+.vp-ab-unterschied.is-gross {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-ab-feldfehler {
+  font-size: var(--vp-c-fs-12, 0.75rem);
+  color: var(--vp-warn-ink, #b45309);
+  text-align: right;
+}
+
+.vp-ab-saetze {
+  display: grid;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.vp-ab-satz {
+  margin: 0;
+  font-size: var(--vp-c-fs-14, 0.875rem);
+  color: var(--vp-text-gray);
+}
+
+.vp-ab-satz.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+/* „Frühere Prüfungen“: die gemerkten Zeiträume, je einer antippbar (BK-10 = A). */
+.vp-ab-fruehere {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vp-ab-fruehere button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn, 10px);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-c-primary, #2563eb);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Telefon: dieselben Angaben untereinander (Foto r-a-375). */
+.vp-ab-karte.is-telefon .vp-ab-zeile {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px 0;
+}
+
+.vp-ab-karte.is-telefon .vp-ab-name {
+  justify-content: space-between;
+}
+
+.vp-ab-karte.is-telefon .vp-ab-name .vp-ab-gemessen {
+  margin-left: auto;
+}
+
+.vp-ab-karte.is-telefon .vp-ab-c-rechnung,
+.vp-ab-karte.is-telefon .vp-ab-unterschied {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  display: flex;
+  text-align: left;
+}
+
+.vp-ab-karte.is-telefon .vp-ab-feldfehler {
+  flex-basis: 100%;
+}
+
+.vp-ab-telefon-label {
+  font-weight: 400;
+  color: var(--vp-c-muted-fg, #475569);
+}

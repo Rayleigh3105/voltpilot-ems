@@ -1256,3 +1256,97 @@
     min-width: 0;
   }
 }
+
+/* ==========================================================================
+   Abrechnung prüfen (Bedienkonzept vp-privatkunde-bedienkonzept §7.1, BK-8 = A):
+   der fünfte Abschnitt „Zeitraum“ — statt ‹ Datum › Heute zwei Datumsfelder
+   „von“ und „bis“, das Wort IM Feld (Foto r-a der Variante A).
+   ========================================================================== */
+
+.vp-zr-felder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.vp-zr-feld {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 44px;
+  padding-left: 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-btn, 10px);
+  background: var(--vp-surface, #fff);
+}
+
+.vp-zr-feld:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
+  outline-offset: 1px;
+}
+
+.vp-zr-vor {
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: 0.875rem;
+}
+
+/* Der Auslöser des Hauspickers ohne eigenen Rand: der Rand gehört dem Feld mit dem Wort. */
+.vp-zr-feld .vp-zr-picker:focus-within {
+  outline: none;
+}
+
+.vp-zr-feld .vp-picker-ausloeser {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-left: 6px;
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-zr-feld .vp-picker-caret {
+  display: none;
+}
+
+/* Das Kalender-Symbol steht HINTER dem Datum („von 01.11.2025 ▢“, Foto r-a). */
+.vp-zr-feld .vp-picker-ic {
+  order: 2;
+}
+
+/* Am Telefon (§3.5): fünf Abschnitte füllen die erste Zeile allein; „⋯“ steht in der zweiten neben dem
+   Blätterer bzw. den Datumsfeldern. Gemessen 375 px: Tag 49 · Woche 69 · Monat 65 · Jahr 53 · Zeitraum 81. */
+@media (max-width: 720px) {
+  /* Blätterer und ⋯ teilen sich die Zeile; ein gesetzter Vergleich (Chip) bricht darunter um. */
+  .vp-zeitleiste-mobil.mit-zeitraum .vp-zl-row-2 > .vp-period-nav {
+    flex: 1 1 calc(100% - 50px);
+    width: auto;
+    min-width: 0;
+  }
+
+  .vp-zeitleiste-mobil .vp-zr-felder {
+    flex: 1 1 auto;
+    margin-left: 0;
+  }
+
+  .vp-zeitleiste-mobil .vp-zr-feld {
+    flex: 1 1 0;
+    padding-left: 10px;
+  }
+
+  .vp-zeitleiste-mobil .vp-zr-feld .vp-zr-picker,
+  .vp-zeitleiste-mobil .vp-zr-feld .vp-picker-anker,
+  .vp-zeitleiste-mobil .vp-zr-feld .vp-picker-ausloeser {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Fünf Abschnitte nach ihrem Wort, nicht gleich breit: „Zeitraum“ braucht mehr als „Tag“. */
+  .vp-zeitleiste-mobil.mit-zeitraum .vp-zl-row-1 > .vp-seg > button {
+    flex: 1 1 auto;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}

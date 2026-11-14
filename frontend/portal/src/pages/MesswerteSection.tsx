@@ -23,7 +23,7 @@ import {
   type EreignisZelle,
 } from '../historieEreignisse';
 import { historieHash, WELTEN, type WeltId } from '../historieWelten';
-import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
+import { useHistoryPeriod, useHistoryZeitraum, useVergleichsPeriode } from '../useHistoryPeriod';
 import type { AnlageSurface } from '../surface';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { standTime } from '../datenAlter';
@@ -61,6 +61,19 @@ import { QuotenKarte, rollenFarbe, SpitzenKarte } from '../components/energie/En
 import { EreignisKarte } from '../components/energie/EreignisKarte';
 import { BereicheKarte } from '../components/energie/BereicheKarte';
 import { EreignisSpurRahmen, type EreignisFokus } from '../components/energie/EreignisSpurRahmen';
+import { AbrechnungKarte } from '../components/energie/AbrechnungKarte';
+import {
+  letzterTag as gesternBis,
+  parseZeitraum,
+  tagDatum,
+  zeitraumHash,
+  zeitraumJeMonat,
+  zeitraumSetzen,
+  zeitraumText,
+  zeitraumVorgabe,
+  type Zeitraum,
+} from '../abrechnungPruefen';
+import { zeitraumZellen } from '../verlaufRaster';
 
 /**
  * **Verlauf › Energie** (`#/anlage/{id}/messwerte`) — Konzept „Verlauf-Rework",
@@ -127,6 +140,10 @@ export function MesswerteSection({
 }) {
   const [init] = useState(() => parseVerlaufParams(window.location.hash));
   const [range, setRange] = useState<HistoryRange>(init.range);
+  // Abrechnung prüfen (BK-8 = A): der fünfte Abschnitt „Zeitraum“ — `null` = einer der vier festen Zeiträume.
+  const [zeitraum, setZeitraum] = useState<Zeitraum | null>(() => zeitraumAusAdresse(window.location.hash));
+  // Der zuletzt gewählte freie Zeitraum: ein Wechsel nach „Monat“ und zurück findet ihn wieder.
+  const [letzterZeitraum, setLetzterZeitraum] = useState<Zeitraum | null>(zeitraum);
   const [anchor, setAnchor] = useState<Date>(() =>
     init.at ? new Date(`${init.at}T12:00:00`) : new Date(),
   );
@@ -138,15 +155,27 @@ export function MesswerteSection({
   const [bilanzAus, setBilanzAus] = useState<ReadonlySet<BilanzReihe>>(() => new Set());
 
   const at = isoDate(anchor);
-  const { history, loading, stale, err, retry } = useHistoryPeriod(site.id, range, at);
-  const modus = normalisiereModus(modusWahl, anchor, range, history?.coverage);
+  const periode = useHistoryPeriod(site.id, range, at, zeitraum == null);
+  const frei = useHistoryZeitraum(site.id, zeitraum);
+  const { history, loading, stale, err, retry } = zeitraum ? frei : periode;
+  // Im Zeitraum ist der Vergleich mit der Vorperiode aus (§7.1) — es gibt keine „vorige“ freie Spanne.
+  const modus = zeitraum ? 'aus' : normalisiereModus(modusWahl, anchor, range, history?.coverage);
   const vorher = useVergleichsPeriode(
     site.id,
     range,
     anchor,
-    !stale && (history?.buckets.length ?? 0) > 0,
+    !zeitraum && !stale && (history?.buckets.length ?? 0) > 0,
     wirksamerModus(modus),
   );
+  // Im Zeitraum lesen Bilanz, Tabelle, Spitzen und Ereignisse ihn wie einen Monat (bis 92 Tage, Tageszellen)
+  // bzw. ein Jahr (Monatszellen) — mit den Zellen des Zeitraums statt denen um einen Anker.
+  const jeMonat = zeitraum ? zeitraumJeMonat(zeitraum) : false;
+  const rasterRange: HistoryRange = zeitraum ? (jeMonat ? 'year' : 'month') : range;
+  const zellenVorgabe = useMemo(
+    () => (zeitraum ? zeitraumZellen(tagDatum(zeitraum.von), tagDatum(zeitraum.bis)) : undefined),
+    [zeitraum],
+  );
+  const bilanzAnker = zeitraum ? tagDatum(zeitraum.bis) : anchor;
   const vergleichHinweis =
     ueberlagerungAktiv(modus) && vorher != null && vorher.buckets.length === 0
       ? keineVergleichsDatenText(anchor, range, modus)
@@ -160,11 +189,20 @@ export function MesswerteSection({
   );
   const zeigeZeitraum = useCallback(
     (r: HistoryRange, a: Date) => {
+      setZeitraum(null);
       setRange(r);
       setAnchor(a);
       schreibeAdresse(r, a, modusWahl);
     },
     [modusWahl, schreibeAdresse],
+  );
+  const zeigeFreienZeitraum = useCallback(
+    (z: Zeitraum) => {
+      setZeitraum(z);
+      setLetzterZeitraum(z);
+      replaceCurrentNavigation(zeitraumHash(site.id, z));
+    },
+    [site.id],
   );
   const aendereModus = useCallback(
     (m: VergleichsModus) => {
@@ -177,6 +215,9 @@ export function MesswerteSection({
   useEffect(() => {
     const onHash = () => {
       const p = parseVerlaufParams(window.location.hash);
+      const z = zeitraumAusAdresse(window.location.hash);
+      setZeitraum(z);
+      if (z) setLetzterZeitraum(z);
       setModusWahl(parseVergleichModus(window.location.hash));
       setRange(p.range);
       setAnchor(p.at ? new Date(`${p.at}T12:00:00`) : new Date());
@@ -186,28 +227,39 @@ export function MesswerteSection({
   }, []);
 
   const now = useMemo(() => new Date(), [history, range, at]);
-  const laeuft = isCurrentPeriod(anchor, range, now);
-  const label = periodLabel(anchor, range);
+  const laeuft = zeitraum ? false : isCurrentPeriod(anchor, range, now);
+  const label = zeitraum ? zeitraumText(zeitraum) : periodLabel(anchor, range);
 
   const kennzahlen = useMemo(
-    () => energieKennzahlen({ history, vorher, anchor, range, now, modus: wirksamerModus(modus) }),
-    [history, vorher, anchor, range, now, modus],
+    () =>
+      energieKennzahlen({
+        history,
+        vorher: zeitraum ? null : vorher,
+        anchor: bilanzAnker,
+        range: rasterRange,
+        now,
+        modus: wirksamerModus(modus),
+      }),
+    [history, vorher, zeitraum, bilanzAnker, rasterRange, now, modus],
   );
   const tag = useMemo(
-    () => (history && range === 'day' ? energieTag(history, anchor, now) : null),
-    [history, range, anchor, now],
+    () => (history && !zeitraum && range === 'day' ? energieTag(history, anchor, now) : null),
+    [history, zeitraum, range, anchor, now],
   );
   const bilanz = useMemo(
-    () => (history && range !== 'day' ? energieBilanzView(history, anchor, range, now) : null),
-    [history, range, anchor, now],
+    () =>
+      history && rasterRange !== 'day'
+        ? energieBilanzView(history, bilanzAnker, rasterRange, now, zellenVorgabe)
+        : null,
+    [history, rasterRange, bilanzAnker, now, zellenVorgabe],
   );
   const tabellenZellen = useMemo(
-    () => (history ? energieTabellenZellen(history, anchor, range, now) : []),
-    [history, anchor, range, now],
+    () => (history ? energieTabellenZellen(history, bilanzAnker, rasterRange, now, zellenVorgabe) : []),
+    [history, bilanzAnker, rasterRange, now, zellenVorgabe],
   );
   const tabelle = useMemo(
-    () => (history ? energieTabelle(tabellenZellen, history, range) : null),
-    [tabellenZellen, history, range],
+    () => (history ? energieTabelle(tabellenZellen, history, rasterRange, zeitraum != null) : null),
+    [tabellenZellen, history, rasterRange, zeitraum],
   );
   // F8: der gewählte Vergleich liegt blass hinter dem Bild — nach Position im
   // Zeitraum (1. Juni neben 1. Juli), benannt mit seinem Zeitraum.
@@ -229,9 +281,9 @@ export function MesswerteSection({
     [ueberlagern, vorher, range, vergleichName, vorherAnker, now],
   );
   const quoten = useMemo(() => (history ? energieQuoten(history) : []), [history]);
-  const spitzen = useMemo(() => (history ? energieSpitzen(history, range) : null), [history, range]);
+  const spitzen = useMemo(() => (history ? energieSpitzen(history, rasterRange) : null), [history, rasterRange]);
   const spur = useMemo(() => (history ? ereignisSpur(history) : null), [history]);
-  const chronik = useMemo(() => (spur ? ereignisChronik(spur, range) : []), [spur, range]);
+  const chronik = useMemo(() => (spur ? ereignisChronik(spur, rasterRange) : []), [spur, rasterRange]);
   // Die Zellen der x-Achse, unter denen die Spur ihre Marken setzt: die
   // Viertelstunden des Tages bzw. die Tage/Monate der Bilanz.
   const achsenZellen = useMemo<EreignisZelle[]>(() => {
@@ -247,15 +299,15 @@ export function MesswerteSection({
   }, [tag, bilanz, anchor]);
   // Der Streifen von „Nach Art": am Tag die Stunden, sonst dieselben Zellen.
   const streifenZellen = useMemo(
-    () => (range === 'day' ? stundenZellen(anchor, now) : achsenZellen),
-    [range, anchor, now, achsenZellen],
+    () => (rasterRange === 'day' ? stundenZellen(anchor, now) : achsenZellen),
+    [rasterRange, anchor, now, achsenZellen],
   );
   const [ereignisFilter, setEreignisFilter] = useState<EreignisArt | null>(null);
   const [ereignisFokus, setEreignisFokus] = useState<EreignisFokus | null>(null);
   useEffect(() => {
     setEreignisFilter(null);
     setEreignisFokus(null);
-  }, [range, at]);
+  }, [range, at, zeitraum]);
 
   const tagSichtbar = useMemo(
     () => new Set<TagReihe>((['pv', 'load', 'netz', 'soc', 'preis'] as TagReihe[]).filter((r) => !tagAus.has(r))),
@@ -305,21 +357,26 @@ export function MesswerteSection({
 
   // Die Vorgaben einer Erzeugeranlage (EZ-9): ihr Detail je Zeile und „Vorgaben als CSV“ für den Zeitraum der Ansicht.
   const ladeVorgabe = useCallback((id: string) => erzeugerVorgabenApi.detail(site.id, id), [site.id]);
+  const dateiname = (teil: string) =>
+    zeitraum
+      ? zeitraumDateiname(csvDateiname(teil, site.name, 'day', zeitraum.von), zeitraum)
+      : csvDateiname(teil, site.name, range, at);
   const vorgabenCsv = history?.vorgaben
-    ? () => ladeVorgabenCsv(site.id, history.from, history.to, csvDateiname('vorgaben', site.name, range, at))
+    ? () => ladeVorgabenCsv(site.id, history.from, history.to, dateiname('vorgaben'))
     : undefined;
+  const titel = zeitraum ? (jeMonat ? TITEL.year : TITEL.month) : TITEL[range];
   const ereignisKarte = spur && (
     <EreignisKarte
-      key={`${range}-${at}`}
+      key={zeitraum ? `zeitraum-${zeitraum.von}-${zeitraum.bis}` : `${range}-${at}`}
       spur={spur}
       gruppen={chronik}
-      range={range}
+      range={rasterRange}
       streifenZellen={streifenZellen}
       filter={ereignisFilter}
       onFilter={setEreignisFilter}
       fokus={ereignisFokus}
       onFokus={setEreignisFokus}
-      onOeffnen={range === 'day' ? undefined : oeffneEreignis}
+      onOeffnen={rasterRange === 'day' ? undefined : oeffneEreignis}
       ladeVorgabe={ladeVorgabe}
       onVorgabenCsv={vorgabenCsv}
     />
@@ -387,6 +444,16 @@ export function MesswerteSection({
         onVergleich={aendereModus}
         vergleichHinweis={vergleichHinweis}
         abdeckungInStatus
+        zeitraum={{
+          aktiv: zeitraum != null,
+          wert: zeitraum ?? letzterZeitraum ?? zeitraumVorgabe(anchor, range, now),
+          max: gesternBis(now),
+          onWaehlen: () => zeigeFreienZeitraum(zeitraum ?? letzterZeitraum ?? zeitraumVorgabe(anchor, range, now)),
+          onWert: (feld, v) =>
+            zeigeFreienZeitraum(
+              zeitraumSetzen(zeitraum ?? letzterZeitraum ?? zeitraumVorgabe(anchor, range, now), feld, v, now),
+            ),
+        }}
       />
       <VerlaufStatus
         art="gemessen"
@@ -396,6 +463,7 @@ export function MesswerteSection({
         alt={stale}
         info={{ titel: 'So entstehen die Werte', text: [WELTEN.messwerte.fussText, abdeckung?.abText ? `${abdeckung.abText}.` : null].filter(Boolean).join(' ') }}
       />
+      {zeitraum && <AbrechnungKarte siteId={site.id} zeitraum={zeitraum} onZeitraum={zeigeFreienZeitraum} />}
 
       <div className={`vp-vr-body${stale ? ' alt' : ''}`} aria-busy={loading || undefined}>
         {err && !history ? (
@@ -404,13 +472,13 @@ export function MesswerteSection({
           </VrKarte>
         ) : !history ? (
           loading ? (
-            <VrKarte titel={TITEL[range]}>
+            <VrKarte titel={titel}>
               <VerlaufKarteSkeleton />
             </VrKarte>
           ) : null
         ) : leer ? (
           <>
-            <VrKarte titel={TITEL[range]}>
+            <VrKarte titel={titel}>
               <VerlaufLeer
                 label="Keine Messwerte in diesem Zeitraum"
                 satz={`Für ${label} liegen keine Messwerte vor.`}
@@ -449,9 +517,9 @@ export function MesswerteSection({
             <div className="vp-vr-row">
               <div className="vp-vr-col">
                 <VrKarte
-                  titel={TITEL[range]}
+                  titel={titel}
                   info={
-                    range === 'day'
+                    rasterRange === 'day'
                       ? null
                       : {
                           titel: 'Energiebilanz',
@@ -470,7 +538,7 @@ export function MesswerteSection({
                         filter={ereignisFilter}
                         fokus={ereignisFokus}
                         onFokus={setEreignisFokus}
-                        onOeffnen={range === 'day' ? undefined : oeffneEreignis}
+                        onOeffnen={rasterRange === 'day' ? undefined : oeffneEreignis}
                       >
                         {tag && (
                           <Suspense fallback={<ChartPlatz klasse={tagHoehe(tag, tagSichtbar.has('preis'))} />}>
@@ -489,7 +557,7 @@ export function MesswerteSection({
                               vergleich={bilanzVergleich}
                               sichtbar={bilanzSichtbar}
                               onZelle={oeffneZelle}
-                              label={`${TITEL[range]} · ${label}`}
+                              label={`${titel} · ${label}`}
                             />
                           </Suspense>
                         )}
@@ -503,23 +571,23 @@ export function MesswerteSection({
                         zeilen={tabelle.zeilen}
                         summe={tabelle.summe}
                         onZeile={
-                          range === 'day'
+                          rasterRange === 'day'
                             ? undefined
                             : (id) => {
                                 const i = tabellenZellen.findIndex((z) => z.schluessel === id);
                                 const z = tabellenZellen[i];
                                 if (!z) return;
                                 const a = new Date(z.start.getFullYear(), z.start.getMonth(), z.start.getDate(), 12);
-                                zeigeZeitraum(range === 'year' ? 'month' : 'day', a);
+                                zeigeZeitraum(rasterRange === 'year' ? 'month' : 'day', a);
                               }
                         }
-                        zeileTitel={range === 'year' ? 'Monat öffnen' : 'Tag öffnen'}
+                        zeileTitel={rasterRange === 'year' ? 'Monat öffnen' : 'Tag öffnen'}
                         fuss={
                           <button
                             type="button"
                             className="vp-vr-textbtn"
                             onClick={() =>
-                              ladeCsv(energieCsv(tabellenZellen, history, range), csvDateiname('energie', site.name, range, at))
+                              ladeCsv(energieCsv(tabellenZellen, history, rasterRange, zeitraum != null), dateiname('energie'))
                             }
                           >
                             Als CSV herunterladen
@@ -532,7 +600,9 @@ export function MesswerteSection({
                 {ereignisKarte}
               </div>
               <div className="vp-vr-col">
-                <BereicheKarte site={site} range={range} at={at} history={stale ? null : history} />
+                {/* „Verbrauch nach Bereichen“ liest die Geräte-Route, die nur die vier festen Zeiträume kennt —
+                    im freien Zeitraum stünden dort Zahlen eines anderen Zeitraums. */}
+                {!zeitraum && <BereicheKarte site={site} range={range} at={at} history={stale ? null : history} />}
                 <QuotenKarte quoten={quoten} />
                 {spitzen && <SpitzenKarte titel={spitzen.titel} zeilen={spitzen.zeilen} />}
               </div>
@@ -542,4 +612,15 @@ export function MesswerteSection({
       </div>
     </div>
   );
+}
+
+/** Ein Zeitraum aus der Adresse, auf „bis höchstens gestern“ gehalten — `null` ohne `z=zeitraum`. */
+function zeitraumAusAdresse(hash: string): Zeitraum | null {
+  const z = parseZeitraum(hash);
+  return z ? zeitraumSetzen(z, 'bis', z.bis, new Date()) : null;
+}
+
+/** `energie_haus_tag_2025-11-01.csv` → `energie_haus_zeitraum_2025-11-01_2026-10-31.csv`. */
+function zeitraumDateiname(basis: string, z: Zeitraum): string {
+  return basis.replace('_tag_', '_zeitraum_').replace(/\.csv$/, `_${z.bis}.csv`);
 }

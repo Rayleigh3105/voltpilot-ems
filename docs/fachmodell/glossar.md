@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 65 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 66 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -98,6 +98,7 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Meldung](#meldung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)
 - [Zustellweg](#zustellweg) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)
 - [Ruhezeit](#ruhezeit) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3, Entscheid 8A (15.10.2026)
+- [Abrechnung prüfen](#abrechnung-prüfen) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, Variante A, Entscheide BK-8/BK-9/BK-10 = A (14.11.2026)
 
 ## Kundenbereich
 
@@ -1660,3 +1661,17 @@ Werktags und Wochenende getrennt einstellbar, das Wochenende auch als „ganz“
 **Heute im Code.** `RuhezeitTeilfenster`/`RuhezeitRegeln` (PORTAL/ruhezeit.ts:1-24); Zeile „Ruhezeit“ und Option „keine Ruhezeit“ der Einstellungs-Seite (Scheibe 1, PORTAL/pages/EinstellungenPage.tsx:609,1175); Schalter „Dringendes trotzdem melden“ (:616).
 
 **Abgrenzung.** Nicht die Stummschaltung (unterdrückt eine einzelne Regel/Anlage befristet, unabhängig von der Uhrzeit — heute nur als API, noch ohne eigene Kundenformulierung im Markup).
+
+## Abrechnung prüfen
+
+*Sicht: Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, Variante A, Entscheide BK-8/BK-9/BK-10 = A (14.11.2026)*
+
+**Der Vergleich der am Netzanschluss gemessenen Mengen (Netzbezug, Einspeisung) eines frei gewählten Zeitraums mit den Mengen, die der Kunde von seiner Rechnung abschreibt — nur der Unterschied, kein Urteil über den Zähler.**
+
+Wörter der Fläche: „Zeitraum“ ist der fünfte Abschnitt der Zeitleiste im Verlauf › Energie (neben Tag · Woche · Monat · Jahr) mit zwei Datumsfeldern „von“ und „bis“, ganze Tage, beide eingeschlossen, höchstens bis gestern; die ganze Seite folgt ihm, der Vergleich mit der Vorperiode ist dort aus. „Gemessen“ ist die Menge am Netzanschluss: mit Zähler der Zählerstand am Ende des letzten Tages minus der am Ende des Vortags (auch über Lücken hinweg), als graue Zeile „Zählerstand 12.455 → 17.609“; ohne Zähler „aus Messwerten summiert“, fehlende Tage genannt. „Laut Rechnung“ ist das Eingabefeld (gespeichert beim Verlassen, leeres Feld löscht). „Unterschied“ ist gemessen minus Rechnung in kWh und Prozent der Rechnung; ab 5 % steht er im Warn-Ton mit der Frage nach Zeitraum und Zählernummer (Startwert, nicht entschieden). „Frühere Prüfungen“ sind die gemerkten Zeiträume, je einer antippbar. Kein Euro, kein Wort über Steuern.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Haus am Mühlbach, 01.11.2025 – 31.10.2026: Netzbezug gemessen 5.154 kWh (Zählerstand 12.455 → 17.609), laut Rechnung 5.131 kWh, Unterschied +23 kWh · 0,4 %.
+
+**Heute im Code.** Route `GET /api/v1/sites/{id}/abrechnung` und Prüfungen `…/abrechnung/pruefung(en)` (services/api/src/main/java/com/voltpilot/api/web/AbrechnungController.java), freier Zeitraum `/history?from=&to=` (`history/Zeitraum.java`), Tabelle `abrechnung_pruefung` (MIG/V20261114150000__abrechnung_pruefung.sql); Wörter `ABRECHNUNG_PRUEFEN` (PORTAL/glossar.ts), Regeln PORTAL/abrechnungPruefen.ts, Karte PORTAL/components/energie/AbrechnungKarte.tsx.
+
+**Abgrenzung.** Nicht die Ablesung einer Messstelle (UEMS, an Messstelle und Recht `ablesung.erfassen` gebunden); nicht die Erlöse (bewertet, mit Geld); nicht der Abrechnungszeitraum einer Überwachung.
