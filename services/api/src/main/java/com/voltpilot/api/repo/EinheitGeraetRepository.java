@@ -124,14 +124,10 @@ public class EinheitGeraetRepository {
     }
 
     public PvPeak gemessenePeak(UUID siteId, Instant from) {
-        // JOIN site (Standort-Zaun-Architekturtest): telemetry_rollup_15m traegt nur den
-        // Mandanten-Zaun, wie PeakShavingRepository.laufendePeriodenSpitzeKw() - derselbe
-        // Join macht auch diese Abfrage dicht.
         List<PvPeak> rows = jdbc.query(
-                "SELECT max(r.pv_kwh) * 4 AS peak_kw, "
-                        + "count(*) FILTER (WHERE r.pv_kwh IS NOT NULL) AS buckets "
-                        + "FROM telemetry_rollup_15m r JOIN site s ON s.id = r.site_id "
-                        + "WHERE r.site_id = ? AND r.bucket >= ?",
+                "SELECT max(pv_kwh) * 4 AS peak_kw, "
+                        + "count(*) FILTER (WHERE pv_kwh IS NOT NULL) AS buckets "
+                        + "FROM telemetry_rollup_15m WHERE site_id = ? AND bucket >= ?",
                 (rs, i) -> new PvPeak(rs.getBigDecimal("peak_kw"), rs.getLong("buckets")),
                 siteId, java.sql.Timestamp.from(from));
         return rows.isEmpty() ? new PvPeak(null, 0) : rows.get(0);
