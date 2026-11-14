@@ -51,6 +51,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logiklauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/modbustcp"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
@@ -649,6 +650,12 @@ type Agent struct {
 	ebyteStoreMu sync.Mutex
 	ebyteStore   *ebyte.Store
 	ebyteRun     *ebyteState
+	// mbGeraete are the self-built Modbus devices with write values (K3) the
+	// core owns end to end (modbusgeraet.go); mbDial opens their connection
+	// (nil = modbustcp.DefaultDialer; injectable for tests).
+	mbMu      sync.Mutex
+	mbGeraete map[string]*mbGeraet
+	mbDial    modbustcp.Dialer
 
 	// logik runs delivered Steuerlogiken along (agent/steuerlogik.go): it
 	// computes and reports, it never switches. logikIn are its inputs.
@@ -1169,6 +1176,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.startShellySensorPoll(ctx)
 	a.startLogikMitlauf(ctx)
 	a.startEbyteSourcePoll(ctx)
+	// Self-built Modbus devices with write values (K3): the core reads and
+	// writes them itself on both box kinds; idles without such a device.
+	a.startModbusGeraetPoll(ctx)
 	// OCPP charge points: the CSMS the stations dial + the load-management
 	// executor. A no-op while VP_OCPP_ENABLED is off (the default), so a box
 	// without charge points pays nothing for it.

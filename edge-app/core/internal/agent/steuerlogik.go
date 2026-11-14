@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logik"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logiklauf"
@@ -115,8 +116,9 @@ func istFuehlerTemperatur(pointKey string) bool {
 
 // logikQuelle reads one input of a logic. Known: site.grid, site.pv,
 // battery.power, battery.soc, price.current (the spot price of the price feed,
-// ct/kWh, while it is valid) and <entity>.temperature of a Fühler with exactly
-// one temperature probe. Everything else is unknown - more probes on one
+// ct/kWh, while it is valid), <entity>.<signal> of a self-built Modbus device
+// whose definition maps that signal to a channel, and <entity>.temperature of
+// a Fühler with exactly one temperature probe. Everything else is unknown - more probes on one
 // entity is ambiguous, and a guess would be invented.
 func (a *Agent) logikQuelle(source string, now time.Time) logik.EinWert {
 	if source == "price.current" {
@@ -126,12 +128,19 @@ func (a *Agent) logikQuelle(source string, now time.Time) logik.EinWert {
 		}
 		return messwert(logikMesswert{v: ct, at: seit}, now)
 	}
+	entity, kanal, ok := strings.Cut(source, ".")
+	if ok {
+		// A self-built Modbus device with write values (K3) delivers every
+		// signal its definition maps to a channel.
+		if w, geraet := a.mbQuelle(entity, kanal, now); geraet {
+			return w
+		}
+	}
 	a.logikIn.mu.Lock()
 	defer a.logikIn.mu.Unlock()
 	if w, ok := a.logikIn.site[source]; ok {
 		return messwert(w, now)
 	}
-	entity, kanal, ok := strings.Cut(source, ".")
 	if !ok || kanal != "temperature" {
 		return logik.EinWert{}
 	}
@@ -177,6 +186,13 @@ func (a *Agent) logikGeraet(entityID string, now time.Time) (logik.GeraetStamm, 
 	if isShelly {
 		stamm.Ausgaenge, stamm.KwJeAusgang = cfg.OutputFacts()
 	}
+	geraetFakten(*e, &stamm)
+	if mb, ok := a.mbIst(entityID, now); ok {
+		// A self-built Modbus device with write values: its read-back is the
+		// observed state of all three outputs.
+		ist.Ein, ist.Sollwert, ist.Betriebsart = mb.On, mb.Setpoint, mb.Mode
+		return stamm, ist
+	}
 	if st := a.shellyGroupStage(entityID); st != nil && st.Confirmed != nil {
 		if at, err := time.Parse(time.RFC3339, st.At); err == nil && now.Sub(at) <= heizstabStageMaxAge {
 			n := *st.Confirmed
@@ -213,6 +229,23 @@ func (a *Agent) logikGeraet(entityID string, now time.Time) (logik.GeraetStamm, 
 		break
 	}
 	return stamm, ist
+}
+
+// geraetFakten fills the device facts a logic needs for a device that
+// regulates itself (K2): the released band and step of its setpoint in °C and
+// its closed list of modes, from the registry capabilities.
+func geraetFakten(e entities.Entity, stamm *logik.GeraetStamm) {
+	for _, c := range e.Capabilities.Actuate {
+		switch c.Command {
+		case entities.CmdSetpointC:
+			if c.Min != nil && c.Max != nil {
+				stamm.SollwertBereich = &[2]float64{*c.Min, *c.Max}
+			}
+			stamm.SollwertSchritt = c.Step
+		case entities.CmdMode:
+			stamm.Betriebsarten = append([]string(nil), c.Modes...)
+		}
+	}
 }
 
 // logikAdapter lets the deployer hand Steuerlogik artifacts to the run; the

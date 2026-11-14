@@ -74,6 +74,10 @@ type Auftrag struct {
 type Ist struct {
 	Stufe *int
 	Ein   *bool
+	// Sollwert and Betriebsart are the read-back of a device that regulates
+	// itself (K2/K3); nil/"" = unknown.
+	Sollwert    *float64
+	Betriebsart string
 }
 
 // Deps wires the run to the box. Read paths only: values, device data and
@@ -288,6 +292,13 @@ func (lz *Laufzeit) taktEiner(l *einLauf, now time.Time, dt float64) {
 				stamm.Stufe = &v
 			}
 		}
+		if stamm.Sollwert == nil && ist.Sollwert != nil {
+			v := *ist.Sollwert
+			stamm.Sollwert = &v
+		}
+		if stamm.Betriebsart == "" {
+			stamm.Betriebsart = ist.Betriebsart
+		}
 		ein.Geraete[g] = stamm
 		iste[g] = ist
 	}
@@ -398,10 +409,14 @@ func wunschStand(a logik.Ausgang) *cloud.LogikStand {
 
 // istStand maps the observed state; nil = unknown.
 func istStand(i Ist) *cloud.LogikStand {
-	if i.Stufe == nil && i.Ein == nil {
+	if i.Stufe == nil && i.Ein == nil && i.Sollwert == nil && i.Betriebsart == "" {
 		return nil
 	}
-	s := &cloud.LogikStand{}
+	s := &cloud.LogikStand{Betriebsart: i.Betriebsart}
+	if i.Sollwert != nil {
+		v := *i.Sollwert
+		s.Sollwert = &v
+	}
 	if i.Stufe != nil {
 		n := *i.Stufe
 		s.Stufe = &n
@@ -415,11 +430,27 @@ func istStand(i Ist) *cloud.LogikStand {
 
 // abweichung says whether wish and observed state differ, and whether the
 // two can be compared at all. A level against on/off compares "0 = off";
-// setpoint, mode and share have no observed state on the box yet.
+// setpoint and mode compare where the device reads them back (K2/K3; a
+// setpoint within 0.05 K counts as the same); a share has no observed state.
+// A device with several outputs differs when any compared output differs.
 func abweichung(w, i *cloud.LogikStand) (weicht, vergleichbar bool) {
 	if w == nil || i == nil {
 		return false, false
 	}
+	weicht, vergleichbar = schaltAbweichung(w, i)
+	if w.Sollwert != nil && i.Sollwert != nil {
+		vergleichbar = true
+		d := *w.Sollwert - *i.Sollwert
+		weicht = weicht || d > 0.05 || d < -0.05
+	}
+	if w.Betriebsart != "" && i.Betriebsart != "" {
+		vergleichbar = true
+		weicht = weicht || w.Betriebsart != i.Betriebsart
+	}
+	return weicht, vergleichbar
+}
+
+func schaltAbweichung(w, i *cloud.LogikStand) (weicht, vergleichbar bool) {
 	switch {
 	case w.Stufe != nil && i.Stufe != nil:
 		return *w.Stufe != *i.Stufe, true

@@ -172,6 +172,11 @@ func (a *Agent) switchExchange(op probe.Op, value int) *switchBusResult {
 		// auto-off below reaches this same branch, so it cannot miss.
 		return a.ebyteSwitchExchange(op, value)
 	}
+	if res := a.mbSwitchExchange(op, value); res != nil {
+		// A self-built device with write values is CORE-owned (K3): its test
+		// write goes through the device's one connection, on both box kinds.
+		return res
+	}
 	if a.Bus == nil {
 		return nil
 	}
