@@ -92,7 +92,7 @@ const JETZT = new Date();
 beforeEach(() => {
   vi.spyOn(flowsApi, 'customerFlowApi').mockReturnValue(BOUND as unknown as ReturnType<typeof flowsApi.customerFlowApi>);
   BOUND.list.mockResolvedValue([
-    { flowId: 'f-1', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 1, latestLifecycle: 'active', activeVersion: 1, updatedAt: '', simulation: null, latestDocument: REGEL, versions: [1] },
+    { flowId: 'f-1', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 1, latestLifecycle: 'active', activeVersion: 1, updatedAt: '', simulation: null, latestDocument: REGEL, versions: [1], preisBausteinAktiv: false },
   ]);
   BOUND.entities.mockResolvedValue([
     { id: 'grid', entityType: 'grid-meter', label: 'Netz', measure: ['power_kw'], actuate: [] },
@@ -118,7 +118,9 @@ beforeEach(() => {
   vi.spyOn(api, 'schedule').mockResolvedValue({ planId: null, deviceId: null, generatedAt: null, slotMinutes: 15, savingsEur: null, bankedValueEur: null, socStartPct: null, socEndPct: null, peakTargetKw: null, fallback14a: null, slots: [] });
   vi.spyOn(api, 'consumerSchedule').mockResolvedValue({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] });
   vi.spyOn(api, 'history').mockRejectedValue(new Error('nicht da'));
-  vi.spyOn(api, 'prices').mockResolvedValue({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: [] });
+  // Diese Testwelt ist eine Anlage OHNE Preis-Zuleitung (Festtarif): der
+  // Preis-Baustein bleibt gesperrt, die Preis-Regel ehrlich gekennzeichnet.
+  vi.spyOn(api, 'prices').mockResolvedValue({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: [], boxFeed: { aktiv: false, grund: 'kein_dynamischer_tarif' } });
   vi.spyOn(api, 'weather').mockResolvedValue({ runAt: null, points: [] });
   vi.spyOn(api, 'siteAssets').mockResolvedValue([{ id: 'b', type: 'battery', deviceId: 'd', capacityKwh: 10, maxChargeKw: 5, maxDischargeKw: 5, roundtripEfficiencyPct: 92, speicherschonung: null, pvCapacityKwp: null } as never]);
   vi.spyOn(api, 'siteProfiles').mockResolvedValue({ profiles: [] });
@@ -322,8 +324,9 @@ describe('Steuerung · Reiter Regeln', () => {
     zeige('regeln');
     fireEvent.click(await screen.findByRole('button', { name: /Neue Regel/ }));
     const blatt = await screen.findByRole('dialog', { name: 'Neue Regel' });
-    // N2 (report.md §11): eine frische Regel startet mit 'zeit', nicht mehr mit dem
-    // gesperrten Preis-Baustein (`neuerEntwurf` ohne Vorlage).
+    // Ohne Preis-Zuleitung (diese Testwelt: Festtarif) startet eine frische
+    // Regel mit 'zeit', nie mit dem gesperrten Preis-Baustein (`neuerEntwurf`);
+    // die Bühnen-Welt MIT Zuleitung prüft e2e/steuerung.spec.ts (Börsenpreis).
     expect(within(blatt).getByLabelText('Regel als Satz')).toHaveTextContent(/Uhrzeit.*22:00.*06:00/);
     fireEvent.click(within(blatt).getByRole('button', { name: 'Weiter: Folgen' }));
     const folgen = await screen.findByRole('dialog', { name: 'Folgen prüfen' });
@@ -856,11 +859,12 @@ describe('Steuerung · Steuern & Optimieren (UEMS)', () => {
     const { unmount } = render(<SteuerungSection site={site} reiter="regeln" tabs={TABS} onOpenSub={vi.fn()} />);
     await screen.findByTestId('steuern-ruhe');
     const regel = await waitFor(() => document.getElementById('regel-f-1')!);
-    // `REGEL` (oben) hat eine Preis-Bedingung: N2 (report.md §11) zeigt dafür
-    // immer „kommt noch“, auch angehalten - das ist der fundamentalere Grund,
-    // unabhängig vom Fortsetzen. Die `matt`-Klasse (SZ-2 A) bleibt trotzdem.
+    // `REGEL` (oben) hat eine Preis-Bedingung und diese Testwelt KEINE
+    // Preis-Zuleitung (Festtarif): die Karte zeigt immer „kommt noch“, auch
+    // angehalten - das ist der fundamentalere Grund, unabhängig vom
+    // Fortsetzen. Die `matt`-Klasse (SZ-2 A) bleibt trotzdem.
     await waitFor(() => expect(regel).toHaveTextContent('kommt noch'));
-    expect(regel).toHaveTextContent('wird auf der Box noch nicht ausgeführt');
+    expect(regel).toHaveTextContent('wird auf der Box noch nicht ausgeführt - kein zeitveränderlicher Tarif');
     expect(regel).toHaveClass('matt');
     unmount();
     zeige('laden');

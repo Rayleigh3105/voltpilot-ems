@@ -23,7 +23,7 @@ import { N } from './zeit';
 
 function leereReihen(): Reihen {
   const n = () => Array.from({ length: N }, () => null as number | null);
-  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: 52, morgenBekannt: false };
+  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: 52, morgenBekannt: false, preisBox: false };
 }
 
 const geraet = (o: Partial<GeraetBild> = {}): GeraetBild => ({
@@ -36,22 +36,36 @@ const geraet = (o: Partial<GeraetBild> = {}): GeraetBild => ({
   ...o,
 });
 
-const bezug = bezugAus([
+const entitaeten = [
   { id: 'grid', entityType: 'grid-meter', label: 'Netz', measure: ['power_kw'], actuate: [] },
   { id: 'bat', entityType: 'battery-hybrid', label: 'Speicher', measure: ['soc_pct'], actuate: ['set_power'] },
   { id: 'hs', entityType: 'heating-rod', label: 'Heizstab', measure: ['power_kw'], actuate: ['on_off', 'setpoint_kw'] },
-]);
+];
+/** Ohne Preis-Zuleitung (der Stand vor dem Feed, und jede gesperrte Anlage). */
+const bezug = bezugAus(entitaeten);
+/** Mit Preis-Zuleitung: die Box bekommt den Börsenpreis gespeist. */
+const bezugMitPreis = bezugAus(entitaeten, { aktiv: true, grund: null });
 
 describe('Satzbaukasten', () => {
   it('bietet nur Bausteine an, die die Box ausführen kann', () => {
     const v = vars(bezug);
-    // N2 (report.md §11, needs-decision n2-preis-feed, Entscheid: Weg B): die Box
-    // bekommt nie einen Preis - gesperrt wie jeder andere nicht ausführbare Baustein.
+    // Ohne Preis-Zuleitung bleibt der Baustein gesperrt - wie jeder andere
+    // Baustein, der nichts bewirken kann (vor dem Feed: N2, Weg B).
     expect(v.preis.gesperrt).toBe('kommt noch');
     expect(v.sonne.gesperrt).toBeNull();
     expect(v.soc.gesperrt).toBeNull();
     expect(v.temp.gesperrt).toBe('kommt noch');
-    expect(vars({ netzId: null, speicherId: null }).sonne.gesperrt).toBe('kein Netzanschluss-Zähler');
+    expect(vars({ netzId: null, speicherId: null, preisFeed: null }).sonne.gesperrt).toBe('kein Netzanschluss-Zähler');
+  });
+
+  it('entsperrt den Preis-Baustein genau mit der Zuleitung, sonst mit Grund im Klartext', () => {
+    expect(vars(bezugMitPreis).preis.gesperrt).toBeNull();
+    const grund = (g: 'kein_dynamischer_tarif' | 'keine_zone' | 'keine_box' | 'edge_light') =>
+      vars(bezugAus(entitaeten, { aktiv: false, grund: g })).preis.gesperrt;
+    expect(grund('kein_dynamischer_tarif')).toBe('kein zeitveränderlicher Tarif');
+    expect(grund('keine_zone')).toBe('keine Preiszone');
+    expect(grund('keine_box')).toBe('keine VoltPilot-Box');
+    expect(grund('edge_light')).toBe('führt diese Box nicht aus');
   });
 
   it('wird eine gewöhnliche Regel der Box und kommt unverändert zurück', () => {
@@ -100,12 +114,10 @@ describe('Satzbaukasten', () => {
     expect(p.kwh).toBeCloseTo(0.75);
   });
 
-  it('N2 (report.md §11): eine Preis-Bedingung greift im Probelauf nie - die Box hat nie einen Preis', () => {
-    // Anders als `sonne`/`soc`/`zeit`: eine Preis-Bedingung kompiliert zu
-    // `vp.price.current`, das Thema `edge/price/current` liest - reserviert,
-    // der Core speist es nicht. Ein bekannter Marktpreis im Portal (selbst für
-    // heute UND morgen) darf den Probelauf nicht zu Schaltzeiten verführen, die
-    // die Box nie ausführt.
+  it('ohne Preis-Zuleitung greift eine Preis-Bedingung im Probelauf nie - wie auf der Box', () => {
+    // Ein bekannter Marktpreis im Portal (selbst für heute UND morgen) darf den
+    // Probelauf nicht zu Schaltzeiten verführen, die die Box ohne Zuleitung nie
+    // ausführt (`rh.preisBox` false).
     const rh = leereReihen();
     rh.preis[60] = -1; // negativer Preis, Bedingung der 'negativ'-Vorlage - und bekannt
     rh.morgenBekannt = true;
@@ -115,37 +127,73 @@ describe('Satzbaukasten', () => {
     const p = probelauf(e, rh, geraet(), 52);
     expect(p.treffer).toBe(0);
     expect(p.kwh).toBe(0);
+    expect(p.unbekannt).toBe(true);
     expect(p.niedrigsterPreis).toBe(-1); // der Hinweistext „nie zu" bleibt informativ
   });
 
-  it('N2: eine bereits angelegte Preis-Regel verschwindet nicht, sie wird ehrlich gekennzeichnet', () => {
-    // Weg B (needs-decision n2-preis-feed, Entscheid 14.11.2026): der Baustein wird
-    // gesperrt, eine SCHON gebaute Regel mit Preis-Bedingung bleibt aber stehen - sie
-    // wird weder gelöscht noch stillschweigend ausgeblendet, nur ehrlich markiert.
-    const regel = zuGuided(neuerEntwurf([geraet()], { vorlage: 'negativ' }), bezug, geraet())!;
+  it('mit Preis-Zuleitung rechnet der Probelauf auf demselben Börsenpreis wie die Box', () => {
+    // `rh.preis` sind die day_ahead_prices der Zone (/prices) - exakt die
+    // Reihen, aus denen der Feed veröffentlicht (mqtt-price-current.md).
+    const rh = leereReihen();
+    rh.preisBox = true;
+    rh.morgenBekannt = true;
+    rh.preis[60] = -1;
+    rh.preis[61] = 0.5; // über 0 ct: die 'negativ'-Vorlage greift dort nicht
+    const e = neuerEntwurf([geraet()], { vorlage: 'negativ' });
+    expect(greift(e, rh, 60, 63)).toEqual([true, false, false]);
+    const p = probelauf(e, rh, geraet(), 52);
+    expect(p.treffer).toBe(1);
+    expect(p.unbekannt).toBe(false);
+    // Ohne die Preise für morgen bleibt der Probelauf ausdrücklich unvollständig.
+    rh.morgenBekannt = false;
+    expect(probelauf(e, rh, geraet(), 52).unbekannt).toBe(true);
+  });
+
+  it('eine Preis-Regel verschwindet nie, ihr Hinweis folgt Zuleitung und Artefakt', () => {
+    const regel = zuGuided(neuerEntwurf([geraet()], { vorlage: 'negativ' }), bezugMitPreis, geraet())!;
     const doc = buildGuidedFlow(regel, 'Negativpreise mitnehmen', 's1');
     const flow: FlowSummary = {
       flowId: 'f-preis', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 1,
       latestLifecycle: 'active', activeVersion: 1, updatedAt: '2026-01-01T00:00:00Z',
-      simulation: null, latestDocument: doc, versions: [1],
+      simulation: null, latestDocument: doc, versions: [1], preisBausteinAktiv: true,
     };
-    const karten = regelKarten([flow], bezug, { hs: 'Heizstab' });
-    expect(karten).toHaveLength(1);
-    expect(karten[0].an).toBe(true);
-    expect(karten[0].preisNichtAusgefuehrt).toBe(true);
 
-    // Eine Regel ohne Preis-Bedingung bleibt unberührt.
+    // Ohne Zuleitung: sichtbar und eingeschaltet, aber ehrlich gekennzeichnet -
+    // mit dem Sperr-Grund im Klartext.
+    const ohneFeed = regelKarten([flow],
+        bezugAus(entitaeten, { aktiv: false, grund: 'kein_dynamischer_tarif' }), { hs: 'Heizstab' });
+    expect(ohneFeed).toHaveLength(1);
+    expect(ohneFeed[0].an).toBe(true);
+    expect(ohneFeed[0].preisHinweis?.art).toBe('zuleitung_fehlt');
+    expect(ohneFeed[0].preisHinweis?.text).toContain('kein zeitveränderlicher Tarif');
+
+    // Mit Zuleitung und frischem Artefakt: der Hinweis ist weg - die Regel läuft.
+    expect(regelKarten([flow], bezugMitPreis, { hs: 'Heizstab' })[0].preisHinweis).toBeNull();
+
+    // Mit Zuleitung, aber ein AKTIVES Artefakt von vor der Preis-Wächter-Kette:
+    // der Kunde heilt das selbst über Aus- und wieder Einschalten.
+    const alt = { ...flow, preisBausteinAktiv: false };
+    const altKarte = regelKarten([alt], bezugMitPreis, { hs: 'Heizstab' })[0];
+    expect(altKarte.preisHinweis?.art).toBe('neu_einschalten');
+    // Eine AUSGESCHALTETE alte Regel braucht keinen Hinweis: Einschalten kompiliert neu.
+    const aus = { ...flow, activeVersion: null, preisBausteinAktiv: null };
+    expect(regelKarten([aus], bezugMitPreis, { hs: 'Heizstab' })[0].preisHinweis).toBeNull();
+
+    // Eine Regel ohne Preis-Bedingung bleibt in jeder Welt unberührt.
     const nachtRegel = zuGuided(neuerEntwurf([geraet()], { vorlage: 'nacht' }), bezug, geraet())!;
     const nachtDoc = buildGuidedFlow(nachtRegel, 'Nachts laufen lassen', 's1');
-    const nachtFlow: FlowSummary = { ...flow, flowId: 'f-nacht', name: 'Nachts laufen lassen', latestDocument: nachtDoc };
-    expect(regelKarten([nachtFlow], bezug, { hs: 'Heizstab' })[0].preisNichtAusgefuehrt).toBe(false);
+    const nachtFlow: FlowSummary = { ...flow, flowId: 'f-nacht', name: 'Nachts laufen lassen', latestDocument: nachtDoc, preisBausteinAktiv: false };
+    expect(regelKarten([nachtFlow], bezug, { hs: 'Heizstab' })[0].preisHinweis).toBeNull();
   });
 
   it('bietet Vorlagen nur mit Gerät und ausführbaren Bausteinen an', () => {
     expect(vorlagenFuer(bezug, []).length).toBe(0);
-    // N2 (Entscheid: Weg B): 'negativ' und 'guenstig' brauchen den gesperrten
-    // Preis-Baustein und verschwinden deshalb aus der Galerie - 'nacht' bleibt.
-    expect(vorlagenFuer({ netzId: null, speicherId: null }, [geraet()]).map((v) => v.id)).toEqual(['nacht']);
+    // Ohne Zuleitung brauchen 'negativ' und 'guenstig' den gesperrten
+    // Preis-Baustein und verschwinden aus der Galerie - 'nacht' bleibt.
+    expect(vorlagenFuer({ netzId: null, speicherId: null, preisFeed: null }, [geraet()]).map((v) => v.id)).toEqual(['nacht']);
+    // Mit Zuleitung sind die zwei Preis-Vorlagen wieder da, wo sie funktionieren.
+    expect(vorlagenFuer({ netzId: null, speicherId: null, preisFeed: { aktiv: true, grund: null } }, [geraet()]).map((v) => v.id))
+      .toEqual(['negativ', 'guenstig', 'nacht']);
   });
 
   it('verspricht bei einer Benachrichtigungs-Regel nie eine ankommende Nachricht (Entscheid 10A)', () => {

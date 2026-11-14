@@ -346,8 +346,8 @@ export function installSteuerungFixtures() {
   const regelAus = buildGuidedFlow({ conditions: [{ kind: 'entity', entityId: 'help-battery', channel: 'soc_pct', direction: 'above', threshold: 90, hysteresis: 2 }], combinator: 'and',
     action: { kind: 'onoff', entityId: eid('klima'), ttlS: 300 } }, 'Speicher voll? Weiter', SITE);
   const flows = OHNE_REGELN ? [] : [
-    { flowId: 'f-neg', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 2, latestLifecycle: 'active', activeVersion: 2, updatedAt: JETZT, simulation: null, latestDocument: regelDoc, versions: [1, 2] },
-    { flowId: 'f-voll', name: 'Speicher voll? Weiter', runtime: 'edge', latestVersion: 1, latestLifecycle: 'draft', activeVersion: null, updatedAt: JETZT, simulation: null, latestDocument: regelAus, versions: [1] },
+    { flowId: 'f-neg', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 2, latestLifecycle: 'active', activeVersion: 2, updatedAt: JETZT, simulation: null, latestDocument: regelDoc, versions: [1, 2], preisBausteinAktiv: true },
+    { flowId: 'f-voll', name: 'Speicher voll? Weiter', runtime: 'edge', latestVersion: 1, latestLifecycle: 'draft', activeVersion: null, updatedAt: JETZT, simulation: null, latestDocument: regelAus, versions: [1], preisBausteinAktiv: null },
   ];
   const ruleEvents = { recordingSince: '2026-09-01T00:00:00Z', countsToday: true, accuracySeconds: 15,
     rules: [{ ruleKind: 'flow', ruleRef: 'f-neg', switchedToday: 1, lastSwitchedAt: ts(52) }],
@@ -361,7 +361,9 @@ export function installSteuerungFixtures() {
     schedule: result(plan),
     history: result(verlauf),
     telemetry: result([{ ts: JETZT, powerKw: netz[J], socPct: soc[J], pvPowerKw: pv[J], loadKw: gesamtLast(J), gridLimitKw: 22 }]),
-    prices: result({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: preis.map((p, i) => ({ ts: ts(i), end: ts(i + 1), priceEurMwh: p * 10 })) }),
+    // Die Bühne ist eine Anlage MIT Preis-Zuleitung (ihre Preis-Regel hat heute
+    // geschaltet, siehe ruleEvents): der Preis-Baustein ist entsperrt.
+    prices: result({ biddingZone: 'DE-LU', currency: 'EUR', resolution: 'PT15M', points: preis.map((p, i) => ({ ts: ts(i), end: ts(i + 1), priceEurMwh: p * 10 })), boxFeed: { aktiv: true, grund: null } }),
     weather: result({ runAt: JETZT, points: (D.temp as number[]).map((t, i) => ({ ts: ts(i), temperatureC: t, cloudCoverPct: 10, ghiWM2: 0, dniWM2: 0, dhiWM2: 0, dniNormalWM2: 0 })) }),
     siteVerbraucher: result({ verbraucher, ladepunkte: { standard: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'pausieren' }, standardFolger: 0, gesamt: 2, rahmen }, rangliste }),
     saveRangliste: async (_s: string, eintraege: { art: string; entityId?: string }[]) => ({

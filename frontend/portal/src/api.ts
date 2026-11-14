@@ -376,11 +376,24 @@ export interface PricePoint {
   priceEurMwh: number | null;
 }
 
+/**
+ * Ob die Box dieser Anlage den aktuellen Börsenpreis gespeist bekommt
+ * (Vertrag docs/contracts/v2/mqtt-price-current.md). Daran entsperrt der
+ * Regel-Baukasten seinen Preis-Baustein, und der Probelauf rechnet dann auf
+ * den `points` derselben Antwort - den Reihen, aus denen auch der Feed
+ * veröffentlicht. `grund` ist genau dann gesetzt, wenn `aktiv` false ist.
+ */
+export interface PriceBoxFeed {
+  aktiv: boolean;
+  grund: 'kein_dynamischer_tarif' | 'keine_zone' | 'keine_box' | 'edge_light' | null;
+}
+
 export interface PriceSeries {
   biddingZone: string;
   resolution: string | null;
   currency: string;
   points: PricePoint[];
+  boxFeed: PriceBoxFeed;
 }
 
 export interface PriceBucket {

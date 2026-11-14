@@ -1084,10 +1084,10 @@ export function NetzanschlussBlatt({ k, siteId, netzanschlussKw }: {
 }
 
 export function NegativBlatt({ k }: { k: BlattKontext }) {
-  // N2 (report.md §11, needs-decision n2-preis-feed): die Vorlage "Negativpreise
-  // mitnehmen" braucht den Preis-Baustein, der auf der Box noch nicht ankommt und
-  // deshalb gesperrt ist (`vars().preis`) - kein Vorschlag, eine Regel daraus zu
-  // bauen, solange sie nichts bewirken würde.
+  // Der Preis-Baustein hängt an der Zuleitung (`vars().preis`, mqtt-price-
+  // current.md): wo sie steht, bietet die Vorlagen-Galerie "Negativpreise
+  // mitnehmen" wieder an - dieses Blatt bleibt bewusst ohne eigenen Kurzweg,
+  // die Galerie ist der eine Einstieg.
   return (
     <Blatt symbol="down" titel="Negativpreis-Abregelung" unter="läuft immer mit" onClose={k.zu}>
       <div className="warum">Kostet Strom an der Börse unter null, speist die Anlage nicht ein. Das schützt vor Kosten.</div>

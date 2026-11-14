@@ -104,6 +104,12 @@ export interface Reihen {
   gemessenBis: number;
   /** Sind die Börsenpreise für morgen schon da? */
   morgenBekannt: boolean;
+  /**
+   * Bekommt die Box den aktuellen Börsenpreis gespeist (`PriceSeries.boxFeed`,
+   * mqtt-price-current.md)? Nur dann rechnet der Probelauf eine Preis-Bedingung
+   * auf `preis` - sonst ist sie unbekannt, wie auf der Box.
+   */
+  preisBox: boolean;
 }
 
 const num = (v: unknown): number | null =>
@@ -124,6 +130,7 @@ export function reihen(i: ReihenInput): Reihen {
     pv: leer(), last: leer(), netz: leer(), bat: leer(), soc: leer(), preis: leer(),
     bezug: leer(), einspeise: leer(),
     temp: leer(), abgeregelt: leer(), gemessenBis: r.jetzt, morgenBekannt: false,
+    preisBox: i.preise?.boxFeed?.aktiv === true,
   };
   // Zukunft: der jüngste Fahrplan.
   for (const s of liste(i.plan?.slots)) {

@@ -37,6 +37,12 @@ export interface FlowSummary {
   simulation: FlowSimulationSummary | null;
   latestDocument: FlowDocument;
   versions: number[];
+  /**
+   * Ob das AKTIVE Artefakt Preis-Bedingungen ausführt (flowc >= 1.1.0, die
+   * Preis-Wächter-Kette). `null` = keine aktive Version. Grundlage des
+   * „wird auf der Box noch nicht ausgeführt"-Hinweises einer Preis-Regel.
+   */
+  preisBausteinAktiv: boolean | null;
 }
 
 export interface FlowSimulationSummary {
