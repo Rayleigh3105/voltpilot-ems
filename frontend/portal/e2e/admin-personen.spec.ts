@@ -70,6 +70,53 @@ for (const breite of [DESKTOP, PHONE]) {
   });
 }
 
+/**
+ * vp-admin-rollen-plattform (Admin-Durchgang Antwort Punkt 3 = B): im selben Bearbeiten-Dialog kann der
+ * Plattform-Administrator Rolle und (bei Standort-Rollen) Standorte ändern - mit denselben Regeln wie
+ * der Kundenadministrator (mindestens ein Standort). Ohne Berührung des Felds bleibt die Rolle unverändert.
+ */
+for (const breite of [DESKTOP, PHONE]) {
+  test(`Bearbeiten ändert auch Rolle und Standorte · ${breite}px`, async ({ page }) => {
+    const fehler = fehlerAufzeichnen(page);
+    await page.setViewportSize({ width: breite, height: breite === PHONE ? 844 : 900 });
+    await page.goto('/e2e/admin-personen.html');
+    await page.waitForSelector('.vp-kundenakte');
+    await expect(page.getByText('Kundenadministrator')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Aktionen für wuestholz' }).click();
+    await page.getByRole('menuitem', { name: 'Bearbeiten' }).click();
+    const edit = page.getByRole('dialog', { name: /Benutzer bearbeiten: wuestholz/ });
+
+    // Ohne das Rolle-Feld zu berühren: kein Standort-Wähler, kein Hinweis auf das Zugriffsprotokoll.
+    await expect(edit.getByRole('combobox', { name: 'Standorte' })).toHaveCount(0);
+    await expect(edit.getByText('Die Änderung gilt sofort und steht im Zugriffsprotokoll des Kunden.')).toHaveCount(0);
+
+    // Die Listbox-Optionen rendern als Overlay außerhalb des Dialogs - deshalb page-, nicht edit-skaliert.
+    await edit.getByRole('combobox', { name: 'Rolle' }).click();
+    await page.getByRole('option', { name: 'Leser' }).click();
+    await expect(edit.getByText('Die Änderung gilt sofort und steht im Zugriffsprotokoll des Kunden.')).toBeVisible();
+
+    // Regel wie beim Kundenadministrator: eine Standort-Rolle braucht mindestens einen Standort.
+    const speichern = edit.getByRole('button', { name: 'Änderungen speichern' });
+    await expect(speichern).toBeDisabled();
+    await expect(edit.getByText('Wählen Sie mindestens einen Standort.')).toBeVisible();
+
+    await edit.getByRole('combobox', { name: 'Standorte' }).click();
+    await page.getByRole('option', { name: 'Zuhause', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await expect(edit.getByText('Wählen Sie mindestens einen Standort.')).toHaveCount(0);
+    await expect(speichern).toBeEnabled();
+    await speichern.click();
+    await expect(edit).toHaveCount(0);
+
+    await expect(page.getByText('Kundenadministrator')).toHaveCount(0);
+    await expect(page.getByText('Leser')).toBeVisible();
+
+    await keinUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+}
+
 test('Person hinzufügen: unternehmensweite Rolle ohne Standort-Wähler', async ({ page }) => {
   const fehler = fehlerAufzeichnen(page);
   await page.setViewportSize({ width: DESKTOP, height: 900 });

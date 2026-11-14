@@ -2,6 +2,7 @@ package com.voltpilot.api.admin;
 
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
 import com.voltpilot.api.benutzer.BenutzerService;
+import com.voltpilot.api.benutzer.BenutzerVerwaltung;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.RechteAbleitung.Konto;
@@ -32,14 +33,17 @@ public class AdminBenutzerService {
     private final ZugriffRepository zugriffe;
     private final ZugriffAenderung aenderung;
     private final BenutzerService benutzer;
+    private final BenutzerVerwaltung verwaltung;
     private final TransactionTemplate tx;
 
     public AdminBenutzerService(KeycloakAdminClient keycloak, ZugriffRepository zugriffe,
-            ZugriffAenderung aenderung, BenutzerService benutzer, PlatformTransactionManager transactions) {
+            ZugriffAenderung aenderung, BenutzerService benutzer, BenutzerVerwaltung verwaltung,
+            PlatformTransactionManager transactions) {
         this.keycloak = keycloak;
         this.zugriffe = zugriffe;
         this.aenderung = aenderung;
         this.benutzer = benutzer;
+        this.verwaltung = verwaltung;
         this.tx = new TransactionTemplate(transactions);
     }
 
@@ -98,6 +102,19 @@ public class AdminBenutzerService {
                 zugriffe.kontoProtokoll("konto_geaendert", sub, anzeigename, akteur, grund);
             }
             return nachher;
+        });
+    }
+
+    /**
+     * Admin-Durchgang Antwort Punkt 3 (B): „Bearbeiten" im selben Dialog wie Anmeldename/E-Mail/Name - Rolle und
+     * (bei Rollen je Standort) Standorte ändern, mit denselben Regeln wie beim Kundenadministrator. Derselbe
+     * Weg wie dort ({@link BenutzerVerwaltung#wechseln}), nur im Mandantensprung: der Prüfpunkt bleibt
+     * {@link ZugriffAenderung}, das Protokoll trägt den Urheber {@code voltpilot_betrieb}.
+     */
+    public void rolleUndStandorteAendern(UUID tenant, String sub, BenutzerVerwaltung.Wechsel wechsel) {
+        imKundenbereich(tenant, akteur -> {
+            verwaltung.wechseln(sub, wechsel, akteur);
+            return null;
         });
     }
 

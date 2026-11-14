@@ -571,6 +571,87 @@ class AdminApiTest {
         assertThat(ungueltig.getBody()).containsEntry("code", "anmeldename_ungueltig");
     }
 
+    /**
+     * Admin-Durchgang Antwort Punkt 3 (B): Rolle und (bei Rollen je Standort) Standorte im selben
+     * Bearbeiten-Dialog ändern wie Anmeldename/E-Mail/Name - über denselben Prüfpunkt ({@code
+     * ZugriffAenderung}, wie beim Kundenadministrator unter {@code /api/v1/benutzer/{sub}/zugriff}, vgl.
+     * {@code BenutzerVerwaltungApiTest#imMandantensprungVerwaltetDiePlattformBenutzerWieDerKundenadministrator})
+     * und dieselben Regeln: mindestens ein Standort bei Standort-Rollen, der letzte Kundenadministrator
+     * lässt sich nicht herabstufen. Protokoll mit Urheber VoltPilot-Betrieb, von welcher Rolle auf welche.
+     */
+    @Test
+    void adminAendertRolleUndStandorteImBearbeitenDialogMitDenRegelnDesKundenadministrators() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Rollenwechsel GmbH", "CI").get("id");
+        String kundenadminSub = (String) createUser(admin, tenantId, "erste-rollenwechsel",
+                "erste@rollenwechsel.example", "egal-pw-1").get("id");
+
+        UUID unternehmen = UUID.fromString(queryString("SELECT id FROM unternehmen WHERE tenant_id = '" + tenantId + "'"));
+        UUID standort = UUID.fromString(queryString("INSERT INTO standort (tenant_id, unternehmen_id, name, "
+                + "kurzzeichen, zeitzone, zustand) VALUES ('" + tenantId + "', '" + unternehmen
+                + "', 'Werk Rollenwechsel', 'ST-RW', 'Europe/Berlin', 'aktiv') RETURNING id"));
+
+        ResponseEntity<Map<String, Object>> angelegt = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "zweite-rollenwechsel", "email", "zweite@rollenwechsel.example",
+                        "rolle", "leser", "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(angelegt.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> konto = (Map<String, Object>) angelegt.getBody().get("benutzer");
+        String sub = (String) konto.get("sub");
+        String bisherigeZuweisung = queryString("SELECT id FROM zugriff WHERE benutzer_sub = '" + sub
+                + "' AND beendet_am IS NULL");
+
+        // Erlaubt für den Plattform-Administrator: „Leser" an ST-RW wird „Energiemanager" unternehmensweit -
+        // im selben Dialog wie Anmeldename/E-Mail/Name, über die Admin-Route.
+        ResponseEntity<Void> gewechselt = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + sub + "/zugriff"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("bisher", List.of(bisherigeZuweisung), "rolle", "energiemanager",
+                        "standorte", List.of()), bearer(admin)),
+                Void.class);
+        assertThat(gewechselt.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(queryLong("SELECT count(*) FROM zugriff WHERE benutzer_sub = '" + sub
+                + "' AND rolle = 'energiemanager' AND standort_id IS NULL AND beendet_am IS NULL")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM zugriff WHERE id = '" + bisherigeZuweisung
+                + "' AND beendet_am IS NOT NULL")).isEqualTo(1);
+
+        // Protokoll-Eintrag: wer (Plattform-Administrator, Urheber voltpilot_betrieb), bei wem, von welcher
+        // Rolle auf welche - sichtbar im bestehenden Zugriffsprotokoll, auch für den Kunden (BenutzerVerwaltung#protokoll).
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + sub
+                + "' AND aktion = 'entziehen' AND rolle = 'leser' AND actor_rolle = 'voltpilot_betrieb'"))
+                .isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + sub
+                + "' AND aktion = 'zuweisen' AND rolle = 'energiemanager' AND actor_rolle = 'voltpilot_betrieb'"))
+                .isEqualTo(1);
+
+        // Regel aus Punkt 1 (wie beim Kundenadministrator): mindestens ein Standort bei Standort-Rollen.
+        ResponseEntity<Map<String, Object>> ohneStandort = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + sub + "/zugriff"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("bisher", List.of(), "rolle", "leser", "standorte", List.of()), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ohneStandort.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // Regel aus Punkt 1: der letzte Kundenadministrator eines Kunden lässt sich nicht herabstufen.
+        String bisherigeKa = queryString("SELECT id FROM zugriff WHERE benutzer_sub = '" + kundenadminSub
+                + "' AND beendet_am IS NULL");
+        ResponseEntity<Map<String, Object>> herabstufung = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + kundenadminSub + "/zugriff"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("bisher", List.of(bisherigeKa), "rolle", "leser",
+                        "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(herabstufung.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(herabstufung.getBody()).containsEntry("code", "letzter_kundenadministrator");
+
+        // Verboten für alle anderen Rollen - derselbe Zaun wie jede Admin-Route (@PreAuthorize platform-admin).
+        String operator = token("demo", "demo");
+        assertThat(rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + sub + "/zugriff"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("bisher", List.of(), "rolle", "leser", "standorte", List.of()),
+                        bearer(operator)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
 
     @Test

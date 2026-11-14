@@ -12,7 +12,7 @@ import { mandantHash } from '../src/nav';
 import { adminApi, type AdminUser, type Tenant } from '../src/admin/adminApi';
 import { benutzerApi, type BenutzerAnlage, type BenutzerEintrag } from '../src/benutzer';
 import { fleetApi, type AdminFleetSite } from '../src/admin/fleetApi';
-import { api, ApiError, type Site } from '../src/api';
+import { api, ApiError, type SelbstauskunftStandort, type Site } from '../src/api';
 import { keycloak } from '../src/auth';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -43,6 +43,12 @@ function site(id: string, name: string): Site {
   } as Site;
 }
 const sites: Site[] = [site('zuhause', 'Zuhause')];
+// vp-admin-rollen-plattform: der Standort-Wähler des Rolle-und-Standorte-Teils - dieselbe Liste, die der
+// Kundenadministrator selbst über die Selbstauskunft sieht (`standort`, nicht `site`).
+const standorte: SelbstauskunftStandort[] = [
+  { id: 'zuhause', kennzeichen: 'ZH', name: 'Zuhause', rollen: [], umfang: null, ocpp_stufe: 'keine', rechte: [] },
+];
+const STANDORT_ROLLEN = new Set(['bearbeiter', 'bedienberechtigt', 'leser']);
 
 let konten: AdminUser[] = [
   { id: 'kf', username: 'wuestholz', email: 'k.wuestholz@example.de', firstName: 'Karl-Friedrich',
@@ -129,6 +135,19 @@ Object.assign(adminApi, {
     tenantId: TENANT_ID, daten: ['herzschlag', 'messwerte'], beendetAm: null,
     folgen: { anlagen: 1, boxen: [], personen: konten.length },
   }),
+  // vp-admin-rollen-plattform: Rolle und Standorte ändern - derselbe Wechsel wie beim
+  // Kundenadministrator (`BenutzerVerwaltung#wechseln`), hier als Zustand auf den Einträgen.
+  changeUserAccess: async (_tenantId: string, userId: string, input: { bisher: string[]; rolle: string; standorte: string[] }) => {
+    const bisherigerEintrag = eintraege.find((e) => e.sub === userId)!;
+    const bleibend = bisherigerEintrag.zuweisungen.filter((z) => !input.bisher.includes(z.id));
+    const ids = STANDORT_ROLLEN.has(input.rolle) ? input.standorte : [null];
+    const neue = ids.map((standortId) => ({
+      id: 'z-wechsel-' + naechsteId++, rolle: input.rolle, standort_id: standortId,
+      standort_name: standortId ? standorte.find((s) => s.id === standortId)?.name ?? null : null,
+      gueltig_ab: iso(0), gueltig_bis: null,
+    }));
+    eintraege = eintraege.map((e) => e.sub === userId ? { ...e, zuweisungen: [...bleibend, ...neue] } : e);
+  },
 });
 Object.assign(benutzerApi, { liste: async () => eintraege });
 Object.assign(fleetApi, {
@@ -146,7 +165,7 @@ Object.assign(fleetApi, {
     unterstuetzungStandorte: sites.map((s) => ({ id: s.id, tenantId: TENANT_ID, name: s.name })),
   }),
 });
-Object.assign(api, { selbstauskunft: async () => ({ kundenbereich: { beendet: null } }) });
+Object.assign(api, { selbstauskunft: async () => ({ kundenbereich: { beendet: null }, standorte }) });
 
 window.location.hash = mandantHash(TENANT_ID);
 

@@ -12,7 +12,7 @@ import { StartpasswortAnzeige } from '../../components/StartpasswortAnzeige';
 import { AufklapperKarte } from '../../components/AufklapperKarte';
 import { benutzerApi, benutzerFehler, KUNDENROLLEN, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag } from '../../benutzer';
 import { ROLLE_BESCHREIBUNG } from '../../components/BenutzerEinladen';
-import { ApiError, ablehnungCode, api, neueAnfrageKennung, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
+import { ApiError, ablehnungCode, api, neueAnfrageKennung, type SelbstauskunftKundenbereichBeendet, type SelbstauskunftStandort, type Site } from '../../api';
 import {
   anlagenBoxenZeilen,
   datumDe,
@@ -523,6 +523,9 @@ function KundenaktePage({
 }) {
   const [konten, setKonten] = useState<AdminUser[] | null>(null);
   const [eintraege, setEintraege] = useState<BenutzerEintrag[] | null>(null);
+  // vp-admin-rollen-plattform: die Standorte für den Rolle-und-Standorte-Teil des Bearbeiten-Dialogs - dieselbe
+  // Liste, die der Kundenadministrator selbst sieht (`standort`, nicht `site`/Anlage).
+  const [standorte, setStandorte] = useState<SelbstauskunftStandort[] | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
   const [fleetSites, setFleetSites] = useState<AdminFleetSite[] | null>(null);
   const [unterstuetzungBis, setUnterstuetzungBis] = useState<string | null>(null);
@@ -567,6 +570,7 @@ function KundenaktePage({
       setKonten(k);
       setEintraege(e);
       setSites(s);
+      setStandorte(selbst.standorte);
       setFleetSites(f.sites.filter((fs) => fs.tenantId === tenant.id));
       setUnterstuetzungBis(f.unterstuetzungBis?.[tenant.id] ?? null);
       setVertragsende(selbst.kundenbereich?.beendet ?? null);
@@ -1061,6 +1065,8 @@ function KundenaktePage({
           key={editUser.id}
           tenant={tenant}
           user={editUser}
+          eintrag={eintraege?.find((e) => e.sub === editUser.id) ?? null}
+          standorte={standorte ?? []}
           onClose={() => setEditUser(null)}
           onSaved={() => {
             setEditUser(null);
