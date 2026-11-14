@@ -12,6 +12,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '../src/App';
 import { api, type AbrechnungPruefung, type HistoryRange } from '../src/api';
+import { abrechnungApi } from '../src/abrechnungApi';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { installHelpFixtures } from './help-fixtures';
@@ -64,27 +65,6 @@ Object.assign(api, {
   earnings: result({ range: 'day', from: d.money.from, to: d.money.to, sites: [d.money], totals: d.money }),
   siteEarnings: result(d.money),
   history: async (_site: string, range: HistoryRange, at: string) => historyFuer(anlage, fall, range, at),
-  historyZeitraum: async (_site: string, von: string, bis: string) => historyZeitraum(anlage, fall, von, bis),
-  abrechnung: async (_site: string, von: string, bis: string) => ({
-    ...abrechnungFuer(anlage, fall, von, bis),
-    rechnung: pruefungen().find((p) => p.von === von && p.bis === bis) ?? null,
-  }),
-  abrechnungPruefungen: async () => [...pruefungen()].sort((a, b) => b.bis.localeCompare(a.bis) || b.von.localeCompare(a.von)),
-  abrechnungPruefungSpeichern: async (
-    _site: string,
-    von: string,
-    bis: string,
-    werte: { bezugKwh: number | null; einspeisungKwh: number | null },
-  ) => {
-    const rest = pruefungen().filter((p) => p.von !== von || p.bis !== bis);
-    if (werte.bezugKwh == null && werte.einspeisungKwh == null) {
-      merke(rest);
-      return undefined;
-    }
-    const p: AbrechnungPruefung = { von, bis, ...werte, geaendertAm: JETZT_ISO };
-    merke([...rest, p]);
-    return p;
-  },
   schedule: result(d.plan),
   weather: result(d.weather),
   topology: result(d.topology),
@@ -101,6 +81,29 @@ Object.assign(api, {
   siteProfiles: result({ profiles: [], weitere: [] }),
   telemetry: result([]),
   entityEnergy: async () => ({ range: 'month', from: d.money.from, to: d.money.to, bucketMinutes: 1440, source: 'zaehler', buckets: [], totalKwh: null, counterFalls: false }),
+});
+Object.assign(abrechnungApi, {
+  historyZeitraum: async (_site: string, von: string, bis: string) => historyZeitraum(anlage, fall, von, bis),
+  abrechnung: async (_site: string, von: string, bis: string) => ({
+    ...abrechnungFuer(anlage, fall, von, bis),
+    rechnung: pruefungen().find((p) => p.von === von && p.bis === bis) ?? null,
+  }),
+  pruefungen: async () => [...pruefungen()].sort((a, b) => b.bis.localeCompare(a.bis) || b.von.localeCompare(a.von)),
+  pruefungSpeichern: async (
+    _site: string,
+    von: string,
+    bis: string,
+    werte: { bezugKwh: number | null; einspeisungKwh: number | null },
+  ) => {
+    const rest = pruefungen().filter((p) => p.von !== von || p.bis !== bis);
+    if (werte.bezugKwh == null && werte.einspeisungKwh == null) {
+      merke(rest);
+      return undefined;
+    }
+    const p: AbrechnungPruefung = { von, bis, ...werte, geaendertAm: JETZT_ISO };
+    merke([...rest, p]);
+    return p;
+  },
 });
 Object.assign(entitiesApi, {
   typeCatalog: result({ catalog_version: '1.0', types: typen.map((t) => ({ type: t, label: t, category: 'consumer', controllable: t === 'battery-hybrid', composed: false, default_failsafe: 'release' })) }),

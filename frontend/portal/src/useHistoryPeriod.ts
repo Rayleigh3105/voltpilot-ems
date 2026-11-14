@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, type History, type HistoryRange } from './api';
+import { abrechnungApi } from './abrechnungApi';
 import { historyCacheKey, readHistoryCache, writeHistoryCache } from './historyCache';
 import { vergleichsAnkerFor, type VergleichsModus } from './historieVergleich';
 import { isoDate } from './periodNav';
@@ -52,7 +53,7 @@ export function useHistoryZeitraum(siteId: string, zeitraum: { von: string; bis:
   const bis = zeitraum?.bis ?? '';
   return useHistoryAbruf(
     `${siteId}|zeitraum|${von}|${bis}`,
-    () => api.historyZeitraum(siteId, von, bis),
+    () => abrechnungApi.historyZeitraum(siteId, von, bis),
     zeitraum != null,
   );
 }

@@ -11,7 +11,8 @@
  */
 import { useCallback, useEffect, useId, useState } from 'react';
 import { Input } from '../../../designsystem/components/forms/Input';
-import { api, ApiError, type Abrechnung, type AbrechnungPruefung } from '../../api';
+import { ApiError, type Abrechnung, type AbrechnungPruefung } from '../../api';
+import { abrechnungApi } from '../../abrechnungApi';
 import {
   abrechnungKarte,
   eingabeText,
@@ -63,7 +64,7 @@ export function AbrechnungKarte({
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
-    api
+    abrechnungApi
       .abrechnung(siteId, zeitraum.von, zeitraum.bis)
       .then((a) => {
         if (!aktiv) return;
@@ -82,8 +83,8 @@ export function AbrechnungKarte({
   }, [siteId, zeitraum.von, zeitraum.bis, laden]);
 
   const ladeFruehere = useCallback(() => {
-    api
-      .abrechnungPruefungen(siteId)
+    abrechnungApi
+      .pruefungen(siteId)
       .then(setFruehere)
       .catch(() => setFruehere([]));
   }, [siteId]);
@@ -107,7 +108,7 @@ export function AbrechnungKarte({
       const andereWert = andere === 'ungueltig' ? null : andere;
       setSpeichert(true);
       try {
-        await api.abrechnungPruefungSpeichern(siteId, zeitraum.von, zeitraum.bis, {
+        await abrechnungApi.pruefungSpeichern(siteId, zeitraum.von, zeitraum.bis, {
           bezugKwh: richtung === 'bezug' ? wert : andereWert,
           einspeisungKwh: richtung === 'einspeisung' ? wert : andereWert,
         });

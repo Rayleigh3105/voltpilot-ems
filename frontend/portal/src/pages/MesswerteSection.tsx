@@ -61,11 +61,11 @@ import { QuotenKarte, rollenFarbe, SpitzenKarte } from '../components/energie/En
 import { EreignisKarte } from '../components/energie/EreignisKarte';
 import { BereicheKarte } from '../components/energie/BereicheKarte';
 import { EreignisSpurRahmen, type EreignisFokus } from '../components/energie/EreignisSpurRahmen';
-import { AbrechnungKarte } from '../components/energie/AbrechnungKarte';
 import {
   letzterTag as gesternBis,
   parseZeitraum,
   tagDatum,
+  WORT,
   zeitraumHash,
   zeitraumJeMonat,
   zeitraumSetzen,
@@ -113,6 +113,11 @@ const TITEL: Record<HistoryRange, string> = {
 // nach: Kennzahlen, Karten und Tabelle stehen sofort (`CHART_CHUNK`).
 const EnergieTagChart = lazy(() => CHART_CHUNK.energie().then((m) => ({ default: m.EnergieTagChart })));
 const EnergieBilanzChart = lazy(() => CHART_CHUNK.energie().then((m) => ({ default: m.EnergieBilanzChart })));
+// „Abrechnung prüfen“ braucht nur, wer „Zeitraum“ wählt: die Karte (mit Eingabefeld und eigenem CSS) lädt als eigenes
+// Stück nach — Bündel-Wächter `test/bundle-smoke.sh`, wie die Dialoge.
+const AbrechnungKarte = lazy(() =>
+  import('../components/energie/AbrechnungKarte').then((m) => ({ default: m.AbrechnungKarte })),
+);
 
 const TAG_REIHEN: { id: TagReihe; label: string; rolle: 'pv' | 'load' | 'grid' | 'soc' }[] = [
   { id: 'pv', label: 'Erzeugung', rolle: 'pv' },
@@ -463,7 +468,17 @@ export function MesswerteSection({
         alt={stale}
         info={{ titel: 'So entstehen die Werte', text: [WELTEN.messwerte.fussText, abdeckung?.abText ? `${abdeckung.abText}.` : null].filter(Boolean).join(' ') }}
       />
-      {zeitraum && <AbrechnungKarte siteId={site.id} zeitraum={zeitraum} onZeitraum={zeigeFreienZeitraum} />}
+      {zeitraum && (
+        <Suspense
+          fallback={
+            <VrKarte titel={WORT.titel}>
+              <VerlaufKarteSkeleton />
+            </VrKarte>
+          }
+        >
+          <AbrechnungKarte siteId={site.id} zeitraum={zeitraum} onZeitraum={zeigeFreienZeitraum} />
+        </Suspense>
+      )}
 
       <div className={`vp-vr-body${stale ? ' alt' : ''}`} aria-busy={loading || undefined}>
         {err && !history ? (
