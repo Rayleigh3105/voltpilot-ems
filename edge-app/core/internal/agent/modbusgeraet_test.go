@@ -364,3 +364,67 @@ func TestSchaltTestAmModbusGeraetUeberDieEigeneVerbindung(t *testing.T) {
 		t.Fatalf("writes %+v", w)
 	}
 }
+
+// The registry entry the API builds for a released device
+// (examples/edge-entity.valid.config-modbus-geraet.json, pinned by the API's
+// ModbusGeraetDefinitionVectorsTest) is exactly what this box executes: its
+// capabilities, guards and definition drive the stand-in device.
+func TestRegistryEintragDerApiTreibtDasGeraet(t *testing.T) {
+	roh, err := os.ReadFile("../../../../docs/contracts/v2/examples/edge-entity.valid.config-modbus-geraet.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e entities.Entity
+	if err := json.Unmarshal(roh, &e); err != nil {
+		t.Fatal(err)
+	}
+	if !e.Supports(entities.CmdSetpointC) || !e.Supports(entities.CmdMode) || !e.Supports(entities.CmdOnOff) ||
+		e.ChangeInterval() != 120*time.Second || e.Guards.Failsafe.Behavior != "rest" {
+		t.Fatalf("capabilities/guards: %+v", e)
+	}
+	rest := e.RestCommands()
+	if *rest.SetpointC != 24 || rest.Mode != "cool" || *rest.OnOff {
+		t.Fatalf("rest: %+v", rest)
+	}
+	def, _, ok := mbDefinition(e)
+	if !ok || !def.Released() || def.ChannelForSignal("fault") == nil {
+		t.Fatalf("definition: %+v", def)
+	}
+
+	// Point the definition at the stand-in and let the box drive it.
+	sim, err := geraetsim.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sim.Close()
+	var drv map[string]map[string]any
+	_ = json.Unmarshal(e.Driver, &drv)
+	host, portS, _ := net.SplitHostPort(sim.Addr())
+	port, _ := strconv.Atoi(portS)
+	drv["connection"]["transport"] = map[string]any{"host": host, "port": port, "unit_id": 1}
+	e.Driver, _ = json.Marshal(map[string]any{"communication": "modbus_baukasten", "connection": drv["connection"]})
+	uhr := time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC)
+	arb := desired.New(desired.Deps{Now: func() time.Time { return uhr }, Reading: func(string) guards.Reading { return guards.Reading{} },
+		ControlEnabled: func() bool { return true }, PublishCommand: func(string, []byte) {}, PublishEvent: func(string, []byte) {}})
+	reg := entities.Registry{Revision: "r", Entities: []entities.Entity{e}}
+	arb.SetEntities(reg)
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.ControlEnabled, cfg.ConsumerControlEnabled = true, true
+	a := &Agent{Cfg: cfg, entRegistry: reg, arb: arb}
+	defer func() {
+		for _, g := range a.mbGeraete {
+			g.schliesse()
+		}
+	}()
+	an := true
+	arb.SubmitInternal(&desired.Desired{EntityID: e.ID, RequestID: "x", Source: desired.Source{Kind: desired.SourceFlow,
+		FlowID: "f", NodeID: "n"}, Priority: desired.ClassFlow, TTL: time.Minute, IssuedAt: uhr,
+		Commands: entities.Commands{OnOff: &an, SetpointC: f64p(21.26), Mode: "heat"}})
+	ctx := context.Background()
+	a.runModbusGeraetPoll(ctx, uhr) // the fault bit (holding 5, bit 3) reads 0: no fault
+	a.runModbusGeraetControlPass(ctx, uhr)
+	if !sim.CoilWert(0) || sim.HoldingWert(10) != 215 || sim.HoldingWert(12) != 2 {
+		t.Fatalf("device: ein=%v soll=%d betrieb=%d", sim.CoilWert(0), sim.HoldingWert(10), sim.HoldingWert(12))
+	}
+}

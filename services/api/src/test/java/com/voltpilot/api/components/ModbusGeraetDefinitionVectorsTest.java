@@ -126,6 +126,27 @@ class ModbusGeraetDefinitionVectorsTest {
                 + "\"min_on_seconds\":300,\"min_off_seconds\":180},\"failsafe\":{\"behavior\":\"rest\"}}");
     }
 
+    /**
+     * Der Registry-Eintrag, den die API für ein freigegebenes Gerät baut, ist
+     * als Beispiel festgehalten; die Box treibt mit genau dieser Datei das
+     * gestellte Gerät ({@code agent/modbusgeraet_test.go}).
+     */
+    @Test
+    void registryEintragWieDasBeispielDerBox() throws Exception {
+        JsonNode def = vektoren().path("geraete").path("klima");
+        JsonNode beispiel = MAPPER.readTree(Path.of("../../docs/contracts/v2/examples/"
+                + "edge-entity.valid.config-modbus-geraet.json").toFile());
+        assertThat(beispiel.path("entity_type").asText()).isEqualTo(ModbusGeraetDefinition.ENTITY_TYPE);
+        assertThat(beispiel.path("capabilities")).isEqualTo(ModbusGeraetDefinition.faehigkeiten(def, true, MAPPER));
+        assertThat(beispiel.path("guards")).isEqualTo(ModbusGeraetDefinition.schutz(def, true, MAPPER));
+        assertThat(beispiel.path("driver").path("communication").asText()).isEqualTo(SelfBuildDefinition.COMMUNICATION);
+        assertThat(beispiel.path("driver").path("connection")).isEqualTo(def);
+        // Die API speichert die geprüfte Form: sie ändert an einer gültigen Definition nichts außer der Freigabe.
+        ObjectNode ohneFreigabe = def.deepCopy();
+        ((ObjectNode) ohneFreigabe.path("controls")).remove("freigabe");
+        assertThat(ModbusGeraetDefinition.pruefe(def, MAPPER).definition()).isEqualTo(ohneFreigabe);
+    }
+
     @Test
     void testwertWirdNichtGeklemmt() throws Exception {
         JsonNode soll = ModbusGeraetDefinition.control(vektoren().path("geraete").path("klima"), "soll");
