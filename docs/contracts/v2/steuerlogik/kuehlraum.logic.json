@@ -1,0 +1,340 @@
+{
+ "logic": 1,
+ "name": "Kühlraum",
+ "description": "Ist Sonnenstrom übrig, kühlt der Raum etwas tiefer und hält die Kälte auf Vorrat. Sonst gilt der normale Sollwert. Wird es zu warm, kommt eine Meldung.\n",
+ "devices": {
+  "regler": {
+   "entity": "kuehlstellenregler-1",
+   "name": "Kühlraum"
+  }
+ },
+ "inputs": {
+  "raum": {
+   "source": "kuehlstellenregler-1.room_temperature",
+   "name": "Kühlraum",
+   "max_age": "5 min"
+  },
+  "tuer": {
+   "source": "kuehlstellenregler-1.door_open",
+   "name": "Tür offen",
+   "max_age": "5 min"
+  },
+  "abtau": {
+   "source": "kuehlstellenregler-1.defrost",
+   "name": "Abtauung läuft",
+   "max_age": "5 min"
+  },
+  "netz": {
+   "source": "site.grid",
+   "name": "Netzbezug",
+   "max_age": "60 s"
+  }
+ },
+ "settings": {
+  "vorrat_an": {
+   "name": "Kälte auf Vorrat",
+   "type": "boolean",
+   "default": "on",
+   "editable_by": "customer",
+   "help": {
+    "when_on": "An: Mit Sonnenstrom kühlt der Raum auf {normal - vorrat} statt {normal}.",
+    "when_off": "Aus: Der Raum hält immer {normal}."
+   }
+  },
+  "normal": {
+   "name": "Sollwert normal",
+   "default": "4 °C",
+   "range": [
+    "2 °C",
+    "6 °C"
+   ],
+   "step": "0.5 K",
+   "editable_by": "customer"
+  },
+  "vorrat": {
+   "name": "Auf Vorrat tiefer um",
+   "default": "2 K",
+   "range": [
+    "0 K",
+    "3 K"
+   ],
+   "step": "0.5 K"
+  },
+  "ab_kw": {
+   "name": "Sonnenstrom übrig ab",
+   "default": "1.5 kW",
+   "range": [
+    "0.5 kW",
+    "10 kW"
+   ],
+   "step": "0.5 kW"
+  },
+  "warn_ab": {
+   "name": "Warnen ab",
+   "default": "8 °C",
+   "range": [
+    "5 °C",
+    "12 °C"
+   ],
+   "step": "0.5 K"
+  },
+  "warn_nach": {
+   "name": "Warnen nach",
+   "default": "30 min",
+   "range": [
+    "10 min",
+    "120 min"
+   ],
+   "step": "5 min"
+  }
+ },
+ "constraints": [
+  {
+   "Die Warnschwelle liegt über dem normalen Sollwert": "warn_ab >= normal + 2 K"
+  }
+ ],
+ "formulas": {
+  "uebrig": "max(0 kW, -netz)"
+ },
+ "states": {
+  "sonne_da": {
+   "name": "Sonnenstrom ist übrig",
+   "type": "boolean",
+   "on_when": "holds(uebrig >= ab_kw, 5 min)",
+   "off_when": "unknown(netz) or holds(uebrig < 0.2 kW, 10 min)",
+   "after_restart": "off"
+  },
+  "speichern": {
+   "name": "Kälte auf Vorrat",
+   "type": "boolean",
+   "on_when": [
+    {
+     "Kälte auf Vorrat ist eingeschaltet": "vorrat_an"
+    },
+    {
+     "Es ist Sonnenstrom übrig": "sonne_da"
+    },
+    {
+     "Die Tür ist zu": "not tuer"
+    },
+    {
+     "Es wird nicht abgetaut": "not abtau"
+    }
+   ],
+   "off_when_any": [
+    {
+     "Kälte auf Vorrat ist ausgeschaltet": "not vorrat_an"
+    },
+    {
+     "Die Tür steht seit 2 Minuten offen": "holds(tuer, 2 min)"
+    },
+    {
+     "Der Netzwert fehlt": "unknown(netz)"
+    },
+    {
+     "Der Sonnenstrom ist weg": "not sonne_da and since(speichern) >= 15 min"
+    }
+   ],
+   "after_restart": "off"
+  }
+ },
+ "outputs": {
+  "regler": {
+   "setpoint": "if(speichern, normal - vorrat, normal)"
+  }
+ },
+ "display": {
+  "input": "raum",
+  "scale": [
+   "0 °C",
+   "10 °C"
+  ],
+  "marks": [
+   {
+    "name": "Vorrat",
+    "at": "normal - vorrat"
+   },
+   {
+    "name": "Normal",
+    "at": "normal"
+   },
+   {
+    "name": "Warnung",
+    "at": "warn_ab"
+   }
+  ]
+ },
+ "notifications": [
+  {
+   "when": "holds(raum > warn_ab, warn_nach)",
+   "to": [
+    "customer",
+    "installer"
+   ],
+   "text": "Der Kühlraum ist seit {warn_nach} wärmer als {warn_ab}. Jetzt sind es {raum}."
+  },
+  {
+   "when": "holds(unknown(raum), 15 min)",
+   "to": [
+    "installer"
+   ],
+   "text": "Der Fühler im Kühlraum liefert seit 15 Minuten keinen Wert."
+  }
+ ],
+ "status": [
+  {
+   "when": "unknown(raum)",
+   "title": "Störung Fühler",
+   "type": "fault",
+   "text": "Der Fühler liefert keinen Wert. Der Regler des Kühlraums kühlt weiter auf {normal}."
+  },
+  {
+   "when": "raum > warn_ab",
+   "title": "Zu warm",
+   "type": "fault",
+   "text": "Im Kühlraum sind es {raum}. Normal sind {normal}."
+  },
+  {
+   "when": "abtau",
+   "title": "Taut ab",
+   "type": "waiting",
+   "text": "Der Regler taut gerade ab. Danach kühlt er wieder auf {normal}."
+  },
+  {
+   "when": "speichern",
+   "title": "Kühlt auf Vorrat",
+   "type": "solar",
+   "text": "Es ist Sonnenstrom übrig. Der Raum kühlt auf {normal - vorrat} statt {normal}."
+  },
+  {
+   "else": true,
+   "title": "Kühlt normal",
+   "type": "idle",
+   "text": "Der Raum hält {normal}. Jetzt sind es {raum}."
+  }
+ ],
+ "tests": [
+  {
+   "name": "Mittags ist Sonnenstrom übrig, dann kühlt der Raum 2 K tiefer",
+   "given": {
+    "raum": "4.2 °C",
+    "tuer": "off",
+    "abtau": "off",
+    "netz": "-3 kW"
+   },
+   "after": "6 min",
+   "expect": {
+    "speichern": "on",
+    "regler.setpoint": "2 °C",
+    "status": "Kühlt auf Vorrat"
+   }
+  },
+  {
+   "name": "Ohne Sonnenstrom gilt der normale Sollwert",
+   "given": {
+    "raum": "4.2 °C",
+    "tuer": "off",
+    "abtau": "off",
+    "netz": "0.8 kW"
+   },
+   "after": "6 min",
+   "expect": {
+    "speichern": "off",
+    "regler.setpoint": "4 °C",
+    "status": "Kühlt normal"
+   }
+  },
+  {
+   "name": "Steht die Tür offen, wird nicht auf Vorrat gekühlt",
+   "given": {
+    "raum": "5 °C",
+    "tuer": "on",
+    "abtau": "off",
+    "netz": "-3 kW"
+   },
+   "after": "10 min",
+   "expect": {
+    "speichern": "off",
+    "regler.setpoint": "4 °C"
+   }
+  },
+  {
+   "name": "Eine Wolke kehrt den Verdichter nicht sofort um",
+   "given": {
+    "raum": "3.1 °C",
+    "tuer": "off",
+    "abtau": "off",
+    "netz": "0.5 kW",
+    "speichern": "on",
+    "sonne_da": "off"
+   },
+   "after": "5 min",
+   "expect": {
+    "speichern": "on",
+    "regler.setpoint": "2 °C"
+   }
+  },
+  {
+   "name": "Bleibt die Sonne eine Viertelstunde weg, gilt wieder der normale Sollwert",
+   "given": {
+    "raum": "3.1 °C",
+    "tuer": "off",
+    "abtau": "off",
+    "netz": "0.5 kW",
+    "speichern": "on",
+    "sonne_da": "off"
+   },
+   "after": "16 min",
+   "expect": {
+    "speichern": "off",
+    "regler.setpoint": "4 °C",
+    "status": "Kühlt normal"
+   }
+  },
+  {
+   "name": "Der Kunde schaltet Kälte auf Vorrat aus",
+   "given": {
+    "raum": "4.2 °C",
+    "tuer": "off",
+    "abtau": "off",
+    "netz": "-3 kW",
+    "vorrat_an": "off"
+   },
+   "after": "10 min",
+   "expect": {
+    "speichern": "off",
+    "regler.setpoint": "4 °C"
+   }
+  },
+  {
+   "name": "Eine halbe Stunde zu warm, dann kommt die Meldung",
+   "given": {
+    "raum": "9 °C",
+    "tuer": "off",
+    "abtau": "off",
+    "netz": "0.5 kW"
+   },
+   "after": "31 min",
+   "expect": {
+    "status": "Zu warm",
+    "notifications": 1
+   }
+  },
+  {
+   "name": "Fällt der Netzwert aus, gilt sofort der normale Sollwert",
+   "given": {
+    "raum": "4.2 °C",
+    "tuer": "off",
+    "abtau": "off",
+    "netz": "unknown",
+    "speichern": "on",
+    "sonne_da": "on"
+   },
+   "after": "1 min",
+   "expect": {
+    "speichern": "off",
+    "regler.setpoint": "4 °C"
+   }
+  }
+ ]
+}

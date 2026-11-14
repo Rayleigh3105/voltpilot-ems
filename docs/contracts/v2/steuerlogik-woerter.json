@@ -1,0 +1,225 @@
+{
+  "_hinweis": "Die Wörter der Steuerlogik-Textform, deutsch nach englisch (Entscheid E9 = B vom 14.11.2026). Eine Tabelle je Stelle im Dokument. Namen, Titel, Sätze und die Kennungen des Verfassers werden nie übersetzt. Geschlossenes Vokabular: Änderungen nur zusammen mit dem Kern (edge-app/core/internal/logik, woerter_test.go), dem Schema und docs/contracts/v2/steuerlogik.md.",
+  "abschnitte": {
+    "logik": "logic",
+    "name": "name",
+    "beschreibung": "description",
+    "geraete": "devices",
+    "werte": "inputs",
+    "stellwerte": "settings",
+    "zusammen": "constraints",
+    "merker": "formulas",
+    "zustand": "states",
+    "ausgaenge": "outputs",
+    "anzeige": "display",
+    "meldungen": "notifications",
+    "lage": "status",
+    "proben": "tests"
+  },
+  "geraet": {
+    "geraet": "entity",
+    "name": "name"
+  },
+  "wert": {
+    "von": "source",
+    "name": "name",
+    "hoechstalter": "max_age"
+  },
+  "stellwert": {
+    "name": "name",
+    "art": "type",
+    "vorgabe": "default",
+    "bereich": "range",
+    "schritt": "step",
+    "darf": "editable_by",
+    "hilfe": "help",
+    "werte": "options"
+  },
+  "hilfe": {
+    "an": "when_on",
+    "aus": "when_off"
+  },
+  "zeitfenster": {
+    "tage": "days",
+    "von": "from",
+    "bis": "to"
+  },
+  "zustand": {
+    "name": "name",
+    "art": "type",
+    "an_wenn": "on_when",
+    "an_wenn_eines": "on_when_any",
+    "aus_wenn": "off_when",
+    "aus_wenn_eines": "off_when_any",
+    "nach_neustart": "after_restart",
+    "dauer": "duration",
+    "von": "min",
+    "bis": "max",
+    "schritte": "steps"
+  },
+  "schritt": {
+    "name": "name",
+    "um": "by",
+    "setze": "set",
+    "fruehestens": "not_before",
+    "wenn": "when",
+    "wenn_eines": "when_any",
+    "dann": "then"
+  },
+  "ausgang": {
+    "stufe": "level",
+    "ein": "on_off",
+    "sollwert": "setpoint",
+    "betriebsart": "mode",
+    "anteil": "percent"
+  },
+  "anzeige": {
+    "wert": "input",
+    "skala": "scale",
+    "marken": "marks"
+  },
+  "marke": {
+    "name": "name",
+    "bei": "at"
+  },
+  "meldung": {
+    "wenn": "when",
+    "an": "to",
+    "satz": "text",
+    "wieder": "repeat_after"
+  },
+  "lage": {
+    "wenn": "when",
+    "sonst": "else",
+    "titel": "title",
+    "art": "type",
+    "satz": "text"
+  },
+  "probe": {
+    "name": "name",
+    "gegeben": "given",
+    "nach": "after",
+    "erwarte": "expect"
+  },
+  "gegeben": {
+    "uhr": "clock",
+    "wochentag": "weekday",
+    "neustart": "restart"
+  },
+  "erwarte": {
+    "lage": "status",
+    "meldungen": "notifications"
+  },
+  "art_stellwert": {
+    "schalter": "boolean",
+    "auswahl": "select",
+    "zeitplan": "schedule"
+  },
+  "art_zustand": {
+    "schalter": "boolean",
+    "zaehler": "counter",
+    "zeitgeber": "timer"
+  },
+  "darf": {
+    "kunde": "customer",
+    "kundenadministrator": "customer_admin",
+    "fachbetrieb": "installer"
+  },
+  "art_lage": {
+    "sonne": "solar",
+    "netz": "grid",
+    "wartet": "waiting",
+    "ruht": "idle",
+    "stoerung": "fault"
+  },
+  "tage": {
+    "mo": "mon",
+    "di": "tue",
+    "mi": "wed",
+    "do": "thu",
+    "fr": "fri",
+    "sa": "sat",
+    "so": "sun"
+  },
+  "wertwort": {
+    "an": "on",
+    "aus": "off",
+    "wahr": "true",
+    "falsch": "false",
+    "fehlt": "unknown",
+    "bleibt": "keep"
+  },
+  "formelwort": {
+    "und": "and",
+    "oder": "or",
+    "nicht": "not",
+    "an": "on",
+    "aus": "off",
+    "wahr": "true",
+    "falsch": "false",
+    "uhr": "clock"
+  },
+  "funktion": {
+    "wenn": "if",
+    "bekannt": "known",
+    "fehlt": "unknown",
+    "zeitfenster": "time_window",
+    "im_plan": "in_schedule",
+    "haelt": "holds",
+    "seit": "since",
+    "laeuft": "running",
+    "zuletzt": "last",
+    "min": "min",
+    "max": "max"
+  },
+  "handlung": {
+    "starte": "start",
+    "wenn": "if"
+  },
+  "geraet_eigenschaft": {
+    "an": "on",
+    "stufe": "level",
+    "leistung": "power",
+    "kw_je_ausgang": "kw_per_output",
+    "ausgangsstunden_heute": "output_hours_today",
+    "wunsch": "requested"
+  },
+  "betriebsart": {
+    "normal": "normal",
+    "anheben": "boost",
+    "kuehlen": "cool",
+    "heizen": "heat",
+    "lueften": "fan_only",
+    "trocknen": "dry",
+    "automatik": "auto",
+    "start": "start"
+  },
+  "quelle_fest": {
+    "anlage.netz": "site.grid",
+    "anlage.sonne": "site.pv",
+    "speicher.leistung": "battery.power",
+    "speicher.ladestand": "battery.soc",
+    "sonne.hoehe": "sun.elevation"
+  },
+  "signal": {
+    "temperatur": "temperature",
+    "raumtemperatur": "room_temperature",
+    "offen": "open",
+    "tuer_offen": "door_open",
+    "abtauung": "defrost",
+    "stoerung": "fault",
+    "laeuft": "running"
+  },
+  "schema_def": {
+    "kennung": "identifier",
+    "wert": "value",
+    "ausdruck": "expression",
+    "benannt": "named",
+    "bedingungen": "conditions",
+    "zeitfenster": "time_window",
+    "stellwert": "setting",
+    "schalter": "boolean",
+    "zeitgeber": "timer",
+    "zaehler": "counter"
+  }
+}

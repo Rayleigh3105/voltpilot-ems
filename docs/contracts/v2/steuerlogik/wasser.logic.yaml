@@ -1,0 +1,126 @@
+# Baustein "Warmwasser mit Sonnenstrom", eingesetzt für einen Speicher mit Heizstab und Fühler.
+# Derselbe Aufbau wie die große Logik, auf einen Speicher gekürzt (Labor für die Konzeptseite).
+logic: 1
+name: Warmwasser
+description: Ein Speicher wird mit Sonnenstrom geheizt und fällt nie unter eine Mindesttemperatur.
+
+devices:
+  heizstab: {entity: heizstab-warmwasser, name: Heizstab}
+
+inputs:
+  t:         {source: fuehler-speicher-oben.temperature, name: Speicher,          max_age: 5 min}
+  netz:      {source: site.grid,                         name: Netzbezug,         max_age: 60 s}
+  speicher:  {source: battery.power,                     name: Batterie lädt mit, max_age: 60 s}
+  ladestand: {source: battery.soc,                       name: Batterie,          max_age: 5 min}
+  sonne:     {source: sun.elevation,                     name: Sonnenstand}
+
+settings:
+  ziel:      {name: Mit Sonnenstrom bis, default: 57 °C,   range: [45 °C, 65 °C], step: 1 K, editable_by: customer}
+  mindest:   {name: Nie kälter als,      default: 40 °C,   range: [30 °C, 50 °C], step: 1 K, editable_by: customer}
+  netz_ziel: {name: Aus dem Netz bis,    default: 50 °C,   range: [40 °C, 60 °C], step: 1 K, editable_by: customer}
+  netz_ab:   {name: Netz erlaubt ab,     default: "06:00", editable_by: customer}
+  netz_bis:  {name: Netz erlaubt bis,    default: "22:00", editable_by: customer}
+
+constraints:
+  - Aus dem Netz bis liegt mindestens 5 K über Nie kälter als: netz_ziel >= mindest + 5 K
+  - Aus dem Netz bis liegt nicht über dem Ziel mit Sonnenstrom: netz_ziel <= ziel
+
+formulas:
+  netzfenster: time_window(netz_ab, netz_bis)
+  frei:        known(t) and not warm
+
+states:
+  warm:
+    type: boolean
+    on_when:  t >= ziel
+    off_when: unknown(t) or t < ziel - 3 K
+    after_restart: off
+  netzheizen:
+    type: boolean
+    on_when:
+      - Uhrzeit liegt im Fenster: netzfenster
+      - Der Speicher ist seit 2 Minuten zu kalt: holds(t < mindest, 2 min)
+    off_when_any:
+      - Fühler fehlt: unknown(t)
+      - Der Speicher ist warm genug: t >= netz_ziel
+      - Uhrzeit liegt außerhalb des Fensters: not netzfenster
+    after_restart: off
+  stufe:
+    type: counter
+    min: 0
+    max: 3
+    after_restart: 0
+    steps:
+      - name: blind
+        set: 0
+        when: holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)
+      - name: voll
+        set: 0
+        when: stufe > 0 and not frei
+      - name: zurueck
+        by: -1
+        not_before: 2 min
+        when: stufe > 0
+        when_any:
+          - Die Batterie muss aushelfen: speicher < -0.15 kW
+          - Das Netz muss aushelfen: netz > 0.3 kW
+      - name: versuch
+        by: +1
+        not_before: 6 min
+        when:
+          - Der Speicher ist noch nicht warm: frei
+          - Das Netz hilft nicht aus: netz < 0.3 kW
+          - Die Batterie ist voll: ladestand > 95 %
+          - Die Sonne steht hoch genug: sonne > 5°
+          - Die Batterie hilft nicht aus: speicher > -0.15 kW
+
+outputs:
+  heizstab: {level: "if(netzheizen, 3, if(frei, stufe, 0))"}
+
+status:
+  - when: unknown(t)
+    title: Störung Fühler
+    type: fault
+    text: Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.
+  - when: netzheizen
+    title: Heizt aus dem Netz
+    type: grid
+    text: Der Speicher war unter {mindest} gefallen und steht bei {t}. Der Heizstab heizt aus dem Netz bis {netz_ziel}.
+  - when: not netzfenster and t < mindest
+    title: Nachtsperre
+    type: waiting
+    text: Der Speicher liegt mit {t} unter {mindest}. Nachts wird nicht aus dem Netz geheizt, ab {netz_ab} Uhr schaltet der Heizstab zu.
+  - when: stufe > 0
+    title: Heizt mit Sonnenstrom
+    type: solar
+    text: Der Heizstab läuft mit Sonnenstrom, bis der Speicher {ziel} hat.
+  - when: warm
+    title: Speicher ist warm
+    type: idle
+    text: Der Speicher hat sein Ziel von {ziel} erreicht.
+  - else: true
+    title: Wartet auf Sonnenstrom
+    type: waiting
+    text: Sobald Sonnenstrom übrig ist, heizt der Heizstab bis {ziel}.
+
+tests:
+  - name: Kalter Morgen
+    given: {t: 38 °C, netz: 0.4 kW, speicher: 0 kW, ladestand: 20 %, sonne: -10°, clock: "06:30"}
+    after: 3 min
+    expect: {netzheizen: on, heizstab.level: 3, status: Heizt aus dem Netz}
+  - name: Kalte Nacht
+    given: {t: 38 °C, netz: 0.4 kW, speicher: 0 kW, ladestand: 20 %, sonne: -30°, clock: "02:00"}
+    after: 15 min
+    expect: {netzheizen: off, heizstab.level: 0, status: Nachtsperre}
+  - name: Sonne am Mittag
+    given: {t: 46 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°}
+    after: 13 min
+    expect: {stufe: 2, heizstab.level: 2, status: Heizt mit Sonnenstrom}
+  - name: Speicher ist warm
+    given: {t: 57.2 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, stufe: 3}
+    after: 1 min
+    expect: {heizstab.level: 0, status: Speicher ist warm}
+  - name: Fühler fällt aus
+    given: {t: unknown, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, stufe: 2}
+    after: 1 min
+    expect: {heizstab.level: 0, status: Störung Fühler}

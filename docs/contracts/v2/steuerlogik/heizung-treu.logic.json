@@ -1,0 +1,690 @@
+{
+ "logic": 1,
+ "name": "Heizung",
+ "description": "Sonnenstrom geht der Reihe nach in drei Wärmespeicher. Die Anlage speist nicht ein, der Überschuss ist deshalb nicht messbar und wird ertastet. Mit der Winterregelung heizt Speicher 1 notfalls aus dem Netz.\n",
+ "devices": {
+  "dle": {
+   "entity": "heizstab-dle",
+   "name": "Durchlauferhitzer"
+  },
+  "puffer2": {
+   "entity": "heizstab-puffer-2",
+   "name": "Speicher 2"
+  },
+  "puffer3": {
+   "entity": "heizstab-puffer-3",
+   "name": "Speicher 3"
+  }
+ },
+ "inputs": {
+  "t1": {
+   "source": "fuehler-puffer-1-oben.temperature",
+   "name": "Speicher 1",
+   "max_age": "5 min"
+  },
+  "t2": {
+   "source": "fuehler-puffer-2-oben.temperature",
+   "name": "Speicher 2",
+   "max_age": "5 min"
+  },
+  "t3": {
+   "source": "fuehler-puffer-3-oben.temperature",
+   "name": "Speicher 3",
+   "max_age": "5 min"
+  },
+  "netz": {
+   "source": "site.grid",
+   "name": "Netzbezug",
+   "max_age": "60 s"
+  },
+  "speicher": {
+   "source": "battery.power",
+   "name": "Batterie lädt mit",
+   "max_age": "60 s"
+  },
+  "ladestand": {
+   "source": "battery.soc",
+   "name": "Batterie",
+   "max_age": "5 min"
+  },
+  "sonne": {
+   "source": "sun.elevation",
+   "name": "Sonnenstand"
+  }
+ },
+ "settings": {
+  "winter": {
+   "name": "Winterregelung",
+   "type": "boolean",
+   "default": "off",
+   "editable_by": "customer",
+   "help": "Eingeschaltet heizt der Durchlauferhitzer Speicher 1 auch aus dem Netz, sobald er unter {ein_unter} fällt, allerdings nur zwischen {netz_ab} und {netz_bis} Uhr und nur bis {ziel_netz}. Die höhere Wintertemperatur von {ziel_winter} wird ausschließlich mit Sonnenstrom erreicht. Ausgeschaltet wird ausschließlich überschüssiger Sonnenstrom verheizt."
+  },
+  "ein_unter": {
+   "name": "Netzheizen ab",
+   "default": "40 °C",
+   "range": [
+    "30 °C",
+    "70 °C"
+   ],
+   "step": "1 K"
+  },
+  "ziel_netz": {
+   "name": "Netzheizen bis",
+   "default": "60 °C",
+   "range": [
+    "40 °C",
+    "80 °C"
+   ],
+   "step": "1 K"
+  },
+  "netz_ab": {
+   "name": "Netzheizen erlaubt ab",
+   "default": "06:00"
+  },
+  "netz_bis": {
+   "name": "Netzheizen erlaubt bis",
+   "default": "22:00"
+  },
+  "ziel_sommer": {
+   "name": "Ziel im Sommer",
+   "default": "57 °C",
+   "range": [
+    "57 °C",
+    "90 °C"
+   ],
+   "step": "1 K"
+  },
+  "ziel_winter": {
+   "name": "Ziel im Winter",
+   "default": "75 °C",
+   "range": [
+    "50 °C",
+    "90 °C"
+   ],
+   "step": "1 K"
+  },
+  "vorrang_bis": {
+   "name": "Warmwasser vor Batterie bis",
+   "default": "60 °C",
+   "range": [
+    "0 °C",
+    "80 °C"
+   ],
+   "step": "1 K",
+   "help": "0 °C schaltet den Vorrang ab."
+  },
+  "reserve": {
+   "name": "Reserve beim Vorrang",
+   "default": "0.3 kW",
+   "range": [
+    "0 kW",
+    "2 kW"
+   ],
+   "step": "0.05 kW"
+  },
+  "freigabe": {
+   "name": "Batterie gilt als voll ab",
+   "default": "95 %",
+   "range": [
+    "90 %",
+    "100 %"
+   ],
+   "step": "1 %"
+  },
+  "stopp": {
+   "name": "Abbruch unter Ladestand",
+   "default": "90 %",
+   "range": [
+    "80 %",
+    "100 %"
+   ],
+   "step": "1 %"
+  },
+  "entladung_max": {
+   "name": "Zulässige Batterieentladung",
+   "default": "0.15 kW",
+   "range": [
+    "0.15 kW",
+    "1 kW"
+   ],
+   "step": "0.05 kW"
+  },
+  "bezug_max": {
+   "name": "Zulässiger Netzbezug",
+   "default": "0.3 kW",
+   "range": [
+    "0.3 kW",
+    "3 kW"
+   ],
+   "step": "0.05 kW"
+  },
+  "sperrzeit": {
+   "name": "Pause nach Fehlversuch",
+   "default": "5 min",
+   "range": [
+    "0 min",
+    "60 min"
+   ],
+   "step": "5 min"
+  },
+  "sonne_min": {
+   "name": "Mindest-Sonnenstand",
+   "default": "5°",
+   "range": [
+    "0°",
+    "30°"
+   ],
+   "step": "1°"
+  },
+  "max_temp": {
+   "name": "Speicher 2 und 3 höchstens",
+   "default": "80 °C",
+   "range": [
+    "50 °C",
+    "95 °C"
+   ],
+   "step": "1 K"
+  },
+  "tageslimit": {
+   "name": "Speicher 2 und 3 je Tag",
+   "default": "9 h",
+   "range": [
+    "1 h",
+    "24 h"
+   ],
+   "step": "0.5 h",
+   "help": "Summe der drei Phasen: 9 h sind drei Stunden mit allen Phasen."
+  }
+ },
+ "constraints": [
+  {
+   "Netzheizen bis liegt mindestens 5 K über Netzheizen ab": "ziel_netz >= ein_unter + 5 K"
+  },
+  {
+   "Der Abbruch liegt nicht über der Freigabe": "stopp <= freigabe"
+  }
+ ],
+ "formulas": {
+  "ziel": "if(winter, ziel_winter, ziel_sommer)",
+  "netzfenster": "time_window(netz_ab, netz_bis)",
+  "vorrang_ziel": "min(vorrang_bis, ziel)",
+  "dle_frei": "known(t1) and t1 < ziel",
+  "rest": "if(dle_frei, heizstufe - min(heizstufe, 3), heizstufe)",
+  "frei2": "known(t2) and t2 < if(puffer2.on, ziel, ziel - 3 K) and t2 < max_temp and puffer2.output_hours_today < tageslimit\n",
+  "frei3": "known(t3) and t3 < if(puffer3.on, ziel, ziel - 3 K) and t3 < max_temp and puffer3.output_hours_today < tageslimit\n",
+  "naechste_kw": "if(dle_frei and heizstufe < 3, dle.kw_per_output, puffer2.kw_per_output)",
+  "stufe_frei": "if(dle_frei, heizstufe < 9, heizstufe < 6)",
+  "heizleistung": "dle.power + puffer2.power + puffer3.power",
+  "ww": "vorrang and ladestand < freigabe"
+ },
+ "states": {
+  "vorrang": {
+   "name": "Warmwasser-Vorrang",
+   "type": "boolean",
+   "on_when": "vorrang_bis > 0 °C and t1 < vorrang_ziel - 3 K",
+   "off_when": "not (vorrang_bis > 0 °C) or unknown(t1) or t1 >= vorrang_ziel",
+   "after_restart": "off"
+  },
+  "netzheizen": {
+   "name": "Notbetrieb",
+   "type": "boolean",
+   "on_when": [
+    {
+     "Winterregelung ist an": "winter"
+    },
+    {
+     "Uhrzeit liegt im Fenster": "netzfenster"
+    },
+    {
+     "Speicher 1 ist seit 2 Minuten zu kalt": "holds(t1 < ein_unter, 2 min)"
+    }
+   ],
+   "off_when_any": [
+    {
+     "Fühler fehlt": "unknown(t1)"
+    },
+    {
+     "Speicher 1 ist warm genug": "t1 >= ziel_netz"
+    },
+    {
+     "Winterregelung ist aus": "not winter"
+    },
+    {
+     "Uhrzeit liegt außerhalb des Fensters": "not netzfenster"
+    }
+   ],
+   "after_restart": "off"
+  },
+  "sperre": {
+   "name": "Sperre nach Fehlversuch",
+   "type": "timer",
+   "duration": "sperrzeit",
+   "after_restart": "off"
+  },
+  "heizstufe": {
+   "name": "Heizstufe",
+   "type": "counter",
+   "min": 0,
+   "max": 9,
+   "after_restart": 0,
+   "steps": [
+    {
+     "name": "zurueck",
+     "by": -1,
+     "not_before": "2 min",
+     "when": "heizstufe > 0",
+     "when_any": [
+      {
+       "Die Batterie muss aushelfen": "speicher < -entladung_max"
+      },
+      {
+       "Das Netz muss aushelfen": "netz > bezug_max"
+      },
+      {
+       "Die Batterie ist zu leer": "ladestand < stopp and not (vorrang and heizstufe <= 3)"
+      }
+     ],
+     "then": "start(sperre) if not (vorrang and ladestand < freigabe)"
+    },
+    {
+     "name": "versuch",
+     "by": 1,
+     "not_before": "6 min",
+     "when": [
+      {
+       "Das Netz hilft nicht aus": "netz < bezug_max"
+      },
+      {
+       "Die Batterie ist voll": "ladestand > freigabe"
+      },
+      {
+       "Die Sonne steht hoch genug": "sonne > sonne_min"
+      },
+      {
+       "Keine Pause nach einem Fehlversuch": "not running(sperre)"
+      },
+      {
+       "Die Batterie hilft nicht aus": "speicher > -entladung_max"
+      }
+     ]
+    },
+    {
+     "name": "umleiten",
+     "by": 1,
+     "not_before": "6 min",
+     "when": [
+      {
+       "Das Netz hilft nicht aus": "netz < bezug_max"
+      },
+      {
+       "Warmwasser hat Vorrang": "vorrang"
+      },
+      {
+       "Der Durchlauferhitzer hat noch eine Phase frei": "heizstufe < 3"
+      },
+      {
+       "Die Batterie lädt mit genug Leistung": "speicher >= naechste_kw + reserve"
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "outputs": {
+  "dle": {
+   "level": "if(netzheizen, 3, if(dle_frei, min(heizstufe, 3), 0))"
+  },
+  "puffer2": {
+   "level": "if(frei2, min(rest, 3), 0)"
+  },
+  "puffer3": {
+   "level": "if(frei3, min(rest - min(rest, 3), 3), 0)"
+  }
+ },
+ "status": [
+  {
+   "when": "unknown(t1)",
+   "title": "Störung Fühler",
+   "type": "fault",
+   "text": "Der Temperaturfühler von Speicher 1 liefert keinen Wert. Die Heizung bleibt vorsichtshalber aus. Bitte melden."
+  },
+  {
+   "when": "netzheizen",
+   "title": "Notheizung",
+   "type": "grid",
+   "text": "Speicher 1 war unter {ein_unter} gefallen und steht jetzt bei {t1}. Der Durchlauferhitzer heizt mit Strom aus dem Netz, bis {ziel_netz} erreicht sind. Höher wird nur noch mit Sonnenstrom geheizt."
+  },
+  {
+   "when": "winter and not netzfenster and t1 < ein_unter",
+   "title": "Nachtsperre",
+   "type": "waiting",
+   "text": "Speicher 1 liegt mit {t1} unter der Grenze von {ein_unter}. Nachts wird nicht aus dem Netz geheizt, der Durchlauferhitzer schaltet ab {netz_ab} Uhr zu."
+  },
+  {
+   "when": "heizstufe > 0 and heizstufe <= 3 and ww",
+   "title": "Warmwasser vor Batterie",
+   "type": "solar",
+   "text": "Warmwasser hat Vorrang vor der Batterie. Speicher 1 ist mit {t1} noch unter {vorrang_ziel}. Der Sonnenstrom geht deshalb zuerst in den Durchlauferhitzer, aktuell mit {heizstufe} von 3 Stufen und zusammen {heizleistung}. Die Batterie ist bei {ladestand} und wird danach geladen."
+  },
+  {
+   "when": "heizstufe > 0 and stufe_frei",
+   "title": "Heizt mit Sonnenstrom",
+   "type": "solar",
+   "text": "Es ist mehr Sonnenstrom da, als Haus und Batterie brauchen. Aktuell laufen {heizstufe} von 9 Stufen mit zusammen {heizleistung}. In einigen Minuten versucht die Anlage, eine weitere Stufe mit {naechste_kw} zuzuschalten."
+  },
+  {
+   "when": "heizstufe > 0",
+   "title": "Heizt mit Sonnenstrom",
+   "type": "solar",
+   "text": "Es ist mehr Sonnenstrom da, als Haus und Batterie brauchen. Aktuell laufen {heizstufe} von 9 Stufen mit zusammen {heizleistung}. Mehr Stufen sind derzeit nicht möglich."
+  },
+  {
+   "when": "sonne <= 0° and winter and netz_ab != netz_bis",
+   "title": "Keine Sonne",
+   "type": "idle",
+   "text": "Die Sonne ist untergegangen, es gibt keinen Sonnenstrom zu verteilen. Fällt Speicher 1 unter {ein_unter}, heizt der Durchlauferhitzer zwischen {netz_ab} und {netz_bis} Uhr aus dem Netz bis {ziel_netz} nach."
+  },
+  {
+   "when": "sonne <= 0° and winter",
+   "title": "Keine Sonne",
+   "type": "idle",
+   "text": "Die Sonne ist untergegangen, es gibt keinen Sonnenstrom zu verteilen. Fällt Speicher 1 unter {ein_unter}, heizt der Durchlauferhitzer aus dem Netz bis {ziel_netz} nach."
+  },
+  {
+   "when": "sonne <= 0°",
+   "title": "Keine Sonne",
+   "type": "idle",
+   "text": "Die Sonne ist untergegangen, es gibt keinen Sonnenstrom zu verteilen."
+  },
+  {
+   "when": "ww and speicher > 0 kW",
+   "title": "Wartet auf Sonnenstrom",
+   "type": "waiting",
+   "text": "Warmwasser hat Vorrang vor der Batterie, weil Speicher 1 mit {t1} unter {vorrang_ziel} liegt. Im Moment sind {speicher} Sonnenstrom übrig und laden die Batterie. Der Durchlauferhitzer schaltet zu, sobald mindestens {naechste_kw + reserve} übrig sind. So viel braucht eine Stufe."
+  },
+  {
+   "when": "ww",
+   "title": "Wartet auf Sonnenstrom",
+   "type": "waiting",
+   "text": "Warmwasser hat Vorrang vor der Batterie, weil Speicher 1 mit {t1} unter {vorrang_ziel} liegt. Im Moment ist kein Sonnenstrom übrig. Der Durchlauferhitzer schaltet zu, sobald mindestens {naechste_kw + reserve} übrig sind. So viel braucht eine Stufe."
+  },
+  {
+   "when": "ladestand < freigabe and vorrang_bis > 0 °C",
+   "title": "Batterie lädt",
+   "type": "waiting",
+   "text": "Speicher 1 ist mit {t1} warm genug, deshalb wird jetzt zuerst die Batterie geladen. Sie ist bei {ladestand}. Ab {freigabe} geht der übrige Sonnenstrom wieder in die Speicher."
+  },
+  {
+   "when": "ladestand < freigabe",
+   "title": "Batterie lädt",
+   "type": "waiting",
+   "text": "Die Batterie hat Vorrang und ist erst bei {ladestand}. Ab {freigabe} geht der übrige Sonnenstrom wieder in die Speicher."
+  },
+  {
+   "when": "sonne < sonne_min",
+   "title": "Sonne zu tief",
+   "type": "waiting",
+   "text": "Die Sonne steht mit {sonne} zu tief über dem Horizont. Ab {sonne_min} beginnt die Anlage wieder mit Versuchen."
+  },
+  {
+   "when": "running(sperre)",
+   "title": "Pause nach Versuch",
+   "type": "waiting",
+   "text": "Der letzte Versuch hat nicht getragen, die Batterie musste aushelfen. Die Anlage wartet ab und versucht es danach erneut."
+  },
+  {
+   "when": "speicher < -entladung_max",
+   "title": "Kein Überschuss",
+   "type": "waiting",
+   "text": "Die Batterie gibt gerade {-speicher} ab. Das heißt, es ist kein Überschuss vorhanden."
+  },
+  {
+   "when": "speicher > entladung_max and netz > bezug_max",
+   "title": "Kein Überschuss",
+   "type": "waiting",
+   "text": "Die Batterie wird gerade mit {speicher} geladen. Solange der Strom dorthin fließt, steht er nicht für die Speicher zur Verfügung."
+  },
+  {
+   "when": "speicher > entladung_max and t1 >= ziel",
+   "title": "Speicher auf Zieltemperatur",
+   "type": "waiting",
+   "text": "Die Batterie wird gerade mit {speicher} geladen. Solange der Strom dorthin fließt, steht er nicht für die Speicher zur Verfügung."
+  },
+  {
+   "when": "speicher > entladung_max",
+   "title": "Nächster Versuch läuft",
+   "type": "waiting",
+   "text": "Die Batterie wird gerade mit {speicher} geladen. Solange der Strom dorthin fließt, steht er nicht für die Speicher zur Verfügung."
+  },
+  {
+   "when": "netz > bezug_max",
+   "title": "Kein Überschuss",
+   "type": "waiting",
+   "text": "Aus dem Netz kommen gerade {netz}, mehr als die erlaubten {bezug_max}. Solange das so ist, wird nicht zugeschaltet."
+  },
+  {
+   "when": "t1 >= ziel",
+   "title": "Speicher auf Zieltemperatur",
+   "type": "solar",
+   "text": "Speicher 1 hat mit {t1} seine Zieltemperatur von {ziel} erreicht. Überschuss geht jetzt in die Speicher 2 und 3."
+  },
+  {
+   "else": true,
+   "title": "Nächster Versuch läuft",
+   "type": "waiting",
+   "text": "Die Anlage prüft gleich, ob eine Stufe mit {naechste_kw} getragen wird. Weil nicht eingespeist wird, lässt sich der Überschuss nicht direkt messen. Die Anlage schaltet deshalb kurz zu und schaut, ob die Batterie einspringen muss."
+  }
+ ],
+ "tests": [
+  {
+   "name": "Batterie voll und Sonne da, nach der Wartezeit kommt die erste Stufe",
+   "given": {
+    "t1": "45 °C",
+    "t2": "40 °C",
+    "t3": "40 °C",
+    "netz": "0 kW",
+    "speicher": "0 kW",
+    "ladestand": "98 %",
+    "sonne": "40°"
+   },
+   "after": "7 min",
+   "expect": {
+    "heizstufe": 1,
+    "dle.level": 1,
+    "status": "Heizt mit Sonnenstrom"
+   }
+  },
+  {
+   "name": "Die Batterie muss aushelfen, also Stufe zurück und Pause",
+   "given": {
+    "t1": "45 °C",
+    "t2": "40 °C",
+    "t3": "40 °C",
+    "netz": "0 kW",
+    "speicher": "-1.2 kW",
+    "ladestand": "97 %",
+    "sonne": "40°",
+    "heizstufe": 2
+   },
+   "after": "3 min",
+   "expect": {
+    "heizstufe": 1,
+    "sperre": "on"
+   }
+  },
+  {
+   "name": "Im Winter kalt und im Zeitfenster, dann Netzheizen mit allen drei Phasen",
+   "given": {
+    "t1": "38 °C",
+    "t2": "30 °C",
+    "t3": "30 °C",
+    "netz": "0.4 kW",
+    "speicher": "0 kW",
+    "ladestand": "20 %",
+    "sonne": "-10°",
+    "winter": "on",
+    "clock": "06:30"
+   },
+   "after": "3 min",
+   "expect": {
+    "netzheizen": "on",
+    "dle.level": 3,
+    "status": "Notheizung"
+   }
+  },
+  {
+   "name": "Nachts wird nicht aus dem Netz geheizt",
+   "given": {
+    "t1": "38 °C",
+    "t2": "30 °C",
+    "t3": "30 °C",
+    "netz": "0.4 kW",
+    "speicher": "0 kW",
+    "ladestand": "20 %",
+    "sonne": "-30°",
+    "winter": "on",
+    "clock": "02:00"
+   },
+   "after": "15 min",
+   "expect": {
+    "netzheizen": "off",
+    "dle.level": 0,
+    "status": "Nachtsperre"
+   }
+  },
+  {
+   "name": "Netzheizen endet bei 60 Grad, auch wenn das Winterziel höher liegt",
+   "given": {
+    "t1": "60.5 °C",
+    "t2": "30 °C",
+    "t3": "30 °C",
+    "netz": "9 kW",
+    "speicher": "0 kW",
+    "ladestand": "20 %",
+    "sonne": "-10°",
+    "winter": "on",
+    "clock": "09:00",
+    "netzheizen": "on"
+   },
+   "after": "1 min",
+   "expect": {
+    "netzheizen": "off",
+    "dle.level": 0
+   }
+  },
+  {
+   "name": "Warmwasser vor Batterie leitet die Ladeleistung um",
+   "given": {
+    "t1": "50 °C",
+    "t2": "40 °C",
+    "t3": "40 °C",
+    "netz": "0 kW",
+    "speicher": "4 kW",
+    "ladestand": "60 %",
+    "sonne": "35°"
+   },
+   "after": "7 min",
+   "expect": {
+    "heizstufe": 1,
+    "dle.level": 1,
+    "status": "Warmwasser vor Batterie"
+   }
+  },
+  {
+   "name": "Speicher 1 ist warm, dann geht der Überschuss in Speicher 2",
+   "given": {
+    "t1": "58 °C",
+    "t2": "40 °C",
+    "t3": "40 °C",
+    "netz": "0 kW",
+    "speicher": "0 kW",
+    "ladestand": "98 %",
+    "sonne": "40°",
+    "heizstufe": 2
+   },
+   "after": "1 min",
+   "expect": {
+    "dle.level": 0,
+    "puffer2.level": 2
+   }
+  },
+  {
+   "name": "Speicher 2 erreicht die Höchsttemperatur und wird gesperrt",
+   "given": {
+    "t1": "76 °C",
+    "t2": "80.5 °C",
+    "t3": "60 °C",
+    "netz": "0 kW",
+    "speicher": "0 kW",
+    "ladestand": "98 %",
+    "sonne": "40°",
+    "winter": "on",
+    "heizstufe": 4
+   },
+   "after": "1 min",
+   "expect": {
+    "puffer2.level": 0,
+    "puffer3.level": 1
+   }
+  },
+  {
+   "name": "Fühler von Speicher 2 fällt aus, dann bleibt Speicher 2 aus",
+   "given": {
+    "t1": "58 °C",
+    "t2": "unknown",
+    "t3": "40 °C",
+    "netz": "0 kW",
+    "speicher": "0 kW",
+    "ladestand": "98 %",
+    "sonne": "40°",
+    "heizstufe": 5
+   },
+   "after": "1 min",
+   "expect": {
+    "puffer2.level": 0,
+    "puffer3.level": 2
+   }
+  },
+  {
+   "name": "Fühler von Speicher 1 fällt aus, dann bleibt die Heizung aus (so sagt es der Text der Vorlage)",
+   "given": {
+    "t1": "unknown",
+    "t2": "40 °C",
+    "t3": "40 °C",
+    "netz": "0 kW",
+    "speicher": "0 kW",
+    "ladestand": "98 %",
+    "sonne": "40°",
+    "heizstufe": 3
+   },
+   "after": "1 min",
+   "expect": {
+    "dle.level": 0,
+    "puffer2.level": 0,
+    "puffer3.level": 0,
+    "status": "Störung Fühler"
+   }
+  },
+  {
+   "name": "Nach einem Neustart beginnt alles bei null",
+   "given": {
+    "t1": "45 °C",
+    "t2": "40 °C",
+    "t3": "40 °C",
+    "netz": "0 kW",
+    "speicher": "0 kW",
+    "ladestand": "98 %",
+    "sonne": "40°",
+    "heizstufe": 6,
+    "restart": "on"
+   },
+   "after": "1 min",
+   "expect": {
+    "heizstufe": 0,
+    "dle.level": 0,
+    "puffer2.level": 0
+   }
+  }
+ ]
+}

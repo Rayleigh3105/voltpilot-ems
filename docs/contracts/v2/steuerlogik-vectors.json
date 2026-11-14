@@ -1,0 +1,407 @@
+{
+ "$comment": [
+  "Vertragsvektoren der Steuerlogik (Regelsprache, Stufe 2). Leser: edge-app/core/internal/logik (logik_vectors_test.go),",
+  "edge-app/core/internal/logik/textform (textform_test.go). Später: der Dienst neben der API, sobald er die Sprache liest.",
+  "Erzeugt aus dem Referenzlabor des Steuerlogik-Konzepts (14.11.2026); alle Namen sind erfunden."
+ ],
+ "$regel": "Feste Werte: on = true und off = false; die gespeicherte Form schreibt on/off. Einheiten wie docs/contracts/v2/steuerlogik.md. Eine Probe besteht, wenn jede Erwartung nach dem Lauf zutrifft; eine vorhandene Probe, die nicht besteht, sperrt das Scharfschalten (E5).",
+ "schema_version": "1.0",
+ "logiken": [
+  {
+   "name": "heizung-treu",
+   "datei": "steuerlogik/heizung-treu.logic.json",
+   "anlage": {
+    "dle": {
+     "kw_per_output": 3,
+     "outputs": 3
+    },
+    "puffer2": {
+     "kw_per_output": 1.5,
+     "outputs": 3
+    },
+    "puffer3": {
+     "kw_per_output": 1.5,
+     "outputs": 3
+    }
+   },
+   "pruefung": {
+    "ausdruecke": 61,
+    "befunde": 0,
+    "zusammen": [
+     {
+      "name": "Netzheizen bis liegt mindestens 5 K über Netzheizen ab",
+      "gilt": true,
+      "im_bereich_verletzbar": true
+     },
+     {
+      "name": "Der Abbruch liegt nicht über der Freigabe",
+      "gilt": true,
+      "im_bereich_verletzbar": true
+     }
+    ],
+    "zielwerte": [
+     "ein_unter",
+     "max_temp",
+     "vorrang_bis",
+     "ziel_netz",
+     "ziel_sommer",
+     "ziel_winter"
+    ]
+   },
+   "proben": [
+    {
+     "name": "Batterie voll und Sonne da, nach der Wartezeit kommt die erste Stufe",
+     "besteht": true
+    },
+    {
+     "name": "Die Batterie muss aushelfen, also Stufe zurück und Pause",
+     "besteht": true
+    },
+    {
+     "name": "Im Winter kalt und im Zeitfenster, dann Netzheizen mit allen drei Phasen",
+     "besteht": true
+    },
+    {
+     "name": "Nachts wird nicht aus dem Netz geheizt",
+     "besteht": true
+    },
+    {
+     "name": "Netzheizen endet bei 60 Grad, auch wenn das Winterziel höher liegt",
+     "besteht": true
+    },
+    {
+     "name": "Warmwasser vor Batterie leitet die Ladeleistung um",
+     "besteht": true
+    },
+    {
+     "name": "Speicher 1 ist warm, dann geht der Überschuss in Speicher 2",
+     "besteht": true
+    },
+    {
+     "name": "Speicher 2 erreicht die Höchsttemperatur und wird gesperrt",
+     "besteht": true
+    },
+    {
+     "name": "Fühler von Speicher 2 fällt aus, dann bleibt Speicher 2 aus",
+     "besteht": true
+    },
+    {
+     "name": "Fühler von Speicher 1 fällt aus, dann bleibt die Heizung aus (so sagt es der Text der Vorlage)",
+     "besteht": false,
+     "abweichungen": [
+      {
+       "stelle": "puffer2.level",
+       "soll": "0",
+       "ist": "3"
+      }
+     ]
+    },
+    {
+     "name": "Nach einem Neustart beginnt alles bei null",
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "heizung",
+   "datei": "steuerlogik/heizung.logic.json",
+   "anlage": {
+    "dle": {
+     "kw_per_output": 3,
+     "outputs": 3
+    },
+    "puffer2": {
+     "kw_per_output": 1.5,
+     "outputs": 3
+    },
+    "puffer3": {
+     "kw_per_output": 1.5,
+     "outputs": 3
+    }
+   },
+   "pruefung": {
+    "ausdruecke": 55,
+    "befunde": 0,
+    "zusammen": [
+     {
+      "name": "Netzheizen bis liegt mindestens 5 K über Netzheizen ab",
+      "gilt": true,
+      "im_bereich_verletzbar": true
+     },
+     {
+      "name": "Der Abbruch liegt nicht über der Freigabe",
+      "gilt": true,
+      "im_bereich_verletzbar": true
+     }
+    ],
+    "zielwerte": [
+     "ein_unter",
+     "max_temp",
+     "vorrang_bis",
+     "ziel_netz",
+     "ziel_sommer",
+     "ziel_winter"
+    ]
+   },
+   "proben": [
+    {
+     "name": "Batterie voll und Sonne da, nach der Wartezeit kommt die erste Stufe",
+     "besteht": true
+    },
+    {
+     "name": "Die Batterie muss aushelfen, also Stufe zurück und Pause",
+     "besteht": true
+    },
+    {
+     "name": "Im Winter kalt und im Zeitfenster, dann Netzheizen mit allen drei Phasen",
+     "besteht": true
+    },
+    {
+     "name": "Nachts wird nicht aus dem Netz geheizt",
+     "besteht": true
+    },
+    {
+     "name": "Netzheizen endet bei 60 Grad, auch wenn das Winterziel höher liegt",
+     "besteht": true
+    },
+    {
+     "name": "Warmwasser vor Batterie leitet die Ladeleistung um",
+     "besteht": true
+    },
+    {
+     "name": "Speicher 1 ist warm, dann geht der Überschuss in Speicher 2",
+     "besteht": true
+    },
+    {
+     "name": "Speicher 2 erreicht die Höchsttemperatur und wird gesperrt",
+     "besteht": true
+    },
+    {
+     "name": "Fühler von Speicher 2 fällt aus, dann bleibt Speicher 2 aus",
+     "besteht": true
+    },
+    {
+     "name": "Fühler von Speicher 1 fällt aus, dann bleibt der Durchlauferhitzer aus und Speicher 2 heizt weiter",
+     "besteht": true
+    },
+    {
+     "name": "Speicher 1 pendelt um das Ziel, der Durchlauferhitzer schaltet erst 3 K darunter wieder zu",
+     "besteht": true
+    },
+    {
+     "name": "Der Wechselrichter liefert keine Werte, nach einer Minute ist die Heizstufe null",
+     "besteht": true
+    },
+    {
+     "name": "Nach einem Neustart beginnt alles bei null",
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "wasser",
+   "datei": "steuerlogik/wasser.logic.json",
+   "anlage": {
+    "heizstab": {
+     "kw_per_output": 2,
+     "outputs": 3
+    }
+   },
+   "pruefung": {
+    "ausdruecke": 29,
+    "befunde": 0,
+    "zusammen": [
+     {
+      "name": "Aus dem Netz bis liegt mindestens 5 K über Nie kälter als",
+      "gilt": true,
+      "im_bereich_verletzbar": true
+     },
+     {
+      "name": "Aus dem Netz bis liegt nicht über dem Ziel mit Sonnenstrom",
+      "gilt": true,
+      "im_bereich_verletzbar": true
+     }
+    ],
+    "zielwerte": [
+     "mindest",
+     "netz_ziel",
+     "ziel"
+    ]
+   },
+   "proben": [
+    {
+     "name": "Kalter Morgen",
+     "besteht": true
+    },
+    {
+     "name": "Kalte Nacht",
+     "besteht": true
+    },
+    {
+     "name": "Sonne am Mittag",
+     "besteht": true
+    },
+    {
+     "name": "Speicher ist warm",
+     "besteht": true
+    },
+    {
+     "name": "Fühler fällt aus",
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "kuehlraum",
+   "datei": "steuerlogik/kuehlraum.logic.json",
+   "anlage": {
+    "regler": {
+     "setpoint_range": [
+      0,
+      8
+     ]
+    }
+   },
+   "pruefung": {
+    "ausdruecke": 22,
+    "befunde": 0,
+    "zusammen": [
+     {
+      "name": "Die Warnschwelle liegt über dem normalen Sollwert",
+      "gilt": true,
+      "im_bereich_verletzbar": true
+     }
+    ],
+    "zielwerte": [
+     "normal",
+     "warn_ab"
+    ]
+   },
+   "proben": [
+    {
+     "name": "Mittags ist Sonnenstrom übrig, dann kühlt der Raum 2 K tiefer",
+     "besteht": true
+    },
+    {
+     "name": "Ohne Sonnenstrom gilt der normale Sollwert",
+     "besteht": true
+    },
+    {
+     "name": "Steht die Tür offen, wird nicht auf Vorrat gekühlt",
+     "besteht": true
+    },
+    {
+     "name": "Eine Wolke kehrt den Verdichter nicht sofort um",
+     "besteht": true
+    },
+    {
+     "name": "Bleibt die Sonne eine Viertelstunde weg, gilt wieder der normale Sollwert",
+     "besteht": true
+    },
+    {
+     "name": "Der Kunde schaltet Kälte auf Vorrat aus",
+     "besteht": true
+    },
+    {
+     "name": "Eine halbe Stunde zu warm, dann kommt die Meldung",
+     "besteht": true
+    },
+    {
+     "name": "Fällt der Netzwert aus, gilt sofort der normale Sollwert",
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "waermepumpe",
+   "datei": "steuerlogik/waermepumpe.logic.json",
+   "anlage": {
+    "wp": {}
+   },
+   "pruefung": {
+    "ausdruecke": 15,
+    "befunde": 0,
+    "zusammen": [],
+    "zielwerte": [
+     "puffer_max"
+    ]
+   },
+   "proben": [
+    {
+     "name": "Sonnenstrom und die Pause ist um, dann kommt die Empfehlung",
+     "besteht": true
+    },
+    {
+     "name": "Fünf Minuten reichen nicht",
+     "besteht": true
+    },
+    {
+     "name": "Der Speicher ist voll, dann endet die Empfehlung trotz Haltezeit",
+     "besteht": true
+    },
+    {
+     "name": "Eine Wolke beendet die Empfehlung nicht vor der Haltezeit",
+     "besteht": true
+    },
+    {
+     "name": "Nach der Haltezeit und zehn Minuten Netzbezug ist Schluss",
+     "besteht": true
+    },
+    {
+     "name": "Fällt der Fühler aus, läuft die Wärmepumpe normal",
+     "besteht": true
+    }
+   ]
+  },
+  {
+   "name": "klima",
+   "datei": "steuerlogik/klima.logic.json",
+   "anlage": {
+    "klima": {
+     "setpoint_range": [
+      18,
+      30
+     ]
+    }
+   },
+   "pruefung": {
+    "ausdruecke": 23,
+    "befunde": 0,
+    "zusammen": [],
+    "zielwerte": [
+     "wunsch"
+    ]
+   },
+   "proben": [
+    {
+     "name": "Dienstag um zehn wird auf die Wunschtemperatur gekühlt",
+     "besteht": true
+    },
+    {
+     "name": "Mit Sonnenstrom wird anderthalb Grad tiefer vorgekühlt",
+     "besteht": true
+    },
+    {
+     "name": "Samstags ohne Sonnenstrom bleibt das Gerät aus",
+     "besteht": true
+    },
+    {
+     "name": "Samstags mit Sonnenstrom wird vorgekühlt",
+     "besteht": true
+    },
+    {
+     "name": "Das Fenster steht drei Minuten offen, dann geht das Gerät aus",
+     "besteht": true
+    },
+    {
+     "name": "Nur mit Sonnenstrom heißt, zur Arbeitszeit ohne Sonnenstrom bleibt es aus",
+     "besteht": true
+    },
+    {
+     "name": "Betrieb aus gewinnt immer",
+     "besteht": true
+    }
+   ]
+  }
+ ]
+}

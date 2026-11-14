@@ -1,0 +1,258 @@
+# Heizungsautomatik (Variante Nulleinspeisung) in der entschiedenen Textform, mit englischen Wörtern (E9).
+# Vorzeichen nach dem Vertrag der Box: netz + = Bezug, speicher + = laden.
+# Gegenüber der Vorlage ergänzt (im Text mit "ergänzt" markiert): Totband an Speicher 1,
+# Schritt und Lage für fehlende Messwerte, Lage "Alle Speicher sind warm". Alles andere ist 1:1 übertragen.
+logic: 1
+name: Heizung
+description: >
+  Sonnenstrom geht der Reihe nach in drei Wärmespeicher. Die Anlage speist nicht ein,
+  der Überschuss ist deshalb nicht messbar und wird ertastet. Mit der Winterregelung
+  heizt Speicher 1 notfalls aus dem Netz.
+
+devices:                        # was diese Logik schaltet
+  dle: {entity: heizstab-dle,  name: Durchlauferhitzer}       # Speicher 1, drei Phasen je 3,0 kW
+  puffer2: {entity: heizstab-puffer-2, name: Speicher 2}    # drei Phasen je 1,5 kW
+  puffer3: {entity: heizstab-puffer-3, name: Speicher 3}    # drei Phasen je 1,5 kW
+
+inputs:                         # was sie liest; ohne frischen Wert gilt "unbekannt"
+  t1:        {source: fuehler-puffer-1-oben.temperature, name: Speicher 1,        max_age: 5 min}
+  t2:        {source: fuehler-puffer-2-oben.temperature, name: Speicher 2,        max_age: 5 min}
+  t3:        {source: fuehler-puffer-3-oben.temperature, name: Speicher 3,        max_age: 5 min}
+  netz:      {source: site.grid,                         name: Netzbezug,         max_age: 60 s}
+  speicher:  {source: battery.power,                     name: Batterie lädt mit, max_age: 60 s}
+  ladestand: {source: battery.soc,                       name: Batterie,          max_age: 5 min}
+  sonne:     {source: sun.elevation,                     name: Sonnenstand}
+
+settings:                       # Temperaturen stellt der Kunde immer (E2); sonst gilt ohne "editable_by" der Fachbetrieb
+  winter:        {name: Winterregelung, type: boolean, default: off, editable_by: customer,
+                  help: {when_on: "An: Unter {ein_unter} heizt Speicher 1 aus dem Netz, von {netz_ab} bis {netz_bis} Uhr, bis {ziel_netz}.",
+                         when_off: "Aus: Geheizt wird nur mit Sonnenstrom."}}
+  ein_unter:     {name: Netzheizen ab,               default: 40 °C,   range: [30 °C, 70 °C],  step: 1 K}
+  ziel_netz:     {name: Netzheizen bis,              default: 60 °C,   range: [40 °C, 80 °C],  step: 1 K}
+  netz_ab:       {name: Netzheizen erlaubt ab,       default: "06:00"}
+  netz_bis:      {name: Netzheizen erlaubt bis,      default: "22:00"}
+  ziel_sommer:   {name: Ziel im Sommer,              default: 57 °C,   range: [57 °C, 90 °C],  step: 1 K}
+  ziel_winter:   {name: Ziel im Winter,              default: 75 °C,   range: [50 °C, 90 °C],  step: 1 K}
+  vorrang_bis:   {name: Warmwasser vor Batterie bis, default: 60 °C,   range: [0 °C, 80 °C],   step: 1 K,
+                  help: "0 °C schaltet den Vorrang ab."}
+  reserve:       {name: Reserve beim Vorrang,        default: 0.3 kW,  range: [0 kW, 2 kW],    step: 0.05 kW}
+  freigabe:      {name: Batterie gilt als voll ab,   default: 95 %,    range: [90 %, 100 %],   step: 1 %}
+  stopp:         {name: Abbruch unter Ladestand,     default: 90 %,    range: [80 %, 100 %],   step: 1 %}
+  entladung_max: {name: Zulässige Batterieentladung, default: 0.15 kW, range: [0.15 kW, 1 kW], step: 0.05 kW}
+  bezug_max:     {name: Zulässiger Netzbezug,        default: 0.3 kW,  range: [0.3 kW, 3 kW],  step: 0.05 kW}
+  sperrzeit:     {name: Pause nach Fehlversuch,      default: 5 min,   range: [0 min, 60 min], step: 5 min}
+  sonne_min:     {name: Mindest-Sonnenstand,         default: 5°,      range: [0°, 30°],       step: 1°}
+  max_temp:      {name: Speicher 2 und 3 höchstens,  default: 80 °C,   range: [50 °C, 95 °C],  step: 1 K}
+  tageslimit:    {name: Speicher 2 und 3 je Tag,     default: 9 h,     range: [1 h, 24 h],     step: 0.5 h,
+                  help: "Summe der drei Phasen: 9 h sind drei Stunden mit allen Phasen."}
+
+constraints:                    # was zwischen den Stellwerten gelten muss
+  - Netzheizen bis liegt mindestens 5 K über Netzheizen ab: ziel_netz >= ein_unter + 5 K
+  - Der Abbruch liegt nicht über der Freigabe: stopp <= freigabe
+
+formulas:                       # Formeln; sie gelten immer mit den aktuellen Werten
+  ziel:         if(winter, ziel_winter, ziel_sommer)
+  netzfenster:  time_window(netz_ab, netz_bis)
+  vorrang_ziel: min(vorrang_bis, ziel)
+  dle_frei:     known(t1) and not speicher1_warm
+  rest:         if(dle_frei, heizstufe - min(heizstufe, 3), heizstufe)
+  frei2: >
+    known(t2) and t2 < if(puffer2.on, ziel, ziel - 3 K) and t2 < max_temp
+    and puffer2.output_hours_today < tageslimit
+  frei3: >
+    known(t3) and t3 < if(puffer3.on, ziel, ziel - 3 K) and t3 < max_temp
+    and puffer3.output_hours_today < tageslimit
+  naechste_kw:  if(dle_frei and heizstufe < 3, dle.kw_per_output, puffer2.kw_per_output)
+
+states:                         # was sich die Logik merkt
+  speicher1_warm:               # ergänzt: Ziel erreicht; wieder frei, wenn 3 K darunter (wie bei Speicher 2 und 3)
+    name: Speicher 1 ist warm
+    type: boolean
+    on_when:  t1 >= ziel
+    off_when: unknown(t1) or t1 < ziel - 3 K
+    after_restart: off
+
+  vorrang:                      # Warmwasser vor Batterie, mit 3 K Totband
+    name: Warmwasser vor Batterie
+    type: boolean
+    on_when:  vorrang_bis > 0 °C and t1 < vorrang_ziel - 3 K
+    off_when: not (vorrang_bis > 0 °C) or unknown(t1) or t1 >= vorrang_ziel
+    after_restart: off
+
+  netzheizen:                   # "Notbetrieb": nur Durchlauferhitzer, nur Winter, nur im Zeitfenster
+    name: Netzheizen
+    type: boolean
+    on_when:
+      - Winterregelung ist an: winter
+      - Uhrzeit liegt im Fenster: netzfenster
+      - Speicher 1 ist seit 2 Minuten zu kalt: holds(t1 < ein_unter, 2 min)
+    off_when_any:
+      - Fühler fehlt: unknown(t1)
+      - Speicher 1 ist warm genug: t1 >= ziel_netz
+      - Winterregelung ist aus: not winter
+      - Uhrzeit liegt außerhalb des Fensters: not netzfenster
+    after_restart: off
+
+  sperre:                       # Pause nach einem Versuch, der nicht getragen hat
+    name: Pause nach Fehlversuch
+    type: timer
+    duration: sperrzeit
+    after_restart: off
+
+  heizstufe:                    # so viele Heizphasen bekommen Sonnenstrom
+    name: Heizstufe
+    type: counter
+    min: 0
+    max: 9
+    after_restart: 0
+    steps:                      # je Takt gilt der erste zutreffende Schritt
+      - name: blind             # ergänzt: ohne Messwerte vom Wechselrichter wird nicht weiter geheizt
+        set: 0
+        when: holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)
+      - name: zurueck           # die Stufe wird nicht getragen
+        by: -1
+        not_before: 2 min       # so lange hat der Wechselrichter Zeit, die Sonne nachzuführen
+        when: heizstufe > 0
+        when_any:
+          - Die Batterie muss aushelfen: speicher < -entladung_max
+          - Das Netz muss aushelfen: netz > bezug_max
+          - Die Batterie ist zu leer: ladestand < stopp and not (vorrang and heizstufe <= 3)
+        then: start(sperre) if not (vorrang and ladestand < freigabe)
+      - name: versuch           # Batterie voll: eine Stufe zuschalten und sehen, ob sie getragen wird
+        by: +1
+        not_before: 6 min
+        when:
+          - Das Netz hilft nicht aus: netz < bezug_max
+          - Die Batterie ist voll: ladestand > freigabe
+          - Die Sonne steht hoch genug: sonne > sonne_min
+          - Keine Pause nach einem Fehlversuch: not running(sperre)
+          - Die Batterie hilft nicht aus: speicher > -entladung_max
+      - name: umleiten          # Vorrang: Ladeleistung der Batterie geht ins Warmwasser
+        by: +1
+        not_before: 6 min
+        when:
+          - Das Netz hilft nicht aus: netz < bezug_max
+          - Warmwasser hat Vorrang: vorrang
+          - Der Durchlauferhitzer hat noch eine Phase frei: heizstufe < 3
+          - Die Batterie lädt mit genug Leistung: speicher >= naechste_kw + reserve
+
+outputs:                        # was die Geräte tun sollen: Zahl der Phasen
+  dle: {level: "if(netzheizen, 3, if(dle_frei, min(heizstufe, 3), 0))"}
+  puffer2: {level: "if(frei2, min(rest, 3), 0)"}
+  puffer3: {level: "if(frei3, min(rest - min(rest, 3), 3), 0)"}
+
+status:                         # was der Kunde liest; die erste zutreffende Zeile gilt
+  - when: unknown(t1)
+    title: Störung Fühler
+    type: fault
+    text: Der Fühler von Speicher 1 liefert keinen Wert. Der Durchlauferhitzer bleibt aus, Speicher 2 und 3 heizen weiter mit Sonnenstrom.
+  - when: unknown(netz) or unknown(speicher) or unknown(ladestand)    # ergänzt
+    title: Messwerte fehlen
+    type: fault
+    text: Der Wechselrichter liefert keine Werte. Ohne sie wird nicht mit Sonnenstrom geheizt.
+  - when: netzheizen
+    title: Heizt aus dem Netz
+    type: grid
+    text: Speicher 1 war unter {ein_unter} gefallen und steht bei {t1}. Der Durchlauferhitzer heizt aus dem Netz bis {ziel_netz}.
+  - when: winter and not netzfenster and t1 < ein_unter
+    title: Nachtsperre
+    type: waiting
+    text: Speicher 1 liegt mit {t1} unter {ein_unter}. Nachts wird nicht aus dem Netz geheizt, ab {netz_ab} Uhr schaltet der Durchlauferhitzer zu.
+  - when: heizstufe > 0 and dle.requested + puffer2.requested + puffer3.requested == 0  # ergänzt
+    title: Alle Speicher sind warm
+    type: idle
+    text: Alle drei Speicher haben ihr Ziel erreicht. Mehr Sonnenstrom kann die Anlage gerade nicht aufnehmen.
+  - when: heizstufe > 0 and heizstufe <= 3 and vorrang and ladestand < freigabe
+    title: Warmwasser vor Batterie
+    type: solar
+    text: Speicher 1 ist mit {t1} noch unter {vorrang_ziel}. Der Sonnenstrom geht zuerst in den Durchlauferhitzer, die Batterie wird danach geladen.
+  - when: heizstufe > 0
+    title: Heizt mit Sonnenstrom
+    type: solar
+    text: Es ist mehr Sonnenstrom da, als Haus und Batterie brauchen.
+  - when: sonne <= 0°
+    title: Keine Sonne
+    type: idle
+    text: Die Sonne ist untergegangen, es gibt keinen Sonnenstrom zu verteilen.
+  - when: vorrang and ladestand < freigabe
+    title: Wartet auf Sonnenstrom
+    type: waiting
+    text: Warmwasser hat Vorrang vor der Batterie. Der Durchlauferhitzer schaltet zu, sobald {naechste_kw + reserve} übrig sind.
+  - when: ladestand < freigabe
+    title: Batterie lädt
+    type: waiting
+    text: Die Batterie ist bei {ladestand}. Ab {freigabe} geht der übrige Sonnenstrom in die Speicher.
+  - when: sonne < sonne_min
+    title: Sonne zu tief
+    type: waiting
+    text: Die Sonne steht mit {sonne} zu tief. Ab {sonne_min} beginnt die Anlage mit Versuchen.
+  - when: running(sperre)
+    title: Pause nach Versuch
+    type: waiting
+    text: Der letzte Versuch hat nicht getragen. Die Anlage wartet und versucht es danach erneut.
+  - when: speicher < -entladung_max or netz > bezug_max
+    title: Kein Überschuss
+    type: waiting
+    text: Batterie oder Netz müssen gerade aushelfen. Solange das so ist, wird nicht zugeschaltet.
+  - when: speicher1_warm
+    title: Speicher 1 ist warm
+    type: solar
+    text: Speicher 1 hat mit {t1} sein Ziel von {ziel} erreicht. Überschuss geht jetzt in die Speicher 2 und 3.
+  - else: true
+    title: Nächster Versuch
+    type: waiting
+    text: Die Anlage prüft gleich, ob eine Stufe mit {naechste_kw} getragen wird.
+
+tests:                          # Fälle, die zeigen, was die Logik tun soll; sie laufen bei jeder Fassung mit (E5)
+  - name: Batterie voll und Sonne da, nach der Wartezeit kommt die erste Stufe
+    given: {t1: 45 °C, t2: 40 °C, t3: 40 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°}
+    after: 7 min
+    expect: {heizstufe: 1, dle.level: 1, status: Heizt mit Sonnenstrom}
+  - name: Die Batterie muss aushelfen, also Stufe zurück und Pause
+    given: {t1: 45 °C, t2: 40 °C, t3: 40 °C, netz: 0 kW, speicher: -1.2 kW, ladestand: 97 %, sonne: 40°, heizstufe: 2}
+    after: 3 min
+    expect: {heizstufe: 1, sperre: on}
+  - name: Im Winter kalt und im Zeitfenster, dann Netzheizen mit allen drei Phasen
+    given: {t1: 38 °C, t2: 30 °C, t3: 30 °C, netz: 0.4 kW, speicher: 0 kW, ladestand: 20 %, sonne: -10°, winter: on, clock: "06:30"}
+    after: 3 min
+    expect: {netzheizen: on, dle.level: 3, status: Heizt aus dem Netz}
+  - name: Nachts wird nicht aus dem Netz geheizt
+    given: {t1: 38 °C, t2: 30 °C, t3: 30 °C, netz: 0.4 kW, speicher: 0 kW, ladestand: 20 %, sonne: -30°, winter: on, clock: "02:00"}
+    after: 15 min
+    expect: {netzheizen: off, dle.level: 0, status: Nachtsperre}
+  - name: Netzheizen endet bei 60 Grad, auch wenn das Winterziel höher liegt
+    given: {t1: 60.5 °C, t2: 30 °C, t3: 30 °C, netz: 9 kW, speicher: 0 kW, ladestand: 20 %, sonne: -10°, winter: on, clock: "09:00", netzheizen: on}
+    after: 1 min
+    expect: {netzheizen: off, dle.level: 0}
+  - name: Warmwasser vor Batterie leitet die Ladeleistung um
+    given: {t1: 50 °C, t2: 40 °C, t3: 40 °C, netz: 0 kW, speicher: 4 kW, ladestand: 60 %, sonne: 35°}
+    after: 7 min
+    expect: {heizstufe: 1, dle.level: 1, status: Warmwasser vor Batterie}
+  - name: Speicher 1 ist warm, dann geht der Überschuss in Speicher 2
+    given: {t1: 58 °C, t2: 40 °C, t3: 40 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, heizstufe: 2}
+    after: 1 min
+    expect: {dle.level: 0, puffer2.level: 2}
+  - name: Speicher 2 erreicht die Höchsttemperatur und wird gesperrt
+    given: {t1: 76 °C, t2: 80.5 °C, t3: 60 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, winter: on, heizstufe: 4}
+    after: 1 min
+    expect: {puffer2.level: 0, puffer3.level: 1}
+  - name: Fühler von Speicher 2 fällt aus, dann bleibt Speicher 2 aus
+    given: {t1: 58 °C, t2: unknown, t3: 40 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, heizstufe: 5}
+    after: 1 min
+    expect: {puffer2.level: 0, puffer3.level: 2}
+  - name: Fühler von Speicher 1 fällt aus, dann bleibt der Durchlauferhitzer aus und Speicher 2 heizt weiter
+    given: {t1: unknown, t2: 40 °C, t3: 40 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, heizstufe: 3}
+    after: 1 min
+    expect: {dle.level: 0, puffer2.level: 3, puffer3.level: 0, status: Störung Fühler}
+  - name: Speicher 1 pendelt um das Ziel, der Durchlauferhitzer schaltet erst 3 K darunter wieder zu
+    given: {t1: 56.2 °C, t2: 40 °C, t3: 40 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, heizstufe: 3, speicher1_warm: on}
+    after: 1 min
+    expect: {dle.level: 0, puffer2.level: 3, status: Heizt mit Sonnenstrom}
+  - name: Der Wechselrichter liefert keine Werte, nach einer Minute ist die Heizstufe null
+    given: {t1: 45 °C, t2: 40 °C, t3: 40 °C, netz: unknown, speicher: unknown, ladestand: unknown, sonne: 40°, heizstufe: 5}
+    after: 2 min
+    expect: {heizstufe: 0, dle.level: 0, puffer2.level: 0, status: Messwerte fehlen}
+  - name: Nach einem Neustart beginnt alles bei null
+    given: {t1: 45 °C, t2: 40 °C, t3: 40 °C, netz: 0 kW, speicher: 0 kW, ladestand: 98 %, sonne: 40°, heizstufe: 6, restart: on}
+    after: 1 min
+    expect: {heizstufe: 0, dle.level: 0, puffer2.level: 0}
