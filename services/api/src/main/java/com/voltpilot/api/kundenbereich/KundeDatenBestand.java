@@ -188,6 +188,9 @@ public final class KundeDatenBestand {
                 "netzanschluss_kennzeichen_seq", "ort_kurzzeichen_seq", "verbesserung_kennung_seq")) {
             m.put(t, zaehler);
         }
+        // Abrechnung prüfen (R3): die Zahl, die der Kunde von SEINER Rechnung abschreibt - die Rechnung
+        // bleibt sein Beleg; hier liegt nur die Vergleichszahl, keine Aufzeichnung.
+        m.put("abrechnung_pruefung", "Vergleichszahl von der Rechnung des Kunden - der Beleg ist die Rechnung");
         return Collections.unmodifiableMap(m);
     }
 

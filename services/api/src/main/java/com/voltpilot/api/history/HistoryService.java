@@ -90,18 +90,57 @@ public class HistoryService {
         Instant cutover = repo.v2HistoryCutover(siteId);
         List<HistoryBucketDto> buckets = buckets(siteId, biddingZone, range, window, cutover);
 
-        HistoryTotalsDto totals = totals(buckets,
-                new HistoryRepository.PlannedSavings(
-                        repo.savings(siteId, window.from(), window.to()),
-                        earnings.steuerungGeplantForSite(siteId, window.from(), window.to())),
-                repo.tariffContext(siteId), ungeklemmteQuoten);
-
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY
                 ? Tagesprotokoll.build(buckets)
                 : List.of();
         List<HistoryPlanPointDto> plan = range == HistoryRange.DAY
                 ? repo.planForWindow(siteId, window.from(), window.to())
                 : List.of();
+        return assemble(siteId, biddingZone, range, window, at, cutover,
+                range.name().toLowerCase(java.util.Locale.ROOT), range.bucketMinutes(),
+                buckets, buckets, protocol, plan);
+    }
+
+    /**
+     * Die Historie eines FREIEN Zeitraums (Paket R1, {@code /history?from=&to=}): ganze Berliner Tage,
+     * beide eingeschlossen; Eimer je Tag bis {@value Zeitraum#TAGE_JE_TAG} Tage, darüber je Monat
+     * ({@code bucketMinutes = 0}). Gelesen wird über denselben Tageseimer-Weg wie {@code range=month|year}
+     * (v1/v2-Naht inklusive), Summen und Abdeckung über die Tage - ein Kalenderjahr als Zeitraum hat
+     * dieselben Summen wie {@code range=year}. Ohne Tagesprotokoll und Plan wie jeder Zeitraum über einen Tag.
+     */
+    public HistoryDto zeitraum(UUID siteId, String biddingZone, Zeitraum zeitraum) {
+        HistoryRange.Window window = zeitraum.window();
+        Instant cutover = repo.v2HistoryCutover(siteId);
+        List<HistoryBucketDto> tage = buckets(siteId, biddingZone, HistoryRange.MONTH, window, cutover);
+        List<HistoryBucketDto> eimer = zeitraum.jeMonat() ? zeitraum.monatsEimer(tage) : tage;
+        return assemble(siteId, biddingZone, zeitraum.ereignisRaster(), window, zeitraum.von(), cutover,
+                "zeitraum", zeitraum.jeMonat() ? 0 : HistoryRange.MONTH.bucketMinutes(),
+                eimer, tage, List.of(), List.of());
+    }
+
+    /**
+     * Die Tageseimer eines Zeitraums in der Era-Sicht der Anlage (v1/v2-Naht) - für die Abrechnung
+     * (Paket R2), die je Tag wissen muss, ob gemessen wurde.
+     */
+    public List<HistoryBucketDto> tagesEimer(UUID siteId, String biddingZone, Zeitraum zeitraum) {
+        return buckets(siteId, biddingZone, HistoryRange.MONTH, zeitraum.window(),
+                repo.v2HistoryCutover(siteId));
+    }
+
+    /**
+     * Der gemeinsame Rest beider Wege: Summen (über {@code summenEimer}, damit die Eimer-Wahl sie nicht
+     * verschiebt), Abdeckung, Ereignisse, Vorgaben. {@code range} bestimmt nur, wie Ereignisse gebündelt
+     * werden.
+     */
+    private HistoryDto assemble(UUID siteId, String biddingZone, HistoryRange range,
+            HistoryRange.Window window, LocalDate at, Instant cutover, String rangeName, int bucketMinutes,
+            List<HistoryBucketDto> buckets, List<HistoryBucketDto> summenEimer,
+            List<ProtocolEventDto> protocol, List<HistoryPlanPointDto> plan) {
+        HistoryTotalsDto totals = totals(summenEimer,
+                new HistoryRepository.PlannedSavings(
+                        repo.savings(siteId, window.from(), window.to()),
+                        earnings.steuerungGeplantForSite(siteId, window.from(), window.to())),
+                repo.tariffContext(siteId), ungeklemmteQuoten);
 
         // Die Abdeckungs-Rohzahlen werden EINMAL geholt und zweimal gelesen: die
         // Zeit-Leiste zählt daraus die Fehlstellen, die Ereignis-Spur setzt ihre
@@ -120,8 +159,8 @@ public class HistoryService {
             events.addAll(Ereignisse.vorgaben(range, window, v.zeilen(), v.luecken()));
             events.sort(java.util.Comparator.comparing(HistoryEventDto::start));
         }
-        return new HistoryDto(range.name().toLowerCase(java.util.Locale.ROOT),
-                window.from(), window.to(), range.bucketMinutes(), buckets, totals, protocol, plan,
+        return new HistoryDto(rangeName,
+                window.from(), window.to(), bucketMinutes, buckets, totals, protocol, plan,
                 coverage, events, v == null ? null
                         : Ereignisse.vorgabenZaehlung(range, window, v.zeilen(), v.luecken(), v.verarbeitetBis()));
     }

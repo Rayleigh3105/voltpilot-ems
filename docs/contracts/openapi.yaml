@@ -5192,13 +5192,28 @@ paths:
           required: false
           schema: { type: string, format: date }
           description: Any date inside the wanted period (default today, Europe/Berlin).
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: >
+            Freier Zeitraum (Abrechnung prüfen, R1): erster Tag, eingeschlossen. Nur zusammen mit `to`;
+            dann gelten `range` und `at` nicht, die Antwort trägt `range=zeitraum`. Ganze Europe/Berlin-Tage,
+            Eimer je Tag bis 92 Tage (`bucketMinutes=1440`), darüber je Kalendermonat (`bucketMinutes=0`,
+            der erste Eimer beginnt am ersten Tag). Summen und Abdeckung über die Tage; kein Tagesprotokoll,
+            kein Plan. Höchstens 1098 Tage.
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Freier Zeitraum - letzter Tag, eingeschlossen; höchstens heute.
       responses:
         "200":
           description: The site's history for the period (empty buckets if no data).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/History" }
-        "400": { description: Unknown range value. }
+        "400": { description: "Unknown range value, or an invalid from/to pair (one missing, to before from, to in the future, longer than 1098 days)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/grundlast:
@@ -5236,6 +5251,93 @@ paths:
         "400": { description: Unbekannter Zeitraum. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage nicht gefunden oder nicht sichtbar. }
+  /api/v1/sites/{siteId}/abrechnung:
+    get:
+      tags: [history]
+      summary: Abrechnung prüfen - Netzbezug und Einspeisung eines Zeitraums (R2).
+      description: >
+        Bedienkonzept vp-privatkunde-bedienkonzept §7. Ganze Europe/Berlin-Tage, beide eingeschlossen.
+        Mit Zähler am Netzanschluss (`energy_kwh` / `energy_export_kwh` eines grid-meter, Tagesend-Stände aus
+        telemetry_v2_rollup_1d) ist die Menge Stand am Ende des letzten Tages minus Stand am Ende des Vortags -
+        auch über Lücken hinweg; fällt der Zähler im Zeitraum oder belegt er weniger Tage als die Tagessummen,
+        gilt die Summe der Tageswerte (`herkunft=summe`, Lückentage genannt). Kein Urteil, kein Euro. Lesen darf,
+        wer die Anlage sieht; eine fremde Anlage ist 404.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: von, in: query, required: true, schema: { type: string, format: date } }
+        - { name: bis, in: query, required: true, schema: { type: string, format: date }, description: "Eingeschlossen, höchstens heute." }
+      responses:
+        "200":
+          description: Die Mengen des Zeitraums.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Abrechnung" }
+        "400": { description: "Ungültiger Zeitraum (bis vor von, in der Zukunft, länger als 1098 Tage)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/abrechnung/pruefungen:
+    get:
+      tags: [history]
+      summary: Frühere Prüfungen - alle gespeicherten Zeiträume der Anlage, der jüngste zuerst (R3).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die gespeicherten Prüfungen.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AbrechnungPruefung" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/abrechnung/pruefung:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: von, in: query, required: true, schema: { type: string, format: date } }
+      - { name: bis, in: query, required: true, schema: { type: string, format: date } }
+    get:
+      tags: [history]
+      summary: Die Zahlen von der Rechnung für genau diesen Zeitraum (R3).
+      responses:
+        "200":
+          description: Die gespeicherte Prüfung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AbrechnungPruefung" }
+        "204": { description: Für diesen Zeitraum ist nichts eingetragen. }
+        "400": { description: Ungültiger Zeitraum. }
+        "404": { description: Anlage nicht gefunden. }
+    put:
+      tags: [history]
+      summary: Zahlen von der Rechnung speichern (R3, Recht auswertung.anlegen).
+      description: >
+        Eine Zeile je Anlage und Zeitraum. Ein leeres Feld (null) löscht nur seine Zahl; sind beide leer, ist
+        die Prüfung gelöscht (204). Mandant aus dem Token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bezugKwh: { type: number, nullable: true, minimum: 0 }
+                einspeisungKwh: { type: number, nullable: true, minimum: 0 }
+      responses:
+        "200":
+          description: Die gespeicherte Prüfung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AbrechnungPruefung" }
+        "204": { description: Beide Felder leer - die Prüfung ist gelöscht. }
+        "400": { description: Ungültiger Zeitraum oder eine Menge unter 0. }
+        "403": { description: "Recht auswertung.anlegen fehlt (recht_fehlt)." }
+        "404": { description: Anlage nicht gefunden. }
+    delete:
+      tags: [history]
+      summary: Die Prüfung des Zeitraums löschen (R3, Recht auswertung.anlegen).
+      responses:
+        "204": { description: Gelöscht (auch wenn es keine gab). }
+        "403": { description: "Recht auswertung.anlegen fehlt (recht_fehlt)." }
+        "404": { description: Anlage nicht gefunden. }
   /api/v1/sites/{siteId}/earnings:
     get:
       tags: [history]
@@ -30303,13 +30405,53 @@ components:
           properties:
             w: { type: number, nullable: true }
             grund: { type: string, nullable: true, enum: [teil_ohne_wert, teile_mehr_als_haus] }
+    AbrechnungZeile:
+      type: object
+      properties:
+        mengeKwh: { type: number, nullable: true, description: "Null ohne jeden Messwert im Zeitraum - nie eine erfundene 0." }
+        herkunft: { type: string, nullable: true, enum: [zaehler, summe] }
+        standVonKwh: { type: number, nullable: true, description: Zählerstand am Beginn (nur herkunft=zaehler). }
+        standBisKwh: { type: number, nullable: true, description: Zählerstand am Ende (nur herkunft=zaehler). }
+        zaehlerFaellt: { type: boolean, description: "Ein Zähler war da, fiel aber im Zeitraum (Tausch) - darum die Summe." }
+        fehlendeTage: { type: integer, description: Tage ab Messbeginn, die in der Menge fehlen. }
+        luecken:
+          type: array
+          items:
+            type: object
+            properties:
+              von: { type: string, format: date }
+              bis: { type: string, format: date }
+    AbrechnungPruefung:
+      type: object
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        bezugKwh: { type: number, nullable: true }
+        einspeisungKwh: { type: number, nullable: true }
+        geaendertAm: { type: string, format: date-time }
+    Abrechnung:
+      type: object
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        tage: { type: integer }
+        messbeginn: { type: string, format: date, nullable: true, description: Erster gemessener Tag der Anlage (v1 oder v2). }
+        tageVorMessbeginn: { type: integer, description: Tage des Zeitraums vor dem Messbeginn. }
+        bezug: { $ref: "#/components/schemas/AbrechnungZeile" }
+        einspeisung:
+          allOf: [{ $ref: "#/components/schemas/AbrechnungZeile" }]
+          nullable: true
+          description: Null, wenn die Anlage im Zeitraum weder einspeist noch erzeugt und keinen Einspeise-Zähler hat.
+        rechnung:
+          allOf: [{ $ref: "#/components/schemas/AbrechnungPruefung" }]
+          nullable: true
     History:
       type: object
       properties:
-        range: { type: string, enum: [day, week, month, year] }
+        range: { type: string, enum: [day, week, month, year, zeitraum] }
         from: { type: string, format: date-time, description: Period start (inclusive). }
         to: { type: string, format: date-time, description: Period end (exclusive). }
-        bucketMinutes: { type: integer, description: "15 (day), 60 (week) or 1440 (month/year)." }
+        bucketMinutes: { type: integer, description: "15 (day), 60 (week) or 1440 (month/year, zeitraum bis 92 Tage); 0 = je Kalendermonat (zeitraum über 92 Tage)." }
         buckets:
           type: array
           items:
