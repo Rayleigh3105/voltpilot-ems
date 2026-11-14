@@ -26,6 +26,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logik"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 )
 
 // Communication is the driver word the cloud and the box share for every
@@ -74,7 +75,7 @@ var BoolSignals = map[string]bool{"open": true, "door_open": true, "defrost": tr
 
 func temperatureSignal(s string) bool { return strings.HasSuffix(s, "temperature") }
 
-var slugRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+var slugRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 // Register is one Modbus location. Bit selects one bit of a 16-bit register
 // (status bits); DataType is ignored for coils and discrete inputs.
@@ -275,7 +276,9 @@ func Pruefe(d Definition) []Fehler {
 	var out []Fehler
 	fehl := func(code, wo string) { out = append(out, Fehler{code, wo}) }
 
-	if strings.TrimSpace(d.Transport.Host) == "" || d.Port() < 1 || d.Port() > 65535 || d.Unit() < 0 || d.Unit() > 255 {
+	// The LAN rule (lan-host-vectors.json): the executor checks it again at the
+	// one place that opens the socket.
+	if !probe.IsPrivateHost(d.Transport.Host) || d.Port() < 1 || d.Port() > 65535 || d.Unit() < 0 || d.Unit() > 255 {
 		fehl(ErrTransport, "transport")
 	}
 	if len(d.Channels) > MaxChannels {

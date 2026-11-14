@@ -74,7 +74,8 @@
   {"name": "Ein Eingangsregister lässt sich nicht schreiben", "geraet": "klima", "aendere": {"controls.values[1].register.kind": "input"}, "fehler": ["register"]},
   {"name": "Ein Sollwert wird als Wort zurückgelesen, nicht als Bit", "geraet": "klima", "aendere": {"controls.values[1].readback.kind": "coil"}, "fehler": ["readback"]},
   {"name": "Ein Schreibwert heißt wie ein Messwert", "geraet": "klima", "aendere": {"controls.values[1].slug": "raum"}, "fehler": ["control_slug"]},
-  {"name": "Ohne Adresse kein Gerät", "geraet": "klima", "aendere": {"transport.host": ""}, "fehler": ["transport"]}
+  {"name": "Ohne Adresse kein Gerät", "geraet": "klima", "aendere": {"transport.host": ""}, "fehler": ["transport"]},
+  {"name": "Ein Ziel im Internet ist kein Gerät im eigenen Netz", "geraet": "klima", "aendere": {"transport.host": "8.8.8.8"}, "fehler": ["transport"]}
  ],
  "roh": [
   {"geraet": "klima", "slug": "soll", "wert": 21.5, "roh": 215},
