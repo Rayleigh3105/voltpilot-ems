@@ -189,6 +189,19 @@ befehl_auf() {
   uci set network.vp_einricht.proto=static
   uci set "network.vp_einricht.ipaddr=$ADR"
   uci set network.vp_einricht.netmask=255.255.255.0
+  # Im WLAN-Weg B lenkt relayd mit lokaler Adresse ALLEN eigenen Verkehr der
+  # Box zuerst in seine Tabelle ("from all iif lo lookup 16800"), und deren
+  # Standardweg zeigt zum Kundenrouter - die Antworten der Box an ein Handy
+  # im Einrichtungs-WLAN gingen damit auf die Funkstrecke statt an den
+  # Access Point (gemessen, Lauf einrichtung-weg: SYN kommt an, die Antwort
+  # laeuft "via 192.168.178.1 dev ...-sta0 table 16800"). Diese Regel mit
+  # Vorrang vor den relayd-Regeln (Prioritaet 2) loest Ziele im
+  # Einrichtungsnetz immer ueber die Haupttabelle auf.
+  uci -q delete network.vp_einricht_regel
+  uci set network.vp_einricht_regel=rule
+  uci set "network.vp_einricht_regel.dest=$NETZ.0/24"
+  uci set network.vp_einricht_regel.lookup=main
+  uci set network.vp_einricht_regel.priority=1
   # DHCP ueber den dnsmasq der Box: ein eigener Adressbereich fuer die
   # Einrichtungs-Schnittstelle; er nennt sich selbst als Router und DNS.
   uci -q delete dhcp.vp_einricht
@@ -248,7 +261,8 @@ befehl_auf() {
 
 befehl_zu() {
   entfernt=nein
-  for s in wireless.vp_einricht network.vp_einricht dhcp.vp_einricht firewall.vp_einricht \
+  for s in wireless.vp_einricht network.vp_einricht network.vp_einricht_regel \
+    dhcp.vp_einricht firewall.vp_einricht \
     firewall.vp_einricht_dhcp firewall.vp_einricht_dns firewall.vp_einricht_dnsu \
     firewall.vp_einricht_seite firewall.vp_einricht_fang; do
     [ -z "$(uci -q get "$s")" ] || entfernt=ja

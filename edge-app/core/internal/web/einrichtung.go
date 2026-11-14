@@ -361,7 +361,12 @@ func (e *Einrichtung) registriere(mux *http.ServeMux) {
 	}))
 
 	mux.HandleFunc("GET /api/einrichtung/status", schranke(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		// Bewusst NICHT r.Context(): ein Handy im Einrichtungs-WLAN verliert
+		// seine Verbindung genau dann, wenn das Funkmodul arbeitet - der
+		// Abbruch der Anfrage darf den Skriptlauf nie toeten (gemessen, Lauf
+		// einrichtung-weg: der Scan starb mit der Anfrage). Gilt fuer alle
+		// drei Skript-Aufrufe hier; verbinden laeuft ohnehin im Hintergrund.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		aus, rc, err := e.ausfuehren(ctx, "", "status")
 		if err != nil || rc != 0 {
@@ -378,7 +383,7 @@ func (e *Einrichtung) registriere(mux *http.ServeMux) {
 	}))
 
 	mux.HandleFunc("GET /api/einrichtung/netze", schranke(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		aus, rc, err := e.ausfuehren(ctx, "", "scan")
 		if err != nil {
@@ -448,7 +453,9 @@ func (e *Einrichtung) registriere(mux *http.ServeMux) {
 		if body.OhneKabel {
 			arg = append(arg, "--ohne-kabel")
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		// Erst recht nicht r.Context(): ein Abbruch mitten in kabel liesse
+		// die Netz-Konfiguration halb umgebaut zurueck.
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 		aus, rc, err := e.ausfuehren(ctx, "", arg...)
 		if err != nil {

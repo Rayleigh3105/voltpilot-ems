@@ -2,7 +2,7 @@
 # weder eigene Header noch Cookies, und die Einrichtungs-API verlangt beides
 # (JSON-Inhaltstyp, Sitzungs-Cookie) - also HTTP/1.0 von Hand ueber busybox nc.
 #
-#   http_ruf <ns|-> <adresse> <port> <methode> <pfad> [cookie] [json-body]
+#   http_ruf <ns|-> <adresse> <port> <methode> <pfad> [cookie] [json-body] [frist]
 #
 # schreibt die ganze Antwort (ohne \r) nach /tmp/http.antwort und gibt sie
 # aus. http_status und http_cookie lesen daraus.
@@ -14,6 +14,7 @@ http_ruf() {
   h_pfad="$5"
   h_cookie="${6:-}"
   h_body="${7:-}"
+  h_frist="${8:-12}"
   {
     printf '%s %s HTTP/1.0\r\n' "$h_met" "$h_pfad"
     printf 'Host: %s\r\n' "$h_adr"
@@ -25,11 +26,23 @@ http_ruf() {
     printf '\r\n'
     [ -z "$h_body" ] || printf '%s' "$h_body"
   } >/tmp/http.anfrage
+  # Waechter von Hand: die OpenWrt-busybox hat weder nc -w noch timeout
+  # (gemessen: jede Antwort blieb leer), und ohne Deckel wartet ein SYN ohne
+  # Antwort minutenlang (Handy gerade beim WLAN-Wechsel).
   if [ "$h_ns" = - ]; then
-    nc -w 10 "$h_adr" "$h_port" </tmp/http.anfrage 2>/dev/null | tr -d '\r' >/tmp/http.antwort
+    nc "$h_adr" "$h_port" </tmp/http.anfrage >/tmp/http.roh 2>/dev/null &
   else
-    ip netns exec "$h_ns" nc -w 10 "$h_adr" "$h_port" </tmp/http.anfrage 2>/dev/null | tr -d '\r' >/tmp/http.antwort
+    ip netns exec "$h_ns" nc "$h_adr" "$h_port" </tmp/http.anfrage >/tmp/http.roh 2>/dev/null &
   fi
+  h_pid=$!
+  h_i=0
+  while kill -0 "$h_pid" 2>/dev/null && [ "$h_i" -lt "$h_frist" ]; do
+    sleep 1
+    h_i=$((h_i + 1))
+  done
+  kill "$h_pid" 2>/dev/null
+  wait "$h_pid" 2>/dev/null
+  tr -d '\r' </tmp/http.roh >/tmp/http.antwort
   cat /tmp/http.antwort
 }
 # http_status: der Status der letzten Antwort (z. B. 200)
