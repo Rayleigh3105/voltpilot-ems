@@ -6,10 +6,12 @@
 # Einrichtungs-WLAN oeffnet trotzdem sofort, und verbinden gelingt ohne jeden
 # Versuch, relayd nachzuladen - apk ist dafuer absichtlich nicht mehr da, jeder
 # Aufruf schluege sofort fehl.
-gleich "Werkstatt: Land DE schon gesetzt" "$(uci -q get wireless.radio0.country)" DE
+# Schritt einrichtung_wlan der Werkstatt (schritte.go), nachgebaut: Land setzen, relayd ist schon aus basis.txt da
+uci set wireless.radio0.country=DE; uci commit wireless
+gleich "Werkstatt: Land DE gesetzt" "$(uci -q get wireless.radio0.country)" DE
 pruefe "Werkstatt: relayd schon auf der Box" command -v relayd
 APK="$(command -v apk)"; mv "$APK" "$APK.aus"
-command -v apk >/dev/null 2>&1 && pruef_fehler "apk haette weg sein sollen" || pruef_ok "beim Kunden: keine Paketquelle mehr, apk selbst ist weg"
+[ -e "$APK" ] && pruef_fehler "apk haette weg sein sollen" || pruef_ok "beim Kunden: keine Paketquelle mehr, apk selbst ist weg"
 rm -f /etc/apk/repositories.d/distfeeds.list
 
 # Erster Start ohne Kabel: das Einrichtungs-WLAN oeffnet sofort, ganz ohne jede Paketquelle
@@ -22,5 +24,5 @@ $E zu
 @180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/w-v.out; echo "rc=$?" > /tmp/w-v.rc; cat /tmp/w-v.out /tmp/w-v.rc
 gleich "verbinden ohne Paketquelle: Rueckgabe" "$(cat /tmp/w-v.rc)" "rc=0"
 gleich "verbinden ohne Paketquelle: Ergebnis" "$(wert ergebnis /tmp/w-v.out)" verbunden
-pruefe "relayd laeuft (kein Nachladen noetig)" pgrep -x relayd
+pruefe "relayd laeuft (kein Nachladen noetig)" pidof relayd
 @30 $W status > /tmp/w-s.out; gleich "status nach verbinden: WLAN" "$(wert wlan_zustand /tmp/w-s.out)" COMPLETED
