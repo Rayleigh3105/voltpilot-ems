@@ -101,6 +101,9 @@
 
 .vp-lade-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
 .vp-lade-always { margin: 8px 0 0; font-size: 0.9rem; color: var(--vp-ok-ink, #166534); }
+/* Entscheid vom 2026-11-14: nur die Ergebniszeile bleibt sichtbar, die zwei
+   Wie-Absätze klappen hinter "Wie funktioniert das?" auf (`Aufklapper`). */
+.vp-lade-rechnung { margin: 0; }
 
 @media (max-width: 720px) {
   .vp-lade-row { grid-template-columns: 12px 1fr; }

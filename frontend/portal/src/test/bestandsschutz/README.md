@@ -164,6 +164,18 @@ sichtbare h2 „Ladevorgänge" weiter unten blieb die einzige Überschrift der S
 Änderung dieser Fläche, keine gefundene Abweichung. Neu geschrieben mit `vitest -u` am Produktstand; der
 Zeichenvergleich alt/neu zeigt nur dieses eine Element (5 459 → 5 500 Bytes).
 
+**Zwei Text-Kürzungen, PR #1847 zur Entscheidung vorgelegt (14.11.2026, Entscheid vom 2026-11-14):**
+`verlauf-lastspitzen.html` ändert genau die Zeile „Vermiedene Spitze": sichtbar bleibt die kurze Sekundärzeile
+„gegenüber derselben Anlage ohne Speicher", der bisher immer sichtbare lange Methoden-Satz
+(„Verglichen wird die höchste Viertelstunden-Bezugsspitze …") bleibt wörtlich erhalten und steht jetzt hinter
+einem ⓘ am Namen (`InfoTip`, dasselbe Muster wie `components/erloese/Statement.tsx`). `verlauf-ladevorgaenge.html`
+ändert genau die Karte „Ausfall-Schutz": sichtbar bleiben nur die Ergebniszeile mit der Rechnung
+(„6 Stecker × 15 kW + …") und „Immer aktiv", die zwei Wie-Absätze (Sicherheitsprofil, 2-Minuten-Ablauf) bleiben
+wörtlich erhalten und klappen hinter „Wie funktioniert das?" auf (`Aufklapper`, dasselbe Muster wie an anderer
+Stelle auf dieser Lastspitzen-Seite). Neu geschrieben mit `vitest -u` am Produktstand - die beschlossene
+Kürzung sichtbaren Texts, keine gefundene Abweichung; `git diff --stat` zeigt unter den Aufnahmen nur diese
+zwei Dateien mit je einer geänderten Zeile.
+
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 
 ```bash

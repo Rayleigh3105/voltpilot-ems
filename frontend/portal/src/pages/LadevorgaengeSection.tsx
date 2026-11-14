@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
+import { Aufklapper } from '../components/Aufklapper';
 import { api, ApiError, type Device, type Site } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LadeBudgetBand } from '../components/LadeBudgetBand';
@@ -281,12 +282,18 @@ export function LadevorgaengeSection({
       {steps.length > 0 && (
         <Card>
           <h2 className="vp-lade-h2">Ausfall-Schutz</h2>
-          <ol className="vp-lade-steps">
-            {steps.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ol>
+          {/* Entscheid vom 2026-11-14: sichtbar bleibt nur die nachrechenbare
+              Ergebniszeile (falls berechenbar); die zwei Wie-Absätze bleiben
+              wörtlich erhalten und klappen hinter „Wie funktioniert das?" auf. */}
+          {steps[2] && <p className="vp-lade-rechnung">{steps[2]}</p>}
           <p className="vp-lade-always">Immer aktiv - unabhängig davon, was VoltPilot gerade tut.</p>
+          <Aufklapper titel="Wie funktioniert das?">
+            <ol className="vp-lade-steps">
+              {steps.slice(0, 2).map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ol>
+          </Aufklapper>
         </Card>
       )}
 
