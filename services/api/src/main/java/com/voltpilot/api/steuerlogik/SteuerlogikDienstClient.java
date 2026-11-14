@@ -41,6 +41,13 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
             if (auftrag.ort().breite() != null) site.put("latitude", auftrag.ort().breite());
             if (auftrag.ort().laenge() != null) site.put("longitude", auftrag.ort().laenge());
         }
+        if (auftrag.registry() != null) {
+            try {
+                request.set("registry", json.readTree(auftrag.registry()));
+            } catch (IOException e) {
+                log.warn("logik_dienst.registry_unlesbar: {}", e.getMessage());
+            }
+        }
         FlowCompilerHttp.Response response;
         try {
             response = http.post(baseUri.resolve("/artefakt"), json.writeValueAsString(request));

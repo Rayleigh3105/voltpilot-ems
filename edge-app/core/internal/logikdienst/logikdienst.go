@@ -22,9 +22,11 @@ import (
 	"regexp"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logik"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/logik/textform"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/shelly"
 )
 
 const (
@@ -127,10 +129,35 @@ type Gelesen struct {
 	Bericht   *Bericht
 }
 
+// anlageAusRegistry derives the probes' plant facts from the registry push
+// of the site - the document the box gets - with the box's own driver reader
+// (shelly.Config.OutputFacts): outputs and kW per output of each device the
+// logic switches. A device the registry does not know keeps the defaults.
+func anlageAusRegistry(L *logik.Logik, registry json.RawMessage) Anlage {
+	var reg entities.Registry
+	if len(registry) == 0 || json.Unmarshal(registry, &reg) != nil {
+		return nil
+	}
+	out := Anlage{}
+	for _, k := range L.GeraetListe {
+		e := reg.Find(L.Geraete[k].Entity)
+		if e == nil {
+			continue
+		}
+		if cfg, ok := shelly.ParseDriver(e.Driver); ok {
+			n, kw := cfg.OutputFacts()
+			out[k] = AnlageGeraet{Outputs: n, KwPerOutput: kw}
+		}
+	}
+	return out
+}
+
 // Pruefe reads a text and runs the check. A text the readers refuse is
 // ErrUnlesbar with the reason; a readable logic always comes back with its
-// report, Sperrt saying whether the check blocks it.
-func Pruefe(text []byte, anlage Anlage) (*Gelesen, error) {
+// report, Sperrt saying whether the check blocks it. The plant facts of the
+// probes come from anlage (by device key) or, where it says nothing, from the
+// site's registry push (by entity).
+func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, error) {
 	if len(text) > MaxTextBytes {
 		return nil, fmt.Errorf("%w: Der Text ist größer als %d KB", ErrUnlesbar, MaxTextBytes/1024)
 	}
@@ -152,7 +179,14 @@ func Pruefe(text []byte, anlage Anlage) (*Gelesen, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrUnlesbar, err.Error())
 	}
-	pb := L.Pruefe(anlage.kern())
+	fakten := anlageAusRegistry(L, registry)
+	for k, g := range anlage {
+		if fakten == nil {
+			fakten = Anlage{}
+		}
+		fakten[k] = g
+	}
+	pb := L.Pruefe(fakten.kern())
 	b := &Bericht{Name: L.Name, Sperrt: pb.Sperrt(), Ausdruecke: pb.Ausdruecke,
 		Befunde: []string{}, Zusammen: []Zusammen{}, Proben: []Probe{}, Hinweise: []string{},
 		Geraete: []Geraet{}, Eingaenge: []Eingang{}}
@@ -195,12 +229,15 @@ type Ort struct {
 
 // Auftrag is what the API asks an artifact for.
 type Auftrag struct {
-	Text        string    `json:"text"`
-	Anlage      Anlage    `json:"anlage,omitempty"`
-	FlowID      string    `json:"flow_id"`
-	FlowVersion int       `json:"flow_version"`
-	CompiledAt  time.Time `json:"compiled_at"`
-	Site        *Ort      `json:"site,omitempty"`
+	Text   string `json:"text"`
+	Anlage Anlage `json:"anlage,omitempty"`
+	// Registry is the site's registry push (edge-entity.schema.json), the
+	// source of the probes' device facts.
+	Registry    json.RawMessage `json:"registry,omitempty"`
+	FlowID      string          `json:"flow_id"`
+	FlowVersion int             `json:"flow_version"`
+	CompiledAt  time.Time       `json:"compiled_at"`
+	Site        *Ort            `json:"site,omitempty"`
 }
 
 // ErrSperrt marks a readable logic the check blocks (E5 = C).
@@ -224,7 +261,7 @@ func Artefakt(a Auftrag) (json.RawMessage, *Bericht, error) {
 			return nil, nil, fmt.Errorf("%w: Zeitzone %q unbekannt", ErrAuftrag, a.Site.Timezone)
 		}
 	}
-	g, err := Pruefe([]byte(a.Text), a.Anlage)
+	g, err := Pruefe([]byte(a.Text), a.Anlage, a.Registry)
 	if err != nil {
 		return nil, nil, err
 	}

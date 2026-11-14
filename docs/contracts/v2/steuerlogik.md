@@ -99,7 +99,8 @@ Der Kundenadministrator darf an einer Logik alles, was der Fachbetrieb darf, ein
 Stufe 2, zweiter Teil (gebaut): Die Logik kommt noch als Datei von VoltPilot, eine Oberfläche für Kunden folgt in den Stufen 3 bis 5.
 
 - **Dienst neben der API** (`edge-app/core/cmd/vp-logik-dienst`, Paket `internal/logikdienst`, Compose-Dienst `logik-dienst`, Port 8101): nimmt den Text als YAML-Schreibform oder kanonisches JSON, liest ihn mit denselben Lesern wie die Box, prüft ihn und baut das Artefakt; eine Logik, die die Prüfung sperrt, verlässt den Dienst nicht.
-  `POST /pruefe {text, anlage?}` liefert kanonische Form und Bericht, `POST /artefakt {text, anlage?, flow_id, flow_version, compiled_at?, site?}` das Artefakt (422 bei unlesbar oder gesperrt, mit Bericht), `GET /health`.
+  `POST /pruefe {text, anlage?, registry?}` liefert kanonische Form und Bericht, `POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?}` das Artefakt (422 bei unlesbar oder gesperrt, mit Bericht), `GET /health`.
+  Die Geräte der Proben (Ausgänge, kW je Ausgang) liest der Dienst aus `registry`, dem Registry-Inhalt der Anlage, wie die Box ihn bekommt, mit dem Treiber-Leser der Box (`shelly.Config.OutputFacts`); `anlage` je Gerät der Logik geht vor. Ohne diese Angaben gelten die Vorgaben der Proben, und eine Probe, die an der Leistung hängt, sperrt.
   Die API liest die Sprache nirgends selbst; sie ruft nur diesen Dienst (`SteuerlogikDienstClient`).
 - **Annahme** (nur Plattform): `POST /api/v1/admin/sites/{siteId}/steuerlogik {text}` legt eine Logik an, `POST …/{logikId}/fassungen` eine neue Fassung, die die laufende ablöst, `POST …/{logikId}/stilllegen` legt sie still.
   Abgelegt in `steuerlogik` als Text (wie gekommen), kanonische Form und Artefakt, alle drei als TEXT: JSONB ordnete Schlüssel um.

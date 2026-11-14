@@ -168,6 +168,21 @@ func (c Config) StageCeilings() (outputs []int, kw []float64) {
 	return outputs, kw
 }
 
+// OutputFacts is what a Steuerlogik needs to know about a Shelly device: the
+// number of outputs (1 for a single relay) and the power of one output - nil
+// when the driver does not say (a single relay, or a set without stages).
+// The box's run along and the logic service beside the API read it alike.
+func (c Config) OutputFacts() (outputs int, kwPerOutput *float64) {
+	if !c.IsGroup() {
+		return 1, nil
+	}
+	if outs, kws := c.StageCeilings(); len(outs) > 0 && outs[0] > 0 {
+		kw := kws[0] / float64(outs[0])
+		return len(c.Channels), &kw
+	}
+	return len(c.Channels), nil
+}
+
 // GroupPrev is what the executor last commanded and last read, per output
 // (index into Config.Channels). Empty slices = nothing known yet (first pass,
 // restart): the selection then just keeps outputs that are on.

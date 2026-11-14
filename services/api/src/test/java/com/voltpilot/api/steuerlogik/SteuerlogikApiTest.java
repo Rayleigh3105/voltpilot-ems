@@ -163,6 +163,8 @@ class SteuerlogikApiTest {
         assertThat(auftraege.get(0).text()).isEqualTo(text);
         assertThat(auftraege.get(0).ort().zeitzone()).isEqualTo("Europe/Berlin");
         assertThat(auftraege.get(0).ort().breite()).isEqualByComparingTo("48.137");
+        assertThat(MAPPER.readTree(auftraege.get(0).registry()).path("site_id").asText())
+                .as("der Dienst bekommt den Registry-Inhalt der Anlage für die Proben").isEqualTo(w.site().toString());
         assertThat(root.queryForObject("SELECT quelltext FROM steuerlogik WHERE logik_id = ?", String.class, logik))
                 .as("der Text bleibt Byte für Byte").isEqualTo(text);
 

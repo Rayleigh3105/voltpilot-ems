@@ -175,15 +175,7 @@ func (a *Agent) logikGeraet(entityID string, now time.Time) (logik.GeraetStamm, 
 		return stamm, ist
 	}
 	if isShelly {
-		if cfg.IsGroup() {
-			stamm.Ausgaenge = len(cfg.Channels)
-			if outs, kws := cfg.StageCeilings(); len(outs) > 0 && outs[0] > 0 {
-				kw := kws[0] / float64(outs[0])
-				stamm.KwJeAusgang = &kw
-			}
-		} else {
-			stamm.Ausgaenge = 1
-		}
+		stamm.Ausgaenge, stamm.KwJeAusgang = cfg.OutputFacts()
 	}
 	if st := a.shellyGroupStage(entityID); st != nil && st.Confirmed != nil {
 		if at, err := time.Parse(time.RFC3339, st.At); err == nil && now.Sub(at) <= heizstabStageMaxAge {

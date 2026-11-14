@@ -605,6 +605,15 @@ public class EntityRegistryService {
         return pushRegistryBestEffort(siteId, clock.instant());
     }
 
+    /**
+     * Der Registry-Inhalt der Anlage, wie ihn die Box {@code gateway} bekommt, ohne ihn zu veröffentlichen oder einen
+     * Soll-Stand zu vermerken: der Logik-Dienst liest daraus die Geräte für die Proben einer Steuerlogik.
+     */
+    public String registryAnsicht(UUID siteId, UUID gateway) {
+        return new String(composePush(TenantContext.get(), siteId, gateway, clock.instant(), repo.entitiesForSite(siteId),
+                repo.componentAuthority(siteId)), java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     /** Der Zeitgeber reicht seine injizierbare Uhr bis in die Push-Revision durch. */
     public PushOutcome pushRegistryBestEffort(UUID siteId, Instant now) {
         UUID tenantId = TenantContext.get();

@@ -2,6 +2,7 @@ package com.voltpilot.api.steuerlogik;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.repo.FlowStatusRepository;
@@ -72,6 +73,7 @@ public class SteuerlogikService {
     private final SteuerlogikDienst dienst;
     private final FlowActivationService auslieferung;
     private final FlowStatusRepository acks;
+    private final EntityRegistryService registry;
     private final TransactionTemplate tx;
     private final ObjectMapper json;
     private final Clock clock;
@@ -79,13 +81,15 @@ public class SteuerlogikService {
     @Autowired
     public SteuerlogikService(SteuerlogikRepository logiken, SiteRepository sites, LeadDeviceService leadDevices,
             BoxFaehigkeiten faehigkeiten, SteuerlogikDienst dienst, FlowActivationService auslieferung,
-            FlowStatusRepository acks, TransactionTemplate tx, ObjectMapper json) {
-        this(logiken, sites, leadDevices, faehigkeiten, dienst, auslieferung, acks, tx, json, Clock.systemUTC());
+            FlowStatusRepository acks, EntityRegistryService registry, TransactionTemplate tx, ObjectMapper json) {
+        this(logiken, sites, leadDevices, faehigkeiten, dienst, auslieferung, acks, registry, tx, json,
+                Clock.systemUTC());
     }
 
     SteuerlogikService(SteuerlogikRepository logiken, SiteRepository sites, LeadDeviceService leadDevices,
             BoxFaehigkeiten faehigkeiten, SteuerlogikDienst dienst, FlowActivationService auslieferung,
-            FlowStatusRepository acks, TransactionTemplate tx, ObjectMapper json, Clock clock) {
+            FlowStatusRepository acks, EntityRegistryService registry, TransactionTemplate tx, ObjectMapper json,
+            Clock clock) {
         this.logiken = logiken;
         this.sites = sites;
         this.leadDevices = leadDevices;
@@ -93,6 +97,7 @@ public class SteuerlogikService {
         this.dienst = dienst;
         this.auslieferung = auslieferung;
         this.acks = acks;
+        this.registry = registry;
         this.tx = tx;
         this.json = json;
         this.clock = clock;
@@ -129,7 +134,8 @@ public class SteuerlogikService {
         SteuerlogikDienst.Artefakt artefakt;
         try {
             artefakt = dienst.artefakt(new SteuerlogikDienst.Auftrag(text, id, fassung, jetzt,
-                    new SteuerlogikDienst.Ort(ZONE.getId(), site.latitude(), site.longitude())));
+                    new SteuerlogikDienst.Ort(ZONE.getId(), site.latitude(), site.longitude()),
+                    registry.registryAnsicht(siteId, lead.box())));
         } catch (SteuerlogikDienstException e) {
             throw new Abgelehnt(e.grund(), e.getMessage(), e.bericht());
         }

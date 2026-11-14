@@ -37,7 +37,8 @@ class SteuerlogikDienstClientTest {
 
     private static SteuerlogikDienst.Auftrag auftrag() {
         return new SteuerlogikDienst.Auftrag("logic: 1", LOGIK, 1, Instant.parse("2026-11-14T12:00:00Z"),
-                new SteuerlogikDienst.Ort("Europe/Berlin", new BigDecimal("48.1"), new BigDecimal("11.6")));
+                new SteuerlogikDienst.Ort("Europe/Berlin", new BigDecimal("48.1"), new BigDecimal("11.6")),
+                "{\"schema_version\":\"1.0\",\"entities\":[]}");
     }
 
     @Test
@@ -54,6 +55,7 @@ class SteuerlogikDienstClientTest {
         assertThat(anfrage.path("flow_id").asText()).isEqualTo(LOGIK.toString());
         assertThat(anfrage.path("site").path("timezone").asText()).isEqualTo("Europe/Berlin");
         assertThat(anfrage.path("site").path("latitude").decimalValue()).isEqualByComparingTo("48.1");
+        assertThat(anfrage.path("registry").path("entities").isArray()).as("der Registry-Inhalt geht als JSON mit").isTrue();
     }
 
     @Test

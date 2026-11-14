@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -62,7 +63,7 @@ func TestDienstBestehtDieVertragsvektoren(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				g, err := Pruefe(text, vl.Anlage)
+				g, err := Pruefe(text, vl.Anlage, nil)
 				if err != nil {
 					t.Fatalf("Pruefe: %v", err)
 				}
@@ -246,3 +247,37 @@ func TestBeispielArtefaktIstGepinnt(t *testing.T) {
 		t.Fatalf("%s weicht vom gebauten Artefakt ab (VP_FIXTURES_SCHREIBEN=1 nach gewollter Änderung)", pfad)
 	}
 }
+
+// The pilot logic needs the plant's devices: one of its probes depends on the
+// kW per phase. Without facts it blocks; with the site's registry push - the
+// document the box gets - the service reads the output sets with the box's
+// own driver reader and the logic passes.
+func TestProbenLesenDieGeraeteAusDerRegistry(t *testing.T) {
+	text := []byte(beispiel(t, "heizung"))
+	ohne, err := Pruefe(text, nil, nil)
+	if err != nil || !ohne.Bericht.Sperrt {
+		t.Fatalf("ohne Anlagendaten muss die Probe der Leistung sperren: %v %+v", err, ohne.Bericht.Proben)
+	}
+	stab := func(id string, kw float64) string {
+		return fmt.Sprintf(`{"entity_id":%q,"entity_type":"heating-rod","capabilities":{"actuate":[{"command":"setpoint_kw"}]},`+
+			`"guards":{"failsafe":{"behavior":"off"}},"driver":{"brand":"shelly","communication":"shelly_http",`+
+			`"connection":{"ip":"192.168.1.20","port":80,"channels":[0,1,2],"output_kw":[%g,%g,%g],"stages":[1,2,3]}}}`,
+			id, kw, kw, kw)
+	}
+	registry := json.RawMessage(`{"schema_version":"1.0","revision":"r1","entities":[` +
+		stab("heizstab-dle", 3) + "," + stab("heizstab-puffer-2", 1.5) + "," + stab("heizstab-puffer-3", 1.5) + `]}`)
+	mit, err := Pruefe(text, nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mit.Bericht.Sperrt {
+		t.Fatalf("mit der Registry der Anlage besteht jede Probe: %+v", mit.Bericht.Proben)
+	}
+	// An explicit plant fact wins over the registry.
+	falsch, _ := Pruefe(text, Anlage{"dle": {Outputs: 3, KwPerOutput: ptr(9)}}, registry)
+	if !falsch.Bericht.Sperrt {
+		t.Fatal("eine ausdrückliche Angabe geht vor")
+	}
+}
+
+func ptr(v float64) *float64 { return &v }

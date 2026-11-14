@@ -16,8 +16,11 @@ public interface SteuerlogikDienst {
     /** Ort der Anlage für Uhrzeit und Sonnenstand; Breite und Länge dürfen fehlen. */
     record Ort(String zeitzone, BigDecimal breite, BigDecimal laenge) {}
 
-    /** Was die API für ein Artefakt mitgibt: den Text, wie er kam, die Identität und den Ort. */
-    record Auftrag(String text, UUID logikId, int fassung, Instant gebautAm, Ort ort) {}
+    /**
+     * Was die API für ein Artefakt mitgibt: den Text, wie er kam, die Identität, den Ort und den Registry-Inhalt der
+     * Anlage (wie die Box ihn bekommt; der Dienst liest daraus die Geräte für die Proben, {@code null} = keiner).
+     */
+    record Auftrag(String text, UUID logikId, int fassung, Instant gebautAm, Ort ort, String registry) {}
 
     /** Das gebaute Artefakt und der Prüfbericht. */
     record Artefakt(JsonNode artefakt, JsonNode bericht) {}

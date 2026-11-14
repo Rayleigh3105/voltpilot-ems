@@ -3,9 +3,9 @@ package logikdienst
 // The HTTP face of the service, shaped like flowc (edge-app/nodered/flowc/
 // serve.js) so the API's client follows the same seam:
 //
-//   POST /pruefe   {text, anlage?}                -> 200 {kanonisch, bericht}
+//   POST /pruefe   {text, anlage?, registry?}     -> 200 {kanonisch, bericht}
 //                                                 |  422 {message}           (unreadable)
-//   POST /artefakt {text, anlage?, flow_id, flow_version, compiled_at?, site?}
+//   POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?}
 //                                                 -> 200 {artifact, bericht}
 //                                                 |  422 {message, bericht?} (unreadable or blocked)
 //   GET  /health                                  -> 200 {status, version, sprache}
@@ -30,13 +30,14 @@ func Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /pruefe", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Text   string `json:"text"`
-			Anlage Anlage `json:"anlage"`
+			Text     string          `json:"text"`
+			Anlage   Anlage          `json:"anlage"`
+			Registry json.RawMessage `json:"registry"`
 		}
 		if !lies(w, r, &req) {
 			return
 		}
-		g, err := Pruefe([]byte(req.Text), req.Anlage)
+		g, err := Pruefe([]byte(req.Text), req.Anlage, req.Registry)
 		if err != nil {
 			antworteFehler(w, err, nil)
 			return
