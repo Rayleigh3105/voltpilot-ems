@@ -303,6 +303,24 @@ export const UEMS_HAUPTGROESSE = 'Hauptgröße';
 /** Die Geschwister der Hauptgröße — nie in Bilanz oder Bericht (AP-04 E1). */
 export const UEMS_NEBENGROESSE = 'Nebengröße';
 
+/**
+ * **Abrechnung prüfen** (Bedienkonzept `vp-privatkunde-bedienkonzept` §7, Fachmodell-Glossar „Abrechnung prüfen“):
+ * die Wörter der Karte und des fünften Abschnitts der Zeitleiste. Kein Urteil — „Unterschied“, nie „stimmt“.
+ */
+export const ABRECHNUNG_PRUEFEN = {
+  titel: 'Abrechnung prüfen',
+  zeitraum: 'Zeitraum',
+  gemessen: 'Gemessen',
+  lautRechnung: 'Laut Rechnung',
+  unterschied: 'Unterschied',
+  eintragen: 'eintragen',
+  fruehere: 'Frühere Prüfungen',
+  netzbezug: 'Netzbezug',
+  einspeisung: 'Einspeisung',
+  summiert: 'aus Messwerten summiert',
+  standard: 'Gemessen am Netzanschluss. Für die Rechnung zählt der Zähler Ihres Messstellenbetreibers.',
+} as const;
+
 /** Die elektrische Stellung am Netzanschluss (AP-04 E12). */
 export const UEMS_HAUPTZAEHLER = 'Hauptzähler';
 

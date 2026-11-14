@@ -767,7 +767,10 @@ class ZugriffZaunApiTest {
     /** Pflichtparameter einer Inventur-Route, ohne die auch der Bearbeiter am Standort abgelehnt wird. */
     private static final Map<String, String> ANFRAGE = Map.of(
             "/api/v1/messstellen/{kennzeichen}/werte", "?raster=tag&von=2026-09-01&bis=2026-09-02",
-            "/api/v1/messstellen/{kennzeichen}/werte/versionen", "?raster=tag&von=2026-09-01&bis=2026-09-02");
+            "/api/v1/messstellen/{kennzeichen}/werte/versionen", "?raster=tag&von=2026-09-01&bis=2026-09-02",
+            // Abrechnung prüfen (R2/R3): ein Zeitraum in ganzen Tagen, sonst sähe die Inventur nur 400.
+            "/api/v1/sites/{siteId}/abrechnung", "?von=2026-09-01&bis=2026-09-30",
+            "/api/v1/sites/{siteId}/abrechnung/pruefung", "?von=2026-09-01&bis=2026-09-30");
 
     /** Eine Kennung, die es in keinem Kundenbereich gibt. */
     private static final String NIE = "00000000-0000-0000-0000-00000000dead";

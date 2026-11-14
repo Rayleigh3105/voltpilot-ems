@@ -8,6 +8,7 @@ import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.history.HistoryService;
+import com.voltpilot.api.history.Zeitraum;
 import com.voltpilot.api.optimizer.SchedulePricingService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
@@ -612,7 +613,21 @@ public class SiteController {
     public HistoryDto history(
             @PathVariable UUID siteId,
             @RequestParam(defaultValue = "day") String range,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        // Paket R1 (Abrechnung prüfen): ein freier Zeitraum in ganzen Tagen statt einer der vier Perioden.
+        if (from != null || to != null) {
+            String fehler = Zeitraum.pruefe(from, to, LocalDate.now(HistoryRange.ZONE));
+            if (fehler != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fehler);
+            }
+            SiteDto site = sites.findById(siteId);
+            if (site == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+            }
+            return history.zeitraum(siteId, site.biddingZone(), new Zeitraum(from, to));
+        }
         HistoryRange parsed = HistoryRange.parse(range);
         if (parsed == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

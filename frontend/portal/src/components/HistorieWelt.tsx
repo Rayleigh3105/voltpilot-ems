@@ -631,6 +631,46 @@ export function ZeitPopover({
   );
 }
 
+/** Der freie Zeitraum als fünfter Abschnitt der Leiste (Abrechnung prüfen, BK-8 = A). */
+export interface ZeitraumWahl {
+  /** Der Abschnitt „Zeitraum“ ist gewählt: statt ‹ Datum › stehen „von“ und „bis“. */
+  aktiv: boolean;
+  /** Der gewählte Zeitraum (ISO-Tage, beide eingeschlossen). */
+  wert: { von: string; bis: string };
+  /** Der letzte wählbare Tag (gestern). */
+  max: string;
+  /** Der Abschnitt wurde angetippt. */
+  onWaehlen: () => void;
+  /** Ein Datum wurde geändert. */
+  onWert: (feld: 'von' | 'bis', iso: string) => void;
+}
+
+/**
+ * „von“ und „bis“ des freien Zeitraums: zwei Datumsfelder des Hauspickers, das Wort IM Feld (Foto r-a der
+ * Variante A). Grenzen: nie nach gestern; ein „von“ nach „bis“ rückt das andere Datum nach (`zeitraumSetzen`).
+ */
+function ZeitraumFelder({ wahl }: { wahl: ZeitraumWahl }) {
+  return (
+    <div className="vp-zr-felder">
+      {(['von', 'bis'] as const).map((feld) => (
+        <div key={feld} className="vp-zr-feld">
+          <span className="vp-zr-vor" aria-hidden="true">
+            {feld}
+          </span>
+          <VpDatePicker
+            className="vp-zl-jump vp-zr-picker"
+            ariaLabel={feld === 'von' ? 'Zeitraum von' : 'Zeitraum bis'}
+            art="tag"
+            value={wahl.wert[feld]}
+            max={wahl.max}
+            onChange={(v) => wahl.onWert(feld, v)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ZeitLeiste({
   range,
   anchor,
@@ -644,6 +684,7 @@ export function ZeitLeiste({
   abdeckungInStatus = false,
   now = new Date(),
   ranges = PERIOD_RANGES,
+  zeitraum,
 }: {
   range: HistoryRange;
   anchor: Date;
@@ -670,8 +711,14 @@ export function ZeitLeiste({
    * bieten keine Woche an, weil ihr Endpunkt keine kennt.
    */
   ranges?: readonly { id: HistoryRange; label: string }[];
+  /**
+   * Der fünfte Abschnitt „Zeitraum“ (nur Verlauf › Energie). Mit ihm rückt „⋯“ am Telefon in die zweite
+   * Zeile: fünf Abschnitte und der Knopf passen nicht in 343 px (Bedienkonzept §3.5).
+   */
+  zeitraum?: ZeitraumWahl;
 }) {
   const nextDisabled = shiftAnchor(anchor, range, 1) > now;
+  const zeitraumAktiv = zeitraum?.aktiv === true;
   const streifen = zeigtStreifen(range);
   const isPhone = useIsPhone();
   const [blattOffen, setBlattOffen] = useState(false);
@@ -701,9 +748,18 @@ export function ZeitLeiste({
     />
   );
 
-  const perioden = (
+  const perioden = zeitraum ? (
+    <ZeitSegment<HistoryRange | 'zeitraum'>
+      label="Zeitraum"
+      optionen={[...ranges, { id: 'zeitraum', label: 'Zeitraum' }]}
+      wert={zeitraumAktiv ? 'zeitraum' : range}
+      onWert={(w) => (w === 'zeitraum' ? zeitraum.onWaehlen() : onRange(w))}
+    />
+  ) : (
     <ZeitSegment label="Zeitraum" optionen={ranges} wert={range} onWert={onRange} />
   );
+  // Im Zeitraum stehen „von“ und „bis“, wo sonst ‹ Datum › steht.
+  const zeitBedienung = zeitraum && zeitraumAktiv ? <ZeitraumFelder wahl={zeitraum} /> : blaetterer;
 
   const schalter = onVergleich ? (
     <VergleichsSchalter
@@ -723,27 +779,32 @@ export function ZeitLeiste({
    * warum das erste Diagramm erst bei 1 908 px begann.
    */
   if (isPhone) {
+    const mehrKnopf = zeitraumAktiv ? null : (
+      <button
+        type="button"
+        className="vp-zl-more"
+        aria-label="Zeitraum & Vergleich"
+        aria-expanded={blattOffen}
+        onClick={() => setBlattOffen(true)}
+      >
+        <Icon name="more-horizontal" size={18} />
+      </button>
+    );
     return (
       <ZeitLeisteRahmen
         mobil
+        className={zeitraum ? 'mit-zeitraum' : undefined}
         zeile1={
           <>
             {perioden}
-            <button
-              type="button"
-              className="vp-zl-more"
-              aria-label="Zeitraum & Vergleich"
-              aria-expanded={blattOffen}
-              onClick={() => setBlattOffen(true)}
-            >
-              <Icon name="more-horizontal" size={18} />
-            </button>
+            {!zeitraum && mehrKnopf}
           </>
         }
         zeile2={
           <>
-            {blaetterer}
-            {chip && (
+            {zeitBedienung}
+            {zeitraum && mehrKnopf}
+            {!zeitraumAktiv && chip && (
               <button
                 type="button"
                 className="vp-zl-chip"
@@ -791,17 +852,21 @@ export function ZeitLeiste({
    * Telefon: eine überlagerte Reihe, deren Schalter im Popover wohnt, hätte
    * sonst niemand bestellt.
    */
+  // Im Zeitraum gibt es weder Monatsstreifen noch Vergleich (BK-8: „der Vergleich mit der Vorperiode ist im
+  // Zeitraum aus“) — ein ⋯ ohne Inhalt wäre ein Knopf ohne Deckung.
   const hatPopInhalt =
-    streifen || schalter != null || (!abdeckungInStatus && abdeckungView(coverage) != null);
+    !zeitraumAktiv &&
+    (streifen || schalter != null || (!abdeckungInStatus && abdeckungView(coverage) != null));
 
   return (
     <ZeitLeisteRahmen
       mobil={false}
+      className={zeitraumAktiv ? 'ist-zeitraum' : undefined}
       zeile1={
         <>
           {perioden}
-          {blaetterer}
-          {chip && (
+          {zeitBedienung}
+          {!zeitraumAktiv && chip && (
           <button
             type="button"
             className="vp-zl-chip"

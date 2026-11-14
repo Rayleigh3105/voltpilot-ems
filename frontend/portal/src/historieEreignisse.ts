@@ -37,7 +37,7 @@ import type {
   HistoryVorgaben,
 } from './api';
 import { isoDate } from './periodNav';
-import { monatSchluessel, tagSchluessel } from './verlaufRaster';
+import { monatSchluessel, rasterRange, tagSchluessel } from './verlaufRaster';
 
 /** Die Arten, die diese Oberfläche kennt (der Server darf mehr schicken). */
 export type EreignisArt =
@@ -353,7 +353,7 @@ export function ereignisSpur(history: History): EreignisSpurView | null {
     const end = new Date(e.end);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
     const spanne = bandSpanne(starts, start.getTime(), end.getTime());
-    const zeit = ereignisZeit(start, end, history.range);
+    const zeit = ereignisZeit(start, end, rasterRange(history));
     const art = e.type as EreignisArt;
     chips.push({
       key: `${e.type}-${e.start}-${i}`,
@@ -364,7 +364,7 @@ export function ereignisSpur(history: History): EreignisSpurView | null {
       titel: `${zeit} · ${e.text}`,
       vonIndex: spanne ? spanne[0] : -1,
       bisIndex: spanne ? spanne[1] : -1,
-      sprungAt: tagesSprung(e.start, history.range),
+      sprungAt: tagesSprung(e.start, rasterRange(history)),
       start,
       ende: end,
       wert: typeof e.value === 'number' && Number.isFinite(e.value) ? e.value : null,
@@ -387,7 +387,7 @@ export function ereignisSpur(history: History): EreignisSpurView | null {
     leerText: chips.length === 0 ? (keineVorgaben ?? 'Nichts Auffälliges') : null,
     vorgaben,
     vorgabenHinweis: chips.length > 0 && ohneVorgaben ? keineVorgaben : null,
-    hinweis: spurHinweis(history.range),
+    hinweis: spurHinweis(rasterRange(history)),
     arten: vorhanden.map((art) => ({ art, info: EREIGNIS_ARTEN[art] })),
   };
 }

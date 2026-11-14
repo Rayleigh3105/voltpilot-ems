@@ -1113,8 +1113,51 @@ export interface Grundlast {
   rest: { w: number | null; grund: 'teil_ohne_wert' | 'teile_mehr_als_haus' | null } | null;
 }
 
+/** Eine Richtung von „Abrechnung prüfen“ (`GET …/abrechnung`, R2). */
+export interface AbrechnungZeile {
+  /** `null` ohne jeden Messwert im Zeitraum — nie eine erfundene 0. */
+  mengeKwh: number | null;
+  herkunft: 'zaehler' | 'summe' | null;
+  /** Zählerstand am Beginn/Ende — nur bei `herkunft = 'zaehler'`. */
+  standVonKwh: number | null;
+  standBisKwh: number | null;
+  /** Ein Zähler war da, sprang aber zurück (Tausch) — darum die Summe. */
+  zaehlerFaellt: boolean;
+  fehlendeTage: number;
+  luecken: { von: string; bis: string }[];
+}
+
+/** Die gespeicherten Zahlen von der Rechnung für einen Zeitraum (R3). */
+export interface AbrechnungPruefung {
+  von: string;
+  bis: string;
+  bezugKwh: number | null;
+  einspeisungKwh: number | null;
+  geaendertAm: string;
+}
+
+export interface Abrechnung {
+  von: string;
+  bis: string;
+  tage: number;
+  /** Erster gemessener Tag der Anlage; `null` = noch nie gemessen. */
+  messbeginn: string | null;
+  tageVorMessbeginn: number;
+  bezug: AbrechnungZeile;
+  /** `null` = die Anlage speist im Zeitraum nicht ein und erzeugt nichts (nur Netzbezug). */
+  einspeisung: AbrechnungZeile | null;
+  rechnung: AbrechnungPruefung | null;
+}
+
+/**
+ * Der Zeitraum einer Historie-ANTWORT: einer der vier festen oder `zeitraum` (freier Zeitraum in ganzen Tagen,
+ * `GET …/history?from=&to=`, Abrechnung prüfen R1). `bucketMinutes` ist dort 1440 (Tage, bis 92 Tage) oder 0
+ * (Kalendermonate).
+ */
+export type HistoryAntwortRange = HistoryRange | 'zeitraum';
+
 export interface History {
-  range: HistoryRange;
+  range: HistoryAntwortRange;
   from: string;
   to: string;
   bucketMinutes: number;

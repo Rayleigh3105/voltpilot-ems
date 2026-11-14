@@ -40,6 +40,11 @@ ist die beschlossene Änderung dieser Fläche, keine Neuaufnahme anderer Zahlen.
 Der Wortvergleich der Aufnahme zeigt nur diese zwei Sätze; alle übrigen Bytes, Zahlen und Klassen sind unverändert.
 Das ist eine beschlossene Kürzung sichtbaren Texts, keine Neuaufnahme anderer Zahlen.
 
+**Abrechnung prüfen (fm/vp-pk-abrechnung, 14.11.2026, Bedienkonzept vp-privatkunde-bedienkonzept BK-8 = A):** `verlauf-messwerte.html`
+trägt in der Zeitleiste einen fünften Abschnitt `<button role="tab" …>Zeitraum</button>` hinter „Jahr“. Der Wortvergleich
+der Aufnahme zeigt nur diesen Knopf; alle übrigen Bytes, Zahlen und Klassen sind unverändert. Das ist die beschlossene
+Erweiterung der Fläche, keine Neuaufnahme anderer Zahlen.
+
 **Nachzug main 8b8b6a03b (26.09.2026, echter Merge `main` → `uems`, Paket `vp-uems-nachzug-main-0926`):**
 main hat mehrere der aufgenommenen Flächen ausgeliefert neu gebaut. Die betroffenen Aufnahmen folgen der
 ausgelieferten Fläche; jede ist **nicht** per `--update` am Merge-Baum entstanden, sondern auf einem frischen

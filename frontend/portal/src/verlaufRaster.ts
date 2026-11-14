@@ -17,7 +17,7 @@
  * Rein und framework-frei; Datumsgrenzen folgen der Browser-Uhr wie
  * `periodNav.ts` (die API rechnet in Europe/Berlin, das Portal zeigt lokal).
  */
-import type { HistoryBucket, HistoryRange, SiteEarningsBucket } from './api';
+import type { HistoryAntwortRange, HistoryBucket, HistoryRange, SiteEarningsBucket } from './api';
 
 export type RasterZustand = 'ok' | 'luecke' | 'zukunft' | 'vorher';
 
@@ -99,6 +99,46 @@ export interface Kalenderzelle {
 }
 
 /**
+ * Der feste Zeitraum, dessen Raster eine Antwort trägt: ein freier Zeitraum (`zeitraum`, Abrechnung prüfen) ist
+ * mit Tageseimern ein Monat, mit Monatseimern (`bucketMinutes = 0`) ein Jahr — so lesen Ereignisse, Spitzen und
+ * Beschriftungen ihn ohne eigene Fallunterscheidung.
+ */
+export function rasterRange(h: { range: HistoryAntwortRange; bucketMinutes: number }): HistoryRange {
+  if (h.range !== 'zeitraum') return h.range;
+  return h.bucketMinutes === 0 ? 'year' : 'month';
+}
+
+/** Bis zu so vielen Tagen hat ein freier Zeitraum Tageszellen, darüber Monatszellen (wie die API). */
+export const ZEITRAUM_TAGE_JE_TAG = 92;
+
+/**
+ * Die Kalenderzellen eines FREIEN Zeitraums (Abrechnung prüfen): `von` bis `bis` (lokale Tage, beide
+ * eingeschlossen) in Tagen, ab {@link ZEITRAUM_TAGE_JE_TAG} + 1 Tagen in Monaten — die erste und letzte
+ * Monatszelle auf den Zeitraum gekürzt.
+ */
+export function zeitraumZellen(von: Date, bis: Date): Kalenderzelle[] {
+  const v = new Date(von.getFullYear(), von.getMonth(), von.getDate());
+  const ende = new Date(bis.getFullYear(), bis.getMonth(), bis.getDate() + 1);
+  const tage = Math.round((ende.getTime() - v.getTime()) / 86_400_000);
+  const zellen: Kalenderzelle[] = [];
+  if (tage <= ZEITRAUM_TAGE_JE_TAG) {
+    for (let i = 0; i < tage; i++) {
+      const start = new Date(v.getFullYear(), v.getMonth(), v.getDate() + i);
+      zellen.push({ schluessel: tagSchluessel(start), start, ende: new Date(v.getFullYear(), v.getMonth(), v.getDate() + i + 1), art: 'tag' });
+    }
+    return zellen;
+  }
+  let m = new Date(v.getFullYear(), v.getMonth(), 1);
+  while (m < ende) {
+    const naechster = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+    const start = m < v ? v : m;
+    zellen.push({ schluessel: monatSchluessel(m), start, ende: naechster > ende ? ende : naechster, art: 'monat' });
+    m = naechster;
+  }
+  return zellen;
+}
+
+/**
  * Die Kalenderzellen eines Zeitraums: Woche und Monat in Tagen, Jahr in
  * Monaten. Der Tag selbst hat keine Kalenderzellen (er nutzt das feine Raster).
  */
@@ -165,9 +205,11 @@ export function energieZellen(
   range: Exclude<HistoryRange, 'day'>,
   now: Date,
   firstDataAt?: string | null,
+  /** Die Zellen eines freien Zeitraums ({@link zeitraumZellen}) statt der Kalenderzellen um `anchor`. */
+  vorgabe?: readonly Kalenderzelle[],
 ): EnergieZelle[] {
-  const zellen = kalenderzellen(anchor, range);
-  const key = range === 'year' ? monatSchluessel : tagSchluessel;
+  const zellen = vorgabe ? [...vorgabe] : kalenderzellen(anchor, range);
+  const key = (vorgabe ? vorgabe[0]?.art === 'monat' : range === 'year') ? monatSchluessel : tagSchluessel;
   const sums = new Map<string, Omit<EnergieZelle, keyof Kalenderzelle | 'zustand'>>();
   for (const b of buckets) {
     const t = ms(b.start);
