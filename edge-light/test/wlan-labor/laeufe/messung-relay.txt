@@ -1,0 +1,19 @@
+# Messung (Konzept 6.4, ohne Urteil): WLAN-Weg B mit eigener Zone - was erreicht das Heimnetz, und erreicht die Box selbst das Geraet ohne und mit lokaler Adresse am Relay (relayd -L)?
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?"; cat /tmp/v.out
+@60 KABELIP=$(dhcp_neu kabel kabel1); info "Geraet bekommt vom Router $KABELIP"; info "Lease beim Router: $(grep -i "$(ip netns exec kabel cat /sys/class/net/kabel1/address)" /tmp/kunde.leases)"
+WWANIP=$(wert wlan_adresse /tmp/v.out); info "Box im WLAN: $WWANIP, lokale Adresse am Relay $(uci -q get network.vp_relay.ipaddr)"; info "Gegenprobe des Pruefhelfers: Box an sich selbst Port 22 $(tcp - 127.0.0.1 22 && echo offen || echo zu), Geraet (Zone lan) an die Box Port 22 $(tcp kabel 10.213.0.1 22 && echo offen || echo zu)"
+for p in 80 502 4196; do info "Heimnetz -> Geraet:$p $(tcp kunde $KABELIP $p && echo offen || echo zu) $(tcp_meldung kunde $KABELIP $p)"; done; info "Heimnetz -> Geraet Ping $(ip netns exec kunde ping -c 2 -W 2 $KABELIP >/dev/null 2>&1 && echo ja || echo nein)"
+for p in 22 80 8484 8887; do info "Heimnetz -> Box:$p $(tcp kunde $WWANIP $p && echo offen || echo zu) $(tcp_meldung kunde $WWANIP $p)"; done
+ip netns exec kunde ip route add 10.213.0.0/24 via $WWANIP; info "Heimnetz -> 10.213.0.1:80 $(tcp kunde 10.213.0.1 80 && echo offen || echo zu) $(tcp_meldung kunde 10.213.0.1 80)"; ip netns exec kunde ip route del 10.213.0.0/24
+# 1. lokale Adresse = WLAN-Adresse der Box (so richtet das Skript es ein)
+ps w | grep -v grep | grep relayd; ip rule | head -6; ip route show table 16800
+ip netns exec kabel tcpdump -n -l -i kabel1 -c 2 'icmp' > /tmp/td1.txt 2>/dev/null & sleep 1; info "lokal = WLAN-Adresse: Box -> Geraet Ping $(ping -c 2 -W 2 $KABELIP >/dev/null 2>&1 && echo ja || echo nein), Port 502 $(tcp - $KABELIP 502 && echo ja || echo nein)"; sleep 2; info "Geraet sieht als Absender: $(awk '{print $3}' /tmp/td1.txt | head -n 1)"
+ip netns exec kunde tcpdump -n -l -i kunde0 -c 2 'icmp' > /tmp/td2.txt 2>/dev/null & sleep 1; info "lokal = WLAN-Adresse: Box -> Router Ping $(ping -c 2 -W 2 192.168.178.1 >/dev/null 2>&1 && echo ja || echo nein)"; sleep 2; info "Router sieht als Absender: $(awk '{print $3}' /tmp/td2.txt | head -n 1)"
+# 2. ohne lokale Adresse
+uci -q delete network.vp_relay.ipaddr; uci commit network; /etc/init.d/relayd restart; sleep 4; ps w | grep -v grep | grep relayd
+info "ohne lokale Adresse: Box -> Geraet Ping $(ping -c 2 -W 2 $KABELIP >/dev/null 2>&1 && echo ja || echo nein), Port 502 $(tcp - $KABELIP 502 && echo ja || echo nein) $(tcp_meldung - $KABELIP 502)"
+# 3. lokale Adresse = 10.213.0.1
+uci set network.vp_relay.ipaddr='10.213.0.1'; uci commit network; /etc/init.d/relayd restart; sleep 4; ps w | grep -v grep | grep relayd
+ip netns exec kabel tcpdump -n -l -i kabel1 -c 2 'icmp' > /tmp/td3.txt 2>/dev/null & sleep 1; info "lokal = 10.213.0.1: Box -> Geraet Ping $(ping -c 2 -W 2 $KABELIP >/dev/null 2>&1 && echo ja || echo nein), Port 502 $(tcp - $KABELIP 502 && echo ja || echo nein)"; sleep 2; info "Geraet sieht als Absender: $(awk '{print $3}' /tmp/td3.txt | head -n 1)"
+ip netns exec kunde tcpdump -n -l -i kunde0 -c 2 'icmp' > /tmp/td4.txt 2>/dev/null & sleep 1; info "lokal = 10.213.0.1: Box -> Router Ping $(ping -c 2 -W 2 192.168.178.1 >/dev/null 2>&1 && echo ja || echo nein)"; sleep 2; info "Router sieht als Absender: $(awk '{print $3}' /tmp/td4.txt | head -n 1)"
+for p in 22 80 8484 8887; do info "danach Heimnetz -> Box:$p $(tcp kunde $WWANIP $p && echo offen || echo zu)"; done

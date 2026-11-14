@@ -1,0 +1,9 @@
+# Lauf falsch: falsches Passwort, unbekanntes Netz, zu kurzes Passwort - jedes Mal gilt die vorige Einstellung, die LAN-Seite bleibt, kein Client sucht weiter
+@180 printf 'falschespasswort\n' | $W verbinden Kunde-WLAN > /tmp/f.out; echo "rc=$?" > /tmp/f.rc; cat /tmp/f.out /tmp/f.rc
+gleich "falsches Passwort: Rueckgabe" "$(cat /tmp/f.rc)" "rc=5"; gleich "falsches Passwort: Ergebnis" "$(wert ergebnis /tmp/f.out)" passwort_falsch
+@30 $W status > /tmp/st.out; cat /tmp/st.out; gleich "danach: modus" "$(wert modus /tmp/st.out)" keins; gleich "danach: DHCP der Box an" "$(wert lan_dhcp /tmp/st.out)" an; gleich "danach: keine Zone heimnetz" "$(wert zone_heimnetz /tmp/st.out)" nein
+gleich "danach: kein WLAN-Client in der Konfiguration" "$(uci -q get wireless.vp_wlan)" ""; sleep 5; gleich "danach: keine Client-Schnittstelle" "$(iw dev | grep -c 'type managed')" 0
+@60 KABELIP=$(dhcp_neu kabel kabel1); case "$KABELIP" in 10.213.0.*) pruef_ok "danach: Geraet bekommt weiter eine Adresse der Box ($KABELIP)";; *) pruef_fehler "danach: Geraet ohne Adresse der Box ($KABELIP)";; esac
+pruefe "danach: Box erreicht das Geraet" ping -c 2 -W 2 $KABELIP; gleich "Passwort nicht im Protokoll" "$(logread | grep -c falschespasswort)" 0
+@120 printf 'irgendeinpasswort\n' | $W verbinden Gibt-es-nicht > /tmp/u.out; echo "rc=$?" > /tmp/u.rc; cat /tmp/u.out /tmp/u.rc; gleich "unbekanntes Netz: Rueckgabe" "$(cat /tmp/u.rc)" "rc=4"; gleich "unbekanntes Netz: nichts eingetragen" "$(uci -q get wireless.vp_wlan)" ""
+@120 printf 'kurz\n' | $W verbinden Kunde-WLAN > /tmp/k.out; echo "rc=$?" > /tmp/k.rc; cat /tmp/k.out /tmp/k.rc; gleich "zu kurzes Passwort: Rueckgabe" "$(cat /tmp/k.rc)" "rc=5"; gleich "zu kurzes Passwort: nichts eingetragen" "$(uci -q get wireless.vp_wlan)" ""

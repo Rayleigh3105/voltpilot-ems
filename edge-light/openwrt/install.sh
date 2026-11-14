@@ -159,6 +159,11 @@ for f in usr/libexec/vp-edge-light/boot.sh etc/init.d/vp-edge-light; do
 done
 # Die Konfiguration nur anlegen, nie eine bestehende ueberschreiben.
 box_ssh "$TARGET" "[ -f /etc/config/vp-edge-light ] || { cat > /etc/config/vp-edge-light.neu && mv -f /etc/config/vp-edge-light.neu /etc/config/vp-edge-light; }" <"$HERE/files/etc/config/vp-edge-light"
+# WLAN-Anschluss (Kabel oder WLAN beim Einrichten, edge-light/docs/mango.md
+# "Ohne Kabel zum Router"): nur das Skript. Es gehoert zum Betriebssystem und
+# aendert erst etwas, wenn jemand es aufruft; das Programm erneuert es nicht.
+# shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
+box_ssh "$TARGET" "mkdir -p /usr/libexec/vp-edge-light && cat > /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && chmod 0755 /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && mv -f /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu /usr/libexec/vp-edge-light/wlan-anschluss.sh && sync" <"$HERE/files/usr/libexec/vp-edge-light/wlan-anschluss.sh"
 
 echo "--- Vertrauens-Set in den Flash ($OTA_FEST)"
 # Bis Stufe 1 war ota ein Symlink in den RAM - dort ginge das Set beim

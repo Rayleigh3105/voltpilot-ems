@@ -172,6 +172,11 @@ if [ -n "$STAND" ]; then
     '[ ! -f /usr/libexec/vp-edge-light/boot.sh.neu ] && [ ! -f /etc/init.d/vp-edge-light.neu ] && [ ! -f /etc/config/vp-edge-light.neu ]'
 fi
 
+pruefe "WLAN-Anschluss: Skript liegt ausfuehrbar auf der Box, ohne Schreibrest" \
+  '[ -x /usr/libexec/vp-edge-light/wlan-anschluss.sh ] && [ ! -f /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu ]'
+pruefe "WLAN-Anschluss: install.sh richtet nichts ein (kein WLAN-Client, kein Relay)" \
+  '! uci -q get wireless.vp_wlan && ! uci -q get network.vp_relay'
+
 schritt "3b. Update-bereit"
 pruefe "Vertrauens-Set im Flash (kein RAM-Symlink mehr)" '[ -d /etc/vp-edge-light/ota ] && [ ! -L /etc/vp-edge-light/ota ] && [ -s /etc/vp-edge-light/ota/trust-set.json ] && [ -s /etc/vp-edge-light/ota/trust-set.json.sig ]'
 pruefe "base_url auf der Box entfernt" '! uci -q get vp-edge-light.main.base_url'

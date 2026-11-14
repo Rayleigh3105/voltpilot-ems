@@ -1,0 +1,8 @@
+{
+  "name": "vp-wlan-labor",
+  "private": true,
+  "description": "Emulator fuer edge-light/test/wlan-anschluss-probe.sh (OpenWrt x86 in v86); installiert hole.sh im Cache, nicht im Repo",
+  "dependencies": {
+    "v86": "0.5.473"
+  }
+}

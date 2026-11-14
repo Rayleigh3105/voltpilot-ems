@@ -1,0 +1,18 @@
+# Lauf stoerfaelle: im WLAN-Weg B faellt der Router 60 s aus, dann aendert der Kunde das Passwort am Router - was liest die Box, was kommt von selbst zurueck?
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; cat /tmp/v.rc; gleich "verbinden: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
+pruefe "vorher: Box erreicht das Geraet" ping -c 2 -W 2 $KABELIP; pruefe "vorher: Box liest das Geraet (Port 502)" tcp - $KABELIP 502
+# Fall 1: Router 60 s aus
+kill $(cat /var/run/kunde-hostapd.pid); sleep 1; echo "Router aus"
+@90 sleep 30; $W status | grep -E '^(wlan_zustand|relay)='; verneine "Router aus: WLAN nicht mehr verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+@60 info "Router aus: Box erreicht das Geraet $(ping -c 2 -W 2 $KABELIP >/dev/null 2>&1 && echo ja || echo nein), liest Port 502 $(tcp - $KABELIP 502 && echo ja || echo nein)"; info "Router aus: Geraet hat noch $(ip netns exec kabel ip -4 -o addr show kabel1 | awk '{print $4}')"
+@90 sleep 30; ip netns exec kunde hostapd -B -P /var/run/kunde-hostapd.pid /tmp/kunde.conf >/dev/null 2>&1; sleep 1; ip netns exec kunde ip addr replace 192.168.178.1/24 dev kunde0; echo "Router wieder an"
+@120 i=0; while [ $i -lt 90 ] && ! $W status | grep -qx wlan_zustand=COMPLETED; do sleep 1; i=$((i+1)); done; info "nach dem Ausfall verbunden nach $i s"; pruefe "nach dem Ausfall von selbst wieder verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+@60 sleep 5; pruefe "nach dem Ausfall: Heimnetz erreicht das Geraet" ip netns exec kunde ping -c 2 -W 2 $KABELIP; pruefe "nach dem Ausfall: Box liest das Geraet" tcp - $KABELIP 502
+# Fall 2: Kunde aendert das Passwort am Router
+kill $(cat /var/run/kunde-hostapd.pid); sed 's/^wpa_passphrase=.*/wpa_passphrase=neuespasswort/' /tmp/kunde.conf > /tmp/kunde-neu.conf; sleep 1
+@30 ip netns exec kunde hostapd -B -P /var/run/kunde-hostapd.pid /tmp/kunde-neu.conf >/dev/null 2>&1; sleep 1; ip netns exec kunde ip addr replace 192.168.178.1/24 dev kunde0; echo "Router mit neuem Passwort an"
+@120 sleep 60; $W status | grep -E '^(wlan_zustand|relay)='; verneine "neues Passwort am Router: Box nicht verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+@60 info "neues Passwort am Router: Box erreicht das Geraet $(ping -c 2 -W 2 $KABELIP >/dev/null 2>&1 && echo ja || echo nein), liest Port 502 $(tcp - $KABELIP 502 && echo ja || echo nein)"
+@180 printf 'neuespasswort\n' | $W verbinden Kunde-WLAN > /tmp/v2.out; echo "rc=$?" > /tmp/v2.rc; cat /tmp/v2.out /tmp/v2.rc; gleich "verbinden mit dem neuen Passwort: Rueckgabe" "$(cat /tmp/v2.rc)" "rc=0"
+@60 sleep 5; pruefe "danach: Heimnetz erreicht das Geraet" ip netns exec kunde ping -c 2 -W 2 $KABELIP; pruefe "danach: Box liest das Geraet" tcp - $KABELIP 502

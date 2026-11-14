@@ -1,0 +1,25 @@
+# Lauf verbinden: WLAN-Weg B - das Geraet steht mit einer Adresse vom Router im Heimnetz, die Box bleibt aus dem Heimnetz zu (nur OCPP), die Leseports sind gesperrt, die Box liest das Geraet; ein zweiter Lauf aendert nichts
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; cat /tmp/v.out /tmp/v.rc
+gleich "verbinden: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"; gleich "verbinden: Ergebnis" "$(wert ergebnis /tmp/v.out)" verbunden; gleich "verbinden: Urteil" "$(wert urteil /tmp/v.out)" reicht; gleich "verbinden: Router erreichbar" "$(wert router_erreichbar /tmp/v.out)" ja
+WWANIP=$(wert wlan_adresse /tmp/v.out); gleich "lokale Adresse am Relay = WLAN-Adresse der Box" "$(wert relay_adresse /tmp/v.out)" "$WWANIP"; pruefe "Hotplug-Haken angelegt" grep -q nachziehen /etc/hotplug.d/iface/90-vp-wlan-anschluss
+@30 $W status > /tmp/st.out; cat /tmp/st.out; gleich "status: modus" "$(wert modus /tmp/st.out)" wlan; gleich "status: Relay" "$(wert relay /tmp/st.out)" an; gleich "status: DHCP der Box" "$(wert lan_dhcp /tmp/st.out)" aus; gleich "status: Zone heimnetz" "$(wert zone_heimnetz /tmp/st.out)" ja; gleich "status: WLAN" "$(wert wlan_zustand /tmp/st.out)" COMPLETED
+gleich "status: Funkmodul" "$(wert funkmodul /tmp/st.out)" an; gleich "das offene WLAN OpenWrt ab Werk bleibt aus (disabled)" "$(uci -q get wireless.default_radio0.disabled)" 1; gleich "kein Access Point der Box" "$(iw dev | grep -c 'type AP')" 0
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet bekommt eine Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
+pruefe "Router sieht im DHCP die eigene MAC des Geraets (feste Adresse moeglich)" grep -qi "$(ip netns exec kabel cat /sys/class/net/kabel1/address) $KABELIP" /tmp/kunde.leases
+pruefe "Heimnetz erreicht das Geraet (Ping)" ip netns exec kunde ping -c 2 -W 2 $KABELIP; pruefe "Heimnetz erreicht die Weboberflaeche des Geraets (80)" tcp kunde $KABELIP 80; pruefe "Geraet erreicht den Router" ip netns exec kabel ping -c 2 -W 2 192.168.178.1
+verneine "Heimnetz erreicht Modbus am Geraet nicht (502)" tcp kunde $KABELIP 502; verneine "Heimnetz erreicht den Waveshare-Port nicht (4196)" tcp kunde $KABELIP 4196
+pruefe "Gegenprobe: am Kabel der Box ist SSH offen (Zone lan)" tcp kabel 10.213.0.1 22; verneine "Heimnetz erreicht SSH der Box nicht (22)" tcp kunde $WWANIP 22; verneine "Heimnetz erreicht LuCI nicht (80)" tcp kunde $WWANIP 80; verneine "Heimnetz erreicht die Web-App nicht (8484)" tcp kunde $WWANIP 8484
+pruefe "Heimnetz erreicht OCPP fuer die Ladesaeule (8887)" tcp kunde $WWANIP 8887; ip netns exec kunde ip route add 10.213.0.0/24 via $WWANIP; verneine "Heimnetz erreicht 10.213.0.1 nicht" tcp kunde 10.213.0.1 80; ip netns exec kunde ip route del 10.213.0.0/24
+pruefe "Box erreicht das Geraet (Ping)" ping -c 2 -W 2 $KABELIP; pruefe "Box liest das Geraet (502)" tcp - $KABELIP 502; pruefe "Box erreicht den Router" ping -c 2 -W 2 192.168.178.1
+ip netns exec kabel tcpdump -n -l -i kabel1 -c 1 'icmp' > /tmp/td.txt 2>/dev/null & sleep 1; ping -c 1 -W 2 $KABELIP >/dev/null; sleep 2; gleich "Geraet sieht die Box mit ihrer WLAN-Adresse (fuer Huawei restricted)" "$(awk '{print $3}' /tmp/td.txt | head -n 1)" "$WWANIP"
+gleich "Passwort nicht im Protokoll" "$(logread | grep -c kundenpasswort)" 0
+# Hotplug: eine falsche lokale Adresse zieht ifup vp_wlan zurecht
+uci set network.vp_relay.ipaddr='192.168.178.250'; uci commit network; /etc/init.d/relayd restart; sleep 2
+@90 ifup vp_wlan; i=0; while [ $i -lt 60 ] && [ "$(uci -q get network.vp_relay.ipaddr)" != "$WWANIP" ]; do sleep 1; i=$((i+1)); done; gleich "nach ifup: lokale Adresse wieder die WLAN-Adresse" "$(uci -q get network.vp_relay.ipaddr)" "$WWANIP"
+@60 i=0; while [ $i -lt 40 ] && ! ping -c 1 -W 1 $KABELIP >/dev/null 2>&1; do i=$((i+1)); done; pruefe "danach erreicht die Box das Geraet wieder" ping -c 2 -W 2 $KABELIP
+# Wiederholung
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v2.out; echo "rc=$?" > /tmp/v2.rc; gleich "zweites verbinden: Rueckgabe" "$(cat /tmp/v2.rc)" "rc=0"; gleich "danach genau eine Zone heimnetz" "$(uci show firewall | grep -c "name='heimnetz'")" 1; gleich "danach genau ein Relay" "$(uci show network | grep -c "=relay$\|proto='relay'")" 1
+pruefe "WPA2-Router: Client steht auf WPA2/WPA3 (sae-mixed)" sh -c "[ \"\$(uci -q get wireless.vp_wlan.encryption)\" = sae-mixed ]"
+# Wechsel in ein reines WPA3-Netz (SAE) aus dem laufenden WLAN-Weg
+@180 printf 'nachbarpasswort\n' | $W verbinden Nachbar-WLAN > /tmp/v3.out; echo "rc=$?" > /tmp/v3.rc; cat /tmp/v3.out /tmp/v3.rc; gleich "WPA3-Netz: Rueckgabe" "$(cat /tmp/v3.rc)" "rc=0"; gleich "WPA3-Netz: Adresse vom Router" "$(wert wlan_adresse /tmp/v3.out | cut -d. -f1-3)" 192.168.180
+@30 $W status > /tmp/st3.out; gleich "WPA3-Netz: status ssid" "$(wert wlan_ssid /tmp/st3.out)" Nachbar-WLAN; gleich "WPA3-Netz: verbunden" "$(wert wlan_zustand /tmp/st3.out)" COMPLETED; gleich "WPA3-Netz: lokale Adresse am Relay nachgezogen" "$(wert relay_adresse /tmp/st3.out)" "$(wert wlan_adresse /tmp/v3.out)"

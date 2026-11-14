@@ -1,0 +1,6 @@
+# Lauf scan: beide Netze mit Kanal und Verschluesselung, eine Zeile je Netz, --json fuer Programme; keine Schnittstelle bleibt zurueck
+@90 $W scan > /tmp/s.out; echo "rc=$?" > /tmp/s.rc; cat /tmp/s.out /tmp/s.rc
+gleich "scan: Rueckgabe" "$(cat /tmp/s.rc)" "rc=0"; pruefe "scan nennt Kunde-WLAN, Kanal 6, WPA2 (psk2)" grep -q 'kanal=6 verschluesselung=psk2 ssid=Kunde-WLAN$' /tmp/s.out
+pruefe "scan nennt Nachbar-WLAN, Kanal 11, WPA3 (sae)" grep -q 'kanal=11 verschluesselung=sae ssid=Nachbar-WLAN$' /tmp/s.out; gleich "scan: jede Zeile signal, kanal, verschluesselung, ssid" "$(grep -cv '^signal=-[0-9]* kanal=[0-9]* verschluesselung=[a-z0-9-]* ssid=.' /tmp/s.out)" 0
+@90 $W scan --json > /tmp/s.json; echo "rc=$?"; gleich "scan --json: Kanal von Kunde-WLAN" "$(jsonfilter -i /tmp/s.json -e '@.results[@.ssid="Kunde-WLAN"].channel')" 6
+gleich "scan legt keine WLAN-Schnittstelle an" "$(iw dev | grep -c 'type managed')" 0

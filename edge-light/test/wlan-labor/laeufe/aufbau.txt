@@ -1,0 +1,25 @@
+# Aufbau: drei Funkmodule - Kundenrouter (WPA2, ns kunde), Nachbar (WPA3, ns nachbar), Box; Kabelgeraet (ns kabel) per veth an der LAN-Buchse der Box
+@60 rmmod mac80211_hwsim; insmod mac80211_hwsim radios=3; sleep 2; ls /sys/class/ieee80211
+set -- $(ls /sys/class/ieee80211); PK=$1; PN=$2; PB=$3; echo "kunde=$PK nachbar=$PN box=$PB"
+ip netns add kunde; ip netns add nachbar; ip netns add kabel; iw phy $PK set netns name kunde; iw phy $PN set netns name nachbar
+BOXPFAD=$(readlink -f /sys/class/ieee80211/$PB/device | sed 's#^/sys/devices/##'); echo "box-pfad=$BOXPFAD"; cp /tmp/labor/werkzeug/udhcpc.sh /tmp/udhcpc.sh; chmod +x /tmp/udhcpc.sh
+# Kundenrouter: WPA2, Kanal 6, 192.168.178.1/24, DHCP .100-.150
+ip netns exec kunde iw phy $PK interface add kunde0 type managed; ip netns exec kunde ip link set lo up
+printf 'interface=kunde0\ndriver=nl80211\nctrl_interface=/var/run/hostapd-kunde\nssid=Kunde-WLAN\nhw_mode=g\nchannel=6\ncountry_code=DE\nwpa=2\nwpa_key_mgmt=WPA-PSK\nrsn_pairwise=CCMP\nwpa_passphrase=kundenpasswort\n' > /tmp/kunde.conf
+@30 ip netns exec kunde hostapd -B -P /var/run/kunde-hostapd.pid /tmp/kunde.conf 2>&1 | tail -1; sleep 2; ip netns exec kunde ip addr add 192.168.178.1/24 dev kunde0
+ip netns exec kunde dnsmasq --conf-file=/dev/null --port=0 --interface=kunde0 --bind-interfaces --dhcp-range=192.168.178.100,192.168.178.150,12h --dhcp-leasefile=/tmp/kunde.leases --pid-file=/var/run/kunde-dnsmasq.pid; echo dnsmasq-kunde=$?
+# Nachbar: nur WPA3 (SAE), Kanal 11, 192.168.180.1/24, DHCP .100-.150
+ip netns exec nachbar iw phy $PN interface add nachbar0 type managed; ip netns exec nachbar ip link set lo up
+printf 'interface=nachbar0\ndriver=nl80211\nctrl_interface=/var/run/hostapd-nachbar\nssid=Nachbar-WLAN\nhw_mode=g\nchannel=11\ncountry_code=DE\nwpa=2\nwpa_key_mgmt=SAE\nrsn_pairwise=CCMP\nieee80211w=2\nsae_password=nachbarpasswort\n' > /tmp/nachbar.conf
+@30 ip netns exec nachbar hostapd -B -P /var/run/nachbar-hostapd.pid /tmp/nachbar.conf 2>&1 | tail -1; sleep 2; ip netns exec nachbar ip addr add 192.168.180.1/24 dev nachbar0
+ip netns exec nachbar dnsmasq --conf-file=/dev/null --port=0 --interface=nachbar0 --bind-interfaces --dhcp-range=192.168.180.100,192.168.180.150,12h --dhcp-leasefile=/tmp/nachbar.leases --pid-file=/var/run/nachbar-dnsmasq.pid; echo dnsmasq-nachbar=$?
+# Box: LAN 10.213.0.1/24 wie nach der Werkstatt; Funkmodul radio0 wie OpenWrt 25.12.5 es anlegt (an, darauf das offene WLAN "OpenWrt" im lan aus; Band fest 2g wie die Mango, wifi config naehme beim Simulator 6g); Kabelgeraet per veth am br-lan
+uci set network.lan.ipaddr='10.213.0.1'; uci set network.lan.netmask='255.255.255.0'; while uci -q delete wireless.@wifi-iface[0]; do :; done; while uci -q delete wireless.@wifi-device[0]; do :; done
+uci set wireless.radio0=wifi-device; uci set wireless.radio0.type='mac80211'; uci set wireless.radio0.path="$BOXPFAD"; uci set wireless.radio0.band='2g'; uci set wireless.radio0.channel='1'; uci set wireless.radio0.htmode='HT20'; uci commit wireless
+uci set wireless.default_radio0=wifi-iface; uci set wireless.default_radio0.device='radio0'; uci set wireless.default_radio0.network='lan'; uci set wireless.default_radio0.mode='ap'; uci set wireless.default_radio0.ssid='OpenWrt'; uci set wireless.default_radio0.encryption='none'; uci set wireless.default_radio0.disabled='1'; uci commit wireless
+ip link add kabel0 type veth peer name kabel1; ip link set kabel1 netns kabel; ip netns exec kabel ip link set lo up; ip netns exec kabel ip link set kabel1 up; uci add_list network.@device[0].ports='kabel0'; uci commit network
+@120 /etc/init.d/network reload; sleep 6; ip -4 addr show br-lan | grep inet
+# Stellvertreter: am Geraet Weboberflaeche 80, Modbus 502, Waveshare 4196; an der Box Web-App 8484 und OCPP 8887 (LuCI 80 und SSH 22 laufen ohnehin)
+ip netns exec kabel uhttpd -f -p 0.0.0.0:80 -p 0.0.0.0:502 -p 0.0.0.0:4196 -h /www >/dev/null 2>&1 & uhttpd -f -p 0.0.0.0:8484 -p 0.0.0.0:8887 -h /www >/dev/null 2>&1 & sleep 2; netstat -ltn 2>/dev/null | grep -cE ':(8484|8887) '
+# Ausgangslage Kabelweg: das Kabelgeraet holt seine Adresse von der Box
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 10.213.0.*) pruef_ok "Geraet bekommt eine Adresse der Box ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse der Box ($KABELIP)";; esac
