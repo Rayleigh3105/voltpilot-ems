@@ -26,6 +26,7 @@ import com.voltpilot.api.flows.FlowCompilerException;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -151,7 +152,8 @@ class ConsumerPolicyActivationBrokerTest {
                 org.mockito.Mockito.mock(com.voltpilot.api.repo.FlowClaimRepository.class),
                 new FlowCatalog(MAPPER),
                 provider((com.voltpilot.api.entities.EntityRegistryService) null),
-                provider((FlowCompiler) null), provider(publisher), MAPPER, true);
+                provider((FlowCompiler) null), provider(publisher), MAPPER, true,
+                mock(UpdateStatusRepository.class));
         return new ConsumerPolicyActivationService(repo,
                 new ConsumerPolicyValidator(new ConsumerSignalCatalog()), compiler,
                 windows, provider(flowc), flows, new FlowCatalog(MAPPER), deployments, audit,

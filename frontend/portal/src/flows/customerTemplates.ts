@@ -10,7 +10,7 @@
  * customerTemplates.test.ts.
  */
 import { type EditorEntity, type FlowDocument } from './model';
-import { buildGuidedFlow } from './guidedBuilder';
+import { buildGuidedFlow, GUIDED_WISH_TTL_S } from './guidedBuilder';
 
 /** The site's controllable on/off consumers (Wallbox / Heizstab / gen. Last). */
 export function controllableConsumers(entities: EditorEntity[]): EditorEntity[] {
@@ -48,7 +48,7 @@ export function pvSurplusConsumerFlow(
         { kind: 'entity', entityId: gridId, channel: 'power_kw', direction: 'below', threshold: -2, hysteresis: 0.5 },
       ],
       combinator: 'and',
-      action: { kind: 'onoff', entityId: consumerId, ttlS: 300 },
+      action: { kind: 'onoff', entityId: consumerId, ttlS: GUIDED_WISH_TTL_S },
     },
     name,
     siteId,
@@ -69,7 +69,7 @@ export function scheduleConsumerFlow(
     {
       conditions: [{ kind: 'schedule', from: '11:00', to: '15:00', days: 'alle' }],
       combinator: 'and',
-      action: { kind: 'onoff', entityId: consumerId, ttlS: 600 },
+      action: { kind: 'onoff', entityId: consumerId, ttlS: GUIDED_WISH_TTL_S },
     },
     name,
     siteId,

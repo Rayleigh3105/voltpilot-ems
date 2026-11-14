@@ -17,7 +17,7 @@
 import { liste } from './liste';
 import type { EditorEntity } from '../flows/model';
 import type { FlowSummary } from '../flows/flowsApi';
-import { parseGuidedFlow } from '../flows/guidedBuilder';
+import { GUIDED_WISH_TTL_S, parseGuidedFlow } from '../flows/guidedBuilder';
 import { istGenerierteVerbraucherregel } from '../regeln/zustand';
 import type { GuidedCondition, GuidedRule } from '../flows/guidedBuilder';
 import type { GeraetBild, Reihen } from './bild';
@@ -139,8 +139,6 @@ export function regelSatz(r: RegelEntwurf, g: GeraetBild | null): { wenn: string
 // Umwandlung in den geführten Baukasten und zurück
 // ---------------------------------------------------------------------------
 
-const TTL_S = 300;
-
 export function zuGuided(r: RegelEntwurf, b: Bezug, g: GeraetBild | null): GuidedRule | null {
   const conditions: GuidedCondition[] = [];
   for (const c of r.wenn) {
@@ -160,8 +158,8 @@ export function zuGuided(r: RegelEntwurf, b: Bezug, g: GeraetBild | null): Guide
   }
   if (!conditions.length) return null;
   const action = r.dann.a === 'voll' && g?.nennKw
-    ? { kind: 'setpoint' as const, entityId: r.dann.g, value: g.nennKw, ttlS: TTL_S }
-    : { kind: 'onoff' as const, entityId: r.dann.g, ttlS: TTL_S };
+    ? { kind: 'setpoint' as const, entityId: r.dann.g, value: g.nennKw, ttlS: GUIDED_WISH_TTL_S }
+    : { kind: 'onoff' as const, entityId: r.dann.g, ttlS: GUIDED_WISH_TTL_S };
   return { conditions, combinator: r.oder ? 'or' : 'and', action };
 }
 
@@ -238,11 +236,15 @@ export function notifyUmwandlung(regel: GuidedRule): NotifyUmwandlung | null {
 /** Gilt eine Bedingung in Viertelstunde t? `null` = unbekannt (kein Wert). */
 export function gilt(c: Bedingung, rh: Reihen, t: number): boolean | null {
   switch (c.v) {
-    case 'preis': {
-      const p = rh.preis[t];
-      if (p == null) return null;
-      return c.op === 'unter' ? p < (c.w as number) : p > (c.w as number);
-    }
+    case 'preis':
+      // N2 (report.md §11): eine Preis-Bedingung kompiliert auf die Box zu
+      // `vp.price.current`, das Thema `edge/price/current` liest - reserviert,
+      // der Core speist es nicht (kein Sender im Core). `rh.preis` kommt vom
+      // Markt-Tagespreis des Portals, ein ANDERER Pfad als der Box-Feed; ihn
+      // hier zu lesen hieße, Schaltzeiten zu zeigen, die die Box nicht
+      // ausführen kann. Bis das Thema gespeist wird (needs-decision), gilt
+      // eine Preis-Bedingung im Probelauf wie am Gerät: nie bekannt.
+      return null;
     case 'sonne': {
       const n = rh.netz[t];
       if (n == null) return null;

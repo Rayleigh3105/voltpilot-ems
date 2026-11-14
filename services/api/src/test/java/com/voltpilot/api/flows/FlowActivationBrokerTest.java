@@ -10,6 +10,7 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.io.IOException;
 import java.net.URI;
@@ -112,7 +113,8 @@ class FlowActivationBrokerTest {
                 mock(com.voltpilot.api.repo.FlowClaimRepository.class), new FlowCatalog(MAPPER),
                 provider((com.voltpilot.api.entities.EntityRegistryService) null),
                 provider(compiler), provider(publisher), MAPPER, true,
-                Clock.fixed(Instant.parse("2026-07-19T09:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-07-19T09:00:00Z"), ZoneOffset.UTC),
+                mock(UpdateStatusRepository.class));
 
         FlowActivationService.ActivationOutcome outcome = service.activate(SITE,
                 row("simulated", null), MAPPER.createObjectNode());

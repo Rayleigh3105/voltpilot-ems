@@ -27,6 +27,7 @@ import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -137,7 +138,8 @@ class LeadDeviceBestandVerhaltensgleichTest {
                     "contracts", "v2", "examples", "flow-artifact.valid.artifact.json")));
             flowService = new FlowActivationService(flows, lead, mock(FlowClaimRepository.class),
                     new FlowCatalog(MAPPER), provider((EntityRegistryService) null),
-                    provider((FlowCompiler) doc -> artifact), provider(flowBroker), MAPPER, true);
+                    provider((FlowCompiler) doc -> artifact), provider(flowBroker), MAPPER, true,
+                    mock(UpdateStatusRepository.class));
         }
     }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGuidedFlow,
+  GUIDED_WISH_TTL_S,
   isGuidedFlow,
   parseGuidedFlow,
   type GuidedRule,
@@ -123,7 +124,7 @@ describe('guided rule builder', () => {
     expect(parseGuidedFlow(res.doc)).toEqual({
       conditions: [{ kind: 'entity', entityId: 'gm', channel: 'power_kw', direction: 'below', threshold: -2, hysteresis: 0.5 }],
       combinator: 'and',
-      action: { kind: 'onoff', entityId: 'wb', ttlS: 300 },
+      action: { kind: 'onoff', entityId: 'wb', ttlS: GUIDED_WISH_TTL_S },
     });
   });
 
@@ -134,7 +135,7 @@ describe('guided rule builder', () => {
     expect(parseGuidedFlow(res.doc)).toEqual({
       conditions: [{ kind: 'schedule', from: '11:00', to: '15:00', days: 'alle' }],
       combinator: 'and',
-      action: { kind: 'onoff', entityId: 'wb', ttlS: 600 },
+      action: { kind: 'onoff', entityId: 'wb', ttlS: GUIDED_WISH_TTL_S },
     });
   });
 
@@ -191,5 +192,41 @@ describe('guided rule builder', () => {
       triggers: [{ id: 't1', kind: 'slot-boundary' }],
     };
     expect(parseGuidedFlow(doc)).toBeNull();
+  });
+});
+
+describe('N1 (report.md §11): der Wunsch hält das ganze Fenster, nicht nur einen Teil davon', () => {
+  // flowc (`edge-app/nodered/flowc/compile.js`, "Slot-Grenze") re-fires a
+  // guided flow's trigger exactly once per 900s platform slot, reached by an
+  // inject that repeats every 30s - so the worst-case gap between two
+  // re-affirmations of the wish is 900 + 30 = 930s. A shorter TTL (previously
+  // 300s/600s) let the wish lapse for the rest of every slot - a pure time
+  // rule like "Nachts laufen lassen" held only 5 of 15 minutes.
+  const SLOT_S = 900;
+  const DISPATCH_JITTER_S = 30;
+
+  it('the shared TTL outlives one full slot-boundary gap', () => {
+    expect(GUIDED_WISH_TTL_S).toBeGreaterThanOrEqual(SLOT_S + DISPATCH_JITTER_S);
+  });
+
+  it('every emitted entity-control wish uses the shared TTL, not a shorter literal', () => {
+    const scheduleOnly: GuidedRule = {
+      conditions: [{ kind: 'schedule', from: '22:00', to: '06:00', days: 'alle' }],
+      combinator: 'and',
+      action: { kind: 'onoff', entityId: 'wb', ttlS: GUIDED_WISH_TTL_S },
+    };
+    const doc = buildGuidedFlow(scheduleOnly, 'Nachts laufen lassen', 'site-1');
+    const control = doc.nodes.find((n) => n.type === 'vp.entity.control')!;
+    expect(control.parameters.ttl_s).toBe(GUIDED_WISH_TTL_S);
+    expect(control.parameters.ttl_s as number).toBeGreaterThanOrEqual(SLOT_S + DISPATCH_JITTER_S);
+  });
+
+  it('both shipped customer templates (E3b) use the shared TTL', () => {
+    for (const tpl of CUSTOMER_TEMPLATES) {
+      const res = tpl.resolve(ENTITIES, 'site-1');
+      if (!('doc' in res)) throw new Error('expected a doc');
+      const control = res.doc.nodes.find((n) => n.type === 'vp.entity.control')!;
+      expect(control.parameters.ttl_s).toBe(GUIDED_WISH_TTL_S);
+    }
   });
 });

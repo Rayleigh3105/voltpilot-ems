@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.LeadDeviceService;
+import com.voltpilot.api.ota.BoxArt;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -42,6 +44,15 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>Compiler failure ({@link FlowCompilerException}: sidecar unreachable or
  *       the flow rejected) or a malformed artifact: activation refuses with a
  *       German message and changes NOTHING - the flow stays "simuliert".</li>
+ *   <li>Gateway is an Edge Light box (N3, report {@code vp-steuerlogik-konzept}
+ *       §11): Edge Light's local runtime only ever accepts the generated
+ *       reactive-Verbraucherregel shape ({@code vp-consumer-policy}); a flow
+ *       built in the guided builder or the free editor compiles to a different
+ *       node set the box has NEVER been able to run (edge-light parity list,
+ *       "Kundenautomationen aus dem Flow-Editor") and would be rejected AFTER
+ *       activation with "läuft auf dieser Box nicht". Checked here - the same
+ *       capability-before-activation pattern as {@code SteuerartService} - so
+ *       the customer hears it before the compiler even runs.</li>
  * </ol>
  * Rollback = re-activating a previous version (its stored artifact is
  * re-published; deterministic tab ids make it a clean replace).
@@ -73,6 +84,7 @@ public class FlowActivationService {
     private final ObjectMapper mapper;
     private final boolean activationEnabled;
     private final Clock clock;
+    private final UpdateStatusRepository updateStatus;
 
     /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
@@ -85,16 +97,18 @@ public class FlowActivationService {
             ObjectProvider<EntityRegistryService> registry,
             ObjectProvider<FlowCompiler> compiler, ObjectProvider<FlowDeploymentPublisher> publisher,
             ObjectMapper mapper,
-            @Value("${voltpilot.flows.activation.enabled:false}") boolean activationEnabled) {
+            @Value("${voltpilot.flows.activation.enabled:false}") boolean activationEnabled,
+            UpdateStatusRepository updateStatus) {
         this(flows, leadDevices, claims, catalog, registry, compiler, publisher, mapper,
-                activationEnabled, Clock.systemUTC());
+                activationEnabled, Clock.systemUTC(), updateStatus);
     }
 
     FlowActivationService(FlowRepository flows, LeadDeviceService leadDevices,
             FlowClaimRepository claims, FlowCatalog catalog,
             ObjectProvider<EntityRegistryService> registry,
             ObjectProvider<FlowCompiler> compiler, ObjectProvider<FlowDeploymentPublisher> publisher,
-            ObjectMapper mapper, boolean activationEnabled, Clock clock) {
+            ObjectMapper mapper, boolean activationEnabled, Clock clock,
+            UpdateStatusRepository updateStatus) {
         this.flows = flows;
         this.leadDevices = leadDevices;
         this.claims = claims;
@@ -105,6 +119,7 @@ public class FlowActivationService {
         this.mapper = mapper;
         this.activationEnabled = activationEnabled;
         this.clock = clock;
+        this.updateStatus = updateStatus;
     }
 
     /** Activate one validated version. Never throws for the honest stops. */
@@ -128,6 +143,16 @@ public class FlowActivationService {
                     "Diese Anlage hat kein eindeutiges Gateway-Gerät - der Rollout braucht "
                             + "genau ein beanspruchtes Gerät (oder ein mit dem Speicher "
                             + "verknüpftes).");
+        }
+        // N3 (report §11): Edge Light cannot run a flow-editor artifact at all
+        // (parity list, "Kundenautomationen aus dem Flow-Editor") - check the
+        // box's capability BEFORE compiling, same pattern as SteuerartService,
+        // so the customer is told instead of the box quietly refusing later.
+        if (BoxArt.LIGHT.equals(updateStatus.boxArt(gateway))) {
+            return ActivationOutcome.refused("edge_light_unsupported",
+                    "Diese Box ist eine Edge Light und kann Regeln aus dem Regel-Baukasten "
+                            + "oder dem freien Editor noch nicht ausführen. Die Regel bleibt "
+                            + "gespeichert, aber nicht ausgerollt.");
         }
 
         // Compile the real artifact (the E2 flowc sidecar) and validate its
