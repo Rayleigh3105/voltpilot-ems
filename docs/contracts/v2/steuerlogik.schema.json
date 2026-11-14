@@ -1,0 +1,747 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://voltpilot.local/contracts/v2/steuerlogik.schema.json",
+ "title": "Steuerlogik: eine Logik in ihrer kanonischen JSON-Form (Vertrag)",
+ "description": "Aufbau eines Logik-Dokuments in seiner kanonischen JSON-Form. Die YAML-Schreibform wird ohne Verlust in diese Form gewandelt (feste Werte: on = true, off = false; die gespeicherte Form schreibt on/off). Das Schema prüft den Aufbau; Namen, Einheiten und Verhalten prüft der Kern (edge-app/core/internal/logik). Regeln und Vektoren: docs/contracts/v2/steuerlogik.md, steuerlogik-vectors.json.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "logic",
+  "name",
+  "devices",
+  "outputs",
+  "status"
+ ],
+ "properties": {
+  "logic": {
+   "const": 1,
+   "description": "Version der Sprache."
+  },
+  "name": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 60,
+   "description": "So heißt die Logik für den Kunden."
+  },
+  "description": {
+   "type": "string",
+   "maxLength": 600
+  },
+  "devices": {
+   "description": "Was die Logik schaltet. Jedes Gerät gehört genau einer Logik.",
+   "type": "object",
+   "minProperties": 1,
+   "maxProperties": 16,
+   "propertyNames": {
+    "$ref": "#/$defs/identifier"
+   },
+   "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "entity",
+     "name"
+    ],
+    "properties": {
+     "entity": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kennung des Geräts in der Anlage."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     }
+    }
+   }
+  },
+  "inputs": {
+   "description": "Was die Logik liest. Ohne frischen Wert gilt unbekannt.",
+   "type": "object",
+   "maxProperties": 32,
+   "propertyNames": {
+    "$ref": "#/$defs/identifier"
+   },
+   "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "source",
+     "name"
+    ],
+    "properties": {
+     "source": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z][a-z0-9_]*$",
+      "description": "Quelle als gerät.kanal, dazu anlage, speicher, sonne."
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "max_age": {
+      "$ref": "#/$defs/value"
+     }
+    }
+   }
+  },
+  "settings": {
+   "description": "Was sich einstellen lässt, ohne den Text zu ändern.",
+   "type": "object",
+   "maxProperties": 64,
+   "propertyNames": {
+    "$ref": "#/$defs/identifier"
+   },
+   "additionalProperties": {
+    "$ref": "#/$defs/setting"
+   }
+  },
+  "constraints": {
+   "description": "Was zwischen Stellwerten gelten muss.",
+   "type": "array",
+   "maxItems": 16,
+   "items": {
+    "$ref": "#/$defs/named"
+   }
+  },
+  "formulas": {
+   "description": "Formeln. Sie gelten immer mit den aktuellen Werten.",
+   "type": "object",
+   "maxProperties": 64,
+   "propertyNames": {
+    "$ref": "#/$defs/identifier"
+   },
+   "additionalProperties": {
+    "$ref": "#/$defs/expression"
+   }
+  },
+  "states": {
+   "description": "Was sich die Logik merkt.",
+   "type": "object",
+   "maxProperties": 32,
+   "propertyNames": {
+    "$ref": "#/$defs/identifier"
+   },
+   "additionalProperties": {
+    "oneOf": [
+     {
+      "$ref": "#/$defs/boolean"
+     },
+     {
+      "$ref": "#/$defs/timer"
+     },
+     {
+      "$ref": "#/$defs/counter"
+     }
+    ]
+   }
+  },
+  "outputs": {
+   "description": "Was die Geräte tun sollen. Unbekannt heißt: Ruhewert des Geräts.",
+   "type": "object",
+   "minProperties": 1,
+   "propertyNames": {
+    "$ref": "#/$defs/identifier"
+   },
+   "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "minProperties": 1,
+    "properties": {
+     "level": {
+      "$ref": "#/$defs/expression",
+      "description": "Zahl der eingeschalteten Ausgänge."
+     },
+     "on_off": {
+      "$ref": "#/$defs/expression",
+      "description": "Ja oder Nein."
+     },
+     "setpoint": {
+      "$ref": "#/$defs/expression",
+      "description": "Wert mit Einheit; das Gerät begrenzt ihn auf seinen Bereich."
+     },
+     "mode": {
+      "$ref": "#/$defs/expression",
+      "description": "Eines der Wörter, die das Gerät kennt."
+     },
+     "percent": {
+      "$ref": "#/$defs/expression",
+      "description": "0 bis 100 Prozent."
+     }
+    }
+   }
+  },
+  "display": {
+   "description": "Optional: was die Karte des Kunden zusätzlich zeichnet. Ohne Angabe wählt das Portal das Bild nach der Art der Geräte.",
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "input"
+   ],
+   "properties": {
+    "input": {
+     "$ref": "#/$defs/identifier",
+     "description": "Der Wert, der groß gezeigt wird."
+    },
+    "scale": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 2,
+     "items": {
+      "$ref": "#/$defs/value"
+     }
+    },
+    "marks": {
+     "type": "array",
+     "maxItems": 4,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "at"
+      ],
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 20
+       },
+       "at": {
+        "$ref": "#/$defs/expression"
+       }
+      }
+     }
+    }
+   }
+  },
+  "notifications": {
+   "description": "Nachrichten an Menschen, wenn eine Bedingung eintritt.",
+   "type": "array",
+   "maxItems": 16,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "when",
+     "to",
+     "text"
+    ],
+    "properties": {
+     "when": {
+      "$ref": "#/$defs/expression"
+     },
+     "to": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+       "enum": [
+        "customer",
+        "installer"
+       ]
+      }
+     },
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+     },
+     "repeat_after": {
+      "$ref": "#/$defs/value",
+      "description": "Frühestens nach dieser Dauer erneut melden."
+     }
+    }
+   }
+  },
+  "status": {
+   "description": "Was der Kunde liest. Die erste zutreffende Zeile gilt.",
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 32,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "title",
+     "type",
+     "text"
+    ],
+    "oneOf": [
+     {
+      "required": [
+       "when"
+      ]
+     },
+     {
+      "required": [
+       "else"
+      ]
+     }
+    ],
+    "properties": {
+     "when": {
+      "$ref": "#/$defs/expression"
+     },
+     "else": {
+      "const": true
+     },
+     "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "type": {
+      "enum": [
+       "solar",
+       "grid",
+       "waiting",
+       "idle",
+       "fault"
+      ]
+     },
+     "text": {
+      "type": "string",
+      "maxLength": 300
+     }
+    }
+   }
+  },
+  "tests": {
+   "description": "Durchgespielte Fälle mit erwartetem Ergebnis.",
+   "type": "array",
+   "maxItems": 64,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "name",
+     "given",
+     "expect"
+    ],
+    "properties": {
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+     },
+     "given": {
+      "type": "object",
+      "additionalProperties": {
+       "$ref": "#/$defs/value"
+      }
+     },
+     "after": {
+      "$ref": "#/$defs/value"
+     },
+     "expect": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+       "$ref": "#/$defs/value"
+      }
+     }
+    }
+   }
+  }
+ },
+ "$defs": {
+  "identifier": {
+   "type": "string",
+   "pattern": "^[a-z][a-z0-9_]{0,31}$"
+  },
+  "value": {
+   "description": "Ein fester Wert: Zahl, Ja/Nein, Wort oder Zahl mit Einheit als Text.",
+   "type": [
+    "string",
+    "number",
+    "boolean"
+   ]
+  },
+  "expression": {
+   "description": "Eine Formel der Sprache als Text; ein fester Wert ist auch erlaubt.",
+   "type": [
+    "string",
+    "number",
+    "boolean"
+   ]
+  },
+  "named": {
+   "description": "Eine Bedingung mit ihrem Namen: {Name: Formel}.",
+   "type": "object",
+   "minProperties": 1,
+   "maxProperties": 1,
+   "additionalProperties": {
+    "$ref": "#/$defs/expression"
+   }
+  },
+  "conditions": {
+   "description": "Eine Formel oder eine Liste aus Formeln und benannten Bedingungen.",
+   "oneOf": [
+    {
+     "$ref": "#/$defs/expression"
+    },
+    {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 12,
+     "items": {
+      "oneOf": [
+       {
+        "$ref": "#/$defs/expression"
+       },
+       {
+        "$ref": "#/$defs/named"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "time_window": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "days",
+    "from",
+    "to"
+   ],
+   "properties": {
+    "days": {
+     "type": "string",
+     "pattern": "^(mon|tue|wed|thu|fri|sat|sun)(-(mon|tue|wed|thu|fri|sat|sun))?(,(mon|tue|wed|thu|fri|sat|sun)(-(mon|tue|wed|thu|fri|sat|sun))?)*$"
+    },
+    "from": {
+     "type": "string",
+     "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "to": {
+     "type": "string",
+     "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    }
+   }
+  },
+  "setting": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name",
+    "default"
+   ],
+   "properties": {
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 40
+    },
+    "type": {
+     "enum": [
+      "boolean",
+      "select",
+      "schedule"
+     ],
+     "description": "Ohne Angabe: Zahl mit Einheit oder Uhrzeit."
+    },
+    "default": {
+     "oneOf": [
+      {
+       "$ref": "#/$defs/value"
+      },
+      {
+       "type": "array",
+       "minItems": 1,
+       "maxItems": 14,
+       "items": {
+        "$ref": "#/$defs/time_window"
+       }
+      }
+     ]
+    },
+    "range": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 2,
+     "items": {
+      "$ref": "#/$defs/value"
+     }
+    },
+    "step": {
+     "$ref": "#/$defs/value"
+    },
+    "options": {
+     "description": "Nur bei Auswahl: Wort im Text und Name für den Kunden.",
+     "type": "object",
+     "minProperties": 2,
+     "maxProperties": 8,
+     "propertyNames": {
+      "$ref": "#/$defs/identifier"
+     },
+     "additionalProperties": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30
+     }
+    },
+    "editable_by": {
+     "enum": [
+      "customer",
+      "customer_admin",
+      "installer"
+     ],
+     "description": "Wer den Wert ändern darf. Ohne Angabe: Fachbetrieb."
+    },
+    "help": {
+     "oneOf": [
+      {
+       "type": "string",
+       "maxLength": 500
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "when_on",
+        "when_off"
+       ],
+       "properties": {
+        "when_on": {
+         "type": "string",
+         "maxLength": 300
+        },
+        "when_off": {
+         "type": "string",
+         "maxLength": 300
+        }
+       }
+      }
+     ]
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "type": {
+        "const": "select"
+       }
+      },
+      "required": [
+       "type"
+      ]
+     },
+     "then": {
+      "required": [
+       "options"
+      ]
+     },
+     "else": {
+      "not": {
+       "required": [
+        "options"
+       ]
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "type": {
+        "enum": [
+         "boolean",
+         "select",
+         "schedule"
+        ]
+       }
+      },
+      "required": [
+       "type"
+      ]
+     },
+     "then": {
+      "not": {
+       "anyOf": [
+        {
+         "required": [
+          "range"
+         ]
+        },
+        {
+         "required": [
+          "step"
+         ]
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  "boolean": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "type",
+    "after_restart"
+   ],
+   "anyOf": [
+    {
+     "required": [
+      "on_when"
+     ]
+    },
+    {
+     "required": [
+      "on_when_any"
+     ]
+    }
+   ],
+   "properties": {
+    "type": {
+     "const": "boolean"
+    },
+    "on_when": {
+     "$ref": "#/$defs/conditions"
+    },
+    "on_when_any": {
+     "$ref": "#/$defs/conditions"
+    },
+    "off_when": {
+     "$ref": "#/$defs/conditions"
+    },
+    "off_when_any": {
+     "$ref": "#/$defs/conditions"
+    },
+    "after_restart": {
+     "enum": [
+      "on",
+      "off",
+      "keep"
+     ]
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 40,
+     "description": "So heißt der Zustand in Oberfläche und Verlauf."
+    }
+   }
+  },
+  "timer": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "type",
+    "duration",
+    "after_restart"
+   ],
+   "properties": {
+    "type": {
+     "const": "timer"
+    },
+    "duration": {
+     "$ref": "#/$defs/expression"
+    },
+    "after_restart": {
+     "enum": [
+      "off",
+      "keep"
+     ]
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 40,
+     "description": "So heißt der Zustand in Oberfläche und Verlauf."
+    }
+   }
+  },
+  "counter": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "type",
+    "min",
+    "max",
+    "after_restart",
+    "steps"
+   ],
+   "properties": {
+    "type": {
+     "const": "counter"
+    },
+    "min": {
+     "type": "integer"
+    },
+    "max": {
+     "type": "integer"
+    },
+    "after_restart": {
+     "oneOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "const": "keep"
+      }
+     ]
+    },
+    "steps": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 12,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "name"
+      ],
+      "oneOf": [
+       {
+        "required": [
+         "by"
+        ]
+       },
+       {
+        "required": [
+         "set"
+        ]
+       }
+      ],
+      "properties": {
+       "name": {
+        "$ref": "#/$defs/identifier"
+       },
+       "by": {
+        "type": "integer"
+       },
+       "set": {
+        "$ref": "#/$defs/expression"
+       },
+       "not_before": {
+        "$ref": "#/$defs/value"
+       },
+       "when": {
+        "$ref": "#/$defs/conditions"
+       },
+       "when_any": {
+        "$ref": "#/$defs/conditions"
+       },
+       "then": {
+        "type": "string",
+        "pattern": "^start\\([a-z][a-z0-9_]*\\)( if .+)?$"
+       }
+      }
+     }
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 40,
+     "description": "So heißt der Zustand in Oberfläche und Verlauf."
+    }
+   }
+  }
+ }
+}
