@@ -90,4 +90,3 @@ func TestRestartAfterFailsafeReleasesOnRealTimeTicks(t *testing.T) {
 	dec, ok := arb.DecisionFor("rod-1")
 	t.Fatalf("restart never released after the pause; decision=%+v ok=%v", dec, ok)
 }
-

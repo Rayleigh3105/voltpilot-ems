@@ -64,8 +64,8 @@ const (
 // component it actually finds). Everything else is another reader's point,
 // never guessed at here.
 var shellySensorTemplates = map[string]shellySensorKind{
-	"shelly.gen2plus.temperature[*].tc":                  kindGen2Temperature,
-	"shelly.gen2plus.input[*].state":                     kindGen2Input,
+	"shelly.gen2plus.temperature[*].tc":                   kindGen2Temperature,
+	"shelly.gen2plus.input[*].state":                      kindGen2Input,
 	"shelly.gen1.external_sensor[*].ext_temperature.*.tc": kindGen1Temperature,
 }
 

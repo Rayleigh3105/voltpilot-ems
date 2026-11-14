@@ -29,7 +29,7 @@ func fuehlerRegistry(id, ip string, port int) entities.Registry {
 
 func shellySensorMessplan(catalogVersion string, entityID, pointKey string, cadenceS int) []byte {
 	raw, _ := json.Marshal(map[string]any{
-		"revision":       int64(1),
+		"revision":        int64(1),
 		"catalog_version": catalogVersion,
 		"selections": []map[string]any{
 			{"point_key": pointKey, "cadence_s": cadenceS, "entity_id": entityID},

@@ -18,41 +18,41 @@ func TestClampTracedStageAttribution(t *testing.T) {
 		stages  []string
 	}{
 		{
-			name: "within band, nothing bites",
+			name:    "within band, nothing bites",
 			command: 10, l: limits, r: reading(50, 20, 5, 100),
 			want: 10, stages: nil,
 		},
 		{
-			name: "rated band clamps charge",
+			name:    "rated band clamps charge",
 			command: 120, l: limits, r: reading(50, 20, 5, 100),
 			want: 50, stages: []string{StageRatedBand},
 		},
 		{
-			name: "soc window blocks charge at ceiling",
+			name:    "soc window blocks charge at ceiling",
 			command: 30, l: limits, r: reading(95, 20, 5, 100),
 			want: 0, stages: []string{StageSocWindow},
 		},
 		{
-			name: "solar-only caps at measured pv",
+			name:    "solar-only caps at measured pv",
 			command: 30,
 			l:       Limits{MaxChargeKw: 50, MaxDischargeKw: 40, SocMinPct: 5, SocMaxPct: 95, SolarOnlyCharge: true},
 			r:       reading(50, 6.2, 1, 100),
 			want:    6.2, stages: []string{StageSolarOnlyCharge},
 		},
 		{
-			name: "grid limit caps import",
+			name:    "grid limit caps import",
 			command: 30, l: limits, r: reading(50, 0, 0, 11),
 			want: 11, stages: []string{StageGridLimit14a},
 		},
 		{
-			name: "band clamps then solar-only bites too",
+			name:    "band clamps then solar-only bites too",
 			command: 120,
 			l:       Limits{MaxChargeKw: 50, MaxDischargeKw: 40, SocMinPct: 5, SocMaxPct: 95, SolarOnlyCharge: true},
 			r:       reading(50, 6.2, 1, 100),
 			want:    6.2, stages: []string{StageRatedBand, StageSolarOnlyCharge},
 		},
 		{
-			name: "non-finite command reports rated band",
+			name:    "non-finite command reports rated band",
 			command: math.NaN(), l: limits, r: reading(50, 20, 5, 100),
 			want: 0, stages: []string{StageRatedBand},
 		},

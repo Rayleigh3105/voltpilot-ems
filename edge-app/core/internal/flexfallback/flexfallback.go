@@ -327,8 +327,8 @@ const MaxSampleGap = 5 * time.Minute
 // Tracker accumulates the confirmed progress of ONE requirement instance from
 // measured samples. Serializable (persisted across reboots by the agent).
 type Tracker struct {
-	InstanceKey string   `json:"instance_key"`
-	Progress    Progress `json:"progress"`
+	InstanceKey string    `json:"instance_key"`
+	Progress    Progress  `json:"progress"`
 	LastAt      time.Time `json:"last_at"`
 	LastKw      float64   `json:"last_kw"`
 	HasLast     bool      `json:"has_last"`

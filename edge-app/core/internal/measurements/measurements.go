@@ -54,6 +54,7 @@ type Selection struct {
 	EntityID   string          `json:"entity_id,omitempty"`
 	Definition json.RawMessage `json:"definition,omitempty"`
 }
+
 // RegisterbildKarte is the Soll of one energy card: WHICH card the Hardwareblatt
 // expects in which slot. Identity of a card is (device, slot) - card type and
 // variant only check that the expected card is plugged in, so a card swapped to
