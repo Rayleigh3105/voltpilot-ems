@@ -106,6 +106,26 @@ describe('capabilities + guards', () => {
     expect(rows).toContainEqual({ label: 'Rückfallverhalten', value: 'Eigenverbrauch' });
   });
 
+  it('names the cycle and change guards with their own units, never kW', () => {
+    const rows = guardRows(entity({
+      entityType: 'modbus-device',
+      guards: {
+        limits: { min_on_seconds: 300, min_off_seconds: 45, max_starts_per_day: 4, ramp_kw_per_min: 1.5,
+          min_change_interval_s: 120, max_consumption_kw: 3.5 },
+        failsafe: { behavior: 'rest' },
+      },
+    }));
+    expect(rows).toEqual([
+      { label: 'Mindestlaufzeit', value: '5 min' },
+      { label: 'Mindestpause', value: '45 s' },
+      { label: 'Max. Starts je Tag', value: '4' },
+      { label: 'Max. Leistungsänderung', value: '1,5 kW/min' },
+      { label: 'Abstand zwischen Änderungen', value: '2 min' },
+      { label: 'Max. Leistung', value: '3,5 kW' },
+      { label: 'Rückfallverhalten', value: 'Ruhewerte des Geräts' },
+    ]);
+  });
+
   describe('Min. Ladestand vom Wechselrichter', () => {
     const jetzt = new Date('2026-11-09T07:00:00Z'); // 08:00 in Berlin
     const herkunft = (over: Partial<SocMinHerkunft> = {}): SocMinHerkunft => ({
