@@ -66,6 +66,16 @@ final class Bestandsschutz {
     static final List<String> HINTERGRUND_ZWISCHENSPEICHER = List.of("schedule_savings_1d", "schedule_savings_1d_state");
 
     /**
+     * Tabellen, deren EIGENE spätere Migration allen Bestandskunden einen Startwert anlegt - kein
+     * Zutun des Pakets, dessen Bestandsschutz-Test gerade läuft, sondern eine einmalige Vorgabe beim
+     * Rollout der Tabelle selbst: {@code zustellweg} (V20261113160000, Kunden-Alarmierung KA-2) legt
+     * jedem Benutzer mit E-Mail eine bestätigte E-Mail-Zustellung an, bevor die Glocke je einen Alarm
+     * zustellen kann. Ohne diese Ausnahme bräche jeder ältere Bestandsschutz-Test, der bis zum
+     * neuesten Stand migriert, an einer "neue Tabelle mit Inhalt" - der Bestand selbst bleibt unberührt.
+     */
+    static final List<String> VOREINSTELLUNGS_BACKFILL = List.of("zustellweg");
+
+    /**
      * Eine Zeile {@code t} als Text: die Spalten mit Wert als jsonb-Objekt (Schlüssel sortiert,
      * also unabhängig von der Spaltenreihenfolge). Nur die OBERSTE Ebene wird gefiltert — ein
      * {@code null} innerhalb eines jsonb-Werts bleibt stehen.
@@ -78,8 +88,9 @@ final class Bestandsschutz {
 
     /**
      * Der Inhalt jeder Tabelle des Schemas {@code public} als ein Wert je Tabelle — ändert sich
-     * irgendwo eine Zeile, ändert sich ihr Wert. Das Migrations-Protokoll und die
-     * {@link #HINTERGRUND_ZWISCHENSPEICHER} sind immer ausgenommen.
+     * irgendwo eine Zeile, ändert sich ihr Wert. Das Migrations-Protokoll, die
+     * {@link #HINTERGRUND_ZWISCHENSPEICHER} und der {@link #VOREINSTELLUNGS_BACKFILL} sind immer
+     * ausgenommen.
      *
      * @param ausnahmen {@code LIKE}-Muster der Tabellen, die das Paket selbst bearbeitet; sie
      *                  gelten auch für später hinzukommende Tabellen
@@ -89,9 +100,11 @@ final class Bestandsschutz {
                 + "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
                 + "AND table_name <> 'flyway_schema_history'");
         HINTERGRUND_ZWISCHENSPEICHER.forEach(t -> sql.append(" AND table_name <> ?"));
+        VOREINSTELLUNGS_BACKFILL.forEach(t -> sql.append(" AND table_name <> ?"));
         ausnahmen.forEach(a -> sql.append(" AND table_name NOT LIKE ?"));
         sql.append(" ORDER BY table_name");
         List<Object> parameter = new ArrayList<>(HINTERGRUND_ZWISCHENSPEICHER);
+        parameter.addAll(VOREINSTELLUNGS_BACKFILL);
         parameter.addAll(ausnahmen);
         Map<String, String> aus = new LinkedHashMap<>();
         for (String tabelle : db.queryForList(sql.toString(), String.class, parameter.toArray())) {
