@@ -14,6 +14,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -475,6 +476,15 @@ type Agent struct {
 	// Light's own networks (network.go, netzUmgebung) in tests only.
 	netzSchnittstellen func() ([]suche.Schnittstelle, error)
 	netzRouten         func() ([]suche.Route, error)
+	// netzNachbarn / netzAnstoss replace the ARP reader and the UDP nudge
+	// (wiederfinden.go, wiederfindenUmgebung) in tests only - a unit test
+	// sends nothing into a real network, same discipline as netzSchnittstellen.
+	netzNachbarn func() ([]suche.Nachbar, error)
+	netzAnstoss  func(ctx context.Context, ip netip.Addr) error
+	// netzTakt paces Wiederfinden's own full search; zero value = the
+	// package's real production pace. Tests only - a slow, realistic pace
+	// against a handful of loopback addresses just wastes wall-clock.
+	netzTakt suche.Takt
 
 	entMu        sync.Mutex
 	entStore     *entities.Store
@@ -1152,6 +1162,10 @@ func (a *Agent) Start(ctx context.Context) error {
 	// Gerätesuche: an order open at the last stop is reported once
 	// ("neustart", Docker box); waiting results keep going out.
 	a.geraetesuche.Start(ctx)
+	// Wiederfinden (S6): keeps the box's own reading working after a device
+	// behind it changes address in the WLAN way. A no-op loop on the Docker
+	// box and on a plant with nothing MAC-pinned yet.
+	a.startWiederfindenWatch(ctx)
 
 	// OTA Stufe 3: der Zustandskanal zum Sidecar und der Selbsttest eines
 	// frisch getauschten Standes. Beide sind harmlos ohne Sidecar - der eine
@@ -5452,6 +5466,56 @@ func (a *Agent) RenameSource(id, label string) (sources.Source, error) {
 	}
 	a.publishSourcesConfig()
 	slog.Info("measurement point renamed", "id", id)
+	return updated, nil
+}
+
+// setSourceConnection updates ONLY the connection address (and, if not yet
+// pinned, the MAC) of an existing additional source - identity (id, brand,
+// model, role) stays untouched, the RenameSource discipline. Wiederfinden
+// (wiederfinden.go) is the one caller: it never calls this without the
+// device's own protocol having already confirmed, in the normal search pass,
+// that the same physical source now answers at neueIP. Unknown id ->
+// sources.ErrNotFound.
+func (a *Agent) setSourceConnection(id, neueIP, neueMAC string) (sources.Source, error) {
+	if err := a.refuseIfPortalManaged(); err != nil {
+		return sources.Source{}, err
+	}
+	ip, err := netip.ParseAddr(strings.TrimSpace(neueIP))
+	if err != nil {
+		return sources.Source{}, &sources.ValidationError{Msg: "Die neue Adresse ist ungueltig."}
+	}
+	a.srcMu.Lock()
+	idx := -1
+	for i := range a.srcs {
+		if a.srcs[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		a.srcMu.Unlock()
+		return sources.Source{}, sources.ErrNotFound
+	}
+	previous := a.srcs[idx].Connection
+	a.srcs[idx].Connection.IP = ip.String()
+	if a.srcs[idx].Connection.MAC == "" && neueMAC != "" {
+		a.srcs[idx].Connection.MAC = neueMAC
+	}
+	updated := a.srcs[idx]
+	list := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	if err := a.srcStore.Save(list); err != nil {
+		// Roll back the in-memory change so disk + memory stay consistent
+		// (the AddSource/DeleteSource/RenameSource discipline).
+		a.srcMu.Lock()
+		if idx < len(a.srcs) && a.srcs[idx].ID == id {
+			a.srcs[idx].Connection = previous
+		}
+		a.srcMu.Unlock()
+		return sources.Source{}, fmt.Errorf("Energiequelle konnte nicht gespeichert werden: %w", err)
+	}
+	a.publishSourcesConfig()
+	slog.Info("measurement point connection updated", "id", id, "ip", ip.String())
 	return updated, nil
 }
 

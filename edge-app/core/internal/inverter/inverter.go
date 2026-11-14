@@ -163,8 +163,27 @@ func IsSunSpecTCP(comm string) bool {
 	return comm == CommFroniusSunSpec || comm == CommSunSpecTCP
 }
 
-// macPattern is the normalized MAC form an ebyte connection pins.
+// macPattern is the normalized MAC form a connection pins.
 var macPattern = regexp.MustCompile(`^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)
+
+// normalizeOptionalMAC brings a configured MAC into its pinned form
+// ("00:54:2c:84:9b:90") or refuses a malformed one. Empty stays empty - the
+// device search's Wiederfinden (geraetesuche/suche/wiederfinden.go) learns it
+// itself at the next successful read, the same way the box already pins
+// ebyte's on first contact (internal/ebyte store); this is only the gate that
+// keeps whatever gets pinned in one normalized shape across every
+// communication, not just that one.
+func normalizeOptionalMAC(mac string) (string, error) {
+	mac = strings.TrimSpace(mac)
+	if mac == "" {
+		return "", nil
+	}
+	mac = strings.ReplaceAll(strings.ToLower(mac), "-", ":")
+	if !macPattern.MatchString(mac) {
+		return "", invalid("Die MAC-Adresse hat nicht die Form 00:54:2c:84:9b:90.")
+	}
+	return mac, nil
+}
 
 // IsCoreOwned reports whether the CORE owns the whole device socket for a
 // communication (reads, connection test and control): such a source never
@@ -2160,7 +2179,11 @@ type Connection struct {
 	// ebyte_modbus_tcp: the MAC the device answered with at setup
 	// ("00:54:2c:84:9b:90"). With DHCP an address proves no device identity;
 	// the core refuses to read or switch when another MAC answers. Empty =
-	// pinned by the box on first contact (internal/ebyte store).
+	// pinned by the box on first contact (internal/ebyte store). Carried
+	// through generically to the device search's Wiederfinden (S6,
+	// geraetesuche/suche/wiederfinden.go): whichever communication a MAC ends
+	// up pinned for, the search uses it the same way to look for a moved
+	// device, never only this one.
 	MAC string `json:"mac,omitempty"`
 
 	// fronius_solar_api (InvertGridSign above is shared as the sign escape hatch)
@@ -2340,8 +2363,12 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Channel = 0
 		conn.Channels = ""
 	}
-	// The pinned MAC belongs to the Ebyte I/O module only (validated below).
-	if transport.Communication != CommEbyteModbusTCP {
+	// The pinned MAC is only ever meaningful on a network device with an
+	// address that can move under it (validated per communication below);
+	// everywhere else it is cleared here once, the Channel pattern above.
+	switch transport.Communication {
+	case CommEbyteModbusTCP, CommHuaweiModbus, CommKacoSerial:
+	default:
 		conn.MAC = ""
 	}
 
@@ -2563,6 +2590,11 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
+		mac, err := normalizeOptionalMAC(conn.MAC)
+		if err != nil {
+			return Selection{}, err
+		}
+		conn.MAC = mac
 	case CommKacoSerial:
 		// Powador-Altgeraete ueber den RS485-zu-Ethernet-Wandler: host + port
 		// DES WANDLERS + die RS485-Busadresse des Wechselrichters (1-32,
@@ -2586,7 +2618,11 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
 		conn.Channel = 0
-		conn.MAC = ""
+		mac, err := normalizeOptionalMAC(conn.MAC)
+		if err != nil {
+			return Selection{}, err
+		}
+		conn.MAC = mac
 	case CommKostalDxs:
 		// KOSTAL PIKO Web-API: host + port only, no auth, no unit id, no sign
 		// hatch (a string device's AC output is unsigned generation). Same
@@ -2699,13 +2735,11 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.UnitID < 1 || conn.UnitID > 247 {
 			return Selection{}, invalid("Die Modbus-Adresse muss zwischen 1 und 247 liegen.")
 		}
-		if conn.MAC != "" {
-			mac := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(conn.MAC)), "-", ":")
-			if !macPattern.MatchString(mac) {
-				return Selection{}, invalid("Die MAC-Adresse hat nicht die Form 00:54:2c:84:9b:90.")
-			}
-			conn.MAC = mac
+		mac, err := normalizeOptionalMAC(conn.MAC)
+		if err != nil {
+			return Selection{}, err
 		}
+		conn.MAC = mac
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 		conn.Profile, conn.InsecureTLS, conn.ModelType = "", false, ""
 		conn.InvertControlSign, conn.InvertBattSign = false, false
