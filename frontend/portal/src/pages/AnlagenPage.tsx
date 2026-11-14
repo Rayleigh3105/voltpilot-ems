@@ -2228,9 +2228,9 @@ export function AnlageSeite({
   // (`DEFAULTS`). „@geld“ ist der Platz von „Unterm Strich“, wenn der Baustein
   // `geld` direkt hinter den Kennzahlen steht (so die Voreinstellung).
   const KACHEL_REIHE: Record<Betrieb, string[]> = {
-    eigenverbrauch: ['autarkie', 'eigenverbrauch', 'speicher', 'solaranlage', 'waermepumpe', 'sonne', 'handel', 'lastspitze', 'automatik'],
-    markt: ['sonne', 'speicher', 'handel', '@geld', 'netz', 'solaranlage', 'wetter', 'waermepumpe', 'automatik'],
-    spitze: ['lastspitze', 'sonne', '@geld', 'netz', 'speicher', 'solaranlage', 'handel', 'waermepumpe', 'automatik', 'wetter'],
+    eigenverbrauch: ['autarkie', 'eigenverbrauch', 'speicher', 'solaranlage', 'waermepumpe', 'grundlast', 'sonne', 'handel', 'lastspitze', 'automatik'],
+    markt: ['sonne', 'speicher', 'handel', '@geld', 'netz', 'solaranlage', 'wetter', 'waermepumpe', 'grundlast', 'automatik'],
+    spitze: ['lastspitze', 'sonne', '@geld', 'netz', 'speicher', 'solaranlage', 'handel', 'waermepumpe', 'grundlast', 'automatik', 'wetter'],
   };
   // Eine Erzeugeranlage zeigt ihre Einheiten und wer heute geregelt hat (Bild Cockpit des Konzepts);
   // Speicher-, Autarkie- und Handelskacheln haben dort keine Grundlage.
@@ -2290,6 +2290,10 @@ export function AnlageSeite({
         );
       case 'waermepumpe':
         return waerme ? <KachelSpaet {...basis} art="waermepumpe" teil={waerme} onOpen={() => onOpenSub('steuerung')} /> : null;
+      case 'grundlast':
+        // Den Absprung (Verlauf › Energie, Woche) setzt die Kachel selbst: `historieWelten` gehört nicht ins
+        // Einstiegs-Bündel (test/bundle-smoke.sh, +8 kB gz über `verlauf.ts`).
+        return <KachelSpaet {...basis} art="grundlast" siteId={site.id} />;
       case 'sonne':
         return (
           <KachelSpaet

@@ -61,6 +61,7 @@ import { QuotenKarte, rollenFarbe, SpitzenKarte } from '../components/energie/En
 import { EreignisKarte } from '../components/energie/EreignisKarte';
 import { BereicheKarte } from '../components/energie/BereicheKarte';
 import { EinheitenKarte } from '../components/energie/EinheitenKarte';
+import { GrundlastKarte } from '../components/energie/GrundlastKarte';
 import { EreignisSpurRahmen, type EreignisFokus } from '../components/energie/EreignisSpurRahmen';
 
 /**
@@ -535,6 +536,7 @@ export function MesswerteSection({
               <div className="vp-vr-col">
                 <EinheitenKarte siteId={site.id} range={range} at={at} />
                 <BereicheKarte site={site} range={range} at={at} history={stale ? null : history} />
+                <GrundlastKarte site={site} range={range} at={at} />
                 <QuotenKarte quoten={quoten} />
                 {spitzen && <SpitzenKarte titel={spitzen.titel} zeilen={spitzen.zeilen} />}
               </div>

@@ -1157,6 +1157,13 @@ export const GLOSSAR: GlossarEntry[] = [
   },
 ];
 
+/**
+ * Privatkunde (Bedienkonzept `vp-privatkunde-bedienkonzept` §5) — die Wörter der **Grundlast** (Grundlast, typische
+ * Nacht, läuft immer, Hauslast) stehen in `glossarGrundlast.ts`: nur nachgeladene Stücke brauchen sie, und dieses
+ * Modul liegt im Einstiegs-Bündel (`test/bundle-smoke.sh`). Nicht die „Grundlast“ der Bezugsbasis
+ * ({@link UEMS_GRUNDLAST}). Glossar: `docs/fachmodell/glossar.md` › Grundlast (Privatkunde).
+ */
+
 // ---------------------------------------------------------------------------
 // 4 · Vergleichen
 // ---------------------------------------------------------------------------

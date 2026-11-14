@@ -7,16 +7,19 @@
  * Aufruf: `/e2e/unterverteilung.html#/anlage/help-site` (Cockpit), `…/messwerte` (Verlauf › Energie).
  * `?profil=gewerbe` setzt das Anwendungsprofil; `?vorher=1` zeigt die Unterzähler, wie sie bis
  * 07.11.2026 entstanden (`generic-load` „Steuerbare Last“, nur `power_kw`, keine Energie-Route).
+ * `?grundlast=voll|luecke|wenig|stufe|nie` wählt den Fall der Karte „Grundlast“ (`grundlast-fixtures.ts`).
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '../src/App';
 import { api } from '../src/api';
-import type { EntityEnergy, History, HistoryRange } from '../src/api';
+import { grundlastApi } from '../src/grundlastApi';
+import type { EntityEnergy, GrundlastZeitraum, History, HistoryRange } from '../src/api';
 import { derive } from '../src/topology';
 import { installHelpFixtures } from './help-fixtures';
 import { installAnlagenCheck } from './anlagen-check-fixtures';
 import { historyFor, TODAY } from './verlauf-fixtures';
+import { grundlastAntwort, type GrundlastFall } from './grundlast-fixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -127,6 +130,17 @@ Object.assign(api, {
   entityEnergy: vorher
     ? async () => { throw new Error('404'); }
     : async (_siteId: string, entityId: string, range: HistoryRange, at?: string) => energieFuer(entityId, range, at ?? TODAY),
+});
+
+Object.assign(grundlastApi, {
+  // Grundlast (Bedienkonzept Privatkunde §5): die Nacht der Halle mit beiden Unterzählern; `?grundlast=` wählt den Fall.
+  grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) =>
+    grundlastAntwort({
+      heute: TODAY,
+      basisW: 640,
+      teile: [{ entityId: 'uv-halle', label: 'UV Halle', anteil: 0.875 }, { entityId: 'uv-keller', label: 'UV Keller', anteil: 0.047 }],
+      fall: (q.get('grundlast') ?? 'voll') as GrundlastFall,
+    }, z, at),
 });
 
 // Anlagen-Check (`?solar=…`, `?bilanz=…`, `?einheiten=wr`): nur wenn die Adresse einen Fall nennt.

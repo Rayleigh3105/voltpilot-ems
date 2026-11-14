@@ -7,7 +7,7 @@
  *
  * Die Anschlussgrenze prüft das Rahmen-Blatt wie der Server (`PUT
  * /charging-frame`, AP-01 IP-13) gegen den heute gebundenen Netzanschluss,
- * die Grundlast der letzten 7 Tage und die Hausreserve - mit demselben Grund.
+ * die Hauslast der letzten 7 Tage und die Hausreserve - mit demselben Grund.
  */
 import type { Netzanschluss } from '../api';
 import { KW, zahl as ergebnisZahl } from '../uemsErgebnis';
@@ -330,7 +330,7 @@ export function heutigerAnschluss(liste: readonly Netzanschluss[], anlageId: str
 /** Eine Leistung im Wortlaut der Grenzprüfung („200 kW“). */
 export const kwVereinbart = (wert: number) => ergebnisZahl(wert, KW, null, 'vereinbart');
 
-/** Was nach Grundlast und Hausreserve innerhalb der Grenze zum Laden bleibt; `null` ohne beide. */
+/** Was nach Hauslast und Hausreserve innerhalb der Grenze zum Laden bleibt; `null` ohne beide. */
 export function ladebudgetKw(grenzeKw: number | null, grundlastKw: number | null, reserveKw: number | null): number | null {
   return grenzeKw != null && grundlastKw != null && reserveKw != null ? grenzeKw - grundlastKw - reserveKw : null;
 }
@@ -359,10 +359,10 @@ export function grenzePruefung(
     return `${kwVereinbart(grenzeKw)} liegen über ${kwVereinbart(vereinbartKw)} vereinbarter Leistung — bitte prüfen.`;
   }
   if (grundlastKw == null || reserveKw == null) {
-    return 'Für die Prüfung fehlen die Grundlast der letzten 7 Tage oder die Hausreserve.';
+    return 'Für die Prüfung fehlen die Hauslast der letzten 7 Tage oder die Hausreserve.';
   }
   if (grenzeKw - grundlastKw - reserveKw <= 0) {
-    return 'Grundlast und Hausreserve lassen innerhalb der Anschlussgrenze kein Ladebudget übrig.';
+    return 'Hauslast und Hausreserve lassen innerhalb der Anschlussgrenze kein Ladebudget übrig.';
   }
   return null;
 }

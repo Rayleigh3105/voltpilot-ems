@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 68 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 69 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -101,6 +101,7 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Solaranlage (Anlagen-Check) · liefert wie erwartet](#solaranlage-anlagen-check--liefert-wie-erwartet) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-4 = BK-5 = A (14.11.2026)
 - [Erzeugung nach Einheiten](#erzeugung-nach-einheiten) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-4 = A (14.11.2026)
 - [Speicher-Bilanz · Vollzyklen](#speicher-bilanz--vollzyklen) — Sicht Betrieb · Nachtrag Bedienkonzept vp-privatkunde-bedienkonzept, BK-7 = A (14.11.2026)
+- [Grundlast (Privatkunde) · typische Nacht · Hauslast](#grundlast-privatkunde--typische-nacht--hauslast) — Sicht Betrieb · Nachtrag Bedienkonzept Privatkunde vp-privatkunde-bedienkonzept §5, Entscheide BK-1/BK-2/BK-3 = A (14.11.2026)
 
 ## Kundenbereich
 
@@ -1705,3 +1706,17 @@ Wirkungsgrad = (heraus + Ladestand-Unterschied × Kapazität) ÷ hinein — ohne
 **Heute im Code.** Regel `SpeicherBilanzRegel`, Route `GET /api/v1/sites/{id}/speicher-bilanz`; Karte PORTAL/components/SpeicherBilanzKarte.tsx, Konstanten `ANLAGEN_CHECK_SPEICHER_BILANZ`, `ANLAGEN_CHECK_VOLLZYKLEN` (PORTAL/glossar.ts).
 
 **Abgrenzung.** Nicht der Speicher-Wirkungsgrad des Optimierers (eine Annahme in den Stammdaten, `roundtrip_efficiency_pct`).
+
+## Grundlast (Privatkunde) · typische Nacht · Hauslast
+
+*Sicht: Betrieb · Nachtrag Bedienkonzept Privatkunde vp-privatkunde-bedienkonzept §5, Entscheide BK-1/BK-2/BK-3 = A (14.11.2026)*
+
+**Was in einer Anlage immer läuft, auch nachts — die niedrigste Viertelstunde der Nacht in Watt; die „typische Nacht“ ist ihr mittlerer Wert über einen Zeitraum.**
+
+Je Nacht (0–5 Uhr Ortszeit) zählt die niedrigste gemessene Viertelstunde; eine Nacht wird nur gewertet, wenn höchstens zwei ihrer Viertelstunden fehlen (bei der Zeitumstellung 16 oder 24 statt 20). Die typische Nacht ist der Median der gewerteten Nächte, ab drei; im Jahr steht ein Wert je Monat (ab sieben Nächten). Daneben stehen kWh am Tag (Watt × 24 h) und der Anteil am Verbrauch als Wort (ein Zehntel … mehr als die Hälfte) — nie eine Hochrechnung aufs Jahr, kein Geld. Eine Nacht ohne genug Messwerte ist „nicht gewertet“, nie 0 W. Mit Unterzählern teilt sie sich auf: je Unterzähler seine Leistung in genau den Viertelstunden der Nachtwerte, der Rest heißt wie in „Verbrauch nach Bereichen“ („übriger Haushalt“). Die Schwellen (drei Nächte, 18 von 20, die Stufe ab 50 W und 20 %, die Wort-Stufen) sind Startwerte des Baus, nicht entschieden.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Haus mit UV Halle und UV Keller, Woche 31.08.–06.09.: typische Nacht der Woche 640 W, UV Halle 560 W, UV Keller 30 W, übriger Haushalt 50 W — „Rund 15 kWh am Tag – etwa die Hälfte Ihres Verbrauchs. Vorwoche: 590 W.“
+
+**Heute im Code.** Route `GET /api/v1/sites/{id}/grundlast` mit der Regel `GrundlastRegel` (services/api/.../grundlast); Karte „Grundlast“ in Verlauf › Energie (PORTAL/components/energie/GrundlastKarte.tsx), Kachel „Grundlast“ im Cockpit; Wörter PORTAL/glossarGrundlast.ts (`GRUNDLAST`, `GRUNDLAST_TYPISCHE_NACHT`, `GRUNDLAST_LAEUFT_IMMER`, `HAUSLAST`; eigenes Modul außerhalb des Einstiegs-Bündels), Sätze PORTAL/grundlast.ts.
+
+**Abgrenzung.** Nicht die „Grundlast“ der Bezugsbasis (der feste Teil eines Modells in kWh je Periode, `UEMS_GRUNDLAST`). Nicht die Hauslast des Laden-Rahmens: die höchste Hauslast der letzten 7 Tage, mit der die Ladegrenze geprüft wird, hieß dort bis 14.11.2026 ebenfalls „Grundlast“ und heißt seitdem „Hauslast“.

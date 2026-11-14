@@ -49,12 +49,12 @@ beforeEach(() => setSelbstauskunft(rechteSeed().me));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); setSelbstauskunft(null); });
 
 describe('AP-01 IP-13 · Grenze gegen den Netzanschluss im Rahmen-Blatt', () => {
-  it('zeigt NA-2, 7-Tage-Grundlast und das verbleibende Ladebudget', async () => {
+  it('zeigt NA-2, 7-Tage-Hauslast und das verbleibende Ladebudget', async () => {
     antwort();
     blatt();
 
     expect(await screen.findByText(/Netzanschluss NA-2: 200/)).toHaveTextContent('vereinbart');
-    expect(screen.getByText(/Grundlast der letzten 7 Tage 96,5 kW/)).toHaveTextContent('Ladebudget 73,5 kW');
+    expect(screen.getByText(/Hauslast der letzten 7 Tage 96,5 kW/)).toHaveTextContent('Ladebudget 73,5 kW');
     expect(screen.queryByText(/bitte prüfen/)).toBeNull();
   });
 
@@ -84,7 +84,7 @@ describe('AP-01 IP-13 · Grenze gegen den Netzanschluss im Rahmen-Blatt', () => 
     blatt(undefined, { ...config, gridLimitKw: 120, frame: { houseReserveKw: 30, maxHouseLoadKw: 96.5 } });
     await screen.findByText(/Netzanschluss NA-2: 200/);
     fireEvent.click(screen.getByRole('button', { name: 'weniger' }));
-    expect(screen.getByText('Grundlast und Hausreserve lassen innerhalb der Anschlussgrenze kein Ladebudget übrig.')).toBeInTheDocument();
+    expect(screen.getByText('Hauslast und Hausreserve lassen innerhalb der Anschlussgrenze kein Ladebudget übrig.')).toBeInTheDocument();
     expect(uebernehmen()).toBeDisabled();
   });
 

@@ -739,7 +739,7 @@ export function ZielBlatt({ k, id, anlage, rahmenMinKw, onSpeichern }: {
  * Das Rahmen-Blatt: die Anschlussgrenze gehört dem Kunden, der Rest ist von der
  * Box vorgegeben. Die Grenze schreibt der Kunden-Schritt `PUT /charging-frame`
  * (AP-01 IP-13): er prüft sie gegen den heute gebundenen Netzanschluss, die
- * Grundlast der letzten 7 Tage und die Hausreserve und lehnt mit 422 ab. Das
+ * Hauslast der letzten 7 Tage und die Hausreserve und lehnt mit 422 ab. Das
  * Blatt zeigt denselben Grund schon vorher und sperrt „Übernehmen“. Ohne
  * Bindung gilt der Übergang: die vereinbarte Leistung kommt aus dem Blatt.
  */
@@ -842,7 +842,7 @@ export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze, serverFehler 
           )}
           {grundlastKw != null && reserveKw != null && (
             <p className="leise">
-              Grundlast der letzten 7 Tage {kwVereinbart(grundlastKw)} · Hausreserve {kwVereinbart(reserveKw)}
+              Hauslast der letzten 7 Tage {kwVereinbart(grundlastKw)} · Hausreserve {kwVereinbart(reserveKw)}
               {budgetKw != null && budgetKw > 0 ? ` · Ladebudget ${kwVereinbart(budgetKw)}` : ''}
             </p>
           )}

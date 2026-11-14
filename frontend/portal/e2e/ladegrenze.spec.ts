@@ -40,7 +40,7 @@ for (const breite of [375, 1440]) {
   test(`gebundener Netzanschluss und Ladebudget ${breite}`, async ({ page }) => {
     const blatt = await oeffne(page, breite, 'gebunden');
     await expect(blatt.getByText(/Netzanschluss NA-2: 200.*vereinbart/)).toBeVisible();
-    await expect(blatt.getByText(/Grundlast der letzten 7 Tage 96,5.*Ladebudget 53,5/)).toBeVisible();
+    await expect(blatt.getByText(/Hauslast der letzten 7 Tage 96,5.*Ladebudget 53,5/)).toBeVisible();
     await expect(blatt.getByText(/bitte prüfen/)).toHaveCount(0);
     await foto(page, `gebunden-${breite}`);
   });

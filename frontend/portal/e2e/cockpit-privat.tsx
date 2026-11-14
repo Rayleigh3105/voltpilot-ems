@@ -10,11 +10,14 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '../src/App';
 import { api } from '../src/api';
+import { grundlastApi } from '../src/grundlastApi';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { installHelpFixtures } from './help-fixtures';
 import { installAnlagenCheck } from './anlagen-check-fixtures';
 import { lageDaten, type Lage } from './cockpit-privat-daten';
+import { grundlastAntwort, type GrundlastFall } from './grundlast-fixtures';
+import type { GrundlastZeitraum } from '../src/api';
 import { sichtbareListe } from '../src/test/rollenFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -96,6 +99,19 @@ if (lageParam === 'gewerbe') {
       const k = map[entityId];
       return { range: 'day', from: d.money.from, to: d.money.to, bucketMinutes: 15, source: 'zaehler', buckets: [], totalKwh: k ? d.geraeteHeute[k] : null, counterFalls: false };
     },
+  });
+  Object.assign(grundlastApi, {
+    // Grundlast (Bedienkonzept Privatkunde §5): Mühlbach wie Schramm mit UV Halle/UV Keller, Birkenweg ohne
+    // Unterzähler; `?grundlast=voll|luecke|wenig|stufe|nie` wählt den Fall.
+    grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) =>
+      grundlastAntwort({
+        heute: d.now.slice(0, 10),
+        basisW: d.site.id === 'muehlbach' ? 310 : 220,
+        teile: d.site.id === 'muehlbach'
+          ? [{ entityId: 'mb-uv-halle', label: 'UV Halle', anteil: 0.6 }, { entityId: 'mb-uv-keller', label: 'UV Keller', anteil: 0.1 }]
+          : undefined,
+        fall: (q.get('grundlast') ?? 'voll') as GrundlastFall,
+      }, z, at),
   });
   Object.assign(entitiesApi, {
     typeCatalog: result({ catalog_version: '1.0', types: typen.map((t) => ({ type: t, label: t, category: 'consumer', controllable: t === 'battery-hybrid', composed: false, default_failsafe: 'release' })) }),

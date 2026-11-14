@@ -1087,6 +1087,32 @@ export interface HistoryCoverage {
   resolutionMinutes: number;
 }
 
+/**
+ * Grundlast einer Anlage (`GET /api/v1/sites/{id}/grundlast`, Bedienkonzept Privatkunde §5): die typische Nacht
+ * (niedrigste Viertelstunde 0–5 Uhr, Median), je Nacht oder Monat, Vorperiode, kWh am Tag, Anteil am Verbrauch und
+ * die Aufteilung je Unterzähler. Vertrag: `docs/contracts/openapi.yaml` → `Grundlast`; Watt ganzzahlig.
+ */
+export type GrundlastZeitraum = 'tag' | 'woche' | 'monat' | 'jahr' | 'aktuell';
+export type GrundlastNachtStatus = 'gewertet' | 'luecke' | 'vorher' | 'offen';
+export interface Grundlast {
+  z: GrundlastZeitraum;
+  von: string;
+  bis: string;
+  hausverbrauchGemessen: boolean;
+  typischW: number | null;
+  gewertet: number;
+  mindestens: number;
+  luecken: number;
+  naechte: { datum: string; status: GrundlastNachtStatus; w: number | null }[];
+  monate: { monat: string; w: number | null; gewertet: number }[];
+  kwhAmTag: number | null;
+  anteil: number | null;
+  vorperiodeW: number | null;
+  stufe: { seit: string; vorherW: number; nachherW: number } | null;
+  teile: { entityId: string; label: string | null; typLabel: string | null; unterzaehler: boolean; w: number | null }[];
+  rest: { w: number | null; grund: 'teil_ohne_wert' | 'teile_mehr_als_haus' | null } | null;
+}
+
 export interface History {
   range: HistoryRange;
   from: string;
