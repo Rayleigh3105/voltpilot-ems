@@ -49,7 +49,7 @@ const (
 	// mbReassert re-writes an unchanged plan (a device restart loses it).
 	mbReassert = 60 * time.Second
 	// mbStale: a value older than this is not fresh (logic inputs, fault rule).
-	mbStale = 60 * time.Second
+	mbStale          = 60 * time.Second
 	mbConnectTimeout = 3 * time.Second
 	mbIOTimeout      = 3 * time.Second
 )

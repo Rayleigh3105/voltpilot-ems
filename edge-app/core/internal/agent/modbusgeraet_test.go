@@ -122,8 +122,8 @@ func (s *mbStand) sekunden(n int) {
 		s.a.runModbusGeraetPoll(ctx, now)
 		ort := now.In(s.ort)
 		ein := &logik.Eingabe{Jetzt: float64(now.Unix()), DT: 1,
-			UhrMin:    float64(ort.Hour()*60+ort.Minute()) + float64(ort.Second())/60,
-			Tag:       ort.Year()*1000 + ort.YearDay(), Wochentag: (int(ort.Weekday()) + 6) % 7,
+			UhrMin: float64(ort.Hour()*60+ort.Minute()) + float64(ort.Second())/60,
+			Tag:    ort.Year()*1000 + ort.YearDay(), Wochentag: (int(ort.Weekday()) + 6) % 7,
 			Werte: map[string]logik.EinWert{}, Geraete: map[string]logik.GeraetStamm{}}
 		for _, w := range s.L.WertListe {
 			ein.Werte[w] = s.a.logikQuelle(s.L.Werte[w].Source, now)
@@ -178,7 +178,7 @@ func klimaDefinition() map[string]any {
 					"on_value": 1, "off_value": 0, "rest": false},
 				map[string]any{"slug": "soll", "label": "Soll", "kind": "setpoint_c",
 					"register": map[string]any{"kind": "holding", "address": 10, "data_type": "s16"},
-					"scale": 0.1, "min": 16, "max": 30, "step": 0.5, "rest": 24, "readback": map[string]any{"kind": "holding", "address": 11}},
+					"scale":    0.1, "min": 16, "max": 30, "step": 0.5, "rest": 24, "readback": map[string]any{"kind": "holding", "address": 11}},
 				map[string]any{"slug": "betrieb", "label": "Betrieb", "kind": "mode", "register": map[string]any{"kind": "holding", "address": 12},
 					"modes": map[string]any{"cool": 1, "heat": 2, "fan_only": 3}, "rest": "cool"},
 			},

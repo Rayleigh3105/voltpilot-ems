@@ -50,17 +50,22 @@ var uuidMuster = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 // kw_per_output, outputs, setpoint_range).
 type Anlage map[string]AnlageGeraet
 
-// AnlageGeraet is one device of the plant as the probes see it.
+// AnlageGeraet is one device of the plant as the probes see it. A device that
+// regulates itself (K2) adds the step of its setpoint and its closed list of
+// modes (steuerlogik-geraete-vectors.json).
 type AnlageGeraet struct {
 	KwPerOutput   *float64  `json:"kw_per_output,omitempty"`
 	Outputs       int       `json:"outputs,omitempty"`
 	SetpointRange []float64 `json:"setpoint_range,omitempty"`
+	SetpointStep  *float64  `json:"setpoint_step,omitempty"`
+	Modes         []string  `json:"modes,omitempty"`
 }
 
 func (a Anlage) kern() map[string]logik.ProbenGeraet {
 	out := map[string]logik.ProbenGeraet{}
 	for k, g := range a {
-		pg := logik.ProbenGeraet{KwJeAusgang: g.KwPerOutput, Ausgaenge: g.Outputs}
+		pg := logik.ProbenGeraet{KwJeAusgang: g.KwPerOutput, Ausgaenge: g.Outputs,
+			SollwertSchritt: g.SetpointStep, Betriebsarten: g.Modes}
 		if len(g.SetpointRange) == 2 {
 			pg.SollwertBereich = &[2]float64{g.SetpointRange[0], g.SetpointRange[1]}
 		}
@@ -132,7 +137,7 @@ type Gelesen struct {
 // anlageAusRegistry derives the probes' plant facts from the registry push
 // of the site - the document the box gets - with the box's own driver reader
 // (shelly.Config.OutputFacts): outputs and kW per output of each device the
-// logic switches. A device the registry does not know keeps the defaults.
+// logic switches, and band, step and modes of a device that regulates itself. A device the registry does not know keeps the defaults.
 func anlageAusRegistry(L *logik.Logik, registry json.RawMessage) Anlage {
 	var reg entities.Registry
 	if len(registry) == 0 || json.Unmarshal(registry, &reg) != nil {
@@ -144,9 +149,25 @@ func anlageAusRegistry(L *logik.Logik, registry json.RawMessage) Anlage {
 		if e == nil {
 			continue
 		}
+		var g AnlageGeraet
 		if cfg, ok := shelly.ParseDriver(e.Driver); ok {
-			n, kw := cfg.OutputFacts()
-			out[k] = AnlageGeraet{Outputs: n, KwPerOutput: kw}
+			g.Outputs, g.KwPerOutput = cfg.OutputFacts()
+		}
+		// A device that regulates itself: the released band and step of its
+		// setpoint in °C and its modes, as the box's guard chain applies them.
+		for _, c := range e.Capabilities.Actuate {
+			switch c.Command {
+			case entities.CmdSetpointC:
+				if c.Min != nil && c.Max != nil {
+					g.SetpointRange = []float64{*c.Min, *c.Max}
+				}
+				g.SetpointStep = c.Step
+			case entities.CmdMode:
+				g.Modes = append([]string(nil), c.Modes...)
+			}
+		}
+		if g.Outputs != 0 || g.KwPerOutput != nil || g.SetpointRange != nil || g.SetpointStep != nil || g.Modes != nil {
+			out[k] = g
 		}
 	}
 	return out

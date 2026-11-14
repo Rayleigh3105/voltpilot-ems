@@ -99,6 +99,12 @@
       "meaning": "Die Box nimmt im Satz auf v2/flows ein Artefakt im Bündelformat steuerlogik an (flow-artifact.md, steuerlogik.md) und lässt die Logik im Kern mitlaufen: jede Sekunde mit den echten Eingängen der Box, ohne zu schalten und ohne ein Gerät zu beanspruchen; was sie schalten würde, steht neben dem, was geschaltet ist, im Herzschlag-Block logik (steuerlogik-rueckmeldung.md). Erst dann liefert die Cloud eine Logik aus; eine ältere Box quittiert das Bündelformat als Fehler.",
       "advertised": true,
       "evidence": "edge-app/core/internal/agent/steuerlogik_test.go"
+    },
+    {
+      "name": "modbus_geraet",
+      "meaning": "Die Box liest und schreibt ein eigenes Modbus-Gerät mit Schreibwerten (Block controls der Selbstbau-Definition, modbus-geraet.md) selbst im Core, auf beiden Box-Arten: Kanäle mit Signalen als Eingänge der Steuerlogik, Sollwert in °C mit Band und Schritt, Betriebsart aus der Liste des Geräts, Ein/Aus, Ruhewerte ohne Wunsch und bei einer Störung des Geräts, Schalt-Test über die eigene Verbindung. Erst dann liefert die Cloud eine Definition mit controls aus und kompiliert für dieses Gerät keinen Node-RED-Flow; eine ältere Box ließe es ungelesen.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/agent/modbusgeraet_test.go"
     }
   ],
   "cases": [

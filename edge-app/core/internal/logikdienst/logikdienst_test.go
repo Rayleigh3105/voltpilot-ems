@@ -281,3 +281,51 @@ func TestProbenLesenDieGeraeteAusDerRegistry(t *testing.T) {
 }
 
 func ptr(v float64) *float64 { return &v }
+
+// Devices that regulate themselves (K2): the service sees band, step and the
+// closed list of modes the same way - from the vectors' plant facts and from
+// the registry push the box gets.
+func TestDienstKenntGeraeteMitSollwertUndBetriebsart(t *testing.T) {
+	roh, err := os.ReadFile(filepath.Join(vertrag, "steuerlogik-geraete-vectors.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Faelle []struct {
+			Name    string   `json:"name"`
+			Datei   string   `json:"datei"`
+			Anlage  Anlage   `json:"anlage"`
+			Befunde []string `json:"befunde"`
+		} `json:"faelle"`
+	}
+	if err := json.Unmarshal(roh, &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range v.Faelle {
+		text, err := os.ReadFile(filepath.Join(vertrag, f.Datei))
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := Pruefe(text, f.Anlage, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", f.Name, err)
+		}
+		if fmt.Sprint(g.Bericht.Befunde) != fmt.Sprint(f.Befunde) && !(len(f.Befunde) == 0 && len(g.Bericht.Befunde) == 0) {
+			t.Errorf("%s: Befunde %q, erwartet %q", f.Name, g.Bericht.Befunde, f.Befunde)
+		}
+	}
+
+	// From the registry: an air conditioner that cannot cool blocks the example.
+	registry := []byte(`{"entities":[{"entity_id":"klimageraet-buero","entity_type":"modbus-device",
+		"capabilities":{"actuate":[{"command":"on_off"},{"command":"setpoint_c","min":16,"max":30,"step":0.5},
+		{"command":"mode","modes":["heat","fan_only"]}]},"guards":{"failsafe":{"behavior":"rest"}}}]}`)
+	text, _ := os.ReadFile(filepath.Join(vertrag, "steuerlogik/klima.logic.yaml"))
+	g, err := Pruefe(text, nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !g.Bericht.Sperrt || len(g.Bericht.Befunde) != 1 ||
+		g.Bericht.Befunde[0] != "outputs.klima.mode: das Gerät kennt die Betriebsart „cool“ nicht (es kennt heat, fan_only)" {
+		t.Fatalf("Befunde aus der Registry: %+v", g.Bericht.Befunde)
+	}
+}
