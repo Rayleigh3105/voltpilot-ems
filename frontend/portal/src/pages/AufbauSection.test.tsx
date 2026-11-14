@@ -1423,6 +1423,36 @@ describe('AufbauSection · die technische Sicht', () => {
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Wallbox']);
   });
 
+  it('legt einen Fühler an, ohne einen Messkanal zu verlangen (Steuerlogik-Konzept Stufe 1)', async () => {
+    // Fühler ist wie modbus-generic measure-only (composed=false, controllable=false),
+    // aber seine Werte kommen über den Messpunkt-Katalog der Box, nie über einen hier
+    // getippten Kanalnamen - die Pflichtfrage nach einem Messkanal wäre hier sinnlos.
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    stub();
+    vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({
+      catalog_version: '1.0.0',
+      types: [
+        ...CATALOG.types,
+        { type: 'fuehler', label: 'Fühler', category: 'meter', controllable: false, composed: false, default_failsafe: 'measure-only' },
+      ],
+    } as never);
+    const create = vi.spyOn(entitiesApi, 'create').mockResolvedValue(undefined as never);
+    rendere();
+    await zeile('inv');
+    await waitFor(() => expect(entitiesApi.typeCatalog).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Komponente anlegen \(technisch\)/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Entität anlegen' });
+    fireEvent.click(within(dialog).getByRole('combobox', { name: 'Typ' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Fühler' }));
+
+    expect(within(dialog).queryByLabelText('Messkanäle (kommagetrennt)')).toBeNull();
+    expect(within(dialog).getByText(/Messkanal hinzufügen/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Anlegen' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(site.id,
+      expect.objectContaining({ entityType: 'fuehler', capabilities: undefined })));
+  });
+
   it('zeigt den Registry-Stand und die Rollen-Zuordnung', async () => {
     await adminRender();
     expect(await screen.findByText('Diese Anlage wurde noch nicht an das Gerät übertragen.')).toBeInTheDocument();

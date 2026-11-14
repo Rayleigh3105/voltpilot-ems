@@ -370,6 +370,7 @@ function inferCategory(entityType: string): string {
       return 'producer';
     case GRID_METER_TYPE:
     case 'modbus-generic':
+    case 'fuehler':
       return 'meter';
     case HOUSE_LOAD_TYPE:
       return 'consumer';

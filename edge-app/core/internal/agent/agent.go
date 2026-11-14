@@ -96,6 +96,19 @@ type Agent struct {
 	measurementConfig   []byte
 	// Serializes "measurement-status.json + cloud send" (measurements.go).
 	measurementStatusMu sync.Mutex
+	// measurementStatusMerger combines the partial LocalStatus documents the
+	// box's independent local readers (layer1's settings reader, the Shelly
+	// sensor reader, ...) each publish for one plan revision - a reader may
+	// only judge points that belong to it, so onMeasurementStatus never
+	// stores whichever one happened to publish last (measurements.go).
+	measurementStatusMerger *measurements.StatusMerger
+
+	// Steuerlogik-Konzept Stufe 1 (shelly_sensors.go): the retained
+	// edge/measurements/config selections this box's OWN Shelly add-on
+	// sensor reader serves - its own small cache, like layer1.Runtime's.
+	shellySensorMu             sync.Mutex
+	shellySensorPlan           []shellySensorSelection
+	shellySensorCatalogVersion string
 
 	// The SECOND outbox of the box: its own event stream on .../v2/events
 	// (UEMS AP-07 IP-19). Its own sequence, its own FIFO - never mixed with
@@ -834,25 +847,26 @@ func New(cfg config.Config) (*Agent, error) {
 		slog.Warn("stored despike settings unreadable; using defaults", "err", err)
 	}
 	a := &Agent{
-		Cfg:               cfg,
-		State:             state.New(ref, Version),
-		buf:               buf,
-		measurementOutbox: measurementOutbox,
-		boxEventOutbox:    boxEventOutbox,
-		hist:              history.New(historyCapacity),
-		planStore:         ps,
-		invStore:          is,
-		invCat:            inverter.DefaultCatalog(),
-		srcStore:          ss,
-		balStore:          bs,
-		mirStore:          ms,
-		net:               ns,
-		installerLog:      iwl,
-		srcReadings:       map[string]sourceReading{},
-		entReadings:       map[string]entReading{},
-		testReads:         map[string]chan testconn.Result{},
-		probeReads:        map[string]chan []probeBusResult{},
-		probeLimiter:      probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
+		Cfg:                     cfg,
+		State:                   state.New(ref, Version),
+		buf:                     buf,
+		measurementOutbox:       measurementOutbox,
+		measurementStatusMerger: measurements.NewStatusMerger(),
+		boxEventOutbox:          boxEventOutbox,
+		hist:                    history.New(historyCapacity),
+		planStore:               ps,
+		invStore:                is,
+		invCat:                  inverter.DefaultCatalog(),
+		srcStore:                ss,
+		balStore:                bs,
+		mirStore:                ms,
+		net:                     ns,
+		installerLog:            iwl,
+		srcReadings:             map[string]sourceReading{},
+		entReadings:             map[string]entReading{},
+		testReads:               map[string]chan testconn.Result{},
+		probeReads:              map[string]chan []probeBusResult{},
+		probeLimiter:            probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
 		registerLimiter: registerwrite.NewLimiter(
 			registerwrite.DefaultRateWindow, registerwrite.DefaultRateBudget),
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
@@ -1097,6 +1111,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(measurements.LocalSamplesTopic, 17, a.onMeasurementSamples); err != nil {
 		return err
 	}
+	// Steuerlogik-Konzept Stufe 1: this box's own Shelly add-on sensor
+	// reader caches the SAME retained config, independent of layer1.Runtime
+	// (shelly_sensors.go - scope note on the status side there).
+	if err := bus.Subscribe(measurements.LocalConfigTopic, 23, a.onShellySensorPlan); err != nil {
+		return err
+	}
 
 	// Re-publish the persisted inverter selection retained, so a Node-RED that
 	// (re)joins the bus after a reboot immediately self-wires the right adapter.
@@ -1133,6 +1153,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	// (Node-RED has no shelly reader). Independent of the control flags, like
 	// every other source read path; idles cheaply without shelly sources.
 	a.startShellySourcePoll(ctx)
+	a.startShellySensorPoll(ctx)
 	a.startEbyteSourcePoll(ctx)
 	// OCPP charge points: the CSMS the stations dial + the load-management
 	// executor. A no-op while VP_OCPP_ENABLED is off (the default), so a box

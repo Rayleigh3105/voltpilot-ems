@@ -516,6 +516,12 @@ export function EntityDrawer({
   // per-entity, creator-declared (MB-M1) - the drawer edits the channel list
   // instead of a rated power (there is nothing to command).
   const measureOnly = !!selectedType && !selectedType.composed && !selectedType.controllable;
+  // Fühler (Steuerlogik-Konzept Stufe 1) is ALSO measure-only, but its
+  // values never come from a creator-typed channel name: the box reads
+  // fixed catalog points (shelly.gen1/shelly.gen2plus) and the admin adds
+  // them on the device's own page (Messkanal hinzufügen) - a required
+  // free-text channel here would only block "Anlegen" with no effect.
+  const fuehler = selectedType?.type === 'fuehler';
 
   async function submit() {
     setBusy(true);
@@ -527,7 +533,7 @@ export function EntityDrawer({
       return;
     }
     let capabilities: SiteEntity['capabilities'] | undefined;
-    if (measureOnly && !composedEdit) {
+    if (measureOnly && !fuehler && !composedEdit) {
       const channels = parseChannelList(channelsText);
       if (channels === null || channels.length === 0) {
         setError('Bitte geben Sie mindestens einen Messkanal an - klein geschrieben, '
@@ -602,6 +608,11 @@ export function EntityDrawer({
           <p className="vp-note">
             Die Konfiguration dieses Typs wird aus den Stammdaten der Anlage abgeleitet und ist
             hier nicht änderbar.
+          </p>
+        ) : fuehler ? (
+          <p className="vp-note" style={{ marginTop: 0 }}>
+            Temperaturen und Eingänge dieses Fühlers fügen Sie auf seiner Geräteseite hinzu
+            (Messkanal hinzufügen), sobald er angelegt ist.
           </p>
         ) : measureOnly ? (
           <>

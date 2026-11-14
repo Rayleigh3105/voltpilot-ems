@@ -116,7 +116,23 @@ func (a *Agent) onMeasurementStatus(_ string, payload []byte) {
 	a.measurementMu.Lock()
 	id := a.measurementIdentity
 	a.measurementMu.Unlock()
-	raw, err := measurements.WrapStatus(payload, id, Version)
+	// Steuerlogik-Konzept Stufe 1 follow-up: more than one local reader can
+	// judge the same plan revision (layer1's settings reader, the Shelly
+	// sensor reader, ...), each publishing its OWN partial LocalStatus to
+	// the one retained topic. Merge them before wrapping, so an owner's
+	// acceptance of a point is never shadowed by an unrelated reader's
+	// blanket refusal of the same point_key, whichever one arrived last
+	// (measurements.StatusMerger doc comment has the full defect).
+	merged := payload
+	if a.measurementStatusMerger != nil {
+		out, err := a.measurementStatusMerger.Merge(payload)
+		if err != nil {
+			slog.Warn("local measurement status merge rejected", "err", err)
+			return
+		}
+		merged = out
+	}
+	raw, err := measurements.WrapStatus(merged, id, Version)
 	if err != nil {
 		slog.Warn("local measurement status rejected", "err", err)
 		return
