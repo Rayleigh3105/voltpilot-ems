@@ -3,12 +3,15 @@ EV="VP_EINRICHT_AUSFALL=40 VP_EINRICHT_FENSTER=50 VP_EINRICHT_VERSUCH=90 VP_EINR
 @180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; cat /tmp/v.rc; gleich "verbinden: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"
 WWANIP=$(wert wlan_adresse /tmp/v.out); echo "wlan=$WWANIP"
 @60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
+# Die Box liest das Geraet, wie im Betrieb alle paar Sekunden - relayd kennt es dadurch (das traegt gleich durch den Ausfall)
+pruefe "vorher: Box liest das Geraet (502)" tcp - $KABELIP 502
 @60 env $EV $E takt; gleich "verbunden: Einrichtungs-WLAN zu" "$($E status | sed -n s/^einrichtung=//p)-$($E status | sed -n s/^verbindung=//p)" zu-ja
 # Router faellt aus
 kill $(cat /var/run/kunde-hostapd.pid); sleep 8; echo "Router aus"
 @60 env $EV $E takt; verneine "Ausfall: WLAN nicht mehr verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
 gleich "Ausfall: die WLAN-Adresse bleibt stehen (force_link)" "$($W status | sed -n s/^wlan_adresse=//p)" "$WWANIP"
-pruefe "Ausfall, vor den Fenstern: Box erreicht das Geraet" ping -c 2 -W 2 $KABELIP; pruefe "Ausfall, vor den Fenstern: Box liest das Geraet (502)" tcp - $KABELIP 502
+info "Ausfall: relayd $(pidof relayd >/dev/null && echo laeuft || echo aus)"
+pruefe "Ausfall, vor den Fenstern: Box erreicht das Geraet (relayd kennt es, force_link haelt die Adresse)" ping -c 2 -W 2 $KABELIP; pruefe "Ausfall, vor den Fenstern: Box liest das Geraet (502)" tcp - $KABELIP 502
 # Nach AUSFALL beginnt das Einrichtungs-Fenster: Client aus, Notweg an
 @120 sleep 45; env $EV $E takt; sleep 4; gleich "Fenster: Einrichtungs-WLAN offen" "$($E status | sed -n s/^einrichtung=//p)" offen
 gleich "Fenster: Kunden-WLAN-Client abgeschaltet" "$(uci -q get wireless.vp_wlan.disabled)" 1

@@ -3,8 +3,9 @@
 WWANIP=$(wert wlan_adresse /tmp/v.out); echo "wlan=$WWANIP"; gleich "force_link ist gesetzt" "$(uci -q get network.vp_wlan.force_link)" 1
 @60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
 pruefe "vorher: Box liest das Geraet (502)" tcp - $KABELIP 502
-# Fall 1: Router aus - die Box liest weiter (das war die Luecke: vorher nahm netifd die Adresse mit, und die relayd-Wege liefen ins Leere)
+# Fall 1: Router aus - die Box liest weiter (das war die Luecke: vorher nahm netifd die Adresse mit, und die relayd-Wege liefen ins Leere). force_link haelt Adresse und Lease, der erste Takt des Waechters legt die Adresse als Notweg auf br-lan (Luecke hoechstens eine Minute bis zum Takt)
 kill $(cat /var/run/kunde-hostapd.pid); sleep 12; echo "Router aus"
+@60 $E takt; echo "ein Takt nach dem Ausfall"
 verneine "Router aus: WLAN nicht mehr verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
 gleich "Router aus: die WLAN-Adresse bleibt stehen" "$($W status | sed -n s/^wlan_adresse=//p)" "$WWANIP"
 pruefe "Router aus: Box erreicht das Geraet" ping -c 2 -W 2 $KABELIP; pruefe "Router aus: Box liest das Geraet (502)" tcp - $KABELIP 502

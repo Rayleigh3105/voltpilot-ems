@@ -285,20 +285,34 @@ client_an() { # nur zuruecknehmen, was dieser Waechter abgeschaltet hat
 
 # ---- Notweg: letzte WLAN-Adresse auf br-lan --------------------------------
 
+# Der Notweg traegt die Einrichtungs-Fenster: Dort ist der Client AUS, seine
+# Schnittstelle samt WLAN-Adresse weg - die letzte Adresse auf br-lan laesst
+# die Box die Geraete an ihrem Kabel weiterlesen (die /24-Route von ip addr
+# add bringt den richtigen Absender mit; eine Route ohne src-Hinweis nimmt
+# die ERSTE br-lan-Adresse 10.213.0.1, der kein Geraet antworten kann -
+# gemessen, Lauf fenster).
+#
+# VOR den Fenstern (Client sucht noch) braucht es den Notweg im Normalfall
+# nicht: Edge Light liest die Geraete alle paar Sekunden, relayd kennt sie
+# deshalb und seine Wege tragen mit der Adresse, die force_link haelt, durch
+# den Ausfall (Lauf routerausfall). Nur eine Box, die WAEHREND des Ausfalls
+# neu startet (relayd kennt noch niemanden), liest erst ab dem ersten
+# Fenster wieder: relayd prueft eigene Regeln vor der Haupttabelle, dagegen
+# kommt keine Notweg-Route an, solange seine Schnittstellen stehen.
 notweg_an() {
   [ -n "$(gemerkt notweg)" ] && return 0
-  a="$(gemerkt letzte_adresse)"
-  [ -n "$a" ] || return 0
-  ip addr add "$a" dev br-lan 2>/dev/null || return 0
-  merke notweg "$a"
-  melde "Notweg: $a auf br-lan, die Box liest die Geraete waehrend des Ausfalls weiter"
+  am="$(gemerkt letzte_adresse)"
+  [ -n "$am" ] || return 0
+  ip addr add "$am" dev br-lan 2>/dev/null || return 0
+  merke notweg "$am"
+  melde "Notweg: $am auf br-lan, die Box liest die Geraete im Einrichtungs-Fenster weiter"
 }
 notweg_aus() {
-  a="$(gemerkt notweg)"
-  [ -n "$a" ] || return 0
-  ip addr del "$a" dev br-lan 2>/dev/null
+  am="$(gemerkt notweg)"
+  [ -n "$am" ] || return 0
+  ip addr del "$am" dev br-lan 2>/dev/null
   vergiss notweg
-  melde "Notweg beendet ($a)"
+  melde "Notweg beendet ($am)"
 }
 
 befehl_nachlauf() { # Hotplug ifup/ifupdate vp_wlan: WLAN hat wieder eine Adresse
@@ -366,7 +380,8 @@ befehl_takt() {
     return 0
   fi
   if [ "$dauer" -lt "$AUSFALL" ]; then
-    # Der Client sucht selbst; mit force_link liest die Box die Geraete weiter.
+    # Der Client sucht selbst weiter; die relayd-Wege tragen das Lesen mit
+    # der Adresse, die force_link haelt (siehe notweg_an).
     return 0
   fi
   if [ -z "$(uci -q get wireless.vp_wlan)" ]; then
@@ -377,7 +392,7 @@ befehl_takt() {
   pos=$(((dauer - AUSFALL) % (FENSTER + VERSUCH)))
   if [ "$pos" -lt "$FENSTER" ]; then
     # Erst den Client abschalten (seine Schnittstelle nimmt die Adresse mit),
-    # dann die letzte Adresse als Notweg auf br-lan - nie beide zugleich.
+    # dann die letzte Adresse als Notweg auf br-lan.
     client_aus
     notweg_an
     befehl_auf

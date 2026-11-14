@@ -26,9 +26,9 @@ http_ruf() {
     [ -z "$h_body" ] || printf '%s' "$h_body"
   } >/tmp/http.anfrage
   if [ "$h_ns" = - ]; then
-    nc "$h_adr" "$h_port" </tmp/http.anfrage 2>/dev/null | tr -d '\r' >/tmp/http.antwort
+    nc -w 10 "$h_adr" "$h_port" </tmp/http.anfrage 2>/dev/null | tr -d '\r' >/tmp/http.antwort
   else
-    ip netns exec "$h_ns" nc "$h_adr" "$h_port" </tmp/http.anfrage 2>/dev/null | tr -d '\r' >/tmp/http.antwort
+    ip netns exec "$h_ns" nc -w 10 "$h_adr" "$h_port" </tmp/http.anfrage 2>/dev/null | tr -d '\r' >/tmp/http.antwort
   fi
   cat /tmp/http.antwort
 }

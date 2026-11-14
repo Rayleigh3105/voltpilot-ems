@@ -357,13 +357,16 @@ wlan_eintragen() { # wlan_eintragen <ssid> <verschluesselung> <passwort>
   # sonst herunter (link connectivity loss), udhcpc gibt die Adresse frei -
   # und die relayd-Wege zu den Geraeten behalten genau diese Adresse als
   # Absender: die Box erreicht ihre eigenen Geraete nicht mehr (gemessen,
-  # Lauf stoerfaelle, PR #1851). Mit force_link bleibt die Adresse stehen und
-  # die Box liest waehrend des Ausfalls weiter. Der Preis: nach einem
-  # Routertausch (gleicher Name, neues Netz) haelt udhcpc die alte Adresse
-  # bis zur Verlaengerung - dafuer stoesst der Waechter des Einrichtungs-WLANs
-  # (einrichtung-wlan.sh takt) eine frische an, wenn Router und Internet
-  # trotz Anmeldung nicht antworten. Laeuft die Lease waehrend eines langen
-  # Ausfalls ab, endet auch dieser Schutz (die Geraete verlieren ihre
+  # Lauf stoerfaelle, PR #1851). Mit force_link bleiben Adresse und Lease
+  # stehen: die relayd-Wege tragen durch den Ausfall (Edge Light liest alle
+  # paar Sekunden, relayd kennt die Geraete deshalb immer), und die Rueckkehr
+  # desselben Routers braucht kein neues DHCP (gemessen, Lauf routerausfall).
+  # In den Einrichtungs-Fenstern, wenn der Client aus ist, traegt der Notweg
+  # des Waechters (einrichtung-wlan.sh). Der Preis: nach einem Routertausch
+  # (gleicher Name, neues Netz) haelt udhcpc die alte Adresse bis zur
+  # Verlaengerung - dafuer stoesst der Waechter eine frische an, wenn Router
+  # und Internet trotz Anmeldung nicht antworten. Laeuft die Lease waehrend
+  # eines langen Ausfalls ab, endet der Schutz (die Geraete verlieren ihre
   # Adressen dann ebenso).
   uci set network.vp_wlan.force_link=1
   uci -q delete firewall.vp_heimnetz
