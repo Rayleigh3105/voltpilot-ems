@@ -32,7 +32,12 @@ const { TYPES } = require('./catalog');
 const { canonicalize, contentHash } = require('./canonicalize');
 const crypto = require('crypto');
 
-const COMPILER_VERSION = '1.0.0';
+// 1.1.0: vp.price.current compiles to [vp-feed, Preis-Wächter] and the
+// threshold answers an UNKNOWN-marked input with "condition does not hold" -
+// the artifact-side half of the fed edge/price/current topic. The cloud reads
+// this version off the stored artifact to tell an executing price rule from
+// one deployed before the feed existed.
+const COMPILER_VERSION = '1.1.0';
 const MIN_CORE_VERSION = '0.1.0';
 const OWNERSHIP_MARKER = '@vp-flow';
 const MAX_ARTIFACT_BYTES = 262144;
@@ -358,10 +363,22 @@ function compile(graph, opts) {
 
   // Materialize nodes in DOCUMENT order (deterministic).
   const nrNodes = [];
-  const anchors = {}; // graph node id -> NR node id (wiring anchor)
+  const anchors = {}; // graph node id -> NR node id (INPUT anchor: first member)
+  const outAnchors = {}; // graph node id -> NR node id (OUTPUT anchor: last member)
+  const chains = []; // [fromNrId, toNrId] intra-chain wires (chainCompile types)
   for (const n of graph.nodes) {
     const compiled = TYPES[n.type].compile(ctx, n, extrasByNode[n.id]);
     anchors[n.id] = compiled[0].id;
+    // A chainCompile type emits an ordered member chain: triggers and incoming
+    // edges land on the FIRST member, outgoing edges leave the LAST, and the
+    // members are wired first -> last here (vp.price.current's feed + guard).
+    outAnchors[n.id] = TYPES[n.type].chainCompile
+      ? compiled[compiled.length - 1].id : compiled[0].id;
+    if (TYPES[n.type].chainCompile) {
+      for (let i = 0; i + 1 < compiled.length; i++) {
+        chains.push([compiled[i].id, compiled[i + 1].id]);
+      }
+    }
     nrNodes.push(...compiled);
   }
 
@@ -374,10 +391,13 @@ function compile(graph, opts) {
   // same) msg.topic collapse into one slot and the combinator computes the
   // WRONG boolean. Emitted in graph-edge document order -> deterministic.
   const wires = {};
+  for (const [fromNr, toNr] of chains) {
+    (wires[fromNr] = wires[fromNr] || []).push(toNr);
+  }
   const nodeById = {};
   for (const n of graph.nodes) nodeById[n.id] = n;
   for (const e of graph.edges) {
-    const from = anchors[e.from.node];
+    const from = outAnchors[e.from.node];
     const toType = TYPES[nodeById[e.to.node].type];
     let target = anchors[e.to.node];
     if (toType.discriminateInputs) {

@@ -294,19 +294,74 @@ test('pinned content hash of the compound-wallbox fixture', () => {
   assertPinned(a, 'pinned-compound-hash.txt');
 });
 
-// U3: the price automation ("Börsenpreis < 10 ct -> Wallbox") exercises the new
-// vp.price.current data node feeding a threshold.
-test('price-wallbox fixture compiles the current-price feed + threshold', () => {
+// U3: the price automation ("Börsenpreis < 10 ct -> Wallbox") exercises the
+// vp.price.current data node feeding a threshold. Since the fed price topic
+// (edge/price/current) the node compiles to a CHAIN: the vp-feed subscriber
+// followed by the generated Preis-Wächter, and only the guard's number
+// reaches the threshold - a stale/unknown price travels as the unknown marker
+// and the threshold answers "condition does not hold".
+test('price-wallbox fixture compiles the feed -> guard -> threshold chain', () => {
   const a = compile(fixture('flow-graph.valid.price-wallbox.json'));
   for (const n of a.bundle.nodered_flows) {
     assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
   }
   const feed = a.bundle.nodered_flows.find((n) => n.type === 'vp-feed' && n.feed === 'price_current');
   assert.ok(feed, 'vp.price.current compiles to a vp-feed with feed=price_current');
+  const guard = a.bundle.nodered_flows.find((n) => n.type === 'function' && /_vp_unbekannt = true/.test(n.func));
+  assert.ok(guard, 'the chain carries the generated Preis-Wächter');
+  assert.strictEqual(guard.id, feed.id + '-frisch', 'guard id derives from the feed anchor');
   const threshold = a.bundle.nodered_flows.find((n) => n.type === 'function' && /P\.threshold/.test(n.func));
   const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
-  assert.deepStrictEqual(feed.wires, [[threshold.id]]);
+  assert.deepStrictEqual(feed.wires, [[guard.id]]);
+  assert.deepStrictEqual(guard.wires, [[threshold.id]]);
   assert.deepStrictEqual(threshold.wires, [[desired.id]]);
+  // The trigger (slot-boundary gate) still lands on the FEED, not the guard:
+  // the feed re-emits its cached payload, the guard re-judges freshness.
+  const gate = a.bundle.nodered_flows.find((n) => n.type === 'function' && /Slot-Grenze/.test(n.name || ''));
+  assert.ok(gate && gate.wires[0].includes(feed.id), 'trigger wired into the feed anchor');
+});
+
+// The guard body itself: only a fresh payload becomes a number; the stale
+// marker, an expired valid_until and garbage all travel as the unknown marker,
+// and the threshold answers it with an ACTIVE false (the combinator must never
+// sit on a stale true).
+test('Preis-Wächter + threshold judge freshness honestly', () => {
+  const a = compile(fixture('flow-graph.valid.price-wallbox.json'));
+  const guard = a.bundle.nodered_flows.find((n) => n.type === 'function' && /_vp_unbekannt = true/.test(n.func));
+  const threshold = a.bundle.nodered_flows.find((n) => n.type === 'function' && /P\.threshold/.test(n.func));
+  const node = { status: () => {} };
+  const runGuard = (payload) =>
+    new Function('msg', 'context', 'node', guard.func + '\n')({ payload }, null, node);
+  const mem = {};
+  const ctx = { get: (k) => mem[k], set: (k, v) => { mem[k] = v; } };
+  const runThreshold = (msg) =>
+    new Function('msg', 'context', 'node', threshold.func + '\n')(msg, ctx, node);
+
+  const inFiveMin = new Date(Date.now() + 5 * 60000).toISOString();
+  const fresh = runGuard({ schema_version: '1.0', price_ct_kwh: -1.5, unit: 'ct/kWh', valid_until: inFiveMin });
+  assert.strictEqual(fresh.payload, -1.5, 'a fresh (negative) price becomes its number');
+  assert.strictEqual(fresh._vp_unbekannt, undefined);
+  // Fixture threshold: direction below. A fresh cheap price switches on.
+  assert.strictEqual(runThreshold(fresh).payload, true);
+
+  const expired = runGuard({ schema_version: '1.0', price_ct_kwh: -1.5, unit: 'ct/kWh',
+    valid_until: new Date(Date.now() - 1000).toISOString() });
+  assert.strictEqual(expired._vp_unbekannt, true, 'an expired price is unknown, never the old number');
+  assert.ok(Number.isNaN(expired.payload));
+  const afterExpired = runThreshold(expired);
+  assert.strictEqual(afterExpired.payload, false, 'unknown = condition does not hold (active false)');
+  assert.strictEqual(afterExpired._vp_unbekannt, undefined, 'the marker is consumed');
+  assert.strictEqual(mem.on, false, 'the latch is released - no stale true survives');
+
+  for (const bad of [
+    { schema_version: '1.0', stale: true },
+    { schema_version: '1.0', price_ct_kwh: 'x', valid_until: inFiveMin },
+    null,
+    42,
+  ]) {
+    const out = runGuard(bad);
+    assert.strictEqual(out._vp_unbekannt, true, 'unknown for ' + JSON.stringify(bad));
+  }
 });
 
 test('pinned content hash of the price-wallbox fixture', () => {

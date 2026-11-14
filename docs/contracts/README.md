@@ -31,6 +31,7 @@ flowchart LR
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
 | OTA | [Manifest](ota-release-manifest.schema.json) mit [Vektoren je Box-Art](ota-release-manifest-vectors.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
 | Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |
+| Preis-Zuleitung: der aktuelle Börsenpreis für Preis-Regeln auf der Box (Cloud → Box, Spiegel `edge/price/current`) | [Vertrag](v2/mqtt-price-current.md), [Schema](v2/mqtt-price-current.schema.json) |
 | Registerbild Erzeuger: Steuerung einer PV- oder BHKW-Anlage → Box (Modbus, nur lesen) | [Vertrag](v2/erzeuger-registerbild.md), [Vektoren](v2/erzeuger-registerbild-vectors.json), [Schema](v2/erzeuger-registerbild.schema.json); Energiekarten: [WAGO-Registerbild](v2/wago-registerbild.md) |
 | Box-Quelle der Anlagensteuerung: Registry-Treiber und Pin (UEMS EZ-21) | [Regel](v2/edge-entity.schema.json) `x-anlagensteuerung-driver-rule`, [Vektoren](v2/anlagensteuerung-quelle-vectors.json), Fähigkeit `anlagensteuerung_quelle` ([Herzschlag](v2/edge-supports.md)) |
 | Diagnose / Eingriff | [Probe](mqtt-probe.schema.json), [Registerauftrag](mqtt-register-write.schema.json), [Datenbereinigung](mqtt-data-purge.schema.json) |

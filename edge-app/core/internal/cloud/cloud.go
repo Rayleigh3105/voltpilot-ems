@@ -57,6 +57,7 @@ type Link struct {
 	onControlCert       func(payload []byte)
 	onChargingConfig    func(payload []byte)
 	onChargingBoost     func(payload []byte)
+	onPriceCurrent      func(payload []byte)
 	onConnect           func(connected bool)
 }
 
@@ -150,6 +151,16 @@ type Options struct {
 	// at every reconnect. An offline box therefore never gets a missed
 	// override delivered late, and that is intended.
 	OnChargingBoost func(payload []byte)
+	// OnPriceCurrent receives the RETAINED current-spot-price document on
+	// .../v2/price (contract docs/contracts/v2/mqtt-price-current.md). An
+	// EMPTY payload IS forwarded - it withdraws the document (retained-clear,
+	// e.g. on unclaim or a tariff change away from a time-variable price),
+	// and the mirror then marks the local price explicitly unknown. nil =
+	// the price feed is not wired.
+	//
+	// It carries DATA for customer rules, never a command: the dispatch
+	// principle (internal/plan: the cloud decides the schedule) is untouched.
+	OnPriceCurrent func(payload []byte)
 	// OnProbeRequest receives the NON-RETAINED one-shot probe on .../v2/probe
 	// (docs/contracts/mqtt-probe.schema.json, Einheitsmodell Stufe 0b). nil =
 	// the probe channel is not wired.
@@ -236,6 +247,7 @@ func New(o Options) (*Link, error) {
 		onGeraetesuche:      o.OnGeraetesuche,
 		onChargingConfig:    o.OnChargingConfig,
 		onChargingBoost:     o.OnChargingBoost,
+		onPriceCurrent:      o.OnPriceCurrent,
 		onProbeRequest:      o.OnProbeRequest,
 		onRegisterWrite:     o.OnRegisterWrite,
 		onDesiredDownlink:   o.OnDesiredDownlink,
@@ -324,6 +336,7 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	add("v2/control-certification", l.onControlCert, true)
 	add("v2/charging-config", l.onChargingConfig, true)
 	add("v2/charging-boost", l.onChargingBoost, false)
+	add("v2/price", l.onPriceCurrent, true)
 	add("v2/probe", l.onProbeRequest, false)
 	add("v2/register-write", l.onRegisterWrite, false)
 	add("v2/desired", l.onDesiredDownlink, false)
