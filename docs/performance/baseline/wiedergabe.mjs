@@ -6,8 +6,9 @@
 //   node wiedergabe.mjs aufnehmen   --user demo2 --seiten "cockpit=#/anlage/<id>;…" --band <datei.json>
 //   node wiedergabe.mjs messen      --user demo2 --seiten "…" --band <datei.json> --label base --profil desktop|mobil
 //                                   [--runs 5] [--kalt 2] [--latenz 150] [--ohneVorladen] [--base http://localhost:15861]
+//                                   [--zeit ruhig|frisch|lebendig]   (Zeitpunkte im Band, siehe band.mjs; Vorgabe ruhig)
 //   node wiedergabe.mjs takt        … --sek 65        (Abrufe einer OFFENEN Seite je Pfad zählen)
-//   node wiedergabe.mjs interaktion … --schritte "Verlauf Tag → Monat;…"   (Klick → Seite steht wieder)
+//   node wiedergabe.mjs interaktion … --schritte "Verlauf Tag → Monat;…" [--kaltKlick n]   (Klick → Seite steht wieder)
 //   node wiedergabe.mjs profil      … --sek 60        (React-Übergaben je Komponente; braucht einen Profiling-Build,
 //                                   react-dom → react-dom/profiling)
 //
@@ -18,6 +19,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { execSync } from 'node:child_process';
+import { bandLaden } from './band.mjs';
 const require = createRequire(new URL('../../../frontend/portal/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 
@@ -34,6 +36,7 @@ const runs = Number(a.runs ?? 5);
 const kalt = Number(a.kalt ?? 2);
 const latenz = Number(a.latenz ?? 150);
 const label = a.label || 'replay';
+const zeit = a.zeit || 'ruhig'; // ruhig | frisch | lebendig (band.mjs)
 const bandDatei = a.band;
 const out = a.out || `${process.env.TMPDIR ?? '/tmp'}/vp-perf-labor/wiedergabe`;
 const seiten = (a.seiten || 'start=').split(';').filter(Boolean).map((p) => { const i = p.indexOf('='); return [p.slice(0, i), p.slice(i + 1)]; });
@@ -94,8 +97,6 @@ const page = await ctx.newPage();
 const cdp = await ctx.newCDPSession(page);
 await cdp.send('Network.enable');
 const schluessel = (url, method) => { const u = new URL(url); return `${method} ${u.pathname}${u.search}`; };
-// Rückfall: Zeitpunkte in der Adresse (from=…, Uhrzeit) wechseln je Lauf - dann gilt die Antwort mit gleicher Form.
-const form = (k) => decodeURIComponent(k).replace(/\d{4}-\d{2}-\d{2}T[0-9:.]+(Z|[+-]\d\d:\d\d)?/g, '{t}').replace(/\b1[78]\d{11}\b/g, '{ms}');
 
 async function anmelden() {
   await page.goto(BASE + '/');
@@ -108,6 +109,7 @@ async function anmelden() {
 
 if (modus === 'aufnehmen') {
   const band = existsSync(bandDatei) ? JSON.parse(readFileSync(bandDatei, 'utf8')) : { api: {}, token: null };
+  band.aufgenommen = new Date().toISOString();
   page.on('response', async (r) => {
     const url = r.url();
     try {
@@ -134,8 +136,8 @@ if (modus === 'aufnehmen') {
 }
 
 // ---- messen / interaktion ----
-const band = JSON.parse(readFileSync(bandDatei, 'utf8'));
-const nachForm = new Map(Object.entries(band.api).map(([k, v]) => [form(k), v]));
+const B = bandLaden(bandDatei, zeit);
+const band = B.band;
 const tokens = JSON.parse(band.token);
 const fehlend = new Set();
 const verzoegern = (bytes) => latenz + (MOBIL ? Math.round(bytes / 1000) : 0); // mobil: ≈ 1 MB/s wie Fast 4G
@@ -148,7 +150,7 @@ await page.route('**/api/**', async (route) => {
   const req = route.request();
   if (req.method() !== 'GET') return route.fulfill({ status: 204, body: '' });
   const k = schluessel(req.url(), 'GET');
-  const e = band.api[k] ?? nachForm.get(form(k));
+  const e = B.antwort(req.url());
   if (!e) { fehlend.add(k); return route.fulfill({ status: 404, contentType: 'application/json', body: '{"message":"nicht im Band"}' }); }
   apiOffen++; apiSeit++;
   try {
@@ -172,7 +174,7 @@ cdp.on('Network.loadingFinished', (e) => { const r = netz.get(e.requestId); if (
 if (modus === 'profil') {
   // Was rendert, während die Seite OFFEN steht (Takte, Uhr), und wie teuer (Profiling-Build nötig).
   const sek = Number(a.sek ?? 60);
-  const erg = { label, user, profil, sek, uptime: execSync('uptime').toString().trim(), seiten: {} };
+  const erg = { label, user, profil, zeit, sek, uptime: execSync('uptime').toString().trim(), seiten: {} };
   for (const [name, hash] of seiten) {
     await page.goto(BASE + '/silent-check-sso.html');
     await page.goto(BASE + '/' + hash);
@@ -185,7 +187,7 @@ if (modus === 'profil') {
       top: Object.entries(p.je).sort((x, y) => y[1].ms - x[1].ms).slice(0, 30) };
   }
   writeFileSync(`${out}/${label}-profil-${user}-${profil}.json`, JSON.stringify(erg, null, 1));
-  console.log(`## Profiler ${label} · ${user} · ${profil} · ${sek} s offen · ${erg.uptime}`);
+  console.log(`## Profiler ${label} · ${user} · ${profil} · Zeit ${zeit} · ${sek} s offen · ${erg.uptime}`);
   for (const [n, x] of Object.entries(erg.seiten)) {
     console.log(`\n${n}: ${x.commits} Übergaben, ${x.commitMs} ms Renderzeit gesamt, ${x.komponenten} Komponenten-Arten gerendert`);
     for (const [k, v] of x.top.slice(0, 12)) console.log(`   ${v.ms.toFixed(1).padStart(8)} ms  ${String(v.n).padStart(5)}×  ${k}`);
@@ -197,7 +199,7 @@ if (modus === 'profil') {
 if (modus === 'takt') {
   // Was eine OFFENE Seite nachlädt: nach „bereit“ `sek` Sekunden mitschreiben (Zahl und Bytes je Pfad).
   const sek = Number(a.sek ?? 65);
-  const erg = { label, user, profil, sek, uptime: execSync('uptime').toString().trim(), seiten: {} };
+  const erg = { label, user, profil, zeit, sek, uptime: execSync('uptime').toString().trim(), seiten: {} };
   for (const [name, hash] of seiten) {
     await page.goto(BASE + '/silent-check-sso.html');
     await page.goto(BASE + '/' + hash);
@@ -211,7 +213,7 @@ if (modus === 'takt') {
     erg.seiten[name] = { hash, je, summe: Object.values(je).reduce((x, y) => x + y, 0) };
   }
   writeFileSync(`${out}/${label}-takt-${user}-${profil}.json`, JSON.stringify(erg, null, 1));
-  console.log(`## Takt ${label} · ${user} · ${sek} s offen · ${erg.uptime}`);
+  console.log(`## Takt ${label} · ${user} · ${profil} · Zeit ${zeit} · ${sek} s offen · ${erg.uptime}`);
   for (const [n, x] of Object.entries(erg.seiten)) console.log(`${n}: ${x.summe} Abrufe – ${Object.entries(x.je).sort((p, q) => q[1] - p[1]).map(([k, z]) => `${k} ×${z}`).join('; ')}`);
   await ctx.close(); await browser.close();
   process.exit(0);
@@ -254,13 +256,16 @@ if (modus === 'interaktion') {
     'Aufbau: Gerät hinzufügen': [gehe(`${A}/modell`), () => page.getByRole('button', { name: 'Gerät hinzufügen' }).first().click(), sichtbar('[role=dialog]')],
   };
   const wahl = (a.schritte || Object.keys(SCHRITTE).join(';')).split(';');
-  const erg = { label, user, profil, latenz, uptime: execSync('uptime').toString().trim(), schritte: {} };
+  const erg = { label, user, profil, zeit, latenz, uptime: execSync('uptime').toString().trim(), schritte: {} };
   for (const name of wahl) {
     const [vorher, klick, ziel] = SCHRITTE[name];
     const liste = [];
     for (let r = 0; r < runs; r++) {
       try {
         await page.goto(BASE + '/silent-check-sso.html');
+        // --kaltKlick n: die ersten n Läufe mit leerem Cache (Erstbesuch nach einem Deploy) - was das Ziel des Klicks
+        // dann noch laden muss, zählt mit.
+        if (r < Number(a.kaltKlick ?? 0)) await cdp.send('Network.clearBrowserCache');
         await vorher();
         await steht(Date.now(), null);
         await page.waitForTimeout(800);
@@ -277,7 +282,7 @@ if (modus === 'interaktion') {
   }
   writeFileSync(`${out}/${label}-interaktion-${user}-${profil}.json`, JSON.stringify(erg, null, 1));
   const med = (xs) => { const q = xs.filter((x) => x != null).sort((p, q2) => p - q2); return q.length ? q[Math.floor((q.length - 1) / 2)] : null; };
-  console.log(`## Interaktion ${label} · ${user} · ${profil} · Latenz ${latenz} ms · ${erg.uptime}`);
+  console.log(`## Interaktion ${label} · ${user} · ${profil} · Zeit ${zeit} · Latenz ${latenz} ms · ${erg.uptime}`);
   console.log('| Schritt | steht ms (Median) | Ereignis ms | API n | n (Fehl) |');
   for (const [n, l] of Object.entries(erg.schritte)) {
     const ok = l.filter((x) => !x.fehler);
@@ -287,7 +292,7 @@ if (modus === 'interaktion') {
   process.exit(0);
 }
 
-const ergebnis = { label, user, profil, runs, kalt, latenz, uptime: execSync('uptime').toString().trim(), load: loadavg()[0], seiten: {} };
+const ergebnis = { label, user, profil, zeit, runs, kalt, latenz, uptime: execSync('uptime').toString().trim(), load: loadavg()[0], seiten: {} };
 for (const [name, hash] of seiten) {
   const liste = [];
   for (let r = 0; r < kalt + runs; r++) {
@@ -320,7 +325,7 @@ ergebnis.fehlend = [...fehlend];
 writeFileSync(`${out}/${label}-${user}-${profil}.json`, JSON.stringify(ergebnis, null, 1));
 const med = (xs) => { const s = xs.filter((x) => x != null).sort((p, q) => p - q); return s.length ? s[Math.floor((s.length - 1) / 2)] : null; };
 const f = (x, d = 0) => (x == null ? '–' : Number(x).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }));
-console.log(`## Wiedergabe ${label} · ${user} · ${profil} · Latenz ${latenz} ms · ${ergebnis.uptime}`);
+console.log(`## Wiedergabe ${label} · ${user} · ${profil} · Zeit ${zeit} · Latenz ${latenz} ms · ${ergebnis.uptime}`);
 console.log('| Seite | JS bis bereit kalt kB | bereit kalt ms | bereit warm ms | LCP warm ms | TBT warm ms | API bis bereit | n (Fehl) |');
 console.log('|---|---:|---:|---:|---:|---:|---:|---:|');
 for (const [name, s] of Object.entries(ergebnis.seiten)) {

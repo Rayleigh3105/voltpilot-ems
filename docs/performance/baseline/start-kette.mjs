@@ -1,23 +1,21 @@
 // Start-Wasserfall in der Wiedergabe: wann beginnen Stammdaten und Seitendaten, gemessen ab dem Start von /api/v1/me?
-// Usage: node start-kette.mjs <port> <band> <hash> <läufe> [latenz]
+// Usage: node start-kette.mjs <port> <band> <hash> <läufe> [latenz]   (ausführlicher, je Pfad: wasserfall.mjs)
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { bandLaden } from './band.mjs';
 const require = createRequire(new URL('../../../frontend/portal/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 const [port, bandDatei, hash, laeufeS, latenzS] = process.argv.slice(2);
 const laeufe = Number(laeufeS ?? 5), latenz = Number(latenzS ?? 150);
-const band = JSON.parse(readFileSync(bandDatei, 'utf8'));
-const form = (k) => decodeURIComponent(k).replace(/\d{4}-\d{2}-\d{2}T[0-9:.]+(Z|[+-]\d\d:\d\d)?/g, '{t}');
-const nf = new Map(Object.entries(band.api).map(([k, v]) => [form(k), v]));
+const B = bandLaden(bandDatei, process.env.VP_ZEIT ?? 'ruhig'); // VP_ZEIT=lebendig: siehe band.mjs
 const b = await chromium.launch({ channel: 'chrome', headless: true });
 const ctx = await b.newContext();
 const page = await ctx.newPage();
 const warte = (ms) => new Promise((r) => setTimeout(r, ms));
-await page.route('**/openid-connect/token', async (r) => { await warte(latenz); r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': r.request().headers().origin, 'access-control-allow-credentials': 'true' }, body: band.token }); });
+await page.route('**/openid-connect/token', async (r) => { await warte(latenz); r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': r.request().headers().origin, 'access-control-allow-credentials': 'true' }, body: B.token }); });
 let log = [];
-await page.route('**/api/**', async (r) => { const u = new URL(r.request().url()); log.push([Date.now(), u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}')]); const e = band.api[`GET ${u.pathname}${u.search}`] ?? nf.get(form(`GET ${u.pathname}${u.search}`)); await warte(latenz); return e ? r.fulfill({ status: e.status, contentType: e.typ, body: e.body }) : r.fulfill({ status: 404, body: '{}' }); });
+await page.route('**/api/**', async (r) => { const u = new URL(r.request().url()); log.push([Date.now(), u.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}')]); const e = B.antwort(r.request().url()); await warte(latenz); return e ? r.fulfill({ status: e.status, contentType: e.typ, body: e.body }) : r.fulfill({ status: 404, body: '{}' }); });
 await page.goto(`http://localhost:${port}/silent-check-sso.html`);
-await page.evaluate((t) => sessionStorage.setItem('vp.auth.tokens', t), band.token);
+await page.evaluate((t) => sessionStorage.setItem('vp.auth.tokens', t), B.token);
 const erg = [];
 for (let i = 0; i < laeufe + 1; i++) {
   log = [];

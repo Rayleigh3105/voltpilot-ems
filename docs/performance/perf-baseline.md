@@ -222,6 +222,55 @@ je Minute.
 Ebenfalls aufgefallen: Nachgeladene Stücke plus kalter Vite-Server reißen unter Last `findBy`- und 5-s-Grenzen in
 Vitest und Playwright. Die Seiten-Tests laden die Stücke deshalb in `beforeAll` vor.
 
+## Portal-Reaktivität, Welle 2 (14.11.2026)
+
+Diese Runde (`vp-perf2-portal`, Stand `fd7412880`) setzt die Hebel 2 bis 5 der ersten Runde um. Sie misst im selben
+Wiedergabe-Labor wie diese, mit dem Band `demo2` vom 13.11. und 150 ms je Antwort. Der Host lief mit Load 10 bis 190 aus
+anderen Bahnen. Belastbar sind Abrufzahlen, Bytes, React-Übergaben und der Beginn der Abrufe; Seitenzeiten in Sekunden
+streuten auch hier stärker als jeder Effekt.
+
+### Neu im Labor
+
+- **Zeit im Band** (`baseline/band.mjs`, Schalter `--zeit` bzw. `zeit`):
+  - `ruhig` gibt die Antworten wie aufgenommen wieder. Die Live-Zeit steht dann still, und ein Takt bekommt immer dieselbe Antwort.
+  - `lebendig` verschiebt alle Zeitpunkte auf jetzt. Die Live-Pfade (`overview`, `topology`, `rollen/*` …) wandern dabei mit jeder Anfrage, wie an einer laufenden Anlage.
+  - Erst `lebendig` zeigt den echten Takt: Die Rollen folgen der Live-Zeit, also 65 s offene Seite = 62 Abrufe statt 44.
+  - Ein Datum in der Adresse (`history?at=…`) findet die Antwort des aufgenommenen Tages.
+- **`baseline/wasserfall.mjs`:** jeder Abruf eines Starts mit Beginn ab `/me`. Die Zusatzlatenz für `/overview` stellt nach, dass sie am Server langsamer ist als die Rollen (p50 330 gegen 82 ms). Erst damit erscheint das Doppel der Rollen.
+- **`baseline/cpu-profil.mjs`:** CPU-Profil einer offenen Seite, Zeit innerhalb einer Komponente. Braucht den unminifizierten Profiling-Build `baseline/vite.profil.config.mjs`.
+- **Bestehende Werkzeuge erweitert:**
+  - `js-je-route.mjs` zählt optional mit Vorladen, am Telefon und mit Bedienung.
+  - `wiedergabe.mjs interaktion --kaltKlick n` klickt mit leerem Cache.
+  - `blick.mjs` macht Bildschirmfotos für den Vorher-Nachher-Vergleich.
+
+### Geändert
+
+| PR | Was | Nachher |
+|---|---|---|
+| [#1870](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1870) Vorab | Die Seitendaten einer Anlagen-Adresse gehen beim ersten Laden gleichzeitig mit `/me` hinaus (`seitenVorab.ts`): Grundabrufe jeder Anlagen-Route, auf dem Cockpit seine 16 unbedingten Abrufe. Startfenster 2 s wie `/funktionen`. | Erster Seitendaten-Abruf ab `/me`: Cockpit 284–422 → 0–2 ms, Aufbau 507 → 6 ms; letzte Antwort der ersten 4 s 100–260 ms früher; Abrufe je Start 34 → 34, Aufbau 28 → 27 |
+| [#1873](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1873) Takt | Unveränderte Takt-Antworten behalten das alte Objekt (`useTaktZustand`); die heißen Intl-Formatierer (`berlinDay`, `fmtNum`, `eur`, `uhrzeit`, `monatsAnker`) und `todaySlots` werden nicht mehr je Aufruf gebaut. | React-Übergaben je Minute 49–50 → 24 (ruhig 39 → 18); Zeit in `AnlageSeite` je Minute Desktop 151–226 → 73 ms, Telefon 642 → 236 ms; Abrufe unverändert 62 / 65 s |
+| [#1869](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1869) Vorladen | Verlauf und echarts im Leerlauf ohne Frist; am Telefon erst nach der ersten Bedienung. | Telefon ohne Bedienung, erste 15 s: 652,9 → 357,1 kB JS (47 → 21 Stücke); Desktop unverändert |
+| [#1868](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1868) Rollen | Eine neue Live-Zeit holt die Rollen nur, wenn die vorliegende Antwort älter ist als die geltende Übersicht. | `rollen/*` je Start 6 → 3 (Abrufe 37 → 34), Telefon: letzte Start-Antwort 2,1 → 0,9 s |
+
+Das CPU-Profil verortete die Renderzeit von `AnlageSeite` in je Aufruf gebauten Intl-Formatierern (`toLocaleString` und
+Verwandte), nicht in der Fachlogik. Memoisieren half dort wenig, weil fast jede Ableitung an der Uhr (`now`, alle 5 s)
+hängt. Alle vier Zweige zusammen (Probe-Merge ohne Konflikte) ergeben einen Einstieg von 257,97 kB gz bei der Grenze 258.
+
+### Offene Hebel, nach Wirkung gereiht
+
+1. **Zweiter Token-Abruf vor jedem ersten Bild** (unverändert, Hebel 1 oben): eigene Aufgabe mit Auth-Tests.
+2. **Start der installierten App ohne Anlage in der Adresse** (`start_url` = `/`): Der Vorab-Abruf greift nicht, die
+   Startweiche entscheidet erst nach `/sites`. Abhilfe: die zuletzt geöffnete Anlage merken und vorab anfragen.
+3. **Die Rollen im Live-Takt:** 3 von 9 Live-Abrufen je 10 s, auch ohne Zuordnung (`zuordnung_vorhanden = false`,
+   `stand` leer). Die Zuordnung ändert sich nur mit der Konfiguration. Abhilfe: ohne Zuordnung im Listentakt fragen,
+   oder serverseitig ein gebündeltes Live-Lesemodell.
+4. **Uhr-Übergabe am Taktbeginn:** `setNow` beim Start jedes Live-Takts rendert einmal, bevor die Daten da sind. Das
+   sind 6 der verbleibenden 24 Übergaben je Minute; die anderen sind 12 Uhrtakte (5 s) und 6 Datenübergaben.
+5. **Übrige Formatierer im Cockpit:** `periodLabel` mit gut 45 ms je Minute am Telefon, außerdem die Formatierer in
+   Ortszeit (`hhmm`, `control.ts`). Letztere bewusst offen: Tests stellen `TZ` zur Laufzeit um.
+6. **Bündel-Budget:** Der Einstieg steht mit allen vier PRs bei 257,97 von 258 kB gz.
+7. **Meldungen** (≈ 70 kB statisch) und **Summenwert-Dialoge** (≈ 18 kB gz): unverändert, Hebel 6 und 7 oben.
+
 ## Wiederholen
 
 ```bash
@@ -256,6 +305,18 @@ node wechsel.mjs --user demo2 --band $W/demo2.json --profil mobil --varianten "v
 node js-je-route.mjs 15861 $W/demo2.json "#/anlage/$S2" $W/dist-vorher       # JS je Route, ohne Leerlauf-Vorladen
 node start-kette.mjs 15861 $W/demo2.json "#/anlage/$S2" 5 150                 # Start-Wasserfall ab /me
 node wiedergabe.mjs takt --base http://localhost:15861 --user demo2 --band $W/demo2.json --sek 65 --seiten "cockpit=#/anlage/$S2"
+
+# Welle 2 (--zeit lebendig: die Live-Zeit wandert wie in Produktion; ein Band ohne Labor-API genügt)
+node wiedergabe.mjs takt --base http://localhost:15861 --user demo2 --band $W/demo2.json --sek 65 --zeit lebendig --seiten "cockpit=#/anlage/$S2"
+node wasserfall.mjs 15861 $W/demo2.json "#/anlage/$S2" 3 150 lebendig mobil 180        # Start je Pfad, /overview +180 ms
+node js-je-route.mjs 15861 $W/demo2.json "#/anlage/$S2" $W/dist-vorher 15 1 mobil      # mit Vorladen, Telefon, ohne Bedienung
+node wiedergabe.mjs interaktion --base http://localhost:15861 --user demo2 --band $W/demo2.json --profil mobil --zeit lebendig \
+  --runs 3 --kaltKlick 3 --schritte "Bereich Cockpit → Verlauf"
+# Profiling-Build (aus frontend/portal), dann React-Übergaben und CPU-Profil der offenen Seite
+VITE_API_BASE= VITE_KEYCLOAK_URL=http://localhost:15744/auth npx vite build --config ../../docs/performance/baseline/vite.profil.config.mjs --outDir $W/dist-profil
+node serve-dist.mjs 15871 $W/dist-profil &
+node wiedergabe.mjs profil --base http://localhost:15871 --user demo2 --band $W/demo2.json --sek 60 --zeit lebendig --seiten "cockpit=#/anlage/$S2"
+node cpu-profil.mjs 15871 $W/demo2.json "#/anlage/$S2" $W/cockpit.cpuprofile 60 lebendig mobil AnlageSeite
 ```
 
 Die Bänder enthalten Labor-Tokens: nach dem Lauf löschen, nie einchecken.

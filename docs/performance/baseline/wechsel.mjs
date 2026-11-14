@@ -5,6 +5,7 @@
 import { createRequire } from 'node:module';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { bandLaden } from './band.mjs';
 const require = createRequire(new URL('../../../frontend/portal/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 const a = Object.fromEntries(process.argv.slice(2).reduce((acc, x, i, arr) => {
@@ -20,9 +21,9 @@ const out = a.out || `${process.env.TMPDIR ?? '/tmp'}/vp-perf-labor/wechsel`;
 const varianten = a.varianten.split(';').map((x) => x.split('=')).map(([n, p]) => ({ n, base: `http://localhost:${p}` }));
 const seiten = a.seiten.split(';').filter(Boolean).map((p) => { const i = p.indexOf('='); return [p.slice(0, i), p.slice(i + 1)]; });
 mkdirSync(out, { recursive: true });
-const band = JSON.parse(readFileSync(a.band, 'utf8'));
-const form = (k) => decodeURIComponent(k).replace(/\d{4}-\d{2}-\d{2}T[0-9:.]+(Z|[+-]\d\d:\d\d)?/g, '{t}').replace(/\b1[78]\d{11}\b/g, '{ms}');
-const nachForm = new Map(Object.entries(band.api).map(([k, v]) => [form(k), v]));
+const zeit = a.zeit || 'ruhig'; // ruhig | frisch | lebendig (band.mjs)
+const B = bandLaden(a.band, zeit);
+const band = B.band;
 const verz = (bytes) => latenz + (MOBIL ? Math.round(bytes / 1000) : 0);
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true,
@@ -60,8 +61,7 @@ async function aufbauen(v) {
   await page.route('**/api/**', async (route) => {
     const req = route.request();
     if (req.method() !== 'GET') return route.fulfill({ status: 204, body: '' });
-    const u = new URL(req.url()); const k = `GET ${u.pathname}${u.search}`;
-    const e = band.api[k] ?? nachForm.get(form(k));
+    const e = B.antwort(req.url());
     if (!e) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
     await new Promise((r) => setTimeout(r, verz(e.body.length)));
     await route.fulfill({ status: e.status, contentType: e.typ, body: e.body });
@@ -81,7 +81,7 @@ async function aufbauen(v) {
 
 const vs = [];
 for (const v of varianten) vs.push(await aufbauen(v));
-const erg = { label, user, profil, runs, kalt, latenz, start: execSync('uptime').toString().trim(), seiten: {} };
+const erg = { label, user, profil, zeit, runs, kalt, latenz, start: execSync('uptime').toString().trim(), seiten: {} };
 async function laden(v, hash, istKalt) {
   await v.page.goto(v.base + '/silent-check-sso.html');
   if (istKalt) await v.cdp.send('Network.clearBrowserCache');
@@ -110,7 +110,7 @@ erg.ende = execSync('uptime').toString().trim();
 writeFileSync(`${out}/${label}-${user}-${profil}.json`, JSON.stringify(erg, null, 1));
 const med = (xs) => { const s = xs.filter((x) => x != null).sort((p, q) => p - q); return s.length ? s[Math.floor((s.length - 1) / 2)] : null; };
 const f = (x, d = 0) => (x == null ? '–' : Number(x).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }));
-console.log(`## Verzahnt ${label} · ${user} · ${profil} · Latenz ${latenz} ms · ${erg.start} → ${erg.ende.replace(/.*load/, 'load')}`);
+console.log(`## Verzahnt ${label} · ${user} · ${profil} · Zeit ${zeit} · Latenz ${latenz} ms · ${erg.start} → ${erg.ende.replace(/.*load/, 'load')}`);
 const kopf = ['Seite', ...vs.map((v) => `${v.n} bereit warm`), ...vs.map((v) => `${v.n} bereit kalt`), ...vs.map((v) => `${v.n} TBT warm`), ...vs.map((v) => `${v.n} JS bis bereit kalt kB`)];
 console.log(`| ${kopf.join(' | ')} |`); console.log(`|---|${kopf.slice(1).map(() => '---:').join('|')}|`);
 for (const [name, je] of Object.entries(erg.seiten)) {
