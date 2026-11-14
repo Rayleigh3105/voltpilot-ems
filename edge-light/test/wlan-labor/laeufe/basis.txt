@@ -6,5 +6,6 @@ printf '%s\n' /tmp/labor/repo/gen/packages.adb /tmp/labor/repo/base/packages.adb
 @300 apk add kmod-mac80211-hwsim wpad-basic-mbedtls iw iwinfo relayd ip-full kmod-veth tcpdump-mini 2>&1 | tail -2
 # Abweichung vom Geraet: wpad ohne ujail-Sandbox (im Emulator meldet sich der eingesperrte wpa_supplicant nicht am ubus)
 @120 mv /etc/capabilities/wpad.json /root/wpad.json.aus; /etc/init.d/wpad restart; /etc/init.d/network restart; sleep 8; ubus list | grep -E '^network.wireless|^wpa_supplicant|^hostapd' | xargs echo
-# Das Skript der Box an seinen Platz, wie install.sh es ablegt
-mkdir -p /usr/libexec/vp-edge-light && cp /tmp/labor/skript/wlan-anschluss.sh /usr/libexec/vp-edge-light/ && chmod 0755 /usr/libexec/vp-edge-light/wlan-anschluss.sh && W=/usr/libexec/vp-edge-light/wlan-anschluss.sh && ls -l $W
+# Die Skripte der Box an ihren Platz, wie install.sh sie ablegt (dazu der feste Hotplug-Haken 91)
+mkdir -p /usr/libexec/vp-edge-light && cp /tmp/labor/skript/wlan-anschluss.sh /tmp/labor/skript/einrichtung-wlan.sh /usr/libexec/vp-edge-light/ && chmod 0755 /usr/libexec/vp-edge-light/wlan-anschluss.sh /usr/libexec/vp-edge-light/einrichtung-wlan.sh && W=/usr/libexec/vp-edge-light/wlan-anschluss.sh && E=/usr/libexec/vp-edge-light/einrichtung-wlan.sh && ls -l $W $E
+mkdir -p /etc/hotplug.d/iface && cp /tmp/labor/skript/91-vp-einrichtung /etc/hotplug.d/iface/91-vp-einrichtung && ls -l /etc/hotplug.d/iface/91-vp-einrichtung

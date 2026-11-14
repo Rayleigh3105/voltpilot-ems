@@ -541,7 +541,7 @@ WireGuard bleibt der Servicezugang, künftig zum Wartungsserver (UDP 51820, [obe
 Beim Einrichten wählt der Kunde „Mit Netzwerkkabel“ oder „Über WLAN“ (Entscheide vom 13.11.2026 zum Konzept `vp-edge-light-wlan-konzept`).
 Über WLAN arbeitet die Box als **Pseudo-Brücke** (Entscheid E1=B): Sie meldet sich als WLAN-Client beim Kundenrouter an, und die Geräte an ihrer LAN-Buchse holen ihre Adressen beim Kundenrouter und stehen im Heimnetz.
 Der Kabelweg bleibt, wie er ist: eigenes Netz `10.213.0.0/24`, NAT, Zone `wan`.
-Gebaut ist bisher das Netz-Skript auf der Box; Einrichtungsseite der Box, Einrichtungs-WLAN, Werkstatt und Portal folgen als eigene Schritte.
+Gebaut sind das Netz-Skript auf der Box, das Einrichtungs-WLAN und die Einrichtungsseite der Web-App (unten); das Wiederfinden der Geräte nach einem Adresswechsel (S6), Werkstatt und Portal folgen als eigene Schritte.
 
 | | |
 |---|---|
@@ -549,6 +549,7 @@ Gebaut ist bisher das Netz-Skript auf der Box; Einrichtungsseite der Box, Einric
 | Befehle | `scan` (Netze im 2,4-GHz-Band, `--json` für Programme), `messen <ssid>` (Signal und Urteil gegen -70 dBm), `verbinden <ssid>` (Passwort als eine Zeile auf stdin), `kabel` (zurück, nur mit Verbindung an WAN), `status` |
 | Was `verbinden` einrichtet | WLAN-Client `vp_wlan` (DHCP, `metric 20`: ein Kabel an WAN bleibt Standardweg), Relay `vp_relay` über `lan` und `vp_wlan`, DHCP der Box auf `lan` aus; `10.213.0.1` bleibt an der LAN-Buchse; `wireless.radio0.country=DE`. Das offene WLAN „OpenWrt“, das OpenWrt 25.12 ab Werk ausgeschaltet anlegt, bleibt aus; ist das Funkmodul selbst aus, geht es nur für den Client an (jedes andere WLAN darauf bekommt `disabled=1`) |
 | Lokale Adresse am Relay | die WLAN-Adresse der Box (`relayd -L`); ein Hotplug-Haken zieht sie nach, wenn der Router der Box eine neue Adresse gibt |
+| Routerausfall | `vp_wlan` trägt `force_link`: Fällt das Kunden-WLAN aus, bleibt die WLAN-Adresse stehen und die Box liest die Geräte an ihrem Kabel weiter (sonst nähme netifd die Adresse mit, und die relayd-Wege liefen ins Leere - gemessen, Lauf `stoerfaelle` vor dieser Änderung). Der Preis: Nach einem Routertausch (gleicher Name, neues Netz) hält udhcpc die alte Adresse; der Wächter des Einrichtungs-WLANs holt dann eine frische (`ifup vp_wlan`, wenn Router und Internet trotz Anmeldung zwei Takte lang nicht antworten). Läuft die Lease während eines langen Ausfalls ab, endet auch dieser Schutz |
 | Schutz | eigene Zone `heimnetz`: eingehend nur DHCP, Ping und OCPP (Port wie `firewall.vp_ocpp`); SSH, LuCI, Web-App 8484 und 1883 aus dem Heimnetz zu; Weiterleitung zwischen LAN und Heimnetz offen, außer TCP 502 (Huawei-Dongle) und 4196 (Waveshare) |
 | Fehler | falsches Passwort, unbekanntes Netz, keine Adresse vom Router: die vorige Konfiguration gilt wieder, kein Client sucht weiter (er würde jeden Access Point auf dem Funkmodul abschalten) |
 | Grenzen | ein Funkmodul, nur 2,4 GHz, ein Kanal; relayd reicht nur IPv4 durch; Signal am Platz der Box -70 dBm oder besser |
@@ -575,12 +576,32 @@ Der Huawei-Dongle sieht die Box unter ihrer WLAN-Adresse; „restricted“ also 
 | Box → Gerät | ohne lokale Adresse am Relay **kein Weg**; mit der WLAN-Adresse Ping und 502, das Gerät sieht die WLAN-Adresse |
 | `10.213.0.1` als lokale Adresse | Box → Gerät geht, aber relayd setzt sie auch als Absender zum Router: Ping zum Router ohne Antwort (DNS über den Router ginge nicht) |
 | Router | sieht im DHCP die eigene MAC des Geräts |
-| Router 60 s aus | die Box erreicht die Geräte nicht, solange der Router aus ist: netifd nimmt `vp_wlan` bei Verbindungsverlust herunter (DHCP mit Release), damit fehlt die WLAN-Adresse, die relayd als Absender seiner Wege zu den Geräten nutzt; das Gerät behält seine Adresse. Danach von selbst wieder verbunden, die Box liest wieder. Am Kabel läse sie weiter |
-| Passwort am Router geändert | Box nicht verbunden und liest die Geräte nicht, bis `verbinden` mit dem neuen Passwort läuft; danach alles wieder da |
+| Router 60 s aus | mit `force_link` bleibt die WLAN-Adresse stehen, die Box liest die Geräte durch den Ausfall hindurch (Lauf `routerausfall`); danach von selbst wieder verbunden, dieselbe Adresse. Ohne `force_link` war die Lücke gemessen: netifd nahm `vp_wlan` herunter (DHCP mit Release), und die relayd-Wege liefen ins Leere |
+| Routertausch (gleicher Name, neues Netz) | die Box meldet sich an, hält aber die alte Adresse; zwei Takte des Wächters später holt `ifup vp_wlan` eine frische, das Relay zieht nach, die Geräte holen ihre neuen Adressen beim nächsten DHCP-Lauf (Lauf `routerausfall`) |
+| Passwort am Router geändert | Box nicht verbunden; sie liest die Geräte weiter (`force_link`), bis die Lease abläuft, und nach 10 Minuten öffnet sich das Einrichtungs-WLAN; `verbinden` mit dem neuen Passwort stellt alles wieder her |
 
 **Offen, nur an echter Hardware:** Client und Einrichtungs-WLAN auf der Mango (mt7603), relayd an FRITZ!Box, Speedport und Vodafone Station (Geräteliste, feste Adressen), Smart Dongle hinter der Box mit „restricted“, Waveshare im Kundennetz, Ladesäule über die WLAN-Adresse, Router mit WPA3, ein Ausfall des Routers auf echter Hardware.
 
-**Für die Werkstatt (eigener Schritt):** `wireless.radio0.country='DE'` auf jeder Box setzen (heute setzt es erst `verbinden`; ohne Land gelten die Kanäle 12 und 13 nur eingeschränkt) und `relayd` mitbringen.
+**Für die Werkstatt (eigener Schritt):** `wireless.radio0.country='DE'` auf jeder Box setzen (heute setzen es erst `verbinden` und das Einrichtungs-WLAN; ohne Land gelten die Kanäle 12 und 13 nur eingeschränkt) und `relayd` mitbringen.
+
+### Einrichtungs-WLAN und Einrichtungsseite
+
+Jede Box öffnet dasselbe offene WLAN **„VoltPilot-Einrichtung“**, aber nur, solange sie keine Verbindung hat (Entscheid E6=B): beim ersten Start ohne Kabel sofort, nach einem Ausfall nach 10 Minuten.
+Weil Client und Access Point sich das eine Funkmodul teilen und der Access Point während der Client-Suche aus ist, wechselt ein Wächter in festen Fenstern: 10 Minuten Einrichtungs-WLAN (Client aus, die letzte WLAN-Adresse liegt als Notweg auf `br-lan`, die Box liest weiter), dann 2 Minuten Versuch mit dem Kunden-WLAN.
+Die Fenster verlängern sich nicht, auch wenn ein Handy verbunden ist: sonst hielte ein Fremder die Box mit einer dauernden Verbindung offline.
+Nach 3 Minuten stabiler Verbindung schließt das WLAN von selbst; die kurze Frist lässt die Seite ihr Ergebnis noch anzeigen.
+
+| | |
+|---|---|
+| Wächter | `/usr/libexec/vp-edge-light/einrichtung-wlan.sh` (`takt` aus cron jede Minute, `status`, `auf`, `zu`); `install.sh` legt Skript, cron-Zeile (`# vp-einrichtung-wlan`), `cronloglevel 9` und den Hotplug-Haken `91-vp-einrichtung` an |
+| Netz | `vp_einricht`, `10.213.1.1/24`; DHCP über den dnsmasq der Box (`dhcp.vp_einricht`; ein zweiter dnsmasq bekäme Port 67 nicht); DNS fängt ein eigener dnsmasq auf Port 5353, der jeden Namen auf die Box zeigt (Anmelde-Erkennung des Handys öffnet die Seite) |
+| Zone `einrichtung` | eingehend nur DHCP (67), der DNS-Fänger (5353; JEDE DNS-Frage aus der Zone wird dorthin umgelenkt, auch an fremde Namensserver) und die Seite der Box (8484, nur an `10.213.1.1`); Port 80 an die Box wird auf die Seite umgelenkt; keine Weiterleitung, weder ins Heimnetz noch zu den Geräten; SSH, LuCI, 1883 zu |
+| Seite | `http://10.213.1.1:8484/einrichtung.html` (Web-App, `internal/web/einrichtung.go`): zuerst die Kennung, die unten auf der Box steht (fünf Fehlversuche, dann fünf Minuten Pause; die Seite zeigt sie vorher nirgends), dann Kabel oder WLAN, Netzliste, Passwort, Empfangsprüfung gegen -70 dBm; sie ruft `wlan-anschluss.sh` auf |
+| Schranke | Anfragen unter `10.213.1.1` sehen NUR die Einrichtungsseite und ihre API; der Rest der Web-App (am Kabel wie heute ohne Anmeldung offen) bleibt im Einrichtungs-WLAN unerreichbar, und ihr Beobachter lernt aus solchen Anfragen keine Adresse |
+| Zustand | nur in `/tmp/vp-einricht` (Laufzeit der Box, `/proc/uptime`); in den Flash schreiben nur die uci-Wechsel der Fenster (höchstens alle paar Minuten, nur während eines Ausfalls) |
+
+Gemessen im Emulator (Läufe `einrichtung`, `fenster`, `routerausfall`, `einrichtung-weg` - Letzterer führt das echte Go-Programm der Seite im OpenWrt-Emulator aus und geht den Weg Kennung → Netzliste → `verbinden` bis zum WLAN-Weg B).
+Offen, nur an echter Hardware: V1 (Access Point und Client auf der Mango), V11 (öffnet sich die Seite auf iPhone und Android von selbst), Scan während der Access Point sendet (mt7603; im Emulator belegt).
 
 ## Pilotplan auf einem echten Mango
 

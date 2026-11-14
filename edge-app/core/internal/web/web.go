@@ -22,13 +22,13 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otatarget"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -338,11 +338,18 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
 	src SourcesController, topo TopologyController, ac ActiveControlController,
 	cal CalibrationController, mir MirrorController, ota OtaController,
-	iw InstallerWriteController, ocpp OcppController) http.Handler {
+	iw InstallerWriteController, ocpp OcppController, einr *Einrichtung) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
+
+	// Die Einrichtungsseite (Kabel oder WLAN, einrichtung.go). Ihre Schranke
+	// legt edgemain um Handler UND Beobachter - sie gehoert zur Verbindung,
+	// nicht zu einer Route.
+	if einr != nil {
+		einr.registriere(mux)
+	}
 
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

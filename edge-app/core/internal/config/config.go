@@ -53,6 +53,17 @@ type Config struct {
 	// a property of the build. "" = the Docker box.
 	BoxArt string `json:"-"`
 
+	// WlanSkript ist das Netz-Skript der Edge-Light-Box (wlan-anschluss.sh,
+	// Kabel oder WLAN beim Einrichten). Die Einrichtungsseite der Web-App ruft
+	// es auf Knopfdruck auf; fehlt die Datei (Docker-Box), sagt die Seite das.
+	// Das Programm selbst aendert nie die Konfiguration der Box.
+	WlanSkript string `json:"wlan_skript"`
+	// EinrichtAddr ist die Adresse der Box im Einrichtungs-WLAN
+	// "VoltPilot-Einrichtung" (einrichtung-wlan.sh). Anfragen, die unter ihr
+	// ankommen, sehen nur die Einrichtungsseite (web.Einrichtung.Schranke).
+	// "" schaltet die Schranke ab.
+	EinrichtAddr string `json:"einricht_addr"`
+
 	// LocalMQTTAddr is the listen address of the embedded local bus that
 	// Layer 1 (Node-RED) connects to.
 	LocalMQTTAddr string `json:"local_mqtt_addr"`
@@ -266,6 +277,8 @@ func Defaults() Config {
 		DataDir:                     "/data",
 		LoaderPath:                  "/usr/libexec/vp-edge-light/boot.sh",
 		LoaderInitPath:              "/etc/init.d/vp-edge-light",
+		WlanSkript:                  "/usr/libexec/vp-edge-light/wlan-anschluss.sh",
+		EinrichtAddr:                "10.213.1.1",
 		LocalMQTTAddr:               ":1883",
 		HTTPAddr:                    ":8484",
 		MaxChargeKw:                 50,
@@ -401,6 +414,8 @@ func applyEnv(cfg *Config) {
 	str("VP_OTA_RAM_DIR", &cfg.OtaRAMDir)
 	str("VP_LOADER_PATH", &cfg.LoaderPath)
 	str("VP_LOADER_INIT_PATH", &cfg.LoaderInitPath)
+	str("VP_WLAN_SKRIPT", &cfg.WlanSkript)
+	str("VP_EINRICHT_ADDR", &cfg.EinrichtAddr)
 	str("VP_LOCAL_MQTT_ADDR", &cfg.LocalMQTTAddr)
 	str("VP_HTTP_ADDR", &cfg.HTTPAddr)
 	str("VP_LAN_HOST", &cfg.LANHost)

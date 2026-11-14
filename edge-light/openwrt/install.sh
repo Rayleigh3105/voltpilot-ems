@@ -164,6 +164,13 @@ box_ssh "$TARGET" "[ -f /etc/config/vp-edge-light ] || { cat > /etc/config/vp-ed
 # aendert erst etwas, wenn jemand es aufruft; das Programm erneuert es nicht.
 # shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
 box_ssh "$TARGET" "mkdir -p /usr/libexec/vp-edge-light && cat > /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && chmod 0755 /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu && mv -f /usr/libexec/vp-edge-light/wlan-anschluss.sh.neu /usr/libexec/vp-edge-light/wlan-anschluss.sh && sync" <"$HERE/files/usr/libexec/vp-edge-light/wlan-anschluss.sh"
+# Einrichtungs-WLAN (gleiches WLAN ab Werk, nur offen ohne Verbindung;
+# edge-light/docs/mango.md "Ohne Kabel zum Router"): der Waechter und sein
+# Hotplug-Haken. Aktiv wird er erst ueber den cron-Eintrag unten.
+# shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
+box_ssh "$TARGET" "cat > /usr/libexec/vp-edge-light/einrichtung-wlan.sh.neu && chmod 0755 /usr/libexec/vp-edge-light/einrichtung-wlan.sh.neu && mv -f /usr/libexec/vp-edge-light/einrichtung-wlan.sh.neu /usr/libexec/vp-edge-light/einrichtung-wlan.sh && sync" <"$HERE/files/usr/libexec/vp-edge-light/einrichtung-wlan.sh"
+# shellcheck disable=SC2029 # bewusst lokal expandiert: der Zielpfad kommt von hier
+box_ssh "$TARGET" "mkdir -p /etc/hotplug.d/iface && cat > /etc/hotplug.d/iface/91-vp-einrichtung.neu && mv -f /etc/hotplug.d/iface/91-vp-einrichtung.neu /etc/hotplug.d/iface/91-vp-einrichtung && sync" <"$HERE/files/etc/hotplug.d/iface/91-vp-einrichtung"
 
 echo "--- Vertrauens-Set in den Flash ($OTA_FEST)"
 # Bis Stufe 1 war ota ein Symlink in den RAM - dort ginge das Set beim
@@ -244,6 +251,20 @@ box_ssh "$TARGET" "if [ -f /etc/config/firewall ]; then
 else
   echo '    WARNUNG: /etc/config/firewall fehlt - keine fw4-Firewall auf diesem Geraet, keine Regel gesetzt'
 fi"
+
+echo "--- Einrichtungs-WLAN: Waechter jede Minute (cron)"
+# Eine MARKIERTE Zeile (# vp-einrichtung-wlan) wie bei service-tunnel.sh: ein
+# erneuter Aufruf ersetzt sie statt eine zweite anzulegen. cronloglevel 9 wie
+# dort, sonst protokolliert cron jeden Start (60 Zeilen je Stunde); eine schon
+# gesetzte Stufe bleibt. Der Waechter selbst meldet nur, was sich aendert.
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "touch /etc/crontabs/root
+grep -v 'vp-einrichtung-wlan\$' /etc/crontabs/root > /tmp/crontab.vp || true
+echo '* * * * * /usr/libexec/vp-edge-light/einrichtung-wlan.sh takt # vp-einrichtung-wlan' >> /tmp/crontab.vp
+cat /tmp/crontab.vp > /etc/crontabs/root && rm -f /tmp/crontab.vp
+[ -n \"\$(uci -q get 'system.@system[0].cronloglevel' || true)\" ] || { uci set 'system.@system[0].cronloglevel=9'; uci commit system; }
+/etc/init.d/cron enable
+/etc/init.d/cron restart"
 
 echo "--- fertig. Starten:  ssh $TARGET /etc/init.d/vp-edge-light restart"
 echo "    Protokoll:         ssh $TARGET logread -f -e vp-edge-light"

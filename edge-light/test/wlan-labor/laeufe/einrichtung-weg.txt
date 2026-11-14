@@ -1,0 +1,34 @@
+# Lauf einrichtung-weg: Ende-zu-Ende gegen die ECHTE Web-App der Einrichtungsseite (cmd/einrichtung-probe, dieselbe Umsetzung wie auf der Box) - Kennung mit Sperre, Schranke, Netzliste aus dem echten Scan, verbinden bis zum WLAN-Weg B, Ergebnis nach dem WLAN-Wechsel des Handys
+. /tmp/labor/werkzeug/http.sh
+pruefe "nc (busybox) ist da" sh -c "command -v nc"
+# Den Stellvertreter auf 8484 gegen das echte Probe-Programm tauschen
+kill $(cat /var/run/w8484.pid); sleep 1; cp /tmp/labor/skript/einrichtung-probe /tmp/einrichtung-probe; chmod 0755 /tmp/einrichtung-probe
+VP_REF=edge-wrk7abg VP_WLAN_SKRIPT=$W VP_EINRICHT_ADDR=10.213.1.1 VP_HTTP_ADDR=:8484 /tmp/einrichtung-probe > /tmp/probe.log 2>&1 & echo "probe_pid=$!"
+@60 i=0; while [ $i -lt 30 ] && ! netstat -ltn 2>/dev/null | grep -q ':8484 '; do sleep 1; i=$((i+1)); done; pruefe "die Web-App der Probe hoert auf 8484" sh -c "netstat -ltn 2>/dev/null | grep -q ':8484 '"
+# Einrichtungs-WLAN auf, Handy hinein
+@90 $E takt; sleep 4; gleich "Einrichtungs-WLAN offen" "$($E status | sed -n s/^einrichtung=//p)" offen
+printf 'ctrl_interface=/var/run/handy-wpa\nnetwork={\n ssid="VoltPilot-Einrichtung"\n key_mgmt=NONE\n}\n' > /tmp/handy.conf
+@150 ip netns exec handy wpa_supplicant -B -i handy0 -c /tmp/handy.conf -P /var/run/handy-wpa.pid 2>&1 | tail -1; i=0; while [ $i -lt 45 ] && ! ip netns exec handy iw dev handy0 link | grep -q Connected; do sleep 1; i=$((i+1)); done; HANDYIP=$(dhcp_neu handy handy0); echo "handy=$HANDYIP"; case "$HANDYIP" in 10.213.1.*) pruef_ok "Handy im Einrichtungs-WLAN ($HANDYIP)";; *) pruef_fehler "Handy ohne Adresse ($HANDYIP)";; esac
+# Anmeldestand offen, aber ohne die Kennung der Box
+@60 http_ruf handy 10.213.1.1 8484 GET /api/einrichtung/anmeldung > /dev/null; gleich "Anmeldestand: Status" "$(http_status)" 200; pruefe "Anmeldestand: verfuegbar" grep -q '"verfuegbar":true' /tmp/http.antwort; verneine "die Antwort nennt die Kennung nicht" grep -qi wrk7abg /tmp/http.antwort
+# Die Schranke: im Einrichtungs-WLAN gibt es nur die Einrichtungsseite
+@60 http_ruf handy 10.213.1.1 8484 GET /einrichtung.html > /dev/null; gleich "Seite: Status" "$(http_status)" 200; pruefe "Seite: die Schritte stehen drin" grep -q sAnmeldung /tmp/http.antwort
+@60 http_ruf handy 10.213.1.1 8484 GET /einrichten.html > /dev/null; gleich "einrichten.html: umgelenkt" "$(http_status)-$(sed -n 's/^Location: //p' /tmp/http.antwort | head -n 1)" "302-/einrichtung.html"
+@60 http_ruf handy 10.213.1.1 8484 GET /api/state > /dev/null; gleich "api/state: umgelenkt, kein Zustand der Anlage im Einrichtungs-WLAN" "$(http_status)" 302
+# Falsche Kennung zaehlt, die richtige meldet an (jede Schreibweise)
+@60 http_ruf handy 10.213.1.1 8484 POST /api/einrichtung/anmeldung "" '{"kennung":"EDGE-FALSCH1"}' > /dev/null; gleich "falsche Kennung: Status" "$(http_status)" 403; pruefe "falsche Kennung: Versuche gezaehlt" grep -q '"versuche_frei":4' /tmp/http.antwort
+@60 http_ruf handy 10.213.1.1 8484 POST /api/einrichtung/anmeldung "" '{"kennung":"EDGE-WRK7ABG"}' > /dev/null; gleich "richtige Kennung: Status" "$(http_status)" 200; KEKS=$(http_cookie); pruefe "Sitzungs-Cookie gesetzt" sh -c "[ -n \"$KEKS\" ]"
+# Netzliste aus dem echten Scan - waehrend der Access Point der Box sendet
+@120 http_ruf handy 10.213.1.1 8484 GET /api/einrichtung/netze "$KEKS" > /dev/null; gleich "Netzliste: Status" "$(http_status)" 200; pruefe "Netzliste: das Kunden-WLAN steht drin" grep -q '"ssid":"Kunde-WLAN"' /tmp/http.antwort
+# verbinden ueber die Web-App: 202 sofort, der Lauf arbeitet im Hintergrund weiter, waehrend das Funkmodul zum Kunden-WLAN wechselt
+@60 http_ruf handy 10.213.1.1 8484 POST /api/einrichtung/verbinden "$KEKS" '{"ssid":"Kunde-WLAN","passwort":"kundenpasswort"}' > /dev/null; gleich "verbinden: angenommen" "$(http_status)" 202
+@240 i=0; while [ $i -lt 60 ]; do http_ruf - 127.0.0.1 8484 GET /api/einrichtung/verbinden "$KEKS" > /dev/null; grep -q '"laeuft":false' /tmp/http.antwort && break; sleep 3; i=$((i+1)); done; cat /tmp/http.antwort | tail -n 1
+pruefe "verbinden: beendet" grep -q '"laeuft":false' /tmp/http.antwort; pruefe "verbinden: Rueckgabe 0" grep -q '"rc":0' /tmp/http.antwort; pruefe "verbinden: Urteil reicht" grep -q '"urteil":"reicht"' /tmp/http.antwort
+gleich "danach: WLAN-Weg B steht" "$($W status | sed -n s/^modus=//p)-$($W status | sed -n s/^relay=//p)" wlan-an
+@60 KABELIP2=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP2"; case "$KABELIP2" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP2)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP2)";; esac
+# Der Moment aus Bildschirm 6W: die Box ist verbunden, der Access Point sendet wieder, das Handy (wpa_supplicant) kommt von selbst zurueck und holt das Ergebnis ab
+@120 i=0; while [ $i -lt 60 ] && ! ip netns exec handy iw dev handy0 link | grep -q Connected; do sleep 2; i=$((i+1)); done; pruefe "Handy wieder im Einrichtungs-WLAN" sh -c "ip netns exec handy iw dev handy0 link | grep -q Connected"
+@60 http_ruf handy 10.213.1.1 8484 GET /api/einrichtung/verbinden "$KEKS" > /dev/null; gleich "Handy holt das Ergebnis ab" "$(http_status)" 200; pruefe "Ergebnis: verbunden" grep -q '"rc":0' /tmp/http.antwort
+# Die Ruhefrist schliesst das Einrichtungs-WLAN von selbst
+@90 env "VP_EINRICHT_RUHE=10" $E takt; sleep 11; env "VP_EINRICHT_RUHE=10" $E takt; sleep 3; gleich "nach der Ruhefrist: Einrichtungs-WLAN zu" "$($E status | sed -n s/^einrichtung=//p)" zu
+info "probe.log: $(tail -n 2 /tmp/probe.log | tr '\n' ' ')"

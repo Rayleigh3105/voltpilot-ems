@@ -3429,3 +3429,39 @@ test("brand-mark: dieselben Zahlen wie VP_MARK im Portal (wenn das Portal danebe
   assert.ok(VP_MARK_BOLT.includes(d[0].slice(4, -1)), "Blitz weicht von VP_MARK ab");
   assert.match(tsx, /fill: '#95B9FF'/);
 });
+
+// ---- einrichtung.js: die reinen Helfer der Einrichtungsseite ----------------
+
+test("Einrichtung: balkenstufe stuft das Signal wie die Netzliste", () => {
+  const w = load(["einrichtung.js"]);
+  const f = w.VPEinrichtung.balkenstufe;
+  assert.strictEqual(f(-30), 4);
+  assert.strictEqual(f(-50), 4);
+  assert.strictEqual(f(-55), 3);
+  assert.strictEqual(f(-65), 2);
+  assert.strictEqual(f(-70), 2); // -70 reicht (Konzept 4.2), nie nur ein Balken
+  assert.strictEqual(f(-71), 1);
+  assert.strictEqual(f("kaputt"), 1);
+});
+
+test("Einrichtung: skala misst gegen die Schwelle -70, auch als Text", () => {
+  const w = load(["einrichtung.js"]);
+  const f = w.VPEinrichtung.skala;
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(f("-70", "-70"))), { prozent: 33, schwach: false });
+  assert.strictEqual(f(-71, -70).schwach, true);
+  assert.strictEqual(f(-30, -70).prozent, 100);
+  assert.strictEqual(f(-95, -70).prozent, 0);  // unter dem Skalenende
+  assert.strictEqual(f("", "").schwach, true); // kein Wert = kein Urteil "reicht"
+  assert.strictEqual(f(-69, "kaputt").schwach, false); // kaputte Schwelle faellt auf -70
+});
+
+test("Einrichtung: ergebnisZiel lenkt die Rueckgaben des Netz-Skripts", () => {
+  const w = load(["einrichtung.js"]);
+  const f = w.VPEinrichtung.ergebnisZiel;
+  assert.strictEqual(f(0, { urteil: "reicht" }), "reicht");        // 6W
+  assert.strictEqual(f(0, { urteil: "reicht_nicht" }), "schwach"); // 6W'
+  assert.strictEqual(f(5, {}), "passwort");                        // 6W''
+  assert.strictEqual(f(4, {}), "weg");                             // Netz nicht gefunden
+  assert.strictEqual(f(9, {}), "weg");
+  assert.strictEqual(f(0, {}), "schwach"); // ohne Urteil nie "reicht" behaupten
+});

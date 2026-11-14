@@ -1,0 +1,29 @@
+# Lauf routerausfall: die Luecke aus PR #1851 - mit force_link liest die Box die Geraete waehrend eines Routerausfalls weiter (die WLAN-Adresse bleibt stehen), und nach einem Routertausch (gleicher Name, neues Netz) holt der Waechter eine frische Adresse. Die Fenster des Einrichtungs-WLANs bleiben hier aussen vor (Vorgabe AUSFALL 600 s)
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; cat /tmp/v.rc; gleich "verbinden: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"
+WWANIP=$(wert wlan_adresse /tmp/v.out); echo "wlan=$WWANIP"; gleich "force_link ist gesetzt" "$(uci -q get network.vp_wlan.force_link)" 1
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
+pruefe "vorher: Box liest das Geraet (502)" tcp - $KABELIP 502
+# Fall 1: Router aus - die Box liest weiter (das war die Luecke: vorher nahm netifd die Adresse mit, und die relayd-Wege liefen ins Leere)
+kill $(cat /var/run/kunde-hostapd.pid); sleep 12; echo "Router aus"
+verneine "Router aus: WLAN nicht mehr verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+gleich "Router aus: die WLAN-Adresse bleibt stehen" "$($W status | sed -n s/^wlan_adresse=//p)" "$WWANIP"
+pruefe "Router aus: Box erreicht das Geraet" ping -c 2 -W 2 $KABELIP; pruefe "Router aus: Box liest das Geraet (502)" tcp - $KABELIP 502
+info "Router aus: Geraet hat noch $(ip netns exec kabel ip -4 -o addr show kabel1 | awk '{print $4}')"
+# Rueckkehr desselben Routers: ohne Eingriff wieder verbunden, dieselbe Adresse
+@30 ip netns exec kunde hostapd -B -P /var/run/kunde-hostapd.pid /tmp/kunde.conf >/dev/null 2>&1; sleep 1; ip netns exec kunde ip addr replace 192.168.178.1/24 dev kunde0; echo "Router wieder an"
+@120 i=0; while [ $i -lt 90 ] && ! $W status | grep -qx wlan_zustand=COMPLETED; do sleep 1; i=$((i+1)); done; info "nach dem Ausfall verbunden nach $i s"; pruefe "nach dem Ausfall von selbst wieder verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+gleich "nach dem Ausfall: dieselbe Adresse, kein neues DHCP noetig" "$($W status | sed -n s/^wlan_adresse=//p)" "$WWANIP"
+@60 sleep 3; pruefe "nach dem Ausfall: Box liest das Geraet" tcp - $KABELIP 502; pruefe "nach dem Ausfall: Heimnetz erreicht das Geraet" ip netns exec kunde ping -c 2 -W 2 $KABELIP
+# Fall 2: Routertausch - gleicher Name, gleiches Passwort, NEUES Netz 192.168.179.0/24. udhcpc haelt die alte Adresse (der Preis von force_link); der Waechter merkt, dass Router und Internet trotz Anmeldung nicht antworten, und holt per ifup eine frische
+kill $(cat /var/run/kunde-hostapd.pid); kill $(cat /var/run/kunde-dnsmasq.pid); rm -f /tmp/kunde.leases; sleep 1
+ip netns exec kunde ip addr flush dev kunde0; ip netns exec kunde ip addr add 192.168.179.1/24 dev kunde0
+@30 ip netns exec kunde hostapd -B -P /var/run/kunde-hostapd.pid /tmp/kunde.conf >/dev/null 2>&1; sleep 1; ip netns exec kunde ip addr replace 192.168.179.1/24 dev kunde0
+ip netns exec kunde dnsmasq --conf-file=/dev/null --port=0 --interface=kunde0 --bind-interfaces --dhcp-range=192.168.179.100,192.168.179.150,12h --dhcp-leasefile=/tmp/kunde.leases --pid-file=/var/run/kunde-dnsmasq.pid; echo "Router getauscht (192.168.179.0/24)"
+@120 i=0; while [ $i -lt 90 ] && ! $W status | grep -qx wlan_zustand=COMPLETED; do sleep 1; i=$((i+1)); done; pruefe "Tausch: wieder angemeldet (gleicher Name)" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+gleich "Tausch: die Adresse ist noch die alte (udhcpc haelt die Lease)" "$($W status | sed -n s/^wlan_adresse=//p)" "$WWANIP"
+# Zwei Takte des Waechters: Router und Internet antworten nicht -> ifup holt eine frische Adresse
+@60 $E takt; sleep 2; $E takt; echo "zwei Takte"
+@180 i=0; while [ $i -lt 40 ] && ! $W status | sed -n s/^wlan_adresse=//p | grep -q '^192\.168\.179\.'; do sleep 3; i=$((i+1)); done; ADR2=$($W status | sed -n s/^wlan_adresse=//p); echo "wlan jetzt=$ADR2"; case "$ADR2" in 192.168.179.*) pruef_ok "Tausch: frische Adresse vom neuen Router ($ADR2)";; *) pruef_fehler "Tausch: Adresse bleibt alt ($ADR2)";; esac
+@60 sleep 2; gleich "Tausch: lokale Adresse am Relay nachgezogen" "$($W status | sed -n s/^relay_adresse=//p)" "$ADR2"
+@60 KABELIP2=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP2"; case "$KABELIP2" in 192.168.179.*) pruef_ok "Tausch: Geraet holt eine Adresse vom neuen Router ($KABELIP2)";; *) pruef_fehler "Tausch: Geraet ohne neue Adresse ($KABELIP2)";; esac
+pruefe "Tausch: Box liest das Geraet unter der neuen Adresse (502)" tcp - $KABELIP2 502; pruefe "Tausch: der neue Router erreicht das Geraet" ip netns exec kunde ping -c 2 -W 2 $KABELIP2

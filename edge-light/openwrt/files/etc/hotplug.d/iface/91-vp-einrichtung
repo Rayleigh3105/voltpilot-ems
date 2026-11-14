@@ -1,0 +1,7 @@
+# vp-einrichtung: fest installiert (install.sh). Das Kunden-WLAN hat wieder
+# eine Adresse - der Notweg des Einrichtungs-WLANs (letzte WLAN-Adresse auf
+# br-lan, einrichtung-wlan.sh) ist dann sofort zu raeumen, nicht erst beim
+# naechsten Takt: sonst traegt eine Minute lang dieselbe Adresse auf zwei
+# Schnittstellen. Ohne aktiven Notweg tut nachlauf nichts.
+[ "$INTERFACE" = vp_wlan ] && { [ "$ACTION" = ifup ] || [ "$ACTION" = ifupdate ]; } &&
+  /usr/libexec/vp-edge-light/einrichtung-wlan.sh nachlauf

@@ -353,6 +353,19 @@ wlan_eintragen() { # wlan_eintragen <ssid> <verschluesselung> <passwort>
   uci set network.vp_wlan=interface
   uci set network.vp_wlan.proto=dhcp
   uci set network.vp_wlan.metric=20
+  # force_link: Faellt das Kunden-WLAN aus, nimmt netifd die Schnittstelle
+  # sonst herunter (link connectivity loss), udhcpc gibt die Adresse frei -
+  # und die relayd-Wege zu den Geraeten behalten genau diese Adresse als
+  # Absender: die Box erreicht ihre eigenen Geraete nicht mehr (gemessen,
+  # Lauf stoerfaelle, PR #1851). Mit force_link bleibt die Adresse stehen und
+  # die Box liest waehrend des Ausfalls weiter. Der Preis: nach einem
+  # Routertausch (gleicher Name, neues Netz) haelt udhcpc die alte Adresse
+  # bis zur Verlaengerung - dafuer stoesst der Waechter des Einrichtungs-WLANs
+  # (einrichtung-wlan.sh takt) eine frische an, wenn Router und Internet
+  # trotz Anmeldung nicht antworten. Laeuft die Lease waehrend eines langen
+  # Ausfalls ab, endet auch dieser Schutz (die Geraete verlieren ihre
+  # Adressen dann ebenso).
+  uci set network.vp_wlan.force_link=1
   uci -q delete firewall.vp_heimnetz
   uci set firewall.vp_heimnetz=zone
   uci set "firewall.vp_heimnetz.name=$ZONE"

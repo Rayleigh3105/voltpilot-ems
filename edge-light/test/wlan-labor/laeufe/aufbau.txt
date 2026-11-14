@@ -1,7 +1,8 @@
-# Aufbau: drei Funkmodule - Kundenrouter (WPA2, ns kunde), Nachbar (WPA3, ns nachbar), Box; Kabelgeraet (ns kabel) per veth an der LAN-Buchse der Box
-@60 rmmod mac80211_hwsim; insmod mac80211_hwsim radios=3; sleep 2; ls /sys/class/ieee80211
-set -- $(ls /sys/class/ieee80211); PK=$1; PN=$2; PB=$3; echo "kunde=$PK nachbar=$PN box=$PB"
-ip netns add kunde; ip netns add nachbar; ip netns add kabel; iw phy $PK set netns name kunde; iw phy $PN set netns name nachbar
+# Aufbau: vier Funkmodule - Kundenrouter (WPA2, ns kunde), Nachbar (WPA3, ns nachbar), Box, Handy (ns handy, fuer das Einrichtungs-WLAN); Kabelgeraet (ns kabel) per veth an der LAN-Buchse der Box
+@60 rmmod mac80211_hwsim; insmod mac80211_hwsim radios=4; sleep 2; ls /sys/class/ieee80211
+set -- $(ls /sys/class/ieee80211); PK=$1; PN=$2; PB=$3; PH=$4; echo "kunde=$PK nachbar=$PN box=$PB handy=$PH"
+ip netns add kunde; ip netns add nachbar; ip netns add kabel; ip netns add handy; iw phy $PK set netns name kunde; iw phy $PN set netns name nachbar; iw phy $PH set netns name handy
+ip netns exec handy iw phy $PH interface add handy0 type managed; ip netns exec handy ip link set lo up; ip netns exec handy ip link set handy0 up
 BOXPFAD=$(readlink -f /sys/class/ieee80211/$PB/device | sed 's#^/sys/devices/##'); echo "box-pfad=$BOXPFAD"; cp /tmp/labor/werkzeug/udhcpc.sh /tmp/udhcpc.sh; chmod +x /tmp/udhcpc.sh
 # Kundenrouter: WPA2, Kanal 6, 192.168.178.1/24, DHCP .100-.150
 ip netns exec kunde iw phy $PK interface add kunde0 type managed; ip netns exec kunde ip link set lo up
@@ -19,7 +20,8 @@ uci set wireless.radio0=wifi-device; uci set wireless.radio0.type='mac80211'; uc
 uci set wireless.default_radio0=wifi-iface; uci set wireless.default_radio0.device='radio0'; uci set wireless.default_radio0.network='lan'; uci set wireless.default_radio0.mode='ap'; uci set wireless.default_radio0.ssid='OpenWrt'; uci set wireless.default_radio0.encryption='none'; uci set wireless.default_radio0.disabled='1'; uci commit wireless
 ip link add kabel0 type veth peer name kabel1; ip link set kabel1 netns kabel; ip netns exec kabel ip link set lo up; ip netns exec kabel ip link set kabel1 up; uci add_list network.@device[0].ports='kabel0'; uci commit network
 @120 /etc/init.d/network reload; sleep 6; ip -4 addr show br-lan | grep inet
-# Stellvertreter: am Geraet Weboberflaeche 80, Modbus 502, Waveshare 4196; an der Box Web-App 8484 und OCPP 8887 (LuCI 80 und SSH 22 laufen ohnehin)
-ip netns exec kabel uhttpd -f -p 0.0.0.0:80 -p 0.0.0.0:502 -p 0.0.0.0:4196 -h /www >/dev/null 2>&1 & uhttpd -f -p 0.0.0.0:8484 -p 0.0.0.0:8887 -h /www >/dev/null 2>&1 & sleep 2; netstat -ltn 2>/dev/null | grep -cE ':(8484|8887) '
+# Stellvertreter: am Geraet Weboberflaeche 80, Modbus 502, Waveshare 4196; an der Box Web-App 8484 und OCPP 8887 (LuCI 80 und SSH 22 laufen ohnehin). Die 8484-Marke unterscheidet die Web-App von LuCI (beide uhttpd); die PID-Dateien lassen den Lauf einrichtung-weg den Stellvertreter gegen das echte Probe-Programm tauschen
+mkdir -p /tmp/w8484 && echo vp-seite > /tmp/w8484/marke.txt
+ip netns exec kabel uhttpd -f -p 0.0.0.0:80 -p 0.0.0.0:502 -p 0.0.0.0:4196 -h /www >/dev/null 2>&1 & echo $! > /var/run/w-geraet.pid; uhttpd -f -p 0.0.0.0:8484 -p 0.0.0.0:8887 -h /tmp/w8484 >/dev/null 2>&1 & echo $! > /var/run/w8484.pid; sleep 2; netstat -ltn 2>/dev/null | grep -cE ':(8484|8887) '
 # Ausgangslage Kabelweg: das Kabelgeraet holt seine Adresse von der Box
 @60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 10.213.0.*) pruef_ok "Geraet bekommt eine Adresse der Box ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse der Box ($KABELIP)";; esac

@@ -1,0 +1,173 @@
+/* Einrichtungsseite der Box - eigenstaendig (nur tokens.css), weil im
+   Einrichtungs-WLAN nur diese Seite erreichbar ist. Mobil zuerst: der
+   normale Weg ist ein Handy im WLAN "VoltPilot-Einrichtung". */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--vp-font-body);
+  color: var(--vp-text-dark);
+  background: var(--vp-bg-light);
+  line-height: var(--vp-leading-normal);
+}
+
+.er-kopf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--vp-navy);
+  color: #fff;
+}
+.er-marke svg { width: 34px; height: 34px; display: block; background: #fff; border-radius: 8px; }
+.er-titel { font-family: var(--vp-font-heading); font-weight: var(--vp-weight-bold); font-size: 18px; }
+.er-titel small { display: block; font-weight: 400; font-size: 12px; opacity: .8; }
+
+.er-main { max-width: 520px; margin: 0 auto; padding: 16px; }
+
+.card {
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  box-shadow: var(--vp-shadow-sm);
+  padding: 20px;
+}
+.er-schritt h1 {
+  font-family: var(--vp-font-heading);
+  font-size: 22px;
+  line-height: var(--vp-leading-tight);
+  margin: 0 0 10px;
+}
+.er-schritt p { margin: 0 0 12px; }
+
+.er-label { display: block; font-size: 13px; color: var(--vp-text-gray); margin-bottom: 4px; }
+.er-feld {
+  width: 100%;
+  font: inherit;
+  padding: 12px;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-sm);
+}
+.er-feld:focus { outline: 2px solid var(--vp-primary); outline-offset: 1px; }
+#kennung { text-transform: uppercase; letter-spacing: .08em; }
+
+.er-knopf {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 13px;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  color: #fff;
+  background: var(--vp-action);
+  border: 0;
+  border-radius: var(--vp-radius-btn);
+  cursor: pointer;
+}
+.er-knopf:disabled { opacity: .5; cursor: default; }
+.er-knopf-leise { background: transparent; color: var(--vp-action); border: 1px solid var(--vp-field-border); }
+
+.er-fehler { color: var(--vp-industry); margin: 10px 0 0; }
+.er-hinweis { color: var(--vp-text-gray); font-size: 14px; }
+
+/* Kabel oder WLAN */
+.er-wahl { display: flex; gap: 8px; margin-bottom: 14px; }
+.er-wahl-knopf {
+  flex: 1;
+  padding: 11px 8px;
+  font: inherit;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  cursor: pointer;
+}
+.er-wahl-knopf[aria-selected="true"] {
+  border-color: var(--vp-action);
+  background: var(--vp-primary-light);
+  font-weight: var(--vp-weight-semibold);
+}
+
+/* WLAN-Liste */
+.er-netze { list-style: none; margin: 0 0 10px; padding: 0; }
+.er-netz {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 8px;
+  font: inherit;
+  text-align: left;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  cursor: pointer;
+}
+.er-netz:disabled { opacity: .55; cursor: default; }
+.er-netz-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.er-netz-hinweis { display: block; font-size: 12px; color: var(--vp-text-gray); white-space: normal; }
+.er-balken { display: inline-flex; gap: 2px; align-items: flex-end; height: 16px; }
+.er-balken i { width: 4px; background: var(--vp-gray); border-radius: 1px; }
+.er-balken i:nth-child(1) { height: 5px; }
+.er-balken i:nth-child(2) { height: 8px; }
+.er-balken i:nth-child(3) { height: 12px; }
+.er-balken i:nth-child(4) { height: 16px; }
+.er-balken[data-stufe="1"] i:nth-child(-n+1),
+.er-balken[data-stufe="2"] i:nth-child(-n+2),
+.er-balken[data-stufe="3"] i:nth-child(-n+3),
+.er-balken[data-stufe="4"] i:nth-child(-n+4) { background: var(--vp-action); }
+
+/* Passwort */
+.er-pw { display: flex; gap: 8px; }
+.er-pw .er-feld { flex: 1; }
+.er-pw-auge {
+  font: inherit;
+  font-size: 13px;
+  padding: 0 12px;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  cursor: pointer;
+}
+
+/* Stationen (5W) */
+.er-stationen { margin: 0 0 12px; padding: 0 0 0 2px; list-style: none; }
+.er-stationen li { padding: 6px 0 6px 28px; position: relative; color: var(--vp-text-gray); }
+.er-stationen li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 9px;
+  width: 14px; height: 14px;
+  border: 2px solid var(--vp-gray);
+  border-radius: 50%;
+}
+.er-stationen li.aktiv { color: var(--vp-text-dark); }
+.er-stationen li.aktiv::before { border-color: var(--vp-action); }
+.er-stationen li.fertig { color: var(--vp-text-dark); }
+.er-stationen li.fertig::before { border-color: var(--vp-green); background: var(--vp-green); }
+@keyframes er-puls { 50% { opacity: .35; } }
+.er-stationen li.aktiv::before { animation: er-puls 1.2s infinite; }
+
+/* Skala (6W) */
+.er-skala { position: relative; margin: 6px 0 16px; }
+.er-skala-balken { height: 10px; border-radius: 5px; background: var(--vp-border); overflow: hidden; }
+.er-skala-wert { height: 100%; background: var(--vp-green); width: 0; transition: width .4s var(--vp-ease); }
+.er-skala-wert.schwach { background: var(--vp-solar); }
+.er-skala-marke {
+  position: absolute;
+  /* -70 dBm auf der Achse -90..-30 = 33,3 % */
+  left: 33.3%; top: -3px;
+  width: 2px; height: 16px;
+  background: var(--vp-text-dark);
+}
+.er-skala-marke::after {
+  content: "-70 reicht";
+  position: absolute;
+  top: -18px; left: -14px;
+  font-size: 11px;
+  color: var(--vp-text-gray);
+  white-space: nowrap;
+}
+.er-skala { margin-top: 26px; }
+.er-skala-text { display: flex; justify-content: space-between; font-size: 12px; color: var(--vp-text-gray); margin-top: 4px; }
+#skalaZahl { font-weight: var(--vp-weight-semibold); color: var(--vp-text-dark); }

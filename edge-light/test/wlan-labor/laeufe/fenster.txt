@@ -1,0 +1,28 @@
+# Lauf fenster: Ausfall im WLAN-Weg B - nach AUSFALL wechselt der Waechter in feste Fenster (Einrichtungs-WLAN mit Client aus / Versuch mit dem Kunden-WLAN); der Notweg laesst die Box die Geraete am Kabel weiterlesen; kommt der Router zurueck, raeumt sich alles von selbst
+EV="VP_EINRICHT_AUSFALL=40 VP_EINRICHT_FENSTER=50 VP_EINRICHT_VERSUCH=90 VP_EINRICHT_RUHE=15"
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/v.out; echo "rc=$?" > /tmp/v.rc; cat /tmp/v.rc; gleich "verbinden: Rueckgabe" "$(cat /tmp/v.rc)" "rc=0"
+WWANIP=$(wert wlan_adresse /tmp/v.out); echo "wlan=$WWANIP"
+@60 KABELIP=$(dhcp_neu kabel kabel1); echo "kabelgeraet=$KABELIP"; case "$KABELIP" in 192.168.178.*) pruef_ok "Geraet mit Adresse vom Router ($KABELIP)";; *) pruef_fehler "Geraet ohne Adresse vom Router ($KABELIP)";; esac
+@60 env $EV $E takt; gleich "verbunden: Einrichtungs-WLAN zu" "$($E status | sed -n s/^einrichtung=//p)-$($E status | sed -n s/^verbindung=//p)" zu-ja
+# Router faellt aus
+kill $(cat /var/run/kunde-hostapd.pid); sleep 8; echo "Router aus"
+@60 env $EV $E takt; verneine "Ausfall: WLAN nicht mehr verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+gleich "Ausfall: die WLAN-Adresse bleibt stehen (force_link)" "$($W status | sed -n s/^wlan_adresse=//p)" "$WWANIP"
+pruefe "Ausfall, vor den Fenstern: Box erreicht das Geraet" ping -c 2 -W 2 $KABELIP; pruefe "Ausfall, vor den Fenstern: Box liest das Geraet (502)" tcp - $KABELIP 502
+# Nach AUSFALL beginnt das Einrichtungs-Fenster: Client aus, Notweg an
+@120 sleep 45; env $EV $E takt; sleep 4; gleich "Fenster: Einrichtungs-WLAN offen" "$($E status | sed -n s/^einrichtung=//p)" offen
+gleich "Fenster: Kunden-WLAN-Client abgeschaltet" "$(uci -q get wireless.vp_wlan.disabled)" 1
+pruefe "Fenster: Notweg traegt die letzte WLAN-Adresse auf br-lan" sh -c "ip -4 addr show br-lan | grep -qF $WWANIP"
+pruefe "Fenster: Box erreicht das Geraet weiter (Notweg)" ping -c 2 -W 2 $KABELIP; pruefe "Fenster: Box liest das Geraet weiter (502)" tcp - $KABELIP 502
+# Ein Handy kommt waehrend des Fensters ins Einrichtungs-WLAN
+printf 'ctrl_interface=/var/run/handy-wpa\nnetwork={\n ssid="VoltPilot-Einrichtung"\n key_mgmt=NONE\n}\n' > /tmp/handy.conf
+@150 ip netns exec handy wpa_supplicant -B -i handy0 -c /tmp/handy.conf -P /var/run/handy-wpa.pid 2>&1 | tail -1; i=0; while [ $i -lt 45 ] && ! ip netns exec handy iw dev handy0 link | grep -q Connected; do sleep 1; i=$((i+1)); done; HANDYIP=$(dhcp_neu handy handy0); echo "handy=$HANDYIP"; case "$HANDYIP" in 10.213.1.*) pruef_ok "Handy im Einrichtungs-WLAN ($HANDYIP)";; *) pruef_fehler "Handy ohne Adresse ($HANDYIP)";; esac
+# Router kommt zurueck; im naechsten Versuchs-Fenster verbindet sich die Box von selbst
+@30 ip netns exec kunde hostapd -B -P /var/run/kunde-hostapd.pid /tmp/kunde.conf >/dev/null 2>&1; sleep 1; ip netns exec kunde ip addr replace 192.168.178.1/24 dev kunde0; echo "Router wieder an"
+@300 i=0; while [ $i -lt 40 ] && ! $E status | grep -qx verbindung=ja; do env $EV $E takt >/dev/null 2>&1; sleep 5; i=$((i+1)); done; info "nach der Rueckkehr verbunden nach $((i*5)) s Takten"; pruefe "nach der Rueckkehr von selbst wieder verbunden" sh -c "$W status | grep -qx wlan_zustand=COMPLETED"
+# Ein Takt nach der Rueckkehr: er vermerkt die Verbindung (Ruhefrist) und raeumt den Notweg, falls der Hotplug-Haken es nicht schon tat
+@60 env $EV $E takt; sleep 3; gleich "danach: Notweg geraeumt" "$(ip -4 addr show br-lan | grep -cF 192.168.178.)" 0; gleich "danach: Client wieder an" "$(uci -q get wireless.vp_wlan.disabled)" ""
+ADR2=$($W status | sed -n s/^wlan_adresse=//p); echo "wlan jetzt=$ADR2"; gleich "danach: lokale Adresse am Relay nachgezogen" "$($W status | sed -n s/^relay_adresse=//p)" "$ADR2"
+pruefe "danach: Box liest das Geraet" tcp - $KABELIP 502; pruefe "danach: Heimnetz erreicht das Geraet" ip netns exec kunde ping -c 2 -W 2 $KABELIP
+# Die Ruhefrist schliesst das Einrichtungs-WLAN
+@90 sleep 16; env $EV $E takt; sleep 3; gleich "nach der Ruhefrist: Einrichtungs-WLAN zu" "$($E status | sed -n s/^einrichtung=//p)" zu; gleich "keine vp_einricht-Reste" "$(uci show 2>/dev/null | grep -c vp_einricht)" 0

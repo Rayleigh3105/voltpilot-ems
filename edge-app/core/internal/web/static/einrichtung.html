@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1E3A5F">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="shortcut icon" href="favicon.ico">
+  <title>VoltPilot · Box einrichten</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="einrichtung.css">
+</head>
+<body>
+  <!-- Die Einrichtungsseite der Box (Bildschirme 2W' bis 6W'' des
+       WLAN-Konzepts). Bewusst OHNE die App-Schale: im Einrichtungs-WLAN ist
+       nur diese Seite erreichbar (Schranke, einrichtung.go), Links in die
+       uebrige Web-App liefen dort ins Leere. -->
+  <header class="er-kopf">
+    <span class="er-marke" aria-hidden="true">
+      <svg viewBox="15.5 15.5 33 33"><circle cx="36.87" cy="19.64" r="3.22" fill="#000000"/><path d="M33.9 24.29 L40.03 24.29 L34.76 32.17 L39.9 32.17 L25.98 47.36 L31.89 35.7 L27.95 35.7 Z" fill="#95B9FF"/></svg>
+    </span>
+    <span class="er-titel">VoltPilot<small>Box einrichten</small></span>
+  </header>
+
+  <main class="er-main">
+
+    <!-- 2W': Kennung -->
+    <section class="card er-schritt" id="sAnmeldung" hidden>
+      <h1>Diese Box einrichten</h1>
+      <p>Geben Sie die Kennung dieser Box ein. Sie steht <strong>unten auf der
+      Box</strong> und im VoltPilot-Portal beim Schritt „Box verbinden“.</p>
+      <form id="fAnmeldung" autocomplete="off">
+        <label class="er-label" for="kennung">Kennung</label>
+        <input class="er-feld" id="kennung" name="kennung" inputmode="text"
+               autocapitalize="characters" spellcheck="false" placeholder="EDGE-XXXXXXX">
+        <p class="er-fehler" id="anmeldungFehler" hidden></p>
+        <p class="er-hinweis" id="anmeldungSperre" hidden></p>
+        <button class="er-knopf" id="anmeldungWeiter" type="submit">Weiter</button>
+      </form>
+      <p class="er-hinweis" id="nichtVerfuegbar" hidden>Auf dieser Box gibt es
+      den WLAN-Anschluss nicht.</p>
+    </section>
+
+    <!-- 3W: Kabel oder WLAN -->
+    <section class="card er-schritt" id="sWeg" hidden>
+      <h1>Internet für Ihre Box</h1>
+      <div class="er-wahl" role="tablist" aria-label="Kabel oder WLAN">
+        <button type="button" class="er-wahl-knopf" id="wahlWlan" aria-selected="true">Über WLAN</button>
+        <button type="button" class="er-wahl-knopf" id="wahlKabel" aria-selected="false">Mit Netzwerkkabel</button>
+      </div>
+      <p class="er-fehler" id="wegFehler" hidden></p>
+
+      <div id="wegWlan">
+        <p>Wählen Sie Ihr WLAN. Die Box sieht nur Netze im <strong>2,4-GHz-Band</strong>.</p>
+        <ul class="er-netze" id="netzListe" aria-busy="false"></ul>
+        <p class="er-hinweis" id="netzLeer" hidden>Kein WLAN zu sehen. Prüfen Sie,
+        ob Ihr Router ein 2,4-GHz-WLAN sendet, und suchen Sie erneut.</p>
+        <button class="er-knopf er-knopf-leise" id="netzSuchen" type="button">Erneut suchen</button>
+      </div>
+
+      <div id="wegKabel" hidden>
+        <p>Stecken Sie ein Netzwerkkabel von der Buchse <strong>„WAN“</strong>
+        der Box zu Ihrem Router. Die Box nimmt das Kabel von selbst; es hat
+        immer Vorrang vor dem WLAN.</p>
+        <p class="er-hinweis" id="kabelStand"></p>
+        <p class="er-fehler" id="kabelFehler" hidden></p>
+        <button class="er-knopf" id="kabelUmstellen" type="button" hidden>Auf Kabel umstellen</button>
+      </div>
+    </section>
+
+    <!-- 4W: Passwort -->
+    <section class="card er-schritt" id="sPasswort" hidden>
+      <h1>Passwort</h1>
+      <p>WLAN <strong id="pwNetz"></strong></p>
+      <form id="fPasswort" autocomplete="off">
+        <label class="er-label" for="passwort">WLAN-Passwort</label>
+        <div class="er-pw">
+          <input class="er-feld" id="passwort" name="passwort" type="password" spellcheck="false">
+          <button type="button" class="er-pw-auge" id="pwZeigen" aria-pressed="false">anzeigen</button>
+        </div>
+        <p class="er-fehler" id="pwFehler" hidden></p>
+        <button class="er-knopf" type="submit">Verbinden</button>
+        <button class="er-knopf er-knopf-leise" id="pwZurueck" type="button">Anderes WLAN wählen</button>
+      </form>
+    </section>
+
+    <!-- 5W: Empfang pruefen -->
+    <section class="card er-schritt" id="sPruefen" hidden>
+      <h1>Empfang prüfen</h1>
+      <ol class="er-stationen">
+        <li id="st1">Angemeldet</li>
+        <li id="st2">Empfang messen</li>
+        <li id="st3">Internet prüfen</li>
+      </ol>
+      <p>Das dauert etwa 30 Sekunden. Ihr Handy verliert dabei kurz das WLAN
+      „VoltPilot-Einrichtung“ und verbindet sich von selbst wieder –
+      <strong>die Box bleibt an ihrem Platz.</strong></p>
+      <p class="er-hinweis" id="pruefenStand"></p>
+    </section>
+
+    <!-- 6W / 6W': Ergebnis -->
+    <section class="card er-schritt" id="sErgebnis" hidden>
+      <h1 id="ergTitel"></h1>
+      <div class="er-skala" aria-hidden="true">
+        <div class="er-skala-balken"><div class="er-skala-wert" id="skalaWert"></div></div>
+        <div class="er-skala-marke" title="-70 reicht"></div>
+        <div class="er-skala-text"><span>schwach</span><span id="skalaZahl"></span><span>stark</span></div>
+      </div>
+      <p id="ergText"></p>
+      <p class="er-fehler" id="ergFehler" hidden></p>
+      <button class="er-knopf" id="ergFertig" type="button" hidden>Fertig</button>
+      <button class="er-knopf er-knopf-leise" id="ergNeu" type="button" hidden>Neu prüfen</button>
+      <button class="er-knopf er-knopf-leise" id="ergKabel" type="button" hidden>Doch mit Netzwerkkabel</button>
+    </section>
+
+    <!-- Abschluss -->
+    <section class="card er-schritt" id="sFertig" hidden>
+      <h1>Ihre Box ist online</h1>
+      <p id="fertigText">Weiter geht es im VoltPilot-Portal: Dort erscheint die
+      Box in wenigen Minuten als verbunden.</p>
+      <p class="er-hinweis">Die Geräte (Wechselrichter, Zubehör) kommen per
+      Netzwerkkabel in die Buchse <strong>„LAN“</strong> der Box – je nach
+      Gerät mit Zubehör. Das WLAN „VoltPilot-Einrichtung“ schließt sich von
+      selbst, sobald die Box verbunden ist.</p>
+    </section>
+
+  </main>
+  <script src="einrichtung.js"></script>
+</body>
+</html>
