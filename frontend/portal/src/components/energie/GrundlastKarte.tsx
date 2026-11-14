@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type Grundlast, type HistoryRange } from '../../api';
+import type { Grundlast, HistoryRange } from '../../api';
 import { chartTheme } from '../../chartTheme';
-import { GRUNDLAST, GRUNDLAST_UNTERZEILE } from '../../glossar';
+import { GRUNDLAST, GRUNDLAST_UNTERZEILE } from '../../glossarGrundlast';
 import { grundlastKarte, grundlastZeitraum } from '../../grundlast';
+import { grundlastApi } from '../../grundlastApi';
 import { VrKarte } from '../VerlaufRahmen';
 import './EnergieSeite.css';
 
@@ -31,7 +32,7 @@ export function GrundlastKarte({
   const [daten, setDaten] = useState<{ key: string; g: Grundlast | null } | null>(null);
   useEffect(() => {
     let aktiv = true;
-    api.grundlast(site.id, z, at).then(
+    grundlastApi.grundlast(site.id, z, at).then(
       (g) => aktiv && setDaten({ key, g }),
       () => aktiv && setDaten({ key, g: null }),
     );

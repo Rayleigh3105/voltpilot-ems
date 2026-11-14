@@ -10,9 +10,20 @@
  * Strich und der Grund. Keine Hochrechnung aufs Jahr (BK-3 = A), keine Warnung bei einer Stufe (§5.3).
  */
 import type { Grundlast, GrundlastZeitraum, HistoryRange } from './api';
-import { GRUNDLAST, GRUNDLAST_LAEUFT_IMMER, GRUNDLAST_TYPISCHE_NACHT } from './glossar';
-import { watt } from './leitungsplan';
+import { GRUNDLAST, GRUNDLAST_LAEUFT_IMMER, GRUNDLAST_TYPISCHE_NACHT } from './glossarGrundlast';
+import { NBSP } from './format';
 import { restWort } from './verbrauchKomposition';
+
+const NF0 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+
+/**
+ * Leistung in Watt, auf 10 W gerundet (§5.4): „640 W“, „1.240 W“ - geschütztes Leerzeichen vor der Einheit,
+ * Tausenderpunkt; kleiner als 5 W wird „0 W“, nie ein Minus. Steht hier statt in `leitungsplan.ts`, weil jenes Modul
+ * im Einstiegs-Bündel liegt und nur nachgeladene Stücke Watt schreiben (`test/bundle-smoke.sh`).
+ */
+export function watt(x: number | null): string {
+  return x == null ? '—' : `${NF0.format(Math.max(0, Math.round(x / 10) * 10))}${NBSP}W`;
+}
 
 /** Der Zeitraum der Route zum Zeitraum des Verlaufs. */
 export function grundlastZeitraum(range: HistoryRange): GrundlastZeitraum {

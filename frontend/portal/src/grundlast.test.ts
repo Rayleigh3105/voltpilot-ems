@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Grundlast } from './api';
-import { anteilWort, grundlastKachel, grundlastKarte, grundlastSatz, kwhRund, nachtTitel } from './grundlast';
-import { watt } from './leitungsplan';
+import { anteilWort, grundlastKachel, grundlastKarte, grundlastSatz, kwhRund, nachtTitel, watt } from './grundlast';
 
 const NBSP = String.fromCharCode(160);
 const n = (s: string) => s.replace(new RegExp(NBSP, 'g'), ' ');

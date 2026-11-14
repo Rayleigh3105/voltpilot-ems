@@ -10,6 +10,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '../src/App';
 import { api } from '../src/api';
+import { grundlastApi } from '../src/grundlastApi';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { installHelpFixtures } from './help-fixtures';
@@ -87,6 +88,18 @@ if (lageParam === 'gewerbe') {
     siteVerbraucher: result({ verbraucher: [], ladepunkte: null, rangliste: [] }),
     siteProfiles: result({ profiles: [], weitere: [] }),
     telemetry: result([]),
+    einspeiseverguetung: result({ zustand: 'eeg', wirksamCtKwh: 7.9, angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.9, hergeleitetGenaehert: false, inbetriebnahme: '2021-04-01', leistungKwp: 19.8, eegEndeAm: '2041-12-31', ohneVerguetungBeiNegativpreis: false, anzulegenderWertCtKwh: null }),
+    entityHistory: async (_site: string, entityId: string) => ({
+      range: 'day', from: d.money.from, to: d.money.to, bucketMinutes: 15,
+      channels: { power_kw: (d.serien[entityId] ?? []).map((p) => ({ start: p.start, avg: p.kw, min: p.kw, max: p.kw, last: p.kw, n: 15 })) },
+    }),
+    entityEnergy: async (_site: string, entityId: string) => {
+      const map: Record<string, string> = { 'mb-uv-halle': 'halle', 'mb-uv-keller': 'keller', 'bw-wp': 'wp' };
+      const k = map[entityId];
+      return { range: 'day', from: d.money.from, to: d.money.to, bucketMinutes: 15, source: 'zaehler', buckets: [], totalKwh: k ? d.geraeteHeute[k] : null, counterFalls: false };
+    },
+  });
+  Object.assign(grundlastApi, {
     // Grundlast (Bedienkonzept Privatkunde §5): Mühlbach wie Schramm mit UV Halle/UV Keller, Birkenweg ohne
     // Unterzähler; `?grundlast=voll|luecke|wenig|stufe|nie` wählt den Fall.
     grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) =>
@@ -98,16 +111,6 @@ if (lageParam === 'gewerbe') {
           : undefined,
         fall: (q.get('grundlast') ?? 'voll') as GrundlastFall,
       }, z, at),
-    einspeiseverguetung: result({ zustand: 'eeg', wirksamCtKwh: 7.9, angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.9, hergeleitetGenaehert: false, inbetriebnahme: '2021-04-01', leistungKwp: 19.8, eegEndeAm: '2041-12-31', ohneVerguetungBeiNegativpreis: false, anzulegenderWertCtKwh: null }),
-    entityHistory: async (_site: string, entityId: string) => ({
-      range: 'day', from: d.money.from, to: d.money.to, bucketMinutes: 15,
-      channels: { power_kw: (d.serien[entityId] ?? []).map((p) => ({ start: p.start, avg: p.kw, min: p.kw, max: p.kw, last: p.kw, n: 15 })) },
-    }),
-    entityEnergy: async (_site: string, entityId: string) => {
-      const map: Record<string, string> = { 'mb-uv-halle': 'halle', 'mb-uv-keller': 'keller', 'bw-wp': 'wp' };
-      const k = map[entityId];
-      return { range: 'day', from: d.money.from, to: d.money.to, bucketMinutes: 15, source: 'zaehler', buckets: [], totalKwh: k ? d.geraeteHeute[k] : null, counterFalls: false };
-    },
   });
   Object.assign(entitiesApi, {
     typeCatalog: result({ catalog_version: '1.0', types: typen.map((t) => ({ type: t, label: t, category: 'consumer', controllable: t === 'battery-hybrid', composed: false, default_failsafe: 'release' })) }),

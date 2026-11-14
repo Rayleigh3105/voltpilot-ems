@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import { Icon, type IconName } from '../../../designsystem/components/core/Icon';
-import { api, type ForecastResponse, type Grundlast, type HistoryTotals, type WeatherPoint } from '../../api';
+import type { ForecastResponse, Grundlast, HistoryTotals, WeatherPoint } from '../../api';
 import { chartTheme } from '../../chartTheme';
 import type { HeroMoney } from '../../cockpitWidgets';
 import {
@@ -15,8 +15,10 @@ import {
   type AnteilKachel,
   type HeuteTeil,
 } from '../../kacheln';
-import { GRUNDLAST } from '../../glossar';
+import { GRUNDLAST } from '../../glossarGrundlast';
 import { grundlastKachel } from '../../grundlast';
+import { grundlastApi } from '../../grundlastApi';
+import { historieHash } from '../../historieWelten';
 import { kwh, prozent, zahl } from '../../leitungsplan';
 import { morgenSatz, prognoseModell, reichtSatz, verbrauchsSpitzeSatz } from '../../prognoseSeite';
 import type { PeakBandView } from '../../peakBand';
@@ -656,13 +658,13 @@ export function WaermepumpeKachel({ teil, ...b }: Basis & { teil: VerbrauchTeil 
 /**
  * **Grundlast** (Bedienkonzept Privatkunde §5.1, BK-1 = A): die typische Nacht der letzten 14 Nächte in Watt,
  * „läuft immer“, der Wert von vor einem Monat. Holt sich die Zahl selbst (`z=aktuell`); ohne gemessenen
- * Hausverbrauch erscheint sie nicht. Der Kopf springt in Verlauf › Energie, Woche.
+ * Hausverbrauch erscheint sie nicht. Der Kopf springt in Verlauf › Energie, Woche (selbst gesetzt, nicht von der Seite).
  */
 export function GrundlastKachel({ siteId, ...b }: Basis & { siteId: string }) {
   const [g, setG] = useState<{ siteId: string; g: Grundlast | null } | null>(null);
   useEffect(() => {
     let aktiv = true;
-    api.grundlast(siteId, 'aktuell').then(
+    grundlastApi.grundlast(siteId, 'aktuell').then(
       (r) => aktiv && setG({ siteId, g: r }),
       () => aktiv && setG({ siteId, g: null }),
     );
@@ -672,8 +674,12 @@ export function GrundlastKachel({ siteId, ...b }: Basis & { siteId: string }) {
   }, [siteId]);
   const k = grundlastKachel(g?.siteId === siteId ? g.g : null);
   if (!k) return null;
+  // Der Absprung wohnt hier im nachgeladenen Stück, nicht in der Seite (Einstiegs-Bündel, test/bundle-smoke.sh).
+  const oeffne = () => {
+    window.location.hash = historieHash(siteId, 'messwerte', 'week');
+  };
   return (
-    <Kachel {...b} id="grundlast" name={GRUNDLAST} icon="plug" ton="load" ziel="Verlauf">
+    <Kachel {...b} onOpen={oeffne} id="grundlast" name={GRUNDLAST} icon="plug" ton="load" ziel="Verlauf">
       <div>
         <Gross wert={k.zahl} einheit={k.einheit ?? undefined} />
         <p className="vp-k-zustand">{k.zustand}</p>

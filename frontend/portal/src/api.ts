@@ -12014,9 +12014,6 @@ export const api = {
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
   history: (siteId: string, range: HistoryRange, at: string) =>
     request<History>(`/api/v1/sites/${siteId}/history?range=${range}&at=${at}`),
-  /** Grundlast des Zeitraums (`aktuell` = die letzten 14 Nächte, `at` zählt dort nicht). */
-  grundlast: (siteId: string, z: GrundlastZeitraum, at?: string) =>
-    request<Grundlast>(`/api/v1/sites/${siteId}/grundlast?z=${z}${at ? `&at=${at}` : ''}`),
   /** Ersparnis-Simulation: async job - POST starts (defaults from the site's
    * master data, body fields override), GET polls every ~2 s. */
   startSimulation: (siteId: string, input: SimulationRequestInput) =>

@@ -308,17 +308,6 @@ export function kwh(x: number | null): string {
 export function prozent(x: number | null): string {
   return x == null ? '—' : `${NF0.format(x)}${NBSP}%`;
 }
-/**
- * Leistung in Watt, auf 10 W gerundet (Grundlast, Bedienkonzept Privatkunde §5.4): „640 W“, „1.240 W“ - geschütztes
- * Leerzeichen vor der Einheit, Tausenderpunkt. Kleiner als 5 W wird „0 W“, nie ein Minus.
- */
-export function watt(x: number | null): string {
-  return x == null ? '—' : `${wattZahl(x)}${NBSP}W`;
-}
-/** Nur die Zahl von {@link watt} (für die große Zahl mit eigener Einheit). */
-export function wattZahl(x: number): string {
-  return NF0.format(Math.max(0, Math.round(x / 10) * 10));
-}
 
 export type Ansicht = 'jetzt' | 'heute';
 /** Was die Uhrzeit zeigt: jetzt (live), gemessen (zurückgezogen) oder Plan (nach jetzt). */

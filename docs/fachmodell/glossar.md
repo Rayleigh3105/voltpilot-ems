@@ -1672,6 +1672,6 @@ Je Nacht (0–5 Uhr Ortszeit) zählt die niedrigste gemessene Viertelstunde; ein
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Haus mit UV Halle und UV Keller, Woche 31.08.–06.09.: typische Nacht der Woche 640 W, UV Halle 560 W, UV Keller 30 W, übriger Haushalt 50 W — „Rund 15 kWh am Tag – etwa die Hälfte Ihres Verbrauchs. Vorwoche: 590 W.“
 
-**Heute im Code.** Route `GET /api/v1/sites/{id}/grundlast` mit der Regel `GrundlastRegel` (services/api/.../grundlast); Karte „Grundlast“ in Verlauf › Energie (PORTAL/components/energie/GrundlastKarte.tsx), Kachel „Grundlast“ im Cockpit; Wörter PORTAL/glossar.ts (`GRUNDLAST`, `GRUNDLAST_TYPISCHE_NACHT`, `GRUNDLAST_LAEUFT_IMMER`, `HAUSLAST`), Sätze PORTAL/grundlast.ts.
+**Heute im Code.** Route `GET /api/v1/sites/{id}/grundlast` mit der Regel `GrundlastRegel` (services/api/.../grundlast); Karte „Grundlast“ in Verlauf › Energie (PORTAL/components/energie/GrundlastKarte.tsx), Kachel „Grundlast“ im Cockpit; Wörter PORTAL/glossarGrundlast.ts (`GRUNDLAST`, `GRUNDLAST_TYPISCHE_NACHT`, `GRUNDLAST_LAEUFT_IMMER`, `HAUSLAST`; eigenes Modul außerhalb des Einstiegs-Bündels), Sätze PORTAL/grundlast.ts.
 
 **Abgrenzung.** Nicht die „Grundlast“ der Bezugsbasis (der feste Teil eines Modells in kWh je Periode, `UEMS_GRUNDLAST`). Nicht die Hauslast des Laden-Rahmens: die höchste Hauslast der letzten 7 Tage, mit der die Ladegrenze geprüft wird, hieß dort bis 14.11.2026 ebenfalls „Grundlast“ und heißt seitdem „Hauslast“.

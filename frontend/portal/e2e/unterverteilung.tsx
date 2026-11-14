@@ -13,6 +13,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '../src/App';
 import { api } from '../src/api';
+import { grundlastApi } from '../src/grundlastApi';
 import type { EntityEnergy, GrundlastZeitraum, History, HistoryRange } from '../src/api';
 import { derive } from '../src/topology';
 import { installHelpFixtures } from './help-fixtures';
@@ -116,14 +117,6 @@ Object.assign(api, {
     };
   },
   history: async (_siteId: string, range: HistoryRange, at: string) => historyFor(range, at || TODAY),
-  // Grundlast (Bedienkonzept Privatkunde §5): die Nacht der Halle mit beiden Unterzählern; `?grundlast=` wählt den Fall.
-  grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) =>
-    grundlastAntwort({
-      heute: TODAY,
-      basisW: 640,
-      teile: [{ entityId: 'uv-halle', label: 'UV Halle', anteil: 0.875 }, { entityId: 'uv-keller', label: 'UV Keller', anteil: 0.047 }],
-      fall: (q.get('grundlast') ?? 'voll') as GrundlastFall,
-    }, z, at),
   // Die Box meldet die beiden Shelly-Zähler als Quellen; die Komponenten sind an sie gepinnt.
   siteSources: async () => [
     { deviceId: 'help-box', sourceId: 'src-uv-halle', kind: 'source', role: 'consumer', label: 'UV Halle', brand: 'shelly',
@@ -136,6 +129,17 @@ Object.assign(api, {
   entityEnergy: vorher
     ? async () => { throw new Error('404'); }
     : async (_siteId: string, entityId: string, range: HistoryRange, at?: string) => energieFuer(entityId, range, at ?? TODAY),
+});
+
+Object.assign(grundlastApi, {
+  // Grundlast (Bedienkonzept Privatkunde §5): die Nacht der Halle mit beiden Unterzählern; `?grundlast=` wählt den Fall.
+  grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) =>
+    grundlastAntwort({
+      heute: TODAY,
+      basisW: 640,
+      teile: [{ entityId: 'uv-halle', label: 'UV Halle', anteil: 0.875 }, { entityId: 'uv-keller', label: 'UV Keller', anteil: 0.047 }],
+      fall: (q.get('grundlast') ?? 'voll') as GrundlastFall,
+    }, z, at),
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App initialAuth />);
