@@ -8481,6 +8481,36 @@ export const STARTFENSTER_MS = 2_000;
 const STARTFENSTER_PFADE = new Set(['/api/v1/funktionen']);
 
 /**
+ * Läuft gerade ein VORAB-Abruf ({@link vorabAbrufen})? Dann bleibt auch dessen Eintrag nach der Antwort
+ * {@link STARTFENSTER_MS} im Bündel stehen - für die Seite, die ihn gleich selbst stellt.
+ */
+let vorabLaeuft = false;
+
+/**
+ * Stellt die Lese-Abrufe in `holen` VORAB, bevor die Seite sie braucht (Performance-Runde vp-perf2-portal,
+ * Idee 2): beim Start steht die Anlagen-ID schon in der Adresse, die Seite fragt aber erst, wenn `/sites` da
+ * ist - eine ganze Runde später. Jeder hier gestellte GET bleibt nach seiner Antwort für das Startfenster
+ * ({@link STARTFENSTER_MS}) im Bündel; fragt die Seite in dieser Zeit dieselbe Adresse, bekommt sie diese
+ * Antwort statt einer zweiten Anfrage. Es gelten dieselben Grenzen wie für `/funktionen`: höchstens so lange
+ * nach der Antwort, jede Änderung leert das Bündel, eine Ablehnung wird nie geteilt. Fehler bleiben still -
+ * die Seite fragt dann eben selbst. `holen` muss seine Abrufe SYNCHRON stellen (`api.*` tut das).
+ */
+export function vorabAbrufen(holen: Array<() => Promise<unknown>>): void {
+  vorabLaeuft = true;
+  try {
+    for (const h of holen) {
+      try {
+        h().catch(() => undefined);
+      } catch {
+        /* still: die Seite fragt dann selbst */
+      }
+    }
+  } finally {
+    vorabLaeuft = false;
+  }
+}
+
+/**
  * Erzwingt eine frische Antwort auf `/funktionen` - fürs ausdrückliche „Erneut prüfen" (Schritt 4 des
  * Messen-Assistenten): das Startfenster oben teilt drei zeitgleiche Boot-Lesungen, nie einen bewussten
  * Klick, der auf neue Daten (Telemetrie, Register) wartet. Ohne das bekäme ein Klick innerhalb von
@@ -8529,7 +8559,8 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     const frei = () => {
       if (inFlight.get(key) === p) inFlight.delete(key);
     };
-    p.then(() => (STARTFENSTER_PFADE.has(path) ? setTimeout(frei, STARTFENSTER_MS) : frei()), frei);
+    const halten = vorabLaeuft || STARTFENSTER_PFADE.has(path);
+    p.then(() => (halten ? setTimeout(frei, STARTFENSTER_MS) : frei()), frei);
     inFlight.set(key, p);
     return p;
   }

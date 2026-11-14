@@ -5,7 +5,8 @@ vi.mock('./auth', () => ({
   AuthRedirectError: class AuthRedirectError extends Error {},
 }));
 
-import { request, setKundenbereich, setTenantOverride, STARTFENSTER_MS } from './api';
+import { request, setKundenbereich, setTenantOverride, STARTFENSTER_MS, vorabAbrufen } from './api';
+import { seitendatenVorab } from './seitenVorab';
 
 /** `request` wartet zuerst auf ein frisches Token - erst danach fliegt fetch. */
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -224,6 +225,113 @@ describe('request: In-flight-Bündelung', () => {
       void request('/api/v1/funktionen');
       await tick();
       expect(calls).toHaveLength(2);
+    });
+  });
+
+  /**
+   * Vorab-Abrufe nach Route (Performance-Runde vp-perf2-portal, Idee 2): was `vorabAbrufen` stellt, teilt das
+   * Startfenster der Funktionen - die Seite, die gleich dieselbe Adresse fragt, bekommt diese Antwort.
+   */
+  describe('Vorab-Abrufe', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    });
+    afterEach(async () => {
+      release.forEach((r) => r());
+      await vi.advanceTimersByTimeAsync(STARTFENSTER_MS);
+      vi.useRealTimers();
+    });
+
+    const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
+    const antworten = async () => {
+      await tick();
+      release.forEach((r) => r());
+      await tick();
+    };
+
+    it('die Seite fragt dieselbe Adresse nach der Antwort: keine zweite Anfrage im Startfenster', async () => {
+      vorabAbrufen([() => request('/api/v1/sites/x/topology')]);
+      await antworten();
+      await tick(800);
+      await expect(request('/api/v1/sites/x/topology')).resolves.toEqual({ ok: 1 });
+      expect(calls).toHaveLength(1);
+    });
+
+    it('nach dem Startfenster fragt sie wirklich neu - ein Vorab-Abruf wird nie zum Zwischenspeicher', async () => {
+      vorabAbrufen([() => request('/api/v1/sites/x/topology')]);
+      await antworten();
+      await tick(STARTFENSTER_MS);
+      void request('/api/v1/sites/x/topology');
+      await tick();
+      expect(calls).toHaveLength(2);
+    });
+
+    it('nur der Vorab-Abruf hält sein Fenster - derselbe Abruf der Seite danach nicht', async () => {
+      vorabAbrufen([() => request('/api/v1/sites/x/topology')]);
+      await antworten();
+      await tick(STARTFENSTER_MS);
+      const takt = request('/api/v1/sites/x/topology');
+      await antworten();
+      await takt;
+      await tick(100);
+      void request('/api/v1/sites/x/topology');
+      await tick();
+      expect(calls).toHaveLength(3);
+    });
+
+    it('eine Ablehnung wird nie geteilt, und sie bleibt still', async () => {
+      const failing = vi.fn(() => Promise.reject(new Error('403')));
+      vi.stubGlobal('fetch', failing);
+      vorabAbrufen([() => request('/api/v1/sites/fremd/topology')]);
+      await tick();
+      await expect(request('/api/v1/sites/fremd/topology')).rejects.toThrow('403');
+      expect(failing).toHaveBeenCalledTimes(2);
+    });
+
+    it('eine Änderung leert das Fenster - Lesen nach Schreiben', async () => {
+      vorabAbrufen([() => request('/api/v1/sites/x/schedule')]);
+      await antworten();
+      const aenderung = request('/api/v1/sites/x', { method: 'PUT', body: '{}' });
+      await tick();
+      release[1]();
+      await aenderung;
+      void request('/api/v1/sites/x/schedule');
+      await tick();
+      expect(calls.filter((c) => c.endsWith('/schedule'))).toHaveLength(2);
+    });
+
+    it('seitendatenVorab: Cockpit-Adresse = Grundabrufe und Cockpit, Unterseite = nur Grundabrufe, sonst nichts', async () => {
+      seitendatenVorab('#/portfolio');
+      seitendatenVorab('#/anlage');
+      await tick();
+      expect(calls).toEqual([]);
+      seitendatenVorab('#/anlage/s-1/modell');
+      await tick();
+      const pfad = (c: string) => c.replace(/^GET https?:\/\/[^/]+/, 'GET ');
+      const unterseite = calls.map(pfad).sort();
+      expect(unterseite).toEqual([
+        'GET /api/v1/funktionen',
+        'GET /api/v1/sites/s-1/entities',
+        'GET /api/v1/sites/s-1/entity-strategies',
+        'GET /api/v1/sites/s-1/flows',
+        'GET /api/v1/sites/s-1/interventions',
+        'GET /api/v1/sites/s-1/profile',
+        'GET /api/v1/sites/s-1/profiles',
+      ]);
+      await antworten();
+      await tick(STARTFENSTER_MS);
+      calls.length = 0;
+      seitendatenVorab('#/anlage/s-1');
+      await tick();
+      expect(calls).toHaveLength(7 + 16);
+      expect(calls.map(pfad)).toEqual(expect.arrayContaining([
+        'GET /api/v1/overview',
+        'GET /api/v1/sites/s-1/topology',
+        'GET /api/v1/sites/s-1/earnings?range=day',
+        'GET /api/v1/sites/s-1/consumer-status',
+        'GET /api/v1/sites/s-1/cockpit-layout',
+        'GET /api/v1/sites/s-1/rollen/grid',
+      ]));
     });
   });
 });

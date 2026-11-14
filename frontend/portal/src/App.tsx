@@ -117,6 +117,7 @@ import { sprungziel, type Sprung } from './uemsSprung';
 import { useDeployWatch } from './deployWatch';
 import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
 import { useAnlageSurface } from './useAnlageSurface';
+import { seitendatenVorab } from './seitenVorab';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
 import { MessenEinstiegKontext, type MessenZiel } from './messenEinstieg';
@@ -465,6 +466,10 @@ function UnifiedPortal() {
   const { selbst } = useRollen();
   const [zugriffBeendet, setZugriffBeendet] = useState<string | null>(null);
   const ladeNummer = useRef(0);
+  // Die Seitendaten nach Route gehen nur beim ERSTEN Laden vorab hinaus (`seitenVorab.ts`): danach steht die Seite
+  // schon und fragt selbst - ein späteres Neuladen der Stammdaten (Gerät gekoppelt, Mandant gewechselt) würde sie
+  // sonst ein zweites Mal stellen, ohne dass jemand sie abholt.
+  const vorabOffen = useRef(true);
   const [route, setRoute] = useState<Route>(() => {
     const r = routeFromHash();
     return !isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r;
@@ -693,6 +698,8 @@ function UnifiedPortal() {
   const reload = useCallback(
     async (selectSiteId?: string, opts?: { background?: boolean }) => {
       const nummer = ++ladeNummer.current;
+      const erstesLaden = vorabOffen.current;
+      vorabOffen.current = false;
       if (!tenantReady) {
         try { const me = await api.selbstauskunft(); if (nummer === ladeNummer.current) setSelbstauskunft(me); } catch { if (nummer === ladeNummer.current) setSelbstauskunft(null); }
         if (nummer !== ladeNummer.current) return;
@@ -727,7 +734,11 @@ function UnifiedPortal() {
           opts?.background ? Promise.resolve(undefined) : orteLaden(),
         ]);
         stammdaten.catch(() => undefined);
-        const me = await api.selbstauskunft();
+        const meAbruf = api.selbstauskunft();
+        // Die Seitendaten der Adresse gleich mit (Performance-Runde vp-perf2-portal, Idee 2): die Anlagen-Seite fragte
+        // sie sonst erst nach `/me` und `/sites`. Nach Stammdaten und `/me` gestellt, damit die zuerst hinausgehen.
+        if (erstesLaden && !opts?.background) seitendatenVorab(window.location.hash);
+        const me = await meAbruf;
         if (nummer !== ladeNummer.current) return;
         setSelbstauskunft(me);
         if (ohneStandort(me)) {

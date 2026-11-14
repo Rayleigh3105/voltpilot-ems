@@ -11,6 +11,8 @@ import { periodLabel } from '../anlage';
 import { readFace, rememberFace } from '../anlageFace';
 import { ReportFirstPaint } from '../bootReady';
 import { SUB_CHUNK } from '../pageChunks';
+import { cockpitAbrufe } from '../seitenVorab';
+import { consumersApi } from '../consumers/consumersApi';
 
 /**
  * M3 (#531) — der Cockpit-Beweis, erweitert um die Captain-Nachtrag-Invarianten
@@ -1928,6 +1930,45 @@ it('der Live-Takt holt auch die Ladepunkte - eine neu gestartete Ladung erschein
   await waitFor(() => expect(detail()).not.toContain('Kein Auto eingesteckt'));
   expect(detail()).toMatch(/Wallbox Garage.*8,2\skW/);
   expect(detail()).toMatch(/übriger Haushalt berechnet1,3\skW/);
+});
+
+/**
+ * Der Wächter der Vorab-Abrufe (`seitenVorab.ts`, Performance-Runde vp-perf2-portal, Idee 2): was beim Start einer
+ * Cockpit-Adresse vorab hinausgeht, muss die Seite beim Öffnen selbst stellen - mit GENAU denselben Argumenten, sonst
+ * trifft sie die vorab geholte Antwort nicht und es war eine vergeudete Serveranfrage. Die Topologie stellt
+ * `useAdaptiveLive` (hier ersetzt, geprüft in `seitenVorab.test.tsx`).
+ */
+describe('Vorab-Abrufe nach Route', () => {
+  it('das Cockpit stellt jeden Vorab-Abruf beim Öffnen selbst, mit denselben Argumenten', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const quellen: Array<[string, Record<string, unknown>]> = [['api', api as never], ['consumersApi', consumersApi as never]];
+    for (const [, obj] of quellen) {
+      for (const k of Object.keys(obj)) {
+        if (typeof obj[k] === 'function' && !vi.isMockFunction(obj[k])) vi.spyOn(obj as never, k as never);
+      }
+    }
+    const aufrufe = () => quellen.flatMap(([praefix, obj]) => Object.keys(obj).flatMap((k) => {
+      const f = obj[k];
+      return vi.isMockFunction(f) ? f.mock.calls.map((args) => `${praefix}.${k}(${JSON.stringify(args)})`) : [];
+    }));
+    renderSeite();
+    await waitFor(() => expect(api.schedule).toHaveBeenCalled());
+    await waitFor(() => expect(api.rollenWert).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
+    const seite = new Set(aufrufe());
+    vi.clearAllMocks();
+    for (const holen of cockpitAbrufe('s-1')) {
+      try {
+        holen().catch(() => undefined);
+      } catch {
+        /* nur die Aufzeichnung zählt */
+      }
+    }
+    const vorab = aufrufe().filter((x) => !x.startsWith('api.topology('));
+    expect(vorab).toHaveLength(cockpitAbrufe('s-1').length - 1);
+    expect(vorab.filter((x) => !seite.has(x))).toEqual([]);
+  });
 });
 
 describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
