@@ -242,3 +242,112 @@ func TestOnShellySensorPlanIgnoresUnknownPointKey(t *testing.T) {
 		t.Fatalf("plan = %+v, want empty (not a Shelly sensor template)", a.shellySensorPlan)
 	}
 }
+
+// Firstmate review of the first version of this change: a working Fühler
+// point must report itself ACCEPTED on the status topic, never leave the
+// field to layer1's blanket "edge_too_old" refusal of the same point_key -
+// see the package comment and measurements.StatusMerger for the full
+// defect. This is the reader's OWN partial verdict, asserted straight off
+// the bus (never through the merge, which measurements.StatusMerger already
+// covers in isolation).
+func TestOnShellySensorPlanPublishesAcceptedStatusForItsOwnPoint(t *testing.T) {
+	addr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	bus, err := localbus.Start(addr, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bus.Close()
+	statuses, sub := busObserver(t, addr, "fuehler-status-accept", "edge/measurements/config-status")
+	defer sub.Disconnect(0)
+
+	a := &Agent{Bus: bus}
+	a.onShellySensorPlan("", shellySensorMessplan("2026.10.21.1", "e1", "shelly.gen2plus.temperature[*].tc", 30))
+
+	waitFor(t, 3*time.Second, "status published", func() bool { return len(statuses()) > 0 })
+	got := statuses()[len(statuses())-1]
+	accepted := got["accepted"].([]any)
+	if len(accepted) != 1 || accepted[0] != "shelly.gen2plus.temperature[*].tc" {
+		t.Fatalf("accepted = %v, want exactly this reader's own point", accepted)
+	}
+	if rejected, ok := got["rejected"].([]any); ok && len(rejected) != 0 {
+		t.Fatalf("rejected = %v, want none", rejected)
+	}
+	if int64(got["revision"].(float64)) != 1 {
+		t.Fatalf("revision = %v, want 1", got["revision"])
+	}
+}
+
+// A selection naming no entity_id can never be bound to a device - reported
+// binding_unavailable (Stufe 3c's existing word), never silently dropped
+// with no explanation at all.
+func TestOnShellySensorPlanPublishesBindingUnavailableWithoutEntityID(t *testing.T) {
+	addr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	bus, err := localbus.Start(addr, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bus.Close()
+	statuses, sub := busObserver(t, addr, "fuehler-status-unbound", "edge/measurements/config-status")
+	defer sub.Disconnect(0)
+
+	a := &Agent{Bus: bus}
+	a.onShellySensorPlan("", shellySensorMessplan("2026.10.21.1", "", "shelly.gen2plus.temperature[*].tc", 30))
+
+	waitFor(t, 3*time.Second, "status published", func() bool { return len(statuses()) > 0 })
+	got := statuses()[len(statuses())-1]
+	rejected := got["rejected"].([]any)[0].(map[string]any)
+	if rejected["reason"] != "binding_unavailable" {
+		t.Fatalf("reason = %v, want binding_unavailable", rejected["reason"])
+	}
+	if accepted, ok := got["accepted"].([]any); ok && len(accepted) != 0 {
+		t.Fatalf("accepted = %v, want none", accepted)
+	}
+	if len(a.shellySensorPlan) != 0 {
+		t.Fatalf("plan = %+v, want empty - unbound, never read", a.shellySensorPlan)
+	}
+}
+
+// A cadence below the catalog floor is reported invalid_cadence (layer1's
+// own word for the identical situation), not silently dropped.
+func TestOnShellySensorPlanPublishesInvalidCadenceRejection(t *testing.T) {
+	addr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	bus, err := localbus.Start(addr, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bus.Close()
+	statuses, sub := busObserver(t, addr, "fuehler-status-cadence", "edge/measurements/config-status")
+	defer sub.Disconnect(0)
+
+	a := &Agent{Bus: bus}
+	a.onShellySensorPlan("", shellySensorMessplan("2026.10.21.1", "e1", "shelly.gen2plus.temperature[*].tc", 5))
+
+	waitFor(t, 3*time.Second, "status published", func() bool { return len(statuses()) > 0 })
+	got := statuses()[len(statuses())-1]
+	rejected := got["rejected"].([]any)[0].(map[string]any)
+	if rejected["reason"] != "invalid_cadence" {
+		t.Fatalf("reason = %v, want invalid_cadence", rejected["reason"])
+	}
+}
+
+// A point_key this reader does not own is never mentioned on the status
+// topic at all - "a reader may only judge points that belong to it"; no
+// publish happens, leaving the field entirely to the point's actual owner.
+func TestOnShellySensorPlanPublishesNothingForUnownedPointKey(t *testing.T) {
+	addr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	bus, err := localbus.Start(addr, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bus.Close()
+	statuses, sub := busObserver(t, addr, "fuehler-status-unowned", "edge/measurements/config-status")
+	defer sub.Disconnect(0)
+
+	a := &Agent{Bus: bus}
+	a.onShellySensorPlan("", shellySensorMessplan("2026.10.21.1", "e1", "deye.hybrid_1p.settings.battery-low-soc", 300))
+
+	time.Sleep(300 * time.Millisecond)
+	if got := statuses(); len(got) != 0 {
+		t.Fatalf("status published = %v, want none for a point this reader does not own", got)
+	}
+}

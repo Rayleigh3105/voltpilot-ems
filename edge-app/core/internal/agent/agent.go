@@ -96,6 +96,12 @@ type Agent struct {
 	measurementConfig   []byte
 	// Serializes "measurement-status.json + cloud send" (measurements.go).
 	measurementStatusMu sync.Mutex
+	// measurementStatusMerger combines the partial LocalStatus documents the
+	// box's independent local readers (layer1's settings reader, the Shelly
+	// sensor reader, ...) each publish for one plan revision - a reader may
+	// only judge points that belong to it, so onMeasurementStatus never
+	// stores whichever one happened to publish last (measurements.go).
+	measurementStatusMerger *measurements.StatusMerger
 
 	// Steuerlogik-Konzept Stufe 1 (shelly_sensors.go): the retained
 	// edge/measurements/config selections this box's OWN Shelly add-on
@@ -841,25 +847,26 @@ func New(cfg config.Config) (*Agent, error) {
 		slog.Warn("stored despike settings unreadable; using defaults", "err", err)
 	}
 	a := &Agent{
-		Cfg:               cfg,
-		State:             state.New(ref, Version),
-		buf:               buf,
-		measurementOutbox: measurementOutbox,
-		boxEventOutbox:    boxEventOutbox,
-		hist:              history.New(historyCapacity),
-		planStore:         ps,
-		invStore:          is,
-		invCat:            inverter.DefaultCatalog(),
-		srcStore:          ss,
-		balStore:          bs,
-		mirStore:          ms,
-		net:               ns,
-		installerLog:      iwl,
-		srcReadings:       map[string]sourceReading{},
-		entReadings:       map[string]entReading{},
-		testReads:         map[string]chan testconn.Result{},
-		probeReads:        map[string]chan []probeBusResult{},
-		probeLimiter:      probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
+		Cfg:                     cfg,
+		State:                   state.New(ref, Version),
+		buf:                     buf,
+		measurementOutbox:       measurementOutbox,
+		measurementStatusMerger: measurements.NewStatusMerger(),
+		boxEventOutbox:          boxEventOutbox,
+		hist:                    history.New(historyCapacity),
+		planStore:               ps,
+		invStore:                is,
+		invCat:                  inverter.DefaultCatalog(),
+		srcStore:                ss,
+		balStore:                bs,
+		mirStore:                ms,
+		net:                     ns,
+		installerLog:            iwl,
+		srcReadings:             map[string]sourceReading{},
+		entReadings:             map[string]entReading{},
+		testReads:               map[string]chan testconn.Result{},
+		probeReads:              map[string]chan []probeBusResult{},
+		probeLimiter:            probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
 		registerLimiter: registerwrite.NewLimiter(
 			registerwrite.DefaultRateWindow, registerwrite.DefaultRateBudget),
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),

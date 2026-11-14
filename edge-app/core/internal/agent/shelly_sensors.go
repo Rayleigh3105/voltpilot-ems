@@ -12,16 +12,22 @@ package agent
 // VP_CONTROL_ENABLED off) and of Node-RED (SHELLY.md: "keinen
 // Node-RED-Lesepfad" - single writer of the device socket).
 //
-// Scope left out of THIS stage, on purpose: accept/reject STATUS reporting
-// (measurements.LocalStatusTopic). layer1.Runtime.onMessplan (Edge Light)
-// already evaluates EVERY selection in a config revision and rejects
-// whatever is not in its own small Deye map with "edge_too_old" - a second,
-// independent full-plan evaluator on the SAME local topic would race its
-// status publish (storeAndSendMeasurementStatus replaces the stored
-// document wholesale, it does not merge per revision). Fixing that merge is
-// bigger than reading a sensor; a selected Shelly point simply starts
-// streaming samples once its entity resolves, with no "accepted" line yet.
-// Noted for the next stage, not guessed around here.
+// Accept/reject STATUS reporting (measurements.LocalStatusTopic, firstmate
+// review of the first version of this change): this reader judges and
+// reports ONLY the point-key templates it owns (shellySensorTemplates) -
+// never the whole plan. layer1.Runtime.onMessplan (Edge Light) separately
+// walks EVERY selection and refuses whatever is not in its own small Deye
+// map with "edge_too_old"; that blanket refusal would otherwise include a
+// working Fühler point too. The two readers' partial verdicts for the same
+// revision are combined by measurements.StatusMerger (agent/measurements.go,
+// onMeasurementStatus) before anything is stored or sent - an owner's
+// acceptance always wins over an unrelated reader's rejection of the same
+// point_key. Whether the add-on module is CURRENTLY plugged in is a live-data
+// question, not a plan-acceptance one: "accepted" means this box's software
+// can read the template, exactly like layer1 accepts a settings point
+// whether or not the inverter answers this particular poll; an absent
+// add-on simply never produces a sample, surfacing as the ordinary missing
+// value every other gap already does ("fehlend ist keine Null").
 
 import (
 	"context"
@@ -82,6 +88,7 @@ func (a *Agent) onShellySensorPlan(_ string, payload []byte) {
 		return
 	}
 	var doc struct {
+		Revision       int64  `json:"revision"`
 		CatalogVersion string `json:"catalog_version"`
 		Selections     []struct {
 			PointKey string `json:"point_key"`
@@ -93,16 +100,52 @@ func (a *Agent) onShellySensorPlan(_ string, payload []byte) {
 		return
 	}
 	var plan []shellySensorSelection
+	var accepted []string
+	var rejected []measurements.Rejection
 	for _, s := range doc.Selections {
 		kind, ok := shellySensorTemplates[s.PointKey]
-		takt := time.Duration(s.CadenceS) * time.Second
-		if !ok || s.EntityID == "" || takt < minShellySensorTakt {
-			continue
+		if !ok {
+			continue // not this reader's point - never judged here
 		}
-		plan = append(plan, shellySensorSelection{pointKey: s.PointKey, entityID: s.EntityID, kind: kind, takt: takt})
+		takt := time.Duration(s.CadenceS) * time.Second
+		switch {
+		case s.EntityID == "":
+			rejected = append(rejected, measurements.Rejection{PointKey: s.PointKey, Reason: "binding_unavailable"})
+		case takt < minShellySensorTakt:
+			rejected = append(rejected, measurements.Rejection{PointKey: s.PointKey, Reason: "invalid_cadence"})
+		default:
+			accepted = append(accepted, s.PointKey)
+			plan = append(plan, shellySensorSelection{pointKey: s.PointKey, entityID: s.EntityID, kind: kind, takt: takt})
+		}
 	}
 	a.shellySensorCatalogVersion = doc.CatalogVersion
 	a.shellySensorPlan = plan
+	if doc.Revision >= 1 {
+		a.publishShellySensorStatus(doc.Revision, accepted, rejected)
+	}
+}
+
+// publishShellySensorStatus reports ONLY this reader's own verdict on the
+// templates it owns (shellySensorTemplates) - never a verdict on the rest of
+// the plan, which belongs to whichever reader actually owns those points.
+// Not from inside the bus handler (the same reason layer1.onMessplan
+// publishes its status from a goroutine): a QoS1 publish waits for its
+// PUBACK, and the local bus runs every subscriber's handler in order on
+// paho's own goroutine.
+func (a *Agent) publishShellySensorStatus(revision int64, accepted []string, rejected []measurements.Rejection) {
+	if a.Bus == nil || (len(accepted) == 0 && len(rejected) == 0) {
+		return
+	}
+	raw, err := json.Marshal(measurements.LocalStatus{Revision: revision, AppliedAt: time.Now().UTC(),
+		Accepted: accepted, Rejected: rejected})
+	if err != nil {
+		return
+	}
+	go func() {
+		if err := a.Bus.Publish(measurements.LocalStatusTopic, raw, false); err != nil {
+			slog.Warn("shelly sensor status publish failed", "err", err)
+		}
+	}()
 }
 
 // startShellySensorPoll launches the add-on sensor read loop. It idles
