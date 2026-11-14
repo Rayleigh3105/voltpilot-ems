@@ -12,7 +12,9 @@
 package textform
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -248,4 +250,66 @@ func gleich(a, b *Knoten, pfad string) (bool, string) {
 		}
 	}
 	return true, ""
+}
+
+// JSON schreibt die kanonische Form als JSON, Reihenfolge der Schlüssel erhalten.
+// Das ist die Form, die der Kern liest und die ins Bundle der Auslieferung kommt
+// (Stufe 2, zweiter Teil: der Dienst nimmt die Schreibform an und liefert JSON aus).
+func (k *Knoten) JSON() ([]byte, error) {
+	var b []byte
+	b, err := schreibeJSON(b, k)
+	return b, err
+}
+
+func schreibeJSON(b []byte, k *Knoten) ([]byte, error) {
+	switch k.Art {
+	case 'o':
+		b = append(b, '{')
+		for i, s := range k.Schluessel {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			sb, err := json.Marshal(s)
+			if err != nil {
+				return nil, err
+			}
+			b = append(b, sb...)
+			b = append(b, ':')
+			if b, err = schreibeJSON(b, k.Kinder[i]); err != nil {
+				return nil, err
+			}
+		}
+		return append(b, '}'), nil
+	case 'a':
+		b = append(b, '[')
+		for i, e := range k.Liste {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			var err error
+			if b, err = schreibeJSON(b, e); err != nil {
+				return nil, err
+			}
+		}
+		return append(b, ']'), nil
+	case 's':
+		sb, err := json.Marshal(k.Text)
+		if err != nil {
+			return nil, err
+		}
+		return append(b, sb...), nil
+	case 'z':
+		if math.IsNaN(k.Zahl) || math.IsInf(k.Zahl, 0) {
+			return nil, fmt.Errorf("Zahl %v lässt sich nicht als JSON schreiben", k.Zahl)
+		}
+		return strconv.AppendFloat(b, k.Zahl, 'g', -1, 64), nil
+	case 'b':
+		if k.Bool {
+			return append(b, []byte("true")...), nil
+		}
+		return append(b, []byte("false")...), nil
+	case '0':
+		return append(b, []byte("null")...), nil
+	}
+	return nil, fmt.Errorf("unbekannte Knotenart %c", k.Art)
 }
