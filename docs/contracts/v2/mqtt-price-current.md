@@ -22,7 +22,8 @@ Der Spiegel auf der Box ist `internal/pricefeed` (vom Cloud-Downlink `OnPriceCur
 
 Dieselbe wie Erlösanzeige und Optimierer (Projektregel in `AGENTS.md`): die `day_ahead_prices` der Gebotszone der Anlage, Viertelstunde schlägt Stunde (`SlotEconomics` / `PriceWindowSource`).
 Gesendet wird der NACKTE Börsenpreis (`price_eur_mwh / 10`) - exakt die Zahl, die das Portal als „Börsenpreis" zeigt und auf der der Probelauf einer Regel rechnet.
-Veröffentlicht wird nur für Anlagen mit zeitveränderlichem Bezugspreis (`SlotEconomics.importPriceSource() != 'fest'`); für Kunden mit Festtarif bleibt der Preis-Baustein im Portal gesperrt, mit dem Grund im Klartext.
+Veröffentlicht wird nur für Anlagen ohne erklärten Festtarif (`site.tarif_art != 'fest'`): maßgeblich ist die Aussage des Kunden, nicht der Bewertungs-Rückfall der Erlösanzeige - `dynamisch` und `ohne` sind genau die Anlagen, deren Bezug die Erlösanzeige je Slot zum Börsenpreis bewertet.
+Für Kunden mit Festtarif bleibt der Preis-Baustein im Portal gesperrt, mit dem Grund im Klartext.
 
 ## Frische
 

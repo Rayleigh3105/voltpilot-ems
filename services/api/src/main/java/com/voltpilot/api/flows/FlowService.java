@@ -82,10 +82,19 @@ public class FlowService {
             String runtime, String lifecycle, JsonNode document, JsonNode simulation,
             Instant createdAt, Instant updatedAt, Instant simulatedAt, Instant activatedAt) {}
 
-    /** List entry: one flow with its version spine. */
+    /**
+     * List entry: one flow with its version spine.
+     *
+     * <p>{@code preisBausteinAktiv}: ob das AKTIVE Artefakt Preis-Bedingungen
+     * ausführt (flowc {@code compiler_version} >= 1.1.0, die Preis-Wächter-
+     * Kette). {@code null} = keine aktive Version. Das Portal nimmt einer
+     * Preis-Regel ihren „wird auf der Box noch nicht ausgeführt"-Hinweis erst,
+     * wenn Feed UND Artefakt es wirklich tun; ein älteres Artefakt heilt der
+     * Kunde selbst über Aus- und wieder Einschalten (= Re-Kompilierung).
+     */
     public record FlowSummaryDto(UUID flowId, String name, String runtime, int latestVersion,
             String latestLifecycle, Integer activeVersion, Instant updatedAt, JsonNode simulation,
-            JsonNode latestDocument, List<Integer> versions) {}
+            JsonNode latestDocument, List<Integer> versions, Boolean preisBausteinAktiv) {}
 
     /** Save/create request; document optional on create (skeleton then). */
     public record SaveFlowRequest(String name, JsonNode document) {}
@@ -224,9 +233,10 @@ public class FlowService {
         for (List<FlowVersionRow> versions : byFlow.values()) {
             versions.sort((a, b) -> Integer.compare(b.flowVersion(), a.flowVersion()));
             FlowVersionRow latest = versions.get(0);
-            Integer activeVersion = versions.stream()
+            FlowVersionRow active = versions.stream()
                     .filter(v -> "active".equals(v.lifecycle()))
-                    .map(FlowVersionRow::flowVersion).findFirst().orElse(null);
+                    .findFirst().orElse(null);
+            Integer activeVersion = active == null ? null : active.flowVersion();
             JsonNode simulation = versions.stream()
                     .map(FlowVersionRow::simulationJson)
                     .filter(s -> s != null)
@@ -234,9 +244,54 @@ public class FlowService {
             summaries.add(new FlowSummaryDto(latest.flowId(), latest.name(), latest.runtime(),
                     latest.flowVersion(), latest.lifecycle(), activeVersion, latest.updatedAt(),
                     simulation, parse(latest.documentJson()),
-                    versions.stream().map(FlowVersionRow::flowVersion).toList()));
+                    versions.stream().map(FlowVersionRow::flowVersion).toList(),
+                    preisBausteinAktiv(active, mapper)));
         }
         return summaries;
+    }
+
+    /** Ab dieser flowc-Version führt ein Artefakt Preis-Bedingungen aus (Preis-Wächter-Kette). */
+    static final String PREIS_COMPILER_VERSION = "1.1.0";
+
+    /**
+     * Ob das AKTIVE Artefakt Preis-Bedingungen ausführt ({@code null} = nichts
+     * aktiv). Ein fehlendes oder unlesbares Artefakt ist ehrlich {@code false}:
+     * nicht belegbar heißt nie „führt aus".
+     */
+    static Boolean preisBausteinAktiv(FlowVersionRow active, ObjectMapper mapper) {
+        if (active == null) {
+            return null;
+        }
+        if (active.artifactJson() == null) {
+            return false;
+        }
+        try {
+            String version = mapper.readTree(active.artifactJson())
+                    .path("compiler_version").asText("");
+            return semverAtLeast(version, PREIS_COMPILER_VERSION);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean semverAtLeast(String version, String min) {
+        String[] a = version.split("\\.");
+        String[] b = min.split("\\.");
+        if (a.length < 3) {
+            return false;
+        }
+        try {
+            for (int i = 0; i < 3; i++) {
+                int ai = Integer.parseInt(a[i].trim());
+                int bi = Integer.parseInt(b[i].trim());
+                if (ai != bi) {
+                    return ai > bi;
+                }
+            }
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     /**

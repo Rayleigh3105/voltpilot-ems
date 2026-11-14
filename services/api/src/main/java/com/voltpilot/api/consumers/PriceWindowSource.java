@@ -107,7 +107,7 @@ public class PriceWindowSource implements ConsumerPolicyCompiler.WindowSource {
      * The PT15M-beats-PT60M rule: an hour covered by any quarter-hour row
      * drops its PT60M row; hours with only PT60M coverage keep it.
      */
-    private static List<PricePointDto> preferQuarterHours(List<PricePointDto> raw) {
+    public static List<PricePointDto> preferQuarterHours(List<PricePointDto> raw) {
         List<PricePointDto> quarters = raw.stream()
                 .filter(p -> Duration.between(p.ts(), p.end()).toMinutes() <= 15).toList();
         List<PricePointDto> out = new ArrayList<>(quarters);

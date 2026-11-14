@@ -10,6 +10,7 @@ import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.history.HistoryService;
 import com.voltpilot.api.history.Zeitraum;
 import com.voltpilot.api.optimizer.SchedulePricingService;
+import com.voltpilot.api.preis.PreisZuleitung;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
@@ -141,6 +142,7 @@ public class SiteController {
     private final NetzanschlussService netzanschluesse;
     private final BerichtsBelege berichtsBelege;
     private final AnfrageKennungen anfrageKennungen;
+    private final PreisZuleitung preisZuleitung;
 
     public SiteController(
             SiteRepository sites,
@@ -167,9 +169,11 @@ public class SiteController {
             NetzanschlussService netzanschluesse,
             BerichtsBelege berichtsBelege,
             Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht,
-            AnfrageKennungen anfrageKennungen) {
+            AnfrageKennungen anfrageKennungen,
+            PreisZuleitung preisZuleitung) {
         this.sites = sites;
         this.anfrageKennungen = anfrageKennungen;
+        this.preisZuleitung = preisZuleitung;
         this.teilansicht = teilansicht;
         this.geltungsbereich = geltungsbereich;
         this.devices = devices;
@@ -427,7 +431,12 @@ public class SiteController {
         String zone = site.biddingZone();
         List<PricePointDto> points = prices.findForZone(zone, effectiveFrom, effectiveTo, MAX_PRICE_POINTS);
         String resolution = prices.latestResolution(zone);
-        return new PriceSeriesDto(zone, resolution, prices.currencyFor(zone), points);
+        // Dieselbe Ableitung wie der Veröffentlichungs-Takt (PreisZuleitung):
+        // das Portal entsperrt den Preis-Baustein genau dort, wo die Box den
+        // Preis wirklich gespeist bekommt - nie eine zweite Regel.
+        PreisZuleitung.Stand stand = preisZuleitung.stand(siteId, zone, site.tarifArt());
+        return new PriceSeriesDto(zone, resolution, prices.currencyFor(zone), points,
+                new PriceSeriesDto.BoxFeedDto(stand.aktiv(), stand.grund()));
     }
 
     /**
