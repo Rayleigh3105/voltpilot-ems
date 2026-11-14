@@ -11,7 +11,7 @@
  */
 import type { Abrechnung, AbrechnungZeile, HistoryRange } from './api';
 import { NBSP, fmtNum } from './format';
-import { ABRECHNUNG_PRUEFEN } from './glossarAbrechnung';
+import { ABRECHNUNG_PRUEFEN } from './glossar';
 import { isoDate } from './periodNav';
 import { zahl } from './zahl';
 
@@ -24,7 +24,7 @@ export const TAGE_JE_TAG = 92;
 /** Längster Zeitraum (wie die API, `Zeitraum.MAX_TAGE`). */
 export const MAX_TAGE = 3 * 366;
 
-/** Die Wörter der Fläche — sie wohnen im Glossar (`glossarAbrechnung.ts`, Fachmodell „Abrechnung prüfen“). */
+/** Die Wörter der Fläche — sie wohnen im Glossar (`glossar.ts`, Fachmodell „Abrechnung prüfen“). */
 export const WORT = ABRECHNUNG_PRUEFEN;
 
 /** Ein Zeitraum in ganzen Tagen, beide eingeschlossen (ISO `JJJJ-MM-TT`). */

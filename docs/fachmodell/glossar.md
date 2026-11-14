@@ -1672,6 +1672,6 @@ Wörter der Fläche: „Zeitraum“ ist der fünfte Abschnitt der Zeitleiste im 
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Haus am Mühlbach, 01.11.2025 – 31.10.2026: Netzbezug gemessen 5.154 kWh (Zählerstand 12.455 → 17.609), laut Rechnung 5.131 kWh, Unterschied +23 kWh · 0,4 %.
 
-**Heute im Code.** Route `GET /api/v1/sites/{id}/abrechnung` und Prüfungen `…/abrechnung/pruefung(en)` (services/api/src/main/java/com/voltpilot/api/web/AbrechnungController.java), freier Zeitraum `/history?from=&to=` (`history/Zeitraum.java`), Tabelle `abrechnung_pruefung` (MIG/V20261114150000__abrechnung_pruefung.sql); Wörter `ABRECHNUNG_PRUEFEN` (PORTAL/glossarAbrechnung.ts, eigenes Modul wegen des Bündel-Wächters), Regeln PORTAL/abrechnungPruefen.ts, Karte PORTAL/components/energie/AbrechnungKarte.tsx.
+**Heute im Code.** Route `GET /api/v1/sites/{id}/abrechnung` und Prüfungen `…/abrechnung/pruefung(en)` (services/api/src/main/java/com/voltpilot/api/web/AbrechnungController.java), freier Zeitraum `/history?from=&to=` (`history/Zeitraum.java`), Tabelle `abrechnung_pruefung` (MIG/V20261114150000__abrechnung_pruefung.sql); Wörter `ABRECHNUNG_PRUEFEN` (PORTAL/glossar.ts), Regeln PORTAL/abrechnungPruefen.ts, Karte PORTAL/components/energie/AbrechnungKarte.tsx.
 
 **Abgrenzung.** Nicht die Ablesung einer Messstelle (UEMS, an Messstelle und Recht `ablesung.erfassen` gebunden); nicht die Erlöse (bewertet, mit Geld); nicht der Abrechnungszeitraum einer Überwachung.
