@@ -150,9 +150,11 @@ class UnterstuetzungSchnittstelleVertragTest {
      */
     @Test
     void dieZweiNeuenProtokollwoerterStehenUeberall() throws Exception {
+        // "konto_geaendert" (V20261110210000, P1/N1) kam spaeter dazu - eigene Migration, eigener
+        // Eintrag in rechte-vectors.json/rechte.schema.json, hier nur der vollstaendige Momentaufnahme-Snapshot.
         assertThat(Arrays.stream(AenderungsArt.values()).map(AenderungsArt::code))
                 .containsExactly("zuweisen", "entziehen", "sperren", "entfernen", "verlaengern", "ablaufen",
-                        "erste_anmeldung", "startpasswort_neu");
+                        "erste_anmeldung", "startpasswort_neu", "konto_geaendert");
         String vektoren = Files.readString(WURZEL.resolve(Path.of("docs", "contracts", "v2", "rechte-vectors.json")));
         String schema = Files.readString(WURZEL.resolve(Path.of("docs", "contracts", "v2", "rechte.schema.json")));
         String sql = Files.readString(MIGRATION);

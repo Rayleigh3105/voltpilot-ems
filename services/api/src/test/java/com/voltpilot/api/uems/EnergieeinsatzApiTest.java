@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -183,8 +185,12 @@ class EnergieeinsatzApiTest {
         var e1 = anlegen(p1); var e2 = anlegen(p2);
         root.update("INSERT INTO benutzer(tenant_id,sub,konto,anzeigename,zustand) VALUES (?,'TB','partner','Thomas Brunner','aktiv')", tenant);
         ruf("GET", BASE, "TB", null, 404);
+        // endet_am ist gueltig_bis + 1 Tag ALS ZEITPUNKT in der Zeitzone (zugriff_ende_chk) - nicht einfach der
+        // naechste Kalendertag als UTC-Mitternacht (RechtMatrixApiTest#unterstuetzung hat dasselbe Muster).
+        LocalDate bis = LocalDate.parse("2099-12-30");
         root.update("INSERT INTO zugriff(tenant_id,benutzer_sub,rolle,standort_id,art,umfang,gueltig_ab,gueltig_bis,endet_am,zeitzone) "
-                + "VALUES (?,'TB','unterstuetzer',?,'installateur','ansehen','2024-01-01','2099-12-30','2099-12-31','Europe/Berlin')",tenant,s1);
+                + "VALUES (?,'TB','unterstuetzer',?,'installateur','ansehen','2024-01-01',?,?,'Europe/Berlin')", tenant, s1, bis,
+                bis.plusDays(1).atStartOfDay(ZoneId.of("Europe/Berlin")).toOffsetDateTime());
         ruf("GET", BASE + "/" + e1.path("id").asText(), "TB", null, 200);
         ruf("GET", BASE + "/" + e2.path("id").asText(), "TB", null, 404);
         ruf("GET", BASE + "/" + e2.path("id").asText() + "/protokoll", "TB", null, 404);

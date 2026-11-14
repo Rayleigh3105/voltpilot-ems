@@ -83,12 +83,17 @@ class UemsBerichtKaskadeTest {
     /** Datenstand von Nr. 1: 10.11.2026 08:55 (MEZ) — freigegeben um 09:02. */
     private static final Instant DATENSTAND_NR1 = Instant.parse("2026-11-10T07:55:00Z");
     private static final Instant FREIGABE_NR1 = Instant.parse("2026-11-10T08:02:00Z");
-    /** Die Kaskade von K-2026-0007: 12.11.2026 10:05:33 (MEZ, Referenzdatei 1.4). */
-    private static final Instant T_KASKADE = Instant.parse("2026-11-12T09:05:33Z");
+    /**
+     * Die Kaskade von K-2026-0007 - wie {@code berechnet_am} oben (#1821) relativ zum Lauf statt fest: ihr {@code jetzt}
+     * geht durch {@code BerichtKaskade.datenstand()}, die das SPÄTERE von {@code jetzt} und der DB-Uhr nimmt - ein fester
+     * Kalendertag wird so zur Zeitbombe, sobald die echte Uhr ihn überholt (Lauf 586, 13.11.2026: T_KASKADE fest auf
+     * 12.11.2026 lag bereits in der Vergangenheit). Einen Tag NACH dem Lauf bleibt immer später als die DB-Uhr.
+     */
+    private static final Instant T_KASKADE = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS);
     /** Die Revision Nr. 2: 16.11.2026 14:20 (MEZ). */
     private static final Instant FREIGABE_NR2 = Instant.parse("2026-11-16T13:20:00Z");
-    /** Der Zweig aus B7: die Rücknahme von K-2026-0007 (Fassung 3) am 24.11.2026. */
-    private static final Instant T_RUECKNAHME = Instant.parse("2026-11-24T09:00:00Z");
+    /** Der Zweig aus B7: die Rücknahme von K-2026-0007 (Fassung 3) - 12 Tage nach T_KASKADE, aus demselben Grund relativ. */
+    private static final Instant T_RUECKNAHME = T_KASKADE.plus(12, ChronoUnit.DAYS);
 
     private static final ProtokollAkteur INES = new ProtokollAkteur("kc-ines-kaltenbach", "Ines Kaltenbach",
             "energiemanager", "kunde");
@@ -227,8 +232,8 @@ class UemsBerichtKaskadeTest {
         List<JsonNode> neu = meldungen(w, BerichtKaskade.NEU_GEBILDET);
         assertThat(neu).extracting(n -> n.path("bericht").asText() + " | " + n.path("datenstand").asText() + " | "
                 + n.path("anlass_kennung").asText() + " | " + n.path("urheber").asText()).containsExactly(
-                        "BR-2026-0001 | 2026-11-12T09:05:33Z | K-2026-0007 | cloud",
-                        "BR-2027-0001 | 2026-11-12T09:05:33Z | K-2026-0007 | cloud");
+                        "BR-2026-0001 | " + T_KASKADE + " | K-2026-0007 | cloud",
+                        "BR-2027-0001 | " + T_KASKADE + " | K-2026-0007 | cloud");
         assertThat(new BerichtRepository(root).anlassDerNeubildung(w.mandant(), "BR-2026-0001", T_KASKADE))
                 .as("der Anlass, den der 409 entwurf_veraltet der Route nennt").isEqualTo(K7);
 

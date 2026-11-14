@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,8 @@ class UemsBerichtKennzahlAbwahlMigrationTest {
 
     private static final String DIESE = "20260915113000";
     private static final String TABELLE = "bericht_kennzahl_abwahl";
+    /** #1843 Löschzug-Indexdeckung I: idx_bericht_kennzahl_abwahl_tenant auf dieser Tabelle - reist mit ihr. */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of("20261112150000");
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";
@@ -182,7 +185,9 @@ class UemsBerichtKennzahlAbwahlMigrationTest {
         Path ohneDiese = Files.createTempDirectory("migrationen-ohne-abwahl");
         try (var dateien = Files.list(MIGRATIONEN)) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
@@ -190,7 +195,9 @@ class UemsBerichtKennzahlAbwahlMigrationTest {
         String url = POSTGRES.getJdbcUrl().replaceFirst("/voltpilot(?=\\?|$)", "/voltpilot_spaet");
         flyway(url).locations("filesystem:" + ohneDiese.toAbsolutePath()).load().migrate();
         MigrateResult spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
 
         JdbcTemplate db = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         for (String sql : List.of(

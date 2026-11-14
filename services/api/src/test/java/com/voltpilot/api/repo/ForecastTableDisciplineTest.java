@@ -84,11 +84,15 @@ class ForecastTableDisciplineTest {
      * TenantRepository löscht in einer Tabellen-Schleife - über die
      * BYPASSRLS-Admin-Rolle (strukturell unten mitgeprüft), also der bewusste
      * Admin-Datenpfad des Offboardings. FlowTemplates' Literal ist gar kein
-     * SQL (ein Flow-Port-Name im Starter-Graphen).
+     * SQL (ein Flow-Port-Name im Starter-Graphen). KundeDatenBestand's Literal
+     * ist ebenfalls kein SQL: ein Tabellenname in der rein beschreibenden
+     * Daten-Bestandsübersicht des Löschzugs (§ "Von Zyklen erzeugt ...") -
+     * keine Query, kein DELETE, keine eigene Zaun-Pflicht.
      */
     private static final Map<String, Integer> ALLOWED_LITERAL = Map.of(
             "TenantRepository.java", 1,
-            "FlowTemplates.java", 1);
+            "FlowTemplates.java", 1,
+            "KundeDatenBestand.java", 1);
 
     @Test
     @DisplayName("jede forecast-Query im App-Pfad ist allowlisted und damit bewusst gefenced")

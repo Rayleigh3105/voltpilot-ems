@@ -53,7 +53,8 @@ class UemsTeilVermerkMigrationTest {
     private static final String SATZ = "Risiken und Chancen bewerten wir im Jahresgespräch der Geschäftsführung.";
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
-            "20261007150000"); // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
+            "20261007150000", // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
+            "20261112150000"); // #1843 Löschzug-Indexdeckung I: idx_energiemanagement_teil_vermerk_tenant auf dieser Tabelle.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
