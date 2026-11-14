@@ -8,7 +8,7 @@
  "schema_version": "1.0",
  "geraete": {
   "klima": {
-   "schema_version": 1,
+   "schema_version": "1.0",
    "transport": {"host": "192.168.10.50", "port": 502, "unit_id": 1},
    "channels": [
     {"slug": "raum", "label": "Raumtemperatur", "unit": "°C", "signal": "room_temperature",
@@ -20,6 +20,8 @@
    ],
    "controls": {
     "min_change_interval_s": 120,
+    "min_on_seconds": 300,
+    "min_off_seconds": 180,
     "values": [
      {"slug": "ein", "label": "Ein", "kind": "on_off", "register": {"kind": "coil", "address": 0},
       "on_value": 1, "off_value": 0, "rest": false},
@@ -67,6 +69,7 @@
   {"name": "Eine Spule kennt nur 0 und 1", "geraet": "klima", "aendere": {"controls.values[0].on_value": 2}, "fehler": ["on_off_values"]},
   {"name": "Eine Spule mit Funktionscode 16", "geraet": "klima", "aendere": {"controls.values[0].write_fc": 16}, "fehler": ["write_fc"]},
   {"name": "Abstand unter 10 s", "geraet": "klima", "aendere": {"controls.min_change_interval_s": 5}, "fehler": ["change_interval"]},
+  {"name": "Mindestlauf über einen Tag", "geraet": "klima", "aendere": {"controls.min_on_seconds": 90000}, "fehler": ["cycle"]},
   {"name": "Mit dieser Skalierung passt -10 °C nicht in u16", "geraet": "kuehlraum", "aendere": {"controls.values[0].offset": 0, "controls.values[0].min": -10}, "fehler": ["raw_range"]},
   {"name": "Ein Eingangsregister lässt sich nicht schreiben", "geraet": "klima", "aendere": {"controls.values[1].register.kind": "input"}, "fehler": ["register"]},
   {"name": "Ein Sollwert wird als Wort zurückgelesen, nicht als Bit", "geraet": "klima", "aendere": {"controls.values[1].readback.kind": "coil"}, "fehler": ["readback"]},

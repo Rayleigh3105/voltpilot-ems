@@ -164,7 +164,7 @@ func (s *mbStand) lage() string {
 
 func klimaDefinition() map[string]any {
 	return map[string]any{
-		"schema_version": 1,
+		"schema_version": "1.0",
 		"channels": []any{
 			map[string]any{"slug": "raum", "label": "Raum", "unit": "°C", "signal": "room_temperature",
 				"register": map[string]any{"kind": "input", "address": 0, "data_type": "s16"}, "scale": 0.1, "min_read_interval_s": 5},

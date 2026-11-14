@@ -137,7 +137,12 @@ type Control struct {
 
 // Controls is the write block of a definition.
 type Controls struct {
-	MinChangeIntervalS *int      `json:"min_change_interval_s,omitempty"`
+	MinChangeIntervalS *int `json:"min_change_interval_s,omitempty"`
+	// MinOnSeconds and MinOffSeconds are the cycle guard of the on_off value
+	// (the cloud puts them into guards.limits; listed here so both readers
+	// check the same definition).
+	MinOnSeconds  *int `json:"min_on_seconds,omitempty"`
+	MinOffSeconds *int `json:"min_off_seconds,omitempty"`
 	WatchdogAddress    *int      `json:"watchdog_address,omitempty"`
 	WatchdogValue      *int      `json:"watchdog_value,omitempty"`
 	Values             []Control `json:"values"`
@@ -149,7 +154,8 @@ type Controls struct {
 // Definition is the self-built device as the cloud stores it in
 // driver.connection.
 type Definition struct {
-	SchemaVersion int `json:"schema_version,omitempty"`
+	// SchemaVersion is "1.0" as the cloud stores it (a number is read too).
+	SchemaVersion json.RawMessage `json:"schema_version,omitempty"`
 	Transport     struct {
 		Host   string `json:"host"`
 		Port   *int   `json:"port,omitempty"`
@@ -247,6 +253,7 @@ const (
 	ErrModeWord         = "mode_word"
 	ErrRest             = "rest"
 	ErrChangeInterval   = "change_interval"
+	ErrCycle            = "cycle"
 	ErrWatchdog         = "watchdog"
 	ErrReadback         = "readback"
 	ErrReadbackDataType = "readback_data_type"
@@ -317,6 +324,11 @@ func Pruefe(d Definition) []Fehler {
 	}
 	if cs.MinChangeIntervalS != nil && (*cs.MinChangeIntervalS < MinChangeIntervalS || *cs.MinChangeIntervalS > MaxChangeIntervalS) {
 		fehl(ErrChangeInterval, "controls.min_change_interval_s")
+	}
+	for _, v := range []*int{cs.MinOnSeconds, cs.MinOffSeconds} {
+		if v != nil && (*v < 0 || *v > 86400) {
+			fehl(ErrCycle, "controls.min_on_seconds")
+		}
 	}
 	if cs.WatchdogAddress != nil {
 		v := 0
