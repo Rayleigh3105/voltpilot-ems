@@ -352,7 +352,7 @@ public class HistoryRepository {
      * quarter leaves grid/load NULL (a bare hybrid); SoC is min/max across
      * quarters, last = the latest quarter's value.
      */
-    private static String v2Reconstruction(String quarters, String displayBucketExpr) {
+    static String v2Reconstruction(String quarters, String displayBucketExpr) {
         return "WITH typed AS (SELECT src.bucket, src.channel, src.avg_value, src.min_value,"
                 + "   src.max_value, src.last_value, mp.entity_type"
                 + "   FROM (" + quarters + ") src"

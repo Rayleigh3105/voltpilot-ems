@@ -5201,6 +5201,41 @@ paths:
         "400": { description: Unknown range value. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/grundlast:
+    get:
+      tags: [history]
+      summary: Grundlast einer Anlage – was läuft immer, auch nachts.
+      description: >
+        Bedienkonzept Privatkunde §5 (Paket G1, Variante A). Nachtwert = die
+        niedrigste gemessene Viertelstunde 0–5 Uhr Ortszeit (Europe/Berlin) in
+        Watt; eine Nacht zählt, wenn höchstens 2 ihrer Viertelstunden fehlen
+        (18 von 20; Zeitumstellung 16/24). Typische Nacht = Median der
+        gewerteten Nächte, ab 3 (Tag: die eine Nacht); im Jahr je Monat ab 7.
+        Gelesen über den Pfad von /history (v1 telemetry_rollup_15m, nach dem
+        Umstieg telemetry_v2_rollup_15m, gespleißt am Cutover). Die Aufteilung
+        nimmt je Unterzähler dessen Leistung in genau den Viertelstunden der
+        Nachtwerte. Nur lesend; RLS-gezäunt, eine fremde Anlage ist 404.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: z
+          in: query
+          required: false
+          schema: { type: string, enum: [tag, woche, monat, jahr, aktuell], default: woche }
+          description: Zeitraum wie der Verlauf; aktuell = die letzten 14 Nächte (Kachel, at zählt nicht).
+        - name: at
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Ein Datum im Zeitraum (Vorgabe heute, Europe/Berlin).
+      responses:
+        "200":
+          description: Die Grundlast des Zeitraums.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Grundlast" }
+        "400": { description: Unbekannter Zeitraum. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage nicht gefunden oder nicht sichtbar. }
   /api/v1/sites/{siteId}/earnings:
     get:
       tags: [history]
@@ -30194,6 +30229,80 @@ components:
                         label: { type: string }
                         primary: { type: boolean }
                         value_kw: { type: number, description: "Raw signed contribution; omitted when unknown." }
+    Grundlast:
+      type: object
+      description: >
+        Die Zahlen der Karte „Grundlast“ (Verlauf › Energie) und der Kachel im
+        Cockpit. Watt ganzzahlig; die Anzeige rundet auf 10 W. Fehlend ist nie
+        0: ohne Zahl steht null.
+      required: [z, von, bis, hausverbrauchGemessen, gewertet, mindestens, luecken, naechte, monate, teile]
+      properties:
+        z: { type: string, enum: [tag, woche, monat, jahr, aktuell] }
+        von: { type: string, format: date, description: Erste Nacht des Zeitraums. }
+        bis: { type: string, format: date, description: Letzte Nacht des Zeitraums (eingeschlossen). }
+        hausverbrauchGemessen:
+          type: boolean
+          description: false = die Anlage hat nie einen Hausverbrauch gemessen (keine Karte, keine Kachel).
+        typischW: { type: number, nullable: true, description: Typische Nacht (Median) in W; null unter der Mindestzahl. }
+        gewertet: { type: integer, description: Gewertete Nächte des Zeitraums. }
+        mindestens: { type: integer, description: Mindestzahl gewerteter Nächte (Tag 1, sonst 3). }
+        luecken: { type: integer, description: Nächte nach Messbeginn mit zu wenigen Messwerten. }
+        naechte:
+          type: array
+          description: Je Nacht (leer im Jahr).
+          items:
+            type: object
+            required: [datum, status]
+            properties:
+              datum: { type: string, format: date }
+              status: { type: string, enum: [gewertet, luecke, vorher, offen] }
+              w: { type: number, nullable: true }
+        monate:
+          type: array
+          description: Je Monat (nur im Jahr).
+          items:
+            type: object
+            required: [monat, gewertet]
+            properties:
+              monat: { type: string, example: "2026-07" }
+              w: { type: number, nullable: true, description: Median ab 7 gewerteten Nächten. }
+              gewertet: { type: integer }
+        kwhAmTag: { type: number, nullable: true, description: typischW × 24 h. }
+        anteil:
+          type: number
+          nullable: true
+          description: Grundlast über die gemessene Dauer ÷ Verbrauch derselben Dauer (0..1, ungeklemmt).
+        vorperiodeW:
+          type: number
+          nullable: true
+          description: Typische Nacht des Zeitraums davor (bei aktuell dieselben 14 Nächte einen Monat früher).
+        stufe:
+          type: object
+          nullable: true
+          description: Nur im Monat - ab diesem Tag liegt die Grundlast deutlich anders.
+          properties:
+            seit: { type: string, format: date }
+            vorherW: { type: number }
+            nachherW: { type: number }
+        teile:
+          type: array
+          description: Je Unterzähler an der Wurzel (leer ohne Unterzähler oder ohne typische Nacht).
+          items:
+            type: object
+            required: [entityId, unterzaehler]
+            properties:
+              entityId: { type: string }
+              label: { type: string, nullable: true }
+              typLabel: { type: string, nullable: true }
+              unterzaehler: { type: boolean }
+              w: { type: number, nullable: true }
+        rest:
+          type: object
+          nullable: true
+          description: übriger Haushalt = typische Nacht minus Teile; ohne Zahl steht der Grund.
+          properties:
+            w: { type: number, nullable: true }
+            grund: { type: string, nullable: true, enum: [teil_ohne_wert, teile_mehr_als_haus] }
     History:
       type: object
       properties:
