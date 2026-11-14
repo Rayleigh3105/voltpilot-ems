@@ -1275,6 +1275,36 @@ class PortalApiTest {
         List<?> points = (List<?>) res.getBody().get("points");
         assertThat(points).isNotEmpty();
 
+        // boxFeed (Vertrag v2/mqtt-price-current.md): dieselbe Ableitung wie der
+        // Veröffentlichungs-Takt. Ein erklärter Festtarif sperrt mit Grund im
+        // Klartext-Code - unabhängig davon, welche Boxen die Anlage hat.
+        String tarifVorher;
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(
+                        "SELECT tarif_art FROM site WHERE id = '" + BERLIN_SITE + "'")) {
+            rs.next();
+            tarifVorher = rs.getString(1);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        try {
+            exec("UPDATE site SET tarif_art = 'fest', tarif_param_ct_kwh = 30 WHERE id = '"
+                    + BERLIN_SITE + "'");
+            ResponseEntity<Map<String, Object>> fest = rest.exchange(
+                    url("/api/v1/sites/" + BERLIN_SITE + "/prices"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo", "demo"))),
+                    new ParameterizedTypeReference<>() {});
+            @SuppressWarnings("unchecked")
+            Map<String, Object> boxFeed = (Map<String, Object>) fest.getBody().get("boxFeed");
+            assertThat(boxFeed).containsEntry("aktiv", false)
+                    .containsEntry("grund", "kein_dynamischer_tarif");
+        } finally {
+            exec("UPDATE site SET tarif_art = " + (tarifVorher == null ? "NULL" : "'" + tarifVorher + "'")
+                    + " WHERE id = '" + BERLIN_SITE + "'");
+        }
+
         // A foreign site is invisible via RLS -> 404 (never another tenant's zone).
         ResponseEntity<String> foreign = rest.exchange(
                 url("/api/v1/sites/" + BERLIN_SITE + "/prices"), HttpMethod.GET,
