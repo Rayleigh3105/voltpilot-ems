@@ -73,32 +73,41 @@ type mbGeraet struct {
 	grund      string
 	letzteSchr []modbusgeraet.Write
 	fehler     string
+	// zu: the device left the registry or its definition changed - this
+	// instance never opens a connection again (a stale pointer held by the
+	// other loop must not leave a second socket behind).
+	zu bool
 }
 
 // mbDefinition reads the self-built definition of an entity when it is a
 // device with write values; ok=false for every other entity (and for a
 // definition the box's own rules refuse - the cloud is believed nothing).
 func mbDefinition(e entities.Entity) (modbusgeraet.Definition, string, bool) {
+	def, quelle, _, ok := mbDefinitionMitFehlern(e)
+	return def, quelle, ok
+}
+
+// mbDefinitionMitFehlern is mbDefinition plus the refusals of a definition the
+// box's rules refuse (quelle is set then, ok false).
+func mbDefinitionMitFehlern(e entities.Entity) (modbusgeraet.Definition, string, []modbusgeraet.Fehler, bool) {
 	if len(e.Driver) == 0 {
-		return modbusgeraet.Definition{}, "", false
+		return modbusgeraet.Definition{}, "", nil, false
 	}
 	var drv struct {
 		Communication string          `json:"communication"`
 		Connection    json.RawMessage `json:"connection"`
 	}
 	if json.Unmarshal(e.Driver, &drv) != nil || drv.Communication != modbusgeraet.Communication || len(drv.Connection) == 0 {
-		return modbusgeraet.Definition{}, "", false
+		return modbusgeraet.Definition{}, "", nil, false
 	}
 	def, fehler := modbusgeraet.Lies(drv.Connection)
 	if def.Controls == nil {
-		return modbusgeraet.Definition{}, "", false
+		return modbusgeraet.Definition{}, "", nil, false
 	}
 	if len(fehler) > 0 {
-		slog.Warn("Modbus-Gerät: Definition verletzt die Regeln - nichts wird gelesen oder geschrieben",
-			"entity", e.ID, "fehler", fmt.Sprint(fehler))
-		return modbusgeraet.Definition{}, "", false
+		return modbusgeraet.Definition{}, string(drv.Connection), fehler, false
 	}
-	return def, string(drv.Connection), true
+	return def, string(drv.Connection), nil, true
 }
 
 // syncModbusGeraete follows the registry: new devices start, changed ones start
@@ -112,12 +121,22 @@ func (a *Agent) syncModbusGeraete() []*mbGeraet {
 	if a.mbGeraete == nil {
 		a.mbGeraete = map[string]*mbGeraet{}
 	}
+	if a.mbAbgelehnt == nil {
+		a.mbAbgelehnt = map[string]string{}
+	}
 	da := map[string]bool{}
 	for _, e := range reg.Entities {
-		def, quelle, ok := mbDefinition(e)
+		def, quelle, fehler, ok := mbDefinitionMitFehlern(e)
 		if !ok {
+			if len(fehler) > 0 && a.mbAbgelehnt[e.ID] != quelle {
+				// Once per definition, not every second.
+				a.mbAbgelehnt[e.ID] = quelle
+				slog.Warn("Modbus-Gerät: Definition verletzt die Regeln - nichts wird gelesen oder geschrieben",
+					"entity", e.ID, "fehler", fmt.Sprint(fehler))
+			}
 			continue
 		}
+		delete(a.mbAbgelehnt, e.ID)
 		da[e.ID] = true
 		if g := a.mbGeraete[e.ID]; g != nil && g.quelle == quelle {
 			continue
@@ -155,6 +174,7 @@ func (a *Agent) mbGeraetFuer(entityID string) *mbGeraet {
 func (g *mbGeraet) schliesse() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.zu = true
 	if g.client != nil {
 		_ = g.client.Close()
 		g.client = nil
@@ -166,6 +186,9 @@ func (g *mbGeraet) schliesse() {
 func (a *Agent) verbinde(ctx context.Context, g *mbGeraet) (*modbustcp.Client, error) {
 	if g.client != nil {
 		return g.client, nil
+	}
+	if g.zu {
+		return nil, fmt.Errorf("Gerät nicht mehr in der Registry")
 	}
 	if !probe.IsPrivateHost(g.def.Transport.Host) {
 		return nil, fmt.Errorf("Ziel %q liegt nicht im lokalen Netz", g.def.Transport.Host)

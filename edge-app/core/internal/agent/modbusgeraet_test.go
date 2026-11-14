@@ -428,3 +428,22 @@ func TestRegistryEintragDerApiTreibtDasGeraet(t *testing.T) {
 		t.Fatalf("device: ein=%v soll=%d betrieb=%d", sim.CoilWert(0), sim.HoldingWert(10), sim.HoldingWert(12))
 	}
 }
+
+// A definition the box's own rules refuse (here: a target outside the local
+// network) is neither read nor written, and the refusal is logged once.
+func TestAbgelehnteDefinitionWirdNieGelesen(t *testing.T) {
+	def := klimaDefinition()
+	def["transport"] = map[string]any{"host": "8.8.8.8", "port": 502, "unit_id": 1}
+	conn, _ := json.Marshal(def)
+	drv, _ := json.Marshal(map[string]any{"communication": "modbus_baukasten", "connection": json.RawMessage(conn)})
+	a := &Agent{Cfg: config.Defaults(), entRegistry: entities.Registry{Revision: "r", Entities: []entities.Entity{
+		{ID: "fremd", Type: "modbus-device", Driver: drv}}}}
+	for i := 0; i < 3; i++ {
+		if g := a.syncModbusGeraete(); len(g) != 0 {
+			t.Fatalf("a refused definition runs: %+v", g)
+		}
+	}
+	if a.mbAbgelehnt["fremd"] == "" {
+		t.Fatal("the refusal is remembered (logged once)")
+	}
+}

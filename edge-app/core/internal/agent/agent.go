@@ -653,9 +653,10 @@ type Agent struct {
 	// mbGeraete are the self-built Modbus devices with write values (K3) the
 	// core owns end to end (modbusgeraet.go); mbDial opens their connection
 	// (nil = modbustcp.DefaultDialer; injectable for tests).
-	mbMu      sync.Mutex
-	mbGeraete map[string]*mbGeraet
-	mbDial    modbustcp.Dialer
+	mbMu        sync.Mutex
+	mbGeraete   map[string]*mbGeraet
+	mbAbgelehnt map[string]string // entity -> refused definition (logged once)
+	mbDial      modbustcp.Dialer
 
 	// logik runs delivered Steuerlogiken along (agent/steuerlogik.go): it
 	// computes and reports, it never switches. logikIn are its inputs.
