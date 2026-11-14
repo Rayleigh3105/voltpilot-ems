@@ -193,11 +193,15 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter, onUmwandeln }: {
   const ruht = k.an && bild.funktion.angehalten;
   let pill: ReactNode;
   if (!k.an) pill = <span className="pill off"><i />aus</span>;
+  // N2 (report.md §11): die Box führt eine Preis-Bedingung noch nicht aus - ehrlich als
+  // "kommt noch" zeigen statt "wartet" zu versprechen, egal ob angehalten oder nicht.
+  else if (k.preisNichtAusgefuehrt) pill = <span className="pill lock"><i />kommt noch</span>;
   else if (ruht) pill = <span className="pill lock"><i />wirkt nicht</span>;
   else if (jetzt) pill = <span className="pill on"><i />greift gerade</span>;
   else pill = <span className="pill wait"><i />wartet</span>;
   const info: string[] = [];
-  if (ruht) info.push('bis Sie fortsetzen');
+  if (k.preisNichtAusgefuehrt) info.push('wird auf der Box noch nicht ausgeführt - der Preis-Baustein kommt noch');
+  else if (ruht) info.push('bis Sie fortsetzen');
   else {
     if (k.an && vorbei.length) info.push(`heute schon ${spannenText(vorbei, 2)}`);
     if (k.an && kommend.length && !jetzt) info.push(`als Nächstes ${uhrTag(kommend[0][0])}`);
@@ -350,7 +354,9 @@ export function RegelBlatt(p: RegelBlattProps) {
   });
   if (d.wenn.length < 4) {
     tokens.push(
-      <button type="button" className="tok add" key="plus" onClick={() => { setze({ wenn: [...d.wenn, { v: 'preis', op: 'unter', w: 10 }] }); setFokus(`w${d.wenn.length}v`); }}>
+      // N2 (report.md §11): 'zeit' statt des gesperrten Preis-Bausteins als Default für eine
+      // frisch hinzugefügte Bedingung - der Wähler öffnet sich direkt danach sowieso.
+      <button type="button" className="tok add" key="plus" onClick={() => { setze({ wenn: [...d.wenn, { v: 'zeit', op: 'zwischen', w: [88, 24] }] }); setFokus(`w${d.wenn.length}v`); }}>
         <Ic n="plus" s={15} />
         {d.oder ? 'oder' : 'und'} …
       </button>,

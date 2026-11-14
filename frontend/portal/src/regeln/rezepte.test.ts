@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildPolicyDocument, type BuildOptions } from '../consumers/policy';
 import type { ConsumerDraft } from '../consumers/questions';
 import { isValid, validatePolicy } from '../consumers/validate';
-import { buildGuidedFlow, parseGuidedFlow } from '../flows/guidedBuilder';
+import { buildGuidedFlow, GUIDED_WISH_TTL_S, parseGuidedFlow } from '../flows/guidedBuilder';
 import type { EditorEntity } from '../flows/model';
 import { validateFlow } from '../flows/validate';
 import {
@@ -181,6 +181,9 @@ describe('„Speicher schützen" befüllt den Wenn/Dann-Baukasten vor', () => {
       kind: 'entity', entityId: 'e-batt', channel: 'soc_pct', direction: 'above',
     });
     expect((rule!.conditions[0] as { hysteresis?: number }).hysteresis).toBeGreaterThan(0);
+    // N1 (report.md §11): auch dieser Rezept-Emitter nutzt den geteilten TTL,
+    // der das ganze Slot-Boundary-Fenster überlebt - keinen kürzeren Literal.
+    expect((rule!.action as { ttlS: number }).ttlS).toBe(GUIDED_WISH_TTL_S);
 
     // Sie geht durch den GETEILTEN Emitter und ist danach wieder lesbar
     // (Roundtrip-Gesetz) und clientseitig gültig.

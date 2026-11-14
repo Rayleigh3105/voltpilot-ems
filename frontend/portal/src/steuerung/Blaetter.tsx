@@ -1084,18 +1084,13 @@ export function NetzanschlussBlatt({ k, siteId, netzanschlussKw }: {
 }
 
 export function NegativBlatt({ k }: { k: BlattKontext }) {
+  // N2 (report.md §11, needs-decision n2-preis-feed): die Vorlage "Negativpreise
+  // mitnehmen" braucht den Preis-Baustein, der auf der Box noch nicht ankommt und
+  // deshalb gesperrt ist (`vars().preis`) - kein Vorschlag, eine Regel daraus zu
+  // bauen, solange sie nichts bewirken würde.
   return (
     <Blatt symbol="down" titel="Negativpreis-Abregelung" unter="läuft immer mit" onClose={k.zu}>
       <div className="warum">Kostet Strom an der Börse unter null, speist die Anlage nicht ein. Das schützt vor Kosten.</div>
-      {k.neueRegel && (
-        <>
-          <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
-          <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); k.a.oeffne({ art: 'regel', vorlage: 'negativ' }); }}>
-            <Ic n="plus" s={18} />
-            Regel aus Vorlage
-          </button></Recht>
-        </>
-      )}
     </Blatt>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildGuidedFlow, parseGuidedFlow } from '../flows/guidedBuilder';
+import { buildGuidedFlow, GUIDED_WISH_TTL_S, parseGuidedFlow } from '../flows/guidedBuilder';
+import type { FlowSummary } from '../flows/flowsApi';
 import type { GeraetBild, Reihen } from './bild';
 import { einordnen, nurMessenKey, vorschlag } from './neu';
 import {
@@ -9,6 +10,7 @@ import {
   neuerEntwurf,
   notifyUmwandlung,
   probelauf,
+  regelKarten,
   regelSatz,
   regelSatzAusFlow,
   vars,
@@ -43,7 +45,9 @@ const bezug = bezugAus([
 describe('Satzbaukasten', () => {
   it('bietet nur Bausteine an, die die Box ausführen kann', () => {
     const v = vars(bezug);
-    expect(v.preis.gesperrt).toBeNull();
+    // N2 (report.md §11, needs-decision n2-preis-feed, Entscheid: Weg B): die Box
+    // bekommt nie einen Preis - gesperrt wie jeder andere nicht ausführbare Baustein.
+    expect(v.preis.gesperrt).toBe('kommt noch');
     expect(v.sonne.gesperrt).toBeNull();
     expect(v.soc.gesperrt).toBeNull();
     expect(v.temp.gesperrt).toBe('kommt noch');
@@ -65,6 +69,18 @@ describe('Satzbaukasten', () => {
     expect(zurueck.dann).toEqual(e.dann);
   });
 
+  it('N1 (report.md §11): „Nachts laufen lassen" kompiliert mit einem Wunsch, der das ganze Fenster hält', () => {
+    const e = neuerEntwurf([geraet()], { vorlage: 'nacht' });
+    const regel = zuGuided(e, bezug, geraet())!;
+    expect(regel.action.ttlS).toBe(GUIDED_WISH_TTL_S);
+    const doc = buildGuidedFlow(regel, e.name, 's1');
+    const control = doc.nodes.find((n) => n.type === 'vp.entity.control')!;
+    // flowc re-fires den Trigger genau einmal je 900s-Slot (Slot-Grenze) +
+    // bis zu 30s Auslöser-Jitter: ein kürzerer ttl_s hielt den Wunsch nur
+    // 5 von 15 Minuten (Lab-Nachstellung, regel-takt.js).
+    expect(control.parameters.ttl_s as number).toBeGreaterThanOrEqual(930);
+  });
+
   it('sagt die Regel als Satz', () => {
     const e = neuerEntwurf([geraet()], { vorlage: 'negativ' });
     const s = regelSatz(e, geraet());
@@ -74,20 +90,62 @@ describe('Satzbaukasten', () => {
 
   it('greift nur, wo die Bedingung belegt ist - unbekannt ist keine Null', () => {
     const rh = leereReihen();
-    rh.preis[60] = -1;
-    rh.preis[61] = 12;
-    const e = neuerEntwurf([geraet()], { vorlage: 'negativ' });
+    rh.soc[60] = 95;
+    rh.soc[61] = 50;
+    const e = neuerEntwurf([geraet()], { vorlage: 'voll' });
     const bits = greift(e, rh, 60, 63);
     expect(bits).toEqual([true, false, false]);
     const p = probelauf(e, rh, geraet(), 52);
     expect(p.treffer).toBe(1);
     expect(p.kwh).toBeCloseTo(0.75);
-    expect(p.unbekannt).toBe(true);
+  });
+
+  it('N2 (report.md §11): eine Preis-Bedingung greift im Probelauf nie - die Box hat nie einen Preis', () => {
+    // Anders als `sonne`/`soc`/`zeit`: eine Preis-Bedingung kompiliert zu
+    // `vp.price.current`, das Thema `edge/price/current` liest - reserviert,
+    // der Core speist es nicht. Ein bekannter Marktpreis im Portal (selbst für
+    // heute UND morgen) darf den Probelauf nicht zu Schaltzeiten verführen, die
+    // die Box nie ausführt.
+    const rh = leereReihen();
+    rh.preis[60] = -1; // negativer Preis, Bedingung der 'negativ'-Vorlage - und bekannt
+    rh.morgenBekannt = true;
+    const e = neuerEntwurf([geraet()], { vorlage: 'negativ' });
+    const bits = greift(e, rh, 60, 63);
+    expect(bits).toEqual([false, false, false]);
+    const p = probelauf(e, rh, geraet(), 52);
+    expect(p.treffer).toBe(0);
+    expect(p.kwh).toBe(0);
+    expect(p.niedrigsterPreis).toBe(-1); // der Hinweistext „nie zu" bleibt informativ
+  });
+
+  it('N2: eine bereits angelegte Preis-Regel verschwindet nicht, sie wird ehrlich gekennzeichnet', () => {
+    // Weg B (needs-decision n2-preis-feed, Entscheid 14.11.2026): der Baustein wird
+    // gesperrt, eine SCHON gebaute Regel mit Preis-Bedingung bleibt aber stehen - sie
+    // wird weder gelöscht noch stillschweigend ausgeblendet, nur ehrlich markiert.
+    const regel = zuGuided(neuerEntwurf([geraet()], { vorlage: 'negativ' }), bezug, geraet())!;
+    const doc = buildGuidedFlow(regel, 'Negativpreise mitnehmen', 's1');
+    const flow: FlowSummary = {
+      flowId: 'f-preis', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 1,
+      latestLifecycle: 'active', activeVersion: 1, updatedAt: '2026-01-01T00:00:00Z',
+      simulation: null, latestDocument: doc, versions: [1],
+    };
+    const karten = regelKarten([flow], bezug, { hs: 'Heizstab' });
+    expect(karten).toHaveLength(1);
+    expect(karten[0].an).toBe(true);
+    expect(karten[0].preisNichtAusgefuehrt).toBe(true);
+
+    // Eine Regel ohne Preis-Bedingung bleibt unberührt.
+    const nachtRegel = zuGuided(neuerEntwurf([geraet()], { vorlage: 'nacht' }), bezug, geraet())!;
+    const nachtDoc = buildGuidedFlow(nachtRegel, 'Nachts laufen lassen', 's1');
+    const nachtFlow: FlowSummary = { ...flow, flowId: 'f-nacht', name: 'Nachts laufen lassen', latestDocument: nachtDoc };
+    expect(regelKarten([nachtFlow], bezug, { hs: 'Heizstab' })[0].preisNichtAusgefuehrt).toBe(false);
   });
 
   it('bietet Vorlagen nur mit Gerät und ausführbaren Bausteinen an', () => {
     expect(vorlagenFuer(bezug, []).length).toBe(0);
-    expect(vorlagenFuer({ netzId: null, speicherId: null }, [geraet()]).map((v) => v.id)).toEqual(['negativ', 'guenstig', 'nacht']);
+    // N2 (Entscheid: Weg B): 'negativ' und 'guenstig' brauchen den gesperrten
+    // Preis-Baustein und verschwinden deshalb aus der Galerie - 'nacht' bleibt.
+    expect(vorlagenFuer({ netzId: null, speicherId: null }, [geraet()]).map((v) => v.id)).toEqual(['nacht']);
   });
 
   it('verspricht bei einer Benachrichtigungs-Regel nie eine ankommende Nachricht (Entscheid 10A)', () => {

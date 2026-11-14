@@ -24,6 +24,7 @@
 import type { SiteTopology } from '../api';
 import type { ConsumerDraft } from '../consumers/questions';
 import { CONSUMER_TEMPLATE_PREFILL } from '../consumers/vorlagen';
+import { GUIDED_WISH_TTL_S } from '../flows/guidedBuilder';
 import type { GuidedRule } from '../flows/guidedBuilder';
 import type { EditorEntity } from '../flows/model';
 import type { TemplateRole } from '../flows/customerTemplates';
@@ -310,6 +311,6 @@ export function speicherSchutzRegel(entities: EditorEntity[]): GuidedRule | null
       },
     ],
     combinator: 'and',
-    action: { kind: 'onoff', entityId: geraet.id, ttlS: 300 },
+    action: { kind: 'onoff', entityId: geraet.id, ttlS: GUIDED_WISH_TTL_S },
   };
 }

@@ -7,14 +7,17 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.LeadDeviceService;
+import com.voltpilot.api.ota.BoxArt;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -68,6 +71,7 @@ class FlowActivationServiceTest {
 
     private FlowRepository flows;
     private EntityRegistryRepository entities;
+    private UpdateStatusRepository updateStatus;
     private CapturingPublisher publisher;
     private JsonNode fixtureArtifact;
 
@@ -75,6 +79,7 @@ class FlowActivationServiceTest {
     void setUp() throws IOException {
         flows = mock(FlowRepository.class);
         entities = mock(EntityRegistryRepository.class);
+        updateStatus = mock(UpdateStatusRepository.class);
         publisher = new CapturingPublisher();
         fixtureArtifact = MAPPER.readTree(Files.readString(Path.of("..", "..", "docs",
                 "contracts", "v2", "examples", "flow-artifact.valid.artifact.json")));
@@ -98,7 +103,7 @@ class FlowActivationServiceTest {
                 mock(com.voltpilot.api.repo.FlowClaimRepository.class), new FlowCatalog(MAPPER),
                 provider((com.voltpilot.api.entities.EntityRegistryService) null),
                 provider(compiler), provider(publisher), MAPPER, enabled,
-                Clock.fixed(Instant.parse("2026-07-18T12:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-07-18T12:00:00Z"), ZoneOffset.UTC), updateStatus);
     }
 
     private FlowVersionRow row(int version, String lifecycle, String artifactJson) {
@@ -210,5 +215,50 @@ class FlowActivationServiceTest {
                 row(2, "simulated", null), MAPPER.createObjectNode());
         assertThat(outcome.activated()).isFalse();
         assertThat(outcome.reason()).isEqualTo("no_gateway_device");
+    }
+
+    /**
+     * N3 (report {@code vp-steuerlogik-konzept} §11): Edge Light's local runtime
+     * only ever runs the generated reactive-Verbraucherregel shape - a guided
+     * builder / free editor flow (what the fixture artifact is) has never been
+     * supported there. Activation must say so BEFORE compiling, the same
+     * capability-before-activation pattern as {@code SteuerartService}; unlike
+     * the compiler refusals, nothing should even reach the compiler.
+     */
+    @Test
+    void anEdgeLightGatewayRefusesAFlowEditorFlowBeforeCompiling() {
+        when(entities.batteryAsset(SITE)).thenReturn(
+                new EntityRegistryRepository.BatteryAsset(DEVICE, null, null, null, null));
+        when(updateStatus.boxArt(DEVICE)).thenReturn(BoxArt.LIGHT);
+        FlowCompiler compiler = mock(FlowCompiler.class);
+        FlowActivationService service = service(compiler, true);
+        FlowActivationService.ActivationOutcome outcome = service.activate(SITE,
+                row(2, "simulated", null), MAPPER.createObjectNode());
+        assertThat(outcome.activated()).isFalse();
+        assertThat(outcome.reason()).isEqualTo("edge_light_unsupported");
+        assertThat(outcome.message()).contains("Edge Light");
+        assertThat(outcome.published()).isFalse();
+        verifyNoInteractions(compiler);
+        verify(flows, never()).markActive(any(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString());
+        assertThat(publisher.payload).isNull();
+    }
+
+    /**
+     * A Docker box (or a device that has never reported a backend - unknown is
+     * never silently "Docker" per {@code BoxArt}, but it is also never silently
+     * "Light") must activate exactly as before this check existed.
+     */
+    @Test
+    void aDockerOrUnknownGatewayIsUnaffectedByTheEdgeLightCheck() {
+        when(entities.batteryAsset(SITE)).thenReturn(
+                new EntityRegistryRepository.BatteryAsset(DEVICE, null, null, null, null));
+        when(updateStatus.boxArt(DEVICE)).thenReturn(BoxArt.DOCKER);
+        when(flows.versionsForSite(SITE)).thenReturn(
+                List.of(row(2, "active", fixtureArtifact.toString())));
+        FlowActivationService service = service(doc -> fixtureArtifact, true);
+        FlowActivationService.ActivationOutcome outcome = service.activate(SITE,
+                row(2, "simulated", null), MAPPER.createObjectNode());
+        assertThat(outcome.activated()).isTrue();
     }
 }

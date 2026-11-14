@@ -94,7 +94,17 @@ export interface GuidedRule {
 // Emitter: GuidedRule -> FlowDocument
 // ---------------------------------------------------------------------------
 
-const TTL_DEFAULT = 300;
+/**
+ * The entity-control wish's TTL for every flow this builder emits (N1,
+ * `report.md` §11): the ONLY trigger a guided flow ever gets is
+ * `slot-boundary`, which compiles (flowc `compile.js`, "Slot-Grenze") to a
+ * gate that re-fires exactly once per 900s platform slot, itself reached by
+ * an inject that repeats every 30s - so the next re-affirmation can land up
+ * to 30s into the new slot. A TTL shorter than 900 + 30 = 930s lets the wish
+ * lapse for the remainder of every slot (observed: 5 of 15 minutes at the
+ * default 300s). 930s is the exact worst case, not a margin to tune.
+ */
+export const GUIDED_WISH_TTL_S = 930;
 
 interface Builder {
   nodes: FlowNode[];
@@ -316,7 +326,7 @@ export function parseGuidedFlow(doc: FlowDocument): GuidedRule | null {
     ctx.used.add(control.id);
     const p = control.parameters ?? {};
     const entityId = String(p.entity_id ?? '');
-    const ttlS = Number(p.ttl_s ?? TTL_DEFAULT);
+    const ttlS = Number(p.ttl_s ?? GUIDED_WISH_TTL_S);
     if (p.command === 'on_off') {
       boolRef = feeder(control.id, 'value');
       action = { kind: 'onoff', entityId, ttlS };

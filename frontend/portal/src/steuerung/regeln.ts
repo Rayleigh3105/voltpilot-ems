@@ -17,7 +17,7 @@
 import { liste } from './liste';
 import type { EditorEntity } from '../flows/model';
 import type { FlowSummary } from '../flows/flowsApi';
-import { parseGuidedFlow } from '../flows/guidedBuilder';
+import { GUIDED_WISH_TTL_S, parseGuidedFlow } from '../flows/guidedBuilder';
 import { istGenerierteVerbraucherregel } from '../regeln/zustand';
 import type { GuidedCondition, GuidedRule } from '../flows/guidedBuilder';
 import type { GeraetBild, Reihen } from './bild';
@@ -70,7 +70,10 @@ const KOMMT = 'kommt noch';
 
 export function vars(b: Bezug): Record<VarId, VarDef> {
   return {
-    preis: { kat: 'Preis', label: 'Börsenpreis', icon: 'euro', einheit: 'ct/kWh', ops: ['unter', 'ueber'], min: -5, max: 40, schritt: 0.5, def: 10, gesperrt: null },
+    // N2 (report.md §11, needs-decision n2-preis-feed): die Box liest nie einen Preis
+    // (reserviertes, ungespeistes Thema) - gesperrt wie jeder andere Baustein, der nichts
+    // bewirken kann, bis eine eigene Zuleitung entschieden ist.
+    preis: { kat: 'Preis', label: 'Börsenpreis', icon: 'euro', einheit: 'ct/kWh', ops: ['unter', 'ueber'], min: -5, max: 40, schritt: 0.5, def: 10, gesperrt: KOMMT },
     rang: { kat: 'Preis', label: 'Günstigste Stunden', icon: 'trend', einheit: 'Std', ops: ['unter'], min: 1, max: 8, schritt: 1, def: 3, gesperrt: KOMMT },
     sonne: { kat: 'Sonne', label: 'Sonnen-Überschuss', icon: 'sun', einheit: 'kW', ops: ['ueber', 'unter'], min: 0.5, max: 30, schritt: 0.5, def: 2, gesperrt: b.netzId ? null : 'kein Netzanschluss-Zähler' },
     soc: { kat: 'Speicher', label: 'Ladestand Speicher', icon: 'battery', einheit: '%', ops: ['unter', 'ueber'], min: 5, max: 100, schritt: 5, def: 90, gesperrt: b.speicherId ? null : 'kein Speicher' },
@@ -139,8 +142,6 @@ export function regelSatz(r: RegelEntwurf, g: GeraetBild | null): { wenn: string
 // Umwandlung in den geführten Baukasten und zurück
 // ---------------------------------------------------------------------------
 
-const TTL_S = 300;
-
 export function zuGuided(r: RegelEntwurf, b: Bezug, g: GeraetBild | null): GuidedRule | null {
   const conditions: GuidedCondition[] = [];
   for (const c of r.wenn) {
@@ -160,8 +161,8 @@ export function zuGuided(r: RegelEntwurf, b: Bezug, g: GeraetBild | null): Guide
   }
   if (!conditions.length) return null;
   const action = r.dann.a === 'voll' && g?.nennKw
-    ? { kind: 'setpoint' as const, entityId: r.dann.g, value: g.nennKw, ttlS: TTL_S }
-    : { kind: 'onoff' as const, entityId: r.dann.g, ttlS: TTL_S };
+    ? { kind: 'setpoint' as const, entityId: r.dann.g, value: g.nennKw, ttlS: GUIDED_WISH_TTL_S }
+    : { kind: 'onoff' as const, entityId: r.dann.g, ttlS: GUIDED_WISH_TTL_S };
   return { conditions, combinator: r.oder ? 'or' : 'and', action };
 }
 
@@ -238,11 +239,15 @@ export function notifyUmwandlung(regel: GuidedRule): NotifyUmwandlung | null {
 /** Gilt eine Bedingung in Viertelstunde t? `null` = unbekannt (kein Wert). */
 export function gilt(c: Bedingung, rh: Reihen, t: number): boolean | null {
   switch (c.v) {
-    case 'preis': {
-      const p = rh.preis[t];
-      if (p == null) return null;
-      return c.op === 'unter' ? p < (c.w as number) : p > (c.w as number);
-    }
+    case 'preis':
+      // N2 (report.md §11): eine Preis-Bedingung kompiliert auf die Box zu
+      // `vp.price.current`, das Thema `edge/price/current` liest - reserviert,
+      // der Core speist es nicht (kein Sender im Core). `rh.preis` kommt vom
+      // Markt-Tagespreis des Portals, ein ANDERER Pfad als der Box-Feed; ihn
+      // hier zu lesen hieße, Schaltzeiten zu zeigen, die die Box nicht
+      // ausführen kann. Bis das Thema gespeist wird (needs-decision), gilt
+      // eine Preis-Bedingung im Probelauf wie am Gerät: nie bekannt.
+      return null;
     case 'sonne': {
       const n = rh.netz[t];
       if (n == null) return null;
@@ -391,8 +396,10 @@ export function neuerEntwurf(ziele: GeraetBild[], opts: { geraet?: string; vorla
   const v = opts.vorlage ? VORLAGEN.find((x) => x.id === opts.vorlage) : null;
   const g = opts.geraet ? ziele.find((x) => x.id === opts.geraet) ?? null : v ? vorlagenZiel(v, ziele) : ziele[0] ?? null;
   return {
-    name: v ? v.titel : g ? `${g.name} bei günstigem Preis` : 'Neue Regel',
-    wenn: v ? v.wenn.map((c) => ({ ...c })) : [{ v: 'preis', op: 'unter', w: 10 }],
+    // N2 (report.md §11): ohne Vorlage startet die Regel mit 'zeit', nicht mit
+    // dem gesperrten Preis-Baustein - der wäre im Wähler ohnehin nicht wählbar.
+    name: v ? v.titel : g ? `${g.name} nach Zeitplan` : 'Neue Regel',
+    wenn: v ? v.wenn.map((c) => ({ ...c })) : [{ v: 'zeit', op: 'zwischen', w: [88, 24] }],
     oder: false,
     dann: { g: g?.id ?? '', a: 'an' },
   };
@@ -412,6 +419,13 @@ export interface RegelKarte {
   version: number;
   /** Nicht `null`, wenn die Karte „In Überwachung umwandeln" anbieten darf (Entscheid 10A). */
   notifyUmwandlung: NotifyUmwandlung | null;
+  /**
+   * N2 (report.md §11, needs-decision n2-preis-feed): eine Preis-Bedingung
+   * kompiliert zu einem Thema, das die Box nicht gespeist bekommt - diese
+   * Regel bleibt sichtbar und eingeschaltet (nichts wird gelöscht), aber sie
+   * schaltet auf der Box nicht, bis das entschieden ist.
+   */
+  preisNichtAusgefuehrt: boolean;
 }
 
 export function regelKarten(flows: FlowSummary[] | null, bezug: Bezug, namen: Record<string, string>): RegelKarte[] {
@@ -435,6 +449,7 @@ export function regelKarten(flows: FlowSummary[] | null, bezug: Bezug, namen: Re
       entwurf: entwurf ? { ...entwurf, flowId: f.flowId, version: f.latestVersion } : null,
       version: f.latestVersion,
       notifyUmwandlung: guided ? notifyUmwandlung(guided) : null,
+      preisNichtAusgefuehrt: guided ? guided.conditions.some((c) => c.kind === 'price') : false,
     });
   }
   return out;
