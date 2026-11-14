@@ -115,6 +115,7 @@ public final class SteuerlogikRueckmeldung {
                     }
                     ObjectNode one = gn.putObject(e.getKey());
                     one.put("entity_id", g.path("entity_id").asText());
+                    if (g.path("name").isTextual()) one.put("name", text(g.path("name"), 40));
                     ObjectNode w = stand(g.get("wunsch"), mapper);
                     if (w != null) one.set("wunsch", w);
                     ObjectNode i = stand(g.get("ist"), mapper);

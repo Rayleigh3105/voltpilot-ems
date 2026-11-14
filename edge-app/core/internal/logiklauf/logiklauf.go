@@ -485,8 +485,8 @@ func (lz *Laufzeit) Summary() *cloud.LogikSummary {
 			e.Geraete = map[string]cloud.LogikGeraet{}
 			for g, v := range l.geraete {
 				e.Geraete[g] = cloud.LogikGeraet{
-					EntityID: l.L.Geraete[g].Entity,
-					Wunsch:   kopieStand(v.wunsch), Ist: kopieStand(v.ist),
+					EntityID: l.L.Geraete[g].Entity, Name: l.L.Geraete[g].Name,
+					Wunsch: kopieStand(v.wunsch), Ist: kopieStand(v.ist),
 					VerglichenS: int(v.verglichenS), AbweichendS: int(v.abweichendS),
 					LaengsteAbweichungS: int(v.laengsteS),
 					WunschWechsel:       v.wunschWechsel, IstWechsel: v.istWechsel,

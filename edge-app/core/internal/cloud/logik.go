@@ -50,6 +50,8 @@ type LogikLage struct {
 // LogikGeraet is the comparison for one device of the logic today.
 type LogikGeraet struct {
 	EntityID string `json:"entity_id"`
+	// Name is the device's name in the logic (devices.<kennung>.name).
+	Name string `json:"name,omitempty"`
 	// Wunsch is what the core would switch now; nil = no wish this second.
 	Wunsch *LogikStand `json:"wunsch,omitempty"`
 	// Ist is the observed switch state; nil = unknown (never "off").

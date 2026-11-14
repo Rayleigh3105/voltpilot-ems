@@ -20,6 +20,7 @@
       "geraete": {
         "wp": {
           "entity_id": "waermepumpe-1",
+          "name": "Wärmepumpe",
           "wunsch": {
             "ein": true
           },

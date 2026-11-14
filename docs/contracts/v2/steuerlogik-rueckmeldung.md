@@ -26,7 +26,7 @@ Beispiel: [steuerlogik-rueckmeldung.valid.waermepumpe.json](examples/steuerlogik
 | `geraete.{kennung}` | je Gerät der Vergleich, siehe unten |
 | `wechsel[]` | die jüngsten Wechsel, höchstens 16, älteste zuerst |
 
-Je Gerät: `entity_id`; `wunsch` (was der Kern jetzt schalten würde) und `ist` (der beobachtete Schaltstand), beide als Stand `{stufe, ein, sollwert, betriebsart, anteil}` mit nur den Feldern, die die Ausgangsart hat; fehlt `ist`, ist der Stand unbekannt, nie „aus“.
+Je Gerät: `entity_id`, `name` (wie in der Logik); `wunsch` (was der Kern jetzt schalten würde) und `ist` (der beobachtete Schaltstand), beide als Stand `{stufe, ein, sollwert, betriebsart, anteil}` mit nur den Feldern, die die Ausgangsart hat; fehlt `ist`, ist der Stand unbekannt, nie „aus“.
 Dazu die Zähler des Tages: `verglichen_s` (Sekunden, in denen beide Seiten bekannt waren), `abweichend_s` (davon verschieden), `laengste_abweichung_s`, `wunsch_wechsel`, `ist_wechsel`.
 Eine Stufe gegen Ein/Aus vergleicht „0 heißt aus“; Sollwert, Betriebsart und Anteil hat die Box noch keinen beobachteten Stand und vergleicht sie nicht.
 

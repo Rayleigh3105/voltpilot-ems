@@ -30,6 +30,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -105,6 +106,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -176,6 +178,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -247,6 +250,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -318,6 +322,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -380,6 +385,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -451,6 +457,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -522,6 +529,7 @@
       "geraete": {
        "wp": {
         "entity_id": "a b",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -594,6 +602,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -675,6 +684,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -710,6 +720,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -745,6 +756,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -780,6 +792,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -815,6 +828,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -850,6 +864,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -885,6 +900,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -920,6 +936,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
@@ -955,6 +972,7 @@
       "geraete": {
        "wp": {
         "entity_id": "waermepumpe-1",
+        "name": "Wärmepumpe",
         "wunsch": {
          "ein": true
         },
