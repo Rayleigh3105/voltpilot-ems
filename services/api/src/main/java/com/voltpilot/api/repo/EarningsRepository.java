@@ -175,8 +175,20 @@ public class EarningsRepository {
             "LEFT JOIN price_slot p"
                     + " ON p.bidding_zone = s.bidding_zone AND p.slot = r.bucket ";
 
+    /**
+     * The price half of {@link #COVERED}. The row queries keep it OUT of their WHERE clause (vp-perf2-server B3):
+     * there it turns the {@code LEFT JOIN price_slot} into an inner join, and the planner - which cannot estimate
+     * the materialized CTE joined on the zone (measured: 9 rows estimated, 5 392 actual for 4 sites x 14 days) -
+     * then starts from the price slots and probes the rollup once per slot in every chunk (39 000 buffers per
+     * query where the range itself is 250). With only {@link #CHANNELS_OK} in WHERE the join stays a LEFT JOIN,
+     * the rollup is read as a range and the prices are hashed onto it. The condition moves into the sums'
+     * {@code FILTER}/{@code HAVING} or into the row reader, so every result row stays exactly what it was
+     * ({@code EarningsPreisBedingungGleichheitTest} holds the old form as the oracle).
+     */
+    private static final String PRICED = "p.price_eur_mwh IS NOT NULL";
+
     /** A slot enters the sums when its channels AND a price are present. */
-    private static final String COVERED = CHANNELS_OK + " AND p.price_eur_mwh IS NOT NULL";
+    private static final String COVERED = CHANNELS_OK + " AND " + PRICED;
 
     /**
      * Joins a slot's German calendar month to its Monatsmarktwert Solar (the
@@ -809,9 +821,12 @@ public class EarningsRepository {
                         + "JOIN site s ON s.id = r.site_id AND s.netzladen_erlaubt "
                         + PRICE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
-                        + " AND " + COVERED + " "
+                        + " AND " + CHANNELS_OK + " "
                         + "ORDER BY r.site_id, r.bucket",
                 rs -> {
+                    if (rs.getObject("price_eur_mwh") == null) {
+                        return; // not COVERED: the price half stays out of WHERE (PRICED, B3)
+                    }
                     UUID siteId = rs.getObject("site_id", UUID.class);
                     if (!siteId.equals(state.site)) {
                         state.finish();
@@ -1173,9 +1188,11 @@ public class EarningsRepository {
                         + "SELECT r.site_id, r.bucket, r.pv_kwh, r.load_kwh, r.soc_last_pct,"
                         + " r.grid_import_kwh, r.grid_export_kwh,"
                         + " r.battery_charge_kwh, r.battery_discharge_kwh,"
-                        + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
-                        + " " + importPriceEurKwh + " AS import_price_eur_kwh,"
-                        + " " + exportValueEurKwh + " AS export_value_eur_kwh,"
+                        + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day, p.price_eur_mwh,"
+                        // Only priced rows are read (PRICED, B3) - and only they evaluate the price
+                        // expressions, exactly as when the condition stood in WHERE.
+                        + " CASE WHEN " + PRICED + " THEN " + importPriceEurKwh + " END AS import_price_eur_kwh,"
+                        + " CASE WHEN " + PRICED + " THEN " + exportValueEurKwh + " END AS export_value_eur_kwh,"
                         + " b.capacity_kwh, b.max_charge_kw, b.max_discharge_kw,"
                         + " b.roundtrip_efficiency_pct, b.soc_min_pct, b.soc_max_pct,"
                         + " s.backup_reserve_soc_pct, s.peak_reserve_soc_pct "
@@ -1187,9 +1204,12 @@ public class EarningsRepository {
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
-                        + " AND " + COVERED + " "
+                        + " AND " + CHANNELS_OK + " "
                         + "ORDER BY r.site_id, r.bucket",
                 rs -> {
+                    if (rs.getObject("price_eur_mwh") == null) {
+                        return; // not COVERED: the price half stays out of WHERE (PRICED, B3)
+                    }
                     UUID siteId = rs.getObject("site_id", UUID.class);
                     if (!siteId.equals(state.site)) {
                         state.finish();
@@ -1613,7 +1633,7 @@ public class EarningsRepository {
                         // saved = baseline - actual (import at the tariff,
                         // export at the export composition, incl. the premium
                         // delta resp. the feste Vergütung).
-                        + " sum(" + savedEur + ") AS saved_eur "
+                        + " sum(" + savedEur + ") FILTER (WHERE " + PRICED + ") AS saved_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + SUPPLY_PRICE_JOIN
@@ -1621,8 +1641,9 @@ public class EarningsRepository {
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
-                        + " AND " + COVERED + " "
-                        + "GROUP BY 1, 2 ORDER BY 1, 2",
+                        + " AND " + CHANNELS_OK + " "
+                        // PRICED in FILTER/HAVING, not WHERE (B3): the same days, the same sums.
+                        + "GROUP BY 1, 2 HAVING count(*) FILTER (WHERE " + PRICED + ") > 0 ORDER BY 1, 2",
                 rs -> {
                     BigDecimal saved = rs.getBigDecimal("saved_eur");
                     if (saved != null) {
@@ -2071,9 +2092,10 @@ public class EarningsRepository {
         jdbc.query(
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id, " + start + " AS bucket_start,"
-                        + " sum(" + einspeiseErloesEur + ") AS einspeise_erloes_eur,"
-                        + " sum(" + eigenverbrauchsWertEur + ") AS eigenverbrauchs_wert_eur,"
-                        + " sum(" + stromkostenEur + ") AS stromkosten_eur "
+                        + " sum(" + einspeiseErloesEur + ") FILTER (WHERE " + PRICED + ") AS einspeise_erloes_eur,"
+                        + " sum(" + eigenverbrauchsWertEur + ") FILTER (WHERE " + PRICED + ")"
+                        + " AS eigenverbrauchs_wert_eur,"
+                        + " sum(" + stromkostenEur + ") FILTER (WHERE " + PRICED + ") AS stromkosten_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         // The import price reads the supply-price sheet and the
@@ -2085,8 +2107,10 @@ public class EarningsRepository {
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
-                        + " AND " + COVERED + " "
-                        + "GROUP BY r.site_id, bucket_start ORDER BY r.site_id, bucket_start",
+                        + " AND " + CHANNELS_OK + " "
+                        // PRICED in FILTER/HAVING, not WHERE (B3): the same buckets, the same sums.
+                        + "GROUP BY r.site_id, bucket_start"
+                        + " HAVING count(*) FILTER (WHERE " + PRICED + ") > 0 ORDER BY r.site_id, bucket_start",
                 rs -> {
                     result.computeIfAbsent(rs.getObject("site_id", UUID.class),
                                     k -> new ArrayList<>())
