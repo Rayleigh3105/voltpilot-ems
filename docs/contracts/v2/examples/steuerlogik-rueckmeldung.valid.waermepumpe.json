@@ -97,6 +97,8 @@
         {
           "zustand": "empfehlung",
           "name": "Empfehlung an die Wärmepumpe",
+          "satz": "Die Empfehlung an die Wärmepumpe endet",
+          "eigen": true,
           "was": "aus",
           "modus": "eines",
           "bedingungen": [

@@ -6,6 +6,7 @@ import { keycloak } from '../src/auth';
 import { LogikKarte } from '../src/steuerung/LogikKarte';
 import { LogikBlatt } from '../src/steuerung/LogikBlatt';
 import gepinnt from '../../../docs/contracts/v2/examples/steuerlogik-karte.valid.wasser.json';
+import winter from '../../../docs/contracts/v2/examples/steuerlogik-karte-saetze.heizung-winter.json';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -22,10 +23,11 @@ import '../src/steuerung/steuerung.css';
 /**
  * E2E-Bühne „Steuerlogik-Karte“ (Stufe 3): die Karte einer scharfen Logik im Reiter „Geräte“ und ihr Blatt „Warum?“.
  * `?stand=wasser` ist die Antwort der API Byte für Byte (`steuerlogik-karte.valid.wasser.json`, gepinnt von
- * `SteuerlogikScharfApiTest` aus dem Block der Box und der Antwort des Dienstes). `?stand=winter` setzt den Schalter
- * „Winterregelung“ des Heizungs-Beispiels aus dem Vertrag (`steuerlogik/heizung.logic.yaml`, Name und Hilfesätze von
- * dort) dazu und zeigt die Lage „Heizt aus dem Netz“; `?stand=stoerung` einen Fühler ohne Wert, `?stand=haelt` eine
- * Logik, die auf der Box nicht läuft, `?stand=leser` eine Person ohne Recht zum Ändern. Fiktive Daten.
+ * `SteuerlogikScharfApiTest` aus dem Block der Box und der Antwort des Dienstes). `?stand=winter` zeigt die Karte
+ * „Heizung“ des Heizungs-Beispiels mit dem Schalter „Winterregelung“: Lage, Hilfesatz und Gerät aus einem Lauf
+ * (`steuerlogik-karte-saetze.heizung-winter.json`), also mit denselben Zahlen; `?stand=stoerung` einen Fühler ohne
+ * Wert, `?stand=haelt` eine Logik, die auf der Box nicht läuft, `?stand=leser` eine Person ohne Recht zum Ändern.
+ * Fiktive Daten.
  */
 const stand = new URLSearchParams(window.location.search).get('stand') ?? 'wasser';
 const JETZT = new Date('2026-11-14T09:08:00Z');
@@ -33,15 +35,20 @@ const JETZT = new Date('2026-11-14T09:08:00Z');
 function karteFuer(s: string): SteuerlogikKarte {
   const k = structuredClone(gepinnt) as unknown as SteuerlogikKarte;
   if (s === 'winter') {
-    k.name = 'Heizung';
-    k.lage = { nr: 2, titel: 'Heizt aus dem Netz', art: 'grid', satz: 'Der Speicher war unter 42 °C gefallen und steht bei 38,5 °C. Der Heizstab heizt aus dem Netz bis 50 °C.' };
+    // Lage, Hilfesatz der Winterregelung und Gerät aus EINEM Lauf des Heizungs-Beispiels (gepinnt von
+    // edge-app/core/internal/logik/karte_saetze_test.go): beide Sätze tragen dieselben Werte von jetzt.
+    const w = winter.winter;
+    k.name = winter.logik;
+    k.lage = winter.lage as SteuerlogikKarte['lage'];
     k.stellwerte = [{
-      kennung: 'winter', name: 'Winterregelung', art: 'boolean', einheit: null, von: null, bis: null, schritt: null,
-      optionen: null, zielwert: false, darf: 'customer', wert: 'on', wertBox: 'on', text: 'an',
-      hilfe: 'An: Unter 40 °C heizt Speicher 1 aus dem Netz, von 06:00 bis 22:00 Uhr, bis 60 °C.',
+      kennung: w.kennung, name: w.name, art: 'boolean', einheit: null, von: null, bis: null, schritt: null,
+      optionen: null, zielwert: false, darf: 'customer', wert: w.wert, wertBox: w.wert, text: w.text, hilfe: w.hilfe,
       frei: true, aendern: true, uebernommen: true,
-    }, ...k.stellwerte];
-    k.geraete = k.geraete.map((g) => ({ ...g, ist: { stufe: 3 }, befehl: { stufe: 3 }, wunsch: { stufe: 3 }, schutz: null }));
+    }];
+    const stand = { stufe: winter.geraet.stufe };
+    k.geraete = k.geraete.slice(0, 1).map((g) => ({ ...g, kennung: winter.geraet.kennung, name: winter.geraet.name,
+      ist: stand, befehl: stand, wunsch: stand, schutz: null }));
+    k.warum = null;
   }
   if (s === 'stoerung') {
     k.lage = { nr: 1, titel: 'Störung Fühler', art: 'fault', satz: 'Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.' };

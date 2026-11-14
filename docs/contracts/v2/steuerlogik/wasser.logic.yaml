@@ -34,6 +34,8 @@ states:
     type: boolean
     on_when:  t >= ziel
     off_when: unknown(t) or t < ziel - 3 K
+    on_text: Der Speicher gilt als warm
+    off_text: Der Speicher braucht wieder Wärme
     after_restart: off
   netzheizen:
     type: boolean
@@ -44,6 +46,8 @@ states:
       - Fühler fehlt: unknown(t)
       - Der Speicher ist warm genug: t >= netz_ziel
       - Uhrzeit liegt außerhalb des Fensters: not netzfenster
+    on_text: Heizt aus dem Netz bis {netz_ziel}
+    off_text: Hört auf, aus dem Netz zu heizen
     after_restart: off
   stufe:
     type: counter
@@ -52,12 +56,15 @@ states:
     after_restart: 0
     steps:
       - name: blind
+        text: Ohne Werte vom Wechselrichter bleibt der Heizstab aus
         set: 0
         when: holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)
       - name: voll
+        text: Der Speicher ist warm, der Heizstab geht aus
         set: 0
         when: stufe > 0 and not frei
       - name: zurueck
+        text: Eine Phase weniger
         by: -1
         not_before: 2 min
         when: stufe > 0
@@ -65,6 +72,7 @@ states:
           - Die Batterie muss aushelfen: speicher < -0.15 kW
           - Das Netz muss aushelfen: netz > 0.3 kW
       - name: versuch
+        text: Eine Phase mehr
         by: +1
         not_before: 6 min
         when:

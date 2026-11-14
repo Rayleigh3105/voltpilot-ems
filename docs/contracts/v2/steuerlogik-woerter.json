@@ -55,7 +55,9 @@
     "dauer": "duration",
     "von": "min",
     "bis": "max",
-    "schritte": "steps"
+    "schritte": "steps",
+    "an_text": "on_text",
+    "aus_text": "off_text"
   },
   "schritt": {
     "name": "name",
@@ -64,7 +66,8 @@
     "fruehestens": "not_before",
     "wenn": "when",
     "wenn_eines": "when_any",
-    "dann": "then"
+    "dann": "then",
+    "text": "text"
   },
   "ausgang": {
     "stufe": "level",

@@ -247,10 +247,16 @@ export function schutzSatz(code: string, text: string): string {
 // --- Warum ---------------------------------------------------------------------------------------------------
 
 /** Die Überschrift einer Gruppe der Liste „Warum?“. */
+/**
+ * Die Überschrift einer Gruppe: der Satz, den die Box schickt (der Satz der Logik oder einer aus ihrem Wortschatz),
+ * und wie die Bedingungen darunter zusammen gelten. Kennungen von Zuständen und Schritten erscheinen nie; eine Box
+ * ohne Satz bekommt ein allgemeines Wort.
+ */
 export function warumTitel(g: SteuerlogikWarum): string {
-  if (g.was === 'schritt') return `${g.name}: ${g.schritt ?? 'nächster Schritt'}`;
-  if (g.was === 'an') return g.modus === 'alle' ? `${g.name} beginnt, wenn alles erfüllt ist` : `${g.name} beginnt, wenn eines erfüllt ist`;
-  return g.modus === 'alle' ? `${g.name} endet, wenn alles erfüllt ist` : `${g.name} endet, wenn eines erfüllt ist`;
+  const satz = g.satz?.trim() || (g.was === 'an' ? 'Schaltet ein' : g.was === 'aus' ? 'Schaltet aus' : 'Nächster Schritt');
+  const wie =
+    g.bedingungen.length === 1 ? 'wenn dies zutrifft' : g.modus === 'alle' ? 'wenn alles erfüllt ist' : 'sobald eines davon zutrifft';
+  return `${satz}, ${wie}`;
 }
 
 /** Wie lange ein Schritt noch wartet („frühestens in 4 min“). */
@@ -261,12 +267,11 @@ export function wartetText(s: number | undefined): string | null {
 }
 
 /**
- * Die Gruppen in der Reihenfolge für Menschen: zuerst die mit Namen (ein benannter Zustand oder benannte
- * Bedingungen), dann die, deren Text nur Formeln trägt - sonst in der Reihenfolge des Textes.
+ * Die Gruppen in der Reihenfolge für Menschen: zuerst die mit benannten Bedingungen und einem Satz der Logik, dann
+ * die, deren Text nur Formeln trägt - sonst in der Reihenfolge des Textes.
  */
 export function warumSortiert(gruppen: SteuerlogikWarum[] | null): SteuerlogikWarum[] {
-  const gewicht = (g: SteuerlogikWarum) =>
-    (g.name !== g.zustand ? 1 : 0) + (g.bedingungen.some((b) => !b.formel) ? 2 : 0);
+  const gewicht = (g: SteuerlogikWarum) => (g.eigen ? 1 : 0) + (g.bedingungen.some((b) => !b.formel) ? 2 : 0);
   return (gruppen ?? []).map((g, i) => ({ g, i })).sort((a, b) => gewicht(b.g) - gewicht(a.g) || a.i - b.i).map((x) => x.g);
 }
 

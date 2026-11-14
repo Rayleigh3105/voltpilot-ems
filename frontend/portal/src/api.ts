@@ -9598,8 +9598,15 @@ export interface SteuerlogikGrund {
 
 /** Eine Gruppe der Liste „Warum?“: die benannten Bedingungen, die als Nächstes über einen Zustand entscheiden. */
 export interface SteuerlogikWarum {
+  /** Kennung des Zustands und (bei `schritt`) des Schritts: für Maschinen, nie vor dem Kunden. */
   zustand: string;
   name: string;
+  /**
+   * Die Überschrift für den Kunden: der Satz der Logik mit den Werten von jetzt (`eigen`), sonst einer aus dem
+   * Wortschatz der Box. Fehlt bei einer Box vor diesem Feld.
+   */
+  satz?: string;
+  eigen?: boolean;
   /** an: schaltet ein, wenn …; aus: endet, wenn …; schritt: ein Schritt eines Zählers. */
   was: 'an' | 'aus' | 'schritt';
   schritt?: string;

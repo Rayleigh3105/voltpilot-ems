@@ -661,8 +661,8 @@ func (lz *Laufzeit) Summary() *cloud.LogikSummary {
 				Text: j.Text, Hilfe: j.Hilfe})
 		}
 		for _, g := range l.L.Warum(l.st, l.letzteEin) {
-			w := cloud.LogikWarum{Zustand: g.Zustand, Name: g.Name, Was: g.Was, Schritt: g.Schritt, Modus: g.Modus,
-				WartetS: g.WartetS}
+			w := cloud.LogikWarum{Zustand: g.Zustand, Name: g.Name, Satz: g.Satz, Eigen: g.Eigen, Was: g.Was,
+				Schritt: g.Schritt, Modus: g.Modus, WartetS: g.WartetS}
 			for _, b := range g.Bedingungen {
 				wb := cloud.LogikBedingung{Name: b.Name, Ok: b.Ok, Formel: b.Formel}
 				for _, x := range b.Werte {

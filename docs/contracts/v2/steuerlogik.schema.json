@@ -625,6 +625,18 @@
      "minLength": 1,
      "maxLength": 40,
      "description": "So heißt der Zustand in Oberfläche und Verlauf."
+    },
+    "on_text": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 160,
+     "description": "Satz für den Kunden im Blatt „Warum?“: was das Einschalten bedeutet (Platzhalter {formel} wie in der Lage). Fehlt er, bildet der Kern einen Satz aus dem Wortschatz, und die Prüfung gibt einen Hinweis."
+    },
+    "off_text": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 160,
+     "description": "Satz für den Kunden im Blatt „Warum?“: was das Ausschalten bedeutet (Platzhalter wie on_text)."
     }
    }
   },
@@ -731,6 +743,12 @@
        "then": {
         "type": "string",
         "pattern": "^start\\([a-z][a-z0-9_]*\\)( if .+)?$"
+       },
+       "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160,
+        "description": "Satz für den Kunden im Blatt „Warum?“: was dieser Schritt tut (Platzhalter wie on_text). Der Name des Schritts ist eine Kennung und erscheint nie vor dem Kunden."
        }
       }
      }

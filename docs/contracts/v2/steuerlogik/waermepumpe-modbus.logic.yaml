@@ -30,6 +30,8 @@ states:
     type: boolean
     on_when:  holds(uebrig >= ab_kw, 10 min)
     off_when: unknown(netz) or holds(uebrig < 0.5 kW, 10 min)
+    on_text: Sonnenstrom gilt als übrig
+    off_text: Sonnenstrom gilt nicht mehr als übrig
     after_restart: off
 
 outputs:                        # ohne Wunsch der Logik gilt der Ruhewert der Wärmepumpe

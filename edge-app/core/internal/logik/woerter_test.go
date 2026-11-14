@@ -82,9 +82,9 @@ func TestWortlisteUndKernSindDeckungsgleich(t *testing.T) {
 	gleicheMengen(t, "zeitfenster", englisch(t, w, "zeitfenster"), []string{"days", "from", "to"})
 	gleicheMengen(t, "zustand", englisch(t, w, "zustand"), []string{
 		"name", "type", "on_when", "on_when_any", "off_when", "off_when_any", "after_restart",
-		"duration", "min", "max", "steps"})
+		"duration", "min", "max", "steps", "on_text", "off_text"})
 	gleicheMengen(t, "schritt", englisch(t, w, "schritt"), []string{
-		"name", "by", "set", "not_before", "when", "when_any", "then"})
+		"name", "by", "set", "not_before", "when", "when_any", "then", "text"})
 	gleicheMengen(t, "ausgang", englisch(t, w, "ausgang"), []string{"level", "on_off", "setpoint", "mode", "percent"})
 	gleicheMengen(t, "anzeige", englisch(t, w, "anzeige"), []string{"input", "scale", "marks"})
 	gleicheMengen(t, "marke", englisch(t, w, "marke"), []string{"name", "at"})

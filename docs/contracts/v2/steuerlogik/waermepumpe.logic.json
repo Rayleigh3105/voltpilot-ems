@@ -103,6 +103,8 @@
      "Seit 10 Minuten kommt Strom aus dem Netz": "holds(netz > 0.3 kW, 10 min) and since(empfehlung) >= haltezeit"
     }
    ],
+   "on_text": "Die Wärmepumpe bekommt die Empfehlung, mit Sonnenstrom zu heizen",
+   "off_text": "Die Empfehlung an die Wärmepumpe endet",
    "after_restart": "off"
   }
  },

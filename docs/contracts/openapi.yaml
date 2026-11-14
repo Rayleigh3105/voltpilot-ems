@@ -21139,7 +21139,7 @@ components:
                     uebernommen: { type: boolean }
               stand: { type: integer }
               standBox: { type: integer, nullable: true }
-              warum: { type: array, nullable: true, items: { type: object } }
+              warum: { type: array, nullable: true, items: { type: object }, description: "Die Liste „Warum?“ der Box (steuerlogik-rueckmeldung.md): je Gruppe `satz` als Überschrift für den Kunden (der Satz der Logik, `eigen`, sonst einer aus dem Wortschatz der Box, nie eine Kennung), `modus` und die Bedingungen mit Haken." }
               meldungen: { type: array, nullable: true, items: { type: object } }
     SteuerlogikVerlauf:
       type: object

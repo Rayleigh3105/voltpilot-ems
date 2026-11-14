@@ -70,6 +70,8 @@ states:                         # was sich die Logik merkt
     type: boolean
     on_when:  t1 >= ziel
     off_when: unknown(t1) or t1 < ziel - 3 K
+    on_text: Speicher 1 gilt als warm
+    off_text: Speicher 1 braucht wieder Wärme
     after_restart: off
 
   vorrang:                      # Warmwasser vor Batterie, mit 3 K Totband
@@ -77,6 +79,8 @@ states:                         # was sich die Logik merkt
     type: boolean
     on_when:  vorrang_bis > 0 °C and t1 < vorrang_ziel - 3 K
     off_when: not (vorrang_bis > 0 °C) or unknown(t1) or t1 >= vorrang_ziel
+    on_text: Warmwasser bekommt Vorrang vor der Batterie
+    off_text: Die Batterie lädt wieder zuerst
     after_restart: off
 
   netzheizen:                   # "Notbetrieb": nur Durchlauferhitzer, nur Winter, nur im Zeitfenster
@@ -91,6 +95,8 @@ states:                         # was sich die Logik merkt
       - Speicher 1 ist warm genug: t1 >= ziel_netz
       - Winterregelung ist aus: not winter
       - Uhrzeit liegt außerhalb des Fensters: not netzfenster
+    on_text: Speicher 1 heizt aus dem Netz bis {ziel_netz}
+    off_text: Hört auf, aus dem Netz zu heizen
     after_restart: off
 
   sperre:                       # Pause nach einem Versuch, der nicht getragen hat
@@ -107,9 +113,11 @@ states:                         # was sich die Logik merkt
     after_restart: 0
     steps:                      # je Takt gilt der erste zutreffende Schritt
       - name: blind             # ergänzt: ohne Messwerte vom Wechselrichter wird nicht weiter geheizt
+        text: Ohne Werte vom Wechselrichter wird nicht weiter geheizt
         set: 0
         when: holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)
       - name: zurueck           # die Stufe wird nicht getragen
+        text: Eine Heizstufe weniger
         by: -1
         not_before: 2 min       # so lange hat der Wechselrichter Zeit, die Sonne nachzuführen
         when: heizstufe > 0
@@ -119,6 +127,7 @@ states:                         # was sich die Logik merkt
           - Die Batterie ist zu leer: ladestand < stopp and not (vorrang and heizstufe <= 3)
         then: start(sperre) if not (vorrang and ladestand < freigabe)
       - name: versuch           # Batterie voll: eine Stufe zuschalten und sehen, ob sie getragen wird
+        text: Eine Heizstufe mehr
         by: +1
         not_before: 6 min
         when:
@@ -128,6 +137,7 @@ states:                         # was sich die Logik merkt
           - Keine Pause nach einem Fehlversuch: not running(sperre)
           - Die Batterie hilft nicht aus: speicher > -entladung_max
       - name: umleiten          # Vorrang: Ladeleistung der Batterie geht ins Warmwasser
+        text: Eine Heizstufe mehr, Warmwasser geht vor
         by: +1
         not_before: 6 min
         when:

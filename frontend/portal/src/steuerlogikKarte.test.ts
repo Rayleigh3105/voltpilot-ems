@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SteuerlogikKarte, SteuerlogikStellwert, SteuerlogikVerlauf } from './api';
+import type { SteuerlogikKarte, SteuerlogikStellwert, SteuerlogikVerlauf, SteuerlogikWarum } from './api';
 import gepinnt from '../../../docs/contracts/v2/examples/steuerlogik-karte.valid.wasser.json';
 import {
   erfuellt,
@@ -14,6 +14,7 @@ import {
   stand,
   verlaufZeilen,
   warumSortiert,
+  warumTitel,
   wertText,
   zahlAus,
   zusatzStoerung,
@@ -107,6 +108,31 @@ describe('die Liste „Warum?“', () => {
     expect(erfuellt({ ...w[0], modus: 'alle', bedingungen: [{ name: 'a', ok: true }, { name: 'b', ok: null }] })).toBeNull();
     expect(erfuellt({ ...w[0], modus: 'eines', bedingungen: [{ name: 'a', ok: false }, { name: 'b', ok: true }] })).toBe(true);
     expect(erfuellt({ ...w[0], modus: 'alle', bedingungen: [{ name: 'a', ok: false }, { name: 'b', ok: null }] })).toBe(false);
+  });
+});
+
+describe('die Überschriften im Blatt „Warum?“', () => {
+  it('tragen den Satz der Box in Alltagssprache und nie eine Kennung', () => {
+    const g: SteuerlogikWarum = {
+      zustand: 'netzheizen', name: 'netzheizen', satz: 'Heizt aus dem Netz bis 50\u00a0°C', eigen: true, was: 'an',
+      modus: 'alle', bedingungen: [{ name: 'Uhrzeit liegt im Fenster', ok: true }, { name: 'Zu kalt', ok: false }],
+    };
+    expect(warumTitel(g)).toBe('Heizt aus dem Netz bis 50\u00a0°C, wenn alles erfüllt ist');
+    expect(warumTitel({ ...g, modus: 'eines' })).toBe('Heizt aus dem Netz bis 50\u00a0°C, sobald eines davon zutrifft');
+    expect(warumTitel({ ...g, bedingungen: [g.bedingungen[0]] })).toBe('Heizt aus dem Netz bis 50\u00a0°C, wenn dies zutrifft');
+    // Eine Box ohne das Feld: ein allgemeines Wort statt der Kennung von Zustand oder Schritt.
+    const alt = { ...g, satz: undefined, eigen: undefined, was: 'schritt' as const, schritt: 'zurueck', zustand: 'stufe' };
+    expect(warumTitel(alt)).toBe('Nächster Schritt, wenn alles erfüllt ist');
+    expect(warumTitel({ ...alt, was: 'an' })).not.toMatch(/stufe|zurueck|netzheizen/);
+  });
+
+  it('zeigen am gepinnten Beispiel nur Sätze der Logik', () => {
+    const w = karte().warum ?? [];
+    expect(w.length).toBeGreaterThan(0);
+    for (const g of w) {
+      expect(g.eigen).toBe(true);
+      expect(warumTitel(g)).not.toMatch(/netzheizen|zurueck|versuch|blind|[a-z]_[a-z]|^[a-z]/);
+    }
   });
 });
 

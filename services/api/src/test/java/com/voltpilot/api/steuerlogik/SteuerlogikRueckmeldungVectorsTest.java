@@ -74,6 +74,14 @@ class SteuerlogikRueckmeldungVectorsTest {
                     .isFalse());
             assertThat(sauber.path("stellwerte").path("werte")).as("Stellwerte").hasSize(fall.path("stellwerte").asInt());
             assertThat(sauber.path("warum")).as("Warum-Gruppen").hasSize(fall.path("warum").asInt());
+            if (fall.has("warum_saetze")) {
+                // Die Überschrift für den Kunden reist mit; ein Satz, der kein Text ist, fällt weg (nie eine Kennung).
+                List<String> saetze = new ArrayList<>();
+                sauber.path("warum").forEach(w -> saetze.add(w.path("satz").asText("")));
+                List<String> sollSaetze = new ArrayList<>();
+                fall.path("warum_saetze").forEach(n -> sollSaetze.add(n.asText()));
+                assertThat(saetze).as("Überschriften für den Kunden").containsExactlyElementsOf(sollSaetze);
+            }
             assertThat(sauber.path("meldungen")).as("Meldungen").hasSize(fall.path("meldungen").asInt());
         }
         for (var w : g.wechsel()) {

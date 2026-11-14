@@ -36,6 +36,8 @@ states:
     type: boolean
     on_when:  holds(uebrig >= ab_kw, 5 min)
     off_when: unknown(netz) or holds(netz > 0.3 kW, 10 min)
+    on_text: Sonnenstrom gilt als übrig
+    off_text: Sonnenstrom gilt nicht mehr als übrig
     after_restart: off
 
   fenster_auf:                  # ein kurz gekipptes Fenster schaltet nicht ab
@@ -43,6 +45,8 @@ states:
     type: boolean
     on_when:  holds(fenster, 3 min)
     off_when: holds(not fenster, 2 min)
+    on_text: Das Fenster gilt als offen
+    off_text: Das Fenster gilt als zu
     after_restart: off
 
   laeuft:                       # das Gerät soll an sein; kühlen und halten macht es selbst
@@ -56,6 +60,8 @@ states:
       - Der Betrieb steht auf Aus: betrieb == abgeschaltet
       - Das Fenster steht offen: fenster_auf
       - Weder Arbeitszeit noch Sonnenstrom: not gewollt
+    on_text: Das Klimagerät schaltet ein
+    off_text: Das Klimagerät schaltet aus
     after_restart: off
 
 outputs:                        # Ruhewert des Geräts: aus

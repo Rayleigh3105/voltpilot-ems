@@ -75,10 +75,14 @@ type LogikStellwert struct {
 	Hilfe   string `json:"hilfe,omitempty"`
 }
 
-// LogikWarum is one group of the "Warum?" list.
+// LogikWarum is one group of the "Warum?" list. Satz is its heading for the
+// customer: the logic's own sentence with today's values (Eigen), else one the
+// core builds from its vocabulary - never the identifier of a state or step.
 type LogikWarum struct {
 	Zustand     string           `json:"zustand"`
 	Name        string           `json:"name"`
+	Satz        string           `json:"satz"`
+	Eigen       bool             `json:"eigen,omitempty"`
 	Was         string           `json:"was"`
 	Schritt     string           `json:"schritt,omitempty"`
 	Modus       string           `json:"modus"`

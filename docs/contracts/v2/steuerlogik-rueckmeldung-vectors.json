@@ -1102,7 +1102,7 @@
           {
             "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
             "flow_version": 1,
-            "content_hash": "sha256:3435ecf00403dd33ab282613fde6b67ae2306551e3731cc0822f846b63f76498",
+            "content_hash": "sha256:82c322f48c837b682f02ea6709903f62d08166b3bf472f4ece889fb4585e7835",
             "name": "Warmwasser",
             "zustand": "scharf",
             "scharf_seit": "2026-11-14T09:00:00Z",
@@ -1231,6 +1231,8 @@
               {
                 "zustand": "warm",
                 "name": "warm",
+                "satz": "Der Speicher gilt als warm",
+                "eigen": true,
                 "was": "an",
                 "modus": "alle",
                 "bedingungen": [
@@ -1254,6 +1256,8 @@
               {
                 "zustand": "netzheizen",
                 "name": "netzheizen",
+                "satz": "Heizt aus dem Netz bis 50 °C",
+                "eigen": true,
                 "was": "an",
                 "modus": "alle",
                 "bedingungen": [
@@ -1290,6 +1294,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "blind",
                 "modus": "alle",
@@ -1318,6 +1324,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Der Speicher ist warm, der Heizstab geht aus",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "voll",
                 "modus": "alle",
@@ -1338,6 +1346,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase weniger",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "zurueck",
                 "modus": "alle",
@@ -1352,6 +1362,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase weniger",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "zurueck",
                 "modus": "eines",
@@ -1381,6 +1393,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase mehr",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "versuch",
                 "modus": "alle",
@@ -1454,6 +1468,15 @@
       ],
       "stellwerte": 5,
       "warum": 7,
+      "warum_saetze": [
+        "Der Speicher gilt als warm",
+        "Heizt aus dem Netz bis 50 °C",
+        "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
+        "Der Speicher ist warm, der Heizstab geht aus",
+        "Eine Phase weniger",
+        "Eine Phase weniger",
+        "Eine Phase mehr"
+      ],
       "meldungen": 0
     },
     {
@@ -1597,6 +1620,8 @@
               {
                 "zustand": "warm",
                 "name": "warm",
+                "satz": "Der Speicher gilt als warm",
+                "eigen": true,
                 "was": "an",
                 "modus": "alle",
                 "bedingungen": [
@@ -1620,6 +1645,8 @@
               {
                 "zustand": "netzheizen",
                 "name": "netzheizen",
+                "satz": "Heizt aus dem Netz bis 50 °C",
+                "eigen": true,
                 "was": "an",
                 "modus": "alle",
                 "bedingungen": [
@@ -1656,6 +1683,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "blind",
                 "modus": "alle",
@@ -1684,6 +1713,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Der Speicher ist warm, der Heizstab geht aus",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "voll",
                 "modus": "alle",
@@ -1704,6 +1735,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase weniger",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "zurueck",
                 "modus": "alle",
@@ -1718,6 +1751,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase weniger",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "zurueck",
                 "modus": "eines",
@@ -1747,6 +1782,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase mehr",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "versuch",
                 "modus": "alle",
@@ -1836,6 +1873,15 @@
       ],
       "stellwerte": 5,
       "warum": 7,
+      "warum_saetze": [
+        "Der Speicher gilt als warm",
+        "Heizt aus dem Netz bis 50 °C",
+        "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
+        "Der Speicher ist warm, der Heizstab geht aus",
+        "Eine Phase weniger",
+        "Eine Phase weniger",
+        "Eine Phase mehr"
+      ],
       "meldungen": 1
     },
     {
@@ -1983,6 +2029,7 @@
               {
                 "zustand": "warm",
                 "name": "warm",
+                "satz": 42,
                 "was": "an",
                 "modus": "alle",
                 "bedingungen": [
@@ -2006,6 +2053,8 @@
               {
                 "zustand": "netzheizen",
                 "name": "netzheizen",
+                "satz": "Heizt aus dem Netz bis 50 °C",
+                "eigen": true,
                 "was": "an",
                 "modus": "alle",
                 "bedingungen": [
@@ -2042,6 +2091,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "blind",
                 "modus": "alle",
@@ -2070,6 +2121,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Der Speicher ist warm, der Heizstab geht aus",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "voll",
                 "modus": "alle",
@@ -2090,6 +2143,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase weniger",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "zurueck",
                 "modus": "alle",
@@ -2104,6 +2159,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase weniger",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "zurueck",
                 "modus": "eines",
@@ -2133,6 +2190,8 @@
               {
                 "zustand": "stufe",
                 "name": "stufe",
+                "satz": "Eine Phase mehr",
+                "eigen": true,
                 "was": "schritt",
                 "schritt": "versuch",
                 "modus": "alle",
@@ -2232,6 +2291,15 @@
       ],
       "stellwerte": 5,
       "warum": 7,
+      "warum_saetze": [
+        "",
+        "Heizt aus dem Netz bis 50 °C",
+        "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
+        "Der Speicher ist warm, der Heizstab geht aus",
+        "Eine Phase weniger",
+        "Eine Phase weniger",
+        "Eine Phase mehr"
+      ],
       "meldungen": 1
     }
   ]

@@ -38,7 +38,10 @@ for (const breite of [390, 1440] as const) {
     await expect(karte.locator('.pill')).toHaveText('Netz');
     const schalter = karte.getByRole('switch', { name: 'Winterregelung' });
     await expect(schalter).toHaveAttribute('aria-checked', 'true');
-    await expect(karte).toContainText('Unter 40 °C heizt Speicher 1 aus dem Netz');
+    // Lage und Hilfesatz kommen aus EINEM Lauf: dieselben Zahlen (40 °C, 60 °C), kein Widerspruch in der Karte.
+    await expect(karte).toContainText(/Speicher 1 war unter 40\s°C gefallen.*heizt aus dem Netz bis 60\s°C/);
+    await expect(karte).toContainText(/Unter 40\s°C heizt Speicher 1 aus dem Netz, von 06:00 bis 22:00 Uhr, bis 60\s°C/);
+    await expect(karte).toContainText('Durchlauferhitzer · 3 Phasen');
     await bild(page, 'karte-winterregelung', breite);
     await schalter.click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { gesendet: unknown[] }).gesendet)).toEqual([
@@ -59,6 +62,9 @@ for (const breite of [390, 1440] as const) {
     await expect(blatt).toBeVisible();
     await expect(blatt.getByText('Was gerade entscheidet')).toBeVisible();
     await expect(blatt.locator('.lg-check li').first()).toBeVisible();
+    // Jede Gruppe trägt den Satz der Logik in Alltagssprache, mit dem Wert von jetzt - nie eine Kennung.
+    const titel = blatt.locator('.lg-gruppe-t > span');
+    await expect(titel.first()).toHaveText(/^Heizt aus dem Netz bis 50\s°C, wenn alles erfüllt ist$/);
     // Das Gerät: Befehl 3 Phasen, die Mindestlaufzeit hält es (der Schutz der Box, den keine Logik überstimmt).
     await expect(blatt.locator('.lg-geraete')).toContainText('3 Phasen');
     await expect(blatt.locator('.lg-geraete')).toContainText('Mindestlaufzeit');
@@ -75,6 +81,20 @@ for (const breite of [390, 1440] as const) {
     await expect(blatt.locator('.lg-verlauf')).toContainText('Jonas Wendlinger: Nie kälter als 40 °C → 42 °C');
     await expect(blatt.locator('.lg-verlauf')).toContainText('Heizstab: 3 Phasen');
     await bild(page, 'blatt-warum', breite);
+    // Alle Gruppen: jede Überschrift ist ein Satz der Logik - Kennungen (netzheizen, zurueck, stufe_x) und
+    // kleingeschriebene Satzanfänge kommen nicht vor.
+    await blatt.getByRole('button', { name: /Alle \d+ Gruppen anzeigen/ }).click();
+    const alle = await titel.allTextContents();
+    expect(alle.length).toBeGreaterThan(2);
+    expect(alle.join(' | ')).not.toMatch(/netzheizen|zurueck|versuch|blind|[a-z]_[a-z]|(^|\| )[a-z]/);
+    if (BILDER) {
+      // Für das Bild aller Gruppen kurz ein hohes Fenster: das Blatt wächst mit und zeigt alle auf einmal.
+      await page.setViewportSize({ width: breite, height: 2400 });
+      await blatt.getByRole('heading', { name: 'Was gerade entscheidet' }).scrollIntoViewIfNeeded();
+      await bild(page, 'warum-alle-gruppen', breite);
+      await page.setViewportSize({ width: breite, height: breite === 1440 ? 900 : 844 });
+    }
+    await blatt.getByRole('button', { name: 'Weniger anzeigen' }).click();
     await ohneUeberlauf(page);
     await page.keyboard.press('Escape');
     await expect(blatt).toHaveCount(0);

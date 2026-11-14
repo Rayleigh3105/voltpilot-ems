@@ -268,6 +268,9 @@ public final class SteuerlogikRueckmeldung {
             ObjectNode one = out.addObject();
             one.put("zustand", g.path("zustand").asText());
             one.put("name", text(g.path("name"), 80));
+            // Die Überschrift für den Kunden (Satz der Logik oder aus dem Wortschatz der Box, nie eine Kennung).
+            if (g.path("satz").isTextual()) one.put("satz", text(g.path("satz"), 160));
+            if (g.path("eigen").asBoolean(false)) one.put("eigen", true);
             one.put("was", g.path("was").asText());
             if (g.path("schritt").isTextual()) one.put("schritt", text(g.path("schritt"), 40));
             one.put("modus", g.path("modus").asText());

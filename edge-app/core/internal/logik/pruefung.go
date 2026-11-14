@@ -223,6 +223,33 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 			pruefeText("Hilfe zu „"+s.Name+"“", h[1])
 		}
 	}
+	// Die Sätze für den Kunden im Blatt „Warum?“: Platzhalter wie in der Lage; fehlt einer für eine
+	// Gruppe, die das Blatt zeigt, sagt es ein Hinweis (dort steht dann ein Satz aus dem Wortschatz).
+	var ohneSatz []string
+	for _, z := range L.Zustaende {
+		switch z.Art {
+		case "boolean":
+			pruefeText("on_text von „"+z.Name+"“", z.AnText)
+			pruefeText("off_text von „"+z.Name+"“", z.AusText)
+			if z.AnText == "" && (z.An != nil || z.AnEines != nil) {
+				ohneSatz = append(ohneSatz, "states."+z.Kennung+".on_text")
+			}
+			if z.AusText == "" && (z.Aus != nil || z.AusEines != nil) {
+				ohneSatz = append(ohneSatz, "states."+z.Kennung+".off_text")
+			}
+		case "counter":
+			for _, s := range z.Schritte {
+				pruefeText("text von „"+z.Name+"“, Schritt "+s.Name, s.Text)
+				if s.Text == "" && (s.Alle != nil || s.Eines != nil) {
+					ohneSatz = append(ohneSatz, "states."+z.Kennung+".steps."+s.Name+".text")
+				}
+			}
+		}
+	}
+	if len(ohneSatz) > 0 {
+		b.Hinweise = append(b.Hinweise, "Ohne Satz für den Kunden im Blatt „Warum?“ (dort steht dann ein Satz "+
+			"aus dem Wortschatz): "+strings.Join(ohneSatz, ", "))
+	}
 	// Wörter dürfen keinen anderen Namen verdecken; Schrittnamen sind auch Wörter.
 	istName := func(w string) bool {
 		if _, ok := L.Werte[w]; ok {

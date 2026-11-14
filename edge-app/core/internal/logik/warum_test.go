@@ -1,6 +1,9 @@
 package logik
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Die Liste „Warum?“ nennt je Zustand die Bedingungen, die als Nächstes entscheiden, mit Haken
 // und Werten - und verändert den Lauf beim Lesen nicht (holds-Zähler bleiben, wo sie waren).
@@ -83,5 +86,92 @@ func TestWarumZaehlerSchritte(t *testing.T) {
 	}
 	if len(w) > maxWarumGruppen {
 		t.Fatalf("mehr als %d Gruppen", maxWarumGruppen)
+	}
+}
+
+// Jede Gruppe trägt einen Satz für den Kunden: den der Logik mit den Werten von jetzt, sonst einen
+// aus dem Wortschatz - nie die Kennung eines Zustands oder Schritts. Fehlt ein Satz für eine Gruppe,
+// die das Blatt zeigt, sagt es die Prüfung.
+func TestWarumSatzNieDieKennung(t *testing.T) {
+	ohne := []byte(`{"logic": 1, "name": "Probe", "devices": {"stab": {"entity": "e1", "name": "Stab"}},
+ "inputs": {"t": {"source": "f.temperature", "name": "Speicher"}},
+ "states": {
+  "heizen": {"type": "boolean", "on_when": [{"Zu kalt": "t < 40 °C"}], "off_when_any": [{"Warm genug": "t >= 50 °C"}], "after_restart": "off"},
+  "netzheizen": {"type": "boolean", "name": "Netzheizen", "on_when": "t < 30 °C", "after_restart": "off"},
+  "stufe": {"type": "counter", "min": 0, "max": 3, "after_restart": 0, "steps": [
+   {"name": "hoch", "by": 1, "when": "heizen"}, {"name": "null", "set": 0, "when_any": [{"Warm": "not heizen"}]}]}},
+ "outputs": {"stab": {"level": "stufe"}},
+ "status": [{"else": true, "title": "Läuft", "type": "idle", "text": "Gut."}]}`)
+	L, err := Lesen(ohne)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jetzt := 1000000.0
+	st := L.NeuerLauf(jetzt)
+	temp := 35.0
+	ein := &Eingabe{Jetzt: jetzt, UhrMin: 720, Tag: 100, Werte: map[string]EinWert{"t": {Zahl: &temp}},
+		Geraete: map[string]GeraetStamm{}}
+	L.Takt(st, ein)
+	saetze := map[string]string{}
+	for _, g := range L.Warum(st, ein) {
+		if g.Eigen {
+			t.Fatalf("ohne Satz im Text ist keine Gruppe „eigen“: %+v", g)
+		}
+		saetze[g.Zustand+"/"+g.Was+"/"+g.Schritt] = g.Satz
+	}
+	soll := map[string]string{
+		"heizen/aus/":        "Schaltet aus", // bei 35 °C schon an: das Blatt nennt, was ihn beendet
+		"netzheizen/an/":     "„Netzheizen“ beginnt",
+		"stufe/schritt/hoch": "Um 1 höher",
+		"stufe/schritt/null": "Auf 0",
+	}
+	for k, v := range soll {
+		if saetze[k] != v {
+			t.Errorf("%s: Satz %q, erwartet %q (alle: %v)", k, saetze[k], v, saetze)
+		}
+	}
+	hinweis := ""
+	for _, h := range L.Pruefe(nil).Hinweise {
+		if strings.HasPrefix(h, "Ohne Satz für den Kunden") {
+			hinweis = h
+		}
+	}
+	for _, ort := range []string{"states.heizen.on_text", "states.heizen.off_text", "states.netzheizen.on_text",
+		"states.stufe.steps.hoch.text", "states.stufe.steps.null.text"} {
+		if !strings.Contains(hinweis, ort) {
+			t.Errorf("der Hinweis nennt %s nicht: %q", ort, hinweis)
+		}
+	}
+	if strings.Contains(hinweis, "netzheizen.off_text") {
+		t.Errorf("ohne Aus-Bedingungen zeigt das Blatt keine Gruppe, also kein Hinweis: %q", hinweis)
+	}
+
+	// Das Beispiel bringt seine Sätze mit; Platzhalter tragen die Werte von jetzt (wie die Lage).
+	W := ladeBeispiel(t, "wasser")
+	st = W.NeuerLauf(jetzt)
+	kalt, netz, speicher, ladestand := 38.0, 0.4, 0.0, 20.0
+	ein = &Eingabe{Jetzt: jetzt, UhrMin: 6*60 + 30, Tag: 100, Werte: map[string]EinWert{"t": {Zahl: &kalt},
+		"netz": {Zahl: &netz}, "speicher": {Zahl: &speicher}, "ladestand": {Zahl: &ladestand}},
+		Geraete: map[string]GeraetStamm{}}
+	W.Takt(st, ein)
+	gefunden := false
+	for _, g := range W.Warum(st, ein) {
+		if !g.Eigen || g.Satz == "" || g.Satz == g.Zustand || g.Satz == g.Schritt {
+			t.Fatalf("das Beispiel bringt für jede Gruppe einen Satz: %+v", g)
+		}
+		if g.Zustand == "netzheizen" && g.Was == "an" {
+			gefunden = true
+			if g.Satz != "Heizt aus dem Netz bis 50\u00a0°C" {
+				t.Fatalf("Platzhalter mit dem Stellwert von jetzt: %q", g.Satz)
+			}
+		}
+	}
+	if !gefunden {
+		t.Fatal("die Gruppe „Heizt aus dem Netz“ fehlt")
+	}
+	for _, h := range W.Pruefe(nil).Hinweise {
+		if strings.HasPrefix(h, "Ohne Satz für den Kunden") {
+			t.Fatalf("das Beispiel hat alle Sätze: %q", h)
+		}
 	}
 }

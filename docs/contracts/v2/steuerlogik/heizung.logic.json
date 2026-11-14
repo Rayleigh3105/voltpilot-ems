@@ -224,6 +224,8 @@
    "type": "boolean",
    "on_when": "t1 >= ziel",
    "off_when": "unknown(t1) or t1 < ziel - 3 K",
+   "on_text": "Speicher 1 gilt als warm",
+   "off_text": "Speicher 1 braucht wieder Wärme",
    "after_restart": "off"
   },
   "vorrang": {
@@ -231,6 +233,8 @@
    "type": "boolean",
    "on_when": "vorrang_bis > 0 °C and t1 < vorrang_ziel - 3 K",
    "off_when": "not (vorrang_bis > 0 °C) or unknown(t1) or t1 >= vorrang_ziel",
+   "on_text": "Warmwasser bekommt Vorrang vor der Batterie",
+   "off_text": "Die Batterie lädt wieder zuerst",
    "after_restart": "off"
   },
   "netzheizen": {
@@ -261,6 +265,8 @@
      "Uhrzeit liegt außerhalb des Fensters": "not netzfenster"
     }
    ],
+   "on_text": "Speicher 1 heizt aus dem Netz bis {ziel_netz}",
+   "off_text": "Hört auf, aus dem Netz zu heizen",
    "after_restart": "off"
   },
   "sperre": {
@@ -278,11 +284,13 @@
    "steps": [
     {
      "name": "blind",
+     "text": "Ohne Werte vom Wechselrichter wird nicht weiter geheizt",
      "set": 0,
      "when": "holds(unknown(netz) or unknown(speicher) or unknown(ladestand), 1 min)"
     },
     {
      "name": "zurueck",
+     "text": "Eine Heizstufe weniger",
      "by": -1,
      "not_before": "2 min",
      "when": "heizstufe > 0",
@@ -301,6 +309,7 @@
     },
     {
      "name": "versuch",
+     "text": "Eine Heizstufe mehr",
      "by": 1,
      "not_before": "6 min",
      "when": [
@@ -323,6 +332,7 @@
     },
     {
      "name": "umleiten",
+     "text": "Eine Heizstufe mehr, Warmwasser geht vor",
      "by": 1,
      "not_before": "6 min",
      "when": [

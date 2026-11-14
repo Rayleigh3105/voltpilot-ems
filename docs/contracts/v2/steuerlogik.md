@@ -26,7 +26,7 @@ Nach der Lesart zu E9 ist die Wortliste mit der ersten Auslieferung fest; bis da
 | `settings` | Stellwerte: `default`, `range`, `step`, `editable_by`, `help`; Arten `boolean`, `select`, `schedule`, sonst Zahl mit Einheit oder Uhrzeit |
 | `constraints` | was zwischen Stellwerten gelten muss |
 | `formulas` | benannte Formeln; sie gelten immer mit den aktuellen Werten |
-| `states` | was sich die Logik merkt: `boolean`, `timer`, `counter`, je mit `after_restart` |
+| `states` | was sich die Logik merkt: `boolean`, `timer`, `counter`, je mit `after_restart`; für das Blatt „Warum?“ je Schalter `on_text` und `off_text`, je Zählerschritt `text` (Sätze für den Kunden) |
 | `outputs` | je Gerät, was gelten soll: `level`, `on_off`, `setpoint`, `mode`, `percent` als Formel |
 | `display` | optional: was die Karte zusätzlich zeichnet |
 | `notifications` | Nachricht, wenn etwas eintritt; frühestens nach `repeat_after` erneut |
@@ -74,6 +74,9 @@ Ein Takt, jede Sekunde, in dieser Reihenfolge: Werte lesen und ihr Alter prüfen
   Eine Betriebsart, die das Gerät nicht kennt (die Liste nennt die Anlage), ist kein Wunsch und ein Fehler-Ereignis; es gilt der Ruhewert des Geräts.
 - **Meldungen** gehen einmal hinaus, wenn die Bedingung eintritt, und frühestens nach `repeat_after` (Vorgabe eine Stunde) erneut.
 - **Lage**: die erste zutreffende Zeile gilt; im Satz steht `{formel}` für einen Wert in deutscher Schreibweise mit Einheit.
+- **Sätze für „Warum?“**: `on_text` und `off_text` eines Schalters und `text` eines Zählerschritts sind die Überschriften der Gruppen im Blatt „Warum?“, mit Platzhaltern wie die Lage („Heizt aus dem Netz bis {netz_ziel}“).
+  Fehlt einer, bildet der Kern einen Satz aus dem Wortschatz („„Netzheizen“ beginnt“, „Heizstufe um 1 höher“, „Auf 0“); die Kennung eines Zustands oder Schritts erscheint nie vor dem Kunden.
+  Die Prüfung nennt jede Gruppe, die das Blatt zeigt und für die der Text keinen Satz hat, in einem Hinweis.
 
 Anzeige der Werte: deutsche Schreibweise (Komma, schmales Leerzeichen vor der Einheit, echtes Minus), Leistungen unter 10 kW mit einer oder zwei Stellen, Hälften runden vom Nullpunkt weg (wie das Referenzlabor); die Lagesätze der Tagesvektoren prüfen das Zeichen für Zeichen.
 
@@ -176,6 +179,7 @@ Die Beschreibung der Werte (Name, Art, Einheit, Bereich, Schritt in der Einheit 
 
 `GET /api/v1/sites/{siteId}/steuerlogik` liefert je scharfe Logik eine Karte: die Lage der Box mit ihrem Alter, die Störungen (die Box lehnt die Fassung ab, die Logik läuft nicht, die Box schaltet nicht, die Lage ist `fault`, ein Eingang hat keinen Wert, ein Gerät bekommt keinen Wunsch), je Gerät Wunsch, gelesener Stand, Befehl, Halter, Schutz und Konflikt, die Werte mit dem Recht DIESES Aufrufers, die Liste „Warum?“ und die Meldungen der Logik; `GET …/{logikId}/verlauf?tag=` die Schaltungen des Tages und wer welchen Wert gestellt hat.
 Beispiel: [steuerlogik-karte.valid.wasser.json](examples/steuerlogik-karte.valid.wasser.json) (gepinnt von `SteuerlogikScharfApiTest` aus dem Block der Box und der Antwort des Dienstes; das Portal liest sie in seinen Tests).
+Satz der Lage und Hilfesätze der Werte setzen beide die Werte von jetzt ein, also widersprechen sie sich auf einer Karte nie; belegt mit [steuerlogik-karte-saetze.heizung-winter.json](examples/steuerlogik-karte-saetze.heizung-winter.json) (beide aus einem Lauf des Heizungs-Beispiels, gepinnt von `logik/karte_saetze_test.go`).
 Eine Störung (ohne die gewollte Pause und ohne die Box, die sich nicht meldet - das meldet `box.erreichbar`) wird nach zwei Minuten eine Meldung der Überwachung (`steuerlogik.stoerung`, ab Werk eingeschaltet an Anlagen mit scharfer Logik).
 
 Ende zu Ende mit den echten Programmen und einem gestellten Shelly Pro 3: `edge-light/test/steuerlogik-scharf-probe.sh` (scharf, echte Schaltanfragen, Mindestlaufzeit, gestellter Wert ohne Neustart, Fassung 2 und „Zurück“, „Stilllegen“, zweiter Herr).
