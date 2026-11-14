@@ -2068,6 +2068,13 @@
       "nachher": "bb0e74e8ee46d470a886791122699dcf6851cc22d5f4ff6aa4258caf9a27476f",
       "commit": "fm/vp-ux-text-kunde",
       "grund": "Text-Runde Kunde (vp-ux-text-kunde): dasselbe Feld (Beschriftung, value, placeholder, onChange) trägt den kürzeren Hinweis „Nur für Ihre Anzeige.“ statt „Nur für Ihre Anzeige - er darf sich vom Kennungs-Feld unterscheiden.“; die Kennung steht direkt darunter mit eigenem Feld."
+    },
+    {
+      "datei": "pages/MesswerteSection.tsx",
+      "vorher": "4c511c4c7d33af3dcc7a139ea74bfc589e209bf5f0cd4c2d065326390b2d2c53",
+      "nachher": "66e0f9455c3bfb3e923e7c44ddd123b7a420fb9fb137734b3da23b74222fae09",
+      "commit": "c929dea4a",
+      "grund": "Abrechnung prüfen (#1876, R1-R5): der CSV-Export der Energie-Tabelle folgt dem freien Zeitraum (Raster-Zeitraum, Kennzeichen für einen gewählten Zeitraum) und benennt die Datei über den gemeinsamen Dateinamen; Text, Art und Ort des Knopfes bleiben gleich. Nachgetragen, weil die Fortschreibung beim Merge fehlte."
     }
   ],
   "assistentZusammenfuehrung": {
