@@ -830,8 +830,19 @@ public class MessstelleFormelService {
         return restLive(hauptzaehlerId, uhr.instant().minus(FRISCHE), heute(zone()));
     }
 
+    /**
+     * {@link #restLive(UUID)} auf einem schon gelesenen Stand der Stellungen - für die Bilanzen mehrerer Anlagen in
+     * einer Anfrage ({@link BilanzService#bilanzen}, vp-perf2-server B7), die ihn einmal lesen statt je Hauptzähler.
+     */
+    public RestLive restLive(UUID hauptzaehlerId, BilanzStellungen.Stand stand) {
+        return restLive(hauptzaehlerId, uhr.instant().minus(FRISCHE), heute(zone()), stand);
+    }
+
     private RestLive restLive(UUID hauptzaehlerId, Instant cutoff, LocalDate tag) {
-        BilanzStellungen.Stand stand = stellungen.lesen();
+        return restLive(hauptzaehlerId, cutoff, tag, stellungen.lesen());
+    }
+
+    private RestLive restLive(UUID hauptzaehlerId, Instant cutoff, LocalDate tag, BilanzStellungen.Stand stand) {
         Messstelle x = messstellen.finde(hauptzaehlerId).orElse(null);
         BilanzAbleitung.RestFassung f = x == null ? null : stand.rest(x.kennzeichen(), tag);
         if (f == null || f.fehler() != null) {

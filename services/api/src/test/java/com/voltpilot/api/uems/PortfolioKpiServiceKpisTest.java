@@ -60,8 +60,13 @@ class PortfolioKpiServiceKpisTest {
         when(sites.findAll()).thenReturn(List.of(
                 site(jahrId, "Werk Jahr", "jahr"),
                 site(monatId, "Werk Monat", "monat")));
-        when(bilanz.bilanz(any(), eq("monat"), any())).thenReturn(leereBilanz());
-        when(netzanschluss.bindungenDerAnlage(any())).thenReturn(List.of());
+        // B7: beide Monate für alle Anlagen in EINEM Aufruf, die Bindungen aller Anlagen in einem.
+        when(bilanz.bilanzen(List.of(jahrId, monatId), "monat",
+                List.of(LocalDate.parse("2026-09-15"), LocalDate.parse("2025-09-15"))))
+                .thenReturn(Map.of(jahrId, List.of(leereBilanz(), leereBilanz()),
+                        monatId, List.of(leereBilanz(), leereBilanz())));
+        when(netzanschluss.bindungenDerAnlagen(List.of(jahrId, monatId))).thenReturn(Map.of());
+        when(netzanschluss.findeAlle(any())).thenReturn(Map.of());
         when(messstellen.liste(any(), any())).thenReturn(listeMitDatenlage(8, 10));
         when(auswertung.leit()).thenReturn(Optional.empty());
         // Die Spitze der Jahres-Anlage steht NUR im Jahresfenster, die der Monats-Anlage NUR im Monatsfenster.

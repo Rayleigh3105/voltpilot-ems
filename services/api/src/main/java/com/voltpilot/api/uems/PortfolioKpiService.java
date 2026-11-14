@@ -17,6 +17,8 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -53,9 +55,10 @@ import org.springframework.stereotype.Service;
  * Anlage einen Wert beiträgt (nie 0); Kosten nur, wo ein Arbeitspreis hinterlegt ist.
  *
  * <p>Reiner Leser: läuft als der Request-Nutzer (TenantContext/Zugriffs-Zaun),
- * startet keine Threads, schreibt nichts. Je Anlage ein {@link BilanzService#bilanz}-
- * Aufruf (dieselbe Ableitung wie die Einzel-Bilanz); für sehr große Portfolios
- * später bündelbar.
+ * startet keine Threads, schreibt nichts. Die Bilanzen kommen aus
+ * {@link BilanzService#bilanzen} (je Anlage dieselbe Ableitung wie die Einzel-Bilanz,
+ * die mandantenweiten Lesungen einmal für alle Anlagen); was dann noch je Anlage
+ * gelesen wird, sind die Werte ihrer Hauptzähler.
  */
 @Service
 public class PortfolioKpiService {
@@ -97,14 +100,21 @@ public class PortfolioKpiService {
         Map<UUID, PortfolioKpiRepository.Spitze> spJahr = f.brauchtJahr() ? spitzen.importSpitzen(f.jahrVon(), jetzt) : Map.of();
         Map<UUID, PortfolioKpiRepository.Spitze> spMonat = f.brauchtMonat() ? spitzen.importSpitzen(f.monatVon(), jetzt) : Map.of();
 
+        // B7 (vp-perf2-server): die Bilanzen beider Monate und die vereinbarte Leistung für ALLE Anlagen gebündelt -
+        // die Anweisungszahl wächst nicht mehr mit der Anlagenzahl (nur noch mit ihren Hauptzählern).
+        List<UUID> ids = alle.stream().map(SiteDto::id).toList();
+        Map<UUID, List<BilanzDto.Bilanz>> bilanzen = bilanz.bilanzen(ids, "monat",
+                List.of(aktuell.atDay(15), vorjahr.atDay(15)));
+        Map<UUID, BigDecimal> vereinbart = vereinbartKw(ids, heute);
         List<AnlageKpiRoh> roh = new ArrayList<>();
         for (SiteDto s : alle) {
-            Netzbezug jetztM = netzbezugAus(bilanz.bilanz(s.id(), "monat", aktuell.atDay(15)));
-            Netzbezug vorM = netzbezugAus(bilanz.bilanz(s.id(), "monat", vorjahr.atDay(15)));
+            List<BilanzDto.Bilanz> b = bilanzen.get(s.id());
+            Netzbezug jetztM = netzbezugAus(b.get(0));
+            Netzbezug vorM = netzbezugAus(b.get(1));
             boolean monat = "monat".equals(s.abrechnungLeistung());
             PortfolioKpiRepository.Spitze sp = (monat ? spMonat : spJahr).get(s.id());
             roh.add(new AnlageKpiRoh(s.name(), jetztM.kwh(), jetztM.vollstaendig(), vorM.kwh(),
-                    arbeitspreis(s), sp != null ? sp.kw() : null, vereinbartKw(s.id(), heute),
+                    arbeitspreis(s), sp != null ? sp.kw() : null, vereinbart.get(s.id()),
                     sp != null ? sp.zeitpunkt() : null, monat ? f.monatLabel() : f.jahrLabel()));
         }
 
@@ -135,7 +145,7 @@ public class PortfolioKpiService {
     }
 
     /** Die Datenlage: aktuell liefernde Messstellen / gesamt (dieselbe Ableitung wie der Messstellen-Baustein). */
-    private PortfolioKpiDto.Datenlage datenlage() {
+    PortfolioKpiDto.Datenlage datenlage() {
         MessstelleDto.RegisterAggregat agg = messstellen.liste(null, MessstelleRegisterService.Filter.KEINER).aggregat();
         if (agg == null || agg.unternehmen() == null || agg.unternehmen().gesamt() <= 0) {
             return null;
@@ -242,7 +252,7 @@ public class PortfolioKpiService {
     }
 
     /** Der hinterlegte Arbeitspreis (ct/kWh) einer Anlage, oder null bei {@code tarif_art='ohne'}. */
-    private static BigDecimal arbeitspreis(SiteDto s) {
+    static BigDecimal arbeitspreis(SiteDto s) {
         if (s.tarifArt() == null || "ohne".equals(s.tarifArt())) {
             return null;
         }
@@ -258,14 +268,26 @@ public class PortfolioKpiService {
 
     // ------------------------------------------------------------------ DB-Lesungen (IO)
 
-    /** Die am Tag {@code am} vereinbarte Leistung (kW) der Anlage, oder null ohne Netzanschluss. */
-    private BigDecimal vereinbartKw(UUID siteId, LocalDate am) {
-        return netzanschluss.bindungenDerAnlage(siteId).stream()
+    /**
+     * Die am Tag {@code am} vereinbarte Leistung (kW) je Anlage - die der ersten am Tag laufenden Bindung (nach Beginn);
+     * ohne Netzanschluss oder ohne Wert fehlt die Anlage. Zwei Abfragen für alle Anlagen (B7), nicht zwei je Anlage.
+     */
+    Map<UUID, BigDecimal> vereinbartKw(List<UUID> siteIds, LocalDate am) {
+        Map<UUID, UUID> anschlussJeAnlage = new HashMap<>();
+        netzanschluss.bindungenDerAnlagen(siteIds).forEach((siteId, bindungen) -> bindungen.stream()
                 .filter(b -> b.laeuftAm(am))
                 .findFirst()
-                .flatMap(b -> netzanschluss.finde(b.netzanschlussId()))
-                .map(NetzanschlussRepository.Anschluss::vereinbartKw)
-                .orElse(null);
+                .ifPresent(b -> anschlussJeAnlage.put(siteId, b.netzanschlussId())));
+        Map<UUID, NetzanschlussRepository.Anschluss> anschluesse =
+                netzanschluss.findeAlle(new LinkedHashSet<>(anschlussJeAnlage.values()));
+        Map<UUID, BigDecimal> out = new HashMap<>();
+        anschlussJeAnlage.forEach((siteId, anschluss) -> {
+            NetzanschlussRepository.Anschluss a = anschluesse.get(anschluss);
+            if (a != null && a.vereinbartKw() != null) {
+                out.put(siteId, a.vereinbartKw());
+            }
+        });
+        return out;
     }
 
     /**

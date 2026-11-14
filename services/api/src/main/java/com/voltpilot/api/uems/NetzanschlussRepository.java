@@ -6,7 +6,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -97,6 +101,17 @@ public class NetzanschlussRepository {
         return jdbc.query("SELECT " + SPALTEN + " FROM netzanschluss WHERE id = ?", ANSCHLUSS, id).stream().findFirst();
     }
 
+    /** Mehrere Anschlüsse nach Kennung in EINER Abfrage (Portfolio-Kennzahlen, B7); unbekannte fehlen in der Karte. */
+    public Map<UUID, Anschluss> findeAlle(Collection<UUID> ids) {
+        Map<UUID, Anschluss> out = new LinkedHashMap<>();
+        if (ids.isEmpty()) {
+            return out;
+        }
+        jdbc.query("SELECT " + SPALTEN + " FROM netzanschluss WHERE id = ANY (?::uuid[])", ANSCHLUSS,
+                (Object) ids.stream().map(UUID::toString).toArray(String[]::new)).forEach(a -> out.put(a.id(), a));
+        return out;
+    }
+
     /** Jedes Kennzeichen, das ein Anschluss des Kundenbereichs trägt oder trug — die Eingabe {@code belegt}. */
     public List<Belegung> belegt() {
         return jdbc.query("SELECT kennzeichen, netzanschluss_id FROM netzanschluss_kennzeichen ORDER BY kennzeichen",
@@ -168,6 +183,21 @@ public class NetzanschlussRepository {
 
     public List<Bindung> bindungenDerAnlage(UUID siteId) {
         return jdbc.query(BINDUNG_SPALTEN + "AND b.site_id = ? ORDER BY b.gueltig_ab, b.id", BINDUNG, siteId);
+    }
+
+    /**
+     * {@link #bindungenDerAnlage} für mehrere Anlagen in EINER Abfrage (Portfolio-Kennzahlen, B7): je Anlage dieselben
+     * Bindungen in derselben Reihenfolge; eine Anlage ohne Bindung fehlt in der Karte.
+     */
+    public Map<UUID, List<Bindung>> bindungenDerAnlagen(Collection<UUID> siteIds) {
+        Map<UUID, List<Bindung>> out = new LinkedHashMap<>();
+        if (siteIds.isEmpty()) {
+            return out;
+        }
+        jdbc.query(BINDUNG_SPALTEN + "AND b.site_id = ANY (?::uuid[]) ORDER BY b.site_id, b.gueltig_ab, b.id", BINDUNG,
+                (Object) siteIds.stream().map(UUID::toString).toArray(String[]::new))
+                .forEach(b -> out.computeIfAbsent(b.siteId(), k -> new ArrayList<>()).add(b));
+        return out;
     }
 
     public List<Bindung> bindungenDesAnschlusses(UUID netzanschluss) {

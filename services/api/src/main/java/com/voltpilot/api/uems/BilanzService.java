@@ -17,6 +17,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,9 +26,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -106,11 +109,66 @@ public class BilanzService {
     public BilanzDto.Bilanz bilanz(UUID siteId, String periodeWort, LocalDate amTag,
             Predicate<Collection<UUID>> imZugriff) {
         String name = anlageName(siteId);
+        String periode = periode(periodeWort);
+        ZoneId zone = zone(siteId, amTag);
+        return bilanz(siteId, name, periode, amTag, zone,
+                new Lesestand(stellungen.lesen(), reste.alle(), formeln::restLive), imZugriff);
+    }
+
+    /**
+     * Was eine Bilanz über ihre Anlage hinaus liest: die Stellungen, die Reste und den Live-Wert des Rests je
+     * Hauptzähler. Die Einzel-Bilanz liest alles frisch; {@link #bilanzen} liest Stellungen und Reste einmal und den
+     * Live-Wert („jetzt“, für jeden Stichtag derselbe) einmal je Hauptzähler.
+     */
+    private record Lesestand(BilanzStellungen.Stand stand, Map<UUID, BilanzRestRepository.Rest> reste,
+            Function<UUID, MessstelleFormelService.RestLive> live) {}
+
+    /**
+     * Die Bilanzen MEHRERER Anlagen zu mehreren Stichtagen (Portfolio-Kennzahlen, vp-perf2-server B7): je Anlage und
+     * Tag genau die Ableitung von {@link #bilanz(UUID, String, LocalDate)}, ohne Zaun wie dort. Gebündelt sind nur
+     * die Lesungen, die für alle Anlagen gleich sind (Stellungen, Reste, Zone des Unternehmens), und die je Anlage
+     * einzeiligen (Name, Zone des Standorts am Stichtag) - je eine Abfrage für alle Anlagen statt je Anlage und Tag.
+     * Der Live-Wert des Rests („jetzt“, an jedem Stichtag derselbe) entsteht einmal je Hauptzähler; die Werte seiner
+     * Terme liest weiter jeder Block für seine Periode.
+     *
+     * @return je Anlage (in der Reihenfolge von {@code siteIds}) ihre Bilanzen in der Reihenfolge von {@code amTage}
+     */
+    public Map<UUID, List<BilanzDto.Bilanz>> bilanzen(List<UUID> siteIds, String periodeWort,
+            List<LocalDate> amTage) {
+        Map<UUID, String> namen = anlageNamen(siteIds);
+        String periode = periode(periodeWort);
+        List<Map<UUID, ZoneId>> zonen = new ArrayList<>();
+        for (LocalDate amTag : amTage) {
+            zonen.add(zonen(siteIds, amTag));
+        }
+        BilanzStellungen.Stand stand = siteIds.isEmpty() ? null : stellungen.lesen();
+        Map<UUID, MessstelleFormelService.RestLive> live = new HashMap<>();
+        Lesestand lesestand = new Lesestand(stand, siteIds.isEmpty() ? Map.of() : reste.alle(),
+                hauptzaehlerId -> live.computeIfAbsent(hauptzaehlerId, id -> formeln.restLive(id, stand)));
+        Map<UUID, List<BilanzDto.Bilanz>> out = new LinkedHashMap<>();
+        for (UUID siteId : siteIds) {
+            List<BilanzDto.Bilanz> jeTag = new ArrayList<>();
+            for (int i = 0; i < amTage.size(); i++) {
+                jeTag.add(bilanz(siteId, namen.get(siteId), periode, amTage.get(i), zonen.get(i).get(siteId),
+                        lesestand, eingaenge -> true));
+            }
+            out.put(siteId, List.copyOf(jeTag));
+        }
+        return out;
+    }
+
+    private static String periode(String periodeWort) {
         String periode = periodeWort == null || periodeWort.isBlank() ? VORGABE_PERIODE : periodeWort;
         if (!PERIODEN.contains(periode)) {
             throw BilanzAbgelehnt.anfrage("periode", "„periode“ ist tag, monat oder jahr.");
         }
-        ZoneId zone = zone(siteId, amTag);
+        return periode;
+    }
+
+    private BilanzDto.Bilanz bilanz(UUID siteId, String name, String periode, LocalDate amTag, ZoneId zone,
+            Lesestand lesestand, Predicate<Collection<UUID>> imZugriff) {
+        BilanzStellungen.Stand stand = lesestand.stand();
+        Map<UUID, BilanzRestRepository.Rest> alleReste = lesestand.reste();
         LocalDate heute = uhr.instant().atZone(zone).toLocalDate();
         LocalDate am = amTag == null ? heute : amTag;
         LocalDate von = switch (periode) {
@@ -123,8 +181,6 @@ public class BilanzService {
             case "monat" -> am.withDayOfMonth(am.lengthOfMonth());
             default -> am.withDayOfYear(am.lengthOfYear());
         };
-        BilanzStellungen.Stand stand = stellungen.lesen();
-        Map<UUID, BilanzRestRepository.Rest> alleReste = reste.alle();
         List<BilanzDto.Hauptzaehler> hauptzaehler = new ArrayList<>();
         boolean ausserhalb = false;
         for (String kz : hauptzaehlerDerAnlage(stand, siteId, von, bis)) {
@@ -133,8 +189,7 @@ public class BilanzService {
                 ausserhalb = true;
                 continue;
             }
-            hauptzaehler.add(hauptzaehler(x, siteId, name, periode, von, bis, heute, stand, alleReste.get(x.id()),
-                    zone));
+            hauptzaehler.add(hauptzaehler(x, siteId, name, periode, von, bis, heute, lesestand, zone));
         }
         // Zählerbaum S4 (§4.3 Satz 2): je Unterverteilung — Unterzähler mit eigenen Unterzählern — ein
         // Block derselben Form; sein Rest zieht nur die direkten Kinder ab. Ein Unterzähler ohne
@@ -150,7 +205,7 @@ public class BilanzService {
                 continue;
             }
             BilanzDto.Hauptzaehler block = hauptzaehler(x, siteId, x.name() == null ? x.kennzeichen() : x.name(),
-                    periode, von, bis, heute, stand, alleReste.get(x.id()), zone);
+                    periode, von, bis, heute, lesestand, zone);
             // Der Block hängt an der PERIODE: ohne einen Tag mit Unterzählern (Abschnitt) gäbe es nur
             // eine leere Hülle - der Vorschlag "Rest anlegen" allein trägt keinen Block.
             if (!block.abschnitte().isEmpty() || block.restMessstelle() != null) {
@@ -219,8 +274,9 @@ public class BilanzService {
     private record Lauf(LocalDate von, LocalDate bis, BilanzAbleitung.RestFassung fassung) {}
 
     private BilanzDto.Hauptzaehler hauptzaehler(Messstelle x, UUID siteId, String anlageName, String periode,
-            LocalDate von, LocalDate bis, LocalDate heute, BilanzStellungen.Stand stand,
-            BilanzRestRepository.Rest rest, ZoneId zone) {
+            LocalDate von, LocalDate bis, LocalDate heute, Lesestand lesestand, ZoneId zone) {
+        BilanzStellungen.Stand stand = lesestand.stand();
+        BilanzRestRepository.Rest rest = lesestand.reste().get(x.id());
         BilanzDto.MessstelleRef restRef = null;
         if (rest != null) {
             MessstelleDto.Messstelle r = messstellen.eine(rest.messstelleId());
@@ -261,7 +317,7 @@ public class BilanzService {
             }
         }
 
-        MessstelleFormelService.RestLive live = formeln.restLive(x.id());
+        MessstelleFormelService.RestLive live = lesestand.live().apply(x.id());
         List<BilanzDto.Fehlender> fehlende = live.urteil().fehlende().stream()
                 .map(f -> new BilanzDto.Fehlender(f.term(), f.grund())).toList();
         BilanzDto.Live liveDto = new BilanzDto.Live(live.urteil().wert(), MessstelleFormelService.RestLive.EINHEIT,
@@ -454,13 +510,77 @@ public class BilanzService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden."));
     }
 
+    /** Die Namen mehrerer Anlagen in EINER Abfrage - unter RLS fehlt eine fremde (404 wie {@link #anlageName}). */
+    private Map<UUID, String> anlageNamen(List<UUID> siteIds) {
+        if (TenantContext.get() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Kein Kundenbereich gewählt.");
+        }
+        Map<UUID, String> out = new LinkedHashMap<>();
+        if (siteIds.isEmpty()) {
+            return out;
+        }
+        jdbc.query("SELECT id, name FROM site WHERE id = ANY (?::uuid[])",
+                (RowCallbackHandler) rs -> out.put(rs.getObject(1, UUID.class),
+                        rs.getString(2)),
+                (Object) uuidTexte(siteIds));
+        for (UUID siteId : siteIds) {
+            if (!out.containsKey(siteId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Die Zeitzone je Anlage am Tag - dieselbe Kette wie {@link #zone}, für mehrere Anlagen in EINER Abfrage der
+     * Standorte und höchstens einer des Unternehmens (nur, wenn eine Anlage ohne gültigen Standort dabei ist).
+     */
+    private Map<UUID, ZoneId> zonen(List<UUID> siteIds, LocalDate tag) {
+        UUID tenant = TenantContext.get();
+        LocalDate stichtag = stichtag(tag);
+        Map<UUID, String> standorte = new LinkedHashMap<>();
+        if (!siteIds.isEmpty()) {
+            jdbc.query("""
+                    SELECT DISTINCT ON (a.site_id) a.site_id, st.zeitzone FROM anlage_standort a
+                      JOIN standort st ON st.id = a.standort_id AND st.tenant_id = a.tenant_id
+                     WHERE a.tenant_id = ? AND a.site_id = ANY (?::uuid[]) AND a.aufgehoben_am IS NULL
+                       AND a.gueltig_ab <= ? AND (a.gueltig_bis IS NULL OR a.gueltig_bis >= ?)
+                     ORDER BY a.site_id, a.gueltig_ab DESC
+                    """, (RowCallbackHandler) rs -> standorte.put(
+                            rs.getObject(1, UUID.class), rs.getString(2)),
+                    tenant, uuidTexte(siteIds), Date.valueOf(stichtag), Date.valueOf(stichtag));
+        }
+        Map<UUID, ZoneId> out = new LinkedHashMap<>();
+        ZoneId ohneStandort = null;
+        for (UUID siteId : siteIds) {
+            String standort = standorte.get(siteId);
+            if (standort != null && TagRegeln.ZONEN.contains(standort)) {
+                out.put(siteId, TagRegeln.zone(standort));
+                continue;
+            }
+            if (ohneStandort == null) {
+                ohneStandort = unternehmenZone(tenant);
+            }
+            out.put(siteId, ohneStandort);
+        }
+        return out;
+    }
+
+    private static String[] uuidTexte(List<UUID> ids) {
+        return ids.stream().map(UUID::toString).toArray(String[]::new);
+    }
+
+    private LocalDate stichtag(LocalDate tag) {
+        return tag == null ? uhr.instant().atZone(ZoneId.of(TagRegeln.VORGABE_ZONE)).toLocalDate() : tag;
+    }
+
     /**
      * Die Zeitzone der Tage: STANDORT der Anlage am Tag → UNTERNEHMEN → Vorgabe — dieselbe Kette wie die
      * Tagesklasse und das Lese-Modell „Werte je Messstelle“, damit die Perioden auf den gespeicherten liegen.
      */
     private ZoneId zone(UUID siteId, LocalDate tag) {
         UUID tenant = TenantContext.get();
-        LocalDate stichtag = tag == null ? uhr.instant().atZone(ZoneId.of(TagRegeln.VORGABE_ZONE)).toLocalDate() : tag;
+        LocalDate stichtag = stichtag(tag);
         if (siteId != null) {
             Optional<String> standort = jdbc.query("""
                     SELECT st.zeitzone FROM anlage_standort a
@@ -474,6 +594,11 @@ public class BilanzService {
                 return TagRegeln.zone(standort.get());
             }
         }
+        return unternehmenZone(tenant);
+    }
+
+    /** Die Zone des Unternehmens (das zuerst angelegte), sonst die Vorgabe - das Ende der Kette von {@link #zone}. */
+    private ZoneId unternehmenZone(UUID tenant) {
         Optional<String> unternehmen = jdbc.query(
                 "SELECT zeitzone FROM unternehmen WHERE tenant_id = ? ORDER BY created_at, id LIMIT 1",
                 (rs, n) -> rs.getString(1), tenant).stream().findFirst();
