@@ -770,7 +770,7 @@ func (e Entity) setpointCBand(v float64) (float64, bool) {
 // like the Steuerlogik core), then into [min, max].
 func RoundSetpointC(v, min, max float64, step *float64) float64 {
 	if step != nil && *step > 0 {
-		v = min + math.Floor((v-min) / *step+0.5)**step
+		v = min + math.Floor((v-min) / *step + 0.5)**step
 		v = math.Round(v*1e9) / 1e9
 	}
 	if v < min {
