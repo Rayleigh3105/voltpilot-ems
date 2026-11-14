@@ -381,7 +381,8 @@ fi
 case "$(beleg internet standardweg)" in *"via 192.168.1.2"*) ok "Werkstatt-Internet über die Brücke (PS-12 in der Probe)" ;; *) nein "internet: $(beleg internet standardweg)" ;; esac
 case "$(beleg programm install)" in *"Pruefsumme auf dem Geraet bestaetigt"*) ok "install.sh aus dem Skriptstand: Prüfsumme auf der Box bestätigt" ;; *) nein "install: $(beleg programm install)" ;; esac
 case "$(beleg programm update_bereit)" in ja) ok "update-bereit: Vertrauens-Set geprüft, Stand 77 aus dem Manifest" ;; *) nein "update_bereit: $(beleg programm update_bereit)" ;; esac
-case "$(beleg einrichtung_wlan land)" in DE) ok "Werkstatt (S1): Land DE gesetzt" ;; *) nein "einrichtung_wlan land: $(beleg einrichtung_wlan land)" ;; esac
+# kein_funkmodul ist hier richtig: dieses x86-64-Abbild hat kein Funkmodul (PS-14, nur an der echten Mango DE gemessen)
+case "$(beleg einrichtung_wlan land)" in DE | kein_funkmodul) ok "Werkstatt (S1): Land $(beleg einrichtung_wlan land) (kein Funkmodul in dieser Probe, PS-14)" ;; *) nein "einrichtung_wlan land: $(beleg einrichtung_wlan land)" ;; esac
 case "$(beleg einrichtung_wlan relayd)" in da) ok "Werkstatt (S1): Paket relayd auf der Box" ;; *) nein "einrichtung_wlan relayd: $(beleg einrichtung_wlan relayd)" ;; esac
 case "$(beleg fassungen manifest)" in *"Stand 77"*) ok "Manifest der Fassung aus dem Zwischenspeicher: $(beleg fassungen manifest)" ;; *) nein "manifest: $(beleg fassungen manifest)" ;; esac
 x box sh -c '[ -s /etc/vp-edge-light/ota/trust-set.json ] && [ ! -L /etc/vp-edge-light/ota ] && grep -q "\"release_seq\":77" /etc/vp-edge-light/ota/current.json' &&
