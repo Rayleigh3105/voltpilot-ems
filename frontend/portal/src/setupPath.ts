@@ -25,7 +25,7 @@
  * („außerhalb des geführten Pfads bleibt Adoption admin-first").
  */
 
-import { UEMS_GERAETE_SUCHEN } from './glossar';
+import { UEMS_GERAETE_SUCHEN } from './glossarEinstieg';
 import type { AdoptableSource } from './rollen';
 
 // ---------------------------------------------------------------------------

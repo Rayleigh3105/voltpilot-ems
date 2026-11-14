@@ -21,6 +21,8 @@ const erreichbar = statischErreichbar;
 
 /** Stück → warum es nicht in den Einstieg gehört. */
 const NICHT_IM_EINSTIEG: Record<string, string> = {
+  'src/glossar.ts':
+    'das ganze Kundenwörter-Glossar (rund 6 kB gz); das erste Bild nimmt seine Wörter aus `glossarEinstieg.ts`',
   'src/components/EigeneAuswertungDialog.tsx':
     'öffnet nur aus dem Anpassen-Modus; `AnlagenPage.tsx` lädt es per `lazy` nach',
   'src/komponenten.ts':

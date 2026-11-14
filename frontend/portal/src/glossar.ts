@@ -930,7 +930,7 @@ export const UEMS_GATEWAY_ANBINDEN = 'Gateway oder Logger anbinden';
  * „Liste durchsuchen“ - zwei Dinge mit einem Namen wären eins zu viel. Die Kachel im Katalog heißt „Im Heimnetz suchen“.
  * Glossar: `docs/fachmodell/glossar.md` › Gerät (Abschnitt „Gerätesuche“).
  */
-export const UEMS_GERAETE_SUCHEN = 'Geräte suchen';
+export { UEMS_GERAETE_SUCHEN } from './glossarEinstieg';
 export const UEMS_GERAETESUCHE = 'Gerätesuche';
 export const UEMS_IM_HEIMNETZ_SUCHEN = 'Im Heimnetz suchen';
 export const UEMS_LISTE_DURCHSUCHEN = 'Liste durchsuchen';

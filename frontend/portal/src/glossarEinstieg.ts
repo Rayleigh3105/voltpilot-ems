@@ -3,7 +3,7 @@
  *
  * ⚠ EIGENES MODUL (Bündel-Wächter `test/bundle-smoke.sh`, 09.10.2026): `glossar.ts` ist EIN Modul und liegt deshalb
  * als Ganzes in genau einem Stück - mit jedem Wort, das irgendeine Seite braucht (13,9 kB im Einstiegs-Bündel).
- * Schale, Navigation und Cockpit brauchen davon nur diese sechzehn. Bedeutung und Regel jedes Worts stehen weiter an
+ * Schale, Navigation und Cockpit brauchen davon nur diese. Bedeutung und Regel jedes Worts stehen weiter an
  * seiner Stelle in `glossar.ts`, das jedes Wort unter seinem Namen weiterreicht; nur die Module des Einstiegs-Bündels
  * importieren von hier. Ein Wort kommt nur hierher, wenn ein Modul des Einstiegs es braucht - und zuerst ins
  * Fachmodell-Glossar (Pflegeregel: `docs/fachmodell/README.md`).
@@ -31,3 +31,5 @@ export const UEMS_MANAGEMENTBEWERTUNG = 'Managementbewertung';
 export const LADEN_BEI_BEZUG_WOLKE =
   'Eine Wolke hat die Sonne gerade verdeckt – der Speicher regelt in den nächsten Sekunden nach.';
 export const LADEN_BEI_BEZUG_FAHRPLAN = 'Der Fahrplan lädt jetzt für die teuren Stunden.';
+/** Der Knopf der Gerätesuche - der Hinweis des leeren Aufbaus (`setupPath.ts`) nennt ihn schon im ersten Bild. */
+export const UEMS_GERAETE_SUCHEN = 'Geräte suchen';
