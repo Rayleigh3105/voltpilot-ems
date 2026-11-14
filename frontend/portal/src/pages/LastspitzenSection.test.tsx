@@ -1,6 +1,6 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { LastspitzenSection } from './LastspitzenSection';
 import type { Earnings, PeakShaving, SchedulePlan, Site } from '../api';
 
@@ -152,14 +152,23 @@ describe('P6 · Karte 1 — das Statement (E8 = a)', () => {
     expect(container.querySelector('.vp-kpi')).toBeNull();
   });
 
-  it('der Erklärtext des InfoTips ist jetzt die Sekundärzeile der Zeile', async () => {
+  // Entscheid vom 2026-11-14: die Sekundärzeile trägt nur noch die kurze
+  // Gegenüberstellung; der volle Methoden-Satz bleibt wörtlich hinter dem ⓘ
+  // am Namen „Vermiedene Spitze" erreichbar (Erlöse-Muster).
+  it('die Sekundärzeile ist kurz, der volle Methoden-Satz bleibt wörtlich hinter dem ⓘ', async () => {
     render(<LastspitzenSection site={SITE} />);
     await screen.findByText('8,7 kW', { selector: '.vp-c-stm-zahl' });
 
     const sek = document.querySelectorAll('.vp-c-led-sek');
     const texte = [...sek].map((n) => n.textContent ?? '');
-    expect(texte.some((t) => t.includes('ohne Speichereinsatz'))).toBe(true);
+    expect(texte.some((t) => t === 'gegenüber derselben Anlage ohne Speicher')).toBe(true);
+    expect(texte.some((t) => t.includes('ohne Speichereinsatz'))).toBe(false);
     expect(texte.some((t) => t.includes('Leistungspreis'))).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wie wird verglichen?' }));
+    const tip = screen.getByRole('tooltip');
+    expect(within(tip).getByText(/ohne Speichereinsatz/)).toBeInTheDocument();
+    expect(within(tip).getByText(/vermiedene Spitze × Leistungspreis/)).toBeInTheDocument();
   });
 
   it('ohne Messwerte steht „—" und der GRUND — nie eine 0', async () => {

@@ -94,7 +94,10 @@ export function lastspitzeZeilen(
       id: 'vermieden',
       name: 'Vermiedene Spitze',
       wert: `${kw >= 0 ? '+' : ''}${fmtNum(kw, 'kW')}`,
-      sekundaer: peakCounterfactualTip(peak),
+      // Entscheid vom 2026-11-14: sichtbar bleibt nur die kurze Gegenüber-
+      // stellung, der volle Methoden-Satz bleibt wörtlich hinter dem ⓘ.
+      sekundaer: 'gegenüber derselben Anlage ohne Speicher',
+      info: peakCounterfactualTip(peak),
     },
     {
       id: 'erspart',

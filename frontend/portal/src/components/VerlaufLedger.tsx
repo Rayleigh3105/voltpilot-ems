@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { InfoTip } from './InfoTip';
 import './erloese/ErgebnisKarte.css';
 import './VerlaufLedger.css';
 
@@ -61,6 +62,12 @@ export interface VerlaufLedgerZeile {
   gross?: boolean;
   /** Titel/Tooltip der Zeile (der erklärende Satz aus der Ableitung). */
   hinweis?: string;
+  /**
+   * Der volle Erklärsatz hinter dem ⓘ am Namen (Entscheid vom 2026-11-14,
+   * Erlöse-Muster `components/erloese/Statement.tsx`): die Sekundärzeile
+   * bleibt kurz, der lange Methoden-Satz bleibt wörtlich im Tooltip erreichbar.
+   */
+  info?: ReactNode;
 }
 
 /**
@@ -79,7 +86,14 @@ export function VerlaufLedger({
       {zeilen.map((z) => (
         <li key={z.id} className="vp-c-led-row" title={z.hinweis}>
           <div className="vp-c-led-sum">
-            <span className="vp-c-led-name">{z.name}</span>
+            <span className="vp-c-led-name">
+              {z.name}
+              {z.info != null && (
+                <span className="vp-c-info">
+                  <InfoTip label="Wie wird verglichen?">{z.info}</InfoTip>
+                </span>
+              )}
+            </span>
             <span
               className={
                 z.wert == null
