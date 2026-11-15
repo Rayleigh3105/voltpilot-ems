@@ -60,7 +60,7 @@ describe('CreateSiteDrawer (netzladen switch, captain revision 2026-07-07)', () 
     // The responsibility-carrying warning stays so nobody flips it uninformed.
     expect(screen.getByText(/Ausschließlichkeitsprinzip/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Nur aktivieren, wenn Ihre Anlage keine\s+EEG-Vergütung bezieht/),
+      screen.getByText(/Nur aktivieren, wenn deine Anlage keine\s+EEG-Vergütung bezieht/),
     ).toBeInTheDocument();
   });
 

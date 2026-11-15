@@ -62,15 +62,15 @@ export function CreateSiteDrawer({
     if (!name.trim()) return;
     const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
     if (praemieValue === undefined) {
-      setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
+      setError('Bitte gib den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
       return;
     }
     const tarifParamValue = tarifArt === 'ohne' ? null : parsePremiumInput(tarifParam);
     if (tarifParamValue === undefined) {
       setError(
         tarifArt === 'dynamisch'
-          ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
-          : 'Bitte geben Sie Ihren Arbeitspreis als Zahl in ct/kWh an, z. B. 32,5.',
+          ? 'Bitte gib den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
+          : 'Bitte gib deinen Arbeitspreis als Zahl in ct/kWh an, z. B. 32,5.',
       );
       return;
     }
@@ -94,8 +94,8 @@ export function CreateSiteDrawer({
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 400
-          ? 'Ungültige Eingabe. Bitte prüfen Sie Name und Koordinaten.'
-          : 'Die Anlage konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
+          ? 'Ungültige Eingabe. Bitte prüf Name und Koordinaten.'
+          : 'Die Anlage konnte nicht angelegt werden. Bitte versuch es erneut.',
       );
     } finally {
       setBusy(false);
@@ -170,9 +170,9 @@ export function CreateSiteDrawer({
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
             />
             <p className="vp-note" style={{ margin: 0 }}>
-              Steht in Ihrem EEG-Zuschlag bzw. Direktvermarktungsvertrag. Optional -
-              wenn angegeben, rechnen wir Ihre Marktprämie (anzulegender Wert minus
-              Monatsmarktwert Solar) in Ihren Mehrerlös ein; bei negativen
+              Steht in deinem EEG-Zuschlag bzw. Direktvermarktungsvertrag. Optional -
+              wenn angegeben, rechnen wir deine Marktprämie (anzulegender Wert minus
+              Monatsmarktwert Solar) in deinen Mehrerlös ein; bei negativen
               Börsenpreisen entfällt sie.
             </p>
           </div>
@@ -197,7 +197,7 @@ export function CreateSiteDrawer({
           />
           <p className="vp-note" style={{ margin: 0 }}>
             EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
-            (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
+            (Ausschließlichkeitsprinzip). Nur aktivieren, wenn deine Anlage keine
             EEG-Vergütung bezieht.
           </p>
         </div>
@@ -212,7 +212,7 @@ export function CreateSiteDrawer({
             }}
           />
           <p className="vp-note" style={{ margin: 0 }}>
-            Setzen Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
+            Setz den Pin auf deinen Standort - nötig für die Wettervorhersage. Optional.
           </p>
         </div>
       </div>

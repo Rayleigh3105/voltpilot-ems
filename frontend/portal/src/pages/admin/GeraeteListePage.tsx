@@ -150,7 +150,7 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: 
 
       {werkzeug && (
         <div className="vp-alert vp-alert-info" data-testid="geraete-liste-werkzeug">
-          Werkzeug „{WERKZEUG_LABEL[werkzeug]}" - wählen Sie unten die Box, deren Anlage es öffnen soll.
+          Werkzeug „{WERKZEUG_LABEL[werkzeug]}" - wähl unten die Box, deren Anlage es öffnen soll.
         </div>
       )}
 
@@ -200,7 +200,7 @@ function GeraeteTabelle({ zeilen, jetzt, filter, onFilter, onOpen, werkstattBoxe
           icon="list"
           category="primary"
           title="Noch kein Gerät"
-          description="Registrieren Sie die erste Aufkleber-ID (Format VP-XXXX-XXXX), damit Kunden ihr Gerät verbinden können."
+          description="Registrier die erste Aufkleber-ID (Format VP-XXXX-XXXX), damit Kunden ihr Gerät verbinden können."
         />
       </Card>
     );

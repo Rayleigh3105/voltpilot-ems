@@ -199,13 +199,13 @@ export function FlowsPage({ tenants = [], preselect, onBack }: {
 
       {!tenantId && (
         <EmptyState
-          title="Wählen Sie oben einen Mandanten"
+          title="Wähl oben einen Mandanten"
           description="Flows werden je Anlage eines Mandanten gebaut und ausgerollt."
         />
       )}
       {tenantId && !siteId && (
         <EmptyState
-          title="Wählen Sie eine Anlage"
+          title="Wähl eine Anlage"
           description="Jeder Flow gehört zu genau einer Anlage."
         />
       )}
@@ -220,7 +220,7 @@ export function FlowsPage({ tenants = [], preselect, onBack }: {
             <EmptyState
               icon="zap"
               title="Noch keine Flows"
-              description="Starten Sie mit der Vorlage „Marktoptimierung“ - der Pilot-Flow aus Strompreis, PV-Prognose und Speicher."
+              description="Starte mit der Vorlage „Marktoptimierung“ - der Pilot-Flow aus Strompreis, PV-Prognose und Speicher."
               action={<Button size="sm" onClick={() => setCreateOpen(true)}>＋ Neuer Flow</Button>}
             />
           ) : (

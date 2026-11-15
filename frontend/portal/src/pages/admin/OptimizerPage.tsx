@@ -262,7 +262,7 @@ export function OptimizerPage({ tenants = [], preselect, onBack }: {
             icon="settings"
             category="primary"
             title="Optimizer-Diagnose öffnen"
-            description="Wählen Sie oben einen Mandanten und eine Anlage, um die Optimizer-Diagnose zu öffnen."
+            description="Wähl oben einen Mandanten und eine Anlage, um die Optimizer-Diagnose zu öffnen."
           />
         </Card>
       ) : !siteId ? (
@@ -271,7 +271,7 @@ export function OptimizerPage({ tenants = [], preselect, onBack }: {
             icon="sun"
             category="solar"
             title="Anlage wählen"
-            description="Wählen Sie eine Anlage dieses Mandanten, um ihren Fahrplan und die Stellhebel zu sehen."
+            description="Wähl eine Anlage dieses Mandanten, um ihren Fahrplan und die Stellhebel zu sehen."
           />
         </Card>
       ) : diagState === 'loading' && !diag ? (
@@ -294,7 +294,7 @@ export function OptimizerPage({ tenants = [], preselect, onBack }: {
               icon="calendar"
               category="dynamic"
               title="Keine Läufe an diesem Tag"
-              description={`Für den gewählten Tag liegen keine Optimizer-Läufe vor. Läufe gibt es zwischen dem ${runDateLabel(diag.firstRunDate ?? diag.lastRunDate)} und dem ${runDateLabel(diag.lastRunDate)} - wählen Sie oben einen anderen Tag.`}
+              description={`Für den gewählten Tag liegen keine Optimizer-Läufe vor. Läufe gibt es zwischen dem ${runDateLabel(diag.firstRunDate ?? diag.lastRunDate)} und dem ${runDateLabel(diag.lastRunDate)} - wähl oben einen anderen Tag.`}
             />
           )}
         </Card>
@@ -504,7 +504,7 @@ function PlanSection({
       <h2>Der Plan</h2>
       <p className="vp-chart-sub">
         Geplante Batterieleistung (Balken) über dem Preis: durchgezogen der Spot-Preis, den der
-        Solver optimiert, gestrichelt der reale Bezugs-/Einspeisewert dieser Anlage. Klicken Sie
+        Solver optimiert, gestrichelt der reale Bezugs-/Einspeisewert dieser Anlage. Klick
         einen Balken für die €-Aufschlüsselung.
       </p>
       <Card>
@@ -632,7 +632,7 @@ function ExplainSlot({
               )}
             </>
           ) : (
-            <p className="vp-muted">Wählen Sie einen Slot.</p>
+            <p className="vp-muted">Wähl einen Slot.</p>
           )}
         </Card>
 
@@ -1302,7 +1302,7 @@ function WhatIfResultView({
             <tr>
               <th>Kennzahl</th>
               <th>Aktuelle Einstellungen</th>
-              <th>Ihre Regler</th>
+              <th>Deine Regler</th>
               <th>Unterschied</th>
             </tr>
           </thead>
@@ -1315,7 +1315,7 @@ function WhatIfResultView({
                 <td data-label="Aktuelle Einstellungen" className="vp-mono">
                   {r.baseline}
                 </td>
-                <td data-label="Ihre Regler" className="vp-mono">
+                <td data-label="Deine Regler" className="vp-mono">
                   {r.variant}
                 </td>
                 <td data-label="Unterschied" className={`vp-mono vp-delta-${r.tone}`}>
@@ -1330,7 +1330,7 @@ function WhatIfResultView({
       <Card>
         <h3 style={{ margin: '0 0 4px' }}>Beide Fahrpläne übereinander</h3>
         <p className="vp-chart-sub">
-          Gefüllte Balken = Ihre Regler, blasser Umriss = die aktuellen Einstellungen. Beide
+          Gefüllte Balken = Deine Regler, blasser Umriss = die aktuellen Einstellungen. Beide
           über denselben Horizont, mit denselben Preisen und Prognosen gerechnet.
         </p>
         <WhatIfCompareChart result={result} />

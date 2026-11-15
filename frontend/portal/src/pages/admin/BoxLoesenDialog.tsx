@@ -70,7 +70,7 @@ export function BoxLoesenDialog({ open, boxRef, jetzt, onClose, onGeloescht, onA
     if (!anlass || busy) return;
     const text = anlass === 'anderer_anlass' ? anlassText.trim() : null;
     if (anlass === 'anderer_anlass' && text === '') {
-      setFehler('Bitte beschreiben Sie den Anlass.');
+      setFehler('Bitte beschreib den Anlass.');
       return;
     }
     setBusy(true);
@@ -89,7 +89,7 @@ export function BoxLoesenDialog({ open, boxRef, jetzt, onClose, onGeloescht, onA
     if (!anlass || busy) return;
     const text = anlass === 'anderer_anlass' ? anlassText.trim() : null;
     if (anlass === 'anderer_anlass' && text === '') {
-      setFehler('Bitte beschreiben Sie den Anlass.');
+      setFehler('Bitte beschreib den Anlass.');
       return;
     }
     if (abschrift.trim() !== boxRef) {

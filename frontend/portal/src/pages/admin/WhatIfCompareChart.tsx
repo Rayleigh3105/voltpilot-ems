@@ -93,7 +93,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
                 x == null ? '—' : `${x.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`;
               return [
                 `<b>${time} Uhr</b>`,
-                `Ihre Regler: ${kw(num(v.batteryKw))} · SoC ${pct(num(v.socPct))}`,
+                `Deine Regler: ${kw(num(v.batteryKw))} · SoC ${pct(num(v.socPct))}`,
                 `Gespeichert: ${kw(num(b?.batteryKw))} · SoC ${pct(num(b?.socPct))}`,
               ].join('<br/>');
             },
@@ -142,7 +142,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               itemStyle: ghostBar(t.axis),
             },
             {
-              name: 'Ihre Regler',
+              name: 'Deine Regler',
               type: 'bar',
               yAxisIndex: 0,
               // Dieselbe Speicher-Sprache wie im Kunden-Fahrplan: Grün lädt,
@@ -158,7 +158,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
 
             },
             {
-              name: `${LADESTAND} · Ihre Regler`,
+              name: `${LADESTAND} · Deine Regler`,
               type: 'line',
               yAxisIndex: 1,
               data: variantSoc,
@@ -190,11 +190,11 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
   );
 
   const legend: LegendItem[] = [
-    { label: 'Ihre Regler · Solarladen', color: t.charge, shape: 'bar', toggleable: false },
-    { label: 'Ihre Regler · Netzladen', color: t.gridCharge, shape: 'bar', toggleable: false },
-    { label: 'Ihre Regler · Entladen', color: t.battDischarge, shape: 'bar', toggleable: false },
+    { label: 'Deine Regler · Solarladen', color: t.charge, shape: 'bar', toggleable: false },
+    { label: 'Deine Regler · Netzladen', color: t.gridCharge, shape: 'bar', toggleable: false },
+    { label: 'Deine Regler · Entladen', color: t.battDischarge, shape: 'bar', toggleable: false },
     { label: BASELINE_NAME, color: t.axis, shape: 'outline', toggleable: false },
-    { label: `${LADESTAND} · Ihre Regler`, color: t.soc, unit: '%', shape: 'line', toggleable: false },
+    { label: `${LADESTAND} · Deine Regler`, color: t.soc, unit: '%', shape: 'line', toggleable: false },
     { label: `${LADESTAND} · ${BASELINE_NAME}`, color: t.soc, unit: '%', shape: 'dashed', toggleable: false },
   ];
 

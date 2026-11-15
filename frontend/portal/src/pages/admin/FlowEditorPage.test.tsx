@@ -118,7 +118,7 @@ describe('FlowEditorPage · the review step (audit E-1)', () => {
       />,
     );
 
-    expect(await screen.findByText('Ihre Regel')).toBeInTheDocument();
+    expect(await screen.findByText('Deine Regel')).toBeInTheDocument();
     // The rule reads as sentences...
     expect(screen.getByTestId('flow-steplist').textContent)
       .toMatch(/Wenn es zwischen 11:00 und 15:00 Uhr ist/);
@@ -159,7 +159,7 @@ describe('FlowEditorPage · the review step (audit E-1)', () => {
       />,
     );
     expect(await screen.findByLabelText('Baustein-Katalog')).toBeInTheDocument();
-    expect(screen.queryByText('Ihre Regel')).toBeNull();
+    expect(screen.queryByText('Deine Regel')).toBeNull();
   });
 
   it('rolls out from the review step and says so in customer German (E-9)', async () => {

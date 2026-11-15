@@ -578,9 +578,9 @@ export function FlowEditorPage({
         </div>
 
         <div className="vp-flowreview">
-          <h3>Ihre Regel</h3>
+          <h3>Deine Regel</h3>
           <p className="vp-flowreview-lead">
-            So haben wir Ihre Regel verstanden. Passt das, rollen wir sie aus - VoltPilot prüft
+            So haben wir deine Regel verstanden. Passt das, rollen wir sie aus - VoltPilot prüft
             und simuliert sie vorher.
           </p>
           <FlowStepList
@@ -592,7 +592,7 @@ export function FlowEditorPage({
 
           {findings.filter((f) => f.severity === 'error').length > 0 && (
             <p className="vp-flowed-notice warn" role="status">
-              Diese Regel ist noch nicht vollständig. Öffnen Sie den Editor, um die markierten
+              Diese Regel ist noch nicht vollständig. Öffne den Editor, um die markierten
               Stellen zu ergänzen.
             </p>
           )}
