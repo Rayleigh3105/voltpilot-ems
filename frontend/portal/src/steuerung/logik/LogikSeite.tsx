@@ -23,6 +23,7 @@ import { replaceCurrentNavigation } from '../../navigationBlocker';
 import { LIST_POLL_MS } from '../../pollCadence';
 import { Blatt } from '../Blatt';
 import { Ic } from '../Ic';
+import { AlsBausteinBlatt } from './AlsBausteinBlatt';
 import { AufbauAnsicht } from './AufbauAnsicht';
 import type { CodeEditorGriff } from './Code';
 import { FassungenAnsicht } from './FassungenAnsicht';
@@ -91,7 +92,8 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
   const [geprueft, setGeprueft] = useState<{ text: string; g: LogikGeprueft } | null>(null);
   const [pruefend, setPruefend] = useState(false);
   const [blatt, setBlatt] = useState<null | { art: 'speichern' } | { art: 'verwerfen' } | { art: 'anfrage'; kennung: string | null }
-    | { art: 'anfragen' } | { art: 'zurueck'; fassung: number } | { art: 'stilllegen' } | { art: 'scharf'; fassung: number }>(null);
+    | { art: 'anfragen' } | { art: 'zurueck'; fassung: number } | { art: 'stilllegen' } | { art: 'scharf'; fassung: number }
+    | { art: 'baustein' }>(null);
   const [meldung, setMeldung] = useState<{ text: string; fehler?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const textRef = useRef<CodeEditorGriff>(null);
@@ -307,6 +309,9 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
             {ansicht && darf && aktiv ? (
               <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); setBlatt({ art: 'stilllegen' }); }}>Stilllegen</button>
             ) : null}
+            {ansicht?.darfBausteinSpeichern && !veraendert && ansicht.fassungen.length ? (
+              <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); setBlatt({ art: 'baustein' }); }}>Als Baustein speichern</button>
+            ) : null}
           </div>
         </div>
 
@@ -326,7 +331,8 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
               {naechster.satz}
               {naechster.handlungen.length ? (
                 <span className="lk-band-knoepfe">
-                  {naechster.handlungen.map((h) => (
+                  {/* Auf „Mitlaufen“ trägt die Karte darunter denselben Knopf; einmal genügt. */}
+                  {naechster.handlungen.filter((h) => !(h === 'mitlaufen' && aktuelleAnsicht === 'mitlaufen')).map((h) => (
                     <button type="button" key={h} className={h === 'scharf' ? 'tbtn on' : 'tbtn'} disabled={busy || (h === 'mitlaufen' && !ansicht?.boxKann)}
                       onClick={() => void schritt(h === 'scharf' ? (ansicht?.fassungen.find((f) => f.vorgelegtAm && !f.scharfAm)?.fassung ?? ansicht!.fassungen[0].fassung) : ansicht!.fassungen[0].fassung, h)}>
                       {h === 'mitlaufen' ? 'Mitlaufen lassen' : h === 'vorlegen' ? 'Zur Freigabe vorlegen' : 'Scharf schalten'}
@@ -389,6 +395,16 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
         <SpeichernBlatt geprueft={aktuellGeprueft} busy={busy} neu={neueLogik} fassung={(basis?.fassung ?? 0) + 1}
           onClose={() => setBlatt(null)} onSpeichern={(n) => void speichern(n)} />
       ) : null}
+      {blatt?.art === 'baustein' && ansicht ? (() => {
+        const f = aktiv ?? ansicht.fassungen[0];
+        const doc = g.ok ? (g.doc.toJS() as { description?: unknown }) : null;
+        return (
+          <AlsBausteinBlatt siteId={site.id} logikId={logikId} fassung={f.fassung} name={name}
+            beschreibung={typeof doc?.description === 'string' ? doc.description : null} bericht={f.bericht}
+            plattform={ansicht.plattform} onClose={() => setBlatt(null)}
+            onGespeichert={(t) => { setBlatt(null); setMeldung({ text: t }); }} />
+        );
+      })() : null}
       {blatt?.art === 'verwerfen' ? (
         <Blatt symbol="alert" titel="Entwurf verwerfen?" onClose={() => setBlatt(null)}
           fuss={<>

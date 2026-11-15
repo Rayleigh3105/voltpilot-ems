@@ -9900,6 +9900,8 @@ export interface LogikAnsicht {
   darfAnfragen: boolean;
   /** Die Plattform (auch im Mandantensprung): sie schaltet vorgelegte Fassungen scharf. */
   plattform: boolean;
+  /** Stufe 5: dieses Konto speichert eine Logik als Baustein (Fachbetrieb für seine Kunden, VoltPilot für alle). */
+  darfBausteinSpeichern?: boolean;
   boxKann: boolean;
   boxKannScharf: boolean;
   fassungen: LogikFassungKopf[];
@@ -9929,6 +9931,89 @@ export interface LogikGespeichert {
   name: string;
   contentHash: string;
   bericht: LogikBericht | null;
+}
+
+/** Ein Stück des Satzes eines Bausteins: fester Text oder eine Lücke (Steuerlogik Stufe 5). */
+export interface BausteinSatzTeil {
+  text?: string;
+  luecke?: string;
+}
+
+/** Eine Lücke eines Bausteins, wie der Logik-Dienst sie für diese Anlage füllt. */
+export interface BausteinLuecke {
+  kennung: string;
+  /** geraet, eingang (ein Fühler oder Signal) oder stellwert. */
+  art: 'geraet' | 'eingang' | 'stellwert';
+  name: string;
+  im_satz: boolean;
+  ausgaenge?: string[];
+  signal?: string;
+  stellwert?: {
+    kennung: string;
+    name: string;
+    art: 'zahl' | 'uhrzeit' | 'boolean' | 'select' | 'schedule';
+    einheit?: string;
+    vorgabe: unknown;
+    von?: number;
+    bis?: number;
+    schritt?: number;
+    optionen?: { wert: string; name: string }[];
+  };
+  /** Die Füllung: Kennung des Geräts oder Fühlers, beim Stellwert der Wert in der Form des Dokuments. */
+  wert: unknown;
+  wert_text?: string;
+  kandidaten?: { entity_id: string; name: string }[];
+  fehler?: string;
+}
+
+/** Ein Baustein in der Liste: Satz, Lücken mit dem Vorschlag für diese Anlage, ob er passt, woher er kommt. */
+export interface BausteinKopf {
+  id: string;
+  lesbar: boolean;
+  message?: string;
+  name?: string;
+  beschreibung?: string;
+  satz: BausteinSatzTeil[];
+  luecken: BausteinLuecke[];
+  passt: boolean;
+  herkunft: 'voltpilot' | 'fachbetrieb';
+  /** Der Fachbetrieb, der ihn gespeichert hat; null bei VoltPilot. */
+  von: string | null;
+  /** Dieses Konto hat ihn gespeichert (nur es entfernt ihn). */
+  eigen: boolean;
+}
+
+export interface BausteinListe {
+  darfEinsetzen: boolean;
+  darfSpeichern: boolean;
+  bausteine: BausteinKopf[];
+}
+
+/** Ein Moment von „So verhält sie sich“: eine Probe des Bausteins mit Uhrzeit und Lage. */
+export interface BausteinMoment {
+  name: string;
+  besteht: boolean;
+  uhr: string;
+  lage?: { titel: string; art: string; satz: string };
+  abweichungen: { stelle: string; soll: string; ist: string }[];
+}
+
+/** Ein gefüllter Baustein (Vorschau): die Logik als Text, ihre Prüfung und „So verhält sie sich“. */
+export interface BausteinEingesetzt {
+  name: string;
+  beschreibung?: string;
+  satz: BausteinSatzTeil[];
+  luecken: BausteinLuecke[];
+  vollstaendig: boolean;
+  text: string;
+  bericht: LogikBericht | null;
+  verhalten: BausteinMoment[];
+}
+
+/** Was „Einsetzen“ an den Dienst schickt: der Name der Logik und je Lücke ein Wert. */
+export interface BausteinFuellung {
+  name?: string;
+  werte: Record<string, unknown>;
 }
 
 export interface UemsBetreiberblatt {

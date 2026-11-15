@@ -2,6 +2,7 @@ package logik
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -481,6 +482,19 @@ func (L *Logik) zusammenImBereich(nr int) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// FesteBetriebsarten nennt die Betriebsarten, die im Ausgang mode eines Geräts fest als Wort
+// stehen ("if(empfehlung, boost, normal)"): ein Gerät, das sie nicht kennt, passt nicht (Stufe 5,
+// die Lücken eines Bausteins).
+func (L *Logik) FesteBetriebsarten(geraet string) []string {
+	var out []string
+	for _, w := range festeBetriebsarten(L.Ausgaenge[geraet]["mode"]) {
+		if !slices.Contains(out, w) {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // festeBetriebsarten sammelt die Betriebsarten, die in einem Ausdruck als Wort stehen.

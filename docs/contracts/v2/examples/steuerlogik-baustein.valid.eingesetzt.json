@@ -1,0 +1,356 @@
+{
+  "name": "Aus dem Netz nachheizen",
+  "beschreibung": "Wird der Speicher zu kalt, heizt der Heizstab aus dem Netz, nur im Zeitfenster.",
+  "satz": [
+    {
+      "text": "Wenn der Speicher unter "
+    },
+    {
+      "luecke": "mindest"
+    },
+    {
+      "text": " fällt, heize mit "
+    },
+    {
+      "luecke": "heizstab"
+    },
+    {
+      "text": " aus dem Netz bis "
+    },
+    {
+      "luecke": "netz_ziel"
+    },
+    {
+      "text": ", aber nur zwischen "
+    },
+    {
+      "luecke": "netz_ab"
+    },
+    {
+      "text": " und "
+    },
+    {
+      "luecke": "netz_bis"
+    },
+    {
+      "text": "."
+    }
+  ],
+  "luecken": [
+    {
+      "kennung": "mindest",
+      "art": "stellwert",
+      "name": "Nie kälter als",
+      "im_satz": true,
+      "stellwert": {
+        "kennung": "mindest",
+        "name": "Nie kälter als",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "40 °C",
+        "von": 30,
+        "bis": 55,
+        "schritt": 1,
+        "darf": "customer",
+        "zielwert": true
+      },
+      "wert": "45 °C",
+      "wert_text": "45 °C"
+    },
+    {
+      "kennung": "heizstab",
+      "art": "geraet",
+      "name": "Heizstab",
+      "im_satz": true,
+      "ausgaenge": [
+        "level"
+      ],
+      "wert": "stab-puffer",
+      "wert_text": "Heizstab Puffer",
+      "kandidaten": [
+        {
+          "entity_id": "stab-puffer",
+          "name": "Heizstab Puffer"
+        },
+        {
+          "entity_id": "stab-ww",
+          "name": "Heizstab Warmwasser"
+        }
+      ]
+    },
+    {
+      "kennung": "netz_ziel",
+      "art": "stellwert",
+      "name": "Aus dem Netz bis",
+      "im_satz": true,
+      "stellwert": {
+        "kennung": "netz_ziel",
+        "name": "Aus dem Netz bis",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "50 °C",
+        "von": 35,
+        "bis": 65,
+        "schritt": 1,
+        "darf": "customer",
+        "zielwert": true
+      },
+      "wert": "50 °C",
+      "wert_text": "50 °C"
+    },
+    {
+      "kennung": "netz_ab",
+      "art": "stellwert",
+      "name": "Netz erlaubt ab",
+      "im_satz": true,
+      "stellwert": {
+        "kennung": "netz_ab",
+        "name": "Netz erlaubt ab",
+        "art": "uhrzeit",
+        "vorgabe": "06:00",
+        "darf": "customer",
+        "zielwert": false
+      },
+      "wert": "05:30",
+      "wert_text": "05:30"
+    },
+    {
+      "kennung": "netz_bis",
+      "art": "stellwert",
+      "name": "Netz erlaubt bis",
+      "im_satz": true,
+      "stellwert": {
+        "kennung": "netz_bis",
+        "name": "Netz erlaubt bis",
+        "art": "uhrzeit",
+        "vorgabe": "22:00",
+        "darf": "customer",
+        "zielwert": false
+      },
+      "wert": "22:00",
+      "wert_text": "22:00"
+    },
+    {
+      "kennung": "t",
+      "art": "eingang",
+      "name": "Speicher",
+      "im_satz": false,
+      "signal": "temperature",
+      "wert": "fuehler-puffer",
+      "wert_text": "Puffer oben",
+      "kandidaten": [
+        {
+          "entity_id": "fuehler-ww",
+          "name": "Warmwasser oben"
+        },
+        {
+          "entity_id": "fuehler-puffer",
+          "name": "Puffer oben"
+        }
+      ]
+    }
+  ],
+  "vollstaendig": true,
+  "text": "logic: 1\nname: \"Puffer nachheizen\"\ndescription: Ein Speicher fällt nie lange unter seine Mindesttemperatur; aus dem Netz geheizt wird nur im Zeitfenster.\n\ndevices:\n  heizstab: {entity: \"stab-puffer\", name: \"Heizstab Puffer\"}\n\ninputs:\n  t: {source: \"fuehler-puffer.temperature\", name: Speicher, max_age: 5 min}\n\nsettings:\n  mindest:   {name: Nie kälter als,   default: \"45 °C\",   range: [30 °C, 55 °C], step: 1 K, editable_by: customer}\n  netz_ziel: {name: Aus dem Netz bis, default: \"50 °C\",   range: [35 °C, 65 °C], step: 1 K, editable_by: customer}\n  netz_ab:   {name: Netz erlaubt ab,  default: \"05:30\", editable_by: customer}\n  netz_bis:  {name: Netz erlaubt bis, default: \"22:00\", editable_by: customer}\n\nconstraints:\n  - Aus dem Netz bis liegt mindestens 5 K über Nie kälter als: netz_ziel \u003e= mindest + 5 K\n  - Das Zeitfenster hat einen Anfang und ein Ende: netz_ab != netz_bis\n\nformulas:\n  netzfenster: time_window(netz_ab, netz_bis)\n\nstates:\n  netzheizen:\n    type: boolean\n    on_when:\n      - Uhrzeit liegt im Fenster: netzfenster\n      - Der Speicher ist seit 2 Minuten zu kalt: holds(t \u003c mindest, 2 min)\n    off_when_any:\n      - Fühler fehlt: unknown(t)\n      - Der Speicher ist warm genug: t \u003e= netz_ziel\n      - Uhrzeit liegt außerhalb des Fensters: not netzfenster\n    on_text: Heizt aus dem Netz bis {netz_ziel}\n    off_text: Hört auf, aus dem Netz zu heizen\n    after_restart: off\n\noutputs:\n  heizstab: {level: \"if(netzheizen, 3, 0)\"}\n\nstatus:\n  - when: unknown(t)\n    title: Störung Fühler\n    type: fault\n    text: Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.\n  - when: netzheizen\n    title: Heizt aus dem Netz\n    type: grid\n    text: Der Speicher war unter {mindest} gefallen und steht bei {t}. Der Heizstab heizt aus dem Netz bis {netz_ziel}.\n  - when: not netzfenster and t \u003c mindest\n    title: Wartet auf das Zeitfenster\n    type: waiting\n    text: Der Speicher liegt mit {t} unter {mindest}. Ab {netz_ab} Uhr heizt der Heizstab aus dem Netz.\n  - else: true\n    title: Speicher ist warm genug\n    type: idle\n    text: Der Speicher hat {t}. Erst unter {mindest} heizt der Heizstab aus dem Netz.\n\n# Die Proben rechnen mit den eingestellten Werten: kalt heißt 2 K unter der Mindesttemperatur, das\n# Zeitfenster geht zu den eingestellten Uhrzeiten auf und zu.\ntests:\n  - name: Das Zeitfenster geht auf, der Speicher ist zu kalt\n    given: {t: mindest - 2 K, clock: netz_ab}\n    after: 3 min\n    expect: {netzheizen: on, status: Heizt aus dem Netz}\n  - name: Aufgeheizt\n    given: {t: netz_ziel + 0.5 K, netzheizen: on, clock: \"07:00\"}\n    after: 1 min\n    expect: {netzheizen: off, heizstab.level: 0, status: Speicher ist warm genug}\n  - name: Ein warmer Speicher am Tag\n    given: {t: mindest + 1 K, clock: \"12:00\"}\n    after: 10 min\n    expect: {netzheizen: off, heizstab.level: 0, status: Speicher ist warm genug}\n  - name: Das Zeitfenster ist zu, der Speicher ist zu kalt\n    given: {t: mindest - 2 K, clock: netz_bis}\n    after: 15 min\n    expect: {netzheizen: off, heizstab.level: 0, status: Wartet auf das Zeitfenster}\n  - name: Der Fühler fällt aus\n    given: {t: unknown, netzheizen: on, clock: \"16:00\"}\n    after: 1 min\n    expect: {netzheizen: off, heizstab.level: 0, status: Störung Fühler}\n",
+  "kanonisch": "{\"logic\":1,\"name\":\"Puffer nachheizen\",\"description\":\"Ein Speicher fällt nie lange unter seine Mindesttemperatur; aus dem Netz geheizt wird nur im Zeitfenster.\",\"devices\":{\"heizstab\":{\"entity\":\"stab-puffer\",\"name\":\"Heizstab Puffer\"}},\"inputs\":{\"t\":{\"source\":\"fuehler-puffer.temperature\",\"name\":\"Speicher\",\"max_age\":\"5 min\"}},\"settings\":{\"mindest\":{\"name\":\"Nie kälter als\",\"default\":\"45 °C\",\"range\":[\"30 °C\",\"55 °C\"],\"step\":\"1 K\",\"editable_by\":\"customer\"},\"netz_ziel\":{\"name\":\"Aus dem Netz bis\",\"default\":\"50 °C\",\"range\":[\"35 °C\",\"65 °C\"],\"step\":\"1 K\",\"editable_by\":\"customer\"},\"netz_ab\":{\"name\":\"Netz erlaubt ab\",\"default\":\"05:30\",\"editable_by\":\"customer\"},\"netz_bis\":{\"name\":\"Netz erlaubt bis\",\"default\":\"22:00\",\"editable_by\":\"customer\"}},\"constraints\":[{\"Aus dem Netz bis liegt mindestens 5 K über Nie kälter als\":\"netz_ziel \\u003e= mindest + 5 K\"},{\"Das Zeitfenster hat einen Anfang und ein Ende\":\"netz_ab != netz_bis\"}],\"formulas\":{\"netzfenster\":\"time_window(netz_ab, netz_bis)\"},\"states\":{\"netzheizen\":{\"type\":\"boolean\",\"on_when\":[{\"Uhrzeit liegt im Fenster\":\"netzfenster\"},{\"Der Speicher ist seit 2 Minuten zu kalt\":\"holds(t \\u003c mindest, 2 min)\"}],\"off_when_any\":[{\"Fühler fehlt\":\"unknown(t)\"},{\"Der Speicher ist warm genug\":\"t \\u003e= netz_ziel\"},{\"Uhrzeit liegt außerhalb des Fensters\":\"not netzfenster\"}],\"on_text\":\"Heizt aus dem Netz bis {netz_ziel}\",\"off_text\":\"Hört auf, aus dem Netz zu heizen\",\"after_restart\":\"off\"}},\"outputs\":{\"heizstab\":{\"level\":\"if(netzheizen, 3, 0)\"}},\"status\":[{\"when\":\"unknown(t)\",\"title\":\"Störung Fühler\",\"type\":\"fault\",\"text\":\"Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.\"},{\"when\":\"netzheizen\",\"title\":\"Heizt aus dem Netz\",\"type\":\"grid\",\"text\":\"Der Speicher war unter {mindest} gefallen und steht bei {t}. Der Heizstab heizt aus dem Netz bis {netz_ziel}.\"},{\"when\":\"not netzfenster and t \\u003c mindest\",\"title\":\"Wartet auf das Zeitfenster\",\"type\":\"waiting\",\"text\":\"Der Speicher liegt mit {t} unter {mindest}. Ab {netz_ab} Uhr heizt der Heizstab aus dem Netz.\"},{\"else\":true,\"title\":\"Speicher ist warm genug\",\"type\":\"idle\",\"text\":\"Der Speicher hat {t}. Erst unter {mindest} heizt der Heizstab aus dem Netz.\"}],\"tests\":[{\"name\":\"Das Zeitfenster geht auf, der Speicher ist zu kalt\",\"given\":{\"t\":\"mindest - 2 K\",\"clock\":\"netz_ab\"},\"after\":\"3 min\",\"expect\":{\"netzheizen\":\"on\",\"status\":\"Heizt aus dem Netz\"}},{\"name\":\"Aufgeheizt\",\"given\":{\"t\":\"netz_ziel + 0.5 K\",\"netzheizen\":\"on\",\"clock\":\"07:00\"},\"after\":\"1 min\",\"expect\":{\"netzheizen\":\"off\",\"heizstab.level\":0,\"status\":\"Speicher ist warm genug\"}},{\"name\":\"Ein warmer Speicher am Tag\",\"given\":{\"t\":\"mindest + 1 K\",\"clock\":\"12:00\"},\"after\":\"10 min\",\"expect\":{\"netzheizen\":\"off\",\"heizstab.level\":0,\"status\":\"Speicher ist warm genug\"}},{\"name\":\"Das Zeitfenster ist zu, der Speicher ist zu kalt\",\"given\":{\"t\":\"mindest - 2 K\",\"clock\":\"netz_bis\"},\"after\":\"15 min\",\"expect\":{\"netzheizen\":\"off\",\"heizstab.level\":0,\"status\":\"Wartet auf das Zeitfenster\"}},{\"name\":\"Der Fühler fällt aus\",\"given\":{\"t\":\"unknown\",\"netzheizen\":\"on\",\"clock\":\"16:00\"},\"after\":\"1 min\",\"expect\":{\"netzheizen\":\"off\",\"heizstab.level\":0,\"status\":\"Störung Fühler\"}}]}",
+  "bericht": {
+    "name": "Puffer nachheizen",
+    "sperrt": false,
+    "ausdruecke": 12,
+    "befunde": [],
+    "zusammen": [
+      {
+        "name": "Aus dem Netz bis liegt mindestens 5 K über Nie kälter als",
+        "gilt": true,
+        "im_bereich_verletzbar": true
+      },
+      {
+        "name": "Das Zeitfenster hat einen Anfang und ein Ende",
+        "gilt": true,
+        "im_bereich_verletzbar": false
+      }
+    ],
+    "proben": [
+      {
+        "name": "Das Zeitfenster geht auf, der Speicher ist zu kalt",
+        "besteht": true,
+        "abweichungen": [],
+        "uhr": "05:30",
+        "lage": {
+          "titel": "Heizt aus dem Netz",
+          "art": "grid",
+          "satz": "Der Speicher war unter 45 °C gefallen und steht bei 43 °C. Der Heizstab heizt aus dem Netz bis 50 °C."
+        }
+      },
+      {
+        "name": "Aufgeheizt",
+        "besteht": true,
+        "abweichungen": [],
+        "uhr": "07:00",
+        "lage": {
+          "titel": "Speicher ist warm genug",
+          "art": "idle",
+          "satz": "Der Speicher hat 50,5 °C. Erst unter 45 °C heizt der Heizstab aus dem Netz."
+        }
+      },
+      {
+        "name": "Ein warmer Speicher am Tag",
+        "besteht": true,
+        "abweichungen": [],
+        "uhr": "12:00",
+        "lage": {
+          "titel": "Speicher ist warm genug",
+          "art": "idle",
+          "satz": "Der Speicher hat 46 °C. Erst unter 45 °C heizt der Heizstab aus dem Netz."
+        }
+      },
+      {
+        "name": "Das Zeitfenster ist zu, der Speicher ist zu kalt",
+        "besteht": true,
+        "abweichungen": [],
+        "uhr": "22:00",
+        "lage": {
+          "titel": "Wartet auf das Zeitfenster",
+          "art": "waiting",
+          "satz": "Der Speicher liegt mit 43 °C unter 45 °C. Ab 05:30 Uhr heizt der Heizstab aus dem Netz."
+        }
+      },
+      {
+        "name": "Der Fühler fällt aus",
+        "besteht": true,
+        "abweichungen": [],
+        "uhr": "16:00",
+        "lage": {
+          "titel": "Störung Fühler",
+          "art": "fault",
+          "satz": "Der Fühler liefert keinen Wert. Der Heizstab bleibt aus."
+        }
+      }
+    ],
+    "hinweise": [],
+    "geraete": [
+      {
+        "kennung": "heizstab",
+        "entity_id": "stab-puffer",
+        "name": "Heizstab Puffer",
+        "ausgaenge": [
+          "level"
+        ]
+      }
+    ],
+    "eingaenge": [
+      {
+        "kennung": "t",
+        "source": "fuehler-puffer.temperature",
+        "name": "Speicher"
+      }
+    ],
+    "stellwerte": [
+      {
+        "kennung": "mindest",
+        "name": "Nie kälter als",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "45 °C",
+        "von": 30,
+        "bis": 55,
+        "schritt": 1,
+        "darf": "customer",
+        "zielwert": true
+      },
+      {
+        "kennung": "netz_ziel",
+        "name": "Aus dem Netz bis",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "50 °C",
+        "von": 35,
+        "bis": 65,
+        "schritt": 1,
+        "darf": "customer",
+        "zielwert": true
+      },
+      {
+        "kennung": "netz_ab",
+        "name": "Netz erlaubt ab",
+        "art": "uhrzeit",
+        "vorgabe": "05:30",
+        "darf": "customer",
+        "zielwert": false
+      },
+      {
+        "kennung": "netz_bis",
+        "name": "Netz erlaubt bis",
+        "art": "uhrzeit",
+        "vorgabe": "22:00",
+        "darf": "customer",
+        "zielwert": false
+      }
+    ],
+    "meldungen": [
+      {
+        "art": "hinweis",
+        "text": "„Aus dem Netz bis liegt mindestens 5 K über Nie kälter als“ ließe sich im erlaubten Bereich verletzen; die Regler lassen nur Werte zu, die passen.",
+        "ort": "constraints[1]",
+        "zeile": 18
+      }
+    ]
+  },
+  "verhalten": [
+    {
+      "name": "Das Zeitfenster geht auf, der Speicher ist zu kalt",
+      "besteht": true,
+      "abweichungen": [],
+      "uhr": "05:30",
+      "lage": {
+        "titel": "Heizt aus dem Netz",
+        "art": "grid",
+        "satz": "Der Speicher war unter 45 °C gefallen und steht bei 43 °C. Der Heizstab heizt aus dem Netz bis 50 °C."
+      }
+    },
+    {
+      "name": "Aufgeheizt",
+      "besteht": true,
+      "abweichungen": [],
+      "uhr": "07:00",
+      "lage": {
+        "titel": "Speicher ist warm genug",
+        "art": "idle",
+        "satz": "Der Speicher hat 50,5 °C. Erst unter 45 °C heizt der Heizstab aus dem Netz."
+      }
+    },
+    {
+      "name": "Ein warmer Speicher am Tag",
+      "besteht": true,
+      "abweichungen": [],
+      "uhr": "12:00",
+      "lage": {
+        "titel": "Speicher ist warm genug",
+        "art": "idle",
+        "satz": "Der Speicher hat 46 °C. Erst unter 45 °C heizt der Heizstab aus dem Netz."
+      }
+    },
+    {
+      "name": "Der Fühler fällt aus",
+      "besteht": true,
+      "abweichungen": [],
+      "uhr": "16:00",
+      "lage": {
+        "titel": "Störung Fühler",
+        "art": "fault",
+        "satz": "Der Fühler liefert keinen Wert. Der Heizstab bleibt aus."
+      }
+    },
+    {
+      "name": "Das Zeitfenster ist zu, der Speicher ist zu kalt",
+      "besteht": true,
+      "abweichungen": [],
+      "uhr": "22:00",
+      "lage": {
+        "titel": "Wartet auf das Zeitfenster",
+        "art": "waiting",
+        "satz": "Der Speicher liegt mit 43 °C unter 45 °C. Ab 05:30 Uhr heizt der Heizstab aus dem Netz."
+      }
+    }
+  ]
+}

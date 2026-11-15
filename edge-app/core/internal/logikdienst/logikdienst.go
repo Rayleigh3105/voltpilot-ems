@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -110,6 +111,18 @@ type Probe struct {
 	Name         string       `json:"name"`
 	Besteht      bool         `json:"besteht"`
 	Abweichungen []Abweichung `json:"abweichungen"`
+	// Uhr is the clock at the start of the probe ("HH:MM", 12:00 without clock) and
+	// Lage the status at its end with the values of the case: together they are a
+	// moment of "So verhält sie sich" (Stufe 5, Bausteine).
+	Uhr  string      `json:"uhr"`
+	Lage *ProbenLage `json:"lage,omitempty"`
+}
+
+// ProbenLage is the status a probe ends in: title, kind and the sentence with its values.
+type ProbenLage struct {
+	Titel string `json:"titel"`
+	Art   string `json:"art"`
+	Satz  string `json:"satz"`
 }
 
 // Abweichung is an expectation that did not hold.
@@ -252,7 +265,10 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 		}
 	}
 	for _, p := range pb.Proben {
-		pr := Probe{Name: p.Name, Besteht: p.Bestanden, Abweichungen: []Abweichung{}}
+		pr := Probe{Name: p.Name, Besteht: p.Bestanden, Abweichungen: []Abweichung{}, Uhr: uhrzeit(p.Uhr)}
+		if p.Lage.Titel != "" {
+			pr.Lage = &ProbenLage{Titel: p.Lage.Titel, Art: p.Lage.Art, Satz: p.Lage.Satz}
+		}
 		var teile []string
 		for _, a := range p.Abweichungen {
 			pr.Abweichungen = append(pr.Abweichungen, Abweichung{Stelle: a.Stelle, Soll: a.Soll, Ist: a.Ist})
@@ -295,6 +311,15 @@ func probenOrt(L *logik.Logik, name string) string {
 		}
 	}
 	return ""
+}
+
+// uhrzeit writes minutes since midnight as "HH:MM".
+func uhrzeit(min float64) string {
+	m := int(math.Round(min)) % 1440
+	if m < 0 {
+		m += 1440
+	}
+	return fmt.Sprintf("%02d:%02d", m/60, m%60)
 }
 
 func istJSON(text []byte) bool {

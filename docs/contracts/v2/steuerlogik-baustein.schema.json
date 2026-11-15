@@ -1,0 +1,25 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://voltpilot.de/contracts/v2/steuerlogik-baustein.schema.json",
+ "title": "Steuerlogik-Baustein",
+ "description": "Ein Baustein (Stufe 5): eine Logik der Textform mit Lücken und ein Satz für die Oberfläche. Lücken sind jedes Gerät, jeder Eingang, der ein Signal eines Geräts der Anlage liest (ein Signal eines Geräts der Logik folgt dem Gerät), und jeder Stellwert, den der Satz mit {name} nennt. Vertrag: steuerlogik.md, Abschnitt Bausteine.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["block", "name", "sentence", "logic"],
+ "properties": {
+  "block": {"const": 1, "description": "Version der Baustein-Form."},
+  "name": {"type": "string", "minLength": 1, "maxLength": 80},
+  "description": {"type": "string", "minLength": 1, "maxLength": 300},
+  "sentence": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 300,
+   "description": "Der Satz mit Lücken als {name}: ein Gerät, ein Eingang oder ein Stellwert der Logik (kein Zeitplan)."
+  },
+  "logic": {
+   "type": "string",
+   "minLength": 1,
+   "description": "Der Text der Logik (YAML-Schreibform oder kanonisches JSON, steuerlogik.schema.json). Geräte und Fühler tragen Platzhalter; was die Lücken füllt, ändert nur entity, name, source und default, jeweils einzeilig."
+  }
+ }
+}

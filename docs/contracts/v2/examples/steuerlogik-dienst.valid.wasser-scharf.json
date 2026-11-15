@@ -57,27 +57,57 @@
       {
         "name": "Kalter Morgen",
         "besteht": true,
-        "abweichungen": []
+        "abweichungen": [],
+        "uhr": "06:30",
+        "lage": {
+          "titel": "Heizt aus dem Netz",
+          "art": "grid",
+          "satz": "Der Speicher war unter 40 °C gefallen und steht bei 38 °C. Der Heizstab heizt aus dem Netz bis 50 °C."
+        }
       },
       {
         "name": "Kalte Nacht",
         "besteht": true,
-        "abweichungen": []
+        "abweichungen": [],
+        "uhr": "02:00",
+        "lage": {
+          "titel": "Nachtsperre",
+          "art": "waiting",
+          "satz": "Der Speicher liegt mit 38 °C unter 40 °C. Nachts wird nicht aus dem Netz geheizt, ab 06:00 Uhr schaltet der Heizstab zu."
+        }
       },
       {
         "name": "Sonne am Mittag",
         "besteht": true,
-        "abweichungen": []
+        "abweichungen": [],
+        "uhr": "12:00",
+        "lage": {
+          "titel": "Heizt mit Sonnenstrom",
+          "art": "solar",
+          "satz": "Der Heizstab läuft mit Sonnenstrom, bis der Speicher 57 °C hat."
+        }
       },
       {
         "name": "Speicher ist warm",
         "besteht": true,
-        "abweichungen": []
+        "abweichungen": [],
+        "uhr": "12:00",
+        "lage": {
+          "titel": "Speicher ist warm",
+          "art": "idle",
+          "satz": "Der Speicher hat sein Ziel von 57 °C erreicht."
+        }
       },
       {
         "name": "Fühler fällt aus",
         "besteht": true,
-        "abweichungen": []
+        "abweichungen": [],
+        "uhr": "12:00",
+        "lage": {
+          "titel": "Störung Fühler",
+          "art": "fault",
+          "satz": "Der Fühler liefert keinen Wert. Der Heizstab bleibt aus."
+        }
       }
     ],
     "hinweise": [],

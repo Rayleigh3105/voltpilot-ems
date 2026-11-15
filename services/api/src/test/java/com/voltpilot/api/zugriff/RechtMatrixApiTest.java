@@ -885,6 +885,12 @@ class RechtMatrixApiTest {
         z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/stilllegen", logik));
         z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/anfragen/{FREMD}/erledigt", logik));
         z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, sl + "/{FREMD}/anfragen", betrieb));
+        // Steuerlogik Stufe 5 (Konzept §8.8, E4 = A): einsetzen, als Baustein speichern und entfernen ist an der Anlage
+        // logik.bearbeiten; dass nur ein Partner- oder Plattform-Konto eine Sammlung hat, prüft der Dienst dahinter.
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/bausteine/{FREMD}/vorschau", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/bausteine/{FREMD}/logik", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/bausteine", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.DELETE, sl + "/bausteine/{FREMD}", logik));
         return z;
     }
 

@@ -53,6 +53,8 @@ export interface RegelnReiterProps {
   onUmwandeln: (k: RegelKarte) => void;
   /** Die Logiken der Anlage (Steuerlogik Stufe 4, E7 = A): neben den Regeln, nicht statt ihrer. */
   logiken?: ReactNode;
+  /** Die Bausteine unter „Neue Regel“ (Steuerlogik Stufe 5): ein Satz mit Lücken, dahinter eine Logik. */
+  bausteine?: ReactNode;
 }
 
 const FARBE: Record<string, [string, string]> = {
@@ -102,6 +104,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
       {!p.ziele.length && (
         <p className="leise voll">Noch gibt es kein Gerät, das eine Regel schalten kann. Schaltbare Geräte verbinden Sie in der Anlage.</p>
       )}
+      {p.bausteine}
       {vorlagen.length > 0 && (
         <section aria-label="Vorlagen" className="voll">
           <div className="grp-h"><h3>Vorlagen</h3><span>antippen und anpassen</span></div>

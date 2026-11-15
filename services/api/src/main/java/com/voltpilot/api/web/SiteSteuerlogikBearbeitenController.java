@@ -12,6 +12,7 @@ import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import com.voltpilot.api.zugriff.ZugriffContext;
+import com.voltpilot.api.zugriff.ZugriffKontextLader;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -115,7 +116,16 @@ public class SiteSteuerlogikBearbeitenController {
                 plattform(), box.mitlauf(), box.scharf(), fassungen, anfragen,
                 new SteuerlogikDto.Einstellung(l.einstellung().stand(), lies(l.einstellung().werteJson())),
                 lauf == null ? null : new SteuerlogikDto.Lauf(lauf.deviceId(), lauf.fassung(), lauf.contentHash(),
-                        lauf.zustand(), lauf.seit(), lies(lauf.rueckmeldungJson()), lauf.gemeldetAm()));
+                        lauf.zustand(), lauf.seit(), lies(lauf.rueckmeldungJson()), lauf.gemeldetAm()),
+                darfBausteinSpeichern(siteId));
+    }
+
+    /** Stufe 5: als Baustein speichern - das Recht und ein Konto mit Sammlung (Partner oder Plattform, E4 = A). */
+    private boolean darfBausteinSpeichern(UUID siteId) {
+        if (!darfBearbeiten(siteId)) return false;
+        if (plattform()) return true;
+        Authentication a = SecurityContextHolder.getContext().getAuthentication();
+        return a != null && ZugriffKontextLader.konto(a) == RechteAbleitung.Konto.PARTNER;
     }
 
     /** Recht: lesend wie die Steuerung der Anlage - der Text einer Fassung, wie er gespeichert wurde. */

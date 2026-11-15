@@ -158,7 +158,7 @@ public final class SteuerlogikDto {
     /** Eine Logik zum Ansehen und Bearbeiten. */
     public record LogikAnsicht(UUID logikId, String name, boolean darfBearbeiten, boolean darfAnfragen,
             boolean plattform, boolean boxKann, boolean boxKannScharf, List<FassungKopf> fassungen,
-            List<Anfrage> anfragen, Einstellung einstellung, Lauf lauf) {}
+            List<Anfrage> anfragen, Einstellung einstellung, Lauf lauf, boolean darfBausteinSpeichern) {}
 
     /**
      * Eine Fassung im Portal: Zustand ({@code geprueft}, {@code mitlaufend}, {@code scharf}, {@code stillgelegt}),

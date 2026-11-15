@@ -1,0 +1,134 @@
+# VoltPilot-Baustein: zwei Heizstäbe an Ausgangsmengen teilen sich den Sonnenstrom, das Warmwasser hat Vorrang.
+# Der Sonnenstrom geht Phase für Phase an den Speicher, der dran ist: erst das Warmwasser, wenn es warm ist der
+# Puffer. Braucht das Warmwasser wieder Wärme, bekommt es die Phasen sofort zurück.
+block: 1
+name: Warmwasser zuerst
+description: Zwei Speicher teilen sich den Sonnenstrom, das Warmwasser hat Vorrang.
+sentence: Heize mit Sonnenstrom zuerst mit {ww} bis {ww_ziel}, danach mit {puffer} bis {puffer_ziel}.
+logic: |
+  logic: 1
+  name: Warmwasser zuerst
+  description: Zwei Speicher teilen sich den Sonnenstrom; das Warmwasser hat Vorrang vor dem Puffer.
+
+  devices:
+    ww:     {entity: geraet-ww,     name: Heizstab Warmwasser}
+    puffer: {entity: geraet-puffer, name: Heizstab Puffer}
+
+  inputs:
+    t_ww:     {source: quelle-t_ww.temperature,     name: Warmwasser,        max_age: 5 min}
+    t_puffer: {source: quelle-t_puffer.temperature, name: Puffer,            max_age: 5 min}
+    netz:     {source: site.grid,                   name: Netzbezug,         max_age: 60 s}
+    speicher: {source: battery.power,               name: Batterie lädt mit, max_age: 60 s}
+
+  settings:
+    ww_ziel:     {name: Warmwasser bis, default: 55 °C, range: [40 °C, 70 °C], step: 1 K, editable_by: customer}
+    puffer_ziel: {name: Puffer bis,     default: 70 °C, range: [40 °C, 85 °C], step: 1 K, editable_by: customer}
+
+  formulas:
+    ww_dran:     known(t_ww) and not ww_warm
+    puffer_dran: not ww_dran and known(t_puffer) and not puffer_warm
+    frei:        ww_dran or puffer_dran
+    phase_kw:    if(ww_dran, ww.kw_per_output, puffer.kw_per_output)
+    hat_stufe:   if(ww_dran, ww.level, puffer.level)
+
+  states:
+    ww_warm:
+      type: boolean
+      on_when:
+        - Das Warmwasser hat sein Ziel: t_ww >= ww_ziel
+      off_when:
+        - Das Warmwasser liegt 3 K unter dem Ziel oder hat keinen Wert: unknown(t_ww) or t_ww < ww_ziel - 3 K
+      on_text: Das Warmwasser gilt als warm
+      off_text: Das Warmwasser braucht wieder Wärme
+      after_restart: off
+    puffer_warm:
+      type: boolean
+      on_when:
+        - Der Puffer hat sein Ziel: t_puffer >= puffer_ziel
+      off_when:
+        - Der Puffer liegt 3 K unter dem Ziel oder hat keinen Wert: unknown(t_puffer) or t_puffer < puffer_ziel - 3 K
+      on_text: Der Puffer gilt als warm
+      off_text: Der Puffer braucht wieder Wärme
+      after_restart: off
+    stufe:
+      type: counter
+      min: 0
+      max: 3
+      after_restart: 0
+      steps:
+        - name: blind
+          text: Ohne Netzwert bleiben die Heizstäbe aus
+          set: 0
+          when:
+            - Der Netzwert fehlt seit 1 Minute: holds(unknown(netz), 1 min)
+        - name: voll
+          text: Beide Speicher sind warm, die Heizstäbe gehen aus
+          set: 0
+          when:
+            - Ein Heizstab läuft, kein Speicher braucht Wärme: stufe > 0 and not frei
+        - name: zurueck
+          text: Eine Phase weniger
+          by: -1
+          not_before: 1 min
+          when:
+            - Ein Heizstab läuft: stufe > 0
+          when_any:
+            - Strom kommt aus dem Netz: netz > 0.1 kW
+            - Die Batterie muss aushelfen: speicher < -0.15 kW
+        - name: versuch
+          text: Eine Phase mehr
+          by: +1
+          not_before: 3 min
+          when:
+            - Ein Speicher braucht Wärme: frei
+            - Seit 1 Minute geht mehr ins Netz, als eine Phase braucht: holds(netz < -phase_kw, 1 min)
+            - Der Heizstab hat die letzte Phase angenommen: hat_stufe >= stufe
+
+  outputs:
+    ww:     {level: "if(ww_dran, stufe, 0)"}
+    puffer: {level: "if(puffer_dran, stufe, 0)"}
+
+  status:
+    - when: unknown(t_ww) or unknown(t_puffer)
+      title: Störung Fühler
+      type: fault
+      text: Ein Fühler liefert keinen Wert. Sein Heizstab bleibt aus.
+    - when: ww_dran and stufe > 0
+      title: Heizt das Warmwasser
+      type: solar
+      text: Das Warmwasser hat Vorrang und heizt mit Sonnenstrom bis {ww_ziel}. Jetzt sind es {t_ww}.
+    - when: puffer_dran and stufe > 0
+      title: Heizt den Puffer
+      type: solar
+      text: Das Warmwasser ist warm. Der Puffer heizt mit Sonnenstrom bis {puffer_ziel}. Jetzt sind es {t_puffer}.
+    - when: ww_warm and puffer_warm
+      title: Beide sind warm
+      type: idle
+      text: Warmwasser {t_ww}, Puffer {t_puffer}.
+    - else: true
+      title: Wartet auf Sonnenstrom
+      type: waiting
+      text: Sobald Sonnenstrom ins Netz geht, heizt zuerst das Warmwasser.
+
+  # Die Proben rechnen mit den eingestellten Zielen: kalt heißt 10 K darunter, warm knapp darüber.
+  tests:
+    - name: Mittags zuerst das Warmwasser
+      given: {t_ww: ww_ziel - 10 K, t_puffer: puffer_ziel - 10 K, netz: -7 kW, speicher: 0 kW, clock: "11:00"}
+      after: 5 min
+      expect: {puffer.level: 0, status: Heizt das Warmwasser}
+    - name: Das Warmwasser ist warm, dann der Puffer
+      given: {t_ww: ww_ziel + 0.5 K, t_puffer: puffer_ziel - 10 K, netz: -7 kW, speicher: 0 kW, clock: "13:00"}
+      after: 5 min
+      expect: {ww.level: 0, status: Heizt den Puffer}
+    - name: Nach dem Duschen hat das Warmwasser wieder Vorrang
+      given: {t_ww: ww_ziel - 5 K, t_puffer: puffer_ziel - 10 K, netz: -7 kW, speicher: 0 kW, ww_warm: on, stufe: 2, clock: "14:00"}
+      after: 1 min
+      expect: {puffer.level: 0, status: Heizt das Warmwasser}
+    - name: Der Fühler am Warmwasser fällt aus
+      given: {t_ww: unknown, t_puffer: puffer_ziel - 10 K, netz: -7 kW, speicher: 0 kW, stufe: 1, clock: "15:00"}
+      after: 1 min
+      expect: {ww.level: 0, status: Störung Fühler}
+    - name: Abends kommt Strom aus dem Netz
+      given: {t_ww: ww_ziel - 10 K, t_puffer: puffer_ziel - 10 K, netz: 1 kW, speicher: 0 kW, stufe: 1, clock: "19:00"}
+      after: 2 min
+      expect: {stufe: 0, ww.level: 0, status: Wartet auf Sonnenstrom}

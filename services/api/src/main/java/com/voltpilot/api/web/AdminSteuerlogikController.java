@@ -227,14 +227,16 @@ public class AdminSteuerlogikController {
     static ResponseEntity<Map<String, Object>> antwort(SteuerlogikService.Abgelehnt e) {
         HttpStatus status = switch (e.grund()) {
             case "anlage_unbekannt", "logik_unbekannt", "stellwert_unbekannt", "fassung_unbekannt",
-                    "anfrage_unbekannt" -> HttpStatus.NOT_FOUND;
-            case "text_fehlt", "text_zu_gross", "wert_fehlt", "notiz_zu_lang", "zeitraum" -> HttpStatus.BAD_REQUEST;
+                    "anfrage_unbekannt", "baustein_unbekannt" -> HttpStatus.NOT_FOUND;
+            case "text_fehlt", "text_zu_gross", "wert_fehlt", "notiz_zu_lang", "zeitraum", "name_fehlt", "satz_fehlt",
+                    "beschreibung_zu_lang" -> HttpStatus.BAD_REQUEST;
             case "recht_fehlt" -> HttpStatus.FORBIDDEN;
             case "keine_box", "box_ohne_mitlauf", "box_ohne_scharf", "zweiter_herr", "scharf_abloesen",
                     "bestaetigung_fehlt", "fassung_veraltet", "schon_scharf", "nichts_aktiv", "keine_vorige",
-                    "gleichzeitig", "laeuft_schon", "nicht_freigegeben" ->
+                    "gleichzeitig", "laeuft_schon", "nicht_freigegeben", "aus_dem_vertrag" ->
                     HttpStatus.CONFLICT;
-            case "logik_unlesbar", "pruefung_sperrt", "stellwerte_passen_nicht" -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case "logik_unlesbar", "pruefung_sperrt", "stellwerte_passen_nicht", "baustein_unlesbar",
+                    "baustein_unvollstaendig" -> HttpStatus.UNPROCESSABLE_ENTITY;
             default -> HttpStatus.SERVICE_UNAVAILABLE;
         };
         Map<String, Object> body = new LinkedHashMap<>();

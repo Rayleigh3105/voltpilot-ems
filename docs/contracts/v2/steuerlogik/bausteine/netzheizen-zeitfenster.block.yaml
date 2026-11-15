@@ -1,0 +1,88 @@
+# VoltPilot-Baustein: fällt der Speicher unter eine Mindesttemperatur, heizt der Heizstab aus dem Netz,
+# aber nur in einem Zeitfenster (der Satz aus dem Auftrag zu Stufe 5).
+block: 1
+name: Aus dem Netz nachheizen
+description: Wird der Speicher zu kalt, heizt der Heizstab aus dem Netz, nur im Zeitfenster.
+sentence: Wenn der Speicher unter {mindest} fällt, heize mit {heizstab} aus dem Netz bis {netz_ziel}, aber nur zwischen {netz_ab} und {netz_bis}.
+logic: |
+  logic: 1
+  name: Aus dem Netz nachheizen
+  description: Ein Speicher fällt nie lange unter seine Mindesttemperatur; aus dem Netz geheizt wird nur im Zeitfenster.
+
+  devices:
+    heizstab: {entity: geraet-heizstab, name: Heizstab}
+
+  inputs:
+    t: {source: quelle-t.temperature, name: Speicher, max_age: 5 min}
+
+  settings:
+    mindest:   {name: Nie kälter als,   default: 40 °C,   range: [30 °C, 55 °C], step: 1 K, editable_by: customer}
+    netz_ziel: {name: Aus dem Netz bis, default: 50 °C,   range: [35 °C, 65 °C], step: 1 K, editable_by: customer}
+    netz_ab:   {name: Netz erlaubt ab,  default: "06:00", editable_by: customer}
+    netz_bis:  {name: Netz erlaubt bis, default: "22:00", editable_by: customer}
+
+  constraints:
+    - Aus dem Netz bis liegt mindestens 5 K über Nie kälter als: netz_ziel >= mindest + 5 K
+    - Das Zeitfenster hat einen Anfang und ein Ende: netz_ab != netz_bis
+
+  formulas:
+    netzfenster: time_window(netz_ab, netz_bis)
+
+  states:
+    netzheizen:
+      type: boolean
+      on_when:
+        - Uhrzeit liegt im Fenster: netzfenster
+        - Der Speicher ist seit 2 Minuten zu kalt: holds(t < mindest, 2 min)
+      off_when_any:
+        - Fühler fehlt: unknown(t)
+        - Der Speicher ist warm genug: t >= netz_ziel
+        - Uhrzeit liegt außerhalb des Fensters: not netzfenster
+      on_text: Heizt aus dem Netz bis {netz_ziel}
+      off_text: Hört auf, aus dem Netz zu heizen
+      after_restart: off
+
+  outputs:
+    heizstab: {level: "if(netzheizen, 3, 0)"}
+
+  status:
+    - when: unknown(t)
+      title: Störung Fühler
+      type: fault
+      text: Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.
+    - when: netzheizen
+      title: Heizt aus dem Netz
+      type: grid
+      text: Der Speicher war unter {mindest} gefallen und steht bei {t}. Der Heizstab heizt aus dem Netz bis {netz_ziel}.
+    - when: not netzfenster and t < mindest
+      title: Wartet auf das Zeitfenster
+      type: waiting
+      text: Der Speicher liegt mit {t} unter {mindest}. Ab {netz_ab} Uhr heizt der Heizstab aus dem Netz.
+    - else: true
+      title: Speicher ist warm genug
+      type: idle
+      text: Der Speicher hat {t}. Erst unter {mindest} heizt der Heizstab aus dem Netz.
+
+  # Die Proben rechnen mit den eingestellten Werten: kalt heißt 2 K unter der Mindesttemperatur, das
+  # Zeitfenster geht zu den eingestellten Uhrzeiten auf und zu.
+  tests:
+    - name: Das Zeitfenster geht auf, der Speicher ist zu kalt
+      given: {t: mindest - 2 K, clock: netz_ab}
+      after: 3 min
+      expect: {netzheizen: on, status: Heizt aus dem Netz}
+    - name: Aufgeheizt
+      given: {t: netz_ziel + 0.5 K, netzheizen: on, clock: "07:00"}
+      after: 1 min
+      expect: {netzheizen: off, heizstab.level: 0, status: Speicher ist warm genug}
+    - name: Ein warmer Speicher am Tag
+      given: {t: mindest + 1 K, clock: "12:00"}
+      after: 10 min
+      expect: {netzheizen: off, heizstab.level: 0, status: Speicher ist warm genug}
+    - name: Das Zeitfenster ist zu, der Speicher ist zu kalt
+      given: {t: mindest - 2 K, clock: netz_bis}
+      after: 15 min
+      expect: {netzheizen: off, heizstab.level: 0, status: Wartet auf das Zeitfenster}
+    - name: Der Fühler fällt aus
+      given: {t: unknown, netzheizen: on, clock: "16:00"}
+      after: 1 min
+      expect: {netzheizen: off, heizstab.level: 0, status: Störung Fühler}

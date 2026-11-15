@@ -476,6 +476,11 @@ public class SteuerlogikService {
         }
     }
 
+    /** Ein ehrlicher Halt, wenn es die Anlage nicht gibt. */
+    void pruefeAnlage(UUID siteId) {
+        if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
+    }
+
     /** Was eine Logik an der Anlage lesen und schalten kann (Auswahl im Aufbau). */
     public JsonNode quellen(UUID siteId) {
         if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
@@ -746,7 +751,7 @@ public class SteuerlogikService {
      * Der Registry-Inhalt der Anlage für die Proben, so wie die führende Box ihn bekommt; ohne eindeutige Box
      * {@code null} - die Proben rechnen dann mit ihren Vorgaben, und Speichern geht trotzdem.
      */
-    private String registryOderNull(UUID siteId) {
+    String registryOderNull(UUID siteId) {
         UUID box = leadDevices.fuehrendeBox(siteId).box();
         return box == null ? null : registry.registryAnsicht(siteId, box);
     }

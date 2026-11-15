@@ -1,0 +1,71 @@
+# VoltPilot-Baustein: ein Gerät läuft mit Sonnenstrom, der sonst ins Netz ginge.
+# Für jedes Gerät, das die Box ein- und ausschaltet (Pumpe, Infrarotheizung, Lüfter).
+block: 1
+name: Gerät mit Sonnenstrom
+description: Ein Gerät läuft, solange Sonnenstrom übrig ist.
+sentence: Schalte {geraet} ein, sobald 5 Minuten lang {ueberschuss} ins Netz gehen.
+logic: |
+  logic: 1
+  name: Gerät mit Sonnenstrom
+  description: Ein Gerät läuft mit Sonnenstrom, der sonst ins Netz ginge.
+
+  devices:
+    geraet: {entity: geraet-geraet, name: Gerät}
+
+  inputs:
+    netz: {source: site.grid, name: Netzbezug, max_age: 60 s}
+
+  settings:
+    ueberschuss: {name: Einschalten ab Einspeisung, default: 1 kW, range: [0.2 kW, 10 kW], step: 0.1 kW, editable_by: customer}
+
+  states:
+    sonnenstrom:
+      type: boolean
+      on_when:
+        - Es wird seit 5 Minuten eingespeist: holds(netz < -ueberschuss, 5 min)
+      off_when_any:
+        - Strom kommt seit 2 Minuten aus dem Netz: holds(netz > 0.1 kW, 2 min)
+        - Der Netzbezug ist unbekannt: unknown(netz)
+      on_text: Das Gerät läuft mit Sonnenstrom
+      off_text: Das Gerät geht aus
+      after_restart: off
+
+  outputs:
+    geraet: {on_off: sonnenstrom}
+
+  status:
+    - when: unknown(netz)
+      title: Kein Netzwert
+      type: fault
+      text: Der Zähler am Netz liefert keinen Wert. Das Gerät bleibt aus.
+    - when: sonnenstrom
+      title: Läuft mit Sonnenstrom
+      type: solar
+      text: Das Gerät läuft, solange mehr als {ueberschuss} übrig sind.
+    - else: true
+      title: Wartet auf Sonnenstrom
+      type: waiting
+      text: Sobald mehr als {ueberschuss} ins Netz gehen, schaltet das Gerät ein.
+
+  # Die Proben rechnen mit dem eingestellten Wert: "netz" liegt immer 0,5 kW unter der Schwelle.
+  tests:
+    - name: Mittags geht Sonnenstrom ins Netz
+      given: {netz: 0 kW - ueberschuss - 0.5 kW, clock: "12:00"}
+      after: 6 min
+      expect: {sonnenstrom: on, geraet.on_off: on, status: Läuft mit Sonnenstrom}
+    - name: Eine Wolke zieht vorbei
+      given: {netz: 0.5 kW, sonnenstrom: on, clock: "13:00"}
+      after: 1 min
+      expect: {sonnenstrom: on, geraet.on_off: on}
+    - name: Abends kommt Strom aus dem Netz
+      given: {netz: 1 kW, sonnenstrom: on, clock: "19:00"}
+      after: 3 min
+      expect: {sonnenstrom: off, geraet.on_off: off, status: Wartet auf Sonnenstrom}
+    - name: Morgens reicht der Sonnenstrom noch nicht
+      given: {netz: 0 kW - ueberschuss + 0.1 kW, clock: "08:00"}
+      after: 10 min
+      expect: {sonnenstrom: off, geraet.on_off: off, status: Wartet auf Sonnenstrom}
+    - name: Der Zähler am Netz fällt aus
+      given: {netz: unknown, sonnenstrom: on, clock: "15:00"}
+      after: 1 min
+      expect: {sonnenstrom: off, geraet.on_off: off, status: Kein Netzwert}

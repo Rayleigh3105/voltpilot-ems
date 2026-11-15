@@ -69,6 +69,7 @@ import type {
   WagoKartenangaben, WagoKartenwechsel, WagoSollLesung, Wetterbezug, WetterbezugAnfrage, Zaehlerwechsel,
   ZaehlerwechselVorgang,
   LogikAnsicht, LogikBericht, LogikGeprueft, LogikGespeichert, LogikListe, LogikQuellen, LogikZustand,
+  BausteinEingesetzt, BausteinFuellung, BausteinListe, BausteinLuecke, BausteinSatzTeil,
 } from './api';
 import { freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
@@ -1330,6 +1331,32 @@ const weitere = {
   /** Stufe 4, Plattform: was der Dialog „Scharf schalten“ für eine bestimmte (vorgelegte) Fassung zeigt. */
   steuerlogikVorschauFassung: (siteId: string, logikId: string, fassung: number) =>
     request<SteuerlogikVorschau>(`/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/scharf?fassung=${fassung}`),
+  /** Stufe 5: die Bausteine für diese Anlage, mit den Rechten des Aufrufers. */
+  bausteinListe: (siteId: string) => request<BausteinListe>(`/api/v1/sites/${siteId}/steuerlogik/bausteine`),
+  /** Stufe 5: einen Baustein füllen, ohne zu speichern - Prüfung und „So verhält sie sich“. */
+  bausteinVorschau: (siteId: string, bausteinId: string, fuellung: BausteinFuellung, signal?: AbortSignal) =>
+    request<BausteinEingesetzt>(`/api/v1/sites/${siteId}/steuerlogik/bausteine/${encodeURIComponent(bausteinId)}/vorschau`, {
+      method: 'POST',
+      body: JSON.stringify({ fuellung }),
+      signal,
+    }),
+  /** Stufe 5: einen Baustein einsetzen - es entsteht eine Logik (Fassung 1, läuft noch nicht). */
+  bausteinEinsetzen: (siteId: string, bausteinId: string, fuellung: BausteinFuellung) =>
+    request<LogikGespeichert>(`/api/v1/sites/${siteId}/steuerlogik/bausteine/${encodeURIComponent(bausteinId)}/logik`, {
+      method: 'POST',
+      body: JSON.stringify({ fuellung }),
+    }),
+  /** Stufe 5: eine Fassung einer Logik als Baustein speichern (Fachbetrieb für seine Kunden, VoltPilot für alle). */
+  bausteinSpeichern: (siteId: string, logikId: string, fassung: number, name: string, satz: string) =>
+    request<{ id: string; herkunft: 'voltpilot' | 'fachbetrieb'; name: string; satz: BausteinSatzTeil[]; luecken: BausteinLuecke[] }>(
+      `/api/v1/sites/${siteId}/steuerlogik/bausteine`,
+      { method: 'POST', body: JSON.stringify({ logikId, fassung, name, satz }) },
+    ),
+  /** Stufe 5: einen eigenen Baustein aus der Sammlung entfernen. */
+  bausteinEntfernen: (siteId: string, bausteinId: string) =>
+    request<{ entfernt: boolean }>(`/api/v1/sites/${siteId}/steuerlogik/bausteine/${encodeURIComponent(bausteinId)}`, {
+      method: 'DELETE',
+    }),
   /** Einen Wert stellen, in der Form des Dokuments (`"72 °C"`, `"on"`, `"06:00"`). */
   siteSteuerlogikWert: (siteId: string, logikId: string, kennung: string, wert: unknown) =>
     request<{ logikId: string; kennung: string; wert: unknown; stand: number; veroeffentlicht: boolean }>(
