@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -16,10 +17,8 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * The acceptance criterion of the price-matching materialization: for every
@@ -67,25 +66,18 @@ class PriceSlotEqualityTest {
     private static final Instant WINDOW_TO = Instant.parse("2026-03-02T00:00:00Z");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of(
                         "appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin"))
-                .load()
-                .migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin")));
 
         try (Connection c = dataSource().getConnection()) {
             // Pure PT15M with a one-hour gap (02:00-03:00).

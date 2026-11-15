@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantContext;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -34,10 +35,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** H-11: echte API/DB-Kette vom Summenwert über Karte und Cockpit bis zum Entzug.
  * Deye A1 und angenommener Netzfall A5; keine Hardware- oder Echtkunden-Nachweise. */
@@ -63,12 +62,7 @@ class UemsSummenwertAbnahmeTest {
     private static final String OHNE_RICHTUNG = "deye.hybrid_3p.generator-smartload-microinverter.generator-power";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw")
-            // Die Abnahme startet keine Timescale-Jobs parallel zu Flyway.
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @DynamicPropertySource

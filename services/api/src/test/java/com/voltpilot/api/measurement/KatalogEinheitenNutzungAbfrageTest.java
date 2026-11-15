@@ -2,6 +2,7 @@ package com.voltpilot.api.measurement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -15,10 +16,8 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Betriebsabfrage {@code tools/betriebsabfragen/katalog-zaehler-einheiten-nutzung.sql} gegen die
@@ -35,15 +34,11 @@ class KatalogEinheitenNutzungAbfrageTest {
             "katalog-zaehler-einheiten-nutzung.sql");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @BeforeAll
     static void entwicklungsDb() {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration", "classpath:db/dev")
                 .outOfOrder(true)
@@ -51,9 +46,7 @@ class KatalogEinheitenNutzungAbfrageTest {
                 .baselineVersion("0")
                 .placeholders(Map.of(
                         "appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin"))
-                .load()
-                .migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin")));
     }
 
     private static Connection verbindung() throws Exception {

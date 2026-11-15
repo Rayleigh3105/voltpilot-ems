@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
@@ -40,10 +41,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Kaskaden-Naht der Berichte gegen die echte Datenbank (UEMS AP-12 IP-8, Pfad 1) — Meilenstein 3 „Revision
@@ -90,8 +89,12 @@ class UemsBerichtKaskadeTest {
      * 12.11.2026 lag bereits in der Vergangenheit). Einen Tag NACH dem Lauf bleibt immer später als die DB-Uhr.
      */
     private static final Instant T_KASKADE = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS);
-    /** Die Revision Nr. 2: 16.11.2026 14:20 (MEZ). */
-    private static final Instant FREIGABE_NR2 = Instant.parse("2026-11-16T13:20:00Z");
+    /**
+     * Die Revision Nr. 2: freigegeben eine Stunde nach ihrem Datenstand T_KASKADE - relativ wie T_KASKADE selbst. Fest
+     * auf den 16.11.2026 14:20 (MEZ) lag sie ab dem 15.11.2026 14:20 (MEZ) VOR ihrem Datenstand, und
+     * {@code bericht_stand_datenstand_chk} verwarf die Freigabe in B7.
+     */
+    private static final Instant FREIGABE_NR2 = T_KASKADE.plus(1, ChronoUnit.HOURS);
     /** Der Zweig aus B7: die Rücknahme von K-2026-0007 (Fassung 3) - 12 Tage nach T_KASKADE, aus demselben Grund relativ. */
     private static final Instant T_RUECKNAHME = T_KASKADE.plus(12, ChronoUnit.DAYS);
 
@@ -99,11 +102,7 @@ class UemsBerichtKaskadeTest {
             "energiemanager", "kunde");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static final AtomicInteger NR = new AtomicInteger();
     private static DataSource rootDs;
@@ -124,14 +123,13 @@ class UemsBerichtKaskadeTest {
 
     @BeforeAll
     static void aufbauen() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
         rootDs = ds(POSTGRES.getUsername(), POSTGRES.getPassword());
         root = new JdbcTemplate(rootDs);
         admin = ds(ADMIN_USER, ADMIN_PW);

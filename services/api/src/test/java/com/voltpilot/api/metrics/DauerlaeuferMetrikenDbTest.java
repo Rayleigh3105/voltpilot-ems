@@ -3,6 +3,7 @@ package com.voltpilot.api.metrics;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.FleetMetricsRepository;
 import com.voltpilot.api.repo.UemsMetricsRepository;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
@@ -25,10 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.env.MockEnvironment;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-14 IP-18 (Kasten E11): der Dauerläufer-Kundenbereich gegen eine ECHTE Wegwerf-Datenbank —
@@ -68,23 +67,17 @@ class DauerlaeuferMetrikenDbTest {
     private static final Instant NOW = Instant.parse("2026-11-03T10:00:00Z");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw")
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true).baselineVersion("0")
                 .placeholders(Map.of("appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
 
         try (Connection c = quelle(POSTGRES.getUsername(), POSTGRES.getPassword()).getConnection()) {
             messkunde(c, DAUERLAEUFER, "VoltPilot Dauerläufer (intern)");

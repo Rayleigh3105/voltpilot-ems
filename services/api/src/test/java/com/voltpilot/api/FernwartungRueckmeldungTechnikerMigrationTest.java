@@ -14,10 +14,8 @@ import java.util.Objects;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration V20261105233000 (letzter Handshake je Techniker-Zugang aus der
@@ -44,12 +42,7 @@ class FernwartungRueckmeldungTechnikerMigrationTest {
     private static final String FREMD = "99999999-9999-4999-8999-999999999999";
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Test
     void dieMigrationKommtAufEinerBenutztenDatenbankAnUndHaeltIhreRegeln() throws Exception {

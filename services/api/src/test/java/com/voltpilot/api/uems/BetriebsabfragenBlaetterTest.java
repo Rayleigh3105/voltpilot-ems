@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.voltpilot.api.TestDatenbank;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,10 +28,8 @@ import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-14 IP-1: die drei Betriebsabfrage-Blätter unter {@code tools/betriebsabfragen/} gegen
@@ -64,11 +63,7 @@ class BetriebsabfragenBlaetterTest {
                     + "anschrift|telefon|kennung)($|_)", Pattern.CASE_INSENSITIVE);
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("uems")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw")
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @TempDir
@@ -79,12 +74,13 @@ class BetriebsabfragenBlaetterTest {
 
     @BeforeAll
     static void zweiWegwerfDatenbanken() throws Exception {
-        // (1) `uems`: der volle Satz plus die vorhandene Entwicklungs-Saat (db/dev), damit keine
-        //     Abfrage nur auf leeren Tabellen „läuft“.
-        flyway("uems").locations("classpath:db/migration", "classpath:db/dev").load().migrate();
+        // (1) die eigene Datenbank: der volle Satz plus die vorhandene Entwicklungs-Saat (db/dev),
+        //     damit keine Abfrage nur auf leeren Tabellen „läuft“.
+        flyway(POSTGRES.getDatabaseName()).locations("classpath:db/migration", "classpath:db/dev")
+                .load().migrate();
 
         // (2) `bestand_main`: GENAU die 168 Migrationen, die heute in Produktion stehen.
-        try (Connection c = verbindung("uems"); Statement s = c.createStatement()) {
+        try (Connection c = verbindung(POSTGRES.getDatabaseName()); Statement s = c.createStatement()) {
             s.execute("CREATE DATABASE bestand_main");
         }
         List<String> mainSatz = mainSatz();
@@ -135,7 +131,7 @@ class BetriebsabfragenBlaetterTest {
     @Test
     void nachherUndPilotBlattLaufenAufDemSchemaVonUems() throws Exception {
         Map<String, Integer> nachZeilen = new LinkedHashMap<>();
-        Map<String, String> nachFormen = fahre("uems", NACHHER, nachZeilen);
+        Map<String, String> nachFormen = fahre(POSTGRES.getDatabaseName(), NACHHER, nachZeilen);
         assertThat(nachFormen.keySet()).contains("Z01#1", "Z01#2", "Z02#1", "Z03#1", "Z03#2",
                 "Z04#1", "Z05#1", "Z06#1", "Z07#1", "Z08#1");
         assertThat(vergleichbar(NACHHER, nachFormen)).isEqualTo(erwarteteFormen(NACHHER));
@@ -145,7 +141,7 @@ class BetriebsabfragenBlaetterTest {
         assertThat(nachZeilen.get("Z01#1")).isEqualTo(1);
 
         Map<String, Integer> pilotZeilen = new LinkedHashMap<>();
-        Map<String, String> pilotFormen = fahre("uems", PILOT, pilotZeilen);
+        Map<String, String> pilotFormen = fahre(POSTGRES.getDatabaseName(), PILOT, pilotZeilen);
         assertThat(pilotFormen.keySet()).contains("T01a#1", "T01b#1", "T02#1", "T03#1", "T04#1");
         assertThat(vergleichbar(PILOT, pilotFormen)).isEqualTo(erwarteteFormen(PILOT));
         // Jede der vier Fragen findet die gesäten Zeilen; sonst prüfte das Blatt nur Syntax.
@@ -160,7 +156,7 @@ class BetriebsabfragenBlaetterTest {
     void dasVorherBlattLaeuftNichtAufEinemFrischenUemsSchemaAlsErsatz() throws Exception {
         // Nicht gefordert, aber festgehalten: V20260916010000 benennt die Akteur-Spalten um,
         // deshalb ist das Vorher-Blatt genau das — ein Blatt für den Stand VOR der Zusammenführung.
-        assertThatThrownBy(() -> fahre("uems", VORHER, new LinkedHashMap<>()))
+        assertThatThrownBy(() -> fahre(POSTGRES.getDatabaseName(), VORHER, new LinkedHashMap<>()))
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining("akteur_name");
     }
@@ -171,7 +167,7 @@ class BetriebsabfragenBlaetterTest {
 
     @Test
     void nachherBlattErkenntErfolgreicheDeleteMarkerOhneSieAlsSqlZuZaehlen() throws Exception {
-        try (Connection c = verbindung("uems"); Statement s = c.createStatement()) {
+        try (Connection c = verbindung(POSTGRES.getDatabaseName()); Statement s = c.createStatement()) {
             // Session-local copy: the actual migrated history remains untouched for all other tests.
             s.execute("CREATE TEMP TABLE flyway_schema_history AS TABLE public.flyway_schema_history");
             long sqlCount;
@@ -214,7 +210,7 @@ class BetriebsabfragenBlaetterTest {
 
     @Test
     void nachherBlattUnterscheidetGeheilteVonOffenenDeleteMarkern() throws Exception {
-        try (Connection c = verbindung("uems"); Statement s = c.createStatement()) {
+        try (Connection c = verbindung(POSTGRES.getDatabaseName()); Statement s = c.createStatement()) {
             s.execute("CREATE TEMP TABLE flyway_schema_history AS TABLE public.flyway_schema_history");
             // Das Muster der Produktion (02.08.2026): DELETE, danach identisch neu angewandt.
             String ersteVersion = "(SELECT version FROM flyway_schema_history WHERE type='SQL' ORDER BY installed_rank LIMIT 1)";
@@ -421,7 +417,7 @@ class BetriebsabfragenBlaetterTest {
     // -----------------------------------------------------------------------------------------
 
     private static void saeeWerteFuerDasPilotBlatt() throws Exception {
-        try (Connection c = verbindung("uems"); Statement s = c.createStatement()) {
+        try (Connection c = verbindung(POSTGRES.getDatabaseName()); Statement s = c.createStatement()) {
             UUID tenant;
             UUID site;
             UUID device;
@@ -488,6 +484,6 @@ class BetriebsabfragenBlaetterTest {
     }
 
     private static String jdbc(String db) {
-        return POSTGRES.getJdbcUrl().replaceFirst("/uems(\\?|$)", "/" + db + "$1");
+        return POSTGRES.getJdbcUrl(db);
     }
 }

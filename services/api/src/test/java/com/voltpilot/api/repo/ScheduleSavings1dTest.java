@@ -5,6 +5,7 @@ import static com.voltpilot.api.FahrplanVersionenBestand.stammdaten;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.OverviewRepository.DailySavings;
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -29,10 +30,8 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die vorberechnete Sparzeile ({@code schedule_savings_1d}, Migration {@code V20261105090000},
@@ -59,12 +58,7 @@ class ScheduleSavings1dTest {
     private static final UUID SITE_B1 = UUID.fromString("5c000000-0000-0000-0000-0000000002b1");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static Instant jetzt;
     /** Mittag des heutigen Berliner Tages: gestern ist sicher abgeschlossen, heute sicher nicht. */
@@ -73,16 +67,14 @@ class ScheduleSavings1dTest {
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of(
                         "appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin"))
-                .load()
-                .migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin")));
         jetzt = Instant.now();
         heute = jetzt.atZone(BERLIN).toLocalDate();
         mittags = heute.atTime(12, 0).atZone(BERLIN).toInstant();

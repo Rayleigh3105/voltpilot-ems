@@ -32,6 +32,12 @@ Health endpoints on the JVM services are mapped to root: `GET /health` (Spring B
 
 **⚠ Writer: jede `@SpringBootTest`-Klasse mit eigenen Containern stoppt in `@AfterAll` ihre Zuhörer** (`KafkaListenerEndpointRegistry.stop()`, Vorbild `WriterPipeTest`). Spring cacht den Testkontext, Testcontainers stoppt die Container nach der Klasse - die `@KafkaListener` des alten Kontexts (Gruppe `timescale-writer`) verbinden sich danach mit dem Broker der NÄCHSTEN Klasse, gewinnen dort die Partition (kleinere Member-Id) und schreiben in ihre gestoppte Datenbank; die Folgeklasse wartet vergeblich (`WriterPipeTest` nach `EventsRawConsumerTest`: 4 bis 17 Fehlschläge nach je 45 s). Dieselbe Falle wie der `@Scheduled`-Job in [Kubernetes-Readiness](kubernetes-readiness-der-betriebsvertrag.md).
 
+**api: geteilte Container statt eines eigenen je Testklasse.**
+Datenbank-Testklassen in `services/api` nehmen `new TestDatenbank()` statt `new PostgreSQLContainer`, Keycloak-Klassen `new TestKeycloak()`; die Wächter in `TestDatenbankTest` und `TestKeycloakTest` lassen nichts anderes durch.
+Jede Klasse bekommt in einem je JVM geteilten Container eine frische Datenbank und frische Rollen bzw. einen frisch importierten Realm; weitere eigene Datenbanken über `getJdbcUrl(name)`.
+Ein voller Lauf nur mit `classpath:db/migration` über `POSTGRES.migriere(...)` kommt aus einer Vorlage; die Dev-Saat `db/dev` und Läufe mit `target` nie, weil ihre Zeilen an `now()` hängen.
+Schreibt eine neue Migration `now()` in eine Zeile, schlägt `vorlageIstDieselbeDatenbankWieEinVollerLauf` an: dann prüfen, ob ein Test vom Alter des Werts abhängt, bevor er in `ZEITPUNKT_DER_MIGRATION` darf.
+
 Dependency resolution uses **Maven Central** (matching the committed wrapper `distributionUrl`). On a clean machine `./mvnw test` just works. If your `~/.m2/settings.xml` pins a corporate mirror (`<mirrorOf>*</mirrorOf>`) that a sandbox/CI can't reach, build with a Central-only settings override: `./mvnw -s .mvn-central-settings.xml test` (that helper file is git-ignored, create it locally with a single `central-direct` mirror at `https://repo.maven.apache.org/maven2`).
 
 The edge flows are exercised end-to-end against the simulator (not a unit test): bring up `emqx` + the `edge` profile, subscribe to `.../telemetry`, publish a retained `.../schedule`, and watch `edge-sim` log the slot setpoint writes. See `edge/node-red/README.md`. Telemetry conformance to `docs/contracts/mqtt-telemetry.schema.json` was validated with ajv (2020-12).

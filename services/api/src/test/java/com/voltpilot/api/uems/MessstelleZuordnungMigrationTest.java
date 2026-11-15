@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -26,10 +27,8 @@ import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration {@code V20260911230000} (UEMS AP-04 IP-7, Teil Ort und Stellung) gegen eine
@@ -62,12 +61,7 @@ class MessstelleZuordnungMigrationTest {
     private static final LocalDate UMZUG_VORTAG = LocalDate.parse("2027-02-28");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JsonNode referenz;
     private static JdbcTemplate root;
@@ -80,14 +74,13 @@ class MessstelleZuordnungMigrationTest {
     static void migriere() throws IOException {
         referenz = new ObjectMapper().readTree(V2.resolve("uems-referenzunternehmen.json").toFile());
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
         DataSource appDs = new TenantAwareDataSource(ds(APP_USER, APP_PW));
         app = new JdbcTemplate(appDs);
         tx = new TransactionTemplate(new DataSourceTransactionManager(appDs));

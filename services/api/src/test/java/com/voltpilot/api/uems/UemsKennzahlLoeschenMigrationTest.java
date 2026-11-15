@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import java.io.IOException;
@@ -25,10 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration {@code V20260915020000__uems_kennzahl_loeschen.sql} (UEMS AP-11 IP-5, V5): eine Kennzahl ohne einen
@@ -49,11 +48,7 @@ class UemsKennzahlLoeschenMigrationTest {
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;
@@ -188,7 +183,7 @@ class UemsKennzahlLoeschenMigrationTest {
                 }
             }
         }
-        String url = POSTGRES.getJdbcUrl().replaceFirst("/voltpilot(?=\\?|$)", "/voltpilot_spaet_loeschen");
+        String url = POSTGRES.getJdbcUrl("voltpilot_spaet_loeschen");
         flyway(url).locations("filesystem:" + ohneDiese.toAbsolutePath()).load().migrate();
         MigrateResult spaet = flyway(url).outOfOrder(true).load().migrate();
         assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);

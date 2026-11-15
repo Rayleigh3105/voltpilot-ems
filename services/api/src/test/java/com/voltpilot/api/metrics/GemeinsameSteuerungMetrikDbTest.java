@@ -3,6 +3,7 @@ package com.voltpilot.api.metrics;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.BoxMetrikRepository;
 import com.voltpilot.api.repo.BoxMetrikRepository.Box;
 import com.voltpilot.api.uems.PlanZustellungAufbewahrung;
@@ -20,10 +21,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-15 IP-11 (NW-9): das SQL hinter den Box-Metriken und die Frist für {@code plan_zustellung}
@@ -40,9 +39,7 @@ class GemeinsameSteuerungMetrikDbTest {
     private static final String ADMIN_PW = "pw_admin";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw")
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     private static JdbcTemplate root;
@@ -58,13 +55,12 @@ class GemeinsameSteuerungMetrikDbTest {
 
     @BeforeAll
     static void migrateAndSeed() {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true).baselineVersion("0")
                 .placeholders(Map.of("appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
         root = new JdbcTemplate(quelle(POSTGRES.getUsername(), POSTGRES.getPassword()));
         admin = new JdbcTemplate(quelle(ADMIN_USER, ADMIN_PW));
 

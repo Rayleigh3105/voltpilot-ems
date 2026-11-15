@@ -12,7 +12,6 @@ import com.voltpilot.api.uems.OrtRepository;
 import com.voltpilot.api.uems.OrtZuordnungRepository;
 import com.voltpilot.api.uems.StandortRepository;
 import com.voltpilot.api.uems.UnternehmenRepository;
-import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Timestamp;
@@ -44,10 +43,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Das Standort-Lesemodell (UEMS AP-02 IP-3 ★) durch den ganzen Stapel — echter
@@ -96,17 +93,10 @@ class StandortLesemodellApiTest {
             "energyToday", "chargePointCount", "anwendungen");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Container
-    static final KeycloakContainer KEYCLOAK = new KeycloakContainer(
-            "quay.io/keycloak/keycloak:26.0.5")
-            .withRealmImportFile("keycloak/voltpilot-realm.json");
+    static final TestKeycloak KEYCLOAK = new TestKeycloak();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

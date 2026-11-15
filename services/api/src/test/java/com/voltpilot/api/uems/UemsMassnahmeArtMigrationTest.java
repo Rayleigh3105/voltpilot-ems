@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.voltpilot.api.TestDatenbank;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -27,10 +28,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Verbessern-Konzept v1, PR 2 (Entscheide 6 und 13): {@code V20261007120100} gibt der Maßnahme ihre Art
@@ -53,9 +52,7 @@ class UemsMassnahmeArtMigrationTest {
             + "\"urteil\":\"schlechter\"}";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static UUID tenant, standort, kennzahl, basis;
@@ -246,7 +243,7 @@ class UemsMassnahmeArtMigrationTest {
     @Test
     void dieMigrationTraegtAuchAlsSpaeteAnkunft() throws IOException {
         root.execute("CREATE DATABASE voltpilot_spaet");
-        String url = POSTGRES.getJdbcUrl().replace("/voltpilot?", "/voltpilot_spaet?");
+        String url = POSTGRES.getJdbcUrl("voltpilot_spaet");
         Path ohneDiese = Files.createTempDirectory("ohne-massnahme-art");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {

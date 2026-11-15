@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.measurement.MeasurementHistoryService;
 import com.voltpilot.api.measurement.SpeicherklasseHistorie;
@@ -35,10 +36,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Der Zuwachs über eine Lücke — GEMESSEN, aber NICHT VERTEILBAR (UEMS AP-08 IP-6, E2 = A), über
@@ -91,12 +90,7 @@ class UemsLueckenZuwachsTest {
     private static final String LUECKE_SZ = "Lücke 01:30–02:30 MEZ: Zuwachs 192,0 kWh gemessen, nicht auf Viertelstunden verteilbar";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Map<String, UUID> IDS = new LinkedHashMap<>();

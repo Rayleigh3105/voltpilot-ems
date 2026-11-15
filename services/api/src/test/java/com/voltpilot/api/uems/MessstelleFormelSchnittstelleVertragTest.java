@@ -115,7 +115,7 @@ class MessstelleFormelSchnittstelleVertragTest {
     }
 
     @Test
-    void dieFehlerCodesSindDieDerRegelUndDieRoutenStehenInDerOpenApi() {
+    void dieFehlerCodesSindDieDerRegelUndDieRoutenStehenInDerOpenApi() throws IOException {
         List<String> codes = new ArrayList<>();
         codes.add("anfrage_ungueltig");
         Arrays.stream(MessstelleFormelRegeln.Fehler.values()).forEach(f -> codes.add(f.code()));
@@ -129,8 +129,8 @@ class MessstelleFormelSchnittstelleVertragTest {
         assertThat(pfade).containsKey("/api/v1/messstellen/{id}/formel/fassungen");
         assertThat(String.valueOf(pfade.get("/api/v1/messstellen/{id}/formel/fassungen"))).contains("messstelle.formel");
         assertThat(String.valueOf(pfade.get("/api/v1/messstellen/{id}/formel"))).contains("messstelle.ansehen");
-        // Der Aufruf des Portals ohne Tag bleibt derselbe.
-        assertThat(apiTs).contains("request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel${am ? `?am=${am}` : ''}`)");
+        // Der Aufruf des Portals ohne Tag bleibt derselbe (seit #1907 im api-Objekt in apiVoll.ts).
+        assertThat(Files.readString(API_TS.resolveSibling("apiVoll.ts"))).contains("request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel${am ? `?am=${am}` : ''}`)");
     }
 
     // ------------------------------------------------------------------ Gerüst

@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.ApiApplication;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.flows.FlowCompilerHttp;
 import com.voltpilot.api.measurement.MeasurementConfigStatusListener;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository;
@@ -75,10 +76,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Abnahme AP-14 „Ein neuer reiner Messkunde kann den vollständigen Weg von der Datenquelle bis zum Bericht
@@ -149,11 +148,7 @@ class PortalwegMesskundeAbnahmeTest {
     private static final double STUMM_S = 900;
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -239,9 +234,12 @@ class PortalwegMesskundeAbnahmeTest {
      */
     @Test
     void portalwegEinesReinenMesskunden() throws Exception {
-        String portal = Files.readString(Path.of("..", "..", "frontend", "portal", "src", "api.ts"));
+        // Seit #1907 steht das api-Objekt in apiVoll.ts; api.ts behält den Einstieg.
+        Path src = Path.of("..", "..", "frontend", "portal", "src");
+        String portal = Files.readString(src.resolve("api.ts")) + Files.readString(src.resolve("apiVoll.ts"));
         for (String route : PORTAL_ROUTEN) {
-            assertThat(portal).as("Das Portal ruft " + route + " (api.ts) — sonst spielt dieser Lauf einen Umweg")
+            assertThat(portal).as("Das Portal ruft " + route + " (api.ts/apiVoll.ts) — sonst spielt dieser Lauf einen "
+                    + "Umweg")
                     .contains(route);
         }
 

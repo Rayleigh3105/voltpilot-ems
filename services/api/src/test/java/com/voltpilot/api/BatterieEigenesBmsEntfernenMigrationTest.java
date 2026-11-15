@@ -12,10 +12,8 @@ import java.util.Objects;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration V20261104190000 (die „Batterie mit eigenem BMS" ist aus dem Produkt entfernt) auf einer Datenbank
@@ -48,12 +46,7 @@ class BatterieEigenesBmsEntfernenMigrationTest {
     private static final String FLOW_KUNDE = "c1000000-0000-4000-8000-000000000003";
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Test
     void dieMigrationRaeumtNurDieBatterienMitEigenemBmsAbUndLaesstDieAnlageLesbar() throws Exception {

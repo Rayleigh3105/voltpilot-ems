@@ -3,6 +3,8 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.voltpilot.api.TestDatenbank;
+import com.voltpilot.api.TestKeycloak;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.metrics.ConsumerMetrics;
@@ -10,7 +12,6 @@ import com.voltpilot.api.repo.AdminComponentFleetRepository;
 import com.voltpilot.api.repo.AdminFleetRepository;
 import com.voltpilot.api.repo.ConsumerMetricsRepository;
 import com.voltpilot.api.tenant.TenantContext;
-import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -41,10 +42,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Das Folgepaket der Löschwege (UEMS AP-07 IP-11): die 19 Live-Leser auf Herzschlag-Tabellen OHNE
@@ -79,15 +78,10 @@ class UemsAusgebauteBoxLiveFlaechenApiTest {
             "flow_node_status", "device_edge_version", "device_update_status", "device_command_log");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Container
-    static final KeycloakContainer KEYCLOAK = new KeycloakContainer("quay.io/keycloak/keycloak:26.0.5")
-            .withRealmImportFile("keycloak/voltpilot-realm.json");
+    static final TestKeycloak KEYCLOAK = new TestKeycloak();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

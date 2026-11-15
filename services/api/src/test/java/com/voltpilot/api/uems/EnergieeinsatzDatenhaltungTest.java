@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -30,10 +31,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** DB-Grenzen und Repository unter der wirklichen App-Rolle; kein Superuser als Kunden-Schreibweg. */
 @Testcontainers(disabledWithoutDocker = true)
@@ -43,19 +42,18 @@ class EnergieeinsatzDatenhaltungTest {
     private static final List<String> TABELLEN = List.of("energieeinsatz", "energieeinsatz_einflussgroesse",
             "energieeinsatz_aenderung", "energieeinsatz_kennzeichen_seq");
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
     private static JdbcTemplate root, app;
     private static EnergieeinsatzRepository repo;
     private UUID tenant, unternehmen, prozess;
 
     @BeforeAll
     static void start() {
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        POSTGRES.migriere(Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").baselineOnMigrate(true).baselineVersion("0")
-                .placeholders(Map.of("appDbUser", APP, "appDbPassword", PW, "adminDbUser", ADMIN, "adminDbPassword", PW))
-                .load().migrate();
+                .placeholders(Map.of("appDbUser", APP, "appDbPassword", PW,
+                        "adminDbUser", ADMIN, "adminDbPassword", PW)));
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         DataSource kundenDs = new TenantAwareDataSource(ds(APP, PW));
         app = new JdbcTemplate(kundenDs);

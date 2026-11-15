@@ -37,68 +37,32 @@ name: Nightly test gate (main, no deploy)
 
 on:
   schedule:
-    # 01:00 UTC = 02:00/03:00 Europe/Berlin (je Sommer-/Winterzeit) - nachts,
-    # und auf dem einzigen ubuntu-latest-mo-Runner nicht gleichzeitig mit
-    # einem von Hand ausgeloesten deploy-fast.yaml (workflow_dispatch, i.d.R.
-    # tagsueber von einem Menschen gestartet).
-    - cron: '0 1 * * *'
+    # 21:00 UTC = 22:00/23:00 Europe/Berlin (je Winter-/Sommerzeit). Der ganze Lauf
+    # braucht geschaetzt ~7 h (kurz ~35 min, api 8 x ~50 min) und ist so gegen 04:00 UTC
+    # fertig, vor dem ersten Deploy am Morgen (14.-15.11.2026: frueheste Deploys 06:08 und
+    # 06:58 UTC). Deploys am spaeten Abend (bis ~23:00 UTC) schieben sich zwischen die
+    # Teile (siehe api-1) statt hinter die Nacht. Vorher 01:00 UTC: Lauf 595 endete erst
+    # um 09:12 UTC.
+    - cron: '0 21 * * *'
   workflow_dispatch:
 
 jobs:
-  test:
+  # Reihenfolge auf dem einzigen Runner: erst alle kurzen Zeilen (`kurz`), dann
+  # die api-Teile als Kette (api-1 needs kurz, ...). Innerhalb EINER Matrix
+  # vergibt Forgejo die Zeilen nicht in der Reihenfolge hier (Lauf 595: api-1..5
+  # zuerst, optimization als vorletzte nach ~7 h auf knapper Platte) - nur
+  # `needs` legt die Reihenfolge fest.
+  kurz:
     name: Test (${{ matrix.name }})
     runs-on: ubuntu-latest-mo
-    # Je Matrixzeile eigene Obergrenze (`matrix.timeout`, Default 45 - dieselbe
-    # Grenze wie im Deploy-Gate, Lauf 2587 sass sonst >2.5 h auf einer
-    # livelocked Suite fest): `api` allein braucht mehr, siehe unten.
-    timeout-minutes: ${{ matrix.timeout || 45 }}
+    # Dieselbe Grenze wie im Deploy-Gate (Lauf 2587 sass sonst >2.5 h auf einer
+    # livelocked Suite fest); die laengste kurze Zeile brauchte 11 min.
+    timeout-minutes: 45
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Lauf 578/582 (12./13.11.2026): der `api`-Job endete beide Naechte
-          # exakt bei 180 min ("the runner cancelled the job because it
-          # exceeds the maximum run time"), mitten in einer Flyway-Migration -
-          # kein Haenger, nur zu wenig Zeit. Nachgemessen (Lauf-582-Log): von
-          # 836 Testklassen liefen in 180 min nur 320 durch (~34 s/Klasse,
-          # davon ~355 Testcontainers-Klassen mit eigenem Postgres-Container
-          # UND eigenem Flyway-Lauf je Klasse - 202 volle Migrationen allein
-          # in diesen 180 min). Der ganze Satz braucht so ~470 min; eine noch
-          # hoehere Grenze ist kein Fix, nur ein spaeterer Abbruch (die Suite
-          # waechst weiter). Fix: EIN Surefire-Lauf, fuenf Matrixzeilen -
-          # jede waehlt per `find`+`awk 'NR % 5 == shardIndex'` ihr Fuenftel
-          # der *Test.java-Klassen (siehe "Maven test"-Schritt), ohne eine
-          # Docker-Container MEHR gleichzeitig als heute (sequenziell auf dem
-          # einzigen Runner, nicht mehr Testcontainers-Nebenlast). Neue
-          # Testklassen wandern automatisch in ihr Fuenftel, ohne Pflege
-          # hier. timeout:130 bei ~94 min/Fuenftel (167 Klassen) laesst der
-          # Suite noch Raum zu wachsen, bevor die Grenze wieder knapp wird.
-          - name: api-1
-            type: jvm
-            path: services/api
-            timeout: 130
-            shard: '1/5'
-          - name: api-2
-            type: jvm
-            path: services/api
-            timeout: 130
-            shard: '2/5'
-          - name: api-3
-            type: jvm
-            path: services/api
-            timeout: 130
-            shard: '3/5'
-          - name: api-4
-            type: jvm
-            path: services/api
-            timeout: 130
-            shard: '4/5'
-          - name: api-5
-            type: jvm
-            path: services/api
-            timeout: 130
-            shard: '5/5'
           - name: ingest
             type: jvm
             path: services/ingest
@@ -174,25 +138,7 @@ jobs:
       - name: Maven test
         if: matrix.type == 'jvm'
         working-directory: ${{ matrix.path }}
-        env:
-          SHARD: ${{ matrix.shard }}
-        # Nur fuer die api-Fuenftel gesetzt (siehe Matrix oben): waehlt das
-        # eigene Fuenftel der *Test.java-Klassen per Modulo auf der
-        # sortierten, vollstaendigen Liste - deterministisch und ohne
-        # Pflege, auch wenn Klassen dazukommen oder wegfallen. Ohne SHARD
-        # (ingest/timescale-writer) laeuft `mvn test` unveraendert komplett.
-        run: |
-          filter=""
-          if [ -n "$SHARD" ]; then
-            idx="${SHARD%%/*}"
-            total="${SHARD##*/}"
-            filter=$(find src/test/java -name '*Test.java' \
-              | sed -e 's#^src/test/java/##' -e 's#\.java$##' -e 's#/#.#g' \
-              | LC_ALL=C sort \
-              | awk -v n="$total" -v i="$((idx - 1))" 'NR % n == i' \
-              | paste -sd, -)
-          fi
-          ./mvnw -B test ${filter:+-Dtest="$filter"}
+        run: ./mvnw -B test
 
       # ---- Python services --------------------------------------------------
       - name: Set up Python
@@ -216,20 +162,24 @@ jobs:
       # Fenster durchgaengig "Connection refused", obwohl `docker run` selbst
       # ohne Fehler zurueckkehrt und derselbe Aufbau in forecasts
       # test_kundenbereich_db.py auf demselben Runner gruen ist. `optimization`
-      # laeuft als eine der letzten Matrixzeilen, nach api-*/forecast/
+      # lief als eine der letzten Matrixzeilen, nach api-*/forecast/
       # frontend/ingest/market-data/marketing-adapter auf demselben Runner
       # (sequentiell, keine zwei Matrixzeilen gleichzeitig) - Verdacht:
       # Plattenplatz/Docker-Zustand nach den vorherigen, teils Testcontainers-
-      # schweren Zeilen. BESTAETIGT in Lauf 582 (dieser Diagnose-Schritt):
+      # schweren Zeilen. Seither laeuft sie im Job `kurz` VOR den api-Teilen.
+      # BESTAETIGT in Lauf 582 (dieser Diagnose-Schritt):
       # Overlay-Dateisystem bei 99 % (1.7 GB frei von 122 GB), 39 GB davon
       # reclaimable Docker-Images von VOELLIG ANDEREN Projekten auf diesem
       # geteilten Runner (kulisso, bookflow, immo-calc, ...). Gibt weiterhin
       # nur aus, loest nichts auf: das Aufraeumen eines geteilten Runners ist
       # keine Aenderung an diesem Repo und nicht Sache einer einzelnen Lane -
       # Befund im PR-Text an den Betreiber des Runners.
-      - name: "Diagnose (optimization): Docker-/Plattenzustand"
+      - name: "Diagnose (optimization): Runner-, Docker- und Plattenzustand"
         if: always() && matrix.name == 'optimization'
         run: |
+          echo "--- nproc / free -h (Ausstattung des Runners) ---"
+          nproc || true
+          free -h || true
           echo "--- df -h ---"
           df -h
           echo "--- docker system df ---"
@@ -266,6 +216,156 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: npm run build
 
+  # services/api in acht Teilen, als KETTE (api-2 wartet auf api-1 ...), nicht als Matrix.
+  # Forgejo vergibt wartende Jobs nach dem Zeitpunkt, zu dem sie wartend wurden
+  # (models/actions/task.go: Asc("updated", "id")). Eine Matrix stellt alle Zeilen beim
+  # Start des Laufs ein - ein Deploy von Hand stand dann hinter der ganzen Nacht (Lauf 589:
+  # 06:08 angestossen, 10:32 fertig, hinter Lauf 590). In der Kette wird ein Teil erst
+  # wartend, wenn der vorige endet: ein zwischendurch angestossener Deploy laeuft vor dem
+  # naechsten Teil und wartet hoechstens auf den laufenden.
+  #
+  # Dauer: Lauf 595 brauchte fuer api in fuenf Teilen 457 min (80 bis 104 min je Teil). Seit
+  # der geteilten Testdatenbank und dem geteilten Keycloak (TestDatenbank, TestKeycloak)
+  # startet je Teil ein Container statt ~75 Datenbank- und ~11 Keycloak-Containern; lokal
+  # gemessen (derselbe Fuenftel, 173 Klassen) 31,4 -> 26,4 min. Geschaetzt je Achtel ~50 min;
+  # die Grenze von 90 min laesst Raum und haelt einen Haenger von der naechsten Nacht fern.
+  # Der Runner bricht jeden Job sonst nach 180 min ab (Lauf 578/582).
+
+  api-1:
+    name: Test (api-1)
+    needs: [kurz]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 1 von 8)
+        run: bash tools/tests/api-teil.sh 1 8
+
+  api-2:
+    name: Test (api-2)
+    needs: [api-1]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 2 von 8)
+        run: bash tools/tests/api-teil.sh 2 8
+
+  api-3:
+    name: Test (api-3)
+    needs: [api-2]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 3 von 8)
+        run: bash tools/tests/api-teil.sh 3 8
+
+  api-4:
+    name: Test (api-4)
+    needs: [api-3]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 4 von 8)
+        run: bash tools/tests/api-teil.sh 4 8
+
+  api-5:
+    name: Test (api-5)
+    needs: [api-4]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 5 von 8)
+        run: bash tools/tests/api-teil.sh 5 8
+
+  api-6:
+    name: Test (api-6)
+    needs: [api-5]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 6 von 8)
+        run: bash tools/tests/api-teil.sh 6 8
+
+  api-7:
+    name: Test (api-7)
+    needs: [api-6]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 7 von 8)
+        run: bash tools/tests/api-teil.sh 7 8
+
+  api-8:
+    name: Test (api-8)
+    needs: [api-7]
+    # Auch wenn ein frueherer Teil rot ist: die Nacht soll ALLES Rote zeigen.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Maven test (Teil 8 von 8)
+        run: bash tools/tests/api-teil.sh 8 8
   # Red-run notification. Forgejo markiert den Lauf (Actions-Tab, Commit-
   # Status) bereits rot, sobald eine Matrixzeile scheitert - derselbe
   # bestehende Weg wie im Deploy-Gate (deploy.yaml:notify-failure). Diese
@@ -274,7 +374,7 @@ jobs:
   # Vorschlag dazu steht im Bericht statt hier eingebaut zu werden.
   notify-failure:
     name: Notify on red nightly run
-    needs: [test]
+    needs: [kurz, api-1, api-2, api-3, api-4, api-5, api-6, api-7, api-8]
     if: failure()
     runs-on: ubuntu-latest-mo
     timeout-minutes: 10
@@ -287,7 +387,15 @@ jobs:
             echo ""
             echo "| Job | Result |"
             echo "| --- | --- |"
-            echo "| test | ${{ needs.test.result }} |"
+            echo "| kurz | ${{ needs.kurz.result }} |"
+            echo "| api-1 | ${{ needs.api-1.result }} |"
+            echo "| api-2 | ${{ needs.api-2.result }} |"
+            echo "| api-3 | ${{ needs.api-3.result }} |"
+            echo "| api-4 | ${{ needs.api-4.result }} |"
+            echo "| api-5 | ${{ needs.api-5.result }} |"
+            echo "| api-6 | ${{ needs.api-6.result }} |"
+            echo "| api-7 | ${{ needs.api-7.result }} |"
+            echo "| api-8 | ${{ needs.api-8.result }} |"
             echo ""
             echo "Kein Deploy betroffen - dieser Workflow baut, pusht und deployt nichts."
             echo "Commit \`${{ github.sha }}\` lief nur durch den Testgate."

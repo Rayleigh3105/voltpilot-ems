@@ -10,6 +10,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.PriceRepository;
@@ -36,10 +37,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Aussaat der Regeln ab Werk auf der echten Datenbank (Lasttest vp-lasttest, Befund B3, Rang 6): der Takt sät
@@ -57,9 +56,7 @@ class UeberwachungAussaatIT {
     private static final String PW = "ueberwachung_aussaat_it_pw";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static final AtomicInteger ANWEISUNGEN = new AtomicInteger();
     private static JdbcTemplate app;
@@ -67,15 +64,13 @@ class UeberwachungAussaatIT {
 
     @BeforeAll
     static void migrate() {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP, "appDbPassword", PW, "adminDbUser", ADMIN,
-                        "adminDbPassword", PW))
-                .load()
-                .migrate();
+                        "adminDbPassword", PW)));
         app = new JdbcTemplate(new TenantAwareDataSource(zaehlend(ds(APP, PW))));
         adminJdbc = new JdbcTemplate(ds(ADMIN, PW));
         // 30 Tage Börsenpreise je Viertelstunde für die Zone der Testanlagen (die Preisreihe hat kein RLS).

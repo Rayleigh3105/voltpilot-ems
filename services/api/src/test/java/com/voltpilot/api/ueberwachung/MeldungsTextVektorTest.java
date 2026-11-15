@@ -183,7 +183,8 @@ class MeldungsTextVektorTest {
                 assertThat(VERBOTEN.matcher(t).find()).as("%s: „%s“", fall, t).isFalse();
             }
         }
-        assertThat(arten).as("feste Meldungsarten im Katalog").isEqualTo(14);
+        // 15 seit steuerlogik.stoerung (#1892).
+        assertThat(arten).as("feste Meldungsarten im Katalog").isEqualTo(15);
     }
 
     @Test

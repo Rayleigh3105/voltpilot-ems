@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import java.sql.SQLException;
@@ -21,10 +22,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-17 IP-15 (A2–A4): der Anstoß an der Bezugsbasis. Pfad 1 über die Naht der Kennzahl-Kaskade
@@ -48,9 +47,7 @@ class UemsBezugsbasisAnstossTest {
             + "\"kennzahl\":{\"objekt\":\"KZ-0005\",\"wert\":11.9032,\"version\":1,\"definition_fassung\":1},\"annahme\":false}]";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root, app, admin;
 
@@ -59,10 +56,11 @@ class UemsBezugsbasisAnstossTest {
     @BeforeAll
     static void migrieren() {
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        POSTGRES.migriere(Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").baselineOnMigrate(true).baselineVersion("0")
-                .placeholders(Map.of("appDbUser", APP, "appDbPassword", PW, "adminDbUser", ADMIN, "adminDbPassword", PW))
-                .load().migrate();
+                .placeholders(Map.of("appDbUser", APP, "appDbPassword", PW,
+                        "adminDbUser", ADMIN, "adminDbPassword", PW)));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP, PW)));
         admin = new JdbcTemplate(ds(ADMIN, PW));
     }

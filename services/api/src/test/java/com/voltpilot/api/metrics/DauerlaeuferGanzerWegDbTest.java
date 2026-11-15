@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.ApiApplication;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.flows.FlowCompilerHttp;
 import com.voltpilot.api.measurement.MeasurementConfigStatusListener;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository;
@@ -74,10 +75,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * NW-6 im Kleinen (AP-14 IP-18, Kasten E11): „Geht der ganze Weg Box → Alarm-Kennzahl?“ — mit der
@@ -144,11 +143,7 @@ class DauerlaeuferGanzerWegDbTest {
     private static final double STUMM_S = 900;
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
