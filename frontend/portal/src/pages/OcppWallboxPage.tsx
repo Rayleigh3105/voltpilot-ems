@@ -56,6 +56,7 @@ import {
   type TechnikTeil,
 } from '../components/GeraetRahmen';
 import { GeraetBuehne } from '../components/GeraetBuehne';
+import { LadesaeuleEntfernenDialog } from '../components/LadesaeuleEntfernenDialog';
 import { ladepunktZeilen } from '../steuerungJetzt';
 import type { Zeile } from '../geraetSeite';
 import './OcppWallboxPage.css';
@@ -138,6 +139,7 @@ export function OcppWallboxPage({
   const [eventFilter, setEventFilter] = useState('alle');
   const [pollError, setPollError] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [entfernenOffen, setEntfernenOffen] = useState(false);
 
   /**
    * Die Zeile dieser Säule in der Jetzt-Zone der Steuerung - Zustand, Quelle,
@@ -298,9 +300,20 @@ export function OcppWallboxPage({
       : `Anschluss ${state.connectorId}: kein aktueller Zustand`;
   const anschlussVorbehalt = state.connectorId == null || !state.connectorStatus
     || !(connectorCurrent || connection.source === 'edge');
-  const menue: MenueEintrag[] = onRename
-    ? [{ key: 'umbenennen', label: 'Anzeigename ändern', icon: 'pencil', onClick: onRename, recht: 'geraet.einrichten' }]
-    : [];
+  const menue: MenueEintrag[] = [];
+  if (onRename) {
+    menue.push({ key: 'umbenennen', label: 'Anzeigename ändern', icon: 'pencil', onClick: onRename, recht: 'geraet.einrichten' });
+  }
+  // Keine löschbare Messkomponente (sie kommt per OCPP) - der Gefahr-Eintrag nimmt stattdessen die Kennung
+  // zurück (`vp-ladesaeule-entfernen`), dasselbe Recht wie der Server-Endpunkt (`DELETE …/charge-points/{id}`).
+  menue.push({
+    key: 'entfernen',
+    label: 'Ladesäule entfernen …',
+    icon: 'trash',
+    danger: true,
+    recht: 'ladepunkt.anbinden',
+    onClick: () => setEntfernenOffen(true),
+  });
 
   // --- Jetzt: EIN Zustand, EINE Hauptaktion --------------------------------
   const laedt = state.kind === 'charging';
@@ -695,6 +708,20 @@ export function OcppWallboxPage({
               onDatenGeaendert?.();
             }
           }} />
+      )}
+
+      {entfernenOffen && (
+        <LadesaeuleEntfernenDialog
+          siteId={siteId}
+          kennung={chargePointId}
+          name={fallbackTitle}
+          onClose={() => setEntfernenOffen(false)}
+          onEntfernt={() => {
+            // Zurück zur Anlage - die Kennung meldet sich nicht mehr an, die Seite dieser Säule hat sonst nichts mehr zu zeigen.
+            setEntfernenOffen(false);
+            window.location.hash = siteHref;
+          }}
+        />
       )}
     </div>
   );

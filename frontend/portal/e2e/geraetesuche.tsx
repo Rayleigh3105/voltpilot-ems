@@ -125,6 +125,16 @@ const merke = <T,>(name: string, wert: T) => (...args: unknown[]) => {
   gesendet[name] = structuredClone(args[args.length - 1]);
   return Promise.resolve(structuredClone(wert));
 };
+
+/**
+ * `&ladesaeule=1` (vp-ladesaeule-entfernen): eine zugelassene OCPP-Ladesäule im Aufbau - für den Beweis, dass ihr
+ * Zeilenmenü „Ladesäule entfernen …" anbietet und die Zeile nach der Bestätigung OHNE Neuladen verschwindet
+ * (`siteEntities` zählt mit, die Spec prüft: kein zweiter Abruf).
+ */
+const ladesaeule = frage.get('ladesaeule') === '1';
+const LADESAEULE_KENNUNG = 'CP-HOF-SUED';
+let siteEntitiesAufrufe = 0;
+(window as unknown as { __siteEntitiesAufrufe: () => number }).__siteEntitiesAufrufe = () => siteEntitiesAufrufe;
 const nein = (status: number, body: Record<string, unknown>) => () =>
   Promise.reject(new ApiError(status, String(body.message ?? 'abgelehnt'), {
     suchId: null, zuletztGesehen: null, wiederAb: null, message: '', ...body,
@@ -150,9 +160,12 @@ const verlauf = gsVerlauf(jetzt).map((e, i) =>
   boxLage === 'laeuft' && i === 0 ? { ...e, zustand: 'laeuft' as const, gestartetAm: new Date(jetzt - 12_000).toISOString(), gestartetVon: F.fremd.gestartetVon, dauerMs: null } : e);
 
 const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
-  siteEntities: ok(heizstabFall
-    ? { registry: null, entities: zuhause.entities, localSetup: zuhause.localSetup, staleOnDevice: [] }
-    : { registry: null, entities: ohneGeraete ? [] : [wechselrichter], localSetup: [], staleOnDevice: [] }),
+  siteEntities: () => {
+    siteEntitiesAufrufe += 1;
+    return Promise.resolve(structuredClone(heizstabFall
+      ? { registry: null, entities: zuhause.entities, localSetup: zuhause.localSetup, staleOnDevice: [] }
+      : { registry: null, entities: ohneGeraete ? [] : [wechselrichter], localSetup: [], staleOnDevice: [] }));
+  },
   topology: ok(topology),
   datenquellen: ok({ datenquellen: [] }),
   uemsGeraete: ok({ geraete: [] }),
@@ -167,7 +180,16 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
     reportedAt: new Date(jetzt - 20_000).toISOString(),
     capabilities: boxLage === 'update' ? ['data_sources'] : ['data_sources', 'geraetesuche'],
   }])),
-  siteChargers: ok({ budget: null, chargers: [] }),
+  siteChargers: ok({
+    budget: null,
+    chargers: ladesaeule ? [{
+      deviceId: GS_BOX_ID, chargePointId: LADESAEULE_KENNUNG, label: 'Hof Süd', priority: false,
+      connected: true, ready: true, lastSeen: new Date(jetzt - 30_000).toISOString(),
+    }] : [],
+  }),
+  removeChargePoint: merke('removeChargePoint', {
+    gridLimitKw: null, priorityChargePointIds: [], chargePoints: [], removedChargePointIds: [LADESAEULE_KENNUNG],
+  }),
   entityStrategies: ok({}),
   listDevices: ok(sichtbareListe([box])),
   siteInterventions: ok({ automationPaused: false, pausedUntil: null, interventions: [] }),

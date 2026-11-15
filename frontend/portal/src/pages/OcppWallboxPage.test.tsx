@@ -4,6 +4,8 @@ import { ApiError, type OcppAction, type OcppStation } from '../api';
 import { api } from '../apiVoll';
 import { OcppWallboxPage } from './OcppWallboxPage';
 import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 /**
  * Der Zustands-Satz der Bühne - die Antwort auf „was tut die Säule gerade?".
@@ -619,5 +621,63 @@ describe('OcppWallboxPage integration', () => {
     expect(pollSignal).toBeDefined();
     await act(async () => { view.rerender(<OcppWallboxPage siteId="s" chargePointId="CP-2" fallbackTitle="Wallbox" backHref="#back" />); });
     expect(pollSignal?.aborted).toBe(true);
+  });
+});
+
+describe('OcppWallboxPage · Ladesäule entfernen (vp-ladesaeule-entfernen)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setSelbstauskunft(null);
+    window.history.replaceState(null, '', '#/');
+  });
+
+  it('bietet im „⋯"-Menü „Ladesäule entfernen …" an - nie eine löschbare Messkomponente', async () => {
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" siteHref="#site" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Weitere Aktionen' }));
+    expect(await screen.findByRole('menuitem', { name: /Ladesäule entfernen/ })).toBeInTheDocument();
+  });
+
+  it('fragt nach den Folgen, nimmt erst nach der Bestätigung zurück und führt dann zur Anlage zurück', async () => {
+    const removeChargePoint = vi.spyOn(api, 'removeChargePoint').mockResolvedValue({
+      gridLimitKw: null, priorityChargePointIds: [], chargePoints: [], removedChargePointIds: ['CP-1'],
+    });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" siteHref="#site" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Weitere Aktionen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Ladesäule entfernen/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Ladesäule entfernen' });
+    expect(within(dialog).getByText(/Soll VoltPilot die Ladesäule „Garage" nicht mehr annehmen\?/)).toBeInTheDocument();
+    expect(removeChargePoint).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ladesäule entfernen' }));
+    await waitFor(() => expect(removeChargePoint).toHaveBeenCalledWith('s', 'CP-1'));
+    // Diese Seite hat nach der Rücknahme nichts mehr zu zeigen - zurück zur Anlage.
+    await waitFor(() => expect(window.location.hash).toBe('#site'));
+  });
+
+  it('zeigt den Grund des Servers verständlich, wenn das Entfernen abgelehnt wird, und bleibt auf der Seite', async () => {
+    vi.spyOn(api, 'removeChargePoint').mockRejectedValue(
+      new ApiError(404, 'Diese Anlage führt keine eingetragene Ladepunkt-Kennung "CP-1".'),
+    );
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" siteHref="#site" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Weitere Aktionen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Ladesäule entfernen/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ladesäule entfernen' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ladesäule entfernen' }));
+    expect(await within(dialog).findByText(/keine eingetragene Ladepunkt-Kennung/)).toBeInTheDocument();
+    expect(window.location.hash).not.toBe('#site');
+  });
+
+  it('ohne „ladepunkt.anbinden“ fehlt der Eintrag - dasselbe Recht wie der Server-Endpunkt', async () => {
+    const me = rechteSeed('JW').me;
+    const ohne = (rechte: readonly string[]) => rechte.filter((r) => r !== 'ladepunkt.anbinden');
+    setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: ohne(me.unternehmen_rechte),
+      standorte: me.standorte.map((st) => ({ ...st, rechte: ohne(st.rechte) })),
+    });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#devices" siteHref="#site" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Weitere Aktionen' }));
+    expect(screen.queryByRole('menuitem', { name: /Ladesäule entfernen/ })).toBeNull();
   });
 });

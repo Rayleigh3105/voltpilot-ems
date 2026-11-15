@@ -56,6 +56,7 @@ import { REGEL_BRUECKE_LABEL, bietetRegelBruecke, regelBrueckeHash } from '../se
 import { UmbenennenDialog } from '../components/UmbenennenDialog';
 import { KomponenteLoeschenDialog, ZuordnungAendernDialog } from '../components/ZuordnungAendern';
 import { UmhaengenDialog } from '../components/UmhaengenDialog';
+import { LadesaeuleEntfernenDialog } from '../components/LadesaeuleEntfernenDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
@@ -238,6 +239,7 @@ export function AufbauSection({
   // Aus „Geräte suchen“ geöffnet: die Quelle an der Adresse des Fundes ist vorgewählt (nie still gespeichert).
   const [repinVorschlag, setRepinVorschlag] = useState<string | null>(null);
   const [remove, setRemove] = useState<PlantComponent | null>(null);
+  const [ladesaeuleEntfernen, setLadesaeuleEntfernen] = useState<{ kennung: string; name: string } | null>(null);
   const [umhaengen, setUmhaengen] = useState<PlantComponent | null>(null);
   const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
   const [sofortBusy, setSofortBusy] = useState(false);
@@ -804,6 +806,18 @@ export function AufbauSection({
         });
       }
     }
+    // Eine Ladesäule hat keine löschbare Messkomponente (sie kommt per OCPP) - ihr eigener Gefahr-Eintrag
+    // nimmt stattdessen die Kennung zurück (`vp-ladesaeule-entfernen`), dasselbe Recht wie der Server-Endpunkt.
+    const kennung = g.kennung;
+    if (g.art === 'ladepunkt' && kennung) {
+      items.push({
+        label: 'Ladesäule entfernen …',
+        icon: 'trash',
+        recht: 'ladepunkt.anbinden',
+        danger: true,
+        onClick: () => setLadesaeuleEntfernen({ kennung, name: g.titel }),
+      });
+    }
     return items;
   };
 
@@ -1290,6 +1304,24 @@ export function AufbauSection({
           }}
         />
       )}
+
+      {ladesaeuleEntfernen && (() => {
+        const kennung = ladesaeuleEntfernen.kennung;
+        return (
+          <LadesaeuleEntfernenDialog
+            siteId={site.id}
+            kennung={kennung}
+            name={ladesaeuleEntfernen.name}
+            onClose={() => setLadesaeuleEntfernen(null)}
+            onEntfernt={() => {
+              // Die Karte der Säule kommt direkt aus `charging.chargers` (R7, `zentraleListe.ts`) - ihre Zeile
+              // verschwindet also schon mit dieser lokalen Aktualisierung, ohne einen neuen Abruf abzuwarten.
+              setCharging((c) => (c ? { ...c, chargers: c.chargers.filter((x) => x.chargePointId !== kennung) } : c));
+              setLadesaeuleEntfernen(null);
+            }}
+          />
+        );
+      })()}
 
       {umhaengen && (
         <UmhaengenDialog

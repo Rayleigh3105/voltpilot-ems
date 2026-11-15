@@ -18,14 +18,11 @@ import {
   ANSCHLUSS_HILFE,
   ANSCHLUSS_OPTIONEN,
   ENDPUNKT_ZWEI_FORMEN,
-  ENTFERNEN_HINWEIS,
   KEINE_EINGETRAGEN,
   KENNUNG_HILFE,
   abschluss,
   eingetrageneZeilen,
   endpunkt,
-  entfernenFolgen,
-  entfernenFrage,
   kennungFehler,
   kennungVorschlag,
   meldung,
@@ -41,7 +38,7 @@ import {
   nennleistungSoll,
   nennleistungText,
 } from '../ladesaeuleAnbinden';
-import { ConfirmDialog } from './ConfirmDialog';
+import { LadesaeuleEntfernenDialog } from './LadesaeuleEntfernenDialog';
 import './LadesaeuleAnbinden.css';
 
 /**
@@ -98,7 +95,6 @@ export function LadesaeuleAnbinden({
   const [entfernenZiel, setEntfernenZiel] = useState<{ kennung: string; name: string } | null>(
     null,
   );
-  const [entfernenBusy, setEntfernenBusy] = useState(false);
 
   useEffect(() => {
     let aktiv = true;
@@ -197,25 +193,6 @@ export function LadesaeuleAnbinden({
       setFehler(e instanceof ApiError ? e.message : 'Die Kennung konnte nicht eingetragen werden.');
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function entfernen() {
-    if (!entfernenZiel) return;
-    setEntfernenBusy(true);
-    setFehler(null);
-    try {
-      const c = await api.removeChargePoint(siteId, entfernenZiel.kennung);
-      setConfig(c);
-      setEntfernenZiel(null);
-      onChanged?.();
-    } catch (e) {
-      setFehler(
-        e instanceof ApiError ? e.message : 'Die Kennung konnte nicht entfernt werden.',
-      );
-      setEntfernenZiel(null);
-    } finally {
-      setEntfernenBusy(false);
     }
   }
 
@@ -434,7 +411,7 @@ export function LadesaeuleAnbinden({
                   type="button"
                   className="vp-anbinden-remove"
                   aria-label={`Ladesäule „${z.name}" entfernen`}
-                  disabled={busy || entfernenBusy}
+                  disabled={busy}
                   onClick={() => setEntfernenZiel({ kennung: z.kennung, name: z.name })}
                 >
                   <Icon name="trash" size={16} />
@@ -445,18 +422,20 @@ export function LadesaeuleAnbinden({
         )}
       </div>
 
-      <ConfirmDialog
-        open={!!entfernenZiel}
-        title="Ladesäule entfernen"
-        intro={entfernenZiel ? entfernenFrage(entfernenZiel.name) : ''}
-        /* Wann die Rücknahme wirkt, gehört zur Entscheidung - im Dialog statt dauerhaft unter der Liste. */
-        consequences={entfernenZiel ? [...entfernenFolgen(entfernenZiel.name), ENTFERNEN_HINWEIS] : []}
-        confirmLabel="Kennung entfernen"
-        tone="danger"
-        busy={entfernenBusy}
-        onConfirm={() => void entfernen()}
-        onCancel={() => setEntfernenZiel(null)}
-      />
+      {entfernenZiel && (
+        <LadesaeuleEntfernenDialog
+          siteId={siteId}
+          kennung={entfernenZiel.kennung}
+          name={entfernenZiel.name}
+          confirmLabel="Kennung entfernen"
+          onClose={() => setEntfernenZiel(null)}
+          onEntfernt={(c) => {
+            setConfig(c);
+            setEntfernenZiel(null);
+            onChanged?.();
+          }}
+        />
+      )}
     </section>
   );
 }
