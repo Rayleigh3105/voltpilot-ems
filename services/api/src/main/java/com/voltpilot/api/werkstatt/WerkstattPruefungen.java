@@ -1,5 +1,6 @@
 package com.voltpilot.api.werkstatt;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 
@@ -21,7 +22,23 @@ public final class WerkstattPruefungen {
             "fenster_zu",
             "lan_netz",
             "neustart",
-            "update_bereit");
+            "update_bereit",
+            "einrichtung_wlan_bereit");
+
+    /** Die jüngste Prüfung (PR #1885, S1); die einzige, die während der Übergangsfrist fehlen darf. */
+    public static final String EINRICHTUNG_WLAN_BEREIT = "einrichtung_wlan_bereit";
+
+    /**
+     * Übergangsfrist für {@link #EINRICHTUNG_WLAN_BEREIT} (Entscheid des
+     * Kapitäns vom 15.11.2026 zu PR #1885, vier Wochen): Der Werkstatt-Dienst
+     * läuft auf einem eigenen Rechner in der Werkstatt und wird dort von Hand
+     * aktualisiert, nicht automatisch wie die API. Bis zu diesem Zeitpunkt
+     * nimmt die Abnahme eines Dienstes an, dem nur dieser eine Beleg fehlt
+     * (alle anderen neun bleiben Pflicht), und kennzeichnet sie sichtbar als
+     * "Dienst-Fassung vor Einrichtungs-WLAN". Danach gilt wieder die volle
+     * Pflicht aus {@link #ALLE}.
+     */
+    public static final Instant EINRICHTUNG_WLAN_UEBERGANG_BIS = Instant.parse("2026-12-13T00:00:00Z");
 
     private WerkstattPruefungen() {
     }
@@ -34,5 +51,14 @@ public final class WerkstattPruefungen {
     /** Kennungen, die es in der Liste nicht gibt. */
     public static List<String> unbekannt(Collection<String> abgehakt) {
         return abgehakt.stream().filter(p -> !ALLE.contains(p)).distinct().sorted().toList();
+    }
+
+    /**
+     * Ob eine Abnahme mit genau diesen fehlenden Prüfungen innerhalb der
+     * Übergangsfrist noch durchgeht: nur wenn ausschließlich
+     * {@link #EINRICHTUNG_WLAN_BEREIT} fehlt und {@code jetzt} vor der Frist liegt.
+     */
+    public static boolean uebergangGilt(List<String> fehlend, Instant jetzt) {
+        return fehlend.equals(List.of(EINRICHTUNG_WLAN_BEREIT)) && jetzt.isBefore(EINRICHTUNG_WLAN_UEBERGANG_BIS);
     }
 }

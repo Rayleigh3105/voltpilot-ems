@@ -12,14 +12,14 @@ const lauf = vektor.lauf as LaufStand;
 const T = Date.parse(vektor.zeit);
 
 describe('Lauf-Seite aus der Ansicht des Dienstes', () => {
-  it('neun Prüfungen aus dem Vektor der Prüfungen, nicht acht', () => {
-    expect(PRUEFUNGEN_WORT).toBe('neun');
+  it('zehn Prüfungen aus dem Vektor der Prüfungen, nicht neun', () => {
+    expect(PRUEFUNGEN_WORT).toBe('zehn');
   });
 
   it('Schritte mit Belegzeile und Dauer; ohne Belege (älterer Dienst) bleibt die Zeile leer statt erfunden', () => {
     const ph = schrittListe(lauf, meistDauer([]), T);
     const alle = ph.flatMap((p) => p.schritte);
-    expect(alle).toHaveLength(16);
+    expect(alle).toHaveLength(17);
     expect(alle.find((s) => s.schritt === 'fassungen')).toMatchObject({ zustand: 'ok', dauer: '0:04', beleg: expect.stringContaining('Manifest signiert') });
     expect(alle.find((s) => s.schritt === 'programm')).toMatchObject({ zustand: 'lauf', dauer: '0:42', beleg: null });
     expect(ph.find((p) => p.id === 'abnahme')?.rechts).toMatch(/^ca\. \d+ Min$/);
@@ -30,7 +30,7 @@ describe('Lauf-Seite aus der Ansicht des Dienstes', () => {
 
   it('Jetzt-Karte: Schritt, seit wann, meist, Frist, danach; nur solange der Lauf arbeitet', () => {
     const j = jetzt(lauf, meistDauer([]), T)!;
-    expect(j).toMatchObject({ nummer: 8, von: 16, titel: 'Edge Light einspielen', seitSek: 42, fristSek: 600, danach: 'Tunnel-Schlüssel erzeugen' });
+    expect(j).toMatchObject({ nummer: 8, von: 17, titel: 'Edge Light einspielen', seitSek: 42, fristSek: 600, danach: 'Einrichtungs-WLAN vorbereiten' });
     expect(jetzt({ ...lauf, zustand: 'angehalten' }, {}, T)).toBeNull();
     expect(jetzt({ ...lauf, zustand: 'fertig' }, {}, T)).toBeNull();
   });

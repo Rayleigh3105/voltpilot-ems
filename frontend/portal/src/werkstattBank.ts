@@ -189,10 +189,10 @@ export type PhaseZustand = 'ok' | 'lauf' | 'offen' | 'warn';
 export const PHASEN = [
   { id: 'erkannt', titel: 'Erkannt', klein: 'Mango erkannt', schritte: ['erkennen'] },
   { id: 'aufgespielt', titel: 'Aufgespielt', klein: 'Neues System (OpenWrt)', schritte: ['fassungen', 'openwrt', 'wiedererkennen'] },
-  { id: 'einrichten', titel: 'Einrichten', klein: 'Passwort, Notfall-Schlüssel, Programm', schritte: ['internet', 'passwort', 'notfall', 'programm'] },
+  { id: 'einrichten', titel: 'Einrichten', klein: 'Passwort, Notfall-Schlüssel, Programm, Einrichtungs-WLAN', schritte: ['internet', 'passwort', 'notfall', 'programm', 'einrichtung_wlan'] },
   { id: 'anmelden', titel: 'Bei VoltPilot anmelden', klein: 'Geräteschlüssel und Wartungstunnel', schritte: ['tunnel_schluessel', 'einloesen', 'tunnel_adresse', 'tunnel'] },
   { id: 'probe', titel: 'Probe über den Wartungstunnel', klein: 'Netz der Box, Neustart, Anmeldung über den Tunnel', schritte: ['lan', 'neustart', 'probe'] },
-  { id: 'abnahme', titel: 'Abnahme', klein: 'Alle neun Prüfungen mit Beleg', schritte: ['internet_weg', 'uebergabe'] },
+  { id: 'abnahme', titel: 'Abnahme', klein: 'Alle zehn Prüfungen mit Beleg', schritte: ['internet_weg', 'uebergabe'] },
 ] as const;
 
 /** Die Schritte des Dienstes in ihrer Reihenfolge. */
@@ -201,7 +201,7 @@ export const SCHRITTE: readonly string[] = PHASEN.flatMap((p) => p.schritte);
 /** Ungefähre Dauer je Schritt in Minuten an der Mango (PS-3 misst nach); die Lauf-Seite nimmt gemessene Dauern, wenn es sie gibt. */
 export const MINUTEN: Record<string, number> = {
   erkennen: 0.5, fassungen: 1, openwrt: 2, wiedererkennen: 4, internet: 0.5, passwort: 0.5, notfall: 0.3,
-  programm: 2, tunnel_schluessel: 0.3, einloesen: 0.3, tunnel_adresse: 0.3, tunnel: 1, lan: 0.5, neustart: 3,
+  programm: 2, einrichtung_wlan: 0.5, tunnel_schluessel: 0.3, einloesen: 0.3, tunnel_adresse: 0.3, tunnel: 1, lan: 0.5, neustart: 3,
   probe: 1.5, internet_weg: 0.3, uebergabe: 0.2,
 };
 

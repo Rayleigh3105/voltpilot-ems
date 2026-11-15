@@ -45,6 +45,11 @@
       "id": "update_bereit",
       "regel": "Entscheid 5c, Konzept vp-edge-light-update K5",
       "text": "Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Light"
+    },
+    {
+      "id": "einrichtung_wlan_bereit",
+      "regel": "Entscheid E6=B vom 13.11.2026, Konzept vp-edge-light-wlan Abschnitt 6.1",
+      "text": "Einrichtungs-WLAN bereit: Funkmodul auf Land DE, Paket relayd auf der Box"
     }
   ]
 }

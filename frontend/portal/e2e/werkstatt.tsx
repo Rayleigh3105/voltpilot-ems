@@ -41,7 +41,7 @@ let freigaben: WerkstattFreigabe[] = szenario === 'ohne' ? [] : [{
   notiz: null, erteiltAm: iso(-86_400_000), erteiltVon: 'Alex', beendetAm: null, beendetVon: null, zustand: 'laufend', grund: null,
 }];
 
-const ERLEDIGT_BIS_TUNNEL = ['erkennen', 'fassungen', 'openwrt', 'wiedererkennen', 'internet', 'passwort', 'notfall', 'programm', 'tunnel_schluessel'];
+const ERLEDIGT_BIS_TUNNEL = ['erkennen', 'fassungen', 'openwrt', 'wiedererkennen', 'internet', 'passwort', 'notfall', 'programm', 'einrichtung_wlan', 'tunnel_schluessel'];
 const ALLE = [...ERLEDIGT_BIS_TUNNEL, 'einloesen', 'tunnel', 'lan', 'neustart', 'probe', 'internet_weg', 'uebergabe'];
 
 /** Belegzeilen und Dauern, wie der Dienst sie aus seiner festen Liste bildet (lauf/zeile.go). */
@@ -54,6 +54,7 @@ const BELEG: Record<string, [number, string]> = {
   passwort: [9, 'gesetzt, nur verschlüsselt abgelegt · ohne Passwort abgewiesen'],
   notfall: [2.2, '1 Notfall-Schlüssel auf der Box'],
   programm: [112, 'meldet sich: ref edge-k7m2xq3, version 2026.11.1 · update-bereit'],
+  einrichtung_wlan: [8, 'Land DE, Paket relayd auf der Box'],
   tunnel_schluessel: [14, 'erzeugt für edge-k7m2xq3 (Prüfzeichen gültig)'],
   einloesen: [18, 'Tunnel-Adresse 10.10.16.9 · Geräteschlüssel festgehalten'],
   tunnel: [41, 'Wartungstunnel eingerichtet · SSH nur im Tunnel'],
@@ -61,7 +62,7 @@ const BELEG: Record<string, [number, string]> = {
   neustart: [161, 'wieder da nach 2m41s · Host-Schlüssel unverändert'],
   probe: [74, 'Anmeldung über den Tunnel gelungen nach 2 Versuchen in 31s'],
   internet_weg: [5, 'beim Kunden geht die Box nur über WAN ins Netz'],
-  uebergabe: [11, 'edge-light-g1a2b3c · 9 Prüfungen mit Beleg'],
+  uebergabe: [11, 'edge-light-g1a2b3c · 10 Prüfungen mit Beleg'],
 };
 const belege = (erledigt: string[]): SchrittBeleg[] => erledigt.map((x) => ({ schritt: x, dauer_s: BELEG[x][0], zeile: BELEG[x][1] }));
 const VORHER_WERK = { system: 'GL-Firmware 4.3.17', edge_light: 'kein VoltPilot' };

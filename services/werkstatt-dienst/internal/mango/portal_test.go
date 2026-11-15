@@ -86,7 +86,7 @@ func TestLaufMitPortal(t *testing.T) {
 	if z != lauf.Fertig {
 		t.Fatalf("Zustand %s: %+v\n%s", z, l.Stand(), a.log.String())
 	}
-	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm tunnel_schluessel einloesen tunnel lan neustart probe internet_weg uebergabe"
+	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm einrichtung_wlan tunnel_schluessel einloesen tunnel lan neustart probe internet_weg uebergabe"
 	if got := strings.Join(l.Stand().Erledigt, " "); got != want {
 		t.Fatalf("Schritte %s", got)
 	}
@@ -109,7 +109,7 @@ func TestLaufMitPortal(t *testing.T) {
 	if _, _, _, tunnel := a.m.Stand(); tunnel != "10.10.16.7" {
 		t.Fatalf("Tunnel %s", tunnel)
 	}
-	// Probe-Fenster der Einlösung geschlossen, Abnahme mit acht Belegen und verschlüsseltem Passwort.
+	// Probe-Fenster der Einlösung geschlossen, Abnahme mit zehn Belegen und verschlüsseltem Passwort.
 	if len(p.geschlossen) != 1 || p.geschlossen[0] != "5d1b2c3e-0000-4000-8000-000000000001" {
 		t.Fatalf("geschlossen %v", p.geschlossen)
 	}

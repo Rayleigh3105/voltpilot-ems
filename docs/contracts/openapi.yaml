@@ -8288,8 +8288,12 @@ paths:
       tags: [werkstatt-dienst]
       summary: Die Abnahme mit den Belegen des Werkstatt-Dienstes (WI-7 A).
       description: >
-        Je Prüfung der Werkstatt-Regel ein Beleg (alle acht, keine andere),
-        das Root-Passwort mit age verschlüsselt (ASCII-Hülle mit age-Kopf), das
+        Je Prüfung der Werkstatt-Regel ein Beleg (alle zehn, keine andere) -
+        außer während der Übergangsfrist für einrichtung_wlan_bereit bis
+        13.12.2026 (PR #1885): fehlt nur dieser eine, geht die Abnahme trotzdem
+        durch und wird im Portal als "Dienst-Fassung vor Einrichtungs-WLAN"
+        gekennzeichnet; alle anderen neun bleiben Pflicht. Dazu das
+        Root-Passwort mit age verschlüsselt (ASCII-Hülle mit age-Kopf), das
         LAN-Netz (geprüft wie im Register, dort festgehalten). Bezieht sich auf
         die letzte Einlösung der Box: Host-Schlüssel und Fassung wie beim
         Einlösen gemeldet, Tunnel-Schlüssel wie hinterlegt, das Probe-Fenster der
@@ -29043,6 +29047,12 @@ components:
           type: string
           nullable: true
           description: Das Root-Passwort, mit age verschlüsselt für den Schlüssel „Box-Passwörter“ (WI-6 A); nur der Betreiber kann es entschlüsseln. Das Passwort selbst geht an keine Route.
+        dienstFassungVorEinrichtungWlan:
+          type: boolean
+          description: >
+            true, wenn ein Werkstatt-Dienst vor S1 (PR #1885) ohne den Beleg
+            einrichtung_wlan_bereit angenommen wurde (Übergangsfrist bis
+            13.12.2026, aus belege abgeleitet, keine eigene Spalte).
     WerkstattBox:
       type: object
       properties:

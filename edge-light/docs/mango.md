@@ -562,7 +562,7 @@ ssh <box> "/usr/libexec/vp-edge-light/wlan-anschluss.sh messen 'Familie Müller'
 printf '%s\n' '<passwort>' | ssh <box> "/usr/libexec/vp-edge-light/wlan-anschluss.sh verbinden 'Familie Müller'"
 ```
 
-Fehlt `relayd` (gehört künftig zur Werkstatt), holt `verbinden` es, solange die Box Internet hat.
+Fehlt `relayd` ausnahmsweise doch (die Werkstatt bringt es seit S1 auf jeder Box mit, Schritt `einrichtung_wlan` im Werkstatt-Dienst), holt `verbinden` es nach, solange die Box Internet hat.
 Danach holen die Geräte an der LAN-Buchse ihre neue Adresse beim nächsten DHCP-Lauf; sofort nur nach einem Neustart oder wenn ihr Kabel kurz gezogen wird.
 Im Kundenrouter feste Adressen für die Box (wegen der Ladesäule) und für die Geräte anlegen: Der Router sieht die Geräte im DHCP mit ihrer eigenen MAC, auch wenn er sie per ARP mit der MAC der Box führt.
 Der Huawei-Dongle sieht die Box unter ihrer WLAN-Adresse; „restricted“ also auf diese Adresse stellen.
@@ -582,7 +582,7 @@ Der Huawei-Dongle sieht die Box unter ihrer WLAN-Adresse; „restricted“ also 
 
 **Offen, nur an echter Hardware:** Client und Einrichtungs-WLAN auf der Mango (mt7603), relayd an FRITZ!Box, Speedport und Vodafone Station (Geräteliste, feste Adressen), Smart Dongle hinter der Box mit „restricted“, Waveshare im Kundennetz, Ladesäule über die WLAN-Adresse, Router mit WPA3, ein Ausfall des Routers auf echter Hardware.
 
-**Für die Werkstatt (eigener Schritt):** `wireless.radio0.country='DE'` auf jeder Box setzen (heute setzen es erst `verbinden` und das Einrichtungs-WLAN; ohne Land gelten die Kanäle 12 und 13 nur eingeschränkt) und `relayd` mitbringen.
+**Werkstatt (S1, gebaut):** Der Werkstatt-Dienst setzt im Schritt `einrichtung_wlan` `wireless.radio0.country='DE'` auf jeder Box (sonst setzen es erst `verbinden` und das Einrichtungs-WLAN selbst; ohne Land gelten die Kanäle 12 und 13 nur eingeschränkt) und bringt `relayd` mit, solange die Werkstatt-Brücke noch Internet gibt; die Abnahme prüft das mit „Einrichtungs-WLAN bereit“ (`docs/contracts/werkstatt-pruefungen.json`).
 
 ### Einrichtungs-WLAN und Einrichtungsseite
 

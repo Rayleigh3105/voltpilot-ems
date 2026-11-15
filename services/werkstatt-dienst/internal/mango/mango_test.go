@@ -212,7 +212,7 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 		t.Fatalf("Zustand %s: %+v\n%s", z, l.Stand(), a.log.String())
 	}
 	s := l.Stand()
-	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm tunnel_schluessel tunnel_adresse tunnel lan neustart probe internet_weg uebergabe"
+	want := "erkennen fassungen openwrt wiedererkennen internet passwort notfall programm einrichtung_wlan tunnel_schluessel tunnel_adresse tunnel lan neustart probe internet_weg uebergabe"
 	if strings.Join(s.Erledigt, " ") != want {
 		t.Fatalf("Schritte %v", s.Erledigt)
 	}
@@ -260,6 +260,9 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 	}
 	if !strings.Contains(wert(t, b["programm"], "install"), "Pruefsumme auf dem Geraet bestaetigt") || wert(t, b["programm"], "referenz") != "edge-k7m2xq3 (Prüfzeichen gültig)" {
 		t.Fatalf("Programm %v", b["programm"])
+	}
+	if wert(t, b["einrichtung_wlan"], "land") != "DE" || wert(t, b["einrichtung_wlan"], "relayd") != "da" {
+		t.Fatalf("Einrichtungs-WLAN der Werkstatt %v", b["einrichtung_wlan"])
 	}
 	if wert(t, b["tunnel_adresse"], "tunnel_adresse") != "10.10.16.5" || !strings.Contains(wert(t, b["tunnel"], "handshake"), "7 seconds ago") {
 		t.Fatalf("Tunnel %v %v", b["tunnel_adresse"], b["tunnel"])
@@ -327,6 +330,7 @@ func TestAbbruchregeln(t *testing.T) {
 		{"Freigabe-Prüfsumme", mango.AbWerk, func(a *aufbau) { a.f.OpenWrt.Sha256 = strings.Repeat("0", 64) }, "fassungen", "nicht benutzt", false, "fassung_nicht_bereit"},
 		{"falsche Programm-Fassung", mango.AbOpenWrt, func(a *aufbau) { a.m.Version = "edge-light-gabc1234" }, "programm", "die Freigabe nennt", false, "schritt_gescheitert"},
 		{"Referenz ohne Prüfzeichen", mango.AbOpenWrt, func(a *aufbau) { a.m.Ref = "edge-k7m2xqz" }, "programm", "Prüfzeichen", false, "schritt_gescheitert"},
+		{"relayd nicht verfügbar", mango.AbOpenWrt, func(a *aufbau) { a.m.RelaydNichtVerfuegbar = true }, "einrichtung_wlan", "relayd", false, "schritt_gescheitert"},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {

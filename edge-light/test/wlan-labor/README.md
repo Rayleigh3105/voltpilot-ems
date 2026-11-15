@@ -1,7 +1,7 @@
 # WLAN-Labor: OpenWrt mit simuliertem Funk
 
 Ein echtes OpenWrt 25.12.5 mit WLAN, ohne Mango, ohne Docker, ohne Root auf dem Rechner.
-Gebaut für den WLAN-Anschluss der Box (`edge-light/openwrt/files/usr/libexec/vp-edge-light/wlan-anschluss.sh`); inzwischen prüft es auch das Einrichtungs-WLAN samt Wächter (`einrichtung-wlan.sh`, Läufe `einrichtung`, `fenster`), das Weiterlesen bei Routerausfall und -tausch (`routerausfall`) und die Einrichtungsseite der Web-App Ende-zu-Ende (`einrichtung-weg`: das echte Go-Programm, als i686 gebaut, läuft im Emulator).
+Gebaut für den WLAN-Anschluss der Box (`edge-light/openwrt/files/usr/libexec/vp-edge-light/wlan-anschluss.sh`); inzwischen prüft es auch das Einrichtungs-WLAN samt Wächter (`einrichtung-wlan.sh`, Läufe `einrichtung`, `fenster`), das Weiterlesen bei Routerausfall und -tausch (`routerausfall`), die Einrichtungsseite der Web-App Ende-zu-Ende (`einrichtung-weg`: das echte Go-Programm, als i686 gebaut, läuft im Emulator) und die Vorgabe der Werkstatt (S1: eine Box mit Land DE und relayd wie ab Werk, aber ganz ohne Paketquelle beim Kunden, Lauf `werkstatt`).
 Der nächste Schritt (Wiederfinden der Geräte, S6) verwendet es weiter.
 
 ```sh
