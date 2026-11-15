@@ -69,7 +69,7 @@ describe('Satzbaukasten', () => {
     expect(grund('kein_dynamischer_tarif')).toBe('kein zeitveränderlicher Tarif');
     expect(grund('keine_zone')).toBe('keine Preiszone');
     expect(grund('keine_box')).toBe('keine VoltPilot-Box');
-    expect(grund('edge_light')).toBe('führt diese Box nicht aus');
+    expect(grund('edge_light')).toBe('Box braucht ein Update');
   });
 
   it('wird eine gewöhnliche Regel der Box und kommt unverändert zurück', () => {

@@ -86,7 +86,8 @@ export function preisGesperrt(feed: PriceBoxFeed | null): string | null {
     case 'kein_dynamischer_tarif': return 'kein zeitveränderlicher Tarif';
     case 'keine_zone': return 'keine Preiszone';
     case 'keine_box': return 'keine VoltPilot-Box';
-    case 'edge_light': return 'führt diese Box nicht aus';
+    // Seit Steuerlogik Stufe 6 rechnet eine Edge Light Regeln im Kern; gesperrt ist nur eine, die das noch nicht meldet.
+    case 'edge_light': return 'Box braucht ein Update';
     default: return KOMMT;
   }
 }
