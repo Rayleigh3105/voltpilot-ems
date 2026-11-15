@@ -4,7 +4,7 @@ package logikdienst
 // serve.js) so the API's client follows the same seam:
 //
 //   POST /pruefe   {text, anlage?, registry?}     -> 200 {kanonisch, bericht}
-//                                                 |  422 {message}           (unreadable)
+//                                                 |  422 {message, meldungen} (unreadable, placed at its line)
 //   POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?,
 //                   armed?, settings?: {revision, values}, settings_keep_fitting?}
 //                                                 -> 200 {artifact, bericht, settings?, verworfen?}
@@ -91,7 +91,12 @@ func antworteFehler(w http.ResponseWriter, err error, bericht *Bericht) {
 	case errors.Is(err, ErrAuftrag):
 		schreibe(w, http.StatusBadRequest, map[string]any{"message": err.Error()})
 	case errors.Is(err, ErrUnlesbar):
-		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error()})
+		antwort := map[string]any{"message": err.Error()}
+		var u *Unlesbar
+		if errors.As(err, &u) {
+			antwort["meldungen"] = []Meldung{u.Meldung}
+		}
+		schreibe(w, http.StatusUnprocessableEntity, antwort)
 	case errors.Is(err, ErrStellwerte):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "stellwerte"})
 	case errors.Is(err, ErrSperrt):

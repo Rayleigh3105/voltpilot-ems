@@ -171,6 +171,20 @@
         "darf": "customer",
         "zielwert": false
       }
+    ],
+    "meldungen": [
+      {
+        "art": "hinweis",
+        "text": "„Aus dem Netz bis liegt mindestens 5 K über Nie kälter als“ ließe sich im erlaubten Bereich verletzen; die Regler lassen nur Werte zu, die passen.",
+        "ort": "constraints[1]",
+        "zeile": 25
+      },
+      {
+        "art": "hinweis",
+        "text": "„Aus dem Netz bis liegt nicht über dem Ziel mit Sonnenstrom“ ließe sich im erlaubten Bereich verletzen; die Regler lassen nur Werte zu, die passen.",
+        "ort": "constraints[2]",
+        "zeile": 26
+      }
     ]
   },
   "settings": {

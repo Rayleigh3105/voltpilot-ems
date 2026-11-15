@@ -19,6 +19,11 @@ import (
 // Befund ist ein sperrender Fund der Prüfung.
 type Befund struct {
 	Text string
+	// Ort ist die Stelle im Dokument, in der Schreibweise der Meldungen des Lesers:
+	// Schlüssel mit Punkten, Listenplätze ab 1 in eckigen Klammern
+	// („states.warm.on_when[1]“, „tests[2]“). Damit stellt eine Oberfläche den Befund an
+	// seine Zeile (Dienst neben der API, Stufe 4); leer, wo der Befund keine Stelle hat.
+	Ort string
 }
 
 // ZusammenStand ist eine Bedingung zwischen Stellwerten mit ihrem Stand.
@@ -53,53 +58,62 @@ func (b *Pruefbericht) Sperrt() bool {
 
 type ausdruckOrt struct {
 	ort  string
+	pfad string // die Stelle des Ausdrucks samt Listenplatz (Befund.Ort)
 	baum *baum
 	soll Groesse // "" heißt: nur lesbar und einheitenrein
 }
 
 func (L *Logik) alleAusdruecke() []ausdruckOrt {
 	var out []ausdruckOrt
+	liste := func(wo string, liste []Bedingung, soll Groesse) {
+		for i, b := range liste {
+			out = append(out, ausdruckOrt{ort: wo, pfad: fmt.Sprintf("%s[%d]", wo, i+1), baum: b.Baum, soll: soll})
+		}
+	}
 	for _, n := range L.MerkerListe {
-		out = append(out, ausdruckOrt{ort: "formulas." + n, baum: L.Merker[n]})
+		out = append(out, ausdruckOrt{ort: "formulas." + n, pfad: "formulas." + n, baum: L.Merker[n]})
 	}
 	for _, e := range L.Zustaende {
 		for _, teil := range []struct {
 			feld  string
 			liste []Bedingung
 		}{{"on_when", e.An}, {"on_when_any", e.AnEines}, {"off_when", e.Aus}, {"off_when_any", e.AusEines}} {
-			for _, b := range teil.liste {
-				out = append(out, ausdruckOrt{ort: "states." + e.Kennung + "." + teil.feld, baum: b.Baum, soll: GroesseBool})
-			}
+			liste("states."+e.Kennung+"."+teil.feld, teil.liste, GroesseBool)
 		}
 		if e.Art == "timer" {
-			out = append(out, ausdruckOrt{ort: "states." + e.Kennung + ".duration", baum: e.Dauer, soll: GroesseDauer})
+			wo := "states." + e.Kennung + ".duration"
+			out = append(out, ausdruckOrt{ort: wo, pfad: wo, baum: e.Dauer, soll: GroesseDauer})
 		}
-		for _, s := range e.Schritte {
-			for _, b := range s.Alle {
-				out = append(out, ausdruckOrt{ort: "states." + e.Kennung + "." + s.Name + ".when", baum: b.Baum, soll: GroesseBool})
+		for i, s := range e.Schritte {
+			ort := "states." + e.Kennung + "." + s.Name
+			pfad := fmt.Sprintf("states.%s.steps[%d]", e.Kennung, i+1)
+			for j, b := range s.Alle {
+				out = append(out, ausdruckOrt{ort: ort + ".when", pfad: fmt.Sprintf("%s.when[%d]", pfad, j+1), baum: b.Baum, soll: GroesseBool})
 			}
-			for _, b := range s.Eines {
-				out = append(out, ausdruckOrt{ort: "states." + e.Kennung + "." + s.Name + ".when_any", baum: b.Baum, soll: GroesseBool})
+			for j, b := range s.Eines {
+				out = append(out, ausdruckOrt{ort: ort + ".when_any", pfad: fmt.Sprintf("%s.when_any[%d]", pfad, j+1), baum: b.Baum, soll: GroesseBool})
 			}
 			if s.Setze != nil {
-				out = append(out, ausdruckOrt{ort: "states." + e.Kennung + "." + s.Name + ".set", baum: s.Setze, soll: GroesseZahl})
+				out = append(out, ausdruckOrt{ort: ort + ".set", pfad: pfad + ".set", baum: s.Setze, soll: GroesseZahl})
 			}
 			if s.FruehestensBaum != nil {
-				out = append(out, ausdruckOrt{ort: "states." + e.Kennung + "." + s.Name + ".not_before", baum: s.FruehestensBaum, soll: GroesseDauer})
+				out = append(out, ausdruckOrt{ort: ort + ".not_before", pfad: pfad + ".not_before", baum: s.FruehestensBaum, soll: GroesseDauer})
 			}
 			if s.DannWenn != nil {
-				out = append(out, ausdruckOrt{ort: "states." + e.Kennung + "." + s.Name + ".then", baum: s.DannWenn, soll: GroesseBool})
+				out = append(out, ausdruckOrt{ort: ort + ".then", pfad: pfad + ".then", baum: s.DannWenn, soll: GroesseBool})
 			}
 		}
 	}
 	soll := map[string]Groesse{"level": GroesseZahl, "on_off": GroesseBool, "setpoint": "", "mode": GroesseWort, "percent": GroesseProzent}
 	for _, g := range L.AusgangListe {
 		for art, b := range L.Ausgaenge[g] {
-			out = append(out, ausdruckOrt{ort: "outputs." + g + "." + art, baum: b, soll: soll[art]})
+			wo := "outputs." + g + "." + art
+			out = append(out, ausdruckOrt{ort: wo, pfad: wo, baum: b, soll: soll[art]})
 		}
 	}
 	for i, m := range L.Meldungen {
-		out = append(out, ausdruckOrt{ort: fmt.Sprintf("notifications[%d].when", i+1), baum: m.Wenn, soll: GroesseBool})
+		wo := fmt.Sprintf("notifications[%d].when", i+1)
+		out = append(out, ausdruckOrt{ort: wo, pfad: wo, baum: m.Wenn, soll: GroesseBool})
 	}
 	if L.Anzeige != nil {
 		var anzeigeSoll Groesse
@@ -110,17 +124,18 @@ func (L *Logik) alleAusdruecke() []ausdruckOrt {
 				anzeigeSoll = e.Groesse
 			}
 		}
-		for _, m := range L.Anzeige.Marken {
-			out = append(out, ausdruckOrt{ort: "display.marks." + m.Name, baum: m.Bei, soll: anzeigeSoll})
+		for i, m := range L.Anzeige.Marken {
+			out = append(out, ausdruckOrt{ort: "display.marks." + m.Name, pfad: fmt.Sprintf("display.marks[%d].at", i+1), baum: m.Bei, soll: anzeigeSoll})
 		}
 	}
 	for i, z := range L.Lage {
 		if !z.Sonst {
-			out = append(out, ausdruckOrt{ort: fmt.Sprintf("status[%d].when", i+1), baum: z.Wenn, soll: GroesseBool})
+			wo := fmt.Sprintf("status[%d].when", i+1)
+			out = append(out, ausdruckOrt{ort: wo, pfad: wo, baum: z.Wenn, soll: GroesseBool})
 		}
 	}
-	for _, z := range L.Zusammen {
-		out = append(out, ausdruckOrt{ort: "constraints", baum: z.Baum, soll: GroesseBool})
+	for i, z := range L.Zusammen {
+		out = append(out, ausdruckOrt{ort: "constraints", pfad: fmt.Sprintf("constraints[%d]", i+1), baum: z.Baum, soll: GroesseBool})
 	}
 	return out
 }
@@ -131,7 +146,9 @@ var verboteneNamen = map[string]bool{"on": true, "off": true, "yes": true, "no":
 // Pruefe prüft Aufbau, Einheiten und Stellwerte und lässt die Proben laufen.
 func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 	b := &Pruefbericht{}
-	fehl := func(format string, a ...any) { b.Befunde = append(b.Befunde, Befund{Text: fmt.Sprintf(format, a...)}) }
+	fehl := func(ort, format string, a ...any) {
+		b.Befunde = append(b.Befunde, Befund{Text: fmt.Sprintf(format, a...), Ort: ort})
+	}
 
 	// Punkt 1: Aufbau und Einheiten.
 	alle := L.alleAusdruecke()
@@ -139,16 +156,16 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 	for _, a := range alle {
 		d, err := L.groesse(a.baum, nil)
 		if err != nil {
-			fehl("%s: %s", a.ort, err.Error())
+			fehl(a.pfad, "%s: %s", a.ort, err.Error())
 			continue
 		}
 		if a.soll != "" && d != a.soll {
-			fehl("%s: erwartet %s, ist %s („%s“)", a.ort, nenne(a.soll), nenne(d), a.baum.src)
+			fehl(a.pfad, "%s: erwartet %s, ist %s („%s“)", a.ort, nenne(a.soll), nenne(d), a.baum.src)
 		}
 		if strings.HasSuffix(a.ort, ".setpoint") {
 			switch d {
 			case GroesseBool, GroesseWort, GroessePlan, GroesseZahl:
-				fehl("%s: ein Sollwert braucht eine Einheit („%s“)", a.ort, a.baum.src)
+				fehl(a.pfad, "%s: ein Sollwert braucht eine Einheit („%s“)", a.ort, a.baum.src)
 			}
 		}
 	}
@@ -161,30 +178,30 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 		}
 		for _, w := range festeBetriebsarten(b) {
 			if !kenntBetriebsart(GeraetStamm{Betriebsarten: anlage[g].Betriebsarten}, w) {
-				fehl("outputs.%s.mode: das Gerät kennt die Betriebsart „%s“ nicht (es kennt %s)", g, w,
+				fehl("outputs."+g+".mode", "outputs.%s.mode: das Gerät kennt die Betriebsart „%s“ nicht (es kennt %s)", g, w,
 					strings.Join(anlage[g].Betriebsarten, ", "))
 			}
 		}
 	}
 	if L.Anzeige != nil {
 		if _, ok := L.Werte[L.Anzeige.Wert]; !ok {
-			fehl("display.input: „%s“ steht nicht unter inputs", L.Anzeige.Wert)
+			fehl("display.input", "display.input: „%s“ steht nicht unter inputs", L.Anzeige.Wert)
 		}
 	}
 	for _, g := range L.GeraetListe {
 		if _, ok := L.Ausgaenge[g]; !ok {
-			fehl("Gerät „%s“ wird beansprucht, bekommt aber keinen Ausgang", g)
+			fehl("devices."+g, "Gerät „%s“ wird beansprucht, bekommt aber keinen Ausgang", g)
 		}
 	}
 	for _, g := range L.AusgangListe {
 		if _, ok := L.Geraete[g]; !ok {
-			fehl("Ausgang für „%s“, das Gerät steht nicht unter devices", g)
+			fehl("outputs."+g, "Ausgang für „%s“, das Gerät steht nicht unter devices", g)
 		}
 	}
 	if len(L.Lage) == 0 || !L.Lage[len(L.Lage)-1].Sonst {
-		fehl("Die letzte Zeile der Lage muss „else“ sein, damit immer ein Satz gilt")
+		fehl(fmt.Sprintf("status[%d]", len(L.Lage)), "Die letzte Zeile der Lage muss „else“ sein, damit immer ein Satz gilt")
 	}
-	pruefeText := func(wo, text string) {
+	pruefeText := func(wo, ort, text string) {
 		rest := text
 		for {
 			i := strings.IndexByte(rest, '{')
@@ -199,28 +216,28 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 			rest = rest[i+j+1:]
 			baum, err := lies(formel)
 			if err != nil {
-				fehl("%s: %s", wo, err.Error())
+				fehl(ort, "%s: %s", wo, err.Error())
 				continue
 			}
 			if _, err := L.groesse(baum, nil); err != nil {
-				fehl("%s: %s", wo, err.Error())
+				fehl(ort, "%s: %s", wo, err.Error())
 			}
 		}
 	}
-	for _, z := range L.Lage {
-		pruefeText("Satz „"+z.Titel+"“", z.Satz)
+	for i, z := range L.Lage {
+		pruefeText("Satz „"+z.Titel+"“", fmt.Sprintf("status[%d].text", i+1), z.Satz)
 	}
 	for i, m := range L.Meldungen {
-		pruefeText(fmt.Sprintf("Meldung %d", i+1), m.Satz)
+		pruefeText(fmt.Sprintf("Meldung %d", i+1), fmt.Sprintf("notifications[%d].text", i+1), m.Satz)
 	}
 	for _, n := range L.StellListe {
 		s := L.Stellwerte[n]
 		switch h := s.Hilfe.(type) {
 		case string:
-			pruefeText("Hilfe zu „"+s.Name+"“", h)
+			pruefeText("Hilfe zu „"+s.Name+"“", "settings."+n+".help", h)
 		case [2]string:
-			pruefeText("Hilfe zu „"+s.Name+"“", h[0])
-			pruefeText("Hilfe zu „"+s.Name+"“", h[1])
+			pruefeText("Hilfe zu „"+s.Name+"“", "settings."+n+".help.when_on", h[0])
+			pruefeText("Hilfe zu „"+s.Name+"“", "settings."+n+".help.when_off", h[1])
 		}
 	}
 	// Die Sätze für den Kunden im Blatt „Warum?“: Platzhalter wie in der Lage; fehlt einer für eine
@@ -240,8 +257,8 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 	for _, z := range L.Zustaende {
 		switch z.Art {
 		case "boolean":
-			pruefeText("on_text von „"+z.Name+"“", z.AnText)
-			pruefeText("off_text von „"+z.Name+"“", z.AusText)
+			pruefeText("on_text von „"+z.Name+"“", "states."+z.Kennung+".on_text", z.AnText)
+			pruefeText("off_text von „"+z.Name+"“", "states."+z.Kennung+".off_text", z.AusText)
 			if z.AnText == "" && (z.An != nil || z.AnEines != nil) {
 				ohneSatz = append(ohneSatz, "states."+z.Kennung+".on_text")
 			}
@@ -253,8 +270,8 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 			bedingungenOhneWort("states."+z.Kennung+".off_when", z.Aus)
 			bedingungenOhneWort("states."+z.Kennung+".off_when_any", z.AusEines)
 		case "counter":
-			for _, s := range z.Schritte {
-				pruefeText("text von „"+z.Name+"“, Schritt "+s.Name, s.Text)
+			for i, s := range z.Schritte {
+				pruefeText("text von „"+z.Name+"“, Schritt "+s.Name, fmt.Sprintf("states.%s.steps[%d].text", z.Kennung, i+1), s.Text)
 				if s.Text == "" && (s.Alle != nil || s.Eines != nil) {
 					ohneSatz = append(ohneSatz, "states."+z.Kennung+".steps."+s.Name+".text")
 				}
@@ -285,22 +302,35 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 		_, ok := L.zustand[w]
 		return ok
 	}
+	// Wo ein Name steht: die Stelle seiner Erklärung.
+	stelle := func(w string) string {
+		for _, abschnitt := range []struct {
+			name string
+			da   bool
+		}{{"inputs", L.Werte[w] != nil}, {"settings", L.Stellwerte[w] != nil}, {"formulas", L.Merker[w] != nil},
+			{"states", L.zustand[w] != nil}} {
+			if abschnitt.da {
+				return abschnitt.name + "." + w
+			}
+		}
+		return ""
+	}
 	for w := range L.eigene {
 		if istName(w) {
-			fehl("„%s“ ist zugleich ein Wort und ein Name", w)
+			fehl(stelle(w), "„%s“ ist zugleich ein Wort und ein Name", w)
 		}
 	}
 	for _, e := range L.Zustaende {
-		for _, s := range e.Schritte {
+		for i, s := range e.Schritte {
 			if istName(s.Name) {
-				fehl("Schritt „%s“ von „%s“ heißt wie ein anderer Name", s.Name, e.Kennung)
+				fehl(fmt.Sprintf("states.%s.steps[%d].name", e.Kennung, i+1), "Schritt „%s“ von „%s“ heißt wie ein anderer Name", s.Name, e.Kennung)
 			}
 		}
 	}
 	// Die YAML-Falle (Vertrag 17.2): kein Name des Verfassers ist ein Ja oder Nein.
 	pruefeVerboten := func(wo, n string) {
 		if verboteneNamen[n] {
-			fehl("%s: „%s“ ist als Name nicht erlaubt (Ja/Nein-Wort)", wo, n)
+			fehl(wo+"."+n, "%s: „%s“ ist als Name nicht erlaubt (Ja/Nein-Wort)", wo, n)
 		}
 	}
 	for _, n := range L.GeraetListe {
@@ -317,8 +347,11 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 	}
 	for _, z := range L.Zustaende {
 		pruefeVerboten("states", z.Kennung)
-		for _, s := range z.Schritte {
-			pruefeVerboten("states."+z.Kennung+".steps", s.Name)
+		for i, s := range z.Schritte {
+			if verboteneNamen[s.Name] {
+				fehl(fmt.Sprintf("states.%s.steps[%d].name", z.Kennung, i+1), "%s: „%s“ ist als Name nicht erlaubt (Ja/Nein-Wort)",
+					"states."+z.Kennung+".steps", s.Name)
+			}
 		}
 	}
 	for w := range L.eigene {
@@ -334,32 +367,33 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 		if s.Bereich != nil {
 			a, z := s.Bereich[0], s.Bereich[1]
 			if a.Art != WertZahl || z.Art != WertZahl || a.D != s.Vorgabe.D || z.D != s.Vorgabe.D {
-				fehl("Stellwert „%s“: Bereich und Vorgabe haben verschiedene Einheiten", s.Name)
+				fehl("settings."+n+".range", "Stellwert „%s“: Bereich und Vorgabe haben verschiedene Einheiten", s.Name)
 			} else if s.Vorgabe.V < a.V-eps || s.Vorgabe.V > z.V+eps {
-				fehl("Stellwert „%s“: Vorgabe %s liegt außerhalb %s bis %s", s.Name, Zeige(s.Vorgabe), Zeige(a), Zeige(z))
+				fehl("settings."+n+".default", "Stellwert „%s“: Vorgabe %s liegt außerhalb %s bis %s", s.Name, Zeige(s.Vorgabe), Zeige(a), Zeige(z))
 			}
 		}
 		// E2 = B: ein Zielwert (°C) braucht einen Bereich, weil der Kunde ihn immer stellt.
 		if s.Zielwert() && s.Bereich == nil {
-			fehl("Stellwert „%s“: ein Zielwert (°C) braucht einen Bereich (range), weil der Kunde ihn immer stellt", s.Name)
+			fehl("settings."+n, "Stellwert „%s“: ein Zielwert (°C) braucht einen Bereich (range), weil der Kunde ihn immer stellt", s.Name)
 		}
 	}
 	for i, z := range L.Zusammen {
 		stand := ZusammenStand{Name: z.Name}
+		ort := fmt.Sprintf("constraints[%d]", i+1)
 		ok, err := L.zusammenGilt(nil)
 		if err != nil {
-			fehl("constraints „%s“: %s", z.Name, err.Error())
+			fehl(ort, "constraints „%s“: %s", z.Name, err.Error())
 			continue
 		}
 		stand.Gilt = ok[i]
 		verletzbar, err := L.zusammenImBereich(i)
 		if err != nil {
-			fehl("constraints „%s“: %s", z.Name, err.Error())
+			fehl(ort, "constraints „%s“: %s", z.Name, err.Error())
 			continue
 		}
 		stand.Verletzbar = verletzbar
 		if !stand.Gilt {
-			fehl("constraints „%s“: mit den Vorgaben verletzt", z.Name)
+			fehl(ort, "constraints „%s“: mit den Vorgaben verletzt", z.Name)
 		}
 		b.Zusammen = append(b.Zusammen, stand)
 	}
@@ -369,10 +403,10 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 		b.Hinweise = append(b.Hinweise, "Keine Proben: Verhalten nicht belegt")
 	}
 	if len(b.Befunde) == 0 {
-		for _, p := range L.Proben {
+		for i, p := range L.Proben {
 			r, err := L.FuehreProbe(p, anlage)
 			if err != nil {
-				fehl("Probe „%s“: %s", p.Name, err.Error())
+				fehl(fmt.Sprintf("tests[%d]", i+1), "Probe „%s“: %s", p.Name, err.Error())
 				continue
 			}
 			b.Proben = append(b.Proben, r)
