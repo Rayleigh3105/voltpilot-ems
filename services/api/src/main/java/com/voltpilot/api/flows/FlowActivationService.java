@@ -52,7 +52,9 @@ import org.springframework.transaction.annotation.Transactional;
  *       "Kundenautomationen aus dem Flow-Editor") and would be rejected AFTER
  *       activation with "läuft auf dieser Box nicht". Checked here - the same
  *       capability-before-activation pattern as {@code SteuerartService} - so
- *       the customer hears it before the compiler even runs.</li>
+ *       the customer hears it before the compiler even runs. Since Steuerlogik
+ *       Stufe 6 ({@link RegelnImKern}) a rule of the guided builder runs there
+ *       as a Kern logic; only what does not translate is still refused.</li>
  * </ol>
  * Rollback = re-activating a previous version (its stored artifact is
  * re-published; deterministic tab ids make it a clean replace).
@@ -87,6 +89,8 @@ public class FlowActivationService {
     private final UpdateStatusRepository updateStatus;
     /** Further artifact sources of the set (Steuerlogik); empty in tests that build the service by hand. */
     private List<WeitereArtefakte> weitere = List.of();
+    /** Rules as Kern logics (Steuerlogik Stufe 6, Zusammenführen); null in tests that build the service by hand. */
+    private RegelnImKern regelnImKern;
 
     /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
@@ -133,6 +137,15 @@ public class FlowActivationService {
         this.weitere = weitere == null ? List.of() : List.copyOf(weitere);
     }
 
+    /**
+     * Rules of the guided builder as Kern logics (Steuerlogik Stufe 6): optional like {@link #setWeitereArtefakte}.
+     * Without it an Edge Light gateway refuses every rule, as before.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setRegelnImKern(RegelnImKern regelnImKern) {
+        this.regelnImKern = regelnImKern;
+    }
+
     /** Activate one validated version. Never throws for the honest stops. */
     @Transactional
     public ActivationOutcome activate(UUID siteId, FlowVersionRow version, JsonNode document) {
@@ -156,10 +169,18 @@ public class FlowActivationService {
                             + "verknüpftes).");
         }
         // N3 (report §11): Edge Light cannot run a flow-editor artifact at all
-        // (parity list, "Kundenautomationen aus dem Flow-Editor") - check the
-        // box's capability BEFORE compiling, same pattern as SteuerartService,
-        // so the customer is told instead of the box quietly refusing later.
-        if (BoxArt.LIGHT.equals(updateStatus.boxArt(gateway))) {
+        // (parity list, "Kundenautomationen aus dem Flow-Editor"). Since
+        // Steuerlogik Stufe 6 a rule of the guided builder runs there as a
+        // Kern logic instead (RegelnImKern); whatever does not translate is
+        // still refused BEFORE anything changes. On the Docker box the site's
+        // Steuerweg decides whether the Kern runs along or switches.
+        boolean edgeLight = BoxArt.LIGHT.equals(updateStatus.boxArt(gateway));
+        RegelnImKern.Vorbereitet kern = regelnImKern == null ? null
+                : regelnImKern.bereite(siteId, version, document, gateway, edgeLight);
+        if (kern != null && kern.halt() != null) {
+            return ActivationOutcome.refused(kern.halt().reason(), kern.halt().message());
+        }
+        if (edgeLight && kern == null) {
             return ActivationOutcome.refused("edge_light_unsupported",
                     "Diese Box ist eine Edge Light und kann Regeln aus dem Regel-Baukasten "
                             + "oder dem freien Editor noch nicht ausführen. Die Regel bleibt "
@@ -188,6 +209,9 @@ public class FlowActivationService {
 
         flows.retireActive(version.flowId());
         flows.markActive(version.flowId(), version.flowVersion(), artifact.toString());
+        if (kern != null) {
+            regelnImKern.schreibe(siteId, kern);
+        }
         // Steuerung Stufe 3 (§3.7 A3/A4): materialize this flow's claims in the
         // SAME transaction, then re-push the registry so the box learns
         // owner_claimed and stops injecting a plan setpoint for the claimed
@@ -211,6 +235,9 @@ public class FlowActivationService {
     @Transactional
     public DeactivationOutcome deactivate(UUID siteId, UUID flowId, FlowVersionRow active) {
         flows.retireActive(flowId);
+        if (regelnImKern != null) {
+            regelnImKern.stillgelegt(siteId, flowId);
+        }
         // A claim never outlives the flow that holds it (Stufe 3): dropping it
         // here is what makes the plan take the component back on the next push.
         claims.clearForFlow(flowId);
@@ -289,9 +316,13 @@ public class FlowActivationService {
         }
         UUID tenantId = TenantContext.get();
         List<JsonNode> artifacts = new ArrayList<>();
+        // A rule whose translation goes ARMED to this box (Stufe 6) is switched by the
+        // Kern; its Node-RED artifact stays out, so a device never has two executors.
+        java.util.Set<UUID> ersetzt = regelnImKern == null ? java.util.Set.of()
+                : regelnImKern.ersetzt(siteId, gateway);
         for (FlowVersionRow row : flows.versionsForSite(siteId)) {
             if ("active".equals(row.lifecycle()) && "edge".equals(row.runtime())
-                    && row.artifactJson() != null) {
+                    && row.artifactJson() != null && !ersetzt.contains(row.flowId())) {
                 try {
                     artifacts.add(mapper.readTree(row.artifactJson()));
                 } catch (Exception e) {

@@ -30,13 +30,23 @@ public class SteuerlogikRepository {
     public record Fassung(UUID logikId, int fassung, UUID siteId, String name, String zustand,
             String contentHash, String berichtJson, Instant angelegtAm, String angelegtVon, Instant stillgelegtAm,
             Instant scharfAm, String scharfVon, String hinweiseJson, String angelegtRolle, String angelegtName,
-            String notiz, Instant vorgelegtAm, String vorgelegtVon, String vorgelegtName) {
+            String notiz, Instant vorgelegtAm, String vorgelegtVon, String vorgelegtName, String herkunft,
+            UUID herkunftFlowId, Integer herkunftFassung) {
 
         public Fassung(UUID logikId, int fassung, UUID siteId, String name, String zustand, String contentHash,
                 String berichtJson, Instant angelegtAm, String angelegtVon, Instant stillgelegtAm, Instant scharfAm,
                 String scharfVon, String hinweiseJson) {
             this(logikId, fassung, siteId, name, zustand, contentHash, berichtJson, angelegtAm, angelegtVon,
-                    stillgelegtAm, scharfAm, scharfVon, hinweiseJson, null, angelegtVon, null, null, null, null);
+                    stillgelegtAm, scharfAm, scharfVon, hinweiseJson, null, angelegtVon, null, null, null, null, null,
+                    null, null);
+        }
+
+        /**
+         * Stufe 6 (Zusammenführen): die Übersetzung einer Regel des Regel-Baukastens. Bearbeitet wird die Regel; die
+         * Logik folgt ihr und ist im Aufbau und Text nur zu lesen.
+         */
+        public boolean ausRegel() {
+            return HERKUNFT_REGEL.equals(herkunft);
         }
 
         public boolean aktiv() {
@@ -47,6 +57,9 @@ public class SteuerlogikRepository {
             return ZUSTAND_SCHARF.equals(zustand);
         }
     }
+
+    /** Die Herkunft einer abgeleiteten Logik (V20261115230000): die Übersetzung einer Regel. */
+    public static final String HERKUNFT_REGEL = "regel";
 
     /** Die Zustände einer Fassung (V20261114200000, V20261115190000). */
     public static final String ZUSTAND_GEPRUEFT = "geprueft";
@@ -119,14 +132,14 @@ public class SteuerlogikRepository {
             s.logik_id, s.fassung, s.site_id, s.name, s.zustand, s.content_hash, s.bericht::text, s.angelegt_am,
             s.angelegt_von, s.stillgelegt_am, s.scharf_am, s.scharf_von, s.hinweise::text, s.angelegt_rolle,
             """ + anzeigename("angelegt_von") + ", s.notiz, s.vorgelegt_am, s.vorgelegt_von, "
-            + anzeigename("vorgelegt_von") + " ";
+            + anzeigename("vorgelegt_von") + ", s.herkunft, s.herkunft_flow_id, s.herkunft_fassung ";
 
     private static Fassung fassung(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new Fassung(rs.getObject(1, UUID.class), rs.getInt(2), rs.getObject(3, UUID.class), rs.getString(4),
                 rs.getString(5), rs.getString(6), rs.getString(7), instant(rs.getTimestamp(8)), rs.getString(9),
                 instant(rs.getTimestamp(10)), instant(rs.getTimestamp(11)), rs.getString(12), rs.getString(13),
                 rs.getString(14), rs.getString(15), rs.getString(16), instant(rs.getTimestamp(17)), rs.getString(18),
-                rs.getString(19));
+                rs.getString(19), rs.getString(20), rs.getObject(21, UUID.class), (Integer) rs.getObject(22));
     }
 
     /** Alle Fassungen der Anlage, je Logik die jüngste zuerst. */
@@ -258,13 +271,14 @@ public class SteuerlogikRepository {
 
     /**
      * Die Geräte der scharfen Logiken der Anlage, aus dem gespeicherten Prüfbericht (der Dienst nennt sie dort; die
-     * API liest die Sprache nicht).
+     * API liest die Sprache nicht). Ohne die Übersetzungen von Regeln (Stufe 6): deren Geräte gehören der Regel, und
+     * die Regel beansprucht sie selbst ({@code flow_claim}, V-5).
      */
     public List<Besitz> scharfeGeraete(UUID siteId) {
         return jdbc.query("""
                 SELECT (g->>'entity_id'), s.logik_id, s.name
                 FROM steuerlogik s, jsonb_array_elements(COALESCE(s.bericht->'geraete', '[]'::jsonb)) g
-                WHERE s.site_id = ? AND s.zustand = 'scharf'
+                WHERE s.site_id = ? AND s.zustand = 'scharf' AND s.herkunft IS NULL
                 """, (rs, i) -> {
                     UUID entity;
                     try {
@@ -347,14 +361,43 @@ public class SteuerlogikRepository {
         return t.isEmpty() ? null : t.get(0);
     }
 
-    /** Ein auszulieferndes Artefakt mit dem Zustand seiner Fassung. */
-    public record Auslieferung(String artefakt, boolean scharf) {}
+    /** Ein auszulieferndes Artefakt mit dem Zustand seiner Fassung; {@code ausRegel}: die Übersetzung einer Regel. */
+    public record Auslieferung(String artefakt, boolean scharf, boolean ausRegel) {}
 
     /** Die Artefakte der aktiven Logiken der Anlage (mitlaufend und scharf), Byte für Byte wie gebaut. */
     public List<Auslieferung> aktiveArtefakte(UUID siteId) {
-        return jdbc.query("SELECT artefakt, zustand FROM steuerlogik WHERE site_id = ? "
+        return jdbc.query("SELECT artefakt, zustand, herkunft FROM steuerlogik WHERE site_id = ? "
                 + "AND zustand IN ('mitlaufend', 'scharf') ORDER BY angelegt_am, logik_id",
-                (rs, i) -> new Auslieferung(rs.getString(1), ZUSTAND_SCHARF.equals(rs.getString(2))), siteId);
+                (rs, i) -> new Auslieferung(rs.getString(1), ZUSTAND_SCHARF.equals(rs.getString(2)),
+                        HERKUNFT_REGEL.equals(rs.getString(3))), siteId);
+    }
+
+    // --- Übersetzte Regeln (Stufe 6, Zusammenführen) --------------------------------------------------------------
+
+    /**
+     * Legt die Übersetzung einer Regel als neue Fassung ihrer abgeleiteten Logik an, mitlaufend oder scharf; die bis
+     * dahin aktive Fassung wird stillgelegt. In der Transaktion des Aufrufers.
+     */
+    public void legeRegelAn(UUID tenantId, UUID siteId, UUID logikId, int fassung, String name, String quelltext,
+            String kanonisch, String artefakt, String contentHash, String berichtJson, String zustand, UUID flowId,
+            int flowFassung, String von, String rolle, Instant jetzt) {
+        stillegen(logikId, jetzt);
+        jdbc.update("""
+                INSERT INTO steuerlogik (logik_id, fassung, tenant_id, site_id, name, quelltext, kanonisch, artefakt,
+                                         content_hash, bericht, zustand, angelegt_am, angelegt_von, angelegt_rolle,
+                                         scharf_am, scharf_von, herkunft, herkunft_flow_id, herkunft_fassung)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, 'regel', ?, ?)
+                """, logikId, fassung, tenantId, siteId, name, quelltext, kanonisch, artefakt, contentHash,
+                berichtJson, zustand, Timestamp.from(jetzt), von, rolle,
+                ZUSTAND_SCHARF.equals(zustand) ? Timestamp.from(jetzt) : null,
+                ZUSTAND_SCHARF.equals(zustand) ? von : null, flowId, flowFassung);
+    }
+
+    /** Die aktiven Übersetzungen der Regeln einer Anlage (mitlaufend oder scharf), je Regel höchstens eine. */
+    public List<Fassung> aktiveRegeln(UUID siteId) {
+        return jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik s WHERE s.site_id = ? "
+                + "AND s.herkunft = 'regel' AND s.zustand IN ('mitlaufend', 'scharf') ORDER BY s.angelegt_am",
+                (rs, i) -> fassung(rs), siteId);
     }
 
     // --- Mitlauf aus dem Herzschlag ------------------------------------------------------------------------------

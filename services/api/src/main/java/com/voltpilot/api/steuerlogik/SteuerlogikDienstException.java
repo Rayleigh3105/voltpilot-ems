@@ -17,6 +17,8 @@ public class SteuerlogikDienstException extends RuntimeException {
     public static final String BAUSTEIN = "baustein_unlesbar";
     /** Die Dateien von Home Assistant lassen sich nicht lesen (kein YAML, zu groß, keine Datei; Stufe 6). */
     public static final String HOME_ASSISTANT = "home_assistant_unlesbar";
+    /** Ein Flow ist keine Regel des Regel-Baukastens (der freie Editor baut mehr; Stufe 6, Zusammenführen). */
+    public static final String KEINE_REGEL = "keine_regel";
 
     private final String grund;
     private final transient JsonNode bericht;
