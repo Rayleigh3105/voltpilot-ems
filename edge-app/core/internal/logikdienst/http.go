@@ -19,6 +19,9 @@ package logikdienst
 //   POST /baustein/aus-logik {text, name, beschreibung?, satz}
 //                                                 -> 200 {baustein, name, satz, luecken}
 //                                                 |  422 {message, grund: "baustein" | …} (unreadable logic or sentence)
+//   POST /home-assistant {dateien: [{name, text}], zuordnung?: {kennung: {wert, name?}}, registry?}
+//                                                 -> 200 {luecken, vollstaendig, text, bericht, nicht_uebersetzt, nicht_uebernommen, hinweise, kennungen, dateien}
+//                                                 |  422 {message, grund: "home_assistant"} (no readable YAML, too large)
 //   GET  /health                                  -> 200 {status, version, sprache}
 //   anything malformed                            -> 400 {message}
 
@@ -128,6 +131,20 @@ func Handler() http.Handler {
 		}
 		schreibe(w, http.StatusOK, map[string]any{"baustein": string(doc), "name": b.Name, "satz": b.Satz, "luecken": b.Luecken})
 	})
+	mux.HandleFunc("POST /home-assistant", func(w http.ResponseWriter, r *http.Request) {
+		var req HAAuftrag
+		if !liesBis(w, r, &req, MaxHABytes+256*1024) {
+			return
+		}
+		e, err := UebersetzeHA(req)
+		if err != nil {
+			antworteFehler(w, err, nil)
+			return
+		}
+		slog.Info("logik-dienst: Home Assistant übersetzt", "dateien", e.Dateien, "luecken", len(e.Luecken),
+			"nicht_uebersetzt", len(e.NichtUebersetzt), "vollstaendig", e.Vollstaendig)
+		schreibe(w, http.StatusOK, e)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		schreibe(w, http.StatusNotFound, map[string]any{"message": "Nicht gefunden"})
 	})
@@ -135,7 +152,11 @@ func Handler() http.Handler {
 }
 
 func lies(w http.ResponseWriter, r *http.Request, ziel any) bool {
-	roh, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+	return liesBis(w, r, ziel, maxBody)
+}
+
+func liesBis(w http.ResponseWriter, r *http.Request, ziel any, grenze int64) bool {
+	roh, err := io.ReadAll(http.MaxBytesReader(w, r.Body, grenze))
 	if err != nil {
 		schreibe(w, http.StatusBadRequest, map[string]any{"message": "Anfrage zu groß oder nicht lesbar"})
 		return false
@@ -158,6 +179,8 @@ func antworteFehler(w http.ResponseWriter, err error, bericht *Bericht) {
 			antwort["meldungen"] = []Meldung{u.Meldung}
 		}
 		schreibe(w, http.StatusUnprocessableEntity, antwort)
+	case errors.Is(err, ErrHomeAssistant):
+		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "home_assistant"})
 	case errors.Is(err, ErrBaustein):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "baustein"})
 	case errors.Is(err, ErrStellwerte):
