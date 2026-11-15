@@ -24,6 +24,7 @@ import {
   type SiteEntities,
   type SiteInterventions,
   type SiteScene,
+  type LogikListe,
   type SteuerlogikKarte,
   type SuggestionStates,
   type TelemetryPoint,
@@ -77,6 +78,8 @@ export interface SteuerungDaten {
   gemessen: Record<string, (number | null)[]>;
   /** Die scharfen Steuerlogiken der Anlage als Karten (Stufe 3); `null` = unbekannt. */
   logiken: SteuerlogikKarte[] | null;
+  /** Alle Logiken der Anlage für den Reiter „Regeln“ (Stufe 4), mit den Rechten des Aufrufers; `null` = unbekannt. */
+  logikListe: LogikListe | null;
 }
 
 const LEER: SteuerungDaten = {
@@ -84,7 +87,7 @@ const LEER: SteuerungDaten = {
   chargingConfig: null, ocppTransactionEconomics: null, interventions: null, plan: null, consumerPlan: null, verlauf: null,
   preise: null, wetter: null, live: null, assets: null, profiles: null, fahrzeuge: null,
   flows: null, editorEntities: null, ruleEvents: null, entities: null, vorschlaege: null,
-  szene: null, funktionen: null, gemessen: {}, logiken: null,
+  szene: null, funktionen: null, gemessen: {}, logiken: null, logikListe: null,
 };
 
 const heuteIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
@@ -138,6 +141,7 @@ export function useSteuerungDaten(site: Site): SteuerungLaden {
     return Promise.all([
       hole('consumers', consumersApi.list(id)),
       hole('chargingConfig', api.chargingConfig(id)),
+      hole('logikListe', api.logikListe(id)),
       hole('ocppTransactionEconomics', api.ocppTransactionEconomics(id)),
       hole('plan', api.schedule(id)),
       hole('consumerPlan', api.consumerSchedule(id)),

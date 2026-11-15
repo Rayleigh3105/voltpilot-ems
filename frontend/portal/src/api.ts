@@ -9656,7 +9656,12 @@ export interface SteuerlogikBericht {
 
 export interface SteuerlogikFassung {
   fassung: number;
-  zustand: 'mitlaufend' | 'scharf' | 'stillgelegt';
+  zustand: 'geprueft' | 'mitlaufend' | 'scharf' | 'stillgelegt';
+  /** Stufe 4: Rolle des Urhebers, Notiz, Vorlage zur Freigabe. */
+  angelegtRolle?: string | null;
+  notiz?: string | null;
+  vorgelegtAm?: string | null;
+  vorgelegtVon?: string | null;
   contentHash: string;
   bericht: SteuerlogikBericht | null;
   angelegtAm: string;
@@ -9722,7 +9727,8 @@ export interface SteuerlogikVorschau {
 /** Ein Schritt an einer Logik: angenommen, scharf, zurück, stillgelegt, Wert gestellt. */
 export interface SteuerlogikSchritt {
   fassung: number;
-  was: 'angenommen' | 'scharf' | 'zurueck' | 'stillgelegt' | 'stellwert';
+  was: 'angenommen' | 'scharf' | 'zurueck' | 'stillgelegt' | 'stellwert' | 'gespeichert' | 'mitlaufen' | 'vorgelegt'
+    | 'anfrage' | 'erledigt';
   am: string;
   von: string | null;
   rolle: string | null;
@@ -9810,6 +9816,119 @@ export interface SteuerlogikProtokoll {
   logikId: string;
   tag: string;
   wechsel: SteuerlogikWechsel[];
+}
+
+// --- Steuerlogik Stufe 4: Aufbau und Text (`SiteSteuerlogikBearbeitenController`) ----------------------------------
+
+/** Eine Meldung der Prüfung an ihrer Zeile im Text (Logik-Dienst, `zeilen.go`); `zeile` fehlt ohne Stelle. */
+export interface LogikMeldung {
+  art: 'fehler' | 'probe' | 'hinweis';
+  text: string;
+  ort?: string;
+  zeile?: number;
+}
+
+/** Der Prüfbericht des Dienstes, soweit das Portal ihn liest. */
+export interface LogikBericht extends SteuerlogikBericht {
+  ausdruecke?: number;
+  zusammen?: { name: string; gilt: boolean; im_bereich_verletzbar: boolean }[];
+  eingaenge?: { kennung: string; source: string; name: string }[];
+  stellwerte?: { kennung: string; name: string; art: string; einheit?: string; darf?: string; zielwert?: boolean }[];
+  meldungen?: LogikMeldung[];
+}
+
+/** Ergebnis von „Prüfen“: lesbar mit Bericht, oder unlesbar mit dem Satz des Lesers. */
+export interface LogikGeprueft {
+  lesbar: boolean;
+  sperrt: boolean;
+  message: string | null;
+  bericht: LogikBericht | null;
+  meldungen: LogikMeldung[] | null;
+}
+
+export type LogikZustand = 'geprueft' | 'mitlaufend' | 'scharf' | 'stillgelegt';
+
+/** Eine Logik im Reiter „Regeln“. `aktiv` null = läuft nicht; `vorgelegt` wartet auf die Freigabe. */
+export interface LogikKopf {
+  logikId: string;
+  name: string;
+  neueste: number;
+  aktiv: number | null;
+  zustand: LogikZustand;
+  vorgelegt: number | null;
+  offeneAnfragen: number;
+  gemeldetAm: string | null;
+  lage: { nr: number; titel: string; art?: string; satz?: string } | null;
+}
+
+export interface LogikListe {
+  darfBearbeiten: boolean;
+  darfAnfragen: boolean;
+  logiken: LogikKopf[];
+}
+
+export interface LogikFassungKopf {
+  fassung: number;
+  zustand: LogikZustand;
+  contentHash: string;
+  angelegtAm: string;
+  angelegtVon: string | null;
+  rolle: string | null;
+  notiz: string | null;
+  scharfAm: string | null;
+  vorgelegtAm: string | null;
+  vorgelegtVon: string | null;
+  bericht: LogikBericht | null;
+}
+
+export interface LogikAnfrage {
+  id: string;
+  kennung: string | null;
+  text: string;
+  am: string;
+  von: string | null;
+  rolle: string | null;
+  erledigtAm: string | null;
+  erledigtVon: string | null;
+}
+
+/** Eine Logik zum Ansehen und Bearbeiten, mit den Rechten des Aufrufers. */
+export interface LogikAnsicht {
+  logikId: string;
+  name: string;
+  darfBearbeiten: boolean;
+  darfAnfragen: boolean;
+  /** Die Plattform (auch im Mandantensprung): sie schaltet vorgelegte Fassungen scharf. */
+  plattform: boolean;
+  boxKann: boolean;
+  boxKannScharf: boolean;
+  fassungen: LogikFassungKopf[];
+  anfragen: LogikAnfrage[];
+  einstellung: { stand: number; werte: Record<string, unknown> | null } | null;
+  lauf: { box: string; fassung: number; contentHash: string; zustand: 'mitlaufend' | 'scharf'; seit: string; rueckmeldung: SteuerlogikRueckmeldung | null; gemeldetAm: string } | null;
+}
+
+/** Was eine Logik an der Anlage lesen und schalten kann (Logik-Dienst `/quellen`). */
+export interface LogikQuellen {
+  quellen: { source: string; name: string; entity_id?: string; signal?: string; einheit: string }[];
+  geraete: {
+    entity_id: string;
+    name: string;
+    typ: string;
+    ausgaenge: ('level' | 'on_off' | 'setpoint' | 'mode')[];
+    ausgangszahl?: number;
+    kw_je_ausgang?: number;
+    sollwert?: { einheit: string; von?: number; bis?: number; schritt?: number };
+    betriebsarten?: string[];
+  }[];
+}
+
+export interface LogikGespeichert {
+  logikId: string;
+  fassung: number;
+  name: string;
+  contentHash: string;
+  bericht: LogikBericht | null;
 }
 
 export interface UemsBetreiberblatt {

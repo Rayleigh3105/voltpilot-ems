@@ -72,6 +72,9 @@ export const SUB_CHUNK = {
   steuerung: () => import('./pages/SteuerungSection'),
   technik: () => import('./pages/AnlageTechnik'),
   befehle: () => import('./pages/BefehleSection'),
+  // Eine Logik (Steuerlogik Stufe 4): Aufbau, Text und der YAML-Leser - ein eigenes Stück, das die Steuerung
+  // nicht mitlädt.
+  logik: () => import('./pages/LogikSection'),
   // Die Kundenseite der Prognose (Konzept vp-prognosen-konzept, E1 = C
   // Sonnen-Teppich). `prognosemodelle` ist das frühere `prognose` - die
   // VoltPilot-interne Modellqualität; die Datei heisst weiter `PrognosePage`

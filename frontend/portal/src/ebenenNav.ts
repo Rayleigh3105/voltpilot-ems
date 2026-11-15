@@ -237,6 +237,8 @@ const SUB_BEREICH: Record<AnlagenSub, BereichId> = {
   befehle: 'anlage',
   geraet: 'anlage',
   box: 'anlage',
+  // Eine Logik (Steuerlogik Stufe 4) wohnt unter „Regeln" der Steuerung, mit eigenem Rückweg.
+  logik: 'steuerung',
 };
 
 function bereich(
@@ -441,7 +443,7 @@ export function bereichFor(sub: AnlagenSub | null, sidebar?: AnlageSidebar | nul
  * Brotkrume im Seitenkopf, und zwar GENAU EINMAL
  * (Konzept `vp-geraeteseite-rahmen-r2` §2.1/§4.2, Captain-Entscheid D1a).
  */
-const OHNE_BEREICHS_REITER: ReadonlySet<AnlagenSub> = new Set(['geraet', 'box']);
+const OHNE_BEREICHS_REITER: ReadonlySet<AnlagenSub> = new Set(['geraet', 'box', 'logik']);
 
 /**
  * Die Reiter, die über einer offenen Unterseite stehen — leer, wo der Bereich

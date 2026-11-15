@@ -6,7 +6,7 @@ export const HELP_FOR_SUB: Record<AnlagenSub, HelpArticleId> = {
   marktpreise: 'marktpreise',
   prognose: 'prognosen', prognosemodelle: 'prognosen', technik: 'einstellungen', modell: 'anlagenmodell',
   steuerung: 'geraete-steuern', laden: 'ladepark', regeln: 'regeln', lastspitzen: 'lastspitzen', ladevorgaenge: 'ladevorgaenge',
-  befehle: 'geraete', geraet: 'geraete', box: 'geraete', energiebilanz: 'messwerte',
+  befehle: 'geraete', geraet: 'geraete', box: 'geraete', energiebilanz: 'messwerte', logik: 'regeln',
 };
 
 export function helpForRoute(route: Route): HelpArticleId | null {
