@@ -47,6 +47,28 @@ public class AblesungRepository {
                 UUID.class, tenant, messstelle).stream().findFirst().orElse(null);
     }
 
+    /**
+     * {@link #quelle} für viele Messstellen in EINER Abfrage (vp-perf3-server H1): je Messstelle dieselbe Zeile (die
+     * Abfrage von {@link #quelle} je Messstelle als {@code LATERAL}); eine ohne Ablesung fehlt in der Map.
+     */
+    public Map<UUID, UUID> quellen(UUID tenant, Collection<UUID> messstellen) {
+        Map<UUID, UUID> out = new HashMap<>();
+        if (messstellen.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT k.m, x.id FROM unnest(?::uuid[]) AS k(m) CROSS JOIN LATERAL ("
+                    + "SELECT id FROM messstelle_quelle WHERE tenant_id = ? AND messstelle_id = k.m "
+                    + "AND art = 'ablesung' AND rolle = 'fuehrend' ORDER BY gueltig_ab DESC LIMIT 1) x");
+            ps.setArray(1, con.createArrayOf("uuid", messstellen.toArray()));
+            ps.setObject(2, tenant);
+            return ps;
+        }, rs -> {
+            out.put(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class));
+        });
+        return out;
+    }
+
     public UUID anlegen(UUID tenant, MessstelleRepository.Messstelle m, Instant zeit, ProtokollAkteur wer, Instant jetzt) {
         var g = m.hauptgroesse();
         return jdbc.queryForObject("INSERT INTO messstelle_quelle (tenant_id,messstelle_id,groesse,richtung,kanal,"

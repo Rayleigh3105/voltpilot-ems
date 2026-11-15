@@ -357,6 +357,51 @@ Alle drei zusammen (Probe-Merge ohne Konflikte, Typecheck grün), 60 s offene Co
 5. **Übrige Arbeit je Übergabe:** Im CPU-Profil stehen jetzt React-Interna, `fetch` und `AnlageSeite` selbst oben.
    Weniger Arbeit je Übergabe bringt nur noch ein Schnitt der Seite in Teile, die nicht an der Uhr hängen.
 
+## Kunden-API, Welle 3 (15.11.2026)
+
+Diese Runde (`vp-perf3-server`, Ausgang `44734c3c7`) baut die offenen Hebel H5, H2/H3 und H1 der zweiten Welle. Labor
+wie dort (eigener Compose-Stapel, `pg_stat_statements` mit `track_planning`, Modus „ruhig“). Neu im Bestand: ein Jahr
+Viertelstunden für die 12 Anlagen von `lt-kunde-0101` (die Lastspitze liest das Jahresfenster) und für
+`lt-kunde-0001` Stammdaten wie im Betrieb (PV-Asset je Anlage, bestätigte PV-Einheiten, ein Preisblatt). Load 17 bis 57
+aus anderen Bahnen; belastbar sind Anweisungen und Buffer je Aufruf und gepaarte `EXPLAIN`-Läufe in einer Sitzung.
+
+| Messung | vorher | nachher |
+|---|---:|---:|
+| Lastspitze allein, 12 Anlagen × Jahr | 1 071–1 113 ms, 6 335 Buffer + Sortierung auf Platte | 3,1 ms, 554 Buffer |
+| `/portfolio/kpis`, 12 Anlagen mit Hauptzähler, DB-Ausführung je Aufruf | 723 ms | 26,5 ms (H5) |
+| `/portfolio/kpis`, 12 Anlagen mit Hauptzähler, Anweisungen | 857 | 115 |
+| `/portfolio/kpis`, 4 Anlagen mit Hauptzähler, Anweisungen | 377 | 113 |
+| `/portfolio/kpis`, 12 Anlagen mit Hauptzähler, Buffer / Planung je Aufruf | 5 364–6 065 / 374–462 ms | 1 784 / 202 ms |
+| Vergleichsspeicher-Walk, 4 Anlagen, Buffer | 45 327 | 843 |
+| `/earnings?range=day`, 4 Anlagen, Buffer je Aufruf | 60 547 | 10 434 |
+| `/earnings?range=day`, „Zuhause“, Buffer je Aufruf | 11 806 | 4 974 |
+
+### Geändert
+
+- H5 (#1895): die Lastspitze je Anlage über den Teilindex `idx_telemetry_rollup_15m_netzbezug_spitze` (ein Griff je
+  Anlage und Chunk) statt `DISTINCT ON` über alle Viertelstunden des Jahresfensters. Der Index entsteht je Chunk in
+  eigener Transaktion (`timescaledb.transaction_per_chunk`).
+- H2/H3 (#1899): Walk, Tagesreihe und Eimer lesen die Stammdaten je Anlage (Speicher, Preisblatt, PV-Asset, feste
+  Vergütung, Registereinheiten) aus einer Zeile je Anlage und den Monatsmarktwert je Preis-Slot, statt sie je
+  Viertelstunde per Index zu proben.
+- H1: `BilanzService.bilanzen` sammelt vorab, welche Werte die Abschnitte aller Anlagen und Stichtage lesen werden, und
+  liest sie über `MessstelleWerteService.vorrat` in einem Zug je Art (Messstellen, Bindungen, Ablesung, Zone je Anlage
+  und Stichtag, Zone des Unternehmens einmal, Tage/Perioden, Versionen, Ereignisse, Zuordnung; je Schlüssel die
+  Einzel-Abfrage als `LATERAL`). Den Live-Wert aller Hauptzähler liest `MessstelleFormelService.restLiveVieler`
+  ebenso gebündelt. Die Anweisungszahl hängt nicht mehr an der Zahl der Hauptzähler (12 Anlagen 115, 4 Anlagen 113).
+
+### Offene Hebel, nach Wirkung gereiht
+
+1. Je Repository-Aufruf `set_config` und je Anfrage der Zugriffs-Kontext (B1/B2 der ersten Runde, H4 der zweiten;
+   sicherheitskritisch, nicht Teil dieser Welle): bei `/portfolio/kpis` jetzt 70 von 115 Anweisungen, bei
+   `/earnings?range=day` 47 von 66.
+2. Das Erlös-Aggregat (dreimal je `/earnings?range=day`) liest PV-Asset, Preisblatt und Marktwert weiter je
+   Viertelstunde und trägt die Tranchen-Tabelle viermal im SQL-Text; dieselbe Zeile je Anlage wie Walk und Tagesreihe
+   (#1899) passt dort ebenso (B4 hat schon die `LATERAL`-Form).
+3. Die Zeile je Anlage (#1899) entsteht für alle sichtbaren Anlagen, auch wenn eine Abfrage nur eine fragt
+   (`/sites/{id}/earnings`); erst ab mehreren hundert Anlagen je Kundenbereich teurer als vorher, mit einem
+   Anlagen-Filter in der CTE ganz zu vermeiden.
+
 ## Wiederholen
 
 ```bash

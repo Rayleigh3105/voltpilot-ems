@@ -28,12 +28,15 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -117,6 +120,393 @@ public class MessstelleWerteService {
     public MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis,
             String version) {
         return werte(kennzeichen, raster, von, bis, version, versionen);
+    }
+
+    // ------------------------------------------------------------------ gebündelt lesen (vp-perf3-server H1)
+
+    /** Eine Anfrage an {@link #vorrat}: dieselben Angaben wie {@link #werte(String, String, String, String, String)}. */
+    public record Anfrage(String kennzeichen, String raster, String von, String bis) {}
+
+    /**
+     * Wie {@link #werte(String, String, String, String, String)}, die Lesungen aber aus {@code vorrat}, soweit er sie
+     * gebündelt gelesen hat - was er nicht hat, liest diese Anfrage einzeln wie sonst. Dieselbe Antwort.
+     */
+    public MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis, String version,
+            Vorrat vorrat) {
+        Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
+        Leser leser = vorrat.gilt() ? vorrat : direkt;
+        return werte(lesen(kennzeichen, form, versionen, id -> { }, null, leser), form, leser);
+    }
+
+    /**
+     * Was {@link #werte(String, String, String, String, String)} für jede der {@code anfragen} einzeln läse, in einem
+     * Zug je Art (vp-perf3-server H1, Portfolio-Kennzahlen mit vielen Hauptzählern): Messstellen, ihre Bindungen und
+     * Ablesungen, die Zone je Anlage und Stichtag, die Zone des Unternehmens (einmal), die gespeicherten Tage bzw.
+     * Perioden je Reihe, ihre Versionen, ihre Ereignis-Verweise und die Zuordnung an der Box. Jede gebündelte Lesung
+     * ist die Einzel-Abfrage je Schlüssel als {@code LATERAL} (dieselben Zeilen, dieselbe Reihenfolge, dieselbe
+     * Obergrenze). Was eine Anfrage darüber hinaus braucht (Ablesung, berechnete Spur, Stunde und Viertelstunde,
+     * Lücken), liest sie weiter einzeln.
+     */
+    public Vorrat vorrat(List<Anfrage> anfragen) {
+        UUID tenant = TenantContext.get();
+        Vorrat v = new Vorrat(tenant);
+        Set<String> kennzeichen = new LinkedHashSet<>();
+        anfragen.forEach(a -> kennzeichen.add(a.kennzeichen()));
+        if (tenant == null || kennzeichen.isEmpty()) {
+            return v;
+        }
+        Map<String, Messstelle> ms = messstellen.findeNachKennzeichen(kennzeichen);
+        kennzeichen.forEach(k -> v.messstellen.put(k, Optional.ofNullable(ms.get(k))));
+        List<UUID> ids = ms.values().stream().map(Messstelle::id).distinct().toList();
+        v.quellen.putAll(quellen.derMessstellen(ids));
+        Map<UUID, UUID> ablesung = new AblesungRepository(jdbc).quellen(tenant, ids);
+        ids.forEach(id -> v.ablesung.put(id, ablesung.get(id)));
+
+        // Die Zone je Anlage und Stichtag - erst sie bestimmt den Zeitraum und damit die Reihen-Fenster.
+        record Plan(Messstelle m, Form form, List<Quelle> fuehrend, Instant stichtag) {}
+        List<Plan> plaene = new ArrayList<>();
+        Set<List<Object>> zonen = new LinkedHashSet<>();
+        for (Anfrage a : anfragen) {
+            Messstelle m = ms.get(a.kennzeichen());
+            if (m == null || v.ablesung.get(m.id()) != null) {
+                continue; // keine Messstelle (404) oder Ablesung: einzeln
+            }
+            Form form;
+            try {
+                form = MessstelleWerteRegeln.form(a.raster(), a.von(), a.bis(), null);
+            } catch (RuntimeException e) {
+                continue; // die Anfrage lehnt einzeln ab, mit ihrem Grund
+            }
+            List<Quelle> fuehrend = fuehrend(m, v);
+            Instant stichtag = stichtag(form);
+            UUID site = zoneSite(fuehrend, stichtag);
+            if (site != null) {
+                zonen.add(List.of(site, stichtag));
+            }
+            plaene.add(new Plan(m, form, fuehrend, stichtag));
+        }
+        v.standortZonen.putAll(standortZonen(tenant, zonen));
+
+        Set<SpeicherklasseHistorie.Fenster> tage = new LinkedHashSet<>();
+        Map<String, Set<SpeicherklasseHistorie.Fenster>> perioden = new LinkedHashMap<>();
+        Set<WertVersionenLeser.Periodenfenster> versionenFenster = new LinkedHashSet<>();
+        Set<SpeicherklasseHistorie.Fenster> ereignisse = new LinkedHashSet<>();
+        Map<List<Object>, Integer> zuordnungen = new LinkedHashMap<>();
+        for (Plan p : plaene) {
+            Zeitraum z;
+            try {
+                z = MessstelleWerteRegeln.zeitraum(p.form(), zone(tenant, p.fuehrend(), p.stichtag(), v).id());
+            } catch (RuntimeException e) {
+                continue;
+            }
+            for (Map.Entry<Reihe, List<Schritt>> r : reihen(deckung(p.m(), z, bindungen(p.fuehrend()))).entrySet()) {
+                UUID e = r.getKey().entityId();
+                String k = r.getKey().kanal();
+                if (k == null || k.contains("[*]")) {
+                    continue; // fragt mit LIKE bzw. IS NULL: einzeln
+                }
+                Instant von = r.getValue().get(0).von();
+                Instant bis = r.getValue().get(r.getValue().size() - 1).bis();
+                switch (z.raster()) {
+                    case TAG -> tage.add(new SpeicherklasseHistorie.Fenster(e, k, von, bis.minusSeconds(1)));
+                    case MONAT, JAHR -> perioden.computeIfAbsent(z.raster().wort(), x -> new LinkedHashSet<>())
+                            .add(new SpeicherklasseHistorie.Fenster(e, k, von, bis));
+                    default -> { }
+                }
+                if (z.raster() == Raster.TAG || z.raster() == Raster.MONAT || z.raster() == Raster.JAHR) {
+                    versionenFenster.add(new WertVersionenLeser.Periodenfenster(z.raster().wort(), e, k, von, bis));
+                    ereignisse.add(new SpeicherklasseHistorie.Fenster(e, k, von, bis));
+                }
+            }
+            List<Quelle> imZeitraum = imZeitraum(p.fuehrend(), z.von(), z.bis());
+            if (!imZeitraum.isEmpty()) {
+                zuordnungen.putIfAbsent(zuordnungsfrage(imZeitraum, z), zuordnungen.size() + 1);
+            }
+        }
+        v.tage.putAll(historie.tage(tenant, tage));
+        perioden.forEach((art, f) -> v.perioden.computeIfAbsent(art, x -> new HashMap<>())
+                .putAll(historie.perioden(tenant, art, f)));
+        v.versionen.putAll(versionen.perioden(tenant, versionenFenster));
+        v.ereignisse.putAll(historie.ereignisVerweise(tenant, ereignisse));
+        v.zuordnungen.putAll(nichtZugeordnet(zuordnungen));
+        return v;
+    }
+
+    /** Die Zone des Standorts je (Anlage, Stichtag) - die Abfrage von {@link #zone} je Schlüssel als {@code LATERAL}. */
+    private Map<List<Object>, List<String>> standortZonen(UUID tenant, Set<List<Object>> schluessel) {
+        Map<List<Object>, List<String>> out = new HashMap<>();
+        List<List<Object>> k = List.copyOf(schluessel);
+        k.forEach(x -> out.put(x, new ArrayList<>()));
+        if (k.isEmpty()) {
+            return out;
+        }
+        // Die Einzel-Abfrage bindet den Stichtag als Zeitstempel an `?::date`: der Treiber schickt ihn als Text in der
+        // Zone der JVM, und PostgreSQL nimmt davon das Datum. Hier dasselbe Datum, als Text gebunden.
+        ZoneId jvm = ZoneId.systemDefault();
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("""
+                    SELECT k.i, x.zeitzone FROM unnest(?::uuid[], ?::text[]) WITH ORDINALITY AS k(site, tag, i)
+                    CROSS JOIN LATERAL (SELECT st.zeitzone FROM anlage_standort a
+                      JOIN standort st ON st.id = a.standort_id AND st.tenant_id = a.tenant_id
+                     WHERE a.tenant_id = ? AND a.site_id = k.site AND a.aufgehoben_am IS NULL
+                       AND a.gueltig_ab <= k.tag::date AND (a.gueltig_bis IS NULL OR a.gueltig_bis >= k.tag::date)
+                     ORDER BY a.gueltig_ab DESC LIMIT 1) x
+                    """);
+            ps.setArray(1, con.createArrayOf("uuid", k.stream().map(x -> x.get(0)).toArray()));
+            ps.setArray(2, con.createArrayOf("text", k.stream()
+                    .map(x -> LocalDate.ofInstant((Instant) x.get(1), jvm).toString()).toArray()));
+            ps.setObject(3, tenant);
+            return ps;
+        }, rs -> {
+            out.get(k.get(rs.getInt("i") - 1)).add(rs.getString("zeitzone"));
+        });
+        return out;
+    }
+
+    /** {@link #nichtZugeordnetDirekt} für viele Fragen in EINER Abfrage: welche Frage (Nummer) trifft zu. */
+    private Map<List<Object>, Boolean> nichtZugeordnet(Map<List<Object>, Integer> fragen) {
+        Map<List<Object>, Boolean> out = new HashMap<>();
+        fragen.keySet().forEach(f -> out.put(f, false));
+        if (fragen.isEmpty()) {
+            return out;
+        }
+        List<Integer> nr = new ArrayList<>();
+        List<Object> komponenten = new ArrayList<>();
+        List<Object> kanaele = new ArrayList<>();
+        List<Object> von = new ArrayList<>();
+        List<Object> bis = new ArrayList<>();
+        fragen.forEach((f, i) -> {
+            for (int j = 0; j < f.size(); j += 4) {
+                nr.add(i);
+                komponenten.add(f.get(j));
+                kanaele.add(f.get(j + 1));
+                von.add(Timestamp.from((Instant) f.get(j + 2)));
+                bis.add(Timestamp.from((Instant) f.get(j + 3)));
+            }
+        });
+        Map<Integer, List<Object>> jeNummer = new HashMap<>();
+        fragen.forEach((f, i) -> jeNummer.put(i, f));
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("""
+                    SELECT DISTINCT b.i FROM unnest(?::int[], ?::uuid[], ?::text[], ?::timestamptz[], ?::timestamptz[])
+                               AS b(i, komponente, kanal, von, bis)
+                      JOIN device_measurement_selection d ON d.entity_id = b.komponente AND d.point_key = b.kanal
+                     WHERE EXISTS (SELECT 1 FROM device_measurement_sample s
+                                     JOIN site st ON st.id = s.site_id
+                                    WHERE s.device_id = d.device_id AND s.point_key = b.kanal
+                                      AND s.quality = 'good' AND s.time >= b.von AND s.time < b.bis)
+                       AND NOT EXISTS (SELECT 1 FROM device_measurement_sample s
+                                    WHERE s.entity_id = b.komponente AND s.point_key = b.kanal
+                                      AND s.entity_id IS NOT NULL AND s.role IS DISTINCT FROM 'spiegel'
+                                      AND s.time >= b.von AND s.time < b.bis)
+                    """);
+            ps.setArray(1, con.createArrayOf("integer", nr.toArray()));
+            ps.setArray(2, con.createArrayOf("uuid", komponenten.toArray()));
+            ps.setArray(3, con.createArrayOf("text", kanaele.toArray()));
+            ps.setArray(4, con.createArrayOf("timestamptz", von.toArray()));
+            ps.setArray(5, con.createArrayOf("timestamptz", bis.toArray()));
+            return ps;
+        }, rs -> {
+            out.put(jeNummer.get(rs.getInt(1)), true);
+        });
+        return out;
+    }
+
+    /**
+     * Die Lesungen, die {@link #lesen} je Messstelle stellt: einzeln ({@link #direkt}) oder aus einem {@link Vorrat}.
+     * Beide liefern dieselben Zeilen.
+     */
+    private interface Leser {
+        Optional<Messstelle> messstelle(String kennzeichen);
+
+        List<Quelle> quellen(UUID messstelle);
+
+        UUID ablesung(UUID tenant, UUID messstelle);
+
+        List<String> standortZone(UUID tenant, UUID site, Instant stichtag);
+
+        List<String> unternehmenZone(UUID tenant);
+
+        List<Zeile> tage(UUID tenant, UUID entity, String kanal, Instant von, Instant bis);
+
+        List<Zeile> perioden(UUID tenant, UUID entity, String kanal, String art, Instant von, Instant bis);
+
+        Map<Instant, List<WertVersionenLeser.Version>> versionen(UUID tenant, String ebene, UUID entity, String kanal,
+                Instant von, Instant bis);
+
+        List<Verweis> ereignisse(UUID tenant, UUID entity, String kanal, Instant von, Instant bis);
+
+        boolean nichtZugeordnet(List<Quelle> imZeitraum, Zeitraum z);
+    }
+
+    /** Jede Lesung einzeln, wie bisher. */
+    private final Leser direkt = new Leser() {
+        @Override
+        public Optional<Messstelle> messstelle(String kennzeichen) {
+            return messstellen.findeNachKennzeichen(kennzeichen);
+        }
+
+        @Override
+        public List<Quelle> quellen(UUID messstelle) {
+            return quellen.derMessstelle(messstelle);
+        }
+
+        @Override
+        public UUID ablesung(UUID tenant, UUID messstelle) {
+            return new AblesungRepository(jdbc).quelle(tenant, messstelle);
+        }
+
+        @Override
+        public List<String> standortZone(UUID tenant, UUID site, Instant stichtag) {
+            return jdbc.queryForList("""
+                    SELECT st.zeitzone FROM anlage_standort a
+                      JOIN standort st ON st.id = a.standort_id AND st.tenant_id = a.tenant_id
+                     WHERE a.tenant_id = ? AND a.site_id = ? AND a.aufgehoben_am IS NULL
+                       AND a.gueltig_ab <= ?::date AND (a.gueltig_bis IS NULL OR a.gueltig_bis >= ?::date)
+                     ORDER BY a.gueltig_ab DESC LIMIT 1
+                    """, String.class, tenant, site, Timestamp.from(stichtag), Timestamp.from(stichtag));
+        }
+
+        @Override
+        public List<String> unternehmenZone(UUID tenant) {
+            return jdbc.queryForList("SELECT zeitzone FROM unternehmen WHERE tenant_id = ? ORDER BY created_at, id LIMIT 1",
+                    String.class, tenant);
+        }
+
+        @Override
+        public List<Zeile> tage(UUID tenant, UUID entity, String kanal, Instant von, Instant bis) {
+            return historie.tage(tenant, entity, kanal, von, bis);
+        }
+
+        @Override
+        public List<Zeile> perioden(UUID tenant, UUID entity, String kanal, String art, Instant von, Instant bis) {
+            return historie.perioden(tenant, entity, kanal, art, von, bis);
+        }
+
+        @Override
+        public Map<Instant, List<WertVersionenLeser.Version>> versionen(UUID tenant, String ebene, UUID entity,
+                String kanal, Instant von, Instant bis) {
+            return versionen.perioden(tenant, ebene, entity, kanal, null, von, bis);
+        }
+
+        @Override
+        public List<Verweis> ereignisse(UUID tenant, UUID entity, String kanal, Instant von, Instant bis) {
+            return historie.ereignisVerweise(tenant, entity, kanal, von, bis);
+        }
+
+        @Override
+        public boolean nichtZugeordnet(List<Quelle> imZeitraum, Zeitraum z) {
+            return nichtZugeordnetDirekt(imZeitraum, z);
+        }
+    };
+
+    /**
+     * Die gebündelt gelesenen Antworten für {@link #werte(String, String, String, String, String, Vorrat)} - nur im
+     * Mandanten, in dem {@link #vorrat} sie las. Ein Schlüssel, den er nicht hat, liest er einzeln; die Zone des
+     * Unternehmens (für alle Messstellen dieselbe) liest er höchstens einmal.
+     */
+    public final class Vorrat implements Leser {
+        private final UUID tenant;
+        private final Map<String, Optional<Messstelle>> messstellen = new HashMap<>();
+        private final Map<UUID, List<Quelle>> quellen = new HashMap<>();
+        private final Map<UUID, UUID> ablesung = new HashMap<>();
+        private final Map<List<Object>, List<String>> standortZonen = new HashMap<>();
+        private List<String> unternehmenZone;
+        private final Map<SpeicherklasseHistorie.Fenster, List<Zeile>> tage = new HashMap<>();
+        private final Map<String, Map<SpeicherklasseHistorie.Fenster, List<Zeile>>> perioden = new HashMap<>();
+        private final Map<WertVersionenLeser.Periodenfenster, Map<Instant, List<WertVersionenLeser.Version>>> versionen =
+                new HashMap<>();
+        private final Map<SpeicherklasseHistorie.Fenster, List<Verweis>> ereignisse = new HashMap<>();
+        private final Map<List<Object>, Boolean> zuordnungen = new HashMap<>();
+        private int einzeln;
+
+        private Vorrat(UUID tenant) {
+            this.tenant = tenant;
+        }
+
+        /** Wie oft eine Anfrage einen Schlüssel nicht im Vorrat fand und einzeln las (für Tests). */
+        int einzeln() {
+            return einzeln;
+        }
+
+        private Leser nachlesen() {
+            einzeln++;
+            return direkt;
+        }
+
+        /** Gilt nur im Mandanten, in dem er gelesen wurde. */
+        boolean gilt() {
+            return tenant != null && tenant.equals(TenantContext.get());
+        }
+
+        @Override
+        public Optional<Messstelle> messstelle(String kennzeichen) {
+            Optional<Messstelle> m = messstellen.get(kennzeichen);
+            return m != null ? m : nachlesen().messstelle(kennzeichen);
+        }
+
+        @Override
+        public List<Quelle> quellen(UUID messstelle) {
+            List<Quelle> q = quellen.get(messstelle);
+            return q != null ? q : nachlesen().quellen(messstelle);
+        }
+
+        @Override
+        public UUID ablesung(UUID t, UUID messstelle) {
+            return t.equals(tenant) && ablesung.containsKey(messstelle) ? ablesung.get(messstelle)
+                    : nachlesen().ablesung(t, messstelle);
+        }
+
+        @Override
+        public List<String> standortZone(UUID t, UUID site, Instant stichtag) {
+            List<String> z = t.equals(tenant) ? standortZonen.get(List.of(site, stichtag)) : null;
+            return z != null ? z : nachlesen().standortZone(t, site, stichtag);
+        }
+
+        @Override
+        public List<String> unternehmenZone(UUID t) {
+            if (!t.equals(tenant)) {
+                return direkt.unternehmenZone(t);
+            }
+            if (unternehmenZone == null) {
+                unternehmenZone = List.copyOf(direkt.unternehmenZone(t));
+            }
+            return unternehmenZone;
+        }
+
+        @Override
+        public List<Zeile> tage(UUID t, UUID entity, String kanal, Instant von, Instant bis) {
+            List<Zeile> z = t.equals(tenant) ? tage.get(new SpeicherklasseHistorie.Fenster(entity, kanal, von, bis)) : null;
+            return z != null ? z : nachlesen().tage(t, entity, kanal, von, bis);
+        }
+
+        @Override
+        public List<Zeile> perioden(UUID t, UUID entity, String kanal, String art, Instant von, Instant bis) {
+            List<Zeile> z = t.equals(tenant) ? perioden.getOrDefault(art, Map.of())
+                    .get(new SpeicherklasseHistorie.Fenster(entity, kanal, von, bis)) : null;
+            return z != null ? z : nachlesen().perioden(t, entity, kanal, art, von, bis);
+        }
+
+        @Override
+        public Map<Instant, List<WertVersionenLeser.Version>> versionen(UUID t, String ebene, UUID entity, String kanal,
+                Instant von, Instant bis) {
+            Map<Instant, List<WertVersionenLeser.Version>> v = t.equals(tenant)
+                    ? versionen.get(new WertVersionenLeser.Periodenfenster(ebene, entity, kanal, von, bis)) : null;
+            return v != null ? v : nachlesen().versionen(t, ebene, entity, kanal, von, bis);
+        }
+
+        @Override
+        public List<Verweis> ereignisse(UUID t, UUID entity, String kanal, Instant von, Instant bis) {
+            List<Verweis> e = t.equals(tenant)
+                    ? ereignisse.get(new SpeicherklasseHistorie.Fenster(entity, kanal, von, bis)) : null;
+            return e != null ? e : nachlesen().ereignisse(t, entity, kanal, von, bis);
+        }
+
+        @Override
+        public boolean nichtZugeordnet(List<Quelle> imZeitraum, Zeitraum z) {
+            Boolean b = zuordnungen.get(zuordnungsfrage(imZeitraum, z));
+            return b != null ? b : nachlesen().nichtZugeordnet(imZeitraum, z);
+        }
     }
 
     /**
@@ -270,11 +660,15 @@ public class MessstelleWerteService {
     }
 
     private MessstelleWerteDto.Werte werte(Lesung l, Form form) {
+        return werte(l, form, direkt);
+    }
+
+    private MessstelleWerteDto.Werte werte(Lesung l, Form form, Leser leser) {
         Zeitraum z = l.z();
         Zone zone = l.zone();
         return new MessstelleWerteDto.Werte(messstelle(l), z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
                 MessstelleWerteRegeln.iso(z.bis(), zone.id()), zone.id().getId(), zone.herkunft(), form.version(),
-                quellen(l), schritte(l, form), l.ablesung() != null ? null : zuordnung(l.imZeitraum(), z));
+                quellen(l), schritte(l, form), l.ablesung() != null ? null : zuordnung(l.imZeitraum(), z, leser));
     }
 
     /** Die Schritte des Zeitraums in der angefragten Version, je mit Herkunft. */
@@ -311,10 +705,26 @@ public class MessstelleWerteService {
      * ({@code entity_id} ohne {@code site_id}), und jeder Wert trägt die Anlage, an der er ankam — nach einem Umzug
      * die alte. Ohne den Join verriete das Wort Werte einer fremden Anlage.
      */
-    private String zuordnung(List<Quelle> imZeitraum, Zeitraum z) {
+    private static String zuordnung(List<Quelle> imZeitraum, Zeitraum z, Leser leser) {
         if (imZeitraum.isEmpty()) {
             return null;
         }
+        return leser.nichtZugeordnet(imZeitraum, z) ? MessstelleBeobachtung.NICHT_ZUGEORDNET : null;
+    }
+
+    /** Die Spannen der Bindungen im Zeitraum, wie {@link #zuordnung} sie fragt - auch der Schlüssel im Vorrat. */
+    private static List<Object> zuordnungsfrage(List<Quelle> imZeitraum, Zeitraum z) {
+        List<Object> frage = new ArrayList<>();
+        for (Quelle q : imZeitraum) {
+            frage.add(q.entityId());
+            frage.add(q.kanal());
+            frage.add(q.gueltigAb().isAfter(z.von()) ? q.gueltigAb() : z.von());
+            frage.add(q.gueltigBis() != null && q.gueltigBis().isBefore(z.bis()) ? q.gueltigBis() : z.bis());
+        }
+        return frage;
+    }
+
+    private boolean nichtZugeordnetDirekt(List<Quelle> imZeitraum, Zeitraum z) {
         UUID[] komponenten = imZeitraum.stream().map(Quelle::entityId).toArray(UUID[]::new);
         String[] kanaele = imZeitraum.stream().map(Quelle::kanal).toArray(String[]::new);
         Timestamp[] von = imZeitraum.stream().map(q -> Timestamp.from(
@@ -343,7 +753,7 @@ public class MessstelleWerteService {
             ps.setArray(4, con.createArrayOf("timestamptz", bis));
             return ps;
         }, rs -> rs.next() && rs.getBoolean(1));
-        return Boolean.TRUE.equals(an) ? MessstelleBeobachtung.NICHT_ZUGEORDNET : null;
+        return Boolean.TRUE.equals(an);
     }
 
     /**
@@ -429,11 +839,16 @@ public class MessstelleWerteService {
 
     private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen, Consumer<UUID> zaun,
             Instant grenze) {
+        return lesen(kennzeichen, form, versionen, zaun, grenze, direkt);
+    }
+
+    private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen, Consumer<UUID> zaun,
+            Instant grenze, Leser leser) {
         UUID tenant = TenantContext.get();
-        Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
+        Messstelle m = leser.messstelle(kennzeichen).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
         zaun.accept(m.id());
-        return lesen(tenant, m, form, versionen, grenze);
+        return lesen(tenant, m, form, versionen, grenze, leser);
     }
 
     private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen) {
@@ -446,11 +861,16 @@ public class MessstelleWerteService {
      * Die Leser im Haus (Kennzahl, Bilanz, Bewertung) rechnen ungezäunt mit ihrer eigenen Uhr ({@code null}).
      */
     private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen, Instant grenze) {
+        return lesen(tenant, m, form, versionen, grenze, direkt);
+    }
+
+    private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen, Instant grenze,
+            Leser leser) {
         MessstelleRegeln.Groesse haupt = m.hauptgroesse();
-        List<Quelle> fuehrend = fuehrend(m);
+        List<Quelle> fuehrend = fuehrend(m, leser);
         AblesungRepository ablesungen = new AblesungRepository(jdbc);
-        UUID ablesung = ablesungen.quelle(tenant, m.id());
-        Zone zone = zone(tenant, fuehrend, form);
+        UUID ablesung = leser.ablesung(tenant, m.id());
+        Zone zone = zone(tenant, fuehrend, stichtag(form), leser);
         if (ablesung != null) {
             Instant t = form.von().zeitpunkt() != null ? form.von().zeitpunkt()
                     : form.von().tag().atStartOfDay(zone.id()).toInstant();
@@ -464,16 +884,10 @@ public class MessstelleWerteService {
         List<Bindung> bindungen = bindungen(fuehrend);
         List<Quelle> imZeitraum = imZeitraum(fuehrend, z.von(), z.bis());
 
-        Map<Schritt, Deckung> deckung = new LinkedHashMap<>();
-        for (Schritt s : z.schritte()) {
-            deckung.put(s, "berechnet".equals(m.art()) ? new Deckung(null, null, OhneZahl.BERECHNET)
-                    : MessstelleWerteRegeln.deckung(bindungen, s));
-        }
+        Map<Schritt, Deckung> deckung = deckung(m, z, bindungen);
         Map<Reihe, Gelesen> gelesen = new HashMap<>();
-        deckung.entrySet().stream().filter(e -> e.getValue().reihe() != null)
-                .collect(Collectors.groupingBy(e -> e.getValue().reihe(), LinkedHashMap::new,
-                        Collectors.mapping(Map.Entry::getKey, Collectors.toList())))
-                .forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte, versionen)));
+        reihen(deckung).forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte, versionen,
+                leser)));
 
         Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z, ablesung != null);
         Map<Instant, List<WertVersionenLeser.Version>> spurVersionen = spur == null ? Map.of()
@@ -487,6 +901,23 @@ public class MessstelleWerteService {
         }
         return new Lesung(tenant, m, haupt, zone, z, jetzt, imZeitraum, deckung, gelesen, spur, spurVersionen,
                 new Beschriftung(z), ablesung, abgelesen);
+    }
+
+    /** Welche Reihe welchen Schritt beantwortet - eine berechnete Messstelle hat keine. */
+    private static Map<Schritt, Deckung> deckung(Messstelle m, Zeitraum z, List<Bindung> bindungen) {
+        Map<Schritt, Deckung> deckung = new LinkedHashMap<>();
+        for (Schritt s : z.schritte()) {
+            deckung.put(s, "berechnet".equals(m.art()) ? new Deckung(null, null, OhneZahl.BERECHNET)
+                    : MessstelleWerteRegeln.deckung(bindungen, s));
+        }
+        return deckung;
+    }
+
+    /** Je Reihe ihre Schritte, in der Reihenfolge des Zeitraums - je Reihe liest {@link #lies} einmal. */
+    private static Map<Reihe, List<Schritt>> reihen(Map<Schritt, Deckung> deckung) {
+        return deckung.entrySet().stream().filter(e -> e.getValue().reihe() != null)
+                .collect(Collectors.groupingBy(e -> e.getValue().reihe(), LinkedHashMap::new,
+                        Collectors.mapping(Map.Entry::getKey, Collectors.toList())));
     }
 
     /**
@@ -542,8 +973,12 @@ public class MessstelleWerteService {
 
     /** Die führenden Bindungen der Hauptgröße — eine Vergleichsquelle oder eine Nebengröße liefert nie. */
     private List<Quelle> fuehrend(Messstelle m) {
+        return fuehrend(m, direkt);
+    }
+
+    private static List<Quelle> fuehrend(Messstelle m, Leser leser) {
         MessstelleRegeln.Groesse haupt = m.hauptgroesse();
-        return quellen.derMessstelle(m.id()).stream()
+        return leser.quellen(m.id()).stream()
                 .filter(q -> "fuehrend".equals(q.rolle()))
                 .filter(q -> q.groesse().equals(haupt.groesse()) && q.richtung().equals(haupt.richtung()))
                 .toList();
@@ -633,7 +1068,8 @@ public class MessstelleWerteService {
             Set<Instant> mitDaten, Integer selektionS, Map<UUID, List<KadenzRegeln.Fassung>> fassungen,
             Map<Instant, List<WertVersionenLeser.Version>> versionen) {}
 
-    private Gelesen lies(UUID tenant, Reihe reihe, Zeitraum z, List<Schritt> schritte, WertVersionenLeser versionen) {
+    private Gelesen lies(UUID tenant, Reihe reihe, Zeitraum z, List<Schritt> schritte, WertVersionenLeser versionen,
+            Leser leser) {
         Instant a = schritte.get(0).von();
         Instant b = schritte.get(schritte.size() - 1).bis();
         UUID e = reihe.entityId();
@@ -647,14 +1083,16 @@ public class MessstelleWerteService {
                 historie.viertelstunden(tenant, e, k, a, b.minusSeconds(1), 3600).forEach(x -> zeilen.put(x.zeit(), x));
                 historie.viertelstunden(tenant, e, k, a, b.minusSeconds(1), 900).forEach(x -> viertel.put(x.zeit(), x));
             }
-            case TAG -> historie.tage(tenant, e, k, a, b.minusSeconds(1)).forEach(x -> zeilen.put(x.zeit(), x));
-            case MONAT, JAHR -> historie.perioden(tenant, e, k, z.raster().wort(), a, b)
+            case TAG -> leser.tage(tenant, e, k, a, b.minusSeconds(1)).forEach(x -> zeilen.put(x.zeit(), x));
+            case MONAT, JAHR -> leser.perioden(tenant, e, k, z.raster().wort(), a, b)
                     .forEach(x -> zeilen.put(x.zeit(), x));
         }
         // Die Versionen ab 2 (Ersatzwert-Lauf, Kaskade): je Periode; die Stunde fragt ihre Viertelstunden.
         Map<Instant, List<WertVersionenLeser.Version>> spaetere = switch (z.raster()) {
             case VIERTELSTUNDE, STUNDE -> versionen.viertelstunden(tenant, e, k, a, b);
-            case TAG, MONAT, JAHR -> versionen.perioden(tenant, z.raster().wort(), e, k, null, a, b);
+            // Die Kaskade reicht ihren eigenen Leser (ihre Transaktion) - dann nie aus dem Vorrat.
+            case TAG, MONAT, JAHR -> versionen == this.versionen ? leser.versionen(tenant, z.raster().wort(), e, k, a, b)
+                    : versionen.perioden(tenant, z.raster().wort(), e, k, null, a, b);
         };
         // Welche Perioden ohne Zeile schon etwas darunter tragen — für die Stunde die fehlenden
         // Viertelstunden, sonst die fehlenden Schritte selbst.
@@ -672,7 +1110,7 @@ public class MessstelleWerteService {
         }
         Set<Instant> mitDaten = new HashSet<>(historie.mitDaten(tenant, e, k,
                 offen.stream().map(Schritt::von).toList(), offen.stream().map(Schritt::bis).toList()));
-        return new Gelesen(zeilen, viertel, historie.ereignisVerweise(tenant, e, k, a, b), mitDaten,
+        return new Gelesen(zeilen, viertel, leser.ereignisse(tenant, e, k, a, b), mitDaten,
                 offen.isEmpty() ? null : selektionS(tenant, e, k), new HashMap<>(), spaetere);
     }
 
@@ -1142,29 +1580,36 @@ public class MessstelleWerteService {
      * UNTERNEHMEN → VORGABE), damit die Schritte genau auf den gespeicherten Perioden liegen.
      */
     private Zone zone(UUID tenant, List<Quelle> fuehrend, Form form) {
-        return zone(tenant, fuehrend, form.von().zeitpunkt() != null ? form.von().zeitpunkt()
-                : form.von().tag().atStartOfDay(ZoneId.of("UTC")).toInstant());
+        return zone(tenant, fuehrend, stichtag(form));
     }
 
-    private Zone zone(UUID tenant, List<Quelle> fuehrend, Instant stichtag) {
-        UUID site = fuehrend.stream()
+    /** Der Stichtag der Zonenwahl: der Zeitpunkt des Beginns, sonst sein Tag um 00:00 UTC. */
+    private static Instant stichtag(Form form) {
+        return form.von().zeitpunkt() != null ? form.von().zeitpunkt()
+                : form.von().tag().atStartOfDay(ZoneId.of("UTC")).toInstant();
+    }
+
+    /** Die Anlage der Zonenwahl: die erste führende Bindung, die am Stichtag noch gilt, sonst die erste mit Anlage. */
+    private static UUID zoneSite(List<Quelle> fuehrend, Instant stichtag) {
+        return fuehrend.stream()
                 .filter(q -> q.gueltigBis() == null || q.gueltigBis().isAfter(stichtag))
                 .map(Quelle::siteId).filter(x -> x != null).findFirst()
                 .orElse(fuehrend.stream().map(Quelle::siteId).filter(x -> x != null).findFirst().orElse(null));
+    }
+
+    private Zone zone(UUID tenant, List<Quelle> fuehrend, Instant stichtag) {
+        return zone(tenant, fuehrend, stichtag, direkt);
+    }
+
+    private static Zone zone(UUID tenant, List<Quelle> fuehrend, Instant stichtag, Leser leser) {
+        UUID site = zoneSite(fuehrend, stichtag);
         if (site != null) {
-            List<String> standort = jdbc.queryForList("""
-                    SELECT st.zeitzone FROM anlage_standort a
-                      JOIN standort st ON st.id = a.standort_id AND st.tenant_id = a.tenant_id
-                     WHERE a.tenant_id = ? AND a.site_id = ? AND a.aufgehoben_am IS NULL
-                       AND a.gueltig_ab <= ?::date AND (a.gueltig_bis IS NULL OR a.gueltig_bis >= ?::date)
-                     ORDER BY a.gueltig_ab DESC LIMIT 1
-                    """, String.class, tenant, site, Timestamp.from(stichtag), Timestamp.from(stichtag));
+            List<String> standort = leser.standortZone(tenant, site, stichtag);
             if (!standort.isEmpty() && TagRegeln.ZONEN.contains(standort.get(0))) {
                 return new Zone(TagRegeln.zone(standort.get(0)), TagRegeln.AUS_STANDORT);
             }
         }
-        List<String> unternehmen = jdbc.queryForList(
-                "SELECT zeitzone FROM unternehmen WHERE tenant_id = ? ORDER BY created_at, id LIMIT 1", String.class, tenant);
+        List<String> unternehmen = leser.unternehmenZone(tenant);
         if (!unternehmen.isEmpty() && TagRegeln.ZONEN.contains(unternehmen.get(0))) {
             return new Zone(TagRegeln.zone(unternehmen.get(0)), TagRegeln.AUS_UNTERNEHMEN);
         }

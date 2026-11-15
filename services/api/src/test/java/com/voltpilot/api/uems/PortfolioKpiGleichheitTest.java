@@ -7,6 +7,7 @@ import com.voltpilot.api.repo.PortfolioKpiRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.BilanzDto;
+import com.voltpilot.api.web.dto.MessstelleWerteDto;
 import com.voltpilot.api.web.dto.PortfolioKpiDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
@@ -178,6 +179,48 @@ class PortfolioKpiGleichheitTest {
         assertThat(fremde).containsExactlyInAnyOrderElementsOf(fremd.anlagen().values());
         assertThat(mapper.writeValueAsString(service.kpis(JETZT)))
                 .isEqualTo(mapper.writeValueAsString(kpisAlt(JETZT)));
+    }
+
+    /**
+     * H1 (vp-perf3-server): {@link BilanzService#bilanzen} liest die Werte aller Abschnitte über einen
+     * {@link MessstelleWerteService.Vorrat}. Je Messstelle der Welt und je Raster (Tag, Monat, Jahr, Vorjahresmonat)
+     * muss die Antwort aus dem Vorrat dieselbe sein wie die einzeln gelesene - und keine Anfrage darf einzeln
+     * nachlesen: sonst wüchse die Anweisungszahl wieder mit der Zahl der Hauptzähler.
+     */
+    @Test
+    void derVorratSagtJederMessstelleDasselbeWieEinzelnUndLiestNichtsNach() {
+        Welt w = welt("Vorrat");
+        Clock fest = Clock.fixed(JETZT, ZoneOffset.UTC);
+        bilanzService.uhrStellen(fest);
+        werteService.uhrStellen(fest);
+        formelService.uhrStellen(fest);
+        TenantContext.set(w.mandant());
+        List<String[]> zeitraeume = List.of(new String[] {"monat", "2026-10-01", "2026-10-31"},
+                new String[] {"monat", "2025-10-01", "2025-10-31"}, new String[] {"tag", "2026-10-01", "2026-10-31"},
+                new String[] {"tag", "2026-10-21", "2026-10-21"}, new String[] {"jahr", "2026-01-01", "2026-12-31"});
+        List<MessstelleWerteService.Anfrage> anfragen = new ArrayList<>();
+        for (String kz : w.messstellen().keySet()) {
+            for (String[] z : zeitraeume) {
+                anfragen.add(new MessstelleWerteService.Anfrage(kz, z[0], z[1], z[2]));
+            }
+        }
+        MessstelleWerteService.Vorrat vorrat = werteService.vorrat(anfragen);
+        int mitWert = 0;
+        for (MessstelleWerteService.Anfrage a : anfragen) {
+            MessstelleWerteDto.Werte einzeln = werteService.werte(a.kennzeichen(), a.raster(), a.von(), a.bis(), null);
+            assertThat(werteService.werte(a.kennzeichen(), a.raster(), a.von(), a.bis(), null, vorrat))
+                    .as("%s %s %s..%s", a.kennzeichen(), a.raster(), a.von(), a.bis()).isEqualTo(einzeln);
+            mitWert += einzeln.werte().stream().anyMatch(x -> x.menge() != null) ? 1 : 0;
+        }
+        assertThat(mitWert).as("die Probe trägt Werte").isGreaterThan(5);
+        assertThat(vorrat.einzeln()).as("keine Anfrage las einzeln nach").isZero();
+
+        // Ein anderer Mandant liest nie aus diesem Vorrat.
+        Welt fremd = welt("VorratFremd");
+        TenantContext.set(fremd.mandant());
+        String kz = fremd.messstellen().keySet().iterator().next();
+        assertThat(werteService.werte(kz, "monat", "2026-10-01", "2026-10-31", null, vorrat))
+                .isEqualTo(werteService.werte(kz, "monat", "2026-10-01", "2026-10-31", null));
     }
 
     private static String zoneDer(BilanzDto.Bilanz b) {

@@ -74,6 +74,69 @@ public class MessstelleFormelWerteRepository {
                 .stream().findFirst();
     }
 
+    /**
+     * {@link #quelle} für viele Paare (Komponente, Kanal) in EINER Abfrage (vp-perf3-server H1): je Paar die Abfrage
+     * von {@link #quelle} als {@code LATERAL}, also dieselbe Box. Ein Paar ohne lesende Box fehlt in der Map.
+     */
+    public Map<List<Object>, Quelle> quellen(Collection<List<Object>> paare) {
+        List<List<Object>> k = List.copyOf(new java.util.LinkedHashSet<>(paare));
+        Map<List<Object>, Quelle> out = new java.util.HashMap<>();
+        if (k.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("""
+                    SELECT k.i, x.site_id, x.device_id FROM unnest(?::uuid[], ?::text[]) WITH ORDINALITY AS k(e, pk, i)
+                    CROSS JOIN LATERAL (SELECT mp.site_id AS site_id, sel.device_id AS device_id
+                      FROM measurement_point mp
+                      JOIN device_measurement_selection sel
+                        ON sel.entity_id = mp.id AND sel.point_key = k.pk
+                      JOIN device d ON d.id = sel.device_id
+                     WHERE mp.id = k.e
+                     ORDER BY (d.ausgebaut_am IS NOT NULL), sel.device_id
+                     LIMIT 1) x
+                    """);
+            ps.setArray(1, con.createArrayOf("uuid", k.stream().map(x -> x.get(0)).toArray()));
+            ps.setArray(2, con.createArrayOf("text", k.stream().map(x -> x.get(1)).toArray()));
+            return ps;
+        }, rs -> {
+            out.put(k.get(rs.getInt("i") - 1), new Quelle(rs.getObject("site_id", UUID.class),
+                    rs.getObject("device_id", UUID.class)));
+        });
+        return out;
+    }
+
+    /**
+     * {@link #frischester} für viele Schlüssel (Anlage, Box, Kanal, Komponente) in EINER Abfrage (vp-perf3-server H1):
+     * je Schlüssel die Abfrage von {@link #frischester} als {@code LATERAL}. Ein Schlüssel ohne Wert fehlt.
+     */
+    public Map<List<Object>, Messwert> frischeste(Collection<List<Object>> schluessel) {
+        List<List<Object>> k = List.copyOf(new java.util.LinkedHashSet<>(schluessel));
+        Map<List<Object>, Messwert> out = new java.util.HashMap<>();
+        if (k.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT k.i, x.wert, x.time FROM unnest(?::uuid[], ?::uuid[], ?::text[], "
+                    + "?::uuid[]) WITH ORDINALITY AS k(site, device, pk, e, i) CROSS JOIN LATERAL ("
+                    + "SELECT COALESCE(decoded_numeric, raw_numeric) AS wert, time "
+                    + "FROM device_measurement_sample "
+                    + "WHERE tenant_id = ? AND site_id = k.site AND device_id = k.device AND point_key = k.pk "
+                    + "AND (edge_entity_id IS NULL OR edge_entity_id = k.e) "
+                    + "AND quality = 'good' AND COALESCE(decoded_numeric, raw_numeric) IS NOT NULL "
+                    + "ORDER BY time DESC, edge_sequence DESC LIMIT 1) x");
+            ps.setArray(1, con.createArrayOf("uuid", k.stream().map(x -> x.get(0)).toArray()));
+            ps.setArray(2, con.createArrayOf("uuid", k.stream().map(x -> x.get(1)).toArray()));
+            ps.setArray(3, con.createArrayOf("text", k.stream().map(x -> x.get(2)).toArray()));
+            ps.setArray(4, con.createArrayOf("uuid", k.stream().map(x -> x.get(3)).toArray()));
+            ps.setObject(5, TenantContext.get());
+            return ps;
+        }, rs -> {
+            out.put(k.get(rs.getInt("i") - 1), new Messwert(rs.getDouble("wert"), rs.getTimestamp("time").toInstant()));
+        });
+        return out;
+    }
+
     /** Die führenden Quellen der Hauptgröße dieser Messstellen samt Box ({@link GeteiltesRegister#lade}). */
     public List<GeteiltesRegister.Bindung> bindungen(Collection<UUID> messstellen, Instant von, Instant bis) {
         return GeteiltesRegister.lade(jdbc, messstellen, von, bis);

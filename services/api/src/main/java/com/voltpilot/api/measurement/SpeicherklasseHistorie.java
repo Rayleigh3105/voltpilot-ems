@@ -12,6 +12,8 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -238,7 +240,16 @@ public class SpeicherklasseHistorie {
      */
     public List<Zeile> tage(UUID tenantId, UUID entityId, String messkanal, Instant von,
             Instant bis) {
-        String sql = "SELECT beginn bucket,wertart aggregation_kind,"
+        String sql = "SELECT " + TAGE_SPALTEN
+                + "FROM messreihe_tag WHERE tenant_id=? AND entity_id=? AND "
+                + praedikat("messkanal", messkanal) + " AND beginn>=? AND beginn<=? "
+                + "ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN;
+        return jdbc.query(sql, (rs, n) -> zeile(rs, Quelle.TAG), tenantId, entityId,
+                wert(messkanal), Timestamp.from(von), Timestamp.from(bis));
+    }
+
+    /** Die Spalten von {@link #tage} (vor {@code FROM}), auch für {@link #tage(UUID, Collection)}. */
+    private static final String TAGE_SPALTEN = "beginn bucket,wertart aggregation_kind,"
                 // Die Tagesmenge aus den Periodenständen (AP-08 IP-5), NIE die Summe der
                 // Viertelstunden. Ein Tag, der vor IP-5 gebildet wurde, hat keine — und keine Kurve.
                 + "menge menge_summe,mittel avg_value,min_wert min_value,"
@@ -254,12 +265,60 @@ public class SpeicherklasseHistorie {
                 + "stand_ende h_stand_ende,menge_zustand h_menge_zustand,"
                 + "kennzeichen::text h_kennzeichen,energie h_energie,"
                 + "CASE WHEN wertart='gauge' THEN mittel "
-                + "WHEN wertart='counter' THEN menge ELSE letzter_wert END chart_value "
-                + "FROM messreihe_tag WHERE tenant_id=? AND entity_id=? AND "
-                + praedikat("messkanal", messkanal) + " AND beginn>=? AND beginn<=? "
-                + "ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN;
-        return jdbc.query(sql, (rs, n) -> zeile(rs, Quelle.TAG), tenantId, entityId,
-                wert(messkanal), Timestamp.from(von), Timestamp.from(bis));
+                + "WHEN wertart='counter' THEN menge ELSE letzter_wert END chart_value ";
+
+    /**
+     * Ein Fenster einer Reihe für die gebündelten Lesungen (vp-perf3-server H1): Komponente, Kanal (ohne den
+     * Platzhalter {@code [*]}) und die Grenzen, wie sie die Einzel-Lesung bekäme.
+     */
+    public record Fenster(UUID entityId, String messkanal, Instant von, Instant bis) {}
+
+    /**
+     * {@link #tage} für viele Fenster in EINER Abfrage (vp-perf3-server H1): je Fenster die Abfrage von {@link #tage}
+     * als {@code LATERAL}, also dieselben Zeilen in derselben Reihenfolge und mit derselben Obergrenze. Ein Kanal mit
+     * dem Platzhalter {@code [*]} fragt anders ({@code LIKE}) - den liest der Aufrufer einzeln.
+     */
+    public Map<Fenster, List<Zeile>> tage(UUID tenantId, Collection<Fenster> fenster) {
+        return gebuendelt(fenster, "SELECT " + TAGE_SPALTEN + "FROM messreihe_tag WHERE tenant_id=? AND entity_id=k.e "
+                + "AND messkanal=k.kanal AND beginn>=k.kvon AND beginn<=k.kbis ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN,
+                null, tenantId, Quelle.TAG);
+    }
+
+    /** {@link #perioden} (Monat oder Jahr {@code art}) für viele Fenster in EINER Abfrage, wie {@link #tage(UUID, Collection)}. */
+    public Map<Fenster, List<Zeile>> perioden(UUID tenantId, String art, Collection<Fenster> fenster) {
+        if (!"monat".equals(art) && !"jahr".equals(art)) {
+            throw new IllegalArgumentException("eine Periode ist ein Monat oder ein Jahr: " + art);
+        }
+        return gebuendelt(fenster, "SELECT " + PERIODEN_SPALTEN + "FROM messreihe_periode WHERE tenant_id=? "
+                + "AND entity_id=k.e AND messkanal=k.kanal AND art=? AND beginn>=k.kvon AND beginn<k.kbis "
+                + "ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN, art, tenantId, null);
+    }
+
+    private Map<Fenster, List<Zeile>> gebuendelt(Collection<Fenster> fenster, String jeFenster, String art,
+            UUID tenantId, Quelle quelle) {
+        List<Fenster> f = List.copyOf(new LinkedHashSet<>(fenster));
+        Map<Fenster, List<Zeile>> out = new LinkedHashMap<>();
+        f.forEach(x -> out.put(x, new ArrayList<>()));
+        if (f.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT k.i, x.* FROM unnest(?::uuid[], ?::text[], ?::timestamptz[], "
+                    + "?::timestamptz[]) WITH ORDINALITY AS k(e, kanal, kvon, kbis, i) CROSS JOIN LATERAL ("
+                    + jeFenster + ") x ORDER BY k.i, x.bucket");
+            ps.setArray(1, con.createArrayOf("uuid", f.stream().map(Fenster::entityId).toArray()));
+            ps.setArray(2, con.createArrayOf("text", f.stream().map(Fenster::messkanal).toArray()));
+            ps.setArray(3, con.createArrayOf("timestamptz", f.stream().map(x -> Timestamp.from(x.von())).toArray()));
+            ps.setArray(4, con.createArrayOf("timestamptz", f.stream().map(x -> Timestamp.from(x.bis())).toArray()));
+            ps.setObject(5, tenantId);
+            if (art != null) {
+                ps.setString(6, art);
+            }
+            return ps;
+        }, rs -> {
+            out.get(f.get(rs.getInt("i") - 1)).add(zeile(rs, quelle));
+        });
+        return out;
     }
 
     /**
@@ -275,7 +334,17 @@ public class SpeicherklasseHistorie {
         if (!"monat".equals(art) && !"jahr".equals(art)) {
             throw new IllegalArgumentException("eine Periode ist ein Monat oder ein Jahr: " + art);
         }
-        String sql = "SELECT beginn bucket,wertart aggregation_kind,"
+        String sql = "SELECT " + PERIODEN_SPALTEN
+                + "FROM messreihe_periode WHERE tenant_id=? AND entity_id=? AND messkanal=? AND art=? "
+                + "AND beginn>=? AND beginn<? ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN;
+        // `quelle` bleibt leer: sie ist ein Wort der Quellenwahl des Verlaufs (LesepfadQuelle), und
+        // die wählt Monat und Jahr nie.
+        return jdbc.query(sql, (rs, n) -> zeile(rs, null), tenantId, entityId, messkanal, art,
+                Timestamp.from(von), Timestamp.from(bis));
+    }
+
+    /** Die Spalten von {@link #perioden} (vor {@code FROM}), auch für die gebündelte Lesung. */
+    private static final String PERIODEN_SPALTEN = "beginn bucket,wertart aggregation_kind,"
                 + "min_wert min_value,max_wert max_value,NULL::text last_text,"
                 + "erhalten::bigint samples,(erhalten<erwartet) has_gap,"
                 + "erhalten h_erhalten,erwartet h_erwartet,NULL::int h_good,NULL::int h_uncertain,"
@@ -286,14 +355,7 @@ public class SpeicherklasseHistorie {
                 + "NULL::bigint h_fassung,NULL::text h_katalog,NULL::text h_rolle,"
                 + "stand_anfang h_stand_anfang,stand_ende h_stand_ende,menge_zustand h_menge_zustand,"
                 + "kennzeichen::text h_kennzeichen,energie h_energie,"
-                + "CASE WHEN wertart='gauge' THEN mittel WHEN wertart='counter' THEN menge END chart_value "
-                + "FROM messreihe_periode WHERE tenant_id=? AND entity_id=? AND messkanal=? AND art=? "
-                + "AND beginn>=? AND beginn<? ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN;
-        // `quelle` bleibt leer: sie ist ein Wort der Quellenwahl des Verlaufs (LesepfadQuelle), und
-        // die wählt Monat und Jahr nie.
-        return jdbc.query(sql, (rs, n) -> zeile(rs, null), tenantId, entityId, messkanal, art,
-                Timestamp.from(von), Timestamp.from(bis));
-    }
+                + "CASE WHEN wertart='gauge' THEN mittel WHEN wertart='counter' THEN menge END chart_value ";
 
     /**
      * Die Ereignisse der Reihe als VERWEISE (AP-08 IP-9): je Ereignis seine Kennung, Art und Zeit —
@@ -322,6 +384,47 @@ public class SpeicherklasseHistorie {
 
     /** Der Verweis auf ein Ereignis: Kennung, Art, Beginn und — bei einem Zeitraum — Ende. */
     public record Verweis(UUID ereignisId, String art, Instant von, Instant bis) {}
+
+    /**
+     * {@link #ereignisVerweise} für viele Fenster in EINER Abfrage (vp-perf3-server H1): je Fenster dieselbe Abfrage als
+     * {@code LATERAL}, also dieselben Verweise in derselben Reihenfolge und mit derselben Obergrenze.
+     */
+    public Map<Fenster, List<Verweis>> ereignisVerweise(UUID tenantId, Collection<Fenster> fenster) {
+        List<Fenster> f = List.copyOf(new LinkedHashSet<>(fenster));
+        Map<Fenster, List<Verweis>> out = new LinkedHashMap<>();
+        f.forEach(x -> out.put(x, new ArrayList<>()));
+        if (f.isEmpty()) {
+            return out;
+        }
+        String jeFenster = "WITH e AS (SELECT DISTINCT ON (ereignis_id) ereignis_id,art,"
+                + "zeit beginn,bis,entity_id,messkanal FROM messreihe_ereignis WHERE tenant_id=? "
+                + "AND NOT aus_bestand AND art IN (" + MARKER_ARTEN + ") AND ("
+                + "(entity_id=k.e AND (messkanal IS NULL OR messkanal=k.kanal)) OR (entity_id IS NULL AND "
+                + "data_source_id=(SELECT data_source_id FROM measurement_point WHERE tenant_id=? AND id=k.e))) "
+                + "AND zeit<=k.kbis AND COALESCE(bis,zeit)>=k.kvon "
+                + "ORDER BY ereignis_id,eingang DESC) "
+                + "SELECT ereignis_id,art,beginn,bis FROM e WHERE NOT (e.art='counter_reset' AND EXISTS ("
+                + "SELECT 1 FROM messreihe_ereignis u WHERE u.tenant_id=? AND u.entity_id=e.entity_id "
+                + "AND u.messkanal=e.messkanal AND u.art='counter_overflow' AND u.zeit=e.beginn)) "
+                + "ORDER BY beginn,ereignis_id LIMIT " + HOECHSTENS_ZEILEN;
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT k.i, x.* FROM unnest(?::uuid[], ?::text[], ?::timestamptz[], "
+                    + "?::timestamptz[]) WITH ORDINALITY AS k(e, kanal, kvon, kbis, i) CROSS JOIN LATERAL ("
+                    + jeFenster + ") x ORDER BY k.i, x.beginn, x.ereignis_id");
+            ps.setArray(1, con.createArrayOf("uuid", f.stream().map(Fenster::entityId).toArray()));
+            ps.setArray(2, con.createArrayOf("text", f.stream().map(Fenster::messkanal).toArray()));
+            ps.setArray(3, con.createArrayOf("timestamptz", f.stream().map(x -> Timestamp.from(x.von())).toArray()));
+            ps.setArray(4, con.createArrayOf("timestamptz", f.stream().map(x -> Timestamp.from(x.bis())).toArray()));
+            ps.setObject(5, tenantId);
+            ps.setObject(6, tenantId);
+            ps.setObject(7, tenantId);
+            return ps;
+        }, rs -> {
+            out.get(f.get(rs.getInt("i") - 1)).add(new Verweis(rs.getObject("ereignis_id", UUID.class),
+                    rs.getString("art"), rs.getTimestamp("beginn").toInstant(), instant(rs, "bis")));
+        });
+        return out;
+    }
 
     /**
      * Welche dieser Spannen schon Rohwerte oder Viertelstunden der Reihe tragen (AP-08 IP-9): eine

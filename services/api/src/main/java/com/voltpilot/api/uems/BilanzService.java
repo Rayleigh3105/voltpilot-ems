@@ -112,7 +112,8 @@ public class BilanzService {
         String periode = periode(periodeWort);
         ZoneId zone = zone(siteId, amTag);
         return bilanz(siteId, name, periode, amTag, zone,
-                new Lesestand(stellungen.lesen(), reste.alle(), formeln::restLive), imZugriff);
+                new Lesestand(stellungen.lesen(), reste.alle(), formeln::restLive,
+                        (k, raster, von, bis) -> werte.werte(k, raster, von, bis, null)), imZugriff);
     }
 
     /**
@@ -121,7 +122,16 @@ public class BilanzService {
      * Live-Wert („jetzt“, für jeden Stichtag derselbe) einmal je Hauptzähler.
      */
     private record Lesestand(BilanzStellungen.Stand stand, Map<UUID, BilanzRestRepository.Rest> reste,
-            Function<UUID, MessstelleFormelService.RestLive> live) {}
+            Function<UUID, MessstelleFormelService.RestLive> live, WerteLeser werte) {}
+
+    /**
+     * Die Werte einer Messstelle für einen Abschnitt ({@link MessstelleWerteService#werte}): einzeln, oder in
+     * {@link #bilanzen} aus dem Vorrat, den die Anfrage für alle Abschnitte gebündelt las (vp-perf3-server H1).
+     */
+    @FunctionalInterface
+    private interface WerteLeser {
+        MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis);
+    }
 
     /**
      * Die Bilanzen MEHRERER Anlagen zu mehreren Stichtagen (Portfolio-Kennzahlen, vp-perf2-server B7): je Anlage und
@@ -143,8 +153,16 @@ public class BilanzService {
         }
         BilanzStellungen.Stand stand = siteIds.isEmpty() ? null : stellungen.lesen();
         Map<UUID, MessstelleFormelService.RestLive> live = new HashMap<>();
+        // H1 (vp-perf3-server): die Werte aller Abschnitte aller Anlagen und Stichtage in einem Zug je Art - die
+        // Anweisungszahl wächst nicht mehr mit der Zahl der Hauptzähler.
+        Vorhaben vorhaben = siteIds.isEmpty() ? new Vorhaben(List.of(), List.of())
+                : vorhaben(siteIds, periode, amTage, zonen, stand);
+        MessstelleWerteService.Vorrat vorrat = siteIds.isEmpty() ? null : werte.vorrat(vorhaben.anfragen());
+        live.putAll(formeln.restLiveVieler(vorhaben.zaehler(), stand));
         Lesestand lesestand = new Lesestand(stand, siteIds.isEmpty() ? Map.of() : reste.alle(),
-                hauptzaehlerId -> live.computeIfAbsent(hauptzaehlerId, id -> formeln.restLive(id, stand)));
+                hauptzaehlerId -> live.computeIfAbsent(hauptzaehlerId, id -> formeln.restLive(id, stand)),
+                vorrat == null ? (k, raster, von, bis) -> werte.werte(k, raster, von, bis, null)
+                        : (k, raster, von, bis) -> werte.werte(k, raster, von, bis, null, vorrat));
         Map<UUID, List<BilanzDto.Bilanz>> out = new LinkedHashMap<>();
         for (UUID siteId : siteIds) {
             List<BilanzDto.Bilanz> jeTag = new ArrayList<>();
@@ -171,16 +189,8 @@ public class BilanzService {
         Map<UUID, BilanzRestRepository.Rest> alleReste = lesestand.reste();
         LocalDate heute = uhr.instant().atZone(zone).toLocalDate();
         LocalDate am = amTag == null ? heute : amTag;
-        LocalDate von = switch (periode) {
-            case "tag" -> am;
-            case "monat" -> am.withDayOfMonth(1);
-            default -> am.withDayOfYear(1);
-        };
-        LocalDate bis = switch (periode) {
-            case "tag" -> am;
-            case "monat" -> am.withDayOfMonth(am.lengthOfMonth());
-            default -> am.withDayOfYear(am.lengthOfYear());
-        };
+        LocalDate von = periodeVon(periode, am);
+        LocalDate bis = periodeBis(periode, am);
         List<BilanzDto.Hauptzaehler> hauptzaehler = new ArrayList<>();
         boolean ausserhalb = false;
         for (String kz : hauptzaehlerDerAnlage(stand, siteId, von, bis)) {
@@ -215,6 +225,64 @@ public class BilanzService {
         return new BilanzDto.Bilanz(new BilanzDto.Anlage(siteId, name), periode, am, von, bis, zone.getId(),
                 List.copyOf(hauptzaehler), List.copyOf(unterverteilungen),
                 ausserhalb ? RechtPruefung.AUSSERHALB_ZUGRIFF : null);
+    }
+
+    private static LocalDate periodeVon(String periode, LocalDate am) {
+        return switch (periode) {
+            case "tag" -> am;
+            case "monat" -> am.withDayOfMonth(1);
+            default -> am.withDayOfYear(1);
+        };
+    }
+
+    private static LocalDate periodeBis(String periode, LocalDate am) {
+        return switch (periode) {
+            case "tag" -> am;
+            case "monat" -> am.withDayOfMonth(am.lengthOfMonth());
+            default -> am.withDayOfYear(am.lengthOfYear());
+        };
+    }
+
+    /** Was {@link #bilanzen} lesen wird: die Werte-Anfragen der Abschnitte und die Zähler mit Block (Live-Wert). */
+    private record Vorhaben(List<MessstelleWerteService.Anfrage> anfragen, List<UUID> zaehler) {}
+
+    /**
+     * Die Werte-Anfragen, die {@link #bilanz} für diese Anlagen und Stichtage stellen wird (vp-perf3-server H1): je
+     * Hauptzähler und Unterzähler dieselben Läufe und Abschnitte ({@link #laeufe}, {@link #abschnitte}), je Term einer;
+     * dazu die Zähler, deren Block den Live-Wert liest. Fehlt hier etwas, liest es die Bilanz einzeln - das Ergebnis
+     * bleibt dasselbe.
+     */
+    private Vorhaben vorhaben(List<UUID> siteIds, String periode, List<LocalDate> amTage,
+            List<Map<UUID, ZoneId>> zonen, BilanzStellungen.Stand stand) {
+        Set<MessstelleWerteService.Anfrage> out = new LinkedHashSet<>();
+        Set<UUID> mitBlock = new LinkedHashSet<>();
+        for (UUID siteId : siteIds) {
+            for (int i = 0; i < amTage.size(); i++) {
+                ZoneId zone = zonen.get(i).get(siteId);
+                if (zone == null) {
+                    continue;
+                }
+                LocalDate am = amTage.get(i) == null ? uhr.instant().atZone(zone).toLocalDate() : amTage.get(i);
+                LocalDate von = periodeVon(periode, am);
+                LocalDate bis = periodeBis(periode, am);
+                List<String> zaehler = new ArrayList<>(hauptzaehlerDerAnlage(stand, siteId, von, bis));
+                zaehler.addAll(unterzaehlerDerAnlage(stand, siteId, von, bis));
+                for (String kz : zaehler) {
+                    Messstelle x = stand.nachKennzeichen().get(kz);
+                    if (x == null) {
+                        continue;
+                    }
+                    mitBlock.add(x.id());
+                    for (AbschnittPlan a : abschnitte(laeufe(x, siteId, von, bis, stand), periode, von, bis)) {
+                        for (BilanzAbleitung.RestTerm t : a.fassung().terme()) {
+                            out.add(new MessstelleWerteService.Anfrage(t.messstelle(), a.raster(), a.von().toString(),
+                                    a.bis().toString()));
+                        }
+                    }
+                }
+            }
+        }
+        return new Vorhaben(List.copyOf(out), List.copyOf(mitBlock));
     }
 
     /** Jede Messstelle, die der Block des Hauptzählers nennt oder rechnet: er, sein Rest, die Terme der Tage und heute. */
@@ -273,17 +341,9 @@ public class BilanzService {
 
     private record Lauf(LocalDate von, LocalDate bis, BilanzAbleitung.RestFassung fassung) {}
 
-    private BilanzDto.Hauptzaehler hauptzaehler(Messstelle x, UUID siteId, String anlageName, String periode,
-            LocalDate von, LocalDate bis, LocalDate heute, Lesestand lesestand, ZoneId zone) {
-        BilanzStellungen.Stand stand = lesestand.stand();
-        BilanzRestRepository.Rest rest = lesestand.reste().get(x.id());
-        BilanzDto.MessstelleRef restRef = null;
-        if (rest != null) {
-            MessstelleDto.Messstelle r = messstellen.eine(rest.messstelleId());
-            restRef = new BilanzDto.MessstelleRef(r.id(), r.kennzeichen(), r.name());
-        }
-        Herkunft herkunft = new Herkunft(rest, restRef == null ? null : restRef.kennzeichen(), zone, uhr.instant());
-        // E3: je TAG die Terme aus der Stellung; gleiche Terme hintereinander sind ein Abschnitt.
+    /** E3: je TAG die Terme aus der Stellung; gleiche Terme hintereinander sind ein Lauf. */
+    private static List<Lauf> laeufe(Messstelle x, UUID siteId, LocalDate von, LocalDate bis,
+            BilanzStellungen.Stand stand) {
         List<Lauf> laeufe = new ArrayList<>();
         for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
             BilanzAbleitung.RestFassung f = stand.rest(x.kennzeichen(), tag);
@@ -298,15 +358,47 @@ public class BilanzService {
                 laeufe.add(new Lauf(tag, tag, f));
             }
         }
-        boolean gleicheTerme = laeufe.stream().map(l -> l.fassung().terme()).distinct().count() <= 1;
-        List<BilanzDto.Abschnitt> abschnitte = new ArrayList<>();
-        if (gleicheTerme && !laeufe.isEmpty()) {
-            abschnitte.add(abschnitt(laeufe.get(0).von(), laeufe.get(laeufe.size() - 1).bis(), periode, von, bis,
-                    laeufe.get(0).fassung(), stand, herkunft));
+        return laeufe;
+    }
+
+    private static boolean gleicheTerme(List<Lauf> laeufe) {
+        return laeufe.stream().map(l -> l.fassung().terme()).distinct().count() <= 1;
+    }
+
+    /** Ein Abschnitt, wie {@link #hauptzaehler} ihn rechnet: seine Tage, sein Raster, sein Zeitraum, seine Fassung. */
+    private record AbschnittPlan(LocalDate abschnittVon, LocalDate abschnittBis, String raster, LocalDate von,
+            LocalDate bis, BilanzAbleitung.RestFassung fassung) {}
+
+    /** Gleiche Terme über die ganze Periode: EIN Abschnitt im Raster der Periode; sonst je Lauf einer je Tag. */
+    private static List<AbschnittPlan> abschnitte(List<Lauf> laeufe, String periode, LocalDate von, LocalDate bis) {
+        List<AbschnittPlan> out = new ArrayList<>();
+        if (gleicheTerme(laeufe) && !laeufe.isEmpty()) {
+            out.add(new AbschnittPlan(laeufe.get(0).von(), laeufe.get(laeufe.size() - 1).bis(), periode, von, bis,
+                    laeufe.get(0).fassung()));
         } else {
             for (Lauf l : laeufe) {
-                abschnitte.add(abschnitt(l.von(), l.bis(), "tag", l.von(), l.bis(), l.fassung(), stand, herkunft));
+                out.add(new AbschnittPlan(l.von(), l.bis(), "tag", l.von(), l.bis(), l.fassung()));
             }
+        }
+        return out;
+    }
+
+    private BilanzDto.Hauptzaehler hauptzaehler(Messstelle x, UUID siteId, String anlageName, String periode,
+            LocalDate von, LocalDate bis, LocalDate heute, Lesestand lesestand, ZoneId zone) {
+        BilanzStellungen.Stand stand = lesestand.stand();
+        BilanzRestRepository.Rest rest = lesestand.reste().get(x.id());
+        BilanzDto.MessstelleRef restRef = null;
+        if (rest != null) {
+            MessstelleDto.Messstelle r = messstellen.eine(rest.messstelleId());
+            restRef = new BilanzDto.MessstelleRef(r.id(), r.kennzeichen(), r.name());
+        }
+        Herkunft herkunft = new Herkunft(rest, restRef == null ? null : restRef.kennzeichen(), zone, uhr.instant());
+        List<Lauf> laeufe = laeufe(x, siteId, von, bis, stand);
+        boolean gleicheTerme = gleicheTerme(laeufe);
+        List<BilanzDto.Abschnitt> abschnitte = new ArrayList<>();
+        for (AbschnittPlan a : abschnitte(laeufe, periode, von, bis)) {
+            abschnitte.add(abschnitt(a.abschnittVon(), a.abschnittBis(), a.raster(), a.von(), a.bis(), a.fassung(),
+                    stand, herkunft, lesestand.werte()));
         }
 
         BilanzDto.Vorschlag vorschlag = null;
@@ -337,7 +429,7 @@ public class BilanzService {
      */
     private BilanzDto.Abschnitt abschnitt(LocalDate abschnittVon, LocalDate abschnittBis, String raster,
             LocalDate von, LocalDate bis, BilanzAbleitung.RestFassung fassung, BilanzStellungen.Stand stand,
-            Herkunft herkunft) {
+            Herkunft herkunft, WerteLeser werteLeser) {
         List<BilanzDto.Term> terme = new ArrayList<>();
         Map<String, List<MessstelleWerteDto.Wert>> jeMessstelle = new LinkedHashMap<>();
         Map<String, String> gruende = new LinkedHashMap<>();
@@ -347,8 +439,8 @@ public class BilanzService {
                     t.rolle(), t.anteil()));
             if (!jeMessstelle.containsKey(t.messstelle())) {
                 try {
-                    jeMessstelle.put(t.messstelle(), werte.werte(t.messstelle(), raster, von.toString(),
-                            bis.toString(), null).werte());
+                    jeMessstelle.put(t.messstelle(), werteLeser.werte(t.messstelle(), raster, von.toString(),
+                            bis.toString()).werte());
                 } catch (MessstelleWerteRegeln.Abgelehnt e) {
                     jeMessstelle.put(t.messstelle(), List.of());
                     gruende.put(t.messstelle(), e.ablehnung().grund().wort());

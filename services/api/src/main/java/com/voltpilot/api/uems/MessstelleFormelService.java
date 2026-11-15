@@ -34,6 +34,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -842,8 +843,163 @@ public class MessstelleFormelService {
         return restLive(hauptzaehlerId, cutoff, tag, stellungen.lesen());
     }
 
+    /**
+     * {@link #restLive(UUID, BilanzStellungen.Stand)} für viele Hauptzähler (vp-perf3-server H1, Portfolio-Kennzahlen):
+     * dieselbe Rechnung je Hauptzähler, ihre Lesungen aber in einem Zug je Art - die Hauptzähler, die Bindungen ihrer
+     * Terme, die lesende Box je Kanal und der frischeste Wert je Box (je Schlüssel die Einzel-Abfrage als
+     * {@code LATERAL}); die Zone des Kundenbereichs einmal statt je Hauptzähler.
+     */
+    public Map<UUID, RestLive> restLiveVieler(Collection<UUID> hauptzaehler, BilanzStellungen.Stand stand) {
+        Map<UUID, RestLive> out = new LinkedHashMap<>();
+        if (hauptzaehler.isEmpty()) {
+            return out;
+        }
+        Instant cutoff = uhr.instant().minus(FRISCHE);
+        LocalDate tag = heute(zone());
+        Map<UUID, Messstelle> xs = messstellen.finde(hauptzaehler);
+        Map<UUID, Messstelle> terme = new LinkedHashMap<>();
+        for (Messstelle x : xs.values()) {
+            BilanzAbleitung.RestFassung f = stand.rest(x.kennzeichen(), tag);
+            if (f.fehler() == null) {
+                for (BilanzAbleitung.RestTerm t : f.terme()) {
+                    Messstelle q = stand.nachKennzeichen().get(t.messstelle());
+                    if (q != null) {
+                        terme.putIfAbsent(q.id(), q);
+                    }
+                }
+            }
+        }
+        Map<UUID, List<MessstelleQuelleRepository.Quelle>> bindungen = quellen.derMessstellen(terme.keySet());
+        Instant jetzt = uhr.instant();
+        List<List<Object>> paare = new ArrayList<>();
+        for (Messstelle q : terme.values()) {
+            for (MessstelleQuelleRepository.Quelle b : bindungen.get(q.id())) {
+                if (leistungsBindung(q, b, jetzt)) {
+                    paare.add(Arrays.asList(b.entityId(), b.kanal()));
+                }
+            }
+        }
+        Map<List<Object>, Quelle> boxen = werte.quellen(paare);
+        Set<List<Object>> gefragt = new HashSet<>(paare);
+        LiveLeser vorab = new LiveLeser() {
+            @Override
+            public Optional<Messstelle> messstelle(UUID id) {
+                return hauptzaehler.contains(id) ? Optional.ofNullable(xs.get(id)) : liveDirekt.messstelle(id);
+            }
+
+            @Override
+            public List<MessstelleQuelleRepository.Quelle> quellen(UUID messstelle) {
+                List<MessstelleQuelleRepository.Quelle> q = bindungen.get(messstelle);
+                return q != null ? q : liveDirekt.quellen(messstelle);
+            }
+
+            @Override
+            public Instant jetzt() {
+                return jetzt;
+            }
+
+            @Override
+            public Optional<Quelle> quelle(UUID entityId, String kanal) {
+                List<Object> k = Arrays.asList(entityId, kanal);
+                return gefragt.contains(k) ? Optional.ofNullable(boxen.get(k)) : liveDirekt.quelle(entityId, kanal);
+            }
+
+            @Override
+            public Optional<Messwert> frischester(Quelle q, String pointKey, UUID entityId) {
+                return liveDirekt.frischester(q, pointKey, entityId);
+            }
+        };
+        // Der frischeste Wert je Leistungskanal - die Kanäle wählt dieselbe Regel wie unten (leistungsKanal).
+        List<List<Object>> werteSchluessel = new ArrayList<>();
+        for (Messstelle q : terme.values()) {
+            Leistung l = leistungsKanal(q, vorab);
+            if (l != null) {
+                werteSchluessel.add(Arrays.asList(l.quelle().siteId(), l.quelle().deviceId(), l.pointKey(), l.entityId()));
+            }
+        }
+        Map<List<Object>, Messwert> frisch = werte.frischeste(werteSchluessel);
+        Set<List<Object>> frischGefragt = new HashSet<>(werteSchluessel);
+        LiveLeser leser = new LiveLeser() {
+            @Override
+            public Optional<Messstelle> messstelle(UUID id) {
+                return vorab.messstelle(id);
+            }
+
+            @Override
+            public List<MessstelleQuelleRepository.Quelle> quellen(UUID messstelle) {
+                return vorab.quellen(messstelle);
+            }
+
+            @Override
+            public Instant jetzt() {
+                return jetzt;
+            }
+
+            @Override
+            public Optional<Quelle> quelle(UUID entityId, String kanal) {
+                return vorab.quelle(entityId, kanal);
+            }
+
+            @Override
+            public Optional<Messwert> frischester(Quelle q, String pointKey, UUID entityId) {
+                List<Object> k = Arrays.asList(q.siteId(), q.deviceId(), pointKey, entityId);
+                return frischGefragt.contains(k) ? Optional.ofNullable(frisch.get(k))
+                        : liveDirekt.frischester(q, pointKey, entityId);
+            }
+        };
+        for (UUID id : hauptzaehler) {
+            out.put(id, restLive(id, cutoff, tag, stand, leser));
+        }
+        return out;
+    }
+
+    /** Die Lesungen des Live-Werts: einzeln ({@link #liveDirekt}) oder vorab für viele ({@link #restLiveVieler}). */
+    private interface LiveLeser {
+        Optional<Messstelle> messstelle(UUID id);
+
+        List<MessstelleQuelleRepository.Quelle> quellen(UUID messstelle);
+
+        Instant jetzt();
+
+        Optional<Quelle> quelle(UUID entityId, String kanal);
+
+        Optional<Messwert> frischester(Quelle q, String pointKey, UUID entityId);
+    }
+
+    private final LiveLeser liveDirekt = new LiveLeser() {
+        @Override
+        public Optional<Messstelle> messstelle(UUID id) {
+            return messstellen.finde(id);
+        }
+
+        @Override
+        public List<MessstelleQuelleRepository.Quelle> quellen(UUID messstelle) {
+            return quellen.derMessstelle(messstelle);
+        }
+
+        @Override
+        public Instant jetzt() {
+            return uhr.instant();
+        }
+
+        @Override
+        public Optional<Quelle> quelle(UUID entityId, String kanal) {
+            return werte.quelle(entityId, kanal);
+        }
+
+        @Override
+        public Optional<Messwert> frischester(Quelle q, String pointKey, UUID entityId) {
+            return werte.frischester(q, pointKey, entityId);
+        }
+    };
+
     private RestLive restLive(UUID hauptzaehlerId, Instant cutoff, LocalDate tag, BilanzStellungen.Stand stand) {
-        Messstelle x = messstellen.finde(hauptzaehlerId).orElse(null);
+        return restLive(hauptzaehlerId, cutoff, tag, stand, liveDirekt);
+    }
+
+    private RestLive restLive(UUID hauptzaehlerId, Instant cutoff, LocalDate tag, BilanzStellungen.Stand stand,
+            LiveLeser leser) {
+        Messstelle x = leser.messstelle(hauptzaehlerId).orElse(null);
         BilanzAbleitung.RestFassung f = x == null ? null : stand.rest(x.kennzeichen(), tag);
         if (f == null || f.fehler() != null) {
             return new RestLive(x == null ? null : x.kennzeichen(), List.of(),
@@ -853,13 +1009,13 @@ public class MessstelleFormelService {
         Instant juengster = null;
         for (BilanzAbleitung.RestTerm t : f.terme()) {
             Messstelle q = stand.nachKennzeichen().get(t.messstelle());
-            Leistung l = q == null ? null : leistungsKanal(q);
+            Leistung l = q == null ? null : leistungsKanal(q, leser);
             Double wert = null;
             String grund = null;
             if (l == null) {
                 grund = "kein_geraet";
             } else {
-                Optional<Messwert> mw = werte.frischester(l.quelle(), l.pointKey(), l.entityId());
+                Optional<Messwert> mw = leser.frischester(l.quelle(), l.pointKey(), l.entityId());
                 if (mw.isEmpty()) {
                     grund = "kein_wert";
                 } else if (mw.get().zeit().isBefore(cutoff)) {
@@ -954,16 +1110,23 @@ public class MessstelleFormelService {
     private static final String WIRKLEISTUNG = "Wirkleistung";
 
     private Leistung leistungsKanal(Messstelle q) {
-        Instant jetzt = uhr.instant();
-        for (MessstelleQuelleRepository.Quelle b : quellen.derMessstelle(q.id())) {
-            if (!FUEHREND.equals(b.rolle()) || !WIRKLEISTUNG.equals(b.groesse())
-                    || !q.hauptgroesse().richtung().equals(b.richtung())) {
+        return leistungsKanal(q, liveDirekt);
+    }
+
+    /** Eine führende Wirkleistungs-Bindung der Hauptrichtung, die jetzt gilt - nur sie liefert den Live-Wert. */
+    private static boolean leistungsBindung(Messstelle q, MessstelleQuelleRepository.Quelle b, Instant jetzt) {
+        return FUEHREND.equals(b.rolle()) && WIRKLEISTUNG.equals(b.groesse())
+                && q.hauptgroesse().richtung().equals(b.richtung())
+                && !(b.gueltigAb().isAfter(jetzt) || (b.gueltigBis() != null && !b.gueltigBis().isAfter(jetzt)));
+    }
+
+    private Leistung leistungsKanal(Messstelle q, LiveLeser leser) {
+        Instant jetzt = leser.jetzt();
+        for (MessstelleQuelleRepository.Quelle b : leser.quellen(q.id())) {
+            if (!leistungsBindung(q, b, jetzt)) {
                 continue;
             }
-            if (b.gueltigAb().isAfter(jetzt) || (b.gueltigBis() != null && !b.gueltigBis().isAfter(jetzt))) {
-                continue;
-            }
-            Optional<Quelle> scope = werte.quelle(b.entityId(), b.kanal());
+            Optional<Quelle> scope = leser.quelle(b.entityId(), b.kanal());
             if (scope.isPresent()) {
                 return new Leistung(scope.get(), b.kanal(), kanalEinheit(b.kanal(), RestLive.EINHEIT), b.anteil(),
                         b.entityId());

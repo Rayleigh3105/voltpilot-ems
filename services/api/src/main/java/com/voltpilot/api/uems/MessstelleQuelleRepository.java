@@ -5,7 +5,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -96,6 +100,29 @@ public class MessstelleQuelleRepository {
     public List<Quelle> derMessstelle(UUID messstelleId) {
         return jdbc.query("SELECT " + SPALTEN + VON + "WHERE q.messstelle_id = ?" + REIHENFOLGE,
                 MessstelleQuelleRepository::quelle, messstelleId);
+    }
+
+    /**
+     * {@link #derMessstelle} für viele Messstellen in EINER Abfrage (vp-perf3-server H1): je Messstelle dieselben
+     * Bindungen in derselben Reihenfolge; eine ohne Bindung steht mit leerer Liste darin.
+     */
+    public Map<UUID, List<Quelle>> derMessstellen(Collection<UUID> messstellen) {
+        Map<UUID, List<Quelle>> out = new LinkedHashMap<>();
+        for (UUID id : messstellen) {
+            out.put(id, new ArrayList<>());
+        }
+        if (messstellen.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT " + SPALTEN + VON + "WHERE q.messstelle_id = ANY (?)" + REIHENFOLGE);
+            ps.setArray(1, con.createArrayOf("uuid", messstellen.toArray()));
+            return ps;
+        }, rs -> {
+            Quelle q = quelle(rs, 0);
+            out.get(q.messstelleId()).add(q);
+        });
+        return out;
     }
 
     /** Ablesungen haben keine Komponente. Dieser Bestandsspalten-Filter funktioniert auch vor AP-09 IP-8. */

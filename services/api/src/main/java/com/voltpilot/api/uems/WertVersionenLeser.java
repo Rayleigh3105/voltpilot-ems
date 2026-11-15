@@ -98,6 +98,42 @@ public class WertVersionenLeser {
         return aus;
     }
 
+    /** Eine Reihe und ihr Fenster für {@link #perioden(UUID, Collection)} (vp-perf3-server H1). */
+    public record Periodenfenster(String ebene, UUID entity, String kanal, Instant von, Instant bis) {}
+
+    /**
+     * {@link #perioden} einer REIHE ({@code messstelle == null}) für viele Fenster in EINER Abfrage (vp-perf3-server
+     * H1): je Fenster dieselbe Abfrage als {@code LATERAL}, also dieselben Versionen in derselben Reihenfolge.
+     */
+    public Map<Periodenfenster, Map<Instant, List<Version>>> perioden(UUID tenant, Collection<Periodenfenster> fenster) {
+        List<Periodenfenster> f = List.copyOf(new java.util.LinkedHashSet<>(fenster));
+        Map<Periodenfenster, Map<Instant, List<Version>>> aus = new HashMap<>();
+        f.forEach(x -> aus.put(x, new HashMap<>()));
+        if (f.isEmpty()) {
+            return aus;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT k.i, x.* FROM unnest(?::text[], ?::uuid[], ?::text[], "
+                    + "?::timestamptz[], ?::timestamptz[]) WITH ORDINALITY AS k(ebene, e, kanal, kvon, kbis, i) "
+                    + "CROSS JOIN LATERAL (SELECT periode_beginn AS beginn, version, " + FAKTEN
+                    + ", zustand, nachgezogen_am FROM messreihe_periode_version WHERE tenant_id = ? AND ebene = k.ebene "
+                    + "AND entity_id = k.e AND messkanal = k.kanal AND messstelle_id IS NULL "
+                    + "AND periode_beginn >= k.kvon AND periode_beginn < k.kbis ORDER BY periode_beginn, version) x "
+                    + "ORDER BY k.i, x.beginn, x.version");
+            ps.setArray(1, con.createArrayOf("text", f.stream().map(Periodenfenster::ebene).toArray()));
+            ps.setArray(2, con.createArrayOf("uuid", f.stream().map(Periodenfenster::entity).toArray()));
+            ps.setArray(3, con.createArrayOf("text", f.stream().map(Periodenfenster::kanal).toArray()));
+            ps.setArray(4, con.createArrayOf("timestamptz", f.stream().map(x -> Timestamp.from(x.von())).toArray()));
+            ps.setArray(5, con.createArrayOf("timestamptz", f.stream().map(x -> Timestamp.from(x.bis())).toArray()));
+            ps.setObject(6, tenant);
+            return ps;
+        }, rs -> {
+            Version v = version(rs);
+            aus.get(f.get(rs.getInt("i") - 1)).computeIfAbsent(v.beginn(), x -> new ArrayList<>()).add(v);
+        });
+        return aus;
+    }
+
     /**
      * Wann die Verdichtung Version 1 der Periode gebildet hat ({@code berechnet_am} ihrer Zeile) — {@code null} ohne
      * Zeile (eine Lücke).

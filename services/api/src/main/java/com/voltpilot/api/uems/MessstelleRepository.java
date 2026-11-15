@@ -8,7 +8,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.support.DataAccessUtils;
@@ -157,6 +160,43 @@ public class MessstelleRepository {
     public Optional<Messstelle> findeNachKennzeichen(String kennzeichen) {
         return jdbc.query("SELECT " + SPALTEN + " FROM messstelle WHERE kennzeichen = ?",
                 MessstelleRepository::map, kennzeichen).stream().findFirst();
+    }
+
+    /** {@link #finde} für viele Kennungen in EINER Abfrage (vp-perf3-server H1); eine ohne Messstelle fehlt. */
+    public Map<UUID, Messstelle> finde(Collection<UUID> ids) {
+        Map<UUID, Messstelle> out = new LinkedHashMap<>();
+        if (ids.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT " + SPALTEN + " FROM messstelle WHERE id = ANY (?)");
+            ps.setArray(1, con.createArrayOf("uuid", ids.toArray()));
+            return ps;
+        }, rs -> {
+            Messstelle m = map(rs, 0);
+            out.put(m.id(), m);
+        });
+        return out;
+    }
+
+    /**
+     * Die Messstellen zu vielen Kennzeichen in EINER Abfrage (vp-perf3-server H1): je Kennzeichen dieselbe Zeile wie
+     * {@link #findeNachKennzeichen(String)}; ein Kennzeichen ohne Messstelle fehlt in der Map.
+     */
+    public Map<String, Messstelle> findeNachKennzeichen(Collection<String> kennzeichen) {
+        Map<String, Messstelle> out = new LinkedHashMap<>();
+        if (kennzeichen.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT " + SPALTEN + " FROM messstelle WHERE kennzeichen = ANY (?)");
+            ps.setArray(1, con.createArrayOf("text", kennzeichen.toArray()));
+            return ps;
+        }, rs -> {
+            Messstelle m = map(rs, 0);
+            out.putIfAbsent(m.kennzeichen(), m);
+        });
+        return out;
     }
 
     /** Alle Messstellen des Mandanten, archivierte eingeschlossen, nach Kennzeichen. */
