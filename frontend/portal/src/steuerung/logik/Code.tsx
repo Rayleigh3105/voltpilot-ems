@@ -22,6 +22,18 @@ function artDerZeile(liste: LogikMeldung[] | undefined): string {
   return liste.some((x) => x.art !== 'hinweis') ? 'fehler' : 'hinweis';
 }
 
+function Stuecke({ zeile }: { zeile: string }) {
+  return (
+    <>
+      {faerbeZeile(zeile).map((s, j) => (
+        s.art === 'leer' || s.art === 'einzug' || s.art === 'bezeichner'
+          ? <span key={j}>{s.t}</span>
+          : <span key={j} className={`t-${s.art}`}>{s.t}</span>
+      ))}
+    </>
+  );
+}
+
 function Zeilen({ text, jeZeile, umbruch, ab = 1 }: { text: string; jeZeile: Map<number, LogikMeldung[]>; umbruch: boolean; ab?: number }) {
   const zeilen = text.split('\n');
   return (
@@ -34,11 +46,7 @@ function Zeilen({ text, jeZeile, umbruch, ab = 1 }: { text: string; jeZeile: Map
             className={artDerZeile(jeZeile.get(i + ab))}
             style={umbruch && einzug ? { paddingLeft: `${einzug}ch`, textIndent: `-${einzug}ch` } : undefined}
           >
-            {faerbeZeile(z).map((s, j) => (
-              s.art === 'leer' || s.art === 'einzug' || s.art === 'bezeichner'
-                ? <span key={j}>{s.t}</span>
-                : <span key={j} className={`t-${s.art}`}>{s.t}</span>
-            ))}
+            <Stuecke zeile={z} />
             {z === '' ? '​' : null}
           </span>
         );
@@ -72,8 +80,30 @@ export function CodeLesen({ text, meldungen, label, immer, umbruch = true, ab = 
   text: string; meldungen: LogikMeldung[]; label: string; immer?: boolean; umbruch?: boolean; ab?: number;
 }) {
   const jeZeile = useMemo(() => meldungenJeZeile(meldungen), [meldungen]);
+  if (umbruch) {
+    // Mit Umbruch trägt jede Zeile ihre Nummer selbst: eine umbrochene Zeile ist höher, die Nummer bleibt bei ihr.
+    return (
+      <div className={`lk-code lk-umbruch${immer ? '' : ' lk-lesen'}`} role="region" aria-label={label} tabIndex={0}>
+        <div className="lk-uz-liste" aria-hidden="true">
+          {text.split('\n').map((z, i) => {
+            const art = artDerZeile(jeZeile.get(i + ab));
+            const einzug = z.match(/^(\s*(-\s+)?)/)?.[0].length ?? 0;
+            return (
+              <div key={i} className={`lk-uz ${art}`} title={jeZeile.get(i + ab)?.map((x) => x.text).join('\n')}>
+                <span className="lk-uz-nr">{art ? <i /> : null}{i + ab}</span>
+                <span className="lk-uz-code" style={einzug ? { paddingLeft: `calc(${einzug}ch + 10px)`, textIndent: `-${einzug}ch` } : undefined}>
+                  <Stuecke zeile={z} />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <span className="sr">{text}</span>
+      </div>
+    );
+  }
   return (
-    <div className={`lk-code${immer ? '' : ' lk-lesen'}${umbruch ? ' lk-umbruch' : ''}`} role="region" aria-label={label} tabIndex={0}>
+    <div className={`lk-code${immer ? '' : ' lk-lesen'}`} role="region" aria-label={label} tabIndex={0}>
       <div className="lk-code-innen">
         <Rinne anzahl={text.split('\n').length} jeZeile={jeZeile} ab={ab} />
         <div className="lk-flaeche">

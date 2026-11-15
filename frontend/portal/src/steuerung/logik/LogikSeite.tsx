@@ -97,6 +97,12 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
   const [zielZeile, setZielZeile] = useState<number | null>(null);
 
   const darf = neueLogik ? true : !!ansicht?.darfBearbeiten;
+  // Eine Rückmeldung steht so lange wie in der Steuerung, eine Ablehnung bis man sie antippt.
+  useEffect(() => {
+    if (!meldung || meldung.fehler) return;
+    const t = window.setTimeout(() => setMeldung(null), 4200);
+    return () => window.clearTimeout(t);
+  }, [meldung]);
 
   const lade = useCallback(async (behalteEntwurf = true) => {
     if (!logikId || neueLogik) return;
@@ -202,7 +208,7 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
       else await api.logikFassungSchritt(site.id, logikId, fassung, was);
       setMeldung({
         text: was === 'mitlaufen' ? `Fassung ${fassung} läuft mit. Die Box rechnet, schaltet aber nichts.`
-          : was === 'vorlegen' ? `Fassung ${fassung} liegt VoltPilot zur Freigabe vor.`
+          : was === 'vorlegen' ? `Fassung ${fassung} ist vorgelegt.`
             : was === 'zurueck' ? `Zurück auf Fassung ${fassung}. Das wirkt sofort.`
               : 'Die Logik ist stillgelegt. Ihre Geräte sind frei.',
       });
@@ -288,7 +294,6 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
             <h1>{name}</h1>
             <div className="lk-unter">
               <span className={`pill ${p.klasse}`}><i />{p.wort}</span>
-              <span>Logik</span>
               {veraendert ? <span className="pill hand"><i />Entwurf</span> : null}
             </div>
           </div>

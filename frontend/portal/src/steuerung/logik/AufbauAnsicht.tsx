@@ -49,10 +49,13 @@ export function markenAus(js: Obj): Marke[] {
   return out;
 }
 
-/** Die Meldungen, die in den Zeilen eines Eintrags stehen. */
+/**
+ * Die Fehler, die in den Zeilen eines Eintrags stehen. Hinweise sperren nicht; sie stehen in der Ansicht „Text“ und
+ * im Dialog „Speichern“, damit der Aufbau knapp bleibt.
+ */
 function meldungenIn(meldungen: LogikMeldung[], zeilen: [number, number] | null): LogikMeldung[] {
   if (!zeilen) return [];
-  return meldungen.filter((m) => m.zeile && m.zeile >= zeilen[0] && m.zeile <= zeilen[1]);
+  return meldungen.filter((m) => m.art !== 'hinweis' && m.zeile && m.zeile >= zeilen[0] && m.zeile <= zeilen[1]);
 }
 
 export function AufbauAnsicht({ text, darf, quellen, meldungen, onText, zuText }: AufbauAnsichtProps) {

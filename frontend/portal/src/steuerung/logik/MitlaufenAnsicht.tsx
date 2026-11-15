@@ -98,7 +98,7 @@ export function MitlaufenAnsicht({ siteId, ansicht, jetzt, onStart }: MitlaufenA
                 {verlauf.wechsel.slice().reverse().map((w) => (
                   <tr key={`${w.laufSeit}-${w.nr}`}>
                     <td className="zeit">{uhrzeit(w.t)}</td>
-                    <td>{w.geraet}</td>
+                    <td>{lauf?.rueckmeldung?.geraete?.[w.geraet]?.name ?? w.geraet}</td>
                     <td>{w.was === 'wunsch' ? 'Logik will' : 'Gerät ist'}</td>
                     <td>{standText(w.neu)}</td>
                     <td>{standText(w.andere)}</td>

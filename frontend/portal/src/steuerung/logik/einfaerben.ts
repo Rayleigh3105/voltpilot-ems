@@ -49,6 +49,9 @@ function wert(teil: string, out: Stueck[]): void {
       out.push({ t: m[1], art: SPRACHWOERTER.has(m[1]) ? 'schluessel' : 'name' }, { t: m[2], art: 'zeichen' });
       rest = rest.slice(m[0].length);
       continue;
+    } else if ((m = rest.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z_]+)?/))) {
+      // Eine Kennung der Anlage (Gerät, Fühler) ist ein Wort, keine Rechnung.
+      out.push({ t: m[0], art: 'bezeichner' });
     } else if ((m = rest.match(ZAHL)) && m[0].length) {
       out.push({ t: m[0], art: 'zahl' });
     } else if ((m = rest.match(/^[A-Za-z_][\w.]*/))) {

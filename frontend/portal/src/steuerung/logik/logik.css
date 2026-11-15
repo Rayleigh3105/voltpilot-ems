@@ -124,10 +124,15 @@
 .t-kommentar { color: var(--t-kommentar); font-style: italic; }
 .t-strich, .t-zeichen { color: var(--c-muted-fg); }
 .lk-lesen { display: none; }
-.lk-umbruch .lk-flaeche pre { white-space: normal; }
-.lk-umbruch .lk-flaeche pre > span { height: auto; min-height: var(--z); white-space: pre-wrap; overflow-wrap: anywhere; }
-.lk-umbruch .lk-code-innen { min-width: 0; }
-.lk-umbruch .lk-rinne > span { height: auto; min-height: var(--z); align-items: flex-start; }
+.lk-uz-liste { padding: 8px 0; }
+.lk-uz { display: grid; grid-template-columns: 44px minmax(0, 1fr); font: 400 13px/var(--z) var(--mono); }
+.lk-uz-nr { display: flex; justify-content: flex-end; align-items: flex-start; gap: 4px; padding-right: 8px; background: var(--c-bg); border-right: 1px solid var(--c-border); color: var(--c-muted-fg); font-size: 12px; user-select: none; }
+.lk-uz-nr i { width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: currentColor; }
+.lk-uz.fehler .lk-uz-nr { color: var(--st-lock); font-weight: 800; }
+.lk-uz.hinweis .lk-uz-nr { color: var(--st-wait); font-weight: 800; }
+.lk-uz.fehler .lk-uz-code { background: var(--z-fehler); }
+.lk-uz.hinweis .lk-uz-code { background: var(--z-hinweis); }
+.lk-uz-code { padding: 0 12px 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
 .lk-lesen-hinweis { display: none; }
 @media (max-width: 719px) {
   .lk-editor { display: none; }
@@ -187,6 +192,8 @@
 .lk-fuss .lk-pruefung.laeuft { color: var(--c-muted-fg); }
 .lk-fuss .lk-pruefung span { overflow-wrap: anywhere; }
 @media (max-width: 720px) {
+  /* Fünf Ansichten passen bei 390 px ohne Wischen in die Leiste. */
+  .lk .stn-reiter button { padding: 0 6px; font-size: 13.5px; }
   .lk-fuss { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
   .lk-kopf h1 { font-size: 21px; }
   .lk-zwei { grid-template-columns: minmax(0, 1fr); }

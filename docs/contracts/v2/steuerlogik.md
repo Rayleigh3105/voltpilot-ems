@@ -6,6 +6,7 @@ Der Kern liest die kanonische JSON-Form, prüft sie und wertet sie im Takt aus: 
 Die YAML-Schreibform für Menschen liest `edge-app/core/internal/logik/textform`; die Box selbst braucht kein YAML.
 Seit Stufe 2, zweiter Teil, wird eine Logik ausgeliefert und läuft auf der Box mit (siehe [Auslieferung und Mitlauf](#auslieferung-und-mitlauf)); sie schaltet nichts und beansprucht kein Gerät, sie äußert je Takt nur, was die Geräte tun sollen.
 Seit Stufe 3 lässt sich eine Fassung [scharf](#scharf) schalten: dann gehen ihre Wünsche durch Schiedsrichter und Schutzgrenzen der Box, und ihre Geräte gehören ihr.
+Seit Stufe 4 wird eine Logik im Portal geschrieben, im [Aufbau und im Text](#aufbau-und-text-stufe-4), geprüft und als Fassung gespeichert.
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
 Für Geräte mit Sollwert und Betriebsart (K2/K3) kommen [steuerlogik-geraete-vectors.json](steuerlogik-geraete-vectors.json) und das siebte Beispiel `waermepumpe-modbus` dazu, von Hand geschrieben; dort ist der Kern die Referenz (`geraete_vectors_test.go`, im Dienst `logikdienst_test.go`).
@@ -110,7 +111,7 @@ Klima, Heizung, Kälte (Bericht Abschnitt 15): Das Gerät regelt selbst; die Log
 
 `editable_by` kennt `customer`, `customer_admin`, `installer`; ohne Angabe stellt der Fachbetrieb.
 Temperaturen stellt der Kunde immer, in ihrem Bereich (E2 = B).
-Der Kundenadministrator darf an einer Logik alles, was der Fachbetrieb darf, einschließlich Bereiche und `editable_by` (E3 = B und ihre Lesart); das setzt die Oberfläche in Stufe 4 um, der Kern unterscheidet nicht nach Rolle.
+Der Kundenadministrator darf an einer Logik alles, was der Fachbetrieb darf, einschließlich Bereiche und `editable_by` (E3 = B und ihre Lesart); seit Stufe 4 trägt das Recht `logik.bearbeiten` das ([Aufbau und Text](#aufbau-und-text-stufe-4)), der Kern unterscheidet nicht nach Rolle.
 
 Gebaut in Stufe 3, für das Stellen von Werten (Recht `betriebsweise.aendern`, Route `PUT /api/v1/sites/{siteId}/steuerlogik/{logikId}/stellwerte/{kennung}`):
 
@@ -129,7 +130,8 @@ Scharfschalten, Zurücknehmen und Stilllegen bleiben in Stufe 3 Sache der Plattf
 Stufe 2, zweiter Teil (gebaut): Die Logik kommt noch als Datei von VoltPilot, eine Oberfläche für Kunden folgt in den Stufen 3 bis 5.
 
 - **Dienst neben der API** (`edge-app/core/cmd/vp-logik-dienst`, Paket `internal/logikdienst`, Compose-Dienst `logik-dienst`, Port 8101): nimmt den Text als YAML-Schreibform oder kanonisches JSON, liest ihn mit denselben Lesern wie die Box, prüft ihn und baut das Artefakt; eine Logik, die die Prüfung sperrt, verlässt den Dienst nicht.
-  `POST /pruefe {text, anlage?, registry?}` liefert kanonische Form und Bericht, `POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?}` das Artefakt (422 bei unlesbar oder gesperrt, mit Bericht), `GET /health`.
+  `POST /pruefe {text, anlage?, registry?}` liefert kanonische Form und Bericht, `POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?}` das Artefakt (422 bei unlesbar oder gesperrt, mit Bericht), `POST /quellen {registry?}` was eine Logik an der Anlage lesen und schalten kann (Stufe 4), `GET /health`.
+  Der Bericht trägt seit Stufe 4 `meldungen`: je Befund, nicht bestandener Probe und Hinweis `{art, text, ort?, zeile?}` mit der Zeile im Text, wie der Mensch ihn schrieb; ein unlesbarer Text kommt mit `meldungen` an der Zeile, die der Leser nennt.
   Die Geräte der Proben (Ausgänge, kW je Ausgang) liest der Dienst aus `registry`, dem Registry-Inhalt der Anlage, wie die Box ihn bekommt, mit dem Treiber-Leser der Box (`shelly.Config.OutputFacts`); `anlage` je Gerät der Logik geht vor. Ohne diese Angaben gelten die Vorgaben der Proben, und eine Probe, die an der Leistung hängt, sperrt.
   Die API liest die Sprache nirgends selbst; sie ruft nur diesen Dienst (`SteuerlogikDienstClient`).
 - **Annahme** (nur Plattform): `POST /api/v1/admin/sites/{siteId}/steuerlogik {text}` legt eine Logik an, `POST …/{logikId}/fassungen` eine neue Fassung, die die laufende ablöst, `POST …/{logikId}/stilllegen` legt sie still.
@@ -186,6 +188,43 @@ Satz der Lage und Hilfesätze der Werte setzen beide die Werte von jetzt ein, al
 Eine Störung (ohne die gewollte Pause und ohne die Box, die sich nicht meldet - das meldet `box.erreichbar`) wird nach zwei Minuten eine Meldung der Überwachung (`steuerlogik.stoerung`, ab Werk eingeschaltet an Anlagen mit scharfer Logik).
 
 Ende zu Ende mit den echten Programmen und einem gestellten Shelly Pro 3: `edge-light/test/steuerlogik-scharf-probe.sh` (scharf, echte Schaltanfragen, Mindestlaufzeit, gestellter Wert ohne Neustart, Fassung 2 und „Zurück“, „Stilllegen“, zweiter Herr).
+
+## Aufbau und Text (Stufe 4)
+
+Gebaut am 15.11.2026 (Bericht Abschnitte 6, 12.3, 13, 17.7): eine Logik entsteht und ändert sich im Portal, im Reiter „Regeln“ neben den Regeln (E7 = A).
+„Logik bearbeiten“ öffnet zwei Ansichten desselben Textes, dazu Mitlaufen, Fassungen und Protokoll (`frontend/portal/src/steuerung/logik/`, Adresse `#/anlage/{id}/logik?id=…&ansicht=…`).
+
+- **Aufbau**: jeder Abschnitt als Liste, jeder Eintrag über ein Formular (Gerät, Eingang, Stellwert mit Bereich und `editable_by`, Regel zwischen Stellwerten, abgeleiteter Wert, Schalter, Zähler mit Schritten, Zeitgeber, Ausgang, Erklärsatz, Meldung, Probe).
+  Eine Änderung schreibt nur die geänderten Felder in den Text; Kommentare und die übrigen Zeilen bleiben, wie sie sind (`logik/text.ts`).
+  Was kein Formular darstellt (ein Zeitplan, `display`, eine fremde Gestalt), bleibt Text und steht als „im Text festgelegt“ da; ein Text, den YAML nicht liest, steht lesbar mit seiner Zeile.
+  Die Auswahl der Geräte und Quellen kommt vom Dienst (`/quellen`), mit den Regeln, mit denen die Box liest und schaltet.
+- **Text**: die YAML-Schreibform mit Zeilennummern, eigener Einfärbung (keine Editor-Bibliothek, Inhaltsrichtlinie des Portals) und den `meldungen` des Dienstes an ihrer Zeile; am Telefon nur lesbar.
+  Daneben die Wortliste als Nachschlageseite, aus einer byte-gleichen Kopie von [steuerlogik-woerter.json](steuerlogik-woerter.json) (`woerter.sync` in `werkzeuge.test.ts`).
+- **Prüfen** fragt den Dienst (`POST /api/v1/sites/{siteId}/steuerlogik/pruefe`) mit dem Registry-Inhalt der Anlage, beim Schreiben kurz nach der letzten Änderung; nichts wird gespeichert.
+  Der Entwurf liegt bis zum Speichern im Browser.
+- **Lebenslauf** einer Fassung: `geprueft` (gespeichert, läuft nicht), `mitlaufend`, `scharf`, `stillgelegt` (V20261115170000).
+  Gespeichert wird nur, was die Prüfung nicht sperrt; eine vorhandene Probe, die nicht besteht, sperrt (Lesart zu E5), Proben zu schreiben ist freiwillig.
+  Jede Fassung trägt Urheber, Rolle, Zeit, Notiz und Prüfbericht.
+
+| Route unter `/api/v1/sites/{siteId}/steuerlogik` | Recht | Was |
+|---|---|---|
+| `GET /logiken`, `GET /{logikId}`, `GET /{logikId}/fassungen/{n}`, `GET /{logikId}/protokoll?von=&bis=`, `GET /quellen` | lesend wie die Steuerung | Überblick, Fassungen mit Bericht, Text, Protokoll (90 Tage), was die Anlage bietet |
+| `POST /pruefe {text}` | `logik.bearbeiten` | prüfen ohne zu speichern |
+| `POST {text, notiz?}`, `POST /{logikId}/fassungen {text, notiz?, basis}` | `logik.bearbeiten` | eine neue Logik, eine neue Fassung (`geprueft`); ist `basis` nicht die neueste, 409 `fassung_veraltet` |
+| `POST /{logikId}/fassungen/{n}/mitlaufen` | `logik.bearbeiten` | sie löst die aktive ab und läuft mit; eine scharfe Logik löst sie nicht ab (409 `scharf_abloesen`) |
+| `POST /{logikId}/fassungen/{n}/vorlegen` | `logik.bearbeiten` | zur Freigabe vorlegen; scharf schaltet in Stufe 4 die Plattform |
+| `POST /{logikId}/fassungen/{n}/zurueck` | `logik.bearbeiten` | zurück auf Fassung n, im Zustand der aktiven; ist sie scharf, nur auf eine Fassung, die schon scharf war (409 `nicht_freigegeben`, die Plattform darf jede) |
+| `POST /{logikId}/stilllegen` | `logik.bearbeiten` | die aktive Fassung stilllegen |
+| `POST /{logikId}/anfragen {kennung?, text}` | `betriebsweise.aendern` | „Änderung anfragen“ (Bedienberechtigte) |
+| `POST /{logikId}/anfragen/{id}/erledigt` | `logik.bearbeiten` | eine Anfrage abhaken |
+
+`logik.bearbeiten` haben Kundenadministrator, Unterstützer mit „Einrichten und Bedienen“ und die Plattform ([Rechte-Matrix](rechte-matrix.md), Nachtrag „Steuerlogik v1 §8.8“).
+Bedienberechtigte sehen Aufbau, Text, Fassungen und Protokoll und fragen eine Änderung an; offene Anfragen stehen an der Logik.
+Die Plattform schaltet eine vorgelegte Fassung scharf (`GET …/admin/sites/{siteId}/steuerlogik/{logikId}/scharf?fassung=n`, `POST …/scharf {fassung, bestaetigt}`); sie löst dabei die aktive Fassung ab und übernimmt die gestellten Werte, die passen.
+Jeder Schritt steht im Protokoll (`gespeichert`, `mitlaufen`, `vorgelegt`, `anfrage`, `erledigt` kommen zu den Schritten aus Stufe 3).
+
+Ende zu Ende mit dem echten Dienst: `frontend/portal/e2e/steuerlogik-bearbeiten.spec.ts` (eine Beispiel-Logik im Aufbau ändern, die Probe anpassen, im Text einen Fehler an seiner Zeile sehen und beheben, als Fassung speichern, mitlaufen lassen; Rollen; eine neue Logik, die die Prüfung besteht).
+API: `SteuerlogikBearbeitenApiTest`, Rechte: `RechtMatrixApiTest`, Zeilen: `logikdienst/zeilen_test.go`, Quellen: `logikdienst/quellen_test.go`.
 
 ## Versionsregeln
 

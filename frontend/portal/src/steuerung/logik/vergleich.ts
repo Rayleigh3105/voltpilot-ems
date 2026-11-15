@@ -45,12 +45,13 @@ export function vergleiche(altText: string, neuText: string): Teil[] {
       roh.push({ art: 'gleich', zeile: am[i], alt: vorne + i + 1, neu: vorne + j + 1 });
       i++;
       j++;
-    } else if (j < m && (i >= n || lcs[i * (m + 1) + j + 1] >= lcs[(i + 1) * (m + 1) + j])) {
-      roh.push({ art: 'dazu', zeile: bm[j], alt: 0, neu: vorne + j + 1 });
-      j++;
-    } else {
+    } else if (i < n && (j >= m || lcs[(i + 1) * (m + 1) + j] >= lcs[i * (m + 1) + j + 1])) {
+      // Erst die alte Zeile, dann die neue.
       roh.push({ art: 'weg', zeile: am[i], alt: vorne + i + 1, neu: 0 });
       i++;
+    } else {
+      roh.push({ art: 'dazu', zeile: bm[j], alt: 0, neu: vorne + j + 1 });
+      j++;
     }
   }
   for (let k = 0; k < hinten; k++) {

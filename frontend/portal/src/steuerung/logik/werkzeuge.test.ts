@@ -38,6 +38,8 @@ describe('Einfärbung', () => {
     expect(f.find((x) => x.t === 'holds')?.art).toBe('funktion');
     expect(f.find((x) => x.t === '2 min')?.art).toBe('zahl');
     expect(f.find((x) => x.t === 'and')?.art).toBe('wort');
+    const g = faerbeZeile('  t: {source: 3d2c1b0a-9f8e-4d7c-8b6a-5f4e3d2c1b0a.temperature, name: Speicher}');
+    expect(g.find((x) => x.t.startsWith('3d2c'))).toEqual({ t: '3d2c1b0a-9f8e-4d7c-8b6a-5f4e3d2c1b0a.temperature', art: 'bezeichner' });
   });
 
   it('verliert kein Zeichen', () => {
@@ -57,6 +59,9 @@ describe('Vergleich zweier Fassungen', () => {
       WASSER.split('\n').findIndex((l) => l.startsWith('  frei:')) + 1,
     ]);
     expect(teile[0].art).toBe('ausgelassen');
+    // Erst die alte Zeile, dann die neue.
+    const i = teile.findIndex((t) => t.art === 'weg');
+    expect(teile[i + 1].art).toBe('dazu');
     expect(vergleiche(WASSER, WASSER)).toEqual([{ art: 'ausgelassen', anzahl: WASSER.split('\n').length }]);
   });
 
