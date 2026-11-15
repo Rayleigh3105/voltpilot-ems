@@ -210,21 +210,35 @@ function alsApp(): boolean {
   return typeof window !== 'undefined' && isStandalone(window);
 }
 
-/** Realm roles inside a raw access token (JWT payload); null when unreadable. */
-function realmRollen(accessToken: string): string[] | null {
+/** The payload of a raw JWT; null when unreadable. */
+function jwtNutzlast(token: string): Record<string, unknown> | null {
   try {
-    const teil = (accessToken.split('.')[1] ?? '').replace(/-/g, '+').replace(/_/g, '/');
+    const teil = (token.split('.')[1] ?? '').replace(/-/g, '+').replace(/_/g, '/');
     const bytes = Uint8Array.from(atob(teil.padEnd(Math.ceil(teil.length / 4) * 4, '=')), (c) =>
       c.charCodeAt(0),
     );
-    const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
-      realm_access?: { roles?: unknown };
-    };
-    const rollen = payload.realm_access?.roles;
-    return Array.isArray(rollen) ? rollen.filter((r): r is string => typeof r === 'string') : [];
+    const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return payload !== null && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
   } catch {
     return null;
   }
+}
+
+/** Realm roles inside a raw access token (JWT payload); null when unreadable. */
+function realmRollen(accessToken: string): string[] | null {
+  const payload = jwtNutzlast(accessToken) as { realm_access?: { roles?: unknown } } | null;
+  if (!payload) return null;
+  const rollen = payload.realm_access?.roles;
+  return Array.isArray(rollen) ? rollen.filter((r): r is string => typeof r === 'string') : [];
+}
+
+/**
+ * Clock offset device minus Keycloak in seconds, computed exactly like keycloak-js does after its own refresh:
+ * the device clock at the middle of the grant request minus the token's `iat`. Null without a readable `iat`.
+ */
+function uhrVersatz(accessToken: string, zeitLokalMs: number): number | null {
+  const iat = jwtNutzlast(accessToken)?.['iat'];
+  return typeof iat === 'number' && Number.isFinite(iat) ? Math.floor(zeitLokalMs / 1000) - iat : null;
 }
 
 /**
@@ -261,12 +275,18 @@ function clearStoredTokens(): void {
   if (alsApp()) localStorage.removeItem(TOKEN_STORE_KEY);
 }
 
+/** A token set Keycloak just issued, plus the device clock at the middle of that grant request. */
+interface GepruefteSitzung {
+  tokens: TokenSet;
+  zeitLokalMs: number;
+}
+
 /**
  * Re-validate stored tokens against Keycloak (refresh grant). Returns a fresh,
  * guaranteed-valid token set, or null (clearing the store) when there is no
  * stored session or it has expired.
  */
-async function refreshStoredTokens(): Promise<TokenSet | null> {
+async function refreshStoredTokens(): Promise<GepruefteSitzung | null> {
   const raw = readStoredTokens();
   if (!raw) return null;
   let stored: TokenSet;
@@ -287,12 +307,14 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
   // just-signed-in customer to a blank login card (M5).
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
+      const gesendet = Date.now();
       const fresh = await tokenGrant({
         grant_type: 'refresh_token',
         refresh_token: stored.refresh_token,
       });
+      const zeitLokalMs = (gesendet + Date.now()) / 2;
       storeTokens(fresh);
-      return fresh;
+      return { tokens: fresh, zeitLokalMs };
     } catch (e) {
       if (e instanceof TokenGrantError && e.throttled) {
         // Throttled/locked out: KEEP the stored tokens (they may still be
@@ -371,6 +393,37 @@ export async function loginWithCredentials(username: string, password: string): 
 }
 
 /**
+ * `keycloak.init` with the tokens Keycloak issued a moment ago - WITHOUT a second Keycloak round.
+ *
+ * Handed a token pair (and no login-status iframe), keycloak-js 26 ALWAYS refreshes once inside `init`
+ * (`updateToken(-1)`), only to learn the clock offset `timeSkew`. Right after our own grant that was a second
+ * Keycloak round before `/me`, on every load (measured: the first two requests of every boot). We already know
+ * the offset from exactly that grant (`uhrVersatz`, the same arithmetic keycloak-js uses), and with `timeSkew` in
+ * the init options keycloak-js arms its `onTokenExpired` timer itself when it takes the tokens over. So only that
+ * one forced refresh is skipped, and only while `init` runs: every later renewal (`freshToken`, the expiry timer)
+ * goes through keycloak-js unchanged, with the same tokens, scope and lifetimes. Without a readable `iat` the old
+ * path (keycloak-js refreshes) stays - slower, never wrong.
+ */
+async function initMitGeprueftenTokens(t: TokenSet, timeSkew: number | null): Promise<boolean> {
+  const optionen = {
+    token: t.access_token,
+    refreshToken: t.refresh_token,
+    idToken: t.id_token,
+    checkLoginIframe: false,
+    pkceMethod: 'S256',
+  } as const;
+  if (timeSkew === null) return keycloak.init(optionen);
+  const erneuern = keycloak.updateToken;
+  keycloak.updateToken = (minValidity?: number) =>
+    minValidity === -1 ? Promise.resolve(false) : erneuern(minValidity);
+  try {
+    return await keycloak.init({ ...optionen, timeSkew });
+  } finally {
+    keycloak.updateToken = erneuern;
+  }
+}
+
+/**
  * Initialise Keycloak.
  *
  * FAST path: a stored session (fresh registration OR the last successful login
@@ -382,19 +435,16 @@ export async function loginWithCredentials(username: string, password: string): 
  * proven silent SSO check runs exactly as before. Returns whether authenticated.
  */
 export async function initAuth(): Promise<boolean> {
-  const injected = await refreshStoredTokens();
-  if (injected) {
+  const geprueft = await refreshStoredTokens();
+  if (geprueft) {
     // The refresh above already proved the session, so skip the SSO iframe
     // check - the just-refreshed tokens ARE the session. (On the registration
     // path no SSO cookie exists at all; after a normal login one does, but this
     // path deliberately does not depend on it.)
-    const ok = await keycloak.init({
-      token: injected.access_token,
-      refreshToken: injected.refresh_token,
-      idToken: injected.id_token,
-      checkLoginIframe: false,
-      pkceMethod: 'S256',
-    });
+    const ok = await initMitGeprueftenTokens(
+      geprueft.tokens,
+      uhrVersatz(geprueft.tokens.access_token, geprueft.zeitLokalMs),
+    );
     if (ok) {
       onAuthenticated();
       return true;
