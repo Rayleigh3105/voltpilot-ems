@@ -31,6 +31,9 @@ const SEITEN: Record<string, Record<string, string>> = {
     'src/useEChart.ts': 'das einzige Diagramm ist der Verlauf eines beobachteten Messwerts (`MesswertVerlaufChart.tsx`)',
     'src/components/AnlegenFlow.tsx': 'Bearbeiten öffnet auf Klick (`AnlegenFlowLazy`)',
     'src/boxDialoge.ts': '„Zuständige Box wechseln“ öffnet auf Klick (`DatenquelleWechselDialogLazy`)',
+    'src/components/SummenwertAssistent.tsx':
+      '„Summenwert anlegen“ öffnet auf Klick (`useSummenwertAssistent`, vorgeladen beim Zeigen auf den Knopf)',
+    'src/components/SummenwertFormelDialog.tsx': 'die Formel eines Summenwerts öffnet auf Klick (`lazy` in `GeraetSummenwerte`)',
   },
   'src/pages/GatewaySeiteSection.tsx': {
     'src/boxDialoge.ts': '„Zuständige Box wechseln“ öffnet auf Klick (`DatenquelleWechselDialogLazy`)',
@@ -77,6 +80,7 @@ describe('Seiten-Bündel · was eine Kundenseite beim Aufruf nicht mitlädt', ()
       ['src/components/SteuernAssistentLazy.tsx', 'src/components/SteuernAssistent.tsx'],
       ['src/components/DatenquelleWechselDialogLazy.tsx', 'src/boxDialoge.ts'],
       ['src/components/BeobachteteRegister.tsx', 'src/useEChart.ts'],
+      ['src/components/useSummenwertAssistent.tsx', 'src/components/SummenwertAssistent.tsx'],
     ]) {
       expect(statischErreichbar(huelle).has(resolve(PORTAL_ROOT, ziel)), `${huelle} → ${ziel}`).toBe(false);
     }

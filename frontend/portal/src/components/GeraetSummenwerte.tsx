@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../designsystem/components/core/Button";
 import { Card } from "../../designsystem/components/core/Card";
 import { Input } from "../../designsystem/components/forms/Input";
@@ -12,9 +12,14 @@ import { RowMenu } from "./RowMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ProtokollDialog, PROTOKOLL_LABEL } from "./ProtokollDialog";
 import { RolleAendernDialog } from "./RolleAendernDialog";
-import { SummenwertFormelDialog } from "./SummenwertFormelDialog";
-import { useSummenwertAssistent } from "./SummenwertAssistent";
+import { ladeSummenwertAssistent, useSummenwertAssistent } from "./useSummenwertAssistent";
 import "./GeraetSummenwerte.css";
+
+// Die Summenwert-Dialoge kommen mit dem Klick, der sie öffnet (Performance Welle 3): statisch lagen Assistent und
+// Formel-Dialog in jedem Aufruf der Gerätedetailseite. Der Assistent hängt am Hook `useSummenwertAssistent`.
+const SummenwertFormelDialog = lazy(() =>
+  import("./SummenwertFormelDialog").then((m) => ({ default: m.SummenwertFormelDialog })),
+);
 
 type Zeile = GeraetSummenwert & { entityId: string };
 
@@ -128,6 +133,8 @@ export function GeraetSummenwerte({
             <Button
               variant="outline"
               size="sm"
+              onPointerEnter={() => void ladeSummenwertAssistent()}
+              onFocus={() => void ladeSummenwertAssistent()}
               onClick={(e) => {
                 e.currentTarget.focus();
                 oeffneSummenwertAssistent();
@@ -238,12 +245,14 @@ export function GeraetSummenwerte({
           />
         )}
         {formel && rechte.darf("messstelle.formel") && (
-          <SummenwertFormelDialog
-            siteId={siteId}
-            messstelle={formel.messstelle}
-            onClose={() => setFormel(null)}
-            onGespeichert={geaendert}
-          />
+          <Suspense fallback={null}>
+            <SummenwertFormelDialog
+              siteId={siteId}
+              messstelle={formel.messstelle}
+              onClose={() => setFormel(null)}
+              onGespeichert={geaendert}
+            />
+          </Suspense>
         )}
         {name && rechte.darf("messstelle.bearbeiten") && (
           <Modal

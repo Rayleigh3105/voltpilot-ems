@@ -4,7 +4,10 @@ import { api, type GeraetSummenwert } from "../api";
 import { setSelbstauskunft } from "../rollen";
 import { rechteSeed } from "../test/rollenFixtures";
 import { GeraetSummenwerte } from "./GeraetSummenwerte";
-vi.mock("./SummenwertAssistent", () => ({ useSummenwertAssistent: () => ({ oeffneSummenwertAssistent: vi.fn(), assistent: null }) }));
+import { beforeAll } from "vitest";
+vi.mock("./useSummenwertAssistent", () => ({ ladeSummenwertAssistent: vi.fn(), useSummenwertAssistent: () => ({ oeffneSummenwertAssistent: vi.fn(), assistent: null }) }));
+// Der Formel-Dialog ist ein nachgeladenes Stück (Performance Welle 3): vorladen, damit ein Klick ihn sofort findet.
+beforeAll(() => import("./SummenwertFormelDialog"));
 const z: GeraetSummenwert = {
   messstelle: {
     id: "m1",

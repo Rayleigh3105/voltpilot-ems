@@ -39,14 +39,8 @@ export interface SummenwertEinstieg {
   onGespeichert?: (messstelle: Messstelle) => void;
 }
 
-/** Stabile Öffnen-Funktion für Karten und Anlagen-Einstieg. Fertig bleibt bis zum Schließen. */
-export function useSummenwertAssistent() {
-  const [einstieg, setEinstieg] = useState<SummenwertEinstieg | null>(null);
-  return {
-    oeffneSummenwertAssistent: (neu: SummenwertEinstieg) => setEinstieg(neu),
-    assistent: einstieg && <SummenwertAssistent {...einstieg} open onClose={() => setEinstieg(null)} />,
-  };
-}
+/** Die Öffnen-Funktion wohnt in `useSummenwertAssistent.tsx`: sie lädt diesen Assistenten erst beim Öffnen. */
+export { useSummenwertAssistent } from './useSummenwertAssistent';
 
 /** EIN Assistent mit expliziter Gerätegrenze oder anlagenweiter Auswahl. */
 export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' }, deviceId, entityId, geraetName, onClose, onGespeichert }: SummenwertEinstieg & { open: boolean; onClose: () => void }) {
