@@ -303,6 +303,18 @@ export function Teppich({
         // sagen, dass die Prognose für diesen Tag fehlt ("Fehlend ist keine
         // Null").
         const unvollstaendig = m.mitPv ? tag.sonneKwh == null || tag.verbrauchKwh == null : tag.verbrauchKwh == null;
+        // Die Zahlen rechts (kWh je Tag) stehen als eigener Text IN der
+        // Schaltfläche, direkt hinter dem Tagnamen, ohne Trennzeichen
+        // zwischen den Zellen (axe `label-content-name-mismatch` prüft den
+        // SICHTBAREN Text, nicht die ARIA-Sicht - ein eigenes Leerzeichen VOR
+        // jeder Zahl trennt sie im Textfluss, s.u.). Der Satz im aria-label
+        // beginnt darum mit genau derselben Reihenfolge Tag → Zahl(en), die
+        // Zusatzworte (Himmel, Ausblick) stehen danach.
+        const mengenWort = unvollstaendig
+          ? 'noch keine Vorhersage'
+          : m.mitPv
+            ? `${kwh0(tag.sonneKwh as number)} ${kwh0(tag.verbrauchKwh as number)} Kilowattstunden Sonne und Verbrauch`
+            : `${kwh0(tag.verbrauchKwh as number)} Kilowattstunden Verbrauch`;
         return (
           <button
             key={tag.beginn}
@@ -310,7 +322,7 @@ export function Teppich({
             className={`vp-pt-zeile vp-pt-tagzeile${gewaehlt === i ? ' is-gewaehlt' : ''}${tag.ausblick ? ' is-ausblick' : ''}`}
             style={{ gridTemplateColumns: raster }}
             aria-pressed={gewaehlt === i}
-            aria-label={`${tag.wort}${tag.art ? `, ${HIMMEL_WORT[tag.art]}` : ''}${tag.ausblick ? ', Ausblick' : ''}`}
+            aria-label={`${tag.wort} ${mengenWort}${tag.art ? `, ${HIMMEL_WORT[tag.art]}` : ''}${tag.ausblick ? ', Ausblick' : ''}`}
             onClick={() => onWahl(i)}
           >
             <span className="vp-pt-tag-name" style={{ gridColumn: 1, gridRow: 1 }}>
@@ -322,6 +334,7 @@ export function Teppich({
                 className="vp-pt-teppich-leer"
                 style={{ gridColumn: `2 / span ${spalten.length + rechtsSpalten}`, gridRow: 1 }}
               >
+                {' '}
                 noch keine Vorhersage
               </span>
             ) : (
@@ -346,14 +359,21 @@ export function Teppich({
                   </span>
                 )}
                 {m.mitPv && (
-                  <span className="vp-pt-kwh vp-pt-kwh-sonne" style={{ gridColumn: spalten.length + 2, gridRow: 1 }}>
+                  <span
+                    className="vp-pt-kwh vp-pt-kwh-sonne"
+                    style={{ gridColumn: spalten.length + 2, gridRow: 1 }}
+                    aria-hidden="true"
+                  >
+                    {' '}
                     {kwh0(tag.sonneKwh as number)}
                   </span>
                 )}
                 <span
                   className="vp-pt-kwh vp-pt-kwh-verbrauch"
+                  aria-hidden="true"
                   style={{ gridColumn: spalten.length + rechtsSpalten + 1, gridRow: 1 }}
                 >
+                  {' '}
                   {kwh0(tag.verbrauchKwh as number)}
                 </span>
               </>
