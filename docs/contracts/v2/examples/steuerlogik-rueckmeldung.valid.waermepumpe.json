@@ -61,6 +61,101 @@
           },
           "lage": "Speichert Sonnenstrom"
         }
+      ],
+      "stellwerte": {
+        "stand": 0,
+        "werte": [
+          {
+            "kennung": "sonne_nutzen",
+            "wert": "on",
+            "text": "an",
+            "hilfe": "An: Mit Sonnenstrom lädt die Wärmepumpe den Speicher bis 55 °C."
+          },
+          {
+            "kennung": "ab_kw",
+            "wert": "2 kW",
+            "text": "2,0 kW"
+          },
+          {
+            "kennung": "puffer_max",
+            "wert": "55 °C",
+            "text": "55 °C"
+          },
+          {
+            "kennung": "haltezeit",
+            "wert": "30 min",
+            "text": "30 min"
+          },
+          {
+            "kennung": "pause",
+            "wert": "20 min",
+            "text": "20 min"
+          }
+        ]
+      },
+      "warum": [
+        {
+          "zustand": "empfehlung",
+          "name": "Empfehlung an die Wärmepumpe",
+          "satz": "Die Empfehlung an die Wärmepumpe endet",
+          "eigen": true,
+          "was": "aus",
+          "modus": "eines",
+          "bedingungen": [
+            {
+              "name": "Sonnenstrom speichern ist ausgeschaltet",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Sonnenstrom in Wärme speichern",
+                  "text": "an"
+                }
+              ]
+            },
+            {
+              "name": "Der Speicher ist voll",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Pufferspeicher",
+                  "text": "42 °C"
+                },
+                {
+                  "name": "Speicher höchstens",
+                  "text": "55 °C"
+                }
+              ]
+            },
+            {
+              "name": "Ein Messwert fehlt",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Netzbezug",
+                  "text": "−3,0 kW"
+                },
+                {
+                  "name": "Pufferspeicher",
+                  "text": "42 °C"
+                }
+              ]
+            },
+            {
+              "name": "Seit 10 Minuten kommt Strom aus dem Netz",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Netzbezug",
+                  "text": "−3,0 kW"
+                },
+                {
+                  "name": "Empfehlung mindestens",
+                  "text": "30 min"
+                }
+              ]
+            }
+          ]
+        }
       ]
     }
   ]

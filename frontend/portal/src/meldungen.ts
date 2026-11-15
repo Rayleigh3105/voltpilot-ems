@@ -208,6 +208,7 @@ export const MELDUNGSART_WORT: Record<string, string> = {
   'ladepunkt.wallbox_meldet_sich_nicht': 'Wallbox meldet sich nicht',
   'ladepunkt.ziel_wird_knapp': 'Ladeziel wird knapp',
   'ladepunkt.ladung_fertig': 'Auto fertig geladen',
+  'steuerlogik.stoerung': 'Störung einer Logik',
   'anlage.preis.jetzt': 'Strom gerade günstig',
   'anlage.netz.lastspitze_laufend': 'Lastspitze droht',
 };

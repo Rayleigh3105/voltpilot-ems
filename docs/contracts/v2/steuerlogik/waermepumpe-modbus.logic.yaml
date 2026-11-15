@@ -28,8 +28,12 @@ states:
   sonne_da:                     # Sonnenstrom ist verlässlich übrig, nicht nur für einen Augenblick
     name: Sonnenstrom ist übrig
     type: boolean
-    on_when:  holds(uebrig >= ab_kw, 10 min)
-    off_when: unknown(netz) or holds(uebrig < 0.5 kW, 10 min)
+    on_when:
+      - Seit 10 Minuten ist genug Sonnenstrom übrig: holds(uebrig >= ab_kw, 10 min)
+    off_when:
+      - Der Netzwert fehlt, oder seit 10 Minuten ist kaum Sonnenstrom übrig: unknown(netz) or holds(uebrig < 0.5 kW, 10 min)
+    on_text: Sonnenstrom gilt als übrig
+    off_text: Sonnenstrom gilt nicht mehr als übrig
     after_restart: off
 
 outputs:                        # ohne Wunsch der Logik gilt der Ruhewert der Wärmepumpe

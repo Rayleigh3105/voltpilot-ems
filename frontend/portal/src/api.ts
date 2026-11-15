@@ -9590,6 +9590,36 @@ export interface SteuerlogikStand {
   anteil?: number;
 }
 
+/** Ein Grund in Code und Satz (Halt, Schutz, Konflikt). */
+export interface SteuerlogikGrund {
+  code: string;
+  text: string;
+}
+
+/** Eine Gruppe der Liste „Warum?“: die benannten Bedingungen, die als Nächstes über einen Zustand entscheiden. */
+export interface SteuerlogikWarum {
+  /** Kennung des Zustands und (bei `schritt`) des Schritts: für Maschinen, nie vor dem Kunden. */
+  zustand: string;
+  name: string;
+  /**
+   * Die Überschrift für den Kunden: der Satz der Logik mit den Werten von jetzt (`eigen`), sonst einer aus dem
+   * Wortschatz der Box. Fehlt bei einer Box vor diesem Feld.
+   */
+  satz?: string;
+  eigen?: boolean;
+  /** an: schaltet ein, wenn …; aus: endet, wenn …; schritt: ein Schritt eines Zählers. */
+  was: 'an' | 'aus' | 'schritt';
+  schritt?: string;
+  modus: 'alle' | 'eines';
+  wartet_s?: number;
+  /** ok null = unbekannt, nie „nein“. */
+  /**
+   * `name` ist immer ein Satz (der Name aus dem Text oder einer aus dem Wortschatz der Box), nie eine Formel;
+   * `allgemein`: die Box konnte die Bedingung nicht übersetzen, `name` ist „Eine Bedingung Ihres Fachbetriebs“.
+   */
+  bedingungen: { name: string; ok: boolean | null; allgemein?: boolean; werte?: { name: string; text: string }[] }[];
+}
+
 export interface SteuerlogikGeraetVergleich {
   entity_id: string;
   /** Name des Geräts in der Logik. */
@@ -9602,6 +9632,11 @@ export interface SteuerlogikGeraetVergleich {
   laengste_abweichung_s: number;
   wunsch_wechsel: number;
   ist_wechsel: number;
+  /** Nur scharf: was der Schiedsrichter gewährt hat, wer sonst hält, welcher Schutz greift, welcher Konflikt. */
+  befehl?: SteuerlogikStand;
+  halter?: string;
+  schutz?: SteuerlogikGrund;
+  konflikt?: SteuerlogikGrund;
 }
 
 export interface SteuerlogikRueckmeldung {
@@ -9609,8 +9644,15 @@ export interface SteuerlogikRueckmeldung {
   flow_version: number;
   content_hash: string;
   name: string;
-  zustand: 'mitlaufend';
+  zustand: 'mitlaufend' | 'scharf';
   seit: string;
+  /** Seit wann die Box nach dieser Fassung schaltet (nur scharf). */
+  scharf_seit?: string;
+  /** Warum eine scharfe Logik gerade nicht schaltet (Schalter der Box, Pause). */
+  halt?: SteuerlogikGrund;
+  stellwerte?: { stand: number; werte: { kennung: string; wert: unknown; text: string; hilfe?: string }[] };
+  warum?: SteuerlogikWarum[];
+  meldungen?: { nr: number; t: string; an?: string[]; text: string }[];
   tag?: string;
   lage?: { nr: number; titel: string; art?: string; satz?: string };
   zustaende?: Record<string, string>;
@@ -9625,16 +9667,20 @@ export interface SteuerlogikBericht {
   befunde?: string[];
   proben?: { name: string; besteht: boolean; abweichungen: { stelle: string; soll: string; ist: string }[] }[];
   hinweise?: string[];
+  geraete?: { kennung: string; entity_id: string; name: string; ausgaenge?: string[] }[];
 }
 
 export interface SteuerlogikFassung {
   fassung: number;
-  zustand: 'mitlaufend' | 'stillgelegt';
+  zustand: 'mitlaufend' | 'scharf' | 'stillgelegt';
   contentHash: string;
   bericht: SteuerlogikBericht | null;
   angelegtAm: string;
   angelegtVon: string | null;
   stillgelegtAm: string | null;
+  scharfAm?: string | null;
+  scharfVon?: string | null;
+  hinweise?: string[] | null;
 }
 
 export interface SteuerlogikLogik {
@@ -9642,12 +9688,15 @@ export interface SteuerlogikLogik {
   name: string;
   fassungen: SteuerlogikFassung[];
   quittung: { fassung: number; contentHash: string; zustand: 'active' | 'error' | 'unsupported'; detail: string | null; gemeldetAm: string } | null;
-  laeufe: { box: string; fassung: number; contentHash: string; zustand: 'mitlaufend'; seit: string; rueckmeldung: SteuerlogikRueckmeldung | null; gemeldetAm: string }[];
+  laeufe: { box: string; fassung: number; contentHash: string; zustand: 'mitlaufend' | 'scharf'; seit: string; rueckmeldung: SteuerlogikRueckmeldung | null; gemeldetAm: string }[];
+  einstellung?: { stand: number; werte: Record<string, unknown> | null } | null;
 }
 
 export interface SteuerlogikBlatt {
   box: string | null;
   boxKann: boolean;
+  /** Die führende Box meldet `steuerlogik_scharf`. */
+  boxKannScharf?: boolean;
   logiken: SteuerlogikLogik[];
 }
 
@@ -9659,6 +9708,105 @@ export interface SteuerlogikAngenommen {
   bericht: SteuerlogikBericht | null;
   box: string;
   veroeffentlicht: boolean;
+  zustand?: 'mitlaufend' | 'scharf';
+  verworfen?: { kennung: string; grund: string }[];
+}
+
+/** Ein Grund, warum eine Logik ein Gerät nicht bekommt (zweiter Herr, Ladepunkt, Freigabe, Ausgang). */
+export interface SteuerlogikKonflikt {
+  entityId: string | null;
+  geraet: string;
+  art: string;
+  text: string;
+}
+
+/** Was der Dialog „Scharf schalten“ zeigt (Stufe 3, nur Plattform). */
+export interface SteuerlogikVorschau {
+  logikId: string;
+  fassung: number;
+  name: string;
+  zustand: 'mitlaufend' | 'scharf';
+  boxKann: boolean;
+  bericht: SteuerlogikBericht | null;
+  hinweise: string[];
+  konflikte: SteuerlogikKonflikt[];
+  geraete: string[];
+  kundeStellt: string[];
+  moeglich: boolean;
+}
+
+/** Ein Schritt an einer Logik: angenommen, scharf, zurück, stillgelegt, Wert gestellt. */
+export interface SteuerlogikSchritt {
+  fassung: number;
+  was: 'angenommen' | 'scharf' | 'zurueck' | 'stillgelegt' | 'stellwert';
+  am: string;
+  von: string | null;
+  rolle: string | null;
+  daten: Record<string, unknown> | null;
+}
+
+/**
+ * Ein Stellwert der Kundenkarte: Beschreibung, der gestellte Wert der Cloud (`wert`, Form des Dokuments wie
+ * `"72 °C"`), was die Box anwendet (`wertBox`, `text`, `hilfe`), ob er unter „Das stellen Sie ein“ steht (`frei`)
+ * und ob dieser Aufrufer ihn ändern darf.
+ */
+export interface SteuerlogikStellwert {
+  kennung: string;
+  name: string;
+  art: 'zahl' | 'uhrzeit' | 'boolean' | 'select' | 'schedule';
+  einheit: string | null;
+  von: number | null;
+  bis: number | null;
+  schritt: number | null;
+  optionen: { wert: string; name: string }[] | null;
+  zielwert: boolean;
+  darf: 'customer' | 'customer_admin' | 'installer';
+  wert: unknown;
+  wertBox: unknown;
+  text: string | null;
+  hilfe: string | null;
+  frei: boolean;
+  aendern: boolean;
+  uebernommen: boolean;
+}
+
+/** Ein Gerät der Logik jetzt; fehlende Teile sind unbekannt, nie „aus“. */
+export interface SteuerlogikKartenGeraet {
+  kennung: string;
+  entityId: string;
+  name: string;
+  wunsch: SteuerlogikStand | null;
+  ist: SteuerlogikStand | null;
+  befehl: SteuerlogikStand | null;
+  halter: string | null;
+  schutz: SteuerlogikGrund | null;
+  konflikt: SteuerlogikGrund | null;
+}
+
+/** Eine scharfe Logik, wie der Kunde sie sieht (`GET /api/v1/sites/{siteId}/steuerlogik`). */
+export interface SteuerlogikKarte {
+  logikId: string;
+  name: string;
+  fassung: number;
+  scharfSeit: string | null;
+  /** Wann die Box zuletzt von der Logik berichtet hat; `null` = noch nie. */
+  gemeldetAm: string | null;
+  lage: { nr: number; titel: string; art?: string; satz?: string } | null;
+  /** Die erste zeigt die Karte. */
+  stoerungen: SteuerlogikGrund[];
+  geraete: SteuerlogikKartenGeraet[];
+  stellwerte: SteuerlogikStellwert[];
+  stand: number;
+  standBox: number | null;
+  warum: SteuerlogikWarum[] | null;
+  meldungen: { nr: number; t: string; an?: string[]; text: string }[] | null;
+}
+
+export interface SteuerlogikVerlauf {
+  logikId: string;
+  tag: string;
+  wechsel: SteuerlogikWechsel[];
+  schritte: SteuerlogikSchritt[];
 }
 
 export interface SteuerlogikWechsel {
@@ -12461,11 +12609,14 @@ export const api = {
 
   /** Steuerlogik Stufe 2: das Blatt der Plattform (Fassungen, Quittung, Mitlauf). */
   steuerlogikBlatt: (siteId: string) => request<SteuerlogikBlatt>(`/api/v1/admin/sites/${siteId}/steuerlogik`),
-  /** Eine Logik als Text annehmen; mit `logikId` eine neue Fassung, die die laufende ablöst. */
-  steuerlogikAnnehmen: (siteId: string, text: string, logikId?: string) =>
+  /**
+   * Eine Logik als Text annehmen; mit `logikId` eine neue Fassung, die die laufende ablöst. `scharf` lässt sie gleich
+   * scharf gehen (eine scharfe Fassung löst nur eine scharfe ab) und bestätigt damit die Hinweise.
+   */
+  steuerlogikAnnehmen: (siteId: string, text: string, logikId?: string, scharf = false) =>
     request<SteuerlogikAngenommen>(
       logikId ? `/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/fassungen` : `/api/v1/admin/sites/${siteId}/steuerlogik`,
-      { method: 'POST', body: JSON.stringify({ text }) },
+      { method: 'POST', body: JSON.stringify(scharf ? { text, scharf: true, bestaetigt: true } : { text }) },
     ),
   steuerlogikStilllegen: (siteId: string, logikId: string) =>
     request<{ stillgelegt: boolean }>(`/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/stilllegen`, { method: 'POST' }),
@@ -12473,6 +12624,37 @@ export const api = {
   steuerlogikWechsel: (siteId: string, logikId: string, tag?: string) =>
     request<SteuerlogikProtokoll>(
       `/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/wechsel${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`,
+    ),
+  /** Stufe 3: was der Dialog „Scharf schalten“ zeigt. */
+  steuerlogikVorschau: (siteId: string, logikId: string) =>
+    request<SteuerlogikVorschau>(`/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/scharf`),
+  /** Die Fassung scharf schalten - eine Bestätigung für alle Hinweise (E5 = C). */
+  steuerlogikScharf: (siteId: string, logikId: string, fassung: number) =>
+    request<SteuerlogikAngenommen>(`/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/scharf`, {
+      method: 'POST',
+      body: JSON.stringify({ fassung, bestaetigt: true }),
+    }),
+  /** Zurück zur vorigen Fassung, im selben Zustand; wirkt sofort. */
+  steuerlogikZurueck: (siteId: string, logikId: string) =>
+    request<SteuerlogikAngenommen>(`/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/zurueck`, { method: 'POST' }),
+  /** Die Schritte an einer Logik an einem Tag der Anlage. */
+  steuerlogikProtokoll: (siteId: string, logikId: string, tag?: string) =>
+    request<{ logikId: string; tag: string; schritte: SteuerlogikSchritt[] }>(
+      `/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/protokoll${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`,
+    ),
+
+  /** Stufe 3, Kunde: die scharfen Logiken der Anlage als Karten. */
+  siteSteuerlogik: (siteId: string) => request<{ logiken: SteuerlogikKarte[] }>(`/api/v1/sites/${siteId}/steuerlogik`),
+  /** Der Verlauf eines Tages der Anlage: Schaltungen und Schritte von Menschen. */
+  siteSteuerlogikVerlauf: (siteId: string, logikId: string, tag?: string) =>
+    request<SteuerlogikVerlauf>(
+      `/api/v1/sites/${siteId}/steuerlogik/${logikId}/verlauf${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`,
+    ),
+  /** Einen Wert stellen, in der Form des Dokuments (`"72 °C"`, `"on"`, `"06:00"`). */
+  siteSteuerlogikWert: (siteId: string, logikId: string, kennung: string, wert: unknown) =>
+    request<{ logikId: string; kennung: string; wert: unknown; stand: number; veroeffentlicht: boolean }>(
+      `/api/v1/sites/${siteId}/steuerlogik/${logikId}/stellwerte/${encodeURIComponent(kennung)}`,
+      { method: 'PUT', body: JSON.stringify({ wert }) },
     ),
 
   gemeinsameSteuerungBetreiber: (siteId: string, schritt: 'scharfschalten' | 'fortsetzen') =>

@@ -33,8 +33,17 @@ public final class SteuerlogikRueckmeldung {
     static final int MAX_UNBEKANNT = 32;
     static final int MAX_SEKUNDEN = 2 * 86400;
     static final int MAX_WECHSEL_JE_TAG = 100000;
+    static final int MAX_STELLWERTE = 64;
+    static final int MAX_WARUM = 24;
+    static final int MAX_BEDINGUNGEN = 12;
+    static final int MAX_WERTE = 3;
+    static final int MAX_MELDUNGEN = 8;
 
-    private static final Set<String> ZUSTAENDE = Set.of("mitlaufend");
+    /** Mitlaufend (Stufe 2) oder scharf (Stufe 3); ein anderes Wort verwirft den Lauf. */
+    private static final Set<String> ZUSTAENDE = Set.of("mitlaufend", "scharf");
+    private static final Set<String> WARUM_WAS = Set.of("an", "aus", "schritt");
+    private static final Set<String> WARUM_MODUS = Set.of("alle", "eines");
+    private static final Pattern CODE = Pattern.compile("^[a-z][a-z0-9_-]{0,39}$");
     private static final Set<String> WAS = Set.of("wunsch", "ist");
     /** Die Arten einer Lage-Zeile (steuerlogik.schema.json, status[].type). */
     private static final Set<String> LAGE_ARTEN = Set.of("solar", "grid", "waiting", "idle", "fault");
@@ -74,6 +83,10 @@ public final class SteuerlogikRueckmeldung {
             sauber.put("seit", seit.toString());
             String tag = l.path("tag").asText(null);
             if (tag != null && istTag(tag)) sauber.put("tag", tag);
+            Instant scharfSeit = instant(l.path("scharf_seit").asText(null));
+            if ("scharf".equals(zustand) && scharfSeit != null) sauber.put("scharf_seit", scharfSeit.toString());
+            ObjectNode halt = grund(l.get("halt"), mapper);
+            if (halt != null) sauber.set("halt", halt);
             JsonNode lage = l.get("lage");
             if (lage != null && lage.isObject() && lage.path("titel").isTextual() && lage.path("nr").isInt()) {
                 ObjectNode ln = sauber.putObject("lage");
@@ -126,8 +139,23 @@ public final class SteuerlogikRueckmeldung {
                     for (String f : List.of("wunsch_wechsel", "ist_wechsel")) {
                         one.put(f, zahl(g.path(f), MAX_WECHSEL_JE_TAG));
                     }
+                    ObjectNode befehl = stand(g.get("befehl"), mapper);
+                    if (befehl != null) one.set("befehl", befehl);
+                    if (g.path("halter").isTextual() && CODE.matcher(g.path("halter").asText()).matches()) {
+                        one.put("halter", g.path("halter").asText());
+                    }
+                    ObjectNode schutz = grund(g.get("schutz"), mapper);
+                    if (schutz != null) one.set("schutz", schutz);
+                    ObjectNode konflikt = grund(g.get("konflikt"), mapper);
+                    if (konflikt != null) one.set("konflikt", konflikt);
                 }
             }
+            ObjectNode stell = stellwerte(l.get("stellwerte"), mapper);
+            if (stell != null) sauber.set("stellwerte", stell);
+            ArrayNode warum = warum(l.get("warum"), mapper);
+            if (warum != null) sauber.set("warum", warum);
+            ArrayNode meldungen = meldungen(l.get("meldungen"), mapper);
+            if (meldungen != null) sauber.set("meldungen", meldungen);
             laeufe.add(new SteuerlogikRepository.Lauf(deviceId, logikId, fassung, hash, zustand, seit,
                     sauber.toString(), null));
             JsonNode ws = l.get("wechsel");
@@ -171,6 +199,127 @@ public final class SteuerlogikRueckmeldung {
             out.put("anteil", s.path("anteil").asDouble());
         }
         return out.isEmpty() ? null : out;
+    }
+
+    /** Ein Grund in Code und Satz ({@code halt}, {@code schutz}, {@code konflikt}); sonst {@code null}. */
+    static ObjectNode grund(JsonNode g, ObjectMapper mapper) {
+        if (g == null || !g.isObject() || !CODE.matcher(g.path("code").asText("")).matches()
+                || !g.path("text").isTextual()) {
+            return null;
+        }
+        ObjectNode out = mapper.createObjectNode();
+        out.put("code", g.path("code").asText());
+        out.put("text", text(g.path("text"), 200));
+        return out;
+    }
+
+    /** Die gestellten Werte mit Stand, Anzeige und Hilfesatz; ein Wert nur in der Form des Dokuments. */
+    static ObjectNode stellwerte(JsonNode s, ObjectMapper mapper) {
+        if (s == null || !s.isObject() || !s.path("stand").isIntegralNumber() || s.path("stand").asLong() < 0) {
+            return null;
+        }
+        ObjectNode out = mapper.createObjectNode();
+        out.put("stand", s.path("stand").asLong());
+        ArrayNode werte = out.putArray("werte");
+        for (JsonNode w : s.path("werte")) {
+            if (werte.size() >= MAX_STELLWERTE) break;
+            JsonNode wert = formDesDokuments(w.get("wert"), mapper);
+            if (!KENNUNG.matcher(w.path("kennung").asText("")).matches() || wert == null) continue;
+            ObjectNode one = werte.addObject();
+            one.put("kennung", w.path("kennung").asText());
+            one.set("wert", wert);
+            one.put("text", text(w.path("text"), 80));
+            if (w.path("hilfe").isTextual()) one.put("hilfe", text(w.path("hilfe"), 300));
+        }
+        return out;
+    }
+
+    /** Ein Wert in der Form des Dokuments: Wort oder Zahl mit Einheit als Text, Zahl, Ja/Nein oder Zeitplan. */
+    static JsonNode formDesDokuments(JsonNode w, ObjectMapper mapper) {
+        if (w == null) return null;
+        if (w.isTextual()) return w.asText().length() <= 80 ? w : null;
+        if (w.isNumber()) return Double.isFinite(w.asDouble()) ? w : null;
+        if (w.isBoolean()) return w;
+        if (w.isArray() && w.size() <= 8) {
+            ArrayNode plan = mapper.createArrayNode();
+            for (JsonNode f : w) {
+                if (!f.isObject()) return null;
+                ObjectNode one = plan.addObject();
+                for (String k : List.of("days", "from", "to")) {
+                    if (!f.path(k).isTextual() || f.path(k).asText().length() > 40) return null;
+                    one.put(k, f.path(k).asText());
+                }
+            }
+            return plan;
+        }
+        return null;
+    }
+
+    /** Die Liste "Warum?": je Gruppe die benannten Bedingungen mit Haken (ok null = unbekannt) und Werten. */
+    static ArrayNode warum(JsonNode liste, ObjectMapper mapper) {
+        if (liste == null || !liste.isArray()) return null;
+        ArrayNode out = mapper.createArrayNode();
+        for (JsonNode g : liste) {
+            if (out.size() >= MAX_WARUM) break;
+            if (!KENNUNG.matcher(g.path("zustand").asText("")).matches() || !WARUM_WAS.contains(g.path("was").asText())
+                    || !WARUM_MODUS.contains(g.path("modus").asText())) {
+                continue;
+            }
+            ObjectNode one = out.addObject();
+            one.put("zustand", g.path("zustand").asText());
+            one.put("name", text(g.path("name"), 80));
+            // Die Überschrift für den Kunden (Satz der Logik oder aus dem Wortschatz der Box, nie eine Kennung).
+            if (g.path("satz").isTextual()) one.put("satz", text(g.path("satz"), 160));
+            if (g.path("eigen").asBoolean(false)) one.put("eigen", true);
+            one.put("was", g.path("was").asText());
+            if (g.path("schritt").isTextual()) one.put("schritt", text(g.path("schritt"), 40));
+            one.put("modus", g.path("modus").asText());
+            if (g.path("wartet_s").isInt()) one.put("wartet_s", zahl(g.path("wartet_s"), MAX_SEKUNDEN));
+            ArrayNode bed = one.putArray("bedingungen");
+            for (JsonNode b : g.path("bedingungen")) {
+                if (bed.size() >= MAX_BEDINGUNGEN) break;
+                if (!b.path("name").isTextual()) continue;
+                ObjectNode bn = bed.addObject();
+                bn.put("name", text(b.path("name"), 120));
+                if (b.path("ok").isBoolean()) {
+                    bn.put("ok", b.path("ok").asBoolean());
+                } else {
+                    bn.putNull("ok");
+                }
+                // Ein Satz, nie eine Formel: allgemein heißt, die Box konnte die Bedingung nicht übersetzen.
+                if (b.path("allgemein").asBoolean(false)) bn.put("allgemein", true);
+                ArrayNode werte = bn.putArray("werte");
+                for (JsonNode w : b.path("werte")) {
+                    if (werte.size() >= MAX_WERTE) break;
+                    if (!w.path("name").isTextual() || !w.path("text").isTextual()) continue;
+                    werte.addObject().put("name", text(w.path("name"), 80)).put("text", text(w.path("text"), 40));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Die eigenen Meldungen der Logik (notifications), jüngste zuletzt. */
+    static ArrayNode meldungen(JsonNode liste, ObjectMapper mapper) {
+        if (liste == null || !liste.isArray()) return null;
+        ArrayNode out = mapper.createArrayNode();
+        for (JsonNode m : liste) {
+            if (out.size() >= MAX_MELDUNGEN) break;
+            Instant t = instant(m.path("t").asText(null));
+            if (!m.path("nr").isIntegralNumber() || m.path("nr").asLong() < 1 || t == null
+                    || !m.path("text").isTextual()) {
+                continue;
+            }
+            ObjectNode one = out.addObject();
+            one.put("nr", m.path("nr").asLong());
+            one.put("t", t.toString());
+            ArrayNode an = one.putArray("an");
+            for (JsonNode a : m.path("an")) {
+                if (an.size() < 4 && a.isTextual() && KENNUNG.matcher(a.asText()).matches()) an.add(a.asText());
+            }
+            one.put("text", text(m.path("text"), 300));
+        }
+        return out;
     }
 
     private static int zahl(JsonNode n, int max) {

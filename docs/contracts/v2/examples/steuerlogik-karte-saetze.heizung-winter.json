@@ -1,0 +1,21 @@
+{
+  "geraet": {
+    "kennung": "dle",
+    "name": "Durchlauferhitzer",
+    "stufe": 3
+  },
+  "lage": {
+    "art": "grid",
+    "nr": 2,
+    "satz": "Speicher 1 war unter 40 °C gefallen und steht bei 38,5 °C. Der Durchlauferhitzer heizt aus dem Netz bis 60 °C.",
+    "titel": "Heizt aus dem Netz"
+  },
+  "logik": "Heizung",
+  "winter": {
+    "hilfe": "An: Unter 40 °C heizt Speicher 1 aus dem Netz, von 06:00 bis 22:00 Uhr, bis 60 °C.",
+    "kennung": "winter",
+    "name": "Winterregelung",
+    "text": "an",
+    "wert": "on"
+  }
+}

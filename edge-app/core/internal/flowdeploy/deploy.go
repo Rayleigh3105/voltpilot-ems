@@ -78,6 +78,22 @@ type Bundle struct {
 	// Site is where the plant is (timezone, location) for the logic's clock
 	// and sun elevation; absent parts stay unknown on the box.
 	Site *BundleSite `json:"site,omitempty"`
+	// Armed (Stufe 3, "scharf"): the logic's wishes go to the arbiter and its
+	// devices belong to it. Absent = it runs along and switches nothing. Only
+	// a box reporting steuerlogik_scharf gets an armed bundle; an older box
+	// drops the field when re-hashing and acks the artifact as an error.
+	Armed bool `json:"armed,omitempty"`
+	// Settings are the values people set without changing the text (Stufe 3):
+	// revision counts every change, values carry the document's form. They
+	// sit under the hash, so the ack proves the box holds exactly these.
+	Settings *BundleSettings `json:"settings,omitempty"`
+}
+
+// BundleSettings are the set values of a Steuerlogik (steuerlogik.md
+// "Stellwerte"); a setting not named keeps its default.
+type BundleSettings struct {
+	Revision int64                      `json:"revision"`
+	Values   map[string]json.RawMessage `json:"values"`
 }
 
 // BundleSite is the place of the plant a Steuerlogik computes in.
@@ -161,7 +177,8 @@ func (dep *Deployer) verifyArtifact(a Artifact, raw []byte) (string, string) {
 		if a.Bundle.Logic == "" || len(a.Bundle.TabIDs) != 0 || len(a.Bundle.NoderedFlows) != 0 {
 			return "error", "Bundle-Format nicht unterstützt oder leer"
 		}
-	} else if a.Bundle.Format != "nodered-tabs" || len(a.Bundle.TabIDs) == 0 || len(a.Bundle.NoderedFlows) == 0 || a.Bundle.Logic != "" || a.Bundle.Site != nil {
+	} else if a.Bundle.Format != "nodered-tabs" || len(a.Bundle.TabIDs) == 0 || len(a.Bundle.NoderedFlows) == 0 || a.Bundle.Logic != "" || a.Bundle.Site != nil ||
+		a.Bundle.Armed || a.Bundle.Settings != nil {
 		return "error", "Bundle-Format nicht unterstützt oder leer"
 	}
 	// Integrity: re-canonicalize the bundle and verify the hash.

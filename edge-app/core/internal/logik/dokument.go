@@ -183,6 +183,9 @@ type Stellwert struct {
 	HatDarf     bool
 	Hilfe       any // nil, string oder [2]string{whenOn, whenOff}
 	Optionen    *jObjekt
+	// vorgabeText ist die Vorgabe, wie der Text sie schreibt ("30 min"): ihre Einheit ist die
+	// Einheit, in der Oberfläche und Bündel den Wert zeigen und schreiben (StellwertInfos).
+	vorgabeText string
 }
 
 // Zielwert nach E2 = B: jeder Stellwert in °C. Ihn darf der Kunde immer ändern, in seinem Bereich.
@@ -209,10 +212,13 @@ const (
 type Zustand struct {
 	Kennung string
 	Name    string
+	HatName bool   // Name kommt aus dem Text (sonst ist er die Kennung)
 	Art     string // "boolean", "timer", "counter"
 
 	// Schalter
 	An, AnEines, Aus, AusEines []Bedingung
+	// AnText und AusText sind die Sätze für den Kunden im Blatt „Warum?“ (on_text, off_text).
+	AnText, AusText string
 
 	// Zeitgeber
 	Dauer *baum
@@ -228,6 +234,7 @@ type Zustand struct {
 // Schritt ist ein Schritt eines Zählers; je Takt gilt der erste zutreffende.
 type Schritt struct {
 	Name            string
+	Text            string // Satz für den Kunden im Blatt „Warum?“; Name ist eine Kennung
 	Um              int
 	HatUm           bool
 	Setze           *baum
@@ -902,6 +909,7 @@ func liesStellwert(L *Logik, k string, o *jObjekt) (*Stellwert, error) {
 		if s.Vorgabe, err = LiesWert(o.wert("default")); err != nil {
 			return nil, fehler("%s.default: %s", wo, err.Error())
 		}
+		s.vorgabeText, _ = o.wert("default").(string)
 		if s.Art == "boolean" && s.Vorgabe.Art != WertBool {
 			return nil, fehler("%s.default: on oder off", wo)
 		}
@@ -973,12 +981,19 @@ func liesZustand(L *Logik, k string, o *jObjekt) (*Zustand, error) {
 	if n, err := textWert(wo+".name", o.wert("name"), false); err != nil {
 		return nil, err
 	} else if n != "" {
-		z.Name = n
+		z.Name, z.HatName = n, true
 	}
 	neu := o.wert("after_restart")
 	switch art {
 	case "boolean":
-		if err := nurSchluessel(wo, o, "type", "name", "on_when", "on_when_any", "off_when", "off_when_any", "after_restart"); err != nil {
+		if err := nurSchluessel(wo, o, "type", "name", "on_when", "on_when_any", "off_when", "off_when_any", "after_restart",
+			"on_text", "off_text"); err != nil {
+			return nil, err
+		}
+		if z.AnText, err = textWert(wo+".on_text", o.wert("on_text"), false); err != nil {
+			return nil, err
+		}
+		if z.AusText, err = textWert(wo+".off_text", o.wert("off_text"), false); err != nil {
 			return nil, err
 		}
 		if z.An, err = bedingungen(wo+".on_when", o.wert("on_when")); err != nil {
@@ -1055,11 +1070,14 @@ func liesZustand(L *Logik, k string, o *jObjekt) (*Zustand, error) {
 			if !ok {
 				return nil, fehler("%s.steps: erwartet Objekte", wo)
 			}
-			if err := nurSchluessel(wo+".steps", so, "name", "by", "set", "not_before", "when", "when_any", "then"); err != nil {
+			if err := nurSchluessel(wo+".steps", so, "name", "by", "set", "not_before", "when", "when_any", "then", "text"); err != nil {
 				return nil, err
 			}
 			s := &Schritt{}
 			if s.Name, err = textWert(wo+".steps.name", so.wert("name"), true); err != nil {
+				return nil, err
+			}
+			if s.Text, err = textWert(wo+".steps."+s.Name+".text", so.wert("text"), false); err != nil {
 				return nil, err
 			}
 			if err := pruefeKennung(wo+".steps", s.Name); err != nil {

@@ -329,3 +329,150 @@ func TestDienstKenntGeraeteMitSollwertUndBetriebsart(t *testing.T) {
 		t.Fatalf("Befunde aus der Registry: %+v", g.Bericht.Befunde)
 	}
 }
+
+// tScharfStab is the hot water rod of the armed example as the registry
+// names it - an entity with a UUID, as every real component has.
+const tScharfStab = "7b0c2f4e-1a2b-4c3d-8e9f-0a1b2c3d4e5f"
+
+func scharfeRegistry() json.RawMessage {
+	return json.RawMessage(`{"schema_version":"1.0","revision":"r1","entities":[{"entity_id":"` + tScharfStab + `",` +
+		`"entity_type":"heating-rod","capabilities":{"actuate":[{"command":"on_off"},{"command":"setpoint_kw"}]},` +
+		`"guards":{"failsafe":{"behavior":"off"}},"driver":{"brand":"shelly","communication":"shelly_http",` +
+		`"connection":{"ip":"192.168.1.20","port":80,"channels":[0,1,2],"output_kw":[2,2,2],"stages":[1,2,3]}}}]}`)
+}
+
+func scharfesBeispiel(t *testing.T) string {
+	return strings.ReplaceAll(beispiel(t, "wasser"), "heizstab-warmwasser", tScharfStab)
+}
+
+// An armed artifact carries armed, the set values with their revision, and
+// requires the command the box will switch with (a level on an output set ->
+// setpoint_kw). The service's whole answer is pinned as a contract fixture
+// (examples/steuerlogik-dienst.valid.wasser-scharf.json) the API's tests hand
+// out, so Go and Java meet on the same bytes.
+func TestScharfesArtefaktIstGepinnt(t *testing.T) {
+	breite, laenge := 48.1, 11.6
+	art, bericht, gebaut, err := ArtefaktMitWerten(Auftrag{Text: scharfesBeispiel(t),
+		FlowID: "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b", FlowVersion: 1,
+		CompiledAt: time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC), Registry: scharfeRegistry(), Armed: true,
+		Site:     &Ort{Timezone: "Europe/Berlin", Latitude: &breite, Longitude: &laenge},
+		Settings: &Einstellung{Revision: 1, Values: map[string]json.RawMessage{"mindest": json.RawMessage(`"42 °C"`)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a flowdeploy.Artifact
+	if err := json.Unmarshal(art, &a); err != nil {
+		t.Fatal(err)
+	}
+	if !a.Bundle.Armed || a.Bundle.Settings == nil || a.Bundle.Settings.Revision != 1 ||
+		string(a.Bundle.Settings.Values["mindest"]) != `"42 °C"` {
+		t.Fatalf("bundle: armed %v settings %+v", a.Bundle.Armed, a.Bundle.Settings)
+	}
+	if len(a.RequiredEntities) != 1 || a.RequiredEntities[0].EntityID != tScharfStab ||
+		strings.Join(a.RequiredEntities[0].Capabilities, ",") != "actuate:setpoint_kw" {
+		t.Fatalf("required entities: %+v", a.RequiredEntities)
+	}
+	if len(bericht.Geraete) != 1 || strings.Join(bericht.Geraete[0].Ausgaenge, ",") != "level" ||
+		len(bericht.Stellwerte) != 5 || !bericht.Stellwerte[0].Zielwert {
+		t.Fatalf("bericht: %+v", bericht)
+	}
+	antwort, err := json.MarshalIndent(map[string]any{"artifact": json.RawMessage(art), "bericht": bericht,
+		"settings": gebaut.Settings}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	antwort = append(antwort, '\n')
+	pfad := filepath.Join(vertrag, "examples", "steuerlogik-dienst.valid.wasser-scharf.json")
+	if os.Getenv("VP_FIXTURES_SCHREIBEN") == "1" {
+		if err := os.WriteFile(pfad, antwort, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	soll, err := os.ReadFile(pfad)
+	if err != nil {
+		t.Fatalf("%v (VP_FIXTURES_SCHREIBEN=1 legt sie an)", err)
+	}
+	if !bytes.Equal(soll, antwort) {
+		t.Fatalf("%s weicht von der Antwort des Dienstes ab (VP_FIXTURES_SCHREIBEN=1 nach gewollter Änderung)", pfad)
+	}
+}
+
+// Set values that do not fit refuse the artifact (a customer's slider must
+// never reach the box out of range); for a new version they fall back to
+// their default and are named instead (report §8.9).
+func TestStellwerteImArtefakt(t *testing.T) {
+	auftrag := func(werte map[string]string, behalten bool) Auftrag {
+		v := map[string]json.RawMessage{}
+		for k, w := range werte {
+			v[k], _ = json.Marshal(w)
+		}
+		return Auftrag{Text: scharfesBeispiel(t), FlowID: "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b", FlowVersion: 2,
+			Registry: scharfeRegistry(), Settings: &Einstellung{Revision: 4, Values: v}, SettingsKeepFitting: behalten}
+	}
+	for name, werte := range map[string]map[string]string{
+		"über dem Bereich": {"ziel": "70 °C"},
+		"nicht im Raster":  {"mindest": "40.5 °C"},
+		"falsche Einheit":  {"mindest": "40 kW"},
+		"unbekannt":        {"gibt_es_nicht": "1"},
+		"Bedingung":        {"netz_ziel": "42 °C", "mindest": "40 °C"},
+	} {
+		_, _, _, err := ArtefaktMitWerten(auftrag(werte, false))
+		if !errors.Is(err, ErrStellwerte) {
+			t.Fatalf("%s: erwartet ErrStellwerte, war %v", name, err)
+		}
+	}
+	_, _, gebaut, err := ArtefaktMitWerten(auftrag(map[string]string{"ziel": "70 °C", "mindest": "41 °C"}, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gebaut.Verworfen) != 1 || gebaut.Verworfen[0].Kennung != "ziel" || gebaut.Settings.Revision != 4 ||
+		string(gebaut.Settings.Values["mindest"]) != `"41 °C"` || gebaut.Settings.Values["ziel"] != nil {
+		t.Fatalf("eine neue Fassung behält, was passt: %+v %+v", gebaut.Verworfen, gebaut.Settings)
+	}
+
+	// Over HTTP the refusal is 422 with grund stellwerte (the API's client reads it).
+	srv := httptest.NewServer(Handler())
+	defer srv.Close()
+	body, _ := json.Marshal(auftrag(map[string]string{"ziel": "70 °C"}, false))
+	res, err := http.Post(srv.URL+"/artefakt", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var antwort map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&antwort)
+	res.Body.Close()
+	if res.StatusCode != 422 || antwort["grund"] != "stellwerte" {
+		t.Fatalf("HTTP: %d %v", res.StatusCode, antwort)
+	}
+}
+
+// Armed, a device that regulates itself (K2/K3) must execute what the logic
+// sets: on/off, the setpoint in °C as setpoint_c, the mode as mode. The box
+// takes the bundle only when its registry entry declares all three.
+func TestScharfesArtefaktVerlangtSollwertUndBetriebsart(t *testing.T) {
+	registry := json.RawMessage(`{"entities":[{"entity_id":"klimageraet-buero","entity_type":"modbus-device",
+		"capabilities":{"actuate":[{"command":"on_off"},{"command":"setpoint_c","min":16,"max":30,"step":0.5},
+		{"command":"mode","modes":["cool","heat","fan_only"]}]},"guards":{"failsafe":{"behavior":"rest"}}}]}`)
+	text, err := os.ReadFile(filepath.Join(vertrag, "steuerlogik/klima.logic.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	art, bericht, _, err := ArtefaktMitWerten(Auftrag{Text: string(text), FlowID: "3c9d2e1f-4a5b-4c6d-8e7f-9a0b1c2d3e4f", FlowVersion: 1,
+		Registry: registry, Armed: true})
+	if err != nil || bericht.Sperrt {
+		t.Fatalf("Dienst: %v %+v", err, bericht)
+	}
+	var a struct {
+		RequiredEntities []struct {
+			EntityID     string   `json:"entity_id"`
+			Capabilities []string `json:"capabilities"`
+		} `json:"required_entities"`
+	}
+	if err := json.Unmarshal(art, &a); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.RequiredEntities) != 1 || fmt.Sprint(a.RequiredEntities[0].Capabilities) !=
+		"[actuate:mode actuate:on_off actuate:setpoint_c]" {
+		t.Fatalf("verlangt: %+v", a.RequiredEntities)
+	}
+}

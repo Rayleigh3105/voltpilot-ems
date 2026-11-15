@@ -44,7 +44,7 @@ public class WerteKatalog {
      * messreihe; Scheibe 4: menge, geld; Scheibe 5: kennzahl, zaehlung; EZ-11: erzeuger; Ein Ort fürs Laden
      * Scheibe 4: ladepunkt). */
     static final List<String> LESERARTEN = List.of("zustand", "ereignis", "anlagenfluss", "messreihe", "menge", "geld",
-            "kennzahl", "zaehlung", "erzeuger", "ladepunkt");
+            "kennzahl", "zaehlung", "erzeuger", "ladepunkt", "steuerlogik");
 
     /** Wie ein Eintrag seinen Wert liest (§6.3): Scheibe 1 nutzt {@code feld} ODER {@code arten}+{@code bezugsfeld}. */
     public record LeserVerweis(String art, String feld, List<String> arten, String bezugsfeld) {}

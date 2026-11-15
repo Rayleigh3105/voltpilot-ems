@@ -35,8 +35,12 @@ states:
   sonne_da:                     # Sonnenstrom ist verlässlich übrig, nicht nur für einen Augenblick
     name: Sonnenstrom ist übrig
     type: boolean
-    on_when:  holds(uebrig >= ab_kw, 5 min)
-    off_when: unknown(netz) or holds(uebrig < 0.2 kW, 10 min)
+    on_when:
+      - Seit 5 Minuten ist genug Sonnenstrom übrig: holds(uebrig >= ab_kw, 5 min)
+    off_when:
+      - Der Netzwert fehlt, oder seit 10 Minuten ist kaum Sonnenstrom übrig: unknown(netz) or holds(uebrig < 0.2 kW, 10 min)
+    on_text: Sonnenstrom gilt als übrig
+    off_text: Sonnenstrom gilt nicht mehr als übrig
     after_restart: off
 
   speichern:                    # Kälte auf Vorrat
@@ -53,6 +57,8 @@ states:
       - Der Netzwert fehlt: unknown(netz)
       # der Verdichter soll nicht wegen einer Wolke umkehren: frühestens nach 15 Minuten zurück
       - Der Sonnenstrom ist weg: not sonne_da and since(speichern) >= 15 min
+    on_text: Kühlt tiefer und speichert Kälte
+    off_text: Kühlt wieder auf den normalen Sollwert
     after_restart: off
 
 outputs:                        # ohne Wunsch der Logik gilt der Ruhewert des Geräts: sein eigener Sollwert

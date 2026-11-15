@@ -358,6 +358,9 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			if a.heizstabOwns(pe.ID) {
 				continue // the box's heating-rod controller is that rule (heizstab.go)
 			}
+			if a.steuerlogikOwns(pe.ID) {
+				continue // an armed Steuerlogik owns it (steuerlogik_scharf.go)
+			}
 			cmds, slotStart, ok := v2.ActiveCommands(pe.ID, now)
 			if !ok {
 				continue

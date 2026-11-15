@@ -100,7 +100,7 @@
               "type": "object",
               "required": ["format", "logic"],
               "additionalProperties": false,
-              "description": "Steuerlogik (flow-artifact.md §Steuerlogik, steuerlogik.md): one logic document as canonical JSON TEXT - a string so the content hash also covers the order of its keys, which is semantic - plus the place of the plant. Built only by the logic service beside the api; delivered only to a box reporting steuerlogik_mitlauf.",
+              "description": "Steuerlogik (flow-artifact.md §Steuerlogik, steuerlogik.md): one logic document as canonical JSON TEXT - a string so the content hash also covers the order of its keys, which is semantic - plus the place of the plant. Built only by the logic service beside the api; delivered only to a box reporting steuerlogik_mitlauf, an armed one only to a box reporting steuerlogik_scharf.",
               "properties": {
                 "format": { "type": "string", "const": "steuerlogik" },
                 "logic": { "type": "string", "minLength": 2, "maxLength": 262144, "description": "The canonical JSON of the logic (steuerlogik.schema.json), as text." },
@@ -112,6 +112,22 @@
                     "timezone": { "type": "string", "minLength": 1, "maxLength": 64 },
                     "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
                     "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+                  }
+                },
+                "armed": { "type": "boolean", "const": true, "description": "Stufe 3 (scharf): the logic's wishes go to the arbiter and its devices belong to it. Absent = it runs along and switches nothing." },
+                "settings": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["revision", "values"],
+                  "description": "Values people set without changing the text, checked by the logic service and again by the box (range, step, kind, constraints). A setting not named keeps its default. They sit under the hash: another value is another artifact, yet the box keeps the run of the same text.",
+                  "properties": {
+                    "revision": { "type": "integer", "minimum": 0, "description": "Counts every change; the box reports it back (heartbeat logik.laeufe[].stellwerte.stand)." },
+                    "values": {
+                      "type": "object",
+                      "maxProperties": 64,
+                      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+                      "additionalProperties": { "description": "The value in the document's form: \"72 °C\", \"on\", \"06:00\", a word of a select, a number, or a schedule list." }
+                    }
                   }
                 }
               }

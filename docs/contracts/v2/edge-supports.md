@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -121,6 +121,13 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   Ein/Aus, Ruhewerte ohne Wunsch und bei einer Störung des Geräts, der Schalt-Test über die eigene Verbindung
   (Beleg `agent/modbusgeraet_test.go`). Beide Box-Arten melden es. Die Cloud liefert eine Definition mit `controls` nur
   an eine Box mit diesem Wort und kompiliert für dieses Gerät keinen Node-RED-Flow; eine ältere Box ließe es ungelesen.
+- `steuerlogik_scharf` (Steuerlogik Stufe 3, 14.11.2026): die Box nimmt auch eine scharf geschaltete Logik an
+  (`bundle.armed`, gestellte Werte in `bundle.settings`; [Flow-Artefakt](flow-artifact.md#steuerlogik),
+  [Steuerlogik](steuerlogik.md#scharf)) und gibt ihre Wünsche an den Schiedsrichter: Klasse `flow` (Rang 40), 45 s
+  gültig, in jedem Takt erneuert, Quelle nur intern. Plan und Fristen-Rückfall lassen ihre Geräte in Ruhe, ein Gerät
+  hat nie zwei Herren, und ohne die Schalter der Box geht kein Wunsch hinaus (Beleg `agent/steuerlogik_scharf_test.go`).
+  Beide Box-Arten melden es. Die Cloud schaltet eine Logik nur an einer Box mit diesem Wort scharf; eine Box mit nur
+  `steuerlogik_mitlauf` schaltet nie nach einer Logik und quittiert ein scharfes Bündel als Fehler.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

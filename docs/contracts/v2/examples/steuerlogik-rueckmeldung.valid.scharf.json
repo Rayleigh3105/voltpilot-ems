@@ -1,0 +1,355 @@
+{
+  "laeufe": [
+    {
+      "flow_id": "5e1f0c2a-7b3d-4e8f-9a1b-2c3d4e5f6a7b",
+      "flow_version": 1,
+      "content_hash": "sha256:a204a09389982493dafe1cfbbcb66c14ff6b3b9ac49c150764fcfb4a86d1ce92",
+      "name": "Warmwasser",
+      "zustand": "scharf",
+      "scharf_seit": "2026-11-14T09:00:00Z",
+      "seit": "2026-11-14T09:00:00Z",
+      "tag": "2026-11-14",
+      "lage": {
+        "nr": 5,
+        "titel": "Wartet auf Sonnenstrom",
+        "art": "waiting",
+        "satz": "Sobald Sonnenstrom übrig ist, heizt der Heizstab bis 57 °C."
+      },
+      "zustaende": {
+        "netzheizen": "off",
+        "stufe": "0",
+        "warm": "off"
+      },
+      "geraete": {
+        "heizstab": {
+          "entity_id": "heizstab-warmwasser",
+          "name": "Heizstab",
+          "wunsch": {
+            "stufe": 0
+          },
+          "ist": {
+            "stufe": 3
+          },
+          "verglichen_s": 126,
+          "abweichend_s": 6,
+          "laengste_abweichung_s": 5,
+          "wunsch_wechsel": 2,
+          "ist_wechsel": 2,
+          "befehl": {
+            "stufe": 3
+          },
+          "schutz": {
+            "code": "guard_min_on",
+            "text": "läuft - Mindestlaufzeit hält"
+          }
+        }
+      },
+      "wechsel": [
+        {
+          "nr": 1,
+          "t": "2026-11-14T09:00:02Z",
+          "geraet": "heizstab",
+          "was": "ist",
+          "neu": {
+            "stufe": 0
+          },
+          "andere": {
+            "stufe": 0
+          },
+          "lage": "Wartet auf Sonnenstrom"
+        },
+        {
+          "nr": 2,
+          "t": "2026-11-14T09:02:01Z",
+          "geraet": "heizstab",
+          "was": "wunsch",
+          "neu": {
+            "stufe": 3
+          },
+          "andere": {
+            "stufe": 0
+          },
+          "lage": "Heizt aus dem Netz"
+        },
+        {
+          "nr": 3,
+          "t": "2026-11-14T09:02:02Z",
+          "geraet": "heizstab",
+          "was": "ist",
+          "neu": {
+            "stufe": 3
+          },
+          "andere": {
+            "stufe": 3
+          },
+          "lage": "Heizt aus dem Netz"
+        },
+        {
+          "nr": 4,
+          "t": "2026-11-14T09:02:03Z",
+          "geraet": "heizstab",
+          "was": "wunsch",
+          "neu": {
+            "stufe": 0
+          },
+          "andere": {
+            "stufe": 3
+          },
+          "lage": "Wartet auf Sonnenstrom"
+        }
+      ],
+      "stellwerte": {
+        "stand": 1,
+        "werte": [
+          {
+            "kennung": "ziel",
+            "wert": "57 °C",
+            "text": "57 °C"
+          },
+          {
+            "kennung": "mindest",
+            "wert": "42 °C",
+            "text": "42 °C"
+          },
+          {
+            "kennung": "netz_ziel",
+            "wert": "50 °C",
+            "text": "50 °C"
+          },
+          {
+            "kennung": "netz_ab",
+            "wert": "06:00",
+            "text": "06:00"
+          },
+          {
+            "kennung": "netz_bis",
+            "wert": "22:00",
+            "text": "22:00"
+          }
+        ]
+      },
+      "warum": [
+        {
+          "zustand": "warm",
+          "name": "warm",
+          "satz": "Der Speicher gilt als warm",
+          "eigen": true,
+          "was": "an",
+          "modus": "alle",
+          "bedingungen": [
+            {
+              "name": "Der Speicher hat das Ziel erreicht",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Speicher",
+                  "text": "55 °C"
+                },
+                {
+                  "name": "Mit Sonnenstrom bis",
+                  "text": "57 °C"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "zustand": "netzheizen",
+          "name": "netzheizen",
+          "satz": "Heizt aus dem Netz bis 50 °C",
+          "eigen": true,
+          "was": "an",
+          "modus": "alle",
+          "bedingungen": [
+            {
+              "name": "Uhrzeit liegt im Fenster",
+              "ok": true,
+              "werte": [
+                {
+                  "name": "Netz erlaubt ab",
+                  "text": "06:00"
+                },
+                {
+                  "name": "Netz erlaubt bis",
+                  "text": "22:00"
+                }
+              ]
+            },
+            {
+              "name": "Der Speicher ist seit 2 Minuten zu kalt",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Speicher",
+                  "text": "55 °C"
+                },
+                {
+                  "name": "Nie kälter als",
+                  "text": "42 °C"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "zustand": "stufe",
+          "name": "stufe",
+          "satz": "Ohne Werte vom Wechselrichter bleibt der Heizstab aus",
+          "eigen": true,
+          "was": "schritt",
+          "schritt": "blind",
+          "modus": "alle",
+          "bedingungen": [
+            {
+              "name": "Ein Wert vom Wechselrichter fehlt seit 1 Minute",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Netzbezug",
+                  "text": "0,1 kW"
+                },
+                {
+                  "name": "Batterie lädt mit",
+                  "text": "0,0 kW"
+                },
+                {
+                  "name": "Batterie",
+                  "text": "50 %"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "zustand": "stufe",
+          "name": "stufe",
+          "satz": "Der Speicher ist warm, der Heizstab geht aus",
+          "eigen": true,
+          "was": "schritt",
+          "schritt": "voll",
+          "modus": "alle",
+          "bedingungen": [
+            {
+              "name": "Der Heizstab läuft, der Speicher braucht keine Wärme",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Speicher",
+                  "text": "55 °C"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "zustand": "stufe",
+          "name": "stufe",
+          "satz": "Eine Phase weniger",
+          "eigen": true,
+          "was": "schritt",
+          "schritt": "zurueck",
+          "modus": "alle",
+          "bedingungen": [
+            {
+              "name": "Der Heizstab läuft",
+              "ok": false
+            }
+          ]
+        },
+        {
+          "zustand": "stufe",
+          "name": "stufe",
+          "satz": "Eine Phase weniger",
+          "eigen": true,
+          "was": "schritt",
+          "schritt": "zurueck",
+          "modus": "eines",
+          "bedingungen": [
+            {
+              "name": "Die Batterie muss aushelfen",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Batterie lädt mit",
+                  "text": "0,0 kW"
+                }
+              ]
+            },
+            {
+              "name": "Das Netz muss aushelfen",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Netzbezug",
+                  "text": "0,1 kW"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "zustand": "stufe",
+          "name": "stufe",
+          "satz": "Eine Phase mehr",
+          "eigen": true,
+          "was": "schritt",
+          "schritt": "versuch",
+          "modus": "alle",
+          "wartet_s": 233,
+          "bedingungen": [
+            {
+              "name": "Der Speicher ist noch nicht warm",
+              "ok": true,
+              "werte": [
+                {
+                  "name": "Speicher",
+                  "text": "55 °C"
+                }
+              ]
+            },
+            {
+              "name": "Das Netz hilft nicht aus",
+              "ok": true,
+              "werte": [
+                {
+                  "name": "Netzbezug",
+                  "text": "0,1 kW"
+                }
+              ]
+            },
+            {
+              "name": "Die Batterie ist voll",
+              "ok": false,
+              "werte": [
+                {
+                  "name": "Batterie",
+                  "text": "50 %"
+                }
+              ]
+            },
+            {
+              "name": "Die Sonne steht hoch genug",
+              "ok": true,
+              "werte": [
+                {
+                  "name": "Sonnenstand",
+                  "text": "19°"
+                }
+              ]
+            },
+            {
+              "name": "Die Batterie hilft nicht aus",
+              "ok": true,
+              "werte": [
+                {
+                  "name": "Batterie lädt mit",
+                  "text": "0,0 kW"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

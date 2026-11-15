@@ -11,6 +11,8 @@ public class SteuerlogikDienstException extends RuntimeException {
     public static final String UNLESBAR = "logik_unlesbar";
     /** Lesbar, aber die Prüfung sperrt (Befunde oder eine Probe, die nicht besteht; E5 = C). */
     public static final String GESPERRT = "pruefung_sperrt";
+    /** Gestellte Werte passen nicht (Art, Bereich, Schritt, Auswahl oder die Bedingungen zwischen ihnen). */
+    public static final String STELLWERTE = "stellwerte_passen_nicht";
 
     private final String grund;
     private final transient JsonNode bericht;

@@ -13,15 +13,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Die mitlaufenden Steuerlogiken einer Anlage im vollständigen Satz auf {@code …/v2/flows} (Bericht Abschnitt 6.8:
- * "die Cloud schickt Logik nur an Boxen, die es melden"): nur an eine führende Box, die {@code steuerlogik_mitlauf}
- * kann, und nur das gespeicherte Artefakt, Byte für Byte wie der Dienst es gebaut hat.
+ * Die aktiven Steuerlogiken einer Anlage im vollständigen Satz auf {@code …/v2/flows} (Bericht Abschnitt 6.8:
+ * "die Cloud schickt Logik nur an Boxen, die es melden"): nur an eine führende Box und nur das gespeicherte
+ * Artefakt, Byte für Byte wie der Dienst es gebaut hat. Eine mitlaufende Logik braucht {@code steuerlogik_mitlauf},
+ * eine scharfe {@code steuerlogik_scharf} - eine Box, die nur mitlaufen kann, bekommt nie ein scharfes Bündel.
  */
 @Component
 public class SteuerlogikAuslieferung implements WeitereArtefakte {
 
-    /** Das Wort in {@code supports[]} (edge-supports.md). */
+    /** Das Wort in {@code supports[]} für den Mitlauf (edge-supports.md). */
     public static final String FAEHIGKEIT = "steuerlogik_mitlauf";
+    /** Das Wort in {@code supports[]} für das Schalten nach einer Logik (Stufe 3). */
+    public static final String FAEHIGKEIT_SCHARF = "steuerlogik_scharf";
 
     private static final Logger log = LoggerFactory.getLogger(SteuerlogikAuslieferung.class);
 
@@ -37,17 +40,18 @@ public class SteuerlogikAuslieferung implements WeitereArtefakte {
 
     @Override
     public List<JsonNode> artefakte(UUID siteId, UUID gateway) {
-        List<String> texte = logiken.mitlaufendeArtefakte(siteId);
-        if (texte.isEmpty()) return List.of();
-        if (!faehigkeiten.kann(gateway, FAEHIGKEIT)) {
-            log.warn("steuerlogik: {} Logik(en) der Anlage {} nicht ausgeliefert - Box {} meldet {} nicht",
-                    texte.size(), siteId, gateway, FAEHIGKEIT);
-            return List.of();
-        }
+        List<SteuerlogikRepository.Auslieferung> aktive = logiken.aktiveArtefakte(siteId);
+        if (aktive.isEmpty()) return List.of();
         List<JsonNode> out = new ArrayList<>();
-        for (String text : texte) {
+        for (SteuerlogikRepository.Auslieferung a : aktive) {
+            String wort = a.scharf() ? FAEHIGKEIT_SCHARF : FAEHIGKEIT;
+            if (!faehigkeiten.kann(gateway, wort)) {
+                log.warn("steuerlogik: Logik der Anlage {} nicht ausgeliefert - Box {} meldet {} nicht", siteId,
+                        gateway, wort);
+                continue;
+            }
             try {
-                out.add(json.readTree(text));
+                out.add(json.readTree(a.artefakt()));
             } catch (Exception e) {
                 log.warn("steuerlogik: gespeichertes Artefakt der Anlage {} unlesbar, übersprungen: {}", siteId,
                         e.getMessage());

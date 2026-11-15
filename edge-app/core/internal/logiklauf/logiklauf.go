@@ -1,14 +1,20 @@
-// Package logiklauf lets delivered Steuerlogiken RUN ALONG on the box
-// (Steuerlogik Stufe 2, second part; contract docs/contracts/v2/steuerlogik.md
-// and steuerlogik-rueckmeldung.md): every second the core computes with the
-// box's real inputs and states what it would switch - but it switches nothing
-// and claims no device.
+// Package logiklauf runs delivered Steuerlogiken on the box (contract
+// docs/contracts/v2/steuerlogik.md and steuerlogik-rueckmeldung.md): every
+// second the core computes with the box's real inputs and states what it
+// would switch.
 //
-// That is enforced by construction, not by a setting: this package imports
-// neither the arbiter (desired) nor any device driver, and its Deps carry only
-// read functions. Its wishes leave it only as the heartbeat block "logik", the
-// comparison log "würde schalten" against "ist geschaltet" (report §3.2, §8.4).
+// A logic runs ALONG (Stufe 2) or ARMED ("scharf", Stufe 3). This package
+// never switches either way, by construction: it imports neither the arbiter
+// (desired) nor any device driver, and its Deps carry only read functions.
+// Along, its wishes leave it only as the heartbeat block "logik", the
+// comparison log "würde schalten" against "ist geschaltet" (report §3.2,
+// §8.4). Armed, the agent reads them through Wuensche and hands them to the
+// arbiter - the one place a wish becomes a command (agent/steuerlogik.go).
 // logiklauf_test.go holds the import allowlist that keeps it so.
+//
+// Set values (Stellwerte) arrive with the bundle; the same logic text with
+// other values or another mode keeps its run and state - a set value never
+// restarts a logic (report §6.6 point 4).
 //
 // Inputs the box does not deliver are missing as unknown; the core handles
 // that by max_age, nothing is invented. A run's remembered state lives
@@ -17,6 +23,9 @@
 package logiklauf
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -41,6 +50,8 @@ const (
 	saveEvery = 30 * time.Second
 	// MaxWechsel bounds the comparison log per logic in the heartbeat.
 	MaxWechsel = 16
+	// MaxMeldungen bounds the logic's own notifications per logic in the heartbeat.
+	MaxMeldungen = 8
 	// MaxLaeufe bounds the logics running along (the deployment budget allows
 	// only a few anyway).
 	MaxLaeufe = 8
@@ -67,6 +78,22 @@ type Auftrag struct {
 	// Dokument is the canonical JSON of the logic (steuerlogik.md).
 	Dokument []byte
 	Ort      Ort
+	// Scharf: the logic's wishes go to the arbiter (Stufe 3); otherwise it
+	// runs along and only reports.
+	Scharf bool
+	// Stellwerte are the set values in the document's form; a setting not
+	// named keeps its default. StellStand is their revision.
+	Stellwerte map[string]any
+	StellStand int64
+}
+
+// Wunsch is what an armed logic wants for one of its devices this beat.
+type Wunsch struct {
+	FlowID   string
+	Fassung  int
+	Geraet   string
+	EntityID string
+	Ausgang  logik.Ausgang
 }
 
 // Ist is the observed switch state of a device: the read-back state of its
@@ -106,20 +133,27 @@ type Laufzeit struct {
 	gespeichert time.Time
 }
 
-// einLauf is one logic running along.
+// einLauf is one logic running along or armed.
 type einLauf struct {
-	auftrag  Auftrag
-	L        *logik.Logik
-	st       *logik.Lauf
-	ort      *time.Location
-	seit     time.Time
-	lage     logik.Lage
-	tag      string
-	fehler   int
-	gemeldet map[string]bool // runtime errors already logged (one line each)
-	geraete  map[string]*geraetVergleich
-	wechsel  []cloud.LogikWechsel
-	nr       int64
+	auftrag    Auftrag
+	L          *logik.Logik
+	st         *logik.Lauf
+	ort        *time.Location
+	seit       time.Time
+	scharfSeit time.Time
+	lage       logik.Lage
+	tag        string
+	fehler     int
+	gemeldet   map[string]bool // runtime errors already logged (one line each)
+	geraete    map[string]*geraetVergleich
+	wechsel    []cloud.LogikWechsel
+	nr         int64
+	// letzte is the last beat: its outputs (the wishes of an armed logic) and
+	// its input, for the "Warum?" list and the help sentences of the heartbeat.
+	letzte    map[string]logik.Ausgang
+	letzteEin *logik.Eingabe
+	meldungen []cloud.LogikMeldung
+	meldungNr int64
 }
 
 // geraetVergleich holds the comparison counters of one device for the day.
@@ -172,35 +206,88 @@ func (lz *Laufzeit) Angleichen(auftraege []Auftrag) error {
 	jetzt := lz.deps.Jetzt()
 	neu := map[string]*einLauf{}
 	var reihenfolge []string
+	herr := map[string]string{} // entity -> flow_id of the armed logic that claims it
 	for _, a := range auftraege {
 		if _, doppelt := neu[a.FlowID]; doppelt {
 			return fmt.Errorf("Logik %s doppelt ausgeliefert", a.FlowID)
 		}
 		reihenfolge = append(reihenfolge, a.FlowID)
-		if alt := lz.laeufe[a.FlowID]; alt != nil && alt.auftrag.Fassung == a.Fassung && alt.auftrag.Hash == a.Hash {
-			neu[a.FlowID] = alt
-			continue
-		}
-		L, err := Lies(a.Dokument)
-		if err != nil {
-			return fmt.Errorf("Logik %s nicht lesbar: %w", a.FlowID, err)
-		}
 		ort, err := Zone(a.Ort)
 		if err != nil {
 			return fmt.Errorf("Logik %s: Zeitzone %q unbekannt", a.FlowID, a.Ort.Zeitzone)
 		}
-		l := &einLauf{auftrag: a, L: L, ort: ort, seit: jetzt, gemeldet: map[string]bool{},
-			geraete: map[string]*geraetVergleich{}, tag: ortsTag(jetzt, ort)}
-		l.st = lz.ladeGesichertenLauf(L, a, jetzt)
+		l := lz.laeufe[a.FlowID]
+		var vorig *einLauf
+		if l != nil && (l.auftrag.Fassung != a.Fassung || !bytes.Equal(l.auftrag.Dokument, a.Dokument)) {
+			vorig, l = l, nil // another version or another text: a new run
+		}
+		var L *logik.Logik
+		if l != nil {
+			L = l.L
+		} else if L, err = Lies(a.Dokument); err != nil {
+			return fmt.Errorf("Logik %s nicht lesbar: %w", a.FlowID, err)
+		}
+		werte, err := L.PruefeStellwerte(a.Stellwerte)
+		if err != nil {
+			return fmt.Errorf("Logik %s: Stellwerte passen nicht: %w", a.FlowID, err)
+		}
+		if a.Scharf {
+			for _, g := range L.GeraetListe {
+				e := L.Geraete[g].Entity
+				if anderer, ok := herr[e]; ok {
+					return fmt.Errorf("Gerät %s gehört zwei scharfen Logiken (%s und %s)", e, anderer, a.FlowID)
+				}
+				herr[e] = a.FlowID
+			}
+		}
+		if l == nil {
+			l = &einLauf{L: L, seit: jetzt, gemeldet: map[string]bool{},
+				geraete: map[string]*geraetVergleich{}, tag: ortsTag(jetzt, ort)}
+			if vorig != nil {
+				// A new version (or "Zurück" to an earlier one) keeps the states
+				// of the same name and kind (report §8.9); the rest begins as
+				// after a restart.
+				l.st = L.UebernimmLauf(vorig.L, vorig.st, unixSekunden(jetzt))
+				slog.Info("steuerlogik: neue Fassung übernimmt die Zustände der vorigen", "flow_id", a.FlowID,
+					"von", vorig.auftrag.Fassung, "auf", a.Fassung)
+			} else {
+				l.st = lz.ladeGesichertenLauf(L, a, jetzt)
+			}
+			if a.Scharf {
+				l.scharfSeit = jetzt
+				slog.Info("steuerlogik: Logik ist scharf (schaltet über den Schiedsrichter)", "flow_id", a.FlowID,
+					"fassung", a.Fassung, "name", L.Name)
+			} else {
+				slog.Info("steuerlogik: Logik läuft mit (schaltet nichts)", "flow_id", a.FlowID,
+					"fassung", a.Fassung, "name", L.Name)
+			}
+		} else if l.auftrag.Scharf != a.Scharf {
+			if a.Scharf {
+				l.scharfSeit = jetzt
+				slog.Info("steuerlogik: Logik ist scharf (schaltet über den Schiedsrichter)", "flow_id", a.FlowID,
+					"fassung", a.Fassung, "name", L.Name)
+			} else {
+				l.scharfSeit = time.Time{}
+				slog.Info("steuerlogik: Logik läuft wieder nur mit (schaltet nichts)", "flow_id", a.FlowID,
+					"fassung", a.Fassung, "name", L.Name)
+			}
+		}
+		if l.auftrag.StellStand != a.StellStand || l.auftrag.Hash != a.Hash {
+			slog.Info("steuerlogik: Stellwerte übernommen", "flow_id", a.FlowID, "stand", a.StellStand)
+		}
+		L.SetzeStellwerte(l.st, werte)
+		l.auftrag, l.ort = a, ort
 		neu[a.FlowID] = l
 		lz.dirty = true
-		slog.Info("steuerlogik: Logik läuft mit (schaltet nichts)", "flow_id", a.FlowID,
-			"fassung", a.Fassung, "name", L.Name)
 	}
-	for id := range lz.laeufe {
+	for id, l := range lz.laeufe {
 		if neu[id] == nil {
 			lz.dirty = true
-			slog.Info("steuerlogik: Logik gestoppt", "flow_id", id)
+			if l.auftrag.Scharf {
+				slog.Info("steuerlogik: Logik gestoppt, ihre Geräte sind frei", "flow_id", id)
+			} else {
+				slog.Info("steuerlogik: Logik gestoppt", "flow_id", id)
+			}
 		}
 	}
 	lz.laeufe = neu
@@ -215,7 +302,9 @@ func (lz *Laufzeit) Angleichen(auftraege []Auftrag) error {
 func (lz *Laufzeit) ladeGesichertenLauf(L *logik.Logik, a Auftrag, jetzt time.Time) *logik.Lauf {
 	js := unixSekunden(jetzt)
 	if doc := lz.liesPlatte(); doc != nil {
-		if g, ok := doc.Laeufe[a.FlowID]; ok && g.Fassung == a.Fassung && g.ContentHash == a.Hash && len(g.Lauf) > 0 {
+		g, ok := doc.Laeufe[a.FlowID]
+		gleich := ok && g.Fassung == a.Fassung && (g.ContentHash == a.Hash || (g.LogikHash != "" && g.LogikHash == logikHash(a.Dokument)))
+		if gleich && len(g.Lauf) > 0 {
 			st, err := L.LadeLauf(g.Lauf, js)
 			if err == nil {
 				L.Neustart(st, js)
@@ -303,7 +392,18 @@ func (lz *Laufzeit) taktEiner(l *einLauf, now time.Time, dt float64) {
 		iste[g] = ist
 	}
 	erg := l.L.Takt(l.st, ein)
+	l.letzte, l.letzteEin = erg.Ausgaenge, ein
 	for _, e := range erg.Ereignisse {
+		if e.Was == "meldung" {
+			l.meldungNr++
+			l.meldungen = append(l.meldungen, cloud.LogikMeldung{Nr: l.meldungNr, T: now.UTC().Format(time.RFC3339),
+				An: append([]string(nil), e.An...), Text: e.Text})
+			if len(l.meldungen) > MaxMeldungen {
+				l.meldungen = l.meldungen[len(l.meldungen)-MaxMeldungen:]
+			}
+			lz.dirty = true
+			continue
+		}
 		if e.Was == "fehler" {
 			l.fehler++
 			if !l.gemeldet[e.Grund] && len(l.gemeldet) < 32 {
@@ -489,6 +589,52 @@ func (l *einLauf) merke(now time.Time, geraet, was string, neu, andere *cloud.Lo
 	}
 }
 
+// The run states of the heartbeat block (closed vocabulary, steuerlogik-rueckmeldung.md).
+const (
+	ZustandMitlaufend = "mitlaufend"
+	ZustandScharf     = "scharf"
+)
+
+// Wuensche are the wishes of the armed logics from the last beat, in the order
+// of the logics and their devices. A logic running along wishes nothing here.
+func (lz *Laufzeit) Wuensche() []Wunsch {
+	lz.mu.Lock()
+	defer lz.mu.Unlock()
+	var out []Wunsch
+	for _, id := range lz.reihenfolge {
+		l := lz.laeufe[id]
+		if l == nil || !l.auftrag.Scharf || l.letzte == nil {
+			continue
+		}
+		for _, g := range l.L.GeraetListe {
+			a, ok := l.letzte[g]
+			if !ok {
+				continue
+			}
+			out = append(out, Wunsch{FlowID: id, Fassung: l.auftrag.Fassung, Geraet: g,
+				EntityID: l.L.Geraete[g].Entity, Ausgang: a})
+		}
+	}
+	return out
+}
+
+// Beansprucht names the devices of the armed logics (entity -> flow_id), also
+// before their first beat: the plan leaves them alone from the moment of arming.
+func (lz *Laufzeit) Beansprucht() map[string]string {
+	lz.mu.Lock()
+	defer lz.mu.Unlock()
+	out := map[string]string{}
+	for id, l := range lz.laeufe {
+		if !l.auftrag.Scharf {
+			continue
+		}
+		for _, g := range l.L.GeraetListe {
+			out[l.L.Geraete[g].Entity] = id
+		}
+	}
+	return out
+}
+
 // Summary is the heartbeat block; nil while nothing runs along.
 func (lz *Laufzeit) Summary() *cloud.LogikSummary {
 	lz.mu.Lock()
@@ -502,9 +648,31 @@ func (lz *Laufzeit) Summary() *cloud.LogikSummary {
 		l := lz.laeufe[id]
 		e := cloud.LogikLauf{
 			FlowID: l.auftrag.FlowID, FlowVersion: l.auftrag.Fassung, ContentHash: l.auftrag.Hash,
-			Name: l.L.Name, Zustand: "mitlaufend", Seit: l.seit.UTC().Format(time.RFC3339), Tag: l.tag,
+			Name: l.L.Name, Zustand: ZustandMitlaufend, Seit: l.seit.UTC().Format(time.RFC3339), Tag: l.tag,
 			Fehler: l.fehler,
 		}
+		if l.auftrag.Scharf {
+			e.Zustand = ZustandScharf
+			e.ScharfSeit = l.scharfSeit.UTC().Format(time.RFC3339)
+		}
+		e.Stellwerte = &cloud.LogikStellwerte{Stand: l.auftrag.StellStand}
+		for _, j := range l.L.StellwerteJetzt(l.st, l.letzteEin) {
+			e.Stellwerte.Werte = append(e.Stellwerte.Werte, cloud.LogikStellwert{Kennung: j.Kennung, Wert: j.Wert,
+				Text: j.Text, Hilfe: j.Hilfe})
+		}
+		for _, g := range l.L.Warum(l.st, l.letzteEin) {
+			w := cloud.LogikWarum{Zustand: g.Zustand, Name: g.Name, Satz: g.Satz, Eigen: g.Eigen, Was: g.Was,
+				Schritt: g.Schritt, Modus: g.Modus, WartetS: g.WartetS}
+			for _, b := range g.Bedingungen {
+				wb := cloud.LogikBedingung{Name: b.Name, Ok: b.Ok, Allgemein: b.Allgemein}
+				for _, x := range b.Werte {
+					wb.Werte = append(wb.Werte, cloud.LogikWert{Name: x.Name, Text: x.Text})
+				}
+				w.Bedingungen = append(w.Bedingungen, wb)
+			}
+			e.Warum = append(e.Warum, w)
+		}
+		e.Meldungen = append([]cloud.LogikMeldung(nil), l.meldungen...)
 		if l.lage.Titel != "" {
 			e.Lage = &cloud.LogikLage{Nr: l.lage.Nr, Titel: l.lage.Titel, Art: l.lage.Art, Satz: l.lage.Satz}
 		}
@@ -580,9 +748,18 @@ type platte struct {
 }
 
 type gesicherteLogik struct {
-	Fassung     int             `json:"fassung"`
-	ContentHash string          `json:"content_hash"`
-	Lauf        json.RawMessage `json:"lauf"`
+	Fassung     int    `json:"fassung"`
+	ContentHash string `json:"content_hash"`
+	// LogikHash identifies the logic text alone: another mode or other set
+	// values change the artifact's hash but keep the run.
+	LogikHash string          `json:"logik_hash,omitempty"`
+	Lauf      json.RawMessage `json:"lauf"`
+}
+
+// logikHash is the hash of a logic document (its canonical JSON text).
+func logikHash(dokument []byte) string {
+	sum := sha256.Sum256(dokument)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func (lz *Laufzeit) plattePfad() string {
@@ -621,7 +798,8 @@ func (lz *Laufzeit) speichereLocked(now time.Time, sofort bool) {
 			slog.Warn("steuerlogik: Lauf nicht sicherbar", "flow_id", id, "err", err)
 			continue
 		}
-		doc.Laeufe[id] = gesicherteLogik{Fassung: l.auftrag.Fassung, ContentHash: l.auftrag.Hash, Lauf: roh}
+		doc.Laeufe[id] = gesicherteLogik{Fassung: l.auftrag.Fassung, ContentHash: l.auftrag.Hash,
+			LogikHash: logikHash(l.auftrag.Dokument), Lauf: roh}
 	}
 	raw, err := json.Marshal(doc)
 	if err != nil {

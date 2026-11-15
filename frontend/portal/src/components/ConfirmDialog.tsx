@@ -29,6 +29,7 @@ export function ConfirmDialog({
   cancelLabel = 'Abbrechen',
   tone = 'neutral',
   busy,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
   extra,
@@ -47,6 +48,8 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: 'neutral' | 'danger';
   busy?: boolean;
+  /** Nur die Bestätigung gesperrt (etwas steht ihr entgegen); Abbrechen bleibt möglich. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   /**
@@ -84,7 +87,7 @@ export function ConfirmDialog({
             variant={danger ? 'outline' : 'primary'}
             className={danger ? 'vp-btn-danger' : undefined}
             onClick={onConfirm}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
           >
             {confirmLabel}
           </Button>

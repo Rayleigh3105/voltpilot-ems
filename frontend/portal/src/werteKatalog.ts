@@ -21,6 +21,9 @@
  * „Ein Ort fürs Laden" Scheibe 4 (E6 = A) fügt die Leserart `ladepunkt` hinzu: zwei Einträge mit
  * `vorschlag` ab Werk (`wallbox_meldet_sich_nicht`, `ziel_wird_knapp`), zwei mit `vorlage` wählbar
  * (`auto_angesteckt`, `ladung_fertig`).
+ *
+ * Steuerlogik Stufe 3 fügt die Leserart `steuerlogik` hinzu: ein Eintrag mit `vorschlag` ab Werk
+ * (`steuerlogik.stoerung`, gesät an Anlagen mit scharfer Logik).
  */
 
 export type LeserArt =
@@ -33,7 +36,8 @@ export type LeserArt =
   | 'ereignis'
   | 'zaehlung'
   | 'erzeuger'
-  | 'ladepunkt';
+  | 'ladepunkt'
+  | 'steuerlogik';
 
 /** Geschlossenes Vokabular der Bedingungsarten (§6.4). `periode` und `aenderung` (Scheibe 4) gelten
  * nur für periodische Einträge (an ihren `bedingungen`, nicht an der Leserart zu erkennen - Scheibe 5
@@ -450,6 +454,18 @@ export const WERTE_KATALOG: WerteKatalogEintrag[] = [
     zustaende: ['laedt', 'fertig', 'nicht_angesteckt'],
     bedingungen: ['zustand'],
     vorlage: { dauer_s: 0, erholen_s: 300, schwere: 'hinweis', ziel: ['fertig'], nur_mit_anlagensteuerung: false },
+  },
+  {
+    wertart: 'steuerlogik.stoerung',
+    name: 'Störung einer Logik',
+    satzname: 'die Logik',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'steuerlogik', feld: 'stoerung' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['in_ordnung', 'stoerung'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 120, erholen_s: 300, schwere: 'warnung', ziel: ['stoerung'] },
   },
 ];
 

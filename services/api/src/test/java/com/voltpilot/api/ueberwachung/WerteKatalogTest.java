@@ -42,13 +42,14 @@ class WerteKatalogTest {
     }
 
     @Test
-    void nurDieVierAbWerkEintraegeHabenEinenVorschlag() {
+    void nurDieFuenfAbWerkEintraegeHabenEinenVorschlag() {
         // Scheibe 1: box.erreichbar, datenquelle.liefert_daten. "Ein Ort fürs Laden" Scheibe 4 (E6 = A) fügt
-        // die zwei Ladepunkt-Meldungen ab Werk hinzu (eigener Test unten für ihre Vorgaben).
+        // die zwei Ladepunkt-Meldungen ab Werk hinzu (eigener Test unten für ihre Vorgaben); Steuerlogik Stufe 3
+        // die Störung einer scharfen Logik (Bericht 8.5: Störungen gehen als Meldung hinaus).
         assertThat(katalog.mitVorschlagAbWerk())
                 .extracting(WerteKatalog.Eintrag::wertart)
                 .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten",
-                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp");
+                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp", "steuerlogik.stoerung");
     }
 
     @Test
@@ -145,14 +146,14 @@ class WerteKatalogTest {
     void entscheid9aKeinScheibe5EintragHatEinenVorschlagAbWerk() {
         // 9A: kein Läufer legt ab Werk eine Überwachung auf Energiemanagement-Zahlen an - nur
         // eine selbst angelegte. mitVorschlagAbWerk() bleibt darum unverändert bei den
-        // Scheibe-1- und Ladepunkt-Einträgen (siehe nurDieVierAbWerkEintraegeHabenEinenVorschlag oben).
+        // Scheibe-1-, Ladepunkt- und Steuerlogik-Einträgen (siehe nurDieFuenfAbWerkEintraegeHabenEinenVorschlag oben).
         for (String wertart : List.of("kennzahl.bezugsbasis", "energieziel.kurs", "messstelle.menge",
                 "messstelle.beobachtung", "messstelle.monat_unvollstaendig")) {
             assertThat(katalog.eintrag(wertart).vorschlag()).as(wertart).isNull();
         }
         assertThat(katalog.mitVorschlagAbWerk()).extracting(WerteKatalog.Eintrag::wertart)
                 .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten",
-                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp");
+                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp", "steuerlogik.stoerung");
     }
 
     @Test

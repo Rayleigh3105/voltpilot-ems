@@ -57,6 +57,42 @@ class SteuerlogikRueckmeldungVectorsTest {
             fall.path("unbekannt").forEach(n -> soll.add(n.asText()));
             assertThat(unbekannt).as("unbekannte Eingänge").containsExactlyElementsOf(soll);
         }
+        if (fall.has("zustand")) {
+            JsonNode sauber = JSON.readTree(g.laeufe().get(0).rueckmeldungJson());
+            assertThat(sauber.path("zustand").asText()).as("Zustand").isEqualTo(fall.path("zustand").asText());
+            assertThat(g.laeufe().get(0).zustand()).isEqualTo(fall.path("zustand").asText());
+            if (fall.has("halt")) {
+                if (fall.path("halt").isNull()) {
+                    assertThat(sauber.has("halt")).as("ein Halt ohne gültigen Code fällt weg").isFalse();
+                } else {
+                    assertThat(sauber.path("halt").path("code").asText()).isEqualTo(fall.path("halt").asText());
+                }
+            }
+            JsonNode geraet = sauber.path("geraete").elements().next();
+            fall.path("geraet_felder").forEach(f -> assertThat(geraet.has(f.asText())).as("Gerät hat " + f).isTrue());
+            fall.path("ohne_geraet_felder").forEach(f -> assertThat(geraet.has(f.asText())).as("Gerät ohne " + f)
+                    .isFalse());
+            assertThat(sauber.path("stellwerte").path("werte")).as("Stellwerte").hasSize(fall.path("stellwerte").asInt());
+            assertThat(sauber.path("warum")).as("Warum-Gruppen").hasSize(fall.path("warum").asInt());
+            if (fall.has("warum_saetze")) {
+                // Die Überschrift für den Kunden reist mit; ein Satz, der kein Text ist, fällt weg (nie eine Kennung).
+                List<String> saetze = new ArrayList<>();
+                sauber.path("warum").forEach(w -> saetze.add(w.path("satz").asText("")));
+                List<String> sollSaetze = new ArrayList<>();
+                fall.path("warum_saetze").forEach(n -> sollSaetze.add(n.asText()));
+                assertThat(saetze).as("Überschriften für den Kunden").containsExactlyElementsOf(sollSaetze);
+            }
+            // Bedingungen sind Sätze: nie ein Feld formel; allgemein reist nur als echtes Ja.
+            int allgemein = 0;
+            for (JsonNode gruppe : sauber.path("warum")) {
+                for (JsonNode b : gruppe.path("bedingungen")) {
+                    assertThat(b.has("formel")).as("keine Formel in „Warum?“").isFalse();
+                    if (b.path("allgemein").asBoolean(false)) allgemein++;
+                }
+            }
+            assertThat(allgemein).as("allgemeine Bedingungen").isEqualTo(fall.path("allgemeine_bedingungen").asInt(0));
+            assertThat(sauber.path("meldungen")).as("Meldungen").hasSize(fall.path("meldungen").asInt());
+        }
         for (var w : g.wechsel()) {
             assertThat(w.deviceId()).isEqualTo(box);
             assertThat(w.laufSeit()).as("der Lauf ist der Schlüssel des Protokolls").isNotNull();

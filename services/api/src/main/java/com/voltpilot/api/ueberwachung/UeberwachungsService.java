@@ -81,6 +81,13 @@ public class UeberwachungsService {
     private final KennzahlWerteLeser kennzahlLeser;
     private final ZaehlungWerteLeser zaehlungLeser;
     private final LadepunktWerteLeser ladepunktLeser;
+    /** Steuerlogik Stufe 3 (optional, damit von Hand gebaute Tests unverändert bleiben). */
+    private SteuerlogikWerteLeser steuerlogikLeser;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void steuerlogikLeser(SteuerlogikWerteLeser steuerlogikLeser) {
+        this.steuerlogikLeser = steuerlogikLeser;
+    }
     private final ZugriffRepository zugriffe;
     private final PriceRepository preise;
     private final PeakShavingRepository peakShaving;
@@ -138,6 +145,7 @@ public class UeberwachungsService {
             case "zaehlung" -> zaehlungLeser;
             case "erzeuger" -> erzeugerLeser;
             case "ladepunkt" -> ladepunktLeser;
+            case "steuerlogik" -> steuerlogikLeser;
             default -> null;
         };
     }
@@ -305,6 +313,7 @@ public class UeberwachungsService {
                 case "box_erreichbar" -> repo.anlagenMitAngenommenerBox();
                 case "datenquelle_status" -> repo.anlagenMitDatenquelle();
                 case "wallbox_meldet_sich_nicht", "ziel_wird_knapp" -> repo.anlagenMitLadepunkt();
+                case "stoerung" -> repo.anlagenMitScharferLogik();
                 default -> List.of();
             };
             for (UUID anlageId : anlagen) {

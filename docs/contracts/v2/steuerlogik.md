@@ -5,6 +5,7 @@ Herkunft: Steuerlogik-Konzept, entschieden am 14.11.2026 (E1 = A Regelsprache mi
 Der Kern liest die kanonische JSON-Form, prüft sie und wertet sie im Takt aus: `edge-app/core/internal/logik`, lauffähig auf beiden Box-Arten.
 Die YAML-Schreibform für Menschen liest `edge-app/core/internal/logik/textform`; die Box selbst braucht kein YAML.
 Seit Stufe 2, zweiter Teil, wird eine Logik ausgeliefert und läuft auf der Box mit (siehe [Auslieferung und Mitlauf](#auslieferung-und-mitlauf)); sie schaltet nichts und beansprucht kein Gerät, sie äußert je Takt nur, was die Geräte tun sollen.
+Seit Stufe 3 lässt sich eine Fassung [scharf](#scharf) schalten: dann gehen ihre Wünsche durch Schiedsrichter und Schutzgrenzen der Box, und ihre Geräte gehören ihr.
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
 Für Geräte mit Sollwert und Betriebsart (K2/K3) kommen [steuerlogik-geraete-vectors.json](steuerlogik-geraete-vectors.json) und das siebte Beispiel `waermepumpe-modbus` dazu, von Hand geschrieben; dort ist der Kern die Referenz (`geraete_vectors_test.go`, im Dienst `logikdienst_test.go`).
@@ -25,7 +26,7 @@ Nach der Lesart zu E9 ist die Wortliste mit der ersten Auslieferung fest; bis da
 | `settings` | Stellwerte: `default`, `range`, `step`, `editable_by`, `help`; Arten `boolean`, `select`, `schedule`, sonst Zahl mit Einheit oder Uhrzeit |
 | `constraints` | was zwischen Stellwerten gelten muss |
 | `formulas` | benannte Formeln; sie gelten immer mit den aktuellen Werten |
-| `states` | was sich die Logik merkt: `boolean`, `timer`, `counter`, je mit `after_restart` |
+| `states` | was sich die Logik merkt: `boolean`, `timer`, `counter`, je mit `after_restart`; für das Blatt „Warum?“ je Schalter `on_text` und `off_text`, je Zählerschritt `text` (Sätze für den Kunden) |
 | `outputs` | je Gerät, was gelten soll: `level`, `on_off`, `setpoint`, `mode`, `percent` als Formel |
 | `display` | optional: was die Karte zusätzlich zeichnet |
 | `notifications` | Nachricht, wenn etwas eintritt; frühestens nach `repeat_after` erneut |
@@ -73,6 +74,11 @@ Ein Takt, jede Sekunde, in dieser Reihenfolge: Werte lesen und ihr Alter prüfen
   Eine Betriebsart, die das Gerät nicht kennt (die Liste nennt die Anlage), ist kein Wunsch und ein Fehler-Ereignis; es gilt der Ruhewert des Geräts.
 - **Meldungen** gehen einmal hinaus, wenn die Bedingung eintritt, und frühestens nach `repeat_after` (Vorgabe eine Stunde) erneut.
 - **Lage**: die erste zutreffende Zeile gilt; im Satz steht `{formel}` für einen Wert in deutscher Schreibweise mit Einheit.
+- **Sätze für „Warum?“**: `on_text` und `off_text` eines Schalters und `text` eines Zählerschritts sind die Überschriften der Gruppen im Blatt „Warum?“, mit Platzhaltern wie die Lage („Heizt aus dem Netz bis {netz_ziel}“).
+  Fehlt einer, bildet der Kern einen Satz aus dem Wortschatz („„Netzheizen“ beginnt“, „Heizstufe um 1 höher“, „Auf 0“); die Kennung eines Zustands oder Schritts erscheint nie vor dem Kunden.
+  Die Prüfung nennt jede Gruppe, die das Blatt zeigt und für die der Text keinen Satz hat, in einem Hinweis.
+  Ebenso jede Bedingung: eine benannte trägt ihren Namen, eine ohne Namen übersetzt der Kern aus dem Wortschatz (Vergleiche mit Eingängen, Stellwerten und benannten Zuständen, `unknown`/`known`, `holds`, `time_window`, `running`, `since`, `and`/`or`; „„Netzbezug“ liegt über 0,3 kW, seit mindestens 10 min“).
+  Was sich nicht übersetzen lässt (eine Formel aus `formulas`, ein Zustand ohne Namen, Rechnen jenseits von „Wert ± Zahl“), heißt im Blatt „Eine Bedingung Ihres Fachbetriebs“, und die Prüfung nennt die Stelle mit ihrer Formel; die Formel selbst steht nie in „Warum?“, sie gehört in die Ansicht des Texts für den Fachbetrieb.
 
 Anzeige der Werte: deutsche Schreibweise (Komma, schmales Leerzeichen vor der Einheit, echtes Minus), Leistungen unter 10 kW mit einer oder zwei Stellen, Hälften runden vom Nullpunkt weg (wie das Referenzlabor); die Lagesätze der Tagesvektoren prüfen das Zeichen für Zeichen.
 
@@ -87,8 +93,8 @@ Pflicht vor dem Scharfschalten ist die Prüfung (E5 = C); der Kern baut ihre spe
    Proben sind freiwillig; eine Logik ohne Proben kann scharf gehen und bekommt nur den Hinweis „Keine Proben: Verhalten nicht belegt“.
    Eine vorhandene Probe, die nicht besteht, sperrt weiter (Lesart zu E5).
 
-Die Punkte 4 bis 6 des Konzepts (Ausfall je Eingang, Flattern, Schutzzeiten) sind Hinweise im Dialog und kommen mit der Oberfläche (Stufe 4).
-Ob ein Gerät existiert, zum Steuern freigegeben und von keiner anderen Regel beansprucht ist, prüft die Auslieferung (Regel V-5 im [Graphvertrag](flow-graph.md)), nicht der Kern.
+Die Punkte 4 bis 6 des Konzepts (Ausfall je Eingang, Flattern, Schutzzeiten) sind Hinweise im Dialog und kommen mit der Oberfläche (Stufe 4); bis dahin nennt der Dialog „Scharf schalten“ ausdrücklich, dass sie nicht geprüft sind.
+Ob ein Gerät existiert, zum Steuern freigegeben und von keinem anderen Herrn beansprucht ist, prüft die API beim Scharfschalten ([Besitz](#besitz-ein-gerät-hat-nie-zwei-herren)), nicht der Kern.
 
 ## Geräte mit Sollwert und Betriebsart (K2/K3)
 
@@ -105,6 +111,18 @@ Klima, Heizung, Kälte (Bericht Abschnitt 15): Das Gerät regelt selbst; die Log
 `editable_by` kennt `customer`, `customer_admin`, `installer`; ohne Angabe stellt der Fachbetrieb.
 Temperaturen stellt der Kunde immer, in ihrem Bereich (E2 = B).
 Der Kundenadministrator darf an einer Logik alles, was der Fachbetrieb darf, einschließlich Bereiche und `editable_by` (E3 = B und ihre Lesart); das setzt die Oberfläche in Stufe 4 um, der Kern unterscheidet nicht nach Rolle.
+
+Gebaut in Stufe 3, für das Stellen von Werten (Recht `betriebsweise.aendern`, Route `PUT /api/v1/sites/{siteId}/steuerlogik/{logikId}/stellwerte/{kennung}`):
+
+| Wert | Wer stellt ihn |
+|---|---|
+| Zielwert (°C) | jeder mit `betriebsweise.aendern`: Kundenadministrator, Bedienberechtigte, Unterstützer mit „Einrichten und Bedienen“, Plattform |
+| `editable_by: customer` | dieselben |
+| `editable_by: customer_admin` oder `installer` (oder ohne Angabe) | Kundenadministrator, Unterstützer, Plattform; nicht Bedienberechtigte (403 `recht_fehlt`) |
+
+`customer_admin` und `installer` sind damit in Stufe 3 gleich (Lesart zu E3: der Kundenadministrator darf, was der Fachbetrieb darf).
+Die Karte des Portals zeigt Zielwerte und Werte `customer` unter „Das stellen Sie ein“, die übrigen unter „Das legt Ihr Fachbetrieb fest“ - gesperrt, für Kundenadministrator und Fachbetrieb hinter „Ändern“.
+Scharfschalten, Zurücknehmen und Stilllegen bleiben in Stufe 3 Sache der Plattform.
 
 ## Auslieferung und Mitlauf
 
@@ -125,8 +143,49 @@ Stufe 2, zweiter Teil (gebaut): Die Logik kommt noch als Datei von VoltPilot, ei
   Der gemerkte Zustand liegt gedrosselt in `<data_dir>/logik-laeufe.json` (bei Wechseln, höchstens alle 30 s, beim Angleichen und Beenden); nach einem Neustart gelten die Regeln von `after_restart`.
 - **Rückmeldung**: der Herzschlag-Block `logik` mit Fassung, Lage, Zuständen und dem Vergleich „würde schalten“ gegen „ist geschaltet“ ([Rückmeldung](steuerlogik-rueckmeldung.md)).
 
-Für das Schalten (Stufe 3) gilt das Muster des [Heizstab-Reglers](heizstab-regler.md): Klasse `flow` (Rang 40), TTL 45 s, in jedem Takt erneuert, Quelle nur intern; die Geräte einer Logik tragen `owner_claimed`; ohne die Schalter der Box geht kein Wunsch hinaus.
-Dafür kommt ein eigenes Wort in `supports[]`; eine Box mit nur `steuerlogik_mitlauf` schaltet nie.
+## Scharf
+
+Stufe 3 (gebaut): Scharfschalten ist ein eigener, protokollierter Schritt je Fassung, getrennt vom Mitlaufen.
+
+- **Pflicht** ist nur die Prüfung (E5 = C): der Dienst baut das Artefakt erneut, und was sie sperrt, geht nicht scharf. Die Hinweise stehen gesammelt im Dialog (`GET …/{logikId}/scharf`): Hinweise des Berichts, im Bereich verletzbare Bedingungen, „Die bisherige Steuerung dieser Geräte muss aus sein“ (das Portal kann es nicht prüfen) und was nicht geprüft ist (Punkte 4 bis 6). Eine Bestätigung genügt (`POST …/{logikId}/scharf {fassung, bestaetigt: true}`); sie steht mit wer und wann an der Fassung (`scharf_am`, `scharf_von`, `hinweise`) und im Protokoll.
+- **Bündel**: das scharfe Artefakt trägt `armed: true` ([Flow-Artefakt](flow-artifact.md#steuerlogik)) und verlangt je Gerät die Befehle, mit denen die Box es schaltet (`logikdienst.SchaltRecht`): `actuate:setpoint_kw` für eine Stufe an einer Shelly-Ausgangsmenge, `actuate:on_off` für jede andere Stufe und für Ein/Aus, `actuate:setpoint_c` für einen Sollwert in °C, `actuate:setpoint_kw` für einen in kW, `actuate:mode` für eine Betriebsart, an einer SG-Ready-Wärmepumpe ohne eigene Betriebsart `actuate:on_off` (der Kontakt). Die Box nimmt das Bündel nur an, wenn ihr Registry-Eintrag jeden davon nennt. Es geht nur an eine Box mit `steuerlogik_scharf`; eine Box mit nur `steuerlogik_mitlauf` schaltet nie nach einer Logik.
+- **Auf der Box** (`agent/steuerlogik_scharf.go`) gilt das Muster des [Heizstab-Reglers](heizstab-regler.md): Klasse `flow` (Rang 40), TTL 45 s, in jedem Takt erneuert, Quelle `steuerlogik` nur intern (ein Wunsch auf dem Bus mit dieser Quelle wird abgelehnt). Ausgänge: `level` an einer Ausgangsmenge die kW der größten Stufe, die passt, an einem einfachen Relais Ein/Aus; `mode` `boost`/`normal` am SG-Ready-Kontakt einer Wärmepumpe ohne eigene Betriebsart (E10 = A) als Ein/Aus; alles andere über die Naht der K2 ([Ausgänge als Befehle](#geräte-mit-sollwert-und-betriebsart-k2k3)): `on_off`, `setpoint_c`, `setpoint_kw`, `mode`, mit Band, Schritt, Liste, Abstand und Ruhewerten aus dem Arbiter. Einen Befehl, den das Gerät nicht ausführt, und einen Anteil (`percent`) sendet die Box nicht: das Gerät bekommt dann keinen Wunsch, und der Herzschlag nennt es (`konflikt.code: ausgang_offen`). Beleg für ein Gerät, das selbst regelt: `agent/steuerlogik_scharf_test.go` (das Klimagerät-Beispiel scharf am gestellten Modbus-Gerät).
+- **Darüber** behalten alle ihr Wort: ein Eingriff von Hand (75), die Schutzgrenzen und der Zyklen-Guard (Mindestlauf, Mindestpause, Starts je Tag), „Automatik pausieren“ und die zwei Schalter der Box. Ohne `VP_CONSUMER_CONTROL_ENABLED` geht kein Wunsch hinaus.
+- **Freigeben**: ein Gerät, das die Logik nicht mehr wünscht (stillgelegt, zurück im Mitlauf, kein Wunsch in diesem Takt, ein zweiter Herr), lässt die Box sofort los, nicht erst nach der TTL.
+
+### Besitz: ein Gerät hat nie zwei Herren
+
+Steuerart (auch der Heizstab-Regler, der eine Steuerart ausführt), Verbraucherregel oder Regel und eine scharfe Logik schließen sich je Gerät aus.
+Beim Scharfschalten (und bei einer neuen scharfen Fassung oder „Zurück“) prüft die API je Gerät aus dem Prüfbericht (`SteuerlogikBesitz`): ein steuerbarer Verbraucher der Anlage, zum Steuern freigegeben (ein Typ, der nur am Simulator belegt ist, bleibt das auch für eine Logik), kein Ladepunkt (Laden hat seinen eigenen Ort), kein Anteil, jeder Befehl, den das scharfe Artefakt verlangt, in den Fähigkeiten des Geräts im Registry-Push (dieselbe Prüfung, mit der die Box das Bündel annimmt; sonst `ausgang_offen`), keine aktive Steuerart, kein Heizstab-Regler, keine Regel, keine andere scharfe Logik.
+Jeder Konflikt kommt mit Namen zurück (409 `zweiter_herr`, `konflikte[]`), nie still aufgelöst.
+Danach materialisiert die API den Besitz in `flow_claim` (Flow-Kennung = Logik): der Registry-Push trägt `owner_claimed`, Fahrplan und Fristen-Rückfall lassen die Geräte in Ruhe.
+In der Gegenrichtung lehnen Steuerart (409) und Regel (V-5) ein Gerät ab, das einer scharfen Logik gehört.
+Die Box selbst gibt einem Gerät, das ihr Heizstab-Regler führt, keinen Wunsch einer Logik und meldet den Konflikt (`konflikt.code: zweiter_herr`); zwei scharfe Logiken mit demselben Gerät nimmt sie nicht an.
+
+### Fassungen, Zurück, Stilllegen
+
+- Eine neue Fassung einer scharfen Logik geht nur scharf (`POST …/fassungen {text, scharf: true, bestaetigt: true}`, sonst 409 `scharf_abloesen`): sonst fielen ihre Geräte still aus der Steuerung.
+- „Zurück zur vorigen Fassung“ (`POST …/{logikId}/zurueck`) liefert die Fassung davor erneut aus, im selben Zustand (scharf bleibt scharf); „Stilllegen“ (`POST …/{logikId}/stilllegen`) liefert den Satz ohne sie. Beide gehen in derselben Anfrage an die Box und wirken im nächsten Takt; eine laufende Mindestlaufzeit hält ein Gerät bis zu ihrem Ende.
+- Auf der Box behält dieselbe Fassung mit gleichem Text ihren Lauf, auch wenn sich Zustand oder Werte ändern; eine neue Fassung (auch „Zurück“) übernimmt die Zustände gleichen Namens und gleicher Art samt letztem Wechsel und Frist eines Zeitgebers, ein Zähler bleibt in seinen neuen Grenzen; alles andere beginnt nach `after_restart` (Bericht 8.9).
+- Jeder Schritt steht im Protokoll (`steuerlogik_protokoll`: angenommen, scharf, zurueck, stillgelegt, stellwert; wer, wann, Rolle, Daten), lesbar über `GET …/{logikId}/protokoll` und im Verlauf des Kunden.
+
+### Stellwerte
+
+Ein gestellter Wert ist keine Fassung (Bericht 6.6 Punkt 4): er reist im Bündel (`settings: {revision, values}`) in der Form des Dokuments (`"72 °C"`, `"on"`, `"06:00"`, ein Wort, ein Zeitplan) und startet die Logik nicht neu.
+Der Dienst prüft vor dem Speichern Art, Einheit, Bereich, Schritt, Auswahl und die Bedingungen unter `constraints` mit allen Werten zusammen (422 `stellwerte_passen_nicht`); die Box prüft beim Annehmen dasselbe und nimmt ein Bündel mit einem unpassenden Wert nicht an.
+Eine neue Fassung übernimmt die Werte, die passen; die anderen fallen auf ihre Vorgabe, die Antwort und das Protokoll nennen sie (`verworfen`).
+Die API hält je Logik die Werte und ihren Stand (`steuerlogik_einstellung`); die Box meldet den Stand zurück (`stellwerte.stand` im Herzschlag), und erst dann zeigt das Portal einen Wert als übernommen.
+Regler und Schalter zeigen den Wert, der auf der Box gilt; solange eine Änderung offen ist, ihr Ziel mit „wird übernommen …“, nie den alten Wert.
+Die Beschreibung der Werte (Name, Art, Einheit, Bereich, Schritt in der Einheit der Vorgabe, `editable_by`, Zielwert) steht im Prüfbericht (`bericht.stellwerte`), so liest das Portal die Sprache nicht.
+
+### Für den Kunden
+
+`GET /api/v1/sites/{siteId}/steuerlogik` liefert je scharfe Logik eine Karte: die Lage der Box mit ihrem Alter, die Störungen (die Box lehnt die Fassung ab, die Logik läuft nicht, die Box schaltet nicht, die Lage ist `fault`, ein Eingang hat keinen Wert, ein Gerät bekommt keinen Wunsch), je Gerät Wunsch, gelesener Stand, Befehl, Halter, Schutz und Konflikt, die Werte mit dem Recht DIESES Aufrufers, die Liste „Warum?“ und die Meldungen der Logik; `GET …/{logikId}/verlauf?tag=` die Schaltungen des Tages und wer welchen Wert gestellt hat.
+Beispiel: [steuerlogik-karte.valid.wasser.json](examples/steuerlogik-karte.valid.wasser.json) (gepinnt von `SteuerlogikScharfApiTest` aus dem Block der Box und der Antwort des Dienstes; das Portal liest sie in seinen Tests).
+Satz der Lage und Hilfesätze der Werte setzen beide die Werte von jetzt ein, also widersprechen sie sich auf einer Karte nie; belegt mit [steuerlogik-karte-saetze.heizung-winter.json](examples/steuerlogik-karte-saetze.heizung-winter.json) (beide aus einem Lauf des Heizungs-Beispiels, gepinnt von `logik/karte_saetze_test.go`).
+Eine Störung (ohne die gewollte Pause und ohne die Box, die sich nicht meldet - das meldet `box.erreichbar`) wird nach zwei Minuten eine Meldung der Überwachung (`steuerlogik.stoerung`, ab Werk eingeschaltet an Anlagen mit scharfer Logik).
+
+Ende zu Ende mit den echten Programmen und einem gestellten Shelly Pro 3: `edge-light/test/steuerlogik-scharf-probe.sh` (scharf, echte Schaltanfragen, Mindestlaufzeit, gestellter Wert ohne Neustart, Fassung 2 und „Zurück“, „Stilllegen“, zweiter Herr).
 
 ## Versionsregeln
 

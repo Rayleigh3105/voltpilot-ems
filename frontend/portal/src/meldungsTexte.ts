@@ -412,6 +412,28 @@ export const WERTART_TEXTE: Record<string, WertartTexte> = {
       entwarnung: 'Seit {ende} lädt das Auto wieder oder ist abgesteckt.',
     },
   },
+  "steuerlogik.stoerung": {
+    zustandsworte: {
+      in_ordnung: 'in Ordnung',
+      stoerung: 'gestört',
+    },
+    meldung: {
+      gilt_bei: {
+        zustaende: ['stoerung'],
+      },
+      titel: 'Störung einer Logik',
+      lage: [
+        'Seit {beginn}: {satz}',
+        'Eine Logik Ihrer Anlage ist seit {beginn} gestört.',
+      ],
+      ursache: 'Meist fehlt der Wert eines Fühlers, oder die Box schaltet gerade nicht nach der Logik.',
+      was_tun: 'Öffnen Sie in der Steuerung die Karte der Logik und tippen Sie auf „Warum?“. Hilft das nicht, rufen Sie Ihren Fachbetrieb an.',
+      push: 'Seit {beginn} ist eine Logik gestört.',
+      entwarnung_titel: 'Logik läuft wieder',
+      entwarnung: 'Seit {ende} läuft die Logik wieder ohne Störung.',
+      entwarnung_dauer: 'Die Störung dauerte {dauer}.',
+    },
+  },
   "ladepunkt.auto_angesteckt": {
     zustandsworte: {
       angesteckt: 'angesteckt',

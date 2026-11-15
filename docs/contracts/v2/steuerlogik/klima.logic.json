@@ -89,15 +89,35 @@
   "sonne_da": {
    "name": "Sonnenstrom ist übrig",
    "type": "boolean",
-   "on_when": "holds(uebrig >= ab_kw, 5 min)",
-   "off_when": "unknown(netz) or holds(netz > 0.3 kW, 10 min)",
+   "on_when": [
+    {
+     "Seit 5 Minuten ist genug Sonnenstrom übrig": "holds(uebrig >= ab_kw, 5 min)"
+    }
+   ],
+   "off_when": [
+    {
+     "Der Netzwert fehlt, oder seit 10 Minuten kommt Strom aus dem Netz": "unknown(netz) or holds(netz > 0.3 kW, 10 min)"
+    }
+   ],
+   "on_text": "Sonnenstrom gilt als übrig",
+   "off_text": "Sonnenstrom gilt nicht mehr als übrig",
    "after_restart": "off"
   },
   "fenster_auf": {
    "name": "Fenster steht offen",
    "type": "boolean",
-   "on_when": "holds(fenster, 3 min)",
-   "off_when": "holds(not fenster, 2 min)",
+   "on_when": [
+    {
+     "Das Fenster steht seit 3 Minuten offen": "holds(fenster, 3 min)"
+    }
+   ],
+   "off_when": [
+    {
+     "Das Fenster ist seit 2 Minuten zu": "holds(not fenster, 2 min)"
+    }
+   ],
+   "on_text": "Das Fenster gilt als offen",
+   "off_text": "Das Fenster gilt als zu",
    "after_restart": "off"
   },
   "laeuft": {
@@ -125,6 +145,8 @@
      "Weder Arbeitszeit noch Sonnenstrom": "not gewollt"
     }
    ],
+   "on_text": "Das Klimagerät schaltet ein",
+   "off_text": "Das Klimagerät schaltet aus",
    "after_restart": "off"
   }
  },
