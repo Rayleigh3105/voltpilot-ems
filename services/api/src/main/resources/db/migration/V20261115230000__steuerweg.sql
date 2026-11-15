@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS steuerweg_schritt (
 );
 
 CREATE INDEX IF NOT EXISTS idx_steuerweg_schritt_tenant ON steuerweg_schritt (tenant_id, site_id, am);
+-- Der Fremdschlüssel auf site: das Löschen einer Anlage prüft ihn über diesen Index, und der Stand liest die
+-- jüngsten Schritte einer Anlage.
+CREATE INDEX IF NOT EXISTS idx_steuerweg_schritt_site ON steuerweg_schritt (site_id, am);
 
 ALTER TABLE steuerlogik ADD COLUMN IF NOT EXISTS herkunft TEXT;
 ALTER TABLE steuerlogik DROP CONSTRAINT IF EXISTS steuerlogik_herkunft_check;
