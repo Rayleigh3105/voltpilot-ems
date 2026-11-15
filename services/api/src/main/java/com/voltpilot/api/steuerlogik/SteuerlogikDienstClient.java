@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,6 +56,7 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
             }
         }
         if (auftrag.scharf()) request.put("armed", true);
+        if (auftrag.pflicht()) request.put("pflicht", true);
         if (auftrag.werte() != null) {
             ObjectNode settings = request.putObject("settings");
             settings.put("revision", auftrag.werte().stand());
@@ -230,6 +232,49 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
         }
         log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
         throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
+    @Override
+    public JsonNode ausSteuerart(JsonNode dokument, String name, int fassung, String registry) {
+        ObjectNode request = json.createObjectNode();
+        request.set("dokument", dokument);
+        request.put("name", name);
+        request.put("fassung", fassung);
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/aus-steuerart", request);
+        JsonNode body = parse(response.body());
+        if (uebersetzung(response, body)) {
+            return body;
+        }
+        if (response.status() == 422 && body != null && "steuerart".equals(body.path("grund").asText())) {
+            throw new SteuerlogikDienstException(SteuerlogikDienstException.KEINE_STEUERART,
+                    body.path("message").asText("Dieser Flow ist keine Verbraucherregel einer Steuerart."), null);
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
+    @Override
+    public JsonNode ausHeizstab(UUID entityId, JsonNode block, String name, String registry) {
+        ObjectNode request = json.createObjectNode();
+        request.put("entity", entityId.toString());
+        request.set("block", block);
+        if (name != null) request.put("name", name);
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/aus-heizstab", request);
+        JsonNode body = parse(response.body());
+        if (uebersetzung(response, body)) {
+            return body;
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
+    /** Eine Antwort der Übersetzungen: übersetzt mit Text, oder die Gründe, warum nicht. */
+    private static boolean uebersetzung(FlowCompilerHttp.Response response, JsonNode body) {
+        return response.status() == 200 && body != null && body.path("uebersetzt").isBoolean()
+                && body.path("gruende").isArray()
+                && (!body.path("uebersetzt").asBoolean() || body.path("text").isTextual());
     }
 
     /** 422 ist ein Baustein oder Text, den die Leser ablehnen (mit Satz); alles andere ein nicht erreichbarer Dienst. */

@@ -194,6 +194,10 @@ func (a *Agent) runHeizstab(now time.Time) {
 		}
 		kw := d.Kw
 		cmds := a.consumerCommands(rod.entity, entities.Commands{SetpointKw: &kw})
+		// Einen Stab mit Block führt der Regler; einer Logik gibt die Box ihn nicht (zweiter Herr). Kommt der
+		// Block zurück (Zurück zum bisherigen Weg), nimmt der Regler den Wunsch der Logik sofort zurück, statt
+		// in derselben Klasse abgewiesen zu werden - keine Sekunde ohne Herrn (Stufe 6, dritter Teil).
+		a.arb.Withdraw(id, desired.Source{Kind: desired.SourceSteuerlogik}.Key(), false)
 		a.arb.SubmitInternal(&desired.Desired{
 			EntityID:      id,
 			RequestID:     "heizstab:" + st.Since.UTC().Format(time.RFC3339) + ":" + d.Code,

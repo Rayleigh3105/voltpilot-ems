@@ -1,0 +1,139 @@
+{
+  "bericht": {
+    "ausdruecke": 61,
+    "befunde": [],
+    "eingaenge": [
+      {
+        "kennung": "netz",
+        "name": "Netzbezug",
+        "source": "site.grid"
+      },
+      {
+        "kennung": "speicher",
+        "name": "Batterie lädt mit",
+        "source": "battery.power"
+      },
+      {
+        "kennung": "stab",
+        "name": "Heizstab zieht",
+        "source": "33333333-3333-4333-8333-333333333333.power"
+      }
+    ],
+    "geraete": [
+      {
+        "ausgaenge": [
+          "level"
+        ],
+        "entity_id": "33333333-3333-4333-8333-333333333333",
+        "kennung": "heizstab",
+        "name": "Heizstab"
+      }
+    ],
+    "hinweise": [
+      "Keine Proben: Verhalten nicht belegt"
+    ],
+    "meldungen": [
+      {
+        "art": "hinweis",
+        "text": "Keine Proben: Verhalten nicht belegt"
+      }
+    ],
+    "name": "Heizstab-Regler: Heizstab",
+    "proben": [],
+    "sperrt": false,
+    "stellwerte": [
+      {
+        "art": "zahl",
+        "bis": 50,
+        "darf": "installer",
+        "einheit": "kW",
+        "kennung": "reserve",
+        "name": "Bleibt als Einspeisung",
+        "schritt": 0.001,
+        "von": 0,
+        "vorgabe": "0.2 kW",
+        "zielwert": false
+      },
+      {
+        "art": "zahl",
+        "bis": 3,
+        "darf": "installer",
+        "kennung": "hoechste",
+        "name": "Höchstens Ausgänge zugleich",
+        "schritt": 1,
+        "von": 1,
+        "vorgabe": 3,
+        "zielwert": false
+      },
+      {
+        "art": "select",
+        "darf": "installer",
+        "kennung": "vorrang",
+        "name": "Reihenfolge mit dem Speicher",
+        "optionen": [
+          {
+            "name": "Speicher zuerst",
+            "wert": "speicher_zuerst"
+          },
+          {
+            "name": "Heizstab zuerst",
+            "wert": "heizstab_zuerst"
+          }
+        ],
+        "vorgabe": "speicher_zuerst",
+        "zielwert": false
+      },
+      {
+        "art": "zahl",
+        "bis": 86400,
+        "darf": "installer",
+        "einheit": "s",
+        "kennung": "mindestlauf",
+        "name": "Mindestlaufzeit",
+        "schritt": 1,
+        "von": 0,
+        "vorgabe": "300 s",
+        "zielwert": false
+      },
+      {
+        "art": "zahl",
+        "bis": 86400,
+        "darf": "installer",
+        "einheit": "s",
+        "kennung": "mindestpause",
+        "name": "Mindestpause",
+        "schritt": 1,
+        "von": 0,
+        "vorgabe": "300 s",
+        "zielwert": false
+      },
+      {
+        "art": "zahl",
+        "bis": 86400,
+        "darf": "installer",
+        "einheit": "s",
+        "kennung": "haltezeit",
+        "name": "Haltezeit nach einem Wechsel",
+        "schritt": 1,
+        "von": 0,
+        "vorgabe": "120 s",
+        "zielwert": false
+      },
+      {
+        "art": "zahl",
+        "bis": 64,
+        "darf": "installer",
+        "kennung": "schaltungen",
+        "name": "Schaltungen je Stunde",
+        "schritt": 1,
+        "von": 1,
+        "vorgabe": 12,
+        "zielwert": false
+      }
+    ],
+    "zusammen": []
+  },
+  "gruende": [],
+  "text": "# Übersetzt aus dem Parameterblock des Heizstab-Reglers (heizstab-regler.md), Baustein heizstab-regler.block.yaml.\n# Bearbeitet wird die Steuerart des Heizstabs, nicht dieser Text: jede Änderung übersetzt ihn neu.\n# Stufen der Ausgangsmenge (Ausgänge zugleich, Leistung): 1 zugleich 1 kW, 2 zugleich 2 kW, 3 zugleich 3 kW.\nlogic: 1\nname: \"Heizstab-Regler: Heizstab\"\ndescription: Der Heizstab nimmt Stufe für Stufe den gemessenen Überschuss, wie der Heizstab-Regler der Box.\n\ndevices:\n  heizstab: {entity: \"33333333-3333-4333-8333-333333333333\", name: Heizstab}\n\ninputs:\n  netz:     {source: site.grid,      name: Netzbezug,         max_age: 30 s}\n  speicher: {source: battery.power,  name: Batterie lädt mit, max_age: 30 s}\n  # Was der Stab zieht: gemessen, sonst die Leistung seiner bestätigten Stufe; die Box nennt nur Frisches.\n  stab:     {source: \"33333333-3333-4333-8333-333333333333.power\", name: Heizstab zieht}\n\nsettings:\n  reserve:      {name: Bleibt als Einspeisung,         default: 0.2 kW, range: [0 kW, 50 kW], step: 0.001 kW}\n  hoechste:     {name: Höchstens Ausgänge zugleich,    default: 3, range: [1, 3], step: 1}  # Stufen\n  vorrang:      {name: Reihenfolge mit dem Speicher,   type: select, default: speicher_zuerst,\n                 options: {speicher_zuerst: Speicher zuerst, heizstab_zuerst: Heizstab zuerst}}\n  mindestlauf:  {name: Mindestlaufzeit,                default: 300 s, range: [0 s, 86400 s], step: 1 s}\n  mindestpause: {name: Mindestpause,                   default: 300 s, range: [0 s, 86400 s], step: 1 s}\n  haltezeit:    {name: Haltezeit nach einem Wechsel,   default: 120 s, range: [0 s, 86400 s], step: 1 s}\n  schaltungen:  {name: Schaltungen je Stunde,          default: 12, range: [1, 64], step: 1}\n\nformulas:\n  # Eine Entladung zählt immer gegen den Stab; \"Heizstab zuerst\" nimmt auch, was die Batterie lädt.\n  batterie: if(known(speicher), speicher, 0 kW)\n  ueberschuss: if(vorrang == heizstab_zuerst, batterie, min(0 kW, batterie)) - netz\n  # Die Eigenlast zählt zurück: ein laufender Stab frisst nicht den Überschuss, der ihn gestartet hat.\n  frei: ueberschuss + stab - reserve\n  messung: known(netz) and known(stab)\n  # Die höchste erlaubte Stufe und die Stufe, die zum Überschuss passt (Stufen in Ausgängen).\n  oben: if(hoechste \u003e= 3, 3, if(hoechste \u003e= 2, 2, if(hoechste \u003e= 1, 1, 0)))  # Stufen\n  ziel: if(oben \u003e= 3 and frei * 1.000001 \u003e= 3 kW, 3, if(oben \u003e= 2 and frei * 1.000001 \u003e= 2 kW, 2, if(oben \u003e= 1 and frei * 1.000001 \u003e= 1 kW, 1, 0)))  # Stufen\n  naechste: if(stufe \u003c 1, 1, if(stufe \u003c 2, 2, 3))  # Stufen\n  kleinste: 1  # Stufen\n  gewechselt: since(stufe) \u003c 1 s\n  bezug_haelt: bezug and since(bezug) \u003e= 30 s and ueberschuss \u003c -0.1 kW and ziel \u003c stufe\n  zu_viele: changes(stufe, 1 h) + naechste - stufe \u003e schaltungen\n  rest_pruefen: max(0 s, 60 s - since(hoeher))\n  rest_pause: if(stufe == 0, max(0 s, mindestpause - since(laeuft)), 0 s)\n  rest_halten: max(0 s, haltezeit - since(stufe))\n  rest_tor: max(rest_pruefen, rest_pause, rest_halten)\n  rest_grenze: max(rest_tor, 1 h - if(known(oldest_change(stufe, 1 h)), oldest_change(stufe, 1 h), 0 s))\n  hoeher_in: if(not messung or gewechselt, 0 s, if(ziel \u003e stufe and zu_viele, rest_grenze, if(ziel \u003e stufe, rest_tor, if(bezug_haelt, max(0 s, mindestlauf - since(laeuft)), 0 s))))\n\nstates:\n  blind:\n    type: boolean\n    on_when:\n      - Frische Messwerte fehlen: not messung\n    off_when:\n      - Die Messwerte sind frisch: messung\n    on_text: Frische Messwerte fehlen\n    off_text: Die Messwerte sind wieder da\n    after_restart: off\n  stufe:\n    type: counter\n    min: 0\n    max: 3  # Stufen\n    after_restart: keep\n    steps:\n      - name: blind_aus\n        text: Seit einer Minute fehlen frische Messwerte, der Heizstab geht aus\n        set: 0\n        when:\n          - Frische Messwerte fehlen seit einer Minute: blind and since(blind) \u003e= 60 s\n          - Der Heizstab läuft: stufe \u003e 0\n      - name: kappe\n        text: Die höchste erlaubte Stufe wurde gesenkt\n        set: oben\n        when:\n          - Die Messwerte sind frisch: messung\n          - Der Heizstab läuft über der höchsten erlaubten Stufe: stufe \u003e oben\n      - name: runter\n        text: Netzbezug seit 30 Sekunden, eine kleinere Stufe\n        set: max(ziel, if(ziel == 0 and since(laeuft) \u003c mindestlauf, kleinste, 0))\n        when:\n          - Die Messwerte sind frisch: messung\n          - Seit 30 Sekunden kommt Strom aus dem Netz: bezug_haelt\n      - name: hoch\n        text: Überschuss, eine Stufe höher\n        set: naechste\n        when:\n          - Die Messwerte sind frisch: messung\n          - Der Überschuss reicht für eine höhere Stufe: ziel \u003e stufe\n          - Der Überschuss hält seit einer Minute: hoeher and since(hoeher) \u003e= 60 s\n          - Die Mindestpause ist vorbei: rest_pause == 0 s\n          - Die Haltezeit ist vorbei: rest_halten == 0 s\n          - Die Schaltungen der letzten Stunde lassen es zu: not zu_viele\n  laeuft:\n    type: boolean\n    on_when:\n      - Der Heizstab läuft: stufe \u003e 0\n    off_when:\n      - Der Heizstab ist aus: stufe == 0\n    on_text: Der Heizstab läuft\n    off_text: Der Heizstab ist aus\n    after_restart: keep\n  hoeher:\n    type: boolean\n    on_when:\n      - Die Messwerte sind frisch: messung\n      - Der Überschuss reicht für eine höhere Stufe: ziel \u003e stufe\n    off_when_any:\n      - Frische Messwerte fehlen: not messung\n      - Der Überschuss reicht nicht für eine höhere Stufe: ziel \u003c= stufe\n      - Die Stufe hat gerade gewechselt: gewechselt\n    on_text: Der Überschuss reicht für eine höhere Stufe\n    off_text: Der Überschuss reicht nicht für eine höhere Stufe\n    after_restart: off\n  bezug:\n    type: boolean\n    on_when:\n      - Die Messwerte sind frisch: messung\n      - Es kommt Strom aus dem Netz: ueberschuss \u003c -0.1 kW\n    off_when_any:\n      - Frische Messwerte fehlen: not messung\n      - Es kommt kein Strom aus dem Netz: ueberschuss \u003e= -0.1 kW\n      - Die Stufe hat gerade gewechselt: gewechselt\n    on_text: Es kommt Strom aus dem Netz\n    off_text: Es kommt kein Strom mehr aus dem Netz\n    after_restart: off\n\noutputs:\n  heizstab: {level: stufe}\n\nstatus:\n  - when: gewechselt and last(stufe) == blind_aus\n    title: Messwerte fehlen\n    type: fault\n    text: Seit einer Minute fehlen frische Messwerte - der Heizstab ist aus.\n  - when: not messung\n    title: Messwerte fehlen\n    type: fault\n    text: Messwerte fehlen - keine neue Stufe, nach einer Minute aus.\n  - when: gewechselt and last(stufe) == kappe\n    title: Höchste Stufe gesenkt\n    type: idle\n    text: Die höchste erlaubte Stufe wurde gesenkt.\n  - when: gewechselt and last(stufe) == runter and stufe == 0\n    title: Kein Überschuss\n    type: idle\n    text: Kein Überschuss mehr - der Heizstab ist aus.\n  - when: gewechselt and last(stufe) == runter\n    title: Kein Überschuss\n    type: idle\n    text: Netzbezug seit 30 Sekunden - eine kleinere Stufe.\n  - when: gewechselt and last(stufe) == hoch\n    title: Heizt mit Überschuss\n    type: solar\n    text: Überschuss - eine Stufe höher.\n  - when: bezug_haelt\n    title: Mindestlaufzeit\n    type: waiting\n    text: Netzbezug, aber die Mindestlaufzeit läuft noch.\n  - when: ziel \u003e stufe and zu_viele\n    title: Schaltgrenze erreicht\n    type: waiting\n    text: Überschuss da, aber {schaltungen} Schaltungen in der letzten Stunde sind erreicht. Höhere Stufe frühestens in {hoeher_in}.\n  - when: ziel \u003e stufe and rest_halten \u003e 0 s and rest_halten \u003e= rest_pause and rest_halten \u003e= rest_pruefen\n    title: Haltezeit\n    type: waiting\n    text: Überschuss da, aber die Haltezeit nach dem letzten Wechsel läuft noch. Höhere Stufe frühestens in {hoeher_in}.\n  - when: ziel \u003e stufe and rest_pause \u003e 0 s and rest_pause \u003e= rest_pruefen\n    title: Mindestpause\n    type: waiting\n    text: Überschuss da, aber die Mindestpause läuft noch. Höhere Stufe frühestens in {hoeher_in}.\n  - when: ziel \u003e stufe and rest_pruefen \u003e 0 s\n    title: Überschuss wird geprüft\n    type: waiting\n    text: Überschuss für eine höhere Stufe - wird eine Minute geprüft. Höhere Stufe frühestens in {hoeher_in}.\n  - when: stufe == 0\n    title: Kein Überschuss\n    type: idle\n    text: Kein Überschuss für die kleinste Stufe.\n  - when: bezug and ziel \u003c stufe\n    title: Kein Überschuss\n    type: grid\n    text: Netzbezug - hält er 30 Sekunden an, folgt eine kleinere Stufe.\n  - else: true\n    title: Heizt mit Überschuss\n    type: solar\n    text: Heizt mit Überschuss.\n",
+  "uebersetzt": true
+}

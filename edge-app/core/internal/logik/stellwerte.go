@@ -378,6 +378,7 @@ func (L *Logik) UebernimmLauf(alt *Logik, altSt *Lauf, jetzt float64) *Lauf {
 			v := *l.bis
 			l.bis = &v
 		}
+		l.wechsel = append([]zaehlerWechsel(nil), al.wechsel...)
 		if z.Art == "counter" {
 			if l.wert > z.Bis {
 				l.wert = z.Bis

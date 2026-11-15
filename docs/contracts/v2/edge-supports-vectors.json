@@ -117,6 +117,12 @@
       "meaning": "Der Kern der Box kennt die Ergänzungen der Sprache, in die sich eine Regel des Regel-Baukastens übersetzt (das Formelwort unknown als Zweig von if(): „voll einschalten“ wünscht außerhalb der Bedingung nichts), und ist der Kern, den die Gleichheitsvektoren regel-kern-vectors.json gegen den Node-RED-Weg halten (steuerlogik.md, Zusammenführen). Erst dann liefert die Cloud eine Regel als Logik des Kerns aus, auf Edge Light statt sie abzulehnen, auf der Docker-Box nach dem Schalter der Anlage; eine ältere Box quittierte eine Logik mit diesem Wort als nicht lesbar.",
       "advertised": true,
       "evidence": "edge-app/core/internal/logikdienst/regel/gleichheit_test.go"
+    },
+    {
+      "name": "steuerlogik_steuerarten",
+      "meaning": "Der Kern der Box kennt die Ergänzungen der Sprache, in die sich eine Steuerart (die generierte Verbraucherregel) und der Heizstab-Regler übersetzen: die Quelle site.surplus, das Signal power eines Geräts, den Verlauf eines Zählers (changes, oldest_change) und den Ausgang must_run (Pflicht vor dem Fahrplan wie die Pflichtregel); er ist der Kern, den die Gleichheitstests gegen verbraucherregel-vectors.json und heizstab-regler-vectors.json halten (steuerlogik.md, Zusammenführen, dritter Teil). Erst dann liefert die Cloud diese Übersetzungen aus, nach dem Schalter der Anlage; eine ältere Box quittierte eine Logik mit diesen Wörtern als nicht lesbar.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/logikdienst/steuerart/gleichheit_test.go"
     }
   ],
   "cases": [

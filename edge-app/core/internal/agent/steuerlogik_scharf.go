@@ -105,6 +105,10 @@ func (a *Agent) runSteuerlogik(now time.Time) {
 				Text: "Der Heizstab-Regler der Box führt dieses Gerät schon; die Logik schaltet es nicht."}
 			continue
 		}
+		// Übergabe ohne Lücke (Stufe 6, dritter Teil): hat der Regler den Stab abgegeben (sein Block ist
+		// fort), sein Wunsch aber noch nicht zurückgezogen, weil seine Schleife erst gleich läuft, nimmt
+		// ihn die Logik jetzt zurück - sonst wiese der Schiedsrichter sie in derselben Klasse ab.
+		a.arb.Withdraw(w.EntityID, desired.Source{Kind: desired.SourceHeizstab}.Key(), false)
 		cmds, typ, warum := logikBefehl(ent, w.Ausgang)
 		if warum != nil {
 			konflikt[w.EntityID] = warum
@@ -123,6 +127,10 @@ func (a *Agent) runSteuerlogik(now time.Time) {
 			IssuedAt:      now,
 			Commands:      a.consumerCommands(ent, cmds),
 			RequestedType: typ,
+			// Pflicht (must_run, nur aus der Übersetzung einer Steuerart): derselbe begrenzte
+			// Override wie die generierte Pflichtregel - über dem Fahrplan (70), unter dem
+			// Handeingriff (75), höchstens vier Stunden, jede Schutzgrenze bleibt.
+			Override: w.Ausgang.Pflicht,
 		})
 	}
 

@@ -19,6 +19,8 @@ public class SteuerlogikDienstException extends RuntimeException {
     public static final String HOME_ASSISTANT = "home_assistant_unlesbar";
     /** Ein Flow ist keine Regel des Regel-Baukastens (der freie Editor baut mehr; Stufe 6, Zusammenführen). */
     public static final String KEINE_REGEL = "keine_regel";
+    /** Ein Flow ist nicht die generierte Verbraucherregel einer Steuerart (Stufe 6, dritter Teil). */
+    public static final String KEINE_STEUERART = "keine_steuerart";
 
     private final String grund;
     private final transient JsonNode bericht;

@@ -9983,10 +9983,29 @@ export interface SteuerwegSchritt {
   am: string;
   wer: string | null;
   rolle: string | null;
-  daten: { regeln?: unknown[] } | null;
+  daten: { regeln?: unknown[]; geraete?: unknown[] } | null;
 }
 
-/** Der Schalter der Anlage (`modus` ist auf einer Edge Light immer `kern`: dort gibt es keinen alten Weg). */
+/**
+ * Ein Gerät, das eine Steuerart oder der Heizstab-Regler der Box führt (Stufe 6, Zusammenführen, dritter Teil): wo es
+ * läuft (`alt` der generierte Flow bzw. der Regler der Box, `mitlauf`, `kern`) und der Vergleich seiner Übersetzung.
+ */
+export interface SteuerwegGeraet {
+  art: 'steuerart' | 'heizstab';
+  entityId: string;
+  name: string;
+  weg: SteuerwegWeg;
+  gruende: string[];
+  logikId: string | null;
+  logikFassung: number | null;
+  vergleich: SteuerwegVergleich | null;
+  gemeldetAm: string | null;
+}
+
+/**
+ * Der Schalter der Anlage: `modus` gilt für die Regeln (auf einer Edge Light immer `kern`: dort gibt es für Regeln
+ * keinen alten Weg), `geraeteModus` für Steuerarten und Heizstab-Regler (auf beiden Box-Arten, ab Werk `alt`).
+ */
 export interface SteuerwegAntwort {
   stand: {
     modus: 'alt' | 'mitlauf' | 'kern';
@@ -9996,6 +10015,10 @@ export interface SteuerwegAntwort {
     boxKannScharf: boolean;
     regeln: SteuerwegRegel[];
     schritte: SteuerwegSchritt[];
+    geraeteModus: 'alt' | 'mitlauf' | 'kern';
+    geraeteSeit: string | null;
+    boxKannSteuerarten: boolean;
+    geraete: SteuerwegGeraet[];
   };
   darf: boolean;
 }

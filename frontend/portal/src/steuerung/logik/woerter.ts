@@ -73,7 +73,10 @@ const ERKLAERT: Record<string, Tabelle> = {
     on_text: 'Satz im Blatt „Warum?“ fürs Angehen', off_text: 'Satz fürs Ausgehen', min: 'Kleinster Wert', max: 'Größter Wert',
   },
   schritt: { by: 'Um so viel ändern', set: 'Auf diesen Wert setzen', not_before: 'Frühestens so lange nach dem letzten Wechsel', then: 'Einen Zeitgeber starten' },
-  ausgang: { level: 'Stufe 0 bis Zahl der Ausgänge', on_off: 'Ein oder aus', setpoint: 'Sollwert in °C oder kW', mode: 'Betriebsart', percent: 'Anteil 0 bis 100 %' },
+  ausgang: {
+    level: 'Stufe 0 bis Zahl der Ausgänge', on_off: 'Ein oder aus', setpoint: 'Sollwert in °C oder kW', mode: 'Betriebsart',
+    percent: 'Anteil 0 bis 100 %', must_run: 'Pflicht vor dem Fahrplan: nur in der Übersetzung einer Steuerart',
+  },
   lage: { when: 'Wenn das gilt …', else: 'Die letzte Zeile: sonst', title: 'Kurzer Titel', text: 'Satz mit {Formel} für Werte von jetzt' },
   probe: { given: 'Werte am Anfang', after: 'So lange läuft die Probe', expect: 'Was danach gelten soll' },
   wertwort: { keep: 'Nach einem Neustart: behalten', unknown: 'Kein frischer Wert' },
@@ -82,10 +85,16 @@ const ERKLAERT: Record<string, Tabelle> = {
     time_window: 'time_window(von, bis): Uhrzeit liegt im Fenster', in_schedule: 'Jetzt im Zeitplan',
     holds: 'holds(Bedingung, Dauer): gilt seit mindestens', since: 'Zeit seit dem letzten Wechsel eines Zustands',
     running: 'Ein Zeitgeber läuft', last: 'Letzter Schritt eines Zählers', min: 'Kleinster Wert', max: 'Größter Wert',
+    changes: 'changes(Zähler, Dauer): um wie viel er sich in der Dauer bewegt hat',
+    oldest_change: 'oldest_change(Zähler, Dauer): wie lange der älteste Wechsel darin her ist',
   },
   formelwort: { clock: 'Die Uhrzeit, zum Vergleich mit "HH:MM"', unknown: 'Kein Wert: nur als Zweig von if(), etwa „sonst kein Wunsch“' },
   geraet_eigenschaft: { requested: 'Was die Logik im letzten Takt wollte', output_hours_today: 'Einschaltzeit aller Ausgänge seit Mitternacht' },
-  quelle_fest: { 'site.grid': 'kW, + heißt Bezug', 'battery.power': 'kW, + heißt laden', 'price.current': 'ct/kWh, eine Zahl ohne Einheit' },
+  quelle_fest: {
+    'site.grid': 'kW, + heißt Bezug', 'battery.power': 'kW, + heißt laden', 'price.current': 'ct/kWh, eine Zahl ohne Einheit',
+    'site.surplus': 'kW: Sonnenstrom minus Hausverbrauch, aus derselben Messung',
+  },
+  signal: { power: 'kW, die das Gerät zieht: gemessen, sonst die seiner bestätigten Stufe' },
 };
 
 export interface Zeile {

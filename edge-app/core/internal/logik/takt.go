@@ -45,6 +45,37 @@ type zustandLauf struct {
 	seit    float64
 	zuletzt string
 	bis     *float64
+	// wechsel ist der Verlauf eines Zählers für changes() und oldest_change(): je Wechsel die
+	// Zeit und um wie viel er sich bewegt hat. Er reicht höchstens verlaufDauer zurück und
+	// bleibt über einen Neustart und eine neue Fassung erhalten (er ist Geschichte, kein Stand).
+	wechsel []zaehlerWechsel
+}
+
+// zaehlerWechsel ist ein Wechsel eines Zählers: wann und um wie viel (Betrag).
+type zaehlerWechsel struct {
+	T  float64 `json:"t"`
+	Um int     `json:"um"`
+}
+
+// Grenzen des Verlaufs eines Zählers: ein Tag, höchstens verlaufEintraege Wechsel.
+const (
+	verlaufDauer     = 24 * 3600.0
+	verlaufEintraege = 1024
+)
+
+// merkeWechsel schreibt einen Wechsel in den Verlauf und vergisst, was älter als ein Tag ist.
+func (z *zustandLauf) merkeWechsel(t float64, um int) {
+	if um < 0 {
+		um = -um
+	}
+	z.wechsel = append(z.wechsel, zaehlerWechsel{T: t, Um: um})
+	alt := 0
+	for alt < len(z.wechsel) && (t-z.wechsel[alt].T >= verlaufDauer || len(z.wechsel)-alt > verlaufEintraege) {
+		alt++
+	}
+	if alt > 0 {
+		z.wechsel = append([]zaehlerWechsel(nil), z.wechsel[alt:]...)
+	}
 }
 
 type geraetLauf struct {
@@ -105,7 +136,11 @@ func (z *Zustand) neuerLauf(jetzt float64, alt *zustandLauf) *zustandLauf {
 				wert = z.Von
 			}
 		}
-		return &zustandLauf{art: "counter", wert: wert, seit: jetzt, zuletzt: "start"}
+		l := &zustandLauf{art: "counter", wert: wert, seit: jetzt, zuletzt: "start"}
+		if alt != nil && alt.art == "counter" {
+			l.wechsel = append([]zaehlerWechsel(nil), alt.wechsel...)
+		}
+		return l
 	default:
 		l := &zustandLauf{art: "timer"}
 		if z.Neustart == neustartBleibt && alt != nil {
@@ -141,6 +176,11 @@ type Ausgang struct {
 
 	HatAnteil bool
 	Anteil    *float64 // nil: kein Wunsch
+
+	// Pflicht hebt den Wunsch über den Fahrplan (must_run, nur in der Übersetzung einer
+	// Steuerart): wahr nur, wenn die Formel wahr ist.
+	HatPflicht bool
+	Pflicht    bool
 }
 
 // Ereignis ist ein Wechsel, den der Verlauf festhält.
@@ -367,6 +407,7 @@ func (L *Logik) takt(st *Lauf, ein *Eingabe, opt taktOpt) TaktErgebnis {
 					}
 				}
 				ereignisse = append(ereignisse, Ereignis{T: ein.Jetzt, Was: e.Kennung, Von: z.wert, Nach: ziel, Schritt: s.Name, Grund: grund, Gestartet: gestartet})
+				z.merkeWechsel(ein.Jetzt, ziel-z.wert)
 				z.wert = ziel
 				z.seit = ein.Jetzt
 				z.zuletzt = s.Name
@@ -447,6 +488,11 @@ func (L *Logik) takt(st *Lauf, ein *Eingabe, opt taktOpt) TaktErgebnis {
 				}
 				o.Anteil = &v
 			}
+		}
+		if b, ok := arten["must_run"]; ok {
+			o.HatPflicht = true
+			x := L.rechneSicher(st, ein, b, &ereignisse, ein.Jetzt)
+			o.Pflicht = x.Art == WertBool && x.B
 		}
 		ausgaenge[g] = o
 	}

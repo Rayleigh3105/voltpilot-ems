@@ -105,7 +105,8 @@ func (L *Logik) alleAusdruecke() []ausdruckOrt {
 			}
 		}
 	}
-	soll := map[string]Groesse{"level": GroesseZahl, "on_off": GroesseBool, "setpoint": "", "mode": GroesseWort, "percent": GroesseProzent}
+	soll := map[string]Groesse{"level": GroesseZahl, "on_off": GroesseBool, "setpoint": "", "mode": GroesseWort, "percent": GroesseProzent,
+		"must_run": GroesseBool}
 	for _, g := range L.AusgangListe {
 		for art, b := range L.Ausgaenge[g] {
 			wo := "outputs." + g + "." + art
@@ -192,6 +193,13 @@ func (L *Logik) Pruefe(anlage map[string]ProbenGeraet) *Pruefbericht {
 	for _, g := range L.GeraetListe {
 		if _, ok := L.Ausgaenge[g]; !ok {
 			fehl("devices."+g, "Gerät „%s“ wird beansprucht, bekommt aber keinen Ausgang", g)
+		}
+	}
+	// Pflicht hebt einen Wunsch über den Fahrplan (Rang 70, Arbitrierung D-5); das darf nur die
+	// Übersetzung einer Steuerart, wie auf dem alten Weg nur der Compiler der Verbraucherregel.
+	for _, g := range L.AusgangListe {
+		if _, ok := L.Ausgaenge[g]["must_run"]; ok && !L.PflichtErlaubt {
+			fehl("outputs."+g+".must_run", "outputs.%s.must_run: Pflicht vor dem Fahrplan gibt es nur in der Übersetzung einer Steuerart", g)
 		}
 	}
 	for _, g := range L.AusgangListe {

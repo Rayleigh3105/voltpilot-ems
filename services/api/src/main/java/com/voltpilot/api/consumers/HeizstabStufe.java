@@ -8,7 +8,9 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Die STUFE eines Heizstabs, wie die Box sie im Herzschlag meldet (Heizstab-Konzept V1;
@@ -135,6 +137,55 @@ public final class HeizstabStufe {
             n.put("seit", seit);
         }
         return n.toString();
+    }
+
+    /**
+     * Die Titel der Lage des Heizstab-Reglers als Logik des Kerns (Baustein
+     * {@code steuerlogik/zusammenfuehren/heizstab-regler.block.yaml}) und der Code des Reglers dazu; ein Zwilling, den
+     * {@code HeizstabStufeTest} gegen den Baustein hält.
+     */
+    static final Map<String, String> TITEL_CODES = Map.of(
+            "Messwerte fehlen", "messwerte_fehlen", "Höchste Stufe gesenkt", "hoechste_stufe",
+            "Kein Überschuss", "kein_ueberschuss", "Heizt mit Überschuss", "ueberschuss",
+            "Mindestlaufzeit", "mindestlauf", "Schaltgrenze erreicht", "schaltgrenze", "Haltezeit", "haltezeit",
+            "Mindestpause", "mindestpause", "Überschuss wird geprüft", "ueberschuss_pruefen");
+
+    /**
+     * Führt die scharfe Übersetzung des Heizstab-Reglers den Stab (Steuerlogik Stufe 6, dritter Teil), meldet der
+     * Herzschlag keinen {@code heizstab}-Block, sondern ihren Lauf: daraus derselbe Auszug, damit die Karte des Stabs
+     * ihren Grund behält ({@code grund} ist der Satz der Lage, „höher ab“ steht darin). null ohne einen solchen Lauf.
+     *
+     * @param herzschlag der ganze Herzschlag ({@code logik.laeufe})
+     */
+    public static String reglerAusLogik(JsonNode herzschlag, UUID entityId) {
+        // Die Kennung der Übersetzung wie SteuerwegGeraete.logikIdHeizstab (dieses Paket hängt nicht an steuerlogik).
+        String logik = UUID.nameUUIDFromBytes(("steuerlogik-heizstab:" + entityId)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        JsonNode laeufe = herzschlag == null ? null : herzschlag.path("logik").get("laeufe");
+        if (laeufe == null || !laeufe.isArray()) {
+            return null;
+        }
+        for (JsonNode l : laeufe) {
+            if (!logik.equals(l.path("flow_id").asText()) || !"scharf".equals(l.path("zustand").asText())) {
+                continue;
+            }
+            String code = TITEL_CODES.get(l.path("lage").path("titel").asText(""));
+            JsonNode wunsch = l.path("geraete").path("heizstab").path("wunsch");
+            Integer ausgaenge = ganzzahl(wunsch.get("stufe"), 0, 4);
+            if (code == null || ausgaenge == null) {
+                return null;
+            }
+            ObjectNode n = JSON.createObjectNode();
+            n.put("stufe", ausgaenge);
+            n.put("ausgaenge", ausgaenge);
+            n.put("code", code);
+            String grund = l.path("lage").path("satz").asText("");
+            if (!grund.isBlank()) {
+                n.put("grund", grund.length() > 200 ? grund.substring(0, 200) : grund);
+            }
+            return n.toString();
+        }
+        return null;
     }
 
     /**

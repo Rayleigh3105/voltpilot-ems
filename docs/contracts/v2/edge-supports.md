@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -134,6 +134,16 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   ([Zusammenführen](steuerlogik.md#zusammenführen-stufe-6-zweiter-teil); Beleg `logikdienst/regel/gleichheit_test.go`).
   Beide Box-Arten melden es. Die Cloud liefert eine Regel nur an eine Box mit diesem Wort als Logik des Kerns aus;
   ohne es lehnt sie eine Regel auf Edge Light weiter ab, und eine Docker-Box bleibt auf dem alten Weg.
+- `steuerlogik_steuerarten` (Steuerlogik Stufe 6, Zusammenführen, dritter Teil, 15.11.2026): der Kern kennt die
+  Ergänzungen der Sprache, in die sich eine Steuerart (die generierte Verbraucherregel) und der Heizstab-Regler
+  übersetzen: die Quelle `site.surplus`, das Signal `power` eines Geräts, den Verlauf eines Zählers (`changes`,
+  `oldest_change`) und den Ausgang `must_run` (Pflicht vor dem Fahrplan, Rang 70 wie die Pflichtregel); er ist der
+  Kern, den die Gleichheitstests gegen [verbraucherregel-vectors.json](verbraucherregel-vectors.json) und
+  [heizstab-regler-vectors.json](heizstab-regler-vectors.json) halten
+  ([Zusammenführen](steuerlogik.md#zusammenführen-stufe-6-dritter-teil); Belege `logikdienst/steuerart/gleichheit_test.go`,
+  `logikdienst/heizstabregler/gleichheit_test.go`). Beide Box-Arten melden es. Die Cloud liefert diese Übersetzungen
+  nur an eine Box mit diesem Wort aus, nach dem Schalter der Anlage; ohne es bleiben Steuerart und Heizstab-Regler auf
+  dem alten Weg.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

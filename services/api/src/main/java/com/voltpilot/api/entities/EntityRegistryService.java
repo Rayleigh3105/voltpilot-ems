@@ -188,6 +188,17 @@ public class EntityRegistryService {
     }
 
     /**
+     * Steuerlogik Stufe 6, dritter Teil: der Heizstab-Regler als Logik des Kerns. Führt die scharfe Übersetzung einen
+     * Stab, bleibt sein Block aus dem Push (die Komponente bleibt owner_claimed); ohne Spring keiner.
+     */
+    private com.voltpilot.api.consumers.HeizstabImKern heizstabImKern;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void heizstabImKern(@org.springframework.context.annotation.Lazy com.voltpilot.api.consumers.HeizstabImKern heizstabImKern) {
+        this.heizstabImKern = heizstabImKern;
+    }
+
+    /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
      * footgun): with the package-private test-seam constructor below and no
      * annotation, Spring cannot pick an injection constructor and crash-loops
@@ -616,6 +627,10 @@ public class EntityRegistryService {
 
     /** Der Zeitgeber reicht seine injizierbare Uhr bis in die Push-Revision durch. */
     public PushOutcome pushRegistryBestEffort(UUID siteId, Instant now) {
+        if (heizstabImKern != null) {
+            // Die Übersetzungen der Geräte zuerst auf den Stand ihrer Quellen (und der Satz vor der Registry).
+            heizstabImKern.angleichen(siteId);
+        }
         UUID tenantId = TenantContext.get();
         LeadDeviceService.FuehrendeBox lead = leadDevices.fuehrendeBox(siteId);
         UUID gateway = lead.box();
@@ -1323,6 +1338,9 @@ public class EntityRegistryService {
         // ohne einen einzigen Block ist die Nutzlast byte-gleich.
         Map<UUID, ObjectNode> heizstaebe = heizstabPush == null ? Map.of()
                 : heizstabPush.fuerBox(siteId, deviceId);
+        // Steuerlogik Stufe 6, dritter Teil: führt die scharfe Übersetzung den Stab, bleibt sein Block draußen.
+        java.util.Set<UUID> imKern = heizstabImKern == null || heizstaebe.isEmpty() ? java.util.Set.of()
+                : heizstabImKern.imKern(siteId, deviceId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
@@ -1351,8 +1369,11 @@ public class EntityRegistryService {
             }
             ObjectNode heizstabBlock = heizstaebe.get(row.id());
             if (heizstabBlock != null) {
-                // Der Regler der Box IST die Regel dieses Heizstabs: der Plan bleibt draußen.
-                d.set("heizstab", heizstabBlock.deepCopy());
+                // Der Regler der Box IST die Regel dieses Heizstabs: der Plan bleibt draußen. Führt ihn die
+                // Übersetzung im Kern, fehlt nur der Block; der Plan bleibt trotzdem draußen.
+                if (!imKern.contains(row.id())) {
+                    d.set("heizstab", heizstabBlock.deepCopy());
+                }
                 d.put("owner_claimed", true);
             }
             String chargePointId = chargePoints.get(row.id());

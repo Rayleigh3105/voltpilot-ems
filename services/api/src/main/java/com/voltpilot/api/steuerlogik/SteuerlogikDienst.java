@@ -36,10 +36,19 @@ public interface SteuerlogikDienst {
      * abzulehnen (Bericht 8.9).
      */
     record Auftrag(String text, UUID logikId, int fassung, Instant gebautAm, Ort ort, String registry,
-            boolean scharf, Werte werte, boolean werteBehalten) {
+            boolean scharf, Werte werte, boolean werteBehalten, boolean pflicht) {
 
         public Auftrag(String text, UUID logikId, int fassung, Instant gebautAm, Ort ort, String registry) {
             this(text, logikId, fassung, gebautAm, ort, registry, false, null, false);
+        }
+
+        /**
+         * Ohne {@code pflicht}: nur die Übersetzung einer Steuerart darf {@code must_run} tragen (Stufe 6, dritter
+         * Teil); jede andere Logik sperrt die Prüfung damit.
+         */
+        public Auftrag(String text, UUID logikId, int fassung, Instant gebautAm, Ort ort, String registry,
+                boolean scharf, Werte werte, boolean werteBehalten) {
+            this(text, logikId, fassung, gebautAm, ort, registry, scharf, werte, werteBehalten, false);
         }
     }
 
@@ -128,4 +137,20 @@ public interface SteuerlogikDienst {
      * {@link SteuerlogikDienstException#KEINE_REGEL}.
      */
     JsonNode ausRegel(JsonNode dokument, String name, int fassung, String registry);
+
+    /**
+     * Übersetzt die generierte Verbraucherregel einer Steuerart in eine Logik ({@code POST /aus-steuerart}, Stufe 6,
+     * Zusammenführen, dritter Teil): {@code dokument} ist der generierte Flow ({@code origin.kind = consumer-policy}).
+     * Antwort wie {@link #ausRegel}, dazu {@code pflicht}: die Logik trägt {@code must_run}, ihr Artefakt baut die API
+     * mit {@link Auftrag#pflicht()}. Ein anderes Dokument ist eine {@link SteuerlogikDienstException} mit Grund
+     * {@link SteuerlogikDienstException#KEINE_STEUERART}.
+     */
+    JsonNode ausSteuerart(JsonNode dokument, String name, int fassung, String registry);
+
+    /**
+     * Übersetzt den Parameterblock des Heizstab-Reglers in eine Logik ({@code POST /aus-heizstab}, Stufe 6,
+     * Zusammenführen, dritter Teil): der Baustein {@code heizstab-regler.block.yaml} mit den Werten des Blocks und den
+     * Stufen der Ausgangsmenge aus {@code registry}. Antwort wie {@link #ausRegel}.
+     */
+    JsonNode ausHeizstab(UUID entityId, JsonNode block, String name, String registry);
 }

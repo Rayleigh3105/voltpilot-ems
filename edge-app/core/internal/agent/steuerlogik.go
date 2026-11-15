@@ -88,6 +88,14 @@ func (a *Agent) logikObserve(ts time.Time, ms map[string]float64, battKw *float6
 	if battKw != nil && endlich(*battKw) {
 		a.logikIn.site["battery.power"] = logikMesswert{v: *battKw, at: ts}
 	}
+	// site.surplus (Stufe 6, dritter Teil): Sonnenstrom minus Hausverbrauch, nur aus einer
+	// Messung, in der beide stehen - wie die Verbraucherregel ihren pv_surplus_kw bildet
+	// (verbraucherregel.SiteSignals). Fehlt einer, bleibt der letzte Wert und altert.
+	pv, okPV := ms["pv_power_kw"]
+	last, okLast := ms["load_kw"]
+	if okPV && okLast && endlich(pv) && endlich(last) {
+		a.logikIn.site["site.surplus"] = logikMesswert{v: pv - last, at: ts}
+	}
 }
 
 // logikObserveSamples keeps the Fühler temperatures out of a local
@@ -133,8 +141,9 @@ func istFuehlerTemperatur(pointKey string) bool {
 }
 
 // logikQuelle reads one input of a logic. Known: site.grid, site.pv,
-// battery.power, battery.soc, price.current (the spot price of the price feed,
-// ct/kWh, while it is valid), <entity>.<signal> of a self-built Modbus device
+// site.surplus, battery.power, battery.soc, price.current (the spot price of
+// the price feed, ct/kWh, while it is valid), <entity>.power (logikLeistung),
+// <entity>.<signal> of a self-built Modbus device
 // whose definition maps that signal to a channel, and <entity>.temperature of
 // a Fühler with exactly one temperature probe. Everything else is unknown - more probes on one
 // entity is ambiguous, and a guess would be invented.
@@ -155,10 +164,17 @@ func (a *Agent) logikQuelle(source string, now time.Time) logik.EinWert {
 		}
 	}
 	a.logikIn.mu.Lock()
-	defer a.logikIn.mu.Unlock()
-	if w, ok := a.logikIn.site[source]; ok {
+	if w, fest := a.logikIn.site[source]; fest {
+		a.logikIn.mu.Unlock()
 		return messwert(w, now)
 	}
+	a.logikIn.mu.Unlock()
+	// Erst nach den festen Quellen: battery.power ist der Speicher, kein Gerät „battery“.
+	if ok && kanal == "power" && !istFesteQuelle(source) {
+		return a.logikLeistung(entity, now)
+	}
+	a.logikIn.mu.Lock()
+	defer a.logikIn.mu.Unlock()
 	if !ok || kanal != "temperature" {
 		return logik.EinWert{}
 	}
@@ -170,6 +186,37 @@ func (a *Agent) logikQuelle(source string, now time.Time) logik.EinWert {
 		return messwert(w, now)
 	}
 	return logik.EinWert{}
+}
+
+// logikLeistung is <entity>.power (Stufe 6, third part): what the device
+// draws now - MEASURED (its own power_kw, at most 30 s old), else the kW of its
+// CONFIRMED stage while the readback is fresh; the heating-rod controller reads
+// its rod exactly so (heizstabRodKw). Nothing fresh: unknown.
+func (a *Agent) logikLeistung(entityID string, now time.Time) logik.EinWert {
+	a.entMu.Lock()
+	er, ok := a.entReadings[entityID]
+	a.entMu.Unlock()
+	if ok && now.Sub(er.recv) <= heizstabRodMeasuredMaxAge {
+		if kw, has := er.channels["power_kw"]; has && endlich(kw) {
+			return messwert(logikMesswert{v: kw, at: er.recv}, now)
+		}
+	}
+	if st := a.shellyGroupStage(entityID); st != nil && st.ConfirmedKw != nil {
+		if at, err := time.Parse(time.RFC3339, st.At); err == nil && now.Sub(at) <= heizstabStageMaxAge {
+			return messwert(logikMesswert{v: *st.ConfirmedKw, at: at}, now)
+		}
+	}
+	return logik.EinWert{}
+}
+
+// istFesteQuelle: die Quellen der Anlage, die jede Box liest (Wortliste, quelle_fest) - auch ohne Messwert nie
+// das Signal eines Geräts.
+func istFesteQuelle(source string) bool {
+	switch source {
+	case "site.grid", "site.pv", "site.surplus", "battery.power", "battery.soc", "sun.elevation", "price.current":
+		return true
+	}
+	return false
 }
 
 func messwert(w logikMesswert, now time.Time) logik.EinWert {

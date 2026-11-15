@@ -199,6 +199,17 @@ func (L *Logik) rechne(st *Lauf, ein *Eingabe, b *baum, tiefe int) (Wert, error)
 	return Wert{}, fehler("Unbekannter Knoten")
 }
 
+// Formel rechnet eine benannte Formel mit dem Stand des Laufs, wie der letzte Takt ihn
+// hinterließ (Stufe 6, dritter Teil: „höher ab“ des Heizstab-Reglers im Gleichheitsbeleg).
+// Sie ändert nichts, was ein Takt nicht ebenso in derselben Sekunde rechnen würde.
+func (L *Logik) Formel(st *Lauf, ein *Eingabe, name string) (Wert, error) {
+	m, ok := L.Merker[name]
+	if !ok {
+		return Wert{}, fehler("Unbekannte Formel „%s“", name)
+	}
+	return L.rechne(st, ein, m, 0)
+}
+
 func (L *Logik) rufe(st *Lauf, ein *Eingabe, b *baum, tiefe int) (Wert, error) {
 	w := func(x *baum) (Wert, error) { return L.rechne(st, ein, x, tiefe+1) }
 	a := b.args
@@ -353,6 +364,41 @@ func (L *Logik) rufe(st *Lauf, ein *Eingabe, b *baum, tiefe int) (Wert, error) {
 			return Wert{}, fehler("last() braucht einen Zähler: „%s“", b.src)
 		}
 		return wortW(z.zuletzt), nil
+	case "changes", "oldest_change":
+		// Der Verlauf eines Zählers (Stufe 6, dritter Teil): changes() ist, um wie viel er sich in
+		// der Dauer insgesamt bewegt hat (0 → 3 zählt drei), oldest_change(), wie lange der älteste
+		// dieser Wechsel her ist (ohne Wechsel unbekannt). Ein Wechsel zählt, solange er jünger als
+		// die Dauer ist; der Verlauf reicht einen Tag zurück.
+		if err := brauche(2); err != nil {
+			return Wert{}, err
+		}
+		z := st.zustandLauf(a[0])
+		if z == nil || z.art != "counter" {
+			return Wert{}, fehler("%s() braucht einen Zähler: „%s“", b.f, b.src)
+		}
+		dauer, err := w(a[1])
+		if err != nil {
+			return Wert{}, err
+		}
+		if dauer.Art == WertUnbekannt {
+			return unbekanntW(), nil
+		}
+		summe, aeltester := 0, -1.0
+		for _, x := range z.wechsel {
+			if alter := ein.Jetzt - x.T; alter < dauer.V && alter >= 0 {
+				summe += x.Um
+				if alter > aeltester {
+					aeltester = alter
+				}
+			}
+		}
+		if b.f == "changes" {
+			return zahlW(float64(summe), GroesseZahl), nil
+		}
+		if aeltester < 0 {
+			return unbekanntW(), nil
+		}
+		return zahlW(aeltester, GroesseDauer), nil
 	case "in_schedule":
 		if err := brauche(1); err != nil {
 			return Wert{}, err
@@ -669,6 +715,20 @@ func (L *Logik) groesse(b *baum, pfad []string) (Groesse, error) {
 				return "", fehler("last() braucht einen Zähler: „%s“", b.src)
 			}
 			return GroesseWort, nil
+		case "changes", "oldest_change":
+			if len(b.args) != 2 || b.args[0].t != kName {
+				return "", fehler("%s() braucht einen Zähler und eine Dauer: „%s“", b.f, b.src)
+			}
+			if z, ok := L.zustand[b.args[0].n]; !ok || z.Art != "counter" {
+				return "", fehler("%s() braucht einen Zähler und eine Dauer: „%s“", b.f, b.src)
+			}
+			if arten[1] != GroesseDauer {
+				return "", fehler("%s() braucht einen Zähler und eine Dauer: „%s“", b.f, b.src)
+			}
+			if b.f == "changes" {
+				return GroesseZahl, nil
+			}
+			return GroesseDauer, nil
 		case "in_schedule":
 			if len(arten) != 1 || arten[0] != GroessePlan {
 				return "", fehler("in_schedule() braucht einen Zeitplan: „%s“", b.src)

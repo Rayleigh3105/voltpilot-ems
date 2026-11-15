@@ -25,6 +25,11 @@ package logikdienst
 //   POST /aus-regel {dokument, name?, fassung?, registry?}
 //                                                 -> 200 {uebersetzt, text?, gruende, bericht?} (Stufe 6, Zusammenführen)
 //                                                 |  422 {message, grund: "regel"} (keine Regel des Regel-Baukastens)
+//   POST /aus-steuerart {dokument, name?, fassung?, registry?}
+//                                                 -> 200 {uebersetzt, text?, gruende, bericht?, pflicht} (Stufe 6, dritter Teil)
+//                                                 |  422 {message, grund: "steuerart"} (keine Verbraucherregel einer Steuerart)
+//   POST /aus-heizstab {entity, block, name?, registry}
+//                                                 -> 200 {uebersetzt, text?, gruende, bericht?} (Stufe 6, dritter Teil)
 //   GET  /health                                  -> 200 {status, version, sprache}
 //   anything malformed                            -> 400 {message}
 
@@ -162,6 +167,34 @@ func Handler() http.Handler {
 			"gruende", len(e.Gruende))
 		schreibe(w, http.StatusOK, e)
 	})
+	mux.HandleFunc("POST /aus-steuerart", func(w http.ResponseWriter, r *http.Request) {
+		var req SteuerartAuftrag
+		if !lies(w, r, &req) {
+			return
+		}
+		e, err := AusSteuerart(req)
+		if err != nil {
+			antworteFehler(w, err, nil)
+			return
+		}
+		slog.Info("logik-dienst: Steuerart übersetzt", "name", req.Name, "fassung", req.Fassung, "uebersetzt", e.Uebersetzt,
+			"gruende", len(e.Gruende), "pflicht", e.Pflicht)
+		schreibe(w, http.StatusOK, e)
+	})
+	mux.HandleFunc("POST /aus-heizstab", func(w http.ResponseWriter, r *http.Request) {
+		var req HeizstabAuftrag
+		if !lies(w, r, &req) {
+			return
+		}
+		e, err := AusHeizstab(req)
+		if err != nil {
+			antworteFehler(w, err, nil)
+			return
+		}
+		slog.Info("logik-dienst: Heizstab-Regler übersetzt", "entity", req.Entity, "uebersetzt", e.Uebersetzt,
+			"gruende", len(e.Gruende))
+		schreibe(w, http.StatusOK, e)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		schreibe(w, http.StatusNotFound, map[string]any{"message": "Nicht gefunden"})
 	})
@@ -200,6 +233,8 @@ func antworteFehler(w http.ResponseWriter, err error, bericht *Bericht) {
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "home_assistant"})
 	case errors.Is(err, ErrRegel):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "regel"})
+	case errors.Is(err, ErrSteuerart):
+		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "steuerart"})
 	case errors.Is(err, ErrBaustein):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "baustein"})
 	case errors.Is(err, ErrStellwerte):

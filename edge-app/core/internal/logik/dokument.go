@@ -303,8 +303,12 @@ type Logik struct {
 	Lage         []*LageZeile
 	Zusammen     []Bedingung
 	Proben       []*Probe
-	woerter      map[string]bool
-	eigene       map[string]bool
+	// PflichtErlaubt lässt `must_run` an einem Ausgang zu (Stufe 6, dritter Teil): nur die
+	// Übersetzung einer Steuerart trägt die Pflicht einer Verbraucherregel weiter. Die Prüfung
+	// sperrt sie sonst; nur der Dienst neben der API setzt das Feld, auf Weisung der API.
+	PflichtErlaubt bool
+	woerter        map[string]bool
+	eigene         map[string]bool
 }
 
 // Grenzen des Dokuments, wie das Schema sie zieht.
@@ -655,11 +659,11 @@ func Lesen(daten []byte) (*Logik, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := nurSchluessel("outputs."+k, o, "level", "on_off", "setpoint", "mode", "percent"); err != nil {
+		if err := nurSchluessel("outputs."+k, o, "level", "on_off", "setpoint", "mode", "percent", "must_run"); err != nil {
 			return nil, err
 		}
-		if len(o.keys) == 0 {
-			return nil, fehler("outputs.%s: mindestens eine Angabe", k)
+		if len(o.keys) == 0 || (len(o.keys) == 1 && o.keys[0] == "must_run") {
+			return nil, fehler("outputs.%s: mindestens eine Angabe außer must_run", k)
 		}
 		arten := map[string]*baum{}
 		for j, art := range o.keys {
@@ -1153,8 +1157,13 @@ func groesseDerQuelle(von string) (Groesse, bool) {
 	if strings.HasSuffix(von, ".humidity") {
 		return GroesseProzent, false
 	}
+	if strings.HasSuffix(von, ".power") {
+		// Die Leistung, die ein Gerät gerade zieht (Stufe 6, dritter Teil): gemessen, sonst die
+		// Leistung seiner bestätigten Stufe.
+		return GroesseKW, false
+	}
 	switch von {
-	case "site.grid", "battery.power", "site.pv":
+	case "site.grid", "battery.power", "site.pv", "site.surplus":
 		return GroesseKW, false
 	case "battery.soc":
 		return GroesseProzent, false

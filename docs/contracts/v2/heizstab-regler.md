@@ -54,6 +54,13 @@ Einen Stab, den der Regler führt, lässt der Plan-Executor in Ruhe. Das ist die
 
 Den Zustand je Stab hält die Box in `data_dir/heizstab-state.json`: Stufe, seit wann, zuletzt ein und aus, Schaltungen der letzten Stunde. Ein Neustart verkürzt so weder eine Pause noch einen Mindestlauf. Der allgemeine Zyklen-Guard des Arbiters bleibt, wie er ist; er vergisst beim Neustart bewusst.
 
+## Als Logik des Kerns
+
+Seit Steuerlogik Stufe 6, dritter Teil, lässt sich der Regler als Logik des Kerns ausführen: der Baustein [heizstab-regler.block.yaml](steuerlogik/zusammenfuehren/heizstab-regler.block.yaml), gefüllt aus diesem Block und den Stufen der Ausgangsmenge, entscheidet gegen [heizstab-regler-vectors.json](heizstab-regler-vectors.json) gleich ([Zusammenführen, dritter Teil](steuerlogik.md#zusammenführen-stufe-6-dritter-teil)).
+Ab Werk und nach „Zurück“ führt der Regler; nach „Übernehmen“ am Schalter der Anlage fehlt der Block im Registry-Push, die Komponente bleibt `owner_claimed`, und die scharfe Übersetzung führt den Stab.
+Solange ein Stab Block und Übersetzung hat, führt der Regler: die Box gibt ihm keinen Wunsch einer Logik, und der Regler nimmt einen solchen Wunsch in derselben Sekunde zurück; umgekehrt nimmt die Logik den Wunsch des Reglers zurück, sobald der Block fehlt.
+Kommt der Block wieder, beginnt der Regler neu (sein Zustand ging mit dem Block).
+
 ## Herzschlag: `consumers.{id}.heizstab`
 
 Additiv, nur für einen Stab mit Regler:
