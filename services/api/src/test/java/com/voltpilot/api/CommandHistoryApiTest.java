@@ -173,11 +173,11 @@ class CommandHistoryApiTest {
             jdbc.update("DELETE FROM device_command_recording");
         });
         // Vorgabe: die echte Uhr - `derZeitraumReichtBisZumMonatUndNieUeberDieAufbewahrungHinaus`
-        // rechnet absichtlich relativ zu HEUTE (dort steht, warum). Nur die drei Tests mit
-        // Zeitpunkten fest am 11./12./16.08.2026 stellen sich ihre eigene feste Uhr
-        // ({@link #mitFesterUhr}) - sonst wanderte die echte Uhr irgendwann an diesen
-        // Randfällen vorbei (90 Tage Aufbewahrung) und die Route lehnte mit 400 ab, ohne dass
-        // sich an den Daten etwas änderte.
+        // rechnet absichtlich relativ zu HEUTE (dort steht, warum). Jeder andere Test mit
+        // Zeitpunkten fest am 11./12./16.08.2026 stellt sich seine eigene feste Uhr
+        // ({@link #FESTE_UHR}, direkt oder über {@link #mitFesterUhr}) - sonst wanderte die
+        // echte Uhr irgendwann an diesen Randfällen vorbei (90 Tage Aufbewahrung) und die Route
+        // lehnte mit 400 ab, ohne dass sich an den Daten etwas änderte.
         commandHistoryController.uhrStellen(java.time.Clock.systemUTC());
     }
 
@@ -187,9 +187,11 @@ class CommandHistoryApiTest {
      * Herzschläge vom 11./12./16.08.2026 unabhängig von der echten Uhrzeit innerhalb der
      * 90-tägigen Aufbewahrung bleiben.
      */
+    private static final java.time.Clock FESTE_UHR =
+            java.time.Clock.fixed(java.time.Instant.parse("2026-08-17T06:00:00Z"), java.time.ZoneOffset.UTC);
+
     private void mitFesterUhr(Runnable test) {
-        commandHistoryController.uhrStellen(
-                java.time.Clock.fixed(java.time.Instant.parse("2026-08-17T06:00:00Z"), java.time.ZoneOffset.UTC));
+        commandHistoryController.uhrStellen(FESTE_UHR);
         try {
             test.run();
         } finally {
@@ -214,6 +216,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void derBatterieVerlaufEntstehtAusDenHerzschlaegenUndBleibtEineWahrheit() {
+        commandHistoryController.uhrStellen(FESTE_UHR);
         ControlStatusListener listener = controlListener();
 
         // 1. Erster Herzschlag: die Periode beginnt, es wird KEIN Übergang
@@ -299,6 +302,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void dieAbregelungIstEinEigenerStromMitEigenemUrteil() {
+        commandHistoryController.uhrStellen(FESTE_UHR);
         CurtailmentStatusListener listener = curtailListener();
         // Freigegeben, aber nichts angewandt: kein Urteil, denn es gibt nichts
         // zu bestätigen.
@@ -329,6 +333,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void derVerbraucherStromTraegtNurDasDrahtUrteilUndErsetztDenGanzenSatz() {
+        commandHistoryController.uhrStellen(FESTE_UHR);
         String tok = token("demo", "demo");
         ResponseEntity<Map<String, Object>> created = exchange(HttpMethod.POST,
                 "/api/v1/sites/" + BERLIN_SITE + "/consumers", tok, Map.of(
@@ -337,6 +342,7 @@ class CommandHistoryApiTest {
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String entityId = (String) created.getBody().get("id");
         clearHistory();
+        commandHistoryController.uhrStellen(FESTE_UHR);
 
         ConsumerRuntimeStatusListener listener = consumerListener();
         listener.handle(TOPIC, consumers("2026-08-16T10:00:00Z", entityId, "running_optimized",
@@ -375,6 +381,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void derGeraeteFilterTrenntDieBoxVonDenGeraetenDahinter() {
+        commandHistoryController.uhrStellen(FESTE_UHR);
         String tok = token("demo", "demo");
         ResponseEntity<Map<String, Object>> created = exchange(HttpMethod.POST,
                 "/api/v1/sites/" + BERLIN_SITE + "/consumers", tok, Map.of(
@@ -384,6 +391,7 @@ class CommandHistoryApiTest {
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String entityId = (String) created.getBody().get("id");
         clearHistory();
+        commandHistoryController.uhrStellen(FESTE_UHR);
 
         // Eine gemeldete Quelle OHNE Komponente - das Gerät gibt es, es hat nur
         // noch keine Zuordnung.
@@ -462,11 +470,13 @@ class CommandHistoryApiTest {
      */
     @Test
     void derSpeicherSollwertStehtAufDerSeiteDesWechselrichtersDerIhnAusfuehrt() {
+        commandHistoryController.uhrStellen(FESTE_UHR);
         // Die Auto-Komposition hat die Steuer-Komponente angelegt; ohne sie
         // trüge die Batterie-Zeile gar keine Komponente und der Test wäre leer.
         java.util.UUID controlPoint = asTenantAQuery();
         assertThat(controlPoint).as("komponierte Steuer-Komponente der Anlage").isNotNull();
         clearHistory();
+        commandHistoryController.uhrStellen(FESTE_UHR);
 
         // Die Box meldet ihren PRIMÄREN Wechselrichter - genau die Bedingung,
         // unter der das Portal ihm die komponierten Zeilen zuordnet.
@@ -679,6 +689,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void dieSucheFiltertStrukturServerseitigUndNenntBeideZahlen() {
+        commandHistoryController.uhrStellen(FESTE_UHR);
         ControlStatusListener control = controlListener();
         CurtailmentStatusListener curtail = curtailListener();
         // Zwei Speicher-Perioden: die zweite weicht ab.
@@ -776,6 +787,7 @@ class CommandHistoryApiTest {
      */
     @Test
     void derDeckelWirdGesagtUndDerCursorFuehrtNachHinten() {
+        commandHistoryController.uhrStellen(FESTE_UHR);
         asTenantA(() -> {
             for (int i = 0; i < 6; i++) {
                 seedPeriod(String.format("2026-08-16T%02d:00:00Z", 8 + i),
