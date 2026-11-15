@@ -498,6 +498,11 @@ for (const breite of [390, 1440] as const) {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Soll VoltPilot die Ladesäule „Wallbox Carport" nicht mehr annehmen?')).toBeVisible();
     await expect(dialog.getByText(/endet dadurch NICHT/)).toBeVisible();
+    // Das Modal blendet ein (Rechner: Opacity, Telefon < 720 px: ein Blatt, das per `transform` hochfährt -
+    // Bewegungs-Programm P6, `shell.css`). `toBeVisible()` wartet nicht auf das Ende dieser Animation, ein Bild
+    // mitten drin zeigt die Fläche durchscheinend bzw. verschoben; diese zwei Zusicherungen schon.
+    await expect(dialog).toHaveCSS('opacity', '1');
+    await expect(dialog).toHaveCSS('transform', 'none');
 
     if (BILDER) {
       await page.screenshot({ path: join(BILDER, `ladesaeulen-seite-rueckfrage-${breite}.png`), fullPage: true });
