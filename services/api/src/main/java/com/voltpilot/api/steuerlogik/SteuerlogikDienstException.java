@@ -13,6 +13,8 @@ public class SteuerlogikDienstException extends RuntimeException {
     public static final String GESPERRT = "pruefung_sperrt";
     /** Gestellte Werte passen nicht (Art, Bereich, Schritt, Auswahl oder die Bedingungen zwischen ihnen). */
     public static final String STELLWERTE = "stellwerte_passen_nicht";
+    /** Ein Baustein lässt sich nicht lesen, oder ein Satz nennt eine Lücke, die die Logik nicht hat (Stufe 5). */
+    public static final String BAUSTEIN = "baustein_unlesbar";
 
     private final String grund;
     private final transient JsonNode bericht;

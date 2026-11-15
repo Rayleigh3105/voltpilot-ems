@@ -1,0 +1,113 @@
+# VoltPilot-Baustein: ein Heizstab an einer Ausgangsmenge (zum Beispiel Shelly Pro 3) nimmt Phase für Phase
+# den Sonnenstrom, der sonst ins Netz ginge, bis der Speicher warm ist. Lädt die Batterie noch, geht kaum Strom
+# ins Netz: die Batterie kommt so von selbst zuerst. Muss sie aushelfen, gibt der Heizstab eine Phase ab.
+block: 1
+name: Heizstab mit Sonnenstrom
+description: Der Heizstab heizt den Speicher mit Strom, der sonst ins Netz ginge.
+sentence: Heize mit {heizstab} und Sonnenstrom, bis der Speicher {ziel} hat.
+logic: |
+  logic: 1
+  name: Heizstab mit Sonnenstrom
+  description: Der Heizstab nimmt Phase für Phase den Sonnenstrom, der sonst ins Netz ginge, bis der Speicher warm ist.
+
+  devices:
+    heizstab: {entity: geraet-heizstab, name: Heizstab}
+
+  inputs:
+    t:        {source: quelle-t.temperature, name: Speicher,          max_age: 5 min}
+    netz:     {source: site.grid,            name: Netzbezug,         max_age: 60 s}
+    speicher: {source: battery.power,        name: Batterie lädt mit, max_age: 60 s}
+
+  settings:
+    ziel: {name: Mit Sonnenstrom bis, default: 60 °C, range: [40 °C, 75 °C], step: 1 K, editable_by: customer}
+
+  formulas:
+    frei: known(t) and not warm
+
+  states:
+    warm:
+      type: boolean
+      on_when:
+        - Der Speicher hat das Ziel erreicht: t >= ziel
+      off_when:
+        - Der Speicher liegt 3 K unter dem Ziel oder hat keinen Wert: unknown(t) or t < ziel - 3 K
+      on_text: Der Speicher gilt als warm
+      off_text: Der Speicher braucht wieder Wärme
+      after_restart: off
+    stufe:
+      type: counter
+      min: 0
+      max: 3
+      after_restart: 0
+      steps:
+        - name: blind
+          text: Ohne Netzwert bleibt der Heizstab aus
+          set: 0
+          when:
+            - Der Netzwert fehlt seit 1 Minute: holds(unknown(netz), 1 min)
+        - name: voll
+          text: Der Speicher ist warm, der Heizstab geht aus
+          set: 0
+          when:
+            - Der Heizstab läuft, der Speicher braucht keine Wärme: stufe > 0 and not frei
+        - name: zurueck
+          text: Eine Phase weniger
+          by: -1
+          not_before: 1 min
+          when:
+            - Der Heizstab läuft: stufe > 0
+          when_any:
+            - Strom kommt aus dem Netz: netz > 0.1 kW
+            - Die Batterie muss aushelfen: speicher < -0.15 kW
+        - name: versuch
+          text: Eine Phase mehr
+          by: +1
+          not_before: 3 min
+          when:
+            - Der Speicher braucht Wärme: frei
+            - Seit 1 Minute geht mehr ins Netz, als eine Phase braucht: holds(netz < -heizstab.kw_per_output, 1 min)
+            - Der Heizstab hat die letzte Phase angenommen: heizstab.level >= stufe
+
+  outputs:
+    heizstab: {level: "if(frei, stufe, 0)"}
+
+  status:
+    - when: unknown(t)
+      title: Störung Fühler
+      type: fault
+      text: Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.
+    - when: stufe > 0
+      title: Heizt mit Sonnenstrom
+      type: solar
+      text: Der Heizstab nimmt den Sonnenstrom, bis der Speicher {ziel} hat. Jetzt sind es {t}.
+    - when: warm
+      title: Speicher ist warm
+      type: idle
+      text: Der Speicher hat {t} und damit sein Ziel von {ziel}.
+    - else: true
+      title: Wartet auf Sonnenstrom
+      type: waiting
+      text: Sobald Sonnenstrom ins Netz geht, heizt der Heizstab bis {ziel}. Jetzt sind es {t}.
+
+  # Die Proben rechnen mit dem eingestellten Ziel: "t" liegt immer 10 K darunter oder knapp darüber.
+  tests:
+    - name: Morgens lädt erst die Batterie
+      given: {t: ziel - 10 K, netz: 0 kW, speicher: 3 kW, clock: "09:00"}
+      after: 10 min
+      expect: {stufe: 0, heizstab.level: 0, status: Wartet auf Sonnenstrom}
+    - name: Mittags geht Sonnenstrom ins Netz
+      given: {t: ziel - 10 K, netz: -7 kW, speicher: 0 kW, clock: "12:00"}
+      after: 13 min
+      expect: {stufe: 3, status: Heizt mit Sonnenstrom}
+    - name: Eine Wolke, die Batterie hilft aus
+      given: {t: ziel - 10 K, netz: 0 kW, speicher: -1 kW, stufe: 3, clock: "13:30"}
+      after: 90 s
+      expect: {stufe: 2, status: Heizt mit Sonnenstrom}
+    - name: Am Nachmittag ist der Speicher warm
+      given: {t: ziel + 0.5 K, netz: -7 kW, speicher: 0 kW, stufe: 3, clock: "15:00"}
+      after: 1 min
+      expect: {stufe: 0, heizstab.level: 0, status: Speicher ist warm}
+    - name: Der Fühler fällt aus
+      given: {t: unknown, netz: -7 kW, speicher: 0 kW, stufe: 2, clock: "16:00"}
+      after: 1 min
+      expect: {heizstab.level: 0, status: Störung Fühler}

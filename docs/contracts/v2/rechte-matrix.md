@@ -292,6 +292,7 @@ Sätze der Abschnitte, die keine Handlung sind — und wo sie gelten.
 | Alerting v1 §6.6 | Sicht je Empfänger beim Versand: RechteAbleitung.darf(matrix, benutzer, kundenbereich, recht, ziel, jetzt) | services/api/src/main/java/com/voltpilot/api/ueberwachung/UeberwachungSichtPruefungImpl.java |
 | Alerting v1 §6.6 | Eine Meldung erbt die Sicht ihres Werts (meist messwerte.ansehen), zweifach gesichert: Datenbank-Zaun (site_scope auf alarm/ueberwachung) und das Recht des Werts | db/migration/V20261015130000__ueberwachung_kern.sql |
 | Steuerlogik v1 §8.8 | Prüfung und Schutz unterscheiden nicht nach Rolle; jede Fassung trägt Urheber, Zeit und Rolle | services/api/src/main/java/com/voltpilot/api/steuerlogik/SteuerlogikService.java |
+| Steuerlogik v1 §8.8 | Bausteine (Stufe 5, E4 = A): an der Anlage braucht Einsetzen, Speichern und Entfernen logik.bearbeiten; eine Sammlung hat nur ein Partner-Konto (für seine Kunden: die Kundenbereiche, die ihm eine Unterstützung der Art Installateur gewährt und nicht vorzeitig beendet haben) und die Plattform (für alle) - ein Kundenkonto setzt Bausteine ein, speichert aber keine. Die Sichtbarkeit setzt die Datenbank durch. | services/api/src/main/java/com/voltpilot/api/steuerlogik/SteuerlogikBausteine.java, db/migration/V20261115200000__steuerlogik_baustein.sql |
 
 ## Kennungen
 

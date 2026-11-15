@@ -11,6 +11,14 @@ package logikdienst
 //                                                 |  422 {message, bericht?} (unreadable or blocked)
 //                                                 |  422 {message, grund: "stellwerte"} (set values do not fit)
 //   POST /quellen  {registry?}                    -> 200 {quellen, geraete} (what a logic may read and switch)
+//   POST /bausteine {bausteine: [{id, text}], registry?}
+//                                                 -> 200 {bausteine: [{id, lesbar, satz, luecken, passt, …}]}
+//   POST /baustein {baustein, fuellung?: {name?, werte?}, registry?}
+//                                                 -> 200 {name, satz, luecken, vollstaendig, text, bericht, verhalten}
+//                                                 |  422 {message, grund: "baustein"} (the building block is unreadable)
+//   POST /baustein/aus-logik {text, name, beschreibung?, satz}
+//                                                 -> 200 {baustein, name, satz, luecken}
+//                                                 |  422 {message, grund: "baustein" | …} (unreadable logic or sentence)
 //   GET  /health                                  -> 200 {status, version, sprache}
 //   anything malformed                            -> 400 {message}
 
@@ -77,6 +85,49 @@ func Handler() http.Handler {
 		}
 		schreibe(w, http.StatusOK, antwort)
 	})
+	mux.HandleFunc("POST /bausteine", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Bausteine []BausteinText  `json:"bausteine"`
+			Registry  json.RawMessage `json:"registry"`
+		}
+		if !lies(w, r, &req) {
+			return
+		}
+		schreibe(w, http.StatusOK, map[string]any{"bausteine": LiesBausteine(req.Bausteine, req.Registry)})
+	})
+	mux.HandleFunc("POST /baustein", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Baustein string          `json:"baustein"`
+			Fuellung Fuellung        `json:"fuellung"`
+			Registry json.RawMessage `json:"registry"`
+		}
+		if !lies(w, r, &req) {
+			return
+		}
+		e, err := Einsetzen([]byte(req.Baustein), req.Fuellung, req.Registry)
+		if err != nil {
+			antworteFehler(w, err, nil)
+			return
+		}
+		schreibe(w, http.StatusOK, e)
+	})
+	mux.HandleFunc("POST /baustein/aus-logik", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Text         string `json:"text"`
+			Name         string `json:"name"`
+			Beschreibung string `json:"beschreibung"`
+			Satz         string `json:"satz"`
+		}
+		if !lies(w, r, &req) {
+			return
+		}
+		doc, b, err := AusLogik([]byte(req.Text), req.Name, req.Beschreibung, req.Satz)
+		if err != nil {
+			antworteFehler(w, err, nil)
+			return
+		}
+		schreibe(w, http.StatusOK, map[string]any{"baustein": string(doc), "name": b.Name, "satz": b.Satz, "luecken": b.Luecken})
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		schreibe(w, http.StatusNotFound, map[string]any{"message": "Nicht gefunden"})
 	})
@@ -107,6 +158,8 @@ func antworteFehler(w http.ResponseWriter, err error, bericht *Bericht) {
 			antwort["meldungen"] = []Meldung{u.Meldung}
 		}
 		schreibe(w, http.StatusUnprocessableEntity, antwort)
+	case errors.Is(err, ErrBaustein):
+		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "baustein"})
 	case errors.Is(err, ErrStellwerte):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "stellwerte"})
 	case errors.Is(err, ErrSperrt):

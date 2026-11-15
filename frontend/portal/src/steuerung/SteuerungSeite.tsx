@@ -40,6 +40,7 @@ import { useRollen } from '../rollen';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
 import { LogikBlatt } from './LogikBlatt';
+import { BausteineAbschnitt } from './logik/BausteineAbschnitt';
 import { LogikenAbschnitt } from './logik/LogikenAbschnitt';
 import { herrschaft } from '../steuerlogikKarte';
 
@@ -636,6 +637,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
         onSzeneBeenden={() => void szeneAus()}
         onUmwandeln={setUmwandelnKarte}
         logiken={<LogikenAbschnitt siteId={site.id} liste={daten.logikListe} />}
+        bausteine={<BausteineAbschnitt siteId={site.id} />}
       />
     );
   } else {

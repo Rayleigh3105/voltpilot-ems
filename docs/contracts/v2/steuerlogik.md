@@ -7,6 +7,7 @@ Die YAML-Schreibform für Menschen liest `edge-app/core/internal/logik/textform`
 Seit Stufe 2, zweiter Teil, wird eine Logik ausgeliefert und läuft auf der Box mit (siehe [Auslieferung und Mitlauf](#auslieferung-und-mitlauf)); sie schaltet nichts und beansprucht kein Gerät, sie äußert je Takt nur, was die Geräte tun sollen.
 Seit Stufe 3 lässt sich eine Fassung [scharf](#scharf) schalten: dann gehen ihre Wünsche durch Schiedsrichter und Schutzgrenzen der Box, und ihre Geräte gehören ihr.
 Seit Stufe 4 wird eine Logik im Portal geschrieben, im [Aufbau und im Text](#aufbau-und-text-stufe-4), geprüft und als Fassung gespeichert.
+Seit Stufe 5 entsteht eine Logik auch aus einem [Baustein](#bausteine-stufe-5): ein Satz mit Lücken, dahinter eine Logik dieser Textform.
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
 Für Geräte mit Sollwert und Betriebsart (K2/K3) kommen [steuerlogik-geraete-vectors.json](steuerlogik-geraete-vectors.json) und das siebte Beispiel `waermepumpe-modbus` dazu, von Hand geschrieben; dort ist der Kern die Referenz (`geraete_vectors_test.go`, im Dienst `logikdienst_test.go`).
@@ -93,6 +94,10 @@ Pflicht vor dem Scharfschalten ist die Prüfung (E5 = C); der Kern baut ihre spe
 3. **Proben**: jeder Fall wird durchgespielt, mit einem Gerät, das jedem Wunsch folgt.
    Proben sind freiwillig; eine Logik ohne Proben kann scharf gehen und bekommt nur den Hinweis „Keine Proben: Verhalten nicht belegt“.
    Eine vorhandene Probe, die nicht besteht, sperrt weiter (Lesart zu E5).
+   Ein Wert unter `given` und ein erwarteter Sollwert (`<gerät>.setpoint` unter `expect`) dürfen eine Formel über Stellwerte sein (`t: mindest - 2 K`, `clock: netz_ab`, `regler.setpoint: normal - vorrat`), gerechnet mit den Stellwerten der Probe; Stellwerte unter `given` gelten zuerst.
+   So bleibt eine Probe wahr, wenn jemand den Wert stellt (Stufe 5: die Proben eines Bausteins gelten für jeden Wert, den der Satz anbietet).
+   Eine solche Formel kennt nur Stellwerte, feste Werte, Wörter und `min`, `max`, `if`; ihre Größe muss zum Eingang passen, `clock` ist eine Uhrzeit (über Mitternacht gerechnet).
+   Die Box führt keine Proben aus; für sie ändert sich nichts.
 
 Die Punkte 4 bis 6 des Konzepts (Ausfall je Eingang, Flattern, Schutzzeiten) sind Hinweise im Dialog und kommen mit der Oberfläche (Stufe 4); bis dahin nennt der Dialog „Scharf schalten“ ausdrücklich, dass sie nicht geprüft sind.
 Ob ein Gerät existiert, zum Steuern freigegeben und von keinem anderen Herrn beansprucht ist, prüft die API beim Scharfschalten ([Besitz](#besitz-ein-gerät-hat-nie-zwei-herren)), nicht der Kern.
@@ -225,6 +230,46 @@ Jeder Schritt steht im Protokoll (`gespeichert`, `mitlaufen`, `vorgelegt`, `anfr
 
 Ende zu Ende mit dem echten Dienst: `frontend/portal/e2e/steuerlogik-bearbeiten.spec.ts` (eine Beispiel-Logik im Aufbau ändern, die Probe anpassen, im Text einen Fehler an seiner Zeile sehen und beheben, als Fassung speichern, mitlaufen lassen; Rollen; eine neue Logik, die die Prüfung besteht).
 API: `SteuerlogikBearbeitenApiTest`, Rechte: `RechtMatrixApiTest`, Zeilen: `logikdienst/zeilen_test.go`, Quellen: `logikdienst/quellen_test.go`.
+
+## Bausteine (Stufe 5)
+
+Gebaut am 15.11.2026 (Bericht Abschnitte 6.7, 7, 9 und 12, E4 = A): ein Baustein ist eine Logik dieser Textform mit Lücken und einem Satz für die Oberfläche.
+Unter „Neue Regel“ im Reiter „Regeln“ wählt man einen Satz, füllt die Lücken mit Geräten und Werten der Anlage und liest „So verhält sie sich“; gespeichert wird eine gewöhnliche Logik (Fassung 1, `geprueft`), die danach mitläuft und vorgelegt wird wie jede andere (`frontend/portal/src/steuerung/logik/BausteineAbschnitt.tsx`, `BausteinBlatt.tsx`).
+
+**Die Form** ([steuerlogik-baustein.schema.json](steuerlogik-baustein.schema.json), `block: 1`): `name`, wahlweise `description`, `sentence` und `logic` - der Text einer Logik als Zeichenkette (Schreibform oder kanonisches JSON), mit Kommentaren, genau so, wie er gespeichert wird.
+Die Lücken bestimmt der Dienst aus der Logik, nicht der Verfasser:
+
+- jedes Gerät unter `devices` (Kandidaten: Geräte der Anlage, an denen die Box jeden Ausgang ausführt, den die Logik ihm stellt, mit derselben Einheit des Sollwerts, jeder fest gewählten Betriebsart und jedem Signal, das die Logik an ihm liest);
+- jeder Eingang, der ein Signal eines Geräts der Anlage liest (Kandidaten: Fühler und Signale mit demselben Signal); liest er ein Signal eines Geräts der Logik (`<gerät>.room_temperature`), folgt er dem Gerät und ist keine eigene Lücke;
+- jeder Stellwert, den der Satz mit `{name}` nennt (kein Zeitplan; den stellt der Kunde an der Karte).
+
+Geräte und Fühler, die der Satz nicht nennt, stehen unter ihm.
+Platzhalter im Text eines Bausteins sind beliebige Kennungen; beim Speichern aus einer Logik schreibt der Dienst `geraet-<name>` und `quelle-<name>`, damit keine Kennung einer Anlage die Anlage verlässt.
+
+**Einsetzen** (Dienst `POST /baustein {baustein, fuellung: {name?, werte}, registry}`): der Dienst ersetzt im Text genau die Werte unter `devices.<x>.entity` und `.name`, `inputs.<x>.source` und `settings.<x>.default` (und `name`, wenn gegeben) - jeweils einzeilig, Kommentare und alle übrigen Zeilen bleiben.
+Ohne Füllung schlägt er je Gerät und Fühler das erste passende der Anlage vor (wer genau kann, was die Logik braucht, zuerst; danach, wessen Name zur Lücke passt; verschiedene Geräte für verschiedene Lücken).
+Ein Stellwert ohne Füllung behält seine Vorgabe; ein Wert außerhalb von Bereich oder Schritt steht als `fehler` an seiner Lücke.
+Antwort: Satz, Lücken (mit Wert, Wert für Menschen, Kandidaten), `vollstaendig`, der Text, sein Prüfbericht und `verhalten` - die Proben nach ihrer Uhrzeit, je mit `uhr` und `lage` (Titel, Art, Satz mit den Werten des Falls).
+Gespeichert wird nur `vollstaendig` und was die Prüfung nicht sperrt.
+`POST /bausteine` liest mehrere für die Liste (`passt`: jedes Gerät und jeder Fühler hat ein Gegenüber), `POST /baustein/aus-logik` macht aus dem Text einer Logik einen Baustein.
+
+**Die Sammlung** (E4 = A): die Bausteine von VoltPilot für den Start stehen unter [steuerlogik/bausteine/](steuerlogik/bausteine/), die API legt sie ins Jar; ihre Kennung ist der Dateiname.
+Was jemand aus einer Logik speichert, liegt in `steuerlogik_baustein` (V20261115200000): ein Partner-Konto für seine Kunden, die Plattform für alle.
+Einen Fachbetrieb als Einheit über mehrere Kunden gibt es im Portal nicht (Bericht 8.8); die Sammlung hängt am Partner-Konto (Keycloak-Subject), seine Kunden sind die Kundenbereiche, die ihm eine Unterstützung der Art Installateur gewährt haben, die begonnen hat und nicht vorzeitig beendet wurde (abgelaufen zählt weiter), solange sein Konto dort nicht gesperrt oder entfernt ist.
+Die Datenbank setzt das durch (FORCE RLS über `zugriff` und `benutzer` des Kundenbereichs der Anfrage).
+Ein Kundenkonto setzt Bausteine ein, speichert aber keine.
+
+| Route unter `/api/v1/sites/{siteId}/steuerlogik/bausteine` | Recht | Was |
+|---|---|---|
+| `GET` | lesend wie die Steuerung | die Bausteine mit Satz und Lücken für diese Anlage, `darfEinsetzen`, `darfSpeichern` |
+| `POST /{bausteinId}/vorschau {fuellung}` | `logik.bearbeiten` | füllen ohne zu speichern: Prüfung und „So verhält sie sich“ |
+| `POST /{bausteinId}/logik {fuellung}` | `logik.bearbeiten` | einsetzen: der Dienst füllt erneut, gespeichert wird Fassung 1 mit der Notiz „Aus dem Baustein …“ |
+| `POST {logikId, fassung, name, satz, beschreibung?}` | `logik.bearbeiten` und ein Partner- oder Plattform-Konto | eine Fassung als Baustein speichern |
+| `DELETE /{bausteinId}` | `logik.bearbeiten`; den eines Fachbetriebs nur sein Konto, einen von VoltPilot nur die Plattform | aus der Sammlung entfernen (die Zeile bleibt mit wer und wann; die Bausteine des Vertrags ändern sich nur mit ihm) |
+
+Gemeinsame Vektoren: [steuerlogik-baustein-vectors.json](steuerlogik-baustein-vectors.json) - je Baustein eine Füllung an einer Anlage und was daraus entsteht (Satz mit Werten, je Probe Uhrzeit, Titel und Satz der Lage); dazu die Antwort des Dienstes [steuerlogik-baustein.valid.eingesetzt.json](examples/steuerlogik-baustein.valid.eingesetzt.json), die API und Portal lesen.
+Der Dienst belegt, dass jeder Baustein des Vertrags gefüllt die Prüfung besteht und seine Proben für jeden Wert im Bereich gelten (`logikdienst/baustein_test.go`); API: `SteuerlogikBausteineApiTest`; Ende zu Ende mit dem echten Dienst: `frontend/portal/e2e/steuerlogik-bausteine.spec.ts`.
+Eine Wallbox hat keinen Baustein: Laden hat seinen eigenen Ort, eine scharfe Logik beansprucht keinen Ladepunkt ([Besitz](#besitz-ein-gerät-hat-nie-zwei-herren)).
 
 ## Versionsregeln
 

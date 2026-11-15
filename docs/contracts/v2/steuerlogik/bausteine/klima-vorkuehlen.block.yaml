@@ -1,0 +1,104 @@
+# VoltPilot-Baustein: ein Klimagerät kühlt zur Arbeitszeit und mit Sonnenstrom etwas tiefer vor.
+# Das Gerät regelt die Raumtemperatur selbst; die Logik schaltet es ein und aus und gibt den Sollwert vor.
+# Die Raumtemperatur liest sie am Gerät selbst. Die Arbeitszeit ist ein Zeitplan; ihn stellt der Kunde an der Karte.
+block: 1
+name: Klima mit Sonnenstrom
+description: Zur Arbeitszeit kühlt das Gerät, mit Sonnenstrom etwas tiefer vor.
+sentence: Kühle mit {klima} zur Arbeitszeit auf {wunsch}, mit Sonnenstrom {vorkuehlen} tiefer.
+logic: |
+  logic: 1
+  name: Klima mit Sonnenstrom
+  description: >
+    Zur Arbeitszeit kühlt das Gerät auf die Wunschtemperatur. Ist Sonnenstrom übrig, kühlt es etwas tiefer vor,
+    auch außerhalb der Arbeitszeit.
+
+  devices:
+    klima: {entity: geraet-klima, name: Klimagerät}
+
+  inputs:
+    raum: {source: geraet-klima.room_temperature, name: Raum,      max_age: 10 min}
+    netz: {source: site.grid,                     name: Netzbezug, max_age: 60 s}
+
+  settings:
+    betrieb:     {name: Betrieb, type: select, default: auto, editable_by: customer,
+                  options: {auto: Automatik, nur_sonne: Nur mit Sonnenstrom, abgeschaltet: Aus},
+                  help: "Automatik kühlt zur Arbeitszeit. Nur mit Sonnenstrom kühlt nur, wenn Sonnenstrom übrig ist."}
+    arbeitszeit: {name: Arbeitszeit, type: schedule, editable_by: customer,
+                  default: [{days: mon-fri, from: "07:00", to: "18:00"}]}
+    wunsch:      {name: Wunschtemperatur,          default: 25 °C, range: [20 °C, 28 °C], step: 0.5 K, editable_by: customer}
+    vorkuehlen:  {name: Mit Sonnenstrom tiefer um, default: 1.5 K, range: [0.5 K, 3 K],   step: 0.5 K, editable_by: customer}
+    ab_kw:       {name: Sonnenstrom übrig ab,      default: 1 kW,  range: [0.5 kW, 5 kW], step: 0.5 kW}
+
+  formulas:
+    uebrig:   max(0 kW, -netz)
+    anwesend: in_schedule(arbeitszeit)
+    soll:     if(sonne_da, wunsch - vorkuehlen, wunsch)
+    gewollt:  (betrieb == auto and anwesend) or sonne_da
+
+  states:
+    sonne_da:
+      name: Sonnenstrom ist übrig
+      type: boolean
+      on_when:
+        - Seit 5 Minuten ist genug Sonnenstrom übrig: holds(uebrig >= ab_kw, 5 min)
+      off_when:
+        - Der Netzwert fehlt, oder seit 10 Minuten kommt Strom aus dem Netz: unknown(netz) or holds(netz > 0.3 kW, 10 min)
+      on_text: Sonnenstrom gilt als übrig
+      off_text: Sonnenstrom gilt nicht mehr als übrig
+      after_restart: off
+    laeuft:
+      name: Kühlen
+      type: boolean
+      on_when:
+        - Der Betrieb steht nicht auf Aus: betrieb != abgeschaltet
+        - Es ist Arbeitszeit oder Sonnenstrom ist übrig: gewollt
+      off_when_any:
+        - Der Betrieb steht auf Aus: betrieb == abgeschaltet
+        - Weder Arbeitszeit noch Sonnenstrom: not gewollt
+      on_text: Das Klimagerät schaltet ein
+      off_text: Das Klimagerät schaltet aus
+      after_restart: off
+
+  outputs:                      # Ruhewert des Geräts: aus
+    klima: {on_off: laeuft, mode: cool, setpoint: soll}
+
+  status:
+    - when: betrieb == abgeschaltet
+      title: Ausgeschaltet
+      type: idle
+      text: Der Betrieb steht auf {betrieb}.
+    - when: laeuft and sonne_da
+      title: Kühlt mit Sonnenstrom vor
+      type: solar
+      text: Es ist Sonnenstrom übrig. Der Raum wird auf {soll} statt {wunsch} gekühlt. Jetzt sind es {raum}.
+    - when: laeuft
+      title: Kühlt
+      type: grid
+      text: Arbeitszeit. Der Raum wird auf {wunsch} gekühlt. Jetzt sind es {raum}.
+    - else: true
+      title: Aus
+      type: idle
+      text: Außerhalb der Arbeitszeit und ohne Sonnenstrom bleibt das Gerät aus.
+
+  # Die Proben rechnen mit den eingestellten Werten: der erwartete Sollwert folgt "wunsch" und "vorkuehlen".
+  tests:
+    - name: Dienstag um acht wird auf die Wunschtemperatur gekühlt
+      given: {raum: wunsch + 2 K, netz: 0.5 kW, weekday: tue, clock: "08:00"}
+      after: 2 min
+      expect: {klima.on_off: on, klima.setpoint: wunsch, klima.mode: cool, status: Kühlt}
+    - name: Mittags kühlt es mit Sonnenstrom tiefer vor
+      given: {raum: wunsch + 2 K, netz: -2 kW, weekday: tue, clock: "12:00"}
+      after: 6 min
+      expect: {klima.on_off: on, klima.setpoint: wunsch - vorkuehlen, status: Kühlt mit Sonnenstrom vor}
+    - name: Samstags mit Sonnenstrom wird vorgekühlt
+      given: {raum: wunsch + 3 K, netz: -2 kW, weekday: sat, clock: "13:00"}
+      after: 6 min
+      expect: {klima.on_off: on, klima.setpoint: wunsch - vorkuehlen}
+    - name: Samstags ohne Sonnenstrom bleibt das Gerät aus
+      given: {raum: wunsch + 3 K, netz: 0.5 kW, weekday: sat, clock: "16:00"}
+      after: 6 min
+      expect: {klima.on_off: off, status: Aus}
+    - name: Betrieb aus gewinnt immer
+      given: {raum: wunsch + 5 K, netz: -5 kW, weekday: tue, clock: "17:00", betrieb: abgeschaltet}
+      after: 6 min
+      expect: {klima.on_off: off, status: Ausgeschaltet}

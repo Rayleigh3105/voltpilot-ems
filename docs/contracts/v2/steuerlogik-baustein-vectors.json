@@ -1,0 +1,539 @@
+{
+  "_hinweis": "Bausteine (Stufe 5): je Fall ein Baustein aus steuerlogik/bausteine/, eine Füllung an der Anlage unter registry und was daraus entsteht - der Satz mit den Werten (Lücken in eckigen Klammern) und je Probe Uhrzeit, Name, Titel und Satz der Lage, nach der Uhrzeit geordnet. Fehlt einem Gerät oder Fühler die Füllung, gilt der Vorschlag des Dienstes (das erste passende Gerät der Anlage). Referenz ist der Kern (edge-app/core/internal/logikdienst/baustein_test.go, neu schreiben mit VP_FIXTURES_SCHREIBEN=1); jeder Leser muss genau dasselbe ergeben. Alle Namen sind erfunden.",
+  "registry": {
+    "schema_version": "1.0",
+    "revision": "r1",
+    "entities": [
+      {
+        "entity_id": "stab-ww",
+        "entity_type": "heating-rod",
+        "label": "Heizstab Warmwasser",
+        "capabilities": {
+          "actuate": [
+            {
+              "command": "on_off"
+            },
+            {
+              "command": "setpoint_kw"
+            }
+          ]
+        },
+        "guards": {
+          "failsafe": {
+            "behavior": "off"
+          }
+        },
+        "driver": {
+          "brand": "shelly",
+          "communication": "shelly_http",
+          "connection": {
+            "ip": "192.168.1.20",
+            "port": 80,
+            "channels": [
+              0,
+              1,
+              2
+            ],
+            "output_kw": [
+              2,
+              2,
+              2
+            ],
+            "stages": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      },
+      {
+        "entity_id": "stab-puffer",
+        "entity_type": "heating-rod",
+        "label": "Heizstab Puffer",
+        "capabilities": {
+          "actuate": [
+            {
+              "command": "on_off"
+            },
+            {
+              "command": "setpoint_kw"
+            }
+          ]
+        },
+        "guards": {
+          "failsafe": {
+            "behavior": "off"
+          }
+        },
+        "driver": {
+          "brand": "shelly",
+          "communication": "shelly_http",
+          "connection": {
+            "ip": "192.168.1.21",
+            "port": 80,
+            "channels": [
+              0,
+              1,
+              2
+            ],
+            "output_kw": [
+              2,
+              2,
+              2
+            ],
+            "stages": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      },
+      {
+        "entity_id": "relais-pumpe",
+        "entity_type": "switchable-load",
+        "label": "Poolpumpe",
+        "capabilities": {
+          "actuate": [
+            {
+              "command": "on_off"
+            }
+          ]
+        },
+        "guards": {}
+      },
+      {
+        "entity_id": "fuehler-ww",
+        "entity_type": "fuehler",
+        "label": "Warmwasser oben",
+        "capabilities": {},
+        "guards": {}
+      },
+      {
+        "entity_id": "fuehler-puffer",
+        "entity_type": "fuehler",
+        "label": "Puffer oben",
+        "capabilities": {},
+        "guards": {}
+      },
+      {
+        "entity_id": "wp-1",
+        "entity_type": "heat-pump-sgready",
+        "label": "Wärmepumpe",
+        "capabilities": {
+          "actuate": [
+            {
+              "command": "on_off"
+            }
+          ]
+        },
+        "guards": {}
+      },
+      {
+        "schema_version": "1.0",
+        "entity_id": "kuehl-1",
+        "entity_type": "modbus-device",
+        "label": "Kühlraum",
+        "capabilities": {
+          "measure": [
+            {
+              "channel": "raum",
+              "unit": "°C",
+              "label": "Raum"
+            }
+          ],
+          "actuate": [
+            {
+              "command": "setpoint_c",
+              "min": 0,
+              "max": 8,
+              "step": 0.5,
+              "rest": 4
+            }
+          ]
+        },
+        "guards": {
+          "limits": {
+            "min_change_interval_s": 60
+          },
+          "failsafe": {
+            "behavior": "rest"
+          }
+        },
+        "driver": {
+          "communication": "modbus_baukasten",
+          "connection": {
+            "schema_version": "1.0",
+            "transport": {
+              "host": "192.168.10.60",
+              "port": 502,
+              "unit_id": 1
+            },
+            "channels": [
+              {
+                "slug": "raum",
+                "label": "Raum",
+                "unit": "°C",
+                "signal": "room_temperature",
+                "register": {
+                  "kind": "input",
+                  "address": 0,
+                  "data_type": "s16"
+                },
+                "scale": 0.1,
+                "offset": 0
+              },
+              {
+                "slug": "tuer",
+                "label": "Tür",
+                "unit": "",
+                "signal": "door_open",
+                "register": {
+                  "kind": "discrete",
+                  "address": 1
+                }
+              },
+              {
+                "slug": "abtau",
+                "label": "Abtauung",
+                "unit": "",
+                "signal": "defrost",
+                "register": {
+                  "kind": "discrete",
+                  "address": 2
+                }
+              }
+            ],
+            "controls": {
+              "min_change_interval_s": 60,
+              "values": [
+                {
+                  "slug": "soll",
+                  "label": "Sollwert",
+                  "kind": "setpoint_c",
+                  "register": {
+                    "kind": "holding",
+                    "address": 10,
+                    "data_type": "s16"
+                  },
+                  "scale": 0.1,
+                  "offset": 0,
+                  "min": 0,
+                  "max": 8,
+                  "step": 0.5,
+                  "rest": 4
+                }
+              ],
+              "freigabe": {
+                "released_at": "2026-11-14T10:00:00Z",
+                "released_by": "installer",
+                "evidence": "Test bestanden"
+              }
+            }
+          }
+        },
+        "revision": "2026-11-14T10:00:00Z"
+      },
+      {
+        "schema_version": "1.0",
+        "entity_id": "5b8d2e40-1c7a-4f3e-9d21-6a0b4c8e2f17",
+        "entity_type": "modbus-device",
+        "label": "Klimagerät Büro",
+        "capabilities": {
+          "measure": [
+            {
+              "channel": "raum",
+              "unit": "°C",
+              "label": "Raumtemperatur"
+            },
+            {
+              "channel": "stoerung",
+              "unit": "",
+              "label": "Störung"
+            },
+            {
+              "channel": "verdichter",
+              "unit": "",
+              "label": "Verdichter läuft"
+            }
+          ],
+          "actuate": [
+            {
+              "command": "on_off",
+              "rest": false
+            },
+            {
+              "command": "setpoint_c",
+              "min": 16.0,
+              "max": 30.0,
+              "step": 0.5,
+              "rest": 24
+            },
+            {
+              "command": "mode",
+              "modes": [
+                "cool",
+                "heat",
+                "fan_only"
+              ],
+              "rest": "cool"
+            }
+          ]
+        },
+        "guards": {
+          "limits": {
+            "min_change_interval_s": 120,
+            "min_on_seconds": 300,
+            "min_off_seconds": 180
+          },
+          "failsafe": {
+            "behavior": "rest"
+          }
+        },
+        "driver": {
+          "communication": "modbus_baukasten",
+          "connection": {
+            "schema_version": "1.0",
+            "transport": {
+              "host": "192.168.10.50",
+              "port": 502,
+              "unit_id": 1
+            },
+            "channels": [
+              {
+                "slug": "raum",
+                "label": "Raumtemperatur",
+                "unit": "°C",
+                "signal": "room_temperature",
+                "register": {
+                  "kind": "input",
+                  "address": 0,
+                  "data_type": "s16"
+                },
+                "scale": 0.1,
+                "offset": 0,
+                "min_read_interval_s": 10
+              },
+              {
+                "slug": "stoerung",
+                "label": "Störung",
+                "unit": "",
+                "signal": "fault",
+                "register": {
+                  "kind": "holding",
+                  "address": 5,
+                  "data_type": "u16",
+                  "bit": 3
+                }
+              },
+              {
+                "slug": "verdichter",
+                "label": "Verdichter läuft",
+                "unit": "",
+                "signal": "running",
+                "register": {
+                  "kind": "discrete",
+                  "address": 2
+                }
+              }
+            ],
+            "controls": {
+              "min_change_interval_s": 120,
+              "min_on_seconds": 300,
+              "min_off_seconds": 180,
+              "values": [
+                {
+                  "slug": "ein",
+                  "label": "Ein",
+                  "kind": "on_off",
+                  "register": {
+                    "kind": "coil",
+                    "address": 0
+                  },
+                  "on_value": 1,
+                  "off_value": 0,
+                  "rest": false
+                },
+                {
+                  "slug": "soll",
+                  "label": "Solltemperatur",
+                  "kind": "setpoint_c",
+                  "register": {
+                    "kind": "holding",
+                    "address": 10,
+                    "data_type": "s16"
+                  },
+                  "scale": 0.1,
+                  "offset": 0,
+                  "min": 16,
+                  "max": 30,
+                  "step": 0.5,
+                  "rest": 24,
+                  "readback": {
+                    "kind": "holding",
+                    "address": 11
+                  }
+                },
+                {
+                  "slug": "betrieb",
+                  "label": "Betriebsart",
+                  "kind": "mode",
+                  "register": {
+                    "kind": "holding",
+                    "address": 12
+                  },
+                  "modes": {
+                    "cool": 1,
+                    "heat": 2,
+                    "fan_only": 3
+                  },
+                  "rest": "cool"
+                }
+              ],
+              "freigabe": {
+                "released_at": "2026-11-14T10:00:00Z",
+                "released_by": "installer",
+                "evidence": "Test bestanden"
+              }
+            }
+          }
+        },
+        "revision": "2026-11-14T10:00:00Z"
+      }
+    ]
+  },
+  "faelle": [
+    {
+      "baustein": "geraet-ueberschuss",
+      "fuellung": {
+        "geraet": "relais-pumpe",
+        "ueberschuss": "1.5 kW"
+      },
+      "satz": "Schalte [Poolpumpe] ein, sobald 5 Minuten lang [1,5 kW] ins Netz gehen.",
+      "verhalten": [
+        "08:00 Morgens reicht der Sonnenstrom noch nicht | Wartet auf Sonnenstrom | Sobald mehr als 1,5 kW ins Netz gehen, schaltet das Gerät ein.",
+        "12:00 Mittags geht Sonnenstrom ins Netz | Läuft mit Sonnenstrom | Das Gerät läuft, solange mehr als 1,5 kW übrig sind.",
+        "13:00 Eine Wolke zieht vorbei | Läuft mit Sonnenstrom | Das Gerät läuft, solange mehr als 1,5 kW übrig sind.",
+        "15:00 Der Zähler am Netz fällt aus | Kein Netzwert | Der Zähler am Netz liefert keinen Wert. Das Gerät bleibt aus.",
+        "19:00 Abends kommt Strom aus dem Netz | Wartet auf Sonnenstrom | Sobald mehr als 1,5 kW ins Netz gehen, schaltet das Gerät ein."
+      ]
+    },
+    {
+      "baustein": "heizstab-ueberschuss",
+      "fuellung": {
+        "heizstab": "stab-ww",
+        "t": "fuehler-ww",
+        "ziel": "65 °C"
+      },
+      "satz": "Heize mit [Heizstab Warmwasser] und Sonnenstrom, bis der Speicher [65 °C] hat.",
+      "verhalten": [
+        "09:00 Morgens lädt erst die Batterie | Wartet auf Sonnenstrom | Sobald Sonnenstrom ins Netz geht, heizt der Heizstab bis 65 °C. Jetzt sind es 55 °C.",
+        "12:00 Mittags geht Sonnenstrom ins Netz | Heizt mit Sonnenstrom | Der Heizstab nimmt den Sonnenstrom, bis der Speicher 65 °C hat. Jetzt sind es 55 °C.",
+        "13:30 Eine Wolke, die Batterie hilft aus | Heizt mit Sonnenstrom | Der Heizstab nimmt den Sonnenstrom, bis der Speicher 65 °C hat. Jetzt sind es 55 °C.",
+        "15:00 Am Nachmittag ist der Speicher warm | Speicher ist warm | Der Speicher hat 65,5 °C und damit sein Ziel von 65 °C.",
+        "16:00 Der Fühler fällt aus | Störung Fühler | Der Fühler liefert keinen Wert. Der Heizstab bleibt aus."
+      ]
+    },
+    {
+      "baustein": "netzheizen-zeitfenster",
+      "fuellung": {
+        "heizstab": "stab-puffer",
+        "mindest": "45 °C",
+        "netz_ab": "05:30",
+        "netz_bis": "21:00",
+        "netz_ziel": "55 °C",
+        "t": "fuehler-puffer"
+      },
+      "satz": "Wenn der Speicher unter [45 °C] fällt, heize mit [Heizstab Puffer] aus dem Netz bis [55 °C], aber nur zwischen [05:30] und [21:00].",
+      "verhalten": [
+        "05:30 Das Zeitfenster geht auf, der Speicher ist zu kalt | Heizt aus dem Netz | Der Speicher war unter 45 °C gefallen und steht bei 43 °C. Der Heizstab heizt aus dem Netz bis 55 °C.",
+        "07:00 Aufgeheizt | Speicher ist warm genug | Der Speicher hat 55,5 °C. Erst unter 45 °C heizt der Heizstab aus dem Netz.",
+        "12:00 Ein warmer Speicher am Tag | Speicher ist warm genug | Der Speicher hat 46 °C. Erst unter 45 °C heizt der Heizstab aus dem Netz.",
+        "16:00 Der Fühler fällt aus | Störung Fühler | Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.",
+        "21:00 Das Zeitfenster ist zu, der Speicher ist zu kalt | Wartet auf das Zeitfenster | Der Speicher liegt mit 43 °C unter 45 °C. Ab 05:30 Uhr heizt der Heizstab aus dem Netz."
+      ]
+    },
+    {
+      "baustein": "netzheizen-zeitfenster",
+      "fuellung": {
+        "netz_ab": "22:00",
+        "netz_bis": "06:00"
+      },
+      "satz": "Wenn der Speicher unter [40 °C] fällt, heize mit [Heizstab Puffer] aus dem Netz bis [50 °C], aber nur zwischen [22:00] und [06:00].",
+      "verhalten": [
+        "06:00 Das Zeitfenster ist zu, der Speicher ist zu kalt | Wartet auf das Zeitfenster | Der Speicher liegt mit 38 °C unter 40 °C. Ab 22:00 Uhr heizt der Heizstab aus dem Netz.",
+        "07:00 Aufgeheizt | Speicher ist warm genug | Der Speicher hat 50,5 °C. Erst unter 40 °C heizt der Heizstab aus dem Netz.",
+        "12:00 Ein warmer Speicher am Tag | Speicher ist warm genug | Der Speicher hat 41 °C. Erst unter 40 °C heizt der Heizstab aus dem Netz.",
+        "16:00 Der Fühler fällt aus | Störung Fühler | Der Fühler liefert keinen Wert. Der Heizstab bleibt aus.",
+        "22:00 Das Zeitfenster geht auf, der Speicher ist zu kalt | Heizt aus dem Netz | Der Speicher war unter 40 °C gefallen und steht bei 38 °C. Der Heizstab heizt aus dem Netz bis 50 °C."
+      ]
+    },
+    {
+      "baustein": "warmwasser-vorrang",
+      "fuellung": {
+        "puffer": "stab-puffer",
+        "puffer_ziel": "75 °C",
+        "t_puffer": "fuehler-puffer",
+        "t_ww": "fuehler-ww",
+        "ww": "stab-ww",
+        "ww_ziel": "50 °C"
+      },
+      "satz": "Heize mit Sonnenstrom zuerst mit [Heizstab Warmwasser] bis [50 °C], danach mit [Heizstab Puffer] bis [75 °C].",
+      "verhalten": [
+        "11:00 Mittags zuerst das Warmwasser | Heizt das Warmwasser | Das Warmwasser hat Vorrang und heizt mit Sonnenstrom bis 50 °C. Jetzt sind es 40 °C.",
+        "13:00 Das Warmwasser ist warm, dann der Puffer | Heizt den Puffer | Das Warmwasser ist warm. Der Puffer heizt mit Sonnenstrom bis 75 °C. Jetzt sind es 65 °C.",
+        "14:00 Nach dem Duschen hat das Warmwasser wieder Vorrang | Heizt das Warmwasser | Das Warmwasser hat Vorrang und heizt mit Sonnenstrom bis 50 °C. Jetzt sind es 45 °C.",
+        "15:00 Der Fühler am Warmwasser fällt aus | Störung Fühler | Ein Fühler liefert keinen Wert. Sein Heizstab bleibt aus.",
+        "19:00 Abends kommt Strom aus dem Netz | Wartet auf Sonnenstrom | Sobald Sonnenstrom ins Netz geht, heizt zuerst das Warmwasser."
+      ]
+    },
+    {
+      "baustein": "waermepumpe-sgready",
+      "fuellung": {
+        "ab_kw": "3 kW",
+        "puffer_max": "60 °C"
+      },
+      "satz": "Sobald [3,0 kW] Sonnenstrom übrig sind, lädt [Wärmepumpe] den Speicher bis [60 °C].",
+      "verhalten": [
+        "09:30 Morgens reichen fünf Minuten Sonne nicht | Wartet auf Sonnenstrom | Sobald 10 Minuten lang 3,0 kW übrig sind, lädt die Wärmepumpe den Speicher höher.",
+        "11:30 Mittags ist Sonnenstrom übrig | Speichert Sonnenstrom | Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 50 °C von höchstens 60 °C.",
+        "13:00 Eine Wolke beendet die Empfehlung nicht vor der Haltezeit | Speichert Sonnenstrom | Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt 50 °C von höchstens 60 °C.",
+        "15:00 Am Nachmittag ist der Speicher voll | Speicher ist warm | Der Speicher hat 60,5 °C. Mehr Wärme nimmt er gerade nicht auf.",
+        "16:00 Der Fühler fällt aus | Störung Fühler | Der Fühler am Speicher liefert keinen Wert. Die Wärmepumpe läuft im Normalbetrieb.",
+        "18:00 Abends, nach der Haltezeit und zehn Minuten Netzbezug | Wartet auf Sonnenstrom | Sobald 10 Minuten lang 3,0 kW übrig sind, lädt die Wärmepumpe den Speicher höher."
+      ]
+    },
+    {
+      "baustein": "kuehlraum-vorrat",
+      "fuellung": {
+        "normal": "3 °C",
+        "vorrat": "1.5 K"
+      },
+      "satz": "Kühle [Kühlraum] auf [3 °C], mit Sonnenstrom [2 K] tiefer.",
+      "verhalten": [
+        "08:00 Morgens ohne Sonnenstrom gilt der normale Sollwert | Kühlt normal | Der Raum hält 3 °C. Jetzt sind es 3,2 °C.",
+        "12:00 Mittags ist Sonnenstrom übrig, dann kühlt der Raum tiefer | Kühlt auf Vorrat | Es ist Sonnenstrom übrig. Der Raum kühlt auf 1,5 °C statt 3 °C.",
+        "12:30 Steht die Tür offen, wird nicht auf Vorrat gekühlt | Kühlt normal | Der Raum hält 3 °C. Jetzt sind es 4 °C.",
+        "14:00 Eine Wolke kehrt den Verdichter nicht sofort um | Kühlt auf Vorrat | Es ist Sonnenstrom übrig. Der Raum kühlt auf 1,5 °C statt 3 °C.",
+        "16:00 Bleibt die Sonne eine Viertelstunde weg, gilt wieder der normale Sollwert | Kühlt normal | Der Raum hält 3 °C. Jetzt sind es 2,5 °C.",
+        "17:00 Eine halbe Stunde zu warm, dann kommt die Meldung | Zu warm | Im Kühlraum sind es 9 °C. Normal sind 3 °C."
+      ]
+    },
+    {
+      "baustein": "klima-vorkuehlen",
+      "fuellung": {
+        "vorkuehlen": "2 K",
+        "wunsch": "24 °C"
+      },
+      "satz": "Kühle mit [Klimagerät Büro] zur Arbeitszeit auf [24 °C], mit Sonnenstrom [2 K] tiefer.",
+      "verhalten": [
+        "08:00 Dienstag um acht wird auf die Wunschtemperatur gekühlt | Kühlt | Arbeitszeit. Der Raum wird auf 24 °C gekühlt. Jetzt sind es 26 °C.",
+        "12:00 Mittags kühlt es mit Sonnenstrom tiefer vor | Kühlt mit Sonnenstrom vor | Es ist Sonnenstrom übrig. Der Raum wird auf 22 °C statt 24 °C gekühlt. Jetzt sind es 26 °C.",
+        "13:00 Samstags mit Sonnenstrom wird vorgekühlt | Kühlt mit Sonnenstrom vor | Es ist Sonnenstrom übrig. Der Raum wird auf 22 °C statt 24 °C gekühlt. Jetzt sind es 27 °C.",
+        "16:00 Samstags ohne Sonnenstrom bleibt das Gerät aus | Aus | Außerhalb der Arbeitszeit und ohne Sonnenstrom bleibt das Gerät aus.",
+        "17:00 Betrieb aus gewinnt immer | Ausgeschaltet | Der Betrieb steht auf Aus."
+      ]
+    }
+  ]
+}

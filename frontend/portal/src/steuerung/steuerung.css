@@ -416,7 +416,7 @@
 :is(.stn, .stn-blatt) .tok.var{border-color:var(--c-primary);color:#1d4ed8}
 :is(.stn, .stn-blatt) .tok.op{border-color:#94a3b8}
 :is(.stn, .stn-blatt) .tok.val{border-color:var(--c-primary);background:var(--price-soft);color:#1d4ed8}
-:is(.stn, .stn-blatt) .tok.dev{border-color:var(--load);color:var(--load-ink)}
+:is(.stn, .stn-blatt) .tok.dev{border-color:var(--load);color:var(--load-ink);width:auto}
 :is(.stn, .stn-blatt) .tok.act{border-color:var(--load);background:var(--load-soft);color:var(--load-ink)}
 :is(.stn, .stn-blatt) .tok.add{border-style:dashed;color:var(--c-muted-fg);font-weight:700;font-size:14px}
 :is(.stn, .stn-blatt) .tok[aria-expanded="true"]{box-shadow:0 0 0 3px color-mix(in srgb,var(--c-primary) 30%,transparent)}
@@ -733,3 +733,35 @@
 :is(.stn, .stn-blatt) .lg-verlauf time{font:700 13.5px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
 :is(.stn, .stn-blatt) .lg-verlauf li span{min-width:0;overflow-wrap:anywhere}
 :is(.stn, .stn-blatt) .lg-verlauf li.mensch span{color:var(--st-hand)}
+
+/* Steuerlogik Stufe 5: Bausteine unter „Neue Regel“ - der Satz mit Lücken und „So verhält sie sich“ als ein Tag. */
+:is(.stn, .stn-blatt) .bs-karte{position:relative}
+:is(.stn, .stn-blatt) .bs-karte:disabled{cursor:default;opacity:.7}
+:is(.stn, .stn-blatt) .bs-karte small{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+:is(.stn, .stn-blatt) .bs-von{justify-self:start;font:700 12px var(--font);color:var(--load-ink);background:var(--load-soft);border-radius:999px;padding:2px 9px}
+:is(.stn, .stn-blatt) .bs-satz{display:block;font:600 17px/2.7 var(--font);color:var(--c-fg);overflow-wrap:anywhere}
+:is(.stn, .stn-blatt) .bs-satz .tok{vertical-align:middle;margin:0 1px}
+:is(.stn, .stn-blatt) .bs-satz .bs-kette{white-space:nowrap}
+:is(.stn, .stn-blatt) .bs-satz .bs-w{color:var(--c-fg)}
+:is(.stn, .stn-blatt) .bs-darunter{display:grid;gap:6px;padding:0 4px}
+:is(.stn, .stn-blatt) .bs-zeile{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+:is(.stn, .stn-blatt) .bs-zeile>span{font:600 14px var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .bs-momente{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+:is(.stn, .stn-blatt) .bs-momente.alt{opacity:.55;transition:opacity var(--vp-motion-enter) var(--vp-ease-out)}
+:is(.stn, .stn-blatt) .bs-momente li{display:grid;grid-template-columns:44px 12px minmax(0,1fr) auto;align-items:start;gap:8px;padding:8px 2px;border-top:1px solid var(--c-border)}
+:is(.stn, .stn-blatt) .bs-momente li:first-child{border-top:0}
+:is(.stn, .stn-blatt) .bs-momente time{font:700 14px var(--font);font-variant-numeric:tabular-nums;color:var(--c-muted-fg);padding-top:1px}
+:is(.stn, .stn-blatt) .bs-punkt{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--st-off)}
+:is(.stn, .stn-blatt) .bs-punkt.on{background:var(--st-on)}
+:is(.stn, .stn-blatt) .bs-punkt.hand{background:var(--st-hand)}
+:is(.stn, .stn-blatt) .bs-punkt.wait{background:var(--st-wait)}
+:is(.stn, .stn-blatt) .bs-punkt.lock{background:var(--st-lock)}
+:is(.stn, .stn-blatt) .bs-moment{display:grid;gap:1px;min-width:0}
+:is(.stn, .stn-blatt) .bs-moment b{font:700 15px/1.35 var(--font);overflow-wrap:anywhere}
+:is(.stn, .stn-blatt) .bs-moment small{font:500 13px/1.35 var(--font);color:var(--c-muted-fg);overflow-wrap:anywhere}
+:is(.stn, .stn-blatt) .bs-warn{color:var(--st-wait);margin-top:2px}
+:is(.stn, .stn-blatt) .bs-name{display:grid;gap:6px;padding:0 2px}
+:is(.stn, .stn-blatt) .bs-name>span{font:700 13px var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .bs-name :is(input, textarea){min-height:46px;border-radius:12px;border:1px solid var(--field);background:var(--c-card);color:inherit;padding:10px 12px;font:600 16px/1.4 var(--font);width:100%;box-sizing:border-box;resize:vertical}
+:is(.stn, .stn-blatt) .bs-schutz{display:flex;align-items:center;gap:8px;padding:0 4px}
+:is(.stn, .stn-blatt) .bs-schutz svg{flex:none;color:var(--c-muted-fg)}

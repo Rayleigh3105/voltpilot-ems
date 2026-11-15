@@ -143,6 +143,65 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
         throw SteuerlogikDienstException.nichtErreichbar();
     }
 
+    @Override
+    public JsonNode bausteine(List<BausteinText> bausteine, String registry) {
+        ObjectNode request = json.createObjectNode();
+        var liste = request.putArray("bausteine");
+        for (BausteinText b : bausteine) {
+            liste.addObject().put("id", b.id()).put("text", b.text());
+        }
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/bausteine", request);
+        JsonNode body = parse(response.body());
+        if (response.status() == 200 && body != null && body.path("bausteine").isArray()) {
+            return body.get("bausteine");
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
+    @Override
+    public JsonNode baustein(String text, JsonNode fuellung, String registry) {
+        ObjectNode request = json.createObjectNode();
+        request.put("baustein", text);
+        if (fuellung != null && fuellung.isObject()) request.set("fuellung", fuellung);
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/baustein", request);
+        JsonNode body = parse(response.body());
+        if (response.status() == 200 && body != null && body.path("luecken").isArray()
+                && body.path("text").isTextual()) {
+            return body;
+        }
+        throw bausteinFehler(response, body);
+    }
+
+    @Override
+    public JsonNode ausLogik(String text, String name, String beschreibung, String satz) {
+        ObjectNode request = json.createObjectNode();
+        request.put("text", text);
+        request.put("name", name);
+        if (beschreibung != null) request.put("beschreibung", beschreibung);
+        request.put("satz", satz);
+        FlowCompilerHttp.Response response = post("/baustein/aus-logik", request);
+        JsonNode body = parse(response.body());
+        if (response.status() == 200 && body != null && body.path("baustein").isTextual()) {
+            return body;
+        }
+        throw bausteinFehler(response, body);
+    }
+
+    /** 422 ist ein Baustein oder Text, den die Leser ablehnen (mit Satz); alles andere ein nicht erreichbarer Dienst. */
+    private SteuerlogikDienstException bausteinFehler(FlowCompilerHttp.Response response, JsonNode body) {
+        if (response.status() == 422 && body != null) {
+            String grund = "baustein".equals(body.path("grund").asText()) ? SteuerlogikDienstException.BAUSTEIN
+                    : SteuerlogikDienstException.UNLESBAR;
+            return new SteuerlogikDienstException(grund, body.path("message").asText("Der Baustein ist nicht lesbar."),
+                    null, body.get("meldungen"));
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        return SteuerlogikDienstException.nichtErreichbar();
+    }
+
     private FlowCompilerHttp.Response post(String pfad, ObjectNode request) {
         try {
             return http.post(baseUri.resolve(pfad), json.writeValueAsString(request));

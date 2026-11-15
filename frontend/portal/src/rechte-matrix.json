@@ -2556,6 +2556,10 @@
         {
           "wortlaut": "Prüfung und Schutz unterscheiden nicht nach Rolle; jede Fassung trägt Urheber, Zeit und Rolle",
           "wo": "services/api/src/main/java/com/voltpilot/api/steuerlogik/SteuerlogikService.java"
+        },
+        {
+          "wortlaut": "Bausteine (Stufe 5, E4 = A): an der Anlage braucht Einsetzen, Speichern und Entfernen logik.bearbeiten; eine Sammlung hat nur ein Partner-Konto (für seine Kunden: die Kundenbereiche, die ihm eine Unterstützung der Art Installateur gewährt und nicht vorzeitig beendet haben) und die Plattform (für alle) - ein Kundenkonto setzt Bausteine ein, speichert aber keine. Die Sichtbarkeit setzt die Datenbank durch.",
+          "wo": "services/api/src/main/java/com/voltpilot/api/steuerlogik/SteuerlogikBausteine.java, db/migration/V20261115200000__steuerlogik_baustein.sql"
         }
       ]
     }

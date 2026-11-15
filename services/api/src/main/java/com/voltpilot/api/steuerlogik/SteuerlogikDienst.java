@@ -81,4 +81,31 @@ public interface SteuerlogikDienst {
      * eigener Modbus-Geräte, je Gerät die Ausgänge, die die Box ausführt - aus dem Registry-Inhalt der Anlage.
      */
     JsonNode quellen(String registry);
+
+    /** Ein Baustein, wie die API ihn dem Dienst gibt: seine Kennung und sein Text (Stufe 5). */
+    record BausteinText(String id, String text) {}
+
+    /**
+     * Liest Bausteine für eine Anlage ({@code POST /bausteine}): je Baustein Name, Satz, Lücken mit dem Vorschlag
+     * der Anlage und ob jedes Gerät und jeder Fühler ein Gegenüber hat ({@code passt}); ein unlesbarer Baustein
+     * kommt mit {@code lesbar: false} und Satz. Ein nicht erreichbarer Dienst ist eine
+     * {@link SteuerlogikDienstException}.
+     */
+    JsonNode bausteine(List<BausteinText> bausteine, String registry);
+
+    /**
+     * Füllt einen Baustein für eine Anlage ({@code POST /baustein}): Lücken, Satz, die Logik als Text, ihr
+     * Prüfbericht und die Proben nach der Uhrzeit ({@code verhalten}, "So verhält sie sich"); {@code vollstaendig}
+     * sagt, ob sie sich so speichern lässt. Ein unlesbarer Baustein ist eine {@link SteuerlogikDienstException} mit
+     * Grund {@link SteuerlogikDienstException#BAUSTEIN}.
+     */
+    JsonNode baustein(String text, JsonNode fuellung, String registry);
+
+    /**
+     * Macht aus dem Text einer Logik einen Baustein ({@code POST /baustein/aus-logik}): Geräte und Fühler werden
+     * Lücken, ihre Kennungen bleiben in der Anlage. Antwort: {@code baustein} (der Text), {@code name}, {@code satz},
+     * {@code luecken}. Ein Satz, der eine unbekannte Lücke nennt, ist eine {@link SteuerlogikDienstException} mit
+     * Grund {@link SteuerlogikDienstException#BAUSTEIN}.
+     */
+    JsonNode ausLogik(String text, String name, String beschreibung, String satz);
 }

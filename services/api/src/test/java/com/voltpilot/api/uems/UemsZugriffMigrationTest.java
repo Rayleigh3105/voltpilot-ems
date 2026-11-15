@@ -111,7 +111,8 @@ class UemsZugriffMigrationTest {
             "20261007150000", // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
             "20261110210000", // Plattform-Admin Personen (P1/N1, #1814): weitet zugriff_vokabular() um konto_geaendert.
             "20261112150000", // #1843 Löschzug-Indexdeckung I: idx_bewertung_aenderung_tenant auf dieser Tabelle.
-            "20261113160000"); // Kunden-Alarmierung P2 (#1862, KA-1): Trigger auf benutzer, Bestand aus benutzer.sub/email.
+            "20261113160000", // Kunden-Alarmierung P2 (#1862, KA-1): Trigger auf benutzer, Bestand aus benutzer.sub/email.
+            "20261115200000"); // Steuerlogik Stufe 5: die Policy der Bausteine liest zugriff und benutzer (Partner-Konto).
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

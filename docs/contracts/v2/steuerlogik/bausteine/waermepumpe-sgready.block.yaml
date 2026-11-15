@@ -1,0 +1,95 @@
+# VoltPilot-Baustein: eine Wärmepumpe mit SG-Ready-Eingang speichert Sonnenstrom als Wärme (E10 = A).
+# Die Wärmepumpe regelt selbst; die Logik gibt nur die Empfehlung "jetzt mehr laden" (im Portal "Anheben").
+# Haltezeit und Pause entsprechen dem, was das Portal für diesen Gerätetyp vorgibt (30 und 20 Minuten).
+block: 1
+name: Wärmepumpe mit Sonnenstrom
+description: Ist Sonnenstrom übrig, lädt die Wärmepumpe den Speicher wärmer.
+sentence: Sobald {ab_kw} Sonnenstrom übrig sind, lädt {wp} den Speicher bis {puffer_max}.
+logic: |
+  logic: 1
+  name: Wärmepumpe mit Sonnenstrom
+  description: >
+    Ist Sonnenstrom übrig, bekommt die Wärmepumpe die Empfehlung, den Speicher wärmer zu laden.
+    Wie viel sie daraus macht, entscheidet ihr eigener Regler.
+
+  devices:
+    wp: {entity: geraet-wp, name: Wärmepumpe}
+
+  inputs:
+    netz:   {source: site.grid,                 name: Netzbezug,      max_age: 60 s}
+    puffer: {source: quelle-puffer.temperature, name: Pufferspeicher, max_age: 10 min}
+
+  settings:
+    ab_kw:      {name: Sonnenstrom übrig ab,  default: 2 kW,   range: [1 kW, 10 kW],     step: 0.5 kW, editable_by: customer}
+    puffer_max: {name: Speicher höchstens,    default: 55 °C,  range: [40 °C, 65 °C],    step: 1 K,    editable_by: customer}
+    haltezeit:  {name: Empfehlung mindestens, default: 30 min, range: [30 min, 120 min], step: 5 min}
+    pause:      {name: Pause danach,          default: 20 min, range: [20 min, 120 min], step: 5 min}
+
+  formulas:
+    uebrig: max(0 kW, -netz)
+
+  states:
+    empfehlung:
+      name: Empfehlung an die Wärmepumpe
+      type: boolean
+      on_when:
+        - Seit 10 Minuten ist genug Sonnenstrom übrig: holds(uebrig >= ab_kw, 10 min)
+        - Der Speicher kann noch Wärme aufnehmen: puffer < puffer_max - 3 K
+        - Die Pause nach der letzten Empfehlung ist um: since(empfehlung) >= pause
+      off_when_any:
+        - Der Speicher ist voll: puffer >= puffer_max
+        - Ein Messwert fehlt: unknown(netz) or unknown(puffer)
+        # die Empfehlung bleibt mindestens für die Haltezeit stehen, damit der Verdichter nicht taktet
+        - Seit 10 Minuten kommt Strom aus dem Netz: holds(netz > 0.3 kW, 10 min) and since(empfehlung) >= haltezeit
+      on_text: Die Wärmepumpe bekommt die Empfehlung, mit Sonnenstrom zu heizen
+      off_text: Die Empfehlung an die Wärmepumpe endet
+      after_restart: off
+
+  outputs:                      # Anheben heißt hier: Kontakt geschlossen. Ruhewert: Normalbetrieb
+    wp: {mode: "if(empfehlung, boost, normal)"}
+
+  status:
+    - when: unknown(puffer)
+      title: Störung Fühler
+      type: fault
+      text: Der Fühler am Speicher liefert keinen Wert. Die Wärmepumpe läuft im Normalbetrieb.
+    - when: empfehlung
+      title: Speichert Sonnenstrom
+      type: solar
+      text: Es ist Sonnenstrom übrig. Die Wärmepumpe lädt den Speicher höher, jetzt {puffer} von höchstens {puffer_max}.
+    - when: puffer >= puffer_max - 3 K
+      title: Speicher ist warm
+      type: idle
+      text: Der Speicher hat {puffer}. Mehr Wärme nimmt er gerade nicht auf.
+    - else: true
+      title: Wartet auf Sonnenstrom
+      type: waiting
+      text: Sobald 10 Minuten lang {ab_kw} übrig sind, lädt die Wärmepumpe den Speicher höher.
+
+  # Die Proben rechnen mit den eingestellten Werten: übrig ist immer 1 kW mehr als die Schwelle,
+  # der Speicher 10 K unter dem Höchstwert oder knapp darüber.
+  tests:
+    - name: Morgens reichen fünf Minuten Sonne nicht
+      given: {netz: 0 kW - ab_kw - 1 kW, puffer: puffer_max - 10 K, clock: "09:30"}
+      after: 5 min
+      expect: {empfehlung: off, wp.mode: normal, status: Wartet auf Sonnenstrom}
+    - name: Mittags ist Sonnenstrom übrig
+      given: {netz: 0 kW - ab_kw - 1 kW, puffer: puffer_max - 10 K, clock: "11:30"}
+      after: 21 min
+      expect: {empfehlung: on, wp.mode: boost, status: Speichert Sonnenstrom}
+    - name: Eine Wolke beendet die Empfehlung nicht vor der Haltezeit
+      given: {netz: 1.5 kW, puffer: puffer_max - 10 K, empfehlung: on, clock: "13:00"}
+      after: 25 min
+      expect: {empfehlung: on, wp.mode: boost}
+    - name: Am Nachmittag ist der Speicher voll
+      given: {netz: 0 kW - ab_kw - 1 kW, puffer: puffer_max + 0.5 K, empfehlung: on, clock: "15:00"}
+      after: 1 min
+      expect: {empfehlung: off, wp.mode: normal, status: Speicher ist warm}
+    - name: Abends, nach der Haltezeit und zehn Minuten Netzbezug
+      given: {netz: 1.5 kW, puffer: puffer_max - 10 K, empfehlung: on, clock: "18:00"}
+      after: 31 min
+      expect: {empfehlung: off, wp.mode: normal}
+    - name: Der Fühler fällt aus
+      given: {netz: 0 kW - ab_kw - 1 kW, puffer: unknown, empfehlung: on, clock: "16:00"}
+      after: 1 min
+      expect: {empfehlung: off, wp.mode: normal, status: Störung Fühler}
