@@ -164,6 +164,8 @@ describe('Plattform springt ohne Unterstützung in die Mandanten-Ansicht', () =>
     render(<App initialAuth />);
     expect(await screen.findByRole('heading', { name: 'Mandanten wählen' }, { timeout: 15000 })).toBeTruthy();
     expect(screen.getByText(/Mandanten \(oder hier direkt\), um dessen Ansicht zu sehen/)).toBeTruthy();
+    // vp-admin-du: nur Admins sehen diese Karte, also "du", egal auf welcher Route.
+    expect(screen.getByText(/Wähl oben im Mandanten-Umschalter/)).toBeTruthy();
     expect(screen.queryByText(/Unterstützung oder einen Notfall-Zugriff/)).toBeNull();
   }, 40000);
 });

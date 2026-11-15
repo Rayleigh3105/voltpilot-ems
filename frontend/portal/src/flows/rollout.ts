@@ -37,6 +37,13 @@ const LABELS: Record<RolloutStep['key'], string> = {
 const ORDER: Array<RolloutStep['key']> = ['pruefen', 'simulieren', 'ausrollen'];
 
 /**
+ * Wer den Text liest (vp-admin-du): die Kunden-Steuerung redet weiter mit
+ * "Sie", der Admin-Bereich duzt. Keine doppelte Logik - nur die Textwahl je
+ * Zielgruppe, hier und in {@link rolloutMessage}.
+ */
+export type RolloutAnrede = 'sie' | 'du';
+
+/**
  * Customer-grade German for every activation refusal. Until the v3 release
  * these strings were operator-only (no production site could activate a flow);
  * from the release on a customer reads them, so none may name an internal
@@ -61,8 +68,31 @@ export const ROLLOUT_REASONS: Record<string, string> = {
   already_active: 'Diese Regel läuft bereits auf Ihrem Gerät.',
 };
 
+/** Admin-Fassung (du) von {@link ROLLOUT_REASONS} - gleiche Schlüssel, gleicher Inhalt. */
+export const ROLLOUT_REASONS_DU: Record<string, string> = {
+  compiler_unavailable:
+    'Der Rollout ist gerade nicht möglich - versuch es in einigen Minuten erneut. '
+    + 'Deine Regel bleibt unverändert gespeichert.',
+  compiler_rejected:
+    'Diese Regel lässt sich so nicht auf dein Gerät übertragen. '
+    + 'Prüf die markierten Bausteine und versuch es erneut.',
+  gated_node_not_enabled:
+    'Für diese Regel muss VoltPilot zuerst die passende Anwendung für deine Anlage '
+    + 'freischalten. Schalte die Anwendung unter „Anwendungen" ein oder sprich uns an.',
+  peakshaving_not_configured:
+    'Für die Lastspitzenkappung fehlen noch deine Vertragsdaten (Leistungspreis). '
+    + 'VoltPilot hinterlegt sie für dich - sprich uns kurz an.',
+  activation_disabled:
+    'Regeln können auf dieser Anlage derzeit nicht scharf geschaltet werden. '
+    + 'Deine Regel bleibt gespeichert - VoltPilot meldet sich dazu bei dir.',
+  already_active: 'Diese Regel läuft bereits auf deinem Gerät.',
+};
+
 /** The customer sentence for the happy path - see {@link rolloutMessage}. */
 export const ROLLOUT_DONE_MESSAGE = 'Ihre Regel läuft jetzt auf dem Gerät.';
+
+/** Admin-Fassung (du) von {@link ROLLOUT_DONE_MESSAGE}. */
+export const ROLLOUT_DONE_MESSAGE_DU = 'Deine Regel läuft jetzt auf dem Gerät.';
 
 /**
  * The honest German sentence for one outcome. A server message wins for every
@@ -70,22 +100,32 @@ export const ROLLOUT_DONE_MESSAGE = 'Ihre Regel läuft jetzt auf dem Gerät.';
  * NOT for the happy path: there the server says "Flow aktiviert (Version 1)."
  * - internal vocabulary and a version number the customer did not ask for
  * (audit E-9), so the customer string wins.
+ *
+ * `anrede` wählt nur die Fassung (vp-admin-du); Standard bleibt "Sie" für
+ * jede Kundenfläche, der Admin-Bereich ruft explizit mit "du" auf.
  */
-export function rolloutMessage(state: RolloutState): string | null {
+export function rolloutMessage(state: RolloutState, anrede: RolloutAnrede = 'sie'): string | null {
+  const reasons = anrede === 'du' ? ROLLOUT_REASONS_DU : ROLLOUT_REASONS;
   if (state.phase === 'fertig') {
-    return ROLLOUT_DONE_MESSAGE;
+    return anrede === 'du' ? ROLLOUT_DONE_MESSAGE_DU : ROLLOUT_DONE_MESSAGE;
   }
   if (state.message && state.message.trim()) return state.message.trim();
   if (state.phase !== 'fehler') return null;
-  const known = state.reason ? ROLLOUT_REASONS[state.reason] : undefined;
+  const known = state.reason ? reasons[state.reason] : undefined;
   if (known) return known;
   if (state.failedAt === 'pruefen') {
-    return 'Die Regel ist noch nicht vollständig - bitte beheben Sie die markierten Stellen.';
+    return anrede === 'du'
+      ? 'Die Regel ist noch nicht vollständig - beheb die markierten Stellen.'
+      : 'Die Regel ist noch nicht vollständig - bitte beheben Sie die markierten Stellen.';
   }
   if (state.failedAt === 'simulieren') {
-    return 'Der Probelauf konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.';
+    return anrede === 'du'
+      ? 'Der Probelauf konnte nicht abgeschlossen werden. Versuch es erneut.'
+      : 'Der Probelauf konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.';
   }
-  return 'Der Rollout ist fehlgeschlagen. Ihre bisher laufende Regel bleibt unverändert.';
+  return anrede === 'du'
+    ? 'Der Rollout ist fehlgeschlagen. Deine bisher laufende Regel bleibt unverändert.'
+    : 'Der Rollout ist fehlgeschlagen. Ihre bisher laufende Regel bleibt unverändert.';
 }
 
 /** The three steps with their current state - the progress UI reads this. */

@@ -560,7 +560,7 @@ export function FlowEditorPage({
   });
   const fork = forkBanner({ activeVersion, editingVersion: version, dirty });
   const rolloutRunning = rolloutBusy(rollout);
-  const rolloutText = rolloutMessage(rollout);
+  const rolloutText = rolloutMessage(rollout, 'du');
   const simRunning = sim.busy;
   const simResult = sim.status?.status === 'done' ? sim.status.result ?? null : null;
 
