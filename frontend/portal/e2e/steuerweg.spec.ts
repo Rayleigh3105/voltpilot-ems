@@ -83,7 +83,7 @@ for (const breite of [390, 1440] as const) {
   test(`Edge Light und ohne Recht: kein Schritt bei ${breite} px`, async ({ page }) => {
     const fehler = await oeffnen(page, breite, 'light');
     const abschnitt = page.getByRole('region', { name: 'Wie Ihre Regeln laufen' });
-    await expect(abschnitt).toContainText('Auf dieser Box rechnet die Box jede Regel selbst.');
+    await expect(abschnitt).toContainText('Diese Box rechnet jede Regel selbst und schaltet danach.');
     await expect(abschnitt.getByRole('button')).toHaveCount(0);
     await bild(page, 'steuerweg-edge-light', breite);
     await ohneUeberlauf(page);

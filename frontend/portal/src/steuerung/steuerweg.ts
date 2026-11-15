@@ -42,7 +42,7 @@ export function wegAnsicht(a: SteuerwegAntwort): WegAnsicht {
     return {
       titel: 'Neuer Weg',
       pille: { klasse: 'on', wort: 'neuer Weg' },
-      satz: 'Auf dieser Box rechnet die Box jede Regel selbst.',
+      satz: 'Diese Box rechnet jede Regel selbst und schaltet danach.',
       knoepfe: [],
       hinweis: s.boxKannScharf ? null : 'Für Regeln braucht diese Box ein Update.',
     };
