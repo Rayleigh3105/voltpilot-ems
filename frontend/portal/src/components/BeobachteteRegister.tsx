@@ -85,6 +85,18 @@ function bytes(value: number) {
   return `${(value / 1_000_000_000).toFixed(2)} GB/Jahr`;
 }
 
+/**
+ * Datenvolumen pro Jahr, schon in GB gerechnet: unter 1 GB in MB wechseln - ein
+ * einzelnes Register liegt oft bei wenigen MB im Jahr, "0,0 GB/Jahr" behauptete
+ * dort fälschlich nichts Geplantes. Deutsches Zahlenformat wie die übrigen
+ * Mengenangaben im Portal (`fmtNum`).
+ */
+function datenvolumenProJahr(gbProJahr: number): string {
+  return gbProJahr < 1
+    ? fmtNum(gbProJahr * 1000, 'MB/Jahr', 0)
+    : fmtNum(gbProJahr, 'GB/Jahr', 1);
+}
+
 function cadence(value: number | null) {
   if (!value) return 'ereignisgesteuert';
   if (value < 60) return `alle ${value} s`;
@@ -586,7 +598,7 @@ export function BeobachteteRegister({
           <strong>{state.status === 'rejected' ? ablehngrundText(state.statusReason) : state.statusReason}</strong>
           {/* Ohne geplantes Volumen (z. B. alles abgelehnt) ist der Satz nichtssagend - dann weglassen. */}
           {state.volumeEstimate.totalGbPerYear > 0
-            && ` ${fmtNum(state.volumeEstimate.totalGbPerYear, 'GB/Jahr', 1)} geplant.`}
+            && ` ${datenvolumenProJahr(state.volumeEstimate.totalGbPerYear)} geplant.`}
         </p>
       )}
       {!state || !quiet ? (
@@ -649,7 +661,7 @@ export function BeobachteteRegister({
         consequences={pending?.enabled ? [
           `Kadenz: ${cadence(pendingCadence)}.`,
           estimate ? `Gerätelast: ${estimate.samplesPerMinute} Samples/min, ${estimate.dutyCyclePercent} % Buslast.` : 'Gerätelast wird berechnet …',
-          estimate ? `Datenvolumen gesamt: ${estimate.totalGbPerYear.toFixed(3)} GB/Jahr.` : 'Datenvolumen wird berechnet …',
+          estimate ? `Datenvolumen gesamt: ${datenvolumenProJahr(estimate.totalGbPerYear)}.` : 'Datenvolumen wird berechnet …',
           'Die Aufzeichnung startet jetzt. Frühere Werte werden nicht rückwirkend nachgeladen.',
           'Statusfolge: angefordert → auf der Box angewendet → erster Wert.',
         ] : [
@@ -685,7 +697,7 @@ export function BeobachteteRegister({
         </div>
         <p className="vp-measure-readonly"><Icon name="lock" size={15} /> Ausschließlich lesbar. Keine Schreibparameter.</p>
         {customError && <p role="alert" className="vp-assist-error">{customError}</p>}
-        {customEstimate && <p role="status" className="vp-measure-global-status">{customEstimate.samplesPerMinute} Samples/min · {customEstimate.dutyCyclePercent} % Buslast · {customEstimate.totalGbPerYear.toFixed(3)} GB/Jahr. Start jetzt, kein Backfill.</p>}
+        {customEstimate && <p role="status" className="vp-measure-global-status">{customEstimate.samplesPerMinute} Samples/min · {customEstimate.dutyCyclePercent} % Buslast · {datenvolumenProJahr(customEstimate.totalGbPerYear)}. Start jetzt, kein Backfill.</p>}
       </Modal>
     </section>
   );
