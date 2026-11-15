@@ -241,12 +241,17 @@ def test_ratchet_never_blocks_a_real_arbitrage_cycle():
 
 
 @needs_highs
-def test_period_start_flattens_toward_the_energy_feasible_minimum():
+def test_period_start_flattens_toward_the_energy_feasible_minimum(ohne_defizitdeckung):
     """peak_so_far = 0 (1st of the period): the FULL Leistungspreis applies to
     every kW of import, so the plan flattens as far as the battery's energy
     allows. Flat 2 kW load over 8h = 16 kWh, usable stored energy 8.5 kWh ->
     ~8.15 kWh AC, so the floor is ~2 - 8.15/8 = ~0.98 kW - and the 1st-of-
-    January 00:15 never defines the year maximum (report (c)3)."""
+    January 00:15 never defines the year maximum (report (c)3).
+
+    The flattening is a property of the LP's peak term, so this runs WITHOUT
+    the box's deficit cover: the box deepens a partial discharge to the whole
+    deficit until the battery is empty, and since PH-1 A the plan counts that
+    (``test_defizitdeckung.py::test_die_box_flacht_eine_spitze_nicht_ab``)."""
     load = [2.0] * 32
     plan = solve(
         make_input(FLAT_100, load, soc0_kwh=9.0, leistungspreis=100.0, peak_so_far=0.0)
@@ -264,11 +269,18 @@ def test_export_is_never_penalized_by_the_peak_term():
     """The Leistungspreis prices IMPORT only. An evening export burst (high
     spot, merchant discharge; ~8.15 kWh AC over the 4h window forces an
     average export of ~1.5 kW past the 0.5 kW load) coexists with a held
-    import peak: the plan exports while peak_target stays at the anchor."""
+    import peak: the plan exports while peak_target stays at the anchor.
+
+    The 2-kW day load is carried by PV: since PH-1 A the box covers a house
+    deficit from the battery in every slot the plan does not charge, so a
+    day load from the grid would leave nothing for the evening."""
     prices = [100.0] * 16 + [500.0] * 16
     load = [2.0] * 16 + [0.5] * 16
+    pv = [2.0] * 16 + [0.0] * 16
     plan = solve(
-        make_input(prices, load, soc0_kwh=9.0, leistungspreis=100.0, peak_so_far=2.0)
+        make_input(
+            prices, load, soc0_kwh=9.0, leistungspreis=100.0, peak_so_far=2.0, pv=pv
+        )
     )
     assert max_import(plan) <= 2.0 + 0.01
     assert plan.peak_target_kw == pytest.approx(2.0, abs=0.01)
@@ -372,8 +384,12 @@ def test_fallback_build_without_s14a_still_shaves_the_peak():
 def test_eeg_site_shaves_peaks_with_discharge_but_never_grid_charges():
     """EEG mode (netzladen_erlaubt=false) + peak shaving: DISCHARGE against
     the spike is unrestricted, while the solar-only-charge bound keeps every
-    charge within produced PV (here: none) - shaving never opens a
-    grid-charging loophole."""
+    charge within produced PV (here: no surplus) - shaving never opens a
+    grid-charging loophole.
+
+    PV carries the 2-kW base load: since PH-1 A the box covers a house deficit
+    from the battery in every slot the plan does not charge, so a base load
+    from the grid would empty the battery before the spike."""
     plan = solve(
         make_input(
             FLAT_100,
@@ -382,10 +398,11 @@ def test_eeg_site_shaves_peaks_with_discharge_but_never_grid_charges():
             leistungspreis=100.0,
             peak_so_far=4.0,
             netzladen=False,
+            pv=[2.0] * len(FLAT_100),
         )
     )
     assert max_import(plan) <= 4.0 + 0.01
-    assert all(s.battery_kw <= 1e-6 for s in plan.slots), "no PV = no charge at all"
+    assert all(s.battery_kw <= 1e-6 for s in plan.slots), "no surplus = no charge at all"
 
 
 # ---- contract: the additive payload fields --------------------------------------

@@ -270,15 +270,20 @@ def test_eeg_pv_day_roles_store_pv_and_never_grid_charge():
 @needs_highs
 def test_peak_day_discharge_is_spitze_kappen():
     # RLM site, flat prices (no arbitrage motive), a noon load spike: the only
-    # reason to discharge is the Leistungspreis - the role must say so.
+    # reason to discharge is the Leistungspreis - the role must say so. The PV
+    # carries the 5-kW base load and the spike is one hour: since PH-1 A the
+    # plan counts the box's deficit cover, which covers every house deficit in
+    # full - a base load from the grid would empty the battery before the
+    # spike, and a spike longer than the stored energy at full power could not
+    # be shaved at all (test_defizitdeckung.py).
     n = 96
-    load = [5.0] * 40 + [12.0] * 8 + [5.0] * 48
+    load = [5.0] * 40 + [12.0] * 4 + [5.0] * 52
     inp = make_input(
-        [100.0] * n, load=load, soc0_kwh=9.5, leistungspreis_eur_kw=120.0
+        [100.0] * n, load=load, pv=5.0, soc0_kwh=9.5, leistungspreis_eur_kw=120.0
     )
     plan = solve(inp)
     spike_discharge = [
-        s for i, s in enumerate(plan.slots) if 40 <= i < 48 and s.battery_kw < -0.05
+        s for i, s in enumerate(plan.slots) if 40 <= i < 44 and s.battery_kw < -0.05
     ]
     assert spike_discharge, "the spike must be shaved by discharging"
     assert all(s.slot_role == "spitze_kappen" for s in spike_discharge)
@@ -309,8 +314,10 @@ def test_curtailment_day_idle_slots_are_abregeln():
 @needs_highs
 def test_flat_day_is_all_warten_with_no_bindings():
     # A flat curve plans an idle battery (zero savings by construction) - the
-    # honest story is simply "warten", with no fabricated bindings.
-    plan = solve(make_input([100.0] * 96, load=5.0, soc0_kwh=5.0))
+    # honest story is simply "warten", with no fabricated bindings. Without a
+    # house deficit: since PH-1 A a deficit is covered from the battery (the
+    # box does it in every slot that does not charge), which is no rest.
+    plan = solve(make_input([100.0] * 96, load=0.0, soc0_kwh=5.0))
     assert all(s.slot_role == "warten" for s in plan.slots)
     assert all(s.slot_flags == () for s in plan.slots)
     assert all(abs(s.battery_kw) <= 0.05 for s in plan.slots)

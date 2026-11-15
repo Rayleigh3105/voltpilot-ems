@@ -242,8 +242,16 @@ def fk3_allein(monkeypatch):
     are only visible there in EEG mode - since EN-2 A an EEG plan never
     charges while the house imports, so the grid-sourced part is 0 anyway
     (``test_since_en_2_a_the_24_09_slots_never_charge_even_without_hurdle``);
-    the hurdle still binds where grid charging is allowed."""
+    the hurdle still binds where grid charging is allowed.
+
+    Without PH-1 A (2026-11-15) as well, which did not exist then either: in
+    this stylized afternoon a 14-kW house sits between the charge and the
+    sale, and the box covers it from the battery in every slot the plan does
+    not charge - the stored kWh would never reach the sale the hurdle prices."""
+    from voltpilot_optimization import defizitdeckung
     from voltpilot_optimization import solver as solver_mod
+
+    monkeypatch.setattr(defizitdeckung, "baue", lambda m, **kw: 0.0)
 
     bauen = solver_mod.build_model
 
@@ -291,8 +299,10 @@ def test_with_the_hurdle_the_herzogau_slots_no_longer_charge_from_the_grid():
     assert surplus.battery_kw == pytest.approx(6.0, abs=0.01)
     assert grid_charge(surplus) <= PLANNED_GRID_CHARGE_DEADBAND_KW
     assert surplus.charge_from_surplus_only is True
-    # What is stored still goes into the better sale.
-    assert plan.slots[SALE_SLOTS[1]].battery_kw < -PLANNED_GRID_CHARGE_DEADBAND_KW
+    # What is stored covers the 14-kW house right after: the box covers a
+    # deficit in every slot the plan does not charge, and the plan counts it
+    # (PH-1 A) - the sale behind 15 slots of house load never sees it.
+    assert plan.slots[1].battery_kw < -PLANNED_GRID_CHARGE_DEADBAND_KW
 
 
 @needs_highs

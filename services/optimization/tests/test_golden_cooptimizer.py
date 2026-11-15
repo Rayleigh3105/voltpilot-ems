@@ -210,6 +210,7 @@ def test_golden_scenarios_cover_every_module():
     assert seen == {
         "reservation-stack",
         "solar-only-charge",
+        "defizitdeckung",
         "grid-limit-14a",
         "max-feed-in",
         "peak-shaving",

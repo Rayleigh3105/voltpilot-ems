@@ -2,8 +2,9 @@
 
 The v1 solver's conditional blocks - EEG solar-only charge, §14a caps, the
 FK1 static feed-in cap, the PS-1 peak epigraph + ratchet, the P11/PS-2
-reservation stack - become DECLARED constraint/objective contributions that
-are SELECTED per site instead of inline ``if`` blocks. Behavior is identical
+reservation stack, the PH-1 A deficit cover - become DECLARED
+constraint/objective contributions that are SELECTED per site instead of
+inline ``if`` blocks. Behavior is identical
 (the golden suite proves it); the structure is what the v2 strategy nodes
 register against later: a strategy node announces its contribution
 (Peak-Ziel, HLZF-Fenster, DV-Fahrplan, ...) and the co-optimizer folds every
@@ -33,6 +34,7 @@ from dataclasses import dataclass
 
 from pyomo.environ import ConcreteModel, Constraint, NonNegativeReals, Var
 
+from voltpilot_optimization import defizitdeckung
 from voltpilot_optimization.config import peak_ratchet_eur_per_kw
 from voltpilot_optimization.entities import CoOptimizationInput, StorageEntity
 from voltpilot_optimization.verbund import erzeuger_id
@@ -115,6 +117,43 @@ class SolarOnlyChargeModule(SolverModule):
             )
 
         m.strenge_ausschliesslichkeit = Constraint(solar_only, m.T, rule=strenge)
+
+
+@dataclass(frozen=True)
+class DefizitDeckungModule(SolverModule):
+    """PH-1 A (Captain-Entscheid 15.11.2026): the box's deficit cover - in a
+    slot that does not charge, a forecast house deficit leaves the battery
+    until the box floor (:mod:`voltpilot_optimization.defizitdeckung`).
+
+    Selected only for the case the v1 rule covers: exactly ONE storage, no
+    controllable consumer, no Verbund. There it is byte-identical to v1's
+    ``defizit_deckung`` / ``defizit_boden`` / ``defizit_laden`` (same helper,
+    same rows, same names). How the box splits a deficit over several
+    storages, and how a planned consumer moves it, is not decided - such a
+    site keeps the model without the rule."""
+
+    name: str = "defizitdeckung"
+    #: the priced gap of the build that holds the §14a cap (same predicate as
+    #: :class:`GridLimitModule`'s selection)
+    mit_luecke: bool = False
+
+    def constrain(self, m: ConcreteModel, inp: CoOptimizationInput) -> None:
+        (storage,) = inp.storages
+        defizitdeckung.baue(
+            m,
+            load_kw=inp.base_load_kw,
+            pv_kw=[inp.total_pv_kw(t) for t in range(inp.slots)],
+            params=storage.params,
+            slot_hours=inp.slot_hours,
+            mit_luecke=self.mit_luecke,
+            charge=lambda t: m.charge[0, t],
+            discharge=lambda t: m.discharge[0, t],
+            is_charging=lambda t: m.is_charging[0, t],
+            soc_ende=lambda t: m.soc[0, t + 1],
+        )
+
+    def objective(self, m: ConcreteModel, inp: CoOptimizationInput):
+        return defizitdeckung.luecke_kosten(m, inp.slot_hours)
 
 
 @dataclass(frozen=True)
@@ -322,6 +361,12 @@ def select_modules(
     modules: list[SolverModule] = [ReservationStackModule()]
     if any(not inp.grid_charge_allowed(s) for s in inp.storages):
         modules.append(SolarOnlyChargeModule())
+    if len(inp.storages) == 1 and not inp.controllable_loads and not inp.verbund:
+        modules.append(
+            DefizitDeckungModule(
+                mit_luecke=enforce_grid_limit and inp.grid_limit_kw is not None
+            )
+        )
     if enforce_grid_limit and inp.grid_limit_kw is not None:
         modules.append(GridLimitModule())
     if inp.max_feed_in_kw is not None:

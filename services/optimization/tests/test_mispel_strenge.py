@@ -173,7 +173,12 @@ HZ_PV = (
     + [0.0] * 34
 )
 HZ_LOAD = 6.5
-HZ_EXPORT = [90.0] * 68 + [380.0] * 12 + [90.0] * 16
+# Der Verkaufswert schliesst direkt an das Sonnenfenster an (15:30-18:30). Seit
+# PH-1 A rechnet der Plan die Defizitdeckung der Box mit: Laege zwischen
+# Sonnenende und Verkauf eine Luecke, leerte die Box den Speicher dort ins Haus,
+# dann lohnte auch FK3 allein kein Laden mehr - und die Gegenprobe unten
+# bewiese nicht mehr, dass EN-2 A das Laden bei Bezug verhindert.
+HZ_EXPORT = [90.0] * 62 + [380.0] * 12 + [90.0] * 22
 
 
 def _herzogau(netzladen_erlaubt: bool = False) -> OptimizationInput:

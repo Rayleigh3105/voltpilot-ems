@@ -82,11 +82,14 @@ def test_model_builds_without_solver():
     model = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
     # 96 slots: balance + import/export gates + dynamics + charge/discharge
     # gates + 2 grid caps per slot. (The old hard terminal-SoC constraint is
-    # gone - P3 replaced it with a terminal-value objective term.)
-    assert model.nconstraints() == 96 * 8
+    # gone - P3 replaced it with a terminal-value objective term.) Plus, since
+    # PH-1 A, the box's deficit cover in every slot (the 5-kW house has a
+    # deficit in all of them): defizit_deckung/_boden/_laden.
+    assert model.nconstraints() == 96 * 8 + 96 * 3
     # charge/discharge/is_charging/curtail/import/export/is_importing per slot
-    # + 97 SoC nodes.
-    assert model.nvariables() == 96 * 7 + 97
+    # + 97 SoC nodes + boden_erreicht and, with the hard §14a cap, the priced
+    # gap deckung_luecke per deficit slot.
+    assert model.nvariables() == 96 * 7 + 97 + 96 * 2
 
 
 def test_curtailment_exists_in_both_builds_and_is_bounded_by_pv():
@@ -127,7 +130,10 @@ def test_savings_positive_on_arbitrage_curve_zero_on_flat():
     arb = solve(make_input(arbitrage_prices()))
     assert arb.savings_eur > 0.5
 
-    flat = solve(make_input([100.0] * 96))
+    # Without a house deficit: since PH-1 A a deficit is covered from the
+    # battery (the box does it in every slot the plan does not charge), and
+    # that saves the import it displaces - which is no arbitrage motive.
+    flat = solve(make_input([100.0] * 96, load=0.0))
     assert flat.savings_eur == pytest.approx(0.0, abs=1e-6)
     # On a flat curve cycling only burns round-trip losses: the optimum is idle.
     assert all(abs(s.battery_kw) < 1e-6 for s in flat.slots)
@@ -430,8 +436,10 @@ def test_fallback_build_curtails_too():
 def test_eeg_constraint_exists_only_in_eeg_mode_and_in_both_builds():
     # Merchant build: same constraint/variable counts as before the EEG switch,
     # no EEG constraint objects (the regression guarantee).
+    # (+ 3 x 96 since PH-1 A: the box's deficit cover, see
+    # test_model_builds_without_solver.)
     merchant = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
-    assert merchant.nconstraints() == 96 * 8
+    assert merchant.nconstraints() == 96 * 8 + 96 * 3
     assert not hasattr(merchant, "solar_only_charge")
     assert not hasattr(merchant, "no_import_while_charging")
 
@@ -451,7 +459,7 @@ def test_eeg_constraint_exists_only_in_eeg_mode_and_in_both_builds():
         assert hasattr(eeg, "solar_only_charge")
         assert hasattr(eeg, "strenge_ausschliesslichkeit")
         assert not hasattr(eeg, "no_import_while_charging")
-        expected = 96 * 10 if enforce else 96 * 8
+        expected = (96 * 10 if enforce else 96 * 8) + 96 * 3
         assert eeg.nconstraints() == expected
 
 
@@ -482,8 +490,10 @@ def test_eeg_mode_cloudy_day_never_charges_while_the_house_imports():
     # 2026-07-16 alone let the PV bus charge while the house imported): a
     # cloudy day where load > pv in EVERY slot. Every slot imports, so NOTHING
     # may charge - in the balance at the connection point that charge would be
-    # grid power in the storage (tests/test_mispel_strenge.py). The battery
-    # still serves the expensive evening from what it holds at the start.
+    # grid power in the storage (tests/test_mispel_strenge.py). What the
+    # battery holds at the start covers the house from the first slot on: the
+    # box covers a deficit in every slot the plan does not charge, and since
+    # PH-1 A the plan counts it - the expensive evening is not reachable.
     n = 96
     prices = [20.0] * 48 + [60.0] * 16 + [250.0] * 32
     pv = [0.0] * 48 + [3.0] * 16 + [0.0] * 32  # cloudy: pv < load (4) all day
@@ -492,9 +502,10 @@ def test_eeg_mode_cloudy_day_never_charges_while_the_house_imports():
         charge = max(slot.battery_kw, 0.0)
         assert charge <= pv[i] + 1e-6, f"slot {i} charges beyond the produced PV"
         assert charge <= 1e-6, f"slot {i} charges {charge} kW while the house imports"
-    evening = plan.slots[64:]
-    assert sum(s.battery_kw for s in evening) < -1.0, "the stored energy covers the peak"
-    assert plan.savings_eur > 0.5
+    assert plan.slots[0].battery_kw == pytest.approx(-4.0, abs=1e-3), "the house is covered"
+    discharged = -sum(min(s.battery_kw, 0.0) for s in plan.slots) * 0.25
+    assert discharged > 1.0, "the stored energy is used, not parked"
+    assert plan.savings_eur > 0.0
 
 
 @needs_highs

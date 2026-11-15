@@ -178,10 +178,16 @@ def test_the_block_load_morning_is_covered_now_instead_of_parked():
 
 
 @needs_highs
-def test_covering_earlier_moves_the_same_energy_and_the_same_money():
+def test_covering_earlier_moves_the_same_energy_and_the_same_money(ohne_defizitdeckung):
     """Der Beleg, dass hier nur ein GLEICHSTAND gebrochen wird: gegenueber dem
     Plan ohne den Tie-Break aendert sich weder die entladene noch die geladene
-    Menge, weder Export noch Kosten - nur der Zeitpunkt."""
+    Menge, weder Export noch Kosten - nur der Zeitpunkt.
+
+    Im LP ohne die Defizitdeckung der Box: seit PH-1 A (15.11.2026) kann der
+    Plan in einem Defizit-Slot gar nicht mehr parken - die Box deckt dort, und
+    der Plan rechnet es mit. Der Gleichstand und sein Brecher sind dann nur
+    noch im LP selbst zu sehen; den Vormittag im vollen Modell prueft der Test
+    darueber."""
     inp = morning_input()
     with_fix = solve(inp)
     saved = solver_module.EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW
@@ -220,13 +226,17 @@ def test_a_real_price_difference_still_beats_the_earliness_preference():
     dynamischer Tarif muss den teuren Stunden weiterhin folgen: hier ist der
     Abend WIRKLICH teurer als der Vormittag, also wartet der Speicher."""
     # Dynamischer Bezug: Vormittag guenstig, Abend teuer (die Blocklast liegt
-    # am Vormittag - der Frueh-Anreiz zoege genau dorthin).
+    # am Vormittag - der Frueh-Anreiz zoege genau dorthin). Netzladen erlaubt:
+    # seit PH-1 A deckt die Box ein Defizit in jedem Slot, in dem der Plan nicht
+    # laedt, und warten kann der Speicher am Vormittag nur, indem der Plan
+    # laedt - zum billigen Vormittagspreis tut er das.
     imports = [120.0 if _local_hour(t) < 17.0 else 400.0 for t in range(N)]
     plan = solve(
         morning_input(
             soc_pct=25.0,
             import_eur_mwh=imports,
             export_eur_mwh=[min(p, 100.0) for p in SPOT],
+            netzladen_erlaubt=True,
         )
     )
     evening = [t for t in range(N) if _local_hour(t) >= 17.0]

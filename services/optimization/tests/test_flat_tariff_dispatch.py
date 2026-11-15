@@ -229,8 +229,14 @@ def test_spot_settled_plans_are_unchanged(tarif_art, tarif_param):
     """Pinned to the values measured on the unfixed solver, so the terminal
     value rework cannot silently alter the plans that were already correct:
     34.53 kWh discharged, the full 95 % -> 5 % traverse, and the identical
-    window cashflow."""
-    expected_cash = {"ohne": -1.145, "dynamisch": -0.163}[tarif_art]
+    window cashflow.
+
+    One re-pin, by PH-1 A (2026-11-15): the ``ohne`` plan held at 19:30-19:45
+    with 1,7-4,3 kW of house deficit and sold that energy at 22:00-22:15 - a
+    hold the box never executes (it covers a deficit in every slot the plan
+    does not charge). It now covers there like the box and sells less at 22:00:
+    -1.129 instead of -1.145 EUR, same 34.53 kWh, same traverse."""
+    expected_cash = {"ohne": -1.129, "dynamisch": -0.163}[tarif_art]
     inp, plan = plan_for(tarif_art=tarif_art, tarif_param=tarif_param)
 
     assert discharged_kwh(plan) == pytest.approx(34.53, abs=0.05)
@@ -251,12 +257,28 @@ def test_a_genuinely_flat_curve_still_plans_an_idle_battery():
     "Nothing to earn" means no dispersion in the curve AND no import/export
     spread - i.e. the symmetric ``ohne`` model on a flat spot. Then holding and
     using a stored kWh are worth exactly the same, and the throughput tie-break
-    must keep the battery still."""
+    must keep the battery still - wherever it has the choice. Since PH-1 A it
+    has none: the evening house deficit takes the stored energy anyway (the
+    box covers it in every slot the plan does not charge, and the plan counts
+    that). On this exactly flat, symmetric curve "sell it now" and "cover the
+    house later" are then the same money, and the early-discharge tie-break
+    picks "now" - a tie, not a dump; a real curve never has it.
+
+    What must survive is the "no dumping" half: nothing is bought, no more
+    leaves the battery than the house would have taken from it, and the window
+    cashflow is the one of the same stored energy covering the house."""
     inp, plan = plan_for(
         tarif_art="ohne", tarif_param=None, spot_override=[120.0] * SLOTS
     )
-    assert all(abs(s.battery_kw) < 1e-6 for s in plan.slots)
-    assert discharged_kwh(plan) == pytest.approx(0.0, abs=1e-6)
+    assert all(s.battery_kw <= 1e-6 for s in plan.slots), "no charge on a flat curve"
+    house_kwh = sum(max(lo - p, 0.0) for p, lo in zip(inp.pv_kw, inp.load_kw)) * 0.25
+    assert discharged_kwh(plan) <= house_kwh + 1e-6, "no more than the house takes"
+    # Same money as covering the house with that energy: at 12 ct both ways
+    # the window cashflow only depends on HOW MUCH leaves the battery.
+    idle_cash = sum(inp.cashflow_cost_eur(i, lo - p) for i, (p, lo) in enumerate(zip(inp.pv_kw, inp.load_kw)))
+    assert window_cashflow_eur(inp, plan) == pytest.approx(
+        idle_cash - discharged_kwh(plan) * 0.12, abs=1e-3
+    )
 
 
 @needs_highs
@@ -279,20 +301,20 @@ def test_a_flat_curve_under_an_asymmetric_tariff_self_consumes_without_churn(
     inp, plan = plan_for(
         tarif_art=tarif_art, tarif_param=tarif_param, spot_override=flat
     )
-    _, idle_reference = plan_for(
-        tarif_art="ohne", tarif_param=None, spot_override=flat
-    )
+    # The same plant with the battery idle: the house balance alone. (Until
+    # PH-1 A this was the symmetric plan on the flat curve; since the plan
+    # counts the box's deficit cover that one covers the house too.)
+    reference_export = sum(max(p - lo, 0.0) for p, lo in zip(inp.pv_kw, inp.load_kw)) * 0.25
+    reference_import = sum(max(lo - p, 0.0) for p, lo in zip(inp.pv_kw, inp.load_kw)) * 0.25
 
     charged = sum(max(s.battery_kw, 0.0) for s in plan.slots) * 0.25
     assert charged == pytest.approx(0.0, abs=1e-6), "no round-trip churn"
     assert discharged_kwh(plan) > 30.0, "the evening load is served from storage"
 
     exported = -sum(min(s.grid_kw, 0.0) for s in plan.slots) * 0.25
-    reference_export = -sum(min(s.grid_kw, 0.0) for s in idle_reference.slots) * 0.25
     assert exported == pytest.approx(reference_export, abs=0.05), (
         "the stored energy displaces import, it is never exported at the flat price"
     )
     # ... and that displacement is the whole point: grid import collapses.
     imported = sum(max(s.grid_kw, 0.0) for s in plan.slots) * 0.25
-    reference_import = sum(max(s.grid_kw, 0.0) for s in idle_reference.slots) * 0.25
     assert imported < reference_import - 25.0

@@ -31,6 +31,15 @@ Formulation (per slot t, dt = 0.25 h):
                                                                     PV-bus Bilanzierung - FK3)
                import_t <= M_imp_t * (1 - is_charging_t)           (no charging in a quarter hour
                                                                     with grid import - EN-2 A)
+    and, for a battery the plan steers (outside the Verbund), in every slot with a
+    forecast house deficit d_t = load_t - pv_t > 0.2 kW (PH-1 A, see below):
+               discharge_t >= min(d_t, max_discharge) * (1 - is_charging_t - boden_t)
+               soc_{t+1}   <= boden + (soc_max - boden) * (1 - boden_t)
+                                                                   (boden_t binary: the slot
+                                                                    ends at the box floor)
+               charge_t    >= 0.15 * is_charging_t                 (a charge the box counts)
+    with, ONLY in the build that holds the §14a cap, a gap gap_t >= 0 added to
+    the left side of the first row and objective += 10 EUR/kWh * gap_t * dt
     and, ONLY when leistungspreis_eur_kw is set (peak shaving, PS-1, see below):
                peak >= grid_import_t,  peak >= peak_so_far         (epigraph over the billing
                peak_below >= grid_import_t                          period's import peak)
@@ -233,6 +242,27 @@ Design decisions, deliberately:
   values (``grid_charge_allowed`` false), because a forecast surplus is not a
   measured one.
 
+- **The box's deficit cover is part of the plan (PH-1 A, Captain-Entscheid
+  15.11.2026).** In every slot the plan does not charge, the box covers a
+  measured house deficit from the battery down to its floor
+  (``deficitcover.go``, the trust rule of 2026-08-28). The model used to plan
+  0 kW as a hold for a later, higher sale - Herzogau 2026-11-02: hold from
+  16:00, sell at 08:00/09:00 the next morning - while the box emptied the
+  battery into the house by 22-23 h. ``defizit_deckung`` /
+  ``defizit_boden`` / ``defizit_laden`` make the plan's SoC path the one the
+  box drives: a slot with a forecast deficit either charges (at least
+  ``LADEN_AB_KW``, a charge the box counts), or discharges at least that
+  deficit, or ends at the box floor (``boden_erreicht``, one binary per
+  deficit slot). Holding is therefore only planned where the box executes
+  it, and stock the house would drain is sold while it is still there.
+  Rule, thresholds and the cases left out (a battery the plan does not
+  steer, the Verbund) live in :mod:`voltpilot_optimization.defizitdeckung`.
+  A horizon without a deficit slot builds the identical model as before.
+  The box keeps no reserve for a later §14a peak, so a hard §14a cap and the
+  cover can be infeasible together; in that build the cover gets a gap priced
+  far above any market price (``deckung_luecke``), the cap wins where both
+  cannot hold, and :func:`optimize` logs it.
+
 - **Ehrliche Marge on grid-sourced charge (Captain-Entscheid E6 A,
   24.09.2026; K0 vp-wr-k0-plandaten).** Economically every kW charged beyond
   the slot's PV surplus is a kW bought at the import price. (In EEG mode the
@@ -314,6 +344,7 @@ from voltpilot_optimization.config import (
     night_reserve_enabled,
     peak_ratchet_eur_per_kw,
 )
+from voltpilot_optimization import defizitdeckung
 from voltpilot_optimization.domain import (
     OptimizationInput,
     PlanSlot,
@@ -623,6 +654,21 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             rule=lambda model, t: model.grid_import[t]
             <= _m_import(t) * (1 - model.is_charging[t]),
         )
+    # PH-1 A (Captain-Entscheid 15.11.2026): the box covers a measured house
+    # deficit from the battery in every slot the plan does not charge, down to
+    # its floor (deficitcover.go). The plan now counts that instead of planning
+    # a hold the box never executes - see voltpilot_optimization.defizitdeckung.
+    # Only for a battery the plan actually steers and outside the Verbund (both
+    # reasons in that module); a horizon without a deficit adds nothing. With
+    # the hard §14a cap below the rule gets a priced gap, so the two can never
+    # make a run infeasible together.
+    deckung_cost = 0.0
+    if not battery_ruht and eigen is None and not inp.verbund:
+        deckung_cost = _add_defizitdeckung(
+            m,
+            inp,
+            mit_luecke=enforce_grid_limit and inp.grid_limit_kw is not None,
+        )
     # Ehrliche Marge (Captain-Entscheid E6 A, K0 vp-wr-k0-plandaten): at a
     # fixed-tariff site the grid-sourced part of a charge must earn the hurdle
     # AFTER the full round trip. grid_charge_kw is that part - the charge
@@ -733,6 +779,7 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         )
         + peak_cost
         + hurdle_cost
+        + deckung_cost
         - v_end * (m.soc[n] - soc0),
         sense=minimize,
     )
@@ -740,6 +787,43 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.total_cost.expr = m.total_cost.expr + verbund_cost
     _add_night_reserve(m, inp, soc_floor)
     return m
+
+
+def _add_defizitdeckung(
+    m: ConcreteModel, inp: OptimizationInput, mit_luecke: bool
+):
+    """Die Defizitdeckung der Box als Nebenbedingung (PH-1 A); Regel, Lesart
+    und Grenzen stehen in :mod:`voltpilot_optimization.defizitdeckung`. Ohne
+    einen Slot mit Hausdefizit kommt nichts ins Modell - byte-identisch.
+    Gibt den Zielfunktionsterm der Luecke zurueck (0.0 ohne harte
+    §14a-Grenze)."""
+    return defizitdeckung.baue(
+        m,
+        load_kw=inp.load_kw,
+        pv_kw=inp.pv_kw,
+        params=inp.battery,
+        slot_hours=inp.slot_hours,
+        mit_luecke=mit_luecke,
+        charge=lambda t: m.charge[t],
+        discharge=lambda t: m.discharge[t],
+        is_charging=lambda t: m.is_charging[t],
+        soc_ende=lambda t: m.soc[t + 1],
+    )
+
+
+def _melde_deckungsluecke(model: ConcreteModel, inp: OptimizationInput) -> None:
+    """Warnung, wenn die harte §14a-Grenze die Defizitdeckung der Box
+    ueberstimmt hat: Der Plan haelt dort Energie, die die Box ins Haus gibt
+    (PH-1 A, :mod:`voltpilot_optimization.defizitdeckung`)."""
+    kwh = defizitdeckung.luecke_kwh(model, inp.slot_hours)
+    if kwh > 1e-3:
+        logger.warning(
+            "site=%s: §14a-Grenze und Defizitdeckung der Box sind zusammen "
+            "nicht zu halten - der Plan rechnet %.2f kWh Hausdefizit als nicht "
+            "gedeckt, die Box deckt sie bis zu ihrer Untergrenze (PH-1 A)",
+            inp.site_id,
+            kwh,
+        )
 
 
 def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: bool):
@@ -948,6 +1032,7 @@ def optimize(
     """
     model = build_model(inp)
     _solve(model)
+    _melde_deckungsluecke(model, inp)
     plan = _extract_plan(model, inp, plan_id, generated_at)
     if explain_plan:
         plan = _with_explanation(plan, model, inp, fallback_14a=False)

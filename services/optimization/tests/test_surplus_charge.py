@@ -388,7 +388,14 @@ def test_the_honest_hold_of_hypothesis_h2_never_fires_the_duty():
     Symmetric flat pricing with no expensive hour: cycling moves no money, so
     the plan idles at 7 % SoC while the surplus is exported. The assertion is
     NON-VACUOUS on the economics: it checks the rule refuses those slots on
-    ``storing_beats_selling`` alone, independently of any trade guard."""
+    ``storing_beats_selling`` alone, independently of any trade guard.
+
+    "Idle" means: nothing is stored. Since PH-1 A the plan counts the box's
+    deficit cover, so the 2 % above the box floor cannot be held - the
+    evening house would take them. At this exactly flat, symmetric price
+    selling them now and covering the house later are the same money, and the
+    early-discharge tie-break sells them in the first slot (a tie, no
+    economic decision)."""
     flat = [80.0] * (MORNING + EVENING)
     inp = make_input(
         flat,
@@ -400,8 +407,8 @@ def test_the_honest_hold_of_hypothesis_h2_never_fires_the_duty():
     )
     plan = solve(inp)
 
-    assert all(s.battery_kw == pytest.approx(0.0, abs=1e-6) for s in plan.slots), (
-        "the honest-hold scenario must plan an idle battery"
+    assert all(s.battery_kw <= 1e-6 for s in plan.slots), (
+        "the honest-hold scenario must store nothing of the surplus"
     )
     assert all(not s.charge_surplus_to_battery for s in plan.slots)
     # The economics alone refuse it - not the trade guard, not the SoC headroom

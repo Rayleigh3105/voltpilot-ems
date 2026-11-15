@@ -349,13 +349,18 @@ def test_the_17_08_evening_spends_the_tie_on_covering_and_still_explains_why():
 
 
 @needs_highs
-def test_a_reserved_rest_names_decken_and_calls_the_tie_a_tie():
+def test_a_reserved_rest_names_decken_and_calls_the_tie_a_tie(ohne_defizitdeckung):
     """The export's C-facts on a rest that is genuinely right: with a real
     evening peak the plan holds a part of its charge back (covering the cheap
     slots early would starve the expensive ones), and the resting slot reports
     what it rejected - covering - and that the marginal trade itself was a TIE,
     not a decision. Since the Jetzt-Vorzug this is where that reading lives:
-    on a flat tariff the plan no longer rests at such a tie."""
+    on a flat tariff the plan no longer rests at such a tie.
+
+    The reading of a rest is a property of the LP's duals, so this runs
+    WITHOUT the box's deficit cover: since PH-1 A a rest with a house deficit
+    above the box floor no longer happens in the full model - the box covers
+    there, and the plan counts it."""
     plan = solve(truebe_nacht_mit_abendspitze())
     assert plan.why_terminal_anchor == ANCHOR_BEZUGSPREIS
     resting = [
@@ -421,11 +426,13 @@ def test_a_full_battery_offers_no_charging_alternative():
     # soc_max binds: charging is impossible, so only the discharge side may be
     # named. The horizon is a cheap night before an expensive morning, so the
     # plan fills up and then waits.
+    # No house load: since PH-1 A a full battery cannot rest above a house
+    # deficit - the box covers it, and the plan counts that.
     n = 48
     spot = [10.0] * (n // 2) + [300.0] * (n - n // 2)
     inp = make_input(
         n=n, spot=spot, import_price=spot, export_value=spot,
-        load=0.5, pv=0.0, soc0_kwh=2.0, netzladen_erlaubt=True,
+        load=0.0, pv=0.0, soc0_kwh=2.0, netzladen_erlaubt=True,
     )
     plan = solve(inp)
     full = [s for s in plan.slots
@@ -516,10 +523,11 @@ def test_the_committed_plan_is_byte_identical_with_and_without_the_export():
 
 @needs_highs
 def test_persistence_carries_the_run_facts_on_every_row_and_the_slot_facts_per_slot():
-    # The reserved-rest horizon: it carries BOTH kinds of row (a resting slot
-    # with a margin, an active one without). The flat-tariff twin no longer
-    # rests with a charged battery since the Jetzt-Vorzug.
-    plan = solve(truebe_nacht_mit_abendspitze())
+    # The summer day carries BOTH kinds of row (a resting slot with a margin,
+    # an active one without). The cloudy horizons no longer rest with a
+    # charged battery: the flat-tariff one since the Jetzt-Vorzug, the one
+    # with the evening peak since PH-1 A (the box covers the house there).
+    plan = solve(sonniger_tag())
     rows = plan_rows(plan)
     # Positions are read from the INSERT's own column list, not counted from
     # the end of the tuple: a later column (pv_anchor_ratio) must not silently

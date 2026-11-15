@@ -114,6 +114,13 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         # lambda to (import + hurdle + wear)/eta, and the lambda-based texts
         # and duties read it from there; next_best_alternative prices it.
         "grid_charge_hurdle",
+        # PH-1 A (2026-11-15, voltpilot_optimization.defizitdeckung): the box's
+        # deficit cover. No flag of its own either - where it binds the slot
+        # discharges to the house (role eigenverbrauch) or ends at the floor
+        # (soc_floor), and the texts read the plan as it is.
+        "defizit_deckung",
+        "defizit_boden",
+        "defizit_laden",
     }
 )
 
@@ -337,10 +344,14 @@ def resolve_lp_duals(model: ConcreteModel):
     from pyomo.contrib.appsi.base import TerminationCondition
     from pyomo.contrib.appsi.solvers.highs import Highs
 
-    for t in model.T:
-        for var in (model.is_charging[t], model.is_importing[t]):
-            var.fix(round(value(var)))
-            var.domain = Reals
+    binaries = [model.is_charging[t] for t in model.T]
+    binaries += [model.is_importing[t] for t in model.T]
+    # PH-1 A: one more binary per deficit slot, present only when it is built.
+    if hasattr(model, "boden_erreicht"):
+        binaries += list(model.boden_erreicht.values())
+    for var in binaries:
+        var.fix(round(value(var)))
+        var.domain = Reals
     solver = Highs()
     solver.config.load_solution = False
     results = solver.solve(model)

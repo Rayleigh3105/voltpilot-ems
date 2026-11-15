@@ -89,12 +89,16 @@ def solve(inp: OptimizationInput):
 
 
 @needs_highs
-def test_f3_eeg_site_discharges_its_full_battery_into_the_evening_peak():
+def test_f3_eeg_site_discharges_its_full_battery_into_the_evening_peak(ohne_defizitdeckung):
     """Critique Experiment 1, reproduced: EEG mode, battery 90% full, NO PV
     for the whole 24h horizon (cloudy), a 250 EUR/MWh evening peak. The old
     terminal floor forbade ALL discharge (charging was impossible, so the end
     SoC could never recover) - 9 kWh of stored solar idled through the peak
-    while the household imported. Now the stored energy serves the peak."""
+    while the household imported. Now the stored energy serves the peak.
+
+    A statement about the terminal value in the LP, so WITHOUT the box's
+    deficit cover: the box covers the 2-kW house from the first slot on, and
+    since PH-1 A the plan counts that (test_defizitdeckung.py)."""
     n = 96
     prices = [100.0] * 80 + [250.0] * 16  # cloudy day, expensive evening
     plan = solve(make_input(prices, load=2.0, pv=0.0, soc0_kwh=9.0))
@@ -112,10 +116,10 @@ def test_f3_eeg_site_discharges_its_full_battery_into_the_evening_peak():
 
 
 @needs_highs
-def test_f3_stored_energy_waits_for_the_peak_instead_of_dumping_early():
+def test_f3_stored_energy_waits_for_the_peak_instead_of_dumping_early(ohne_defizitdeckung):
     # Same scenario: the cheap 100-slots BEFORE the peak must not discharge -
     # the terminal value (and the better peak ahead) both beat realizing at
-    # the anchor price.
+    # the anchor price. In the LP without the box's deficit cover (see above).
     n = 96
     prices = [100.0] * 80 + [250.0] * 16
     plan = solve(make_input(prices, load=2.0, pv=0.0, soc0_kwh=9.0))
@@ -174,9 +178,11 @@ def test_plan_is_stamped_with_the_effective_terminal_value_it_credited():
 def test_flat_curve_still_plans_an_idle_battery():
     # The long-standing product property "zero savings on a flat curve" must
     # survive P3: discharging at exactly the derived anchor price is an exact
-    # tie with holding, broken toward idle by the epsilon tie-breaks.
+    # tie with holding, broken toward idle by the epsilon tie-breaks. Without
+    # a house deficit: since PH-1 A the plan counts the box's deficit cover,
+    # and covering the house saves the import it displaces.
     plan = solve(
-        make_input([100.0] * 96, load=5.0, pv=0.0, soc0_kwh=5.0,
+        make_input([100.0] * 96, load=0.0, pv=0.0, soc0_kwh=5.0,
                    netzladen_erlaubt=True)
     )
     assert all(abs(s.battery_kw) < 1e-6 for s in plan.slots)
