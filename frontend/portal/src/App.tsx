@@ -4,7 +4,7 @@ import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
 import { ANMELDE_TEXT, AuthScreen, TrustRow } from './components/AuthScreen';
-import { currentRoles, isPlatformAdmin, login } from './auth';
+import { currentRoles, isPlatformAdmin, keycloak, login } from './auth';
 import { leseEntwurf, meinEntwurfSchluessel } from './anlageEntwurf';
 import { einrichtungSpaeter, merkeEinrichtungSpaeter } from './einrichtungSpaeter';
 import {
@@ -118,6 +118,7 @@ import { useDeployWatch } from './deployWatch';
 import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
 import { useAnlageSurface } from './useAnlageSurface';
 import { seitendatenVorab } from './seitenVorab';
+import { merkeStartAnlage, vergissStartAnlage, vorabAdresse } from './startAnlage';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
 import { MessenEinstiegKontext, type MessenZiel } from './messenEinstieg';
@@ -487,6 +488,11 @@ function UnifiedPortal() {
   const [tenantId, setTenantId] = useState<string | null>(() =>
     isAdmin ? sessionStorage.getItem('vp-tenant-override') : currentRoles().includes('partner') ? sessionStorage.getItem('vp-kundenbereich') : null,
   );
+  // Welle 3: der Kundenbereich des ersten Ladens, für die Anlage des leeren Starts (`startAnlage.ts`).
+  const bereichBeimStart = useRef(tenantId);
+  // Startet das Portal OHNE Adresse (installierte App: `start_url` = `/`)? Dann merkt die Weiche unten, wo dieser
+  // Start landet, und der nächste leere Start fragt die Seitendaten dieser Anlage vorab (`startAnlage.ts`).
+  const leererStart = useRef(!isAdmin && isBootHash(window.location.hash));
   const [tenants, setTenants] = useState<Tenant[]>([]);
   // Ob die Mandantenliste eines Admins schon einmal geantwortet hat - trennt
   // "noch nicht geladen" von "geladen, leer" (siehe `MandantenPage`).
@@ -737,7 +743,13 @@ function UnifiedPortal() {
         const meAbruf = api.selbstauskunft();
         // Die Seitendaten der Adresse gleich mit (Performance-Runde vp-perf2-portal, Idee 2): die Anlagen-Seite fragte
         // sie sonst erst nach `/me` und `/sites`. Nach Stammdaten und `/me` gestellt, damit die zuerst hinausgehen.
-        if (erstesLaden && !opts?.background) seitendatenVorab(window.location.hash);
+        // Ohne Anlage in der Adresse (Start der installierten App) die Anlage, auf der der letzte leere Start
+        // dieses Nutzers gelandet ist (Welle 3, `startAnlage.ts`) - nur vorab, die Weiche entscheidet weiter selbst.
+        if (erstesLaden && !opts?.background) {
+          seitendatenVorab(
+            isAdmin ? window.location.hash : vorabAdresse(window.location.hash, keycloak.subject, bereichBeimStart.current),
+          );
+        }
         const me = await meAbruf;
         if (nummer !== ladeNummer.current) return;
         setSelbstauskunft(me);
@@ -951,9 +963,29 @@ function UnifiedPortal() {
   // Funktionen noch laden) und dann noch einmal auf die echte `ebene`, zwei Adressänderungen und
   // zwei Seitenübergänge für einen Seitenaufruf statt einer.
   useEffect(() => {
-    if (error != null || !selbst || ohneStandort(selbst) || !startFunktionenBereit) return;
+    if (error != null || !selbst || !startFunktionenBereit) return;
+    if (ohneStandort(selbst)) {
+      if (leererStart.current) {
+        leererStart.current = false;
+        vergissStartAnlage();
+      }
+      return;
+    }
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length, ebene };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
+    // Welle 3: wo landet der leere Start? Genau hier steht die Entscheidung fest (`loaded`, Funktionen da). Nur die
+    // Startseite selbst zählt (`uebersicht` aus der leeren Adresse); wer vorher schon wegnavigiert ist, ändert nichts.
+    if (leererStart.current && loaded && tenantReady) {
+      leererStart.current = false;
+      if (route.page === 'uebersicht') {
+        const ziel = target ?? route;
+        merkeStartAnlage(
+          keycloak.subject,
+          bereichBeimStart.current,
+          ziel.page === 'anlagen' && ziel.sub == null ? ziel.siteId : null,
+        );
+      }
+    }
     if (!target) return;
     replaceCurrentNavigation(canonicalShellHash(target, window.location.hash));
     setRoute(target);

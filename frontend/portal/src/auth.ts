@@ -1,6 +1,7 @@
 import Keycloak from 'keycloak-js';
 import { isStandalone } from './installApp';
 import { vergissKoppelRef } from './koppelLink';
+import { vergissStartAnlage } from './startAnlage';
 
 const KC_URL = import.meta.env.VITE_KEYCLOAK_URL ?? 'http://localhost:8081';
 const KC_REALM = import.meta.env.VITE_KEYCLOAK_REALM ?? 'voltpilot';
@@ -492,6 +493,8 @@ export function logout(): void {
   localStorage.removeItem(TOKEN_STORE_KEY);
   // Die vorgemerkte Box aus dem QR-Code geht mit (QE-3 B: gelöscht beim Abmelden).
   vergissKoppelRef();
+  // Die Anlage des leeren Starts auch (Welle 3, `startAnlage.ts`): ein nächster Nutzer bekommt keine Vorab-Abrufe für sie.
+  vergissStartAnlage();
   void keycloak.logout({ redirectUri: window.location.origin });
 }
 
