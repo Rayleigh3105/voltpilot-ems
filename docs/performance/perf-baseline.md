@@ -402,6 +402,57 @@ aus anderen Bahnen; belastbar sind Anweisungen und Buffer je Aufruf und gepaarte
    (`/sites/{id}/earnings`); erst ab mehreren hundert Anlagen je Kundenbereich teurer als vorher, mit einem
    Anlagen-Filter in der CTE ganz zu vermeiden.
 
+## Portal, Welle 3: erster Start (15.11.2026)
+
+Diese Runde (`vp-perf3-portal-start`, Ausgang `44734c3c7`) setzt Hebel 1 der ersten Runde und Hebel 2 und 6 der
+zweiten um: zweiter Token-Abruf, Start der App ohne Anlage in der Adresse, Bündel. Labor wie in Welle 2 (Bänder `demo2`
+und `demo`, 150 ms je Antwort), für die Anmeldung zusätzlich ein echtes Keycloak 26.0.5 aus dem Realm von
+`infra/local`. Der Host lief mit Load 6 bis 134. Belastbar sind Token-Abrufe und Abrufe je Start, Bytes und der Beginn
+der Abrufe; Zeiten sind Mediane verzahnter Reihen und streuten oft stärker als der Effekt.
+
+### Neu im Labor
+
+- **`keycloak-runde.mjs`:** Token-Abrufe vor `/me`, Zeit vom Laden und vom ersten Token-Abruf bis `/me`, und mit
+  welchem Token `/me` hinausging (Alter, Lebensdauer, Scope, Rollen). Gegen ein echtes Keycloak (Passwort-Grant je Lauf,
+  frischer Browser-Kontext) oder mit `band` in der Wiedergabe. Varianten laufen verzahnt.
+- `wasserfall.mjs` mit leerem Hash (`""`) misst den Start der installierten App auf `/`.
+
+### Geändert
+
+| PR | Was | Nachher |
+|---|---|---|
+| [#1894](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1894) Keycloak | `init` übernimmt die eben geprüften Tokens mit `timeSkew` aus dem eigenen Abruf; die erzwungene Auffrischung von keycloak-js (`updateToken(-1)`) entfällt nur während `init`. Der `onTokenExpired`-Zeitgeber stellt keycloak-js selbst. | Token-Abrufe vor `/me` 2 → 1 (160 von 160 Starts). Kette erster Token-Abruf → `/me`: echtes Keycloak Telefon 875 → 419 ms, Desktop 317 → 156 ms; Wiedergabe 480 → 297 / 366 → 229 ms. Gleicher Scope und gleiche Lebensdauer. |
+| [#1896](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1896) Vorab | Die Schale merkt je Nutzer (`sub`) und Kundenbereich, auf welchem Anlagen-Cockpit ein Start ohne Adresse landet (`startAnlage.ts`), und stellt beim nächsten leeren Start dessen Seitendaten mit `/me` vorab. Abmelden und Nutzerwechsel verwerfen sie. | Start auf `/`: erster Seitendaten-Abruf ab `/me` Desktop 179–190 → 2–3 ms, Telefon 233–707 → 1–2 ms; Abrufe je Start 36 → 36 |
+| [#1898](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1898) Meldungen | Die Ortswahl der neuen Überwachung brauchte aus `energiezielBild.ts` nur den Namen; jetzt `energiezielName.ts`, die Wörter aus `glossarEinstieg.ts`. | Meldungen statisch 106,1 → 46,8 kB gz; JS der ersten 8 s 359,7 → 300,2 kB gz |
+| [#1902](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1902) Summenwert | Summenwert-Assistent (hinter `useSummenwertAssistent`) und Formel-Dialog der Gerätedetailseite kommen mit dem Klick. | Gerätedetail statisch 273,4 → 262,1 kB gz; JS der ersten 8 s 534,4 → 523,1 kB gz |
+| [#1907](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1907) api | Das `api`-Objekt geteilt: `api.ts` behält die 40 Routen des ersten Bilds, die übrigen stehen in `apiVoll.ts` und hängen sich an dasselbe Objekt. Die Grenze hält der Typ. | Einstieg 252,52 → 244,53 kB gz (−7,99); `apiVoll` 8,64 kB gz kommt mit der ersten Seite, die es braucht (am Cockpit als zweite Welle) |
+| [#1910](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1910) Einstieg | Einrichtungspfad (`setupPathWeiche.ts`), Flotten-Karten (`lazy`) und Anpassen-Modus (mit dem Klick) aus dem ersten Bild. | Einstieg 252,11 → 247,25 kB gz (−4,86) |
+
+Alle drei Bündel-PRs zusammen (#1902, #1907, #1910, gemergt; `test/bundle-smoke.sh` auf `main` @ `07570568c`): Einstieg
+**252,52 → 239,50 kB gz**. „Richtung 230“ ist damit nicht erreicht; was bleibt, sind Fach-Module, die das Cockpit-Bild
+selbst braucht (Hebel 2 unten). Die Grenze in `test/bundle-smoke.sh` bleibt 258.
+
+Rollup legt ein Modul nur als Ganzes in ein Stück. Was der Einstieg statisch importiert, liegt mit allen Exporten im
+ersten Bild, auch mit denen, die nur nachgeladene Seiten brauchen. Beide Einstiegs-Schnitte folgen diesem Befund, wie
+schon V-01 und der UEMS-Schnitt (`test/bundle-smoke.sh`). Die Wächter `einstiegLuft.test.ts` und
+`seitenBuendel.test.ts` halten die Schnitte fest.
+
+### Offene Hebel, nach Wirkung gereiht
+
+1. **Token-Abruf vor dem Bündel:** Die verbleibende Keycloak-Runde beginnt erst, wenn das Einstiegs-Bündel geparst ist
+   (Telefon ≈ 1 s nach dem Laden). Ein kleines Skript in `index.html` könnte den Refresh-Grant parallel zum Bündel
+   stellen; `initAuth` nähme dessen Ergebnis. Das ist Anmeldung, also eine eigene Aufgabe mit Auth-Tests.
+2. **Weitere Fach-Module im Einstieg:** `fahrplanWhy` (≈ 6,5 kB gz), `schedule` (≈ 5,2), `ladepunkte` (≈ 4,5),
+   `profiles` (≈ 4,1) und `erloesKomposition` (≈ 3,8) liegen ganz im ersten Bild. Wo das Cockpit nur eine Hilfe braucht,
+   hilft ein Zwilling-Modul wie bei `setupPathWeiche.ts`. Vorher den tatsächlichen Bedarf des Cockpits prüfen.
+3. **Anmeldekarte (`AuthScreen`, ≈ 2,7 kB gz):** Sie liegt im Einstieg, auch für jeden angemeldeten Start.
+4. **Gerätedetail:** Das Stück `GeraetSeiteSection` selbst trägt 74,6 kB gz (mit `OcppWallboxPage`, 59 kB Quelle),
+   dazu `glossar` (7,1 kB gz).
+5. **Meldungen, Reiter „Einstellen“:** `EinstellungenPage` mit `rechte` und `uemsOrtsbaum` (≈ 14 kB gz) ist statisch,
+   auch wenn der Reiter nicht offen ist.
+6. **Gemeinsamer Vorwärm-Schritt der Testinfrastruktur** (Idee 8 der ersten Runde): Auch in dieser Runde rissen
+   nachgeladene Stücke unter Last die Fristen von `waitFor` und `findBy` (Hook-Test, M5 der Anlagen-Seite).
+
 ## Wiederholen
 
 ```bash
@@ -450,6 +501,12 @@ node wiedergabe.mjs profil --base http://localhost:15871 --user demo2 --band $W/
 node cpu-profil.mjs 15871 $W/demo2.json "#/anlage/$S2" $W/cockpit.cpuprofile 60 lebendig mobil AnlageSeite
 # Welle 3: Intl-Formatierer im CPU-Profil (die Zeitleiste der Übergaben druckt `wiedergabe.mjs profil` selbst)
 node intl-heiss.mjs $W/cockpit.cpuprofile $W/dist-profil
+# Welle 3, erster Start: Token-Abrufe vor /me - in der Wiedergabe (`band`) und gegen ein echtes Keycloak
+# (eigener Container, Realm aus infra/local mit den Ports der Varianten in redirectUris/webOrigins, KC_HTTP_RELATIVE_PATH=/auth)
+node keycloak-runde.mjs band "vorher=15861;nachher=15862" $W/demo2.json "#/anlage/$S2" 15 mobil 150
+node keycloak-runde.mjs http://localhost:15944/auth "vorher=15861;nachher=15862" $W/demo2.json "#/anlage/$S2" 15 mobil 150
+# Start der installierten App auf `/` (leerer Hash; der erste Lauf lernt die Anlage)
+node wasserfall.mjs 15861 $W/demo2.json "" 5 150 lebendig mobil
 ```
 
 Die Bänder enthalten Labor-Tokens: nach dem Lauf löschen, nie einchecken.
