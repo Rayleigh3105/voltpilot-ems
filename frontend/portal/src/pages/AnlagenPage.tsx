@@ -177,8 +177,9 @@ const AnlageSetup = lazy(() => import('../components/AnlageSetup').then((m) => (
 // Aufrufstelle: der Anpassen-Modus holt das Stück vor, sobald er aufgeht, der Klick findet es schon da.
 const ladeEigeneAuswertung = () => import('../components/EigeneAuswertungDialog');
 // Der Anpassen-Modus (Leiste, Hüllen, Liste, „Ausgeblendet“) kommt mit dem Klick, der ihn öffnet (Performance Welle 3):
-// statisch lag er in jedem ersten Bild. Der Modus beginnt erst, wenn das Stück da ist - kein Zwischenbild ohne
-// Hüllen; Zeigen auf den Knopf holt es vor.
+// statisch lag er in jedem ersten Bild. `layout.start` holt erst das Stück und schaltet dann den Modus ein - kein
+// Zwischenbild ohne Hüllen; Zeigen auf die Kopf-Aktionen bzw. die Anpassen-Reihe holt es vor. Die beiden Knöpfe selbst
+// bleiben Zeichen für Zeichen, wie sie waren (Bestandsschutz `migration.test.ts`, AP-03 IP-12).
 type AnpassenModul = typeof import('../components/CockpitAnpassen');
 const ladeAnpassen = () => import('../components/CockpitAnpassen');
 const EigeneAuswertungDialog = lazy(() =>
@@ -1836,7 +1837,7 @@ export function AnlageSeite({
   // Absicht bewiesen. Der frühere Umweg (erst irgendwo einschalten, dann
   // anlegen) war genau der Absichts-Schalter ohne Wirkung, den das Konzept
   // abgeschafft hat.
-  const layout = useCockpitLayout({
+  const layoutRoh = useCockpitLayout({
     schluessel: site.id,
     siteId: site.id,
     verfuegbar,
@@ -1847,8 +1848,8 @@ export function AnlageSeite({
     versteckt: verstecktFuer(betriebAus(blocks)),
   });
   const [anpassenModul, setAnpassenModul] = useState<AnpassenModul | null>(null);
-  const layoutStart = useRef(layout.start);
-  layoutStart.current = layout.start;
+  const layoutStart = useRef(layoutRoh.start);
+  layoutStart.current = layoutRoh.start;
   const anpassenStarten = () => {
     void ladeAnpassen().then(
       (m) => {
@@ -1858,6 +1859,8 @@ export function AnlageSeite({
       () => undefined,
     );
   };
+  // Dasselbe Layout, nur `start` lädt vorher das Stück des Anpassen-Modus.
+  const layout = { ...layoutRoh, start: anpassenStarten };
   /** Die Bausteine des Anpassen-Modus, solange er läuft (das Stück ist dann immer da). */
   const A = layout.anpassen ? anpassenModul : null;
 
@@ -2648,7 +2651,7 @@ export function AnlageSeite({
           {/* Netzladen betrifft einen Speicher - eine Erzeugeranlage, die VoltPilot nur liest, hat keinen, und
               eine Anlage ohne Speicher-Rolle auch nicht (Konzept `vp-cockpit-privat-konzept`, N3). */}
           {!isPhone && !erzZeile && mitSpeicher !== false && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
-          <div className="vp-anlage-actions">
+          <div className="vp-anlage-actions" onPointerEnter={() => void ladeAnpassen()}>
             {/* Anwendungs-Programm Stufe 3 (E4): der Einstieg in den
                 Anpassen-Modus wohnt in der Cockpit-Kopfzeile - dort, wo der
                 Kunde auf das Cockpit schaut, das er anordnen will. Er erscheint
@@ -2657,8 +2660,7 @@ export function AnlageSeite({
               <Recht aktion="cockpit.anpassen"><button
                 type="button"
                 className="vp-gear-btn"
-                onPointerEnter={() => void ladeAnpassen()}
-                onClick={anpassenStarten}
+                onClick={layout.start}
                 aria-label="Cockpit anpassen"
                 title="Cockpit anpassen"
               >
@@ -2898,8 +2900,8 @@ export function AnlageSeite({
           {/* Der zweite Weg ins Anpassen (Konzept „Cockpit als Tagesfilm“): am
               Ende des Cockpits, wo der Blick nach den Kacheln ankommt. */}
           {!layout.anpassen && (
-            <div className="vp-cockpit-anpassen-reihe">
-              <Button variant="ghost" onPointerEnter={() => void ladeAnpassen()} onClick={anpassenStarten}>
+            <div className="vp-cockpit-anpassen-reihe" onPointerEnter={() => void ladeAnpassen()}>
+              <Button variant="ghost" onClick={layout.start}>
                 <Icon name="sliders" size={18} />
                 Cockpit anpassen
               </Button>

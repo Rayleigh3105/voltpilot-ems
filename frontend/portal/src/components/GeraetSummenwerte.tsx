@@ -128,14 +128,18 @@ export function GeraetSummenwerte({
   return (
     <div ref={wurzel}>
       <Card padding="md" radius="md">
-        <div className="vp-summen-head">
+        {/* Zeigen auf den Kopf (oder Fokus darin) holt den Assistenten vor; der Knopf selbst bleibt, wie er war
+            (Bestandsschutz `migration.test.ts`, AP-03 IP-12). */}
+        <div
+          className="vp-summen-head"
+          onPointerEnter={() => void ladeSummenwertAssistent()}
+          onFocus={() => void ladeSummenwertAssistent()}
+        >
           <h3>Summenwerte dieses Geräts</h3>
           {rechte.darf("messstelle.formel") && (
             <Button
               variant="outline"
               size="sm"
-              onPointerEnter={() => void ladeSummenwertAssistent()}
-              onFocus={() => void ladeSummenwertAssistent()}
               onClick={(e) => {
                 e.currentTarget.focus();
                 oeffneSummenwertAssistent();
