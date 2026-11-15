@@ -10,6 +10,7 @@ package logikdienst
 //                                                 -> 200 {artifact, bericht, settings?, verworfen?}
 //                                                 |  422 {message, bericht?} (unreadable or blocked)
 //                                                 |  422 {message, grund: "stellwerte"} (set values do not fit)
+//   POST /quellen  {registry?}                    -> 200 {quellen, geraete} (what a logic may read and switch)
 //   GET  /health                                  -> 200 {status, version, sprache}
 //   anything malformed                            -> 400 {message}
 
@@ -45,6 +46,15 @@ func Handler() http.Handler {
 			return
 		}
 		schreibe(w, http.StatusOK, map[string]any{"kanonisch": string(g.Kanonisch), "bericht": g.Bericht})
+	})
+	mux.HandleFunc("POST /quellen", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Registry json.RawMessage `json:"registry"`
+		}
+		if !lies(w, r, &req) {
+			return
+		}
+		schreibe(w, http.StatusOK, Quellen(req.Registry))
 	})
 	mux.HandleFunc("POST /artefakt", func(w http.ResponseWriter, r *http.Request) {
 		var req Auftrag

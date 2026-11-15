@@ -145,7 +145,7 @@ public final class KundeDatenBestand {
         String einstellung = "Einstellung/Absicht der Cloud - keine Aufzeichnung, wird mit dem Kunden hinfällig";
         for (String t : List.of("device_override", "consumer_override", "consumer_policy", "consumer_profile",
                 "flow_definition", "flow_claim", "flow_layout", "flow_gated_node_enablement", "cockpit_layout",
-                "steuerlogik", "steuerlogik_einstellung", "site_scene", "site_suggestion_state",
+                "steuerlogik", "steuerlogik_einstellung", "steuerlogik_anfrage", "site_scene", "site_suggestion_state",
                 "site_profile_state", "site_forecast_automatik",
                 "site_forecast_model_choice", "site_charge_point_allowlist", "site_charge_point_priority",
                 "site_charge_point_rank", "site_charging_config", "site_supply_price", "site_vehicle_tag",

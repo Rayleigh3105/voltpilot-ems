@@ -16,11 +16,22 @@ public class SteuerlogikDienstException extends RuntimeException {
 
     private final String grund;
     private final transient JsonNode bericht;
+    private final transient JsonNode meldungen;
 
     public SteuerlogikDienstException(String grund, String message, JsonNode bericht) {
+        this(grund, message, bericht, null);
+    }
+
+    public SteuerlogikDienstException(String grund, String message, JsonNode bericht, JsonNode meldungen) {
         super(message);
         this.grund = grund;
         this.bericht = bericht;
+        this.meldungen = meldungen;
+    }
+
+    /** Bei einem unlesbaren Text die Meldung des Lesers an ihrer Zeile ({@code [{art, text, zeile}]}), sonst null. */
+    public JsonNode meldungen() {
+        return meldungen;
     }
 
     public String grund() {

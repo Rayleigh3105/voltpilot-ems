@@ -90,24 +90,7 @@ func mbDefinition(e entities.Entity) (modbusgeraet.Definition, string, bool) {
 // mbDefinitionMitFehlern is mbDefinition plus the refusals of a definition the
 // box's rules refuse (quelle is set then, ok false).
 func mbDefinitionMitFehlern(e entities.Entity) (modbusgeraet.Definition, string, []modbusgeraet.Fehler, bool) {
-	if len(e.Driver) == 0 {
-		return modbusgeraet.Definition{}, "", nil, false
-	}
-	var drv struct {
-		Communication string          `json:"communication"`
-		Connection    json.RawMessage `json:"connection"`
-	}
-	if json.Unmarshal(e.Driver, &drv) != nil || drv.Communication != modbusgeraet.Communication || len(drv.Connection) == 0 {
-		return modbusgeraet.Definition{}, "", nil, false
-	}
-	def, fehler := modbusgeraet.Lies(drv.Connection)
-	if def.Controls == nil {
-		return modbusgeraet.Definition{}, "", nil, false
-	}
-	if len(fehler) > 0 {
-		return modbusgeraet.Definition{}, string(drv.Connection), fehler, false
-	}
-	return def, string(drv.Connection), nil, true
+	return modbusgeraet.AusEntity(e)
 }
 
 // syncModbusGeraete follows the registry: new devices start, changed ones start

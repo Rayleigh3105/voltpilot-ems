@@ -15,8 +15,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Die Brücke zum Logik-Dienst ({@code POST {base}/artefakt}, internal/logikdienst/http.go): 200 trägt Artefakt,
- * Prüfbericht und die gestellten Werte, 422 eine unlesbare Logik (nur {@code message}), eine gesperrte (mit
- * {@code bericht}) oder unpassende Werte ({@code grund: stellwerte}), alles andere ist ein nicht erreichbarer Dienst. Den Hash rechnet nur der Dienst - die API prüft die Form und reicht weiter.
+ * Prüfbericht und die gestellten Werte, 422 eine unlesbare Logik ({@code message} und {@code meldungen} an der Zeile),
+ * eine gesperrte (mit {@code bericht}) oder unpassende Werte ({@code grund: stellwerte}), alles andere ist ein nicht
+ * erreichbarer Dienst. Den Hash rechnet nur der Dienst - die API prüft die Form und reicht weiter. Dazu die Prüfung
+ * ohne Artefakt ({@code /pruefe}) und was eine Logik an der Anlage lesen und schalten kann ({@code /quellen}).
  */
 public class SteuerlogikDienstClient implements SteuerlogikDienst {
 
@@ -100,10 +102,63 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
             if (bericht != null && bericht.isObject()) {
                 throw new SteuerlogikDienstException(SteuerlogikDienstException.GESPERRT, message, bericht);
             }
-            throw new SteuerlogikDienstException(SteuerlogikDienstException.UNLESBAR, message, null);
+            throw new SteuerlogikDienstException(SteuerlogikDienstException.UNLESBAR, message, null,
+                    body.get("meldungen"));
         }
         log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
         throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
+    @Override
+    public Geprueft pruefe(String text, String registry) {
+        ObjectNode request = json.createObjectNode();
+        request.put("text", text);
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/pruefe", request);
+        JsonNode body = parse(response.body());
+        if (response.status() == 200 && body != null && body.path("bericht").isObject()
+                && body.path("kanonisch").isTextual()) {
+            return new Geprueft(true, null, body.path("kanonisch").asText(), body.get("bericht"),
+                    body.path("bericht").path("meldungen"));
+        }
+        if (response.status() == 422 && body != null) {
+            return new Geprueft(false, body.path("message").asText("Die Logik ist nicht lesbar."), null, null,
+                    body.has("meldungen") ? body.get("meldungen") : json.createArrayNode());
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
+    @Override
+    public JsonNode quellen(String registry) {
+        ObjectNode request = json.createObjectNode();
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/quellen", request);
+        JsonNode body = parse(response.body());
+        if (response.status() == 200 && body != null && body.path("quellen").isArray()
+                && body.path("geraete").isArray()) {
+            return body;
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
+    private FlowCompilerHttp.Response post(String pfad, ObjectNode request) {
+        try {
+            return http.post(baseUri.resolve(pfad), json.writeValueAsString(request));
+        } catch (IOException e) {
+            log.warn("logik_dienst.unreachable: {}", e.toString());
+            throw SteuerlogikDienstException.nichtErreichbar();
+        }
+    }
+
+    private void setzeRegistry(ObjectNode request, String registry) {
+        if (registry == null) return;
+        try {
+            request.set("registry", json.readTree(registry));
+        } catch (IOException e) {
+            log.warn("logik_dienst.registry_unlesbar: {}", e.getMessage());
+        }
     }
 
     private JsonNode parse(String body) {

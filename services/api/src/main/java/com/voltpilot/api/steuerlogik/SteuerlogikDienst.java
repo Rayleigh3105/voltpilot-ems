@@ -62,4 +62,23 @@ public interface SteuerlogikDienst {
      * sind eine {@link SteuerlogikDienstException} mit Grund und deutschem Satz.
      */
     Artefakt artefakt(Auftrag auftrag);
+
+    /**
+     * Das Ergebnis der Prüfung ohne Artefakt (Stufe 4, Ansicht "Text"): lesbar mit kanonischer Form und Bericht - der
+     * Bericht trägt {@code meldungen}, je Befund, Probe und Hinweis mit der Zeile im Text -, oder unlesbar mit dem
+     * Satz des Lesers und seiner Meldung an der Zeile.
+     */
+    record Geprueft(boolean lesbar, String message, String kanonisch, JsonNode bericht, JsonNode meldungen) {}
+
+    /**
+     * Prüft einen Text mit denselben Regeln wie Box und Artefakt ({@code POST /pruefe}); die Geräte der Proben aus dem
+     * Registry-Inhalt der Anlage. Ein nicht erreichbarer Dienst ist eine {@link SteuerlogikDienstException}.
+     */
+    Geprueft pruefe(String text, String registry);
+
+    /**
+     * Was eine Logik an der Anlage lesen und schalten kann ({@code POST /quellen}): feste Quellen, Fühler und Signale
+     * eigener Modbus-Geräte, je Gerät die Ausgänge, die die Box ausführt - aus dem Registry-Inhalt der Anlage.
+     */
+    JsonNode quellen(String registry);
 }
