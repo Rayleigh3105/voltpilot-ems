@@ -108,6 +108,8 @@ type symbol struct {
 	maxAlter string
 	// Name stammt aus der Kennung, nicht aus einem Namen in den Dateien
 	nameGeraten bool
+	// lueckenName: der Name der Lücke, wenn der Eingang den Namen aus der Anlage trägt
+	lueckenName string
 	// zugeordneteGroesse: die Größe der Quelle, die der Mensch zugeordnet hat
 	zugeordneteGroesse string
 	gelesen            bool
@@ -769,6 +771,7 @@ func (u *uebersetzer) neuerEingang(entity, name string, ort Ort) *symbol {
 			s.quelle, s.gedreht = strings.TrimPrefix(s.quelle, "-"), true
 		}
 		if s.nameGeraten && z.Name != "" {
+			s.lueckenName = s.name
 			s.name = kuerze(z.Name, 40)
 		}
 		// Die Quelle bringt ihre Größe mit; so bekommen auch feste Zahlen daneben ihre Einheit.

@@ -756,6 +756,9 @@ func (u *uebersetzer) bildeLuecken() {
 		// Was die Dateien nicht sagen, sagt die Zuordnung; ohne sie ist die Größe offen.
 		offen := g == gZahl || g == gOffen
 		l := Luecke{Kennung: s.kennung, Art: "eingang", Name: s.name, Entities: []string{s.entity}, Groesse: groesseWort[g], Orte: []Ort{s.ort}}
+		if s.lueckenName != "" {
+			l.Name = s.lueckenName // die Lücke heißt wie in Home Assistant, auch wenn der Eingang den Namen der Anlage trägt
+		}
 		if offen {
 			l.Groesse = ""
 			switch geschaetzt := groesseAusName(s.entity + " " + s.name); {

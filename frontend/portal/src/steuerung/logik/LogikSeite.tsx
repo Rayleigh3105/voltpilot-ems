@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiError,
+  type HaDatei,
   type LogikAnsicht,
   type LogikGeprueft,
   type LogikMeldung,
@@ -27,6 +28,7 @@ import { AlsBausteinBlatt } from './AlsBausteinBlatt';
 import { AufbauAnsicht } from './AufbauAnsicht';
 import type { CodeEditorGriff } from './Code';
 import { FassungenAnsicht } from './FassungenAnsicht';
+import { HaDateiWahl, HomeAssistantBlatt } from './HomeAssistantBlatt';
 import { AuswahlFeld, TextFeld } from './Felder';
 import { MitlaufenAnsicht } from './MitlaufenAnsicht';
 import { ProtokollAnsicht } from './ProtokollAnsicht';
@@ -93,7 +95,9 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
   const [pruefend, setPruefend] = useState(false);
   const [blatt, setBlatt] = useState<null | { art: 'speichern' } | { art: 'verwerfen' } | { art: 'anfrage'; kennung: string | null }
     | { art: 'anfragen' } | { art: 'zurueck'; fassung: number } | { art: 'stilllegen' } | { art: 'scharf'; fassung: number }
-    | { art: 'baustein' }>(null);
+    | { art: 'baustein' } | { art: 'homeassistant'; dateien: HaDatei[] }>(null);
+  // Die Notiz, mit der eine übernommene Übersetzung als Fassung gespeichert wird (Stufe 6).
+  const [vorgabeNotiz, setVorgabeNotiz] = useState('');
   const [meldung, setMeldung] = useState<{ text: string; fehler?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const textRef = useRef<CodeEditorGriff>(null);
@@ -232,6 +236,7 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
         neueLogik ? undefined : basis?.fassung);
       vergissEntwurf(site.id, logikId);
       setBlatt(null);
+      setVorgabeNotiz('');
       setMeldung({ text: `Fassung ${g.fassung} ist gespeichert. Sie läuft noch nicht.` });
       if (neueLogik) {
         vergissEntwurf(site.id, 'neu');
@@ -248,6 +253,19 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
     }
   };
 
+  // Stufe 6: der übersetzte Text wird der Entwurf; gespeichert wird er wie jeder andere.
+  const uebernimm = (t: string, n: string) => {
+    setBlatt(null);
+    setText(t);
+    setGeprueft(null);
+    setVorgabeNotiz(n);
+    setMeldung({ text: neueLogik ? 'Die Übersetzung ist Ihr Entwurf. Prüfen Sie ihn und speichern Sie ihn als Logik.'
+      : 'Die Übersetzung ist jetzt Ihr Entwurf. Sie ersetzt den Text erst, wenn Sie sie als Fassung speichern.' });
+  };
+  const haBlatt = blatt?.art === 'homeassistant' ? (
+    <HomeAssistantBlatt siteId={site.id} dateien={blatt.dateien} neu={neueLogik} onClose={() => setBlatt(null)} onUebernehmen={uebernimm} />
+  ) : null;
+
   if (!logikId) {
     return <div className="stn"><p className="stn-fehler">Diese Adresse nennt keine Logik.</p></div>;
   }
@@ -260,7 +278,15 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
           <button type="button" className="lk-zurueck" onClick={zurueckZuRegeln}><Ic n="chevL" s={16} />Regeln</button>
           <div className="lk-kopf"><div><h1>Neue Logik</h1></div></div>
           <NeueLogik quellen={quellen} onStart={(t) => setText(t)} />
+          <section className="card lk-abschnitt" aria-label="Aus Home Assistant übernehmen">
+            <h2>Aus Home Assistant übernehmen</h2>
+            <p>Laufen die Regeln dieser Anlage heute in Home Assistant, laden Sie dessen Dateien hoch: configuration.yaml, automations.yaml und scripts.yaml. Daraus entsteht eine Logik in dieser Form; Sie ordnen nur Geräte und Messwerte zu.</p>
+            <div className="lk-knoepfe" style={{ justifyContent: 'flex-start' }}>
+              <HaDateiWahl label="Dateien wählen" onGelesen={(d) => setBlatt({ art: 'homeassistant', dateien: d })} />
+            </div>
+          </section>
         </div>
+        {haBlatt}
       </div>
     );
   }
@@ -308,6 +334,9 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
             ) : null}
             {ansicht && darf && aktiv ? (
               <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); setBlatt({ art: 'stilllegen' }); }}>Stilllegen</button>
+            ) : null}
+            {ansicht && darf ? (
+              <HaDateiWahl label="Aus Home Assistant" klasse="tbtn" onGelesen={(d) => setBlatt({ art: 'homeassistant', dateien: d })} />
             ) : null}
             {ansicht?.darfBausteinSpeichern && !veraendert && ansicht.fassungen.length ? (
               <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); setBlatt({ art: 'baustein' }); }}>Als Baustein speichern</button>
@@ -391,8 +420,9 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
         </div>
       ) : null}
 
+      {haBlatt}
       {blatt?.art === 'speichern' && aktuellGeprueft ? (
-        <SpeichernBlatt geprueft={aktuellGeprueft} busy={busy} neu={neueLogik} fassung={(basis?.fassung ?? 0) + 1}
+        <SpeichernBlatt geprueft={aktuellGeprueft} busy={busy} neu={neueLogik} fassung={(basis?.fassung ?? 0) + 1} vorgabe={vorgabeNotiz}
           onClose={() => setBlatt(null)} onSpeichern={(n) => void speichern(n)} />
       ) : null}
       {blatt?.art === 'baustein' && ansicht ? (() => {
@@ -498,10 +528,10 @@ function Pruefstand({ pruefend, geprueft }: { pruefend: boolean; geprueft: Logik
   );
 }
 
-function SpeichernBlatt({ geprueft, busy, neu, fassung, onClose, onSpeichern }: {
-  geprueft: LogikGeprueft; busy: boolean; neu: boolean; fassung: number; onClose: () => void; onSpeichern: (notiz: string) => void;
+function SpeichernBlatt({ geprueft, busy, neu, fassung, vorgabe, onClose, onSpeichern }: {
+  geprueft: LogikGeprueft; busy: boolean; neu: boolean; fassung: number; vorgabe: string; onClose: () => void; onSpeichern: (notiz: string) => void;
 }) {
-  const [notiz, setNotiz] = useState('');
+  const [notiz, setNotiz] = useState(vorgabe);
   const hinweise = (geprueft.meldungen ?? []).filter((m) => m.art === 'hinweis');
   return (
     <Blatt symbol="check" titel={neu ? 'Logik speichern' : `Als Fassung ${fassung} speichern`} unter="Sie läuft danach noch nicht." onClose={onClose}

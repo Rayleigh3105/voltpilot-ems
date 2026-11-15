@@ -172,7 +172,7 @@
     {
       "kennung": "wr_netzleistung",
       "art": "eingang",
-      "name": "Netzbezug",
+      "name": "Wr Netzleistung",
       "entities": [
         "sensor.wr_netzleistung"
       ],
@@ -211,7 +211,7 @@
     {
       "kennung": "wr_akkuleistung",
       "art": "eingang",
-      "name": "Batterie lädt mit",
+      "name": "Wr Akkuleistung",
       "entities": [
         "sensor.wr_akkuleistung"
       ],
@@ -250,7 +250,7 @@
     {
       "kennung": "fuehler_speicher_1_oben",
       "art": "eingang",
-      "name": "Fühler Speicher 1 oben",
+      "name": "Fuehler Speicher 1 Oben",
       "entities": [
         "sensor.fuehler_speicher_1_oben"
       ],
@@ -282,7 +282,7 @@
     {
       "kennung": "wr_ladestand",
       "art": "eingang",
-      "name": "Ladestand der Batterie",
+      "name": "Wr Ladestand",
       "entities": [
         "sensor.wr_ladestand"
       ],
