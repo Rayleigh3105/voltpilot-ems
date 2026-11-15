@@ -9,6 +9,7 @@ Seit Stufe 3 lässt sich eine Fassung [scharf](#scharf) schalten: dann gehen ihr
 Seit Stufe 4 wird eine Logik im Portal geschrieben, im [Aufbau und im Text](#aufbau-und-text-stufe-4), geprüft und als Fassung gespeichert.
 Seit Stufe 5 entsteht eine Logik auch aus einem [Baustein](#bausteine-stufe-5): ein Satz mit Lücken, dahinter eine Logik dieser Textform.
 Seit Stufe 6 entsteht sie auch [aus den Dateien einer Anlage von Home Assistant](#aus-home-assistant-stufe-6).
+Seit Stufe 6, zweiter Teil, läuft eine Regel des Regel-Baukastens als Logik des Kerns: auf Edge Light immer, auf der Docker-Box nach dem Schalter der Anlage ([Zusammenführen](#zusammenführen-stufe-6-zweiter-teil)).
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
 Für Geräte mit Sollwert und Betriebsart (K2/K3) kommen [steuerlogik-geraete-vectors.json](steuerlogik-geraete-vectors.json) und das siebte Beispiel `waermepumpe-modbus` dazu, von Hand geschrieben; dort ist der Kern die Referenz (`geraete_vectors_test.go`, im Dienst `logikdienst_test.go`).
@@ -59,6 +60,7 @@ Ein Schritt geschieht nur bei wahr; ein unbekannter Ausgang heißt bei `level` 0
 Ein Ausdruck, der sich zur Laufzeit nicht rechnen lässt, gilt als unbekannt und erzeugt ein Fehler-Ereignis.
 
 Formeln: `and`, `or`, `not`, Vergleiche, `+ - * /`, Klammern; Rangfolge von schwach nach stark: `or`, `and`, `not`, Vergleich, `+ -`, `* /`, Vorzeichen.
+Das Wort `unknown` allein ist der Wert „kein Wert“ und steht nur als Zweig von `if()`: `setpoint: if(c, 3 kW, unknown)` heißt „sonst kein Wunsch“ (Stufe 6, für die Regel „voll einschalten“); an jeder anderen Stelle sperrt die Prüfung.
 Funktionen: `min`, `max`, `if(bedingung, dann, sonst)`, `known`, `unknown`, `time_window(von, bis)` (über Mitternacht erlaubt; `von` zählt mit, `bis` nicht; gleich oder unbekannt heißt rund um die Uhr), `in_schedule(zeitplan)`, `holds(bedingung, dauer)`, `since(zustand)`, `running(timer)`, `last(counter)`.
 Feste Quellen: `site.grid` (kW, + Bezug), `site.pv` (kW), `battery.power` (kW, + laden), `battery.soc` (%), `sun.elevation` (°), `price.current` (Börsenpreis in ct/kWh als Zahl ohne Einheit, [Preis-Zuleitung](mqtt-price-current.md)); dazu `gerät.signal` mit den Signalen der Wortliste: `temperature`, `room_temperature`, `outdoor_temperature`, `supply_temperature`, `return_temperature` (°C), `humidity` (%), `open`, `door_open`, `defrost`, `fault`, `running` (Ja/Nein).
 Geräte-Eigenschaften: `gerät.on`, `.level`, `.power`, `.kw_per_output`, `.output_hours_today` (Summe der Einschaltzeit aller Ausgänge seit Mitternacht), `.requested` (was die Logik im letzten Takt wollte), `.setpoint` (der zurückgelesene Sollwert in °C) und `.mode` (die zurückgelesene Betriebsart); ohne Rücklesung sind die beiden unbekannt.
@@ -319,6 +321,68 @@ Dienst `POST /home-assistant {dateien: [{name, text}], zuordnung?: {kennung: {we
 Beispiel: [steuerlogik-home-assistant.valid.solarheizung.json](examples/steuerlogik-home-assistant.valid.solarheizung.json) (gepinnt vom Dienst, gelesen von API und Portal).
 Maßstab: die Test-Anlage des Übersetzers (`homeassistant/testdata/solarheizung`, erfunden, gleich aufgebaut wie die Vorlage des Konzepts) ergibt eine Logik, die sich wie `heizung-treu` verhält - die elf Proben mit den Namen der Übersetzung bestehen wie dort, die drei Tage sind in jeder Sekunde gleich, 177 Stufenwechsel zur selben Sekunde (`vergleich_test.go`; mit `VP_HA_VORLAGE` und `VP_HA_VORLAGE_NAMEN` misst derselbe Test eine echte Anlage, die nur auf dem eigenen Rechner liegt).
 Je Baustein von Home Assistant ein Test: `bausteine_test.go`; Dienst: `logikdienst/homeassistant_test.go`; API: `SteuerlogikBearbeitenApiTest`; Ende zu Ende mit dem echten Dienst: `frontend/portal/e2e/steuerlogik-home-assistant.spec.ts`.
+
+## Zusammenführen (Stufe 6, zweiter Teil)
+
+Gebaut am 15.11.2026 (Bericht Abschnitt 9, Stufe 6: „ein Mechanismus statt vier“): eine Regel des Regel-Baukastens läuft als Logik des Kerns.
+Die Regel bleibt, was der Kunde bearbeitet (Reiter „Regeln“, `flow_definition`); ihre Übersetzung ist eine abgeleitete Logik (`steuerlogik.herkunft = 'regel'`, die Regel in `herkunft_flow_id` und `herkunft_fassung`, V20261115230000) mit einer festen Kennung je Regel, die jede neue Fassung der Regel neu übersetzt.
+Aufbau und Text zeigen sie nur zum Lesen; bearbeiten, mitlaufen lassen, scharf schalten und stilllegen geht nur über die Regel und den Steuerweg (409 `aus_regel`), in der Liste der Logiken und als Karte steht sie nicht, die Überwachung liest ihre Störungen wie bei jeder scharfen Logik.
+Der Besitz der Geräte bleibt bei der Regel (`flow_claim`); die Übersetzung beansprucht nichts selbst und zählt nicht als „scharfe Logik“ gegen ihre Regel.
+
+**Übersetzen** (Dienst `POST /aus-regel {dokument, name?, fassung?, registry?}` → `{uebersetzt, text?, gruende, bericht?}`, 422 `grund: regel` für einen Flow aus dem freien Editor; Paket `logikdienst/regel`, nur im Dienst): gelesen wird genau die Teilmenge, die der Baukasten baut (Zwilling von `parseGuidedFlow`).
+
+| Regel-Baukasten (flowc, `catalog.js`) | in der Logik |
+|---|---|
+| Schwelle mit Hysterese (`vp.logic.threshold`) über dem Netz-Zähler (`power_kw`) oder dem Ladestand des Speichers (`soc_pct`) | Eingang `site.grid` bzw. `battery.soc` (nur, wenn das Gerät der Anlage eindeutig dieses eine ist) und ein Schalter: an, sobald der Wert die Schwelle kreuzt, aus, sobald er um die Hysterese zurückliegt oder fehlt; die Grenzen stehen so im Text, wie Node-RED rechnet (`netz > -2 kW + 0.3 kW`) |
+| Schwelle über dem Börsenpreis (`vp.price.current`) | Eingang `price.current` und derselbe Schalter (der Preis gilt, solange die Box ihn hat) |
+| Zeitfenster (`vp.schedule.window`, alle Tage) | `time_window()` ab der ersten Viertelstunde (Node-RED prüft es im Slot-Raster) |
+| Zeitfenster werktags oder am Wochenende | ein Zeitplan; über Mitternacht an bestimmten Tagen nicht übersetzbar (Node-RED nimmt den Tag der Prüfung, der Zeitplan den des Beginns) |
+| und/oder (`vp.logic.and`/`or`) | `and`/`or` der Schalter und Zeitfenster |
+| Ein/Aus (`vp.entity.control on_off`) | `on_off`: in jedem Takt an oder aus, wie der Flow |
+| „voll einschalten“ (`vp.logic.if` ohne Sonst → `setpoint_kw`) | `setpoint: if(…, P kW, unknown)`: außerhalb der Bedingung kein Wunsch |
+
+Nicht übersetzt wird mit Grund: eine Benachrichtigung, ein Messwert, den die Box für eine Logik nicht liest (ein Unterzähler, eine Wallbox-Leistung), ein Gerät, das der Heizstab-Regler der Box führt.
+
+**Der Beleg** ist [regel-kern-vectors.json](regel-kern-vectors.json): 13 Regeln (die fünf Vorlagen des Satzbaukastens, Verknüpfungen bis vier Bedingungen, „voll“, ein Zeitfenster werktags), je mit flowc kompiliert und so ausgeführt, wie Node-RED den Flow ausführt (die generierten Funktionsknoten, Inject-Takt, Palettenknoten; `edge-app/nodered/flowc/regel-kern-vectors.gen.js`, aktuell gehalten von `regel-kern-vectors.test.js`), über Stunden Sekunde für Sekunde.
+Der Kern entscheidet die übersetzte Regel in jeder Sekunde gleich (`logikdienst/regel/gleichheit_test.go`), außer in diesen Abschnitten, die die Vektoren mit Grund und dem Wert des Kerns nennen:
+
+| Grund | alter Weg | Kern |
+|---|---|---|
+| `start` | wünscht vor dem ersten Messwert oder Slot-Raster nichts (bis zu 1 s) | aus |
+| `veraltet` | rechnet mit der letzten Probe weiter, solange keine neue kommt | ein Messwert ist nach `max_age` unbekannt, die Bedingung gilt nicht |
+| `preis_abgelaufen` | merkt die Frist des Preises erst beim nächsten Slot-Raster (bis zu 15 min) | liest den Preis nur, solange er gilt |
+| `raster` | prüft ein Zeitfenster, wenn sein Slot-Raster feuert (bis zu 30 s nach der Viertelstunde, je nach Ladezeitpunkt des Flows) | zur Viertelstunde |
+| `nachlauf` | hält „voll“ nach dem Ende der Bedingung, bis die TTL von 930 s abläuft | wünscht sofort nichts mehr |
+
+Die Vektoren rechnen in der Ortszeit der Anlage (Europe/Berlin).
+**Befund am alten Weg:** der Node-RED-Container der Docker-Box hat keine Zeitzone (`TZ` fehlt im Compose-Dienst `nodered`, belegt mit dem Image `nodered/node-red:4.0`: UTC); ein Zeitfenster des Baukastens schaltet dort eine Stunde (Winter) bzw. zwei Stunden (Sommer) später, als der Probelauf zeigt.
+**Befund am alten Weg:** die Box veröffentlicht die Leistung des Netz-Zählers und den Ladestand des Speichers nicht auf `edge/entities/<id>/telemetry` (`meter_entity_telemetry.go` nur Zählerstände und Phasen, `ComposeLocal` nur für die eigene Ansicht); eine Regel „Sonnen-Überschuss“ oder „Ladestand“ bekommt in Node-RED also keinen Wert und wünscht nichts. Der Kern liest beide aus der gesicherten Hausbilanz.
+Beide Befunde ändert dieser Schritt am alten Weg nicht (keine Anlage wechselt still); der Mitlauf zeigt sie als Abweichung, und übernimmt der Kern, sind sie für diese Regeln behoben.
+
+**Edge Light**: es gibt keinen alten Weg für Regeln. Beim Einschalten einer Regel übersetzt die API sie und liefert die Übersetzung scharf aus; was sich nicht übersetzt oder eine Box ohne `steuerlogik_regeln` lehnt die Aktivierung mit Grund ab, bevor sich etwas ändert (wie bisher jede Regel). Ausschalten legt die Übersetzung still. Den Börsenpreis bekommt eine Edge Light mit `steuerlogik_regeln` gespeist ([Preis-Zuleitung](mqtt-price-current.md)).
+
+**Docker-Box: der Schalter der Anlage** (`steuerweg`, ab Werk `alt`; jeder Schritt in `steuerweg_schritt`):
+
+| Modus | Node-RED | Kern | Schritt |
+|---|---|---|---|
+| `alt` | schaltet jede Regel | - | „Vergleich starten“ |
+| `mitlauf` | schaltet weiter | jede übersetzbare Regel läuft mit; der Herzschlag vergleicht „würde schalten“ mit „ist geschaltet“ ([Rückmeldung](steuerlogik-rueckmeldung.md)) | „Übernehmen“ (mit Rückfrage), „Vergleich beenden“ |
+| `kern` | bekommt die übersetzten Regeln nicht mehr (ihr Artefakt bleibt aus dem Satz) | schaltet sie scharf | „Zurück zum bisherigen Weg“ |
+
+Eine Regel, die sich nicht übersetzt, bleibt in jedem Modus auf dem alten Weg und steht mit Grund da.
+Zurück wirkt in derselben Anfrage: die Übersetzungen hören auf, Node-RED bekommt seine Artefakte wieder.
+Das Node-RED-Artefakt einer Regel bleibt nur aus dem Satz, solange ihre Übersetzung scharf ist und die Box `steuerlogik_scharf` und `steuerlogik_regeln` meldet - ginge die Übersetzung nicht hinaus, schaltet Node-RED (nie hat eine Regel keinen Weg, nie zwei).
+Wird eine Regel bei `mitlauf` oder `kern` eingeschaltet oder geändert, folgt ihre Übersetzung im selben Zustand.
+
+| Route unter `/api/v1/sites/{siteId}/steuerlogik/steuerweg` | Recht | Was |
+|---|---|---|
+| `GET` | lesend wie die Steuerung | Modus, Box-Art, was die Box kann, je eingeschaltete Regel `weg` (`alt`, `mitlauf`, `kern`, `aus`), Gründe und der Vergleich der Box, die letzten Schritte; `darf` |
+| `POST /mitlauf`, `POST /uebernehmen`, `POST /zurueck` | `logik.bearbeiten` | den Schalter stellen; 409 mit Grund (`erst_mitlaufen`, `schon_an`, `edge_light`, `box_ohne_regeln`, `box_ohne_scharf`) |
+
+Im Portal: „Wie Ihre Regeln laufen“ im Reiter „Regeln“ (`steuerung/SteuerwegAbschnitt.tsx`, Wörter aus `steuerung/steuerweg.ts`; Bühne `e2e/steuerweg.html`).
+API: `SteuerwegApiTest`, `FlowActivationServiceTest`; Ende zu Ende je Box-Art: `edge-light/test/regel-kern-probe.sh` (Docker-Box mit einem gestellten Node-RED: Mitlauf, Übernehmen, Hysterese, Zurück; Edge Light: die Regel schaltet einen gestellten Shelly).
+
+**Noch nicht zusammengeführt** (alte Wege bleiben in diesem Schritt bestehen): die Steuerarten je Gerät mit der Verbraucherregel (`verbraucherregel-vectors.json`) und der Heizstab-Regler (`heizstab-regler-vectors.json`) - je ein Baustein, sobald er gegen diese Vektoren gleich entscheidet; die Vorlagen als eigene Bausteine der Sammlung (die Startsammlung ist fünf bis sieben Bausteine, eine Regel aus einer Vorlage läuft schon über die Übersetzung); Automationen aus dem freien Editor.
 
 ## Versionsregeln
 
