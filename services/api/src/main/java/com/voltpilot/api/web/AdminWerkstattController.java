@@ -83,11 +83,15 @@ public class AdminWerkstattController {
      * Ein Abnahmeprotokoll. {@code probe} trägt das Fenster der Werkstatt-Probe
      * und was der Tunnel-Dienst dazu gemeldet hatte ({@code schluesselAbgeholtUm}
      * null = keine Meldung nannte es abgeholt): Anzeige, kein Beweis.
+     * {@code dienstFassungVorEinrichtungWlan}: true, wenn ein Werkstatt-Dienst
+     * vor S1 (PR #1885) ohne den Beleg {@code einrichtung_wlan_bereit}
+     * angenommen wurde (Übergangsfrist, aus {@code belege} abgeleitet, keine
+     * eigene Spalte).
      */
     public record AbnahmeDto(UUID id, String edgeRef, String hostSchluessel, String fassung, String tunnelAdresse,
             String lanNetz, List<String> pruefungen, JsonNode probe, String notiz, Instant erfasstAm,
             String erfasstVon, String quelle, JsonNode belege, UUID freigabeId, UUID einloesungId,
-            String passwortAge) {
+            String passwortAge, boolean dienstFassungVorEinrichtungWlan) {
     }
 
     /**
@@ -408,11 +412,14 @@ public class AdminWerkstattController {
     }
 
     private AbnahmeDto abnahmeDto(Abnahme a) {
+        JsonNode belege = a.belegeJson() == null ? null : lies(a.belegeJson());
+        boolean vorEinrichtungWlan = "dienst".equals(a.quelle()) && belege != null
+                && !belege.has(WerkstattPruefungen.EINRICHTUNG_WLAN_BEREIT);
         return new AbnahmeDto(a.id(), a.edgeRef(), a.hostSchluessel(), a.fassung(), a.tunnelAdresse(), a.lanNetz(),
                 liste(a.pruefungenJson()), lies(a.probeJson()), a.notiz(), a.erfasstAm(),
                 name(a.erfasstVonName(), a.erfasstVon()), a.quelle(),
-                a.belegeJson() == null ? null : lies(a.belegeJson()), a.freigabeId(), a.einloesungId(),
-                a.passwortAge());
+                belege, a.freigabeId(), a.einloesungId(),
+                a.passwortAge(), vorEinrichtungWlan);
     }
 
     private JsonNode lies(String text) {

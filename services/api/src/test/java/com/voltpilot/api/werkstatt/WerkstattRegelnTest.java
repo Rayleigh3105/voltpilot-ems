@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.fernwartung.Ipv4Netz;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,25 @@ class WerkstattRegelnTest {
                         "fenster_zu", "lan_netz", "update_bereit", "einrichtung_wlan_bereit");
         assertThat(WerkstattPruefungen.fehlend(WerkstattPruefungen.ALLE)).isEmpty();
         assertThat(WerkstattPruefungen.unbekannt(List.of("neustart", "zz", "aa", "zz"))).containsExactly("aa", "zz");
+    }
+
+    /**
+     * Übergangsfrist für einrichtung_wlan_bereit (Entscheid des Kapitäns vom
+     * 15.11.2026 zu PR #1885): nur wenn genau und nur sie fehlt, und nur vor
+     * der Frist.
+     */
+    @Test
+    void uebergangNurFuerEinrichtungWlanBereitUndNurVorDerFrist() {
+        Instant frist = WerkstattPruefungen.EINRICHTUNG_WLAN_UEBERGANG_BIS;
+        List<String> nurSie = List.of("einrichtung_wlan_bereit");
+        assertThat(WerkstattPruefungen.uebergangGilt(nurSie, frist.minus(1, ChronoUnit.SECONDS))).isTrue();
+        assertThat(WerkstattPruefungen.uebergangGilt(nurSie, frist)).isFalse();
+        assertThat(WerkstattPruefungen.uebergangGilt(nurSie, frist.plus(1, ChronoUnit.SECONDS))).isFalse();
+        Instant vorDerFrist = frist.minus(1, ChronoUnit.SECONDS);
+        assertThat(WerkstattPruefungen.uebergangGilt(List.of("lan_netz"), vorDerFrist)).isFalse();
+        assertThat(WerkstattPruefungen.uebergangGilt(List.of("einrichtung_wlan_bereit", "lan_netz"), vorDerFrist))
+                .isFalse();
+        assertThat(WerkstattPruefungen.uebergangGilt(List.of(), vorDerFrist)).isFalse();
     }
 
     @Test

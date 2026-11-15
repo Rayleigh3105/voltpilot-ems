@@ -417,7 +417,10 @@ export function WerkstattBoxSeite({
                   <ul className="vp-ws-belege">
                     {fruehereAbnahmen(box).map((a) => (
                       <li key={a.id}>
-                        <span className="vp-ws-pruefung">{zeitpunkt(a.erfasstAm, jetzt)} · {a.quelle === 'dienst' ? 'vom Dienst' : `von ${a.erfasstVon} (von Hand)`}</span>
+                        <span className="vp-ws-pruefung">
+                          {zeitpunkt(a.erfasstAm, jetzt)} · {a.quelle === 'dienst' ? 'vom Dienst' : `von ${a.erfasstVon} (von Hand)`}
+                          {a.dienstFassungVorEinrichtungWlan ? ' · Dienst vor Einrichtungs-WLAN' : ''}
+                        </span>
                         <span>{a.fassung}</span>
                       </li>
                     ))}

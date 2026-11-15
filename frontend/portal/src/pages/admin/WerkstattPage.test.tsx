@@ -123,6 +123,16 @@ describe('Werkstatt: Übersicht am Rechner', () => {
     expect(within(detail).getByTestId('ws-abnahme-protokoll')).toHaveTextContent('nur mit dem age-Schlüssel');
   });
 
+  it('Übergangsfrist: eine Abnahme ohne einrichtung_wlan_bereit zeigt den Hinweis „Dienst-Fassung vor Einrichtungs-WLAN“', async () => {
+    const alt = box('edge-5t2dcy6');
+    alt.abnahmen[0] = { ...alt.abnahmen[0], dienstFassungVorEinrichtungWlan: true };
+    werkstattBoxen.mockResolvedValue([alt]);
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const detail = await screen.findByTestId('ws-detail');
+    expect(within(detail).getByTestId('ws-abnahme-dienst-alt')).toHaveTextContent('Dienst-Fassung vor Einrichtungs-WLAN');
+  });
+
   it('Freigabe beenden fragt nach und ruft die API', async () => {
     werkstattFreigabeBeenden.mockResolvedValue(freigabe({ zustand: 'beendet' }));
     render(<WerkstattPage />);

@@ -57,6 +57,12 @@ export interface WerkstattAbnahme {
   einloesungId?: string | null;
   /** Das Root-Passwort, mit age verschlüsselt; nur der Betreiber kann es lesen. */
   passwortAge?: string | null;
+  /**
+   * true: ein Werkstatt-Dienst vor S1 (PR #1885) hat ohne den Beleg
+   * `einrichtung_wlan_bereit` abgenommen (Übergangsfrist bis 13.12.2026);
+   * fehlt bei einer API vor diesem Feld.
+   */
+  dienstFassungVorEinrichtungWlan?: boolean;
 }
 
 export interface WerkstattBox {

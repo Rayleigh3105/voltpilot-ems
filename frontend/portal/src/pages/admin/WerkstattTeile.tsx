@@ -85,6 +85,17 @@ export function AbnahmeAnzeige({ a, jetzt }: { a: WerkstattAbnahme; jetzt: Date 
       <dd>
         {zeitpunkt(a.erfasstAm, jetzt)} {a.quelle === 'dienst' ? 'vom Werkstatt-Dienst' : `von ${a.erfasstVon} (von Hand)`}
       </dd>
+      {a.dienstFassungVorEinrichtungWlan && (
+        <>
+          <dt />
+          <dd>
+            <p className="vp-alert vp-alert-warn" style={{ margin: 0 }} data-testid="ws-abnahme-dienst-alt">
+              Dienst-Fassung vor Einrichtungs-WLAN: ohne den Beleg „Einrichtungs-WLAN bereit“ (Übergangsfrist, Werkstatt-Dienst
+              am Werkstatt-Rechner aktualisieren).
+            </p>
+          </dd>
+        </>
+      )}
       <dt>Host-Schlüssel</dt>
       <dd className="vp-fw-fingerabdruck">{a.hostSchluessel}</dd>
       <dt>Fassung</dt>

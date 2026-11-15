@@ -344,14 +344,21 @@ public class WerkstattService {
         }
         List<String> leer = WerkstattPruefungen.ALLE.stream()
                 .filter(p -> belege.get(p) == null || belege.get(p).isBlank()).toList();
-        if (!leer.isEmpty()) {
+        // Übergangsfrist (Entscheid des Kapitäns vom 15.11.2026 zu PR #1885): ein Dienst vor
+        // Einrichtungs-WLAN liefert alle Belege außer einrichtung_wlan_bereit; bis zur Frist
+        // geht die Abnahme trotzdem durch (dienstFassungVorEinrichtungWlan kennzeichnet sie).
+        if (!leer.isEmpty() && !WerkstattPruefungen.uebergangGilt(leer, fernwartung.jetzt())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Abnahme braucht für jede Prüfung der Werkstatt-Regel einen Beleg. Es fehlt: "
                             + String.join(", ", leer) + ".");
         }
         Map<String, String> geordnet = new LinkedHashMap<>();
         for (String p : WerkstattPruefungen.ALLE) {
-            String text = belege.get(p).trim();
+            String roh = belege.get(p);
+            if (roh == null) {
+                continue; // nur einrichtung_wlan_bereit kann hier fehlen (s.o., Übergangsfrist)
+            }
+            String text = roh.trim();
             if (text.length() > MAX_BELEG) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Der Beleg von " + p + " ist länger als " + MAX_BELEG + " Zeichen.");
