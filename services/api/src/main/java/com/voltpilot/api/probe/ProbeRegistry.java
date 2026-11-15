@@ -1,5 +1,6 @@
 package com.voltpilot.api.probe;
 
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -87,6 +88,8 @@ public class ProbeRegistry {
      * assistant renders, not an error.
      */
     public ProbeResult await(CompletableFuture<ProbeResult> future, Duration timeout) {
+        // Nicht mit einer Verbindung des Anfrage-Pools auf die Box warten (Lasttest Rang 13).
+        AnfrageVerbindung.freigeben();
         try {
             return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {

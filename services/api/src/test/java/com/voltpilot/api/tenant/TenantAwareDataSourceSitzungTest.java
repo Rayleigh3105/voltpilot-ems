@@ -129,12 +129,14 @@ class TenantAwareDataSourceSitzungTest {
     }
 
     /**
-     * Scheitert das Zurücksetzen (die Verbindung kommt mit abgebrochener Transaktion zurück), trägt die rohe Sitzung
-     * noch die Werte der vorigen Ausleihe — die nächste Ausleihe setzt trotzdem ihre eigenen. Das Setzen beim Ausleihen
-     * ist die Garantie, das Zurücksetzen der Gürtel dazu.
+     * Kommt die Verbindung mit abgebrochener Transaktion zurück (kein {@code rollback()} des Aufrufers), rollt die
+     * Rückgabe sie zuerst zurück - wie Hikari es ohnehin täte - und setzt DANN zurück: die rohe Sitzung ist leer. Vor
+     * Lasttest Rang 13 lief das Zurücksetzen in die abgebrochene Transaktion, scheiterte still und die Verbindung lag
+     * mit dem Mandanten der vorigen Ausleihe im Pool; nur das Setzen der nächsten Ausleihe schützte. Das Setzen beim
+     * Ausleihen bleibt die Garantie, das Zurücksetzen der Gürtel dazu - jetzt ohne Lücke.
      */
     @Test
-    void auchWennDasZuruecksetzenScheitertErbtDieNaechsteAusleiheNichts() throws SQLException {
+    void eineAbgebrocheneTransaktionWirdVorDemZuruecksetzenZurueckgerollt() throws SQLException {
         TenantContext.set(AHRENBERG);
         ZugriffContext.set(claudia());
         try (Connection c = ds.getConnection()) {
@@ -142,14 +144,13 @@ class TenantAwareDataSourceSitzungTest {
             try (Statement s = c.createStatement()) {
                 s.execute("SELECT 1 / 0");
             } catch (SQLException erwartet) {
-                // die Transaktion ist abgebrochen: das Zurücksetzen beim close() scheitert still
+                // die Transaktion ist abgebrochen, der Aufrufer rollt nicht zurück
             }
         }
         TenantContext.clear();
         ZugriffContext.clear();
         Sitzung roh = roh();
-        assertThat(roh.tenant()).as("roh: das Zurücksetzen lief in die abgebrochene Transaktion")
-                .isEqualTo(AHRENBERG.toString());
+        assertThat(roh).as("roh: zurückgerollt und zurückgesetzt").isEqualTo(LEER.mitPid(roh.pid()));
 
         TenantContext.set(NORDWIND);
         ZugriffContext.set(peter(NORDWIND));

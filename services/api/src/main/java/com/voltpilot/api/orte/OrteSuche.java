@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -378,6 +379,8 @@ public class OrteSuche {
                     .header("User-Agent", "VoltPilot-EMS (Adresssuche beim Anlegen)")
                     .header("Accept", "application/json").GET().build();
             try {
+                // Nicht mit einer Verbindung des Anfrage-Pools auf einen fremden Dienst warten (Lasttest Rang 13).
+                AnfrageVerbindung.freigeben();
                 HttpResponse<String> res = client.send(r, HttpResponse.BodyHandlers.ofString());
                 return new Ergebnis(res.statusCode(), res.body());
             } catch (InterruptedException e) {

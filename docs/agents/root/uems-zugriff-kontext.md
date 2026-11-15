@@ -29,8 +29,9 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   bei offenem Umschalter auf A die Personen von A). Das Portal lässt den Umschalter-Kopf bei Aufrufen mit eigenem
   `X-Tenant-Id`-Kopf weg (`expliziterMandant` in `api.ts`); gleiche Werte in beiden Köpfen bleiben erlaubt. Für einen
   Partner ignoriert der `TenantFilter` `X-Tenant-Id` weiterhin - er kann den Widerspruch nicht auslösen.
-- **Sitzungs-Einstellungen** in derselben `set_config`-Anweisung wie `app.tenant_id`, beim Zurückgeben zusammen
-  zurückgesetzt:
+- **Sitzungs-Einstellungen** in derselben `set_config`-Anweisung wie `app.tenant_id`, zusammen zurückgesetzt, bevor
+  die Verbindung in den Pool geht (in einer Anfrage einmal am Ende, `AnfrageVerbindung`; der Griff nach dem Laden des
+  Zugriffs setzt neu, weil sich der Zugriff geändert hat):
   - `app.zugriff` ist `unternehmen` bei einem Kundenkonto mit wirksamer mandantenweiter Zuweisung oder ganz ohne je
     eine Zuweisung (E12, seit IP-5; seit 16.09.2026 nur, solange der Kundenbereich keinen Stichtag hat —
     `uems-zugriff-stichtag.md`) und am Umschalter, sonst `standorte`.

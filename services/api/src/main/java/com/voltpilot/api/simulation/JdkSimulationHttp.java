@@ -1,5 +1,6 @@
 package com.voltpilot.api.simulation;
 
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -35,6 +36,8 @@ public class JdkSimulationHttp implements SimulationHttp {
 
     private Response send(HttpRequest request) throws IOException {
         try {
+            // Nicht mit einer Verbindung des Anfrage-Pools auf einen fremden Dienst warten (Lasttest Rang 13).
+            AnfrageVerbindung.freigeben();
             HttpResponse<String> res = client.send(request, HttpResponse.BodyHandlers.ofString());
             return new Response(res.statusCode(), res.body());
         } catch (InterruptedException e) {

@@ -1,5 +1,6 @@
 package com.voltpilot.api.registerwrite;
 
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -138,6 +139,8 @@ public class RegisterWriteRegistry {
     /** Warten, oder {@code null} bei Zeitablauf - ein ehrlicher AUSGANG, kein Fehler. */
     public RegisterWriteResult await(CompletableFuture<RegisterWriteResult> future,
             Duration timeout) {
+        // Nicht mit einer Verbindung des Anfrage-Pools auf die Box warten (Lasttest Rang 13).
+        AnfrageVerbindung.freigeben();
         try {
             return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {

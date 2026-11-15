@@ -2,6 +2,7 @@ package com.voltpilot.api.admin;
 
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.voltpilot.api.benutzer.Startpasswort;
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -50,7 +51,13 @@ public class KeycloakAdminClient {
         var anfragen = new org.springframework.http.client.SimpleClientHttpRequestFactory();
         anfragen.setConnectTimeout(props.getConnectTimeout());
         anfragen.setReadTimeout(props.getReadTimeout());
-        this.http = RestClient.builder().baseUrl(props.getBaseUrl()).requestFactory(anfragen).build();
+        this.http = RestClient.builder().baseUrl(props.getBaseUrl()).requestFactory(anfragen)
+                // Nicht mit einer Verbindung des Anfrage-Pools auf Keycloak warten (Lasttest Rang 13).
+                .requestInterceptor((anfrage, koerper, ausfuehrung) -> {
+                    AnfrageVerbindung.freigeben();
+                    return ausfuehrung.execute(anfrage, koerper);
+                })
+                .build();
     }
 
     /** A provisioned/queried Keycloak user, projected to what the portal needs. */

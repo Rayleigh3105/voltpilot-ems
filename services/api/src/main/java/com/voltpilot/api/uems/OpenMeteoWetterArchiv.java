@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -50,6 +51,8 @@ public class OpenMeteoWetterArchiv implements WetterArchiv {
                     + "&longitude=" + laengengrad.toPlainString() + "&start_date=" + von + "&end_date=" + bis
                     + "&daily=temperature_2m_mean&timezone=" + URLEncoder.encode(zone.getId(), StandardCharsets.UTF_8)
                     + (schluessel == null ? "" : "&apikey=" + URLEncoder.encode(schluessel, StandardCharsets.UTF_8));
+            // Nicht mit einer Verbindung des Anfrage-Pools auf einen fremden Dienst warten (Lasttest Rang 13).
+            AnfrageVerbindung.freigeben();
             HttpResponse<String> antwort = client.send(HttpRequest.newBuilder(URI.create(url)).timeout(zeitgrenze)
                     .GET().build(), HttpResponse.BodyHandlers.ofString());
             if (antwort.statusCode() != 200) {

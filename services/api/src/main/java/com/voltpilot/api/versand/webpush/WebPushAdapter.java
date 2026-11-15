@@ -1,5 +1,6 @@
 package com.voltpilot.api.versand.webpush;
 
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -79,6 +80,8 @@ public class WebPushAdapter {
                 .POST(HttpRequest.BodyPublishers.ofByteArray(koerper))
                 .build();
         try {
+            // Nicht mit einer Verbindung des Anfrage-Pools auf einen fremden Dienst warten (Lasttest Rang 13).
+            AnfrageVerbindung.freigeben();
             HttpResponse<Void> response = http.send(request, HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() / 100 != 2) {
                 throw new WebPushException(response.statusCode(),

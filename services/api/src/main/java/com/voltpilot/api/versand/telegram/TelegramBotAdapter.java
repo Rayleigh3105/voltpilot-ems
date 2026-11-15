@@ -2,6 +2,7 @@ package com.voltpilot.api.versand.telegram;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.tenant.AnfrageVerbindung;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -51,6 +52,8 @@ public class TelegramBotAdapter implements TelegramAdapter {
                 .build();
         HttpResponse<String> response;
         try {
+            // Nicht mit einer Verbindung des Anfrage-Pools auf einen fremden Dienst warten (Lasttest Rang 13).
+            AnfrageVerbindung.freigeben();
             response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new TelegramException(0, e.getMessage(), e);

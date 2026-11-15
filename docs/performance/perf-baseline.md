@@ -79,8 +79,9 @@ Vergleich mit dem Bericht `vp-anlagen-cockpit-perf` vom 04.11.2026 (dieselbe Bef
 | `history?range=year` | 7,0 s SQL | 470 ms SQL, 563.209 Buffer |
 | `earnings?range=year` | 973 ms SQL | 698 ms SQL, 909.169 Buffer |
 
-Je Repository-Aufruf setzt die api die Sitzungsvariablen der Mandantentrennung und setzt sie bei der Rückgabe zurück.
-Ein `/overview` erzeugt deshalb 102 Statements der App-Rolle, davon 67 `set_config`; `/profiles` 86, davon 56.
+Je Repository-Aufruf setzte die api damals die Sitzungsvariablen der Mandantentrennung und setzte sie bei der Rückgabe
+zurück. Ein `/overview` erzeugte deshalb 102 Statements der App-Rolle, davon 67 `set_config`; `/profiles` 86, davon 56.
+Seit 15.11.2026 einmal je Anfrage ([Mandanten-Sockel](mandanten-sockel.md)).
 
 ## Nutzerweg im Browser
 
@@ -452,6 +453,14 @@ schon V-01 und der UEMS-Schnitt (`test/bundle-smoke.sh`). Die Wächter `einstieg
    auch wenn der Reiter nicht offen ist.
 6. **Gemeinsamer Vorwärm-Schritt der Testinfrastruktur** (Idee 8 der ersten Runde): Auch in dieser Runde rissen
    nachgeladene Stücke unter Last die Fristen von `waitFor` und `findBy` (Hook-Test, M5 der Anlagen-Seite).
+
+## Kunden-API, Mandanten-Sockel (15.11.2026)
+
+Der offene Hebel 1 der dritten Welle (B1/B2 der ersten Runde, H4 der zweiten, Lasttest Rang 13): eine Verbindung je
+Anfrage, `set_config` dreimal je Anfrage statt zweimal je Repository-Aufruf (`AnfrageVerbindung`). Über die 19 Kundenrouten
+764 → 333 Anweisungen (−56 %), `/earnings?range=day` 66 → 23, `/portfolio/kpis` 113 → 48, `/overview` 105 → 40; bei 40
+Nutzern auf 10 Verbindungen 276–368 → 428–439 Anfragen/s. Die Zugriffs-Abfrage je Anfrage (H4, zweiter Teil) bleibt
+offen. Messung und Methode: [mandanten-sockel.md](mandanten-sockel.md).
 
 ## Wiederholen
 

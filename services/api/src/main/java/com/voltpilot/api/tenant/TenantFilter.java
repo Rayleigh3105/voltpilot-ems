@@ -27,7 +27,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <p>Independently of the tenant, this filter also brackets the request with
  * {@link AnfrageZeitgrenze}, which is how {@link AnfragePfadDataSource} tells an
  * HTTP request's queries (statement/socket timeout) apart from a scheduled
- * job's or listener's (none) - see its Javadoc.
+ * job's or listener's (none) - see its Javadoc. The same bracket opens and closes
+ * {@link AnfrageVerbindung}: all queries of the request share one connection, its
+ * RLS session variables reset once when the request ends (also on exceptions and
+ * aborted responses - the {@code finally} below).
  *
  * <p><b>Admin tenant switcher.</b> A Portal-Admin token (realm role
  * {@code platform-admin}, no {@code tenant_id} claim) may select a tenant via
@@ -57,11 +60,14 @@ public class TenantFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
         boolean gescheitert = true;
         AnfrageZeitgrenze.start();
+        AnfrageVerbindung.beginn();
         try {
             resolveTenant(request).ifPresent(TenantContext::set);
             filterChain.doFilter(request, response);
             gescheitert = false;
         } finally {
+            // Zuerst die eine Verbindung der Anfrage zurückgesetzt in den Pool, dann die Markierungen.
+            AnfrageVerbindung.ende();
             AnfrageZeitgrenze.ende();
             UUID tenant = TenantContext.get();
             TenantContext.clear();
