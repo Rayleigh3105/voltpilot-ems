@@ -109,4 +109,32 @@ class SteuerlogikDienstClientTest {
                 .isInstanceOfSatisfying(SteuerlogikDienstException.class,
                         e -> assertThat(e.grund()).isEqualTo(SteuerlogikDienstException.NICHT_ERREICHBAR));
     }
+
+    @Test
+    void homeAssistantGehtMitDateienZuordnungUndRegistryHinUndKommtUnveraendertZurueck() throws Exception {
+        JsonNode gepinnt = JSON.readTree(Files.readString(
+                Path.of("../../docs/contracts/v2/examples/steuerlogik-home-assistant.valid.solarheizung.json")));
+        var dateien = JSON.createArrayNode();
+        dateien.addObject().put("name", "automations.yaml").put("text", "- id: a");
+        ObjectNode zuordnung = JSON.createObjectNode();
+        zuordnung.putObject("wr_netzleistung").put("wert", "site.grid");
+        JsonNode antwort = client(200, gepinnt.toString()).homeAssistant(dateien, zuordnung,
+                "{\"schema_version\":\"1.0\",\"entities\":[]}");
+        assertThat(antwort).isEqualTo(gepinnt);
+        assertThat(anfragen.get(0)).startsWith("http://logik-dienst:8101/home-assistant ");
+        JsonNode anfrage = JSON.readTree(anfragen.get(0).substring(anfragen.get(0).indexOf(' ') + 1));
+        assertThat(anfrage.path("dateien").get(0).path("name").asText()).isEqualTo("automations.yaml");
+        assertThat(anfrage.path("zuordnung").path("wr_netzleistung").path("wert").asText()).isEqualTo("site.grid");
+        assertThat(anfrage.path("registry").path("entities").isArray()).isTrue();
+
+        assertThatThrownBy(() -> client(422, "{\"message\":\"Dateien von Home Assistant nicht lesbar: a.yaml ist kein "
+                + "lesbares YAML\",\"grund\":\"home_assistant\"}").homeAssistant(dateien, null, null))
+                .isInstanceOfSatisfying(SteuerlogikDienstException.class, e -> {
+                    assertThat(e.grund()).isEqualTo(SteuerlogikDienstException.HOME_ASSISTANT);
+                    assertThat(e.getMessage()).contains("a.yaml ist kein lesbares YAML");
+                });
+        assertThatThrownBy(() -> client(500, "{}").homeAssistant(dateien, null, null))
+                .isInstanceOfSatisfying(SteuerlogikDienstException.class,
+                        e -> assertThat(e.grund()).isEqualTo(SteuerlogikDienstException.NICHT_ERREICHBAR));
+    }
 }

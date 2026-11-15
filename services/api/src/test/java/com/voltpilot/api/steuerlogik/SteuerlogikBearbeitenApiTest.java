@@ -313,6 +313,57 @@ class SteuerlogikBearbeitenApiTest {
         assertThat(ka(w, get(w.kunde(logik, "/protokoll?von=2026-01-02&bis=2026-01-01"))).status()).isEqualTo(400);
     }
 
+    /**
+     * Stufe 6: die Dateien von Home Assistant gehen mit der Zuordnung und dem Registry-Inhalt der Anlage an den Dienst,
+     * seine Antwort kommt unverändert zurück; gespeichert wird nichts. Wer die Logik nicht bearbeitet, übersetzt nicht.
+     */
+    @Test
+    void homeAssistantUebersetztOhneZuSpeichern() throws Exception {
+        Welt w = welt();
+        JsonNode gepinnt = MAPPER.readTree(Files.readString(
+                V2.resolve("examples/steuerlogik-home-assistant.valid.solarheizung.json")));
+        when(dienst.homeAssistant(any(), any(), any())).thenReturn(gepinnt);
+        ObjectNode body = MAPPER.createObjectNode();
+        body.putArray("dateien").addObject().put("name", "configuration.yaml").put("text", "input_boolean: {}")
+                .put("pfad", "fällt weg");
+        body.putObject("zuordnung").putObject("wr_netzleistung").put("wert", "site.grid");
+        Antwort a = ka(w, post(w.kunde() + "/home-assistant").content(MAPPER.writeValueAsString(body)));
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+        assertThat(a.body()).isEqualTo(gepinnt);
+
+        ArgumentCaptor<JsonNode> dateien = ArgumentCaptor.forClass(JsonNode.class);
+        ArgumentCaptor<JsonNode> zuordnung = ArgumentCaptor.forClass(JsonNode.class);
+        ArgumentCaptor<String> registry = ArgumentCaptor.forClass(String.class);
+        verify(dienst).homeAssistant(dateien.capture(), zuordnung.capture(), registry.capture());
+        assertThat(dateien.getValue().get(0).has("pfad")).as("nur Name und Text gehen an den Dienst").isFalse();
+        assertThat(dateien.getValue().get(0).path("text").asText()).isEqualTo("input_boolean: {}");
+        assertThat(zuordnung.getValue().path("wr_netzleistung").path("wert").asText()).isEqualTo("site.grid");
+        assertThat(MAPPER.readTree(registry.getValue()).path("site_id").asText()).isEqualTo(w.site().toString());
+
+        Antwort bd = als(w, "bedienberechtigt", post(w.kunde() + "/home-assistant")
+                .content(MAPPER.writeValueAsString(body)));
+        assertThat(bd.status()).isEqualTo(403);
+        assertThat(bd.body().path("recht").asText()).isEqualTo("logik.bearbeiten");
+
+        assertThat(ka(w, post(w.kunde() + "/home-assistant").content("{\"dateien\":[]}")).body().path("grund")
+                .asText()).isEqualTo("dateien_fehlen");
+        ObjectNode gross = MAPPER.createObjectNode();
+        gross.putArray("dateien").addObject().put("name", "configuration.yaml").put("text", "#".repeat(1024 * 1024 + 1));
+        Antwort zuGross = ka(w, post(w.kunde() + "/home-assistant").content(MAPPER.writeValueAsString(gross)));
+        assertThat(zuGross.status()).isEqualTo(400);
+        assertThat(zuGross.body().path("grund").asText()).isEqualTo("dateien_zu_gross");
+
+        doThrow(new SteuerlogikDienstException(SteuerlogikDienstException.HOME_ASSISTANT,
+                "Dateien von Home Assistant nicht lesbar: configuration.yaml ist kein lesbares YAML", null))
+                .when(dienst).homeAssistant(any(), any(), any());
+        Antwort kaputt = ka(w, post(w.kunde() + "/home-assistant").content(MAPPER.writeValueAsString(body)));
+        assertThat(kaputt.status()).isEqualTo(422);
+        assertThat(kaputt.body().path("grund").asText()).isEqualTo("home_assistant_unlesbar");
+        assertThat(kaputt.body().path("message").asText()).contains("configuration.yaml");
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerlogik WHERE site_id = ?", Integer.class,
+                w.site())).isZero();
+    }
+
     @Test
     void anfrageDesBedienberechtigten() throws Exception {
         Welt w = welt();

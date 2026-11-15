@@ -1,0 +1,831 @@
+{
+  "luecken": [
+    {
+      "kennung": "speicher_2",
+      "art": "geraet",
+      "name": "Speicher 2",
+      "entities": [
+        "switch.speicher_2_l1",
+        "switch.speicher_2_l2",
+        "switch.speicher_2_l3"
+      ],
+      "ausgaenge": 3,
+      "ausgang": "level",
+      "orte": [
+        {
+          "datei": "scripts.yaml",
+          "zeile": 43
+        }
+      ],
+      "wert": "stab-2",
+      "kandidaten": [
+        {
+          "wert": "stab-2",
+          "name": "Heizstab Speicher 2"
+        },
+        {
+          "wert": "stab-1",
+          "name": "Durchlauferhitzer Speicher 1"
+        },
+        {
+          "wert": "stab-3",
+          "name": "Heizstab Speicher 3"
+        }
+      ],
+      "vorgeschlagen": true,
+      "wert_text": "Heizstab Speicher 2"
+    },
+    {
+      "kennung": "speicher_3",
+      "art": "geraet",
+      "name": "Speicher 3",
+      "entities": [
+        "switch.speicher_3_l1",
+        "switch.speicher_3_l2",
+        "switch.speicher_3_l3"
+      ],
+      "ausgaenge": 3,
+      "ausgang": "level",
+      "orte": [
+        {
+          "datei": "scripts.yaml",
+          "zeile": 43
+        }
+      ],
+      "wert": "stab-3",
+      "kandidaten": [
+        {
+          "wert": "stab-3",
+          "name": "Heizstab Speicher 3"
+        },
+        {
+          "wert": "stab-1",
+          "name": "Durchlauferhitzer Speicher 1"
+        },
+        {
+          "wert": "stab-2",
+          "name": "Heizstab Speicher 2"
+        }
+      ],
+      "vorgeschlagen": true,
+      "wert_text": "Heizstab Speicher 3"
+    },
+    {
+      "kennung": "durchlauferhitzer",
+      "art": "geraet",
+      "name": "Durchlauferhitzer",
+      "entities": [
+        "switch.durchlauferhitzer_l1",
+        "switch.durchlauferhitzer_l2",
+        "switch.durchlauferhitzer_l3"
+      ],
+      "ausgaenge": 3,
+      "ausgang": "level",
+      "orte": [
+        {
+          "datei": "scripts.yaml",
+          "zeile": 43
+        }
+      ],
+      "wert": "stab-1",
+      "kandidaten": [
+        {
+          "wert": "stab-1",
+          "name": "Durchlauferhitzer Speicher 1"
+        },
+        {
+          "wert": "stab-2",
+          "name": "Heizstab Speicher 2"
+        },
+        {
+          "wert": "stab-3",
+          "name": "Heizstab Speicher 3"
+        }
+      ],
+      "vorgeschlagen": true,
+      "wert_text": "Durchlauferhitzer Speicher 1"
+    },
+    {
+      "kennung": "speicher_2_oben",
+      "art": "eingang",
+      "name": "Solarheizung Speicher 2 oben",
+      "entities": [
+        "sensor.messmodul_a7c3f1e09b24_temperatur_1"
+      ],
+      "groesse": "temperatur",
+      "orte": [
+        {
+          "datei": "configuration.yaml",
+          "zeile": 229
+        }
+      ],
+      "wert": "f-2.temperature",
+      "kandidaten": [
+        {
+          "wert": "f-2.temperature",
+          "name": "Speicher 2 oben"
+        },
+        {
+          "wert": "f-1.temperature",
+          "name": "Fühler Speicher 1 oben"
+        },
+        {
+          "wert": "f-3.temperature",
+          "name": "Speicher 3 oben"
+        }
+      ],
+      "vorgeschlagen": true,
+      "wert_text": "Speicher 2 oben"
+    },
+    {
+      "kennung": "speicher_3_oben",
+      "art": "eingang",
+      "name": "Solarheizung Speicher 3 oben",
+      "entities": [
+        "sensor.messmodul_a7c3f1e09b24_temperatur_3"
+      ],
+      "groesse": "temperatur",
+      "orte": [
+        {
+          "datei": "configuration.yaml",
+          "zeile": 235
+        }
+      ],
+      "wert": "f-3.temperature",
+      "kandidaten": [
+        {
+          "wert": "f-3.temperature",
+          "name": "Speicher 3 oben"
+        },
+        {
+          "wert": "f-1.temperature",
+          "name": "Fühler Speicher 1 oben"
+        },
+        {
+          "wert": "f-2.temperature",
+          "name": "Speicher 2 oben"
+        }
+      ],
+      "vorgeschlagen": true,
+      "wert_text": "Speicher 3 oben"
+    },
+    {
+      "kennung": "wr_netzleistung",
+      "art": "eingang",
+      "name": "Netzbezug",
+      "entities": [
+        "sensor.wr_netzleistung"
+      ],
+      "groesse": "leistung",
+      "orte": [
+        {
+          "datei": "configuration.yaml",
+          "zeile": 217
+        }
+      ],
+      "wert": "site.grid",
+      "kandidaten": [
+        {
+          "wert": "site.grid",
+          "name": "Netz, + ist Bezug"
+        },
+        {
+          "wert": "-site.grid",
+          "name": "Netz, + ist Einspeisung"
+        },
+        {
+          "wert": "battery.power",
+          "name": "Batterie, + ist Laden"
+        },
+        {
+          "wert": "-battery.power",
+          "name": "Batterie, + ist Entladen"
+        },
+        {
+          "wert": "site.pv",
+          "name": "PV-Leistung"
+        }
+      ],
+      "wert_text": "Netz, + ist Bezug"
+    },
+    {
+      "kennung": "wr_akkuleistung",
+      "art": "eingang",
+      "name": "Batterie lädt mit",
+      "entities": [
+        "sensor.wr_akkuleistung"
+      ],
+      "groesse": "leistung",
+      "orte": [
+        {
+          "datei": "configuration.yaml",
+          "zeile": 225
+        }
+      ],
+      "wert": "-battery.power",
+      "kandidaten": [
+        {
+          "wert": "site.grid",
+          "name": "Netz, + ist Bezug"
+        },
+        {
+          "wert": "-site.grid",
+          "name": "Netz, + ist Einspeisung"
+        },
+        {
+          "wert": "battery.power",
+          "name": "Batterie, + ist Laden"
+        },
+        {
+          "wert": "-battery.power",
+          "name": "Batterie, + ist Entladen"
+        },
+        {
+          "wert": "site.pv",
+          "name": "PV-Leistung"
+        }
+      ],
+      "wert_text": "Batterie, + ist Entladen"
+    },
+    {
+      "kennung": "fuehler_speicher_1_oben",
+      "art": "eingang",
+      "name": "Fühler Speicher 1 oben",
+      "entities": [
+        "sensor.fuehler_speicher_1_oben"
+      ],
+      "groesse": "temperatur",
+      "orte": [
+        {
+          "datei": "configuration.yaml",
+          "zeile": 256
+        }
+      ],
+      "wert": "f-1.temperature",
+      "kandidaten": [
+        {
+          "wert": "f-1.temperature",
+          "name": "Fühler Speicher 1 oben"
+        },
+        {
+          "wert": "f-2.temperature",
+          "name": "Speicher 2 oben"
+        },
+        {
+          "wert": "f-3.temperature",
+          "name": "Speicher 3 oben"
+        }
+      ],
+      "vorgeschlagen": true,
+      "wert_text": "Fühler Speicher 1 oben"
+    },
+    {
+      "kennung": "wr_ladestand",
+      "art": "eingang",
+      "name": "Ladestand der Batterie",
+      "entities": [
+        "sensor.wr_ladestand"
+      ],
+      "groesse": "prozent",
+      "orte": [
+        {
+          "datei": "configuration.yaml",
+          "zeile": 289
+        }
+      ],
+      "wert": "battery.soc",
+      "kandidaten": [
+        {
+          "wert": "battery.soc",
+          "name": "Ladestand der Batterie"
+        }
+      ],
+      "vorgeschlagen": true,
+      "wert_text": "Ladestand der Batterie"
+    }
+  ],
+  "vollstaendig": true,
+  "text": "# Aus Home Assistant übersetzt: configuration.yaml, automations.yaml, scripts.yaml. Jeder Eintrag nennt seine\n# Herkunft (Datei:Zeile); ein Hinweis steht dort, wo die Logik sich anders verhält als Home Assistant.\nlogic: 1\nname: Solarheizung\ndescription: 'Aus Home Assistant übersetzt: 6 Automationen, 1 Skript, 24 Helfer, 10 Vorlagen-Sensoren.'\n\ndevices:\n  speicher_2: {entity: stab-2, name: Heizstab Speicher 2}   # switch.speicher_2_l1, switch.speicher_2_l2, switch.speicher_2_l3\n  speicher_3: {entity: stab-3, name: Heizstab Speicher 3}   # switch.speicher_3_l1, switch.speicher_3_l2, switch.speicher_3_l3\n  durchlauferhitzer: {entity: stab-1, name: Durchlauferhitzer Speicher 1}   # switch.durchlauferhitzer_l1, switch.durchlauferhitzer_l2, switch.durchlauferhitzer_l3\n\ninputs:\n  speicher_2_oben: {source: f-2.temperature, name: Solarheizung Speicher 2 oben, max_age: 5 min}   # sensor.messmodul_a7c3f1e09b24_temperatur_1\n  speicher_3_oben: {source: f-3.temperature, name: Solarheizung Speicher 3 oben, max_age: 5 min}   # sensor.messmodul_a7c3f1e09b24_temperatur_3\n  # Hinweis: Der Schalter „Vorzeichen Netz gedreht“ drehte in Home Assistant das Vorzeichen von wr_netzleistung.\n  # In der Logik legt die Zuordnung des Eingangs das Vorzeichen fest (Netz: + ist Bezug, Batterie: + ist Laden);\n  # der Schalter entfällt, gerechnet wird wie mit ihm aus.\n  wr_netzleistung: {source: site.grid, name: Netzbezug, max_age: 60 s}   # sensor.wr_netzleistung\n  # Hinweis: Der Schalter „Vorzeichen Akku gedreht“ drehte in Home Assistant das Vorzeichen von wr_akkuleistung.\n  # In der Logik legt die Zuordnung des Eingangs das Vorzeichen fest (Netz: + ist Bezug, Batterie: + ist Laden);\n  # der Schalter entfällt, gerechnet wird wie mit ihm aus.\n  wr_akkuleistung: {source: battery.power, name: Batterie lädt mit, max_age: 60 s}   # sensor.wr_akkuleistung; Home Assistant zählt mit umgekehrtem Vorzeichen, gelesen wird deshalb -wr_akkuleistung\n  fuehler_speicher_1_oben: {source: f-1.temperature, name: Fühler Speicher 1 oben, max_age: 5 min}   # sensor.fuehler_speicher_1_oben\n  wr_ladestand: {source: battery.soc, name: Ladestand der Batterie, max_age: 5 min}   # sensor.wr_ladestand\n  sonnenstand: {source: sun.elevation, name: Sonnenstand}   # sun.sun\n\nsettings:\n  winterbetrieb: {name: Winterbetrieb, type: boolean, default: off}   # configuration.yaml:63\n  speicher1_einschalten_unter: {name: Speicher 1 heizt aus dem Netz unter, default: 40 °C, range: [30 °C, 70 °C], step: 1 K}   # configuration.yaml:85\n  speicher1_ziel_sommer: {name: Speicher 1 Ziel im Sommer, default: 57 °C, range: [57 °C, 90 °C], step: 1 K}   # configuration.yaml:92\n  speicher1_ziel_winter: {name: Speicher 1 Ziel im Winter, default: 75 °C, range: [50 °C, 90 °C], step: 1 K}   # configuration.yaml:99\n  speicher1_ziel_netz: {name: Speicher 1 Netzheizen bis, default: 60 °C, range: [40 °C, 80 °C], step: 1 K}   # configuration.yaml:106\n  speicher1_vorrang_bis: {name: Warmwasser zuerst bis, default: 60 °C, range: [0 °C, 80 °C], step: 1 K}   # configuration.yaml:113\n  reserve_vorrang: {name: Reserve für Warmwasser zuerst, default: 300 W, range: [0 W, 2000 W], step: 50 W}   # configuration.yaml:120\n  akku_voll_ab: {name: Akku gilt als voll ab, default: 95 %, range: [90 %, 100 %], step: 1 %}   # configuration.yaml:127\n  akku_abbruch_unter: {name: Abbruch unter Ladestand, default: 90 %, range: [80 %, 100 %], step: 1 %}   # configuration.yaml:134\n  akku_entladung_max: {name: Erlaubte Akkuentladung, default: 150 W, range: [150 W, 1000 W], step: 50 W}   # configuration.yaml:141\n  netzbezug_max: {name: Erlaubter Netzbezug, default: 300 W, range: [300 W, 3000 W], step: 50 W}   # configuration.yaml:148\n  pause_minuten: {name: Pause nach Fehlversuch, default: 5 min, range: [0 min, 60 min], step: 5 min}   # configuration.yaml:155\n  sonnenhoehe_min: {name: Mindesthöhe der Sonne, default: 5°, range: [0°, 30°], step: 1°}   # configuration.yaml:162\n  leistung_dle_phase: {name: Durchlauferhitzer je Phase, default: 3000 W, range: [500 W, 5000 W], step: 100 W}   # configuration.yaml:169\n  leistung_stab_phase: {name: Heizstab je Phase, default: 1500 W, range: [500 W, 5000 W], step: 100 W}   # configuration.yaml:176\n  speicher23_hoechsttemperatur: {name: Speicher 2 und 3 höchstens, default: 80 °C, range: [50 °C, 95 °C], step: 1 K}   # configuration.yaml:183\n  speicher23_stunden_je_tag: {name: Speicher 2 und 3 Stunden je Tag, default: 9 h, range: [1 h, 24 h], step: 0.5 h}   # configuration.yaml:190\n  netzheizen_von: {name: Netzheizen ab, default: '06:00'}   # configuration.yaml:199\n  netzheizen_bis: {name: Netzheizen bis, default: '22:00'}   # configuration.yaml:204\n\nformulas:\n  # Hinweis: Home Assistant rundet hier (|round); die Logik rechnet ungerundet. Ein Unterschied entsteht nur\n  # innerhalb einer halben Einheit um eine Schwelle.\n  ueberschuss: '-wr_netzleistung'   # configuration.yaml:213 „Solarheizung Ueberschuss“\n  # Hinweis: Home Assistant rundet hier (|round); die Logik rechnet ungerundet. Ein Unterschied entsteht nur\n  # innerhalb einer halben Einheit um eine Schwelle.\n  akkuleistung: '-wr_akkuleistung'   # configuration.yaml:221 „Solarheizung Akkuleistung“\n  zieltemperatur: if(winterbetrieb, speicher1_ziel_winter, speicher1_ziel_sommer)   # configuration.yaml:241 „Solarheizung Zieltemperatur“\n  # Hinweis: Home Assistant rundet hier (|round); die Logik rechnet ungerundet. Ein Unterschied entsteht nur\n  # innerhalb einer halben Einheit um eine Schwelle.\n  naechste_phase: if(known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c zieltemperatur, if(heizstufe \u003c 3, leistung_dle_phase, if(heizstufe \u003c 9, leistung_stab_phase, 999999 W)), if(heizstufe \u003c 6, leistung_stab_phase, 999999 W))   # configuration.yaml:251 „Solarheizung Naechste Phase“\n  heizleistung: durchlauferhitzer.level * leistung_dle_phase + speicher_2.level * leistung_stab_phase + speicher_3.level * leistung_stab_phase   # configuration.yaml:266 „Solarheizung Heizleistung“\n  # Hinweis: Ohne Wert von „wr_ladestand“ rechnet Home Assistant hier mit 0; in der Logik ist der Wert dann\n  # unbekannt, und was davon abhängt, geschieht nicht.\n  zuerst: warmwasser_zuerst and wr_ladestand \u003c akku_voll_ab   # configuration.yaml:294\n  netzfenster: time_window(netzheizen_von, netzheizen_bis)   # configuration.yaml:315 „Solarheizung Netzfenster“\n  grenze: min(speicher1_vorrang_bis, zieltemperatur)   # configuration.yaml:334\n  dle_frei: known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c zieltemperatur   # scripts.yaml:13\n  rest: if(dle_frei, heizstufe - min(heizstufe, 3), heizstufe)   # scripts.yaml:15\n\nstates:\n  # Binärsensor mit eigenem Wert (this.state): wird ein Schalter, der sich merkt, ob er an ist.\n  warmwasser_zuerst:   # binary_sensor.solarheizung_warmwasser_zuerst, configuration.yaml:329\n    name: Solarheizung Warmwasser zuerst\n    type: boolean\n    on_when: speicher1_vorrang_bis \u003e 0 °C and known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c grenze - 3 K\n    off_when: not (speicher1_vorrang_bis \u003e 0 °C and known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c grenze)\n    after_restart: off\n  # Hinweis: Home Assistant prüft „Netzheizen einschalten“ nur, wenn ein Auslöser sie weckt; die Logik prüft\n  # ihre Bedingungen in jedem Takt. Auffangläufe (time_pattern) entfallen, eine verpasste Flanke gibt es nicht.\n  # Hinweis: Home Assistant prüft „Netzheizen ausschalten“ nur, wenn ein Auslöser sie weckt; die Logik prüft\n  # ihre Bedingungen in jedem Takt. Auffangläufe (time_pattern) entfallen, eine verpasste Flanke gibt es nicht.\n  # Nach einem Neustart: wie „Nach dem Start von vorn“ (automations.yaml:165).\n  netzheizung_aktiv:   # input_boolean.netzheizung_aktiv, configuration.yaml:65\n    name: Netzheizung aktiv\n    type: boolean\n    on_when:\n      - winterbetrieb\n      - netzfenster\n      - holds(fuehler_speicher_1_oben \u003c speicher1_einschalten_unter, 2 min)\n    off_when_any:\n      - unknown(fuehler_speicher_1_oben)\n      - fuehler_speicher_1_oben \u003c 0 °C\n      - fuehler_speicher_1_oben \u003e= speicher1_ziel_netz\n      - not winterbetrieb\n      - not netzfenster\n    after_restart: off\n  # Hinweis: Startet Home Assistant den Zeitgeber mit der Dauer 0, läuft er seine eingestellte Dauer (30 min);\n  # in der Logik startet eine Dauer von 0 nicht.\n  # Nach einem Neustart: wie „Nach dem Start von vorn“ (automations.yaml:165).\n  sperre_nach_versuch:   # timer.sperre_nach_versuch, configuration.yaml:73\n    name: Sperre nach Versuch\n    type: timer\n    duration: pause_minuten\n    after_restart: off\n  # Hinweis: In Home Assistant ändern „Heizstufe rauf“ und „Heizstufe zurück“ diesen Wert unabhängig\n  # voneinander; welche zuerst prüft, hängt vom Start von Home Assistant ab. Hier gilt je Takt der erste\n  # zutreffende Schritt, die zurücknehmenden zuerst.\n  # Nach einem Neustart: wie „Nach dem Start von vorn“ (automations.yaml:165).\n  heizstufe:   # input_number.heizstufe, configuration.yaml:79\n    name: Heizstufe\n    type: counter\n    min: 0\n    max: 9\n    after_restart: 0\n    steps:\n      # Hinweis: Ohne Wert von „wr_ladestand“ rechnet Home Assistant hier mit 0; in der Logik ist der Wert dann\n      # unbekannt, und was davon abhängt, geschieht nicht.\n      # Hinweis: Home Assistant prüft „Heizstufe zurück“ nur jede Minute (time_pattern); „mehr als 1 min seit dem\n      # letzten Wechsel“ ist so erst nach 2 min erfüllt. Die Logik prüft jede Sekunde, deshalb steht hier\n      # not_before: 2 min.\n      - name: stufe_zurueck   # automations.yaml:109\n        by: -1\n        not_before: 2 min\n        when: heizstufe \u003e 0\n        when_any:\n          - akkuleistung \u003e akku_entladung_max\n          - ueberschuss \u003c -netzbezug_max\n          - wr_ladestand \u003c akku_abbruch_unter and not (warmwasser_zuerst and heizstufe \u003c= 3)\n        then: start(sperre_nach_versuch) if not (warmwasser_zuerst and wr_ladestand \u003c akku_voll_ab)\n      # Hinweis: Home Assistant prüft „Heizstufe rauf“ nur jede Minute (time_pattern); „mehr als 5 min seit dem\n      # letzten Wechsel“ ist so erst nach 6 min erfüllt. Die Logik prüft jede Sekunde, deshalb steht hier\n      # not_before: 6 min.\n      - name: stufe_rauf   # automations.yaml:69\n        by: +1\n        not_before: 6 min\n        when:\n          - heizstufe \u003c 9\n          - ueberschuss \u003e -netzbezug_max\n        when_any:\n          - wr_ladestand \u003e akku_voll_ab and sonnenstand \u003e sonnenhoehe_min and not running(sperre_nach_versuch) and akkuleistung \u003c akku_entladung_max\n          - warmwasser_zuerst and heizstufe \u003c 3 and -akkuleistung \u003e= naechste_phase + reserve_vorrang\n\noutputs:\n  # Hinweis: Home Assistant setzt die Schalter nur, wenn „Relais setzen“ läuft (bei Auslösern und\n  # Auffangläufen); die Logik stellt die Ausgänge in jedem Takt. Sie schaltet deshalb früher, sobald sich die\n  # Bedingungen ändern, nicht erst beim nächsten Lauf.\n  speicher_2: {level: 'if(speicher_2.output_hours_today \u003c speicher23_stunden_je_tag and known(speicher_2_oben) and speicher_2_oben \u003e= 0 °C and speicher_2_oben \u003c if(speicher_2.on, zieltemperatur, zieltemperatur - 3 K) and speicher_2_oben \u003c speicher23_hoechsttemperatur, min(rest, 3), 0)'}\n  speicher_3: {level: 'if(speicher_3.output_hours_today \u003c speicher23_stunden_je_tag and known(speicher_3_oben) and speicher_3_oben \u003e= 0 °C and speicher_3_oben \u003c if(speicher_3.on, zieltemperatur, zieltemperatur - 3 K) and speicher_3_oben \u003c speicher23_hoechsttemperatur, min(rest - min(rest, 3), 3), 0)'}\n  durchlauferhitzer: {level: 'if(netzheizung_aktiv, 3, if(dle_frei, min(heizstufe, 3), 0))'}\n\nstatus:\n  # Hinweis: Ohne Wert von „wr_ladestand“ rechnet Home Assistant hier mit 0; in der Logik ist der Wert dann\n  # unbekannt, und was davon abhängt, geschieht nicht.\n  # Hinweis: Die Art jeder Zeile der Lage (Sonne, Netz, wartet, ruht, Störung) kennt Home Assistant nicht; sie\n  # ist aus dem Titel geschätzt. Den Satz für den Kunden (text) schreiben Sie im Aufbau dazu.\n  # aus configuration.yaml:284 „Solarheizung Status“\n  - when: unknown(fuehler_speicher_1_oben) or fuehler_speicher_1_oben \u003c 0 °C\n    title: Störung Fühler\n    type: fault\n    text: \"\"\n  - when: netzheizung_aktiv\n    title: Notheizung\n    type: grid\n    text: \"\"\n  - when: winterbetrieb and not netzfenster and fuehler_speicher_1_oben \u003c speicher1_einschalten_unter\n    title: Nachtsperre\n    type: idle\n    text: \"\"\n  - when: heizstufe \u003e 0 and heizstufe \u003c= 3 and zuerst\n    title: Warmwasser vor Batterie\n    type: waiting\n    text: \"\"\n  - when: heizstufe \u003e 0\n    title: Heizt mit Sonnenstrom\n    type: solar\n    text: \"\"\n  - when: sonnenstand \u003c= 0°\n    title: Keine Sonne\n    type: idle\n    text: \"\"\n  - when: zuerst\n    title: Wartet auf Sonnenstrom\n    type: waiting\n    text: \"\"\n  - when: wr_ladestand \u003c akku_voll_ab\n    title: Batterie lädt\n    type: waiting\n    text: \"\"\n  - when: sonnenstand \u003c sonnenhoehe_min\n    title: Sonne zu tief\n    type: waiting\n    text: \"\"\n  - when: running(sperre_nach_versuch)\n    title: Pause nach Versuch\n    type: idle\n    text: \"\"\n  - when: akkuleistung \u003e akku_entladung_max or ueberschuss \u003c -netzbezug_max\n    title: Kein Überschuss\n    type: waiting\n    text: \"\"\n  - when: fuehler_speicher_1_oben \u003e= zieltemperatur\n    title: Speicher auf Zieltemperatur\n    type: waiting\n    text: \"\"\n  - else: true\n    title: Nächster Versuch läuft\n    type: waiting\n    text: \"\"\n",
+  "bericht": {
+    "name": "Solarheizung",
+    "sperrt": false,
+    "ausdruecke": 45,
+    "befunde": [],
+    "zusammen": [],
+    "proben": [],
+    "hinweise": [
+      "Ohne Satz für den Kunden im Blatt „Warum?“ (dort steht dann ein Satz aus dem Wortschatz): states.warmwasser_zuerst.on_text, states.warmwasser_zuerst.off_text, states.netzheizung_aktiv.on_text, states.netzheizung_aktiv.off_text, states.heizstufe.steps.stufe_zurueck.text, states.heizstufe.steps.stufe_rauf.text",
+      "Bedingungen ohne Namen, die sich nicht in einen Satz übersetzen lassen (im Blatt „Warum?“ steht dann „Eine Bedingung Ihres Fachbetriebs“; bitte benennen): states.warmwasser_zuerst.on_when („speicher1_vorrang_bis \u003e 0 °C and known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c grenze - 3 K“), states.warmwasser_zuerst.off_when („not (speicher1_vorrang_bis \u003e 0 °C and known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c grenze)“), states.netzheizung_aktiv.on_when („netzfenster“), states.netzheizung_aktiv.off_when_any („not netzfenster“), states.heizstufe.steps.stufe_zurueck.when_any („akkuleistung \u003e akku_entladung_max“), states.heizstufe.steps.stufe_zurueck.when_any („ueberschuss \u003c -netzbezug_max“), states.heizstufe.steps.stufe_zurueck.when_any („wr_ladestand \u003c akku_abbruch_unter and not (warmwasser_zuerst and heizstufe \u003c= 3)“), states.heizstufe.steps.stufe_rauf.when („ueberschuss \u003e -netzbezug_max“), states.heizstufe.steps.stufe_rauf.when_any („wr_ladestand \u003e akku_voll_ab and sonnenstand \u003e sonnenhoehe_min and not running(sperre_nach_versuch) and akkuleistung \u003c akku_entladung_max“), states.heizstufe.steps.stufe_rauf.when_any („warmwasser_zuerst and heizstufe \u003c 3 and -akkuleistung \u003e= naechste_phase + reserve_vorrang“)",
+      "Keine Proben: Verhalten nicht belegt"
+    ],
+    "geraete": [
+      {
+        "kennung": "speicher_2",
+        "entity_id": "stab-2",
+        "name": "Heizstab Speicher 2",
+        "ausgaenge": [
+          "level"
+        ]
+      },
+      {
+        "kennung": "speicher_3",
+        "entity_id": "stab-3",
+        "name": "Heizstab Speicher 3",
+        "ausgaenge": [
+          "level"
+        ]
+      },
+      {
+        "kennung": "durchlauferhitzer",
+        "entity_id": "stab-1",
+        "name": "Durchlauferhitzer Speicher 1",
+        "ausgaenge": [
+          "level"
+        ]
+      }
+    ],
+    "eingaenge": [
+      {
+        "kennung": "speicher_2_oben",
+        "source": "f-2.temperature",
+        "name": "Solarheizung Speicher 2 oben"
+      },
+      {
+        "kennung": "speicher_3_oben",
+        "source": "f-3.temperature",
+        "name": "Solarheizung Speicher 3 oben"
+      },
+      {
+        "kennung": "wr_netzleistung",
+        "source": "site.grid",
+        "name": "Netzbezug"
+      },
+      {
+        "kennung": "wr_akkuleistung",
+        "source": "battery.power",
+        "name": "Batterie lädt mit"
+      },
+      {
+        "kennung": "fuehler_speicher_1_oben",
+        "source": "f-1.temperature",
+        "name": "Fühler Speicher 1 oben"
+      },
+      {
+        "kennung": "wr_ladestand",
+        "source": "battery.soc",
+        "name": "Ladestand der Batterie"
+      },
+      {
+        "kennung": "sonnenstand",
+        "source": "sun.elevation",
+        "name": "Sonnenstand"
+      }
+    ],
+    "stellwerte": [
+      {
+        "kennung": "winterbetrieb",
+        "name": "Winterbetrieb",
+        "art": "boolean",
+        "vorgabe": "off",
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "speicher1_einschalten_unter",
+        "name": "Speicher 1 heizt aus dem Netz unter",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "40 °C",
+        "von": 30,
+        "bis": 70,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": true
+      },
+      {
+        "kennung": "speicher1_ziel_sommer",
+        "name": "Speicher 1 Ziel im Sommer",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "57 °C",
+        "von": 57,
+        "bis": 90,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": true
+      },
+      {
+        "kennung": "speicher1_ziel_winter",
+        "name": "Speicher 1 Ziel im Winter",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "75 °C",
+        "von": 50,
+        "bis": 90,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": true
+      },
+      {
+        "kennung": "speicher1_ziel_netz",
+        "name": "Speicher 1 Netzheizen bis",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "60 °C",
+        "von": 40,
+        "bis": 80,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": true
+      },
+      {
+        "kennung": "speicher1_vorrang_bis",
+        "name": "Warmwasser zuerst bis",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "60 °C",
+        "von": 0,
+        "bis": 80,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": true
+      },
+      {
+        "kennung": "reserve_vorrang",
+        "name": "Reserve für Warmwasser zuerst",
+        "art": "zahl",
+        "einheit": "W",
+        "vorgabe": "300 W",
+        "von": 0,
+        "bis": 2000,
+        "schritt": 50,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "akku_voll_ab",
+        "name": "Akku gilt als voll ab",
+        "art": "zahl",
+        "einheit": "%",
+        "vorgabe": "95 %",
+        "von": 90,
+        "bis": 100,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "akku_abbruch_unter",
+        "name": "Abbruch unter Ladestand",
+        "art": "zahl",
+        "einheit": "%",
+        "vorgabe": "90 %",
+        "von": 80,
+        "bis": 100,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "akku_entladung_max",
+        "name": "Erlaubte Akkuentladung",
+        "art": "zahl",
+        "einheit": "W",
+        "vorgabe": "150 W",
+        "von": 150,
+        "bis": 1000,
+        "schritt": 50,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "netzbezug_max",
+        "name": "Erlaubter Netzbezug",
+        "art": "zahl",
+        "einheit": "W",
+        "vorgabe": "300 W",
+        "von": 300,
+        "bis": 3000,
+        "schritt": 50,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "pause_minuten",
+        "name": "Pause nach Fehlversuch",
+        "art": "zahl",
+        "einheit": "min",
+        "vorgabe": "5 min",
+        "von": 0,
+        "bis": 60,
+        "schritt": 5,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "sonnenhoehe_min",
+        "name": "Mindesthöhe der Sonne",
+        "art": "zahl",
+        "einheit": "°",
+        "vorgabe": "5 °",
+        "von": 0,
+        "bis": 30,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "leistung_dle_phase",
+        "name": "Durchlauferhitzer je Phase",
+        "art": "zahl",
+        "einheit": "W",
+        "vorgabe": "3000 W",
+        "von": 500,
+        "bis": 5000,
+        "schritt": 100,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "leistung_stab_phase",
+        "name": "Heizstab je Phase",
+        "art": "zahl",
+        "einheit": "W",
+        "vorgabe": "1500 W",
+        "von": 500,
+        "bis": 5000,
+        "schritt": 100,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "speicher23_hoechsttemperatur",
+        "name": "Speicher 2 und 3 höchstens",
+        "art": "zahl",
+        "einheit": "°C",
+        "vorgabe": "80 °C",
+        "von": 50,
+        "bis": 95,
+        "schritt": 1,
+        "darf": "installer",
+        "zielwert": true
+      },
+      {
+        "kennung": "speicher23_stunden_je_tag",
+        "name": "Speicher 2 und 3 Stunden je Tag",
+        "art": "zahl",
+        "einheit": "h",
+        "vorgabe": "9 h",
+        "von": 1,
+        "bis": 24,
+        "schritt": 0.5,
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "netzheizen_von",
+        "name": "Netzheizen ab",
+        "art": "uhrzeit",
+        "vorgabe": "06:00",
+        "darf": "installer",
+        "zielwert": false
+      },
+      {
+        "kennung": "netzheizen_bis",
+        "name": "Netzheizen bis",
+        "art": "uhrzeit",
+        "vorgabe": "22:00",
+        "darf": "installer",
+        "zielwert": false
+      }
+    ],
+    "meldungen": [
+      {
+        "art": "hinweis",
+        "text": "Ohne Satz für den Kunden im Blatt „Warum?“ (dort steht dann ein Satz aus dem Wortschatz): states.warmwasser_zuerst.on_text, states.warmwasser_zuerst.off_text, states.netzheizung_aktiv.on_text, states.netzheizung_aktiv.off_text, states.heizstufe.steps.stufe_zurueck.text, states.heizstufe.steps.stufe_rauf.text"
+      },
+      {
+        "art": "hinweis",
+        "text": "Bedingungen ohne Namen, die sich nicht in einen Satz übersetzen lassen (im Blatt „Warum?“ steht dann „Eine Bedingung Ihres Fachbetriebs“; bitte benennen): states.warmwasser_zuerst.on_when („speicher1_vorrang_bis \u003e 0 °C and known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c grenze - 3 K“), states.warmwasser_zuerst.off_when („not (speicher1_vorrang_bis \u003e 0 °C and known(fuehler_speicher_1_oben) and fuehler_speicher_1_oben \u003e= 0 °C and fuehler_speicher_1_oben \u003c grenze)“), states.netzheizung_aktiv.on_when („netzfenster“), states.netzheizung_aktiv.off_when_any („not netzfenster“), states.heizstufe.steps.stufe_zurueck.when_any („akkuleistung \u003e akku_entladung_max“), states.heizstufe.steps.stufe_zurueck.when_any („ueberschuss \u003c -netzbezug_max“), states.heizstufe.steps.stufe_zurueck.when_any („wr_ladestand \u003c akku_abbruch_unter and not (warmwasser_zuerst and heizstufe \u003c= 3)“), states.heizstufe.steps.stufe_rauf.when („ueberschuss \u003e -netzbezug_max“), states.heizstufe.steps.stufe_rauf.when_any („wr_ladestand \u003e akku_voll_ab and sonnenstand \u003e sonnenhoehe_min and not running(sperre_nach_versuch) and akkuleistung \u003c akku_entladung_max“), states.heizstufe.steps.stufe_rauf.when_any („warmwasser_zuerst and heizstufe \u003c 3 and -akkuleistung \u003e= naechste_phase + reserve_vorrang“)"
+      },
+      {
+        "art": "hinweis",
+        "text": "Keine Proben: Verhalten nicht belegt"
+      }
+    ]
+  },
+  "nicht_uebersetzt": [],
+  "nicht_uebernommen": [],
+  "hinweise": [
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 218
+      },
+      "stelle": "formulas.ueberschuss",
+      "text": "Home Assistant rundet hier (|round); die Logik rechnet ungerundet. Ein Unterschied entsteht nur innerhalb einer halben Einheit um eine Schwelle.",
+      "zeile": 51
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 226
+      },
+      "stelle": "formulas.akkuleistung",
+      "text": "Home Assistant rundet hier (|round); die Logik rechnet ungerundet. Ein Unterschied entsteht nur innerhalb einer halben Einheit um eine Schwelle.",
+      "zeile": 54
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 261
+      },
+      "stelle": "formulas.naechste_phase",
+      "text": "Home Assistant rundet hier (|round); die Logik rechnet ungerundet. Ein Unterschied entsteht nur innerhalb einer halben Einheit um eine Schwelle.",
+      "zeile": 58
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 263
+      },
+      "stelle": "formulas.naechste_phase",
+      "text": "Home Assistant rundet hier (|round); die Logik rechnet ungerundet. Ein Unterschied entsteht nur innerhalb einer halben Einheit um eine Schwelle.",
+      "zeile": 58
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 294
+      },
+      "stelle": "formulas.zuerst",
+      "text": "Ohne Wert von „wr_ladestand“ rechnet Home Assistant hier mit 0; in der Logik ist der Wert dann unbekannt, und was davon abhängt, geschieht nicht.",
+      "zeile": 62
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 295
+      },
+      "stelle": "status",
+      "text": "Ohne Wert von „wr_ladestand“ rechnet Home Assistant hier mit 0; in der Logik ist der Wert dann unbekannt, und was davon abhängt, geschieht nicht.",
+      "zeile": 149
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 284
+      },
+      "stelle": "status",
+      "text": "Die Art jeder Zeile der Lage (Sonne, Netz, wartet, ruht, Störung) kennt Home Assistant nicht; sie ist aus dem Titel geschätzt. Den Satz für den Kunden (text) schreiben Sie im Aufbau dazu.",
+      "zeile": 149
+    },
+    {
+      "ort": {
+        "datei": "automations.yaml",
+        "zeile": 6
+      },
+      "stelle": "states.netzheizung_aktiv",
+      "text": "Home Assistant prüft „Netzheizen einschalten“ nur, wenn ein Auslöser sie weckt; die Logik prüft ihre Bedingungen in jedem Takt. Auffangläufe (time_pattern) entfallen, eine verpasste Flanke gibt es nicht.",
+      "zeile": 81
+    },
+    {
+      "ort": {
+        "datei": "automations.yaml",
+        "zeile": 41
+      },
+      "stelle": "states.netzheizung_aktiv",
+      "text": "Home Assistant prüft „Netzheizen ausschalten“ nur, wenn ein Auslöser sie weckt; die Logik prüft ihre Bedingungen in jedem Takt. Auffangläufe (time_pattern) entfallen, eine verpasste Flanke gibt es nicht.",
+      "zeile": 81
+    },
+    {
+      "ort": {
+        "datei": "automations.yaml",
+        "zeile": 69
+      },
+      "stelle": "states.heizstufe.stufe_rauf",
+      "text": "Home Assistant prüft „Heizstufe rauf“ nur jede Minute (time_pattern); „mehr als 5 min seit dem letzten Wechsel“ ist so erst nach 6 min erfüllt. Die Logik prüft jede Sekunde, deshalb steht hier not_before: 6 min.",
+      "zeile": 131
+    },
+    {
+      "ort": {
+        "datei": "automations.yaml",
+        "zeile": 136
+      },
+      "stelle": "states.heizstufe.stufe_zurueck",
+      "text": "Ohne Wert von „wr_ladestand“ rechnet Home Assistant hier mit 0; in der Logik ist der Wert dann unbekannt, und was davon abhängt, geschieht nicht.",
+      "zeile": 119
+    },
+    {
+      "ort": {
+        "datei": "automations.yaml",
+        "zeile": 109
+      },
+      "stelle": "states.heizstufe.stufe_zurueck",
+      "text": "Home Assistant prüft „Heizstufe zurück“ nur jede Minute (time_pattern); „mehr als 1 min seit dem letzten Wechsel“ ist so erst nach 2 min erfüllt. Die Logik prüft jede Sekunde, deshalb steht hier not_before: 2 min.",
+      "zeile": 119
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 73
+      },
+      "stelle": "states.sperre_nach_versuch",
+      "text": "Startet Home Assistant den Zeitgeber mit der Dauer 0, läuft er seine eingestellte Dauer (30 min); in der Logik startet eine Dauer von 0 nicht.",
+      "zeile": 98
+    },
+    {
+      "ort": {
+        "datei": "automations.yaml",
+        "zeile": 145
+      },
+      "stelle": "outputs.speicher_2",
+      "text": "Home Assistant setzt die Schalter nur, wenn „Relais setzen“ läuft (bei Auslösern und Auffangläufen); die Logik stellt die Ausgänge in jedem Takt. Sie schaltet deshalb früher, sobald sich die Bedingungen ändern, nicht erst beim nächsten Lauf.",
+      "zeile": 145
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 79
+      },
+      "stelle": "states.heizstufe",
+      "text": "In Home Assistant ändern „Heizstufe rauf“ und „Heizstufe zurück“ diesen Wert unabhängig voneinander; welche zuerst prüft, hängt vom Start von Home Assistant ab. Hier gilt je Takt der erste zutreffende Schritt, die zurücknehmenden zuerst.",
+      "zeile": 107
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 67
+      },
+      "stelle": "inputs.wr_netzleistung",
+      "text": "Der Schalter „Vorzeichen Netz gedreht“ drehte in Home Assistant das Vorzeichen von wr_netzleistung. In der Logik legt die Zuordnung des Eingangs das Vorzeichen fest (Netz: + ist Bezug, Batterie: + ist Laden); der Schalter entfällt, gerechnet wird wie mit ihm aus.",
+      "zeile": 18
+    },
+    {
+      "ort": {
+        "datei": "configuration.yaml",
+        "zeile": 69
+      },
+      "stelle": "inputs.wr_akkuleistung",
+      "text": "Der Schalter „Vorzeichen Akku gedreht“ drehte in Home Assistant das Vorzeichen von wr_akkuleistung. In der Logik legt die Zuordnung des Eingangs das Vorzeichen fest (Netz: + ist Bezug, Batterie: + ist Laden); der Schalter entfällt, gerechnet wird wie mit ihm aus.",
+      "zeile": 22
+    }
+  ],
+  "kennungen": {
+    "binary_sensor.solarheizung_netzfenster": "netzfenster",
+    "binary_sensor.solarheizung_warmwasser_zuerst": "warmwasser_zuerst",
+    "input_boolean.netzheizung_aktiv": "netzheizung_aktiv",
+    "input_boolean.winterbetrieb": "winterbetrieb",
+    "input_datetime.netzheizen_bis": "netzheizen_bis",
+    "input_datetime.netzheizen_von": "netzheizen_von",
+    "input_number.akku_abbruch_unter": "akku_abbruch_unter",
+    "input_number.akku_entladung_max": "akku_entladung_max",
+    "input_number.akku_voll_ab": "akku_voll_ab",
+    "input_number.heizstufe": "heizstufe",
+    "input_number.leistung_dle_phase": "leistung_dle_phase",
+    "input_number.leistung_stab_phase": "leistung_stab_phase",
+    "input_number.netzbezug_max": "netzbezug_max",
+    "input_number.pause_minuten": "pause_minuten",
+    "input_number.reserve_vorrang": "reserve_vorrang",
+    "input_number.sonnenhoehe_min": "sonnenhoehe_min",
+    "input_number.speicher1_einschalten_unter": "speicher1_einschalten_unter",
+    "input_number.speicher1_vorrang_bis": "speicher1_vorrang_bis",
+    "input_number.speicher1_ziel_netz": "speicher1_ziel_netz",
+    "input_number.speicher1_ziel_sommer": "speicher1_ziel_sommer",
+    "input_number.speicher1_ziel_winter": "speicher1_ziel_winter",
+    "input_number.speicher23_hoechsttemperatur": "speicher23_hoechsttemperatur",
+    "input_number.speicher23_stunden_je_tag": "speicher23_stunden_je_tag",
+    "sensor.fuehler_speicher_1_oben": "fuehler_speicher_1_oben",
+    "sensor.messmodul_a7c3f1e09b24_temperatur_1": "speicher_2_oben",
+    "sensor.messmodul_a7c3f1e09b24_temperatur_3": "speicher_3_oben",
+    "sensor.solarheizung_akkuleistung": "akkuleistung",
+    "sensor.solarheizung_heizleistung": "heizleistung",
+    "sensor.solarheizung_naechste_phase": "naechste_phase",
+    "sensor.solarheizung_speicher_2_oben": "speicher_2_oben",
+    "sensor.solarheizung_speicher_2_temperatur": "speicher_2_oben",
+    "sensor.solarheizung_speicher_3_oben": "speicher_3_oben",
+    "sensor.solarheizung_speicher_3_temperatur": "speicher_3_oben",
+    "sensor.solarheizung_ueberschuss": "ueberschuss",
+    "sensor.solarheizung_ziel": "zieltemperatur",
+    "sensor.solarheizung_zieltemperatur": "zieltemperatur",
+    "sensor.wr_akkuleistung": "wr_akkuleistung",
+    "sensor.wr_ladestand": "wr_ladestand",
+    "sensor.wr_netzleistung": "wr_netzleistung",
+    "sun.sun": "sonnenstand",
+    "switch.durchlauferhitzer_l1": "durchlauferhitzer",
+    "switch.durchlauferhitzer_l2": "durchlauferhitzer",
+    "switch.durchlauferhitzer_l3": "durchlauferhitzer",
+    "switch.speicher_2_l1": "speicher_2",
+    "switch.speicher_2_l2": "speicher_2",
+    "switch.speicher_2_l3": "speicher_2",
+    "switch.speicher_3_l1": "speicher_3",
+    "switch.speicher_3_l2": "speicher_3",
+    "switch.speicher_3_l3": "speicher_3",
+    "timer.sperre_nach_versuch": "sperre_nach_versuch"
+  },
+  "dateien": [
+    "configuration.yaml",
+    "automations.yaml",
+    "scripts.yaml"
+  ]
+}

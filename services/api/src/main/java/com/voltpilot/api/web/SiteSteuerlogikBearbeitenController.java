@@ -170,6 +170,19 @@ public class SiteSteuerlogikBearbeitenController {
         return new SteuerlogikDto.Geprueft(g.lesbar(), sperrt, g.message(), g.bericht(), g.meldungen());
     }
 
+    /**
+     * Recht: {@code logik.bearbeiten} - die Dateien einer Anlage von Home Assistant übersetzen (Stufe 6), ohne etwas
+     * zu speichern: Lücken mit den Kandidaten dieser Anlage, die Logik als Text, ihre Prüfung, was nicht übersetzbar
+     * ist (Datei, Zeile, Grund) und die Hinweise. Übernommen wird der Text danach wie jeder Entwurf.
+     */
+    @PostMapping("/home-assistant")
+    @Recht(value = RECHT_BEARBEITEN, ziel = RechtZiel.ANLAGE)
+    public JsonNode homeAssistant(@PathVariable UUID siteId, @RequestBody(required = false) JsonNode body) {
+        geltungsbereich.requireSite(siteId);
+        return dienst.homeAssistant(siteId, body == null ? null : body.get("dateien"),
+                body == null ? null : body.get("zuordnung"));
+    }
+
     /** Recht: {@code logik.bearbeiten} - eine neue Logik als Fassung 1 speichern (sie läuft noch nicht). */
     @PostMapping
     @Recht(value = RECHT_BEARBEITEN, ziel = RechtZiel.ANLAGE)

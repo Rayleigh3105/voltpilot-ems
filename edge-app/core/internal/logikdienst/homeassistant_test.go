@@ -146,3 +146,32 @@ func TestHomeAssistantNichtUebersetzbar(t *testing.T) {
 		t.Fatal("ohne Dateien")
 	}
 }
+
+// Die Antwort des Dienstes für die Test-Anlage, vollständig zugeordnet, gepinnt für API und
+// Portal (VP_FIXTURES_SCHREIBEN=1 schreibt sie neu).
+func TestHomeAssistantGepinnteAntwort(t *testing.T) {
+	e, err := UebersetzeHA(HAAuftrag{Dateien: haDateien(t), Registry: haRegistry(), Zuordnung: map[string]homeassistant.Zuordnung{
+		"wr_netzleistung": {Wert: "site.grid"}, "wr_akkuleistung": {Wert: "-battery.power"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roh, err := json.MarshalIndent(e, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roh = append(roh, '\n')
+	pfad := "../../../../docs/contracts/v2/examples/steuerlogik-home-assistant.valid.solarheizung.json"
+	if os.Getenv("VP_FIXTURES_SCHREIBEN") == "1" {
+		if err := os.WriteFile(pfad, roh, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alt, err := os.ReadFile(pfad)
+	if err != nil {
+		t.Fatalf("%v (VP_FIXTURES_SCHREIBEN=1 schreibt sie)", err)
+	}
+	if string(alt) != string(roh) {
+		t.Fatalf("%s ist nicht die Antwort des Dienstes; VP_FIXTURES_SCHREIBEN=1 schreibt sie neu", pfad)
+	}
+}
