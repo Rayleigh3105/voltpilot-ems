@@ -19,6 +19,7 @@ import com.voltpilot.api.web.dto.KennzahlDto;
 import com.voltpilot.api.web.dto.PriceRangeSummaryDto;
 import com.voltpilot.api.zugriff.ZugriffRepository;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -306,7 +308,19 @@ public class UeberwachungsService {
     /** 5 % über der Schwelle (Hausregel §9: Rückkehr mindestens die Auflösung, hier ein fester Aufschlag). */
     private static final double PREIS_RUECKKEHR_AUFSCHLAG = 1.05;
 
+    /**
+     * Sät die Regeln ab Werk, die noch fehlen. Jede Säe-Anweisung ist {@code ON CONFLICT DO NOTHING} auf
+     * {@code uq_ueberwachung_ab_werk (tenant_id, wertart, bezug->>'anlage') WHERE herkunft = 'ab_werk'} - ein schon
+     * gesätes Paar (Wertart, Anlage) bliebe also ohnehin unverändert, auch wenn die Regel inzwischen geändert oder
+     * abgeschaltet ist. Darum liest der Takt diese Paare EINMAL je Kundenbereich ({@link
+     * UeberwachungRepository#abWerkGesaet()}, derselbe Schlüssel wie der Index) und sät nur die fehlenden: dasselbe
+     * Ergebnis wie vorher, aber ohne je Anlage, Wertart und Takt zwei Anweisungen, ohne die 30-Tage-Preisstatistik je
+     * Anlage und ohne die Periodenspitze je Anlage (Lasttest vp-lasttest, Befund B3: 25,9 s je Takt bei 128
+     * Kundenbereichen). Eine gelöschte Regel ab Werk fehlt im Bestand und wird - wie bisher - im nächsten Takt neu
+     * gesät. Gezählt wird nur noch, was wirklich gesät wurde.
+     */
     private int aussaat() {
+        Set<String> gesaet = repo.abWerkGesaet();
         int n = 0;
         for (WerteKatalog.Eintrag eintrag : katalog.mitVorschlagAbWerk()) {
             List<UUID> anlagen = switch (eintrag.leser().feld()) {
@@ -317,13 +331,42 @@ public class UeberwachungsService {
                 default -> List.of();
             };
             for (UUID anlageId : anlagen) {
+                if (gesaet.contains(UeberwachungRepository.abWerkSchluessel(eintrag.wertart(), anlageId))) {
+                    continue;
+                }
                 repo.seedAbWerk(anlageId, repo.standortHeute(anlageId), eintrag);
                 n++;
             }
         }
-        n += aussaatPreisHinweisPrivatkunde();
-        n += aussaatLastspitzeDrohtGewerbe();
+        n += aussaatPreisHinweisPrivatkunde(gesaet);
+        n += aussaatLastspitzeDrohtGewerbe(gesaet);
         return n;
+    }
+
+    /**
+     * Wie lange ein 30-Tage-Mittel des Börsenpreises je Gebotszone wiederverwendet wird. Der Preis-Hinweis braucht ihn
+     * nur als Schwelle beim Säen; das Mittel über 30 Tage bewegt sich in 15 Minuten nicht merklich. Die Preisreihe hat
+     * keine Mandantentrennung (eine Reihe je Zone für alle), der Zwischenspeicher gilt also über alle Kundenbereiche
+     * hinweg - vorher rechnete jeder Takt die Statistik je Anlage neu (Lasttest: 604 gleiche Abfragen in 40 s).
+     */
+    static final Duration PREIS_MITTEL_GUELTIG = Duration.ofMinutes(15);
+
+    private record PreisMittel(Instant gelesen, Double ctKwh) {}
+
+    private final ConcurrentHashMap<String, PreisMittel> preisMittelJeZone = new ConcurrentHashMap<>();
+
+    /** Das 30-Tage-Mittel einer Zone in ct/kWh, oder {@code null} ohne Preise (zu junge Reihe, fremde Zone). */
+    private Double preisMittelCtKwh(String zone, Instant jetzt) {
+        PreisMittel m = preisMittelJeZone.get(zone);
+        if (m != null && jetzt.isBefore(m.gelesen().plus(PREIS_MITTEL_GUELTIG))) {
+            return m.ctKwh();
+        }
+        PriceRangeSummaryDto stat = preise.summarize(zone, jetzt.minus(Duration.ofDays(30)), jetzt);
+        Double ctKwh = stat.count() == 0 || stat.avgEurMwh() == null
+                ? null
+                : stat.avgEurMwh().doubleValue() / 10.0; // ct/kWh, dieselbe Umrechnung wie der Leser
+        preisMittelJeZone.put(zone, new PreisMittel(jetzt, ctKwh));
+        return ctKwh;
     }
 
     private static final String WERTART_LASTSPITZE_LAUFEND = "anlage.netz.lastspitze_laufend";
@@ -342,7 +385,7 @@ public class UeberwachungsService {
      * Alternativen); ohne eine einzige gemessene Spitze gibt es noch keine Schwelle (§6.1 Nr. 9
      * "Vorgaben, die meistens passen" - keine erfundene Zahl ohne eigene Daten).
      */
-    private int aussaatLastspitzeDrohtGewerbe() {
+    private int aussaatLastspitzeDrohtGewerbe(Set<String> gesaet) {
         WerteKatalog.Eintrag eintrag = katalog.eintrag(WERTART_LASTSPITZE_LAUFEND);
         if (eintrag == null) {
             return 0;
@@ -351,6 +394,9 @@ public class UeberwachungsService {
         LocalDate heute = jetzt.atZone(HistoryRange.ZONE).toLocalDate();
         int n = 0;
         for (UUID anlageId : repo.anlagenMitLeistungspreis()) {
+            if (gesaet.contains(UeberwachungRepository.abWerkSchluessel(eintrag.wertart(), anlageId))) {
+                continue;
+            }
             BigDecimal grenze = peakShaving.laufendePeriodenSpitzeKw(anlageId, heute);
             if (grenze == null || grenze.doubleValue() <= 0) {
                 continue;
@@ -369,23 +415,25 @@ public class UeberwachungsService {
      * 30 Tage (§6.1 Nr. 9 "Vorgaben, die meistens passen") - kein Preis-Hinweis ohne eigene
      * Preisreihe (unbekannte/keine Gebotszone, zu junge Anlage).
      */
-    private int aussaatPreisHinweisPrivatkunde() {
+    private int aussaatPreisHinweisPrivatkunde(Set<String> gesaet) {
         WerteKatalog.Eintrag eintrag = katalog.eintrag(WERTART_PREIS_JETZT);
         if (eintrag == null || !repo.istEndkunde()) {
             return 0;
         }
         int n = 0;
         for (UUID anlageId : repo.alleAnlagen()) {
+            if (gesaet.contains(UeberwachungRepository.abWerkSchluessel(eintrag.wertart(), anlageId))) {
+                continue;
+            }
             String zone = repo.biddingZone(anlageId);
             if (zone == null) {
                 continue;
             }
-            Instant jetzt = Instant.now();
-            PriceRangeSummaryDto stat = preise.summarize(zone, jetzt.minus(java.time.Duration.ofDays(30)), jetzt);
-            if (stat.count() == 0 || stat.avgEurMwh() == null) {
+            Double schwelleOderNull = preisMittelCtKwh(zone, Instant.now());
+            if (schwelleOderNull == null) {
                 continue;
             }
-            double schwelle = stat.avgEurMwh().doubleValue() / 10.0; // ct/kWh, dieselbe Umrechnung wie der Leser
+            double schwelle = schwelleOderNull;
             repo.seedAbWerkPreis(anlageId, repo.standortHeute(anlageId), eintrag, schwelle,
                     schwelle * PREIS_RUECKKEHR_AUFSCHLAG);
             n++;

@@ -38,6 +38,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class FleetMetricsRepository {
 
+    /** Wie weit die erste, billige Suche nach der jüngsten Ankunft zurückgeht (siehe lastTelemetryPerSite). */
+    static final int FRISCH_TAGE = 2;
+
     private final JdbcTemplate admin;
 
     public FleetMetricsRepository(@Qualifier("adminJdbcTemplate") JdbcTemplate admin) {
@@ -146,13 +149,33 @@ public class FleetMetricsRepository {
      * {@code idx_telemetry_device_received (device_id, received_at DESC)},
      * darüber das Maximum je Anlage. Eine Anlage ohne Gerät oder ohne je eine
      * Messung ist ABWESEND.
+     *
+     * <p><b>Erst die frischen Chunks, die ganze Historie nur, wo nötig</b>
+     * (Lasttest vp-lasttest, Befund B3/B6, Rang 6). Der Index-Abstieg je Gerät
+     * ging in JEDEN Chunk - die Kosten wuchsen mit Geräten × Chunks (7-Tage-Chunks
+     * ohne Aufbewahrung: nach einem Jahr 52 Abstiege je Gerät und Minute; im Labor
+     * bei 2 000 Boxen und 9 Chunks 5,5 s und 325 000 Buffer je Takt). Jetzt sucht
+     * je Gerät zuerst eine Abfrage nur in den Chunks der letzten
+     * {@value #FRISCH_TAGE} Tage ({@code time}-Bedingung, Chunk-Ausschluss); nur
+     * ein Gerät OHNE Zeile darin (seit Tagen still, oder eine Box, deren Uhr in
+     * der Vergangenheit steht) bekommt den vollen Abstieg wie bisher.
+     * {@code coalesce} wertet den zweiten Teil nur dann aus.
+     *
+     * <p>Exakt für jedes Gerät ohne frische Zeile. Für ein Gerät MIT frischer
+     * Zeile ist der Wert die jüngste Ankunft einer frischen Beobachtung; eine
+     * NOCH jüngere Ankunft gäbe es nur, wenn dieselbe Box danach ausschließlich
+     * Beobachtungen älter als {@value #FRISCH_TAGE} Tage nachgespielt hätte. Eine
+     * Box, die nach einem Ausfall nachspielt, sendet ihre laufenden Werte mit -
+     * deren Ankunft ist dann die jüngste, wie vorher.
      */
     public Map<UUID, Instant> lastTelemetryPerSite() {
         Map<UUID, Instant> seen = new HashMap<>();
         admin.query(
-                "SELECT d.site_id, max(ls.last_seen) AS last_seen FROM device d "
-                        + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
-                        + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "
+                "SELECT d.site_id, max(coalesce("
+                        + "  (SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id"
+                        + "     AND t.time >= now() - interval '" + FRISCH_TAGE + " days'),"
+                        + "  (SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id)"
+                        + ")) AS last_seen FROM device d "
                         + "WHERE d.ausgebaut_am IS NULL "
                         + "GROUP BY d.site_id",
                 rs -> {

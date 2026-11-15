@@ -72,6 +72,24 @@ public class DeviceRepository {
                 DeviceRepository::mapDevice);
     }
 
+    /**
+     * Die angenommenen, nicht ausgebauten Boxen EINER Anlage des aktuellen Mandanten - genau die Zeilen, die
+     * {@link #findAll()} gefiltert auf {@code siteId} und {@code status = 'claimed'} ergäbe, mit derselben
+     * {@code last_seen}-Ableitung und in derselben Reihenfolge. Für Leser, die je Anlage fragen (Überwachung
+     * „Box erreichbar“, alle 15 s je Anlage): {@code findAll()} las dort je Anlage alle Geräte des Mandanten samt
+     * „zuletzt gesehen“ - quadratisch in der Anlagenzahl (Lasttest vp-lasttest, Befund B3).
+     */
+    public List<DeviceDto> findClaimedForSite(UUID siteId) {
+        return jdbc.query(
+                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, "
+                        + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
+                        + "FROM device d WHERE d.site_id = ? AND d.status = 'claimed' AND d.ausgebaut_am IS NULL "
+                        + "ORDER BY d.created_at",
+                DeviceRepository::mapDevice, siteId);
+    }
+
     /** The current tenant's active device, or empty when RLS hides it or it is ausgebaut (=> 404). */
     public Optional<DeviceDto> findById(UUID deviceId) {
         return jdbc.query(

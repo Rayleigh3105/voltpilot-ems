@@ -8,8 +8,10 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -116,6 +118,24 @@ public class UeberwachungRepository {
                 """,
                 TenantContext.get(), standortId, eintrag.name(), eintrag.wertart(), bezug, bedingung,
                 v.schwere(), empfaenger);
+    }
+
+    /**
+     * Die schon gesäten Paare (Wertart, Anlage) der Regeln ab Werk dieses Kundenbereichs - genau der Schlüssel von
+     * {@code uq_ueberwachung_ab_werk (tenant_id, wertart, bezug->>'anlage') WHERE herkunft = 'ab_werk'}, an dem jede
+     * Säe-Anweisung mit {@code ON CONFLICT DO NOTHING} abprallt. Wer hier steht, wird nicht noch einmal gesät; das
+     * Ergebnis ist dasselbe, nur ohne die Anweisungen je Anlage und Takt. Gelesen unter RLS (eigener Kundenbereich).
+     */
+    public Set<String> abWerkGesaet() {
+        return new HashSet<>(jdbc.query("""
+                SELECT wertart, bezug ->> 'anlage' FROM ueberwachung
+                 WHERE tenant_id = ? AND herkunft = 'ab_werk' AND bezug ->> 'anlage' IS NOT NULL
+                """, (rs, n) -> rs.getString(1) + "|" + rs.getString(2), TenantContext.get()));
+    }
+
+    /** Der Schlüssel aus {@link #abWerkGesaet()} für eine Wertart an einer Anlage. */
+    public static String abWerkSchluessel(String wertart, UUID anlageId) {
+        return wertart + "|" + anlageId;
     }
 
     /** Privatkunde (Entscheid 15C, §6.10): der Kundenbereich hat die Betriebsart {@code endkunde}. */

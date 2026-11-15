@@ -63,10 +63,13 @@ public class ZustandWerteLeser implements WerteLeser {
         return !claimedDevices(anlageId).isEmpty();
     }
 
+    /**
+     * Die angenommenen Boxen der Anlage - dieselben Zeilen wie {@code findAll()} gefiltert auf die Anlage, aber
+     * nur diese Anlage gelesen (Lasttest vp-lasttest, Befund B3, Rang 6: vorher las jede Anlage jedes Takts alle
+     * Geräte des Kundenbereichs samt „zuletzt gesehen“).
+     */
     private List<DeviceDto> claimedDevices(java.util.UUID anlageId) {
-        return geraete.findAll().stream()
-                .filter(d -> anlageId.equals(d.siteId()) && "claimed".equals(d.status()))
-                .toList();
+        return geraete.findClaimedForSite(anlageId);
     }
 
     private Lesung boxErreichbar(java.util.UUID anlageId, Instant jetzt) {
