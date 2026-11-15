@@ -178,6 +178,16 @@ export interface UpdateUserInput {
   lastName?: string | null;
 }
 
+/**
+ * vp-admin-rollen-plattform: Rolle und Standorte ändern - derselbe atomare Wechsel wie
+ * `benutzerApi.wechseln` (Kundenadministrator), nur über die Admin-Route.
+ */
+export interface UpdateUserAccessInput {
+  bisher: string[];
+  rolle: string;
+  standorte: string[];
+}
+
 /** Eingabe von `POST …/beenden` (§5.6: Auftrag, Begründung, Name eintippen, Frist in Tagen). */
 export interface BeendenMandantInput {
   auftrag: string;
@@ -561,6 +571,13 @@ export const adminApi = {
 
   updateUser: (tenantId: string, userId: string, input: UpdateUserInput) =>
     request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+
+  /** vp-admin-rollen-plattform: Rolle und Standorte im selben Bearbeiten-Dialog ändern. */
+  changeUserAccess: (tenantId: string, userId: string, input: UpdateUserAccessInput) =>
+    request<void>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/zugriff`, {
       method: 'PUT',
       body: JSON.stringify(input),
     }),

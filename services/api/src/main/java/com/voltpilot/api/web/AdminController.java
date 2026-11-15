@@ -29,6 +29,7 @@ import com.voltpilot.api.web.dto.TenantOffboardingCleanupDto;
 import com.voltpilot.api.web.dto.UpdateTenantRequest;
 import com.voltpilot.api.web.dto.UpdateUserRequest;
 import com.voltpilot.api.benutzer.BenutzerService;
+import com.voltpilot.api.benutzer.BenutzerVerwaltung;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import org.springframework.security.core.Authentication;
 import jakarta.validation.Valid;
@@ -363,6 +364,19 @@ public class AdminController {
             }
             throw toResponse(ex);
         }
+    }
+
+    /**
+     * Admin-Durchgang Antwort Punkt 3 (B): Rolle und (bei Rollen je Standort) Standorte ändern - im selben
+     * Dialog wie {@link #updateUser}, über denselben Prüfpunkt und dieselben Regeln wie beim
+     * Kundenadministrator ({@link AdminBenutzerService#rolleUndStandorteAendern}).
+     */
+    @PutMapping("/tenants/{tenantId}/users/{userId}/zugriff")
+    public ResponseEntity<Void> updateUserAccess(@PathVariable UUID tenantId, @PathVariable String userId,
+            @RequestBody BenutzerVerwaltung.Wechsel request) {
+        requireTenant(tenantId);
+        adminBenutzer.rolleUndStandorteAendern(tenantId, userId, request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/tenants/{tenantId}/users/{userId}/disable")
