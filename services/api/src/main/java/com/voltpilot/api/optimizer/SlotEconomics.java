@@ -521,10 +521,82 @@ public final class SlotEconomics {
      */
     public static String exportValueCtSql(String spotEurMwhExpr, String slotStartExpr,
             EegRates eegRates) {
+        return exportValueCtSql(spotEurMwhExpr, slotStartExpr, eegRates, null);
+    }
+
+    /**
+     * Die Teile von {@link #exportValueCtSql(String, String, EegRates)}, die nur von der ANLAGE abhängen, als Spalten
+     * einer Zeile je Anlage (vp-perf3-server H3) - statt sie in jeder Viertelstunde neu zu rechnen bzw. zu lesen. Die
+     * Zeile baut {@link #vorabSpaltenSql}/{@link #vorabEinheitenJoinSql} über die Aliase {@code s} und {@code pv};
+     * {@link #vorab(String)} nennt ihre Spalten.
+     *
+     * @param festePvCt die feste Vergütung aus der Tranchen-Tabelle über das primäre PV-Asset
+     * @param mehrereEinheitenBereit ob der S4-Mischsatz über die Registereinheiten greifen kann
+     * @param einheitenQuelle die bestätigten PV-Einheiten der Anlage als Relation {@code re} mit den Spalten
+     *     {@code leistung_kwp}, {@code inbetriebnahme} und {@code feste_ct}, dazu {@code total} mit {@code kwp}
+     *     (ihre Summe) - an Stelle der Lesung aus {@code register_einheit}
+     */
+    public record Vorab(String festePvCt, String mehrereEinheitenBereit, String einheitenQuelle) {}
+
+    /** Die Spalten von {@link Vorab} in der Zeile je Anlage mit dem Alias {@code anlage}. */
+    public static Vorab vorab(String anlage) {
+        return new Vorab(anlage + ".vorab_feste_pv_ct", anlage + ".vorab_mehrere_bereit",
+                "unnest(" + anlage + ".vorab_e_leistung_kwp, " + anlage + ".vorab_e_inbetriebnahme, "
+                        + anlage + ".vorab_e_feste_ct) AS re(leistung_kwp, inbetriebnahme, feste_ct),"
+                        + " (SELECT " + anlage + ".vorab_e_kwp AS kwp) total");
+    }
+
+    /**
+     * Die Spalten der Zeile je Anlage für {@link #vorab(String)} - über die Aliase {@code s} (Anlage), {@code pv}
+     * (primäres PV-Asset, LEFT JOIN) und {@code e} ({@link #vorabEinheitenJoinSql}). Jede Spalte ist der Ausdruck,
+     * der inline in {@link #exportValueCtSql(String, String, EegRates)} steht.
+     */
+    public static String vorabSpaltenSql(EegRates eegRates) {
+        return eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp") + " AS vorab_feste_pv_ct, "
+                + mehrereEinheitenBereitSql() + " AS vorab_mehrere_bereit, "
+                + "e.leistung_kwp AS vorab_e_leistung_kwp, e.inbetriebnahme AS vorab_e_inbetriebnahme, "
+                + "e.feste_ct AS vorab_e_feste_ct, e.kwp AS vorab_e_kwp";
+    }
+
+    /**
+     * Die bestätigten PV-Einheiten der Anlage {@code s} als Arrays (Alias {@code e}) - dieselben Zeilen und dieselbe
+     * Summe wie die Lesung im Mischsatz, je Einheit ihre feste Vergütung aus der Tranchen-Tabelle. Ohne Einheit sind
+     * die Arrays leer ({@code NULL}); der Mischsatz greift dann ohnehin nicht ({@link #mehrereEinheitenBereitSql}).
+     */
+    public static String vorabEinheitenJoinSql(EegRates eegRates) {
+        return "LEFT JOIN LATERAL (SELECT array_agg(re.leistung_kwp ORDER BY re.id) AS leistung_kwp,"
+                + " array_agg(re.inbetriebnahme ORDER BY re.id) AS inbetriebnahme,"
+                + " array_agg(" + eegRates.festeVerguetungCtSql("re.inbetriebnahme", "re.leistung_kwp")
+                + " ORDER BY re.id) AS feste_ct, sum(re.leistung_kwp) AS kwp"
+                + " FROM register_einheit re WHERE re.site_id = s.id AND re.art = 'pv' AND re.bestaetigt_am IS NOT NULL) e"
+                + " ON true ";
+    }
+
+    /**
+     * Ob der S4-Mischsatz über die Registereinheiten greifen kann (Alias {@code s}): mindestens eine bestätigte
+     * PV-Einheit, jede mit bekannter Leistung - nur die Anlage zählt.
+     */
+    public static String mehrereEinheitenBereitSql() {
+        return "(EXISTS (SELECT 1 FROM register_einheit re0 WHERE re0.site_id = s.id"
+                + "   AND re0.art = 'pv' AND re0.bestaetigt_am IS NOT NULL)"
+                + " AND NOT EXISTS (SELECT 1 FROM register_einheit re1 WHERE re1.site_id = s.id"
+                + "   AND re1.art = 'pv' AND re1.bestaetigt_am IS NOT NULL AND re1.leistung_kwp IS NULL))";
+    }
+
+    /**
+     * Wie {@link #exportValueCtSql(String, String, EegRates)}; mit {@code vorab} stehen an Stelle der Teile, die nur
+     * von der Anlage abhängen, die Spalten, in denen der Aufrufer sie je Anlage EINMAL gerechnet hat
+     * ({@link #vorab(String)}). Sonst dieselbe Komposition, Ausdruck für Ausdruck - die Erlös-Abfragen sparen so die
+     * Tranchen-Tabelle viermal im SQL-Text (Planung) und je Viertelstunde die Registereinheiten-Proben (Ausführung).
+     * {@code null} = alles inline wie bisher, Zeichen für Zeichen.
+     */
+    public static String exportValueCtSql(String spotEurMwhExpr, String slotStartExpr,
+            EegRates eegRates, Vorab vorab) {
         String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
         String yearExpr = "EXTRACT(YEAR FROM (" + slotStartExpr + " AT TIME ZONE 'Europe/Berlin'))";
         String rate = "COALESCE(s.einspeiseverguetung_ct_kwh, "
-                + eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp") + ")";
+                + (vorab == null ? eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp")
+                        : vorab.festePvCt()) + ")";
         // The DV premium exactly as the earnings' PREMIUM_ELIGIBLE /
         // PREMIUM_RATE_CT pair applies it (incl. the per-slot §51 suspension);
         // 0 for every other plant kind, NULL-spot propagates to NULL via the
@@ -556,7 +628,8 @@ public final class SlotEconomics {
         // S4 multi-unit blend - see the Javadoc above. Only ever substituted
         // for the eigenverbrauch/no-netzladen fixed branch, never for DV or
         // merchant mode (those keep legacyValue's ELSE untouched).
-        String perUnitRate = eegRates.festeVerguetungCtSql("re.inbetriebnahme", "re.leistung_kwp");
+        String perUnitRate = vorab == null ? eegRates.festeVerguetungCtSql("re.inbetriebnahme", "re.leistung_kwp")
+                : "re.feste_ct";
         String perUnitS51a = "(CASE WHEN (re.leistung_kwp >= "
                 + EegRates.SOLARSPITZENGESETZ_KLEINANLAGE_KWP
                 + " AND re.inbetriebnahme >= DATE '" + EegRates.SOLARSPITZENGESETZ_CUTOFF + "')"
@@ -580,15 +653,14 @@ public final class SlotEconomics {
         // unknowable (the null-vs-zero discipline, like the Java/SQL single-
         // unit twins), not quietly drop that unit's weight. bool_or(v IS
         // NULL) catches it before SUM ever runs.
+        String einheiten = vorab != null ? vorab.einheitenQuelle()
+                : "register_einheit re, (SELECT SUM(leistung_kwp) AS kwp FROM register_einheit"
+                + "         WHERE site_id = s.id AND art = 'pv' AND bestaetigt_am IS NOT NULL) total"
+                + "       WHERE re.site_id = s.id AND re.art = 'pv' AND re.bestaetigt_am IS NOT NULL";
         String multiUnitBlend = "(SELECT CASE WHEN bool_or(q.v IS NULL) THEN NULL ELSE SUM(q.w * q.v) END"
                 + " FROM (SELECT (re.leistung_kwp / total.kwp) AS w, " + perUnitValue + " AS v"
-                + "       FROM register_einheit re, (SELECT SUM(leistung_kwp) AS kwp FROM register_einheit"
-                + "         WHERE site_id = s.id AND art = 'pv' AND bestaetigt_am IS NOT NULL) total"
-                + "       WHERE re.site_id = s.id AND re.art = 'pv' AND re.bestaetigt_am IS NOT NULL) q)";
-        String readyMultiUnit = "(EXISTS (SELECT 1 FROM register_einheit re0 WHERE re0.site_id = s.id"
-                + "   AND re0.art = 'pv' AND re0.bestaetigt_am IS NOT NULL)"
-                + " AND NOT EXISTS (SELECT 1 FROM register_einheit re1 WHERE re1.site_id = s.id"
-                + "   AND re1.art = 'pv' AND re1.bestaetigt_am IS NOT NULL AND re1.leistung_kwp IS NULL))";
+                + "       FROM " + einheiten + ") q)";
+        String readyMultiUnit = vorab == null ? mehrereEinheitenBereitSql() : vorab.mehrereEinheitenBereit();
 
         return "(CASE WHEN (s.plant_kind = 'eigenverbrauch' AND NOT s.netzladen_erlaubt) AND "
                 + readyMultiUnit + " THEN " + multiUnitBlend

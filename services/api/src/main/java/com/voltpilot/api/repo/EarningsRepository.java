@@ -294,6 +294,94 @@ public class EarningsRepository {
     private static final String PV_ASSET_JOIN =
             "LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary ";
 
+    /**
+     * H2 (vp-perf3-server): der Monatsmarktwert Solar je Preis-Slot statt je Viertelstunde - dieselbe Zeile wie
+     * {@link #MARKET_VALUE_JOIN}, denn ein Slot mit Preis hat {@code p.slot = r.bucket}. Ohne Preis bleibt der
+     * Marktwert leer; die Abfragen über {@link #VORAB_FROM} lesen ihn nur unter {@link #PRICED}. Bindet nichts.
+     */
+    private static final String PREIS_MW_CTE = ", preis_mw AS MATERIALIZED ("
+            + "SELECT p.bidding_zone, p.slot, p.price_eur_mwh, mv.value_ct_kwh AS mv_value_ct_kwh FROM price_slot p "
+            + "LEFT JOIN monthly_market_value mv ON mv.technology = 'solar'"
+            + " AND mv.month = date_trunc('month', p.slot AT TIME ZONE 'Europe/Berlin')::date) ";
+
+    /** Platzhalter der Anlagen-Vorlagen für die Teile, die von den EEG-Sätzen abhängen ({@link #vorab(String)}). */
+    private static final String VORAB_SPALTEN = "{vorab_spalten}";
+    private static final String VORAB_EINHEITEN = "{vorab_einheiten}";
+
+    /** Die Spalten der Zeile je Anlage hinter {@code s.*} (Preisblatt, PV-Asset, Anlagen-Teile des Exports). */
+    private static final String ANLAGE_SPALTEN =
+            " ssp.netzentgelt_arbeitspreis_ct AS vorab_ssp_netzentgelt_arbeitspreis_ct,"
+                    + " ssp.stromsteuer_ct AS vorab_ssp_stromsteuer_ct,"
+                    + " ssp.konzessionsabgabe_ct AS vorab_ssp_konzessionsabgabe_ct,"
+                    + " ssp.umlagen_ct AS vorab_ssp_umlagen_ct, ssp.vertriebsaufschlag_ct AS vorab_ssp_vertriebsaufschlag_ct,"
+                    + " ssp.ust_pct AS vorab_ssp_ust_pct,"
+                    + " pv.commissioned_on AS vorab_pv_commissioned_on, pv.pv_capacity_kwp AS vorab_pv_capacity_kwp, "
+                    + VORAB_SPALTEN + " ";
+
+    /**
+     * H2/H3 (vp-perf3-server): EINE Zeile je sichtbarer Anlage mit allem, was die Kompositionen von ihr brauchen -
+     * die Spalten der Anlage, das Preisblatt ({@link #SUPPLY_PRICE_JOIN}), das primäre PV-Asset
+     * ({@link #PV_ASSET_JOIN}) und die Teile der Export-Komposition, die nur von der Anlage abhängen
+     * ({@link SlotEconomics#vorab}). Dieselben Joins über dieselben Tabellen unter derselben Row-Level-Security, nur
+     * einmal je Anlage statt je Viertelstunde. Über {@link #vorab(String)} einsetzen.
+     */
+    private static final String ANLAGE_CTE = ", anlage AS MATERIALIZED (SELECT s.*," + ANLAGE_SPALTEN
+            + "FROM site s "
+            + SUPPLY_PRICE_JOIN
+            + PV_ASSET_JOIN
+            + VORAB_EINHEITEN + ") ";
+
+    /** {@link #ANLAGE_CTE} mit dem primären Speicher wie {@link #BATTERY_ASSET_JOIN}: eine Anlage ohne ihn fehlt. */
+    private static final String ANLAGE_CTE_SPEICHER = ", anlage AS MATERIALIZED (SELECT s.*,"
+            + " b.capacity_kwh AS vorab_b_capacity_kwh, b.max_charge_kw AS vorab_b_max_charge_kw,"
+            + " b.max_discharge_kw AS vorab_b_max_discharge_kw,"
+            + " b.roundtrip_efficiency_pct AS vorab_b_roundtrip_efficiency_pct,"
+            + " b.soc_min_pct AS vorab_b_soc_min_pct, b.soc_max_pct AS vorab_b_soc_max_pct," + ANLAGE_SPALTEN
+            + "FROM site s "
+            + "JOIN asset b ON b.site_id = s.id AND b.type = 'battery' AND b.is_primary"
+            + " AND b.capacity_kwh IS NOT NULL AND b.max_charge_kw IS NOT NULL"
+            + " AND b.max_discharge_kw IS NOT NULL "
+            + SUPPLY_PRICE_JOIN
+            + PV_ASSET_JOIN
+            + VORAB_EINHEITEN + ") ";
+
+    /**
+     * Hinter der Zeile je Anlage ({@code s}): {@code ssp}/{@code pv} als Projektion ihrer Spalten (kein Join je
+     * Viertelstunde), der Preis-Slot mit seinem Marktwert als {@code p}/{@code mv} ({@link #PREIS_MW_CTE}).
+     */
+    private static final String VORAB_JOINS =
+            "CROSS JOIN LATERAL (SELECT s.vorab_ssp_netzentgelt_arbeitspreis_ct AS netzentgelt_arbeitspreis_ct,"
+                    + " s.vorab_ssp_stromsteuer_ct AS stromsteuer_ct, s.vorab_ssp_konzessionsabgabe_ct AS konzessionsabgabe_ct,"
+                    + " s.vorab_ssp_umlagen_ct AS umlagen_ct, s.vorab_ssp_vertriebsaufschlag_ct AS vertriebsaufschlag_ct,"
+                    + " s.vorab_ssp_ust_pct AS ust_pct) ssp "
+                    + "CROSS JOIN LATERAL (SELECT s.vorab_pv_commissioned_on AS commissioned_on,"
+                    + " s.vorab_pv_capacity_kwp AS pv_capacity_kwp) pv "
+                    + "LEFT JOIN preis_mw p ON p.bidding_zone = s.bidding_zone AND p.slot = r.bucket "
+                    + "CROSS JOIN LATERAL (SELECT p.mv_value_ct_kwh AS value_ct_kwh) mv ";
+
+    /**
+     * Der FROM-Block über {@link #ANLAGE_CTE} und {@link #PREIS_MW_CTE}: ersetzt {@code JOIN site s} +
+     * {@link #SUPPLY_PRICE_JOIN} + {@link #PV_ASSET_JOIN} + {@link #PRICE_JOIN} + {@link #MARKET_VALUE_JOIN}; die
+     * Aliase der Kompositionen bleiben.
+     */
+    private static final String VORAB_FROM = "FROM telemetry_rollup_15m r "
+            + "JOIN anlage s ON s.id = r.site_id "
+            + VORAB_JOINS;
+
+    /** {@link #VORAB_FROM} über {@link #ANLAGE_CTE_SPEICHER}, dazu {@code b} (statt {@link #BATTERY_ASSET_JOIN}). */
+    private static final String VORAB_FROM_SPEICHER = "FROM telemetry_rollup_15m r "
+            + "JOIN anlage s ON s.id = r.site_id "
+            + "CROSS JOIN LATERAL (SELECT s.vorab_b_capacity_kwh AS capacity_kwh,"
+            + " s.vorab_b_max_charge_kw AS max_charge_kw, s.vorab_b_max_discharge_kw AS max_discharge_kw,"
+            + " s.vorab_b_roundtrip_efficiency_pct AS roundtrip_efficiency_pct,"
+            + " s.vorab_b_soc_min_pct AS soc_min_pct, s.vorab_b_soc_max_pct AS soc_max_pct) b "
+            + VORAB_JOINS;
+
+    /** Eine Anlagen-Vorlage mit den Spalten, die von den EEG-Sätzen dieser Instanz abhängen. */
+    private String vorab(String vorlage) {
+        return vorlage.replace(VORAB_SPALTEN, vorabSpalten).replace(VORAB_EINHEITEN, vorabEinheitenJoin);
+    }
+
     private final JdbcTemplate jdbc;
 
     /**
@@ -371,6 +459,24 @@ public class EarningsRepository {
     /** The per-row price subquery of {@link #aggregate} (alias {@code z}); see {@link #aggBaselineEur}. */
     private final String pricesPerRow;
 
+    /**
+     * H2/H3 (vp-perf3-server): Vergleichsspeicher-Walk, Tagesreihe und Eimer lesen die Stammdaten je Anlage aus EINER
+     * kleinen Menge ({@link #ANLAGE_CTE}: Anlage, Speicher, Preisblatt, primäres PV-Asset, dazu die zwei Teile der
+     * Export-Komposition, die nur von der Anlage abhängen) und den Monatsmarktwert je Preis-Slot ({@link #PREIS_MW_CTE})
+     * - statt je Viertelstunde. Vorher schätzte der Planer im Walk den Join Anlage ⋈ Speicher auf 1 Zeile und probte
+     * PV-Asset und Marktwert je Viertelstunde per Index (21 000 Buffer bei 4 Anlagen und 14 Tagen), und jede
+     * Viertelstunde fragte die Registereinheiten zweimal ab ({@code EXISTS}); die Tranchen-Tabelle stand zweimal im
+     * SQL-Text. Die Aliase {@code s}, {@code b}, {@code ssp}, {@code pv}, {@code mv} bleiben (als Projektion der
+     * Zeile je Anlage bzw. je Slot), darum ist jede Komposition dieselbe wie zuvor;
+     * {@code EarningsStammdatenJeAnlageGleichheitTest} hält die alte Form als Orakel.
+     */
+    private final String vorabExportValueEurKwh;
+    private final String vorabSavedEur;
+    private final String vorabPricesPerRow;
+    /** Die Anlagen-Teile der Export-Komposition als Spalten der Zeile je Anlage ({@link SlotEconomics#vorab}). */
+    private final String vorabSpalten;
+    private final String vorabEinheitenJoin;
+
     /** The tarifPricedSql boolean for this flag setting (see {@link #tarifPriced}). */
     private final String tarifPricedExpr;
 
@@ -380,8 +486,21 @@ public class EarningsRepository {
     public EarningsRepository(JdbcTemplate jdbc, OptimizerProperties optimizer) {
         this.jdbc = jdbc;
         String importCt = SlotEconomics.importPriceCtSql("p.price_eur_mwh", optimizer.defaultSupplyComponents());
-        String exportCt = SlotEconomics.exportValueCtSql(
-                "p.price_eur_mwh", "r.bucket", EegRates.fromJson(optimizer.eegRatesJson()));
+        EegRates eegRates = EegRates.fromJson(optimizer.eegRatesJson());
+        String exportCt = SlotEconomics.exportValueCtSql("p.price_eur_mwh", "r.bucket", eegRates);
+        // H3: dieselbe Komposition mit den Anlagen-Teilen aus der Zeile je Anlage (ANLAGE_CTE).
+        String vorabExportCt = SlotEconomics.exportValueCtSql("p.price_eur_mwh", "r.bucket", eegRates,
+                SlotEconomics.vorab("s"));
+        this.vorabSpalten = SlotEconomics.vorabSpaltenSql(eegRates);
+        this.vorabEinheitenJoin = SlotEconomics.vorabEinheitenJoinSql(eegRates);
+        this.vorabExportValueEurKwh = "(" + vorabExportCt + " / 100.0)";
+        this.vorabSavedEur = "((GREATEST(r.load_kwh - r.pv_kwh, 0) - r.grid_import_kwh) * "
+                + "(" + importCt + " / 100.0)"
+                + " - (GREATEST(r.pv_kwh - r.load_kwh, 0) - r.grid_export_kwh)"
+                + "   * " + vorabExportValueEurKwh + ")";
+        this.vorabPricesPerRow = "CROSS JOIN LATERAL (SELECT"
+                + " CASE WHEN " + COVERED + " THEN " + importCt + " END AS import_ct,"
+                + " CASE WHEN " + COVERED + " THEN " + vorabExportCt + " END AS export_ct OFFSET 0) z ";
         this.importPriceEurKwh = "(" + importCt + " / 100.0)";
         this.exportValueEurKwh = "(" + exportCt + " / 100.0)";
         this.einspeiseErloesEur = "(r.grid_export_kwh * " + exportValueEurKwh + ")";
@@ -1219,7 +1338,7 @@ public class EarningsRepository {
             }
         };
         jdbc.query(
-                "WITH " + PRICE_SLOT_CTE
+                "WITH " + PRICE_SLOT_CTE + PREIS_MW_CTE + vorab(ANLAGE_CTE_SPEICHER)
                         + "SELECT r.site_id, r.bucket, r.pv_kwh, r.load_kwh, r.soc_last_pct,"
                         + " r.grid_import_kwh, r.grid_export_kwh,"
                         + " r.battery_charge_kwh, r.battery_discharge_kwh,"
@@ -1227,17 +1346,12 @@ public class EarningsRepository {
                         // Only priced rows are read (PRICED, B3) - and only they evaluate the price
                         // expressions, exactly as when the condition stood in WHERE.
                         + " CASE WHEN " + PRICED + " THEN " + importPriceEurKwh + " END AS import_price_eur_kwh,"
-                        + " CASE WHEN " + PRICED + " THEN " + exportValueEurKwh + " END AS export_value_eur_kwh,"
+                        + " CASE WHEN " + PRICED + " THEN " + vorabExportValueEurKwh + " END AS export_value_eur_kwh,"
                         + " b.capacity_kwh, b.max_charge_kw, b.max_discharge_kw,"
                         + " b.roundtrip_efficiency_pct, b.soc_min_pct, b.soc_max_pct,"
                         + " s.backup_reserve_soc_pct, s.peak_reserve_soc_pct "
-                        + "FROM telemetry_rollup_15m r "
-                        + "JOIN site s ON s.id = r.site_id "
-                        + BATTERY_ASSET_JOIN
-                        + SUPPLY_PRICE_JOIN
-                        + PV_ASSET_JOIN
-                        + PRICE_JOIN
-                        + MARKET_VALUE_JOIN
+                        // H2/H3: Stammdaten je Anlage und Marktwert je Slot vorab (ANLAGE_CTE, PREIS_MW_CTE).
+                        + VORAB_FROM_SPEICHER
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
                         + " AND " + CHANNELS_OK + " "
                         + "ORDER BY r.site_id, r.bucket",
@@ -1662,19 +1776,15 @@ public class EarningsRepository {
         // Rest entsteht - derselbe Rest-Trick wie im Fenster-Aggregat, damit
         // Reihe und Summe nie Verschiedenes behaupten.
         jdbc.query(
-                "WITH " + PRICE_SLOT_CTE
+                "WITH " + PRICE_SLOT_CTE + PREIS_MW_CTE + vorab(ANLAGE_CTE)
                         + "SELECT r.site_id,"
                         + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
                         // saved = baseline - actual (import at the tariff,
                         // export at the export composition, incl. the premium
                         // delta resp. the feste Vergütung).
-                        + " sum(" + savedEur + ") FILTER (WHERE " + PRICED + ") AS saved_eur "
-                        + "FROM telemetry_rollup_15m r "
-                        + "JOIN site s ON s.id = r.site_id "
-                        + SUPPLY_PRICE_JOIN
-                        + PV_ASSET_JOIN
-                        + PRICE_JOIN
-                        + MARKET_VALUE_JOIN
+                        + " sum(" + vorabSavedEur + ") FILTER (WHERE " + PRICED + ") AS saved_eur "
+                        // H2/H3: Stammdaten je Anlage und Marktwert je Slot vorab (ANLAGE_CTE, PREIS_MW_CTE).
+                        + VORAB_FROM
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
                         + " AND " + CHANNELS_OK + " "
                         // PRICED in FILTER/HAVING, not WHERE (B3): the same days, the same sums.
@@ -2125,22 +2235,18 @@ public class EarningsRepository {
         String start = "(date_trunc('" + bucket.unit
                 + "', r.bucket AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')";
         jdbc.query(
-                "WITH " + PRICE_SLOT_CTE
+                "WITH " + PRICE_SLOT_CTE + PREIS_MW_CTE + vorab(ANLAGE_CTE)
                         + "SELECT r.site_id, " + start + " AS bucket_start,"
-                        + " sum(" + einspeiseErloesEur + ") FILTER (WHERE " + PRICED + ") AS einspeise_erloes_eur,"
-                        + " sum(" + eigenverbrauchsWertEur + ") FILTER (WHERE " + PRICED + ")"
+                        // H3: Import (2x) und Export (1x) einmal je Viertelstunde im LATERAL z (Form von B4).
+                        + " sum(" + aggEinspeiseErloesEur + ") FILTER (WHERE " + PRICED + ") AS einspeise_erloes_eur,"
+                        + " sum(" + aggEigenverbrauchsWertEur + ") FILTER (WHERE " + PRICED + ")"
                         + " AS eigenverbrauchs_wert_eur,"
-                        + " sum(" + stromkostenEur + ") FILTER (WHERE " + PRICED + ") AS stromkosten_eur "
-                        + "FROM telemetry_rollup_15m r "
-                        + "JOIN site s ON s.id = r.site_id "
+                        + " sum(" + aggStromkostenEur + ") FILTER (WHERE " + PRICED + ") AS stromkosten_eur "
                         // The import price reads the supply-price sheet and the
-                        // export value the primary pv asset, so the sums need
-                        // the same LEFT JOINs the aggregate uses (one row per
-                        // site each - they cannot fan a bucket out).
-                        + SUPPLY_PRICE_JOIN
-                        + PV_ASSET_JOIN
-                        + PRICE_JOIN
-                        + MARKET_VALUE_JOIN
+                        // export value the primary pv asset - one row per site each (ANLAGE_CTE), so
+                        // they cannot fan a bucket out. H2/H3: Stammdaten je Anlage, Marktwert je Slot.
+                        + VORAB_FROM
+                        + vorabPricesPerRow
                         + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
                         + " AND " + CHANNELS_OK + " "
                         // PRICED in FILTER/HAVING, not WHERE (B3): the same buckets, the same sums.
