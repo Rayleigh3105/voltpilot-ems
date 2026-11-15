@@ -12,6 +12,7 @@ import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.ota.OtaTargetPublisher;
+import com.voltpilot.api.preis.PreisZuleitungPublisher;
 import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.registerwrite.RegisterWritePublisher;
@@ -141,6 +142,7 @@ class AnlageUmzugApiTest {
     @MockitoBean FlowDeploymentPublisher flowDeploymentPublisher;
     @MockitoBean ControlCertificationPublisher controlCertificationPublisher;
     @MockitoBean OtaTargetPublisher otaTargetPublisher;
+    @MockitoBean PreisZuleitungPublisher preisZuleitungPublisher;
     @MockitoBean ProvisioningPublisher provisioningPublisher;
     @MockitoBean MeasurementConfigPublisher measurementConfigPublisher;
     @MockitoBean ConsumerOverridePublisher consumerOverridePublisher;
@@ -214,7 +216,7 @@ class AnlageUmzugApiTest {
         // Gezählt, nicht vermutet: kein Sender hat irgendetwas bekommen.
         Map<String, Integer> aufrufe = new LinkedHashMap<>();
         sender().forEach((name, mock) -> aufrufe.put(name, Mockito.mockingDetails(mock).getInvocations().size()));
-        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(14)
+        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(15)
                 .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
         assertThat(r.getBody().get("befehle").asInt()).isZero();
         // Und in der Datenbank ändern sich nur Zuordnung und Protokoll.
@@ -552,6 +554,7 @@ class AnlageUmzugApiTest {
         m.put("FlowDeploymentPublisher", flowDeploymentPublisher);
         m.put("ControlCertificationPublisher", controlCertificationPublisher);
         m.put("OtaTargetPublisher", otaTargetPublisher);
+        m.put("PreisZuleitungPublisher", preisZuleitungPublisher);
         m.put("ProvisioningPublisher", provisioningPublisher);
         m.put("MeasurementConfigPublisher", measurementConfigPublisher);
         m.put("ConsumerOverridePublisher", consumerOverridePublisher);
