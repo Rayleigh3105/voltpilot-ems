@@ -43,9 +43,12 @@ class RolleEinsichtBestandTest {
      * der Zeile {@code verbesserung.eigene_massnahme;U;U;S;S;S;-;-} aus Verbessern v1 §10.8 (82 Aktionen, 06.10.2026;
      * alle 81 Zeilen davor unverändert) sowie den zwei Zeilen {@code ueberwachung.eigene} und
      * {@code ueberwachung.verwalten} aus Alerting Scheibe 1 (84 Aktionen, 15.10.2026; alle 82 Zeilen davor
-     * unverändert).
+     * unverändert) und der Zeile {@code logik.bearbeiten;U;-;-;-;-;B;P} aus Steuerlogik v1 §8.8 (Entscheid E3 = B,
+     * Stufe 4, #1918; 85 Aktionen, 15.11.2026; alle 84 Zeilen davor unverändert). Das neue Recht gibt genau den drei
+     * Rollen Kundenadministrator (U), Unterstützer (B) und VoltPilot-Betrieb/Plattform (P) Zugriff; Bedienberechtigt
+     * bleibt bei „-“ (Lesart §17.8: Bedienberechtigte fragen nur an).
      */
-    private static final String BESTAND_SHA256 = "01a1c5675c86a1b0743b006954f1bf30be11b5dc1e079e45acb17c276346774e";
+    private static final String BESTAND_SHA256 = "52dc75060813888233dfdd26328358550a3920ad384eb165f9287b8f171c1d53";
 
     /** R6 „lesen“ — die Zeilen, an denen Einsicht U trägt (energiemanagement.ansehen seit IP-5). */
     private static final Set<String> LESEND = Set.of("aenderungsprotokoll.lesen", "messwerte.ansehen",
