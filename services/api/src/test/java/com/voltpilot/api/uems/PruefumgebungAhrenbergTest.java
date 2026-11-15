@@ -225,10 +225,33 @@ class PruefumgebungAhrenbergTest {
     }
 
     /**
+     * Routen ohne {@link Recht}, die trotzdem kein fremdes Objekt treffen können: die Person kommt aus dem Token
+     * (Authentication), nie aus dem Anfragekörper oder der Pfadvariable - dieselbe Liste und derselbe Eigen-Grund wie
+     * {@code RechtRoutenArchitekturTest} ("eigeneBenachrichtigung"/"probeSenden").
+     *
+     * <p>Alle standen hier bisher blind, solange die Fachperson keinen eigenen E-Mail-Zustellweg hatte: seit
+     * Kunden-Alarmierung P2 (#1862) legt ein Trigger an {@code benutzer} ihn beim Anlegen des Kontos automatisch an,
+     * die Routen haben jetzt eine eigene Zeile zum Lesen/Ändern/Löschen/Testen und antworten nicht mehr 404.
+     */
+    private static final Set<String> OHNE_RECHT_NUR_EIGENES_KONTO = Set.of(
+            "ZustellwegController#anfordern", "ZustellwegController#emailEinstellungen",
+            "ZustellwegController#emailAktiv", "ZustellwegController#emailEntfernen",
+            "ZustellwegController#emailProbe", "ZustellwegController#pushAbonnieren",
+            "ZustellwegController#pushEinstellungen", "ZustellwegController#pushEntfernen",
+            "ZustellwegController#pushName", "ZustellwegController#pushAbmelden",
+            "ZustellwegController#pushProbe", "ZustellwegController#webhookZielAnlegen",
+            "ZustellwegController#webhookZielEinstellungen", "ZustellwegController#webhookZielEntfernen",
+            "ZustellwegController#webhookZielBearbeiten", "ZustellwegController#webhookProbe",
+            "ZustellwegController#webhookProbeVorAnlegen", "ZustellwegController#telegramVerbinden",
+            "ZustellwegController#telegramZielEinstellungen", "ZustellwegController#telegramZielEntfernen",
+            "ZustellwegController#telegramProbe", "RuhezeitController#setzen", "RuhezeitController#probe");
+
+    /**
      * Jede Route mit einem schreibenden Verb, mit dem Token der Fachperson: keine antwortet mit Erfolg, außer denen, die
-     * nur das eigene Konto betreffen ({@code konto.eigenes}, E in der Matrix) — und der Kundenbereich ist danach
-     * byte-gleich. Die Pfad-Variablen tragen erfundene Kennungen; das Recht prüft {@code RechtInterceptor} vor dem
-     * Handler, also vor jeder Suche nach dem Objekt. Dazu die echten Objekte der Bühne an ihren Freigabe-Wegen.
+     * nur das eigene Konto betreffen ({@code konto.eigenes}, E in der Matrix, oder {@link #OHNE_RECHT_NUR_EIGENES_KONTO})
+     * — und der Kundenbereich ist danach byte-gleich. Die Pfad-Variablen tragen erfundene Kennungen; das Recht prüft
+     * {@code RechtInterceptor} vor dem Handler, also vor jeder Suche nach dem Objekt. Dazu die echten Objekte der
+     * Bühne an ihren Freigabe-Wegen.
      */
     @Test
     @Order(3)
@@ -240,7 +263,9 @@ class PruefumgebungAhrenbergTest {
             Set<RequestMethod> verben = e.getKey().getMethodsCondition().getMethods();
             HandlerMethod h = e.getValue();
             Recht recht = h.getMethodAnnotation(Recht.class);
-            boolean eigenesKonto = recht != null && List.of(recht.value()).contains("konto.eigenes");
+            boolean eigenesKonto = (recht != null && List.of(recht.value()).contains("konto.eigenes"))
+                    || OHNE_RECHT_NUR_EIGENES_KONTO.contains(
+                            h.getBeanType().getSimpleName() + "#" + h.getMethod().getName());
             for (RequestMethod verb : verben) {
                 if (verb == RequestMethod.GET || verb == RequestMethod.HEAD || verb == RequestMethod.OPTIONS) continue;
                 for (String muster : e.getKey().getPatternValues()) {
@@ -329,10 +354,15 @@ class PruefumgebungAhrenbergTest {
 
     /** Jede Zeile jeder Tabelle mit {@code tenant_id} im Kundenbereich Ahrenberg, als eine Prüfsumme je Tabelle. */
     private String fingerabdruck() {
+        // Eigene Zustellwege (Alerting Scheibe 3/6, siehe OHNE_RECHT_NUR_EIGENES_KONTO): die Fachperson darf sie
+        // ändern, wie jede Person ihre eigenen - derselbe Eigen-Grund, nur auf die Tabellen statt auf die Route
+        // übertragen. Ohne diesen Ausschluss wäre der Fingerabdruck seit Kunden-Alarmierung P2 (#1862, automatischer
+        // E-Mail-Zustellweg je Konto) nie mehr stabil.
         List<String> tabellen = root.queryForList("SELECT c.table_name FROM information_schema.columns c JOIN "
                 + "information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name "
                 + "WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id' AND t.table_type = 'BASE TABLE' "
-                + "ORDER BY 1", String.class);
+                + "AND c.table_name NOT IN ('zustellweg', 'push_abo', 'webhook_ziel', 'telegram_ziel', "
+                + "'ruhezeit_person') ORDER BY 1", String.class);
         StringBuilder aus = new StringBuilder();
         for (String t : tabellen) {
             aus.append(t).append('=').append(root.queryForObject("SELECT count(*) || ':' || coalesce(md5(string_agg(x::text, "
