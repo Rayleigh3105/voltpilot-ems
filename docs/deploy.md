@@ -23,6 +23,8 @@ Quellen: [Workflow](../.forgejo/workflows/deploy.yaml), [Fast-Workflow](../.forg
 ## Nächtlicher Testlauf
 
 Unabhängig vom releasegebundenen Testjob in **Build & Deploy** läuft nachts automatisch **Nightly test gate** (`.forgejo/workflows/nightly-tests.yaml`) gegen `main`: dieselben Testsuiten (api/ingest/timescale-writer per Maven, die Python-Dienste per Pytest, Portal-Typecheck/Vitest/Build), aber ohne Image-Build, Push oder gitops-Tag-Bump - reine Meldung, keine Secrets nötig. Ein roter Lauf ist im Actions-Tab des Repos sichtbar (Commit-Status); ein zusätzlicher Push-Kanal existiert noch nicht.
+Er beginnt um 21:00 UTC und läuft auf demselben Runner wie die Deploys: erst die kurzen Suiten, dann die api-Tests in acht nacheinander folgenden Teilen.
+Ein Deploy, der währenddessen angestoßen wird, wartet höchstens auf die kurzen Suiten (rund 35 min) oder auf den gerade laufenden api-Teil, nicht auf die ganze Nacht.
 
 ## CI-Zugangsdaten
 
