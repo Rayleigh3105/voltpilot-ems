@@ -28,6 +28,9 @@ const (
 	GroesseBool    Groesse = "bool"     // Ja/Nein (nur statisch)
 	GroesseWort    Groesse = "wort"     // Wort einer Auswahl, Betriebsart, Schrittname (nur statisch)
 	GroessePlan    Groesse = "plan"     // Zeitplan (nur statisch)
+	// GroesseOffen ist das Wort „unknown“ als Wert: kein Wert, nur als Zweig von if() erlaubt
+	// (`setpoint: if(c, 3 kW, unknown)` heißt „sonst kein Wunsch“). Nur statisch.
+	GroesseOffen Groesse = "offen"
 )
 
 var groesseWort = map[Groesse]string{

@@ -400,6 +400,9 @@ func (L *Logik) hole(st *Lauf, ein *Eingabe, n string, tiefe int) (Wert, error) 
 	if n == "clock" {
 		return zahlW(ein.UhrMin, GroesseUhrzeit), nil
 	}
+	if n == "unknown" {
+		return unbekanntW(), nil
+	}
 	if _, ok := L.Stellwerte[n]; ok {
 		return st.Stell[n], nil
 	}
@@ -528,6 +531,9 @@ func (L *Logik) groesse(b *baum, pfad []string) (Groesse, error) {
 		if n == "clock" {
 			return GroesseUhrzeit, nil
 		}
+		if n == "unknown" {
+			return GroesseOffen, nil
+		}
 		if s, ok := L.Stellwerte[n]; ok {
 			switch s.Art {
 			case "boolean":
@@ -610,6 +616,15 @@ func (L *Logik) groesse(b *baum, pfad []string) (Groesse, error) {
 			}
 			if arten[0] != GroesseBool {
 				return "", fehler("if() beginnt mit Ja/Nein: „%s“", b.src)
+			}
+			// „unknown“ als Zweig: dieser Zweig liefert keinen Wert, die Größe kommt vom anderen.
+			switch {
+			case arten[1] == GroesseOffen && arten[2] == GroesseOffen:
+				return "", fehler("if() braucht mindestens einen Wert, nicht zweimal „unknown“: „%s“", b.src)
+			case arten[1] == GroesseOffen:
+				return arten[2], nil
+			case arten[2] == GroesseOffen:
+				return arten[1], nil
 			}
 			if arten[1] != arten[2] {
 				return "", fehler("if() liefert zwei verschiedene Größen: „%s“", b.src)
@@ -729,6 +744,8 @@ func nenne(x Groesse) string {
 		return "ein Wort"
 	case GroessePlan:
 		return "ein Zeitplan"
+	case GroesseOffen:
+		return "„unknown“ (nur als Zweig von if() erlaubt)"
 	}
 	return groesseWort[x]
 }

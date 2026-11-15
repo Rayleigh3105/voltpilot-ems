@@ -16,7 +16,7 @@ export interface Stueck {
 
 const FUNKTIONEN = new Set(['if', 'min', 'max', 'known', 'unknown', 'time_window', 'in_schedule', 'holds', 'since',
   'running', 'last', 'start']);
-const WOERTER = new Set(['and', 'or', 'not', 'on', 'off', 'true', 'false', 'keep', 'clock', 'else']);
+const WOERTER = new Set(['and', 'or', 'not', 'on', 'off', 'true', 'false', 'keep', 'clock', 'else', 'unknown']);
 const ZAHL = /^[-+]?\d+(?:\.\d+)?(?:\s?(?:°C|K|kW|W|%|s|min|h|°|ct))?/;
 
 /** Wo in einer Zeile der Kommentar beginnt (ein `#` am Anfang oder nach Leerraum, nicht in Anführungszeichen). */
@@ -56,7 +56,8 @@ function wert(teil: string, out: Stueck[]): void {
       out.push({ t: m[0], art: 'zahl' });
     } else if ((m = rest.match(/^[A-Za-z_][\w.]*/))) {
       const w = m[0];
-      const art: Art = WOERTER.has(w) ? 'wort' : FUNKTIONEN.has(w) && rest.slice(w.length).startsWith('(') ? 'funktion' : 'bezeichner';
+      // `unknown(x)` ist die Funktion, `unknown` allein das Wort (ein Zweig von if() ohne Wert).
+      const art: Art = FUNKTIONEN.has(w) && rest.slice(w.length).startsWith('(') ? 'funktion' : WOERTER.has(w) ? 'wort' : 'bezeichner';
       out.push({ t: w, art });
     } else {
       m = rest.match(/^./u)!;

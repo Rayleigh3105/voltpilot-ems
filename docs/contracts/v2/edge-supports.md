@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -128,6 +128,12 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   hat nie zwei Herren, und ohne die Schalter der Box geht kein Wunsch hinaus (Beleg `agent/steuerlogik_scharf_test.go`).
   Beide Box-Arten melden es. Die Cloud schaltet eine Logik nur an einer Box mit diesem Wort scharf; eine Box mit nur
   `steuerlogik_mitlauf` schaltet nie nach einer Logik und quittiert ein scharfes Bündel als Fehler.
+- `steuerlogik_regeln` (Steuerlogik Stufe 6, Zusammenführen, 15.11.2026): der Kern kennt die Ergänzungen der Sprache,
+  in die sich eine Regel des Regel-Baukastens übersetzt (das Formelwort `unknown` als Zweig von `if()`), und ist der
+  Kern, den [regel-kern-vectors.json](regel-kern-vectors.json) gegen den Node-RED-Weg hält
+  ([Zusammenführen](steuerlogik.md#zusammenführen-stufe-6-zweiter-teil); Beleg `logikdienst/regel/gleichheit_test.go`).
+  Beide Box-Arten melden es. Die Cloud liefert eine Regel nur an eine Box mit diesem Wort als Logik des Kerns aus;
+  ohne es lehnt sie eine Regel auf Edge Light weiter ab, und eine Docker-Box bleibt auf dem alten Weg.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

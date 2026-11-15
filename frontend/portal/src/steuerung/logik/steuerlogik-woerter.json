@@ -160,7 +160,8 @@
     "aus": "off",
     "wahr": "true",
     "falsch": "false",
-    "uhr": "clock"
+    "uhr": "clock",
+    "fehlt": "unknown"
   },
   "funktion": {
     "wenn": "if",

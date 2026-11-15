@@ -99,7 +99,7 @@ func TestWortlisteUndKernSindDeckungsgleich(t *testing.T) {
 	gleicheMengen(t, "art_lage", englisch(t, w, "art_lage"), []string{"solar", "grid", "waiting", "idle", "fault"})
 	gleicheMengen(t, "tage", englisch(t, w, "tage"), tage)
 	gleicheMengen(t, "wertwort", englisch(t, w, "wertwort"), []string{"on", "off", "true", "false", "unknown", "keep"})
-	gleicheMengen(t, "formelwort", englisch(t, w, "formelwort"), []string{"and", "or", "not", "on", "off", "true", "false", "clock"})
+	gleicheMengen(t, "formelwort", englisch(t, w, "formelwort"), []string{"and", "or", "not", "on", "off", "true", "false", "clock", "unknown"})
 	gleicheMengen(t, "funktion", englisch(t, w, "funktion"), []string{
 		"if", "known", "unknown", "time_window", "in_schedule", "holds", "since", "running", "last", "min", "max"})
 	gleicheMengen(t, "handlung", englisch(t, w, "handlung"), []string{"start", "if"})
@@ -112,8 +112,9 @@ func TestWortlisteUndKernSindDeckungsgleich(t *testing.T) {
 		"temperature", "room_temperature", "open", "door_open", "defrost", "fault", "running",
 		"humidity", "outdoor_temperature", "supply_temperature", "return_temperature"})
 
-	// Die reservierten Wörter sind die Formelwörter plus unknown und else (Vertrag 17.2).
-	gleicheMengen(t, "formelwort + unknown/else", append(englisch(t, w, "formelwort"), "unknown", "else"), Reserviert)
+	// Die reservierten Wörter sind die Formelwörter plus else (Vertrag 17.2); unknown ist seit
+	// Stufe 6 selbst ein Formelwort (ein Zweig von if() ohne Wert).
+	gleicheMengen(t, "formelwort + else", append(englisch(t, w, "formelwort"), "else"), Reserviert)
 }
 
 // Jede feste Quelle und jedes Signal der Wortliste muss der Kern einer Größe zuordnen.

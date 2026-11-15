@@ -111,6 +111,12 @@
       "meaning": "Die Box nimmt auch eine scharf geschaltete Steuerlogik an (bundle.armed, gestellte Werte in bundle.settings; flow-artifact.md, steuerlogik.md) und gibt ihre Wünsche an den Schiedsrichter: Klasse flow (Rang 40), 45 s gültig, je Takt erneuert, Quelle nur intern. Plan und Fristen-Rückfall lassen ihre Geräte in Ruhe, ein Gerät hat nie zwei Herren, und ohne die Schalter der Box geht kein Wunsch hinaus. Erst dann schaltet die Cloud eine Logik scharf; eine Box mit nur steuerlogik_mitlauf schaltet nie nach einer Logik.",
       "advertised": true,
       "evidence": "edge-app/core/internal/agent/steuerlogik_scharf_test.go"
+    },
+    {
+      "name": "steuerlogik_regeln",
+      "meaning": "Der Kern der Box kennt die Ergänzungen der Sprache, in die sich eine Regel des Regel-Baukastens übersetzt (das Formelwort unknown als Zweig von if(): „voll einschalten“ wünscht außerhalb der Bedingung nichts), und ist der Kern, den die Gleichheitsvektoren regel-kern-vectors.json gegen den Node-RED-Weg halten (steuerlogik.md, Zusammenführen). Erst dann liefert die Cloud eine Regel als Logik des Kerns aus, auf Edge Light statt sie abzulehnen, auf der Docker-Box nach dem Schalter der Anlage; eine ältere Box quittierte eine Logik mit diesem Wort als nicht lesbar.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/logikdienst/regel/gleichheit_test.go"
     }
   ],
   "cases": [
