@@ -412,6 +412,16 @@ voltpilot:
     username: ${ADMIN_DB_USER:voltpilot_admin}
     # C2: no dev-password fallback, see the datasource.password comment above.
     password: ${ADMIN_DB_PASSWORD}
+    # Hintergrund-Pool der Admin-Rolle (Lasttest vp-lasttest, Rang 7): Laeufer,
+    # Sammler und MQTT-Listener borgen ihre Admin-Verbindungen hier, HTTP-Anfragen
+    # weiter aus dem Anfrage-Pool (4, voltpilot-admin-pool) - dieselbe Weiche wie
+    # beim App-Pool (AnfragePfadDataSource). Vorher teilten sich beide 4
+    # Verbindungen, und mehrsekuendige Sammler-Abfragen konkurrierten mit
+    # Kunden-Anfragen (Kundenbereich-Ende-Pruefung) und Plattform-Seiten. 4 = was
+    # der Hintergrund bisher hoechstens bekam (2 staute im Labor die Sammler und
+    # die minuetliche Auffrischung der beendeten Kundenbereiche). minimumIdle 0:
+    # ohne Hintergrundarbeit haelt der Pool keine Verbindung.
+    background-max-size: ${DB_POOL_ADMIN_BACKGROUND_MAX_SIZE:4}
   # Zero-touch device onboarding (docs/contracts/mqtt-provisioning.schema.json):
   # on claim, publish the retained provision/{ref}/config to the broker so a
   # waiting device is configured immediately. Best-effort; off by default so
