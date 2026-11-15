@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.fleet.AdminFlottenSpeicher;
 import com.voltpilot.api.fleet.FleetPflege;
 import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.forecast.ForecastModels;
@@ -102,15 +103,23 @@ public class AdminFleetController {
 
     private final AdminFleetRepository fleet;
     private final ForecastModelService forecastModels;
+    private final AdminFlottenSpeicher speicher;
 
-    public AdminFleetController(AdminFleetRepository fleet, ForecastModelService forecastModels) {
+    public AdminFleetController(AdminFleetRepository fleet, ForecastModelService forecastModels,
+            AdminFlottenSpeicher speicher) {
         this.fleet = fleet;
         this.forecastModels = forecastModels;
+        this.speicher = speicher;
     }
 
     // Lesend ohne eigene Kennung: bestehender Plattform-Zaun, einschließlich Unterstützungsauswahl und Ende.
+    // Kurz festgehalten (AdminFlottenSpeicher): mehrere Admin-Tabs rechnen die Flotte einmal.
     @GetMapping
     public AdminFleetDto fleet() {
+        return speicher.flotte(this::rechneFlotte);
+    }
+
+    private AdminFleetDto rechneFlotte() {
         Instant now = Instant.now();
         List<FleetSiteRow> siteRows = fleet.sites();
 

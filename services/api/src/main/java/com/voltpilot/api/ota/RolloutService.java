@@ -391,21 +391,24 @@ public class RolloutService {
         // sie fertig wird.
         List<RolloutRepository.RolloutRow> recent = rollouts.recentRollouts(5);
 
-        // Releases + „läuft auf N Geräten".
+        // Releases + „läuft auf N Geräten". Das Register EINMAL je Anfrage lesen
+        // (Lasttest B6: vorher eine Abfrage samt aller Manifeste je Gerät mit
+        // gemeldetem Stand - bei 2 000 Boxen 2 000 Abfragen je Seitenaufruf).
+        List<EdgeReleaseDto> alleReleases = releases.findAll();
         Map<String, Integer> runningPerRelease = new HashMap<>();
         for (RolloutRepository.FleetDeviceRow d : fleet) {
             String running = reportedRunning(d);
             if (running == null) {
                 continue;
             }
-            for (EdgeReleaseDto rel : releases.findAll()) {
+            for (EdgeReleaseDto rel : alleReleases) {
                 if (RolloutStates.releaseIsRunning(rel.version(), running)) {
                     runningPerRelease.merge(rel.version(), 1, Integer::sum);
                 }
             }
         }
         List<EdgeUpdatesDto.ReleaseDto> releaseDtos = new ArrayList<>();
-        for (EdgeReleaseDto rel : releases.findAll()) {
+        for (EdgeReleaseDto rel : alleReleases) {
             releaseDtos.add(new EdgeUpdatesDto.ReleaseDto(rel.releaseSeq(), rel.version(),
                     rel.targetCommit(), rel.notes(), rel.manifest() != null, rel.signingKeyId(),
                     rel.createdAt(), runningPerRelease.getOrDefault(rel.version(), 0),

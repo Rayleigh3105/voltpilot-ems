@@ -396,6 +396,14 @@ voltpilot:
     # replica if this service is ever scaled horizontally.
     mqtt-client-id: ${VOLTPILOT_OCPP_MQTT_CLIENT_ID:voltpilot-api-ocpp}
     privacy-pepper: ${VOLTPILOT_OCPP_PRIVACY_PEPPER:local-dev-only-change-me}
+  # Die Flotten-Antworten der Plattform-Seiten (GET /api/v1/admin/fleet,
+  # /admin/edge-updates, /admin/devices) gelten so lange fuer alle
+  # Plattform-Administratoren; gleichzeitige Abrufe warten auf EINE Berechnung,
+  # jede schreibende Admin-Anfrage verwirft den Stand (AdminFlottenSpeicher,
+  # Lasttest B6: bei 2 000 Boxen 1,4-4,4 MB und 0,7-3,6 s je Abruf, je Tab alle
+  # 30 s). 0 schaltet das Festhalten ab (so im Testlauf).
+  admin:
+    flotte-speicher-ms: ${VOLTPILOT_ADMIN_FLOTTE_SPEICHER_MS:15000}
   # Dedicated cross-tenant datasource for the platform-admin API. Connects as the
   # voltpilot_admin BYPASSRLS role (created by Flyway V4) to the SAME database as
   # the app datasource (URL falls back to spring.datasource.url); only the role

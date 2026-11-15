@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.fleet.AdminFlottenSpeicher;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
 import com.voltpilot.api.web.dto.AdminDevicesDto;
@@ -52,17 +53,22 @@ public class AdminEdgeUpdateController {
 
     private final RolloutService rollouts;
     private final AdminProvisionedDeviceRepository registry;
+    private final AdminFlottenSpeicher speicher;
 
     public AdminEdgeUpdateController(RolloutService rollouts,
-            AdminProvisionedDeviceRepository registry) {
+            AdminProvisionedDeviceRepository registry, AdminFlottenSpeicher speicher) {
         this.rollouts = rollouts;
         this.registry = registry;
+        this.speicher = speicher;
     }
 
-    /** Alles, was die Seite „Edge-Updates" zeigt - in EINEM Aufruf. */
+    /**
+     * Alles, was die Seite „Edge-Updates" zeigt - in EINEM Aufruf. Kurz festgehalten
+     * ({@link AdminFlottenSpeicher}); jede Admin-Schreibhandlung verwirft den Stand.
+     */
     @GetMapping("/edge-updates")
     public EdgeUpdatesDto edgeUpdates() {
-        return rollouts.readModel(Instant.now());
+        return speicher.edgeUpdates(() -> rollouts.readModel(Instant.now()));
     }
 
     /**
@@ -113,7 +119,7 @@ public class AdminEdgeUpdateController {
      */
     @GetMapping("/devices")
     public AdminDevicesDto devices() {
-        return rollouts.devices(registry.findAll(), Instant.now());
+        return speicher.geraete(() -> rollouts.devices(registry.findAll(), Instant.now()));
     }
 
     /**

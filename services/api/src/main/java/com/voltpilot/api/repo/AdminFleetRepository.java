@@ -293,18 +293,20 @@ public class AdminFleetRepository {
     public Map<UUID, DeviceStats> deviceStatsPerSite() {
         Map<UUID, DeviceStats> stats = new HashMap<>();
         jdbc.query(
-                "SELECT d.site_id, count(*) AS device_count,"
-                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen)"
-                        + " >= now() - interval '" + ONLINE_WINDOW + "')"
+                // „Zuletzt gesehen" = Herzschlag, nur ohne ihn die jüngste Telemetrie-
+                // Ankunft: die Ankunft steht als Unterabfrage IM coalesce und läuft
+                // nur für Boxen ohne Herzschlag (vorher LATERAL für jede Box, je Gerät
+                // ein Abstieg in jeden Chunk - Lasttest B6, Rang 5). Ergebnis unverändert.
+                "SELECT x.site_id, count(*) AS device_count,"
+                        + " count(*) FILTER (WHERE x.last_seen >= now() - interval '" + ONLINE_WINDOW + "')"
                         + "   AS online_count,"
-                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen) IS NULL)"
-                        + " AS waiting_count,"
-                        + " max(coalesce(d.device_status_seen_at, ls.last_seen)) AS last_seen "
-                        + "FROM device d "
-                        + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
-                        + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "
-                        + "WHERE d.ausgebaut_am IS NULL "
-                        + "GROUP BY d.site_id",
+                        + " count(*) FILTER (WHERE x.last_seen IS NULL) AS waiting_count,"
+                        + " max(x.last_seen) AS last_seen "
+                        + "FROM (SELECT d.site_id, coalesce(d.device_status_seen_at,"
+                        + "        (SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id))"
+                        + "        AS last_seen"
+                        + "      FROM device d WHERE d.ausgebaut_am IS NULL) x "
+                        + "GROUP BY x.site_id",
                 rs -> {
                     Timestamp lastSeen = rs.getTimestamp("last_seen");
                     stats.put(rs.getObject("site_id", UUID.class), new DeviceStats(

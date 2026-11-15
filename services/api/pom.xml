@@ -525,6 +525,11 @@
                         <!-- The Steuerlogik heartbeat listener (block `logik`) is ON in production as well;
                              its tests drive handle() directly. -->
                         <voltpilot.steuerlogik.mqtt-listener-enabled>false</voltpilot.steuerlogik.mqtt-listener-enabled>
+                        <!-- Lasttest Rang 5: die Flotten-Antworten der Admin-Seiten werden in PRODUKTION 15 s
+                             festgehalten (AdminFlottenSpeicher). Tests schreiben zwischen zwei Abrufen direkt in
+                             die Datenbank und erwarten den neuen Stand - im Testlauf hält der Speicher nichts fest.
+                             AdminFlottenSpeicherTest prueft das Festhalten selbst. -->
+                        <voltpilot.admin.flotte-speicher-ms>0</voltpilot.admin.flotte-speicher-ms>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

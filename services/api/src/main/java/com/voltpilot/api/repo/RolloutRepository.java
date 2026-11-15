@@ -293,6 +293,14 @@ public class RolloutRepository {
      * Alle Geräte der Plattform mit ihrem gemeldeten Stand. Ein LEFT JOIN,
      * damit ein Gerät ohne jede Meldung sichtbar BLEIBT - genau das ist der
      * Zustand „unbekannt", und ihn wegzufiltern hieße, ihn zu verschweigen.
+     *
+     * <p>„Zuletzt gesehen" ist der Herzschlag, nur ohne ihn die jüngste
+     * Telemetrie-Ankunft. Die Ankunft steht darum als Unterabfrage IM
+     * {@code coalesce} und läuft nur für Boxen ohne Herzschlag; vorher lief
+     * sie als {@code LEFT JOIN LATERAL} für JEDE Box - je Gerät ein Abstieg in
+     * jeden Telemetrie-Chunk, alle 60 s im Rollout-Wächter und bei jedem
+     * Abruf der Seiten Edge-Updates und Geräte (Lasttest vp-lasttest, Befund
+     * B6, Rang 5). Ergebnis unverändert.
      */
     public List<FleetDeviceRow> fleetDevices() {
         return jdbc.query("""
@@ -304,7 +312,9 @@ public class RolloutRepository {
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error, u.target_verdict_at, u.current_since,
                        u.geraet_modell, u.geraet_arch, u.loader, u.loader_stand,
-                       coalesce(d.device_status_seen_at, ls.last_seen) AS last_seen,
+                       coalesce(d.device_status_seen_at,
+                                (SELECT max(tm.received_at) FROM telemetry tm
+                                  WHERE tm.device_id = d.id)) AS last_seen,
                        c.checked_at AS control_checked_at, c.all_match AS control_confirmed,
                        c.certified AS control_certified
                   FROM device d
@@ -312,8 +322,6 @@ public class RolloutRepository {
                   JOIN tenant t ON t.id = s.tenant_id
                   LEFT JOIN device_update_status u ON u.device_id = d.id
                   LEFT JOIN device_control_status c ON c.device_id = d.id
-                  LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen
-                                       FROM telemetry tm WHERE tm.device_id = d.id) ls ON true
                  WHERE d.ausgebaut_am IS NULL
                  ORDER BY t.name, s.name, d.external_ref
                 """, (rs, i) -> new FleetDeviceRow(
