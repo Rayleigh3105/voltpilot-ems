@@ -69,6 +69,7 @@ import type {
   WagoKartenangaben, WagoKartenwechsel, WagoSollLesung, Wetterbezug, WetterbezugAnfrage, Zaehlerwechsel,
   ZaehlerwechselVorgang,
   HaDatei, LogikAnsicht, LogikAusHomeAssistant, LogikBericht, LogikGeprueft, LogikGespeichert, LogikListe, LogikQuellen, LogikZustand,
+  SteuerwegAntwort,
   BausteinEingesetzt, BausteinFuellung, BausteinListe, BausteinLuecke, BausteinSatzTeil,
 } from './api';
 import { freshToken } from './auth';
@@ -1281,6 +1282,11 @@ const weitere = {
     ),
   /** Stufe 4: die Logiken der Anlage im Reiter „Regeln“, mit den Rechten des Aufrufers. */
   logikListe: (siteId: string) => request<LogikListe>(`/api/v1/sites/${siteId}/steuerlogik/logiken`),
+  /** Wo die Regeln der Anlage laufen (Steuerlogik Stufe 6, Zusammenführen). */
+  steuerweg: (siteId: string) => request<SteuerwegAntwort>(`/api/v1/sites/${siteId}/steuerlogik/steuerweg`),
+  /** Den Schalter stellen: `mitlauf` (an), `uebernehmen` (der ausdrückliche Schritt), `zurueck` (sofort). */
+  steuerwegSchritt: (siteId: string, schritt: 'mitlauf' | 'uebernehmen' | 'zurueck') =>
+    request<SteuerwegAntwort>(`/api/v1/sites/${siteId}/steuerlogik/steuerweg/${schritt}`, { method: 'POST' }),
   /** Stufe 4: was eine Logik an der Anlage lesen und schalten kann (Auswahl im Aufbau). */
   logikQuellen: (siteId: string) => request<LogikQuellen>(`/api/v1/sites/${siteId}/steuerlogik/quellen`),
   /** Stufe 4: eine Logik mit Fassungen, Anfragen, Werten und Lauf. */

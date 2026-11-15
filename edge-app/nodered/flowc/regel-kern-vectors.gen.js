@@ -65,8 +65,9 @@ const PRAEFIX = {
   'vp.schedule.window': 'zeit', 'vp.logic.and': 'und', 'vp.logic.or': 'oder', 'vp.logic.if': 'wert',
   'vp.logic.gate': 'wenn', 'vp.entity.control': 'steuern', 'vp.notify.push': 'melden',
 };
+// type_version wie der Katalog des Portals (frontend/portal/src/flows/catalog.json), aus dem buildGuidedFlow sie liest.
 const VERSION = {
-  'vp.entity.read': '1.0.0', 'vp.price.current': '1.1.0', 'vp.logic.threshold': '1.1.0',
+  'vp.entity.read': '1.0.0', 'vp.price.current': '1.0.0', 'vp.logic.threshold': '1.1.0',
   'vp.schedule.window': '1.0.0', 'vp.logic.and': '1.0.0', 'vp.logic.or': '1.0.0', 'vp.logic.if': '1.0.0',
   'vp.logic.gate': '1.0.0', 'vp.entity.control': '1.0.0', 'vp.notify.push': '1.0.0',
 };

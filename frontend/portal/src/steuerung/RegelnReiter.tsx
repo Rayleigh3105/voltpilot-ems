@@ -55,6 +55,8 @@ export interface RegelnReiterProps {
   logiken?: ReactNode;
   /** Die Bausteine unter „Neue Regel“ (Steuerlogik Stufe 5): ein Satz mit Lücken, dahinter eine Logik. */
   bausteine?: ReactNode;
+  /** Wie die Regeln laufen, bisheriger oder neuer Weg (Steuerlogik Stufe 6, Zusammenführen). */
+  steuerweg?: ReactNode;
 }
 
 const FARBE: Record<string, [string, string]> = {
@@ -165,6 +167,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
         )}
         <p className="leise" style={{ padding: '0 4px' }}>Regeln sind Ausnahmen vom Smart-Auftrag der Geräte. Schutzgrenzen und Ihre Eingriffe gehen immer vor.</p>
       </section>
+      {p.steuerweg}
       {p.logiken}
       <section className="card rechts" aria-label="Verlauf" style={{ gridRow: 'auto' }}>
         <div className="card-h">
