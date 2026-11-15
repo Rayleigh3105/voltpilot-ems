@@ -118,6 +118,35 @@ Der gebaute Kapazitätswächter ist davon getrennt; Details stehen unter
 [UEMS-Speicher-Wächter](agents/root/uems-speicher-waechter.md), die UEMS-Betriebsüberwachung
 vollständig unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
 
+### Broker-Verluste (EMQX)
+
+Der MQTT-Broker verwirft Nachrichten still, wenn ein Abonnent nicht nachkommt: die Warteschlange der Sitzung ist voll
+(EMQX-Vorgabe 1 000), jede weitere Nachricht an diese Sitzung fällt weg. Die Box hat ihr PUBACK und sendet nicht
+nach; der Dienst, der abonniert, merkt nichts. Im Lasttest (`vp-lasttest`, 05./06.11.2026) waren es bei 500 Boxen
+66 322 verworfene Zustellungen an die Status-Abos der api (Steuerstatus, „zuletzt gesehen“ und OTA-Stand veralteten),
+bei 2 000 Boxen 434 323, dazu fehlten rund 40 % der v1-Telemetrie hinter dem ingest. Zählen kann das nur der Broker.
+
+| Was | Vertrag |
+|---|---|
+| Abruf | `GET :18083/api/v5/prometheus/stats` am Broker, **ohne Anmeldung** (EMQX-Vorgabe `prometheus.enable_basic_auth = false`) |
+| Zähler | `emqx_delivery_dropped_queue_full` (`counter`): an eine volle Sitzungs-Warteschlange verworfene Zustellungen, über alle Sitzungen; `emqx_delivery_dropped` (alle Gründe), `emqx_messages_delivered`, `emqx_connections_count` zum Einordnen |
+| Abbild | das `emqx`-Abbild aus `docker-compose.prod.yml` (heute `emqx/emqx:5.8.3`) |
+| Beleg | `BrokerVerlustMetrikTest` (services/ingest, Testcontainers gegen dieses Abbild): Pfad ohne Anmeldung, Zählername und -typ, und ein Abonnent mit dauerhafter Sitzung, der 1 500 Nachrichten nicht liest, ergibt 499 verworfene Zustellungen |
+
+Ausgangspunkt der Regel (Scrape-Punkt, Schwelle und Empfänger stehen im GitOps-Repository, ServiceMonitor `emqx`
+und Regel `VoltPilotBrokerVerwirftNachrichten`):
+
+```promql
+sum by (namespace) (increase(emqx_delivery_dropped_queue_full{job="emqx"}[15m])) > 0
+```
+
+Welcher Abonnent verliert, zählt der Broker je Sitzung, aber nicht im Prometheus-Abruf: im EMQX-Dashboard (Clients)
+oder per REST nach `POST /api/v5/login`
+`GET /api/v5/clients?fields=clientid,mqueue_len,mqueue_max,mqueue_dropped,connected` — wessen `mqueue_len` an
+`mqueue_max` steht, verliert. Die beiden anderen stillen Verluststellen des Lasttests haben schon eigene Metriken und
+Regeln: Rückstand des Writers (`voltpilot_kafka_consumer_lag`) und ein ingest, der annimmt, aber nicht mehr schreibt
+(`voltpilot_ingest_letzter_schreibzug_age_seconds`).
+
 ## Logs
 
 Alle Dienste schreiben auf stdout. `api`, `ingest` und `timescale-writer` können je Ereignis eine JSON-Zeile schreiben; die Felder unten sind der Vertrag für die Log-Verarbeitung im Cluster. Das Format ist in allen drei Diensten dieselbe `logback-spring.xml`.
