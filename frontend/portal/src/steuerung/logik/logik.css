@@ -185,12 +185,12 @@
 
 /* Fusszeile: Prüfung und Speichern */
 .lk-fuss { position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 16px; background: var(--c-card); border: 1px solid var(--c-border); box-shadow: 0 10px 28px color-mix(in srgb, var(--c-fg) 16%, transparent); }
-.lk-fuss .lk-pruefung { display: flex; align-items: center; gap: 8px; min-width: 0; font: 700 14px/1.3 var(--font); }
-.lk-fuss .lk-pruefung svg { width: 18px; height: 18px; flex: none; }
-.lk-fuss .lk-pruefung.ok { color: var(--st-on-ink); }
-.lk-fuss .lk-pruefung.fehler { color: var(--st-lock); }
-.lk-fuss .lk-pruefung.laeuft { color: var(--c-muted-fg); }
-.lk-fuss .lk-pruefung span { overflow-wrap: anywhere; }
+:is(.lk-fuss, .lk-ha) .lk-pruefung { display: flex; align-items: center; gap: 8px; min-width: 0; font: 700 14px/1.3 var(--font); }
+:is(.lk-fuss, .lk-ha) .lk-pruefung svg { width: 18px; height: 18px; flex: none; }
+:is(.lk-fuss, .lk-ha) .lk-pruefung.ok { color: var(--st-on-ink); }
+:is(.lk-fuss, .lk-ha) .lk-pruefung.fehler { color: var(--st-lock); }
+:is(.lk-fuss, .lk-ha) .lk-pruefung.laeuft { color: var(--c-muted-fg); }
+:is(.lk-fuss, .lk-ha) .lk-pruefung span { overflow-wrap: anywhere; }
 @media (max-width: 720px) {
   /* Fünf Ansichten passen bei 390 px ohne Wischen in die Leiste. */
   .lk .stn-reiter button { padding: 0 6px; font-size: 13.5px; }
@@ -198,3 +198,24 @@
   .lk-kopf h1 { font-size: 21px; }
   .lk-zwei { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Aus Home Assistant übernehmen (Stufe 6) */
+.lk-ha { display: grid; gap: 14px; min-width: 0; }
+.lk-ha .blk h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lk-ha .blk h3 .tbtn { margin-left: auto; }
+.lk-ha-stellen { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.lk-ha-stellen li { display: grid; gap: 2px; padding: 9px 11px; border-radius: 12px; background: var(--z-fehler); color: #7f1d1d; font: 600 13.5px/1.4 var(--font); min-width: 0; }
+.lk-ha-stellen.leise li { background: var(--c-muted); color: var(--c-muted-fg); font-weight: 500; }
+.lk-ha-stellen b { font: 800 12.5px/1.5 var(--mono); }
+.lk-ha-stellen code { font: 600 12px/1.4 var(--mono); overflow-wrap: anywhere; }
+.lk-ha-stellen span { overflow-wrap: anywhere; font-weight: 500; }
+/* Hinweise: die Stelle in Home Assistant über dem Satz, damit der Satz am Telefon die ganze Breite hat */
+.lk-ha .lk-meldungen button { grid-template-columns: 18px minmax(0, 1fr); row-gap: 2px; }
+.lk-ha .lk-meldungen button b { grid-column: 2; }
+.lk-ha .lk-meldungen button span { grid-column: 2; font-weight: 500; }
+.lk-ha-luecken { display: grid; gap: 14px 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.lk-ha-luecke { display: grid; gap: 4px; min-width: 0; }
+.lk-ha-luecke .fehler { color: var(--c-destructive); font: 600 12.5px/1.4 var(--font); }
+.lk-ha-entity { display: block; margin-top: 2px; font: 600 11.5px/1.4 var(--mono); color: var(--c-muted-fg); overflow-wrap: anywhere; }
+.lk-ha-schutz { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+.lk-ha-schutz svg { flex: none; color: var(--c-muted-fg); }

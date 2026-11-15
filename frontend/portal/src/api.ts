@@ -9846,6 +9846,74 @@ export interface LogikGeprueft {
   meldungen: LogikMeldung[] | null;
 }
 
+/** Stufe 6: eine Datei einer Anlage von Home Assistant, wie sie hochgeladen wird. */
+export interface HaDatei {
+  name: string;
+  text: string;
+}
+
+/** Eine Stelle in den Dateien von Home Assistant (Zeile ab 1). */
+export interface HaOrt {
+  datei: string;
+  zeile: number;
+}
+
+/** Was sich nicht übersetzen lässt (oder nicht übernommen wird), mit Stelle und Grund. */
+export interface HaStelle {
+  ort: HaOrt;
+  was: string;
+  grund: string;
+}
+
+/** Ein Gerät oder eine Quelle der Anlage für eine Lücke; `wert` mit „-“ vorn dreht das Vorzeichen. */
+export interface HaKandidat {
+  wert: string;
+  name: string;
+  hinweis?: string;
+}
+
+/**
+ * Eine Entität von Home Assistant, die einem Gerät oder Eingang der Anlage zugeordnet wird. `groesse` leer: die
+ * Dateien sagen nicht, ob Temperatur, Leistung oder Prozent - die Zuordnung entscheidet.
+ */
+export interface HaLuecke {
+  kennung: string;
+  art: 'geraet' | 'eingang';
+  name: string;
+  entities: string[];
+  groesse?: 'temperatur' | 'leistung' | 'prozent' | 'winkel' | 'ja_nein' | '';
+  groesse_geschaetzt?: boolean;
+  ausgaenge?: number;
+  ausgang?: 'level' | 'on_off';
+  orte: HaOrt[];
+  wert: string;
+  wert_text?: string;
+  fehler?: string;
+  kandidaten: HaKandidat[];
+  vorgeschlagen?: boolean;
+}
+
+/** Wo die Logik sich anders verhält als Home Assistant; `zeile` im übersetzten Text. */
+export interface HaHinweis {
+  ort: HaOrt;
+  stelle?: string;
+  text: string;
+  zeile?: number;
+}
+
+/** Die Antwort des Übersetzers (`POST …/steuerlogik/home-assistant`); gespeichert wird nichts. */
+export interface LogikAusHomeAssistant {
+  luecken: HaLuecke[];
+  vollstaendig: boolean;
+  text: string;
+  bericht: LogikBericht | null;
+  nicht_uebersetzt: HaStelle[];
+  nicht_uebernommen: HaStelle[];
+  hinweise: HaHinweis[];
+  kennungen: Record<string, string>;
+  dateien: string[];
+}
+
 export type LogikZustand = 'geprueft' | 'mitlaufend' | 'scharf' | 'stillgelegt';
 
 /** Eine Logik im Reiter „Regeln“. `aktiv` null = läuft nicht; `vorgelegt` wartet auf die Freigabe. */

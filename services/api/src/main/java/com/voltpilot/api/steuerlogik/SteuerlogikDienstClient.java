@@ -190,6 +190,26 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
         throw bausteinFehler(response, body);
     }
 
+    @Override
+    public JsonNode homeAssistant(JsonNode dateien, JsonNode zuordnung, String registry) {
+        ObjectNode request = json.createObjectNode();
+        request.set("dateien", dateien);
+        if (zuordnung != null && zuordnung.isObject()) request.set("zuordnung", zuordnung);
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/home-assistant", request);
+        JsonNode body = parse(response.body());
+        if (response.status() == 200 && body != null && body.path("luecken").isArray()
+                && body.path("text").isTextual()) {
+            return body;
+        }
+        if (response.status() == 422 && body != null) {
+            throw new SteuerlogikDienstException(SteuerlogikDienstException.HOME_ASSISTANT,
+                    body.path("message").asText("Die Dateien lassen sich nicht lesen."), null);
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
     /** 422 ist ein Baustein oder Text, den die Leser ablehnen (mit Satz); alles andere ein nicht erreichbarer Dienst. */
     private SteuerlogikDienstException bausteinFehler(FlowCompilerHttp.Response response, JsonNode body) {
         if (response.status() == 422 && body != null) {

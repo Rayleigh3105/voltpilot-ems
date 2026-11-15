@@ -8,6 +8,7 @@ Seit Stufe 2, zweiter Teil, wird eine Logik ausgeliefert und läuft auf der Box 
 Seit Stufe 3 lässt sich eine Fassung [scharf](#scharf) schalten: dann gehen ihre Wünsche durch Schiedsrichter und Schutzgrenzen der Box, und ihre Geräte gehören ihr.
 Seit Stufe 4 wird eine Logik im Portal geschrieben, im [Aufbau und im Text](#aufbau-und-text-stufe-4), geprüft und als Fassung gespeichert.
 Seit Stufe 5 entsteht eine Logik auch aus einem [Baustein](#bausteine-stufe-5): ein Satz mit Lücken, dahinter eine Logik dieser Textform.
+Seit Stufe 6 entsteht sie auch [aus den Dateien einer Anlage von Home Assistant](#aus-home-assistant-stufe-6).
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
 Für Geräte mit Sollwert und Betriebsart (K2/K3) kommen [steuerlogik-geraete-vectors.json](steuerlogik-geraete-vectors.json) und das siebte Beispiel `waermepumpe-modbus` dazu, von Hand geschrieben; dort ist der Kern die Referenz (`geraete_vectors_test.go`, im Dienst `logikdienst_test.go`).
@@ -270,6 +271,54 @@ Ein Kundenkonto setzt Bausteine ein, speichert aber keine.
 Gemeinsame Vektoren: [steuerlogik-baustein-vectors.json](steuerlogik-baustein-vectors.json) - je Baustein eine Füllung an einer Anlage und was daraus entsteht (Satz mit Werten, je Probe Uhrzeit, Titel und Satz der Lage); dazu die Antwort des Dienstes [steuerlogik-baustein.valid.eingesetzt.json](examples/steuerlogik-baustein.valid.eingesetzt.json), die API und Portal lesen.
 Der Dienst belegt, dass jeder Baustein des Vertrags gefüllt die Prüfung besteht und seine Proben für jeden Wert im Bereich gelten (`logikdienst/baustein_test.go`); API: `SteuerlogikBausteineApiTest`; Ende zu Ende mit dem echten Dienst: `frontend/portal/e2e/steuerlogik-bausteine.spec.ts`.
 Eine Wallbox hat keinen Baustein: Laden hat seinen eigenen Ort, eine scharfe Logik beansprucht keinen Ladepunkt ([Besitz](#besitz-ein-gerät-hat-nie-zwei-herren)).
+
+## Aus Home Assistant (Stufe 6)
+
+Gebaut am 15.11.2026 (Bericht Abschnitte 12.4, 13.4 und 14, E8 = A: eigene Form, Bausteine wie in Home Assistant, ein Helfer übersetzt vorhandene Dateien, die Prüfung urteilt).
+Unter „Neue Logik“ und auf der Seite einer Logik („Aus Home Assistant“) lädt man configuration.yaml, automations.yaml und scripts.yaml hoch; daraus entsteht eine Logik dieser Textform oder eine Liste, was sich nicht übersetzen lässt, mit Datei, Zeile und Grund.
+Übernommen wird der Text als Entwurf; danach geht es weiter wie bei jeder Logik (Aufbau und Text, Prüfen, Proben, Mitlaufen, Vorlegen).
+Die Dateien werden nirgends gespeichert.
+
+**Was woraus wird** (Übersetzer `edge-app/core/internal/logikdienst/homeassistant`, nur im Dienst, nie auf der Box):
+
+| Home Assistant | in der Logik |
+|---|---|
+| `input_boolean`, `input_number`, `input_datetime` (Uhrzeit), `input_select`, die keine Automation ändert | Stellwert mit Name, Vorgabe (`initial`, sonst das Minimum), Bereich, Schritt und Einheit (`W` bleibt `W`, Temperatur-Schritte in K) |
+| `input_boolean`, den Automationen ein- und ausschalten | Schalter: `on_when` aus den Bedingungen der einschaltenden Automation, `off_when`/`off_when_any` aus der ausschaltenden; die Prüfung auf den eigenen Stand fällt weg |
+| `input_number` mit `increment`, `decrement`, `set_value` | Zähler, je Automation ein Schritt; die zurücknehmenden zuerst |
+| `timer` | Zeitgeber; die Dauer aus `timer.start` (Minuten mal 60 bleibt die Dauer des Stellwerts), gestartet mit `then: start(…)` des Schritts |
+| Automation nur beim Start von Home Assistant | `after_restart` der Zustände, die sie setzt |
+| Vorlagen-Sensor | Formel; einer, der nur einen Messwert weitergibt, ist der Eingang selbst |
+| Vorlagen-Binärsensor mit `this.state` | Schalter: an, wenn die Vorlage mit „aus“ wahr ist, aus, wenn sie mit „an“ falsch ist |
+| Vorlagen-Sensor mit Texten | die Lage, je Zweig eine Zeile; die Art der Zeile ist aus dem Titel geschätzt, den Satz schreibt man dazu |
+| `history_stats` über alle Ausgänge eines Geräts | `<gerät>.output_hours_today` |
+| `numeric_state`, `state`, `template`, `time`, `and`/`or`/`not` | Bedingungen; ein Auslöser mit `for:` wird `holds()` der gleichen Bedingung |
+| `(now() - states.x.last_changed).total_seconds() > N` am eigenen Zähler | `not_before`; prüft Home Assistant nur im Raster (`time_pattern`), steht das Raster darin (über 300 s zur vollen Minute: 6 min) |
+| Skript, das Schalter `<gerät>_l1` … `_ln` nach „k ≤ Stufe“ setzt | Ausgang `level` des Geräts; ein einzelner Schalter `on_off`; Schalter, die Automationen einzeln ein- und ausschalten, ein Schalter-Zustand |
+| Messwert, Schalter | Lücke, die man einem Eingang oder Gerät der Anlage zuordnet |
+
+Formeln aus Jinja: `{% set %}`, `{% if %}`, Schleifen über `range()` (ausgerollt), `namespace`, Filter wie `float`, `int`, `min`, `max`, `count`, `reject('in', …)`.
+`x|float(d)` gegen eine feste Zahl wird genau so geschrieben, wie Home Assistant ohne Wert rechnet (`p1|float(-1) < 0` wird `unknown(p1) or p1 < 0 °C`); sonst ist ein fehlender Wert unbekannt.
+Ein Zeitfenster aus `today_at()` und `now()` wird `time_window()`; ein Schalter, der nur das Vorzeichen eines Messwerts dreht, entfällt, das Vorzeichen legt die Zuordnung fest.
+Was die Sprache nicht hat (Warten in Abläufen, Wochentage als Bedingung, Sonnenereignisse, Attribute, einzelne Ausgänge lesen, einen Zeitgeber anhalten), ist „nicht übersetzbar“.
+
+**Hinweise**: wo Home Assistant anders rechnet als die Sprache, steht ein Hinweis an der Stelle, als Kommentar im Text und in der Antwort mit seiner Zeile: Auswertung nur bei Auslösern und im Raster, Ersatzwerte ohne Messwert, Rundung, die Reihenfolge zweier Automationen am selben Zähler, ein Zeitgeber mit der Dauer 0, Schalter, die Home Assistant nur bei Läufen setzt.
+Jeder Eintrag nennt seine Herkunft (`# automations.yaml:118`).
+
+**Lücken**: je Gerät (Ausgänge, `level` oder `on_off`) und Messwert (Temperatur, Leistung, Prozent, Ja/Nein; sagen die Dateien nichts, entscheidet die Zuordnung).
+Kandidaten nennt der Dienst aus `Quellen` (dieselben Regeln wie die Box); ohne Zuordnung schlägt er Geräte (gleiche Zahl von Ausgängen zuerst, dann der ähnlichste Name) und Fühler mit passendem Namen vor, eine Leistung nie: ihr Vorzeichen wählt der Mensch (`site.grid` oder `-site.grid`, `battery.power` oder `-battery.power`, `site.pv`).
+Eine Quelle anderer Größe passt nicht (`fehler` an der Lücke).
+
+Dienst `POST /home-assistant {dateien: [{name, text}], zuordnung?: {kennung: {wert, name?}}, registry?}` (höchstens 8 Dateien, zusammen 1 MB): `{luecken (mit kandidaten, vorgeschlagen), vollstaendig, text, bericht, nicht_uebersetzt, nicht_uebernommen, hinweise (mit zeile), kennungen, dateien}`; nicht lesbares YAML ist 422 `grund: home_assistant`.
+Übernehmen lässt sich nur `vollstaendig`: eine Logik ist entstanden, jede Lücke passt, die Prüfung sperrt nicht.
+
+| Route unter `/api/v1/sites/{siteId}/steuerlogik` | Recht | Was |
+|---|---|---|
+| `POST /home-assistant {dateien, zuordnung?}` | `logik.bearbeiten` | übersetzen mit dem Registry-Inhalt der Anlage, ohne etwas zu speichern; 400 `dateien_fehlen`/`dateien_zu_gross`, 422 `home_assistant_unlesbar` |
+
+Beispiel: [steuerlogik-home-assistant.valid.solarheizung.json](examples/steuerlogik-home-assistant.valid.solarheizung.json) (gepinnt vom Dienst, gelesen von API und Portal).
+Maßstab: die Test-Anlage des Übersetzers (`homeassistant/testdata/solarheizung`, erfunden, gleich aufgebaut wie die Vorlage des Konzepts) ergibt eine Logik, die sich wie `heizung-treu` verhält - die elf Proben mit den Namen der Übersetzung bestehen wie dort, die drei Tage sind in jeder Sekunde gleich, 177 Stufenwechsel zur selben Sekunde (`vergleich_test.go`; mit `VP_HA_VORLAGE` und `VP_HA_VORLAGE_NAMEN` misst derselbe Test eine echte Anlage, die nur auf dem eigenen Rechner liegt).
+Je Baustein von Home Assistant ein Test: `bausteine_test.go`; Dienst: `logikdienst/homeassistant_test.go`; API: `SteuerlogikBearbeitenApiTest`; Ende zu Ende mit dem echten Dienst: `frontend/portal/e2e/steuerlogik-home-assistant.spec.ts`.
 
 ## Versionsregeln
 

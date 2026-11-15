@@ -68,7 +68,7 @@ import type {
   Versorgung, VerteilungZeileEingabe, VorgangAnstossAntwort, VorschauKnoepfe, WagoGeraeteangaben, WagoKartenAnlage,
   WagoKartenangaben, WagoKartenwechsel, WagoSollLesung, Wetterbezug, WetterbezugAnfrage, Zaehlerwechsel,
   ZaehlerwechselVorgang,
-  LogikAnsicht, LogikBericht, LogikGeprueft, LogikGespeichert, LogikListe, LogikQuellen, LogikZustand,
+  HaDatei, LogikAnsicht, LogikAusHomeAssistant, LogikBericht, LogikGeprueft, LogikGespeichert, LogikListe, LogikQuellen, LogikZustand,
   BausteinEingesetzt, BausteinFuellung, BausteinListe, BausteinLuecke, BausteinSatzTeil,
 } from './api';
 import { freshToken } from './auth';
@@ -1296,6 +1296,16 @@ const weitere = {
     request<LogikGeprueft>(`/api/v1/sites/${siteId}/steuerlogik/pruefe`, {
       method: 'POST',
       body: JSON.stringify({ text }),
+      signal,
+    }),
+  /**
+   * Stufe 6: die Dateien einer Anlage von Home Assistant übersetzen; `zuordnung` je Lücke `{wert, name?}`, was fehlt,
+   * schlägt der Dienst vor. Nichts wird gespeichert, auch die Dateien nicht.
+   */
+  logikHomeAssistant: (siteId: string, dateien: HaDatei[], zuordnung: Record<string, { wert: string; name?: string }>, signal?: AbortSignal) =>
+    request<LogikAusHomeAssistant>(`/api/v1/sites/${siteId}/steuerlogik/home-assistant`, {
+      method: 'POST',
+      body: JSON.stringify({ dateien, zuordnung }),
       signal,
     }),
   /** Stufe 4: als Fassung speichern (ohne `logikId` eine neue Logik); `basis` ist die Fassung, von der es ausging. */

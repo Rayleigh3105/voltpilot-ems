@@ -3,6 +3,7 @@ package com.voltpilot.api.steuerlogik;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.LeadDeviceService;
@@ -57,6 +58,9 @@ public class SteuerlogikService {
     public static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
     /** Höchstens so viele Zeichen nimmt die Annahme (der Dienst prüft dieselbe Grenze in Bytes). */
     static final int MAX_TEXT = 256 * 1024;
+    /** Die Dateien einer Anlage von Home Assistant (Stufe 6): wie viele und zusammen wie groß (wie der Dienst). */
+    static final int MAX_HA_DATEIEN = 8;
+    static final int MAX_HA_BYTES = 1024 * 1024;
     /** Höchstens so viele Zeilen trägt ein Tag des Vergleichsprotokolls in der Antwort. */
     static final int MAX_WECHSEL = 2000;
     /** Höchstens so viele Schritte des Protokolls trägt ein Tag in der Antwort. */
@@ -486,6 +490,40 @@ public class SteuerlogikService {
         if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
         try {
             return dienst.quellen(registryOderNull(siteId));
+        } catch (SteuerlogikDienstException e) {
+            throw new Abgelehnt(e.grund(), e.getMessage(), e.bericht());
+        }
+    }
+
+    /**
+     * Stufe 6: übersetzt die Dateien einer Anlage von Home Assistant ({@code [{name, text}]}) mit der Zuordnung der
+     * Lücken zu Geräten und Eingängen dieser Anlage; der Dienst schlägt vor, was fehlt, und prüft das Ergebnis.
+     * Gespeichert wird nichts - die Dateien sind Material des Kunden und verlassen den Dienst nicht; was übernommen
+     * wird, ist der Text, gespeichert wie jede Fassung.
+     */
+    public JsonNode homeAssistant(UUID siteId, JsonNode dateien, JsonNode zuordnung) {
+        pruefeAnlage(siteId);
+        if (dateien == null || !dateien.isArray() || dateien.isEmpty()) {
+            throw new Abgelehnt("dateien_fehlen", "Bitte die Dateien von Home Assistant mitschicken "
+                    + "(configuration.yaml, automations.yaml, scripts.yaml).", null);
+        }
+        if (dateien.size() > MAX_HA_DATEIEN) {
+            throw new Abgelehnt("dateien_zu_gross", "Höchstens " + MAX_HA_DATEIEN + " Dateien.", null);
+        }
+        long summe = 0;
+        ArrayNode sauber = JsonNodeFactory.instance.arrayNode();
+        for (JsonNode d : dateien) {
+            if (!d.path("name").isTextual() || !d.path("text").isTextual() || d.path("name").asText().isBlank()) {
+                throw new Abgelehnt("dateien_fehlen", "Jede Datei braucht einen Namen und ihren Text.", null);
+            }
+            summe += d.path("text").asText().getBytes(StandardCharsets.UTF_8).length;
+            sauber.addObject().put("name", d.path("name").asText()).put("text", d.path("text").asText());
+        }
+        if (summe > MAX_HA_BYTES) {
+            throw new Abgelehnt("dateien_zu_gross", "Die Dateien sind zusammen größer als 1 MB.", null);
+        }
+        try {
+            return dienst.homeAssistant(sauber, zuordnung, registryOderNull(siteId));
         } catch (SteuerlogikDienstException e) {
             throw new Abgelehnt(e.grund(), e.getMessage(), e.bericht());
         }

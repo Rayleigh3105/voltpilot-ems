@@ -1,0 +1,336 @@
+# Test-Anlage für den Übersetzer aus Home Assistant (Steuerlogik Stufe 6).
+# Erfunden: eine Solarheizung mit drei Wärmespeichern an einer Anlage, die nicht einspeist.
+# Speicher 1 heizt ein Durchlauferhitzer mit drei Phasen, Speicher 2 und 3 je ein Heizstab
+# mit drei Phasen. Weil der Wechselrichter abregelt, lässt sich der Überschuss nicht messen:
+# eine Phase wird probeweise zugeschaltet; muss die Batterie aushelfen, geht sie wieder weg.
+# Gleich aufgebaut wie die Hand-Übersetzung "heizung-treu" (docs/contracts/v2/steuerlogik/),
+# damit ihr Verhalten an deren Vektoren und Tagen gemessen werden kann.
+
+default_config:
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+
+recorder:
+  purge_keep_days: 14
+
+# Einschaltzeit je Phase seit Mitternacht
+sensor:
+  - platform: history_stats
+    name: Speicher 2 L1 heute an
+    entity_id: switch.speicher_2_l1
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Speicher 2 L2 heute an
+    entity_id: switch.speicher_2_l2
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Speicher 2 L3 heute an
+    entity_id: switch.speicher_2_l3
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Speicher 3 L1 heute an
+    entity_id: switch.speicher_3_l1
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Speicher 3 L2 heute an
+    entity_id: switch.speicher_3_l2
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Speicher 3 L3 heute an
+    entity_id: switch.speicher_3_l3
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+
+input_boolean:
+  winterbetrieb:
+    name: Winterbetrieb
+  netzheizung_aktiv:
+    name: Netzheizung aktiv
+  netz_vorzeichen_gedreht:
+    name: Vorzeichen Netz gedreht
+  akku_vorzeichen_gedreht:
+    name: Vorzeichen Akku gedreht
+
+timer:
+  sperre_nach_versuch:
+    name: Sperre nach Versuch
+    duration: "00:30:00"
+    restore: true
+
+input_number:
+  heizstufe:
+    name: Heizstufe
+    initial: 0
+    min: 0
+    max: 9
+    step: 1
+  speicher1_einschalten_unter:
+    name: Speicher 1 heizt aus dem Netz unter
+    initial: 40
+    min: 30
+    max: 70
+    step: 1
+    unit_of_measurement: "°C"
+  speicher1_ziel_sommer:
+    name: Speicher 1 Ziel im Sommer
+    initial: 57
+    min: 57
+    max: 90
+    step: 1
+    unit_of_measurement: "°C"
+  speicher1_ziel_winter:
+    name: Speicher 1 Ziel im Winter
+    initial: 75
+    min: 50
+    max: 90
+    step: 1
+    unit_of_measurement: "°C"
+  speicher1_ziel_netz:
+    name: Speicher 1 Netzheizen bis
+    initial: 60
+    min: 40
+    max: 80
+    step: 1
+    unit_of_measurement: "°C"
+  speicher1_vorrang_bis:
+    name: Warmwasser zuerst bis
+    initial: 60
+    min: 0
+    max: 80
+    step: 1
+    unit_of_measurement: "°C"
+  reserve_vorrang:
+    name: Reserve für Warmwasser zuerst
+    initial: 300
+    min: 0
+    max: 2000
+    step: 50
+    unit_of_measurement: W
+  akku_voll_ab:
+    name: Akku gilt als voll ab
+    initial: 95
+    min: 90
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+  akku_abbruch_unter:
+    name: Abbruch unter Ladestand
+    initial: 90
+    min: 80
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+  akku_entladung_max:
+    name: Erlaubte Akkuentladung
+    initial: 150
+    min: 150
+    max: 1000
+    step: 50
+    unit_of_measurement: W
+  netzbezug_max:
+    name: Erlaubter Netzbezug
+    initial: 300
+    min: 300
+    max: 3000
+    step: 50
+    unit_of_measurement: W
+  pause_minuten:
+    name: Pause nach Fehlversuch
+    initial: 5
+    min: 0
+    max: 60
+    step: 5
+    unit_of_measurement: min
+  sonnenhoehe_min:
+    name: Mindesthöhe der Sonne
+    initial: 5
+    min: 0
+    max: 30
+    step: 1
+    unit_of_measurement: "°"
+  leistung_dle_phase:
+    name: Durchlauferhitzer je Phase
+    initial: 3000
+    min: 500
+    max: 5000
+    step: 100
+    unit_of_measurement: W
+  leistung_stab_phase:
+    name: Heizstab je Phase
+    initial: 1500
+    min: 500
+    max: 5000
+    step: 100
+    unit_of_measurement: W
+  speicher23_hoechsttemperatur:
+    name: Speicher 2 und 3 höchstens
+    initial: 80
+    min: 50
+    max: 95
+    step: 1
+    unit_of_measurement: "°C"
+  speicher23_stunden_je_tag:
+    name: Speicher 2 und 3 Stunden je Tag
+    initial: 9
+    min: 1
+    max: 24
+    step: 0.5
+    unit_of_measurement: h
+
+input_datetime:
+  netzheizen_von:
+    name: Netzheizen ab
+    has_date: false
+    has_time: true
+    initial: "06:00:00"
+  netzheizen_bis:
+    name: Netzheizen bis
+    has_date: false
+    has_time: true
+    initial: "22:00:00"
+
+template:
+  - sensor:
+      # Einspeisung positiv, Bezug negativ (der Zähler meldet Bezug positiv)
+      - name: Solarheizung Ueberschuss
+        unique_id: solarheizung_ueberschuss
+        unit_of_measurement: W
+        state: >
+          {% set p = states('sensor.wr_netzleistung') | float(0) %}
+          {{ (p if is_state('input_boolean.netz_vorzeichen_gedreht', 'on') else 0 - p) | round(0) }}
+
+      # Entladen positiv, Laden negativ (so meldet es der Wechselrichter)
+      - name: Solarheizung Akkuleistung
+        unique_id: solarheizung_akkuleistung
+        unit_of_measurement: W
+        state: >
+          {% set p = states('sensor.wr_akkuleistung') | float(0) %}
+          {{ (0 - p if is_state('input_boolean.akku_vorzeichen_gedreht', 'on') else p) | round(0) }}
+
+      # Die Fühler von Speicher 2 und 3 hängen an einem Messmodul mit vier Eingängen.
+      - name: Solarheizung Speicher 2 oben
+        unique_id: solarheizung_speicher_2_temperatur
+        unit_of_measurement: "°C"
+        state: "{{ states('sensor.messmodul_a7c3f1e09b24_temperatur_1') }}"
+        availability: "{{ states('sensor.messmodul_a7c3f1e09b24_temperatur_1') | is_number }}"
+
+      - name: Solarheizung Speicher 3 oben
+        unique_id: solarheizung_speicher_3_temperatur
+        unit_of_measurement: "°C"
+        state: "{{ states('sensor.messmodul_a7c3f1e09b24_temperatur_3') }}"
+        availability: "{{ states('sensor.messmodul_a7c3f1e09b24_temperatur_3') | is_number }}"
+
+      - name: Solarheizung Zieltemperatur
+        unique_id: solarheizung_ziel
+        unit_of_measurement: "°C"
+        state: >
+          {% if is_state('input_boolean.winterbetrieb', 'on') %}
+            {{ states('input_number.speicher1_ziel_winter') | float(75) }}
+          {% else %}
+            {{ states('input_number.speicher1_ziel_sommer') | float(57) }}
+          {% endif %}
+
+      - name: Solarheizung Naechste Phase
+        unique_id: solarheizung_naechste_phase
+        unit_of_measurement: W
+        state: >
+          {% set stufe = states('input_number.heizstufe') | int(0) %}
+          {% set t1 = states('sensor.fuehler_speicher_1_oben') | float(-1) %}
+          {% set ziel = states('sensor.solarheizung_zieltemperatur') | float(57) %}
+          {% set dle = states('input_number.leistung_dle_phase') | float(3000) %}
+          {% set stab = states('input_number.leistung_stab_phase') | float(1500) %}
+          {% if t1 >= 0 and t1 < ziel %}
+            {{ (dle if stufe < 3 else (stab if stufe < 9 else 999999)) | round(0) }}
+          {% else %}
+            {{ (stab if stufe < 6 else 999999) | round(0) }}
+          {% endif %}
+
+      - name: Solarheizung Heizleistung
+        unique_id: solarheizung_heizleistung
+        unit_of_measurement: W
+        state: >
+          {% set ns = namespace(summe=0) %}
+          {% for n in range(1, 4) %}
+            {% if is_state('switch.durchlauferhitzer_l' ~ n, 'on') %}
+              {% set ns.summe = ns.summe + states('input_number.leistung_dle_phase') | float(3000) %}
+            {% endif %}
+            {% if is_state('switch.speicher_2_l' ~ n, 'on') %}
+              {% set ns.summe = ns.summe + states('input_number.leistung_stab_phase') | float(1500) %}
+            {% endif %}
+            {% if is_state('switch.speicher_3_l' ~ n, 'on') %}
+              {% set ns.summe = ns.summe + states('input_number.leistung_stab_phase') | float(1500) %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.summe }}
+
+      - name: Solarheizung Status
+        unique_id: solarheizung_status
+        state: >
+          {% set stufe = states('input_number.heizstufe') | int(0) %}
+          {% set t1 = states('sensor.fuehler_speicher_1_oben') | float(-1) %}
+          {% set ladestand = states('sensor.wr_ladestand') | float(0) %}
+          {% set voll = states('input_number.akku_voll_ab') | float(95) %}
+          {% set akku = states('sensor.solarheizung_akkuleistung') | float(0) %}
+          {% set ueber = states('sensor.solarheizung_ueberschuss') | float(0) %}
+          {% set sonne = state_attr('sun.sun', 'elevation') | float(-90) %}
+          {% set zuerst = is_state('binary_sensor.solarheizung_warmwasser_zuerst', 'on') and ladestand < voll %}
+          {% if t1 < 0 %}Störung Fühler
+          {%- elif is_state('input_boolean.netzheizung_aktiv', 'on') %}Notheizung
+          {%- elif is_state('input_boolean.winterbetrieb', 'on') and is_state('binary_sensor.solarheizung_netzfenster', 'off')
+                   and t1 < states('input_number.speicher1_einschalten_unter') | float(40) %}Nachtsperre
+          {%- elif stufe > 0 and stufe <= 3 and zuerst %}Warmwasser vor Batterie
+          {%- elif stufe > 0 %}Heizt mit Sonnenstrom
+          {%- elif sonne <= 0 %}Keine Sonne
+          {%- elif zuerst %}Wartet auf Sonnenstrom
+          {%- elif ladestand < voll %}Batterie lädt
+          {%- elif sonne < states('input_number.sonnenhoehe_min') | float(5) %}Sonne zu tief
+          {%- elif not is_state('timer.sperre_nach_versuch', 'idle') %}Pause nach Versuch
+          {%- elif akku > states('input_number.akku_entladung_max') | float(150)
+                   or ueber < 0 - states('input_number.netzbezug_max') | float(300) %}Kein Überschuss
+          {%- elif t1 >= states('sensor.solarheizung_zieltemperatur') | float(57) %}Speicher auf Zieltemperatur
+          {%- else %}Nächster Versuch läuft
+          {%- endif %}
+
+  - binary_sensor:
+      # An, solange aus dem Netz geheizt werden darf. Über Mitternacht erlaubt;
+      # gleiche Zeiten heißen: immer.
+      - name: Solarheizung Netzfenster
+        unique_id: solarheizung_netzfenster
+        state: >
+          {% set von = states('input_datetime.netzheizen_von') %}
+          {% set bis = states('input_datetime.netzheizen_bis') %}
+          {% if von == bis or von in ['unknown', 'unavailable'] or bis in ['unknown', 'unavailable'] %}
+            true
+          {% elif today_at(von) < today_at(bis) %}
+            {{ today_at(von) <= now() < today_at(bis) }}
+          {% else %}
+            {{ now() >= today_at(von) or now() < today_at(bis) }}
+          {% endif %}
+
+      # Speicher 1 vor der Batterie, mit 3 K Abstand zwischen ein und aus
+      - name: Solarheizung Warmwasser zuerst
+        unique_id: solarheizung_warmwasser_zuerst
+        state: >
+          {% set t1 = states('sensor.fuehler_speicher_1_oben') | float(-1) %}
+          {% set bis = states('input_number.speicher1_vorrang_bis') | float(0) %}
+          {% set grenze = [bis, states('sensor.solarheizung_zieltemperatur') | float(57)] | min %}
+          {% set an = this.state == 'on' %}
+          {{ bis > 0 and t1 >= 0 and t1 < (grenze if an else grenze - 3) }}

@@ -108,4 +108,14 @@ public interface SteuerlogikDienst {
      * Grund {@link SteuerlogikDienstException#BAUSTEIN}.
      */
     JsonNode ausLogik(String text, String name, String beschreibung, String satz);
+
+    /**
+     * Übersetzt die Dateien einer Anlage von Home Assistant ({@code POST /home-assistant}, Stufe 6): {@code dateien}
+     * ist {@code [{name, text}]}, {@code zuordnung} je Lücke {@code {wert, name?}} ({@code null} = noch keine; der
+     * Dienst schlägt Geräte und Fühler vor). Antwort: {@code luecken} mit Kandidaten, {@code vollstaendig}, {@code
+     * text}, {@code bericht}, {@code nicht_uebersetzt}, {@code nicht_uebernommen}, {@code hinweise}. Gespeichert wird
+     * nichts, auch die Dateien nicht. Dateien, die sich nicht lesen lassen, sind eine {@link
+     * SteuerlogikDienstException} mit Grund {@link SteuerlogikDienstException#HOME_ASSISTANT}.
+     */
+    JsonNode homeAssistant(JsonNode dateien, JsonNode zuordnung, String registry);
 }
