@@ -14,7 +14,8 @@
  *   Summe; erst wenn ALLE scheitern, ist die Seite in einem Fehlerzustand.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError, type Earnings, type EarningsRange, type HistoryRange } from './api';
+import { ApiError, type Earnings, type EarningsRange, type HistoryRange } from './api';
+import { api } from './apiVoll';
 import { historyCacheKey, readHistoryCache, writeHistoryCache } from './historyCache';
 import { vergleichsAnker } from './historieVergleich';
 import { isoDate } from './periodNav';

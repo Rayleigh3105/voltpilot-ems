@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import * as A from '../abweichungen';
-import { api, type Abweichung, type Auffaelligkeit, type AuffaelligkeitenAlle } from '../api';
+import { type Abweichung, type Auffaelligkeit, type AuffaelligkeitenAlle } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_ABWEICHUNGEN, UEMS_AUFFAELLIGKEIT, UEMS_VERANTWORTLICH } from '../glossar';
 import { abweichungRoute, hashForRoute, kennzahlRoute } from '../nav';
 import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';

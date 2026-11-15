@@ -3,7 +3,6 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   deviceLiveStatus,
   type DatenquelleBudgetFehler,
@@ -11,6 +10,7 @@ import {
   type UemsDatenquelle,
   type UemsDatenquellePruefergebnis,
 } from '../api';
+import { api } from '../apiVoll';
 import { geplanterWechsel, wechselFolgen } from '../boxDialoge';
 import { budgetAblehnungAnzeige } from '../uemsDatenquelle';
 import { ortszeit, lesen, type ZeitpunktEingabe } from '../picker/zeitpunkt';

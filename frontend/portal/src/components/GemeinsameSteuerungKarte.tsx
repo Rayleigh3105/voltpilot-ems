@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, ApiError, type Device, type Funktionen, type UemsGemeinsameSteuerungEinrichten, type UemsGemeinsameSteuerungZustand } from '../api';
+import { ApiError, type Device, type Funktionen, type UemsGemeinsameSteuerungEinrichten, type UemsGemeinsameSteuerungZustand } from '../api';
+import { api } from '../apiVoll';
 import { standortDerAnlage } from '../anlageEnergiebilanz';
 import {
   anlageSteuert,

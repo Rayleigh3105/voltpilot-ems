@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { ahrenbergHeute, FIXTURE_IDS as I } from '../test/standorteFixtures';
 import { ahrenbergNetzanschluesse } from '../test/netzanschlussFixtures';
 import { EnergiebilanzFuss } from './EnergiebilanzFuss';

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Device, type Site } from '../api';
+import { ApiError, type Device, type Site } from '../api';
+import { api } from '../apiVoll';
 import { KOPPEL_VORMERKER, merkeKoppelRef, offeneKoppelRef } from '../koppelLink';
 import { AnlageFlow } from './AnlageFlow';
 import { BoxFremdKonto } from './BoxVerbunden';

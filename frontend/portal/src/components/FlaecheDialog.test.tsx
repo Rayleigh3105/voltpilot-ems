@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { FlaecheDialog } from './FlaecheDialog';
-import { api, ApiError, type BerichteBetroffen } from '../api';
+import { ApiError, type BerichteBetroffen } from '../api';
+import { api } from '../apiVoll';
 import { FLAECHE_SATZ } from '../uemsOrtsbaum';
 import { ORT_IDS, ortNachSchreiben } from '../test/ortsbaumFixtures';
 

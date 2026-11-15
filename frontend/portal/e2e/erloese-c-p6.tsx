@@ -31,7 +31,7 @@ import '../src/components/Erloese.css';
 import '../src/components/Verlauf.css';
 import '../src/components/BereichTabs.css';
 
-import { api } from '../src/api';
+import { api } from '../src/apiVoll';
 import type { EarningsSite, Site } from '../src/api';
 import { PortfolioErloese } from '../src/pages/PortfolioErloese';
 

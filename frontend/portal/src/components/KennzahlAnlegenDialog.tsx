@@ -6,7 +6,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   type Bezugsflaeche,
   type Bezugsgroesse,
   type Kennzahl,
@@ -22,6 +21,7 @@ import {
   type StandortAmStichtag,
   type Unternehmen,
 } from '../api';
+import { api } from '../apiVoll';
 import { currentUser } from '../auth';
 import { SUMMENWERT, UEMS_BERECHNUNG, UEMS_GELTUNGSBEREICH, UEMS_RECHENFORM, UEMS_VERANTWORTLICH, UEMS_VORLAGE, UEMS_ZWECK } from '../glossar';
 import * as E from '../kennzahlAendern';

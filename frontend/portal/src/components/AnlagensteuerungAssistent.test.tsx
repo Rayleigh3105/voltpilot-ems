@@ -1,13 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  api,
   type Anlagensteuerung,
   type Device,
   type NetzVermarktung,
   type UemsDatenquelle,
   type UemsDatenquellePruefergebnis,
 } from '../api';
+import { api } from '../apiVoll';
 import type { ErzeugerKopf } from '../anlagensteuerungAssistent';
 import { RechteStandort, setSelbstauskunft } from '../rollen';
 import { rechteSeed, STANDORT_IDS } from '../test/rollenFixtures';

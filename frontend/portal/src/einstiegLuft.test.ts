@@ -33,6 +33,8 @@ const NICHT_IM_EINSTIEG: Record<string, string> = {
     'die Ableitung des Börsenpreis-Streifens (Film-Wortlaut, Preisfenster, Bezugspreis); die Anlagen-Seite braucht nur das Tor aus `strompreisGate.ts`',
   'src/fahrplanFilm.ts': 'hängt allein an `strompreis.ts`',
   'src/preisFenster.ts': 'hängt allein an `strompreis.ts`',
+  'src/apiVoll.ts':
+    'die rund 460 Routen, die das erste Bild nicht ruft (Performance Welle 3); der Einstieg ruft nur die 40 aus `api.ts`, eine weitere Route zieht dorthin um',
 };
 
 describe('Einstieg-Luft · Stücke, die das erste Bild nicht trägt', () => {

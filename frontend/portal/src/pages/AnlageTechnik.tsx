@@ -7,7 +7,6 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { VpPicker } from '../components/VpPicker';
 import {
-  api,
   ApiError,
   type Device,
   type EinheitGeraet,
@@ -20,6 +19,7 @@ import {
   type SiteAsset,
   type SiteDeletionPreview,
 } from '../api';
+import { api } from '../apiVoll';
 import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, premiumInputText, tarifArtLabel } from '../fleet';
 import { buildSitePayload } from '../anlage';
 import { compassLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';

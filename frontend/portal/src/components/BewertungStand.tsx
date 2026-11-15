@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Bericht, type BerichtDetail, type BerichtEntwurf, type BerichtStandKurz, type Selbstauskunft } from '../api';
+import { type Bericht, type BerichtDetail, type BerichtEntwurf, type BerichtStandKurz, type Selbstauskunft } from '../api';
+import { api } from '../apiVoll';
 import { BEWERTUNG_VORLAGE, rechteAus } from '../berichtDialoge';
 import { gueltigerStand } from '../berichtSeite';
 import {

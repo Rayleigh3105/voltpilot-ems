@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type MeasurementHistory, type MeasurementHerkunft } from '../api';
+import { type MeasurementHistory, type MeasurementHerkunft } from '../api';
+import { api } from '../apiVoll';
 import './Messwerte.css';
 
 export interface HerkunftNamen {

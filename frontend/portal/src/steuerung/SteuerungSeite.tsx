@@ -21,7 +21,8 @@
  */
 import { liste } from './liste';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError, type Device, type Site, type SzeneKey } from '../api';
+import { ApiError, type Device, type Site, type SzeneKey } from '../api';
+import { api } from '../apiVoll';
 import { Recht } from '../components/Recht';
 import { SteuernAssistentLazy as SteuernAssistent } from '../components/SteuernAssistentLazy';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';

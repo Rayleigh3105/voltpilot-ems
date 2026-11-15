@@ -9,7 +9,8 @@ vi.mock('./auth', async (importOriginal) => ({
   freshToken: async () => 'token',
 }));
 
-import { api, setKundenbereich, setTenantOverride } from './api';
+import { setKundenbereich, setTenantOverride } from './api';
+import { api } from './apiVoll';
 
 const kopf = () => (vi.mocked(fetch).mock.calls.at(-1)?.[1]?.headers ?? {}) as Record<string, string>;
 

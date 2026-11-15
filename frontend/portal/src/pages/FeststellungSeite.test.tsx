@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type FeststellungMitVerlauf, type FeststellungStand } from '../api';
+import { type FeststellungMitVerlauf, type FeststellungStand } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { vergissAbruf } from '../routenUhr';
 import { AF_IDS, auditFeststellungBuehne } from '../test/auditFeststellungFixtures';

@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
-import { api, type Betriebsart, type Overview, type Site, type StandortZuordnungVorschau } from '../api';
+import { type Betriebsart, type Overview, type Site, type StandortZuordnungVorschau } from '../api';
+import { api } from '../apiVoll';
 import { orteAus } from '../betriebsart';
 import { MESSEN_EINRICHTEN, useMessenEinstieg } from '../messenEinstieg';
 import { portfolioAnwendungen } from '../portfolioCockpit';

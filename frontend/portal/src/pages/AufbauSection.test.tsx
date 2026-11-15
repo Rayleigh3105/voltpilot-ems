@@ -2,7 +2,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AufbauSection } from './AufbauSection';
 import {
-  api,
   ApiError,
   type Device,
   type Site,
@@ -12,6 +11,7 @@ import {
   type StandorteAmStichtag,
   type UemsDatenquelle,
 } from '../api';
+import { api } from '../apiVoll';
 import * as auth from '../auth';
 import { entitiesApi } from '../entitiesApi';
 import { consumersApi } from '../consumers/consumersApi';

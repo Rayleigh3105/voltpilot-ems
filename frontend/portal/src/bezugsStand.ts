@@ -1,4 +1,5 @@
-import { api, type Bezugsgroesse } from './api';
+import { type Bezugsgroesse } from './api';
+import { api } from './apiVoll';
 import * as B from './bezugsgroesseListe';
 import { heuteIn } from './kennzahlKarte';
 import { VORGABE_ZEITZONE } from './uemsOrtsbaum';

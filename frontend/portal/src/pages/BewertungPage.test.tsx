@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { KRITERIEN_BEREITS_ENTSCHIEDEN } from '../bewertungErgebnis';
 import { setSelbstauskunft } from '../rollen';
 import { bewertungBuehne } from '../test/bewertungFixtures';

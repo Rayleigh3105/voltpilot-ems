@@ -3,13 +3,13 @@ import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   type BewertungRangliste,
   type BewertungUmfang,
   type Energieeinsatz,
   type EnergieeinsatzEinstufungFassung,
   type Messbedarf,
 } from '../api';
+import { api } from '../apiVoll';
 import { ANLEGEN_KNOPF, darfKriterienAendern, darfVerwalten, ladeFehler, LADEN, laeuft, NUR_LESEN, UMFANG_TITEL } from '../bewertung';
 import {
   bewertungBeispiel,

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { KNOPF_AENDERUNGEN, KNOPF_VERSCHIEBEN } from '../ortArchiv';
 import { bereichNurAngelegt, halle2Protokoll, werkAhrenbergProtokoll } from '../test/ortAenderungenFixtures';
 import { ORT_IDS } from '../test/ortsbaumFixtures';

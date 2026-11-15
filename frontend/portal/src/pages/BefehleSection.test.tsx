@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BefehleSection } from './BefehleSection';
-import { api, type CommandEntry, type CommandHistory, type Site } from '../api';
+import { type CommandEntry, type CommandHistory, type Site } from '../api';
+import { api } from '../apiVoll';
 import { SEITE, VERLAUF_TAGE } from '../befehleVerlauf';
 
 const site = { id: 's1', name: 'Hof Herzogau' } as Site;

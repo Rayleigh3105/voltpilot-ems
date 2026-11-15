@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
-import { api, type EnergiemanagementMappe, type EnergiemanagementVerzeichnis } from '../../api';
+import { type EnergiemanagementMappe, type EnergiemanagementVerzeichnis } from '../../api';
+import { api } from '../../apiVoll';
 import * as E from '../../energiemanagementPortal';
 import * as P from '../../mappeBild';
 import { useIsPhone } from '../../useIsPhone';

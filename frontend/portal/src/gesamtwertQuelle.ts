@@ -8,7 +8,8 @@
  * nicht auf dem Cockpit der Anlage B auftaucht. Reine Orchestrierung (Netz), die
  * Regeln wohnen in `gesamtwert.ts`.
  */
-import { api, type Messstelle, type MessstelleFormel } from './api';
+import { type Messstelle, type MessstelleFormel } from './api';
+import { api } from './apiVoll';
 
 export interface GesamtwertQuelle {
   messstelle: Messstelle;

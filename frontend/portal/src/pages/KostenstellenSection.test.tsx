@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../api';
+import { ApiError } from '../api';
+import { api } from '../apiVoll';
 import { ALLE_NICHT_ABRUFBAR, MENGEN_RECHT, MENGEN_ROLLEN, OHNE_MENGEN } from '../kostenstellenUebersicht';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
 import { setSelbstauskunft } from '../rollen';

@@ -1,7 +1,8 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type Bericht, type Managementbewertung, type ManagementbewertungBeschluss, type ManagementbewertungFolgeVerknuepfen } from '../api';
+import { type Bericht, type Managementbewertung, type ManagementbewertungBeschluss, type ManagementbewertungFolgeVerknuepfen } from '../api';
+import { api } from '../apiVoll';
 import { anlegenFehler } from '../berichtDialoge';
 import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import * as M from '../managementbewertung';

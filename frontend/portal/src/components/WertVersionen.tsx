@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import {
   DANACH,
   VERSIONEN_TITEL,

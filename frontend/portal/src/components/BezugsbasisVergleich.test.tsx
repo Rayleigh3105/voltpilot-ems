@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../api';
+import { ApiError } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { vergleichAbNovember, vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../test/bezugsbasisVergleichFixtures';
 import { BezugsbasisVergleich } from './BezugsbasisVergleich';

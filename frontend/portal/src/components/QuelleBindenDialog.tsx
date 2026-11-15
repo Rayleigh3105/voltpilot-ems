@@ -3,7 +3,8 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type Messkanal, type MessstelleRegisterZeile, type StandorteAmStichtag } from '../api';
+import { ApiError, type Messkanal, type MessstelleRegisterZeile, type StandorteAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import { jetztEingabe, kanalZeile, zeitpunktAus } from '../geraetEinstellungen';
 import { ablehnung, anlageWahlen, komponenteAus, komponenteWert, type KomponenteWahl } from '../messstelleDialog';
 import {

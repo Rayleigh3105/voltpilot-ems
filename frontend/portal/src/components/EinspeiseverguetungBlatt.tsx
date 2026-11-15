@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, type Einspeiseverguetung } from '../api';
+import { type Einspeiseverguetung } from '../api';
+import { api } from '../apiVoll';
 import {
   angabeMoeglich,
   EIGENER_SATZ_BEISPIELE,

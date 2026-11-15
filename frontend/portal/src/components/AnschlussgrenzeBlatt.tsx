@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type ChargingConfig } from '../api';
+import { type ChargingConfig } from '../api';
+import { api } from '../apiVoll';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import { RahmenBlatt } from '../steuerung/LadenReiter';
 

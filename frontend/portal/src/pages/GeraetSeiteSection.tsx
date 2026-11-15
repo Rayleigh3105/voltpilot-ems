@@ -5,7 +5,6 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { VpPicker } from '../components/VpPicker';
 import {
-  api,
   ApiError,
   type SchedulePlan,
   type SiteInterventions,
@@ -28,6 +27,7 @@ import {
   type UemsDatenquelle,
   type UemsGeraet,
 } from '../api';
+import { api } from '../apiVoll';
 import { ausfallSchutz, budgetFuer, type SiteCharging } from '../ladepunkte';
 import {
   chargePointIdOf,

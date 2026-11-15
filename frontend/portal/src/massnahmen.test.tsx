@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Massnahme } from './api';
+import { ApiError, type Massnahme } from './api';
+import { api } from './apiVoll';
 import { benutzerApi } from './benutzer';
 import { MassnahmeAendernDialog, MassnahmeAnlegenDialog, MassnahmeUmgesetztDialog } from './components/MassnahmeDialoge';
 import { UEMS_NORMGRENZE } from './glossar';

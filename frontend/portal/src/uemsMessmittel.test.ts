@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from './api';
+import { api } from './apiVoll';
 import { MessmittelBlatt, MessmittelDialog } from './components/MessmittelBlatt';
 import { abdeckungSumme, einsatzZeilen, ortZeilen } from './uemsMessabdeckung';
 import { blattZeilen, eintragAus, entwurfAus, herstellerZeilen, messmittelLesbar, messmittelSatz, pruefsummeKurz, pruefsummeLokal, toleranzWert } from './uemsMessmittel';

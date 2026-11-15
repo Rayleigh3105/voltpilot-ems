@@ -4,13 +4,13 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   type EnergiemanagementDokument,
   type EnergiemanagementFassung,
   type EnergiemanagementPerson,
   type EnergiemanagementPersonKurz,
   type StandortAmStichtag,
 } from '../api';
+import { api } from '../apiVoll';
 // Befund 3 (Konzept Nachweisen n1): „entschieden am“ und „vom“ enden am Tag der Route, nie am Tag des Browsers.
 import { routenHeute as heute } from '../routenUhr';
 import { SAETZE, WOERTER } from '../energiemanagement';

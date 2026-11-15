@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
-import { api, ApiError, type Bericht, type BerichtAnstoss, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Kennzahl, type StandortAmStichtag, type Unternehmen } from '../../api';
+import { ApiError, type Bericht, type BerichtAnstoss, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Kennzahl, type StandortAmStichtag, type Unternehmen } from '../../api';
+import { api } from '../../apiVoll';
 import {
   anlegenAnfrage,
   anlegenFehler,

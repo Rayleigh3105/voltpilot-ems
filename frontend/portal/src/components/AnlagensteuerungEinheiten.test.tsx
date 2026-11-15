@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { ENTITY_GORE, GERAET_GORE, goreGeraet, goreWerte, JETZT, SITE_GORE } from '../test/anlagensteuerungFixtures';
 import { GeraetHerkunft } from './GeraetHerkunft';
 

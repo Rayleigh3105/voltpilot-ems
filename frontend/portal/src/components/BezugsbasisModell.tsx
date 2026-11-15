@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type BezugsbasisFassung, type Kennzahl } from '../api';
+import { type BezugsbasisFassung, type Kennzahl } from '../api';
+import { api } from '../apiVoll';
 import { datenlageSaetze, dezimal, methodeWort, monatText } from '../bezugsbasisAnlegen';
 import * as M from '../bezugsbasisModell';
 import { BezugsbasisModellGrafik } from './BezugsbasisModellGrafik';

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type EdgeVersion } from '../api';
+import { type EdgeVersion } from '../api';
+import { api } from '../apiVoll';
 import type { GeraetesucheVerlaufEintrag } from '../geraetesuche';
 import { knopfLage, laeuftNoch, letzteSucheSatz, type KnopfLage } from '../geraetesucheAnsicht';
 import { UEMS_GERAETE_SUCHEN } from '../glossar';

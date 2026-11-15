@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type OcppAction, type OcppStation } from '../api';
+import { ApiError, type OcppAction, type OcppStation } from '../api';
+import { api } from '../apiVoll';
 import { OcppWallboxPage } from './OcppWallboxPage';
 import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
 

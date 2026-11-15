@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { GrenzHinweis, GrenzSatzBereich } from './GrenzSatz';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Bericht, type Funktionen, type MessstellenRegister } from '../api';
+import { type Bericht, type Funktionen, type MessstellenRegister } from '../api';
+import { api } from '../apiVoll';
 import { darfAnsehen } from '../bewertung';
 import { bewertungFristBaustein, type BewertungFristBild } from '../bewertungFrist';
 import { bezugsbasisUebersichtBild, type BezugsbasisUebersicht, type BezugsbasisUebersichtBild } from '../bezugsbasisUebersicht';

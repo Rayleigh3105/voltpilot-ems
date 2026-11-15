@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import {
-  api,
   type BerichtDetail,
   type BerichtEntwurf,
   type Managementbewertung,
   type ManagementbewertungBeschluss,
   type ManagementbewertungBeschlussArt,
 } from '../api';
+import { api } from '../apiVoll';
 import { freigabeAntrag, freigabeFehler, freigabeVorschau } from '../berichtDialoge';
 import { abzugAus, gueltigerStand } from '../berichtSeite';
 import { VOKABULARE } from '../energiemanagement';

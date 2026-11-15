@@ -3,13 +3,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { VerlaufExplorer } from './VerlaufExplorer';
 import { GERAET_GORE, gore, goreVerlauf } from '../test/anlagensteuerungFixtures';
 import {
-  api,
   type EntityHistory,
   type Site,
   type SiteEntities,
   type SiteEntity,
   type SiteTopology,
 } from '../api';
+import { api } from '../apiVoll';
 
 // The chart uses useEChart (canvas); jsdom has neither, so stub it.
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));

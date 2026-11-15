@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { EbenenCockpit } from './EbenenCockpit';
-import { api, type Earnings, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
+import { type Earnings, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
+import { api } from '../apiVoll';
 import type { Route } from '../nav';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';

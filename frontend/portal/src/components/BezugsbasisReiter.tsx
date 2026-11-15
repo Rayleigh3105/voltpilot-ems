@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type Bezugsbasis, type BezugsbasisFassung, type Kennzahl } from '../api';
+import { type Bezugsbasis, type BezugsbasisFassung, type Kennzahl } from '../api';
+import { api } from '../apiVoll';
 import * as B from '../bezugsbasisAnlegen';
 import * as Bz from '../bezugsbasisEbene';
 import { useRollen } from '../rollen';

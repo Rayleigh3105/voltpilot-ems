@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type Bericht, type BerichtUeberpruefung, type Selbstauskunft } from '../api';
+import { type Bericht, type BerichtUeberpruefung, type Selbstauskunft } from '../api';
+import { api } from '../apiVoll';
 import { bewertungFristBaustein } from '../bewertungFrist';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { setSelbstauskunft } from '../rollen';

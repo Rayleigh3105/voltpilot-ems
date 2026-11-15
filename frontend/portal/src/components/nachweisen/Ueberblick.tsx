@@ -2,12 +2,12 @@ import { merkeAugenblick } from '../../routenUhr';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
-  api,
   ApiError,
   type EnergiemanagementDokumentKurz,
   type EnergiemanagementTeilVermerk,
   type EnergiemanagementVerzeichnis,
 } from '../../api';
+import { api } from '../../apiVoll';
 import { ansehenSprung, sprungKlick, springeUeberHash, seitenSprung, type Sprung } from '../../entscheid';
 import * as E from '../../energiemanagementPortal';
 import { UEMS_KEINE_FRIST_UEBERFAELLIG, UEMS_WIEDERVORLAGE } from '../../glossar';

@@ -6,7 +6,8 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ApiError, api, type WagoKartenangaben } from '../api';
+import { ApiError, type WagoKartenangaben } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed, STANDORT_IDS } from '../test/rollenFixtures';
 import { FIXTURE_IDS } from '../test/standorteFixtures';

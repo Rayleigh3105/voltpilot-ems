@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { massnahmeRoute, verbesserungRoute } from '../nav';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { setSelbstauskunft } from '../rollen';

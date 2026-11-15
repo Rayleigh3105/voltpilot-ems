@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import * as A from '../abweichungen';
-import { api, type AuffaelligkeitenAlle, type Auffaelligkeit } from '../api';
+import { type AuffaelligkeitenAlle, type Auffaelligkeit } from '../api';
+import { api } from '../apiVoll';
 import { monatWort } from '../bezugsbasisVergleich';
 import { abweichungRoute, hashForRoute } from '../nav';
 import { merkeAbruf } from '../routenUhr';

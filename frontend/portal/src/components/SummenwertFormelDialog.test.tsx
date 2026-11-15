@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, type Messstelle } from '../api';
+import { type Messstelle } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { SummenwertFormelDialog } from './SummenwertFormelDialog';

@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'rea
 import { Button } from '../../../designsystem/components/core/Button';
 import { Input } from '../../../designsystem/components/forms/Input';
 import {
-  api,
   ApiError,
   type Device,
   type UemsBetreiberblatt,
   type UemsGemeinsameSteuerungBefund,
   type UemsSprungprobe,
 } from '../../api';
+import { api } from '../../apiVoll';
 import {
   ablehnungSaetze,
   auslegungSaetze,

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { api, type MeasurementCatalogPoint, type MeasurementSelectionState } from '../api';
+import { type MeasurementCatalogPoint, type MeasurementSelectionState } from '../api';
+import { api } from '../apiVoll';
 import { BeobachteteRegister } from './BeobachteteRegister';
 
 const estimate = {

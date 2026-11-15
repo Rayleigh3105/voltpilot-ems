@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../api';
+import { ApiError } from '../api';
+import { api } from '../apiVoll';
 import { ortsbaumSicht, SATZ_BEREICH_ZIEL } from '../ortsbaum';
 import { ORT_IDS, ortNachSchreiben, ortsbaumAhrenberg, verwaltung } from '../test/ortsbaumFixtures';
 import { FLAECHE_SATZ } from '../uemsOrtsbaum';

@@ -1,7 +1,8 @@
 import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { api, ApiError, type SteuerlogikKarte, type SteuerlogikVerlauf } from '../src/api';
+import { ApiError, type SteuerlogikKarte, type SteuerlogikVerlauf } from '../src/api';
+import { api } from '../src/apiVoll';
 import { keycloak } from '../src/auth';
 import { LogikKarte } from '../src/steuerung/LogikKarte';
 import { LogikBlatt } from '../src/steuerung/LogikBlatt';

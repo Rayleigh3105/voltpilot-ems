@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { vermerkeJeMonat } from '../abweichungen';
-import { api, type Auffaelligkeit } from '../api';
+import { type Auffaelligkeit } from '../api';
+import { api } from '../apiVoll';
 import { merkeAbruf } from '../routenUhr';
 import {
   monatsOptionen,

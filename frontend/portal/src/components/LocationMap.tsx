@@ -3,7 +3,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, type OrtTreffer } from '../api';
+import { type OrtTreffer } from '../api';
+import { api } from '../apiVoll';
 import { fmtCoords } from '../format';
 import {
   coordFieldValue,

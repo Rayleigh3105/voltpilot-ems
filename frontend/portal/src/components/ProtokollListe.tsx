@@ -13,7 +13,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Protokoll, type ProtokollAbfrage } from '../api';
+import { ApiError, type Protokoll, type ProtokollAbfrage } from '../api';
+import { api } from '../apiVoll';
 import { protokollListe, SEITE, type ProtokollView } from '../uemsProtokoll';
 import { ErrorState, Skeleton } from './States';
 import '../pages/Befehle.css';

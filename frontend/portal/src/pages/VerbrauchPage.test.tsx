@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type BewertungRangliste } from '../api';
+import { ApiError, type BewertungRangliste } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { ahrenbergEinsaetze, ahrenbergRangliste } from '../test/bewertungFixtures';
 import { rechteSeed } from '../test/rollenFixtures';

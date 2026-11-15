@@ -4,7 +4,8 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { merkeAusloeser } from '../../designsystem/components/shell/ueberlagerung';
-import { api, type OrtAktionen, type OrtsbaumAmStichtag, type StandortAmStichtag } from '../api';
+import { type OrtAktionen, type OrtsbaumAmStichtag, type StandortAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import {
   FLAECHE_FEHLT,
   KNOPF_BEREICH_ANLEGEN,

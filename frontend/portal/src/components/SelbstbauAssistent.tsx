@@ -3,7 +3,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
-import { api, ApiError, type GeraetesucheBezug, type SiteComponents, type SiteComponentTemplate } from '../api';
+import { ApiError, type GeraetesucheBezug, type SiteComponents, type SiteComponentTemplate } from '../api';
+import { api } from '../apiVoll';
 import { prefill } from '../eigeneVorlagen';
 import { AUTO_TEST_MS, neueKomponente } from '../anlegenFlow';
 import {

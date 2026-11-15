@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type Energieziel, type Kennzahl } from '../api';
+import { type Energieziel, type Kennzahl } from '../api';
+import { api } from '../apiVoll';
 import type { BezugsbasisVergleichZeitraum } from '../bezugsbasisVergleich';
 import * as B from '../energiezielBild';
 import * as Z from '../energieziele';

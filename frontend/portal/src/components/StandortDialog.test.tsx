@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../api';
+import { ApiError } from '../api';
+import { api } from '../apiVoll';
 import { SATZ_ADRESSE, SATZ_NAME_FEHLT } from '../standorte';
 import {
   ahrenbergHeute,

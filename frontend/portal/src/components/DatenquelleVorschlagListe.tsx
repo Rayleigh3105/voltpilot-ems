@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type UemsDatenquelleBestaetigt, type UemsDatenquelleVorschlagsliste } from '../api';
+import { type UemsDatenquelleBestaetigt, type UemsDatenquelleVorschlagsliste } from '../api';
+import { api } from '../apiVoll';
 import {
   DQ_FEHLER,
   DQ_GEAENDERT,

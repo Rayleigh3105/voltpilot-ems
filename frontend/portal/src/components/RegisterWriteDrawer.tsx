@@ -6,9 +6,9 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  ApiError, api,
-  type RegisterWriteEvent, type RegisterWriteOutcome, type RegisterWriteTarget,
+  ApiError, type RegisterWriteEvent, type RegisterWriteOutcome, type RegisterWriteTarget,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   EEPROM_HINWEIS,
   LESE_DAUER_HINWEIS,

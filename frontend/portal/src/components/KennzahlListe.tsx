@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Kennzahl, type KennzahlPeriodeArt } from '../api';
+import { ApiError, type Kennzahl, type KennzahlPeriodeArt } from '../api';
+import { api } from '../apiVoll';
 import {
   ANZAHL_VERLAUF,
   amStandort,

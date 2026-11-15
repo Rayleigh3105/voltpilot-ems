@@ -29,7 +29,7 @@ import '../src/components/SoVerdient.css';
 import '../src/components/Verlauf.css';
 import '../src/components/BereichTabs.css';
 
-import { api } from '../src/api';
+import { api } from '../src/apiVoll';
 import type { Site } from '../src/api';
 import { ErloeseSection } from '../src/pages/ErloeseSection';
 import { MesswerteSection } from '../src/pages/MesswerteSection';

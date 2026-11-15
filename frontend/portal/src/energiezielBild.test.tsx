@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type Energieziel, type EnergiezielStand, type Kennzahl } from './api';
+import { type Energieziel, type EnergiezielStand, type Kennzahl } from './api';
+import { api } from './apiVoll';
 import { EnergiezielSetzenFuehrung, fruehesterBeginn, zeitraumWahl } from './components/EnergiezielSetzenFuehrung';
 import * as B from './energiezielBild';
 import * as Z from './energieziele';

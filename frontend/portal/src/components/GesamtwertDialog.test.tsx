@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, type MeasurementCatalogPoint } from '../api';
+import { type MeasurementCatalogPoint } from '../api';
+import { api } from '../apiVoll';
 import { GesamtwertDialog } from './GesamtwertDialog';
 import { SummenwertAssistent } from './SummenwertAssistent';
 import { setSelbstauskunft } from '../rollen';

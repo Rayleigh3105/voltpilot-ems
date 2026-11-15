@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type EnergiemanagementMappe } from '../api';
+import { type EnergiemanagementMappe } from '../api';
+import { api } from '../apiVoll';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { EinsichtBlatt } from '../components/nachweisen/EinsichtBlatt';
 import { NwKopf } from '../components/nachweisen/NwKopf';

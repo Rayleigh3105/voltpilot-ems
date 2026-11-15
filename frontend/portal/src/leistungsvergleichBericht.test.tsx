@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type BerichtAnlegen } from './api';
+import { ApiError, type BerichtAnlegen } from './api';
+import { api } from './apiVoll';
 import { anlegenAnfrage, anlegenFehler, anlegenPruefen, vorlageKarten, type BerichtRechte } from './berichtDialoge';
 import { BerichtAnlegenDialog } from './components/BerichtAnlegenDialog';
 import { LeistungsvergleichBericht } from './components/LeistungsvergleichBericht';

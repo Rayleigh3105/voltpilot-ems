@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type BerichtDetail, type BerichtEntwurf, type BerichtVergleich } from '../api';
+import { type BerichtDetail, type BerichtEntwurf, type BerichtVergleich } from '../api';
+import { api } from '../apiVoll';
 import {
   abweichungenAnzahl,
   ERNEUT,

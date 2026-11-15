@@ -2,7 +2,6 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import {
-  api,
   type Device,
   type EdgeVersion,
   type ProbeAntwort,
@@ -10,6 +9,7 @@ import {
   type UemsDatenquellePruefergebnis,
   type WagoSollLesung,
 } from '../api';
+import { api } from '../apiVoll';
 import { anschlussGespeichert, UEMS_ANSCHLUSS } from '../glossar';
 import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';

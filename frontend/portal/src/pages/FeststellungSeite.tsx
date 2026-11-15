@@ -1,7 +1,8 @@
 import { merkeAbruf, tagDesAugenblicks } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, ApiError, type FeststellungMitVerlauf, type InternesAudit, type Massnahme } from '../api';
+import { ApiError, type FeststellungMitVerlauf, type InternesAudit, type Massnahme } from '../api';
+import { api } from '../apiVoll';
 import * as B from '../auditBild';
 import * as A from '../auditFeststellung';
 import { EinsichtGruppe, EinsichtRecht } from '../components/EinsichtRecht';

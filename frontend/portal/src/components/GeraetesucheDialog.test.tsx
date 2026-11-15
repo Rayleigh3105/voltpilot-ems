@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as auth from '../auth';
-import { api, ApiError, type ProbeAntwort } from '../api';
+import { ApiError, type ProbeAntwort } from '../api';
+import { api } from '../apiVoll';
 import type { Geraetesuche, GeraetesucheFehler } from '../geraetesuche';
 import {
   GS_BOX_ID,

@@ -16,7 +16,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type EinstellungEingetragen, type EinstellungFassung } from '../api';
+import { ApiError, type EinstellungEingetragen, type EinstellungFassung } from '../api';
+import { api } from '../apiVoll';
 import {
   aenderungPruefen,
   ANWENDUNG_WAHL,

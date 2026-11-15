@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type InternesAuditMitVerlauf, type InternesAuditprogramm } from '../api';
+import { type InternesAuditMitVerlauf, type InternesAuditprogramm } from '../api';
+import { api } from '../apiVoll';
 import * as A from '../auditFeststellung';
 import { planVorschlag, unabhaengigSatz, wannOptionen, type UnabhaengigWahl } from '../auditPlanen';
 import * as E from '../energiemanagementPortal';

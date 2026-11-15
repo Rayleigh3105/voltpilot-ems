@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Energieziel, type EnergiezielStand, type Massnahme } from '../api';
+import { type Energieziel, type EnergiezielStand, type Massnahme } from '../api';
+import { api } from '../apiVoll';
 import * as B from '../energiezielBild';
 import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';

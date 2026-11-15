@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Kennzahl, type KennzahlAuswertung } from '../api';
+import { ApiError, type Kennzahl, type KennzahlAuswertung } from '../api';
+import { api } from '../apiVoll';
 import { LEER_SATZ, OHNE_BASISWERT } from '../bezugsbasisAnlegen';
 import { OHNE_GRUNDLAGE } from '../bezugsbasisModell';
 import { FEHLER_IM_BEREICH } from './Fehlergrenze';

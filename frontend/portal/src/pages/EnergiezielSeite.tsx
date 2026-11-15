@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Energieziel, type EnergiezielStand, type Massnahme, type VorgangAnstoss } from '../api';
+import { ApiError, type Energieziel, type EnergiezielStand, type Massnahme, type VorgangAnstoss } from '../api';
+import { api } from '../apiVoll';
 import { AuffaelligkeitHinweis } from '../components/AuffaelligkeitHinweis';
 import { EnergiezielBeendenDialog, EnergiezielBewertenDialog } from '../components/EnergiezielDialoge';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';

@@ -2,7 +2,8 @@ import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioCockpit } from './PortfolioCockpit';
-import { api, type Earnings, type Overview, type OverviewSite, type Site } from '../api';
+import { type Earnings, type Overview, type OverviewSite, type Site } from '../api';
+import { api } from '../apiVoll';
 
 /**
  * Die Übersicht der Flotten-Ebene — Stufe 4 (E5), seit „Meine Anlagen neu"

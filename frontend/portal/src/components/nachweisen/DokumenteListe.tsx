@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { api, type EnergiemanagementDokumentKurz } from '../../api';
+import { type EnergiemanagementDokumentKurz } from '../../api';
+import { api } from '../../apiVoll';
 import * as E from '../../energiemanagementPortal';
 import * as N from '../../nachweisDokumente';
 import { useRollen } from '../../rollen';

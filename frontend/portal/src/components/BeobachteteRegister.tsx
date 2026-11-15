@@ -6,7 +6,6 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Switch } from '../../designsystem/components/forms/Switch';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   downloadMeasurementExport,
   type MeasurementBudgetEstimate,
   type MeasurementCatalogPoint,
@@ -16,6 +15,7 @@ import {
   type MeasurementSelectionState,
   type MesskanalListe,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   HINZU,
   LEER,

@@ -2,7 +2,8 @@ import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { LadevorgaengeSection } from './LadevorgaengeSection';
-import { api, type Device, type Site } from '../api';
+import { type Device, type Site } from '../api';
+import { api } from '../apiVoll';
 import type { SiteCharging } from '../ladepunkte';
 
 const site: Site = {

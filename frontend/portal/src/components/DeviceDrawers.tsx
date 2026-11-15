@@ -8,7 +8,6 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   deviceLiveStatus,
   deviceWaitedTooLong,
@@ -18,6 +17,7 @@ import {
   type Site,
   type UemsDatenquelle,
 } from '../api';
+import { api } from '../apiVoll';
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
 import { VpPicker } from './VpPicker';

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../../api';
+import { ApiError } from '../../api';
+import { api } from '../../apiVoll';
 import { benutzerApi } from '../../benutzer';
 import { VOKABULARE } from '../../energiemanagement';
 import { mappeRoute } from '../../nav';

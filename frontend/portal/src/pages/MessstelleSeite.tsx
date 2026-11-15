@@ -9,7 +9,6 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   ApiError,
   type Ablesung,
   type AblesungAntwort,
@@ -25,6 +24,7 @@ import {
   type Prozess,
   type StandorteAmStichtag,
 } from '../api';
+import { api } from '../apiVoll';
 import { MessstelleDialog } from '../components/MessstelleDialog';
 import { QuelleBindenDialog, type QuelleBindenZiel } from '../components/QuelleBindenDialog';
 import { ZaehlerwechselVerlauf } from '../components/ZaehlerwechselVerlauf';

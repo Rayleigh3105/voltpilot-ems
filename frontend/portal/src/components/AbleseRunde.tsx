@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
+import { ApiError, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
+import { api } from '../apiVoll';
 import {
   FERTIG,
   fortschritt,

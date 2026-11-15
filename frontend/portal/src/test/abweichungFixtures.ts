@@ -6,7 +6,8 @@
  * an KZ-0005 (vorläufig, abgeschlossen „erklärt“). Zahlen, Sätze und Fristen stellt hier die Fixture — das Portal
  * rechnet keine. Die Ablehnungen spielen die Regeln der Route nach (einmalig, Begründung, aktives Konto, Maßnahme Pflicht).
  */
-import { api, ApiError, type Abweichung, type AbweichungEintrag, type AbweichungVerweis, type Auffaelligkeit } from '../api';
+import { ApiError, type Abweichung, type AbweichungEintrag, type AbweichungVerweis, type Auffaelligkeit } from '../api';
+import { api } from '../apiVoll';
 import { BB_IDS } from './bezugsbasisFixtures';
 import { R2_DEZEMBER } from './bezugsbasisVergleichFixtures';
 import { kontenAhrenberg } from './massnahmeFixtures';

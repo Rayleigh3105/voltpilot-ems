@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   ApiError,
   type ControlStatus,
   type CurtailmentStatus,
@@ -17,6 +16,7 @@ import {
   type UemsGemeinsameSteuerungZustand,
   type UemsGeraet,
 } from '../api';
+import { api } from '../apiVoll';
 import { gemeinsameSteuerungAendern, wegDesWechsels } from '../uemsDatenquelle';
 import type { SiteCharging } from '../ladepunkte';
 import {

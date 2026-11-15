@@ -3,7 +3,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type Bezugsgroesse, type EnergieTraeger, type Energieeinsatz, type EnergieeinsatzVorschlag, type Prozess } from '../api';
+import { type Bezugsgroesse, type EnergieTraeger, type Energieeinsatz, type EnergieeinsatzVorschlag, type Prozess } from '../api';
+import { api } from '../apiVoll';
 import { benutzerApi, type BenutzerEintrag } from '../benutzer';
 import {
   ABBRECHEN,

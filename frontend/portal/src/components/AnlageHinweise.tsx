@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type BoxGeloestHinweis, type Site, type StandortBezug } from '../api';
+import { ApiError, type BoxGeloestHinweis, type Site, type StandortBezug } from '../api';
+import { api } from '../apiVoll';
 import { adresseAusTreffer, adresseText, SATZ_NICHT_GEFUNDEN, ZEITZONE_DES_LANDES } from '../anlageOrt';
 import { ersteWerteErledigt } from '../ersteWerte';
 import { einstellungenHash } from '../settingsNav';

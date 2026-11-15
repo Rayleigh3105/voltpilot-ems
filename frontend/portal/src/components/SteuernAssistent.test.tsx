@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type Netzanschluss, type SiteEntity } from '../api';
+import { type Netzanschluss, type SiteEntity } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { rechteSeed } from '../test/rollenFixtures';

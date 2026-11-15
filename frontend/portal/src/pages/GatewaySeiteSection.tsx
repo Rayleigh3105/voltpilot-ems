@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   type Device,
   type Site,
   type SiteEntities,
@@ -11,6 +10,7 @@ import {
   type UemsDatenquelle,
   type UemsGeraet,
 } from '../api';
+import { api } from '../apiVoll';
 import { aufbauDerAnlage } from '../boxGeraete';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';

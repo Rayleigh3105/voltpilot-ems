@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type EnergieeinsatzEinstufungFassung, type EnergieeinsatzMessstelle, type MessmittelAngaben } from '../api';
+import { type EnergieeinsatzEinstufungFassung, type EnergieeinsatzMessstelle, type MessmittelAngaben } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_MESSMITTEL, UEMS_NICHT_ERHOBEN, UEMS_PRUEFAUFGABE } from '../glossar';
 import { messmittelSatz, ohneAngabe } from '../uemsMessmittel';
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Massnahme, type MassnahmeListe } from '../api';
+import { type Massnahme, type MassnahmeListe } from '../api';
+import { api } from '../apiVoll';
 import * as M from '../massnahmen';
 import * as B from '../massnahmenBild';
 import { useRollen } from '../rollen';

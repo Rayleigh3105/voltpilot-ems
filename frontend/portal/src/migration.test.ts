@@ -1764,7 +1764,8 @@ describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () =>
   it('verwendet die Rechte-Weiche und fügt für O18 weder Seite noch Navigation hinzu', () => {
     // Seit dem Nachzug „Steuerung neu“ wohnt der Rahmen im Rahmen-Blatt des Reiters Laden (Paket 1c bringt die Prüfung dorthin).
     const karte = readFileSync(join(SRC, 'steuerung/LadenReiter.tsx'), 'utf8');
-    const api = readFileSync(join(SRC, 'api.ts'), 'utf8');
+    // Die Route steht seit Performance Welle 3 in `apiVoll.ts` (Routen außerhalb des ersten Bilds).
+    const api = readFileSync(join(SRC, 'api.ts'), 'utf8') + readFileSync(join(SRC, 'apiVoll.ts'), 'utf8');
     const nav = readFileSync(join(SRC, 'ebenenNav.ts'), 'utf8') + readFileSync(join(SRC, 'nav.ts'), 'utf8');
     expect(karte).toContain('<Recht aktion="grenze.eintragen">');
     expect(api).toContain('/api/v1/sites/${siteId}/charging-frame');

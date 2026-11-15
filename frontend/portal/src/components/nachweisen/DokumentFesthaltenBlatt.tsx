@@ -2,13 +2,13 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
-  api,
   type EnergiemanagementAusschluss,
   type EnergiemanagementDokument,
   type EnergiemanagementFassungEntwerfen,
   type EnergiemanagementPerson,
   type StandortAmStichtag,
 } from '../../api';
+import { api } from '../../apiVoll';
 import { WOERTER } from '../../energiemanagement';
 import * as E from '../../energiemanagementPortal';
 import * as N from '../../nachweisDokumente';

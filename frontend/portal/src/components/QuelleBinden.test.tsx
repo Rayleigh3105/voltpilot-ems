@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type MesskanalListe } from '../api';
+import { type MesskanalListe } from '../api';
+import { api } from '../apiVoll';
 import { KEINE_VERGLEICHSQUELLE, OHNE_BEWERTUNG, quelleKarte } from '../quelleBinden';
 import { komponentenHalle1, registerAntwort } from '../test/messstelleDialogFixtures';
 import { JETZT, JETZT_NACH_WECHSEL, K1_ID, K3_ID, kanaeleK1, kanaeleK3, quellenMs01, quellenMs06 } from '../test/quelleBindenFixtures';

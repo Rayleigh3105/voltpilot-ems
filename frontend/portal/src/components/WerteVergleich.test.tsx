@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type MessstelleWerte, type MessstelleWerteRaster } from '../api';
+import { type MessstelleWerte, type MessstelleWerteRaster } from '../api';
+import { api } from '../apiVoll';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
 import {
   MS_11,

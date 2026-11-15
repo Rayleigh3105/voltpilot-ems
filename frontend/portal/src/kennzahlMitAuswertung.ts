@@ -1,4 +1,5 @@
-import { api, ApiError, type Kennzahl } from './api';
+import { ApiError, type Kennzahl } from './api';
+import { api } from './apiVoll';
 
 /**
  * Eine Kennzahl für ihre Seite und die Ebene ihrer Bezugsbasis: mit Auswertung (`?mit=auswertung`). Scheitert nur die

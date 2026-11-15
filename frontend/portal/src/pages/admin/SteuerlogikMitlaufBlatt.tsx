@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
-import { api, type SteuerlogikBlatt, type SteuerlogikLogik, type SteuerlogikProtokoll, type SteuerlogikVorschau } from '../../api';
+import { type SteuerlogikBlatt, type SteuerlogikLogik, type SteuerlogikProtokoll, type SteuerlogikVorschau } from '../../api';
+import { api } from '../../apiVoll';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import {
   ablehnungSaetze,

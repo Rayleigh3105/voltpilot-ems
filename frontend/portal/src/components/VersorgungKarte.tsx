@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type StandortAmStichtag, type Versorgung } from '../api';
+import { type StandortAmStichtag, type Versorgung } from '../api';
+import { api } from '../apiVoll';
 import { ausserhalbSatz, versorgungZeilen } from '../versorgung';
 import './VersorgungKarte.css';
 

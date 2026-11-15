@@ -3,7 +3,8 @@ import { Recht } from '../components/Recht';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Bilanz, type Funktionen, type Site } from '../api';
+import { ApiError, type Bilanz, type Funktionen, type Site } from '../api';
+import { api } from '../apiVoll';
 import {
   ENERGIEBILANZ_UNTERZEILE,
   HERKUNFT_EINGAENGE,

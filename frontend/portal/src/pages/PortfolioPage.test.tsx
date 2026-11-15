@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PortfolioPage } from './PortfolioPage';
-import { api, type Overview, type OverviewSite, type Site, type StandorteAmStichtag } from '../api';
+import { type Overview, type OverviewSite, type Site, type StandorteAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type MeasurementComparisonOption, type MeasurementHistory, type MeasurementRange } from '../api';
+import { type MeasurementComparisonOption, type MeasurementHistory, type MeasurementRange } from '../api';
+import { api } from '../apiVoll';
 import { useEChart } from '../useEChart';
 import { VpPicker } from './VpPicker';
 import './Messwerte.css';

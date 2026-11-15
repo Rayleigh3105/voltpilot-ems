@@ -3,12 +3,12 @@ import { Button } from "../../designsystem/components/core/Button";
 import { Input } from "../../designsystem/components/forms/Input";
 import { Modal } from "../../designsystem/components/shell/Modal";
 import {
-  api,
   ApiError,
   type BerechneteMessstelleAnlegen,
   type Messstelle,
   type MessstelleGroesse,
 } from "../api";
+import { api } from "../apiVoll";
 import { alsAnfrage, FAKTOR_ANTEIL_HINWEIS, leererFormelEntwurf, type AssistentTyp } from '../formelAssistent';
 import { FormelMessstellen } from './FormelMessstellen';
 import { hauptgroesse } from '../uemsMessstelleFormel';

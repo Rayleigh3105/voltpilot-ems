@@ -11,7 +11,8 @@
  */
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type UemsGeraet } from '../api';
+import { type UemsGeraet } from '../api';
+import { api } from '../apiVoll';
 import { geraetZuKomponenten } from '../uemsProtokoll';
 import { PROTOKOLL_LABEL } from './ProtokollDialog';
 import { ProtokollListe, useProtokoll } from './ProtokollListe';

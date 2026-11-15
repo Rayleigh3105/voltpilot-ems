@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { api, type MeasurementComparisonOption, type MeasurementHistory } from '../api';
+import { type MeasurementComparisonOption, type MeasurementHistory } from '../api';
+import { api } from '../apiVoll';
 import { SiteMeasurementComparison } from './SiteMeasurementComparison';
 
 vi.mock('../useEChart', () => ({ useEChart: () => () => undefined }));

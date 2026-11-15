@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type MessstelleRegisterZeile, type MessstelleVerteilungAnteil } from '../api';
+import { type MessstelleRegisterZeile, type MessstelleVerteilungAnteil } from '../api';
+import { api } from '../apiVoll';
 import { MAX_TERME } from '../gesamtwert';
 import { messstellenImKontext, messstellenTerm, type AssistentTyp, type FormelTerm } from '../formelAssistent';
 import { VpPicker } from './VpPicker';

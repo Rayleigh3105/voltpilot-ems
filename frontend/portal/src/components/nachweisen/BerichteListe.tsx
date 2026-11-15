@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { api, type Bericht } from '../../api';
+import { type Bericht } from '../../api';
+import { api } from '../../apiVoll';
 import { BEWERTUNG_VORLAGE, darf } from '../../berichtDialoge';
 import { amStandort, LADEN, LEER, LEER_STANDORT, listenFehler } from '../../berichtSeite';
 import { STANDORT_BERICHTE } from '../../ebenenNav';

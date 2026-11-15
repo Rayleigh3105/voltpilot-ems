@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { api, ApiError, type Device } from '../../api';
+import { ApiError, type Device } from '../../api';
+import { api } from '../../apiVoll';
 import { keycloak } from '../../auth';
 import { useGemeinsameSteuerung } from '../../components/GemeinsameSteuerungKarte';
 import { setSelbstauskunft } from '../../rollen';

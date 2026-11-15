@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { StrompreisStrip } from './StrompreisStrip';
-import { api, type PricePoint, type ScheduleSlot } from '../api';
+import { type PricePoint, type ScheduleSlot } from '../api';
+import { api } from '../apiVoll';
 import { PROVENIENZ } from '../historieWelten';
 import { LEER_TEXT } from '../strompreis';
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
-import { api, type EnergiemanagementVerantwortung as Verantwortung } from '../api';
+import { type EnergiemanagementVerantwortung as Verantwortung } from '../api';
+import { api } from '../apiVoll';
 import { merkeAbruf, routenHeute } from '../routenUhr';
 import * as E from '../energiemanagementPortal';
 import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_WER_IST_WOFUER_VERANTWORTLICH } from '../glossar';

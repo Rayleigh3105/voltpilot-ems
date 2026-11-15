@@ -6,7 +6,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   type BewertungMessabdeckungOrt,
   type Energieeinsatz,
   type Messbedarf,
@@ -16,6 +15,7 @@ import {
   type OrtsbaumAmStichtag,
   type StandorteAmStichtag,
 } from '../api';
+import { api } from '../apiVoll';
 import { laeuft } from '../bewertung';
 import { groesseOptionen, ortHinweis, ortOptionen, ortWahlen, richtungOptionen, type OrtWahl } from '../messstelleDialog';
 import {

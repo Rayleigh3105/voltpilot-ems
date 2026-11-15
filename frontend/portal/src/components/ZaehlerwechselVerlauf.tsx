@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { wechselMarken } from '../zaehlerwechsel';
 import { VORGABE_ZEITZONE } from '../uemsZustand';
 

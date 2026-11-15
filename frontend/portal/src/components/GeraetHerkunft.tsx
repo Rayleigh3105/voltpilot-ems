@@ -24,12 +24,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   type EinstellungEingetragen,
   type GeraetEinstellungen,
   type Messkanal,
   type UemsGeraet,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   einstellungGruppen,
   eingetragenText,

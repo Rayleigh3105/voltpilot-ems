@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type Device, type EdgeVersion, type ProbeAntwort, type UemsDatenquelle, type UemsDatenquellePruefergebnis } from '../api';
+import { type Device, type EdgeVersion, type ProbeAntwort, type UemsDatenquelle, type UemsDatenquellePruefergebnis } from '../api';
+import { api } from '../apiVoll';
 import { FIXTURE_IDS } from '../test/standorteFixtures';
 import { WagoAssistent } from './WagoAssistent';
 

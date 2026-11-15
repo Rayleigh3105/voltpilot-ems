@@ -9,7 +9,6 @@ import './rollen-fixture';
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
-  api,
   type FunktionStandort,
   type AnlageUmzug,
   type BezugsdatenZuordnung,
@@ -22,6 +21,7 @@ import {
   type StandortAusfall,
   type UemsDatenquelle,
 } from '../src/api';
+import { api } from '../src/apiVoll';
 import { keycloak } from '../src/auth';
 import { showAddAnlageButton } from '../src/addAnlage';
 import { ohneGeld } from '../src/anlageGeld';

@@ -4,12 +4,12 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   type Bezugsgroesse,
   type BezugsgroesseStammdatum,
   type BezugsgroesseWert,
   type BezugsKanalbindung as Kanalbindung,
 } from '../api';
+import { api } from '../apiVoll';
 import { useRollen } from '../rollen';
 import { UEMS_VERLAUF_PROZENT } from '../glossar';
 import { kanalRegelText, wertKennzeichen } from '../bezugsKanal';

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { ahrenbergRangliste } from '../test/bewertungFixtures';
 import { EinstufungDialog } from './BewertungEntscheidungen';
 

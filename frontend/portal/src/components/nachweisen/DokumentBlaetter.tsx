@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } f
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
-  api,
   type EnergiemanagementAusschluss,
   type EnergiemanagementBeleg,
   type EnergiemanagementDokument,
@@ -12,6 +11,7 @@ import {
   type EnergiemanagementPersonKurz,
   type StandortAmStichtag,
 } from '../../api';
+import { api } from '../../apiVoll';
 import * as E from '../../energiemanagementPortal';
 import { SAETZE } from '../../energiemanagement';
 import * as N from '../../nachweisDokumente';

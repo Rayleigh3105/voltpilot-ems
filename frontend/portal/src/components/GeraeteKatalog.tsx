@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type SiteComponentTemplate } from '../api';
+import { type SiteComponentTemplate } from '../api';
+import { api } from '../apiVoll';
 import type { ComponentTemplate } from '../komponentenAssistent';
 import {
   KATEGORIE_SYMBOL,

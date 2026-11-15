@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type PricePoint, type ScheduleSlot, type TarifArt } from '../api';
+import { type PricePoint, type ScheduleSlot, type TarifArt } from '../api';
+import { api } from '../apiVoll';
 import { chartTheme } from '../chartTheme';
 import { PROVENIENZ } from '../provenienz';
 import type { PlanWordingKind } from '../schedule';

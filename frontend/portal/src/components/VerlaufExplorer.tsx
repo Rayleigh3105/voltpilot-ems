@@ -4,7 +4,6 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
-  api,
   ApiError,
   type Anlagensteuerung,
   type AnlagensteuerungVerlauf,
@@ -15,6 +14,7 @@ import {
   type MessstelleVerlauf,
   type Site,
 } from '../api';
+import { api } from '../apiVoll';
 import { SUMMENWERT } from '../glossar';
 import { ladeSiteGesamtwerte } from '../gesamtwertQuelle';
 import { erzeugerGeraetId, erzeugerGruppe, istErzeugerZiel, seriesFromErzeugerVerlauf } from '../anlagensteuerung';

@@ -5,7 +5,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type Messkanal,
   type Messstelle,
@@ -14,6 +13,7 @@ import {
   type OrtsbaumAmStichtag,
   type StandorteAmStichtag,
 } from '../api';
+import { api } from '../apiVoll';
 import { jetztEingabe, kanalZeile, zeitpunktAus } from '../geraetEinstellungen';
 import { UEMS_HAUPTGROESSE, UEMS_NEBENGROESSE } from '../glossar';
 import {

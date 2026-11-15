@@ -3,7 +3,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import {
-  api,
   ApiError,
   neueAnfrageKennung,
   type PlantKind,
@@ -13,6 +12,7 @@ import {
   type TarifArt,
   type Unternehmen,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   adresseAusTreffer,
   adresseText,

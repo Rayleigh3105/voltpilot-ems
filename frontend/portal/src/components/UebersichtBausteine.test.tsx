@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type Funktionen } from '../api';
+import { type Funktionen } from '../api';
+import { api } from '../apiVoll';
 import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
 import { werkAhrenberg } from '../test/standorteFixtures';
 import { ortsbaumAhrenberg } from '../test/ortsbaumFixtures';

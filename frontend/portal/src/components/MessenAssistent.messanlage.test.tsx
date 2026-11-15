@@ -1,7 +1,8 @@
 import { sichtbareListe } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type Device, type EdgeVersion, type Site, type SiteComponents } from '../api';
+import { type Device, type EdgeVersion, type Site, type SiteComponents } from '../api';
+import { api } from '../apiVoll';
 import { steuerGeldWoerter, ZU_DEN_MESSSTELLEN } from '../anlegeNurMessen';
 import { MESSANLAGE_ANLEGEN, type EntwurfSpeicher } from '../messenAssistent';
 import {

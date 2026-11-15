@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Betriebsart, type Funktionen } from '../api';
+import { ApiError, type Betriebsart, type Funktionen } from '../api';
+import { api } from '../apiVoll';
 import { LADEPUNKT_DAUERN, boostDauer, type SiteCharging } from '../ladepunkte';
 import { useRollen } from '../rollen';
 import {

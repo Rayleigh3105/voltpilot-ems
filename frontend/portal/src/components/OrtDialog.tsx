@@ -3,7 +3,8 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'rea
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type Nutzung, type OrtsbaumAmStichtag } from '../api';
+import { ApiError, type Nutzung, type OrtsbaumAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import {
   bereichZiele,
   DIREKT_AM_STANDORT,

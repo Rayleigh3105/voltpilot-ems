@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AnlageHinweise from './AnlageHinweise';
-import { api, type Site, type StandortAmStichtag } from '../api';
+import { type Site, type StandortAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import { ersteWerteOffen, merkeErsteWerte } from '../ersteWerte';
 
 vi.mock('leaflet', () => {

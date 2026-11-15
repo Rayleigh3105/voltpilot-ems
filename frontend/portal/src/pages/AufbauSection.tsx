@@ -3,7 +3,6 @@ import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   type ComponentTemplate,
   type Device,
   type EntityStrategy,
@@ -19,6 +18,7 @@ import {
   type UemsDatenquelle,
   type UemsGeraet,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   CONTROL_BADGE,
   componentActions,

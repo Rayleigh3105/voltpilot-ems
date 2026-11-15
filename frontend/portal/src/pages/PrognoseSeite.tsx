@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type ForecastResponse,
   type History,
@@ -11,6 +10,7 @@ import {
   type Site,
   type WeatherForecast,
 } from '../api';
+import { api } from '../apiVoll';
 import { VerlaufKopf } from '../components/HistorieWelt';
 import {
   PrognoseAntwort,

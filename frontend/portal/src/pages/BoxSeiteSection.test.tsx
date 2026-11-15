@@ -5,7 +5,6 @@ import { BoxSeiteSection } from './BoxSeiteSection';
 import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
 import * as auth from '../auth';
 import {
-  api,
   type CommandHistory,
   type Device,
   type RegisterWriteTarget,
@@ -16,6 +15,7 @@ import {
   type UemsDatenquelle,
   type UemsGeraet,
 } from '../api';
+import { api } from '../apiVoll';
 import { consumersApi } from '../consumers/consumersApi';
 import { gatewayForm, goreForm } from '../test/boxGeraeteFixtures';
 import { gsAktivitaet, gsVerlauf } from '../test/geraetesucheFixtures';

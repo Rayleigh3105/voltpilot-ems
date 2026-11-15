@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { api, type EnergiemanagementPerson } from '../../api';
+import { type EnergiemanagementPerson } from '../../api';
+import { api } from '../../apiVoll';
 import { seitenSprung, sprungKlick, type Sprung } from '../../entscheid';
 import { STARTWERTE } from '../../energiemanagement';
 import * as E from '../../energiemanagementPortal';

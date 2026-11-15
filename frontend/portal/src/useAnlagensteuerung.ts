@@ -7,7 +7,8 @@
  * Verwaltungsstand (`LIST_POLL_MS`); verdeckte Tabs fragen nicht.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type AnlagensteuerungListe, type AnlagensteuerungWerte, type NetzVermarktung } from './api';
+import { type AnlagensteuerungListe, type AnlagensteuerungWerte, type NetzVermarktung } from './api';
+import { api } from './apiVoll';
 import { LIST_POLL_MS, LIVE_POLL_MS } from './pollCadence';
 import { useFreshnessPoll } from './useFreshnessPoll';
 

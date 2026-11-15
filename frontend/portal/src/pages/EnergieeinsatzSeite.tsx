@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type BewertungMessabdeckung,
   type BewertungRangliste,
@@ -11,6 +10,7 @@ import {
   type EnergieeinsatzAenderung,
   type EnergieeinsatzEinstufungFassung,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   ablehnung,
   BEENDEN_KNOPF,

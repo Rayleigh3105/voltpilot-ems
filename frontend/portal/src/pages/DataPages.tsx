@@ -3,7 +3,6 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   ONLINE_WINDOW_MS,
   type ControlStatus,
@@ -18,6 +17,7 @@ import {
   type WeatherForecast,
   type ForecastQuality,
 } from '../api';
+import { api } from '../apiVoll';
 import { mittlereMae } from '../prognose';
 import { showTechnicalLayer } from '../rollen';
 import { eurAmount, fmtNum } from '../format';

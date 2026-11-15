@@ -20,7 +20,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
-import { ApiError, api, type SiteComponentTemplate, type SiteComponents } from '../api';
+import { ApiError, type SiteComponentTemplate, type SiteComponents } from '../api';
+import { api } from '../apiVoll';
 import {
   KEINE_ADRESSE,
   kopfSatz,

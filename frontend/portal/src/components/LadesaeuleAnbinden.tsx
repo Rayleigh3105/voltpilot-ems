@@ -3,7 +3,8 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type Device } from '../api';
+import { ApiError, type Device } from '../api';
+import { api } from '../apiVoll';
 import { VpPicker } from './VpPicker';
 import {
   ANBINDEN_ALLOWLIST,

@@ -1,7 +1,6 @@
 import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  api,
   ApiError,
   type ForecastAccuracyPoint,
   type ForecastModelId,
@@ -10,6 +9,7 @@ import {
   type HistoryRange,
   type Site,
 } from '../api';
+import { api } from '../apiVoll';
 import { NBSP } from '../format';
 import { SitePicker } from '../components/SitePicker';
 import { Aufklapper } from '../components/Aufklapper';

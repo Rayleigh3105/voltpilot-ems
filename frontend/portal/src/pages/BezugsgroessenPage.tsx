@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Bezugsflaechen } from '../api';
+import { type Bezugsflaechen } from '../api';
+import { api } from '../apiVoll';
 import { useRollen } from '../rollen';
 import { BegriffAufklapper } from '../components/BegriffAufklapper';
 import { BezugsgroesseAnlegenDialog } from '../components/BezugsgroesseAnlegenDialog';

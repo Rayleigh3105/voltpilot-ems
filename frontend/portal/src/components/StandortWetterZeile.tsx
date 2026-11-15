@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type StandortAmStichtag, type StandortWetter } from '../api';
+import { type StandortAmStichtag, type StandortWetter } from '../api';
+import { api } from '../apiVoll';
 import { standortWetterZeile, WETTER } from '../wetterBezug';
 import './VersorgungKarte.css';
 

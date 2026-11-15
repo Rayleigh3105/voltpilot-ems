@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   type Kostenstelle,
   type KostenstelleEnergiePeriode,
   type MessstelleRegisterZeile,
   type Prozess,
 } from '../api';
+import { api } from '../apiVoll';
 import { BegriffAufklapper } from '../components/BegriffAufklapper';
 import {
   ALLE_NICHT_ABRUFBAR,

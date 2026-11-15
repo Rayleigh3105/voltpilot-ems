@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, type GeraetSummenwert } from "../api";
+import { ApiError, type GeraetSummenwert } from "../api";
+import { api } from "../apiVoll";
 import { RolleAendernDialog } from "./RolleAendernDialog";
 
 export const zeile: GeraetSummenwert = {

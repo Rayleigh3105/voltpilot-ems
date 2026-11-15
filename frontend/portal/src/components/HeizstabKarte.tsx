@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type EdgeVersion, type SiteComponentRow } from '../api';
+import { ApiError, type EdgeVersion, type SiteComponentRow } from '../api';
+import { api } from '../apiVoll';
 import { consumersApi } from '../consumers/consumersApi';
 import type { ManualOverride } from '../consumers/fulfillment';
 import type { ConsumerRuntimeStatus } from '../consumers/status';

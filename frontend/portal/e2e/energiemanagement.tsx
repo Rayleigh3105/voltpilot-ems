@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { api } from '../src/api';
+import { api } from '../src/apiVoll';
 import { benutzerApi } from '../src/benutzer';
 import { keycloak } from '../src/auth';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type EnergiemanagementPersonMitVerlauf, type EnergiemanagementZuordnung } from '../api';
+import { type EnergiemanagementPersonMitVerlauf, type EnergiemanagementZuordnung } from '../api';
+import { api } from '../apiVoll';
 import { merkeAbruf, routenHeute } from '../routenUhr';
 import { EinsichtRecht } from '../components/EinsichtRecht';
 import { PersonAendernDialog } from '../components/EnergiemanagementAufgabeDialoge';

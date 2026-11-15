@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type BerichtDetail, type BerichtEntwurf, type BerichtStand } from '../api';
+import { ApiError, type BerichtDetail, type BerichtEntwurf, type BerichtStand } from '../api';
+import { api } from '../apiVoll';
 import { darf, freigabeAntrag, freigabeVorschau, freigebenErklaerung, freigebenWer, KEINE_RECHTE } from '../berichtDialoge';
 import {
   abschnitte,

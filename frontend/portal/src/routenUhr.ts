@@ -7,7 +7,7 @@
  * `GET /api/v1/verbesserung/uebersicht` (`useRoutenHeute`). Erst ohne jede Antwort gilt der Kalendertag in Berlin.
  */
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api } from './apiVoll';
 import { heute } from './bewertung';
 
 const TAG = /^\d{4}-\d{2}-\d{2}$/;

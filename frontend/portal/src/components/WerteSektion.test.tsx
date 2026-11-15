@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type MessstelleRegisterZeile, type MessstelleWerte, type MessstelleWerteRaster } from '../api';
+import { ApiError, type MessstelleRegisterZeile, type MessstelleWerte, type MessstelleWerteRaster } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_WOCHE_OHNE_ZAHL } from '../glossar';
 import {
   f13Stunden,

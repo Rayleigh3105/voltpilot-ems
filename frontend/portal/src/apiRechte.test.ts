@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, request, setKundenbereich, setTenantOverride } from './api';
+import { request, setKundenbereich, setTenantOverride } from './api';
+import { api } from './apiVoll';
 import { sichtbareListe } from './test/rollenFixtures';
 vi.mock('./auth', () => ({ freshToken: async () => 'test', AuthRedirectError: class extends Error {} }));
 afterEach(() => { vi.unstubAllGlobals(); setTenantOverride(null); setKundenbereich(null); });

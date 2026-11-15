@@ -3,7 +3,8 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type OrtVerschiebenZiel, type OrtVerschiebung } from '../api';
+import { ApiError, type OrtVerschiebenZiel, type OrtVerschiebung } from '../api';
+import { api } from '../apiVoll';
 import {
   ERGEBNIS_TITEL,
   FOLGEN_PRUEFEN,

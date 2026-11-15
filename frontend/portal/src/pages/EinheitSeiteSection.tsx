@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   type AnlagensteuerungListe,
   type AnlagensteuerungVerlauf,
   type Device,
@@ -11,6 +10,7 @@ import {
   type NetzVermarktung,
   type Site,
 } from '../api';
+import { api } from '../apiVoll';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import { GeraetBuehne } from '../components/GeraetBuehne';
 import { GeraetRahmen, type BausteinInhalt, type MenueEintrag } from '../components/GeraetRahmen';

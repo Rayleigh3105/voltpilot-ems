@@ -7,7 +7,6 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { zeitraumAus } from '../anlageEnergiebilanz';
 import {
-  api,
   ApiError,
   type Energieeinsatz,
   type KostenstelleEnergiePeriode,
@@ -16,6 +15,7 @@ import {
   type MessstellenRegister,
   type StandortAusfall,
 } from '../api';
+import { api } from '../apiVoll';
 import { darfAnsehen, darfVerwalten, laeuft } from '../bewertung';
 import '../components/BereichTabs.css';
 import '../components/kacheln/Kacheln.css';

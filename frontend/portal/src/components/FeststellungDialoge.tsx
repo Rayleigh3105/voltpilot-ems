@@ -3,13 +3,13 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   type EnergiemanagementDokumentKurz,
   type FeststellungEintrag,
   type FeststellungErgebnis,
   type FeststellungMitVerlauf,
   type InternesAudit,
 } from '../api';
+import { api } from '../apiVoll';
 import * as A from '../auditFeststellung';
 import { VOKABULARE, WOERTER } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';

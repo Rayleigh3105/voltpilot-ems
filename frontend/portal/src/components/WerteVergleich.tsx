@@ -16,7 +16,8 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type MessstelleGroesse, type MessstelleRegisterZeile, type MessstelleWerte } from '../api';
+import { type MessstelleGroesse, type MessstelleRegisterZeile, type MessstelleWerte } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_VERGLEICH, UEMS_VERGLEICH_KEIN_DELTA, UEMS_VERGLEICH_NICHT_ABRUFBAR, UEMS_VERGLEICH_NUR_EINE_REIHE, UEMS_VERGLEICH_WEITERE } from '../glossar';
 import { type Zeitraum } from '../uemsOberflaechen';
 import {

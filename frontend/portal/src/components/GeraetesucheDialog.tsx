@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, neueAnfrageKennung, type SiteComponentRow, type SiteComponents } from '../api';
+import { ApiError, neueAnfrageKennung, type SiteComponentRow, type SiteComponents } from '../api';
+import { api } from '../apiVoll';
 import type { AufbauKategorie } from '../aufbauBaum';
 import type {
   Geraetesuche,

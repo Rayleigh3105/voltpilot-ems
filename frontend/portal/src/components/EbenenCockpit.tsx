@@ -5,7 +5,6 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
-  api,
   type Betriebsart,
   type ControlStatus,
   type Earnings,
@@ -16,6 +15,7 @@ import {
   type StandorteAmStichtag,
   type StandortZuordnungVorschau as StandortZuordnungVorschauDaten,
 } from '../api';
+import { api } from '../apiVoll';
 import { berlinDay, fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
 import { anlageRoute, aufbauHash, pageRoute, standortAufbauHash, standortRoute, type AufbauNeu, type Route } from '../nav';

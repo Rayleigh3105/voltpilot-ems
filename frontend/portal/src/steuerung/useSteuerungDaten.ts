@@ -12,7 +12,6 @@
 import { liste } from './liste';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  api,
   type ChargingConfig,
   type Funktionen,
   type History,
@@ -30,6 +29,7 @@ import {
   type TelemetryPoint,
   type WeatherForecast,
 } from '../api';
+import { api } from '../apiVoll';
 import type { ConsumerSchedule } from '../consumerSchedule';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';

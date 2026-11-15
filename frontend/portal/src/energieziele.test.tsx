@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from './api';
+import { api } from './apiVoll';
 import { EnergiezielBewertenDialog } from './components/EnergiezielDialoge';
 import { ebenenAktiv, ebenenBereiche, EBENEN_SEITEN, type EbenenLesemodell } from './ebenenNav';
 import * as B from './energiezielBild';

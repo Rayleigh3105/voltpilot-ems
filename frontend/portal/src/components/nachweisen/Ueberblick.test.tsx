@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Selbstauskunft } from '../../api';
+import { ApiError, type Selbstauskunft } from '../../api';
+import { api } from '../../apiVoll';
 import { energiemanagementRoute, pageRoute } from '../../nav';
 import { setSelbstauskunft } from '../../rollen';
 import { energiemanagementBuehne } from '../../test/energiemanagementFixtures';

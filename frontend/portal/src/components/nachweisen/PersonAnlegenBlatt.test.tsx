@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../../api';
+import { ApiError } from '../../api';
+import { api } from '../../apiVoll';
 import { setSelbstauskunft } from '../../rollen';
 import { energiemanagementBuehne } from '../../test/energiemanagementFixtures';
 import { rechteSeed } from '../../test/rollenFixtures';

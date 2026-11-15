@@ -5,7 +5,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type MessmittelAngaben } from '../api';
+import { type MessmittelAngaben } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_MESSMITTEL, UEMS_NICHT_ERHOBEN } from '../glossar';
 import {
   blattZeilen,

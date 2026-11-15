@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, type BezugsdatenZuordnung } from './api';
+import { type BezugsdatenZuordnung } from './api';
+import { api } from './apiVoll';
 vi.mock('./auth', () => ({ freshToken: async () => 'test', AuthRedirectError: class extends Error {} }));
 afterEach(() => vi.unstubAllGlobals());
 it('IP-9 verwendet die bestehenden Listen-, Anlege- und Archivierungsrouten', async () => {

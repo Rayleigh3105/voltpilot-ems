@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import {
-  api,
   type FunktionFreigabeZeile,
   type Funktionen,
   type FunktionSteuernErgebnis,
@@ -11,6 +10,7 @@ import {
   type SiteEntity,
   type StandorteAmStichtag,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   BETRIEBSMODELLE,
   SPATER,

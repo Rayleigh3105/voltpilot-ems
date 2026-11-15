@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type Bericht, type Kennzahl, type StandortAmStichtag, type Unternehmen } from '../api';
+import { type Bericht, type Kennzahl, type StandortAmStichtag, type Unternehmen } from '../api';
+import { api } from '../apiVoll';
 import {
   ABBRECHEN,
   ANLEGEN,

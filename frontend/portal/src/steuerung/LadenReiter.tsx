@@ -7,7 +7,8 @@
  */
 import { liste } from './liste';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { api, type ChargingConfig, type Device, type OcppTransactionEconomics } from '../api';
+import { type ChargingConfig, type Device, type OcppTransactionEconomics } from '../api';
+import { api } from '../apiVoll';
 import { Recht } from '../components/Recht';
 import { GeraetBuehne } from '../components/GeraetBuehne';
 import { LADEPUNKT_MODUS, LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';

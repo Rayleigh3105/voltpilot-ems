@@ -3,7 +3,6 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type DatenquelleBudgetBox,
   type DatenquelleBudgetFehler,
@@ -13,6 +12,7 @@ import {
   type UemsDatenquelleBearbeiten,
   type UemsDatenquellePruefergebnis,
 } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_ANSCHLUSS, UEMS_GATEWAY_ANBINDEN } from '../glossar';
 import { budgetAblehnungAnzeige, PROTOKOLLE, type Protokoll } from '../uemsDatenquelle';
 import { datenquelleBoxen, folgenSaetze, pruefungText } from '../datenquelle';

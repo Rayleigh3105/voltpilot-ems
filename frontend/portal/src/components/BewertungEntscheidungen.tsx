@@ -6,13 +6,13 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type BewertungKriterienFassung,
   type BewertungKriterienWerte,
   type BewertungRanglisteEinsatz,
   type EnergieeinsatzEinstufungFassung,
 } from '../api';
+import { api } from '../apiVoll';
 import { ABBRECHEN, einstufungText, prozentText, SPEICHERN, tag, zahlMitEinheit } from '../bewertung';
 import {
   GRUND_WOERTER,

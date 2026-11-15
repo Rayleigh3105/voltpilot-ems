@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { api, ApiError, type AnlageUmzug, type BerichteBetroffen, type StandorteAmStichtag } from '../api';
+import { ApiError, type AnlageUmzug, type BerichteBetroffen, type StandorteAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import { standortDerAnlage } from '../anlageStandort';
 import { FOLGEN_WAEHLEN } from '../anlageUmziehen';
 import { ahrenbergHeute, FIXTURE_IDS, werkAhrenberg } from '../test/standorteFixtures';

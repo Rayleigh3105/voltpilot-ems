@@ -3,7 +3,8 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type AnlageUmzug, type StandorteAmStichtag } from '../api';
+import { ApiError, type AnlageUmzug, type StandorteAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import type { BerichteFolgen } from '../berichteFolgen';
 import {
   FOLGEN_AENDERT_TITEL,

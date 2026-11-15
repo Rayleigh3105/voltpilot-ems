@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type Funktionen } from '../api';
+import { type Funktionen } from '../api';
+import { api } from '../apiVoll';
 import type { ChargePoint, SiteCharging } from '../ladepunkte';
 import { setSelbstauskunft } from '../rollen';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';

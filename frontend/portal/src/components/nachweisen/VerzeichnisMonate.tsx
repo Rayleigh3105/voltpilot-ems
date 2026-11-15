@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
-  api,
   type EnergiemanagementDokumentKurz,
   type EnergiemanagementPerson,
   type EnergiemanagementVerzeichnis,
   type EnergiemanagementVerzeichnisFilter,
   type EnergiemanagementVerzeichnisZeile,
 } from '../../api';
+import { api } from '../../apiVoll';
 import { VOKABULARE, WOERTER } from '../../energiemanagement';
 import * as E from '../../energiemanagementPortal';
 import { UEMS_ENTSCHIEDEN_VON, UEMS_EINGETRAGEN_VON, UEMS_VERZEICHNIS } from '../../glossar';

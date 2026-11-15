@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type EnergiemanagementAufgaben as Stand, type EnergiemanagementPerson, type EnergiemanagementZuordnung } from '../api';
+import { type EnergiemanagementAufgaben as Stand, type EnergiemanagementPerson, type EnergiemanagementZuordnung } from '../api';
+import { api } from '../apiVoll';
 import * as T from '../aufgabenBild';
 import * as E from '../energiemanagementPortal';
 import { merkeAbruf, routenHeute } from '../routenUhr';

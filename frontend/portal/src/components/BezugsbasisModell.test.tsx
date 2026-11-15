@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import * as M from '../bezugsbasisModell';
 import { bb1Fassung, bb1Modell, bb1ZweiGroessen, bb4Gas, kz4, kz6, variablenVorschlag } from '../test/bezugsbasisFixtures';
 import { BezugsbasisModell, BezugsbasisModellAnFassung } from './BezugsbasisModell';

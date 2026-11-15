@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Button } from "../../designsystem/components/core/Button";
 import { Modal } from "../../designsystem/components/shell/Modal";
 import {
-  api,
   ApiError,
   type GeraetSummenwert,
   type SummenwertRolle,
 } from "../api";
+import { api } from "../apiVoll";
 import { SUMMENWERT } from "../glossar";
 import { useRollen } from "../rollen";
 import { ROLLEN } from "../uemsRollen";

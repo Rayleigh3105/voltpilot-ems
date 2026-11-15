@@ -12,7 +12,6 @@ import type { Consumer } from '../consumers/types';
 import { entitiesApi } from '../entitiesApi';
 import { requestNavigation } from '../navigationBlocker';
 import {
-  api,
   ApiError,
   type CommandHistory,
   type Device,
@@ -26,6 +25,7 @@ import {
   type UemsDatenquelle,
   type UemsGeraet,
 } from '../api';
+import { api } from '../apiVoll';
 import { anbindungApi } from '../geraetAnbindung';
 import { gr4Einstellungen, gr4Z5b, k5Kanaele } from '../test/geraetHerkunftFixtures';
 import { ENTITY_GORE, gore, goreNv, goreWerte } from '../test/anlagensteuerungFixtures';

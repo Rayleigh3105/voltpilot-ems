@@ -7,13 +7,13 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
 import {
-  api,
   ApiError,
   type EntityStrategy,
   type SiteEntities,
   type SiteEntity,
   type SiteTopology,
 } from '../api';
+import { api } from '../apiVoll';
 import { commandLabel } from '../channels';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Managementbewertung, type ManagementbewertungBeschluss } from '../api';
+import { type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Managementbewertung, type ManagementbewertungBeschluss } from '../api';
+import { api } from '../apiVoll';
 import { EinsichtRecht } from '../components/EinsichtRecht';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { ManagementbewertungEingaben } from '../components/ManagementbewertungEingaben';

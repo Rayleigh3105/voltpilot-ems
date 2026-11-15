@@ -1,6 +1,7 @@
 import { merkeAbruf } from '../routenUhr';
 import { useEffect, useState } from 'react';
-import { api, type Feststellung, type InternesAuditprogramm } from '../api';
+import { type Feststellung, type InternesAuditprogramm } from '../api';
+import { api } from '../apiVoll';
 import * as B from '../auditBild';
 import * as A from '../auditFeststellung';
 import * as E from '../energiemanagementPortal';

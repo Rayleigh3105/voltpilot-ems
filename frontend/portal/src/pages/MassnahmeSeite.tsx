@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Massnahme, type MassnahmeEintrag, type MassnahmeHerkunft, type VorgangAnstoss } from '../api';
+import { ApiError, type Massnahme, type MassnahmeEintrag, type MassnahmeHerkunft, type VorgangAnstoss } from '../api';
+import { api } from '../apiVoll';
 import { herkunftSatz } from '../auditFeststellung';
 import { FristDatum } from '../components/FristDatum';
 import {

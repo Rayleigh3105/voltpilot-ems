@@ -3,7 +3,6 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Switch } from '../../designsystem/components/forms/Switch';
 import {
-  api,
   type Anlagensteuerung,
   type AnlagensteuerungListe,
   type DirektvermarkterKanal,
@@ -13,6 +12,7 @@ import {
   type UemsDatenquelle,
   type UemsDatenquellePruefergebnis,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   ANLAGENART_TEXT,
   ERZEUGER_ALARM_VORLAGEN,

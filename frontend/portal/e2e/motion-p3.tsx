@@ -35,7 +35,8 @@ import '../src/components/MiniChart.css';
 import '../src/components/StrompreisStrip.css';
 import '../src/components/erloese/ErgebnisKarte.css';
 
-import { api, type PriceSeries } from '../src/api';
+import { type PriceSeries } from '../src/api';
+import { api } from '../src/apiVoll';
 import { EnergyFlow } from '../src/components/EnergyFlow';
 import { ErgebnisRing } from '../src/components/erloese/CockpitErgebnis';
 import { MiniBarSpark, MiniLineSpark, MiniShareBar } from '../src/components/MiniChart';

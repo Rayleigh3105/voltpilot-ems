@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
 import { MessstelleSeite } from './MessstelleSeite';
 

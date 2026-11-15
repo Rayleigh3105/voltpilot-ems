@@ -1,7 +1,8 @@
 import { sichtbareListe } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type ComponentTemplate, type Device, type EdgeVersion, type Site, type SiteComponents } from '../api';
+import { ApiError, type ComponentTemplate, type Device, type EdgeVersion, type Site, type SiteComponents } from '../api';
+import { api } from '../apiVoll';
 import { entwurfLesen, entwurfSchreiben, messenEinstieg, type EntwurfSpeicher } from '../messenAssistent';
 import {
   ahrenbergFunktionen,

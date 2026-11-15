@@ -6,7 +6,6 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   ablehnungCode,
-  api,
   ApiError,
   type Bezugsbasis,
   type BezugsbasisFassung,
@@ -14,6 +13,7 @@ import {
   type Kennzahl,
   type VariablenVorschlag,
 } from '../api';
+import { api } from '../apiVoll';
 import * as B from '../bezugsbasisAnlegen';
 import { anpassungKoerper, TITEL_NEUE_FASSUNG, type Anpassung, type Vorbelegung } from '../bezugsbasisFassungen';
 import * as M from '../bezugsbasisModell';

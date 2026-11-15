@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
 import {
-  api,
   type Device,
   type EinheitGeraet,
   type Einspeiseverguetung,
@@ -12,6 +11,7 @@ import {
   type SiteAsset,
   type SupplyPrice,
 } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { buettner, buettnerNv } from '../test/anlagensteuerungFixtures';

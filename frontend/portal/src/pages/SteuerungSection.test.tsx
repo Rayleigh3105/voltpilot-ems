@@ -10,7 +10,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SteuerungSection } from './SteuerungSection';
-import { api, type FunktionTeilnahme, type Funktionen, type Site } from '../api';
+import { type FunktionTeilnahme, type Funktionen, type Site } from '../api';
+import { api } from '../apiVoll';
 import { setSelbstauskunft } from '../rollen';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import { STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';

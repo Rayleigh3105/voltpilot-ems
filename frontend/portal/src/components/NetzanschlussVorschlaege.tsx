@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type Netzanschluss, type NetzanschlussVorschlag, type StandortAmStichtag } from '../api';
+import { type Netzanschluss, type NetzanschlussVorschlag, type StandortAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import { NetzanschlussDialog } from './NetzanschlussDialog';
 import * as N from '../netzanschlussListe';
 

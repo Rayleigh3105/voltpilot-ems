@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
 import {
-  api,
   ApiError,
   type Device,
   type MastrPreview,
@@ -10,6 +9,7 @@ import {
   type SiteAsset,
   type SiteEntities,
 } from '../api';
+import { api } from '../apiVoll';
 import { entitiesApi } from '../entitiesApi';
 import { anlageRoute } from '../nav';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';

@@ -5,7 +5,8 @@ import { PortfolioMesswerte } from './PortfolioMesswerte';
 import { PortfolioErloese } from './PortfolioErloese';
 import { clearHistoryCache } from '../historyCache';
 import { clearPortfolioEarningsCache } from '../usePortfolioHistorie';
-import { api, type Earnings, type EarningsSite, type History, type Site } from '../api';
+import { type Earnings, type EarningsSite, type History, type Site } from '../api';
+import { api } from '../apiVoll';
 
 /**
  * **Die zwei Welten eine Ebene höher** (PR G): Σ oben, Anlagen-Tabelle

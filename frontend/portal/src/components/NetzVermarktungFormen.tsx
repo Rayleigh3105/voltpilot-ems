@@ -11,7 +11,6 @@ import { useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import {
-  api,
   ApiError,
   type DirektvermarkterKanal,
   type Einspeisemanagement,
@@ -19,6 +18,7 @@ import {
   type NetzVermarktung,
   type NetzVermarktungAendern,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   einheitName,
   einheitNummer,

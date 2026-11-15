@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { api, type BerichtDetail } from '../api';
+import { type BerichtDetail } from '../api';
+import { api } from '../apiVoll';
 import { vergleichBild } from '../bezugsbasisVergleich';
 import type { BerichtRechte } from '../berichtDialoge';
 import { UEMS_NORMGRENZE } from '../glossar';

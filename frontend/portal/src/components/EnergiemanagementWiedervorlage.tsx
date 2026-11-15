@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import {
   ansehenSprung,
   artFilterAus,

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { api, ApiError, type Device } from '../api';
+import { ApiError, type Device } from '../api';
+import { api } from '../apiVoll';
 import { GemeinsameSteuerungAbschnitt } from '../pages/AnlageTechnik';
 import { setSelbstauskunft } from '../rollen';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';

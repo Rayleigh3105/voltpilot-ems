@@ -2,13 +2,13 @@ import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   type EarningsRange,
   type HistoryTotals,
   type Site,
   type SiteTopology,
   type TelemetryPoint,
 } from '../api';
+import { api } from '../apiVoll';
 import { ChartSubtitle } from './ChartExplain';
 import { ChartLoading, LazyBoundary } from './Lazy';
 import { ErrorState, Skeleton } from './States';

@@ -5,7 +5,6 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type BerichtStrukturAnlass,
   type Messstelle,
@@ -13,6 +12,7 @@ import {
   type OrtsbaumAmStichtag,
   type StandorteAmStichtag,
 } from '../api';
+import { api } from '../apiVoll';
 import { UEMS_KOSTENSTELLE } from '../glossar';
 import { setzenDoppeltBild, type SetzenDoppeltBild } from '../kostenstellenUebersicht';
 import {

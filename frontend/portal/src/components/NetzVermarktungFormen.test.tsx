@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../api';
+import { ApiError } from '../api';
+import { api } from '../apiVoll';
 import { buettner, buettnerNv, GERAET_BUETTNER, gore, GERAET_GORE, goreNv, SITE_BUETTNER, SITE_GORE } from '../test/anlagensteuerungFixtures';
 import { DirektvermarkterForm, EinheitForm, EinspeisemanagementForm, NetzbetreiberBlatt } from './NetzVermarktungFormen';
 

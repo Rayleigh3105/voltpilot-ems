@@ -3,7 +3,8 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type BerichtDetail, type BerichtEntwurf, type BerichtStand } from '../api';
+import { type BerichtDetail, type BerichtEntwurf, type BerichtStand } from '../api';
+import { api } from '../apiVoll';
 import {
   ABBRECHEN,
   ENTWURF_LADEFEHLER,

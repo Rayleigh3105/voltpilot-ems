@@ -7,7 +7,7 @@
  * Prototyp und Portal Bild für Bild vergleichbar sind. Nur von
  * `e2e/steuerung.tsx` importiert; nie im Produktionsbündel.
  */
-import { api } from '../src/api';
+import { api } from '../src/apiVoll';
 import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { buildGuidedFlow } from '../src/flows/guidedBuilder';

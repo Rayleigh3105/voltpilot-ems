@@ -3,7 +3,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type BewertungUmfang, type EnergieTraeger, type Prozess } from '../api';
+import { ApiError, type BewertungUmfang, type EnergieTraeger, type Prozess } from '../api';
+import { api } from '../apiVoll';
 import {
   ABBRECHEN,
   anlagenText,

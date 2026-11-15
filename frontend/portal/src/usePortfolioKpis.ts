@@ -9,7 +9,8 @@
  * solange nichts Gültiges da ist (nie ein halber Stand).
  */
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type PortfolioKpi } from './api';
+import { ApiError, type PortfolioKpi } from './api';
+import { api } from './apiVoll';
 
 export interface PortfolioKpisState {
   kpis: PortfolioKpi | null;

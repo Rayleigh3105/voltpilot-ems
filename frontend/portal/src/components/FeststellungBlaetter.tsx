@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type FeststellungErgebnis, type FeststellungMitVerlauf } from '../api';
+import { type FeststellungErgebnis, type FeststellungMitVerlauf } from '../api';
+import { api } from '../apiVoll';
 import * as A from '../auditFeststellung';
 import * as E from '../energiemanagementPortal';
 import { useRollen } from '../rollen';

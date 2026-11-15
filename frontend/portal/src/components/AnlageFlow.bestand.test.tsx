@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { anlageRoute } from '../nav';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { bestandEineAnlage, FIXTURE_IDS } from '../test/standorteFixtures';

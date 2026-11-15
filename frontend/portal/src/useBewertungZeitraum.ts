@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type Bericht } from './api';
+import { type Bericht } from './api';
+import { api } from './apiVoll';
 import { bewertungZeitraum } from './bewertung';
 import { bewertungWaehlen, darfBewertung } from './bewertungStand';
 import { useRollen } from './rollen';

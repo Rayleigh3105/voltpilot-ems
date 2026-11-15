@@ -5,7 +5,8 @@
  * „Ändern“ (E3 = B) - und der Verlauf des Tages. Alles Ableiten steht in `steuerlogikKarte.ts`.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, type SteuerlogikKarte, type SteuerlogikStellwert, type SteuerlogikVerlauf } from '../api';
+import { type SteuerlogikKarte, type SteuerlogikStellwert, type SteuerlogikVerlauf } from '../api';
+import { api } from '../apiVoll';
 import { VpTimePicker } from '../components/VpTimePicker';
 import {
   erfuellt,

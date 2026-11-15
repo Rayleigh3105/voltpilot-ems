@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { api, type GeraetSummenwert } from "../api";
+import { type GeraetSummenwert } from "../api";
+import { api } from "../apiVoll";
 import { setSelbstauskunft } from "../rollen";
 import { rechteSeed } from "../test/rollenFixtures";
 import { GeraetSummenwerte } from "./GeraetSummenwerte";

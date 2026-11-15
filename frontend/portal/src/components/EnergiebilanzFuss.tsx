@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api } from '../apiVoll';
 import { FUSS_ZONE, FUSS_ZONE_STANDORT } from '../anlageEnergiebilanz';
 import { dez } from '../dez';
 import { anschlussText } from '../netzanschlussListe';

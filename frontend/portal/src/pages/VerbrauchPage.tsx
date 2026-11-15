@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   ApiError,
   type BewertungMessabdeckung,
   type BewertungMessabdeckungOrt,
@@ -10,6 +9,7 @@ import {
   type Energieeinsatz,
   type Messbedarf,
 } from '../api';
+import { api } from '../apiVoll';
 import { darfVerwalten, laeuft } from '../bewertung';
 import { BegriffAufklapper } from '../components/BegriffAufklapper';
 import { EnergieeinsatzAnlegenDialog } from '../components/EnergieeinsatzDialoge';

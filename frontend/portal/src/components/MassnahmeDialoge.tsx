@@ -4,7 +4,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   type Energieeinsatz,
   type Energieziel,
   type Kennzahl,
@@ -12,6 +11,7 @@ import {
   type MassnahmeSchaetzung,
   type StandortAmStichtag,
 } from '../api';
+import { api } from '../apiVoll';
 import { herkunftSatz } from '../auditFeststellung';
 import { benutzerApi, type BenutzerEintrag } from '../benutzer';
 import { verantwortlichOptionen } from '../bewertung';

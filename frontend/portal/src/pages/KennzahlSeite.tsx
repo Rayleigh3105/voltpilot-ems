@@ -4,7 +4,6 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type Auffaelligkeit,
   type Bezugsbasis,
@@ -15,6 +14,7 @@ import {
   type KennzahlPeriodeArt,
   type KennzahlWerte,
 } from '../api';
+import { api } from '../apiVoll';
 import { basisZeile, kannBezugsbasis, zeilenFassung } from '../bezugsbasisAnlegen';
 import type { BezugsbasisVergleich } from '../bezugsbasisVergleich';
 import { AbweichungsGrafik, Infozeile, Legende, SpaltenGrafik, ZielSkala, ZusammenGrafik } from '../components/AuswertenGrafik';

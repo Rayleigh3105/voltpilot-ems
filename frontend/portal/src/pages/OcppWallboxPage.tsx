@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
-  api,
   type OcppAction,
   type OcppActionAudit,
   type OcppDataGap,
@@ -17,6 +16,7 @@ import {
   type OcppStation,
   type OcppTransaction,
 } from '../api';
+import { api } from '../apiVoll';
 import { fokussierbare } from '../components/VpPanel';
 import { VpPicker } from '../components/VpPicker';
 import { OcppControlPanel } from '../components/OcppControlPanel';

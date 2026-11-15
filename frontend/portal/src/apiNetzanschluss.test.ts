@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './api';
+import { api } from './apiVoll';
 import { anfrage, neuerEntwurf } from './netzanschlussListe';
 vi.mock('./auth', () => ({ freshToken: async () => 'test', AuthRedirectError: class extends Error {} }));
 afterEach(() => vi.unstubAllGlobals());

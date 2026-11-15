@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type BerichtStrukturAnlass } from './api';
+import { type BerichtStrukturAnlass } from './api';
+import { api } from './apiVoll';
 import { berichteFolgen, istKalendertag, type BerichteFolgen, type BerichteFolgenArt } from './berichteFolgen';
 
 /**

@@ -3,7 +3,6 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import {
-  api,
   type Device,
   type EdgeVersion,
   type Funktionen,
@@ -16,6 +15,7 @@ import {
   type Unternehmen,
   vergissFunktionenStartfenster,
 } from '../api';
+import { api } from '../apiVoll';
 import { standortWahl } from '../anlageStandort';
 import {
   adresseFehlt,

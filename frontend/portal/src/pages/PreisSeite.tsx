@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type HistoryRange, type PriceHistory, type ScheduleSlot, type Site } from '../api';
+import { ApiError, type HistoryRange, type PriceHistory, type ScheduleSlot, type Site } from '../api';
+import { api } from '../apiVoll';
 import { Aufklapper } from '../components/Aufklapper';
 import { VerlaufKopf, ZeitBlaetterer, ZeitSegment } from '../components/HistorieWelt';
 import { PreisZeilen, ProfiZahlen } from '../components/MarktpreiseMobil';

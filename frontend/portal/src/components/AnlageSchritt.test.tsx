@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
-import { api, ApiError, type OrtTreffer, type Site, type StandortAmStichtag } from '../api';
+import { ApiError, type OrtTreffer, type Site, type StandortAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { bestandEineAnlage } from '../test/standorteFixtures';
 

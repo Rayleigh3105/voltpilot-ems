@@ -1,7 +1,8 @@
 import { setSelbstauskunft } from '../rollen';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, type MessstellenRegisterAnfrage } from '../api';
+import { type MessstellenRegisterAnfrage } from '../api';
+import { api } from '../apiVoll';
 import { KNOPF_KENNZAHL_ANLEGEN } from '../gebaeudeKarte';
 import { StandortGebaeudePage } from '../pages/StandortGebaeudePage';
 import { ahrenbergBilanz } from '../test/bilanzFixtures';

@@ -1,7 +1,8 @@
 import { sichtbareListe } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type FunktionStandort, type Messstelle, type MessstellenRegister } from '../api';
+import { ApiError, type FunktionStandort, type Messstelle, type MessstellenRegister } from '../api';
+import { api } from '../apiVoll';
 import { entwurfLesen, entwurfSchreiben, type EntwurfSpeicher, type MessenSchritt } from '../messenAssistent';
 import { ahrenbergFunktionen, funktionWerkLindach } from '../test/funktionenFixtures';
 import {

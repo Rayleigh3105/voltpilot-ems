@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type EnergiemanagementMappe, type EnergiemanagementVerzeichnis } from '../../api';
+import { type EnergiemanagementMappe, type EnergiemanagementVerzeichnis } from '../../api';
+import { api } from '../../apiVoll';
 import * as E from '../../energiemanagementPortal';
 import * as P from '../../mappeBild';
 import { hashForRoute, mappeRoute, type Route } from '../../nav';

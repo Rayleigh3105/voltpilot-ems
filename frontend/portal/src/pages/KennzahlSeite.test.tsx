@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from '../api';
+import { ApiError } from '../api';
+import { api } from '../apiVoll';
 import { keycloak } from '../auth';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { setSelbstauskunft } from '../rollen';

@@ -3,7 +3,6 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
-  api,
   ApiError,
   type Device,
   type UemsDatenquelle,
@@ -11,6 +10,7 @@ import {
   type UemsGemeinsameSteuerungZustand,
   type UemsSteuerRichtung,
 } from '../api';
+import { api } from '../apiVoll';
 import {
   anteilVon,
   befundSaetze,

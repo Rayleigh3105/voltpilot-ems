@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type Bericht, type Managementbewertung } from '../api';
+import { type Bericht, type Managementbewertung } from '../api';
+import { api } from '../apiVoll';
 import * as E from '../energiemanagementPortal';
 import * as M from '../managementbewertung';
 import * as B from '../managementbewertungBild';

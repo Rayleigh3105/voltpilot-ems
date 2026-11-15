@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MastrDrawer } from './MastrDrawer';
-import { api, type MastrLokationPreview, type MastrPreview, type RegisterEinheit, type Site } from '../api';
+import { type MastrLokationPreview, type MastrPreview, type RegisterEinheit, type Site } from '../api';
+import { api } from '../apiVoll';
 
 /**
  * S2/S3 (vp-mastr-mehrere-einheiten-konzept, E2=A "eine Nummer genügt"): die

@@ -6,7 +6,6 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
 import type { VpOption } from '../picker/optionen';
 import {
-  api,
   ApiError,
   type ComponentTemplate,
   type Device,
@@ -15,6 +14,7 @@ import {
   type SiteComponentTemplate,
   type SiteComponentRow,
 } from '../api';
+import { api } from '../apiVoll';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
 import { SelbstbauAssistent } from './SelbstbauAssistent';

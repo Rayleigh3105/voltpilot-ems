@@ -4,13 +4,13 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   ApiError,
-  api,
   type BezugsdatenImportErgebnis,
   type BezugsdatenVorlage,
   type BezugsdatenVorschau,
   type BezugsdatenZuordnung,
   type Bezugsgroesse,
 } from '../api';
+import { api } from '../apiVoll';
 import { URTEIL_LABEL, trennzeichenText, vorschauAbleitung } from '../bezugsdatenVorschau';
 import { doppelimportBanner, konfliktAbleitung, type KonfliktEntscheidung } from '../bezugsdatenImportProtokoll';
 import { VpPicker } from './VpPicker';

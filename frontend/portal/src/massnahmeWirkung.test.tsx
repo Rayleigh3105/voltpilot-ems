@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from './api';
+import { api } from './apiVoll';
 import { benutzerApi } from './benutzer';
 import { fazit, nachherMonate } from './components/WirkungsGrafik';
 import { UEMS_VERBESSERUNG_SAETZE } from './glossar';

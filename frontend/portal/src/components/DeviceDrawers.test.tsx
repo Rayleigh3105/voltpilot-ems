@@ -12,7 +12,7 @@ vi.mock('../api', async () => {
     api: { deleteDevice: vi.fn(async () => {}), purgeDeviceData: vi.fn(async () => ({})) },
   };
 });
-import { api } from '../api';
+import { api } from '../apiVoll';
 
 const site: Site = {
   id: 'site-1',

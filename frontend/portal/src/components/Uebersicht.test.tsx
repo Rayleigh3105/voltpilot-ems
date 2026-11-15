@@ -3,7 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { EbenenCockpit } from './EbenenCockpit';
 import { PortfolioCockpit } from './PortfolioCockpit';
 import { StandortUebersichtPage } from '../pages/StandortUebersichtPage';
-import { api, type Earnings, type Funktionen, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
+import { type Earnings, type Funktionen, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
+import { api } from '../apiVoll';
 import catalog from '../anwendungen/catalog.json';
 import { berlinDay } from '../fleet';
 import { GELD_BAUSTEINE } from '../portfolioCockpit';

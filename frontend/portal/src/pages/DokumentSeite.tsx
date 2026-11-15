@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { merkeAbruf } from '../routenUhr';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { ApiError, api, type EnergiemanagementDokument, type Feststellung } from '../api';
+import { ApiError, type EnergiemanagementDokument, type Feststellung } from '../api';
+import { api } from '../apiVoll';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import {
   AufhebenBlatt,

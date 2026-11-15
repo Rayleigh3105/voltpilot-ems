@@ -3,7 +3,6 @@ import { rechteSeed } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  api,
   ApiError,
   type Ablesung,
   type Messkanal,
@@ -15,6 +14,7 @@ import {
   type Protokoll,
   type SiteEntity,
 } from '../api';
+import { api } from '../apiVoll';
 import { ebenenAktiv } from '../ebenenNav';
 import { hashForRoute, messstelleRoute, parseRoute, standortMessstellenRoute } from '../nav';
 import {

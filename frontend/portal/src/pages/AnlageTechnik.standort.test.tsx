@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { TechnikSection } from './AnlageTechnik';
-import { api, ApiError, type Site, type StandorteAmStichtag } from '../api';
+import { ApiError, type Site, type StandorteAmStichtag } from '../api';
+import { api } from '../apiVoll';
 import { DIALOG_TITEL } from '../standorte';
 import { ahrenbergHeute, ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS } from '../test/standorteFixtures';
 

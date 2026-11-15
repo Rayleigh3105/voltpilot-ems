@@ -3,14 +3,17 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Jede Client-Route in `api.ts` nutzt eine HTTP-Methode, die der Vertrag (`docs/contracts/openapi.yaml`) für diesen Pfad
+ * Jede Client-Route in `api.ts` und `apiVoll.ts` (die Routen außerhalb des ersten Bilds, Performance Welle 3) nutzt eine HTTP-Methode, die der Vertrag (`docs/contracts/openapi.yaml`) für diesen Pfad
  * kennt. Anlass (Konzept Auswerten a1, Befund 1): „Energieeinsatz beenden“ schickte PUT, Server und Vertrag kennen nur
  * POST - die Route antwortete 405, der Nutzer las „Der Server ist zurzeit nicht erreichbar“.
  *
  * Geprüft werden Aufrufe `request<…>(\`/api/v1/…\`, { method })`, deren Pfad (Parameter als `{}`) im Vertrag steht; Pfade,
  * die der Vertrag nicht führt, prüft diese Datei nicht.
  */
-const API = readFileSync(resolve(process.cwd(), 'src/api.ts'), 'utf8');
+const QUELLEN = ['api.ts', 'apiVoll.ts'].map((datei) => ({
+  datei,
+  text: readFileSync(resolve(process.cwd(), 'src', datei), 'utf8'),
+}));
 const VERTRAG = readFileSync(resolve(process.cwd(), '../../docs/contracts/openapi.yaml'), 'utf8');
 
 const normiert = (pfad: string) => pfad.replace(/\{[^}]*\}/g, '{}');
@@ -38,21 +41,23 @@ function vertragsMethoden(): Map<string, Set<string>> {
   return m;
 }
 
-function clientAufrufe(): Array<{ pfad: string; methode: string; zeile: number }> {
-  const aufrufe: Array<{ pfad: string; methode: string; zeile: number }> = [];
-  const muster = /\brequest(?:<[^`()]*?>)?\(\s*`([^`]*)`/g;
-  for (let m = muster.exec(API); m; m = muster.exec(API)) {
-    // Das Ende des Aufrufs: Klammern ab der öffnenden zählen - die Methode steht im zweiten Argument.
-    const start = API.indexOf('(', m.index);
-    let tiefe = 0;
-    let ende = start;
-    for (; ende < API.length; ende++) {
-      if (API[ende] === '(') tiefe++;
-      else if (API[ende] === ')' && --tiefe === 0) break;
+function clientAufrufe(): Array<{ pfad: string; methode: string; zeile: string }> {
+  const aufrufe: Array<{ pfad: string; methode: string; zeile: string }> = [];
+  for (const { datei, text: API } of QUELLEN) {
+    const muster = /\brequest(?:<[^`()]*?>)?\(\s*`([^`]*)`/g;
+    for (let m = muster.exec(API); m; m = muster.exec(API)) {
+      // Das Ende des Aufrufs: Klammern ab der öffnenden zählen - die Methode steht im zweiten Argument.
+      const start = API.indexOf('(', m.index);
+      let tiefe = 0;
+      let ende = start;
+      for (; ende < API.length; ende++) {
+        if (API[ende] === '(') tiefe++;
+        else if (API[ende] === ')' && --tiefe === 0) break;
+      }
+      const methode = /method:\s*'(\w+)'/.exec(API.slice(start, ende))?.[1] ?? 'GET';
+      const pfad = normiert(m[1].replace(/\$\{[^}]*\}/g, '{}').split('?')[0]);
+      aufrufe.push({ pfad, methode, zeile: `${datei}:${API.slice(0, m.index).split('\n').length}` });
     }
-    const methode = /method:\s*'(\w+)'/.exec(API.slice(start, ende))?.[1] ?? 'GET';
-    const pfad = normiert(m[1].replace(/\$\{[^}]*\}/g, '{}').split('?')[0]);
-    aufrufe.push({ pfad, methode, zeile: API.slice(0, m.index).split('\n').length });
   }
   return aufrufe;
 }
@@ -69,7 +74,7 @@ describe('Client-Routen gegen den Vertrag (openapi.yaml)', () => {
   it('nutzt für jeden Vertragspfad eine Methode, die der Vertrag kennt', () => {
     const falsch = geprueft
       .filter((a) => !vertrag.get(a.pfad)!.has(a.methode))
-      .map((a) => `api.ts:${a.zeile} ${a.methode} ${a.pfad} (Vertrag: ${[...vertrag.get(a.pfad)!].join(', ')})`);
+      .map((a) => `${a.zeile} ${a.methode} ${a.pfad} (Vertrag: ${[...vertrag.get(a.pfad)!].join(', ')})`);
     expect(falsch).toEqual([]);
   });
 
