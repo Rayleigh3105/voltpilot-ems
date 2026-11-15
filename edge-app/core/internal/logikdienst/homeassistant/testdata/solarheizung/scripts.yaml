@@ -1,0 +1,50 @@
+# Skript der Test-Anlage (erfunden): die Heizstufe auf die neun Relais verteilen.
+# Zuerst der Durchlauferhitzer (Speicher 1), dann Speicher 2, dann Speicher 3.
+
+solarheizung_relais:
+  alias: Heizstufe auf die Relais verteilen
+  mode: single
+  sequence:
+    - variables:
+        an: >
+          {% set stufe = states('input_number.heizstufe') | int(0) %}
+          {% set t1 = states('sensor.fuehler_speicher_1_oben') | float(-1) %}
+          {% set ziel = states('sensor.solarheizung_zieltemperatur') | float(57) %}
+          {% set dle_frei = t1 >= 0 and t1 < ziel %}
+          {% set dle = 3 if is_state('input_boolean.netzheizung_aktiv', 'on') else ([stufe, 3] | min if dle_frei else 0) %}
+          {% set rest = stufe - ([stufe, 3] | min) if dle_frei else stufe %}
+          {% set h2 = states('sensor.speicher_2_l1_heute_an') | float(0) + states('sensor.speicher_2_l2_heute_an') | float(0)
+                    + states('sensor.speicher_2_l3_heute_an') | float(0) %}
+          {% set h3 = states('sensor.speicher_3_l1_heute_an') | float(0) + states('sensor.speicher_3_l2_heute_an') | float(0)
+                    + states('sensor.speicher_3_l3_heute_an') | float(0) %}
+          {% set stunden = states('input_number.speicher23_stunden_je_tag') | float(9) %}
+          {% set hoechstens = states('input_number.speicher23_hoechsttemperatur') | float(80) %}
+          {% set t2 = states('sensor.solarheizung_speicher_2_temperatur') | float(-1) %}
+          {% set t3 = states('sensor.solarheizung_speicher_3_temperatur') | float(-1) %}
+          {% set laeuft2 = is_state('switch.speicher_2_l1', 'on') or is_state('switch.speicher_2_l2', 'on') or is_state('switch.speicher_2_l3', 'on') %}
+          {% set laeuft3 = is_state('switch.speicher_3_l1', 'on') or is_state('switch.speicher_3_l2', 'on') or is_state('switch.speicher_3_l3', 'on') %}
+          {% set frei2 = t2 >= 0 and t2 < (ziel if laeuft2 else ziel - 3) and t2 < hoechstens %}
+          {% set frei3 = t3 >= 0 and t3 < (ziel if laeuft3 else ziel - 3) and t3 < hoechstens %}
+          {% set s2 = [rest, 3] | min if h2 < stunden and frei2 else 0 %}
+          {% set s3 = [rest - ([rest, 3] | min), 3] | min if h3 < stunden and frei3 else 0 %}
+          {% set ns = namespace(liste=[]) %}
+          {% for n in range(1, 4) %}
+            {% if n <= dle %}{% set ns.liste = ns.liste + ['switch.durchlauferhitzer_l' ~ n] %}{% endif %}
+            {% if n <= s2 %}{% set ns.liste = ns.liste + ['switch.speicher_2_l' ~ n] %}{% endif %}
+            {% if n <= s3 %}{% set ns.liste = ns.liste + ['switch.speicher_3_l' ~ n] %}{% endif %}
+          {% endfor %}
+          {{ ns.liste }}
+        aus: >
+          {{ ['switch.durchlauferhitzer_l1', 'switch.durchlauferhitzer_l2', 'switch.durchlauferhitzer_l3',
+              'switch.speicher_2_l1', 'switch.speicher_2_l2', 'switch.speicher_2_l3',
+              'switch.speicher_3_l1', 'switch.speicher_3_l2', 'switch.speicher_3_l3'] | reject('in', an) | list }}
+    - if: "{{ aus | count > 0 }}"
+      then:
+        - action: switch.turn_off
+          target:
+            entity_id: "{{ aus }}"
+    - if: "{{ an | count > 0 }}"
+      then:
+        - action: switch.turn_on
+          target:
+            entity_id: "{{ an }}"

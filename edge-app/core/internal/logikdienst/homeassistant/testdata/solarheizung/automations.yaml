@@ -1,0 +1,182 @@
+# Automationen der Test-Anlage (erfunden). Vorzeichen der Rohwerte:
+#   sensor.wr_netzleistung   positiv = Bezug aus dem Netz
+#   sensor.wr_akkuleistung   positiv = Akku entlädt, negativ = Akku lädt
+
+# Netzheizen: nur im Winterbetrieb, nur im Zeitfenster, nur der Durchlauferhitzer
+- id: solarheizung_netzheizen_an
+  alias: Netzheizen einschalten
+  mode: single
+  triggers:
+    - trigger: numeric_state
+      entity_id: sensor.fuehler_speicher_1_oben
+      below: input_number.speicher1_einschalten_unter
+      for:
+        minutes: 2
+    - trigger: state
+      entity_id: input_boolean.winterbetrieb
+      to: "on"
+    - trigger: state
+      entity_id: binary_sensor.solarheizung_netzfenster
+      to: "on"
+    - trigger: time_pattern
+      minutes: "/10"
+  conditions:
+    - condition: state
+      entity_id: input_boolean.netzheizung_aktiv
+      state: "off"
+    - condition: state
+      entity_id: input_boolean.winterbetrieb
+      state: "on"
+    - condition: state
+      entity_id: binary_sensor.solarheizung_netzfenster
+      state: "on"
+    - condition: numeric_state
+      entity_id: sensor.fuehler_speicher_1_oben
+      below: input_number.speicher1_einschalten_unter
+  actions:
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.netzheizung_aktiv
+
+- id: solarheizung_netzheizen_aus
+  alias: Netzheizen ausschalten
+  mode: single
+  triggers:
+    - trigger: numeric_state
+      entity_id: sensor.fuehler_speicher_1_oben
+      above: input_number.speicher1_ziel_netz
+    - trigger: state
+      entity_id:
+        - input_boolean.winterbetrieb
+        - binary_sensor.solarheizung_netzfenster
+      to: "off"
+    - trigger: time_pattern
+      minutes: "/5"
+  conditions:
+    - condition: state
+      entity_id: input_boolean.netzheizung_aktiv
+      state: "on"
+    - "{{ states('sensor.fuehler_speicher_1_oben') | float(-1) < 0
+          or states('sensor.fuehler_speicher_1_oben') | float(-1) >= states('input_number.speicher1_ziel_netz') | float(60)
+          or is_state('input_boolean.winterbetrieb', 'off')
+          or is_state('binary_sensor.solarheizung_netzfenster', 'off') }}"
+  actions:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.netzheizung_aktiv
+
+# Eine Phase mehr: probeweise bei vollem Akku, oder gemessen, solange Warmwasser zuerst kommt
+- id: solarheizung_stufe_rauf
+  alias: Heizstufe rauf
+  mode: single
+  max_exceeded: silent
+  triggers:
+    - trigger: time_pattern
+      minutes: "/1"
+  conditions:
+    - "{{ states('input_number.heizstufe') | int(0) < 9 }}"
+    - "{{ (now() - states.input_number.heizstufe.last_changed).total_seconds() > 300 }}"
+    - "{{ states('sensor.solarheizung_ueberschuss') | float(0) > 0 - states('input_number.netzbezug_max') | float(300) }}"
+    - condition: or
+      conditions:
+        - condition: and
+          conditions:
+            - condition: numeric_state
+              entity_id: sensor.wr_ladestand
+              above: input_number.akku_voll_ab
+            - "{{ state_attr('sun.sun', 'elevation') | float(-90) > states('input_number.sonnenhoehe_min') | float(5) }}"
+            - condition: state
+              entity_id: timer.sperre_nach_versuch
+              state: idle
+            - condition: numeric_state
+              entity_id: sensor.solarheizung_akkuleistung
+              below: input_number.akku_entladung_max
+        - condition: and
+          conditions:
+            - condition: state
+              entity_id: binary_sensor.solarheizung_warmwasser_zuerst
+              state: "on"
+            - "{{ states('input_number.heizstufe') | int(0) < 3 }}"
+            - "{{ 0 - states('sensor.solarheizung_akkuleistung') | float(0)
+                  >= states('sensor.solarheizung_naechste_phase') | float(999999)
+                     + states('input_number.reserve_vorrang') | float(300) }}"
+  actions:
+    - action: input_number.increment
+      target:
+        entity_id: input_number.heizstufe
+
+# Eine Phase weniger, wenn Akku oder Netz aushelfen müssen
+- id: solarheizung_stufe_zurueck
+  alias: Heizstufe zurück
+  mode: single
+  max_exceeded: silent
+  triggers:
+    - trigger: time_pattern
+      minutes: "/1"
+  conditions:
+    - "{{ states('input_number.heizstufe') | int(0) > 0 }}"
+    - condition: or
+      conditions:
+        - condition: numeric_state
+          entity_id: sensor.solarheizung_akkuleistung
+          above: input_number.akku_entladung_max
+        - "{{ states('sensor.solarheizung_ueberschuss') | float(0) < 0 - states('input_number.netzbezug_max') | float(300) }}"
+        - condition: and
+          conditions:
+            - condition: numeric_state
+              entity_id: sensor.wr_ladestand
+              below: input_number.akku_abbruch_unter
+            - "{{ not (is_state('binary_sensor.solarheizung_warmwasser_zuerst', 'on') and states('input_number.heizstufe') | int(0) <= 3) }}"
+    - "{{ (now() - states.input_number.heizstufe.last_changed).total_seconds() > 60 }}"
+  actions:
+    - action: input_number.decrement
+      target:
+        entity_id: input_number.heizstufe
+    - if:
+        - "{{ not (is_state('binary_sensor.solarheizung_warmwasser_zuerst', 'on')
+                   and states('sensor.wr_ladestand') | float(0) < states('input_number.akku_voll_ab') | float(95)) }}"
+      then:
+        - action: timer.start
+          target:
+            entity_id: timer.sperre_nach_versuch
+          data:
+            duration: "{{ states('input_number.pause_minuten') | int(30) * 60 }}"
+
+- id: solarheizung_relais_setzen
+  alias: Relais setzen
+  mode: single
+  max_exceeded: silent
+  triggers:
+    - trigger: state
+      entity_id:
+        - input_number.heizstufe
+        - input_boolean.netzheizung_aktiv
+        - input_boolean.winterbetrieb
+        - sensor.solarheizung_zieltemperatur
+        - sensor.solarheizung_speicher_2_temperatur
+        - sensor.solarheizung_speicher_3_temperatur
+    - trigger: time_pattern
+      minutes: "/5"
+    - trigger: homeassistant
+      event: start
+  actions:
+    - action: script.solarheizung_relais
+
+- id: solarheizung_start
+  alias: Nach dem Start von vorn
+  mode: single
+  triggers:
+    - trigger: homeassistant
+      event: start
+  actions:
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.heizstufe
+      data:
+        value: 0
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.netzheizung_aktiv
+    - action: timer.cancel
+      target:
+        entity_id: timer.sperre_nach_versuch
