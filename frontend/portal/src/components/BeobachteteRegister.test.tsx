@@ -80,6 +80,32 @@ describe('BeobachteteRegister · die Liste (Teil 1)', () => {
     expect(document.body).not.toHaveTextContent('beobachtet ·');
   });
 
+  it('die Kurzfassung nennt das geplante Volumen im deutschen Zahlenformat, nicht mit Dezimalpunkt', async () => {
+    vi.mocked(api.measurementSelection).mockResolvedValue({
+      ...state, status: 'applied', statusReason: 'Von der VoltPilot-Box bestätigt.',
+      selections: [beobachtet],
+      volumeEstimate: { ...estimate, totalGbPerYear: 1234.567 },
+    } as never);
+    render(<BeobachteteRegister deviceId="d" familien={['hybrid_3p']} />);
+    // RTL normalisiert das geschützte Leerzeichen zwischen Zahl und Einheit zu einem gewöhnlichen.
+    expect(await screen.findByText(/1\.234,6 GB\/Jahr geplant\./)).toBeVisible();
+    expect(document.body).not.toHaveTextContent('1234.567');
+  });
+
+  it('lässt den Satz zum geplanten Volumen weg, wenn nichts geplant ist (z. B. alles abgelehnt)', async () => {
+    vi.mocked(api.measurementSelection).mockResolvedValue({
+      ...state, status: 'rejected', statusReason: 'edge_too_old',
+      selections: [{ ...beobachtet, applyStatus: 'rejected', applyReason: 'edge_too_old' }],
+      volumeEstimate: { ...estimate, totalGbPerYear: 0 },
+    } as never);
+    render(<BeobachteteRegister deviceId="d" familien={['hybrid_3p']} />);
+    await screen.findAllByText(/Update der Box einspielen/);
+    const kurzfassung = document.querySelector('.vp-measure-global-status');
+    expect(kurzfassung).not.toBeNull();
+    expect(kurzfassung).toHaveTextContent('Update der Box einspielen');
+    expect(kurzfassung).not.toHaveTextContent('GB/Jahr geplant');
+  });
+
   it('spricht auf einem HTTP-Gerät von MESSWERTEN, nie von Registern', async () => {
     render(<BeobachteteRegister deviceId="d" familien={['goe.api_v2']} registerFaehig={false} geraetName="go-e Charger" />);
     expect(await screen.findByRole('heading', { name: 'Beobachtete Messwerte' })).toBeVisible();

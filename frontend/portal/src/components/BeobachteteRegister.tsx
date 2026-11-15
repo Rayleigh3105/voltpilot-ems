@@ -31,6 +31,7 @@ import {
   type BeobachteteZeile,
   type BrueckeVorschlag,
 } from '../beobachteteRegister';
+import { fmtNum } from '../format';
 import { ablehngrundText } from '../messpunktAblehngrund';
 import { BEOBACHTEN_HINWEIS } from '../registerFamilie';
 import { ANDERES, MESSWERT_ARTEN, MESSWERT_FRAGE, definitionAusArt, einheitFehler, messwertArt, messwertHinweis } from '../eigenerMesswert';
@@ -583,7 +584,9 @@ export function BeobachteteRegister({
           {/* ⚠ Bei „rejected" liefert der Server denselben rohen Box-Code wie je
               Zeile (MeasurementSelectionService.state()) - nie roh zeigen. */}
           <strong>{state.status === 'rejected' ? ablehngrundText(state.statusReason) : state.statusReason}</strong>
-          {' '}{state.volumeEstimate.totalGbPerYear.toFixed(3)} GB/Jahr geplant.
+          {/* Ohne geplantes Volumen (z. B. alles abgelehnt) ist der Satz nichtssagend - dann weglassen. */}
+          {state.volumeEstimate.totalGbPerYear > 0
+            && ` ${fmtNum(state.volumeEstimate.totalGbPerYear, 'GB/Jahr', 1)} geplant.`}
         </p>
       )}
       {!state || !quiet ? (

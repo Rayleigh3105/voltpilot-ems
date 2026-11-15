@@ -48,6 +48,8 @@ for (const breite of [390, 1440] as const) {
         'Die Software Ihrer VoltPilot-Box unterstützt diesen Punkt noch nicht - '
         + 'bitte ein Update der Box einspielen.',
       ).first()).toBeVisible();
+      // Nichts geplant (alles abgelehnt) - der Satz zum Datenvolumen entfällt, statt "0 GB/Jahr" zu behaupten.
+      await expect(page.getByText(/GB\/Jahr geplant/)).toHaveCount(0);
       await bild(page, 'k-abgelehnt', breite);
       expect(fehler).toEqual([]);
     });
