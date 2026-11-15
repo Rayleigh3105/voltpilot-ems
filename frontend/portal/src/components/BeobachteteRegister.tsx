@@ -31,6 +31,7 @@ import {
   type BeobachteteZeile,
   type BrueckeVorschlag,
 } from '../beobachteteRegister';
+import { ablehngrundText } from '../messpunktAblehngrund';
 import { BEOBACHTEN_HINWEIS } from '../registerFamilie';
 import { ANDERES, MESSWERT_ARTEN, MESSWERT_FRAGE, definitionAusArt, einheitFehler, messwertArt, messwertHinweis } from '../eigenerMesswert';
 import { NO_DATA } from '../nodata';
@@ -579,7 +580,10 @@ export function BeobachteteRegister({
       )}
       {state && state.status !== 'idle' && (
         <p className="vp-measure-global-status" role="status">
-          <strong>{state.statusReason}</strong> {state.volumeEstimate.totalGbPerYear.toFixed(3)} GB/Jahr geplant.
+          {/* ⚠ Bei „rejected" liefert der Server denselben rohen Box-Code wie je
+              Zeile (MeasurementSelectionService.state()) - nie roh zeigen. */}
+          <strong>{state.status === 'rejected' ? ablehngrundText(state.statusReason) : state.statusReason}</strong>
+          {' '}{state.volumeEstimate.totalGbPerYear.toFixed(3)} GB/Jahr geplant.
         </p>
       )}
       {!state || !quiet ? (

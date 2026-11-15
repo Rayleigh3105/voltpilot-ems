@@ -1536,7 +1536,7 @@ export interface MeasurementSelectionState {
   entityId?: string | null;
   desiredRevision: number;
   catalogVersion: string;
-  status: 'idle' | 'pending_edge' | 'applied' | 'first_sample' | 'partially_rejected';
+  status: 'idle' | 'pending_edge' | 'applied' | 'first_sample' | 'partially_rejected' | 'rejected';
   statusReason: string;
   activationNotice: string;
   disableNotice: string;

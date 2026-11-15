@@ -31,6 +31,7 @@ import type {
   MeasurementCatalogPoint, MeasurementHistory, MeasurementSelectionState,
 } from './api';
 import { fmtRelative } from './format';
+import { ablehngrundText } from './messpunktAblehngrund';
 import type { MiniPoint } from './miniChart';
 import { parseRegisterZahl } from './registerWrite';
 
@@ -193,7 +194,9 @@ export function zeilen(input: ZeilenInput): BeobachteteZeile[] {
     let grund: string | null = null;
     if (status === 'rejected') {
       zustand = 'abgelehnt';
-      grund = sel.applyReason ?? null;
+      // ⚠ Der Server liefert hier den rohen Box-Code (z. B. `edge_too_old`) -
+      // nie roh zeigen, sondern in einen verständlichen deutschen Satz übersetzen.
+      grund = ablehngrundText(sel.applyReason);
     } else if (status === 'applied' || status === 'first_sample') {
       // Regel 3: ohne Lesbarkeit UND ohne Wert wird keine Beobachtung behauptet.
       if (input.lesbar === false && wert == null) {
