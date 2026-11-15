@@ -36,6 +36,7 @@ class DbHealthMetricsScrapeTest {
         private List<JobStat> jobs = new ArrayList<>();
         private OptimizerCycle cycle;
         private boolean explode;
+        private int sizeReads;
 
         StubRepo() {
             super(null);
@@ -46,12 +47,17 @@ class DbHealthMetricsScrapeTest {
             if (explode) {
                 throw new IllegalStateException("Failed to obtain JDBC Connection");
             }
-            return sizes;
+            sizeReads++;
+            return new ArrayList<>(sizes);
         }
 
         @Override
         public List<JobStat> jobStats() {
-            return jobs;
+            // Eine fehlende Verbindung trifft jede Abfrage, nicht nur die Groessen.
+            if (explode) {
+                throw new IllegalStateException("Failed to obtain JDBC Connection");
+            }
+            return new ArrayList<>(jobs);
         }
 
         @Override
@@ -247,9 +253,84 @@ class DbHealthMetricsScrapeTest {
                 .endsWith(" 1.2E7");
 
         repo.sizes.set(0, new HypertableSize("telemetry", 20_000_000L));
+        clock.advance(DbHealthMetricsCollector.DEFAULT_SIZE_INTERVAL);
         collector.collect();
         assertThat(line(registry.scrape(), "voltpilot_db_total_bytes{table=\"telemetry\"}"))
                 .endsWith(" 2.0E7");
+    }
+
+    /**
+     * Lasttest B8: {@code hypertable_size} ueber alle Chunks kostete 8-19 s je
+     * Aufruf. Der 60-s-Takt liest die Groessen darum nur alle 15 min, Job-Status
+     * und Optimierer-Zyklus aber in jedem Takt - und das Sammler-Alter bleibt
+     * frisch, damit {@code VoltPilotKennzahlenEingefroren} ({@code > 300}) nicht
+     * zwischen zwei Groessen-Laeufen feuert.
+     */
+    @Test
+    void theSizesAreReadOncePerSizeIntervalWhileJobsAndTheCycleFollowEveryTick() {
+        MutableClock clock = new MutableClock(NOW);
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        StubRepo repo = fleet();
+        DbHealthMetricsCollector collector = new DbHealthMetricsCollector(repo, registry, clock);
+        collector.tick();
+        assertThat(repo.sizeReads).isEqualTo(1);
+
+        // 14 Takte spaeter: neue Groesse und ein erholter Job in der Datenbank.
+        repo.sizes.set(0, new HypertableSize("telemetry", 20_000_000L));
+        repo.jobs.set(0, new JobStat(1000, "policy_retention", "Success", 4L));
+        for (int i = 1; i <= 14; i++) {
+            clock.advance(Duration.ofMinutes(1));
+            collector.tick();
+        }
+        String scrape = registry.scrape();
+        assertThat(repo.sizeReads).as("Groessen nur im ersten Takt gelesen").isEqualTo(1);
+        assertThat(line(scrape, "voltpilot_db_total_bytes{table=\"telemetry\"}")).endsWith(" 1.2E7");
+        assertThat(line(scrape, "voltpilot_db_job_last_run_failed{job_id=\"1000\""))
+                .as("Job-Status folgt jedem Takt").endsWith(" 0.0");
+        assertThat(line(scrape, "voltpilot_db_metrics_collect_age_seconds ")).endsWith(" 0.0");
+
+        clock.advance(Duration.ofMinutes(1)); // 15 min nach dem ersten Lesen
+        collector.tick();
+        assertThat(repo.sizeReads).isEqualTo(2);
+        assertThat(line(registry.scrape(), "voltpilot_db_total_bytes{table=\"telemetry\"}"))
+                .endsWith(" 2.0E7");
+    }
+
+    @Test
+    void aFailedSizeReadIsRetriedOnTheNextTickNotOneIntervalLater() {
+        MutableClock clock = new MutableClock(NOW);
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        StubRepo repo = fleet();
+        DbHealthMetricsCollector collector = new DbHealthMetricsCollector(repo, registry, clock);
+        collector.tick();
+
+        clock.advance(DbHealthMetricsCollector.DEFAULT_SIZE_INTERVAL);
+        repo.explode = true;
+        collector.tick(); // faellig, scheitert: ganzer Takt scheitert, Alter waechst
+        assertThat(line(registry.scrape(), "voltpilot_db_metrics_collect_age_seconds "))
+                .endsWith(" 900.0");
+
+        repo.explode = false;
+        repo.sizes.set(0, new HypertableSize("telemetry", 20_000_000L));
+        clock.advance(Duration.ofMinutes(1));
+        collector.tick();
+        assertThat(repo.sizeReads).isEqualTo(2);
+        String scrape = registry.scrape();
+        assertThat(line(scrape, "voltpilot_db_total_bytes{table=\"telemetry\"}")).endsWith(" 2.0E7");
+        assertThat(line(scrape, "voltpilot_db_metrics_collect_age_seconds ")).endsWith(" 0.0");
+    }
+
+    @Test
+    void aConfiguredSizeIntervalOfZeroReadsTheSizesInEveryTick() {
+        MutableClock clock = new MutableClock(NOW);
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        StubRepo repo = fleet();
+        DbHealthMetricsCollector collector =
+                new DbHealthMetricsCollector(repo, registry, clock, Duration.ZERO);
+        collector.tick();
+        clock.advance(Duration.ofMinutes(1));
+        collector.tick();
+        assertThat(repo.sizeReads).isEqualTo(2);
     }
 
     @Test

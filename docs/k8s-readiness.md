@@ -174,11 +174,11 @@ Belege: `K8sReadinessConfigTest` in den JVM-Diensten, Python-`test_runtime.py`, 
 
 Ingest verwendet `readinessState,eventsTopic`: `events.raw` muss einmal erfolgreich erkannt sein. Fehlt es, legt der Ingest es vorher selbst an (abschaltbar; ein vorhandenes Topic wird nie angepasst; Grund und Einstellung im Ingest-README). Bis dahin bleiben Messwerte mit Ereignis-Fallback möglich, der Box-Ereignisadapter wartet. Ein späterer Broker-Ausfall entfernt die einmal erkannte Bereitschaft nicht. Details: [Ingest](../services/ingest/README.md).
 
-API, Writer und Ingest liefern interne `/metrics`-Endpunkte auf 8090, 8092 bzw. 8091 (gleiche Bauart: Actuator-Endpunkt `prometheus`, umgehängt auf `/metrics`; anonym lesbar, vom Frontend-nginx nie durchgereicht). Die API ergänzt Datenhaltungsmetriken über `DbHealthMetricsCollector` (alle 60 s, `VOLTPILOT_METRICS_DB_ENABLED`, Vorgabe true). Der Writer ermittelt Gruppenrückstand über Kafka-AdminClient (`VOLTPILOT_METRICS_KAFKA_LAG_ENABLED`, Vorgabe true).
+API, Writer und Ingest liefern interne `/metrics`-Endpunkte auf 8090, 8092 bzw. 8091 (gleiche Bauart: Actuator-Endpunkt `prometheus`, umgehängt auf `/metrics`; anonym lesbar, vom Frontend-nginx nie durchgereicht). Die API ergänzt Datenhaltungsmetriken über `DbHealthMetricsCollector` (alle 60 s, `VOLTPILOT_METRICS_DB_ENABLED`, Vorgabe true; die Größe je Hypertable liest der Takt nur alle 15 min neu, `VOLTPILOT_METRICS_DB_SIZE_INTERVAL_MS`, weil `hypertable_size` mit der Zahl der Chunks teuer wird). Der Writer ermittelt Gruppenrückstand über Kafka-AdminClient (`VOLTPILOT_METRICS_KAFKA_LAG_ENABLED`, Vorgabe true).
 
 | Metrikfamilie | Bedeutung |
 |---|---|
-| `voltpilot_db_total_bytes{table}` | Größe je Hypertable |
+| `voltpilot_db_total_bytes{table}` | Größe je Hypertable; höchstens 15 min alt |
 | `voltpilot_db_table_bytes{class,tenant}` | Täglich gecachter physischer Anteil der AP-07-Speicherklasse je interner Mandantenkennung |
 | `voltpilot_db_table_plan_fraction{class,tenant}`, `…_warning` | Anteil am 100-Messstellen-Plan; Warnung `1` ab einschließlich 70 % |
 | `voltpilot_db_job_last_run_failed`, `voltpilot_db_job_total_failures` | Status/Fehlerzahl der Timescale-Jobs; `policy_telemetry` wird ausgeblendet |

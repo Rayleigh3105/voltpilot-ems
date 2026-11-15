@@ -205,13 +205,23 @@ class DbHealthMetricsDbTest {
                 new DbHealthMetricsRepository(new JdbcTemplate(adminRole()));
         PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         DbHealthMetricsCollector collector =
-                new DbHealthMetricsCollector(repo, registry, Clock.systemUTC());
+                new DbHealthMetricsCollector(repo, registry, Clock.systemUTC(), Duration.ZERO);
         collector.collect(); // aufwaermen
         long start = System.nanoTime();
         collector.collect();
         Duration cost = Duration.ofNanos(System.nanoTime() - start);
         // Die Zahl steht im PR: getaktet (60 s), nie pro Scrape - trotzdem billig.
-        System.out.println("DbHealthMetricsCollector.collect() = " + cost.toMillis() + " ms");
+        System.out.println("DbHealthMetricsCollector.collect() mit Groessen = " + cost.toMillis() + " ms");
+
+        // Im 60-s-Takt zwischen zwei Groessen-Laeufen (Vorgabe 15 min, Lasttest B8).
+        DbHealthMetricsCollector getaktet = new DbHealthMetricsCollector(repo,
+                new PrometheusMeterRegistry(PrometheusConfig.DEFAULT), Clock.systemUTC());
+        getaktet.collect();
+        long startOhne = System.nanoTime();
+        getaktet.collect();
+        Duration ohne = Duration.ofNanos(System.nanoTime() - startOhne);
+        System.out.println("DbHealthMetricsCollector.collect() ohne Groessen = " + ohne.toMillis() + " ms");
+        assertThat(ohne).isLessThan(Duration.ofSeconds(5));
         assertThat(cost).isLessThan(Duration.ofSeconds(5));
     }
 }

@@ -286,6 +286,11 @@ voltpilot:
       enabled: ${VOLTPILOT_METRICS_DB_ENABLED:true}
       interval-ms: ${VOLTPILOT_METRICS_DB_INTERVAL_MS:60000}
       initial-delay-ms: ${VOLTPILOT_METRICS_DB_INITIAL_DELAY_MS:15000}
+      # Die Groesse je Hypertable (hypertable_size ueber alle Chunks) liest der
+      # 60-s-Takt nur alle 15 min neu (Lasttest B8: 8-19 s je Aufruf, ~30 % der
+      # DB-Zeit bei 100 Boxen). Job-Status, Optimierer-Zyklus und das
+      # Sammler-Alter bleiben im 60-s-Takt.
+      size-interval-ms: ${VOLTPILOT_METRICS_DB_SIZE_INTERVAL_MS:900000}
       # Mandantenanteile brauchen vier Vollscans. Einmal taeglich sammeln und
       # dazwischen fuer beliebig viele Prometheus-Scrapes im Prozess cachen.
       storage-interval-ms: ${VOLTPILOT_METRICS_DB_STORAGE_INTERVAL_MS:86400000}

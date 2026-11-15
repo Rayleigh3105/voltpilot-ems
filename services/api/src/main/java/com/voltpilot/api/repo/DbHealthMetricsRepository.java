@@ -47,8 +47,10 @@ public class DbHealthMetricsRepository {
 
     /**
      * Groesse je Hypertable in Bytes. {@code hypertable_size} summiert die
-     * Chunk-Groessen (Katalog + {@code pg_relation_size} je Chunk) - billig, und
-     * die 60-s-Taktung des Sammlers haelt es aus dem Scrape heraus. Die DB-Summe
+     * Chunk-Groessen (Katalog + {@code pg_relation_size} je Chunk). Nicht billig:
+     * im Lasttest 7,9-19,1 s je Aufruf, wachsend mit der Zahl der Chunks - darum
+     * liest der Sammler sie nur alle 15 min ({@code
+     * voltpilot.metrics.db.size-interval-ms}), nie je Scrape. Die DB-Summe
      * fuer die 0,5-TB-Schwelle ist {@code sum(voltpilot_db_total_bytes)} in der
      * Alarm-Regel (Prometheus-Konvention: Label fuer die Aufschluesselung, das
      * Aggregat im PromQL - wie {@code voltpilot_priced_slots_ahead{zone}}).

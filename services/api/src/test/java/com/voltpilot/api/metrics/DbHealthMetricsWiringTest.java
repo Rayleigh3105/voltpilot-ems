@@ -110,4 +110,23 @@ class DbHealthMetricsWiringTest {
         }
         assertThat(node).isEqualTo("${VOLTPILOT_METRICS_DB_ENABLED:true}");
     }
+
+    /**
+     * Die Groessen je Hypertable kommen ab Werk alle 15 min (Lasttest B8), und
+     * der Wert der Vorgabe im Code ist derselbe wie in der {@code application.yml}.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theShippedSizeIntervalIsFifteenMinutes() throws Exception {
+        Map<String, Object> yml;
+        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
+            yml = (Map<String, Object>) new Yaml().loadAll(in).iterator().next();
+        }
+        Object node = yml;
+        for (String key : new String[] {"voltpilot", "metrics", "db", "size-interval-ms"}) {
+            node = ((Map<String, Object>) node).get(key);
+        }
+        assertThat(node).isEqualTo("${VOLTPILOT_METRICS_DB_SIZE_INTERVAL_MS:900000}");
+        assertThat(DbHealthMetricsCollector.DEFAULT_SIZE_INTERVAL.toMillis()).isEqualTo(900_000L);
+    }
 }

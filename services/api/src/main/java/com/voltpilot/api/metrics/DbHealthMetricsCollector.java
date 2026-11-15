@@ -9,6 +9,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.MultiGauge;
 import io.micrometer.core.instrument.Tags;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -83,8 +85,15 @@ public class DbHealthMetricsCollector {
     /** Dauer des letzten Sammel-Laufs (Kosten-Beleg). */
     public static final String COLLECT_DURATION = "voltpilot_db_metrics_collect_duration_seconds";
 
+    /** Vorgabe fuer {@code voltpilot.metrics.db.size-interval-ms}: 15 min. */
+    static final Duration DEFAULT_SIZE_INTERVAL = Duration.ofMinutes(15);
+
     private final DbHealthMetricsRepository repo;
     private final Clock clock;
+    private final Duration sizeInterval;
+
+    /** Wann die Groessen zuletzt erfolgreich gelesen wurden; {@code null} bis zum ersten Mal. */
+    private volatile Instant sizesReadAt;
 
     private final MultiGauge dbBytes;
     private final MultiGauge jobFailed;
@@ -103,17 +112,25 @@ public class DbHealthMetricsCollector {
     private volatile boolean failing;
 
     @Autowired
-    public DbHealthMetricsCollector(DbHealthMetricsRepository repo, MeterRegistry registry) {
-        this(repo, registry, Clock.systemUTC());
+    public DbHealthMetricsCollector(DbHealthMetricsRepository repo, MeterRegistry registry,
+            @Value("${voltpilot.metrics.db.size-interval-ms:900000}") long sizeIntervalMs) {
+        this(repo, registry, Clock.systemUTC(), Duration.ofMillis(sizeIntervalMs));
     }
 
     /**
-     * Test-Naht mit steuerbarer Uhr. <b>Der Produktions-Konstruktor oben MUSS
-     * {@code @Autowired} tragen</b> - siehe {@link FleetMetricsCollector}.
+     * Test-Naht mit steuerbarer Uhr und dem Vorgabe-Takt der Groessen. <b>Der
+     * Produktions-Konstruktor oben MUSS {@code @Autowired} tragen</b> - siehe
+     * {@link FleetMetricsCollector}.
      */
     DbHealthMetricsCollector(DbHealthMetricsRepository repo, MeterRegistry registry, Clock clock) {
+        this(repo, registry, clock, DEFAULT_SIZE_INTERVAL);
+    }
+
+    DbHealthMetricsCollector(DbHealthMetricsRepository repo, MeterRegistry registry, Clock clock,
+            Duration sizeInterval) {
         this.repo = repo;
         this.clock = clock;
+        this.sizeInterval = sizeInterval;
 
         // OHNE Micrometer-baseUnit (wie FleetMetricsCollector): eine gesetzte
         // baseUnit haengte die Einheit als Suffix an den Namen und braeche den
@@ -183,16 +200,22 @@ public class DbHealthMetricsCollector {
     /** Sammelt und veroeffentlicht einen Stand. Paket-sichtbar fuer die Tests. */
     void collect() {
         long startedNanos = System.nanoTime();
+        Instant now = clock.instant();
 
-        List<HypertableSize> sizes = repo.hypertableSizes();
+        // Erst lesen, dann veroeffentlichen: scheitert eine der Abfragen, bleibt
+        // der ganze letzte Stand stehen (und die Groessen gelten als nicht gelesen).
+        List<HypertableSize> sizes = sizesDue(now) ? repo.hypertableSizes() : null;
         List<JobStat> jobs = repo.jobStats();
         OptimizerCycle latestCycle = repo.latestOptimizerCycle();
 
-        List<MultiGauge.Row<?>> byteRows = new ArrayList<>(sizes.size());
-        for (HypertableSize s : sizes) {
-            byteRows.add(MultiGauge.Row.of(Tags.of("table", s.table()), s.bytes()));
+        if (sizes != null) {
+            List<MultiGauge.Row<?>> byteRows = new ArrayList<>(sizes.size());
+            for (HypertableSize s : sizes) {
+                byteRows.add(MultiGauge.Row.of(Tags.of("table", s.table()), s.bytes()));
+            }
+            dbBytes.register(byteRows, true);
+            this.sizesReadAt = now;
         }
-        dbBytes.register(byteRows, true);
 
         List<MultiGauge.Row<?>> failedRows = new ArrayList<>();
         List<MultiGauge.Row<?>> totalRows = new ArrayList<>();
@@ -218,9 +241,15 @@ public class DbHealthMetricsCollector {
 
         this.lastDurationSeconds = (System.nanoTime() - startedNanos) / 1_000_000_000.0;
         this.lastCollect.set(clock.instant());
-        log.debug("db health metrics collected: {} hypertables, {} jobs, cycle={}, {} ms",
-                sizes.size(), jobs.size(), latestCycle != null,
+        log.debug("db health metrics collected: sizes={}, {} jobs, cycle={}, {} ms",
+                sizes == null ? "kept" : sizes.size(), jobs.size(), latestCycle != null,
                 Math.round(lastDurationSeconds * 1000));
+    }
+
+    /** Die Groessen sind faellig beim ersten Takt und danach je {@link #sizeInterval}. */
+    private boolean sizesDue(Instant now) {
+        Instant last = sizesReadAt;
+        return last == null || !now.isBefore(last.plus(sizeInterval));
     }
 
     private double cycleAgeSeconds() {
