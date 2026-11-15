@@ -156,7 +156,8 @@ public class GrundlastService {
                 teile.stream().map(t -> new TeilDto(t.entityId(), t.label(), t.typLabel(), t.unterzaehler(), watt(t.w())))
                         .toList(),
                 rest == null ? null : new RestDto(watt(rest.w()),
-                        rest.grund() == null ? null : rest.grund().name().toLowerCase(Locale.ROOT)));
+                        rest.grund() == null ? null : rest.grund().name().toLowerCase(Locale.ROOT),
+                        rest.ohneMessung()));
     }
 
     /** Hausverbrauch je Nacht-Viertelstunde, an der Umstellung gespleißt. */

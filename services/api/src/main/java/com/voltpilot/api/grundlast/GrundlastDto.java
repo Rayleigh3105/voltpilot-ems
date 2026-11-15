@@ -52,6 +52,8 @@ public record GrundlastDto(String z, LocalDate von, LocalDate bis, boolean hausv
      * Der Rest.
      *
      * @param grund {@code teil_ohne_wert | teile_mehr_als_haus}, wenn es keine Zahl gibt
+     * @param ohneMessung die Teile ({@code entityId}), deren Reihe im Zeitraum leer ist: sie gehen nicht in
+     *     den Rest ein, ihr Verbrauch steckt darin
      */
-    public record RestDto(Double w, String grund) {}
+    public record RestDto(Double w, String grund, List<String> ohneMessung) {}
 }

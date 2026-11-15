@@ -8,6 +8,8 @@
  * `?profil=gewerbe` setzt das Anwendungsprofil; `?vorher=1` zeigt die Unterzähler, wie sie bis
  * 07.11.2026 entstanden (`generic-load` „Steuerbare Last“, nur `power_kw`, keine Energie-Route).
  * `?grundlast=voll|luecke|wenig|stufe|nie` wählt den Fall der Karte „Grundlast“ (`grundlast-fixtures.ts`).
+ * `?nichtmessend=1` fügt einen Ladepunkt „Testing“ ohne jede Reihe hinzu (Muster Schramm 15.11.2026): er misst
+ * nicht und steckt im Rest.
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -34,6 +36,7 @@ installHelpFixtures();
 const q = new URLSearchParams(location.search);
 const vorher = q.get('vorher') === '1';
 const profil = q.get('profil') === 'gewerbe' ? 'gewerbe' : 'privat';
+const nichtMessend = q.get('nichtmessend') === '1';
 const NOW = new Date().toISOString();
 
 const typ = vorher ? 'generic-load' : 'sub-meter';
@@ -56,6 +59,10 @@ const zusatz = [
     capabilities: kanaele(11.252, [3.89, 3.82, 3.54], 70802.308, 1.069) },
   { id: 'uv-keller', entityType: typ, typeLabel: typLabel, label: 'UV Keller', category: 'consumer',
     capabilities: kanaele(0.072, [0.057, 0.015, 0], 7647.388, 6.8) },
+  ...(nichtMessend
+    ? [{ id: 'uv-testing', entityType: 'ev-charger', typeLabel: 'Ladepunkt', label: 'Testing', category: 'consumer',
+      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'charging', primary: true, value: null }] }]
+    : []),
 ];
 
 const topologyOrig = api.topology;
@@ -65,6 +72,10 @@ const listSitesOrig = api.listSites;
 /** Der Hausverbrauch je Eimer, aufgeteilt: UV Halle ~ 93 %, UV Keller ~ 3 %, der Rest im Haus. */
 function energieFuer(entityId: string, range: HistoryRange, at: string): EntityEnergy {
   const h: History = historyFor(range, at || TODAY);
+  if (entityId === 'uv-testing') {
+    // Nie gemessen: die Energie-Route antwortet ohne Quelle und ohne Eimer.
+    return { range, from: h.from, to: h.to, bucketMinutes: h.bucketMinutes, source: null, buckets: [], totalKwh: null, counterFalls: false } as unknown as EntityEnergy;
+  }
   const anteil = entityId === 'uv-halle' ? 0.93 : 0.03;
   const buckets = h.buckets
     .filter((b) => b.loadKwh != null)
@@ -134,13 +145,21 @@ Object.assign(api, {
 
 Object.assign(grundlastApi, {
   // Grundlast (Bedienkonzept Privatkunde §5): die Nacht der Halle mit beiden Unterzählern; `?grundlast=` wählt den Fall.
-  grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) =>
-    grundlastAntwort({
+  grundlast: async (_siteId: string, z: GrundlastZeitraum, at?: string) => {
+    const g = grundlastAntwort({
       heute: TODAY,
       basisW: 640,
       teile: [{ entityId: 'uv-halle', label: 'UV Halle', anteil: 0.875 }, { entityId: 'uv-keller', label: 'UV Keller', anteil: 0.047 }],
       fall: (q.get('grundlast') ?? 'voll') as GrundlastFall,
-    }, z, at),
+    }, z, at);
+    // Der Server nennt einen Teil ohne Reihe im Zeitraum (`ohneMessung`) und rechnet ihn nicht ab.
+    if (!nichtMessend || !g.rest) return g;
+    return {
+      ...g,
+      teile: [...g.teile, { entityId: 'uv-testing', label: 'Testing', typLabel: 'Ladepunkt', unterzaehler: false, w: null }],
+      rest: { ...g.rest, ohneMessung: ['uv-testing'] },
+    };
+  },
 });
 
 // Anlagen-Check (`?solar=…`, `?bilanz=…`, `?einheiten=wr`): nur wenn die Adresse einen Fall nennt.

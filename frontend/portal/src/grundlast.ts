@@ -124,6 +124,8 @@ export interface GrundlastTeilZeile {
   label: string;
   wert: string;
   art: 'teil' | 'rest';
+  /** Nur am Rest: welche Teile nicht messen und deshalb darin stecken („enthält Testing (misst nicht)“). */
+  sub?: string;
 }
 
 export interface GrundlastKarteModell {
@@ -218,7 +220,11 @@ export function grundlastKarte(g: Grundlast, profil?: string | null): GrundlastK
           : g.rest.grund === 'teile_mehr_als_haus'
             ? 'passt nicht zusammen'
             : 'nicht bestimmbar';
-      teile.push({ key: 'rest', label: restWort(profil), wert, art: 'rest' });
+      const namen = (g.rest.ohneMessung ?? [])
+        .map((id) => g.teile.find((t) => t.entityId === id))
+        .map((t) => t?.label?.trim() || t?.typLabel || 'Gerät');
+      const sub = nichtMessendSatz(namen);
+      teile.push({ key: 'rest', label: restWort(profil), wert, art: 'rest', ...(sub ? { sub } : {}) });
     }
   }
   return {
@@ -229,6 +235,16 @@ export function grundlastKarte(g: Grundlast, profil?: string | null): GrundlastK
     teile,
     satz: grundlastSatz(g),
   };
+}
+
+/**
+ * Die Unterzeile des Rests, wenn Teile im Zeitraum nicht messen: „enthält Testing (misst nicht)“, „enthält A und B
+ * (messen nicht)“; ohne solche Teile `null`. Dieselben Wörter wie „Verbrauch nach Bereichen“.
+ */
+export function nichtMessendSatz(namen: readonly string[]): string | null {
+  if (namen.length === 0) return null;
+  const liste = namen.length === 1 ? namen[0] : `${namen.slice(0, -1).join(', ')} und ${namen[namen.length - 1]}`;
+  return `enthält ${liste} (${namen.length === 1 ? 'misst' : 'messen'} nicht)`;
 }
 
 /** Ob ein Monat (`JJJJ-MM`) schon begonnen hat. */

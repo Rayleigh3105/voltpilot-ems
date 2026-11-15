@@ -296,6 +296,87 @@ describe('Verlauf: Verbrauch nach Bereichen', () => {
     expect(b?.zeilen.at(-1)?.sub).toContain('Messwerte passen nicht zusammen');
   });
 
+  // Schramm 15.11.2026: ein nach dem Zeitraum angelegter Ladepunkt „Testing“ hat keine einzige Reihe
+  // (source null, keine Eimer). Er misst nicht - der Rest bleibt eine Zahl und nennt ihn.
+  const leer: EntityEnergy = {
+    range: 'month', from: '', to: '', bucketMinutes: 1440, source: null, buckets: [], totalKwh: null, counterFalls: false,
+  } as unknown as EntityEnergy;
+
+  it('ein Teil ohne jede Reihe im Zeitraum misst nicht: Rest wird angezeigt und nennt ihn (Schramm)', () => {
+    const b = verbrauchBereiche({
+      history: woche([62, 61]),
+      range: 'month',
+      profil: 'gewerbe',
+      teile: [
+        { entityId: 'halle', label: 'UV Halle', unterzaehler: true, energie: energie([59, 58]), haengtAn: null },
+        { entityId: 'keller', label: 'UV Keller', unterzaehler: true, energie: energie([2, 2]), haengtAn: null },
+        { entityId: 'testing', label: 'Testing', unterzaehler: false, energie: leer, haengtAn: null },
+      ],
+    });
+    expect(b?.zeilen.map((z) => [z.label, z.kwh, z.sub])).toEqual([
+      ['UV Halle', 117, 'Unterzähler'],
+      ['UV Keller', 4, 'Unterzähler'],
+      ['Testing', null, 'keine Werte in diesem Zeitraum'],
+      ['ohne eigenen Zähler', 2, 'berechnet: Haus minus Unterzähler, enthält Testing (misst nicht)'],
+    ]);
+    expect(b?.saeulen.map((s) => s.rest)).toEqual([1, 1]);
+    // Alle Eimer belegt: auch eine Reihe, deren Eimer alle leer sind, misst nicht.
+    const nurNull = { ...energie([null, null]), totalKwh: null };
+    const c = verbrauchBereiche({
+      history: woche([62, 61]),
+      range: 'month',
+      teile: [
+        { entityId: 'halle', label: 'UV Halle', unterzaehler: true, energie: energie([59, 58]), haengtAn: null },
+        { entityId: 'a', label: 'A', unterzaehler: false, energie: leer, haengtAn: null },
+        { entityId: 'b', label: 'B', unterzaehler: false, energie: nurNull, haengtAn: null },
+      ],
+    });
+    expect(c?.zeilen.at(-1)).toMatchObject({
+      kwh: 6,
+      sub: 'berechnet: Haus minus Unterzähler, enthält A und B (messen nicht)',
+    });
+  });
+
+  it('eine Lücke in einer gemessenen Reihe macht den Rest weiter unbestimmbar, auch neben einem Teil ohne Reihe', () => {
+    const b = verbrauchBereiche({
+      history: woche([62, 61]),
+      range: 'month',
+      teile: [
+        { entityId: 'halle', label: 'UV Halle', unterzaehler: true, energie: energie([59, null]), haengtAn: null },
+        { entityId: 'testing', label: 'Testing', unterzaehler: false, energie: leer, haengtAn: null },
+      ],
+    });
+    expect(b?.zeilen.at(-1)).toMatchObject({
+      kwh: null,
+      sub: 'nicht bestimmbar (UV Halle ohne Werte für einen Teil des Zeitraums)',
+    });
+    expect(b?.saeulen.map((s) => s.rest)).toEqual([3, null]);
+  });
+
+  it('eine nicht geladene Reihe ist unbekannt, kein „misst nicht“ - der Rest sagt, dass sie fehlt', () => {
+    const b = verbrauchBereiche({
+      history: woche([62, 61]),
+      range: 'month',
+      teile: [
+        { entityId: 'halle', label: 'UV Halle', unterzaehler: true, energie: energie([59, 58]), haengtAn: null },
+        { entityId: 'keller', label: 'UV Keller', unterzaehler: true, energie: null, haengtAn: null },
+      ],
+    });
+    expect(b?.zeilen.at(-1)).toMatchObject({
+      kwh: null,
+      sub: 'nicht bestimmbar (UV Keller: Werte konnten nicht geladen werden)',
+    });
+  });
+
+  it('misst kein Teil an der Wurzel, ist der Rest der ganze Hausverbrauch', () => {
+    const b = verbrauchBereiche({
+      history: woche([62, 61]),
+      range: 'month',
+      teile: [{ entityId: 'halle', label: 'UV Halle', unterzaehler: true, energie: leer, haengtAn: null }],
+    });
+    expect(b?.zeilen.at(-1)).toMatchObject({ kwh: 123, sub: 'der ganze Hausverbrauch, enthält UV Halle (misst nicht)' });
+  });
+
   it('ohne Teil oder ohne Historie gibt es keine Karte', () => {
     expect(verbrauchBereiche({ history: woche([1]), range: 'month', teile: [] })).toBeNull();
     expect(verbrauchBereiche({ history: null, range: 'month', teile: [] })).toBeNull();

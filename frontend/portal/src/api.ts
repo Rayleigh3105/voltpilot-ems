@@ -1123,7 +1123,11 @@ export interface Grundlast {
   vorperiodeW: number | null;
   stufe: { seit: string; vorherW: number; nachherW: number } | null;
   teile: { entityId: string; label: string | null; typLabel: string | null; unterzaehler: boolean; w: number | null }[];
-  rest: { w: number | null; grund: 'teil_ohne_wert' | 'teile_mehr_als_haus' | null } | null;
+  /**
+   * `ohneMessung`: die Teile (`entityId`), deren Reihe im Zeitraum leer ist - sie gehen nicht in den Rest
+   * ein, ihr Verbrauch steckt darin. Fehlt bei einem älteren Server.
+   */
+  rest: { w: number | null; grund: 'teil_ohne_wert' | 'teile_mehr_als_haus' | null; ohneMessung?: string[] } | null;
 }
 
 /** Eine Richtung von „Abrechnung prüfen“ (`GET …/abrechnung`, R2). */

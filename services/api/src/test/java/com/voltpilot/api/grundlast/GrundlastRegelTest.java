@@ -237,4 +237,43 @@ class GrundlastRegelTest {
         assertThat(GrundlastRegel.rest(null, knapp)).isNull();
         assertThat(GrundlastRegel.rest(300.0, List.of())).isNull();
     }
+
+    /**
+     * Schramm 15.11.2026: ein Ladepunkt ohne jede Reihe im Zeitraum misst nicht. Er geht nicht in den Rest ein
+     * und wird genannt; eine Lücke in einer gemessenen Reihe macht den Rest weiter unbestimmbar.
+     */
+    @Test
+    void teilOhneReiheImZeitraumStecktImRestLueckeInGemessenerReiheNicht() {
+        NavigableMap<Instant, Double> haus = new TreeMap<>();
+        Map<Instant, Double> halle = new HashMap<>();
+        Map<Instant, Double> nurAusserhalb = new HashMap<>();
+        LocalDate mo = LocalDate.of(2026, 8, 31);
+        for (int i = 0; i < 7; i++) {
+            LocalDate d = mo.plusDays(i);
+            fuelle(haus, d, x -> x == 4 ? 640 : 900);
+            halle.put(GrundlastRegel.nachtBeginn(d).plus(Duration.ofMinutes(60)), 0.56);
+            // Misst im Zeitraum, aber nie in der tiefsten Viertelstunde: eine Lücke, kein „misst nicht“.
+            nurAusserhalb.put(GrundlastRegel.nachtBeginn(d), 0.1);
+        }
+        List<Nacht> naechte = GrundlastRegel.naechte(mo, mo.plusDays(7), haus, Instant.EPOCH, SPAETER);
+        Double typisch = GrundlastRegel.typisch(naechte, 3);
+
+        List<Teil> mitTesting = GrundlastRegel.teile(naechte, List.of(
+                new TeilEingabe("halle", "UV Halle", "Unterzähler", true, halle),
+                new TeilEingabe("testing", "Testing", "Ladepunkt", false, Map.of())));
+        assertThat(mitTesting).extracting(Teil::misst).containsExactly(true, false);
+        GrundlastRegel.Rest rest = GrundlastRegel.rest(typisch, mitTesting);
+        assertThat(rest.grund()).isNull();
+        assertThat(rest.w()).isCloseTo(80, within(1e-6));
+        assertThat(rest.ohneMessung()).containsExactly("testing");
+
+        List<Teil> mitLuecke = GrundlastRegel.teile(naechte, List.of(
+                new TeilEingabe("halle", "UV Halle", "Unterzähler", true, halle),
+                new TeilEingabe("keller", "UV Keller", "Unterzähler", true, nurAusserhalb),
+                new TeilEingabe("testing", "Testing", "Ladepunkt", false, Map.of())));
+        GrundlastRegel.Rest unbestimmt = GrundlastRegel.rest(typisch, mitLuecke);
+        assertThat(unbestimmt.w()).isNull();
+        assertThat(unbestimmt.grund()).isEqualTo(RestGrund.TEIL_OHNE_WERT);
+        assertThat(unbestimmt.ohneMessung()).containsExactly("testing");
+    }
 }

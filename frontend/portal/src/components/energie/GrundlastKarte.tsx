@@ -91,6 +91,7 @@ export function GrundlastKarte({
                   aria-hidden="true"
                 />{' '}
                 {t.label}
+                {t.sub && <small>{t.sub}</small>}
               </dt>
               <dd>{t.wert}</dd>
             </div>

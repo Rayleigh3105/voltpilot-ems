@@ -16,6 +16,11 @@
  *  1. **Fehlend ist keine Null.** Fehlt einem Teil in einem Eimer, in dem das Haus misst, der Wert,
  *     ist der Rest dieses Eimers - und damit jeder Summe, die ihn enthält - nicht bestimmbar. Der
  *     Grund steht da, nie eine Zahl, die die Lücke enthält.
+ *  1a. **Ein Teil ohne jeden Wert im Zeitraum misst nicht** (Entscheid 15.11.2026): seine Reihe ist
+ *     leer (`source: null`, keine Eimer), etwa ein heute angelegter Ladepunkt im Rückblick. Er ist
+ *     kein Ausfall, sein Verbrauch steckt im Rest: Er geht nicht in den Rest ein, und die Restzeile
+ *     nennt ihn („enthält Testing (misst nicht)“). Nur eine Lücke in einer sonst gemessenen Reihe
+ *     macht den Rest unbestimmbar.
  *  2. **Ein fallender Zähler gibt keine Summe** (Zählerregel des Servers, `counterFalls`).
  *  3. **Ein negativer Rest wird gesagt, nie geklemmt**, sobald er über der Rundung zweier Zähler
  *     liegt (0,2 kW über die gemessene Dauer - die Schwelle der Cockpit-Liste).
@@ -25,6 +30,7 @@
  */
 import type { EntityEnergy, History, HistoryRange } from './api';
 import { csvZahl, isoLokal, tabellenKopf } from './energieSeite';
+import { nichtMessendSatz } from './grundlast';
 import { restWort } from './verbrauchKomposition';
 
 /** Ab dieser Leistung (kW) über die gemessene Dauer widersprechen sich die Zähler. */
@@ -78,6 +84,14 @@ export interface VerbrauchBereiche {
 
 const ms = (iso: string) => new Date(iso).getTime();
 
+/**
+ * Regel 1a: die Reihe ist geladen und hat im ganzen Zeitraum keinen Wert - der Teil misst nicht. Eine nicht
+ * geladene Reihe (`energie == null`) ist unbekannt, kein „misst nicht“; ein fallender Zähler hat Werte.
+ */
+export function misstNicht(t: BereichEingabe): boolean {
+  return t.energie != null && !t.energie.counterFalls && !t.energie.buckets.some((b) => b.kwh != null);
+}
+
 /** Der Beginn der Säule (lokale Zeit wie die Energie-Tabelle): Stunde, Tag oder Monat. */
 function saeulenBeginn(t: number, range: HistoryRange): number {
   const d = new Date(t);
@@ -113,7 +127,11 @@ export function verbrauchBereiche(input: {
   // (`haengtAn` gesetzt) steckt schon im Wert IHRER Unterverteilung - ein
   // zweiter Abzug am Haus wäre Doppelzählung. Sie bleibt trotzdem eine eigene
   // Zeile/Spalte unten (`reihen`, ungefiltert), nur eben außerhalb des Rests.
-  const wurzelIdx = teile.map((t, i) => (t.haengtAn == null ? i : -1)).filter((i) => i >= 0);
+  // Regel 1a: ein Wurzel-Teil ohne jeden Wert im Zeitraum misst nicht - er steckt im Rest, statt ihn
+  // unbestimmbar zu machen.
+  const wurzelAlle = teile.map((t, i) => (t.haengtAn == null ? i : -1)).filter((i) => i >= 0);
+  const wurzelIdx = wurzelAlle.filter((i) => !misstNicht(teile[i]));
+  const ohneMessung = wurzelAlle.filter((i) => misstNicht(teile[i])).map((i) => teile[i].label);
   const wurzelTeile = wurzelIdx.map((i) => teile[i]);
   const wurzelReihen = wurzelIdx.map((i) => reihen[i]);
 
@@ -186,7 +204,7 @@ export function verbrauchBereiche(input: {
 
   zeilen.length = 0;
   zeilen.push(...sortiert);
-  zeilen.push(restZeile(restJeEimer, wurzelTeile, input.profil, history.bucketMinutes, anteil));
+  zeilen.push(restZeile(restJeEimer, wurzelTeile, ohneMessung, input.profil, history.bucketMinutes, anteil));
 
   const saeulen: BereichSaeule[] = Array.from(spalten.entries())
     .filter(([, s]) => s.haus != null)
@@ -207,12 +225,15 @@ export function verbrauchBereiche(input: {
 function restZeile(
   restJeEimer: Map<number, number | null>,
   teile: readonly BereichEingabe[],
+  ohneMessung: readonly string[],
   profil: string | null | undefined,
   bucketMinutes: number,
   anteil: (v: number | null) => number | null,
 ): BereichZeile {
   const label = restWort(profil);
   const teilWort = teile.every((t) => t.unterzaehler) ? 'Unterzähler' : 'gemessene Geräte';
+  const enthaelt = nichtMessendSatz(ohneMessung);
+  const mitEnthaelt = (sub: string) => (enthaelt ? `${sub}, ${enthaelt}` : sub);
   const ohne = (grund: string): BereichZeile => ({ key: 'rest', label, sub: grund, kwh: null, anteil: null, art: 'rest' });
   if (restJeEimer.size === 0) return ohne('nicht bestimmbar - der Hausverbrauch fehlt in diesem Zeitraum');
   const gefallen = teile.find((t) => t.energie?.counterFalls);
@@ -221,16 +242,20 @@ function restZeile(
   for (const [t, r] of restJeEimer) {
     if (r == null) {
       const luecke = teile.find((tt) => !tt.energie?.buckets.some((b) => ms(b.start) === t && b.kwh != null));
+      // „für einen Teil des Zeitraums“ nur, wenn der Teil im Zeitraum Werte hat (Regel 1a); eine nicht
+      // geladene Reihe sagt das.
+      if (luecke && luecke.energie == null) return ohne(`nicht bestimmbar (${luecke.label}: Werte konnten nicht geladen werden)`);
       return ohne(`nicht bestimmbar (${luecke?.label ?? 'ein Teil'} ohne Werte für einen Teil des Zeitraums)`);
     }
     summe += r;
   }
   const toleranz = KONFLIKT_KW * (restJeEimer.size * bucketMinutes) / 60;
   if (summe < -toleranz) {
-    return ohne(`Messwerte passen nicht zusammen (${kwhText(summe)})`);
+    return ohne(mitEnthaelt(`Messwerte passen nicht zusammen (${kwhText(summe)})`));
   }
   const kwh = Math.max(summe, 0);
-  return { key: 'rest', label, sub: `berechnet: Haus minus ${teilWort}`, kwh, anteil: anteil(kwh), art: 'rest' };
+  const sub = teile.length === 0 ? 'der ganze Hausverbrauch' : `berechnet: Haus minus ${teilWort}`;
+  return { key: 'rest', label, sub: mitEnthaelt(sub), kwh, anteil: anteil(kwh), art: 'rest' };
 }
 
 function kwhText(v: number): string {

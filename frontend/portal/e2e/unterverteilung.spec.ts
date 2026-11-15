@@ -65,6 +65,32 @@ for (const width of [1440, 390]) {
     await pruefe(page, `verlauf-woche-${width}${vorher ? '-vorher' : ''}`);
     expect(fehler).toEqual([]);
   });
+
+  // Muster Schramm 15.11.2026: ein Ladepunkt ohne jede Reihe im Zeitraum misst nicht. Beide Karten zeigen den
+  // Rest und nennen ihn in der Unterzeile, statt den Rest unbestimmbar zu machen.
+  test(`Verlauf › Energie: Teil ohne Reihe steckt im Rest (Bereiche und Grundlast) bei ${width} px`, async ({ page }) => {
+    test.skip(vorher, 'nur mit Unterzählern');
+    await page.setViewportSize({ width, height: 1100 });
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    await page.goto('/e2e/unterverteilung.html?nichtmessend=1#/anlage/help-site/messwerte?z=woche&at=2026-09-03');
+    const karte = page.getByRole('region', { name: 'Verbrauch nach Bereichen' });
+    await expect(karte).toBeVisible();
+    await expect(karte).toContainText('Testing');
+    await expect(karte).toContainText('keine Werte in diesem Zeitraum');
+    await expect(karte).toContainText('berechnet: Haus minus Unterzähler, enthält Testing (misst nicht)');
+    await expect(karte).not.toContainText('nicht bestimmbar');
+    const grundlast = page.getByRole('region', { name: 'Grundlast' });
+    await expect(grundlast).toContainText('enthält Testing (misst nicht)');
+    await expect(grundlast).not.toContainText('nicht bestimmbar');
+    await karte.scrollIntoViewIfNeeded();
+    await pruefe(page, `verlauf-woche-nichtmessend-${width}`);
+    if (bilder) {
+      await karte.screenshot({ path: `${bilder}/bereiche-nichtmessend-${width}-karte.png` });
+      await grundlast.screenshot({ path: `${bilder}/grundlast-nichtmessend-${width}-karte.png` });
+    }
+    expect(fehler).toEqual([]);
+  });
 }
 
 for (const width of [1440, 390]) {

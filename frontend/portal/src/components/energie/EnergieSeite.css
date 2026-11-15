@@ -83,6 +83,9 @@
 }
 .vp-vr-bereiche .vp-vr-kv dd {
   white-space: nowrap;
+  /* Die Zahl behält ihre Breite; umbrechen darf nur der Name mit seiner Unterzeile (sonst ragte „· 9 %“
+     bei einer langen Unterzeile über den Kartenrand). */
+  flex-shrink: 0;
 }
 .vp-vr-saeulen {
   display: flex;
@@ -879,6 +882,11 @@ button.vp-vr-zeile:hover,
 }
 .vp-vr-grundlast-teile > div.is-rest dt {
   color: var(--vp-text-gray);
+}
+/* Die Unterzeile am Rest („enthält Testing (misst nicht)“) wie in „Verbrauch nach Bereichen“: unter dem Namen. */
+.vp-vr-grundlast-teile dt small {
+  display: block;
+  padding-left: 14px;
 }
 .vp-vr-grundlast-satz {
   margin: var(--vp-c-space-4) 0 0;

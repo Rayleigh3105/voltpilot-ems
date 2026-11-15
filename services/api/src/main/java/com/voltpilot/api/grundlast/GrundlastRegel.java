@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Objects;
 
 /**
  * Die Rechenregel der <b>Grundlast</b> – „Was läuft bei mir immer?“ (Bedienkonzept Privatkunde §5.4,
@@ -36,7 +37,10 @@ import java.util.NavigableMap;
  * </ul>
  *
  * <p>Fehlend ist keine Null: eine Nacht ohne genug Messwerte ist „nicht gewertet“, nie 0 W; ein Teil
- * ohne Wert macht den Rest unbestimmbar statt ihn zu schätzen. Die Schwellen ({@value #MIN_NAECHTE}
+ * ohne Wert macht den Rest unbestimmbar statt ihn zu schätzen. Ein Teil, dessen Reihe im ganzen Zeitraum
+ * leer ist, misst nicht: er geht nicht in den Rest ein (sein Verbrauch steckt darin), und der Rest nennt
+ * ihn ({@link Rest#ohneMessung()}). Nur ein Teil, der im Zeitraum misst, aber in den gewerteten Nächten
+ * keinen Wert hat, macht den Rest unbestimmbar. Die Schwellen ({@value #MIN_NAECHTE}
  * Nächte, 18 von 20, die Stufe) sind Startwerte des Baus, nicht vom Captain entschieden (Bericht §8).
  */
 public final class GrundlastRegel {
@@ -114,15 +118,31 @@ public final class GrundlastRegel {
     public record TeilEingabe(String entityId, String label, String typLabel, boolean unterzaehler,
             Map<Instant, Double> kwJeViertelstunde) {}
 
-    /** Ein Teil der Aufteilung; {@code w == null} = in keiner gewerteten Nacht gemessen. */
-    public record Teil(String entityId, String label, String typLabel, boolean unterzaehler, Double w) {}
+    /**
+     * Ein Teil der Aufteilung; {@code w == null} = in keiner gewerteten Nacht gemessen.
+     *
+     * @param misst ob die Reihe im Zeitraum überhaupt einen Wert hat; {@code false} = der Teil misst
+     *     nicht und geht nicht in den Rest ein
+     */
+    public record Teil(String entityId, String label, String typLabel, boolean unterzaehler, Double w,
+            boolean misst) {
+        /** Ein Teil, der im Zeitraum misst. */
+        public Teil(String entityId, String label, String typLabel, boolean unterzaehler, Double w) {
+            this(entityId, label, typLabel, unterzaehler, w, true);
+        }
+    }
 
-    /** Der Rest („übriger Haushalt“): Watt, oder der Grund, warum es keine Zahl gibt. */
-    public record Rest(Double w, RestGrund grund) {}
+    /**
+     * Der Rest („übriger Haushalt“): Watt, oder der Grund, warum es keine Zahl gibt.
+     *
+     * @param ohneMessung die Teile ({@code entityId}), deren Reihe im Zeitraum leer ist - sie stecken
+     *     im Rest
+     */
+    public record Rest(Double w, RestGrund grund, List<String> ohneMessung) {}
 
     /** Warum der Rest keine Zahl hat. */
     public enum RestGrund {
-        /** Ein Teil hat in keiner gewerteten Nacht einen Wert. */
+        /** Ein Teil, der im Zeitraum misst, hat in keiner gewerteten Nacht einen Wert. */
         TEIL_OHNE_WERT,
         /** Die Teile messen mehr als das Haus (über {@link #KONFLIKT_W}). */
         TEILE_MEHR_ALS_HAUS
@@ -296,27 +316,35 @@ public final class GrundlastRegel {
                     w.add(Math.max(0, kw) * 1000.0);
                 }
             }
-            out.add(new Teil(t.entityId(), t.label(), t.typLabel(), t.unterzaehler(), median(w)));
+            boolean misst = t.kwJeViertelstunde().values().stream().anyMatch(Objects::nonNull);
+            out.add(new Teil(t.entityId(), t.label(), t.typLabel(), t.unterzaehler(), median(w), misst));
         }
         return out;
     }
 
-    /** Der Rest zur typischen Nacht, oder {@code null}, wenn es keine typische Nacht oder keine Teile gibt. */
+    /**
+     * Der Rest zur typischen Nacht, oder {@code null}, wenn es keine typische Nacht oder keine Teile gibt.
+     * Ein Teil, der im Zeitraum nicht misst ({@link Teil#misst()}), geht nicht ein und wird genannt.
+     */
     public static Rest rest(Double typischW, List<Teil> teile) {
         if (typischW == null || teile.isEmpty()) {
             return null;
         }
+        List<String> ohneMessung = teile.stream().filter(t -> !t.misst()).map(Teil::entityId).toList();
         double summe = 0;
         for (Teil t : teile) {
+            if (!t.misst()) {
+                continue;
+            }
             if (t.w() == null) {
-                return new Rest(null, RestGrund.TEIL_OHNE_WERT);
+                return new Rest(null, RestGrund.TEIL_OHNE_WERT, ohneMessung);
             }
             summe += t.w();
         }
         double rest = typischW - summe;
         if (rest < -KONFLIKT_W) {
-            return new Rest(null, RestGrund.TEILE_MEHR_ALS_HAUS);
+            return new Rest(null, RestGrund.TEILE_MEHR_ALS_HAUS, ohneMessung);
         }
-        return new Rest(Math.max(0, rest), null);
+        return new Rest(Math.max(0, rest), null, ohneMessung);
     }
 }

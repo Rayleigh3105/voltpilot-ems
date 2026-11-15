@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Grundlast } from './api';
-import { anteilWort, grundlastKachel, grundlastKarte, grundlastSatz, kwhRund, nachtTitel, watt } from './grundlast';
+import { anteilWort, grundlastKachel, grundlastKarte, grundlastSatz, kwhRund, nachtTitel, nichtMessendSatz, watt } from './grundlast';
 
 const NBSP = String.fromCharCode(160);
 const n = (s: string) => s.replace(new RegExp(NBSP, 'g'), ' ');
@@ -78,6 +78,25 @@ describe('Grundlast · Karte', () => {
   it('ohne Unterzähler keine Aufteilung; Gewerbe nennt den Rest anders', () => {
     expect(grundlastKarte(woche({ teile: [], rest: null })).teile).toEqual([]);
     expect(grundlastKarte(woche(), 'gewerbe').teile.at(-1)?.label).toBe('ohne eigenen Zähler');
+  });
+
+  it('ein Teil ohne Reihe im Zeitraum steckt im Rest: Rest mit Zahl, die Unterzeile nennt ihn (Schramm)', () => {
+    const k = grundlastKarte(woche({
+      teile: [...woche().teile, { entityId: 't', label: 'Testing', typLabel: 'Ladepunkt', unterzaehler: false, w: null }],
+      rest: { w: 50, grund: null, ohneMessung: ['t'] },
+    }), 'gewerbe');
+    expect(k.teile.map((t) => [t.label, n(t.wert), t.sub])).toEqual([
+      ['UV Halle', '560 W', undefined],
+      ['UV Keller', '30 W', undefined],
+      ['Testing', '—', undefined],
+      ['ohne eigenen Zähler', '50 W', 'enthält Testing (misst nicht)'],
+    ]);
+    // Eine Lücke in einer gemessenen Reihe bleibt „nicht bestimmbar“ - ohne Unterzeile, wenn alle messen.
+    const luecke = grundlastKarte(woche({ rest: { w: null, grund: 'teil_ohne_wert', ohneMessung: [] } }));
+    expect(luecke.teile.at(-1)).toMatchObject({ wert: 'nicht bestimmbar' });
+    expect(luecke.teile.at(-1)?.sub).toBeUndefined();
+    expect(nichtMessendSatz(['A', 'B', 'C'])).toBe('enthält A, B und C (messen nicht)');
+    expect(nichtMessendSatz([])).toBeNull();
   });
 
   it('Rest ohne Zahl: der Grund statt einer Zahl', () => {
