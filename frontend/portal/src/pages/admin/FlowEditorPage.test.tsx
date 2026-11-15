@@ -118,7 +118,7 @@ describe('FlowEditorPage · the review step (audit E-1)', () => {
       />,
     );
 
-    expect(await screen.findByText('Ihre Regel')).toBeInTheDocument();
+    expect(await screen.findByText('Deine Regel')).toBeInTheDocument();
     // The rule reads as sentences...
     expect(screen.getByTestId('flow-steplist').textContent)
       .toMatch(/Wenn es zwischen 11:00 und 15:00 Uhr ist/);
@@ -159,7 +159,7 @@ describe('FlowEditorPage · the review step (audit E-1)', () => {
       />,
     );
     expect(await screen.findByLabelText('Baustein-Katalog')).toBeInTheDocument();
-    expect(screen.queryByText('Ihre Regel')).toBeNull();
+    expect(screen.queryByText('Deine Regel')).toBeNull();
   });
 
   it('rolls out from the review step and says so in customer German (E-9)', async () => {
@@ -179,7 +179,7 @@ describe('FlowEditorPage · the review step (audit E-1)', () => {
     await waitFor(() => expect(flowApi.activate).toHaveBeenCalled());
     const strip = await screen.findByTestId('rollout-strip');
     await waitFor(() => expect(strip.textContent)
-      .toMatch(/Ihre Regel läuft jetzt auf dem Gerät/));
+      .toMatch(/Deine Regel läuft jetzt auf dem Gerät/));
     // The raw server string never reaches the customer, and never twice.
     expect(document.body.textContent).not.toMatch(/Flow aktiviert/);
   });

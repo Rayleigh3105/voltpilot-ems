@@ -96,7 +96,7 @@ export function EditUserDrawer({
       }
       onSaved();
     } catch (e) {
-      setError(benutzerFehler(e, 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.'));
+      setError(benutzerFehler(e, 'Die Änderungen konnten nicht gespeichert werden. Bitte versuch es erneut.'));
     } finally {
       setBusy(false);
     }
@@ -172,7 +172,7 @@ export function EditUserDrawer({
           />
         )}
         {ohneStandort && (
-          <p className="vp-feld-fehler" role="alert" style={{ margin: 0 }}>Wählen Sie mindestens einen Standort.</p>
+          <p className="vp-feld-fehler" role="alert" style={{ margin: 0 }}>Wähl mindestens einen Standort.</p>
         )}
         {rolleBeruehrt && mehrfach && (
           <div className="vp-alert vp-alert-warn" role="alert">

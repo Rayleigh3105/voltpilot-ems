@@ -20,7 +20,7 @@ it('Notfall: Standort und Grund Pflicht; 24 Stunden kommen vom Server, keine erf
   fireEvent.click(screen.getByRole('button', { name: 'Notfall-Zugriff', exact: true }));
   const dialog = screen.getByRole('dialog');
   fireEvent.click(within(dialog).getByRole('button', { name: 'Notfall-Zugriff gewähren' }));
-  expect(within(dialog).getByRole('alert')).toHaveTextContent('Wählen Sie mindestens einen Standort.');
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('Wähl mindestens einen Standort.');
   await waitFor(() => expect(fleetApi.fleet).toHaveBeenCalled());
   fireEvent.click(within(dialog).getByRole('combobox', { name: 'Standorte' }));
   expect(screen.queryByRole('option', { name: 'Fremder Standort' })).toBeNull();

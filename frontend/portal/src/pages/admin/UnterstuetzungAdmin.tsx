@@ -30,7 +30,7 @@ export function UnterstuetzungAdmin({ tenantId, name }: { tenantId: string; name
   const schliessen = () => { if (!busy) { setModus(undefined); requestAnimationFrame(() => trigger.current?.focus()); } };
   async function speichern() {
     if (busy || !modus) return;
-    const problem = modus === 'notfall' ? (!auswahl.length ? 'Wählen Sie mindestens einen Standort.' : !grund.trim() ? 'Bitte geben Sie einen Grund für den Notfall-Zugriff an.' : null) : pruefeUnterstuetzung(auswahl, bis);
+    const problem = modus === 'notfall' ? (!auswahl.length ? 'Wähl mindestens einen Standort.' : !grund.trim() ? 'Bitte gib einen Grund für den Notfall-Zugriff an.' : null) : pruefeUnterstuetzung(auswahl, bis);
     if (problem) { setFehler(problem); form.current?.querySelector<HTMLElement>(!auswahl.length ? '[role="combobox"]' : modus === 'notfall' ? 'input' : '[aria-haspopup="dialog"]')?.focus(); return; }
     setBusy(true); setFehler('');
     try {

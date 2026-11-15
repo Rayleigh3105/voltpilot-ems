@@ -1609,7 +1609,7 @@ function UnifiedPortal() {
       ) : needsTenantPick ? (
         <PickTenantNotice tenants={tenants} onPick={changeTenant} />
       ) : loadFailed ? (
-        <LoadErrorNotice onRetry={() => void reload()} />
+        <LoadErrorNotice onRetry={() => void reload()} admin={isAdmin} />
       ) : tenantReady && !selbst && !PLATFORM_PAGES.some((p) => p.id === page) ? (
         <Card padding="lg" radius="lg"><p>Wird geladen …</p></Card>
       ) : ohneUnterstuetzung ? (
@@ -1663,7 +1663,7 @@ function UnifiedPortal() {
         // wenn schon ein FEHLER steht (z. B. Mandanten-Fetch scheiterte vor den
         // Sites), ist der Cover aus - dann NIE leer unter der Schale (Review
         // NICE-5), sondern die ehrliche Fehlerkarte.
-        error != null ? <LoadErrorNotice onRetry={() => void reload()} /> : null
+        error != null ? <LoadErrorNotice onRetry={() => void reload()} admin={isAdmin} /> : null
       ) : (
         <>
           {(page === 'uebersicht' || page === 'anlagen') &&
@@ -2082,14 +2082,20 @@ function isPlatformPage(page: PageId): boolean {
  * retry, NEVER the "Willkommen … ersten Standort anlegen" onboarding copy on
  * top of an outage (M2).
  */
-function LoadErrorNotice({ onRetry }: { onRetry: () => void }) {
+/**
+ * `admin` (vp-admin-du): nur setzen, wenn an dieser Stelle schon SICHER bekannt ist,
+ * dass ein Plattform-Admin angemeldet ist (z. B. `isAdmin`, aus dem Token, nicht aus
+ * einem noch ladenden Abruf) - sonst bleibt die Sie-Fassung, nie eine Rolle raten.
+ */
+export function LoadErrorNotice({ onRetry, admin = false }: { onRetry: () => void; admin?: boolean }) {
   return (
     <Card padding="lg" radius="lg">
       <div className="vp-empty">
         <h3>Daten konnten nicht geladen werden</h3>
         <p>
-          Ihre Anlagen und Geräte ließen sich gerade nicht laden. Das liegt
-          meist an einer kurzen Verbindungsstörung. Bitte versuchen Sie es erneut.
+          {admin
+            ? 'Deine Anlagen und Geräte ließen sich gerade nicht laden. Das liegt meist an einer kurzen Verbindungsstörung. Versuch es erneut.'
+            : 'Ihre Anlagen und Geräte ließen sich gerade nicht laden. Das liegt meist an einer kurzen Verbindungsstörung. Bitte versuchen Sie es erneut.'}
         </p>
         <Button variant="primary" iconLeft={<Icon name="refresh-cw" size={18} />} onClick={onRetry}>
           Erneut laden
@@ -2138,7 +2144,7 @@ function PickTenantNotice({
       <div className="vp-empty">
         <h3>Mandanten wählen</h3>
         <p>
-          Diese Seite zeigt Kundendaten. Wählen Sie oben im Mandanten-Umschalter einen
+          Diese Seite zeigt Kundendaten. Wähl oben im Mandanten-Umschalter einen
           Mandanten (oder hier direkt), um dessen Ansicht zu sehen.
         </p>
         <div style={{ display: 'flex', gap: 'var(--vp-space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>

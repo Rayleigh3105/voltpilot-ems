@@ -287,7 +287,7 @@ describe('MandantenPage - die Kundenakte', () => {
     const dlg = await screen.findByRole('dialog', { name: /Benutzer löschen/ });
     fireEvent.click(within(dlg).getByRole('button', { name: 'Benutzer löschen' }));
     expect(await screen.findByText(/Der Vertrag dieses Kunden ist am 11.11.2026 beendet/)).toBeInTheDocument();
-    expect(screen.queryByText('Sie können Ihr eigenes Konto nicht löschen.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Du kannst dein eigenes Konto nicht löschen.')).not.toBeInTheDocument();
   });
 
   it('behält den Selbst-Sperre-Satz für die code-lose 409 (eigenes Konto)', async () => {
@@ -298,7 +298,7 @@ describe('MandantenPage - die Kundenakte', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Löschen' }));
     const dlg = await screen.findByRole('dialog', { name: /Benutzer löschen/ });
     fireEvent.click(within(dlg).getByRole('button', { name: 'Benutzer löschen' }));
-    expect(await screen.findByText('Sie können Ihr eigenes Konto nicht löschen.')).toBeInTheDocument();
+    expect(await screen.findByText('Du kannst dein eigenes Konto nicht löschen.')).toBeInTheDocument();
   });
 
   it('bei einem beendeten Kunden sagt die Personen-Karte es vorher: kein Lösch-Knopf, nur Deaktivieren', async () => {
@@ -615,7 +615,7 @@ describe('MandantenPage - die Kundenliste', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Neuer Kunde' }));
     fireEvent.change(screen.getByLabelText('Name des neuen Kunden'), { target: { value: 'Wüstholz Karl-Friedrich' } });
     fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
-    await screen.findByText('Der Kunde konnte nicht angelegt werden. Bitte versuchen Sie es erneut.');
+    await screen.findByText('Der Kunde konnte nicht angelegt werden. Bitte versuch es erneut.');
     fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
     await waitFor(() => expect(createTenant).toHaveBeenCalledTimes(2));
     const [, kennung1] = createTenant.mock.calls[0];

@@ -329,7 +329,7 @@ function LogikKarte({
         title={`„${logik.name}“ stilllegen?`}
         intro={scharf ? 'Die Box hört sofort auf, nach dieser Logik zu schalten.' : 'Die Box hört sofort auf, diese Logik mitlaufen zu lassen.'}
         consequences={scharf ? [
-          'Ihre Geräte sind frei: ohne Wunsch gilt ihr Ruhewert, Fahrplan und Steuerart dürfen sie wieder führen.',
+          'Deine Geräte sind frei: ohne Wunsch gilt ihr Ruhewert, Fahrplan und Steuerart dürfen sie wieder führen.',
           'Eine laufende Mindestlaufzeit hält ein Gerät noch bis zu ihrem Ende an.',
           'Das Protokoll der letzten 90 Tage bleibt lesbar.',
         ] : [

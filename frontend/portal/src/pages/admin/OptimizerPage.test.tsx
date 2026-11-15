@@ -152,7 +152,7 @@ beforeEach(() => {
 describe('OptimizerPage - picker gating', () => {
   it('prompts for a Mandant before anything loads', () => {
     render(<OptimizerPage tenants={tenants} />);
-    expect(screen.getByText(/Wählen Sie oben einen Mandanten/)).toBeInTheDocument();
+    expect(screen.getByText(/Wähl oben einen Mandanten/)).toBeInTheDocument();
     expect(listSites).not.toHaveBeenCalled();
   });
 
@@ -161,7 +161,7 @@ describe('OptimizerPage - picker gating', () => {
     render(<OptimizerPage tenants={tenants} />);
     waehle('Mandant', 'Demo GmbH');
     await waitFor(() => expect(listSites).toHaveBeenCalledWith('t-1'));
-    expect(await screen.findByText(/Wählen Sie eine Anlage/)).toBeInTheDocument();
+    expect(await screen.findByText(/Wähl eine Anlage/)).toBeInTheDocument();
   });
 
   /** Scheibe S3 (E2 = A): aus der Akte › Anlage geöffnet - die Auswahl Mandant → Anlage entfällt. */

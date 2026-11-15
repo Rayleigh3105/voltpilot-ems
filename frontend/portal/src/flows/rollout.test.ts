@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ROLLOUT_REASONS,
+  ROLLOUT_REASONS_DU,
   deployedBadge,
   forkBanner,
   rolloutBusy,
@@ -61,6 +62,32 @@ describe('rolloutMessage', () => {
       .toMatch(/bleibt unverändert/);
     expect(rolloutMessage({ phase: 'idle' })).toBeNull();
     expect(rolloutMessage({ phase: 'fertig' })).toMatch(/läuft jetzt auf dem Gerät/);
+  });
+
+  it('duzt in der Admin-Fassung (vp-admin-du), ohne die Sie-Fassung zu verändern', () => {
+    for (const reason of ['compiler_unavailable', 'compiler_rejected',
+      'gated_node_not_enabled', 'peakshaving_not_configured', 'activation_disabled']) {
+      const text = rolloutMessage({ phase: 'fehler', failedAt: 'ausrollen', reason }, 'du');
+      expect(text).toBe(ROLLOUT_REASONS_DU[reason]);
+      expect(text).not.toMatch(/\bSie\b|\bIhr(e|em|en|er)?\b/);
+    }
+    expect(rolloutMessage({ phase: 'fertig' }, 'du')).toBe('Deine Regel läuft jetzt auf dem Gerät.');
+    expect(rolloutMessage({ phase: 'fehler', failedAt: 'pruefen' }, 'du'))
+      .toBe('Die Regel ist noch nicht vollständig - beheb die markierten Stellen.');
+    expect(rolloutMessage({ phase: 'fehler', failedAt: 'simulieren' }, 'du'))
+      .toBe('Der Probelauf konnte nicht abgeschlossen werden. Versuch es erneut.');
+    expect(rolloutMessage({ phase: 'fehler', failedAt: 'ausrollen' }, 'du'))
+      .toBe('Der Rollout ist fehlgeschlagen. Deine bisher laufende Regel bleibt unverändert.');
+    // Ein Serversatz gewinnt unabhängig von der Anrede.
+    expect(rolloutMessage({ phase: 'fehler', reason: 'compiler_rejected', message: 'Serversatz.' }, 'du'))
+      .toBe('Serversatz.');
+  });
+
+  it('never names an internal component in the admin copy either', () => {
+    const forbidden = /compiler|sidecar|flowc|artefakt|artifact|flag|gate|broker|mqtt|api/i;
+    for (const text of Object.values(ROLLOUT_REASONS_DU)) {
+      expect(text).not.toMatch(forbidden);
+    }
   });
 });
 

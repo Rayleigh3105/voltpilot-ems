@@ -131,7 +131,7 @@ export function MandantenPage({
         <ZurueckZuMandanten onClick={zurueck} />
         <Card padding="lg" radius="lg">
           {tenantsError ? (
-            <ErrorState message="Die Mandantenliste ließ sich gerade nicht laden. Bitte versuchen Sie es erneut." onRetry={() => onReloadTenants()} />
+            <ErrorState message="Die Mandantenliste ließ sich gerade nicht laden. Bitte versuch es erneut." onRetry={() => onReloadTenants()} />
           ) : !tenantsLoaded ? (
             <TextSkeleton lines={4} />
           ) : (
@@ -296,7 +296,7 @@ function KundenlisteSeite({
       {tenantsError && tenants.length === 0 ? (
         <Card padding="lg" radius="lg">
           <ErrorState
-            message="Die Mandantenliste ließ sich gerade nicht laden. Bitte versuchen Sie es erneut."
+            message="Die Mandantenliste ließ sich gerade nicht laden. Bitte versuch es erneut."
             onRetry={() => onReloadTenants()}
           />
         </Card>
@@ -310,7 +310,7 @@ function KundenlisteSeite({
             icon="building"
             category="industry"
             title="Noch keine Kunden"
-            description="Legen Sie den ersten Kunden an, um Personen und Anlagen auf der Plattform zu verwalten."
+            description="Leg den ersten Kunden an, um Personen und Anlagen auf der Plattform zu verwalten."
             action={addButton}
           />
         </Card>
@@ -455,7 +455,7 @@ function NeuerKundeZeile({
       setError(
         e instanceof ApiError && e.status === 409
           ? 'Ein Kunde mit diesem Namen existiert bereits.'
-          : 'Der Kunde konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
+          : 'Der Kunde konnte nicht angelegt werden. Bitte versuch es erneut.',
       );
     } finally {
       laeuft.current = false;
@@ -479,7 +479,7 @@ function NeuerKundeZeile({
         {gleicherName && (
           <p className="vp-note" role="status" style={{ margin: 'var(--vp-space-2) 0 0' }}>
             Einen Kunden mit diesem Namen gibt es schon. Zwei Kunden dürfen gleich heißen -
-            prüfen Sie aber, ob Sie nicht den vorhandenen meinen.
+            prüf aber, ob du nicht den vorhandenen meinst.
           </p>
         )}
       </td>
@@ -615,7 +615,7 @@ function KundenaktePage({
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 409
-          ? (ablehnungCode(e) ? e.message : 'Sie können Ihr eigenes Konto nicht löschen.')
+          ? (ablehnungCode(e) ? e.message : 'Du kannst dein eigenes Konto nicht löschen.')
           : e instanceof ApiError
             ? `Löschen fehlgeschlagen: ${e.message}`
             : 'Fehler',
@@ -1364,8 +1364,8 @@ function TenantEditForm({
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 400
-          ? 'Ungültige Eingabe. Bitte prüfen Sie Name, Segment und Betriebsart.'
-          : 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
+          ? 'Ungültige Eingabe. Bitte prüf Name, Segment und Betriebsart.'
+          : 'Die Änderungen konnten nicht gespeichert werden. Bitte versuch es erneut.',
       );
     } finally {
       setBusy(false);
