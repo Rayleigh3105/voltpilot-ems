@@ -50,12 +50,14 @@ describe('Je Regel', () => {
   it('nennt im Vergleich beide Seiten und den Tag', () => {
     const z = regelZeile(regel('mitlauf', { vergleich: { zustand: 'mitlaufend', wunsch: { ein: true }, ist: { ein: false },
       verglichen_s: 7800, abweichend_s: 90, laengste_abweichung_s: 60 } }));
-    expect(z.pille.wort).toBe('Vergleich');
-    expect(z.satz).toBe('Neuer Weg: an, geschaltet: aus. Heute 2 Std 10 Min verglichen, 1 Min verschieden (längstens 1 Min).');
+    expect(z.pille.wort).toBe('weicht ab');
+    expect(regelZeile(regel('mitlauf', { vergleich: { zustand: 'mitlaufend', verglichen_s: 60, abweichend_s: 0 } })).pille.wort).toBe('gleich');
+    expect(regelZeile(regel('mitlauf')).pille.wort).toBe('Vergleich');
+    expect(z.satz).toBe('Neuer Weg: an, geschaltet: aus. Heute 2\u00a0Std 10\u00a0Min verglichen, 1\u00a0Min verschieden (längstens 1\u00a0Min).');
   });
 
   it('sagt „immer gleich“ ohne Abweichung und nichts ohne Meldung der Box', () => {
-    expect(vergleichSatz({ zustand: 'mitlaufend', verglichen_s: 45, abweichend_s: 0 })).toBe('Heute 45 s verglichen, immer gleich.');
+    expect(vergleichSatz({ zustand: 'mitlaufend', verglichen_s: 45, abweichend_s: 0 })).toBe('Heute 45\u00a0s verglichen, immer gleich.');
     expect(vergleichSatz(null)).toBeNull();
     expect(vergleichSatz({ zustand: 'mitlaufend' })).toBeNull();
   });
@@ -73,8 +75,8 @@ describe('Je Regel', () => {
     expect(standText({ stufe: 0 })).toBe('aus');
     expect(standText({ stufe: 2 })).toBe('Stufe 2');
     expect(standText({})).toBe('kein Wunsch');
-    expect(dauerText(59)).toBe('59 s');
-    expect(dauerText(3600)).toBe('1 Std');
+    expect(dauerText(59)).toBe('59\u00a0s');
+    expect(dauerText(3600)).toBe('1\u00a0Std');
   });
 });
 

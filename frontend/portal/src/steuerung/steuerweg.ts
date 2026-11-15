@@ -82,15 +82,15 @@ export function wegAnsicht(a: SteuerwegAntwort): WegAnsicht {
   }
 }
 
-/** „2 Std 10 Min“, „45 s“, „0 s“ aus Sekunden. */
+/** „2 Std 10 Min“, „45 s“, „0 s“ aus Sekunden; Zahl und Einheit bleiben zusammen (geschütztes Leerzeichen). */
 export function dauerText(s: number): string {
   const sek = Math.max(0, Math.round(s));
-  if (sek < 60) return `${sek} s`;
+  if (sek < 60) return `${sek}\u00a0s`;
   const min = Math.floor(sek / 60);
   const h = Math.floor(min / 60);
   const m = min % 60;
-  if (!h) return `${min} Min`;
-  return `${h} Std${m ? ` ${m} Min` : ''}`;
+  if (!h) return `${min}\u00a0Min`;
+  return `${h}\u00a0Std${m ? ` ${m}\u00a0Min` : ''}`;
 }
 
 /** Ein Stand in Worten: „an“, „aus“, „Stufe 2“, „21 °C“; unbekannt bleibt unbekannt. */
@@ -129,7 +129,10 @@ export function regelZeile(r: SteuerwegRegel): RegelZeile {
     case 'mitlauf': {
       const jetzt = v ? `Neuer Weg: ${standText(v.wunsch)}, geschaltet: ${standText(v.ist)}.` : 'Die Box meldet den Vergleich gleich.';
       const tag = vergleichSatz(v);
-      return { flowId: r.flowId, name: r.name, pille: { klasse: 'wait', wort: 'Vergleich' }, satz: tag ? `${jetzt} ${tag}` : jetzt };
+      // Auf einen Blick: weicht der neue Weg heute ab, oder rechnet er bisher gleich?
+      const pille: Pille = (v?.abweichend_s ?? 0) > 0 ? { klasse: 'wait', wort: 'weicht ab' }
+        : (v?.verglichen_s ?? 0) > 0 ? { klasse: 'done', wort: 'gleich' } : { klasse: 'wait', wort: 'Vergleich' };
+      return { flowId: r.flowId, name: r.name, pille, satz: tag ? `${jetzt} ${tag}` : jetzt };
     }
     case 'kern': {
       const halt = v?.halt?.text ?? v?.konflikt?.text ?? null;
