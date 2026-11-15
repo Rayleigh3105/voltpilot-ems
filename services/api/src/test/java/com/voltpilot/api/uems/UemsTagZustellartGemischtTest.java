@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -19,10 +20,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Prod-Befund 12.11.2026: der Tageslauf überspringt eine Reihe mit
@@ -86,11 +85,7 @@ class UemsTagZustellartGemischtTest {
     private static Map<String, Object> tagZeile;
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @BeforeAll
     static void bauenUndFahren() {

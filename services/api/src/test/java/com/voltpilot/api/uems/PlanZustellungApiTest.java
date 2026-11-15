@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import java.nio.file.Files;
@@ -19,10 +20,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-15 IP-10 (P3, R11): „veröffentlicht gegen angenommen“ je Box in {@code plan_zustellung}.
@@ -48,9 +47,7 @@ class PlanZustellungApiTest {
             """;
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static PlanZustellungRepository repository;
@@ -60,12 +57,11 @@ class PlanZustellungApiTest {
 
     @BeforeAll
     static void setUp() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").baselineOnMigrate(true).baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "voltpilot_admin_test_pw"))
-                .load().migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "voltpilot_admin_test_pw")));
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         repository = new PlanZustellungRepository(new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW))));
         listener = new PlanResultListener("tcp://unused", "", "", repository, JSON);

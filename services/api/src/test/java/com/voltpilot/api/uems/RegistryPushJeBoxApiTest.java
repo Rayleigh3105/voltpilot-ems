@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.components.ComponentAdoptionRunner;
 import com.voltpilot.api.components.ComponentApplyRepository;
 import com.voltpilot.api.consumers.ConsumerAuditRepository;
@@ -63,7 +64,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
@@ -115,11 +115,7 @@ class RegistryPushJeBoxApiTest {
               "interval_s":30,"capacity_kwp":27,"registry_unit_id":"SEE966831669442"}]""";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Container
     static final GenericContainer<?> EMQX = new GenericContainer<>(DockerImageName.parse("emqx/emqx:5.8.3"))

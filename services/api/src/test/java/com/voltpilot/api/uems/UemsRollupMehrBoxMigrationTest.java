@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -19,10 +20,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Das 15-Minuten-Rollup einer Mehr-Box-Anlage liest die Anlagen-Summen an der führenden Box
@@ -50,12 +49,7 @@ class UemsRollupMehrBoxMigrationTest {
     private static final String OHNE_PAAR = "2026-09-15T10:30:00Z";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static final Map<String, UUID> IDS = new LinkedHashMap<>();

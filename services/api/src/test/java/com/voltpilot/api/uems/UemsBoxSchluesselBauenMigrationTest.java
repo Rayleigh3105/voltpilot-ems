@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -14,10 +15,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * UEMS AP-07 IP-18b Teil 1b, sperrarm ({@code V20260922236500}): die zwei Box-Schlüssel entstehen
@@ -44,12 +43,7 @@ class UemsBoxSchluesselBauenMigrationTest {
     private static final UUID KB = UUID.fromString("4e0e0000-0000-0000-0000-00000000b518");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static UUID site;

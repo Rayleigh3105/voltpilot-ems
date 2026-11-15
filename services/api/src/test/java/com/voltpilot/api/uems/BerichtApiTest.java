@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,10 +61,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Berichts-Routen (UEMS AP-12 IP-7, Meilenstein „Bericht freigebbar“) gegen die echte Kette: JWT → TenantFilter →
@@ -94,11 +93,7 @@ class BerichtApiTest {
     private static final Map<String, Benutzer> PERSONEN = new ConcurrentHashMap<>();
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

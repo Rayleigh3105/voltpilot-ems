@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.EreignisVokabular.Urheber;
@@ -30,10 +31,8 @@ import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * {@code V20260915061500} (UEMS AP-11 IP-8): das Ereignis {@code kennzahl_neu_gebildet} — ADDITIV über die EINE
@@ -73,11 +72,7 @@ class UemsKennzahlNeuGebildetMigrationTest {
     private static final String NUTZLAST = "{\"ausloeser\": \"K-2026-0007\", \"version\": 2}";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;

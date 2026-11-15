@@ -2,6 +2,7 @@ package com.voltpilot.api.zugriff;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -21,10 +22,8 @@ import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Bestandsnachweis des Standort-Zauns (UEMS AP-03 IP-5, {@code V20260915190000}): jedes heutige Konto sieht nach der
@@ -50,11 +49,7 @@ class SiteScopeBestandTest {
             List.of("site", "standort", "anlage_standort", "ort", "measurement_point", "device");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private record Variante(String name, String zugriff, String standortIds) {}
 

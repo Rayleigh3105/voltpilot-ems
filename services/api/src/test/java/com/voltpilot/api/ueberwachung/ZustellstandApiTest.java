@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
@@ -30,10 +31,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Kunden-Alarmierung P4 über HTTP: der Zustellstand je Meldung ({@code GET /api/v1/meldungen/zustellung}) und die
@@ -60,11 +59,7 @@ class ZustellstandApiTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

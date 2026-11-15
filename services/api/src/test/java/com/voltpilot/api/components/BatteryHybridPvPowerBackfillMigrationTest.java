@@ -2,6 +2,7 @@ package com.voltpilot.api.components;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -14,10 +15,8 @@ import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Der Backfill {@code V20260915120000}: JEDE {@code battery-hybrid}-Zeile, der
@@ -55,12 +54,7 @@ class BatteryHybridPvPowerBackfillMigrationTest {
                     + "{\"channel\": \"pv_power_kw\", \"unit\": \"kW\"}]}";
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @ParameterizedTest(name = "verspaetet nach UEMS: {0}")
     @ValueSource(booleans = {false, true})

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.voltpilot.api.measurement.MeasurementSelectionRepository;
 import com.voltpilot.api.tenant.TenantContext;
-import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -29,10 +28,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** End-to-end proof of selection revisions, idempotency and the HTTP tenant fence. */
 @Testcontainers(disabledWithoutDocker = true)
@@ -48,17 +45,11 @@ class MeasurementSelectionApiTest {
     private static final String POINT = "deye.hybrid_1p.battery.battery-current";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Container
-    static final KeycloakContainer KEYCLOAK =
-            new KeycloakContainer("quay.io/keycloak/keycloak:26.0.5")
-                    .withRealmImportFile("keycloak/voltpilot-realm.json");
+    static final TestKeycloak KEYCLOAK =
+            new TestKeycloak();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

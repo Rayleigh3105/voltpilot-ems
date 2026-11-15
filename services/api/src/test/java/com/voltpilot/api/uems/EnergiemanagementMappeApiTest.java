@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -37,10 +38,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Konzept Nachweisen n1, Runde 2, Entscheid 7 (PR 6): „Unterlagen zusammenstellen“ über die echte HTTP-, Rechte- und
@@ -65,9 +64,7 @@ class EnergiemanagementMappeApiTest {
     private static final String SATZ_RC = "Risiken und Chancen bewerten wir im Jahresgespräch der Geschäftsführung.";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {

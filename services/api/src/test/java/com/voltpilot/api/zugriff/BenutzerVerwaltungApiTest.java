@@ -10,6 +10,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
 import com.voltpilot.api.benutzer.Startpasswort;
 import com.voltpilot.api.benutzer.StartpasswortKonten;
@@ -42,10 +43,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** AP-03 IP-13: Kundenrouten unter echter RLS, eigene Rolle und letzter Administrator. */
 @Testcontainers(disabledWithoutDocker = true)
@@ -68,11 +67,7 @@ class BenutzerVerwaltungApiTest {
     private static final String BESTAND = "sub-entzug-bestandskonto";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

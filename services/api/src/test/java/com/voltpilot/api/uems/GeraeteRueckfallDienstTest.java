@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.GeraeteRueckfallRegel.Angabe;
@@ -27,10 +28,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Der am Gerät hinterlegte Rückfall je Komponente (UEMS AP-15 IP-6, {@code V20260921150000}) gegen die echte
@@ -50,11 +49,7 @@ class GeraeteRueckfallDienstTest {
     private static final String ADMIN_PW = "voltpilot_admin_test_pw";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

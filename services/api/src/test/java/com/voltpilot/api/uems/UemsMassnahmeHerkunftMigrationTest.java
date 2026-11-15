@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.voltpilot.api.TestDatenbank;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,10 +27,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-19 IP-17 (W1, W4, W14; FS3, R10): {@code V20260925040000} weitet die Herkunft der Maßnahme um
@@ -56,9 +55,7 @@ class UemsMassnahmeHerkunftMigrationTest {
             "massnahme_art:2:nicht_gemessen", "massnahme_art:3:organisatorisch");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static UUID tenant;
@@ -155,7 +152,7 @@ class UemsMassnahmeHerkunftMigrationTest {
     @Test
     void dieMigrationTraegtAuchAlsSpaeteAnkunft() throws IOException {
         root.execute("CREATE DATABASE voltpilot_spaet");
-        String url = POSTGRES.getJdbcUrl().replace("/voltpilot?", "/voltpilot_spaet?");
+        String url = POSTGRES.getJdbcUrl("voltpilot_spaet");
         Path ohneDiese = Files.createTempDirectory("ohne-herkunft");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {

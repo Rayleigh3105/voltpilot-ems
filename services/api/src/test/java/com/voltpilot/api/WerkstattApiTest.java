@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.fernwartung.SshTestSchluessel;
-import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -37,10 +36,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Werkstatt (erster Schnitt aus dem Bericht voltpilot-box-einrichtung-portal)
@@ -75,16 +72,10 @@ class WerkstattApiTest {
     private static final String FW = "/api/v1/admin/fernwartung";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Container
-    static final KeycloakContainer KEYCLOAK = new KeycloakContainer("quay.io/keycloak/keycloak:26.0.5")
-            .withRealmImportFile("keycloak/voltpilot-realm.json");
+    static final TestKeycloak KEYCLOAK = new TestKeycloak();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

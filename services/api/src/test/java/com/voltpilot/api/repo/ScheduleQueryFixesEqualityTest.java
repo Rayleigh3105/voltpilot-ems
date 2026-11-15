@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.ScheduleSlotDto;
 import com.voltpilot.api.optimizer.OptimizerProperties;
@@ -24,10 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Acceptance of the 2026-11-04 schedule query fixes (scout
@@ -81,25 +80,18 @@ class ScheduleQueryFixesEqualityTest {
     private static final int HORIZON_SLOTS = 192;
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of(
                         "appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin"))
-                .load()
-                .migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin")));
 
         try (Connection c = superuser().getConnection()) {
             tenant(c, TENANT_A, "Tenant A");

@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.MessreiheKorrekturRepository.Korrektur;
@@ -24,10 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * {@code V20260914201500} (UEMS AP-08 IP-15, E8): die Einstellung je Unternehmen und die Einstellung an der Freigabe —
@@ -57,11 +56,7 @@ class UemsVierAugenFreigabeMigrationTest {
             "[{\"entity_id\": \"6f1c2b1e-8d2a-4c7e-9a51-3b8e2f0c1d10\", \"messkanal\": \"energy_import_kwh\"}]";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;

@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -24,10 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Abwahl einer Kennzahl in einem Bericht ({@code V20260915113000}, UEMS AP-12 IP-6, Q4/V3) fährt die Hausregeln mit:
@@ -49,11 +48,7 @@ class UemsBerichtKennzahlAbwahlMigrationTest {
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;
@@ -192,7 +187,7 @@ class UemsBerichtKennzahlAbwahlMigrationTest {
                 }
             }
         }
-        String url = POSTGRES.getJdbcUrl().replaceFirst("/voltpilot(?=\\?|$)", "/voltpilot_spaet");
+        String url = POSTGRES.getJdbcUrl("voltpilot_spaet");
         flyway(url).locations("filesystem:" + ohneDiese.toAbsolutePath()).load().migrate();
         MigrateResult spaet = flyway(url).outOfOrder(true).load().migrate();
         List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));

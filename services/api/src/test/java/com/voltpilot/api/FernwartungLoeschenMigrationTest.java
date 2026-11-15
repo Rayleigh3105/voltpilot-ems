@@ -13,10 +13,8 @@ import java.util.Objects;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration V20261008213500 (ein gesperrter Techniker-Zugang lässt sich
@@ -49,12 +47,7 @@ class FernwartungLoeschenMigrationTest {
     private static final String KEY_NEU = "dTkajHaCSCVbnmtc9YaXOW4Fvi51HANh0Fg2KTFV3kk=";
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Test
     void dieMigrationKommtAufEinerBenutztenDatenbankAnUndHaeltDieLoeschregel() throws Exception {

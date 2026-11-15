@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.repo.FlowClaimRepository;
@@ -23,10 +24,8 @@ import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** A3 mit zwei Boxen in EINER Anlage; der unveränderte anlagenfremde Fall bleibt am Gate. */
 @Testcontainers(disabledWithoutDocker = true)
@@ -34,9 +33,7 @@ class UemsQuellenUebergabeTest {
     static final ObjectMapper JSON = new ObjectMapper();
     static final Instant HIN = Instant.parse("2027-04-10T05:30:00Z"); // 07:30 Europe/Berlin
     static final Instant ZURUECK = Instant.parse("2027-04-12T14:00:00Z"); // 16:00
-    @Container static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("test");
+    @Container static final TestDatenbank DB = new TestDatenbank();
     static JdbcTemplate root, app;
     static DataSource ds;
     static UebergabeRepository repo;
@@ -52,10 +49,10 @@ class UemsQuellenUebergabeTest {
     Uhr uhr = new Uhr();
 
     @BeforeAll static void migration() {
-        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+        DB.migriere(Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").baselineOnMigrate(true).baselineVersion("0")
                 .placeholders(Map.of("appDbUser","voltpilot_app","appDbPassword","app_test",
-                        "adminDbUser","voltpilot_admin","adminDbPassword","admin_test")).load().migrate();
+                        "adminDbUser","voltpilot_admin","adminDbPassword","admin_test")));
         root = new JdbcTemplate(source(DB.getUsername(), DB.getPassword()));
         ds = new TenantAwareDataSource(source("voltpilot_app", "app_test"));
         app = new JdbcTemplate(ds);

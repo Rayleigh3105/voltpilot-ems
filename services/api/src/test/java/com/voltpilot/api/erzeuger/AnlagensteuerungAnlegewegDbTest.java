@@ -3,6 +3,7 @@ package com.voltpilot.api.erzeuger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityRegistryService.BackfillOutcome;
@@ -23,10 +24,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * UEMS EZ-20: welche Komponenten eine reine Erzeugeranlage (Gore Pleinfeld, „Neue Halle“) nach dem Anlege-Weg
@@ -41,10 +40,7 @@ import org.testcontainers.utility.DockerImageName;
 @ActiveProfiles("local")
 class AnlagensteuerungAnlegewegDbTest {
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw")
-            // Ohne Timescale-Jobs: ein Job direkt nach dem Start lief einmal in eine Verklemmung mit dem Anlegen.
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @DynamicPropertySource

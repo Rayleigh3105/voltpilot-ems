@@ -12,10 +12,8 @@ import java.util.Objects;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration V20261113160000 (Kunden-Alarmierung P2, Voreinstellungen) auf einer Datenbank AM AKTUELLEN STAND: die
@@ -38,12 +36,7 @@ class AlarmierungVoreinstellungenMigrationTest {
     private static final String KB = "a0000000-0000-4000-8000-000000000001";
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Test
     void derBestandBekommtDieVoreinstellungenOhneEigeneEinstellungenZuUeberschreiben() throws Exception {

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.measurement.ErzeugerRegisterbilder;
 import com.voltpilot.api.measurement.MeasurementPlan;
@@ -49,10 +50,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.server.ResponseStatusException;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * UEMS EZ-6 gegen die echte Datenbank, als Laufzeitrolle {@code voltpilot_app} unter RLS: die Anlagensteuerung
@@ -65,9 +64,7 @@ import org.testcontainers.utility.DockerImageName;
 @ActiveProfiles("local")
 class AnlagensteuerungDbTest {
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {

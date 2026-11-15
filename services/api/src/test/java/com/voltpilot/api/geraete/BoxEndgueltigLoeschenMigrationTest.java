@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -25,10 +26,8 @@ import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.web.server.ResponseStatusException;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * „Endgültig löschen" einer ausgebauten Box (vp-box-endgueltig-loeschen, V20261111190000) gegen
@@ -50,11 +49,7 @@ class BoxEndgueltigLoeschenMigrationTest {
     private static final String KATALOG = "2026.09.11.1";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;
@@ -66,14 +61,13 @@ class BoxEndgueltigLoeschenMigrationTest {
     @BeforeAll
     static void migrieren() {
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
         TenantAwareDataSource appDs = new TenantAwareDataSource(ds(APP_USER, APP_PW));
         app = new JdbcTemplate(appDs);
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));

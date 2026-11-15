@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -19,20 +20,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** Entire production arrival order, without Git/network access during the test. */
 @Testcontainers
 class UemsProduktionsreihenfolgeMigrationTest {
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw")
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @TempDir
@@ -43,9 +38,9 @@ class UemsProduktionsreihenfolgeMigrationTest {
         List<String> main = satz("/migration/vor-uems-migrations.txt");
         kopieren(main);
 
-        JdbcTemplate frisch = db("voltpilot");
+        JdbcTemplate frisch = db(POSTGRES.getDatabaseName());
         Instant beginn = Instant.now();
-        Flyway alle = flyway("voltpilot").load();
+        Flyway alle = flyway(POSTGRES.getDatabaseName()).load();
         alle.migrate();
         rollenereignisse(frisch, "actor");
 
@@ -91,7 +86,7 @@ class UemsProduktionsreihenfolgeMigrationTest {
     void produktionssatzDannSpaetereMigrationenErreichenDenFrischenStand() throws IOException {
         List<String> produktionssatz = satz("/migration/main-migrations.txt");
         kopieren(produktionssatz);
-        JdbcTemplate verwaltung = db("voltpilot");
+        JdbcTemplate verwaltung = db(POSTGRES.getDatabaseName());
         verwaltung.execute("CREATE DATABASE frisch_heute");
         verwaltung.execute("CREATE DATABASE produktion_heute");
         JdbcTemplate frisch = db("frisch_heute");
@@ -210,7 +205,7 @@ class UemsProduktionsreihenfolgeMigrationTest {
 
     private static PGSimpleDataSource dataSource(String database) {
         PGSimpleDataSource ds = new PGSimpleDataSource();
-        ds.setUrl(POSTGRES.getJdbcUrl().replace("/voltpilot", "/" + database));
+        ds.setUrl(POSTGRES.getJdbcUrl(database));
         ds.setUser(POSTGRES.getUsername());
         ds.setPassword(POSTGRES.getPassword());
         return ds;

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
+import com.voltpilot.api.TestKeycloak;
 import com.voltpilot.api.chargers.ChargingBoostPublisher;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.consumers.ConsumerOverridePublisher;
@@ -16,7 +18,6 @@ import com.voltpilot.api.preis.PreisZuleitungPublisher;
 import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.registerwrite.RegisterWritePublisher;
-import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,10 +58,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Eine Anlage einem Standort zuordnen oder umziehen (UEMS AP-02 IP-11, T6) Ende zu Ende gegen
@@ -102,17 +101,10 @@ class AnlageUmzugApiTest {
     private static final List<String> GESCHRIEBEN = List.of("anlage_standort", "ort_aenderung");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Container
-    static final KeycloakContainer KEYCLOAK = new KeycloakContainer(
-            "quay.io/keycloak/keycloak:26.0.5")
-            .withRealmImportFile("keycloak/voltpilot-realm.json");
+    static final TestKeycloak KEYCLOAK = new TestKeycloak();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

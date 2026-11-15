@@ -9,7 +9,6 @@ import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.verbraucher.SteuerartSatz;
 import com.voltpilot.api.verbraucher.SteuerartService;
-import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -35,10 +34,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Der SCHREIBPFAD der Steuerart gegen echtes TimescaleDB + Keycloak (Konzept
@@ -80,17 +77,11 @@ class SteuerartApiTest {
     private static final String TENANT_A = "00000000-0000-0000-0000-000000000001";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Container
-    static final KeycloakContainer KEYCLOAK =
-            new KeycloakContainer("quay.io/keycloak/keycloak:26.0.5")
-                    .withRealmImportFile("keycloak/voltpilot-realm.json");
+    static final TestKeycloak KEYCLOAK =
+            new TestKeycloak();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

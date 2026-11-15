@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.optimizer.OptimizerProperties;
 import com.voltpilot.api.optimizer.SteuerungVorsprungLaeufer;
 import com.voltpilot.api.optimizer.SteuerungVorsprungRepository;
@@ -29,10 +30,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * DIE EINE TAGESZAHL der Steuerung (Definition A, Captain 24.09.2026 -
@@ -95,12 +94,7 @@ class SteuerungTageszahlTest {
             "luecke", UUID.fromString("5e000000-0000-0000-0000-0000000000e3"));
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JsonNode vektor;
     private static JsonNode band;
@@ -111,16 +105,14 @@ class SteuerungTageszahlTest {
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of(
                         "appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin"))
-                .load()
-                .migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin")));
         vektor = MAPPER.readTree(Files.readString(VECTORS)).path("abends_geleert");
         band = MAPPER.readTree(Files.readString(VECTORS)).path("band_und_plan");
         mitBestand = MAPPER.readTree(Files.readString(VECTORS)).path("mit_bestand");

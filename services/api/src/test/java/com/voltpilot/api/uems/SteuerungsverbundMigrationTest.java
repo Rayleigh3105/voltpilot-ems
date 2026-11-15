@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -30,10 +31,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-15 IP-4: das Verbund-Objekt in der Datenbank (V20260921140000). Die Box einer anderen Anlage scheitert an der
@@ -51,9 +50,7 @@ class SteuerungsverbundMigrationTest {
             new ProtokollAkteur(null, "VoltPilot Betrieb", "voltpilot_betrieb", "voltpilot");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;
@@ -65,12 +62,11 @@ class SteuerungsverbundMigrationTest {
 
     @BeforeAll
     static void setUp() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").baselineOnMigrate(true).baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
         repository = new SteuerungsverbundRepository(app);

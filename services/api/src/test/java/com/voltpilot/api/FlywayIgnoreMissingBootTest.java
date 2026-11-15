@@ -11,10 +11,8 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Regression guard for the recurring production-deploy Flyway footgun: a VM that
@@ -48,12 +46,7 @@ class FlywayIgnoreMissingBootTest {
     // checksum-tampering test can never leak a corrupted history into the
     // boot test (order-independent isolation).
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Test
     void prodProfileBootsOverADbThatAlreadyAppliedTheDevMigrations() throws Exception {

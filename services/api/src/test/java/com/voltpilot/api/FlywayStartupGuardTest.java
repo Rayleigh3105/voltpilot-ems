@@ -47,18 +47,14 @@ import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** Real PostgreSQL history, including the exact production -> new -> old -> new sequence. */
 @Testcontainers
 class FlywayStartupGuardTest {
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("test")
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @TempDir Path scripts;
@@ -74,7 +70,7 @@ class FlywayStartupGuardTest {
         source.setPassword(POSTGRES.getPassword());
         String name = "guard_" + UUID.randomUUID().toString().replace("-", "");
         new JdbcTemplate(source).execute("CREATE DATABASE " + name);
-        source.setURL(POSTGRES.getJdbcUrl().replace("/voltpilot", "/" + name));
+        source.setURL(POSTGRES.getJdbcUrl(name));
         db = new JdbcTemplate(source);
     }
 

@@ -2,6 +2,7 @@ package com.voltpilot.api.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantFilter;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Duration;
@@ -22,10 +23,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Admin-Rolle hat zwei Pools (Lasttest vp-lasttest, Befunde B3/B4, Rang 7): während einer HTTP-Anfrage (vom
@@ -45,9 +44,7 @@ import org.testcontainers.utility.DockerImageName;
 class AdminPoolTrennungTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static HikariDataSource anfrage;
     private static HikariDataSource hintergrund;

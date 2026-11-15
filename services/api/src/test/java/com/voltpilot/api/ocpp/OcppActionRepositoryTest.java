@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.web.dto.OcppActionDto;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -25,10 +26,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 import org.postgresql.ds.PGSimpleDataSource;
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -38,15 +37,13 @@ class OcppActionRepositoryTest {
     private static final UUID DEVICE = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    @Container static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>(DockerImageName
-            .parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    @Container static final TestDatenbank DB = new TestDatenbank();
 
     @BeforeAll static void migrate() throws Exception {
-        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+        DB.migriere(Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration", "classpath:db/dev").baselineOnMigrate(true).baselineVersion("0")
                 .placeholders(Map.of("appDbUser","voltpilot_app","appDbPassword","action_pw",
-                        "adminDbUser","voltpilot_admin","adminDbPassword","admin_pw")).load().migrate();
+                        "adminDbUser","voltpilot_admin","adminDbPassword","admin_pw")));
         try (Connection c = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()); Statement s = c.createStatement()) {
             s.executeUpdate("INSERT INTO ocpp_station(device_id,charge_point_id,tenant_id,site_id,connected,last_seen,updated_at) VALUES "
                     + "('"+DEVICE+"','CP-A','"+TENANT+"','"+SITE+"',true,now(),now()),"

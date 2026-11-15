@@ -8,8 +8,9 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
+import com.voltpilot.api.TestKeycloak;
 import com.voltpilot.api.admin.KeycloakAdminClient;
-import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -30,21 +31,16 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** Echte Keycloak-Required-Action, echte RLS-Rolle und DEBUG-Logprüfung ohne Geheimnisse in Testausgaben. */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class BenutzerStartpasswortApiTest {
-    @Container static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
-    @Container static final KeycloakContainer KC = new KeycloakContainer("quay.io/keycloak/keycloak:26.0.5")
-            .withRealmImportFile("keycloak/voltpilot-realm.json");
+    @Container static final TestDatenbank DB = new TestDatenbank();
+    @Container static final TestKeycloak KC = new TestKeycloak();
 
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url", DB::getJdbcUrl);

@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -31,10 +32,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-16 IP-17 (G5, E10 = A) · R9: MS-01 mit zwei Vergleichsquellen im Dezember 2026 — 1,1 % passt (Toleranz 2 %),
@@ -48,9 +47,7 @@ import org.testcontainers.utility.DockerImageName;
 class VergleichToleranzApiTest {
     private static final String VERGLEICH = "/api/v1/messstellen/MS-01/vergleich?von=2026-11&bis=2026-12";
     private static final ObjectMapper JSON = new ObjectMapper();
-    @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    @Container static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url", POSTGRES::getJdbcUrl);

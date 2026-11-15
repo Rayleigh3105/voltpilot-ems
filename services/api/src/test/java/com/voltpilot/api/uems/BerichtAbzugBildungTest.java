@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -33,10 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Der Abzug eines Standort-Berichts wird gebildet (UEMS AP-12 IP-5, Meilenstein 1 „Abzug existiert“): B1 Nr. 1 —
@@ -82,11 +81,7 @@ class BerichtAbzugBildungTest {
     private static final List<String> QUELLEN_AP11 = List.of("BZ-4", "BZ-6", "KZ-0001", "KZ-0005");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static final Map<String, UUID> IDS = new LinkedHashMap<>();
     private static JdbcTemplate root;
@@ -104,14 +99,13 @@ class BerichtAbzugBildungTest {
 
     @BeforeAll
     static void aufbauen() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         app = new TenantAwareDataSource(ds(APP_USER, APP_PW));
         admin = ds(ADMIN_USER, ADMIN_PW);

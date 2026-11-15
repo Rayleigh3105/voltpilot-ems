@@ -3,6 +3,7 @@ package com.voltpilot.api.entities;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.measurement.MeasurementSelectionService;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.EntityController;
@@ -23,10 +24,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die am Wechselrichter gelesene Entladegrenze gegen die echte Datenbank, als Laufzeitrolle {@code voltpilot_app}
@@ -39,9 +38,7 @@ import org.testcontainers.utility.DockerImageName;
 @ActiveProfiles("local")
 class WechselrichterUntergrenzeDbTest {
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {

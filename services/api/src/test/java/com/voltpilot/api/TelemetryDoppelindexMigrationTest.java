@@ -11,10 +11,8 @@ import java.util.Map;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration V20261115180000 (Lasttest vp-lasttest, Befund B10, Rang 8) auf einer Datenbank AM STAND DAVOR mit
@@ -38,11 +36,7 @@ class TelemetryDoppelindexMigrationTest {
     private static final String DEVICE = "a3000000-0000-4000-8000-0000000000a8";
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Test
     void derDoppelteIndexIstAufHypertableUndChunksWegDerEindeutigeBleibt() throws Exception {

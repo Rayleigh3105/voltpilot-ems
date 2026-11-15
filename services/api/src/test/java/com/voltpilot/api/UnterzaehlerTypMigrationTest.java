@@ -12,10 +12,8 @@ import java.util.Objects;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration V20261107120000 (Unterverteilungen, Konzept vp-unterzaehler-anzeige C1) auf einer
@@ -49,12 +47,7 @@ class UnterzaehlerTypMigrationTest {
     private static final String NUR_LEISTUNG = "{\"measure\": [{\"unit\": \"kW\", \"channel\": \"power_kw\"}]}";
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    final TestDatenbank POSTGRES = new TestDatenbank();
 
     @Test
     void shellyZaehlerWerdenUnterzaehlerUndDerNetzZaehlerBekommtSeineKanaele() throws Exception {

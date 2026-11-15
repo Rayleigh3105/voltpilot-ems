@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.MessstelleRegeln.Groesse;
@@ -18,10 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration der FORMEL-Terme (UEMS AP-10, {@code messstelle_formel_term},
@@ -41,11 +40,7 @@ class MessstelleFormelTermMigrationTest {
     private static final Groesse GEMESSEN = new Groesse("Wirkenergie", "Bezug", "kWh", "Zählerstand");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;
@@ -54,13 +49,12 @@ class MessstelleFormelTermMigrationTest {
 
     @BeforeAll
     static void migriere() {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true).baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load().migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         DataSource appDs = new TenantAwareDataSource(ds(APP_USER, APP_PW));
         app = new JdbcTemplate(appDs);

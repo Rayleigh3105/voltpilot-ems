@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ConnectorRow;
@@ -26,10 +27,8 @@ import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Das Rennen im Ladepunkt-Status-Empfang (Geschwister von entity_observed_state, PR 1685): zwei
@@ -50,12 +49,7 @@ class DeviceChargerStatusRepositoryRaceTest {
     private static final Instant T2 = T1.plusSeconds(5);
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root;
     private static JdbcTemplate app;
@@ -68,14 +62,13 @@ class DeviceChargerStatusRepositoryRaceTest {
 
     @BeforeAll
     static void setUp() {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW,
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "voltpilot_admin_test_pw"))
-                .load().migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "voltpilot_admin_test_pw")));
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         DataSource appSource = new TenantAwareDataSource(ds(APP_USER, APP_PW));
         app = new JdbcTemplate(appSource);

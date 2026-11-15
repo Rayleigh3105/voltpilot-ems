@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -19,10 +20,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** AP-14 U12 and the X5 fleet audit against seeded plans in a disposable database. */
 @Testcontainers(disabledWithoutDocker = true)
@@ -35,12 +34,7 @@ class BestandsboxBudgetPruefungTest {
     private static final UUID U12_ZEHN = UUID.fromString("17000000-0000-0000-0000-000000000010");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("uems")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw")
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -49,10 +43,10 @@ class BestandsboxBudgetPruefungTest {
 
     @BeforeAll
     static void schemaUndPlaene() throws Exception {
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        POSTGRES.migriere(Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .placeholders(Map.of("appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin"))
-                .load().migrate();
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "pw_admin")));
         dataSource = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword());
         catalog = new MeasurementCatalog(MAPPER);

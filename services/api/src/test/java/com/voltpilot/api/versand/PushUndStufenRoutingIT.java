@@ -3,6 +3,7 @@ package com.voltpilot.api.versand;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpServer;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.versand.telegram.TelegramAdapter;
@@ -23,10 +24,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Alerting Scheibe 3 (§6.7, §7 "Push-Versand gegen einen lokalen Test-Endpunkt - kein echter
@@ -42,9 +41,7 @@ class PushUndStufenRoutingIT {
     private static final String PW = "push_it_pw";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate app;
     private static JdbcTemplate adminJdbc;
@@ -53,15 +50,13 @@ class PushUndStufenRoutingIT {
 
     @BeforeAll
     static void migrate() {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of("appDbUser", APP, "appDbPassword", PW, "adminDbUser", ADMIN,
-                        "adminDbPassword", PW))
-                .load()
-                .migrate();
+                        "adminDbPassword", PW)));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP, PW)));
         adminJdbc = new JdbcTemplate(ds(ADMIN, PW));
         ausgang = new VersandRepository(app, adminJdbc);

@@ -2,6 +2,7 @@ package com.voltpilot.api.tenant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.uems.RechteAbleitung.Konto;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.zugriff.ZugriffContext;
@@ -22,10 +23,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Sitzungs-Einstellungen je Verbindung (UEMS AP-03 IP-4): {@link TenantAwareDataSource} setzt {@code app.tenant_id},
@@ -46,11 +45,7 @@ class TenantAwareDataSourceSitzungTest {
     private static final Sitzung LEER = new Sitzung(0, "", "", "");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static HikariDataSource pool;
     private static TenantAwareDataSource ds;

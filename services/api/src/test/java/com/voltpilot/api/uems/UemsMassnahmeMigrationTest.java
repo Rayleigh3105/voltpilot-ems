@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -36,10 +37,8 @@ import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * AP-18 IP-9: die Datenhaltung der Maßnahme (M1, M2, M4, M5, M6, M7, WK6) unter der wirklichen App-Rolle. Die
@@ -77,9 +76,7 @@ class UemsMassnahmeMigrationTest {
             + "\"nachher\":\"2028-02/2029-01\",\"von\":12}";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JdbcTemplate root, app, admin;
     private static Map<String, String> fingerVorher, fingerNachMigration;
@@ -591,7 +588,7 @@ class UemsMassnahmeMigrationTest {
     @Test
     void dieMigrationTraegtAuchAlsSpaeteAnkunft() throws IOException {
         root.execute("CREATE DATABASE voltpilot_spaet");
-        String url = POSTGRES.getJdbcUrl().replace("/voltpilot?", "/voltpilot_spaet?");
+        String url = POSTGRES.getJdbcUrl("voltpilot_spaet");
         Path ohneDiese = Files.createTempDirectory("ohne-massnahme");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {

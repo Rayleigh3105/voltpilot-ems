@@ -2,6 +2,7 @@ package com.voltpilot.api.metrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.DbHealthMetricsRepository;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
@@ -18,10 +19,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Datenhaltungs-Metriken gegen eine ECHTE TimescaleDB - das SQL, das {@link
@@ -54,12 +53,7 @@ class DbHealthMetricsDbTest {
             UUID.fromString("71000000-0000-0000-0000-000000000016");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static DataSource superuser() {
         PGSimpleDataSource ds = new PGSimpleDataSource();
@@ -80,16 +74,14 @@ class DbHealthMetricsDbTest {
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
-        Flyway.configure()
+        POSTGRES.migriere(Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .placeholders(Map.of(
                         "appDbUser", "voltpilot_app", "appDbPassword", "pw_app",
-                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW))
-                .load()
-                .migrate();
+                        "adminDbUser", ADMIN_USER, "adminDbPassword", ADMIN_PW)));
 
         try (Connection c = superuser().getConnection(); Statement s = c.createStatement()) {
             s.execute("INSERT INTO tenant (id, name) VALUES ('" + STORAGE_TENANT

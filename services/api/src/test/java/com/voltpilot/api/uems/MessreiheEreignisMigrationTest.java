@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.TenantRepository;
@@ -49,10 +50,8 @@ import org.junit.jupiter.api.TestFactory;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Migration {@code V20260911260000} (UEMS AP-07 IP-8) gegen eine echte TimescaleDB: die
@@ -97,12 +96,7 @@ class MessreiheEreignisMigrationTest {
     private static final UUID FREMD = UUID.fromString("4e070000-0000-0000-0000-000000000002");
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
-                    .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+    static final TestDatenbank POSTGRES = new TestDatenbank();
 
     private static JsonNode vektoren;
     private static JsonNode referenz;

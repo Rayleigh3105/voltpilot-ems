@@ -7,6 +7,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.voltpilot.api.TestDatenbank;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.control.ControlCertificationPublisher;
@@ -36,10 +37,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /** A5: echte App-Rolle/RLS/Transaktion, ausschließlich gemockte externe Transporte. */
 @Testcontainers(disabledWithoutDocker=true)
@@ -47,9 +46,7 @@ import org.testcontainers.utility.DockerImageName;
 @AutoConfigureMockMvc
 @ActiveProfiles("local")
 class BoxTauschApiTest {
-    @Container static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw");
+    @Container static final TestDatenbank DB=new TestDatenbank();
     @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url",DB::getJdbcUrl);
         r.add("spring.datasource.username",()->"voltpilot_app");
