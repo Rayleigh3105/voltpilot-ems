@@ -25,6 +25,13 @@ const NICHT_IM_EINSTIEG: Record<string, string> = {
     'das ganze Kundenwörter-Glossar (rund 6 kB gz); das erste Bild nimmt seine Wörter aus `glossarEinstieg.ts`',
   'src/components/EigeneAuswertungDialog.tsx':
     'öffnet nur aus dem Anpassen-Modus; `AnlagenPage.tsx` lädt es per `lazy` nach',
+  // Performance Welle 3: Bestand der Anlagen-Seite, den das erste Bild nicht zeigt
+  'src/setupPath.ts':
+    'der Einrichtungspfad selbst (drei Schritte, Übernahme-Plan); das Cockpit braucht nur Weiche und Statuszeile aus `setupPathWeiche.ts`',
+  'src/components/FleetOverview.tsx':
+    'die Flotten-Karten stehen nur in „Meine Anlagen“ ohne gewählte Anlage; `AnlagenPage.tsx` lädt sie per `lazy`',
+  'src/components/CockpitAnpassen.tsx':
+    'der Anpassen-Modus; `AnlagenPage.tsx` lädt ihn mit dem Klick auf „Cockpit anpassen“ (Zeigen holt ihn vor)',
   'src/komponenten.ts':
     'das Komponenten-Fachmodul (Rollen, Boards); der Einstieg braucht nur `toComponentHealth` aus `komponentenHealth.ts`',
   'src/verlauf.ts':

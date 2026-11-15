@@ -32,38 +32,10 @@ import type { AdoptableSource } from './rollen';
 // Die Weiche
 // ---------------------------------------------------------------------------
 
-export interface SetupPathGateInput {
-  /** M0 `surface.base.hasEntities`; undefined/null = Read-Model nicht geladen. */
-  hasEntities?: boolean | null;
-  /** Anzahl aktiver Modi (M0). */
-  modeCount?: number | null;
-  /** true, sobald die Status-Zeile der Anlage (Overview) aufgelöst ist. */
-  statusLoaded?: boolean;
-  /** Zeitpunkt der letzten Messung (Overview); null = noch nie. */
-  lastSeenAt?: string | null;
-  /** Neuester Telemetrie-Datensatz vorhanden? */
-  hasLiveSample?: boolean;
-}
-
-/**
- * Ist diese Anlage die Ausprägung „Neu / leer"? Nur dann ersetzt der
- * Einrichtungspfad das Cockpit.
- *
- * Alle vier Bedingungen müssen gelten:
- *  1. das Read-Model ist geladen (älteres Backend/Ladefehler ⇒ v1, fail-soft),
- *  2. es gibt keine Entitäten,
- *  3. es läuft kein Modus,
- *  4. die Anlage hat noch **nie** Messdaten geliefert (siehe Kopfkommentar).
- */
-export function setupPathActive(input: SetupPathGateInput | null | undefined): boolean {
-  const i = input ?? {};
-  if (i.hasEntities !== false) return false;
-  if ((i.modeCount ?? 0) > 0) return false;
-  if (i.statusLoaded !== true) return false;
-  if (i.lastSeenAt != null) return false;
-  if (i.hasLiveSample === true) return false;
-  return true;
-}
+// Die Weiche und die Statuszeile wohnen in `setupPathWeiche.ts`: das Cockpit braucht im ersten Bild nur sie,
+// den Pfad selbst rendert `AnlageSetup` (nachgeladen). Hier unverändert weitergereicht.
+export { SETUP_STATUS_LINE, setupPathActive, type SetupPathGateInput } from './setupPathWeiche';
+import { SETUP_STATUS_LINE } from './setupPathWeiche';
 
 // ---------------------------------------------------------------------------
 // Die drei Schritte
@@ -113,10 +85,6 @@ export interface SetupPathInput {
   /** Bereits übernommene Entitäten dieser Anlage. */
   adoptedCount?: number | null;
 }
-
-export const SETUP_STATUS_LINE =
-  'Ihre Anlage ist angelegt - jetzt stellen wir Ihr Energie-System zusammen. '
-  + 'Drei Schritte, alles Weitere passiert automatisch.';
 
 export const SETUP_TITLE = 'Ihr Weg zum fertigen EMS';
 

@@ -356,6 +356,12 @@ it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
   await bestandSnapshot('cockpit', view);
 });
 
+// Performance Welle 3: Anpassen-Modus und Flotten-Karten laden nach. Vorgewärmt wie die Unterseiten unten, damit unter
+// Last keine waitFor-Frist am ersten Import reißt - geprüft wird die Seite, nicht die Ladezeit des Testlaufs.
+beforeAll(async () => {
+  await Promise.all([import('../components/CockpitAnpassen'), import('../components/FleetOverview')]);
+}, 60_000);
+
 describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anlagen-Knopf', () => {
   function renderSub(sub: string, geraet: unknown = null) {
     return render(
@@ -572,6 +578,12 @@ describe('Endzustand „nicht zugeordnet": Anlage MIT Daten, ohne v2-Komponenten
 });
 
 describe('M5 · Der Leer-Zustand IST der Einrichtungspfad (#533)', () => {
+  // `AnlageSetup` lädt nach (React.lazy) und trägt seit Welle 3 auch den Pfad aus `setupPath.ts`: vorgewärmt, damit unter
+  // Last nicht die 1-s-Frist von waitFor am ersten Import reißt (auf `main` unter Last schon zuvor rot, Bericht Welle 2).
+  beforeAll(async () => {
+    await import('../components/AnlageSetup');
+  }, 60_000);
+
   /** Eine brandneue Anlage: Gerät verbunden, aber noch nie Messdaten. */
   function stubFreshSite() {
     vi.restoreAllMocks();

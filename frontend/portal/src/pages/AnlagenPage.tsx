@@ -111,12 +111,6 @@ import {
   type EigeneAuswertungWerte,
 } from '../eigeneAuswertung';
 import { EigenerBaustein } from '../components/EigeneAuswertung';
-import {
-  AnpassenHuelle,
-  AnpassenLeiste,
-  AnpassenListe,
-  AusgeblendetZeile,
-} from '../components/CockpitAnpassen';
 import { useAnlageSurface } from '../useAnlageSurface';
 import { useTaktZustand } from '../gleicheAntwort';
 import { useTaktUhr } from '../useTaktUhr';
@@ -136,10 +130,9 @@ import { MobileStickyHead } from '../components/CockpitBlocks';
 import { ZustandCard } from '../components/ZustandCard';
 import { KachelRaster } from '../components/kacheln/KachelRaster';
 import { gateStrompreis } from '../strompreisGate';
-import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
+import { SETUP_STATUS_LINE, setupPathActive } from '../setupPathWeiche';
 import { ersteWerteOffen } from '../ersteWerte';
 import { peakBand, serverQuarterHourMean } from '../peakBand';
-import { FleetSiteCard } from '../components/FleetOverview';
 import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
@@ -155,6 +148,16 @@ import { schnellZeileRelevant } from '../ladeRegel';
 // Fracht ins Einstiegs-Bündel: ECharts (jede Diagramm-Fläche), Leaflet (die
 // Karte auf „Einstellungen"), den Automations-Editor. Gemessen war das der
 // grösste Einzelposten der Ladezeit - siehe `components/Lazy.tsx`.
+// Die Flotten-Karten stehen nur in „Meine Anlagen“ ohne gewählte Anlage (mehrere Anlagen) und kommen mit dieser
+// Ansicht (Performance Welle 3); bis dahin steht dasselbe Skelett wie beim Laden der Übersicht.
+const FleetSiteCard = lazy(() => import('../components/FleetOverview').then((m) => ({ default: m.FleetSiteCard })));
+const FLOTTEN_SKELETT = (
+  <div className="vp-grid vp-fleet-grid">
+    <Skeleton height={190} radius="var(--vp-radius-lg)" />
+    <Skeleton height={190} radius="var(--vp-radius-lg)" />
+    <Skeleton height={190} radius="var(--vp-radius-lg)" />
+  </div>
+);
 const FahrplanSection = lazy(() =>
   SUB_CHUNK.daten().then((m) => ({ default: m.FahrplanSection })),
 );
@@ -173,6 +176,11 @@ const AnlageSetup = lazy(() => import('../components/AnlageSetup').then((m) => (
 // Messwert-Baum (`verlauf`/`komponenten`) und kommt deshalb nachgeladen. `ladeEigeneAuswertung` ist die EINE
 // Aufrufstelle: der Anpassen-Modus holt das Stück vor, sobald er aufgeht, der Klick findet es schon da.
 const ladeEigeneAuswertung = () => import('../components/EigeneAuswertungDialog');
+// Der Anpassen-Modus (Leiste, Hüllen, Liste, „Ausgeblendet“) kommt mit dem Klick, der ihn öffnet (Performance Welle 3):
+// statisch lag er in jedem ersten Bild. Der Modus beginnt erst, wenn das Stück da ist - kein Zwischenbild ohne
+// Hüllen; Zeigen auf den Knopf holt es vor.
+type AnpassenModul = typeof import('../components/CockpitAnpassen');
+const ladeAnpassen = () => import('../components/CockpitAnpassen');
 const EigeneAuswertungDialog = lazy(() =>
   ladeEigeneAuswertung().then((m) => ({ default: m.EigeneAuswertungDialog })),
 );
@@ -548,23 +556,21 @@ function AnlagenListe({
           />
         </Card>
       ) : overview == null ? (
-        <div className="vp-grid vp-fleet-grid">
-          <Skeleton height={190} radius="var(--vp-radius-lg)" />
-          <Skeleton height={190} radius="var(--vp-radius-lg)" />
-          <Skeleton height={190} radius="var(--vp-radius-lg)" />
-        </div>
+        FLOTTEN_SKELETT
       ) : (
-        <div className="vp-grid vp-fleet-grid">
-          {overview.sites.map((s) => (
-            <FleetSiteCard
-              key={s.id}
-              site={s}
-              earnings={null}
-              now={now}
-              onOpen={() => onOpen(s.id)}
-            />
-          ))}
-        </div>
+        <Suspense fallback={FLOTTEN_SKELETT}>
+          <div className="vp-grid vp-fleet-grid">
+            {overview.sites.map((s) => (
+              <FleetSiteCard
+                key={s.id}
+                site={s}
+                earnings={null}
+                now={now}
+                onOpen={() => onOpen(s.id)}
+              />
+            ))}
+          </div>
+        </Suspense>
       )}
 
       <AnlageAnlegenDrawer
@@ -1840,6 +1846,20 @@ export function AnlageSeite({
     canonical: canonicalFuer(isPhone, betriebAus(blocks)),
     versteckt: verstecktFuer(betriebAus(blocks)),
   });
+  const [anpassenModul, setAnpassenModul] = useState<AnpassenModul | null>(null);
+  const layoutStart = useRef(layout.start);
+  layoutStart.current = layout.start;
+  const anpassenStarten = () => {
+    void ladeAnpassen().then(
+      (m) => {
+        setAnpassenModul(m);
+        layoutStart.current();
+      },
+      () => undefined,
+    );
+  };
+  /** Die Bausteine des Anpassen-Modus, solange er läuft (das Stück ist dann immer da). */
+  const A = layout.anpassen ? anpassenModul : null;
 
   // --- Anwendungs-Programm Stufe 5 · die EIGENEN Auswertungen ---------------
   // Seit Steuerung Stufe 8 ohne jedes Tor: eine angelegte Kachel ist eine
@@ -2637,7 +2657,8 @@ export function AnlageSeite({
               <Recht aktion="cockpit.anpassen"><button
                 type="button"
                 className="vp-gear-btn"
-                onClick={layout.start}
+                onPointerEnter={() => void ladeAnpassen()}
+                onClick={anpassenStarten}
                 aria-label="Cockpit anpassen"
                 title="Cockpit anpassen"
               >
@@ -2773,8 +2794,8 @@ export function AnlageSeite({
               was er anordnet. Am Telefon ist es dieselbe Baustein-Menge als
               Liste - auf 375 px ist ein Overlay über einem Diagramm nicht
               bedienbar. */}
-          {layout.anpassen && (
-            <AnpassenLeiste
+          {A && (
+            <A.AnpassenLeiste
               quelle={layout.resolved.quelle}
               resetSatz={layout.resetSatz}
               dirty={layout.dirty}
@@ -2811,8 +2832,8 @@ export function AnlageSeite({
               </p>
             </div>
           )}
-          {layout.anpassen && isPhone && (
-            <AnpassenListe
+          {A && isPhone && (
+            <A.AnpassenListe
               zeilen={layout.zeilen}
               onVerschieben={layout.verschieben}
               onSichtbar={layout.setSichtbar}
@@ -2824,13 +2845,13 @@ export function AnlageSeite({
           {/* Der Stapel entsteht aus der AUFGELÖSTEN Reihenfolge (Katalog ->
               Preset -> Vorgabe -> Eigen). Ohne gespeicherte Zeile ist das
               Zeichen für Zeichen die frühere hart codierte Folge. */}
-          {layout.anpassen
+          {A
             ? layout.resolved.order.map((id) => {
                 const node = istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id];
                 const zeile = !isPhone ? layout.zeilen.find((z) => z.id === id) : undefined;
                 if (zeile) {
                   return (
-                    <AnpassenHuelle
+                    <A.AnpassenHuelle
                       key={id}
                       zeile={zeile}
                       /* Status und Steuerung wohnen im Kopf bzw. in der
@@ -2844,7 +2865,7 @@ export function AnlageSeite({
                       extra={eigenStift(zeile)}
                     >
                       {node ?? undefined}
-                    </AnpassenHuelle>
+                    </A.AnpassenHuelle>
                   );
                 }
                 if (node == null) return null;
@@ -2864,8 +2885,8 @@ export function AnlageSeite({
           {/* „Ausgeblendet (n)" bleibt erreichbar (§3.4) - ausblenden darf
               kein Weg ohne Rückweg sein. Am Telefon steht die Reihe schon in
               der Liste oben. */}
-          {layout.anpassen && !isPhone && (
-            <AusgeblendetZeile
+          {A && !isPhone && (
+            <A.AusgeblendetZeile
               zeilen={layout.zeilen.filter((z) => !z.sichtbar)}
               onVerschieben={layout.verschieben}
               onSichtbar={layout.setSichtbar}
@@ -2878,7 +2899,7 @@ export function AnlageSeite({
               Ende des Cockpits, wo der Blick nach den Kacheln ankommt. */}
           {!layout.anpassen && (
             <div className="vp-cockpit-anpassen-reihe">
-              <Button variant="ghost" onClick={layout.start}>
+              <Button variant="ghost" onPointerEnter={() => void ladeAnpassen()} onClick={anpassenStarten}>
                 <Icon name="sliders" size={18} />
                 Cockpit anpassen
               </Button>
