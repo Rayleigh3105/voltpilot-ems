@@ -17,6 +17,7 @@ import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.ota.OtaTargetPublisher;
+import com.voltpilot.api.preis.PreisZuleitungPublisher;
 import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
@@ -219,6 +220,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) FlowDeploymentPublisher flowPublisher;
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ControlCertificationPublisher certificationPublisher;
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) OtaTargetPublisher otaPublisher;
+    @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) PreisZuleitungPublisher preisPublisher;
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ProvisioningPublisher provisioningPublisher;
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) MeasurementConfigPublisher measurementPublisher;
     @MockitoBean(reset = org.springframework.test.context.bean.override.mockito.MockReset.NONE) ConsumerOverridePublisher consumerPublisher;
@@ -240,7 +242,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     private String lastRegisterCorrelation;
     /** Sender, die es auf main nicht gibt (die Referenz kennt sie nicht): beim Start gezählt und stumm verlangt. */
     private static final java.util.Set<String> NEU_SEIT_MAIN = java.util.Set.of("VerbundAnteilePublisher",
-            "SprungprobePublisher", "GeraetesuchePublisher");
+            "SprungprobePublisher", "GeraetesuchePublisher", "PreisZuleitungPublisher");
     private final Map<String, Integer> startNeu = new TreeMap<>();
     private MockedStatic<Instant> time;
 
@@ -734,7 +736,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     private Map<String, Object> senders() {
         var result = new LinkedHashMap<String, Object>();
         for (Object sender : List.of(registryPublisher, probePublisher, chargingPublisher, boostPublisher,
-                registerPublisher, flowPublisher, certificationPublisher, otaPublisher, provisioningPublisher,
+                registerPublisher, flowPublisher, certificationPublisher, otaPublisher, preisPublisher, provisioningPublisher,
                 measurementPublisher, consumerPublisher, verbundAnteilePublisher, sprungprobePublisher,
                 geraetesuchePublisher))
             result.put(mockingDetails(sender).getMockCreationSettings().getTypeToMock().getSimpleName(), sender);

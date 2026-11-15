@@ -107,6 +107,9 @@ public class ZustellwegController {
     @PutMapping("/email/einstellungen")
     public ResponseEntity<Void> emailEinstellungen(@RequestBody EmailEinstellungen einstellungen,
             Authentication auth) {
+        if (istLeer(einstellungen.abSchwere())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "abSchwere ist ein Pflichtfeld.");
+        }
         boolean geaendert = zustellwege.emailEinstellungenSetzen(sub(auth), einstellungen.abSchwere(),
                 einstellungen.zusammenfassungAktiv(), einstellungen.zusammenfassungUhrzeit());
         if (!geaendert) {
