@@ -16,7 +16,7 @@
 import { channelLabel } from './channels';
 import type { UeberwachenBezug } from './components/UeberwachenBlatt';
 import { fmtNum } from './format';
-import { UEMS_ENERGIEZIELE, UEMS_KENNZAHLEN, UEMS_MESSSTELLE } from './glossar';
+import { UEMS_ENERGIEZIELE, UEMS_KENNZAHLEN, UEMS_MESSSTELLE } from './glossarEinstieg';
 import type { VpGruppe, VpOption } from './picker/optionen';
 import type { Wertverweis } from './ueberwachungApi';
 import { zustandswortAnzeige } from './ueberwachungSatz';

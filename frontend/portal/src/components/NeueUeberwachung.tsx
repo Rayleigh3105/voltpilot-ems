@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api } from '../api';
-import { energiezielName } from '../energiezielBild';
+import { energiezielName } from '../energiezielName';
 import { ueberwachungApi } from '../ueberwachungApi';
 import {
   anlageWerte,

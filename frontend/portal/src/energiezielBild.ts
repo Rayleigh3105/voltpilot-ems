@@ -16,6 +16,7 @@ import type {
 import { runden } from './bezugsbasis';
 import { dez, dezText } from './dez';
 import { MONAT_LAEUFT, MONAT_OHNE_WERT, NICHT_BEWERTBAR, offenGrund } from './energieziele';
+import { energiezielName } from './energiezielName';
 
 export type Ton = 'ok' | 'warn' | 'rahmen' | 'ohne';
 export type Lage = EnergiezielKurs['lage'];
@@ -133,11 +134,8 @@ export function periodeText(von: string, bis: string, jahr = false): string {
 const zp = (zielperiode: string) => [zielperiode.slice(0, 7), zielperiode.slice(8)] as const;
 export const zielperiodeText = (zielperiode: string) => periodeText(...zp(zielperiode));
 
-/** Name vor Kennzeichen (V6): „Energieziel 2029“, über den Jahreswechsel „Energieziel 2028/29“. */
-export function energiezielName(ez: Pick<Energieziel, 'zielperiode'>): string {
-  const [von, bis] = zp(ez.zielperiode);
-  return von.slice(0, 4) === bis.slice(0, 4) ? `Energieziel ${bis.slice(0, 4)}` : `Energieziel ${von.slice(0, 4)}/${bis.slice(2, 4)}`;
-}
+/** Name vor Kennzeichen (V6), eigenes Modul für die Meldungen (`energiezielName.ts`). */
+export { energiezielName };
 
 /** „Energie“ nur, wenn gemessen wird, was Energie ist (kWh, MWh) - Wasser oder Gas in m³ bleiben ohne Wort. */
 const energie = (einheit: string | null) => (einheit && /wh$/i.test(einheit) ? 'Energie ' : '');

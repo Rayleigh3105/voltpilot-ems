@@ -43,6 +43,14 @@ const SEITEN: Record<string, Record<string, string>> = {
   'src/steuerung/SteuerungSeite.tsx': {
     'src/components/SteuernAssistent.tsx': '„Steuern einrichten“ öffnet auf Klick (`SteuernAssistentLazy`)',
   },
+  // Meldungen (Performance Welle 3): die Ortswahl der neuen Überwachung brauchte nur Namen und Wörter
+  'src/pages/MeldungenPage.tsx': {
+    'src/energiezielBild.ts':
+      'die Ortswahl braucht nur den Namen (`energiezielName.ts`); das Bild zog Energieziele, Bezugsbasis, Kennzahl- und Messstellen-Bild mit (gut 50 kB gz)',
+    'src/uemsKennzahl.ts': 'hing allein am Energieziel-Bild',
+    'src/kennzahlKarte.ts': 'hing allein am Energieziel-Bild',
+    'src/glossar.ts': 'die Ortswahl nimmt ihre drei Wörter aus `glossarEinstieg.ts`',
+  },
 };
 
 describe('Seiten-Bündel · was eine Kundenseite beim Aufruf nicht mitlädt', () => {
