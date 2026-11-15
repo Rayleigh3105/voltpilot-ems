@@ -87,13 +87,17 @@ export type AnlagenSub =
   | 'lastspitzen'
   | 'ladevorgaenge'
   | 'befehle'
+  // Eine Logik der Steuerung (Steuerlogik Stufe 4): Aufbau, Text, Mitlaufen,
+  // Fassungen und Protokoll EINER Logik - eine Ebene unter „Regeln", mit eigenem
+  // Rückweg. Welche Logik und welche Ansicht stehen im Hash (`logikHash`).
+  | 'logik'
   | 'geraet'
   | 'box';
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'prognosemodelle',
   'technik', 'modell', 'steuerung', 'laden', 'regeln', 'lastspitzen', 'ladevorgaenge', 'befehle',
-  'geraet', 'box', 'energiebilanz',
+  'geraet', 'box', 'energiebilanz', 'logik',
 ]);
 
 /**
@@ -1515,6 +1519,27 @@ export function transitionKind(
  * öffnet exakt dieselbe Komponente wieder. Ohne Komponente zeigt die Seite
  * den Verlauf der ganzen Anlage.
  */
+/** Die Ansichten einer Logik (Steuerlogik Stufe 4). */
+export type LogikAnsichtId = 'aufbau' | 'text' | 'mitlaufen' | 'fassungen' | 'protokoll';
+const LOGIK_ANSICHTEN: ReadonlySet<string> = new Set(['aufbau', 'text', 'mitlaufen', 'fassungen', 'protokoll']);
+
+/**
+ * Die Seite EINER Logik: `#/anlage/{id}/logik?id=<logik>&ansicht=<ansicht>`; `id=neu` öffnet eine neue Logik.
+ * Ein Lesezeichen öffnet dieselbe Logik in derselben Ansicht wieder.
+ */
+export function logikHash(siteId: string, logikId: string, ansicht?: LogikAnsichtId | null): string {
+  const q = new URLSearchParams({ id: logikId });
+  if (ansicht && ansicht !== 'aufbau') q.set('ansicht', ansicht);
+  return `#/anlage/${siteId}/logik?${q.toString()}`;
+}
+
+/** Welche Logik und welche Ansicht die Adresse nennt; ohne gültige Ansicht der Aufbau. */
+export function parseLogik(hash: string): { id: string | null; ansicht: LogikAnsichtId } {
+  const id = befehleParam(hash, 'id');
+  const a = befehleParam(hash, 'ansicht');
+  return { id, ansicht: a && LOGIK_ANSICHTEN.has(a) ? (a as LogikAnsichtId) : 'aufbau' };
+}
+
 export function befehleHash(siteId: string, entityId?: string | null): string {
   const base = `#/anlage/${siteId}/befehle`;
   return entityId ? `${base}?komponente=${encodeURIComponent(entityId)}` : base;

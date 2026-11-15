@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
@@ -92,6 +93,9 @@ type Bericht struct {
 	// unit, range, step, who may set them, target value after E2 = B), so
 	// neither has to read the language.
 	Stellwerte []logik.StellwertInfo `json:"stellwerte"`
+	// Meldungen sind Befunde, Proben, die nicht bestehen, und Hinweise, je an ihrer
+	// Zeile im Text (Stufe 4: die Ansicht "Text" des Portals).
+	Meldungen []Meldung `json:"meldungen"`
 }
 
 // Zusammen is a constraint between settings with its state.
@@ -135,6 +139,20 @@ type Eingang struct {
 
 // ErrUnlesbar marks a text the readers refuse (the German reason follows).
 var ErrUnlesbar = errors.New("Logik nicht lesbar")
+
+// Unlesbar is ErrUnlesbar with the reader's message placed at its line of the text.
+type Unlesbar struct {
+	Grund   string
+	Meldung Meldung
+}
+
+func (e *Unlesbar) Error() string { return ErrUnlesbar.Error() + ": " + e.Grund }
+
+func (e *Unlesbar) Unwrap() error { return ErrUnlesbar }
+
+func unlesbar(z *zeilen, grund string) error {
+	return &Unlesbar{Grund: grund, Meldung: z.ausFehler(grund)}
+}
 
 // Gelesen is a read and checked logic.
 type Gelesen struct {
@@ -191,6 +209,7 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 	if len(text) > MaxTextBytes {
 		return nil, fmt.Errorf("%w: Der Text ist größer als %d KB", ErrUnlesbar, MaxTextBytes/1024)
 	}
+	z := neueZeilen(text)
 	var baum *textform.Knoten
 	var err error
 	if istJSON(text) {
@@ -199,15 +218,15 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 		baum, err = textform.Lies(text)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrUnlesbar, err.Error())
+		return nil, unlesbar(z, err.Error())
 	}
 	kanonisch, err := baum.JSON()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrUnlesbar, err.Error())
+		return nil, unlesbar(z, err.Error())
 	}
 	L, err := logik.Lesen(kanonisch)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrUnlesbar, err.Error())
+		return nil, unlesbar(z, err.Error())
 	}
 	fakten := anlageAusRegistry(L, registry)
 	for k, g := range anlage {
@@ -219,21 +238,37 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 	pb := L.Pruefe(fakten.kern())
 	b := &Bericht{Name: L.Name, Sperrt: pb.Sperrt(), Ausdruecke: pb.Ausdruecke,
 		Befunde: []string{}, Zusammen: []Zusammen{}, Proben: []Probe{}, Hinweise: []string{},
-		Geraete: []Geraet{}, Eingaenge: []Eingang{}, Stellwerte: L.StellwertInfos()}
+		Geraete: []Geraet{}, Eingaenge: []Eingang{}, Stellwerte: L.StellwertInfos(), Meldungen: []Meldung{}}
 	for _, f := range pb.Befunde {
 		b.Befunde = append(b.Befunde, f.Text)
+		b.Meldungen = append(b.Meldungen, Meldung{Art: MeldungFehler, Text: f.Text, Ort: f.Ort, Zeile: z.zeile(f.Ort)})
 	}
-	for _, z := range pb.Zusammen {
-		b.Zusammen = append(b.Zusammen, Zusammen{Name: z.Name, Gilt: z.Gilt, Verletzbar: z.Verletzbar})
+	for i, zs := range pb.Zusammen {
+		b.Zusammen = append(b.Zusammen, Zusammen{Name: zs.Name, Gilt: zs.Gilt, Verletzbar: zs.Verletzbar})
+		if zs.Verletzbar {
+			ort := fmt.Sprintf("constraints[%d]", i+1)
+			b.Meldungen = append(b.Meldungen, Meldung{Art: MeldungHinweis, Ort: ort, Zeile: z.zeile(ort),
+				Text: "„" + zs.Name + "“ ließe sich im erlaubten Bereich verletzen; die Regler lassen nur Werte zu, die passen."})
+		}
 	}
 	for _, p := range pb.Proben {
 		pr := Probe{Name: p.Name, Besteht: p.Bestanden, Abweichungen: []Abweichung{}}
+		var teile []string
 		for _, a := range p.Abweichungen {
 			pr.Abweichungen = append(pr.Abweichungen, Abweichung{Stelle: a.Stelle, Soll: a.Soll, Ist: a.Ist})
+			teile = append(teile, a.Stelle+" soll "+a.Soll+" sein, ist "+a.Ist)
 		}
 		b.Proben = append(b.Proben, pr)
+		if !p.Bestanden {
+			ort := probenOrt(L, p.Name)
+			b.Meldungen = append(b.Meldungen, Meldung{Art: MeldungProbe, Ort: ort, Zeile: z.zeile(ort),
+				Text: "Probe „" + p.Name + "“ besteht nicht: " + strings.Join(teile, "; ")})
+		}
 	}
 	b.Hinweise = append(b.Hinweise, pb.Hinweise...)
+	for _, h := range pb.Hinweise {
+		b.Meldungen = append(b.Meldungen, Meldung{Art: MeldungHinweis, Text: h})
+	}
 	for _, k := range L.GeraetListe {
 		g := L.Geraete[k]
 		d := Geraet{Kennung: k, EntityID: g.Entity, Name: g.Name, Ausgaenge: []string{}}
@@ -249,6 +284,17 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 		b.Eingaenge = append(b.Eingaenge, Eingang{Kennung: k, Source: e.Source, Name: e.Name})
 	}
 	return &Gelesen{Kanonisch: kanonisch, Bericht: b}, nil
+}
+
+// probenOrt ist die Stelle einer Probe nach ihrem Namen (Namen sind je Logik eindeutig
+// genug für eine Zeile; bei gleichen Namen die erste).
+func probenOrt(L *logik.Logik, name string) string {
+	for i, p := range L.Proben {
+		if p.Name == name {
+			return fmt.Sprintf("tests[%d]", i+1)
+		}
+	}
+	return ""
 }
 
 func istJSON(text []byte) bool {

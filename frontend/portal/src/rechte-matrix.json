@@ -1734,6 +1734,24 @@
         "einsicht": "-"
       },
       "anmerkung": "Eine Stummschaltung für alle braucht ebenfalls dieses Recht (§6.6 Tabelle „Anlegen, quittieren, ändern“)."
+    },
+    {
+      "kennung": "logik.bearbeiten",
+      "gruppe": "steuerung",
+      "kundenwort": "Logik bearbeiten: Aufbau und Text ändern, prüfen, als Fassung speichern, mitlaufen lassen, zur Freigabe vorlegen, zurücknehmen, stilllegen; Bereiche und editable_by setzen",
+      "herkunft": "Steuerlogik v1 §8.8 (E3 = B, 14.11.2026)",
+      "nachtrag": "Steuerlogik v1 §8.8",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "B",
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
+      },
+      "anmerkung": "Scharf schalten bleibt in Stufe 4 beim VoltPilot-Betrieb: für den Kundenadministrator und den Unterstützer heißt eine neue Fassung „zur Freigabe vorlegen“. Bedienberechtigte sehen die Logik und fragen eine Änderung an (betriebsweise.aendern)."
     }
   ],
   "nachtraege": [
@@ -2495,6 +2513,49 @@
         {
           "wortlaut": "Eine Meldung erbt die Sicht ihres Werts (meist messwerte.ansehen), zweifach gesichert: Datenbank-Zaun (site_scope auf alarm/ueberwachung) und das Recht des Werts",
           "wo": "db/migration/V20261015130000__ueberwachung_kern.sql"
+        }
+      ]
+    },
+    {
+      "abschnitt": "Steuerlogik v1 §8.8",
+      "titel": "Rechte an einer Logik (Stufe 4: Aufbau und Text)",
+      "konzept": "Steuerlogik-Konzept vp-steuerlogik-konzept — report.md §8.8 und §17.4, E3 = B vom 14.11.2026",
+      "handlungen": [
+        {
+          "handlung": "Text schreiben, prüfen, mitlaufen lassen, zurücknehmen; gesperrte Stellwerte ändern; darf setzen",
+          "wer": "Kundenadministrator, Unterstützer (Einrichten und Bedienen), VoltPilot-Betrieb",
+          "recht": "`@Recht(\"logik.bearbeiten\")`",
+          "kennungen": [
+            "logik.bearbeiten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "E3 = B: die Zeile gilt auch für den Kundenadministrator, einschließlich Bereiche und editable_by (Lesart §17.8). Scharf schalten in Stufe 4 nur die Plattform."
+        },
+        {
+          "handlung": "Freigegebenen Stellwert ändern; Änderung anfragen",
+          "wer": "Kundenadministrator, Bedienberechtigte, Unterstützer (Einrichten und Bedienen)",
+          "recht": "`@Recht(\"betriebsweise.aendern\")`",
+          "kennungen": [
+            "betriebsweise.aendern"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Zeile „Betriebsweise ändern“; Temperaturen stellt jeder davon (E2 = B)."
+        },
+        {
+          "handlung": "Karte, Warum, Verlauf, Text lesen",
+          "wer": "wer die Steuerung der Anlage sieht",
+          "recht": null,
+          "kennungen": [
+            "messwerte.ansehen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Lesend wie die Steuerung der Anlage; keine eigene Kennung."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Prüfung und Schutz unterscheiden nicht nach Rolle; jede Fassung trägt Urheber, Zeit und Rolle",
+          "wo": "services/api/src/main/java/com/voltpilot/api/steuerlogik/SteuerlogikService.java"
         }
       ]
     }

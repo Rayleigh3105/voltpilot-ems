@@ -23,10 +23,21 @@ public class SteuerlogikRepository {
         this.jdbc = jdbc;
     }
 
-    /** Eine Fassung einer Logik, ohne die großen Texte. */
+    /**
+     * Eine Fassung einer Logik, ohne die großen Texte. Stufe 4: Rolle und Anzeigename des Urhebers, Notiz, wer sie wann
+     * zur Freigabe vorgelegt hat.
+     */
     public record Fassung(UUID logikId, int fassung, UUID siteId, String name, String zustand,
             String contentHash, String berichtJson, Instant angelegtAm, String angelegtVon, Instant stillgelegtAm,
-            Instant scharfAm, String scharfVon, String hinweiseJson) {
+            Instant scharfAm, String scharfVon, String hinweiseJson, String angelegtRolle, String angelegtName,
+            String notiz, Instant vorgelegtAm, String vorgelegtVon, String vorgelegtName) {
+
+        public Fassung(UUID logikId, int fassung, UUID siteId, String name, String zustand, String contentHash,
+                String berichtJson, Instant angelegtAm, String angelegtVon, Instant stillgelegtAm, Instant scharfAm,
+                String scharfVon, String hinweiseJson) {
+            this(logikId, fassung, siteId, name, zustand, contentHash, berichtJson, angelegtAm, angelegtVon,
+                    stillgelegtAm, scharfAm, scharfVon, hinweiseJson, null, angelegtVon, null, null, null, null);
+        }
 
         public boolean aktiv() {
             return ZUSTAND_MITLAUFEND.equals(zustand) || ZUSTAND_SCHARF.equals(zustand);
@@ -37,7 +48,8 @@ public class SteuerlogikRepository {
         }
     }
 
-    /** Die Zustände einer Fassung (V20261114200000). */
+    /** Die Zustände einer Fassung (V20261114200000, V20261115190000). */
+    public static final String ZUSTAND_GEPRUEFT = "geprueft";
     public static final String ZUSTAND_MITLAUFEND = "mitlaufend";
     public static final String ZUSTAND_SCHARF = "scharf";
     public static final String ZUSTAND_STILLGELEGT = "stillgelegt";
@@ -97,42 +109,128 @@ public class SteuerlogikRepository {
                 + "WHERE logik_id = ? AND zustand IN ('mitlaufend', 'scharf')", Timestamp.from(jetzt), logikId);
     }
 
+    /** Der Anzeigename eines Kontos des Mandanten, sonst die Kennung (wie im Protokoll). */
+    private static String anzeigename(String spalte) {
+        return "COALESCE((SELECT NULLIF(btrim(b.anzeigename), '') FROM benutzer b WHERE b.tenant_id = s.tenant_id "
+                + "AND b.sub = s." + spalte + "), s." + spalte + ")";
+    }
+
     private static final String FASSUNG_SPALTEN = """
-            logik_id, fassung, site_id, name, zustand, content_hash, bericht::text, angelegt_am, angelegt_von,
-            stillgelegt_am, scharf_am, scharf_von, hinweise::text
-            """;
+            s.logik_id, s.fassung, s.site_id, s.name, s.zustand, s.content_hash, s.bericht::text, s.angelegt_am,
+            s.angelegt_von, s.stillgelegt_am, s.scharf_am, s.scharf_von, s.hinweise::text, s.angelegt_rolle,
+            """ + anzeigename("angelegt_von") + ", s.notiz, s.vorgelegt_am, s.vorgelegt_von, "
+            + anzeigename("vorgelegt_von") + " ";
 
     private static Fassung fassung(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new Fassung(rs.getObject(1, UUID.class), rs.getInt(2), rs.getObject(3, UUID.class), rs.getString(4),
                 rs.getString(5), rs.getString(6), rs.getString(7), instant(rs.getTimestamp(8)), rs.getString(9),
-                instant(rs.getTimestamp(10)), instant(rs.getTimestamp(11)), rs.getString(12), rs.getString(13));
+                instant(rs.getTimestamp(10)), instant(rs.getTimestamp(11)), rs.getString(12), rs.getString(13),
+                rs.getString(14), rs.getString(15), rs.getString(16), instant(rs.getTimestamp(17)), rs.getString(18),
+                rs.getString(19));
     }
 
     /** Alle Fassungen der Anlage, je Logik die jüngste zuerst. */
     public List<Fassung> fassungen(UUID siteId) {
-        return jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik WHERE site_id = ? "
-                + "ORDER BY angelegt_am DESC, logik_id, fassung DESC", (rs, i) -> fassung(rs), siteId);
+        return jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik s WHERE s.site_id = ? "
+                + "ORDER BY s.angelegt_am DESC, s.logik_id, s.fassung DESC", (rs, i) -> fassung(rs), siteId);
     }
 
     /** Die aktive Fassung einer Logik (mitlaufend oder scharf), {@code null} ohne. */
     public Fassung aktiveFassung(UUID logikId) {
-        List<Fassung> f = jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik WHERE logik_id = ? "
-                + "AND zustand IN ('mitlaufend', 'scharf')", (rs, i) -> fassung(rs), logikId);
+        List<Fassung> f = jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik s WHERE s.logik_id = ? "
+                + "AND s.zustand IN ('mitlaufend', 'scharf')", (rs, i) -> fassung(rs), logikId);
         return f.isEmpty() ? null : f.get(0);
     }
 
     /** Eine bestimmte Fassung, {@code null}, wenn es sie nicht gibt. */
     public Fassung fassung(UUID logikId, int fassung) {
-        List<Fassung> f = jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik WHERE logik_id = ? "
-                + "AND fassung = ?", (rs, i) -> fassung(rs), logikId, fassung);
+        List<Fassung> f = jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik s WHERE s.logik_id = ? "
+                + "AND s.fassung = ?", (rs, i) -> fassung(rs), logikId, fassung);
         return f.isEmpty() ? null : f.get(0);
     }
 
     /** Die Fassung vor {@code fassung} (die höchste kleinere Nummer), {@code null} ohne. */
     public Fassung vorige(UUID logikId, int fassung) {
-        List<Fassung> f = jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik WHERE logik_id = ? "
-                + "AND fassung < ? ORDER BY fassung DESC LIMIT 1", (rs, i) -> fassung(rs), logikId, fassung);
+        List<Fassung> f = jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik s WHERE s.logik_id = ? "
+                + "AND s.fassung < ? ORDER BY s.fassung DESC LIMIT 1", (rs, i) -> fassung(rs), logikId, fassung);
         return f.isEmpty() ? null : f.get(0);
+    }
+
+    /** Alle Fassungen einer Logik, die jüngste zuerst. */
+    public List<Fassung> fassungenDerLogik(UUID logikId) {
+        return jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik s WHERE s.logik_id = ? "
+                + "ORDER BY s.fassung DESC", (rs, i) -> fassung(rs), logikId);
+    }
+
+    /** Die höchste Fassung einer Logik, 0 ohne. */
+    public int neuesteFassung(UUID logikId) {
+        Integer max = jdbc.queryForObject("SELECT max(fassung) FROM steuerlogik WHERE logik_id = ?",
+                Integer.class, logikId);
+        return max == null ? 0 : max;
+    }
+
+    /**
+     * Speichert eine geprüfte Fassung, die noch nicht läuft (Stufe 4): mit Rolle des Urhebers und Notiz. In der
+     * Transaktion des Aufrufers; die aktive Fassung bleibt, wie sie ist.
+     */
+    public void speichere(UUID tenantId, UUID siteId, UUID logikId, int fassung, String name, String quelltext,
+            String kanonisch, String artefakt, String contentHash, String berichtJson, String von, String rolle,
+            String notiz, Instant jetzt) {
+        jdbc.update("""
+                INSERT INTO steuerlogik (logik_id, fassung, tenant_id, site_id, name, quelltext, kanonisch, artefakt,
+                                         content_hash, bericht, zustand, angelegt_am, angelegt_von, angelegt_rolle,
+                                         notiz)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'geprueft', ?, ?, ?, ?)
+                """, logikId, fassung, tenantId, siteId, name, quelltext, kanonisch, artefakt, contentHash,
+                berichtJson, Timestamp.from(jetzt), von, rolle, notiz);
+    }
+
+    /** Hält fest, wer eine Fassung wann zur Freigabe vorgelegt hat. */
+    public void legeVor(UUID logikId, int fassung, String von, Instant jetzt) {
+        jdbc.update("UPDATE steuerlogik SET vorgelegt_am = ?, vorgelegt_von = ? WHERE logik_id = ? AND fassung = ?",
+                Timestamp.from(jetzt), von, logikId, fassung);
+    }
+
+    // --- Anfragen (Stufe 4: "Änderung anfragen") ------------------------------------------------------------------
+
+    /** Eine Anfrage an einer Logik; {@code vonName} ist der Anzeigename des Kontos, sonst die Kennung. */
+    public record Anfrage(UUID id, UUID logikId, String kennung, String text, Instant am, String von, String vonName,
+            String rolle, Instant erledigtAm, String erledigtVon, String erledigtName) {}
+
+    public void frageAn(UUID tenantId, UUID siteId, UUID id, UUID logikId, String kennung, String text, String von,
+            String rolle, Instant jetzt) {
+        jdbc.update("""
+                INSERT INTO steuerlogik_anfrage (id, tenant_id, site_id, logik_id, kennung, text, am, von, rolle)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, id, tenantId, siteId, logikId, kennung, text, Timestamp.from(jetzt), von, rolle);
+    }
+
+    /** Die Anfragen einer Logik, jüngste zuerst, höchstens {@code grenze}. */
+    public List<Anfrage> anfragen(UUID logikId, int grenze) {
+        return jdbc.query("SELECT s.id, s.logik_id, s.kennung, s.text, s.am, s.von, " + anzeigename("von")
+                + ", s.rolle, s.erledigt_am, s.erledigt_von, " + anzeigename("erledigt_von")
+                + " FROM steuerlogik_anfrage s WHERE s.logik_id = ? ORDER BY s.am DESC LIMIT ?",
+                (rs, i) -> new Anfrage(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3),
+                        rs.getString(4), instant(rs.getTimestamp(5)), rs.getString(6), rs.getString(7),
+                        rs.getString(8), instant(rs.getTimestamp(9)), rs.getString(10), rs.getString(11)),
+                logikId, grenze);
+    }
+
+    /** Je Logik der Anlage die Zahl der offenen Anfragen. */
+    public java.util.Map<UUID, Integer> offeneAnfragen(UUID siteId) {
+        java.util.Map<UUID, Integer> out = new java.util.HashMap<>();
+        jdbc.query("SELECT logik_id, count(*) FROM steuerlogik_anfrage WHERE site_id = ? AND erledigt_am IS NULL "
+                + "GROUP BY logik_id", rs -> {
+                    out.put(rs.getObject(1, UUID.class), rs.getInt(2));
+                }, siteId);
+        return out;
+    }
+
+    /** Hakt eine offene Anfrage ab; {@code false}, wenn es sie an dieser Logik nicht (mehr offen) gibt. */
+    public boolean erledige(UUID logikId, UUID id, String von, Instant jetzt) {
+        return jdbc.update("UPDATE steuerlogik_anfrage SET erledigt_am = ?, erledigt_von = ? "
+                + "WHERE id = ? AND logik_id = ? AND erledigt_am IS NULL", Timestamp.from(jetzt), von, id,
+                logikId) > 0;
     }
 
     /**

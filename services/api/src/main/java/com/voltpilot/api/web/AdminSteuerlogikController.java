@@ -63,8 +63,9 @@ public class AdminSteuerlogikController {
             List<SteuerlogikDto.Fassung> fassungen = e.getValue().stream()
                     .sorted((x, y) -> Integer.compare(y.fassung(), x.fassung()))
                     .map(f -> new SteuerlogikDto.Fassung(f.fassung(), f.zustand(), f.contentHash(),
-                            lies(f.berichtJson()), f.angelegtAm(), f.angelegtVon(), f.stillgelegtAm(), f.scharfAm(),
-                            f.scharfVon(), lies(f.hinweiseJson())))
+                            lies(f.berichtJson()), f.angelegtAm(), f.angelegtName(), f.stillgelegtAm(), f.scharfAm(),
+                            f.scharfVon(), lies(f.hinweiseJson()), f.angelegtRolle(), f.notiz(), f.vorgelegtAm(),
+                            f.vorgelegtName()))
                     .toList();
             SteuerlogikDto.Quittung quittung = b.quittungen().stream()
                     .filter(a -> a.flowId().equals(e.getKey())).findFirst()
@@ -111,18 +112,20 @@ public class AdminSteuerlogikController {
 
     /**
      * Recht: {@code plattform.betrieb} - lesend: was der Dialog "Scharf schalten" zeigt (Prüfbericht, gesammelte
-     * Hinweise, Konflikte, Geräte, was der Kunde stellt).
+     * Hinweise, Konflikte, Geräte, was der Kunde stellt); ohne {@code fassung} für die aktive.
      */
     @GetMapping("/{logikId}/scharf")
-    public SteuerlogikDto.Vorschau vorschau(@PathVariable UUID siteId, @PathVariable UUID logikId) {
-        SteuerlogikService.Vorschau v = dienst.scharfVorschau(siteId, logikId);
+    public SteuerlogikDto.Vorschau vorschau(@PathVariable UUID siteId, @PathVariable UUID logikId,
+            @RequestParam(required = false) Integer fassung) {
+        SteuerlogikService.Vorschau v = dienst.scharfVorschau(siteId, logikId, fassung);
         return new SteuerlogikDto.Vorschau(v.logikId(), v.fassung(), v.name(), v.zustand(), v.boxKann(), v.bericht(),
                 v.hinweise(), konflikte(v.konflikte()), v.geraete(), v.kundeStellt(), v.moeglich());
     }
 
     /**
-     * Recht: {@code plattform.betrieb} - die aktive Fassung scharf schalten: eine Bestätigung für alle Hinweise (E5 =
-     * C), kein zweiter Herr; protokolliert mit wer und wann.
+     * Recht: {@code plattform.betrieb} - eine Fassung scharf schalten, die mitlaufende oder (Stufe 4) eine vorgelegte,
+     * die die aktive ablöst: eine Bestätigung für alle Hinweise (E5 = C), kein zweiter Herr; protokolliert mit wer
+     * und wann.
      */
     @PostMapping("/{logikId}/scharf")
     public SteuerlogikDto.Angenommen scharf(@PathVariable UUID siteId, @PathVariable UUID logikId,
@@ -223,12 +226,13 @@ public class AdminSteuerlogikController {
     /** Ein ehrlicher Halt als Antwort: Code, Satz, Prüfbericht und Konflikte; der Status folgt dem Grund. */
     static ResponseEntity<Map<String, Object>> antwort(SteuerlogikService.Abgelehnt e) {
         HttpStatus status = switch (e.grund()) {
-            case "anlage_unbekannt", "logik_unbekannt", "stellwert_unbekannt" -> HttpStatus.NOT_FOUND;
-            case "text_fehlt", "text_zu_gross", "wert_fehlt" -> HttpStatus.BAD_REQUEST;
+            case "anlage_unbekannt", "logik_unbekannt", "stellwert_unbekannt", "fassung_unbekannt",
+                    "anfrage_unbekannt" -> HttpStatus.NOT_FOUND;
+            case "text_fehlt", "text_zu_gross", "wert_fehlt", "notiz_zu_lang", "zeitraum" -> HttpStatus.BAD_REQUEST;
             case "recht_fehlt" -> HttpStatus.FORBIDDEN;
             case "keine_box", "box_ohne_mitlauf", "box_ohne_scharf", "zweiter_herr", "scharf_abloesen",
                     "bestaetigung_fehlt", "fassung_veraltet", "schon_scharf", "nichts_aktiv", "keine_vorige",
-                    "gleichzeitig" ->
+                    "gleichzeitig", "laeuft_schon", "nicht_freigegeben" ->
                     HttpStatus.CONFLICT;
             case "logik_unlesbar", "pruefung_sperrt", "stellwerte_passen_nicht" -> HttpStatus.UNPROCESSABLE_ENTITY;
             default -> HttpStatus.SERVICE_UNAVAILABLE;
@@ -237,6 +241,8 @@ public class AdminSteuerlogikController {
         body.put("grund", e.grund());
         body.put("message", e.getMessage());
         if (e.bericht() != null) body.put("bericht", e.bericht());
+        if (e.meldungen() != null) body.put("meldungen", e.meldungen());
+        else if (e.bericht() != null && e.bericht().has("meldungen")) body.put("meldungen", e.bericht().get("meldungen"));
         if (!e.konflikte().isEmpty()) body.put("konflikte", konflikte(e.konflikte()));
         return ResponseEntity.status(status).body(body);
     }

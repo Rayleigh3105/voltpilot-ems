@@ -129,6 +129,9 @@ function LogikKarte({
     api.steuerlogikVorschau(siteId, logik.logikId).then(setVorschau, (e) => setFehler(ablehnungSaetze(e)));
   };
 
+  // Stufe 4: eine Fassung, die der Kunde zur Freigabe vorgelegt hat und die noch nicht scharf war.
+  const vorgelegt = logik.fassungen.find((f) => f.vorgelegtAm && !f.scharfAm && f.zustand !== 'scharf') ?? null;
+
   const stilllegen = async () => {
     setBusy(true);
     setFehler([]);
@@ -150,12 +153,18 @@ function LogikKarte({
         <h3>{logik.name}</h3>
         <span className="vp-slm-leise">
           {fassung == null
-            ? 'stillgelegt'
+            ? logik.fassungen[0]?.zustand === 'geprueft' ? `Fassung ${logik.fassungen[0].fassung} gespeichert, läuft nicht` : 'stillgelegt'
             : scharf
               ? `Fassung ${fassung} · scharf${aktiv?.scharfAm ? ` seit ${uhrzeit(aktiv.scharfAm)}` : ''}, die Box schaltet nach ihr`
               : `Fassung ${fassung} · läuft mit, schaltet nichts`}
         </span>
         <span className={`vp-slm-${quittung.ton}`}>{quittung.text}</span>
+        {vorgelegt ? (
+          <span className="vp-slm-warn">
+            Fassung {vorgelegt.fassung} liegt zur Freigabe vor{vorgelegt.vorgelegtVon ? ` (${vorgelegt.vorgelegtVon})` : ''}: in der
+            Logik der Anlage scharf schalten.
+          </span>
+        ) : null}
       </header>
       {fassung != null && !r && <p className="vp-slm-leise">Die Box hat noch keinen Mitlauf gemeldet.</p>}
       {fassung != null && r && (

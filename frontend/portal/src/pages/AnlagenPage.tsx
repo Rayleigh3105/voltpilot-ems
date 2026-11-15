@@ -287,6 +287,9 @@ const TechnikSection = lazy(() =>
 const BefehleSection = lazy(() =>
   SUB_CHUNK.befehle().then((m) => ({ default: m.BefehleSection })),
 );
+const LogikSection = lazy(() =>
+  SUB_CHUNK.logik().then((m) => ({ default: m.LogikSection })),
+);
 // Marktpreise und Prognose sind seit der Navigations-Runde „zwei Ebenen" (E3)
 // REITER des Verlaufs, also gewöhnliche Unterseiten dieser Anlage - ihre alten
 // Adressen leiten um (`nav.ts` LEGACY_ROUTES).
@@ -734,7 +737,7 @@ function AnlagenSubPage({
   // Brotkrume `Anlage › Komponenten › {Gerät}` in ihrem eigenen Kopf. Der Knopf
   // hier stünde darüber als ZWEITER Rückweg auf denselben Weg (Stufe 0, §2.1,
   // Captain-Entscheid D1a); `tabsFor` schweigt aus demselben Grund.
-  const eigenerRueckweg = sub === 'geraet' || sub === 'box';
+  const eigenerRueckweg = sub === 'geraet' || sub === 'box' || sub === 'logik';
   return (
     <>
       {!eigenerRueckweg && (
@@ -853,6 +856,7 @@ function AnlagenSubPage({
             geraetRef={parseBefehleGeraet(window.location.hash)}
           />
         )}
+        {sub === 'logik' && <LogikSection site={site} onOpenSub={onOpenSub} />}
         {STEUERUNG_SUBS.has(sub) && (
           <SteuerungSection
             site={site}

@@ -40,6 +40,7 @@ import { useRollen } from '../rollen';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
 import { LogikBlatt } from './LogikBlatt';
+import { LogikenAbschnitt } from './logik/LogikenAbschnitt';
 import { herrschaft } from '../steuerlogikKarte';
 
 /**
@@ -149,7 +150,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
   const mitRegeln = regelnReiterSichtbar({
     bereit: geladen && daten.verbraucher != null && daten.flows != null && daten.editorEntities != null,
     ziele: ziele.length,
-    regeln: karten.length,
+    regeln: karten.length + (daten.logikListe?.logiken.length ?? 0) + (daten.logikListe?.darfBearbeiten ? 1 : 0),
     szenen: bild.szene != null || bild.geraete.some(szenenfaehig),
   });
   const sichtbareTabs = mitRegeln ? tabs : tabs.filter((t) => t.sub !== 'regeln');
@@ -634,6 +635,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
         onBefehle={() => onOpenSub('befehle')}
         onSzeneBeenden={() => void szeneAus()}
         onUmwandeln={setUmwandelnKarte}
+        logiken={<LogikenAbschnitt siteId={site.id} liste={daten.logikListe} />}
       />
     );
   } else {

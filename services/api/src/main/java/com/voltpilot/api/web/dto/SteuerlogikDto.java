@@ -42,8 +42,20 @@ public final class SteuerlogikDto {
     public record Logik(UUID logikId, String name, List<Fassung> fassungen, Quittung quittung, List<Lauf> laeufe,
             Einstellung einstellung) {}
 
+    /**
+     * Eine Fassung im Blatt der Plattform. Stufe 4: Rolle des Urhebers, Notiz und wer sie wann zur Freigabe vorgelegt
+     * hat ({@code null}, wenn nicht).
+     */
     public record Fassung(int fassung, String zustand, String contentHash, JsonNode bericht, Instant angelegtAm,
-            String angelegtVon, Instant stillgelegtAm, Instant scharfAm, String scharfVon, JsonNode hinweise) {}
+            String angelegtVon, Instant stillgelegtAm, Instant scharfAm, String scharfVon, JsonNode hinweise,
+            String angelegtRolle, String notiz, Instant vorgelegtAm, String vorgelegtVon) {
+
+        public Fassung(int fassung, String zustand, String contentHash, JsonNode bericht, Instant angelegtAm,
+                String angelegtVon, Instant stillgelegtAm, Instant scharfAm, String scharfVon, JsonNode hinweise) {
+            this(fassung, zustand, contentHash, bericht, angelegtAm, angelegtVon, stillgelegtAm, scharfAm, scharfVon,
+                    hinweise, null, null, null, null);
+        }
+    }
 
     /** Die gestellten Werte einer Logik (Form des Dokuments) und ihr Stand. */
     public record Einstellung(long stand, JsonNode werte) {}
@@ -115,4 +127,56 @@ public final class SteuerlogikDto {
 
     public record Wechsel(UUID box, int fassung, Instant laufSeit, long nr, Instant t, String geraet, String was,
             JsonNode neu, JsonNode andere, String lage) {}
+
+    // --- Stufe 4: Aufbau und Text --------------------------------------------------------------------------------
+
+    /** Ein Text zum Prüfen (YAML-Schreibform oder kanonisches JSON). */
+    public record Pruefen(String text) {}
+
+    /**
+     * Das Ergebnis der Prüfung: {@code lesbar} mit Bericht ({@code sperrt}, Proben, Stellwerte ...) oder unlesbar mit
+     * dem Satz des Lesers; {@code meldungen} je Befund, Probe und Hinweis mit der Zeile im Text.
+     */
+    public record Geprueft(boolean lesbar, boolean sperrt, String message, JsonNode bericht, JsonNode meldungen) {}
+
+    /** Ein Text als neue Fassung: Notiz und die Fassung, von der die Änderung ausging. */
+    public record Speichern(String text, String notiz, Integer basis) {}
+
+    /** Die gespeicherte Fassung (Zustand {@code geprueft}). */
+    public record Gespeichert(UUID logikId, int fassung, String name, String contentHash, JsonNode bericht) {}
+
+    /** Die Logiken der Anlage im Reiter "Regeln", mit den Rechten des Aufrufers. */
+    public record Logiken(boolean darfBearbeiten, boolean darfAnfragen, List<LogikKopf> logiken) {}
+
+    /**
+     * Eine Logik im Überblick: neueste Fassung, die aktive mit ihrem Zustand ({@code null} = läuft nicht), die
+     * vorgelegte, die auf die Freigabe wartet, offene Anfragen und wann die Box zuletzt von ihr berichtete.
+     */
+    public record LogikKopf(UUID logikId, String name, int neueste, Integer aktiv, String zustand, Integer vorgelegt,
+            int offeneAnfragen, Instant gemeldetAm, JsonNode lage) {}
+
+    /** Eine Logik zum Ansehen und Bearbeiten. */
+    public record LogikAnsicht(UUID logikId, String name, boolean darfBearbeiten, boolean darfAnfragen,
+            boolean plattform, boolean boxKann, boolean boxKannScharf, List<FassungKopf> fassungen,
+            List<Anfrage> anfragen, Einstellung einstellung, Lauf lauf) {}
+
+    /**
+     * Eine Fassung im Portal: Zustand ({@code geprueft}, {@code mitlaufend}, {@code scharf}, {@code stillgelegt}),
+     * Urheber mit Anzeigename und Rolle, Notiz, Scharf und Vorlage, der Prüfbericht (Stellwerte, Proben).
+     */
+    public record FassungKopf(int fassung, String zustand, String contentHash, Instant angelegtAm, String angelegtVon,
+            String rolle, String notiz, Instant scharfAm, Instant vorgelegtAm, String vorgelegtVon, JsonNode bericht) {}
+
+    /** Der Text einer Fassung, wie er gespeichert wurde. */
+    public record FassungText(UUID logikId, int fassung, String zustand, String text, JsonNode bericht) {}
+
+    /** Eine Anfrage an einer Logik ("Änderung anfragen"). */
+    public record Anfrage(UUID id, String kennung, String text, Instant am, String von, String rolle,
+            Instant erledigtAm, String erledigtVon) {}
+
+    /** Eine neue Anfrage: zu einem Wert ({@code kennung}) oder zur ganzen Logik. */
+    public record AnfrageNeu(String kennung, String text) {}
+
+    /** Die Schritte an einer Logik über einen Zeitraum (Tage der Anlage, letzter eingeschlossen). */
+    public record Zeitraum(UUID logikId, String von, String bis, List<Schritt> schritte) {}
 }

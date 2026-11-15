@@ -166,6 +166,33 @@ type Definition struct {
 	Controls *Controls `json:"controls,omitempty"`
 }
 
+// AusEntity reads the definition of a self-built device that the core owns
+// (K3: a driver block "modbus_baukasten" whose definition has controls) from a
+// registry entity. ok = the core reads and writes this device; a definition
+// that breaks the rules comes back with its errors and the raw connection (so
+// a caller can say it once per definition). Box (agent) and the service beside
+// the API (the inputs a logic may read) decide with this one function.
+func AusEntity(e entities.Entity) (def Definition, quelle string, fehler []Fehler, ok bool) {
+	if len(e.Driver) == 0 {
+		return Definition{}, "", nil, false
+	}
+	var drv struct {
+		Communication string          `json:"communication"`
+		Connection    json.RawMessage `json:"connection"`
+	}
+	if json.Unmarshal(e.Driver, &drv) != nil || drv.Communication != Communication || len(drv.Connection) == 0 {
+		return Definition{}, "", nil, false
+	}
+	def, fehler = Lies(drv.Connection)
+	if def.Controls == nil {
+		return Definition{}, "", nil, false
+	}
+	if len(fehler) > 0 {
+		return Definition{}, string(drv.Connection), fehler, false
+	}
+	return def, string(drv.Connection), nil, true
+}
+
 // Port and Unit with their defaults.
 func (d Definition) Port() int {
 	if d.Transport.Port == nil {

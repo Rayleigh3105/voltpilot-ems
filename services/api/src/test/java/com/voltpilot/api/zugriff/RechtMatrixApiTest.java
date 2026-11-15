@@ -872,6 +872,19 @@ class RechtMatrixApiTest {
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/aufloesen", nurKa));
         // Ausscheiden eines Mitglieds (§5.5) — Recht wie auflösen
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/mitglieder/{FREMD}/ausscheiden", nurKa));
+        // Steuerlogik Stufe 4 (Konzept §8.8, E3 = B): Aufbau und Text schreibt der Kundenadministrator, der
+        // Unterstützer mit „Einrichten und Bedienen“ und die Plattform; anfragen darf, wer die Betriebsweise ändert.
+        String logik = "e34433ee3";              // U - - - - B P
+        String sl = s1 + "/steuerlogik";
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/pruefe", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl, logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/fassungen", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/fassungen/1/mitlaufen", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/fassungen/1/vorlegen", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/fassungen/1/zurueck", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/stilllegen", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/{FREMD}/anfragen/{FREMD}/erledigt", logik));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, sl + "/{FREMD}/anfragen", betrieb));
         return z;
     }
 

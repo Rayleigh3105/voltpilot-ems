@@ -4,12 +4,13 @@ package logikdienst
 // serve.js) so the API's client follows the same seam:
 //
 //   POST /pruefe   {text, anlage?, registry?}     -> 200 {kanonisch, bericht}
-//                                                 |  422 {message}           (unreadable)
+//                                                 |  422 {message, meldungen} (unreadable, placed at its line)
 //   POST /artefakt {text, anlage?, registry?, flow_id, flow_version, compiled_at?, site?,
 //                   armed?, settings?: {revision, values}, settings_keep_fitting?}
 //                                                 -> 200 {artifact, bericht, settings?, verworfen?}
 //                                                 |  422 {message, bericht?} (unreadable or blocked)
 //                                                 |  422 {message, grund: "stellwerte"} (set values do not fit)
+//   POST /quellen  {registry?}                    -> 200 {quellen, geraete} (what a logic may read and switch)
 //   GET  /health                                  -> 200 {status, version, sprache}
 //   anything malformed                            -> 400 {message}
 
@@ -45,6 +46,15 @@ func Handler() http.Handler {
 			return
 		}
 		schreibe(w, http.StatusOK, map[string]any{"kanonisch": string(g.Kanonisch), "bericht": g.Bericht})
+	})
+	mux.HandleFunc("POST /quellen", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Registry json.RawMessage `json:"registry"`
+		}
+		if !lies(w, r, &req) {
+			return
+		}
+		schreibe(w, http.StatusOK, Quellen(req.Registry))
 	})
 	mux.HandleFunc("POST /artefakt", func(w http.ResponseWriter, r *http.Request) {
 		var req Auftrag
@@ -91,7 +101,12 @@ func antworteFehler(w http.ResponseWriter, err error, bericht *Bericht) {
 	case errors.Is(err, ErrAuftrag):
 		schreibe(w, http.StatusBadRequest, map[string]any{"message": err.Error()})
 	case errors.Is(err, ErrUnlesbar):
-		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error()})
+		antwort := map[string]any{"message": err.Error()}
+		var u *Unlesbar
+		if errors.As(err, &u) {
+			antwort["meldungen"] = []Meldung{u.Meldung}
+		}
+		schreibe(w, http.StatusUnprocessableEntity, antwort)
 	case errors.Is(err, ErrStellwerte):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "stellwerte"})
 	case errors.Is(err, ErrSperrt):

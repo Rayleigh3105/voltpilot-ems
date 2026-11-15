@@ -80,6 +80,7 @@ public class SteuerlogikService {
         private final String grund;
         private final transient JsonNode bericht;
         private final transient List<SteuerlogikBesitz.Konflikt> konflikte;
+        private transient JsonNode meldungen;
 
         Abgelehnt(String grund, String message, JsonNode bericht) {
             this(grund, message, bericht, List.of());
@@ -90,6 +91,11 @@ public class SteuerlogikService {
             this.grund = grund;
             this.bericht = bericht;
             this.konflikte = konflikte;
+        }
+
+        /** Bei einem unlesbaren Text die Meldung des Lesers an ihrer Zeile; sonst null (sie stehen im Bericht). */
+        public JsonNode meldungen() {
+            return meldungen;
         }
 
         public String grund() {
@@ -249,8 +255,17 @@ public class SteuerlogikService {
      * mit anderen Herren, welche Geräte die Logik dann führt und welche Werte der Kunde stellt.
      */
     public Vorschau scharfVorschau(UUID siteId, UUID logikId) {
+        return scharfVorschau(siteId, logikId, null);
+    }
+
+    /**
+     * Wie {@link #scharfVorschau(UUID, UUID)} für eine bestimmte Fassung (Stufe 4: eine vorgelegte, die die aktive
+     * ablösen soll); {@code null} = die aktive.
+     */
+    public Vorschau scharfVorschau(UUID siteId, UUID logikId, Integer fassung) {
         SiteDto site = requireLogik(siteId, logikId);
-        SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
+        SteuerlogikRepository.Fassung f = fassung == null ? logiken.aktiveFassung(logikId)
+                : requireFassung(logikId, fassung);
         if (f == null) {
             throw new Abgelehnt("nichts_aktiv", "Diese Logik läuft gerade nicht; erst eine Fassung annehmen.", null);
         }
@@ -264,7 +279,7 @@ public class SteuerlogikService {
             String ansicht = registry.registryAnsicht(siteId, box);
             SteuerlogikDienst.Artefakt artefakt = baue(new SteuerlogikDienst.Auftrag(
                     logiken.quelltext(logikId, f.fassung()), logikId, f.fassung(), clock.instant(),
-                    ort(site), ansicht, true, werte(logiken.einstellung(logikId)), false));
+                    ort(site), ansicht, true, werte(logiken.einstellung(logikId)), !f.aktiv()));
             konflikte = konflikte(siteId, logikId, artefakt, ansicht);
         } else {
             konflikte = besitz.pruefe(siteId, logikId, bericht);
@@ -282,21 +297,16 @@ public class SteuerlogikService {
     }
 
     /**
-     * Schaltet die aktive, mitlaufende Fassung scharf: Prüfung (beim Dienst), Bestätigung der Hinweise, kein zweiter
-     * Herr, eine Box mit {@code steuerlogik_scharf}. Protokolliert mit wer, wann und den Hinweisen; die Geräte
-     * gehören ab jetzt der Logik ({@code flow_claim}, im Registry-Push {@code owner_claimed}).
+     * Schaltet eine Fassung scharf - die mitlaufende oder (Stufe 4) eine gespeicherte, etwa eine vorgelegte, die die
+     * aktive ablöst: Prüfung (beim Dienst), Bestätigung der Hinweise, kein zweiter Herr, eine Box mit
+     * {@code steuerlogik_scharf}. Protokolliert mit wer, wann und den Hinweisen; die Geräte gehören ab jetzt der
+     * Logik ({@code flow_claim}, im Registry-Push {@code owner_claimed}).
      */
     public Angenommen scharfSchalten(UUID siteId, UUID logikId, int fassung, boolean bestaetigt, String von,
             String rolle) {
         SiteDto site = requireLogik(siteId, logikId);
-        SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
-        if (f == null) {
-            throw new Abgelehnt("nichts_aktiv", "Diese Logik läuft gerade nicht; erst eine Fassung annehmen.", null);
-        }
-        if (f.fassung() != fassung) {
-            throw new Abgelehnt("fassung_veraltet", "Es läuft inzwischen Fassung " + f.fassung()
-                    + ". Bitte den Dialog neu öffnen.", null);
-        }
+        SteuerlogikRepository.Fassung f = requireFassung(logikId, fassung);
+        SteuerlogikRepository.Fassung aktiv = logiken.aktiveFassung(logikId);
         if (f.scharf()) {
             throw new Abgelehnt("schon_scharf", "Fassung " + f.fassung() + " ist schon scharf.", null);
         }
@@ -308,18 +318,24 @@ public class SteuerlogikService {
         Instant jetzt = clock.instant();
         SteuerlogikRepository.Einstellung einstellung = logiken.einstellung(logikId);
         String ansicht = registry.registryAnsicht(siteId, box);
+        // Eine andere Fassung als die laufende übernimmt die gestellten Werte, die passen (Bericht 8.9).
+        boolean andere = aktiv == null || aktiv.fassung() != fassung;
         SteuerlogikDienst.Artefakt artefakt = baue(new SteuerlogikDienst.Auftrag(
                 logiken.quelltext(logikId, fassung), logikId, fassung, jetzt, ort(site), ansicht, true,
-                werte(einstellung), false));
+                werte(einstellung), andere));
         pruefeBesitz(siteId, logikId, artefakt, ansicht);
         List<String> hinweise = hinweise(artefakt.bericht());
         String hash = artefakt.artefakt().path("content_hash").asText();
         UUID tenant = TenantContext.get();
         tx.executeWithoutResult(s -> {
+            if (aktiv != null && aktiv.fassung() != fassung) logiken.stillegen(logikId, jetzt);
             logiken.aktiviere(logikId, fassung, SteuerlogikRepository.ZUSTAND_SCHARF,
                     artefakt.artefakt().toString(), hash, jetzt, von, json.valueToTree(hinweise).toString());
-            logiken.protokolliere(tenant, siteId, logikId, fassung, "scharf", von, rolle,
-                    json.createObjectNode().set("hinweise", json.valueToTree(hinweise)).toString(), jetzt);
+            ObjectNode daten = json.createObjectNode();
+            daten.set("hinweise", json.valueToTree(hinweise));
+            if (aktiv != null && aktiv.fassung() != fassung) daten.put("von", aktiv.fassung());
+            logiken.protokolliere(tenant, siteId, logikId, fassung, "scharf", von, rolle, daten.toString(), jetzt);
+            uebernimmVerworfene(tenant, siteId, logikId, fassung, einstellung, artefakt, von, rolle, jetzt);
             beanspruche(tenant, siteId, logikId, fassung, f.name(), artefakt.artefakt());
         });
         boolean veroeffentlicht = auslieferung.republishForSite(siteId);
@@ -334,7 +350,7 @@ public class SteuerlogikService {
      * Anfrage an die Box, die die Zustände gleichen Namens übernimmt (Bericht 8.9).
      */
     public Angenommen zurueck(UUID siteId, UUID logikId, String von, String rolle) {
-        SiteDto site = requireLogik(siteId, logikId);
+        requireLogik(siteId, logikId);
         SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
         if (f == null) {
             throw new Abgelehnt("nichts_aktiv", "Diese Logik läuft gerade nicht.", null);
@@ -344,13 +360,44 @@ public class SteuerlogikService {
             throw new Abgelehnt("keine_vorige", "Fassung " + f.fassung() + " ist die erste; es gibt keine vorige.",
                     null);
         }
+        return wechsleAuf(siteId, logikId, f, vorige, von, rolle);
+    }
+
+    /**
+     * Rücknahme auf eine bestimmte Fassung (Stufe 4, Ansicht "Fassungen"): sie löst die aktive ab, im selben Zustand.
+     * Ist die Logik scharf, nimmt ein Kunde nur auf eine Fassung zurück, die schon einmal scharf war - Scharfschalten
+     * bleibt in Stufe 4 Sache der Plattform ({@code plattform}).
+     */
+    public Angenommen zurueckAuf(UUID siteId, UUID logikId, int fassung, boolean plattform, String von,
+            String rolle) {
+        requireLogik(siteId, logikId);
+        SteuerlogikRepository.Fassung ziel = requireFassung(logikId, fassung);
+        SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
+        if (f == null) {
+            throw new Abgelehnt("nichts_aktiv", "Die Logik läuft gerade nicht. „Mitlaufen“ startet eine Fassung.",
+                    null);
+        }
+        if (f.fassung() == fassung) {
+            throw new Abgelehnt("laeuft_schon", "Fassung " + fassung + " läuft schon.", null);
+        }
+        if (f.scharf() && !plattform && ziel.scharfAm() == null) {
+            throw new Abgelehnt("nicht_freigegeben", "Fassung " + fassung + " war noch nie scharf. Zurück geht nur auf "
+                    + "eine Fassung, die VoltPilot schon einmal scharf geschaltet hat.", null);
+        }
+        return wechsleAuf(siteId, logikId, f, ziel, von, rolle);
+    }
+
+    /** Liefert {@code ziel} statt der aktiven Fassung {@code f} aus, im Zustand von {@code f}; protokolliert. */
+    private Angenommen wechsleAuf(UUID siteId, UUID logikId, SteuerlogikRepository.Fassung f,
+            SteuerlogikRepository.Fassung ziel, String von, String rolle) {
+        SiteDto site = sites.findById(siteId);
         boolean scharf = f.scharf();
         UUID box = fuehrendeBox(siteId, scharf);
         Instant jetzt = clock.instant();
         SteuerlogikRepository.Einstellung einstellung = logiken.einstellung(logikId);
         String ansicht = registry.registryAnsicht(siteId, box);
         SteuerlogikDienst.Artefakt artefakt = baue(new SteuerlogikDienst.Auftrag(
-                logiken.quelltext(logikId, vorige.fassung()), logikId, vorige.fassung(), jetzt, ort(site),
+                logiken.quelltext(logikId, ziel.fassung()), logikId, ziel.fassung(), jetzt, ort(site),
                 ansicht, scharf, werte(einstellung), true));
         if (scharf) pruefeBesitz(siteId, logikId, artefakt, ansicht);
         String hash = artefakt.artefakt().path("content_hash").asText();
@@ -358,21 +405,21 @@ public class SteuerlogikService {
         UUID tenant = TenantContext.get();
         tx.executeWithoutResult(s -> {
             logiken.stillegen(logikId, jetzt);
-            logiken.aktiviere(logikId, vorige.fassung(), zustand, artefakt.artefakt().toString(), hash,
+            logiken.aktiviere(logikId, ziel.fassung(), zustand, artefakt.artefakt().toString(), hash,
                     scharf ? jetzt : null, scharf ? von : null, null);
             ObjectNode daten = json.createObjectNode();
             daten.put("von", f.fassung());
-            daten.put("auf", vorige.fassung());
-            logiken.protokolliere(tenant, siteId, logikId, vorige.fassung(), "zurueck", von, rolle,
+            daten.put("auf", ziel.fassung());
+            logiken.protokolliere(tenant, siteId, logikId, ziel.fassung(), "zurueck", von, rolle,
                     daten.toString(), jetzt);
-            uebernimmVerworfene(tenant, siteId, logikId, vorige.fassung(), einstellung, artefakt, von, rolle, jetzt);
+            uebernimmVerworfene(tenant, siteId, logikId, ziel.fassung(), einstellung, artefakt, von, rolle, jetzt);
             if (scharf) {
-                beanspruche(tenant, siteId, logikId, vorige.fassung(), vorige.name(), artefakt.artefakt());
+                beanspruche(tenant, siteId, logikId, ziel.fassung(), ziel.name(), artefakt.artefakt());
             }
         });
         boolean veroeffentlicht = auslieferung.republishForSite(siteId);
         if (scharf) registry.pushRegistryBestEffort(siteId);
-        return new Angenommen(logikId, vorige.fassung(), vorige.name(), hash, artefakt.bericht(), box,
+        return new Angenommen(logikId, ziel.fassung(), ziel.name(), hash, artefakt.bericht(), box,
                 veroeffentlicht, zustand, artefakt.verworfen());
     }
 
@@ -406,6 +453,302 @@ public class SteuerlogikService {
             if (f.scharf()) registry.pushRegistryBestEffort(siteId);
         }
         return n > 0;
+    }
+
+    // --- Stufe 4: Aufbau und Text --------------------------------------------------------------------------------
+
+    /** Höchstens so viele Zeichen trägt die Notiz einer Fassung. */
+    static final int MAX_NOTIZ = 500;
+    /** Höchstens so viele Zeichen trägt eine Anfrage. */
+    static final int MAX_ANFRAGE = 1000;
+
+    /**
+     * Prüft einen Text mit denselben Regeln wie Dienst und Box, ohne etwas zu speichern (Ansicht "Text"): die Geräte
+     * der Proben aus dem Registry-Inhalt der Anlage, so wie die Box ihn bekommt.
+     */
+    public SteuerlogikDienst.Geprueft pruefe(UUID siteId, String text) {
+        if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
+        pruefeText(text);
+        try {
+            return dienst.pruefe(text, registryOderNull(siteId));
+        } catch (SteuerlogikDienstException e) {
+            throw new Abgelehnt(e.grund(), e.getMessage(), e.bericht());
+        }
+    }
+
+    /** Was eine Logik an der Anlage lesen und schalten kann (Auswahl im Aufbau). */
+    public JsonNode quellen(UUID siteId) {
+        if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
+        try {
+            return dienst.quellen(registryOderNull(siteId));
+        } catch (SteuerlogikDienstException e) {
+            throw new Abgelehnt(e.grund(), e.getMessage(), e.bericht());
+        }
+    }
+
+    /** Eine gespeicherte Fassung. */
+    public record Gespeichert(UUID logikId, int fassung, String name, String contentHash, JsonNode bericht) {}
+
+    /**
+     * Speichert einen Text als neue Fassung, die noch nicht läuft (Zustand {@code geprueft}): {@code logikId == null}
+     * legt eine neue Logik an. Gespeichert wird nur, was die Prüfung nicht sperrt - der Dienst baut dafür das
+     * Artefakt, wie er es zum Mitlaufen baut. {@code basis} ist die Fassung, von der die Änderung ausging: gibt es
+     * inzwischen eine neuere, ist das ein ehrlicher Halt statt eines stillen Überschreibens.
+     */
+    public Gespeichert speichere(UUID siteId, UUID logikId, String text, String notiz, Integer basis, String von,
+            String rolle) {
+        SiteDto site = sites.findById(siteId);
+        if (site == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
+        pruefeText(text);
+        String n = notiz == null || notiz.isBlank() ? null : notiz.strip();
+        if (n != null && n.length() > MAX_NOTIZ) {
+            throw new Abgelehnt("notiz_zu_lang", "Die Notiz hat höchstens " + MAX_NOTIZ + " Zeichen.", null);
+        }
+        if (logikId != null && !logiken.gehoertZu(logikId, siteId)) {
+            throw new Abgelehnt("logik_unbekannt", "Diese Logik gibt es an dieser Anlage nicht.", null);
+        }
+        UUID id = logikId == null ? UUID.randomUUID() : logikId;
+        int neueste = logikId == null ? 0 : logiken.neuesteFassung(id);
+        if (basis != null && basis != neueste) {
+            throw new Abgelehnt("fassung_veraltet", "Inzwischen gibt es Fassung " + neueste + ". Bitte die Logik neu "
+                    + "laden; Ihr Entwurf bleibt erhalten.", null);
+        }
+        int fassung = neueste + 1;
+        Instant jetzt = clock.instant();
+        SteuerlogikDienst.Artefakt artefakt = baue(new SteuerlogikDienst.Auftrag(text, id, fassung, jetzt, ort(site),
+                registryOderNull(siteId), false, werte(logiken.einstellung(id)), true));
+        JsonNode bericht = artefakt.bericht();
+        String name = bericht.path("name").asText("Logik");
+        String kanonisch = artefakt.artefakt().path("bundle").path("logic").asText();
+        String hash = artefakt.artefakt().path("content_hash").asText();
+        UUID tenant = TenantContext.get();
+        tx.executeWithoutResult(st -> {
+            logiken.speichere(tenant, siteId, id, fassung, name, text, kanonisch, artefakt.artefakt().toString(),
+                    hash, bericht.toString(), von, rolle, n, jetzt);
+            ObjectNode daten = json.createObjectNode();
+            if (n != null) daten.put("notiz", n);
+            logiken.protokolliere(tenant, siteId, id, fassung, "gespeichert", von, rolle,
+                    daten.isEmpty() ? null : daten.toString(), jetzt);
+        });
+        return new Gespeichert(id, fassung, name, hash, bericht);
+    }
+
+    /**
+     * Lässt eine gespeicherte Fassung mitlaufen (Bericht 8.4): sie löst die aktive ab und geht in dieser Anfrage an
+     * die Box, die mit den echten Werten rechnet, ohne zu schalten. Eine scharfe Logik löst nur eine scharfe Fassung
+     * ab - in Stufe 4 schaltet die Plattform scharf; der Kunde legt die Fassung dafür vor.
+     */
+    public Angenommen mitlaufen(UUID siteId, UUID logikId, int fassung, String von, String rolle) {
+        SiteDto site = requireLogik(siteId, logikId);
+        SteuerlogikRepository.Fassung ziel = requireFassung(logikId, fassung);
+        SteuerlogikRepository.Fassung aktiv = logiken.aktiveFassung(logikId);
+        if (aktiv != null && aktiv.fassung() == fassung) {
+            throw new Abgelehnt("laeuft_schon", "Fassung " + fassung + " läuft schon.", null);
+        }
+        if (aktiv != null && aktiv.scharf()) {
+            throw new Abgelehnt("scharf_abloesen", "Die Logik ist scharf (Fassung " + aktiv.fassung() + "). Eine neue "
+                    + "Fassung löst sie nur scharf ab: bitte zur Freigabe vorlegen.", null);
+        }
+        UUID box = fuehrendeBox(siteId, false);
+        Instant jetzt = clock.instant();
+        SteuerlogikRepository.Einstellung einstellung = logiken.einstellung(logikId);
+        SteuerlogikDienst.Artefakt artefakt = baue(new SteuerlogikDienst.Auftrag(logiken.quelltext(logikId, fassung),
+                logikId, fassung, jetzt, ort(site), registry.registryAnsicht(siteId, box), false, werte(einstellung),
+                true));
+        String hash = artefakt.artefakt().path("content_hash").asText();
+        UUID tenant = TenantContext.get();
+        tx.executeWithoutResult(st -> {
+            logiken.stillegen(logikId, jetzt);
+            logiken.aktiviere(logikId, fassung, SteuerlogikRepository.ZUSTAND_MITLAUFEND,
+                    artefakt.artefakt().toString(), hash, null, null, null);
+            ObjectNode daten = json.createObjectNode();
+            if (aktiv != null) daten.put("von", aktiv.fassung());
+            logiken.protokolliere(tenant, siteId, logikId, fassung, "mitlaufen", von, rolle,
+                    daten.isEmpty() ? null : daten.toString(), jetzt);
+            uebernimmVerworfene(tenant, siteId, logikId, fassung, einstellung, artefakt, von, rolle, jetzt);
+        });
+        boolean veroeffentlicht = auslieferung.republishForSite(siteId);
+        return new Angenommen(logikId, fassung, ziel.name(), hash, artefakt.bericht(), box, veroeffentlicht,
+                SteuerlogikRepository.ZUSTAND_MITLAUFEND, artefakt.verworfen());
+    }
+
+    /**
+     * "Zur Freigabe vorlegen" (Stufe 4): Scharfschalten bleibt Sache der Plattform; eine Fassung, die scharf gehen
+     * soll, legt der Kunde ihr vor. Protokolliert; ein zweites Vorlegen derselben Fassung ändert nichts.
+     */
+    public void vorlegen(UUID siteId, UUID logikId, int fassung, String von, String rolle) {
+        requireLogik(siteId, logikId);
+        SteuerlogikRepository.Fassung ziel = requireFassung(logikId, fassung);
+        if (ziel.scharf()) {
+            throw new Abgelehnt("schon_scharf", "Fassung " + fassung + " ist schon scharf.", null);
+        }
+        if (ziel.vorgelegtAm() != null) return;
+        Instant jetzt = clock.instant();
+        UUID tenant = TenantContext.get();
+        tx.executeWithoutResult(st -> {
+            logiken.legeVor(logikId, fassung, von, jetzt);
+            logiken.protokolliere(tenant, siteId, logikId, fassung, "vorgelegt", von, rolle, null, jetzt);
+        });
+    }
+
+    /** Eine Anfrage ist angekommen. */
+    public record Angefragt(UUID id, UUID logikId) {}
+
+    /**
+     * "Änderung anfragen" (Bericht 6.5, 8.8): wer die Logik sieht und Werte stellt, aber den Text nicht schreibt, fragt
+     * eine Änderung an - zu einem Wert ({@code kennung}) oder zur ganzen Logik.
+     */
+    public Angefragt frageAn(UUID siteId, UUID logikId, String kennung, String text, String von, String rolle) {
+        requireLogik(siteId, logikId);
+        String t = text == null ? "" : text.strip();
+        if (t.isEmpty()) throw new Abgelehnt("text_fehlt", "Bitte kurz schreiben, was sich ändern soll.", null);
+        if (t.length() > MAX_ANFRAGE) {
+            throw new Abgelehnt("text_zu_gross", "Eine Anfrage hat höchstens " + MAX_ANFRAGE + " Zeichen.", null);
+        }
+        String k = kennung == null || kennung.isBlank() ? null : kennung;
+        SteuerlogikRepository.Fassung neueste = logiken.fassung(logikId, logiken.neuesteFassung(logikId));
+        if (k != null) {
+            boolean da = false;
+            for (JsonNode sw : lies(neueste.berichtJson()).path("stellwerte")) {
+                if (sw.path("kennung").asText().equals(k)) da = true;
+            }
+            if (!da) {
+                throw new Abgelehnt("stellwert_unbekannt", "Einen Wert „" + k + "“ gibt es in dieser Logik nicht.",
+                        null);
+            }
+        }
+        UUID id = UUID.randomUUID();
+        Instant jetzt = clock.instant();
+        UUID tenant = TenantContext.get();
+        tx.executeWithoutResult(st -> {
+            logiken.frageAn(tenant, siteId, id, logikId, k, t, von, rolle, jetzt);
+            ObjectNode daten = json.createObjectNode();
+            daten.put("anfrage", id.toString());
+            if (k != null) daten.put("kennung", k);
+            daten.put("text", t);
+            logiken.protokolliere(tenant, siteId, logikId, neueste.fassung(), "anfrage", von, rolle,
+                    daten.toString(), jetzt);
+        });
+        return new Angefragt(id, logikId);
+    }
+
+    /** Hakt eine Anfrage ab. */
+    public void erledige(UUID siteId, UUID logikId, UUID anfrageId, String von, String rolle) {
+        requireLogik(siteId, logikId);
+        Instant jetzt = clock.instant();
+        UUID tenant = TenantContext.get();
+        int fassung = logiken.neuesteFassung(logikId);
+        tx.executeWithoutResult(st -> {
+            if (!logiken.erledige(logikId, anfrageId, von, jetzt)) {
+                throw new Abgelehnt("anfrage_unbekannt", "Diese Anfrage ist nicht (mehr) offen.", null);
+            }
+            ObjectNode daten = json.createObjectNode();
+            daten.put("anfrage", anfrageId.toString());
+            logiken.protokolliere(tenant, siteId, logikId, fassung, "erledigt", von, rolle, daten.toString(), jetzt);
+        });
+    }
+
+    /** Eine Logik der Anlage im Überblick (Reiter "Regeln"). */
+    public record Kopf(UUID logikId, String name, SteuerlogikRepository.Fassung neueste,
+            SteuerlogikRepository.Fassung aktiv, SteuerlogikRepository.Fassung vorgelegt, int offeneAnfragen,
+            SteuerlogikRepository.Lauf lauf) {}
+
+    /** Alle Logiken der Anlage, je mit neuester, aktiver und vorgelegter Fassung. */
+    public List<Kopf> koepfe(UUID siteId) {
+        if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
+        Map<UUID, List<SteuerlogikRepository.Fassung>> je = new LinkedHashMap<>();
+        for (SteuerlogikRepository.Fassung f : logiken.fassungen(siteId)) {
+            je.computeIfAbsent(f.logikId(), k -> new ArrayList<>()).add(f);
+        }
+        Map<UUID, Integer> anfragen = logiken.offeneAnfragen(siteId);
+        List<SteuerlogikRepository.Lauf> laeufe = logiken.laeufe(siteId);
+        List<Kopf> out = new ArrayList<>();
+        for (var e : je.entrySet()) {
+            List<SteuerlogikRepository.Fassung> fs = new ArrayList<>(e.getValue());
+            fs.sort((a, b) -> Integer.compare(b.fassung(), a.fassung()));
+            SteuerlogikRepository.Fassung aktiv = fs.stream().filter(SteuerlogikRepository.Fassung::aktiv)
+                    .findFirst().orElse(null);
+            SteuerlogikRepository.Fassung vorgelegt = vorgelegt(fs);
+            SteuerlogikRepository.Lauf lauf = laeufe.stream().filter(l -> l.logikId().equals(e.getKey()))
+                    .findFirst().orElse(null);
+            out.add(new Kopf(e.getKey(), (aktiv != null ? aktiv : fs.get(0)).name(), fs.get(0), aktiv, vorgelegt,
+                    anfragen.getOrDefault(e.getKey(), 0), lauf));
+        }
+        return out;
+    }
+
+    /** Die jüngste vorgelegte Fassung, die noch auf die Freigabe wartet (neuer als jede scharfe), sonst null. */
+    static SteuerlogikRepository.Fassung vorgelegt(List<SteuerlogikRepository.Fassung> jungZuerst) {
+        for (SteuerlogikRepository.Fassung f : jungZuerst) {
+            if (f.scharfAm() != null) return null;
+            if (f.vorgelegtAm() != null) return f;
+        }
+        return null;
+    }
+
+    /** Eine Logik mit allen Fassungen, Anfragen und gestellten Werten. */
+    public record Logik(UUID logikId, List<SteuerlogikRepository.Fassung> fassungen,
+            List<SteuerlogikRepository.Anfrage> anfragen, SteuerlogikRepository.Einstellung einstellung,
+            SteuerlogikRepository.Lauf lauf) {}
+
+    public Logik logik(UUID siteId, UUID logikId) {
+        requireLogik(siteId, logikId);
+        SteuerlogikRepository.Lauf lauf = logiken.laeufe(siteId).stream()
+                .filter(l -> l.logikId().equals(logikId)).findFirst().orElse(null);
+        return new Logik(logikId, logiken.fassungenDerLogik(logikId), logiken.anfragen(logikId, 50),
+                logiken.einstellung(logikId), lauf);
+    }
+
+    /** Was die führende Box der Anlage kann: mitlaufen lassen, scharf schalten. */
+    public record BoxStand(boolean mitlauf, boolean scharf) {}
+
+    public BoxStand boxStand(UUID siteId) {
+        UUID box = leadDevices.fuehrendeBox(siteId).box();
+        return new BoxStand(box != null && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT),
+                box != null && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_SCHARF));
+    }
+
+    /** Der Text einer Fassung, wie er gespeichert wurde, mit ihrem Bericht. */
+    public record Text(SteuerlogikRepository.Fassung fassung, String text) {}
+
+    public Text text(UUID siteId, UUID logikId, int fassung) {
+        requireLogik(siteId, logikId);
+        SteuerlogikRepository.Fassung f = requireFassung(logikId, fassung);
+        return new Text(f, logiken.quelltext(logikId, fassung));
+    }
+
+    /** Das Protokoll einer Logik über einen Zeitraum der Anlage (Tage, letzter eingeschlossen), jüngstes zuerst. */
+    public List<SteuerlogikRepository.Schritt> protokoll(UUID siteId, UUID logikId, LocalDate von, LocalDate bis) {
+        requireLogik(siteId, logikId);
+        if (bis.isBefore(von)) throw new Abgelehnt("zeitraum", "Der Zeitraum endet vor seinem Anfang.", null);
+        return logiken.protokoll(logikId, von.atStartOfDay(ZONE).toInstant(),
+                bis.plusDays(1).atStartOfDay(ZONE).toInstant(), MAX_SCHRITTE);
+    }
+
+    private void pruefeText(String text) {
+        if (text == null || text.isBlank()) {
+            throw new Abgelehnt("text_fehlt", "Bitte den Text der Logik mitschicken.", null);
+        }
+        if (text.getBytes(StandardCharsets.UTF_8).length > MAX_TEXT) {
+            throw new Abgelehnt("text_zu_gross", "Der Text ist größer als 256 KB.", null);
+        }
+    }
+
+    private SteuerlogikRepository.Fassung requireFassung(UUID logikId, int fassung) {
+        SteuerlogikRepository.Fassung f = logiken.fassung(logikId, fassung);
+        if (f == null) {
+            throw new Abgelehnt("fassung_unbekannt", "Fassung " + fassung + " gibt es nicht.", null);
+        }
+        return f;
+    }
+
+    /**
+     * Der Registry-Inhalt der Anlage für die Proben, so wie die führende Box ihn bekommt; ohne eindeutige Box
+     * {@code null} - die Proben rechnen dann mit ihren Vorgaben, und Speichern geht trotzdem.
+     */
+    private String registryOderNull(UUID siteId) {
+        UUID box = leadDevices.fuehrendeBox(siteId).box();
+        return box == null ? null : registry.registryAnsicht(siteId, box);
     }
 
     // --- Gestellte Werte -----------------------------------------------------------------------------------------
@@ -626,7 +969,9 @@ public class SteuerlogikService {
         try {
             return dienst.artefakt(auftrag);
         } catch (SteuerlogikDienstException e) {
-            throw new Abgelehnt(e.grund(), e.getMessage(), e.bericht());
+            Abgelehnt a = new Abgelehnt(e.grund(), e.getMessage(), e.bericht());
+            a.meldungen = e.meldungen();
+            throw a;
         }
     }
 

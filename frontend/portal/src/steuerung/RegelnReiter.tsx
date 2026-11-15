@@ -51,6 +51,8 @@ export interface RegelnReiterProps {
   onSzeneBeenden: () => void;
   /** „In Überwachung umwandeln" (Alerting Scheibe 6, Entscheid 10A) - nur bei `k.notifyUmwandlung`. */
   onUmwandeln: (k: RegelKarte) => void;
+  /** Die Logiken der Anlage (Steuerlogik Stufe 4, E7 = A): neben den Regeln, nicht statt ihrer. */
+  logiken?: ReactNode;
 }
 
 const FARBE: Record<string, [string, string]> = {
@@ -160,6 +162,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
         )}
         <p className="leise" style={{ padding: '0 4px' }}>Regeln sind Ausnahmen vom Smart-Auftrag der Geräte. Schutzgrenzen und Ihre Eingriffe gehen immer vor.</p>
       </section>
+      {p.logiken}
       <section className="card rechts" aria-label="Verlauf" style={{ gridRow: 'auto' }}>
         <div className="card-h">
           <h2><Ic n="history" s={18} />Heute passiert</h2>
