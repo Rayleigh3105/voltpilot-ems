@@ -1,0 +1,28 @@
+-- =============================================================================
+-- V20261115180000 - telemetry: den doppelten Index (device_id, time DESC)
+--                   entfernen (Lasttest vp-lasttest, Befund B10, Rang 8).
+-- -----------------------------------------------------------------------------
+-- telemetry trägt zwei Indizes auf genau (device_id, time DESC):
+-- idx_telemetry_device_time (V1, schlicht) und uq_telemetry_device_time
+-- (V20260712000000, UNIQUE - Grundlage der Idempotenz des Writers). Jeder
+-- Leser, der den schlichten nutzen kann, nutzt den eindeutigen ebenso (gleiche
+-- Spalten, gleiche Richtung); jeder INSERT pflegt aber beide - eine von sechs
+-- Indexpflegen je v1-Zeile, im Lasttest 67 MB je Chunk. Der UNIQUE-Index
+-- bleibt unverändert.
+--
+-- OHNE LANGE SPERRE: ein schlichtes DROP INDEX nimmt ACCESS EXCLUSIVE auf
+-- telemetry und jeden Chunk und wartet dafür auf jeden laufenden Leser; so
+-- lange stünden auch der Writer und jeder andere Leser (im Labor hielt es ein
+-- INSERT 7,8 s hinter einem 10-s-Leser fest). DROP INDEX CONCURRENTLY wartet
+-- auf laufende Leser, OHNE Schreiber aufzuhalten (im Labor: das INSERT
+-- während des Wartens nach 0,5 s durch); TimescaleDB 2.17 nimmt dabei die
+-- Indizes aller Chunks mit. CONCURRENTLY geht nicht in einer Transaktion,
+-- darum läuft diese Migration ohne Flyway-Transaktion
+-- (…_entfernen.sql.conf: executeInTransaction=false), wie V20261112151000.
+-- Die Migration wartet beim Start des api-Pods, bis vor ihr begonnene Leser
+-- von telemetry fertig sind; der alte Pod bedient so lange weiter.
+--
+-- IF EXISTS: eine Datenbank ohne den Index (oder ein Lauf nach einem Abbruch,
+-- der einen ungültigen Rest hinterließ) läuft ohne Fehler durch.
+-- =============================================================================
+DROP INDEX CONCURRENTLY IF EXISTS idx_telemetry_device_time;

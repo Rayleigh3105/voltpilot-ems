@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
 
 SELECT create_hypertable('telemetry', 'time',
     chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);
-CREATE INDEX IF NOT EXISTS idx_telemetry_device_time ON telemetry (device_id, time DESC);
+-- idx_telemetry_device_time (device_id, time DESC) gibt es nicht mehr: api migration
+-- V20261115180000 entfernt ihn, der UNIQUE-Index unten deckt dieselben Spalten.
 CREATE INDEX IF NOT EXISTS idx_telemetry_device_received ON telemetry (device_id, received_at DESC);
 -- Mirrors api migration V20260712000000: the UNIQUE index that backs the
 -- writer's idempotent guarded insert against concurrent duplicates.

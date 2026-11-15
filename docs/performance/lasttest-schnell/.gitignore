@@ -1,0 +1,7 @@
+jars/
+bau/
+bau-*.log
+jwt/
+results/
+herzschlag.stop
+herzschlag.log
