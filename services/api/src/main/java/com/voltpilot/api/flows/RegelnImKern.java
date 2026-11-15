@@ -1,0 +1,38 @@
+package com.voltpilot.api.flows;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Regeln des Regel-Baukastens als Logik des Kerns (Steuerlogik Stufe 6, Zusammenführen; Vertrag
+ * {@code docs/contracts/v2/steuerlogik.md}). Die Aktivierung fragt vor jeder Änderung, ob und wie eine Regel im Kern
+ * läuft, und schreibt das Ergebnis in derselben Transaktion; der Satz auf {@code v2/flows} lässt das Node-RED-Artefakt
+ * einer Regel genau dann weg, wenn ihre Übersetzung scharf an die Box geht.
+ *
+ * <p>Auf Edge Light gibt es für eine Regel keinen alten Weg: dort läuft sie nur so, oder die Aktivierung hält mit
+ * Grund an. Auf der Docker-Box entscheidet der Steuerweg der Anlage (ab Werk der alte Weg).
+ */
+public interface RegelnImKern {
+
+    /** Ein ehrlicher Halt der Aktivierung, wie {@link FlowActivationService.ActivationOutcome#refused}. */
+    record Halt(String reason, String message) {}
+
+    /** Was eine Aktivierung für den Kern vorbereitet hat; {@link #halt()} != null hält sie an, bevor sich etwas ändert. */
+    interface Vorbereitet {
+        Halt halt();
+    }
+
+    /** Vor der Aktivierung, ohne etwas zu ändern: übersetzen, prüfen, das Artefakt bauen lassen. */
+    Vorbereitet bereite(UUID siteId, FlowVersionRow version, JsonNode document, UUID gateway, boolean edgeLight);
+
+    /** Nach der Aktivierung, in ihrer Transaktion: die Übersetzung anlegen oder eine veraltete stilllegen. */
+    void schreibe(UUID siteId, Vorbereitet vorbereitet);
+
+    /** Die Regel wurde ausgeschaltet: ihre Übersetzung hört mit ihr auf. In der Transaktion des Aufrufers. */
+    void stillgelegt(UUID siteId, UUID flowId);
+
+    /** Die Regeln, deren Übersetzung scharf an diese Box geht - ihr Node-RED-Artefakt bleibt aus dem Satz. */
+    Set<UUID> ersetzt(UUID siteId, UUID gateway);
+}

@@ -208,6 +208,7 @@ public class SteuerlogikService {
         if (logikId != null && !logiken.gehoertZu(logikId, siteId)) {
             throw new Abgelehnt("logik_unbekannt", "Diese Logik gibt es an dieser Anlage nicht.", null);
         }
+        if (logikId != null) eigeneLogik(logikId);
         SteuerlogikRepository.Fassung aktiv = logikId == null ? null : logiken.aktiveFassung(logikId);
         if (aktiv != null && aktiv.scharf() && !scharf) {
             throw new Abgelehnt("scharf_abloesen", "Die laufende Fassung ist scharf. Eine neue Fassung löst sie nur "
@@ -309,6 +310,7 @@ public class SteuerlogikService {
     public Angenommen scharfSchalten(UUID siteId, UUID logikId, int fassung, boolean bestaetigt, String von,
             String rolle) {
         SiteDto site = requireLogik(siteId, logikId);
+        eigeneLogik(logikId);
         SteuerlogikRepository.Fassung f = requireFassung(logikId, fassung);
         SteuerlogikRepository.Fassung aktiv = logiken.aktiveFassung(logikId);
         if (f.scharf()) {
@@ -355,6 +357,7 @@ public class SteuerlogikService {
      */
     public Angenommen zurueck(UUID siteId, UUID logikId, String von, String rolle) {
         requireLogik(siteId, logikId);
+        eigeneLogik(logikId);
         SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
         if (f == null) {
             throw new Abgelehnt("nichts_aktiv", "Diese Logik läuft gerade nicht.", null);
@@ -375,6 +378,7 @@ public class SteuerlogikService {
     public Angenommen zurueckAuf(UUID siteId, UUID logikId, int fassung, boolean plattform, String von,
             String rolle) {
         requireLogik(siteId, logikId);
+        eigeneLogik(logikId);
         SteuerlogikRepository.Fassung ziel = requireFassung(logikId, fassung);
         SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
         if (f == null) {
@@ -440,6 +444,7 @@ public class SteuerlogikService {
         if (sites.findById(siteId) == null || !logiken.gehoertZu(logikId, siteId)) {
             throw new Abgelehnt("logik_unbekannt", "Diese Logik gibt es an dieser Anlage nicht.", null);
         }
+        eigeneLogik(logikId);
         SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
         if (f == null) return false;
         Instant jetzt = clock.instant();
@@ -550,6 +555,7 @@ public class SteuerlogikService {
         if (logikId != null && !logiken.gehoertZu(logikId, siteId)) {
             throw new Abgelehnt("logik_unbekannt", "Diese Logik gibt es an dieser Anlage nicht.", null);
         }
+        if (logikId != null) eigeneLogik(logikId);
         UUID id = logikId == null ? UUID.randomUUID() : logikId;
         int neueste = logikId == null ? 0 : logiken.neuesteFassung(id);
         if (basis != null && basis != neueste) {
@@ -583,6 +589,7 @@ public class SteuerlogikService {
      */
     public Angenommen mitlaufen(UUID siteId, UUID logikId, int fassung, String von, String rolle) {
         SiteDto site = requireLogik(siteId, logikId);
+        eigeneLogik(logikId);
         SteuerlogikRepository.Fassung ziel = requireFassung(logikId, fassung);
         SteuerlogikRepository.Fassung aktiv = logiken.aktiveFassung(logikId);
         if (aktiv != null && aktiv.fassung() == fassung) {
@@ -621,6 +628,7 @@ public class SteuerlogikService {
      */
     public void vorlegen(UUID siteId, UUID logikId, int fassung, String von, String rolle) {
         requireLogik(siteId, logikId);
+        eigeneLogik(logikId);
         SteuerlogikRepository.Fassung ziel = requireFassung(logikId, fassung);
         if (ziel.scharf()) {
             throw new Abgelehnt("schon_scharf", "Fassung " + fassung + " ist schon scharf.", null);
@@ -643,6 +651,7 @@ public class SteuerlogikService {
      */
     public Angefragt frageAn(UUID siteId, UUID logikId, String kennung, String text, String von, String rolle) {
         requireLogik(siteId, logikId);
+        eigeneLogik(logikId);
         String t = text == null ? "" : text.strip();
         if (t.isEmpty()) throw new Abgelehnt("text_fehlt", "Bitte kurz schreiben, was sich ändern soll.", null);
         if (t.length() > MAX_ANFRAGE) {
@@ -701,6 +710,8 @@ public class SteuerlogikService {
         if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
         Map<UUID, List<SteuerlogikRepository.Fassung>> je = new LinkedHashMap<>();
         for (SteuerlogikRepository.Fassung f : logiken.fassungen(siteId)) {
+            // Die Übersetzungen der Regeln stehen an ihrer Regel (Stufe 6), nicht in der Liste der Logiken.
+            if (f.ausRegel()) continue;
             je.computeIfAbsent(f.logikId(), k -> new ArrayList<>()).add(f);
         }
         Map<UUID, Integer> anfragen = logiken.offeneAnfragen(siteId);
@@ -805,6 +816,7 @@ public class SteuerlogikService {
     public Gestellt stelleWert(UUID siteId, UUID logikId, String kennung, JsonNode wert, boolean darfFachbetriebWerte,
             String von, String rolle) {
         SiteDto site = requireLogik(siteId, logikId);
+        eigeneLogik(logikId);
         SteuerlogikRepository.Fassung f = logiken.aktiveFassung(logikId);
         if (f == null) {
             throw new Abgelehnt("nichts_aktiv", "Diese Logik läuft gerade nicht.", null);
@@ -1147,6 +1159,20 @@ public class SteuerlogikService {
                     + "(Fähigkeit steuerlogik_scharf fehlt). Bitte erst die Box aktualisieren.", null);
         }
         return lead.box();
+    }
+
+    /**
+     * Eine Übersetzung einer Regel (Stufe 6, Zusammenführen) folgt ihrer Regel: bearbeitet, mitlaufen gelassen,
+     * scharf geschaltet und stillgelegt wird sie nur über die Regel und den Steuerweg der Anlage.
+     */
+    private void eigeneLogik(UUID logikId) {
+        SteuerlogikRepository.Fassung f = logiken.neuesteFassung(logikId) == 0 ? null
+                : logiken.fassung(logikId, logiken.neuesteFassung(logikId));
+        if (f != null && f.ausRegel()) {
+            throw new Abgelehnt("aus_regel", "„" + f.name() + "“ ist die Übersetzung einer Regel aus dem "
+                    + "Regel-Baukasten. Bearbeitet wird die Regel im Reiter „Regeln“; wo sie läuft, stellt der "
+                    + "Steuerweg der Anlage.", null);
+        }
     }
 
     private SiteDto requireLogik(UUID siteId, UUID logikId) {

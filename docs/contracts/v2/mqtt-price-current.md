@@ -16,6 +16,7 @@ Dieses Dokument ist DATEN für Kundenregeln, nie ein Befehl: die Box wertet dami
 | Box-intern | `edge/price/current`, retained auf dem lokalen Bus | `{schema_version, price_ct_kwh, unit, slot_start, slot_end, valid_until, bidding_zone}`; veraltet/zurückgezogen: `{schema_version:"1.0", stale:true}` |
 
 Sender ist die API (`com.voltpilot.api.preis`), je 15-Minuten-Slotgrenze für jede berechtigte Anlage an deren führende Box; retained, damit eine offline gewesene Box den Stand beim Verbindungsaufbau selbst abholt.
+Berechtigt ist eine Anlage mit führender Box, die Regeln ausführt: die Docker-Box, und eine Edge Light, sobald sie `steuerlogik_regeln` meldet - dort rechnet der Kern eine Regel als Logik und liest den Preis als `price.current` ([Zusammenführen](steuerlogik.md#zusammenführen-stufe-6-zweiter-teil)); ohne das Wort bleibt sie gesperrt (Grund `edge_light`).
 Der Spiegel auf der Box ist `internal/pricefeed` (vom Cloud-Downlink `OnPriceCurrent` gespeist); Konsument ist der kompilierte `vp.price.current`-Baustein (`vp-feed` „price_current" + generierter Preis-Wächter) - und künftig der Kern der Regelsprache, der den Preis als benannten Eingang `edge/price/current` liest.
 
 ## Tarifgrundlage

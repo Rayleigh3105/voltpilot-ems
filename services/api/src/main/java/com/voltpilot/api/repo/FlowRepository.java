@@ -72,10 +72,12 @@ public class FlowRepository {
     /** The ACTIVE versions of all OTHER flows of a site+runtime (V-5 cross-flow). */
     public List<FlowVersionRow> activeVersionsForSiteExcept(UUID siteId, String runtime,
             UUID exceptFlowId) {
+        // exceptFlowId may be null ("every active flow"): `flow_id <> NULL` is NULL in SQL and
+        // matched NOTHING, so a caller asking for all active flows got none.
         return jdbc.query(
                 "SELECT " + COLUMNS + " FROM flow_definition WHERE site_id = ? AND runtime = ? "
-                        + "AND lifecycle = 'active' AND flow_id <> ?",
-                FlowRepository::mapRow, siteId, runtime, exceptFlowId);
+                        + "AND lifecycle = 'active' AND (?::uuid IS NULL OR flow_id <> ?::uuid)",
+                FlowRepository::mapRow, siteId, runtime, exceptFlowId, exceptFlowId);
     }
 
     /** The documents (JSON text) of all ACTIVE flows of a site - the AE7 profile

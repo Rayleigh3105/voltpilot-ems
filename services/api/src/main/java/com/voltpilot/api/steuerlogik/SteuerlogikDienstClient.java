@@ -210,6 +210,28 @@ public class SteuerlogikDienstClient implements SteuerlogikDienst {
         throw SteuerlogikDienstException.nichtErreichbar();
     }
 
+    @Override
+    public JsonNode ausRegel(JsonNode dokument, String name, int fassung, String registry) {
+        ObjectNode request = json.createObjectNode();
+        request.set("dokument", dokument);
+        request.put("name", name);
+        request.put("fassung", fassung);
+        setzeRegistry(request, registry);
+        FlowCompilerHttp.Response response = post("/aus-regel", request);
+        JsonNode body = parse(response.body());
+        if (response.status() == 200 && body != null && body.path("uebersetzt").isBoolean()
+                && body.path("gruende").isArray()
+                && (!body.path("uebersetzt").asBoolean() || body.path("text").isTextual())) {
+            return body;
+        }
+        if (response.status() == 422 && body != null && "regel".equals(body.path("grund").asText())) {
+            throw new SteuerlogikDienstException(SteuerlogikDienstException.KEINE_REGEL,
+                    body.path("message").asText("Dieser Flow ist keine Regel des Regel-Baukastens."), null);
+        }
+        log.warn("logik_dienst.unexpected_status: {} {}", response.status(), response.body());
+        throw SteuerlogikDienstException.nichtErreichbar();
+    }
+
     /** 422 ist ein Baustein oder Text, den die Leser ablehnen (mit Satz); alles andere ein nicht erreichbarer Dienst. */
     private SteuerlogikDienstException bausteinFehler(FlowCompilerHttp.Response response, JsonNode body) {
         if (response.status() == 422 && body != null) {

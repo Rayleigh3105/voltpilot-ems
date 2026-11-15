@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildGuidedFlow, GUIDED_WISH_TTL_S, parseGuidedFlow } from '../flows/guidedBuilder';
 import type { FlowSummary } from '../flows/flowsApi';
@@ -15,9 +17,11 @@ import {
   regelSatzAusFlow,
   vars,
   vorlagenFuer,
+  VORLAGEN,
   zuGuided,
   type RegelEntwurf,
 } from './regeln';
+import type { GuidedRule } from '../flows/guidedBuilder';
 import { band, naechsteUhrzeit } from './laden';
 import { N } from './zeit';
 
@@ -65,7 +69,7 @@ describe('Satzbaukasten', () => {
     expect(grund('kein_dynamischer_tarif')).toBe('kein zeitveränderlicher Tarif');
     expect(grund('keine_zone')).toBe('keine Preiszone');
     expect(grund('keine_box')).toBe('keine VoltPilot-Box');
-    expect(grund('edge_light')).toBe('führt diese Box nicht aus');
+    expect(grund('edge_light')).toBe('Box braucht ein Update');
   });
 
   it('wird eine gewöhnliche Regel der Box und kommt unverändert zurück', () => {
@@ -272,5 +276,34 @@ describe('Laden', () => {
     expect(b.freiKw).toBeCloseTo(18.8);
     expect(naechsteUhrzeit(52, '07:00')).toBe(124);
     expect(naechsteUhrzeit(52, '16:00')).toBe(64);
+  });
+});
+
+/**
+ * Steuerlogik Stufe 6, Zusammenführen: jede Vorlage des Satzbaukastens ist ein Fall der Gleichheitsvektoren
+ * (docs/contracts/v2/regel-kern-vectors.json). Eine Regel aus einer Vorlage läuft damit im Kern der Box nachweislich so
+ * wie in Node-RED - dieselben Bedingungen, Schwellen und Hysteresen, wie `zuGuided` sie schreibt.
+ */
+describe('Die Vorlagen in den Gleichheitsvektoren', () => {
+  const vektoren = JSON.parse(readFileSync(resolve(process.cwd(), '../../docs/contracts/v2/regel-kern-vectors.json'), 'utf8')) as {
+    anlage: { id: string; typ: string }[];
+    faelle: { name: string; regel: GuidedRule }[];
+  };
+  const netz = vektoren.anlage.find((g) => g.typ === 'grid-meter')!.id;
+  const speicher = vektoren.anlage.find((g) => g.typ === 'battery-hybrid')!.id;
+  const FALL: Record<string, string> = {
+    negativ: 'Negativpreise mitnehmen', guenstig: 'Günstig heizen', mittag: 'Sonnen-Überschuss: Pumpe einschalten',
+    voll: 'Speicher voll: Heizstab einschalten', nacht: 'Nachts laufen lassen',
+  };
+  it('kennt jede Vorlage', () => {
+    expect(VORLAGEN.map((v) => v.id).sort()).toEqual(Object.keys(FALL).sort());
+  });
+  it.each(VORLAGEN.map((v) => [v.id, v] as const))('%s', (_id, v) => {
+    const fall = vektoren.faelle.find((f) => f.name === FALL[v.id])!;
+    const ziel = fall.regel.action.kind === 'notify' ? '' : fall.regel.action.entityId;
+    const g = geraet({ id: ziel, form: 'schaltbar' });
+    const bezug = { netzId: netz, speicherId: speicher, preisFeed: { aktiv: true } as never };
+    const entwurf = neuerEntwurf([g], { vorlage: v.id, geraet: ziel }, bezug);
+    expect(zuGuided(entwurf, bezug, g)).toEqual(fall.regel);
   });
 });

@@ -118,4 +118,14 @@ public interface SteuerlogikDienst {
      * SteuerlogikDienstException} mit Grund {@link SteuerlogikDienstException#HOME_ASSISTANT}.
      */
     JsonNode homeAssistant(JsonNode dateien, JsonNode zuordnung, String registry);
+
+    /**
+     * Übersetzt eine Regel des Regel-Baukastens in eine Logik ({@code POST /aus-regel}, Stufe 6, Zusammenführen):
+     * {@code dokument} ist das Flow-Dokument der Regel, {@code name} und {@code fassung} nennen sie im Kopf des
+     * Texts. Antwort: {@code uebersetzt}, {@code text} (geprüft, die Prüfung sperrt nicht), {@code gruende}
+     * ({@code [{code, text}]}, warum nicht), {@code bericht}. Ein Dokument, das keine Regel des Baukastens ist (ein
+     * Flow aus dem freien Editor), ist eine {@link SteuerlogikDienstException} mit Grund
+     * {@link SteuerlogikDienstException#KEINE_REGEL}.
+     */
+    JsonNode ausRegel(JsonNode dokument, String name, int fassung, String registry);
 }

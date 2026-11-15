@@ -83,7 +83,7 @@ const ERKLAERT: Record<string, Tabelle> = {
     holds: 'holds(Bedingung, Dauer): gilt seit mindestens', since: 'Zeit seit dem letzten Wechsel eines Zustands',
     running: 'Ein Zeitgeber läuft', last: 'Letzter Schritt eines Zählers', min: 'Kleinster Wert', max: 'Größter Wert',
   },
-  formelwort: { clock: 'Die Uhrzeit, zum Vergleich mit "HH:MM"' },
+  formelwort: { clock: 'Die Uhrzeit, zum Vergleich mit "HH:MM"', unknown: 'Kein Wert: nur als Zweig von if(), etwa „sonst kein Wunsch“' },
   geraet_eigenschaft: { requested: 'Was die Logik im letzten Takt wollte', output_hours_today: 'Einschaltzeit aller Ausgänge seit Mitternacht' },
   quelle_fest: { 'site.grid': 'kW, + heißt Bezug', 'battery.power': 'kW, + heißt laden', 'price.current': 'ct/kWh, eine Zahl ohne Einheit' },
 };

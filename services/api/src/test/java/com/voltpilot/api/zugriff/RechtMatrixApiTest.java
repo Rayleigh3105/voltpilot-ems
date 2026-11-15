@@ -893,6 +893,10 @@ class RechtMatrixApiTest {
         z.add(new Zeile("logik.bearbeiten", HttpMethod.DELETE, sl + "/bausteine/{FREMD}", logik));
         // Steuerlogik Stufe 6 (E8 = A): Dateien von Home Assistant übersetzen schreibt nichts, gehört aber zum Bearbeiten.
         z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/home-assistant", logik));
+        // Steuerlogik Stufe 6, Zusammenführen: den Steuerweg der Anlage stellt, wer eine Logik bearbeiten darf.
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/steuerweg/mitlauf", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/steuerweg/uebernehmen", logik));
+        z.add(new Zeile("logik.bearbeiten", HttpMethod.POST, sl + "/steuerweg/zurueck", logik));
         return z;
     }
 

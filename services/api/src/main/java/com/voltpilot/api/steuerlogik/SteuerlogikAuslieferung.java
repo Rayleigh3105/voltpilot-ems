@@ -16,7 +16,8 @@ import org.springframework.stereotype.Component;
  * Die aktiven Steuerlogiken einer Anlage im vollständigen Satz auf {@code …/v2/flows} (Bericht Abschnitt 6.8:
  * "die Cloud schickt Logik nur an Boxen, die es melden"): nur an eine führende Box und nur das gespeicherte
  * Artefakt, Byte für Byte wie der Dienst es gebaut hat. Eine mitlaufende Logik braucht {@code steuerlogik_mitlauf},
- * eine scharfe {@code steuerlogik_scharf} - eine Box, die nur mitlaufen kann, bekommt nie ein scharfes Bündel.
+ * eine scharfe {@code steuerlogik_scharf} - eine Box, die nur mitlaufen kann, bekommt nie ein scharfes Bündel. Eine
+ * übersetzte Regel (Stufe 6) braucht dazu {@code steuerlogik_regeln}.
  */
 @Component
 public class SteuerlogikAuslieferung implements WeitereArtefakte {
@@ -25,6 +26,11 @@ public class SteuerlogikAuslieferung implements WeitereArtefakte {
     public static final String FAEHIGKEIT = "steuerlogik_mitlauf";
     /** Das Wort in {@code supports[]} für das Schalten nach einer Logik (Stufe 3). */
     public static final String FAEHIGKEIT_SCHARF = "steuerlogik_scharf";
+    /**
+     * Das Wort in {@code supports[]} für übersetzte Regeln (Stufe 6, Zusammenführen): der Kern kennt die Ergänzungen,
+     * in die sich eine Regel übersetzt, und ist der Kern der Gleichheitsvektoren.
+     */
+    public static final String FAEHIGKEIT_REGELN = "steuerlogik_regeln";
 
     private static final Logger log = LoggerFactory.getLogger(SteuerlogikAuslieferung.class);
 
@@ -48,6 +54,11 @@ public class SteuerlogikAuslieferung implements WeitereArtefakte {
             if (!faehigkeiten.kann(gateway, wort)) {
                 log.warn("steuerlogik: Logik der Anlage {} nicht ausgeliefert - Box {} meldet {} nicht", siteId,
                         gateway, wort);
+                continue;
+            }
+            if (a.ausRegel() && !faehigkeiten.kann(gateway, FAEHIGKEIT_REGELN)) {
+                log.warn("steuerlogik: übersetzte Regel der Anlage {} nicht ausgeliefert - Box {} meldet {} nicht",
+                        siteId, gateway, FAEHIGKEIT_REGELN);
                 continue;
             }
             try {

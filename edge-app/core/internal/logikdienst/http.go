@@ -22,6 +22,9 @@ package logikdienst
 //   POST /home-assistant {dateien: [{name, text}], zuordnung?: {kennung: {wert, name?}}, registry?}
 //                                                 -> 200 {luecken, vollstaendig, text, bericht, nicht_uebersetzt, nicht_uebernommen, hinweise, kennungen, dateien}
 //                                                 |  422 {message, grund: "home_assistant"} (no readable YAML, too large)
+//   POST /aus-regel {dokument, name?, fassung?, registry?}
+//                                                 -> 200 {uebersetzt, text?, gruende, bericht?} (Stufe 6, Zusammenführen)
+//                                                 |  422 {message, grund: "regel"} (keine Regel des Regel-Baukastens)
 //   GET  /health                                  -> 200 {status, version, sprache}
 //   anything malformed                            -> 400 {message}
 
@@ -145,6 +148,20 @@ func Handler() http.Handler {
 			"nicht_uebersetzt", len(e.NichtUebersetzt), "vollstaendig", e.Vollstaendig)
 		schreibe(w, http.StatusOK, e)
 	})
+	mux.HandleFunc("POST /aus-regel", func(w http.ResponseWriter, r *http.Request) {
+		var req RegelAuftrag
+		if !lies(w, r, &req) {
+			return
+		}
+		e, err := AusRegel(req)
+		if err != nil {
+			antworteFehler(w, err, nil)
+			return
+		}
+		slog.Info("logik-dienst: Regel übersetzt", "name", req.Name, "fassung", req.Fassung, "uebersetzt", e.Uebersetzt,
+			"gruende", len(e.Gruende))
+		schreibe(w, http.StatusOK, e)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		schreibe(w, http.StatusNotFound, map[string]any{"message": "Nicht gefunden"})
 	})
@@ -181,6 +198,8 @@ func antworteFehler(w http.ResponseWriter, err error, bericht *Bericht) {
 		schreibe(w, http.StatusUnprocessableEntity, antwort)
 	case errors.Is(err, ErrHomeAssistant):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "home_assistant"})
+	case errors.Is(err, ErrRegel):
+		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "regel"})
 	case errors.Is(err, ErrBaustein):
 		schreibe(w, http.StatusUnprocessableEntity, map[string]any{"message": err.Error(), "grund": "baustein"})
 	case errors.Is(err, ErrStellwerte):

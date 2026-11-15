@@ -1,0 +1,40 @@
+{
+  "bericht": {
+    "ausdruecke": 6,
+    "befunde": [],
+    "eingaenge": [
+      {
+        "kennung": "netz",
+        "name": "Netzbezug",
+        "source": "site.grid"
+      }
+    ],
+    "geraete": [
+      {
+        "ausgaenge": [
+          "on_off"
+        ],
+        "entity_id": "44444444-4444-4444-8444-444444444444",
+        "kennung": "geraet",
+        "name": "Pumpe"
+      }
+    ],
+    "hinweise": [
+      "Keine Proben: Verhalten nicht belegt"
+    ],
+    "meldungen": [
+      {
+        "art": "hinweis",
+        "text": "Keine Proben: Verhalten nicht belegt"
+      }
+    ],
+    "name": "Sonnen-Überschuss: Pumpe einschalten",
+    "proben": [],
+    "sperrt": false,
+    "stellwerte": [],
+    "zusammen": []
+  },
+  "gruende": [],
+  "text": "# Übersetzt aus der Regel „Sonnen-Überschuss: Pumpe einschalten“ (Fassung 1) des Regel-Baukastens.\n# Bearbeitet wird die Regel, nicht dieser Text: jede neue Fassung der Regel übersetzt ihn neu.\n# Wie die Übersetzung entscheidet, belegt docs/contracts/v2/regel-kern-vectors.json.\nlogic: 1\nname: 'Sonnen-Überschuss: Pumpe einschalten'\n\ndevices:\n  geraet: {entity: 44444444-4444-4444-8444-444444444444, name: Pumpe}\n\ninputs:\n  netz: {source: site.grid, name: Netzbezug, max_age: 60 s}\n\nstates:\n  bedingung_1:\n    type: boolean\n    on_when:\n      - Mehr als 2,0 kW Sonnenstrom sind übrig: netz \u003c -2 kW\n    off_when_any:\n      - Weniger als 1,7 kW Sonnenstrom sind übrig: netz \u003e -2 kW + 0.3 kW\n      - Der Netzbezug fehlt: unknown(netz)\n    on_text: Mehr als 2,0 kW Sonnenstrom sind übrig\n    off_text: Weniger als 1,7 kW Sonnenstrom sind übrig\n    after_restart: off\n\noutputs:\n  geraet: {on_off: bedingung_1}\n\nstatus:\n  - when: bedingung_1\n    title: Regel greift\n    type: solar\n    text: Die Regel schaltet „Pumpe“ ein, weil mehr als 2,0 kW Sonnenstrom übrig sind.\n  - when: unknown(netz)\n    title: Ein Wert fehlt\n    type: fault\n    text: Ohne den Wert gilt die Bedingung nicht; die Regel schaltet „Pumpe“ nicht ein.\n  - else: true\n    title: Wartet\n    type: waiting\n    text: Wenn mehr als 2,0 kW Sonnenstrom übrig sind, schaltet die Regel „Pumpe“ ein.\n",
+  "uebersetzt": true
+}

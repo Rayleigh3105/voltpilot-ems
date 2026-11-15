@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildGuidedFlow,
@@ -228,5 +230,22 @@ describe('N1 (report.md §11): der Wunsch hält das ganze Fenster, nicht nur ein
       const control = res.doc.nodes.find((n) => n.type === 'vp.entity.control')!;
       expect(control.parameters.ttl_s).toBe(GUIDED_WISH_TTL_S);
     }
+  });
+});
+
+/**
+ * Die Gleichheitsvektoren Regel-Baukasten -> Kern (Steuerlogik Stufe 6, Zusammenführen;
+ * docs/contracts/v2/regel-kern-vectors.json) bauen ihre Flow-Dokumente mit einem Spiegel dieses Builders
+ * (edge-app/nodered/flowc/regel-kern-vectors.gen.js). Dieser Test hält den Spiegel ehrlich: jedes Dokument der
+ * Vektoren ist genau das, was der Baukasten des Portals für dieselbe Regel baut - und liest sich zurück.
+ */
+describe('Gleichheitsvektoren Regel -> Kern', () => {
+  const vektoren = JSON.parse(readFileSync(resolve(process.cwd(), '../../docs/contracts/v2/regel-kern-vectors.json'), 'utf8')) as {
+    faelle: { name: string; regel: GuidedRule; dokument: FlowDocument }[];
+  };
+
+  it.each(vektoren.faelle.map((f) => [f.name, f] as const))('%s: das Dokument baut der Baukasten', (_name, f) => {
+    expect(buildGuidedFlow(f.regel, f.name)).toEqual(f.dokument);
+    expect(parseGuidedFlow(f.dokument)).toEqual(f.regel);
   });
 });

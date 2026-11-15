@@ -41,6 +41,7 @@ import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
 import { LogikBlatt } from './LogikBlatt';
 import { BausteineAbschnitt } from './logik/BausteineAbschnitt';
+import { SteuerwegAbschnitt } from './SteuerwegAbschnitt';
 import { LogikenAbschnitt } from './logik/LogikenAbschnitt';
 import { herrschaft } from '../steuerlogikKarte';
 
@@ -638,6 +639,12 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
         onUmwandeln={setUmwandelnKarte}
         logiken={<LogikenAbschnitt siteId={site.id} liste={daten.logikListe} />}
         bausteine={<BausteineAbschnitt siteId={site.id} />}
+        steuerweg={(
+          <SteuerwegAbschnitt
+            siteId={site.id}
+            schluessel={karten.filter((k) => k.an).map((k) => `${k.flowId}:${k.version}`).join(',')}
+          />
+        )}
       />
     );
   } else {

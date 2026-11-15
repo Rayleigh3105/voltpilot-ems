@@ -9935,6 +9935,71 @@ export interface LogikListe {
   logiken: LogikKopf[];
 }
 
+/**
+ * Wo eine eingeschaltete Regel läuft (Steuerlogik Stufe 6, Zusammenführen; `GET …/steuerlogik/steuerweg`):
+ * `alt` Node-RED, `mitlauf` Node-RED schaltet und der Kern rechnet mit, `kern` der Kern schaltet, `aus` auf dieser
+ * Box läuft sie nicht (eine Edge Light ohne Übersetzung).
+ */
+export type SteuerwegWeg = 'alt' | 'mitlauf' | 'kern' | 'aus';
+
+/** Ein Stand im Vergleich der Box (Herzschlag-Block `logik`, steuerlogik-rueckmeldung.md). */
+export interface SteuerwegStand {
+  stufe?: number;
+  ein?: boolean;
+  sollwert?: number;
+  betriebsart?: string;
+}
+
+/** Der Vergleich „würde schalten“ gegen „ist geschaltet“ einer übersetzten Regel, wie die Box ihn meldet. */
+export interface SteuerwegVergleich {
+  zustand: 'mitlaufend' | 'scharf';
+  wunsch?: SteuerwegStand;
+  ist?: SteuerwegStand;
+  befehl?: SteuerwegStand;
+  halter?: string;
+  verglichen_s?: number;
+  abweichend_s?: number;
+  laengste_abweichung_s?: number;
+  lage?: { nr: number; titel: string; art?: string; satz?: string };
+  halt?: { code: string; text: string };
+  konflikt?: { code: string; text: string };
+  unbekannt?: string[];
+}
+
+export interface SteuerwegRegel {
+  flowId: string;
+  name: string;
+  weg: SteuerwegWeg;
+  /** Warum sie nicht im Kern läuft (leer, wo sie es tut oder der Schalter aus ist). */
+  gruende: string[];
+  logikId: string | null;
+  logikFassung: number | null;
+  vergleich: SteuerwegVergleich | null;
+  gemeldetAm: string | null;
+}
+
+export interface SteuerwegSchritt {
+  was: 'mitlauf' | 'kern' | 'zurueck';
+  am: string;
+  wer: string | null;
+  rolle: string | null;
+  daten: { regeln?: unknown[] } | null;
+}
+
+/** Der Schalter der Anlage (`modus` ist auf einer Edge Light immer `kern`: dort gibt es keinen alten Weg). */
+export interface SteuerwegAntwort {
+  stand: {
+    modus: 'alt' | 'mitlauf' | 'kern';
+    seit: string | null;
+    boxArt: 'docker' | 'light' | null;
+    boxKannMitlauf: boolean;
+    boxKannScharf: boolean;
+    regeln: SteuerwegRegel[];
+    schritte: SteuerwegSchritt[];
+  };
+  darf: boolean;
+}
+
 export interface LogikFassungKopf {
   fassung: number;
   zustand: LogikZustand;

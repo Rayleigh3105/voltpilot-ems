@@ -11,6 +11,7 @@ import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.entities.LeadDeviceService.FuehrendeBox;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.UpdateStatusRepository;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.web.dto.PricePointDto;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -24,7 +25,7 @@ import org.junit.jupiter.api.Test;
  * Die EINE Wahrheit der Preis-Zuleitung ({@code docs/contracts/v2/
  * mqtt-price-current.md}): gesperrt für den erklärten Festtarif (die AUSSAGE
  * des Kunden, nicht der Bewertungs-Rückfall), Fähigkeit der Box (führende
- * Box, keine Edge Light), und der Slot, der „jetzt" enthält - Viertelstunde
+ * Box, eine Edge Light nur mit Regeln im Kern), und der Slot, der „jetzt" enthält - Viertelstunde
  * schlägt Stunde, der Preis ist der nackte Börsenpreis in ct/kWh.
  */
 class PreisZuleitungTest {
@@ -36,6 +37,7 @@ class PreisZuleitungTest {
     private LeadDeviceService leadDevices;
     private UpdateStatusRepository updateStatus;
     private PriceRepository prices;
+    private BoxFaehigkeiten faehigkeiten;
     private PreisZuleitung dienst;
 
     @BeforeEach
@@ -43,7 +45,8 @@ class PreisZuleitungTest {
         leadDevices = mock(LeadDeviceService.class);
         updateStatus = mock(UpdateStatusRepository.class);
         prices = mock(PriceRepository.class);
-        dienst = new PreisZuleitung(leadDevices, updateStatus, prices);
+        faehigkeiten = mock(BoxFaehigkeiten.class);
+        dienst = new PreisZuleitung(leadDevices, updateStatus, prices, faehigkeiten);
     }
 
     private void boxDa(String boxArt) {
@@ -96,6 +99,16 @@ class PreisZuleitungTest {
         boxDa("light");
         assertThat(dienst.stand(SITE, "DE-LU", "dynamisch").grund())
                 .isEqualTo(PreisZuleitung.GRUND_EDGE_LIGHT);
+    }
+
+    /** Eine Edge Light, deren Kern Regeln ausführt (Steuerlogik Stufe 6), bekommt den Preis wie die Docker-Box. */
+    @Test
+    void edgeLightMitRegelnImKernWirdGespeist() {
+        boxDa("light");
+        when(faehigkeiten.kann(BOX, "steuerlogik_regeln")).thenReturn(true);
+        PreisZuleitung.Stand stand = dienst.stand(SITE, "DE-LU", "dynamisch");
+        assertThat(stand.aktiv()).isTrue();
+        assertThat(stand.box()).isEqualTo(BOX);
     }
 
     /** Eine Box, die ihre Art nie gemeldet hat (null), ist keine belegte Edge Light. */

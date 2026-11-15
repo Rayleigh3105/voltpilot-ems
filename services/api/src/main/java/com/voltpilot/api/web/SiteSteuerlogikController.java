@@ -70,6 +70,9 @@ public class SiteSteuerlogikController {
         boolean fachbetrieb = darf && fachbetriebWerte();
         List<SteuerlogikDto.Karte> out = new ArrayList<>();
         for (SteuerlogikService.Karte k : dienst.karten(siteId)) {
+            // Eine übersetzte Regel (Stufe 6) zeigt ihre Regel im Reiter „Regeln“, nicht als eigene Karte; die
+            // Überwachung liest ihre Störungen trotzdem (SteuerlogikWerteLeser).
+            if (k.fassung().ausRegel()) continue;
             out.add(karte(k, darf, fachbetrieb));
         }
         return new SteuerlogikDto.Karten(out);

@@ -5,6 +5,7 @@ import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.ota.BoxArt;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.UpdateStatusRepository;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -35,10 +36,11 @@ import org.springframework.stereotype.Service;
  * Erlösanzeige je Slot zum Börsenpreis bewertet.
  *
  * <p><b>Fähigkeit der Box:</b> gespeist wird nur eine Anlage mit führender
- * Box, die Regeln auch ausführen kann - eine Edge Light kann das nicht
- * (Paritätsliste, derselbe Capability-Check wie {@code FlowActivationService}).
- * Der Grund einer Sperre reist als Code zum Portal und wird dort im Klartext
- * gezeigt.
+ * Box, die Regeln auch ausführen kann. Eine Edge Light führt Regeln erst aus,
+ * seit sie sie als Logik des Kerns rechnet (Steuerlogik Stufe 6,
+ * Zusammenführen): gespeist wird sie, wenn sie {@code steuerlogik_regeln}
+ * meldet - derselbe Check wie {@code FlowActivationService}. Der Grund einer
+ * Sperre reist als Code zum Portal und wird dort im Klartext gezeigt.
  */
 @Service
 public class PreisZuleitung {
@@ -64,15 +66,20 @@ public class PreisZuleitung {
         }
     }
 
+    /** Das Wort, mit dem eine Edge Light meldet, dass ihr Kern Regeln ausführt. */
+    static final String REGELN_IM_KERN = "steuerlogik_regeln";
+
     private final LeadDeviceService leadDevices;
     private final UpdateStatusRepository updateStatus;
     private final PriceRepository prices;
+    private final BoxFaehigkeiten faehigkeiten;
 
     public PreisZuleitung(LeadDeviceService leadDevices,
-            UpdateStatusRepository updateStatus, PriceRepository prices) {
+            UpdateStatusRepository updateStatus, PriceRepository prices, BoxFaehigkeiten faehigkeiten) {
         this.leadDevices = leadDevices;
         this.updateStatus = updateStatus;
         this.prices = prices;
+        this.faehigkeiten = faehigkeiten;
     }
 
     /**
@@ -94,7 +101,8 @@ public class PreisZuleitung {
         if (lead.box() == null) {
             return Stand.gesperrt(GRUND_KEINE_BOX);
         }
-        if (BoxArt.LIGHT.equals(updateStatus.boxArt(lead.box()))) {
+        if (BoxArt.LIGHT.equals(updateStatus.boxArt(lead.box()))
+                && !faehigkeiten.kann(lead.box(), REGELN_IM_KERN)) {
             return Stand.gesperrt(GRUND_EDGE_LIGHT);
         }
         return Stand.aktiv(lead.box());
