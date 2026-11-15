@@ -1580,7 +1580,7 @@ describe('AufbauSection · Ladesäule entfernen (vp-ladesaeule-entfernen)', () =
     fireEvent.click(await screen.findByRole('menuitem', { name: /Ladesäule entfernen/ }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Ladesäule entfernen' });
-    expect(within(dialog).getByText(/Soll VoltPilot die Ladesäule „Halle" nicht mehr annehmen\?/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Soll VoltPilot die Ladesäule „Halle“ nicht mehr annehmen\?/)).toBeInTheDocument();
     expect(within(dialog).getByText(/endet dadurch NICHT/)).toBeInTheDocument();
     expect(removeChargePoint).not.toHaveBeenCalled();
 

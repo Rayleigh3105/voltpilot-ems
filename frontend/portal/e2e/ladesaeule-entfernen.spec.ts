@@ -39,7 +39,7 @@ for (const breite of [390, 1440] as const) {
 
     const dialog = page.getByRole('dialog', { name: 'Ladesäule entfernen' });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText('Soll VoltPilot die Ladesäule „Hof Süd" nicht mehr annehmen?')).toBeVisible();
+    await expect(dialog.getByText('Soll VoltPilot die Ladesäule „Hof Süd“ nicht mehr annehmen?')).toBeVisible();
     await expect(dialog.getByText(/endet dadurch NICHT/)).toBeVisible();
     await expect(dialog.getByText(/jederzeit wieder eintragen/)).toBeVisible();
     // Das Modal blendet ein (Rechner: Opacity, Telefon < 720 px: ein Blatt, das per `transform` hochfährt -

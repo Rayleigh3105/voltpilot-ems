@@ -646,7 +646,7 @@ describe('OcppWallboxPage · Ladesäule entfernen (vp-ladesaeule-entfernen)', ()
     fireEvent.click(await screen.findByRole('menuitem', { name: /Ladesäule entfernen/ }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Ladesäule entfernen' });
-    expect(within(dialog).getByText(/Soll VoltPilot die Ladesäule „Garage" nicht mehr annehmen\?/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Soll VoltPilot die Ladesäule „Garage“ nicht mehr annehmen\?/)).toBeInTheDocument();
     expect(removeChargePoint).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ladesäule entfernen' }));

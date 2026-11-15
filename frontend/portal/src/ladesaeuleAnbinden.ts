@@ -646,7 +646,7 @@ export function cockpitHinweis(gemeldet: boolean): string | null {
  */
 export function entfernenFolgen(name: string): string[] {
   return [
-    `„${name}" wird nicht mehr angenommen: die Verbindung zur Säule wird getrennt, und ein Wiederverbinden weist VoltPilot ab.`,
+    `„${name}“ wird nicht mehr angenommen: die Verbindung zur Säule wird getrennt, und ein Wiederverbinden weist VoltPilot ab.`,
     'Ein laufender Ladevorgang endet dadurch NICHT. Die Säule behält ihr zuletzt hinterlegtes Sicherheitsprofil und lädt damit weiter — langsam, aber sie lädt.',
     'Alle anderen Säulen, Ihre Anschlussgrenze und der Ausfall-Schutz bleiben unverändert.',
     'Sie können dieselbe Kennung jederzeit wieder eintragen — dann lässt VoltPilot die Säule wieder herein.',
@@ -655,7 +655,7 @@ export function entfernenFolgen(name: string): string[] {
 
 /** Der eine Satz über der Folgenliste. */
 export function entfernenFrage(name: string): string {
-  return `Soll VoltPilot die Ladesäule „${name}" nicht mehr annehmen?`;
+  return `Soll VoltPilot die Ladesäule „${name}“ nicht mehr annehmen?`;
 }
 
 /**
