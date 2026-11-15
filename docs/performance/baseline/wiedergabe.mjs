@@ -10,7 +10,8 @@
 //   node wiedergabe.mjs takt        … --sek 65        (Abrufe einer OFFENEN Seite je Pfad zählen)
 //   node wiedergabe.mjs interaktion … --schritte "Verlauf Tag → Monat;…" [--kaltKlick n]   (Klick → Seite steht wieder)
 //   node wiedergabe.mjs profil      … --sek 60        (React-Übergaben je Komponente; braucht einen Profiling-Build,
-//                                   react-dom → react-dom/profiling)
+//                                   react-dom → react-dom/profiling; druckt die Zeitleiste der Übergaben und der
+//                                   /api/-Abrufe, ms ab Seitenstart - zeigt, welche Übergabe zu welchem Takt gehört)
 //
 // Wiedergabe: jede /api/-Antwort kommt nach `latenz` ms (mobil zusätzlich: Größe / 1 MB/s), Token-Abrufe ebenso.
 // Mobil: CPU 4× gedrosselt, Netz „Fast 4G“ für alles, was NICHT aus dem Band kommt (JS, CSS, HTML).
@@ -72,7 +73,7 @@ await ctx.addInitScript(() => {
   requestAnimationFrame(loop);
 });
 if (modus === 'profil') await ctx.addInitScript(() => {
-  const P = { an: false, commits: 0, commitMs: 0, je: {} };
+  const P = { an: false, commits: 0, commitMs: 0, je: {}, zeiten: [] };
   window.__prof = P;
   const name = (f) => { const t = f.type; if (!t || typeof t === 'string') return null;
     return t.displayName || t.name || (t.render && (t.render.displayName || t.render.name)) || (t.type && (t.type.displayName || t.type.name)) || null; };
@@ -82,7 +83,7 @@ if (modus === 'profil') await ctx.addInitScript(() => {
     checkDCE() {}, onCommitFiberUnmount() {}, onPostCommitFiberRoot() {}, onScheduleFiberRoot() {},
     onCommitFiberRoot(_id, root) {
       if (!P.an) return;
-      P.commits++; P.commitMs += root.current.actualDuration || 0;
+      P.commits++; P.commitMs += root.current.actualDuration || 0; P.zeiten.push(Math.round(performance.now()));
       const stack = [root.current];
       while (stack.length) {
         const f = stack.pop();
@@ -180,17 +181,24 @@ if (modus === 'profil') {
     await page.goto(BASE + '/' + hash);
     await page.waitForFunction(() => window.__m && window.__m.bereit != null, null, { timeout: 60000 });
     await page.waitForTimeout(6000);
-    await page.evaluate(() => { const P = window.__prof; P.an = true; P.commits = 0; P.commitMs = 0; P.je = {}; });
+    await page.evaluate(() => { const P = window.__prof; P.an = true; P.commits = 0; P.commitMs = 0; P.je = {}; P.zeiten = []; });
     await page.waitForTimeout(sek * 1000);
-    const p = await page.evaluate(() => { const P = window.__prof; P.an = false; return { commits: P.commits, commitMs: P.commitMs, je: P.je }; });
+    const p = await page.evaluate(() => { const P = window.__prof; P.an = false; return { commits: P.commits, commitMs: P.commitMs, je: P.je, zeiten: P.zeiten,
+      // Abrufe als [Beginn, Antwort, Pfadende] in ms ab Seitenstart, wie die Übergaben.
+      api: performance.getEntriesByType('resource').filter((r) => r.name.includes('/api/'))
+        .map((r) => [Math.round(r.startTime), Math.round(r.responseEnd), new URL(r.name).pathname.split('/').slice(-2).join('/')]) }; });
+    const ab = (p.zeiten[0] ?? 0) - 1000;
+    p.api = p.api.filter((r) => r[0] >= ab).sort((x, y) => x[0] - y[0]);
     erg.seiten[name] = { hash, commits: p.commits, commitMs: Math.round(p.commitMs), komponenten: Object.keys(p.je).length,
-      top: Object.entries(p.je).sort((x, y) => y[1].ms - x[1].ms).slice(0, 30) };
+      zeiten: p.zeiten, api: p.api, top: Object.entries(p.je).sort((x, y) => y[1].ms - x[1].ms).slice(0, 30) };
   }
   writeFileSync(`${out}/${label}-profil-${user}-${profil}.json`, JSON.stringify(erg, null, 1));
   console.log(`## Profiler ${label} · ${user} · ${profil} · Zeit ${zeit} · ${sek} s offen · ${erg.uptime}`);
   for (const [n, x] of Object.entries(erg.seiten)) {
     console.log(`\n${n}: ${x.commits} Übergaben, ${x.commitMs} ms Renderzeit gesamt, ${x.komponenten} Komponenten-Arten gerendert`);
     for (const [k, v] of x.top.slice(0, 12)) console.log(`   ${v.ms.toFixed(1).padStart(8)} ms  ${String(v.n).padStart(5)}×  ${k}`);
+    console.log(`   Übergaben bei (ms ab Seitenstart): ${x.zeiten.join(', ')}`);
+    console.log(`   /api/ (Beginn–Antwort): ${x.api.map(([b, e, n]) => `${b}–${e} ${n}`).join('; ')}`);
   }
   await ctx.close(); await browser.close();
   process.exit(0);

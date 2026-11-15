@@ -310,6 +310,53 @@ Buffer je Aufruf und die Planungszeit in einer warmen Sitzung (`EXPLAIN` zwölfm
    nicht Teil dieser Welle): rund zwei Drittel der Anweisungen jeder Kundenroute; die Zugriffs-Abfrage läuft je
    `/earnings?range=day` rund zehnmal und wird jedes Mal neu geplant.
 
+## Portal-Reaktivität, Welle 3: Live-Takt (15.11.2026)
+
+Diese Runde (`vp-perf3-portal-takt`, Stand `44734c3c7`) setzt die Hebel 3 bis 5 von Welle 2 um: Rollen, Uhr und
+Formatierer im Live-Takt der offenen Anlagen-Seite. Labor wie in Welle 2: Band `demo2`, 150 ms je Antwort,
+`--zeit lebendig`. Der Host lief mit Load 7 bis 170 bei 12 GB belegtem Swap. Belastbar sind Abrufe und Übergaben je
+Minute sowie die Selbstzeit je Formatierer, also die Arbeit je Aufruf. Renderzeiten in ms nur aus verzahnten Reihen
+mit ähnlicher Last (`vorher3`/`kombi`, Load 27 bis 80).
+
+### Neu im Labor
+
+- **`wiedergabe.mjs profil`** druckt die Zeitleiste der Übergaben und der `/api/`-Abrufe (ms ab Seitenstart). Erst sie
+  zeigte, dass die Übergabe „am Taktbeginn“ aus Welle 2 der 5-s-Uhrtick war. Uhr-Intervall und Live-Takt starten mit
+  derselben Übergabe und laufen phasengleich, der Tick kam 10–15 ms nach dem Taktbeginn.
+- **`intl-heiss.mjs`:** Selbstzeit der Funktionen eines CPU-Profils, deren Rumpf je Aufruf `Intl` baut.
+
+### Geändert
+
+| PR | Was | Nachher |
+|---|---|---|
+| [#1903](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1903) Rollen | Haben alle drei Rollen keine Zuordnung, fragt die Seite sie im Listentakt (30 s) statt mit jeder Live-Zeit. | Abrufe je 65 s 62 → 50 (`rollen/*` 18 → 6) |
+| [#1904](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1904) Uhr | `useTaktUhr`: Der Tick setzt aus, solange ein Live-Takt unterwegs ist; die Antwort stellt Uhr und Daten in einer Übergabe. Nach Stillstand (verdeckter Tab) stellt der Taktbeginn die Uhr sofort. | Übergaben je Minute 24 → 18, Desktop und Telefon |
+| [#1905](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1905) Formatierer | Diese Formatierer werden nicht mehr je Aufruf gebaut: `periodLabel`, `ctFmt`/`numFmt`/`pctFmt`, `kwhWort`/`ctWort`, `spurTitel`. Die Ortszeit-Uhrzeit `hhmm` und `slotTime` laufen über `ortsUhrzeit` (`getHours`/`getMinutes`) und tragen so jede `TZ`-Umstellung. | Intl-Selbstzeit je Minute Telefon 72–99 → 3–10 ms, Desktop 15–20 → 0–1 ms |
+
+Alle drei zusammen (Probe-Merge ohne Konflikte, Typecheck grün), 60 s offene Cockpit-Seite:
+
+| | vorher | nachher |
+|---|---:|---:|
+| Abrufe je 65 s | 62 | 50 |
+| Übergaben je Minute, Desktop / Telefon | 24 / 24 | 18 / 19 |
+| Renderzeit `AnlageSeite` je Minute (React-Profiler), Desktop / Telefon | 80 / 239 ms | 32 / 163 ms |
+| CPU unter `AnlageSeite` je Minute, Desktop / Telefon | 50 / 149 ms | 18 / 122 ms |
+| Intl-Formatierer je Minute, Desktop / Telefon | 15 / 72 ms | 1 / 10 ms |
+| Einstieg gz | 251,90 kB | 252,26 kB |
+
+### Offene Hebel, nach Wirkung gereiht
+
+1. **Ein gebündeltes Live-Lesemodell** (Server): Die verbleibenden 50 Abrufe je 65 s sind 6 Live-Endpunkte × 6 und
+   die Listen. Ein Endpunkt je Takt spart 30 Anfragen je Minute und Seite.
+2. **Rollen mit Zuordnung:** Weiter 3 Abrufe je Live-Takt. Sie hängen an der Live-Zeit der Übersicht und kommen
+   darum eine Antwortzeit später als eigene Übergabe. Das löst nur das gebündelte Lesemodell (1).
+3. **Gleiche Uhr auf weiteren Seiten:** `PortfolioCockpit`, `EbenenCockpit` und `DataPages` stellen die Uhr wie vorher
+   am Taktbeginn und ticken phasengleich. `useTaktUhr` passt dort ohne Umbau.
+4. **`toLocaleDateString` im Zeitraum-Verlauf** des Cockpits (`rangeHistoryLoadRef`, 30-s-Abruf): 3–10 ms je Minute am
+   Telefon, `berlinDay` steht bereit.
+5. **Übrige Arbeit je Übergabe:** Im CPU-Profil stehen jetzt React-Interna, `fetch` und `AnlageSeite` selbst oben.
+   Weniger Arbeit je Übergabe bringt nur noch ein Schnitt der Seite in Teile, die nicht an der Uhr hängen.
+
 ## Wiederholen
 
 ```bash
@@ -356,6 +403,8 @@ VITE_API_BASE= VITE_KEYCLOAK_URL=http://localhost:15744/auth npx vite build --co
 node serve-dist.mjs 15871 $W/dist-profil &
 node wiedergabe.mjs profil --base http://localhost:15871 --user demo2 --band $W/demo2.json --sek 60 --zeit lebendig --seiten "cockpit=#/anlage/$S2"
 node cpu-profil.mjs 15871 $W/demo2.json "#/anlage/$S2" $W/cockpit.cpuprofile 60 lebendig mobil AnlageSeite
+# Welle 3: Intl-Formatierer im CPU-Profil (die Zeitleiste der Übergaben druckt `wiedergabe.mjs profil` selbst)
+node intl-heiss.mjs $W/cockpit.cpuprofile $W/dist-profil
 ```
 
 Die Bänder enthalten Labor-Tokens: nach dem Lauf löschen, nie einchecken.
