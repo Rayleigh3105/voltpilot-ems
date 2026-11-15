@@ -219,6 +219,18 @@ func anlageAusRegistry(L *logik.Logik, registry json.RawMessage) Anlage {
 // probes come from anlage (by device key) or, where it says nothing, from the
 // site's registry push (by entity).
 func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, error) {
+	return PruefeMit(text, anlage, registry, Erlaubt{})
+}
+
+// Erlaubt ist, was die Prüfung über die Regeln für jeden Text hinaus zulässt; nur die API
+// setzt es, für die Übersetzung einer Steuerart (Stufe 6, dritter Teil).
+type Erlaubt struct {
+	// Pflicht lässt `must_run` an einem Ausgang zu: die Pflicht einer Verbraucherregel.
+	Pflicht bool
+}
+
+// PruefeMit ist Pruefe mit dem, was die API für diesen Text erlaubt.
+func PruefeMit(text []byte, anlage Anlage, registry json.RawMessage, erlaubt Erlaubt) (*Gelesen, error) {
 	if len(text) > MaxTextBytes {
 		return nil, fmt.Errorf("%w: Der Text ist größer als %d KB", ErrUnlesbar, MaxTextBytes/1024)
 	}
@@ -241,6 +253,7 @@ func Pruefe(text []byte, anlage Anlage, registry json.RawMessage) (*Gelesen, err
 	if err != nil {
 		return nil, unlesbar(z, err.Error())
 	}
+	L.PflichtErlaubt = erlaubt.Pflicht
 	fakten := anlageAusRegistry(L, registry)
 	for k, g := range anlage {
 		if fakten == nil {
@@ -356,6 +369,9 @@ type Auftrag struct {
 	// (name, unit or range changed, report §8.9) falls back to its default and
 	// is named in the answer instead of refusing the version.
 	SettingsKeepFitting bool `json:"settings_keep_fitting,omitempty"`
+	// Pflicht lässt `must_run` zu (die Übersetzung einer Steuerart, Stufe 6, dritter Teil); nur
+	// die API setzt es, für eine abgeleitete Logik, die niemand bearbeitet.
+	Pflicht bool `json:"pflicht,omitempty"`
 }
 
 // Einstellung are set values with their revision.
@@ -414,7 +430,7 @@ func artefakt(a Auftrag) (json.RawMessage, *Bericht, *Gebaut, error) {
 			return nil, nil, nil, fmt.Errorf("%w: Zeitzone %q unbekannt", ErrAuftrag, a.Site.Timezone)
 		}
 	}
-	g, err := Pruefe([]byte(a.Text), a.Anlage, a.Registry)
+	g, err := PruefeMit([]byte(a.Text), a.Anlage, a.Registry, Erlaubt{Pflicht: a.Pflicht})
 	if err != nil {
 		return nil, nil, nil, err
 	}

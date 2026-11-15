@@ -74,7 +74,8 @@
     "ein": "on_off",
     "sollwert": "setpoint",
     "betriebsart": "mode",
-    "anteil": "percent"
+    "anteil": "percent",
+    "pflicht": "must_run"
   },
   "anzeige": {
     "wert": "input",
@@ -174,7 +175,9 @@
     "laeuft": "running",
     "zuletzt": "last",
     "min": "min",
-    "max": "max"
+    "max": "max",
+    "wechsel": "changes",
+    "aeltester_wechsel": "oldest_change"
   },
   "handlung": {
     "starte": "start",
@@ -206,7 +209,8 @@
     "speicher.leistung": "battery.power",
     "speicher.ladestand": "battery.soc",
     "sonne.hoehe": "sun.elevation",
-    "preis.aktuell": "price.current"
+    "preis.aktuell": "price.current",
+    "anlage.ueberschuss": "site.surplus"
   },
   "signal": {
     "temperatur": "temperature",
@@ -219,7 +223,8 @@
     "luftfeuchte": "humidity",
     "aussentemperatur": "outdoor_temperature",
     "vorlauf": "supply_temperature",
-    "ruecklauf": "return_temperature"
+    "ruecklauf": "return_temperature",
+    "leistung": "power"
   },
   "schema_def": {
     "kennung": "identifier",

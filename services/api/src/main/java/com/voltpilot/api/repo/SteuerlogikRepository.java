@@ -31,14 +31,14 @@ public class SteuerlogikRepository {
             String contentHash, String berichtJson, Instant angelegtAm, String angelegtVon, Instant stillgelegtAm,
             Instant scharfAm, String scharfVon, String hinweiseJson, String angelegtRolle, String angelegtName,
             String notiz, Instant vorgelegtAm, String vorgelegtVon, String vorgelegtName, String herkunft,
-            UUID herkunftFlowId, Integer herkunftFassung) {
+            UUID herkunftFlowId, Integer herkunftFassung, String herkunftStand, UUID herkunftGeraet) {
 
         public Fassung(UUID logikId, int fassung, UUID siteId, String name, String zustand, String contentHash,
                 String berichtJson, Instant angelegtAm, String angelegtVon, Instant stillgelegtAm, Instant scharfAm,
                 String scharfVon, String hinweiseJson) {
             this(logikId, fassung, siteId, name, zustand, contentHash, berichtJson, angelegtAm, angelegtVon,
                     stillgelegtAm, scharfAm, scharfVon, hinweiseJson, null, angelegtVon, null, null, null, null, null,
-                    null, null);
+                    null, null, null, null);
         }
 
         /**
@@ -47,6 +47,19 @@ public class SteuerlogikRepository {
          */
         public boolean ausRegel() {
             return HERKUNFT_REGEL.equals(herkunft);
+        }
+
+        /**
+         * Stufe 6 (Zusammenführen): eine abgeleitete Logik - die Übersetzung einer Regel, einer Steuerart oder des
+         * Heizstab-Reglers. Bearbeitet wird ihr Ursprung; sie ist im Aufbau und Text nur zu lesen.
+         */
+        public boolean abgeleitet() {
+            return herkunft != null;
+        }
+
+        /** Stufe 6, dritter Teil: die Übersetzung einer Steuerart oder des Heizstab-Reglers (Gruppe der Geräte). */
+        public boolean ausSteuerart() {
+            return HERKUNFT_STEUERART.equals(herkunft) || HERKUNFT_HEIZSTAB.equals(herkunft);
         }
 
         public boolean aktiv() {
@@ -60,6 +73,10 @@ public class SteuerlogikRepository {
 
     /** Die Herkunft einer abgeleiteten Logik (V20261115230000): die Übersetzung einer Regel. */
     public static final String HERKUNFT_REGEL = "regel";
+    /** Die Übersetzung der Verbraucherregel einer Steuerart (V20261116000000). */
+    public static final String HERKUNFT_STEUERART = "steuerart";
+    /** Die Übersetzung des Heizstab-Reglers aus seinem Parameterblock (V20261116000000). */
+    public static final String HERKUNFT_HEIZSTAB = "heizstab";
 
     /** Die Zustände einer Fassung (V20261114200000, V20261115190000). */
     public static final String ZUSTAND_GEPRUEFT = "geprueft";
@@ -132,14 +149,16 @@ public class SteuerlogikRepository {
             s.logik_id, s.fassung, s.site_id, s.name, s.zustand, s.content_hash, s.bericht::text, s.angelegt_am,
             s.angelegt_von, s.stillgelegt_am, s.scharf_am, s.scharf_von, s.hinweise::text, s.angelegt_rolle,
             """ + anzeigename("angelegt_von") + ", s.notiz, s.vorgelegt_am, s.vorgelegt_von, "
-            + anzeigename("vorgelegt_von") + ", s.herkunft, s.herkunft_flow_id, s.herkunft_fassung ";
+            + anzeigename("vorgelegt_von") + ", s.herkunft, s.herkunft_flow_id, s.herkunft_fassung, "
+            + "s.herkunft_stand, s.herkunft_geraet ";
 
     private static Fassung fassung(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new Fassung(rs.getObject(1, UUID.class), rs.getInt(2), rs.getObject(3, UUID.class), rs.getString(4),
                 rs.getString(5), rs.getString(6), rs.getString(7), instant(rs.getTimestamp(8)), rs.getString(9),
                 instant(rs.getTimestamp(10)), instant(rs.getTimestamp(11)), rs.getString(12), rs.getString(13),
                 rs.getString(14), rs.getString(15), rs.getString(16), instant(rs.getTimestamp(17)), rs.getString(18),
-                rs.getString(19), rs.getString(20), rs.getObject(21, UUID.class), (Integer) rs.getObject(22));
+                rs.getString(19), rs.getString(20), rs.getObject(21, UUID.class), (Integer) rs.getObject(22),
+                rs.getString(23), rs.getObject(24, UUID.class));
     }
 
     /** Alle Fassungen der Anlage, je Logik die jüngste zuerst. */
@@ -361,15 +380,21 @@ public class SteuerlogikRepository {
         return t.isEmpty() ? null : t.get(0);
     }
 
-    /** Ein auszulieferndes Artefakt mit dem Zustand seiner Fassung; {@code ausRegel}: die Übersetzung einer Regel. */
-    public record Auslieferung(String artefakt, boolean scharf, boolean ausRegel) {}
+    /**
+     * Ein auszulieferndes Artefakt mit dem Zustand seiner Fassung; {@code ausRegel}: die Übersetzung einer Regel,
+     * {@code ausSteuerart}: die einer Steuerart oder des Heizstab-Reglers.
+     */
+    public record Auslieferung(String artefakt, boolean scharf, boolean ausRegel, boolean ausSteuerart,
+            String herkunft, UUID herkunftFlowId, UUID herkunftGeraet) {}
 
     /** Die Artefakte der aktiven Logiken der Anlage (mitlaufend und scharf), Byte für Byte wie gebaut. */
     public List<Auslieferung> aktiveArtefakte(UUID siteId) {
-        return jdbc.query("SELECT artefakt, zustand, herkunft FROM steuerlogik WHERE site_id = ? "
-                + "AND zustand IN ('mitlaufend', 'scharf') ORDER BY angelegt_am, logik_id",
+        return jdbc.query("SELECT artefakt, zustand, herkunft, herkunft_flow_id, herkunft_geraet FROM steuerlogik "
+                + "WHERE site_id = ? AND zustand IN ('mitlaufend', 'scharf') ORDER BY angelegt_am, logik_id",
                 (rs, i) -> new Auslieferung(rs.getString(1), ZUSTAND_SCHARF.equals(rs.getString(2)),
-                        HERKUNFT_REGEL.equals(rs.getString(3))), siteId);
+                        HERKUNFT_REGEL.equals(rs.getString(3)), HERKUNFT_STEUERART.equals(rs.getString(3))
+                                || HERKUNFT_HEIZSTAB.equals(rs.getString(3)), rs.getString(3),
+                        rs.getObject(4, UUID.class), rs.getObject(5, UUID.class)), siteId);
     }
 
     // --- Übersetzte Regeln (Stufe 6, Zusammenführen) --------------------------------------------------------------
@@ -391,6 +416,34 @@ public class SteuerlogikRepository {
                 berichtJson, zustand, Timestamp.from(jetzt), von, rolle,
                 ZUSTAND_SCHARF.equals(zustand) ? Timestamp.from(jetzt) : null,
                 ZUSTAND_SCHARF.equals(zustand) ? von : null, flowId, flowFassung);
+    }
+
+    /**
+     * Legt die Übersetzung einer Steuerart oder des Heizstab-Reglers als neue Fassung ihrer abgeleiteten Logik an
+     * (Stufe 6, dritter Teil): {@code quelle} ist der generierte Flow (Steuerart) oder das Gerät (Heizstab),
+     * {@code stand} der Fingerabdruck dessen, woraus sie entstand, {@code geraet} das Gerät, dessen alten Weg sie
+     * ersetzt. Die bis dahin aktive Fassung wird stillgelegt. In der Transaktion des Aufrufers.
+     */
+    public void legeGeraetAn(UUID tenantId, UUID siteId, UUID logikId, int fassung, String name, String quelltext,
+            String kanonisch, String artefakt, String contentHash, String berichtJson, String zustand, String herkunft,
+            UUID quelle, Integer quelleFassung, String stand, UUID geraet, Instant jetzt) {
+        stillegen(logikId, jetzt);
+        jdbc.update("""
+                INSERT INTO steuerlogik (logik_id, fassung, tenant_id, site_id, name, quelltext, kanonisch, artefakt,
+                                         content_hash, bericht, zustand, angelegt_am, scharf_am, herkunft,
+                                         herkunft_flow_id, herkunft_fassung, herkunft_stand, herkunft_geraet)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, logikId, fassung, tenantId, siteId, name, quelltext, kanonisch, artefakt, contentHash,
+                berichtJson, zustand, Timestamp.from(jetzt),
+                ZUSTAND_SCHARF.equals(zustand) ? Timestamp.from(jetzt) : null, herkunft, quelle, quelleFassung,
+                stand, geraet);
+    }
+
+    /** Die aktiven Übersetzungen der Steuerarten und Heizstab-Regler einer Anlage (mitlaufend oder scharf). */
+    public List<Fassung> aktiveGeraete(UUID siteId) {
+        return jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM steuerlogik s WHERE s.site_id = ? "
+                + "AND s.herkunft IN ('steuerart', 'heizstab') AND s.zustand IN ('mitlaufend', 'scharf') "
+                + "ORDER BY s.angelegt_am", (rs, i) -> fassung(rs), siteId);
     }
 
     /** Die aktiven Übersetzungen der Regeln einer Anlage (mitlaufend oder scharf), je Regel höchstens eine. */

@@ -33,6 +33,15 @@ public interface RegelnImKern {
     /** Die Regel wurde ausgeschaltet: ihre Übersetzung hört mit ihr auf. In der Transaktion des Aufrufers. */
     void stillgelegt(UUID siteId, UUID flowId);
 
-    /** Die Regeln, deren Übersetzung scharf an diese Box geht - ihr Node-RED-Artefakt bleibt aus dem Satz. */
+    /**
+     * Die Flows, deren Übersetzung scharf an diese Box geht - ihr Node-RED-Artefakt bleibt aus dem Satz: Regeln und,
+     * seit dem dritten Teil, die generierten Verbraucherregeln der Steuerarten.
+     */
     Set<UUID> ersetzt(UUID siteId, UUID gateway);
+
+    /**
+     * Vor jedem Satz (Stufe 6, dritter Teil): die Übersetzungen der Steuerarten und des Heizstab-Reglers auf den
+     * Stand ihrer Quellen bringen; eine, die sich nicht neu übersetzen lässt, wird stillgelegt und der alte Weg führt.
+     */
+    default void vorDemSatz(UUID siteId) {}
 }

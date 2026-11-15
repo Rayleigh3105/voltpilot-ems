@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { SteuerwegAntwort, SteuerwegRegel } from '../api';
-import { dauerText, regelZeile, sichtbar, standText, uebernehmenFolgen, vergleichSatz, wegAnsicht } from './steuerweg';
+import type { SteuerwegAntwort, SteuerwegGeraet, SteuerwegRegel } from '../api';
+import { abschnittTitel, dauerText, geraetZeile, regelZeile, sichtbar, standText, uebernehmenFolgen, vergleichSatz, wegAnsicht } from './steuerweg';
 
 const regel = (weg: SteuerwegRegel['weg'], extra: Partial<SteuerwegRegel> = {}): SteuerwegRegel => ({
   flowId: `f-${weg}`, name: `Regel ${weg}`, weg, gruende: [], logikId: null, logikFassung: null, vergleich: null,
@@ -9,8 +9,14 @@ const regel = (weg: SteuerwegRegel['weg'], extra: Partial<SteuerwegRegel> = {}):
 
 const antwort = (modus: SteuerwegAntwort['stand']['modus'], regeln: SteuerwegRegel[], extra: Partial<SteuerwegAntwort['stand']> = {},
   darf = true): SteuerwegAntwort => ({
-  stand: { modus, seit: null, boxArt: 'docker', boxKannMitlauf: true, boxKannScharf: true, regeln, schritte: [], ...extra },
+  stand: { modus, seit: null, boxArt: 'docker', boxKannMitlauf: true, boxKannScharf: true, regeln, schritte: [],
+    geraeteModus: 'alt', geraeteSeit: null, boxKannSteuerarten: true, geraete: [], ...extra },
   darf,
+});
+
+const geraet = (weg: SteuerwegGeraet['weg'], extra: Partial<SteuerwegGeraet> = {}): SteuerwegGeraet => ({
+  art: 'steuerart', entityId: `e-${weg}`, name: `Gerät ${weg}`, weg, gruende: [], logikId: null, logikFassung: null,
+  vergleich: null, gemeldetAm: null, ...extra,
 });
 
 describe('Der Schalter der Anlage', () => {
@@ -91,5 +97,57 @@ describe('Vor dem Übernehmen', () => {
     expect(f[1]).toBe('Heute wichen die Wege ab bei: „Sonne“.');
     expect(f[2]).toBe('Auf dem bisherigen Weg bleiben: „Frei“.');
     expect(f[3]).toContain('Zurück geht jederzeit sofort');
+  });
+});
+
+describe('Steuerarten und Heizstab-Regler am selben Schalter (Stufe 6, dritter Teil)', () => {
+  it('nennt in der Überschrift, was an der Anlage läuft', () => {
+    expect(abschnittTitel(antwort('alt', [regel('alt')]))).toBe('Wie Ihre Regeln laufen');
+    expect(abschnittTitel(antwort('alt', [], { geraete: [geraet('alt')] }))).toBe('Wie Ihre Steuerarten laufen');
+    expect(abschnittTitel(antwort('alt', [regel('alt')], { geraete: [geraet('alt')] }))).toBe('Wie Ihre Regeln und Steuerarten laufen');
+  });
+
+  it('zeigt sich mit Steuerarten auch ohne Regeln, und bietet ab Werk den Vergleich an', () => {
+    const a = antwort('alt', [], { geraete: [geraet('alt')] });
+    expect(sichtbar(a)).toBe(true);
+    const w = wegAnsicht(a);
+    expect(w.knoepfe.map((k) => k.schritt)).toEqual(['mitlauf']);
+    expect(w.satz).toMatch(/^Ihre Steuerarten laufen wie bisher\./);
+  });
+
+  it('hält auf einer Edge Light die Regeln im Kern und schaltet die Steuerarten über den Schalter', () => {
+    const light = { boxArt: 'light' as const };
+    const teils = wegAnsicht(antwort('kern', [regel('kern')], { ...light, geraete: [geraet('alt')] }));
+    expect(teils.pille.wort).toBe('teils neu');
+    expect(teils.satz).toBe('Die Box rechnet Ihre Regeln schon selbst. Ihre Steuerarten laufen wie bisher; auch sie rechnet der neue Weg, erst nur zum Vergleich.');
+    expect(teils.knoepfe.map((k) => k.schritt)).toEqual(['mitlauf']);
+    const vergleich = wegAnsicht(antwort('kern', [regel('kern')], { ...light, geraeteModus: 'mitlauf', geraete: [geraet('mitlauf')] }));
+    expect(vergleich.knoepfe.map((k) => [k.schritt, k.wort])).toEqual([['uebernehmen', 'Übernehmen'], ['zurueck', 'Vergleich beenden']]);
+    const neu = wegAnsicht(antwort('kern', [regel('kern')], { ...light, geraeteModus: 'kern', geraete: [geraet('kern')] }));
+    expect(neu.pille.wort).toBe('neuer Weg');
+    expect(neu.satz).toBe('Die Box rechnet Ihre Regeln und Steuerarten selbst und schaltet danach. Zurück geht jederzeit sofort.');
+    expect(neu.knoepfe.map((k) => k.wort)).toEqual(['Zurück zum bisherigen Weg']);
+    // Ohne das Update kein Schritt für die Steuerarten, aber ein Satz, warum.
+    const alt = wegAnsicht(antwort('kern', [regel('kern')], { ...light, boxKannSteuerarten: false, geraete: [geraet('alt')] }));
+    expect(alt.knoepfe).toEqual([]);
+    expect(alt.hinweis).toBe('Für den neuen Weg der Steuerarten braucht die Box ein Update.');
+  });
+
+  it('bewegt auf der Docker-Box, was noch zurück ist: Regeln schon im Kern, Steuerarten noch bisher', () => {
+    const w = wegAnsicht(antwort('kern', [regel('kern')], { geraete: [geraet('alt')] }));
+    expect(w.pille.wort).toBe('teils neu');
+    expect(w.knoepfe.map((k) => k.schritt)).toEqual(['mitlauf', 'zurueck']);
+  });
+
+  it('nennt je Gerät, was es führt, und vor dem Übernehmen Regeln und Steuerarten', () => {
+    expect(geraetZeile(geraet('alt', { art: 'heizstab', name: 'Heizstab' })).art).toBe('Heizstab-Regler');
+    expect(geraetZeile(geraet('kern', { vergleich: { zustand: 'scharf', wunsch: { stufe: 2 } } })).satz).toBe('Die Box will: Stufe 2.');
+    const f = uebernehmenFolgen(antwort('mitlauf', [regel('mitlauf')], { geraeteModus: 'mitlauf',
+      geraete: [geraet('mitlauf', { name: 'Pumpe' }), geraet('mitlauf', { entityId: 'b', art: 'heizstab', name: 'Heizstab',
+        vergleich: { zustand: 'mitlaufend', verglichen_s: 100, abweichend_s: 5 } }), geraet('alt', { name: 'Wallbox' })] }));
+    expect(f[0]).toBe('Die Box schaltet 1 Regel und 2 Steuerarten selbst; der bisherige Weg gibt sie ab.');
+    expect(f[1]).toBe('Heute wichen die Wege ab bei: „Heizstab“.');
+    expect(f[2]).toBe('Auf dem bisherigen Weg bleiben: „Wallbox“.');
+    expect(f[3]).toBe('Ihre Regeln und Steuerarten, Schutzgrenzen und Eingriffe bleiben, wie sie sind. Zurück geht jederzeit sofort.');
   });
 });

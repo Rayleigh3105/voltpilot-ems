@@ -316,6 +316,11 @@ public class FlowActivationService {
         }
         UUID tenantId = TenantContext.get();
         List<JsonNode> artifacts = new ArrayList<>();
+        if (regelnImKern != null) {
+            // The translations of Steuerarten and the heating-rod controller follow their
+            // sources before the set is built (Stufe 6, third part).
+            regelnImKern.vorDemSatz(siteId);
+        }
         // A rule whose translation goes ARMED to this box (Stufe 6) is switched by the
         // Kern; its Node-RED artifact stays out, so a device never has two executors.
         java.util.Set<UUID> ersetzt = regelnImKern == null ? java.util.Set.of()

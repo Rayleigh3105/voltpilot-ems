@@ -1,0 +1,198 @@
+# VoltPilot-Baustein: der Heizstab-Regler der Box (heizstab-regler.md) als Logik des Kerns (Stufe 6,
+# Zusammenführen, dritter Teil). Er entscheidet wie der Regler: Stufe für Stufe mit dem gemessenen
+# Überschuss, die eigene Leistung des Stabs zählt zurück, aufwärts nach 60 s, abwärts nach 30 s Netzbezug,
+# Mindestlauf, Mindestpause, Haltezeit und höchstens so viele Schaltungen je Stunde.
+# Der Dienst füllt ihn aus dem Parameterblock eines Heizstabs (POST /aus-heizstab): Gerät, Stellwerte und
+# die Stufen der Ausgangsmenge mit ihrer Leistung, wie der Treiber sie nennt. Dieser Text ist der für eine
+# Ausgangsmenge mit drei Heizelementen je 2 kW und den Stufen 1, 2 und 3 (Shelly Pro 3); andere Stufen
+# ändern nur die Zeilen mit "# Stufen".
+# Dass er wie der Regler entscheidet, belegt logikdienst/heizstab_gleichheit_test.go gegen
+# heizstab-regler-vectors.json. Er steht nicht in der Sammlung: bearbeitet wird die Steuerart.
+block: 1
+name: Heizstab-Regler
+description: Der Heizstab nimmt Stufe für Stufe den Überschuss, wie der Regler der Box.
+sentence: Heize mit {heizstab} und dem Überschuss, {reserve} bleiben als Einspeisung.
+logic: |
+  logic: 1
+  name: Heizstab-Regler
+  description: Der Heizstab nimmt Stufe für Stufe den gemessenen Überschuss, wie der Heizstab-Regler der Box.
+
+  devices:
+    heizstab: {entity: geraet-heizstab, name: Heizstab}
+
+  inputs:
+    netz:     {source: site.grid,      name: Netzbezug,         max_age: 30 s}
+    speicher: {source: battery.power,  name: Batterie lädt mit, max_age: 30 s}
+    # Was der Stab zieht: gemessen, sonst die Leistung seiner bestätigten Stufe; die Box nennt nur Frisches.
+    stab:     {source: geraet-heizstab.power, name: Heizstab zieht}
+
+  settings:
+    reserve:      {name: Bleibt als Einspeisung,         default: 0.2 kW, range: [0 kW, 50 kW], step: 0.001 kW}
+    hoechste:     {name: Höchstens Ausgänge zugleich,    default: 3, range: [1, 3], step: 1}  # Stufen
+    vorrang:      {name: Reihenfolge mit dem Speicher,   type: select, default: speicher_zuerst,
+                   options: {speicher_zuerst: Speicher zuerst, heizstab_zuerst: Heizstab zuerst}}
+    mindestlauf:  {name: Mindestlaufzeit,                default: 300 s, range: [0 s, 86400 s], step: 1 s}
+    mindestpause: {name: Mindestpause,                   default: 300 s, range: [0 s, 86400 s], step: 1 s}
+    haltezeit:    {name: Haltezeit nach einem Wechsel,   default: 120 s, range: [0 s, 86400 s], step: 1 s}
+    schaltungen:  {name: Schaltungen je Stunde,          default: 12, range: [1, 64], step: 1}
+
+  formulas:
+    # Eine Entladung zählt immer gegen den Stab; "Heizstab zuerst" nimmt auch, was die Batterie lädt.
+    batterie: if(known(speicher), speicher, 0 kW)
+    ueberschuss: if(vorrang == heizstab_zuerst, batterie, min(0 kW, batterie)) - netz
+    # Die Eigenlast zählt zurück: ein laufender Stab frisst nicht den Überschuss, der ihn gestartet hat.
+    frei: ueberschuss + stab - reserve
+    messung: known(netz) and known(stab)
+    # Die höchste erlaubte Stufe und die Stufe, die zum Überschuss passt (Stufen in Ausgängen).
+    oben: if(hoechste >= 3, 3, if(hoechste >= 2, 2, if(hoechste >= 1, 1, 0)))  # Stufen
+    ziel: if(oben >= 3 and frei * 1.000001 >= 6 kW, 3, if(oben >= 2 and frei * 1.000001 >= 4 kW, 2, if(oben >= 1 and frei * 1.000001 >= 2 kW, 1, 0)))  # Stufen
+    naechste: if(stufe < 1, 1, if(stufe < 2, 2, 3))  # Stufen
+    kleinste: 1  # Stufen
+    gewechselt: since(stufe) < 1 s
+    bezug_haelt: bezug and since(bezug) >= 30 s and ueberschuss < -0.1 kW and ziel < stufe
+    zu_viele: changes(stufe, 1 h) + naechste - stufe > schaltungen
+    rest_pruefen: max(0 s, 60 s - since(hoeher))
+    rest_pause: if(stufe == 0, max(0 s, mindestpause - since(laeuft)), 0 s)
+    rest_halten: max(0 s, haltezeit - since(stufe))
+    rest_tor: max(rest_pruefen, rest_pause, rest_halten)
+    rest_grenze: max(rest_tor, 1 h - if(known(oldest_change(stufe, 1 h)), oldest_change(stufe, 1 h), 0 s))
+    hoeher_in: if(not messung or gewechselt, 0 s, if(ziel > stufe and zu_viele, rest_grenze, if(ziel > stufe, rest_tor, if(bezug_haelt, max(0 s, mindestlauf - since(laeuft)), 0 s))))
+
+  states:
+    blind:
+      type: boolean
+      on_when:
+        - Frische Messwerte fehlen: not messung
+      off_when:
+        - Die Messwerte sind frisch: messung
+      on_text: Frische Messwerte fehlen
+      off_text: Die Messwerte sind wieder da
+      after_restart: off
+    stufe:
+      type: counter
+      min: 0
+      max: 3  # Stufen
+      after_restart: keep
+      steps:
+        - name: blind_aus
+          text: Seit einer Minute fehlen frische Messwerte, der Heizstab geht aus
+          set: 0
+          when:
+            - Frische Messwerte fehlen seit einer Minute: blind and since(blind) >= 60 s
+            - Der Heizstab läuft: stufe > 0
+        - name: kappe
+          text: Die höchste erlaubte Stufe wurde gesenkt
+          set: oben
+          when:
+            - Die Messwerte sind frisch: messung
+            - Der Heizstab läuft über der höchsten erlaubten Stufe: stufe > oben
+        - name: runter
+          text: Netzbezug seit 30 Sekunden, eine kleinere Stufe
+          set: max(ziel, if(ziel == 0 and since(laeuft) < mindestlauf, kleinste, 0))
+          when:
+            - Die Messwerte sind frisch: messung
+            - Seit 30 Sekunden kommt Strom aus dem Netz: bezug_haelt
+        - name: hoch
+          text: Überschuss, eine Stufe höher
+          set: naechste
+          when:
+            - Die Messwerte sind frisch: messung
+            - Der Überschuss reicht für eine höhere Stufe: ziel > stufe
+            - Der Überschuss hält seit einer Minute: hoeher and since(hoeher) >= 60 s
+            - Die Mindestpause ist vorbei: rest_pause == 0 s
+            - Die Haltezeit ist vorbei: rest_halten == 0 s
+            - Die Schaltungen der letzten Stunde lassen es zu: not zu_viele
+    laeuft:
+      type: boolean
+      on_when:
+        - Der Heizstab läuft: stufe > 0
+      off_when:
+        - Der Heizstab ist aus: stufe == 0
+      on_text: Der Heizstab läuft
+      off_text: Der Heizstab ist aus
+      after_restart: keep
+    hoeher:
+      type: boolean
+      on_when:
+        - Die Messwerte sind frisch: messung
+        - Der Überschuss reicht für eine höhere Stufe: ziel > stufe
+      off_when_any:
+        - Frische Messwerte fehlen: not messung
+        - Der Überschuss reicht nicht für eine höhere Stufe: ziel <= stufe
+        - Die Stufe hat gerade gewechselt: gewechselt
+      on_text: Der Überschuss reicht für eine höhere Stufe
+      off_text: Der Überschuss reicht nicht für eine höhere Stufe
+      after_restart: off
+    bezug:
+      type: boolean
+      on_when:
+        - Die Messwerte sind frisch: messung
+        - Es kommt Strom aus dem Netz: ueberschuss < -0.1 kW
+      off_when_any:
+        - Frische Messwerte fehlen: not messung
+        - Es kommt kein Strom aus dem Netz: ueberschuss >= -0.1 kW
+        - Die Stufe hat gerade gewechselt: gewechselt
+      on_text: Es kommt Strom aus dem Netz
+      off_text: Es kommt kein Strom mehr aus dem Netz
+      after_restart: off
+
+  outputs:
+    heizstab: {level: stufe}
+
+  status:
+    - when: gewechselt and last(stufe) == blind_aus
+      title: Messwerte fehlen
+      type: fault
+      text: Seit einer Minute fehlen frische Messwerte - der Heizstab ist aus.
+    - when: not messung
+      title: Messwerte fehlen
+      type: fault
+      text: Messwerte fehlen - keine neue Stufe, nach einer Minute aus.
+    - when: gewechselt and last(stufe) == kappe
+      title: Höchste Stufe gesenkt
+      type: idle
+      text: Die höchste erlaubte Stufe wurde gesenkt.
+    - when: gewechselt and last(stufe) == runter and stufe == 0
+      title: Kein Überschuss
+      type: idle
+      text: Kein Überschuss mehr - der Heizstab ist aus.
+    - when: gewechselt and last(stufe) == runter
+      title: Kein Überschuss
+      type: idle
+      text: Netzbezug seit 30 Sekunden - eine kleinere Stufe.
+    - when: gewechselt and last(stufe) == hoch
+      title: Heizt mit Überschuss
+      type: solar
+      text: Überschuss - eine Stufe höher.
+    - when: bezug_haelt
+      title: Mindestlaufzeit
+      type: waiting
+      text: Netzbezug, aber die Mindestlaufzeit läuft noch.
+    - when: ziel > stufe and zu_viele
+      title: Schaltgrenze erreicht
+      type: waiting
+      text: Überschuss da, aber {schaltungen} Schaltungen in der letzten Stunde sind erreicht. Höhere Stufe frühestens in {hoeher_in}.
+    - when: ziel > stufe and rest_halten > 0 s and rest_halten >= rest_pause and rest_halten >= rest_pruefen
+      title: Haltezeit
+      type: waiting
+      text: Überschuss da, aber die Haltezeit nach dem letzten Wechsel läuft noch. Höhere Stufe frühestens in {hoeher_in}.
+    - when: ziel > stufe and rest_pause > 0 s and rest_pause >= rest_pruefen
+      title: Mindestpause
+      type: waiting
+      text: Überschuss da, aber die Mindestpause läuft noch. Höhere Stufe frühestens in {hoeher_in}.
+    - when: ziel > stufe and rest_pruefen > 0 s
+      title: Überschuss wird geprüft
+      type: waiting
+      text: Überschuss für eine höhere Stufe - wird eine Minute geprüft. Höhere Stufe frühestens in {hoeher_in}.
+    - when: stufe == 0
+      title: Kein Überschuss
+      type: idle
+      text: Kein Überschuss für die kleinste Stufe.
+    - when: bezug and ziel < stufe
+      title: Kein Überschuss
+      type: grid
+      text: Netzbezug - hält er 30 Sekunden an, folgt eine kleinere Stufe.
+    - else: true
+      title: Heizt mit Überschuss
+      type: solar
+      text: Heizt mit Überschuss.

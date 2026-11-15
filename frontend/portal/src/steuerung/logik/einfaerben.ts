@@ -15,7 +15,7 @@ export interface Stueck {
 }
 
 const FUNKTIONEN = new Set(['if', 'min', 'max', 'known', 'unknown', 'time_window', 'in_schedule', 'holds', 'since',
-  'running', 'last', 'start']);
+  'running', 'last', 'changes', 'oldest_change', 'start']);
 const WOERTER = new Set(['and', 'or', 'not', 'on', 'off', 'true', 'false', 'keep', 'clock', 'else', 'unknown']);
 const ZAHL = /^[-+]?\d+(?:\.\d+)?(?:\s?(?:°C|K|kW|W|%|s|min|h|°|ct))?/;
 

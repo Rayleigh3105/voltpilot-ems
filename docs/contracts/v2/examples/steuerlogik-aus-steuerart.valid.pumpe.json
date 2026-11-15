@@ -1,0 +1,41 @@
+{
+  "bericht": {
+    "ausdruecke": 16,
+    "befunde": [],
+    "eingaenge": [
+      {
+        "kennung": "ueberschuss",
+        "name": "Sonnen-Überschuss",
+        "source": "site.surplus"
+      }
+    ],
+    "geraete": [
+      {
+        "ausgaenge": [
+          "on_off"
+        ],
+        "entity_id": "44444444-4444-4444-8444-444444444444",
+        "kennung": "geraet",
+        "name": "Pumpe"
+      }
+    ],
+    "hinweise": [
+      "Keine Proben: Verhalten nicht belegt"
+    ],
+    "meldungen": [
+      {
+        "art": "hinweis",
+        "text": "Keine Proben: Verhalten nicht belegt"
+      }
+    ],
+    "name": "Verbraucherregel: Pumpe",
+    "proben": [],
+    "sperrt": false,
+    "stellwerte": [],
+    "zusammen": []
+  },
+  "gruende": [],
+  "pflicht": false,
+  "text": "# Übersetzt aus der Verbraucherregel der Steuerart „Verbraucherregel: Pumpe“ (Fassung 3).\n# Bearbeitet wird die Steuerart, nicht dieser Text: jede neue Fassung übersetzt ihn neu.\n# Wie die Übersetzung entscheidet, belegt logikdienst/steuerart/gleichheit_test.go gegen\n# docs/contracts/v2/verbraucherregel-vectors.json.\nlogic: 1\nname: 'Verbraucherregel: Pumpe'\n\ndevices:\n  geraet: {entity: 44444444-4444-4444-8444-444444444444, name: Pumpe}\n\ninputs:\n  ueberschuss: {source: site.surplus, name: Sonnen-Überschuss, max_age: 120 s}\n\nformulas:\n  # Anforderung „ueberschuss“: dreiwertig, ohne frischen Wert unbekannt.\n  anforderung_1: if(known(ueberschuss), schwelle_1, unknown)\n  gilt_jetzt: (known(anforderung_1) and anforderung_1)\n  ziel_jetzt: 1 + 2 * if((known(anforderung_1) and anforderung_1), 0, 1) + 0\n\nstates:\n  schwelle_1:\n    type: boolean\n    on_when:\n      - „Sonnen-Überschuss“ liegt über 1,5 kW: ueberschuss \u003e 1.5 kW\n    off_when_any:\n      - „Sonnen-Überschuss“ liegt unter 1,125 kW: ueberschuss \u003c 1.125 kW\n      - „Sonnen-Überschuss“ fehlt: unknown(ueberschuss)\n    on_text: „Sonnen-Überschuss“ liegt über 1,5 kW\n    off_text: „Sonnen-Überschuss“ liegt unter 1,125 kW\n    after_restart: off\n  gilt:\n    type: boolean\n    on_when:\n      - Eine Anforderung gilt: gilt_jetzt\n    off_when:\n      - Keine Anforderung gilt: not gilt_jetzt\n    on_text: Eine Anforderung gilt\n    off_text: Keine Anforderung gilt mehr\n    after_restart: off\n  # Das Ziel als Zahl: 0 keins, sonst 1 + 2 · Wert + Pflicht. Nach der letzten Anforderung hält es die\n  # Ausschaltverzögerung.\n  ziel:\n    type: counter\n    min: 0\n    max: 4\n    after_restart: 0\n    steps:\n      - name: verzoegerung_vorbei\n        text: Die Ausschaltverzögerung ist vorbei\n        set: 0\n        when:\n          - Seit 15 s gilt keine Anforderung: not gilt and since(gilt) \u003e= 15 s\n      - name: anforderung\n        text: Die geltenden Anforderungen setzen das Ziel\n        set: ziel_jetzt\n        when:\n          - Eine Anforderung gilt: gilt_jetzt\n\noutputs:\n  geraet: {on_off: 'if(ziel \u003e 0, on, unknown)'}\n\nstatus:\n  - when: ziel \u003e 0 and not gilt\n    title: Hält noch\n    type: waiting\n    text: Keine Anforderung gilt mehr; „Pumpe“ bleibt noch 15 s wie zuletzt.\n  - when: gilt\n    title: Steuerart greift\n    type: solar\n    text: Eine Anforderung der Steuerart gilt; sie steuert „Pumpe“.\n  - when: unknown(ueberschuss)\n    title: Ein Wert fehlt\n    type: fault\n    text: Ohne frischen Wert gilt die Bedingung nicht; „Pumpe“ bekommt keinen Wunsch.\n  - else: true\n    title: Wartet\n    type: waiting\n    text: Sobald eine Anforderung gilt, steuert die Steuerart „Pumpe“.\n",
+  "uebersetzt": true
+}

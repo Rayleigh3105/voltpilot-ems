@@ -90,6 +90,20 @@ public class HeizstabPush {
 
     /** Die Blöcke je Heizstab-Entität für den Push an DIESE Box (leer = keiner). */
     public Map<UUID, ObjectNode> fuerBox(UUID siteId, UUID box) {
+        Map<UUID, ObjectNode> out = new LinkedHashMap<>();
+        bloecke(siteId, box).forEach((id, b) -> out.put(id, b.block()));
+        return out;
+    }
+
+    /**
+     * Ein Block mit dem Fingerabdruck dessen, woraus die Logik des Kerns ihn übersetzt (Steuerlogik Stufe 6, dritter
+     * Teil): der Block und die Stufen der Ausgangsmenge (Ausgänge, Leistung je Element, erlaubte Stufen). Ändert sich
+     * einer davon, ist eine Übersetzung veraltet.
+     */
+    public record Block(ObjectNode block, String stand) {}
+
+    /** Die Blöcke wie {@link #fuerBox}, je mit ihrem Fingerabdruck. */
+    public Map<UUID, Block> bloecke(UUID siteId, UUID box) {
         if (box == null || !faehigkeiten.kann(box, HeizstabGeraet.FAEHIGKEIT) || !freigegeben(box)) {
             return Map.of();
         }
@@ -101,16 +115,33 @@ public class HeizstabPush {
                         + "JOIN consumer_policy pol ON pol.entity_id = mp.id AND pol.lifecycle = 'active' "
                         + "WHERE mp.site_id = ? AND mp.entity_type = ? AND mp.communication = 'shelly_http'",
                 siteId, HeizstabGeraet.TYP);
-        Map<UUID, ObjectNode> out = new LinkedHashMap<>();
+        Map<UUID, Block> out = new LinkedHashMap<>();
         for (Map<String, Object> r : rows) {
-            ObjectNode block = block(lies((String) r.get("c")), (String) r.get("storage_relation"),
+            Map<String, Object> connection = lies((String) r.get("c"));
+            ObjectNode block = block(connection, (String) r.get("storage_relation"),
                     (Integer) r.get("min_on_seconds"), (Integer) r.get("min_off_seconds"),
                     baum((String) r.get("doc")));
             if (block != null) {
-                out.put((UUID) r.get("id"), block);
+                out.put((UUID) r.get("id"), new Block(block, stand(block, connection)));
             }
         }
         return out;
+    }
+
+    /** Der Fingerabdruck eines Blocks samt der Stufen seiner Ausgangsmenge (SHA-256, hex). */
+    static String stand(ObjectNode block, Map<String, Object> connection) {
+        ObjectNode stufen = JSON.createObjectNode();
+        for (String k : List.of("channels", "output_kw", "stages")) {
+            stufen.set(k, JSON.valueToTree(connection == null ? null : connection.get(k)));
+        }
+        String roh = block.toString() + "|" + stufen;
+        try {
+            byte[] h = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(roh.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(h);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**

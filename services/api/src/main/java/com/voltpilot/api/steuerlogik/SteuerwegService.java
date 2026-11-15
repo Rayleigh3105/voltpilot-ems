@@ -69,6 +69,7 @@ public class SteuerwegService implements RegelnImKern {
     private final EntityRegistryService registry;
     private final HeizstabPush heizstab;
     private final ObjectProvider<FlowActivationService> auslieferung;
+    private final SteuerwegGeraete geraete;
     private final TransactionTemplate tx;
     private final ObjectMapper json;
     private final Clock clock;
@@ -77,17 +78,17 @@ public class SteuerwegService implements RegelnImKern {
     public SteuerwegService(SteuerlogikRepository logiken, SteuerwegRepository wege, FlowRepository flows,
             SiteRepository sites, LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten,
             UpdateStatusRepository updateStatus, SteuerlogikDienst dienst, EntityRegistryService registry,
-            HeizstabPush heizstab, ObjectProvider<FlowActivationService> auslieferung, TransactionTemplate tx,
-            ObjectMapper json) {
+            HeizstabPush heizstab, ObjectProvider<FlowActivationService> auslieferung, SteuerwegGeraete geraete,
+            TransactionTemplate tx, ObjectMapper json) {
         this(logiken, wege, flows, sites, leadDevices, faehigkeiten, updateStatus, dienst, registry, heizstab,
-                auslieferung, tx, json, Clock.systemUTC());
+                auslieferung, geraete, tx, json, Clock.systemUTC());
     }
 
     SteuerwegService(SteuerlogikRepository logiken, SteuerwegRepository wege, FlowRepository flows,
             SiteRepository sites, LeadDeviceService leadDevices, BoxFaehigkeiten faehigkeiten,
             UpdateStatusRepository updateStatus, SteuerlogikDienst dienst, EntityRegistryService registry,
-            HeizstabPush heizstab, ObjectProvider<FlowActivationService> auslieferung, TransactionTemplate tx,
-            ObjectMapper json, Clock clock) {
+            HeizstabPush heizstab, ObjectProvider<FlowActivationService> auslieferung, SteuerwegGeraete geraete,
+            TransactionTemplate tx, ObjectMapper json, Clock clock) {
         this.logiken = logiken;
         this.wege = wege;
         this.flows = flows;
@@ -99,6 +100,7 @@ public class SteuerwegService implements RegelnImKern {
         this.registry = registry;
         this.heizstab = heizstab;
         this.auslieferung = auslieferung;
+        this.geraete = geraete;
         this.tx = tx;
         this.json = json;
         this.clock = clock;
@@ -261,16 +263,27 @@ public class SteuerwegService implements RegelnImKern {
 
     @Override
     public Set<UUID> ersetzt(UUID siteId, UUID gateway) {
+        Set<UUID> out = new HashSet<>(geraete.ersetzteFlows(siteId, gateway));
         if (gateway == null || !faehigkeiten.kann(gateway, SteuerlogikAuslieferung.FAEHIGKEIT_SCHARF)
                 || !faehigkeiten.kann(gateway, SteuerlogikAuslieferung.FAEHIGKEIT_REGELN)) {
             // Ginge die Übersetzung nicht an die Box, bliebe die Regel sonst ohne jeden Weg.
-            return Set.of();
+            return out;
         }
-        Set<UUID> out = new HashSet<>();
         for (SteuerlogikRepository.Fassung f : logiken.aktiveRegeln(siteId)) {
             if (f.scharf()) out.add(f.herkunftFlowId());
         }
         return out;
+    }
+
+    @Override
+    public void vorDemSatz(UUID siteId) {
+        // Bestmöglich: scheitert das Angleichen, baut der Satz auf dem gespeicherten Stand (eine Übersetzung geht nur
+        // hinaus, solange sie zu ihrer Quelle passt - ersetzt() und HeizstabImKern prüfen das je Satz und Push).
+        try {
+            geraete.angleiche(siteId);
+        } catch (RuntimeException e) {
+            log.warn("steuerweg: Angleichen der Geräte an Anlage {} gescheitert: {}", siteId, e.toString());
+        }
     }
 
     // --- Der Schalter der Anlage ---------------------------------------------------------------------------------
@@ -290,88 +303,174 @@ public class SteuerwegService implements RegelnImKern {
         }
     }
 
-    /** Schaltet den neuen Weg ein: die Regeln laufen im Kern mit, Node-RED schaltet weiter. */
+    /**
+     * Die Box der Anlage und was an ihr schaltbar ist: die Regeln nur auf der Docker-Box (auf Edge Light laufen sie
+     * immer im Kern), die Geräte (Steuerarten und Heizstab-Regler) auf beiden Box-Arten.
+     */
+    private record Box(UUID id, boolean light, boolean regeln, boolean geraete) {}
+
+    private Box box(UUID siteId) {
+        if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.");
+        UUID box = leadDevices.fuehrendeBox(siteId).box();
+        if (box == null) {
+            throw new Abgelehnt("keine_box", "Die Anlage hat keine eindeutige führende Box.");
+        }
+        boolean light = BoxArt.LIGHT.equals(updateStatus.boxArt(box));
+        boolean regeln = !light && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT)
+                && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_REGELN);
+        return new Box(box, light, regeln, geraete.kann(box));
+    }
+
+    /**
+     * Schaltet den neuen Weg ein: was an der Box noch auf dem alten Weg ist (Regeln, Geräte), läuft im Kern mit; der
+     * alte Weg schaltet weiter.
+     */
     public Stand mitlaufen(UUID siteId, String von, String rolle) {
-        UUID box = dockerBox(siteId);
-        if (!SteuerwegRepository.ALT.equals(wege.weg(siteId).modus())) {
+        Box b = box(siteId);
+        SteuerwegRepository.Weg weg = wege.weg(siteId);
+        boolean regeln = b.regeln() && SteuerwegRepository.ALT.equals(weg.modus());
+        boolean geraeteMit = b.geraete() && SteuerwegRepository.ALT.equals(weg.geraeteModus());
+        if (!regeln && !geraeteMit) {
+            if (!b.regeln() && !b.geraete()) throw ohneKern(b);
             throw new Abgelehnt("schon_an", "Der neue Weg ist an dieser Anlage schon eingeschaltet.");
         }
-        stelle(siteId, box, SteuerwegRepository.MITLAUF, "mitlauf", SteuerlogikRepository.ZUSTAND_MITLAUFEND, von,
-                rolle);
+        stelle(siteId, b, regeln ? SteuerwegRepository.MITLAUF : weg.modus(),
+                geraeteMit ? SteuerwegRepository.MITLAUF : weg.geraeteModus(), "mitlauf", von, rolle);
         return stand(siteId);
     }
 
-    /** Der ausdrückliche Schritt: die Übersetzungen schalten, Node-RED gibt diese Regeln ab. */
+    /** Der ausdrückliche Schritt: was mitläuft, schaltet; der alte Weg gibt diese Regeln und Geräte ab. */
     public Stand uebernehmen(UUID siteId, String von, String rolle) {
-        UUID box = dockerBox(siteId);
-        String modus = wege.weg(siteId).modus();
-        if (SteuerwegRepository.ALT.equals(modus)) {
+        Box b = box(siteId);
+        SteuerwegRepository.Weg weg = wege.weg(siteId);
+        boolean regeln = b.regeln() && SteuerwegRepository.MITLAUF.equals(weg.modus());
+        boolean geraeteMit = b.geraete() && SteuerwegRepository.MITLAUF.equals(weg.geraeteModus());
+        if (!regeln && !geraeteMit) {
+            if (!b.regeln() && !b.geraete()) throw ohneKern(b);
+            boolean alles = (!b.regeln() || SteuerwegRepository.KERN.equals(weg.modus()))
+                    && (!b.geraete() || SteuerwegRepository.KERN.equals(weg.geraeteModus()));
+            if (alles) {
+                throw new Abgelehnt("schon_uebernommen", "Der neue Weg hat an dieser Anlage schon übernommen.");
+            }
             throw new Abgelehnt("erst_mitlaufen", "Bitte den neuen Weg zuerst mitlaufen lassen und den Vergleich "
                     + "ansehen; erst dann übernimmt er.");
         }
-        if (SteuerwegRepository.KERN.equals(modus)) {
-            throw new Abgelehnt("schon_uebernommen", "Der neue Weg hat an dieser Anlage schon übernommen.");
-        }
-        if (!faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_SCHARF)) {
+        if (!faehigkeiten.kann(b.id(), SteuerlogikAuslieferung.FAEHIGKEIT_SCHARF)) {
             throw new Abgelehnt("box_ohne_scharf", "Die Box dieser Anlage kann noch nicht nach einer Logik schalten "
                     + "(Fähigkeit steuerlogik_scharf fehlt). Bitte erst die Box aktualisieren.");
         }
-        stelle(siteId, box, SteuerwegRepository.KERN, "kern", SteuerlogikRepository.ZUSTAND_SCHARF, von, rolle);
+        stelle(siteId, b, regeln ? SteuerwegRepository.KERN : weg.modus(),
+                geraeteMit ? SteuerwegRepository.KERN : weg.geraeteModus(), "kern", von, rolle);
         return stand(siteId);
     }
 
-    /** Zurück auf den alten Weg, sofort: die Übersetzungen hören auf, Node-RED schaltet wieder alle Regeln. */
+    /** Zurück auf den alten Weg, sofort: die Übersetzungen hören auf, der alte Weg schaltet wieder alles. */
     public Stand zurueck(UUID siteId, String von, String rolle) {
-        UUID box = dockerBox(siteId);
-        if (SteuerwegRepository.ALT.equals(wege.weg(siteId).modus())) {
+        Box b = box(siteId);
+        SteuerwegRepository.Weg weg = wege.weg(siteId);
+        boolean regeln = !b.light() && !SteuerwegRepository.ALT.equals(weg.modus());
+        boolean geraeteZurueck = !SteuerwegRepository.ALT.equals(weg.geraeteModus());
+        if (!regeln && !geraeteZurueck) {
+            if (b.light() && !b.geraete()) throw ohneKern(b);
             throw new Abgelehnt("schon_alt", "An dieser Anlage gilt schon der alte Weg.");
         }
         Instant jetzt = clock.instant();
         UUID tenant = TenantContext.get();
+        SteuerwegGeraete.Vorhaben gv = geraete.vorbereiten(siteId, b.id(), SteuerwegRepository.ALT);
         tx.executeWithoutResult(s -> {
-            ArrayNode regeln = json.createArrayNode();
-            for (SteuerlogikRepository.Fassung f : logiken.aktiveRegeln(siteId)) {
-                stillegen(tenant, siteId, f.herkunftFlowId(), jetzt, von, rolle);
-                regeln.add(f.herkunftFlowId().toString());
+            ArrayNode regelListe = json.createArrayNode();
+            if (regeln) {
+                for (SteuerlogikRepository.Fassung f : logiken.aktiveRegeln(siteId)) {
+                    stillegen(tenant, siteId, f.herkunftFlowId(), jetzt, von, rolle);
+                    regelListe.add(f.herkunftFlowId().toString());
+                }
             }
+            ArrayNode geraetListe = json.createArrayNode();
+            for (SteuerlogikRepository.Fassung f : gv.still()) geraetListe.add(String.valueOf(f.herkunftGeraet()));
+            geraete.schreibe(siteId, gv, von, rolle);
             ObjectNode daten = json.createObjectNode();
-            daten.set("regeln", regeln);
-            wege.stelle(tenant, siteId, SteuerwegRepository.ALT, "zurueck", von, rolle, daten.toString(), jetzt);
+            daten.set("regeln", regelListe);
+            daten.set("geraete", geraetListe);
+            wege.stelle(tenant, siteId, regeln ? SteuerwegRepository.ALT : weg.modus(), SteuerwegRepository.ALT,
+                    "zurueck", von, rolle, daten.toString(), jetzt);
         });
-        veroeffentliche(siteId, box);
+        // Erst die Registry (der Block des Heizstabs ist wieder da, der Regler führt), dann der Satz: dazwischen hat
+        // ein Stab beide Wege, und die Box gibt dann dem Regler den Vorrang - nie hat er keinen.
+        if (geraeteZurueck) schiebeRegistry(siteId);
+        veroeffentliche(siteId, b.id());
         return stand(siteId);
     }
 
+    private Abgelehnt ohneKern(Box b) {
+        if (b.light()) {
+            return new Abgelehnt("edge_light", "Auf einer Edge Light laufen Regeln immer über den Kern der "
+                    + "Box; Steuerarten und den Heizstab-Regler kann diese Box noch nicht über ihren Kern ausführen "
+                    + "(Fähigkeit " + SteuerwegGeraete.FAEHIGKEIT + " fehlt). Bitte erst die Box aktualisieren.");
+        }
+        return new Abgelehnt("box_ohne_regeln", "Die Box dieser Anlage kann Regeln noch nicht über ihren Kern "
+                + "ausführen (Fähigkeit steuerlogik_regeln fehlt). Bitte erst die Box aktualisieren.");
+    }
+
     /**
-     * Stellt den Schalter: übersetzt jede eingeschaltete Regel der Anlage (außerhalb der Transaktion, der Dienst ist
-     * ein Netzaufruf), schreibt Schalter, Schritt und Übersetzungen zusammen und liefert den Satz aus.
+     * Stellt den Schalter: übersetzt jede eingeschaltete Regel und jedes Gerät der Gruppe, die sich bewegt (außerhalb
+     * der Transaktion, der Dienst ist ein Netzaufruf), schreibt Schalter, Schritt und Übersetzungen zusammen und
+     * liefert aus.
      */
-    private void stelle(UUID siteId, UUID box, String modus, String was, String zustand, String von, String rolle) {
+    private void stelle(UUID siteId, Box b, String modus, String geraeteModus, String was, String von, String rolle) {
+        SteuerwegRepository.Weg vorher = wege.weg(siteId);
+        boolean regelnNeu = !modus.equals(vorher.modus());
+        boolean geraeteNeu = !geraeteModus.equals(vorher.geraeteModus());
+        String zustand = SteuerwegRepository.KERN.equals(modus) ? SteuerlogikRepository.ZUSTAND_SCHARF
+                : SteuerlogikRepository.ZUSTAND_MITLAUFEND;
         List<Plan> plaene = new ArrayList<>();
         ArrayNode regeln = json.createArrayNode();
-        for (FlowVersionRow r : aktiveRegeln(siteId)) {
-            JsonNode doc = lies(r.documentJson());
-            Plan p = plane(siteId, r, doc, box, zustand);
-            if (p.halt() != null && SteuerlogikDienstException.NICHT_ERREICHBAR.equals(p.halt().reason())) {
-                throw new Abgelehnt(p.halt().reason(), p.halt().message());
+        if (regelnNeu) {
+            for (FlowVersionRow r : aktiveRegeln(siteId)) {
+                JsonNode doc = lies(r.documentJson());
+                Plan p = plane(siteId, r, doc, b.id(), zustand);
+                if (p.halt() != null && SteuerlogikDienstException.NICHT_ERREICHBAR.equals(p.halt().reason())) {
+                    throw new Abgelehnt(p.halt().reason(), p.halt().message());
+                }
+                plaene.add(p);
+                ObjectNode eintrag = regeln.addObject().put("regel", r.flowId().toString()).put("name", r.name())
+                        .put("uebersetzt", p.logik() != null);
+                if (p.logik() == null) {
+                    eintrag.put("grund", String.join(" ", p.gruende().isEmpty() && p.halt() != null
+                            ? List.of(p.halt().message()) : p.gruende()));
+                }
             }
-            plaene.add(p);
-            ObjectNode eintrag = regeln.addObject().put("regel", r.flowId().toString()).put("name", r.name())
-                    .put("uebersetzt", p.logik() != null);
-            if (p.logik() == null) {
-                eintrag.put("grund", String.join(" ", p.gruende().isEmpty() && p.halt() != null
-                        ? List.of(p.halt().message()) : p.gruende()));
+        }
+        SteuerwegGeraete.Vorhaben gv = geraeteNeu ? geraete.vorbereiten(siteId, b.id(), geraeteModus) : null;
+        if (gv != null && gv.dienstFehlt()) {
+            throw new Abgelehnt(SteuerlogikDienstException.NICHT_ERREICHBAR, "Der Logik-Dienst ist nicht "
+                    + "erreichbar; die Steuerarten lassen sich gerade nicht übersetzen. Bitte später erneut versuchen.");
+        }
+        ArrayNode geraetListe = json.createArrayNode();
+        if (gv != null) {
+            for (SteuerwegGeraete.Plan p : gv.plaene()) {
+                geraetListe.addObject().put("geraet", p.quelle().entityId().toString()).put("name", p.quelle().name())
+                        .put("art", p.quelle().herkunft()).put("uebersetzt", true);
             }
         }
         Instant jetzt = clock.instant();
         UUID tenant = TenantContext.get();
         tx.executeWithoutResult(s -> {
             ObjectNode daten = json.createObjectNode();
-            daten.set("regeln", regeln);
-            wege.stelle(tenant, siteId, modus, was, von, rolle, daten.toString(), jetzt);
+            if (regelnNeu) daten.set("regeln", regeln);
+            if (geraeteNeu) daten.set("geraete", geraetListe);
+            wege.stelle(tenant, siteId, modus, geraeteModus, was, von, rolle, daten.toString(), jetzt);
             for (Plan p : plaene) schreibe(siteId, p);
+            if (gv != null) geraete.schreibe(siteId, gv, von, rolle);
         });
-        veroeffentliche(siteId, box);
+        // Erst der Satz (die scharfe Übersetzung ist da; solange der Block des Heizstabs noch reist, führt der Regler),
+        // dann die Registry ohne den Block: nie hat ein Stab keinen Weg.
+        veroeffentliche(siteId, b.id());
+        if (geraeteNeu) schiebeRegistry(siteId);
+    }
+
+    /** Der Registry-Push der Anlage (der Block des Heizstabs kommt oder geht). */
+    private void schiebeRegistry(UUID siteId) {
+        registry.pushRegistryBestEffort(siteId);
     }
 
     /** Liefert den vollständigen Satz an die Box; ohne Broker bleibt es beim gespeicherten Stand (wie überall). */
@@ -380,25 +479,6 @@ public class SteuerwegService implements RegelnImKern {
         if (a != null && !a.republishForSite(siteId)) {
             log.warn("steuerweg: Satz der Anlage {} (Box {}) nicht veröffentlicht", siteId, box);
         }
-    }
-
-    /** Die Docker-Box der Anlage; auf Edge Light gibt es keinen alten Weg für Regeln und also keinen Schalter. */
-    private UUID dockerBox(UUID siteId) {
-        if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.");
-        UUID box = leadDevices.fuehrendeBox(siteId).box();
-        if (box == null) {
-            throw new Abgelehnt("keine_box", "Die Anlage hat keine eindeutige führende Box.");
-        }
-        if (BoxArt.LIGHT.equals(updateStatus.boxArt(box))) {
-            throw new Abgelehnt("edge_light", "Auf einer Edge Light laufen Regeln immer über den Kern der Box; einen "
-                    + "alten Weg gibt es dort nicht.");
-        }
-        if (!faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT)
-                || !faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_REGELN)) {
-            throw new Abgelehnt("box_ohne_regeln", "Die Box dieser Anlage kann Regeln noch nicht über ihren Kern "
-                    + "ausführen (Fähigkeit steuerlogik_regeln fehlt). Bitte erst die Box aktualisieren.");
-        }
-        return box;
     }
 
     /** Die eingeschalteten Regeln der Anlage (ohne die erzeugten Flows der Steuerarten). */
@@ -425,8 +505,14 @@ public class SteuerwegService implements RegelnImKern {
     public record Schritt(String was, Instant am, String wer, String rolle, JsonNode daten) {}
 
     /** Der Schalter der Anlage mit ihren Regeln. */
+    /**
+     * Der Schalter der Anlage mit ihren Regeln und, seit dem dritten Teil, der Gruppe der Geräte: Steuerarten und
+     * Heizstab-Regler ({@code geraeteModus}, je Gerät {@code geraete}); {@code boxKannSteuerarten}: die Box meldet
+     * {@code steuerlogik_steuerarten}.
+     */
     public record Stand(String modus, Instant seit, String boxArt, boolean boxKannMitlauf, boolean boxKannScharf,
-            List<RegelWeg> regeln, List<Schritt> schritte) {}
+            List<RegelWeg> regeln, List<Schritt> schritte, String geraeteModus, Instant geraeteSeit,
+            boolean boxKannSteuerarten, List<SteuerwegGeraete.GeraetWeg> geraete) {}
 
     public Stand stand(UUID siteId) {
         if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.");
@@ -461,9 +547,15 @@ public class SteuerwegService implements RegelnImKern {
                     f == null ? null : f.fassung(), lauf == null ? null : vergleich(lauf),
                     lauf == null ? null : lauf.gemeldetAm()));
         }
+        boolean geraeteKann = geraete.kann(box);
+        List<SteuerwegGeraete.GeraetWeg> geraetWege = box == null ? List.of()
+                : geraete.stand(siteId, box, weg.geraeteModus(), this::vergleich);
         return new Stand(light ? "kern" : weg.modus(), weg.seit(), light ? BoxArt.LIGHT : box == null ? null
-                : BoxArt.DOCKER, regelnKann, scharfKann, regeln, wege.schritte(siteId, SCHRITTE).stream()
-                .map(x -> new Schritt(x.was(), x.am(), x.vonName(), x.rolle(), lies(x.datenJson()))).toList());
+                : BoxArt.DOCKER, regelnKann, scharfKann || (geraeteKann
+                && faehigkeiten.kann(box, SteuerlogikAuslieferung.FAEHIGKEIT_SCHARF)), regeln,
+                wege.schritte(siteId, SCHRITTE).stream()
+                .map(x -> new Schritt(x.was(), x.am(), x.vonName(), x.rolle(), lies(x.datenJson()))).toList(),
+                weg.geraeteModus(), weg.geraeteSeit(), geraeteKann, geraetWege);
     }
 
     /** Warum eine Regel nicht im Kern läuft (fragt den Dienst; ohne ihn ein ehrlicher Satz). */
@@ -499,7 +591,9 @@ public class SteuerwegService implements RegelnImKern {
         if (r == null) return null;
         ObjectNode out = json.createObjectNode();
         out.put("zustand", lauf.zustand());
+        // Das eine Gerät der Übersetzung: „geraet“ bei Regel und Steuerart, „heizstab“ beim Heizstab-Regler.
         JsonNode g = r.path("geraete").path("geraet");
+        if (g.isMissingNode() && r.path("geraete").size() == 1) g = r.path("geraete").elements().next();
         for (String k : List.of("wunsch", "ist", "befehl", "halter", "schutz", "konflikt")) {
             if (g.has(k)) out.set(k, g.get(k));
         }

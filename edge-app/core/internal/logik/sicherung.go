@@ -31,6 +31,8 @@ type gesicherterZustand struct {
 	Seit    float64  `json:"seit,omitempty"`
 	Zuletzt string   `json:"zuletzt,omitempty"`
 	Bis     *float64 `json:"bis,omitempty"`
+	// Wechsel ist der Verlauf eines Zählers (changes(), oldest_change()); er bleibt über den Neustart.
+	Wechsel []zaehlerWechsel `json:"wechsel,omitempty"`
 }
 
 type gesichertesGeraet struct {
@@ -62,7 +64,8 @@ func (L *Logik) SichereLauf(st *Lauf) ([]byte, error) {
 		g.Stell[n] = roh
 	}
 	for n, z := range st.Z {
-		gz := gesicherterZustand{Art: z.art, An: z.an, Wert: z.wert, Seit: z.seit, Zuletzt: z.zuletzt}
+		gz := gesicherterZustand{Art: z.art, An: z.an, Wert: z.wert, Seit: z.seit, Zuletzt: z.zuletzt,
+			Wechsel: append([]zaehlerWechsel(nil), z.wechsel...)}
 		if z.bis != nil {
 			v := *z.bis
 			gz.Bis = &v
@@ -177,6 +180,9 @@ func (L *Logik) LadeLauf(daten []byte, jetzt float64) (*Lauf, error) {
 		l.wert = gz.Wert
 		l.seit = gz.Seit
 		l.zuletzt = gz.Zuletzt
+		if z.Art == "counter" {
+			l.wechsel = append([]zaehlerWechsel(nil), gz.Wechsel...)
+		}
 		if gz.Bis != nil {
 			v := *gz.Bis
 			l.bis = &v

@@ -74,7 +74,7 @@
      "source": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z][a-z0-9_]*$",
-      "description": "Quelle als gerät.signal (temperature, room_temperature, outdoor_temperature, supply_temperature, return_temperature, humidity, open, door_open, defrost, fault, running; Tabelle signal der Wortliste), dazu site.grid, site.pv, battery.power, battery.soc, sun.elevation, price.current."
+      "description": "Quelle als gerät.signal (temperature, room_temperature, outdoor_temperature, supply_temperature, return_temperature, humidity, open, door_open, defrost, fault, running, power; Tabelle signal der Wortliste), dazu site.grid, site.pv, site.surplus, battery.power, battery.soc, sun.elevation, price.current."
      },
      "name": {
       "type": "string",
@@ -169,6 +169,10 @@
      "percent": {
       "$ref": "#/$defs/expression",
       "description": "0 bis 100 Prozent."
+     },
+     "must_run": {
+      "$ref": "#/$defs/expression",
+      "description": "Ja oder Nein: Pflicht vor dem Fahrplan (Rang 70, wie die Pflichtregel einer Verbraucherregel). Nur in der Übersetzung einer Steuerart; die Prüfung sperrt es sonst. Allein kein Ausgang."
      }
     }
    }

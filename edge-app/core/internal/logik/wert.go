@@ -115,6 +115,9 @@ func LiesWert(roh any) (Wert, error) {
 		return boolW(v), nil
 	case float64:
 		return zahlW(v, GroesseZahl), nil
+	case jZahl:
+		// Eine Zahl ohne Einheit, wie der geordnete Leser sie liefert (Schema: $defs/value).
+		return zahlW(v.v, GroesseZahl), nil
 	case nil:
 		return unbekanntW(), nil
 	case string:

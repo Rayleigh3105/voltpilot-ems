@@ -47,6 +47,8 @@ Mehrere Anforderungen eines Verbrauchers werden zu einem zulässigen Ziel zusamm
 
 Die **technisch verbindlichen** Klassen, Quellberechtigungen und TTLs stehen unter [Arbitration](contracts/v2/edge-desired-arbitration.md). Eine vereinfachte Reihenfolge im Portal darf diese Regeln nicht ersetzen.
 
+Die reaktive Regel einer Steuerart und der Heizstab-Regler lassen sich seit Steuerlogik Stufe 6 (dritter Teil) als Logik des Kerns ausführen: nach dem Schalter der Anlage, erst im Vergleich, dann auf einen ausdrücklichen Schritt; bearbeitet wird weiter die Steuerart ([Zusammenführen](contracts/v2/steuerlogik.md#zusammenführen-stufe-6-dritter-teil)).
+
 Bei fehlgeschlagener Kompilierung bleibt der bisher aktive Stand maßgeblich. Speicherung einer Policy oder MQTT-Zustellung allein beweist noch keine laufende Geräteausführung. Deaktivieren/Pausieren muss ausgerollte Artefakte auch bei abgeschalteten Aktivierungsflags zurückziehen.
 
 Eine **Szene** (Steuerung neu, E6; `SzenenService`, `/sites/{id}/scene`) ist kein eigener Schaltweg: sie pausiert die gewählten Verbraucher über denselben Pausenweg und merkt sich, welche sie selbst pausiert hat. Beim Beenden setzt sie genau diese fort; ein vorher pausiertes oder zwischendurch von Hand fortgesetztes Gerät bleibt unberührt. Weil Fortsetzen das Steuerungs-Flag braucht, verweigert der Server das Einschalten einer Szene ohne `voltpilot.consumer-control.enabled`. Was beim Beenden nicht fortgesetzt werden kann, bleibt in der Szene und wird benannt.

@@ -107,6 +107,15 @@ type StatusExtension struct {
 // against the Node-RED path. Both builds carry it; the cloud ships a rule as a
 // Kern logic only to a box reporting it.
 //
+// steuerlogik_steuerarten (Steuerlogik Stufe 6, third part): the core knows
+// the language additions a Steuerart (the generated Verbraucherregel) and the
+// heating-rod controller translate to - the source site.surplus, the device
+// signal power, the counter history changes()/oldest_change() and the output
+// must_run (a Pflicht as the D-5 override) - and its Kern is the one the
+// equality tests hold against verbraucherregel-vectors.json and
+// heizstab-regler-vectors.json. Both builds carry it; the cloud ships those
+// translations only to a box reporting it.
+//
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
 // Edge Light has no Node-RED palette, so the words whose way ends in the
 // palette - the shared point read once per target, the Erzeuger image reader
@@ -119,7 +128,7 @@ func BuiltSupports(boxArt string) []string {
 		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
 	}
 	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
-		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln")
+		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten")
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and

@@ -710,8 +710,8 @@ public class SteuerlogikService {
         if (sites.findById(siteId) == null) throw new Abgelehnt("anlage_unbekannt", "Diese Anlage gibt es nicht.", null);
         Map<UUID, List<SteuerlogikRepository.Fassung>> je = new LinkedHashMap<>();
         for (SteuerlogikRepository.Fassung f : logiken.fassungen(siteId)) {
-            // Die Übersetzungen der Regeln stehen an ihrer Regel (Stufe 6), nicht in der Liste der Logiken.
-            if (f.ausRegel()) continue;
+            // Die Übersetzungen der Regeln und Steuerarten stehen an ihrem Ursprung (Stufe 6), nicht in der Liste.
+            if (f.abgeleitet()) continue;
             je.computeIfAbsent(f.logikId(), k -> new ArrayList<>()).add(f);
         }
         Map<UUID, Integer> anfragen = logiken.offeneAnfragen(siteId);
@@ -1162,8 +1162,8 @@ public class SteuerlogikService {
     }
 
     /**
-     * Eine Übersetzung einer Regel (Stufe 6, Zusammenführen) folgt ihrer Regel: bearbeitet, mitlaufen gelassen,
-     * scharf geschaltet und stillgelegt wird sie nur über die Regel und den Steuerweg der Anlage.
+     * Eine Übersetzung einer Regel oder Steuerart (Stufe 6, Zusammenführen) folgt ihrem Ursprung: bearbeitet,
+     * mitlaufen gelassen, scharf geschaltet und stillgelegt wird sie nur über ihn und den Steuerweg der Anlage.
      */
     private void eigeneLogik(UUID logikId) {
         SteuerlogikRepository.Fassung f = logiken.neuesteFassung(logikId) == 0 ? null
@@ -1172,6 +1172,10 @@ public class SteuerlogikService {
             throw new Abgelehnt("aus_regel", "„" + f.name() + "“ ist die Übersetzung einer Regel aus dem "
                     + "Regel-Baukasten. Bearbeitet wird die Regel im Reiter „Regeln“; wo sie läuft, stellt der "
                     + "Steuerweg der Anlage.", null);
+        }
+        if (f != null && f.ausSteuerart()) {
+            throw new Abgelehnt("aus_steuerart", "„" + f.name() + "“ ist die Übersetzung einer Steuerart. Bearbeitet "
+                    + "wird die Steuerart am Gerät; wo sie läuft, stellt der Steuerweg der Anlage.", null);
         }
     }
 

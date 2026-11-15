@@ -204,7 +204,7 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
                             entry.getKey(), siteId);
                     continue;
                 }
-                ConsumerRuntimeStatusRepository.Row row = parseEntry(entityId, entry.getValue());
+                ConsumerRuntimeStatusRepository.Row row = parseEntry(entityId, entry.getValue(), json);
                 if (row != null) {
                     rows.add(row);
                 }
@@ -236,7 +236,7 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
      * One entity entry. An unknown STATE word drops the entry (D9: discarded,
      * never stored); an unknown REASON word is dropped alone.
      */
-    private ConsumerRuntimeStatusRepository.Row parseEntry(UUID entityId, JsonNode node) {
+    private ConsumerRuntimeStatusRepository.Row parseEntry(UUID entityId, JsonNode node, JsonNode herzschlag) {
         if (node == null || !node.isObject()) {
             return null;
         }
@@ -263,8 +263,14 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
         }
         // Heizstab V1 (additive): the stage a heating rod over an output set reports and, where
         // the box's controller drives it, the controller's verdict - both as checked excerpts.
+        // Führt die scharfe Übersetzung des Reglers den Stab (Steuerlogik Stufe 6, dritter Teil), kommt der Befund
+        // aus ihrem Lauf - die Karte des Stabs behält ihren Grund.
+        String regler = HeizstabStufe.reglerJson(node);
+        if (regler == null) {
+            regler = HeizstabStufe.reglerAusLogik(herzschlag, entityId);
+        }
         return new ConsumerRuntimeStatusRepository.Row(entityId, state, reason, actualKw,
-                confirmed, runtime, starts, HeizstabStufe.stufe(node), null, HeizstabStufe.reglerJson(node));
+                confirmed, runtime, starts, HeizstabStufe.stufe(node), null, regler);
     }
 
     private static Integer boundedInt(JsonNode node, String field, int max) {

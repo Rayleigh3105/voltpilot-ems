@@ -233,8 +233,8 @@ public class AdminSteuerlogikController {
             case "recht_fehlt" -> HttpStatus.FORBIDDEN;
             case "keine_box", "box_ohne_mitlauf", "box_ohne_scharf", "zweiter_herr", "scharf_abloesen",
                     "bestaetigung_fehlt", "fassung_veraltet", "schon_scharf", "nichts_aktiv", "keine_vorige",
-                    "gleichzeitig", "laeuft_schon", "nicht_freigegeben", "aus_dem_vertrag", "aus_regel" ->
-                    HttpStatus.CONFLICT;
+                    "gleichzeitig", "laeuft_schon", "nicht_freigegeben", "aus_dem_vertrag", "aus_regel",
+                    "aus_steuerart" -> HttpStatus.CONFLICT;
             case "logik_unlesbar", "pruefung_sperrt", "stellwerte_passen_nicht", "baustein_unlesbar",
                     "baustein_unvollstaendig", "home_assistant_unlesbar" -> HttpStatus.UNPROCESSABLE_ENTITY;
             default -> HttpStatus.SERVICE_UNAVAILABLE;

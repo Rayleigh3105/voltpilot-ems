@@ -85,7 +85,7 @@ func TestWortlisteUndKernSindDeckungsgleich(t *testing.T) {
 		"duration", "min", "max", "steps", "on_text", "off_text"})
 	gleicheMengen(t, "schritt", englisch(t, w, "schritt"), []string{
 		"name", "by", "set", "not_before", "when", "when_any", "then", "text"})
-	gleicheMengen(t, "ausgang", englisch(t, w, "ausgang"), []string{"level", "on_off", "setpoint", "mode", "percent"})
+	gleicheMengen(t, "ausgang", englisch(t, w, "ausgang"), []string{"level", "on_off", "setpoint", "mode", "percent", "must_run"})
 	gleicheMengen(t, "anzeige", englisch(t, w, "anzeige"), []string{"input", "scale", "marks"})
 	gleicheMengen(t, "marke", englisch(t, w, "marke"), []string{"name", "at"})
 	gleicheMengen(t, "meldung", englisch(t, w, "meldung"), []string{"when", "to", "text", "repeat_after"})
@@ -101,16 +101,17 @@ func TestWortlisteUndKernSindDeckungsgleich(t *testing.T) {
 	gleicheMengen(t, "wertwort", englisch(t, w, "wertwort"), []string{"on", "off", "true", "false", "unknown", "keep"})
 	gleicheMengen(t, "formelwort", englisch(t, w, "formelwort"), []string{"and", "or", "not", "on", "off", "true", "false", "clock", "unknown"})
 	gleicheMengen(t, "funktion", englisch(t, w, "funktion"), []string{
-		"if", "known", "unknown", "time_window", "in_schedule", "holds", "since", "running", "last", "min", "max"})
+		"if", "known", "unknown", "time_window", "in_schedule", "holds", "since", "running", "last", "min", "max",
+		"changes", "oldest_change"})
 	gleicheMengen(t, "handlung", englisch(t, w, "handlung"), []string{"start", "if"})
 	gleicheMengen(t, "geraet_eigenschaft", englisch(t, w, "geraet_eigenschaft"), []string{
 		"on", "level", "power", "kw_per_output", "output_hours_today", "requested", "setpoint", "mode"})
 	gleicheMengen(t, "betriebsart", englisch(t, w, "betriebsart"), Betriebsarten)
 	gleicheMengen(t, "quelle_fest", englisch(t, w, "quelle_fest"), []string{
-		"site.grid", "site.pv", "battery.power", "battery.soc", "sun.elevation", "price.current"})
+		"site.grid", "site.pv", "battery.power", "battery.soc", "sun.elevation", "price.current", "site.surplus"})
 	gleicheMengen(t, "signal", englisch(t, w, "signal"), []string{
 		"temperature", "room_temperature", "open", "door_open", "defrost", "fault", "running",
-		"humidity", "outdoor_temperature", "supply_temperature", "return_temperature"})
+		"humidity", "outdoor_temperature", "supply_temperature", "return_temperature", "power"})
 
 	// Die reservierten Wörter sind die Formelwörter plus else (Vertrag 17.2); unknown ist seit
 	// Stufe 6 selbst ein Formelwort (ein Zweig von if() ohne Wert).
@@ -127,6 +128,7 @@ func TestQuellenHabenEineGroesse(t *testing.T) {
 		"site.grid": {GroesseKW, false}, "site.pv": {GroesseKW, false},
 		"battery.power": {GroesseKW, false}, "battery.soc": {GroesseProzent, false},
 		"sun.elevation": {GroesseWinkel, false}, "price.current": {GroesseZahl, false},
+		"site.surplus": {GroesseKW, false}, "x.power": {GroesseKW, false},
 		"x.temperature": {GroesseTemp, false}, "x.room_temperature": {GroesseTemp, false},
 		"x.open": {GroesseZahl, true}, "x.door_open": {GroesseZahl, true},
 		"x.defrost": {GroesseZahl, true}, "x.fault": {GroesseZahl, true}, "x.running": {GroesseZahl, true},

@@ -13,7 +13,8 @@ public final class EdgeSupports {
             "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe",
             "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle",
             "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen",
-            "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln");
+            "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln",
+            "steuerlogik_steuerarten");
     private EdgeSupports() {}
 
     public static List<String> parse(JsonNode block, Consumer<String> unknown) {

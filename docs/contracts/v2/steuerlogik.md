@@ -10,6 +10,7 @@ Seit Stufe 4 wird eine Logik im Portal geschrieben, im [Aufbau und im Text](#auf
 Seit Stufe 5 entsteht eine Logik auch aus einem [Baustein](#bausteine-stufe-5): ein Satz mit Lücken, dahinter eine Logik dieser Textform.
 Seit Stufe 6 entsteht sie auch [aus den Dateien einer Anlage von Home Assistant](#aus-home-assistant-stufe-6).
 Seit Stufe 6, zweiter Teil, läuft eine Regel des Regel-Baukastens als Logik des Kerns: auf Edge Light immer, auf der Docker-Box nach dem Schalter der Anlage ([Zusammenführen](#zusammenführen-stufe-6-zweiter-teil)).
+Seit Stufe 6, dritter Teil, laufen auch die Verbraucherregel einer Steuerart und der Heizstab-Regler der Box als Logik des Kerns, auf beiden Box-Arten nach demselben Schalter ([Zusammenführen, dritter Teil](#zusammenführen-stufe-6-dritter-teil)).
 
 Gemeinsame Vektoren: [steuerlogik-vectors.json](steuerlogik-vectors.json) mit den sechs Beispiel-Logiken unter [steuerlogik/](steuerlogik/) (je Schreibform und kanonische Form) und ihren 50 Proben, dazu drei nachgebaute Tage sekundengenau in `edge-app/core/internal/logik/testdata/tage/`.
 Für Geräte mit Sollwert und Betriebsart (K2/K3) kommen [steuerlogik-geraete-vectors.json](steuerlogik-geraete-vectors.json) und das siebte Beispiel `waermepumpe-modbus` dazu, von Hand geschrieben; dort ist der Kern die Referenz (`geraete_vectors_test.go`, im Dienst `logikdienst_test.go`).
@@ -61,8 +62,8 @@ Ein Ausdruck, der sich zur Laufzeit nicht rechnen lässt, gilt als unbekannt und
 
 Formeln: `and`, `or`, `not`, Vergleiche, `+ - * /`, Klammern; Rangfolge von schwach nach stark: `or`, `and`, `not`, Vergleich, `+ -`, `* /`, Vorzeichen.
 Das Wort `unknown` allein ist der Wert „kein Wert“ und steht nur als Zweig von `if()`: `setpoint: if(c, 3 kW, unknown)` heißt „sonst kein Wunsch“ (Stufe 6, für die Regel „voll einschalten“); an jeder anderen Stelle sperrt die Prüfung.
-Funktionen: `min`, `max`, `if(bedingung, dann, sonst)`, `known`, `unknown`, `time_window(von, bis)` (über Mitternacht erlaubt; `von` zählt mit, `bis` nicht; gleich oder unbekannt heißt rund um die Uhr), `in_schedule(zeitplan)`, `holds(bedingung, dauer)`, `since(zustand)`, `running(timer)`, `last(counter)`.
-Feste Quellen: `site.grid` (kW, + Bezug), `site.pv` (kW), `battery.power` (kW, + laden), `battery.soc` (%), `sun.elevation` (°), `price.current` (Börsenpreis in ct/kWh als Zahl ohne Einheit, [Preis-Zuleitung](mqtt-price-current.md)); dazu `gerät.signal` mit den Signalen der Wortliste: `temperature`, `room_temperature`, `outdoor_temperature`, `supply_temperature`, `return_temperature` (°C), `humidity` (%), `open`, `door_open`, `defrost`, `fault`, `running` (Ja/Nein).
+Funktionen: `min`, `max`, `if(bedingung, dann, sonst)`, `known`, `unknown`, `time_window(von, bis)` (über Mitternacht erlaubt; `von` zählt mit, `bis` nicht; gleich oder unbekannt heißt rund um die Uhr), `in_schedule(zeitplan)`, `holds(bedingung, dauer)`, `since(zustand)`, `running(timer)`, `last(counter)`, `changes(counter, dauer)` und `oldest_change(counter, dauer)` (Stufe 6, dritter Teil: um wie viel sich ein Zähler in der Dauer insgesamt bewegt hat, 0 → 3 zählt drei; wie lange der älteste dieser Wechsel her ist, ohne Wechsel unbekannt).
+Feste Quellen: `site.grid` (kW, + Bezug), `site.pv` (kW), `site.surplus` (kW: Sonnenstrom minus Hausverbrauch, beide aus derselben Messung; seit Stufe 6, dritter Teil), `battery.power` (kW, + laden), `battery.soc` (%), `sun.elevation` (°), `price.current` (Börsenpreis in ct/kWh als Zahl ohne Einheit, [Preis-Zuleitung](mqtt-price-current.md)); dazu `gerät.signal` mit den Signalen der Wortliste: `temperature`, `room_temperature`, `outdoor_temperature`, `supply_temperature`, `return_temperature` (°C), `humidity` (%), `open`, `door_open`, `defrost`, `fault`, `running` (Ja/Nein), `power` (kW: was das Gerät zieht, gemessen, sonst die Leistung seiner bestätigten Stufe; nur frisch, sonst unbekannt).
 Geräte-Eigenschaften: `gerät.on`, `.level`, `.power`, `.kw_per_output`, `.output_hours_today` (Summe der Einschaltzeit aller Ausgänge seit Mitternacht), `.requested` (was die Logik im letzten Takt wollte), `.setpoint` (der zurückgelesene Sollwert in °C) und `.mode` (die zurückgelesene Betriebsart); ohne Rücklesung sind die beiden unbekannt.
 `clock` ist die Uhrzeit; die Wochentage heißen `mon` bis `sun`; die Betriebsarten `normal`, `boost`, `cool`, `heat`, `fan_only`, `dry`, `auto`, `start`.
 
@@ -73,9 +74,11 @@ Ein Takt, jede Sekunde, in dieser Reihenfolge: Werte lesen und ihr Alter prüfen
 - **Schalter** (`boolean`): geht an, wenn alles unter `on_when` wahr ist (und eines unter `on_when_any`) und nichts für aus spricht; aus gewinnt.
 - **Zeitgeber** (`timer`): wird von einem Zählerschritt gestartet (`then: start(name) if …`); die Dauer wird beim Start gerechnet, eine Dauer von 0 oder unbekannt startet nicht.
 - **Zähler** (`counter`): je Takt gilt der erste zutreffende Schritt; `not_before` zählt ab dem letzten Wechsel und darf eine Formel sein; `set` rundet halbe Werte zur nächsthöheren Zahl; das Ziel wird auf `min` bis `max` begrenzt; ein Schritt ohne Änderung zählt nicht als Wechsel.
+  Jeder Zähler hält seinen Verlauf für `changes` und `oldest_change`: je Wechsel Zeit und Betrag, höchstens einen Tag und 1024 Wechsel zurück; der Verlauf ist Geschichte und bleibt über einen Neustart und eine neue Fassung erhalten.
 - **`after_restart`**: `on`/`off`/Zahl setzt den Wert, `keep` behält nur den Wert (beim Zeitgeber die Frist); `since` und `last` zählen nach einem Neustart ab dem Neustart; beim allerersten Start heißt `keep` aus, `min` beziehungsweise Zeitgeber steht.
   Stellwerte und Tageszähler bleiben bei einem Neustart erhalten.
 - **Ausgänge**: `level` wird gerundet und auf die Ausgänge des Geräts begrenzt, `setpoint` auf die Schrittweite des Geräts gerundet (ab dem unteren Ende seines Bereichs, halbe Schritte nach oben) und auf seinen Bereich begrenzt, `percent` auf 0 bis 100.
+  `must_run` (Ja/Nein, Stufe 6, dritter Teil) hebt den Wunsch des Geräts über den Fahrplan (Rang 70, der begrenzte Override der Pflichtregel, [Arbitrierung](edge-desired-arbitration.md)); allein ist es kein Ausgang, und nur die Übersetzung einer Steuerart darf es tragen (siehe Prüfung).
   Eine Betriebsart, die das Gerät nicht kennt (die Liste nennt die Anlage), ist kein Wunsch und ein Fehler-Ereignis; es gilt der Ruhewert des Geräts.
 - **Meldungen** gehen einmal hinaus, wenn die Bedingung eintritt, und frühestens nach `repeat_after` (Vorgabe eine Stunde) erneut.
 - **Lage**: die erste zutreffende Zeile gilt; im Satz steht `{formel}` für einen Wert in deutscher Schreibweise mit Einheit.
@@ -92,6 +95,7 @@ Anzeige der Werte: deutsche Schreibweise (Komma, schmales Leerzeichen vor der Ei
 Pflicht vor dem Scharfschalten ist die Prüfung (E5 = C); der Kern baut ihre sperrenden Punkte:
 
 1. **Aufbau und Einheiten**: jeder Ausdruck lesbar, jeder Name bekannt, Einheiten passen, keine Formel hängt von sich selbst ab; jedes beanspruchte Gerät hat einen Ausgang und umgekehrt; die letzte Lage-Zeile ist `else`; Sätze und Hilfen mit `{formel}` sind rechenbar; kein Wort verdeckt einen Namen; eine Betriebsart, die fest im Text eines Ausgangs `mode` steht, kennt das Gerät, wenn die Anlage seine Liste nennt.
+   Ein Ausgang `must_run` sperrt, außer die API baut die Übersetzung einer Steuerart (Auftrag `pflicht` an den Dienst): wie auf dem alten Weg stempelt nur der Compiler der Verbraucherregel eine Pflicht.
 2. **Stellwerte**: die Vorgabe liegt im Bereich; die Bedingungen unter `constraints` gelten mit den Vorgaben; dazu die Angabe, ob sie sich im erlaubten Bereich verletzen lassen (dann begrenzt die Oberfläche den Regler).
    Ein Stellwert in °C ist ein Zielwert und braucht einen Bereich, weil der Kunde ihn immer stellt (E2 = B); `editable_by` hat an ihm keine Wirkung.
 3. **Proben**: jeder Fall wird durchgespielt, mit einem Gerät, das jedem Wunsch folgt.
@@ -382,7 +386,74 @@ Wird eine Regel bei `mitlauf` oder `kern` eingeschaltet oder geändert, folgt ih
 Im Portal: „Wie Ihre Regeln laufen“ im Reiter „Regeln“ (`steuerung/SteuerwegAbschnitt.tsx`, Wörter aus `steuerung/steuerweg.ts`; Bühne `e2e/steuerweg.html`).
 API: `SteuerwegApiTest`, `FlowActivationServiceTest`; Ende zu Ende je Box-Art: `edge-light/test/regel-kern-probe.sh` (Docker-Box mit einem gestellten Node-RED: Mitlauf, Übernehmen, Hysterese, Zurück; Edge Light: die Regel schaltet einen gestellten Shelly).
 
-**Noch nicht zusammengeführt** (alte Wege bleiben in diesem Schritt bestehen): die Steuerarten je Gerät mit der Verbraucherregel (`verbraucherregel-vectors.json`) und der Heizstab-Regler (`heizstab-regler-vectors.json`) - je ein Baustein, sobald er gegen diese Vektoren gleich entscheidet; die Vorlagen als eigene Bausteine der Sammlung (die Startsammlung ist fünf bis sieben Bausteine, eine Regel aus einer Vorlage läuft schon über die Übersetzung); Automationen aus dem freien Editor.
+**Noch nicht zusammengeführt** (alte Wege bleiben bestehen): Automationen aus dem freien Editor.
+Die Steuerarten und der Heizstab-Regler folgen im [dritten Teil](#zusammenführen-stufe-6-dritter-teil); die Vorlagen bekommen keine eigenen Bausteine der Sammlung (entschieden: eine Regel aus einer Vorlage läuft schon über die Übersetzung).
+
+## Zusammenführen (Stufe 6, dritter Teil)
+
+Gebaut am 15.11.2026 (Bericht Abschnitt 9, Stufe 6: „ein Mechanismus statt vier“): die Verbraucherregel einer Steuerart und der Heizstab-Regler der Box laufen als Logik des Kerns, nach demselben Schalter je Anlage wie die Regeln.
+Was der Kunde bearbeitet, bleibt die Steuerart am Gerät; ihre Übersetzung ist eine abgeleitete Logik (`steuerlogik.herkunft` = `steuerart` oder `heizstab`, V20261116000000) mit einer festen Kennung je Gerät (`nameUUIDFromBytes("steuerlogik-steuerart:"+Gerät)` bzw. `"steuerlogik-heizstab:"+Gerät`).
+Aufbau und Text zeigen sie nur zum Lesen (409 `aus_steuerart`), in der Liste der Logiken und als Karte steht sie nicht, die Überwachung liest ihre Störungen wie bei jeder scharfen Logik.
+
+**Die Quellen** (`steuerlogik/SteuerwegGeraete`):
+
+| Alter Weg | Übersetzung (Logik-Dienst) | Was im Kern schaltet, bleibt draußen |
+|---|---|---|
+| die generierte Verbraucherregel einer Steuerart (`flow_definition` mit `origin.kind = consumer-policy`, ein Knoten `vp.consumer.reactive`); Docker-Box: Node-RED, Edge Light: der Go-Zwilling `internal/verbraucherregel` | `POST /aus-steuerart {dokument, name?, fassung?, registry?}` → `{uebersetzt, text?, gruende, bericht?, pflicht}`; 422 `grund: steuerart` für ein anderes Dokument (Paket `logikdienst/steuerart`) | ihr Flow-Artefakt aus dem Satz auf `v2/flows` |
+| der Parameterblock `heizstab` im Registry-Push, ausgeführt vom Heizstab-Regler der Box (beide Box-Arten) | `POST /aus-heizstab {entity, block, name?, registry}` → `{uebersetzt, text?, gruende, bericht?}`: der Baustein [heizstab-regler.block.yaml](steuerlogik/zusammenfuehren/heizstab-regler.block.yaml), gefüllt mit den Werten des Blocks und den Stufen der Ausgangsmenge aus dem Treiber (`logikdienst/heizstab.go`) | sein Block aus der Registry; die Komponente bleibt `owner_claimed` |
+
+Die Übersetzung der Verbraucherregel liest genau, was der Compiler der Cloud baut: je Anforderung den Bedingungsbaum dreiwertig (`all` → `and`, `any` → `or`, `not` → `not`), eine Schwelle mit Rückfallwert als Schalter (an bei der Schwelle, aus beim Rückfallwert oder ohne frischen Wert), die Frische je Bedingung als `max_age` des Eingangs, das Ziel aller geltenden Anforderungen (Ein/Aus: an; Sollwert in kW: der größte; Betriebsart: die der ersten), die Ausschaltverzögerung als Zähler, der das letzte Ziel `off_delay_s` hält, und die Pflicht als `must_run`.
+Die Werte der Anlage: `site.pv_surplus_kw` → `site.surplus`, `site.grid_power_kw` → `site.grid`, `storage.soc_pct` → `battery.soc`.
+Nicht übersetzt wird mit Grund: ein Signal des Geräts selbst (`consumer.available`, `consumer.vehicle_connected`; die Box liest es für eine Logik nicht), ein Preisfenster (die Cloud rechnet es aus ihren Preisen), eine Betriebsart außerhalb der Wortliste, ein Ladepunkt (Laden hat seinen eigenen Ort), ein Gerät, das zugleich ein Block und ein Flow führen (zwei alte Wege bleiben, wie sie sind).
+
+Der Baustein des Heizstab-Reglers ist der Regler in Wörtern der Sprache: Überschuss mit der Eigenlast des Stabs (`frei = Überschuss + Stab − Reserve`, „Speicher zuerst“ nimmt nur eine Entladung, „Heizstab zuerst“ auch die Ladung), aufwärts nach 60 s eine Stufe, abwärts nach 30 s Netzbezug auf die Stufe, die passt, Mindestlauf, Mindestpause, Haltezeit, höchstens `schaltungen` Wechsel je Stunde (`changes`), nach 60 s ohne frische Messwerte aus, die höchste erlaubte Stufe folgt sofort.
+Die Stufen der Ausgangsmenge stehen als Zahlen im Text (Ausgänge zugleich und ihre Leistung, wie `shelly.Config.StageCeilings`); ändert sich der Treiber, übersetzt die API neu.
+Die Lage nennt den Grund des Reglers mit seinem Satz („Überschuss da, aber die Haltezeit nach dem letzten Wechsel läuft noch.“) und „höher ab“ (`hoeher_in`) wie sein Herzschlag (`consumers.{id}.heizstab`).
+Führt die scharfe Übersetzung den Stab, fehlt dieser Block im Herzschlag; die API bildet ihn beim Lesen aus dem Lauf (Code aus dem Titel der Lage, `grund` = ihr Satz; `HeizstabStufe.reglerAusLogik`), damit die Karte des Stabs ihren Grund behält.
+
+**Der Beleg**: Gleichheit gegen die Vektoren der alten Wege, Sekunde für Sekunde gegen ihre Implementierungen, und ein absichtlich falscher Parameter macht den Vergleich rot.
+
+- Heizstab (`logikdienst/heizstab_gleichheit_test.go`): an jedem Schritt der 16 Szenarien von [heizstab-regler-vectors.json](heizstab-regler-vectors.json) Stufe, Wechsel, Code, Satz und „höher ab“; dazu Zufallsläufe über Stunden gegen `heizstab.Step` mit wechselnden Parametern und Stufen (auch nur „alle zusammen“); der Baustein des Vertrags ist byte-gleich die Übersetzung für drei Stufen je 2 kW.
+- Verbraucherregel (`logikdienst/steuerart/gleichheit_test.go`): an jedem Schritt der übersetzbaren Szenarien von [verbraucherregel-vectors.json](verbraucherregel-vectors.json) aktiv, gehalten, unbekannt, Pflicht, Wert und geltende Anforderungen; die übrigen fünf Szenarien bleiben mit ihrem Grund auf dem alten Weg (Preisfenster, Signale des Geräts, die Betriebsart „eco“); dazu Zufallsläufe gegen den Go-Zwilling des Knotens mit zufälligen Bäumen, Schwellen, Rückfallwerten, Frischen, Pflichten und allen drei Befehlen.
+- Box (`agent/steuerlogik_zusammen3_test.go`): der übersetzte Heizstab-Regler schaltet einen gestellten Shelly Pro 3 über sechs Stunden in jeder Sekunde wie der Regler an einer gleichen Anlage; Übernehmen und Zurück geben den Stab ohne eine Sekunde ohne Herrn weiter.
+
+Wo der Kern abweicht, in benannten Abschnitten:
+
+| Grund | alter Weg | Kern |
+|---|---|---|
+| `nachlauf` (Verbraucherregel) | ein Wunsch bleibt nach dem Ende der Anforderung stehen, bis seine TTL (45 s) abläuft | wünscht sofort nichts mehr |
+| `raster` (Verbraucherregel) | rechnet nur bei einer Nachricht und im 15-s-Takt: eine veraltete Messung und das Ende der Ausschaltverzögerung merkt er bis zu 15 s später | jede Sekunde |
+| `schwelle` (beide) | vergleicht die Gleitkommazahl exakt (2,063 − 0,563 liegt über 1,5) | Vergleiche tragen ein Epsilon von 10⁻⁹: auf der Schwelle ist gleich |
+| `start` (Heizstab) | ohne Vorgeschichte gibt es keine Haltezeit und keine Mindestpause; nach einem Neustart hält er sie auf der Platte | eine neue Übersetzung und ein Neustart zählen Haltezeit, Mindestlauf und Mindestpause ab dem Start (vorsichtiger); der Mitlauf vor dem Übernehmen gleicht das aus, die scharfe Fassung übernimmt seinen Stand |
+
+**Der Schalter der Anlage** hat damit zwei Gruppen: die Regeln (`modus`, Zusammenführen zweiter Teil; auf Edge Light immer der Kern) und die Geräte (`geraete_modus`, auf beiden Box-Arten, ab Werk `alt`).
+Keine Anlage wechselt still: auch eine Anlage, deren Regeln schon im Kern laufen, behält für die Geräte den alten Weg, bis jemand den Schritt geht.
+Ein Schritt bewegt jede Gruppe, die ihn gehen kann: „Vergleich starten“ (`alt` → `mitlauf`), „Übernehmen“ (`mitlauf` → `kern`, mit Rückfrage), „Zurück“ (alles → `alt`, sofort).
+
+| Geräte | alter Weg | Kern |
+|---|---|---|
+| `alt` | schaltet | - |
+| `mitlauf` | schaltet weiter (Flow und Block bleiben) | jede übersetzbare Steuerart und jeder Heizstab läuft mit; der Herzschlag vergleicht |
+| `kern` | bekommt sie nicht mehr: der Flow bleibt aus dem Satz, der Block aus der Registry | schaltet sie scharf |
+
+Reihenfolge beim Übernehmen: erst der Satz mit den scharfen Übersetzungen, dann die Registry ohne Block; beim Zurück erst die Registry mit Block, dann der Satz ohne Übersetzung.
+Solange ein Stab beides hat, führt ihn der Regler (die Box gibt einem Stab mit Block keinen Wunsch einer Logik), und wer ihn übernimmt, nimmt den Wunsch des anderen in derselben Sekunde zurück: nie zwei Wege, nie keiner.
+Beim Zurück beginnt der Regler neu wie bei jedem Block, der kommt: aus, dann nach der Prüfminute Stufe für Stufe.
+Die Verbraucherregel wechselt in einem Satz (Flow raus und Übersetzung rein oder umgekehrt).
+
+**Aktuell bleiben**: vor jedem Satz (`RegelnImKern.vorDemSatz`) und jedem Registry-Push (`HeizstabImKern.angleichen`) vergleicht die API je Quelle den Fingerabdruck (`herkunft_stand`: der generierte Flow mit seiner Fassung; Block und Stufen des Heizstabs) und übersetzt neu, was sich geändert hat; eine Steuerart, die neu dazukommt, folgt im Zustand der Gruppe.
+Lässt sich eine geänderte Quelle nicht übersetzen (Dienst nicht erreichbar, nicht mehr übersetzbar), legt die API die Übersetzung still, und der alte Weg führt.
+
+**Die Box** braucht `steuerlogik_steuerarten` ([supports](edge-supports.md)); ohne das Wort bleibt die Gruppe auf dem alten Weg (Edge Light lehnt den Schritt mit `edge_light` ab, die Docker-Box bewegt nur die Regeln).
+
+| Route unter `/api/v1/sites/{siteId}/steuerlogik/steuerweg` | Was sich ändert |
+|---|---|
+| `GET` | dazu `geraeteModus`, `geraeteSeit`, `boxKannSteuerarten` und je Gerät `geraete[]`: `art` (`steuerart`, `heizstab`), `entityId`, `name`, `weg`, `gruende`, die Übersetzung und der Vergleich der Box |
+| `POST /mitlauf`, `POST /uebernehmen`, `POST /zurueck` | bewegen beide Gruppen; 409 `dienst_nicht_erreichbar`, wenn sich die Geräte gerade nicht übersetzen lassen |
+
+Im Portal: „Wie Ihre Regeln und Steuerarten laufen“ im Reiter „Regeln“ (`steuerung/SteuerwegAbschnitt.tsx`, Wörter aus `steuerung/steuerweg.ts`; Bühne `e2e/steuerweg.html`).
+API: `SteuerwegGeraeteApiTest`; Dienst: `logikdienst/zusammen3_test.go` (gepinnte Antworten [steuerlogik-aus-steuerart.valid.pumpe.json](examples/steuerlogik-aus-steuerart.valid.pumpe.json), [steuerlogik-aus-heizstab.valid.heizstab.json](examples/steuerlogik-aus-heizstab.valid.heizstab.json)); Ende zu Ende je Box-Art: `edge-light/test/steuerart-kern-probe.sh`.
+Nicht in diesem Schritt: die zwei Befunde am alten Weg der Docker-Box (Zeitzone von Node-RED, fehlende Messwerte für Sonnen-Überschuss und Ladestand; ein Entscheid steht aus), das Abschalten der alten Wege, der KI-Helfer.
 
 ## Versionsregeln
 
