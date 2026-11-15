@@ -3,6 +3,7 @@ package com.voltpilot.api.tenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.voltpilot.api.TestDatenbank;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
@@ -20,10 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die eine Verbindung je Anfrage ({@link AnfrageVerbindung}, Lasttest Rang 13) an einem echten Pool mit ZWEI
@@ -44,11 +43,7 @@ class AnfrageVerbindungTest {
     private static final String ROLLE = "vp_sockel";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot")
-            .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw")
+    static final TestDatenbank POSTGRES = new TestDatenbank()
             .withCommand("postgres", "-c", "shared_preload_libraries=timescaledb,pg_stat_statements");
 
     private static HikariDataSource pool;
