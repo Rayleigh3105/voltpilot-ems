@@ -245,6 +245,49 @@ class FlowActivationServiceTest {
     }
 
     /**
+     * Steuerlogik Stufe 6 (Zusammenführen): with the Kern seam an Edge Light runs a rule as a Kern logic. A halt of
+     * the seam (the rule does not translate, the box cannot) refuses BEFORE the compiler; a prepared translation is
+     * written after the version went active, and a flow whose translation goes armed to the box leaves the set.
+     */
+    @Test
+    void anEdgeLightGatewayRunsATranslatedRuleAndLeavesItsNodeRedArtifactOut() throws IOException {
+        when(entities.batteryAsset(SITE)).thenReturn(
+                new EntityRegistryRepository.BatteryAsset(DEVICE, null, null, null, null));
+        when(updateStatus.boxArt(DEVICE)).thenReturn(BoxArt.LIGHT);
+        RegelnImKern kern = mock(RegelnImKern.class);
+        RegelnImKern.Vorbereitet halt = () -> new RegelnImKern.Halt("edge_light_unsupported", "Grund der Übersetzung");
+        when(kern.bereite(eq(SITE), any(), any(), eq(DEVICE), eq(true))).thenReturn(halt);
+        FlowCompiler compiler = mock(FlowCompiler.class);
+        FlowActivationService service = service(compiler, true);
+        service.setRegelnImKern(kern);
+        FlowActivationService.ActivationOutcome refused = service.activate(SITE,
+                row(2, "simulated", null), MAPPER.createObjectNode());
+        assertThat(refused.activated()).isFalse();
+        assertThat(refused.message()).isEqualTo("Grund der Übersetzung");
+        verifyNoInteractions(compiler);
+        verify(kern, never()).schreibe(any(), any());
+
+        RegelnImKern.Vorbereitet bereit = () -> null;
+        when(kern.bereite(eq(SITE), any(), any(), eq(DEVICE), eq(true))).thenReturn(bereit);
+        when(kern.ersetzt(SITE, DEVICE)).thenReturn(java.util.Set.of(FLOW));
+        when(compiler.compile(any())).thenReturn(fixtureArtifact);
+        FlowVersionRow other = new FlowVersionRow(UUID.randomUUID(), 1, SITE, "Anderer", "edge",
+                "active", "{}", null, fixtureArtifact.toString(), Instant.now(), Instant.now(),
+                null, null);
+        when(flows.versionsForSite(SITE)).thenReturn(List.of(
+                row(2, "active", fixtureArtifact.toString()), other));
+        FlowActivationService.ActivationOutcome activated = service.activate(SITE,
+                row(2, "simulated", null), MAPPER.createObjectNode());
+        assertThat(activated.activated()).isTrue();
+        verify(kern).schreibe(SITE, bereit);
+        JsonNode deployment = MAPPER.readTree(new String(publisher.payload, StandardCharsets.UTF_8));
+        assertThat(deployment.path("artifacts")).as("only the other flow's Node-RED artifact").hasSize(1);
+
+        service.deactivate(SITE, FLOW, row(2, "active", null));
+        verify(kern).stillgelegt(SITE, FLOW);
+    }
+
+    /**
      * A Docker box (or a device that has never reported a backend - unknown is
      * never silently "Docker" per {@code BoxArt}, but it is also never silently
      * "Light") must activate exactly as before this check existed.
