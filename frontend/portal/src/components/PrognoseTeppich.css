@@ -111,7 +111,10 @@
 
 .vp-pt-stunde {
   font-size: 10px;
-  color: var(--vp-c-text-muted, #94a3b8);
+  /* #94a3b8 misst nur 2,56:1 auf Weiss (AA braucht 4,5:1 bei 10px);
+     --vp-text-gray ist das Haus-Neutral, das AA auch auf helleren
+     Flaechen haelt (designsystem/tokens/colors.css). */
+  color: var(--vp-text-gray, #66717c);
   text-align: center;
 }
 
@@ -205,11 +208,17 @@
 }
 
 .vp-pt-kwh-sonne {
-  color: var(--vp-chart-pv-line, #e65100);
+  /* --vp-chart-pv-line ist die LINIEN-Stufe (3,8:1, siehe colors.css) - als
+     Schrift reisst sie 4,5:1; --vp-pv-ink ist dieselbe Rolle eine Stufe
+     dunkler fuer Text (5,18:1 auf Weiss). */
+  color: var(--vp-pv-ink, #c2410c);
 }
 
 .vp-pt-kwh-verbrauch {
-  color: var(--vp-flow-load, #8b5cf6);
+  /* --vp-flow-load ist die Flaechen-/Punkt-Stufe (4,23:1); als Schrift
+     reisst sie 4,5:1. #5b3aa8 ist dieselbe Rolle als Text-Ink (schon so im
+     Rollen-Chip `.vp-role-pill.vp-role-consumer` in index.css verwendet). */
+  color: #5b3aa8;
 }
 
 .vp-pt-teppich-unter-kurz {
@@ -219,7 +228,7 @@
 .vp-pt-teppich-leer {
   padding: 0 4px;
   font-size: 12px;
-  color: var(--vp-c-text-muted, #94a3b8);
+  color: var(--vp-text-gray, #66717c);
   font-style: italic;
 }
 
