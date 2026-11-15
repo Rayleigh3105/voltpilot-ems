@@ -24,7 +24,7 @@ import {
   type CurtailTruth,
 } from './curtailment';
 import { FEED_IN_FULL_MARGIN_KW } from './flowConflict';
-import { eurAmount, fmtNum, NBSP } from './format';
+import { eurAmount, fmtNum, NBSP, ortsUhrzeit, stellenFormat } from './format';
 import {
   leitgrund,
   type GrenzenGrund,
@@ -875,8 +875,7 @@ export function phaseEurNote(phase: PlanPhase): string | null {
 
 /** "11:15–17:45 Uhr" for the phase card / band tooltip. */
 export function phaseRange(phase: PlanPhase): string {
-  const hm = (iso: string) =>
-    new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const hm = (iso: string) => ortsUhrzeit(new Date(iso));
   return `${hm(phase.from)}–${hm(phase.to)} Uhr`;
 }
 
@@ -884,17 +883,17 @@ export function phaseRange(phase: PlanPhase): string {
 
 /** de-DE "31,5 ct/kWh". */
 function ctFmt(v: number): string {
-  return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh`;
+  return `${stellenFormat(1).format(v)} ct/kWh`;
 }
 
 /** de-DE "31,5" - a bare number for use inside a price breakdown. */
 function numFmt(v: number): string {
-  return v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return stellenFormat(1).format(v);
 }
 
 /** de-DE "13 %" - whole percent, the accuracy the refill share is exported at. */
 function pctFmt(v: number): string {
-  return `${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`;
+  return `${stellenFormat(0).format(v)} %`;
 }
 
 /**
@@ -1262,7 +1261,7 @@ const SURPLUS_REST_DEADBAND_KW = 0.05;
 
 /** de-DE "12:00" for the "lädt ab X Uhr" reason. */
 function slotTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return ortsUhrzeit(new Date(iso));
 }
 
 /**

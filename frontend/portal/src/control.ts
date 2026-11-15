@@ -7,7 +7,7 @@
 // jargon) - that detail lives on the technician's :8484 card.
 import type { ControlStatus, ExecutionDirection, ExecutionMode } from './api';
 import { CURTAIL_PLAN, curtailExecutionNote, type CurtailTruth } from './curtailment';
-import { fmtNum, fmtRelative } from './format';
+import { fmtNum, fmtRelative, ortsUhrzeit } from './format';
 
 /**
  * The strip's state:
@@ -705,7 +705,7 @@ export function controlReasonSlot<T extends { start: string }>(
 
 /** de-DE "11:15". */
 function hhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return ortsUhrzeit(new Date(iso));
 }
 
 /** The next engaged slot after `now` (the battery charges or discharges). */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { eur, eurAmount, fmtNum } from './format';
+import { eur, eurAmount, fmtNum, ortsUhrzeit, stellenFormat } from './format';
+import { periodLabel } from './anlage';
 import { berlinDay } from './fleet';
 import { todaySlots } from './schedule';
 import { uhrzeit } from './steuerungZeitraum';
@@ -55,6 +56,79 @@ describe('gleiche Ausgabe wie toLocaleString', () => {
       for (const stunde of [0, 1, 2, 3, 12, 23]) {
         const now = new Date(`${tag}T${String(stunde).padStart(2, '0')}:30:00`);
         expect(todaySlots(slots, now), `${tag} ${stunde}`).toEqual(alt(slots, now));
+      }
+    }
+  });
+
+  it('stellenFormat gleich toLocaleString - auch wie die alten Schreibweisen von ct, kWh, Prozent und Leitungsplan', () => {
+    for (const v of ZAHLEN) {
+      for (const stellen of [0, 1, 2, 3]) {
+        expect(stellenFormat(stellen).format(v), `${v}/${stellen}`)
+          .toBe(v.toLocaleString('de-DE', { minimumFractionDigits: stellen, maximumFractionDigits: stellen }));
+      }
+      // `pctFmt` (fahrplanWhy) nannte nur die Obergrenze; Untergrenze 0 ist dieselbe Vorgabe.
+      expect(stellenFormat(0).format(v)).toBe(v.toLocaleString('de-DE', { maximumFractionDigits: 0 }));
+      // `spurTitel` (Leitungsplan) baute je Aufruf einen `Intl.NumberFormat` mit beiden Grenzen.
+      expect(stellenFormat(1).format(v))
+        .toBe(new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(v));
+    }
+  });
+
+  it('ortsUhrzeit gleich toLocaleTimeString in Ortszeit - in mehreren Zonen, nach Umstellen von TZ und an den Zeitumstellungen', () => {
+    const vorher = process.env.TZ;
+    const momente = ['2026-03-29T00:59:59Z', '2026-03-29T01:00:00Z', '2026-03-08T06:59:00Z', '2026-03-08T07:00:00Z',
+      '2026-10-25T00:59:00Z', '2026-10-25T01:00:00Z', '2026-11-01T05:30:00Z', '2026-11-01T06:00:00Z',
+      '2026-04-05T14:59:00Z', '2026-04-05T15:00:00Z', '2026-07-07T21:59:59.999Z', '2026-07-07T22:00:00Z',
+      '2026-12-31T23:00:00Z', '2026-01-01T00:00:00Z', '2026-06-15T12:07:00Z'];
+    try {
+      // Halbe und Dreiviertelstunden (Indien, Nepal), halbstündige Sommerzeit (Lord Howe), Süd- und Nordhalbkugel.
+      for (const tz of ['Europe/Berlin', 'America/New_York', 'Asia/Kolkata', 'Asia/Kathmandu', 'Australia/Lord_Howe',
+        'Pacific/Chatham', 'UTC', 'Europe/Berlin']) {
+        process.env.TZ = tz;
+        for (const iso of momente) {
+          const d = new Date(iso);
+          expect(ortsUhrzeit(d), `${tz} ${iso}`).toBe(d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+        }
+      }
+      // Die Umstellung greift wirklich (sonst prüfte die Schleife nur eine Zone): Nepal liegt 5:45 vor UTC.
+      process.env.TZ = 'Asia/Kathmandu';
+      expect(ortsUhrzeit(new Date('2026-06-15T12:07:00Z'))).toBe('17:52');
+      const kaputt = new Date('kaputt');
+      expect(ortsUhrzeit(kaputt)).toBe(kaputt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+    } finally {
+      process.env.TZ = vorher;
+    }
+  });
+
+  it('periodLabel gleich der alten Schreibweise über toLocaleDateString', () => {
+    const ZONE = 'Europe/Berlin';
+    const tag = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: ZONE });
+    const alt = (range: string, at: Date, now: Date) => {
+      const thisYear = tag(now).slice(0, 4);
+      const atYear = at.toLocaleDateString('en-CA', { timeZone: ZONE, year: 'numeric' });
+      switch (range) {
+        case 'day':
+          return tag(at) === tag(now) ? 'Heute' : at.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', timeZone: ZONE });
+        case 'month': {
+          const name = at.toLocaleDateString('de-DE', { month: 'long', timeZone: ZONE });
+          return atYear === thisYear ? name : `${name} ${atYear}`;
+        }
+        case 'year':
+          return atYear;
+        default:
+          return 'Gesamt';
+      }
+    };
+    const nows = ['2026-11-15T10:00:00Z', '2026-12-31T23:30:00Z', '2027-01-01T00:30:00Z'];
+    const ats = ['2026-11-15T10:00:00Z', '2026-11-14T23:30:00Z', '2025-07-01T00:00:00Z', '2026-12-31T22:59:59Z',
+      '2026-12-31T23:00:00Z', '2026-03-29T01:00:00Z', 'kaputt'];
+    for (const n of nows) {
+      for (const a of ats) {
+        for (const range of ['day', 'month', 'year', 'all'] as const) {
+          const now = new Date(n);
+          const at = new Date(a);
+          expect(periodLabel(range, at, now), `${range} ${a} / ${n}`).toBe(alt(range, at, now));
+        }
       }
     }
   });

@@ -11,13 +11,30 @@ export const NBSP = ' ';
  */
 const EUR_FORMAT = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const STELLEN_FORMAT = new Map<number, Intl.NumberFormat>();
-function stellenFormat(digits: number): Intl.NumberFormat {
+/** `de-DE` mit genau `digits` Nachkommastellen - einmal gebaut, für alle Aufrufer (gleich `toLocaleString`). */
+export function stellenFormat(digits: number): Intl.NumberFormat {
   let f = STELLEN_FORMAT.get(digits);
   if (!f) {
     f = new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
     STELLEN_FORMAT.set(digits, f);
   }
   return f;
+}
+
+/**
+ * Die Uhrzeit eines Zeitpunkts in ORTSZEIT, `de-DE` „08:05“ - dieselbe Ausgabe wie
+ * `toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })`, ohne je Aufruf einen Formatierer zu bauen
+ * (Performance-Runde vp-perf3-portal-takt). Stunde und Minute in Ortszeit hängen nur am Versatz des Zeitpunkts, und
+ * den liefern `getHours`/`getMinutes` aus derselben Zeitzone wie `Intl` - auch nach einer Umstellung von `TZ` (die
+ * Tests tun das), wo ein einmal gebauter `Intl.DateTimeFormat` die alte Zone behielte. `intlGleich.test.ts` hält die
+ * Gleichheit in mehreren Zonen und an den Zeitumstellungen.
+ */
+export function ortsUhrzeit(d: Date): string {
+  const ms = d.getTime();
+  if (Number.isNaN(ms)) return 'Invalid Date';
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return `${h < 10 ? '0' : ''}${h}:${m < 10 ? '0' : ''}${m}`;
 }
 
 export function eur(v: number): string {

@@ -51,6 +51,15 @@ export function buildSitePayload(site: Site, overrides: Partial<CreateSiteInput>
 }
 
 const BERLIN_TAG = new Intl.DateTimeFormat('sv-SE', { timeZone: ZONE });
+// Die Kopfzeile des Zeitraums (`periodLabel`) rendert mit jeder Übergabe des Cockpits: ihre drei Berliner Formate
+// stehen EINMAL bereit (Performance-Runde vp-perf3-portal-takt; feste Zone, darum unabhängig von `TZ`).
+const BERLIN_JAHR = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric' });
+const BERLIN_TAG_MONAT = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long', timeZone: ZONE });
+const BERLIN_MONAT = new Intl.DateTimeFormat('de-DE', { month: 'long', timeZone: ZONE });
+/** `fmt.format(d)` wie `toLocaleDateString`: ein ungültiger Zeitpunkt wird „Invalid Date“, statt zu werfen. */
+function datumText(fmt: Intl.DateTimeFormat, d: Date): string {
+  return Number.isNaN(d.getTime()) ? 'Invalid Date' : fmt.format(d);
+}
 
 /** A moment as its Europe/Berlin ISO day ("2026-07-07"). */
 function berlinDay(at: Date): string {
@@ -115,14 +124,14 @@ export const DEFAULT_EARNINGS_RANGE: EarningsRange = 'day';
  */
 export function periodLabel(range: EarningsRange, at: Date, now: Date = new Date()): string {
   const thisYear = berlinDay(now).slice(0, 4);
-  const atYear = at.toLocaleDateString('en-CA', { timeZone: ZONE, year: 'numeric' });
+  const atYear = datumText(BERLIN_JAHR, at);
   switch (range) {
     case 'day':
       return berlinDay(at) === berlinDay(now)
         ? 'Heute'
-        : at.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', timeZone: ZONE });
+        : datumText(BERLIN_TAG_MONAT, at);
     case 'month': {
-      const name = at.toLocaleDateString('de-DE', { month: 'long', timeZone: ZONE });
+      const name = datumText(BERLIN_MONAT, at);
       return atYear === thisYear ? name : `${name} ${atYear}`;
     }
     case 'year':

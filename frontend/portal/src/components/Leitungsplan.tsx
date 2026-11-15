@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { useContainerWidth } from '../useContainerWidth';
+import { stellenFormat } from '../format';
 import {
   anteile,
   geometrie,
@@ -184,7 +185,7 @@ function spurTitel(p: Paar, h: Herkunft | null, zeit: string): string {
   const x = h ? h[p] : null;
   if (x == null) return PAAR_TEXT[p];
   const u = zeit === 'heute' ? 'kWh' : 'kW';
-  return `${PAAR_TEXT[p]}: ${new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(x)} ${u}`;
+  return `${PAAR_TEXT[p]}: ${stellenFormat(1).format(x)} ${u}`;
 }
 
 function Knoten({

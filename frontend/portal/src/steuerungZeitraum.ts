@@ -24,7 +24,7 @@
  */
 import type { EarningsSite, SteuerungTag, SteuerungZeitraum } from './api';
 import type { RechenZeile } from './erloesEbenen';
-import { NBSP } from './format';
+import { NBSP, stellenFormat } from './format';
 import {
   anzeigeTonVon,
   bestandGrundWorte,
@@ -255,11 +255,11 @@ function stand(kwh: number): string {
 }
 
 function kwhWort(kwh: number): string {
-  return `${kwh.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${NBSP}kWh`;
+  return `${stellenFormat(1).format(kwh)}${NBSP}kWh`;
 }
 
 function ctWort(ct: number, stellen: number): string {
-  return `${ct.toLocaleString('de-DE', { minimumFractionDigits: stellen, maximumFractionDigits: stellen })}${NBSP}ct`;
+  return `${stellenFormat(stellen).format(ct)}${NBSP}ct`;
 }
 
 /** „− 4,48 € + 2,16 €“ — der zweite Summand mit seinem Vorzeichen als Rechenzeichen. */
