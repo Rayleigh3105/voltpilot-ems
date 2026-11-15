@@ -1,5 +1,5 @@
 -- =============================================================================
--- V20261115170000 - Steuerlogik Stufe 4: Aufbau und Text im Portal.
+-- V20261115190000 - Steuerlogik Stufe 4: Aufbau und Text im Portal.
 -- -----------------------------------------------------------------------------
 -- Eine Logik wird im Portal geschrieben (Aufbau und Text sind zwei Ansichten
 -- desselben Textes) und als Fassung gespeichert, bevor sie läuft. Der Lebenslauf

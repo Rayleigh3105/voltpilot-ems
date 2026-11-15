@@ -202,7 +202,7 @@ Gebaut am 15.11.2026 (Bericht Abschnitte 6, 12.3, 13, 17.7): eine Logik entsteht
   Daneben die Wortliste als Nachschlageseite, aus einer byte-gleichen Kopie von [steuerlogik-woerter.json](steuerlogik-woerter.json) (`woerter.sync` in `werkzeuge.test.ts`).
 - **Prüfen** fragt den Dienst (`POST /api/v1/sites/{siteId}/steuerlogik/pruefe`) mit dem Registry-Inhalt der Anlage, beim Schreiben kurz nach der letzten Änderung; nichts wird gespeichert.
   Der Entwurf liegt bis zum Speichern im Browser.
-- **Lebenslauf** einer Fassung: `geprueft` (gespeichert, läuft nicht), `mitlaufend`, `scharf`, `stillgelegt` (V20261115170000).
+- **Lebenslauf** einer Fassung: `geprueft` (gespeichert, läuft nicht), `mitlaufend`, `scharf`, `stillgelegt` (V20261115190000).
   Gespeichert wird nur, was die Prüfung nicht sperrt; eine vorhandene Probe, die nicht besteht, sperrt (Lesart zu E5), Proben zu schreiben ist freiwillig.
   Jede Fassung trägt Urheber, Rolle, Zeit, Notiz und Prüfbericht.
 

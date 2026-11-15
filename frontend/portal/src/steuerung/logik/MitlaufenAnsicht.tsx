@@ -4,7 +4,8 @@
  * das Vergleichsprotokoll eines Tages. Freiwillig (E5 = C): ein Werkzeug, keine Pflicht.
  */
 import { useEffect, useState } from 'react';
-import { api, type LogikAnsicht, type SteuerlogikVerlauf } from '../../api';
+import { type LogikAnsicht, type SteuerlogikVerlauf } from '../../api';
+import { api } from '../../apiVoll';
 import { VpDatePicker } from '../../components/VpDatePicker';
 import { abweichungSatz, standText, tagDerAnlage, uhrzeit } from '../../steuerlogikMitlauf';
 import { Ic } from '../Ic';

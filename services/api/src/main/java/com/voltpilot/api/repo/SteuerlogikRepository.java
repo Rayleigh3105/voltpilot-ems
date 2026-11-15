@@ -48,7 +48,7 @@ public class SteuerlogikRepository {
         }
     }
 
-    /** Die Zustände einer Fassung (V20261114200000, V20261115170000). */
+    /** Die Zustände einer Fassung (V20261114200000, V20261115190000). */
     public static final String ZUSTAND_GEPRUEFT = "geprueft";
     public static final String ZUSTAND_MITLAUFEND = "mitlaufend";
     public static final String ZUSTAND_SCHARF = "scharf";

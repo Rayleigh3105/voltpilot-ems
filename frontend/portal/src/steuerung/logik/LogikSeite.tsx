@@ -9,7 +9,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  api,
   ApiError,
   type LogikAnsicht,
   type LogikGeprueft,
@@ -18,8 +17,10 @@ import {
   type Site,
   type SteuerlogikVorschau,
 } from '../../api';
+import { api } from '../../apiVoll';
 import { logikHash, parseLogik, type AnlagenSub, type LogikAnsichtId } from '../../nav';
 import { replaceCurrentNavigation } from '../../navigationBlocker';
+import { LIST_POLL_MS } from '../../pollCadence';
 import { Blatt } from '../Blatt';
 import { Ic } from '../Ic';
 import { AufbauAnsicht } from './AufbauAnsicht';
@@ -143,7 +144,7 @@ export function LogikSeite({ site, onOpenSub }: LogikSeiteProps) {
   // Mitlaufen: was die Box meldet, kommt mit dem Herzschlag - die Ansicht holt es nach.
   useEffect(() => {
     if (adresse.ansicht !== 'mitlaufen' || neueLogik) return;
-    const t = window.setInterval(() => { if (document.visibilityState === 'visible') void lade(); }, 30_000);
+    const t = window.setInterval(() => { if (document.visibilityState === 'visible') void lade(); }, LIST_POLL_MS);
     return () => window.clearInterval(t);
   }, [adresse.ansicht, lade, neueLogik]);
 

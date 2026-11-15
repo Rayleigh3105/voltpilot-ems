@@ -4,7 +4,8 @@
  * Tabelle zum Herunterladen.
  */
 import { useEffect, useState } from 'react';
-import { api, type SteuerlogikSchritt } from '../../api';
+import { type SteuerlogikSchritt } from '../../api';
+import { api } from '../../apiVoll';
 import { Ic } from '../Ic';
 import { datum } from './FassungenAnsicht';
 import { protokollCsv, rolleWort, schrittSatz } from './seite';

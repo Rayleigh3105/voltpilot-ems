@@ -139,6 +139,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   regeln: SUB_CHUNK.steuerung,
   technik: SUB_CHUNK.technik,
   befehle: SUB_CHUNK.befehle,
+  logik: SUB_CHUNK.logik,
   prognose: SUB_CHUNK.prognose,
   prognosemodelle: SUB_CHUNK.prognosemodelle,
 };

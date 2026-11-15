@@ -68,6 +68,7 @@ import type {
   Versorgung, VerteilungZeileEingabe, VorgangAnstossAntwort, VorschauKnoepfe, WagoGeraeteangaben, WagoKartenAnlage,
   WagoKartenangaben, WagoKartenwechsel, WagoSollLesung, Wetterbezug, WetterbezugAnfrage, Zaehlerwechsel,
   ZaehlerwechselVorgang,
+  LogikAnsicht, LogikBericht, LogikGeprueft, LogikGespeichert, LogikListe, LogikQuellen, LogikZustand,
 } from './api';
 import { freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
@@ -1277,6 +1278,58 @@ const weitere = {
     request<SteuerlogikVerlauf>(
       `/api/v1/sites/${siteId}/steuerlogik/${logikId}/verlauf${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`,
     ),
+  /** Stufe 4: die Logiken der Anlage im Reiter „Regeln“, mit den Rechten des Aufrufers. */
+  logikListe: (siteId: string) => request<LogikListe>(`/api/v1/sites/${siteId}/steuerlogik/logiken`),
+  /** Stufe 4: was eine Logik an der Anlage lesen und schalten kann (Auswahl im Aufbau). */
+  logikQuellen: (siteId: string) => request<LogikQuellen>(`/api/v1/sites/${siteId}/steuerlogik/quellen`),
+  /** Stufe 4: eine Logik mit Fassungen, Anfragen, Werten und Lauf. */
+  logikAnsicht: (siteId: string, logikId: string) =>
+    request<LogikAnsicht>(`/api/v1/sites/${siteId}/steuerlogik/${logikId}`),
+  /** Stufe 4: der Text einer Fassung. */
+  logikText: (siteId: string, logikId: string, fassung: number) =>
+    request<{ logikId: string; fassung: number; zustand: LogikZustand; text: string; bericht: LogikBericht | null }>(
+      `/api/v1/sites/${siteId}/steuerlogik/${logikId}/fassungen/${fassung}`,
+    ),
+  /** Stufe 4: einen Text prüfen, mit denselben Regeln wie Dienst und Box; nichts wird gespeichert. */
+  logikPruefen: (siteId: string, text: string, signal?: AbortSignal) =>
+    request<LogikGeprueft>(`/api/v1/sites/${siteId}/steuerlogik/pruefe`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+      signal,
+    }),
+  /** Stufe 4: als Fassung speichern (ohne `logikId` eine neue Logik); `basis` ist die Fassung, von der es ausging. */
+  logikSpeichern: (siteId: string, text: string, notiz: string | null, logikId?: string, basis?: number) =>
+    request<LogikGespeichert>(
+      logikId ? `/api/v1/sites/${siteId}/steuerlogik/${logikId}/fassungen` : `/api/v1/sites/${siteId}/steuerlogik`,
+      { method: 'POST', body: JSON.stringify({ text, notiz, basis: basis ?? null }) },
+    ),
+  /** Stufe 4: eine Fassung mitlaufen lassen, zur Freigabe vorlegen oder auf sie zurückgehen. */
+  logikFassungSchritt: (siteId: string, logikId: string, fassung: number, schritt: 'mitlaufen' | 'vorlegen' | 'zurueck') =>
+    request<SteuerlogikAngenommen | { vorgelegt: boolean; fassung: number }>(
+      `/api/v1/sites/${siteId}/steuerlogik/${logikId}/fassungen/${fassung}/${schritt}`,
+      { method: 'POST' },
+    ),
+  /** Stufe 4: die aktive Fassung stilllegen. */
+  logikStilllegen: (siteId: string, logikId: string) =>
+    request<{ stillgelegt: boolean }>(`/api/v1/sites/${siteId}/steuerlogik/${logikId}/stilllegen`, { method: 'POST' }),
+  /** Stufe 4: eine Änderung anfragen, zu einem Wert oder zur ganzen Logik. */
+  logikAnfragen: (siteId: string, logikId: string, text: string, kennung?: string | null) =>
+    request<{ id: string }>(`/api/v1/sites/${siteId}/steuerlogik/${logikId}/anfragen`, {
+      method: 'POST',
+      body: JSON.stringify({ text, kennung: kennung ?? null }),
+    }),
+  logikAnfrageErledigt: (siteId: string, logikId: string, anfrageId: string) =>
+    request<{ erledigt: boolean }>(`/api/v1/sites/${siteId}/steuerlogik/${logikId}/anfragen/${anfrageId}/erledigt`, {
+      method: 'POST',
+    }),
+  /** Stufe 4: das Protokoll einer Logik über einen Zeitraum (Tage der Anlage; ohne Angabe 90 Tage). */
+  logikProtokoll: (siteId: string, logikId: string, von?: string, bis?: string) =>
+    request<{ logikId: string; von: string; bis: string; schritte: SteuerlogikSchritt[] }>(
+      `/api/v1/sites/${siteId}/steuerlogik/${logikId}/protokoll${von || bis ? `?${new URLSearchParams({ ...(von ? { von } : {}), ...(bis ? { bis } : {}) })}` : ''}`,
+    ),
+  /** Stufe 4, Plattform: was der Dialog „Scharf schalten“ für eine bestimmte (vorgelegte) Fassung zeigt. */
+  steuerlogikVorschauFassung: (siteId: string, logikId: string, fassung: number) =>
+    request<SteuerlogikVorschau>(`/api/v1/admin/sites/${siteId}/steuerlogik/${logikId}/scharf?fassung=${fassung}`),
   /** Einen Wert stellen, in der Form des Dokuments (`"72 °C"`, `"on"`, `"06:00"`). */
   siteSteuerlogikWert: (siteId: string, logikId: string, kennung: string, wert: unknown) =>
     request<{ logikId: string; kennung: string; wert: unknown; stand: number; veroeffentlicht: boolean }>(

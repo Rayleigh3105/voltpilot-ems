@@ -4,7 +4,8 @@
  * (sie löst die laufende ab, im selben Zustand). Scharf schaltet in Stufe 4 die Plattform; der Kunde legt vor.
  */
 import { useEffect, useState } from 'react';
-import { api, type LogikAnsicht, type LogikFassungKopf } from '../../api';
+import { type LogikAnsicht, type LogikFassungKopf } from '../../api';
+import { api } from '../../apiVoll';
 import { Blatt } from '../Blatt';
 import { aktiveFassung, pille, rolleWort, vorgelegt, type Handlung } from './seite';
 import { probenVergleich, vergleiche, zaehle, type Teil } from './vergleich';

@@ -2,7 +2,6 @@ import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
-  api,
   ApiError,
   type LogikAnsicht,
   type LogikAnfrage,
@@ -16,6 +15,7 @@ import {
   type SteuerlogikSchritt,
   type SteuerlogikWechsel,
 } from '../src/api';
+import { api } from '../src/apiVoll';
 import { keycloak } from '../src/auth';
 import { logikHash } from '../src/nav';
 import { LogikSeite } from '../src/steuerung/logik/LogikSeite';
