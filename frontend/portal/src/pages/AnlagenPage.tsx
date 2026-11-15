@@ -119,6 +119,7 @@ import {
 } from '../components/CockpitAnpassen';
 import { useAnlageSurface } from '../useAnlageSurface';
 import { useTaktZustand } from '../gleicheAntwort';
+import { useTaktUhr } from '../useTaktUhr';
 import { CockpitMessstellenWeg } from '../components/CockpitMessstellenWeg';
 import type { AnlageSurface } from '../surface';
 import { bausteineOhneGeld, unterseiteOhneGeld } from '../anlageGeld';
@@ -486,7 +487,7 @@ function AnlagenListe({
   const [overview, setOverview] = useState<Overview | null>(null);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [now, setNow] = useState(() => new Date());
+  const { now, taktBeginn, taktEnde } = useTaktUhr(TICK_MS);
   const [drawer, setDrawer] = useState(false);
 
   // Boot-Cover: die Flottenliste hat ihr erstes echtes Bild, sobald die
@@ -513,17 +514,17 @@ function AnlagenListe({
   // Freshness tick + silent background poll (the fleet-mode pattern). Der
   // DATEN-Takt läuft über `useFreshnessPoll`, damit die Rückkehr in einen
   // verdeckten Tab sofort nachholt statt den Stand von vorhin zu zeigen.
+  // Die Uhr geht MIT den Daten weiter (`useTaktUhr`).
   useFreshnessPoll(() => {
-    setNow(new Date());
+    taktBeginn();
     api.overview().then(
-      (o) => setOverview(o),
-      () => {},
+      (o) => {
+        taktEnde();
+        setOverview(o);
+      },
+      taktEnde,
     );
   }, LIVE_POLL_MS);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
 
   return (
     <>
@@ -1015,7 +1016,8 @@ export function AnlageSeite({
   // (ein Gerät ohne Messung hat NUR diesen Zustand).
   const [consumerStatus, setConsumerStatus] = useState<ConsumerRuntimeStatus[] | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [now, setNow] = useState(() => new Date());
+  // Die Uhr der Seite (Frische, Alter, Satz): sie geht im Live-Takt MIT der Übersicht weiter (`useTaktUhr`).
+  const { now, taktBeginn, taktEnde } = useTaktUhr(TICK_MS);
   // Aufwach-Signal: die drei BEDINGTEN Lade-Effekte unten holen beim Betreten
   // sofort und hängen sonst nur an einem Intervall - das ein verdeckter Tab
   // drosselt oder einfriert. `wake` in ihrer Abhängigkeitsliste lässt sie beim
@@ -1273,13 +1275,16 @@ export function AnlageSeite({
     );
   }, ERLOES_POLL_MS);
   useFreshnessPoll(() => {
-    setNow(new Date());
+    // Die Live-Zeit der Übersicht trägt Frische-Chip, Satz und Alter: die Uhr geht mit ihr weiter, in derselben
+    // Übergabe (`useTaktUhr`), nicht schon eine Antwortzeit davor.
+    taktBeginn();
     overviewHolen().then(
       ({ o, gesendet }) => {
         overviewGesendetRef.current = gesendet;
+        taktEnde();
         setOverview(o);
       },
-      () => {},
+      taktEnde,
     );
     api.controlStatus(site.id).then(
       (c) => setControlStatus(c),
@@ -1304,10 +1309,6 @@ export function AnlageSeite({
       () => {},
     );
   }, LIVE_POLL_MS);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
 
   const ovSite = overview?.sites.find((x) => x.id === site.id) ?? null;
   const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;

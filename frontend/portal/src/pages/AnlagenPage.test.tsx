@@ -1,9 +1,11 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
+import { Profiler } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageSeite, AnlagenPage } from './AnlagenPage';
 import { api, type Site } from '../api';
 import * as adaptive from '../useAdaptiveLive';
+import * as wakeHook from '../useWake';
 import * as surfaceHook from '../useAnlageSurface';
 import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../surface';
 import { GELD_UNTERSEITEN, ohneGeld } from '../anlageGeld';
@@ -1981,6 +1983,70 @@ describe('Vorab-Abrufe nach Route', () => {
 describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('die Uhr geht MIT den Daten weiter, nicht schon am Taktbeginn - nach dem Zurückkommen sofort (vp-perf3-portal-takt)', async () => {
+    // Vorher stellte jeder Live-Takt zuerst die Uhr: eine Übergabe, die die alten Daten nur neu zeichnete, eine
+    // Antwortzeit vor den neuen. Stand die Uhr dagegen still (verdeckter Tab), muss sie sofort weiter: der alte Stand
+    // soll bis zur Antwort sein wahres Alter zeigen.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.spyOn(wakeHook, 'useWake').mockReturnValue(0);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const basis = await api.overview();
+    let freigeben: (() => void) | null = null;
+    let halten = false;
+    vi.spyOn(api, 'overview').mockImplementation(() => halten
+      ? new Promise((r) => { freigeben = () => r(basis); })
+      : Promise.resolve(basis));
+    let uebergaben = 0;
+    render(
+      <Profiler id="seite" onRender={() => { uebergaben += 1; }}>
+        <AnlageSeite
+          sites={[site]}
+          devices={[]}
+          route={{ page: 'anlagen', siteId: 's-1', sub: null }}
+          onNavigate={() => {}}
+          onReload={() => {}}
+          site={site}
+          onOpenSub={(() => {}) as never}
+          onBackToList={null}
+          onHealthFacts={(() => {}) as never}
+        />
+      </Profiler>,
+    );
+    const ruhen = () => act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    await waitFor(() => expect(api.overview).toHaveBeenCalled());
+    await ruhen();
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await ruhen();
+
+    // Ein Live-Takt mit hängender Übersicht, die Uhr läuft (eben getickt): der Taktbeginn übergibt nichts. Der Takt
+    // läuft hier über das Zurückkommen in den Tab (`useWake` ist oben stillgelegt) - im Test fielen Intervall-Takt
+    // und Uhr-Tick sonst in dieselbe Übergabe. Alle anderen Abrufe hängen ab hier, damit nur die Uhr zählt.
+    for (const [name, f] of Object.entries(api)) {
+      if (name !== 'overview' && typeof f === 'function') {
+        vi.spyOn(api, name as keyof typeof api).mockImplementation((() => new Promise(() => {})) as never);
+      }
+    }
+    halten = true;
+    let vorher = uebergaben;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await ruhen();
+    expect(uebergaben - vorher).toBe(0);
+    // Die Antwort bringt Uhr und Daten zusammen: genau eine Übergabe.
+    vorher = uebergaben;
+    await act(async () => { freigeben?.(); });
+    await ruhen();
+    expect(uebergaben - vorher).toBe(1);
+
+    // Zwei Minuten verdeckt, ohne dass ein Ticken lief: das Zurückkommen stellt die Uhr sofort, vor der Antwort.
+    vi.setSystemTime(Date.now() + 120_000);
+    vorher = uebergaben;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await ruhen();
+    expect(uebergaben - vorher).toBe(1);
+    await act(async () => { freigeben?.(); });
   });
 
   it('Ist-Werte und Frische alle 10 s, der Plan alle 30 s, die Erlöse nur alle 5 min', async () => {
