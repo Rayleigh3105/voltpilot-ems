@@ -147,15 +147,28 @@ describe('beobachteteRegister · die Zeilen', () => {
     expect(ohne.name).toBe('deye.hybrid_3p.battery.soc');
   });
 
-  it('eine Ablehnung trägt den Grund des SERVERS, nie einen erfundenen', () => {
+  it('eine Ablehnung übersetzt den rohen Box-Code des SERVERS, nie roh (Befund PR 1886)', () => {
     const [zeile] = zeilen({
-      selections: [auswahl({ applyStatus: 'rejected', applyReason: 'Buslast zu hoch.' })],
+      selections: [auswahl({ applyStatus: 'rejected', applyReason: 'edge_too_old' })],
       katalog: [punkt()],
       now: NOW,
     });
     expect(zeile.zustand).toBe('abgelehnt');
     expect(zeile.ton).toBe('warn');
-    expect(zeile.grund).toBe('Buslast zu hoch.');
+    expect(zeile.grund).toBe(
+      'Die Software Ihrer VoltPilot-Box unterstützt diesen Punkt noch nicht - '
+      + 'bitte ein Update der Box einspielen.',
+    );
+    expect(zeile.grund).not.toContain('edge_too_old');
+  });
+
+  it('ein unbekannter künftiger Ablehn-Code fällt auf den allgemeinen Satz zurück, nie roh', () => {
+    const [zeile] = zeilen({
+      selections: [auswahl({ applyStatus: 'rejected', applyReason: 'noch_nicht_uebersetzt' })],
+      katalog: [punkt()],
+      now: NOW,
+    });
+    expect(zeile.grund).toBe('Die VoltPilot-Box hat die Auswahl abgelehnt.');
   });
 
   it('wartet, solange die Box den Punkt nicht angewandt hat', () => {

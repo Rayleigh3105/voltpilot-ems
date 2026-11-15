@@ -31,6 +31,8 @@ import {
   type BeobachteteZeile,
   type BrueckeVorschlag,
 } from '../beobachteteRegister';
+import { fmtNum } from '../format';
+import { ablehngrundText } from '../messpunktAblehngrund';
 import { BEOBACHTEN_HINWEIS } from '../registerFamilie';
 import { ANDERES, MESSWERT_ARTEN, MESSWERT_FRAGE, definitionAusArt, einheitFehler, messwertArt, messwertHinweis } from '../eigenerMesswert';
 import { NO_DATA } from '../nodata';
@@ -81,6 +83,18 @@ function bytes(value: number) {
   if (value < 1_000_000) return `${Math.round(value / 1000)} kB/Jahr`;
   if (value < 1_000_000_000) return `${(value / 1_000_000).toFixed(1)} MB/Jahr`;
   return `${(value / 1_000_000_000).toFixed(2)} GB/Jahr`;
+}
+
+/**
+ * Datenvolumen pro Jahr, schon in GB gerechnet: unter 1 GB in MB wechseln - ein
+ * einzelnes Register liegt oft bei wenigen MB im Jahr, "0,0 GB/Jahr" behauptete
+ * dort fälschlich nichts Geplantes. Deutsches Zahlenformat wie die übrigen
+ * Mengenangaben im Portal (`fmtNum`).
+ */
+function datenvolumenProJahr(gbProJahr: number): string {
+  return gbProJahr < 1
+    ? fmtNum(gbProJahr * 1000, 'MB/Jahr', 0)
+    : fmtNum(gbProJahr, 'GB/Jahr', 1);
 }
 
 function cadence(value: number | null) {
@@ -579,7 +593,12 @@ export function BeobachteteRegister({
       )}
       {state && state.status !== 'idle' && (
         <p className="vp-measure-global-status" role="status">
-          <strong>{state.statusReason}</strong> {state.volumeEstimate.totalGbPerYear.toFixed(3)} GB/Jahr geplant.
+          {/* ⚠ Bei „rejected" liefert der Server denselben rohen Box-Code wie je
+              Zeile (MeasurementSelectionService.state()) - nie roh zeigen. */}
+          <strong>{state.status === 'rejected' ? ablehngrundText(state.statusReason) : state.statusReason}</strong>
+          {/* Ohne geplantes Volumen (z. B. alles abgelehnt) ist der Satz nichtssagend - dann weglassen. */}
+          {state.volumeEstimate.totalGbPerYear > 0
+            && ` ${datenvolumenProJahr(state.volumeEstimate.totalGbPerYear)} geplant.`}
         </p>
       )}
       {!state || !quiet ? (
@@ -642,7 +661,7 @@ export function BeobachteteRegister({
         consequences={pending?.enabled ? [
           `Kadenz: ${cadence(pendingCadence)}.`,
           estimate ? `Gerätelast: ${estimate.samplesPerMinute} Samples/min, ${estimate.dutyCyclePercent} % Buslast.` : 'Gerätelast wird berechnet …',
-          estimate ? `Datenvolumen gesamt: ${estimate.totalGbPerYear.toFixed(3)} GB/Jahr.` : 'Datenvolumen wird berechnet …',
+          estimate ? `Datenvolumen gesamt: ${datenvolumenProJahr(estimate.totalGbPerYear)}.` : 'Datenvolumen wird berechnet …',
           'Die Aufzeichnung startet jetzt. Frühere Werte werden nicht rückwirkend nachgeladen.',
           'Statusfolge: angefordert → auf der Box angewendet → erster Wert.',
         ] : [
@@ -678,7 +697,7 @@ export function BeobachteteRegister({
         </div>
         <p className="vp-measure-readonly"><Icon name="lock" size={15} /> Ausschließlich lesbar. Keine Schreibparameter.</p>
         {customError && <p role="alert" className="vp-assist-error">{customError}</p>}
-        {customEstimate && <p role="status" className="vp-measure-global-status">{customEstimate.samplesPerMinute} Samples/min · {customEstimate.dutyCyclePercent} % Buslast · {customEstimate.totalGbPerYear.toFixed(3)} GB/Jahr. Start jetzt, kein Backfill.</p>}
+        {customEstimate && <p role="status" className="vp-measure-global-status">{customEstimate.samplesPerMinute} Samples/min · {customEstimate.dutyCyclePercent} % Buslast · {datenvolumenProJahr(customEstimate.totalGbPerYear)}. Start jetzt, kein Backfill.</p>}
       </Modal>
     </section>
   );

@@ -80,6 +80,39 @@ describe('BeobachteteRegister · die Liste (Teil 1)', () => {
     expect(document.body).not.toHaveTextContent('beobachtet ·');
   });
 
+  it.each([
+    // Ein einzelnes Register liegt oft bei wenigen MB im Jahr - unter 1 GB wird
+    // deshalb in MB gewechselt, statt "0,0 GB/Jahr" fälschlich nichts zu behaupten.
+    [0.004, '4 MB/Jahr geplant.'],
+    [0.4, '400 MB/Jahr geplant.'],
+    [1.4, '1,4 GB/Jahr geplant.'],
+    [1234.567, '1.234,6 GB/Jahr geplant.'],
+  ])('die Kurzfassung nennt das geplante Volumen von %s GB im deutschen Zahlenformat: %s', async (gb, erwartet) => {
+    vi.mocked(api.measurementSelection).mockResolvedValue({
+      ...state, status: 'applied', statusReason: 'Von der VoltPilot-Box bestätigt.',
+      selections: [beobachtet],
+      volumeEstimate: { ...estimate, totalGbPerYear: gb },
+    } as never);
+    render(<BeobachteteRegister deviceId="d" familien={['hybrid_3p']} />);
+    // RTL normalisiert das geschützte Leerzeichen zwischen Zahl und Einheit zu einem gewöhnlichen.
+    expect(await screen.findByText(erwartet)).toBeVisible();
+    expect(document.body).not.toHaveTextContent(String(gb));
+  });
+
+  it('lässt den Satz zum geplanten Volumen weg, wenn nichts geplant ist (z. B. alles abgelehnt)', async () => {
+    vi.mocked(api.measurementSelection).mockResolvedValue({
+      ...state, status: 'rejected', statusReason: 'edge_too_old',
+      selections: [{ ...beobachtet, applyStatus: 'rejected', applyReason: 'edge_too_old' }],
+      volumeEstimate: { ...estimate, totalGbPerYear: 0 },
+    } as never);
+    render(<BeobachteteRegister deviceId="d" familien={['hybrid_3p']} />);
+    await screen.findAllByText(/Update der Box einspielen/);
+    const kurzfassung = document.querySelector('.vp-measure-global-status');
+    expect(kurzfassung).not.toBeNull();
+    expect(kurzfassung).toHaveTextContent('Update der Box einspielen');
+    expect(kurzfassung).not.toHaveTextContent('GB/Jahr geplant');
+  });
+
   it('spricht auf einem HTTP-Gerät von MESSWERTEN, nie von Registern', async () => {
     render(<BeobachteteRegister deviceId="d" familien={['goe.api_v2']} registerFaehig={false} geraetName="go-e Charger" />);
     expect(await screen.findByRole('heading', { name: 'Beobachtete Messwerte' })).toBeVisible();
@@ -214,7 +247,8 @@ describe('BeobachteteRegister · der Katalog-Einschub (Teil 2)', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: 'PV2 Strom aufzeichnen' }));
     expect(await screen.findByText('Die Aufzeichnung startet jetzt. Frühere Werte werden nicht rückwirkend nachgeladen.')).toBeVisible();
     await waitFor(() => expect(screen.getByText(/2 Samples\/min/)).toBeVisible());
-    expect(screen.getByText(/0.140 GB\/Jahr/)).toBeVisible();
+    // Unter 1 GB wird in MB gewechselt, deutsches Zahlenformat statt Dezimalpunkt.
+    expect(screen.getByText(/140 MB\/Jahr/)).toBeVisible();
     expect(screen.getByText('Statusfolge: angefordert → auf der Box angewendet → erster Wert.')).toBeVisible();
   });
 
