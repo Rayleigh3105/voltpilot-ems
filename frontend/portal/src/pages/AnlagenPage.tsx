@@ -1916,24 +1916,34 @@ export function AnlageSeite({
   // nicht: ohne Zuordnung oder ohne liefernde Geräte ist er leer.
   // Übernommen wird nur die Antwort des JÜNGSTEN Abrufs - auch eine, deren Abruf vor der neuen Live-Zeit
   // losging und die darum nicht wiederholt wird.
+  //
+  // ⚠ Ohne Zuordnung fragt die Seite im LISTEN-Takt statt im Live-Takt (vp-perf3-portal-takt): sagten alle drei
+  // Rollen zuletzt `zuordnung_vorhanden = false`, gibt es keinen Rollen-Wert, der mit der Live-Zeit wandert - das
+  // Cockpit zeigt dann den v1-Schnappschuss aus `/overview`. Gefragt wird trotzdem weiter (alle `LIST_POLL_MS`),
+  // damit eine neu angelegte Zuordnung ohne Neuladen erscheint, wie jede andere Liste des Cockpits. Ein
+  // fehlgeschlagener Abruf (`null`) zählt NICHT als „ohne Zuordnung": er bleibt im Live-Takt.
   const liveTs = ovSite?.live?.ts ?? null;
-  const rollenAbrufRef = useRef<{ siteId: string; reloadKey: number; gesendet: number; nummer: number } | null>(null);
+  const rollenAbrufRef = useRef<{
+    siteId: string; reloadKey: number; gesendet: number; nummer: number; ohneZuordnung: boolean;
+  } | null>(null);
   useEffect(() => {
     const letzter = rollenAbrufRef.current;
-    if (
-      liveTs != null &&
-      letzter?.siteId === site.id &&
-      letzter.reloadKey === reloadKey &&
-      letzter.gesendet >= overviewGesendetRef.current
-    ) {
-      return;
-    }
-    const abruf = { siteId: site.id, reloadKey, gesendet: Date.now(), nummer: (letzter?.nummer ?? 0) + 1 };
+    const gleicheSeite = letzter?.siteId === site.id && letzter.reloadKey === reloadKey;
+    if (liveTs != null && gleicheSeite && letzter.gesendet >= overviewGesendetRef.current) return;
+    // Halber Live-Takt Spielraum: die Live-Zeit wechselt im Live-Takt, ein Abruf genau nach `LIST_POLL_MS` soll
+    // nicht an ein paar Millisekunden scheitern und erst einen Live-Takt später gehen.
+    if (liveTs != null && gleicheSeite && letzter.ohneZuordnung
+      && Date.now() - letzter.gesendet < LIST_POLL_MS - LIVE_POLL_MS / 2) return;
+    const abruf = {
+      siteId: site.id, reloadKey, gesendet: Date.now(), nummer: (letzter?.nummer ?? 0) + 1, ohneZuordnung: false,
+    };
     rollenAbrufRef.current = abruf;
     Promise.all(['pv', 'consumer', 'grid'].map((rolle) =>
       api.rollenWert(abruf.siteId, rolle).catch(() => null),
     )).then((werte) => {
-      if (rollenAbrufRef.current?.nummer === abruf.nummer) setRollenStand({ siteId: abruf.siteId, werte });
+      if (rollenAbrufRef.current?.nummer !== abruf.nummer) return;
+      abruf.ohneZuordnung = werte.every((w) => w != null && !w.zuordnung_vorhanden);
+      setRollenStand({ siteId: abruf.siteId, werte });
     });
   }, [site.id, liveTs, reloadKey]);
   const eigenWerteById = useMemo(() => werteNachId(eigenWerte), [eigenWerte]);

@@ -2037,7 +2037,8 @@ describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
       sites: basis.sites.map((s) => ({ ...s, live: { ...s.live!, ts: new Date(ts).toISOString() } })),
     }));
     const lesen = vi.spyOn(api, 'rollenWert').mockImplementation(async (_siteId, role) => ({
-      role, zuordnung_vorhanden: false, wert: null, einheit: 'kW', unvollstaendig: false, geraete: [], stand: null,
+      role, zuordnung_vorhanden: role === 'pv', wert: role === 'pv' ? 2 : null, einheit: 'kW', unvollstaendig: false,
+      geraete: [], stand: null,
     }));
     const ruhen = () => act(async () => { await new Promise((r) => setTimeout(r, 30)); });
     renderSeite();
@@ -2056,6 +2057,45 @@ describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
     await ruhen();
     expect(lesen).toHaveBeenCalledTimes(6);
     for (const role of ['pv', 'consumer', 'grid']) expect(lesen).toHaveBeenCalledWith('s-1', role);
+  });
+
+  it('ohne Zuordnung kommen die Rollen im Listentakt, nicht mit jeder Live-Zeit (vp-perf3-portal-takt)', async () => {
+    // Je 65 s offener Seite waren 18 von 62 Abrufen Rollen - auch ohne eine einzige Zuordnung, deren Wert mit der
+    // Live-Zeit wandern könnte. Jetzt: alle `LIST_POLL_MS` (30 s), damit eine neue Zuordnung trotzdem erscheint.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const basis = await api.overview();
+    const overview = vi.spyOn(api, 'overview').mockImplementation(async () => ({
+      ...basis,
+      sites: basis.sites.map((s) => ({ ...s, live: { ...s.live!, ts: new Date().toISOString() } })),
+    }));
+    let zugeordnet = false;
+    const lesen = vi.spyOn(api, 'rollenWert').mockImplementation(async (_siteId, role) => ({
+      role, zuordnung_vorhanden: zugeordnet && role === 'pv', wert: null, einheit: 'kW', unvollstaendig: false,
+      geraete: [], stand: null,
+    }));
+    const ruhen = () => act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    const takt = async () => {
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+      await ruhen();
+    };
+    renderSeite();
+    await waitFor(() => expect(overview).toHaveBeenCalled());
+    await waitFor(() => expect(lesen).toHaveBeenCalledTimes(3));
+    await ruhen();
+
+    // Zwei Live-Takte mit neuer Live-Zeit: keine Rolle hat eine Zuordnung, nichts zu holen.
+    await takt();
+    await takt();
+    expect(lesen).toHaveBeenCalledTimes(3);
+    // Nach 30 s fragt der Listentakt - und findet die inzwischen angelegte Zuordnung.
+    zugeordnet = true;
+    await takt();
+    expect(lesen).toHaveBeenCalledTimes(6);
+    // Mit Zuordnung wandert der Wert wieder mit jeder Live-Zeit.
+    await takt();
+    expect(lesen).toHaveBeenCalledTimes(9);
   });
 });
 
