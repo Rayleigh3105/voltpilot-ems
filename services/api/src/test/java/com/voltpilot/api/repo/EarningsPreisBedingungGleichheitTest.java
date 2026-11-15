@@ -159,7 +159,9 @@ class EarningsPreisBedingungGleichheitTest {
             if (!summe && !zeilenLesung) {
                 continue; // andere Abfragen des Repositorys: nicht umgeformt
             }
-            assertThat(a.sql()).as("keine Preis-Bedingung mehr im WHERE").doesNotContain("AND " + PREIS + " ");
+            // Als Bedingung eines CASE (B4: Preisspalten je Zeile, „CASE WHEN … AND PREIS THEN“) ist sie erlaubt.
+            assertThat(a.sql().replace("AND " + PREIS + " THEN", ""))
+                    .as("keine Preis-Bedingung mehr im WHERE").doesNotContain("AND " + PREIS + " ");
             if (summe) {
                 // Summen: alte Form = Preis-Bedingung im WHERE, kein FILTER/HAVING auf sie.
                 String alt = a.sql()

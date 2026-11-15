@@ -234,9 +234,12 @@ class PortalwegMesskundeAbnahmeTest {
      */
     @Test
     void portalwegEinesReinenMesskunden() throws Exception {
-        String portal = Files.readString(Path.of("..", "..", "frontend", "portal", "src", "api.ts"));
+        // Seit #1907 steht das api-Objekt in apiVoll.ts; api.ts behält den Einstieg.
+        Path src = Path.of("..", "..", "frontend", "portal", "src");
+        String portal = Files.readString(src.resolve("api.ts")) + Files.readString(src.resolve("apiVoll.ts"));
         for (String route : PORTAL_ROUTEN) {
-            assertThat(portal).as("Das Portal ruft " + route + " (api.ts) — sonst spielt dieser Lauf einen Umweg")
+            assertThat(portal).as("Das Portal ruft " + route + " (api.ts/apiVoll.ts) — sonst spielt dieser Lauf einen "
+                    + "Umweg")
                     .contains(route);
         }
 
