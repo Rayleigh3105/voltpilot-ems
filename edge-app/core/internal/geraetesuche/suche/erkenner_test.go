@@ -738,3 +738,142 @@ func TestHTTPZeitlimitBeginntNachDemTakt(t *testing.T) {
 		t.Fatalf("%v", pfade)
 	}
 }
+
+// halbtot dials the loopback listener behind the device, but the first
+// verloren attempts get no answer: they wait until their deadline, like a SYN
+// lost on a weak WLAN.
+type halbtot struct {
+	ziel     string
+	mu       sync.Mutex
+	verloren int
+	versuche []time.Time
+}
+
+func (h *halbtot) dial(ctx context.Context, _ string) (net.Conn, error) {
+	h.mu.Lock()
+	h.versuche = append(h.versuche, time.Now())
+	verloren := h.verloren > 0
+	if verloren {
+		h.verloren--
+	}
+	h.mu.Unlock()
+	if verloren {
+		<-ctx.Done()
+		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: ctx.Err()}
+	}
+	var d net.Dialer
+	return d.DialContext(ctx, "tcp", h.ziel)
+}
+
+func (h *halbtot) gezaehlt() []time.Time {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.versuche)
+}
+
+func halbtotesGeraet(t *testing.T, h *halbtot, takt Takt) *Lauf {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	h.ziel = ln.Addr().String()
+	l, grund := Neu(Umgebung{BoxArt: geraetesuche.BoxArtDocker, LANHost: "10.77.0.20", Dial: h.dial, Takt: takt}, nil)
+	if grund != "" {
+		t.Fatal(grund)
+	}
+	return l
+}
+
+// VoltPilotGATE 05.11.2026: the Shelly Pro 3 at -80 dBm was missing from the
+// list. A port 80 attempt without an answer in time is repeated once, after
+// the pause and through the pacer; the device is found.
+func TestPort80WiederholtDenVerbindungsversuch(t *testing.T) {
+	ip := netip.MustParseAddr("10.77.0.34")
+	takt := Takt{JeSekunde: 100000, Zeitlimit: 150 * time.Millisecond}
+	h := &halbtot{verloren: 1}
+	l := halbtotesGeraet(t, h, takt)
+	if offen, alive := l.portOffen(context.Background(), ip, 80); !offen || !alive {
+		t.Fatalf("offen %v alive %v, want a find after the repeat", offen, alive)
+	}
+	v := h.gezaehlt()
+	if len(v) != 2 {
+		t.Fatalf("%d attempts, want 2", len(v))
+	}
+	if d := v[1].Sub(v[0]); d < takt.Zeitlimit+httpPause(takt) {
+		t.Fatalf("repeat after %v, want deadline and pause (%v)", d, takt.Zeitlimit+httpPause(takt))
+	}
+
+	// The repeat takes its slot in the pacer: one connection per second.
+	h = &halbtot{}
+	l = halbtotesGeraet(t, h, Takt{JeSekunde: 1, Zeitlimit: 50 * time.Millisecond})
+	if _, err := l.verbinde(context.Background(), ip, 502); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Lock()
+	h.verloren = 1
+	h.mu.Unlock()
+	if offen, _ := l.portOffen(context.Background(), ip, 80); !offen {
+		t.Fatal("no find after the repeat")
+	}
+	v = h.gezaehlt()
+	if len(v) != 3 {
+		t.Fatalf("%d attempts, want 3", len(v))
+	}
+	for i := 1; i < len(v); i++ {
+		if d := v[i].Sub(v[i-1]); d < 900*time.Millisecond {
+			t.Fatalf("attempt %d after %v, the pacer allows one per second", i+1, d)
+		}
+	}
+}
+
+// A dead port 80 is tried twice and stays closed within two deadlines and the
+// pause; a refused port is an answer and is not repeated, and no other port is
+// repeated.
+func TestPort80NurEinmalWiederholt(t *testing.T) {
+	ip := netip.MustParseAddr("10.77.0.34")
+	takt := Takt{JeSekunde: 100000, Zeitlimit: 150 * time.Millisecond}
+	h := &halbtot{verloren: 99}
+	l := halbtotesGeraet(t, h, takt)
+	start := time.Now()
+	if offen, alive := l.portOffen(context.Background(), ip, 80); offen || alive {
+		t.Fatalf("dead port: offen %v alive %v", offen, alive)
+	}
+	if d, grenze := time.Since(start), 2*takt.Zeitlimit+httpPause(takt)+300*time.Millisecond; d > grenze {
+		t.Fatalf("dead port took %v, want at most %v", d, grenze)
+	}
+	if n := len(h.gezaehlt()); n != 2 {
+		t.Fatalf("dead port: %d attempts, want 2", n)
+	}
+
+	for _, port := range []int{502, 8899, 443} {
+		h = &halbtot{verloren: 99}
+		l = halbtotesGeraet(t, h, takt)
+		if offen, _ := l.portOffen(context.Background(), ip, port); offen {
+			t.Fatalf("port %d: open", port)
+		}
+		if n := len(h.gezaehlt()); n != 1 {
+			t.Fatalf("port %d: %d attempts, want 1", port, n)
+		}
+	}
+
+	versuche := 0
+	refused := func(context.Context, string) (net.Conn, error) {
+		versuche++
+		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	}
+	l, _ = Neu(Umgebung{BoxArt: geraetesuche.BoxArtDocker, LANHost: "10.77.0.20", Dial: refused, Takt: takt}, nil)
+	if offen, alive := l.portOffen(context.Background(), ip, 80); offen || !alive || versuche != 1 {
+		t.Fatalf("refused: offen %v alive %v, %d attempts, want closed, alive, 1", offen, alive, versuche)
+	}
+}

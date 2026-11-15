@@ -65,10 +65,25 @@ func (l *Lauf) oeffne(ctx context.Context, ip netip.Addr, port int) (net.Conn, e
 	return l.dial(dctx, netip.AddrPortFrom(ip, uint16(port)).String())
 }
 
+// portNochmal is the port whose connection attempt is repeated once.
+const portNochmal = 80
+
 // portOffen is the gentle port check: connect, close at once. alive is true
 // when the device answered at all (connected or refused).
+//
+// The attempt on port 80 is repeated once when it got no answer in time or
+// broke, like the device's first HTTP request (VoltPilotGATE 05.11.2026: the
+// Shelly Pro 3 at -80 dBm was missing from the list; a single attempt of 1.5 s
+// is the likely reason). The
+// repeat waits the same pause, takes its slot in the pacer and has the same
+// deadline; a refused connection is an answer and is never repeated, and no
+// other port is.
 func (l *Lauf) portOffen(ctx context.Context, ip netip.Addr, port int) (offen, alive bool) {
 	c, err := l.verbinde(ctx, ip, port)
+	if err != nil && port == portNochmal && ctx.Err() == nil && abgerissen(err) &&
+		ruhe(ctx, httpPause(l.u.Takt)) {
+		c, err = l.verbinde(ctx, ip, port)
+	}
 	if err == nil {
 		_ = c.Close()
 		return true, true
