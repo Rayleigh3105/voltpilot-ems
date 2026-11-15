@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const now = new Date().toISOString();
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
@@ -455,3 +457,65 @@ test('customer configures OCPP and follows requested accepted and measured state
   await expect(page.getByRole('button', { name: 'Prüfung abbrechen', exact: true })).toHaveCount(0);
   await capture('09-ergebnis', '.vp-ocpp-control > fieldset:last-of-type');
 });
+
+/**
+ * vp-ladesaeule-entfernen, Weg 2: die Seite der Ladesäule selbst - „Nie für eine Ladesäule" galt bisher auch für
+ * ihr eigenes „⋯"-Menü. Der neue Gefahr-Eintrag nutzt DIESELBE Rückfrage-Komponente wie der Anbinde-Assistent und
+ * das Zeilenmenü im Aufbau, ruft `DELETE …/charging-config/charge-points/{id}` und führt danach zur Anlage zurück -
+ * diese Seite hätte sonst nichts mehr zu zeigen.
+ *
+ * Bilder vorher/nachher nur auf Wunsch (`LADESAEULE_BILDER=<Ordner>`), nie ins Repository.
+ */
+const BILDER = process.env.LADESAEULE_BILDER;
+
+for (const breite of [390, 1440] as const) {
+  test(`Ladesäulen-Seite: „⋯" bietet „Ladesäule entfernen …" an, führt nach der Bestätigung zur Anlage zurück (${breite})`, async ({ page }, info) => {
+    const passend = breite < 720 ? info.project.name === 'mobile-webkit' : info.project.name === 'desktop-chromium';
+    test.skip(!passend, 'je Breite nur die passende Maschine');
+    await page.setViewportSize({ width: breite, height: breite < 720 ? 844 : 900 });
+    await mock(page);
+    let removed: string | null = null;
+    await page.route('**/api/v1/sites/site-e2e/charging-config/charge-points/**', async (route) => {
+      removed = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() ?? '');
+      return route.fulfill({
+        json: { gridLimitKw: null, priorityChargePointIds: [], chargePoints: [], removedChargePointIds: [removed] },
+      });
+    });
+    await page.goto('/e2e/ocpp-wallbox.html');
+    await expect(page.getByRole('heading', { name: 'Wallbox Carport', level: 1 })).toBeVisible();
+
+    if (BILDER) {
+      mkdirSync(BILDER, { recursive: true });
+      await page.screenshot({ path: join(BILDER, `ladesaeulen-seite-vorher-${breite}.png`), fullPage: true });
+    }
+
+    await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+    const eintrag = page.getByRole('menuitem', { name: /Ladesäule entfernen/ });
+    await expect(eintrag).toBeVisible();
+    await eintrag.click();
+
+    const dialog = page.getByRole('dialog', { name: 'Ladesäule entfernen' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Soll VoltPilot die Ladesäule „Wallbox Carport“ nicht mehr annehmen?')).toBeVisible();
+    await expect(dialog.getByText(/endet dadurch NICHT/)).toBeVisible();
+    // Das Modal blendet ein (Rechner: Opacity, Telefon < 720 px: ein Blatt, das per `transform` hochfährt -
+    // Bewegungs-Programm P6, `shell.css`). `toBeVisible()` wartet nicht auf das Ende dieser Animation, ein Bild
+    // mitten drin zeigt die Fläche durchscheinend bzw. verschoben; diese zwei Zusicherungen schon.
+    await expect(dialog).toHaveCSS('opacity', '1');
+    await expect(dialog).toHaveCSS('transform', 'none');
+
+    if (BILDER) {
+      await page.screenshot({ path: join(BILDER, `ladesaeulen-seite-rueckfrage-${breite}.png`), fullPage: true });
+    }
+
+    await dialog.getByRole('button', { name: 'Ladesäule entfernen' }).click();
+    await expect(dialog).toBeHidden();
+    // Zurück zur Anlage - diese Seite hätte sonst nichts mehr zu zeigen.
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#back');
+    expect(removed).toBe('CP-CARPORT');
+
+    if (BILDER) {
+      await page.screenshot({ path: join(BILDER, `ladesaeulen-seite-nachher-${breite}.png`), fullPage: true });
+    }
+  });
+}

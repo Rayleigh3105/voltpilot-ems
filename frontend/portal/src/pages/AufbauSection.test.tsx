@@ -1548,3 +1548,79 @@ describe('AufbauSection · Gerätesuche (Konzept „Geräte suchen“)', () => {
     expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 });
+
+describe('AufbauSection · Ladesäule entfernen (vp-ladesaeule-entfernen)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const halle = {
+    deviceId: 'gw', chargePointId: 'halle', label: 'Halle', priority: false,
+    connected: true, ready: true, lastSeen: new Date().toISOString(),
+  };
+
+  it('bietet im Zeilenmenü „Ladesäule entfernen …“ an - eine Ladesäule hat keine löschbare Messkomponente', async () => {
+    stub();
+    vi.mocked(api.siteChargers).mockResolvedValue({ budget: null, chargers: [halle] });
+    rendere();
+    const zeileHalle = await zeile('cp-halle');
+    fireEvent.click(within(zeileHalle).getByRole('button', { name: /Weitere Aktionen/ }));
+    const eintraege = (await screen.findAllByRole('menuitem')).map((m) => m.textContent);
+    expect(eintraege.some((t) => t?.includes('Ladesäule entfernen'))).toBe(true);
+    expect(eintraege.some((t) => t?.includes('Komponente löschen'))).toBe(false);
+  });
+
+  it('fragt nach den Folgen, nimmt erst nach der Bestätigung zurück und lässt die Zeile ohne Neuladen verschwinden', async () => {
+    stub();
+    vi.mocked(api.siteChargers).mockResolvedValue({ budget: null, chargers: [halle] });
+    const removeChargePoint = vi.spyOn(api, 'removeChargePoint').mockResolvedValue({
+      gridLimitKw: null, priorityChargePointIds: [], chargePoints: [], removedChargePointIds: ['halle'],
+    });
+    rendere();
+    const zeileHalle = await zeile('cp-halle');
+    fireEvent.click(within(zeileHalle).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Ladesäule entfernen/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Ladesäule entfernen' });
+    expect(within(dialog).getByText(/Soll VoltPilot die Ladesäule „Halle“ nicht mehr annehmen\?/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/endet dadurch NICHT/)).toBeInTheDocument();
+    expect(removeChargePoint).not.toHaveBeenCalled();
+
+    // Ein zweiter Abruf der Anlage wäre ein Neuladen - genau das soll hier nicht passieren.
+    const siteEntitiesCalls = vi.mocked(api.siteEntities).mock.calls.length;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ladesäule entfernen' }));
+    await waitFor(() => expect(removeChargePoint).toHaveBeenCalledWith(site.id, 'halle'));
+    await waitFor(() => expect(screen.queryByText('Halle')).toBeNull());
+    expect(vi.mocked(api.siteEntities).mock.calls.length).toBe(siteEntitiesCalls);
+  });
+
+  it('zeigt den Grund des Servers verständlich, wenn das Entfernen abgelehnt wird', async () => {
+    stub();
+    vi.mocked(api.siteChargers).mockResolvedValue({ budget: null, chargers: [halle] });
+    vi.spyOn(api, 'removeChargePoint').mockRejectedValue(new ApiError(404, 'Diese Anlage führt keine eingetragene Ladepunkt-Kennung "halle".'));
+    rendere();
+    const zeileHalle = await zeile('cp-halle');
+    fireEvent.click(within(zeileHalle).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Ladesäule entfernen/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ladesäule entfernen' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ladesäule entfernen' }));
+    expect(await within(dialog).findByText(/keine eingetragene Ladepunkt-Kennung/)).toBeInTheDocument();
+    // Der Dialog bleibt offen - kein stiller Abbruch über etwas, das fehlschlug.
+    expect(screen.getByText('Halle')).toBeInTheDocument();
+  });
+
+  it('ohne „ladepunkt.anbinden“ fehlt der Eintrag - dasselbe Recht wie der Server-Endpunkt', async () => {
+    const me = rechteSeed('JW').me;
+    const ohne = (rechte: readonly string[]) => rechte.filter((r) => r !== 'ladepunkt.anbinden');
+    setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: ohne(me.unternehmen_rechte),
+      standorte: me.standorte.map((st) => ({ ...st, rechte: ohne(st.rechte) })),
+    });
+    stub();
+    vi.mocked(api.siteChargers).mockResolvedValue({ budget: null, chargers: [halle] });
+    rendere();
+    const zeileHalle = await zeile('cp-halle');
+    fireEvent.click(within(zeileHalle).getByRole('button', { name: /Weitere Aktionen/ }));
+    // Das Recht fehlt - die Rechte-Weiche am `RowMenu` (wie am Netzanschluss) lässt den Eintrag selbst dann weg.
+    expect(screen.queryByRole('menuitem', { name: /Ladesäule entfernen/ })).toBeNull();
+  });
+});
