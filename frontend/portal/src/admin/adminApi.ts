@@ -77,9 +77,12 @@ export interface ProvisionedDevice {
 
 /**
  * Ein Gerät, das sich gemeldet hat (CSR hochgeladen) und auf keinen Claim
- * trifft — die andere Hälfte des Tippfehler-Fensters: das Gerät „hat seinen
- * Teil getan", der Kunde hat eine andere Referenz getippt, und bis hierher war
- * dieser Zustand auf BEIDEN Seiten unsichtbar.
+ * trifft — das Gerät „hat seinen Teil getan", aber kein Kundenkonto passt
+ * dazu, und bis hierher war dieser Zustand auf BEIDEN Seiten unsichtbar. Dass
+ * ein Kunde dabei etwas falsch getippt hat, ist NICHT die einzige Erklärung —
+ * die Box kann sich auch ohne jeden Kunden-Tastendruck selbst gemeldet haben
+ * (vp-geraete-herkunft); `werkstattAbnahmeAm` sagt, ob wenigstens die
+ * Werkstatt sie abgenommen hat.
  *
  * `everIssued` unterscheidet „nie beansprucht" von „war beansprucht und wurde
  * getrennt" (ein Zertifikat wurde schon einmal ausgestellt).
@@ -92,6 +95,8 @@ export interface PendingEnrollment {
   csrUpdatedAt: string;
   everIssued: boolean;
   issuedAt: string | null;
+  /** Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz; `null` = selbst angemeldet. */
+  werkstattAbnahmeAm: string | null;
 }
 
 /**
@@ -152,6 +157,8 @@ export interface AdminDeviceRow {
   loader?: string | null;
   /** Nur Edge Light: die `LOADER_STAND`-Marke des Loaders im Flash; `null` = nicht gemeldet. */
   loaderStand?: number | null;
+  /** Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz; `null` = selbst angemeldet. */
+  werkstattAbnahmeAm: string | null;
 }
 
 export interface ProvisionDeviceInput {

@@ -22,7 +22,7 @@ import {
   boxFakten, linieDerBox, messwerteLuecke, stufe1Hinweis, verbindungSicht, verlaufSicht,
   type BoxVerbindungSicht,
 } from '../../geraeteUpdates';
-import { PENDING_KONTEXT, pendingErreichbarText, pendingRows } from '../../onboardingFunnel';
+import { PENDING_KONTEXT, herkunftText, pendingErreichbarText, pendingRows } from '../../onboardingFunnel';
 import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { LIVE_POLL_MS } from '../../pollCadence';
@@ -371,6 +371,7 @@ function AktenKopf({
                 {row.tenantName} › {row.siteName}
               </span>
             )}
+            {deviceRow && <span className="vp-muted">{herkunftText(deviceRow.werkstattAbnahmeAm)}</span>}
           </span>
         }
         actions={
@@ -1056,6 +1057,7 @@ function EinrichtungReiter({ boxRef, deviceRow, pendingRow, werkstattZeile, werk
               </div>
             )}
             <p className="vp-muted">{PENDING_KONTEXT}.</p>
+            <p className="vp-muted">{herkunftText(pendingRow.werkstattAbnahmeAm)}</p>
             <p>{p?.hint}</p>
             <p className="vp-muted vp-text-sm">Meldet sich seit {fmtRelative(pendingRow.csrUpdatedAt, jetzt)}{pendingRow.deviceInfo ? ` · ${pendingRow.deviceInfo}` : ''}.</p>
           </Card>

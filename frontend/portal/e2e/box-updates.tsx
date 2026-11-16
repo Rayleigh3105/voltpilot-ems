@@ -181,6 +181,9 @@ const LETZTE_MELDUNG: Record<string, string | null> = {
   d4: new Date(Date.now() - 4 * 3600_000).toISOString(),
   d5: null,
 };
+// Herkunft (vp-geraete-herkunft): „Box Werkstatt" (d2) kam aus der Werkstatt, jede andere
+// verbundene Box in dieser Bühne hat sich selbst angemeldet - keine dritte Wertung erfinden.
+const WERKSTATT_ABNAHME: Record<string, string> = { d2: vor(20 * 24 * 3600_000) };
 // Scheibe S2 (Geräteakte, Geräte-Liste): eine Box in der Werkstatt (noch nicht
 // verbunden), eine gedruckte Aufkleber-ID ohne jedes Gerät dahinter.
 const werkstattBoxen: WerkstattBox[] = [
@@ -244,13 +247,21 @@ Object.assign(adminApi, {
       lastSeenAt: d.deviceId! in LETZTE_MELDUNG
         ? LETZTE_MELDUNG[d.deviceId!]
         : new Date(Date.now() - 40_000).toISOString(),
+      werkstattAbnahmeAm: WERKSTATT_ABNAHME[d.deviceId!] ?? null,
     })),
     { deviceId: null, externalRef: gedrucktOhneGeraet, label: null, siteId: null, siteName: null, tenantId: null,
       tenantName: null, kind: 'inverter', ist: null, soll: null, sollSeq: null, state: null, reason: null,
       blocker: null, lastSeenAt: null, reportedAt: null, provisioned: true, note: 'Charge 2026-09',
-      provisionedAt: vor(5 * 24 * 3600_000) },
+      provisionedAt: vor(5 * 24 * 3600_000), werkstattAbnahmeAm: null },
   ],
-  listPendingEnrollments: async () => [{ externalRef: 'edge-xyz234q', deviceInfo: 'Box im Lager', csrUpdatedAt: now, everIssued: false, issuedAt: null }],
+  // Herkunft (vp-geraete-herkunft): eine Anmeldung aus der Werkstatt neben einer selbst
+  // angemeldeten - die eine ehrliche Angabe, nie eine Vermutung über die Ursache.
+  listPendingEnrollments: async () => [
+    { externalRef: 'edge-xyz234q', deviceInfo: 'Box im Lager', csrUpdatedAt: now,
+      everIssued: false, issuedAt: null, werkstattAbnahmeAm: null },
+    { externalRef: 'edge-wrk88z2k', deviceInfo: null, csrUpdatedAt: vor(2 * 24 * 3600_000 + 60_000),
+      everIssued: false, issuedAt: null, werkstattAbnahmeAm: vor(10 * 24 * 3600_000) },
+  ],
   createRollout: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   setUpdateTarget: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   revertUpdateTarget: async () => { throw new Error('Vorschau: Keine Änderung an echten Boxen.'); },

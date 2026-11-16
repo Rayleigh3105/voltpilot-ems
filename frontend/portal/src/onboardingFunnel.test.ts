@@ -7,6 +7,7 @@ import {
   TYPO_SUSPECT_AFTER_MS,
   deviceRows,
   funnelStages,
+  herkunftText,
   pendingErreichbarText,
   pendingRows,
   versionDisplay,
@@ -26,13 +27,14 @@ function device(ref: string, claimed: boolean): ProvisionedDevice {
   };
 }
 
-function pending(ref: string, agoMs: number, everIssued = false): PendingEnrollment {
+function pending(ref: string, agoMs: number, everIssued = false, werkstattAbnahmeAm: string | null = null): PendingEnrollment {
   return {
     externalRef: ref,
     deviceInfo: 'VP Edge · Raspberry Pi',
     csrUpdatedAt: new Date(NOW.getTime() - agoMs).toISOString(),
     everIssued,
     issuedAt: everIssued ? '2026-07-20T00:00:00Z' : null,
+    werkstattAbnahmeAm,
   };
 }
 
@@ -78,15 +80,21 @@ describe('pendingRows', () => {
     expect(rows.map((r) => r.externalRef)).toEqual(['edge-alt', 'edge-mittel', 'edge-frisch']);
   });
 
-  it('calls a long wait a typo suspicion and a fresh one normal', () => {
+  it('names a long wait honestly - how long, never a guessed cause - and a fresh one normal', () => {
     const [alt, frisch] = pendingRows(
       [pending('edge-alt', TYPO_SUSPECT_AFTER_MS + 3600_000), pending('edge-frisch', 3600_000)],
       NOW,
     );
     expect(alt.suspect).toBe(true);
-    expect(alt.hint).toContain('Tippfehler');
+    expect(alt.hint).toBe('Meldet sich seit 1 Tag, noch keinem Kunden zugeordnet');
+    expect(alt.hint).not.toContain('Tippfehler');
     expect(frisch.suspect).toBe(false);
     expect(frisch.hint).toContain('normal');
+  });
+
+  it('counts the days of a long wait, never 0', () => {
+    const [zweiTage] = pendingRows([pending('edge-2d', 2 * 24 * 3600_000 + 1000)], NOW);
+    expect(zweiTage.hint).toBe('Meldet sich seit 2 Tagen, noch keinem Kunden zugeordnet');
   });
 
   it('never calls a device that WAS connected a typo - that is a different state', () => {
@@ -122,6 +130,15 @@ describe('pendingRows', () => {
     expect(PENDING_KONTEXT).toBe('Noch bei keinem Kunden eingerichtet');
   });
 
+  it('passes the Werkstatt acceptance date through unchanged - the one honest fact about origin', () => {
+    const [selbst] = pendingRows([pending('edge-selbst', 0)], NOW);
+    expect(selbst.werkstattAbnahmeAm).toBeNull();
+    const [werkstatt] = pendingRows(
+      [pending('edge-werkstatt', 0, false, '2026-11-01T09:00:00Z')], NOW,
+    );
+    expect(werkstatt.werkstattAbnahmeAm).toBe('2026-11-01T09:00:00Z');
+  });
+
   it('does not mutate the input list', () => {
     const list = [pending('edge-b', 1000), pending('edge-a', 2000)];
     pendingRows(list, NOW);
@@ -137,7 +154,7 @@ const fleetRow = (over: Partial<AdminDeviceRow> = {}): AdminDeviceRow => ({
   ist: 'edge-2026.08.1-9b37439a02c1', soll: 'edge-2026.08.1', sollSeq: 14,
   channel: 'stable', pinned: false, state: 'bestaetigt', reason: null, blocker: null,
   lastSeenAt: null, reportedAt: null, provisioned: false, note: null, provisionedAt: null,
-  trust: null, ...over,
+  trust: null, werkstattAbnahmeAm: null, ...over,
 });
 
 const crossed = {
@@ -206,6 +223,13 @@ describe('Funnel-Stufe 4 „Vertrauen gekreuzt"', () => {
     expect(stages.find((s) => s.id === 'verbunden')!.count).toBe(2);
     // Ohne Inventar (älteres Backend) bleibt die alte Quelle gültig.
     expect(funnelStages(registry, [], []).find((s) => s.id === 'verbunden')!.count).toBe(0);
+  });
+});
+
+describe('herkunftText', () => {
+  it('names a Werkstatt acceptance with its date, or says the box registered itself - nothing else', () => {
+    expect(herkunftText(null)).toBe('Selbst angemeldet');
+    expect(herkunftText('2026-11-01T09:00:00Z')).toBe('Aus der Werkstatt · 01.11.2026');
   });
 });
 

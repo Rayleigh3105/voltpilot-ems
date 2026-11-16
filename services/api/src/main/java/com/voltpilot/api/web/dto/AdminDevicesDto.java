@@ -56,6 +56,10 @@ public record AdminDevicesDto(List<DeviceRowDto> devices) {
             // Geräte & Updates G8 (additiv): das gemeldete Gerät, null = nicht
             // gemeldet; loaderStand ist die LOADER_STAND-Marke des Loaders im
             // Flash (Loader-Selbstupdate, nur Edge Light).
-            String geraetModell, String geraetArch, String loader, Integer loaderStand) {
+            String geraetModell, String geraetArch, String loader, Integer loaderStand,
+            // Herkunft (vp-geraete-herkunft): null = die Box hat sich ohne Werkstatt-Abnahme
+            // selbst angemeldet; sonst das Datum ihrer Werkstatt-Abnahme (hand ODER dienst,
+            // auch Abnahmen des alten Werkstatt-Dienstes in der Übergangsfrist).
+            Instant werkstattAbnahmeAm) {
     }
 }

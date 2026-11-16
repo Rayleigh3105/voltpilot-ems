@@ -4,9 +4,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -286,7 +290,11 @@ public class RolloutRepository {
             Instant controlCheckedAt, Boolean controlConfirmed, Boolean controlCertified,
             String rootKeyIds, String trustSetKeyIds, String trustSetGeneratedAt,
             String trustSetError, Instant targetVerdictAt, Instant currentSince,
-            String geraetModell, String geraetArch, String loader, Integer loaderStand) {
+            String geraetModell, String geraetArch, String loader, Integer loaderStand,
+            // Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz, über denselben
+            // edge_ref/external_ref-Stringabgleich wie in WerkstattRepository (keine FK zwischen den
+            // Domänen); null = die Box hat sich ohne Werkstatt-Abnahme selbst angemeldet.
+            Instant werkstattAbnahmeAm) {
     }
 
     /**
@@ -316,12 +324,15 @@ public class RolloutRepository {
                                 (SELECT max(tm.received_at) FROM telemetry tm
                                   WHERE tm.device_id = d.id)) AS last_seen,
                        c.checked_at AS control_checked_at, c.all_match AS control_confirmed,
-                       c.certified AS control_certified
+                       c.certified AS control_certified,
+                       wa.werkstatt_abnahme_am
                   FROM device d
                   JOIN site s ON s.id = d.site_id
                   JOIN tenant t ON t.id = s.tenant_id
                   LEFT JOIN device_update_status u ON u.device_id = d.id
                   LEFT JOIN device_control_status c ON c.device_id = d.id
+                  LEFT JOIN (SELECT edge_ref, min(erfasst_am) AS werkstatt_abnahme_am
+                               FROM werkstatt_abnahme GROUP BY edge_ref) wa ON wa.edge_ref = d.external_ref
                  WHERE d.ausgebaut_am IS NULL
                  ORDER BY t.name, s.name, d.external_ref
                 """, (rs, i) -> new FleetDeviceRow(
@@ -365,12 +376,34 @@ public class RolloutRepository {
                         rs.getString("loader"),
                         // Loader-Selbstupdate: die LOADER_STAND-Marke im Flash
                         // (null = nicht gemeldet, nie 0 erfinden).
-                        (Integer) rs.getObject("loader_stand")));
+                        (Integer) rs.getObject("loader_stand"),
+                        instant(rs, "werkstatt_abnahme_am")));
     }
 
     /** Prüft, ob eine Geräte-Id überhaupt existiert (bevor sie ein Ziel bekommt). */
     public Optional<FleetDeviceRow> fleetDevice(UUID deviceId) {
         return fleetDevices().stream().filter(d -> d.deviceId().equals(deviceId)).findFirst();
+    }
+
+    /**
+     * Werkstatt-Abnahmedatum je Referenz (vp-geraete-herkunft), für gedruckte Aufkleber-IDs, die
+     * noch kein Gerät sind - {@link #fleetDevices} trägt dasselbe für die verbundene Flotte schon
+     * über den JOIN. Derselbe String-Abgleich wie überall sonst zwischen den beiden Domänen, keine
+     * FK; leer = keine der Referenzen war je in der Werkstatt.
+     */
+    public Map<String, Instant> werkstattAbnahmeAm(Collection<String> refs) {
+        if (refs.isEmpty()) {
+            return Map.of();
+        }
+        String platzhalter = refs.stream().map(r -> "?").collect(Collectors.joining(","));
+        Map<String, Instant> ergebnis = new HashMap<>();
+        jdbc.query("SELECT edge_ref, min(erfasst_am) AS abnahme_am FROM werkstatt_abnahme "
+                        + "WHERE edge_ref IN (" + platzhalter + ") GROUP BY edge_ref",
+                rs -> {
+                    ergebnis.put(rs.getString("edge_ref"), rs.getTimestamp("abnahme_am").toInstant());
+                },
+                refs.toArray());
+        return ergebnis;
     }
 
     private static TargetRow mapTarget(ResultSet rs, int rowNum) throws SQLException {
