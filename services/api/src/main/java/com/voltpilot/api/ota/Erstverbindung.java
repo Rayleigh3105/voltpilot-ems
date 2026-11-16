@@ -1,0 +1,219 @@
+package com.voltpilot.api.ota;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * Die Regel „neueste Software beim ersten Verbinden" (Konzept
+ * vp-erstverbindung-update, Entscheid des Captains 16.11.2026: E1 = A, E2 = B,
+ * E3 = A) - rein, ohne DB, ohne Broker, ohne Uhr aus der Umgebung (das
+ * {@link RolloutStates}-Muster).
+ *
+ * <p><b>Die Regel:</b> Bei der ersten Meldung einer neu verbundenen,
+ * update-fähigen Box weist die Plattform ihr die Fassung ihrer Linie mit der
+ * höchsten {@code release_seq} zu, die heute zuweisbar ist: signiert, passende
+ * Box-Art ({@link BoxArt#sperrgrund} ohne Grund), bei Edge Light alle Programme
+ * des Manifests geprüft im Portal. Ob schon eine andere Box diese Fassung
+ * bestätigt hat, spielt keine Rolle (E2 = B).
+ *
+ * <ul>
+ *   <li><b>Neu verbunden</b> heißt: Die erste Meldung dieser Gerätezeile ist
+ *       jünger als {@link #FENSTER}, und die Box hatte nie eine Zuweisung. So
+ *       greift die Regel nur bei neuen Verbindungen, nie rückwirkend für die
+ *       Flotte.</li>
+ *   <li>Ein unsigniertes Release zählt nie als „neueste" (N4).</li>
+ *   <li>Ist das neueste signierte Release noch nicht zuweisbar (die Programme
+ *       laden noch hoch), nimmt die Regel nicht das vorige, sondern wartet auf
+ *       den nächsten Takt, bis {@link #FENSTER} nach der ersten Meldung; danach
+ *       gibt sie mit Grund auf.</li>
+ *   <li>Läuft die Box schon diese oder eine neuere Fassung, ist nichts fällig.</li>
+ *   <li>Stufe 1, eine Box anderer Art, ein beendeter Kundenbereich: nichts, mit
+ *       Grund.</li>
+ *   <li>Der Schalter des Betriebs ({@link Schalter}) hält die Automatik je Linie
+ *       oder ganz an.</li>
+ * </ul>
+ *
+ * <p>Was danach geschieht, ist der vorhandene Update-Weg, unverändert: die
+ * Zuweisung geht über {@link RolloutService#createRollout} mit dem Urheber
+ * {@link #URHEBER}, die Box prüft Signatur, lädt, probt mit Selbsttest und nimmt
+ * bei einem Fehler zurück. Jede Entscheidung außer „warten" steht einmal im
+ * Journal ({@code rollout_event}, Akteur {@link #URHEBER}); danach ist die Box
+ * für die Regel erledigt.
+ */
+public final class Erstverbindung {
+
+    /** Der Akteur im Journal; das Portal zeigt „Automatik · erstes Verbinden". */
+    public static final String URHEBER = "erstverbindung";
+
+    /** Wie lange nach der ersten Meldung die Regel noch zuweist. */
+    public static final Duration FENSTER = Duration.ofHours(1);
+
+    /**
+     * Bis wann der Wächter eine Box noch ansieht: lang genug, dass eine Box, die
+     * im Fenster nicht entschieden wurde (Takt ausgefallen), ihren Grund noch ins
+     * Journal bekommt.
+     */
+    public static final Duration NACHLAUF = FENSTER.multipliedBy(2);
+
+    /** Journal-Ereignis: die Box läuft schon die neueste Fassung ihrer Linie. */
+    public static final String EREIGNIS_AKTUELL = "erstverbindung_aktuell";
+    /** Journal-Ereignis: die Box bekommt nichts (Stufe 1, andere Art, …), mit Grund. */
+    public static final String EREIGNIS_GESPERRT = "erstverbindung_gesperrt";
+    /** Journal-Ereignis: der Schalter des Betriebs steht auf aus. */
+    public static final String EREIGNIS_AUS = "erstverbindung_aus";
+    /** Journal-Ereignis: im Fenster ging nichts zuzuweisen, mit Grund. */
+    public static final String EREIGNIS_AUFGEGEBEN = "erstverbindung_aufgegeben";
+    /** Journal-Ereignis: jemand hat den Schalter umgelegt (Akteur = Mensch). */
+    public static final String EREIGNIS_SCHALTER = "erstverbindung_schalter";
+
+    public static final String GRUND_ART_UNBEKANNT =
+            "Die Box hat noch nicht gemeldet, ob sie eine Docker-Box oder Edge Light ist.";
+    public static final String GRUND_KEINE_FASSUNG =
+            "Für diese Linie liegt keine signierte Fassung im Register.";
+    public static final String GRUND_FENSTER =
+            "Die erste Stunde nach der ersten Meldung ist verstrichen, bevor zugewiesen werden konnte.";
+
+    private Erstverbindung() {
+    }
+
+    /** Was die Regel mit einer Box tut. */
+    public enum Art {
+        /** Nicht neu verbunden, hatte schon eine Zuweisung, oder schon entschieden. */
+        NICHTS,
+        /** Zuweisen: {@link Urteil#releaseSeq()}. */
+        ZUWEISEN,
+        /** Nichts fällig: läuft schon die neueste Fassung. */
+        AKTUELL,
+        /** Bekommt nichts, mit Grund. */
+        GESPERRT,
+        /** Schalter aus. */
+        AUS,
+        /** Im nächsten Takt erneut versuchen, kein Journal. */
+        WARTEN,
+        /** Fenster verstrichen, mit Grund. */
+        AUFGEBEN
+    }
+
+    /**
+     * Das Urteil: {@code releaseSeq}/{@code release} beim Zuweisen (bei
+     * {@link Art#AKTUELL} die laufende Fassung, soweit bekannt), {@code grund}
+     * bei Sperre, Warten, Aufgeben und Aus.
+     */
+    public record Urteil(Art art, Long releaseSeq, String release, String grund) {
+
+        static Urteil nur(Art art) {
+            return new Urteil(art, null, null, null);
+        }
+
+        static Urteil mitGrund(Art art, String grund) {
+            return new Urteil(art, null, null, grund);
+        }
+    }
+
+    /**
+     * Eine Box, wie der Wächter sie sieht.
+     *
+     * @param boxArt            {@link BoxArt#ofDevice} ({@code null} = unbekannt)
+     * @param vertrauenGekreuzt Wurzel und geprüftes Vertrauens-Set gemeldet
+     * @param loader            gemeldeter Loader-Stand ({@code null} = keine Angabe)
+     * @param laeuft            der laufende Stempel ({@code null} = nichts gemeldet)
+     * @param ersteMeldung      erste Meldung dieser Gerätezeile ({@code null} = vor der Regel)
+     * @param hatteZuweisung    die Box hat oder hatte je eine Zuweisung
+     * @param entschieden       die Regel hat für diese Box schon entschieden (Journal)
+     * @param beendet           ihr Kundenbereich ist beendet
+     */
+    public record Box(String boxArt, boolean vertrauenGekreuzt, String loader, String laeuft,
+            Instant ersteMeldung, boolean hatteZuweisung, boolean entschieden, boolean beendet) {
+    }
+
+    /**
+     * Ein Release des Registers.
+     *
+     * @param nichtZuweisbar warum es gerade noch nicht zuweisbar ist (Edge Light:
+     *                       Programme fehlen im Portal), sonst {@code null}
+     */
+    public record Release(long releaseSeq, String version, String boxArt, boolean signiert,
+            String nichtZuweisbar) {
+    }
+
+    /** Der Schalter des Betriebs; ohne Eintrag an. */
+    public record Schalter(boolean alle, boolean docker, boolean light) {
+
+        public static final Schalter AN = new Schalter(true, true, true);
+
+        /** Ist die Automatik für diese Linie an? {@code null} = Linie unbekannt, nur der globale. */
+        public boolean an(String linie) {
+            if (!alle) {
+                return false;
+            }
+            if (BoxArt.DOCKER.equals(linie)) {
+                return docker;
+            }
+            if (BoxArt.LIGHT.equals(linie)) {
+                return light;
+            }
+            return true;
+        }
+    }
+
+    public static Urteil of(Box box, List<Release> register, Schalter schalter, Instant now) {
+        if (box.ersteMeldung() == null || box.hatteZuweisung() || box.entschieden()
+                || now.isAfter(box.ersteMeldung().plus(NACHLAUF))) {
+            return Urteil.nur(Art.NICHTS);
+        }
+        boolean imFenster = !now.isAfter(box.ersteMeldung().plus(FENSTER));
+        String linie = box.boxArt();
+        if (!schalter.an(linie)) {
+            return Urteil.mitGrund(Art.AUS, schalter.alle()
+                    ? "Die Automatik ist für " + linieName(linie) + " abgeschaltet."
+                    : "Die Automatik ist abgeschaltet.");
+        }
+        if (box.beendet()) {
+            return Urteil.mitGrund(Art.GESPERRT, UpdateEignung.GRUND_BEENDET);
+        }
+        if (linie == null) {
+            return warten(imFenster, GRUND_ART_UNBEKANNT);
+        }
+        String sperre = BoxArt.sperrgrund(linie, linie, box.vertrauenGekreuzt(), box.loader());
+        if (sperre != null) {
+            return Urteil.mitGrund(Art.GESPERRT, sperre);
+        }
+        Release neueste = register.stream()
+                .filter(r -> r.signiert() && linie.equals(r.boxArt()))
+                .max(Comparator.comparingLong(Release::releaseSeq)).orElse(null);
+        if (neueste == null) {
+            return Urteil.mitGrund(Art.GESPERRT, GRUND_KEINE_FASSUNG);
+        }
+        Release ist = box.laeuft() == null ? null : register.stream()
+                .filter(r -> linie.equals(r.boxArt()))
+                .filter(r -> RolloutStates.releaseIsRunning(r.version(), box.laeuft()))
+                .max(Comparator.comparingLong(Release::releaseSeq)).orElse(null);
+        if (ist != null && ist.releaseSeq() >= neueste.releaseSeq()) {
+            return new Urteil(Art.AKTUELL, ist.releaseSeq(), ist.version(), null);
+        }
+        if (neueste.nichtZuweisbar() != null) {
+            return warten(imFenster, neueste.nichtZuweisbar());
+        }
+        if (!imFenster) {
+            return Urteil.mitGrund(Art.AUFGEBEN, GRUND_FENSTER);
+        }
+        return new Urteil(Art.ZUWEISEN, neueste.releaseSeq(), neueste.version(), null);
+    }
+
+    private static Urteil warten(boolean imFenster, String grund) {
+        return Urteil.mitGrund(imFenster ? Art.WARTEN : Art.AUFGEBEN, grund);
+    }
+
+    /** Die Linie in Worten, wie die Seite sie nennt. */
+    public static String linieName(String linie) {
+        if (BoxArt.DOCKER.equals(linie)) {
+            return "Docker-Boxen";
+        }
+        if (BoxArt.LIGHT.equals(linie)) {
+            return "Edge Light";
+        }
+        return "Boxen unbekannter Art";
+    }
+}

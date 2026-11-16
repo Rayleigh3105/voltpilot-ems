@@ -51,5 +51,13 @@ public class RolloutWatcher {
             // Ein Wächter, der an einem Durchlauf stirbt, hört auf zu wachen.
             log.warn("OTA rollout watcher tick failed: {}", e.getMessage());
         }
+        // Neueste Software beim ersten Verbinden (Erstverbindung): im selben Takt,
+        // damit ein verpasster Takt nachgeholt wird; getrennt gefangen, damit ein
+        // Fehler hier das Fortschreiben der Zustände nicht aufhält.
+        try {
+            rollouts.erstverbindung(Instant.now());
+        } catch (Exception e) {
+            log.warn("OTA erstverbindung tick failed: {}", e.getMessage());
+        }
     }
 }

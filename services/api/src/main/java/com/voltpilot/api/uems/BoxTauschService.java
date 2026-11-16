@@ -110,8 +110,7 @@ public class BoxTauschService {
                 || exists("SELECT EXISTS (SELECT 1 FROM asset WHERE device_id=?)", newId)
                 || exists("SELECT EXISTS (SELECT 1 FROM site WHERE lead_device_id=?)", newId)
                 || exists("SELECT EXISTS (SELECT 1 FROM device_measurement_selection WHERE device_id=?)", newId)
-                || exists("SELECT EXISTS (SELECT 1 FROM device_control_activation WHERE device_id=?)", newId)
-                || exists("SELECT EXISTS (SELECT 1 FROM device_update_target WHERE device_id=?)", newId)) {
+                || exists("SELECT EXISTS (SELECT 1 FROM device_control_activation WHERE device_id=?)", newId)) {
             throw konflikt("nachfolger_belegt", "Die neue Box hat bereits eigene Aufgaben oder Einstellungen.");
         }
         if (exists("SELECT EXISTS (SELECT 1 FROM device_succession WHERE tenant_id=? "
@@ -155,7 +154,10 @@ public class BoxTauschService {
                 FROM device_measurement_selection WHERE device_id=?
                 """, actor.sub() == null ? "box_tausch" : actor.sub(), actor.name(), newId);
         counts.put("freigaben", jdbc.update("UPDATE device_control_activation SET device_id=? WHERE device_id=?", newId, oldId));
-        counts.put("ota_zuordnungen", jdbc.update("UPDATE device_update_target SET device_id=?,published_at=NULL WHERE device_id=?", newId, oldId));
+        // Das OTA-Ziel gehört zur Hardware, nicht zur Anlage (N5 der Erstverbindung): Es bleibt an der
+        // alten Box, wie ihre Software-Rückmeldungen. Die neue Box behält ihr eigenes, geprüftes Ziel
+        // (etwa das der Automatik beim ersten Verbinden) - ein übertragenes, ungeprüftes könnte ihr eine
+        // ältere oder fremde Fassung zuweisen und blockierte bisher den Tausch einer frisch verbundenen Box.
         // Ohne Gemeinsame Steuerung an der Anlage: eine Abfrage, kein Schreiben, kein Zähler (I6).
         if (verbund != null) {
             int mitglieder = verbund.uebertragen(old.siteId(), oldId, newId, at, actor).size();

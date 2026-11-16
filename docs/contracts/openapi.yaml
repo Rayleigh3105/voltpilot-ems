@@ -7326,7 +7326,10 @@ paths:
         by a trigger on device_update_status whenever a value CHANGES: `stand`
         = a new running stamp with `vorher` (null = first report), angenommen /
         abgelehnt / zurueckgestellt = its verdict on a target, fehlgeschlagen /
-        zurueckgenommen with the box's reason). Times are server time. The
+        zurueckgenommen with the box's reason). The first-connect automation
+        adds `automatik_aktuell` (release = the running one) and
+        `automatik_nicht` (grund = why nothing was assigned), both with `von`
+        = `erstverbindung`. Times are server time. The
         derived rollout state is not part of it. Platform-admin only.
       parameters:
         - name: deviceId
@@ -7345,6 +7348,52 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: The device does not exist. }
+  /api/v1/admin/edge-updates/erstverbindung:
+    get:
+      tags: [admin]
+      summary: The switch of the automation "newest software on first connect" (ota.Erstverbindung).
+      description: >
+        On the first report of a newly connected, update-capable box the
+        platform assigns the highest assignable release of its line itself
+        (signed, matching box kind, Edge Light programs complete), with actor
+        `erstverbindung` in the journal. This switch holds it per line or for
+        all boxes, without a deploy; default on (no row = on). `eintraege`
+        names who last changed each area and when. Platform-admin only.
+      responses:
+        "200":
+          description: >
+            `{alle, docker, light, eintraege: [{bereich, an, geaendertVon,
+            geaendertAm}]}`.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/edge-updates/erstverbindung/{bereich}:
+    post:
+      tags: [admin]
+      summary: Turn the first-connect automation on or off for one area.
+      description: >
+        `bereich` is `alle`, `docker` or `light`. Every change appends
+        `erstverbindung_schalter` with the admin as actor to the rollout
+        journal; setting the current value again changes nothing. Boxes the
+        automation already decided keep their decision. Platform-admin only.
+      parameters:
+        - name: bereich
+          in: path
+          required: true
+          schema: { type: string, enum: [alle, docker, light] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [an]
+              properties:
+                an: { type: boolean }
+      responses:
+        "200": { description: The switch after the change, same shape as GET. }
+        "400": { description: Unknown area. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/edge-updates/eignung:
     get:
       tags: [admin]

@@ -257,6 +257,60 @@ public class RolloutRepository {
                 RolloutRepository::mapEvent, limit);
     }
 
+    // ── Erstverbindung: die Automatik beim ersten Verbinden ──────────────
+
+    /**
+     * Eine Box, die sich seit {@code seit} zum ersten Mal gemeldet hat
+     * ({@code device_update_status.erste_meldung_am}), mit dem, was die Regel
+     * {@code ota.Erstverbindung} über ihre Vorgeschichte wissen muss.
+     *
+     * @param hatteZuweisung sie hat eine Zuweisung oder hatte je eine (Journal)
+     * @param entschieden    die Regel hat für sie schon etwas ins Journal geschrieben
+     */
+    public record ErstmeldungRow(UUID deviceId, Instant ersteMeldungAm, boolean hatteZuweisung,
+            boolean entschieden) {
+    }
+
+    public List<ErstmeldungRow> erstmeldungenSeit(Instant seit, String urheber) {
+        return jdbc.query("""
+                SELECT u.device_id, u.erste_meldung_am,
+                       EXISTS (SELECT 1 FROM device_update_target t WHERE t.device_id = u.device_id)
+                       OR EXISTS (SELECT 1 FROM rollout_event e WHERE e.device_id = u.device_id
+                                     AND e.event = 'target_assigned') AS hatte_zuweisung,
+                       EXISTS (SELECT 1 FROM rollout_event e WHERE e.device_id = u.device_id
+                                 AND e.actor = ?) AS entschieden
+                  FROM device_update_status u
+                  JOIN device d ON d.id = u.device_id AND d.ausgebaut_am IS NULL
+                 WHERE u.erste_meldung_am >= ?
+                 ORDER BY u.erste_meldung_am
+                """, (rs, i) -> new ErstmeldungRow(rs.getObject("device_id", UUID.class),
+                        instant(rs, "erste_meldung_am"), rs.getBoolean("hatte_zuweisung"),
+                        rs.getBoolean("entschieden")),
+                urheber, Timestamp.from(seit));
+    }
+
+    /** Ein Eintrag des Schalters ({@code bereich} = alle, docker, light). */
+    public record SchalterRow(String bereich, boolean an, String geaendertVon, Instant geaendertAm) {
+    }
+
+    public List<SchalterRow> erstverbindungSchalter() {
+        return jdbc.query("SELECT bereich, an, geaendert_von, geaendert_am "
+                        + "FROM ota_erstverbindung_schalter ORDER BY bereich",
+                (rs, i) -> new SchalterRow(rs.getString("bereich"), rs.getBoolean("an"),
+                        rs.getString("geaendert_von"), instant(rs, "geaendert_am")));
+    }
+
+    /** Den Schalter eines Bereichs setzen; {@code true}, wenn er sich dadurch änderte. */
+    public boolean setzeErstverbindungSchalter(String bereich, boolean an, String von) {
+        return jdbc.update("""
+                INSERT INTO ota_erstverbindung_schalter (bereich, an, geaendert_von, geaendert_am)
+                VALUES (?, ?, ?, now())
+                ON CONFLICT (bereich) DO UPDATE SET an = EXCLUDED.an,
+                        geaendert_von = EXCLUDED.geaendert_von, geaendert_am = now()
+                 WHERE ota_erstverbindung_schalter.an IS DISTINCT FROM EXCLUDED.an
+                """, bereich, an, von) > 0;
+    }
+
     // ── Portal-Apply: die erteilte Einmal-Freigabe ───────────────────────
 
 

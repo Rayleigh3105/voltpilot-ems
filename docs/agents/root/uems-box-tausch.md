@@ -12,7 +12,10 @@ Box bleibt 404. `BoxTauschService` schreibt alle Übernahmen in einer Transaktio
   Kennung und gleichem Broker keine geänderte Anlagenidentität. Anlagenwechsel
   braucht ein eigenes Paket mit Edge-Release, keine verdeckte Cloud-Umbuchung.
 - Übernommen werden führende Rolle, laufende Zuständigkeiten, Komponenten- und
-  Asset-Verweise, aktuelle Mess-Selektionen, Freigabe und OTA-Ziel. Die alte Box
+  Asset-Verweise, aktuelle Mess-Selektionen und Freigabe. Das OTA-Ziel gehört zur
+  Hardware und bleibt an der alten Box; die neue Box behält ihr eigenes (etwa das
+  der Automatik beim ersten Verbinden, `ota.Erstverbindung`), und ein eigenes Ziel
+  belegt den Nachfolger nicht. Die alte Box
   erhält `status=retired` und `ausgebaut_am`; beide Identitäten bleiben erhalten.
   Der bestehende Endgültigkeits-Trigger und alle `ausgebaut_am`-Filter gelten.
 - Zuständigkeiten enden/beginnen halboffen auf derselben Minute. Ein Wechsel in

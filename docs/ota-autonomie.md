@@ -17,11 +17,29 @@ flowchart TD
 
 Die Geräte benötigen keine zweite Apply-Freigabe und keinen Autonomie-Schalter. Der Updater ist ein regulärer Dienst. Signaturen, Schutz gegen unzulässigen Versionsrückschritt, kompatibles Datenformat und ausreichender Speicher bleiben Voraussetzungen.
 
+## Neueste Software beim ersten Verbinden
+
+Mit der ersten Meldung einer neu verbundenen Box weist die Plattform ihr selbst die neueste zuweisbare Fassung ihrer Linie zu (Regel `ota.Erstverbindung`, Takt des `RolloutWatcher`, Urheber `erstverbindung`, im Portal „Automatik · erstes Verbinden").
+Zuweisbar heißt: signiert, passende Box-Art, bei Edge Light alle Programme geprüft im Portal; ob eine andere Box die Fassung schon bestätigt hat, spielt keine Rolle.
+Neu verbunden heißt: Die erste Meldung der Gerätezeile (`device_update_status.erste_meldung_am`) ist jünger als eine Stunde, und die Box hatte nie eine Zuweisung; Bestandsboxen haben keinen Wert und bekommen nie etwas.
+Lädt die neueste Fassung noch hoch, wartet die Regel bis eine Stunde nach der ersten Meldung und nimmt nie die vorige.
+Läuft die Box schon die neueste Fassung, hat sie Stufe 1 oder ist der Schalter aus, steht der Grund einmal im Journal und im Verlauf der Box; danach fasst die Regel sie nicht mehr an.
+Vor dem Verbinden wird nichts geladen; danach ist es der Update-Weg oben, unverändert, einschließlich Rücknahme.
+
+Abschalten ohne Deploy (je Linie oder alle, ab Werk an; jede Änderung steht im Journal):
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"an": false}' https://<portal>/api/v1/admin/edge-updates/erstverbindung/light
+```
+
+`GET /api/v1/admin/edge-updates/erstverbindung` zeigt den Stand; Bereiche sind `alle`, `docker` und `light`.
+
 ## Status richtig lesen
 
 | Information | Bedeutung |
 |---|---|
-| Neueste Version | Neuester Eintrag im Release-Register der eigenen Linie: Docker-Box (`edge-JJJJ.MM.N`) oder Edge Light (`edge-light-JJJJ.MM.N`) |
+| Neueste Version | Neuester signierter Eintrag im Release-Register der eigenen Linie: Docker-Box (`edge-JJJJ.MM.N`) oder Edge Light (`edge-light-JJJJ.MM.N`) |
 | Ziel | Dieser Box zugewiesenes Release |
 | Installiert / gemeldet | Von der Box berichtete Softwarestände |
 | Bestätigt | Zugewiesener Stand und erforderlicher Selbsttest erfolgreich belegt |

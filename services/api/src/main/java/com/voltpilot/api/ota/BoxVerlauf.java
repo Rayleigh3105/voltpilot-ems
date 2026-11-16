@@ -10,7 +10,8 @@ import java.util.UUID;
  *
  * <p>Die drei Wörter der Seite bleiben getrennt: was das PORTAL tat
  * ({@code angefragt}, {@code zurueckgezogen}, {@code erneut_gesendet},
- * {@code entfernt}) und was die BOX meldete ({@code stand} - ein neuer laufender
+ * {@code entfernt}; die Automatik beim ersten Verbinden {@code automatik_aktuell}
+ * und {@code automatik_nicht} mit Grund) und was die BOX meldete ({@code stand} - ein neuer laufender
  * Stand, {@code angenommen}/{@code abgelehnt}/{@code zurueckgestellt} - ihr
  * Prüfurteil zu einem Ziel, {@code fehlgeschlagen}/{@code zurueckgenommen}).
  * Ein „bestätigt" erfindet diese Klasse nicht: ob ein neuer Stand die damalige
@@ -28,6 +29,10 @@ public final class BoxVerlauf {
     public static final String ZURUECKGEZOGEN = "zurueckgezogen";
     public static final String ERNEUT_GESENDET = "erneut_gesendet";
     public static final String ENTFERNT = "entfernt";
+    /** Die Automatik beim ersten Verbinden: nichts fällig, die Box läuft schon die neueste Fassung. */
+    public static final String AUTOMATIK_AKTUELL = "automatik_aktuell";
+    /** Die Automatik beim ersten Verbinden hat nichts zugewiesen, mit Grund. */
+    public static final String AUTOMATIK_NICHT = "automatik_nicht";
     public static final String STAND = "stand";
     public static final String ANGENOMMEN = "angenommen";
     public static final String ABGELEHNT = "abgelehnt";
@@ -51,6 +56,17 @@ public final class BoxVerlauf {
     /** Die Übersetzung einer rohen Zeile; {@code null} für ein unbekanntes Wort. */
     public static Eintrag of(BoxVerlaufRepository.Zeile z) {
         if (QUELLE_PORTAL.equals(z.quelle())) {
+            switch (z.art()) {
+                case Erstverbindung.EREIGNIS_AKTUELL:
+                    return new Eintrag(z.am(), QUELLE_PORTAL, AUTOMATIK_AKTUELL, z.wert(), null, null,
+                            z.von(), null);
+                case Erstverbindung.EREIGNIS_GESPERRT, Erstverbindung.EREIGNIS_AUS,
+                        Erstverbindung.EREIGNIS_AUFGEGEBEN:
+                    return new Eintrag(z.am(), QUELLE_PORTAL, AUTOMATIK_NICHT, null, null, z.wert(),
+                            z.von(), null);
+                default:
+                    break;
+            }
             String art = switch (z.art()) {
                 case "target_assigned" -> ANGEFRAGT;
                 case "target_reverted" -> ZURUECKGEZOGEN;

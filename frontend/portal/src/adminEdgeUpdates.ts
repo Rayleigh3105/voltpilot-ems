@@ -924,17 +924,27 @@ const EVENT_LABELS: Record<string, string> = {
   apply_requested: 'Anwendung freigegeben',
   device_pinned_skipped: 'Gerät übersprungen (festgenagelt)',
   device_state: 'Zustand geändert',
+  erstverbindung_aktuell: 'Beim ersten Verbinden: schon aktuell',
+  erstverbindung_gesperrt: 'Beim ersten Verbinden: kein Update möglich',
+  erstverbindung_aus: 'Beim ersten Verbinden: Automatik aus',
+  erstverbindung_aufgegeben: 'Beim ersten Verbinden: nicht zugewiesen',
+  erstverbindung_schalter: 'Automatik beim ersten Verbinden umgeschaltet',
 };
 
 export function eventLabel(event: string): string {
   return EVENT_LABELS[event] ?? event;
 }
 
+/** Der Urheber der Automatik beim ersten Verbinden (`ota.Erstverbindung.URHEBER`). */
+export const URHEBER_ERSTVERBINDUNG = 'erstverbindung';
+
 /**
- * Wer hat gehandelt. `system` ist der Wächter - er wird als solcher benannt
- * und nie wie ein Mensch dargestellt, sonst wäre die Papier-Spur wertlos.
+ * Wer hat gehandelt. `system` ist der Wächter, `erstverbindung` die Automatik
+ * beim ersten Verbinden - beide werden als solche benannt und nie wie ein
+ * Mensch dargestellt, sonst wäre die Papier-Spur wertlos.
  */
 export function actorLabel(actor: string): string {
+  if (actor === URHEBER_ERSTVERBINDUNG) return 'Automatik · erstes Verbinden';
   return actor === 'system' ? 'automatisch' : actor;
 }
 

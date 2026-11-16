@@ -25,7 +25,9 @@ public class BoxVerlaufRepository {
 
     /** Die Portal-Ereignisse, die zu EINER Box gehören (nicht der abgeleitete Zustand). */
     private static final String PORTAL_EREIGNISSE =
-            "'target_assigned', 'target_reverted', 'target_republished', 'target_cleared_on_unclaim'";
+            "'target_assigned', 'target_reverted', 'target_republished', 'target_cleared_on_unclaim', "
+            + "'erstverbindung_aktuell', 'erstverbindung_gesperrt', 'erstverbindung_aus', "
+            + "'erstverbindung_aufgegeben'";
 
     private final JdbcTemplate jdbc;
 

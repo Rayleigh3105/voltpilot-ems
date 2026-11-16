@@ -310,6 +310,11 @@ describe('Journal', () => {
     expect(actorLabel('7a1f-admin')).toBe('7a1f-admin');
   });
 
+  it('nennt die Automatik beim ersten Verbinden als solche', () => {
+    expect(actorLabel('erstverbindung')).toBe('Automatik · erstes Verbinden');
+    expect(eventLabel('erstverbindung_gesperrt')).toBe('Beim ersten Verbinden: kein Update möglich');
+  });
+
   it('übersetzt bekannte Ereignisse und lässt unbekannte stehen', () => {
     expect(eventLabel('rollout_auto_halted')).toContain('AUTOMATISCH');
     expect(eventLabel('irgendwas_neues')).toBe('irgendwas_neues');

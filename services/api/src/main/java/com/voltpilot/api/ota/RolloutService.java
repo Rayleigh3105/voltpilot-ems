@@ -72,6 +72,9 @@ public class RolloutService {
     /** Der Akteur, unter dem der Wächter selbst handelt (nie ein Mensch). */
     public static final String SYSTEM_ACTOR = "system";
 
+    /** Der Bereich des Erstverbindungs-Schalters, der beide Linien hält. */
+    public static final String SCHALTER_ALLE = "alle";
+
     private final RolloutRepository rollouts;
     private final EdgeReleaseRepository releases;
     private final ObjectProvider<OtaTargetPublisher> publisher;
@@ -356,6 +359,149 @@ public class RolloutService {
         }
     }
 
+    // ── Erstverbindung: neueste Software beim ersten Verbinden ───────────
+
+    /**
+     * Ein Durchlauf der Automatik {@link Erstverbindung}: jede Box, die sich in
+     * den letzten {@link Erstverbindung#NACHLAUF} zum ersten Mal gemeldet hat,
+     * bekommt einmal ihr Urteil. Zugewiesen wird über {@link #createRollout} mit
+     * dem Urheber {@link Erstverbindung#URHEBER} - dieselben Prüfungen, dasselbe
+     * Journal, derselbe retained Weg wie „Aktualisieren" im Portal. Jedes andere
+     * Urteil außer „warten" steht einmal im Journal; danach ist die Box für die
+     * Regel erledigt.
+     *
+     * <p>Idempotent: eine entschiedene Box sieht die Regel nicht mehr an, eine
+     * wartende kostet nichts als einen Blick im nächsten Takt. Ein Fehler bei
+     * einer Box hält die übrigen nicht auf.
+     */
+    public void erstverbindung(Instant now) {
+        List<RolloutRepository.ErstmeldungRow> kandidaten = rollouts.erstmeldungenSeit(
+                now.minus(Erstverbindung.NACHLAUF), Erstverbindung.URHEBER);
+        if (kandidaten.stream().allMatch(k -> k.hatteZuweisung() || k.entschieden())) {
+            return;
+        }
+        Erstverbindung.Schalter schalter = erstverbindungSchalter();
+        List<Erstverbindung.Release> register = erstverbindungRegister();
+        Map<UUID, RolloutRepository.FleetDeviceRow> fleet = fleetById();
+        for (RolloutRepository.ErstmeldungRow k : kandidaten) {
+            RolloutRepository.FleetDeviceRow d = fleet.get(k.deviceId());
+            if (d == null) {
+                continue;
+            }
+            Erstverbindung.Urteil u = Erstverbindung.of(new Erstverbindung.Box(boxArt(d),
+                    vertrauenGekreuzt(d), d.loader(), reportedRunning(d), k.ersteMeldungAm(),
+                    k.hatteZuweisung(), k.entschieden(), beendete.beendet(d.tenantId())),
+                    register, schalter, now);
+            try {
+                erstverbindungAusfuehren(d, u);
+            } catch (Exception e) {
+                // Eine Box, an der die Zuweisung scheitert (ein Rennen mit dem
+                // Release-Lauf, ein Broker-Fehler), versucht es im nächsten Takt.
+                log.warn("Erstverbindung: Box {} im nächsten Takt erneut: {}", d.externalRef(),
+                        e.getMessage());
+            }
+        }
+    }
+
+    private void erstverbindungAusfuehren(RolloutRepository.FleetDeviceRow d,
+            Erstverbindung.Urteil u) {
+        String ereignis;
+        String detail;
+        switch (u.art()) {
+            case NICHTS, WARTEN -> {
+                return;
+            }
+            case ZUWEISEN -> {
+                createRollout(u.releaseSeq(), List.of(d.deviceId()), Erstverbindung.URHEBER);
+                log.info("Erstverbindung: Box {} bekommt {}", d.externalRef(), u.release());
+                return;
+            }
+            case AKTUELL -> {
+                ereignis = Erstverbindung.EREIGNIS_AKTUELL;
+                detail = u.release() == null ? reportedRunning(d) : u.release();
+            }
+            case GESPERRT -> {
+                ereignis = Erstverbindung.EREIGNIS_GESPERRT;
+                detail = u.grund();
+            }
+            case AUS -> {
+                ereignis = Erstverbindung.EREIGNIS_AUS;
+                detail = u.grund();
+            }
+            case AUFGEBEN -> {
+                ereignis = Erstverbindung.EREIGNIS_AUFGEGEBEN;
+                detail = u.grund();
+            }
+            default -> throw new IllegalStateException("unbekanntes Urteil " + u.art());
+        }
+        rollouts.appendEvent(Erstverbindung.URHEBER, ereignis, null, d.deviceId(), detail);
+    }
+
+    /**
+     * Das Register für die Regel: jedes Release mit Box-Art und „signiert"; ob ein
+     * signiertes Edge-Light-Release schon zuweisbar ist (Programme im Portal),
+     * wird nur für das neueste je Linie gefragt - nur das kann die Regel wählen.
+     */
+    private List<Erstverbindung.Release> erstverbindungRegister() {
+        List<EdgeReleaseDto> alle = releases.findAll();
+        Map<String, Long> neuesteJeLinie = new HashMap<>();
+        for (EdgeReleaseDto r : alle) {
+            if (r.manifest() != null && r.signature() != null) {
+                neuesteJeLinie.merge(releaseBoxArt(r), r.releaseSeq(), Math::max);
+            }
+        }
+        List<Erstverbindung.Release> register = new ArrayList<>();
+        for (EdgeReleaseDto r : alle) {
+            String art = releaseBoxArt(r);
+            boolean signiert = r.manifest() != null && r.signature() != null;
+            String nichtZuweisbar = null;
+            if (signiert && Long.valueOf(r.releaseSeq()).equals(neuesteJeLinie.get(art))) {
+                try {
+                    requireLightProgramme(r);
+                } catch (ResponseStatusException e) {
+                    nichtZuweisbar = e.getReason();
+                }
+            }
+            register.add(new Erstverbindung.Release(r.releaseSeq(), r.version(), art, signiert,
+                    nichtZuweisbar));
+        }
+        return register;
+    }
+
+    /** Der Schalter des Betriebs; ohne Eintrag an (ab Werk an). */
+    public Erstverbindung.Schalter erstverbindungSchalter() {
+        Map<String, Boolean> an = new HashMap<>();
+        for (RolloutRepository.SchalterRow s : rollouts.erstverbindungSchalter()) {
+            an.put(s.bereich(), s.an());
+        }
+        return new Erstverbindung.Schalter(an.getOrDefault(SCHALTER_ALLE, true),
+                an.getOrDefault(BoxArt.DOCKER, true), an.getOrDefault(BoxArt.LIGHT, true));
+    }
+
+    /** Die Einträge des Schalters mit Urheber und Zeit (für die Seite). */
+    public List<RolloutRepository.SchalterRow> erstverbindungSchalterEintraege() {
+        return rollouts.erstverbindungSchalter();
+    }
+
+    /**
+     * Den Schalter umlegen (nur Plattform-Admin, ohne Deploy). Jede Änderung
+     * steht im Journal mit dem Menschen, der sie gemacht hat.
+     *
+     * @throws ResponseStatusException 400 für einen unbekannten Bereich
+     */
+    public void setzeErstverbindungSchalter(String bereich, boolean an, String actor) {
+        if (!SCHALTER_ALLE.equals(bereich) && !BoxArt.DOCKER.equals(bereich)
+                && !BoxArt.LIGHT.equals(bereich)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannter Bereich: " + bereich + " (alle, docker, light).");
+        }
+        if (rollouts.setzeErstverbindungSchalter(bereich, an, actor)) {
+            rollouts.appendEvent(actor, Erstverbindung.EREIGNIS_SCHALTER, null, null,
+                    (SCHALTER_ALLE.equals(bereich) ? "alle Linien"
+                            : Erstverbindung.linieName(bereich)) + ": " + (an ? "an" : "aus"));
+        }
+    }
+
     /** Ein Endzustand, aus dem sich von selbst nichts mehr bewegt. */
     private static boolean isTerminalFailure(String state) {
         return RolloutStates.FEHLGESCHLAGEN.equals(state)
@@ -436,7 +582,7 @@ public class RolloutService {
         // Linie, mit derselben Regel wie die Kunden-Box-Seite (EdgeStandVerdict).
         List<EdgeVersionRepository.RegisterEntry> register = releaseDtos.stream()
                 .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(),
-                        r.boxArt()))
+                        r.boxArt(), r.signed()))
                 .toList();
         Map<String, Linie> perLine = new HashMap<>();
         for (RolloutRepository.FleetDeviceRow d : fleet) {
@@ -517,7 +663,9 @@ public class RolloutService {
         for (String art : List.of(BoxArt.DOCKER, BoxArt.LIGHT)) {
             List<EdgeUpdatesDto.ReleaseDto> derLinie = releases.stream()
                     .filter(r -> art.equals(r.boxArt())).toList();
-            EdgeUpdatesDto.ReleaseDto neuestes = derLinie.isEmpty() ? null : derLinie.get(0);
+            // „Neuestes" ist das neueste SIGNIERTE (N4): ein unsigniertes kann keine Box bekommen.
+            EdgeUpdatesDto.ReleaseDto neuestes = derLinie.stream().filter(EdgeUpdatesDto.ReleaseDto::signed)
+                    .findFirst().orElse(null);
             Linie l = perLine.getOrDefault(art, new Linie());
             if (neuestes == null && l.devices == 0) {
                 continue;
@@ -551,7 +699,7 @@ public class RolloutService {
                         .filter(r -> RolloutStates.releaseIsRunning(r.version(), running))
                         .findFirst().orElse(null);
         Integer dahinter = ist == null ? null : (int) register.stream()
-                .filter(r -> linie.equals(r.boxArt()) && r.releaseSeq() > ist.releaseSeq())
+                .filter(r -> linie.equals(r.boxArt()) && r.signiert() && r.releaseSeq() > ist.releaseSeq())
                 .count();
         String stand = LinienStand.of(linie, stufe1, v.state(),
                 RolloutStates.offline(lebenszeichen, now), urteil.upToDate());
@@ -738,7 +886,7 @@ public class RolloutService {
         List<RolloutRepository.FleetDeviceRow> fleet = rollouts.fleetDevices();
         List<EdgeVersionRepository.RegisterEntry> register = alle.stream()
                 .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(),
-                        releaseBoxArt(r)))
+                        releaseBoxArt(r), r.manifest() != null && r.signature() != null))
                 .toList();
         List<UUID> laeuftAuf = new ArrayList<>();
         int boxenDerLinie = 0;

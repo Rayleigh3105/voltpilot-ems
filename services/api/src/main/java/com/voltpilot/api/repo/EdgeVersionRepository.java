@@ -83,8 +83,16 @@ public class EdgeVersionRepository {
      * ({@code boxArt}: {@code docker} oder {@code light}, {@code ota.BoxArt}).
      * Ohne die Linie wäre „neuestes Release" eines über beide Box-Arten - genau
      * so las eine Docker-Box „neuerer Stand edge-light-…" (Geräte &amp; Updates S0).
+     * {@code signiert}: Manifest und Signatur liegen vor. Nur ein signiertes
+     * Release ist der Maßstab „neuestes" (N4 der Erstverbindung): ein
+     * unsigniertes kann keine Box bekommen.
      */
-    public record RegisterEntry(String version, long releaseSeq, String boxArt) {
+    public record RegisterEntry(String version, long releaseSeq, String boxArt, boolean signiert) {
+        /** Ohne Angabe gilt ein Eintrag als signiert (Aufrufer, die nur signierte kennen). */
+        public RegisterEntry(String version, long releaseSeq, String boxArt) {
+            this(version, releaseSeq, boxArt, true);
+        }
+
         /** Ohne Manifest: die Linie allein aus dem Namen (sonst Docker, wie {@code BoxArt.ofRelease}). */
         public RegisterEntry(String version, long releaseSeq) {
             this(version, releaseSeq, BoxArt.ofRelease(version, null));
@@ -108,10 +116,11 @@ public class EdgeVersionRepository {
      * und den Namen des Soll-Stands).
      */
     public List<RegisterEntry> releases() {
-        return jdbc.query("SELECT version, release_seq, manifest FROM edge_release "
+        return jdbc.query("SELECT version, release_seq, manifest, signature FROM edge_release "
                         + "ORDER BY release_seq DESC",
                 (rs, n) -> new RegisterEntry(rs.getString("version"), rs.getLong("release_seq"),
-                        BoxArt.ofRelease(rs.getString("version"), rs.getString("manifest"))));
+                        BoxArt.ofRelease(rs.getString("version"), rs.getString("manifest")),
+                        rs.getString("manifest") != null && rs.getString("signature") != null));
     }
 
     /**

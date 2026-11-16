@@ -76,8 +76,10 @@ public final class EdgeStandVerdict {
         if (linie == null) {
             return UNKNOWN;
         }
+        // Maßstab ist das neueste SIGNIERTE Release der Linie (N4): ein
+        // unsigniertes kann keine Box bekommen, also ist keine Box dahinter.
         RegisterEntry soll = register.stream()
-                .filter(r -> linie.equals(r.boxArt()))
+                .filter(r -> linie.equals(r.boxArt()) && r.signiert())
                 .findFirst().orElse(null);
         if (soll == null) {
             // Die Linie hat noch kein Release: kein Maßstab - und schon gar
