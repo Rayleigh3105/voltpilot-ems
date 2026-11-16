@@ -22,7 +22,8 @@ Konzept `vp-portal-geraetesuche-konzept` (30.10.2026, DP-1 C, DP-2 bis DP-7 A). 
   Handler (`RechtPruefung#pruefen`), weil `RechtRoutenArchitekturTest` `@Recht` an Leserouten ablehnt. Außerhalb und
   unbekannt sind dieselbe 404 `nicht_gefunden` (`RechtMatrixApiTest#dieLesendenRoutenDerGeraetesuchePruefen…`).
 - **Ablehnungen in dieser Folge:** 404 → `box_offline` (kein Status-Herzschlag seit 5 min) → `nicht_unterstuetzt`
-  (Fähigkeit) → `laeuft_schon` → 429 `zu_oft` (6 Starts je Stunde ohne die abgelehnten, `wiederAb` + `Retry-After`).
+  (Fähigkeit) → `update_laeuft` (ein Update startet die Box gleich neu, `ota.BoxUpdateSicht#updateLaeuft`; die
+  Oberfläche startet von selbst neu, sobald sie fertig ist) → `laeuft_schon` → 429 `zu_oft` (6 Starts je Stunde ohne die abgelehnten, `wiederAb` + `Retry-After`).
   Erst offline, dann Fähigkeit: die Fähigkeiten kommen mit dem Herzschlag, eine eben gekoppelte Box ohne ersten
   Herzschlag ist offline, nicht „Update nötig“ (`GeraetesucheApiTest#eineEbenGekoppelteBox…`).
 - **Der Auftrag geht als letzter Schritt der Transaktion hinaus** (nach Suche, Protokoll und Anfrage-Kennung).

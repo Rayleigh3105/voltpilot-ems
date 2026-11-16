@@ -37,6 +37,7 @@ import {
   nichtsGefundenFragen,
   offeneAusgaenge,
   startFehlerSatz,
+  UPDATE_WARTEN_MS,
   uebernahmeSchluessel,
   uebernahmeWeg,
   uhrzeit,
@@ -258,6 +259,14 @@ export function GeraetesucheDialog({
       aktiv = false;
     };
   }, [lauf, siteId, boxId, suchId]);
+
+  // Spielt die Box gerade neue Software ein (409 `update_laeuft`), startet die Suche von selbst, sobald sie fertig ist.
+  const wartetAufUpdate = startFehler?.code === 'update_laeuft';
+  useEffect(() => {
+    if (!wartetAufUpdate) return;
+    const timer = window.setTimeout(() => setLauf((n) => Math.max(1, n + 1)), UPDATE_WARTEN_MS);
+    return () => window.clearTimeout(timer);
+  }, [wartetAufUpdate, lauf]);
 
   // Abfragen, solange die Suche läuft - je Runde ein eigener Abbruch (Muster der OCPP-Aktionen); danach nicht mehr.
   const laeuft = suche !== null && laeuftNoch(suche.zustand);
@@ -497,6 +506,15 @@ export function GeraetesucheDialog({
         <Button variant="primary" onClick={neuSuchen} data-testid="gs-jetzt-suchen">{UEMS_GERAETE_SUCHEN}</Button>
       </Recht>
     );
+  } else if (startFehler?.code === 'update_laeuft') {
+    inhalt = (
+      <div className="vp-gs-leer" data-testid="gs-wartet-update">
+        <Radar />
+        <h3 ref={titelRef} tabIndex={-1}>Die Suche wartet auf Ihre Box</h3>
+        <p className="vp-gs-hinweis" role="status">{startFehlerSatz(startFehler, zuletztGesehen)}</p>
+      </div>
+    );
+    fuss = <Fuss telefon={telefon} primaer={null} zweit={portalVerwaltet ? { label: 'Von Hand hinzufügen', onClick: onVonHand } : null} />;
   } else if (startFehler) {
     const satz = startFehlerSatz(startFehler, zuletztGesehen);
     inhalt = (

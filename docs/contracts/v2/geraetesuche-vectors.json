@@ -5450,7 +5450,8 @@
       "409": [
         "laeuft_schon",
         "nicht_unterstuetzt",
-        "box_offline"
+        "box_offline",
+        "update_laeuft"
       ],
       "429": [
         "zu_oft"

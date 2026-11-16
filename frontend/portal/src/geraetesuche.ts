@@ -66,7 +66,7 @@ export type GeraetesucheSchritt = (typeof GERAETESUCHE_SCHRITTE)[number];
 
 /** Die Ablehnungen beim Starten (`GeraetesucheFehler.code`), je HTTP-Status. */
 export const GERAETESUCHE_FEHLER_START = {
-  409: ['laeuft_schon', 'nicht_unterstuetzt', 'box_offline'],
+  409: ['laeuft_schon', 'nicht_unterstuetzt', 'box_offline', 'update_laeuft'],
   429: ['zu_oft'],
 } as const;
 

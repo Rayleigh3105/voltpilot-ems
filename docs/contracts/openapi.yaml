@@ -1922,6 +1922,34 @@ paths:
         "204": { description: Device unclaimed (ausgebaut); nothing recorded deleted. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Device not found for this tenant. }
+  /api/v1/devices/{deviceId}/software-update:
+    get:
+      tags: [devices]
+      summary: Does the own box fetch new software right now (Erstverbindung S2)?
+      description: >
+        Read-only, for customer and installer. The connect path's station
+        "Software", the box row in the set-up view and the box page read here
+        whether the platform's automation on first connect (actor
+        `erstverbindung`) is updating this box. `phase`: `keins` (nothing due -
+        existing box, already current, Stufe 1, automation off; the station is
+        done at once), `prueft` (first report just arrived, not decided yet),
+        `laedt`, `startet_neu`, `prueft_box` (the update runs), `fertig` (the box
+        confirmed the new release; `fertigAm`), `spaeter` (rolled back, failed,
+        deferred or not assigned - the box keeps running its release, VoltPilot
+        takes care). `updateLaeuft` is true while ANY update (also a manual one)
+        is about to restart the box; the device search waits for it. Never an
+        operational reason. Read through the tenant-scoped device row; another
+        tenant's or an invisible box is 404, never 403.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "`{phase, release, seit, fertigAm, updateLaeuft}` (times are server time)."
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Unknown, foreign or invisible box. }
   /api/v1/devices/{deviceId}/purge-data:
     post:
       tags: [devices]
@@ -9545,7 +9573,8 @@ paths:
         `Idempotency-Key` gibt eine wiederholte Anfrage dieselbe Antwort statt einer zweiten Suche. 409
         `laeuft_schon` (eine Suche je Box; `suchId` nennt die laufende, „Mitansehen“), `nicht_unterstuetzt` (die Box
         meldet die Fähigkeit `geraetesuche` nicht: „Update nötig für: Gerätesuche“), `box_offline` (kein Herzschlag
-        seit 5 min; `zuletztGesehen`). 429 `zu_oft` (höchstens 6 Suchen je Stunde und Box; `wiederAb`, Kopf
+        seit 5 min; `zuletztGesehen`), `update_laeuft` (die Box spielt gerade neue Software ein und startet dabei
+        neu; die Oberfläche startet die Suche, sobald sie fertig ist). 429 `zu_oft` (höchstens 6 Suchen je Stunde und Box; `wiederAb`, Kopf
         `Retry-After`).
       parameters:
         - $ref: "#/components/parameters/AnfrageKennung"
@@ -21027,7 +21056,7 @@ components:
         Abgelehnt, nichts gesendet, keine Suche angelegt. 400 `anfrage_ungueltig` (auch eine Kennung im Körper,
         die nicht `deviceId` ist), `anfrage_kennung_ungueltig`; 404 `nicht_gefunden` (fremde Anlage, Box nicht an
         dieser Anlage, unbekannte Suche - nie 403); 409 `laeuft_schon` mit `suchId`, `nicht_unterstuetzt`,
-        `box_offline` mit `zuletztGesehen`; 422 `anfrage_kennung_anders`; 429 `zu_oft` mit `wiederAb`.
+        `box_offline` mit `zuletztGesehen`, `update_laeuft`; 422 `anfrage_kennung_anders`; 429 `zu_oft` mit `wiederAb`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/GeraetesucheFehler" }
@@ -40196,7 +40225,7 @@ components:
         code:
           type: string
           enum: [anfrage_ungueltig, anfrage_kennung_ungueltig, anfrage_kennung_anders, nicht_gefunden, laeuft_schon,
-            nicht_unterstuetzt, box_offline, zu_oft]
+            nicht_unterstuetzt, box_offline, update_laeuft, zu_oft]
         message: { type: string, description: "Der deutsche Satz für den Kunden." }
         suchId: { type: string, format: uuid, nullable: true, description: "Bei laeuft_schon die laufende Suche." }
         zuletztGesehen: { type: string, format: date-time, nullable: true, description: "Bei box_offline der letzte Herzschlag." }

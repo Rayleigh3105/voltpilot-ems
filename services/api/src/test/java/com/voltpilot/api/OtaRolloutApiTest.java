@@ -949,6 +949,20 @@ class OtaRolloutApiTest {
         rollouts.erstverbindung(Instant.now());
         assertThat(erstverbindungEreignisse(neu)).containsExactly("target_assigned");
 
+        // Kunde und Installateur sehen das Update ihrer Box (S2), ohne Rechte auf die Update-Tabellen.
+        JsonNode software = getJson(customer, "/api/v1/devices/" + neu + "/software-update");
+        assertThat(software.get("phase").asText()).isEqualTo("laedt");
+        assertThat(software.get("release").asText()).isEqualTo(version);
+        assertThat(software.get("updateLaeuft").asBoolean()).isTrue();
+        assertThat(getJson(customer, "/api/v1/devices/" + bestand + "/software-update").get("phase").asText())
+                .isEqualTo("keins");
+        herzschlagRoh(ingest, neu, version + "-9b37439a02c1", block.apply(version + "-9b37439a02c1", "update"));
+        software = getJson(customer, "/api/v1/devices/" + neu + "/software-update");
+        assertThat(software.get("phase").asText()).isEqualTo("fertig");
+        assertThat(software.get("fertigAm").isNull()).as("bestätigt mit Zeit").isFalse();
+        assertThat(rest.exchange(url("/api/v1/devices/" + UUID.randomUUID() + "/software-update"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
         // Schon aktuell: nichts fällig, einmal im Journal und im Verlauf.
         UUID aktuell = claim(customer, TestKennung.box("ota-ea-" + UUID.randomUUID().toString().substring(0, 8)));
         herzschlagRoh(ingest, aktuell, version + "-9b37439a02c1", block.apply(version + "-9b37439a02c1", "update"));
@@ -960,6 +974,9 @@ class OtaRolloutApiTest {
         rollouts.erstverbindung(Instant.now());
         assertThat(ziel(aktuell)).isNull();
         assertThat(erstverbindungEreignisse(aktuell)).containsExactly("erstverbindung_aktuell");
+        JsonNode schonAktuell = getJson(customer, "/api/v1/devices/" + aktuell + "/software-update");
+        assertThat(schonAktuell.get("phase").asText()).isEqualTo("keins");
+        assertThat(schonAktuell.get("release").asText()).isEqualTo(version);
         assertThat(ziel(stufe1)).isNull();
         assertThat(erstverbindungEreignisse(stufe1)).containsExactly("erstverbindung_gesperrt");
         JsonNode gesperrt = getJson(admin, "/api/v1/admin/devices/" + stufe1 + "/verlauf").get("eintraege").get(0);
