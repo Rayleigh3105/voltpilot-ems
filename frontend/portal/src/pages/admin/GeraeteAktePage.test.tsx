@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
+import type { WerkstattAbnahme, WerkstattBox } from '../../werkstatt';
 
 const edgeUpdates = vi.fn();
 const listDevices = vi.fn();
@@ -153,6 +154,33 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
   it('Reiter Einrichtung einer noch nicht verbundenen Box sagt ehrlich, dass nichts verzeichnet ist', async () => {
     render(<GeraeteAktePage boxRef="edge-neu" reiter="einrichtung" />);
     expect(await screen.findByText(/nichts in der Einrichtung verzeichnet/)).toBeInTheDocument();
+  });
+
+  describe('N2 (Nebenfund vp-erstverbindung-update-konzept): eine wartende Werkstatt-Box widerspricht sich nicht mehr', () => {
+    const abnahme: WerkstattAbnahme = {
+      id: 'a1', edgeRef: 'edge-cyhchfr', hostSchluessel: 'SHA256:x', fassung: 'edge-light-2026.11.10',
+      tunnelAdresse: '10.10.16.5', lanNetz: '10.213.0.1/24', pruefungen: [], probe: {} as never, notiz: null,
+      erfasstAm: new Date().toISOString(), erfasstVon: 'Dienst', quelle: 'dienst',
+    };
+    const werkstattBox: WerkstattBox = {
+      id: 'edge-cyhchfr', edgeRef: 'edge-cyhchfr', boxArt: 'edge-light', lanNetz: null, schritte: {}, notiz: null,
+      angelegtAm: new Date().toISOString(), angelegtVon: 'Dienst', geaendertAm: new Date().toISOString(), abnahmen: [abnahme],
+    };
+
+    it('Kopf: Bauart aus der Werkstatt statt „Box-Art unbekannt", solange die Box selbst noch nichts meldet', async () => {
+      werkstattBoxen.mockResolvedValue([werkstattBox]);
+      render(<GeraeteAktePage boxRef="edge-cyhchfr" reiter={null} />);
+      expect(await screen.findByTestId('akte-zustand')).toHaveTextContent('Noch nicht verbunden');
+      expect(await screen.findByTestId('box-art')).toHaveTextContent('Edge Light');
+      expect(screen.getByTestId('box-art')).toHaveAttribute('data-box-art', 'light');
+    });
+
+    it('Reiter Software: nennt Bauart und bestätigten Stand aus der Werkstatt, bleibt ehrlich bei „Noch nicht verbunden"', async () => {
+      werkstattBoxen.mockResolvedValue([werkstattBox]);
+      render(<GeraeteAktePage boxRef="edge-cyhchfr" reiter="software" />);
+      expect(await screen.findByRole('heading', { name: 'Noch nicht verbunden' })).toBeInTheDocument();
+      expect(await screen.findByText(/Aus der Werkstatt bekannt: Edge Light/)).toHaveTextContent('Edge Light 2026.11.10');
+    });
   });
 
   it('Reiter Einrichtung „Meldet sich": dieselbe Sprache wie die Geräte-Liste - Erreichbarkeit grün, kein Kunde eingerichtet (Firstmate vp-werkstatt-laeuft-anzeige)', async () => {

@@ -48,6 +48,14 @@ export const UMSCHALT_PRUEFEN_MS = 5 * 60 * SEK;
 export const UMSCHALT_SUPPORT_MS = 15 * 60 * SEK;
 /** Anmeldung da, aber 75 s später noch kein Herzschlag: Port 8883 vermutlich gesperrt (Abschnitt 4.1). */
 export const DATENSPERRE_MS = 75 * SEK;
+/**
+ * N1 (Nebenfund vp-erstverbindung-update-konzept): die Box lädt ihre
+ * Zertifikatsanfrage nur einmal je Programmstart hoch, `zuletztAngefragtAm`
+ * kann also Stunden älter sein als das Verbinden. Lief sie schon vorher
+ * (`liefSchon`), bekommt die 75-s-Messung diesen Zuschlag für ihren
+ * Abruf-Takt (bis 60 s), statt sofort auf Datensperre zu laufen.
+ */
+export const DATENSPERRE_ZUSCHLAG_LIEF_SCHON_MS = 60 * SEK;
 
 /** "1:12" - Minuten:Sekunden, nie negativ. */
 export function mmss(ms: number): string {
@@ -67,6 +75,7 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
   const now = jetzt.getTime();
   const createdAt = zeitpunkt(device.createdAt);
   const angefragtAm = zeitpunkt(device.anmeldung?.zuletztAngefragtAm);
+  const abgeholtAm = zeitpunkt(device.anmeldung?.schluesselAbgeholtAm);
   const angemeldet = angefragtAm != null;
   const everSeen = device.lastSeenAt != null;
   const liveStatus = deviceLiveStatus(device, jetzt);
@@ -105,7 +114,17 @@ export function wegLage(device: Device, jetzt: Date = new Date()): WegLage {
   }
 
   if (angemeldet) {
-    const seitAnmeldung = now - angefragtAm!;
+    // N1: ab "Zertifikat abgeholt" messen, sobald gesetzt - der frischeste Beleg für
+    // Aktivität nach dem Verbinden. Sonst ab dem späteren Zeitpunkt aus Anmeldung und
+    // Verbinden, mit Zuschlag für den Abruf-Takt der Box, wenn sie schon vorher lief.
+    let seitAnmeldung: number;
+    if (abgeholtAm != null) {
+      seitAnmeldung = now - abgeholtAm;
+    } else {
+      const anmeldungBasis = createdAt != null ? Math.max(angefragtAm!, createdAt) : angefragtAm!;
+      const zuschlag = liefSchon ? DATENSPERRE_ZUSCHLAG_LIEF_SCHON_MS : 0;
+      seitAnmeldung = now - anmeldungBasis - zuschlag;
+    }
     if (seitAnmeldung >= DATENSPERRE_MS) {
       return {
         stationen: {

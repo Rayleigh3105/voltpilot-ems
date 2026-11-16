@@ -9,12 +9,14 @@ import java.time.Instant;
  * access to the {@code device} row first, so a lookup only ever reaches a
  * box's OWN already-tenant-scoped reference.
  *
- * <p>{@code zuletztAngefragtAm} is the newest certificate-signing request the
- * box's own enroll loop has sent ({@code csr_updated_at}, refreshed on every
- * retry, not only the first); {@code schluesselAbgeholtAm} is when the cloud
- * last issued it a certificate for that request ({@code issued_at}). Both
- * null (this DTO absent, see {@link DeviceDto#anmeldung()}) means the box has
- * never asked since it was claimed - "nie angemeldet", not a slow heartbeat.
+ * <p>{@code zuletztAngefragtAm} is the certificate-signing request the box's
+ * own enroll loop sent ({@code csr_updated_at}); the box uploads it only once
+ * per program start, not refreshed on later retries, so this can predate the
+ * claim by hours if the box was already running (vp-erstverbindung-update-
+ * konzept N1). {@code schluesselAbgeholtAm} is when the cloud last issued it
+ * a certificate for that request ({@code issued_at}). Both null (this DTO
+ * absent, see {@link DeviceDto#anmeldung()}) means the box has never asked
+ * since it was claimed - "nie angemeldet", not a slow heartbeat.
  */
 public record AnmeldungDto(Instant zuletztAngefragtAm, Instant schluesselAbgeholtAm) {
 }

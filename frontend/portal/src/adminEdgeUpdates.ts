@@ -738,6 +738,15 @@ export function releaseBoxArt(release: Pick<EdgeUpdatesRelease, 'boxArt'>): BoxA
   return release.boxArt === 'light' ? 'light' : 'docker';
 }
 
+/**
+ * N2 (Nebenfund vp-erstverbindung-update-konzept): die Werkstatt nennt die
+ * Bauart `edge-light`/`edge-app` (`WerkstattBox.boxArt`), das Register
+ * `light`/`docker` - bislang bildete nichts das eine auf das andere ab.
+ */
+export function werkstattBoxArt(art: 'edge-light' | 'edge-app'): BoxArt {
+  return art === 'edge-light' ? 'light' : 'docker';
+}
+
 export const BOX_ART_LABELS: Record<BoxArt, string> = {
   docker: 'Docker-Box',
   light: 'Edge Light',
