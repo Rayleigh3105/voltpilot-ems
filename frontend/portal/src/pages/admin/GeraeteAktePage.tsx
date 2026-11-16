@@ -15,8 +15,8 @@ import {
 import { ausgebautZeile, bleibtSatz, NIE_DATEN_SATZ } from '../../boxEndgueltig';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import {
-  BOX_ART_LABELS, BOX_ART_UNBEKANNT, crossoverState, freshnessLabel, releaseBoxArt,
-  type BoxVerlauf, type EdgeUpdates, type EdgeUpdatesRelease, type FleetRow,
+  BOX_ART_LABELS, BOX_ART_UNBEKANNT, crossoverState, freshnessLabel, releaseBoxArt, werkstattBoxArt,
+  type BoxArt, type BoxVerlauf, type EdgeUpdates, type EdgeUpdatesRelease, type FleetRow,
 } from '../../adminEdgeUpdates';
 import {
   boxFakten, linieDerBox, messwerteLuecke, stufe1Hinweis, verbindungSicht, verlaufSicht,
@@ -227,6 +227,16 @@ export function GeraeteAktePage({
     return z ?? null;
   }, [werkstattBoxen, werkstattDienst, boxRef]);
 
+  // N2 (Nebenfund vp-erstverbindung-update-konzept): Kopf und Software-Reiter einer
+  // noch nie verbundenen Box bleiben ehrlich bei "unbekannt"/"noch nicht verbunden",
+  // zeigen aber Bauart und bestätigten Stand aus der Werkstatt, wo es sie gibt -
+  // reine Anzeige, keine neue Update-Logik.
+  const werkstattBox = useMemo(() => werkstattBoxen?.find((b) => b.edgeRef === boxRef) ?? null, [werkstattBoxen, boxRef]);
+  const werkstattBoxArtWert: BoxArt | null = werkstattBox ? werkstattBoxArt(werkstattBox.boxArt) : null;
+  const werkstattStand = werkstattBox?.abnahmen[0]
+    ? { fassung: werkstattBox.abnahmen[0].fassung, erfasstAm: werkstattBox.abnahmen[0].erfasstAm }
+    : null;
+
   const nav = (r: GeraeteAkteReiter | null) => onNavigate?.({ page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: boxRef, reiter: r } });
 
   if (loading) {
@@ -242,6 +252,7 @@ export function GeraeteAktePage({
     <div className="vp-admin-page vp-geraete-akte" data-testid="geraete-akte">
       <AktenKopf boxRef={boxRef} row={row} deviceRow={deviceRow} pendingRow={pendingRow} jetzt={jetzt}
         reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert} nieGemeldet={nieGemeldet}
+        werkstattBoxArt={werkstattBoxArtWert}
         onLoesenOeffnen={() => setLoesenOffen(true)}
         ausgebautAm={ausgebaut ? (akte?.kopf?.ausgebautAm ?? akte?.lebensabschnittSeit ?? null) : null}
         onEndgueltigOeffnen={() => setEndgueltigOffen(true)}
@@ -257,7 +268,8 @@ export function GeraeteAktePage({
       {reiter === 'software' ? (
         <SoftwareReiter row={row} ersterLeerLauf={ersterLeerLauf} verlauf={verlauf} jetzt={jetzt} busy={busy}
           releases={edgeUpdates?.releases ?? []} onAssign={(seq) => act(() => adminApi.setUpdateTarget(row!.deviceId, { releaseSeq: seq }))}
-          onRevert={() => act(() => adminApi.revertUpdateTarget(row!.deviceId))} />
+          onRevert={() => act(() => adminApi.revertUpdateTarget(row!.deviceId))}
+          werkstattBoxArt={werkstattBoxArtWert} werkstattStand={werkstattStand} />
       ) : reiter === 'verbindung' ? (
         <VerbindungReiter boxRef={boxRef} row={row} jetzt={jetzt} akte={akte} />
       ) : reiter === 'anlage' ? (
@@ -309,7 +321,7 @@ function zustandBadgeAusVerbindung(v: BoxVerbindungSicht): { variant: 'ok' | 'wa
 
 function AktenKopf({
   boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate, pulsiert, stand, nieGemeldet,
-  onLoesenOeffnen, ausgebautAm, onEndgueltigOeffnen,
+  onLoesenOeffnen, ausgebautAm, onEndgueltigOeffnen, werkstattBoxArt,
 }: {
   boxRef: string;
   row: FleetRow | null;
@@ -329,6 +341,8 @@ function AktenKopf({
   /** Ausgebaut (vierter Löschweg): der Kopf sagt es, das Menü bietet „Endgültig löschen …" an. */
   ausgebautAm: string | null;
   onEndgueltigOeffnen: () => void;
+  /** N2: Bauart aus der Werkstatt, solange die Box selbst noch nichts meldet. */
+  werkstattBoxArt: BoxArt | null;
 }) {
   const [menuOffen, setMenuOffen] = useState(false);
   const reiterRand = useReiterRand<HTMLDivElement>();
@@ -350,7 +364,7 @@ function AktenKopf({
         title={name}
         description={
           <span className="vp-row-gap vp-akte-kennung" style={{ alignItems: 'center' }}>
-            <BoxArtChip boxArt={row?.boxArt ?? null} />
+            <BoxArtChip boxArt={row?.boxArt ?? werkstattBoxArt ?? null} />
             <span className="vp-mono">{boxRef}</span>
             {row && (
               <span>
@@ -585,7 +599,7 @@ function AusgebautKarte({ akte, befund, jetzt, onEndgueltigOeffnen }: {
 
 // ── Software ──────────────────────────────────────────────────────────────
 
-function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, onAssign, onRevert }: {
+function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, onAssign, onRevert, werkstattBoxArt, werkstattStand }: {
   row: FleetRow | null;
   ersterLeerLauf: boolean;
   verlauf: BoxVerlauf | null;
@@ -594,10 +608,24 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
   releases: EdgeUpdatesRelease[];
   onAssign: (releaseSeq: number) => Promise<boolean>;
   onRevert: () => Promise<boolean>;
+  /** N2: Bauart aus der Werkstatt, solange die Box selbst noch nichts meldet. */
+  werkstattBoxArt: BoxArt | null;
+  /** N2: der zuletzt abgenommene Stand aus der Werkstatt (Abnahme), reine Anzeige. */
+  werkstattStand: { fassung: string; erfasstAm: string } | null;
 }) {
   if (ersterLeerLauf || !row) {
     return <EmptyState icon="refresh-cw" category="primary" title="Noch nicht verbunden"
-      description="Software-Fakten gibt es erst, sobald ein Kundenkonto diese Box verbunden hat." />;
+      description={
+        <>
+          Software-Fakten gibt es erst, sobald ein Kundenkonto diese Box verbunden hat.
+          {(werkstattBoxArt || werkstattStand) && (
+            <>
+              {' '}Aus der Werkstatt bekannt: {werkstattBoxArt ? BOX_ART_LABELS[werkstattBoxArt] : BOX_ART_UNBEKANNT}
+              {werkstattStand && `, abgenommen mit ${werkstattStand.fassung.replace(/^edge-light-/, 'Edge Light ')} (${fmtRelative(werkstattStand.erfasstAm, jetzt)})`}.
+            </>
+          )}
+        </>
+      } />;
   }
   const linie = linieDerBox(row);
   const stufe1 = row.stand === 'hand' || row.stufe1 === true;

@@ -374,6 +374,51 @@ for (const breite of [390, 1440] as const) {
   });
 }
 
+for (const breite of [390, 1440] as const) {
+  const hoehe = breite < 720 ? 844 : 900;
+
+  /**
+   * N1 (Nebenfund vp-erstverbindung-update-konzept): eine Box, die seit zwei Stunden läuft
+   * und auf ihre Zuordnung wartet (wie `edge-cyhchfr`), wird verbunden. `zuletztAngefragtAm`
+   * ist `csr_updated_at` - die Box lädt ihre Zertifikatsanfrage nur einmal je Programmstart
+   * hoch, also zwei Stunden alt. Vor dem Fix maß der Weg die 75 s ab diesem alten Zeitpunkt
+   * und zeigte sofort nach dem Verbinden fälschlich die Datensperre.
+   */
+  test(`Der Weg: eine schon länger laufende Box läuft nicht sofort in die Datensperre (N1) - ${breite}px`, async ({ page }) => {
+    const cloud: Cloud = {
+      sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null,
+      anmeldung: { zuletztAngefragtAm: new Date(Date.now() - 2 * 3_600_000).toISOString(), schluesselAbgeholtAm: null },
+      lastSeenAt: null, id: URSPRUNG_ID, ref: REF,
+    };
+    await verdrahte(page, cloud);
+    await page.clock.install();
+    await page.setViewportSize({ width: breite, height: hoehe });
+    await bisZurBox(page);
+    await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await waehleKabel(page);
+
+    // Sofort nach dem Verbinden: "Sie lief schon, bevor Sie verbunden haben", keine Datensperre.
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist im Internet' })).toBeVisible();
+    await expect(page.getByText('Sie lief schon, bevor Sie verbunden haben. In spätestens 1½ Minuten ist sie online.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Die Datenverbindung kommt nicht durch' })).not.toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-lief-schon');
+
+    // Innerhalb des Zuschlags für den Abruf-Takt der Box (bis 60 s) weiterhin keine Datensperre.
+    await page.clock.runFor(74_000);
+    await expect(page.getByRole('heading', { name: 'Die Datenverbindung kommt nicht durch' })).not.toBeVisible();
+
+    // Erst 75 s nach dem späteren Zeitpunkt aus Anmeldung und Verbinden PLUS Zuschlag greift sie.
+    await page.clock.runFor(62_000);
+    await expect(page.getByRole('heading', { name: 'Die Datenverbindung kommt nicht durch' })).toBeVisible();
+
+    // Erster Herzschlag löst die Datensperre wie gewohnt wieder auf.
+    cloud.lastSeenAt = new Date(await page.evaluate(() => Date.now())).toISOString();
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist online' })).toBeVisible();
+  });
+}
+
 test('Der Weg: axe-core ohne neue Funde (online und Prüf-Hilfe, 1440px)', async ({ page }) => {
   const cloud: Cloud = {
     sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null,
