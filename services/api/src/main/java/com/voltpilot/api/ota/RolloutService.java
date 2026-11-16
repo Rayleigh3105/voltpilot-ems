@@ -381,17 +381,30 @@ public class RolloutService {
             return;
         }
         Erstverbindung.Schalter schalter = erstverbindungSchalter();
-        List<NeuesteFassung.Release> register = register();
+        // Die gemeinsame Regel (neuesteFassung), je Linie einmal je Takt; dazu das ganze Register für den Stand der Box.
+        Map<String, Optional<Erstverbindung.Neueste>> neuesteJeLinie = new HashMap<>();
+        List<EdgeReleaseDto> register = releases.findAll();
         Map<UUID, RolloutRepository.FleetDeviceRow> fleet = fleetById();
         for (RolloutRepository.ErstmeldungRow k : kandidaten) {
             RolloutRepository.FleetDeviceRow d = fleet.get(k.deviceId());
             if (d == null) {
                 continue;
             }
-            Erstverbindung.Urteil u = Erstverbindung.of(new Erstverbindung.Box(boxArt(d),
-                    vertrauenGekreuzt(d), d.loader(), reportedRunning(d), k.ersteMeldungAm(),
+            String linie = boxArt(d);
+            String laeuft = reportedRunning(d);
+            EdgeReleaseDto ist = linie == null || laeuft == null ? null : register.stream()
+                    .filter(r -> linie.equals(releaseBoxArt(r)))
+                    .filter(r -> RolloutStates.releaseIsRunning(r.version(), laeuft))
+                    .max(java.util.Comparator.comparingLong(EdgeReleaseDto::releaseSeq)).orElse(null);
+            Erstverbindung.Neueste neueste = linie == null ? null : neuesteJeLinie
+                    .computeIfAbsent(linie, l -> neuesteFassung(l).map(f -> new Erstverbindung.Neueste(
+                            f.release().releaseSeq(), f.release().version(), f.nichtZuweisbar())))
+                    .orElse(null);
+            Erstverbindung.Urteil u = Erstverbindung.of(new Erstverbindung.Box(linie,
+                    vertrauenGekreuzt(d), d.loader(), ist == null ? null : ist.releaseSeq(),
+                    ist == null ? null : ist.version(), k.ersteMeldungAm(),
                     k.hatteZuweisung(), k.entschieden(), beendete.beendet(d.tenantId())),
-                    register, schalter, now);
+                    neueste, schalter, now);
             try {
                 erstverbindungAusfuehren(d, u);
             } catch (Exception e) {
@@ -435,48 +448,6 @@ public class RolloutService {
             default -> throw new IllegalStateException("unbekanntes Urteil " + u.art());
         }
         rollouts.appendEvent(Erstverbindung.URHEBER, ereignis, null, d.deviceId(), detail);
-    }
-
-    /**
-     * Die neueste Fassung einer Linie, die eine Box heute bekommen kann
-     * ({@link NeuesteFassung}) - für jeden Weg, der „immer die neueste" meint.
-     *
-     * @param linie {@link BoxArt#DOCKER} oder {@link BoxArt#LIGHT}
-     */
-    public NeuesteFassung.Urteil neuesteZuweisbare(String linie) {
-        return NeuesteFassung.of(register(), linie);
-    }
-
-    /**
-     * Das Register für {@link NeuesteFassung}: jedes Release mit Linie und
-     * „signiert"; ob ein signiertes Release schon zuweisbar ist (Edge Light:
-     * Programme im Portal), wird nur für das neueste je Linie gefragt - nur das
-     * kann die Regel wählen.
-     */
-    public List<NeuesteFassung.Release> register() {
-        List<EdgeReleaseDto> alle = releases.findAll();
-        Map<String, Long> neuesteJeLinie = new HashMap<>();
-        for (EdgeReleaseDto r : alle) {
-            if (r.manifest() != null && r.signature() != null) {
-                neuesteJeLinie.merge(releaseBoxArt(r), r.releaseSeq(), Math::max);
-            }
-        }
-        List<NeuesteFassung.Release> register = new ArrayList<>();
-        for (EdgeReleaseDto r : alle) {
-            String art = releaseBoxArt(r);
-            boolean signiert = r.manifest() != null && r.signature() != null;
-            String nichtZuweisbar = null;
-            if (signiert && Long.valueOf(r.releaseSeq()).equals(neuesteJeLinie.get(art))) {
-                try {
-                    requireLightProgramme(r);
-                } catch (ResponseStatusException e) {
-                    nichtZuweisbar = e.getReason();
-                }
-            }
-            register.add(new NeuesteFassung.Release(r.releaseSeq(), r.version(), art, signiert,
-                    nichtZuweisbar));
-        }
-        return register;
     }
 
     /** Der Schalter des Betriebs; ohne Eintrag an (ab Werk an). */

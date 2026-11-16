@@ -2,8 +2,6 @@ package com.voltpilot.api.ota;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.List;
 
 /**
  * Die Regel „neueste Software beim ersten Verbinden" (Konzept
@@ -14,9 +12,11 @@ import java.util.List;
  * <p><b>Die Regel:</b> Bei der ersten Meldung einer neu verbundenen,
  * update-fähigen Box ({@link BoxArt#sperrgrund} ohne Grund) weist die Plattform
  * ihr die neueste zuweisbare Fassung ihrer Linie zu - welche das ist, sagt die
- * gemeinsame Regel {@link NeuesteFassung} (signiert, höchste
+ * gemeinsame Regel {@link RolloutService#neuesteFassung} (signiert, höchste
  * {@code release_seq}, bei Edge Light alle Programme geprüft im Portal; ob schon
- * eine andere Box sie bestätigt hat, spielt keine Rolle, E2 = B).
+ * eine andere Box sie bestätigt hat, spielt keine Rolle, E2 = B), dieselbe, nach
+ * der die Werkstatt aufspielt. Die Regel hier bekommt ihr Ergebnis als
+ * {@link Neueste} und bleibt rein.
  *
  * <ul>
  *   <li><b>Neu verbunden</b> heißt: Die erste Meldung dieser Gerätezeile ist
@@ -67,6 +67,8 @@ public final class Erstverbindung {
     /** Journal-Ereignis: jemand hat den Schalter umgelegt (Akteur = Mensch). */
     public static final String EREIGNIS_SCHALTER = "erstverbindung_schalter";
 
+    public static final String GRUND_KEINE_FASSUNG =
+            "Für diese Linie liegt keine signierte Fassung im Register.";
     public static final String GRUND_ART_UNBEKANNT =
             "Die Box hat noch nicht gemeldet, ob sie eine Docker-Box oder Edge Light ist.";
     public static final String GRUND_FENSTER =
@@ -115,14 +117,23 @@ public final class Erstverbindung {
      * @param boxArt            {@link BoxArt#ofDevice} ({@code null} = unbekannt)
      * @param vertrauenGekreuzt Wurzel und geprüftes Vertrauens-Set gemeldet
      * @param loader            gemeldeter Loader-Stand ({@code null} = keine Angabe)
-     * @param laeuft            der laufende Stempel ({@code null} = nichts gemeldet)
+     * @param istSeq            das Register-Release ihrer Linie, das sie fährt ({@code null} = keines bekannt)
+     * @param istRelease        sein Name
      * @param ersteMeldung      erste Meldung dieser Gerätezeile ({@code null} = vor der Regel)
      * @param hatteZuweisung    die Box hat oder hatte je eine Zuweisung
      * @param entschieden       die Regel hat für diese Box schon entschieden (Journal)
      * @param beendet           ihr Kundenbereich ist beendet
      */
-    public record Box(String boxArt, boolean vertrauenGekreuzt, String loader, String laeuft,
+    public record Box(String boxArt, boolean vertrauenGekreuzt, String loader, Long istSeq, String istRelease,
             Instant ersteMeldung, boolean hatteZuweisung, boolean entschieden, boolean beendet) {
+    }
+
+    /**
+     * Die neueste signierte Fassung der Linie der Box ({@link RolloutService#neuesteFassung}).
+     *
+     * @param nichtZuweisbar warum sie heute noch nicht zuweisbar ist, sonst {@code null}
+     */
+    public record Neueste(long releaseSeq, String version, String nichtZuweisbar) {
     }
 
     /** Der Schalter des Betriebs; ohne Eintrag an. */
@@ -145,7 +156,10 @@ public final class Erstverbindung {
         }
     }
 
-    public static Urteil of(Box box, List<NeuesteFassung.Release> register, Schalter schalter, Instant now) {
+    /**
+     * @param neueste die neueste signierte Fassung der Linie der Box, {@code null} = keine (oder Linie unbekannt)
+     */
+    public static Urteil of(Box box, Neueste neueste, Schalter schalter, Instant now) {
         if (box.ersteMeldung() == null || box.hatteZuweisung() || box.entschieden()
                 || now.isAfter(box.ersteMeldung().plus(NACHLAUF))) {
             return Urteil.nur(Art.NICHTS);
@@ -167,20 +181,14 @@ public final class Erstverbindung {
         if (sperre != null) {
             return Urteil.mitGrund(Art.GESPERRT, sperre);
         }
-        NeuesteFassung.Urteil fassung = NeuesteFassung.of(register, linie);
-        NeuesteFassung.Release neueste = fassung.release();
         if (neueste == null) {
-            return Urteil.mitGrund(Art.GESPERRT, fassung.grund());
+            return Urteil.mitGrund(Art.GESPERRT, GRUND_KEINE_FASSUNG);
         }
-        NeuesteFassung.Release ist = box.laeuft() == null ? null : register.stream()
-                .filter(r -> linie.equals(r.boxArt()))
-                .filter(r -> RolloutStates.releaseIsRunning(r.version(), box.laeuft()))
-                .max(Comparator.comparingLong(NeuesteFassung.Release::releaseSeq)).orElse(null);
-        if (ist != null && ist.releaseSeq() >= neueste.releaseSeq()) {
-            return new Urteil(Art.AKTUELL, ist.releaseSeq(), ist.version(), null);
+        if (box.istSeq() != null && box.istSeq() >= neueste.releaseSeq()) {
+            return new Urteil(Art.AKTUELL, box.istSeq(), box.istRelease(), null);
         }
-        if (!fassung.zuweisbar()) {
-            return warten(imFenster, fassung.grund());
+        if (neueste.nichtZuweisbar() != null) {
+            return warten(imFenster, neueste.nichtZuweisbar());
         }
         if (!imFenster) {
             return Urteil.mitGrund(Art.AUFGEBEN, GRUND_FENSTER);
