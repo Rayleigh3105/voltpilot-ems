@@ -17,7 +17,6 @@ import { beschriftung, VERSAND_SATZ } from '../../werkstatt';
 import {
   bildschirm,
   fortschritt,
-  freigabeZeile,
   heute,
   phasen,
   uhrzeit,
@@ -26,6 +25,7 @@ import {
   type WerkstattAnsicht,
   type WerkstattDienst,
   type WerkstattFreigabe,
+  type WerkstattStand,
 } from '../../werkstattBank';
 import {
   dauerText,
@@ -239,13 +239,12 @@ function SoftwareKarte({ sw, titel, neuer, testId = 'wsb-software' }: { sw: Soft
       <h5>{titel}</h5>
       <p className="frg">
         Freigabe <b>{sw.freigabe}</b>
-        {sw.gueltigBis && <> · gilt bis {new Date(sw.gueltigBis).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</>}
       </p>
       {paket(sw.openwrt, 'openwrt')}
       {paket(sw.edgeLight, 'edge-light')}
       {neuer && (
         <p className="neuer" data-testid="wsb-soft-neuer">
-          Neuer erschienen: Edge Light {neuer}. Die Werkstatt spielt, was die Freigabe nennt.
+          Neuer erschienen: Edge Light {neuer}. Diese Box bleibt bei ihrer Fassung; die nächste bekommt die neueste.
         </p>
       )}
     </div>
@@ -511,7 +510,8 @@ function FallHaupt({
 
 export function WerkstattBank({
   dienst,
-  freigabe,
+  stand,
+  freigaben = [],
   neuerEdgeLight = null,
   onUebersicht,
   onBox = () => {},
@@ -519,8 +519,11 @@ export function WerkstattBank({
   onZurSeite = async () => {},
 }: {
   dienst: WerkstattDienst | null;
-  freigabe: WerkstattFreigabe | null;
-  /** Ein neueres signiertes Edge-Light-Release als die Freigabe (nur Hinweis). */
+  /** Läuft die Werkstatt, und was spielt sie auf? `null`, solange der Stand nicht geladen ist. */
+  stand: WerkstattStand | null;
+  /** Die Freigaben als Beleg: ein Lauf zeigt die Fassungen seiner eigenen. */
+  freigaben?: readonly WerkstattFreigabe[];
+  /** Ein neueres signiertes Edge-Light-Release als die Freigabe des Laufs (nur Hinweis). */
   neuerEdgeLight?: string | null;
   onUebersicht: () => void;
   onBox?: (ref: string) => void;
@@ -563,7 +566,7 @@ export function WerkstattBank({
 
   const lauf = s.art === 'laeuft' || s.art === 'du' || s.art === 'fertig' ? s.lauf : s.art === 'fall' ? s.lauf : null;
   const ansicht = dienst?.ansicht ?? null;
-  const sw = ansicht && zweiSpalten ? software(ansicht, lauf) : null;
+  const sw = ansicht && zweiSpalten ? software(ansicht, lauf, freigaben) : null;
   const swTitel = s.art === 'fertig' ? 'Auf dieser Box' : 'Kommt auf diese Box';
   const krumen = s.art === 'fertig' && s.lauf.box ? `Werkstatt › ${s.lauf.box}` : gewaehlt ? 'Werkstatt › Mango' : 'Werkstatt';
 
@@ -665,19 +668,12 @@ export function WerkstattBank({
 
       {s.art === 'start' && (
         <>
-          <div className="vp-wsb-karte" data-testid="wsb-freigabe">
-            <h5>{freigabe ? 'Werkstatt freigegeben' : 'Werkstatt nicht freigegeben'}</h5>
-            {freigabe ? (
-              <>
-                <div className="vp-wsb-reihe">
-                  <strong>Mango</strong>
-                  <Badge variant="ok">{dienst?.ansicht?.freigabe.boxen ?? 0} eingerichtet</Badge>
-                </div>
-                <p className="vp-wsb-sub">{freigabeZeile(freigabe)}</p>
-              </>
-            ) : (
-              <p className="vp-wsb-sub">Ohne Freigabe richtet der Dienst keine Box ein. Ein Admin gibt sie in der Übersicht frei.</p>
-            )}
+          <div className="vp-wsb-karte vp-wsb-stand" data-testid="wsb-stand" data-zustand={stand?.zustand ?? 'unbekannt'}>
+            <div className="vp-wsb-reihe">
+              <h5>{stand?.titel ?? 'Werkstatt'}</h5>
+              {stand && <Badge variant={stand.badge.variant}>{stand.badge.text}</Badge>}
+            </div>
+            <p className="vp-wsb-sub">{stand?.zeile ?? 'Der Stand der Werkstatt ließ sich nicht laden.'}</p>
           </div>
           <h4 className="vp-wsb-h">Was willst du einrichten?</h4>
           <div className="vp-wsb-kacheln">
@@ -722,8 +718,9 @@ export function WerkstattBank({
           <p className="vp-wsb-sub">Ein Kabel und Strom, dann macht der Dienst den Rest.</p>
           {!s.freigegeben && (
             <p className="vp-wsb-hinweis vp-wsb-warn" data-testid="wsb-nicht-freigegeben">
-              <strong>Noch nicht freigegeben.</strong> {s.grund} Ein Admin gibt die Werkstatt in der Übersicht frei; bis dahin
-              richtet der Dienst keine Box ein.
+              <strong>Die Werkstatt richtet gerade keine Box ein.</strong>{' '}
+              {stand && stand.zustand !== 'laeuft' ? stand.zeile : s.grund} In der Übersicht siehst du, warum, und kannst sie
+              fortsetzen, wenn sie angehalten ist.
             </p>
           )}
           <div className="vp-wsb-karte vp-wsb-bildkarte">

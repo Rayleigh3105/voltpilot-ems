@@ -978,6 +978,13 @@ voltpilot:
   # das Probe-Fenster oeffnet. Leer: der Dienst bekommt keine Einmal-Codes.
   werkstatt:
     techniker-zugang: ${VP_WERKSTATT_TECHNIKER_ZUGANG:}
+    # Die Werkstatt nimmt immer die neueste Fassung (WerkstattRegel): hoechstens so
+    # viele verschiedene Boxen je Berliner Tag (1 bis 200). 40 = eine Werkbank, ein
+    # Lauf zur Zeit, ein voller Arbeitstag mit Reserve (docs/werkstatt.md).
+    tagesgrenze: ${VP_WERKSTATT_TAGESGRENZE:40}
+    # Woher der Werkstatt-Dienst eine Edge-Light-Fassung laedt: <quelle><fassung>/
+    # (das Forgejo-Release, an das der Release-Lauf sie haengt).
+    edge-light-quelle: ${VP_WERKSTATT_EDGE_LIGHT_QUELLE:https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/}
   # Keycloak Admin REST API access for provisioning customer users. The API
   # authenticates as the voltpilot-api service account (client_credentials) that
   # holds the realm-management roles. base-url is the compose-internal Keycloak.

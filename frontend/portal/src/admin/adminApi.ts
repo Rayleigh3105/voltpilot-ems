@@ -21,7 +21,7 @@ import type {
   FernwartungUebersicht,
 } from '../adminFernwartung';
 import type { WerkstattBox } from '../werkstatt';
-import type { WerkstattDienst, WerkstattFreigabe, ZurSeite } from '../werkstattBank';
+import type { WerkstattDienst, WerkstattFreigabe, WerkstattRegel, ZurSeite } from '../werkstattBank';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -1047,16 +1047,12 @@ export const adminApi = {
   werkstattZurSeite: (lauf: string) =>
     request<ZurSeite>('/api/v1/admin/werkstatt/zur-seite', { method: 'POST', body: JSON.stringify({ lauf }) }),
 
-  /** Werkstatt freigeben (WI-4 A): 201; 409, wenn für die Box-Art schon eine läuft; 422 mit Grund. */
-  werkstattFreigeben: (input: {
-    boxArt: 'mango';
-    tage: number;
-    obergrenze: number;
-    openwrt: WerkstattFreigabe['openwrt'];
-    edgeLight: WerkstattFreigabe['edgeLight'];
-    notiz?: string | null;
-  }) => request<WerkstattFreigabe>('/api/v1/admin/werkstatt/freigaben', { method: 'POST', body: JSON.stringify(input) }),
+  /** Der Stand der Werkstatt: läuft sie, was spielt sie auf (die neueste Fassung), wie viele Boxen heute. */
+  werkstattRegel: () => request<WerkstattRegel>('/api/v1/admin/werkstatt/regel'),
 
-  werkstattFreigabeBeenden: (kennung: string) =>
-    request<WerkstattFreigabe>(`/api/v1/admin/werkstatt/freigaben/${encodeURIComponent(kennung)}/ende`, { method: 'POST' }),
+  /** Werkstatt anhalten (Notfall): ab jetzt kein neuer Lauf, keine Anmeldung einer Box. Steht mit dir im Protokoll. */
+  werkstattAnhalten: (grund: string | null) =>
+    request<WerkstattRegel>('/api/v1/admin/werkstatt/anhalten', { method: 'POST', body: JSON.stringify({ grund }) }),
+
+  werkstattFortsetzen: () => request<WerkstattRegel>('/api/v1/admin/werkstatt/fortsetzen', { method: 'POST' }),
 };

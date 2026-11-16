@@ -112,14 +112,14 @@ class ReleaseManifestVectorsTest {
         assertThat(onDocker.get()).contains("Box-Art").contains("light");
         // Der Skriptstand für die Werkstatt reist signiert mit (vp-werkstatt-immer-neueste).
         assertThat(m.skripte()).contains(new ReleaseManifest.Skripte(ReleaseManifest.SKRIPTE_DATEI,
-                "8888888888888888888888888888888888888888888888888888888888888888", 31744));
+                "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a", 31744));
     }
 
     @Test
     @DisplayName("ein unvollständiger Skriptstand fehlt nur (tolerant wie die Box), erzeugt wird er nie")
     void anIncompleteSkriptstandIsOnlyMissing() throws Exception {
         String raw = Files.readString(CONTRACTS.resolve("examples/ota-release-manifest.valid.light.json"))
-                .replace("8888888888888888888888888888888888888888888888888888888888888888", "kaputt");
+                .replace("5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a", "kaputt");
         assertThat(ReleaseManifest.read(raw).skripte()).isEmpty();
         assertThatThrownBy(() -> ReleaseManifest.readStrict(raw))
                 .isInstanceOf(ReleaseManifest.InvalidManifestException.class)

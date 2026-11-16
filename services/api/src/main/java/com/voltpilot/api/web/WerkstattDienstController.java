@@ -8,7 +8,7 @@ import com.voltpilot.api.werkstatt.LaufSeiteService;
 import com.voltpilot.api.werkstatt.EinloesungRepository;
 import com.voltpilot.api.werkstatt.EinloesungService;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Freigabe;
-import com.voltpilot.api.werkstatt.FreigabeService;
+import com.voltpilot.api.werkstatt.WerkstattRegel;
 import com.voltpilot.api.werkstatt.WerkstattGehaeuseRepository;
 import com.voltpilot.api.werkstatt.WerkstattRepository;
 import com.voltpilot.api.werkstatt.WerkstattService;
@@ -47,10 +47,12 @@ import org.springframework.web.server.ResponseStatusException;
  * nichts, und kein Admin- oder Kunden-Token erreicht diesen Baum
  * ({@code SecurityConfig}).
  *
- * <p>Der Dienst darf hier lesen, ob und welche Freigabe läuft; in einer
- * laufenden Freigabe Einmal-Codes für ungekoppelte Boxen holen; lesen, was eine
+ * <p>Der Dienst darf hier lesen, ob und welche Freigabe läuft (seit 16.11.2026
+ * legt sie die Regel „neueste Fassung“ an, {@link WerkstattRegel}; die Form ist
+ * dieselbe wie bei einer Freigabe von Hand); solange die Werkstatt läuft,
+ * Einmal-Codes für ungekoppelte Boxen holen; lesen, was eine
  * Box beim Einlösen gemeldet hat; und das Probe-Fenster schließen, das eine
- * Einlösung geöffnet hat - kein anderes. Freigeben, Fenster öffnen, Kunden,
+ * Einlösung geöffnet hat - kein anderes. Anhalten, Fenster öffnen, Kunden,
  * Kopplung und Updates erreicht er nicht.
  */
 @RestController
@@ -139,17 +141,17 @@ public class WerkstattDienstController {
             String tunnelAdresse, Instant erfasstAm) {
     }
 
-    private final FreigabeService freigaben;
+    private final WerkstattRegel regel;
     private final EinloesungService einloesung;
     private final WerkstattService werkstatt;
     private final DienstAnsichtService ansichten;
     private final LaufSeiteService laufSeite;
     private final WerkstattGehaeuseRepository gehaeuseDateien;
 
-    public WerkstattDienstController(FreigabeService freigaben, EinloesungService einloesung,
+    public WerkstattDienstController(WerkstattRegel regel, EinloesungService einloesung,
             WerkstattService werkstatt, DienstAnsichtService ansichten, LaufSeiteService laufSeite,
             WerkstattGehaeuseRepository gehaeuseDateien) {
-        this.freigaben = freigaben;
+        this.regel = regel;
         this.einloesung = einloesung;
         this.werkstatt = werkstatt;
         this.ansichten = ansichten;
@@ -182,11 +184,18 @@ public class WerkstattDienstController {
                 .map(a -> new AuftragDto(a.id(), a.art(), a.lauf())).toList()));
     }
 
-    /** Die laufende Freigabe einer Box-Art (Vorgabe mango); 404, wenn keine läuft. */
+    /**
+     * Die Freigabe, die gerade gilt (Vorgabe mango): die Zeile der Regel für heute
+     * oder im Übergang eine laufende von Hand. 404 mit Grund, wenn die Werkstatt
+     * angehalten ist, auf eine Fassung wartet oder die Tagesgrenze erreicht hat.
+     */
     @GetMapping("/freigabe")
-    public FreigabeDto freigabe(@RequestParam(name = "boxArt", defaultValue = FreigabeService.MANGO) String boxArt) {
-        return freigaben.laufend(boxArt).map(FreigabeDto::of).orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Die Werkstatt ist für " + boxArt + " nicht freigegeben."));
+    public FreigabeDto freigabe(@RequestParam(name = "boxArt", defaultValue = WerkstattRegel.MANGO) String boxArt) {
+        if (!WerkstattRegel.MANGO.equals(boxArt)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Die Werkstatt richtet nur die Mango ein.");
+        }
+        return regel.fuerDenDienst().map(FreigabeDto::of).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, regel.stand().grund()));
     }
 
     /** Einmal-Code holen: 201; 409 ohne laufende Freigabe, gekoppelt, mit Zertifikat, Obergrenze; 422 Kennung. */

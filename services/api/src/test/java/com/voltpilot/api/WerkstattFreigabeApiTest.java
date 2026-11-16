@@ -5,8 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.werkstatt.WerkstattOpenWrt;
+import com.voltpilot.api.werkstatt.WerkstattRegel;
 import java.time.Instant;
-import java.util.HashMap;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.MethodOrderer;
@@ -37,10 +41,12 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Die Freigabe der Werkstatt (Werkstatt-Automatik V1, WI-4 A und WI-9 A):
- * „Werkstatt freigeben“ und „Freigabe beenden“ nur für VoltPilot-Admins, Lesen
- * der laufenden Freigabe für den Werkstatt-Dienst in seinem eigenen Baum - und
- * dort nichts anderes. Echte Keycloak-Token, echte Migrationen.
+ * Die Werkstatt nimmt immer die neueste Fassung (vp-werkstatt-immer-neueste):
+ * die Regel legt die Freigabe für den Dienst selbst an (neueste zuweisbare
+ * signierte Edge-Light-Fassung, OpenWrt fest im Code), „Werkstatt anhalten“ und
+ * „Werkstatt fortsetzen“ nur für VoltPilot-Admins mit Protokoll, Lesen der
+ * geltenden Freigabe für den Werkstatt-Dienst in seinem eigenen Baum - und dort
+ * nichts anderes. Echte Keycloak-Token, echte Migrationen.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @AutoConfigureTestRestTemplate
@@ -55,7 +61,10 @@ class WerkstattFreigabeApiTest {
     private static final String ADMIN_PW = "voltpilot_admin_test_pw";
 
     private static final String BASE = "/api/v1/admin/werkstatt/freigaben";
+    private static final String REGEL_BASE = "/api/v1/admin/werkstatt";
+    private static final String REGEL = REGEL_BASE + "/regel";
     private static final String DIENST = "/api/v1/werkstatt-dienst/freigabe";
+    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
     private static final String SHA = "0123456789abcdef".repeat(4);
 
     @Container
@@ -99,129 +108,158 @@ class WerkstattFreigabeApiTest {
 
     private final ObjectMapper json = new ObjectMapper();
 
-    private static Map<String, Object> antrag() {
-        Map<String, Object> a = new HashMap<>();
-        a.put("boxArt", "mango");
-        a.put("tage", 30);
-        a.put("obergrenze", 20);
-        a.put("openwrt", Map.of("fassung", "25.12.5",
-                "datei", "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
-                "sha256", SHA, "quelle", "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"));
-        a.put("edgeLight", Map.of("fassung", "edge-light-2026.11.0",
-                "quelle", "https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/edge-light-2026.11.0/",
-                "programmSha256", SHA, "skripteSha256", SHA));
-        a.put("notiz", "erste Werkstatt-Freigabe");
-        return a;
-    }
+    private static final long SEQ = 900_001;
 
     @Test
     @Order(1)
-    void freigebenLesenBeenden() throws Exception {
+    void dieRegelNimmtDieNeuesteSignierteFassung() throws Exception {
         String admin = token("admin", "admin");
         String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
 
-        // Ohne Freigabe: 404 für den Dienst, mit Satz.
+        // Ohne signierte Fassung: 404 für den Dienst, mit Grund; die Seite sagt „wartet“.
         ResponseEntity<String> keine = send(HttpMethod.GET, DIENST, dienst, null);
         assertThat(keine.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(message(keine)).contains("nicht freigegeben");
+        assertThat(message(keine)).contains("keine signierte Edge-Light-Fassung");
+        JsonNode r0 = json.readTree(send(HttpMethod.GET, REGEL, admin, null).getBody());
+        assertThat(r0.get("zustand").asText()).isEqualTo("wartet");
+        assertThat(r0.get("openwrt").get("sha256").asText()).isEqualTo(WerkstattOpenWrt.MANGO.sha256());
+        assertThat(r0.get("tagesgrenze").asInt()).isEqualTo(40);
 
-        ResponseEntity<String> neu = send(HttpMethod.POST, BASE, admin, antrag());
-        assertThat(neu.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        JsonNode f = json.readTree(neu.getBody());
-        String kennung = f.get("kennung").asText();
-        assertThat(kennung).matches("^20[0-9]{2}-[01][0-9]-mango-1$");
-        assertThat(f.get("zustand").asText()).isEqualTo("laufend");
-        assertThat(f.get("erteiltVon").asText()).isNotBlank();
-        Instant ab = Instant.parse(f.get("gueltigAb").asText());
-        Instant bis = Instant.parse(f.get("gueltigBis").asText());
-        assertThat(java.time.Duration.between(ab, bis).toDays()).isEqualTo(30);
+        // Eine Fassung ohne Skriptstand im Manifest nimmt die Werkstatt nicht.
+        WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.0", SEQ, false, true);
+        assertThat(message(send(HttpMethod.GET, DIENST, dienst, null))).contains("Skriptstand");
+        // Die neueste ist noch nicht zuweisbar (Programme fehlen im Portal): Sie wartet, nimmt nicht die vorige.
+        WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.1", SEQ + 1, true, false);
+        ResponseEntity<String> wartet = send(HttpMethod.GET, DIENST, dienst, null);
+        assertThat(wartet.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(message(wartet)).contains("edge-light-2026.11.1").contains("noch nicht zuweisbar");
+        assertThat(adminJdbc.queryForObject("SELECT count(*) FROM werkstatt_freigabe", Long.class)).isZero();
 
-        // Eine zweite für dieselbe Box-Art läuft nicht daneben.
-        ResponseEntity<String> zweite = send(HttpMethod.POST, BASE, admin, antrag());
-        assertThat(zweite.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(message(zweite)).contains(kennung).contains("beenden");
-
-        // Der Dienst liest sie im Format seiner Datei (Schema vp-werkstatt-freigabe.v1).
+        // Programme geprüft im Portal: Jetzt gilt sie, in der Form der Datei des Dienstes.
+        adminJdbc.update("UPDATE edge_light_programm SET daten = ?, fertig_am = now() WHERE release_seq = ?",
+                new byte[] {1, 2, 3, 4}, SEQ + 1);
+        Instant vorher = Instant.now();
         JsonNode d = json.readTree(send(HttpMethod.GET, DIENST + "?boxArt=mango", dienst, null).getBody());
         assertThat(d.get("schema").asText()).isEqualTo("vp-werkstatt-freigabe.v1");
-        assertThat(d.get("kennung").asText()).isEqualTo(kennung);
+        String kennung = d.get("kennung").asText();
+        assertThat(kennung).matches("^20[0-9]{2}-[01][0-9]-mango-1$");
         assertThat(d.get("box_art").asText()).isEqualTo("mango");
-        assertThat(Instant.parse(d.get("erteilt_am").asText())).isEqualTo(ab);
-        assertThat(Instant.parse(d.get("gueltig_bis").asText())).isEqualTo(bis);
-        assertThat(d.get("obergrenze").asInt()).isEqualTo(20);
-        assertThat(d.get("openwrt").get("sha256").asText()).isEqualTo(SHA);
-        assertThat(d.get("edge_light").get("fassung").asText()).isEqualTo("edge-light-2026.11.0");
-        assertThat(d.get("edge_light").get("programm_sha256").asText()).isEqualTo(SHA);
-        assertThat(d.has("beendet_am")).isFalse();
+        assertThat(d.get("erteilt_von").asText()).isEqualTo(WerkstattRegel.AKTEUR_NAME);
+        Instant erteilt = Instant.parse(d.get("erteilt_am").asText());
+        assertThat(erteilt).isBetween(vorher.minusSeconds(5), Instant.now());
+        // Gültig bis Mitternacht (Berlin) und eine Stunde Nachlauf.
+        ZonedDateTime morgen = LocalDate.ofInstant(erteilt, BERLIN).plusDays(1).atStartOfDay(BERLIN);
+        assertThat(Instant.parse(d.get("gueltig_bis").asText())).isEqualTo(morgen.plusHours(1).toInstant());
+        assertThat(d.get("obergrenze").asInt()).isEqualTo(40);
+        assertThat(d.get("openwrt").get("fassung").asText()).isEqualTo("25.12.5");
+        assertThat(d.get("openwrt").get("datei").asText()).isEqualTo(WerkstattOpenWrt.MANGO.datei());
+        assertThat(d.get("openwrt").get("sha256").asText())
+                .isEqualTo("056235c21f55288544ca459bc0a61023d084ce788ca5508d49c235dc66a7686c");
+        assertThat(d.get("edge_light").get("fassung").asText()).isEqualTo("edge-light-2026.11.1");
+        assertThat(d.get("edge_light").get("quelle").asText())
+                .isEqualTo("https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/edge-light-2026.11.1/");
+        assertThat(d.get("edge_light").get("programm_sha256").asText()).isEqualTo(WerkstattTestFassung.PROGRAMM_SHA);
+        assertThat(d.get("edge_light").get("skripte_sha256").asText()).isEqualTo(WerkstattTestFassung.SKRIPTE_SHA);
         assertThat(feldnamen(d)).containsExactlyInAnyOrder("schema", "kennung", "box_art", "erteilt_von",
                 "erteilt_am", "gueltig_bis", "obergrenze", "openwrt", "edge_light");
+        // Jeder Takt des Dienstes bekommt dieselbe Zeile.
+        assertThat(json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody()).get("kennung").asText())
+                .isEqualTo(kennung);
 
-        JsonNode liste = json.readTree(send(HttpMethod.GET, BASE, admin, null).getBody());
-        assertThat(liste).hasSize(1);
+        // Ein neueres, aber unsigniertes Release zählt nie als „neueste“.
+        adminJdbc.update("INSERT INTO edge_release (release_seq, version, target_commit, created_by) "
+                + "VALUES (?, 'edge-light-2026.11.2', '5b28311b4c0d', 'test')", SEQ + 2);
+        assertThat(json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody()).get("kennung").asText())
+                .isEqualTo(kennung);
 
-        // Freigabe beenden
-        ResponseEntity<String> ende = send(HttpMethod.POST, BASE + "/" + kennung + "/ende", admin, null);
-        assertThat(ende.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(json.readTree(ende.getBody()).get("zustand").asText()).isEqualTo("beendet");
-        assertThat(send(HttpMethod.POST, BASE + "/" + kennung + "/ende", admin, null).getStatusCode())
-                .isEqualTo(HttpStatus.CONFLICT);
-        assertThat(send(HttpMethod.POST, BASE + "/2026-01-mango-9/ende", admin, null).getStatusCode())
-                .isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(send(HttpMethod.GET, DIENST, dienst, null).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-
-        // Danach eine neue: die nächste Nummer des Monats.
-        ResponseEntity<String> neu2 = send(HttpMethod.POST, BASE, admin, antrag());
-        assertThat(neu2.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(json.readTree(neu2.getBody()).get("kennung").asText()).endsWith("-mango-2");
+        // Eine neuere signierte Fassung gilt ab der nächsten Box: eine neue Zeile; die alte bleibt gültig.
+        WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.3", SEQ + 3);
         JsonNode d2 = json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody());
         assertThat(d2.get("kennung").asText()).endsWith("-mango-2");
+        assertThat(d2.get("edge_light").get("fassung").asText()).isEqualTo("edge-light-2026.11.3");
+        JsonNode liste = json.readTree(send(HttpMethod.GET, BASE, admin, null).getBody());
+        assertThat(liste).hasSize(2);
+        assertThat(liste.get(0).get("kennung").asText()).endsWith("-mango-2");
+        assertThat(liste.get(0).get("quelle").asText()).isEqualTo("regel");
+        assertThat(liste.get(0).get("edgeReleaseSeq").asLong()).isEqualTo(SEQ + 3);
+        assertThat(liste.get(1).get("zustand").asText()).isEqualTo("laufend");
+
+        JsonNode r = json.readTree(send(HttpMethod.GET, REGEL, admin, null).getBody());
+        assertThat(r.get("zustand").asText()).isEqualTo("laeuft");
+        assertThat(r.get("grund").isNull()).isTrue();
+        assertThat(r.get("freigabe").asText()).isEqualTo(d2.get("kennung").asText());
+        assertThat(r.get("edgeLight").get("fassung").asText()).isEqualTo("edge-light-2026.11.3");
+        assertThat(r.get("releaseSeq").asLong()).isEqualTo(SEQ + 3);
+        assertThat(r.get("vonHand").asBoolean()).isFalse();
+        assertThat(r.get("heute").asInt()).isZero();
+        assertThat(r.get("angehalten").isNull()).isTrue();
     }
 
     @Test
     @Order(2)
-    void ungueltigeAntraege() {
+    void anhaltenUndFortsetzen_mitProtokoll() throws Exception {
         String admin = token("admin", "admin");
-        record Fall(String name, String feld, Object wert, String grund) {
-        }
-        List<Fall> faelle = List.of(
-                new Fall("pi", "boxArt", "pi", "V2"),
-                new Fall("zu lang", "tage", 93, "tage"),
-                new Fall("null Tage", "tage", 0, "tage"),
-                new Fall("obergrenze", "obergrenze", 0, "obergrenze"),
-                new Fall("factory", "openwrt", Map.of("fassung", "25.12.5", "datei", "openwrt-25.12.5-x-factory.bin",
-                        "sha256", SHA, "quelle", "https://x.example/"), "sysupgrade"),
-                new Fall("andere Fassung", "openwrt", Map.of("fassung", "25.12.5", "datei",
-                        "openwrt-24.10.4-x-sysupgrade.bin", "sha256", SHA, "quelle", "https://x.example/"), "passt nicht"),
-                new Fall("http", "edgeLight", Map.of("fassung", "edge-light-2026.11.0", "quelle", "http://x.example/",
-                        "programmSha256", SHA, "skripteSha256", SHA), "https"),
-                new Fall("alte Fassung", "edgeLight", Map.of("fassung", "edge-light-g70cc2059e", "quelle",
-                        "https://x.example/", "programmSha256", SHA, "skripteSha256", SHA), "edge-light-JJJJ.MM.N"),
-                new Fall("sha", "edgeLight", Map.of("fassung", "edge-light-2026.11.0", "quelle", "https://x.example/",
-                        "programmSha256", "abc", "skripteSha256", SHA), "programmSha256"));
-        for (Fall f : faelle) {
-            Map<String, Object> a = antrag();
-            a.put(f.feld(), f.wert());
-            ResponseEntity<String> r = send(HttpMethod.POST, BASE, admin, a);
-            assertThat(r.getStatusCode()).as(f.name()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
-            assertThat(message(r)).as(f.name()).contains(f.grund());
-        }
+        String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
+        String kennung = json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody()).get("kennung").asText();
+
+        ResponseEntity<String> halt = send(HttpMethod.POST, REGEL_BASE + "/anhalten", admin,
+                Map.of("grund", "Probe: falsches Kabel"));
+        assertThat(halt.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode h = json.readTree(halt.getBody());
+        assertThat(h.get("zustand").asText()).isEqualTo("angehalten");
+        assertThat(h.get("angehalten").get("grund").asText()).isEqualTo("Probe: falsches Kabel");
+        assertThat(h.get("angehalten").get("von").asText()).isNotBlank();
+        assertThat(h.get("freigabe").isNull()).isTrue();
+        ResponseEntity<String> fuerDenDienst = send(HttpMethod.GET, DIENST, dienst, null);
+        assertThat(fuerDenDienst.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(message(fuerDenDienst)).contains("angehalten");
+        // Noch einmal anhalten ändert nichts: ein Eintrag im Protokoll.
+        assertThat(send(HttpMethod.POST, REGEL_BASE + "/anhalten", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(adminJdbc.queryForObject("SELECT count(*) FROM werkstatt_betrieb", Long.class)).isEqualTo(1L);
+
+        JsonNode weiter = json.readTree(send(HttpMethod.POST, REGEL_BASE + "/fortsetzen", admin, null).getBody());
+        assertThat(weiter.get("zustand").asText()).isEqualTo("laeuft");
+        assertThat(weiter.get("verlauf")).hasSize(2);
+        assertThat(weiter.get("verlauf").get(0).get("angehalten").asBoolean()).isFalse();
+        assertThat(weiter.get("verlauf").get(1).get("angehalten").asBoolean()).isTrue();
+        assertThat(weiter.get("verlauf").get(1).get("grund").asText()).isEqualTo("Probe: falsches Kabel");
+        // Fortgesetzt: dieselbe Zeile wie vorher, keine neue.
+        assertThat(json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody()).get("kennung").asText())
+                .isEqualTo(kennung);
+
+        // Das Protokoll wird nur fortgeschrieben.
+        assertThatThrownBy(() -> adminJdbc.update("UPDATE werkstatt_betrieb SET grund = 'x'")).rootCause()
+                .hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> eigentuemer().update("DELETE FROM werkstatt_betrieb")).rootCause()
+                .hasMessageContaining("nur fortgeschrieben");
+        assertThat(send(HttpMethod.POST, REGEL_BASE + "/anhalten", admin, Map.of("grund", "x".repeat(501)))
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
     @Order(3)
-    void nurAdminsFreigeben_nurDerDienstLiest() {
+    void nurAdminsHalten_nurDerDienstLiest() {
         String kunde = token("demo", "demo");
         String admin = token("admin", "admin");
         String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
         String tunnel = serviceToken("voltpilot-tunnel-dienst", "voltpilot-tunnel-dienst-dev-secret");
         String publisher = serviceToken("voltpilot-release-publisher", "voltpilot-release-publisher-dev-secret");
-        // Freigeben und beenden: nie der Dienst, nie ein Kunde, nie ein anderes Dienstkonto.
+        // Anhalten, fortsetzen, lesen: nie der Dienst, nie ein Kunde, nie ein anderes Dienstkonto.
         for (String t : List.of(kunde, dienst, tunnel, publisher)) {
-            assertThat(send(HttpMethod.POST, BASE, t, antrag()).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-            assertThat(send(HttpMethod.GET, BASE, t, null).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-            assertThat(send(HttpMethod.POST, BASE + "/x/ende", t, null).getStatusCode())
+            assertThat(send(HttpMethod.POST, REGEL_BASE + "/anhalten", t, null).getStatusCode())
                     .isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(send(HttpMethod.POST, REGEL_BASE + "/fortsetzen", t, null).getStatusCode())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(send(HttpMethod.GET, REGEL, t, null).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(send(HttpMethod.GET, BASE, t, null).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         }
+        assertThat(adminJdbc.queryForObject("SELECT count(*) FROM werkstatt_betrieb", Long.class)).isEqualTo(2L);
+        // Das Formular ist weg: Freigeben und Beenden gibt es nicht mehr.
+        assertThat(send(HttpMethod.POST, BASE, admin, Map.of("tage", 30)).getStatusCode().is2xxSuccessful())
+                .isFalse();
+        assertThat(send(HttpMethod.POST, BASE + "/2026-11-mango-1/ende", admin, null).getStatusCode()
+                .is2xxSuccessful()).isFalse();
         // Der Baum des Dienstes: nur der Dienst - kein Admin, kein Kunde, kein anderes Dienstkonto.
         for (String t : List.of(kunde, admin, tunnel, publisher)) {
             assertThat(send(HttpMethod.GET, DIENST, t, null).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -237,32 +275,88 @@ class WerkstattFreigabeApiTest {
 
     @Test
     @Order(4)
-    void tabelle_nurDasEndeAendertSich_undDieAppRolleLiestNichts() {
-        String kennung = adminJdbc.queryForObject(
-                "SELECT kennung FROM werkstatt_freigabe ORDER BY gueltig_ab LIMIT 1", String.class);
-        assertThatThrownBy(() -> adminJdbc.update("UPDATE werkstatt_freigabe SET obergrenze = 3 WHERE kennung = ?",
-                kennung)).rootCause().hasMessageContaining("schon beendet");
-        String laufend = adminJdbc.queryForObject(
-                "SELECT kennung FROM werkstatt_freigabe WHERE beendet_am IS NULL", String.class);
-        assertThatThrownBy(() -> adminJdbc.update("UPDATE werkstatt_freigabe SET obergrenze = 3 WHERE kennung = ?",
-                laufend)).rootCause().hasMessageContaining("nur ihr Ende");
-        // Löschen: die Admin-Rolle hat kein DELETE (erster Riegel), und selbst der Eigentümer der Tabelle
-        // scheitert am Trigger (zweiter Riegel).
-        assertThatThrownBy(() -> adminJdbc.update("DELETE FROM werkstatt_freigabe WHERE kennung = ?", laufend))
-                .rootCause().hasMessageContaining("permission denied");
-        JdbcTemplate eigentuemer = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(), POSTGRES.getPassword()));
-        assertThatThrownBy(() -> eigentuemer.update("DELETE FROM werkstatt_freigabe WHERE kennung = ?", laufend))
-                .rootCause().hasMessageContaining("nicht gelöscht");
-        assertThat(eigentuemer.queryForObject("SELECT count(*) FROM werkstatt_freigabe", Long.class)).isEqualTo(2L);
+    void uebergang_eineFreigabeVonHandGiltBisDieRegelPasst() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
+        // Die laufende Freigabe von Hand aus der Zeit vor der Regel (wie 2026-11-mango-3).
+        eigentuemer().update("INSERT INTO werkstatt_freigabe (kennung, box_art, gueltig_ab, gueltig_bis, obergrenze, "
+                + "openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, edge_quelle, "
+                + "edge_programm_sha256, edge_skripte_sha256, erteilt_am, erteilt_von, erteilt_von_name) VALUES "
+                + "('2026-10-mango-3', 'mango', now() - interval '1 day', now() + interval '10 days', 20, '25.12.5', "
+                + "'openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin', ?, "
+                + "'https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/', 'edge-light-2026.10.9', "
+                + "'https://git.tecmaxx.de/x/', ?, ?, now() - interval '1 day', 'sub-alex', 'Alex')",
+                SHA, SHA, SHA);
+        // Solange die Regel eine Fassung hat, gilt sie, nicht die von Hand.
+        assertThat(json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody()).get("edge_light")
+                .get("fassung").asText()).isEqualTo("edge-light-2026.11.3");
 
-        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
-        assertThatThrownBy(() -> app.queryForObject("SELECT count(*) FROM werkstatt_freigabe", Long.class))
-                .rootCause().hasMessageContaining("permission denied");
+        // Die neueste Fassung trägt keinen Skriptstand im Manifest: Die Freigabe von Hand gilt weiter.
+        WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.4", SEQ + 4, false, true);
+        JsonNode d = json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody());
+        assertThat(d.get("kennung").asText()).isEqualTo("2026-10-mango-3");
+        assertThat(d.get("erteilt_von").asText()).isEqualTo("Alex");
+        JsonNode r = json.readTree(send(HttpMethod.GET, REGEL, admin, null).getBody());
+        assertThat(r.get("zustand").asText()).isEqualTo("laeuft");
+        assertThat(r.get("vonHand").asBoolean()).isTrue();
+        assertThat(r.get("freigabe").asText()).isEqualTo("2026-10-mango-3");
+        assertThat(r.get("neueste").asText()).isEqualTo("edge-light-2026.11.4");
+        assertThat(r.get("grund").asText()).contains("Skriptstand");
+        // Angehalten gilt auch sie nicht.
+        send(HttpMethod.POST, REGEL_BASE + "/anhalten", admin, null);
+        assertThat(send(HttpMethod.GET, DIENST, dienst, null).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        send(HttpMethod.POST, REGEL_BASE + "/fortsetzen", admin, null);
+
+        // Mit der nächsten Fassung samt Skriptstand übernimmt wieder die Regel.
+        WerkstattTestFassung.anlegen(adminJdbc, "edge-light-2026.11.5", SEQ + 5);
+        JsonNode d2 = json.readTree(send(HttpMethod.GET, DIENST, dienst, null).getBody());
+        assertThat(d2.get("edge_light").get("fassung").asText()).isEqualTo("edge-light-2026.11.5");
+        assertThat(d2.get("kennung").asText()).endsWith("-mango-3");
     }
 
     @Test
     @Order(5)
+    void tabelle_nurDasEndeAendertSich_undDieAppRolleLiestNichts() {
+        String laufend = adminJdbc.queryForObject(
+                "SELECT kennung FROM werkstatt_freigabe WHERE quelle = 'regel' ORDER BY gueltig_ab LIMIT 1",
+                String.class);
+        // Auch Herkunft und Release gehören zum Beleg.
+        for (String spalte : List.of("obergrenze = 3", "quelle = 'formular'", "edge_release_seq = 1")) {
+            assertThatThrownBy(() -> adminJdbc.update("UPDATE werkstatt_freigabe SET " + spalte + " WHERE kennung = ?",
+                    laufend)).as(spalte).rootCause().hasMessageContaining("nur ihr Ende");
+        }
+        adminJdbc.update("UPDATE werkstatt_freigabe SET beendet_am = now(), beendet_von = 'test' WHERE kennung = ?",
+                laufend);
+        assertThatThrownBy(() -> adminJdbc.update("UPDATE werkstatt_freigabe SET obergrenze = 3 WHERE kennung = ?",
+                laufend)).rootCause().hasMessageContaining("schon beendet");
+        // Eine Zeile der Regel ohne Release ist keine.
+        assertThatThrownBy(() -> eigentuemer().update("INSERT INTO werkstatt_freigabe (kennung, box_art, gueltig_ab, "
+                + "gueltig_bis, obergrenze, openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, "
+                + "edge_quelle, edge_programm_sha256, edge_skripte_sha256, erteilt_von, quelle) VALUES ('2026-11-mango-9', "
+                + "'mango', now(), now() + interval '1 day', 5, '25.12.5', 'openwrt-25.12.5-x-sysupgrade.bin', ?, "
+                + "'https://x.example/', 'edge-light-2026.11.0', 'https://x.example/', ?, ?, 'x', 'regel')", SHA, SHA,
+                SHA)).rootCause().hasMessageContaining("werkstatt_freigabe_quelle_chk");
+        // Löschen: die Admin-Rolle hat kein DELETE (erster Riegel), und selbst der Eigentümer der Tabelle
+        // scheitert am Trigger (zweiter Riegel).
+        assertThatThrownBy(() -> adminJdbc.update("DELETE FROM werkstatt_freigabe WHERE kennung = ?", laufend))
+                .rootCause().hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> eigentuemer().update("DELETE FROM werkstatt_freigabe WHERE kennung = ?", laufend))
+                .rootCause().hasMessageContaining("nicht gelöscht");
+
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        for (String t : List.of("werkstatt_freigabe", "werkstatt_betrieb")) {
+            assertThatThrownBy(() -> app.queryForObject("SELECT count(*) FROM " + t, Long.class)).as(t)
+                    .rootCause().hasMessageContaining("permission denied");
+        }
+    }
+
+    private JdbcTemplate eigentuemer() {
+        return new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword()));
+    }
+
+    @Test
+    @Order(6)
     void dienstMeldetSeineAnsicht_nurAdminsLesenSie() throws Exception {
         String admin = token("admin", "admin");
         String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
@@ -320,7 +414,7 @@ class WerkstattFreigabeApiTest {
      * „Zur Seite“ hält Fall, Lösung und Grund fest, append-only.
      */
     @Test
-    @Order(6)
+    @Order(7)
     void laufSeite_nochmalUndZurSeite() throws Exception {
         String admin = token("admin", "admin");
         String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");

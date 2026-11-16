@@ -27,7 +27,12 @@ public class FreigabeRepository {
     private static final String SPALTEN = "id, kennung, box_art, gueltig_ab, gueltig_bis, obergrenze, "
             + "openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, edge_quelle, "
             + "edge_programm_sha256, edge_skripte_sha256, notiz, erteilt_am, erteilt_von, erteilt_von_name, "
-            + "beendet_am, beendet_von, beendet_von_name ";
+            + "beendet_am, beendet_von, beendet_von_name, quelle, edge_release_seq ";
+
+    /** Eine Zeile von Hand (bis 16.11.2026, „Werkstatt freigeben“). */
+    public static final String VON_HAND = "formular";
+    /** Eine Zeile, die die Regel „neueste Fassung“ selbst angelegt hat ({@link WerkstattRegel}). */
+    public static final String REGEL = "regel";
 
     /** Das OpenWrt-Abbild einer Freigabe. */
     public record Abbild(String fassung, String datei, String sha256, String quelle) {
@@ -37,10 +42,19 @@ public class FreigabeRepository {
     public record Programm(String fassung, String quelle, String programmSha256, String skripteSha256) {
     }
 
-    /** Eine Zeile. */
+    /**
+     * Eine Zeile. {@code quelle}: {@link #VON_HAND} oder {@link #REGEL};
+     * {@code edgeReleaseSeq} das Release im Register, aus dessen signiertem
+     * Manifest die Regel Edge Light genommen hat (von Hand: {@code null}).
+     */
     public record Freigabe(UUID id, String kennung, String boxArt, Instant gueltigAb, Instant gueltigBis,
             int obergrenze, Abbild openwrt, Programm edgeLight, String notiz, Instant erteiltAm, String erteiltVon,
-            String erteiltVonName, Instant beendetAm, String beendetVon, String beendetVonName) {
+            String erteiltVonName, Instant beendetAm, String beendetVon, String beendetVonName, String quelle,
+            Long edgeReleaseSeq) {
+
+        public boolean vonDerRegel() {
+            return REGEL.equals(quelle);
+        }
 
         /** Läuft jetzt: begonnen, nicht abgelaufen, nicht beendet. */
         public boolean laufend(Instant jetzt) {
@@ -89,27 +103,53 @@ public class FreigabeRepository {
                 FreigabeRepository::freigabe, boxArt, t, t);
     }
 
+    /** Die Zeilen der Regel einer Box-Art, angelegt ab {@code seit}, nicht beendet; neueste zuerst. */
+    public List<Freigabe> regelSeit(String boxArt, Instant seit) {
+        return jdbc.query("SELECT " + SPALTEN + "FROM werkstatt_freigabe WHERE box_art = ? AND quelle = '"
+                        + REGEL + "' AND beendet_am IS NULL AND gueltig_ab >= ? ORDER BY gueltig_ab DESC",
+                FreigabeRepository::freigabe, boxArt, Timestamp.from(seit));
+    }
+
     /** Die Kennungen eines Präfixes (für die nächste freie Nummer). */
     public List<String> kennungenMit(String praefix) {
         return jdbc.queryForList("SELECT kennung FROM werkstatt_freigabe WHERE kennung LIKE ?", String.class,
                 praefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
     }
 
+    /** Eine Zeile der Regel anlegen ({@link #REGEL}); erteilt am {@code gueltigAb}. */
     public UUID anlegen(String kennung, String boxArt, Instant gueltigAb, Instant gueltigBis, int obergrenze,
-            Abbild o, Programm e, String notiz, String akteur, String akteurName) {
+            Abbild o, Programm e, long edgeReleaseSeq, String notiz, String akteur, String akteurName) {
         return jdbc.queryForObject("INSERT INTO werkstatt_freigabe (kennung, box_art, gueltig_ab, gueltig_bis, "
                         + "obergrenze, openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, "
-                        + "edge_quelle, edge_programm_sha256, edge_skripte_sha256, notiz, erteilt_von, erteilt_von_name) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                        + "edge_quelle, edge_programm_sha256, edge_skripte_sha256, notiz, erteilt_am, erteilt_von, "
+                        + "erteilt_von_name, quelle, edge_release_seq) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '" + REGEL + "', ?) RETURNING id",
                 UUID.class, kennung, boxArt, Timestamp.from(gueltigAb), Timestamp.from(gueltigBis), obergrenze,
                 o.fassung(), o.datei(), o.sha256(), o.quelle(), e.fassung(), e.quelle(), e.programmSha256(),
-                e.skripteSha256(), notiz, akteur, akteurName);
+                e.skripteSha256(), notiz, Timestamp.from(gueltigAb), akteur, akteurName, edgeReleaseSeq);
     }
 
-    /** Setzt das Ende; false, wenn es schon gesetzt war. */
-    public boolean beenden(UUID id, String akteur, String akteurName) {
-        return jdbc.update("UPDATE werkstatt_freigabe SET beendet_am = now(), beendet_von = ?, beendet_von_name = ? "
-                + "WHERE id = ? AND beendet_am IS NULL", akteur, akteurName, id) == 1;
+    // ── Anhalten und Fortsetzen (werkstatt_betrieb, nur anhängen) ─────────
+
+    /** Ein Eintrag im Protokoll: angehalten oder fortgesetzt, von wem, wann, warum. */
+    public record Betrieb(UUID id, String boxArt, boolean angehalten, String grund, Instant am, String von,
+            String vonName) {
+    }
+
+    /** Die letzten {@code anzahl} Einträge einer Box-Art, neueste zuerst. */
+    public List<Betrieb> betrieb(String boxArt, int anzahl) {
+        return jdbc.query("SELECT id, box_art, angehalten, grund, am, von, von_name FROM werkstatt_betrieb "
+                        + "WHERE box_art = ? ORDER BY am DESC, id LIMIT ?",
+                (rs, n) -> new Betrieb(rs.getObject("id", UUID.class), rs.getString("box_art"),
+                        rs.getBoolean("angehalten"), rs.getString("grund"), instant(rs, "am"), rs.getString("von"),
+                        rs.getString("von_name")),
+                boxArt, anzahl);
+    }
+
+    public void betriebEintragen(String boxArt, boolean angehalten, String grund, Instant am, String von,
+            String vonName) {
+        jdbc.update("INSERT INTO werkstatt_betrieb (box_art, angehalten, grund, am, von, von_name) "
+                + "VALUES (?, ?, ?, ?, ?, ?)", boxArt, angehalten, grund, Timestamp.from(am), von, vonName);
     }
 
     private static Freigabe freigabe(ResultSet rs, int n) throws SQLException {
@@ -130,7 +170,9 @@ public class FreigabeRepository {
                 rs.getString("erteilt_von_name"),
                 instant(rs, "beendet_am"),
                 rs.getString("beendet_von"),
-                rs.getString("beendet_von_name"));
+                rs.getString("beendet_von_name"),
+                rs.getString("quelle"),
+                rs.getObject("edge_release_seq", Long.class));
     }
 
     private static Instant instant(ResultSet rs, String spalte) throws SQLException {

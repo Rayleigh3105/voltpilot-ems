@@ -1067,4 +1067,48 @@ public class RolloutService {
                             + String.join(", ", fehlen) + " liegen noch nicht vollstaendig im Portal.");
         }
     }
+
+    // ── Die neueste Fassung einer Linie (geteilte Regel) ─────────────────
+
+    /**
+     * Die neueste signierte Fassung einer Linie und ob sie heute zuweisbar ist.
+     *
+     * @param nichtZuweisbar warum sie noch nicht zuweisbar ist (Edge Light: die
+     *                       Programme liegen noch nicht geprüft im Portal), sonst
+     *                       {@code null}
+     */
+    public record NeuesteFassung(EdgeReleaseDto release, String nichtZuweisbar) {
+
+        public boolean zuweisbar() {
+            return nichtZuweisbar == null;
+        }
+    }
+
+    /**
+     * Die Regel „neueste zuweisbare signierte Fassung je Linie“, an EINER Stelle
+     * für alle, die sie brauchen (die Werkstatt, das erste Verbinden): das
+     * Release der Linie ({@link BoxArt}) mit der höchsten {@code release_seq},
+     * das signiert ist (Manifest und Signatur liegen vor). Ein unsigniertes
+     * zählt nie als „neueste“; es kann keine Box bekommen. Ist die neueste noch
+     * nicht zuweisbar, nennt das Ergebnis den Grund - es weicht NICHT auf die
+     * vorige aus; wer die Regel nutzt, wartet.
+     *
+     * @return leer, wenn die Linie keine signierte Fassung hat
+     */
+    public Optional<NeuesteFassung> neuesteFassung(String linie) {
+        EdgeReleaseDto neueste = releases.findAll().stream()
+                .filter(r -> r.manifest() != null && r.signature() != null)
+                .filter(r -> linie.equals(releaseBoxArt(r)))
+                .max(java.util.Comparator.comparingLong(EdgeReleaseDto::releaseSeq))
+                .orElse(null);
+        if (neueste == null) {
+            return Optional.empty();
+        }
+        try {
+            requireLightProgramme(neueste);
+            return Optional.of(new NeuesteFassung(neueste, null));
+        } catch (ResponseStatusException e) {
+            return Optional.of(new NeuesteFassung(neueste, e.getReason()));
+        }
+    }
 }

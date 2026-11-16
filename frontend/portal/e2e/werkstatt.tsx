@@ -1,7 +1,8 @@
 /**
  * Die echte Werkstatt-Seite mit fiktiven Daten; alle API-Aufrufe bleiben im Speicher. Der
  * Werkstatt-Dienst meldet seine Ansicht (Vertrag werkstatt-ansicht-v1) frisch; welcher Lauf gerade an
- * der Werkbank steht, wählt `?lauf=` (laeuft, wartet, fertig, problem, startlader, still, ohne; dazu die Fälle der
+ * der Werkbank steht, wählt `?lauf=` (laeuft, wartet, fertig, problem, startlader, still; ohne: die Werkstatt wartet auf eine
+ * Fassung, angehalten: jemand hat sie angehalten, beide ohne Lauf; dazu die Fälle der
  * Lauf-Seite: gl_passwort, bruecke_weg, passwort_fremd, startet, bruecke_unterspannung). `problem` und `startlader` sind Stände eines älteren
  * Dienstes ohne `fall`, `belege` und `nochmal_moeglich`: daran zeigt sich, dass die Seite dann wie bisher bleibt.
  *
@@ -17,7 +18,7 @@ import { adminApi } from '../src/admin/adminApi';
 import { ApiError } from '../src/api';
 import { keycloak } from '../src/auth';
 import { type WerkstattBox } from '../src/werkstatt';
-import type { LaufStand, Loesung, SchrittBeleg, WerkstattAnsicht, WerkstattDienst, WerkstattFreigabe, WerkstattLauf, ZurSeite } from '../src/werkstattBank';
+import type { LaufStand, Loesung, SchrittBeleg, WerkstattAnsicht, WerkstattBetrieb, WerkstattDienst, WerkstattFreigabe, WerkstattLauf, WerkstattRegel, ZurSeite } from '../src/werkstattBank';
 import { type PageId } from '../src/nav';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -33,13 +34,48 @@ const iso = (ms: number) => new Date(start + ms).toISOString();
 const SHA = 'a3f1c09b7e2d4f6a8b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f708';
 const szenario = new URLSearchParams(window.location.search).get('lauf') ?? 'laeuft';
 
-let freigaben: WerkstattFreigabe[] = szenario === 'ohne' ? [] : [{
-  id: 'f1', kennung: '2026-11-mango-1', boxArt: 'mango', gueltigAb: iso(-86_400_000), gueltigBis: '2026-11-30T08:00:00Z', obergrenze: 20,
-  openwrt: { fassung: '25.12.5', datei: 'openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin', sha256: SHA,
-    quelle: 'https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/' },
-  edgeLight: { fassung: 'edge-light-2026.11.1', quelle: 'https://git.example.test/releases/edge-light-2026.11.1/', programmSha256: SHA, skripteSha256: SHA },
-  notiz: null, erteiltAm: iso(-86_400_000), erteiltVon: 'Alex', beendetAm: null, beendetVon: null, zustand: 'laufend', grund: null,
-}];
+/** OpenWrt steht fest im Code der API (WerkstattOpenWrt); Edge Light ist die neueste signierte Fassung. */
+const OPENWRT = { fassung: '25.12.5', datei: 'openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin',
+  sha256: '056235c21f55288544ca459bc0a61023d084ce788ca5508d49c235dc66a7686c',
+  quelle: 'https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/' };
+const QUELLE = 'https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/';
+const edge = (fassung: string) => ({ fassung, quelle: `${QUELLE}${fassung}/`, programmSha256: SHA, skripteSha256: SHA.split('').reverse().join('') });
+const heuteLaufend = szenario !== 'ohne';
+/**
+ * Die Freigaben als Beleg: zwei Zeilen der Regel von heute (2026.11.1, unter der der Lauf an der Werkbank begann, und die
+ * neuere 2026.11.3, die ab der nächsten Box gilt) und eine von Hand aus der Zeit vor der Regel.
+ */
+const freigaben: WerkstattFreigabe[] = [
+  { id: 'f2', kennung: '2026-11-mango-2', boxArt: 'mango', gueltigAb: iso(-40 * 60_000), gueltigBis: iso(20 * 3_600_000), obergrenze: 38,
+    openwrt: OPENWRT, edgeLight: edge('edge-light-2026.11.3'), notiz: null, erteiltAm: iso(-40 * 60_000), erteiltVon: 'Regel: neueste Fassung',
+    beendetAm: null, beendetVon: null, zustand: heuteLaufend ? 'laufend' : 'abgelaufen', grund: null, quelle: 'regel', edgeReleaseSeq: 14 },
+  { id: 'f1', kennung: '2026-11-mango-1', boxArt: 'mango', gueltigAb: iso(-5 * 3_600_000), gueltigBis: iso(20 * 3_600_000), obergrenze: 40,
+    openwrt: OPENWRT, edgeLight: edge('edge-light-2026.11.1'), notiz: null, erteiltAm: iso(-5 * 3_600_000), erteiltVon: 'Regel: neueste Fassung',
+    beendetAm: null, beendetVon: null, zustand: heuteLaufend ? 'laufend' : 'abgelaufen', grund: null, quelle: 'regel', edgeReleaseSeq: 12 },
+  { id: 'f0', kennung: '2026-10-mango-3', boxArt: 'mango', gueltigAb: iso(-30 * 86_400_000), gueltigBis: iso(-2 * 86_400_000), obergrenze: 20,
+    openwrt: OPENWRT, edgeLight: edge('edge-light-2026.10.9'), notiz: null, erteiltAm: iso(-30 * 86_400_000), erteiltVon: 'Alex',
+    beendetAm: null, beendetVon: null, zustand: 'abgelaufen', grund: 'Freigabe 2026-10-mango-3 ist abgelaufen.', quelle: 'formular', edgeReleaseSeq: null },
+];
+/** Anhalten und Fortsetzen: einmal vor zwei Tagen; `?lauf=angehalten` hält die Werkstatt jetzt an. */
+let verlauf: WerkstattBetrieb[] = [
+  { angehalten: false, grund: null, am: iso(-2 * 86_400_000), von: 'Alex' },
+  { angehalten: true, grund: 'Brücke getauscht', am: iso(-2 * 86_400_000 - 3_600_000), von: 'Alex' },
+];
+if (szenario === 'angehalten') verlauf = [{ angehalten: true, grund: 'Falsches Kabel an der Werkbank', am: iso(-20 * 60_000), von: 'Alex' }, ...verlauf];
+
+function regel(): WerkstattRegel {
+  const angehalten = verlauf[0]?.angehalten ? verlauf[0] : null;
+  const basis = { neueste: 'edge-light-2026.11.3', openwrt: OPENWRT, vonHand: false, heute: 2, tagesgrenze: 40, verlauf };
+  if (angehalten) {
+    return { ...basis, zustand: 'angehalten', grund: 'Die Werkstatt ist angehalten.', edgeLight: edge('edge-light-2026.11.3'), releaseSeq: 14,
+      freigabe: null, angehalten };
+  }
+  if (szenario === 'ohne') {
+    return { ...basis, zustand: 'wartet', heute: 0, edgeLight: null, releaseSeq: null, freigabe: null, angehalten: null,
+      grund: 'Die Fassung edge-light-2026.11.3 trägt ihren Skriptstand nicht im signierten Manifest. Die Werkstatt nimmt erst eine Fassung, die damit gebaut ist.' };
+  }
+  return { ...basis, zustand: 'laeuft', grund: null, edgeLight: edge('edge-light-2026.11.3'), releaseSeq: 14, freigabe: '2026-11-mango-2', angehalten: null };
+}
 
 const ERLEDIGT_BIS_TUNNEL = ['erkennen', 'fassungen', 'openwrt', 'wiedererkennen', 'internet', 'passwort', 'notfall', 'programm', 'einrichtung_wlan', 'tunnel_schluessel'];
 const ALLE = [...ERLEDIGT_BIS_TUNNEL, 'einloesen', 'tunnel', 'lan', 'neustart', 'probe', 'internet_weg', 'uebergabe'];
@@ -124,7 +160,8 @@ function laufAnDerBank(): LaufStand | null {
 }
 
 function ansicht(): WerkstattAnsicht {
-  const f = freigaben.find((x) => x.zustand === 'laufend');
+  const r = regel();
+  const f = r.zustand === 'laeuft' ? freigaben.find((x) => x.kennung === r.freigabe) : undefined;
   return {
     schema: 'vp-werkstatt-ansicht.v1',
     zeit: new Date().toISOString(),
@@ -137,7 +174,7 @@ function ansicht(): WerkstattAnsicht {
       ? { laufend: true, boxen: 2, freigabe: { kennung: f.kennung, box_art: 'mango', gueltig_bis: f.gueltigBis,
           openwrt: { fassung: f.openwrt.fassung, datei: f.openwrt.datei, sha256: f.openwrt.sha256, quelle: f.openwrt.quelle },
           edge_light: { fassung: f.edgeLight.fassung, quelle: f.edgeLight.quelle } } }
-      : { laufend: false, boxen: 0, grund: 'keine laufende Freigabe für mango', freigabe: null },
+      : { laufend: false, boxen: 0, grund: 'Die Werkstatt ist nicht freigegeben (keine laufende Freigabe im Portal).', freigabe: null },
     anschluss: szenario === 'startet' ? 'Mango erkannt unter 192.168.1.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.'
       : szenario === 'bruecke_unterspannung' ? 'Mango erkannt unter 192.168.1.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen. '
         + 'Die Brücke meldet Unterspannung: die Mango an ein eigenes USB-Netzteil.'
@@ -231,17 +268,14 @@ Object.assign(adminApi, {
   },
   fernwartung: async () => ({ rueckmeldungen: [] }),
   werkstattFreigaben: async () => freigaben,
-  werkstattFreigeben: async (i: { tage: number; obergrenze: number; openwrt: WerkstattFreigabe['openwrt']; edgeLight: WerkstattFreigabe['edgeLight'] }) => {
-    if (!/^[0-9a-f]{64}$/.test(i.openwrt.sha256)) throw new ApiError(422, 'Freigabe ungültig: openwrt.sha256: 64 Zeichen 0-9a-f');
-    const f: WerkstattFreigabe = { id: `f-${Date.now()}`, kennung: '2026-11-mango-2', boxArt: 'mango', gueltigAb: new Date().toISOString(),
-      gueltigBis: new Date(Date.now() + i.tage * 86_400_000).toISOString(), obergrenze: i.obergrenze, openwrt: i.openwrt, edgeLight: i.edgeLight,
-      notiz: null, erteiltAm: new Date().toISOString(), erteiltVon: 'Alex', beendetAm: null, beendetVon: null, zustand: 'laufend', grund: null };
-    freigaben = [f, ...freigaben];
-    return f;
+  werkstattRegel: async () => regel(),
+  werkstattAnhalten: async (grund: string | null) => {
+    if (!verlauf[0]?.angehalten) verlauf = [{ angehalten: true, grund, am: new Date().toISOString(), von: 'Alex' }, ...verlauf];
+    return regel();
   },
-  werkstattFreigabeBeenden: async (kennung: string) => {
-    freigaben = freigaben.map((f) => (f.kennung === kennung ? { ...f, zustand: 'beendet', beendetAm: new Date().toISOString(), beendetVon: 'Alex', grund: 'beendet von Alex' } : f));
-    return freigaben.find((f) => f.kennung === kennung)!;
+  werkstattFortsetzen: async () => {
+    if (verlauf[0]?.angehalten) verlauf = [{ angehalten: false, grund: null, am: new Date().toISOString(), von: 'Alex' }, ...verlauf];
+    return regel();
   },
 });
 

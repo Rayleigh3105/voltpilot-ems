@@ -62,7 +62,7 @@ class WerkstattDienstVertragTest {
                 t, t.plusSeconds(86400), 5,
                 new FreigabeRepository.Abbild("25.12.5", "openwrt-25.12.5-x-sysupgrade.bin", sha, "https://x.example/"),
                 new FreigabeRepository.Programm("edge-light-2026.11.0", "https://x.example/", sha, sha),
-                "notiz", t, "sub", "Admin", t.plusSeconds(60), "sub", "Admin");
+                "notiz", t, "sub", "Admin", t.plusSeconds(60), "sub", "Admin", FreigabeRepository.REGEL, 42L);
         ObjectMapper m = new ObjectMapper().registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         return m.valueToTree(WerkstattDienstController.FreigabeDto.of(f));

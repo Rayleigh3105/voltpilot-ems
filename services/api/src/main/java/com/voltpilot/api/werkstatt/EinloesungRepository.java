@@ -126,6 +126,22 @@ public class EinloesungRepository {
         return n == null ? 0 : n;
     }
 
+    /**
+     * Wie viele verschiedene Boxen seit {@code seit} eingelöst haben, über alle
+     * Freigaben (die Tagesgrenze der Regel), und ob {@code edgeRef} darunter ist.
+     */
+    public int boxenSeit(Instant seit) {
+        Integer n = jdbc.queryForObject("SELECT count(DISTINCT edge_ref) FROM werkstatt_einloesung "
+                + "WHERE eingeloest_am >= ?", Integer.class, Timestamp.from(seit));
+        return n == null ? 0 : n;
+    }
+
+    public boolean schonSeit(Instant seit, String edgeRef) {
+        Boolean da = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM werkstatt_einloesung WHERE eingeloest_am >= ? "
+                + "AND edge_ref = ?)", Boolean.class, Timestamp.from(seit), edgeRef);
+        return Boolean.TRUE.equals(da);
+    }
+
     public boolean schonUnter(UUID freigabeId, String edgeRef) {
         Boolean da = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM werkstatt_einloesung WHERE freigabe_id = ? "
                 + "AND edge_ref = ?)", Boolean.class, freigabeId, edgeRef);

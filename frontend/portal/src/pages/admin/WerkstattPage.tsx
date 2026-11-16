@@ -2,8 +2,9 @@
  * Die Werkstatt (Entscheid WI-8 A, nur platform-admin nach WI-10 B): Die
  * Arbeit an der Box macht der Werkstatt-Dienst. Diese Seite zeigt, was er
  * tut: an der Werkbank die geführten Bildschirme (`WerkstattBank`,
- * `#/werkstatt?werkbank=1`), am Rechner die Übersicht (D1) mit der Freigabe
- * („Werkstatt freigeben“, „Freigabe beenden“), der Werkbank-Brücke, den Boxen
+ * `#/werkstatt?werkbank=1`), am Rechner die Übersicht (D1) mit dem Stand der
+ * Werkstatt (sie nimmt immer die neueste Fassung; „Werkstatt anhalten“ und
+ * „Werkstatt fortsetzen“, Details für Technik), der Werkbank-Brücke, den Boxen
  * und den Belegen der gewählten Box (`?box=<referenz>`, auch das Ziel des
  * Direktlinks). Handschritte, Passwort-Generator und Probe-Knöpfe gibt es
  * nicht mehr: Das macht der Dienst, jeden Schritt mit Beleg.
@@ -12,6 +13,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
+import { Input } from '../../../designsystem/components/forms/Input';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError } from '../../api';
 import { adminApi } from '../../admin/adminApi';
@@ -21,13 +23,16 @@ import { replaceCurrentNavigation } from '../../navigationBlocker';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
 import {
-  freigabeZeile,
+  freigabeListenZeile,
+  kurzSha,
   liesDienst,
-  laufendeFreigabe,
   uebersicht,
+  werkstattStand,
   type UebersichtZeile,
   type WerkstattDienst,
   type WerkstattFreigabe,
+  type WerkstattRegel,
+  type WerkstattStand,
   type ZurSeite,
 } from '../../werkstattBank';
 import { zeitpunkt } from '../../adminFernwartung';
@@ -35,7 +40,6 @@ import { AdminPageHead } from './AdminPageHead';
 import { WerkstattBank } from './WerkstattBank';
 import { neueresRelease, schrittTitel } from '../../werkstattLauf';
 import type { EdgeUpdatesRelease } from '../../adminEdgeUpdates';
-import { WerkstattFreigabeDialog } from './WerkstattFreigabeDialog';
 import { STAND_BADGE } from './WerkstattTeile';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
 import './Fernwartung.css';
@@ -52,20 +56,28 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
   const [boxen, setBoxen] = useState<WerkstattBox[] | null>(null);
   const [dienst, setDienst] = useState<WerkstattDienst | null>(null);
   const [freigaben, setFreigaben] = useState<WerkstattFreigabe[] | null>(null);
+  const [regel, setRegel] = useState<WerkstattRegel | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [aktionsFehler, setAktionsFehler] = useState<string | null>(null);
   const [werkbank, setWerkbank] = useState(() => istWerkstattWerkbank(window.location.hash));
   const [auswahl, setAuswahl] = useState<string | null>(() => parseFernwartungBox(window.location.hash));
-  const [dialog, setDialog] = useState<'freigeben' | 'beenden' | null>(null);
+  const [anhalten, setAnhalten] = useState(false);
+  const [grund, setGrund] = useState('');
   const [busy, setBusy] = useState(false);
   const [jetzt, setJetzt] = useState(() => new Date());
 
   async function laden() {
-    const [b, d, f] = await Promise.allSettled([adminApi.werkstattBoxen(), adminApi.werkstattDienst(), adminApi.werkstattFreigaben()]);
+    const [b, d, f, r] = await Promise.allSettled([
+      adminApi.werkstattBoxen(),
+      adminApi.werkstattDienst(),
+      adminApi.werkstattFreigaben(),
+      adminApi.werkstattRegel(),
+    ]);
     if (b.status === 'fulfilled') setBoxen(b.value);
     if (d.status === 'fulfilled') setDienst(liesDienst(d.value));
     if (f.status === 'fulfilled') setFreigaben(f.value);
-    const erster = [b, d, f].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    if (r.status === 'fulfilled') setRegel(r.value);
+    const erster = [b, d, f, r].find((x) => x.status === 'rejected') as PromiseRejectedResult | undefined;
     setLadeFehler(erster ? fehlerText(erster.reason, 'Die Werkstatt ließ sich nicht laden. Bitte erneut versuchen.') : null);
     setJetzt(new Date());
   }
@@ -84,8 +96,8 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
   // Der Dienst meldet sich im Takt; die Seite fragt still nach, an der Werkbank wie am Rechner.
   useFreshnessPoll(() => void laden(), TAKT_MS);
 
-  const freigabe = useMemo(() => laufendeFreigabe(freigaben ?? []), [freigaben]);
-  // Ein neueres signiertes Edge-Light-Release als die Freigabe: nur ein Hinweis an der Werkbank, einmal gefragt.
+  const stand = useMemo(() => (regel ? werkstattStand(regel, freigaben ?? [], jetzt) : null), [regel, freigaben, jetzt]);
+  // Ein neueres signiertes Edge-Light-Release als die Freigabe des Laufs: nur ein Hinweis an der Werkbank, einmal gefragt.
   const [releases, setReleases] = useState<EdgeUpdatesRelease[]>([]);
   useEffect(() => {
     if (!werkbank) return;
@@ -101,28 +113,31 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
     return () => { aus = true; };
   }, [werkbank]);
   const neuerEdgeLight = useMemo(() => {
-    const f = dienst?.ansicht?.freigabe.freigabe;
-    return f ? neueresRelease(f.edge_light.fassung, releases) : null;
-  }, [dienst, releases]);
+    // Die Fassung des Laufs an der Werkbank: die seiner Freigabe, sonst die, die gerade gilt.
+    const kennung = dienst?.ansicht?.lauf?.freigabe;
+    const zeile = kennung ? freigaben?.find((x) => x.kennung === kennung) : undefined;
+    const fassung = zeile?.edgeLight.fassung ?? dienst?.ansicht?.freigabe.freigabe?.edge_light.fassung;
+    return fassung ? neueresRelease(fassung, releases) : null;
+  }, [dienst, freigaben, releases]);
   const zeilen = useMemo(() => uebersicht(boxen ?? [], dienst?.laeufe ?? []), [boxen, dienst]);
   const gewaehlt = auswahl ? zeilen.find((z) => z.box === auswahl) ?? null : null;
-  const geladen = boxen && dienst && freigaben;
+  const geladen = boxen && dienst && freigaben && regel;
 
   function waehle(ref: string | null) {
     setAuswahl(ref);
     replaceCurrentNavigation(werkstattHash(ref));
   }
 
-  async function beenden() {
-    if (!freigabe) return;
+  async function schalten(art: 'anhalten' | 'fortsetzen') {
     setBusy(true);
     setAktionsFehler(null);
     try {
-      await adminApi.werkstattFreigabeBeenden(freigabe.kennung);
-      setDialog(null);
+      setRegel(art === 'anhalten' ? await adminApi.werkstattAnhalten(grund.trim() || null) : await adminApi.werkstattFortsetzen());
+      setAnhalten(false);
+      setGrund('');
       await laden();
     } catch (e) {
-      setAktionsFehler(fehlerText(e, 'Die Freigabe ließ sich nicht beenden.'));
+      setAktionsFehler(fehlerText(e, art === 'anhalten' ? 'Die Werkstatt ließ sich nicht anhalten.' : 'Die Werkstatt ließ sich nicht fortsetzen.'));
     } finally {
       setBusy(false);
     }
@@ -135,7 +150,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
       <AdminPageHead
         icon="sliders"
         title="Werkstatt"
-        description="Boxen vor dem Versand: Der Werkstatt-Dienst richtet sie ein und prüft sie, jeden Schritt mit Beleg. Hier siehst du, was er tut, und gibst die Werkstatt frei."
+        description="Boxen vor dem Versand: Der Werkstatt-Dienst richtet sie mit der neuesten Fassung ein und prüft sie, jeden Schritt mit Beleg. Hier siehst du, was er tut."
       />
 
       {ladeFehler && !geladen ? (
@@ -147,7 +162,8 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
       ) : werkbank ? (
         <WerkstattBank
           dienst={dienst}
-          freigabe={freigabe}
+          stand={stand}
+          freigaben={freigaben}
           neuerEdgeLight={neuerEdgeLight}
           onUebersicht={() => { window.location.hash = werkstattHash(null); }}
           onBox={(ref) => { window.location.hash = werkstattHash(ref); }}
@@ -186,13 +202,17 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
 
           {auswahl == null ? (
             <div className="vp-ws-haupt">
-              <FreigabeKarte
-                freigabe={freigabe}
-                freigaben={freigaben}
-                eingerichtet={dienst?.ansicht?.freigabe.boxen ?? null}
-                onFreigeben={() => setDialog('freigeben')}
-                onBeenden={() => setDialog('beenden')}
-              />
+              {stand && (
+                <WerkstattStandKarte
+                  stand={stand}
+                  regel={regel}
+                  freigaben={freigaben}
+                  jetzt={jetzt}
+                  busy={busy}
+                  onAnhalten={() => setAnhalten(true)}
+                  onFortsetzen={() => void schalten('fortsetzen')}
+                />
+              )}
               <BrueckeKarte dienst={dienst} />
               <BoxTabelle zeilen={zeilen} auswahl={auswahl} onWaehle={waehle} />
               {dienst?.zurSeite && <ZurSeiteKarte liste={dienst.zurSeite} onWaehle={waehle} />}
@@ -220,27 +240,31 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
         </>
       )}
 
-      {dialog === 'freigeben' && (
-        <WerkstattFreigabeDialog onClose={() => setDialog(null)} onErteilt={() => { setDialog(null); void laden(); }} />
-      )}
-      {dialog === 'beenden' && freigabe && (
+      {anhalten && (
         <Modal
           open
-          title="Freigabe beenden"
-          onClose={() => { if (!busy) setDialog(null); }}
+          title="Werkstatt anhalten"
+          onClose={() => { if (!busy) setAnhalten(false); }}
           footer={
             <>
-              <Button variant="outline" onClick={() => setDialog(null)} disabled={busy}>Abbrechen</Button>
-              <Button onClick={() => void beenden()} disabled={busy} data-testid="ws-beenden-bestaetigen">
-                {busy ? 'Wird beendet …' : 'Freigabe beenden'}
+              <Button variant="outline" onClick={() => setAnhalten(false)} disabled={busy}>Abbrechen</Button>
+              <Button onClick={() => void schalten('anhalten')} disabled={busy} data-testid="ws-anhalten-bestaetigen">
+                {busy ? 'Wird angehalten …' : 'Werkstatt anhalten'}
               </Button>
             </>
           }
         >
           <p style={{ marginTop: 0 }}>
-            Ab jetzt richtet der Werkstatt-Dienst unter <strong>{freigabe.kennung}</strong> keine Box mehr ein. Ein Lauf, der
-            gerade läuft, hält beim nächsten Schritt an. Eine neue Freigabe kannst du danach erteilen.
+            Ab jetzt beginnt der Werkstatt-Dienst keinen neuen Lauf, und keine Box wird angemeldet. Ein Lauf, der gerade
+            läuft, hält beim Anmelden an. Fortsetzen kannst du jederzeit; beides steht mit deinem Namen im Protokoll.
           </p>
+          <Input
+            label="Grund (wenn du magst)"
+            value={grund}
+            maxLength={500}
+            onChange={(e) => setGrund(e.target.value)}
+            data-testid="ws-anhalten-grund"
+          />
         </Modal>
       )}
     </div>
@@ -264,39 +288,101 @@ function DienstZeile({ dienst }: { dienst: WerkstattDienst | null }) {
   );
 }
 
-function FreigabeKarte({
-  freigabe,
+function WerkstattStandKarte({
+  stand,
+  regel,
   freigaben,
-  eingerichtet,
-  onFreigeben,
-  onBeenden,
+  jetzt,
+  busy,
+  onAnhalten,
+  onFortsetzen,
 }: {
-  freigabe: WerkstattFreigabe | null;
-  freigaben: WerkstattFreigabe[];
-  eingerichtet: number | null;
-  onFreigeben: () => void;
-  onBeenden: () => void;
+  stand: WerkstattStand;
+  regel: WerkstattRegel | null;
+  freigaben: readonly WerkstattFreigabe[];
+  jetzt: Date;
+  busy: boolean;
+  onAnhalten: () => void;
+  onFortsetzen: () => void;
 }) {
-  const letzte = freigaben.find((f) => f.zustand !== 'laufend') ?? null;
+  const e = regel?.edgeLight ?? null;
   return (
-    <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-freigabe">
+    <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-werkstatt" data-zustand={stand.zustand}>
       <div className="vp-ws-karte-zeile">
         <div>
-          <strong>{freigabe ? 'Werkstatt freigegeben · Mango' : 'Werkstatt nicht freigegeben'}</strong>
-          <p className="vp-muted" style={{ margin: '2px 0 0' }}>
-            {freigabe
-              ? `${eingerichtet ?? 0} eingerichtet · ${freigabeZeile(freigabe)} · ${freigabe.kennung}`
-              : letzte
-                ? `Zuletzt ${letzte.kennung}: ${letzte.grund ?? letzte.zustand}`
-                : 'Ohne Freigabe richtet der Dienst keine Box ein.'}
-          </p>
+          <div className="vp-ws-stand-kopf">
+            <strong>{stand.titel}</strong>
+            <Badge variant={stand.badge.variant}>{stand.badge.text}</Badge>
+          </div>
+          <p className="vp-muted" style={{ margin: '2px 0 0' }} data-testid="ws-werkstatt-zeile">{stand.zeile}</p>
         </div>
-        {freigabe ? (
-          <Button variant="outline" size="sm" onClick={onBeenden} data-testid="ws-freigabe-beenden">Freigabe beenden</Button>
+        {stand.knopf === 'fortsetzen' ? (
+          <Button size="sm" onClick={onFortsetzen} disabled={busy} data-testid="ws-fortsetzen">
+            {busy ? 'Wird fortgesetzt …' : 'Werkstatt fortsetzen'}
+          </Button>
         ) : (
-          <Button size="sm" onClick={onFreigeben} data-testid="ws-freigeben">Werkstatt freigeben</Button>
+          <Button variant="outline" size="sm" onClick={onAnhalten} disabled={busy} data-testid="ws-anhalten">
+            Werkstatt anhalten
+          </Button>
         )}
       </div>
+      {regel && (
+        <details className="vp-ws-technik vp-ws-stand-technik" data-testid="ws-werkstatt-technik">
+          <summary>Details für Technik</summary>
+          <dl className="vp-ws-stand-liste">
+            <dt>Edge Light</dt>
+            <dd>
+              {e ? (
+                <>
+                  {e.fassung} (Release {regel.releaseSeq}) · Programm <code>{kurzSha(e.programmSha256)}</code> · Skripte{' '}
+                  <code>{kurzSha(e.skripteSha256)}</code>
+                  <small>aus dem signierten Manifest; Quelle {e.quelle}</small>
+                </>
+              ) : (
+                <>
+                  {regel.neueste ? `neueste: ${regel.neueste} (passt nicht)` : 'keine signierte Fassung'}
+                  {regel.grund && <small>{regel.grund}</small>}
+                </>
+              )}
+            </dd>
+            <dt>OpenWrt</dt>
+            <dd>
+              {regel.openwrt.fassung} · <code>{kurzSha(regel.openwrt.sha256)}</code>
+              <small>fest im Code, <code>{regel.openwrt.datei}</code></small>
+            </dd>
+            <dt>Freigabe</dt>
+            <dd>{regel.freigabe ? `${regel.freigabe}${regel.vonHand ? ' (von Hand, bis sie abläuft)' : ' (Regel)'}` : '–'}</dd>
+            <dt>Heute</dt>
+            <dd>{regel.heute} von {regel.tagesgrenze} Boxen (Tagesgrenze)</dd>
+          </dl>
+          {regel.verlauf.length > 0 && (
+            <>
+              <p className="vp-ws-stand-h">Angehalten und fortgesetzt</p>
+              <ul className="vp-ws-stand-verlauf" data-testid="ws-werkstatt-verlauf">
+                {regel.verlauf.map((b) => (
+                  <li key={`${b.am}-${b.angehalten}`}>
+                    {b.angehalten ? 'angehalten' : 'fortgesetzt'} · {zeitpunkt(b.am, jetzt)} · {b.von}
+                    {b.grund ? ` · „${b.grund}“` : ''}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {freigaben.length > 0 && (
+            <>
+              <p className="vp-ws-stand-h">Freigaben (Beleg, neueste zuerst)</p>
+              <ul className="vp-ws-stand-verlauf" data-testid="ws-freigaben">
+                {freigaben.slice(0, 12).map((f) => (
+                  <li key={f.id}>
+                    <strong>{f.kennung}</strong> · {freigabeListenZeile(f)}
+                    {f.zustand !== 'laufend' ? ` · ${f.zustand}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </details>
+      )}
     </Card>
   );
 }

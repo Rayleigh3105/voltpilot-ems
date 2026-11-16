@@ -151,13 +151,6 @@ export const PRUEFUNGEN = [
 
 export type PruefungId = (typeof PRUEFUNGEN)[number]['id'];
 
-// ── Das OpenWrt-Abbild (Vorgabe für „Werkstatt freigeben“) ─────────────────
-
-/** Die Fassung, die alle Skripte erwarten (apk, Dropbear ab 2025.89). */
-export const OPENWRT_FASSUNG = '25.12.5';
-export const OPENWRT_ABBILD = `openwrt-${OPENWRT_FASSUNG}-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin`;
-export const OPENWRT_QUELLE = `https://downloads.openwrt.org/releases/${OPENWRT_FASSUNG}/targets/ramips/mt76x8/`;
-
 // ── Beschriftung des Gehäuses (Entscheid 8, geändert am 26.10.2026) ─────────
 
 export interface Beschriftung {

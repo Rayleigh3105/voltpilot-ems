@@ -4,13 +4,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api';
 import { FEHLER_IM_BEREICH, Fehlergrenze } from '../../components/Fehlergrenze';
-import { SCHRITTE, type GehaeuseAuftragAnsicht, type LaufStand, type WerkstattAnsicht, type WerkstattDienst, type WerkstattFreigabe } from '../../werkstattBank';
+import { SCHRITTE, type GehaeuseAuftragAnsicht, type LaufStand, type WerkstattAnsicht, type WerkstattDienst, type WerkstattFreigabe, type WerkstattRegel } from '../../werkstattBank';
 
 const werkstattBoxen = vi.fn();
 const werkstattDienst = vi.fn();
 const werkstattFreigaben = vi.fn();
-const werkstattFreigeben = vi.fn();
-const werkstattFreigabeBeenden = vi.fn();
+const werkstattRegel = vi.fn();
+const werkstattAnhalten = vi.fn();
+const werkstattFortsetzen = vi.fn();
 const fernwartungBox = vi.fn();
 const fernwartung = vi.fn();
 const werkstattBoxLoeschen = vi.fn();
@@ -24,8 +25,9 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattBoxen: () => werkstattBoxen(),
     werkstattDienst: () => werkstattDienst(),
     werkstattFreigaben: () => werkstattFreigaben(),
-    werkstattFreigeben: (i: unknown) => werkstattFreigeben(i),
-    werkstattFreigabeBeenden: (k: string) => werkstattFreigabeBeenden(k),
+    werkstattRegel: () => werkstattRegel(),
+    werkstattAnhalten: (g: string | null) => werkstattAnhalten(g),
+    werkstattFortsetzen: () => werkstattFortsetzen(),
     fernwartungBox: (r: string) => fernwartungBox(r),
     fernwartung: () => fernwartung(),
     werkstattBoxLoeschen: (r: string) => werkstattBoxLoeschen(r),
@@ -49,7 +51,19 @@ function freigabe(over: Partial<WerkstattFreigabe> = {}): WerkstattFreigabe {
     id: 'f1', kennung: '2026-11-mango-1', boxArt: 'mango', gueltigAb: '2026-11-02T08:00:00Z', gueltigBis: '2026-11-30T08:00:00Z',
     obergrenze: 20, openwrt: { fassung: '25.12.5', datei: 'openwrt-25.12.5-x-sysupgrade.bin', sha256: SHA, quelle: 'https://o.example/' },
     edgeLight: { fassung: 'edge-light-2026.11.1', quelle: 'https://e.example/', programmSha256: SHA, skripteSha256: SHA },
-    notiz: null, erteiltAm: '2026-11-02T08:00:00Z', erteiltVon: 'Admin', beendetAm: null, beendetVon: null, zustand: 'laufend', grund: null,
+    notiz: null, erteiltAm: '2026-11-02T08:00:00Z', erteiltVon: 'Regel: neueste Fassung', beendetAm: null, beendetVon: null, zustand: 'laufend',
+    grund: null, quelle: 'regel', edgeReleaseSeq: 12,
+    ...over,
+  };
+}
+
+/** Der Stand der Werkstatt, wie `/admin/werkstatt/regel` ihn liefert: läuft nach der Regel. */
+function regel(over: Partial<WerkstattRegel> = {}): WerkstattRegel {
+  return {
+    zustand: 'laeuft', grund: null, neueste: 'edge-light-2026.11.1',
+    openwrt: { fassung: '25.12.5', datei: 'openwrt-25.12.5-x-sysupgrade.bin', sha256: SHA, quelle: 'https://o.example/' },
+    edgeLight: { fassung: 'edge-light-2026.11.1', quelle: 'https://e.example/', programmSha256: SHA, skripteSha256: SHA },
+    releaseSeq: 12, freigabe: '2026-11-mango-1', vonHand: false, heute: 2, tagesgrenze: 40, angehalten: null, verlauf: [],
     ...over,
   };
 }
@@ -87,6 +101,7 @@ beforeEach(() => {
   window.location.hash = '#/werkstatt';
   werkstattBoxen.mockResolvedValue([box('edge-5t2dcy6')]);
   werkstattFreigaben.mockResolvedValue([freigabe()]);
+  werkstattRegel.mockResolvedValue(regel());
   werkstattDienst.mockResolvedValue(dienst({}));
   fernwartungBox.mockRejectedValue(new ApiError(404, 'keine Box'));
   fernwartung.mockResolvedValue({ rueckmeldungen: [] });
@@ -94,10 +109,21 @@ beforeEach(() => {
 });
 
 describe('Werkstatt: Übersicht am Rechner', () => {
-  it('zeigt Freigabe, Brücke, Boxen und nennt „Nicht versenden“', async () => {
+  it('zeigt den Stand der Werkstatt, Brücke, Boxen und nennt „Nicht versenden“', async () => {
     render(<WerkstattPage />);
-    expect(await screen.findByTestId('ws-freigabe')).toHaveTextContent('Werkstatt freigegeben · Mango');
-    expect(screen.getByTestId('ws-freigabe')).toHaveTextContent('Edge Light 2026.11.1 · OpenWrt 25.12.5 · bis 30.11.');
+    const stand = await screen.findByTestId('ws-werkstatt');
+    expect(stand).toHaveAttribute('data-zustand', 'laeuft');
+    expect(stand).toHaveTextContent('Werkstatt nimmt die neueste Fassung');
+    expect(screen.getByTestId('ws-werkstatt-zeile')).toHaveTextContent('Edge Light 2026.11.1 · OpenWrt 25.12.5 · heute 2 von 40 Boxen');
+    // Kein Formular mehr: nichts freizugeben, nur anhalten.
+    expect(screen.queryByText(/Werkstatt freigeben/)).toBeNull();
+    expect(screen.getByTestId('ws-anhalten')).toHaveTextContent('Werkstatt anhalten');
+    // Details für Technik: Prüfsummen aus dem signierten Manifest, OpenWrt fest im Code, die Freigaben als Beleg.
+    const technik = screen.getByTestId('ws-werkstatt-technik');
+    expect(technik).toHaveTextContent('edge-light-2026.11.1 (Release 12)');
+    expect(technik).toHaveTextContent('aus dem signierten Manifest');
+    expect(technik).toHaveTextContent('fest im Code');
+    expect(within(technik).getByTestId('ws-freigaben')).toHaveTextContent('2026-11-mango-1 · Regel · Edge Light 2026.11.1 · OpenWrt 25.12.5 · Release 12');
     expect(screen.getByTestId('ws-bruecke')).toHaveTextContent('bereit · Kabel am Werkstatt-Anschluss');
     expect(screen.getByTestId('ws-versand-oben')).toHaveTextContent('Nicht versenden: Stufe 1');
     expect(within(screen.getByTestId('ws-boxen')).getByText('edge-5t2dcy6')).toBeInTheDocument();
@@ -133,30 +159,50 @@ describe('Werkstatt: Übersicht am Rechner', () => {
     expect(within(detail).getByTestId('ws-abnahme-dienst-alt')).toHaveTextContent('Dienst-Fassung vor Einrichtungs-WLAN');
   });
 
-  it('Freigabe beenden fragt nach und ruft die API', async () => {
-    werkstattFreigabeBeenden.mockResolvedValue(freigabe({ zustand: 'beendet' }));
+  it('Werkstatt anhalten fragt nach, nimmt einen Grund mit und zeigt danach „Werkstatt fortsetzen“', async () => {
+    const angehalten = regel({ zustand: 'angehalten', grund: 'Die Werkstatt ist angehalten.', freigabe: null,
+      angehalten: { angehalten: true, grund: 'Falsches Kabel', am: '2026-11-16T12:02:00Z', von: 'Alex' },
+      verlauf: [{ angehalten: true, grund: 'Falsches Kabel', am: '2026-11-16T12:02:00Z', von: 'Alex' }] });
+    werkstattAnhalten.mockImplementation(async () => {
+      werkstattRegel.mockResolvedValue(angehalten);
+      return angehalten;
+    });
     render(<WerkstattPage />);
-    fireEvent.click(await screen.findByTestId('ws-freigabe-beenden'));
-    fireEvent.click(await screen.findByTestId('ws-beenden-bestaetigen'));
-    await waitFor(() => expect(werkstattFreigabeBeenden).toHaveBeenCalledWith('2026-11-mango-1'));
+    fireEvent.click(await screen.findByTestId('ws-anhalten'));
+    fireEvent.change(await screen.findByTestId('ws-anhalten-grund'), { target: { value: ' Falsches Kabel ' } });
+    fireEvent.click(screen.getByTestId('ws-anhalten-bestaetigen'));
+    await waitFor(() => expect(werkstattAnhalten).toHaveBeenCalledWith('Falsches Kabel'));
+    await waitFor(() => expect(screen.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'angehalten'));
+    expect(screen.getByTestId('ws-werkstatt-zeile')).toHaveTextContent('von Alex');
+    expect(screen.getByTestId('ws-werkstatt-zeile')).toHaveTextContent('„Falsches Kabel“');
+    expect(screen.getByTestId('ws-werkstatt-verlauf')).toHaveTextContent('angehalten');
+
+    werkstattFortsetzen.mockImplementation(async () => {
+      werkstattRegel.mockResolvedValue(regel());
+      return regel();
+    });
+    fireEvent.click(screen.getByTestId('ws-fortsetzen'));
+    await waitFor(() => expect(werkstattFortsetzen).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'laeuft'));
   });
 
-  it('Werkstatt freigeben: Block aus freigabe-edge-light.json, Fehler der API stehen im Dialog', async () => {
-    werkstattFreigaben.mockResolvedValue([]);
-    werkstattFreigeben.mockRejectedValue(new ApiError(422, 'Freigabe ungültig: openwrt.sha256: 64 Zeichen 0-9a-f'));
+  it('wartet die Werkstatt, steht der Grund da; im Übergang läuft sie mit der Freigabe von Hand', async () => {
+    werkstattRegel.mockResolvedValue(regel({ zustand: 'wartet', edgeLight: null, releaseSeq: null, freigabe: null, neueste: 'edge-light-2026.11.3',
+      grund: 'Die Fassung edge-light-2026.11.3 trägt ihren Skriptstand nicht im signierten Manifest.' }));
     render(<WerkstattPage />);
-    fireEvent.click(await screen.findByTestId('ws-freigeben'));
-    fireEvent.click(screen.getByTestId('ws-freigabe-absenden'));
-    expect(await screen.findByTestId('ws-freigabe-fehler')).toHaveTextContent('edge_light');
-    expect(werkstattFreigeben).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByTestId('ws-freigabe-block'), {
-      target: { value: JSON.stringify({ edge_light: { fassung: 'edge-light-2026.11.1', quelle: 'https://e.example/', programm_sha256: SHA, skripte_sha256: SHA } }) },
-    });
-    fireEvent.click(screen.getByTestId('ws-freigabe-absenden'));
-    await waitFor(() => expect(werkstattFreigeben).toHaveBeenCalledTimes(1));
-    expect(werkstattFreigeben.mock.calls[0][0]).toMatchObject({ boxArt: 'mango', tage: 30, obergrenze: 20,
-      edgeLight: { fassung: 'edge-light-2026.11.1', programmSha256: SHA } });
-    expect(await screen.findByTestId('ws-freigabe-fehler')).toHaveTextContent('openwrt.sha256');
+    expect(await screen.findByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'wartet');
+    expect(screen.getByTestId('ws-werkstatt-zeile')).toHaveTextContent('Skriptstand nicht im signierten Manifest');
+    expect(screen.getByTestId('ws-werkstatt-technik')).toHaveTextContent('neueste: edge-light-2026.11.3 (passt nicht)');
+    cleanup();
+
+    werkstattFreigaben.mockResolvedValue([freigabe({ kennung: '2026-11-mango-3', quelle: 'formular', erteiltVon: 'Alex', edgeReleaseSeq: null,
+      edgeLight: { fassung: 'edge-light-2026.11.10', quelle: 'https://e.example/', programmSha256: SHA, skripteSha256: SHA } })]);
+    werkstattRegel.mockResolvedValue(regel({ vonHand: true, freigabe: '2026-11-mango-3', edgeLight: null, releaseSeq: null,
+      grund: 'Die Fassung edge-light-2026.11.13 trägt ihren Skriptstand nicht im signierten Manifest.' }));
+    render(<WerkstattPage />);
+    expect(await screen.findByTestId('ws-werkstatt')).toHaveTextContent('Werkstatt noch mit 2026-11-mango-3');
+    expect(screen.getByTestId('ws-werkstatt-zeile')).toHaveTextContent('Edge Light 2026.11.10 · OpenWrt 25.12.5 · bis 30.11. · heute 2 von 40 Boxen');
+    expect(screen.getByTestId('ws-freigaben')).toHaveTextContent('2026-11-mango-3 · von Hand (Alex)');
   });
 });
 
@@ -708,7 +754,7 @@ const LAUF_KNOEPFE: Record<string, string[]> = {
   box_in_gebrauch: ['zur-seite', 'box-oeffnen'], fassung_nicht_bereit: ['freigabe-ansehen', 'zur-seite'],
   einloesen_abgewiesen: ['freigabe-ansehen', 'zur-seite'], nicht_nachweisbar: ['nochmal', 'zur-seite'],
 };
-const ANSCHLUSS_KNOEPFE: Record<string, string[]> = { nicht_freigegeben: ['freigeben'], eingerichtet: ['register'] };
+const ANSCHLUSS_KNOEPFE: Record<string, string[]> = { nicht_freigegeben: ['werkstatt'], eingerichtet: ['register'] };
 
 function knoepfeAufDerSeite(): string[] {
   const k = screen.queryByTestId('wsb-knoepfe');
@@ -753,8 +799,15 @@ describe('Werkstatt: eine Seite je Fall-Code', () => {
       return;
     }
     expect(screen.getByTestId('wsb')).toHaveAttribute('data-fall', code);
-    expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent(`Titel ${code}.`);
-    expect(screen.getByTestId('wsb-loesung')).toHaveTextContent(`Handgriff ${code}.`);
+    if (code === 'nicht_freigegeben') {
+      // Den Text eines älteren Dienstes („Ein Admin gibt die Werkstatt frei“) ersetzt das Portal: es gibt nichts freizugeben.
+      expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent('Die Werkstatt richtet gerade keine Box ein.');
+      expect(screen.getByTestId('wsb-loesung')).toHaveTextContent('angehalten, keine passende Fassung oder die Tagesgrenze');
+      expect(screen.getByTestId('wsb-loesung')).not.toHaveTextContent(/frei/);
+    } else {
+      expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent(`Titel ${code}.`);
+      expect(screen.getByTestId('wsb-loesung')).toHaveTextContent(`Handgriff ${code}.`);
+    }
     expect(screen.getByTestId('wsb-fall-banner')).toHaveAttribute('data-art', code === 'startet' ? 'warten' : code === 'eingerichtet' ? 'seite' : 'hand');
     expect(knoepfeAufDerSeite()).toEqual(ANSCHLUSS_KNOEPFE[code] ?? []);
     expect(screen.queryByTestId('wsb-bild')?.getAttribute('data-bild') ?? null).not.toBe('reset');

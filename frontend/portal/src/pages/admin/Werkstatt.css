@@ -45,6 +45,65 @@
   overflow-wrap: anywhere;
 }
 
+/* Stand der Werkstatt: läuft, angehalten oder wartet; Details für Technik aufklappbar. */
+.vp-ws-stand-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+
+.vp-ws-stand-technik {
+  margin-top: var(--vp-space-3);
+}
+
+.vp-ws-stand-liste {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--vp-space-1) var(--vp-space-3);
+  margin: var(--vp-space-2) 0 0;
+  font-size: 0.8125rem;
+}
+
+.vp-ws-stand-liste dt {
+  color: var(--vp-text-muted);
+}
+
+.vp-ws-stand-liste dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-stand-liste small {
+  display: block;
+  color: var(--vp-text-muted);
+}
+
+.vp-ws-stand-h {
+  margin: var(--vp-space-3) 0 var(--vp-space-1);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-ws-stand-verlauf {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .vp-ws-stand-liste {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-stand-liste dd {
+    margin-bottom: var(--vp-space-1);
+  }
+}
+
 .vp-ws-tabelle-rahmen {
   overflow-x: auto;
   border: 1px solid var(--vp-border);
@@ -457,6 +516,17 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--vp-text-muted);
+}
+
+.vp-wsb-stand h5 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-wsb-stand .vp-wsb-sub {
+  margin: var(--vp-space-1) 0 0;
 }
 
 .vp-wsb-bildkarte {
