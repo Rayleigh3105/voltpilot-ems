@@ -26,6 +26,8 @@ Object.assign(keycloak, {
 });
 
 Object.assign(adminApi, {
+  // Erstverbindung: der Schalter der Automatik, ab Werk an.
+  erstverbindungSchalter: async () => ({ alle: true, docker: true, light: true, eintraege: [] }),
   edgeUpdates: async () => ({
     releases: [
       { releaseSeq: 15, version: 'edge-2026.10.1', targetCommit: '3bf8c038', notes: null, signed: true, signingKeyId: 'rel-a', createdAt: iso(-7 * 86_400_000), runningOnDevices: 2, boxArt: 'docker' },
