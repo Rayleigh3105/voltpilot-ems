@@ -840,12 +840,16 @@ public class RolloutService {
                     v.state(), v.reason(), d.reportedBlocker(), d.lastSeenAt(), d.reportedAt(),
                     p != null, p == null ? null : p.note(),
                     p == null ? null : p.provisionedAt(), trustDto(d), boxArt(d),
-                    d.geraetModell(), d.geraetArch(), d.loader(), d.loaderStand()));
+                    d.geraetModell(), d.geraetArch(), d.loader(), d.loaderStand(),
+                    d.werkstattAbnahmeAm()));
         }
         // Danach die gedruckten IDs, die noch KEIN Gerät sind. Sie tragen
         // bewusst keinen Zustand: über eine ID, die sich nie gemeldet hat, ist
         // nichts abzuleiten - „unbekannt" wäre schon eine Behauptung über ein
         // Gerät, das es noch gar nicht gibt.
+        List<String> ungesehen = registry.stream().map(ProvisionedDeviceDto::externalRef)
+                .filter(ref -> !seen.contains(ref)).toList();
+        Map<String, Instant> werkstattAbnahmen = rollouts.werkstattAbnahmeAm(ungesehen);
         for (ProvisionedDeviceDto p : registry) {
             if (seen.contains(p.externalRef())) {
                 continue;
@@ -853,7 +857,7 @@ public class RolloutService {
             rows.add(new AdminDevicesDto.DeviceRowDto(null, p.externalRef(), null, null, null,
                     null, null, p.kind(), null, null, null,
                     null, null, null, null, null, true, p.note(), p.provisionedAt(), null,
-                    null, null, null, null, null));
+                    null, null, null, null, null, werkstattAbnahmen.get(p.externalRef())));
         }
         return new AdminDevicesDto(rows);
     }

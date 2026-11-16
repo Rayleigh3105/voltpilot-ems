@@ -208,6 +208,48 @@ test('Geräte-Liste: jede Box in jedem Lebensabschnitt, eine Zeile führt in die
   expect(errors).toEqual([]);
 });
 
+// ---------------------------------------------------------------------------
+// Firstmate vp-geraete-herkunft: Herkunft je Box - „aus der Werkstatt" (mit
+// Abnahme-Datum) oder „selbst angemeldet", nie eine dritte Wertung. Und die
+// ehrliche Angabe statt eines erfundenen Tippfehler-Verdachts.
+// ---------------------------------------------------------------------------
+
+test('Geräte-Liste: Herkunft je Box, nie ein erfundener Tippfehler-Verdacht', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/e2e/box-updates.html');
+  await page.getByRole('button', { name: 'Geräte', exact: true }).click();
+  const liste = page.getByTestId('geraete-liste');
+  await expect(liste).toBeVisible();
+
+  // Verbunden: „Box Werkstatt" kam aus der Werkstatt, jede andere Box hat sich selbst angemeldet.
+  const werkstattZeile = liste.locator('tr').filter({ hasText: 'Werkstatt am Bach' });
+  await expect(werkstattZeile).toContainText('Aus der Werkstatt');
+  const selbstZeile = liste.locator('tr').filter({ hasText: 'Solarpark Sonnenhof' });
+  await expect(selbstZeile).toContainText('Selbst angemeldet');
+
+  // Wartet auf Zuordnung: dieselbe Unterscheidung, und der lange Verdachtsfall nennt nur
+  // die Wartezeit - nie mehr „Vermutlich Tippfehler beim Kunden".
+  const wartetSelbst = liste.locator('tr').filter({ hasText: 'edge-xyz234q' });
+  await expect(wartetSelbst).toContainText('Selbst angemeldet');
+  const wartetWerkstatt = liste.locator('tr').filter({ hasText: 'edge-wrk88z2k' });
+  await expect(wartetWerkstatt).toContainText('Aus der Werkstatt');
+  await expect(wartetWerkstatt).toContainText('Meldet sich seit 2 Tagen, noch keinem Kunden zugeordnet');
+  await expect(liste).not.toContainText('Tippfehler');
+
+  // Die Geräteakte einer wartenden Box zeigt dieselbe Herkunft und denselben ehrlichen Satz
+  // (Reiter „Einrichtung" - derselbe Weg wie der Knopf „Zur Einrichtung").
+  await liste.locator('tr').filter({ hasText: 'edge-wrk88z2k' }).click();
+  await page.getByRole('tab', { name: 'Einrichtung' }).click();
+  await expect(page.getByRole('heading', { name: 'Meldet sich, wartet auf Zuordnung' })).toBeVisible();
+  await expect(page.getByText(/Aus der Werkstatt · \d{2}\.\d{2}\.\d{4}/)).toBeVisible();
+  await expect(page.getByText('Meldet sich seit 2 Tagen, noch keinem Kunden zugeordnet')).toBeVisible();
+  await expect(page.getByText('Tippfehler')).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
+
 test('Geräte-Liste: EINE Filterzeile statt zweier Grau-Balken, ohne Überlauf bei 1440 und 390 px', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -325,6 +367,8 @@ test('Geräteakte: alle fünf Zustände nach §5.3 plus der L2-Sonderfall, ohne 
   // Verzögert (E6) - Werkstatt am Bach: drei ausgebliebene Herzschläge, reine Anzeige.
   await zumZustand('Werkstatt am Bach');
   await expect(page.getByTestId('akte-zustand')).toContainText('Verzögert');
+  // Herkunft (vp-geraete-herkunft): im Kopf, mit Abnahme-Datum.
+  await expect(page.getByText(/Aus der Werkstatt · \d{2}\.\d{2}\.\d{4}/)).toBeVisible();
 
   // Meldet sich nicht - Hof Lindenallee.
   await zumZustand('Hof Lindenallee');

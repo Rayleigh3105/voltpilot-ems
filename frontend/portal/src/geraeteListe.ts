@@ -39,10 +39,16 @@ export interface RohZeile {
   suchtext: string;
   /** Nur bei `wartet`: Erreichbarkeit der Box (`boxVerbindung`), sonst null - kein Fakt zu diesem Lebensabschnitt. */
   erreichbar: BoxVerbindung | null;
+  /**
+   * Herkunft (vp-geraete-herkunft): nur bei `wartet` und `verbunden` gefüllt (`null` = selbst
+   * angemeldet); bei `werkstatt` ist die Herkunft schon der Lebensabschnitt selbst, bei
+   * `gedruckt`/`ausgebaut` unbeteiligt - diese Zeilen tragen hier `null`.
+   */
+  werkstattAbnahmeAm: string | null;
 }
 
 export type GeraeteListeZeile =
-  | { lebensabschnitt: 'verbunden'; zeile: BoxZeile; fassungAbweichung: boolean }
+  | { lebensabschnitt: 'verbunden'; zeile: BoxZeile; fassungAbweichung: boolean; werkstattAbnahmeAm: string | null }
   | (RohZeile & { fassungAbweichung: boolean });
 
 const key = (z: GeraeteListeZeile): string => (z.lebensabschnitt === 'verbunden' ? z.zeile.ref : z.ref);
@@ -72,8 +78,10 @@ export function geraeteListeZeilen(args: {
 }, now: Date, fassungRefs: ReadonlySet<string> = new Set()): GeraeteListeZeile[] {
   const { fleet, devices, pending, werkstattBoxen, geraeteListe = [] } = args;
   const verbunden = new Set(fleet.map((r) => r.externalRef));
+  const werkstattAbnahmeJeRef = new Map(devices.map((d) => [d.externalRef, d.werkstattAbnahmeAm]));
   const rows: GeraeteListeZeile[] = fleet.map((r) => ({
     lebensabschnitt: 'verbunden', zeile: boxZeile(r, now), fassungAbweichung: fassungRefs.has(r.externalRef),
+    werkstattAbnahmeAm: werkstattAbnahmeJeRef.get(r.externalRef) ?? null,
   }));
 
   const ausgebautRefs = new Set(
@@ -93,6 +101,7 @@ export function geraeteListeZeilen(args: {
       suchtext: [p.externalRef, p.deviceInfo].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
       erreichbar: p.erreichbar,
+      werkstattAbnahmeAm: p.werkstattAbnahmeAm,
     });
   }
 
@@ -111,6 +120,7 @@ export function geraeteListeZeilen(args: {
       suchtext: [b.edgeRef, geraet, b.notiz].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
       erreichbar: null,
+      werkstattAbnahmeAm: null,
     });
   }
 
@@ -130,6 +140,7 @@ export function geraeteListeZeilen(args: {
       suchtext: [d.externalRef, d.label, d.note].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
       erreichbar: null,
+      werkstattAbnahmeAm: null,
     });
   }
 
@@ -147,6 +158,7 @@ export function geraeteListeZeilen(args: {
       suchtext: [g.externalRef, g.name].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
       erreichbar: null,
+      werkstattAbnahmeAm: null,
     });
   }
 

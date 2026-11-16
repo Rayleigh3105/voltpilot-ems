@@ -198,9 +198,12 @@ const werkstattDienst: WerkstattDienst = {
   }],
 };
 
-// ── Eine wartende Anmeldung ohne Kunde, vermutlich ein Tippfehler ─────────
+// ── Eine wartende Anmeldung ohne Kunde, selbst angemeldet ─────────────────
 
-const pending = [{ externalRef: 'edge-q7xk2p9', deviceInfo: 'Box im Lager', csrUpdatedAt: vor(2 * 24 * STD), everIssued: false, issuedAt: null }];
+const pending = [{
+  externalRef: 'edge-q7xk2p9', deviceInfo: 'Box im Lager', csrUpdatedAt: vor(2 * 24 * STD),
+  everIssued: false, issuedAt: null, werkstattAbnahmeAm: null,
+}];
 
 // ── „Braucht dich" erledigt: eine winzige In-Memory-Ablage für die Bühne ──
 const brauchtDichErledigtAblage = new Map<string, { schluessel: string; stand: string; erledigtAm: string; erledigtVon: string }>();

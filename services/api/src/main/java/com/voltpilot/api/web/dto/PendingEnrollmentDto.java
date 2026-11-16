@@ -12,11 +12,17 @@ import java.time.Instant;
  *
  * <p>{@code everIssued} is true when a certificate was once issued and the
  * device was later unclaimed (a stale enrollment) versus never claimed at all.
+ *
+ * <p>{@code werkstattAbnahmeAm} is the Werkstatt acceptance date for this
+ * reference, {@code null} when it enrolled without one (it registered
+ * itself). This is the one honest fact the platform has about where a box
+ * came from - no inference, no third guess.
  */
 public record PendingEnrollmentDto(
         String externalRef,
         String deviceInfo,
         Instant csrUpdatedAt,
         boolean everIssued,
-        Instant issuedAt) {
+        Instant issuedAt,
+        Instant werkstattAbnahmeAm) {
 }

@@ -27,12 +27,22 @@ public class AdminEnrollmentRepository {
         this.jdbc = adminJdbcTemplate;
     }
 
-    /** Enrollments with no currently-claimed device, newest CSR first. */
+    /**
+     * Enrollments with no currently-claimed device, newest CSR first.
+     *
+     * <p>{@code werkstatt_abnahme_am} is the Werkstatt acceptance date, joined
+     * by the plain {@code edge_ref}/{@code external_ref} string match that
+     * {@code WerkstattRepository} itself uses throughout (no FK between the
+     * two domains): {@code null} means the box enrolled without ever passing
+     * a Werkstatt acceptance, {@code hand} or {@code dienst} both count.
+     */
     public List<PendingEnrollmentDto> findPending() {
         return jdbc.query(
-                "SELECT e.external_ref, e.device_info, e.csr_updated_at, e.issued_at "
+                "SELECT e.external_ref, e.device_info, e.csr_updated_at, e.issued_at, wa.werkstatt_abnahme_am "
                         + "FROM device_enrollment e "
                         + "LEFT JOIN device d ON d.external_ref = e.external_ref AND d.ausgebaut_am IS NULL "
+                        + "LEFT JOIN (SELECT edge_ref, min(erfasst_am) AS werkstatt_abnahme_am "
+                        + "FROM werkstatt_abnahme GROUP BY edge_ref) wa ON wa.edge_ref = e.external_ref "
                         + "WHERE d.id IS NULL "
                         + "ORDER BY e.csr_updated_at DESC, e.external_ref",
                 AdminEnrollmentRepository::map);
@@ -56,11 +66,13 @@ public class AdminEnrollmentRepository {
     private static PendingEnrollmentDto map(java.sql.ResultSet rs, int rowNum)
             throws java.sql.SQLException {
         java.sql.Timestamp issuedAt = rs.getTimestamp("issued_at");
+        java.sql.Timestamp werkstattAbnahmeAm = rs.getTimestamp("werkstatt_abnahme_am");
         return new PendingEnrollmentDto(
                 rs.getString("external_ref"),
                 rs.getString("device_info"),
                 rs.getTimestamp("csr_updated_at").toInstant(),
                 issuedAt != null,
-                issuedAt == null ? null : issuedAt.toInstant());
+                issuedAt == null ? null : issuedAt.toInstant(),
+                werkstattAbnahmeAm == null ? null : werkstattAbnahmeAm.toInstant());
     }
 }

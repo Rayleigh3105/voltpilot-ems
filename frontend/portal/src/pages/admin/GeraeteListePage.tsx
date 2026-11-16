@@ -17,7 +17,7 @@ import {
   filterGeraeteListe, geraeteListeLinien, geraeteListeZeilen, listeChipZahlen, loeschKandidat,
   LEERER_LISTE_FILTER, seitText, type GeraeteListeZeile, type ListeFilter, type LoeschKandidat,
 } from '../../geraeteListe';
-import { PENDING_KONTEXT, pendingErreichbarText } from '../../onboardingFunnel';
+import { PENDING_KONTEXT, pendingErreichbarText, herkunftText } from '../../onboardingFunnel';
 import type { FlottenAnlage } from '../../adminKomponentenFlotte';
 import type { WerkstattBox } from '../../werkstatt';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
@@ -284,6 +284,10 @@ function GeraeteZeile({ z, jetzt, onOpen, werkstattBoxen, onLoeschenAnfragen }: 
   const ref = z.lebensabschnitt === 'verbunden' ? z.zeile.ref : z.ref;
   const openRef = z.lebensabschnitt === 'verbunden' ? z.zeile.row.externalRef : z.ref;
   const kandidat = loeschKandidat(z, werkstattBoxen);
+  // Herkunft (vp-geraete-herkunft): nur bei wartet/verbunden - für gedruckt/werkstatt/ausgebaut
+  // sagt der Lebensabschnitt selbst schon alles, was die Plattform dazu weiß.
+  const herkunft = z.lebensabschnitt === 'wartet' || z.lebensabschnitt === 'verbunden'
+    ? herkunftText(z.werkstattAbnahmeAm) : null;
   return (
     <tr className="vp-row-click" onClick={() => onOpen(openRef)} title="Geräteakte öffnen">
       <td data-label="Box" data-zeile="haupt">
@@ -292,6 +296,7 @@ function GeraeteZeile({ z, jetzt, onOpen, werkstattBoxen, onLoeschenAnfragen }: 
             {z.lebensabschnitt === 'verbunden' ? z.zeile.name : z.name}
           </button>
           <span className="vp-cell-sub vp-mono">{ref}</span>
+          {herkunft && <span className="vp-cell-sub vp-muted">{herkunft}</span>}
           {z.lebensabschnitt === 'verbunden' && <span className="vp-box-art"><BoxArtChip boxArt={z.zeile.row.boxArt} /></span>}
         </span>
       </td>

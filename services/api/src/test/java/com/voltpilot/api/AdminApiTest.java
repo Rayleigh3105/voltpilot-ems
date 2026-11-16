@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -341,6 +342,12 @@ class AdminApiTest {
         // too - it has a matching device row, so it is NOT pending.
         exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
                 + "VALUES ('demo-inverter-01', 'dummy-csr') ON CONFLICT DO NOTHING");
+        // Herkunft (vp-geraete-herkunft): a ref that WAS accepted in the Werkstatt but
+        // never claimed - pending, but its origin is "aus der Werkstatt", not a guess.
+        Instant abnahmeAm = Instant.parse("2026-11-01T09:00:00Z");
+        werkstattAbnahmeEinfuegen("edge-wrkher-pend", abnahmeAm);
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
+                + "VALUES ('edge-wrkher-pend', 'dummy-csr') ON CONFLICT DO NOTHING");
 
         ResponseEntity<List<Map<String, Object>>> pending = rest.exchange(
                 url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
@@ -351,11 +358,54 @@ class AdminApiTest {
         Map<String, Object> orphan = pending.getBody().stream()
                 .filter(e -> "edge-orphan-77".equals(e.get("externalRef"))).findFirst().orElseThrow();
         assertThat(orphan).containsEntry("everIssued", false);
+        assertThat(orphan.get("werkstattAbnahmeAm"))
+                .as("selbst angemeldet - keine Werkstatt-Abnahme für diese Referenz").isNull();
+
+        Map<String, Object> werkstattBox = pending.getBody().stream()
+                .filter(e -> "edge-wrkher-pend".equals(e.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(Instant.parse((String) werkstattBox.get("werkstattAbnahmeAm"))).isEqualTo(abnahmeAm);
 
         // A customer may never see the operator view.
         assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo", "demo"))), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * vp-geraete-herkunft: the device inventory (`/api/v1/admin/devices`) shows the ONE honest
+     * fact the platform has about a box's origin - a Werkstatt acceptance (hand or dienst,
+     * joined by the plain edge_ref string match), or none at all (it enrolled by itself).
+     */
+    @Test
+    void deviceInventoryShowsWerkstattOriginByTheSameEdgeRefMatch() {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        String werkstattRef = TestKennung.box("edge-wrkher-conn");
+        String selbstRef = TestKennung.box("edge-selbher-conn");
+        Instant abnahmeAm = Instant.parse("2026-11-02T08:30:00Z");
+        werkstattAbnahmeEinfuegen(werkstattRef, abnahmeAm);
+
+        rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", werkstattRef), bearer(customer)),
+                new ParameterizedTypeReference<Map<String, Object>>() {});
+        rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", selbstRef), bearer(customer)),
+                new ParameterizedTypeReference<Map<String, Object>>() {});
+
+        ResponseEntity<Map<String, Object>> inventory = rest.exchange(
+                url("/api/v1/admin/devices"), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(inventory.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) inventory.getBody().get("devices");
+
+        Map<String, Object> werkstattRow = rows.stream()
+                .filter(r -> werkstattRef.equals(r.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(Instant.parse((String) werkstattRow.get("werkstattAbnahmeAm"))).isEqualTo(abnahmeAm);
+
+        Map<String, Object> selbstRow = rows.stream()
+                .filter(r -> selbstRef.equals(r.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(selbstRow.get("werkstattAbnahmeAm"))
+                .as("selbst angemeldet - keine Werkstatt-Abnahme für diese Referenz").isNull();
     }
 
     @Test
@@ -4329,6 +4379,38 @@ class AdminApiTest {
             return rs.next() ? rs.getString(1) : null;
         } catch (Exception e) {
             throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
+
+    /**
+     * Seed a Werkstatt acceptance for {@code edgeRef} (vp-geraete-herkunft): a minimal
+     * {@code werkstatt_box} row plus one {@code werkstatt_abnahme} row at {@code erfasstAm},
+     * the same string match ({@code edge_ref}) that every Herkunft lookup uses.
+     */
+    private void werkstattAbnahmeEinfuegen(String edgeRef, Instant erfasstAm) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            UUID boxId = UUID.randomUUID();
+            try (PreparedStatement ps = c.prepareStatement(
+                    "INSERT INTO werkstatt_box (id, edge_ref, angelegt_von, geaendert_von) "
+                            + "VALUES (?, ?, 'test', 'test')")) {
+                ps.setObject(1, boxId);
+                ps.setString(2, edgeRef);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = c.prepareStatement(
+                    "INSERT INTO werkstatt_abnahme (box_id, edge_ref, host_schluessel, fassung, "
+                            + "tunnel_adresse, lan_netz, pruefungen, probe, erfasst_von, erfasst_am) "
+                            + "VALUES (?, ?, ?, 'edge-light-test1', '10.10.16.9'::inet, '10.213.0.1/24', "
+                            + "'[]'::jsonb, '{}'::jsonb, 'test', ?)")) {
+                ps.setObject(1, boxId);
+                ps.setString(2, edgeRef);
+                ps.setString(3, "SHA256:" + "Q".repeat(42) + "c");
+                ps.setObject(4, java.sql.Timestamp.from(erfasstAm));
+                ps.executeUpdate();
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 

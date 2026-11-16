@@ -14,21 +14,27 @@ import { boxVerbindung, type BoxErreichbarkeit, type BoxVerbindung } from './adm
  * (erst der TOFU-Crossover macht die Box update-fähig).
  *
  * Die Seite zeigte bisher nur die erste und dritte Stufe. Die zweite ist das
- * TIPPFEHLER-FENSTER: das Gerät hat seinen Teil getan, der Kunde hat eine
- * andere Referenz getippt — sichtbar war das auf keiner der beiden Seiten,
- * obwohl der Endpunkt seit dem Enrollment-Bau existiert. Die vierte wohnte als
- * SPALTE in der Flotten-Matrix der ANDEREN Seite, der Funnel hörte also eine
- * Stufe zu früh auf.
+ * Fenster, in dem sich das Gerät meldet, aber kein Claim dazu passt - sichtbar
+ * war das auf keiner der beiden Seiten, obwohl der Endpunkt seit dem
+ * Enrollment-Bau existiert. Dass ein Kunde dabei etwas falsch getippt hat, ist
+ * NICHT die einzige Erklärung: eine Box kann sich auch selbst, ohne jeden
+ * Kunden-Tastendruck, melden (vp-geraete-herkunft) - die Fläche behauptet
+ * seither keine Ursache mehr, nur die Wartezeit. Die vierte wohnte als SPALTE
+ * in der Flotten-Matrix der ANDEREN Seite, der Funnel hörte also eine Stufe zu
+ * früh auf.
  *
  * Reine Ableitung: hier wird nur gezählt und formuliert, nie geraten. Was der
  * Server nicht liefert, behauptet dieses Modul auch nicht.
  */
 
 /**
- * Ab dieser Wartezeit ist ein meldendes Gerät ohne Claim kein normaler
- * Einrichtungs-Zwischenstand mehr, sondern ein Hinweis auf einen Tippfehler.
- * Bewusst großzügig: eine Einrichtung, bei der Kunde und Techniker nicht am
- * selben Tag arbeiten, ist normal — erst danach lohnt der Anruf.
+ * Ab dieser Wartezeit verdient ein meldendes Gerät ohne Claim besondere
+ * Aufmerksamkeit (bernstein markiert). Bewusst großzügig: eine Einrichtung,
+ * bei der Kunde und Techniker nicht am selben Tag arbeiten, ist normal —
+ * erst danach lohnt der Anruf. Die Schwelle markiert nur „länger als normal",
+ * NIE eine Vermutung über die Ursache (Firstmate vp-geraete-herkunft: die
+ * Ursache war bisher ein erfundener „Tippfehler", obwohl kein Kunde je etwas
+ * getippt haben muss — die Box kann sich auch nur selbst angemeldet haben).
  */
 export const TYPO_SUSPECT_AFTER_MS = 24 * 60 * 60 * 1000;
 
@@ -178,10 +184,18 @@ export interface PendingRow {
   csrUpdatedAt: string;
   /** Der eine einordnende Satz — die einzige Wertung dieser Fläche. */
   hint: string;
-  /** True für den Tippfehler-Verdacht (die Zeile wird bernstein markiert). */
+  /** True für die Hervorhebung nach {@link TYPO_SUSPECT_AFTER_MS} (die Zeile wird bernstein markiert). */
   suspect: boolean;
   /** Ist die Box gerade erreichbar? DIE Online-Regel der Plattform (`boxVerbindung`), dieselbe Schwelle wie die Flotte. */
   erreichbar: BoxVerbindung;
+  /** Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz; `null` = selbst angemeldet. */
+  werkstattAbnahmeAm: string | null;
+}
+
+/** Dauer in ganzen Tagen, nie 0 — ab {@link TYPO_SUSPECT_AFTER_MS} ist mindestens ein Tag vergangen. */
+function seitTagen(waitedMs: number): string {
+  const tage = Math.max(1, Math.floor(waitedMs / (24 * 60 * 60 * 1000)));
+  return tage === 1 ? '1 Tag' : `${tage} Tagen`;
 }
 
 /**
@@ -189,7 +203,10 @@ export interface PendingRow {
  * jemanden braucht. Der Hinweis unterscheidet nur die drei Zustände, die die
  * Daten wirklich hergeben:
  *
- * - länger als {@link TYPO_SUSPECT_AFTER_MS} → vermutlich Tippfehler beim Kunden
+ * - länger als {@link TYPO_SUSPECT_AFTER_MS} → wie lange die Box schon ohne
+ *   Kunden meldet — ohne eine Vermutung über die Ursache (Firstmate
+ *   vp-geraete-herkunft: nie wieder „vermutlich Tippfehler", wenn nie ein
+ *   Kunde etwas getippt haben muss).
  * - frisch → normal während der Einrichtung
  * - `everIssued` → das Gerät WAR verbunden und wurde getrennt; das ist etwas
  *   anderes als „nie angekommen" und darf nie als Tippfehler gelesen werden.
@@ -210,12 +227,24 @@ export function pendingRows(
         hint: p.everIssued
           ? 'War schon einmal verbunden und wurde getrennt'
           : suspect
-            ? 'Vermutlich Tippfehler beim Kunden'
+            ? `Meldet sich seit ${seitTagen(waitedMs)}, noch keinem Kunden zugeordnet`
             : 'Frisch — normal während der Einrichtung',
         suspect,
         erreichbar: boxVerbindung(p.csrUpdatedAt, now),
+        werkstattAbnahmeAm: p.werkstattAbnahmeAm,
       };
     });
+}
+
+/**
+ * Herkunft (vp-geraete-herkunft): die eine ehrliche Angabe, die die Plattform zu einer Box
+ * hat — aus der Werkstatt (mit Abnahme-Datum) oder selbst angemeldet. Keine dritte Wertung.
+ */
+export function herkunftText(werkstattAbnahmeAm: string | null): string {
+  if (!werkstattAbnahmeAm) return 'Selbst angemeldet';
+  const datum = new Date(werkstattAbnahmeAm).toLocaleDateString('de-DE',
+    { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return `Aus der Werkstatt · ${datum}`;
 }
 
 // ── Das INVENTAR: eine Tabelle über den ganzen Lebenszyklus ────────────────
