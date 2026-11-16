@@ -35,6 +35,8 @@ func cmdManifest(args []string) error {
 	var binaries stringList
 	fs.Var(&binaries, "binary",
 		"name:GOOS/GOARCH=programm[,programm.gz] (Edge Light, je Architektur einmal; ohne ,… gilt programm.gz)")
+	skripte := fs.String("skripte", "",
+		"Edge Light: der Skriptstand edge-light-openwrt.tar.gz; Pruefsumme und Groesse kommen signiert ins Manifest (fuer die Werkstatt)")
 	var backends stringList
 	fs.Var(&backends, "backend", "Apply-Backend, fuer das dieses Release gilt (Vorgabe: compose, mit --binary light)")
 	fs.Usage = func() {
@@ -62,7 +64,12 @@ Pruefsummen und Groessen beider ins Manifest:
     --release edge-light-2026.11.1 --seq 14 --commit 3bf8c03 \
     --binary vp-edge-light:linux/mipsle=dist/vp-edge-light-linux-mipsle \
     --binary vp-edge-light:linux/arm64=dist/vp-edge-light-linux-arm64 \
+    --skripte dist/edge-light-openwrt.tar.gz \
     --state-schema 3 --key-id rel-2026-a --out release.json
+
+Mit --skripte traegt das Manifest auch den Skriptstand (edge-light/openwrt):
+Die Box wendet ihn beim Update nicht an; der Werkstatt-Dienst legt ihn beim
+Einrichten auf die Box und prueft ihn gegen diese signierte Pruefsumme.
 
 `)
 		fs.PrintDefaults()
@@ -123,6 +130,21 @@ Pruefsummen und Groessen beider ins Manifest:
 			return err
 		}
 		m.Artifacts = append(m.Artifacts, a)
+	}
+
+	if *skripte != "" {
+		if len(binaries) == 0 {
+			return errors.New("--skripte gehoert zu einem Edge-Light-Release (--binary)")
+		}
+		daten, err := os.ReadFile(*skripte)
+		if err != nil {
+			return fmt.Errorf("--skripte: %w", err)
+		}
+		if _, err := gzip.NewReader(bytes.NewReader(daten)); err != nil {
+			return fmt.Errorf("--skripte: %s ist kein gzip: %w", *skripte, err)
+		}
+		h := sha256.Sum256(daten)
+		m.Skripte = &otaverify.Skripte{Name: otaverify.SkripteDatei, SHA256: hex.EncodeToString(h[:]), Size: int64(len(daten))}
 	}
 
 	raw, err := marshalDoc(m)
