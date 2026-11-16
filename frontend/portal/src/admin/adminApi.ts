@@ -514,6 +514,14 @@ export interface BoxEndgueltigErgebnis {
   bereitsGeloescht: boolean;
 }
 
+/** Der Schalter der Automatik beim ersten Verbinden (`GET /api/v1/admin/edge-updates/erstverbindung`). */
+export interface ErstverbindungSchalterStand {
+  alle: boolean;
+  docker: boolean;
+  light: boolean;
+  eintraege: { bereich: string; an: boolean; geaendertVon: string; geaendertAm: string }[];
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -938,6 +946,15 @@ export const adminApi = {
   // Passwort: das Root-Passwort einer Box bleibt im Browser.
 
   werkstattBoxen: () => request<WerkstattBox[]>('/api/v1/admin/werkstatt/boxen'),
+
+  /** Erstverbindung: der Schalter der Automatik beim ersten Verbinden (ab Werk an). */
+  erstverbindungSchalter: () => request<ErstverbindungSchalterStand>('/api/v1/admin/edge-updates/erstverbindung'),
+  /** Je Linie (`light`, `docker`) oder für `alle` an- oder abschalten; die Änderung steht im Journal. */
+  erstverbindungSchalten: (bereich: 'alle' | 'light' | 'docker', an: boolean) =>
+    request<ErstverbindungSchalterStand>(`/api/v1/admin/edge-updates/erstverbindung/${bereich}`, {
+      method: 'POST',
+      body: JSON.stringify({ an }),
+    }),
 
   /** Erstverbindung S3: die Zeile „Beim ersten Verbinden“ / „Beim Kunden“; `undefined` (204) = keine Aussage. */
   werkstattErstesVerbinden: (ref: string) =>

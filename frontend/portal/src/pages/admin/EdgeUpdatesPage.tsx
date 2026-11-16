@@ -14,6 +14,7 @@ import { AdminPageHead } from './AdminPageHead';
 import { ReleaseSeite } from './ReleaseSeite';
 import { BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
 import { VerteilDialog, type VerteilStart } from './VerteilDialog';
+import { ErstverbindungSchalter } from './ErstverbindungSchalter';
 import {
   BOX_ART_LABELS,
   actorLabel,
@@ -270,6 +271,8 @@ export function EdgeUpdatesPage({
               steht schon in „Braucht dich". Ein Gerät, das nichts meldet, wird
               getrennt genannt - aus „unbekannt" lässt sich keine Aufgabe ableiten. */}
           {crossover && <p className="vp-muted vp-text-sm" data-testid="fleet-pointer" style={{ margin: 0 }}>{crossover}</p>}
+
+          <ErstverbindungSchalter onGeaendert={() => void load()} />
 
           <Card padding="lg" radius="lg">
             <details>
