@@ -234,7 +234,11 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
             // bei Edge Light der Loader-Stand (update | flash) samt der
             // LOADER_STAND-Marke des Loaders im Flash (Loader-Selbstupdate;
             // null = nicht gemeldet, alte Loader tragen keine Marke).
-            String geraetModell, String geraetArch, String loader, Integer loaderStand) {
+            String geraetModell, String geraetArch, String loader, Integer loaderStand,
+            // Erstverbindung S3 (additiv): das letzte Wort der Automatik beim ersten Verbinden ohne die
+            // Zuweisung selbst - erstverbindung_aktuell | _gesperrt | _aus | _aufgegeben - und sein Detail
+            // (Fassung bei „aktuell", sonst der Grund); null = keines.
+            String automatik, String automatikGrund) {
     }
 
     /**

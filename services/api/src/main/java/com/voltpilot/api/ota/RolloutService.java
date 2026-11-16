@@ -450,6 +450,28 @@ public class RolloutService {
         rollouts.appendEvent(Erstverbindung.URHEBER, ereignis, null, d.deviceId(), detail);
     }
 
+    /**
+     * Der Beleg der Automatik für die Werkstatt-Seite einer Box (S3, E7 = A), über ihre Referenz.
+     *
+     * @param linie die Linie der Box laut Werkstatt-Register ({@link BoxArt#LIGHT} oder {@link BoxArt#DOCKER})
+     * @return {@code null}, wenn die Box verbunden ist, aber nicht von der Automatik aktualisiert wurde
+     */
+    public ErstverbindungBeleg.Beleg erstverbindungBeleg(String externalRef, String linie, Instant now) {
+        var row = rollouts.belegJeReferenz(externalRef, Erstverbindung.URHEBER, List.of(
+                Erstverbindung.EREIGNIS_AKTUELL, Erstverbindung.EREIGNIS_GESPERRT, Erstverbindung.EREIGNIS_AUS,
+                Erstverbindung.EREIGNIS_AUFGEGEBEN));
+        if (row.isEmpty()) {
+            String heute = neuesteFassung(linie).map(f -> f.release().version()).orElse(null);
+            return ErstverbindungBeleg.of(null, null, null, null, heute);
+        }
+        var r = row.get();
+        BoxUpdateSicht.Sicht sicht = BoxUpdateSicht.of(r.zielRelease() == null ? null
+                        : new BoxUpdateSicht.Ziel(r.zielRelease(), r.zielVon(), r.zielAm()), r.automatik(),
+                r.automatikDetail(), r.ersteMeldung(), r.gemeldet(), r.laeuftSeit(), now);
+        return ErstverbindungBeleg.of(sicht, r.automatik(), r.automatikDetail(),
+                r.gemeldet() == null ? null : r.gemeldet().reason(), null);
+    }
+
     /** Der Schalter des Betriebs; ohne Eintrag an (ab Werk an). */
     public Erstverbindung.Schalter erstverbindungSchalter() {
         Map<String, Boolean> an = new HashMap<>();
@@ -567,6 +589,9 @@ public class RolloutService {
                         r.boxArt(), r.signed()))
                 .toList();
         Map<String, Linie> perLine = new HashMap<>();
+        Map<UUID, RolloutRepository.AutomatikRow> automatik = rollouts.letzteAutomatik(Erstverbindung.URHEBER,
+                List.of(Erstverbindung.EREIGNIS_AKTUELL, Erstverbindung.EREIGNIS_GESPERRT, Erstverbindung.EREIGNIS_AUS,
+                        Erstverbindung.EREIGNIS_AUFGEGEBEN));
         for (RolloutRepository.FleetDeviceRow d : fleet) {
             RolloutRepository.TargetRow t = targets.get(d.deviceId());
             String assigned = t == null ? null : t.releaseVersion();
@@ -584,7 +609,9 @@ public class RolloutService {
                     rd == null ? null : rd.rolloutId(), trustDto(d), boxArt(d),
                     b.lebenszeichen(), b.linie(), b.stand(), b.stufe1(),
                     b.ist() == null ? null : b.ist().version(), b.dahinter(), d.currentSince(),
-                    fakten(t, d, now), d.geraetModell(), d.geraetArch(), d.loader(), d.loaderStand()));
+                    fakten(t, d, now), d.geraetModell(), d.geraetArch(), d.loader(), d.loaderStand(),
+                    automatik.containsKey(d.deviceId()) ? automatik.get(d.deviceId()).event() : null,
+                    automatik.containsKey(d.deviceId()) ? automatik.get(d.deviceId()).detail() : null));
 
             if (RolloutStates.UNBEKANNT.equals(v.state())) {
                 unknown++;

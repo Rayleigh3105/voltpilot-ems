@@ -912,7 +912,8 @@ class OtaRolloutApiTest {
         }
 
         // edge-cyhchfr nachgestellt: Mango aus der Werkstatt, gerade verbunden, erste Meldung.
-        UUID neu = claim(customer, TestKennung.box("ota-en-" + UUID.randomUUID().toString().substring(0, 8)));
+        String neuRef = TestKennung.box("ota-en-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID neu = claim(customer, neuRef);
         BlockingQueue<byte[]> amGeraet = subscribe(neu);
         herzschlagRoh(ingest, neu, "edge-light-2026.10.1-9b37439a02c1",
                 block.apply("edge-light-2026.10.1-9b37439a02c1", "update"));
@@ -963,6 +964,23 @@ class OtaRolloutApiTest {
         assertThat(rest.exchange(url("/api/v1/devices/" + UUID.randomUUID() + "/software-update"), HttpMethod.GET,
                 new HttpEntity<>(bearer(customer)), String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
+        // Werkstatt-Seite (S3, E7 = A): „Beim Kunden“ mit Fassung und Zeit; eine wartende Box „Beim ersten Verbinden“.
+        assertThat(post("/api/v1/admin/werkstatt/boxen", admin, Map.of("edgeRef", neuRef, "boxArt", "edge-light"))
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        JsonNode beimKunden = getJson(admin, "/api/v1/admin/werkstatt/boxen/" + neuRef + "/erstes-verbinden");
+        assertThat(beimKunden.get("stand").asText()).isEqualTo("fertig");
+        assertThat(beimKunden.get("release").asText()).isEqualTo(version);
+        assertThat(beimKunden.get("am").isNull()).isFalse();
+        String wartendRef = TestKennung.box("ota-ew-" + UUID.randomUUID().toString().substring(0, 8));
+        assertThat(post("/api/v1/admin/werkstatt/boxen", admin, Map.of("edgeRef", wartendRef, "boxArt", "edge-light"))
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        JsonNode vorher = getJson(admin, "/api/v1/admin/werkstatt/boxen/" + wartendRef + "/erstes-verbinden");
+        assertThat(vorher.get("stand").asText()).isEqualTo("vorher");
+        assertThat(vorher.get("release").asText()).as("die heutige neueste Fassung der Linie").isEqualTo(version);
+        assertThat(rest.exchange(url("/api/v1/admin/werkstatt/boxen/" + wartendRef + "/erstes-verbinden"),
+                HttpMethod.GET, new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
         // Schon aktuell: nichts fällig, einmal im Journal und im Verlauf.
         UUID aktuell = claim(customer, TestKennung.box("ota-ea-" + UUID.randomUUID().toString().substring(0, 8)));
         herzschlagRoh(ingest, aktuell, version + "-9b37439a02c1", block.apply(version + "-9b37439a02c1", "update"));
@@ -982,6 +1000,12 @@ class OtaRolloutApiTest {
         JsonNode gesperrt = getJson(admin, "/api/v1/admin/devices/" + stufe1 + "/verlauf").get("eintraege").get(0);
         assertThat(gesperrt.get("art").asText()).isEqualTo("automatik_nicht");
         assertThat(gesperrt.get("grund").asText()).contains("ihr Loader startet immer die Fassung aus dem Flash");
+        // „Braucht dich" (S3) liest das letzte Wort der Automatik aus der Flotten-Zeile.
+        JsonNode seite = readModel(admin);
+        assertThat(fieldOf(seite, stufe1, "automatik")).isEqualTo("erstverbindung_gesperrt");
+        assertThat(fieldOf(seite, stufe1, "automatikGrund")).contains("Loader");
+        assertThat(fieldOf(seite, aktuell, "automatik")).isEqualTo("erstverbindung_aktuell");
+        assertThat(fieldOf(seite, neu, "automatik")).as("die Zuweisung selbst steht in den Fakten").isNull();
 
         // Der Schalter des Betriebs: Edge Light aus, ohne Deploy, mit Journal; Kunden kommen nicht heran.
         assertThat(post("/api/v1/admin/edge-updates/erstverbindung/light", customer, Map.of("an", false))

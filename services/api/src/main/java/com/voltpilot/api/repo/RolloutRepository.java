@@ -289,6 +289,63 @@ public class RolloutRepository {
                 urheber, Timestamp.from(seit));
     }
 
+    /**
+     * Was die Werkstatt-Seite über das erste Verbinden einer Box braucht, gefunden über ihre Referenz
+     * ({@code ota.ErstverbindungBeleg}); leer = nicht verbunden.
+     */
+    public record BelegRow(UUID deviceId, String zielRelease, String zielVon, Instant zielAm, String automatik,
+            String automatikDetail, Instant ersteMeldung, com.voltpilot.api.ota.RolloutStates.Reported gemeldet,
+            Instant laeuftSeit) {
+    }
+
+    public Optional<BelegRow> belegJeReferenz(String externalRef, String urheber, List<String> ereignisse) {
+        return jdbc.query("""
+                SELECT d.id, d.device_status_seen_at,
+                       u.version, u.current_version, u.target_version, u.state, u.target_verdict,
+                       u.reason, u.blocker, u.reported_at, u.current_since, u.erste_meldung_am,
+                       t.release_version, t.assigned_by, t.assigned_at,
+                       a.event AS automatik, a.detail AS automatik_detail
+                  FROM device d
+                  LEFT JOIN device_update_status u ON u.device_id = d.id
+                  LEFT JOIN device_update_target t ON t.device_id = d.id
+                  LEFT JOIN LATERAL (SELECT e.event, e.detail FROM rollout_event e
+                                      WHERE e.device_id = d.id AND e.actor = ? AND e.event = ANY (?)
+                                      ORDER BY e.id DESC LIMIT 1) a ON true
+                 WHERE d.external_ref = ? AND d.ausgebaut_am IS NULL
+                 ORDER BY d.created_at DESC LIMIT 1
+                """, (rs, i) -> {
+                    Instant reportedAt = instant(rs, "reported_at");
+                    var gemeldet = reportedAt == null ? null : new com.voltpilot.api.ota.RolloutStates.Reported(
+                            rs.getString("version"), rs.getString("current_version"), rs.getString("target_version"),
+                            rs.getString("state"), rs.getString("target_verdict"), rs.getString("reason"),
+                            rs.getString("blocker"), reportedAt, instant(rs, "device_status_seen_at"));
+                    return new BelegRow(rs.getObject("id", UUID.class), rs.getString("release_version"),
+                            rs.getString("assigned_by"), instant(rs, "assigned_at"), rs.getString("automatik"),
+                            rs.getString("automatik_detail"), instant(rs, "erste_meldung_am"), gemeldet,
+                            instant(rs, "current_since"));
+                }, urheber, ereignisse.toArray(String[]::new), externalRef).stream().findFirst();
+    }
+
+    /** Das letzte Wort der Automatik beim ersten Verbinden zu einer Box (ohne die Zuweisung selbst). */
+    public record AutomatikRow(UUID deviceId, String event, String detail, Instant at) {
+    }
+
+    /** Je Box das jüngste Journal-Ereignis eines Akteurs aus {@code ereignisse} (Index nach Gerät). */
+    public Map<UUID, AutomatikRow> letzteAutomatik(String urheber, List<String> ereignisse) {
+        Map<UUID, AutomatikRow> out = new java.util.HashMap<>();
+        jdbc.query("""
+                SELECT DISTINCT ON (device_id) device_id, event, detail, at
+                  FROM rollout_event
+                 WHERE actor = ? AND event = ANY (?) AND device_id IS NOT NULL
+                 ORDER BY device_id, id DESC
+                """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    UUID id = rs.getObject("device_id", UUID.class);
+                    out.put(id, new AutomatikRow(id, rs.getString("event"), rs.getString("detail"),
+                            instant(rs, "at")));
+                }, urheber, ereignisse.toArray(String[]::new));
+        return out;
+    }
+
     /** Ein Eintrag des Schalters ({@code bereich} = alle, docker, light). */
     public record SchalterRow(String bereich, boolean an, String geaendertVon, Instant geaendertAm) {
     }

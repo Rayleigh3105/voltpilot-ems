@@ -19,6 +19,7 @@ const werkstattNochmal = vi.fn();
 const werkstattZurSeite = vi.fn();
 const werkstattGehaeuseErneut = vi.fn();
 const edgeUpdates = vi.fn();
+const werkstattErstesVerbinden = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -35,6 +36,7 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattZurSeite: (l: string) => werkstattZurSeite(l),
     werkstattGehaeuseErneut: (r: string) => werkstattGehaeuseErneut(r),
     edgeUpdates: () => edgeUpdates(),
+    werkstattErstesVerbinden: (r: string) => werkstattErstesVerbinden(r),
   },
 }));
 
@@ -106,6 +108,7 @@ beforeEach(() => {
   fernwartungBox.mockRejectedValue(new ApiError(404, 'keine Box'));
   fernwartung.mockResolvedValue({ rueckmeldungen: [] });
   edgeUpdates.mockRejectedValue(new ApiError(503, 'nicht da'));
+  werkstattErstesVerbinden.mockResolvedValue(undefined);
 });
 
 describe('Werkstatt: Übersicht am Rechner', () => {
@@ -249,6 +252,23 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
     expect(within(b).getByTestId('ws-zeile-tunnel-schluessel')).toHaveTextContent('nicht hinterlegt');
     expect(within(b).queryByTestId('ws-verbindung')).toBeNull();
     expect(within(b).getByRole('link', { name: 'Fernwartung dieser Box' })).toHaveAttribute('href', '#/fernwartung?box=edge-5t2dcy6');
+  });
+
+  it('Erstverbindung S3: „Beim ersten Verbinden“ vor dem Kunden, „Beim Kunden“ mit Fassung und Zeit danach', async () => {
+    werkstattErstesVerbinden.mockResolvedValue({ stand: 'vorher', release: 'edge-light-2026.11.13', am: null, grund: null });
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    const { unmount } = render(<WerkstattPage />);
+    const e = await screen.findByTestId('ws-einrichtung');
+    expect(await within(e).findByTestId('ws-zeile-erstes-verbinden')).toHaveTextContent('holt sich die neueste Fassung selbst (heute 2026.11.13)');
+    expect(werkstattErstesVerbinden).toHaveBeenCalledWith('edge-5t2dcy6');
+    unmount();
+
+    werkstattErstesVerbinden.mockResolvedValue({ stand: 'fertig', release: 'edge-light-2026.11.13', am: '2026-11-16T09:46:00Z', grund: null });
+    render(<WerkstattPage />);
+    const nach = await screen.findByTestId('ws-einrichtung');
+    expect(await within(nach).findByTestId('ws-zeile-beim-kunden'))
+      .toHaveTextContent('✓ 16.11., 10:46 auf 2026.11.13 · automatisch beim ersten Verbinden');
+    expect(within(nach).queryByTestId('ws-zeile-erstes-verbinden')).toBeNull();
   });
 
   it('Bindung: Kunde, Zugang und Verbindung kommen aus der Fernwartung; ohne Meldung des Tunnel-Dienstes „unbekannt“', async () => {

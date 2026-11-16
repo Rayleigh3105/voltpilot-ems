@@ -170,6 +170,12 @@ export interface FleetRow {
    * altes Programm) - nie still 0.
    */
   loaderStand?: number | null;
+  /**
+   * Erstverbindung S3 (additiv): das letzte Wort der Automatik beim ersten Verbinden ohne die Zuweisung selbst
+   * (`erstverbindung_aktuell` | `_gesperrt` | `_aus` | `_aufgegeben`) und sein Detail (Fassung oder Grund).
+   */
+  automatik?: string | null;
+  automatikGrund?: string | null;
 }
 
 /**
@@ -258,7 +264,7 @@ export interface EdgeUpdates {
 /**
  * Ein Eintrag im Verlauf einer Box (`GET /admin/devices/{id}/verlauf`, Geräte &
  * Updates G3), neueste zuerst. `quelle` `portal`: angefragt, zurueckgezogen,
- * erneut_gesendet, entfernt (`von` = Akteur). `quelle` `box`: stand (mit `vorher`;
+ * erneut_gesendet, entfernt, automatik_aktuell, automatik_nicht (Erstverbindung, mit `grund`) (`von` = Akteur). `quelle` `box`: stand (mit `vorher`;
  * `null` = erste Meldung), angenommen, abgelehnt, zurueckgestellt,
  * fehlgeschlagen, zurueckgenommen (mit dem Grund der Box). Serverzeit.
  */

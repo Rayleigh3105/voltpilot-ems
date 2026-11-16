@@ -242,6 +242,14 @@ public class AdminWerkstattController {
     private final WerkstattGehaeuseRepository gehaeuseDateien;
     private final ObjectMapper json;
 
+    /** Erstverbindung S3: der Beleg der Automatik beim ersten Verbinden; ohne Bean (Minimal-Kontexte) keiner. */
+    private com.voltpilot.api.ota.RolloutService rollouts;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setRollouts(com.voltpilot.api.ota.RolloutService rollouts) {
+        this.rollouts = rollouts;
+    }
+
     public AdminWerkstattController(WerkstattService service, FreigabeService freigaben, WerkstattRegel regel,
             DienstAnsichtService ansichten, LaufSeiteService laufSeite, WerkstattGehaeuseRepository gehaeuseDateien,
             ObjectMapper json) {
@@ -307,6 +315,29 @@ public class AdminWerkstattController {
     @GetMapping("/boxen/{ref}")
     public BoxDto box(@PathVariable String ref) {
         return boxDto(service.box(referenz(ref)));
+    }
+
+    /**
+     * Die Zeile „Beim ersten Verbinden“ / „Beim Kunden“ (Erstverbindung S3, E7 = A): was die Automatik beim ersten
+     * Verbinden mit dieser Box tat oder tun wird - aus Journal und Box-Meldung, die Abnahme bleibt unverändert.
+     * {@code stand} {@code vorher} (mit der heutigen neuesten Fassung der Linie), {@code prueft}, {@code laeuft},
+     * {@code fertig}, {@code aktuell}, {@code nicht} (mit Grund); 204, wenn die verbundene Box nicht von der
+     * Automatik aktualisiert wurde. 404 nicht im Register.
+     */
+    public record ErstesVerbindenDto(String stand, String release, Instant am, String grund) {
+    }
+
+    @GetMapping("/boxen/{ref}/erstes-verbinden")
+    public ResponseEntity<ErstesVerbindenDto> erstesVerbinden(@PathVariable String ref) {
+        Stand s = service.box(referenz(ref));
+        if (rollouts == null) {
+            return ResponseEntity.noContent().build();
+        }
+        String linie = "edge-light".equals(s.box().boxArt()) ? com.voltpilot.api.ota.BoxArt.LIGHT
+                : com.voltpilot.api.ota.BoxArt.DOCKER;
+        var b = rollouts.erstverbindungBeleg(s.box().edgeRef(), linie, Instant.now());
+        return b == null ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(new ErstesVerbindenDto(b.stand(), b.release(), b.am(), b.grund()));
     }
 
     /** Ins Register aufnehmen: 201 neu, 200 schon da (unverändert). */

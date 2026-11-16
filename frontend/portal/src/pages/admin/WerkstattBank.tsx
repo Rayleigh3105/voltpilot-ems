@@ -244,7 +244,8 @@ function SoftwareKarte({ sw, titel, neuer, testId = 'wsb-software' }: { sw: Soft
       {paket(sw.edgeLight, 'edge-light')}
       {neuer && (
         <p className="neuer" data-testid="wsb-soft-neuer">
-          Neuer erschienen: Edge Light {neuer}. Diese Box bleibt bei ihrer Fassung; die nächste bekommt die neueste.
+          Neuer erschienen: Edge Light {neuer}. Diese Box bleibt bei ihrer Fassung und holt sie beim ersten Verbinden
+          selbst; die nächste bekommt die neueste.
         </p>
       )}
     </div>

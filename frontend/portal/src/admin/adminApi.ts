@@ -21,6 +21,7 @@ import type {
   FernwartungUebersicht,
 } from '../adminFernwartung';
 import type { WerkstattBox } from '../werkstatt';
+import type { ErstesVerbinden } from '../werkstattEinrichtung';
 import type { WerkstattDienst, WerkstattFreigabe, WerkstattRegel, ZurSeite } from '../werkstattBank';
 
 export type { CreateSiteInput, Site } from '../api';
@@ -937,6 +938,10 @@ export const adminApi = {
   // Passwort: das Root-Passwort einer Box bleibt im Browser.
 
   werkstattBoxen: () => request<WerkstattBox[]>('/api/v1/admin/werkstatt/boxen'),
+
+  /** Erstverbindung S3: die Zeile „Beim ersten Verbinden“ / „Beim Kunden“; `undefined` (204) = keine Aussage. */
+  werkstattErstesVerbinden: (ref: string) =>
+    request<ErstesVerbinden | undefined>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/erstes-verbinden`),
 
   /**
    * Eine Box löschen (etwa einen Fehlversuch) samt Tunnel-Schlüssel, Codes und Geräteschlüssel: 204;

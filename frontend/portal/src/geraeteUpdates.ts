@@ -1,6 +1,6 @@
 import { boxVerbindung, releaseIsRunning } from './adminFleet';
 import {
-  BOX_ART_LABELS, BOX_ART_UNBEKANNT, LOADER_FLASH, actorLabel, blockerLever, deviceBoxArt, geraetZeile,
+  BOX_ART_LABELS, BOX_ART_UNBEKANNT, LOADER_FLASH, URHEBER_ERSTVERBINDUNG, actorLabel, blockerLever, deviceBoxArt, geraetZeile,
   releaseBoxArt, releaseSperre, stateLabel, type BoxArt, type EdgeEignung, type EdgeReleaseSeite, type EdgeUpdates,
   type EdgeUpdatesRelease, type FleetRow, type UpdateFakten, type VerlaufEintrag,
 } from './adminEdgeUpdates';
@@ -361,7 +361,7 @@ export function boxZeile(row: FleetRow, now: Date): BoxZeile {
   }
   const offline = verbindung.zustand === 'offline';
   const brauchtDich = segment === 'fehler' || segment === 'halt' || segment === 'hand'
-    || (offline && anfrageOffen(f));
+    || (offline && anfrageOffen(f)) || (row.automatik === 'erstverbindung_aufgegeben' && !f);
   const ref = row.label && row.label !== row.externalRef ? `${row.label} · ${row.externalRef}` : row.externalRef;
   const geraet = geraetZeile(row);
   const laeuft = istText(row);
@@ -855,10 +855,12 @@ function fehlerAufgabe(r: FleetRow, now: Date): Aufgabe {
   const rel = f?.angefragt.release ?? r.soll ?? null;
   const ist = istText(r);
   const grund = f?.bestaetigt.grund ?? r.reason ?? null;
-  let titel = `${name}: Update fehlgeschlagen`;
+  // Erstverbindung S3: ein Update der Automatik sagt das schon im Titel - beim ersten Verbinden, ohne Menschen.
+  const automatik = f?.angefragt.von === URHEBER_ERSTVERBINDUNG ? ' beim ersten Verbinden' : '';
+  let titel = `${name}: Update${automatik} fehlgeschlagen`;
   let text: Satz;
   if (f?.bestaetigt.stand === 'zurueckgenommen' || r.state === 'zurueckgerollt') {
-    titel = `${name}: Update zurückgenommen`;
+    titel = `${name}: Update${automatik} zurückgenommen`;
     text = [
       'Die Box hat ', ...(rel ? [{ mono: rel }] : ['das Update']),
       ` angenommen, der Selbsttest wurde nicht grün${grund ? ` (${grund})` : ''}.`,
@@ -885,6 +887,24 @@ function fehlerAufgabe(r: FleetRow, now: Date): Aufgabe {
   return {
     id: `fehler-${r.deviceId}`, ton: 'fehler', icon: 'alert-triangle', titel, text, deviceIds: [r.deviceId],
     knoepfe: nochmal ? ['box', 'nochmal'] : ['box'], anfragen: [], nochmal,
+  };
+}
+
+/**
+ * Erstverbindung S3: Die Automatik konnte beim ersten Verbinden nicht zuweisen (die neueste Fassung lud in der ersten
+ * Stunde nicht fertig hoch, die Box-Art blieb unbekannt) - die Box läuft auf ihrem Stand weiter, kein Auto-Versuch.
+ */
+function automatikAufgabe(r: FleetRow): Aufgabe {
+  const ist = istText(r);
+  return {
+    id: `automatik-${r.deviceId}`, ton: 'warn', icon: 'alert-triangle',
+    titel: `${boxName(r)}: beim ersten Verbinden nicht aktualisiert`,
+    text: [
+      r.automatikGrund ?? 'Die Automatik nennt keinen Grund.',
+      ...(ist ? [' Die Box läuft auf ', { mono: ist }, '.'] : []),
+      ' Die neueste Fassung kannst du ihr von Hand zuweisen.',
+    ],
+    deviceIds: [r.deviceId], knoepfe: ['box'], anfragen: [], nochmal: null,
   };
 }
 
@@ -957,6 +977,8 @@ export function aufgaben(data: Pick<EdgeUpdates, 'fleet'>, now: Date): Aufgabe[]
       out.push(offlineAufgabe(r, now));
     }
   }
+  // Die Automatik hat aufgegeben und seitdem wies niemand etwas zu (sonst trüge die Box eine Anfrage).
+  for (const r of rows) if (r.automatik === 'erstverbindung_aufgegeben' && !r.fakten) out.push(automatikAufgabe(r));
   const hand = rows.filter((r) => segmentArt(r.stand) === 'hand');
   if (hand.length) out.push(handAufgabe(hand));
   return out;
@@ -1113,6 +1135,11 @@ export function verlaufSicht(eintraege: VerlaufEintrag[], now: Date): VerlaufZei
         case 'zurueckgezogen': return { wann, ton: 'leer', titel: ['Anfrage zurückgezogen', ...(rel.length ? [': ', ...rel] : [])], text: von };
         case 'erneut_gesendet': return { wann, ton: 'leer', titel: ['Anfrage erneut gesendet', ...(rel.length ? [': ', ...rel] : [])], text: von };
         case 'entfernt': return { wann, ton: 'leer', titel: ['Aus der Verteilung entfernt'], text: von };
+        // Erstverbindung S1/S3: das Wort der Automatik beim ersten Verbinden, wenn sie nichts zuwies.
+        case 'automatik_aktuell':
+          return { wann, ton: 'ok', titel: ['beim ersten Verbinden schon aktuell', ...(rel.length ? [': ', ...rel] : [])], text: von };
+        case 'automatik_nicht':
+          return { wann, ton: 'leer', titel: [`beim ersten Verbinden nicht aktualisiert${grund}`], text: von };
         default: return { wann, ton: 'leer', titel: [e.art], text: von };
       }
     }
