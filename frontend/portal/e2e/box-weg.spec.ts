@@ -54,6 +54,8 @@ interface Cloud {
   linkKind?: 'kabel' | 'wlan' | null;
   signalDbm?: number | null;
   linkWeakSince?: string | null;
+  /** Erstverbindung S2: das Update der Box (`/software-update`); fehlt = 404 wie ein älteres Backend. */
+  software?: Record<string, unknown>;
 }
 
 function box(cloud: Cloud) {
@@ -139,7 +141,24 @@ async function verdrahte(page: Page, cloud: Cloud) {
     json(r, { schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes: [] } }),
   );
   await page.route('**/api/v1/sites/*/assets', (r) => json(r, []));
+  await page.route('**/api/v1/devices/*/software-update', (r) =>
+    cloud.software ? json(r, cloud.software) : json(r, { message: 'Not found' }, 404),
+  );
 }
+
+/** Die Bilder für den Bericht (`WEG_BILDER=<ordner>`), erst nach dem Ende jeder Animation. */
+async function bild(page: Page, name: string) {
+  const ordner = process.env.WEG_BILDER;
+  if (!ordner) return;
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    // Der Weg oben im Bild: Stationen, Überschrift, Fortschritt und Knopf - nicht die Willkommens-Kopfzeile.
+    const liste = document.querySelector('.vp-weg-liste');
+    if (liste) window.scrollTo(0, liste.getBoundingClientRect().top + window.scrollY - 96);
+  });
+  await page.screenshot({ path: `${ordner}/${name}.png`, animations: 'disabled' });
+}
+
 
 /** Kein horizontaler Überlauf, weder am Dokument noch an einem Element der Seite. */
 async function ohneQuerlauf(page: Page, breite: number, seite: string) {
@@ -416,6 +435,149 @@ for (const breite of [390, 1440] as const) {
     cloud.devices = [box(cloud)];
     await page.clock.runFor(6000);
     await expect(page.getByRole('heading', { name: 'Ihre Box ist online' })).toBeVisible();
+  });
+}
+
+/**
+ * Erstverbindung S2 (E4 = B): holt sich die Box beim ersten Verbinden die neueste Software, wartet der Weg an der
+ * Station „Software“, bis sie fertig ist - Fortschritt mit Restzeit, kein „Weiter“; danach „auf dem neuesten Stand“.
+ * Dazu: zurückgenommen („kommt später“), Obergrenze 12 Minuten, kein Update fällig.
+ */
+for (const breite of [390, 1440] as const) {
+  const hoehe = breite < 720 ? 844 : 900;
+  const RELEASE = 'edge-light-2026.11.13';
+
+  async function online(page: Page, cloud: Cloud) {
+    await verdrahte(page, cloud);
+    await page.clock.install();
+    await page.setViewportSize({ width: breite, height: hoehe });
+    await bisZurBox(page);
+    await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await waehleKabel(page);
+    await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
+  }
+  const uhr = async (page: Page) => new Date(await page.evaluate(() => Date.now())).toISOString();
+  const neueCloud = (): Cloud => ({
+    sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null,
+    id: URSPRUNG_ID, ref: REF,
+  });
+  const update = (phase: string, seit: string, over: Record<string, unknown> = {}) => ({
+    phase, release: phase === 'prueft' ? null : RELEASE, seit, fertigAm: null, updateLaeuft: phase !== 'prueft', ...over,
+  });
+
+  test(`Software: der Weg wartet, bis das Update fertig ist - ${breite}px`, async ({ page }) => {
+    const cloud = neueCloud();
+    await online(page, cloud);
+
+    // Erste Meldung: die Automatik entscheidet noch - kein „Weiter“.
+    const erste = await uhr(page);
+    cloud.lastSeenAt = erste;
+    cloud.software = update('prueft', erste);
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box sucht nach neuer Software' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Weiter: Ihre Anlage' })).toHaveCount(0);
+    await ohneQuerlauf(page, breite, 'software-prueft');
+
+    // Zugewiesen: Laden, mit Satz, Restzeit und Balken.
+    const zugewiesen = await uhr(page);
+    cloud.software = update('laedt', zugewiesen);
+    await page.clock.runFor(30_000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box holt die neueste Software' })).toBeVisible();
+    await expect(page.getByText('Bitte kurz warten. Ihre Box startet dabei einmal neu.')).toBeVisible();
+    await expect(page.getByRole('progressbar', { name: 'Fortschritt der neuen Software' })).toBeVisible();
+    await expect(page.getByText(breite < 720 ? 'Lädt · noch etwa 3 Min.' : 'noch etwa 3 Min.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Weiter: Ihre Anlage' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Später einrichten - direkt zum Portal' }).or(
+      page.getByRole('button', { name: 'Später einrichten - direkt zum Portal' }))).toBeVisible();
+    await ohneQuerlauf(page, breite, 'software-laden');
+    await bild(page, `weg-laden-${breite}`);
+
+    // Neustart: die Box ist kurz still - der Weg bleibt beim Update, nicht bei „meldet sich nicht“.
+    cloud.software = update('startet_neu', zugewiesen);
+    await page.clock.runFor(60_000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box holt die neueste Software' })).toBeVisible();
+    if (breite < 720) await expect(page.getByText('Startet neu · noch etwa 2 Min.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Weiter: Ihre Anlage' })).toHaveCount(0);
+    await ohneQuerlauf(page, breite, 'software-neustart');
+    await bild(page, `weg-neustart-${breite}`);
+
+    // Prüfen: die neue Fassung macht ihren Selbsttest.
+    cloud.lastSeenAt = await uhr(page);
+    cloud.devices = [box(cloud)];
+    cloud.software = update('prueft_box', zugewiesen);
+    await page.clock.runFor(60_000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box holt die neueste Software' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'software-pruefen');
+    await bild(page, `weg-pruefen-${breite}`);
+
+    // Fertig: auf dem neuesten Stand, „Weiter“ erscheint.
+    const fertig = await uhr(page);
+    cloud.lastSeenAt = fertig;
+    cloud.devices = [box(cloud)];
+    cloud.software = update('fertig', zugewiesen, { fertigAm: fertig, updateLaeuft: false });
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist auf dem neuesten Stand' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'software-fertig');
+    await bild(page, `weg-fertig-${breite}`);
+    await page.getByRole('button', { name: 'Weiter: Ihre Anlage' }).click();
+    await expect(page.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
+  });
+
+  test(`Software: zurückgenommen - kommt später, Weiter erscheint - ${breite}px`, async ({ page }) => {
+    const cloud = neueCloud();
+    await online(page, cloud);
+    const jetzt = await uhr(page);
+    cloud.lastSeenAt = jetzt;
+    cloud.devices = [box(cloud)];
+    cloud.software = update('laedt', jetzt);
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box holt die neueste Software' })).toBeVisible();
+    cloud.software = update('spaeter', jetzt, { updateLaeuft: false });
+    cloud.lastSeenAt = await uhr(page);
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist online' })).toBeVisible();
+    await expect(page.getByText('Die neue Software kommt später. Darum kümmern wir uns.')).toBeVisible();
+    await expect(page.getByText('kommt später', { exact: true })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'software-spaeter');
+    await bild(page, `weg-spaeter-${breite}`);
+    await expect(page.getByRole('button', { name: 'Weiter: Ihre Anlage' })).toBeVisible();
+  });
+
+  test(`Software: nach 12 Minuten läuft es im Hintergrund weiter - ${breite}px`, async ({ page }) => {
+    const cloud = neueCloud();
+    await online(page, cloud);
+    const jetzt = await uhr(page);
+    cloud.lastSeenAt = jetzt;
+    cloud.devices = [box(cloud)];
+    cloud.software = update('startet_neu', jetzt);
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('button', { name: 'Weiter: Ihre Anlage' })).toHaveCount(0);
+    await page.clock.runFor(12 * 60_000);
+    cloud.lastSeenAt = await uhr(page);
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Das dauert länger als üblich' })).toBeVisible();
+    await expect(page.getByText('Die neue Software läuft im Hintergrund weiter. Sie können schon weitermachen.')).toBeVisible();
+    await ohneQuerlauf(page, breite, 'software-laenger');
+    await bild(page, `weg-obergrenze-${breite}`);
+    await expect(page.getByRole('button', { name: 'Weiter: Ihre Anlage' })).toBeVisible();
+  });
+
+  test(`Software: kein Update fällig - die Station ist sofort erledigt - ${breite}px`, async ({ page }) => {
+    const cloud = neueCloud();
+    await online(page, cloud);
+    cloud.lastSeenAt = await uhr(page);
+    cloud.devices = [box(cloud)];
+    cloud.software = { phase: 'keins', release: RELEASE, seit: null, fertigAm: null, updateLaeuft: false };
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist online' })).toBeVisible();
+    await expect(page.locator('.vp-weg-station.is-done', { hasText: 'Software' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'software-keins');
+    await bild(page, `weg-keins-${breite}`);
+    await page.getByRole('button', { name: 'Weiter: Ihre Anlage' }).click();
+    await expect(page.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
   });
 }
 

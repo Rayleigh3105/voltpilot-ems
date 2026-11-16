@@ -73,6 +73,10 @@
 .vp-weg-station.is-dashed .vp-weg-marke {
   border-style: dashed;
 }
+.vp-weg-station.is-spaeter .vp-weg-marke {
+  border-style: dashed;
+  color: var(--vp-text-gray);
+}
 .vp-weg-marke .vp-ustate-dot {
   width: 9px;
   height: 9px;
@@ -208,4 +212,72 @@
 /* Verbindungsanzeige (Weg und Box-Seite): Signal-Warnung und der Weg zurück ins Einrichtungs-WLAN. */
 .vp-verbindung-chip {
   justify-self: start;
+}
+
+/* Erstverbindung S2: die Station „Software“ - Laden · Neu starten · Prüfen, Balken, Restzeit
+   (Stil der Gerätesuche, eigene Klassen: deren Blatt lädt erst mit dem Dialog). */
+.vp-weg-sw {
+  display: grid;
+  gap: var(--vp-space-3);
+  margin: var(--vp-space-2) 0 var(--vp-space-4);
+}
+.vp-weg-sw-schritte {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--vp-space-3);
+}
+.vp-weg-sw-schritte li {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  font-weight: 600;
+  color: var(--vp-text-dark);
+}
+.vp-weg-sw-schritte li.is-offen {
+  font-weight: 400;
+  color: var(--vp-text-gray);
+}
+.vp-weg-sw-marke {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--vp-border);
+  color: #fff;
+}
+.vp-weg-sw-schritte li.is-fertig .vp-weg-sw-marke {
+  background: var(--vp-ok-ink);
+  border-color: var(--vp-ok-ink);
+}
+.vp-weg-sw-schritte li.is-aktiv .vp-weg-sw-marke {
+  border-color: transparent;
+  color: var(--vp-action);
+}
+.vp-weg-sw-marke .vp-spinner {
+  width: 18px;
+  height: 18px;
+}
+.vp-weg-sw-balken {
+  height: 6px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-border);
+  overflow: hidden;
+}
+.vp-weg-sw-balken > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vp-action);
+  transition: width var(--vp-motion-chart-update) var(--vp-ease-out);
+}
+.vp-weg-sw-rest {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
 }
