@@ -4,7 +4,7 @@ Eine frisch eingerichtete Box löst in der Werkstatt einen Einmal-Code ein. Dami
 
 ## Ablauf
 
-1. Der Werkstatt-Dienst holt für genau diese Box einen Code: `POST /api/v1/werkstatt-dienst/codes` mit `{"edgeRef": "edge-…"}` (nur Rolle `werkstatt-dienst`). Es gibt ihn nur in einer laufenden Freigabe, für eine erzeugte Kennung mit gültigem Prüfzeichen, die nicht gekoppelt ist und noch kein Zertifikat hat. Er gilt 30 Minuten und einmal; die API speichert nur seinen sha256. Ein neuer Code ersetzt den offenen.
+1. Der Werkstatt-Dienst holt für genau diese Box einen Code: `POST /api/v1/werkstatt-dienst/codes` mit `{"edgeRef": "edge-…"}` (nur Rolle `werkstatt-dienst`). Es gibt ihn nur, solange die Werkstatt läuft (eine Freigabe gilt, nicht angehalten, unter der Tagesgrenze), für eine erzeugte Kennung mit gültigem Prüfzeichen, die nicht gekoppelt ist und noch kein Zertifikat hat. Er gilt 30 Minuten und einmal; die API speichert nur seinen sha256. Ein neuer Code ersetzt den offenen.
 2. Der Dienst reicht ihn über die SSH-Standardeingabe an die Box weiter. Der Code steht weder im Log noch in einem Beleg.
 3. Die Box schickt `POST /api/v1/werkstatt/einloesen` (ohne Konto, Rate-Limit je Absender und gesamt).
 
@@ -30,7 +30,7 @@ JSON, alle Felder Pflicht:
 |---|---|
 | `edgeRef` | die Kennung der Box, `edge-` und sechs Zeichen und ein Prüfzeichen ([Vektoren](edge-ref-vectors.json)), genau wie die Box sie führt |
 | `code` | `wk-` und 26 Zeichen aus `a-z2-7` (128 Bit, Base32 klein ohne Auffüllung) |
-| `fassung` | die Fassung des laufenden Programms, etwa `edge-light-2026.11.0`; muss die Fassung der Freigabe sein |
+| `fassung` | die Fassung des laufenden Programms, etwa `edge-light-2026.11.0`; muss die Fassung der Freigabe sein (bei einer Freigabe der Regel auch die einer anderen noch laufenden Zeile der Regel: der Lauf begann, bevor eine neuere Fassung galt) |
 | `geraeteSchluessel` | der öffentliche Geräteschlüssel, EC P-256, als SubjectPublicKeyInfo (DER), Base64 |
 | `wireguardSchluessel` | der öffentliche Tunnel-Schlüssel, 44 Zeichen Base64 |
 | `hostSchluessel` | Fingerabdruck des SSH-Host-Schlüssels, `SHA256:` und 43 Zeichen |
@@ -79,7 +79,7 @@ Signiert wird mit dem Geräteschlüssel, der auch die Zertifikatsanfrage trägt.
 |---|---|
 | `400` | eine Form stimmt nicht, mit Grund; oder die Zertifikatsanfrage ist ungültig |
 | `403` `{"message": "Der Code gilt nicht."}` | **dieselbe Antwort** für einen unbekannten, abgelaufenen, ersetzten oder fremden Code, für eine beendete Freigabe und für eine falsche Signatur |
-| `409` | Code schon eingelöst; Fassung passt nicht zur Freigabe; Box schon gekoppelt oder mit Zertifikat; Obergrenze der Freigabe erreicht; Tunnel-Schlüssel anders ohne Tausch; `{"code": "schluessel_festgehalten"}` ein anderer Geräteschlüssel ist festgehalten |
+| `409` | Code schon eingelöst; Werkstatt angehalten; Fassung passt nicht zur Freigabe; Tagesgrenze erreicht; Box schon gekoppelt oder mit Zertifikat; Obergrenze der Freigabe erreicht; Tunnel-Schlüssel anders ohne Tausch; `{"code": "schluessel_festgehalten"}` ein anderer Geräteschlüssel ist festgehalten |
 | `422` | die Zertifikatsanfrage trägt einen anderen Schlüssel als `geraeteSchluessel` |
 | `429` | zu viele Anfragen |
 
