@@ -7279,13 +7279,20 @@ paths:
         `light` in `compat.backends` or its name starts `edge-light-`.
         LINES (Geräte & Updates S0, additive): `lines` carries, per software
         line (`docker` first, then `light`; a line without release and without
-        box is left out), `newestRelease`/`newestReleaseSeq` of THAT line and
+        box is left out), `newestRelease`/`newestReleaseSeq` of THAT line (the
+        newest SIGNED one; an unsigned register entry is never "newest") and
         `devices`/`known`/`upToDate` counted with the customer judgement
         (`ota.EdgeStandVerdict`) - a Docker box is never measured against an
         Edge Light release. The `kpi` fields keep their old meaning (newest
         release over both lines) for older portals. An Edge Light release is
         refused (409) for an Edge Light box without crossed trust (root AND
         verified trust set reported, Stufe 1).
+        FIRST CONNECT (Erstverbindung S3, additive): each fleet row carries
+        `automatik` - the last word of the first-connect automation besides the
+        assignment itself (`erstverbindung_aktuell` | `_gesperrt` | `_aus` |
+        `_aufgegeben`, null = none) - and `automatikGrund` (the release for
+        "aktuell", otherwise the reason). The assignment itself shows in
+        `fakten.angefragt.von` = `erstverbindung`.
         LINE VIEW AND THREE FACTS (Geräte & Updates G1/G2, additive): each line
         also carries `releases` (count), `stand` (boxes per `ota.LinienStand`
         word: aktuell, laeuft, gehalten, aelter, fehler, offline, hand,
@@ -8128,6 +8135,29 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { description: Falsches Prüfzeichen oder unbekannte Referenz. }
+  /api/v1/admin/werkstatt/boxen/{ref}/erstes-verbinden:
+    get:
+      tags: [werkstatt]
+      summary: Die Zeile „Beim ersten Verbinden“ / „Beim Kunden“ der Werkstatt-Seite (Erstverbindung S3).
+      description: >
+        Was die Automatik beim ersten Verbinden mit dieser Box tat oder tun wird,
+        abgeleitet aus Journal (`rollout_event`, Akteur `erstverbindung`) und
+        Box-Meldung, gefunden über die Referenz; die Abnahme bleibt unverändert
+        (E7 = A). `stand`: `vorher` (noch nicht verbunden; `release` = die
+        heutige neueste zuweisbare Fassung der Linie), `prueft`, `laeuft`
+        (`release`, `am` = zugewiesen), `fertig` (`release`, `am` = bestätigt),
+        `aktuell` (lief schon `release`), `nicht` (`grund`: Stufe 1, Schalter aus,
+        Fenster verstrichen oder der Grund der Box). 204, wenn die verbundene
+        Box nicht von der Automatik aktualisiert wurde (Bestandsbox, Update von
+        Hand).
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "`{stand, release, am, grund}`." }
+        "204": { description: Keine Aussage der Automatik. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Nicht im Register. }
   /api/v1/admin/werkstatt/boxen/{ref}:
     get:
       tags: [werkstatt]
