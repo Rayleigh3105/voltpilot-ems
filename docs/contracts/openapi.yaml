@@ -378,10 +378,11 @@ tags:
       Versand, die Schritte des Ablaufs, das LAN-Netz (Entscheid 6a) und die
       Abnahme nach der Werkstatt-Regel unter /api/v1/admin/werkstatt (nur
       `platform-admin`). Tunnel-Schlüssel und Fenster laufen über die Routen
-      der Fernwartung; keine Route nimmt ein Passwort an. Dazu die Freigabe
-      der Werkstatt (Werkstatt-Automatik V1, WI-4 A): „Werkstatt freigeben“
-      und „Freigabe beenden“ unter /api/v1/admin/werkstatt/freigaben, nur
-      `platform-admin`. Siehe docs/werkstatt.md.
+      der Fernwartung; keine Route nimmt ein Passwort an. Dazu der Stand der
+      Werkstatt: Sie nimmt immer die neueste signierte Fassung (/regel),
+      „Werkstatt anhalten“ und „Werkstatt fortsetzen“ mit Protokoll, und die
+      Freigaben als Beleg (/freigaben), nur `platform-admin`. Siehe
+      docs/werkstatt.md.
   - name: werkstatt-dienst
     description: >
       Der Baum des Werkstatt-Dienstes (services/werkstatt-dienst) unter
@@ -8288,56 +8289,59 @@ paths:
         "200": { description: Die Freigaben., content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/WerkstattFreigabe" } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/werkstatt/regel:
+    get:
+      tags: [werkstatt]
+      summary: Der Stand der Werkstatt (sie nimmt immer die neueste Fassung).
+      description: >
+        Läuft die Werkstatt, ist sie angehalten oder wartet sie (keine passende
+        Fassung, Tagesgrenze)? Was sie aufspielt: Edge Light als neueste
+        zuweisbare signierte Fassung mit Prüfsummen aus dem signierten Manifest,
+        OpenWrt fest im Code. Legt nichts an.
+      responses:
+        "200": { description: Der Stand., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattRegel" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/werkstatt/anhalten:
     post:
       tags: [werkstatt]
-      summary: Werkstatt freigeben (WI-4 A).
+      summary: Werkstatt anhalten (Notfall).
       description: >
-        Legt eine Freigabe an, gültig ab jetzt für `tage` Tage (1 bis 92): Box-Art
-        (V1 nur `mango`), Obergrenze (1 bis 200, nur ein Schutz), OpenWrt-Abbild
-        (Fassung, sysupgrade-Abbild dieser Fassung, sha256, https-Quelle) und
-        Edge-Light-Fassung (`edge-light-JJJJ.MM.N`, https-Quelle, sha256 von
-        Programm und Skriptstand, wie `freigabe-edge-light.json` der Fassung).
-        Die Kennung vergibt die API: `JJJJ-MM-<box-art>-<n>`. Je Box-Art läuft
-        höchstens eine Freigabe.
+        Ab jetzt bekommt der Werkstatt-Dienst keine Freigabe und keinen
+        Einmal-Code, und keine Box wird eingelöst. Steht mit wer, wann und Grund
+        im Protokoll; ist sie schon angehalten, ändert sich nichts.
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
               properties:
-                boxArt: { type: string, enum: [mango], default: mango }
-                tage: { type: integer, minimum: 1, maximum: 92 }
-                obergrenze: { type: integer, minimum: 1, maximum: 200 }
-                openwrt: { $ref: "#/components/schemas/WerkstattFreigabeAbbild" }
-                edgeLight: { $ref: "#/components/schemas/WerkstattFreigabeProgramm" }
-                notiz: { type: string, maxLength: 500, nullable: true }
+                grund: { type: string, maxLength: 500, nullable: true }
       responses:
-        "201": { description: Die neue Freigabe., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattFreigabe" } } } }
+        "200": { description: Der Stand danach., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattRegel" } } } }
+        "400": { description: Grund zu lang. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { description: Für die Box-Art läuft schon eine Freigabe. }
-        "422": { description: Freigabe ungültig, mit Grund. }
-  /api/v1/admin/werkstatt/freigaben/{kennung}/ende:
+  /api/v1/admin/werkstatt/fortsetzen:
     post:
       tags: [werkstatt]
-      summary: Freigabe beenden.
-      description: Ab jetzt richtet der Dienst unter dieser Freigabe keine Box mehr ein. Nur das Ende ändert sich, einmal.
-      parameters:
-        - { name: kennung, in: path, required: true, schema: { type: string } }
+      summary: Werkstatt fortsetzen.
+      description: Steht mit wer und wann im Protokoll; läuft sie schon, ändert sich nichts.
       responses:
-        "200": { description: Die beendete Freigabe., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattFreigabe" } } } }
+        "200": { description: Der Stand danach., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattRegel" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: Keine Freigabe mit dieser Kennung. }
-        "409": { description: Schon beendet. }
   /api/v1/werkstatt-dienst/freigabe:
     get:
       tags: [werkstatt-dienst]
-      summary: Die laufende Freigabe einer Box-Art (für den Werkstatt-Dienst).
+      summary: Die Freigabe, die gerade gilt (für den Werkstatt-Dienst).
       description: >
         Im Format der Freigabe-Datei des Dienstes (Schema `vp-werkstatt-freigabe.v1`,
-        Felder in snake_case); `erteilt_am` ist der Beginn der Gültigkeit. Nur die
+        Felder in snake_case); `erteilt_am` ist der Beginn der Gültigkeit. Die
+        Regel legt sie je Berliner Tag und Fassung selbst an (neueste zuweisbare
+        signierte Edge-Light-Fassung, OpenWrt fest im Code, Obergrenze = Rest der
+        Tagesgrenze); im Übergang gilt eine laufende Freigabe von Hand. Nur die
         Rolle `werkstatt-dienst`.
       parameters:
         - { name: boxArt, in: query, required: false, schema: { type: string, enum: [mango], default: mango } }
@@ -8368,13 +8372,14 @@ paths:
                       skripte_sha256: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: Für die Box-Art läuft keine Freigabe. }
+        "404": { description: "Keine Freigabe: angehalten, keine passende Fassung oder Tagesgrenze erreicht (Grund in `message`); oder eine andere Box-Art als mango." }
   /api/v1/werkstatt-dienst/codes:
     post:
       tags: [werkstatt-dienst]
       summary: Einmal-Code für eine Box holen (Konzept §7).
       description: >
-        Nur in einer laufenden Freigabe, für eine erzeugte Kennung mit gültigem
+        Nur solange die Werkstatt läuft (nicht angehalten, unter der
+        Tagesgrenze), für eine erzeugte Kennung mit gültigem
         Prüfzeichen, die nicht gekoppelt ist und noch kein Zertifikat hat. Der
         Code gilt 30 Minuten und einmal; die API speichert nur seinen sha256, ein
         neuer ersetzt den offenen. `tausch` nur für eine neu aufgespielte Box:
@@ -29320,6 +29325,30 @@ components:
         beendetVon: { type: string, nullable: true }
         zustand: { type: string, enum: [laufend, beendet, abgelaufen] }
         grund: { type: string, nullable: true }
+        quelle: { type: string, enum: [regel, formular], description: "regel = von der Regel „neueste Fassung“ angelegt; formular = von Hand (bis 16.11.2026)." }
+        edgeReleaseSeq: { type: integer, format: int64, nullable: true, description: Das Release im Register, aus dessen signiertem Manifest Edge Light kommt (nur regel). }
+    WerkstattBetrieb:
+      type: object
+      properties:
+        angehalten: { type: boolean }
+        grund: { type: string, nullable: true }
+        am: { type: string, format: date-time }
+        von: { type: string }
+    WerkstattRegel:
+      type: object
+      properties:
+        zustand: { type: string, enum: [laeuft, angehalten, wartet] }
+        grund: { type: string, nullable: true, description: Warum sie nicht nach der Regel läuft. }
+        neueste: { type: string, nullable: true, description: Die neueste signierte Edge-Light-Fassung, auch wenn sie nicht passt. }
+        openwrt: { $ref: "#/components/schemas/WerkstattFreigabeAbbild" }
+        edgeLight: { allOf: [{ $ref: "#/components/schemas/WerkstattFreigabeProgramm" }], nullable: true }
+        releaseSeq: { type: integer, format: int64, nullable: true }
+        freigabe: { type: string, nullable: true, description: Kennung der Zeile, die der Dienst gerade bekommt. }
+        vonHand: { type: boolean, description: Im Übergang gilt eine Freigabe von Hand. }
+        heute: { type: integer, description: Verschiedene Boxen, die heute (Berliner Tag) eingelöst haben. }
+        tagesgrenze: { type: integer }
+        angehalten: { allOf: [{ $ref: "#/components/schemas/WerkstattBetrieb" }], nullable: true }
+        verlauf: { type: array, items: { $ref: "#/components/schemas/WerkstattBetrieb" } }
     WerkstattAbnahme:
       type: object
       properties:

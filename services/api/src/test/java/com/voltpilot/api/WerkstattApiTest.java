@@ -374,8 +374,15 @@ class WerkstattApiTest {
                 "technikerId", technikerId, "grund", "Werkstatt-Probe", "dauerMinuten", 30));
         assertThat(geoeffnet.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String fensterId = json.readTree(geoeffnet.getBody()).get("id").asText();
-        assertThat(send(HttpMethod.POST, BASE + "/freigaben", admin, freigabe()).getStatusCode())
-                .isEqualTo(HttpStatus.CREATED);
+        // Eine Freigabe, unter der der Fehlversuch lief (hier eine von Hand, wie vor der Regel).
+        String sha = "0123456789abcdef".repeat(4);
+        eigner.update("INSERT INTO werkstatt_freigabe (kennung, box_art, gueltig_ab, gueltig_bis, obergrenze, "
+                + "openwrt_fassung, openwrt_datei, openwrt_sha256, openwrt_quelle, edge_fassung, edge_quelle, "
+                + "edge_programm_sha256, edge_skripte_sha256, erteilt_von) VALUES ('2026-11-mango-1', 'mango', now(), "
+                + "now() + interval '7 days', 2, '25.12.5', "
+                + "'openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin', ?, "
+                + "'https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/', 'edge-light-2026.11.0', "
+                + "'https://git.tecmaxx.de/x/', ?, ?, 'test')", sha, sha, sha);
         UUID freigabe = eigner.queryForObject("SELECT id FROM werkstatt_freigabe LIMIT 1", UUID.class);
         UUID eingeloesterCode = eigner.queryForObject("INSERT INTO werkstatt_code (freigabe_id, edge_ref, "
                 + "code_sha256, gueltig_bis, ausgegeben_von, eingeloest_am) VALUES (?, ?, ?, "
@@ -721,19 +728,6 @@ class WerkstattApiTest {
             }
         }
         throw new IllegalArgumentException(rumpf);
-    }
-
-    private static Map<String, Object> freigabe() {
-        String sha = "0123456789abcdef".repeat(4);
-        Map<String, Object> a = new HashMap<>();
-        a.put("tage", 7);
-        a.put("obergrenze", 2);
-        a.put("openwrt", Map.of("fassung", "25.12.5",
-                "datei", "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
-                "sha256", sha, "quelle", "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"));
-        a.put("edgeLight", Map.of("fassung", "edge-light-2026.11.0", "quelle", "https://git.tecmaxx.de/x/",
-                "programmSha256", sha, "skripteSha256", sha));
-        return a;
     }
 
     // ── Hilfen ────────────────────────────────────────────────────────────

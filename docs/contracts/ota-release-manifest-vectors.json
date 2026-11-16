@@ -73,6 +73,77 @@
       }
     },
     {
+      "name": "light-release-mit-skriptstand-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Light-Release traegt seinen Skriptstand (edge-light/openwrt) signiert mit: die Werkstatt prueft dagegen, die Box wendet ihn nicht an und verifiziert wie ohne.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744}
+      }
+    },
+    {
+      "name": "light-skriptstand-ohne-pruefsumme-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Ein Skriptstand ohne gueltige Pruefsumme darf nicht erzeugt werden; die Box ignoriert das Feld und wendet das Release trotzdem an (tolerant annehmen).",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "", "size": 31744}
+      }
+    },
+    {
+      "name": "docker-release-mit-skriptstand-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Einen Skriptstand traegt nur ein Edge-Light-Release; die Docker-Box ignoriert das Feld.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a",
+        "skripte": {"name": "edge-light-openwrt.tar.gz", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "size": 31744}
+      }
+    },
+    {
       "name": "docker-release-auf-light-box",
       "backend": "light",
       "erwartet": "deferred",

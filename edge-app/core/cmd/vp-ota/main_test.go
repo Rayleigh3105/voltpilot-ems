@@ -250,6 +250,49 @@ func TestManifestBuildsASignedEdgeLightRelease(t *testing.T) {
 	}
 }
 
+// Der Skriptstand (edge-light/openwrt) reist signiert im Manifest: die
+// Werkstatt nimmt seine Pruefsumme von dort statt aus einer unsignierten Liste
+// (vp-werkstatt-immer-neueste). Die Box wendet ihn nicht an - das Manifest
+// verifiziert auf light wie ohne ihn.
+func TestManifestCarriesTheSignedSkriptstand(t *testing.T) {
+	dir := ceremony(t)
+	p := func(n string) string { return filepath.Join(dir, n) }
+	mips := writeProgram(t, dir, "vp-edge-light-linux-mipsle", []byte("mipsle-programm"))
+	skripte := writeProgram(t, dir, "skripte", []byte("openwrt/install.sh"))
+	args := func(extra ...string) []string {
+		return append([]string{
+			"--release", "edge-light-2026.11.1", "--seq", "14", "--commit", "3bf8c038a1b2",
+			"--state-schema", "3", "--key-id", "rel-2026-a", "--out", p("light.json"),
+		}, extra...)
+	}
+	must(t, cmdManifest(args("--binary", "vp-edge-light:linux/mipsle="+mips, "--skripte", skripte+".gz")))
+	raw, _ := os.ReadFile(p("light.json"))
+	m, err := otaverify.ParseManifestStrict(raw)
+	if err != nil {
+		t.Fatalf("Manifest mit Skriptstand ist nicht streng gueltig: %v", err)
+	}
+	gz, _ := os.ReadFile(skripte + ".gz")
+	if m.Skripte == nil || m.Skripte.Name != otaverify.SkripteDatei || m.Skripte.SHA256 != sumOf(gz) ||
+		m.Skripte.Size != int64(len(gz)) {
+		t.Fatalf("Skriptstand falsch: %+v", m.Skripte)
+	}
+	must(t, cmdSign([]string{"--key", p("rel-2026-a.key"), "--domain", "release", "--in", p("light.json")}))
+	must(t, cmdVerify([]string{
+		"--root", p("root-2026-a.pub"), "--trust-set", p("trust-set.json"), "--manifest", p("light.json"),
+		"--backend", "light",
+	}))
+
+	if err := cmdManifest(args("--binary", "vp-edge-light:linux/mipsle="+mips, "--skripte", skripte)); err == nil {
+		t.Error("ein Skriptstand, der kein gzip ist, wurde angenommen")
+	}
+	docker := []string{"--release", "edge-2026.11.1", "--seq", "15", "--commit", "3bf8c038a1b2",
+		"--artifact", "core=git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:" + strings.Repeat("1", 64),
+		"--key-id", "rel-2026-a", "--out", p("docker.json"), "--skripte", skripte + ".gz"}
+	if err := cmdManifest(docker); err == nil {
+		t.Error("ein Docker-Release mit Skriptstand wurde erzeugt")
+	}
+}
+
 // Die Lieferung muss genau das Programm entpacken - sonst scheiterte jedes
 // Update erst auf der Box (Download gegen gz_sha256 gut, Programm gegen sha256
 // schlecht).

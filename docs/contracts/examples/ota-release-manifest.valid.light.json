@@ -39,5 +39,10 @@
     "backends": ["light"]
   },
   "signing_key_id": "rel-2026-a",
+  "skripte": {
+    "name": "edge-light-openwrt.tar.gz",
+    "sha256": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+    "size": 31744
+  },
   "notes": "Erstes Edge-Light-Release mit signierter Auslieferung."
 }

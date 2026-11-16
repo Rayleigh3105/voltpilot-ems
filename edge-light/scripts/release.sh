@@ -13,15 +13,15 @@
 #   vp-edge-light-linux-<arch>.gz                           je Programm die gepackte Lieferung (gzip -9 -n)
 #   edge-light-openwrt.tar.gz                               edge-light/openwrt/ als openwrt/…
 #   sha256sums                                              alle fuenf, Format sha256sum
-#   freigabe-edge-light.json                                der Block edge_light der Freigabe (Mango)
 #
 # Die gepackte Lieferung ist das, was eine Box beim Update laedt (Konzept
 # vp-edge-light-update, Schritt 3): ~5 MB statt 16 MB in den Arbeitsspeicher.
 # `gzip -n` laesst Name und Zeit weg - dieselben Programme ergeben byteweise
 # dieselbe Lieferung. Das Manifest (`vp-ota manifest --binary`) und die
-# Signatur entstehen im Release-Lauf, nicht hier. Die Fassung steht als Version
-# im Programm (/health "version") - genau sie prueft der Werkstatt-Dienst gegen
-# die Freigabe.
+# Signatur entstehen im Release-Lauf, nicht hier; das Manifest traegt auch die
+# Pruefsumme des Skriptstands (`--skripte`), gegen die die Werkstatt prueft. Die
+# Fassung steht als Version im Programm (/health "version") - genau sie prueft
+# der Werkstatt-Dienst gegen die Freigabe, die ihm das Portal nennt.
 # shellcheck source=edge-light/scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -64,12 +64,6 @@ summe() { sha256sum "$1" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$1" | 
   printf '%s  %s\n' "$(summe "$f")" "$f"
 done) >"$AUS/sha256sums"
 
-QUELLE="${VP_LIGHT_RELEASE_QUELLE:-https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/$TAG/}"
-printf '{\n  "fassung": "%s",\n  "quelle": "%s",\n  "programm_sha256": "%s",\n  "skripte_sha256": "%s"\n}\n' \
-  "$TAG" "$QUELLE" "$(summe "$AUS/vp-edge-light-linux-mipsle")" "$(summe "$AUS/edge-light-openwrt.tar.gz")" \
-  >"$AUS/freigabe-edge-light.json"
 
 echo "--- $TAG fertig in $AUS"
 cat "$AUS/sha256sums"
-echo "--- Block edge_light fuer die Freigabe der Werkstatt (Mango):"
-cat "$AUS/freigabe-edge-light.json"

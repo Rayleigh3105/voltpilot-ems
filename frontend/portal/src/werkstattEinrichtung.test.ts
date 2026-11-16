@@ -52,7 +52,11 @@ function box(over: Partial<WerkstattBox> = {}): WerkstattBox {
   };
 }
 
-const freigabe = { id: 'f1', kennung: 'F-1', openwrt: { fassung: '25.12.5' } } as WerkstattFreigabe;
+const freigabe = {
+  id: 'f1', kennung: 'F-1', quelle: 'regel', edgeReleaseSeq: 214, erteiltVon: 'Regel: neueste Fassung',
+  openwrt: { fassung: '25.12.5', sha256: '056235c21f55288544ca459bc0a61023d084ce788ca5508d49c235dc66a7686c' },
+  edgeLight: { fassung: 'edge-light-2026.11.1', programmSha256: '1a2b3c4d'.repeat(8), skripteSha256: '5e6f7a8b'.repeat(8) },
+} as WerkstattFreigabe;
 
 describe('einrichtung', () => {
   const wert = (z: ReturnType<typeof einrichtung>, id: string) => z.find((x) => x.id === id)?.wert;
@@ -63,6 +67,10 @@ describe('einrichtung', () => {
     expect(wert(z, 'lan')).toBe('10.213.0.1/24');
     expect(wert(z, 'tunnel')).toBe('10.10.16.5');
     expect(wert(z, 'openwrt')).toBe('25.12.5');
+    // Der Beleg: mit welchen Prüfsummen und unter welcher Freigabe (Regel mit Release, oder von Hand mit Namen).
+    expect(wert(z, 'pruefsummen')).toBe('Programm 1a2b3c4d1a2b… · Skripte 5e6f7a8b5e6f… · OpenWrt 056235c21f55…');
+    expect(wert(z, 'freigabe')).toBe('F-1 · Regel, Release 214');
+    expect(wert(einrichtung(box({}), { ...freigabe, quelle: 'formular', erteiltVon: 'Alex' }), 'freigabe')).toBe('F-1 · von Hand (Alex)');
   });
 
   it('ohne Abnahme und Freigabe bleibt unbekannt null (nie 0 oder erfunden); das LAN-Netz kommt dann aus dem Register', () => {

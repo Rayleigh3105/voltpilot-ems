@@ -14,7 +14,7 @@ Seite zeigt, was er tut; Handschritte, Passwort-Generator und Probe-Knöpfe gibt
 |---|---|---|
 | Werkbank (M1–M6) | Die geführten Bildschirme für die Person an der Werkbank: Box-Art wählen (Raspberry Pi kommt mit V2), Mango anschließen, Fertig mit Referenz und QR-Code. Kein „Weiter“-Knopf: Der Dienst merkt Handgriffe selbst. Fachwörter stehen nur unter „Details für Technik“. | `WerkstattBank.tsx`, `werkstattBank.ts` |
 | Lauf-Seite (Konzept `vp-werkstatt-lauf-seite`, E1–E4 A, 05.11.2026) | Während des Laufs: „Jetzt“ (Schritt, seit wann, wie lange er meist dauert – Median der gemessenen Dauern der letzten Läufe –, Frist, was danach kommt), alle Schritte nach Phasen mit einer Zeile Beleg und Dauer (`lauf.belege`, E3) und die Software-Karte „Kommt auf diese Box“ (Freigabe, OpenWrt mit Prüfsumme, Edge Light, je „vorher“ aus `lauf.vorher`, ein neueres signiertes Release nur als Hinweis). Am Rechner zwei Spalten, am Telefon eine (E4). Hält der Lauf an oder steht am Anschluss ein Fall, zeigt sie eine Seite je Code (`lauf.fall`/`anschluss_fall`, [Vertrag](contracts/werkstatt-ansicht-v1.md#fälle)) in drei Arten: „Der Dienst wartet“, „Einmal kurz du“, „Zur Seite legen“; Titel und Schritte aus `loesung`, ob der Dienst von selbst weitermacht, ein Bild bei Reset, Startlader, Kabel oder Pi. Den Reset nennt sie nur bei `gl_passwort` und `halb_eigene`. „Nochmal versuchen“ (E1) ist ein Auftrag an den Dienst, nur wenn er den Lauf als `nochmal_moeglich` meldet (kein Handgriff an der Box); er tut, was das Abziehen des Kabels täte. „Box zur Seite legen“ (E2) hält Fall, Lösung und Zeit in der API fest; die Übersicht listet sie. Kein Knopf löscht etwas an einer Box. Ein Dienst ohne diese Felder: keine Belegzeilen, kein „Nochmal“, der Fall aus `handgriff` wie bisher. | `WerkstattBank.tsx`, `werkstattLauf.ts` |
-| Übersicht (D1) | Freigabe („Werkstatt freigeben“, „Freigabe beenden“), Werkbank-Brücke und die Boxen mit ihrem Stand (läuft, Problem, abgenommen, nur im Register). Eine Box in der Liste öffnet ihre Detailseite. | `WerkstattPage.tsx` |
+| Übersicht (D1) | Oben der Stand der Werkstatt: läuft (was gerade aufgespielt wird, wie viele Boxen heute), angehalten (wer, wann, warum) oder wartet (warum), mit „Werkstatt anhalten“ bzw. „Werkstatt fortsetzen“; unter „Details für Technik“ die Prüfsummen, das Protokoll von Anhalten und Fortsetzen und die Freigaben als Beleg. Darunter Werkbank-Brücke und die Boxen mit ihrem Stand (läuft, Problem, abgenommen, nur im Register). Eine Box in der Liste öffnet ihre Detailseite. | `WerkstattPage.tsx`, `werkstattStand` |
 | Einrichtungs-Detailseite (`?box=<referenz>`) | Alles zu einer Box an einem Ort, nur Anzeige. Oben steht, ob ein Kunde die Box schon eingerichtet hat (`kunde` der Box: Claim über den QR-Einstieg, Zeile in `device`; die Vorab-Registrierung zählt nicht; fehlt das Feld, „nicht bekannt“); wenn nicht, stehen dort der Direktlink des Gehäuse-QR-Codes (`https://portal.voltpilot.de/k/<referenz>`, siehe unten) mit „Link kopieren“ und derselbe QR-Code: Der Kunde richtet die Box darüber ein, ein Admin öffnet ihn in einem privaten Fenster (angemeldet führt er zurück in die Werkstatt). Dann Einrichtung (Hardware, Edge-Light-Fassung, OpenWrt und Freigabe, LAN-Netz, Tunnel-Adresse, Host-Schlüssel), Bindung und Fernwartung (Tunnel-Schlüssel, Zugang, Kunde und Anlage, Verbindung laut Tunnel-Dienst; ohne Tunnel-Schlüssel steht dort „noch nicht gekoppelt“), die Phasen des Laufs, die Abnahme mit den Belegen samt früheren Abnahmen, die Beschriftung und der Download der Gehäuse-Druckdatei und des Zubehörs (3MF, siehe unten). Fehlt die Abnahme, bleiben ihre Felder leer („–“): Unbekannt ist keine Angabe. Das Root-Passwort steht nur verschlüsselt da, wie an der Abnahme. | `WerkstattBoxSeite.tsx`, `werkstattEinrichtung.ts` |
 | Stand des Dienstes | Die [Ansicht](contracts/werkstatt-ansicht-v1.md) über `GET /api/v1/admin/werkstatt/dienst`, die Seite fragt alle 5 s nach. Ist die letzte Meldung älter als 60 s, steht dort „Der Werkstatt-Dienst meldet sich nicht“ statt eines alten Stands. | – |
 | Beschriftung (Entscheid 8, geändert) | Kein Aufkleber: Referenz in Klarschrift und QR-Code mit dem Direktlink kommen aufs Gehäuse. Die Seite zeigt den Inhalt und den QR-Code, gibt eine SVG-Vorlage in echter Größe (Modul 0,84 mm) zum Probedruck auf Papier und nennt den Befehl für die Druckdatei des Gehäuses (`bauen.sh --referenz <referenz>` im Gehäuse-Programm, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)). Was gedruckt wird, ist Modul für Modul, was die Seite zeigt: beide prüfen gegen [werkstatt-beschriftung.json](contracts/werkstatt-beschriftung.json). | `BeschriftungKarte`, `qrCode.ts` |
@@ -35,18 +35,40 @@ Schritt mit Beleg. Das Root-Passwort erzeugt dann der Dienst (Entscheid WI-6 A s
 verschlüsselt für den age-Schlüssel „Box-Passwörter“ im Protokoll des Dienstes und geht an keine Route. Diese
 Seite zeigt, was er tut, und die Abnahme mit seinen Belegen ([Runbook](../services/werkstatt-dienst/docs/runbook.md#eine-box-einrichten)).
 
-Ob der Dienst überhaupt Boxen einrichtet, sagt die **Freigabe** (WI-4 A): „Werkstatt freigeben“ legt fest, welche
-Fassungen (OpenWrt-Abbild, Edge Light, je mit Prüfsumme) und bis wann, „Freigabe beenden“ hält ihn an. Ab V1 liegt
-sie in der API (`/api/v1/admin/werkstatt/freigaben`, nur `platform-admin`; Tabelle `werkstatt_freigabe`, nur das
-Ende ändert sich, nichts wird gelöscht); der Dienst liest die laufende über sein Dienstkonto im eigenen Baum
-`/api/v1/werkstatt-dienst/**` und kann dort nicht freigeben ([Runbook](../services/werkstatt-dienst/docs/runbook.md#werkstatt-freigeben)).
+### Die Werkstatt nimmt immer die neueste Fassung
+
+Entscheid des Captains vom 16.11.2026 (A, Auftrag `vp-werkstatt-immer-neueste`): Es gibt kein Formular mehr.
+Die Werkstatt läuft, bis jemand sie anhält, und spielt auf jede neue Box die neueste Fassung (`WerkstattRegel`):
+
+- **Edge Light** ist die neueste zuweisbare signierte Fassung der Linie Edge Light, dieselbe Regel wie beim ersten Verbinden (`RolloutService.neuesteFassung`): höchste `release_seq`, Manifest und Signatur liegen vor, die Programme liegen geprüft im Portal.
+  Ein unsigniertes Release zählt nie; ist die neueste noch nicht zuweisbar, wartet die Werkstatt, statt eine ältere zu nehmen.
+  Die Prüfsummen kommen nur aus dem **signierten Manifest**: das Programm der Mango aus `artifacts[]` (`binary`, `linux/mipsle`, `sha256`), der Skriptstand aus `skripte` (additives Feld, das `vp-ota manifest --skripte` im Release-Lauf setzt; die Box wendet es nicht an, [Schema](contracts/ota-release-manifest.schema.json)).
+  Die Quelle ist das Forgejo-Release der Fassung (`VP_WERKSTATT_EDGE_LIGHT_QUELLE`).
+  Trägt die neueste Fassung keinen Skriptstand im Manifest, wartet die Werkstatt.
+- **OpenWrt** steht fest im Code (`WerkstattOpenWrt`: 25.12.5, sysupgrade-Abbild der GL-MT300N-V2, sha256 aus der offiziellen `sha256sums`, gegengeprüft am 16.11.2026).
+  Gehoben wird es per PR mit `WerkstattOpenWrtTest`.
+- **Anhalten und Fortsetzen** (nur `platform-admin`, `POST /api/v1/admin/werkstatt/anhalten` mit optionalem Grund, `…/fortsetzen`): Angehalten bekommt der Dienst keine Freigabe und keinen Einmal-Code, und keine Box wird eingelöst; ein laufender Lauf hält spätestens beim Anmelden an.
+  Jede Änderung steht mit wer, wann und Grund in `werkstatt_betrieb` (nur anhängen).
+- **Tagesgrenze** statt Obergrenze je Freigabe: höchstens `VP_WERKSTATT_TAGESGRENZE` (Vorgabe 40) verschiedene Boxen, die an einem Berliner Tag eingelöst haben, über alle Freigaben.
+  Begründung: eine Werkbank, ein Lauf zur Zeit; ein Lauf dauert gut zehn Minuten (OpenWrt aufspielen und der Neustart allein dauern einige Minuten, Runbook PS-3), ein Arbeitstag schafft also kaum mehr als 40; bisher stand die Obergrenze einer Freigabe meist bei 20.
+  Die Grenze fängt nur einen Fehler oder Missbrauch am Werkstatt-Rechner ab, nie den Normalbetrieb.
+- **Wechselt die neueste Fassung**, gilt sie ab der nächsten Box; ein laufender Lauf bleibt bei seiner Fassung (beim Einlösen gilt die Zeile, deren Fassung die Box meldet).
+
+**Für den Dienst bleibt alles, wie es war.** Die Regel legt je Berliner Tag und Inhalt eine Zeile in `werkstatt_freigabe` an (`quelle = regel`, Kennung `JJJJ-MM-mango-N` in derselben Reihe wie die Freigaben von Hand, `edge_release_seq`, gültig bis Mitternacht und eine Stunde, Obergrenze = was von der Tagesgrenze übrig ist); der Dienst liest sie über `GET /api/v1/werkstatt-dienst/freigabe` in der Form seiner Datei (Schema `vp-werkstatt-freigabe.v1`) und braucht kein Update.
+Code, Einlösung und Abnahme hängen an dieser Zeile wie bisher, und so bleibt der Beleg: Jede Abnahme nennt ihre Freigabe und damit Edge-Light- und OpenWrt-Fassung mit ihren Prüfsummen (Einrichtung der Box: „Prüfsummen (laut Freigabe)“, „Freigabe · Regel, Release N“).
+An einer Zeile ändert sich nur ihr Ende, keine wird gelöscht.
+`GET /api/v1/admin/werkstatt/regel` liefert der Seite den Stand, `GET …/freigaben` alle Zeilen als Verlauf.
+
+**Übergang:** Die Freigaben von Hand bis 16.11.2026 (`quelle = formular`, etwa `2026-11-mango-3`) bleiben lesbar.
+Solange die neueste Fassung ihren Skriptstand noch nicht im signierten Manifest trägt (alle Fassungen vor diesem Stand), gilt eine noch laufende Freigabe von Hand weiter, bis sie abläuft; danach wartet die Werkstatt auf die erste Fassung mit Skriptstand.
+Ohne API (V1a) bleibt die Freigabe eine Datei ([Runbook](../services/werkstatt-dienst/docs/runbook.md#werkstatt-anhalten-und-fortsetzen)).
 
 Was der Dienst gerade tut (Werkbank, Anschluss, laufender Lauf), meldet er jeden Takt als
 [Ansicht](contracts/werkstatt-ansicht-v1.md); `GET /api/v1/admin/werkstatt/dienst` gibt sie mit ihrem Alter und den
 letzten Läufen an die Werkstatt-Bildschirme (älter als 60 s: „der Dienst meldet sich nicht“).
 
-**Einmal-Code und D2** ([Vertrag](contracts/werkstatt-einloesen-v1.md)): In einer laufenden Freigabe holt der Dienst
-für genau eine ungekoppelte Box einen Code (30 Minuten, einmal, in der API nur gehasht). Die Box löst ihn ohne Konto
+**Einmal-Code und D2** ([Vertrag](contracts/werkstatt-einloesen-v1.md)): Solange die Werkstatt läuft (nicht angehalten,
+unter der Tagesgrenze), holt der Dienst für genau eine ungekoppelte Box einen Code (30 Minuten, einmal, in der API nur gehasht). Die Box löst ihn ohne Konto
 selbst ein, signiert mit ihrem Geräteschlüssel und mit ihrer Zertifikatsanfrage. Die API hält dabei den
 Geräteschlüssel fest, hinterlegt den Tunnel-Schlüssel über dieselbe Regel wie „Tunnel-Schlüssel hinterlegen“ und
 öffnet 30 Minuten Probe-Fenster für den Techniker-Zugang des Dienstes (`VP_WERKSTATT_TECHNIKER_ZUGANG`). Danach
@@ -134,6 +156,9 @@ der Kopplung geschrieben (`edge-` klein); ein falsches Prüfzeichen ist 422.
 | `PUT /boxen/{ref}/lan-netz` | `{"lanNetz": "10.213.0.1/24"}`; 422 mit Grund |
 | `POST /boxen/{ref}/abnahme` | das Protokoll; 201, sonst 404/409/422 mit Grund |
 | `POST /dienst/nochmal` | `{"lauf": "<kennung>"}`: Auftrag „Nochmal versuchen“ an den Dienst (E1 A); 201 neu, 200 schon offen; 409, wenn der Dienst sich nicht meldet, der Lauf nicht mehr der letzte ist oder der Dienst ihn nicht als `nochmal_moeglich` meldet |
+| `GET /regel` | der Stand der Werkstatt: `zustand` (`laeuft`, `angehalten`, `wartet`) mit Grund, was sie aufspielt (Edge Light mit `releaseSeq`, OpenWrt), die Freigabe, die der Dienst gerade bekommt (`vonHand` im Übergang), `heute` und `tagesgrenze`, das Protokoll (`verlauf`); legt nichts an |
+| `POST /anhalten`, `POST /fortsetzen` | `{"grund": "…"}` (wahlfrei, höchstens 500 Zeichen) bzw. ohne Inhalt: 200 mit dem Stand; ein Eintrag im Protokoll nur, wenn sich etwas ändert |
+| `GET /freigaben` | alle Freigaben, neueste zuerst, mit `quelle` (`regel`, `formular`) und `edgeReleaseSeq`: der Beleg, was wann galt |
 | `POST /zur-seite` | `{"lauf": "<kennung>"}`: einen angehaltenen Lauf zur Seite legen (E2 A); 201 neu, 200 schon da; 404 unbekannt, 409 nicht angehalten. `GET /dienst` trägt die Liste als `zurSeite` |
 
 ## Daten
@@ -147,12 +172,14 @@ die weder abgenommen noch gekoppelt ist (`DELETE /boxen/{ref}`), unter der Werks
 `geloescht` (Adresse und Schlüssel bleiben vergeben, dieselbe Referenz bekommt später einen neuen Zugang).
 Vorher steht alles mit wer und wann in `werkstatt_box_entfernt` (`mitgeloescht`: Tunnel-Zugang mit geschlossenen
 Fenstern, Codes, Geräteschlüssel, Zertifikatsanfrage). `werkstatt_lauf` und die append-only `werkstatt_einloesung`
-(mit ihrem Code) bleiben als Verlauf; die Einlösung zählt weiter zur Obergrenze ihrer Freigabe.
+(mit ihrem Code) bleiben als Verlauf; die Einlösung zählt weiter zur Obergrenze ihrer Freigabe und zur Tagesgrenze.
 `werkstatt_abnahme` und `werkstatt_box_entfernt` sind append-only an der Datenbankgrenze, und eine abgenommene Box
 hält ihre Abnahme per Fremdschlüssel fest. Migrationen `V20261026200000__werkstatt.sql`,
 `V20261105170000__werkstatt_box_entfernen.sql`, `V20261106080000__werkstatt_fehlversuch_loeschen.sql`,
 `V20261105200000__werkstatt_auftrag_zur_seite.sql` (`werkstatt_auftrag`:
-Aufträge an den Dienst, nur `abgeholt_am` ändert sich; `werkstatt_zur_seite`: append-only).
+Aufträge an den Dienst, nur `abgeholt_am` ändert sich; `werkstatt_zur_seite`: append-only),
+`V20261116150000__werkstatt_regel.sql` (`werkstatt_freigabe.quelle` und `edge_release_seq`; `werkstatt_betrieb`:
+Anhalten und Fortsetzen, append-only).
 
 **Aufträge an den Dienst.** Eine eingehende Verbindung zum Werkstatt-Dienst gibt es nicht. Er holt offene Aufträge mit
 seiner Meldung der Ansicht ab (`PUT /api/v1/werkstatt-dienst/ansicht?auftraege=1`: 200 mit `auftraege`, jeder genau

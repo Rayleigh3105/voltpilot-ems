@@ -14,7 +14,7 @@ Abnahme machst du in V1a wie bisher im Portal, dann mit den Belegen dieses Diens
 | Lauf | Je Box eine feste Folge von Schritten. Jeder Schritt endet mit einem Beleg; fehlt er oder scheitert der Schritt, hält der Lauf an. Nichts wird übersprungen. | `internal/lauf` |
 | Schritt-Protokoll | Je Lauf eine Datei, eine JSON-Zeile je Ereignis, nur angehängt (`laeufe/<kennung>.jsonl` im Datenverzeichnis). | `internal/protokoll` |
 | Geheimnisse | Passwörter und private Schlüssel nur als `geheim.Geheim`: jede Formatierung ergibt `[geheim]`; Log und Protokoll schwärzen jeden bekannten Wert, auch wenn ihn eine Ausgabe zitiert. Ein Test schickt ein bekanntes Passwort durch einen Lauf und sucht es in Log, Belegen, Metriken und Stand. | `internal/geheim`, `internal/lauf/passwort_test.go` |
-| Freigabe | Dein Okay, Boxen einzurichten: Fassungen (OpenWrt, Edge Light, Skripte, je mit Prüfsumme) und bis wann; gilt für jede Box, die du in der Zeit einsteckst. Ohne laufende Freigabe richtet der Dienst keine Box ein. Ab V1 im Portal (`werkstatt_freigabe`), gelesen über das Dienstkonto; ohne API eine Datei aus einer ConfigMap. | `internal/freigabe`, `internal/apikonto`, [Runbook](docs/runbook.md#werkstatt-freigeben) |
+| Freigabe | Welche Fassungen (OpenWrt, Edge Light, Skripte, je mit Prüfsumme) der Dienst aufspielt. Ohne laufende Freigabe richtet er keine Box ein. Mit der API legt das Portal sie selbst an: die Werkstatt nimmt immer die neueste signierte Fassung, bis jemand sie anhält (`werkstatt_freigabe`, gelesen über das Dienstkonto); ohne API eine Datei aus einer ConfigMap. | `internal/freigabe`, `internal/apikonto`, [Runbook](docs/runbook.md#werkstatt-anhalten-und-fortsetzen) |
 | Werkbank-Brücke | Ein Raspberry Pi im WLAN, seine Netzwerkbuchse ist der Werkstatt-Anschluss (WI-13 B). Kein eigenes Programm, nur Konfiguration; der Dienst richtet sie ein und pflegt sie. | [bruecke/](bruecke/README.md), `internal/werkbank` |
 | Anzeige | Betriebsseite für Kubernetes (`/health`, `/ready`, `/metrics`) und die Werkstatt-Anzeige (Brücke, Freigabe, Läufe mit Belegen), die nur im Pod auf Loopback lauscht: `kubectl port-forward`. | `internal/anzeige` |
 | Betrieb | gitops-Entwurf (Namespace `werkstatt-prod`, PodSecurity `restricted`, Application mit Sync von Hand, SOPS-Vorlage, NetworkPolicy) und Runbook. | [deploy/gitops/](deploy/gitops/README.md), [docs/runbook.md](docs/runbook.md) |
@@ -70,12 +70,12 @@ diese Werkstatt begonnen und nicht fertig gemacht hat (Protokoll, Host-Schlüsse
 gekoppelt; [Runbook](docs/runbook.md#eine-box-einrichten)). Eine eingerichtete Box unter dem LAN-Netz fasst er nie an.
 
 Release-Anhänge einer Edge-Light-Fassung (unter `edge_light.quelle` der Freigabe; `edge-light/scripts/release.sh`
-baut sie, dazu `sha256sums` und `freigabe-edge-light.json`, den fertigen Block `edge_light` für die Mango):
+baut sie, dazu `sha256sums`). Mit der API nennt das Portal die Prüfsummen aus dem signierten Manifest der Fassung:
 
-| Anhang | Inhalt | Prüfsumme in der Freigabe |
-|---|---|---|
-| `vp-edge-light-linux-<bauart>` | das Programm, wie `edge-light/dist/` (`mipsle` für die Mango) | `programm_sha256` |
-| `edge-light-openwrt.tar.gz` | `edge-light/openwrt/` als `openwrt/…` (`install.sh`, `service-tunnel.sh`, `files/`) | `skripte_sha256` |
+| Anhang | Inhalt | Prüfsumme in der Freigabe | im signierten Manifest |
+|---|---|---|---|
+| `vp-edge-light-linux-<bauart>` | das Programm, wie `edge-light/dist/` (`mipsle` für die Mango) | `programm_sha256` | `artifacts[]` (`binary`, `linux/<bauart>`, `sha256`) |
+| `edge-light-openwrt.tar.gz` | `edge-light/openwrt/` als `openwrt/…` (`install.sh`, `service-tunnel.sh`, `files/`) | `skripte_sha256` | `skripte.sha256` |
 
 ## Was der Dienst nie tut
 

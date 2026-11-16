@@ -12,7 +12,7 @@
  */
 import { boxOrt, type FernwartungBox } from './adminFernwartung';
 import { beschriftung, type WerkstattAbnahme, type WerkstattBox, type WerkstattGehaeuseDatei } from './werkstatt';
-import type { GehaeuseAuftragAnsicht, WerkstattFreigabe } from './werkstattBank';
+import { kurzSha, type GehaeuseAuftragAnsicht, type WerkstattFreigabe } from './werkstattBank';
 
 /** Die Hardware der Mango, wie das Gehäuse-Programm sie nennt. */
 export const MANGO_HARDWARE = 'GL.iNet GL-MT300N-V2 („Mango“)';
@@ -107,6 +107,12 @@ export function freigabeDerBox(
   return laufFreigabe ? freigaben.find((f) => f.kennung === laufFreigabe) ?? null : null;
 }
 
+/** „2026-11-mango-4 · Regel, Release 214“ oder „2026-11-mango-3 · von Hand (Alex)“. */
+function freigabeHerkunft(f: WerkstattFreigabe): string {
+  if (f.quelle === 'regel') return `${f.kennung} · Regel${f.edgeReleaseSeq != null ? `, Release ${f.edgeReleaseSeq}` : ''}`;
+  return `${f.kennung} · von Hand (${f.erteiltVon})`;
+}
+
 /**
  * Was die Einrichtung festhält: aus dem Register (`WerkstattBox`) und der
  * neuesten Abnahme. Fehlt die Abnahme, bleiben ihre Felder leer: Unbekannt ist
@@ -119,7 +125,14 @@ export function einrichtung(box: WerkstattBox, freigabe: WerkstattFreigabe | nul
     { id: 'hardware', titel: 'Hardware', wert: hardware },
     { id: 'edge-light', titel: 'Edge Light (aufgespielt)', wert: a?.fassung ?? null },
     { id: 'openwrt', titel: 'OpenWrt (laut Freigabe)', wert: freigabe ? freigabe.openwrt.fassung : null },
-    { id: 'freigabe', titel: 'Freigabe', wert: freigabe ? freigabe.kennung : null },
+    {
+      id: 'pruefsummen',
+      titel: 'Prüfsummen (laut Freigabe)',
+      wert: freigabe
+        ? `Programm ${kurzSha(freigabe.edgeLight.programmSha256)} · Skripte ${kurzSha(freigabe.edgeLight.skripteSha256)} · OpenWrt ${kurzSha(freigabe.openwrt.sha256)}`
+        : null,
+    },
+    { id: 'freigabe', titel: 'Freigabe', wert: freigabe ? freigabeHerkunft(freigabe) : null },
     { id: 'lan', titel: 'LAN-Netz der Box', wert: a?.lanNetz ?? box.lanNetz },
     { id: 'tunnel', titel: 'Tunnel-Adresse', wert: a?.tunnelAdresse ?? null },
     { id: 'host', titel: 'Host-Schlüssel', wert: a?.hostSchluessel ?? null },

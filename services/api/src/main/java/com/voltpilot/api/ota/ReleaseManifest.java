@@ -90,6 +90,18 @@ public final class ReleaseManifest {
             long gzSize) {
     }
 
+    /** Der Name des Skriptstands am Release (Go: {@code otaverify.SkripteDatei}). */
+    public static final String SKRIPTE_DATEI = "edge-light-openwrt.tar.gz";
+
+    /**
+     * Der Skriptstand eines Edge-Light-Release ({@code skripte}, additiv): das
+     * Archiv aus {@code edge-light/openwrt}, das der Werkstatt-Dienst beim
+     * Einrichten auflegt. Die Box wendet ihn nicht an; die Werkstatt nimmt seine
+     * Prüfsumme von hier, damit sie signiert ist.
+     */
+    public record Skripte(String name, String sha256, long size) {
+    }
+
     /** Ein Manifest, das nicht die Form des Vertrags hat - mit deutschem Grund. */
     public static final class InvalidManifestException extends IllegalArgumentException {
         InvalidManifestException(String message) {
@@ -102,14 +114,25 @@ public final class ReleaseManifest {
     private final List<String> backends;
     private final List<Artifact> artifacts;
     private final List<Program> programs;
+    private final Skripte skripte;
 
     private ReleaseManifest(String release, long releaseSeq, List<String> backends,
-            List<Artifact> artifacts, List<Program> programs) {
+            List<Artifact> artifacts, List<Program> programs, Skripte skripte) {
         this.release = release;
         this.releaseSeq = releaseSeq;
         this.backends = List.copyOf(backends);
         this.artifacts = List.copyOf(artifacts);
         this.programs = List.copyOf(programs);
+        this.skripte = skripte;
+    }
+
+    /**
+     * Der Skriptstand, wenn das Manifest einen gültigen trägt. Tolerant wie das
+     * Gerät: ein fehlender oder unvollständiger Skriptstand ist kein Formfehler
+     * (nur {@link #readStrict} lehnt ihn ab), er fehlt dann nur.
+     */
+    public Optional<Skripte> skripte() {
+        return Optional.ofNullable(skripte);
     }
 
     public String release() {
@@ -251,7 +274,21 @@ public final class ReleaseManifest {
         List<Program> programs = new ArrayList<>();
         List<Artifact> artifacts = readArtifacts(m.get("artifacts"), programs);
         List<String> backends = readBackends(m.get("compat"));
-        return new ReleaseManifest(release, seq, backends, artifacts, programs);
+        return new ReleaseManifest(release, seq, backends, artifacts, programs, readSkripte(m.get("skripte")));
+    }
+
+    /** {@code skripte}, wenn vollständig und gültig; sonst {@code null} (siehe {@link #skripte}). */
+    private static Skripte readSkripte(JsonNode n) {
+        if (n == null || !n.isObject()) {
+            return null;
+        }
+        String name = n.path("name").asText("");
+        String sha = n.path("sha256").asText("");
+        long size = n.path("size").canConvertToLong() ? n.path("size").asLong() : 0;
+        if (!SKRIPTE_DATEI.equals(name) || !SHA256.matcher(sha).matches() || size <= 0) {
+            return null;
+        }
+        return new Skripte(name, sha, size);
     }
 
     /**
@@ -287,6 +324,17 @@ public final class ReleaseManifest {
                                 + b + "'"
                         : "das Backend 'light' gehoert zu Edge Light - das Release muss edge-light-JJJJ.MM.N "
                                 + "heissen, nicht '" + m.release + "'");
+            }
+        }
+        JsonNode skripte = root.get("skripte");
+        if (skripte != null && !skripte.isNull()) {
+            if (!light) {
+                throw new InvalidManifestException("skripte: einen Skriptstand traegt nur ein Edge-Light-Release "
+                        + "(edge-light-JJJJ.MM.N)");
+            }
+            if (m.skripte == null) {
+                throw new InvalidManifestException("skripte: name " + SKRIPTE_DATEI
+                        + ", sha256 aus 64 Zeichen 0-9a-f und size groesser als 0");
             }
         }
         int i = 0;

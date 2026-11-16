@@ -12,6 +12,8 @@ import com.voltpilot.api.werkstatt.FreigabeRepository;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Abbild;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Programm;
 import com.voltpilot.api.werkstatt.FreigabeService;
+import com.voltpilot.api.werkstatt.WerkstattOpenWrt;
+import com.voltpilot.api.werkstatt.WerkstattRegel;
 import com.voltpilot.api.werkstatt.WerkstattGehaeuseRepository;
 import com.voltpilot.api.werkstatt.WerkstattService;
 import com.voltpilot.api.werkstatt.WerkstattService.Angelegt;
@@ -57,10 +59,12 @@ import org.springframework.web.server.ResponseStatusException;
  * die Tabellen liest und schreibt nur {@code WerkstattRepository} an der
  * BYPASSRLS-Rolle.
  *
- * <p>Dazu die Freigabe der Werkstatt (Werkstatt-Automatik V1, WI-4 A):
- * {@code /freigaben} - „Werkstatt freigeben“ und „Freigabe beenden“. Lesen darf
- * sie außerdem der Werkstatt-Dienst in seinem eigenen Baum
- * ({@link WerkstattDienstController}); freigeben kann nur ein Admin.
+ * <p>Dazu der Stand der Werkstatt ({@link WerkstattRegel}, seit 16.11.2026 ohne
+ * Formular): {@code /regel} - läuft sie, was spielt sie auf (die neueste
+ * Fassung), wie viele Boxen heute; {@code /anhalten} und {@code /fortsetzen}
+ * mit Protokoll; {@code /freigaben} - der Verlauf der Freigaben als Beleg. Die
+ * Freigabe, die gerade gilt, liest der Werkstatt-Dienst in seinem eigenen Baum
+ * ({@link WerkstattDienstController}); anhalten kann nur ein Admin.
  *
  * <p>Tunnel-Schlüssel und Fenster legt die Seite über die Routen der
  * Fernwartung an; hier entsteht davon nichts. Keine Route nimmt ein Passwort
@@ -132,13 +136,44 @@ public class AdminWerkstattController {
      */
     public record FreigabeDto(UUID id, String kennung, String boxArt, Instant gueltigAb, Instant gueltigBis,
             int obergrenze, Abbild openwrt, Programm edgeLight, String notiz, Instant erteiltAm, String erteiltVon,
-            Instant beendetAm, String beendetVon, String zustand, String grund) {
+            Instant beendetAm, String beendetVon, String zustand, String grund, String quelle, Long edgeReleaseSeq) {
         static FreigabeDto of(FreigabeService.Stand st) {
             FreigabeRepository.Freigabe f = st.freigabe();
             return new FreigabeDto(f.id(), f.kennung(), f.boxArt(), f.gueltigAb(), f.gueltigBis(), f.obergrenze(),
                     f.openwrt(), f.edgeLight(), f.notiz(), f.erteiltAm(), name(f.erteiltVonName(), f.erteiltVon()),
                     f.beendetAm(), f.beendetVon() == null ? null : name(f.beendetVonName(), f.beendetVon()),
-                    st.zustand(), st.grund());
+                    st.zustand(), st.grund(), f.quelle(), f.edgeReleaseSeq());
+        }
+    }
+
+    /** Ein Eintrag im Protokoll von Anhalten und Fortsetzen. */
+    public record BetriebDto(boolean angehalten, String grund, Instant am, String von) {
+        static BetriebDto of(FreigabeRepository.Betrieb b) {
+            return new BetriebDto(b.angehalten(), b.grund(), b.am(), name(b.vonName(), b.von()));
+        }
+    }
+
+    /**
+     * Der Stand der Werkstatt: {@code zustand} {@code laeuft}, {@code angehalten}
+     * oder {@code wartet}; {@code grund} in Worten, wenn sie nicht nach der Regel
+     * läuft. {@code openwrt} steht fest im Code; {@code edgeLight} mit
+     * {@code releaseSeq} ist die neueste Fassung, wenn sie passt.
+     * {@code freigabe} ist die Kennung der Zeile, die der Dienst gerade bekommt
+     * ({@code vonHand}: eine Freigabe von Hand im Übergang). {@code heute}:
+     * verschiedene Boxen, die heute (Berliner Tag) eingelöst haben.
+     * {@code verlauf}: Anhalten und Fortsetzen, neueste zuerst.
+     */
+    public record RegelDto(String zustand, String grund, String neueste, Abbild openwrt, Programm edgeLight,
+            Long releaseSeq, String freigabe, boolean vonHand, int heute, int tagesgrenze, BetriebDto angehalten,
+            List<BetriebDto> verlauf) {
+        static RegelDto of(WerkstattRegel.Stand st, List<FreigabeRepository.Betrieb> verlauf) {
+            WerkstattRegel.Soll soll = st.soll();
+            FreigabeRepository.Freigabe f = st.freigabe();
+            return new RegelDto(st.zustand().name().toLowerCase(java.util.Locale.ROOT), st.grund(), st.neueste(),
+                    soll == null ? WerkstattOpenWrt.MANGO : soll.openwrt(), soll == null ? null : soll.edgeLight(),
+                    soll == null ? null : soll.releaseSeq(), f == null ? null : f.kennung(), st.vonHand(),
+                    st.heute(), st.tagesgrenze(), st.angehalten() == null ? null : BetriebDto.of(st.angehalten()),
+                    verlauf.stream().map(BetriebDto::of).toList());
         }
     }
 
@@ -180,9 +215,8 @@ public class AdminWerkstattController {
 
     // ── Anfragen ──────────────────────────────────────────────────────────
 
-    /** Werkstatt freigeben: Box-Art (Vorgabe mango), wie viele Tage ab jetzt, Obergrenze, Fassungen. */
-    public record FreigabeRequest(String boxArt, Integer tage, Integer obergrenze, Abbild openwrt,
-            Programm edgeLight, @Size(max = 500) String notiz) {
+    /** Werkstatt anhalten: warum, wenn du es sagen magst. */
+    public record AnhaltenRequest(@Size(max = 500) String grund) {
     }
 
     /** {@code schritte}: was vor dem Aufnehmen schon erledigt war. */
@@ -202,16 +236,18 @@ public class AdminWerkstattController {
 
     private final WerkstattService service;
     private final FreigabeService freigaben;
+    private final WerkstattRegel regel;
     private final DienstAnsichtService ansichten;
     private final LaufSeiteService laufSeite;
     private final WerkstattGehaeuseRepository gehaeuseDateien;
     private final ObjectMapper json;
 
-    public AdminWerkstattController(WerkstattService service, FreigabeService freigaben,
+    public AdminWerkstattController(WerkstattService service, FreigabeService freigaben, WerkstattRegel regel,
             DienstAnsichtService ansichten, LaufSeiteService laufSeite, WerkstattGehaeuseRepository gehaeuseDateien,
             ObjectMapper json) {
         this.service = service;
         this.freigaben = freigaben;
+        this.regel = regel;
         this.ansichten = ansichten;
         this.laufSeite = laufSeite;
         this.gehaeuseDateien = gehaeuseDateien;
@@ -375,28 +411,35 @@ public class AdminWerkstattController {
         return ResponseEntity.status(HttpStatus.CREATED).body(abnahmeDto(a));
     }
 
-    // ── Freigabe ──────────────────────────────────────────────────────────
+    // ── Stand der Werkstatt und Freigaben ────────────────────────────────
 
-    /** Alle Freigaben, neueste zuerst. */
+    /** Wie viele Einträge von Anhalten und Fortsetzen die Seite zeigt. */
+    private static final int VERLAUF = 10;
+
+    /** Läuft die Werkstatt, und was spielt sie auf? Legt nichts an. */
+    @GetMapping("/regel")
+    public RegelDto regel() {
+        return RegelDto.of(regel.stand(), regel.verlauf(VERLAUF));
+    }
+
+    /** Werkstatt anhalten (Notfall): 200 mit dem Stand; ist sie schon angehalten, ändert sich nichts. */
+    @PostMapping("/anhalten")
+    public RegelDto anhalten(@Valid @RequestBody(required = false) AnhaltenRequest req,
+            @AuthenticationPrincipal Jwt caller) {
+        return RegelDto.of(regel.anhalten(req == null ? null : req.grund(), Akteur.aus(caller)),
+                regel.verlauf(VERLAUF));
+    }
+
+    /** Werkstatt fortsetzen: 200 mit dem Stand; läuft sie schon, ändert sich nichts. */
+    @PostMapping("/fortsetzen")
+    public RegelDto fortsetzen(@AuthenticationPrincipal Jwt caller) {
+        return RegelDto.of(regel.fortsetzen(Akteur.aus(caller)), regel.verlauf(VERLAUF));
+    }
+
+    /** Alle Freigaben (Regel und von Hand), neueste zuerst: der Beleg, was wann galt. */
     @GetMapping("/freigaben")
     public List<FreigabeDto> freigaben() {
         return freigaben.alle().stream().map(FreigabeDto::of).toList();
-    }
-
-    /** Werkstatt freigeben: 201; 409, wenn für die Box-Art schon eine läuft; 422 mit Grund. */
-    @PostMapping("/freigaben")
-    public ResponseEntity<FreigabeDto> freigeben(@Valid @RequestBody FreigabeRequest req,
-            @AuthenticationPrincipal Jwt caller) {
-        FreigabeRepository.Freigabe f = freigaben.erteilen(new FreigabeService.Antrag(req.boxArt(), req.tage(),
-                req.obergrenze(), req.openwrt(), req.edgeLight(), req.notiz()), Akteur.aus(caller));
-        return ResponseEntity.status(HttpStatus.CREATED).body(FreigabeDto.of(FreigabeService.stand(f, Instant.now())));
-    }
-
-    /** Freigabe beenden: 200; 404 unbekannt, 409 schon beendet. */
-    @PostMapping("/freigaben/{kennung}/ende")
-    public FreigabeDto freigabeBeenden(@PathVariable String kennung, @AuthenticationPrincipal Jwt caller) {
-        FreigabeRepository.Freigabe f = freigaben.beenden(kennung, Akteur.aus(caller));
-        return FreigabeDto.of(FreigabeService.stand(f, Instant.now()));
     }
 
     // ── intern ────────────────────────────────────────────────────────────

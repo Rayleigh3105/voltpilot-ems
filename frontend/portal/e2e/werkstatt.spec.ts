@@ -5,7 +5,6 @@ import { expect, test, type Page } from '@playwright/test';
 // WebKit braucht im Container mehr Zeit.
 test.describe.configure({ timeout: 90_000 });
 
-const SHA = 'a3f1c09b7e2d4f6a8b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f708';
 
 /**
  * Kein waagerechter Überlauf und nichts, was über den Rand der Seite ragt. Tabellen und die Reiterleiste
@@ -42,15 +41,18 @@ function wache(page: Page): string[] {
 // (die Boxen-Übersicht stapelt seither über `.vp-table.responsive` statt
 // seitlich zu scrollen); 375 bleibt als bestehende Probe daneben.
 for (const breite of [1440, 390, 375]) {
-  test(`Werkstatt bei ${breite} px: Übersicht mit Freigabe, Brücke, Boxen und Belegen, dann an die Werkbank`, async ({ page }) => {
+  test(`Werkstatt bei ${breite} px: Übersicht mit Stand der Werkstatt, Brücke, Boxen und Belegen, dann an die Werkbank`, async ({ page }) => {
     const fehler = wache(page);
     await page.setViewportSize({ width: breite, height: 900 });
     await page.goto('/e2e/werkstatt.html');
 
     await expect(page.getByRole('tab', { name: 'Werkstatt' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('ws-versand-oben')).toContainText('Nicht versenden: Stufe 1');
-    await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt freigegeben · Mango');
-    await expect(page.getByTestId('ws-freigabe')).toContainText('Edge Light 2026.11.1 · OpenWrt 25.12.5 · bis 30.11.');
+    await expect(page.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'laeuft');
+    await expect(page.getByTestId('ws-werkstatt')).toContainText('Werkstatt nimmt die neueste Fassung');
+    await expect(page.getByTestId('ws-werkstatt-zeile')).toHaveText('Edge Light 2026.11.3 · OpenWrt 25.12.5 · heute 2 von 40 Boxen');
+    await expect(page.getByTestId('ws-anhalten')).toBeVisible();
+    await expect(page.getByText('Werkstatt freigeben')).toHaveCount(0);
     await expect(page.getByTestId('ws-bruecke')).toContainText('bereit · Kabel am Werkstatt-Anschluss');
     const liste = page.getByTestId('ws-boxen');
     await expect(liste.locator('tr[data-stand="abgenommen"]')).toContainText('edge-5t2dcy6');
@@ -81,6 +83,8 @@ for (const breite of [1440, 390, 375]) {
     await expect(detail.getByTestId('ws-zeile-hardware')).toContainText('GL-MT300N-V2');
     await expect(detail.getByTestId('ws-zeile-edge-light')).toHaveText('edge-light-2026.11.1');
     await expect(detail.getByTestId('ws-zeile-openwrt')).toHaveText('25.12.5');
+    await expect(detail.getByTestId('ws-zeile-freigabe')).toHaveText('2026-11-mango-1 · Regel, Release 12');
+    await expect(detail.getByTestId('ws-zeile-pruefsummen')).toContainText('OpenWrt 056235c21f55…');
     await expect(detail.getByTestId('ws-zeile-tunnel')).toHaveText('10.10.16.9');
     await expect(detail.getByTestId('ws-zeile-ort')).toHaveText('Halle 1 · Beispiel GmbH');
     await expect(detail.getByTestId('ws-belege')).toContainText('Schritt probe: Anmeldung über den Tunnel');
@@ -109,6 +113,7 @@ for (const breite of [1440, 390, 375]) {
 
     await page.getByTestId('ws-zur-werkbank').click();
     await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'start');
+    await expect(page.getByTestId('wsb-stand')).toContainText('Werkstatt nimmt die neueste Fassung');
     await expect(page.getByTestId('wsb-heute')).toContainText('edge-5t2dcy6');
     await passt(page);
     await page.screenshot({ path: test.info().outputPath(`werkstatt-m1-${breite}.png`), fullPage: true });
@@ -130,7 +135,7 @@ for (const breite of [1440, 390, 375]) {
     await page.screenshot({ path: test.info().outputPath(`werkstatt-m3-${breite}.png`), fullPage: true });
 
     await page.getByTestId('wsb-uebersicht').click();
-    await expect(page.getByTestId('ws-freigabe')).toBeVisible();
+    await expect(page.getByTestId('ws-werkstatt')).toBeVisible();
     expect(fehler).toEqual([]);
   });
 
@@ -182,8 +187,9 @@ for (const breite of [1440, 390, 375]) {
     { lauf: 'wartet', art: 'du', name: 'wartet-auf-eingabe', pruefe: async (page) => {
       await expect(page.getByTestId('wsb-du-hinweis')).toContainText('Tunnel-Adresse');
     } },
-    { lauf: 'ohne', art: 'anschliessen', name: 'm2-ohne-freigabe', pruefe: async (page) => {
-      await expect(page.getByTestId('wsb-nicht-freigegeben')).toContainText('Noch nicht freigegeben.');
+    { lauf: 'ohne', art: 'anschliessen', name: 'm2-werkstatt-wartet', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-nicht-freigegeben')).toContainText('Die Werkstatt richtet gerade keine Box ein.');
+      await expect(page.getByTestId('wsb-nicht-freigegeben')).toContainText('Skriptstand nicht im signierten Manifest');
     } },
     { lauf: 'still', art: 'kein-dienst', name: 'kein-dienst', pruefe: async (page) => {
       await expect(page.getByTestId('wsb-kein-dienst')).toContainText('Der Werkstatt-Dienst meldet sich nicht.');
@@ -303,25 +309,44 @@ test('Werkbank: nach „Fertig“ führt „Nächste Box“ zum Anschließen, da
   expect(fehler).toEqual([]);
 });
 
-test('Werkstatt freigeben und Freigabe beenden', async ({ page }) => {
+test('Werkstatt anhalten und fortsetzen: Rückfrage mit Grund, danach steht wer und wann da', async ({ page }) => {
   const fehler = wache(page);
-  await page.goto('/e2e/werkstatt.html?lauf=ohne');
-  await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt nicht freigegeben');
-  await page.getByTestId('ws-freigeben').click();
-  const dialog = page.getByRole('dialog', { name: 'Werkstatt freigeben' });
-  await dialog.getByTestId('ws-freigabe-block').fill(JSON.stringify({ edge_light: {
-    fassung: 'edge-light-2026.11.2', quelle: 'https://git.example.test/releases/edge-light-2026.11.2/', programm_sha256: SHA, skripte_sha256: SHA } }));
-  await dialog.getByTestId('ws-freigabe-absenden').click();
-  await expect(dialog.getByTestId('ws-freigabe-fehler')).toContainText('openwrt.sha256');
-  await dialog.getByTestId('ws-freigabe-sha').fill(SHA);
-  await dialog.getByTestId('ws-freigabe-absenden').click();
+  await page.goto('/e2e/werkstatt.html');
+  await expect(page.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'laeuft');
+  await page.getByTestId('ws-anhalten').click();
+  const dialog = page.getByRole('dialog', { name: 'Werkstatt anhalten' });
+  await expect(dialog).toContainText('keinen neuen Lauf');
+  await dialog.getByTestId('ws-anhalten-grund').fill('Brücke wird getauscht');
+  await dialog.getByTestId('ws-anhalten-bestaetigen').click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt freigegeben · Mango');
-  await expect(page.getByTestId('ws-freigabe')).toContainText('Edge Light 2026.11.2');
-
-  await page.getByTestId('ws-freigabe-beenden').click();
-  await page.getByTestId('ws-beenden-bestaetigen').click();
-  await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt nicht freigegeben');
-  await expect(page.getByTestId('ws-freigabe')).toContainText('Zuletzt 2026-11-mango-2');
+  await expect(page.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'angehalten');
+  await expect(page.getByTestId('ws-werkstatt-zeile')).toContainText('von Alex');
+  await expect(page.getByTestId('ws-werkstatt-zeile')).toContainText('„Brücke wird getauscht“');
+  await page.getByTestId('ws-fortsetzen').click();
+  await expect(page.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'laeuft');
+  await page.getByText('Details für Technik').click();
+  await expect(page.getByTestId('ws-werkstatt-verlauf').locator('li').first()).toContainText('fortgesetzt');
+  await expect(page.getByTestId('ws-werkstatt-verlauf').locator('li').nth(1)).toContainText('angehalten');
   expect(fehler).toEqual([]);
 });
+
+for (const breite of [1440, 390]) {
+  test(`Stand der Werkstatt bei ${breite} px: angehalten, wartet, Details für Technik`, async ({ page }) => {
+    const fehler = wache(page);
+    await page.setViewportSize({ width: breite, height: 900 });
+    await page.goto('/e2e/werkstatt.html?lauf=angehalten');
+    await expect(page.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'angehalten');
+    await expect(page.getByTestId('ws-fortsetzen')).toBeVisible();
+    await passt(page);
+    await page.screenshot({ path: test.info().outputPath(`werkstatt-angehalten-${breite}.png`), fullPage: true });
+
+    await page.goto('/e2e/werkstatt.html?lauf=ohne');
+    await expect(page.getByTestId('ws-werkstatt')).toHaveAttribute('data-zustand', 'wartet');
+    await expect(page.getByTestId('ws-werkstatt-zeile')).toContainText('Skriptstand');
+    await page.getByText('Details für Technik').click();
+    await expect(page.getByTestId('ws-freigaben')).toContainText('2026-10-mango-3 · von Hand (Alex)');
+    await passt(page);
+    await page.screenshot({ path: test.info().outputPath(`werkstatt-wartet-technik-${breite}.png`), fullPage: true });
+    expect(fehler).toEqual([]);
+  });
+}

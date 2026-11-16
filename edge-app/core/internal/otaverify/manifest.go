@@ -148,6 +148,24 @@ type Manifest struct {
 	// schema_version bleibt 1.0; ein aelterer Stand ignoriert das Feld und
 	// verschiebt weiter - die sichere Richtung).
 	Urgent bool `json:"urgent,omitempty"`
+	// Skripte ist der Skriptstand eines Edge-Light-Release (edge-light/openwrt
+	// als edge-light-openwrt.tar.gz): Install- und Tunnel-Skripte, die der
+	// Werkstatt-Dienst beim Einrichten auf die Box legt. Die Box wendet ihn
+	// beim Update NICHT an; er steht hier, damit die Pruefsumme, gegen die die
+	// Werkstatt prueft, signiert ist und nicht aus einer unsignierten Liste
+	// kommt (vp-werkstatt-immer-neueste). Additiv: schema_version bleibt 1.0,
+	// ein aelterer Stand ignoriert das Feld.
+	Skripte *Skripte `json:"skripte,omitempty"`
+}
+
+// SkripteDatei ist der Name des Skriptstands am Release.
+const SkripteDatei = "edge-light-openwrt.tar.gz"
+
+// Skripte beschreibt den Skriptstand eines Edge-Light-Release.
+type Skripte struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
 }
 
 // Artifact ist EIN Bestandteil des Releases, typisiert.
@@ -434,6 +452,20 @@ func (m *Manifest) checkProduced() error {
 			}
 			return fmt.Errorf("das Backend '%s' gehoert zu Edge Light - das Release muss %sJJJJ.MM.N heissen, nicht '%s'",
 				BackendLight, LightReleasePrefix, m.Release)
+		}
+	}
+	if m.Skripte != nil {
+		if !light {
+			return fmt.Errorf("skripte: einen Skriptstand traegt nur ein Edge-Light-Release (%sJJJJ.MM.N)", LightReleasePrefix)
+		}
+		if m.Skripte.Name != SkripteDatei {
+			return fmt.Errorf("skripte.name: '%s' statt '%s'", m.Skripte.Name, SkripteDatei)
+		}
+		if !sha256Re.MatchString(m.Skripte.SHA256) {
+			return errors.New("skripte.sha256: 64 Zeichen 0-9a-f")
+		}
+		if m.Skripte.Size <= 0 {
+			return errors.New("skripte.size: groesser als 0")
 		}
 	}
 	for i, a := range m.Artifacts {

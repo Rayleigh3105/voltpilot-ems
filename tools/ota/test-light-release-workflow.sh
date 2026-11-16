@@ -49,6 +49,8 @@ man = steps["Manifest erzeugen"]["run"]
 for arch in ("mipsle", "arm64"):
     assert f'--binary "vp-edge-light:linux/{arch}=${{RUNNER_TEMP}}/fassung/vp-edge-light-linux-{arch}"' in man, arch
 assert "--artifact" not in man
+# Der Skriptstand reist signiert im Manifest: die Werkstatt prueft dagegen.
+assert '--skripte "${RUNNER_TEMP}/fassung/edge-light-openwrt.tar.gz"' in man, man
 assert "ota_sign " in steps["Signieren + gegen die eingebackene Wurzel pruefen"]["run"]
 assert "ota_publish " in steps["Manifest anhaengen + ins Register eintragen"]["run"]
 # K2: die Programme ins Portal NACH dem Register (das Portal prueft gegen das Manifest dort)
@@ -66,7 +68,9 @@ m = re.search(r"for f in ([^;]+); do", runs)
 anh = m.group(1).split()
 for f in anh:
     assert f in rel, f
-assert set(anh) == {"vp-edge-light-linux-mipsle", "vp-edge-light-linux-arm64", "vp-edge-light-linux-mipsle.gz", "vp-edge-light-linux-arm64.gz", "edge-light-openwrt.tar.gz", "sha256sums", "freigabe-edge-light.json"}, anh
+assert set(anh) == {"vp-edge-light-linux-mipsle", "vp-edge-light-linux-arm64", "vp-edge-light-linux-mipsle.gz", "vp-edge-light-linux-arm64.gz", "edge-light-openwrt.tar.gz", "sha256sums"}, anh
+# Kein Freigabe-Block mehr zum Abschreiben: die Werkstatt liest das signierte Manifest.
+assert "freigabe-edge-light" not in text and "freigabe-edge-light" not in rel
 print("ok")
 PY
 

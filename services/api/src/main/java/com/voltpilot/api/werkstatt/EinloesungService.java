@@ -33,8 +33,9 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Einmal-Code und Einlösen (Werkstatt-Automatik V1, Konzept §7), damit D2.
  *
- * <p><b>Code ausgeben</b> (nur der Werkstatt-Dienst): in einer laufenden
- * Freigabe, für eine erzeugte Referenz mit gültigem Prüfzeichen, die nicht
+ * <p><b>Code ausgeben</b> (nur der Werkstatt-Dienst): solange die Werkstatt
+ * läuft ({@link WerkstattRegel}: nicht angehalten, unter der Tagesgrenze, unter
+ * der Freigabe, die gerade gilt), für eine erzeugte Referenz mit gültigem Prüfzeichen, die nicht
  * gekoppelt ist und noch kein Zertifikat hat. Der Code gilt 30 Minuten und
  * einmal; die API behält nur seinen sha256. Ein neuer Code ersetzt den offenen.
  * Die Box kommt dabei ins Werkstatt-Register.
@@ -46,6 +47,11 @@ import org.springframework.web.server.ResponseStatusException;
  * Probe-Fenster für den Techniker-Zugang des Dienstes und speichert die
  * Zertifikatsanfrage der Box (sie ersetzt eine fremde, die vorher kam).
  * Danach nimmt die Zertifikatsanfrage nur noch diesen Schlüssel an.
+ *
+ * <p>Eingelöst wird nur, solange die Werkstatt nicht angehalten ist. Meldet die
+ * Box die Fassung einer anderen Zeile der Regel als der ihres Codes (die
+ * neueste Fassung wechselte während des Laufs), gilt die Zeile ihrer Fassung:
+ * ein laufender Lauf bleibt bei seiner Fassung.
  *
  * <p>Gegen Raten: Ein unbekannter, abgelaufener, ersetzter oder fremder Code
  * und eine falsche Signatur bekommen dieselbe Antwort; das Rate-Limit sitzt
@@ -75,6 +81,7 @@ public class EinloesungService {
 
     private final EinloesungRepository repo;
     private final FreigabeRepository freigaben;
+    private final WerkstattRegel regel;
     private final FernwartungService fernwartung;
     private final WerkstattService werkstatt;
     private final EnrollmentDeviceLookup geraete;
@@ -83,11 +90,13 @@ public class EinloesungService {
     private final SecureRandom zufall = new SecureRandom();
     private Clock uhr = Clock.systemUTC();
 
-    public EinloesungService(EinloesungRepository repo, FreigabeRepository freigaben, FernwartungService fernwartung,
-            WerkstattService werkstatt, EnrollmentDeviceLookup geraete, EnrollmentRepository enrollments,
+    public EinloesungService(EinloesungRepository repo, FreigabeRepository freigaben, WerkstattRegel regel,
+            FernwartungService fernwartung, WerkstattService werkstatt, EnrollmentDeviceLookup geraete,
+            EnrollmentRepository enrollments,
             @Value("${voltpilot.werkstatt.techniker-zugang:}") String technikerZugang) {
         this.repo = repo;
         this.freigaben = freigaben;
+        this.regel = regel;
         this.fernwartung = fernwartung;
         this.werkstatt = werkstatt;
         this.geraete = geraete;
@@ -107,9 +116,10 @@ public class EinloesungService {
                     "Einen Code gibt es nur für eine Kennung der Box mit gültigem Prüfzeichen (edge-…).");
         }
         technikerZugang();
-        Freigabe f = laufendeFreigabe();
+        Freigabe f = regel.laufendOderGrund();
         boxFrei(edgeRef);
         obergrenze(f, edgeRef);
+        regel.tagesgrenze(edgeRef);
         // Ins Register, bevor die Sperre genommen wird: anlegen nimmt sie selbst
         // (eigene Verbindung), verschachtelt warteten beide aufeinander.
         werkstatt.anlegen(edgeRef, WerkstattService.EDGE_LIGHT, List.of(),
@@ -118,9 +128,11 @@ public class EinloesungService {
         Instant ab = uhr.instant();
         Instant bis = ab.plus(CODE_DAUER);
         repo.schreibend(() -> {
-            Freigabe nochImmer = laufendeFreigabe();
-            if (!nochImmer.id().equals(f.id())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Die Freigabe hat eben gewechselt.");
+            // Ohne Sperre gelesen: die Regel legt hier nichts an (verschachtelt
+            // warteten beide Sperren aufeinander).
+            if (!regel.giltNoch(f)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Die Freigabe hat eben gewechselt oder die Werkstatt wurde angehalten.");
             }
             int ersetzt = repo.offeneErsetzen(edgeRef);
             repo.codeAnlegen(f.id(), edgeRef, EinloesenVertrag.sha256Hex(code), tausch, ab, bis, dienst.sub());
@@ -150,7 +162,7 @@ public class EinloesungService {
         if (!code.offen(jetzt)) {
             throw ungueltig();
         }
-        Freigabe f = freigaben.mitId(code.freigabeId()).filter(x -> x.laufend(jetzt))
+        Freigabe vomCode = freigaben.mitId(code.freigabeId()).filter(x -> x.laufend(jetzt))
                 .orElseThrow(EinloesungService::ungueltig);
         if (!EinloesenVertrag.signaturGueltig(a)) {
             throw ungueltig();
@@ -161,6 +173,11 @@ public class EinloesungService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Zertifikatsanfrage trägt einen anderen Schlüssel als die Einlösung.");
         }
+        if (regel.angehalten().isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Die Werkstatt ist angehalten; eingelöst wird erst, wenn sie fortgesetzt ist.");
+        }
+        Freigabe f = zeileDerFassung(vomCode, a.fassung());
         if (!a.fassung().equals(f.edgeLight().fassung())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Die Box meldet die Fassung " + a.fassung()
                     + ", die Freigabe " + f.kennung() + " nennt " + f.edgeLight().fassung() + ".");
@@ -173,6 +190,7 @@ public class EinloesungService {
                     + "Code für einen Tausch.");
         }
         obergrenze(f, a.edgeRef());
+        regel.tagesgrenze(a.edgeRef());
         Zugang techniker = technikerZugang();
         Akteur werkstattAkteur = new Akteur("werkstatt-einloesung", "Werkstatt, Freigabe " + f.kennung());
 
@@ -229,10 +247,17 @@ public class EinloesungService {
 
     // ── intern ────────────────────────────────────────────────────────────
 
-    private Freigabe laufendeFreigabe() {
-        return freigaben.laufend(FreigabeService.MANGO, uhr.instant()).stream().findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Die Werkstatt ist nicht freigegeben."));
+    /**
+     * Die Zeile, unter der die Box eingelöst wird: die ihres Codes, oder - war
+     * der Code eine Zeile der Regel und meldet die Box eine andere Fassung - die
+     * laufende Zeile der Regel mit ihrer Fassung (der Lauf begann, bevor eine
+     * neuere Fassung galt).
+     */
+    private Freigabe zeileDerFassung(Freigabe vomCode, String fassung) {
+        if (fassung.equals(vomCode.edgeLight().fassung()) || !vomCode.vonDerRegel()) {
+            return vomCode;
+        }
+        return regel.regelZeileMitFassung(fassung).orElse(vomCode);
     }
 
     /** Nicht gekoppelt und ohne Zertifikat: nur dann gibt es einen Code und eine Einlösung. */

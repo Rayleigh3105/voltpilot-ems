@@ -9,6 +9,7 @@
  * passiert ist und was zu tun ist, Fachwörter nur unter „Details für Technik“.
  */
 import type { WerkstattAbnahme, WerkstattBox } from './werkstatt';
+import { zeitpunkt } from './adminFernwartung';
 import { fallSeite, type FallSeite } from './werkstattLauf';
 
 export type LaufZustand = 'laeuft' | 'wartet' | 'fertig' | 'angehalten';
@@ -148,7 +149,11 @@ export interface WerkstattDienst {
   zurSeite?: ZurSeite[];
 }
 
-/** Eine Freigabe der Werkstatt (`/api/v1/admin/werkstatt/freigaben`). */
+/**
+ * Eine Freigabe der Werkstatt (`/api/v1/admin/werkstatt/freigaben`): der Beleg, was wann galt. Seit 16.11.2026 legt
+ * sie die Regel „neueste Fassung“ selbst an (`quelle: 'regel'`, mit dem Release im Register); die von Hand davor
+ * (`'formular'`) bleiben lesbar.
+ */
 export interface WerkstattFreigabe {
   id: string;
   kennung: string;
@@ -165,6 +170,112 @@ export interface WerkstattFreigabe {
   beendetVon: string | null;
   zustand: 'laufend' | 'beendet' | 'abgelaufen';
   grund: string | null;
+  /** Fehlt bei einer API vor der Regel: dann war jede von Hand. */
+  quelle?: 'regel' | 'formular';
+  edgeReleaseSeq?: number | null;
+}
+
+/** Ein Eintrag im Protokoll von „Werkstatt anhalten“ und „Werkstatt fortsetzen“. */
+export interface WerkstattBetrieb {
+  angehalten: boolean;
+  grund: string | null;
+  am: string;
+  von: string;
+}
+
+/**
+ * Der Stand der Werkstatt (`/api/v1/admin/werkstatt/regel`): Sie nimmt immer die neueste Fassung und läuft, bis
+ * jemand sie anhält. `grund`: warum sie nicht nach der Regel läuft. `edgeLight` mit `releaseSeq`: die neueste
+ * Fassung, wenn sie passt; `openwrt` steht fest im Code. `freigabe`: die Zeile, die der Dienst gerade bekommt
+ * (`vonHand`: eine Freigabe von Hand im Übergang). `heute`: Boxen, die heute angemeldet wurden.
+ */
+export interface WerkstattRegel {
+  zustand: 'laeuft' | 'angehalten' | 'wartet';
+  grund: string | null;
+  neueste: string | null;
+  openwrt: { fassung: string; datei: string; sha256: string; quelle: string };
+  edgeLight: { fassung: string; quelle: string; programmSha256: string; skripteSha256: string } | null;
+  releaseSeq: number | null;
+  freigabe: string | null;
+  vonHand: boolean;
+  heute: number;
+  tagesgrenze: number;
+  angehalten: WerkstattBetrieb | null;
+  verlauf: WerkstattBetrieb[];
+}
+
+/** Was die Karte oben über die Werkstatt sagt: ein Zustand, eine Zeile, ein Knopf. */
+export interface WerkstattStand {
+  zustand: WerkstattRegel['zustand'];
+  titel: string;
+  badge: { text: string; variant: 'ok' | 'warn' };
+  zeile: string;
+  knopf: 'anhalten' | 'fortsetzen';
+}
+
+/** „2026.11.13“ aus „edge-light-2026.11.13“. */
+export function edgeLightKurz(fassung: string): string {
+  return fassung.replace(/^edge-light-/, '');
+}
+
+/**
+ * Die Karte oben in der Übersicht: läuft (mit dem, was gerade aufgespielt wird, und wie viele Boxen heute),
+ * angehalten (von wem, wann, warum) oder wartet (warum). Im Übergang läuft sie mit der Freigabe von Hand.
+ */
+export function werkstattStand(r: WerkstattRegel, freigaben: readonly WerkstattFreigabe[], jetzt: Date): WerkstattStand {
+  const heute = `heute ${r.heute} von ${r.tagesgrenze} Boxen`;
+  if (r.zustand === 'angehalten') {
+    const a = r.angehalten;
+    const wer = a ? `von ${a.von}, ${zeitpunkt(a.am, jetzt)}` : '';
+    return {
+      zustand: 'angehalten',
+      titel: 'Werkstatt',
+      badge: { text: 'angehalten', variant: 'warn' },
+      zeile: [wer, a?.grund ? `„${a.grund}“` : null].filter(Boolean).join(' · ') || 'Bis du sie fortsetzt, richtet der Dienst keine Box ein.',
+      knopf: 'fortsetzen',
+    };
+  }
+  if (r.zustand === 'wartet') {
+    return {
+      zustand: 'wartet',
+      titel: 'Werkstatt',
+      badge: { text: 'wartet', variant: 'warn' },
+      zeile: r.grund ?? 'Gerade passt keine Fassung.',
+      knopf: 'anhalten',
+    };
+  }
+  const vonHand = r.vonHand ? freigaben.find((f) => f.kennung === r.freigabe) ?? null : null;
+  if (vonHand) {
+    return {
+      zustand: 'laeuft',
+      titel: `Werkstatt noch mit ${vonHand.kennung}`,
+      badge: { text: 'läuft', variant: 'ok' },
+      zeile: `${freigabeZeile(vonHand)} · ${heute}`,
+      knopf: 'anhalten',
+    };
+  }
+  const edge = r.edgeLight ? `Edge Light ${edgeLightKurz(r.edgeLight.fassung)}` : 'Edge Light: neueste Fassung';
+  return {
+    zustand: 'laeuft',
+    titel: 'Werkstatt nimmt die neueste Fassung',
+    badge: { text: 'läuft', variant: 'ok' },
+    zeile: `${edge} · OpenWrt ${r.openwrt.fassung} · ${heute}`,
+    knopf: 'anhalten',
+  };
+}
+
+/** Eine Freigabe in der Liste: die der Regel mit ihrem Release, die von Hand mit ihrem Ende. */
+export function freigabeListenZeile(f: WerkstattFreigabe): string {
+  if (f.quelle === 'regel') {
+    return `Regel · Edge Light ${edgeLightKurz(f.edgeLight.fassung)} · OpenWrt ${f.openwrt.fassung}`
+      + (f.edgeReleaseSeq != null ? ` · Release ${f.edgeReleaseSeq}` : '');
+  }
+  return `von Hand (${f.erteiltVon}) · ${freigabeZeile(f)}`;
+}
+
+/** Eine Prüfsumme kurz: die ersten 12 Zeichen. */
+export function kurzSha(sha: string): string {
+  return sha.length > 12 ? `${sha.slice(0, 12)}…` : sha;
 }
 
 /**
@@ -323,7 +434,7 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
     kabel,
     meldetSich: (a.werkbank.status?.antworten ?? []).some((x) => (x.macs ?? []).length > 0),
     freigegeben: a.freigabe.laufend,
-    grund: a.freigabe.laufend ? null : a.freigabe.grund ?? 'Die Werkstatt ist nicht freigegeben.',
+    grund: a.freigabe.laufend ? null : a.freigabe.grund ?? 'Die Werkstatt richtet gerade keine Box ein.',
   };
 }
 

@@ -73,9 +73,10 @@ class WerkstattEinloesenApiTest {
     private static final String BOX = "edge-k7m2xq3";
     private static final String BOX2 = "edge-mnpqrsb";
     private static final String BOX3 = "edge-zz9988g";
+    private static final String BOX4 = "edge-h4n7wp7";
     private static final UUID TECHNIKER = UUID.fromString("7e57ab1e-0000-4000-8000-00000000c0de");
     private static final String FASSUNG = "edge-light-2026.11.0";
-    private static final String SHA = "0123456789abcdef".repeat(4);
+    private static final String NEUER = "edge-light-2026.11.1";
     private static final String DIENST = "/api/v1/werkstatt-dienst";
     private static final String EINLOESEN = "/api/v1/werkstatt/einloesen";
 
@@ -132,6 +133,8 @@ class WerkstattEinloesenApiTest {
         registry.add("voltpilot.enrollment.mqtt-port", () -> "8883");
         registry.add("voltpilot.fernwartung.server-public-key", () -> "LnLMuBG+dDEeaEKlQrdTlPifX2fk0hOaB/NFc/BudjE=");
         registry.add("voltpilot.werkstatt.techniker-zugang", TECHNIKER::toString);
+        // Klein, damit die Tagesgrenze im Test greift.
+        registry.add("voltpilot.werkstatt.tagesgrenze", () -> "3");
     }
 
     @LocalServerPort
@@ -146,7 +149,7 @@ class WerkstattEinloesenApiTest {
 
     private final ObjectMapper json = new ObjectMapper();
 
-    /** Die neu aufgespielte BOX2 aus {@link #tauschUndObergrenze}; ihre Einlösung ist die letzte. */
+    /** Die neu aufgespielte BOX2 aus {@link #tauschUndTagesgrenze}; ihre Einlösung ist die letzte. */
     private static Box box2Neu;
 
     /** Eine Box: Geräteschlüssel, ihre Zertifikatsanfrage, Tunnel- und Host-Schlüssel. */
@@ -166,18 +169,6 @@ class WerkstattEinloesenApiTest {
         }
     }
 
-    private static Map<String, Object> freigabe(int obergrenze) {
-        Map<String, Object> a = new HashMap<>();
-        a.put("tage", 7);
-        a.put("obergrenze", obergrenze);
-        a.put("openwrt", Map.of("fassung", "25.12.5",
-                "datei", "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
-                "sha256", SHA, "quelle", "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"));
-        a.put("edgeLight", Map.of("fassung", FASSUNG, "quelle", "https://git.tecmaxx.de/x/", "programmSha256", SHA,
-                "skripteSha256", SHA));
-        return a;
-    }
-
     @Test
     @Order(1)
     void vomCodeBisZumZertifikat() throws Exception {
@@ -187,12 +178,11 @@ class WerkstattEinloesenApiTest {
         String admin = token("admin", "admin");
         String dienst = dienstToken();
 
-        // Ohne Freigabe: kein Code.
+        // Ohne signierte Fassung läuft die Werkstatt nicht: kein Code, mit Grund.
         ResponseEntity<String> ohne = send(HttpMethod.POST, DIENST + "/codes", dienst, Map.of("edgeRef", BOX));
         assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(message(ohne)).contains("nicht freigegeben");
-        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/freigaben", admin, freigabe(2)).getStatusCode())
-                .isEqualTo(HttpStatus.CREATED);
+        assertThat(message(ohne)).contains("keine signierte Edge-Light-Fassung");
+        WerkstattTestFassung.anlegen(adminJdbc, FASSUNG, 900_001);
 
         Box box = Box.neu(BOX);
         // Die Box schickt beim ersten Start ihre Zertifikatsanfrage; eine fremde kommt dazwischen.
@@ -232,6 +222,18 @@ class WerkstattEinloesenApiTest {
         ResponseEntity<String> alteFassung = einloesen(box, code, "edge-light-2026.10.4", box.key());
         assertThat(alteFassung.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(message(alteFassung)).contains(FASSUNG);
+
+        // Angehalten: kein Code und keine Einlösung; der Code bleibt offen.
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/anhalten", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        ResponseEntity<String> angehalten = einloesen(box, code, FASSUNG, box.key());
+        assertThat(angehalten.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(angehalten)).contains("angehalten");
+        ResponseEntity<String> keinCode = send(HttpMethod.POST, DIENST + "/codes", dienst, Map.of("edgeRef", BOX3));
+        assertThat(keinCode.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(keinCode)).contains("angehalten");
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/fortsetzen", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
 
         ResponseEntity<String> ok = einloesen(box, code, FASSUNG, box.key());
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -304,11 +306,20 @@ class WerkstattEinloesenApiTest {
 
     @Test
     @Order(2)
-    void tauschUndObergrenze() throws Exception {
+    void tauschUndTagesgrenze() throws Exception {
         String dienst = dienstToken();
         Box erst = Box.neu(BOX2);
-        assertThat(einloesen(erst, code(dienst, BOX2, false).get("code").asText(), FASSUNG, erst.key())
-                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        // Der Lauf an BOX2 begann unter FASSUNG; dann erscheint eine neuere Fassung, und der Code kommt schon
+        // unter ihrer Zeile. Die Box meldet ihre Fassung: Sie wird unter der Zeile ihrer Fassung eingelöst.
+        String vorher = adminJdbc.queryForObject("SELECT kennung FROM werkstatt_freigabe ORDER BY gueltig_ab DESC "
+                + "LIMIT 1", String.class);
+        WerkstattTestFassung.anlegen(adminJdbc, NEUER, 900_002);
+        JsonNode c = code(dienst, BOX2, false);
+        assertThat(c.get("freigabe").asText()).isNotEqualTo(vorher);
+        assertThat(einloesen(erst, c.get("code").asText(), FASSUNG, erst.key()).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(adminJdbc.queryForObject("SELECT f.kennung FROM werkstatt_einloesung e JOIN werkstatt_freigabe f "
+                + "ON f.id = e.freigabe_id WHERE e.edge_ref = ?", String.class, BOX2)).isEqualTo(vorher);
         // Neu aufgespielt: anderer Geräteschlüssel. Ohne Tausch 409 schluessel_festgehalten.
         Box neu = Box.neu(BOX2);
         box2Neu = neu;
@@ -325,10 +336,6 @@ class WerkstattEinloesenApiTest {
                 String.class, BOX2)).isEqualTo(neu.spki());
         assertThat(postCsr(BOX2, erst.csr()).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 
-        // Obergrenze 2: BOX und BOX2 haben eingelöst, BOX3 bekommt keinen Code.
-        ResponseEntity<String> dritte = send(HttpMethod.POST, DIENST + "/codes", dienst, Map.of("edgeRef", BOX3));
-        assertThat(dritte.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(message(dritte)).contains("Obergrenze");
     }
 
     @Test
@@ -360,23 +367,29 @@ class WerkstattEinloesenApiTest {
 
     @Test
     @Order(5)
-    void ohneFreigabeGiltKeinCode() throws Exception {
+    void beendeteFreigabeUndTagesgrenze() throws Exception {
         String dienst = dienstToken();
-        String admin = token("admin", "admin");
         Box box = Box.neu(BOX3);
-        // BOX3 liegt über der Obergrenze; eine neue Freigabe nach dem Ende der alten erlaubt sie.
-        JsonNode liste = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/freigaben", admin, null).getBody());
-        String kennung = liste.get(0).get("kennung").asText();
-        send(HttpMethod.POST, "/api/v1/admin/werkstatt/freigaben/" + kennung + "/ende", admin, null);
-        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/freigaben", admin, freigabe(5)).getStatusCode())
-                .isEqualTo(HttpStatus.CREATED);
-        String code = code(dienst, BOX3, false).get("code").asText();
-        liste = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/freigaben", admin, null).getBody());
-        send(HttpMethod.POST, "/api/v1/admin/werkstatt/freigaben/" + liste.get(0).get("kennung").asText() + "/ende",
-                admin, null);
-        ResponseEntity<String> r = einloesen(box, code, FASSUNG, box.key());
+        // Endet die Zeile des Codes, gilt der Code nicht mehr.
+        JsonNode c = code(dienst, BOX3, false);
+        adminJdbc.update("UPDATE werkstatt_freigabe SET beendet_am = now(), beendet_von = 'test' WHERE kennung = ?",
+                c.get("freigabe").asText());
+        ResponseEntity<String> r = einloesen(box, c.get("code").asText(), NEUER, box.key());
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(message(r)).isEqualTo("Der Code gilt nicht.");
+
+        // Die Regel legt eine neue Zeile an; BOX3 löst als dritte Box des Tages ein.
+        JsonNode neu = code(dienst, BOX3, false);
+        assertThat(neu.get("freigabe").asText()).isNotEqualTo(c.get("freigabe").asText());
+        assertThat(einloesen(box, neu.get("code").asText(), NEUER, box.key()).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        // Tagesgrenze 3: eine vierte Box bekommt keinen Code, und der Dienst bekommt keine Freigabe mehr.
+        ResponseEntity<String> vierte = send(HttpMethod.POST, DIENST + "/codes", dienst, Map.of("edgeRef", BOX4));
+        assertThat(vierte.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(vierte)).contains("Tagesgrenze");
+        ResponseEntity<String> freigabe = send(HttpMethod.GET, DIENST + "/freigabe", dienst, null);
+        assertThat(freigabe.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(message(freigabe)).contains("Tagesgrenze");
     }
 
     @Test
@@ -434,7 +447,9 @@ class WerkstattEinloesenApiTest {
             assertThat(message(r)).as(f.name()).contains(f.grund());
         }
         // Eine Box ohne Einlösung bekommt keine Abnahme des Dienstes.
-        ResponseEntity<String> ohne = send(HttpMethod.POST, DIENST + "/abnahmen/" + BOX3, dienst, abnahmeAntrag(box, Map.of()));
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/boxen", admin, Map.of("edgeRef", BOX4))
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        ResponseEntity<String> ohne = send(HttpMethod.POST, DIENST + "/abnahmen/" + BOX4, dienst, abnahmeAntrag(box, Map.of()));
         assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         // Nur der Dienst: Admin und Kunde 403.
         for (String t : List.of(admin, token("demo", "demo"))) {

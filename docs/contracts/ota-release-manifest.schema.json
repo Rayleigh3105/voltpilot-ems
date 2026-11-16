@@ -95,6 +95,9 @@
       "type": "string",
       "description": "Freitext fuer das Register/die Oberflaeche (Release-Notiz)."
     },
+    "skripte": {
+      "$ref": "#/$defs/skripte"
+    },
     "urgent": {
       "type": "boolean",
       "default": false,
@@ -112,6 +115,7 @@
         }
       },
       "else": {
+        "not": { "required": ["skripte"] },
         "properties": {
           "compat": { "properties": { "backends": { "items": { "not": { "const": "light" } } } } },
           "artifacts": { "items": { "properties": { "type": { "not": { "const": "binary" } } } } }
@@ -120,6 +124,17 @@
     }
   ],
   "$defs": {
+    "skripte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "size"],
+      "description": "ADDITIV (schema_version bleibt 1.0), nur Edge Light. Der Skriptstand des Release (edge-light/openwrt als edge-light-openwrt.tar.gz): Install- und Tunnel-Skripte, die der Werkstatt-Dienst beim Einrichten einer Box auflegt. Die Box wendet ihn beim Update NICHT an; er steht hier, damit die Pruefsumme, gegen die die Werkstatt prueft, signiert ist und nie aus einer unsignierten Liste kommt (docs/werkstatt.md, Werkstatt nimmt die neueste Fassung). Ein aelterer Geraetestand ignoriert das Feld.",
+      "properties": {
+        "name": { "type": "string", "const": "edge-light-openwrt.tar.gz" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
     "artifactName": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,31}$",

@@ -138,12 +138,12 @@ class KundenbereichBeendetApiTest {
                 "Werkstatt: LAN-Netz einer Box vor dem Versand, noch in keinem Kundenbereich");
         m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/schritte/{schritt}",
                 "Werkstatt: Haken eines Schritts an einer Box vor dem Versand, noch in keinem Kundenbereich");
-        // Werkstatt-Automatik V1: die Freigabe der Werkstatt (`werkstatt_freigabe`, V20261102120000) gilt für
-        // Boxen vor dem Versand und trägt keinen Mandanten.
-        m.put("POST /api/v1/admin/werkstatt/freigaben",
-                "Werkstatt freigeben: gilt für Boxen vor dem Versand, kein Kundenbereich");
-        m.put("POST /api/v1/admin/werkstatt/freigaben/{kennung}/ende",
-                "Freigabe beenden: gilt für Boxen vor dem Versand, kein Kundenbereich");
+        // Werkstatt nimmt immer die neueste Fassung (V20261116150000): Anhalten und Fortsetzen
+        // (`werkstatt_betrieb`) gelten für Boxen vor dem Versand und tragen keinen Mandanten.
+        m.put("POST /api/v1/admin/werkstatt/anhalten",
+                "Werkstatt anhalten: gilt für Boxen vor dem Versand, kein Kundenbereich");
+        m.put("POST /api/v1/admin/werkstatt/fortsetzen",
+                "Werkstatt fortsetzen: gilt für Boxen vor dem Versand, kein Kundenbereich");
         // Werkstatt: Lauf-Seite (V20261105200000, main 2b355ef2d) - Aufträge an den Werkstatt-Dienst und
         // „zur Seite gelegt“ nennen einen Lauf der Werkstatt, keinen Mandanten.
         m.put("POST /api/v1/admin/werkstatt/dienst/nochmal",

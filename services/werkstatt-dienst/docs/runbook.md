@@ -175,7 +175,7 @@ die Werkstatt-Seite zeigt sie. Alle Codes: [Vertrag](../../../docs/contracts/wer
 | `falsches_geraet`, `schon_edge_light` | zur Seite legen | – |
 | `kein_internet` (PS-12) | WLAN und Router der Brücke prüfen, dann Kabel kurz abziehen | neuer Lauf |
 | `bruecke_weg`, `box_weg`, `uebertragung`, `schritt_gescheitert` | Kabel kurz abziehen; beim zweiten Mal zur Seite | neuer Lauf; hatte die Box schon das Passwort, ist es `halb_eigene` |
-| `einloesen_abgewiesen` (`schluessel_festgehalten`, nicht freigegeben, Obergrenze, gekoppelt) | zur Seite; Freigabe prüfen bzw. neu erteilen; einen Tausch gibt es nur ausdrücklich und solange sie ungekoppelt ist | – |
+| `einloesen_abgewiesen` (`schluessel_festgehalten`, angehalten, Tagesgrenze, gekoppelt) | zur Seite; Stand der Werkstatt in der Übersicht prüfen; einen Tausch gibt es nur ausdrücklich und solange sie ungekoppelt ist | – |
 | `dienst_neu_gestartet` (der Dienst startete mitten im Lauf neu) | Kabel kurz abziehen | ohne Passwort neuer Lauf, mit Passwort dieser Werkstatt `halb_eigene` |
 
 **Wann der Dienst den Reset nennt (Sicherheitslinie, Entscheid NA-1 B).** Der Dienst kommt in keine Box mit Passwort
@@ -215,19 +215,24 @@ kubectl -n werkstatt-prod cp ./vp-edge-light-linux-mipsle werkstatt-dienst-<pod>
 
 Eine neue Edge-Light-Fassung: in Forgejo den Lauf **„Edge-Light-Fassung“** von Hand starten (legt den Tag
 `edge-light-JJJJ.MM.N` an, nächste freie Nummer des Monats) oder den Tag selbst anlegen und pushen. Der Tag-Lauf prüft
-Edge Light, baut und hängt `vp-edge-light-linux-mipsle`, `vp-edge-light-linux-arm64`, `edge-light-openwrt.tar.gz`,
-`sha256sums` und `freigabe-edge-light.json` an das Release. Den Inhalt von `freigabe-edge-light.json` als Block
-`edge_light` in die Freigabe übernehmen; dazu das OpenWrt-Abbild mit seiner Prüfsumme aus `sha256sums` von
-downloads.openwrt.org. Ohne Forgejo-Lauf geht dasselbe lokal: `edge-light/scripts/release.sh <fassung> <ausgabe>`.
+Edge Light, baut und hängt `vp-edge-light-linux-mipsle`, `vp-edge-light-linux-arm64`, `edge-light-openwrt.tar.gz` und
+`sha256sums` an das Release, signiert das Manifest (mit der Prüfsumme des Skriptstands, `vp-ota manifest --skripte`)
+und lädt die Programme ins Portal. Ab dann nimmt die Werkstatt die Fassung von selbst, ab der nächsten Box. Ohne
+Forgejo-Lauf baut `edge-light/scripts/release.sh <fassung> <ausgabe>` dieselben Anhänge, signiert aber nichts.
 
-## Werkstatt freigeben
+## Werkstatt anhalten und fortsetzen
 
-**Mit der API (V1, `VP_WERKSTATT_API_URL` gesetzt):** Die Freigabe liegt im Portal. „Werkstatt freigeben“ ist
-`POST /api/v1/admin/werkstatt/freigaben` (nur `platform-admin`; Fassungen, Tage, Obergrenze, siehe OpenAPI), „Freigabe
-beenden“ `POST /api/v1/admin/werkstatt/freigaben/<kennung>/ende`; die Knöpfe stehen unter **Geräte › Werkstatt**.
-Ins Feld „Edge Light“ kommt der Block `edge_light` aus `freigabe-edge-light.json` der Fassung, die Prüfsumme des
-OpenWrt-Abbilds aus `sha256sums` der OpenWrt-Fassung. Je Box-Art läuft höchstens eine Freigabe; eine neue verlangt, die laufende erst zu
-beenden. Der Dienst fragt die laufende Freigabe je Takt ab.
+**Mit der API (V1, `VP_WERKSTATT_API_URL` gesetzt):** Es gibt nichts freizugeben.
+Die Werkstatt läuft und nimmt immer die neueste Fassung ([Werkstatt](../../../docs/werkstatt.md#automatisch-der-werkstatt-dienst-v1a)): Edge Light ist die neueste zuweisbare signierte Fassung (Prüfsummen aus dem signierten Manifest), OpenWrt steht fest im Code der API (`WerkstattOpenWrt`).
+Das Portal legt dafür je Tag eine Freigabe an und gibt sie dem Dienst in derselben Form wie früher; der Dienst fragt sie je Takt ab und braucht dafür kein Update.
+
+- **Werkstatt anhalten** (Notfall) und **Werkstatt fortsetzen** stehen unter **Geräte › Werkstatt** (`POST /api/v1/admin/werkstatt/anhalten`, `…/fortsetzen`, nur `platform-admin`, mit wer, wann und Grund im Protokoll).
+  Angehalten bekommt der Dienst keine Freigabe, keinen Einmal-Code, und keine Box wird eingelöst.
+- **Tagesgrenze:** höchstens `VP_WERKSTATT_TAGESGRENZE` (Vorgabe 40) verschiedene Boxen je Berliner Tag.
+  Danach wartet die Werkstatt bis Mitternacht.
+- **OpenWrt heben:** per PR in `WerkstattOpenWrt` (Fassung, Datei, Quelle, Prüfsumme aus `sha256sums` der Fassung).
+- **Übergang:** Trägt die neueste Fassung ihren Skriptstand noch nicht im Manifest (Fassungen vor diesem Stand), gilt eine noch laufende Freigabe von Hand weiter, bis sie abläuft.
+  Danach wartet die Werkstatt auf die nächste Fassung.
 
 **Ohne API (V1a):** Die Freigabe ist eine Datei (`freigabe.json`) in der ConfigMap `werkstatt-freigabe`. Sie steht
 bewusst nicht im gitops-Repo: Argo CD verwaltet sie nicht und setzt sie nicht zurück. Vorlage:
@@ -334,8 +339,8 @@ Dauerhaft: `replicas: 0` im gitops-Repo. Die Protokolle bleiben auf dem Volume.
 | „Brücke einrichten gescheitert, nächster Versuch später“ | `einrichten.sh` brach ab; Grund in der Anzeige unter „Zuletzt eingerichtet“ | Grund beheben; der Dienst versucht es nach 10 Minuten wieder, sofort mit `kubectl -n werkstatt-prod rollout restart deploy/werkstatt-dienst` |
 | „Brücke nicht bereit: Firewall nicht geladen“ | Tabelle `inet werkbank` fehlt | Der Dienst spielt das Paket neu auf (nach der Pause) |
 | „Brücke nicht bereit: WLAN unten“ | WLAN der Brücke | PS-13 |
-| „Keine laufende Freigabe“ | keine Datei, abgelaufen, beendet, Obergrenze | Werkstatt freigeben |
-| „Mango erkannt, aber die Werkstatt ist nicht freigegeben“ | wie oben | Werkstatt freigeben; der Lauf beginnt im nächsten Takt |
+| „Keine laufende Freigabe“ | mit API: Werkstatt angehalten, keine passende Fassung (Skriptstand fehlt im Manifest, Programme noch nicht im Portal) oder Tagesgrenze; ohne API: keine Datei, abgelaufen, beendet, Obergrenze | Grund steht unter **Geräte › Werkstatt**; dort fortsetzen bzw. auf die Fassung warten |
+| „Mango erkannt, aber die Werkstatt ist nicht freigegeben“ | wie oben | wie oben; der Lauf beginnt im nächsten Takt |
 | Lauf hält bei `fassungen` | Datei nicht ladbar oder falsche Prüfsumme | Quelle, Prüfsumme, `download-token` prüfen oder Datei von Hand ablegen (oben) |
 
 Einmal von Hand, ohne Schleife: `kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst werkbank`

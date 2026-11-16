@@ -24,6 +24,7 @@ import {
   type Loesung,
   type PhaseZustand,
   type WerkstattAnsicht,
+  type WerkstattFreigabe,
   type WerkstattLauf,
 } from './werkstattBank';
 
@@ -232,7 +233,6 @@ export interface Paket {
 
 export interface Software {
   freigabe: string;
-  gueltigBis: string | null;
   openwrt: Paket;
   edgeLight: Paket;
 }
@@ -250,9 +250,15 @@ export function edgeFassung(f: string): string {
 /**
  * Was auf diese Box kommt: Freigabe, OpenWrt mit Prüfsumme, Edge Light, je mit
  * „vorher“ (aus dem Schritt erkennen) und dem Stand im Lauf. Null ohne Freigabe.
+ * Ein Lauf bleibt bei der Freigabe, unter der er begann: Steht sie in
+ * `freigaben`, gelten ihre Fassungen, auch wenn inzwischen eine neuere Fassung
+ * gilt (die Werkstatt nimmt immer die neueste, ab der nächsten Box).
  */
-export function software(a: WerkstattAnsicht, lauf: LaufStand | null): Software | null {
-  const f = a.freigabe.freigabe;
+export function software(a: WerkstattAnsicht, lauf: LaufStand | null, freigaben: readonly WerkstattFreigabe[] = []): Software | null {
+  const z = lauf?.freigabe ? freigaben.find((x) => x.kennung === lauf.freigabe) ?? null : null;
+  const f = z
+    ? { kennung: z.kennung, openwrt: z.openwrt, edge_light: { fassung: z.edgeLight.fassung } }
+    : a.freigabe.freigabe;
   if (!f) return null;
   const erledigt = new Set(lauf?.erledigt ?? []);
   const fertig = lauf?.zustand === 'fertig';
@@ -273,7 +279,6 @@ export function software(a: WerkstattAnsicht, lauf: LaufStand | null): Software 
       : { pruef: 'noch nicht drauf', ok: false };
   return {
     freigabe: lauf?.freigabe || f.kennung,
-    gueltigBis: f.gueltig_bis ?? null,
     openwrt: { name: 'OpenWrt', fassung: f.openwrt.fassung, ...ow, vorher: v?.system ?? null, ersetzt: false, sha: shaKurz(f.openwrt.sha256) },
     edgeLight: { name: 'Edge Light', fassung: edgeFassung(f.edge_light.fassung), ...el, vorher: v?.edge_light ?? null, ersetzt: !!v?.ersetzt, sha: null },
   };
@@ -300,7 +305,7 @@ export function neueresRelease(
 
 export type FallArt = 'warten' | 'hand' | 'seite';
 export type Bild = 'reset' | 'startlader' | 'pi' | 'kabel';
-export type KnopfArt = 'nochmal' | 'zur-seite' | 'freigeben' | 'freigabe-ansehen' | 'abbild' | 'register' | 'box-oeffnen';
+export type KnopfArt = 'nochmal' | 'zur-seite' | 'werkstatt' | 'freigabe-ansehen' | 'abbild' | 'register' | 'box-oeffnen';
 export type KnopfStil = 'primary' | 'outline' | 'leise';
 
 export interface Knopf {
@@ -349,7 +354,7 @@ export const WAS: Record<string, string> = {
   kein_kabel: 'Das orange Kabel WERKSTATT steckt in keiner Mango.',
   bruecke_nicht_bereit: 'Der kleine Rechner (Pi) an der Werkbank antwortet nicht. Ohne ihn erreicht der Dienst keine Mango.',
   bruecke_unterspannung: 'Der Pi meldet zu wenig Strom. Das kann Verbindungen abbrechen lassen; ein Lauf wird deshalb nicht angehalten.',
-  nicht_freigegeben: 'Ohne Freigabe richtet der Dienst keine Box ein.',
+  nicht_freigegeben: 'Die Werkstatt richtet gerade keine Box ein: Sie ist angehalten, wartet auf eine Fassung oder hat heute ihre Tagesgrenze erreicht.',
   zwei_geraete: 'Am orangen Kabel antworten mehrere Geräte. Der Dienst fasst keins an.',
   gesperrt: 'Für diese Mango ist der Lauf vorbei. Der Dienst fasst sie erst wieder an, wenn sie einmal weg war.',
   eingerichtet: 'Sie steht schon im Netz einer fertigen Box. Fertige Boxen fasst der Dienst nie an.',
@@ -368,7 +373,7 @@ export const WAS: Record<string, string> = {
   uebertragung: 'Die Prüfsumme auf der Box passt nicht. Aufgespielt wurde nichts.',
   bruecke_weg: 'Der Dienst hat den Pi während des Laufs nicht erreicht.',
   box_weg: 'Sie antwortete während des Laufs nicht mehr.',
-  einloesen_abgewiesen: 'Das Portal hat die Anmeldung der Box abgewiesen, zum Beispiel weil die Freigabe voll oder abgelaufen ist.',
+  einloesen_abgewiesen: 'Das Portal hat die Anmeldung der Box abgewiesen, zum Beispiel weil die Werkstatt angehalten wurde oder ihre Tagesgrenze erreicht hat.',
   nicht_update_bereit: 'Ohne Update-Bereitschaft gibt es keine Abnahme (Entscheid 5c).',
   dienst_neu_gestartet: 'Der Dienst wurde neu gestartet. Beim nächsten Versuch erkennt er, wie weit die Mango war.',
   schritt_gescheitert: 'Ein Fehler, den der Dienst nicht genauer kennt. Der Grund steht unten für die Technik.',
@@ -386,6 +391,20 @@ function fallOhneCode(lauf: LaufStand): string {
   if (h.startsWith('Startlader')) return 'ssh_zu';
   return 'schritt_gescheitert';
 }
+
+/**
+ * „Nicht freigegeben“ sagt das Portal selbst: Seit die Werkstatt immer die neueste Fassung nimmt, gibt es nichts mehr
+ * freizugeben; der Text eines älteren Dienstes („Ein Admin gibt die Werkstatt frei“) stimmte nicht mehr.
+ */
+const NICHT_FREIGEGEBEN: Loesung = {
+  titel: 'Die Werkstatt richtet gerade keine Box ein.',
+  selbst: true,
+  zur_seite: false,
+  schritte: [
+    'In der Übersicht steht, warum: angehalten, keine passende Fassung oder die Tagesgrenze ist erreicht.',
+    'Läuft die Werkstatt wieder, fängt der Dienst von selbst an. Die Mango kann stecken bleiben.',
+  ],
+};
 
 /** Die Lösung, wenn der Dienst keine meldet (älterer Dienst): dieselben Worte wie bisher. */
 function loesungOhne(code: string): Loesung {
@@ -505,14 +524,14 @@ function live(code: string, wo: 'anschluss' | 'lauf', a: WerkstattAnsicht, selbs
 /** Die Seite zu einem Fall (E1 A, E2 A; Konzept Abschnitt 5). */
 export function fallSeite(e: FallEingabe): FallSeite {
   const code = e.code || (e.lauf ? fallOhneCode(e.lauf) : 'schritt_gescheitert');
-  const l = e.loesung ?? loesungOhne(code);
+  const l = code === 'nicht_freigegeben' ? NICHT_FREIGEGEBEN : e.loesung ?? loesungOhne(code);
   const art: FallArt = WARTEN.has(code) ? 'warten' : l.zur_seite || code === 'eingerichtet' ? 'seite' : 'hand';
   const bild: Bild | null = RESET_FAELLE.has(code) ? 'reset' : STARTLADER.has(code) ? 'startlader' : PI.has(code) ? 'pi'
     : code === 'kein_kabel' || code === 'keine_box' ? 'kabel' : null;
   const lauf = e.lauf;
   const nochmal = !!lauf && lauf.zustand === 'angehalten' && lauf.nochmal_moeglich === true && !lauf.nochmal_seit;
   const knoepfe: Knopf[] = [];
-  if (code === 'nicht_freigegeben') knoepfe.push({ art: 'freigeben', stil: 'primary', text: 'Werkstatt freigeben' });
+  if (code === 'nicht_freigegeben') knoepfe.push({ art: 'werkstatt', stil: 'primary', text: 'Zur Übersicht' });
   if (nochmal) knoepfe.push({ art: 'nochmal', stil: art === 'seite' ? 'leise' : 'primary', text: 'Nochmal versuchen' });
   if (STARTLADER.has(code) && e.ansicht.freigabe.freigabe) {
     knoepfe.push({ art: 'abbild', stil: 'outline', text: `OpenWrt-Abbild ${e.ansicht.freigabe.freigabe.openwrt.fassung} herunterladen` });
