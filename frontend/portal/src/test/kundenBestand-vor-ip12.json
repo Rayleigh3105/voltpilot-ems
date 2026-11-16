@@ -2070,6 +2070,13 @@
       "grund": "Text-Runde Kunde (vp-ux-text-kunde): dasselbe Feld (Beschriftung, value, placeholder, onChange) trägt den kürzeren Hinweis „Nur für Ihre Anzeige.“ statt „Nur für Ihre Anzeige - er darf sich vom Kennungs-Feld unterscheiden.“; die Kennung steht direkt darunter mit eigenem Feld."
     },
     {
+      "datei": "components/LadesaeuleAnbinden.tsx",
+      "vorher": "a7b6b65ac7b2a0757e6d09f568ee1c08d9e2cc64b20b1cde6957a6cd1a825d10",
+      "nachher": "a4075925a3150394146ea450aaa394a44a2d2fbe4858f6d1b96a4ee6aafa57b0",
+      "commit": "2f632cea9151e2b1b797be94f630277884b1cddc",
+      "grund": "#1927 (Ladesäule entfernen im Zeilenmenü/Menü): derselbe Entfernen-Knopf (`aria-label`, `onClick`, `Icon`) heißt jetzt `disabled={busy}` statt `disabled={busy || entfernenBusy}`, weil der Entfernen-Dialog mit seinem eigenen `entfernenBusy`-Zustand in die gemeinsame Komponente `LadesaeuleEntfernenDialog.tsx` herausgelöst wurde; der Dialog bleibt ein `Modal` mit Fokusfalle, das Hintergrund-Klicks schon vorher sperrte, also hat der Knopf für den Kunden nie sichtbar reagiert, während der Dialog offen war. Rückfrage, Folgenliste und Hinweistext des Dialogs (Titel „Ladesäule entfernen“, `entfernenFrage`/`entfernenFolgen`/`ENTFERNEN_HINWEIS`, Knopftext „Kennung entfernen“) sind byte-identisch mitgewandert."
+    },
+    {
       "datei": "components/ConfirmDialog.tsx",
       "vorher": "e4c11fc932da48c6cdc6c7415ba031481144e1876c95b50137f1225d557cf9ff",
       "nachher": "c637cea74630b33ef4a39c4a941284c14a20a836fa02b706d3894da16967f3be",
