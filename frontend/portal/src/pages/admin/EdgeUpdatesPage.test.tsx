@@ -10,6 +10,8 @@ const createRollout = vi.fn();
 const setUpdateTarget = vi.fn();
 const revertUpdateTarget = vi.fn();
 const listDevices = vi.fn();
+const erstverbindungSchalter = vi.fn();
+const erstverbindungSchalten = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -21,6 +23,8 @@ vi.mock('../../admin/adminApi', () => ({
     setUpdateTarget: (...a: unknown[]) => setUpdateTarget(...a),
     revertUpdateTarget: (...a: unknown[]) => revertUpdateTarget(...a),
     listDevices: (...a: unknown[]) => listDevices(...a),
+    erstverbindungSchalter: (...a: unknown[]) => erstverbindungSchalter(...a),
+    erstverbindungSchalten: (...a: unknown[]) => erstverbindungSchalten(...a),
   },
 }));
 
@@ -144,6 +148,26 @@ describe('EdgeUpdatesPage', () => {
     edgeRelease.mockRejectedValue(new Error('keine Release-Seite'));
     boxVerlauf.mockResolvedValue({ deviceId: 'd1', eintraege: [] });
     listDevices.mockResolvedValue([]);
+    erstverbindungSchalter.mockResolvedValue({ alle: true, docker: true, light: true, eintraege: [] });
+  });
+
+  it('Erstverbindung: der Schalter der Automatik je Linie, ohne Deploy - danach lädt die Seite neu', async () => {
+    erstverbindungSchalten.mockResolvedValue({
+      alle: true, docker: true, light: false,
+      eintraege: [{ bereich: 'light', an: false, geaendertVon: 'moritz', geaendertAm: '2026-11-16T09:50:00Z' }],
+    });
+    render(<EdgeUpdatesPage />);
+    const karte = await screen.findByTestId('erstverbindung-schalter');
+    const light = await within(karte).findByTestId('erstverbindung-light');
+    expect(light).toBeChecked();
+    const vorher = edgeUpdates.mock.calls.length;
+    fireEvent.click(light);
+    await waitFor(() => expect(erstverbindungSchalten).toHaveBeenCalledWith('light', false));
+    await waitFor(() => expect(within(karte).getByTestId('erstverbindung-light')).not.toBeChecked());
+    expect(within(karte).getByTestId('erstverbindung-docker')).toBeChecked();
+    expect(karte).toHaveTextContent('teilweise aus');
+    expect(karte).toHaveTextContent('von moritz');
+    await waitFor(() => expect(edgeUpdates.mock.calls.length).toBeGreaterThan(vorher));
   });
 
   it('zeigt Lage, Linien und den Verlauf - der Lauf steht in der Linien-Karte, nicht darunter (G6)', async () => {

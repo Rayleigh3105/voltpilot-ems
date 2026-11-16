@@ -164,6 +164,40 @@ public class AdminEdgeUpdateController {
                         "grund", "kundenbereich_beendet")).toList()));
     }
 
+    // ── Automatik beim ersten Verbinden ──────────────────────────────────
+
+    /** Ein Eintrag des Schalters: wer ihn wann zuletzt umgelegt hat. */
+    public record SchalterEintrag(String bereich, boolean an, String geaendertVon, Instant geaendertAm) {
+    }
+
+    /** Der Schalter der Automatik ({@code ota.Erstverbindung}): ab Werk an. */
+    public record ErstverbindungSchalter(boolean alle, boolean docker, boolean light,
+            List<SchalterEintrag> eintraege) {
+    }
+
+    @GetMapping("/edge-updates/erstverbindung")
+    public ErstverbindungSchalter erstverbindung() {
+        var s = rollouts.erstverbindungSchalter();
+        return new ErstverbindungSchalter(s.alle(), s.docker(), s.light(),
+                rollouts.erstverbindungSchalterEintraege().stream()
+                        .map(e -> new SchalterEintrag(e.bereich(), e.an(), e.geaendertVon(), e.geaendertAm()))
+                        .toList());
+    }
+
+    public record SchalterRequest(@NotNull Boolean an) {
+    }
+
+    /**
+     * Die Automatik je Linie ({@code docker}, {@code light}) oder für {@code alle}
+     * an- oder abschalten - ohne Deploy; jede Änderung steht im Journal.
+     */
+    @PostMapping("/edge-updates/erstverbindung/{bereich}")
+    public ErstverbindungSchalter setzeErstverbindung(@PathVariable String bereich,
+            @Valid @RequestBody SchalterRequest req, @AuthenticationPrincipal Jwt caller) {
+        rollouts.setzeErstverbindungSchalter(bereich, req.an(), actor(caller));
+        return erstverbindung();
+    }
+
     // ── Einzelgerät ──────────────────────────────────────────────────────
 
     /** Die Zuweisung EINES Geräts (der Weg über die Geräte-Seite). */

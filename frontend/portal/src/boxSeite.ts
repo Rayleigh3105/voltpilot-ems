@@ -28,7 +28,7 @@
  *
  * Rein + framework-frei; `pages/BoxSeiteSection.tsx` rendert nur.
  */
-import type { ControlStatus, CurtailmentStatus, Device, EdgeVersion, UemsDatenquelle } from './api';
+import type { BoxSoftwareUpdate, ControlStatus, CurtailmentStatus, Device, EdgeVersion, UemsDatenquelle } from './api';
 import { fmtRelative } from './format';
 import { NO_DATA } from './nodata';
 import { versionLabel } from './edgeVersionLabel';
@@ -104,6 +104,8 @@ export interface BoxSeiteInput {
   /** Bezugszeit der Geräteliste - die Box altert dagegen. */
   devicesFetchedAt?: number | null;
   edgeVersions: EdgeVersion[] | null;
+  /** Erstverbindung S2: das Update der Box beim ersten Verbinden (`/software-update`); null = keins oder unbekannt. */
+  software?: BoxSoftwareUpdate | null;
   control: ControlStatus | null;
   curtailment: CurtailmentStatus | null;
   /**
@@ -169,9 +171,22 @@ export const GERAETE_HINWEIS =
  * keine Alters-Aussage über die Box). Daraus „veraltet" zu machen wäre genau
  * die Behauptung, die die OTA-Stufe 0 an dieser Stelle schon einmal beendet hat.
  */
-export function softwareKachel(edge: EdgeVersion | null | undefined): BoxKachel {
+export function softwareKachel(edge: EdgeVersion | null | undefined, software: BoxSoftwareUpdate | null = null): BoxKachel {
   const stand = (edge?.coreVersion ?? '').trim();
   const soll = (edge?.newestRelease ?? '').trim();
+  // Erstverbindung S2: das Update beim ersten Verbinden läuft gerade - das steht vor jedem Urteil über den Stand.
+  if (software && (software.phase === 'laedt' || software.phase === 'startet_neu' || software.phase === 'prueft_box')) {
+    return {
+      key: 'software',
+      label: 'Software',
+      wert: stand ? versionLabel(stand, soll ? [{ version: soll }] : []) : 'wird aktualisiert',
+      ton: 'off',
+      satz: SOFTWARE_LAEUFT_SATZ,
+      zeilen: [],
+      mono: !!stand,
+    };
+  }
+  const eingespielt = software?.phase === 'fertig' && software.fertigAm ? [eingespieltZeile(software.fertigAm)] : [];
   if (!stand) {
     return {
       key: 'software',
@@ -198,7 +213,7 @@ export function softwareKachel(edge: EdgeVersion | null | undefined): BoxKachel 
       wert,
       ton: 'ok',
       satz: 'Ihre Box ist auf dem neuesten Stand.',
-      zeilen: [],
+      zeilen: eingespielt,
       mono: true,
     };
   }
@@ -232,12 +247,23 @@ export function softwareKachel(edge: EdgeVersion | null | undefined): BoxKachel 
   };
 }
 
+/** Erstverbindung S2: die Box holt beim ersten Verbinden die neueste Software. */
+export const SOFTWARE_LAEUFT_SATZ = 'Ihre Box holt gerade die neueste Software und startet dabei einmal neu.';
+
+/** „Eingespielt am 16.11. beim ersten Verbinden“ - der Tag in Ortszeit der Anlage (Europe/Berlin). */
+export function eingespieltZeile(fertigAm: string): string {
+  const tag = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Berlin' })
+    .format(new Date(fertigAm));
+  return `Eingespielt am ${tag} beim ersten Verbinden`;
+}
+
 /** Die drei Kacheln des Kopfes - Verbindung · Software · Im Netzwerk. */
 export function boxKacheln(
   device: Device | undefined,
   edge: EdgeVersion | null | undefined,
   zustand: { wort: string; ton: GeraetTon; detail: string | null },
   now: number,
+  software: BoxSoftwareUpdate | null = null,
 ): BoxKachel[] {
   const host = privateLanAddress(device?.lanHost);
   const safeDevice = device
@@ -270,7 +296,7 @@ export function boxKacheln(
       satz: ANBINDUNG_SATZ,
       zeilen: verbindungZeilen,
     },
-    softwareKachel(edge),
+    softwareKachel(edge, software),
     {
       key: 'netzwerk',
       label: 'Im Netzwerk',
@@ -423,7 +449,7 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
     unterzeile: `${BOX_ROLLE} · Anlage ${input.siteName}`,
     kennung: box.externalRef,
     zustand,
-    kacheln: boxKacheln(box, edge, zustand, now),
+    kacheln: boxKacheln(box, edge, zustand, now, input.software ?? null),
     geraete,
     buehneSatz: buehneSatz(geraete),
     geraeteLeer:

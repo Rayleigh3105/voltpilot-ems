@@ -890,6 +890,184 @@ class OtaRolloutApiTest {
                 .containsExactly("portal:angefragt", "box:stand");
     }
 
+    @Test
+    @Order(10)
+    void erstverbindungWeistDerNeuVerbundenenBoxDieNeuesteZu() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UpdateStatusListener ingest = new UpdateStatusListener("tcp://localhost:1883", "", "",
+                deviceRepo, updateStatusRepo);
+        String trust = ",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_key_ids\":[\"rel-2026-a\"]}";
+        java.util.function.BiFunction<String, String, String> block = (laeuft, loader) ->
+                "{\"backend\":\"light\",\"current\":\"" + laeuft + "\",\"state\":\"idle\"" + trust
+                        + ",\"geraet\":{\"modell\":\"GL.iNet GL-MT300N-V2\",\"arch\":\"mipsle\","
+                        + "\"loader\":\"" + loader + "\"}}";
+
+        // Die Bestandsbox: lief schon vor der Regel (erste_meldung_am leer) - sie bekommt nie etwas.
+        UUID bestand = claim(customer, TestKennung.box("ota-eb-" + UUID.randomUUID().toString().substring(0, 8)));
+        herzschlagRoh(ingest, bestand, "edge-light-2026.10.1-9b37439a02c1",
+                block.apply("edge-light-2026.10.1-9b37439a02c1", "update"));
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("UPDATE device_update_status SET erste_meldung_am = NULL WHERE device_id = '" + bestand + "'");
+        }
+
+        // edge-cyhchfr nachgestellt: Mango aus der Werkstatt, gerade verbunden, erste Meldung.
+        String neuRef = TestKennung.box("ota-en-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID neu = claim(customer, neuRef);
+        BlockingQueue<byte[]> amGeraet = subscribe(neu);
+        herzschlagRoh(ingest, neu, "edge-light-2026.10.1-9b37439a02c1",
+                block.apply("edge-light-2026.10.1-9b37439a02c1", "update"));
+        assertThat(ersteMeldung(neu)).as("der Ingest setzt die erste Meldung").isNotNull();
+
+        // Die allerneueste Fassung erscheint, ihre Programme laden noch hoch: warten, nicht die vorige.
+        long seq;
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT max(release_seq) + 1 FROM edge_release")) {
+            rs.next();
+            seq = rs.getLong(1);
+        }
+        String version = "edge-light-2026.10.3";
+        registerRelease(admin, version, seq, LIGHT_MANIFEST.replace("edge-light-2026.10.1", version)
+                .replace("\"release_seq\": 41", "\"release_seq\": " + seq), SIGNATURE);
+        rollouts.erstverbindung(Instant.now());
+        assertThat(ziel(neu)).as("wartet auf die Programme").isNull();
+        assertThat(erstverbindungEreignisse(neu)).isEmpty();
+
+        hochladen(admin, version, LIGHT_GZ);
+        rollouts.erstverbindung(Instant.now());
+        assertThat(ziel(neu)).isEqualTo(version + " von erstverbindung");
+        assertThat(ziel(bestand)).as("Bestandsbox").isNull();
+        assertThat(erstverbindungEreignisse(bestand)).isEmpty();
+        // Derselbe retained Weg wie „Aktualisieren": das signierte Manifest kommt Byte für Byte an.
+        byte[] payload = amGeraet.poll(10, TimeUnit.SECONDS);
+        assertThat(payload).as("retained Zuweisung am Gerät").isNotNull();
+        assertThat(json.readTree(payload).get("release").asText()).isEqualTo(version);
+        JsonNode verlauf = getJson(admin, "/api/v1/admin/devices/" + neu + "/verlauf").get("eintraege");
+        assertThat(verlauf.get(0).get("art").asText()).isEqualTo("angefragt");
+        assertThat(verlauf.get(0).get("von").asText()).isEqualTo("erstverbindung");
+
+        // Idempotent: ein weiterer Takt weist nichts doppelt zu.
+        rollouts.erstverbindung(Instant.now());
+        assertThat(erstverbindungEreignisse(neu)).containsExactly("target_assigned");
+
+        // Kunde und Installateur sehen das Update ihrer Box (S2), ohne Rechte auf die Update-Tabellen.
+        JsonNode software = getJson(customer, "/api/v1/devices/" + neu + "/software-update");
+        assertThat(software.get("phase").asText()).isEqualTo("laedt");
+        assertThat(software.get("release").asText()).isEqualTo(version);
+        assertThat(software.get("updateLaeuft").asBoolean()).isTrue();
+        assertThat(getJson(customer, "/api/v1/devices/" + bestand + "/software-update").get("phase").asText())
+                .isEqualTo("keins");
+        herzschlagRoh(ingest, neu, version + "-9b37439a02c1", block.apply(version + "-9b37439a02c1", "update"));
+        software = getJson(customer, "/api/v1/devices/" + neu + "/software-update");
+        assertThat(software.get("phase").asText()).isEqualTo("fertig");
+        assertThat(software.get("fertigAm").isNull()).as("bestätigt mit Zeit").isFalse();
+        assertThat(rest.exchange(url("/api/v1/devices/" + UUID.randomUUID() + "/software-update"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Werkstatt-Seite (S3, E7 = A): „Beim Kunden“ mit Fassung und Zeit; eine wartende Box „Beim ersten Verbinden“.
+        assertThat(post("/api/v1/admin/werkstatt/boxen", admin, Map.of("edgeRef", neuRef, "boxArt", "edge-light"))
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        JsonNode beimKunden = getJson(admin, "/api/v1/admin/werkstatt/boxen/" + neuRef + "/erstes-verbinden");
+        assertThat(beimKunden.get("stand").asText()).isEqualTo("fertig");
+        assertThat(beimKunden.get("release").asText()).isEqualTo(version);
+        assertThat(beimKunden.get("am").isNull()).isFalse();
+        String wartendRef = TestKennung.box("ota-ew-" + UUID.randomUUID().toString().substring(0, 8));
+        assertThat(post("/api/v1/admin/werkstatt/boxen", admin, Map.of("edgeRef", wartendRef, "boxArt", "edge-light"))
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        JsonNode vorher = getJson(admin, "/api/v1/admin/werkstatt/boxen/" + wartendRef + "/erstes-verbinden");
+        assertThat(vorher.get("stand").asText()).isEqualTo("vorher");
+        assertThat(vorher.get("release").asText()).as("die heutige neueste Fassung der Linie").isEqualTo(version);
+        assertThat(rest.exchange(url("/api/v1/admin/werkstatt/boxen/" + wartendRef + "/erstes-verbinden"),
+                HttpMethod.GET, new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        // Schon aktuell: nichts fällig, einmal im Journal und im Verlauf.
+        UUID aktuell = claim(customer, TestKennung.box("ota-ea-" + UUID.randomUUID().toString().substring(0, 8)));
+        herzschlagRoh(ingest, aktuell, version + "-9b37439a02c1", block.apply(version + "-9b37439a02c1", "update"));
+        // Stufe 1 am Loader: nichts, mit dem Satz der Sperre.
+        UUID stufe1 = claim(customer, TestKennung.box("ota-es-" + UUID.randomUUID().toString().substring(0, 8)));
+        herzschlagRoh(ingest, stufe1, "edge-light-2026.10.1-9b37439a02c1",
+                block.apply("edge-light-2026.10.1-9b37439a02c1", "flash"));
+        rollouts.erstverbindung(Instant.now());
+        rollouts.erstverbindung(Instant.now());
+        assertThat(ziel(aktuell)).isNull();
+        assertThat(erstverbindungEreignisse(aktuell)).containsExactly("erstverbindung_aktuell");
+        JsonNode schonAktuell = getJson(customer, "/api/v1/devices/" + aktuell + "/software-update");
+        assertThat(schonAktuell.get("phase").asText()).isEqualTo("keins");
+        assertThat(schonAktuell.get("release").asText()).isEqualTo(version);
+        assertThat(ziel(stufe1)).isNull();
+        assertThat(erstverbindungEreignisse(stufe1)).containsExactly("erstverbindung_gesperrt");
+        JsonNode gesperrt = getJson(admin, "/api/v1/admin/devices/" + stufe1 + "/verlauf").get("eintraege").get(0);
+        assertThat(gesperrt.get("art").asText()).isEqualTo("automatik_nicht");
+        assertThat(gesperrt.get("grund").asText()).contains("ihr Loader startet immer die Fassung aus dem Flash");
+        // „Braucht dich" (S3) liest das letzte Wort der Automatik aus der Flotten-Zeile.
+        JsonNode seite = readModel(admin);
+        assertThat(fieldOf(seite, stufe1, "automatik")).isEqualTo("erstverbindung_gesperrt");
+        assertThat(fieldOf(seite, stufe1, "automatikGrund")).contains("Loader");
+        assertThat(fieldOf(seite, aktuell, "automatik")).isEqualTo("erstverbindung_aktuell");
+        assertThat(fieldOf(seite, neu, "automatik")).as("die Zuweisung selbst steht in den Fakten").isNull();
+
+        // Der Schalter des Betriebs: Edge Light aus, ohne Deploy, mit Journal; Kunden kommen nicht heran.
+        assertThat(post("/api/v1/admin/edge-updates/erstverbindung/light", customer, Map.of("an", false))
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        ResponseEntity<Map<String, Object>> aus = post("/api/v1/admin/edge-updates/erstverbindung/light",
+                admin, Map.of("an", false));
+        assertThat(aus.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(aus.getBody()).containsEntry("alle", true).containsEntry("light", false)
+                .containsEntry("docker", true);
+        assertThat(post("/api/v1/admin/edge-updates/erstverbindung/irgendwas", admin, Map.of("an", false))
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        UUID ausgeschaltet = claim(customer, TestKennung.box("ota-eo-" + UUID.randomUUID().toString().substring(0, 8)));
+        herzschlagRoh(ingest, ausgeschaltet, "edge-light-2026.10.1-9b37439a02c1",
+                block.apply("edge-light-2026.10.1-9b37439a02c1", "update"));
+        rollouts.erstverbindung(Instant.now());
+        assertThat(ziel(ausgeschaltet)).isNull();
+        assertThat(erstverbindungEreignisse(ausgeschaltet)).containsExactly("erstverbindung_aus");
+        assertThat(post("/api/v1/admin/edge-updates/erstverbindung/light", admin, Map.of("an", true))
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT detail FROM rollout_event "
+                        + "WHERE event = 'erstverbindung_schalter' ORDER BY id")) {
+            List<String> details = new java.util.ArrayList<>();
+            while (rs.next()) {
+                details.add(rs.getString(1));
+            }
+            assertThat(details).containsExactly("Edge Light: aus", "Edge Light: an");
+        }
+        assertThat(getJson(admin, "/api/v1/admin/edge-updates/erstverbindung").get("light").asBoolean()).isTrue();
+    }
+
+    /** Die erste Meldung einer Box ({@code device_update_status.erste_meldung_am}). */
+    private Instant ersteMeldung(UUID deviceId) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT erste_meldung_am FROM device_update_status "
+                        + "WHERE device_id = '" + deviceId + "'")) {
+            return rs.next() && rs.getTimestamp(1) != null ? rs.getTimestamp(1).toInstant() : null;
+        }
+    }
+
+    /** „Release von Urheber" der Zuweisung einer Box, sonst {@code null}. */
+    private String ziel(UUID deviceId) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT release_version, assigned_by "
+                        + "FROM device_update_target WHERE device_id = '" + deviceId + "'")) {
+            return rs.next() ? rs.getString(1) + " von " + rs.getString(2) : null;
+        }
+    }
+
+    /** Die Journal-Ereignisse der Automatik zu einer Box, in Reihenfolge. */
+    private List<String> erstverbindungEreignisse(UUID deviceId) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery("SELECT event FROM rollout_event "
+                        + "WHERE actor = 'erstverbindung' AND device_id = '" + deviceId + "' ORDER BY id")) {
+            List<String> out = new java.util.ArrayList<>();
+            while (rs.next()) {
+                out.add(rs.getString(1));
+            }
+            return out;
+        }
+    }
+
     /** Ein Status-Herzschlag mit beliebigem Update-Block durch den ECHTEN Ingest. */
     private void herzschlagRoh(UpdateStatusListener ingest, UUID deviceId, String version, String update) {
         String payload = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A
@@ -1202,9 +1380,13 @@ class OtaRolloutApiTest {
 
     /** Die ganze Lieferung so hochladen wie der Release-Lauf: 512 KiB je Teil, ab 0. */
     private ResponseEntity<Map<String, Object>> hochladen(String token, byte[] gz) {
+        return hochladen(token, "edge-light-2026.10.1", gz);
+    }
+
+    private ResponseEntity<Map<String, Object>> hochladen(String token, String version, byte[] gz) {
         ResponseEntity<Map<String, Object>> last = null;
         for (int ab = 0; ab < gz.length; ab += 512 * 1024) {
-            last = putTeil(token, "edge-light-2026.10.1", "linux/mipsle", ab,
+            last = putTeil(token, version, "linux/mipsle", ab,
                     java.util.Arrays.copyOfRange(gz, ab, Math.min(gz.length, ab + 512 * 1024)));
             if (!last.getStatusCode().is2xxSuccessful()) {
                 return last;

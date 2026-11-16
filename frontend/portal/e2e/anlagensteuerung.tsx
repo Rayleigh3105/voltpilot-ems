@@ -65,6 +65,7 @@ if (new URLSearchParams(window.location.search).get('admin') === '1') {
  * aus derselben Zuordnung wie der Aufbau. `flaeche=einheit&te=2` (GE-3): die Seite einer Einheit, mit Tageskurven von heute.
  * `flaeche=gateway` (GE-5): die Seite des Wegs DQ-1 — mit `&form=gateway` ein Gateway mit zwei Steuerungen, ohne die
  * Gegenprobe (1 : 1, keine Gateway-Seite).
+ * `&update=laedt` (Erstverbindung S2): die Box ist eben verbunden und holt sich die neueste Software.
  * Belegt ist, was die Flächen fragen; alles Übrige antwortet „nichts da“ - die Bühne ruft nie eine Cloud.
  */
 const frage = new URLSearchParams(window.location.search);
@@ -72,6 +73,7 @@ const fall = frage.get('fall') === 'buettner' ? 'buettner' : 'gore';
 const flaeche = frage.get('flaeche') ?? 'steuerung';
 const gatewayForm = frage.get('form') === 'gateway';
 const teNr = Number(frage.get('te') ?? '2');
+const updatePhase = frage.get('update');
 
 const F = fall === 'gore'
   ? { s: gore(), w: goreWerte(), nv: goreNv(), entity: ENTITY_GORE, name: 'Gore' }
@@ -106,7 +108,7 @@ const box: Device = {
   name: `Box ${F.name}`,
   status: 'active',
   lastSeenAt: new Date(jetzt).toISOString(),
-  createdAt: null,
+  createdAt: updatePhase ? new Date(jetzt - 3 * 60_000).toISOString() : null,
 };
 
 const steuerungEntity = {
@@ -212,6 +214,9 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   anlagensteuerungVerlauf: ok(flaeche === 'einheit' ? heuteVerlauf() : goreVerlauf()),
   // GE-3: Steuerung › Geräte und Verlauf verweisen auf die Seiten der Einheiten — unter der Box der Anlage.
   listDevices: ok(sichtbareListe([box])),
+  boxSoftwareUpdate: ok(updatePhase
+    ? { phase: updatePhase, release: 'edge-light-2026.11.13', seit: new Date(jetzt - 130_000).toISOString(), fertigAm: null, updateLaeuft: true }
+    : { phase: 'keins', release: null, seit: null, fertigAm: null, updateLaeuft: false }),
   netzVermarktung: (async () => structuredClone(nv)) as never,
   netzVermarktungAendern: (async (_s: string, b: Record<string, unknown>) =>
     structuredClone((nv = { ...nv, ...b, revision: nv.revision + 1 } as typeof nv))) as never,

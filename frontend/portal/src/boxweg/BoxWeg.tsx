@@ -12,8 +12,12 @@ import { fmtRelative } from '../format';
 import { HelpLink } from '../help/HelpProvider';
 import { kennungWieGedruckt } from '../koppelLink';
 import { VERBINDUNG, WEG } from '../koppelTexte';
+import { useIsPhone } from '../useIsPhone';
 import { BoxZeichnung } from './BoxZeichnung';
-import { STATION_LABEL, STATION_REIHENFOLGE, wegLage, type StationKey, type StationState, type WegLage } from './wegLage';
+import {
+  STATION_LABEL, STATION_REIHENFOLGE, UPDATE_UNGEFRAGT, wegLage, type SoftwareLage, type WegUpdate, type SoftwareSchritt, type StationKey, type StationState,
+  type WegLage,
+} from './wegLage';
 import '../components/KoppelBand.css';
 import './BoxWeg.css';
 
@@ -21,8 +25,8 @@ import './BoxWeg.css';
 export const WEG_TAKT_MS = 5000;
 
 /**
- * Der Weg (E1 = B): fünf Stationen - Eingesteckt · Box startet · Anmeldung ·
- * Datenverbindung · Ihre Anlage - mit der echten Box als Zeichnung, der
+ * Der Weg (E1 = B): sechs Stationen - Eingesteckt · Box startet · Anmeldung ·
+ * Datenverbindung · Software · Ihre Anlage - mit der echten Box als Zeichnung, der
  * verstrichenen Zeit im Chip und einer Prüf-Hilfe, sobald es länger als meist
  * dauert. Ersetzt die frühere Zweiteilung „online"/„wartet" (`BoxErgebnis`)
  * vollständig; dieselbe äußere Schnittstelle (`onWeiter`/`onSpaeter`), damit
@@ -48,6 +52,11 @@ export function BoxWeg({
 }) {
   const [stand, setStand] = useState<Device>(box);
   const [jetzt, setJetzt] = useState(() => new Date());
+  // Erstverbindung S2: das Update der Box. `UPDATE_UNGEFRAGT` = noch nicht gefragt (der Weg gibt „Weiter“ erst frei, wenn er
+  // weiß, ob eines kommt), `null` = nicht lesbar (älteres Backend) - dann hält die Station niemanden fest.
+  const [update, setUpdate] = useState<WegUpdate>(UPDATE_UNGEFRAGT);
+  const telefon = useIsPhone();
+  const warOnline = stand.lastSeenAt != null;
   const onStandChangeRef = useRef(onStandChange);
   onStandChangeRef.current = onStandChange;
   useEffect(() => {
@@ -76,7 +85,30 @@ export function BoxWeg({
     // fragt dann nach DIESER Box, nicht mehr nach der gelösten.
   }, [stand.id]);
 
-  const lage = wegLage(stand, jetzt);
+  // Die Station „Software“ fragt erst, wenn die Box sich gemeldet hat - im selben Takt wie der Weg.
+  useEffect(() => {
+    if (!warOnline) return;
+    let aktiv = true;
+    const fragen = () => {
+      api.boxSoftwareUpdate(stand.id).then(
+        (u) => aktiv && setUpdate(u),
+        (e) => {
+          if (!aktiv) return;
+          // Kein Block (404, älteres Backend) oder der erste Abruf scheitert: niemand bleibt daran hängen.
+          if (e instanceof ApiError && e.status === 404) setUpdate(null);
+          else setUpdate((alt) => (alt === UPDATE_UNGEFRAGT ? null : alt));
+        },
+      );
+    };
+    fragen();
+    const takt = window.setInterval(fragen, WEG_TAKT_MS);
+    return () => {
+      aktiv = false;
+      window.clearInterval(takt);
+    };
+  }, [stand.id, warOnline]);
+
+  const lage = wegLage(stand, jetzt, update);
   const gedruckt = kennungWieGedruckt(stand.externalRef);
   const zeigePruefHilfe = lage.hinweis === 'pruefen' || lage.hinweis === 'support';
   // S4 (E4 = A): der Knopf tauscht nur eine Box, die sich nie gemeldet hat UND ihren Schlüssel nie
@@ -94,6 +126,8 @@ export function BoxWeg({
 
       <h3 id="box-weg-titel">{lage.titel}</h3>
       <p className="vp-koppel-klein">{lage.satz}</p>
+
+      {lage.software?.stand === 'laeuft' && <SoftwareFortschritt software={lage.software} telefon={telefon} />}
 
       {lage.verbindung.art && (
         <Badge variant={lage.verbindung.schwach ? 'warn' : 'tint'} dot className="vp-koppel-chip vp-verbindung-chip">
@@ -128,12 +162,12 @@ export function BoxWeg({
 
       <p className="vp-koppel-klein">{stand.lastSeenAt ? WEG.letzterKontakt(fmtRelative(stand.lastSeenAt, jetzt)) : WEG.letzterKontaktKeiner}</p>
 
-      {lage.online && onWeiter && (
+      {lage.weiterFrei && onWeiter && (
         <Button variant="primary" size="lg" fullWidth className="vp-koppel-knopf" onClick={onWeiter}>
           {weiterText}
         </Button>
       )}
-      {!lage.online && onSpaeter && (
+      {!lage.online && lage.software == null && onSpaeter && (
         <Button variant="outline" size="lg" fullWidth className="vp-koppel-knopf" onClick={onSpaeter}>
           {WEG.spaeter}
         </Button>
@@ -169,12 +203,14 @@ function StationEintrag({
     <li className={`vp-weg-station is-${zustand}`}>
       <span className={`vp-weg-marke${zustand === 'active' ? ' vp-ustate-busy' : ''}`} aria-hidden="true">
         {zustand === 'done' && <Icon name="check" size={14} strokeWidth={3} />}
+        {zustand === 'spaeter' && <Icon name="history" size={14} />}
         {zustand === 'problem' && <Icon name="alert-triangle" size={14} />}
         {zustand === 'active' && <span className="vp-ustate-dot" />}
       </span>
       <span className="vp-weg-label">
         {STATION_LABEL[stationKey]}
         {stationKey === 'eingesteckt' && zustand === 'dashed' && <em>{WEG.eingestecktSie}</em>}
+        {zustand === 'spaeter' && <em>{WEG.softwareSpaeter}</em>}
       </span>
       {aktiv && chipText && (
         <Badge variant={warnung ? 'warn' : 'tint'} className="vp-weg-chip">
@@ -182,6 +218,49 @@ function StationEintrag({
         </Badge>
       )}
     </li>
+  );
+}
+
+const SCHRITTE: readonly SoftwareSchritt[] = ['laden', 'neustart', 'pruefen'];
+
+/**
+ * Erstverbindung S2: Laden · Neu starten · Prüfen mit Balken und Restzeit (Stil der Gerätesuche); am Telefon nur
+ * Balken und „Startet neu · noch etwa 2 Min.“.
+ */
+function SoftwareFortschritt({ software, telefon }: { software: SoftwareLage; telefon: boolean }) {
+  const aktuell = software.schritt ? SCHRITTE.indexOf(software.schritt) : 0;
+  const prozent = Math.round((software.anteil ?? 0) * 100);
+  return (
+    <div className="vp-weg-sw" data-testid="weg-software">
+      {!telefon && (
+        <ol className="vp-weg-sw-schritte">
+          {SCHRITTE.map((s, i) => {
+            const z = i < aktuell ? 'fertig' : i === aktuell ? 'aktiv' : 'offen';
+            return (
+              <li key={s} className={`is-${z}`}>
+                <span className="vp-weg-sw-marke" aria-hidden="true">
+                  {z === 'fertig' ? <Icon name="check" size={14} strokeWidth={3} /> : z === 'aktiv' ? <span className="vp-spinner" /> : null}
+                </span>
+                {WEG.softwareSchritte[s]}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <div
+        className="vp-weg-sw-balken"
+        role="progressbar"
+        aria-label="Fortschritt der neuen Software"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={prozent}
+      >
+        <span style={{ width: `${prozent}%` }} />
+      </div>
+      <p className="vp-weg-sw-rest" role="status">
+        {telefon && software.schritt ? `${WEG.softwareSchrittTelefon[software.schritt]} · ${software.restText}` : software.restText}
+      </p>
+    </div>
   );
 }
 

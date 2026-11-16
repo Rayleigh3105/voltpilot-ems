@@ -34,6 +34,7 @@ import {
   kundenStand,
   WERKSTATT_ZUBEHOER,
   type EinrichtungZeile,
+  type ErstesVerbinden,
 } from '../../werkstattEinrichtung';
 import type { GehaeuseAuftragAnsicht } from '../../werkstattBank';
 import { PhasenListe } from './WerkstattBank';
@@ -206,6 +207,20 @@ export function WerkstattBoxSeite({
     }
   }
 
+  // Erstverbindung S3: was die Automatik beim ersten Verbinden tat oder tun wird.
+  const [erstesVerbinden, setErstesVerbinden] = useState<ErstesVerbinden | null>(null);
+  useEffect(() => {
+    let aktuell = true;
+    setErstesVerbinden(null);
+    adminApi.werkstattErstesVerbinden(ref).then(
+      (e) => aktuell && setErstesVerbinden(e ?? null),
+      () => aktuell && setErstesVerbinden(null),
+    );
+    return () => {
+      aktuell = false;
+    };
+  }, [ref]);
+
   useEffect(() => {
     let aktuell = true;
     setVerb({ art: 'laedt' });
@@ -358,7 +373,7 @@ export function WerkstattBoxSeite({
         <WsKarte titel="Einrichtung" testId="ws-einrichtung" urteil={box ? einrichtung(box, freigabe)[0]?.wert ?? undefined : 'ohne Eintrag'}>
           {box ? (
             <>
-              <Zeilen zeilen={einrichtung(box, freigabe)} />
+              <Zeilen zeilen={einrichtung(box, freigabe, erstesVerbinden)} />
               <p className="vp-muted vp-ws-fuss">
                 Im Register seit {zeitpunkt(box.angelegtAm, jetzt)} ({box.angelegtVon}), zuletzt geändert {zeitpunkt(box.geaendertAm, jetzt)}.
                 {!abnahme && ' Ohne Abnahme gibt es keinen geprüften Stand: Fassung, Tunnel-Adresse und Host-Schlüssel fehlen.'}

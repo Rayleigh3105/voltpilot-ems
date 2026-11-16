@@ -181,7 +181,7 @@ Verlauf wie Verbindungstest und Probe; Mandant aus JWT, Standort-Zaun):
 
 | Route | Antwort |
 |---|---|
-| `POST /api/v1/sites/{siteId}/geraetesuche` (`deviceId`, `Idempotency-Key`) | 202 · 409 `laeuft_schon` (mit `suchId`) / `nicht_unterstuetzt` / `box_offline` · 429 `zu_oft` |
+| `POST /api/v1/sites/{siteId}/geraetesuche` (`deviceId`, `Idempotency-Key`) | 202 · 409 `laeuft_schon` (mit `suchId`) / `nicht_unterstuetzt` / `box_offline` / `update_laeuft` · 429 `zu_oft` |
 | `GET …/geraetesuche/{suchId}` | 200: Zustand, Schritt, Netze, Funde gruppiert und abgeglichen |
 | `DELETE …/geraetesuche/{suchId}` | 202 (abbrechen; eine beendete Suche bleibt, wie sie ist) |
 | `GET …/geraetesuche?deviceId=` | 200: Verlauf der letzten 30 Tage |

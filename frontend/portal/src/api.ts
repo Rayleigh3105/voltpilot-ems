@@ -1374,6 +1374,25 @@ export interface SpeicherBilanz {
   monate: { monat: string; hineinKwh: number; herausKwh: number; wirkungsgrad: number | null; vollzyklen: number | null }[];
 }
 
+/**
+ * Erstverbindung S2 (`GET /api/v1/devices/{id}/software-update`, `ota.BoxUpdateSicht`): holt die eigene Box gerade
+ * neue Software? `keins` = nichts fällig (Station sofort erledigt), `prueft` = gerade gemeldet, die Automatik
+ * entscheidet noch, `laedt`/`startet_neu`/`prueft_box` = das Update läuft, `fertig` = bestätigt, `spaeter` =
+ * zurückgenommen oder nicht zugewiesen (die Box läuft auf ihrem Stand weiter). Zeiten sind Serverzeit.
+ */
+export type BoxSoftwarePhase = 'keins' | 'prueft' | 'laedt' | 'startet_neu' | 'prueft_box' | 'fertig' | 'spaeter';
+
+export interface BoxSoftwareUpdate {
+  phase: BoxSoftwarePhase;
+  /** Die neue Fassung (bei `fertig` die eingespielte; bei `keins` die laufende, wenn sie schon aktuell war). */
+  release: string | null;
+  /** Beginn der Phase: erste Meldung (`prueft`) oder Zuweisung. */
+  seit: string | null;
+  fertigAm: string | null;
+  /** Irgendein Update startet die Box gleich neu - die Gerätesuche wartet darauf. */
+  updateLaeuft: boolean;
+}
+
 export interface Device {
   id: string;
   siteId: string;

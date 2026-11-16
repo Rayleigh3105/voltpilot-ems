@@ -8,6 +8,8 @@
  *
  * Im Register: edge-5t2dcy6 (vom Dienst abgenommen, mit Belegen), edge-k7m2xq3 (der Lauf an der
  * Werkbank), edge-p3n8rv4 (angehalten: kein Handshake) und edge-wrk8cdb (Docker-Box, nur im Register).
+ * Erstverbindung S3: die abgenommene edge-5t2dcy6 ist beim Kunden auf die neueste Fassung gekommen
+ * („Beim Kunden“), jede andere Box holt sie sich beim ersten Verbinden („Beim ersten Verbinden“).
  * Alle Referenzen, Schlüssel und Prüfsummen sind erfunden.
  */
 import { useState } from 'react';
@@ -267,6 +269,9 @@ Object.assign(adminApi, {
       laufendeFenster: [], rueckmeldung: null };
   },
   fernwartung: async () => ({ rueckmeldungen: [] }),
+  werkstattErstesVerbinden: async (ref: string) => (ref === 'edge-5t2dcy6'
+    ? { stand: 'fertig', release: 'edge-light-2026.11.3', am: iso(-20 * 60_000), grund: null }
+    : { stand: 'vorher', release: 'edge-light-2026.11.3', am: null, grund: null }),
   werkstattFreigaben: async () => freigaben,
   werkstattRegel: async () => regel(),
   werkstattAnhalten: async (grund: string | null) => {

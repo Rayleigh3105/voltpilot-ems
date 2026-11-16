@@ -74,11 +74,20 @@ public class GeraetesucheDienst {
         uhr = clock;
     }
 
+    /** Erstverbindung S2: läuft ein Update, wartet die Suche. Ohne Bean (Minimal-Kontexte) prüft niemand. */
+    private com.voltpilot.api.repo.BoxUpdateSichtRepository updates;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setUpdates(com.voltpilot.api.repo.BoxUpdateSichtRepository updates) {
+        this.updates = updates;
+    }
+
     // ------------------------------------------------------------------ Starten und Abbrechen
 
     /**
      * Startet eine Suche an der Box: sie hängt an dieser Anlage, war in den letzten 5 Minuten zu hören, meldet die
-     * Fähigkeit {@code geraetesuche}, sucht nicht schon und hat in der letzten Stunde weniger als sechsmal gesucht. Die
+     * Fähigkeit {@code geraetesuche}, spielt gerade kein Update ein ({@code update_laeuft}), sucht nicht schon und hat
+     * in der letzten Stunde weniger als sechsmal gesucht. Die
      * Suche, ihr Protokoll und {@code vorDemVersand} (die Anfrage-Kennung) stehen in derselben Transaktion; der Auftrag
      * geht als letzter Schritt hinaus. Erreicht er die Box nicht, ist nichts geschrieben (409 {@code box_offline}).
      *
@@ -101,6 +110,10 @@ public class GeraetesucheDienst {
         }
         if (!faehigkeiten.kann(deviceId, FAEHIGKEIT)) {
             throw GeraetesucheAbgelehnt.nichtUnterstuetzt();
+        }
+        // Ein Update startet die Box gleich neu - der Auftrag ginge darin verloren (Erstverbindung S2).
+        if (updates != null && updates.zeile(deviceId).map(z -> z.sicht(jetzt).updateLaeuft()).orElse(false)) {
+            throw GeraetesucheAbgelehnt.updateLaeuft();
         }
         Optional<Zeile> offen = suchen.offene(deviceId);
         if (offen.isPresent() && !KEINE_ANTWORT.equals(zustand(offen.get(), jetzt))) {

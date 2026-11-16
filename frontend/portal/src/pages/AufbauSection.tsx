@@ -1,3 +1,4 @@
+import { useBoxSoftware } from '../boxweg/boxSoftware';
 import { Recht } from '../components/Recht';
 import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -342,6 +343,7 @@ export function AufbauSection({
   );
 
   const eigeneBoxen = useMemo(() => (devices ?? []).filter((d) => d.siteId === site.id), [devices, site.id]);
+  const softwareJeBox = useBoxSoftware(eigeneBoxen);
   const boxRef = useMemo(() => boxRefOf(devices, site.id), [devices, site.id]);
 
   const karten = useMemo(
@@ -911,6 +913,7 @@ export function AufbauSection({
       {data && (
         <AufbauTabelle
           standortSicht={standortSicht ? { ...standortSicht, anlageName: site.name } : null}
+          softwareJeBox={softwareJeBox}
           wurzel={baum.wurzel}
           onAdresseNachtragen={standortDesBaumsObjekt ? () => setAdresseNachtragen(true) : undefined}
           anlagenZahl={baum.anlagen.length}

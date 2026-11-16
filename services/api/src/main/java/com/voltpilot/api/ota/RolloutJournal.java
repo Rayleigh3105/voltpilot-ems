@@ -82,7 +82,12 @@ public final class RolloutJournal {
             Map.entry("target_cleared_on_unclaim", "Zuweisung beim Entfernen des Geräts gelöscht"),
             Map.entry("apply_requested", "Anwendung freigegeben"),
             Map.entry("device_pinned_skipped", "Gerät übersprungen (festgenagelt)"),
-            Map.entry("device_state", "Zustand geändert"));
+            Map.entry("device_state", "Zustand geändert"),
+            Map.entry(Erstverbindung.EREIGNIS_AKTUELL, "Beim ersten Verbinden: schon aktuell"),
+            Map.entry(Erstverbindung.EREIGNIS_GESPERRT, "Beim ersten Verbinden: kein Update möglich"),
+            Map.entry(Erstverbindung.EREIGNIS_AUS, "Beim ersten Verbinden: Automatik aus"),
+            Map.entry(Erstverbindung.EREIGNIS_AUFGEGEBEN, "Beim ersten Verbinden: nicht zugewiesen"),
+            Map.entry(Erstverbindung.EREIGNIS_SCHALTER, "Automatik beim ersten Verbinden umgeschaltet"));
 
     private RolloutJournal() {
     }
@@ -141,6 +146,9 @@ public final class RolloutJournal {
      * Automatismus, der sich als Mensch ausgibt, macht das Journal wertlos.
      */
     private static String actor(String actor) {
+        if (Erstverbindung.URHEBER.equals(actor)) {
+            return "Automatik · erstes Verbinden";
+        }
         return RolloutService.SYSTEM_ACTOR.equals(actor) ? "automatisch" : actor;
     }
 

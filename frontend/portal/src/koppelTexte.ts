@@ -98,6 +98,7 @@ export const WEG = {
     startet: 'Box startet',
     anmeldung: 'Anmeldung',
     datenverbindung: 'Datenverbindung',
+    software: 'Software',
     anlage: 'Ihre Anlage',
   },
   /** Qualifiziert die Station „Eingesteckt“, solange sie nur eine Annahme ist (das Portal weiß es nicht). */
@@ -122,6 +123,23 @@ export const WEG = {
   onlineSatz: 'Weiter geht es mit Ihrer Anlage.',
   stillTitel: 'Box verbunden – sie meldet sich gerade nicht',
   stillSatz: 'Sie meldete sich schon einmal und ist gerade still. Das kann an Strom oder Internet liegen.',
+  /**
+   * Erstverbindung S2 (E4 = B): die Station „Software“ - der Weg wartet, bis die Box die neue Software
+   * bestätigt hat. Kein „Weiter“, solange sie läuft; „Später einrichten“ bleibt als Ausweg.
+   */
+  softwarePruefTitel: 'Ihre Box sucht nach neuer Software',
+  softwarePruefSatz: 'Einen Moment bitte - das dauert meist unter einer Minute.',
+  softwareTitel: 'Ihre Box holt die neueste Software',
+  softwareSatz: 'Bitte kurz warten. Ihre Box startet dabei einmal neu.',
+  softwareSchritte: { laden: 'Laden', neustart: 'Neu starten', pruefen: 'Prüfen' },
+  softwareSchrittTelefon: { laden: 'Lädt', neustart: 'Startet neu', pruefen: 'Prüft' },
+  softwareRest: (min: number) => `noch etwa ${min} Min.`,
+  softwareChip: (zeit: string) => `Software · ${zeit}`,
+  softwareFertigTitel: 'Ihre Box ist auf dem neuesten Stand',
+  softwareSpaeter: 'kommt später',
+  softwareSpaeterSatz: 'Die neue Software kommt später. Darum kümmern wir uns.',
+  softwareLaengerTitel: 'Das dauert länger als üblich',
+  softwareLaengerSatz: 'Die neue Software läuft im Hintergrund weiter. Sie können schon weitermachen.',
   weiter: 'Weiter: Ihre Anlage',
   spaeter: 'Später anschließen – weiter zur Anlage',
   letzterKontakt: (zeile: string) => `Letzter Kontakt ${zeile}`,

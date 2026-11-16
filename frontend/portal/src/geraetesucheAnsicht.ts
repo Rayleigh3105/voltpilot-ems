@@ -572,6 +572,8 @@ export function startFehlerSatz(f: GeraetesucheFehler | null, zuletzt: string | 
       return boxOfflineSatz(f.zuletztGesehen ?? zuletzt);
     case 'nicht_unterstuetzt':
       return 'Update nötig für: Gerätesuche';
+    case 'update_laeuft':
+      return UPDATE_LAEUFT_SATZ;
     case 'zu_oft':
       return `${ABGELEHNT.zu_oft}${f.wiederAb ? ` Ab ${uhrzeit(f.wiederAb)} geht es wieder.` : ''}`;
     case 'laeuft_schon':
@@ -582,6 +584,15 @@ export function startFehlerSatz(f: GeraetesucheFehler | null, zuletzt: string | 
       return f?.message?.trim() || 'Die Suche ließ sich nicht starten. Bitte versuchen Sie es erneut.';
   }
 }
+
+/**
+ * Erstverbindung S2: Die Box spielt gerade neue Software ein und startet dabei neu - ein Suchauftrag ginge darin
+ * verloren. Der Dialog wartet und startet die Suche von selbst, sobald die Box fertig ist.
+ */
+export const UPDATE_LAEUFT_SATZ = 'Ihre Box spielt gerade neue Software ein. Die Suche startet, sobald sie fertig ist.';
+
+/** Wie oft der Dialog bei `update_laeuft` erneut anfragt. */
+export const UPDATE_WARTEN_MS = 15_000;
 
 export function boxOfflineSatz(zuletzt: string | null): string {
   const wannZuletzt = zuletzt ? ` (zuletzt ${uhrzeit(zuletzt)})` : '';

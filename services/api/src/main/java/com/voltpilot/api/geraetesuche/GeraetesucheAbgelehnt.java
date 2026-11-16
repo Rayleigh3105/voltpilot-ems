@@ -53,6 +53,16 @@ public final class GeraetesucheAbgelehnt extends RuntimeException {
                 zuletztGesehen, null);
     }
 
+    /**
+     * Die Box spielt gerade neue Software ein und startet dabei neu (Erstverbindung S2): ein Suchauftrag ginge im
+     * Neustart verloren. Die Oberfläche startet die Suche von selbst, sobald die Box fertig ist.
+     */
+    public static GeraetesucheAbgelehnt updateLaeuft() {
+        return new GeraetesucheAbgelehnt(HttpStatus.CONFLICT, "update_laeuft",
+                "Die Box spielt gerade neue Software ein. Die Suche startet, sobald sie fertig ist.", null, null,
+                null);
+    }
+
     public static GeraetesucheAbgelehnt zuOft(Instant wiederAb) {
         return new GeraetesucheAbgelehnt(HttpStatus.TOO_MANY_REQUESTS, "zu_oft",
                 "Diese Box hat in der letzten Stunde schon sechsmal gesucht. Die nächste Suche geht später wieder.",

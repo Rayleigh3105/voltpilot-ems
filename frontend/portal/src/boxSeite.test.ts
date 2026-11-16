@@ -12,6 +12,7 @@ import { kastenSatz } from './aufbauTabelle';
 import { LAN_UNBEKANNT } from './geraetSeite';
 import { dq, gatewayForm, goreDq1, goreForm, hsWege, liefert } from './test/boxGeraeteFixtures';
 import type {
+  BoxSoftwareUpdate,
   ControlStatus,
   CurtailmentStatus,
   Device,
@@ -447,6 +448,20 @@ describe('boxSeite · der Software-Stand', () => {
     const k = softwareKachel(edge({ newestRelease: 'edge-2026.08.10', upToDate: true }));
     expect(k.ton).toBe('ok');
     expect(k.satz).toMatch(/neuesten Stand/);
+  });
+
+  it('Erstverbindung S2: das Update beim ersten Verbinden - läuft, dann „eingespielt am … beim ersten Verbinden“', () => {
+    const update = (phase: BoxSoftwareUpdate['phase'], fertigAm: string | null = null): BoxSoftwareUpdate => ({
+      phase, release: 'edge-light-2026.11.13', seit: '2026-11-16T09:42:40Z', fertigAm, updateLaeuft: phase !== 'fertig',
+    });
+    const laeuft = softwareKachel(edge({ newestRelease: 'edge-2026.08.11', upToDate: false }), update('startet_neu'));
+    expect(laeuft.ton).toBe('off');
+    expect(laeuft.satz).toBe('Ihre Box holt gerade die neueste Software und startet dabei einmal neu.');
+    const fertig = softwareKachel(edge({ newestRelease: 'edge-2026.08.10', upToDate: true }),
+      update('fertig', '2026-11-16T09:46:00Z'));
+    expect(fertig.ton).toBe('ok');
+    expect(fertig.zeilen).toEqual(['Eingespielt am 16.11. beim ersten Verbinden']);
+    expect(softwareKachel(edge({ newestRelease: 'edge-2026.08.10', upToDate: true }), null).zeilen).toEqual([]);
   });
 
   it('nennt den neueren Stand - und sagt, dass der Kunde nichts tun muss', () => {

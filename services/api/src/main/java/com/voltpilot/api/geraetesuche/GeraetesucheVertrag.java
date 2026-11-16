@@ -77,7 +77,8 @@ public final class GeraetesucheVertrag {
             KENNUNG_OFFEN);
     public static final List<String> ZUSTAENDE_API = List.of("wartet", "laeuft", "fertig", "abgebrochen",
             "fehlgeschlagen", "abgelehnt", "keine_antwort");
-    public static final List<String> FEHLER_409 = List.of("laeuft_schon", "nicht_unterstuetzt", "box_offline");
+    public static final List<String> FEHLER_409 = List.of("laeuft_schon", "nicht_unterstuetzt", "box_offline",
+            "update_laeuft");
     public static final List<String> FEHLER_429 = List.of("zu_oft");
 
     /**

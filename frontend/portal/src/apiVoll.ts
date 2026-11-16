@@ -12,7 +12,7 @@ import type {
   BezugsdatenImportErgebnis, BezugsdatenImportProtokollEintrag, BezugsdatenRuecknahmeVorschau, BezugsdatenVorlage,
   BezugsdatenVorschau, BezugsdatenZuordnung, Bezugsflaechen, Bezugsgroesse, BezugsgroesseAnfrage,
   BezugsgroesseStammdatum, BezugsgroesseWerte, BezugsgroessenListe, BezugswertAntwort, BilanzRestAngelegt,
-  BoxTauschAntwort, CommandHistory, ComponentDefinition, ComponentTemplate, ConsumerSchedule,
+  BoxSoftwareUpdate, BoxTauschAntwort, CommandHistory, ComponentDefinition, ComponentTemplate, ConsumerSchedule,
   ControllerwechselVorschau, CreateMeasurementPointInput, CreateSiteInput, Device, DevicePurgeResult, Earnings,
   EarningsRange, EdgeVersion, EinheitGeraet, Einspeiseverguetung, EinstellungEingetragen, EinstellungNeu,
   Energieeinsatz, EnergieeinsatzAenderung, EnergieeinsatzAnlegen, EnergieeinsatzBearbeiten, EnergieeinsatzEinfluss,
@@ -694,7 +694,7 @@ const weitere = {
   /**
    * „Geräte suchen" (OpenAPI-Tag `geraetesuche`, docs/contracts/v2/mqtt-geraetesuche.md §7): startet auf der Box
    * einen lesenden Suchlauf im Heimnetz. Netze, Ports und Dauer bestimmt allein die Box; der Körper nennt nur die
-   * Box. 409 `laeuft_schon`/`nicht_unterstuetzt`/`box_offline`, 429 `zu_oft` - der Körper der Ablehnung ist ein
+   * Box. 409 `laeuft_schon`/`nicht_unterstuetzt`/`box_offline`/`update_laeuft`, 429 `zu_oft` - der Körper der Ablehnung ist ein
    * `GeraetesucheFehler` (`ApiError.body`).
    */
   geraetesucheStarten: (siteId: string, deviceId: string, kennung: string) =>
@@ -706,6 +706,12 @@ const weitere = {
   /** Eine Suche: solange sie läuft, fragt das Portal alle 2 s und hört danach auf. */
   geraetesuche: (siteId: string, suchId: string, signal?: AbortSignal) =>
     request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche/${suchId}`, { signal }),
+  /**
+   * Erstverbindung S2: holt die eigene Box gerade neue Software (die Automatik beim ersten Verbinden)? Die Station
+   * „Software" im Verbinden-Weg, die Box-Zeile im Aufbau und die Box-Seite lesen hier; 404 für eine fremde Box.
+   */
+  boxSoftwareUpdate: (deviceId: string, signal?: AbortSignal) =>
+    request<BoxSoftwareUpdate>(`/api/v1/devices/${deviceId}/software-update`, { signal }),
   /** Abbrechen: die Funde bis dahin gelten; eine beendete Suche bleibt, wie sie ist. */
   geraetesucheAbbrechen: (siteId: string, suchId: string) =>
     request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche/${suchId}`, { method: 'DELETE' }),

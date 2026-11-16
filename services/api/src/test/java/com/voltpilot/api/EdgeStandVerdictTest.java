@@ -164,4 +164,15 @@ class EdgeStandVerdictTest {
         assertThat(new RegisterEntry("edge-light-2026.11.4", 1).boxArt()).isEqualTo(LIGHT);
         assertThat(new RegisterEntry("edge-2026.10.7", 1).boxArt()).isEqualTo(DOCKER);
     }
+
+    @Test
+    @DisplayName("N4: Maßstab ist das neueste SIGNIERTE Release der Linie - ein unsigniertes macht niemanden veraltet")
+    void unsigniertIstKeinMassstab() {
+        List<RegisterEntry> mitUnsigniert = List.of(
+                new RegisterEntry("edge-light-2026.11.14", 66, LIGHT, false),
+                new RegisterEntry("edge-light-2026.11.13", 65, LIGHT, true));
+        EdgeStandVerdict.Verdict v = EdgeStandVerdict.of("edge-light-2026.11.13-1a2b3c4d5e6f", LIGHT, mitUnsigniert);
+        assertThat(v.newestRelease()).isEqualTo("edge-light-2026.11.13");
+        assertThat(v.upToDate()).isTrue();
+    }
 }

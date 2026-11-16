@@ -118,12 +118,18 @@ function freigabeHerkunft(f: WerkstattFreigabe): string {
  * neuesten Abnahme. Fehlt die Abnahme, bleiben ihre Felder leer: Unbekannt ist
  * keine Angabe, und eine nicht abgenommene Box hat keinen geprüften Stand.
  */
-export function einrichtung(box: WerkstattBox, freigabe: WerkstattFreigabe | null): EinrichtungZeile[] {
+export function einrichtung(
+  box: WerkstattBox,
+  freigabe: WerkstattFreigabe | null,
+  erstesVerbinden: ErstesVerbinden | null = null,
+): EinrichtungZeile[] {
   const a = box.abnahmen[0] ?? null;
   const hardware = box.boxArt === 'edge-light' ? MANGO_HARDWARE : 'Docker-Box (Edge App)';
+  const automatik = erstesVerbindenZeile(erstesVerbinden);
   return [
     { id: 'hardware', titel: 'Hardware', wert: hardware },
     { id: 'edge-light', titel: 'Edge Light (aufgespielt)', wert: a?.fassung ?? null },
+    ...(automatik ? [automatik] : []),
     { id: 'openwrt', titel: 'OpenWrt (laut Freigabe)', wert: freigabe ? freigabe.openwrt.fassung : null },
     {
       id: 'pruefsummen',
@@ -137,6 +143,49 @@ export function einrichtung(box: WerkstattBox, freigabe: WerkstattFreigabe | nul
     { id: 'tunnel', titel: 'Tunnel-Adresse', wert: a?.tunnelAdresse ?? null },
     { id: 'host', titel: 'Host-Schlüssel', wert: a?.hostSchluessel ?? null },
   ];
+}
+
+/**
+ * Erstverbindung S3 (E7 = A, `GET /api/v1/admin/werkstatt/boxen/{ref}/erstes-verbinden`): was die Automatik beim
+ * ersten Verbinden mit der Box tat oder tun wird - aus Journal und Box-Meldung; die Abnahme bleibt, wie sie ist.
+ */
+export interface ErstesVerbinden {
+  stand: 'vorher' | 'prueft' | 'laeuft' | 'fertig' | 'aktuell' | 'nicht';
+  release: string | null;
+  am: string | null;
+  grund: string | null;
+}
+
+/** „edge-light-2026.11.13“ → „2026.11.13“: die Fassung, wie die Werkstatt sie nennt. */
+const fassung = (release: string | null) => (release ?? '').replace(/^edge-light-/, '').replace(/^edge-/, '') || null;
+
+const tagUhr = (iso: string) =>
+  new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+
+/** Die Zeile „Beim ersten Verbinden“ (vorher) bzw. „Beim Kunden“ (danach); null = keine Aussage der Automatik. */
+export function erstesVerbindenZeile(e: ErstesVerbinden | null): EinrichtungZeile | null {
+  if (!e) return null;
+  const f = fassung(e.release);
+  switch (e.stand) {
+    case 'vorher':
+      return {
+        id: 'erstes-verbinden', titel: 'Beim ersten Verbinden',
+        wert: f ? `holt sich die neueste Fassung selbst (heute ${f})` : 'holt sich die neueste Fassung selbst',
+      };
+    case 'prueft':
+      return { id: 'beim-kunden', titel: 'Beim Kunden', wert: 'verbunden · die Automatik entscheidet gerade' };
+    case 'laeuft':
+      return { id: 'beim-kunden', titel: 'Beim Kunden', wert: `holt gerade ${f ?? 'die neueste Fassung'} · automatisch beim ersten Verbinden` };
+    case 'fertig':
+      return {
+        id: 'beim-kunden', titel: 'Beim Kunden',
+        wert: `✓ ${e.am ? `${tagUhr(e.am)} ` : ''}auf ${f ?? 'die neueste Fassung'} · automatisch beim ersten Verbinden`,
+      };
+    case 'aktuell':
+      return { id: 'beim-kunden', titel: 'Beim Kunden', wert: `lief schon ${f ?? 'die neueste Fassung'} · nichts zu tun` };
+    case 'nicht':
+      return { id: 'beim-kunden', titel: 'Beim Kunden', wert: `nicht aktualisiert${e.grund ? `: ${e.grund}` : ''}` };
+  }
 }
 
 /** Die Bindung: Tunnel-Schlüssel, Zugang, Kunde. `null` = für die Box ist kein Tunnel-Schlüssel hinterlegt (404), also auch kein Kunde. */

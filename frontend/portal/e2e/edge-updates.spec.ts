@@ -28,9 +28,9 @@ for (const breite of [PHONE, DESKTOP]) {
     expect(r!.x).toBeGreaterThanOrEqual(l!.x - 1);
     expect(r!.x + r!.width).toBeLessThanOrEqual(l!.x + l!.width + 1);
 
-    await expect(page.getByText('Docker-Box')).toBeVisible();
-    await expect(page.getByText('Edge Light')).toBeVisible();
-    const verlauf = page.locator('details', { hasText: 'Verlauf' });
+    await expect(page.getByRole('heading', { name: 'Docker-Box' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Edge Light' })).toBeVisible();
+    const verlauf = page.locator('details', { has: page.getByRole('heading', { name: 'Verlauf', exact: true }) });
     await expect(verlauf).not.toHaveAttribute('open', '');
 
     await keinUeberlauf(page);

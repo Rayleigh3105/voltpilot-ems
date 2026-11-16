@@ -170,6 +170,12 @@ export interface FleetRow {
    * altes Programm) - nie still 0.
    */
   loaderStand?: number | null;
+  /**
+   * Erstverbindung S3 (additiv): das letzte Wort der Automatik beim ersten Verbinden ohne die Zuweisung selbst
+   * (`erstverbindung_aktuell` | `_gesperrt` | `_aus` | `_aufgegeben`) und sein Detail (Fassung oder Grund).
+   */
+  automatik?: string | null;
+  automatikGrund?: string | null;
 }
 
 /**
@@ -258,7 +264,7 @@ export interface EdgeUpdates {
 /**
  * Ein Eintrag im Verlauf einer Box (`GET /admin/devices/{id}/verlauf`, Geräte &
  * Updates G3), neueste zuerst. `quelle` `portal`: angefragt, zurueckgezogen,
- * erneut_gesendet, entfernt (`von` = Akteur). `quelle` `box`: stand (mit `vorher`;
+ * erneut_gesendet, entfernt, automatik_aktuell, automatik_nicht (Erstverbindung, mit `grund`) (`von` = Akteur). `quelle` `box`: stand (mit `vorher`;
  * `null` = erste Meldung), angenommen, abgelehnt, zurueckgestellt,
  * fehlgeschlagen, zurueckgenommen (mit dem Grund der Box). Serverzeit.
  */
@@ -924,17 +930,27 @@ const EVENT_LABELS: Record<string, string> = {
   apply_requested: 'Anwendung freigegeben',
   device_pinned_skipped: 'Gerät übersprungen (festgenagelt)',
   device_state: 'Zustand geändert',
+  erstverbindung_aktuell: 'Beim ersten Verbinden: schon aktuell',
+  erstverbindung_gesperrt: 'Beim ersten Verbinden: kein Update möglich',
+  erstverbindung_aus: 'Beim ersten Verbinden: Automatik aus',
+  erstverbindung_aufgegeben: 'Beim ersten Verbinden: nicht zugewiesen',
+  erstverbindung_schalter: 'Automatik beim ersten Verbinden umgeschaltet',
 };
 
 export function eventLabel(event: string): string {
   return EVENT_LABELS[event] ?? event;
 }
 
+/** Der Urheber der Automatik beim ersten Verbinden (`ota.Erstverbindung.URHEBER`). */
+export const URHEBER_ERSTVERBINDUNG = 'erstverbindung';
+
 /**
- * Wer hat gehandelt. `system` ist der Wächter - er wird als solcher benannt
- * und nie wie ein Mensch dargestellt, sonst wäre die Papier-Spur wertlos.
+ * Wer hat gehandelt. `system` ist der Wächter, `erstverbindung` die Automatik
+ * beim ersten Verbinden - beide werden als solche benannt und nie wie ein
+ * Mensch dargestellt, sonst wäre die Papier-Spur wertlos.
  */
 export function actorLabel(actor: string): string {
+  if (actor === URHEBER_ERSTVERBINDUNG) return 'Automatik · erstes Verbinden';
   return actor === 'system' ? 'automatisch' : actor;
 }
 

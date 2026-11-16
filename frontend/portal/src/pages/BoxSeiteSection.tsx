@@ -3,6 +3,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   ApiError,
+  type BoxSoftwareUpdate,
   type ControlStatus,
   type CurtailmentStatus,
   type Device,
@@ -121,6 +122,8 @@ export function BoxSeiteSection({
   const [control, setControl] = useState<ControlStatus | null>(null);
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
+  // Erstverbindung S2: das Update der Box beim ersten Verbinden (läuft gerade, oder wann es eingespielt wurde).
+  const [software, setSoftware] = useState<BoxSoftwareUpdate | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
   const [gemeinsameSteuerung, setGemeinsameSteuerung] = useState<UemsGemeinsameSteuerungZustand | null>(null);
@@ -174,6 +177,18 @@ export function BoxSeiteSection({
       active = false;
     };
   }, [site.id, boxDevice?.id, boxDevice?.externalRef, reloadKey]);
+
+  useEffect(() => {
+    if (!boxDevice?.id) return;
+    let active = true;
+    api.boxSoftwareUpdate(boxDevice.id).then(
+      (u) => active && setSoftware(u),
+      () => active && setSoftware(null),
+    );
+    return () => {
+      active = false;
+    };
+  }, [boxDevice?.id, reloadKey]);
 
   // Die Wege aller Anlagen am Standort (wie im Aufbau): die Last einer Box zählt alles, was sie liest — auch für eine
   // Nachbaranlage. Bis die Standorte da sind, nur die eigene Anlage.
@@ -246,6 +261,7 @@ export function BoxSeiteSection({
       devices: devices ?? [],
       devicesFetchedAt,
       edgeVersions,
+      software,
       control,
       curtailment,
       anlage,
@@ -256,7 +272,7 @@ export function BoxSeiteSection({
       now,
     });
   }, [
-    data, boxRef, site.name, site.id, devices, devicesFetchedAt, edgeVersions, control,
+    data, boxRef, site.name, site.id, devices, devicesFetchedAt, edgeVersions, software, control,
     curtailment, topology, sources, charging, consumers, datenquellen, uemsGeraete, anlagenNamen, now,
     steuerungen.liste, steuerungen.werte,
   ]);

@@ -222,6 +222,23 @@ class GeraetesucheApiTest {
         assertThat(alt.body().path("message").asText()).contains("Update nötig für: Gerätesuche");
         root.update("UPDATE device SET supports = '[\"geraetesuche\"]'::jsonb WHERE id = ?", w.box());
 
+        // Ein Update startet die Box gleich neu: die Suche wartet, statt im Neustart verloren zu gehen (Erstverbindung S2).
+        String fassung = "edge-light-test-" + UUID.randomUUID();
+        long seq = root.queryForObject("INSERT INTO edge_release(release_seq,version,target_commit,created_by,manifest,"
+                + "signature,signing_key_id) SELECT coalesce(max(release_seq),0)+1,?,'test','test','{}','sig','key' "
+                + "FROM edge_release RETURNING release_seq", Long.class, fassung);
+        root.update("INSERT INTO device_update_status(device_id,tenant_id,site_id,version,current_version,state,"
+                + "reported_at) VALUES (?,?,?,'edge-light-2026.11.10','edge-light-2026.11.10','applying',now())",
+                w.box(), w.mandant(), w.anlage());
+        root.update("INSERT INTO device_update_target(device_id,release_seq,release_version,assigned_by) "
+                + "VALUES (?,?,?,'erstverbindung')", w.box(), seq, fassung);
+        Antwort update = kunde(w, post(w.pfad()).content(koerper(w.box())));
+        assertThat(update.status()).isEqualTo(409);
+        assertThat(update.code()).isEqualTo("update_laeuft");
+        assertThat(update.body().path("message").asText()).contains("neue Software");
+        root.update("DELETE FROM device_update_target WHERE device_id = ?", w.box());
+        root.update("DELETE FROM device_update_status WHERE device_id = ?", w.box());
+
         // Seit 6 Minuten kein Herzschlag.
         Instant zuletzt = Instant.now().minus(Duration.ofMinutes(6)).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
         root.update("UPDATE device SET device_status_seen_at = ? WHERE id = ?", Timestamp.from(zuletzt), w.box());

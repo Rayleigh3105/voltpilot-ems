@@ -117,8 +117,11 @@ class BoxTauschApiTest {
         }
         assertThat(counts(w)).isEqualTo(before);
         assertThat(root.queryForObject("SELECT status FROM device WHERE id=?",String.class,w.old())).isEqualTo("retired");
-        for(String table: List.of("measurement_point","asset","device_measurement_selection","device_control_activation","device_update_target"))
+        for(String table: List.of("measurement_point","asset","device_measurement_selection","device_control_activation"))
             assertThat(root.queryForObject("SELECT count(*) FROM "+table+" WHERE device_id=?",Long.class,w.next())).isPositive();
+        // N5: das OTA-Ziel bleibt an seiner Hardware; die neue Box behält ihr eigenes.
+        assertThat(root.queryForObject("SELECT release_version FROM device_update_target WHERE device_id=?",String.class,w.old())).isEqualTo("test-release");
+        assertThat(root.queryForObject("SELECT release_version FROM device_update_target WHERE device_id=?",String.class,w.next())).isEqualTo("eigene-fassung");
         assertThat(root.queryForObject("SELECT lead_device_id FROM site WHERE id=?",UUID.class,w.site())).isEqualTo(w.next());
         var periods=root.queryForList("SELECT device_id,effective_from,effective_to FROM data_source_assignment WHERE data_source_id=? ORDER BY effective_from",w.source());
         assertThat(periods).hasSize(2);
@@ -135,7 +138,8 @@ class BoxTauschApiTest {
         order.verify(entities).clearRegistry(w.tenant(),w.site(),w.old());
         order.verify(entities).publishRegistry(eq(w.tenant()),eq(w.site()),eq(w.next()),any());
         verify(certification).publish(eq(w.tenant()),eq(w.site()),eq(w.next()),eq(true),any(),any());
-        verify(ota).publishTarget(eq(w.tenant()),eq(w.site()),eq(w.next()),any(),anyLong(),any(),any(),any(),any());
+        verify(ota).publishTarget(eq(w.tenant()),eq(w.site()),eq(w.next()),eq("eigene-fassung"),anyLong(),any(),any(),any(),any());
+        verify(ota,never()).publishTarget(any(),any(),any(),eq("test-release"),anyLong(),any(),any(),any(),any());
     }
 
     @Test void letzterSchrittFehlschlaegtAllesBleibtUndKeinTransport() {
@@ -256,6 +260,8 @@ class BoxTauschApiTest {
         root.update("INSERT INTO device_control_activation(device_id,activated_by) VALUES (?,'test')",old);
         long release=root.queryForObject("INSERT INTO edge_release(release_seq,version,target_commit,created_by,manifest,signature,signing_key_id) SELECT coalesce(max(release_seq),0)+1,?,'test','test','{}','test-signature','test-key' FROM edge_release RETURNING release_seq",Long.class,"test-"+UUID.randomUUID());
         root.update("INSERT INTO device_update_target(device_id,release_seq,release_version) VALUES (?,?,?)",old,release,"test-release");
+        // Die neue Box hat schon ihr eigenes Ziel (Automatik beim ersten Verbinden); es belegt sie nicht.
+        root.update("INSERT INTO device_update_target(device_id,release_seq,release_version,assigned_by) VALUES (?,?,?,'erstverbindung')",next,release,"eigene-fassung");
         root.update("INSERT INTO telemetry(time,tenant_id,site_id,device_id,power_kw) VALUES (now(),?,?,?,42)",t,s,old);
         when(selections.requireDevice(next)).thenReturn(new DeviceScope(t,s,next));
         return new Welt(t,s,old,next,q,entity);

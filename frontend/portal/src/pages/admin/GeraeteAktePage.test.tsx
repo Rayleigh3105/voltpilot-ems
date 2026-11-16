@@ -30,6 +30,7 @@ vi.mock('../../admin/adminApi', () => ({
     listDevices: (...a: unknown[]) => listDevices(...a),
     listPendingEnrollments: (...a: unknown[]) => listPendingEnrollments(...a),
     werkstattBoxen: (...a: unknown[]) => werkstattBoxen(...a),
+    werkstattErstesVerbinden: () => Promise.resolve(undefined),
     werkstattDienst: (...a: unknown[]) => werkstattDienst(...a),
     werkstattFreigaben: (...a: unknown[]) => werkstattFreigaben(...a),
     fernwartungProtokoll: (...a: unknown[]) => fernwartungProtokoll(...a),

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { Device } from '../api';
-import { DATENSPERRE_MS, UMSCHALT_LAENGER_MS, UMSCHALT_PRUEFEN_MS, UMSCHALT_SUPPORT_MS, wegLage } from './wegLage';
+import type { BoxSoftwareUpdate, Device } from '../api';
+import {
+  DATENSPERRE_MS, SOFTWARE_OBERGRENZE_MS, UMSCHALT_LAENGER_MS, UMSCHALT_PRUEFEN_MS, UMSCHALT_SUPPORT_MS,
+  UPDATE_UNGEFRAGT, wegLage,
+} from './wegLage';
 
 const T0 = new Date('2026-11-10T12:00:00Z');
 
@@ -127,5 +130,75 @@ describe('wegLage · Konzept vp-edge-light-wlan-s5 (E1=B): Verbindung und der We
     const lage = wegLage(box({ lastSeenAt: new Date(T0.getTime() + 60_000).toISOString(), linkKind: 'kabel' }), nach(60_000 + 6 * 60_000));
     expect(lage.stale).toBe(true);
     expect(lage.einrichtungshinweis).toBeNull();
+  });
+});
+
+describe('wegLage · Station „Software“ (Erstverbindung S2, E4 = B: der Weg wartet)', () => {
+  const online = () => box({ lastSeenAt: nach(170_000).toISOString() });
+  const jetzt = nach(180_000);
+  const update = (over: Partial<BoxSoftwareUpdate>): BoxSoftwareUpdate => ({
+    phase: 'laedt', release: 'edge-light-2026.11.13', seit: nach(120_000).toISOString(), fertigAm: null,
+    updateLaeuft: true, ...over,
+  });
+
+  it('kein Update fällig: sofort erledigt, Weiter wie heute', () => {
+    const lage = wegLage(online(), jetzt, update({ phase: 'keins', release: null, seit: null }));
+    expect(lage.stationen.software).toBe('done');
+    expect(lage.aktiv).toBe('anlage');
+    expect(lage.titel).toBe('Ihre Box ist online');
+    expect(lage.weiterFrei).toBe(true);
+    expect(wegLage(online(), jetzt, null).weiterFrei, 'älteres Backend hält niemanden fest').toBe(true);
+  });
+
+  it('noch nicht gefragt oder die Automatik entscheidet noch: warten, kein Weiter', () => {
+    for (const u of [UPDATE_UNGEFRAGT, update({ phase: 'prueft', release: null })]) {
+      const lage = wegLage(online(), jetzt, u);
+      expect(lage.aktiv).toBe('software');
+      expect(lage.stationen.anlage).toBe('dashed');
+      expect(lage.titel).toBe('Ihre Box sucht nach neuer Software');
+      expect(lage.weiterFrei).toBe(false);
+    }
+  });
+
+  it('Update läuft: Fortschritt mit Restzeit, Satz zum Neustart, kein Weiter - auch still im Neustart', () => {
+    const lage = wegLage(online(), jetzt, update({}));
+    expect(lage.aktiv).toBe('software');
+    expect(lage.stationen.software).toBe('active');
+    expect(lage.titel).toBe('Ihre Box holt die neueste Software');
+    expect(lage.satz).toBe('Bitte kurz warten. Ihre Box startet dabei einmal neu.');
+    expect(lage.chipText).toBe('Software · 1:00');
+    expect(lage.software).toEqual({ stand: 'laeuft', schritt: 'laden', anteil: 1 / 3, restText: 'noch etwa 2 Min.' });
+    expect(lage.weiterFrei).toBe(false);
+
+    const still = wegLage(box({ lastSeenAt: nach(60_000).toISOString() }), nach(500_000), update({ phase: 'startet_neu' }));
+    expect(still.online).toBe(false);
+    expect(still.aktiv).toBe('software');
+    expect(still.software?.schritt).toBe('neustart');
+    expect(still.software?.anteil).toBe(0.75);
+    expect(still.software?.restText).toBe('noch etwa 1 Min.');
+    expect(wegLage(online(), jetzt, update({ phase: 'prueft_box' })).software?.anteil).toBe(0.75);
+  });
+
+  it('fertig: auf dem neuesten Stand, Weiter erscheint', () => {
+    const lage = wegLage(online(), jetzt, update({ phase: 'fertig', fertigAm: jetzt.toISOString(), updateLaeuft: false }));
+    expect(lage.stationen.software).toBe('done');
+    expect(lage.titel).toBe('Ihre Box ist auf dem neuesten Stand');
+    expect(lage.weiterFrei).toBe(true);
+  });
+
+  it('zurückgenommen oder nicht zugewiesen: „kommt später“, ruhiger Satz, Weiter erscheint', () => {
+    const lage = wegLage(online(), jetzt, update({ phase: 'spaeter', updateLaeuft: false }));
+    expect(lage.stationen.software).toBe('spaeter');
+    expect(lage.titel).toBe('Ihre Box ist online');
+    expect(lage.satz).toBe('Die neue Software kommt später. Darum kümmern wir uns.');
+    expect(lage.weiterFrei).toBe(true);
+  });
+
+  it('Obergrenze 12 Minuten: läuft im Hintergrund weiter, Weiter erscheint', () => {
+    const spaet = nach(120_000 + SOFTWARE_OBERGRENZE_MS);
+    const lage = wegLage(box({ lastSeenAt: spaet.toISOString() }), spaet, update({ phase: 'startet_neu' }));
+    expect(lage.software?.stand).toBe('laenger');
+    expect(lage.titel).toBe('Das dauert länger als üblich');
+    expect(lage.weiterFrei).toBe(true);
   });
 });

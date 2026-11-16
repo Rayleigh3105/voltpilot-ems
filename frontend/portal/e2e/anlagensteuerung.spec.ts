@@ -119,6 +119,22 @@ for (const breite of BREITEN) {
     expect(fehler).toEqual([]);
   });
 
+  // Erstverbindung S2: holt die eben verbundene Box neue Software, sagt ihre Zeile das - mit Restzeit.
+  test(`Aufbau: die Box-Zeile während des Updates beim ersten Verbinden (${breite} px)`, async ({ page }) => {
+    const fehler = await oeffne(page, breite, 'fall=gore&flaeche=aufbau&update=laedt');
+    const box = page.locator('.vp-auf-t-zeile.is-box');
+    await expect(box.locator('.vp-auf-t-zustand')).toContainText('Holt neue Software');
+    await expect(box.locator('.vp-auf-t-zustand')).toContainText('noch etwa 1 Min.');
+    if (breite < 720) await expect(box.locator('.vp-auf-t-text')).toContainText('holt neue Software');
+    await ohneQuerlauf(page, breite);
+    const ordner = process.env.WEG_BILDER;
+    if (ordner) {
+      await box.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+      await page.screenshot({ path: `${ordner}/aufbau-update-${breite}.png`, animations: 'disabled' });
+    }
+    expect(fehler).toEqual([]);
+  });
+
   test(`Aufbau: zwei Steuerungen an einem Weg sind ein Gateway, ein Weg ohne Gerät ein offener Anschluss (${breite} px)`, async ({ page }) => {
     const fehler = await oeffne(page, breite, 'fall=gore&flaeche=aufbau&form=gateway');
     const gateway = page.locator('.vp-auf-t-zeile.is-gateway');

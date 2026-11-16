@@ -72,6 +72,9 @@ public class RolloutService {
     /** Der Akteur, unter dem der Wächter selbst handelt (nie ein Mensch). */
     public static final String SYSTEM_ACTOR = "system";
 
+    /** Der Bereich des Erstverbindungs-Schalters, der beide Linien hält. */
+    public static final String SCHALTER_ALLE = "alle";
+
     private final RolloutRepository rollouts;
     private final EdgeReleaseRepository releases;
     private final ObjectProvider<OtaTargetPublisher> publisher;
@@ -356,6 +359,153 @@ public class RolloutService {
         }
     }
 
+    // ── Erstverbindung: neueste Software beim ersten Verbinden ───────────
+
+    /**
+     * Ein Durchlauf der Automatik {@link Erstverbindung}: jede Box, die sich in
+     * den letzten {@link Erstverbindung#NACHLAUF} zum ersten Mal gemeldet hat,
+     * bekommt einmal ihr Urteil. Zugewiesen wird über {@link #createRollout} mit
+     * dem Urheber {@link Erstverbindung#URHEBER} - dieselben Prüfungen, dasselbe
+     * Journal, derselbe retained Weg wie „Aktualisieren" im Portal. Jedes andere
+     * Urteil außer „warten" steht einmal im Journal; danach ist die Box für die
+     * Regel erledigt.
+     *
+     * <p>Idempotent: eine entschiedene Box sieht die Regel nicht mehr an, eine
+     * wartende kostet nichts als einen Blick im nächsten Takt. Ein Fehler bei
+     * einer Box hält die übrigen nicht auf.
+     */
+    public void erstverbindung(Instant now) {
+        List<RolloutRepository.ErstmeldungRow> kandidaten = rollouts.erstmeldungenSeit(
+                now.minus(Erstverbindung.NACHLAUF), Erstverbindung.URHEBER);
+        if (kandidaten.stream().allMatch(k -> k.hatteZuweisung() || k.entschieden())) {
+            return;
+        }
+        Erstverbindung.Schalter schalter = erstverbindungSchalter();
+        // Die gemeinsame Regel (neuesteFassung), je Linie einmal je Takt; dazu das ganze Register für den Stand der Box.
+        Map<String, Optional<Erstverbindung.Neueste>> neuesteJeLinie = new HashMap<>();
+        List<EdgeReleaseDto> register = releases.findAll();
+        Map<UUID, RolloutRepository.FleetDeviceRow> fleet = fleetById();
+        for (RolloutRepository.ErstmeldungRow k : kandidaten) {
+            RolloutRepository.FleetDeviceRow d = fleet.get(k.deviceId());
+            if (d == null) {
+                continue;
+            }
+            String linie = boxArt(d);
+            String laeuft = reportedRunning(d);
+            EdgeReleaseDto ist = linie == null || laeuft == null ? null : register.stream()
+                    .filter(r -> linie.equals(releaseBoxArt(r)))
+                    .filter(r -> RolloutStates.releaseIsRunning(r.version(), laeuft))
+                    .max(java.util.Comparator.comparingLong(EdgeReleaseDto::releaseSeq)).orElse(null);
+            Erstverbindung.Neueste neueste = linie == null ? null : neuesteJeLinie
+                    .computeIfAbsent(linie, l -> neuesteFassung(l).map(f -> new Erstverbindung.Neueste(
+                            f.release().releaseSeq(), f.release().version(), f.nichtZuweisbar())))
+                    .orElse(null);
+            Erstverbindung.Urteil u = Erstverbindung.of(new Erstverbindung.Box(linie,
+                    vertrauenGekreuzt(d), d.loader(), ist == null ? null : ist.releaseSeq(),
+                    ist == null ? null : ist.version(), k.ersteMeldungAm(),
+                    k.hatteZuweisung(), k.entschieden(), beendete.beendet(d.tenantId())),
+                    neueste, schalter, now);
+            try {
+                erstverbindungAusfuehren(d, u);
+            } catch (Exception e) {
+                // Eine Box, an der die Zuweisung scheitert (ein Rennen mit dem
+                // Release-Lauf, ein Broker-Fehler), versucht es im nächsten Takt.
+                log.warn("Erstverbindung: Box {} im nächsten Takt erneut: {}", d.externalRef(),
+                        e.getMessage());
+            }
+        }
+    }
+
+    private void erstverbindungAusfuehren(RolloutRepository.FleetDeviceRow d,
+            Erstverbindung.Urteil u) {
+        String ereignis;
+        String detail;
+        switch (u.art()) {
+            case NICHTS, WARTEN -> {
+                return;
+            }
+            case ZUWEISEN -> {
+                createRollout(u.releaseSeq(), List.of(d.deviceId()), Erstverbindung.URHEBER);
+                log.info("Erstverbindung: Box {} bekommt {}", d.externalRef(), u.release());
+                return;
+            }
+            case AKTUELL -> {
+                ereignis = Erstverbindung.EREIGNIS_AKTUELL;
+                detail = u.release() == null ? reportedRunning(d) : u.release();
+            }
+            case GESPERRT -> {
+                ereignis = Erstverbindung.EREIGNIS_GESPERRT;
+                detail = u.grund();
+            }
+            case AUS -> {
+                ereignis = Erstverbindung.EREIGNIS_AUS;
+                detail = u.grund();
+            }
+            case AUFGEBEN -> {
+                ereignis = Erstverbindung.EREIGNIS_AUFGEGEBEN;
+                detail = u.grund();
+            }
+            default -> throw new IllegalStateException("unbekanntes Urteil " + u.art());
+        }
+        rollouts.appendEvent(Erstverbindung.URHEBER, ereignis, null, d.deviceId(), detail);
+    }
+
+    /**
+     * Der Beleg der Automatik für die Werkstatt-Seite einer Box (S3, E7 = A), über ihre Referenz.
+     *
+     * @param linie die Linie der Box laut Werkstatt-Register ({@link BoxArt#LIGHT} oder {@link BoxArt#DOCKER})
+     * @return {@code null}, wenn die Box verbunden ist, aber nicht von der Automatik aktualisiert wurde
+     */
+    public ErstverbindungBeleg.Beleg erstverbindungBeleg(String externalRef, String linie, Instant now) {
+        var row = rollouts.belegJeReferenz(externalRef, Erstverbindung.URHEBER, List.of(
+                Erstverbindung.EREIGNIS_AKTUELL, Erstverbindung.EREIGNIS_GESPERRT, Erstverbindung.EREIGNIS_AUS,
+                Erstverbindung.EREIGNIS_AUFGEGEBEN));
+        if (row.isEmpty()) {
+            String heute = neuesteFassung(linie).map(f -> f.release().version()).orElse(null);
+            return ErstverbindungBeleg.of(null, null, null, null, heute);
+        }
+        var r = row.get();
+        BoxUpdateSicht.Sicht sicht = BoxUpdateSicht.of(r.zielRelease() == null ? null
+                        : new BoxUpdateSicht.Ziel(r.zielRelease(), r.zielVon(), r.zielAm()), r.automatik(),
+                r.automatikDetail(), r.ersteMeldung(), r.gemeldet(), r.laeuftSeit(), now);
+        return ErstverbindungBeleg.of(sicht, r.automatik(), r.automatikDetail(),
+                r.gemeldet() == null ? null : r.gemeldet().reason(), null);
+    }
+
+    /** Der Schalter des Betriebs; ohne Eintrag an (ab Werk an). */
+    public Erstverbindung.Schalter erstverbindungSchalter() {
+        Map<String, Boolean> an = new HashMap<>();
+        for (RolloutRepository.SchalterRow s : rollouts.erstverbindungSchalter()) {
+            an.put(s.bereich(), s.an());
+        }
+        return new Erstverbindung.Schalter(an.getOrDefault(SCHALTER_ALLE, true),
+                an.getOrDefault(BoxArt.DOCKER, true), an.getOrDefault(BoxArt.LIGHT, true));
+    }
+
+    /** Die Einträge des Schalters mit Urheber und Zeit (für die Seite). */
+    public List<RolloutRepository.SchalterRow> erstverbindungSchalterEintraege() {
+        return rollouts.erstverbindungSchalter();
+    }
+
+    /**
+     * Den Schalter umlegen (nur Plattform-Admin, ohne Deploy). Jede Änderung
+     * steht im Journal mit dem Menschen, der sie gemacht hat.
+     *
+     * @throws ResponseStatusException 400 für einen unbekannten Bereich
+     */
+    public void setzeErstverbindungSchalter(String bereich, boolean an, String actor) {
+        if (!SCHALTER_ALLE.equals(bereich) && !BoxArt.DOCKER.equals(bereich)
+                && !BoxArt.LIGHT.equals(bereich)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannter Bereich: " + bereich + " (alle, docker, light).");
+        }
+        if (rollouts.setzeErstverbindungSchalter(bereich, an, actor)) {
+            rollouts.appendEvent(actor, Erstverbindung.EREIGNIS_SCHALTER, null, null,
+                    (SCHALTER_ALLE.equals(bereich) ? "alle Linien"
+                            : Erstverbindung.linieName(bereich)) + ": " + (an ? "an" : "aus"));
+        }
+    }
+
     /** Ein Endzustand, aus dem sich von selbst nichts mehr bewegt. */
     private static boolean isTerminalFailure(String state) {
         return RolloutStates.FEHLGESCHLAGEN.equals(state)
@@ -436,9 +586,12 @@ public class RolloutService {
         // Linie, mit derselben Regel wie die Kunden-Box-Seite (EdgeStandVerdict).
         List<EdgeVersionRepository.RegisterEntry> register = releaseDtos.stream()
                 .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(),
-                        r.boxArt()))
+                        r.boxArt(), r.signed()))
                 .toList();
         Map<String, Linie> perLine = new HashMap<>();
+        Map<UUID, RolloutRepository.AutomatikRow> automatik = rollouts.letzteAutomatik(Erstverbindung.URHEBER,
+                List.of(Erstverbindung.EREIGNIS_AKTUELL, Erstverbindung.EREIGNIS_GESPERRT, Erstverbindung.EREIGNIS_AUS,
+                        Erstverbindung.EREIGNIS_AUFGEGEBEN));
         for (RolloutRepository.FleetDeviceRow d : fleet) {
             RolloutRepository.TargetRow t = targets.get(d.deviceId());
             String assigned = t == null ? null : t.releaseVersion();
@@ -456,7 +609,9 @@ public class RolloutService {
                     rd == null ? null : rd.rolloutId(), trustDto(d), boxArt(d),
                     b.lebenszeichen(), b.linie(), b.stand(), b.stufe1(),
                     b.ist() == null ? null : b.ist().version(), b.dahinter(), d.currentSince(),
-                    fakten(t, d, now), d.geraetModell(), d.geraetArch(), d.loader(), d.loaderStand()));
+                    fakten(t, d, now), d.geraetModell(), d.geraetArch(), d.loader(), d.loaderStand(),
+                    automatik.containsKey(d.deviceId()) ? automatik.get(d.deviceId()).event() : null,
+                    automatik.containsKey(d.deviceId()) ? automatik.get(d.deviceId()).detail() : null));
 
             if (RolloutStates.UNBEKANNT.equals(v.state())) {
                 unknown++;
@@ -517,7 +672,9 @@ public class RolloutService {
         for (String art : List.of(BoxArt.DOCKER, BoxArt.LIGHT)) {
             List<EdgeUpdatesDto.ReleaseDto> derLinie = releases.stream()
                     .filter(r -> art.equals(r.boxArt())).toList();
-            EdgeUpdatesDto.ReleaseDto neuestes = derLinie.isEmpty() ? null : derLinie.get(0);
+            // „Neuestes" ist das neueste SIGNIERTE (N4): ein unsigniertes kann keine Box bekommen.
+            EdgeUpdatesDto.ReleaseDto neuestes = derLinie.stream().filter(EdgeUpdatesDto.ReleaseDto::signed)
+                    .findFirst().orElse(null);
             Linie l = perLine.getOrDefault(art, new Linie());
             if (neuestes == null && l.devices == 0) {
                 continue;
@@ -551,7 +708,7 @@ public class RolloutService {
                         .filter(r -> RolloutStates.releaseIsRunning(r.version(), running))
                         .findFirst().orElse(null);
         Integer dahinter = ist == null ? null : (int) register.stream()
-                .filter(r -> linie.equals(r.boxArt()) && r.releaseSeq() > ist.releaseSeq())
+                .filter(r -> linie.equals(r.boxArt()) && r.signiert() && r.releaseSeq() > ist.releaseSeq())
                 .count();
         String stand = LinienStand.of(linie, stufe1, v.state(),
                 RolloutStates.offline(lebenszeichen, now), urteil.upToDate());
@@ -738,7 +895,7 @@ public class RolloutService {
         List<RolloutRepository.FleetDeviceRow> fleet = rollouts.fleetDevices();
         List<EdgeVersionRepository.RegisterEntry> register = alle.stream()
                 .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(),
-                        releaseBoxArt(r)))
+                        releaseBoxArt(r), r.manifest() != null && r.signature() != null))
                 .toList();
         List<UUID> laeuftAuf = new ArrayList<>();
         int boxenDerLinie = 0;

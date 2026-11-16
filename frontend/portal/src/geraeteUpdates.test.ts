@@ -206,6 +206,52 @@ describe('Fehlgeschlagen', () => {
   });
 });
 
+describe('Erstverbindung S3: die Automatik beim ersten Verbinden in „Braucht dich“', () => {
+  const zurueck = box('Zuhause', 'light', {
+    ist: 'edge-light-2026.11.0-c39b18d9c2a4', istRelease: 'edge-light-2026.11.0', releasesDahinter: 1, stand: 'fehler',
+    state: 'zurueckgerollt',
+    fakten: {
+      ...fakten({ release: R.l114, bestaetigt: 'zurueckgenommen', bestaetigtAm: vor(10 * MIN), grund: 'zu wenig freier Speicher zum Entpacken' }),
+      angefragt: { release: R.l114.version, releaseSeq: R.l114.releaseSeq, am: vor(14 * MIN), von: 'erstverbindung' },
+    },
+  });
+  const aufgegeben = box('Seewiesen', 'light', {
+    ist: 'edge-light-2026.11.0-c39b18d9c2a4', istRelease: 'edge-light-2026.11.0', releasesDahinter: 1, stand: 'aelter',
+    automatik: 'erstverbindung_aufgegeben',
+    automatikGrund: 'Die erste Stunde nach der ersten Meldung ist verstrichen, bevor zugewiesen werden konnte.',
+  });
+
+  it('ein Fehlschlag der Automatik sagt „beim ersten Verbinden“ schon im Titel', () => {
+    const [a] = aufgaben(daten([zurueck]), NOW);
+    expect(a.titel).toBe('Zuhause: Update beim ersten Verbinden zurückgenommen');
+    expect(text(a.text)).toContain('(zu wenig freier Speicher zum Entpacken)');
+    expect(a.knoepfe).toEqual(['box', 'nochmal']);
+  });
+
+  it('nicht zugewiesen: der Grund der Automatik, die laufende Fassung und was zu tun ist', () => {
+    const [a] = aufgaben(daten([aufgegeben]), NOW);
+    expect(a.titel).toBe('Seewiesen: beim ersten Verbinden nicht aktualisiert');
+    expect(text(a.text)).toBe('Die erste Stunde nach der ersten Meldung ist verstrichen, bevor zugewiesen werden konnte.'
+      + ' Die Box läuft auf edge-light-2026.11.0. Die neueste Fassung kannst du ihr von Hand zuweisen.');
+    expect(boxZeile(aufgegeben, NOW).brauchtDich).toBe(true);
+    // Hat seitdem jemand von Hand zugewiesen, trägt die Box eine Anfrage - dann ist das erledigt.
+    const vonHand = { ...aufgegeben, fakten: fakten({ release: R.l114 }) };
+    expect(aufgaben(daten([vonHand]), NOW).map((x) => x.id)).not.toContain(`automatik-${aufgegeben.deviceId}`);
+  });
+
+  it('der Verlauf nennt das Wort der Automatik', () => {
+    const z = verlaufSicht([
+      { am: vor(5 * MIN), quelle: 'portal', art: 'automatik_nicht', release: null, vorher: null,
+        grund: 'Release für Edge Light – diese Box hat Stufe 1', von: 'erstverbindung', rolloutId: null },
+      { am: vor(6 * MIN), quelle: 'portal', art: 'automatik_aktuell', release: 'edge-light-2026.11.4', vorher: null,
+        grund: null, von: 'erstverbindung', rolloutId: null },
+    ] as VerlaufEintrag[], NOW);
+    expect(text(z[0].titel)).toBe('beim ersten Verbinden nicht aktualisiert: Release für Edge Light – diese Box hat Stufe 1');
+    expect(z[0].text).toBe('von Automatik · erstes Verbinden');
+    expect(text(z[1].titel)).toBe('beim ersten Verbinden schon aktuell: edge-light-2026.11.4');
+  });
+});
+
 describe('Box offline', () => {
   const lager = box('Ahrenberg Lager', 'docker', {
     ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7', releasesDahinter: 1, stand: 'offline',

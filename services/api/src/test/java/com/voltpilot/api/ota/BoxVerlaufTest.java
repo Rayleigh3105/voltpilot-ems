@@ -66,6 +66,22 @@ class BoxVerlaufTest {
     }
 
     @Test
+    @DisplayName("die Automatik beim ersten Verbinden: aktuell mit Stand, sonst mit Grund")
+    void automatik() {
+        assertThat(BoxVerlauf.of(portal(Erstverbindung.EREIGNIS_AKTUELL, "edge-light-2026.11.13")))
+                .extracting(BoxVerlauf.Eintrag::art, BoxVerlauf.Eintrag::release, BoxVerlauf.Eintrag::rolloutId)
+                .containsExactly(BoxVerlauf.AUTOMATIK_AKTUELL, "edge-light-2026.11.13", null);
+        for (String ereignis : java.util.List.of(Erstverbindung.EREIGNIS_GESPERRT, Erstverbindung.EREIGNIS_AUS,
+                Erstverbindung.EREIGNIS_AUFGEGEBEN)) {
+            assertThat(BoxVerlauf.of(portal(ereignis, BoxArt.GRUND_LIGHT_STUFE_1)))
+                    .extracting(BoxVerlauf.Eintrag::art, BoxVerlauf.Eintrag::release, BoxVerlauf.Eintrag::grund)
+                    .containsExactly(BoxVerlauf.AUTOMATIK_NICHT, null, BoxArt.GRUND_LIGHT_STUFE_1);
+        }
+        assertThat(BoxVerlauf.of(portal(Erstverbindung.EREIGNIS_SCHALTER, "Edge Light: aus")))
+                .as("der Schalter ist kein Ereignis einer Box").isNull();
+    }
+
+    @Test
     @DisplayName("ein unbekanntes Wort wird ausgelassen, nie geraten")
     void unbekannt() {
         assertThat(BoxVerlauf.of(box("urteil", "vielleicht", null, "x", null))).isNull();
