@@ -44,7 +44,7 @@ public final class ErstverbindungBeleg {
      * @param automatik       das letzte Ereignis der Automatik ohne die Zuweisung, {@code null} = keines
      * @param automatikDetail sein Detail (Fassung bei „aktuell", sonst der Grund)
      * @param boxGrund        der Grund, den die Box zu ihrem Update meldet
-     * @param heute           die neueste Fassung der Linie heute ({@link NeuesteFassung}), {@code null} = keine
+     * @param heute           die neueste Fassung der Linie heute ({@link RolloutService#neuesteFassung}), {@code null} = keine
      */
     public static Beleg of(BoxUpdateSicht.Sicht sicht, String automatik, String automatikDetail, String boxGrund,
             String heute) {
