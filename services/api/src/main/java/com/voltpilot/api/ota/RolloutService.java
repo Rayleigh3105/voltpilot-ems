@@ -381,7 +381,7 @@ public class RolloutService {
             return;
         }
         Erstverbindung.Schalter schalter = erstverbindungSchalter();
-        List<Erstverbindung.Release> register = erstverbindungRegister();
+        List<NeuesteFassung.Release> register = register();
         Map<UUID, RolloutRepository.FleetDeviceRow> fleet = fleetById();
         for (RolloutRepository.ErstmeldungRow k : kandidaten) {
             RolloutRepository.FleetDeviceRow d = fleet.get(k.deviceId());
@@ -438,11 +438,22 @@ public class RolloutService {
     }
 
     /**
-     * Das Register für die Regel: jedes Release mit Box-Art und „signiert"; ob ein
-     * signiertes Edge-Light-Release schon zuweisbar ist (Programme im Portal),
-     * wird nur für das neueste je Linie gefragt - nur das kann die Regel wählen.
+     * Die neueste Fassung einer Linie, die eine Box heute bekommen kann
+     * ({@link NeuesteFassung}) - für jeden Weg, der „immer die neueste" meint.
+     *
+     * @param linie {@link BoxArt#DOCKER} oder {@link BoxArt#LIGHT}
      */
-    private List<Erstverbindung.Release> erstverbindungRegister() {
+    public NeuesteFassung.Urteil neuesteZuweisbare(String linie) {
+        return NeuesteFassung.of(register(), linie);
+    }
+
+    /**
+     * Das Register für {@link NeuesteFassung}: jedes Release mit Linie und
+     * „signiert"; ob ein signiertes Release schon zuweisbar ist (Edge Light:
+     * Programme im Portal), wird nur für das neueste je Linie gefragt - nur das
+     * kann die Regel wählen.
+     */
+    public List<NeuesteFassung.Release> register() {
         List<EdgeReleaseDto> alle = releases.findAll();
         Map<String, Long> neuesteJeLinie = new HashMap<>();
         for (EdgeReleaseDto r : alle) {
@@ -450,7 +461,7 @@ public class RolloutService {
                 neuesteJeLinie.merge(releaseBoxArt(r), r.releaseSeq(), Math::max);
             }
         }
-        List<Erstverbindung.Release> register = new ArrayList<>();
+        List<NeuesteFassung.Release> register = new ArrayList<>();
         for (EdgeReleaseDto r : alle) {
             String art = releaseBoxArt(r);
             boolean signiert = r.manifest() != null && r.signature() != null;
@@ -462,7 +473,7 @@ public class RolloutService {
                     nichtZuweisbar = e.getReason();
                 }
             }
-            register.add(new Erstverbindung.Release(r.releaseSeq(), r.version(), art, signiert,
+            register.add(new NeuesteFassung.Release(r.releaseSeq(), r.version(), art, signiert,
                     nichtZuweisbar));
         }
         return register;

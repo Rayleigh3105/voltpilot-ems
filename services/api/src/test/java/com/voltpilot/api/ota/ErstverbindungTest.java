@@ -22,15 +22,15 @@ class ErstverbindungTest {
                     + "liegen noch nicht vollstaendig im Portal.";
 
     /** Das Register wie am 16.11.2026: Edge Light 2026.11.10 bis 2026.11.13, dazu Docker. */
-    private static final List<Erstverbindung.Release> REGISTER = List.of(
+    private static final List<NeuesteFassung.Release> REGISTER = List.of(
             light(61, "edge-light-2026.11.10"),
             light(62, "edge-light-2026.11.11"),
-            new Erstverbindung.Release(63, "edge-2026.11.2", BoxArt.DOCKER, true, null),
+            new NeuesteFassung.Release(63, "edge-2026.11.2", BoxArt.DOCKER, true, null),
             light(64, "edge-light-2026.11.12"),
             light(65, "edge-light-2026.11.13"));
 
-    private static Erstverbindung.Release light(long seq, String version) {
-        return new Erstverbindung.Release(seq, version, BoxArt.LIGHT, true, null);
+    private static NeuesteFassung.Release light(long seq, String version) {
+        return new NeuesteFassung.Release(seq, version, BoxArt.LIGHT, true, null);
     }
 
     /** edge-cyhchfr: Mango aus der Werkstatt, 2026.11.10, Vertrauen gekreuzt, Loader kennt Updates. */
@@ -97,7 +97,7 @@ class ErstverbindungTest {
                 ERSTE_MELDUNG, false, false, false);
         assertThat(Erstverbindung.of(docker, nurLight, Erstverbindung.Schalter.AN, JETZT))
                 .isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.GESPERRT, null, null,
-                        Erstverbindung.GRUND_KEINE_FASSUNG));
+                        NeuesteFassung.GRUND_KEINE_FASSUNG));
         assertThat(urteil(mango()).release()).as("die neuere Docker-Fassung zählt für Edge Light nicht")
                 .startsWith(BoxArt.LIGHT_STAMP_PREFIX);
     }
@@ -110,7 +110,7 @@ class ErstverbindungTest {
         assertThat(urteil(aktuell)).isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.AKTUELL, 65L,
                 "edge-light-2026.11.13", null));
         var neuer = List.of(light(61, "edge-light-2026.11.10"),
-                new Erstverbindung.Release(66, "edge-light-2026.11.14", BoxArt.LIGHT, false, null));
+                new NeuesteFassung.Release(66, "edge-light-2026.11.14", BoxArt.LIGHT, false, null));
         var aufNeuer = new Erstverbindung.Box(BoxArt.LIGHT, true, "update", "edge-light-2026.11.14",
                 ERSTE_MELDUNG, false, false, false);
         assertThat(Erstverbindung.of(aufNeuer, neuer, Erstverbindung.Schalter.AN, JETZT).art())
@@ -121,7 +121,7 @@ class ErstverbindungTest {
     @DisplayName("N4: ein unsigniertes Release ist nie die neueste Fassung")
     void unsigniertZaehltNicht() {
         var mitUnsigniert = new java.util.ArrayList<>(REGISTER);
-        mitUnsigniert.add(new Erstverbindung.Release(66, "edge-light-2026.11.14", BoxArt.LIGHT, false, null));
+        mitUnsigniert.add(new NeuesteFassung.Release(66, "edge-light-2026.11.14", BoxArt.LIGHT, false, null));
         assertThat(Erstverbindung.of(mango(), mitUnsigniert, Erstverbindung.Schalter.AN, JETZT).release())
                 .isEqualTo("edge-light-2026.11.13");
     }
@@ -130,7 +130,7 @@ class ErstverbindungTest {
     @DisplayName("neuestes noch nicht zuweisbar: warten statt der vorigen Fassung, nach einer Stunde aufgeben")
     void neuestesNochNichtZuweisbar() {
         var mitUpload = new java.util.ArrayList<>(REGISTER);
-        mitUpload.add(new Erstverbindung.Release(66, "edge-light-2026.11.14", BoxArt.LIGHT, true,
+        mitUpload.add(new NeuesteFassung.Release(66, "edge-light-2026.11.14", BoxArt.LIGHT, true,
                 PROGRAMME_FEHLEN));
         assertThat(Erstverbindung.of(mango(), mitUpload, Erstverbindung.Schalter.AN, JETZT))
                 .isEqualTo(new Erstverbindung.Urteil(Erstverbindung.Art.WARTEN, null, null, PROGRAMME_FEHLEN));
