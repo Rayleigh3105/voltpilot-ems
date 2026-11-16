@@ -1,3 +1,5 @@
+import type { BoxSoftwareUpdate } from '../api';
+import { softwareZeile } from '../boxweg/boxSoftware';
 import { Recht } from './Recht';
 import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -108,6 +110,8 @@ export interface AufbauTabelleProps {
    * über der Tabelle nennt die aufgeklappte Anlage beim Namen — „an dieser Anlage“ wäre hier mehrdeutig.
    */
   standortSicht?: { wechselHref: (anlageId: string) => string; anlageName?: string } | null;
+  /** Erstverbindung S2: das Update frisch verbundener Boxen (`useBoxSoftware`), je Box-ID. */
+  softwareJeBox?: ReadonlyMap<string, BoxSoftwareUpdate>;
   wurzel: AufbauWurzel | null;
   /** F16 (Anlage-Flow a1): „Adresse nachtragen“ direkt an der Standort-Zeile, wenn sie fehlt. */
   onAdresseNachtragen?: () => void;
@@ -530,6 +534,8 @@ function BoxZeile({
 }) {
   const b = z.box;
   const aktuell = z.anlage.aktuell;
+  // Erstverbindung S2: holt die Box gerade neue Software, sagt die Zeile das statt ihres Zustands.
+  const software = softwareZeile(p.softwareJeBox?.get(b.id), new Date());
   return (
     <div className={`vp-auf-t-zeile is-box${ebeneKlasse(1)}`} role="row" style={ebene(1)}>
       <span role="cell" className="vp-auf-t-name">
@@ -537,7 +543,7 @@ function BoxZeile({
         <AufbauSymbol kategorie="navy" icon="wifi" />
         <span className="vp-auf-t-text">
           <span className="vp-auf-t-titel">
-            <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[b.ton]}`} />
+            <span className={`vp-health-dot vp-auf-nur-mobil ${software ? 'is-software' : TON_PUNKT[b.ton]}`} />
             <a className="vp-auf-t-kuerze" href={b.href}>
               <Treffer text={b.name} begriffe={begriffe} />
             </a>
@@ -550,6 +556,7 @@ function BoxZeile({
             {' · '}
             {kastenSatz(b.geraete, b.wege)}
             {b.last && ` · ${b.last}`}
+            {software && <span className="vp-auf-nur-mobil"> · holt neue Software</span>}
           </small>
         </span>
       </span>
@@ -557,9 +564,21 @@ function BoxZeile({
         VoltPilot-Box
       </span>
       <span role="cell" className="vp-auf-t-zustand">
-        <span className={`vp-health-dot ${TON_PUNKT[b.ton]}`} />
-        <span className="w">{gross(b.zustandWort)}</span>
-        {b.zustandZeit && <small>{b.zustandZeit}</small>}
+        {software ? (
+          <>
+            <span className="vp-ustate vp-ustate-busy vp-auf-t-software" aria-hidden="true">
+              <span className="vp-ustate-dot" />
+            </span>
+            <span className="w">{software.wort}</span>
+            {software.zeit && <small>{software.zeit}</small>}
+          </>
+        ) : (
+          <>
+            <span className={`vp-health-dot ${TON_PUNKT[b.ton]}`} />
+            <span className="w">{gross(b.zustandWort)}</span>
+            {b.zustandZeit && <small>{b.zustandZeit}</small>}
+          </>
+        )}
       </span>
       <span role="cell" className="vp-auf-t-aktion is-breit">
         {aktuell && p.onGeraetHinzufuegen && (

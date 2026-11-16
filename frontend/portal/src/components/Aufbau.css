@@ -846,6 +846,14 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   color: var(--vp-text-dark);
   font-weight: var(--vp-weight-semibold);
 }
+/* Erstverbindung S2: „Holt neue Software“ - der pulsierende Punkt des Hauses an der Stelle des Zustandspunkts;
+   am Handy (ohne Zustandsspalte) der Punkt vor dem Namen in derselben Farbe. */
+.vp-auf-t-zustand .vp-auf-t-software {
+  padding: 3px 6px;
+}
+.vp-health-dot.is-software {
+  background: var(--vp-action);
+}
 .vp-auf-t-zustand small {
   grid-column: 2;
   font-size: var(--vp-text-meta);
