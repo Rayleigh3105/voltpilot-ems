@@ -68,7 +68,7 @@ const (
 // Signals are the words of the Steuerlogik word list (steuerlogik-woerter.json,
 // table "signal") a channel may carry: a logic reads <entity>.<signal>.
 var Signals = []string{"temperature", "room_temperature", "open", "door_open", "defrost", "fault", "running",
-	"humidity", "outdoor_temperature", "supply_temperature", "return_temperature"}
+	"humidity", "outdoor_temperature", "supply_temperature", "return_temperature", "power"}
 
 // BoolSignals are read as yes/no: a bit, a coil or a discrete input.
 var BoolSignals = map[string]bool{"open": true, "door_open": true, "defrost": true, "fault": true, "running": true}
