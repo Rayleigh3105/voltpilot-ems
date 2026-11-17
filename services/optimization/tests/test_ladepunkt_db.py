@@ -26,6 +26,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from wegwerf_netz import postgres_netz
 
 psycopg = pytest.importorskip("psycopg")
 
@@ -68,17 +69,15 @@ def _docker_bereit() -> bool:
 def dsn():
     if not _docker_bereit():
         pytest.skip("Docker fehlt: kein Wegwerf-Postgres")
+    netz = postgres_netz()
     name = f"vp-ladepunkt-db-{uuid.uuid4().hex[:8]}"
     subprocess.run(
         ["docker", "run", "-d", "--rm", "--name", name,
-         "-e", "POSTGRES_PASSWORD=pw", "-p", "127.0.0.1::5432", IMAGE],
+         "-e", "POSTGRES_PASSWORD=pw", *netz.argumente, IMAGE],
         check=True, capture_output=True,
     )
     try:
-        port = subprocess.run(
-            ["docker", "port", name, "5432/tcp"],
-            check=True, capture_output=True, text=True,
-        ).stdout.split()[0].rsplit(":", 1)[1]
+        port = netz.port(name)
         url = (f"host=127.0.0.1 port={port} user=postgres password=pw "
                "dbname=postgres connect_timeout=2")
         frist = time.monotonic() + 90
@@ -95,7 +94,9 @@ def dsn():
             conn.execute(DDL)
         yield url
     finally:
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        # -v: `docker rm -f` nimmt beim --rm-Container sonst dessen anonymes
+        # Datenvolumen nicht mit, und jeder Lauf liesse es auf dem Runner liegen.
+        subprocess.run(["docker", "rm", "-f", "-v", name], capture_output=True)
 
 
 def _verbraucher(dsn, site, *, entity_type, edge_source_id=None, saeule_an=None):

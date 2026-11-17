@@ -75,10 +75,14 @@ jobs:
             pip_install: "-e '.[dev]'"
           # ml = xgboost/numpy, damit die Shadow-Challenger-Tests (test_ml.py)
           # laufen statt zu skippen; der Ubuntu-Runner bringt libgomp mit.
+          # db = psycopg, damit test_kundenbereich_db.py gegen seinen Wegwerf-
+          # Postgres laeuft statt sich zu ueberspringen (bis 17.11.2026 fehlte
+          # die Extra: der Test lief hier nie, und "in forecast gruen" bewies
+          # darum nichts ueber den Docker-Weg von optimization).
           - name: forecast
             type: python
             path: services/forecast
-            pip_install: "-e '.[dev,ml]'"
+            pip_install: "-e '.[dev,ml,db]'"
           # solver = das HiGHS-Wheel (fuer die verhaltensechten MILP-Tests);
           # ../forecast = der Geschwister-Pfad fuer den Persistenz-Fallback.
           # -m 'not slow' entspricht dem CI-Kurzlauf aus docs/development.md.
@@ -155,25 +159,24 @@ jobs:
           pip install ${{ matrix.pip_install }}
           pytest ${{ matrix.pytest_args }}
 
-      # Diagnose fuer optimization (Lauf 554/557/560: die vier `docker run`-
-      # Wegwerf-Postgres-Fixtures - test_kundenbereich_db.py,
-      # test_ladepunkt_db.py, test_morgen_ueberschuss_db.py,
-      # test_vorsprung_budget_db.py - erhalten nach dem 90-s-Bereitschafts-
-      # Fenster durchgaengig "Connection refused", obwohl `docker run` selbst
-      # ohne Fehler zurueckkehrt und derselbe Aufbau in forecasts
-      # test_kundenbereich_db.py auf demselben Runner gruen ist. `optimization`
-      # lief als eine der letzten Matrixzeilen, nach api-*/forecast/
-      # frontend/ingest/market-data/marketing-adapter auf demselben Runner
-      # (sequentiell, keine zwei Matrixzeilen gleichzeitig) - Verdacht:
-      # Plattenplatz/Docker-Zustand nach den vorherigen, teils Testcontainers-
-      # schweren Zeilen. Seither laeuft sie im Job `kurz` VOR den api-Teilen.
-      # BESTAETIGT in Lauf 582 (dieser Diagnose-Schritt):
-      # Overlay-Dateisystem bei 99 % (1.7 GB frei von 122 GB), 39 GB davon
-      # reclaimable Docker-Images von VOELLIG ANDEREN Projekten auf diesem
-      # geteilten Runner (kulisso, bookflow, immo-calc, ...). Gibt weiterhin
-      # nur aus, loest nichts auf: das Aufraeumen eines geteilten Runners ist
-      # keine Aenderung an diesem Repo und nicht Sache einer einzelnen Lane -
-      # Befund im PR-Text an den Betreiber des Runners.
+      # Diagnose fuer optimization. Die vier `docker run`-Wegwerf-Postgres-
+      # Fixtures (test_kundenbereich_db.py, test_ladepunkt_db.py,
+      # test_morgen_ueberschuss_db.py, test_vorsprung_budget_db.py) erhielten
+      # nach dem 90-s-Bereitschaftsfenster "Connection refused" - in JEDEM
+      # Nachtlauf von 554 bis 611, egal an welcher Stelle die Zeile lief. Die
+      # Ursache war nicht die Platte, sondern der Weg: der Job laeuft selbst in
+      # einem Container am Socket des Wirts, `-p 127.0.0.1::5432` legt den Port
+      # auf die Loopback des WIRTS, und 127.0.0.1 im Job ist der Job selbst
+      # (nachgestellt mit einem Job-Container im eigenen Docker-Netz; dieselbe
+      # Klasse wie die Portal-Rauchtests). Seit 17.11.2026 kommt der Postgres im
+      # Container in den Netz-Namensraum des Jobs (tests/wegwerf_netz.py). Der
+      # Vergleich mit forecast trug nie: dort fehlte die Extra `db`, der Test
+      # uebersprang sich. Davon getrennt und weiter wahr: in Lauf 582 zeigte
+      # dieser Schritt das Overlay-Dateisystem bei 99 % (1.7 GB frei von
+      # 122 GB), 39 GB reclaimable Images anderer Projekte auf diesem geteilten
+      # Runner (kulisso, bookflow, immo-calc, ...). Gibt nur aus, loest nichts
+      # auf: das Aufraeumen eines geteilten Runners ist keine Aenderung an
+      # diesem Repo und nicht Sache einer einzelnen Lane.
       - name: "Diagnose (optimization): Runner-, Docker- und Plattenzustand"
         if: always() && matrix.name == 'optimization'
         run: |
