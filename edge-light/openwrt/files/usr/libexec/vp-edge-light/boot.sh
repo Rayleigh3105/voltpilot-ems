@@ -50,7 +50,7 @@
 # Aenderung an boot.sh oder dem Init-Skript den Stand erhoehen und den Verlauf
 # in loaderstand/stand-verlauf fortschreiben - ohne neuen Stand erreicht die
 # Aenderung keine Box im Feld. Kein Stand (alte Loader) zaehlt als 0.
-LOADER_STAND=1
+LOADER_STAND=2
 
 log() { logger -t vp-edge-light "$*"; echo "vp-edge-light: $*" >&2; }
 log "Loader Stand $LOADER_STAND"
@@ -65,7 +65,7 @@ config_get WEB_ADDR main web_addr ":8484"
 config_get BUS_ADDR main bus_addr "127.0.0.1:1883"
 config_get MEMLIMIT main gomemlimit "48MiB"
 config_get MIN_FREE_KB main min_free_kb "40000"
-config_get PROZESS_RESERVE_KB main prozess_reserve_kb "20000"
+config_get PROZESS_RESERVE_KB main prozess_reserve_kb "12000"
 config_get LOCAL_DIR main local_dir "/usr/share/vp-edge-light"
 # Wache der Probe (dieselben Zahlen wie die Docker-Box): Frist in s, Starts,
 # Probestart-Frist in s, Takt der Wache in s.
@@ -143,19 +143,30 @@ mkdir -p "$OTA_FEST" "$OTA_RAM" || exit 1
 #
 # Die Schwelle ist seit dem Tausch-Vorfall an der Box "Zuhause" (11.2026, knapp
 # unter 40 000 kB auch nach dem Raeumen) der TATSAECHLICHE Bedarf der Fassung:
-# Groesse des entpackten Programms (tmpfs) plus PROZESS_RESERVE_KB fuer
-# Prozess und Entpacken (gemessene VmRSS 16-18 MB plus ~2 MB, mango.md
-# "Speicherbudget"). So gelingt der Tausch auf jeder Box, die das laufende
-# Programm halten kann - und eine gewachsene Fassung wird ehrlich verweigert,
-# auch wenn mehr als die alte Pauschale frei ist. Nur wenn die Groesse
-# unbekannt ist (Pruefsummen-Datei ohne groesse-Zeile), gilt die Pauschale
-# MIN_FREE_KB wie bisher.
+# Groesse des entpackten Programms (tmpfs) plus PROZESS_RESERVE_KB fuer den
+# privaten Speicher des Prozesses und das Entpacken. Seit Stand 2 sind das
+# 12 000 kB statt 20 000: die 20 000 kamen aus der VmRSS, und die zaehlt die
+# Seiten der Programmdatei im tmpfs mit, die schon in der Groesse stecken
+# (ASP 17.11.2026 mit Messgeraeten: VmRSS 23 364 kB, AnonPages ALLER Prozesse
+# 12 624 kB; mango.md "Speicherbudget"). Die Reserve des Kernels zaehlt
+# MemAvailable ohnehin nie mit. Die UCI-Option prozess_reserve_kb
+# uebersteuert die Vorgabe.
+# MemAvailable ist schon um das gemindert, was sonst im tmpfs liegt, beim
+# Tausch also um die Lieferung (kandidat.gz) und den Messwert-Puffer. Auch
+# eine Box, die das laufende Programm haelt, kann den Tausch deshalb
+# verweigern (ASP mit Stand 1: 36 744 kB < 37 024 kB); dann nimmt der Loader
+# zurueck und die bestaetigte Fassung startet. Eine gewachsene Fassung wird
+# ehrlich verweigert, auch wenn mehr als die alte Pauschale frei ist. Nur wenn
+# die Groesse unbekannt ist (Pruefsummen-Datei ohne groesse-Zeile), gilt die
+# Pauschale MIN_FREE_KB wie bisher; Loader vor der Bedarfs-Schwelle kennen nur
+# sie.
 
 free_kb() { awk '/^MemAvailable:/ {print $2; exit}' "$PROC/meminfo"; }
 
 # bedarf_kb <groesse_bytes> - was Entpacken und Start dieser Fassung brauchen:
-# das entpackte Programm liegt im tmpfs, dazu Prozess und Entpacken
-# (PROZESS_RESERVE_KB). Ohne bekannte Groesse gilt die Pauschale MIN_FREE_KB.
+# das entpackte Programm liegt im tmpfs, dazu der private Speicher des
+# Prozesses und das Entpacken (PROZESS_RESERVE_KB). Ohne bekannte Groesse gilt
+# die Pauschale MIN_FREE_KB.
 bedarf_kb() {
   case "${1:-}" in
     '' | *[!0-9]* | 0) echo "$MIN_FREE_KB" ;;
@@ -165,11 +176,20 @@ bedarf_kb() {
 
 # genug_speicher <Folge> [schwelle_kb] - 0, wenn das Programm Platz hat (oder
 # der Wert unbekannt ist); sonst Meldung "zu wenig freier Speicher ... -
-# <Folge>". Ohne zweite Angabe gilt die Pauschale MIN_FREE_KB.
+# <Folge>". Ohne zweite Angabe gilt die Pauschale MIN_FREE_KB. Beide Wege
+# nennen den gemessenen Wert; daraus wird das Budget der Groessen-Leitplanke
+# (edge-light/scripts/groessen-gate.sh) am Geraet nachgemessen.
+# Direkt nach dem Raeumen zeigt MemAvailable eher zu wenig (ASP 17.11.2026:
+# mindestens 6,5 MB, die Sekunden spaeter frei waren; die Ursache ist am
+# Geraet nicht gemessen). Die Messung bleibt bewusst so - der Fehler liegt
+# auf der sicheren Seite.
 genug_speicher() {
   schwelle="${2:-$MIN_FREE_KB}"
   avail="$(free_kb)"
-  if [ -z "$avail" ] || [ "$avail" -ge "$schwelle" ]; then return 0; fi
+  if [ -z "$avail" ] || [ "$avail" -ge "$schwelle" ]; then
+    [ -n "$avail" ] && log "genug freier Speicher (${avail} kB >= ${schwelle} kB)"
+    return 0
+  fi
   sync
   if { echo 1 >"$PROC/sys/vm/drop_caches"; } 2>/dev/null; then
     vorher="$avail"
@@ -181,7 +201,10 @@ genug_speicher() {
       sleep 1
     done
     log "Seitencache geraeumt: ${vorher} kB -> ${avail} kB verfuegbar"
-    if [ -z "$avail" ] || [ "$avail" -ge "$schwelle" ]; then return 0; fi
+    if [ -z "$avail" ] || [ "$avail" -ge "$schwelle" ]; then
+      [ -n "$avail" ] && log "genug freier Speicher (${avail} kB >= ${schwelle} kB)"
+      return 0
+    fi
   else
     log "Seitencache nicht raeumbar ($PROC/sys/vm/drop_caches)"
   fi

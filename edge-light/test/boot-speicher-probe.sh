@@ -24,6 +24,11 @@
 #      ohne den Seitencache anzufassen (die Pauschale 40 000 haette verweigert)
 #   7. groesse-Zeile einer GEWACHSENEN Fassung: ehrlich verweigert, obwohl
 #      mehr frei ist als die alte Pauschale
+#   8. Rueckweg an einer Box wie ASP mit 23 MB Puffer (Fassung 11.13): Stand 2
+#      entpackt die bestaetigte Fassung (Bedarf 28 832 kB); Stand 1 (20 000 kB)
+#      stand hier ohne Programm da
+#   9. uci prozess_reserve_kb uebersteuert die Vorgabe: mit 20 000 kB
+#      dieselbe Ablehnung wie Stand 1
 #
 #   edge-light/test/boot-speicher-probe.sh
 #   VPBS_LOADER=<pfad>/boot.sh ...   Gegenprobe mit einem anderen Stand
@@ -95,6 +100,10 @@ cp "/probe/srv/${1##*/}" "$ziel"
 EOF
 chmod +x /probe/bin/uclient-fetch'
 if x '[ "$(uci get vp-edge-light.main.min_free_kb)" = 40000 ]'; then ok "Vorgabe min_free_kb = 40000 (Schwelle nicht gesenkt)"; else falsch "Vorgabe min_free_kb = 40000"; fi
+# Die Vorlage setzt prozess_reserve_kb nicht: sonst haelt jede neu
+# eingerichtete Box eine feste Zahl, und eine neue Vorgabe im Loader (der
+# ueber den Update-Weg kommt) erreichte sie nie.
+if x '[ -z "$(uci -q get vp-edge-light.main.prozess_reserve_kb)" ]'; then ok "Vorlage setzt prozess_reserve_kb nicht (Vorgabe aus dem Loader)"; else falsch "Vorlage setzt prozess_reserve_kb nicht"; fi
 
 schritt "1. Bild aus dem Bericht (MemAvailable 39 600 kB), lokale Kopie"
 raeumbar "$BERICHT" "$GERAEUMT"
@@ -134,28 +143,54 @@ if x '[ ! -s /probe/proc/sys/vm/drop_caches ]'; then ok "drop_caches nicht besch
 fehlt "keine Meldung zum Seitencache" /probe/genug.err "Seitencache"
 
 schritt "6. groesse-Zeile: Schwelle = Bedarf der Fassung, kein Raeumen noetig"
-# 17 000 000 B Programm -> Bedarf 16601 + 20000 = 36601 kB; 39 600 kB reichen.
+# 17 000 000 B Programm -> Bedarf 16601 + 12000 = 28601 kB; 39 600 kB reichen.
 # drop_caches ist bewusst NICHT beschreibbar: die Probe scheitert, wenn der
 # Loader trotz passender Schwelle raeumen wollte (alter Stand: Pauschale 40000).
 x "rm -rf /probe/proc && mkdir -p /probe/proc/sys/vm/drop_caches && printf '%s\n' '$BERICHT' >/probe/proc/meminfo
    sum=\$(sha256sum /probe/programm | awk '{print \$1}')
    printf '%s  vp-edge-light-linux-mipsle\ngroesse 17000000 5400000\n' \"\$sum\" >/usr/share/vp-edge-light/vp-edge-light-linux-mipsle.sha256"
 lauf groesse
-enthaelt "Programm startet bei 39 600 kB (Bedarf 36 601 kB)" /probe/groesse.out "PROGRAMM GESTARTET"
+enthaelt "Programm startet bei 39 600 kB (Bedarf 28 601 kB)" /probe/groesse.out "PROGRAMM GESTARTET"
 fehlt "der Seitencache bleibt unberuehrt" /probe/groesse.err "Seitencache"
+enthaelt "meldet den gemessenen Wert und den Bedarf" /probe/groesse.err "genug freier Speicher (39600 kB >= 28601 kB)"
 enthaelt "lokale Kopie entpackt" /probe/groesse.err "lokale Kopie entpackt"
 
 schritt "7. groesse-Zeile einer gewachsenen Fassung: ehrlich verweigert"
-# 24 000 000 B Programm -> Bedarf 23437 + 20000 = 43437 kB; 41 000 kB (ueber
+# 30 000 000 B Programm -> Bedarf 29296 + 12000 = 41296 kB; 41 000 kB (ueber
 # der alten Pauschale 40 000!) reichen nicht - auch nach dem Raeumen nicht.
 GROSSBILD="$(meminfo 41000 4000 900 41000)"
 raeumbar "$GROSSBILD" "$GROSSBILD"
 x "sum=\$(sha256sum /probe/programm | awk '{print \$1}')
-   printf '%s  vp-edge-light-linux-mipsle\ngroesse 24000000 7400000\n' \"\$sum\" >/usr/share/vp-edge-light/vp-edge-light-linux-mipsle.sha256"
+   printf '%s  vp-edge-light-linux-mipsle\ngroesse 30000000 7400000\n' \"\$sum\" >/usr/share/vp-edge-light/vp-edge-light-linux-mipsle.sha256"
 lauf gewachsen
 fehlt "Programm startet nicht" /probe/gewachsen.out "PROGRAMM GESTARTET"
 enthaelt "Exit 1 (procd versucht es neu)" /probe/gewachsen.rc "1"
-enthaelt "zu wenig Speicher gegen den Bedarf der Fassung" /probe/gewachsen.err "zu wenig freier Speicher (41000 kB < 43437 kB) - lokale Kopie nicht entpackt"
+enthaelt "zu wenig Speicher gegen den Bedarf der Fassung" /probe/gewachsen.err "zu wenig freier Speicher (41000 kB < 41296 kB) - lokale Kopie nicht entpackt"
+
+schritt "8. Rueckweg an einer Box wie ASP mit 23 MB Puffer: die bestaetigte Fassung startet"
+# Modell aus dem Diagnosebericht vp-edge-light-ram-entpacken (17.11.2026): ASP
+# hat nach dem Raeumen ohne Programm, Puffer und Lieferung ~59 022 kB; mit
+# 23 000 kB Puffer bleiben 36 022 kB. Bestaetigt ist 11.13 (17 236 183 B):
+# Bedarf 16832 + 12000 = 28832 kB. Stand 1 verlangte 36 832 kB - die Box
+# stand nach einem gescheiterten Tausch ohne Programm da.
+ASPBILD="$(meminfo 25000 4000 900 25000)"
+ASPGERAEUMT="$(meminfo 36022 1500 300 36022)"
+raeumbar "$ASPBILD" "$ASPGERAEUMT"
+x "sum=\$(sha256sum /probe/programm | awk '{print \$1}')
+   printf '%s  vp-edge-light-linux-mipsle\ngroesse 17236183 5520820\n' \"\$sum\" >/usr/share/vp-edge-light/vp-edge-light-linux-mipsle.sha256"
+lauf rueckweg
+enthaelt "Programm startet" /probe/rueckweg.out "PROGRAMM GESTARTET"
+enthaelt "Seitencache geraeumt: 25000 -> 36022 kB" /probe/rueckweg.err "Seitencache geraeumt: 25000 kB -> 36022 kB verfuegbar"
+enthaelt "Bedarf der bestaetigten Fassung 28 832 kB" /probe/rueckweg.err "genug freier Speicher (36022 kB >= 28832 kB)"
+enthaelt "lokale Kopie entpackt" /probe/rueckweg.err "lokale Kopie entpackt"
+
+schritt "9. uci prozess_reserve_kb=20000 uebersteuert die Vorgabe"
+raeumbar "$ASPBILD" "$ASPGERAEUMT"
+x 'uci set vp-edge-light.main.prozess_reserve_kb=20000 && uci commit vp-edge-light'
+lauf uebersteuert
+x 'uci -q delete vp-edge-light.main.prozess_reserve_kb; uci commit vp-edge-light'
+fehlt "Programm startet nicht" /probe/uebersteuert.out "PROGRAMM GESTARTET"
+enthaelt "Schwelle mit der uebersteuerten Reserve (16832 + 20000)" /probe/uebersteuert.err "zu wenig freier Speicher (36022 kB < 36832 kB) - lokale Kopie nicht entpackt"
 
 schritt "Ergebnis"
 echo "  $OK ok, $FEHLER Fehler ($(x 'grep DISTRIB_DESCRIPTION /etc/openwrt_release' | cut -d"'" -f2))"
