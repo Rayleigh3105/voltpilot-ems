@@ -9,9 +9,13 @@
 //
 // Layout: segmented JSONL files (segment-<n>.jsonl) under the buffer dir,
 // rotated by entry count; a cursor.json persists the read position and the
-// monotonic per-device sequence counter across restarts. Eviction drops the
-// OLDEST whole segments once their newest entry falls outside the retention
-// horizon (default 48h), with a clear log line.
+// monotonic per-device sequence counter across restarts. A segment the read
+// cursor has left (every entry published and acked) is deleted: nothing reads
+// sent telemetry again, so the ring only holds what is still unsent (plus the
+// sent head of the segment the cursor sits in). Eviction drops the OLDEST
+// whole segments once their newest entry falls outside the retention horizon
+// (default 48h), with a clear log line - since sent segments are already gone,
+// the horizon only bounds unsent telemetry (a cloud outage).
 package buffer
 
 import (
@@ -141,6 +145,12 @@ func Open(dir string, retention time.Duration) (*Buffer, error) {
 			b.readIdx = 0
 		}
 	}
+	// Sent segments left behind by a program that kept them (before this
+	// change: up to 48 h, ~17 MB on an Edge Light box) or by a stop between
+	// the cursor flush and the delete go right away, not with the next sample.
+	if dropped := b.dropSentLocked(); dropped > 0 {
+		slog.Info("buffer dropped already-sent segments at open", "segments", dropped, "read_seg", b.readSeg)
+	}
 	b.pending = b.countPendingLocked()
 	return b, nil
 }
@@ -224,13 +234,71 @@ func (b *Buffer) append(e Entry) (Entry, error) {
 	return e, nil
 }
 
-// evictLocked drops whole OLDEST segments whose newest entry is older than
-// the retention horizon. The tail segment is never dropped. The horizon is
-// computed from the core's WALL CLOCK (time.Now), never from an incoming
-// sample's timestamp: a misconfigured Layer-1 clock stamping far-future
-// timestamps must not jump the horizon forward and drop still-unpublished
-// telemetry.
+// dropSentLocked deletes every segment the read cursor has already left
+// (number < readSeg) and returns how many it deleted. The cursor leaves a
+// segment only in Next, once every entry in it was acked, and nothing reads a
+// sent entry again: Next starts at the cursor, PurgeThrough and
+// countPendingLocked skip segments below it. The tail segment (Append's
+// target) is never deleted, and neither is the segment the cursor sits in, so
+// a segment holding even one unsent entry stays.
+//
+// Crash safety: the cursor that marks the segments sent is flushed BEFORE the
+// first file goes (no flush, no delete), and files go oldest-first. A stop in
+// between leaves sent segments below the persisted cursor - the next call
+// (at the latest Open) deletes them. Should the filesystem lose the cursor
+// flush but keep the deletes (power loss on a disk), the persisted cursor is
+// older: Open snaps a cursor below the oldest survivor forward to it and Next
+// steps over a missing segment; everything below the in-memory cursor was
+// sent, so that only replays acked entries (idempotent cloud-side), it never
+// skips an unsent one.
+//
+// A cursor beyond the newest segment does not describe this ring (PurgeThrough
+// renumbers the ring from 0 and a stop before its cursor flush leaves exactly
+// that); then nothing is deleted and the retention horizon alone decides, as
+// before.
+func (b *Buffer) dropSentLocked() int {
+	if b.readSeg > b.segments[len(b.segments)-1] {
+		return 0
+	}
+	drop := 0
+	for drop < len(b.segments)-1 && b.segments[drop] < b.readSeg {
+		drop++
+	}
+	if drop == 0 {
+		return 0
+	}
+	if err := b.saveCursorLocked(); err != nil {
+		slog.Warn("buffer kept sent segments: cursor flush failed", "err", err)
+		return 0
+	}
+	removed := 0
+	for _, n := range b.segments[:drop] {
+		if err := os.Remove(b.segPath(n)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("buffer could not delete sent segment", "segment", n, "err", err)
+			break
+		}
+		if b.cacheSeg == n {
+			b.cacheSeg = -1
+			b.cacheEntries = nil
+		}
+		removed++
+	}
+	b.segments = b.segments[removed:]
+	return removed
+}
+
+// evictLocked first deletes the segments that are fully sent
+// (dropSentLocked), then drops whole OLDEST segments whose newest entry is
+// older than the retention horizon - by then those still hold unsent
+// telemetry, so the horizon bounds how long a cloud outage is buffered. The
+// tail segment is never dropped. The horizon is computed from the core's WALL
+// CLOCK (time.Now), never from an incoming sample's timestamp: a
+// misconfigured Layer-1 clock stamping far-future timestamps must not jump
+// the horizon forward and drop still-unpublished telemetry.
 func (b *Buffer) evictLocked() {
+	if dropped := b.dropSentLocked(); dropped > 0 {
+		slog.Debug("buffer dropped already-sent segments", "segments", dropped, "read_seg", b.readSeg)
+	}
 	horizon := time.Now().UTC().Add(-b.retention)
 	for len(b.segments) > 1 {
 		oldest := b.segments[0]
@@ -439,7 +507,7 @@ func (b *Buffer) DataLoss() bool {
 // device's history, replaying old buffered samples must not resurrect it.
 // Entries observed AFTER t (recorded after the purge instant) survive with
 // their original sequence numbers and replay normally; already-acked entries
-// are discarded outright (they only await eviction anyway). The sequence
+// are discarded outright (nothing reads them; see dropSentLocked). The sequence
 // counter keeps counting monotonically. Returns how many un-published entries
 // were dropped. Idempotent - purging an empty buffer is a no-op.
 func (b *Buffer) PurgeThrough(t time.Time) (int, error) {
