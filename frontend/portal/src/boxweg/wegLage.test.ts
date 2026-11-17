@@ -107,6 +107,64 @@ describe('wegLage · die Szenarien aus Bericht Abschnitt 4.3/5', () => {
   });
 });
 
+/**
+ * N1 (vp-box-rueckkehr-diagnose, Abschnitt 6): eine zuvor ausgebaute/gelöste Box, die unter
+ * derselben Kennung neu verbunden wird, bekommt eine NEUE Gerätezeile - `device_enrollment`
+ * trägt ihre alte, oft Tage zurückliegende Ausstellung (`zuletztAngefragtAm`), bis die Box
+ * ihr eigenes nächstes Abfragen ein neues Zertifikat für GENAU DIESE Zeile holt
+ * (`schluesselAbgeholtAm`). Die API lieferte `schluesselAbgeholtAm` vor dem Fix je Kennung
+ * statt je Gerätezeile (`DeviceRepository.anmeldungColumns`) - die alte Ausstellung erschien
+ * sofort als Datensperre mit einem tagealten Zähler ("Angemeldet · 8819:05").
+ */
+describe('wegLage · N1 Neu-Verbinden nach Ausbauen/Lösen (vp-box-rueckkehr-diagnose)', () => {
+  const ALTE_ANFRAGE = new Date(T0.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+
+  it('Bug-Nachbau: eine ausgestellte alte Zertifikatsausstellung (vor dem Fix) löst sofort Datensperre aus', () => {
+    const lage = wegLage(
+      box({ anmeldung: { zuletztAngefragtAm: ALTE_ANFRAGE, schluesselAbgeholtAm: ALTE_ANFRAGE } }),
+      nach(5_000),
+    );
+    expect(lage.hinweis).toBe('datensperre');
+    expect(lage.chipText).toMatch(/^Angemeldet · \d+:\d{2}$/);
+  });
+
+  it('Fix: ohne die alte Ausstellung (schluesselAbgeholtAm null) kein Alarm 5s nach dem Verbinden', () => {
+    const lage = wegLage(
+      box({ anmeldung: { zuletztAngefragtAm: ALTE_ANFRAGE, schluesselAbgeholtAm: null } }),
+      nach(5_000),
+    );
+    expect(lage.hinweis).toBe('keiner');
+  });
+
+  it('Fix: kein Alarm 60s nach dem Verbinden, solange die Box noch kein eigenes Zertifikat holte', () => {
+    const lage = wegLage(
+      box({ anmeldung: { zuletztAngefragtAm: ALTE_ANFRAGE, schluesselAbgeholtAm: null } }),
+      nach(60_000),
+    );
+    expect(lage.hinweis).toBe('keiner');
+  });
+
+  it('Fix: normaler Verlauf bis 240s - Zertifikat und erster Herzschlag kommen, kein Alarm', () => {
+    const box16 = box({
+      anmeldung: { zuletztAngefragtAm: ALTE_ANFRAGE, schluesselAbgeholtAm: nach(3_000).toISOString() },
+      lastSeenAt: nach(18_000).toISOString(),
+    });
+    for (const ms of [5_000, 60_000, 240_000]) {
+      const lage = wegLage(box16, nach(ms));
+      expect(lage.hinweis).toBe('keiner');
+    }
+  });
+
+  it('Erstes Verbinden einer neuen Box bleibt unverändert (kein everIssued, #1931)', () => {
+    const lage = wegLage(
+      box({ anmeldung: { zuletztAngefragtAm: nach(1_000).toISOString(), schluesselAbgeholtAm: null } }),
+      nach(5_000),
+    );
+    expect(lage.hinweis).toBe('keiner');
+    expect(lage.liefSchon).toBe(false);
+  });
+});
+
 describe('wegLage · Konzept vp-edge-light-wlan-s5 (E1=B): Verbindung und der Weg zurück', () => {
   it('Online per WLAN mit gutem Empfang trägt die Verbindung, ohne Einrichtungs-Hinweis', () => {
     const lage = wegLage(box({ lastSeenAt: nach(10_000).toISOString(), linkKind: 'wlan', signalDbm: -55 }), nach(10_000));

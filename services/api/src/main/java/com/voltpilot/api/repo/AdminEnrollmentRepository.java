@@ -49,18 +49,41 @@ public class AdminEnrollmentRepository {
     }
 
     /**
-     * Remove a dead enrollment (mistyped reference, or a box that was once
-     * issued a certificate and is now disconnected without a re-claim) from
-     * the registry. Re-checks the claim at delete time - {@link #findPending}
-     * can be stale by the time the operator clicks - so a race that claims it
-     * first makes this a no-op (0 rows) rather than an error.
+     * Remove a dead enrollment (mistyped reference only - a box that was once issued a
+     * certificate is never a dead enrollment, see below) from the registry. Re-checks the
+     * claim at delete time - {@link #findPending} can be stale by the time the operator
+     * clicks - so a race that claims it first makes this a no-op (0 rows) rather than an
+     * error.
+     *
+     * <p>N3 (vp-box-rueckkehr-diagnose, Abschnitt 6): a row with {@code issued_at NOT NULL}
+     * ({@code everIssued}) is refused with {@link EnrollmentHatZertifikat} BEFORE the delete
+     * runs, never silently turned into a no-op - deleting it would make the box unreachable
+     * forever (it never sends a new CSR once it holds a certificate, {@code enroll.go:162}),
+     * and a reset under the same reference would then fail on the held key
+     * ({@code schluessel_festgehalten}).
      */
     public boolean delete(String externalRef) {
+        Boolean everIssued = jdbc.query(
+                "SELECT issued_at IS NOT NULL FROM device_enrollment WHERE external_ref = ?",
+                (rs, n) -> rs.getBoolean(1), externalRef).stream().findFirst().orElse(null);
+        if (Boolean.TRUE.equals(everIssued)) {
+            throw new EnrollmentHatZertifikat(externalRef);
+        }
         return jdbc.update(
                 "DELETE FROM device_enrollment e WHERE e.external_ref = ? "
+                        + "AND e.issued_at IS NULL "
                         + "AND NOT EXISTS (SELECT 1 FROM device d "
                         + "WHERE d.external_ref = e.external_ref AND d.ausgebaut_am IS NULL)",
                 externalRef) > 0;
+    }
+
+    /** 409: diese Kennung hat schon ein Zertifikat, Löschen käme einem dauerhaften Ausschluss gleich (N3). */
+    public static final class EnrollmentHatZertifikat extends org.springframework.web.server.ResponseStatusException {
+        public EnrollmentHatZertifikat(String externalRef) {
+            super(org.springframework.http.HttpStatus.CONFLICT,
+                    "Für '" + externalRef + "' wurde schon ein Zertifikat ausgestellt; diese Anmeldung lässt sich "
+                            + "nicht löschen, ohne die Box dauerhaft unerreichbar zu machen.");
+        }
     }
 
     private static PendingEnrollmentDto map(java.sql.ResultSet rs, int rowNum)

@@ -45,6 +45,11 @@ export interface RohZeile {
    * `gedruckt`/`ausgebaut` unbeteiligt - diese Zeilen tragen hier `null`.
    */
   werkstattAbnahmeAm: string | null;
+  /**
+   * Nur bei `wartet`: war für diese Kennung schon einmal ein Zertifikat ausgestellt (N3,
+   * vp-box-rueckkehr-diagnose). `false` bei den anderen Lebensabschnitten - keine Aussage.
+   */
+  everIssued: boolean;
 }
 
 export type GeraeteListeZeile =
@@ -102,6 +107,7 @@ export function geraeteListeZeilen(args: {
       fassungAbweichung: false,
       erreichbar: p.erreichbar,
       werkstattAbnahmeAm: p.werkstattAbnahmeAm,
+      everIssued: p.everIssued,
     });
   }
 
@@ -121,6 +127,7 @@ export function geraeteListeZeilen(args: {
       fassungAbweichung: false,
       erreichbar: null,
       werkstattAbnahmeAm: null,
+      everIssued: false,
     });
   }
 
@@ -141,6 +148,7 @@ export function geraeteListeZeilen(args: {
       fassungAbweichung: false,
       erreichbar: null,
       werkstattAbnahmeAm: null,
+      everIssued: false,
     });
   }
 
@@ -159,6 +167,7 @@ export function geraeteListeZeilen(args: {
       fassungAbweichung: false,
       erreichbar: null,
       werkstattAbnahmeAm: null,
+      everIssued: false,
     });
   }
 
@@ -273,12 +282,19 @@ export interface LoeschKandidat {
  * Werkstatt-Regel sie freigibt). `verbunden` (aktive Bindung) und `ausgebaut`
  * (ein für immer eingefrorener `device`-Datensatz, siehe
  * `V20260913150000__uems_loeschwege.sql`) bekommen absichtlich keine.
+ *
+ * N3 (vp-box-rueckkehr-diagnose, Abschnitt 6): eine `wartet`-Zeile mit
+ * `everIssued` bekommt ebenfalls keine - das Löschen ihrer Anmeldung macht
+ * die Box für immer unerreichbar (sie schickt nach einem Zertifikat nie
+ * wieder eine neue Anfrage, und ein Reset unter derselben Kennung scheitert
+ * am festgehaltenen Schlüssel). Die API lehnt es zusätzlich ab (409).
  */
 export function loeschKandidat(z: GeraeteListeZeile, werkstattBoxen: readonly WerkstattBox[]): LoeschKandidat | null {
   if (z.lebensabschnitt === 'gedruckt') {
     return { ref: z.ref, name: z.name, art: 'gedruckt', loeschtMit: ['Der Registrierungs-Eintrag dieser Aufkleber-ID.'] };
   }
   if (z.lebensabschnitt === 'wartet') {
+    if (z.everIssued) return null;
     return { ref: z.ref, name: z.name, art: 'wartet', loeschtMit: ['Die Zertifikatsanfrage dieser Box im Register.'] };
   }
   if (z.lebensabschnitt === 'werkstatt') {

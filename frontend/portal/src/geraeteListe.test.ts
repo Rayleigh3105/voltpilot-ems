@@ -209,6 +209,20 @@ describe('loeschKandidat: Lösch-Handlung nur ohne aktive Kunden-/Anlagen-Bindun
     }, now);
     expect(loeschKandidat(ausgebaut, [])).toBeNull();
   });
+
+  /**
+   * N3 (vp-box-rueckkehr-diagnose, Abschnitt 6): eine wartende Anmeldung, die schon einmal ein
+   * Zertifikat bekam, bekommt KEINE Lösch-Handlung - gelöscht bekäme sie nie wieder eins (sie
+   * schickt nach einem Zertifikat nie wieder eine neue Anfrage), und ein Reset unter derselben
+   * Kennung scheiterte am festgehaltenen Schlüssel.
+   */
+  it('eine wartende Anmeldung mit einem je ausgestellten Zertifikat bekommt KEINE Lösch-Handlung', () => {
+    const [wartet] = geraeteListeZeilen(
+      { fleet: [], devices: [], pending: [pending({ everIssued: true, issuedAt: vor(6 * 24 * 3600_000) })], werkstattBoxen: [] },
+      now,
+    );
+    expect(loeschKandidat(wartet, [])).toBeNull();
+  });
 });
 
 describe('seitText: die Zeit in der Spalte „Verbindung" nennt ihr Ereignis', () => {

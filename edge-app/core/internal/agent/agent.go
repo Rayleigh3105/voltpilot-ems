@@ -1525,6 +1525,52 @@ func (a *Agent) pokeReconcile() {
 	}
 }
 
+// handleLinkConnect is cloud.Options.OnConnect for the link it was built
+// for - called with EVERY connect/disconnect transition that link's own paho
+// client reports.
+//
+// N4 (vp-box-rueckkehr-diagnose, Abschnitt 6): teardownLink (entered on
+// "Gerät entfernt" or before adopting a new identity) can leave an MQTT
+// reconnect already queued in the library's own backoff goroutine; it still
+// fires - up to ~60s later in the lab - against a link nobody uses anymore.
+// Comparing identity against the CURRENT link under linkMu, before touching
+// any state, is the fix: a mismatch means this callback belongs to a link
+// already replaced or closed, and the whole call is a no-op.
+func (a *Agent) handleLinkConnect(link *cloud.Link, connected bool) {
+	a.linkMu.Lock()
+	current := a.link
+	a.linkMu.Unlock()
+	if current != link {
+		return
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		s.CloudConnected = connected
+		switch {
+		case connected && s.PairingState == string(enroll.StateRemoved):
+			// "Gerät entfernt" is left only by a fresh re-claim
+			// (adoptIdentity/resumeFromRemoved), never by this link simply
+			// reconnecting - the broker still denies it its old topics once
+			// unclaimed, so a bare reconnect here is not evidence of
+			// anything the portal recognizes.
+		case connected:
+			s.PairingState = string(enroll.StateConnected)
+		case s.PairingState == string(enroll.StateConnected):
+			// Was connected and dropped: move the pairing checklist off
+			// the green "Verbunden" so it agrees with the Cloud stat now
+			// showing "getrennt" (reconnect is automatic).
+			s.PairingState = string(enroll.StateCloudDisconnected)
+		}
+	})
+	if connected {
+		a.onCloudConnected(link)
+	} else {
+		// A drifted identity is rejected by the broker as a connection
+		// failure; re-check the identity promptly instead of waiting for
+		// the next tick (a no-op if nothing actually changed).
+		a.pokeReconcile()
+	}
+}
+
 func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string) error {
 	// The v2 entity-registry push must match this identity (topic==payload).
 	a.setEntityIdentity(id.TenantID, id.SiteID, id.DeviceID)
@@ -1579,25 +1625,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnDesiredDownlink:   a.onDesiredDownlink,
 		OnMeasurementConfig: a.onMeasurementConfig,
 		OnConnect: func(connected bool) {
-			a.State.Update(func(s *state.Snapshot) {
-				s.CloudConnected = connected
-				if connected {
-					s.PairingState = string(enroll.StateConnected)
-				} else if s.PairingState == string(enroll.StateConnected) {
-					// Was connected and dropped: move the pairing checklist off
-					// the green "Verbunden" so it agrees with the Cloud stat now
-					// showing "getrennt" (reconnect is automatic).
-					s.PairingState = string(enroll.StateCloudDisconnected)
-				}
-			})
-			if connected {
-				a.onCloudConnected(link)
-			} else {
-				// A drifted identity is rejected by the broker as a connection
-				// failure; re-check the identity promptly instead of waiting for
-				// the next tick (a no-op if nothing actually changed).
-				a.pokeReconcile()
-			}
+			a.handleLinkConnect(link, connected)
 		},
 	})
 	if err != nil {

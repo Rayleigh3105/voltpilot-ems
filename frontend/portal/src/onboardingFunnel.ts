@@ -190,6 +190,13 @@ export interface PendingRow {
   erreichbar: BoxVerbindung;
   /** Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz; `null` = selbst angemeldet. */
   werkstattAbnahmeAm: string | null;
+  /**
+   * N3 (vp-box-rueckkehr-diagnose, Abschnitt 6): war schon einmal ein Zertifikat ausgestellt.
+   * Löscht man diesen Eintrag trotzdem, bekommt die Box nie wieder eins (`geraeteListe.ts`,
+   * `loeschKandidat`) - eine neu aufgesetzte Box unter derselben Kennung scheitert zusätzlich
+   * am festgehaltenen Schlüssel.
+   */
+  everIssued: boolean;
 }
 
 /** Dauer in ganzen Tagen, nie 0 — ab {@link TYPO_SUSPECT_AFTER_MS} ist mindestens ein Tag vergangen. */
@@ -232,6 +239,7 @@ export function pendingRows(
         suspect,
         erreichbar: boxVerbindung(p.csrUpdatedAt, now),
         werkstattAbnahmeAm: p.werkstattAbnahmeAm,
+        everIssued: p.everIssued,
       };
     });
 }

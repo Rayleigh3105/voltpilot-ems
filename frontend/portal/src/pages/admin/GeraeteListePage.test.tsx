@@ -217,6 +217,24 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
       await waitFor(() => expect(deletePendingEnrollment).toHaveBeenCalledWith('edge-typo-1'));
     });
 
+    /**
+     * N3 (vp-box-rueckkehr-diagnose, Abschnitt 6): eine wartende Anmeldung mit einem je
+     * ausgestellten Zertifikat bekommt KEIN Aktionen-Menü mehr - gelöscht bekäme diese Box
+     * nie wieder eins.
+     */
+    it('eine wartende Anmeldung mit einem je ausgestellten Zertifikat bekommt KEIN Aktionen-Menü', async () => {
+      listPendingEnrollments.mockResolvedValue([
+        {
+          externalRef: 'edge-rueckkehr-1', deviceInfo: null,
+          csrUpdatedAt: new Date(Date.now() - 6 * 24 * 3600_000).toISOString(),
+          everIssued: true, issuedAt: new Date(Date.now() - 6 * 24 * 3600_000).toISOString(),
+        },
+      ]);
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      await screen.findAllByText('edge-rueckkehr-1');
+      expect(screen.queryByRole('button', { name: /^Aktionen für/ })).toBeNull();
+    });
+
     it('löscht eine löschbare Werkstatt-Box über ihren eigenen Lösch-Weg', async () => {
       werkstattBoxen.mockResolvedValue([{
         id: 'w1', edgeRef: 'edge-werkstatt', boxArt: 'edge-light', lanNetz: null, schritte: {},
