@@ -484,11 +484,11 @@ Zwei Lücken für den Pilot, beide am Gerät gefunden:
 |---|---|
 | verfügbar laut Gerät | 65 MB |
 | Programm im tmpfs | − 16 MB (10.11.2026; wächst, siehe Programmgröße oben und die Größen-Leitplanke im Release) |
-| Prozess (Go-Laufzeit, Core, Schicht 1) | − 15–30 MB (ohne Gerät gemessen: 16–18 MB; mit Deye und go-e beim Pilot nachmessen), weich begrenzt über `GOMEMLIMIT=48MiB` |
-| RAM-Verzeichnisse (Puffer bis 48 h, Ausgang, OCPP-Ereignisse) | wenige MB, wachsen bei langem Cloud-Ausfall |
-| **Reserve** | **ca. 20–35 MB** |
+| Prozess (Go-Laufzeit, Core, Schicht 1), privater Speicher | − 7–13 MB (ASP mit Messgeräten, 17.11.2026: VmRSS 23 364 kB, davon mindestens 10 740 kB Seiten der Programmdatei, die schon in der Zeile darüber stehen; AnonPages aller Prozesse 12 624 kB), weich begrenzt über `GOMEMLIMIT=48MiB` |
+| RAM-Verzeichnisse (Puffer, Ausgang, OCPP-Ereignisse) | Bis 11.15 hält der Puffer immer die letzten 48 h, auch schon Gesendetes: mit Messgeräten ~17 MB (ASP 17.11.2026: 16 848 kB, ~350 kB/h), ohne Messgeräte fast nichts. Fassungen danach löschen gesendete Segmente; die 48 h begrenzen dann nur noch Ungesendetes (Cloud-Ausfall) |
+| **Reserve** | **ca. 20–40 MB** (im Betrieb 17.11.2026: ASP mit Messgeräten auf 11.13 25 368 kB `MemAvailable`, px6jphw ohne 39 308 kB) |
 
-Der Loader lädt oder entpackt das Programm nur, wenn der **Bedarf der Fassung** frei ist: Größe des entpackten Programms (es liegt im tmpfs) plus `prozess_reserve_kb` (Vorgabe 20 000 kB: gemessene VmRSS 16–18 MB plus ~2 MB fürs Entpacken).
+Der Loader lädt oder entpackt das Programm nur, wenn der **Bedarf der Fassung** frei ist: Größe des entpackten Programms (es liegt im tmpfs) plus `prozess_reserve_kb` (Vorgabe seit Loader Stand 2: 12 000 kB für den privaten Speicher des Prozesses und das Entpacken; Stand 1 nahm 20 000 kB aus der VmRSS, die die Seiten der Programmdatei ein zweites Mal zählt). Die UCI-Option übersteuert die Vorgabe; die Vorlage setzt sie nicht.
 Die Größe kennt er aus `kandidat.json` (beim Tausch) beziehungsweise aus der `groesse`-Zeile der Prüfsummen-Datei (beim Start); nur ohne bekannte Größe gilt die Pauschale `min_free_kb` (Vorgabe 40 000 kB).
 Gemessen wird `MemAvailable`. Der Kernel rechnet darin vom Seitencache nur etwa die Hälfte als verfügbar und räumt ihn ohne Speicherdruck nicht.
 Liegt der Wert unter der Schwelle, schreibt der Loader deshalb einmal `sync; echo 1 > /proc/sys/vm/drop_caches` und misst neu; das meldet er mit `Seitencache geraeumt: <vorher> kB -> <nachher> kB verfuegbar`.
@@ -497,7 +497,10 @@ Erst wenn es auch danach nicht reicht, verschiebt er Download oder Entpacken (pr
 Anlass der Prüfung war die Abnahme am VoltPilotGATE (Mangel M1): Nach einem Update zeigte der Router bei 45 964 kB `MemFree` und 29 092 kB `Inactive(file)` nur ~39 600 kB `MemAvailable`. Die Box blieb über alle Versuche procds aus, bis jemand von Hand `drop_caches` schrieb (danach 73 980 kB).
 `MemFree + Inactive(file)` zu zählen wäre keine Lösung: Das schätzt zu hoch (gemappte und schmutzige Seiten, die Reserve des Kernels), und das Programm im tmpfs lässt sich ohne Swap nicht verdrängen.
 Anlass der Bedarfs-Schwelle war der Tausch an der Box „Zuhause" (11.2026): knapp unter 40 000 kB auch nach dem Räumen - die Pauschale nahm das Update zurück, obwohl Programm (16,1 MiB) plus Prozess längst passten.
-Mit der Bedarfs-Schwelle gelingt der Tausch auf jeder Mango, die das laufende Programm halten kann, und eine zu groß gewachsene Fassung wird ehrlich verweigert, selbst wenn mehr als 40 MB frei sind; damit so eine Fassung gar nicht erst entsteht, verweigert `edge-light/scripts/groessen-gate.sh` sie schon im Release (Budget 39 000 kB: die schwächste beobachtete Mango, mit Begründung im Skript).
+Die Bedarfs-Schwelle rechnet nur mit dem, was die neue Fassung braucht; `MemAvailable` ist beim Tausch schon um das gemindert, was sonst im tmpfs liegt: die Lieferung `kandidat.gz` (~5,4 MB) und den Puffer des laufenden Programms (mit Messgeräten ~17 MB, solange es eine Fassung bis 11.15 ist).
+Deshalb kann auch eine Mango, die das laufende Programm hält, den Tausch verweigern: ASP nahm 11.15 am 17.11.2026 mit Loader Stand 1 zurück (`zu wenig freier Speicher (36744 kB < 37024 kB)`), die bestätigte Fassung lief weiter.
+Den Tausch macht immer der Loader, der schon auf der Box liegt: Stand 2 kommt erst auf die Box, wenn sie eine Fassung mit ihm behalten hat (oder per `install.sh`), und prüft erst den Tausch danach.
+Eine zu groß gewachsene Fassung wird ehrlich verweigert, selbst wenn mehr als 40 MB frei sind; damit so eine Fassung gar nicht erst entsteht, verweigert `edge-light/scripts/groessen-gate.sh` sie schon im Release (Budget 36 744 kB: ASP im Tauschweg, mit Begründung im Skript) und warnt, wenn Loader Stand 1 sie dort nicht tauschen könnte.
 Belegt im Container mit `edge-light/test/boot-speicher-probe.sh` (nachgestelltes `/proc/meminfo`) und `edge-light/test/boot-tausch-speicher-probe.sh` (echtes größenbegrenztes tmpfs, OpenWrt 25.12.5); der Lauf auf dem Gerät steht noch aus.
 
 ## Lokale Kopie im Flash (gebaut, am Gerät geprüft 03.10.2026)

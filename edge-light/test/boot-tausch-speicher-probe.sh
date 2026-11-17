@@ -5,19 +5,29 @@
 # laengst gepasst haette. Seitdem ist die Schwelle der BEDARF der Fassung
 # (Groesse des entpackten Programms + prozess_reserve_kb).
 #
-# Drei Faelle in einem ECHTEN OpenWrt-25.12-Rootfs, jeder mit eigenem
+# Seit Loader Stand 2 ist die Prozessreserve 12 000 kB statt 20 000 (die
+# VmRSS zaehlte die Seiten der Programmdatei doppelt) - der Tausch an ASP
+# (17.11.2026) scheiterte mit Stand 1 an 280 kB.
+#
+# Sechs Faelle in einem ECHTEN OpenWrt-25.12-Rootfs, jeder mit eigenem
 # Container, /tmp als echtes groessenbegrenztes tmpfs (die Entpack-Schreiben
 # belegen wirklich Speicher; QEMU mipsel steht hier nicht zur Verfuegung):
 #
 #   1. der Vorfall: 39 200 kB verfuegbar, Kandidat 17 MB entpackt -> der
-#      Tausch GELINGT (Bedarf 36 601 kB), Probe, behalten; der alte Stand
+#      Tausch GELINGT (Bedarf 28 601 kB), Probe, behalten; der alte Stand
 #      (Pauschale 40 000) nahm hier zurueck
-#   2. gewachsene Fassung (size 24 MB): ehrlich zurueckgenommen, obwohl
+#   2. gewachsene Fassung (size 32 MB): ehrlich zurueckgenommen, obwohl
 #      42 000 kB frei sind - mehr als die alte Pauschale; die alte Fassung
 #      laeuft weiter
 #   3. echte Speichergrenze (tmpfs 12 MB, Messwert luegt): das Entpacken
 #      scheitert wirklich (kein Platz), der Loader nimmt zurueck, die
 #      bestaetigte Fassung startet - die Box ist nie ohne startbares Programm
+#   4. ASP am 17.11.2026 (29 612 kB, nach dem Raeumen 36 744 kB; 11.15 mit
+#      17 432 791 B): Stand 2 tauscht ohne Raeumen (Bedarf 29 024 kB)
+#   5. dasselbe mit uci prozess_reserve_kb=20000: genau das Log von ASP
+#      (36 744 kB < 37 024 kB), zurueck, die bestaetigte Fassung laeuft
+#   6. dasselbe mit uci prozess_reserve_kb=15000 (Uebergang fuer ASP):
+#      der Tausch gelingt nach dem Raeumen (Bedarf 32 024 kB)
 #
 #   edge-light/test/boot-tausch-speicher-probe.sh
 #   VPTS_LOADER=<pfad>/boot.sh ...   Gegenprobe mit einem anderen Stand
@@ -125,11 +135,22 @@ container() {
      printf '%s  $N\n%s  $N.gz\ngroesse %s %s\n' \"\$sha\" \"\$gz\" \"\$(wc -c </probe/alt)\" \"\$(wc -c <$LD/$N.gz)\" >$LD/$N.sha256"
 }
 
+# raeumbar <MemAvailable davor> <MemAvailable danach> - drop_caches als FIFO
+# (wie boot-speicher-probe.sh): wer "1" hineinschreibt, bekommt danach das
+# Bild nach dem Raeumen; mitgeschrieben in /probe/proc/geraeumt.
+raeumbar() {
+  x "rm -rf /probe/proc/sys/vm/drop_caches && mkfifo /probe/proc/sys/vm/drop_caches
+     printf 'MemTotal: 121032 kB\nMemAvailable: $1 kB\n' >/probe/proc/meminfo
+     printf 'MemTotal: 121032 kB\nMemAvailable: $2 kB\n' >/probe/danach"
+  docker exec -d "$C" sh -c 'cat /probe/proc/sys/vm/drop_caches >/probe/proc/geraeumt && cp /probe/danach /probe/proc/meminfo'
+}
+reserve() { x "uci set vp-edge-light.main.prozess_reserve_kb=$1 && uci commit vp-edge-light"; }
+
 schritt "1. Der Vorfall: 39 200 kB frei, Kandidat 17 MB - der Tausch gelingt"
 container vorfall 28 39200
 kandidat gut 42 z-1 17000000
 lauf
-warte "Marke start im Flash (Bedarf 36 601 kB <= 39 200 kB)" "grep -qx 'start 42 z-1' $FEST/versuche" 40
+warte "Marke start im Flash (Bedarf 28 601 kB <= 39 200 kB)" "grep -qx 'start 42 z-1' $FEST/versuche" 40
 warte "Urteil bestanden -> behalten (Marke ok)" "grep -qx 'ok 42 z-1' $FEST/versuche" 30
 pruef "die neue Fassung lief zur Probe" "grep -q 'PROGRAMM $NEU GESTARTET' /probe/lauf.out"
 pruef "der Seitencache wurde nicht angefasst (Schwelle passte sofort)" "! grep -q Seitencache /probe/lauf.err"
@@ -138,13 +159,13 @@ pruef "groesse-Zeile der neuen Fassung im Flash" \
 pruef "keine Ruecknahme" "! grep -q '^zurueck' $FEST/versuche"
 stopp
 
-schritt "2. Gewachsene Fassung (24 MB): ehrlich zurueck trotz 42 000 kB frei"
+schritt "2. Gewachsene Fassung (32 MB): ehrlich zurueck trotz 42 000 kB frei"
 container gewachsen 28 42000
-kandidat gut 43 z-2 "" 24000000
+kandidat gut 43 z-2 "" 32000000
 lauf
 warte "zurueck: zu wenig freier Speicher zum Entpacken" "grep -q '^zurueck 43 z-2 zu wenig freier Speicher zum Entpacken' $FEST/versuche" 40
 warte "die alte Fassung startet" "grep -q 'PROGRAMM $ALT GESTARTET' /probe/lauf.out"
-pruef "die Meldung nennt den Bedarf der Fassung" "grep -q 'zu wenig freier Speicher (42000 kB < 43437 kB) - Kandidat nicht entpackt' /probe/lauf.err"
+pruef "die Meldung nennt den Bedarf der Fassung" "grep -q 'zu wenig freier Speicher (42000 kB < 43250 kB) - Kandidat nicht entpackt' /probe/lauf.err"
 pruef "nie zur Probe gestartet" "! grep -q 'PROGRAMM $NEU' /probe/lauf.out"
 stopp
 
@@ -156,6 +177,50 @@ warte "zurueck: Kandidat nicht entpackbar" "grep -q '^zurueck 44 z-3 Kandidat ni
 warte "die bestaetigte Fassung startet (nie ohne startbares Programm)" "grep -q 'PROGRAMM $ALT GESTARTET' /probe/lauf.out" 40
 pruef "kein Rest des Kandidaten im RAM" "[ ! -f $RAM/kandidat.gz ] && [ ! -f /tmp/vp-edge-light/vp-edge-light.part ]"
 pruef "nie zur Probe gestartet" "! grep -q 'PROGRAMM $NEU' /probe/lauf.out"
+stopp
+
+# ASP (edge-tgjn9gd) am 17.11.2026, Tausch auf 11.15 (Stand 53): vor der
+# Pruefung 29 612 kB, nach dem Raeumen 36 744 kB (im tmpfs: Lieferung
+# 5 430 kB und 48 h Messwert-Puffer, 16 848 kB). 11.15 entpackt 17 432 791 B.
+ASP_VORHER=29612
+ASP_GERAEUMT=36744
+ASP_GROESSE=17432791
+
+schritt "4. ASP 17.11.2026 mit Stand 2: der Tausch auf 11.15 gelingt ohne Raeumen"
+container asp 28 "$ASP_VORHER"
+raeumbar "$ASP_VORHER" "$ASP_GERAEUMT"
+kandidat gut 53 z-4 "" "$ASP_GROESSE"
+lauf
+warte "Marke start im Flash (Bedarf 17024 + 12000 = 29 024 kB <= 29 612 kB)" "grep -qx 'start 53 z-4' $FEST/versuche" 40
+warte "Urteil bestanden -> behalten (Marke ok)" "grep -qx 'ok 53 z-4' $FEST/versuche" 30
+pruef "die Meldung nennt Messwert und Bedarf" "grep -qF 'genug freier Speicher (29612 kB >= 29024 kB)' /probe/lauf.err"
+pruef "der Seitencache wurde nicht angefasst" "! grep -q Seitencache /probe/lauf.err && [ ! -s /probe/proc/geraeumt ]"
+pruef "keine Ruecknahme" "! grep -q '^zurueck' $FEST/versuche"
+stopp
+
+schritt "5. Dasselbe mit uci prozess_reserve_kb=20000 (wie Stand 1): das Log von ASP"
+container asp-alt 28 "$ASP_VORHER"
+reserve 20000
+raeumbar "$ASP_VORHER" "$ASP_GERAEUMT"
+kandidat gut 53 z-5 "" "$ASP_GROESSE"
+lauf
+warte "zurueck: zu wenig freier Speicher zum Entpacken" "grep -q '^zurueck 53 z-5 zu wenig freier Speicher zum Entpacken' $FEST/versuche" 40
+warte "die bestaetigte Fassung startet" "grep -q 'PROGRAMM $ALT GESTARTET' /probe/lauf.out"
+pruef "Seitencache geraeumt: 29612 -> 36744 kB (wie im Log)" "grep -qF 'Seitencache geraeumt: 29612 kB -> 36744 kB verfuegbar' /probe/lauf.err"
+pruef "zu wenig: 36 744 kB < 37 024 kB (wie im Log)" "grep -qF 'zu wenig freier Speicher (36744 kB < 37024 kB) - Kandidat nicht entpackt' /probe/lauf.err"
+pruef "nie zur Probe gestartet" "! grep -q 'PROGRAMM $NEU' /probe/lauf.out"
+stopp
+
+schritt "6. Dasselbe mit uci prozess_reserve_kb=15000 (Uebergang): Tausch nach dem Raeumen"
+container asp-uebergang 28 "$ASP_VORHER"
+reserve 15000
+raeumbar "$ASP_VORHER" "$ASP_GERAEUMT"
+kandidat gut 53 z-6 "" "$ASP_GROESSE"
+lauf
+warte "Marke start im Flash (Bedarf 32 024 kB <= 36 744 kB)" "grep -qx 'start 53 z-6' $FEST/versuche" 40
+warte "Urteil bestanden -> behalten (Marke ok)" "grep -qx 'ok 53 z-6' $FEST/versuche" 30
+pruef "Seitencache geraeumt: 29612 -> 36744 kB" "grep -qF 'Seitencache geraeumt: 29612 kB -> 36744 kB verfuegbar' /probe/lauf.err"
+pruef "keine Ruecknahme" "! grep -q '^zurueck' $FEST/versuche"
 stopp
 
 schritt "Ergebnis"

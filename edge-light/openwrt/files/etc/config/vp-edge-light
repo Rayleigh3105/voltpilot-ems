@@ -35,11 +35,13 @@ config vp-edge-light 'main'
 	option gomemlimit '48MiB'
 	# Speicherschwelle des Loaders vor Entpacken/Download: Groesse des
 	# entpackten Programms (groesse-Zeile der Pruefsummen-Datei bzw.
-	# kandidat.json) plus prozess_reserve_kb (gemessene VmRSS 16-18 MB plus
-	# ~2 MB fuers Entpacken). Nur wenn die Groesse unbekannt ist, gilt
-	# min_free_kb pauschal.
+	# kandidat.json) plus prozess_reserve_kb (Vorgabe im Loader 12 000 kB:
+	# privater Speicher des Prozesses plus Entpacken; die Seiten der
+	# Programmdatei stecken schon in der Groesse). prozess_reserve_kb nur
+	# setzen, um die Vorgabe zu uebersteuern. Nur wenn die Groesse unbekannt
+	# ist, gilt min_free_kb pauschal.
 	option min_free_kb '40000'
-	option prozess_reserve_kb '20000'
+	# option prozess_reserve_kb '12000'
 	# Bei Speichernot trifft der Kernel zuerst das Programm, nie WireGuard/SSH.
 	option oom_score_adj '800'
 
