@@ -6,6 +6,7 @@ import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.geraete.BoxLoesenAbgelehnt;
 import com.voltpilot.api.geraete.BoxLoesenService;
 import com.voltpilot.api.kundenbereich.KundenbereichLoeschlaufRepository.Lauf;
@@ -66,12 +67,15 @@ public class KundenbereichLoeschService {
     static final String SATZ_UNTERBROCHEN = "Der Löschzug wurde unterbrochen (z. B. durch einen"
             + " Neustart des Servers) - es wurde nichts gelöscht. Die Konten des Kunden bleiben"
             + " gesperrt; bitte versuchen Sie es erneut.";
+    static final String SATZ_BROKER = "Der Broker-Zugang einer Box konnte nicht bestätigt entzogen werden -"
+            + " es wurde nichts gelöscht. Die Konten des Kunden bleiben gesperrt; bitte versuchen Sie es erneut.";
 
     private final TenantRepository tenants;
     private final AdminBenutzerService adminBenutzer;
     private final KundenbereichLoeschung loeschung;
     private final BoxLoesenService boxLoesen;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
+    private final ObjectProvider<EnrollmentService> enrollment;
     private final KeycloakAdminClient keycloak;
     private final KundenbereichLoeschlaufRepository laeufe;
     private final ObjectMapper json;
@@ -90,13 +94,14 @@ public class KundenbereichLoeschService {
 
     public KundenbereichLoeschService(TenantRepository tenants, AdminBenutzerService adminBenutzer,
             KundenbereichLoeschung loeschung, BoxLoesenService boxLoesen,
-            ObjectProvider<ProvisioningPublisher> provisioning, KeycloakAdminClient keycloak,
-            KundenbereichLoeschlaufRepository laeufe, ObjectMapper json) {
+            ObjectProvider<ProvisioningPublisher> provisioning, ObjectProvider<EnrollmentService> enrollment,
+            KeycloakAdminClient keycloak, KundenbereichLoeschlaufRepository laeufe, ObjectMapper json) {
         this.tenants = tenants;
         this.adminBenutzer = adminBenutzer;
         this.loeschung = loeschung;
         this.boxLoesen = boxLoesen;
         this.provisioning = provisioning;
+        this.enrollment = enrollment;
         this.keycloak = keycloak;
         this.laeufe = laeufe;
         this.json = json;
@@ -226,6 +231,27 @@ public class KundenbereichLoeschService {
             long boxenMs = ms(boxenStart);
             log.info("Offboarding tenant {}: Konten gesperrt in {} ms, {} Boxen freigegeben in {} ms",
                     tenantId, sperrenMs, freigegeben.size(), boxenMs);
+
+            // Befund D1: eine gemeldete Box geht über die Kaskade - ihr Broker-Grant muss VOR dem Abbau
+            // bestätigt weg, wie beim Lösen (blockSucceededDevice). Sonst sendete sie weiter unter den
+            // Topics des gelöschten Kunden. Ohne Bestätigung: nichts gelöscht, Weg wiederholbar.
+            List<TenantDevice> kaskade = devices.stream()
+                    .filter(d -> d.schluesselAbgeholt() && !freigegeben.contains(d.externalRef()))
+                    .toList();
+            for (TenantDevice device : kaskade) {
+                EnrollmentService svc = enrollment.getIfAvailable();
+                if (svc == null || !svc.blockSucceededDevice(device.externalRef(), device.id())) {
+                    log.error("Offboarding tenant {}: broker grant of device {} ('{}') NOT confirmed revoked;"
+                            + " nothing deleted, accounts remain disabled; retry offboarding", tenantId,
+                            device.id(), device.externalRef());
+                    laeufe.gescheitert(lauf.id(), SATZ_BROKER);
+                    return;
+                }
+            }
+            if (!kaskade.isEmpty()) {
+                log.info("Offboarding tenant {}: Broker-Grant von {} gemeldeten Boxen bestätigt entzogen",
+                        tenantId, kaskade.size());
+            }
 
             OffboardCounts counts;
             try {

@@ -149,16 +149,24 @@ public class TenantRepository {
     }
 
     /** A device row of the tenant, as needed for the MQTT retained-topic cleanup. */
-    public record TenantDevice(UUID id, UUID siteId, String externalRef) {
+    /**
+     * {@code schluesselAbgeholt}: die Box hat ihr Zertifikat für GENAU diese Gerätezeile abgeholt (wie
+     * {@code BoxBefundSql.schluessel_abgeholt_am}) - dann trägt {@code acl.conf} ihren Broker-Grant.
+     */
+    public record TenantDevice(UUID id, UUID siteId, String externalRef, boolean schluesselAbgeholt) {
     }
 
     public List<TenantDevice> devicesOfTenant(UUID tenantId) {
         return jdbc.query(
-                "SELECT id, site_id, external_ref FROM device WHERE tenant_id = ?",
+                "SELECT d.id, d.site_id, d.external_ref, EXISTS (SELECT 1 FROM device_enrollment en"
+                        + " WHERE en.external_ref = d.external_ref AND en.device_id = d.id"
+                        + " AND en.issued_at IS NOT NULL) AS schluessel_abgeholt"
+                        + " FROM device d WHERE d.tenant_id = ?",
                 (rs, i) -> new TenantDevice(
                         rs.getObject("id", UUID.class),
                         rs.getObject("site_id", UUID.class),
-                        rs.getString("external_ref")),
+                        rs.getString("external_ref"),
+                        rs.getBoolean("schluessel_abgeholt")),
                 tenantId);
     }
 
