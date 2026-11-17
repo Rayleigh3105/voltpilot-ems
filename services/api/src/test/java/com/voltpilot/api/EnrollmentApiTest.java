@@ -148,6 +148,9 @@ class EnrollmentApiTest {
     @Autowired
     com.voltpilot.api.enrollment.EnrollmentDeviceLookup deviceLookup;
 
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     // ---- (1) the full first-boot journey --------------------------------------
 
     @Test
@@ -342,6 +345,54 @@ class EnrollmentApiTest {
         assertThat(pendingKnown.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(unknown.getBody()).isEqualTo(pendingKnown.getBody());
+    }
+
+    /**
+     * vp-entkoppelte-box-meldet-verbunden (edge-px6jphw, D3 = A): eine im Portal getrennte Box
+     * mit Zertifikat schickt nie wieder eine CSR - das Portal sah nur {@code csrUpdatedAt} (7 Tage
+     * alt) und zeigte „Meldet sich nicht", obwohl die Box alle 5 min nach ihrem Zertifikat fragte.
+     * Die Abfrage selbst ist jetzt das Lebenszeichen: notiert je Kennung, höchstens einmal je
+     * Minute, nur für eine bekannte Kennung, und die Antwort bleibt dieselbe 404.
+     */
+    @Test
+    void dieZertifikatsAbfrageEinerGetrenntenBoxIstIhrLebenszeichen() throws Exception {
+        String ref = "edge-getrennt-fragt";
+        assertThat(postCsr(ref, TestPki.csrPem(TestPki.rsaKeyPair(2048), "CN=dev"), null).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+        // Der Stand von edge-px6jphw: vor 7 Tagen zuletzt eine CSR, damals ein Zertifikat
+        // ausgestellt, heute keiner Anlage zugeordnet.
+        jdbc.update("UPDATE device_enrollment SET csr_updated_at = now() - interval '7 days', "
+                + "issued_at = now() - interval '7 days' WHERE external_ref = ?", ref);
+
+        ResponseEntity<Map<String, Object>> erste = getCertificate(ref);
+        assertThat(erste.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(erste.getBody()).as("die Antwort verrät nichts Neues")
+                .isEqualTo(getCertificate("edge-nie-gesehen-fragt").getBody());
+
+        Map<String, Object> zeile = wartendeZeile(ref);
+        assertThat(zeile).containsEntry("everIssued", true);
+        java.time.Instant abgefragt = java.time.Instant.parse((String) zeile.get("zuletztAbgefragtAm"));
+        assertThat(abgefragt).isAfter(java.time.Instant.now().minusSeconds(60));
+        assertThat(java.time.Instant.parse((String) zeile.get("csrUpdatedAt")))
+                .isBefore(java.time.Instant.now().minus(java.time.Duration.ofDays(6)));
+
+        // Höchstens einmal je Minute: die zweite Abfrage gleich danach schreibt nichts.
+        getCertificate(ref);
+        assertThat(java.time.Instant.parse((String) wartendeZeile(ref).get("zuletztAbgefragtAm")))
+                .isEqualTo(abgefragt);
+
+        // Eine unbekannte Kennung legt keine Zeile an.
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM device_enrollment WHERE external_ref = ?",
+                Integer.class, "edge-nie-gesehen-fragt")).isZero();
+    }
+
+    private Map<String, Object> wartendeZeile(String ref) {
+        ResponseEntity<List<Map<String, Object>>> pending = rest.exchange(
+                url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("admin", "admin"))), new ParameterizedTypeReference<>() {});
+        assertThat(pending.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return pending.getBody().stream().filter(e -> ref.equals(e.get("externalRef")))
+                .findFirst().orElseThrow();
     }
 
     @Test

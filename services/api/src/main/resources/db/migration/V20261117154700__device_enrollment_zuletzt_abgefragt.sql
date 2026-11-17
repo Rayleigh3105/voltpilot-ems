@@ -1,0 +1,16 @@
+-- vp-entkoppelte-box-meldet-verbunden (D3 = A): wann hat die Box zuletzt nach
+-- ihrem Zertifikat gefragt (GET /api/v1/enrollment/{ref}/certificate)?
+--
+-- Eine Box, der schon einmal ein Zertifikat ausgestellt wurde, schickt nie
+-- wieder eine CSR - csr_updated_at bleibt danach für immer stehen. Wurde sie im
+-- Portal getrennt, fragt sie aber weiter im Abgleich-Takt nach ihrer Identität
+-- (Edge-Core reconcileLoop, 5 min). Diese Spalte ist das einzige Lebenszeichen,
+-- das die Plattform von so einer Box hört; das Portal zeigt eine nicht
+-- eingerichtete Box damit als erreichbar.
+--
+-- Additiv: NULL = noch nie abgefragt (oder vor dieser Version). Geschrieben
+-- höchstens einmal je Minute und Kennung (EnrollmentRepository.notierAbfrage),
+-- nur für eine Kennung, die schon eine Zeile hat; die Antwort der Abfrage
+-- bleibt unverändert. Die Laufzeitrolle hat UPDATE auf der Tabelle bereits
+-- (V20260702040000), die Spalte erbt es.
+ALTER TABLE device_enrollment ADD COLUMN IF NOT EXISTS zuletzt_abgefragt_am TIMESTAMPTZ;

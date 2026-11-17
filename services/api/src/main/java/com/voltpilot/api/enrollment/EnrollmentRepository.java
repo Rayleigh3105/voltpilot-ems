@@ -45,6 +45,21 @@ public class EnrollmentRepository {
                 externalRef, csrPem, deviceInfo) > 0;
     }
 
+    /**
+     * Lebenszeichen einer Zertifikats-Abfrage (vp-entkoppelte-box-meldet-verbunden, D3 = A):
+     * notiert {@code zuletzt_abgefragt_am} für eine Kennung, die schon eine Zeile hat -
+     * höchstens einmal je Minute, damit der Abgleich-Takt aller Boxen keine Schreiblast
+     * erzeugt. Eine unbekannte Kennung ändert nichts (kein INSERT): die Abfrage bleibt so
+     * stumm wie zuvor.
+     */
+    public void notierAbfrage(String externalRef) {
+        jdbc.update(
+                "UPDATE device_enrollment SET zuletzt_abgefragt_am = now() WHERE external_ref = ? "
+                        + "AND (zuletzt_abgefragt_am IS NULL "
+                        + "     OR zuletzt_abgefragt_am < now() - interval '1 minute')",
+                externalRef);
+    }
+
     public Optional<Enrollment> find(String externalRef) {
         return jdbc.query(
                 "SELECT external_ref, csr_pem, device_info, device_id, cert_pem, cert_serial, "

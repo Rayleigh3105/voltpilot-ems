@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
@@ -59,6 +60,11 @@ type Link struct {
 	onChargingBoost     func(payload []byte)
 	onPriceCurrent      func(payload []byte)
 	onConnect           func(connected bool)
+	// verluste zählt jeden von Paho gemeldeten Verbindungsverlust. Die
+	// Verbunden-Meldung liest ihn vorher und danach: ist dazwischen ein
+	// Verlust gemeldet worden und die Verbindung jetzt zu, meldet sie
+	// „getrennt" nach (siehe meldeVerbunden).
+	verluste atomic.Uint64
 }
 
 type downlinkRoute struct {
@@ -285,21 +291,31 @@ func New(o Options) (*Link, error) {
 
 	opts.OnConnect = func(c pahomqtt.Client) {
 		slog.Info("cloud link connected", "broker", o.brokerURL())
+		verlusteVorher := l.verluste.Load()
 		// Routes are installed on the process-new Paho client before Connect.
 		// OnConnect only restores broker subscriptions. With CleanSession=false,
 		// an inflight QoS1 DUP may arrive immediately after CONNACK, before this
 		// callback starts; registering a handler here would lose that delivery.
+		angenommen, abgelehnt := 0, 0
 		for _, route := range l.downlinks {
-			if tok := c.Subscribe(route.topic, 1, nil); tok.Wait() && tok.Error() != nil {
-				slog.Error("downlink subscribe failed", "topic", route.topic, "err", tok.Error())
+			tok := c.Subscribe(route.topic, 1, nil)
+			tok.Wait()
+			if err := tok.Error(); err != nil {
+				slog.Error("downlink subscribe failed", "topic", route.topic, "err", err)
+				continue
 			}
+			if !aboAngenommen(tok, route.topic) {
+				slog.Error("downlink subscribe refused by the broker (SUBACK 0x80)", "topic", route.topic)
+				abgelehnt++
+				continue
+			}
+			angenommen++
 		}
-		if l.onConnect != nil {
-			l.onConnect(true)
-		}
+		l.meldeVerbunden(c, verlusteVorher, angenommen, abgelehnt)
 	}
 	opts.OnConnectionLost = func(_ pahomqtt.Client, err error) {
 		slog.Warn("cloud link lost; buffering continues, reconnect is automatic", "err", err)
+		l.verluste.Add(1)
 		if l.onConnect != nil {
 			l.onConnect(false)
 		}
@@ -410,6 +426,56 @@ func (l *Link) Connect() {
 // Connected reports the live connection state.
 func (l *Link) Connected() bool {
 	return l.client.IsConnectionOpen()
+}
+
+// aboAngenommen: hat der Broker dieses Abo gewährt? MQTT 3.1.1 meldet eine
+// Ablehnung als Rückgabecode 0x80 im SUBACK - Paho macht daraus KEINEN Fehler,
+// nur einen Eintrag in Result().
+func aboAngenommen(tok pahomqtt.Token, topic string) bool {
+	st, ok := tok.(*pahomqtt.SubscribeToken)
+	if !ok {
+		return true
+	}
+	code, ok := st.Result()[topic]
+	return !ok || code != 0x80
+}
+
+// meldeVerbunden schließt eine Verbindung ab, deren Abos gerade gestellt wurden
+// (vp-entkoppelte-box-meldet-verbunden). „Verbunden" heißt: die Verbindung steht
+// noch UND der Broker hat mindestens ein Abo der Box gewährt. Eine Box, deren
+// Rechte in der Cloud entzogen sind (Anlage getrennt, Grant gelöscht), bekommt
+// TLS und CONNECT weiter angenommen - ihr Zertifikat ist ja gültig -, aber kein
+// Abo: in Produktion wirft EMQX sie beim ersten abgelehnten SUBSCRIBE hinaus
+// (deny_action = disconnect), sonst kommt SUBACK 0x80. Beides ist kein
+// „verbunden".
+//
+// Reihenfolge: Paho ruft OnConnect und OnConnectionLost in getrennten
+// Goroutinen auf. Fällt die Verbindung während der Abos, kam die Meldung
+// „verbunden" bisher NACH „getrennt" an und blieb stehen (24 von 40 Läufen in
+// TestRauswurfBeimAboEndetNichtAufVerbunden ohne diesen Abschluss). Darum:
+// vor dem Melden prüfen, ob die Verbindung noch offen ist, und danach, ob
+// inzwischen ein Verlust gemeldet wurde, während die Verbindung zu ist - dann
+// „getrennt" nachmelden. Paho setzt den Verbindungsstatus, bevor es
+// OnConnectionLost aufruft, und der Zähler steigt vor dessen Meldung; so
+// endet jede Verzahnung auf dem wahren Zustand.
+func (l *Link) meldeVerbunden(c pahomqtt.Client, verlusteVorher uint64, angenommen, abgelehnt int) {
+	if l.onConnect == nil {
+		return
+	}
+	if !c.IsConnectionOpen() {
+		return // während der Abos verloren: OnConnectionLost meldet „getrennt"
+	}
+	if angenommen == 0 {
+		slog.Warn("broker accepted the connection but granted no downlink subscription - "+
+			"the device's broker access is withdrawn (removed in the portal?); reporting not connected",
+			"device_id", l.identity.DeviceID, "refused", abgelehnt)
+		l.onConnect(false)
+		return
+	}
+	l.onConnect(true)
+	if l.verluste.Load() != verlusteVorher && !c.IsConnectionOpen() {
+		l.onConnect(false)
+	}
 }
 
 func (l *Link) topic(leaf string) string {

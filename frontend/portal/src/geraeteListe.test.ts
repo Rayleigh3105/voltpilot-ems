@@ -51,11 +51,13 @@ describe('geraeteListeZeilen: eine Zeile je Box, jeder Lebensabschnitt genau ein
     expect(zeilen[0]).toMatchObject({ lebensabschnitt: 'wartet', ref: 'edge-wartend' });
   });
 
-  it('eine wartende Anmeldung trägt ihre Erreichbarkeit (`boxVerbindung`), ein anderer Lebensabschnitt nicht (Firstmate vp-werkstatt-laeuft-anzeige)', () => {
+  it('eine wartende Anmeldung trägt ihre Erreichbarkeit (`wartendeVerbindung`), ein anderer Lebensabschnitt nicht (Firstmate vp-werkstatt-laeuft-anzeige)', () => {
     const zeilen = geraeteListeZeilen({ fleet: [], devices: [deviceRow()], pending: [pending()], werkstattBoxen: [werkstattBox()] }, now);
     const wartet = zeilen.find((z) => z.lebensabschnitt === 'wartet')!;
     expect(wartet).not.toHaveProperty('erreichbar', null);
-    expect((wartet as { erreichbar: { zustand: string } }).erreichbar.zustand).toBe('verzoegert');
+    // Die Fixture-Meldung liegt eine Minute zurück: im Abfragetakt einer wartenden Box (≤ 5 min,
+    // D3 = A) ist das erreichbar, nicht „verzögert" wie beim 15-s-Herzschlag der Flotte.
+    expect((wartet as { erreichbar: { zustand: string } }).erreichbar.zustand).toBe('online');
     const gedruckt = zeilen.find((z) => z.lebensabschnitt === 'gedruckt')!;
     expect((gedruckt as { erreichbar: unknown }).erreichbar).toBeNull();
     const werkstatt = zeilen.find((z) => z.lebensabschnitt === 'werkstatt')!;

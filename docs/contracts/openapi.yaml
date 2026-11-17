@@ -29628,6 +29628,16 @@ components:
             True when a certificate was once issued and the device was later
             unclaimed (a stale enrollment), false when never claimed at all.
         issuedAt: { type: string, format: date-time, nullable: true, description: When a certificate was issued (null if never). }
+        zuletztAbgefragtAm:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Last certificate poll of this reference (written at most once per
+            minute; null = never polled). A box that once held a certificate
+            never uploads a CSR again, so this is the only sign of life the
+            platform hears from it; the portal judges a waiting box's
+            reachability from the later of csrUpdatedAt and this.
     TelemetryPoint:
       type: object
       properties:

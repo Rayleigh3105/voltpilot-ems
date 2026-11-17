@@ -1,6 +1,6 @@
 import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
 import { crossoverState } from './adminEdgeUpdates';
-import { boxVerbindung, type BoxErreichbarkeit, type BoxVerbindung } from './adminFleet';
+import { DASH, relAge, type BoxErreichbarkeit, type BoxVerbindung } from './adminFleet';
 
 /**
  * Die reine Schicht der Plattform-Seite **„Geräte"**: der Onboarding-Funnel
@@ -164,9 +164,8 @@ export function funnelStages(
 export const PENDING_KONTEXT = 'Noch bei keinem Kunden eingerichtet';
 
 /**
- * Wortlaut der Erreichbarkeit EINES wartenden Geräts: dieselbe Schwelle wie
- * die verbundene Flotte (`boxVerbindung`), aber nie „Verbunden" - das Gerät
- * ist erreichbar, nicht mit einem Kunden verbunden.
+ * Wortlaut der Erreichbarkeit EINES wartenden Geräts - nie „Verbunden": das
+ * Gerät ist erreichbar, nicht mit einem Kunden verbunden.
  */
 const PENDING_ERREICHBAR_TEXT: Record<BoxErreichbarkeit, string> = {
   online: 'Online', verzoegert: 'Verzögert', offline: 'Meldet sich nicht', nie: 'Wartet auf erste Meldung',
@@ -174,6 +173,41 @@ const PENDING_ERREICHBAR_TEXT: Record<BoxErreichbarkeit, string> = {
 
 export function pendingErreichbarText(v: BoxVerbindung): string {
   return PENDING_ERREICHBAR_TEXT[v.zustand];
+}
+
+/**
+ * Online-Fenster einer wartenden Box (vp-entkoppelte-box-meldet-verbunden, D3 = A). Ihr
+ * Lebenszeichen ist keine Herzschlag-Meldung (15 s, dafür gilt `boxVerbindung` der Flotte),
+ * sondern ihre Zertifikats-Abfrage: eine nie zugeordnete Box fragt alle ≤ 60 s, eine
+ * getrennte Box mit Zertifikat im Abgleich-Takt alle 5 min (Edge-Core `reconcileLoop`), und
+ * die API notiert höchstens eine Abfrage je Minute. Zwei Abgleich-Takte plus diese Minute:
+ * eine verpasste Abfrage kippt die Box noch nicht auf „Meldet sich nicht". Mit der
+ * Flotten-Schwelle (45 s / 5 min) stünde eine erreichbare getrennte Box fast immer auf
+ * „Verzögert" und flackerte an der 5-min-Grenze.
+ */
+export const WARTET_ONLINE_WINDOW_MS = 11 * 60 * 1000;
+
+/**
+ * Erreichbarkeit einer wartenden Box aus ihrem letzten Lebenszeichen: die spätere von
+ * letzter CSR (`csrUpdatedAt`) und letzter Zertifikats-Abfrage (`zuletztAbgefragtAm`).
+ * Eine Box mit Zertifikat schickt nie wieder eine CSR - ohne die Abfrage stünde sie nach
+ * einer Trennung für immer auf „Meldet sich nicht", auch wenn sie im Takt fragt.
+ */
+export function wartendeVerbindung(
+  p: Pick<PendingEnrollment, 'csrUpdatedAt' | 'zuletztAbgefragtAm'>,
+  now: Date,
+): BoxVerbindung {
+  const zeiten = [p.csrUpdatedAt, p.zuletztAbgefragtAm ?? null]
+    .map((t) => (t ? Date.parse(t) : Number.NaN))
+    .filter((t) => Number.isFinite(t));
+  if (zeiten.length === 0) {
+    return { zustand: 'nie', tone: 'off', text: 'Wartet auf erste Meldung', lastSeenText: DASH };
+  }
+  const age = now.getTime() - Math.max(...zeiten);
+  if (age <= WARTET_ONLINE_WINDOW_MS) {
+    return { zustand: 'online', tone: 'ok', text: 'Online', lastSeenText: relAge(age) };
+  }
+  return { zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht', lastSeenText: relAge(age) };
 }
 
 /** Eine Zeile der Sektion „Wartet auf Zuordnung". */
@@ -186,7 +220,7 @@ export interface PendingRow {
   hint: string;
   /** True für die Hervorhebung nach {@link TYPO_SUSPECT_AFTER_MS} (die Zeile wird bernstein markiert). */
   suspect: boolean;
-  /** Ist die Box gerade erreichbar? DIE Online-Regel der Plattform (`boxVerbindung`), dieselbe Schwelle wie die Flotte. */
+  /** Ist die Box gerade erreichbar? Aus ihrem letzten Lebenszeichen (`wartendeVerbindung`, D3 = A). */
   erreichbar: BoxVerbindung;
   /** Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz; `null` = selbst angemeldet. */
   werkstattAbnahmeAm: string | null;
@@ -237,7 +271,7 @@ export function pendingRows(
             ? `Meldet sich seit ${seitTagen(waitedMs)}, noch keinem Kunden zugeordnet`
             : 'Frisch — normal während der Einrichtung',
         suspect,
-        erreichbar: boxVerbindung(p.csrUpdatedAt, now),
+        erreichbar: wartendeVerbindung(p, now),
         werkstattAbnahmeAm: p.werkstattAbnahmeAm,
         everIssued: p.everIssued,
       };
