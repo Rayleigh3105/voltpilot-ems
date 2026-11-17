@@ -98,6 +98,11 @@ export interface PendingEnrollment {
   issuedAt: string | null;
   /** Herkunft (vp-geraete-herkunft): die Werkstatt-Abnahme dieser Referenz; `null` = selbst angemeldet. */
   werkstattAbnahmeAm: string | null;
+  /**
+   * Letzte Zertifikats-Abfrage dieser Kennung (D3 = A, höchstens eine je Minute notiert);
+   * `null` = nie abgefragt. Fehlt bei einer älteren API (vor V20261117154700).
+   */
+  zuletztAbgefragtAm?: string | null;
 }
 
 /**

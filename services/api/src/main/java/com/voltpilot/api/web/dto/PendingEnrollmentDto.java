@@ -17,6 +17,12 @@ import java.time.Instant;
  * reference, {@code null} when it enrolled without one (it registered
  * itself). This is the one honest fact the platform has about where a box
  * came from - no inference, no third guess.
+ *
+ * <p>{@code zuletztAbgefragtAm} (vp-entkoppelte-box-meldet-verbunden, D3 = A) is the last
+ * certificate poll of this reference ({@code null} = never polled since the column exists).
+ * A box that once held a certificate never uploads a CSR again, so for it this is the only
+ * sign of life the platform hears; the portal judges a waiting box's reachability from the
+ * later of the two.
  */
 public record PendingEnrollmentDto(
         String externalRef,
@@ -24,5 +30,6 @@ public record PendingEnrollmentDto(
         Instant csrUpdatedAt,
         boolean everIssued,
         Instant issuedAt,
-        Instant werkstattAbnahmeAm) {
+        Instant werkstattAbnahmeAm,
+        Instant zuletztAbgefragtAm) {
 }

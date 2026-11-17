@@ -103,7 +103,7 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
 
   it('eine alte Meldung („Meldet sich nicht") bleibt von der grünen Erreichbarkeit unterschieden', async () => {
     listPendingEnrollments.mockResolvedValue([{
-      externalRef: 'edge-alt', deviceInfo: null, csrUpdatedAt: new Date(Date.now() - 10 * 60_000).toISOString(), everIssued: false, issuedAt: null,
+      externalRef: 'edge-alt', deviceInfo: null, csrUpdatedAt: new Date(Date.now() - 20 * 60_000).toISOString(), everIssued: false, issuedAt: null,
     }]);
     render(<GeraeteListePage onOpen={vi.fn()} />);
     const zeile = (await screen.findAllByText('edge-alt'))[0].closest('tr')!;

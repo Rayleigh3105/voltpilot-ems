@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
-import { DELAYED_WINDOW_MS } from './adminFleet';
-import { ONLINE_WINDOW_MS } from './api';
 import {
   PENDING_KONTEXT,
   TYPO_SUSPECT_AFTER_MS,
+  WARTET_ONLINE_WINDOW_MS,
   deviceRows,
   funnelStages,
   herkunftText,
@@ -114,19 +113,42 @@ describe('pendingRows', () => {
     expect(pendingRows([none], NOW)[0].deviceInfo).toBeNull();
   });
 
-  it('erreichbar: dieselbe Online-Regel wie die verbundene Flotte, nie „Verbunden" - das Gerät ist nicht beim Kunden (Firstmate vp-werkstatt-laeuft-anzeige)', () => {
+  it('erreichbar: aus dem letzten Lebenszeichen, nie „Verbunden" - das Gerät ist nicht beim Kunden (Firstmate vp-werkstatt-laeuft-anzeige)', () => {
     const [frisch] = pendingRows([pending('edge-frisch', 0)], NOW);
     expect(frisch.erreichbar.zustand).toBe('online');
     expect(pendingErreichbarText(frisch.erreichbar)).toBe('Online');
     expect(pendingErreichbarText(frisch.erreichbar)).not.toBe('Verbunden');
 
-    const [verzoegert] = pendingRows([pending('edge-verzoegert', DELAYED_WINDOW_MS + 1000)], NOW);
-    expect(verzoegert.erreichbar.zustand).toBe('verzoegert');
-    expect(pendingErreichbarText(verzoegert.erreichbar)).toBe('Verzögert');
+    // Das Fenster folgt dem Abfragetakt der Box (≤ 60 s nie zugeordnet, 5 min getrennt),
+    // nicht dem 15-s-Herzschlag der Flotte: eine verpasste Abfrage kippt sie nicht.
+    const [knapp] = pendingRows([pending('edge-knapp', WARTET_ONLINE_WINDOW_MS - 1000)], NOW);
+    expect(knapp.erreichbar.zustand).toBe('online');
 
-    const [offline] = pendingRows([pending('edge-offline', ONLINE_WINDOW_MS + 1000)], NOW);
+    const [offline] = pendingRows([pending('edge-offline', WARTET_ONLINE_WINDOW_MS + 1000)], NOW);
     expect(offline.erreichbar.zustand).toBe('offline');
     expect(pendingErreichbarText(offline.erreichbar)).toBe('Meldet sich nicht');
+  });
+
+  // vp-entkoppelte-box-meldet-verbunden (edge-px6jphw, D3 = A): eine getrennte Box mit
+  // Zertifikat schickt nie wieder eine CSR - csrUpdatedAt stand 7 Tage zurück, das Portal sagte
+  // „Meldet sich nicht", obwohl die Box alle 5 min nach ihrem Zertifikat fragte.
+  it('eine getrennte Box, die nach ihrem Zertifikat fragt, ist erreichbar - auch wenn ihre CSR alt ist', () => {
+    const getrennt: PendingEnrollment = {
+      ...pending('edge-px6jphw', 7 * 24 * 3600_000, true),
+      zuletztAbgefragtAm: new Date(NOW.getTime() - 4 * 60_000).toISOString(),
+    };
+    const [row] = pendingRows([getrennt], NOW);
+    expect(row.erreichbar.zustand).toBe('online');
+    expect(pendingErreichbarText(row.erreichbar)).toBe('Online');
+    expect(row.erreichbar.lastSeenText).toBe('vor 4 Min.');
+    expect(row.hint).toBe('War schon einmal verbunden und wurde getrennt');
+
+    // Ohne Abfrage (ältere API, Feld fehlt, oder die Box ist wirklich weg) bleibt es ehrlich.
+    const [stumm] = pendingRows([pending('edge-px6jphw', 7 * 24 * 3600_000, true)], NOW);
+    expect(stumm.erreichbar.zustand).toBe('offline');
+    const [weg] = pendingRows([{ ...getrennt, zuletztAbgefragtAm: new Date(NOW.getTime() - 3 * 3600_000).toISOString() }], NOW);
+    expect(weg.erreichbar.zustand).toBe('offline');
+    expect(weg.erreichbar.lastSeenText).toBe('vor 3 Std.');
   });
 
   it('PENDING_KONTEXT: kein Kunde, kein Benutzer, keine Anlage - für jede wartende Zeile derselbe Satz', () => {

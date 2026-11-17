@@ -276,6 +276,15 @@ public class EnrollmentService {
             return Optional.empty();
         }
         Enrollment enrollment = found.get();
+        // D3 = A (vp-entkoppelte-box-meldet-verbunden): jede Abfrage einer bekannten Kennung
+        // ist ein Lebenszeichen - das einzige, das die Plattform von einer getrennten Box mit
+        // Zertifikat noch hört (sie schickt nie wieder eine CSR). Best effort: die Antwort
+        // hängt nie daran.
+        try {
+            enrollments.notierAbfrage(externalRef);
+        } catch (RuntimeException e) {
+            log.warn("Could not note the certificate poll of ref '{}': {}", externalRef, e.getMessage());
+        }
         Optional<DeviceIdentity> claimed = devices.findByRef(externalRef);
         if (claimed.isEmpty()) {
             // Unclaimed (or unclaimed-again): even an already-issued certificate
