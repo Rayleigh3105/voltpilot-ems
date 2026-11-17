@@ -14,7 +14,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.ObjectProvider;
@@ -43,6 +45,8 @@ class EnrollmentServiceStartupReloadTest {
     private static final UUID TENANT = UUID.fromString("f82379ed-0000-0000-0000-000000000001");
     private static final UUID SITE = UUID.fromString("3c88a87b-0000-0000-0000-000000000002");
     private static final UUID DEVICE = UUID.fromString("cdba2ee8-0000-0000-0000-000000000003");
+    /** A grant whose device row died with a deleted customer (Befund D1). */
+    private static final UUID ORPHAN = UUID.fromString("d8a48be6-0000-0000-0000-000000000004");
 
     @TempDir
     Path dir;
@@ -107,6 +111,51 @@ class EnrollmentServiceStartupReloadTest {
         verify(reloader, times(1)).reloadNowBlocking(anyInt(), any());
     }
 
+    /** Befund D1: der Grant einer Box, deren Gerätezeile mit dem Kunden gelöscht wurde, fällt beim Start weg. */
+    @Test
+    void removesAnOrphanGrantWithoutAnActiveDeviceRow() throws Exception {
+        Path acl = writeAclWithDeviceGrantAndOrphan();
+        BrokerAuthzReloader reloader = mockReloader(true);
+
+        newService(acl, reloader, List.of(new DeviceIdentity(TENANT, SITE, DEVICE)))
+                .selfHealBrokerAclOnStartup();
+
+        String content = Files.readString(acl);
+        assertThat(content).as("orphan grant removed").doesNotContain(ORPHAN.toString());
+        assertThat(grantIsAboveDefaultDeny(acl, DEVICE)).as("active device keeps its grant").isTrue();
+        verify(reloader, times(1)).reloadNowBlocking(anyInt(), any());
+    }
+
+    /** Eine vorübergehend nicht lesbare Datenbank darf NIE Grants löschen. */
+    @Test
+    void keepsEveryGrantWhenTheDbIsUnreachable() throws Exception {
+        Path acl = writeAclWithDeviceGrantAndOrphan();
+        EnrollmentDeviceLookup devices = mock(EnrollmentDeviceLookup.class);
+        when(devices.allEnrolledDeviceIdentities()).thenThrow(new RuntimeException("db down"));
+
+        newService(acl, mockReloader(true), devices).selfHealBrokerAclOnStartup();
+
+        assertThat(Files.readString(acl)).contains(ORPHAN.toString()).contains(DEVICE.toString());
+        verify(devices, times(0)).activeDeviceIds();
+    }
+
+    @Test
+    void keepsEveryGrantWhenTheActiveDeviceListFailsOrIsEmpty() throws Exception {
+        Path acl = writeAclWithDeviceGrantAndOrphan();
+        EnrollmentDeviceLookup failing = mock(EnrollmentDeviceLookup.class);
+        when(failing.allEnrolledDeviceIdentities()).thenReturn(List.of());
+        when(failing.activeDeviceIds()).thenThrow(new RuntimeException("db down"));
+        newService(acl, mockReloader(true), failing).selfHealBrokerAclOnStartup();
+        assertThat(Files.readString(acl)).contains(ORPHAN.toString()).contains(DEVICE.toString());
+
+        EnrollmentDeviceLookup empty = mock(EnrollmentDeviceLookup.class);
+        when(empty.allEnrolledDeviceIdentities()).thenReturn(List.of());
+        when(empty.activeDeviceIds()).thenReturn(Set.of());
+        newService(acl, mockReloader(true), empty).selfHealBrokerAclOnStartup();
+        assertThat(Files.readString(acl)).as("an empty device list never empties the file")
+                .contains(ORPHAN.toString()).contains(DEVICE.toString());
+    }
+
     @Test
     void doesNotReloadWhenTheFileHasNoRegionAnchors() throws Exception {
         Path acl = dir.resolve("acl.conf");
@@ -163,6 +212,8 @@ class EnrollmentServiceStartupReloadTest {
             List<DeviceIdentity> enrolled) {
         EnrollmentDeviceLookup devices = mock(EnrollmentDeviceLookup.class);
         when(devices.allEnrolledDeviceIdentities()).thenReturn(enrolled);
+        when(devices.activeDeviceIds()).thenReturn(
+                enrolled.stream().map(DeviceIdentity::deviceId).collect(Collectors.toSet()));
         return newService(acl, reloader, devices);
     }
 
@@ -195,6 +246,13 @@ class EnrollmentServiceStartupReloadTest {
         assertThat(new AclGrantWriter(acl).regenerateGrants(
                 List.of(new AclGrantWriter.DeviceGrant(TENANT, SITE, DEVICE))).changed())
                 .as("fixture must already be canonical+complete").isFalse();
+        return acl;
+    }
+
+    private Path writeAclWithDeviceGrantAndOrphan() throws Exception {
+        Path acl = dir.resolve("acl.conf");
+        Files.writeString(acl, preamble() + grantBlock(DEVICE) + grantBlock(ORPHAN) + endAndTail(),
+                StandardCharsets.UTF_8);
         return acl;
     }
 

@@ -1,7 +1,9 @@
 package com.voltpilot.api.enrollment;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -60,5 +62,15 @@ public class EnrollmentDeviceLookup {
                         rs.getObject("tenant_id", UUID.class),
                         rs.getObject("site_id", UUID.class),
                         rs.getObject("id", UUID.class)));
+    }
+
+    /**
+     * Ids of every ACTIVE device row ({@code ausgebaut_am IS NULL}), enrolled or not - what may still
+     * hold a broker grant. A grant whose device id is missing here is an orphan (its row died with a
+     * deleted customer, or the box was removed and the best-effort grant removal failed) and the
+     * startup self-heal drops it (Befund D1). Admin datasource (BYPASSRLS), like {@link #findByRef}.
+     */
+    public Set<UUID> activeDeviceIds() {
+        return new HashSet<>(jdbc.queryForList("SELECT id FROM device WHERE ausgebaut_am IS NULL", UUID.class));
     }
 }

@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -170,12 +171,17 @@ class AclGrantWriter {
     /** One device that MUST have an in-region grant (from the DB source of truth). */
     record DeviceGrant(UUID tenantId, UUID siteId, UUID deviceId) {}
 
-    /** Outcome of a startup {@link #regenerateGrants(Collection)}. */
+    /**
+     * Outcome of a startup {@link #regenerateGrants(Collection, Supplier)}. {@code orphansRemoved}: device
+     * ids whose grant was dropped for lack of an active device row; {@code orphanCheckSkipped}: why no
+     * orphan was looked for (null when the check ran).
+     */
     record RegenerateResult(NormalizeResult.Status status, int authoritative, int restoredFromTruth,
-            int grantsMovedAboveDeny, int tailCopies, String detail) {
+            int grantsMovedAboveDeny, int tailCopies, String detail, List<String> orphansRemoved,
+            String orphanCheckSkipped) {
 
         static RegenerateResult skipped(String detail) {
-            return new RegenerateResult(NormalizeResult.Status.SKIPPED, 0, 0, 0, 0, detail);
+            return new RegenerateResult(NormalizeResult.Status.SKIPPED, 0, 0, 0, 0, detail, List.of(), detail);
         }
 
         boolean skipped() {
@@ -200,9 +206,25 @@ class AclGrantWriter {
      * shell-provisioned via {@code tools/pki} - collected from anywhere in the
      * file). Rewrites ONLY when something changed; never throws - a file without
      * the region anchors (not one we own, or a fully-wiped file the DB alone
-     * cannot reconstruct) is reported {@code SKIPPED}.
+     * cannot reconstruct) is reported {@code SKIPPED}. No orphan cleanup: see
+     * {@link #regenerateGrants(Collection, Supplier)}.
      */
     synchronized RegenerateResult regenerateGrants(Collection<DeviceGrant> authoritative) {
+        return regenerateGrants(authoritative, null);
+    }
+
+    /**
+     * {@link #regenerateGrants(Collection)} plus the orphan cleanup (Befund D1): a grant whose device id
+     * is neither authoritative nor in {@code activeDeviceIds} has no active device row any more - its
+     * customer was deleted, or the box was removed and the best-effort removal failed - and is dropped,
+     * so an old box cannot keep publishing under a deleted customer's topics. The cleanup runs ONLY on a
+     * successfully read list: {@code activeDeviceIds == null}, a throwing supplier, or an EMPTY list while
+     * the file holds grants (a wrong or empty database) remove nothing. The supplier is read AFTER the
+     * file, so a grant on disk always belongs to a row committed before the list was read. Block ids that
+     * are not UUIDs are never touched.
+     */
+    synchronized RegenerateResult regenerateGrants(Collection<DeviceGrant> authoritative,
+            Supplier<Set<UUID>> activeDeviceIds) {
         List<String> original;
         try {
             original = Files.readAllLines(aclFile, StandardCharsets.UTF_8);
@@ -226,6 +248,9 @@ class AclGrantWriter {
             }
             parsed.blocks.put(g.deviceId().toString(), desired);
         }
+        List<String> orphans = new ArrayList<>();
+        String orphanCheckSkipped = orphans(parsed, authoritative, activeDeviceIds, orphans);
+        orphans.forEach(parsed.blocks::remove);
         List<String> rebuilt;
         try {
             rebuilt = rebuild(parsed); // throws when the region anchors are missing
@@ -234,7 +259,7 @@ class AclGrantWriter {
         }
         if (rebuilt.equals(original)) {
             return new RegenerateResult(NormalizeResult.Status.UNCHANGED, authoritative.size(),
-                    0, 0, 0, null);
+                    0, 0, 0, null, List.of(), orphanCheckSkipped);
         }
         int grantsBelowDeny = deviceBlocksBelowDefaultDeny(original);
         int tailCopies = countTail(original);
@@ -244,7 +269,48 @@ class AclGrantWriter {
             return RegenerateResult.skipped("cannot rewrite " + aclFile + ": " + e.getMessage());
         }
         return new RegenerateResult(NormalizeResult.Status.HEALED, authoritative.size(), restored,
-                grantsBelowDeny, tailCopies, null);
+                grantsBelowDeny, tailCopies, null, List.copyOf(orphans), orphanCheckSkipped);
+    }
+
+    /** Collects the orphan block ids into {@code out}; returns why the check did not run (null = it ran). */
+    private static String orphans(Parsed parsed, Collection<DeviceGrant> authoritative,
+            Supplier<Set<UUID>> activeDeviceIds, List<String> out) {
+        if (activeDeviceIds == null) {
+            return "no active device list (device rows not read from the DB)";
+        }
+        Set<UUID> active;
+        try {
+            active = activeDeviceIds.get();
+        } catch (RuntimeException e) {
+            return "active device list unreadable: " + e;
+        }
+        if (active == null) {
+            return "no active device list";
+        }
+        if (active.isEmpty() && !parsed.blocks.isEmpty()) {
+            return "active device list is EMPTY while the file holds " + parsed.blocks.size()
+                    + " grant(s) - refusing to drop them all (wrong or empty database?)";
+        }
+        Set<String> keep = new java.util.HashSet<>();
+        authoritative.forEach(g -> keep.add(g.deviceId().toString()));
+        for (String id : parsed.blocks.keySet()) {
+            if (keep.contains(id)) {
+                continue;
+            }
+            UUID deviceId;
+            try {
+                deviceId = UUID.fromString(id);
+            } catch (IllegalArgumentException e) {
+                continue; // not a device id we can check against the device table
+            }
+            if (!deviceId.toString().equalsIgnoreCase(id)) {
+                continue; // a non-canonical id is no device row id either
+            }
+            if (!active.contains(deviceId)) {
+                out.add(id);
+            }
+        }
+        return null;
     }
 
     /** How many device grant blocks open BELOW the first default-deny (unreachable). */

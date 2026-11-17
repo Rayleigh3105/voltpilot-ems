@@ -124,10 +124,13 @@ public class EnrollmentService {
      * device ({@link EnrollmentDeviceLookup#allEnrolledDeviceIdentities()}) gets a
      * correct in-region grant - which RESTORES a dropped grant, FIXES a misordered
      * one, and canonicalizes the file (single region above a single default-deny
-     * tail). Grants not in the DB list (e.g. shell-provisioned via
-     * {@code tools/pki}) are preserved. If the DB is unreachable at boot we fall
-     * back to a pure canonicalize (no restore) so ordering is still fixed and the
-     * reload still fires - never crashing the boot.
+     * tail). Grants not in the DB list are preserved while their device row is
+     * active (e.g. shell-provisioned via {@code tools/pki}); a grant WITHOUT an
+     * active device row is an orphan and is dropped (Befund D1: a deleted
+     * customer's box kept publishing under its topics). If the DB is unreachable
+     * at boot we fall back to a pure canonicalize (no restore, no orphan
+     * removal) so ordering is still fixed and the reload still fires - never
+     * crashing the boot.
      *
      * <p><strong>The reload ALWAYS runs</strong> (regardless of whether the file
      * changed). EMQX compiles {@code acl.conf} ONCE at source init and does NOT
@@ -162,12 +165,14 @@ public class EnrollmentService {
         // grant. Deriving it from the DB (not the possibly-broken file) is what
         // lets a DROPPED grant be restored, not just reordered.
         List<AclGrantWriter.DeviceGrant> authoritative;
+        boolean dbRead;
         try {
             authoritative = devices.allEnrolledDeviceIdentities().stream()
                     .map(d -> new AclGrantWriter.DeviceGrant(d.tenantId(), d.siteId(), d.deviceId()))
                     .toList();
             log.info("Broker ACL regeneration: {} claimed+enrolled device grant(s) are the source "
                     + "of truth", authoritative.size());
+            dbRead = true;
         } catch (RuntimeException e) {
             // DB unreachable at boot: still canonicalize + reload (fixes ordering,
             // reconciles a stale broker), but a grant DROPPED from the file cannot
@@ -177,9 +182,12 @@ public class EnrollmentService {
                     + "be restored on this boot - restart the api once the DB is reachable.",
                     e.toString());
             authoritative = List.of();
+            dbRead = false;
         }
 
-        AclGrantWriter.RegenerateResult result = aclWriter.regenerateGrants(authoritative);
+        // Orphans only from a list that was read: an unreadable DB must never empty the file.
+        AclGrantWriter.RegenerateResult result = aclWriter.regenerateGrants(authoritative,
+                dbRead ? devices::activeDeviceIds : null);
         if (result.skipped()) {
             log.warn("Broker ACL regeneration skipped for {}: {} (managing grants out of band); "
                     + "NOT reloading EMQX for a file we do not own", resolved, result.detail());
@@ -195,6 +203,15 @@ public class EnrollmentService {
         } else {
             log.info("Broker ACL at {} already canonical and complete ({} enrolled device grant(s) "
                     + "present) - no file change needed.", resolved, result.authoritative());
+        }
+        if (!result.orphansRemoved().isEmpty()) {
+            log.warn("Broker ACL orphan cleanup: removed {} grant(s) without an active device row "
+                    + "(deleted customer or removed box) from {}: {}", result.orphansRemoved().size(),
+                    resolved, result.orphansRemoved());
+        } else if (result.orphanCheckSkipped() != null) {
+            log.warn("Broker ACL orphan cleanup skipped, no grant removed: {}", result.orphanCheckSkipped());
+        } else {
+            log.info("Broker ACL orphan cleanup: removed 0 grant(s) - every grant has an active device row");
         }
 
         // ALWAYS reload, changed or not: the file being correct does NOT mean the
