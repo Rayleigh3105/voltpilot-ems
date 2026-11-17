@@ -438,6 +438,55 @@ for (const breite of [390, 1440] as const) {
   });
 }
 
+for (const breite of [390, 1440] as const) {
+  const hoehe = breite < 720 ? 844 : 900;
+
+  /**
+   * N1 (vp-box-rueckkehr-diagnose, Abschnitt 6): eine ausgebaute/gelöste Box wird unter
+   * derselben Kennung neu verbunden - `GET /api/v1/devices` lieferte `schluesselAbgeholtAm`
+   * vor dem Fix aus der Ausstellung an die ALTE Gerätezeile (`DeviceRepository.
+   * anmeldungColumns`, nur `external_ref`, nie `device_id`). Der Weg maß die 75s-Datensperre
+   * sofort ab diesem tagealten Zeitpunkt - der Alarm kam, bevor die Box überhaupt eine Chance
+   * hatte, ihr neues Zertifikat zu holen, mit einem absurden Zähler ("Angemeldet · 8819:05").
+   * Nach dem Fix bleibt `schluesselAbgeholtAm` null, bis GENAU DIESE Gerätezeile ihr eigenes
+   * Zertifikat bekommt - derselbe Weg wie eine Box, die schon lief, bevor sie verbunden wurde.
+   */
+  test(`Der Weg: eine neu verbundene Box nach dem Ausbauen zeigt nicht sofort die alte Ausstellung (N1, vp-box-rueckkehr-diagnose) - ${breite}px`, async ({ page }) => {
+    const alteAusstellung = new Date(Date.now() - 6 * 24 * 3_600_000 - 19 * 60_000).toISOString();
+    const cloud: Cloud = {
+      sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null,
+      // Die Box steckte vorher schon an (Zertifikatsanfrage vor Tagen); nach dem Fix
+      // bekommt die NEUE Gerätezeile aus dem Claim noch keine (geleakte) Ausstellung.
+      anmeldung: { zuletztAngefragtAm: alteAusstellung, schluesselAbgeholtAm: null },
+      lastSeenAt: null, id: URSPRUNG_ID, ref: REF,
+    };
+    await verdrahte(page, cloud);
+    await page.clock.install();
+    await page.setViewportSize({ width: breite, height: hoehe });
+    await bisZurBox(page);
+    await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await waehleKabel(page);
+
+    // Nach dem Fix: sofort nach dem Verbinden (5 s) steht "Ihre Box ist im Internet", kein Alarm.
+    await page.clock.runFor(5000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist im Internet' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Die Datenverbindung kommt nicht durch' })).not.toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-rueckkehr-kein-alarm');
+    await bild(page, `n1-nachher-${breite}px`);
+
+    // Gegenprobe (zeigt den Fehler ohne den Fix): dieselbe Box, aber mit der alten
+    // Ausstellung an der neuen Gerätezeile - der Alarm kommt sofort, mit einem Zähler in
+    // Tagen statt Sekunden.
+    cloud.anmeldung = { zuletztAngefragtAm: alteAusstellung, schluesselAbgeholtAm: alteAusstellung };
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(5000);
+    await expect(page.getByRole('heading', { name: 'Die Datenverbindung kommt nicht durch' })).toBeVisible();
+    await expect(page.getByText(/Angemeldet · \d+:\d{2}/)).toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-rueckkehr-alter-alarm');
+    await bild(page, `n1-vorher-${breite}px`);
+  });
+}
+
 /**
  * Erstverbindung S2 (E4 = B): holt sich die Box beim ersten Verbinden die neueste Software, wartet der Weg an der
  * Station „Software“, bis sie fertig ist - Fortschritt mit Restzeit, kein „Weiter“; danach „auf dem neuesten Stand“.

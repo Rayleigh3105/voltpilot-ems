@@ -102,6 +102,9 @@ describe('pendingRows', () => {
     expect(row.suspect).toBe(false);
     expect(row.hint).toContain('getrennt');
     expect(row.hint).not.toContain('Tippfehler');
+    // N3 (vp-box-rueckkehr-diagnose): everIssued muss bis zur Lösch-Entscheidung
+    // (geraeteListe.ts, loeschKandidat) sichtbar bleiben.
+    expect(row.everIssued).toBe(true);
   });
 
   it('keeps an absent device description absent instead of inventing one', () => {

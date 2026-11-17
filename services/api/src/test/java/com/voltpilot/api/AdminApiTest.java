@@ -443,6 +443,31 @@ class AdminApiTest {
         assertThat(pending.getBody()).extracting(e -> e.get("externalRef")).doesNotContain("edge-typo-99");
     }
 
+    /**
+     * N3 (vp-box-rueckkehr-diagnose, Abschnitt 6): a box that was once issued a certificate
+     * ({@code everIssued}) must never be deletable through this route - it would make the box
+     * unreachable forever (it never sends a new CSR once it holds one) and a reset under the
+     * same reference would then fail on the held key.
+     */
+    @Test
+    void deletePendingEnrollmentRefusesOneThatWasEverIssued() {
+        String admin = token("admin", "admin");
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem, issued_at, device_id) "
+                + "VALUES ('edge-rueckkehr-99', 'dummy-csr', now() - interval '6 days', gen_random_uuid()) "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<String> response = rest.exchange(
+                url("/api/v1/admin/enrollments/pending/edge-rueckkehr-99"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(admin)), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        // Still there - nothing was deleted.
+        ResponseEntity<List<Map<String, Object>>> pending = rest.exchange(
+                url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(pending.getBody()).extracting(e -> e.get("externalRef")).contains("edge-rueckkehr-99");
+    }
+
     // ---- (b4) support password reset -----------------------------------------
 
     /**

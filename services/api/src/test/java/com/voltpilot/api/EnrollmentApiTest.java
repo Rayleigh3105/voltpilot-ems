@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.security.auth.x500.X500Principal;
@@ -227,6 +228,48 @@ class EnrollmentApiTest {
         assertThat(Files.readString(ACL_FILE)).doesNotContain(deviceId);
         assertThat(getCertificate("VP-ENROLL-0001").getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * N1 (vp-box-rueckkehr-diagnose, Abschnitt 6): after ausbauen/lösen gives a sticker ref
+     * back, reconnecting claims a NEW device row under the SAME ref - {@code
+     * device_enrollment} still points at the OLD device row's issuance until the box's next
+     * poll re-issues. {@code schluesselAbgeholtAm} must come ONLY from an issuance scoped to
+     * THIS device row ({@code en.device_id = d.id}, like {@code BoxBefundSql}); leaking the
+     * old row's {@code issued_at} made the setup path's 75s-Datensperre fire immediately with
+     * a stale, days-old counter instead of waiting for the box's actual re-issuance.
+     */
+    @Test
+    void schluesselAbgeholtAmNeverLeaksAPriorDeviceRowsIssuance() throws Exception {
+        provisionSticker("VP-RUECKKEHR-0001");
+        KeyPair deviceKey = TestPki.rsaKeyPair(2048);
+        String csr = TestPki.csrPem(deviceKey, "CN=box,O=x,OU=y");
+        assertThat(postCsr("vp-rueckkehr-0001", csr, null).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        String demo = token("demo", "demo");
+        String deviceId1 = claimDevice(demo, "VP-RUECKKEHR-0001");
+        assertThat(getCertificate("VP-RUECKKEHR-0001").getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // "Vom Kunden lösen"/ausbauen: gives the sticker ref back WITHOUT touching the
+        // enrollment row (device_enrollment.device_id still names the old row).
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId1), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), Void.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+
+        String deviceId2 = claimDevice(demo, "VP-RUECKKEHR-0001");
+        assertThat(deviceId2).isNotEqualTo(deviceId1);
+
+        // Before the box's first poll under the new row: the OLD device's issuance must NOT
+        // leak onto the new one.
+        assertThat(anmeldungFuer(demo, deviceId2))
+                .as("neue Gerätezeile hat noch kein eigenes Zertifikat")
+                .containsEntry("schluesselAbgeholtAm", null);
+
+        // The box's next poll re-issues the SAME key's certificate, now to the new device.
+        assertThat(getCertificate("VP-RUECKKEHR-0001").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(anmeldungFuer(demo, deviceId2).get("schluesselAbgeholtAm"))
+                .as("jetzt hat die neue Gerätezeile ihre EIGENE Ausstellung")
+                .isNotNull();
     }
 
     @Test
@@ -453,6 +496,25 @@ class EnrollmentApiTest {
         headers.add("X-Forwarded-For", clientIp);
         return rest.exchange(url("/api/v1/enrollment/" + ref + "/certificate"), HttpMethod.GET,
                 new HttpEntity<>(headers), new ParameterizedTypeReference<>() {});
+    }
+
+    private String claimDevice(String token, String externalRef) {
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", externalRef), bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return (String) claimed.getBody().get("id");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> anmeldungFuer(String token, String deviceId) {
+        ResponseEntity<Map<String, Object>> liste = rest.exchange(url("/api/v1/devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        List<Map<String, Object>> eintraege = (List<Map<String, Object>>) liste.getBody().get("eintraege");
+        Map<String, Object> row = eintraege.stream()
+                .filter(e -> deviceId.equals(e.get("id"))).findFirst().orElseThrow();
+        return (Map<String, Object>) row.get("anmeldung");
     }
 
     private String url(String path) {

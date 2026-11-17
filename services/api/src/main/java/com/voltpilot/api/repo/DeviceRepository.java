@@ -51,12 +51,23 @@ public class DeviceRepository {
      * reference. {@code refExpr} is a SQL expression for that ref (a column
      * reference such as {@code "d.external_ref"}, or {@code "?"} bound
      * alongside the caller's own parameters).
+     *
+     * <p>N1 (vp-box-rueckkehr-diagnose, Abschnitt 6): {@code issued_at} is
+     * additionally scoped to {@code deviceIdExpr} - the issuance belongs to
+     * exactly the device row it was issued to, like {@link
+     * com.voltpilot.api.geraete.BoxBefundSql}. Without that, a box that
+     * reconnects under a new device row (same external_ref, new id after
+     * ausbauen/lösen) kept showing the OLD row's issuance, so the setup path
+     * measured its 75s-Datensperre from a certificate fetched hours or days
+     * earlier. {@code csr_updated_at} stays unscoped by device_id on
+     * purpose: it is the box's own enroll-loop upload, which happens before
+     * any device row exists at all.
      */
-    static String anmeldungColumns(String refExpr) {
+    static String anmeldungColumns(String refExpr, String deviceIdExpr) {
         return "(SELECT e.csr_updated_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
                 + ") AS anmeldung_angefragt_am, "
                 + "(SELECT e.issued_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
-                + ") AS anmeldung_abgeholt_am";
+                + " AND e.device_id = " + deviceIdExpr + ") AS anmeldung_abgeholt_am";
     }
 
     public List<DeviceDto> findAll() {
@@ -67,7 +78,7 @@ public class DeviceRepository {
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
-                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref", "d.id") + " "
                         + "FROM device d WHERE d.ausgebaut_am IS NULL ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
@@ -84,7 +95,7 @@ public class DeviceRepository {
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
-                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref", "d.id") + " "
                         + "FROM device d WHERE d.site_id = ? AND d.status = 'claimed' AND d.ausgebaut_am IS NULL "
                         + "ORDER BY d.created_at",
                 DeviceRepository::mapDevice, siteId);
@@ -96,7 +107,7 @@ public class DeviceRepository {
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
-                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref", "d.id") + " "
                         + "FROM device d WHERE d.id = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
     }
@@ -112,7 +123,7 @@ public class DeviceRepository {
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "d.link_kind, d.signal_dbm, d.link_seen_at, d.link_weak_since, "
                         + lastSeen("d") + " AS last_seen, "
-                        + anmeldungColumns("d.external_ref") + " "
+                        + anmeldungColumns("d.external_ref", "d.id") + " "
                         + "FROM device d "
                         + "WHERE d.external_ref = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice,
@@ -138,18 +149,18 @@ public class DeviceRepository {
         lockReference(externalRef);
         lockTopology(siteId);
         jdbc.query("SELECT id FROM site WHERE id = ? FOR UPDATE", (rs, n) -> rs.getObject(1), siteId);
-        return jdbc.queryForObject(
+        // N1: issued_at is scoped to THIS device row (anmeldungColumns), which the INSERT
+        // has not generated yet - so claim via a plain INSERT...RETURNING id, then read the
+        // full row back through findById (same tenant, same transaction, RLS already let the
+        // insert through).
+        UUID id = jdbc.queryForObject(
                 "INSERT INTO device (tenant_id, site_id, external_ref, kind, status, "
                         + "verbunden_von_sub, verbunden_von_name) "
-                        + "VALUES (?, ?, ?, ?, 'claimed', ?, ?) "
-                        + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
-                        + "lan_host, lan_seen_at, lan_source, "
-                        + "link_kind, signal_dbm, link_seen_at, link_weak_since, "
-                        + "NULL::timestamptz AS last_seen, " + anmeldungColumns("?"),
-                DeviceRepository::mapDevice,
+                        + "VALUES (?, ?, ?, ?, 'claimed', ?, ?) RETURNING id",
+                (rs, n) -> rs.getObject("id", UUID.class),
                 tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind,
-                akteur == null ? null : akteur.sub(), akteur == null ? null : akteur.name(),
-                externalRef, externalRef);
+                akteur == null ? null : akteur.sub(), akteur == null ? null : akteur.name());
+        return findById(id).orElseThrow(() -> new IllegalStateException("claimed device vanished: " + id));
     }
 
     /**
@@ -163,7 +174,8 @@ public class DeviceRepository {
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
                         + "link_kind, signal_dbm, link_seen_at, link_weak_since, "
-                        + lastSeen("device") + " AS last_seen, " + anmeldungColumns("device.external_ref"),
+                        + lastSeen("device") + " AS last_seen, "
+                        + anmeldungColumns("device.external_ref", "device.id"),
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
 
