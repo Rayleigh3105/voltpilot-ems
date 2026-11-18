@@ -52,7 +52,7 @@ public final class ModbusGeraetDefinition {
     /** Die Signale der Steuerlogik-Wortliste (Tabelle {@code signal}). */
     public static final List<String> SIGNALS = List.of("temperature", "room_temperature", "open", "door_open",
             "defrost", "fault", "running", "humidity", "outdoor_temperature", "supply_temperature",
-            "return_temperature");
+            "return_temperature", "power");
 
     /** Die Ja/Nein-Signale: ein Bit, eine Spule oder ein diskreter Eingang. */
     public static final Set<String> BOOL_SIGNALS = Set.of("open", "door_open", "defrost", "fault", "running");
