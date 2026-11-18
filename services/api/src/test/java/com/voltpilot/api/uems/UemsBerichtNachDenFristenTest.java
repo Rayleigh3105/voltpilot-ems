@@ -82,7 +82,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * 2026, Tagesmengen der Referenzdatei 196 kWh, am 31.10. 220 kWh) → Viertelstunden, Tage, Monat → endgültig am 08.11. →
  * Ines legt den Monatsbericht an und gibt Nr. 1 frei (Route, 10.11.2026) → Werte vom 18.10. kommen nach der Frist an, der
  * Vorschlag wird freigegeben, die Korrektur-Kaskade bildet Version 2 und stößt den Bericht an (12.11.2026 10:05:33, Pfad 1
- * über die echte {@link BerichtKaskade}) → Ines gibt Nr. 2 frei (16.11.2026). Dann fallen die Fristen: was die
+ * über die echte {@link BerichtKaskade}) → Ines gibt Nr. 2 frei (eine Stunde nach dem Datenstand des Entwurfs). Dann fallen die Fristen: was die
  * Aufbewahrung am 02.11.2036 entfernt hätte — {@code messreihe_periode}, {@code messreihe_tag},
  * {@code messreihe_viertelstunde} und die Rohtabellen {@code device_measurement_sample} und {@code telemetry_v2} bis zum
  * Ende des Oktobers —, wird per SQL gelöscht und GEZÄHLT (vorher Zeilen, nachher keine). Danach gilt: Nr. 1 und Nr. 2 sind
@@ -287,10 +287,15 @@ class UemsBerichtNachDenFristenTest {
         assertThat(root.queryForObject("SELECT gebildet_von FROM bericht_entwurf WHERE tenant_id = ?", String.class, kb))
                 .as("der Entwurf ist von der Kaskade neu gebildet").isEqualTo("kaskade");
 
-        // ---- 4. Nr. 2: die Revision (16.11.2026) --------------------------------------------------------------------
+        // ---- 4. Nr. 2: die Revision, eine Stunde nach dem Datenstand ihres Entwurfs ----------------------------------
+        // Die Kaskade bildet den Entwurf mit BerichtKaskade.datenstand(), dem SPÄTEREN von T_KASKADE und der DB-Uhr -
+        // also mit dem Tag des Laufs. Fest auf den 16.11.2026 14:20 (MEZ) lag die Freigabe ab diesem Zeitpunkt VOR ihrem
+        // Datenstand, und bericht_stand_datenstand_chk verwarf sie (409 entwurf_veraltet, Nachtlauf seit 16.11.2026).
+        // Dieselbe Zeitbombe wie FREIGABE_NR2 in UemsBerichtKaskadeTest (#1924). Die Uhren ab Schritt 5 bleiben fest:
+        // sie stehen für "vor den Fristen" (20.11.2026) und "danach" (02.11.2036), gelöscht wird per SQL.
         Instant datenstandNr2 = root.queryForObject("SELECT datenstand FROM bericht_entwurf WHERE tenant_id = ?",
                 Timestamp.class, kb).toInstant();
-        uhrBerichte("2026-11-16T14:20:00+01:00");
+        uhrBerichte(datenstandNr2.plus(Duration.ofHours(1)));
         Antwort nr2 = ok(ruf(ines, HttpMethod.POST, PFAD + "/freigeben",
                 Map.of("entwurf_datenstand", MessstelleWerteRegeln.iso(datenstandNr2, BERLIN))), 201);
         assertThat(nr2.body().path("nr").asInt()).isEqualTo(2);
@@ -642,7 +647,11 @@ class UemsBerichtNachDenFristenTest {
     // =========================================================================== Hilfen
 
     private void uhrBerichte(String zeit) {
-        berichte.uhrStellen(Clock.fixed(OffsetDateTime.parse(zeit).toInstant(), ZoneOffset.UTC));
+        uhrBerichte(OffsetDateTime.parse(zeit).toInstant());
+    }
+
+    private void uhrBerichte(Instant zeit) {
+        berichte.uhrStellen(Clock.fixed(zeit, ZoneOffset.UTC));
     }
 
     private void uhrWerte(String zeit) {
