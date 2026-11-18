@@ -9,21 +9,39 @@
 #
 # Aufruf: services/werkstatt-dienst/test/dienst-container-probe.sh
 #   VP_PROBE_BEHALTEN=1  Bild und Container nicht wegräumen
+#   VP_PROBE_BILD=<bild:commit>  ein fertiges Bild prüfen statt zu bauen (etwa
+#                        das geschobene des Laufs); erwartete Fassung = Tag
+# Schlägt sie fehl, zeigt sie Zustand und Log des Dienst-Containers und den
+# freien Platz am Datenvolume.
 set -eu
 
 HIER=$(cd "$(dirname "$0")" && pwd)
 DIENST=$(cd "$HIER/.." && pwd)
-BILD=vp-werkstatt-dienst-probe:lokal
+BILD=${VP_PROBE_BILD:-vp-werkstatt-dienst-probe:lokal}
+FASSUNG=probe-1234
+[ -z "${VP_PROBE_BILD:-}" ] || FASSUNG=${BILD##*:}
 NAME=vp-werkstatt-dienst-probe-$$
 
 command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 || { echo "FEHLER: Docker antwortet nicht" >&2; exit 2; }
 TMP=$(mktemp -d)
 . "$HIER/volumen.sh"
+# zeige_container: warum der Dienst nicht läuft. Der Platz zählt mit: Auf einem
+# vollen Host schreiben root (Docker, chown) noch in die reservierten Blöcke,
+# der Dienst als 10001 nicht mehr.
+zeige_container() {
+  echo "-- Dienst-Container: $(docker inspect -f 'Zustand {{.State.Status}}, Exit {{.State.ExitCode}}, OOM {{.State.OOMKilled}} {{.State.Error}}' "$NAME" 2>&1)"
+  echo "-- Log des Dienstes (letzte 50 Zeilen):"
+  docker logs "$NAME" 2>&1 | tail -n 50
+  echo "-- Platz am Datenvolume:"
+  docker run --rm -v "$NAME-daten:/d" --entrypoint df "$BILD" -h /d 2>&1 || true
+}
 aufraeumen() {
+  rc=$?
+  if [ "$rc" != 0 ] && docker inspect "$NAME" >/dev/null 2>&1; then zeige_container; fi
   if [ "${VP_PROBE_BEHALTEN:-}" = 1 ]; then echo "behalten: $NAME, $TMP"; return; fi
   docker rm -f "$NAME" >/dev/null 2>&1 || true
   docker volume rm "$NAME-daten" "$NAME-geheim" "$NAME-oeffentlich" >/dev/null 2>&1 || true
-  docker image rm "$BILD" >/dev/null 2>&1 || true
+  [ -n "${VP_PROBE_BILD:-}" ] || docker image rm "$BILD" >/dev/null 2>&1 || true
   rm -rf "$TMP"
 }
 trap aufraeumen EXIT
@@ -31,8 +49,13 @@ fehler=0
 ok() { echo "ok: $*"; }
 nein() { echo "FEHLER: $*"; fehler=1; }
 
-echo "== Bild bauen"
-docker build -q --build-arg FASSUNG=probe-1234 -t "$BILD" "$DIENST" >/dev/null
+if [ -n "${VP_PROBE_BILD:-}" ]; then
+  echo "== Bild $BILD"
+  docker image inspect "$BILD" >/dev/null 2>&1 || docker pull -q "$BILD" >/dev/null
+else
+  echo "== Bild bauen"
+  docker build -q --build-arg FASSUNG="$FASSUNG" -t "$BILD" "$DIENST" >/dev/null
+fi
 
 mkdir -p "$TMP/geheim" "$TMP/oeffentlich"
 for k in werkbank-status werkbank-weiterleitung werkbank-pflege; do
@@ -45,7 +68,7 @@ chmod 0644 "$TMP"/geheim/*
 volumen_aus "$NAME-geheim" "$TMP/geheim" "$BILD"
 volumen_aus "$NAME-oeffentlich" "$TMP/oeffentlich" "$BILD"
 
-[ "$(docker run --rm "$BILD" fassung)" = probe-1234 ] && ok "Fassung aus dem Bau" || nein "Fassung"
+[ "$(docker run --rm "$BILD" fassung)" = "$FASSUNG" ] && ok "Fassung aus dem Bau" || nein "Fassung"
 [ "$(docker run --rm --entrypoint id "$BILD" -u)" = 10001 ] && ok "läuft als 10001" || nein "Benutzer"
 docker run --rm --entrypoint sh "$BILD" -c 'gzip --version 2>&1 | head -n1' | grep -q 'gzip 1\.' && ok "GNU gzip für install.sh (gzip -n)" || nein "GNU gzip fehlt"
 # Ohne age-Empfänger und Schlüssel des Wartungsservers startet der Dienst nicht.
@@ -79,8 +102,8 @@ done
 [ "$(betrieb /health)" = ok ] && ok "/health" || nein "/health"
 [ "$(betrieb /ready)" = bereit ] && ok "/ready" || nein "/ready"
 sleep 3
-m=$(betrieb /metrics)
-for w in 'vp_werkstatt_werkbank_bereit 0' 'vp_werkstatt_freigabe_laufend 0' 'vp_werkstatt_info{fassung="probe-1234"} 1' 'vp_werkstatt_lauf_aktiv 0'; do
+m=$(betrieb /metrics || true)
+for w in 'vp_werkstatt_werkbank_bereit 0' 'vp_werkstatt_freigabe_laufend 0' "vp_werkstatt_info{fassung=\"$FASSUNG\"} 1" 'vp_werkstatt_lauf_aktiv 0'; do
   printf '%s\n' "$m" | grep -qF "$w" && ok "/metrics: $w" || nein "/metrics ohne $w"
 done
 betrieb / >/dev/null 2>&1 && nein "Werkstatt-Anzeige auf der Betriebsseite" || ok "Werkstatt-Anzeige nicht auf der Betriebsseite"
@@ -98,8 +121,6 @@ docker exec "$NAME" sh -c 'touch /usr/local/bin/x' 2>/dev/null && nein "Dateisys
 docker exec "$NAME" sh -c 'ls /var/lib/vp-werkstatt-dienst/laeufe' >/dev/null 2>&1 && ok "Datenverzeichnis angelegt" || nein "Datenverzeichnis"
 docker stop -t 10 "$NAME" >/dev/null
 docker logs "$NAME" 2>&1 | grep -q 'Werkstatt-Dienst beendet' && ok "beendet sich sauber bei SIGTERM" || nein "kein sauberes Ende"
-docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker volume rm "$NAME-daten" "$NAME-geheim" "$NAME-oeffentlich" >/dev/null 2>&1 || true
 
 echo
 if [ "$fehler" = 0 ]; then echo "Probe des Dienst-Bilds: alles bestanden"; else echo "Probe des Dienst-Bilds: FEHLER"; fi

@@ -167,7 +167,7 @@ Wie [docs/k8s-readiness.md](../../docs/k8s-readiness.md):
 cd services/werkstatt-dienst
 go vet ./... && go test -race ./...     # Go 1.24; ohne Docker, ohne Netz
 test/bruecke-probe.sh                   # Brücke im Container: einrichten.sh, nftables, OpenSSH, echtes Programm
-test/dienst-container-probe.sh          # Dienst-Bild unter PodSecurity restricted
+test/dienst-container-probe.sh          # Dienst-Bild unter PodSecurity restricted; VP_PROBE_BILD=<bild:commit> prüft ein geschobenes Bild
 test/box-probe.sh                       # ganzer Lauf ab frischem OpenWrt: echtes OpenWrt, Brücke, Wartungsserver, Skripte
 test/gehaeuse-bild-probe.sh             # Bau-Image (amd64): ein Auftrag wie der Job, Druckdateien, Bericht ohne Fehler
 ```
@@ -179,3 +179,5 @@ einen ganzen Lauf ab frischem OpenWrt gegen ein echtes OpenWrt 25.12.5 (x86-64) 
 echten Wartungsserver (`vp-tunnel-dienst`); die GL-Werksfirmware, `sysupgrade` und das Funkmodul (kein Land DE, Schritt `einrichtung_wlan`) gibt es nur in der Attrappe bzw. an der echten Mango. Die Brücken-Probe braucht Docker mit `--privileged` (Netz-Namensräume im Container) und baut ein
 Debian-trixie-Bild; beide Proben räumen ihre Bilder wieder weg. Am echten Gerät ersetzen sie nichts: Prüfsteine
 PS-1 bis PS-14 im [Runbook](docs/runbook.md#prüfsteine-am-echten-gerät).
+Schlägt die Dienst-Bild-Probe fehl, zeigt sie Zustand und Log des Dienst-Containers und den freien Platz am
+Datenvolume: Auf einem vollen Runner-Host schreiben Docker und `chown` als root noch, der Dienst als 10001 nicht.
