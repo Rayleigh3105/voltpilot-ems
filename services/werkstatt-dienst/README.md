@@ -37,9 +37,9 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 
 | Schritt | Was | Beleg |
 |---|---|---|
-| `erkennen` | genau ein Gerät mit einer MAC; SSH als root ohne Passwort (bis die Box SSH annimmt, wartet der Lauf); Board `glinet,gl-mt300n-v2`; GL-Firmware (`/etc/glversion`); root hat kein Passwort (nicht eingerichtet). Verlangt sie ein Passwort: Handgriff Zurücksetzen (Fall `gl_passwort`) | MAC, Board, GL-Fassung, Host-Schlüssel ab Werk, Antwort der GL-Schnittstelle (nur festgehalten, PS-1) |
+| `erkennen` | genau ein Gerät mit einer MAC; SSH als root ohne Passwort (bis die Box SSH annimmt, wartet der Lauf); Board `glinet,gl-mt300n-v2`; GL-Firmware (`/etc/glversion`); root hat kein Passwort (nicht eingerichtet). Verlangt sie ein Passwort: Handgriff Zurücksetzen (Fall `gl_passwort`). Weist sie SSH ab (ab GL 4.3.30 der Werkszustand), fragt der Dienst ihre Web-Schnittstelle (`/rpc` `ui.check_initialized`, ohne Anmeldung): noch nicht eingerichtet und Modell `mt300n-v2` heißt Ersteinrichtung im Schritt `openwrt`; schon eingerichtet heißt Zurücksetzen; sonst Startlader (`ssh_zu`). Hier ändert sich an der Box nichts | MAC, Werksfassung aus der Web-Schnittstelle, bei SSH Board, GL-Fassung, Host-Schlüssel ab Werk; sonst `ersteinrichtung: nötig` |
 | `fassungen` | OpenWrt-Abbild, Programm, Skriptstand der Freigabe bereitlegen, je sha256 geprüft – bevor die Box angefasst wird | Prüfsummen, Herkunft |
-| `openwrt` | Abbild nach `/tmp`, sha256 auf der Box, `sysupgrade -T`, dann `sysupgrade -n` (nie `-F`) | sha256 vorher und auf der Box, Ausgaben |
+| `openwrt` | nur ab GL 4.3.30 zuerst die Ersteinrichtung: `ui.init` mit einem Einmal-Passwort je Lauf (Paket `geheim`, nie in Log oder Beleg), dann SSH mit ihm und dieselben Prüfungen wie in `erkennen`; mit `sysupgrade -n` ist es samt GL-Firmware weg. Dann Abbild nach `/tmp`, sha256 auf der Box, `sysupgrade -T`, dann `sysupgrade -n` (nie `-F`) | `ersteinrichtung`, Host-Schlüssel ab Werk, sha256 vorher und auf der Box, Ausgaben |
 | `wiedererkennen` | bis frisches OpenWrt unter 192.168.1.1 antwortet: Fassung der Freigabe, root ohne Passwort; ab jetzt gilt sein Host-Schlüssel | `openwrt_release`, Board, Host-Schlüssel |
 | `internet` | befristet: Standardweg und DNS über die Brücke (192.168.1.2) | Standardweg, `https://downloads.openwrt.org` erreichbar (PS-12) |
 | `passwort` | zufällig (20 Zeichen wie das Portal), erst verschlüsselt für den age-Schlüssel „Box-Passwörter“ (WI-6 A), dann über die Standardeingabe gesetzt | „ohne Passwort abgewiesen“, `passwort_age` |
@@ -60,7 +60,7 @@ Bei dir bleiben in V1a: die Tunnel-Adresse aus dem Portal eintragen, die Probe i
 Lauf wartet darauf, bevor er den Weg über die Brücke entfernt: ohne ihn steht der Tunnel in der Werkstatt nicht
 mehr), das Fenster schließen und die Abnahme im Portal mit diesen Belegen ([Runbook](docs/runbook.md#eine-box-einrichten)).
 Ein Lauf beginnt erst, wenn die Box fertig gestartet ist (dieselbe MAC zwei Takte unter derselben Adresse, SSH nimmt
-an). Hält ein Lauf an, nennt die Ansicht den Fall (`lauf.fall`) und die Lösung (`lauf.loesung`: Titel, Schritte, ob
+an; ab Werk genügt die Web-Schnittstelle der GL-Firmware, weil ab 4.3.30 SSH bis zur Ersteinrichtung zu ist). Hält ein Lauf an, nennt die Ansicht den Fall (`lauf.fall`) und die Lösung (`lauf.loesung`: Titel, Schritte, ob
 der Dienst danach von selbst weitermacht, ob die Box zur Seite kommt); ohne Lauf dasselbe am Anschluss
 (`anschluss_fall`, `anschluss_loesung`). Codes: [Vertrag](../../docs/contracts/werkstatt-ansicht-v1.md#fälle),
 `internal/faelle`. Eine Box, deren Lauf zu Ende ist, fasst der Dienst erst wieder an, wenn ihre MAC einen Takt lang
@@ -81,11 +81,12 @@ baut sie, dazu `sha256sums`). Mit der API nennt das Portal die Prüfsummen aus d
 
 - das Netz absuchen: Die Brücke fragt nur nach den festen Box-Adressen ihres Werkstatt-Anschlusses (192.168.8.1,
   192.168.1.1, das LAN-Netz), je zwei ARP-Anfragen;
-- Passwörter raten, sich an einer Box mit Passwort anmelden, ein eingerichtetes Gerät anfassen, zwei Geräte am
-  Werkstatt-Anschluss bedienen;
+- Passwörter raten, sich an einer Box mit einem Passwort anmelden, das nicht dieser Lauf gesetzt hat, ein
+  eingerichtetes Gerät anfassen, zwei Geräte am Werkstatt-Anschluss bedienen;
 - ohne Freigabe oder ohne den Beleg des vorigen Schritts weitermachen;
 - ein Root-Passwort an eine Route geben oder in einen Beleg schreiben (Entscheid WI-6 A: nur verschlüsselt für den
-  age-Schlüssel „Box-Passwörter“, ab P5).
+  age-Schlüssel „Box-Passwörter“, ab P5); das Einmal-Passwort der Ersteinrichtung ab Werk steht nirgends, nicht
+  einmal verschlüsselt: Es lebt nur im Speicher des Laufs und ist mit dem Aufspielen von OpenWrt weg.
 
 Er hat keinen `platform-admin`-Zugang und in V1a gar keinen Zugang zur API.
 
@@ -172,8 +173,9 @@ test/gehaeuse-bild-probe.sh             # Bau-Image (amd64): ein Auftrag wie der
 ```
 
 Die Go-Tests sprechen nur mit Attrappen im Prozess (`internal/attrappe`: SSH-Server, die sich wie die Brücke und
-wie eine Mango ab Werk bis zur Neustart-Probe verhalten, dazu Attrappen der beiden Skripte). Die Box-Probe fährt
+wie eine Mango ab Werk bis zur Neustart-Probe verhalten, ab Werk mit der Web-Schnittstelle der GL-Firmware nach dem
+Befund PS-1, dazu Attrappen der beiden Skripte). Die Box-Probe fährt
 einen ganzen Lauf ab frischem OpenWrt gegen ein echtes OpenWrt 25.12.5 (x86-64) mit den echten Skripten und einem
 echten Wartungsserver (`vp-tunnel-dienst`); die GL-Werksfirmware, `sysupgrade` und das Funkmodul (kein Land DE, Schritt `einrichtung_wlan`) gibt es nur in der Attrappe bzw. an der echten Mango. Die Brücken-Probe braucht Docker mit `--privileged` (Netz-Namensräume im Container) und baut ein
 Debian-trixie-Bild; beide Proben räumen ihre Bilder wieder weg. Am echten Gerät ersetzen sie nichts: Prüfsteine
-PS-11 bis PS-14 im [Runbook](docs/runbook.md#prüfsteine-am-echten-gerät).
+PS-1 bis PS-14 im [Runbook](docs/runbook.md#prüfsteine-am-echten-gerät).

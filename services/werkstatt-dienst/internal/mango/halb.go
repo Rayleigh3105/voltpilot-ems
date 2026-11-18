@@ -27,9 +27,14 @@ import (
 const Zuruecksetzen = "Zurücksetzen: Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt, dann loslassen. Kabel und Strom bleiben stecken. Die Mango startet neu und ist danach wie neu; der Dienst macht von selbst weiter."
 
 // Startlader ist der Handgriff M4 (Werksfirmware nimmt das Abbild nicht an
-// oder lässt kein SSH zu). Das Portal erkennt ihn am Anfang "Startlader".
-func (l *Lauf) startlader() string {
-	return "Startlader (Handgriff M4): Mango vom Strom, Reset-Knopf halten und Strom stecken, bis die Leuchte fünfmal blinkt; am Rechner 192.168.1.2 einstellen, http://192.168.1.1 öffnen und " + l.freigabe.OpenWrt.Datei + " hochladen. Danach steckt die Mango mit frischem OpenWrt am orangen Kabel, und der Dienst macht weiter."
+// oder lässt kein SSH zu, und der Dienst kann sie nicht selbst einrichten).
+// Der Startlader antwortet an der LAN-Buchse der Mango; dort steckt sonst das
+// orange Kabel. Das Portal erkennt ihn am Anfang "Startlader".
+func (l *Lauf) startlader() string { return Startlader(l.freigabe.OpenWrt.Datei) }
+
+// Startlader ist der Text des Handgriffs M4 für das Abbild datei.
+func Startlader(datei string) string {
+	return "Startlader (Handgriff M4): Das orange Kabel aus der LAN-Buchse der Mango ziehen und dort den Rechner per Kabel anstecken; am Rechner 192.168.1.2/24 einstellen. Mango vom Strom, Reset-Knopf halten und Strom stecken, loslassen, wenn die Leuchte fünfmal geblinkt hat; http://192.168.1.1 öffnen und " + datei + " hochladen. Danach das orange Kabel wieder in die LAN-Buchse: Die Mango meldet sich mit frischem OpenWrt, und der Dienst macht weiter."
 }
 
 // HalbEigene prüft, ob die Box mit dieser MAC und diesem Host-Schlüssel eine

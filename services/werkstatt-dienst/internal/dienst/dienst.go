@@ -360,7 +360,8 @@ type kandidat struct {
 // runeAnschluss sieht nach, was am Werkstatt-Anschluss steckt, und beginnt
 // gegebenenfalls einen Lauf. Eine Box gilt erst als da, wenn sie in zwei
 // Takten hintereinander mit derselben MAC unter derselben Adresse antwortet
-// und SSH annimmt: Beim Start zeigt jede OpenWrt-Firmware für ein paar
+// und SSH annimmt (ab Werk genügt die Web-Schnittstelle der GL-Firmware: ab
+// 4.3.30 ist SSH bis zur Ersteinrichtung zu): Beim Start zeigt jede OpenWrt-Firmware für ein paar
 // Sekunden 192.168.1.1 (Preinit), und Dropbear kommt nach dem Netz (Läufe
 // 113810-d74e, 115040-8287). Bis dahin beginnt kein Lauf und nichts wird gesperrt.
 func (d *Dienst) runeAnschluss(ctx context.Context, jetzt time.Time) {
@@ -377,12 +378,21 @@ func (d *Dienst) runeAnschluss(ctx context.Context, jetzt time.Time) {
 	if err == nil {
 		_ = conn.Close()
 	}
+	werk := ""
+	if err != nil && einstieg == mango.AbWerk && !brueckeWeg(err) {
+		// Ab GL 4.3.30 bleibt SSH bis zur Ersteinrichtung zu. Antwortet die
+		// Web-Schnittstelle, ist die Mango fertig gestartet: Der Lauf richtet
+		// sie selbst ein, ohne die Startfrist abzuwarten.
+		if w, werr := mango.FrageWerk(ctx, d.Mango.Werkbank); werr == nil && w.RPC {
+			err, werk = nil, w.Text
+		}
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.aktiv != nil || d.kandidat == nil || *d.kandidat != k {
 		return
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "Brücke ") && strings.Contains(err.Error(), "nicht erreichbar") {
+	if err != nil && brueckeWeg(err) {
 		// Der Weg zur Brücke ist weg, nicht die Box (Lauf 114050-9ef8): kein
 		// Lauf, und die Startfrist beginnt neu, sobald die Brücke wieder antwortet.
 		d.kandidat.seit = jetzt
@@ -393,7 +403,15 @@ func (d *Dienst) runeAnschluss(ctx context.Context, jetzt time.Time) {
 		d.amAnschluss(faelle.Startet, "Mango erkannt unter "+k.adresse.String()+"; sie startet noch ("+geheim.Schwaerze(err.Error())+"). Nicht abziehen.")
 		return
 	}
+	if werk != "" {
+		d.Log.Info("Werksfirmware ohne SSH, Web-Schnittstelle antwortet: Lauf beginnt", "mac", k.mac, "werksfassung", werk)
+	}
 	d.beginneLauf(jetzt, k, einstieg)
+}
+
+// brueckeWeg: Der Weg zur Brücke ist weg, nicht die Box.
+func brueckeWeg(err error) bool {
+	return strings.HasPrefix(err.Error(), "Brücke ") && strings.Contains(err.Error(), "nicht erreichbar")
 }
 
 // anschlussKandidat entscheidet unter der Sperre, ob am Anschluss eine Box

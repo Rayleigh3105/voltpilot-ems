@@ -67,12 +67,12 @@ Technik.
 
 | Code | wann | Handgriff | selbst | zur Seite |
 |---|---|---|---|---|
-| `gl_passwort` | 192.168.8.1 verlangt ein Passwort (GL-Firmware schon eingerichtet, gebraucht gekauft) | Reset-Knopf 10 s | ja | nein |
+| `gl_passwort` | 192.168.8.1 verlangt ein Passwort, oder ihre Web-Schnittstelle meldet „schon eingerichtet“ und SSH ist zu (GL-Firmware schon eingerichtet, gebraucht gekauft) | Reset-Knopf 10 s | ja | nein |
 | `halb_eigene` | Passwort, und ein Lauf dieser Werkstatt setzte es und übergab die Box nicht; derselbe Host-Schlüssel; im Portal nicht abgenommen, nicht gekoppelt | Reset-Knopf 10 s | ja | nein |
 | `passwort_fremd` | Passwort unter 192.168.1.1, das kein Lauf dieser Werkstatt gesetzt hat | – | nein | ja |
 | `box_in_gebrauch` | eigene Box, aber übergeben, abgenommen oder gekoppelt | – | nein | ja |
 | `nicht_nachweisbar` | anderer Host-Schlüssel, Portal stumm, kein Portal, kein Stand eines Laufs dieser Werkstatt | – | nein | ja |
-| `ssh_zu` | die Werksfirmware nimmt nach der Startfrist kein SSH an (Prüfstein PS-1 hält nicht) | Startlader (M4) | ja | nein |
+| `ssh_zu` | die Werksfirmware nimmt kein SSH an, und der Dienst kann sie nicht selbst einrichten: keine Web-Schnittstelle `/rpc` (GL 4.x), kein Modell, `ui.init` scheitert, oder SSH kommt auch danach nicht (Prüfstein PS-1) | Startlader (M4) | ja | nein |
 | `abbild_abgelehnt` | `sysupgrade -T` der Werksfirmware scheitert | Startlader (M4) | ja | nein |
 | `falsches_geraet` | kein GL-MT300N-V2 oder keine GL-Firmware unter 192.168.8.1 | – | nein | ja |
 | `schon_edge_light` | Edge Light ohne Stand eines Laufs dieser Werkstatt | – | nein | ja |

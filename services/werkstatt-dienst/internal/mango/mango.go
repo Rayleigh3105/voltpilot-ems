@@ -52,6 +52,11 @@ var (
 // Boards, die als GL-MT300N-V2 gelten (/tmp/sysinfo/board_name).
 var Boards = []string{"glinet,gl-mt300n-v2", "gl-mt300n-v2"}
 
+// WerksModell nennt die Web-Schnittstelle der GL-Firmware für die Mango
+// (ui.check_initialized, aus board_special bzw. /proc/gl-hw-info/model; die
+// Firmware selbst vergleicht in lib/functions/gl_util.sh mit genau diesem Wort).
+const WerksModell = "mt300n-v2"
+
 // Werkbank ist, was die Schritte von der Brücke brauchen.
 type Werkbank interface {
 	box.Weg
@@ -67,10 +72,13 @@ type Zeiten struct {
 	Netz       time.Duration // bis Internet bzw. Standardweg stimmen
 	Programm   time.Duration // bis /health die Referenz nennt
 	Tunnel     time.Duration // bis Handshake und Abholer stehen
+	// Ersteinrichtung: bis Dropbear nach ui.init der Werksfirmware (ab GL
+	// 4.3.30) annimmt; er erzeugt dabei erst seine Host-Schlüssel.
+	Ersteinrichtung time.Duration
 }
 
 // VorgabeZeiten für die echte Mango (PS-3 misst sie nach).
-var VorgabeZeiten = Zeiten{Takt: 3 * time.Second, Verbinden: 20 * time.Second, Sysupgrade: 8 * time.Minute, Neustart: 5 * time.Minute, Netz: 90 * time.Second, Programm: 2 * time.Minute, Tunnel: 3 * time.Minute}
+var VorgabeZeiten = Zeiten{Takt: 3 * time.Second, Verbinden: 20 * time.Second, Sysupgrade: 8 * time.Minute, Neustart: 5 * time.Minute, Netz: 90 * time.Second, Programm: 2 * time.Minute, Tunnel: 3 * time.Minute, Ersteinrichtung: 3 * time.Minute}
 
 // Konfig gilt für alle Läufe eines Dienstes.
 type Konfig struct {
@@ -173,7 +181,9 @@ type Lauf struct {
 	v                                     *box.Verbindung
 	ziel                                  netip.AddrPort
 	pw                                    geheim.Geheim
-	host                                  string // Fingerabdruck nach OpenWrt: gilt für den ganzen Lauf
+	ersteinrichten                        bool          // ab Werk ohne SSH: der Schritt openwrt richtet die Werksfirmware ein (ab GL 4.3.30)
+	werkPw                                geheim.Geheim // Einmal-Passwort der Ersteinrichtung, bis OpenWrt aufgespielt ist
+	host                                  string        // Fingerabdruck nach OpenWrt: gilt für den ganzen Lauf
 	hostArt                               string
 	ref                                   string
 	version                               string
@@ -218,6 +228,7 @@ func (l *Lauf) Schliesse() {
 	}
 	l.v.Schliesse()
 	l.pw.Vergessen()
+	l.werkPw.Vergessen()
 	_ = os.RemoveAll(l.dir)
 }
 
@@ -232,9 +243,9 @@ func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 	}
 	if e == AbWerk {
 		s = append(s,
-			lauf.Schritt{Kennung: "erkennen", Titel: "Mango erkennen", Frist: time.Minute, Tun: l.erkennenWerk},
+			lauf.Schritt{Kennung: "erkennen", Titel: "Mango erkennen", Frist: 2*l.k.Zeiten.Verbinden + time.Minute, Tun: l.erkennenWerk},
 			lauf.Schritt{Kennung: "fassungen", Titel: "Fassungen der Freigabe bereitlegen", Frist: 15 * time.Minute, Tun: l.fassungenHolen(true)},
-			lauf.Schritt{Kennung: "openwrt", Titel: "OpenWrt aufspielen", Frist: 5 * time.Minute, Tun: l.openwrtAufspielen},
+			lauf.Schritt{Kennung: "openwrt", Titel: "OpenWrt aufspielen", Frist: 5*time.Minute + l.k.Zeiten.Ersteinrichtung, Tun: l.openwrtAufspielen},
 			lauf.Schritt{Kennung: "wiedererkennen", Titel: "Neustart in OpenWrt abwarten", Frist: l.k.Zeiten.Sysupgrade + time.Minute, Tun: l.wiedererkennen},
 		)
 	} else {

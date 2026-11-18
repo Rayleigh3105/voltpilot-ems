@@ -55,12 +55,16 @@ const (
 )
 
 const (
-	reset      = "Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt. Dann loslassen."
-	bleibt     = "Kabel und Strom bleiben stecken. Die Mango startet neu; das dauert ein paar Minuten."
-	kurzAb     = "Das orange Kabel kurz abziehen und wieder einstecken."
-	zurSeite   = "Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
-	startlader = "Startlader: Mango vom Strom, Reset-Knopf halten und Strom wieder anstecken; nach etwa fünf Sekunden loslassen, wenn die Leuchte blinkt."
-	hochladen  = "Am Rechner das neue System hochladen, wie unter „Details für Technik“ beschrieben. Das orange Kabel bleibt stecken."
+	reset    = "Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt. Dann loslassen."
+	bleibt   = "Kabel und Strom bleiben stecken. Die Mango startet neu; das dauert ein paar Minuten."
+	kurzAb   = "Das orange Kabel kurz abziehen und wieder einstecken."
+	zurSeite = "Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen."
+	// Der Startlader antwortet nur an der LAN-Buchse der Mango: Der Rechner
+	// steckt dort, wo sonst das orange Kabel steckt (Handgriff M4, mango.startlader).
+	rechnerAn    = "Das orange Kabel aus der LAN-Buchse der Mango ziehen. Dort den Rechner per Kabel anstecken."
+	startlader   = "Startlader: Mango vom Strom, Reset-Knopf halten und Strom wieder anstecken; loslassen, wenn die Leuchte fünfmal geblinkt hat."
+	hochladen    = "Am Rechner das neue System hochladen, wie unter „Details für Technik“ beschrieben."
+	kabelZurueck = "Danach das orange Kabel wieder in die LAN-Buchse der Mango stecken."
 )
 
 var tabelle = map[string]Loesung{
@@ -79,11 +83,11 @@ var tabelle = map[string]Loesung{
 	PasswortFremd:       {Titel: "Diese Mango gehört nicht zur Werkstatt.", Schritte: []string{"Nicht zurücksetzen.", zurSeite}, ZurSeite: true},
 	BoxInGebrauch:       {Titel: "Diese Box ist schon abgenommen oder gekoppelt.", Schritte: []string{"Nicht zurücksetzen.", zurSeite}, ZurSeite: true},
 	NichtNachweisbar:    {Titel: "Der Dienst kann nicht sicher sagen, welche Box das ist.", Schritte: []string{"Nicht zurücksetzen.", zurSeite}, ZurSeite: true},
-	SSHZu:               {Titel: "Die Mango lässt den Dienst nicht hinein.", Schritte: []string{startlader, hochladen}, Selbst: true},
-	AbbildAbgelehnt:     {Titel: "Die Werksfirmware nimmt das neue System nicht an.", Schritte: []string{startlader, hochladen}, Selbst: true},
+	SSHZu:               {Titel: "Die Mango lässt den Dienst nicht hinein.", Schritte: []string{rechnerAn, startlader, hochladen, kabelZurueck}, Selbst: true},
+	AbbildAbgelehnt:     {Titel: "Die Werksfirmware nimmt das neue System nicht an.", Schritte: []string{rechnerAn, startlader, hochladen, kabelZurueck}, Selbst: true},
 	FalschesGeraet:      {Titel: "Das ist keine Mango GL-MT300N-V2.", Schritte: []string{zurSeite}, ZurSeite: true},
 	SchonEdgeLight:      {Titel: "Auf dieser Mango ist schon VoltPilot.", Schritte: []string{"Nicht zurücksetzen.", zurSeite}, ZurSeite: true},
-	OpenWrtFassung:      {Titel: "Auf der Mango ist eine andere System-Fassung.", Schritte: []string{startlader, hochladen}, Selbst: true},
+	OpenWrtFassung:      {Titel: "Auf der Mango ist eine andere System-Fassung.", Schritte: []string{rechnerAn, startlader, hochladen, kabelZurueck}, Selbst: true},
 	KeinInternet:        {Titel: "Die Mango kommt nicht ins Internet.", Schritte: []string{"Am Raspberry Pi nachsehen: WLAN da, Router an.", kurzAb}, Selbst: true},
 	FassungNichtBereit:  {Titel: "Die Dateien der Freigabe sind nicht bereit.", Schritte: []string{"Die Mango ist noch unverändert. " + zurSeite, "Die Technik prüft Freigabe und Release."}, ZurSeite: true},
 	Uebertragung:        {Titel: "Die Übertragung auf die Mango ging schief.", Schritte: []string{kurzAb, "Klappt es wieder nicht: " + zurSeite}, Selbst: true},

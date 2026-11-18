@@ -25,12 +25,19 @@ import (
 // LAN und "reboot" unter der neuen Adresse. Sie versteht genau die Befehle,
 // die der Dienst und die Attrappen-Skripte (SkripteTarGz) schicken.
 //
+// Ab Werk wie der Befund an den Firmwares 3.216, 4.3.25 und 4.3.30
+// (docs/runbook.md, PS-1): Ab GL 4.3.30 lauscht kein Dropbear, bis die Mango
+// eingerichtet ist; die Web-Schnittstelle /rpc beantwortet ohne Anmeldung
+// ui.check_initialized und ui.init (root-Passwort setzen, Dropbear an), wie
+// usr/lib/oui-httpd/rpc/ui der Firmware. Bis 4.3.29 ist SSH ab Werk offen; 3.x
+// hat statt /rpc /cgi-bin/api/router/hello.
+//
 // Hinter der Brücken-Attrappe: Bruecke.AntwortenFunc = m.Antworten,
 // Bruecke.ZielFunc = m.Ziel.
 type Mango struct {
 	MAC                     string
 	Board                   string // /tmp/sysinfo/board_name
-	GL                      string // /etc/glversion ("" = keine GL-Firmware)
+	GL                      string // /etc/glversion ("" = keine GL-Firmware); 4.3.30: SSH erst nach ui.init
 	RootPasswortAbWerk      bool   // ab Werk schon ein Passwort (eingerichtet)
 	SysupgradeTestScheitert bool
 	AbbildVerfaelschen      bool // speichert das Abbild falsch (Prüfsumme auf der Box weicht ab)
@@ -56,6 +63,9 @@ type Mango struct {
 	startet      bool   // SetzeStartet
 	sshZu        bool   // SetzeSSHZu
 	phase        string // werk | openwrt
+	eingerichtet bool   // ab Werk: ui.init angenommen (oui-httpd.main.inited)
+	werkPasswort string // das Passwort aus ui.init (Test: wo darf es nicht stehen)
+	webAufrufe   []string
 	adresse      string
 	offline      bool
 	passwort     string
@@ -79,7 +89,7 @@ type Mango struct {
 // frischem OpenWrt unter 192.168.1.1.
 func NeueMango(t testing.TB, ow bool) *Mango {
 	t.Helper()
-	m := &Mango{MAC: "94:83:c4:12:34:56", Board: "glinet,gl-mt300n-v2", GL: "4.3.25", OpenWrt: "25.12.5",
+	m := &Mango{MAC: "94:83:c4:12:34:56", Board: "glinet,gl-mt300n-v2", GL: "4.3.30", OpenWrt: "25.12.5",
 		Ref: "edge-k7m2xq3", Version: "edge-light-2026.11.1", WgPub: "c2Vydm9wdWJ2b3JiaWxkZXJ3aXJlZ3VhcmRrZXk0NDE=",
 		Neustartdauer: 150 * time.Millisecond, phase: "werk", adresse: "192.168.8.1",
 		dateien: map[string][]byte{}, conns: map[*ssh.ServerConn]bool{}}
@@ -97,14 +107,104 @@ func NeueMango(t testing.TB, ow bool) *Mango {
 	}
 	t.Cleanup(func() { _ = m.sshLn.Close(); _ = m.glLn.Close() })
 	go m.annehmen()
-	go func() {
-		_ = http.Serve(m.glLn, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"code":0,"model":"mt300n-v2","version":"` + m.GL + `","init":false}`))
-		}))
-	}()
+	go func() { _ = http.Serve(m.glLn, http.HandlerFunc(m.web)) }()
 	return m
 }
+
+// sperrtSSH: Ab GL 4.3.30 schaltet die Werksfirmware Dropbear ab, bis sie
+// eingerichtet ist (uci-defaults/80_nginx-oui).
+func sperrtSSH(gl string) bool {
+	var a, b, c int
+	if n, _ := fmt.Sscanf(gl, "%d.%d.%d", &a, &b, &c); n < 2 {
+		return false
+	}
+	return a > 4 || a == 4 && (b > 3 || b == 3 && c >= 30)
+}
+
+// web ist die Web-Schnittstelle der Werksfirmware an Port 80.
+func (m *Mango) web(w http.ResponseWriter, r *http.Request) {
+	m.mu.Lock()
+	gl := m.GL
+	m.mu.Unlock()
+	switch {
+	case strings.HasPrefix(gl, "3.") && r.URL.Path == "/cgi-bin/api/router/hello":
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"model":"mt300n-v2","version":"` + gl + `","init":false}`))
+	case strings.HasPrefix(gl, "4.") && r.URL.Path == "/rpc":
+		m.rpc(w, r)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// rpc wie usr/share/gl-ngx/oui-rpc.lua und das Modul ui der Firmware 4.3.30:
+// ohne Sitzung nur ui.check_initialized und ui.init (no-auth-methods).
+func (m *Mango) rpc(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	var a struct {
+		ID     any               `json:"id"`
+		Method string            `json:"method"`
+		Params []json.RawMessage `json:"params"`
+	}
+	antwort := func(ergebnis any, code int) {
+		out := map[string]any{"jsonrpc": "2.0", "id": a.ID}
+		if code != 0 {
+			out["error"] = map[string]any{"code": code, "message": map[int]string{-32000: "Access denied", -32602: "Invalid params", -32700: "Parse error"}[code]}
+		} else {
+			out["result"] = ergebnis
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	}
+	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
+		antwort(nil, -32700)
+		return
+	}
+	var objekt, methode string
+	args := map[string]any{}
+	if a.Method != "call" || len(a.Params) < 3 || json.Unmarshal(a.Params[1], &objekt) != nil || json.Unmarshal(a.Params[2], &methode) != nil ||
+		len(a.Params) > 3 && json.Unmarshal(a.Params[3], &args) != nil {
+		antwort(nil, -32602)
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.webAufrufe = append(m.webAufrufe, objekt+"."+methode)
+	eingerichtet := m.eingerichtet || m.RootPasswortAbWerk
+	switch {
+	case objekt == "ui" && methode == "check_initialized":
+		modell := strings.TrimPrefix(strings.TrimPrefix(m.Board, "glinet,"), "gl-")
+		antwort(map[string]any{"initialized": eingerichtet, "firmware_version": m.GL, "model": modell, "mac": strings.ToUpper(m.MAC)}, 0)
+	case objekt == "ui" && methode == "init":
+		if eingerichtet {
+			antwort(nil, -32000)
+			return
+		}
+		user, _ := args["username"].(string)
+		pw, _ := args["password"].(string)
+		lang, _ := args["lang"].(string)
+		if user != "root" || pw == "" || lang == "" {
+			antwort(nil, -32602)
+			return
+		}
+		m.passwort, m.werkPasswort, m.eingerichtet = pw, pw, true
+		antwort(map[string]any{}, 0)
+	default:
+		antwort(nil, -32000) // nicht ohne Sitzung
+	}
+}
+
+// WebAufrufe gibt die Aufrufe der Web-Schnittstelle zurück (objekt.methode).
+func (m *Mango) WebAufrufe() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.webAufrufe...)
+}
+
+// WerkPasswort ist das Passwort, das ui.init gesetzt hat (Test: wo darf es nicht stehen).
+func (m *Mango) WerkPasswort() string { m.mu.Lock(); defer m.mu.Unlock(); return m.werkPasswort }
 
 // Dropbear der Mango kennt nur RSA.
 func rsaSchluessel(t testing.TB) ssh.Signer {
@@ -145,7 +245,7 @@ func (m *Mango) Ziel(ziel string) (string, bool) {
 	}
 	switch ziel {
 	case m.adresse + ":22":
-		if m.sshZu {
+		if m.sshZu || m.phase == "werk" && sperrtSSH(m.GL) && !m.eingerichtet && !m.RootPasswortAbWerk {
 			return "127.0.0.1:1", true // niemand lauscht: Connection refused
 		}
 		return m.sshLn.Addr().String(), true
@@ -302,6 +402,9 @@ func (m *Mango) exec(ch ssh.Channel, b string) (code int, abreissen bool) {
 		m.mu.Lock()
 		pw := "leer"
 		if m.RootPasswortAbWerk {
+			pw = "gesetzt"
+		}
+		if m.passwort != "" {
 			pw = "gesetzt"
 		}
 		aus("board=%s\nmodell=GL-MT300N-V2\ngl=%s\nbasis=22.03.4\nrootpw=%s\ntmp_frei_kb=61000\nedge=nein\n", m.Board, m.GL, pw)
@@ -523,7 +626,7 @@ func (m *Mango) Zuruecksetzen(t testing.TB) {
 	defer m.mu.Unlock()
 	m.offline = true
 	m.passwort, m.edge, m.laeuft, m.lan, m.gateway, m.dns, m.tunnel = "", false, false, "", "", nil, ""
-	m.RootPasswortAbWerk = false
+	m.RootPasswortAbWerk, m.eingerichtet = false, false
 	m.dateien = map[string][]byte{}
 	if m.phase == "openwrt" {
 		m.adresse = "192.168.1.1"

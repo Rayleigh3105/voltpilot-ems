@@ -17,6 +17,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/attrappe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/dienst"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
@@ -59,6 +60,9 @@ type werkbankAufbau struct {
 	mk     *mango.Konfig
 	mu     sync.Mutex
 	jetzt  time.Time
+	// neustart baut den Dienst neu wie nach einem Neustart des Pods: gleiche
+	// Brücke, gleiche Protokolle, nichts aus dem Speicher.
+	neustart func()
 }
 
 func (w *werkbankAufbau) uhr() time.Time { w.mu.Lock(); defer w.mu.Unlock(); return w.jetzt }
@@ -94,7 +98,6 @@ func werkbankMit(t *testing.T, m *attrappe.Mango, p mango.Portal) *werkbankAufba
 	}
 	t.Cleanup(wb.Schliesse)
 	ablage, _ := protokoll.NeueAblage(t.TempDir())
-	reg := metriken.Neu()
 	frei := filepath.Join(t.TempDir(), "freigabe.json")
 	ohneNetz := strings.ReplaceAll(freigabeJSON, "https://git.tecmaxx.de/x/", "https://127.0.0.1:1/")
 	ohneNetz = strings.ReplaceAll(ohneNetz, "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/", "https://127.0.0.1:1/")
@@ -108,8 +111,13 @@ func werkbankMit(t *testing.T, m *attrappe.Mango, p mango.Portal) *werkbankAufba
 		Notfall: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(attrappe.Schluessel(t).PublicKey()))), Empfaenger: id.Recipient(),
 		BoxNetz: netip.MustParsePrefix("10.10.16.0/20"), Bauart: "mipsle", Portal: p, Spuren: ablage,
 		Zeiten: mango.Zeiten{Takt: 10 * time.Millisecond, Verbinden: 2 * time.Second}, Log: log}
-	w.d = dienst.Neu(&dienst.Dienst{Log: log, Werkbank: wb, Adresse: b.Adresse, Freigaben: freigabe.Datei{Pfad: frei}, Ablage: ablage,
-		Laeufer: lauf.NeuerLaeufer(ablage, log, reg), Takt: time.Second, Jetzt: w.uhr, Mango: w.mk}, reg)
+	w.neustart = func() {
+		reg := metriken.Neu()
+		w.d = dienst.Neu(&dienst.Dienst{Log: log, Werkbank: wb, Adresse: b.Adresse, Freigaben: freigabe.Datei{Pfad: frei}, Ablage: ablage,
+			Laeufer: lauf.NeuerLaeufer(ablage, log, reg), Takt: time.Second, Jetzt: w.uhr, Mango: w.mk}, reg)
+		w.d.SchliesseOffene()
+	}
+	w.neustart()
 	return w
 }
 
@@ -183,10 +191,12 @@ func TestStartfensterBeginntKeinenLauf(t *testing.T) {
 
 // Lauf 2026-11-05-115040-8287 nachgestellt: Nach dem Reset antwortet die
 // GL-Firmware auf ARP, Dropbear aber noch nicht (Connection refused). Der
-// Dienst wartet; kommt SSH nach der Startfrist nie, nennt der Lauf den
-// Startlader statt „zur Seite legen“.
+// Dienst wartet; kommt SSH nach der Startfrist nie und hat die Firmware keine
+// Web-Schnittstelle, über die der Dienst sie einrichten kann (3.x), nennt der
+// Lauf den Startlader statt „zur Seite legen“.
 func TestSSHNochZuWartetDannStartlader(t *testing.T) {
 	m := attrappe.NeueMango(t, false)
+	m.GL = "3.216"
 	m.SetzeSSHZu(true)
 	w := werkbankMit(t, m, nil)
 	ctx := context.Background()
@@ -201,8 +211,83 @@ func TestSSHNochZuWartetDannStartlader(t *testing.T) {
 		t.Fatalf("nach der Startfrist kein Lauf: %s", w.d.Ansicht().Anschluss)
 	}
 	s := w.bisEnde(t)
-	if s.Schritt != "erkennen" || !strings.HasPrefix(s.Handgriff, "Startlader") || !strings.Contains(s.Grund, "kein SSH") {
+	if s.Schritt != "erkennen" || !strings.HasPrefix(s.Handgriff, "Startlader") || !strings.Contains(s.Grund, "kein SSH") || s.Fall != faelle.SSHZu {
 		t.Fatalf("%+v", s)
+	}
+	if a := m.WebAufrufe(); len(a) != 0 {
+		t.Fatalf("3.x hat kein /rpc, trotzdem: %v", a)
+	}
+}
+
+// Eine Mango ab Werk mit GL 4.3.30 (Lauf 2026-11-18-141934-e731): SSH bleibt
+// bis zur Ersteinrichtung zu. Die Web-Schnittstelle antwortet, also ist sie
+// fertig gestartet: Der Lauf beginnt ohne die Startfrist und macht ohne
+// Handgriff weiter; eingerichtet wird sie erst, wenn die Fassungen
+// bereitliegen (die es hier nicht gibt): bis dahin bleibt sie unverändert.
+func TestFrischeMangoAbWerkOhneHandgriff(t *testing.T) {
+	m := attrappe.NeueMango(t, false)
+	w := werkbankMit(t, m, nil)
+	ctx := context.Background()
+	w.d.Runde(ctx)
+	w.d.Runde(ctx)
+	if w.d.Ansicht().Lauf == nil {
+		t.Fatalf("kein Lauf, obwohl die Web-Schnittstelle antwortet: %s", w.d.Ansicht().Anschluss)
+	}
+	s := w.bisEnde(t)
+	if s.Schritt != "fassungen" || strings.Join(s.Erledigt, ",") != "erkennen" || s.Handgriff != "" {
+		t.Fatalf("%+v", s)
+	}
+	if a := strings.Join(m.WebAufrufe(), " "); !strings.Contains(a, "ui.check_initialized") || strings.Contains(a, "ui.init") {
+		t.Fatalf("Web-Schnittstelle: %s", a)
+	}
+}
+
+// Die Mango aus Lauf 2026-11-18-141934-e731 hielt mit ssh_zu an, als der
+// Dienst die Ersteinrichtung noch nicht kannte. Der angehaltene Lauf sperrt
+// sie nicht: Nach dem Ausrollen startet der Dienst neu und beginnt für die
+// Mango, die noch steckt, von selbst einen neuen Lauf; mit demselben Dienst
+// genügt es, sie einmal abzuziehen (Kabel oder Strom).
+func TestSSHZuLaufSperrtDieMangoNicht(t *testing.T) {
+	for name, weiter := range map[string]func(w *werkbankAufbau){
+		"Dienst startet neu (Ausrollen)": func(w *werkbankAufbau) { w.neustart() },
+		"Mango einmal abgezogen": func(w *werkbankAufbau) {
+			w.m.Abziehen()
+			w.d.Runde(context.Background())
+			w.m.Einstecken()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := attrappe.NeueMango(t, false)
+			m.GL = "3.216" // wie der alte Dienst: kein Weg hinein
+			m.SetzeSSHZu(true)
+			w := werkbankMit(t, m, nil)
+			ctx := context.Background()
+			w.d.Runde(ctx)
+			w.d.Runde(ctx)
+			w.spaeter(dienst.StartFrist + time.Second)
+			w.d.Runde(ctx)
+			alt := w.bisEnde(t)
+			if alt.Fall != faelle.SSHZu {
+				t.Fatalf("%+v", alt)
+			}
+			w.d.Runde(ctx)
+			if a := w.d.Ansicht(); a.AnschlussFall != faelle.Gesperrt {
+				t.Fatalf("nicht gesperrt: %s", a.Anschluss)
+			}
+
+			// Ausgerollt: Dieselbe Mango ist eine 4.3.30 ab Werk.
+			m.GL = "4.3.30"
+			m.SetzeSSHZu(false)
+			weiter(w)
+			w.d.Runde(ctx)
+			w.d.Runde(ctx)
+			if n := w.d.Ansicht().Lauf; n == nil || n.Kennung == alt.Kennung {
+				t.Fatalf("kein neuer Lauf: %s", w.d.Ansicht().Anschluss)
+			}
+			if s := w.bisEnde(t); s.Schritt != "fassungen" || strings.Join(s.Erledigt, ",") != "erkennen" {
+				t.Fatalf("neuer Lauf: %+v", s)
+			}
+		})
 	}
 }
 

@@ -93,7 +93,7 @@ function PiBild() {
 
 function StartladerBild() {
   return (
-    <svg className="vp-wsb-bild" viewBox="0 0 240 160" role="img" aria-label="Mango am Rechner, Reset halten und Strom stecken">
+    <svg className="vp-wsb-bild" viewBox="0 0 240 160" role="img" aria-label="Rechner in der LAN-Buchse der Mango statt des orangen Kabels, Reset halten und Strom stecken">
       <rect x="8" y="40" width="120" height="50" rx="12" fill="#FFFFFF" stroke="#CED4DA" strokeWidth="2" />
       <text x="68" y="62" fontSize="12" fontWeight="700" textAnchor="middle" fill="#1A1A1A">Mango</text>
       <circle cx="114" cy="50" r="6" fill="#C62828" />
@@ -102,7 +102,8 @@ function StartladerBild() {
       <rect x="160" y="70" width="70" height="44" rx="4" fill="#E9ECEF" stroke="#ADB5BD" />
       <rect x="150" y="114" width="90" height="8" rx="3" fill="#ADB5BD" />
       <text x="195" y="96" fontSize="10" textAnchor="middle" fill="#2C5282">192.168.1.1</text>
-      <text x="120" y="146" fontSize="10" textAnchor="middle" fill="#66717C">Rechner statt oranges Kabel</text>
+      <text x="61" y="106" fontSize="9" fontWeight="700" textAnchor="end" fill="#2C5282">LAN</text>
+      <text x="120" y="146" fontSize="10" textAnchor="middle" fill="#66717C">Rechner in LAN statt orangem Kabel</text>
     </svg>
   );
 }
