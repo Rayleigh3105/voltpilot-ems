@@ -29,7 +29,8 @@ Seite ruft sie nicht mehr auf. Die Handschritte selbst stehen in der Werkstatt-R
 
 Die Schritte an der Box übernimmt der [Werkstatt-Dienst](../services/werkstatt-dienst/README.md) im Cluster: Eine
 Mango ab Werk kommt mit dem orangen Kabel WERKSTATT an die [Werkbank-Brücke](../services/werkstatt-dienst/bruecke/README.md),
-der Dienst spielt OpenWrt ohne Startlader auf (`sysupgrade -n` aus der Werksfirmware), setzt Passwort und
+der Dienst spielt OpenWrt ohne Startlader auf (`sysupgrade -n` aus der Werksfirmware; ab GL 4.3.30 richtet er die
+Werksfirmware dafür erst selbst mit einem Einmal-Passwort ein, weil sie SSH sonst nicht zulässt), setzt Passwort und
 Notfall-Schlüssel, spielt Edge Light und den Tunnel ein, stellt das LAN um und macht die Neustart-Probe, jeden
 Schritt mit Beleg. Das Root-Passwort erzeugt dann der Dienst (Entscheid WI-6 A statt 3a): Es steht nur
 verschlüsselt für den age-Schlüssel „Box-Passwörter“ im Protokoll des Dienstes und geht an keine Route. Diese

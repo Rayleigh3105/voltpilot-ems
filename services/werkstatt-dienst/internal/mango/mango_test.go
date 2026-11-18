@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var kurz = mango.Zeiten{Takt: 20 * time.Millisecond, Verbinden: 3 * time.Second, Sysupgrade: 5 * time.Second, Neustart: 5 * time.Second, Netz: 3 * time.Second, Programm: 3 * time.Second, Tunnel: 3 * time.Second}
+var kurz = mango.Zeiten{Takt: 20 * time.Millisecond, Verbinden: 3 * time.Second, Sysupgrade: 5 * time.Second, Neustart: 5 * time.Second, Netz: 3 * time.Second, Programm: 3 * time.Second, Tunnel: 3 * time.Second, Ersteinrichtung: 3 * time.Second}
 
 type aufbau struct {
 	m      *attrappe.Mango
@@ -205,6 +205,8 @@ func wert(t *testing.T, b protokoll.Beleg, name string) string {
 	return v
 }
 
+// Eine Mango ab Werk mit GL 4.3.30 (SSH erst nach der Ersteinrichtung) wird
+// von „ab Werk“ bis zur Übergabe eingerichtet, ohne Handgriff.
 func TestGanzerLaufAbWerk(t *testing.T) {
 	a := neu(t, false)
 	l, z := a.fahre(t, mango.AbWerk)
@@ -217,10 +219,23 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 		t.Fatalf("Schritte %v", s.Erledigt)
 	}
 	b := a.belege(t, l)
+	if s.Handgriff != "" || strings.Join(a.m.WebAufrufe(), " ") != "ui.check_initialized ui.init" {
+		t.Fatalf("Handgriff %q, Web-Schnittstelle %v", s.Handgriff, a.m.WebAufrufe())
+	}
+	if w := wert(t, b["erkennen"], "werksfassung"); w != "GL 4.3.30, Modell mt300n-v2, noch nicht eingerichtet (Web-Schnittstelle /rpc ui.check_initialized)" {
+		t.Fatalf("Werksfassung %q", w)
+	}
+	if e := wert(t, b["erkennen"], "ersteinrichtung"); !strings.HasPrefix(e, "nötig:") {
+		t.Fatalf("erkennen: Ersteinrichtung %q", e)
+	}
+	if e := wert(t, b["openwrt"], "ersteinrichtung"); !strings.HasPrefix(e, "ui.init angenommen") || wert(t, b["openwrt"], "ssh") != "root mit dem Einmal-Passwort angenommen" ||
+		wert(t, b["openwrt"], "board") != "glinet,gl-mt300n-v2" {
+		t.Fatalf("openwrt: Ersteinrichtung %q, %v", e, b["openwrt"])
+	}
 	if wert(t, b["openwrt"], "sha256_box") != summe(a.abbild) || wert(t, b["openwrt"], "sha256_dienst") != summe(a.abbild) {
 		t.Fatal("Prüfsummen")
 	}
-	hostWerk := wert(t, b["erkennen"], "host_schluessel_werk")
+	hostWerk := wert(t, b["openwrt"], "host_schluessel_werk") // ab GL 4.3.30 erst nach der Ersteinrichtung
 	hostOW := wert(t, b["wiedererkennen"], "host_schluessel")
 	if !strings.HasPrefix(hostOW, "ssh-rsa SHA256:") || hostOW == hostWerk {
 		t.Fatalf("Host-Schlüssel nach OpenWrt %q (ab Werk %q)", hostOW, hostWerk)
@@ -254,6 +269,14 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 	})
 	if strings.Contains(alles.String(), pw) || strings.Contains(a.log.String(), pw) {
 		t.Fatal("das Root-Passwort steht im Klartext in Protokoll oder Log")
+	}
+	// Das Einmal-Passwort der Ersteinrichtung: je Lauf neu, nie das Root-Passwort, nirgends abgelegt.
+	ew := a.m.WerkPasswort()
+	if len(ew) != 24 || ew == pw {
+		t.Fatalf("Einmal-Passwort %q", ew)
+	}
+	if strings.Contains(alles.String(), ew) || strings.Contains(a.log.String(), ew) {
+		t.Fatal("das Einmal-Passwort steht im Klartext in Protokoll oder Log")
 	}
 	if wert(t, b["notfall"], "zeilen") != "1" {
 		t.Fatal("Notfall")
@@ -296,6 +319,40 @@ func TestGanzerLaufAbWerk(t *testing.T) {
 	}
 }
 
+// Bis GL 4.3.29 ist SSH ab Werk offen (PS-1): kein ui.init, die
+// Web-Schnittstelle wird nur gefragt (Beleg Werksfassung).
+func TestLaufAbWerkMitOffenemSSH(t *testing.T) {
+	a := neu(t, false)
+	a.m.GL = "4.3.25"
+	l, z := a.fahre(t, mango.AbWerk)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s: %+v", z, l.Stand())
+	}
+	b := a.belege(t, l)
+	if wert(t, b["erkennen"], "ssh") != "root ohne Passwort angenommen" || !strings.HasPrefix(wert(t, b["erkennen"], "werksfassung"), "GL 4.3.25,") {
+		t.Fatalf("erkennen %v", b["erkennen"])
+	}
+	if _, ok := b["erkennen"].Wert("ersteinrichtung"); ok || strings.Contains(strings.Join(a.m.WebAufrufe(), " "), "ui.init") {
+		t.Fatalf("eingerichtet, obwohl SSH offen war: %v", a.m.WebAufrufe())
+	}
+}
+
+// Erkennt der Dienst die Werksfirmware nicht sicher, bleibt der Startlader;
+// die Werksfassung steht trotzdem im Beleg.
+func TestStartladerBelegtDieWerksfassung(t *testing.T) {
+	a := neu(t, false)
+	a.m.GL = "3.216"
+	a.m.SetzeSSHZu(true)
+	l, z := a.fahre(t, mango.AbWerk)
+	s := l.Stand()
+	if z != lauf.Angehalten || s.Fall != "ssh_zu" || !strings.HasPrefix(s.Handgriff, "Startlader") {
+		t.Fatalf("Zustand %s: %+v", z, s)
+	}
+	if w := wert(t, a.belege(t, l)["erkennen"], "werksfassung"); !strings.Contains(w, "3.x /cgi-bin/api/router/hello") || !strings.Contains(w, `"version":"3.216"`) {
+		t.Fatalf("Werksfassung %q", w)
+	}
+}
+
 func TestLaufAbFrischemOpenWrt(t *testing.T) {
 	a := neu(t, true)
 	l, z := a.fahre(t, mango.AbOpenWrt)
@@ -321,6 +378,10 @@ func TestAbbruchregeln(t *testing.T) {
 		fall      string
 	}{
 		{"schon eingerichtet", mango.AbWerk, func(a *aufbau) { a.m.RootPasswortAbWerk = true }, "erkennen", "verlangt ein Passwort", true, "gl_passwort"},
+		{"eingerichtet, SSH aus", mango.AbWerk, func(a *aufbau) { a.m.RootPasswortAbWerk = true; a.m.SetzeSSHZu(true) }, "erkennen", "4.3.30 ist schon eingerichtet", true, "gl_passwort"},
+		{"nach ui.init kein SSH", mango.AbWerk, func(a *aufbau) { a.m.SetzeSSHZu(true) }, "openwrt", "Nach der Ersteinrichtung", true, "ssh_zu"},
+		{"3.x ohne SSH", mango.AbWerk, func(a *aufbau) { a.m.GL = "3.216"; a.m.SetzeSSHZu(true) }, "erkennen", "keine Web-Schnittstelle /rpc", true, "ssh_zu"},
+		{"keine Web-Schnittstelle", mango.AbWerk, func(a *aufbau) { a.m.GL = ""; a.m.SetzeSSHZu(true) }, "erkennen", "antwortet nicht erkennbar", true, "ssh_zu"},
 		{"anderes Gerät", mango.AbWerk, func(a *aufbau) { a.m.Board = "glinet,gl-ar300m" }, "erkennen", "keine GL-MT300N-V2", true, "falsches_geraet"},
 		{"keine GL-Firmware", mango.AbWerk, func(a *aufbau) { a.m.GL = "" }, "erkennen", "keine GL-Werksfirmware", true, "falsches_geraet"},
 		{"zwei Geräte", mango.AbWerk, func(a *aufbau) { a.m.Zweite = true }, "erkennen", "mehrere Geräte", true, "zwei_geraete"},
@@ -342,8 +403,8 @@ func TestAbbruchregeln(t *testing.T) {
 				s.Fall != f.fall || s.Loesung == nil || s.Loesung.Titel == "" {
 				t.Fatalf("Zustand %s, Stand %+v", z, s)
 			}
-			if f.name == "Freigabe-Prüfsumme" && len(a.m.Befehle()) > 1 {
-				t.Fatalf("Box angefasst trotz falscher Datei: %v", a.m.Befehle())
+			if f.name == "Freigabe-Prüfsumme" && (len(a.m.Befehle()) > 1 || strings.Contains(strings.Join(a.m.WebAufrufe(), " "), "ui.init")) {
+				t.Fatalf("Box angefasst trotz falscher Datei: %v %v", a.m.Befehle(), a.m.WebAufrufe())
 			}
 		})
 	}

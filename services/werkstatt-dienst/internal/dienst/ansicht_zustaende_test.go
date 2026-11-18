@@ -221,8 +221,14 @@ func TestAnsichtZustaende(t *testing.T) {
 		return nil, errors.New("kein frischer Handshake an wg_wartung nach dem Neustart")
 	}), zustand(lauf.Angehalten, "")), false)
 	zeige("angehalten_startlader", "2026-11-04-102855-049e", fahre(bis(index("openwrt"), func(context.Context, *lauf.Kontext) (protokoll.Beleg, error) {
-		return nil, lauf.Handgriff{Was: "Startlader (Handgriff M4): Mango vom Strom, Reset-Knopf halten und Strom stecken, bis die Leuchte fünfmal blinkt.",
+		return nil, lauf.Handgriff{Was: mango.Startlader("openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin"),
 			Grund: "Die Mango nimmt das Abbild nicht an.", Fall: faelle.AbbildAbgelehnt}
+	}), zustand(lauf.Angehalten, "")), false)
+	// Ab Werk ohne SSH, und der Dienst erkennt die Firmware nicht sicher genug,
+	// um sie selbst einzurichten: Startlader.
+	zeige("angehalten_ssh_zu", "2026-11-04-102855-049e", fahre(bis(0, func(context.Context, *lauf.Kontext) (protokoll.Beleg, error) {
+		return nil, lauf.Handgriff{Was: mango.Startlader("openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin"), Fall: faelle.SSHZu,
+			Grund: "Die Werksfirmware lässt kein SSH zu (Brücke leitet nicht weiter zu 192.168.8.1:22: connect failed: Connection refused); sie hat keine Web-Schnittstelle /rpc (GL 4.x), über die der Dienst sie einrichten könnte. Über den Startlader kommt OpenWrt trotzdem auf die Mango."}
 	}), zustand(lauf.Angehalten, "")), false)
 	// Zurücksetzen: eine gebrauchte GL-Mango und eine halb eingerichtete Box
 	// dieser Werkstatt; zur Seite: ein fremdes Passwort.

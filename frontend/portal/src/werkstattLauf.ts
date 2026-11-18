@@ -37,9 +37,9 @@ export const PRUEFUNGEN_WORT = ZAHLWORT[PRUEFUNGEN.length] ?? String(PRUEFUNGEN.
 
 /** Titel und ein Satz, was der Dienst in dem Schritt tut (Jetzt-Karte). */
 export const SCHRITT_TEXT: Record<string, { titel: string; tut: string }> = {
-  erkennen: { titel: 'Mango erkennen', tut: 'Liest Modell, System und ob root ein Passwort hat. Ein Passwort rät der Dienst nie.' },
+  erkennen: { titel: 'Mango erkennen', tut: 'Liest Modell, System und ob root ein Passwort hat; lässt die Werksfirmware noch kein SSH zu, fragt er ihre Web-Schnittstelle. Ein Passwort rät der Dienst nie.' },
   fassungen: { titel: 'Dateien der Freigabe bereitlegen', tut: 'Lädt OpenWrt und Edge Light der Freigabe und prüft jede Prüfsumme.' },
-  openwrt: { titel: 'OpenWrt aufspielen', tut: 'Überträgt das neue System, prüft die Prüfsumme auf der Box und spielt es auf. Danach startet die Mango neu.' },
+  openwrt: { titel: 'OpenWrt aufspielen', tut: 'Richtet die Werksfirmware bei Bedarf mit einem Einmal-Passwort ein, überträgt das neue System, prüft die Prüfsumme auf der Box und spielt es auf. Danach startet die Mango neu.' },
   wiedererkennen: { titel: 'Neustart in OpenWrt abwarten', tut: 'Wartet, bis die Mango mit OpenWrt wieder antwortet.' },
   internet: { titel: 'Internet über die Brücke (befristet)', tut: 'Gibt der Mango für den Lauf Internet über die Brücke; am Ende kommt es wieder weg.' },
   passwort: { titel: 'Root-Passwort setzen', tut: 'Setzt ein zufälliges Passwort; abgelegt wird es nur verschlüsselt.' },
@@ -363,7 +363,7 @@ export const WAS: Record<string, string> = {
   passwort_fremd: 'Sie hat ein Passwort, das kein Lauf dieser Werkstatt gesetzt hat, zum Beispiel von Hand eingerichtet.',
   box_in_gebrauch: 'Sie ist abgenommen oder mit einem Kunden gekoppelt. So eine Box setzt der Dienst nie zurück.',
   nicht_nachweisbar: 'Der Dienst kann nicht belegen, dass es dieselbe Box wie in seinem früheren Lauf ist. Dann setzt er nichts zurück.',
-  ssh_zu: 'Ihre Werksfirmware öffnet keinen Zugang. Dann hilft der Startlader, einmal am Rechner.',
+  ssh_zu: 'Ihre Werksfirmware öffnet keinen Zugang, und der Dienst kann sie nicht selbst einrichten. Dann hilft der Startlader, einmal am Rechner.',
   abbild_abgelehnt: 'Der Test vor dem Aufspielen ist gescheitert. Über den Startlader geht es trotzdem.',
   falsches_geraet: 'An der Werkbank werden nur Mangos GL-MT300N-V2 eingerichtet.',
   schon_edge_light: 'Auf ihr läuft schon Edge Light, aber kein Lauf dieser Werkstatt kennt sie.',
@@ -416,8 +416,10 @@ function loesungOhne(code: string): Loesung {
   }
   if (STARTLADER.has(code)) {
     return { titel: 'Die Mango lässt den Dienst nicht hinein.', selbst: true, zur_seite: false, schritte: [
-      'Startlader: Mango vom Strom, Reset-Knopf halten und Strom wieder anstecken; nach etwa fünf Sekunden loslassen, wenn die Leuchte blinkt.',
-      'Am Rechner das neue System hochladen, wie unter „Details für Technik“ beschrieben. Das orange Kabel bleibt stecken.',
+      'Das orange Kabel aus der LAN-Buchse der Mango ziehen. Dort den Rechner per Kabel anstecken.',
+      'Startlader: Mango vom Strom, Reset-Knopf halten und Strom wieder anstecken; loslassen, wenn die Leuchte fünfmal geblinkt hat.',
+      'Am Rechner das neue System hochladen, wie unter „Details für Technik“ beschrieben.',
+      'Danach das orange Kabel wieder in die LAN-Buchse der Mango stecken.',
     ] };
   }
   return { titel: 'Hier hat etwas nicht geklappt.', selbst: true, zur_seite: false, schritte: [

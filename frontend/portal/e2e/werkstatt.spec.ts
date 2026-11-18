@@ -162,6 +162,20 @@ for (const breite of [1440, 390, 375]) {
       await expect(page.getByTestId('wsb-bild')).toHaveAttribute('data-bild', 'startlader');
       await expect(page.getByTestId('wsb-knopf-abbild')).toContainText('OpenWrt-Abbild 25.12.5 herunterladen');
     } },
+    { lauf: 'ssh_zu', art: 'fall', name: 'fall-ssh-zu', pruefe: async (page) => {
+      // Bild, Schritte und „Details für Technik“ sagen dasselbe: Rechner in die LAN-Buchse statt des orangen Kabels, danach zurück.
+      await expect(page.getByTestId('wsb-fall-titel')).toHaveText('Die Mango lässt den Dienst nicht hinein.');
+      await expect(page.getByTestId('wsb-bild')).toHaveAttribute('data-bild', 'startlader');
+      await expect(page.getByTestId('wsb-bild')).toContainText('Rechner in LAN statt orangem Kabel');
+      await expect(page.getByTestId('wsb')).toContainText('Das orange Kabel aus der LAN-Buchse der Mango ziehen. Dort den Rechner per Kabel anstecken.');
+      await expect(page.getByTestId('wsb')).toContainText('Danach das orange Kabel wieder in die LAN-Buchse der Mango stecken.');
+      await expect(page.getByTestId('wsb')).not.toContainText('Das orange Kabel bleibt stecken.');
+      await expect(page.getByTestId('wsb-live')).toContainText('Frisches OpenWrt meldet sich am orangen Kabel');
+      await page.getByTestId('wsb-details').locator('summary').click();
+      await expect(page.getByTestId('wsb-details')).toContainText('aus der LAN-Buchse der Mango ziehen und dort den Rechner per Kabel anstecken');
+      await expect(page.getByTestId('wsb-details')).toContainText('Danach das orange Kabel wieder in die LAN-Buchse');
+      await expect(page.getByTestId('wsb-fall-code')).toHaveText('ssh_zu');
+    } },
     { lauf: 'gl_passwort', art: 'fall', name: 'fall-gl-passwort', pruefe: async (page) => {
       await expect(page.getByTestId('wsb-fall-banner')).toContainText('Einmal kurz du.');
       await expect(page.getByTestId('wsb-fall-titel')).toHaveText('Diese Mango hat schon jemand eingerichtet.');

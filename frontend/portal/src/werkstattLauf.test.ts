@@ -114,6 +114,17 @@ describe('Läuft-Anzeige: der wiederholte Check ist ein laufender Punkt, nie ein
     expect(gemeldet.live[1]).toMatchObject({ zustand: 'lauf', text: 'Lauf beginnt von selbst' });
   });
 
+  it('Startlader eines älteren Dienstes (ohne loesung): dieselben Schritte wie der Dienst - Rechner statt des orangen Kabels in LAN, danach zurück', () => {
+    const s = fallSeite({ code: 'ssh_zu', loesung: null, wo: 'lauf', ansicht: vektor, lauf: null });
+    expect(s.schritte).toEqual([
+      'Das orange Kabel aus der LAN-Buchse der Mango ziehen. Dort den Rechner per Kabel anstecken.',
+      'Startlader: Mango vom Strom, Reset-Knopf halten und Strom wieder anstecken; loslassen, wenn die Leuchte fünfmal geblinkt hat.',
+      'Am Rechner das neue System hochladen, wie unter „Details für Technik“ beschrieben.',
+      'Danach das orange Kabel wieder in die LAN-Buchse der Mango stecken.',
+    ]);
+    expect(s.bild).toBe('startlader');
+  });
+
   it('Reset: wartet aufs Drücken, dann prüft es den Neustart, dann beginnt der neue Lauf - immer genau ein laufender Punkt', () => {
     const wartetAufDruck = fallSeite({ code: 'gl_passwort', loesung: loesungSelbst, wo: 'anschluss', ansicht: vektor, lauf: null });
     expect(wartetAufDruck.live.filter((p) => p.zustand === 'lauf')).toHaveLength(1);

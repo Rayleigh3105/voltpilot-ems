@@ -3,7 +3,7 @@
  * Werkstatt-Dienst meldet seine Ansicht (Vertrag werkstatt-ansicht-v1) frisch; welcher Lauf gerade an
  * der Werkbank steht, wählt `?lauf=` (laeuft, wartet, fertig, problem, startlader, still; ohne: die Werkstatt wartet auf eine
  * Fassung, angehalten: jemand hat sie angehalten, beide ohne Lauf; dazu die Fälle der
- * Lauf-Seite: gl_passwort, bruecke_weg, passwort_fremd, startet, bruecke_unterspannung). `problem` und `startlader` sind Stände eines älteren
+ * Lauf-Seite: gl_passwort, ssh_zu, bruecke_weg, passwort_fremd, startet, bruecke_unterspannung). `problem` und `startlader` sind Stände eines älteren
  * Dienstes ohne `fall`, `belege` und `nochmal_moeglich`: daran zeigt sich, dass die Seite dann wie bisher bleibt.
  *
  * Im Register: edge-5t2dcy6 (vom Dienst abgenommen, mit Belegen), edge-k7m2xq3 (der Lauf an der
@@ -106,6 +106,8 @@ const belege = (erledigt: string[]): SchrittBeleg[] => erledigt.map((x) => ({ sc
 const VORHER_WERK = { system: 'GL-Firmware 4.3.17', edge_light: 'kein VoltPilot' };
 const RESET = 'Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt. Dann loslassen.';
 const KURZ_AB = 'Das orange Kabel kurz abziehen und wieder einstecken.';
+/** Wie mango.Startlader im Werkstatt-Dienst. */
+const STARTLADER = 'Startlader (Handgriff M4): Das orange Kabel aus der LAN-Buchse der Mango ziehen und dort den Rechner per Kabel anstecken; am Rechner 192.168.1.2/24 einstellen. Mango vom Strom, Reset-Knopf halten und Strom stecken, loslassen, wenn die Leuchte fünfmal geblinkt hat; http://192.168.1.1 öffnen und openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin hochladen. Danach das orange Kabel wieder in die LAN-Buchse: Die Mango meldet sich mit frischem OpenWrt, und der Dienst macht weiter.';
 const ZUR_SEITE = 'Zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen.';
 const LOESUNG: Record<string, Loesung> = {
   gl_passwort: { titel: 'Diese Mango hat schon jemand eingerichtet.', selbst: true, zur_seite: false,
@@ -113,6 +115,11 @@ const LOESUNG: Record<string, Loesung> = {
   bruecke_weg: { titel: 'Die Brücke war während des Laufs weg.', selbst: true, zur_seite: false,
     schritte: ['Am Raspberry Pi nachsehen: Strom und WLAN.', KURZ_AB] },
   passwort_fremd: { titel: 'Diese Mango gehört nicht zur Werkstatt.', selbst: false, zur_seite: true, schritte: ['Nicht zurücksetzen.', ZUR_SEITE] },
+  ssh_zu: { titel: 'Die Mango lässt den Dienst nicht hinein.', selbst: true, zur_seite: false,
+    schritte: ['Das orange Kabel aus der LAN-Buchse der Mango ziehen. Dort den Rechner per Kabel anstecken.',
+      'Startlader: Mango vom Strom, Reset-Knopf halten und Strom wieder anstecken; loslassen, wenn die Leuchte fünfmal geblinkt hat.',
+      'Am Rechner das neue System hochladen, wie unter „Details für Technik“ beschrieben.',
+      'Danach das orange Kabel wieder in die LAN-Buchse der Mango stecken.'] },
   startet: { titel: 'Die Mango startet noch.', selbst: true, zur_seite: false,
     schritte: ['Nichts tun und nicht abziehen. Der Dienst fängt an, sobald sie fertig gestartet ist.'] },
   bruecke_unterspannung: { titel: 'Die Brücke hat zu wenig Strom.', selbst: true, zur_seite: false,
@@ -153,9 +160,14 @@ function laufAnDerBank(): LaufStand | null {
     case 'problem':
       return { ...basis, box: 'edge-k7m2xq3', zustand: 'angehalten', schritt: 'probe', titel: 'Probe über den Tunnel',
         grund: 'kein Handshake an wg_wartung seit 180 s', erledigt: [...ERLEDIGT_BIS_TUNNEL, 'einloesen', 'tunnel', 'lan', 'neustart'] };
+    case 'ssh_zu':
+      return { ...basis, zustand: 'angehalten', schritt: 'erkennen', titel: 'Mango erkennen', erledigt: [], ende: iso(-20_000),
+        grund: 'Die Werksfirmware lässt kein SSH zu (Brücke leitet nicht weiter zu 192.168.8.1:22: connect failed: Connection refused); sie hat keine Web-Schnittstelle /rpc (GL 4.x), über die der Dienst sie einrichten könnte. Über den Startlader kommt OpenWrt trotzdem auf die Mango.',
+        handgriff: STARTLADER, fall: 'ssh_zu', loesung: LOESUNG.ssh_zu,
+        vorher: { system: 'GL-Firmware 3.216', edge_light: 'kein VoltPilot' } };
     case 'startlader':
       return { ...basis, zustand: 'angehalten', schritt: 'openwrt', titel: 'OpenWrt aufspielen', erledigt: ['erkennen', 'fassungen'],
-        handgriff: 'Startlader (Handgriff M4): Mango vom Strom, Reset gedrückt halten, Strom an, nach fünfmal Blinken loslassen' };
+        handgriff: STARTLADER };
     default:
       return null;
   }
@@ -169,7 +181,7 @@ function ansicht(): WerkstattAnsicht {
     zeit: new Date().toISOString(),
     werkbank: { adresse: '10.10.40.2', bereit: true, fassung_soll: 'brueckpi-2026.11.1', host_schluessel: 'SHA256:' + 'W'.repeat(43),
       status: { fassung: 'brueckpi-2026.11.1', werkstatt: { kabel: true },
-        antworten: szenario === 'ohne' ? [] : [{ adresse: szenario === 'gl_passwort' ? '192.168.8.1' : '192.168.1.1', macs: ['94:83:c4:12:34:56'] }],
+        antworten: szenario === 'ohne' ? [] : [{ adresse: szenario === 'gl_passwort' || szenario === 'ssh_zu' ? '192.168.8.1' : '192.168.1.1', macs: ['94:83:c4:12:34:56'] }],
         ...(szenario === 'bruecke_unterspannung' ? { strom: { unterspannung_jetzt: true, quelle: 'adc' } } : {}) },
       status_zeit: new Date().toISOString() },
     freigabe: f

@@ -636,7 +636,7 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     expect(ABLAUF.map(([n]) => n)).toEqual(expect.arrayContaining([
       'ohne_kabel', 'mit_kabel', 'angehalten_beim_erkennen', 'laeuft_erkennen', 'laeuft_wiedererkennen', 'wartet_tunnel_adresse',
       'wartet_probe', 'angehalten_beim_neustart', 'angehalten_startlader', 'fertig',
-      'startet', 'unterspannung', 'angehalten_gl_passwort', 'angehalten_halb_eigene', 'angehalten_passwort_fremd',
+      'startet', 'unterspannung', 'angehalten_gl_passwort', 'angehalten_halb_eigene', 'angehalten_passwort_fremd', 'angehalten_ssh_zu',
     ]));
     // jeder Schritt des echten Laufs ab Werk; ohne Portal-API kommt die Tunnel-Adresse aus dem Portal statt einloesen
     expect(ABLAUF.filter(([n]) => n.startsWith('laeuft_')).map(([n]) => n.slice('laeuft_'.length)).sort())
@@ -660,6 +660,7 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     ['angehalten_halb_eigene', 'Diese Mango ist nur halb eingerichtet.', 'Reset-Knopf der Mango'],
     ['angehalten_passwort_fremd', 'Diese Mango gehört nicht zur Werkstatt.', 'Nicht zurücksetzen.'],
     ['angehalten_beim_erkennen', 'Die Brücke war während des Laufs weg.', 'Raspberry Pi'],
+    ['angehalten_ssh_zu', 'Die Mango lässt den Dienst nicht hinein.', 'aus der LAN-Buchse der Mango ziehen'],
   ])('Lösung aus dem Dienst: %s zeigt „%s“', async (name, titel, schritt) => {
     window.location.hash = '#/werkstatt?werkbank=1';
     werkstattDienst.mockResolvedValue(ausZustand(name, laeufeZu(name)));
@@ -667,6 +668,20 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     fireEvent.click(await screen.findByTestId('wsb-mango'));
     expect(screen.getByText(titel)).toBeInTheDocument();
     expect(screen.getAllByText(new RegExp(schritt)).length).toBeGreaterThan(0);
+  });
+
+  it('Startlader: Bild, Schritte und „Details für Technik“ sagen dasselbe - der Rechner statt des orangen Kabels in LAN, danach zurück', async () => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(ausZustand('angehalten_ssh_zu', laeufeZu('angehalten_ssh_zu')));
+    render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.getByTestId('wsb-bild')).toHaveTextContent('Rechner in LAN statt orangem Kabel');
+    const seite = screen.getByTestId('wsb');
+    expect(seite).toHaveTextContent('Das orange Kabel aus der LAN-Buchse der Mango ziehen. Dort den Rechner per Kabel anstecken.');
+    expect(seite).toHaveTextContent('Danach das orange Kabel wieder in die LAN-Buchse der Mango stecken.');
+    expect(seite).not.toHaveTextContent('Das orange Kabel bleibt stecken.');
+    expect(screen.getByTestId('wsb-details')).toHaveTextContent('aus der LAN-Buchse der Mango ziehen und dort den Rechner per Kabel anstecken');
+    expect(screen.getByTestId('wsb-details')).toHaveTextContent('Danach das orange Kabel wieder in die LAN-Buchse');
   });
 
   it.each([

@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -68,16 +66,27 @@ func (l *Lauf) erkennenWerk(ctx context.Context, k *lauf.Kontext) (protokoll.Bel
 		// Unter 192.168.8.1 steht nur GL-Firmware, nie eine Box dieser Werkstatt
 		// (die hat OpenWrt unter 192.168.1.1 oder dem LAN-Netz): Zurücksetzen
 		// nimmt niemandem etwas weg.
-		return b.Mit("host_schluessel_werk", orNone(ab.Host)), lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "Die Mango verlangt ein Passwort: Jemand hat ihre Werksfirmware schon eingerichtet (gebraucht gekauft oder angefangen). Der Dienst rät keine Passwörter; zurückgesetzt ist sie wieder ab Werk."}
+		w, _ := FrageWerk(ctx, l.k.Werkbank)
+		return b.Mit("host_schluessel_werk", orNone(ab.Host)).Mit("werksfassung", w.Text), lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "Die Mango verlangt ein Passwort: Jemand hat ihre Werksfirmware schon eingerichtet (gebraucht gekauft oder angefangen). Der Dienst rät keine Passwörter; zurückgesetzt ist sie wieder ab Werk."}
 	}
 	if startetNoch(err) {
-		return b, lauf.Handgriff{Was: l.startlader(), Fall: faelle.SSHZu, Grund: "Die Werksfirmware lässt kein SSH zu (" + geheim.Schwaerze(err.Error()) + "; Prüfstein PS-1). Über den Startlader kommt OpenWrt trotzdem auf die Mango."}
+		return l.werkOhneSSH(ctx, b, err)
 	}
 	if err != nil {
 		return b, err
 	}
 	defer v.Schliesse()
-	b = b.Mit("ssh", "root ohne Passwort angenommen").Mit("host_schluessel_werk", v.HostArt()+" "+v.HostFingerabdruck())
+	b, err = l.pruefeWerk(ctx, v, b.Mit("ssh", "root ohne Passwort angenommen").Mit("host_schluessel_werk", v.HostArt()+" "+v.HostFingerabdruck()))
+	if err != nil {
+		return b, err
+	}
+	werk, _ := FrageWerk(ctx, l.k.Werkbank)
+	return b.Mit("werksfassung", werk.Text), nil
+}
+
+// pruefeWerk liest, was die Werksfirmware über sich sagt, und prüft Board,
+// GL-Firmware, Passwort und Edge Light.
+func (l *Lauf) pruefeWerk(ctx context.Context, v *box.Verbindung, b protokoll.Beleg) (protokoll.Beleg, error) {
 	w, _, err := v.Werte(ctx, befehlWerk)
 	if err != nil {
 		return b, err
@@ -88,35 +97,77 @@ func (l *Lauf) erkennenWerk(ctx context.Context, k *lauf.Kontext) (protokoll.Bel
 		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.FalschesGeraet, Grund: fmt.Sprintf("Das Gerät ist keine GL-MT300N-V2 (board %q).", w["board"])}
 	case w["gl"] == "":
 		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.FalschesGeraet, Grund: "Unter 192.168.8.1 antwortet keine GL-Werksfirmware (/etc/glversion fehlt)."}
-	case w["rootpw"] != "leer":
+	case w["rootpw"] != "leer" && l.werkPw.Leer():
 		return b, lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "root hat ein Passwort: Jemand hat ihre Werksfirmware schon eingerichtet. Zurückgesetzt ist sie wieder ab Werk."}
 	case w["edge"] == "ja":
 		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.SchonEdgeLight, Grund: "Auf dem Gerät ist schon Edge Light: keine Mango ab Werk."}
 	}
 	l.tmpFrei, _ = strconv.ParseInt(w["tmp_frei_kb"], 10, 64)
-	b = b.Mit("gl_schnittstelle", l.glSchnittstelle(ctx))
 	return b, nil
 }
 
-// glSchnittstelle fragt die GL-Schnittstelle (3.x: /cgi-bin/api/router/hello)
-// und hält die Antwort als Beleg fest. Ihre Felder sind nicht nachgemessen
-// (PS-1); entschieden wird über SSH, Board und Passwort, nicht hierüber.
-func (l *Lauf) glSchnittstelle(ctx context.Context) string {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return l.k.Werkbank.Dial(ctx, netip.AddrPortFrom(WerksAdresse, 80))
-	}}
-	defer tr.CloseIdleConnections()
-	cl := &http.Client{Transport: tr, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://192.168.8.1/cgi-bin/api/router/hello", nil)
-	resp, err := cl.Do(req)
-	if err != nil {
-		return "keine Antwort: " + err.Error()
+// werkOhneSSH: Die Werksfirmware weist SSH ab (Connection refused). Ab GL
+// 4.3.30 ist das der Werkszustand: Dropbear ist aus, bis die Mango
+// eingerichtet ist. Sagt ihre Web-Schnittstelle „noch nicht eingerichtet“ und
+// nennt sie das Modell, richtet der Lauf sie im Schritt openwrt selbst ein
+// (ersteinrichtung); hier wird nur gefragt, nichts geändert. Erkennt der
+// Dienst die Firmware nicht sicher, bleibt es beim Startlader; eine schon
+// eingerichtete wird zurückgesetzt.
+func (l *Lauf) werkOhneSSH(ctx context.Context, b protokoll.Beleg, sshErr error) (protokoll.Beleg, error) {
+	startlader := func(grund string) (protokoll.Beleg, error) {
+		return b, lauf.Handgriff{Was: l.startlader(), Fall: faelle.SSHZu, Grund: grund + " Über den Startlader kommt OpenWrt trotzdem auf die Mango."}
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
-	return fmt.Sprintf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	zu := geheim.Schwaerze(sshErr.Error())
+	werk, err := FrageWerk(ctx, l.k.Werkbank)
+	b = b.Mit("werksfassung", werk.Text)
+	switch {
+	case err != nil:
+		return startlader("Die Werksfirmware lässt kein SSH zu (" + zu + "), und ihre Web-Schnittstelle antwortet nicht erkennbar (" + geheim.Schwaerze(err.Error()) + ").")
+	case !werk.RPC:
+		return startlader("Die Werksfirmware lässt kein SSH zu (" + zu + "); sie hat keine Web-Schnittstelle /rpc (GL 4.x), über die der Dienst sie einrichten könnte.")
+	case werk.Eingerichtet:
+		return b, lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "Die Werksfirmware " + orNone(werk.Fassung) + " ist schon eingerichtet und lässt kein SSH zu: Jemand hat sie eingerichtet (gebraucht gekauft oder angefangen). Zurückgesetzt ist sie wieder ab Werk."}
+	case werk.Modell == "":
+		return startlader("Die Werksfirmware lässt kein SSH zu (" + zu + "); ihre Web-Schnittstelle nennt kein Modell: Der Dienst richtet sie nicht ein.")
+	case strings.ToLower(strings.TrimSpace(werk.Modell)) != WerksModell:
+		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.FalschesGeraet, Grund: fmt.Sprintf("Das Gerät ist keine GL-MT300N-V2 (Modell %q laut Web-Schnittstelle).", werk.Modell)}
+	}
+	l.ersteinrichten = true
+	return b.Mit("ersteinrichtung", "nötig: Die Werksfirmware lässt SSH erst nach der Ersteinrichtung zu (ab GL 4.3.30). Der Dienst richtet sie mit einem Einmal-Passwort selbst ein, sobald die Fassungen bereitliegen (Schritt openwrt)."), nil
+}
+
+// ersteinrichtung richtet die Werksfirmware über ui.init mit einem
+// Einmal-Passwort ein und meldet sich damit an. Das Passwort lebt nur im
+// Speicher dieses Laufs, steht in keinem Beleg und ist mit der GL-Firmware
+// weg, sobald OpenWrt aufgespielt ist.
+func (l *Lauf) ersteinrichtung(ctx context.Context, b protokoll.Beleg) (protokoll.Beleg, *box.Verbindung, error) {
+	startlader := func(grund string) (protokoll.Beleg, *box.Verbindung, error) {
+		return b, nil, lauf.Handgriff{Was: l.startlader(), Fall: faelle.SSHZu, Grund: grund + " Über den Startlader kommt OpenWrt trotzdem auf die Mango."}
+	}
+	pw, err := passwort.Neu()
+	if err != nil {
+		return b, nil, err
+	}
+	l.werkPw = pw
+	if err := richteWerkEin(ctx, l.k.Werkbank, pw); err != nil {
+		var rf *rpcFehler
+		if errors.As(err, &rf) && rf.Code == rpcZugriff {
+			return b.Mit("ersteinrichtung", "abgewiesen: "+rf.Error()), nil, lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "Die Werksfirmware lehnt die Ersteinrichtung ab (" + rf.Error() + "): Sie ist inzwischen eingerichtet. Zurückgesetzt ist sie wieder ab Werk."}
+		}
+		b = b.Mit("ersteinrichtung", "gescheitert: "+geheim.Schwaerze(err.Error()))
+		return startlader("Die Ersteinrichtung über die Web-Schnittstelle ist gescheitert (" + geheim.Schwaerze(err.Error()) + ").")
+	}
+	beginn := time.Now()
+	// Dropbear startet nach ui.init und erzeugt dabei erst seine Host-Schlüssel;
+	// 0,5 s nach ui.init lädt die Firmware ihr Netz neu.
+	v, err := l.verbinde(ctx, netip.AddrPortFrom(WerksAdresse, 22), pw, l.k.Zeiten.Ersteinrichtung)
+	if err != nil {
+		b = b.Mit("ersteinrichtung", "ui.init angenommen, SSH danach nicht: "+geheim.Schwaerze(err.Error()))
+		return startlader("Nach der Ersteinrichtung lässt die Werksfirmware SSH mit dem Einmal-Passwort nicht zu (" + geheim.Schwaerze(err.Error()) + ").")
+	}
+	b = b.Mit("ersteinrichtung", fmt.Sprintf("ui.init angenommen: root mit Einmal-Passwort dieses Laufs (steht in keinem Beleg, weg mit dem Aufspielen von OpenWrt), SSH nach %s", time.Since(beginn).Round(time.Second))).
+		Mit("ssh", "root mit dem Einmal-Passwort angenommen").Mit("host_schluessel_werk", v.HostArt()+" "+v.HostFingerabdruck())
+	return b, v, nil
 }
 
 func macHinweis(mac string) string {
@@ -270,19 +321,29 @@ func (l *Lauf) openwrtAufspielen(ctx context.Context, _ *lauf.Kontext) (protokol
 	if err != nil {
 		return nil, err
 	}
-	if l.tmpFrei > 0 && l.tmpFrei < st.Size()/1024+1024 {
-		return nil, fmt.Errorf("auf der Mango sind in /tmp nur %d kB frei, das Abbild braucht %d kB", l.tmpFrei, st.Size()/1024+1024)
-	}
-	v, err := box.Verbinde(ctx, l.k.Werkbank, netip.AddrPortFrom(WerksAdresse, 22), geheim.Geheim{}, nil, l.k.Zeiten.Verbinden)
-	if err != nil {
-		return nil, err
-	}
-	defer v.Schliesse()
 	summe, err := fassungen.Summe(l.pfadAbbild)
 	if err != nil || summe != l.freigabe.OpenWrt.Sha256 {
 		return nil, fmt.Errorf("Abbild im Zwischenspeicher hat nicht die Prüfsumme der Freigabe")
 	}
-	b := protokoll.Beleg{}.Mit("sha256_dienst", summe)
+	b := protokoll.Beleg{}
+	var v *box.Verbindung
+	if l.ersteinrichten {
+		// Ab GL 4.3.30: erst jetzt, mit den Fassungen bereit, wird die Mango geändert.
+		if b, v, err = l.ersteinrichtung(ctx, b); err != nil {
+			return b, err
+		}
+		if b, err = l.pruefeWerk(ctx, v, b); err != nil {
+			v.Schliesse()
+			return b, err
+		}
+	} else if v, err = box.Verbinde(ctx, l.k.Werkbank, netip.AddrPortFrom(WerksAdresse, 22), geheim.Geheim{}, nil, l.k.Zeiten.Verbinden); err != nil {
+		return nil, err
+	}
+	defer v.Schliesse()
+	if l.tmpFrei > 0 && l.tmpFrei < st.Size()/1024+1024 {
+		return b, fmt.Errorf("auf der Mango sind in /tmp nur %d kB frei, das Abbild braucht %d kB", l.tmpFrei, st.Size()/1024+1024)
+	}
+	b = b.Mit("sha256_dienst", summe)
 	f, err := os.Open(l.pfadAbbild)
 	if err != nil {
 		return b, err
@@ -312,6 +373,11 @@ func (l *Lauf) openwrtAufspielen(ctx context.Context, _ *lauf.Kontext) (protokol
 	}
 	// -n: GL-Einstellungen passen nicht zu OpenWrt. Nie -F.
 	erg, err = v.Fuehre(ctx, "sysupgrade -n "+abbildAufBox, nil)
+	if (err == nil && erg.Code == 0) || errors.Is(err, box.Abgerissen) {
+		// Mit der GL-Firmware ist auch das Einmal-Passwort weg.
+		l.werkPw.Vergessen()
+		l.werkPw = geheim.Geheim{}
+	}
 	switch {
 	case errors.Is(err, box.Abgerissen):
 		b = b.Mit("sysupgrade", strings.TrimSpace(kurz(erg.Text()+"\n(Verbindung beendet: die Mango startet neu)", 300)))
