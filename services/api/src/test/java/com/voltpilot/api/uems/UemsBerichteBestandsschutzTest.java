@@ -296,9 +296,12 @@ class UemsBerichteBestandsschutzTest {
                 .as("der Entwurf ist von der Kaskade neu gebildet").isEqualTo("kaskade");
 
         // ---- Die Revision: Nr. 2 freigeben und abrufen -------------------------------------------------------------------
+        // Freigabe eine Stunde nach dem Datenstand des Entwurfs: die Kaskade bildet ihn mit dem SPÄTEREN von T_KASKADE
+        // und der DB-Uhr, also mit dem Tag des Laufs. Fest auf den 16.11.2026 14:20 (MEZ) lag die Freigabe ab diesem
+        // Zeitpunkt VOR ihrem Datenstand (409 freigabe_vor_datenstand) - wie FREIGABE_NR2 in UemsBerichtKaskadeTest.
         Instant datenstandNr2 = root.queryForObject("SELECT datenstand FROM bericht_entwurf WHERE tenant_id = ?",
                 Timestamp.class, kb).toInstant();
-        uhrBerichte("2026-11-16T14:20:00+01:00");
+        uhrBerichte(datenstandNr2.plus(Duration.ofHours(1)));
         assertThat(ok(ruf(ines, HttpMethod.POST, PFAD + "/freigeben",
                 Map.of("entwurf_datenstand", MessstelleWerteRegeln.iso(datenstandNr2, BERLIN))), 201).body().path("nr")
                 .asInt()).isEqualTo(2);
@@ -590,7 +593,11 @@ class UemsBerichteBestandsschutzTest {
     // ================================================================ Hilfen
 
     private void uhrBerichte(String zeit) {
-        berichte.uhrStellen(Clock.fixed(OffsetDateTime.parse(zeit).toInstant(), ZoneOffset.UTC));
+        uhrBerichte(OffsetDateTime.parse(zeit).toInstant());
+    }
+
+    private void uhrBerichte(Instant zeit) {
+        berichte.uhrStellen(Clock.fixed(zeit, ZoneOffset.UTC));
     }
 
     private long zahl(String sql, Object... args) {

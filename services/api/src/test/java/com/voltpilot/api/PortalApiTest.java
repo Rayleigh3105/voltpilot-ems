@@ -7511,8 +7511,10 @@ class PortalApiTest {
 
         // Mit Register: der gemeldete Stand ist nicht eingetragen - das ist eine
         // Lücke im REGISTER, keine Alters-Aussage. Der Soll steht trotzdem.
-        exec("INSERT INTO edge_release (release_seq, version, target_commit, created_by) "
-                + "VALUES (4200, 'edge-2099.01.1', 'deadbeef', 'test')");
+        // Signiert (Manifest + Signatur, Manifest '{}' = Docker-Linie): seit #1935 (N4) ist nur ein signiertes
+        // Release der Maßstab „neuestes" - ein unsigniertes kann keine Box bekommen.
+        exec("INSERT INTO edge_release (release_seq, version, target_commit, created_by, manifest, signature, "
+                + "signing_key_id) VALUES (4200, 'edge-2099.01.1', 'deadbeef', 'test', '{}', 'test-signature', 'test-key')");
         try {
             Map<String, Object> judged = edgeVersionFor(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
             assertThat(judged).isNotNull();
