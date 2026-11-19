@@ -631,6 +631,40 @@ type health struct {
 	} `json:"ota_update"`
 }
 
+// Health ist, was /health der Box meldet (Referenz, Fassung, Update-Block);
+// auch der Fernlauf liest es (internal/fernlauf).
+type Health = health
+
+// BefehlHealth liest /health der Box über die lokale Web-App.
+const BefehlHealth = "wget -q -O - http://127.0.0.1:8484/health"
+
+// LiesHealth liest die Antwort von /health; false, solange sie keine Referenz nennt.
+func LiesHealth(text string) (Health, bool) {
+	var h health
+	if json.Unmarshal([]byte(strings.TrimSpace(text)), &h) != nil || h.Ref == "" {
+		return health{}, false
+	}
+	return h, true
+}
+
+// UpdateBereit sagt, ob die Box neue Fassungen aus dem Portal annehmen kann
+// (leer = bereit, sonst der Grund); siehe updateBereit.
+func UpdateBereit(h Health, st *fassungen.Stand) string { return updateBereit(h, st) }
+
+// InstallUmgebung ist die Umgebung für install.sh aus dem Skriptstand: Bauart,
+// das signierte Manifest genau dieser Fassung (leer: ohne) und, mit Portal, das
+// Vertrauens-Set aus dem Verzeichnis des Laufs.
+func InstallUmgebung(bauart, manifest, vertrauensSet, portalURL string) []string {
+	env := []string{"VP_LIGHT_ARCH=" + bauart}
+	if manifest != "" {
+		env = append(env, "VP_LIGHT_MANIFEST="+manifest)
+	}
+	if vertrauensSet != "" {
+		env = append(env, "VP_TRUST_SET_DIR="+vertrauensSet, "VP_PORTAL_URL="+strings.TrimRight(portalURL, "/"))
+	}
+	return env
+}
+
 // vertrauensSet laedt trust-set.json und .sig offen aus dem Portal in das
 // Verzeichnis des Laufs.
 func (l *Lauf) vertrauensSet(ctx context.Context) (string, error) {
@@ -688,20 +722,17 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 	if err != nil || summe != l.freigabe.EdgeLight.ProgrammSha256 {
 		return nil, errors.New("Programm im Zwischenspeicher hat nicht die Prüfsumme der Freigabe")
 	}
-	env := []string{"VP_LIGHT_ARCH=" + l.k.Bauart}
-	if l.pfadManifest != "" {
-		env = append(env, "VP_LIGHT_MANIFEST="+l.pfadManifest)
-	}
+	dir := ""
 	if l.k.PortalURL != "" {
 		// Das Vertrauens-Set laedt der Dienst selbst (sein Bild hat kein
 		// curl); install.sh legt es auf die Box. Die Box prueft die
 		// Root-Signatur gegen ihre eingebackene Wurzel.
-		dir, err := l.vertrauensSet(ctx)
-		if err != nil {
+		var err error
+		if dir, err = l.vertrauensSet(ctx); err != nil {
 			return nil, err
 		}
-		env = append(env, "VP_TRUST_SET_DIR="+dir, "VP_PORTAL_URL="+strings.TrimRight(l.k.PortalURL, "/"))
 	}
+	env := InstallUmgebung(l.k.Bauart, l.pfadManifest, dir, l.k.PortalURL)
 	r, err := l.skript(ctx, "install.sh", nil, env...)
 	if err != nil {
 		return nil, err
@@ -715,12 +746,12 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 	}
 	var h health
 	err = l.warteAuf(ctx, l.k.Zeiten.Programm, func() error {
-		erg, err := l.v.Fuehre(ctx, "wget -q -O - http://127.0.0.1:8484/health", nil)
+		erg, err := l.v.Fuehre(ctx, BefehlHealth, nil)
 		if err != nil {
 			return err
 		}
-		h = health{}
-		if json.Unmarshal([]byte(strings.TrimSpace(erg.Aus)), &h) != nil || h.Ref == "" {
+		var ok bool
+		if h, ok = LiesHealth(erg.Aus); !ok {
 			return errors.New("/health nennt noch keine Referenz")
 		}
 		return nil
@@ -767,25 +798,40 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 // test/box-probe.sh, keine echte Mango) überspringt nur das Land; relayd
 // bringt der Schritt trotzdem mit (nur an der echten Mango gemessen, PS-14).
 func (l *Lauf) einrichtungsWlanVorbereiten(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
+	b, land, err := EinrichtungsWlanVorbereiten(ctx, l.v)
+	if err != nil {
+		return b, err
+	}
+	l.belege["einrichtung_wlan_bereit"] = "Schritt einrichtung_wlan: Land " + land + ", Paket relayd auf der Box"
+	return b, nil
+}
+
+// EinrichtungsWlanVorbereiten setzt Land DE und bringt relayd mit (siehe
+// einrichtungsWlanVorbereiten); auch der Fernlauf ruft es nach install.sh.
+// Gibt den Beleg und das Land zurück ("kein_funkmodul" ohne Funkmodul).
+func EinrichtungsWlanVorbereiten(ctx context.Context, v *box.Verbindung) (protokoll.Beleg, string, error) {
 	befehl := "if uci -q get wireless.radio0 >/dev/null 2>&1; then uci set wireless.radio0.country=DE && uci commit wireless; fi\n" +
 		"command -v relayd >/dev/null 2>&1 || (apk update >/dev/null 2>&1 && apk add relayd >/dev/null 2>&1); true"
-	if _, err := l.fuehre(ctx, befehl, ""); err != nil {
-		return nil, fmt.Errorf("Einrichtungs-WLAN der Werkstatt: %w", err)
+	erg, err := v.Fuehre(ctx, befehl, nil)
+	if err == nil && erg.Code != 0 {
+		err = fmt.Errorf("auf der Box: endete mit %d: %s", erg.Code, letzte(erg.Text(), 4))
 	}
-	w, _, err := l.v.Werte(ctx, "if uci -q get wireless.radio0 >/dev/null 2>&1; then echo land=$(uci -q get wireless.radio0.country); else echo land=kein_funkmodul; fi\n"+
+	if err != nil {
+		return nil, "", fmt.Errorf("Einrichtungs-WLAN der Werkstatt: %w", err)
+	}
+	w, _, err := v.Werte(ctx, "if uci -q get wireless.radio0 >/dev/null 2>&1; then echo land=$(uci -q get wireless.radio0.country); else echo land=kein_funkmodul; fi\n"+
 		"if command -v relayd >/dev/null 2>&1; then echo relayd=da; else echo relayd=fehlt; fi")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	b := protokoll.Beleg{}.Mit("land", w["land"]).Mit("relayd", w["relayd"])
 	if w["land"] != "DE" && w["land"] != "kein_funkmodul" {
-		return b, fmt.Errorf("wireless.radio0.country meldet %q statt DE", w["land"])
+		return b, w["land"], fmt.Errorf("wireless.radio0.country meldet %q statt DE", w["land"])
 	}
 	if w["relayd"] != "da" {
-		return b, errors.New("Paket relayd fehlt auf der Box (ohne Internet beim Kunden scheitert der WLAN-Weg)")
+		return b, w["land"], errors.New("Paket relayd fehlt auf der Box (ohne Internet beim Kunden scheitert der WLAN-Weg)")
 	}
-	l.belege["einrichtung_wlan_bereit"] = "Schritt einrichtung_wlan: Land " + w["land"] + ", Paket relayd auf der Box"
-	return b, nil
+	return b, w["land"], nil
 }
 
 // ---- P5: Tunnel -----------------------------------------------------------------------
@@ -995,11 +1041,27 @@ var dauerhaftMuster = regexp.MustCompile(`dauerhaft aus \S+: (\d+) Schluessel`)
 
 // tunnelStand prüft die Ausgabe von service-tunnel.sh status.
 func tunnelStand(status string) (protokoll.Beleg, error) {
-	hs, frisch := handshakeFrisch(status, 3*time.Minute)
-	b := protokoll.Beleg{}.Mit("handshake", hs).
+	b := TunnelBeleg(status)
+	if f := TunnelLuecken(status); len(f) > 0 {
+		return b, errors.New(strings.Join(f, ", "))
+	}
+	return b, nil
+}
+
+// TunnelBeleg sind die Zeilen aus service-tunnel.sh status, die den Tunnel belegen.
+func TunnelBeleg(status string) protokoll.Beleg {
+	hs, _ := handshakeFrisch(status, 3*time.Minute)
+	return protokoll.Beleg{}.Mit("handshake", hs).
 		Mit("ssh_2222", zeilenMit(status, "SSH 2222 ausserhalb der Tunnel")).
 		Mit("abholer", zeilenMit(status, "Fenster-Schluessel: Abholer", "letzte gueltige Antwort")).
 		Mit("dauerhaft", zeilenMit(status, "dauerhaft aus"))
+}
+
+// TunnelLuecken nennt, was laut service-tunnel.sh status am Tunnel fehlt
+// (leer: Handshake frisch, SSH 2222 außerhalb abgewiesen, Abholer läuft mit
+// gültiger Antwort, genau ein dauerhafter Schlüssel).
+func TunnelLuecken(status string) []string {
+	_, frisch := handshakeFrisch(status, 3*time.Minute)
 	var f []string
 	if !frisch {
 		f = append(f, "kein frischer Handshake")
@@ -1016,10 +1078,7 @@ func tunnelStand(status string) (protokoll.Beleg, error) {
 	if m := dauerhaftMuster.FindStringSubmatch(status); m == nil || m[1] != "1" {
 		f = append(f, "nicht genau ein dauerhafter Schlüssel")
 	}
-	if len(f) > 0 {
-		return b, errors.New(strings.Join(f, ", "))
-	}
-	return b, nil
+	return f
 }
 
 func (l *Lauf) tunnelPruefen(ctx context.Context) (protokoll.Beleg, error) {

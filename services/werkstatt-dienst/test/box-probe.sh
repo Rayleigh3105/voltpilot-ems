@@ -30,9 +30,17 @@
 #                        die Box (werkstatt-anmelden), Probe des Dienstes über den
 #                        Tunnel als Techniker-Zugang und Abnahme, gegen eine
 #                        Portal-Attrappe (test/portal-attrappe) am Wartungsserver
+#   VP_PROBE_FERNLAUF=1  dazu (mit API) der Fernlauf durch den Wartungstunnel
+#                        (Konzept vp-update-vor-zuordnung S1): danach hat die Box
+#                        wieder Internet wie beim Installateur, und der Dienst
+#                        spielt ihr über den Tunnel erst eine Fassung auf, die
+#                        falsch startet (Rücknahme), dann die neuere - beide echt
+#                        signiert mit der Wegwerf-Kette dieser Probe.
 set -eu
 
+FERNLAUF=${VP_PROBE_FERNLAUF:-0}
 API=${VP_PROBE_API:-0}
+[ "$FERNLAUF" = 0 ] || API=1
 HIER=$(cd "$(dirname "$0")" && pwd)
 DIENST=$(cd "$HIER/.." && pwd)
 REPO=$(cd "$DIENST/../.." && pwd)
@@ -133,6 +141,30 @@ mkdir -p "$TMP/fassungen/manifest"
   --domain trust-set --in "$TMP/fassungen/trust-set.json") >/dev/null
 (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota sign --key "$TMP/schluessel/rel-2026-a.key" \
   --domain release --in "$TMP/fassungen/manifest/$FASSUNG.json") >/dev/null
+if [ "$FERNLAUF" = 1 ]; then
+  # Für den Fernlauf: FASSUNG_FALSCH startet als eine andere Fassung (Rücknahme),
+  # FASSUNG_NEU richtig; beide mit Skriptstand, signiert wie die Fassung oben.
+  FASSUNG_NEU=edge-light-2026.11.2
+  FASSUNG_FALSCH=edge-light-2026.11.3
+  # fernlauf_fassung <fassung> <seq> <eingestempelt> <datei>
+  fernlauf_fassung() {
+    (cd "$CORE_SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+      -ldflags "-s -w -X git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent.Version=$3" -o "$4" ./cmd/vp-edge-light)
+    gzip -9 -n -c "$4" >"$4.gz"
+    (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$1" --seq "$2" --commit 3bf8c038a1b2 \
+      --binary "vp-edge-light:linux/amd64=$4" --skripte "$TMP/edge-light-openwrt.tar.gz" --state-schema 1 --key-id rel-2026-a \
+      --out "$TMP/fassungen/manifest/$1.json") >/dev/null
+    (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota sign --key "$TMP/schluessel/rel-2026-a.key" \
+      --domain release --in "$TMP/fassungen/manifest/$1.json") >/dev/null
+    rm -f "$4.gz"
+  }
+  fernlauf_fassung "$FASSUNG_NEU" 78 "$FASSUNG_NEU" "$TMP/neu"
+  fernlauf_fassung "$FASSUNG_FALSCH" 79 edge-light-2026.11.9 "$TMP/falsch"
+  NEU_SHA=$(shasum -a 256 "$TMP/neu" | cut -d' ' -f1)
+  FALSCH_SHA=$(shasum -a 256 "$TMP/falsch" | cut -d' ' -f1)
+  mv "$TMP/neu" "$TMP/fassungen/$NEU_SHA"
+  mv "$TMP/falsch" "$TMP/fassungen/$FALSCH_SHA"
+fi
 rm -f "$TMP/vp-edge-light-linux-amd64.gz"
 mv "$TMP/vp-edge-light-linux-amd64" "$TMP/fassungen/$PROG_SHA"
 mv "$TMP/edge-light-openwrt.tar.gz" "$TMP/fassungen/$SKR_SHA"
@@ -488,6 +520,74 @@ x box sh -c '! uci -q get network.lan.gateway' && ok "Werkstatt-Internet aus der
 case "$(beleg neustart handshake)" in *"latest handshake"*) ok "Neustart-Probe: $(beleg neustart handshake)" ;; *) nein "Neustart-Probe ohne Handshake" ;; esac
 x bruecke /usr/local/sbin/vp-werkbank-pruefen >/dev/null && ok "Brücke: vp-werkbank-pruefen besteht" || nein "Brücke: pruefen"
 docker logs "$P-dienst" 2>&1 | grep -v '^{' | grep -q . && nein "Zeile ohne JSON im Log des Dienstes" || ok "jede Log-Zeile des Dienstes ist JSON"
+
+if [ "$FERNLAUF" = 1 ]; then
+  echo "== Fernlauf durch den Wartungstunnel (vp-update-vor-zuordnung S1)"
+  # Beim Installateur hat die Box wieder einen Weg ins Netz (hier über die
+  # Brücke); sie wartet auf ihr Kundenkonto, hängt im Tunnel und fragt nach
+  # Schlüsseln.
+  x box sh -c 'uci set network.lan.gateway=10.213.0.2; uci commit network; /etc/init.d/network reload' >/dev/null 2>&1
+  handshake_frisch() { x box sh -c 't=$(wg show wg_wartung latest-handshakes | awk "{print \$2}"); [ -n "$t" ] && [ "$t" != 0 ] && [ $(( $(date +%s) - t )) -lt 60 ]'; }
+  warte 180 handshake_frisch && ok "Box im Tunnel (frischer Handshake), wartet auf ihr Kundenkonto" || nein "Box kommt nicht in den Tunnel"
+  HOST_BOX=$(beleg probe host_schluessel_tunnel)
+  ID_VORHER=$(x box sh -c 'find /etc/vp-edge-light/identity -type f | sort | xargs sha256sum' 2>/dev/null)
+  [ -n "$ID_VORHER" ] && ok "Box hat ihre Identität (Geräteschlüssel, nie in der Sicherung)" || nein "keine Identität auf der Box"
+  # belegt <schritt>: der Dienst hat den Schritt des letzten Fernlaufs als belegt gemeldet
+  belegt() { jq -e --arg s "$1" 'select(.schritt == $s and .zustand == "belegt")' "$TMP/fl-schritte.json" >/dev/null 2>&1 && \
+    [ -n "$(jq -c --arg s "$1" 'select(.schritt == $s and .zustand == "belegt")' "$TMP/fl-schritte.json")" ]; }
+  # fernlauf <fassung> <seq> <programm-sha> <erwartetes-ergebnis>: wie der Knopf in der Akte
+  fernlauf() {
+    printf '{"edgeRef":"%s","fassungVorher":"%s","hostSchluessel":"%s","ziel":{"fassung":"%s","quelle":"https://probe.invalid/edge/%s/","programm_sha256":"%s","skripte_sha256":"%s","release_seq":%s}}\n' \
+      "$REF" "$FASSUNG" "$HOST_BOX" "$1" "$1" "$3" "$SKR_SHA" "$2" >"$TMP/fernlauf.json"
+    docker cp "$TMP/fernlauf.json" "$P-server:/srv/fernlauf-auftrag.json"
+    FL_ID=$(x server /opt/vptd/portal-attrappe -anlegen /srv/fernlauf-auftrag.json)
+    fl_ende=$(($(date +%s) + 900))
+    until x server test -s "/srv/fernlauf-$FL_ID.json"; do
+      [ "$(date +%s)" -lt "$fl_ende" ] || { nein "Fernlauf $1 nach 15 Minuten ohne Ergebnis"; return; }
+      sleep 3
+    done
+    docker cp "$P-server:/srv/fernlauf-$FL_ID.json" "$TMP/fl-ergebnis.json"
+    docker cp "$P-server:/srv/fernlauf-$FL_ID.schritte" "$TMP/fl-schritte.json"
+    erg=$(jq -r .ergebnis "$TMP/fl-ergebnis.json")
+    echo "   Fernlauf auf $1: $erg ($(jq -r '[.schritt, .grund // ""] | join(": ")' "$TMP/fl-ergebnis.json" | cut -c1-160))"
+    [ "$erg" = "$4" ] && ok "Fernlauf auf $1 endet $4" || nein "Fernlauf auf $1: $(cat "$TMP/fl-ergebnis.json")"
+    belegt fenster_zu && x server grep -q "fernlauf fenster geschlossen" /srv/portal.log &&
+      ok "Fenster des Auftrags vom Dienst geschlossen" || nein "Fenster nicht geschlossen"
+  }
+
+  fernlauf "$FASSUNG_FALSCH" 79 "$FALSCH_SHA" zurueck
+  jq -e '.schritt == "neustart" and (.grund | contains("edge-light-2026.11.9"))' "$TMP/fl-ergebnis.json" >/dev/null &&
+    ok "die falsch startende Fassung fällt im Schritt neustart auf" || nein "Rücknahme aus falschem Grund"
+  belegt zurueck && ok "Rücknahme belegt: $(jq -r 'select(.schritt == "zurueck" and .zustand == "belegt") | .zeile' "$TMP/fl-schritte.json")" || nein "Rücknahme nicht belegt"
+  [ "$(x box wget -qO- http://127.0.0.1:8484/health | jq -r .version)" = "$FASSUNG" ] && ok "nach der Rücknahme läuft wieder $FASSUNG" || nein "nach der Rücknahme läuft nicht $FASSUNG"
+  x box grep -q '"release_seq":77' /etc/vp-edge-light/ota/current.json && ok "Stand 77 wieder im Flash" || nein "current.json nach der Rücknahme"
+
+  fernlauf "$FASSUNG_NEU" 78 "$NEU_SHA" fertig
+  H=$(x box wget -qO- http://127.0.0.1:8484/health)
+  [ "$(printf '%s' "$H" | jq -r .version)" = "$FASSUNG_NEU" ] && [ "$(printf '%s' "$H" | jq -r .ota_update.current_seq)" = 78 ] &&
+    ok "/health: $FASSUNG_NEU, bestätigter Stand 78 (update-bereit)" || nein "/health nach dem Fernlauf: $H"
+  fehlt=""
+  for s in anmelden bestand fassungen sichern aufspielen neustart meldet_sich tunnel; do
+    belegt "$s" || fehlt="$fehlt $s"
+  done
+  [ -z "$fehlt" ] && ok "alle Schritte belegt: anmelden bis tunnel" || nein "Schritte nicht belegt:$fehlt"
+  jq -e '.belege.fassungen | contains("gegen die eingebackene Wurzel geprüft")' "$TMP/fl-ergebnis.json" >/dev/null &&
+    ok "Signatur gegen die eingebackene Wurzel geprüft: $(jq -r .belege.fassungen "$TMP/fl-ergebnis.json" | cut -c1-90)" || nein "Signatur nicht belegt"
+  x server grep -q "zertifikatsanfrage $REF vp-edge-core $FASSUNG_NEU" /srv/portal.log && ok "die Plattform hört die Box mit $FASSUNG_NEU" || nein "keine Zertifikatsanfrage mit $FASSUNG_NEU"
+  P_FL=$(x dienst sh -c 'cat /var/lib/vp-werkstatt-dienst/fernlaeufe/*.jsonl' 2>/dev/null)
+  case "$P_FL" in *"Sitzung im Tunnel blieb über install.sh hinweg stehen"*) ok "die Sitzung im Tunnel übersteht install.sh (Firewall neu geladen)" ;;
+    *"nach install.sh neu angemeldet"*) ok "nach install.sh (Firewall neu geladen) neu angemeldet, Lauf ging weiter" ;;
+    *) nein "Beleg zur Sitzung über install.sh fehlt" ;; esac
+  warte 60 handshake_frisch && ok "Tunnel steht nach dem Fernlauf" || nein "Tunnel nach dem Fernlauf"
+  [ "$(x box sh -c 'find /etc/vp-edge-light/identity -type f | sort | xargs sha256sum' 2>/dev/null)" = "$ID_VORHER" ] &&
+    ok "Identität der Box unverändert" || nein "Identität der Box verändert"
+  x box sh -c 'command -v relayd >/dev/null' && ok "relayd auf der Box" || nein "relayd fehlt"
+  if printf '%s' "$P_FL" | grep -qE 'PRIVATE KEY|BEGIN EC|device\.key' || docker logs "$P-dienst" 2>&1 | grep -qE 'PRIVATE KEY|BEGIN EC'; then
+    nein "Schlüsselmaterial in Protokoll oder Log des Fernlaufs"
+  else
+    ok "kein Schlüssel in Protokoll und Log des Fernlaufs"
+  fi
+fi
 
 echo
 if [ "$fehler" = 0 ]; then echo "Probe eines Laufs ab OpenWrt: alles bestanden"; else

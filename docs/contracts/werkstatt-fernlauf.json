@@ -1,0 +1,26 @@
+{
+  "beschreibung": "Geschlossene Vokabulare des Fernlaufs durch den Wartungstunnel (werkstatt-fernlauf-v1.md, Konzept vp-update-vor-zuordnung S1). Zwillinge: internal/fernlauf (Werkstatt-Dienst, Go), FernlaufRegel.java (API) und werkstattFernlauf.ts (Portal); alle drei Tests lesen diese Datei.",
+  "schritte": [
+    { "id": "anmelden", "gruppe": "anmelden", "titel": "Durch den Tunnel anmelden" },
+    { "id": "bestand", "gruppe": "anmelden", "titel": "Stand der Box lesen" },
+    { "id": "fassungen", "gruppe": "sichern", "titel": "Fassung laden, Signatur prüfen" },
+    { "id": "sichern", "gruppe": "sichern", "titel": "Bisherige Fassung sichern" },
+    { "id": "aufspielen", "gruppe": "aufspielen", "titel": "Neue Fassung aufspielen" },
+    { "id": "neustart", "gruppe": "neustart", "titel": "Programm neu starten" },
+    { "id": "meldet_sich", "gruppe": "pruefen", "titel": "Meldet sich mit der neuen Fassung" },
+    { "id": "tunnel", "gruppe": "pruefen", "titel": "Tunnel steht" },
+    { "id": "zurueck", "gruppe": "zurueck", "titel": "Bisherige Fassung zurückspielen" },
+    { "id": "fenster_zu", "gruppe": "ende", "titel": "Fenster schließen" }
+  ],
+  "gruppen": [
+    { "id": "anmelden", "titel": "Anmelden" },
+    { "id": "sichern", "titel": "Sichern" },
+    { "id": "aufspielen", "titel": "Aufspielen" },
+    { "id": "neustart", "titel": "Neustart" },
+    { "id": "pruefen", "titel": "Prüfen" }
+  ],
+  "schritt_zustaende": ["laeuft", "belegt", "gescheitert"],
+  "ergebnisse": ["fertig", "zurueck", "unveraendert", "offen"],
+  "zustaende": ["erteilt", "laeuft", "fertig", "zurueck", "unveraendert", "offen", "nicht_abgeholt"],
+  "zurueck_ab": "aufspielen"
+}

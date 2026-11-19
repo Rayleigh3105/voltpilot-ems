@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fernlauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/gehaeuse"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
@@ -61,6 +62,10 @@ type Ansicht struct {
 	// erstellt …“ oder, bei fehler, ein ruhiger Satz mit „Erneut erstellen“.
 	// Fehlt ohne Gehäuse-Bau; leer, solange jede offene Box fertig ist.
 	Gehaeuse []GehaeuseAnsicht `json:"gehaeuse,omitempty"`
+	// Fernlauf (additiv, Konzept vp-update-vor-zuordnung S1): ob der Dienst
+	// Fernläufe durch den Wartungstunnel kann (bereit, sonst grund) und der
+	// laufende. Fehlt ohne API; die Portal-API bietet den Knopf nur mit bereit.
+	Fernlauf *fernlauf.Ansicht `json:"fernlauf,omitempty"`
 }
 
 // GehaeuseAnsicht ist ein offener Gehäuse-Auftrag (noch nicht als Druckdatei
@@ -130,6 +135,9 @@ type Dienst struct {
 	// Werkstatt-Bildschirme); nil heißt: nur die eigene Anzeige.
 	Melder       Melder
 	melderFehler string
+	// Fernlauf fährt Aufträge „aufspielen“ durch den Wartungstunnel (nur mit
+	// API); nil: keine Fernläufe.
+	Fernlauf *fernlauf.Dienst
 
 	ctx           context.Context
 	aktiv         *aktiverLauf
@@ -203,6 +211,10 @@ func (d *Dienst) Ansicht() Ansicht {
 	}
 	if d.Mango != nil && d.Mango.Gehaeuse != nil {
 		a.Gehaeuse = gehaeuseAnsicht(d.Mango.Gehaeuse.Offene())
+	}
+	if d.Fernlauf != nil {
+		f := d.Fernlauf.Ansicht()
+		a.Fernlauf = &f
 	}
 	return a
 }
@@ -311,7 +323,9 @@ func (d *Dienst) melde(ctx context.Context) {
 // nichts (sonst gälte er als offen); er steht im Log und als nochmal_seit im
 // Stand. "gehaeuse" (Box-Seite, „Erneut erstellen“ P10): a.Lauf trägt hier die
 // Edge-Referenz, kein Lauf; der Auftrag reiht ihren Bau noch einmal ein, auch
-// einen schon fertigen (Nachdruck, nach einem behobenen Fehler). Jeder andere
+// einen schon fertigen (Nachdruck, nach einem behobenen Fehler). "aufspielen"
+// (Fernlauf, a.ID ist der Auftrag, a.Lauf die Referenz der Box) reiht ihn in
+// die Fernläufe ein; das Portal nennt ihn, bis er angenommen ist. Jeder andere
 // Auftrag steht nur im Log.
 func (d *Dienst) auftrag(a portal.Auftrag) {
 	d.mu.Lock()
@@ -340,6 +354,16 @@ func (d *Dienst) auftrag(a portal.Auftrag) {
 			return
 		}
 		log.Info("Druckdatei erneut erstellen: eingereiht")
+	case portal.FernlaufArt:
+		if d.Fernlauf == nil {
+			log.Warn("Fernlauf: in diesem Dienst nicht eingerichtet, nichts getan")
+			return
+		}
+		ctx := d.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		d.Fernlauf.Annehmen(ctx, a.ID)
 	default:
 		log.Warn("Auftrag des Portals unbekannt, nicht ausgeführt")
 	}

@@ -130,6 +130,56 @@ class WerkstattDienstVertragTest {
         assertThat(go).isEqualTo(java);
     }
 
+    /**
+     * Fernlauf (vp-update-vor-zuordnung S1): der angenommene Auftrag hat in Java
+     * ({@link WerkstattDienstController.FernlaufAuftragDto}), Go ({@code portal.FernlaufAuftrag}) und in
+     * {@code openapi.yaml} ({@code FernlaufAuftrag}) dieselben Felder, auch in Ziel und Server.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void fernlaufAuftrag_javaGoUndOpenapiHabenDieselbenFelder() throws IOException {
+        String portal = Files.readString(Path.of("..", "werkstatt-dienst", "internal", "portal", "portal.go"));
+        Map<String, Object> schema;
+        try (InputStream in = Files.newInputStream(OPENAPI)) {
+            Map<String, Object> openapi = new Yaml().load(in);
+            schema = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) openapi.get("components"))
+                    .get("schemas")).get("FernlaufAuftrag");
+        }
+        Map<String, Object> props = (Map<String, Object>) schema.get("properties");
+        assertThat(goFelderAus(portal, "FernlaufAuftrag")).isEqualTo(java(WerkstattDienstController.FernlaufAuftragDto.class))
+                .isEqualTo(openapiFelder(schema));
+        assertThat(goFelderAus(portal, "FernlaufZiel")).isEqualTo(java(WerkstattDienstController.FernlaufZielDto.class))
+                .isEqualTo(openapiFelder((Map<String, Object>) props.get("ziel")));
+        assertThat(goFelderAus(portal, "FernlaufServer")).isEqualTo(java(WerkstattDienstController.FernlaufServerDto.class))
+                .isEqualTo(openapiFelder((Map<String, Object>) props.get("server")));
+        assertThat(goFelderAus(portal, "FernlaufErgebnis"))
+                .isEqualTo(java(WerkstattDienstController.FernlaufErgebnisRequest.class));
+    }
+
+    /** Die JSON-Namen eines Records, wie Jackson sie schreibt ({@code @JsonProperty} beachtet). */
+    private static Set<String> java(Class<?> rec) {
+        Set<String> s = new TreeSet<>();
+        for (var c : rec.getRecordComponents()) {
+            var p = c.getAccessor().getAnnotation(com.fasterxml.jackson.annotation.JsonProperty.class);
+            if (p == null && c.isAnnotationPresent(com.fasterxml.jackson.annotation.JsonProperty.class)) {
+                p = c.getAnnotation(com.fasterxml.jackson.annotation.JsonProperty.class);
+            }
+            s.add(p != null && !p.value().isEmpty() ? p.value() : c.getName());
+        }
+        return s;
+    }
+
+    private static Set<String> goFelderAus(String quelle, String typ) {
+        Matcher block = Pattern.compile("type " + typ + " struct \\{(.*?)\\n}", Pattern.DOTALL).matcher(quelle);
+        assertThat(block.find()).as("type %s struct", typ).isTrue();
+        Set<String> s = new TreeSet<>();
+        Matcher m = Pattern.compile("json:\"([A-Za-z0-9_]+)").matcher(block.group(1));
+        while (m.find()) {
+            s.add(m.group(1));
+        }
+        return s;
+    }
+
     private static String goSchema() {
         Matcher m = Pattern.compile("Schema\\s*=\\s*\"([^\"]+)\"").matcher(go);
         assertThat(m.find()).isTrue();

@@ -155,6 +155,22 @@ public class WerkstattRegel {
     }
 
     /**
+     * Die neueste passende Fassung ohne Betrieb und Tagesgrenze: was die Werkstatt aufspielen würde, und genau das
+     * spielt auch der Fernlauf durch den Tunnel auf (Konzept vp-update-vor-zuordnung, E2 = A).
+     *
+     * @param name  die neueste signierte Edge-Light-Fassung, auch wenn sie nicht passt ({@code null}: keine)
+     * @param soll  was aufgespielt würde; {@code null}, wenn die neueste nicht passt
+     * @param grund warum nicht, wenn {@code soll} fehlt
+     */
+    public record Neueste(String name, Soll soll, String grund) {
+    }
+
+    public Neueste neueste() {
+        Ergebnis e = soll();
+        return new Neueste(e.neueste(), e.soll(), e.grund());
+    }
+
+    /**
      * Die Freigabe, die der Dienst bekommt: die Zeile der Regel für heute (wird
      * beim ersten Mal angelegt) oder im Übergang eine laufende von Hand; leer,
      * wenn die Werkstatt angehalten ist oder wartet.

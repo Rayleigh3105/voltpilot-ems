@@ -1,3 +1,4 @@
+import type { Fernlauf, FernlaufStand } from '../werkstattFernlauf';
 import type { BenutzerAngelegt, BenutzerAnlage } from '../benutzer';
 import {
   ANFRAGE_KENNUNG_KOPF,
@@ -1010,6 +1011,17 @@ export const adminApi = {
   /** L3: die Geräteakte in einer Antwort. */
   geraeteAkte: (ref: string) =>
     request<AdminGeraeteAkte>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}`),
+
+  /** Fernlauf (vp-update-vor-zuordnung S1): Stand, Vorprüfung und letzte Aufträge einer Box ohne Kundenkonto. */
+  geraeteFernlauf: (ref: string) =>
+    request<FernlaufStand>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/fernlauf`),
+
+  /** „Auf … bringen": der Werkstatt-Dienst spielt `fassung` durch den Tunnel auf (409 mit Grund). */
+  geraeteFernlaufAufspielen: (ref: string, fassung: string) =>
+    request<Fernlauf>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/fernlauf`, {
+      method: 'POST',
+      body: JSON.stringify({ fassung }),
+    }),
 
   /** L1 (B1-B4): der Befund „Vom Kunden lösen" - informativ, prüft nichts unter Sperre. */
   geraeteLoesenBefund: (ref: string) =>

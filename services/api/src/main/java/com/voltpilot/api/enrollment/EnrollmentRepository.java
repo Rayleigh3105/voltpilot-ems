@@ -60,6 +60,27 @@ public class EnrollmentRepository {
                 externalRef);
     }
 
+    /**
+     * Was die Plattform zuletzt von einer Referenz hörte, ohne Schlüsselmaterial: die laufende Fassung aus der
+     * letzten Zertifikatsanfrage ({@code deviceInfo}), wann sie kam (der letzte Programmstart), die letzte
+     * Zertifikats-Abfrage und ob ein Zertifikat ausgestellt ist.
+     */
+    public record Meldung(String deviceInfo, Instant csrUpdatedAt, Instant zuletztAbgefragtAm, boolean zertifikat) {
+    }
+
+    public Optional<Meldung> meldung(String externalRef) {
+        return jdbc.query(
+                "SELECT device_info, csr_updated_at, zuletzt_abgefragt_am, cert_pem IS NOT NULL AS zertifikat "
+                        + "FROM device_enrollment WHERE external_ref = ?",
+                (rs, n) -> new Meldung(rs.getString("device_info"), zeit(rs.getTimestamp("csr_updated_at")),
+                        zeit(rs.getTimestamp("zuletzt_abgefragt_am")), rs.getBoolean("zertifikat")),
+                externalRef).stream().findFirst();
+    }
+
+    private static Instant zeit(java.sql.Timestamp t) {
+        return t == null ? null : t.toInstant();
+    }
+
     public Optional<Enrollment> find(String externalRef) {
         return jdbc.query(
                 "SELECT external_ref, csr_pem, device_info, device_id, cert_pem, cert_serial, "

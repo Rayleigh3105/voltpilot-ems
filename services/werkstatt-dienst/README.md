@@ -22,6 +22,7 @@ Abnahme machst du in V1a wie bisher im Portal, dann mit den Belegen dieses Diens
 | Box-Verbindung | SSH als root durch die Brücke; nach OpenWrt gilt für den ganzen Lauf genau ein Host-Schlüssel. | `internal/box` |
 | Durchreiche | Die Skripte des Release-Stands (`install.sh`, `service-tunnel.sh`) rufen `ssh <ziel> <befehl>` auf; ein `ssh`-Verweis auf dieses Programm reicht jeden Aufruf über eine Unix-Socket an die Verbindung des Laufs. | `internal/durchreiche` |
 | Fassungen | OpenWrt-Abbild, Programm und Skriptstand der Freigabe, geprüft nach sha256, im Zwischenspeicher nach Prüfsumme. | `internal/fassungen` |
+| Fernlauf | Neue Software für eine Edge-Light-Box ohne Kundenkonto durch den Wartungstunnel, auf Auftrag aus der Geräteakte (Konzept vp-update-vor-zuordnung S1): als Techniker-Zugang im Fenster des Auftrags anmelden, Stand lesen, Fassung laden und ihre Signatur prüfen (dieselbe Prüfung wie Schritt `fassungen`), sichern, `install.sh` wie Schritt `programm` samt Land DE und relayd, Neustart, update-bereit, „meldet sich mit der neuen Fassung“, Tunnel wie vorher; bei einem Fehler ab dem Aufspielen die Sicherung zurück. Einer zur Zeit, neben der Werkbank; Protokoll `fernlaeufe/<kennung>.jsonl`. | `internal/fernlauf`, [Vertrag](../../docs/contracts/werkstatt-fernlauf-v1.md), [Runbook](docs/runbook.md#fernlauf-durch-den-wartungstunnel) |
 | Gehäuse | Nach der Übergabe die Druckdatei des Gehäuses mit Referenz und QR-Code (Schritt 19, P10): ein Auftrag je Box, einer zur Zeit, im Cluster als Job mit dem [Bau-Image](gehaeuse/Dockerfile) (Debian 13, Gehäuse-Programm, Bambu Studio, nur amd64). Fertig nur mit dem Prüfbericht ohne Fehler; die Dateien liegen in der Ablage, Abruf in der Werkstatt-Anzeige, drucken tust du (WI-11 A). Mit API lädt der Dienst danach die Box-Druckdatei (mit Referenz und QR-Code, sha256 geprüft) zur Portal-API hoch (`PUT …/werkstatt-dienst/gehaeuse/{edgeRef}`, vp-mango-3mf-pro-box) - die Werkstatt-Box-Seite bietet GENAU sie zum Download an; ein Fehlschlag blockiert den Lauf nicht, im eigenen Takt holt `Laufe` ihn nach, auch ohne Neustart. Derselbe Takt gleicht mit dem Portal ab (`GET …/werkstatt-dienst/gehaeuse/offen`): eine abgenommene Box ohne Druckdatei UND ohne Auftrag in der Ablage reiht er von selbst ein - auch eine, deren Lauf die Bestellung nie ausgelöst hat (zu alt für diese Funktion). Ein schon gescheiterter Auftrag wird dabei NICHT endlos neu gebaut; dafür „Erneut erstellen“ auf der Box-Seite (`POST …/admin/werkstatt/boxen/{ref}/gehaeuse/neu`, Auftrag-Art `gehaeuse` in `werkstatt_auftrag`, wie „Nochmal versuchen“ abgeholt). Die Ansicht trägt additiv die offenen Aufträge (`gehaeuse`, referenz/zustand/grund). | `internal/gehaeuse`, [Runbook](docs/runbook.md#gehäuse-druckdatei), [openapi.yaml](../../docs/contracts/openapi.yaml) (Tag werkstatt-dienst) |
 
 Stand der Pakete aus dem Konzept (Abschnitt 8): P1 Grundgerüst, P2 Werkbank-Brücke, P11 Betrieb, P3
@@ -81,9 +82,12 @@ baut sie, dazu `sha256sums`). Mit der API nennt das Portal die Prüfsummen aus d
 
 - das Netz absuchen: Die Brücke fragt nur nach den festen Box-Adressen ihres Werkstatt-Anschlusses (192.168.8.1,
   192.168.1.1, das LAN-Netz), je zwei ARP-Anfragen;
-- Passwörter raten, sich an einer Box mit einem Passwort anmelden, das nicht dieser Lauf gesetzt hat, ein
-  eingerichtetes Gerät anfassen, zwei Geräte am Werkstatt-Anschluss bedienen;
+- Passwörter raten, sich an einer Box mit einem Passwort anmelden, das nicht dieser Lauf gesetzt hat, an der
+  Werkbank ein eingerichtetes Gerät anfassen (eine eingerichtete Box erreicht er nur im Fernlauf, siehe unten), zwei
+  Geräte am Werkstatt-Anschluss bedienen;
 - ohne Freigabe oder ohne den Beleg des vorigen Schritts weitermachen;
+- im Fernlauf etwas anderes tun als dessen feste Schritte: nie OpenWrt, Passwort, Notfall-Schlüssel, Tunnel, LAN oder
+  die Identität der Box anfassen, nie ohne Auftrag des Portals und nie außerhalb des Fensters dieses Auftrags;
 - ein Root-Passwort an eine Route geben oder in einen Beleg schreiben (Entscheid WI-6 A: nur verschlüsselt für den
   age-Schlüssel „Box-Passwörter“, ab P5); das Einmal-Passwort der Ersteinrichtung ab Werk steht nirgends, nicht
   einmal verschlüsselt: Es lebt nur im Speicher des Laufs und ist mit dem Aufspielen von OpenWrt weg.
@@ -169,6 +173,7 @@ go vet ./... && go test -race ./...     # Go 1.24; ohne Docker, ohne Netz
 test/bruecke-probe.sh                   # Brücke im Container: einrichten.sh, nftables, OpenSSH, echtes Programm
 test/dienst-container-probe.sh          # Dienst-Bild unter PodSecurity restricted; VP_PROBE_BILD=<bild:commit> prüft ein geschobenes Bild
 test/box-probe.sh                       # ganzer Lauf ab frischem OpenWrt: echtes OpenWrt, Brücke, Wartungsserver, Skripte
+VP_PROBE_FERNLAUF=1 test/box-probe.sh   # dazu (mit API) zwei Fernläufe durch den Tunnel: Rücknahme, dann aufgespielt
 test/gehaeuse-bild-probe.sh             # Bau-Image (amd64): ein Auftrag wie der Job, Druckdateien, Bericht ohne Fehler
 ```
 

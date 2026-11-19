@@ -78,6 +78,18 @@ dafür. Ein anderer Schlüssel braucht einen Code für einen Tausch, solange die
 gekoppelte Box gibt es keinen Code. Boxen, die nie eingelöst haben, verhalten sich wie bisher. Auf dem Weg der
 Zertifikatsanfrage prüft die API jetzt auch das Prüfzeichen einer erzeugten Kennung.
 
+## Neue Software durch den Tunnel (Box ohne Kundenkonto)
+
+Eine Edge-Light-Box, die die Werkstatt verlassen hat, aber noch auf ihr Kundenkonto wartet, bekommt neue Software
+nicht über die Updates im Portal (die brauchen eine Cloud-Verbindung in der Probe). Stattdessen spielt der
+Werkstatt-Dienst sie durch den Wartungstunnel auf, wie in der Werkstatt: Geräteakte, Reiter „Software“, Karte „Durch
+den Tunnel aufspielen“ (Konzept vp-update-vor-zuordnung S1, [Vertrag](contracts/werkstatt-fernlauf-v1.md)).
+Immer die neueste Fassung, die auch die Werkstatt nimmt, nur aufwärts; der Dienst prüft die Signatur, sichert vorher,
+prüft danach wie die Abnahme (Fassung, Referenz, update-bereit, meldet sich, Tunnel) und spielt bei einem Fehler die
+Sicherung zurück. Routen: `GET/POST /api/v1/admin/geraete/{ref}/fernlauf` (Admin), `/api/v1/werkstatt-dienst/fernlaeufe/…`
+(Dienst); Tabellen `werkstatt_fernlauf` (Auftrag) und `werkstatt_fernlauf_ergebnis` (nur angehängt), Rechte und RLS
+wie die übrigen Werkstatt-Tabellen.
+
 ## Gehäuse-Druckdatei zum Herunterladen
 
 Die Detailseite einer Mango bietet GENAU die Druckdatei dieser Box an, mit Referenz in Klarschrift und

@@ -16,6 +16,8 @@ const fernwartung = vi.fn();
 const fernwartungTechniker = vi.fn();
 const controlCandidates = vi.fn();
 const componentFleet = vi.fn();
+const geraeteFernlauf = vi.fn();
+const geraeteFernlaufAufspielen = vi.fn();
 const activateControl = vi.fn();
 const deactivateControl = vi.fn();
 const fleet = vi.fn();
@@ -43,6 +45,8 @@ vi.mock('../../admin/adminApi', () => ({
     activateControl: (...a: unknown[]) => activateControl(...a),
     deactivateControl: (...a: unknown[]) => deactivateControl(...a),
     geraeteAkte: (...a: unknown[]) => geraeteAkte(...a),
+    geraeteFernlauf: (...a: unknown[]) => geraeteFernlauf(...a),
+    geraeteFernlaufAufspielen: (...a: unknown[]) => geraeteFernlaufAufspielen(...a),
   },
 }));
 
@@ -78,6 +82,8 @@ const fleetSite = (overrides: Partial<Record<string, unknown>> = {}) => ({
 describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt im Fenster', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Fernlauf (S1): ohne Stand (eine Kundenbox, eine Kennung ohne Prüfzeichen) bleibt alles wie vorher.
+    geraeteFernlauf.mockRejectedValue(new Error('kein Fernlauf'));
     edgeUpdates.mockResolvedValue(emptyEdgeUpdates());
     listDevices.mockResolvedValue([]);
     listPendingEnrollments.mockResolvedValue([]);
@@ -182,6 +188,53 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
       expect(await screen.findByRole('heading', { name: 'Noch nicht verbunden' })).toBeInTheDocument();
       expect(await screen.findByText(/Aus der Werkstatt bekannt: Edge Light/)).toHaveTextContent('Edge Light 2026.11.10');
     });
+  });
+
+  describe('Fernlauf durch den Tunnel (vp-update-vor-zuordnung S1)', () => {
+    const stand = {
+      edgeRef: 'edge-k7m2xq3', laeuft: 'edge-light-2026.11.5', laeuftGemeldetAm: new Date(Date.now() - 3_600_000).toISOString(),
+      fragtZuletztAm: new Date(Date.now() - 20_000).toISOString(), neueste: 'edge-light-2026.11.15',
+      werkstattFassung: 'edge-light-2026.11.5', werkstattAm: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+      moeglich: true, gruende: [], haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true },
+      verlauf: [], stand: new Date().toISOString(),
+    };
+
+    it('Reiter Software einer wartenden Box: Linie und Stand (N2) statt „Noch nicht verbunden", Knopf mit Bestätigung', async () => {
+      geraeteFernlauf.mockResolvedValue(stand);
+      geraeteFernlaufAufspielen.mockResolvedValue({});
+      render(<GeraeteAktePage boxRef="edge-k7m2xq3" reiter="software" />);
+      const karte = await screen.findByTestId('akte-fernlauf-stand');
+      expect(karte).toHaveTextContent('Läuft2026.11.5');
+      expect(karte).toHaveTextContent('gerade nach ihrem Zertifikat');
+      expect(screen.queryByRole('heading', { name: 'Noch nicht verbunden' })).toBeNull();
+      // Kopf: „Aktualisieren" führt auch für die wartende Box hierher (§4.5).
+      expect(screen.getByRole('button', { name: 'Aktualisieren' })).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('akte-fernlauf-knopf'));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('edge-k7m2xq3 von 2026.11.5 auf 2026.11.15 bringen?');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aufspielen' }));
+      await waitFor(() => expect(geraeteFernlaufAufspielen).toHaveBeenCalledWith('edge-k7m2xq3', 'edge-light-2026.11.15'));
+    });
+
+    it('gesperrt: der Knopf bleibt aus und nennt den ersten Grund; kein „Aktualisieren" ohne Auftrag', async () => {
+      geraeteFernlauf.mockResolvedValue({ ...stand, moeglich: false,
+        gruende: [{ code: 'dienst_stumm', text: 'Der Werkstatt-Dienst meldet sich nicht.' }] });
+      render(<GeraeteAktePage boxRef="edge-k7m2xq3" reiter="software" />);
+      expect(await screen.findByTestId('akte-fernlauf-grund')).toHaveTextContent('Der Werkstatt-Dienst meldet sich nicht.');
+      expect(screen.getByTestId('akte-fernlauf-knopf')).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+    });
+  });
+
+  it('N5: Reiter Einrichtung nennt, ob die Box gerade fragt, und den letzten Start - nicht „meldet sich seit"', async () => {
+    listPendingEnrollments.mockResolvedValue([{
+      externalRef: 'edge-cyhchfr', deviceInfo: 'vp-edge-core edge-light-2026.11.5', csrUpdatedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      everIssued: false, issuedAt: null, werkstattAbnahmeAm: null, zuletztAbgefragtAm: new Date(Date.now() - 10_000).toISOString(),
+    }]);
+    render(<GeraeteAktePage boxRef="edge-cyhchfr" reiter="einrichtung" />);
+    const satz = await screen.findByTestId('akte-wartet-fragt');
+    expect(satz).toHaveTextContent(/^Fragt gerade nach ihrem Zertifikat \(vor 10.Sek\.\) · zuletzt gestartet .* · vp-edge-core edge-light-2026\.11\.5\.$/);
+    expect(satz).not.toHaveTextContent('Meldet sich seit');
   });
 
   it('Reiter Einrichtung „Meldet sich": dieselbe Sprache wie die Geräte-Liste - Erreichbarkeit grün, kein Kunde eingerichtet (Firstmate vp-werkstatt-laeuft-anzeige)', async () => {
