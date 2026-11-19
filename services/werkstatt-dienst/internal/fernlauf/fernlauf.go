@@ -953,7 +953,13 @@ func (l *laufZustand) warteHealth(ctx context.Context, fassung string) (mango.He
 		erg, err := l.v.Fuehre(ctx, mango.BefehlHealth, nil)
 		switch {
 		case err != nil:
-			letzter = err
+			// Reißt die Frist genau während dieser Abfrage, meldet Fuehre nur noch
+			// ctx.Err(): das ersetzt sonst den zuletzt bekannten, aussagekräftigen
+			// Grund (z. B. die falsch gestartete Fassung) durch "context deadline
+			// exceeded". Der alte Grund bleibt, solange es einen gibt.
+			if letzter == nil || ctx.Err() == nil {
+				letzter = err
+			}
 		default:
 			var ok bool
 			if h, ok = mango.LiesHealth(erg.Aus); !ok {

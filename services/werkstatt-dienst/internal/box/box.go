@@ -185,7 +185,7 @@ func (v *Verbindung) Fuehre(ctx context.Context, befehl string, ein io.Reader) (
 	}
 	defer s.Close()
 	var err error
-	var o, e bytes.Buffer
+	var o, e sicherPuffer
 	s.Stdout, s.Stderr = &o, &e
 	if ein != nil {
 		s.Stdin = ein
@@ -211,6 +211,27 @@ func (v *Verbindung) Fuehre(ctx context.Context, befehl string, ein io.Reader) (
 		return erg, fmt.Errorf("%w: %v", Abgerissen, err)
 	}
 	return erg, nil
+}
+
+// sicherPuffer sammelt die Ausgabe eines Befehls. Läuft die Frist ab, während
+// die Sitzung noch schreibt, liest Fuehre ihn trotzdem gleich (für die
+// Fehlermeldung): ohne eigene Sperre wäre das ein Wettlauf mit den
+// Kopier-Goroutinen der SSH-Sitzung.
+type sicherPuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (p *sicherPuffer) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.buf.Write(b)
+}
+
+func (p *sicherPuffer) String() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.buf.String()
 }
 
 // Werte führt einen Befehl aus, der Zeilen schluessel=wert ausgibt, und gibt
