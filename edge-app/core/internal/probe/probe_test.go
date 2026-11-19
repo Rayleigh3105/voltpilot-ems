@@ -985,3 +985,28 @@ func TestErzeugerKopfResultIsHonestAboutWhatItRead(t *testing.T) {
 		t.Fatalf("Namen = %s", out)
 	}
 }
+
+func TestKoppelTestIsAdmittedOnlyComplete(t *testing.T) {
+	i := func(v int) *int { return &v }
+	i64 := func(v int64) *int64 { return &v }
+	ok := Op{Op: OpKoppelTest, ID: "sp1", Host: "127.0.0.1", SteuerungID: i64(0), Platz: i(8), Art: "on_off",
+		Wert: i64(1), TTLSeconds: i(20)}
+	if code, msg := ValidateOp(ok); code != "" {
+		t.Fatalf("vollständiger Test abgelehnt: %s %s", code, msg)
+	}
+	for name, kaputt := range map[string]func(o *Op){
+		"ohne Platz":   func(o *Op) { o.Platz = nil },
+		"Platz 9":      func(o *Op) { o.Platz = i(9) },
+		"fremde Art":   func(o *Op) { o.Art = "limit_kw" },
+		"Typ-Maximum":  func(o *Op) { o.Wert = i64(2147483647) },
+		"ttl 61":       func(o *Op) { o.TTLSeconds = i(61) },
+		"ohne Kennung": func(o *Op) { o.SteuerungID = nil },
+		"öffentlich":   func(o *Op) { o.Host = "8.8.8.8" },
+	} {
+		o := ok
+		kaputt(&o)
+		if code, _ := ValidateOp(o); code != ErrInvalidRequest {
+			t.Fatalf("%s: %q", name, code)
+		}
+	}
+}

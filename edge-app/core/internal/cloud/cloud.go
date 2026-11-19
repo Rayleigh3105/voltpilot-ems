@@ -1817,6 +1817,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 		if extension.Logik != nil {
 			payload["logik"] = extension.Logik
 		}
+		if extension.Koppel != nil {
+			payload["koppel"] = extension.Koppel
+		}
 	}
 	if l.version != "" {
 		payload["version"] = l.version

@@ -79,6 +79,10 @@ const historyCapacity = 5000
 // Agent is the running core.
 type Agent struct {
 	dataSourceStatus datasourcestatus.Collector
+	// koppelStand is Layer 1's retained Koppelbild status (Edge Light, PFC200
+	// Stufe 4), carried as the heartbeat block koppel - display only.
+	koppelMu    sync.Mutex
+	koppelStand json.RawMessage
 	Cfg              config.Config
 	State            *state.Store
 	Bus              *localbus.Bus
@@ -1141,6 +1145,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(measurements.LocalConfigTopic, 23, a.onShellySensorPlan); err != nil {
 		return err
 	}
+	if err := bus.Subscribe(TopicKoppelStatus, 24, a.onKoppelStatus); err != nil {
+		return err
+	}
 
 	// Re-publish the persisted inverter selection retained, so a Node-RED that
 	// (re)joins the bus after a reboot immediately self-wires the right adapter.
@@ -1667,7 +1674,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 				a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
 				a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(a.boxArt()),
-					GemeinsameSteuerung: a.gemeinsameSteuerung(), Logik: a.logikSummary()}); err != nil {
+					GemeinsameSteuerung: a.gemeinsameSteuerung(), Logik: a.logikSummary(), Koppel: a.koppelSummary()}); err != nil {
 				slog.Warn("status publish failed", "err", err)
 			}
 			return true

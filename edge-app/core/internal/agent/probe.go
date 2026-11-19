@@ -79,6 +79,13 @@ type probeBusOp struct {
 	WordOrder string `json:"word_order"`
 	// Nameplate: wago_kopf only - also read 0xFA10-0xFA17 and SHOW them.
 	Nameplate bool `json:"nameplate,omitempty"`
+	// koppel_test only (PFC200 Stufe 4): Layer 1 runs it in the controller's
+	// own Koppelbild session.
+	SteuerungID *int64 `json:"steuerung_id,omitempty"`
+	Platz       *int   `json:"platz,omitempty"`
+	Art         string `json:"art,omitempty"`
+	Wert        *int64 `json:"wert,omitempty"`
+	TTLSeconds  *int   `json:"ttl_s,omitempty"`
 }
 
 type probeBusRequest struct {
@@ -101,6 +108,9 @@ type probeBusResult struct {
 	// ErzeugerKopf is what an erzeuger_kopf step read (head, units, names) -
 	// decoded by the node, judged here.
 	ErzeugerKopf *probe.ErzeugerKopf `json:"erzeuger_kopf"`
+	// KoppelTest is what a koppel_test step saw and what the controller
+	// acknowledged - Layer 1 judges the acknowledgement, the core passes it on.
+	KoppelTest *probe.KoppelTest `json:"koppel_test"`
 }
 
 type probeBusResponse struct {
@@ -186,6 +196,16 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			results[i] = probe.Failed(op.ID, verdicts[i].Code, verdicts[i].Message)
 			continue
 		}
+		if op.Op == probe.OpKoppelTest {
+			// The Schalt-Test of a Stellplatz writes through the controller's
+			// Koppelbild session in Layer 1 (one session, one Folge - a second
+			// writer here would be refused by the controller's own rules).
+			index[op.ID] = i
+			busOps = append(busOps, probeBusOp{ID: op.ID, Op: probe.OpKoppelTest, Host: op.Host,
+				Port: op.EffectivePort(), UnitID: op.EffectiveUnit(), SteuerungID: op.SteuerungID, Platz: op.Platz,
+				Art: op.Art, Wert: op.Wert, TTLSeconds: op.TTLSeconds})
+			continue
+		}
 		if op.Writes() {
 			// The two WRITING ops run inline and one at a time, like a connection
 			// test: each is its own bounded round trip, and the auto-off
@@ -255,6 +275,10 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 				results[i] = erzeugerKopfResult(op, r)
 				continue
 			}
+			if op.Op == probe.OpKoppelTest {
+				results[i] = koppelTestResult(op, r)
+				continue
+			}
 			if r.OK && r.Raw != nil {
 				results[i] = probe.Succeeded(op.ID, *r.Raw, r.Registers, op.Scaled(*r.Raw))
 				continue
@@ -272,7 +296,7 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 		// never left as a zero value that would read like a successful 0.
 		for i, op := range req.Ops {
 			if verdicts[i].OK() && (op.Op == probe.OpRead || op.Op == probe.OpWagoKopf ||
-				op.Op == probe.OpErzeugerKopf) &&
+				op.Op == probe.OpErzeugerKopf || op.Op == probe.OpKoppelTest) &&
 				results[i].ID == "" {
 				results[i] = probe.Failed(op.ID, probe.ErrTimeout,
 					"Die Prüfung hat nicht rechtzeitig geantwortet.")
@@ -354,6 +378,20 @@ func erzeugerKopfResult(op probe.Op, r probeBusResult) probe.OpResult {
 		"Das Registerbild Erzeuger ließ sich mit diesen Angaben nicht lesen "+
 			"("+kopf.Grund+") - Basisadresse, Registerart und Wortreihenfolge prüfen.",
 		kopf, nil)
+}
+
+// koppelTestResult passes a Schalt-Test line on: Layer 1 judged whether the
+// controller acknowledged exactly the test's Folge; a missing class is the
+// honest "not readable", never a success.
+func koppelTestResult(op probe.Op, r probeBusResult) probe.OpResult {
+	if r.OK && r.KoppelTest != nil {
+		return probe.SucceededKoppelTest(op.ID, r.KoppelTest)
+	}
+	code, msg := r.ErrorCode, r.Message
+	if code == "" {
+		code, msg = probe.ErrInvalidResponse, "Die Antwort der Steuerung war nicht lesbar."
+	}
+	return probe.FailedKoppelTest(op.ID, code, msg, r.KoppelTest)
 }
 
 // probeExchange runs ONE correlated request/response round trip over the local

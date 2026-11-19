@@ -342,6 +342,36 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 		}
 	}
 
+	// PFC200 Stufe 4 (koppelbild.md §15): the plan's limit of the generation
+	// goes to an Anlagensteuerung with a released limit_kw Stellplatz on its
+	// whole generation, as a market wish - the controller decides itself.
+	a.mu.Lock()
+	p1 := a.currentPlan
+	a.mu.Unlock()
+	if p1 != nil && p1.Fresh(now) {
+		if lim := p1.ActivePvLimit(now); lim != nil && *lim >= 0 {
+			ttl := p1.ReceivedAt.Add(plan.StaleAfter).Sub(now)
+			for _, e := range reg.Entities {
+				if e.Type != entities.TypeAnlagensteuerung || held[e.ID] != "" || ttl < time.Second ||
+					e.StellplatzZiel(entities.CmdLimitKw) != "erzeugung_gesamt" || reg.Claimed(e.ID) ||
+					a.steuerlogikOwns(e.ID) {
+					continue
+				}
+				v := *lim
+				a.arb.SubmitInternal(&desired.Desired{
+					EntityID:  e.ID,
+					RequestID: "plan:v1:pv-limit",
+					Source:    desired.Source{Kind: desired.SourcePlanExecutor},
+					Priority:  desired.ClassMarket,
+					TTL:       ttl,
+					IssuedAt:  now,
+					Commands:  entities.Commands{LimitKw: &v},
+				})
+				held[e.ID] = "v1"
+			}
+		}
+	}
+
 	// The v2 plan drives every entity the v1 plan does not command.
 	if v2 != nil && v2.Fresh(now) {
 		for _, pe := range v2.Entities {

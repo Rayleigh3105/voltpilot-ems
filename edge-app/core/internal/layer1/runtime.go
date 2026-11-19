@@ -11,6 +11,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/deyedecode"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/erzeugerbild"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/koppelbild"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/messwerte"
@@ -117,6 +118,14 @@ type Runtime struct {
 	spiegelWant   []spiegelBlock
 	spiegelRR     int
 	exportLimitAt map[string]time.Time
+
+	// the Koppelbild of the same controllers (koppel.go): their runtimes,
+	// released Stellplätze and the arbiter's last granted command.
+	koppelMu     sync.Mutex
+	koppel       map[string]*koppelbild.Steuerung
+	koppelDQ     map[string]string
+	koppelCaps   map[string][]koppelbild.Faehigkeit
+	koppelBefehl map[string]koppelBefehl
 }
 
 // Ready is closed once every bus subscription is confirmed.
@@ -174,6 +183,8 @@ func New(bus Bus, opts Options) *Runtime {
 		http: newHTTPClient(opts.HTTPTimeout), srcTrace: map[string]traceState{},
 		mw: newMesswerteZustand(), exportLimitAt: map[string]time.Time{},
 		erzEnt: map[string]erzeugerbild.BindungsEntitaet{}, erzQuellen: map[string]erzeugerbild.BindungsQuelle{},
+		koppel: map[string]*koppelbild.Steuerung{}, koppelDQ: map[string]string{},
+		koppelCaps: map[string][]koppelbild.Faehigkeit{}, koppelBefehl: map[string]koppelBefehl{},
 		bootID: "l1-" + strconv.FormatInt(time.Now().UnixNano(), 36)}
 	r.mw.lz = messwerte.NeueLaufzeit(messwerteIO{r}, opts.Now, nil)
 	return r
@@ -195,6 +206,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 	// The binding before the plan: the retained registry and source list
 	// arrive first, so a retained plan is judged with them at once.
 	if err := r.bus.Subscribe(TopicEntityConfig, r.onEntityConfig); err != nil {
+		return err
+	}
+	if err := r.bus.Subscribe(TopicEntityCommand, r.onEntityCommand); err != nil {
 		return err
 	}
 	if err := r.bus.Subscribe(measurements.LocalConfigTopic, r.onMessplan); err != nil {

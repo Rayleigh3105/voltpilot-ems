@@ -228,7 +228,26 @@ func (s *Steuerung) Faellig(jetzt time.Time) bool {
 		return true
 	}
 	seit := jetzt.Sub(s.telegramm)
-	return seit >= Takt || (s.geaendert && seit >= MinAbstand)
+	// a tenth of slack: the 5 s reading tick jitters, a telegram must not
+	// skip a whole tick for a few milliseconds
+	return seit >= Takt-Takt/10 || (s.geaendert && seit >= MinAbstand)
+}
+
+// Eilig reports a changed wish whose telegram may go now, before the next
+// regular tick.
+func (s *Steuerung) Eilig(jetzt time.Time) bool {
+	return s.geaendert && !s.telegramm.IsZero() && jetzt.Sub(s.telegramm) >= MinAbstand
+}
+
+// Abstand is how long until a telegram may go at the earliest.
+func (s *Steuerung) Abstand(jetzt time.Time) time.Duration {
+	if s.telegramm.IsZero() {
+		return 0
+	}
+	if d := MinAbstand - jetzt.Sub(s.telegramm); d > 0 {
+		return d
+	}
+	return 0
 }
 
 // Telegramm builds the next telegram, or nil when the last reading does not

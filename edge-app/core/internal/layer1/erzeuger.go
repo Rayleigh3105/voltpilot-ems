@@ -33,7 +33,8 @@ import (
 //
 // The controller may be anywhere in the customer LAN or, on a WAGO PFC200
 // that runs Edge Light itself, the device's own Modbus server on 127.0.0.1
-// ("in diesem Gerät"). Read only: nothing here writes a register.
+// ("in diesem Gerät"). The image is read only; the Koppelbild of the same
+// controller (koppel.go) reads and writes in the same session.
 
 // erzeugerTakt paces the runtime; a controller is read when its 5 s are due.
 const erzeugerTakt = time.Second
@@ -125,9 +126,18 @@ func (r *Runtime) onEntityConfig(topic string, payload []byte) {
 		Driver       *struct {
 			DataSourceID string `json:"data_source_id"`
 		} `json:"driver"`
+		Capabilities struct {
+			Actuate []koppelCap `json:"actuate"`
+		} `json:"capabilities"`
+	}
+	gueltig := len(payload) > 0 && json.Unmarshal(payload, &doc) == nil && doc.EntityID != ""
+	if gueltig {
+		r.koppelFaehigkeiten(doc.EntityID, doc.EntityType, doc.Capabilities.Actuate)
+	} else {
+		r.koppelFaehigkeiten(id, "", nil)
 	}
 	r.erzMu.Lock()
-	if len(payload) == 0 || json.Unmarshal(payload, &doc) != nil || doc.EntityID == "" {
+	if !gueltig {
 		delete(r.erzEnt, id)
 	} else {
 		e := erzeugerbild.BindungsEntitaet{EntityType: doc.EntityType, EdgeSourceID: doc.EdgeSourceID}
@@ -190,13 +200,16 @@ func (r *Runtime) runErzeuger(ctx context.Context) {
 }
 
 func (r *Runtime) erzeugerTakt(ctx context.Context) {
+	ziele := r.koppelZiele()
+	r.koppelVergiss(ziele)
 	r.erzMu.Lock()
 	runde := r.erz.Beginne(r.opts.Now())
 	r.erzMu.Unlock()
 	if runde == nil {
+		r.koppelEilig(ctx, ziele)
 		return
 	}
-	antworten := r.leseErzeuger(ctx, runde.Anfragen)
+	antworten := r.leseErzeuger(ctx, runde.Anfragen, ziele)
 	r.erzMu.Lock()
 	erg := r.erz.Beende(runde, antworten)
 	r.erzMu.Unlock()
@@ -216,7 +229,8 @@ func (r *Runtime) erzeugerTakt(ctx context.Context) {
 // controller and tick under the lane of its address (a probe of the same
 // controller waits for it), the blocks in order. A transport failure ends the
 // session - the rest of that image cannot be complete anyway.
-func (r *Runtime) leseErzeuger(ctx context.Context, anfragen []erzeugerbild.GeplanteAnfrage) []erzeugerbild.Antwort {
+func (r *Runtime) leseErzeuger(ctx context.Context, anfragen []erzeugerbild.GeplanteAnfrage,
+	koppel map[string][]koppelZiel) []erzeugerbild.Antwort {
 	out := make([]erzeugerbild.Antwort, len(anfragen))
 	for i := 0; i < len(anfragen); {
 		j := i
@@ -270,6 +284,14 @@ func (r *Runtime) leseErzeuger(ctx context.Context, anfragen []erzeugerbild.Gepl
 			default:
 				klasse = erzFehlerklasse(err)
 				out[k].Klasse = klasse
+			}
+		}
+		if c != nil && klasse == "" {
+			// The Koppelbild of the same controller in the same session.
+			for _, z := range koppel[anfragen[i].Ziel.Key] {
+				if k, _ := r.koppelAustausch(c, z, false); k != "" {
+					break
+				}
 			}
 		}
 		if c != nil {
@@ -358,22 +380,26 @@ func (r *Runtime) erzBeleg(z erzeugerbild.Ziel, requests, samples int, failed bo
 // --- the probe channel ----------------------------------------------------
 
 type probeAnfrage struct {
-	RequestID string                 `json:"request_id"`
-	Ops       []erzeugerbild.ProbeOp `json:"ops"`
+	RequestID string         `json:"request_id"`
+	Ops       []probeSchritt `json:"ops"`
 }
 
 // probeAntwort is one answered step on edge/probe/result: the Erzeuger head
-// of an erzeuger_kopf step, or the raw value and register words of a plain
-// register read.
+// of an erzeuger_kopf step, the raw value and register words of a plain
+// register read, or the acknowledgement of a koppel_test.
 type probeAntwort struct {
 	erzeugerbild.ProbeErgebnis
 	Raw       *float64 `json:"raw,omitempty"`
 	Registers []uint16 `json:"registers,omitempty"`
+	// KoppelTest is what a koppel_test step saw and what the controller
+	// acknowledged (koppel.go).
+	KoppelTest *probe.KoppelTest `json:"koppel_test,omitempty"`
 }
 
 // onProbe answers one edge/probe/request, the steps one after another like
 // vp-modbus-probe.js: a plain register read (no `op` on the bus,
-// modbus.go registerProbe) and the op erzeuger_kopf are read here; any other
+// modbus.go registerProbe) and the op erzeuger_kopf are read here, the op
+// koppel_test runs in the controller's Koppelbild session (koppel.go); any other
 // step (wago_kopf) is refused by name at once instead of letting the core wait
 // for its timeout (edge-light/docs/paritaet.md D).
 func (r *Runtime) onProbe(ctx context.Context, payload []byte) {
@@ -393,7 +419,9 @@ func (r *Runtime) onProbe(ctx context.Context, payload []byte) {
 			results = append(results, probeAntwort{ProbeErgebnis: erzeugerbild.ProbeErgebnis{ID: e.ID, OK: e.OK,
 				ErrorCode: e.ErrorCode, Message: e.Message}, Raw: e.Raw, Registers: e.Registers})
 		case erzeugerbild.OpErzeugerKopf:
-			results = append(results, probeAntwort{ProbeErgebnis: r.kopfProbe(ctx, op)})
+			results = append(results, probeAntwort{ProbeErgebnis: r.kopfProbe(ctx, op.ProbeOp)})
+		case probe.OpKoppelTest:
+			results = append(results, r.koppelProbe(ctx, op))
 		default:
 			results = append(results, probeAntwort{ProbeErgebnis: erzeugerbild.ProbeErgebnis{ID: op.ID,
 				ErrorCode: erzeugerbild.ProbeNichtGestuetzt,

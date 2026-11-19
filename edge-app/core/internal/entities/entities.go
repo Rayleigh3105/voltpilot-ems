@@ -95,6 +95,10 @@ type ActuateCap struct {
 	// Platz is the Stellplatz (1..8) of an Anlagensteuerung's Koppelbild this
 	// capability writes to (koppelbild.md §15). Absent on every other device.
 	Platz int `json:"platz,omitempty"`
+	// Ziel is the target of that Stellplatz (koppelbild.md §7, e.g.
+	// erzeugung_gesamt); the timetable's PV limit goes only to a limit_kw
+	// Stellplatz on the whole generation.
+	Ziel string `json:"ziel,omitempty"`
 }
 
 // Capabilities of one entity. A measure-only entity has no Actuate list.
@@ -771,6 +775,20 @@ func (e Entity) clampStellplaetze(c Commands, note func(stage string, before, af
 		out.Mode = c.Mode
 	}
 	return out
+}
+
+// StellplatzZiel is the target of the Stellplatz behind a command of an
+// Anlagensteuerung ("" without one).
+func (e Entity) StellplatzZiel(command string) string {
+	if e.Type != TypeAnlagensteuerung {
+		return ""
+	}
+	for _, cap := range e.Capabilities.Actuate {
+		if cap.Command == command && cap.Platz > 0 {
+			return cap.Ziel
+		}
+	}
+	return ""
 }
 
 // capMax returns the declared upper bound of an actuate capability, or nil.

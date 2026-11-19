@@ -84,6 +84,13 @@ type Zielverbindung struct {
 	Quelle BindungsQuelle
 }
 
+// ZielVon resolves a component to the device it is read from; ok=false when it
+// is not bound (the Koppelbild of the same controller, layer1/koppel.go).
+func (b Bindung) ZielVon(entityID string) (Ziel, bool) {
+	z, grund := b.zielVon(entityID)
+	return z, grund == ""
+}
+
 func (b Bindung) zielVon(entityID string) (Ziel, string) {
 	if entityID == "" {
 		// No component named: the plan belongs to the device as a whole.
