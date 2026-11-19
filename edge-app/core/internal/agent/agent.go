@@ -83,9 +83,9 @@ type Agent struct {
 	// Stufe 4), carried as the heartbeat block koppel - display only.
 	koppelMu    sync.Mutex
 	koppelStand json.RawMessage
-	Cfg              config.Config
-	State            *state.Store
-	Bus              *localbus.Bus
+	Cfg         config.Config
+	State       *state.Store
+	Bus         *localbus.Bus
 
 	// sourceReads is the in-process source reader's answer (Edge Light's
 	// layer1.ReadsAsSource), set once before Start; nil on the Docker box.
