@@ -882,6 +882,79 @@ class ChargerApiTest {
     }
 
     /**
+     * vp-ladesaeule-entfernen (404): die Zeile im Aufbau kommt vom ECHO der Box
+     * ({@code device_charge_point}), nicht aus der Allowlist - eine Rücknahme
+     * darf deshalb nie an einer Zeile scheitern, die der Kunde selbst sieht.
+     *
+     * <p>Zwei Wege führen zu genau diesem Bild: eine Kennung, die schon einmal
+     * zurückgenommen wurde (Grabstein), oder eine, die die Box nur gemeldet hat,
+     * ohne je eingetragen gewesen zu sein. Beide sind kein 404 mehr, und beide
+     * räumen die gemeldete Zeile mit auf.
+     */
+    @Test
+    void removingAGhostRowSucceedsWhetherItsTombstonedOrNeverAdmitted() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Geisterzeile");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-geister");
+
+            // 1 · Die Box meldet eine Kennung, die diese Anlage NIE eingetragen hat
+            //     (Captain-Fall "testing"): die Zeile steht im Aufbau, die Allowlist
+            //     kennt sie nicht.
+            heartbeat(site, device, oneStation().replace("\"id\":\"saeule-1\",", "\"id\":\"testing\","));
+            assertThat(getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers"))
+                    .hasSize(1);
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .get("chargePoints")).isEmpty();
+
+            // 2 · Die Rücknahme dieser nie eingetragenen, aber sichtbaren Kennung ist
+            //     KEIN 404 mehr - sie räumt die Zeile auf, ohne einen Grabstein zu
+            //     hinterlassen (nichts war je zugelassen, also gibt es nichts zu
+            //     sperren, was die Box nicht ohnehin schon ablehnt).
+            JsonNode nachEntfernen = deleteJson(
+                    "/api/v1/sites/" + site + "/charging-config/charge-points/testing", customer);
+            assertThat(nachEntfernen.get("chargePoints")).isEmpty();
+            assertThat(nachEntfernen.get("removedChargePointIds")).isEmpty();
+            assertThat(getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers"))
+                    .isEmpty();
+
+            // 3 · Eine eingetragene Kennung verliert ihre Zeile schon bei der ERSTEN
+            //     Rücknahme ...
+            postJson("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "saeule-7", "label", "Hof Süd"));
+            heartbeat(site, device, oneStation().replace("\"id\":\"saeule-1\",", "\"id\":\"saeule-7\","));
+            assertThat(getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers"))
+                    .hasSize(1);
+            deleteJson("/api/v1/sites/" + site + "/charging-config/charge-points/saeule-7", customer);
+            assertThat(getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers"))
+                    .isEmpty();
+
+            // 4 · Meldet die Box dieselbe (längst zurückgenommene) Kennung danach noch
+            //     einmal - ein laufender Ladevorgang endet ja NICHT -, steht die Zeile
+            //     wieder da, ohne dass sie je neu eingetragen wurde. Ihre Rücknahme ist
+            //     DANN immer noch kein 404 (der Grabstein steht schon, nur die Zeile
+            //     nicht mehr) und räumt genau diesen Fall 1 des Captains auf.
+            heartbeat(site, device, oneStation().replace("\"id\":\"saeule-1\",", "\"id\":\"saeule-7\","));
+            assertThat(getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers"))
+                    .hasSize(1);
+            JsonNode zweiterKlick = deleteJson(
+                    "/api/v1/sites/" + site + "/charging-config/charge-points/saeule-7", customer);
+            assertThat(ids(zweiterKlick.get("removedChargePointIds"))).containsExactly("saeule-7");
+            assertThat(getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers"))
+                    .isEmpty();
+
+            // 5 · Eine Kennung, die diese Anlage WEDER je führte NOCH je meldete,
+            //     bleibt ein 404 - das Vertrauen aus Fall 4 oben.
+            ResponseEntity<String> unbekannt = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points/nie-gesehen"),
+                    HttpMethod.DELETE, new HttpEntity<>(bearer(customer)), String.class);
+            assertThat(unbekannt.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
      * P7 — die FAHRZEUG-PROFILE: dieselbe Säule, zwei Karten, zwei Steuerarten.
      *
      * <p>⚠ Der Schlüssel ist der Pseudonym, den die BOX meldet - der Test fährt

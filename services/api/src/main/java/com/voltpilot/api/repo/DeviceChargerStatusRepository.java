@@ -342,6 +342,28 @@ public class DeviceChargerStatusRepository {
     public record UnboundCharger(UUID deviceId, String chargePointId, String label) {}
 
     /**
+     * Löscht die GEMELDETE ZEILE einer Kennung (Aufbau und Ladesäulen-Seite lesen beide von hier) -
+     * das Gegenstück zur Rücknahme in der Allowlist ({@code ChargingConfigService.remove}, vp-ladesaeule-entfernen).
+     *
+     * <p>⚠ Diese Tabelle ist das ECHO der Box, kein Bestand des Portals: ohne diesen Aufruf bliebe eine
+     * zurückgenommene oder nie eingetragene Kennung hier für immer als Geist stehen, denn eine abgewiesene
+     * Wiederverbindung meldet die Box gar nicht erst - der normale Aufräumweg über {@link #replaceForDevice}
+     * (Herzschlag ersetzt den ganzen Satz eines Geräts) greift dann nie. Verbindet sich dieselbe Säule noch
+     * im selben Herzschlag-Intervall mit einer WIRKLICH laufenden Sitzung, schreibt der nächste Herzschlag die
+     * Zeile ehrlich zurück - das ist kein Geist, sondern die Wahrheit über einen Ladevorgang, der laut Dialog
+     * genau deshalb nicht endet.
+     *
+     * @return true, wenn an dieser Anlage eine Zeile dieser Kennung stand
+     */
+    @Transactional
+    public boolean deleteChargePoint(UUID siteId, String chargePointId) {
+        jdbc.update("DELETE FROM device_charge_connector WHERE site_id = ? AND charge_point_id = ?",
+                siteId, chargePointId);
+        return jdbc.update("DELETE FROM device_charge_point WHERE site_id = ? AND charge_point_id = ?",
+                siteId, chargePointId) > 0;
+    }
+
+    /**
      * Die ganze Ladepunkt-Sicht einer Anlage. {@code budget} ist null, solange
      * kein Gerät den Block gemeldet hat - der ehrliche Zustand einer Anlage
      * ohne Ladesäulen, nie ein Budget von 0.

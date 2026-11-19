@@ -856,15 +856,27 @@ public class ChargingConfigService {
      * behält sie - es liegt IN der Säule -, ein laufender Ladevorgang endet
      * dadurch also nicht, er fällt auf dieses Profil zurück.
      *
-     * <p>Eine Kennung, die diese Anlage nicht (mehr) führt, ist ein 404 - nie
-     * ein stiller Erfolg über etwas, das es nicht gab.
+     * <p><b>⚠ Die GEMELDETE ZEILE ist nicht dieselbe Frage wie die Allowlist</b>
+     * (vp-ladesaeule-entfernen): Aufbau und Ladesäulen-Seite lesen das ECHO der
+     * Box ({@code DeviceChargerStatusRepository}), nicht {@code chargePoints}.
+     * Eine schon zurückgenommene Kennung (zweiter Klick auf denselben Grabstein)
+     * und eine, die die Box nur gemeldet hat, ohne je eingetragen gewesen zu
+     * sein, führen deshalb BEIDE keinen aktiven Allowlist-Eintrag mehr - aber
+     * ihre Zeile kann trotzdem noch stehen, als Geist, der nie verschwindet
+     * (die Box meldet eine abgewiesene Wiederverbindung gar nicht erst, also
+     * räumt kein künftiger Herzschlag sie weg). Diese Rücknahme ist deshalb
+     * idempotent UND räumt die Zeile mit auf: ein 404 bleibt ausschließlich der
+     * Kennung vorbehalten, die WEDER je zugelassen war NOCH je eine Zeile hatte
+     * - nie ein stiller Erfolg über etwas, das es nirgends gab.
      */
     @Transactional
     public ChargingConfigDto remove(UUID siteId, String chargePointId, String actor) {
         requireSite(siteId);
         UUID tenantId = TenantContext.get();
         String id = chargePointId == null ? "" : chargePointId.trim();
-        if (!configs.removeChargePoint(siteId, id, actor)) {
+        boolean warZugelassen = configs.removeChargePoint(siteId, id, actor);
+        boolean hatteZeile = chargers.deleteChargePoint(siteId, id);
+        if (!warZugelassen && !hatteZeile) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Diese Anlage führt keine eingetragene Ladepunkt-Kennung \"" + id + "\".");
         }
