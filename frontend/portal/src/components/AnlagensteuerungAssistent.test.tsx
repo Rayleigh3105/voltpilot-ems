@@ -117,7 +117,7 @@ describe('Anlagensteuerung verbinden - Kopfprüfung', () => {
     await waehle('Wo läuft die Steuerung?', /In diesem Gerät/);
     expect(screen.queryByLabelText('Adresse')).toBeNull();
     expect(screen.queryByLabelText('Netzlage')).toBeNull();
-    expect(screen.getByText(/liest das SPS-Programm, das in ihr selbst läuft/)).toBeTruthy();
+    expect(screen.getByText(/liest das SPS-Programm, das in ihr läuft/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Kopf prüfen' }));
     await screen.findByText('✓ Bild erkannt');
     expect(quelleAnlegen.mock.calls[0][1]).toMatchObject({ protokoll: 'modbus_tcp', adresse: '127.0.0.1:502',

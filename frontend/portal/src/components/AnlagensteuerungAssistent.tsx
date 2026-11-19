@@ -329,14 +329,16 @@ export function AnlagensteuerungAssistent({
     rumpf = <section className="vp-anst-schritt" data-schritt="anschluss">
       <p className="vp-anst-hinweis">Die Box liest den Kopf des VoltPilot-Registerbilds - Signatur, Version, Einheiten,
         Herzschlag und Namen. Keinen Messwert.</p>
-      {ort === 'geraet' && <p className="vp-anst-hinweis">Die Box liest das SPS-Programm, das in ihr selbst läuft
-        (Adresse 127.0.0.1) - ohne Netzwerkkabel und ohne Netzlage. Wählen Sie als zuständige Box das Gerät, das
-        zugleich die Steuerung ist.</p>}
       <div className="vp-anst-felder">
         <VpPicker label="Wo läuft die Steuerung?" value={ort}
           options={[{ value: 'netz', label: 'Im Netz der Anlage' },
-            { value: 'geraet', label: 'In diesem Gerät (die Box ist selbst die Steuerung, z. B. WAGO PFC200)' }]}
+            { value: 'geraet', label: 'In diesem Gerät (WAGO PFC200)' }]}
           onChange={(wert) => setze(mitOrt(anschluss, wert as 'netz' | 'geraet'))} />
+      </div>
+      {ort === 'geraet' && <p className="vp-anst-hinweis">Die Box ist selbst die Steuerung und liest das SPS-Programm,
+        das in ihr läuft (Adresse 127.0.0.1) - ohne Netzwerkkabel und ohne Netzlage. Wählen Sie als zuständige Box
+        dieses Gerät.</p>}
+      <div className="vp-anst-felder">
         {ort === 'netz' && <Input label="Adresse" value={anschluss.host} placeholder="192.168.4.165" onChange={(e) => setze({ host: e.target.value })} />}
         <Input label="Port" inputMode="numeric" value={anschluss.port} onChange={(e) => setze({ port: e.target.value })} />
         {ort === 'netz' && <Input label="Netzlage" value={anschluss.netz} placeholder="VLAN 20 „Anlage“" onChange={(e) => setze({ netz: e.target.value })} />}
