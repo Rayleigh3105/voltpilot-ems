@@ -79,13 +79,14 @@ const historyCapacity = 5000
 // Agent is the running core.
 type Agent struct {
 	dataSourceStatus datasourcestatus.Collector
+	Cfg              config.Config
+	State            *state.Store
+	Bus              *localbus.Bus
+
 	// koppelStand is Layer 1's retained Koppelbild status (Edge Light, PFC200
 	// Stufe 4), carried as the heartbeat block koppel - display only.
 	koppelMu    sync.Mutex
 	koppelStand json.RawMessage
-	Cfg         config.Config
-	State       *state.Store
-	Bus         *localbus.Bus
 
 	// sourceReads is the in-process source reader's answer (Edge Light's
 	// layer1.ReadsAsSource), set once before Start; nil on the Docker box.
