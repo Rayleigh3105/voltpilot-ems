@@ -49,6 +49,10 @@ import { BoxEndgueltigLoeschenDialog } from './BoxEndgueltigLoeschenDialog';
 import { AdminPageHead } from './AdminPageHead';
 import { Zeitleiste } from './Zeitleiste';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
+import {
+  bestaetigung, FERNLAUF_SCHRITTE, fragtSatz, haken as fernlaufHaken, schrittleiste, standZeilen, tunnelKarte, verlaufZeile,
+  type Fernlauf, type FernlaufStand,
+} from '../../werkstattFernlauf';
 import '../GeraetSeite.css';
 import './BoxVersions.css';
 import './Fernwartung.css';
@@ -93,6 +97,8 @@ export function GeraeteAktePage({
   const [verlauf, setVerlauf] = useState<BoxVerlauf | null>(null);
   const [fwProtokoll, setFwProtokoll] = useState<FernwartungProtokollEintrag[] | null>(null);
   const [akte, setAkte] = useState<AdminGeraeteAkte | null>(null);
+  // Fernlauf (vp-update-vor-zuordnung S1): nur für eine Box ohne Flottenzeile von Belang; null = nicht geladen.
+  const [fernlauf, setFernlauf] = useState<FernlaufStand | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -117,11 +123,13 @@ export function GeraeteAktePage({
   const [endgueltigBefund, setEndgueltigBefund] = useState<BoxEndgueltigBefund | null>(null);
 
   async function laden() {
-    const [eu, dv, pe, wb, wd, wf, fw, ak] = await Promise.allSettled([
+    const [eu, dv, pe, wb, wd, wf, fw, ak, fl] = await Promise.allSettled([
       adminApi.edgeUpdates(), adminApi.listDevices(), adminApi.listPendingEnrollments(),
       adminApi.werkstattBoxen(), adminApi.werkstattDienst(), adminApi.werkstattFreigaben(),
       adminApi.fernwartungProtokoll({ box: boxRef, limit: 100 }), adminApi.geraeteAkte(boxRef),
+      adminApi.geraeteFernlauf(boxRef),
     ]);
+    if (fl.status === 'fulfilled') setFernlauf(fl.value);
     if (eu.status === 'fulfilled') setEdgeUpdates(eu.value);
     if (dv.status === 'fulfilled') setDevices(dv.value);
     if (pe.status === 'fulfilled') setPending(pe.value);
@@ -251,6 +259,7 @@ export function GeraeteAktePage({
   return (
     <div className="vp-admin-page vp-geraete-akte" data-testid="geraete-akte">
       <AktenKopf boxRef={boxRef} row={row} deviceRow={deviceRow} pendingRow={pendingRow} jetzt={jetzt}
+        tunnelUpdate={row == null && fernlauf != null && (fernlauf.moeglich || fernlauf.verlauf.length > 0)}
         reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert} nieGemeldet={nieGemeldet}
         werkstattBoxArt={werkstattBoxArtWert}
         onLoesenOeffnen={() => setLoesenOffen(true)}
@@ -266,7 +275,9 @@ export function GeraeteAktePage({
         onGeloescht={() => { setEndgueltigOffen(false); onNavigate?.(pageRoute('geraete-registry')); }} />
 
       {reiter === 'software' ? (
-        <SoftwareReiter row={row} ersterLeerLauf={ersterLeerLauf} verlauf={verlauf} jetzt={jetzt} busy={busy}
+        <SoftwareReiter boxRef={boxRef} fernlauf={fernlauf} row={row} ersterLeerLauf={ersterLeerLauf} verlauf={verlauf} jetzt={jetzt} busy={busy}
+          onAufspielen={(fassung) => act(() => adminApi.geraeteFernlaufAufspielen(boxRef, fassung))}
+          onVerbindung={() => nav('verbindung')}
           releases={edgeUpdates?.releases ?? []} onAssign={(seq) => act(() => adminApi.setUpdateTarget(row!.deviceId, { releaseSeq: seq }))}
           onRevert={() => act(() => adminApi.revertUpdateTarget(row!.deviceId))}
           werkstattBoxArt={werkstattBoxArtWert} werkstattStand={werkstattStand} />
@@ -281,7 +292,7 @@ export function GeraeteAktePage({
           werkstattBoxen={werkstattBoxen ?? []} werkstattFreigaben={werkstattFreigaben ?? []} jetzt={jetzt}
           onNavigate={onNavigate} onGeloescht={() => onNavigate?.(pageRoute('geraete-registry'))} />
       ) : reiter === 'verlauf' ? (
-        <VerlaufReiter verlauf={verlauf} jetzt={jetzt} fwProtokoll={fwProtokoll ?? []} />
+        <VerlaufReiter verlauf={verlauf} jetzt={jetzt} fwProtokoll={fwProtokoll ?? []} fernlaeufe={fernlauf?.verlauf ?? []} />
       ) : (
         <UeberblickReiter row={row} ersterLeerLauf={ersterLeerLauf} jetzt={jetzt} onReiter={nav} akte={akte}
           onJumpToTenant={onJumpToTenant} nieGemeldet={nieGemeldet} onLoesenOeffnen={() => setLoesenOffen(true)}
@@ -321,7 +332,7 @@ function zustandBadgeAusVerbindung(v: BoxVerbindungSicht): { variant: 'ok' | 'wa
 
 function AktenKopf({
   boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate, pulsiert, stand, nieGemeldet,
-  onLoesenOeffnen, ausgebautAm, onEndgueltigOeffnen, werkstattBoxArt,
+  onLoesenOeffnen, ausgebautAm, onEndgueltigOeffnen, werkstattBoxArt, tunnelUpdate,
 }: {
   boxRef: string;
   row: FleetRow | null;
@@ -343,6 +354,8 @@ function AktenKopf({
   onEndgueltigOeffnen: () => void;
   /** N2: Bauart aus der Werkstatt, solange die Box selbst noch nichts meldet. */
   werkstattBoxArt: BoxArt | null;
+  /** Fernlauf (§4.5): „Aktualisieren" auch für die wartende Box, führt auf die Karte im Reiter „Software". */
+  tunnelUpdate: boolean;
 }) {
   const [menuOffen, setMenuOffen] = useState(false);
   const reiterRand = useReiterRand<HTMLDivElement>();
@@ -390,7 +403,7 @@ function AktenKopf({
             {row && !nieGemeldet && (
               <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
             )}
-            {row && !nieGemeldet && !(row.stand === 'hand' || row.stufe1) && (
+            {((row && !nieGemeldet && !(row.stand === 'hand' || row.stufe1)) || (!row && tunnelUpdate)) && (
               <Button variant="outline" size="sm" onClick={() => onReiter('software')}>Aktualisieren</Button>
             )}
             <div className="vp-akte-menu" style={{ position: 'relative' }}>
@@ -600,7 +613,136 @@ function AusgebautKarte({ akte, befund, jetzt, onEndgueltigOeffnen }: {
 
 // ── Software ──────────────────────────────────────────────────────────────
 
-function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, onAssign, onRevert, werkstattBoxArt, werkstattStand }: {
+/**
+ * Reiter „Software" einer Box ohne Kundenkonto (Konzept vp-update-vor-zuordnung S1, §4.5): „Linie und Stand" mit
+ * der Fassung aus ihrer letzten Zertifikatsanfrage (N2) und „Durch den Tunnel aufspielen" - Knopf mit Haken,
+ * Bestätigung, Schrittleiste während des Laufs, danach das Ergebnis mit seinen Belegen.
+ */
+function WartendeSoftware({ boxRef, stand, jetzt, busy, werkstattBoxArt, onAufspielen, onVerbindung }: {
+  boxRef: string;
+  stand: FernlaufStand;
+  jetzt: Date;
+  busy: boolean;
+  werkstattBoxArt: BoxArt | null;
+  onAufspielen: (fassung: string) => Promise<boolean>;
+  onVerbindung: () => void;
+}) {
+  const [frage, setFrage] = useState(false);
+  const [belegeOffen, setBelegeOffen] = useState(false);
+  const linie: BoxArt | null = werkstattBoxArt ?? (stand.laeuft?.startsWith('edge-light-') ? 'light' : null);
+  const karte = tunnelKarte(stand, jetzt);
+  const frageText = bestaetigung(boxRef, stand);
+  const knopf = karte.art === 'laeuft' ? null : karte.knopf;
+  const auftrag: Fernlauf | null = karte.art === 'knopf' ? null : karte.auftrag;
+  const belege = auftrag?.schritte.filter((x) => x.zustand !== 'laeuft' && x.zeile) ?? [];
+
+  return (
+    <div className="vp-geraet-grid">
+      <Card padding="lg" radius="lg" className="vp-geraet-sek" data-testid="akte-fernlauf-stand">
+        <h2><Icon name="refresh-cw" size={18} /> Linie und Stand</h2>
+        <p><Badge variant="tint">{linie ? BOX_ART_LABELS[linie] : BOX_ART_UNBEKANNT}</Badge></p>
+        <dl className="vp-kv-list">
+          {standZeilen(stand, jetzt).map((z) => (
+            <div className="vp-kv-row" key={z.wer}>
+              <dt>{z.wer}</dt>
+              <dd><span className={z.wer === 'Fragt' ? undefined : 'vp-mono'}>{z.wert}</span>{z.satz && <span className="vp-cell-sub">{z.satz}</span>}</dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
+
+      <Card padding="lg" radius="lg" className="vp-geraet-sek vp-fl-karte" data-testid="akte-fernlauf">
+        <h2><Icon name="upload" size={18} /> Durch den Tunnel aufspielen</h2>
+        {karte.art === 'laeuft' ? (
+          <>
+            <p className="vp-fl-satz" data-testid="akte-fernlauf-laeuft">
+              <b>{karte.schrittTitel}</b> <span className="vp-muted">· {karte.seit}</span>
+            </p>
+            <ol className="vp-fl-leiste" aria-label="Schritte des Fernlaufs">
+              {schrittleiste(karte.auftrag).map((p) => (
+                <li key={p.id} className={`vp-fl-punkt vp-fl-${p.zustand}`} aria-current={p.zustand === 'laeuft' ? 'step' : undefined}
+                  aria-label={`${p.titel}: ${PUNKT_WORT[p.zustand]}`}>
+                  <i aria-hidden="true" /><span>{p.titel}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="vp-muted vp-text-sm">Der Werkstatt-Dienst arbeitet im Fenster bis {karte.auftrag.fensterEnde ? zeitpunktKurz(karte.auftrag.fensterEnde, jetzt) : '–'}. Das Programm der Box steht dabei etwa eine Minute, der Tunnel nie.</p>
+          </>
+        ) : (
+          <>
+            {karte.art === 'ergebnis' && (
+              <div className={`vp-fl-ergebnis vp-fl-${karte.ton}`} data-testid="akte-fernlauf-ergebnis">
+                <Badge variant={karte.ton} dot>{karte.titel}</Badge>
+                <p className="vp-text-sm">{karte.satz}</p>
+              </div>
+            )}
+            {knopf?.label != null && (
+              <>
+                {karte.art === 'knopf' && <p style={{ marginTop: 0 }}>Wie in der Werkstatt. Etwa 5 Min., startet einmal neu.</p>}
+                <ul className="vp-fl-haken" aria-label="Voraussetzungen">
+                  {fernlaufHaken(stand).map((h) => (
+                    <li key={h.text}><Badge variant={h.ok ? 'ok' : 'off'} dot>{h.text}</Badge></li>
+                  ))}
+                </ul>
+                {knopf.grund && <p className="vp-muted vp-text-sm" data-testid="akte-fernlauf-grund">{knopf.grund}</p>}
+                <div className="vp-row-gap vp-fl-knoepfe">
+                  <Button variant="primary" disabled={busy || !knopf.moeglich} onClick={() => setFrage(true)} data-testid="akte-fernlauf-knopf">
+                    {knopf.label}
+                  </Button>
+                  {karte.art === 'ergebnis' && karte.ton === 'warn' && (
+                    <Button variant="outline" onClick={onVerbindung}>Fernwartung öffnen</Button>
+                  )}
+                </div>
+              </>
+            )}
+            {knopf?.label == null && karte.art === 'knopf' && (
+              <p className="vp-muted" data-testid="akte-fernlauf-grund">{knopf?.grund ?? 'Es gibt nichts aufzuspielen.'}</p>
+            )}
+            {belege.length > 0 && (
+              <>
+                <Button variant="ghost" size="sm" aria-expanded={belegeOffen} onClick={() => setBelegeOffen((v) => !v)}>
+                  {belegeOffen ? 'Belege ausblenden' : 'Belege'}
+                </Button>
+                <ol className="vp-fl-belege" hidden={!belegeOffen}>
+                  {belege.map((b, i) => (
+                    <li key={`${b.schritt}-${i}`} className={b.zustand === 'gescheitert' ? 'vp-fl-gescheitert' : undefined}>
+                      <b>{FERNLAUF_SCHRITTE.find((x) => x.id === b.schritt)?.titel ?? b.schritt}</b>
+                      <span>{b.zeile}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </>
+        )}
+      </Card>
+      <ConfirmDialog open={frage} title={frageText.titel} intro={frageText.intro} consequences={frageText.folgen}
+        confirmLabel="Aufspielen" busy={busy} onCancel={() => setFrage(false)}
+        onConfirm={() => {
+          if (!stand.neueste) return;
+          void onAufspielen(stand.neueste).then(() => setFrage(false));
+        }} />
+    </div>
+  );
+}
+
+const PUNKT_WORT = { erledigt: 'erledigt', laeuft: 'läuft', gescheitert: 'gescheitert', offen: 'noch offen' } as const;
+
+/** „17:35" heute, sonst „19.11., 17:35". */
+function zeitpunktKurz(iso: string, jetzt: Date): string {
+  const t = new Date(iso);
+  const tag = (d: Date) => d.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' });
+  const uhr = t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+  return tag(t) === tag(jetzt) ? uhr : `${t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Berlin' })}, ${uhr}`;
+}
+
+function SoftwareReiter({ boxRef, fernlauf, row, ersterLeerLauf, verlauf, jetzt, busy, releases, onAssign, onRevert,
+  werkstattBoxArt, werkstattStand, onAufspielen, onVerbindung }: {
+  boxRef: string;
+  /** Fernlauf (S1): Stand einer Box ohne Kundenkonto; null = nicht geladen oder keine Kennung mit Prüfzeichen. */
+  fernlauf: FernlaufStand | null;
+  onAufspielen: (fassung: string) => Promise<boolean>;
+  onVerbindung: () => void;
   row: FleetRow | null;
   ersterLeerLauf: boolean;
   verlauf: BoxVerlauf | null;
@@ -614,6 +756,10 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
   /** N2: der zuletzt abgenommene Stand aus der Werkstatt (Abnahme), reine Anzeige. */
   werkstattStand: { fassung: string; erfasstAm: string } | null;
 }) {
+  if ((ersterLeerLauf || !row) && fernlauf) {
+    return <WartendeSoftware boxRef={boxRef} stand={fernlauf} jetzt={jetzt} busy={busy} werkstattBoxArt={werkstattBoxArt}
+      onAufspielen={onAufspielen} onVerbindung={onVerbindung} />;
+  }
   if (ersterLeerLauf || !row) {
     return <EmptyState icon="refresh-cw" category="primary" title="Noch nicht verbunden"
       description={
@@ -1059,7 +1205,7 @@ function EinrichtungReiter({ boxRef, deviceRow, pendingRow, werkstattZeile, werk
             <p className="vp-muted">{PENDING_KONTEXT}.</p>
             <p className="vp-muted">{herkunftText(pendingRow.werkstattAbnahmeAm)}</p>
             <p>{p?.hint}</p>
-            <p className="vp-muted vp-text-sm">Meldet sich seit {fmtRelative(pendingRow.csrUpdatedAt, jetzt)}{pendingRow.deviceInfo ? ` · ${pendingRow.deviceInfo}` : ''}.</p>
+            <p className="vp-muted vp-text-sm" data-testid="akte-wartet-fragt">{fragtSatz(pendingRow, jetzt)}</p>
           </Card>
         );
       })()}
@@ -1078,15 +1224,27 @@ function werkstattHashRoute(): Route {
 
 // ── Verlauf ───────────────────────────────────────────────────────────────
 
-function VerlaufReiter({ verlauf, jetzt, fwProtokoll }: { verlauf: BoxVerlauf | null; jetzt: Date; fwProtokoll: FernwartungProtokollEintrag[] }) {
+function VerlaufReiter({ verlauf, jetzt, fwProtokoll, fernlaeufe }: {
+  verlauf: BoxVerlauf | null; jetzt: Date; fwProtokoll: FernwartungProtokollEintrag[]; fernlaeufe: Fernlauf[];
+}) {
   return (
     <div className="vp-geraet-grid">
       <Card padding="lg" radius="lg" className="vp-geraet-sek vp-geraet-breit">
         <h2><Icon name="refresh-cw" size={18} /> Software</h2>
-        {verlauf == null ? (
+        {fernlaeufe.length > 0 && (
+          <ul className="vp-fl-verlauf" data-testid="akte-verlauf-fernlauf">
+            {fernlaeufe.map((f) => {
+              const z = verlaufZeile(f, jetzt);
+              return (
+                <li key={f.id}><Badge variant={z.ton} dot>{z.wann}</Badge><span>{z.text}</span></li>
+              );
+            })}
+          </ul>
+        )}
+        {fernlaeufe.length > 0 && verlauf == null ? null : verlauf == null ? (
           <p className="vp-muted">Der Verlauf wird geladen …</p>
         ) : verlauf.eintraege.length === 0 ? (
-          <p className="vp-muted">Für diese Box ist noch nichts verzeichnet.</p>
+          fernlaeufe.length > 0 ? null : <p className="vp-muted">Für diese Box ist noch nichts verzeichnet.</p>
         ) : (
           <Zeitleiste zeilen={verlaufSicht(verlauf.eintraege, jetzt)} testId="akte-verlauf-software" />
         )}

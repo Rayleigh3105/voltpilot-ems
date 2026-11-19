@@ -25,6 +25,7 @@ Vektor: [`werkstatt-ansicht-v1.example.json`](werkstatt-ansicht-v1.example.json)
 | `lauf.nochmal_seit` | seit wann der Dienst den Auftrag „nochmal“ ausführt (er hat die Sperre der Box freigegeben) |
 | `werkbank.status.strom` | Versorgung der Brücke (`vp-werkbank-status.v1`, additiv): `unterspannung_jetzt`, `unterspannung_seit_start` (fehlen, wenn der Pi es nicht meldet), `quelle` (`vcgencmd` oder `keine`) |
 | `gehaeuse` | additiv (vp-mango-3mf-pro-box, automatisch nachholen): Liste der Box-Druckdateien, die im Portal noch nicht liegen - `referenz`, `zustand` (`wartet`, `baut`, `fertig`, `fehler`), `grund` (nur bei `fehler`), `bestellt` (Zeit). Fehlt ohne Gehäuse-Bau; leer, solange jede offene Box fertig und hochgeladen ist. Grundlage für die Werkstatt-Box-Seite: „Druckdatei wird erstellt …“ bzw. bei `fehler` ein ruhiger Satz mit „Erneut erstellen“ (`POST …/admin/werkstatt/boxen/{ref}/gehaeuse/neu`) |
+| `fernlauf` | additiv ([Fernlauf](werkstatt-fernlauf-v1.md), vp-update-vor-zuordnung S1): `bereit` (der Dienst kann Fernläufe durch den Wartungstunnel: API, Techniker-Zugang, Portal für das Vertrauens-Set), sonst `grund`; `wartend` (Aufträge in seiner Schlange), `aktiv` (`auftrag`, `box`, `schritt`, `seit`) und `letzter` (`auftrag`, `box`, `ergebnis`, `ende`). Fehlt ohne API. Die API bietet den Knopf nur, wenn ein frischer Stand `bereit` meldet; fehlt das Feld, ist der Dienst älter als der Fernlauf |
 
 Fehlt `lauf`, gab es seit dem Start des Dienstes keinen.
 
@@ -34,6 +35,8 @@ zeigt keine Belegzeilen und kein „Nochmal versuchen“ und liest den Fall wie 
 **Aufträge.** Mit `PUT …/ansicht?auftraege=1` antwortet die API 200 mit `{"auftraege":[{"id","art","lauf"}]}` (Art
 `nochmal`, jeder Auftrag genau einmal); ohne den Parameter 204 wie bisher. Was der Dienst daraus macht, steht danach in
 `lauf.nochmal_seit`.
+Dazu Aufträge der Art `aufspielen` ([Fernlauf](werkstatt-fernlauf-v1.md)): `id` ist der Auftrag, `lauf` die Referenz der Box.
+Sie stehen in jeder Antwort, bis der Dienst einen mit `POST …/fernlaeufe/{id}/beginnen` annimmt oder die Abholfrist endet.
 
 ## Regeln
 

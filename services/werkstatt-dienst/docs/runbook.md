@@ -221,6 +221,27 @@ Edge Light, baut und hängt `vp-edge-light-linux-mipsle`, `vp-edge-light-linux-a
 und lädt die Programme ins Portal. Ab dann nimmt die Werkstatt die Fassung von selbst, ab der nächsten Box. Ohne
 Forgejo-Lauf baut `edge-light/scripts/release.sh <fassung> <ausgabe>` dieselben Anhänge, signiert aber nichts.
 
+## Fernlauf durch den Wartungstunnel
+
+Neue Software für eine Box ohne Kundenkonto ([Vertrag](../../../docs/contracts/werkstatt-fernlauf-v1.md), Konzept
+vp-update-vor-zuordnung S1). Ausgelöst wird er in der Geräteakte, Reiter „Software“, Knopf „Auf … bringen“; der Dienst
+holt den Auftrag mit seiner Ansicht ab und fährt ihn neben der Werkbank, einen zur Zeit.
+
+Voraussetzungen: API (`VP_WERKSTATT_API_URL`), der [Techniker-Zugang](#techniker-zugang-werkstatt-dienst) mit allen
+drei Teilen und `VP_WERKSTATT_PORTAL_URL` (Vertrauens-Set). Fehlt etwas, meldet die Ansicht `fernlauf.bereit: false`
+mit Grund, und die Akte nennt ihn statt des Knopfs. Neue Konfiguration gibt es nicht.
+
+- **Protokoll:** je Fernlauf `fernlaeufe/<kennung>.jsonl` im Datenverzeichnis (wie `laeufe/`), Kennung
+  `<Zeit>-fl-<Auftrag>`; das Fenster steht mit Grund und Admin im Fernwartungs-Protokoll, die Anmeldung mit
+  Fingerabdruck in der Ereignisliste der Box.
+- **Sicherung:** lebt nur im Arbeitsverzeichnis des Laufs (`/tmp`, emptyDir) und ist danach weg; ohne Identität und
+  ohne WLAN-Einstellung.
+- **Offen geblieben:** Wird der Dienst während eines Fernlaufs neu gestartet, meldet er ihn beim Start als `offen` und
+  schließt sein Fenster. Was die Box fährt, zeigt ihr nächster Programmstart (Akte, „Linie und Stand“). Ein neuer
+  Auftrag geht, sobald die Vorprüfung es zulässt.
+- **Metriken:** keine neuen; der Fernlauf steht in der Ansicht (`fernlauf.aktiv`, `fernlauf.letzter`) und im Log
+  (`logger=fernlauf`).
+
 ## Werkstatt anhalten und fortsetzen
 
 **Mit der API (V1, `VP_WERKSTATT_API_URL` gesetzt):** Es gibt nichts freizugeben.
@@ -371,4 +392,5 @@ Die Proben (`test/bruecke-probe.sh`) ersetzen keinen echten Pi und keine echte M
 | PS-4 | Startlader-Hochladen | nur Rückfall (Handgriff M4), am Gerät noch nicht gemessen: Der Rechner steckt in der LAN-Buchse der Mango statt des orangen Kabels. Das lokale Hochladen der GL-Web-Schnittstelle nutzt der Dienst nicht: Es braucht eine Anmeldung und prüft die GL-Signatur (`upgrade.so`: `usign -V -p /etc/key-build.pub`), die ein OpenWrt-Abbild nicht trägt |
 | PS-8 | Gehäuse-Bau im Cluster: Laufzeit und Speicher | Vorgemessen mit `test/gehaeuse-bild-probe.sh` (amd64 emuliert auf einem arm64-Mac, 02.11.2026): 60 s je Auftrag, höchstens 853 MiB, Bericht ohne Fehler. Im Cluster: erster Auftrag (oben, Schritt 4): Dauer in der Anzeige (bestellt bis Ende), Speicher mit `kubectl top pod -l app.kubernetes.io/name=werkstatt-gehaeuse`; `VP_GEHAEUSE_FRIST` und `VP_GEHAEUSE_SPEICHER` danach stellen |
 | PS-9 | Liest ein Telefon den gedruckten QR-Code? | Probedruck der Datei aus dem ersten Auftrag; [Kennung, Was nur ein Druck zeigt](../../../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md#was-nur-ein-druck-zeigt) |
+| PS-15 | Fernlauf an der Labor-Mango `edge-5t2dcy6` (Box ohne Kundenkonto, Werkstatt-Fassung 2026.11.5, im Tunnel) | `test/box-probe.sh` mit `VP_PROBE_FERNLAUF=1` belegt den Ablauf an echtem OpenWrt (x86-64) mit echtem Wartungsserver, auch die Rücknahme. An der echten Mango nach dem Ausrollen einmal: Knopf in der Akte; im Protokoll `fernlaeufe/*.jsonl` (1) Schritt `aufspielen` Beleg `sitzung`: „Sitzung im Tunnel blieb über install.sh hinweg stehen“ (sonst „neu angemeldet“) - das Neuladen der Firewall in `install.sh` während der Tunnel-Sitzung; (2) die Dauer je Schritt (`dauer_s`) und gesamt (Schätzung im Konzept: rund 5 min); (3) `neustart` update-bereit mit dem neuen Stand; (4) `meldet_sich` binnen 3 min; (5) `tunnel` ohne neue Lücke; (6) danach `uci -q get wireless.radio0.country` = `DE`, `relayd` da, `/etc/vp-edge-light/identity` unverändert (sha256 vorher/nachher), Tunnel steht. Danach `VorgabeZeiten` im Paket `fernlauf` nachstellen |
 | PS-14 | Schritt `einrichtung_wlan`: `wireless.radio0.country=DE` am echten Funkmodul (mt7603) | `test/box-probe.sh` hat keine echte Mango und damit kein Funkmodul; der Schritt überspringt dort nur das Land (Beleg `land=kein_funkmodul`), relayd bringt er trotzdem mit. An der echten Mango: `uci -q get wireless.radio0.country` nach dem Lauf nennt `DE` |

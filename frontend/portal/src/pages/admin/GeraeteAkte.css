@@ -113,3 +113,111 @@
   35% { transform: scale(1.7); opacity: 0.55; }
   100% { transform: scale(1); opacity: 1; }
 }
+
+/* Fernlauf durch den Wartungstunnel (vp-update-vor-zuordnung S1, §4.5): Haken,
+   Schrittleiste und Belege der Karte „Durch den Tunnel aufspielen". Am Rechner
+   steht die Leiste als fünf Punkte mit Wort nebeneinander; am Telefon bleiben
+   nur die Punkte in einer Reihe, den laufenden Schritt nennt der Satz darüber. */
+.vp-fl-haken {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+  list-style: none;
+  margin: 0 0 var(--vp-space-3);
+  padding: 0;
+}
+.vp-fl-knoepfe {
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-space-2);
+}
+.vp-fl-satz {
+  margin-top: 0;
+}
+.vp-fl-ergebnis {
+  margin-bottom: var(--vp-space-3);
+}
+.vp-fl-ergebnis p {
+  margin: var(--vp-space-2) 0 0;
+  overflow-wrap: anywhere;
+}
+.vp-fl-leiste {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--vp-space-2);
+  list-style: none;
+  margin: var(--vp-space-3) 0;
+  padding: 0;
+}
+.vp-fl-punkt {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+  text-align: center;
+  min-width: 0;
+}
+.vp-fl-punkt i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--vp-surface, #fff);
+  box-shadow: inset 0 0 0 2px var(--vp-border);
+}
+.vp-fl-punkt.vp-fl-erledigt i {
+  background: var(--vp-green);
+  box-shadow: none;
+}
+.vp-fl-punkt.vp-fl-laeuft {
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-weight-bold);
+}
+.vp-fl-punkt.vp-fl-laeuft i {
+  background: var(--vp-primary);
+  box-shadow: 0 0 0 4px var(--vp-tint);
+}
+.vp-fl-punkt.vp-fl-gescheitert i {
+  background: var(--vp-warn-ink);
+  box-shadow: none;
+}
+.vp-fl-belege {
+  margin: var(--vp-space-2) 0 0;
+  padding-left: 1.2rem;
+  font-size: var(--vp-text-sm);
+}
+.vp-fl-belege li {
+  margin-bottom: var(--vp-space-2);
+  overflow-wrap: anywhere;
+}
+.vp-fl-belege li b {
+  display: block;
+}
+.vp-fl-belege li.vp-fl-gescheitert b {
+  color: var(--vp-warn-ink);
+}
+.vp-fl-verlauf {
+  display: grid;
+  gap: var(--vp-space-2);
+  list-style: none;
+  margin: 0 0 var(--vp-space-3);
+  padding: 0;
+}
+.vp-fl-verlauf li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .vp-fl-punkt span {
+    display: none;
+  }
+  /* Knopf über die volle Breite (§4.5): der Button setzt width:auto inline,
+     also strecken statt breit setzen. */
+  .vp-fl-karte .vp-fl-knoepfe {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -64,6 +64,17 @@ func (a Abgewiesen) Error() string { return fmt.Sprintf("%s nimmt die Anmeldung 
 
 // Verbinde meldet sich als root an. pw leer: ohne Passwort.
 func Verbinde(ctx context.Context, weg Weg, ziel netip.AddrPort, pw geheim.Geheim, regel HostRegel, zeit time.Duration) (*Verbindung, error) {
+	return VerbindeMit(ctx, weg, ziel, []ssh.AuthMethod{ssh.Password(pw.Offenbaren())}, regel, zeit)
+}
+
+// VerbindeMitSchluessel meldet sich als root mit einem SSH-Schlüssel an (der
+// Techniker-Zugang des Dienstes im Wartungstunnel, Fernlauf).
+func VerbindeMitSchluessel(ctx context.Context, weg Weg, ziel netip.AddrPort, schluessel ssh.Signer, regel HostRegel, zeit time.Duration) (*Verbindung, error) {
+	return VerbindeMit(ctx, weg, ziel, []ssh.AuthMethod{ssh.PublicKeys(schluessel)}, regel, zeit)
+}
+
+// VerbindeMit meldet sich als root mit den angegebenen Verfahren an.
+func VerbindeMit(ctx context.Context, weg Weg, ziel netip.AddrPort, auth []ssh.AuthMethod, regel HostRegel, zeit time.Duration) (*Verbindung, error) {
 	if zeit <= 0 {
 		zeit = 20 * time.Second
 	}
@@ -76,7 +87,7 @@ func Verbinde(ctx context.Context, weg Weg, ziel netip.AddrPort, pw geheim.Gehei
 	var host ssh.PublicKey
 	cfg := &ssh.ClientConfig{
 		User: "root",
-		Auth: []ssh.AuthMethod{ssh.Password(pw.Offenbaren())},
+		Auth: auth,
 		HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
 			host = k
 			if regel != nil {

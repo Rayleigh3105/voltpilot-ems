@@ -8693,6 +8693,152 @@ paths:
                   edgeRefs: { type: array, items: { type: string } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/geraete/{ref}/fernlauf:
+    parameters:
+      - { name: ref, in: path, required: true, schema: { type: string }, description: "Kennung der Box (edge-…, mit Prüfzeichen)." }
+    get:
+      tags: [werkstatt]
+      summary: Fernlauf durch den Wartungstunnel - Stand, Vorprüfung und letzte Aufträge einer Box ohne Kundenkonto.
+      description: >
+        Konzept vp-update-vor-zuordnung S1, Vertrag docs/contracts/werkstatt-fernlauf-v1.md. Nur platform-admin.
+        Die laufende Fassung kommt aus der letzten Zertifikatsanfrage (deviceInfo), fragtZuletztAm ist die letzte
+        Zertifikats-Abfrage. moeglich nur ohne einen Grund; jeder Grund hat einen festen code und einen Satz.
+      responses:
+        "200":
+          description: Der Stand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernlaufStand" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: Keine Kennung mit gültigem Prüfzeichen. }
+    post:
+      tags: [werkstatt]
+      summary: „Auf … bringen" - Auftrag aufspielen mit Fenster für den Techniker-Zugang des Werkstatt-Dienstes.
+      description: >
+        Prüft vor (wie GET), öffnet ein Fenster von 30 Minuten für den Zugang „Werkstatt-Dienst“ (Grund
+        „Software aufspielen <fassung> (Auftrag <id>)“, Akteur der Admin) und legt den Auftrag an. fassung ist die
+        Fassung, die der Admin bestätigt hat; ist inzwischen eine andere die neueste, 409.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fassung: { type: string, example: edge-light-2026.11.15 }
+      responses:
+        "201":
+          description: Der Auftrag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Fernlauf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: "Der erste Grund der Vorprüfung, oder die bestätigte Fassung ist nicht mehr die neueste." }
+        "422": { description: Keine Kennung mit gültigem Prüfzeichen. }
+  /api/v1/werkstatt-dienst/fernlaeufe/{id}/beginnen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [werkstatt-dienst]
+      summary: Einen Auftrag „aufspielen“ annehmen (Werkstatt-Dienst).
+      description: >
+        Der Dienst sieht abholbare Aufträge in der Antwort auf seine Ansicht (Art aufspielen, lauf = Referenz) und
+        nimmt einen an. Hat die Box inzwischen ein Kundenkonto oder ein Zertifikat, oder ist das Fenster zu, endet
+        der Auftrag hier ohne Änderung (409, Ergebnis unveraendert mit Quelle portal).
+      responses:
+        "200":
+          description: Alles für den Lauf, nichts Geheimes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernlaufAuftrag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Diesen Auftrag gibt es nicht. }
+        "409": { description: Nicht mehr abholbar (schon angenommen, Abholfrist vorbei, inzwischen verbunden, Fenster zu). }
+  /api/v1/werkstatt-dienst/fernlaeufe/{id}/schritt:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [werkstatt-dienst]
+      summary: Einen Schritt melden (laeuft, belegt, gescheitert) mit einer Zeile Beleg.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [schritt, zustand]
+              properties:
+                schritt: { type: string, enum: [anmelden, bestand, fassungen, sichern, aufspielen, neustart, meldet_sich, tunnel, zurueck, fenster_zu] }
+                zustand: { type: string, enum: [laeuft, belegt, gescheitert] }
+                zeile: { type: string, maxLength: 1000, description: "Kein Schlüsselmaterial (422)." }
+      responses:
+        "204": { description: Gemeldet. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Nicht angenommen oder schon beendet. }
+        "422": { description: Form oder Schlüsselmaterial. }
+  /api/v1/werkstatt-dienst/fernlaeufe/{id}/meldung:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [werkstatt-dienst]
+      summary: Was die Plattform gerade von der Box des laufenden Auftrags hört (Schritt meldet_sich).
+      responses:
+        "200":
+          description: Die letzte Zertifikatsanfrage und Abfrage.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deviceInfo: { type: string, nullable: true, example: "vp-edge-core edge-light-2026.11.15" }
+                  csrUpdatedAt: { type: string, format: date-time, nullable: true }
+                  zuletztAbgefragtAm: { type: string, format: date-time, nullable: true }
+                  zertifikat: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Der Auftrag läuft nicht. }
+  /api/v1/werkstatt-dienst/fernlaeufe/{id}/ergebnis:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [werkstatt-dienst]
+      summary: Das Ergebnis des Fernlaufs (genau eins je Auftrag, nur angehängt).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ergebnis]
+              properties:
+                ergebnis: { type: string, enum: [fertig, zurueck, unveraendert, offen] }
+                grund: { type: string, maxLength: 2000 }
+                schritt: { type: string }
+                fassungVorher: { type: string }
+                fassungNachher: { type: string }
+                belege: { type: object, additionalProperties: { type: string, maxLength: 4096 }, maxProperties: 40 }
+      responses:
+        "201": { description: Geschrieben. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Nicht angenommen oder schon ein Ergebnis. }
+        "422": { description: Form oder Schlüsselmaterial. }
+  /api/v1/werkstatt-dienst/fernlaeufe/{id}/fenster/schliessen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [werkstatt-dienst]
+      summary: Das Fenster DIESES Auftrags schließen (kein anderes).
+      responses:
+        "200": { description: Das geschlossene Fenster. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Diesen Auftrag gibt es nicht. }
+        "409": { description: Das Fenster ist nicht mehr offen. }
   /api/v1/werkstatt-dienst/ansicht:
     put:
       tags: [werkstatt-dienst]
@@ -40270,3 +40416,97 @@ components:
         suchId: { type: string, format: uuid, nullable: true, description: "Bei laeuft_schon die laufende Suche." }
         zuletztGesehen: { type: string, format: date-time, nullable: true, description: "Bei box_offline der letzte Herzschlag." }
         wiederAb: { type: string, format: date-time, nullable: true, description: "Bei zu_oft, ab wann die nächste Suche geht." }
+    FernlaufAuftrag:
+      type: object
+      description: >
+        Ein angenommener Fernlauf (vp-update-vor-zuordnung S1). Zwillinge: WerkstattDienstController.FernlaufAuftragDto
+        (Java) und portal.FernlaufAuftrag (Werkstatt-Dienst, Go); WerkstattDienstVertragTest hält die drei gleich.
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [aufspielen] }
+        edgeRef: { type: string }
+        fassungVorher: { type: string, nullable: true }
+        ziel:
+          type: object
+          properties:
+            fassung: { type: string }
+            quelle: { type: string }
+            programm_sha256: { type: string }
+            skripte_sha256: { type: string }
+            release_seq: { type: integer, format: int64 }
+        tunnelAdresse: { type: string }
+        hostSchluessel: { type: string, nullable: true, description: "SHA256:… aus Abnahme oder Einlösung." }
+        fensterId: { type: string, format: uuid }
+        fensterEnde: { type: string, format: date-time }
+        server:
+          type: object
+          properties:
+            publicKey: { type: string }
+            endpunkt: { type: string, example: "wartung.voltpilot.de:51820" }
+            boxNetz: { type: string }
+        akteurName: { type: string, nullable: true }
+    Fernlauf:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [aufspielen] }
+        zustand: { type: string, enum: [erteilt, laeuft, fertig, zurueck, unveraendert, offen, nicht_abgeholt] }
+        fassungVorher: { type: string, nullable: true }
+        fassungZiel: { type: string }
+        akteurName: { type: string, nullable: true }
+        erteiltAm: { type: string, format: date-time }
+        begonnenAm: { type: string, format: date-time, nullable: true }
+        schritt: { type: string, nullable: true }
+        schrittSeit: { type: string, format: date-time, nullable: true }
+        schritte:
+          type: array
+          items:
+            type: object
+            properties:
+              schritt: { type: string }
+              zustand: { type: string, enum: [laeuft, belegt, gescheitert] }
+              zeit: { type: string, format: date-time }
+              zeile: { type: string, nullable: true }
+        fensterEnde: { type: string, format: date-time, nullable: true }
+        ergebnis:
+          type: object
+          nullable: true
+          properties:
+            ergebnis: { type: string, enum: [fertig, zurueck, unveraendert, offen] }
+            grund: { type: string, nullable: true }
+            schritt: { type: string, nullable: true }
+            fassungNachher: { type: string, nullable: true }
+            belege: { type: object, additionalProperties: { type: string } }
+            quelle: { type: string, enum: [dienst, portal] }
+            erfasstAm: { type: string, format: date-time }
+    FernlaufStand:
+      type: object
+      properties:
+        edgeRef: { type: string }
+        laeuft: { type: string, nullable: true, description: "Aus deviceInfo der letzten Zertifikatsanfrage." }
+        laeuftGemeldetAm: { type: string, format: date-time, nullable: true }
+        fragtZuletztAm: { type: string, format: date-time, nullable: true }
+        neueste: { type: string, nullable: true }
+        werkstattFassung: { type: string, nullable: true }
+        werkstattAm: { type: string, format: date-time, nullable: true }
+        moeglich: { type: boolean }
+        gruende:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                enum: [kundenkonto, zertifikat, keine_edge_light, fassung_unbekannt, fassung_fremd, keine_neueste,
+                  schon_neueste, kein_tunnel, tunnel_gesperrt, keine_rueckmeldung, nicht_verbunden, fragt_nicht,
+                  kein_techniker_zugang, dienst_stumm, dienst_alt, dienst_nicht_bereit, kein_host_schluessel,
+                  laeuft_schon]
+              text: { type: string }
+        haken:
+          type: object
+          properties:
+            tunnelVerbunden: { type: boolean }
+            fragtNachSchluesseln: { type: boolean }
+            keinKundenkonto: { type: boolean }
+        verlauf: { type: array, items: { $ref: "#/components/schemas/Fernlauf" } }
+        stand: { type: string, format: date-time }

@@ -3,8 +3,12 @@
 // Signatur nach docs/contracts/werkstatt-einloesen-v1.md), Probe-Fenster und
 // Abnahme. Sie schreibt den Soll-Stand, den der echte Tunnel-Dienst der Probe
 // abholt: Box-Peer nach der Einlösung, den Techniker-Zugang des Dienstes und
-// das Probe-Fenster, bis der Dienst es schließt. Nur für die Probe: keine
-// Rechte, keine Mandanten, ein Lauf zur Zeit.
+// das Probe-Fenster, bis der Dienst es schließt. Dazu der Fernlauf
+// (vp-update-vor-zuordnung S1): POST /probe/fernlauf legt einen Auftrag mit
+// Fenster an (wie der Knopf in der Akte), die Antwort auf die Ansicht nennt
+// ihn, bis der Dienst ihn annimmt; Schritte, Ergebnis und das, was die
+// Plattform von der Box hört (Zertifikatsanfrage, Abfragen), stehen unter
+// /srv. Nur für die Probe: keine Rechte, keine Mandanten, ein Lauf zur Zeit.
 package main
 
 import (
@@ -26,6 +30,17 @@ import (
 	"sync"
 	"time"
 )
+
+// fernlauf ist ein Auftrag „aufspielen“ der Probe.
+type fernlauf struct {
+	ID       string          `json:"id"`
+	Auftrag  json.RawMessage `json:"-"`
+	Begonnen bool            `json:"begonnen"`
+	Fenster  string          `json:"fenster"`
+	Offen    bool            `json:"offen"`
+	Ende     time.Time       `json:"ende"`
+	Ergebnis json.RawMessage `json:"ergebnis,omitempty"`
+}
 
 const (
 	boxID       = "6f1d1c52-3c1a-4b8e-9a43-0c4f8a7c2d11"
@@ -61,6 +76,9 @@ type attrappe struct {
 	boxPub                              string
 	fensterOffen                        bool
 	eingeloest                          bool
+	fernlaeufe                          map[string]*fernlauf
+	deviceInfo                          string
+	csrAm, abgefragtAm                  time.Time
 }
 
 func (a *attrappe) ereignis(f string, v ...any) {
@@ -85,6 +103,12 @@ func (a *attrappe) schreibeSoll() {
 		jetzt := time.Now().UTC()
 		fenster = append(fenster, map[string]string{"id": fensterID, "boxId": boxID, "technikerId": technikerID,
 			"beginn": jetzt.Add(-time.Minute).Format(time.RFC3339), "ende": jetzt.Add(30 * time.Minute).Format(time.RFC3339)})
+	}
+	for _, f := range a.fernlaeufe {
+		if f.Offen && a.boxPub != "" {
+			fenster = append(fenster, map[string]string{"id": f.Fenster, "boxId": boxID, "technikerId": technikerID,
+				"beginn": f.Ende.Add(-31 * time.Minute).Format(time.RFC3339), "ende": f.Ende.Format(time.RFC3339)})
+		}
 	}
 	b, _ := json.Marshal(map[string]any{"version": 1, "erzeugtAm": time.Now().UTC().Format(time.RFC3339Nano),
 		"boxNetz": "10.10.16.0/20", "technikerNetz": "10.10.32.0/24", "peers": peers, "fenster": fenster})
@@ -154,7 +178,7 @@ func (a *attrappe) einloesen(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	a := &attrappe{}
+	a := &attrappe{fernlaeufe: map[string]*fernlauf{}}
 	adresse := flag.String("adresse", ":8090", "")
 	flag.StringVar(&a.soll, "soll", "/srv/soll.json", "")
 	flag.StringVar(&a.freigabe, "freigabe", "/srv/freigabe.json", "")
@@ -168,7 +192,27 @@ func main() {
 	flag.StringVar(&a.boxAdresse, "box-adresse", "10.10.16.5", "")
 	vertrauen := flag.String("trust-set-dir", "/srv/trust-set", "trust-set.json(.sig) fuer /api/v1/edge/trust-set/")
 	nurVertrauen := flag.Bool("nur-vertrauen", false, "nur das Vertrauens-Set ausliefern (Probe ohne API)")
+	anlegen := flag.String("anlegen", "", "Fernlauf: Auftrag aus dieser Datei bei der laufenden Attrappe anlegen, Kennung ausgeben")
 	flag.Parse()
+	if *anlegen != "" {
+		b, err := os.ReadFile(*anlegen)
+		if err != nil {
+			log.Fatal(err)
+		}
+		resp, err := http.Post("http://127.0.0.1"+*adresse+"/probe/fernlauf", "application/json", strings.NewReader(string(b)))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out struct {
+			ID string `json:"id"`
+		}
+		if resp.StatusCode != 201 || json.NewDecoder(resp.Body).Decode(&out) != nil {
+			log.Fatalf("Fernlauf nicht angelegt: HTTP %d", resp.StatusCode)
+		}
+		fmt.Println(out.ID)
+		return
+	}
 	// Das Vertrauens-Set offen, wie EdgeTrustSetController: die Werkstatt legt
 	// es mit install.sh auf die Box (K5, Update-bereit).
 	for _, name := range []string{"trust-set.json", "trust-set.json.sig"} {
@@ -247,13 +291,27 @@ func main() {
 		antworte(w, 201, map[string]any{"id": "abnahme-1", "edgeRef": r.PathValue("ref"), "freigabeId": "freigabe-1",
 			"einloesungId": "einloesung-1", "lanNetz": body["lanNetz"], "tunnelAdresse": a.boxAdresse, "erfasstAm": time.Now().UTC().Format(time.RFC3339)})
 	})
-	// Der erste Start der Box: Zertifikatsanfrage annehmen, Zertifikat bleibt „pending“.
+	// Jeder Programmstart der Box: Zertifikatsanfrage annehmen (deviceInfo und
+	// Zeit merken, wie device_enrollment), Zertifikat bleibt „pending“; jede
+	// Abfrage danach ist ein Lebenszeichen (zuletzt_abgefragt_am).
 	http.HandleFunc("POST /api/v1/enrollment/{ref}/csr", func(w http.ResponseWriter, r *http.Request) {
+		var q struct {
+			DeviceInfo string `json:"deviceInfo"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&q)
+		a.mu.Lock()
+		a.deviceInfo, a.csrAm = q.DeviceInfo, time.Now().UTC()
+		a.mu.Unlock()
+		a.ereignis("zertifikatsanfrage %s %s", r.PathValue("ref"), q.DeviceInfo)
 		antworte(w, 202, map[string]string{"status": "pending", "ref": r.PathValue("ref")})
 	})
 	http.HandleFunc("GET /api/v1/enrollment/{ref}/certificate", func(w http.ResponseWriter, _ *http.Request) {
+		a.mu.Lock()
+		a.abgefragtAm = time.Now().UTC()
+		a.mu.Unlock()
 		antworte(w, 404, map[string]string{"status": "pending"})
 	})
+	a.fernlaufRouten()
 	log.Fatal(http.ListenAndServe(*adresse, nil))
 }
 
@@ -273,4 +331,146 @@ func base32(b []byte) string {
 		s.WriteByte(abc[(puffer<<(5-bits))&31])
 	}
 	return s.String()
+}
+
+// ---- Fernlauf ------------------------------------------------------------------
+
+func (a *attrappe) fernlaufRouten() {
+	// Wie der Knopf in der Akte: Auftrag mit Fenster für den Zugang des Dienstes.
+	http.HandleFunc("POST /probe/fernlauf", func(w http.ResponseWriter, r *http.Request) {
+		var q map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			antworte(w, 400, map[string]string{"message": "kein JSON"})
+			return
+		}
+		roh := make([]byte, 16)
+		_, _ = rand.Read(roh)
+		h := hex.EncodeToString(roh)
+		id := h[0:8] + "-" + h[8:12] + "-4" + h[13:16] + "-8" + h[17:20] + "-" + h[20:32]
+		_, _ = rand.Read(roh)
+		h = hex.EncodeToString(roh)
+		fenster := h[0:8] + "-" + h[8:12] + "-4" + h[13:16] + "-8" + h[17:20] + "-" + h[20:32]
+		ende := time.Now().UTC().Add(30 * time.Minute)
+		host, port, _ := strings.Cut(a.serverEP, ":")
+		if port == "" {
+			port = "51820"
+		}
+		q["id"], q["art"], q["tunnelAdresse"], q["fensterId"], q["fensterEnde"], q["akteurName"] =
+			id, "aufspielen", a.boxAdresse, fenster, ende.Format(time.RFC3339), "Probe"
+		q["server"] = map[string]string{"publicKey": a.serverPub, "endpunkt": host + ":" + port, "boxNetz": "10.10.16.0/20"}
+		b, _ := json.Marshal(q)
+		a.mu.Lock()
+		a.fernlaeufe[id] = &fernlauf{ID: id, Auftrag: b, Fenster: fenster, Offen: true, Ende: ende}
+		a.schreibeSoll()
+		a.mu.Unlock()
+		a.ereignis("fernlauf erteilt %s fenster %s", id, fenster)
+		antworte(w, 201, map[string]string{"id": id})
+	})
+	http.HandleFunc("PUT /api/v1/werkstatt-dienst/ansicht", func(w http.ResponseWriter, r *http.Request) {
+		var roh json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&roh)
+		_ = os.WriteFile("/srv/ansicht.json", roh, 0o644)
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		liste := []map[string]string{}
+		for _, f := range a.fernlaeufe {
+			if !f.Begonnen && f.Ergebnis == nil {
+				liste = append(liste, map[string]string{"id": f.ID, "art": "aufspielen", "lauf": a.codeRef})
+			}
+		}
+		antworte(w, 200, map[string]any{"auftraege": liste})
+	})
+	mit := func(w http.ResponseWriter, r *http.Request) *fernlauf {
+		f := a.fernlaeufe[r.PathValue("id")]
+		if f == nil {
+			antworte(w, 404, map[string]string{"message": "Diesen Auftrag gibt es nicht."})
+		}
+		return f
+	}
+	http.HandleFunc("POST /api/v1/werkstatt-dienst/fernlaeufe/{id}/beginnen", func(w http.ResponseWriter, r *http.Request) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		f := mit(w, r)
+		if f == nil {
+			return
+		}
+		if f.Begonnen {
+			antworte(w, 409, map[string]string{"message": "Dieser Auftrag ist schon angenommen."})
+			return
+		}
+		f.Begonnen = true
+		a.ereignis("fernlauf angenommen %s", f.ID)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(f.Auftrag)
+	})
+	http.HandleFunc("POST /api/v1/werkstatt-dienst/fernlaeufe/{id}/schritt", func(w http.ResponseWriter, r *http.Request) {
+		var q map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&q)
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		f := mit(w, r)
+		if f == nil {
+			return
+		}
+		if !f.Begonnen || f.Ergebnis != nil {
+			antworte(w, 409, map[string]string{"message": "Dieser Auftrag läuft nicht."})
+			return
+		}
+		b, _ := json.Marshal(q)
+		fh, err := os.OpenFile("/srv/fernlauf-"+f.ID+".schritte", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err == nil {
+			_, _ = fh.Write(append(b, '\n'))
+			_ = fh.Close()
+		}
+		w.WriteHeader(204)
+	})
+	http.HandleFunc("GET /api/v1/werkstatt-dienst/fernlaeufe/{id}/meldung", func(w http.ResponseWriter, r *http.Request) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if mit(w, r) == nil {
+			return
+		}
+		m := map[string]any{"deviceInfo": a.deviceInfo, "zertifikat": false}
+		if !a.csrAm.IsZero() {
+			m["csrUpdatedAt"] = a.csrAm.Format(time.RFC3339Nano)
+		}
+		if !a.abgefragtAm.IsZero() {
+			m["zuletztAbgefragtAm"] = a.abgefragtAm.Format(time.RFC3339Nano)
+		}
+		antworte(w, 200, m)
+	})
+	http.HandleFunc("POST /api/v1/werkstatt-dienst/fernlaeufe/{id}/ergebnis", func(w http.ResponseWriter, r *http.Request) {
+		var roh json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&roh)
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		f := mit(w, r)
+		if f == nil {
+			return
+		}
+		if f.Ergebnis != nil {
+			antworte(w, 409, map[string]string{"message": "Für diesen Auftrag gibt es schon ein Ergebnis."})
+			return
+		}
+		f.Ergebnis = roh
+		_ = os.WriteFile("/srv/fernlauf-"+f.ID+".json", roh, 0o644)
+		a.ereignis("fernlauf ergebnis %s %s", f.ID, string(roh))
+		antworte(w, 201, map[string]string{"id": f.ID})
+	})
+	http.HandleFunc("POST /api/v1/werkstatt-dienst/fernlaeufe/{id}/fenster/schliessen", func(w http.ResponseWriter, r *http.Request) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		f := mit(w, r)
+		if f == nil {
+			return
+		}
+		if !f.Offen {
+			antworte(w, 409, map[string]string{"message": "Das Fenster ist nicht mehr offen."})
+			return
+		}
+		f.Offen = false
+		a.schreibeSoll()
+		a.ereignis("fernlauf fenster geschlossen %s", f.Fenster)
+		antworte(w, 200, map[string]any{"id": f.Fenster, "geschlossenAm": time.Now().UTC().Format(time.RFC3339)})
+	})
 }

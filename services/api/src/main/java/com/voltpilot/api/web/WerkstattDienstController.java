@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.voltpilot.api.fernwartung.Akteur;
 import com.voltpilot.api.werkstatt.DienstAnsichtService;
+import com.voltpilot.api.werkstatt.FernlaufService;
 import com.voltpilot.api.werkstatt.LaufSeiteService;
 import com.voltpilot.api.werkstatt.EinloesungRepository;
 import com.voltpilot.api.werkstatt.EinloesungService;
@@ -54,6 +55,11 @@ import org.springframework.web.server.ResponseStatusException;
  * Box beim Einlösen gemeldet hat; und das Probe-Fenster schließen, das eine
  * Einlösung geöffnet hat - kein anderes. Anhalten, Fenster öffnen, Kunden,
  * Kopplung und Updates erreicht er nicht.
+ *
+ * <p>Fernlauf (Konzept vp-update-vor-zuordnung, S1): Aufträge „aufspielen“
+ * sieht er in der Antwort auf seine Ansicht; er nimmt einen an, meldet Schritte
+ * und Ergebnis, liest, was die Plattform von der Box hört, und schließt das
+ * Fenster SEINES Auftrags. Ein Fenster öffnet die API für den Admin, nie er.
  */
 @RestController
 @RequestMapping("/api/v1/werkstatt-dienst")
@@ -147,16 +153,18 @@ public class WerkstattDienstController {
     private final DienstAnsichtService ansichten;
     private final LaufSeiteService laufSeite;
     private final WerkstattGehaeuseRepository gehaeuseDateien;
+    private final FernlaufService fernlauf;
 
     public WerkstattDienstController(WerkstattRegel regel, EinloesungService einloesung,
             WerkstattService werkstatt, DienstAnsichtService ansichten, LaufSeiteService laufSeite,
-            WerkstattGehaeuseRepository gehaeuseDateien) {
+            WerkstattGehaeuseRepository gehaeuseDateien, FernlaufService fernlauf) {
         this.regel = regel;
         this.einloesung = einloesung;
         this.werkstatt = werkstatt;
         this.ansichten = ansichten;
         this.laufSeite = laufSeite;
         this.gehaeuseDateien = gehaeuseDateien;
+        this.fernlauf = fernlauf;
     }
 
     /** Ein Auftrag des Portals, wie der Dienst ihn abholt. */
@@ -172,6 +180,9 @@ public class WerkstattDienstController {
      * Mit {@code ?auftraege=1} (ein Dienst, der Aufträge kennt): 200 mit den offenen
      * Aufträgen des Portals, jeder genau einmal ({@link LaufSeiteService#abholen}).
      * Ohne den Parameter bleibt es 204, wie ein älterer Dienst es erwartet.
+     * Dazu die abholbaren Fernläufe (Art {@code aufspielen}, {@code lauf} = die
+     * Referenz der Box): sie bleiben in jeder Antwort, bis der Dienst einen
+     * annimmt ({@code POST /fernlaeufe/{id}/beginnen}) oder die Abholfrist endet.
      */
     @PutMapping(value = "/ansicht", consumes = "application/json")
     public ResponseEntity<AuftraegeDto> ansicht(@RequestBody String roh,
@@ -180,8 +191,99 @@ public class WerkstattDienstController {
         if (!"1".equals(auftraege)) {
             return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new AuftraegeDto(laufSeite.abholen().stream()
-                .map(a -> new AuftragDto(a.id(), a.art(), a.lauf())).toList()));
+        List<AuftragDto> liste = new java.util.ArrayList<>(laufSeite.abholen().stream()
+                .map(a -> new AuftragDto(a.id(), a.art(), a.lauf())).toList());
+        fernlauf.abholbar().forEach(f -> liste.add(new AuftragDto(f.id(), f.art(), f.edgeRef())));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new AuftraegeDto(liste));
+    }
+
+    // ── Fernlauf (vp-update-vor-zuordnung, S1) ─────────────────────────────
+
+    /** Die Ziel-Fassung, Feld für Feld wie {@code edge_light} der Freigabe, dazu ihr Stand. */
+    public record FernlaufZielDto(String fassung, String quelle,
+            @JsonProperty("programm_sha256") String programmSha256,
+            @JsonProperty("skripte_sha256") String skripteSha256,
+            @JsonProperty("release_seq") long releaseSeq) {
+    }
+
+    /** Der Wartungsserver, wie die Box ihn aus der Einlösung kennt. */
+    public record FernlaufServerDto(String publicKey, String endpunkt, String boxNetz) {
+    }
+
+    /**
+     * Ein angenommener Auftrag: Box (Referenz, Tunnel-Adresse, Host-Schlüssel aus der Werkstatt), Ziel, Fenster und
+     * Wartungsserver. Nichts davon ist geheim.
+     */
+    public record FernlaufAuftragDto(UUID id, String art, String edgeRef, String fassungVorher, FernlaufZielDto ziel,
+            String tunnelAdresse, String hostSchluessel, UUID fensterId, Instant fensterEnde, FernlaufServerDto server,
+            String akteurName) {
+    }
+
+    public record FernlaufSchrittRequest(String schritt, String zustand, String zeile) {
+    }
+
+    public record FernlaufMeldungDto(String deviceInfo, Instant csrUpdatedAt, Instant zuletztAbgefragtAm,
+            boolean zertifikat) {
+    }
+
+    public record FernlaufErgebnisRequest(String ergebnis, String grund, String schritt, String fassungVorher,
+            String fassungNachher, Map<String, String> belege) {
+    }
+
+    public record FernlaufErgebnisDto(UUID id, String ergebnis, Instant erfasstAm) {
+    }
+
+    /** Einen Auftrag annehmen: 200 mit allem für den Lauf; 404 unbekannt; 409 nicht mehr abholbar. */
+    @PostMapping("/fernlaeufe/{id}/beginnen")
+    public ResponseEntity<FernlaufAuftragDto> fernlaufBeginnen(@PathVariable UUID id,
+            @AuthenticationPrincipal Jwt caller) {
+        FernlaufService.Auftrag a = fernlauf.beginnen(id, Akteur.aus(caller));
+        var f = a.fernlauf();
+        var p = a.server();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new FernlaufAuftragDto(f.id(), f.art(),
+                f.edgeRef(), f.fassungVorher(), new FernlaufZielDto(f.fassungZiel(), f.quelle(), f.programmSha256(),
+                        f.skripteSha256(), f.releaseSeq()),
+                a.tunnelAdresse(), a.hostSchluessel(), f.fensterId(), a.fensterEnde(),
+                new FernlaufServerDto(p.serverPublicKey(), p.serverEndpunkt() + ":" + p.serverPort(), p.boxNetz()),
+                f.akteurName()));
+    }
+
+    /** Einen Schritt melden: 204; 409 nicht angenommen oder beendet; 422 Form oder Schlüsselmaterial. */
+    @PostMapping("/fernlaeufe/{id}/schritt")
+    public ResponseEntity<Void> fernlaufSchritt(@PathVariable UUID id, @RequestBody FernlaufSchrittRequest req) {
+        if (req == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Kein Inhalt.");
+        }
+        fernlauf.schritt(id, req.schritt(), req.zustand(), req.zeile());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Was die Plattform gerade von der Box des laufenden Auftrags hört; 409 läuft nicht. */
+    @GetMapping("/fernlaeufe/{id}/meldung")
+    public ResponseEntity<FernlaufMeldungDto> fernlaufMeldung(@PathVariable UUID id) {
+        var m = fernlauf.meldung(id);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new FernlaufMeldungDto(m.deviceInfo(),
+                m.csrUpdatedAt(), m.zuletztAbgefragtAm(), m.zertifikat()));
+    }
+
+    /** Das Ergebnis: 201; 409 nicht angenommen oder schon eins; 422 Form oder Schlüsselmaterial. */
+    @PostMapping("/fernlaeufe/{id}/ergebnis")
+    public ResponseEntity<FernlaufErgebnisDto> fernlaufErgebnis(@PathVariable UUID id,
+            @RequestBody FernlaufErgebnisRequest req) {
+        if (req == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Kein Inhalt.");
+        }
+        var f = fernlauf.ergebnis(id, new FernlaufService.ErgebnisMeldung(req.ergebnis(), req.grund(), req.schritt(),
+                req.fassungVorher(), req.fassungNachher(), req.belege()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(new FernlaufErgebnisDto(f.id(), f.ergebnis().ergebnis(),
+                f.ergebnis().erfasstAm()));
+    }
+
+    /** Das Fenster dieses Auftrags schließen (kein anderes): 200; 404 unbekannt; 409 schon zu. */
+    @PostMapping("/fernlaeufe/{id}/fenster/schliessen")
+    public FensterDto fernlaufFensterSchliessen(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
+        var f = fernlauf.fensterSchliessen(id, Akteur.aus(caller));
+        return new FensterDto(f.id(), f.edgeRef(), f.technikerId(), f.beginn(), f.ende(), f.geschlossenAm());
     }
 
     /**

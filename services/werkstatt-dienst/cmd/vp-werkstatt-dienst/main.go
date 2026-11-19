@@ -36,6 +36,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/dienst"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fernlauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/gehaeuse"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/konfig"
@@ -274,6 +275,22 @@ func dienstLaufen(log *slog.Logger) error {
 	if gh != nil {
 		mk.Gehaeuse = gh
 	}
+	var fl *fernlauf.Dienst
+	if c, ok := ptl.(portal.Client); ok {
+		fa, err := protokoll.NeueAblage(k.Daten + "/fernlaeufe")
+		if err != nil {
+			return err
+		}
+		fk := fernlauf.Konfig{Fassungen: mk.Fassungen, PortalURL: k.PortalURL, Bauart: k.Bauart, Arbeit: k.Arbeit,
+			Portal: c, Ablage: fa, Log: log.With("logger", "fernlauf")}
+		if k.TechnikerSSH != nil {
+			fk.Zugang, fk.SSH = wartung.Zugang{Privat: k.TechnikerWG, Adresse: k.TechnikerAdresse}, k.TechnikerSSH
+		}
+		fl = fernlauf.Neu(fk)
+		if a := fl.Ansicht(); !a.Bereit {
+			log.Info("Fernlauf durch den Tunnel nicht bereit", "grund", a.Grund)
+		}
+	}
 	d := dienst.Neu(&dienst.Dienst{
 		Log:       log.With("logger", "dienst"),
 		Werkbank:  wb,
@@ -284,11 +301,15 @@ func dienstLaufen(log *slog.Logger) error {
 		Laeufer:   lauf.NeuerLaeufer(ablage, log.With("logger", "lauf"), reg),
 		Takt:      k.Takt,
 		Mango:     mk,
+		Fernlauf:  fl,
 	}, reg)
 	d.SchliesseOffene()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if fl != nil {
+		go fl.SchliesseOffene(ctx)
+	}
 
 	betrieb := &http.Server{Addr: k.HTTP, Handler: anzeige.Betrieb(d, reg), ReadHeaderTimeout: 5 * time.Second}
 	werkstatt := &http.Server{Addr: k.Anzeige, Handler: anzeige.Werkstatt(d, ablage, gh, log.With("logger", "anzeige")), ReadHeaderTimeout: 5 * time.Second}

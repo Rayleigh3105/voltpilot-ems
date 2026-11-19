@@ -271,3 +271,107 @@ func (c Client) rufeMit(ctx context.Context, methode, pfad string, rein any, rau
 	}
 	return resp.StatusCode, nil
 }
+
+// ---- Fernlauf (Konzept vp-update-vor-zuordnung, S1) --------------------------
+
+// FernlaufArt ist die Art eines Auftrags „aufspielen“ in der Antwort auf die
+// Ansicht; Auftrag.ID ist dann die Kennung des Fernlaufs, Auftrag.Lauf die
+// Referenz der Box.
+const FernlaufArt = "aufspielen"
+
+// FernlaufZiel ist die Fassung, Feld für Feld wie edge_light der Freigabe.
+type FernlaufZiel struct {
+	Fassung        string `json:"fassung"`
+	Quelle         string `json:"quelle"`
+	ProgrammSha256 string `json:"programm_sha256"`
+	SkripteSha256  string `json:"skripte_sha256"`
+	ReleaseSeq     int64  `json:"release_seq"`
+}
+
+// FernlaufServer ist der Wartungsserver.
+type FernlaufServer struct {
+	PublicKey string `json:"publicKey"`
+	Endpunkt  string `json:"endpunkt"`
+	BoxNetz   string `json:"boxNetz"`
+}
+
+// FernlaufAuftrag ist ein angenommener Auftrag (POST …/fernlaeufe/{id}/beginnen).
+type FernlaufAuftrag struct {
+	ID             string         `json:"id"`
+	Art            string         `json:"art"`
+	EdgeRef        string         `json:"edgeRef"`
+	FassungVorher  string         `json:"fassungVorher"`
+	Ziel           FernlaufZiel   `json:"ziel"`
+	TunnelAdresse  string         `json:"tunnelAdresse"`
+	HostSchluessel string         `json:"hostSchluessel"`
+	FensterID      string         `json:"fensterId"`
+	FensterEnde    time.Time      `json:"fensterEnde"`
+	Server         FernlaufServer `json:"server"`
+	AkteurName     string         `json:"akteurName"`
+}
+
+// FernlaufMeldung ist, was die Plattform gerade von der Box hört.
+type FernlaufMeldung struct {
+	DeviceInfo         string    `json:"deviceInfo"`
+	CsrUpdatedAt       time.Time `json:"csrUpdatedAt"`
+	ZuletztAbgefragtAm time.Time `json:"zuletztAbgefragtAm"`
+	Zertifikat         bool      `json:"zertifikat"`
+}
+
+// FernlaufErgebnis ist das Ergebnis eines Fernlaufs.
+type FernlaufErgebnis struct {
+	Ergebnis       string            `json:"ergebnis"`
+	Grund          string            `json:"grund,omitempty"`
+	Schritt        string            `json:"schritt,omitempty"`
+	FassungVorher  string            `json:"fassungVorher,omitempty"`
+	FassungNachher string            `json:"fassungNachher,omitempty"`
+	Belege         map[string]string `json:"belege"`
+}
+
+func fernlauf(id, rest string) string { return "/fernlaeufe/" + url.PathEscape(id) + rest }
+
+// FernlaufBeginnen nimmt einen Auftrag an.
+func (c Client) FernlaufBeginnen(ctx context.Context, id string) (FernlaufAuftrag, error) {
+	var out FernlaufAuftrag
+	if err := c.rufe(ctx, http.MethodPost, fernlauf(id, "/beginnen"), nil, http.StatusOK, &out); err != nil {
+		return FernlaufAuftrag{}, err
+	}
+	if out.ID != id {
+		return FernlaufAuftrag{}, errors.New("Portal: die Antwort nennt einen anderen Auftrag")
+	}
+	return out, nil
+}
+
+// FernlaufSchritt meldet einen Schritt (zustand laeuft, belegt, gescheitert).
+func (c Client) FernlaufSchritt(ctx context.Context, id, schritt, zustand, zeile string) error {
+	return c.rufe(ctx, http.MethodPost, fernlauf(id, "/schritt"),
+		map[string]string{"schritt": schritt, "zustand": zustand, "zeile": geheim.Schwaerze(zeile)}, http.StatusNoContent, nil)
+}
+
+// FernlaufMeldungLesen liest, was die Plattform von der Box des Auftrags hört.
+func (c Client) FernlaufMeldungLesen(ctx context.Context, id string) (FernlaufMeldung, error) {
+	var out FernlaufMeldung
+	err := c.rufe(ctx, http.MethodGet, fernlauf(id, "/meldung"), nil, http.StatusOK, &out)
+	return out, err
+}
+
+// FernlaufErgebnisMelden schreibt das Ergebnis. Ein schon geschriebenes (409)
+// ist ein Fehler: Dann hat die Plattform den Auftrag beendet.
+func (c Client) FernlaufErgebnisMelden(ctx context.Context, id string, e FernlaufErgebnis) error {
+	e.Grund = geheim.Schwaerze(e.Grund)
+	for k, v := range e.Belege {
+		e.Belege[k] = geheim.Schwaerze(v)
+	}
+	return c.rufe(ctx, http.MethodPost, fernlauf(id, "/ergebnis"), e, http.StatusCreated, nil)
+}
+
+// FernlaufFensterSchliessen schließt das Fenster des Auftrags; ein schon
+// geschlossenes (409) ist kein Fehler.
+func (c Client) FernlaufFensterSchliessen(ctx context.Context, id string) (schonZu bool, err error) {
+	err = c.rufe(ctx, http.MethodPost, fernlauf(id, "/fenster/schliessen"), nil, http.StatusOK, nil)
+	var ab Abgelehnt
+	if errors.As(err, &ab) && ab.Status == http.StatusConflict {
+		return true, nil
+	}
+	return false, err
+}
