@@ -15,6 +15,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacoserial"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/layer1"
@@ -338,5 +339,57 @@ func TestEdgeLightReadsTheCustomerPlantHuaweiAndPowador(t *testing.T) {
 	})
 	if !k.OK || k.Reading == nil || k.Reading.PvKw == nil || *k.Reading.PvKw != 1.216 {
 		t.Fatalf("Verbindungstest Powador ueber den Kern: %+v", k)
+	}
+}
+
+// TestEdgeLightFeedsTheMirrorAndWritesTheInstallerRegister: the poll's raw
+// blocks reach the UNCHANGED core's data mirror - and with them the Deye's own
+// feed-in limit (0x00E7, read once a day) - and the :8484 installer write runs
+// through the core's policy onto the logger the poll uses, read back after the
+// write.
+func TestEdgeLightFeedsTheMirrorAndWritesTheInstallerRegister(t *testing.T) {
+	sim, err := v5sim.Start("127.0.0.1:0", 2985159064)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sim.Close()
+	sim.Set(map[uint16]uint16{
+		0x0000: 0x0005,
+		0x024b: 5230, 0x024c: 57, 0x024e: 0xfa24,
+		0x026b: 0xf704, 0x02c4: 0xffff,
+		0x00e7: 3300,
+	})
+	_, simPortStr, _ := net.SplitHostPort(sim.Addr())
+	simPort, _ := strconv.Atoi(simPortStr)
+
+	a := startLightBox(t, layer1.Options{FirstPoll: 50 * time.Millisecond, Poll: 200 * time.Millisecond,
+		WriteSettle: 50 * time.Millisecond})
+	if _, err := a.SetInverter(inverter.SelectionRequest{
+		Brand: "deye", Model: "sun-12k-sg04lp3",
+		Connection: inverter.Connection{IP: "127.0.0.1", Port: simPort, Serial: "2985159064"},
+	}); err != nil {
+		t.Fatalf("Auswahl abgelehnt: %v", err)
+	}
+	waitFor(t, 10*time.Second, "Exportgrenze des Geraets im Kern", func() bool {
+		l := a.State.Get().DeviceExportLimit
+		return l != nil && l.LimitKw == 33
+	})
+
+	out, err := a.InstallerWrite(installerwrite.Request{Mode: installerwrite.ModeApply, Value: 5000,
+		Confirm: installerwrite.ConfirmToken(0x00e7, 5000)}, "test")
+	if err != nil {
+		t.Fatalf("Schreibauftrag abgelehnt: %v", err)
+	}
+	if !out.Accepted || out.Before == nil || *out.Before != 3300 || out.After == nil || *out.After != 5000 {
+		t.Fatalf("Installateur-Schreibpfad: %+v", out)
+	}
+	if w := sim.Writes(); len(w) != 1 || w[0].Fn != 0x10 || w[0].Start != 0x00e7 {
+		t.Fatalf("genau ein FC16-Rahmen auf 0x00e7: %+v", w)
+	}
+	if l := a.State.Get().DeviceExportLimit; l == nil || l.LimitKw != 50 {
+		t.Fatalf("die Grenze im Kern folgt dem zurueckgelesenen Wert: %+v", l)
+	}
+	if n := sim.RefusedConnections(); n != 0 {
+		t.Fatalf("%d Verbindungen abgewiesen - Poll und Schreibauftrag kollidierten am Ein-Client-Logger", n)
 	}
 }

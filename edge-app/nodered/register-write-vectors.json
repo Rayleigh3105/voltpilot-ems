@@ -1,0 +1,1606 @@
+{
+  "_comment": [
+    "GENERIERT von register-write-vectors.gen.js aus vp-palette/lib/register-write.js und switch-write.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: register-write-vectors.test.js (JS) und edge-app/core/internal/einmalschreiben (Go, Edge Light).",
+    "plan ist null, wo plan() den Auftrag verwirft; laeufe.aufrufe ist die Folge der Geraetezugriffe von runOnce."
+  ],
+  "settle_ms": 2000,
+  "plan": [
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "dry_run",
+        "kind": "holding",
+        "addr": 40100,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": false,
+        "value": null,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "dry_run",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 99999,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": false,
+        "value": null,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 6
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 6,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 16
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 3
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": "6"
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 6,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "coil",
+        "addr": 40100,
+        "value": 1,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "coil",
+        "addr": 40100,
+        "apply": true,
+        "value": 1,
+        "fc": 5,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "coil",
+        "addr": 40100,
+        "value": 2,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "coil",
+        "addr": 40100,
+        "value": 0,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 5
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "coil",
+        "addr": 40100,
+        "apply": true,
+        "value": 0,
+        "fc": 5,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "coil",
+        "addr": 40100,
+        "value": 1,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 15
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "input",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "8.8.8.8",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "wechselrichter",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": " box.local ",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "box.local",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 65536,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": -1,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": "40100",
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 65536,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 12.7,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 12,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "expected_before": 7
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": 7
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "expected_before": null
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "expected_before": 70000
+      },
+      "plan": null
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 0,
+        "unit_id": 300
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 502,
+        "unitId": 1,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": "1502",
+        "unit_id": "3"
+      },
+      "plan": {
+        "host": "192.168.1.20",
+        "port": 1502,
+        "unitId": 3,
+        "kind": "holding",
+        "addr": 40100,
+        "apply": true,
+        "value": 20,
+        "fc": 16,
+        "expectedBefore": null
+      }
+    },
+    {
+      "req": null,
+      "plan": null
+    }
+  ],
+  "classify": [
+    {
+      "meldung": "Verbindungsaufbau-Timeout (8000 ms)",
+      "ergebnis": {
+        "code": "unreachable",
+        "message": "Das Gerät ist unter dieser Adresse nicht erreichbar. (Verbindungsaufbau-Timeout (8000 ms))"
+      }
+    },
+    {
+      "meldung": "Verbindung fehlgeschlagen: connect ECONNREFUSED 192.168.1.20:502",
+      "ergebnis": {
+        "code": "unreachable",
+        "message": "Das Gerät ist unter dieser Adresse nicht erreichbar. (Verbindung fehlgeschlagen: connect ECONNREFUSED 192.168.1.20:502)"
+      }
+    },
+    {
+      "meldung": "Antwort-Timeout (8000 ms)",
+      "ergebnis": {
+        "code": "no_answer",
+        "message": "Das Gerät antwortet nicht auf den Schaltbefehl (Unit-ID und Register prüfen). (Antwort-Timeout (8000 ms))"
+      }
+    },
+    {
+      "meldung": "Gesamt-Timeout nach 30000 ms",
+      "ergebnis": {
+        "code": "no_answer",
+        "message": "Das Gerät antwortet nicht auf den Schaltbefehl (Unit-ID und Register prüfen). (Gesamt-Timeout nach 30000 ms)"
+      }
+    },
+    {
+      "meldung": "Verbindung geschlossen ohne Antwort",
+      "ergebnis": {
+        "code": "no_answer",
+        "message": "Das Gerät hat die Verbindung ohne Antwort beendet. (Verbindung geschlossen ohne Antwort)"
+      }
+    },
+    {
+      "meldung": "Modbus-Ausnahme 0x02",
+      "ergebnis": {
+        "code": "no_answer",
+        "message": "Das Gerät weist den Schaltbefehl ab - dieses Register lässt sich dort vermutlich nicht beschreiben. (Modbus-Ausnahme 0x02)"
+      }
+    },
+    {
+      "meldung": "Warteschlange für 192.168.1.20:502 voll - älteste Anfrage verworfen",
+      "ergebnis": {
+        "code": "timeout",
+        "message": "Das Gerät wird gerade von einer anderen Abfrage belegt. Bitte erneut versuchen. (Warteschlange für 192.168.1.20:502 voll - älteste Anfrage verworfen)"
+      }
+    },
+    {
+      "meldung": "Transaktions-ID weicht ab: 7",
+      "ergebnis": {
+        "code": "invalid_response",
+        "message": "Die Antwort des Geräts war nicht lesbar (Transaktions-ID weicht ab: 7)."
+      }
+    },
+    {
+      "meldung": "",
+      "ergebnis": {
+        "code": "invalid_response",
+        "message": "Die Antwort des Geräts war nicht lesbar ()."
+      }
+    }
+  ],
+  "laeufe": [
+    {
+      "name": "Vorschau liest nur",
+      "req": {
+        "request_id": "w1",
+        "mode": "dry_run",
+        "kind": "holding",
+        "addr": 40100,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            42
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": false,
+        "before": 42
+      }
+    },
+    {
+      "name": "Schreiben mit FC16, warten, zuruecklesen",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "ok": true
+        },
+        {
+          "regs": [
+            20
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        },
+        {
+          "warten": 2000
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": true,
+        "before": 10,
+        "after": 20
+      }
+    },
+    {
+      "name": "Schreiben mit FC6",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 6
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "ok": true
+        },
+        {
+          "regs": [
+            20
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 6,
+            "addr": 40100,
+            "value": 20
+          }
+        },
+        {
+          "warten": 2000
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": true,
+        "before": 10,
+        "after": 20
+      }
+    },
+    {
+      "name": "Geraet uebernimmt nicht",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "ok": true
+        },
+        {
+          "regs": [
+            10
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        },
+        {
+          "warten": 2000
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": true,
+        "before": 10,
+        "after": 10
+      }
+    },
+    {
+      "name": "Spule einschalten",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "coil",
+        "addr": 3,
+        "value": 1,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "coils": [
+            false
+          ]
+        },
+        {
+          "ok": true
+        },
+        {
+          "coils": [
+            true
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "spulen": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 3,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 5,
+            "addr": 3,
+            "value": 1
+          }
+        },
+        {
+          "warten": 2000
+        },
+        {
+          "spulen": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 3,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": true,
+        "before": 0,
+        "after": 1
+      }
+    },
+    {
+      "name": "Spule ausschalten mit FC5",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "coil",
+        "addr": 3,
+        "value": 0,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 5
+      },
+      "antworten": [
+        {
+          "coils": [
+            true
+          ]
+        },
+        {
+          "ok": true
+        },
+        {
+          "coils": [
+            false
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "spulen": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 3,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 5,
+            "addr": 3,
+            "value": 0
+          }
+        },
+        {
+          "warten": 2000
+        },
+        {
+          "spulen": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 3,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": true,
+        "before": 1,
+        "after": 0
+      }
+    },
+    {
+      "name": "Vorbedingung erfuellt",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "expected_before": 10
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "ok": true
+        },
+        {
+          "regs": [
+            20
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        },
+        {
+          "warten": 2000
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": true,
+        "before": 10,
+        "after": 20
+      }
+    },
+    {
+      "name": "Vorbedingung verfehlt: nichts geschrieben",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "expected_before": 11
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": false,
+        "before": 10,
+        "error_code": "precondition",
+        "message": "Das Register steht inzwischen auf 10, erwartet wurde 11. Es wurde NICHTS geschrieben."
+      }
+    },
+    {
+      "name": "Vorbedingung gegen unlesbaren Wert",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "expected_before": 0
+      },
+      "antworten": [
+        {
+          "regs": []
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": false,
+        "before": null,
+        "error_code": "precondition",
+        "message": "Das Register steht inzwischen auf einem nicht lesbaren Wert, erwartet wurde 0. Es wurde NICHTS geschrieben."
+      }
+    },
+    {
+      "name": "Zuruecklesen scheitert: Wert fehlt, kein erfundener Fehler",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "ok": true
+        },
+        {
+          "fehler": "Antwort-Timeout (8000 ms)"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        },
+        {
+          "warten": 2000
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": true,
+        "wrote": true,
+        "before": 10,
+        "after": null
+      }
+    },
+    {
+      "name": "Schreibantwort bleibt aus: unbestaetigt",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "fehler": "Antwort-Timeout (8000 ms)"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": true,
+        "before": 10,
+        "error_code": "write_unconfirmed",
+        "message": "Der Schreibbefehl ging hinaus, das Ergebnis ist aber unbestätigt: Das Gerät antwortet nicht auf den Schaltbefehl (Unit-ID und Register prüfen). (Antwort-Timeout (8000 ms))"
+      }
+    },
+    {
+      "name": "Schreiben abgewiesen: unbestaetigt",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "fehler": "Modbus-Ausnahme 0x02"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": true,
+        "before": 10,
+        "error_code": "write_unconfirmed",
+        "message": "Der Schreibbefehl ging hinaus, das Ergebnis ist aber unbestätigt: Das Gerät weist den Schaltbefehl ab - dieses Register lässt sich dort vermutlich nicht beschreiben. (Modbus-Ausnahme 0x02)"
+      }
+    },
+    {
+      "name": "Schreibantwort unlesbar",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "fehler": "Transaktions-ID weicht ab: 9"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": true,
+        "before": 10,
+        "error_code": "invalid_response",
+        "message": "Der Schreibbefehl ging hinaus, das Ergebnis ist aber unbestätigt: Die Antwort des Geräts war nicht lesbar (Transaktions-ID weicht ab: 9)."
+      }
+    },
+    {
+      "name": "Verbindung beim Schreiben weg",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "regs": [
+            10
+          ]
+        },
+        {
+          "fehler": "Verbindung fehlgeschlagen: read ECONNRESET"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        },
+        {
+          "schreiben": {
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "fc": 16,
+            "addr": 40100,
+            "value": 20
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": true,
+        "before": 10,
+        "error_code": "unreachable",
+        "message": "Der Schreibbefehl ging hinaus, das Ergebnis ist aber unbestätigt: Das Gerät ist unter dieser Adresse nicht erreichbar. (Verbindung fehlgeschlagen: read ECONNRESET)"
+      }
+    },
+    {
+      "name": "Erstes Lesen scheitert: nichts geschrieben",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "fehler": "Verbindung fehlgeschlagen: connect EHOSTUNREACH 192.168.1.20:502"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": false,
+        "before": null,
+        "error_code": "unreachable",
+        "message": "Das Gerät ist unter dieser Adresse nicht erreichbar. (Verbindung fehlgeschlagen: connect EHOSTUNREACH 192.168.1.20:502)"
+      }
+    },
+    {
+      "name": "Erstes Lesen abgewiesen",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "fehler": "Modbus-Ausnahme 0x02"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": false,
+        "before": null,
+        "error_code": "no_answer",
+        "message": "Das Gerät weist den Schaltbefehl ab - dieses Register lässt sich dort vermutlich nicht beschreiben. (Modbus-Ausnahme 0x02)"
+      }
+    },
+    {
+      "name": "Geraet belegt",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [
+        {
+          "fehler": "Warteschlange für 192.168.1.20:502 voll - älteste Anfrage verworfen"
+        }
+      ],
+      "aufrufe": [
+        {
+          "spur": "192.168.1.20:502"
+        },
+        {
+          "lesen": {
+            "fc": 3,
+            "host": "192.168.1.20",
+            "port": 502,
+            "unitId": 1,
+            "addr": 40100,
+            "count": 1
+          }
+        }
+      ],
+      "ergebnis": {
+        "ok": false,
+        "wrote": false,
+        "before": null,
+        "error_code": "timeout",
+        "message": "Das Gerät wird gerade von einer anderen Abfrage belegt. Bitte erneut versuchen. (Warteschlange für 192.168.1.20:502 voll - älteste Anfrage verworfen)"
+      }
+    },
+    {
+      "name": "Unzulaessiges Ziel",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "8.8.8.8",
+        "port": 502,
+        "unit_id": 1
+      },
+      "antworten": [],
+      "aufrufe": [],
+      "ergebnis": {
+        "ok": false,
+        "wrote": false,
+        "error_code": "invalid_request",
+        "message": "Der Schreibauftrag ist unvollständig oder unzulässig."
+      }
+    },
+    {
+      "name": "Unzulaessiger Funktionscode",
+      "req": {
+        "request_id": "w1",
+        "mode": "apply",
+        "kind": "holding",
+        "addr": 40100,
+        "value": 20,
+        "host": "192.168.1.20",
+        "port": 502,
+        "unit_id": 1,
+        "write_fc": 3
+      },
+      "antworten": [],
+      "aufrufe": [],
+      "ergebnis": {
+        "ok": false,
+        "wrote": false,
+        "error_code": "invalid_request",
+        "message": "Der Schreibauftrag ist unvollständig oder unzulässig."
+      }
+    }
+  ]
+}

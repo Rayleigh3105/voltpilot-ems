@@ -52,9 +52,14 @@ type Options struct {
 	// KostalRtuTimeout bounds one FC03 round trip against the RS485-to-
 	// Ethernet gateway of the Modbus-RTU Ausweg.
 	KostalRtuTimeout time.Duration
-	Dialer           solarmanv5.Dialer
-	Now              func() time.Time
-	Logger           *slog.Logger
+	// WriteLaneWait bounds how long a one-shot register write waits for the
+	// lane of its device (15 s); WriteSettle is the pause between the write and
+	// the read-back (2 s). Both only shortened by tests.
+	WriteLaneWait time.Duration
+	WriteSettle   time.Duration
+	Dialer        solarmanv5.Dialer
+	Now           func() time.Time
+	Logger        *slog.Logger
 }
 
 // Runtime is the Go Layer 1.
@@ -107,6 +112,13 @@ type Runtime struct {
 	erzEnt     map[string]erzeugerbild.BindungsEntitaet
 	erzQuellen map[string]erzeugerbild.BindungsQuelle
 	erzBindSig string
+
+	// the data mirror (spiegel.go): the learned want set, its round-robin
+	// position, and when each logger's export-limit register was last read.
+	spiegelMu     sync.Mutex
+	spiegelWant   []spiegelBlock
+	spiegelRR     int
+	exportLimitAt map[string]time.Time
 }
 
 // Ready is closed once every bus subscription is confirmed.
@@ -162,8 +174,8 @@ func New(bus Bus, opts Options) *Runtime {
 	return &Runtime{bus: bus, opts: opts, log: opts.Logger, lanes: newLanes(),
 		pollKick: make(chan struct{}, 1), ready: make(chan struct{}),
 		http: newHTTPClient(opts.HTTPTimeout), srcTrace: map[string]traceState{},
-		einstLetzte: map[string]time.Time{},
-		erzEnt:      map[string]erzeugerbild.BindungsEntitaet{}, erzQuellen: map[string]erzeugerbild.BindungsQuelle{},
+		einstLetzte: map[string]time.Time{}, exportLimitAt: map[string]time.Time{},
+		erzEnt: map[string]erzeugerbild.BindungsEntitaet{}, erzQuellen: map[string]erzeugerbild.BindungsQuelle{},
 		bootID: "l1-" + strconv.FormatInt(time.Now().UnixNano(), 36)}
 }
 
@@ -191,6 +203,19 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if err := r.bus.Subscribe(localbus.TopicProbeRequest, func(_ string, p []byte) {
 		go r.onProbe(ctx, p)
 	}); err != nil {
+		return err
+	}
+	if err := r.bus.Subscribe(localbus.TopicRegisterWriteRequest, func(_ string, p []byte) {
+		go r.onRegisterWrite(ctx, p)
+	}); err != nil {
+		return err
+	}
+	if err := r.bus.Subscribe(localbus.TopicInstallerWriteRequest, func(_ string, p []byte) {
+		go r.onInstallerWrite(ctx, p)
+	}); err != nil {
+		return err
+	}
+	if err := r.bus.Subscribe(localbus.TopicRegistersWant, r.onRegistersWant); err != nil {
 		return err
 	}
 	close(r.ready)
@@ -335,7 +360,9 @@ func (r *Runtime) pollSolarman(ctx context.Context, p *solarmanPlan) {
 		return
 	}
 	sess.SetSequence(seq)
-	blocks, err := sess.ReadPlan(ctx, p.Reads)
+	now := r.opts.Now()
+	reads, learned := r.solarmanLeseplan(p, now)
+	blocks, err := sess.ReadPlan(ctx, reads)
 	// The settings Edge Light reads itself ride in the SAME session (one
 	// logger, one client), only after a successful poll and only when due.
 	var plan *messplan
@@ -353,6 +380,7 @@ func (r *Runtime) pollSolarman(ctx context.Context, p *solarmanPlan) {
 		r.readFailed(p, err)
 		return
 	}
+	r.publishRaw(p, reads, learned, blocks, now)
 
 	r.publishEinstellungen(plan, einst, r.opts.Now())
 
