@@ -58,6 +58,22 @@ Rollen `pv-generation`/`grid-meter`, und die Rolle `plant-controller` las kein F
   Palette sendet keine — wirksam erst mit dem Box-Release, das beides trägt. Rückwirkend entsteht nichts.
 - Nachweise: Go `plant_controller_sample_test.go`, Node-RED `erzeuger-laufzeit.test.js` („Quellen-Telemetrie“).
 
+## Edge Light: Go-Zwilling (PFC200-Konzept Stufe 2, 19.11.2026)
+
+- `edge-app/core/internal/erzeugerbild` bildet Leser, Stufe, Melde-Regel, Standort-Sample, Messplan und die Probe
+  `erzeuger_kopf` nach; `internal/layer1/erzeuger.go` bedient damit dieselben Bus-Topics wie die Palette. Edge Light meldet
+  `erzeuger_registerbild` und `anlagensteuerung_quelle`, nicht `measurement_config_per_component`.
+- ⚠ **Zwilling an zwei Vektor-Dateien:** die Vertragsfälle (`erzeuger-registerbild-vectors.json`) und die Laufzeit
+  (`edge-app/nodered/measurements/erzeuger-laufzeit-vectors.json`, ERZEUGT von `erzeuger-laufzeit-vectors.gen.js` über die
+  echte `MeasurementRuntime` und `vp-modbus-probe.js`). Wer einen Erzeuger-Teil der Palette ändert, erzeugt die Datei neu;
+  der Go-Test zeigt, ob der Zwilling nachzieht.
+- ⚠ **Zwei Steuerungen an einer Edge Light** bekommen den zusammengelegten Plan: geteilte Punktnamen ohne `entity_id`
+  binden an den Hauptwechselrichter und werden benannt abgelehnt (`driver_unavailable`), nie geraten.
+- Die Probe beantwortet auf Edge Light nur `erzeuger_kopf`; jede andere Op sofort `not_supported` (Paritätsliste D).
+- „In diesem Gerät“: ein PFC200 mit VoltPilot liest sein eigenes SPS-Programm über 127.0.0.1 (Portal `steuerungOrt.ts`,
+  Anlege-Schritt „Wo läuft die Steuerung?“). Die SPS-Seite (Bibliothek, Grundprogramm, Probeprojekt) liegt unter
+  `sps/codesys/` mit eigenem Prüfer gegen dieselben Vertragsvektoren.
+
 ## Fallen
 
 - ⚠ **Der Leser deutet nach dem Bild, nicht nach dem Katalog.** Die Box erkennt einen Punkt an

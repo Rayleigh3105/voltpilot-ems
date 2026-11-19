@@ -8,6 +8,7 @@ import type {
   UemsDatenquellePruefergebnis,
 } from './api';
 import { SEE_MUSTER } from './anlagensteuerung';
+import { IN_DIESEM_GERAET_HOST, istInDiesemGeraet } from './steuerungOrt';
 import type { UeberwachungAnlegenEingabe } from './ueberwachungApi';
 import { vorlageSatz } from './ueberwachungSatz';
 import { WERTE_KATALOG, type WerteKatalogVorlage } from './werteKatalog';
@@ -147,8 +148,18 @@ function grundSatz(kopf: ErzeugerKopf): string {
   }
 }
 
-/** Was die Box über die VERBINDUNG gesagt hat, wenn sie keinen Kopf gelesen hat. */
-function verbindungsUrteil(pruefung: UemsDatenquellePruefergebnis): KopfUrteil {
+/**
+ * Was die Box über die VERBINDUNG gesagt hat, wenn sie keinen Kopf gelesen hat. Läuft die Steuerung in diesem Gerät
+ * (WAGO PFC200 mit VoltPilot), gibt es kein Netz dazwischen: dann fehlt das SPS-Programm oder sein Modbus-Server.
+ */
+function verbindungsUrteil(pruefung: UemsDatenquellePruefergebnis, inDiesemGeraet: boolean): KopfUrteil {
+  const imGeraet: Record<string, [string, string]> = {
+    unreachable: ['Steuerung in diesem Gerät antwortet nicht',
+      'Auf diesem Gerät lauscht unter dem Port kein Modbus-Server. Prüfen Sie, ob das SPS-Programm läuft '
+        + '(Betriebsartenschalter auf RUN) und ob sein Modbus-Server auf diesem Port eingerichtet ist.'],
+    no_answer: ['Steuerung in diesem Gerät antwortet nicht', 'Der Modbus-Server dieses Geräts nimmt die Verbindung an, '
+      + 'beantwortet die Anfrage aber nicht. Prüfen Sie Unit-ID und Funktionscode und ob das SPS-Programm läuft.'],
+  };
   const texte: Record<string, [string, string]> = {
     unreachable: ['Steuerung nicht erreichbar',
       'Die Box erreicht die Adresse nicht. Prüfen Sie Adresse, Port und Netzlage (VLAN, Firewall).'],
@@ -161,7 +172,8 @@ function verbindungsUrteil(pruefung: UemsDatenquellePruefergebnis): KopfUrteil {
       'Die Box hat nicht geantwortet. Ist sie eingeschaltet und mit dem Internet verbunden?'],
   };
   if (pruefung.ergebnis === 'not_supported') return BOX_UPDATE;
-  const [titel, satz] = texte[pruefung.ergebnis] ?? ['Prüfung nicht möglich', pruefung.text];
+  const [titel, satz] = (inDiesemGeraet ? imGeraet[pruefung.ergebnis] : undefined)
+    ?? texte[pruefung.ergebnis] ?? ['Prüfung nicht möglich', pruefung.text];
   return { art: 'fehler', titel, satz, details: [], kopf: null };
 }
 
@@ -173,11 +185,12 @@ function verbindungsUrteil(pruefung: UemsDatenquellePruefergebnis): KopfUrteil {
 export function kopfUrteil(
   erste: UemsDatenquellePruefergebnis | null,
   zweite: UemsDatenquellePruefergebnis | null,
+  inDiesemGeraet = false,
 ): KopfUrteil | null {
   const letzte = zweite ?? erste;
   if (!letzte) return null;
   const kopf = erzeugerKopfAus(letzte);
-  if (!kopf) return verbindungsUrteil(letzte);
+  if (!kopf) return verbindungsUrteil(letzte, inDiesemGeraet);
   if (!kopf.erkannt) {
     return {
       art: 'fehler',
@@ -399,6 +412,22 @@ export interface Anschluss {
 export const START_ANSCHLUSS: Anschluss = {
   host: '', port: '502', netz: '', unitId: '1', basisadresse: '0', funktionscode: '4', wortfolge: 'big', boxId: '',
 };
+
+/** Wo die Steuerung läuft: im Netz der Anlage oder in diesem Gerät (`steuerungOrt.ts`). */
+export type SteuerungOrt = 'netz' | 'geraet';
+
+export function steuerungOrtAus(a: Anschluss): SteuerungOrt {
+  return istInDiesemGeraet(a.host) ? 'geraet' : 'netz';
+}
+
+/**
+ * Den Ort wechseln: „in diesem Gerät“ IST die Adresse 127.0.0.1 (ohne Netzlage, es gibt kein Netz dazwischen); zurück
+ * ins Netz bleibt die Adresse leer, bis sie eingetragen ist - nie bleibt die Schleifenadresse stehen.
+ */
+export function mitOrt(a: Anschluss, ort: SteuerungOrt): Partial<Anschluss> {
+  if (ort === steuerungOrtAus(a)) return {};
+  return ort === 'geraet' ? { host: IN_DIESEM_GERAET_HOST, netz: '' } : { host: '' };
+}
 
 /** Der erste Fehler der Anschlussangaben in Kundensprache - oder null. */
 export function anschlussFehler(a: Anschluss): string | null {

@@ -52,11 +52,14 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 	if !reflect.DeepEqual(BuiltSupports(""), expected) {
 		t.Fatal("an unnamed box type is not the Docker box")
 	}
-	// Edge Light has no Node-RED palette: the words whose way ends there are
-	// not its own.
-	for _, name := range []string{"measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle"} {
-		if slices.Contains(BuiltSupports(geraetesuche.BoxArtEdgeLight), name) {
-			t.Fatalf("Edge Light advertises %s", name)
+	// Edge Light has no Node-RED palette: the word whose way ends there is not
+	// its own. The Erzeuger image it reads with the Go twin (PFC200 Stufe 2).
+	if slices.Contains(BuiltSupports(geraetesuche.BoxArtEdgeLight), "measurement_config_per_component") {
+		t.Fatal("Edge Light advertises measurement_config_per_component")
+	}
+	for _, name := range []string{"erzeuger_registerbild", "anlagensteuerung_quelle"} {
+		if !slices.Contains(BuiltSupports(geraetesuche.BoxArtEdgeLight), name) {
+			t.Fatalf("Edge Light does not advertise %s", name)
 		}
 	}
 	for _, name := range BuiltSupports(geraetesuche.BoxArtDocker) {

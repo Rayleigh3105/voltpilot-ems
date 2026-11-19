@@ -283,6 +283,10 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
     expect(zeile(v.verbindung, 'Adresse')?.detail).toBe('Modbus-Adresse 1');
     expect(zeile(v.verbindung, 'Lesetakt')?.wert).toBe('alle 5\u00a0s');
     expect(v.verbindungLeer).toBeNull();
+    // Eine Steuerung im Gerät selbst (WAGO PFC200 mit VoltPilot) liest die Box über 127.0.0.1.
+    const imGeraet = geraetSeite(input({ geraetId: 'src-7c1e9a2b', components: { ...COMPONENTS,
+      components: COMPONENTS.components.map((c) => ({ ...c, connection: { ...c.connection, ip: '127.0.0.1' } })) } }));
+    expect(zeile(imGeraet.verbindung, 'Adresse')?.wert).toBe('in diesem Gerät');
   });
 
   it('beschriftet ein box-verwaltetes Gerät aus dem GEMELDETEN Weg (PR 2b)', () => {

@@ -86,3 +86,23 @@ test('ein fremdes Registerbild nennt den Grund und lässt nicht weiter', async (
   await expect(dialog.getByRole('button', { name: 'Weiter' })).toBeDisabled();
   await schritt(page, '1-fremd', isMobile);
 });
+
+test('eine Steuerung in diesem Gerät (WAGO PFC200 mit VoltPilot) braucht keine Adresse und keine Netzlage',
+  async ({ page, isMobile }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') fehler.push(m.text()); });
+    await page.goto('/e2e/anlagensteuerung-verbinden.html');
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('combobox', { name: 'Wo läuft die Steuerung?' }).click();
+    await page.getByRole('option', { name: /^In diesem Gerät/ }).click();
+    await expect(page.getByRole('option')).toHaveCount(0);
+    await expect(dialog.getByLabel('Adresse', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel('Netzlage', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText(/liest das SPS-Programm, das in ihr läuft/)).toBeVisible();
+    await schritt(page, '1-in-diesem-geraet', isMobile);
+    await dialog.getByRole('button', { name: 'Kopf prüfen' }).click();
+    await expect(dialog.getByText('✓ Bild erkannt')).toBeVisible();
+    await schritt(page, '1-in-diesem-geraet-erkannt', isMobile);
+    expect(fehler).toEqual([]);
+  });

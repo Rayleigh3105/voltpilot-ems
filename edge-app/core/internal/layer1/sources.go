@@ -239,6 +239,12 @@ func (r *Runtime) onSourcesConfig(_ string, payload []byte) {
 	changed := sig != r.srcSig
 	r.srcSig = sig
 	r.srcMu.Unlock()
+	// The connections behind the pins of the measurement binding (erzeuger.go).
+	quellen := erzQuellenAus(payload)
+	r.erzMu.Lock()
+	r.erzQuellen = quellen
+	r.erzMu.Unlock()
+	r.erzBindungGeaendert()
 	if !changed {
 		return
 	}

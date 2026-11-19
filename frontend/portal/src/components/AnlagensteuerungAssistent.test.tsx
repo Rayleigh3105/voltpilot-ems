@@ -111,6 +111,30 @@ describe('Anlagensteuerung verbinden - Kopfprüfung', () => {
     expect(weiter().disabled).toBe(false);
   });
 
+  it('liest eine Steuerung in diesem Gerät (WAGO PFC200 mit VoltPilot) über 127.0.0.1, ohne Adresse und Netzlage', async () => {
+    zeige();
+    expect(screen.getByLabelText('Adresse')).toBeTruthy();
+    await waehle('Wo läuft die Steuerung?', /In diesem Gerät/);
+    expect(screen.queryByLabelText('Adresse')).toBeNull();
+    expect(screen.queryByLabelText('Netzlage')).toBeNull();
+    expect(screen.getByText(/liest das SPS-Programm, das in ihr läuft/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Kopf prüfen' }));
+    await screen.findByText('✓ Bild erkannt');
+    expect(quelleAnlegen.mock.calls[0][1]).toMatchObject({ protokoll: 'modbus_tcp', adresse: '127.0.0.1:502',
+      netz: '', device_id: BOX.id });
+    expect(weiter().disabled).toBe(false);
+  });
+
+  it('sagt bei einer stummen Steuerung in diesem Gerät, dass das SPS-Programm fehlt, nicht das Netz', async () => {
+    pruefen.mockReset().mockResolvedValue(pruefung(null, 'unreachable'));
+    zeige();
+    await waehle('Wo läuft die Steuerung?', /In diesem Gerät/);
+    fireEvent.click(screen.getByRole('button', { name: 'Kopf prüfen' }));
+    const kasten = await screen.findByTestId('anst-kopf');
+    expect(within(kasten).getByText('Steuerung in diesem Gerät antwortet nicht')).toBeTruthy();
+    expect(kasten.textContent).not.toMatch(/Netzlage/);
+  });
+
   it('nennt den Grund eines fremden Bilds und liest dann kein zweites Mal', async () => {
     pruefen.mockReset().mockResolvedValue(pruefung({ signatur_ok: false, erkannt: false, grund: 'signatur_fremd' }, 'invalid_response'));
     zeige();

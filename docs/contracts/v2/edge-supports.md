@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf", "modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten"]` (Docker-Box; Edge Light ohne `measurement_config_per_component`, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -62,7 +62,9 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   `uncertain`) und meldet `frozen_source`/`device_restart`; dazu die Probe-Art `erzeuger_kopf`
   ([Probe-Vertrag](../mqtt-probe.schema.json), [Box-Leser](../../agents/root/uems-erzeuger-registerbild-box.md)).
   Beleg `edge-app/nodered/measurements/erzeuger-laufzeit.test.js`. Keine Zeile in `edge-capabilities.json`
-  (Begründung wie `plan_quittung`).
+  (Begründung wie `plan_quittung`). Edge Light meldet es seit Stufe 2 des PFC200-Konzepts: der Go-Zwilling
+  `internal/erzeugerbild` liest dasselbe Bild hinter denselben Bus-Topics, Beleg `erzeugerbild/laufzeit_test.go` (gegen
+  die aus der Palette erzeugten `erzeuger-laufzeit-vectors.json`) und `layer1/erzeuger_test.go`.
 - `anlagensteuerung_quelle` (UEMS EZ-21): der Applier (`componentapply`) leitet aus dem Registry-Treiber einer
   Entität vom Typ `anlagensteuerung` (`communication: modbus_tcp`, `connection` = Adresse, Port und Geräte-ID der
   Datenquelle, Lesetakt 5 s, keine Marke) eine Quelle der Rolle `plant-controller` in `edge/sources/config` ab —
@@ -75,7 +77,9 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   Applier trägt. Beleg `edge-app/core/internal/componentapply/plant_controller_test.go`. Keine Zeile in
   `edge-capabilities.json`: eine Zeile gälte für jeden Stand ab einem Release-Tag, und ein Tag, das diesen Applier
   doch nicht trägt, bekäme den Treiber und verweigerte damit jede Konfiguration der Anlage — nur die eigene Meldung
-  der Box ist dafür sicher.
+  der Box ist dafür sicher. Auf Edge Light (seit Stufe 2 des PFC200-Konzepts) leitet derselbe Applier die Quelle ab,
+  und die Go-Schicht 1 bindet die Komponente über ihren Pin daran (`layer1/erzeuger.go`, Beleg
+  `layer1/erzeuger_quelle_test.go`).
 - `geraetesuche` (Gerätesuche, 30.10.2026): die Box sucht auf `.../v2/geraetesuche` lesend im Heimnetz, meldet alle 2 s
   auf `.../v2/geraetesuche-stand` und genau ein Ergebnis auf `.../v2/geraetesuche-ergebnis`
   ([Gerätesuche](mqtt-geraetesuche.md)). Die Route `POST /api/v1/sites/{siteId}/geraetesuche` fragt dieses Wort
@@ -170,9 +174,15 @@ das Backend (`light` bzw. `compose`), mit dem die Box auch ein Release prüft. E
 also `light`; ältere Stände melden weiter `compose`, darum bleibt die Erkennung am Versionsstempel in der API bestehen.
 
 Die Vektoren sagen je Wort, welche Box-Art es trägt: `box_arten` (wahlfrei; fehlt = beide). Edge Light hat keine
-Node-RED-Palette und meldet darum `measurement_config_per_component`, `erzeuger_registerbild` und
-`anlagensteuerung_quelle` nicht (`box_arten: ["docker"]`): deren Weg endet in der Palette. Das Feld liest nur der
-Go-Test (`cloud/edge_supports_test.go`); Java und TS überlesen es.
+Node-RED-Palette und meldet darum `measurement_config_per_component` nicht (`box_arten: ["docker"]`): dessen Weg endet in
+der Palette.
+`erzeuger_registerbild` und `anlagensteuerung_quelle` melden seit Stufe 2 des PFC200-Konzepts beide Box-Arten: Edge Light
+liest das Erzeuger-Bild mit dem Go-Zwilling (`internal/erzeugerbild`, verdrahtet in `internal/layer1/erzeuger.go`), der gegen
+die Vertrags-Vektoren und die aus der Palette erzeugten `erzeuger-laufzeit-vectors.json` geprüft ist.
+Auf Edge Light kommen Erzeuger-Punkte im zusammengelegten Plan an; zwei Anlagensteuerungen an einer Edge Light teilen sich
+die Punktnamen und werden dort ohne `entity_id` gesendet, die Box lehnt sie dann benannt ab (`driver_unavailable`), statt sie
+einer Steuerung zuzuordnen.
+Das Feld liest nur der Go-Test (`cloud/edge_supports_test.go`); Java und TS überlesen es.
 
 Auch die Tabelle `edge-capabilities.json` kennt die Box-Art nicht: `BoxFaehigkeiten.effective` ordnet nach `release_seq`
 über beide Linien, ein Edge-Light-Stand hinter dem `ab_release` eines Docker-Tags gälte also mit. Die Zeile

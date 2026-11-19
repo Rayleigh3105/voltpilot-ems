@@ -1,0 +1,7532 @@
+{
+ "_comment": [
+  "ERZEUGT von erzeuger-laufzeit-vectors.gen.js - nicht von Hand aendern.",
+  "Gemeinsame Laufzeit-Vektoren des Erzeuger-Wegs: Palette (Quelle der Wahrheit) und Go-Zwilling",
+  "(edge-app/core/internal/erzeugerbild, internal/layer1). Simulator, kein Beleg."
+ ],
+ "katalog_version": "2026.10.21.1",
+ "start": "2026-10-21T20:00:00.000Z",
+ "laufzeit": [
+  {
+   "name": "gore-melde-regel",
+   "why": "Gore, alle 33 Punkte mit 60 s: der erste Takt sendet jeden Wert; Totband 500 W haelt 400 W zurueck, 600 W gehen; ein Zustand geht bei jeder Aenderung; nach 60 s geht alles erneut. Jeder Takt sendet das Standort-Sample (pv_power_kw, power_kw).",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.kopf.te_anzahl",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.kopf.programmstand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.kopf.steuerung_id",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.kopf.anlagenart",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.a_gueltig",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.a_alter_s",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.p_nvp_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.anlage_zustand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.a_bits",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.speicher_fuellstand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.p_installiert_kw",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_kanal",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_bits",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_p_prozent",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_cosphi",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_seit_s",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_zaehler",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.dv.d_kanal",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.dv.d_bits",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.dv.d_soll_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.dv.d_seit_s",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.dv.d_zaehler",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.wirkung.quelle_p",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.wirkung.s_bits",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.wirkung.p_grenze_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_zustand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_bits",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_art",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_nenn_kw",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_p_ist_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_p_soll_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_e",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 3,
+       "anlagenart": "pv",
+       "steuerung_kennung": 4711,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1000,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1005,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51728,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1010,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51928,
+       2,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1015,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       63636,
+       2,
+       51928,
+       2,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 2000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1017,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 48000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1065,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       63636,
+       2,
+       51928,
+       2,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.kopf.te_anzahl",
+      "erzeuger.kopf.programmstand",
+      "erzeuger.kopf.steuerung_id",
+      "erzeuger.kopf.anlagenart",
+      "erzeuger.a.a_gueltig",
+      "erzeuger.a.a_alter_s",
+      "erzeuger.a.p_nvp_w",
+      "erzeuger.a.p_erzeugung_w",
+      "erzeuger.a.anlage_zustand",
+      "erzeuger.a.a_bits",
+      "erzeuger.a.speicher_fuellstand",
+      "erzeuger.a.p_installiert_kw",
+      "erzeuger.nb.n_kanal",
+      "erzeuger.nb.n_bits",
+      "erzeuger.nb.n_p_prozent",
+      "erzeuger.nb.n_cosphi",
+      "erzeuger.nb.n_seit_s",
+      "erzeuger.nb.n_zaehler",
+      "erzeuger.dv.d_kanal",
+      "erzeuger.dv.d_bits",
+      "erzeuger.dv.d_soll_w",
+      "erzeuger.dv.d_seit_s",
+      "erzeuger.dv.d_zaehler",
+      "erzeuger.wirkung.quelle_p",
+      "erzeuger.wirkung.s_bits",
+      "erzeuger.wirkung.p_grenze_w",
+      "erzeuger.te[*].t_zustand",
+      "erzeuger.te[*].t_bits",
+      "erzeuger.te[*].t_art",
+      "erzeuger.te[*].t_nenn_kw",
+      "erzeuger.te[*].t_p_ist_w",
+      "erzeuger.te[*].t_p_soll_w",
+      "erzeuger.te[*].t_e"
+     ],
+     "rejected": []
+    },
+    "anfragen": [
+     {
+      "start": 0,
+      "count": 68,
+      "fc": 4
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:00.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:00.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.kopf.te_anzahl",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.kopf.programmstand",
+           "raw": 2610,
+           "decoded": 2610,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.kopf.steuerung_id",
+           "raw": 4711,
+           "decoded": 4711,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.kopf.anlagenart",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.a_gueltig",
+           "raw": 9,
+           "decoded": 9,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.a_alter_s",
+           "raw": 2,
+           "decoded": 2,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1200,
+           "decoded": -1200,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.anlage_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.a_bits",
+           "raw": 0,
+           "decoded": 0,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_installiert_kw",
+           "raw": 265,
+           "decoded": 265,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_kanal",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_bits",
+           "raw": 7,
+           "decoded": 7,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_p_prozent",
+           "raw": 600,
+           "decoded": 60,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_cosphi",
+           "raw": 950,
+           "decoded": 0.95,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_seit_s",
+           "raw": 1234,
+           "decoded": 1234,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_zaehler",
+           "raw": 17,
+           "decoded": 17,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.dv.d_kanal",
+           "raw": 0,
+           "decoded": 0,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.dv.d_bits",
+           "raw": 0,
+           "decoded": 0,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.wirkung.quelle_p",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.wirkung.s_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.wirkung.p_grenze_w",
+           "raw": 159000,
+           "decoded": 159000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_art",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_art",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_art",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_nenn_kw",
+           "raw": 125,
+           "decoded": 125,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_nenn_kw",
+           "raw": 125,
+           "decoded": 125,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_nenn_kw",
+           "raw": 125,
+           "decoded": 125,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_p_ist_w",
+           "raw": 60900,
+           "decoded": 60900,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_p_ist_w",
+           "raw": 61000,
+           "decoded": 61000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_p_ist_w",
+           "raw": 61100,
+           "decoded": 61100,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_p_soll_w",
+           "raw": 53000,
+           "decoded": 53000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_p_soll_w",
+           "raw": 53000,
+           "decoded": 53000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_p_soll_w",
+           "raw": 53000,
+           "decoded": 53000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_e",
+           "raw": 12345679,
+           "decoded": 1234567.9,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_e",
+           "raw": 12345680,
+           "decoded": 1234568,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_e",
+           "raw": 12345681,
+           "decoded": 1234568.1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 43,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.8,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:05.000Z"
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 183,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:10.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:10.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 183000,
+           "decoded": 183000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.anlage_zustand",
+           "raw": 2,
+           "decoded": 2,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 2,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 183,
+         "power_kw": -1.9,
+         "ts": "2026-10-21T20:00:15.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:15.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1900,
+           "decoded": -1900,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 1,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [],
+      "nachrichten": [],
+      "belege": {
+       "ids": [],
+       "requests": 0,
+       "samples": 0,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 183,
+         "power_kw": -1.9,
+         "ts": "2026-10-21T20:01:05.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:01:05.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.kopf.te_anzahl",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.kopf.programmstand",
+           "raw": 2610,
+           "decoded": 2610,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.kopf.steuerung_id",
+           "raw": 4711,
+           "decoded": 4711,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.kopf.anlagenart",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.a_gueltig",
+           "raw": 9,
+           "decoded": 9,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.a_alter_s",
+           "raw": 2,
+           "decoded": 2,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.a_bits",
+           "raw": 0,
+           "decoded": 0,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_installiert_kw",
+           "raw": 265,
+           "decoded": 265,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_kanal",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_bits",
+           "raw": 7,
+           "decoded": 7,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_p_prozent",
+           "raw": 600,
+           "decoded": 60,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_cosphi",
+           "raw": 950,
+           "decoded": 0.95,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_seit_s",
+           "raw": 1234,
+           "decoded": 1234,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_zaehler",
+           "raw": 17,
+           "decoded": 17,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.dv.d_kanal",
+           "raw": 0,
+           "decoded": 0,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.dv.d_bits",
+           "raw": 0,
+           "decoded": 0,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.wirkung.quelle_p",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.wirkung.s_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.wirkung.p_grenze_w",
+           "raw": 159000,
+           "decoded": 159000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_bits",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_art",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_art",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_art",
+           "raw": 1,
+           "decoded": 1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_nenn_kw",
+           "raw": 125,
+           "decoded": 125,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_nenn_kw",
+           "raw": 125,
+           "decoded": 125,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_nenn_kw",
+           "raw": 125,
+           "decoded": 125,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_p_ist_w",
+           "raw": 60900,
+           "decoded": 60900,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_p_ist_w",
+           "raw": 61000,
+           "decoded": 61000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_p_ist_w",
+           "raw": 61100,
+           "decoded": 61100,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_p_soll_w",
+           "raw": 53000,
+           "decoded": 53000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_p_soll_w",
+           "raw": 53000,
+           "decoded": 53000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_p_soll_w",
+           "raw": 53000,
+           "decoded": 53000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_e",
+           "raw": 12345679,
+           "decoded": 1234567.9,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_e",
+           "raw": 12345680,
+           "decoded": 1234568,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_e",
+           "raw": 12345681,
+           "decoded": 1234568.1,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 40,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "herzschlag-steht-und-neustart",
+   "why": "Der Herzschlag steht: ab der dritten gleichen Lesung ist alles stale, frozen_source geht einmal (Datenquelle, Komponente, 3 Lesungen), das Standort-Sample faellt weg (nie 0). Dann laeuft er wieder, dann springt er zurueck: device_restart mit vorher/nachher. Steht er danach wieder, ist das eine neue Episode: frozen_source ein zweites Mal.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.p_nvp_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_zaehler",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 3,
+       "anlagenart": "pv",
+       "steuerung_kennung": 4711,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       2000,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       2000,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       2000,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       2000,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       2010,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       3,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       0,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       3,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       0,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       3,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       0,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.a.p_erzeugung_w",
+      "erzeuger.a.p_nvp_w",
+      "erzeuger.nb.n_zaehler"
+     ],
+     "rejected": []
+    },
+    "anfragen": [
+     {
+      "start": 0,
+      "count": 68,
+      "fc": 4
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:00.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:00.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1200,
+           "decoded": -1200,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_zaehler",
+           "raw": 17,
+           "decoded": 17,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 3,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:05.000Z"
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/events",
+        "payload": {
+         "art": "frozen_source",
+         "zeitpunkt": "2026-10-21T20:00:10Z",
+         "datenquelle": "DQ-2001",
+         "komponente": "00000000-0000-0000-0000-0000000e2001",
+         "lesungen": 3,
+         "herzschlag": 2000
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:10.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1200,
+           "decoded": -1200,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_zaehler",
+           "raw": 17,
+           "decoded": 17,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 3,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:20.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:20.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1200,
+           "decoded": -1200,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_zaehler",
+           "raw": 17,
+           "decoded": 17,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 3,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/events",
+        "payload": {
+         "art": "device_restart",
+         "zeitpunkt": "2026-10-21T20:00:25Z",
+         "datenquelle": "DQ-2001",
+         "herzschlag_vorher": 2010,
+         "herzschlag_nachher": 3
+        }
+       },
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:25.000Z"
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:30.000Z"
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/events",
+        "payload": {
+         "art": "frozen_source",
+         "zeitpunkt": "2026-10-21T20:00:35Z",
+         "datenquelle": "DQ-2001",
+         "komponente": "00000000-0000-0000-0000-0000000e2001",
+         "lesungen": 3,
+         "herzschlag": 3
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:35.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1200,
+           "decoded": -1200,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_zaehler",
+           "raw": 0,
+           "decoded": 0,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 3,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "lesefehler-und-fremdes-bild",
+   "why": "Ein Lesefehler liefert keinen Wert, nur den Beleg mit Klasse; ein fremdes Bild (Signatur der Energiekarten) ist layout_changed ohne Sample; danach ist der naechste Wert wieder der erste (Melde-Stand vergessen). Eine nicht lesbare Lesung unterbricht die Herzschlag-Folge nicht.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.anlage_zustand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 3,
+       "anlagenart": "pv",
+       "steuerung_kennung": 4711,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       100,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "fehler": "unreachable"
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       21058,
+       258,
+       772,
+       256,
+       3,
+       100,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       100,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       100,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.a.p_erzeugung_w",
+      "erzeuger.a.anlage_zustand"
+     ],
+     "rejected": []
+    },
+    "anfragen": [
+     {
+      "start": 0,
+      "count": 68,
+      "fc": 4
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:00.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:00.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.anlage_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 2,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": [
+        "unreachable"
+       ]
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": [
+        "layout_changed"
+       ]
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:15.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:15.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.anlage_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 2,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/events",
+        "payload": {
+         "art": "frozen_source",
+         "zeitpunkt": "2026-10-21T20:00:20Z",
+         "datenquelle": "DQ-2001",
+         "komponente": "00000000-0000-0000-0000-0000000e2001",
+         "lesungen": 3,
+         "herzschlag": 100
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:20.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.anlage_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "stale",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 2,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "soll-abweichend",
+   "why": "Das Bild meldet 4 Einheiten, eingerichtet sind 3: te_anzahl_abweichend, kein Wert, layout_changed; der Herzschlag zaehlt trotzdem (das Bild ist lesbar).",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 3,
+       "anlagenart": "pv",
+       "steuerung_kennung": 4711,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       4,
+       50,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       1000,
+       0,
+       53000,
+       0,
+       1,
+       3,
+       3,
+       1,
+       125,
+       0,
+       2000,
+       0,
+       53000,
+       0,
+       2,
+       3,
+       3,
+       1,
+       125,
+       0,
+       3000,
+       0,
+       53000,
+       0,
+       3,
+       3,
+       3,
+       1,
+       125,
+       0,
+       4000,
+       0,
+       53000,
+       0,
+       4
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       55,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.a.p_erzeugung_w"
+     ],
+     "rejected": []
+    },
+    "anfragen": [
+     {
+      "start": 0,
+      "count": 68,
+      "fc": 4
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 0,
+       "fehler": [
+        "layout_changed"
+       ]
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:05.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:05.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 1,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "netzpunkt-alt-eigenbedarf-ungueltig",
+   "why": "a_alter_s 45 > 30 s: p_nvp_w ist uncertain und fehlt im Standort-Sample; Eigenbedarf (p_erzeugung_w −3 kW) wird pv 0; eine Anlagenart ausserhalb des Vokabulars ist invalid mit Rohwert; ein ungedeckter Wert sendet nichts.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.p_nvp_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.anlage_zustand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.speicher_fuellstand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_cosphi",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_p_prozent",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 3,
+       "anlagenart": "pv",
+       "steuerung_kennung": 4711,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       10,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       45,
+       65535,
+       64336,
+       65535,
+       62536,
+       9,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       15,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       3,
+       65535,
+       64336,
+       65535,
+       62536,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     },
+     {
+      "nach_ms": 5000,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       20,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       8,
+       2,
+       65535,
+       64336,
+       0,
+       5000,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.a.p_erzeugung_w",
+      "erzeuger.a.p_nvp_w",
+      "erzeuger.a.anlage_zustand",
+      "erzeuger.a.speicher_fuellstand",
+      "erzeuger.nb.n_cosphi",
+      "erzeuger.nb.n_p_prozent"
+     ],
+     "rejected": []
+    },
+    "anfragen": [
+     {
+      "start": 0,
+      "count": 68,
+      "fc": 4
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 0,
+         "ts": "2026-10-21T20:00:00.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:00.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": -3000,
+           "decoded": -3000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1200,
+           "decoded": -1200,
+           "quality": "uncertain",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.anlage_zustand",
+           "raw": 9,
+           "quality": "invalid",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_cosphi",
+           "raw": 950,
+           "decoded": 0.95,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_p_prozent",
+           "raw": 600,
+           "decoded": 60,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 4,
+       "fehler": [
+        "implausible"
+       ]
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 0,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:05.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:05.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_nvp_w",
+           "raw": -1200,
+           "decoded": -1200,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.anlage_zustand",
+           "raw": 3,
+           "decoded": 3,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 2,
+       "fehler": []
+      }
+     },
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 5,
+         "ts": "2026-10-21T20:00:10.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:10.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 5000,
+           "decoded": 5000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 1,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "buettner-bhkw-ohne-netzpunkt",
+   "why": "BHKW mit zwei Motoren, ohne Netzpunkt: das Standort-Sample traegt nur pv_power_kw; speicher_fuellstand mit Faktor 0,1; n_zaehler 65535 ist ein Wert.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.p_nvp_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.speicher_fuellstand",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.nb.n_zaehler",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.dv.d_soll_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[2].t_e",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[1].t_p_ist_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 2,
+       "anlagenart": "bhkw",
+       "steuerung_kennung": 4712,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       2,
+       500,
+       2611,
+       0,
+       4712,
+       2,
+       140,
+       24,
+       65535,
+       32767,
+       65535,
+       0,
+       58900,
+       2,
+       0,
+       734,
+       99,
+       2,
+       7,
+       600,
+       32767,
+       300,
+       65535,
+       1,
+       27,
+       0,
+       60000,
+       120,
+       4,
+       2,
+       3,
+       0,
+       60000,
+       2,
+       15,
+       2,
+       66,
+       0,
+       39600,
+       0,
+       40000,
+       65535,
+       65535,
+       2,
+       15,
+       2,
+       33,
+       0,
+       19300,
+       0,
+       20000,
+       15,
+       4614,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       20013,
+       17746,
+       18249,
+       17696,
+       20069,
+       29818,
+       8263,
+       28002,
+       18432,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       22358,
+       22048,
+       10323,
+       29793,
+       25716,
+       30565,
+       29291,
+       25888,
+       22524,
+       29306,
+       25205,
+       29287,
+       10496,
+       0,
+       0,
+       0,
+       19777,
+       20000,
+       17712,
+       14387,
+       13900,
+       17664,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       19287,
+       8261,
+       28261,
+       29287,
+       26981,
+       8275,
+       28001,
+       29300,
+       25196,
+       28515,
+       27424,
+       13107,
+       0,
+       0,
+       0,
+       0
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.a.p_erzeugung_w",
+      "erzeuger.a.p_nvp_w",
+      "erzeuger.a.speicher_fuellstand",
+      "erzeuger.nb.n_zaehler",
+      "erzeuger.dv.d_soll_w",
+      "erzeuger.te[2].t_e",
+      "erzeuger.te[1].t_p_ist_w"
+     ],
+     "rejected": []
+    },
+    "anfragen": [
+     {
+      "start": 0,
+      "count": 58,
+      "fc": 4
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 58,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 58.9,
+         "ts": "2026-10-21T20:00:00.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:00.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 58900,
+           "decoded": 58900,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.a.speicher_fuellstand",
+           "raw": 734,
+           "decoded": 73.4,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.nb.n_zaehler",
+           "raw": 65535,
+           "decoded": 65535,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.dv.d_soll_w",
+           "raw": 60000,
+           "decoded": 60000,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_e",
+           "raw": 987654,
+           "decoded": 98765.4,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_p_ist_w",
+           "raw": 39600,
+           "decoded": 39600,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 6,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "zehn-einheiten-fc3-little-basis",
+   "why": "Zehn Einheiten ab Basis 100 mit FC 3 und niederwertigem Wort zuerst: zwei Anfragen (118 + 20 Woerter), kein Block geteilt.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_p_ist_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 100,
+       "funktionscode": 3,
+       "wortfolge": "little",
+       "te_anzahl": 10,
+       "anlagenart": "pv",
+       "steuerung_kennung": 900,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       772,
+       258,
+       256,
+       10,
+       7,
+       2610,
+       900,
+       0,
+       1,
+       0,
+       9,
+       1,
+       31072,
+       65534,
+       54919,
+       18,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       32767,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       65535,
+       0,
+       65535,
+       65535,
+       2,
+       1,
+       1,
+       100,
+       65486,
+       65535,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       4414,
+       1,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       8878,
+       2,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       13342,
+       3,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       17806,
+       4,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       22270,
+       5,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       26734,
+       6,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       31198,
+       7,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       35662,
+       8,
+       65535,
+       65535,
+       1,
+       0,
+       2,
+       1,
+       1,
+       100,
+       40126,
+       9,
+       65535,
+       65535,
+       1,
+       0
+      ],
+      "basis": 100
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.a.p_erzeugung_w",
+      "erzeuger.te[*].t_p_ist_w"
+     ],
+     "rejected": []
+    },
+    "anfragen": [
+     {
+      "start": 100,
+      "count": 118,
+      "fc": 3
+     },
+     {
+      "start": 218,
+      "count": 20,
+      "fc": 3
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 100,
+        "count": 118,
+        "fc": 3
+       },
+       {
+        "start": 218,
+        "count": 20,
+        "fc": 3
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 1234.567,
+         "power_kw": -100,
+         "ts": "2026-10-21T20:00:00.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:00.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 1234567,
+           "decoded": 1234567,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[1].t_p_ist_w",
+           "raw": -50,
+           "decoded": -50,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[2].t_p_ist_w",
+           "raw": 69950,
+           "decoded": 69950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[3].t_p_ist_w",
+           "raw": 139950,
+           "decoded": 139950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[4].t_p_ist_w",
+           "raw": 209950,
+           "decoded": 209950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[5].t_p_ist_w",
+           "raw": 279950,
+           "decoded": 279950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[6].t_p_ist_w",
+           "raw": 349950,
+           "decoded": 349950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[7].t_p_ist_w",
+           "raw": 419950,
+           "decoded": 419950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[8].t_p_ist_w",
+           "raw": 489950,
+           "decoded": 489950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[9].t_p_ist_w",
+           "raw": 559950,
+           "decoded": 559950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          },
+          {
+           "point_key": "erzeuger.te[10].t_p_ist_w",
+           "raw": 629950,
+           "decoded": 629950,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 2,
+       "samples": 11,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "messplan-ablehnungen",
+   "why": "Einheit 4 bei drei eingerichteten, unbekanntes Feld, Takt unter 5 s, ein Punkt ohne Komponente (bindet an den Hauptwechselrichter, dort ist kein Bild) - je benannt abgelehnt.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[4].t_p_ist_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.gibt_es_nicht",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.a.p_nvp_w",
+       "cadence_s": 2,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.wirkung.quelle_p",
+       "cadence_s": 60
+      },
+      {
+       "point_key": "erzeuger.te[2].t_e",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2002"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 3,
+       "anlagenart": "pv",
+       "steuerung_kennung": 4711,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [
+      "erzeuger.a.p_erzeugung_w"
+     ],
+     "rejected": [
+      {
+       "point_key": "erzeuger.te[4].t_p_ist_w",
+       "reason": "driver_unavailable"
+      },
+      {
+       "point_key": "erzeuger.a.gibt_es_nicht",
+       "reason": "unknown_point"
+      },
+      {
+       "point_key": "erzeuger.a.p_nvp_w",
+       "reason": "invalid_cadence"
+      },
+      {
+       "point_key": "erzeuger.wirkung.quelle_p",
+       "reason": "driver_unavailable"
+      },
+      {
+       "point_key": "erzeuger.te[2].t_e",
+       "reason": "binding_unavailable"
+      }
+     ]
+    },
+    "anfragen": [
+     {
+      "start": 0,
+      "count": 68,
+      "fc": 4
+     }
+    ],
+    "takte": [
+     {
+      "lesungen": [
+       {
+        "start": 0,
+        "count": 68,
+        "fc": 4
+       }
+      ],
+      "nachrichten": [
+       {
+        "topic": "edge/sources/sps-1/telemetry",
+        "payload": {
+         "pv_power_kw": 182.4,
+         "power_kw": -1.2,
+         "ts": "2026-10-21T20:00:00.000Z"
+        }
+       },
+       {
+        "topic": "edge/measurements/samples",
+        "payload": {
+         "catalog_version": "2026.10.21.1",
+         "observed_at": "2026-10-21T20:00:00.000Z",
+         "samples": [
+          {
+           "point_key": "erzeuger.a.p_erzeugung_w",
+           "raw": 182400,
+           "decoded": 182400,
+           "quality": "good",
+           "entity_id": "00000000-0000-0000-0000-0000000e2001"
+          }
+         ],
+         "applied_revision": 7
+        }
+       }
+      ],
+      "belege": {
+       "ids": [
+        "DQ-2001"
+       ],
+       "requests": 1,
+       "samples": 1,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ohne-bildparameter",
+   "why": "Ohne erzeuger_registerbilder gibt es keine Basisadresse: jeder Punkt driver_unavailable, nie Register 0 von irgendwem.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {
+      "sps-1": {
+       "id": "sps-1",
+       "role": "plant-controller",
+       "communication": "modbus_tcp",
+       "connection": {
+        "ip": "127.0.0.1",
+        "port": 502,
+        "unit_id": 1
+       }
+      }
+     }
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_e",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [],
+     "rejected": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "reason": "driver_unavailable"
+      },
+      {
+       "point_key": "erzeuger.te[*].t_e",
+       "reason": "driver_unavailable"
+      }
+     ]
+    },
+    "anfragen": [],
+    "takte": [
+     {
+      "lesungen": [],
+      "nachrichten": [],
+      "belege": {
+       "ids": [],
+       "requests": 0,
+       "samples": 0,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "quelle-fehlt",
+   "why": "Der Pin nennt eine Quelle, die die Box nicht (mehr) fuehrt: binding_unavailable.",
+   "input": {
+    "binding": {
+     "entities": {
+      "00000000-0000-0000-0000-0000000e2001": {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "entity_type": "anlagensteuerung",
+       "edge_source_id": "sps-1",
+       "data_source_id": "DQ-2001"
+      }
+     },
+     "sources": {}
+    },
+    "config": {
+     "schema_version": "2.0",
+     "revision": 7,
+     "catalog_version": "2026.10.21.1",
+     "selections": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "cadence_s": 60,
+       "entity_id": "00000000-0000-0000-0000-0000000e2001"
+      }
+     ],
+     "erzeuger_registerbilder": [
+      {
+       "entity_id": "00000000-0000-0000-0000-0000000e2001",
+       "basisadresse": 0,
+       "funktionscode": 4,
+       "wortfolge": "big",
+       "te_anzahl": 3,
+       "anlagenart": "pv",
+       "steuerung_kennung": 4711,
+       "veraltet_netzpunkt_s": 30
+      }
+     ]
+    },
+    "takte": [
+     {
+      "nach_ms": 0,
+      "bild": [
+       22096,
+       17754,
+       258,
+       772,
+       256,
+       3,
+       1,
+       2610,
+       0,
+       4711,
+       1,
+       0,
+       9,
+       2,
+       65535,
+       64336,
+       2,
+       51328,
+       3,
+       0,
+       65535,
+       265,
+       3,
+       7,
+       600,
+       950,
+       1234,
+       17,
+       0,
+       0,
+       65535,
+       65535,
+       65535,
+       0,
+       1,
+       3,
+       2,
+       27928,
+       3,
+       3,
+       1,
+       125,
+       0,
+       60900,
+       0,
+       53000,
+       188,
+       24911,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61000,
+       0,
+       53000,
+       188,
+       24912,
+       3,
+       3,
+       1,
+       125,
+       0,
+       61100,
+       0,
+       53000,
+       188,
+       24913
+      ],
+      "basis": 0
+     }
+    ]
+   },
+   "expected": {
+    "status": {
+     "revision": 7,
+     "accepted": [],
+     "rejected": [
+      {
+       "point_key": "erzeuger.a.p_erzeugung_w",
+       "reason": "binding_unavailable"
+      }
+     ]
+    },
+    "anfragen": [],
+    "takte": [
+     {
+      "lesungen": [],
+      "nachrichten": [],
+      "belege": {
+       "ids": [],
+       "requests": 0,
+       "samples": 0,
+       "fehler": []
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "kopfpruefung": [
+  {
+   "name": "gore-mit-namen",
+   "why": "Kopf, drei Einheiten, Namen in einer Anfrage; der leere Direktvermarkter ist \"\" (keiner).",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     3,
+     1000,
+     2610,
+     0,
+     4711,
+     1,
+     140,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     20013,
+     17746,
+     18249,
+     17696,
+     20069,
+     29818,
+     8263,
+     28002,
+     18432,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     },
+     {
+      "fc": 4,
+      "start": 38,
+      "count": 30
+     },
+     {
+      "fc": 4,
+      "start": 140,
+      "count": 80
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": true,
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 3,
+       "herzschlag": 1000,
+       "programmstand": 2610,
+       "steuerung_id": 4711,
+       "anlagenart": 1,
+       "beschreibung_ab": 140,
+       "einheiten": [
+        {
+         "einheit": 1,
+         "art": 1,
+         "nenn_kw": 125,
+         "typ_name": "Growatt MAX 125KTL3-X LV"
+        },
+        {
+         "einheit": 2,
+         "art": 1,
+         "nenn_kw": 125,
+         "typ_name": "Growatt MAX 125KTL3-X LV"
+        },
+        {
+         "einheit": 3,
+         "art": 1,
+         "nenn_kw": 125,
+         "typ_name": "Growatt MAX 125KTL3-X LV"
+        }
+       ],
+       "netzbetreiber_name": "N-ERGIE Netz GmbH",
+       "direktvermarkter_name": ""
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "buettner-umlaut",
+   "why": "Zwei Motoren, Umlaut im Namen (ISO 8859-1).",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     2,
+     500,
+     2611,
+     0,
+     4712,
+     2,
+     140,
+     24,
+     65535,
+     32767,
+     65535,
+     0,
+     58900,
+     2,
+     0,
+     734,
+     99,
+     2,
+     7,
+     600,
+     32767,
+     300,
+     65535,
+     1,
+     27,
+     0,
+     60000,
+     120,
+     4,
+     2,
+     3,
+     0,
+     60000,
+     2,
+     15,
+     2,
+     66,
+     0,
+     39600,
+     0,
+     40000,
+     65535,
+     65535,
+     2,
+     15,
+     2,
+     33,
+     0,
+     19300,
+     0,
+     20000,
+     15,
+     4614,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     20013,
+     17746,
+     18249,
+     17696,
+     20069,
+     29818,
+     8263,
+     28002,
+     18432,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     22358,
+     22048,
+     10323,
+     29793,
+     25716,
+     30565,
+     29291,
+     25888,
+     22524,
+     29306,
+     25205,
+     29287,
+     10496,
+     0,
+     0,
+     0,
+     19777,
+     20000,
+     17712,
+     14387,
+     13900,
+     17664,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     19287,
+     8261,
+     28261,
+     29287,
+     26981,
+     8275,
+     28001,
+     29300,
+     25196,
+     28515,
+     27424,
+     13107,
+     0,
+     0,
+     0,
+     0
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     },
+     {
+      "fc": 4,
+      "start": 38,
+      "count": 20
+     },
+     {
+      "fc": 4,
+      "start": 140,
+      "count": 64
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": true,
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 2,
+       "herzschlag": 500,
+       "programmstand": 2611,
+       "steuerung_id": 4712,
+       "anlagenart": 2,
+       "beschreibung_ab": 140,
+       "einheiten": [
+        {
+         "einheit": 1,
+         "art": 2,
+         "nenn_kw": 66,
+         "typ_name": "MAN E0836LE"
+        },
+        {
+         "einheit": 2,
+         "art": 2,
+         "nenn_kw": 33,
+         "typ_name": "KW Energie Smartblock 33"
+        }
+       ],
+       "netzbetreiber_name": "N-ERGIE Netz GmbH",
+       "direktvermarkter_name": "WVV (Stadtwerke Würzburg)"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ohne-namen",
+   "why": "beschreibung_ab 0: keine Namen im Bericht, kein Fehler.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     3,
+     9,
+     2610,
+     0,
+     4711,
+     1,
+     0,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     },
+     {
+      "fc": 4,
+      "start": 38,
+      "count": 30
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": true,
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 3,
+       "herzschlag": 9,
+       "programmstand": 2610,
+       "steuerung_id": 4711,
+       "anlagenart": 1,
+       "beschreibung_ab": 0,
+       "einheiten": [
+        {
+         "einheit": 1,
+         "art": 1,
+         "nenn_kw": 125
+        },
+        {
+         "einheit": 2,
+         "art": 1,
+         "nenn_kw": 125
+        },
+        {
+         "einheit": 3,
+         "art": 1,
+         "nenn_kw": 125
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "namen-fehlen-im-geraet",
+   "why": "Der Kopf nennt Namen ab 140, die Steuerung beantwortet nur bis zur letzten Einheit: der Bericht ist erkannt, ohne Namen.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     3,
+     1000,
+     2610,
+     0,
+     4711,
+     1,
+     140,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     },
+     {
+      "fc": 4,
+      "start": 38,
+      "count": 30
+     },
+     {
+      "fc": 4,
+      "start": 140,
+      "count": 80
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": true,
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 3,
+       "herzschlag": 1000,
+       "programmstand": 2610,
+       "steuerung_id": 4711,
+       "anlagenart": 1,
+       "beschreibung_ab": 140,
+       "einheiten": [
+        {
+         "einheit": 1,
+         "art": 1,
+         "nenn_kw": 125
+        },
+        {
+         "einheit": 2,
+         "art": 1,
+         "nenn_kw": 125
+        },
+        {
+         "einheit": 3,
+         "art": 1,
+         "nenn_kw": 125
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "einheiten-fehlen",
+   "why": "Der Kopf nennt drei Einheiten, die Steuerung hat nur Register fuer zwei: zu_wenig_woerter mit te_anzahl.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     3,
+     1000,
+     2610,
+     0,
+     4711,
+     1,
+     140,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     },
+     {
+      "fc": 4,
+      "start": 38,
+      "count": 30
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": false,
+       "grund": "zu_wenig_woerter",
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 3
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "signatur-fremd",
+   "why": "Ein Energiekarten-Bild: nur signatur_ok false.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     21058,
+     258,
+     772,
+     256,
+     3,
+     1,
+     2610,
+     0,
+     4711,
+     1,
+     0,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": false,
+       "erkannt": false,
+       "grund": "signatur_fremd"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "version-fremd",
+   "why": "Hauptversion 2: nur die Version im Bericht.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     513,
+     3,
+     1,
+     2610,
+     0,
+     4711,
+     1,
+     0,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": false,
+       "grund": "version_fremd",
+       "hauptversion": 2,
+       "nebenversion": 1
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "wortfolge-falsch",
+   "why": "Der Pruefwert passt nicht zur gewaehlten Wortfolge.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "little"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     3,
+     1000,
+     2610,
+     0,
+     4711,
+     1,
+     140,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     20013,
+     17746,
+     18249,
+     17696,
+     20069,
+     29818,
+     8263,
+     28002,
+     18432,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": false,
+       "grund": "wortfolge_falsch",
+       "hauptversion": 1,
+       "nebenversion": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "te-anzahl-elf",
+   "why": "te_anzahl 11 ist ungueltig: Version und te_anzahl.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     11,
+     1,
+     2610,
+     0,
+     4711,
+     1,
+     0,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": false,
+       "grund": "te_anzahl_ungueltig",
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 11
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "fc3-basis-200-zehn-einheiten",
+   "why": "FC 3 ab Basis 200, zehn Einheiten, Namen in zwei Anfragen (7 + 5 Texte).",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 3,
+      "address": 200,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     10,
+     3,
+     2610,
+     0,
+     77,
+     3,
+     140,
+     0,
+     65535,
+     32767,
+     65535,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     1,
+     50,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     1,
+     51,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     1,
+     52,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     1,
+     53,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     1,
+     54,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     1,
+     55,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     2,
+     56,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     2,
+     57,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     2,
+     58,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     2,
+     59,
+     32767,
+     65535,
+     65535,
+     65535,
+     65535,
+     65535,
+     0,
+     0,
+     20069,
+     29818,
+     8257,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     17494,
+     8258,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     12544,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     12800,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     13056,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     13312,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     13568,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     13824,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     14080,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     14336,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     14592,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     21625,
+     28704,
+     12592,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "basis": 200
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 3,
+      "start": 200,
+      "count": 12
+     },
+     {
+      "fc": 3,
+      "start": 238,
+      "count": 100
+     },
+     {
+      "fc": 3,
+      "start": 340,
+      "count": 112
+     },
+     {
+      "fc": 3,
+      "start": 452,
+      "count": 80
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": true,
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 10,
+       "herzschlag": 3,
+       "programmstand": 2610,
+       "steuerung_id": 77,
+       "anlagenart": 3,
+       "beschreibung_ab": 140,
+       "einheiten": [
+        {
+         "einheit": 1,
+         "art": 1,
+         "nenn_kw": 50,
+         "typ_name": "Typ 1"
+        },
+        {
+         "einheit": 2,
+         "art": 1,
+         "nenn_kw": 51,
+         "typ_name": "Typ 2"
+        },
+        {
+         "einheit": 3,
+         "art": 1,
+         "nenn_kw": 52,
+         "typ_name": "Typ 3"
+        },
+        {
+         "einheit": 4,
+         "art": 1,
+         "nenn_kw": 53,
+         "typ_name": "Typ 4"
+        },
+        {
+         "einheit": 5,
+         "art": 1,
+         "nenn_kw": 54,
+         "typ_name": "Typ 5"
+        },
+        {
+         "einheit": 6,
+         "art": 1,
+         "nenn_kw": 55,
+         "typ_name": "Typ 6"
+        },
+        {
+         "einheit": 7,
+         "art": 2,
+         "nenn_kw": 56,
+         "typ_name": "Typ 7"
+        },
+        {
+         "einheit": 8,
+         "art": 2,
+         "nenn_kw": 57,
+         "typ_name": "Typ 8"
+        },
+        {
+         "einheit": 9,
+         "art": 2,
+         "nenn_kw": 58,
+         "typ_name": "Typ 9"
+        },
+        {
+         "einheit": 10,
+         "art": 2,
+         "nenn_kw": 59,
+         "typ_name": "Typ 10"
+        }
+       ],
+       "netzbetreiber_name": "Netz A",
+       "direktvermarkter_name": "DV B"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "nicht-erreichbar",
+   "why": "Die Lesung des Kopfs scheitert: die Klasse der Lesung, kein Bericht.",
+   "input": {
+    "ops": [
+     {
+      "id": "k1",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": null,
+    "basis": 0,
+    "fehler": "Verbindungsaufbau-Timeout"
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     }
+    ],
+    "results": [
+     {
+      "id": "k1",
+      "ok": false,
+      "error_code": "unreachable",
+      "message": "Das Gerät ist unter dieser Adresse nicht erreichbar. (Verbindungsaufbau-Timeout)"
+     }
+    ]
+   }
+  },
+  {
+   "name": "zwei-ops-und-unvollstaendig",
+   "why": "Zwei Ops nacheinander; eine ohne Host ist invalid_request und wird nicht gelesen.",
+   "input": {
+    "ops": [
+     {
+      "id": "a",
+      "op": "erzeuger_kopf",
+      "host": "127.0.0.1",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     },
+     {
+      "id": "b",
+      "op": "erzeuger_kopf",
+      "host": "",
+      "port": 502,
+      "unit_id": 1,
+      "fc": 4,
+      "address": 0,
+      "word_order": "big"
+     }
+    ],
+    "bild": [
+     22096,
+     17754,
+     258,
+     772,
+     256,
+     3,
+     1000,
+     2610,
+     0,
+     4711,
+     1,
+     140,
+     9,
+     2,
+     65535,
+     64336,
+     2,
+     51328,
+     3,
+     0,
+     65535,
+     265,
+     3,
+     7,
+     600,
+     950,
+     1234,
+     17,
+     0,
+     0,
+     65535,
+     65535,
+     65535,
+     0,
+     1,
+     3,
+     2,
+     27928,
+     3,
+     3,
+     1,
+     125,
+     0,
+     60900,
+     0,
+     53000,
+     188,
+     24911,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61000,
+     0,
+     53000,
+     188,
+     24912,
+     3,
+     3,
+     1,
+     125,
+     0,
+     61100,
+     0,
+     53000,
+     188,
+     24913,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     20013,
+     17746,
+     18249,
+     17696,
+     20069,
+     29818,
+     8263,
+     28002,
+     18432,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0,
+     18290,
+     28535,
+     24948,
+     29728,
+     19777,
+     22560,
+     12594,
+     13643,
+     21580,
+     13101,
+     22560,
+     19542,
+     0,
+     0,
+     0,
+     0
+    ],
+    "basis": 0
+   },
+   "expected": {
+    "lesungen": [
+     {
+      "fc": 4,
+      "start": 0,
+      "count": 12
+     },
+     {
+      "fc": 4,
+      "start": 38,
+      "count": 30
+     },
+     {
+      "fc": 4,
+      "start": 140,
+      "count": 80
+     }
+    ],
+    "results": [
+     {
+      "id": "a",
+      "ok": true,
+      "erzeuger_kopf": {
+       "signatur_ok": true,
+       "erkannt": true,
+       "hauptversion": 1,
+       "nebenversion": 0,
+       "te_anzahl": 3,
+       "herzschlag": 1000,
+       "programmstand": 2610,
+       "steuerung_id": 4711,
+       "anlagenart": 1,
+       "beschreibung_ab": 140,
+       "einheiten": [
+        {
+         "einheit": 1,
+         "art": 1,
+         "nenn_kw": 125,
+         "typ_name": "Growatt MAX 125KTL3-X LV"
+        },
+        {
+         "einheit": 2,
+         "art": 1,
+         "nenn_kw": 125,
+         "typ_name": "Growatt MAX 125KTL3-X LV"
+        },
+        {
+         "einheit": 3,
+         "art": 1,
+         "nenn_kw": 125,
+         "typ_name": "Growatt MAX 125KTL3-X LV"
+        }
+       ],
+       "netzbetreiber_name": "N-ERGIE Netz GmbH",
+       "direktvermarkter_name": ""
+      }
+     },
+     {
+      "id": "b",
+      "ok": false,
+      "error_code": "invalid_request",
+      "message": "Der Prüfschritt ist unvollständig."
+     }
+    ]
+   }
+  }
+ ]
+}
