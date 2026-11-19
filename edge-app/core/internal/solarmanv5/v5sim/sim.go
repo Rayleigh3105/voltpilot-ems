@@ -29,8 +29,11 @@ type Sim struct {
 	silent    bool            // swallow requests (no reply) - the no_answer case
 	refuse    map[uint16]byte // start register -> Modbus exception code
 	busy      bool            // a client is connected
-	requests  int             // fn-0x03 requests answered or swallowed
+	requests  int             // requests answered or swallowed
 	extraConn int             // connections refused because one was open
+	writes    []Write         // write frames received (fn 0x06 / 0x10)
+	// ignoreWrites acknowledges writes without applying them.
+	ignoreWrites bool
 }
 
 // Start listens on addr ("127.0.0.1:0" picks a free port).
@@ -159,8 +162,11 @@ func (s *Sim) answer(req []byte) ([]byte, error) {
 	}
 	seq := binary.LittleEndian.Uint16(req[5:])
 	mb := req[11+15 : len(req)-2]
+	if len(mb) >= 8 && (mb[1] == 0x06 || mb[1] == 0x10) {
+		return s.write(seq, mb)
+	}
 	if len(mb) < 8 || mb[1] != 0x03 {
-		return nil, errors.New("only fn 0x03 is simulated")
+		return nil, errors.New("only fn 0x03, 0x06 and 0x10 are simulated")
 	}
 	slave := mb[0]
 	start := binary.BigEndian.Uint16(mb[2:])
@@ -194,6 +200,68 @@ func (s *Sim) answer(req []byte) ([]byte, error) {
 		reply = withCRC(body)
 	}
 	return ResponseFrame(serial, seq, solarmanv5.FrameTypeSolar, 0x01, reply), nil
+}
+
+// write applies a fn-0x06 or fn-0x10 frame to the register image and answers
+// like a Deye: the echo (0x06) or start + count (0x10). A refused start answers
+// the exception; a silent logger stays silent.
+func (s *Sim) write(seq uint16, mb []byte) ([]byte, error) {
+	slave, fn := mb[0], mb[1]
+	start := binary.BigEndian.Uint16(mb[2:])
+	var values []uint16
+	if fn == 0x06 {
+		values = []uint16{binary.BigEndian.Uint16(mb[4:])}
+	} else {
+		n := int(binary.BigEndian.Uint16(mb[4:]))
+		if len(mb) < 7+2*n {
+			return nil, errors.New("fn 0x10 frame too short")
+		}
+		for i := 0; i < n; i++ {
+			values = append(values, binary.BigEndian.Uint16(mb[7+2*i:]))
+		}
+	}
+	s.mu.Lock()
+	s.requests++
+	s.writes = append(s.writes, Write{Fn: fn, Start: start, Values: values})
+	silent := s.silent
+	code, refused := s.refuse[start]
+	if !refused && !s.ignoreWrites {
+		for i, v := range values {
+			s.regs[start+uint16(i)] = v
+		}
+	}
+	serial := s.serial
+	s.mu.Unlock()
+	if silent {
+		return nil, nil
+	}
+	reply := withCRC(append([]byte{slave, fn}, mb[2:6]...))
+	if refused {
+		reply = withCRC([]byte{slave, fn | 0x80, code})
+	}
+	return ResponseFrame(serial, seq, solarmanv5.FrameTypeSolar, 0x01, reply), nil
+}
+
+// Write is one write frame the logger received.
+type Write struct {
+	Fn     byte
+	Start  uint16
+	Values []uint16
+}
+
+// Writes are the write frames received so far.
+func (s *Sim) Writes() []Write {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Write(nil), s.writes...)
+}
+
+// IgnoreWrites makes the logger acknowledge writes without applying them (the
+// "accepted and silently ignored" firmware).
+func (s *Sim) IgnoreWrites(on bool) {
+	s.mu.Lock()
+	s.ignoreWrites = on
+	s.mu.Unlock()
 }
 
 func withCRC(body []byte) []byte {

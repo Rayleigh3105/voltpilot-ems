@@ -154,6 +154,36 @@ func (s *Session) ReadHolding(ctx context.Context, start, count uint16) ([]uint1
 	return regs[:count], nil
 }
 
+// WriteRegister writes ONE holding register over this session: fn 0x06 when fc
+// is 6, else fn 0x10 with one word (the default - many firmwares accept an
+// fn-0x06 frame and never apply it). It returns once the logger acknowledged
+// the frame; whether the value took is the caller's read-back, never this ack.
+func (s *Session) WriteRegister(ctx context.Context, fc byte, reg, value uint16) error {
+	s.seq++
+	seq := s.seq
+	var frame []byte
+	if fc == 0x06 {
+		frame = BuildWriteSingleRequest(s.serial, seq, s.slave, reg, value)
+	} else {
+		fc = 0x10
+		var err error
+		if frame, err = BuildWriteMultipleRequest(s.serial, seq, s.slave, reg, []uint16{value}); err != nil {
+			return err
+		}
+	}
+	resp, err := s.exchange(ctx, frame)
+	if err != nil {
+		return err
+	}
+	serial := s.serial
+	r, err := ParseResponse(resp, ParseOpts{ExpectSerial: &serial})
+	if err != nil {
+		return err
+	}
+	_, err = ParseWriteResponse(r.Modbus, fc)
+	return err
+}
+
 // ReadPlan reads every block of plan in order over this one session. A
 // mandatory block's failure aborts and is returned; an optional block's
 // failure is recorded as an empty Block with its Err (a firmware refusing the
