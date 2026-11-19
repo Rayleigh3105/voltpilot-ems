@@ -3,7 +3,7 @@
 Neue Software für eine Edge-Light-Box ohne Kundenkonto, aufgespielt vom Werkstatt-Dienst durch den Wartungstunnel.
 Konzept `vp-update-vor-zuordnung`, entschieden 18.11.2026 (E1 = A, E2 = A); dieser Vertrag ist die Stufe S1, der Knopf in der Geräteakte.
 Vokabulare: [`werkstatt-fernlauf.json`](werkstatt-fernlauf.json); Zwillinge `FernlaufRegel.java` (API), `internal/fernlauf` (Werkstatt-Dienst), `werkstattFernlauf.ts` (Portal).
-Routen und Formen: [`openapi.yaml`](openapi.yaml) (`/api/v1/admin/geraete/{ref}/fernlauf`, `/api/v1/werkstatt-dienst/fernlaeufe/…`, Schema `FernlaufAuftrag`).
+Routen und Formen: [`openapi.yaml`](openapi.yaml) (`/api/v1/admin/geraete/{ref}/fernlauf`, `/api/v1/admin/geraete/ohne-kundenkonto` - Karte „Ohne Kundenkonto", S2, derselbe Stand für jede Box, keine zweite Logik - `/api/v1/werkstatt-dienst/fernlaeufe/…`, Schema `FernlaufAuftrag`).
 
 ## Ablauf
 

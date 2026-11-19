@@ -15,6 +15,8 @@ import { ReleaseSeite } from './ReleaseSeite';
 import { BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
 import { VerteilDialog, type VerteilStart } from './VerteilDialog';
 import { ErstverbindungSchalter } from './ErstverbindungSchalter';
+import { OhneKundenkontoKarte } from './OhneKundenkontoKarte';
+import { bereitZumAufspielen, type AlleAufspielenStand, type FernlaufStand } from '../../werkstattFernlauf';
 import {
   BOX_ART_LABELS,
   actorLabel,
@@ -32,8 +34,12 @@ import {
   type UpdateTone,
 } from '../../adminEdgeUpdates';
 import { aufgaben, lage, linienKarten, type LageZiel } from '../../geraeteUpdates';
-// LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
-import { LIST_POLL_MS } from '../../pollCadence';
+// LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich; LIVE: während „Alle aufspielen" läuft.
+import { LIST_POLL_MS, LIVE_POLL_MS } from '../../pollCadence';
+
+function warten(ms: number): Promise<void> {
+  return new Promise((resolve) => { window.setTimeout(resolve, ms); });
+}
 
 const toneVariant = (tone: UpdateTone): 'ok' | 'warn' | 'off' =>
   tone === 'ok' ? 'ok' : tone === 'warn' ? 'warn' : 'off';
@@ -99,6 +105,20 @@ export function EdgeUpdatesPage({
   const [seiten, setSeiten] = useState<Map<number, EdgeReleaseSeite>>(() => new Map());
   const seitenRef = useRef(seiten);
   seitenRef.current = seiten;
+  // Karte „Ohne Kundenkonto" (S2): eigene, kleine Liste neben den Linien-Karten - `null` nur vor dem ersten Laden.
+  const [ohneKonto, setOhneKonto] = useState<FernlaufStand[] | null>(null);
+  const [reihe, setReihe] = useState<AlleAufspielenStand | null>(null);
+  const [reiheAktiv, setReiheAktiv] = useState(false);
+  // Bricht die laufende Reihe sofort ab (Unmount oder eine neue Reihe startet nicht über eine alte hinweg).
+  const reiheLaufendRef = useRef(false);
+
+  async function ladeOhneKundenkonto() {
+    try {
+      setOhneKonto(await adminApi.geraeteOhneKundenkonto());
+    } catch {
+      // Dieselbe Regel wie `load()`: ein Fehlschlag lässt die zuletzt gezeigte Liste stehen.
+    }
+  }
 
   function ladeReleaseSeite(d: EdgeUpdates) {
     const seq = neuestesLightRelease(d);
@@ -130,12 +150,16 @@ export function EdgeUpdatesPage({
 
   useEffect(() => {
     void load();
+    void ladeOhneKundenkonto();
+    return () => { reiheLaufendRef.current = false; };
   }, []);
 
   // Ein Beobachtungs-Werkzeug, das man von Hand aktualisieren muss, erzeugt
   // genau das „hängt es?"-Gefühl. 30 s still, beim Zurückkehren in den Tab
   // sofort (der Hook pausiert im Hintergrund).
   useFreshnessPoll(() => void load(), LIST_POLL_MS, true);
+  // Still, solange keine Reihe läuft: die Karte „Ohne Kundenkonto" teilt sich den Verwaltungs-Takt.
+  useFreshnessPoll(() => void ladeOhneKundenkonto(), LIST_POLL_MS, reihe == null);
   // Der zweite, billige Takt lässt NUR die Bezugszeit-Zeile weiterzählen.
   useEffect(() => {
     const t = window.setInterval(() => setTick(Date.now()), 5_000);
@@ -165,9 +189,80 @@ export function EdgeUpdatesPage({
     }
   }
 
+  /** Eine einzelne Box aus der Karte „Ohne Kundenkonto" aufspielen - derselbe Auftrag wie in ihrer Akte (S1). */
+  async function aufspielenOhneKundenkonto(stand: FernlaufStand) {
+    if (!stand.neueste) return;
+    setActionError(null);
+    setBusy(true);
+    try {
+      await adminApi.geraeteFernlaufAufspielen(stand.edgeRef, stand.neueste);
+      await ladeOhneKundenkonto();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Wartet, bis der letzte Auftrag dieser Box ein Ende hat (nicht mehr `erteilt`/`laeuft`); `null` bei Abbruch. */
+  async function wartetAufEnde(edgeRef: string): Promise<FernlaufStand | null> {
+    while (reiheLaufendRef.current) {
+      let stand: FernlaufStand;
+      try {
+        stand = await adminApi.geraeteFernlauf(edgeRef);
+      } catch {
+        return null;
+      }
+      const f = stand.verlauf[0];
+      if (!f || (f.zustand !== 'erteilt' && f.zustand !== 'laeuft')) return stand;
+      await warten(LIVE_POLL_MS);
+    }
+    return null;
+  }
+
+  /**
+   * „Alle n aufspielen" (§4.1 S2): legt die Aufträge NACHEINANDER an, genau wie der Werkstatt-Dienst ohnehin nur
+   * einen Fernlauf zur Zeit fährt - keine zweite Logik, jeder Auftrag ist derselbe wie in der Akte (S1). Ein
+   * zurückgenommener Lauf bricht die restlichen Boxen DIESER Reihe ab, mit Hinweis; die Karte zeigt den Fortschritt.
+   */
+  async function alleAufspielen() {
+    const ziel = bereitZumAufspielen(ohneKonto ?? []);
+    if (ziel.length === 0 || reiheLaufendRef.current) return;
+    reiheLaufendRef.current = true;
+    setReiheAktiv(true);
+    setActionError(null);
+    setReihe({ gesamt: ziel.length, erledigt: 0, aktuellRef: ziel[0].edgeRef, abgebrochen: null });
+    for (const box of ziel) {
+      if (!reiheLaufendRef.current) break;
+      setReihe((r) => (r ? { ...r, aktuellRef: box.edgeRef } : r));
+      try {
+        await adminApi.geraeteFernlaufAufspielen(box.edgeRef, box.neueste!);
+      } catch (e) {
+        setReihe((r) => (r ? { ...r, abgebrochen: {
+          edgeRef: box.edgeRef, grund: e instanceof ApiError ? e.message : 'Der Auftrag ist fehlgeschlagen.',
+        } } : r));
+        break;
+      }
+      const nach = await wartetAufEnde(box.edgeRef);
+      setReihe((r) => (r ? { ...r, erledigt: r.erledigt + 1 } : r));
+      if (nach?.verlauf[0]?.zustand === 'zurueck') {
+        setReihe((r) => (r ? { ...r, abgebrochen: {
+          edgeRef: box.edgeRef, grund: 'Der Lauf wurde zurückgenommen.',
+        } } : r));
+        break;
+      }
+    }
+    reiheLaufendRef.current = false;
+    setReiheAktiv(false);
+    await ladeOhneKundenkonto();
+    // Glattes Ende: die Zeile räumt sich weg - der Hinweis einer Rücknahme bleibt stehen.
+    setReihe((r) => (r && r.abgebrochen ? r : null));
+  }
+
   // Alles Abgeleitete rechnet gegen die Bezugszeit der Daten, nie gegen eine
   // laufende Uhr über einem stehenden Schnappschuss.
   const jetzt = useMemo(() => new Date(fetchedAt), [fetchedAt]);
+  const ohneKontoJetzt = useMemo(() => new Date(tick), [tick]);
   const karten = useMemo(() => (data ? linienKarten(data, jetzt, seiten) : []), [data, jetzt, seiten]);
   const brauchtDich = useMemo(() => (data ? aufgaben(data, jetzt) : []), [data, jetzt]);
   const lageSatz = useMemo(() => (data ? lage(data, jetzt) : null), [data, jetzt]);
@@ -183,6 +278,11 @@ export function EdgeUpdatesPage({
     setActionError(null);
     const ref = data?.fleet.find((r) => r.deviceId === deviceId)?.externalRef;
     if (ref && onNavigate) onNavigate(geraeteAkteRoute(ref, 'software'));
+  };
+  /** Karte „Ohne Kundenkonto" (S2): die Box dort kennt der Admin schon an ihrer edge-Referenz, kein Umweg über eine Geräte-Kennung. */
+  const oeffneOhneKonto = (edgeRef: string) => {
+    setActionError(null);
+    if (onNavigate) onNavigate(geraeteAkteRoute(edgeRef, 'software'));
   };
   // „Fortschritt" und „Älter": die Boxenliste wohnt seither in der Geräte-Liste (Chips „Update läuft"/„Älter").
   const fortschritt = (_art?: BoxArt | null) => onNavigate?.({ page: 'geraete-registry', siteId: null, sub: null });
@@ -250,6 +350,21 @@ export function EdgeUpdatesPage({
               setVerteilen({ art, releaseSeq, nur: uebrige, reihenfolge: 'alle' });
             }}
           />
+
+          {/* Boxen ohne Kundenkonto mit Tunnel-Zugang (vp-update-vor-zuordnung, S2): eigene Karte unter den
+              Linien, nicht in der Flotte oben - sie haben noch keine Gerätezeile. */}
+          {ohneKonto && ohneKonto.length > 0 && (
+            <OhneKundenkontoKarte
+              liste={ohneKonto}
+              jetzt={ohneKontoJetzt}
+              busy={busy}
+              laeuft={reiheAktiv}
+              reihe={reihe}
+              onBox={oeffneOhneKonto}
+              onAufspielen={(stand) => void aufspielenOhneKundenkonto(stand)}
+              onAlleAufspielen={() => void alleAufspielen()}
+            />
+          )}
 
           {/* Warn-first: was Aufmerksamkeit braucht, steht oben und NENNT die
               Box, den Grund und den nächsten Schritt. Ein Hinweis, keine

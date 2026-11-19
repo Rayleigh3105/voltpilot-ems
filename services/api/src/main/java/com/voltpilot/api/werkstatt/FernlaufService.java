@@ -168,6 +168,20 @@ public class FernlaufService {
         return repo.mitId(id).orElseThrow();
     }
 
+    /**
+     * Alle Boxen ohne Kundenkonto mit Tunnel-Zugang, für die Karte „Ohne Kundenkonto" (S2, §4.5 „Plattform › Geräte
+     * › Updates"): derselbe Stand wie {@link #stand}, einmal je Box - reine Auflistung, keine zweite Vorprüfung.
+     * Eine Box ohne Tunnel-Zugang steht hier nie (ohne ihn gibt es weder einen Fernlauf noch diese Karte für sie).
+     */
+    public List<Stand> ohneKundenkonto() {
+        return fernwartung.boxen().stream().map(Zugang::edgeRef).distinct()
+                .filter(ref -> geraete.findByRef(ref).isEmpty())
+                .filter(ref -> !enrollments.meldung(ref).map(EnrollmentRepository.Meldung::zertifikat).orElse(false))
+                .sorted()
+                .map(this::stand)
+                .toList();
+    }
+
     // ── Dienst ────────────────────────────────────────────────────────────
 
     /** Aufträge, die der Dienst annehmen kann (in der Antwort auf seine Ansicht, nicht verbraucht). */

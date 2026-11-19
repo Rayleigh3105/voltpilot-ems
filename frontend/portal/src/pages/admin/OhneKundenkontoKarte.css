@@ -1,0 +1,30 @@
+/* Karte „Ohne Kundenkonto" (vp-update-vor-zuordnung S2): Zeilen am Rechner in einer Reihe,
+   am Telefon gestapelt - nie seitliches Scrollen. */
+
+.vp-gu-ok-kopf { justify-content: space-between; }
+/* Platz für den Schalter „Nachts von selbst" (S4): nimmt heute keine Breite ein. */
+.vp-gu-ok-kopf-rechts { flex: none; }
+
+.vp-gu-ok-reihe { background: var(--vp-paleblue-start); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; font-size: 0.9rem; }
+.vp-gu-ok-reihe .vp-alert { margin: 0; }
+
+.vp-gu-ok-liste { display: grid; gap: 8px; }
+.vp-gu-ok-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--vp-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.vp-gu-ok-ref { font-weight: 700; text-align: left; overflow-wrap: anywhere; }
+.vp-gu-ok-fassung { justify-self: start; }
+.vp-gu-ok-grund { text-align: right; }
+
+@media (max-width: 720px) {
+  .vp-gu-ok-zeile { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
+  .vp-gu-ok-fassung { grid-column: 1 / -1; }
+  .vp-gu-ok-grund { grid-column: 1 / -1; text-align: left; }
+}

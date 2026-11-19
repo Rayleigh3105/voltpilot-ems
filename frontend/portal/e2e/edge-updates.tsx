@@ -25,6 +25,11 @@ Object.assign(keycloak, {
   tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } },
 });
 
+/** Wofür die Spec `ohne-kundenkonto.spec.ts` liest, ob und mit welchen Werten „Aufspielen" die API rief. */
+const fernlaufAufspielenAufrufe: { ref: string; fassung: string }[] = [];
+(window as unknown as { __fernlaufAufspielenAufrufe: typeof fernlaufAufspielenAufrufe })
+  .__fernlaufAufspielenAufrufe = fernlaufAufspielenAufrufe;
+
 Object.assign(adminApi, {
   // Erstverbindung: der Schalter der Automatik, ab Werk an.
   erstverbindungSchalter: async () => ({ alle: true, docker: true, light: true, eintraege: [] }),
@@ -84,6 +89,57 @@ Object.assign(adminApi, {
   createRollout: async () => ({}),
   setUpdateTarget: async () => ({}),
   revertUpdateTarget: async () => ({}),
+  // Karte „Ohne Kundenkonto" (vp-update-vor-zuordnung S2): eine Box bereit, eine ohne Tunnel-Rückmeldung
+  // (kein Knopf, Grund), eine dritte mit einem zurückgenommenen Fernlauf - „Braucht dich".
+  geraeteOhneKundenkonto: async () => [
+    {
+      edgeRef: 'edge-cyhchfr', laeuft: 'edge-light-2026.11.5', laeuftGemeldetAm: iso(-180_000),
+      fragtZuletztAm: iso(-10_000), neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5',
+      werkstattAm: iso(-9 * 86_400_000), moeglich: true, gruende: [],
+      haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [],
+      stand: iso(0),
+    },
+    {
+      edgeRef: 'edge-mnpqrsb', laeuft: 'edge-light-2026.11.5', laeuftGemeldetAm: iso(-900_000), fragtZuletztAm: null,
+      neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5', werkstattAm: iso(-9 * 86_400_000),
+      moeglich: false,
+      gruende: [{ code: 'nicht_verbunden', text: 'Die Box ist gerade nicht im Tunnel (kein Handshake in den letzten 3 Minuten).' }],
+      haken: { tunnelVerbunden: false, fragtNachSchluesseln: false, keinKundenkonto: true }, verlauf: [],
+      stand: iso(0),
+    },
+    {
+      edgeRef: 'edge-k7m2xq3', laeuft: 'edge-light-2026.11.5', laeuftGemeldetAm: iso(-240_000),
+      fragtZuletztAm: iso(-15_000), neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5',
+      werkstattAm: iso(-9 * 86_400_000), moeglich: true, gruende: [],
+      haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true },
+      verlauf: [{
+        id: 'f1', art: 'aufspielen', zustand: 'zurueck', fassungVorher: 'edge-light-2026.11.5',
+        fassungZiel: 'edge-light-2026.11.15', akteurName: 'Alex Beispiel', erteiltAm: iso(-20 * 60_000),
+        begonnenAm: iso(-19 * 60_000), schritt: 'neustart', schrittSeit: null, schritte: [], fensterEnde: null,
+        ergebnis: { ergebnis: 'zurueck', grund: '/health nennt edge-light-2026.11.9', schritt: 'neustart',
+          fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst', erfasstAm: iso(-15 * 60_000) },
+      }],
+      stand: iso(0),
+    },
+  ],
+  geraeteFernlauf: async () => ({
+    edgeRef: 'edge-cyhchfr', laeuft: 'edge-light-2026.11.15', laeuftGemeldetAm: iso(0), fragtZuletztAm: iso(0),
+    neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5', werkstattAm: iso(-9 * 86_400_000),
+    moeglich: false, gruende: [{ code: 'schon_neueste', text: 'x' }],
+    haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true },
+    verlauf: [{
+      id: 'f2', art: 'aufspielen', zustand: 'fertig', fassungVorher: 'edge-light-2026.11.5',
+      fassungZiel: 'edge-light-2026.11.15', akteurName: 'Alex Beispiel', erteiltAm: iso(-60_000),
+      begonnenAm: iso(-59_000), schritt: 'tunnel', schrittSeit: null, schritte: [], fensterEnde: null,
+      ergebnis: { ergebnis: 'fertig', grund: null, schritt: 'tunnel', fassungNachher: 'edge-light-2026.11.15',
+        belege: {}, quelle: 'dienst', erfasstAm: iso(0) },
+    }],
+    stand: iso(0),
+  }),
+  geraeteFernlaufAufspielen: async (ref: string, fassung: string) => {
+    fernlaufAufspielenAufrufe.push({ ref, fassung });
+    return {};
+  },
 });
 
 function Fixture() {
