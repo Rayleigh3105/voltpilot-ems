@@ -40516,7 +40516,7 @@ components:
                 enum: [kundenkonto, zertifikat, keine_edge_light, fassung_unbekannt, fassung_fremd, keine_neueste,
                   schon_neueste, kein_tunnel, tunnel_gesperrt, keine_rueckmeldung, nicht_verbunden, fragt_nicht,
                   kein_techniker_zugang, dienst_stumm, dienst_alt, dienst_nicht_bereit, kein_host_schluessel,
-                  laeuft_schon]
+                  laeuft_schon, stand_unlesbar]
               text: { type: string }
         haken:
           type: object

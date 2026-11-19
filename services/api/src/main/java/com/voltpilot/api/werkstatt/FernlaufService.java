@@ -178,8 +178,27 @@ public class FernlaufService {
                 .filter(ref -> geraete.findByRef(ref).isEmpty())
                 .filter(ref -> !enrollments.meldung(ref).map(EnrollmentRepository.Meldung::zertifikat).orElse(false))
                 .sorted()
-                .map(this::stand)
+                .map(this::standFuerUebersicht)
                 .toList();
+    }
+
+    /**
+     * Wie {@link #stand}, aber für die Liste: eine Kennung, die {@link #pruefeRef} ablehnt (z. B. ein
+     * Sticker-Format oder eine fremde Form), kippt nie die ganze Liste - sie erscheint mit Grund, so wie jede
+     * andere nicht mögliche Box.
+     */
+    private Stand standFuerUebersicht(String edgeRef) {
+        try {
+            return stand(edgeRef);
+        } catch (ResponseStatusException e) {
+            log.warn("Fernlauf-Übersicht: Stand von {} nicht lesbar ({})", edgeRef, e.getReason());
+            String grund = e.getReason() == null || e.getReason().isBlank() ? "Der Stand dieser Box ist nicht "
+                    + "lesbar." : e.getReason();
+            return new Stand(edgeRef, null, null, null, null, null, null,
+                    new FernlaufRegel.Urteil(false, List.of(new FernlaufRegel.Grund("stand_unlesbar", grund)),
+                            new FernlaufRegel.Haken(false, false, true)),
+                    List.of(), uhr.instant());
+        }
     }
 
     // ── Dienst ────────────────────────────────────────────────────────────
