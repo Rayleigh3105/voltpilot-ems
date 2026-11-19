@@ -36,6 +36,15 @@ class Interpreter(unittest.TestCase):
         w = rechne("s := 'Grün'; b := s[2]; n := LEN(s);", "s : STRING(32); b : BYTE; n : INT;")
         self.assertEqual((w["b"], w["n"]), (0xFC, 4))
 
+    def test_min_max_limit_wie_iec(self):
+        w = rechne("a := MIN(5, -3, 7); b := MAX(udi, 2); c := LIMIT(0, 300000, 265000); d := LIMIT(0, -5, 10);",
+                   "a : DINT; b : UDINT; c : DINT; d : DINT; udi : UDINT := 9;")
+        self.assertEqual((w["a"], w["b"], w["c"], w["d"]), (-3, 9, 265000, 0))
+
+    def test_xor_und_shr_auf_woertern(self):
+        w = rechne("c := 16#FFFF; c := c XOR 16#0031; c := SHR(c, 1) XOR 16#A001;", "c : WORD;")
+        self.assertEqual(w["c"], ((0xFFFF ^ 0x31) >> 1) ^ 0xA001)
+
     def test_feldgrenze_ist_ein_fehler(self):
         with self.assertRaises(st.StFehler):
             rechne("a[3] := 1;", "a : ARRAY[0..2] OF WORD;")

@@ -27,10 +27,14 @@ XHTML = "http://www.w3.org/1999/xhtml"
 BIBLIOTHEK = sorted((CODESYS / "bibliothek").glob("*.st"))
 GVL = CODESYS / "grundprogramm" / "GVL_VoltPilot.st"
 
+VORLAGEN = CODESYS / "vorlagen"
+
 DATEIEN = {
-    "VoltPilot_Bibliothek.xml": ("VoltPilot-Bibliothek Erzeuger-Bild", BIBLIOTHEK),
+    "VoltPilot_Bibliothek.xml": ("VoltPilot-Bibliothek Erzeuger-Bild und Koppelbild", BIBLIOTHEK),
     "VoltPilot_Grundprogramm.xml": ("VoltPilot-Grundprogramm", BIBLIOTHEK + [GVL, CODESYS / "grundprogramm" / "PLC_PRG.st"]),
     "VoltPilot_Probeprojekt.xml": ("VoltPilot-Probeprojekt", BIBLIOTHEK + [GVL, CODESYS / "probeprojekt" / "PLC_PRG.st"]),
+    "VoltPilot_Vorlage_PV.xml": ("VoltPilot-Vorlage PV", BIBLIOTHEK + [GVL, VORLAGEN / "pv" / "PLC_PRG.st"]),
+    "VoltPilot_Vorlage_BHKW.xml": ("VoltPilot-Vorlage BHKW", BIBLIOTHEK + [GVL, VORLAGEN / "bhkw" / "PLC_PRG.st"]),
 }
 
 ELEMENTAR = {"BOOL", "BYTE", "WORD", "DWORD", "SINT", "USINT", "INT", "UINT", "DINT", "UDINT", "TIME"}

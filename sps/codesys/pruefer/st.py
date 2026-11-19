@@ -764,6 +764,14 @@ class Projekt:
         if n == "SEL":
             g, a, b = werte()
             return (b if self.wahr(g) else a,)
+        if n in ("MIN", "MAX"):
+            ws = werte()
+            if len(ws) < 2 or any(isinstance(w, bool) for w in ws):
+                raise StFehler(f"{n} braucht mindestens zwei Zahlen")
+            return (min(ws) if n == "MIN" else max(ws),)
+        if n == "LIMIT":
+            unten, w, oben = werte()
+            return (min(max(w, unten), oben),)
         if n == "TIME" and not args:
             return (self.uhr_ms & 0xFFFFFFFF,)
         return None

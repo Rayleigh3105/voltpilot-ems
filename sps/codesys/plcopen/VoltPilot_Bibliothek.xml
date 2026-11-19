@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project xmlns="http://www.plcopen.org/xml/tc6_0201">
   <fileHeader companyName="VoltPilot" productName="VoltPilot EMS" productVersion="1.0" creationDateTime="2026-11-19T00:00:00"/>
-  <contentHeader name="VoltPilot-Bibliothek Erzeuger-Bild">
+  <contentHeader name="VoltPilot-Bibliothek Erzeuger-Bild und Koppelbild">
     <coordinateInfo><fbd><scaling x="1" y="1"/></fbd><ld><scaling x="1" y="1"/></ld><sfc><scaling x="1" y="1"/></sfc></coordinateInfo>
   </contentHeader>
   <types>
@@ -118,6 +118,59 @@ Vorgabe steht dort der wirksame Ersatzwert.
           <variable name="sTyp"><type><string length="32"/></type></variable>
         </struct></baseType>
         <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Abschnitt T: eine Einheit (Wechselrichter oder BHKW-Motor), 10 Wörter ab 38 + (n - 1) * 10.</xhtml></documentation>
+      </dataType>
+      <dataType name="T_VP_KoppelWunsch">
+        <baseType><array><dimension lower="0" upper="63"/><baseType><WORD/></baseType></array></baseType>
+        <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">VoltPilot-Bibliothek · Datentypen des Koppelbilds (docs/contracts/v2/koppelbild.md)
+
+Das Anlagenprogramm sieht keine Register: es trägt je Stellplatz ein Angebot ein, liest den
+Wunsch am Ausgang des Bausteins und meldet zurück, was es wirklich anwendet.
+
+Codes (Vertrag §7):
+  Art  0 keiner, 1 limit_w (W), 2 limit_pct (0,1 %), 3 setpoint_w (W, Speicher + lädt),
+       4 on_off (0/1), 5 mode (1..8), 6 setpoint_c (0,1 °C)
+  Ziel 1 erzeugung_gesamt, 2 erzeugungseinheit, 3 speicher, 4 verbraucher, 5 netzbezug,
+       6 einspeisung, 7 probe
+  Grund 0 keiner, 1 markt, 2 netz, 3 regel, 4 hand, 5 test
+
+ Abschnitt W: liegt auf den Halteregistern 0..63 des Modbus-TCP-Servers; nur die Edge schreibt.</xhtml></documentation>
+      </dataType>
+      <dataType name="T_VP_KoppelQuittung">
+        <baseType><array><dimension lower="0" upper="115"/><baseType><WORD/></baseType></array></baseType>
+        <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Abschnitt Q: liegt auf den Eingangsregistern 1000..1115; nur der Baustein schreibt.</xhtml></documentation>
+      </dataType>
+      <dataType name="ST_VP_Angebot">
+        <baseType><struct>
+          <variable name="uiArt"><type><UINT/></type></variable>
+          <variable name="uiZiel"><type><UINT/></type></variable>
+          <variable name="uiNr"><type><UINT/></type></variable>
+          <variable name="diMin"><type><DINT/></type></variable>
+          <variable name="diMax"><type><DINT/></type></variable>
+          <variable name="xBereit"><type><BOOL/></type></variable>
+          <variable name="xGrundStoerung"><type><BOOL/></type></variable>
+          <variable name="xGrundHandOrt"><type><BOOL/></type></variable>
+          <variable name="xGrundWartung"><type><BOOL/></type></variable>
+          <variable name="xGrundVorrang"><type><BOOL/></type></variable>
+          <variable name="xGrundSonstiger"><type><BOOL/></type></variable>
+        </struct></baseType>
+        <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Was ein Stellplatz anbietet. uiArt 0 = Platz leer. Band in den Einheiten der Art.</xhtml></documentation>
+      </dataType>
+      <dataType name="ST_VP_Rueckmeldung">
+        <baseType><struct>
+          <variable name="diWirksam"><type><DINT/></type></variable>
+          <variable name="xWirksamBekannt"><type><BOOL/></type></variable>
+          <variable name="xUeberstimmt"><type><BOOL/></type></variable>
+        </struct></baseType>
+        <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Was das Anlagenprogramm für das Ziel eines Stellplatzes gerade anwendet, gleich woher es kommt.</xhtml></documentation>
+      </dataType>
+      <dataType name="ST_VP_Wunsch">
+        <baseType><struct>
+          <variable name="xGilt"><type><BOOL/></type></variable>
+          <variable name="diWert"><type><DINT/></type></variable>
+          <variable name="uiGrund"><type><UINT/></type></variable>
+          <variable name="uiUrteil"><type><UINT/></type></variable>
+        </struct></baseType>
+        <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Der zugelassene Wunsch eines Stellplatzes. Ohne xGilt fährt das Anlagenprogramm mit eigenen Werten.</xhtml></documentation>
       </dataType>
     </dataTypes>
     <pous>
@@ -309,6 +362,272 @@ Grenzen: höchstens 10 Einheiten; uiTeAnzahl 0 oder über 10 schreibt der Bauste
 bekommt - die Box liest das Bild dann nicht (te_anzahl_ungueltig), sieht aber Kopf und
 Herzschlag (so meldet sich das Grundprogramm ohne Anlage).</xhtml></documentation>
         </pou>
+        <pou name="FB_VP_Koppelbild" pouType="functionBlock">
+          <interface>
+            <inputVars>
+              <variable name="udiSteuerungId"><type><UDINT/></type></variable>
+              <variable name="xFernsteuerungFrei"><type><BOOL/></type></variable>
+              <variable name="xHandOrt"><type><BOOL/></type></variable>
+              <variable name="aAngebot"><type><array><dimension lower="1" upper="8"/><baseType><derived name="ST_VP_Angebot"/></baseType></array></type></variable>
+              <variable name="aRueckmeldung"><type><array><dimension lower="1" upper="8"/><baseType><derived name="ST_VP_Rueckmeldung"/></baseType></array></type></variable>
+              <variable name="tHoechsteFrist"><type><TIME/></type><initialValue><simpleValue value="T#60S"/></initialValue></variable>
+              <variable name="uiBibliothek"><type><UINT/></type><initialValue><simpleValue value="16#0100"/></initialValue></variable>
+            </inputVars>
+            <outputVars>
+              <variable name="aWunsch"><type><array><dimension lower="1" upper="8"/><baseType><derived name="ST_VP_Wunsch"/></baseType></array></type></variable>
+              <variable name="xEdgeLebt"><type><BOOL/></type></variable>
+              <variable name="uiKopfUrteil"><type><UINT/></type></variable>
+              <variable name="uiRestS"><type><UINT/></type></variable>
+            </outputVars>
+            <inOutVars>
+              <variable name="aWunschRegister"><type><derived name="T_VP_KoppelWunsch"/></type></variable>
+              <variable name="aQuittungRegister"><type><derived name="T_VP_KoppelQuittung"/></type></variable>
+            </inOutVars>
+            <localVars>
+              <variable name="uiHerzschlag"><type><UINT/></type></variable>
+              <variable name="xGestartet"><type><BOOL/></type></variable>
+              <variable name="tLetzte"><type><TIME/></type></variable>
+              <variable name="tJetzt"><type><TIME/></type></variable>
+              <variable name="udiSekunden"><type><UDINT/></type></variable>
+              <variable name="xErster"><type><BOOL/></type><initialValue><simpleValue value="TRUE"/></initialValue></variable>
+              <variable name="aLetzte"><type><derived name="T_VP_KoppelWunsch"/></type></variable>
+              <variable name="aGilt"><type><derived name="T_VP_KoppelWunsch"/></type></variable>
+              <variable name="xHatTelegramm"><type><BOOL/></type></variable>
+              <variable name="xFristLaeuft"><type><BOOL/></type></variable>
+              <variable name="uiOhneFrist"><type><UINT/></type></variable>
+              <variable name="tAnnahme"><type><TIME/></type></variable>
+              <variable name="udiFristMs"><type><UDINT/></type></variable>
+              <variable name="udiSeitMs"><type><UDINT/></type></variable>
+              <variable name="xLebt"><type><BOOL/></type></variable>
+              <variable name="uiQSitzung"><type><UINT/></type></variable>
+              <variable name="uiQHerzschlag"><type><UINT/></type></variable>
+              <variable name="uiAngenommen"><type><UINT/></type></variable>
+              <variable name="uiAbgelehnt"><type><UINT/></type></variable>
+              <variable name="xGeaendert"><type><BOOL/></type></variable>
+              <variable name="uiGrund"><type><UINT/></type></variable>
+              <variable name="udiFrist"><type><UDINT/></type></variable>
+              <variable name="i"><type><UINT/></type></variable>
+              <variable name="n"><type><UINT/></type></variable>
+              <variable name="uiW"><type><UINT/></type></variable>
+              <variable name="uiQ"><type><UINT/></type></variable>
+              <variable name="uiAnzahl"><type><UINT/></type></variable>
+              <variable name="xLeer"><type><BOOL/></type></variable>
+              <variable name="xBereit"><type><BOOL/></type></variable>
+              <variable name="uiArtW"><type><UINT/></type></variable>
+              <variable name="diW"><type><DINT/></type></variable>
+              <variable name="diWert"><type><DINT/></type></variable>
+              <variable name="uiUrteil"><type><UINT/></type></variable>
+            </localVars>
+          </interface>
+          <body><ST><xhtml xmlns="http://www.w3.org/1999/xhtml">(* --- Herzschlag: +1 je Sekunde seit Programmstart, 65535 -&gt; 0 ------------------------------ *)
+tJetzt := TIME();
+IF NOT xGestartet THEN
+    tLetzte := tJetzt;
+    xGestartet := TRUE;
+END_IF
+udiSekunden := TIME_TO_UDINT(tJetzt - tLetzte) / 1000;
+IF udiSekunden &gt; 0 THEN
+    uiHerzschlag := uiHerzschlag + UDINT_TO_UINT(udiSekunden AND 16#FFFF);
+    tLetzte := tLetzte + UDINT_TO_TIME(udiSekunden * 1000);
+END_IF
+
+(* --- Telegramm prüfen, wenn sich ein Wort geändert hat (Vertrag §5) ------------------------- *)
+IF xErster THEN
+    aLetzte := aWunschRegister;
+    xErster := FALSE;
+ELSE
+    xGeaendert := FALSE;
+    FOR i := 0 TO 63 DO
+        IF aWunschRegister[i] &lt;&gt; aLetzte[i] THEN
+            xGeaendert := TRUE;
+        END_IF
+    END_FOR
+    IF xGeaendert THEN
+        aLetzte := aWunschRegister;
+        udiFrist := WORD_TO_UDINT(aWunschRegister[10]);
+        uiGrund := 0;
+        IF aWunschRegister[0] &lt;&gt; 16#5650 OR aWunschRegister[1] &lt;&gt; 16#4B57 THEN
+            uiGrund := 2;
+        ELSIF SHR(aWunschRegister[4], 8) &lt;&gt; 1 THEN
+            uiGrund := 3;
+        ELSIF aWunschRegister[2] &lt;&gt; 16#0102 OR aWunschRegister[3] &lt;&gt; 16#0304 THEN
+            uiGrund := 4;
+        ELSIF VP_KoppelSiegelW(aW := aWunschRegister) &lt;&gt; aWunschRegister[15] THEN
+            uiGrund := 5;
+        ELSIF VP_KoppelLiesU32(aW := aWunschRegister, uiAdresse := 8) &lt;&gt; udiSteuerungId THEN
+            uiGrund := 6;
+        ELSIF udiFrist &lt; 5 OR udiFrist &gt; 600 OR aWunschRegister[6] = 0 OR aWunschRegister[6] = 16#FFFF
+                OR aWunschRegister[5] &lt;&gt; 8 THEN
+            uiGrund := 7;
+        END_IF
+        IF uiGrund &lt;&gt; 0 THEN
+            (* dieses Telegramm bewirkt nichts; das vorige gilt bis zu seiner Frist *)
+            uiAbgelehnt := uiAbgelehnt + 1;
+            uiKopfUrteil := uiGrund;
+        ELSE
+            aGilt := aWunschRegister;
+            xHatTelegramm := TRUE;
+            uiQSitzung := WORD_TO_UINT(aWunschRegister[6]);
+            uiQHerzschlag := WORD_TO_UINT(aWunschRegister[7]);
+            uiAngenommen := uiAngenommen + 1;
+            tAnnahme := tJetzt;
+            xLebt := TRUE;
+            IF xFernsteuerungFrei THEN
+                udiFristMs := MIN(udiFrist * 1000, TIME_TO_UDINT(tHoechsteFrist));
+                xFristLaeuft := TRUE;
+                uiKopfUrteil := 1;
+            ELSE
+                xFristLaeuft := FALSE;
+                uiOhneFrist := 2;
+                uiKopfUrteil := 9;
+            END_IF
+        END_IF
+    END_IF
+END_IF
+
+(* --- Fernsteuerung entzogen: alle Wünsche fallen sofort ------------------------------------ *)
+IF NOT xFernsteuerungFrei AND xFristLaeuft THEN
+    xFristLaeuft := FALSE;
+    uiOhneFrist := 2;
+    uiKopfUrteil := 9;
+END_IF
+
+(* --- Frist: läuft von selbst ab ------------------------------------------------------------ *)
+udiSeitMs := TIME_TO_UDINT(tJetzt - tAnnahme);
+IF xFristLaeuft AND udiSeitMs &gt;= udiFristMs THEN
+    xFristLaeuft := FALSE;
+    uiOhneFrist := 1;
+    uiKopfUrteil := 8;
+END_IF
+IF xFristLaeuft THEN
+    uiRestS := UDINT_TO_UINT((udiFristMs - udiSeitMs + 999) / 1000);
+ELSE
+    uiRestS := 0;
+END_IF
+(* einmal still, bleibt still: auch wenn TIME() nach 49 Tagen überläuft *)
+IF xLebt AND udiSeitMs &gt;= 15000 THEN
+    xLebt := FALSE;
+END_IF
+xEdgeLebt := xLebt;
+
+(* --- Kopf der Quittung (1000..1019, hier 0..19) -------------------------------------------- *)
+aQuittungRegister[0] := 16#5650;   (* "VP" *)
+aQuittungRegister[1] := 16#4B51;   (* "KQ" *)
+VP_KoppelSetzeU32(aQ := aQuittungRegister, uiAdresse := 2, udiWert := 16#01020304);
+aQuittungRegister[4] := 16#0100;   (* Fassung 1.0 *)
+aQuittungRegister[6] := UINT_TO_WORD(uiHerzschlag);
+aQuittungRegister[7] := UINT_TO_WORD(uiBibliothek);
+VP_KoppelSetzeU32(aQ := aQuittungRegister, uiAdresse := 8, udiWert := udiSteuerungId);
+aQuittungRegister[10] := UINT_TO_WORD(uiKopfUrteil);
+aQuittungRegister[11] := UINT_TO_WORD(uiQSitzung);
+aQuittungRegister[12] := UINT_TO_WORD(uiQHerzschlag);
+aQuittungRegister[13] := UINT_TO_WORD(uiRestS);
+aQuittungRegister[14] := VP_Bit(xGesetzt := xFernsteuerungFrei, uiBit := 0)
+    OR VP_Bit(xGesetzt := xLebt, uiBit := 1) OR VP_Bit(xGesetzt := xHandOrt, uiBit := 2);
+aQuittungRegister[15] := UINT_TO_WORD(uiAngenommen);
+aQuittungRegister[16] := UINT_TO_WORD(uiAbgelehnt);
+aQuittungRegister[17] := 0;
+aQuittungRegister[18] := 0;
+
+(* --- je Stellplatz: Angebot, Urteil, zugelassener Wert, wirksam (Vertrag §5) ---------------- *)
+uiAnzahl := 0;
+FOR n := 1 TO 8 DO
+    uiW := 16 + (n - 1) * 6;
+    uiQ := 20 + (n - 1) * 12;
+    xLeer := aAngebot[n].uiArt = 0;
+    xBereit := NOT xLeer AND aAngebot[n].xBereit AND NOT xHandOrt;
+    uiUrteil := 0;
+    diWert := 0;
+    aWunsch[n].xGilt := FALSE;
+    aWunsch[n].uiGrund := 0;
+    IF NOT xLeer THEN
+        uiAnzahl := uiAnzahl + 1;
+    END_IF
+    IF xHatTelegramm THEN
+        uiArtW := WORD_TO_UINT(aGilt[uiW]);
+        diW := UDINT_TO_DINT(SHL(WORD_TO_UDINT(aGilt[uiW + 2]), 16) OR WORD_TO_UDINT(aGilt[uiW + 3]));
+        IF NOT xFristLaeuft THEN
+            IF uiArtW &lt;&gt; 0 AND uiOhneFrist = 1 THEN
+                uiUrteil := 7;
+            ELSIF uiArtW &lt;&gt; 0 AND uiOhneFrist = 2 THEN
+                uiUrteil := 5;
+            END_IF
+        ELSIF uiArtW = 0 THEN
+            uiUrteil := 0;
+        ELSIF xLeer OR uiArtW &lt;&gt; aAngebot[n].uiArt THEN
+            uiUrteil := 3;
+        ELSIF diW = 16#7FFFFFFF THEN
+            uiUrteil := 4;
+        ELSIF NOT xBereit THEN
+            uiUrteil := 5;
+        ELSE
+            diWert := LIMIT(aAngebot[n].diMin, diW, aAngebot[n].diMax);
+            IF aRueckmeldung[n].xUeberstimmt THEN
+                uiUrteil := 6;
+            ELSIF diWert &lt;&gt; diW THEN
+                uiUrteil := 2;
+            ELSE
+                uiUrteil := 1;
+            END_IF
+            aWunsch[n].xGilt := TRUE;
+            aWunsch[n].uiGrund := WORD_TO_UINT(aGilt[uiW + 1]);
+        END_IF
+        aQuittungRegister[uiQ + 9] := aGilt[uiW + 4];
+    ELSE
+        aQuittungRegister[uiQ + 9] := 0;
+    END_IF
+    aWunsch[n].diWert := diWert;
+    aWunsch[n].uiUrteil := uiUrteil;
+    aQuittungRegister[uiQ] := UINT_TO_WORD(aAngebot[n].uiArt);
+    IF xLeer THEN
+        aQuittungRegister[uiQ + 1] := 0;
+        aQuittungRegister[uiQ + 2] := 0;
+        aQuittungRegister[uiQ + 3] := 0;
+    ELSE
+        aQuittungRegister[uiQ + 1] := UINT_TO_WORD(aAngebot[n].uiZiel);
+        aQuittungRegister[uiQ + 2] := UINT_TO_WORD(aAngebot[n].uiNr);
+        aQuittungRegister[uiQ + 3] := VP_Bit(xGesetzt := xBereit, uiBit := 0)
+            OR VP_Bit(xGesetzt := aAngebot[n].xGrundStoerung, uiBit := 1)
+            OR VP_Bit(xGesetzt := aAngebot[n].xGrundHandOrt OR xHandOrt, uiBit := 2)
+            OR VP_Bit(xGesetzt := aAngebot[n].xGrundWartung, uiBit := 3)
+            OR VP_Bit(xGesetzt := aAngebot[n].xGrundVorrang, uiBit := 4)
+            OR VP_Bit(xGesetzt := aAngebot[n].xGrundSonstiger, uiBit := 5);
+    END_IF
+    VP_KoppelSetzeS32(aQ := aQuittungRegister, uiAdresse := uiQ + 4, diWert := aAngebot[n].diMin, xBekannt := NOT xLeer);
+    VP_KoppelSetzeS32(aQ := aQuittungRegister, uiAdresse := uiQ + 6, diWert := aAngebot[n].diMax, xBekannt := NOT xLeer);
+    aQuittungRegister[uiQ + 8] := UINT_TO_WORD(uiUrteil);
+    VP_KoppelSetzeS32(aQ := aQuittungRegister, uiAdresse := uiQ + 10, diWert := aRueckmeldung[n].diWirksam,
+        xBekannt := aRueckmeldung[n].xWirksamBekannt);
+END_FOR
+aQuittungRegister[5] := UINT_TO_WORD(uiAnzahl);
+aQuittungRegister[19] := VP_KoppelSiegelQ(aQ := aQuittungRegister);
+</xhtml></ST></body>
+          <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">VoltPilot-Bibliothek · Baustein Koppelbild
+
+Die SPS-Seite des "VoltPilot-Koppelbild v1" (docs/contracts/v2/koppelbild.md): die Edge schreibt
+Wünsche in die Halteregister 0..63, der Baustein prüft sie, begrenzt jeden auf das Angebot und
+reicht ihn dem Anlagenprogramm; die Quittung steht in den Eingangsregistern 1000..1115.
+Die SPS entscheidet immer selbst: ein Wunsch ist nie ein Befehl.
+
+Aufruf: einmal je Zyklus in der Task, die die Abbilder auch dem Modbus-Server übergibt.
+
+  fbKoppel(udiSteuerungId := 1042, xFernsteuerungFrei := xSchluesselFern, xHandOrt := xHand,
+           aAngebot := aAngebot, aRueckmeldung := aRueck,
+           aWunschRegister := GVL_VoltPilot.aKoppelWunsch,
+           aQuittungRegister := GVL_VoltPilot.aKoppelQuittung);
+  IF fbKoppel.aWunsch[1].xGilt THEN diGrenze := MIN(diGrenze, fbKoppel.aWunsch[1].diWert); END_IF
+
+Was der Baustein selbst hält:
+  - jeder Wunsch läuft von selbst ab: höchstens frist_s ab Empfang, nie länger als tHoechsteFrist
+    (Vorgabe 60 s); fällt die Edge aus, fährt die Anlage danach mit eigenen Werten;
+  - Lebenszeichen: Herzschlag +1 je Sekunde (wie im Erzeuger-Bild), edge_lebt aus dem letzten
+    gültigen Telegramm;
+  - geprüft wird nur ein Telegramm, dessen Wörter sich geändert haben, in der Reihenfolge von
+    Vertrag §5; ein abgelehntes bewirkt nichts, das vorige gilt bis zu seiner Frist;
+  - Hand/Ort nimmt jedem Stellplatz die Bereitschaft; ohne Fernsteuerung gilt kein Wunsch.
+
+Was beim ersten Aufruf in den Halteregistern steht, ist kein Telegramm, nur der Vergleichsstand.</xhtml></documentation>
+        </pou>
         <pou name="VP_SetzeU16" pouType="function">
           <interface>
             <returnType><BOOL/></returnType>
@@ -450,6 +769,138 @@ ELSE
 END_IF
 </xhtml></ST></body>
           <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Ein Bit eines Bitfelds.</xhtml></documentation>
+        </pou>
+        <pou name="VP_KoppelSetzeU32" pouType="function">
+          <interface>
+            <returnType><BOOL/></returnType>
+            <inputVars>
+              <variable name="uiAdresse"><type><UINT/></type></variable>
+              <variable name="udiWert"><type><UDINT/></type></variable>
+            </inputVars>
+            <inOutVars>
+              <variable name="aQ"><type><derived name="T_VP_KoppelQuittung"/></type></variable>
+            </inOutVars>
+          </interface>
+          <body><ST><xhtml xmlns="http://www.w3.org/1999/xhtml">aQ[uiAdresse] := UDINT_TO_WORD(SHR(udiWert, 16));
+aQ[uiAdresse + 1] := UDINT_TO_WORD(udiWert AND 16#FFFF);
+VP_KoppelSetzeU32 := TRUE;
+</xhtml></ST></body>
+          <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">VoltPilot-Bibliothek · Packen, Lesen und Siegel des Koppelbilds
+
+Wortfolge wie im Erzeuger-Bild: höherwertiges Wort zuerst; ungültig ist das Typ-Maximum.
+Auch der Prüfwert 16#01020304 der Quittung geht über VP_KoppelSetzeU32 (Vertrag §1).</xhtml></documentation>
+        </pou>
+        <pou name="VP_KoppelSetzeS32" pouType="function">
+          <interface>
+            <returnType><BOOL/></returnType>
+            <inputVars>
+              <variable name="uiAdresse"><type><UINT/></type></variable>
+              <variable name="diWert"><type><DINT/></type></variable>
+              <variable name="xBekannt"><type><BOOL/></type></variable>
+            </inputVars>
+            <inOutVars>
+              <variable name="aQ"><type><derived name="T_VP_KoppelQuittung"/></type></variable>
+            </inOutVars>
+          </interface>
+          <body><ST><xhtml xmlns="http://www.w3.org/1999/xhtml">IF xBekannt THEN
+    (* Zweierkomplement: DINT_TO_UDINT behält das Bitmuster *)
+    VP_KoppelSetzeU32(aQ := aQ, uiAdresse := uiAdresse, udiWert := DINT_TO_UDINT(diWert));
+ELSE
+    aQ[uiAdresse] := 16#7FFF;
+    aQ[uiAdresse + 1] := 16#FFFF;
+END_IF
+VP_KoppelSetzeS32 := xBekannt;
+</xhtml></ST></body>
+        </pou>
+        <pou name="VP_KoppelLiesU32" pouType="function">
+          <interface>
+            <returnType><UDINT/></returnType>
+            <inputVars>
+              <variable name="uiAdresse"><type><UINT/></type></variable>
+            </inputVars>
+            <inOutVars>
+              <variable name="aW"><type><derived name="T_VP_KoppelWunsch"/></type></variable>
+            </inOutVars>
+          </interface>
+          <body><ST><xhtml xmlns="http://www.w3.org/1999/xhtml">VP_KoppelLiesU32 := SHL(WORD_TO_UDINT(aW[uiAdresse]), 16) OR WORD_TO_UDINT(aW[uiAdresse + 1]);
+</xhtml></ST></body>
+          <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Ein 32-bit-Wert aus zwei Wörtern des Wunschs, höherwertiges Wort zuerst.</xhtml></documentation>
+        </pou>
+        <pou name="VP_KoppelCrcWort" pouType="function">
+          <interface>
+            <returnType><WORD/></returnType>
+            <inputVars>
+              <variable name="wCrc"><type><WORD/></type></variable>
+              <variable name="wWort"><type><WORD/></type></variable>
+            </inputVars>
+            <localVars>
+              <variable name="wC"><type><WORD/></type></variable>
+              <variable name="wByte"><type><WORD/></type></variable>
+              <variable name="k"><type><INT/></type></variable>
+              <variable name="i"><type><INT/></type></variable>
+            </localVars>
+          </interface>
+          <body><ST><xhtml xmlns="http://www.w3.org/1999/xhtml">wC := wCrc;
+FOR k := 0 TO 1 DO
+    IF k = 0 THEN
+        wByte := SHR(wWort, 8);
+    ELSE
+        wByte := wWort AND 16#00FF;
+    END_IF
+    wC := wC XOR wByte;
+    FOR i := 1 TO 8 DO
+        IF (wC AND 16#0001) &lt;&gt; 0 THEN
+            wC := SHR(wC, 1) XOR 16#A001;
+        ELSE
+            wC := SHR(wC, 1);
+        END_IF
+    END_FOR
+END_FOR
+VP_KoppelCrcWort := wC;
+</xhtml></ST></body>
+          <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Ein Wort in die CRC-16/MODBUS (Polynom 16#A001 gespiegelt): erst das höherwertige Byte.</xhtml></documentation>
+        </pou>
+        <pou name="VP_KoppelSiegelW" pouType="function">
+          <interface>
+            <returnType><WORD/></returnType>
+            <inOutVars>
+              <variable name="aW"><type><derived name="T_VP_KoppelWunsch"/></type></variable>
+            </inOutVars>
+            <localVars>
+              <variable name="wC"><type><WORD/></type></variable>
+              <variable name="i"><type><UINT/></type></variable>
+            </localVars>
+          </interface>
+          <body><ST><xhtml xmlns="http://www.w3.org/1999/xhtml">wC := 16#FFFF;
+FOR i := 0 TO 63 DO
+    IF i &lt;&gt; 15 THEN
+        wC := VP_KoppelCrcWort(wCrc := wC, wWort := aW[i]);
+    END_IF
+END_FOR
+VP_KoppelSiegelW := wC;
+</xhtml></ST></body>
+          <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Siegel des Wunschs: über die Wörter 0..14 und 16..63 (Vertrag §8).</xhtml></documentation>
+        </pou>
+        <pou name="VP_KoppelSiegelQ" pouType="function">
+          <interface>
+            <returnType><WORD/></returnType>
+            <inOutVars>
+              <variable name="aQ"><type><derived name="T_VP_KoppelQuittung"/></type></variable>
+            </inOutVars>
+            <localVars>
+              <variable name="wC"><type><WORD/></type></variable>
+              <variable name="i"><type><UINT/></type></variable>
+            </localVars>
+          </interface>
+          <body><ST><xhtml xmlns="http://www.w3.org/1999/xhtml">wC := 16#FFFF;
+FOR i := 0 TO 115 DO
+    IF i &lt;&gt; 19 THEN
+        wC := VP_KoppelCrcWort(wCrc := wC, wWort := aQ[i]);
+    END_IF
+END_FOR
+VP_KoppelSiegelQ := wC;
+</xhtml></ST></body>
+          <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml"> Siegel der Quittung: über die Wörter 1000..1018 und 1020..1115, hier 0..18 und 20..115.</xhtml></documentation>
         </pou>
     </pous>
   </types>
