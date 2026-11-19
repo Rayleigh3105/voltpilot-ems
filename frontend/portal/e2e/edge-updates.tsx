@@ -25,6 +25,27 @@ Object.assign(keycloak, {
   tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } },
 });
 
+/** Der Beginn der nächsten Nacht: 02:00 Berliner Zeit (Sommer- oder Winterzeit) am nächsten Tag. */
+function naechsteNacht(): string {
+  const t = new Date(now + 86_400_000);
+  for (const h of [0, 1]) {
+    const k = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), h));
+    if (k.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) === '02:00') {
+      return k.toISOString();
+    }
+  }
+  return iso(86_400_000);
+}
+
+/** S4: der Schalter „Nachts von selbst", ab Werk an; „Anhalten"/„Einschalten" schaltet die Bühne um. */
+let nachtlaufAn = true;
+const nachtlaufSchalter = () => ({
+  an: nachtlaufAn, geaendertVon: nachtlaufAn ? null : 'Alex Beispiel', geaendertAm: nachtlaufAn ? null : iso(0),
+  beginn: naechsteNacht(), ende: new Date(new Date(naechsteNacht()).getTime() + 3 * 3_600_000).toISOString(),
+  naechsterLauf: naechsteNacht(), imFenster: false, angelegt: 0, grenze: 20, stand: iso(0),
+});
+const AUS = 'Nachts von selbst ist angehalten; es bleibt der Knopf.';
+
 /** Wofür die Spec `ohne-kundenkonto.spec.ts` liest, ob und mit welchen Werten „Aufspielen" die API rief. */
 const fernlaufAufspielenAufrufe: { ref: string; fassung: string }[] = [];
 (window as unknown as { __fernlaufAufspielenAufrufe: typeof fernlaufAufspielenAufrufe })
@@ -89,14 +110,21 @@ Object.assign(adminApi, {
   createRollout: async () => ({}),
   setUpdateTarget: async () => ({}),
   revertUpdateTarget: async () => ({}),
-  // Karte „Ohne Kundenkonto" (vp-update-vor-zuordnung S2): eine Box bereit, eine ohne Tunnel-Rückmeldung
-  // (kein Knopf, Grund), eine dritte mit einem zurückgenommenen Fernlauf - „Braucht dich".
+  // Karte „Ohne Kundenkonto" (vp-update-vor-zuordnung S2): eine Box bereit (S4: „heute Nacht"), eine ohne
+  // Tunnel-Rückmeldung (kein Knopf, Grund), eine dritte mit einem in der Nacht zurückgenommenen Fernlauf - „Braucht
+  // dich" mit Grund und dem Halt der Automatik.
+  nachtlaufSchalter: async () => nachtlaufSchalter(),
+  nachtlaufSchalten: async (an: boolean) => {
+    nachtlaufAn = an;
+    return nachtlaufSchalter();
+  },
   geraeteOhneKundenkonto: async () => [
     {
       edgeRef: 'edge-cyhchfr', laeuft: 'edge-light-2026.11.5', laeuftGemeldetAm: iso(-180_000),
       fragtZuletztAm: iso(-10_000), neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5',
       werkstattAm: iso(-9 * 86_400_000), moeglich: true, gruende: [],
       haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [],
+      nachtlauf: nachtlaufAn ? { dran: true, grund: null } : { dran: false, grund: AUS },
       stand: iso(0),
     },
     {
@@ -105,6 +133,8 @@ Object.assign(adminApi, {
       moeglich: false,
       gruende: [{ code: 'nicht_verbunden', text: 'Die Box ist gerade nicht im Tunnel (kein Handshake in den letzten 3 Minuten).' }],
       haken: { tunnelVerbunden: false, fragtNachSchluesseln: false, keinKundenkonto: true }, verlauf: [],
+      nachtlauf: { dran: false, grund: 'Der Tunnel-Dienst hat zu dieser Box seit mehr als 3 Minuten nichts gemeldet; '
+        + 'ohne frische Rückmeldung kein Lauf.' },
       stand: iso(0),
     },
     {
@@ -114,11 +144,13 @@ Object.assign(adminApi, {
       haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true },
       verlauf: [{
         id: 'f1', art: 'aufspielen', zustand: 'zurueck', fassungVorher: 'edge-light-2026.11.5',
-        fassungZiel: 'edge-light-2026.11.15', akteurName: 'Alex Beispiel', erteiltAm: iso(-20 * 60_000),
+        fassungZiel: 'edge-light-2026.11.15', akteurName: 'Automatik · nachts', nachts: true, erteiltAm: iso(-20 * 60_000),
         begonnenAm: iso(-19 * 60_000), schritt: 'neustart', schrittSeit: null, schritte: [], fensterEnde: null,
         ergebnis: { ergebnis: 'zurueck', grund: '/health nennt edge-light-2026.11.9', schritt: 'neustart',
           fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst', erfasstAm: iso(-15 * 60_000) },
       }],
+      nachtlauf: { dran: false, grund: 'Der letzte Lauf auf 2026.11.15 wurde zurückgenommen; die Automatik versucht '
+        + 'diese Fassung hier nicht noch einmal („Noch einmal“ von Hand gibt sie frei).' },
       stand: iso(0),
     },
   ],
@@ -127,9 +159,10 @@ Object.assign(adminApi, {
     neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5', werkstattAm: iso(-9 * 86_400_000),
     moeglich: false, gruende: [{ code: 'schon_neueste', text: 'x' }],
     haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true },
+    nachtlauf: null,
     verlauf: [{
       id: 'f2', art: 'aufspielen', zustand: 'fertig', fassungVorher: 'edge-light-2026.11.5',
-      fassungZiel: 'edge-light-2026.11.15', akteurName: 'Alex Beispiel', erteiltAm: iso(-60_000),
+      fassungZiel: 'edge-light-2026.11.15', akteurName: 'Alex Beispiel', nachts: false, erteiltAm: iso(-60_000),
       begonnenAm: iso(-59_000), schritt: 'tunnel', schrittSeit: null, schritte: [], fensterEnde: null,
       ergebnis: { ergebnis: 'fertig', grund: null, schritt: 'tunnel', fassungNachher: 'edge-light-2026.11.15',
         belege: {}, quelle: 'dienst', erfasstAm: iso(0) },

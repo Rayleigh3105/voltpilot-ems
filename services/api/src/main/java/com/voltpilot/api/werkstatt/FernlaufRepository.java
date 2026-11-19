@@ -80,6 +80,12 @@ public class FernlaufRepository {
                 FernlaufRepository::zeile, edgeRef, Math.max(1, Math.min(limit, 50)));
     }
 
+    /** Alle Aufträge (jeder Box, jedes Akteurs), die seit {@code seit} erteilt wurden, neueste zuerst. */
+    public List<Fernlauf> seit(Instant seit) {
+        return jdbc.query("SELECT " + SPALTEN + VON + "WHERE f.erteilt_am >= ? ORDER BY f.erteilt_am DESC, f.id",
+                FernlaufRepository::zeile, Timestamp.from(seit));
+    }
+
     /** Aufträge, die der Dienst noch annehmen kann: nicht angenommen, in der Abholfrist, ohne Ergebnis. */
     public List<Fernlauf> abholbar(Instant seit) {
         return jdbc.query("SELECT " + SPALTEN + VON + "WHERE f.begonnen_am IS NULL AND f.erteilt_am > ? "
@@ -117,6 +123,62 @@ public class FernlaufRepository {
                 id, edgeRef, ergebnis, grund, schritt, fassungVorher, fassungNachher,
                 belegeJson == null ? "{}" : belegeJson, quelle, Timestamp.from(jetzt)) == 1;
     }
+
+    // ── Schalter „Nachts von selbst" (S4, werkstatt_nachtlauf_schalter, Migration V20261119100000) ──────────
+
+    /** Eine Umstellung des Schalters: an oder aus, wer, wann. */
+    public record Umstellung(boolean an, String akteurSub, String akteurName, Instant geaendertAm) {
+    }
+
+    /** Die jüngste Umstellung; {@code empty} heißt: nie umgestellt (ab Werk an). */
+    public Optional<Umstellung> nachtlaufSchalter() {
+        return jdbc.query("SELECT an, akteur_sub, akteur_name, geaendert_am FROM werkstatt_nachtlauf_schalter "
+                        + "ORDER BY geaendert_am DESC, id LIMIT 1",
+                (rs, n) -> new Umstellung(rs.getBoolean("an"), rs.getString("akteur_sub"),
+                        rs.getString("akteur_name"), zeit(rs, "geaendert_am"))).stream().findFirst();
+    }
+
+    /** Eine Umstellung anhängen (die Tabelle nimmt nur Zeilen an; es gilt die jüngste). */
+    public void nachtlaufSchalten(boolean an, String akteurSub, String akteurName, Instant jetzt) {
+        jdbc.update("INSERT INTO werkstatt_nachtlauf_schalter (id, an, akteur_sub, akteur_name, geaendert_am) "
+                + "VALUES (?, ?, ?, ?, ?)", UUID.randomUUID(), an, akteurSub, akteurName, Timestamp.from(jetzt));
+    }
+
+    /**
+     * Führt {@code lauf} nur aus, wenn kein anderer Takt (auf diesem oder einem anderen Replikat) gerade läuft:
+     * eine Sitzungs-Sperre der Datenbank auf einer Verbindung, die für die Dauer des Laufs gehalten wird.
+     *
+     * @return {@code false}, wenn ein anderer Takt führt (dann lief nichts)
+     */
+    public boolean alsEinziger(Runnable lauf) {
+        Boolean ok = jdbc.execute((java.sql.Connection con) -> {
+            boolean gesperrt;
+            try (java.sql.PreparedStatement st = con.prepareStatement(
+                    "SELECT pg_try_advisory_lock(hashtextextended(?, 0))")) {
+                st.setString(1, SPERRE_NACHTLAUF);
+                try (ResultSet rs = st.executeQuery()) {
+                    gesperrt = rs.next() && rs.getBoolean(1);
+                }
+            }
+            if (!gesperrt) {
+                return false;
+            }
+            try {
+                lauf.run();
+                return true;
+            } finally {
+                try (java.sql.PreparedStatement st = con.prepareStatement(
+                        "SELECT pg_advisory_unlock(hashtextextended(?, 0))")) {
+                    st.setString(1, SPERRE_NACHTLAUF);
+                    st.execute();
+                }
+            }
+        });
+        return Boolean.TRUE.equals(ok);
+    }
+
+    /** Der Schlüssel der Sperre des Nachtlaufs ({@link #alsEinziger}). */
+    static final String SPERRE_NACHTLAUF = "werkstatt-nachtlauf";
 
     private static Fernlauf zeile(ResultSet rs, int n) throws SQLException {
         Ergebnis e = rs.getString("ergebnis") == null ? null : new Ergebnis(rs.getString("ergebnis"),

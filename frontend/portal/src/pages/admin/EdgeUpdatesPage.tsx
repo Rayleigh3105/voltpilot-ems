@@ -16,7 +16,9 @@ import { BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
 import { VerteilDialog, type VerteilStart } from './VerteilDialog';
 import { ErstverbindungSchalter } from './ErstverbindungSchalter';
 import { OhneKundenkontoKarte } from './OhneKundenkontoKarte';
-import { bereitZumAufspielen, type AlleAufspielenStand, type FernlaufStand } from '../../werkstattFernlauf';
+import {
+  bereitZumAufspielen, type AlleAufspielenStand, type FernlaufStand, type NachtlaufSchalter,
+} from '../../werkstattFernlauf';
 import {
   BOX_ART_LABELS,
   actorLabel,
@@ -107,16 +109,31 @@ export function EdgeUpdatesPage({
   seitenRef.current = seiten;
   // Karte „Ohne Kundenkonto" (S2): eigene, kleine Liste neben den Linien-Karten - `null` nur vor dem ersten Laden.
   const [ohneKonto, setOhneKonto] = useState<FernlaufStand[] | null>(null);
+  // S4: der Schalter „Nachts von selbst"; `null` vor dem ersten Laden oder nach einem Fehlschlag (dann keine Zeile).
+  const [nachtlauf, setNachtlauf] = useState<NachtlaufSchalter | null>(null);
   const [reihe, setReihe] = useState<AlleAufspielenStand | null>(null);
   const [reiheAktiv, setReiheAktiv] = useState(false);
   // Bricht die laufende Reihe sofort ab (Unmount oder eine neue Reihe startet nicht über eine alte hinweg).
   const reiheLaufendRef = useRef(false);
 
   async function ladeOhneKundenkonto() {
+    const [liste, schalter] = await Promise.allSettled([adminApi.geraeteOhneKundenkonto(), adminApi.nachtlaufSchalter()]);
+    // Dieselbe Regel wie `load()`: ein Fehlschlag lässt das zuletzt Gezeigte stehen.
+    if (liste.status === 'fulfilled') setOhneKonto(liste.value);
+    if (schalter.status === 'fulfilled') setNachtlauf(schalter.value);
+  }
+
+  /** „Anhalten" / „Einschalten": danach Liste und Schalter neu, denn „heute Nacht" hängt am Schalter. */
+  async function nachtlaufSchalten(an: boolean) {
+    setActionError(null);
+    setBusy(true);
     try {
-      setOhneKonto(await adminApi.geraeteOhneKundenkonto());
-    } catch {
-      // Dieselbe Regel wie `load()`: ein Fehlschlag lässt die zuletzt gezeigte Liste stehen.
+      setNachtlauf(await adminApi.nachtlaufSchalten(an));
+      await ladeOhneKundenkonto();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Der Schalter konnte nicht umgelegt werden.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -357,6 +374,8 @@ export function EdgeUpdatesPage({
             <OhneKundenkontoKarte
               liste={ohneKonto}
               jetzt={ohneKontoJetzt}
+              nachtlauf={nachtlauf}
+              onNachtlauf={(an) => void nachtlaufSchalten(an)}
               busy={busy}
               laeuft={reiheAktiv}
               reihe={reihe}

@@ -3,8 +3,9 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   bereitZumAufspielen, bestaetigung, brauchtDichFernlauf, FERNLAUF_ERGEBNISSE, FERNLAUF_GRUPPEN, FERNLAUF_SCHRITTE,
-  fassungKurz, fragtSatz, fragtText, haken, ohneKundenkontoKopf, schrittleiste, standZeilen, tunnelKarte,
-  verlaufZeile, type Fernlauf, type FernlaufStand,
+  fassungKurz, fragtSatz, fragtText, haken, heuteNacht, nachtlaufHalt, nachtlaufZeile, ohneKundenkontoKopf,
+  schrittleiste, sonstHeuteNacht, standZeilen, tunnelKarte, verlaufZeile, type Fernlauf, type FernlaufStand,
+  type NachtlaufSchalter,
 } from './werkstattFernlauf';
 
 const vektor = JSON.parse(readFileSync(resolve(__dirname, '../../../docs/contracts/werkstatt-fernlauf.json'), 'utf8')) as {
@@ -21,14 +22,14 @@ function stand(teil: Partial<FernlaufStand> = {}): FernlaufStand {
     fragtZuletztAm: '2026-11-18T16:57:40Z', neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5',
     werkstattAm: '2026-11-09T15:06:00Z', moeglich: true, gruende: [],
     haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [],
-    stand: JETZT.toISOString(), ...teil,
+    nachtlauf: null, stand: JETZT.toISOString(), ...teil,
   };
 }
 
 function auftrag(teil: Partial<Fernlauf> = {}): Fernlauf {
   return {
     id: 'a1', art: 'aufspielen', zustand: 'laeuft', fassungVorher: 'edge-light-2026.11.5',
-    fassungZiel: 'edge-light-2026.11.15', akteurName: 'admin', erteiltAm: '2026-11-18T16:55:00Z',
+    fassungZiel: 'edge-light-2026.11.15', akteurName: 'admin', nachts: false, erteiltAm: '2026-11-18T16:55:00Z',
     begonnenAm: '2026-11-18T16:55:05Z', schritt: 'aufspielen', schrittSeit: '2026-11-18T16:57:00Z',
     schritte: [
       { schritt: 'anmelden', zustand: 'belegt', zeit: null, zeile: 'angemeldet' },
@@ -156,5 +157,57 @@ describe('Fernlauf durch den Tunnel (vp-update-vor-zuordnung S1)', () => {
       expect(eintraege[0].text).toContain('zurückgenommen');
       expect(eintraege[1].text).toContain('offen');
     });
+  });
+});
+
+describe('Nachts von selbst (S4, §11.2)', () => {
+  function schalter(teil: Partial<NachtlaufSchalter> = {}): NachtlaufSchalter {
+    return {
+      an: true, geaendertVon: null, geaendertAm: null, beginn: '2026-11-19T01:00:00Z', ende: '2026-11-19T04:00:00Z',
+      naechsterLauf: '2026-11-19T01:00:00Z', imFenster: false, angelegt: 0, grenze: 20, stand: JETZT.toISOString(),
+      ...teil,
+    };
+  }
+
+  it('Schalterzeile: an mit nächstem Lauf (Berliner Zeit), in der Nacht bis 05:00, angehalten mit „Einschalten"', () => {
+    expect(nachtlaufZeile(schalter())).toEqual({ stellung: 'an', satz: 'nächster Lauf 02:00', knopf: 'Anhalten' });
+    // Sommerzeit: 02:00 Berlin ist 00:00 UTC.
+    expect(nachtlaufZeile(schalter({ naechsterLauf: '2026-07-02T00:00:00Z' })).satz).toBe('nächster Lauf 02:00');
+    expect(nachtlaufZeile(schalter({ imFenster: true, angelegt: 4 })))
+      .toEqual({ stellung: 'an', satz: 'läuft bis 05:00 · 4 von 20', knopf: 'Anhalten' });
+    expect(nachtlaufZeile(schalter({ an: false })))
+      .toEqual({ stellung: 'angehalten', satz: 'es bleibt der Knopf', knopf: 'Einschalten' });
+  });
+
+  it('„heute Nacht" nur bei eingeschaltetem Schalter und einer Box, die dran ist', () => {
+    const dran = stand({ nachtlauf: { dran: true, grund: null } });
+    expect(heuteNacht(dran, schalter())).toBe(true);
+    expect(heuteNacht(dran, schalter({ an: false }))).toBe(false);
+    expect(heuteNacht(dran, null)).toBe(false);
+    expect(heuteNacht(stand({ nachtlauf: { dran: false, grund: 'x' } }), schalter())).toBe(false);
+    expect(heuteNacht(stand(), schalter())).toBe(false);
+  });
+
+  it('Akte: „Sonst heute Nacht von selbst" nur, wenn der Knopf geht und die Box dran ist', () => {
+    expect(sonstHeuteNacht(stand({ nachtlauf: { dran: true, grund: null } }))).toBe(true);
+    expect(sonstHeuteNacht(stand({ moeglich: false, nachtlauf: { dran: true, grund: null } }))).toBe(false);
+    expect(sonstHeuteNacht(stand({ nachtlauf: { dran: false, grund: 'x' } }))).toBe(false);
+    expect(sonstHeuteNacht(stand())).toBe(false);
+  });
+
+  it('Verlauf und „Braucht dich" nennen die Automatik; nur ein gescheiterter Nachtlauf trägt den Halt', () => {
+    const nacht = auftrag({ zustand: 'zurueck', nachts: true, akteurName: 'Automatik · nachts',
+      ergebnis: { ergebnis: 'zurueck', grund: 'Meldet sich nicht.', schritt: 'meldet_sich',
+        fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst', erfasstAm: '2026-11-19T01:06:00Z' } });
+    expect(verlaufZeile(nacht, JETZT).text).toBe('Über den Tunnel auf 2026.11.15 · zurückgenommen · Automatik · nachts');
+    expect(nachtlaufHalt(nacht)).toBe('Die Automatik hat für 2026.11.15 angehalten: hier erst wieder nach '
+      + '„Noch einmal“, an anderen Boxen ab der nächsten Nacht.');
+    expect(nachtlaufHalt({ ...nacht, zustand: 'offen' })).not.toBeNull();
+    expect(nachtlaufHalt({ ...nacht, zustand: 'fertig' })).toBeNull();
+    expect(nachtlaufHalt({ ...nacht, nachts: false })).toBeNull();
+
+    const [e] = brauchtDichFernlauf([stand({ verlauf: [nacht] })], JETZT);
+    expect(e.grund).toBe('Meldet sich nicht.');
+    expect(e.halt).toContain('angehalten');
   });
 });

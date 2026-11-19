@@ -8,23 +8,23 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Signatur, und die gepackten Programme geprüft im Portal - für die Tests der
  * Werkstatt, die immer die neueste Fassung nimmt. Alle Prüfsummen sind erfunden.
  */
-final class WerkstattTestFassung {
+public final class WerkstattTestFassung {
 
     /** Das rohe Programm der Mango (linux/mipsle), wie es im Manifest steht. */
-    static final String PROGRAMM_SHA = "1a2b3c4d".repeat(8);
+    public static final String PROGRAMM_SHA = "1a2b3c4d".repeat(8);
     /** Der Skriptstand edge-light-openwrt.tar.gz, wie er im Manifest steht. */
-    static final String SKRIPTE_SHA = "5e6f7a8b".repeat(8);
+    public static final String SKRIPTE_SHA = "5e6f7a8b".repeat(8);
     private static final String GZ_SHA = "9c0d1e2f".repeat(8);
 
     private WerkstattTestFassung() {
     }
 
     /** Die Fassung mit Skriptstand im Manifest und fertigen Programmen: die Werkstatt nimmt sie. */
-    static void anlegen(JdbcTemplate admin, String fassung, long seq) {
+    public static void anlegen(JdbcTemplate admin, String fassung, long seq) {
         anlegen(admin, fassung, seq, true, true);
     }
 
-    static void anlegen(JdbcTemplate admin, String fassung, long seq, boolean mitSkripte, boolean programmeFertig) {
+    public static void anlegen(JdbcTemplate admin, String fassung, long seq, boolean mitSkripte, boolean programmeFertig) {
         admin.update("INSERT INTO edge_release (release_seq, version, target_commit, created_by, manifest, signature, "
                 + "signing_key_id) VALUES (?, ?, '5b28311b4c0d', 'test', ?, 'test-signatur', 'rel-2026-a')",
                 seq, fassung, manifest(fassung, seq, mitSkripte));
@@ -33,7 +33,7 @@ final class WerkstattTestFassung {
                 + ", 'test')", seq, GZ_SHA, programmeFertig ? new byte[] {1, 2, 3, 4} : new byte[0]);
     }
 
-    static String manifest(String fassung, long seq, boolean mitSkripte) {
+    public static String manifest(String fassung, long seq, boolean mitSkripte) {
         return "{\"schema_version\":\"1.0\",\"release\":\"" + fassung + "\",\"release_seq\":" + seq
                 + ",\"target_commit\":\"5b28311b4c0d\",\"artifacts\":[{\"type\":\"binary\",\"name\":\"vp-edge-light\","
                 + "\"arch\":\"linux/mipsle\",\"sha256\":\"" + PROGRAMM_SHA + "\",\"size\":100,\"gz_sha256\":\""

@@ -33,7 +33,9 @@ const SZENARIO = new URLSearchParams(window.location.search).get('szenario');
  * `?szenario=wartet` (Konzept vp-update-vor-zuordnung S1): eine erfundene Box ohne Kundenkonto,
  * aus der Werkstatt mit 2026.11.5, im Tunnel, fragt nach Schlüsseln. `&fernlauf=` wählt den
  * Zustand der Karte „Durch den Tunnel aufspielen": `knopf` (Vorgabe), `gesperrt`, `laeuft`,
- * `zurueck`, `fertig`. „Aufspielen" im Dialog schaltet die Bühne auf einen erteilten Auftrag.
+ * `zurueck`, `fertig`, `nachts` (S4: fertig, angelegt von der Automatik „nachts von selbst"). Im Zustand `knopf`
+ * ist die Box in der nächsten Nacht dran („Sonst heute Nacht von selbst"). „Aufspielen" im Dialog schaltet die Bühne
+ * auf einen erteilten Auftrag.
  */
 const WARTET = SZENARIO === 'wartet';
 const FERNLAUF = new URLSearchParams(window.location.search).get('fernlauf') ?? 'knopf';
@@ -88,12 +90,14 @@ function fernlaufStand() {
     edgeRef: BOX, laeuft: 'edge-light-2026.11.5', laeuftGemeldetAm: iso(-3 * 3_600_000), fragtZuletztAm: iso(-25_000),
     neueste: 'edge-light-2026.11.15', werkstattFassung: 'edge-light-2026.11.5', werkstattAm: iso(-9 * 86_400_000),
     moeglich: true, gruende: [] as { code: string; text: string }[],
-    haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [] as unknown[], stand: iso(0),
+    haken: { tunnelVerbunden: true, fragtNachSchluesseln: true, keinKundenkonto: true }, verlauf: [] as unknown[],
+    nachtlauf: { dran: true, grund: null } as { dran: boolean; grund: string | null }, stand: iso(0),
   };
   const auftrag = {
     id: 'f1', art: 'aufspielen', fassungVorher: 'edge-light-2026.11.5', fassungZiel: 'edge-light-2026.11.15',
-    akteurName: 'Alex Beispiel', erteiltAm: iso(-180_000), begonnenAm: iso(-175_000), fensterEnde: iso(27 * 60_000),
+    akteurName: 'Alex Beispiel', nachts: false, erteiltAm: iso(-180_000), begonnenAm: iso(-175_000), fensterEnde: iso(27 * 60_000),
   };
+  const nichtDran = (grund: string) => ({ dran: false, grund });
   if (fernlaufErteilt) {
     return { ...basis, moeglich: false, gruende: [{ code: 'laeuft_schon', text: 'Für diese Box läuft schon ein Fernlauf.' }],
       verlauf: [{ ...auftrag, erteiltAm: iso(-2_000), begonnenAm: null, zustand: 'erteilt', schritt: null, schrittSeit: null, schritte: [], ergebnis: null }] };
@@ -106,6 +110,7 @@ function fernlaufStand() {
           + 'keine oder meldet ihre Bauart nicht.' }] };
     case 'gesperrt':
       return { ...basis, moeglich: false, haken: { tunnelVerbunden: false, fragtNachSchluesseln: false, keinKundenkonto: true },
+        nachtlauf: nichtDran('Der Tunnel-Dienst hat zu dieser Box seit mehr als 3 Minuten nichts gemeldet; ohne frische Rückmeldung kein Lauf.'),
         gruende: [{ code: 'nicht_verbunden', text: 'Die Box ist gerade nicht im Tunnel (kein Handshake in den letzten 3 Minuten).' }] };
     case 'laeuft':
       return { ...basis, moeglich: false, gruende: [{ code: 'laeuft_schon', text: 'Für diese Box läuft schon ein Fernlauf.' }],
@@ -118,6 +123,14 @@ function fernlaufStand() {
           { schritt: 'fenster_zu', zustand: 'belegt', zeit: iso(-30_000), zeile: 'Fenster geschlossen' }],
         ergebnis: { ergebnis: 'zurueck', grund: 'nach dem Neustart: /health nennt "edge-light-2026.11.14" statt edge-light-2026.11.15', schritt: 'neustart',
           fassungNachher: 'edge-light-2026.11.5', belege: {}, quelle: 'dienst', erfasstAm: iso(-30_000) } }] };
+    case 'nachts':
+      return { ...basis, laeuft: 'edge-light-2026.11.15', laeuftGemeldetAm: iso(-7 * 3_600_000), moeglich: false,
+        gruende: [{ code: 'schon_neueste', text: 'Die Box läuft schon edge-light-2026.11.15; neuer ist nichts.' }],
+        nachtlauf: nichtDran('Die Box läuft schon edge-light-2026.11.15; neuer ist nichts.'),
+        verlauf: [{ ...auftrag, akteurName: 'Automatik · nachts', nachts: true, erteiltAm: iso(-7 * 3_600_000 - 300_000),
+          begonnenAm: iso(-7 * 3_600_000 - 290_000), zustand: 'fertig', schritt: 'fenster_zu', schrittSeit: iso(-7 * 3_600_000),
+          schritte: fernlaufSchritte(5),
+          ergebnis: { ergebnis: 'fertig', grund: null, schritt: 'tunnel', fassungNachher: 'edge-light-2026.11.15', belege: {}, quelle: 'dienst', erfasstAm: iso(-7 * 3_600_000) } }] };
     case 'fertig':
       return { ...basis, laeuft: 'edge-light-2026.11.15', laeuftGemeldetAm: iso(-60_000), moeglich: false,
         gruende: [{ code: 'schon_neueste', text: 'Die Box läuft schon edge-light-2026.11.15; neuer ist nichts.' }],

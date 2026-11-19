@@ -6,6 +6,8 @@ import com.voltpilot.api.fernwartung.Akteur;
 import com.voltpilot.api.werkstatt.FernlaufRegel;
 import com.voltpilot.api.werkstatt.FernlaufRepository.Fernlauf;
 import com.voltpilot.api.werkstatt.FernlaufService;
+import com.voltpilot.api.werkstatt.Nachtlauf;
+import com.voltpilot.api.werkstatt.NachtlaufService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -45,9 +47,12 @@ public class AdminFernlaufController {
             Map<String, String> belege, String quelle, Instant erfasstAm) {
     }
 
-    /** Ein Auftrag, wie die Akte ihn zeigt; {@code zustand} aus {@link FernlaufRegel#ZUSTAENDE}. */
+    /**
+     * Ein Auftrag, wie die Akte ihn zeigt; {@code zustand} aus {@link FernlaufRegel#ZUSTAENDE}; {@code nachts}:
+     * angelegt von der Automatik „nachts von selbst" ({@link Nachtlauf#URHEBER}).
+     */
     public record FernlaufDto(UUID id, String art, String zustand, String fassungVorher, String fassungZiel,
-            String akteurName, Instant erteiltAm, Instant begonnenAm, String schritt, Instant schrittSeit,
+            String akteurName, boolean nachts, Instant erteiltAm, Instant begonnenAm, String schritt, Instant schrittSeit,
             List<SchrittDto> schritte, Instant fensterEnde, ErgebnisDto ergebnis) {
     }
 
@@ -57,14 +62,18 @@ public class AdminFernlaufController {
     public record HakenDto(boolean tunnelVerbunden, boolean fragtNachSchluesseln, boolean keinKundenkonto) {
     }
 
+    /** Ob die Box in der nächsten (oder laufenden) Nacht von selbst dran ist, sonst warum nicht (S4). */
+    public record NachtlaufDto(boolean dran, String grund) {
+    }
+
     /**
      * Was die Akte zeigt: die laufende Fassung aus der letzten Zertifikatsanfrage (N2) mit der Zeit des Starts,
      * die letzte Zertifikats-Abfrage (N5), die neueste Fassung, der Werkstatt-Stand, das Urteil der Vorprüfung
-     * und die letzten Aufträge (neueste zuerst).
+     * die letzten Aufträge (neueste zuerst) und ob sie nachts von selbst dran ist.
      */
     public record StandDto(String edgeRef, String laeuft, Instant laeuftGemeldetAm, Instant fragtZuletztAm,
             String neueste, String werkstattFassung, Instant werkstattAm, boolean moeglich, List<GrundDto> gruende,
-            HakenDto haken, List<FernlaufDto> verlauf, Instant stand) {
+            HakenDto haken, List<FernlaufDto> verlauf, NachtlaufDto nachtlauf, Instant stand) {
     }
 
     /** Die Fassung, die der Admin im Dialog bestätigt hat. */
@@ -72,30 +81,34 @@ public class AdminFernlaufController {
     }
 
     private final FernlaufService fernlauf;
+    private final NachtlaufService nachtlauf;
     private final ObjectMapper json;
 
-    public AdminFernlaufController(FernlaufService fernlauf, ObjectMapper json) {
+    public AdminFernlaufController(FernlaufService fernlauf, NachtlaufService nachtlauf, ObjectMapper json) {
         this.fernlauf = fernlauf;
+        this.nachtlauf = nachtlauf;
         this.json = json;
     }
 
     @GetMapping
     public ResponseEntity<StandDto> stand(@PathVariable String ref) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(standDto(fernlauf.stand(ref), json));
+        FernlaufService.Stand s = fernlauf.stand(ref);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(standDto(s, nachtlauf.dran(s), json));
     }
 
     /**
      * Derselbe Stand, wie ihn eine Box in ihrer Akte zeigt - auch für die Karte „Ohne Kundenkonto" (S2, einmal je
      * Box, {@link AdminFernlaufUebersichtController}): keine zweite Vorprüfung, nur dieselbe Abbildung.
      */
-    static StandDto standDto(FernlaufService.Stand s, ObjectMapper json) {
+    static StandDto standDto(FernlaufService.Stand s, Nachtlauf.Dran dran, ObjectMapper json) {
         FernlaufRegel.Urteil u = s.urteil();
         return new StandDto(s.edgeRef(), s.laeuft(), s.laeuftGemeldetAm(), s.fragtZuletztAm(), s.neueste(),
                 s.werkstattFassung(), s.werkstattAm(), u.moeglich(),
                 u.gruende().stream().map(g -> new GrundDto(g.code(), g.text())).toList(),
                 new HakenDto(u.haken().tunnelVerbunden(), u.haken().fragtNachSchluesseln(),
                         u.haken().keinKundenkonto()),
-                s.verlauf().stream().map(f -> dto(f, s.jetzt(), json)).toList(), s.jetzt());
+                s.verlauf().stream().map(f -> dto(f, s.jetzt(), json)).toList(),
+                dran == null ? null : new NachtlaufDto(dran.dran(), dran.grund()), s.jetzt());
     }
 
     /** „Auf … bringen“: 201 mit dem Auftrag; 409 mit Grund; 422 Kennung. */
@@ -126,7 +139,7 @@ public class AdminFernlaufController {
                     f.ergebnis().fassungNachher(), belege, f.ergebnis().quelle(), f.ergebnis().erfasstAm());
         }
         return new FernlaufDto(f.id(), f.art(), f.zustand(jetzt), f.fassungVorher(), f.fassungZiel(), f.akteurName(),
-                f.erteiltAm(), f.begonnenAm(), f.schritt(), f.schrittSeit(), schritte, f.fensterEnde(), e);
+                Nachtlauf.URHEBER.equals(f.akteurSub()), f.erteiltAm(), f.begonnenAm(), f.schritt(), f.schrittSeit(), schritte, f.fensterEnde(), e);
     }
 
     private static JsonNode lies(ObjectMapper json, String text) {

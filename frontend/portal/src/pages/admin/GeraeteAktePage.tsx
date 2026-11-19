@@ -51,7 +51,7 @@ import { Zeitleiste } from './Zeitleiste';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
 import {
   bestaetigung, fassungKurz, fernlaufLinie, FERNLAUF_SCHRITTE, fragtSatz, haken as fernlaufHaken, schrittleiste,
-  standZeilen, tunnelKarte, verlaufZeile,
+  sonstHeuteNacht, standZeilen, tunnelKarte, verlaufZeile,
   type Fernlauf, type FernlaufStand,
 } from '../../werkstattFernlauf';
 import '../GeraetSeite.css';
@@ -740,6 +740,11 @@ function WartendeSoftware({ boxRef, stand, jetzt, busy, werkstattBoxArt, onAufsp
                     <Button variant="outline" onClick={onVerbindung}>Fernwartung öffnen</Button>
                   )}
                 </div>
+                {sonstHeuteNacht(stand) && (
+                  <p className="vp-muted vp-text-sm vp-fl-nacht" data-testid="akte-fernlauf-heute-nacht">
+                    Sonst heute Nacht von selbst
+                  </p>
+                )}
               </>
             )}
             {knopf?.label == null && karte.art === 'knopf' && (

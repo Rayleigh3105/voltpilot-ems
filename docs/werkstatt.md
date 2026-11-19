@@ -100,6 +100,20 @@ zeigt den letzten Fernlauf zusätzlich als eigene Zeile „Nach der Werkstatt" (
 Docker-Box bekommt in der Geräteakte keinen Knopf (kein Wartungstunnel): „Docker-Box · läuft … · holt beim
 Verbinden die neueste Fassung".
 
+**Nachts von selbst (S4, Entscheid E3 = B, §11.2).**
+Zusätzlich zum Knopf bekommt jede wartende Box, die der Knopf erlaubt, die neueste Fassung nachts von selbst.
+Der Takt `NachtlaufWatcher` (einmal je Minute, an `voltpilot.ota.mqtt-listener-enabled` wie der `RolloutWatcher`) legt zwischen 02:00 und 05:00 Berliner Zeit je Durchlauf höchstens einen Auftrag an: denselben Auftrag „aufspielen“ wie der Knopf, mit dem Akteur „Automatik · nachts“ (`nachtlauf`) am Fenster, am Auftrag und im Fernwartungs-Protokoll.
+Was erlaubt ist, entscheidet allein die reine Regel `Nachtlauf` (Tests `NachtlaufTest`):
+- ein Lauf, der vor 05:00 beginnt, läuft zu Ende; solange irgendein Fernlauf offen ist, wartet der Takt;
+- kein Drängeln: endete der letzte Lauf einer Box mit der neuesten Fassung zurückgenommen oder offen, versucht die Automatik diese Fassung dort nicht noch einmal, bis eine neuere Fassung kommt oder jemand „Noch einmal“ drückt;
+- Halt: wurde in dieser Nacht ein Lauf mit einer Fassung zurückgenommen oder blieb er offen, bekommt in dieser Nacht keine weitere Box diese Fassung;
+- jede Box höchstens einmal je Nacht, höchstens 20 Nachtläufe je Nacht, kein Auftrag ohne Rückmeldung des Tunnel-Dienstes aus den letzten 3 Minuten.
+
+Bei mehreren Replikaten führt nur eins: der Takt hält eine Sitzungs-Sperre der Datenbank (`pg_try_advisory_lock`), ein zweiter Takt tut dann nichts.
+Der Schalter des Betriebs steht in der Karte „Ohne Kundenkonto“ auf Geräte › Updates („Nachts von selbst: an · nächster Lauf 02:00“, „Anhalten“/„Einschalten“, `GET/POST /api/v1/admin/geraete/ohne-kundenkonto/nachtlauf`), ab Werk an; jede Umstellung ist eine Zeile in `werkstatt_nachtlauf_schalter` (nur angehängt, es gilt die jüngste).
+Angehalten bleibt nur der Knopf.
+Die Karte zeigt je Box „heute Nacht“, wenn die Automatik sie in der nächsten Nacht nimmt, die Akte darunter „Sonst heute Nacht von selbst“; ein zurückgenommener oder offener Nachtlauf steht morgens in „Braucht dich“ mit Grund und dem Hinweis, dass die Automatik für diese Fassung angehalten hat.
+
 ## Gehäuse-Druckdatei zum Herunterladen
 
 Die Detailseite einer Mango bietet GENAU die Druckdatei dieser Box an, mit Referenz in Klarschrift und
