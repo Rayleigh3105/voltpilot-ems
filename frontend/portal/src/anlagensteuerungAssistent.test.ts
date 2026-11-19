@@ -11,11 +11,13 @@ import {
   einheitenFehler,
   herzschlagSchritt,
   kopfUrteil,
+  mitOrt,
   namenAnfrage,
   netzAusKopf,
   netzbetreiberHinweis,
   netzFehler,
   steuerungKennungText,
+  steuerungOrtAus,
   type ErzeugerKopf,
 } from './anlagensteuerungAssistent';
 import { WERTE_KATALOG } from './werteKatalog';
@@ -90,6 +92,28 @@ describe('Kopfprüfung über zwei Lesungen', () => {
     expect(kopfUrteil(pruefung(null, 'not_supported', false), null)!.titel).toBe('Box-Update nötig');
     expect(kopfUrteil(pruefung(null, 'box_meldet_sich_nicht', false), null)!.titel).toBe('Die VoltPilot-Box meldet sich nicht');
     expect(kopfUrteil(pruefung(null, 'unreachable', false), null)!.satz).toMatch(/Adresse, Port und Netzlage/);
+  });
+
+  it('nennt bei einer Steuerung in diesem Gerät kein Netz als Grund, sondern das SPS-Programm', () => {
+    const tot = kopfUrteil(pruefung(null, 'unreachable', false), null, true)!;
+    expect(tot.titel).toBe('Steuerung in diesem Gerät antwortet nicht');
+    expect(tot.satz).toMatch(/SPS-Programm läuft/);
+    expect(tot.satz).not.toMatch(/Netzlage/);
+    expect(kopfUrteil(pruefung(null, 'no_answer', false), null, true)!.satz).toMatch(/Modbus-Server dieses Geräts/);
+    // Was nicht am Ort hängt, sagt dasselbe wie im Netz.
+    expect(kopfUrteil(pruefung(null, 'timeout', false), null, true)!.titel).toBe('Keine Antwort in der Zeit');
+    expect(kopfUrteil(pruefung(null, 'not_supported', false), null, true)!.titel).toBe('Box-Update nötig');
+  });
+
+  it('wechselt den Ort über die Adresse: in diesem Gerät ist 127.0.0.1 ohne Netzlage, zurück bleibt sie leer', () => {
+    const imNetz = { ...START_ANSCHLUSS, host: '192.168.4.165', netz: 'VLAN 20' };
+    expect(steuerungOrtAus(imNetz)).toBe('netz');
+    const imGeraet = { ...imNetz, ...mitOrt(imNetz, 'geraet') };
+    expect(imGeraet).toMatchObject({ host: '127.0.0.1', netz: '', port: '502' });
+    expect(steuerungOrtAus(imGeraet)).toBe('geraet');
+    expect(mitOrt(imGeraet, 'geraet')).toEqual({});
+    expect({ ...imGeraet, ...mitOrt(imGeraet, 'netz') }.host).toBe('');
+    expect(anschlussFehler({ ...imGeraet, boxId: 'b' })).toBeNull();
   });
 
   it('prüft die Anschlussangaben vor der Box', () => {

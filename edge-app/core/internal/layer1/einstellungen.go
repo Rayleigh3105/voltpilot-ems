@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/deyedecode"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/erzeugerbild"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/solarmanv5"
 )
 
 // Edge Light has no measurement library (edge-light/docs/paritaet.md, D). It
-// reads a CLOSED set of catalog points itself: the discharge limit the
+// reads the points of the Erzeuger image (erzeuger.go) and a CLOSED set of
+// further catalog points itself: the discharge limit the
 // customer set at a Deye hybrid ("Battery Low SOC"), which the cloud takes as
 // the battery's minimum charge (api WechselrichterUntergrenze). Every other
 // selected point is refused by name ("edge_too_old") instead of being left
@@ -65,12 +67,10 @@ type messplan struct {
 // wire shape of the retained edge/measurements/config document (only what
 // Layer 1 needs; the core already validated it before the local publish).
 type messplanDokument struct {
-	Revision       int64  `json:"revision"`
-	CatalogVersion string `json:"catalog_version"`
-	Selections     []struct {
-		PointKey string `json:"point_key"`
-		CadenceS int    `json:"cadence_s"`
-	} `json:"selections"`
+	Revision       int64                        `json:"revision"`
+	CatalogVersion string                       `json:"catalog_version"`
+	Selections     []erzeugerbild.Auswahl       `json:"selections"`
+	Erzeugerbilder []erzeugerbild.Bildparameter `json:"erzeuger_registerbilder"`
 }
 
 func (r *Runtime) onMessplan(_ string, payload []byte) {
@@ -81,6 +81,7 @@ func (r *Runtime) onMessplan(_ string, payload []byte) {
 	}
 	r.einstMu.Unlock()
 	if len(payload) == 0 {
+		r.planeErzeuger(nil)
 		return
 	}
 	var doc messplanDokument
@@ -101,6 +102,9 @@ func (r *Runtime) onMessplan(_ string, payload []byte) {
 	rejected := []measurements.Rejection{}
 	seen := map[string]bool{}
 	for _, s := range doc.Selections {
+		if erzeugerbild.IstErzeugerSchluessel(s.PointKey) {
+			continue // the Erzeuger image judges its own points (erzeuger.go)
+		}
 		if seen[s.PointKey] {
 			continue // a shared point: one read serves the one battery of this box
 		}
@@ -118,6 +122,12 @@ func (r *Runtime) onMessplan(_ string, payload []byte) {
 			plan.punkte = append(plan.punkte, messplanPunkt{pointKey: s.PointKey,
 				takt: time.Duration(s.CadenceS) * time.Second, register: p.register, family: p.family})
 		}
+	}
+	erz := r.planeErzeuger(&erzeugerbild.Konfig{Revision: doc.Revision, CatalogVersion: doc.CatalogVersion,
+		Auswahl: doc.Selections, Bilder: doc.Erzeugerbilder})
+	accepted = append(accepted, erz.Accepted...)
+	for _, a := range erz.Rejected {
+		rejected = append(rejected, measurements.Rejection{PointKey: a.PointKey, Reason: a.Reason, EntityID: a.EntityID})
 	}
 	sort.Strings(accepted)
 	r.einstMu.Lock()

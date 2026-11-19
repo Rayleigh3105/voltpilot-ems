@@ -500,10 +500,38 @@ type TaktErgebnis struct {
 // image once, and returns the bus messages in the palette's order (per
 // controller its events and site sample, then the one batch of samples).
 func (l *Laufzeit) Takt(ctx context.Context, jetzt time.Time, lies Leser) TaktErgebnis {
-	var out TaktErgebnis
+	r := l.Beginne(jetzt)
+	if r == nil {
+		return TaktErgebnis{}
+	}
+	antworten := make([]Antwort, len(r.Anfragen))
+	for i, a := range r.Anfragen {
+		antworten[i].Woerter, antworten[i].Klasse = lies(ctx, a.Ziel, a.Start, a.Count, a.FC)
+	}
+	return l.Beende(r, antworten)
+}
+
+// Runde is one tick's reads, claimed before the first byte goes out - so the
+// caller can do the I/O without holding the lock it guards the runtime with.
+type Runde struct {
+	plan     *plan
+	jetzt    time.Time
+	faellig  map[string]bool
+	Anfragen []GeplanteAnfrage
+}
+
+// Antwort is the answer to one Anfrage of a Runde, in its order: the words,
+// or the error class of the read.
+type Antwort struct {
+	Woerter []uint16
+	Klasse  string
+}
+
+// Beginne claims the due reads of this tick (nil: nothing due).
+func (l *Laufzeit) Beginne(jetzt time.Time) *Runde {
 	p := l.plan
 	if p == nil {
-		return out
+		return nil
 	}
 	faellig := map[string]bool{}
 	for _, s := range p.auswahl {
@@ -512,36 +540,55 @@ func (l *Laufzeit) Takt(ctx context.Context, jetzt time.Time, lies Leser) TaktEr
 		}
 	}
 	if len(faellig) == 0 {
-		return out
+		return nil
 	}
 	for key := range faellig {
 		l.faellig[key] = jetzt.Add(LesetaktS * time.Second)
 	}
-	woerter := map[string]map[int]uint16{}
+	r := &Runde{plan: p, jetzt: jetzt, faellig: faellig}
 	for _, b := range p.bloecke {
-		if !faellig[b.ziel.Key] {
-			continue
+		if faellig[b.ziel.Key] {
+			r.Anfragen = append(r.Anfragen, GeplanteAnfrage{Ziel: Zielverbindung{Ziel: b.ziel,
+				Quelle: p.verbindung[b.ziel.Key]}, Start: b.start, Count: b.count, FC: b.fc})
 		}
-		a := GeplanteAnfrage{Ziel: Zielverbindung{Ziel: b.ziel, Quelle: p.verbindung[b.ziel.Key]},
-			Start: b.start, Count: b.count, FC: b.fc}
-		out.Lesungen = append(out.Lesungen, a)
-		w, klasse := lies(ctx, a.Ziel, b.start, b.count, b.fc)
-		if klasse != "" || len(w) < b.count {
+	}
+	return r
+}
+
+// Beende judges the answers of a Runde. A plan applied while the reads were
+// on the wire never relabels them: the requests are counted, nothing else of
+// the old plan reaches the bus.
+func (l *Laufzeit) Beende(r *Runde, antworten []Antwort) TaktErgebnis {
+	out := TaktErgebnis{Lesungen: r.Anfragen}
+	p, jetzt, faellig := r.plan, r.jetzt, r.faellig
+	woerter := map[string]map[int]uint16{}
+	for i, a := range r.Anfragen {
+		var ant Antwort
+		if i < len(antworten) {
+			ant = antworten[i]
+		} else {
+			ant.Klasse = "timeout"
+		}
+		klasse := ant.Klasse
+		if klasse != "" || len(ant.Woerter) < a.Count {
 			if klasse == "" {
 				klasse = "invalid_response"
 			}
-			out.Belege = append(out.Belege, Beleg{Ziel: b.ziel, Requests: 1, Failed: true, ErrorClass: klasse})
+			out.Belege = append(out.Belege, Beleg{Ziel: a.Ziel.Ziel, Requests: 1, Failed: true, ErrorClass: klasse})
 			continue
 		}
-		out.Belege = append(out.Belege, Beleg{Ziel: b.ziel, Requests: 1})
-		m := woerter[b.ziel.Key]
+		out.Belege = append(out.Belege, Beleg{Ziel: a.Ziel.Ziel, Requests: 1})
+		m := woerter[a.Ziel.Key]
 		if m == nil {
 			m = map[int]uint16{}
-			woerter[b.ziel.Key] = m
+			woerter[a.Ziel.Key] = m
 		}
-		for i := 0; i < b.count; i++ {
-			m[b.start+i] = w[i]
+		for j := 0; j < a.Count; j++ {
+			m[a.Start+j] = ant.Woerter[j]
 		}
+	}
+	if p != l.plan {
+		return out
 	}
 	gelesen := map[string]*StufenLesung{}
 	beurteilt := map[string]bool{}

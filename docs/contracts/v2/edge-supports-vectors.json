@@ -58,16 +58,14 @@
     },
     {
       "name": "erzeuger_registerbild",
-      "meaning": "Die Box liest das VoltPilot-Registerbild Erzeuger v1 (Katalogfamilie voltpilot.erzeuger_registerbild_v1) mit den Parametern aus mqtt-measurement-config erzeuger_registerbilder (UEMS EZ-6/EZ-5): alle 5 s eine Anfrage bis 8 Einheiten, Kopf und Soll geprüft, Punkte mit Qualität (stale, uncertain), frozen_source/device_restart, dazu die Probe-Art erzeuger_kopf. Erst dann bietet das Portal die Anlagensteuerung an und die Cloud sendet das Feld.",
+      "meaning": "Die Box liest das VoltPilot-Registerbild Erzeuger v1 (Katalogfamilie voltpilot.erzeuger_registerbild_v1) mit den Parametern aus mqtt-measurement-config erzeuger_registerbilder (UEMS EZ-6/EZ-5): alle 5 s eine Anfrage bis 8 Einheiten, Kopf und Soll geprüft, Punkte mit Qualität (stale, uncertain), frozen_source/device_restart, dazu die Probe-Art erzeuger_kopf. Erst dann bietet das Portal die Anlagensteuerung an und die Cloud sendet das Feld. Beide Box-Arten: die Docker-Box über die Palette, Edge Light über den Go-Zwilling (internal/erzeugerbild, gleich gegen erzeuger-laufzeit-vectors.json, Beleg erzeugerbild/laufzeit_test.go; PFC200-Konzept Stufe 2).",
       "advertised": true,
-      "box_arten": ["docker"],
       "evidence": "edge-app/nodered/measurements/erzeuger-laufzeit.test.js"
     },
     {
       "name": "anlagensteuerung_quelle",
-      "meaning": "Die Box leitet aus dem Registry-Treiber einer Entität vom Typ anlagensteuerung (communication modbus_tcp, connection ip/port/unit_id der Datenquelle, ohne Marke) eine Quelle der Rolle plant-controller ab, ohne Wechselrichter-Katalog und ohne sie selbst zu pollen; die Palette bindet die Komponente über ihren Pin edge_source_id daran und liest das Erzeuger-Bild (UEMS EZ-21, anlagensteuerung-quelle-vectors.json). Erst dann sendet die Cloud diesen Treiber und den Pin — ein älterer Applier lehnt einen Treiber ohne Marke und damit den ganzen Push ab.",
+      "meaning": "Die Box leitet aus dem Registry-Treiber einer Entität vom Typ anlagensteuerung (communication modbus_tcp, connection ip/port/unit_id der Datenquelle, ohne Marke) eine Quelle der Rolle plant-controller ab, ohne Wechselrichter-Katalog und ohne sie selbst zu pollen; die Palette bindet die Komponente über ihren Pin edge_source_id daran und liest das Erzeuger-Bild (UEMS EZ-21, anlagensteuerung-quelle-vectors.json). Erst dann sendet die Cloud diesen Treiber und den Pin — ein älterer Applier lehnt einen Treiber ohne Marke und damit den ganzen Push ab. Auf Edge Light bindet die Go-Schicht 1 die Komponente an dieselbe Quelle (layer1/erzeuger.go, Beleg layer1/erzeuger_quelle_test.go).",
       "advertised": true,
-      "box_arten": ["docker"],
       "evidence": "edge-app/core/internal/componentapply/plant_controller_test.go"
     },
     {

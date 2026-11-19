@@ -117,16 +117,18 @@ type StatusExtension struct {
 // translations only to a box reporting it.
 //
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
-// Edge Light has no Node-RED palette, so the words whose way ends in the
-// palette - the shared point read once per target, the Erzeuger image reader
-// and the plant-controller binding - are the Docker box's only
-// (edge-supports-vectors.json box_arten).
+// Edge Light has no Node-RED palette, so the shared point read once per target
+// is the Docker box's only (edge-supports-vectors.json box_arten). The Erzeuger
+// image reader and the plant-controller binding are both box types' since
+// Edge Light reads the image with the Go twin (internal/erzeugerbild, wired in
+// layer1/erzeuger.go - PFC200 concept Stufe 2).
 func BuiltSupports(boxArt string) []string {
 	out := []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
 		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}
 	if boxArt != geraetesuche.BoxArtEdgeLight {
-		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
+		out = append(out, "measurement_config_per_component")
 	}
+	out = append(out, "erzeuger_registerbild", "anlagensteuerung_quelle")
 	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen", "steuerlogik_mitlauf",
 		"modbus_geraet", "steuerlogik_scharf", "steuerlogik_regeln", "steuerlogik_steuerarten")
 }

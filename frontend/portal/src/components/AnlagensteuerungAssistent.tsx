@@ -13,6 +13,7 @@ import {
   type UemsDatenquellePruefergebnis,
 } from '../api';
 import { api } from '../apiVoll';
+import { adresseText } from '../steuerungOrt';
 import {
   ANLAGENART_TEXT,
   ERZEUGER_ALARM_VORLAGEN,
@@ -28,11 +29,13 @@ import {
   einheitenFehler,
   erzeugerKopfAus,
   kopfUrteil,
+  mitOrt,
   namenAnfrage,
   netzAusKopf,
   netzbetreiberHinweis,
   netzFehler,
   quellenSchluessel,
+  steuerungOrtAus,
   type AnlagenartWort,
   type Anschluss,
   type EinheitArtWort,
@@ -154,7 +157,8 @@ export function AnlagensteuerungAssistent({
       label: `${b.name ?? b.externalRef}${einrichtung && !faehig.has(b.id) ? ' · Update nötig' : ''}`,
     })), [boxen, faehig, einrichtung]);
   const boxId = anschluss.boxId || boxOptionen[0]?.value || '';
-  const urteil = vorab ?? kopfUrteil(erste, zweite);
+  const ort = steuerungOrtAus(anschluss);
+  const urteil = vorab ?? kopfUrteil(erste, zweite, ort === 'geraet');
   const kopf = urteil?.art === 'erkannt' ? urteil.kopf : null;
   // Am Telefon steht das Ergebnis unter den Feldern: nach jeder Prüfung rückt es ins Bild.
   const urteilRef = useRef<HTMLDivElement>(null);
@@ -325,10 +329,17 @@ export function AnlagensteuerungAssistent({
     rumpf = <section className="vp-anst-schritt" data-schritt="anschluss">
       <p className="vp-anst-hinweis">Die Box liest den Kopf des VoltPilot-Registerbilds - Signatur, Version, Einheiten,
         Herzschlag und Namen. Keinen Messwert.</p>
+      {ort === 'geraet' && <p className="vp-anst-hinweis">Die Box liest das SPS-Programm, das in ihr selbst läuft
+        (Adresse 127.0.0.1) - ohne Netzwerkkabel und ohne Netzlage. Wählen Sie als zuständige Box das Gerät, das
+        zugleich die Steuerung ist.</p>}
       <div className="vp-anst-felder">
-        <Input label="Adresse" value={anschluss.host} placeholder="192.168.4.165" onChange={(e) => setze({ host: e.target.value })} />
+        <VpPicker label="Wo läuft die Steuerung?" value={ort}
+          options={[{ value: 'netz', label: 'Im Netz der Anlage' },
+            { value: 'geraet', label: 'In diesem Gerät (die Box ist selbst die Steuerung, z. B. WAGO PFC200)' }]}
+          onChange={(wert) => setze(mitOrt(anschluss, wert as 'netz' | 'geraet'))} />
+        {ort === 'netz' && <Input label="Adresse" value={anschluss.host} placeholder="192.168.4.165" onChange={(e) => setze({ host: e.target.value })} />}
         <Input label="Port" inputMode="numeric" value={anschluss.port} onChange={(e) => setze({ port: e.target.value })} />
-        <Input label="Netzlage" value={anschluss.netz} placeholder="VLAN 20 „Anlage“" onChange={(e) => setze({ netz: e.target.value })} />
+        {ort === 'netz' && <Input label="Netzlage" value={anschluss.netz} placeholder="VLAN 20 „Anlage“" onChange={(e) => setze({ netz: e.target.value })} />}
         <Input label="Unit-ID" inputMode="numeric" value={anschluss.unitId} onChange={(e) => setze({ unitId: e.target.value })} />
         <Input label="Basisadresse" inputMode="numeric" value={anschluss.basisadresse} onChange={(e) => setze({ basisadresse: e.target.value })} />
         <VpPicker label="Funktionscode" value={anschluss.funktionscode}
@@ -453,7 +464,7 @@ export function AnlagensteuerungAssistent({
       })}</ul>
       {darfAlarme && <p className="vp-anst-hinweis">Gemeldet an: Kundenadministrator.</p>}
       <p className="vp-anst-hinweis">{`Angelegt werden: das Gerät „${steuerungsName}“ mit seinem Anschluss `
-        + `(Modbus TCP ${quelle?.adresse ?? ''} · Kennung ${quelle?.kennzeichen ?? ''}), die Registerbild-Fassung (Soll für den Abgleich), `
+        + `(Modbus TCP ${adresseText(quelle?.adresse)} · Kennung ${quelle?.kennzeichen ?? ''}), die Registerbild-Fassung (Soll für den Abgleich), `
         + `${einheiten.length === 1 ? '1 Einheit' : `${einheiten.length} Einheiten`} und die Komponente.`}</p>
     </section>;
   }

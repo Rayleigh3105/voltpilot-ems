@@ -54,6 +54,7 @@ import { NO_DATA } from './nodata';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
 import { deviceState } from './komponenten';
 import { isPrivateHost } from './selbstbau';
+import { adresseText, istInDiesemGeraet } from './steuerungOrt';
 import { anlagensteuerungIdOf, chargePointIdOf, ioVerbraucherIdOf } from './geraetAdresse';
 import { juengsteLesung, werteJe } from './anlagensteuerung';
 import { AUFBAU_REITER } from './ebenenNav';
@@ -513,13 +514,17 @@ function componentRowOf(
   return rows.find((r) => entityIds.has(r.id)) ?? null;
 }
 
-/** „192.168.254.210 : 8899" aus dem gespeicherten Verbindungs-Block. */
+/**
+ * „192.168.254.210 : 8899" aus dem gespeicherten Verbindungs-Block - eine Steuerung im Gerät selbst (WAGO PFC200 mit
+ * VoltPilot, 127.0.0.1) heißt „in diesem Gerät" (`steuerungOrt.ts`).
+ */
 function adresse(connection: Record<string, unknown> | null | undefined): string | null {
   if (!connection) return null;
   const transport = (connection.transport as Record<string, unknown> | undefined) ?? connection;
   const host = str(transport.host) ?? str(transport.ip);
   if (!host) return null;
   const port = num(transport.port);
+  if (istInDiesemGeraet(host)) return adresseText(port == null ? host : `${host}:${port}`);
   return port == null ? host : `${host} : ${port}`;
 }
 
