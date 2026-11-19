@@ -201,8 +201,10 @@ public class SiteChargingConfigController {
      * Säule wird getrennt und ein Wiederverbinden abgewiesen), und die soll
      * niemand als Nebenwirkung eines Speicherns auslösen können.
      *
-     * <p>Eine Kennung, die diese Anlage nicht (mehr) führt, ist ein 404 - nie
-     * ein stiller Erfolg über etwas, das es nicht gab.
+     * <p>Idempotent und räumt auch eine liegen gebliebene gemeldete Zeile mit auf
+     * ({@code ChargingConfigService.remove} nennt die Fälle); ein 404 bleibt der
+     * Kennung vorbehalten, die diese Anlage nirgends führt - nie ein stiller
+     * Erfolg über etwas, das es nicht gab.
      */
     @DeleteMapping("/charging-config/charge-points/{chargePointId}")
     @Recht(value = "ladepunkt.anbinden", ziel = RechtZiel.ANLAGE)
