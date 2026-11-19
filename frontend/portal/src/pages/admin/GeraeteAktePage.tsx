@@ -32,7 +32,7 @@ import { type FernwartungProtokollEintrag } from '../../adminFernwartung';
 import { liesDienst, uebersicht, type UebersichtZeile, type WerkstattDienst, type WerkstattFreigabe } from '../../werkstattBank';
 import type { WerkstattBox } from '../../werkstatt';
 import { fleetApi, type AdminFleetSite } from '../../admin/fleetApi';
-import { controlMatrixRow, planCell } from '../../adminFleet';
+import { controlMatrixRow, planCell, type BoxVerbindung } from '../../adminFleet';
 import {
   activateConsequences, certSourceLabel, deactivateConsequences, plantCertView,
 } from '../../controlCertification';
@@ -331,6 +331,21 @@ function zustandBadgeAusVerbindung(v: BoxVerbindungSicht): { variant: 'ok' | 'wa
   }
 }
 
+/**
+ * Die Kopfzeile einer wartenden Box (vp-wartend-online-aktuell): dieselbe Erreichbarkeit wie
+ * die Geräte-Liste und die Karte „Meldet sich, wartet auf Zuordnung" weiter unten in diesem
+ * Reiter (`wartendeVerbindung` über `pendingRows`) - EINE Rechnung, nie eine zweite, die der
+ * Karte widersprechen könnte. Vorher stand hier immer derselbe neutrale Satz, auch wenn die
+ * Box längst nicht mehr fragte.
+ */
+function zustandBadgeAusWartend(v: BoxVerbindung): { variant: 'ok' | 'warn' | 'offline' | 'off'; text: string } {
+  switch (v.zustand) {
+    case 'offline': return { variant: 'offline', text: `Meldet sich nicht, wartet auf Zuordnung · ${v.lastSeenText}` };
+    case 'nie': return { variant: 'off', text: 'Wartet auf erste Meldung' };
+    default: return { variant: 'off', text: `Meldet sich, wartet auf Zuordnung · ${v.lastSeenText}` };
+  }
+}
+
 function AktenKopf({
   boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate, pulsiert, stand, nieGemeldet,
   onLoesenOeffnen, ausgebautAm, onEndgueltigOeffnen, werkstattBoxArt, tunnelUpdate,
@@ -373,7 +388,7 @@ function AktenKopf({
     : verbindung
       ? zustandBadgeAusVerbindung(verbindung)
       : pendingRow
-        ? { variant: 'off' as const, text: 'Meldet sich, wartet auf Zuordnung' }
+        ? zustandBadgeAusWartend(pendingRows([pendingRow], jetzt)[0].erreichbar)
         : { variant: 'off' as const, text: 'Noch nicht verbunden' };
 
   return (

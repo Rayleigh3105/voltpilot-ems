@@ -209,6 +209,42 @@ test('Geräte-Liste: jede Box in jedem Lebensabschnitt, eine Zeile führt in die
 });
 
 // ---------------------------------------------------------------------------
+// Firstmate vp-wartend-online-aktuell (Captain 19.11.2026): „komplett vom Strom
+// genommen und das wird seit 8 Minuten als online angezeigt" - die Schwelle
+// richtet sich nach dem tatsächlichen Takt der Box statt pauschal 11 Minuten,
+// dieselbe Rechnung in Liste UND Akten-Kopfzeile.
+// ---------------------------------------------------------------------------
+
+for (const width of [390, 1440]) {
+  test(`Geräte-Liste und Akte bei ${width}px: eine NIE zugeordnete Box kippt nach ihrem eigenen (≤ 60 s-) Takt, nicht erst nach 11 Minuten`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    await page.goto('/e2e/box-updates.html');
+    await page.getByRole('button', { name: 'Geräte', exact: true }).click();
+    const liste = page.getByTestId('geraete-liste');
+    await expect(liste).toBeVisible();
+
+    // edge-cyhchfr: nie zugeordnet, 8 Minuten ohne Abfrage - nach ihrem eigenen Takt (≤ 60 s)
+    // längst „Meldet sich nicht", nicht mehr „Online" (das war der gemeldete Fehler).
+    const nieZugeordnet = liste.locator('tr').filter({ hasText: 'edge-cyhchfr' });
+    await expect(nieZugeordnet).toContainText('Meldet sich nicht');
+
+    // edge-px6jphw: schon einmal verbunden, hat ein Zertifikat, fragt alle 5 min - bei
+    // derselben 8-minütigen Stille bleibt sie zu Recht online (Takt unverändert, 11 Min.).
+    const mitZertifikat = liste.locator('tr').filter({ hasText: 'edge-px6jphw' });
+    await expect(mitZertifikat).toContainText('Online');
+
+    // Dieselbe Rechnung in der Akten-Kopfzeile - nie eine zweite, abweichende Aussage.
+    await nieZugeordnet.click();
+    await expect(page.getByTestId('akte-zustand')).toContainText('Meldet sich nicht, wartet auf Zuordnung');
+
+    expect(errors).toEqual([]);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Firstmate vp-geraete-herkunft: Herkunft je Box - „aus der Werkstatt" (mit
 // Abnahme-Datum) oder „selbst angemeldet", nie eine dritte Wertung. Und die
 // ehrliche Angabe statt eines erfundenen Tippfehler-Verdachts.
