@@ -20,9 +20,13 @@
 #                ein ausgeschaltetes Funkmodul geht nur fuer den Client an
 #   stoerfaelle  im WLAN-Weg B: Router aus, Passwort am Router geaendert
 #   einrichtung  Einrichtungs-WLAN (einrichtung-wlan.sh, S4): erster Start ohne
-#                Kabel oeffnet sofort; eigenes Netz und eigene Zone (ein Handy
-#                erreicht nur DHCP, DNS und die Seite der Box), mit Kabel
+#                Cloud oeffnet sofort; eigenes Netz und eigene Zone (ein Handy
+#                erreicht nur DHCP, DNS und die Seite der Box), mit Cloud
 #                schliesst es nach der Ruhefrist
+#   ohne-cloud   der Befund von der Werkbank (19.11.2026): nur LAN, WAN mit
+#                Traeger ohne Adresse (so sieht WAN an der Mango immer aus),
+#                WAN mit Adresse ohne Internet, Neustart mit offenem WLAN,
+#                Cloud kommt und geht, Programm startet oder schweigt
 #   werkstatt    S1: eine frisch durch die Werkstatt gegangene Box (Land DE,
 #                relayd schon da) zeigt beim Kunden ganz ohne Paketquelle -
 #                Einrichtungs-WLAN oeffnet, verbinden gelingt ohne jeden
@@ -40,7 +44,7 @@
 # Dazu, ohne Urteil: messung-relay (die Messung aus dem Konzept, Abschnitt
 # 6.4: Zone und lokale Adresse am Relay).
 #
-#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle elf)
+#   edge-light/test/wlan-anschluss-probe.sh [lauf ...]      (Vorgabe: alle zwoelf)
 #   VP_WLAN_LABOR_CACHE=<verz>  Zwischenspeicher fuer Abbilder, Pakete, v86
 #                               (Vorgabe ~/.cache/vp-wlan-labor, rund 250 MB)
 #   VP_WLAN_LABOR_AUS=<verz>    Protokolle, je Lauf <lauf>.log (Vorgabe: neu unter /tmp)
@@ -60,7 +64,7 @@ HOTPLUG91="$HIER/../openwrt/files/etc/hotplug.d/iface/91-vp-einrichtung"
 KERN="$HIER/../../edge-app/core"
 CACHE="${VP_WLAN_LABOR_CACHE:-$HOME/.cache/vp-wlan-labor}"
 AUS="${VP_WLAN_LABOR_AUS:-$(mktemp -d "${TMPDIR:-/tmp}/vp-wlan-probe.XXXXXX")}"
-LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle einrichtung werkstatt fenster routerausfall einrichtung-weg}"
+LAEUFE="${*:-scan messen verbinden falsch kabel stoerfaelle einrichtung ohne-cloud werkstatt fenster routerausfall einrichtung-weg}"
 
 command -v node >/dev/null 2>&1 || { echo "FEHLER: node fehlt (>= 22)" >&2; exit 2; }
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] || { echo "FEHLER: node >= 22 noetig" >&2; exit 2; }

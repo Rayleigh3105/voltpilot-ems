@@ -35,6 +35,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,13 +52,15 @@ const (
 // und die Aufrufe des Netz-Skripts. edgemain baut sie einmal und reicht sie an
 // Handler; die Labor-Probe (cmd/einrichtung-probe) nutzt dieselbe Umsetzung.
 type Einrichtung struct {
-	ref     string // die Kennung der Box, normalisiert (z. B. "edgewrk7abg")
-	skript  string // Pfad des Netz-Skripts (wlan-anschluss.sh)
-	adresse string // Adresse der Box im Einrichtungs-WLAN (Schranke)
+	ref      string // die Kennung der Box, normalisiert (z. B. "edgewrk7abg")
+	skript   string // Pfad des Netz-Skripts (wlan-anschluss.sh)
+	waechter string // Pfad des Waechters (einrichtung-wlan.sh), neben dem Netz-Skript
+	adresse  string // Adresse der Box im Einrichtungs-WLAN (Schranke)
 
-	// jetzt und ausfuehren tauschen die Tests aus.
-	jetzt      func() time.Time
-	ausfuehren func(ctx context.Context, stdin string, arg ...string) (string, int, error)
+	// jetzt, ausfuehren und waechterAusfuehren tauschen die Tests aus.
+	jetzt              func() time.Time
+	ausfuehren         func(ctx context.Context, stdin string, arg ...string) (string, int, error)
+	waechterAusfuehren func(ctx context.Context, arg ...string) (string, int, error)
 
 	mu           sync.Mutex
 	fehlversuche int
@@ -84,11 +88,15 @@ func NewEinrichtung(ref, skript, adresse string) *Einrichtung {
 	e := &Einrichtung{
 		ref:       kennungNormalisieren(ref),
 		skript:    skript,
+		waechter:  filepath.Join(filepath.Dir(skript), "einrichtung-wlan.sh"), // install.sh legt beide nebeneinander
 		adresse:   adresse,
 		jetzt:     time.Now,
 		sitzungen: map[string]time.Time{},
 	}
 	e.ausfuehren = e.skriptAusfuehren
+	e.waechterAusfuehren = func(ctx context.Context, arg ...string) (string, int, error) {
+		return programmAusfuehren(ctx, e.waechter, "", arg...)
+	}
 	return e
 }
 
@@ -117,10 +125,28 @@ func (e *Einrichtung) verfuegbar() bool {
 	return err == nil && st.Mode().IsRegular()
 }
 
+// waechterVerfuegbar: gibt es den Waechter des Einrichtungs-WLANs?
+func (e *Einrichtung) waechterVerfuegbar() bool {
+	if e.skript == "" {
+		return false
+	}
+	st, err := os.Stat(e.waechter)
+	return err == nil && st.Mode().IsRegular()
+}
+
+// waechterFelder sind die Werte aus "einrichtung-wlan.sh status", die die
+// Seite am Kabel zeigt: offen oder zu, sendet das Funkmodul, warum, und wann
+// es sich aendert. Adressen und der Notweg bleiben auf der Box.
+var waechterFelder = []string{"einrichtung", "sendet", "kanal", "ssid", "cloud", "cloud_grund", "grund", "kunden_wlan", "wan_traeger"}
+
 // skriptAusfuehren ruft das Netz-Skript auf. stdin traegt das Passwort bei
 // verbinden - nie ein Argument: die Prozessliste zeigt Argumente jedem.
 func (e *Einrichtung) skriptAusfuehren(ctx context.Context, stdin string, arg ...string) (string, int, error) {
-	cmd := exec.CommandContext(ctx, e.skript, arg...)
+	return programmAusfuehren(ctx, e.skript, stdin, arg...)
+}
+
+func programmAusfuehren(ctx context.Context, pfad, stdin string, arg ...string) (string, int, error) {
+	cmd := exec.CommandContext(ctx, pfad, arg...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var aus, fehler strings.Builder
 	cmd.Stdout = &aus
@@ -133,7 +159,7 @@ func (e *Einrichtung) skriptAusfuehren(ctx context.Context, stdin string, arg ..
 			rc = ee.ExitCode()
 			err = nil
 		} else if ctx.Err() == context.DeadlineExceeded {
-			err = fmt.Errorf("%s: ohne Antwort abgebrochen", e.skript)
+			err = fmt.Errorf("%s: ohne Antwort abgebrochen", pfad)
 		}
 	}
 	return aus.String(), rc, err
@@ -359,6 +385,37 @@ func (e *Einrichtung) registriere(mux *http.ServeMux) {
 		})
 		writeJSON(w, http.StatusOK, map[string]any{"angemeldet": true})
 	}))
+
+	// Der Zustand des Einrichtungs-WLANs fuer die Seite am Kabel (Werkbank):
+	// nur lesend und ohne Kennung wie die uebrige Seite dort. Aus dem
+	// Einrichtungs-WLAN selbst bleibt er hinter der Schranke (Schranke lenkt
+	// alles ausser /api/einrichtung/ um).
+	mux.HandleFunc("GET /api/einrichtungs-wlan", func(w http.ResponseWriter, r *http.Request) {
+		if !e.waechterVerfuegbar() {
+			writeJSON(w, http.StatusOK, map[string]any{"verfuegbar": false})
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		aus, rc, err := e.waechterAusfuehren(ctx, "status")
+		if err != nil || rc != 0 {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Der Zustand des Einrichtungs-WLANs ließ sich nicht lesen."})
+			return
+		}
+		f := felderAusZeilen(aus)
+		antwort := map[string]any{"verfuegbar": true}
+		for _, k := range waechterFelder {
+			antwort[k] = f[k]
+		}
+		// Sekunden bis zum Oeffnen oder Schliessen, wo der Waechter sie kennt.
+		for _, k := range []string{"auf_in", "zu_in"} {
+			if n, err := strconv.Atoi(f[k]); err == nil {
+				antwort[k] = n
+			}
+		}
+		antwort["takt_ausgeblieben"] = strings.HasPrefix(f["takt"], "AUSGEBLIEBEN")
+		writeJSON(w, http.StatusOK, antwort)
+	})
 
 	mux.HandleFunc("GET /api/einrichtung/status", schranke(func(w http.ResponseWriter, r *http.Request) {
 		// Bewusst NICHT r.Context(): ein Handy im Einrichtungs-WLAN verliert

@@ -111,9 +111,11 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .pairing-error.soft { color: var(--warn); background: var(--warn-soft); border-color: #F3E2C4; }
 
 /* Setup CTA banner: shown until an inverter is configured. */
+/* Abstand nach OBEN (12px zum Zustand darueber); nach unten traegt der
+   Abstand der folgenden Bereichsueberschrift (.area-title, 26px). */
 .setup-banner {
   display: flex; align-items: center; gap: 14px; text-decoration: none;
-  margin-bottom: 20px; padding: 15px 18px;
+  margin-top: 12px; padding: 15px 18px;
   background: var(--warn-soft); border: 1px solid #F3E2C4; border-radius: var(--radius);
   color: var(--ink); box-shadow: var(--shadow-sm);
 }
@@ -127,6 +129,28 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .setup-banner-text strong { font-size: 14.5px; font-weight: 700; }
 .setup-banner-text small { color: var(--ink-2); font-size: 13px; }
 .setup-banner-arrow { margin-left: auto; color: var(--warn); font-size: 20px; font-weight: 700; flex: none; }
+
+/* Das Einrichtungs-WLAN (einrichtwlan.js): dieselbe Form wie das Banner
+   darueber, der Ton sagt, ob etwas zu tun ist. */
+.einricht-wlan {
+  display: flex; align-items: flex-start; gap: 14px;
+  margin-top: 12px; padding: 15px 18px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--brand-soft); color: var(--ink); box-shadow: var(--shadow-sm);
+}
+.einricht-wlan[data-ton="ok"] { background: var(--ok-soft); border-color: #CBEBD5; }
+.einricht-wlan[data-ton="warn"] { background: var(--warn-soft); border-color: #F3E2C4; }
+.einricht-wlan-ico {
+  width: 40px; height: 40px; flex: none; border-radius: 11px; display: grid; place-items: center;
+  background: #fff; color: var(--brand-deep); border: 1px solid var(--line);
+}
+.einricht-wlan[data-ton="ok"] .einricht-wlan-ico { color: var(--ok); border-color: #CBEBD5; }
+.einricht-wlan[data-ton="warn"] .einricht-wlan-ico { color: var(--warn); border-color: #F3E2C4; }
+.einricht-wlan-ico svg { width: 22px; height: 22px; }
+.einricht-wlan-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.einricht-wlan-text strong { font-size: 14.5px; font-weight: 700; }
+.einricht-wlan-text small { color: var(--ink-2); font-size: 13px; }
+.einricht-wlan-text .einricht-wlan-technik { color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
 
 /* ---------------- KPI cards ---------------- */
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }

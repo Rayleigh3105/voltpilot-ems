@@ -1273,6 +1273,9 @@ func (a *Agent) enrollAndConnect(ctx context.Context) {
 		OnState: func(st enroll.State) {
 			a.State.Update(func(s *state.Snapshot) { s.PairingState = string(st) })
 		},
+		OnAnswer: func() {
+			a.State.Update(func(s *state.Snapshot) { s.PortalAnsweredAt = time.Now().UTC() })
+		},
 	}
 	// Run enrollment, retrying local-init failures (geraet_fehler) with backoff
 	// instead of silently exiting the goroutine - a transient disk problem then

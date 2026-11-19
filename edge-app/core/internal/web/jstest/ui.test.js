@@ -3465,3 +3465,76 @@ test("Einrichtung: ergebnisZiel lenkt die Rueckgaben des Netz-Skripts", () => {
   assert.strictEqual(f(9, {}), "weg");
   assert.strictEqual(f(0, {}), "schwach"); // ohne Urteil nie "reicht" behaupten
 });
+
+/* ============ einrichtwlan.js: das Einrichtungs-WLAN am Kabel ============ */
+
+function einrichtWlan(z) {
+  return load(["einrichtwlan.js"]).VPEinrichtWlan.beschreibe(z);
+}
+
+test("Einrichtungs-WLAN: nichts zu zeigen ohne Waechter (Docker-Box)", () => {
+  assert.strictEqual(einrichtWlan({ verfuegbar: false }), null);
+  assert.strictEqual(einrichtWlan(null), null);
+});
+
+test("Einrichtungs-WLAN offen ohne Cloud: sagt, was zu tun ist", () => {
+  const d = einrichtWlan({ verfuegbar: true, einrichtung: "offen", sendet: "ja", kanal: "1", cloud: "nein", grund: "keine_cloud", wan_traeger: "1" });
+  assert.strictEqual(d.ton, "info");
+  assert.match(d.titel, /ist offen/);
+  assert.match(d.text, /erreicht die Cloud nicht/);
+  assert.match(d.technik, /Kanal 1/);
+  assert.match(d.technik, /Träger an WAN: ja/);
+  assert.strictEqual(d.nurTechnik, false);
+});
+
+test("Einrichtungs-WLAN offen in festen Fenstern: nennt die Restzeit und das Kunden-WLAN", () => {
+  const d = einrichtWlan({ verfuegbar: true, einrichtung: "offen", sendet: "ja", grund: "keine_cloud", zu_in: 300, kunden_wlan: "Familie Müller" });
+  assert.match(d.text, /noch etwa 5 Minuten offen/);
+  assert.match(d.text, /„Familie Müller“/);
+});
+
+test("Einrichtungs-WLAN offen, aber das Funkmodul sendet nicht: Warnung", () => {
+  const d = einrichtWlan({ verfuegbar: true, einrichtung: "offen", sendet: "nein", grund: "keine_cloud" });
+  assert.strictEqual(d.ton, "warn");
+  assert.match(d.titel, /sendet es nicht/);
+});
+
+test("Einrichtungs-WLAN zu: wartet, Versuch, Cloud, Anlauf, ausgebliebener Takt", () => {
+  const wartet = einrichtWlan({ verfuegbar: true, einrichtung: "zu", grund: "wartet", auf_in: 420 });
+  assert.strictEqual(wartet.ton, "warn");
+  assert.match(wartet.titel, /in etwa 7 Minuten/);
+
+  const versuch = einrichtWlan({ verfuegbar: true, einrichtung: "zu", grund: "versuch", auf_in: 50, kunden_wlan: "Heim" });
+  assert.match(versuch.titel, /„Heim“/);
+  assert.match(versuch.text, /etwa einer Minute/);
+
+  const cloud = einrichtWlan({ verfuegbar: true, einrichtung: "zu", grund: "cloud", cloud: "ja" });
+  assert.strictEqual(cloud.ton, "ok");
+  assert.strictEqual(cloud.nurTechnik, true, "der Normalfall steht nur im Technikmodus");
+
+  const ruhe = einrichtWlan({ verfuegbar: true, einrichtung: "offen", sendet: "ja", grund: "cloud_ruhe", zu_in: 120 });
+  assert.strictEqual(ruhe.ton, "ok");
+  assert.match(ruhe.text, /in etwa 2 Minuten von selbst/);
+
+  assert.match(einrichtWlan({ verfuegbar: true, einrichtung: "zu", grund: "anlauf" }).titel, /startet/);
+  assert.match(einrichtWlan({ verfuegbar: true, einrichtung: "zu", grund: "gleich" }).titel, /gleich/);
+
+  const aus = einrichtWlan({ verfuegbar: true, einrichtung: "zu", grund: "takt_aus", takt_ausgeblieben: true });
+  assert.strictEqual(aus.ton, "warn");
+  assert.match(aus.titel, /Wächter läuft nicht/);
+});
+
+test("Einrichtungs-WLAN: die Texte sprechen den Kunden mit Sie an und tragen keinen langen Gedankenstrich", () => {
+  const faelle = [
+    { einrichtung: "offen", sendet: "ja", grund: "keine_cloud", zu_in: 300 },
+    { einrichtung: "offen", sendet: "nein", grund: "keine_cloud" },
+    { einrichtung: "zu", grund: "wartet", auf_in: 300 },
+    { einrichtung: "zu", grund: "takt_aus" },
+    { einrichtung: "zu", grund: "versuch", auf_in: 30 }
+  ];
+  for (const f of faelle) {
+    const d = einrichtWlan(Object.assign({ verfuegbar: true }, f));
+    assert.doesNotMatch(d.titel + d.text, /\bdu\b|\bdein/i);
+    assert.doesNotMatch(d.titel + d.text, /—/);
+  }
+});

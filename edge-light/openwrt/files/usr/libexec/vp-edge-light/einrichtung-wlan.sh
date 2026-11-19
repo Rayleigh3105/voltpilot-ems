@@ -1,22 +1,37 @@
 #!/bin/sh
 # Einrichtungs-WLAN der Box: jede Box oeffnet dasselbe offene WLAN
-# "VoltPilot-Einrichtung", aber nur, solange sie keine Verbindung hat
+# "VoltPilot-Einrichtung", aber nur, solange sie die Cloud nicht erreicht
 # (Entscheid E6=B vom 13.11.2026, Konzept vp-edge-light-wlan, Abschnitt 6.1;
 # edge-light/docs/mango.md "Ohne Kabel zum Router"). Darueber erreicht ein
 # Handy NUR die Einrichtungsseite der Box (:8484); aendern laesst sich dort
 # erst etwas nach Eingabe der Kennung, die unten auf der Box steht.
 #
 #   einrichtung-wlan.sh takt       der Waechter, aus cron jede Minute
-#   einrichtung-wlan.sh status     Zustand (eine Zeile je Wert)
+#   einrichtung-wlan.sh status     Zustand (eine Zeile je Wert), dazu warum es
+#                                  offen oder zu ist und wann sich das aendert
+#                                  (die Seite der Box zeigt das am Kabel)
 #   einrichtung-wlan.sh auf        Einrichtungs-WLAN jetzt oeffnen
 #   einrichtung-wlan.sh zu         Einrichtungs-WLAN jetzt schliessen
 #   einrichtung-wlan.sh nachlauf   ruft der Hotplug-Haken bei ifup vp_wlan:
 #                                  raeumt den Notweg, sobald das WLAN wieder
 #                                  eine Adresse hat
 #
+# Verbindung heisst hier: Die Box erreicht die Cloud. Das urteilt das
+# Programm selbst - cloud_erreicht in /health der Web-App: die Verbindung zur
+# Cloud steht, oder das Portal hat eben auf die Zertifikatsabfrage
+# geantwortet (eine Box, die noch auf ihre Zuordnung wartet). Eine Adresse an
+# WAN oder ein angemeldetes WLAN ohne Internet zaehlt nicht: Bis 2026.11.15
+# hielt eine Adresse an WAN das WLAN zu, und ein Kabel an WAN nahm dem ersten
+# Start den Sofort-Zweig - an der Mango zeigt WAN als VLAN des Switch-Chips
+# (eth0.2) aber IMMER einen Traeger, auch bei freier Buchse (Werkbank
+# 19.11.2026, Lauf ohne-cloud).
+#
 # Wann das WLAN offen ist (takt):
-#   - Beim ersten Start ohne Kabel sofort: seit dem Start gab es weder eine
-#     Verbindung noch ein Kabel an WAN, und kein Kunden-WLAN ist eingerichtet.
+#   - Beim ersten Start ohne Cloud sofort: Seit dem Start hat die Box die
+#     Cloud nie erreicht, und kein Kunden-WLAN ist eingerichtet. Was an WAN
+#     steckt, spielt keine Rolle. Das Programm bekommt nach seinem Start
+#     ANLAUF, um die Cloud zu erreichen; antwortet es gar nicht, zaehlt das ab
+#     OHNE_PROGRAMM Laufzeit der Box als keine Cloud.
 #   - Nach einem Ausfall nach 10 Minuten (AUSFALL). Client und Access Point
 #     teilen sich das eine Funkmodul der Mango, und waehrend der Client sucht,
 #     ist jeder Access Point darauf aus (hostapd, OpenWrt 25.12); deshalb
@@ -25,8 +40,10 @@
 #     Kunden-WLAN. Die Fenster sind fest und verlaengern sich nicht, auch wenn
 #     ein Handy verbunden ist: sonst koennte ein Fremder die Box mit einer
 #     dauerhaften Verbindung offline halten.
-#   - RUHE nach der Rueckkehr der Verbindung schliesst es wieder; die kurze
-#     Frist laesst die Einrichtungsseite ihr Ergebnis noch anzeigen.
+#   - RUHE, nachdem die Box die Cloud wieder erreicht, schliesst es; die
+#     kurze Frist laesst die Einrichtungsseite ihr Ergebnis noch anzeigen.
+#     Nichts sonst schliesst es: Eine Box ohne Cloud bleibt nie dauerhaft
+#     ohne Einrichtungs-WLAN.
 #
 # Eigenes Netz in eigener Zone (vp_einricht, Zone "einrichtung"): nur DHCP,
 # DNS und die Seite der Box (8484, dazu Port 80 auf 8484 umgelenkt, damit die
@@ -59,7 +76,10 @@ ADR="$NETZ.1"
 AUSFALL="${VP_EINRICHT_AUSFALL:-600}"       # s ohne Verbindung bis zum ersten Fenster
 FENSTER="${VP_EINRICHT_FENSTER:-600}"       # s Einrichtungs-WLAN je Fenster
 VERSUCH="${VP_EINRICHT_VERSUCH:-120}"       # s Versuch mit dem Kunden-WLAN
-RUHE="${VP_EINRICHT_RUHE:-180}"             # s Verbindung, dann schliesst das WLAN
+RUHE="${VP_EINRICHT_RUHE:-180}"             # s Cloud erreicht, dann schliesst das WLAN
+ANLAUF="${VP_EINRICHT_ANLAUF:-90}"          # s nach dem Start des Programms, bis "keine Cloud" zaehlt
+OHNE_PROGRAMM="${VP_EINRICHT_OHNE_PROGRAMM:-300}"  # s Laufzeit der Box, ab der ein stummes Programm "keine Cloud" heisst
+HEALTH="${VP_EINRICHT_HEALTH:-}"            # Vorgabe: /health der Web-App auf 127.0.0.1
 SPERRE="${VP_WLAN_SPERRE:-/var/lock/vp-wlan-anschluss}"  # dieselbe wie wlan-anschluss.sh
 ZUSTAND="${VP_EINRICHT_ZUSTAND:-/tmp/vp-einricht}"
 DNSMASQ_PID="$ZUSTAND/dnsmasq.pid"
@@ -91,24 +111,47 @@ wpa_zustand() {
   ubus call wpa_supplicant phy_status "{\"phy\":\"$phy\"}" 2>/dev/null | jsonfilter -e '@.state' 2>/dev/null
 }
 
-# verbindung: hat die Box eine Verbindung? Kabel an WAN mit Adresse, oder das
-# Kunden-WLAN angemeldet (COMPLETED) mit Adresse. Nur die Anmeldung zaehlt:
-# mit force_link behaelt vp_wlan seine Adresse auch, wenn der Router weg ist.
-verbindung() {
-  oben wan && return 0
+seite_port() { # Port der Web-App (vp-edge-light.main.web_addr, etwa ":8484")
+  p="$(uci -q get vp-edge-light.main.web_addr | sed 's/^.*://')"
+  echo "${p:-8484}"
+}
+
+# cloud_pruefen: Erreicht die Box die Cloud? Setzt CLOUD (ja, nein oder
+# anlauf: das Programm startet gerade) und CLOUD_GRUND (der Kopplungszustand
+# des Programms oder programm_stumm). Keine eigene Probe ins Internet: Das
+# Urteil kommt vom Programm, das die Cloud-Verbindung selbst haelt.
+cloud_pruefen() {
+  h="$(uclient-fetch -q -T 5 -O - "${HEALTH:-http://127.0.0.1:$(seite_port)/health}" 2>/dev/null)"
+  if [ -z "$h" ]; then
+    CLOUD_GRUND=programm_stumm
+    if [ "$(laufzeit)" -lt "$OHNE_PROGRAMM" ]; then CLOUD=anlauf; else CLOUD=nein; fi
+    return 0
+  fi
+  e="$(echo "$h" | jsonfilter -e '@.cloud_erreicht' 2>/dev/null)"
+  # Aeltere Fassungen des Programms kennen nur die Cloud-Verbindung selbst.
+  [ -n "$e" ] || e="$(echo "$h" | jsonfilter -e '@.cloud_connected' 2>/dev/null)"
+  CLOUD_GRUND="$(echo "$h" | jsonfilter -e '@.pairing_state' 2>/dev/null)"
+  if [ "$e" = true ]; then
+    CLOUD=ja
+    return 0
+  fi
+  up="$(echo "$h" | jsonfilter -e '@.uptime_seconds' 2>/dev/null)"
+  case "$up" in '' | *[!0-9]*) up=0 ;; esac
+  if [ "$up" -lt "$ANLAUF" ]; then CLOUD=anlauf; else CLOUD=nein; fi
+}
+wlan_angemeldet() { # Kunden-WLAN angemeldet (COMPLETED) und mit Adresse
   ifn="$(schnittstelle_von vp_wlan)"
   [ -n "$ifn" ] || return 1
   [ "$(wpa_zustand "$ifn")" = COMPLETED ] || return 1
   [ -n "$(adresse_von vp_wlan)" ]
 }
-wan_traeger() { # haengt an WAN ein Kabel mit Gegenstelle? (carrier des Geraets)
-  for g in $(uci -q get network.wan.device) $(uci -q get network.wan.ifname); do
-    [ "$(cat "/sys/class/net/$g/carrier" 2>/dev/null)" = 1 ] && return 0
-  done
-  return 1
-}
 
 offen() { [ -n "$(uci -q get wireless.vp_einricht)" ] && ! ist_an "$(uci -q get wireless.vp_einricht.disabled)"; }
+ap_status() { # was hostapd ueber den Access Point des Einrichtungs-WLANs sagt
+  ifn="$(schnittstelle_von vp_einricht)"
+  [ -n "$ifn" ] || return 0
+  ubus call "hostapd.$ifn" get_status 2>/dev/null
+}
 
 anwenden() {
   /etc/init.d/network reload >/dev/null 2>&1
@@ -223,8 +266,8 @@ befehl_auf() {
   # erreichbar.
   regel vp_einricht_dhcp udp 67 - "VoltPilot Einrichtung: DHCP"
   regel vp_einricht_dns tcpudp "$FAENGER" "$ADR" "VoltPilot Einrichtung: DNS-Faenger"
-  seite="$(uci -q get vp-edge-light.main.web_addr | sed 's/^.*://')"
-  regel vp_einricht_seite tcp "${seite:-8484}" "$ADR" "VoltPilot Einrichtung: Seite der Box"
+  seite="$(seite_port)"
+  regel vp_einricht_seite tcp "$seite" "$ADR" "VoltPilot Einrichtung: Seite der Box"
   # JEDE DNS-Frage aus der Zone auf den Faenger, auch an fest eingestellte
   # fremde Namensserver des Handys.
   uci -q delete firewall.vp_einricht_dnsu
@@ -249,7 +292,7 @@ befehl_auf() {
   uci set "firewall.vp_einricht_fang.src_dip=$ADR"
   uci set firewall.vp_einricht_fang.src_dport=80
   uci set "firewall.vp_einricht_fang.dest_ip=$ADR"
-  uci set "firewall.vp_einricht_fang.dest_port=${seite:-8484}"
+  uci set "firewall.vp_einricht_fang.dest_port=$seite"
   uci commit
   anwenden
   n=0
@@ -337,7 +380,8 @@ befehl_nachlauf() { # Hotplug ifup/ifupdate vp_wlan: WLAN hat wieder eine Adress
 
 # ---- Der Waechter -----------------------------------------------------------
 
-# nudge: angemeldet mit Adresse, aber weder Router noch Internet antworten -
+# nudge: angemeldet mit Adresse, keine Cloud, und weder Router noch Internet
+# antworten -
 # nach einem Routertausch (gleicher Name, neues Netz) haelt udhcpc sonst die
 # alte Adresse bis zur Verlaengerung. Zwei Fehlschlaege in Folge, hoechstens
 # alle 10 Minuten: ifup vp_wlan holt eine frische Adresse.
@@ -363,32 +407,42 @@ nudge_pruefen() {
 befehl_takt() {
   jetzt="$(laufzeit)"
   merke takt "$jetzt"
-  wan_traeger && merke hatte_traeger
   if [ "$(wpa_zustand "$(schnittstelle_von vp_wlan)")" = COMPLETED ]; then
     a="$(adresse_von vp_wlan)"
     m="$(maske_von vp_wlan)"
     [ -z "$a" ] || merke letzte_adresse "$a/${m:-24}"
   fi
-  if verbindung; then
-    merke hatte_verbindung
+  # Ein offenes WLAN bekommt immer Adressbereich und DNS-Faenger - auch eines,
+  # das ein Neustart aus dem Flash wieder aufgebaut hat: Der Zustand in /tmp
+  # ist dann weg, und ohne den Faenger oeffnet sich die Seite auf dem Handy
+  # nicht von selbst (Lauf ohne-cloud, bis 2026.11.15 bis AUSFALL so).
+  if offen; then
+    pool_sicherstellen
+    dns_starten
+  fi
+  cloud_pruefen
+  merke cloud "$CLOUD"
+  merke cloud_grund "$CLOUD_GRUND"
+  # Das Programm startet gerade: kein Urteil, nichts aendern.
+  [ "$CLOUD" != anlauf ] || return 0
+  if [ "$CLOUD" = ja ]; then
+    merke hatte_cloud
     vergiss ausfall_seit
+    vergiss gw_fehlt
     [ -n "$(gemerkt verbunden_seit)" ] || merke verbunden_seit "$jetzt"
     notweg_aus
     client_an
     if offen && [ $((jetzt - $(gemerkt verbunden_seit))) -ge "$RUHE" ]; then
       befehl_zu
     fi
-    # Nur am WLAN: Kabel an WAN braucht keinen Anstoss.
-    oben wan || nudge_pruefen
     return 0
   fi
   vergiss verbunden_seit
-  vergiss gw_fehlt
+  if wlan_angemeldet; then nudge_pruefen; else vergiss gw_fehlt; fi
   [ -n "$(gemerkt ausfall_seit)" ] || merke ausfall_seit "$jetzt"
   dauer=$((jetzt - $(gemerkt ausfall_seit)))
-  if [ -z "$(gemerkt hatte_verbindung)" ] && [ -z "$(uci -q get wireless.vp_wlan)" ] &&
-    [ -z "$(gemerkt hatte_traeger)" ]; then
-    # Erster Start ohne Kabel: sofort, und ohne Fenster - es gibt kein
+  if [ -z "$(gemerkt hatte_cloud)" ] && [ -z "$(uci -q get wireless.vp_wlan)" ]; then
+    # Erster Start ohne Cloud: sofort, und ohne Fenster - es gibt kein
     # Kunden-WLAN, das die Box nebenher suchen koennte.
     befehl_auf
     return 0
@@ -418,22 +472,108 @@ befehl_takt() {
   fi
 }
 
+# erklaeren: warum offen oder zu, und wann sich das aendert, aus dem, was der
+# letzte Takt festgehalten hat (status prueft die Cloud nicht selbst: die
+# Web-App ruft status auf, und der Takt laeuft ohnehin jede Minute). Setzt
+# GRUND und, wo bekannt, AUF_IN oder ZU_IN in Sekunden (auf eine Minute
+# genau, so oft kommt der Takt).
+#   keine_cloud   offen, die Box erreicht die Cloud nicht
+#   cloud_ruhe    offen, die Cloud ist da: zu nach RUHE (ZU_IN)
+#   cloud         zu, die Box erreicht die Cloud
+#   wartet        zu, die Cloud ist seit kurzem weg: auf nach AUSFALL (AUF_IN)
+#   versuch       zu, die Box versucht ihr Kunden-WLAN (AUF_IN)
+#   anlauf        das Programm startet gerade, noch kein Urteil
+#   gleich        zu, der naechste Takt oeffnet es
+#   kein_takt     seit dem Start noch kein Takt
+#   takt_aus      der Takt ist ausgeblieben (cron?)
+erklaeren() {
+  GRUND=
+  AUF_IN=
+  ZU_IN=
+  t="$(gemerkt takt)"
+  if [ -z "$t" ]; then
+    GRUND=kein_takt
+    return 0
+  fi
+  if [ $((jetzt - t)) -gt 180 ]; then
+    GRUND=takt_aus
+    return 0
+  fi
+  c="$(gemerkt cloud)"
+  a="$(gemerkt ausfall_seit)"
+  d=$((jetzt - ${a:-$jetzt}))
+  pos=
+  if [ -n "$(uci -q get wireless.vp_wlan)" ] && [ -n "$a" ] && [ "$d" -ge "$AUSFALL" ]; then
+    pos=$(((d - AUSFALL) % (FENSTER + VERSUCH)))
+  fi
+  if offen; then
+    case "$c" in
+      ja)
+        GRUND=cloud_ruhe
+        v="$(gemerkt verbunden_seit)"
+        [ -z "$v" ] || ZU_IN=$((RUHE - (jetzt - v)))
+        ;;
+      anlauf) GRUND=anlauf ;;
+      *)
+        GRUND=keine_cloud
+        [ -z "$pos" ] || [ "$pos" -ge "$FENSTER" ] || ZU_IN=$((FENSTER - pos))
+        ;;
+    esac
+    [ -z "$ZU_IN" ] || [ "$ZU_IN" -ge 0 ] || ZU_IN=0
+    return 0
+  fi
+  case "$c" in
+    ja) GRUND=cloud ;;
+    anlauf) GRUND=anlauf ;;
+    *)
+      if [ -n "$pos" ] && [ "$pos" -ge "$FENSTER" ]; then
+        GRUND=versuch
+        AUF_IN=$((FENSTER + VERSUCH - pos))
+      elif [ -n "$(gemerkt hatte_cloud)$(uci -q get wireless.vp_wlan)" ] && [ "$d" -lt "$AUSFALL" ]; then
+        GRUND=wartet
+        AUF_IN=$((AUSFALL - d))
+      else
+        GRUND=gleich
+        AUF_IN=0
+      fi
+      ;;
+  esac
+}
+
 befehl_status() {
+  jetzt="$(laufzeit)"
   if offen; then echo "einrichtung=offen"; else echo "einrichtung=zu"; fi
+  # Sendet das Funkmodul es wirklich? Offen heisst nur: es steht in der
+  # Konfiguration. Was hostapd sagt, trennt eine Frage der Logik von einer
+  # des Funkmoduls (mt7603 an der Mango).
+  ap="$(ap_status)"
+  if [ "$(echo "$ap" | jsonfilter -e '@.status' 2>/dev/null)" = ENABLED ]; then echo "sendet=ja"; else echo "sendet=nein"; fi
+  echo "kanal=$(echo "$ap" | jsonfilter -e '@.channel' 2>/dev/null)"
   echo "ssid=$SSID"
   echo "adresse=$ADR"
-  if verbindung; then echo "verbindung=ja"; else echo "verbindung=nein"; fi
+  echo "cloud=$(gemerkt cloud)"
+  echo "cloud_grund=$(gemerkt cloud_grund)"
+  erklaeren
+  echo "grund=$GRUND"
+  echo "auf_in=$AUF_IN"
+  echo "zu_in=$ZU_IN"
+  echo "kunden_wlan=$(uci -q get wireless.vp_wlan.ssid)"
+  # Nur zur Anzeige, der Waechter entscheidet nicht danach: an der Mango ist
+  # WAN ein VLAN des Switch-Chips (eth0.2), sein Traeger ist auch bei freier
+  # Buchse 1.
+  g="$(uci -q get network.wan.device)"
+  echo "wan_traeger=$(cat "/sys/class/net/${g:-wan}/carrier" 2>/dev/null)"
   echo "ausfall_seit=$(gemerkt ausfall_seit)"
   echo "verbunden_seit=$(gemerkt verbunden_seit)"
-  echo "hatte_verbindung=$(gemerkt hatte_verbindung)"
+  echo "hatte_cloud=$(gemerkt hatte_cloud)"
   echo "client_aus=$(gemerkt client_aus)"
   echo "notweg=$(gemerkt notweg)"
   echo "letzte_adresse=$(gemerkt letzte_adresse)"
   d="$(cat "$DNSMASQ_PID" 2>/dev/null)"
   if [ -n "$d" ] && kill -0 "$d" 2>/dev/null; then echo "dns=an"; else echo "dns=aus"; fi
   t="$(gemerkt takt)"
-  if [ -n "$t" ] && [ $(($(laufzeit) - t)) -gt 180 ]; then
-    echo "takt=AUSGEBLIEBEN seit $(($(laufzeit) - t)) s"
+  if [ -n "$t" ] && [ $((jetzt - t)) -gt 180 ]; then
+    echo "takt=AUSGEBLIEBEN seit $((jetzt - t)) s"
   else
     echo "takt=${t:-nie}"
   fi

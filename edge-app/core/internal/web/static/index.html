@@ -84,6 +84,21 @@
       <span class="setup-banner-arrow" aria-hidden="true">→</span>
     </a>
 
+    <!-- Das Einrichtungs-WLAN "VoltPilot-Einrichtung" (nur Edge Light): offen
+         oder zu, warum, und wann sich das aendert - am Kabel sieht man so, was
+         die Box tut (einrichtwlan.js). Ohne Waechter (Docker-Box) bleibt es
+         verborgen. -->
+    <section class="einricht-wlan" id="einrichtWlan" data-ton="info" aria-live="polite" hidden>
+      <span class="einricht-wlan-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+      </span>
+      <span class="einricht-wlan-text">
+        <strong id="einrichtWlanTitel"></strong>
+        <small id="einrichtWlanText"></small>
+        <small class="einricht-wlan-technik tech-only" id="einrichtWlanTechnik"></small>
+      </span>
+    </section>
+
     <!-- ==================== 2 · Jetzt: Fluss + Kennzahlen ==================== -->
     <div class="area-title">Jetzt</div>
     <!-- Desktop (>=1000px) puts the diagram and the tiles side by side: MORE at
@@ -425,5 +440,6 @@
   <script src="betrieb.js"></script>
   <script src="flowrollen.js"></script>
   <script src="dashboard.js"></script>
+  <script src="einrichtwlan.js"></script>
 </body>
 </html>

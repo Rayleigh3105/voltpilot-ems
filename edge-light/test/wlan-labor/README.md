@@ -1,7 +1,7 @@
 # WLAN-Labor: OpenWrt mit simuliertem Funk
 
 Ein echtes OpenWrt 25.12.5 mit WLAN, ohne Mango, ohne Docker, ohne Root auf dem Rechner.
-Gebaut für den WLAN-Anschluss der Box (`edge-light/openwrt/files/usr/libexec/vp-edge-light/wlan-anschluss.sh`); inzwischen prüft es auch das Einrichtungs-WLAN samt Wächter (`einrichtung-wlan.sh`, Läufe `einrichtung`, `fenster`), das Weiterlesen bei Routerausfall und -tausch (`routerausfall`), die Einrichtungsseite der Web-App Ende-zu-Ende (`einrichtung-weg`: das echte Go-Programm, als i686 gebaut, läuft im Emulator) und die Vorgabe der Werkstatt (S1: eine Box mit Land DE und relayd wie ab Werk, aber ganz ohne Paketquelle beim Kunden, Lauf `werkstatt`).
+Gebaut für den WLAN-Anschluss der Box (`edge-light/openwrt/files/usr/libexec/vp-edge-light/wlan-anschluss.sh`); inzwischen prüft es auch das Einrichtungs-WLAN samt Wächter (`einrichtung-wlan.sh`, Läufe `einrichtung`, `fenster`, `ohne-cloud`), das Weiterlesen bei Routerausfall und -tausch (`routerausfall`), die Einrichtungsseite der Web-App Ende-zu-Ende (`einrichtung-weg`: das echte Go-Programm, als i686 gebaut, läuft im Emulator) und die Vorgabe der Werkstatt (S1: eine Box mit Land DE und relayd wie ab Werk, aber ganz ohne Paketquelle beim Kunden, Lauf `werkstatt`).
 Der nächste Schritt (Wiederfinden der Geräte, S6) verwendet es weiter.
 
 ```sh
@@ -19,6 +19,7 @@ LAUT=1 edge-light/test/wlan-anschluss-probe.sh scan  # Konsole mitlesen
 | Funk | `mac80211_hwsim radios=4`: Kundenrouter (hostapd, WPA2, Kanal 6, Namensraum `kunde`, DHCP 192.168.178.100-150), Nachbar (WPA3/SAE, Kanal 11, Namensraum `nachbar`), Box (`radio0` mit dem echten netifd, hostapd und wpa_supplicant), Handy (`handy0`, Namensraum `handy`, für das Einrichtungs-WLAN) |
 | Kabel | `kabel0` im `br-lan` der Box, `kabel1` im Namensraum `kabel` (steht für Smart Dongle oder Waveshare; Stellvertreter-Dienste auf 80, 502 und 4196); im Lauf `kabel` dazu `wan0` als Kabel zum Router (192.168.179.0/24) |
 | Box | LAN `10.213.0.1/24` wie nach der Werkstatt; Funkmodul `radio0` wie OpenWrt 25.12.5 es anlegt (an, darauf das offene WLAN „OpenWrt“ im `lan` aus); Stellvertreter für Web-App 8484 und OCPP 8887 |
+| Cloud | Das Labor hat kein Internet: Der Wächter fragt `/health` des Stellvertreters auf 8484 (Datei `$H`), und `ohne` oder `mit` in einem Lauf stellen, ob die Box die Cloud erreicht (`cloud_erreicht`); Vorgabe ohne Cloud. `einrichtung-weg` hat dafür einen eigenen Stellvertreter auf 8485, weil dort das echte Programm auf 8484 läuft |
 
 Abweichungen vom Gerät, ehrlich benannt:
 

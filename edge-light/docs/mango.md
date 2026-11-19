@@ -589,22 +589,51 @@ Der Huawei-Dongle sieht die Box unter ihrer WLAN-Adresse; „restricted“ also 
 
 ### Einrichtungs-WLAN und Einrichtungsseite
 
-Jede Box öffnet dasselbe offene WLAN **„VoltPilot-Einrichtung“**, aber nur, solange sie keine Verbindung hat (Entscheid E6=B): beim ersten Start ohne Kabel sofort, nach einem Ausfall nach 10 Minuten.
+Jede Box öffnet dasselbe offene WLAN **„VoltPilot-Einrichtung“**, aber nur, solange sie die Cloud nicht erreicht (Entscheid E6=B, seit 19.11.2026 genauer: Verbindung heißt Cloud): beim ersten Start ohne Cloud sofort, nach einem Ausfall nach 10 Minuten.
+Ob die Box die Cloud erreicht, urteilt das Programm selbst: `cloud_erreicht` in `/health` der Web-App ist wahr, solange die Cloud-Verbindung steht oder das Portal in den letzten 6 Minuten auf die Zertifikatsabfrage geantwortet hat (so zählt auch eine Box, die noch auf ihre Zuordnung wartet).
+Eine Adresse an WAN, ein Kabel an WAN oder ein angemeldetes WLAN ohne Internet zählen nicht.
+Nach dem Start bekommt das Programm 90 Sekunden für die Cloud; antwortet es gar nicht, zählt das ab 5 Minuten Laufzeit der Box als keine Cloud.
 Weil Client und Access Point sich das eine Funkmodul teilen und der Access Point während der Client-Suche aus ist, wechselt ein Wächter in festen Fenstern: 10 Minuten Einrichtungs-WLAN (Client aus, die letzte WLAN-Adresse liegt als Notweg auf `br-lan`, die Box liest weiter), dann 2 Minuten Versuch mit dem Kunden-WLAN.
 Die Fenster verlängern sich nicht, auch wenn ein Handy verbunden ist: sonst hielte ein Fremder die Box mit einer dauernden Verbindung offline.
-Nach 3 Minuten stabiler Verbindung schließt das WLAN von selbst; die kurze Frist lässt die Seite ihr Ergebnis noch anzeigen.
+Nach 3 Minuten mit Cloud schließt das WLAN von selbst; die kurze Frist lässt die Seite ihr Ergebnis noch anzeigen.
+Nichts sonst schließt es: Eine Box ohne Cloud bleibt nie dauerhaft ohne Einrichtungs-WLAN.
+Die Folge, bewusst: Fällt nur das Portal aus, während das Internet geht, öffnen Boxen am Kabel nach 10 Minuten ihr Einrichtungs-WLAN, und Boxen im WLAN-Weg wechseln in die Fenster (sie lesen über den Notweg weiter und finden in einem Versuchs-Fenster zurück, sobald das Portal wieder antwortet).
 
 | | |
 |---|---|
 | Wächter | `/usr/libexec/vp-edge-light/einrichtung-wlan.sh` (`takt` aus cron jede Minute, `status`, `auf`, `zu`); `install.sh` legt Skript, cron-Zeile (`# vp-einrichtung-wlan`), `cronloglevel 9` und den Hotplug-Haken `91-vp-einrichtung` an |
+| Cloud | `takt` fragt `http://127.0.0.1:<Port der Web-App>/health` und liest `cloud_erreicht` (ältere Fassungen des Programms: `cloud_connected`); keine eigene Probe ins Internet |
+| Am Kabel sichtbar | Die Seite der Box (`http://10.213.0.1:8484`, „Betrieb“) zeigt unter dem Zustand, ob das Einrichtungs-WLAN offen ist, ob das Funkmodul es wirklich sendet (hostapd), warum es zu ist und wann es sich wieder öffnet (`GET /api/einrichtungs-wlan`, dahinter `einrichtung-wlan.sh status` mit `grund`, `auf_in`, `zu_in`, `sendet`, `kanal`); der Normalfall „zu, Cloud da“ steht nur im Technikmodus |
 | Netz | `vp_einricht`, `10.213.1.1/24`; DHCP über den dnsmasq der Box (`dhcp.vp_einricht`; ein zweiter dnsmasq bekäme Port 67 nicht); DNS fängt ein eigener dnsmasq auf Port 5353, der jeden Namen auf die Box zeigt (Anmelde-Erkennung des Handys öffnet die Seite) |
 | Zone `einrichtung` | eingehend nur DHCP (67), der DNS-Fänger (5353; JEDE DNS-Frage aus der Zone wird dorthin umgelenkt, auch an fremde Namensserver) und die Seite der Box (8484, nur an `10.213.1.1`); Port 80 an die Box wird auf die Seite umgelenkt; keine Weiterleitung, weder ins Heimnetz noch zu den Geräten; SSH, LuCI, 1883 zu |
 | Seite | `http://10.213.1.1:8484/einrichtung.html` (Web-App, `internal/web/einrichtung.go`): zuerst die Kennung, die unten auf der Box steht (fünf Fehlversuche, dann fünf Minuten Pause; die Seite zeigt sie vorher nirgends), dann Kabel oder WLAN, Netzliste, Passwort, Empfangsprüfung gegen -70 dBm; sie ruft `wlan-anschluss.sh` auf |
 | Schranke | Anfragen unter `10.213.1.1` sehen NUR die Einrichtungsseite und ihre API; der Rest der Web-App (am Kabel wie heute ohne Anmeldung offen) bleibt im Einrichtungs-WLAN unerreichbar, und ihr Beobachter lernt aus solchen Anfragen keine Adresse |
 | Zustand | nur in `/tmp/vp-einricht` (Laufzeit der Box, `/proc/uptime`); in den Flash schreiben nur die uci-Wechsel der Fenster (höchstens alle paar Minuten, nur während eines Ausfalls) |
 
-Gemessen im Emulator (Läufe `einrichtung`, `fenster`, `routerausfall`, `einrichtung-weg` - Letzterer führt das echte Go-Programm der Seite im OpenWrt-Emulator aus und geht den Weg Kennung → Netzliste → `verbinden` bis zum WLAN-Weg B).
+Gemessen im Emulator (Läufe `einrichtung`, `fenster`, `routerausfall`, `ohne-cloud`, `einrichtung-weg` - Letzterer führt das echte Go-Programm der Seite im OpenWrt-Emulator aus und geht den Weg Kennung → Netzliste → `verbinden` bis zum WLAN-Weg B).
 Offen, nur an echter Hardware: V1 (Access Point und Client auf der Mango), V11 (öffnet sich die Seite auf iPhone und Android von selbst), Scan während der Access Point sendet (mt7603; im Emulator belegt).
+
+#### Befund an der Werkbank (19.11.2026, `edge-cyhchfr`, 2026.11.15)
+
+Aufbau: An der LAN-Buchse ein Switch mit einem Waveshare, WAN frei.
+Nach Aus und Ein ging das Einrichtungs-WLAN kurz auf und war dann nicht mehr zu finden.
+Klärung am selben Tag: Das Kunden-WLAN war schon eingetragen, und hinter der LAN-Buchse kamen Adressen und Internet vom Kundenrouter über die Pseudo-Brücke.
+Das Verschwinden war damit das gewollte Schließen nach 3 Minuten mit Verbindung (Lauf `ohne-cloud`, Fall F: Kunden-WLAN eingetragen, Neustart mit noch offenem Einrichtungs-WLAN, es steht aus dem Flash kurz wieder auf und schließt nach der Ruhefrist; so mit dem Wächter von 2026.11.15 wie mit dem neuen).
+Der Lauf deckte dabei auf, dass bis 2026.11.15 nicht die Cloud über das Schließen entschied, sondern eine Adresse an WAN, und dass ein Kabel an WAN (Träger) dem ersten Start den Sofort-Zweig nahm.
+Lauf `ohne-cloud` gegen den Wächter von 2026.11.15:
+
+| Fall | Wächter bis 2026.11.15 | seit dieser Änderung |
+|---|---|---|
+| A: nur LAN, WAN frei | sofort offen (im Emulator) | sofort offen |
+| B: WAN mit Träger, ohne Adresse | 10 Minuten zu, dann offen | sofort offen |
+| B nach einem Neustart mit offenem WLAN | der Access Point steht aus dem Flash wieder auf, ein Handy bekommt eine Adresse, aber bis 10 Minuten um sind fehlt der DNS-Fänger: die Anmeldeseite öffnet sich nicht von selbst | DNS-Fänger (und, falls nötig, Adressbereich) im ersten Takt |
+| C: WAN mit Adresse, ohne Internet | nie offen; ein offenes WLAN schließt nach 3 Minuten und kommt nicht wieder | sofort offen, bleibt offen |
+| F: Kunden-WLAN eingetragen, Neustart mit noch offenem Einrichtungs-WLAN (der Fall der Werkbank) | kurz auf, nach 3 Minuten zu (gewollt) | ebenso, sobald die Box über ihr WLAN die Cloud erreicht |
+
+An der Mango ist WAN ein VLAN des Switch-Chips (`eth0.2`, swconfig, `target/linux/ramips/mt76x8/base-files/etc/board.d/02_network`: `"1:lan" "0:wan" "6@eth0"`): sein Träger folgt dem CPU-Port und ist immer 1, auch bei freier WAN-Buchse.
+Fall A ist an der Mango deshalb Fall B: Ohne Kunden-WLAN hielt der alte Wächter das Einrichtungs-WLAN nach jedem Start 10 Minuten zu.
+Dass der Träger dort immer 1 ist, folgt aus der Bauart und ist an der Box selbst noch nicht gemessen.
+Ob und warum das Einrichtungs-WLAN gerade offen ist, zeigt seither die Seite am Kabel; steht dort „eingeschaltet, aber das Funkmodul sendet es nicht“, liegt es am Funkmodul (mt7603), nicht an der Logik.
 
 ## Pilotplan auf einem echten Mango
 

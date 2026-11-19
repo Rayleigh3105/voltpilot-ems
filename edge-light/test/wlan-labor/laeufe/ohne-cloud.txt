@@ -1,0 +1,49 @@
+# Lauf ohne-cloud: der Fall von der Werkbank (Mango edge-cyhchfr, 19.11.2026) - das Einrichtungs-WLAN schliesst nur, wenn die Box die Cloud wirklich erreicht (cloud_erreicht in /health der Web-App); ohne Cloud oeffnet es nach dem ersten Start sofort und bleibt offen, egal was an WAN steckt
+EV="VP_EINRICHT_AUSFALL=40 VP_EINRICHT_RUHE=20 VP_EINRICHT_OHNE_PROGRAMM=60"; neu() { $E zu >/dev/null 2>&1; kill $(cat /tmp/vp-einricht/dnsmasq.pid 2>/dev/null) 2>/dev/null; rm -rf /tmp/vp-einricht; }
+printf 'ctrl_interface=/var/run/handy-wpa\nnetwork={\n ssid="VoltPilot-Einrichtung"\n key_mgmt=NONE\n}\n' > /tmp/handy.conf
+# Fall A (Foto, Kabel an LAN): an LAN ein Switch mit dem Waveshare (das Kabelgeraet, kein DHCP-Server, kein Internet), WAN frei, kein Kunden-WLAN, keine Cloud
+ohne; neu; info "A: WAN-Geraet $(uci -q get network.wan.device || echo keins)"
+@90 env $EV $E takt; sleep 3; $E status > /tmp/a.out; cat /tmp/a.out; gleich "A: erster Start ohne Cloud, nur LAN: Einrichtungs-WLAN sofort offen" "$(wert einrichtung /tmp/a.out)" offen
+gleich "A: das Funkmodul sendet es" "$(wert sendet /tmp/a.out)" ja
+gleich "A: Grund keine Cloud" "$(wert grund /tmp/a.out)" keine_cloud
+@90 sleep 45; env $EV $E takt; sleep 2; gleich "A: nach RUHE und AUSFALL weiter offen" "$($E status | sed -n s/^einrichtung=//p)" offen
+# Fall B: Kabel an WAN am selben Switch - Traeger, aber kein DHCP-Server, keine Adresse. Auf der echten Mango ist WAN ein VLAN des Switch-Chips (eth0.2, swconfig): sein Traeger folgt dem CPU-Port und ist IMMER 1, auch mit freier WAN-Buchse - Fall A ist dort dieser Fall
+ip netns add leer; ip link add wan0 type veth peer name wanleer; ip link set wanleer netns leer; ip netns exec leer ip link set lo up; ip netns exec leer ip link set wanleer up
+uci set network.wan=interface; uci set network.wan.device='wan0'; uci set network.wan.proto='dhcp'; uci commit network
+@120 neu; /etc/init.d/network reload; sleep 10; info "B: wan0 Traeger $(cat /sys/class/net/wan0/carrier), wan up=$(ifstatus wan | jsonfilter -e '@.up')"
+@90 env $EV $E takt; sleep 3; $E status > /tmp/b.out; cat /tmp/b.out; gleich "B: Traeger an WAN ohne Adresse, ohne Cloud: Einrichtungs-WLAN sofort offen" "$(wert einrichtung /tmp/b.out)" offen
+# B nach einem Neustart: war das Einrichtungs-WLAN offen, steht es aus der Konfiguration im Flash wieder auf; der Zustand in /tmp ist weg, und der dnsmasq der Box startet vor dem Access Point (Reihenfolge beim Booten)
+@90 $E auf; sleep 3; gleich "B: vor dem Neustart offen" "$($E status | sed -n s/^einrichtung=//p)" offen
+@120 kill $(cat /tmp/vp-einricht/dnsmasq.pid 2>/dev/null) 2>/dev/null; rm -rf /tmp/vp-einricht; wifi down; sleep 3; /etc/init.d/dnsmasq restart; sleep 2; wifi up; sleep 12; info "Neustart: Access Point aus dem Flash sendet: $(iw dev | grep -c 'ssid VoltPilot-Einrichtung')"
+@120 ip netns exec handy wpa_supplicant -B -i handy0 -c /tmp/handy.conf -P /var/run/handy-wpa.pid >/dev/null 2>&1; i=0; while [ $i -lt 45 ] && ! ip netns exec handy iw dev handy0 link | grep -q Connected; do sleep 1; i=$((i+1)); done; info "Neustart, vor dem ersten Takt: Handy $(ip netns exec handy iw dev handy0 link | head -n 1)"
+@90 env $EV $E takt; sleep 3; $E status > /tmp/bn.out; cat /tmp/bn.out; gleich "B nach Neustart: offen" "$(wert einrichtung /tmp/bn.out)" offen
+@90 HANDYIP=$(dhcp_neu handy handy0); echo "handy=$HANDYIP"; case "$HANDYIP" in 10.213.1.*) pruef_ok "B nach Neustart: Handy bekommt eine Adresse ($HANDYIP)";; *) pruef_fehler "B nach Neustart: Handy ohne Adresse ($HANDYIP)";; esac
+pruefe "B nach Neustart: DNS zeigt auf die Box" sh -c "ip netns exec handy nslookup anmeldung.beispiel 10.213.1.1 2>/dev/null | sed -n '/^Name/,\$p' | grep -qF 10.213.1.1"
+pruefe "B nach Neustart: Handy erreicht die Seite der Box" tcp handy 10.213.1.1 8484
+# Fall C: Kabel an WAN an einem Netz mit Adresse, aber ohne Internet (ein Router ohne Anschluss nach draussen)
+ip netns exec leer ip addr add 192.168.181.1/24 dev wanleer; ip netns exec leer dnsmasq --conf-file=/dev/null --port=0 --interface=wanleer --bind-interfaces --dhcp-range=192.168.181.100,192.168.181.150,12h --dhcp-leasefile=/tmp/leer.leases --pid-file=/var/run/leer-dnsmasq.pid; echo dnsmasq-leer=$?
+@90 ifup wan; i=0; while [ $i -lt 60 ] && ! ifstatus wan | grep -q '"up": true'; do sleep 1; i=$((i+1)); done; info "C: wan oben nach $i s, Adresse $(ifstatus wan | jsonfilter -e '@["ipv4-address"][0].address')"
+# C1: offen, dann bekommt WAN eine Adresse ohne Internet - bis 2026.11.15 galt die Adresse als Verbindung und schloss das WLAN nach RUHE: kurz auf, dann weg (und ohne Cloud nie wieder auf)
+@90 $E auf; env $EV $E takt; sleep 21; env $EV $E takt; sleep 3; $E status > /tmp/c1.out; cat /tmp/c1.out; gleich "C1: Adresse an WAN ohne Cloud: bleibt offen" "$(wert einrichtung /tmp/c1.out)" offen
+# C2: erster Start mit Adresse an WAN, ohne Cloud
+@90 neu; env $EV $E takt; sleep 3; $E status > /tmp/c2.out; cat /tmp/c2.out; gleich "C2: erster Start mit Adresse an WAN, ohne Cloud: sofort offen" "$(wert einrichtung /tmp/c2.out)" offen
+# Fall D: die Cloud kommt (cloud_erreicht) - nach der Ruhefrist zu; geht sie wieder, oeffnet das WLAN nach AUSFALL
+@60 mit; env $EV $E takt; $E status > /tmp/d1.out; cat /tmp/d1.out; gleich "D: Cloud da, in der Ruhefrist noch offen" "$(wert einrichtung /tmp/d1.out)-$(wert cloud /tmp/d1.out)-$(wert grund /tmp/d1.out)" offen-ja-cloud_ruhe
+@90 sleep 21; env $EV $E takt; sleep 3; $E status > /tmp/d2.out; cat /tmp/d2.out; gleich "D: nach der Ruhefrist zu, Grund Cloud" "$(wert einrichtung /tmp/d2.out)-$(wert grund /tmp/d2.out)" zu-cloud
+@60 ohne; env $EV $E takt; $E status > /tmp/d3.out; cat /tmp/d3.out; gleich "D: Cloud weg: zu, wartet AUSFALL ab" "$(wert einrichtung /tmp/d3.out)-$(wert grund /tmp/d3.out)" zu-wartet
+info "D: oeffnet in $(wert auf_in /tmp/d3.out) s"
+@120 sleep 42; env $EV $E takt; sleep 3; gleich "D: nach AUSFALL wieder offen" "$($E status | sed -n s/^einrichtung=//p)" offen
+# Fall E: das Programm startet gerade (uptime unter ANLAUF) - nichts aendert sich; antwortet es gar nicht, zaehlt das nach dem Anlauf der Box als keine Cloud; eine aeltere Fassung ohne cloud_erreicht zaehlt mit cloud_connected
+@60 neu; ohne 30; env $EV $E takt; $E status > /tmp/e1.out; cat /tmp/e1.out; gleich "E: Programm im Anlauf: nichts geoeffnet" "$(wert einrichtung /tmp/e1.out)-$(wert grund /tmp/e1.out)" zu-anlauf
+@90 rm -f $H; env $EV $E takt; sleep 3; $E status > /tmp/e2.out; cat /tmp/e2.out; gleich "E: Programm stumm: keine Cloud, offen" "$(wert einrichtung /tmp/e2.out)-$(wert cloud_grund /tmp/e2.out)" offen-programm_stumm
+@60 printf '{"status":"UP","cloud_connected":true,"uptime_seconds":600}\n' > $H; env $EV $E takt; gleich "E: aeltere Fassung (nur cloud_connected) zaehlt" "$($E status | sed -n s/^cloud=//p)" ja
+ohne
+# Fall F (Klaerung 19.11.2026, am Kundennetz gemessen: die Box war schon im Kunden-WLAN, WLAN-Weg B): das Einrichtungs-WLAN ist von der Einrichtung her noch offen (Ruhefrist), die Box wird vom Strom genommen - nach dem Start steht es aus dem Flash kurz wieder auf und schliesst nach RUHE, sobald die Box die Cloud ueber ihr Kunden-WLAN erreicht. Gewollt, kein Fehler
+@60 neu; ohne; ifdown wan; echo "WAN aus"
+@180 printf 'kundenpasswort\n' | $W verbinden Kunde-WLAN > /tmp/f.out; cat /tmp/f.out; gleich "F: Kunden-WLAN eingetragen" "$(wert ergebnis /tmp/f.out)" verbunden
+@90 $E auf; sleep 5; gleich "F: Einrichtungs-WLAN noch offen (Ruhefrist nach der Einrichtung)" "$($E status | sed -n s/^einrichtung=//p)" offen
+@180 kill $(cat /tmp/vp-einricht/dnsmasq.pid 2>/dev/null) 2>/dev/null; rm -rf /tmp/vp-einricht; wifi down; sleep 3; /etc/init.d/dnsmasq restart; sleep 2; wifi up; i=0; while [ $i -lt 60 ] && ! $W status | grep -qx wlan_zustand=COMPLETED; do sleep 2; i=$((i+1)); done; info "F nach Neustart: Kunden-WLAN $($W status | sed -n s/^wlan_zustand=//p) nach $((i*2)) s"
+pruefe "F nach Neustart: kurz auf (der Access Point aus dem Flash sendet)" sh -c "iw dev | grep -q 'ssid VoltPilot-Einrichtung'"
+@60 mit; env $EV $E takt; sleep 2; $E status > /tmp/f1.out; info "F: erster Takt: $(wert einrichtung /tmp/f1.out) $(wert grund /tmp/f1.out)"; gleich "F: erster Takt nach dem Start: noch offen (Ruhefrist)" "$(wert einrichtung /tmp/f1.out)" offen
+@90 sleep 21; env $EV $E takt; sleep 3; gleich "F: nach RUHE zu - kurz auf, dann weg" "$($E status | sed -n s/^einrichtung=//p)" zu
+verneine "F: der Access Point sendet nicht mehr" sh -c "iw dev | grep -q 'ssid VoltPilot-Einrichtung'"

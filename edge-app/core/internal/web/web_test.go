@@ -494,6 +494,45 @@ func TestHealthCarriesBuildVersion(t *testing.T) {
 	}
 }
 
+// cloud_erreicht in /health ist das Urteil, nach dem der Waechter des
+// Einrichtungs-WLANs schliesst: die Cloud-Verbindung oder eine frische
+// Antwort des Portals (eine Box vor ihrer Zuordnung) - nichts sonst.
+func TestHealthSagtObDieBoxDieCloudErreicht(t *testing.T) {
+	faelle := []struct {
+		name string
+		set  func(*state.Snapshot)
+		want bool
+	}{
+		{"keine Cloud", func(*state.Snapshot) {}, false},
+		{"Cloud-Verbindung", func(s *state.Snapshot) { s.CloudConnected = true }, true},
+		{"Portal antwortet (wartet auf Zuordnung)", func(s *state.Snapshot) {
+			s.PairingState = "warte_auf_beanspruchung"
+			s.PortalAnsweredAt = time.Now().Add(-30 * time.Second)
+		}, true},
+		{"Portal-Antwort zu alt", func(s *state.Snapshot) {
+			s.PortalAnsweredAt = time.Now().Add(-state.CloudReachWindow - time.Minute)
+		}, false},
+	}
+	for _, f := range faelle {
+		st := state.New("edge-cloud", "test")
+		st.Update(f.set)
+		srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()},
+			&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{},
+			&fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}, nil))
+		resp, err := http.Get(srv.URL + "/health")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var health map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&health)
+		resp.Body.Close()
+		srv.Close()
+		if health["cloud_erreicht"] != f.want {
+			t.Errorf("%s: cloud_erreicht = %v, soll %v", f.name, health["cloud_erreicht"], f.want)
+		}
+	}
+}
+
 // Die Werkstatt prueft "Update-bereit" an /health: Box-Art und ein gepruefter
 // Vertrauens-Set stehen dort (Konzept vp-edge-light-update, K5).
 func TestHealthCarriesTheUpdateBlock(t *testing.T) {

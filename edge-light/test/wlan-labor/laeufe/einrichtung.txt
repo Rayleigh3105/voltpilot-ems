@@ -1,6 +1,6 @@
-# Lauf einrichtung: erster Start ohne Kabel - das Einrichtungs-WLAN "VoltPilot-Einrichtung" oeffnet sofort; ein Handy bekommt DHCP und DNS auf die Box und erreicht NUR die Seite der Box; kommt ein Kabel mit Verbindung, schliesst es nach der Ruhefrist von selbst
+# Lauf einrichtung: erster Start ohne Kabel - das Einrichtungs-WLAN "VoltPilot-Einrichtung" oeffnet sofort; ein Handy bekommt DHCP und DNS auf die Box und erreicht NUR die Seite der Box; erreicht die Box ueber ein Kabel die Cloud, schliesst es nach der Ruhefrist von selbst
 EV="VP_EINRICHT_RUHE=20"
-# Erster Takt: keine Verbindung, kein Kunden-WLAN, nie ein Kabel -> sofort offen
+# Erster Takt: keine Cloud, kein Kunden-WLAN -> sofort offen
 @90 env $EV $E takt; sleep 4; $E status | head -3; gleich "erster Start ohne Kabel: Einrichtungs-WLAN offen" "$($E status | sed -n s/^einrichtung=//p)" offen
 pruefe "Access Point VoltPilot-Einrichtung sendet" sh -c "iw dev | grep -q 'ssid VoltPilot-Einrichtung'"
 gleich "eigener dnsmasq der Einrichtung laeuft" "$($E status | sed -n s/^dns=//p)" an
@@ -26,7 +26,9 @@ verneine "Handy erreicht das Geraet am Kabel nicht (502)" tcp handy $KABELIP 502
 ip link add wan0 type veth peer name wankabel; ip link set wankabel netns kunde; ip netns exec kunde ip addr add 192.168.179.1/24 dev wankabel; ip netns exec kunde ip link set wankabel up; uci set network.wan=interface; uci set network.wan.device='wan0'; uci set network.wan.proto='dhcp'; uci commit network
 ip netns exec kunde dnsmasq --conf-file=/dev/null --port=0 --interface=wankabel --bind-interfaces --dhcp-range=192.168.179.100,192.168.179.150,12h --dhcp-leasefile=/tmp/kabel.leases --pid-file=/var/run/kabel-dnsmasq.pid; echo dnsmasq-kabel=$?
 @120 /etc/init.d/network reload; i=0; while [ $i -lt 60 ] && ! ifstatus wan | grep -q '"up": true'; do sleep 1; i=$((i+1)); done; echo "wan oben nach $i s"
-@60 env $EV $E takt; gleich "mit Kabel: Verbindung da, WLAN noch offen (Ruhefrist)" "$($E status | sed -n s/^einrichtung=//p)-$($E status | sed -n s/^verbindung=//p)" offen-ja
+# Eine Adresse an WAN allein ist noch keine Verbindung; erst die Cloud (der Stellvertreter von /health sagt cloud_erreicht) startet die Ruhefrist
+@60 env $EV $E takt; gleich "mit Kabel, ohne Cloud: WLAN bleibt offen" "$($E status | sed -n s/^einrichtung=//p)-$($E status | sed -n s/^cloud=//p)" offen-nein
+@60 mit; env $EV $E takt; gleich "mit Kabel und Cloud: WLAN noch offen (Ruhefrist)" "$($E status | sed -n s/^einrichtung=//p)-$($E status | sed -n s/^cloud=//p)" offen-ja
 @90 sleep 21; env $EV $E takt; sleep 3; gleich "nach der Ruhefrist: Einrichtungs-WLAN zu" "$($E status | sed -n s/^einrichtung=//p)" zu
 gleich "keine vp_einricht-Reste in der Konfiguration" "$(uci show 2>/dev/null | grep -c vp_einricht)" 0
 gleich "dnsmasq der Einrichtung beendet" "$($E status | sed -n s/^dns=//p)" aus
