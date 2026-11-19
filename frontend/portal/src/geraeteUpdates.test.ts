@@ -112,10 +112,12 @@ describe('Alles gut', () => {
     const seite = { programme: [
       { arch: 'linux/mipsle', groesse: 10, empfangen: 10, fertig: true },
       { arch: 'linux/arm64', groesse: 10, empfangen: 4, fertig: false },
+      { arch: 'linux/arm', groesse: 10, empfangen: 10, fertig: true },
     ] } as EdgeReleaseSeite;
     expect(plattformen('light', seite)).toEqual([
       { text: 'Mango · mipsle ✓', ton: 'fertig' },
       { text: 'Raspberry Pi · arm64 · noch nicht im Portal', ton: 'fehlt' },
+      { text: 'WAGO PFC200 · arm ✓', ton: 'fertig' },
     ]);
     const karten = linienKarten(d, NOW, new Map([[60, seite]]));
     expect(karten[1].plattformen?.[0].text).toBe('Mango · mipsle ✓');
@@ -598,16 +600,19 @@ describe('Release-Seite (G7)', () => {
         { typ: 'binary', name: 'vp-edge-light', arch: 'linux/mipsle', groesse: 14614743, gzGroesse: 4679121 },
         { typ: 'binary', name: 'vp-edge-light', arch: 'linux/arm64', groesse: 13893816, gzGroesse: 4475301 },
         { typ: 'binary', name: 'vp-edge-light', arch: 'linux/amd64', groesse: 14753976, gzGroesse: 4720556 },
+        { typ: 'binary', name: 'vp-edge-light', arch: 'linux/arm', groesse: 15204514, gzGroesse: 5905289 },
       ],
       programme: [
         { arch: 'linux/mipsle', groesse: 4679121, empfangen: 4679121, fertig: true },
         { arch: 'linux/arm64', groesse: 4475301, empfangen: 1000000, fertig: false },
+        { arch: 'linux/arm', groesse: 5905289, empfangen: 5905289, fertig: true },
       ],
     }));
     expect(z.map((r) => [text(r.teil), r.geraet, r.groesse, r.portal.text])).toEqual([
       ['vp-edge-light linux/mipsle', 'Mango', `4,7${NB}MB gepackt`, 'geprüft'],
       ['vp-edge-light linux/arm64', 'Raspberry Pi', `4,5${NB}MB gepackt`, '22 % empfangen'],
       ['vp-edge-light linux/amd64', 'PC', `4,7${NB}MB gepackt`, 'fehlt im Portal'],
+      ['vp-edge-light linux/arm', 'WAGO PFC200', `5,9${NB}MB gepackt`, 'geprüft'],
       ['Loader, Dienst, Tunnel-Skripte', '–', 'nicht im Update', 'nur Werkstatt'],
     ]);
   });

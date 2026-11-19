@@ -11,7 +11,12 @@
 #      (geraetesuche, gegen simulierte Geraete); der Kern der Steuerlogik
 #      (logik) und ihr Mitlauf (logiklauf), das eigene Modbus-Geraet mit
 #      Schreibwerten (modbusgeraet),
-#   4. das Programm laesst sich fuer MIPS bauen (der Mango).
+#   4. die SPS-Bibliothek (sps/codesys) stimmt mit den Vertragsvektoren des
+#      Erzeuger-Bilds ueberein,
+#   5. das Programm laesst sich fuer MIPS bauen (der Mango),
+#   6. es laesst sich fuer ARMv7 bauen (der WAGO PFC200), und der Loader des
+#      PFC200 spricht wortgleich das Update-Protokoll des Mango-Loaders
+#      (pfc-abgleich.sh); die Modellangabe der Box (geraet).
 #
 #   edge-light/scripts/test.sh
 # shellcheck source=edge-light/scripts/lib.sh
@@ -32,8 +37,8 @@ else
 fi
 
 echo "--- 2.+3. Go-Zwillinge und Schicht 1 (mit Race-Detector)"
-go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
-go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/...
+go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/ ./cmd/vp-lese-probe/
+go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/huaweidecode/... ./internal/kacoserial/... ./internal/sunspeclive/... ./internal/erzeugerbild/... ./internal/shellyem/... ./internal/componentapply/... ./internal/modbustcp/... ./internal/modbusprofil/... ./internal/verbraucherregel/... ./internal/flowdeploy/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/... ./internal/loaderstand/... ./internal/geraet/... ./internal/logik/... ./internal/logiklauf/... ./internal/modbusgeraet/...
 # Das Update im Programm (Konzept vp-edge-light-update, K3): laden, pruefen,
 # Probe - und die Lader-Pflege des bestaetigten Programms (Loader-Selbstupdate).
 go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/
@@ -50,5 +55,9 @@ else
 fi
 echo "--- 5. MIPS-Build (Mango)"
 go_run GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
+
+echo "--- 6. ARMv7-Build und Loader-Abgleich (WAGO PFC200)"
+go_run GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light
+"$LIGHT_DIR/scripts/pfc-abgleich.sh"
 
 echo "--- alles gruen"

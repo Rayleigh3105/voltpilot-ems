@@ -46,7 +46,7 @@ assert '[ "${EDGE_LIGHT_SIGNIEREN:-}" = "true" ]' in inp["run"]
 for name in ("Manifest erzeugen", "Signieren + gegen die eingebackene Wurzel pruefen", "Manifest anhaengen + ins Register eintragen", "Programme ins Portal laden"):
     assert steps[name]["if"] == "steps.inputs.outputs.ready == 'true'", (name, steps[name].get("if"))
 man = steps["Manifest erzeugen"]["run"]
-for arch in ("mipsle", "arm64"):
+for arch in ("mipsle", "arm64", "arm"):
     assert f'--binary "vp-edge-light:linux/{arch}=${{RUNNER_TEMP}}/fassung/vp-edge-light-linux-{arch}"' in man, arch
 assert "--artifact" not in man
 # Der Skriptstand reist signiert im Manifest: die Werkstatt prueft dagegen.
@@ -57,7 +57,7 @@ assert "ota_publish " in steps["Manifest anhaengen + ins Register eintragen"]["r
 names = [s.get("name") for s in jobs["release"]["steps"]]
 assert names.index("Programme ins Portal laden") > names.index("Manifest anhaengen + ins Register eintragen")
 up = steps["Programme ins Portal laden"]["run"]
-assert "ota_light_upload" in up and "for arch in mipsle arm64" in up and 'vp-edge-light-linux-$arch.gz' in up, up
+assert "ota_light_upload" in up and "for arch in mipsle arm64 arm;" in up and 'vp-edge-light-linux-$arch.gz' in up, up
 assert steps["Schluessel + Token vom Runner entfernen"]["if"] == "always()"
 # Der Lauf weist nie etwas zu und startet keinen Rollout.
 code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
@@ -68,7 +68,7 @@ m = re.search(r"for f in ([^;]+); do", runs)
 anh = m.group(1).split()
 for f in anh:
     assert f in rel, f
-assert set(anh) == {"vp-edge-light-linux-mipsle", "vp-edge-light-linux-arm64", "vp-edge-light-linux-mipsle.gz", "vp-edge-light-linux-arm64.gz", "edge-light-openwrt.tar.gz", "sha256sums"}, anh
+assert set(anh) == {"vp-edge-light-linux-mipsle", "vp-edge-light-linux-arm64", "vp-edge-light-linux-arm", "vp-edge-light-linux-mipsle.gz", "vp-edge-light-linux-arm64.gz", "vp-edge-light-linux-arm.gz", "edge-light-openwrt.tar.gz", "sha256sums"}, anh
 # Kein Freigabe-Block mehr zum Abschreiben: die Werkstatt liest das signierte Manifest.
 assert "freigabe-edge-light" not in text and "freigabe-edge-light" not in rel
 print("ok")

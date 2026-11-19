@@ -166,7 +166,7 @@
         "arch": {
           "type": "string",
           "pattern": "^[a-z0-9]+/[a-z0-9]+(/[a-z0-9]+)?$",
-          "description": "Zielplattform als GOOS/GOARCH, etwa linux/mipsle (GL.iNet Mango), linux/arm64, linux/amd64. Das Geraet waehlt den Eintrag seiner eigenen Plattform."
+          "description": "Zielplattform als GOOS/GOARCH, etwa linux/mipsle (GL.iNet Mango), linux/arm64, linux/arm (32-Bit-ARM, gebaut mit GOARM=7: WAGO PFC200), linux/amd64. Das Geraet waehlt den Eintrag seiner eigenen Plattform."
         },
         "sha256": {
           "type": "string",

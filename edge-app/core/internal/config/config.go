@@ -58,6 +58,11 @@ type Config struct {
 	// es auf Knopfdruck auf; fehlt die Datei (Docker-Box), sagt die Seite das.
 	// Das Programm selbst aendert nie die Konfiguration der Box.
 	WlanSkript string `json:"wlan_skript"`
+	// WagoBestellnummer ist die Bestellnummer des WAGO-Controllers, auf dem
+	// Edge Light laeuft ("750-8212"). Der Startweg auf dem Geraet erfragt sie
+	// (edge-light/pfc) und gibt sie mit; das Programm nennt damit sein Modell
+	// (internal/geraet). "" = kein WAGO-Geraet.
+	WagoBestellnummer string `json:"wago_bestellnummer"`
 	// EinrichtAddr ist die Adresse der Box im Einrichtungs-WLAN
 	// "VoltPilot-Einrichtung" (einrichtung-wlan.sh). Anfragen, die unter ihr
 	// ankommen, sehen nur die Einrichtungsseite (web.Einrichtung.Schranke).
@@ -415,6 +420,7 @@ func applyEnv(cfg *Config) {
 	str("VP_LOADER_PATH", &cfg.LoaderPath)
 	str("VP_LOADER_INIT_PATH", &cfg.LoaderInitPath)
 	str("VP_WLAN_SKRIPT", &cfg.WlanSkript)
+	str("VP_WAGO_BESTELLNUMMER", &cfg.WagoBestellnummer)
 	str("VP_EINRICHT_ADDR", &cfg.EinrichtAddr)
 	str("VP_LOCAL_MQTT_ADDR", &cfg.LocalMQTTAddr)
 	str("VP_HTTP_ADDR", &cfg.HTTPAddr)

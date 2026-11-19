@@ -496,7 +496,7 @@ export interface LinieKarte {
   lauf: LaufInDerKarte | null;
 }
 
-const ARCH_GERAET: Record<string, string> = { amd64: 'PC', arm64: 'Raspberry Pi', mipsle: 'Mango' };
+const ARCH_GERAET: Record<string, string> = { amd64: 'PC', arm64: 'Raspberry Pi', arm: 'WAGO PFC200', mipsle: 'Mango' };
 
 /** „linux/arm64" → „Raspberry Pi · arm64". */
 export function plattformText(arch: string): string {

@@ -3,12 +3,13 @@ name: Edge-Light-Fassung
 # Eine Fassung von Edge Light entsteht durch einen git-Tag edge-light-JJJJ.MM.N
 # (eigene Release-Linie, Entscheid E7; N ist ein laufender Zaehler je Monat wie
 # bei edge-JJJJ.MM.N). Der Tag-Lauf prueft Edge Light (edge-light/scripts/test.sh),
-# baut die Programme fuer die Mango (mipsle) und den Raspberry Pi (arm64) mit
-# genau dieser Fassung, packt sie (gzip -9 -n) und den Skriptstand
-# (edge-light/openwrt) und haengt alles samt Pruefsummen an das Forgejo-Release:
+# baut die Programme fuer die Mango (mipsle), den Raspberry Pi (arm64) und den
+# WAGO PFC200 (arm, ARMv7) mit genau dieser Fassung, packt sie (gzip -9 -n) und
+# den Skriptstand (edge-light/openwrt) und haengt alles samt Pruefsummen an das
+# Forgejo-Release:
 #
-#   vp-edge-light-linux-mipsle, vp-edge-light-linux-arm64, die beiden .gz,
-#   edge-light-openwrt.tar.gz, sha256sums
+#   vp-edge-light-linux-mipsle, vp-edge-light-linux-arm64,
+#   vp-edge-light-linux-arm, die drei .gz, edge-light-openwrt.tar.gz, sha256sums
 #
 # Davon lebt die Werkstatt (Paket P4 der Werkstatt-Automatik): Der
 # Werkstatt-Dienst laedt die Fassung von hier. Welche Fassung er aufspielt und
@@ -155,7 +156,7 @@ jobs:
             ota_die "Keine Forgejo-Zugangsdaten zum Anhaengen (VP_OTA_FORGEJO_TOKEN oder FORGEJO_USERNAME/FORGEJO_PASSWORD)."
           base="${GITHUB_SERVER_URL:-https://git.tecmaxx.de}"
           rel="$(ota_forgejo_release_id "$base" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$auth")"
-          for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz edge-light-openwrt.tar.gz sha256sums; do
+          for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 vp-edge-light-linux-arm vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz vp-edge-light-linux-arm.gz edge-light-openwrt.tar.gz sha256sums; do
             ota_forgejo_upload "$base" "$GITHUB_REPOSITORY" "$rel" "$RUNNER_TEMP/fassung/$f" "$auth"
           done
         env:
@@ -242,6 +243,7 @@ jobs:
             --commit "${GITHUB_SHA::12}" \
             --binary "vp-edge-light:linux/mipsle=${RUNNER_TEMP}/fassung/vp-edge-light-linux-mipsle" \
             --binary "vp-edge-light:linux/arm64=${RUNNER_TEMP}/fassung/vp-edge-light-linux-arm64" \
+            --binary "vp-edge-light:linux/arm=${RUNNER_TEMP}/fassung/vp-edge-light-linux-arm" \
             --skripte "${RUNNER_TEMP}/fassung/edge-light-openwrt.tar.gz" \
             --min-from-seq "${MIN_FROM}" \
             --state-schema "${STATE_SCHEMA}" \
@@ -314,7 +316,7 @@ jobs:
           set -euo pipefail
           . tools/ota/release-publish.sh
           token="$(cat "${RUNNER_TEMP}/vp-ota-token")"
-          for arch in mipsle arm64; do
+          for arch in mipsle arm64 arm; do
             ota_light_upload "${PORTAL}" "$token" "${GITHUB_REF_NAME}" "linux/$arch" \
               "${RUNNER_TEMP}/fassung/vp-edge-light-linux-$arch.gz"
           done

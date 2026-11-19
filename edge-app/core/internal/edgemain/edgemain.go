@@ -77,7 +77,7 @@ func Main(o Options) {
 	}
 	// Geraete & Updates G8: auf welchem Geraet laeuft dieses Programm? Einmal
 	// beim Start - das Geraet wechselt nicht, solange das Programm laeuft.
-	erkannt := geraet.Erkennen(os.DirFS("/"), runtime.GOARCH)
+	erkannt := geraet.Erkennen(os.DirFS("/"), runtime.GOARCH, cfg.WagoBestellnummer)
 	a.SetGeraet(erkannt)
 	a.SetSourceReads(o.SourceReads)
 	slog.Info("device detected", "model", erkannt.Modell, "arch", erkannt.Arch)
