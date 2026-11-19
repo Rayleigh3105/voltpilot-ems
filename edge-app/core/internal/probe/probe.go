@@ -74,6 +74,12 @@ const (
 	// names of a "VoltPilot-Registerbild Erzeuger v1" (EZ-5) - no measurement.
 	// It is what the "Steuerung verbinden" step shows before anything is created.
 	OpErzeugerKopf = "erzeuger_kopf"
+	// OpKoppelTest is the Schalt-Test of one Stellplatz of a controller's
+	// Koppelbild (koppelbild.md §15, PFC200 Stufe 4): for ttl_s the box writes
+	// a test wish onto that Stellplatz in its telegram and answers with the
+	// controller's acknowledgement. Edge Light only (layer1 owns the
+	// controller's session); a box without it answers not_supported.
+	OpKoppelTest = "koppel_test"
 	// OpSwitchSet is the ON/OFF switch of a FREE I/O-module output on the
 	// portal's device page: set_value stays until someone switches again - no
 	// auto-off. That is only acceptable for TransportEbyte: the module's own
@@ -222,6 +228,13 @@ type Op struct {
 	ReadbackAddress *int `json:"readback_address,omitempty"`
 	// switch_set only: 1 = on, 0 = off.
 	SetValue *int `json:"set_value,omitempty"`
+
+	// koppel_test only: the expected controller id, the Stellplatz, the kind
+	// it offers and the test value in the picture's whole units. ttl_s above.
+	SteuerungID *int64 `json:"steuerung_id,omitempty"`
+	Platz       *int   `json:"platz,omitempty"`
+	Art         string `json:"art,omitempty"`
+	Wert        *int64 `json:"wert,omitempty"`
 }
 
 // Writes reports whether this op type WRITES to the device. It is the one
@@ -283,6 +296,9 @@ type OpResult struct {
 	// dresses up as a measurement is the kind of ambiguity false confirmations
 	// grow out of.
 	Switched *Switched `json:"switched,omitempty"`
+	// KoppelTest is the outcome of a koppel_test op (its own block, like
+	// Switched: an acknowledgement is neither a reading nor a write receipt).
+	KoppelTest *KoppelTest `json:"koppel_test,omitempty"`
 	// Reading is the decoded snapshot of a test_connection op. Every field is a
 	// pointer so a channel this device does NOT report is ABSENT - never a
 	// fabricated 0 (the gap-not-zero rule the whole codebase runs on).
@@ -550,6 +566,8 @@ func ValidateOp(op Op) (code string, message string) {
 		return validateWagoKopf(op)
 	case OpSwitchSet:
 		return validateSwitchSet(op)
+	case OpKoppelTest:
+		return validateKoppelTest(op)
 	case OpNachStromausfallAus:
 		if !strings.EqualFold(strings.TrimSpace(op.Brand), "shelly") {
 			return ErrNotSupported, "Diese Einstellung gibt es nur an einem Shelly."
@@ -743,6 +761,65 @@ func SucceededErzeugerKopf(id string, kopf *ErzeugerKopf) OpResult {
 func FailedErzeugerKopf(id, code, message string, kopf *ErzeugerKopf, finding *Finding) OpResult {
 	return OpResult{ID: id, OK: false, ErrorCode: code, Message: message,
 		ErzeugerKopf: kopf, Finding: finding}
+}
+
+// KoppelTest is what a koppel_test step saw and what the controller
+// acknowledged (mqtt-probe.schema.json op_result.koppel_test). Absent fields
+// are no value, never 0.
+type KoppelTest struct {
+	Lage        string          `json:"lage"`
+	Grund       string          `json:"grund,omitempty"`
+	KopfUrteil  string          `json:"kopf_urteil,omitempty"`
+	Angebot     json.RawMessage `json:"angebot,omitempty"`
+	Geschrieben *bool           `json:"geschrieben,omitempty"`
+	Folge       *int            `json:"folge,omitempty"`
+	Urteil      string          `json:"urteil,omitempty"`
+	Wirksam     *int64          `json:"wirksam,omitempty"`
+}
+
+// koppelArten are the kinds a Stellplatz can offer (koppelbild.md §7).
+var koppelArten = map[string]bool{"limit_w": true, "limit_pct": true, "setpoint_w": true, "on_off": true,
+	"mode": true, "setpoint_c": true}
+
+// validateKoppelTest admits a Schalt-Test of a Stellplatz: private target
+// (127.0.0.1 is "in diesem Gerät"), bounded port/unit, a stated controller id,
+// Stellplatz 1..8, a known kind, a value inside int32 without its maximum and
+// ttl_s 5..60. The band is the controller's - it clamps itself.
+func validateKoppelTest(op Op) (string, string) {
+	host := strings.TrimSpace(op.Host)
+	switch {
+	case host == "":
+		return ErrInvalidRequest, "Es fehlt die Adresse der Steuerung."
+	case !IsPrivateHost(host):
+		return ErrInvalidRequest, "Die Adresse der Steuerung liegt nicht im eigenen Netz."
+	case op.Port != nil && (*op.Port < 1 || *op.Port > 65535):
+		return ErrInvalidRequest, "Der Port liegt außerhalb des gültigen Bereichs."
+	case op.UnitID != nil && (*op.UnitID < 0 || *op.UnitID > 255):
+		return ErrInvalidRequest, "Die Unit-ID liegt außerhalb des gültigen Bereichs."
+	case op.SteuerungID == nil || *op.SteuerungID < 0 || *op.SteuerungID > 4294967294:
+		return ErrInvalidRequest, "Es fehlt die Kennung der Steuerung."
+	case op.Platz == nil || *op.Platz < 1 || *op.Platz > 8:
+		return ErrInvalidRequest, "Der Stellplatz muss 1 bis 8 sein."
+	case !koppelArten[op.Art]:
+		return ErrInvalidRequest, "Die Art des Stellplatzes ist unbekannt."
+	case op.Wert == nil || *op.Wert < -2147483647 || *op.Wert > 2147483646:
+		return ErrInvalidRequest, "Der Testwert fehlt oder liegt außerhalb des gültigen Bereichs."
+	case op.TTLSeconds == nil || *op.TTLSeconds < 5 || *op.TTLSeconds > 60:
+		return ErrInvalidRequest, "Die Dauer des Schalt-Tests muss 5 bis 60 Sekunden sein."
+	}
+	return "", ""
+}
+
+// SucceededKoppelTest builds the line of a Schalt-Test the controller
+// acknowledged.
+func SucceededKoppelTest(id string, k *KoppelTest) OpResult {
+	return OpResult{ID: id, OK: true, KoppelTest: k}
+}
+
+// FailedKoppelTest builds a refused Schalt-Test line that still shows what the
+// box saw.
+func FailedKoppelTest(id, code, message string, k *KoppelTest) OpResult {
+	return OpResult{ID: id, OK: false, ErrorCode: code, Message: message, KoppelTest: k}
 }
 
 // validateSwitch admits the two WRITING ops. It re-applies every rule a read
