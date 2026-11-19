@@ -93,13 +93,18 @@ func neu(t *testing.T, abOpenWrt bool) *aufbau {
 	_, _ = rand.Read(a.abbild)
 	programm := []byte("\x7fELF vp-edge-light attrappe")
 	skripte := attrappe.SkripteTarGz(t)
-	manifest, signatur := attrappe.Manifest("edge-light-2026.11.1", 77, summe(programm))
+	manifest, _ := attrappe.Manifest("edge-light-2026.11.1", 77, summe(programm))
+	// Eine Wegwerf-Wurzel statt der echten (deren privater Schluessel nirgendwo
+	// im Repo steht): der Dienst prueft seit N3 die Signaturkette echt
+	// kryptographisch, bevor er etwas auf die Mango spielt.
+	wurzel := attrappe.NeueSignierteWurzel(t)
+	signatur := wurzel.SigniereManifest(t, manifest)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/edge/trust-set/trust-set.json":
-			_, _ = w.Write([]byte(`{"schema_version":"1.0","keys":[{"key_id":"rel-2026-a"}]}`))
+			_, _ = w.Write(wurzel.TrustSet)
 		case "/api/v1/edge/trust-set/trust-set.json.sig":
-			_, _ = w.Write([]byte(`{"key_id":"root-2026-a","domain":"trust-set","signature":"AAAA"}`))
+			_, _ = w.Write(wurzel.TrustSetSig)
 		case "/edge/release.json", "/edge/release.json.sig":
 			if a.ohneManifest {
 				http.NotFound(w, r)
@@ -134,7 +139,7 @@ func neu(t *testing.T, abOpenWrt bool) *aufbau {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(arbeit) })
 	a.k = mango.Konfig{
-		Werkbank: wb, Fassungen: &fassungen.Ablage{Dir: filepath.Join(a.dir, "fassungen"), Client: srv.Client()},
+		Werkbank: wb, Fassungen: &fassungen.Ablage{Dir: filepath.Join(a.dir, "fassungen"), Client: srv.Client(), Wurzel: wurzel.Wurzel},
 		Arbeit: arbeit, LanNetz: netip.MustParsePrefix("10.213.0.1/24"), LanBruecke: netip.MustParseAddr("10.213.0.2"),
 		DNS:        []netip.Addr{netip.MustParseAddr("9.9.9.9")},
 		Notfall:    strings.TrimSpace(string(ssh.MarshalAuthorizedKey(notfall.PublicKey()))) + " voltpilot-notfall",
